@@ -9,11 +9,12 @@ use std::fs::OpenOptions;
 use std::io::{Read, Write};
 use std::os::windows::ffi::OsStrExt;
 use std::slice;
+use std::sync::mpsc::TryRecvError;
 use std::sync::{Arc, mpsc};
 use std::thread;
 
 const MAGIC: u32 = 0x4756_534d;
-const VERSION: u16 = 3;
+const VERSION: u16 = 4;
 const REQUEST_SIZE: usize = 512;
 const RESPONSE_SIZE: usize = 256;
 const KIND_HELLO: u16 = 1;
@@ -26,6 +27,7 @@ const STATUS_UNSUPPORTED: u16 = 1;
 const STATUS_RESOURCE: u16 = 2;
 const STATUS_WORKER: u16 = 3;
 const STATUS_DOCUMENT_MISSING: u16 = 4;
+const STATUS_FONT_CATALOG_PENDING: u16 = 5;
 const FLAG_HAS_TILE: u32 = 1;
 const FLAG_HAS_SEMANTIC_COLOR: u32 = 2;
 const PIXEL_RGBA: u8 = 1;
@@ -98,7 +100,7 @@ struct WorkerState {
     cache_cost: u64,
     tick: u64,
     font_database: Option<Arc<usvg::fontdb::Database>>,
-    font_database_receiver: mpsc::Receiver<Arc<usvg::fontdb::Database>>,
+    font_database_receiver: mpsc::Receiver<Result<Arc<usvg::fontdb::Database>, Reject>>,
 }
 
 #[derive(Clone)]
@@ -178,7 +180,9 @@ fn run() -> Result<(), String> {
             database.set_cursive_family("Segoe Script");
             database.set_fantasy_family("Impact");
             database.set_monospace_family("Cascadia Mono");
-            let _ = font_sender.send(Arc::new(database));
+            let database = Arc::new(database);
+            let result = warm_text_pipeline(&database).map(|()| database);
+            let _ = font_sender.send(result);
         })
         .map_err(|error| format!("font thread failed: {error}"))?;
 
@@ -208,8 +212,13 @@ fn run() -> Result<(), String> {
         let response = match request.kind {
             KIND_HELLO => {
                 validate_control_request(&request, false)?;
-                ensure_font_database(&mut state)
-                    .map(|()| Response::ok(&request, Metadata::default(), 0, 0, 0))
+                poll_font_database(&mut state).map(|ready| {
+                    if ready {
+                        Response::ok(&request, Metadata::default(), 0, 0, 0)
+                    } else {
+                        Response::font_catalog_pending(&request)
+                    }
+                })
             }
             KIND_OPEN | KIND_RENDER => process(&mut state, &request),
             KIND_TRIM_CACHE => {
@@ -1734,10 +1743,23 @@ fn ensure_font_database(state: &mut WorkerState) -> Result<(), Reject> {
             .font_database_receiver
             .recv()
             .map_err(|_| Reject::Worker("font catalog failed"))?;
-        warm_text_pipeline(&database)?;
-        state.font_database = Some(database);
+        state.font_database = Some(database?);
     }
     Ok(())
+}
+
+fn poll_font_database(state: &mut WorkerState) -> Result<bool, Reject> {
+    if state.font_database.is_some() {
+        return Ok(true);
+    }
+    match state.font_database_receiver.try_recv() {
+        Ok(result) => {
+            state.font_database = Some(result?);
+            Ok(true)
+        }
+        Err(TryRecvError::Empty) => Ok(false),
+        Err(TryRecvError::Disconnected) => Err(Reject::Worker("font catalog failed")),
+    }
 }
 
 fn warm_text_pipeline(database: &Arc<usvg::fontdb::Database>) -> Result<(), Reject> {
@@ -2168,6 +2190,21 @@ impl Response {
         }
     }
 
+    fn font_catalog_pending(request: &Request) -> Self {
+        Self {
+            status: STATUS_FONT_CATALOG_PENDING,
+            request_id: request.request_id,
+            nonce_low: request.nonce_low,
+            nonce_high: request.nonce_high,
+            metadata: Metadata::default(),
+            output_length: 0,
+            width: 0,
+            height: 0,
+            pixel_format: 0,
+            detail: "",
+        }
+    }
+
     fn rejected(request: &Request, rejection: Reject) -> Self {
         let (status, detail) = match rejection {
             Reject::Unsupported(detail) => (STATUS_UNSUPPORTED, detail),
@@ -2298,6 +2335,46 @@ fn write_f64(bytes: &mut [u8], offset: usize, value: f64) {
 mod tests {
     use super::*;
     use base64::Engine as _;
+
+    #[test]
+    fn font_catalog_probe_is_nonblocking_and_preserves_completed_catalog() {
+        let (sender, receiver) = mpsc::channel();
+        let mut state = WorkerState {
+            cache: HashMap::new(),
+            documents: HashMap::new(),
+            cache_cost: 0,
+            tick: 0,
+            font_database: None,
+            font_database_receiver: receiver,
+        };
+
+        assert!(matches!(poll_font_database(&mut state), Ok(false)));
+        sender
+            .send(Ok(Arc::new(usvg::fontdb::Database::new())))
+            .unwrap();
+        assert!(matches!(poll_font_database(&mut state), Ok(true)));
+        drop(sender);
+        assert!(matches!(poll_font_database(&mut state), Ok(true)));
+    }
+
+    #[test]
+    fn font_catalog_probe_rejects_disconnected_initializer() {
+        let (sender, receiver) = mpsc::channel();
+        drop(sender);
+        let mut state = WorkerState {
+            cache: HashMap::new(),
+            documents: HashMap::new(),
+            cache_cost: 0,
+            tick: 0,
+            font_database: None,
+            font_database_receiver: receiver,
+        };
+
+        assert!(matches!(
+            poll_font_database(&mut state),
+            Err(Reject::Worker("font catalog failed"))
+        ));
+    }
 
     fn test_request(max_nested_svg_depth: u32) -> Request {
         Request {

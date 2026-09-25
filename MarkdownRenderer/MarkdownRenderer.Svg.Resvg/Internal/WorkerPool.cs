@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using MarkdownRenderer.Images;
 
@@ -524,18 +525,60 @@ internal sealed class WorkerPool : IAsyncDisposable, IDisposable
         if (worker.IsFontCatalogReady)
             return;
 
+        var elapsed = Stopwatch.StartNew();
+        long workerCpuAtStart = WorkerTimeoutEvents.Log.IsEnabled()
+            ? worker.GetProcessCpuTicks()
+            : -1;
         try
         {
-            WorkerResponse response = await worker.ExchangeAsync(
-                CreateControlRequest(WorkerOperation.Hello, worker),
-                WorkerSchedulingPolicy.InitializationDeadline,
-                CancellationToken.None).ConfigureAwait(false);
-            cancellationToken.ThrowIfCancellationRequested();
-            if (response.Status != WorkerStatus.Ok || response.OutputLength != 0)
-                throw new WorkerProtocolException("The resvg worker rejected font-catalog initialization.");
-            worker.MarkFontCatalogReady();
+            while (true)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                TimeSpan remaining = WorkerSchedulingPolicy.InitializationDeadline - elapsed.Elapsed;
+                if (remaining <= TimeSpan.Zero)
+                {
+                    // The font thread may still finish. Do not kill and
+                    // restart it merely because the host's wait expired.
+                    long workerCpuAtTimeout = workerCpuAtStart >= 0
+                        ? worker.GetProcessCpuTicks()
+                        : -1;
+                    int workerCpuMilliseconds = workerCpuAtStart >= 0 &&
+                        workerCpuAtTimeout >= workerCpuAtStart
+                            ? (int)Math.Min((workerCpuAtTimeout - workerCpuAtStart) / 10_000, int.MaxValue)
+                            : -1;
+                    WorkerTimeoutEvents.Log.Timeout(
+                        (int)WorkerOperation.Hello,
+                        (int)WorkerSchedulingPolicy.InitializationDeadline.TotalMilliseconds,
+                        workerCpuMilliseconds);
+                    RecordStartupFailure();
+                    throw new WorkerInitializationDeadlineException(
+                        "The resvg worker did not initialize its font catalog before the initialization deadline.",
+                        new TimeoutException());
+                }
+
+                WorkerResponse response = await worker.ExchangeAsync(
+                    CreateControlRequest(WorkerOperation.Hello, worker),
+                    remaining,
+                    CancellationToken.None).ConfigureAwait(false);
+                cancellationToken.ThrowIfCancellationRequested();
+                if (response.OutputLength != 0)
+                    throw new WorkerProtocolException("The resvg worker returned output for font-catalog initialization.");
+                if (response.Status == WorkerStatus.Ok)
+                {
+                    worker.MarkFontCatalogReady();
+                    return;
+                }
+                if (response.Status != WorkerStatus.FontCatalogPending)
+                    throw new WorkerProtocolException("The resvg worker rejected font-catalog initialization.");
+
+                remaining = WorkerSchedulingPolicy.InitializationDeadline - elapsed.Elapsed;
+                if (remaining > TimeSpan.Zero)
+                    await Task.Delay(TimeSpan.FromMilliseconds(Math.Min(50, remaining.TotalMilliseconds)), cancellationToken)
+                        .ConfigureAwait(false);
+            }
         }
-        catch (Exception exception) when (IsWorkerTransportFailure(exception))
+        catch (Exception exception) when (exception is not WorkerInitializationDeadlineException &&
+                                          IsWorkerTransportFailure(exception))
         {
             Invalidate(lease.Slot, worker);
             RecordStartupFailure();

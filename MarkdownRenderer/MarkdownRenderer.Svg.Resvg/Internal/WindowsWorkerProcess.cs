@@ -222,7 +222,7 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
 
     public void Dispose() => DisposeCore(waitForExit: false);
 
-    private long GetProcessCpuTicks()
+    internal long GetProcessCpuTicks()
     {
         try
         {

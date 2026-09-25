@@ -442,6 +442,21 @@ public sealed class ResvgProviderTests
     }
 
     [Fact]
+    public void ProtocolDecoder_AdmitsNonblockingFontCatalogPending()
+    {
+        byte[] response = new byte[WorkerProtocol.ResponseSize];
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(response, WorkerProtocol.Magic);
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(response.AsSpan(4), WorkerProtocol.Version);
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(response.AsSpan(6), (ushort)WorkerStatus.FontCatalogPending);
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(response.AsSpan(8), 41);
+
+        WorkerResponse decoded = WorkerProtocol.DecodeResponse(response, 41, 0, 0);
+
+        Assert.Equal(WorkerStatus.FontCatalogPending, decoded.Status);
+        Assert.Equal(0, decoded.OutputLength);
+    }
+
+    [Fact]
     public void RenderProtocol_UsesDocumentTokenAndOutputOnlyMapping()
     {
         var request = new WorkerRequest(

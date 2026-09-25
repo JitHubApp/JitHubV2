@@ -747,6 +747,44 @@ complete before claiming this plan or the 1.0 performance goal is met.
   pass locally. A new full live audit must confirm nonzero admission where
   bytes are actually materialized and retain the strict 500/500 outcome;
   earlier zero-valued counters cannot qualify the memory gate.
+- The `7da5360` top-500 run (`36122469834`) has exposed two real
+  no-false-unavailable failures, so it cannot qualify even if its remaining
+  shards pass. Rank 154 (`infiniflow/ragflow`) resolved a valid 1,012-byte
+  Shields SVG but its isolated worker timed out in `open` after the 3-second
+  content deadline with 0 ms measured worker CPU; Edge displayed all 25
+  images. Rank 301 (`shanraisshan/claude-code-best-practice`) resolved its
+  assets, then three successive isolated workers timed out during
+  `font-catalog` initialization at 15 seconds (15/31/0 ms worker CPU),
+  disabling the provider and leaving 335 of 341 SVG images unavailable;
+  Edge displayed all 341. These are SVG-worker liveness failures, not image
+  download failures or valid content rejections. The worker currently blocks
+  on Windows system-font enumeration and its text warmup before replying to
+  `HELLO`, and `WarmUpAsync` starts only the process, not that font phase.
+  The same run also failed rank 367 (`remotion-dev/remotion`) because the Edge
+  oracle received `net::ERR_NO_BUFFER_SPACE`; that is separately recorded as
+  an oracle/network failure, not a native-renderer pass or a waiver for ranks
+  154 and 301. The worker protocol has since been changed to use a
+  nonblocking `Hello` probe while catalog loading and text warmup run on its
+  background thread. A responsive worker now survives a font-readiness
+  deadline instead of restarting the entire cold scan, so a late-completing
+  catalog can be used by later requests. Three initialization deadlines in
+  60 seconds still trip the required temporary provider circuit breaker.
+  A text-readiness wait still holds its worker scheduler lease, so unrelated
+  queued non-text SVGs are not yet fully isolated from a slow catalog on
+  one-worker systems. The immutable 3-second content deadline and 15-second
+  font initialization deadline remain intact,
+  and timed-out content is not replayed. This is a liveness mitigation, not
+  yet a no-false-unavailable or latency-gate pass: the off-CPU stall still
+  needs diagnosis and a full live rerun. The `62675d6` full audit
+  (`36127727158`) is running and is the first run whose byte-admission
+  counters can be trusted end-to-end; it predates this worker mitigation.
+- On `62675d6`, the new ranks 76–100 shard passed 25/25. The audit now reports
+  nonzero peak admitted source bytes for all 24 cases with image sources; the
+  only zero case, `nodejs/node`, has no image source or fetch. The largest
+  observed peak in this shard is 8,217,590 bytes, below the 64-MiB admission
+  ceiling. This confirms that the previous wrapper instrumentation hole was
+  closed for this shard, not that the full 500-case correctness, actual peak
+  process memory, or release benchmark gates passed.
 - Open: oversized raster tiling and session-owned SVG/document/GPU preparation
   caches.
 - Open: defer Math/Mermaid scenes and ahead-of-viewport highlighting without

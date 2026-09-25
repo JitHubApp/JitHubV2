@@ -1,4 +1,4 @@
-# MarkdownRenderer resvg worker protocol v3
+# MarkdownRenderer resvg worker protocol v4
 
 The host and worker exchange fixed-size little-endian frames over one private
 duplex named pipe. SVG bytes and premultiplied pixels are never carried by the
@@ -26,12 +26,15 @@ its coordinates in the complete output; the output mapping contains only the
 cropped tile. `TrimCache` discards parsed trees and decoded resources, and
 `CloseDocument` forgets the token.
 
-`Hello` is the text-readiness barrier: it completes only after the background
-Windows font catalog is available and the fixed usvg/resvg text-shaping and
-glyph-raster pipeline has been primed. Process warm-up does not send it. The
-host uses it before the first text-bearing request and gives this one-time,
-content-independent initialization its own deadline. SVGs without text bypass
-the barrier and can render while the catalog is still loading.
+`Hello` is a nonblocking text-readiness probe. It returns status 5 while the
+background Windows font catalog and fixed usvg/resvg text-shaping and
+glyph-raster warmup are in progress, then status 0 when both are ready. The
+host polls before text-bearing requests under one content-independent
+initialization deadline. Exceeding that deadline does not kill a responsive
+worker or restart its font scan; later requests can probe the same worker.
+Process warm-up does not send `Hello`. SVGs without text bypass the probe;
+the one-worker scheduler can still queue them behind an active text-readiness
+wait. Priority isolation during that wait remains open.
 
 The protocol is deliberately not extensible in place. Any field change
 increments the version and ships a matching provider and worker.
