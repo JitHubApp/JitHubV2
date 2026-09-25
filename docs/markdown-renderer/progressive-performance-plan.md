@@ -778,6 +778,14 @@ complete before claiming this plan or the 1.0 performance goal is met.
   needs diagnosis and a full live rerun. The `62675d6` full audit
   (`36127727158`) is running and is the first run whose byte-admission
   counters can be trusted end-to-end; it predates this worker mitigation.
+- The rank-367 Edge `net::ERR_NO_BUFFER_SPACE` failure now has one bounded
+  fresh-navigation recovery after stopping the failed load and waiting one
+  second. The successful attempt gets a post-wait CPU/layout baseline; retry
+  count and total wall time stay in evidence. A second buffer error, any
+  other navigation error, or an incomplete page still fails. Eight navigation
+  contract tests pass locally. This addresses an oracle infrastructure
+  failure mode without excusing a native-renderer failure or qualifying the
+  browser-relative release gate.
 - On `62675d6`, the new ranks 76–100 shard passed 25/25. The audit now reports
   nonzero peak admitted source bytes for all 24 cases with image sources; the
   only zero case, `nodejs/node`, has no image source or fetch. The largest

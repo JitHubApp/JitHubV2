@@ -13,28 +13,37 @@ export function metricDelta(currentMetrics, baselineMetrics, name) {
   return Math.max(0, current >= baseline ? current - baseline : current);
 }
 
-// A timed-out GitHub document may be an upstream delivery stall. Make exactly
-// one fresh attempt, preserving the failed attempt in wall time while keeping
-// its CPU/layout work out of the successful navigation's comparison metrics.
+// A timed-out GitHub document or exhausted Edge network buffers may be an
+// upstream/runner stall. Make exactly one fresh attempt, preserving the failed
+// attempt in wall time while keeping its CPU/layout work out of the successful
+// navigation's comparison metrics. All other navigation errors remain fatal.
 export async function navigateReadme(
   cdp,
   repositoryUrl,
   waitForDocumentReady,
   readTimeOrigin,
   now = () => performance.now(),
+  pause = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)),
 ) {
   let navigationStarted = 0;
   let navigationRetries = 0;
   let retryMetricBaseline = {};
+  let retryAfterBufferExhaustion = false;
   for (let attempt = 0; attempt < 2; attempt++) {
     if (attempt > 0) {
       await cdp.send("Page.stopLoading");
+      if (retryAfterBufferExhaustion) await pause(1_000);
       retryMetricBaseline = metricMap(await cdp.send("Performance.getMetrics"));
     }
     const previousTimeOrigin = await readTimeOrigin();
     navigationStarted = now();
     const navigation = await cdp.send("Page.navigate", { url: repositoryUrl });
     if (navigation.errorText) {
+      if (navigation.errorText === "net::ERR_NO_BUFFER_SPACE" && attempt === 0) {
+        navigationRetries++;
+        retryAfterBufferExhaustion = true;
+        continue;
+      }
       throw new Error(`Edge navigation failed: ${navigation.errorText}`);
     }
     try {

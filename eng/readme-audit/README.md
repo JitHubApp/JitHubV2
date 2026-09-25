@@ -63,6 +63,13 @@ intentionally uses native Fluent typography and styling rather than GitHub's
 CSS. Runs of at least 20 repositories also gate first-render and full-page p95
 timing at 110% of Edge on the same machine.
 
+If Edge cannot begin a navigation because its host reports exactly
+`net::ERR_NO_BUFFER_SPACE`, the oracle stops that attempt, waits one second,
+and makes one fresh navigation with a new CPU/layout baseline. Its total wall
+time and retry count remain in the case evidence. A second failure, any other
+navigation error, or a failed/partial README after the retry still fails the
+case; this is not a fidelity or performance waiver.
+
 When GitHub presents an extensionless README candidate as source rather than a
 rendered `article.markdown-body`, JitHub must make the same choice. Such a case
 still gates process stability, content presence, and unavailable resources, but
