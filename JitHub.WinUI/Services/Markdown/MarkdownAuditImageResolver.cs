@@ -12,7 +12,7 @@ namespace JitHub.Services.Markdown;
 /// It never changes the wrapped resolver's result or error behavior.
 /// </summary>
 internal sealed class MarkdownAuditImageResolver(IMarkdownImageResolver inner) :
-    IMarkdownImageResolver,
+    IMarkdownImageSourceByteAdmittedResolver,
     IMarkdownImagePrefetcher
 {
     public ValueTask PrefetchAsync(
@@ -23,17 +23,36 @@ internal sealed class MarkdownAuditImageResolver(IMarkdownImageResolver inner) :
             ? prefetcher.PrefetchAsync(sources, context, cancellationToken)
             : ValueTask.CompletedTask;
 
-    public async ValueTask<MarkdownImageResolution> ResolveAsync(
+    public ValueTask<MarkdownImageResolution> ResolveAsync(
         string source,
         MarkdownImageResolveContext context,
+        CancellationToken cancellationToken) =>
+        ResolveCoreAsync(source, context, null, cancellationToken);
+
+    public ValueTask<MarkdownImageResolution> ResolveWithSourceByteAdmissionAsync(
+        string source,
+        MarkdownImageResolveContext context,
+        IMarkdownImageSourceByteAdmission admission,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(admission);
+        return ResolveCoreAsync(source, context, admission, cancellationToken);
+    }
+
+    private async ValueTask<MarkdownImageResolution> ResolveCoreAsync(
+        string source,
+        MarkdownImageResolveContext context,
+        IMarkdownImageSourceByteAdmission? admission,
         CancellationToken cancellationToken)
     {
         DateTimeOffset startedAt = DateTimeOffset.UtcNow;
         long started = Stopwatch.GetTimestamp();
-        MarkdownImageResolution resolution = await inner.ResolveAsync(
-            source,
-            context,
-            cancellationToken).ConfigureAwait(false);
+        MarkdownImageResolution resolution = admission is not null &&
+            inner is IMarkdownImageSourceByteAdmittedResolver admitted
+            ? await admitted.ResolveWithSourceByteAdmissionAsync(
+                source, context, admission, cancellationToken).ConfigureAwait(false)
+            : await inner.ResolveAsync(
+                source, context, cancellationToken).ConfigureAwait(false);
         MarkdownLifecycleAutomationBridge.RecordImageResolution(
             source,
             resolution,

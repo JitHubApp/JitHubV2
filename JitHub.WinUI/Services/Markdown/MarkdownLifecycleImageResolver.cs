@@ -12,7 +12,7 @@ namespace JitHub.Services.Markdown;
 /// Every source except the fixture's repository-relative image uses the real resolver.
 /// </summary>
 internal sealed class MarkdownLifecycleImageResolver(IMarkdownImageResolver inner) :
-    IMarkdownImageResolver,
+    IMarkdownImageSourceByteAdmittedResolver,
     IMarkdownImagePrefetcher
 {
     private const string RelativeFixturePath = "docs/images/lifecycle-relative.png";
@@ -44,6 +44,23 @@ internal sealed class MarkdownLifecycleImageResolver(IMarkdownImageResolver inne
     public ValueTask<MarkdownImageResolution> ResolveAsync(
         string source,
         MarkdownImageResolveContext context,
+        CancellationToken cancellationToken) =>
+        ResolveCoreAsync(source, context, null, cancellationToken);
+
+    public ValueTask<MarkdownImageResolution> ResolveWithSourceByteAdmissionAsync(
+        string source,
+        MarkdownImageResolveContext context,
+        IMarkdownImageSourceByteAdmission admission,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(admission);
+        return ResolveCoreAsync(source, context, admission, cancellationToken);
+    }
+
+    private ValueTask<MarkdownImageResolution> ResolveCoreAsync(
+        string source,
+        MarkdownImageResolveContext context,
+        IMarkdownImageSourceByteAdmission? admission,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -63,6 +80,9 @@ internal sealed class MarkdownLifecycleImageResolver(IMarkdownImageResolver inne
                 MarkdownImageUnavailableReason.RemoteContentBlocked));
         }
 
-        return inner.ResolveAsync(source, context, cancellationToken);
+        return admission is not null && inner is IMarkdownImageSourceByteAdmittedResolver admitted
+            ? admitted.ResolveWithSourceByteAdmissionAsync(
+                source, context, admission, cancellationToken)
+            : inner.ResolveAsync(source, context, cancellationToken);
     }
 }

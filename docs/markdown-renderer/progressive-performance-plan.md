@@ -735,6 +735,18 @@ complete before claiming this plan or the 1.0 performance goal is met.
   bounded source cache without a new source allocation. These tests close a
   disk-read admission hole, but they do not establish actual process peak
   memory, authenticated API materialization cost, or the full live storm gate.
+- The first 25-case shard completed on `7da5360` (ranks 76–100, 25/25
+  passing), but every reported peak in-flight source-byte counter was zero
+  despite nonzero image fetches. This is an instrumentation-and-behavior gap,
+  not proof of zero source allocation: the audit and lifecycle resolver
+  wrappers exposed only `IMarkdownImageResolver`, hiding the production
+  resolver's source-byte-admitted capability from the progressive session.
+  Both wrappers now forward admitted resolution to the inner capability,
+  preserving fixture and legacy fallbacks. Three focused wrapper-chain tests,
+  all 3,087 Release x64 app tests, and a zero-warning Release x64 app build
+  pass locally. A new full live audit must confirm nonzero admission where
+  bytes are actually materialized and retain the strict 500/500 outcome;
+  earlier zero-valued counters cannot qualify the memory gate.
 - Open: oversized raster tiling and session-owned SVG/document/GPU preparation
   caches.
 - Open: defer Math/Mermaid scenes and ahead-of-viewport highlighting without
