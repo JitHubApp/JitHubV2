@@ -658,6 +658,20 @@ complete before claiming this plan or the 1.0 performance goal is met.
   recursively, so holding a whole-request permit can deadlock. Global scene
   queue fairness across documents and copy-on-write layout publication with a
   measured ≤2 ms UI commit also remain open.
+- In progress, not yet effective in production: a weighted, document-fair
+  source-byte admission primitive now enforces a total byte ceiling, a
+  speculative sub-ceiling that reserves visible capacity, strict queued
+  visible priority, cancellation-safe grants, and idempotent leases. Six
+  focused Release x64 tests pass, including a cancellation/grant race; the
+  complete 407-test Release x64 GitHub renderer suite and x86/ARM64 optional
+  package builds pass with zero warnings, and the local optional compressed
+  pack is 28,515 bytes under its unchanged 128 KiB cap. It is
+  deliberately not wired to JitHub's reads yet: admission must cover the
+  actual HTTP/authenticated buffer lifetime, avoid holding a lease across
+  recursive Git LFS resolution, and define a safe streaming path for unknown
+  lengths and sources larger than a lowered speculative ceiling. Until that
+  integration and memory-storm tests pass, the 64 MiB in-flight goal remains
+  open; this primitive alone does not bound current downloads.
 - Open: oversized raster tiling and session-owned SVG/document/GPU preparation
   caches.
 - Open: defer Math/Mermaid scenes and ahead-of-viewport highlighting without
