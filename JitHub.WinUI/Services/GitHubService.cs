@@ -2265,9 +2265,10 @@ namespace JitHub.Services
                     }
 
                     GitHubCachedImage? publicImage = publicDecision.Access == MarkdownRemoteImageAccess.CacheOnly
-                        ? await _gitHubImageService.TryGetCachedAsync(
+                        ? await TryGetCachedMarkdownImageAsync(
                             publicUri!.ToString(),
                             scope,
+                            admission,
                             cancellationToken).ConfigureAwait(false)
                         : await GetMarkdownImageAsync(
                             publicUri!.ToString(),
@@ -2355,9 +2356,10 @@ namespace JitHub.Services
                 GitHubCachedImage? cachedImage;
                 if (repositoryDecision.Access == MarkdownRemoteImageAccess.CacheOnly)
                 {
-                    cachedImage = await _gitHubImageService.TryGetCachedAsync(
+                    cachedImage = await TryGetCachedMarkdownImageAsync(
                         rawUri.ToString(),
                         GitHubImageFetchScope.TrustedGitHub,
+                        admission,
                         cancellationToken).ConfigureAwait(false);
                     if (cachedImage is null)
                     {
@@ -2499,6 +2501,14 @@ namespace JitHub.Services
             ? _gitHubImageService.GetAsync(sourceUrl, scope, cancellationToken)
             : _gitHubImageService.GetAsync(sourceUrl, scope, admission, cancellationToken);
 
+        private Task<GitHubCachedImage?> TryGetCachedMarkdownImageAsync(
+            string sourceUrl,
+            GitHubImageFetchScope scope,
+            IMarkdownImageSourceByteAdmission? admission,
+            CancellationToken cancellationToken) => admission is null
+            ? _gitHubImageService.TryGetCachedAsync(sourceUrl, scope, cancellationToken)
+            : _gitHubImageService.TryGetCachedAsync(sourceUrl, scope, admission, cancellationToken);
+
         private static Task<MarkdownImageAsset?> ReadCachedMarkdownImageAsync(
             GitHubCachedImage? cachedImage,
             Uri resolvedUri,
@@ -2616,9 +2626,10 @@ namespace JitHub.Services
             // a GitHub host. Never attach credentials or inherit Camo's trusted
             // fetch scope to this fallback request.
             GitHubCachedImage? image = decision.Access == MarkdownRemoteImageAccess.CacheOnly
-                ? await _gitHubImageService.TryGetCachedAsync(
+                ? await TryGetCachedMarkdownImageAsync(
                     originUri.AbsoluteUri,
                     GitHubImageFetchScope.UserApprovedHttps,
+                    admission,
                     cancellationToken).ConfigureAwait(false)
                 : await GetMarkdownImageAsync(
                     originUri.AbsoluteUri,

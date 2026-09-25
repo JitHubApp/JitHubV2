@@ -6,6 +6,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using MarkdownRenderer.Images;
 
 namespace JitHub.Services;
 
@@ -27,6 +28,13 @@ public sealed record GitHubImageCacheWriteMetadata(
 public sealed record GitHubImageCacheRead(
     GitHubImageCacheEntry Entry,
     byte[] Bytes);
+
+internal sealed partial record AdmittedGitHubImageCacheRead(
+    GitHubImageCacheRead Value,
+    IDisposable Lease) : IDisposable
+{
+    public void Dispose() => Lease.Dispose();
+}
 
 internal sealed record GitHubImageCacheManifest(
     string? PayloadFileName,
@@ -293,6 +301,87 @@ public sealed class GitHubImageCacheStore : IGitHubImageCacheStore
 
             AddEstimatedPayloadBytes(-removedPayloadBytes);
             CacheContentInvalidated?.Invoke();
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    internal async Task<AdmittedGitHubImageCacheRead?> TryReadAdmittedAsync(
+        string cacheKey,
+        IMarkdownImageSourceByteAdmission admission,
+        long maximumImageBytes,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(admission);
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            // Never wait for a byte grant while holding the cache stripe gate:
+            // an active writer may need that gate before it can release its own
+            // source-byte lease. Immutable payload generations let us recheck
+            // the selected path and exact length after the grant arrives.
+            GitHubImageCacheEntry? expected = await TryGetAsync(cacheKey, cancellationToken)
+                .ConfigureAwait(false);
+            if (expected is null || expected.ByteLength <= 0 || expected.ByteLength > maximumImageBytes)
+                return null;
+
+            IDisposable lease = await admission.ReserveAsync(expected.ByteLength, cancellationToken)
+                .ConfigureAwait(false);
+            try
+            {
+                GitHubImageCacheRead? read = await TryReadMatchingAsync(
+                    cacheKey, expected, cancellationToken).ConfigureAwait(false);
+                if (read is not null)
+                    return new AdmittedGitHubImageCacheRead(read, lease);
+            }
+            catch
+            {
+                lease.Dispose();
+                throw;
+            }
+
+            lease.Dispose();
+        }
+    }
+
+    private async Task<GitHubImageCacheRead?> TryReadMatchingAsync(
+        string cacheKey,
+        GitHubImageCacheEntry expected,
+        CancellationToken cancellationToken)
+    {
+        SemaphoreSlim gate = GetGate(cacheKey);
+        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            GitHubImageCacheEntry? current = await TryGetCoreAsync(cacheKey, cancellationToken)
+                .ConfigureAwait(false);
+            if (current is null ||
+                current.ByteLength != expected.ByteLength ||
+                !string.Equals(current.FilePath, expected.FilePath, StringComparison.Ordinal))
+                return null;
+
+            try
+            {
+                await using FileStream stream = new(
+                    current.FilePath, FileMode.Open, FileAccess.Read, FileShare.Read,
+                    bufferSize: 81920, FileOptions.Asynchronous);
+                if (stream.Length != expected.ByteLength)
+                    return null;
+
+                byte[] bytes = new byte[checked((int)expected.ByteLength)];
+                await stream.ReadExactlyAsync(bytes, cancellationToken).ConfigureAwait(false);
+                return new GitHubImageCacheRead(current, bytes);
+            }
+            catch (FileNotFoundException)
+            {
+                return null;
+            }
+            catch (DirectoryNotFoundException)
+            {
+                return null;
+            }
         }
         finally
         {

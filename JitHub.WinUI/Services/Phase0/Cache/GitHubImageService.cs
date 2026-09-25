@@ -62,6 +62,12 @@ public interface IGitHubImageService
         GitHubImageFetchScope scope,
         CancellationToken cancellationToken = default);
 
+    Task<GitHubCachedImage?> TryGetCachedAsync(
+        string sourceUrl,
+        GitHubImageFetchScope scope,
+        IMarkdownImageSourceByteAdmission admission,
+        CancellationToken cancellationToken = default);
+
     Task<GitHubCachedImage?> GetOrFetchAsync(
         string sourceUrl,
         GitHubImageFetcher fetcher,
@@ -180,10 +186,27 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
             cancellationToken);
     }
 
-    public async Task<GitHubCachedImage?> TryGetCachedAsync(
+    public Task<GitHubCachedImage?> TryGetCachedAsync(
         string sourceUrl,
         GitHubImageFetchScope scope,
+        CancellationToken cancellationToken = default) =>
+        TryGetCachedCoreAsync(sourceUrl, scope, null, cancellationToken);
+
+    public Task<GitHubCachedImage?> TryGetCachedAsync(
+        string sourceUrl,
+        GitHubImageFetchScope scope,
+        IMarkdownImageSourceByteAdmission admission,
         CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(admission);
+        return TryGetCachedCoreAsync(sourceUrl, scope, admission, cancellationToken);
+    }
+
+    private async Task<GitHubCachedImage?> TryGetCachedCoreAsync(
+        string sourceUrl,
+        GitHubImageFetchScope scope,
+        IMarkdownImageSourceByteAdmission? admission,
+        CancellationToken cancellationToken)
     {
         if (!IsAllowedSource(sourceUrl, scope))
         {
@@ -197,7 +220,8 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
         GitHubImageCacheRead? cached;
         if (!_memoryCache.TryGet(cacheKey, out cached))
         {
-            cached = await _cacheStore.TryReadAsync(cacheKey, operationToken).ConfigureAwait(false);
+            cached = await ReadCachedForResolutionAsync(cacheKey, admission, operationToken)
+                .ConfigureAwait(false);
             if (cached is not null)
             {
                 _memoryCache.Set(cacheKey, cached);
@@ -268,7 +292,8 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
         GitHubImageCacheRead? cached;
         if (!_memoryCache.TryGet(cacheKey, out cached))
         {
-            cached = await _cacheStore.TryReadAsync(cacheKey, readToken).ConfigureAwait(false);
+            cached = await ReadCachedForResolutionAsync(cacheKey, admission, readToken)
+                .ConfigureAwait(false);
             if (cached is not null)
             {
                 _memoryCache.Set(cacheKey, cached);
@@ -294,6 +319,7 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
                     sourceUrl,
                     cached,
                     fetcher,
+                    admission,
                     token),
                 cancellationToken);
             if (admission is not null)
@@ -326,6 +352,7 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
                 sourceUrl,
                 null,
                 fetcher,
+                admission,
                 token),
             cancellationToken);
         return await missTask.ConfigureAwait(false);
@@ -343,6 +370,38 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
     }
 
     private void ClearMemoryCache() => _memoryCache.Clear();
+
+    private async Task<GitHubImageCacheRead?> ReadCachedForResolutionAsync(
+        string cacheKey,
+        IMarkdownImageSourceByteAdmission? admission,
+        CancellationToken cancellationToken)
+    {
+        if (admission is null)
+            return await _cacheStore.TryReadAsync(cacheKey, cancellationToken).ConfigureAwait(false);
+
+        if (_cacheStore is GitHubImageCacheStore concreteStore)
+        {
+            using AdmittedGitHubImageCacheRead? admitted = await concreteStore.TryReadAdmittedAsync(
+                cacheKey, admission, MaxImageBytes, cancellationToken).ConfigureAwait(false);
+            return admitted?.Value;
+        }
+
+        // Injected stores may not support an atomic metadata/read operation.
+        // Reserve their reported size before asking them to materialize bytes;
+        // the production store above also rechecks the immutable generation
+        // under its stripe gate before allocating the exact-size array.
+        GitHubImageCacheEntry? entry = await _cacheStore.TryGetAsync(cacheKey, cancellationToken)
+            .ConfigureAwait(false);
+        if (entry is null || entry.ByteLength <= 0 || entry.ByteLength > MaxImageBytes)
+            return null;
+        using IDisposable lease = await admission.ReserveAsync(entry.ByteLength, cancellationToken)
+            .ConfigureAwait(false);
+        GitHubImageCacheRead? read = await _cacheStore.TryReadAsync(cacheKey, cancellationToken)
+            .ConfigureAwait(false);
+        if (read is not null && read.Bytes.Length > entry.ByteLength)
+            throw new InvalidDataException("The image cache entry changed during its admitted read.");
+        return read;
+    }
 
     private static GitHubImageCacheRead RefreshCachedTimestamp(GitHubImageCacheRead cached)
     {
@@ -396,6 +455,7 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
         string sourceUrl,
         GitHubImageCacheRead? cached,
         GitHubImageFetcher fetcher,
+        IMarkdownImageSourceByteAdmission? admission,
         CancellationToken cancellationToken)
     {
         try
@@ -405,7 +465,8 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
             if (download?.IsNotModified == true && cached is not null)
             {
                 await _cacheStore.MarkFreshAsync(cacheKey, cancellationToken).ConfigureAwait(false);
-                GitHubImageCacheRead? refreshed = await _cacheStore.TryReadAsync(cacheKey, cancellationToken)
+                GitHubImageCacheRead? refreshed = await ReadCachedForResolutionAsync(
+                    cacheKey, admission, cancellationToken)
                     .ConfigureAwait(false);
                 if (refreshed is not null)
                 {
@@ -451,6 +512,7 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
         string sourceUrl,
         GitHubImageCacheRead? cached,
         GitHubImageFetcher fetcher,
+        IMarkdownImageSourceByteAdmission? admission,
         CancellationToken cancellationToken)
     {
         using IAccountWorkLease? lease = EnterAccountWork(accountId, cancellationToken);
@@ -459,6 +521,7 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
             sourceUrl,
             cached,
             fetcher,
+            admission,
             lease?.CancellationToken ?? cancellationToken).ConfigureAwait(false);
     }
 

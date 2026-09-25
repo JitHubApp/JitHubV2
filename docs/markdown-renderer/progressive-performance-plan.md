@@ -721,6 +721,20 @@ complete before claiming this plan or the 1.0 performance goal is met.
   locally, as does the zero-warning Release x64 audit-harness build. This
   enforces a reported admission ceiling in future audits, not real process
   peak-memory or current-head top-500 completion.
+- Local validation, pending current-head CI and live memory measurement:
+  admitted JitHub image resolutions now reserve source bytes before a cold
+  disk-cache hit materializes its payload, including cache-only policy paths
+  and the 304 revalidation read. The concrete cache store rechecks its
+  immutable payload generation and exact file length after waiting for the
+  weighted grant; it never holds a cache stripe gate while waiting. A changed
+  generation is retried without treating a valid cache entry as unavailable.
+  Tests cover cold hits, speculative deferral followed by visible success,
+  cache-only reads, generation replacement, and cancellation while a writer
+  uses the same gate. The 3,084-test Release x64 app suite and zero-warning
+  x64 Release app build pass locally. Warm in-memory hits reuse the existing
+  bounded source cache without a new source allocation. These tests close a
+  disk-read admission hole, but they do not establish actual process peak
+  memory, authenticated API materialization cost, or the full live storm gate.
 - Open: oversized raster tiling and session-owned SVG/document/GPU preparation
   caches.
 - Open: defer Math/Mermaid scenes and ahead-of-viewport highlighting without

@@ -146,6 +146,8 @@ public sealed class GitHubImageServiceTests : IDisposable
         Assert.False(refreshed!.IsStale);
         Assert.Null(refreshed.RefreshTask);
         Assert.Equal(2, handler.RequestCount);
+        Assert.Equal(PngBytes.Length, admission.PeakBytes);
+        Assert.Equal(1, admission.Reservations);
         Assert.Equal(0, admission.ActiveBytes);
     }
 
@@ -166,6 +168,142 @@ public sealed class GitHubImageServiceTests : IDisposable
         Assert.Equal(PngBytes, image.Bytes);
         Assert.Equal(PngBytes.Length, admission.PeakBytes);
         Assert.Equal(1, admission.Reservations);
+        Assert.Equal(0, admission.ActiveBytes);
+    }
+
+    [Fact]
+    public async Task AdmittedGet_ColdDiskCacheReservesBeforeMaterializingBytes()
+    {
+        GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
+        const string source = "https://images.example.com/admitted-disk-cache.png";
+        using (HttpClient populateClient = new(new RawImageHandler("image/png", PngBytes)))
+        using (GitHubImageService populate = new(store, populateClient))
+        {
+            Assert.NotNull(await populate.GetAsync(
+                source, GitHubImageFetchScope.UserApprovedHttps));
+        }
+
+        CountingHandler handler = new(PngBytes);
+        using HttpClient client = new(handler);
+        using GitHubImageService service = new(store, client);
+        var admission = new TrackingAdmission(1024);
+
+        GitHubCachedImage? cached = await service.GetAsync(
+            source, GitHubImageFetchScope.UserApprovedHttps, admission);
+
+        Assert.NotNull(cached);
+        Assert.True(cached.IsFromCache);
+        Assert.Equal(PngBytes, cached.Bytes);
+        Assert.Equal(0, handler.RequestCount);
+        Assert.Equal(PngBytes.Length, admission.PeakBytes);
+        Assert.Equal(1, admission.Reservations);
+        Assert.Equal(0, admission.ActiveBytes);
+    }
+
+    [Fact]
+    public async Task AdmittedGet_ColdDiskCacheDefersWhenSpeculativeBudgetIsTooSmall()
+    {
+        GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
+        const string source = "https://images.example.com/admitted-disk-deferral.png";
+        using (HttpClient populateClient = new(new RawImageHandler("image/png", PngBytes)))
+        using (GitHubImageService populate = new(store, populateClient))
+        {
+            Assert.NotNull(await populate.GetAsync(
+                source, GitHubImageFetchScope.UserApprovedHttps));
+        }
+
+        CountingHandler handler = new(PngBytes);
+        using HttpClient client = new(handler);
+        using GitHubImageService service = new(store, client);
+        var speculative = new TrackingAdmission(PngBytes.Length - 1, isSpeculative: true);
+
+        await Assert.ThrowsAsync<MarkdownImageSourceDeferredException>(() => service.GetAsync(
+            source, GitHubImageFetchScope.UserApprovedHttps, speculative));
+        Assert.Equal(0, handler.RequestCount);
+        Assert.Equal(0, speculative.ActiveBytes);
+
+        var visible = new TrackingAdmission(1024);
+        GitHubCachedImage? cached = await service.GetAsync(
+            source, GitHubImageFetchScope.UserApprovedHttps, visible);
+        Assert.NotNull(cached);
+        Assert.True(cached.IsFromCache);
+        Assert.Equal(PngBytes, cached.Bytes);
+        Assert.Equal(0, handler.RequestCount);
+        Assert.Equal(0, visible.ActiveBytes);
+    }
+
+    [Fact]
+    public async Task AdmittedCacheOnlyRead_ReservesDiskBytesWithoutFetching()
+    {
+        GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
+        const string source = "https://images.example.com/admitted-cache-only.png";
+        using (HttpClient populateClient = new(new RawImageHandler("image/png", PngBytes)))
+        using (GitHubImageService populate = new(store, populateClient))
+        {
+            Assert.NotNull(await populate.GetAsync(
+                source, GitHubImageFetchScope.UserApprovedHttps));
+        }
+
+        CountingHandler handler = new(PngBytes);
+        using HttpClient client = new(handler);
+        using GitHubImageService service = new(store, client);
+        var admission = new TrackingAdmission(1024);
+
+        GitHubCachedImage? cached = await service.TryGetCachedAsync(
+            source, GitHubImageFetchScope.UserApprovedHttps, admission);
+
+        Assert.NotNull(cached);
+        Assert.True(cached.IsFromCache);
+        Assert.Equal(PngBytes, cached.Bytes);
+        Assert.Equal(0, handler.RequestCount);
+        Assert.Equal(1, admission.Reservations);
+        Assert.Equal(0, admission.ActiveBytes);
+    }
+
+    [Fact]
+    public async Task AdmittedDiskRead_RechecksGenerationAfterWaitingForByteGrant()
+    {
+        GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
+        const string cacheKey = "account:admitted-generation";
+        await store.PutAsync(cacheKey, PngBytes, ".img");
+        byte[] replacement = [.. PngBytes, 42];
+        var admission = new MutatingAdmission(
+            async () => await store.PutAsync(cacheKey, replacement, ".img"));
+
+        using AdmittedGitHubImageCacheRead? read = await store.TryReadAdmittedAsync(
+            cacheKey, admission, GitHubImageService.MaxImageBytes, CancellationToken.None);
+
+        Assert.NotNull(read);
+        Assert.Equal(replacement, read.Value.Bytes);
+        Assert.Equal(2, admission.Reservations);
+        Assert.Equal(replacement.Length, admission.PeakBytes);
+        read.Dispose();
+        Assert.Equal(0, admission.ActiveBytes);
+    }
+
+    [Fact]
+    public async Task AdmittedDiskRead_WaitingForBytesDoesNotHoldCacheGateAndCancelsCleanly()
+    {
+        GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
+        const string cacheKey = "account:admitted-cancellation";
+        await store.PutAsync(cacheKey, PngBytes, ".img");
+        using var admission = new GatedImageAdmission(PngBytes.Length, concurrentImages: 1);
+        using IDisposable blocker = await admission.ReserveAsync(
+            PngBytes.Length, CancellationToken.None);
+        using CancellationTokenSource cancellation = new();
+
+        Task<AdmittedGitHubImageCacheRead?> pending = store.TryReadAdmittedAsync(
+            cacheKey, admission, GitHubImageService.MaxImageBytes, cancellation.Token);
+        await Task.Delay(50);
+        Assert.False(pending.IsCompleted);
+
+        // A cache writer must be able to finish while another reader waits
+        // for weighted source-byte admission on the same stripe.
+        await store.PutAsync(cacheKey, [.. PngBytes, 42], ".img")
+            .WaitAsync(TimeSpan.FromSeconds(2));
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);
+        blocker.Dispose();
         Assert.Equal(0, admission.ActiveBytes);
     }
 
@@ -1752,13 +1890,14 @@ public sealed class GitHubImageServiceTests : IDisposable
         }
     }
 
-    private sealed class TrackingAdmission(long maximumBytes) : IMarkdownImageSourceByteAdmission
+    private sealed class TrackingAdmission(long maximumBytes, bool isSpeculative = false)
+        : IMarkdownImageSourceByteAdmission
     {
         private long _activeBytes;
         private long _peakBytes;
         private int _reservations;
 
-        public bool IsSpeculative => false;
+        public bool IsSpeculative => isSpeculative;
         public long MaximumReservationBytes => maximumBytes;
         internal long ActiveBytes => Interlocked.Read(ref _activeBytes);
         internal long PeakBytes => Interlocked.Read(ref _peakBytes);
@@ -1767,6 +1906,8 @@ public sealed class GitHubImageServiceTests : IDisposable
         public ValueTask<IDisposable> ReserveAsync(long bytes, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (bytes > maximumBytes && isSpeculative)
+                throw new MarkdownImageSourceDeferredException();
             if (bytes < 1 || bytes > maximumBytes)
                 throw new ArgumentOutOfRangeException(nameof(bytes));
             long active = Interlocked.Add(ref _activeBytes, bytes);
@@ -1787,6 +1928,37 @@ public sealed class GitHubImageServiceTests : IDisposable
         }
 
         private void Release(long bytes) => Interlocked.Add(ref _activeBytes, -bytes);
+    }
+
+    private sealed class MutatingAdmission(Func<Task> mutate) : IMarkdownImageSourceByteAdmission
+    {
+        private readonly TrackingAdmission _inner = new(1024);
+        private int _reservations;
+
+        public bool IsSpeculative => false;
+        public long MaximumReservationBytes => _inner.MaximumReservationBytes;
+        internal int Reservations => Volatile.Read(ref _reservations);
+        internal long PeakBytes => _inner.PeakBytes;
+        internal long ActiveBytes => _inner.ActiveBytes;
+
+        public async ValueTask<IDisposable> ReserveAsync(long bytes, CancellationToken cancellationToken)
+        {
+            IDisposable lease = await _inner.ReserveAsync(bytes, cancellationToken);
+            if (Interlocked.Increment(ref _reservations) == 1)
+            {
+                try
+                {
+                    await mutate();
+                }
+                catch
+                {
+                    lease.Dispose();
+                    throw;
+                }
+            }
+
+            return lease;
+        }
     }
 
     private sealed class DeclaredLengthImageHandler(int declaredLength) : HttpMessageHandler
