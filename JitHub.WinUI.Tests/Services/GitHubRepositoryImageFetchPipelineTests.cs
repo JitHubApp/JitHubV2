@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Services;
 using JitHub.Services.Markdown;
+using MarkdownRenderer.Images;
 using NSubstitute;
 using Xunit;
 
@@ -35,6 +36,47 @@ public sealed class GitHubRepositoryImageFetchPipelineTests
         await images.Received(1).GetAsync(
             RawUri.AbsoluteUri, GitHubImageFetchScope.TrustedGitHub,
             Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task AdmittedRawImageCarriesTheRequestBudgetToTheReader()
+    {
+        IGitHubImageService images = Substitute.For<IGitHubImageService>();
+        IMarkdownImageSourceByteAdmission admission =
+            Substitute.For<IMarkdownImageSourceByteAdmission>();
+        GitHubCachedImage expected = new("partitioned-cache-key", [1], "image/svg+xml", false);
+        images.GetAsync(RawUri.AbsoluteUri, GitHubImageFetchScope.TrustedGitHub,
+                admission, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<GitHubCachedImage?>(expected));
+
+        GitHubCachedImage? actual = await GitHubRepositoryImageFetchPipeline.TryGetRawAsync(
+            images, RawUri, _ => throw new Xunit.Sdk.XunitException("Unexpected report"),
+            admission, CancellationToken.None);
+
+        Assert.Same(expected, actual);
+        await images.Received(1).GetAsync(
+            RawUri.AbsoluteUri, GitHubImageFetchScope.TrustedGitHub,
+            admission, Arg.Any<CancellationToken>());
+        await images.DidNotReceiveWithAnyArgs().GetAsync(default!, default, default(CancellationToken));
+    }
+
+    [Fact]
+    public async Task SpeculativeByteDeferralIsNotReportedAsARawImageFailure()
+    {
+        IGitHubImageService images = Substitute.For<IGitHubImageService>();
+        IMarkdownImageSourceByteAdmission admission =
+            Substitute.For<IMarkdownImageSourceByteAdmission>();
+        images.GetAsync(RawUri.AbsoluteUri, GitHubImageFetchScope.TrustedGitHub,
+                admission, Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<GitHubCachedImage?>(
+                new MarkdownImageSourceDeferredException()));
+        int reports = 0;
+
+        await Assert.ThrowsAsync<MarkdownImageSourceDeferredException>(() =>
+            GitHubRepositoryImageFetchPipeline.TryGetRawAsync(
+                images, RawUri, _ => reports++, admission, CancellationToken.None));
+
+        Assert.Equal(0, reports);
     }
 
     [Theory]

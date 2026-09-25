@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Services;
 using JitHub.Services.Markdown;
+using MarkdownRenderer.Images;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;
@@ -123,6 +124,92 @@ public sealed class GitHubImageServiceTests : IDisposable
             () => service.GetAsync("https://avatars.githubusercontent.com/u/not-an-image"));
 
         Assert.Empty(Directory.GetFiles(_root, "*", SearchOption.TopDirectoryOnly));
+    }
+
+    [Fact]
+    public async Task AdmittedStaleRefresh_CompletesWithinTheCallerLifetime()
+    {
+        GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
+        RevalidationHandler handler = new(PngBytes);
+        using HttpClient client = new(handler);
+        using GitHubImageService service = new(store, client);
+        const string source = "https://avatars.githubusercontent.com/u/admitted-stale.png";
+        GitHubCachedImage? initial = await service.GetAsync(source);
+        Assert.NotNull(initial);
+        File.SetLastWriteTimeUtc(initial!.FilePath, DateTime.UtcNow.Subtract(TimeSpan.FromDays(8)));
+        var admission = new TrackingAdmission(1024);
+
+        GitHubCachedImage? refreshed = await service.GetAsync(
+            source, GitHubImageFetchScope.TrustedGitHub, admission);
+
+        Assert.NotNull(refreshed);
+        Assert.False(refreshed!.IsStale);
+        Assert.Null(refreshed.RefreshTask);
+        Assert.Equal(2, handler.RequestCount);
+        Assert.Equal(0, admission.ActiveBytes);
+    }
+
+    [Fact]
+    public async Task AdmittedGet_KnownLengthRetainsTheByteLeaseThroughCacheStorage()
+    {
+        GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
+        using HttpClient client = new(new RawImageHandler("image/png", PngBytes));
+        using GitHubImageService service = new(store, client);
+        var admission = new TrackingAdmission(1024);
+
+        GitHubCachedImage? image = await service.GetAsync(
+            "https://images.example.com/admitted-known.png",
+            GitHubImageFetchScope.UserApprovedHttps,
+            admission);
+
+        Assert.NotNull(image);
+        Assert.Equal(PngBytes, image.Bytes);
+        Assert.Equal(PngBytes.Length, admission.PeakBytes);
+        Assert.Equal(1, admission.Reservations);
+        Assert.Equal(0, admission.ActiveBytes);
+    }
+
+    [Fact]
+    public async Task AdmittedGet_DeclaredLengthMismatchReleasesTheByteLease()
+    {
+        GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
+        using HttpClient client = new(new DeclaredLengthImageHandler(PngBytes.Length - 1));
+        using GitHubImageService service = new(store, client);
+        var admission = new TrackingAdmission(1024);
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => service.GetAsync(
+            "https://images.example.com/admitted-wrong-length.png",
+            GitHubImageFetchScope.UserApprovedHttps,
+            admission));
+
+        Assert.Equal(0, admission.ActiveBytes);
+        Assert.Equal(1, admission.Reservations);
+    }
+
+    [Theory]
+    [InlineData(11, 1)]
+    [InlineData(1_200_000, 2)]
+    public async Task AdmittedGet_UnknownLengthStaysBoundedAndReleasesLeases(
+        int length,
+        int expectedReservations)
+    {
+        byte[] bytes = new byte[length];
+        PngBytes.CopyTo(bytes, 0);
+        GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
+        using HttpClient client = new(new UnknownLengthImageHandler(bytes));
+        using GitHubImageService service = new(store, client);
+        var admission = new TrackingAdmission(2 * 1024 * 1024);
+
+        GitHubCachedImage? image = await service.GetAsync(
+            $"https://images.example.com/admitted-unknown-{length}.png",
+            GitHubImageFetchScope.UserApprovedHttps,
+            admission);
+
+        Assert.NotNull(image);
+        Assert.Equal(bytes, image.Bytes);
+        Assert.Equal(expectedReservations, admission.Reservations);
+        Assert.InRange(admission.PeakBytes, length, 2 * 1024 * 1024);
+        Assert.Equal(0, admission.ActiveBytes);
     }
 
     [Fact]
@@ -1428,6 +1515,70 @@ public sealed class GitHubImageServiceTests : IDisposable
             content.Headers.ContentType = new(contentType);
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = content });
         }
+    }
+
+    private sealed class UnknownLengthImageHandler(byte[] bytes) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            UnknownLengthContent content = new(bytes);
+            content.Headers.ContentType = new("image/png");
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = content });
+        }
+    }
+
+    private sealed class UnknownLengthContent(byte[] bytes) : HttpContent
+    {
+        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) =>
+            stream.WriteAsync(bytes).AsTask();
+
+        protected override bool TryComputeLength(out long length)
+        {
+            length = 0;
+            return false;
+        }
+
+        protected override Task<Stream> CreateContentReadStreamAsync() =>
+            Task.FromResult<Stream>(new MemoryStream(bytes, writable: false));
+    }
+
+    private sealed class TrackingAdmission(long maximumBytes) : IMarkdownImageSourceByteAdmission
+    {
+        private long _activeBytes;
+        private long _peakBytes;
+        private int _reservations;
+
+        public bool IsSpeculative => false;
+        public long MaximumReservationBytes => maximumBytes;
+        internal long ActiveBytes => Interlocked.Read(ref _activeBytes);
+        internal long PeakBytes => Interlocked.Read(ref _peakBytes);
+        internal int Reservations => Volatile.Read(ref _reservations);
+
+        public ValueTask<IDisposable> ReserveAsync(long bytes, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (bytes < 1 || bytes > maximumBytes)
+                throw new ArgumentOutOfRangeException(nameof(bytes));
+            long active = Interlocked.Add(ref _activeBytes, bytes);
+            Interlocked.Increment(ref _reservations);
+            long observed;
+            while ((observed = Interlocked.Read(ref _peakBytes)) < active &&
+                   Interlocked.CompareExchange(ref _peakBytes, active, observed) != observed)
+            {
+            }
+            return ValueTask.FromResult<IDisposable>(new TrackingLease(this, bytes));
+        }
+
+        private sealed class TrackingLease(TrackingAdmission owner, long bytes) : IDisposable
+        {
+            private TrackingAdmission? _owner = owner;
+            public void Dispose() => Interlocked.Exchange(ref _owner, null)?
+                .Release(bytes);
+        }
+
+        private void Release(long bytes) => Interlocked.Add(ref _activeBytes, -bytes);
     }
 
     private sealed class DeclaredLengthImageHandler(int declaredLength) : HttpMessageHandler

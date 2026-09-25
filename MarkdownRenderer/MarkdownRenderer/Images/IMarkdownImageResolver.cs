@@ -141,3 +141,61 @@ public interface IMarkdownImagePrefetcher
         MarkdownImageResolveContext context,
         CancellationToken cancellationToken);
 }
+
+/// <summary>
+/// Admission for the bytes held while one image source is being read or decoded
+/// by a host resolver. A lease must cover the actual buffer lifetime and be
+/// released before recursively resolving another image (for example Git LFS).
+/// This admission does not replace the host's hard per-image size limit.
+/// </summary>
+public interface IMarkdownImageSourceByteAdmission
+{
+    /// <summary>True when this resolution is speculative rather than visible.</summary>
+    bool IsSpeculative { get; }
+
+    /// <summary>
+    /// Largest reservation this request may make. Speculative requests have a
+    /// smaller ceiling so visible image reads retain capacity.
+    /// </summary>
+    long MaximumReservationBytes { get; }
+
+    /// <summary>
+    /// Waits for a weighted reservation. Dispose the returned lease as soon as
+    /// the read or decode buffer is no longer in flight, including on failure.
+    /// </summary>
+    ValueTask<IDisposable> ReserveAsync(long bytes, CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// Indicates that an offscreen image source needs more than the speculative
+/// byte ceiling. It is a deferral, not an image failure; a visible request
+/// will retry with the visible ceiling.
+/// </summary>
+public sealed class MarkdownImageSourceDeferredException : Exception
+{
+    /// <summary>Creates a privacy-safe speculative deferral without source details.</summary>
+    public MarkdownImageSourceDeferredException()
+        : base("The image source exceeds the speculative byte reservation.")
+    {
+    }
+}
+
+/// <summary>
+/// Optional resolver capability used by a progressive performance session.
+/// Resolvers without this interface continue to use <see cref="IMarkdownImageResolver.ResolveAsync"/>.
+/// </summary>
+public interface IMarkdownImageSourceByteAdmittedResolver : IMarkdownImageResolver
+{
+    /// <summary>
+    /// Resolves an image while admitting each actual source-buffer lifetime.
+    /// A speculative request whose required single buffer exceeds
+    /// <see cref="IMarkdownImageSourceByteAdmission.MaximumReservationBytes"/>
+    /// is deferred by <see cref="MarkdownImageSourceDeferredException"/>;
+    /// a later visible resolution starts independently and remains authoritative.
+    /// </summary>
+    ValueTask<MarkdownImageResolution> ResolveWithSourceByteAdmissionAsync(
+        string source,
+        MarkdownImageResolveContext context,
+        IMarkdownImageSourceByteAdmission admission,
+        CancellationToken cancellationToken);
+}

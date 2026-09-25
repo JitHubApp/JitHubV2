@@ -20,6 +20,8 @@ internal sealed class SourceByteAdmission
     private readonly PriorityQueue _background = new();
     private long _activeBytes;
     private long _activeBackgroundBytes;
+    private long _peakActiveBytes;
+    private int _pendingRequests;
 
     internal SourceByteAdmission(long capacity, long reservedVisibleBytes)
     {
@@ -41,6 +43,16 @@ internal sealed class SourceByteAdmission
     internal long ActiveBackgroundBytes
     {
         get { lock (_gate) return _activeBackgroundBytes; }
+    }
+
+    internal long PeakActiveBytes
+    {
+        get { lock (_gate) return _peakActiveBytes; }
+    }
+
+    internal int PendingRequests
+    {
+        get { lock (_gate) return _pendingRequests; }
     }
 
     internal bool CanSpeculate(long bytes) => bytes > 0 && bytes <= _backgroundCapacity;
@@ -77,6 +89,7 @@ internal sealed class SourceByteAdmission
 
             waiter = new Waiter(priority, owner, bytes, background);
             waiter.Node = owner.Waiters.AddLast(waiter);
+            _pendingRequests++;
             DispatchNoLock();
         }
 
@@ -115,6 +128,7 @@ internal sealed class SourceByteAdmission
                     waiter.Owner.Waiters.Remove(waiter.Node!);
                     waiter.Node = null;
                     waiter.State = WaiterState.Canceled;
+                    _pendingRequests--;
                     if (waiter.Owner.Waiters.Count == 0)
                         RemoveOwnerNoLock(waiter.Priority, waiter.Owner);
                     waiter.Completion.TrySetCanceled();
@@ -156,6 +170,7 @@ internal sealed class SourceByteAdmission
     private void GrantBytesNoLock(long bytes, bool background)
     {
         _activeBytes += bytes;
+        _peakActiveBytes = System.Math.Max(_peakActiveBytes, _activeBytes);
         if (background)
             _activeBackgroundBytes += bytes;
     }
@@ -191,6 +206,7 @@ internal sealed class SourceByteAdmission
 
             owner.Waiters.RemoveFirst();
             waiter.Node = null;
+            _pendingRequests--;
             if (owner.Waiters.Count == 0)
                 priority.Owners.Remove(owner.Owner);
             else

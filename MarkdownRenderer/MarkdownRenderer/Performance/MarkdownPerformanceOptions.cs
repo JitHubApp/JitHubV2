@@ -23,6 +23,12 @@ public sealed record MarkdownPerformanceOptions
     /// <summary>Maximum bytes of resolved source images retained in memory.</summary>
     public long SourceCacheBudgetBytes { get; init; } = (IntPtr.Size == 4 ? 32L : 64L) * 1024 * 1024;
 
+    /// <summary>Maximum bytes simultaneously admitted for host image-source buffers.</summary>
+    public long MaxInFlightSourceBytes { get; init; } = (IntPtr.Size == 4 ? 32L : 64L) * 1024 * 1024;
+
+    /// <summary>Part of the in-flight source budget unavailable to speculative reads.</summary>
+    public long ReservedVisibleSourceBytes { get; init; } = (IntPtr.Size == 4 ? 8L : 16L) * 1024 * 1024;
+
     /// <summary>Maximum pixels in a prepared static raster; this cannot exceed the progressive safety ceiling.</summary>
     public long MaxRasterOutputPixels { get; init; } = IntPtr.Size == 4 ? 4_194_304 : 8_388_608;
 
@@ -54,6 +60,12 @@ public sealed record MarkdownPerformanceOptions
         if (SourceCacheBudgetBytes < 0 ||
             SourceCacheBudgetBytes > (IntPtr.Size == 4 ? 32L : 64L) * 1024 * 1024)
             throw new ArgumentOutOfRangeException(nameof(SourceCacheBudgetBytes));
+        if (MaxInFlightSourceBytes < 2 ||
+            MaxInFlightSourceBytes > (IntPtr.Size == 4 ? 32L : 64L) * 1024 * 1024)
+            throw new ArgumentOutOfRangeException(nameof(MaxInFlightSourceBytes));
+        if (ReservedVisibleSourceBytes < 1 ||
+            ReservedVisibleSourceBytes >= MaxInFlightSourceBytes)
+            throw new ArgumentOutOfRangeException(nameof(ReservedVisibleSourceBytes));
         if (MaxRasterOutputPixels < 1 ||
             MaxRasterOutputPixels > (IntPtr.Size == 4 ? 4_194_304 : 8_388_608))
             throw new ArgumentOutOfRangeException(nameof(MaxRasterOutputPixels));

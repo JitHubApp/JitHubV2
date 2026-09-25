@@ -27,6 +27,7 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
     private readonly FairDocumentAdmission _backgroundAdmission;
     private readonly FairDocumentAdmission _cpuPreparationAdmission;
     private readonly FairDocumentAdmission _scenePreparationAdmission;
+    private readonly SourceByteAdmission _sourceByteAdmission;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly CancellationToken _lifetimeToken;
     private readonly bool _memoryPressureSubscribed;
@@ -60,6 +61,8 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
             options.MaxConcurrentImageFetches - options.ReservedVisibleImageFetches);
         _cpuPreparationAdmission = new FairDocumentAdmission(options.MaxConcurrentCpuPreparations);
         _scenePreparationAdmission = new FairDocumentAdmission(options.MaxConcurrentScenePreparations);
+        _sourceByteAdmission = new SourceByteAdmission(
+            options.MaxInFlightSourceBytes, options.ReservedVisibleSourceBytes);
         try
         {
             Windows.System.MemoryManager.AppMemoryUsageIncreased += OnAppMemoryUsageIncreased;
@@ -77,6 +80,8 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
     public MarkdownPerformanceOptions Options { get; }
 
     internal bool IsDisposed => Volatile.Read(ref _disposed) != 0;
+
+    internal long ActiveSourceBytes => _sourceByteAdmission.ActiveBytes;
 
     bool IMarkdownPerformanceSessionInternal.IsDisposed => IsDisposed;
 
@@ -113,7 +118,10 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
             Interlocked.Read(ref _cpuPreparations),
             Interlocked.Read(ref _cpuPreparationMilliseconds),
             Interlocked.Read(ref _scenePreparations),
-            Interlocked.Read(ref _scenePreparationMilliseconds));
+            Interlocked.Read(ref _scenePreparationMilliseconds),
+            _sourceByteAdmission.ActiveBytes,
+            _sourceByteAdmission.PeakActiveBytes,
+            _sourceByteAdmission.PendingRequests);
     }
 
     /// <summary>Releases retained source bytes; active visible work is unaffected.</summary>
@@ -333,8 +341,15 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
             Interlocked.Increment(ref _imageFetches);
             try
             {
-                MarkdownImageResolution resolution = await resolver.ResolveAsync(
-                    key.Source, context, cancellationToken).ConfigureAwait(false);
+                MarkdownImageResolution resolution = resolver is IMarkdownImageSourceByteAdmittedResolver admitted
+                    ? await admitted.ResolveWithSourceByteAdmissionAsync(
+                        key.Source,
+                        context,
+                        new ResolverSourceByteAdmission(
+                            _sourceByteAdmission, owner, background, cancellationToken),
+                        cancellationToken).ConfigureAwait(false)
+                    : await resolver.ResolveAsync(
+                        key.Source, context, cancellationToken).ConfigureAwait(false);
                 if (!string.IsNullOrEmpty(resolution.Asset?.CacheKey))
                     Store(key, key, resolution);
                 return resolution;
@@ -342,6 +357,12 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 Interlocked.Increment(ref _imageFetchCancellations);
+                throw;
+            }
+            catch (MarkdownImageSourceDeferredException) when (background)
+            {
+                // A speculative source that needs a larger reservation is not
+                // a failed image. A later visible request retries it.
                 throw;
             }
             catch
@@ -388,8 +409,7 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
             if (IsDisposed)
                 throw new OperationCanceledException(_lifetimeToken);
             if (!_sharedFlights.TryGetValue(key, out flight!) ||
-                (!background && flight.Background && !flight.HasStartedResolution &&
-                 !flight.Task.IsCompleted))
+                (!background && flight.Background))
             {
                 if (flight is not null)
                 {
@@ -694,8 +714,7 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
                 if (_disposed != 0)
                     throw new OperationCanceledException(_token);
                 if (_inFlight.TryGetValue(source, out InflightRequest? existing) &&
-                    !background && existing.Background &&
-                    !existing.Task.IsCompleted)
+                    !background && existing.Background)
                 {
                     // A queued or paused prefetch must never hold up a visible
                     // image. Its cancellation retires the speculative slot.
@@ -774,6 +793,29 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
         MarkdownImageResolveContext Context,
         string Source,
         DocumentScope? DocumentScope);
+
+    private sealed class ResolverSourceByteAdmission(
+        SourceByteAdmission admission,
+        DocumentScope owner,
+        bool background,
+        CancellationToken requestCancellationToken) : IMarkdownImageSourceByteAdmission
+    {
+        public bool IsSpeculative => background;
+
+        public long MaximumReservationBytes => background
+            ? admission.BackgroundCapacity
+            : admission.Capacity;
+
+        public async ValueTask<IDisposable> ReserveAsync(long bytes, CancellationToken cancellationToken)
+        {
+            if (background && bytes > admission.BackgroundCapacity)
+                throw new MarkdownImageSourceDeferredException();
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken, requestCancellationToken);
+            return await admission.EnterAsync(owner, bytes, background, linked.Token)
+                .ConfigureAwait(false);
+        }
+    }
 
     private sealed class SourceKeyComparer : IEqualityComparer<SourceKey>
     {

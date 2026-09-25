@@ -22,7 +22,10 @@ public sealed class MarkdownPerformanceSnapshot
         long cpuPreparations,
         long cpuPreparationMilliseconds,
         long scenePreparations,
-        long scenePreparationMilliseconds)
+        long scenePreparationMilliseconds,
+        long inFlightSourceBytes,
+        long peakInFlightSourceBytes,
+        int pendingSourceByteRequests)
     {
         SourceCacheBytes = sourceCacheBytes;
         SourceCacheHits = sourceCacheHits;
@@ -37,6 +40,9 @@ public sealed class MarkdownPerformanceSnapshot
         CpuPreparationMilliseconds = cpuPreparationMilliseconds;
         ScenePreparations = scenePreparations;
         ScenePreparationMilliseconds = scenePreparationMilliseconds;
+        InFlightSourceBytes = inFlightSourceBytes;
+        PeakInFlightSourceBytes = peakInFlightSourceBytes;
+        PendingSourceByteRequests = pendingSourceByteRequests;
     }
 
     /// <summary>Retained source bytes.</summary>
@@ -65,6 +71,12 @@ public sealed class MarkdownPerformanceSnapshot
     public long ScenePreparations { get; }
     /// <summary>Total elapsed scene preparation-slot time, rounded to milliseconds.</summary>
     public long ScenePreparationMilliseconds { get; }
+    /// <summary>Bytes currently admitted for host source-buffer reads.</summary>
+    public long InFlightSourceBytes { get; }
+    /// <summary>Peak admitted source-buffer bytes since this session was created.</summary>
+    public long PeakInFlightSourceBytes { get; }
+    /// <summary>Source-buffer reads waiting for weighted admission.</summary>
+    public int PendingSourceByteRequests { get; }
 }
 
 /// <summary>

@@ -15,13 +15,16 @@ public sealed class SourceByteAdmissionTests
             owner, 1, true, CancellationToken.None).AsTask();
 
         Assert.False(nextBackground.IsCompleted);
+        Assert.Equal(1, admission.PendingRequests);
         using IDisposable visible = await admission.EnterAsync(
             owner, 16, false, CancellationToken.None);
         Assert.Equal(64, admission.ActiveBytes);
+        Assert.Equal(64, admission.PeakActiveBytes);
         Assert.Equal(48, admission.ActiveBackgroundBytes);
 
         background.Dispose();
         using IDisposable admitted = await nextBackground.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(0, admission.PendingRequests);
     }
 
     [Fact]

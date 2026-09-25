@@ -638,7 +638,10 @@ internal static partial class MarkdownLifecycleAutomationBridge
         long CpuPreparations,
         long CpuPreparationMilliseconds,
         long ScenePreparations,
-        long ScenePreparationMilliseconds);
+        long ScenePreparationMilliseconds,
+        long InFlightSourceBytes,
+        long PeakInFlightSourceBytes,
+        int PendingSourceByteRequests);
 
     internal sealed record MarkdownAuditCaptureRequest(
         string RequestId,

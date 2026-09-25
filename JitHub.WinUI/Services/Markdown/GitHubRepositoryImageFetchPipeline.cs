@@ -4,6 +4,7 @@ using System.Net;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using MarkdownRenderer.Images;
 
 namespace JitHub.Services.Markdown;
 
@@ -18,6 +19,16 @@ internal static class GitHubRepositoryImageFetchPipeline
         IGitHubImageService imageService,
         Uri rawUri,
         Action<Exception> reportUnexpectedFailure,
+        CancellationToken cancellationToken) =>
+        await TryGetRawAsync(
+            imageService, rawUri, reportUnexpectedFailure, null, cancellationToken)
+            .ConfigureAwait(false);
+
+    internal static async Task<GitHubCachedImage?> TryGetRawAsync(
+        IGitHubImageService imageService,
+        Uri rawUri,
+        Action<Exception> reportUnexpectedFailure,
+        IMarkdownImageSourceByteAdmission? admission,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(imageService);
@@ -32,10 +43,16 @@ internal static class GitHubRepositoryImageFetchPipeline
 
         try
         {
-            return await imageService.GetAsync(
-                rawUri.AbsoluteUri,
-                GitHubImageFetchScope.TrustedGitHub,
-                cancellationToken).ConfigureAwait(false);
+            return admission is null
+                ? await imageService.GetAsync(
+                    rawUri.AbsoluteUri,
+                    GitHubImageFetchScope.TrustedGitHub,
+                    cancellationToken).ConfigureAwait(false)
+                : await imageService.GetAsync(
+                    rawUri.AbsoluteUri,
+                    GitHubImageFetchScope.TrustedGitHub,
+                    admission,
+                    cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -52,6 +69,10 @@ internal static class GitHubRepositoryImageFetchPipeline
         {
             // The raw endpoint can return an LFS pointer, not image bytes.
             return null;
+        }
+        catch (MarkdownImageSourceDeferredException)
+        {
+            throw;
         }
         catch (Exception exception)
         {

@@ -608,7 +608,10 @@ public sealed partial class MarkdownViewer : UserControl
             snapshot.CpuPreparations,
             snapshot.CpuPreparationMilliseconds,
             snapshot.ScenePreparations,
-            snapshot.ScenePreparationMilliseconds);
+            snapshot.ScenePreparationMilliseconds,
+            snapshot.InFlightSourceBytes,
+            snapshot.PeakInFlightSourceBytes,
+            snapshot.PendingSourceByteRequests);
     }
 #pragma warning restore MR1001
 

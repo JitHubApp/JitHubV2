@@ -329,6 +329,14 @@ public interface MarkdownRenderer.Images.IMarkdownImagePrefetcher
 public interface MarkdownRenderer.Images.IMarkdownImageResolver
   public abstract System.Threading.Tasks.ValueTask<MarkdownRenderer.Images.MarkdownImageResolution> ResolveAsync(string source, MarkdownRenderer.Images.MarkdownImageResolveContext context, System.Threading.CancellationToken cancellationToken);
 
+public interface MarkdownRenderer.Images.IMarkdownImageSourceByteAdmission
+  public abstract System.Threading.Tasks.ValueTask<System.IDisposable> ReserveAsync(long bytes, System.Threading.CancellationToken cancellationToken);
+  public abstract bool IsSpeculative { get; }
+  public abstract long MaximumReservationBytes { get; }
+
+public interface MarkdownRenderer.Images.IMarkdownImageSourceByteAdmittedResolver : MarkdownRenderer.Images.IMarkdownImageResolver
+  public abstract System.Threading.Tasks.ValueTask<MarkdownRenderer.Images.MarkdownImageResolution> ResolveWithSourceByteAdmissionAsync(string source, MarkdownRenderer.Images.MarkdownImageResolveContext context, MarkdownRenderer.Images.IMarkdownImageSourceByteAdmission admission, System.Threading.CancellationToken cancellationToken);
+
 public interface MarkdownRenderer.Images.IMarkdownSvgDocument : System.IDisposable
   public abstract MarkdownRenderer.Images.MarkdownSvgDocumentInfo Info { get; }
   public abstract System.Threading.Tasks.ValueTask<MarkdownRenderer.Images.MarkdownSvgRaster> RenderAsync(MarkdownRenderer.Images.MarkdownSvgRenderRequest request, System.Threading.CancellationToken cancellationToken = null);
@@ -403,6 +411,9 @@ public sealed class MarkdownRenderer.Images.MarkdownImageResolveContext : System
   public static bool op_Inequality(MarkdownRenderer.Images.MarkdownImageResolveContext? left, MarkdownRenderer.Images.MarkdownImageResolveContext? right);
   public string? DocumentPath { get; init; }
   public void Deconstruct(out System.Uri? BaseUri, out string? DocumentPath, out bool AllowThirdPartyRemoteImages, out MarkdownRenderer.Images.MarkdownDocumentSource? DocumentSource);
+
+public sealed class MarkdownRenderer.Images.MarkdownImageSourceDeferredException : System.Exception
+  public MarkdownImageSourceDeferredException();
 
 public sealed class MarkdownRenderer.Images.MarkdownImageUnavailableEventArgs : System.EventArgs
   public MarkdownImageUnavailableEventArgs(string source, MarkdownRenderer.Images.MarkdownImageUnavailableReason reason);
@@ -560,7 +571,9 @@ public sealed class MarkdownRenderer.Performance.MarkdownPerformanceOptions : Sy
   public int MaxConcurrentImageFetches { get; init; }
   public int MaxConcurrentScenePreparations { get; init; }
   public int ReservedVisibleImageFetches { get; init; }
+  public long MaxInFlightSourceBytes { get; init; }
   public long MaxRasterOutputPixels { get; init; }
+  public long ReservedVisibleSourceBytes { get; init; }
   public long SourceCacheBudgetBytes { get; init; }
   public override bool Equals(object? obj);
   public override int GetHashCode();
@@ -572,12 +585,15 @@ public sealed class MarkdownRenderer.Performance.MarkdownPerformanceOptions : Sy
 public sealed class MarkdownRenderer.Performance.MarkdownPerformanceSnapshot
   public int ActiveImageFetches { get; }
   public int PendingImageFetches { get; }
+  public int PendingSourceByteRequests { get; }
   public long CpuPreparationMilliseconds { get; }
   public long CpuPreparations { get; }
   public long ImageFetchCancellations { get; }
   public long ImageFetchFailures { get; }
   public long ImageFetchMilliseconds { get; }
   public long ImageFetches { get; }
+  public long InFlightSourceBytes { get; }
+  public long PeakInFlightSourceBytes { get; }
   public long ScenePreparationMilliseconds { get; }
   public long ScenePreparations { get; }
   public long SourceCacheBytes { get; }

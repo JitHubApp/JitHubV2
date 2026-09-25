@@ -47,7 +47,7 @@ using RestGitHubUser = JitHub.Models.GitHub.GitHubUser;
 
 namespace JitHub.Services
 {
-    public partial class GitHubService : IGitHubService, IMarkdownImageResolver, IMarkdownImagePrefetcher
+    public partial class GitHubService : IGitHubService, IMarkdownImageSourceByteAdmittedResolver, IMarkdownImagePrefetcher
     {
         private const long PublicPreviewRepositoryId = 623352671;
         private const long PublicPreviewOwnerId = 170190931;
@@ -666,10 +666,25 @@ namespace JitHub.Services
 
             if (string.Equals(encoding, "base64", StringComparison.OrdinalIgnoreCase))
             {
-                string normalized = content.Replace("\r", string.Empty).Replace("\n", string.Empty);
-                return Convert.FromBase64String(normalized);
+                long encodedCharacters = 0;
+                foreach (char character in content)
+                {
+                    if (character is not (' ' or '\t' or '\r' or '\n'))
+                        encodedCharacters++;
+                }
+                if ((encodedCharacters / 4) * 3 > GitHubImageService.MaxImageBytes + 2L)
+                    throw new InvalidDataException("Repository image exceeds the bounded source limit.");
+                // FromBase64String already ignores Base64 whitespace. Avoid an
+                // additional full-length normalized string alongside the API
+                // response and decoded image bytes.
+                byte[] decoded = Convert.FromBase64String(content);
+                if (decoded.Length > GitHubImageService.MaxImageBytes)
+                    throw new InvalidDataException("Repository image exceeds the bounded source limit.");
+                return decoded;
             }
 
+            if (Encoding.UTF8.GetByteCount(content) > GitHubImageService.MaxImageBytes)
+                throw new InvalidDataException("Repository image exceeds the bounded source limit.");
             return Encoding.UTF8.GetBytes(content);
         }
 
@@ -2126,9 +2141,23 @@ namespace JitHub.Services
             sourceUri.Host.Equals("raw.githubusercontent.com", StringComparison.OrdinalIgnoreCase) &&
             reference.SourceUri.Host.Equals("raw.githubusercontent.com", StringComparison.OrdinalIgnoreCase);
 
-        public async ValueTask<MarkdownImageResolution> ResolveAsync(
+        public ValueTask<MarkdownImageResolution> ResolveAsync(
             string source,
             MarkdownImageResolveContext context,
+            CancellationToken cancellationToken) =>
+            ResolveMarkdownImageCoreAsync(source, context, null, cancellationToken);
+
+        public ValueTask<MarkdownImageResolution> ResolveWithSourceByteAdmissionAsync(
+            string source,
+            MarkdownImageResolveContext context,
+            IMarkdownImageSourceByteAdmission admission,
+            CancellationToken cancellationToken) =>
+            ResolveMarkdownImageCoreAsync(source, context, admission, cancellationToken);
+
+        private async ValueTask<MarkdownImageResolution> ResolveMarkdownImageCoreAsync(
+            string source,
+            MarkdownImageResolveContext context,
+            IMarkdownImageSourceByteAdmission? admission,
             CancellationToken cancellationToken)
         {
             GitHubMarkdownImageReference imageReference;
@@ -2160,11 +2189,16 @@ namespace JitHub.Services
                         MarkdownImageAsset? camoAsset = await TryResolveViaGitHubCamoAsync(
                             source,
                             context,
+                            admission,
                             cancellationToken).ConfigureAwait(false);
                         if (camoAsset is not null)
                             return MarkdownImageResolution.Resolved(camoAsset);
                     }
                     catch (OperationCanceledException)
+                    {
+                        throw;
+                    }
+                    catch (MarkdownImageSourceDeferredException)
                     {
                         throw;
                     }
@@ -2202,19 +2236,24 @@ namespace JitHub.Services
                         MarkdownImageAsset? camoAsset = await MarkdownImageFallbackPipeline
                             .FirstSuccessfulHedgedAsync(
                                 async token => await ReadCachedMarkdownImageAsync(
-                                    await _gitHubImageService.GetAsync(
+                                    await GetMarkdownImageAsync(
                                         publicUri!.AbsoluteUri,
                                         scope,
+                                        admission,
                                         token).ConfigureAwait(false),
                                     publicUri!,
                                     token).ConfigureAwait(false),
                                 token => TryResolveViaGitHubCamoOriginAsync(
-                                    publicUri!, context, token),
-                                static (attempt, exception) => HandledFailureReporter.Report(
-                                    exception,
-                                    attempt == 0
-                                        ? "markdown-image-camo-fetch"
-                                        : "markdown-image-camo-origin-fallback"),
+                                    publicUri!, context, admission, token),
+                                static (attempt, exception) =>
+                                {
+                                    if (exception is not MarkdownImageSourceDeferredException)
+                                        HandledFailureReporter.Report(
+                                            exception,
+                                            attempt == 0
+                                                ? "markdown-image-camo-fetch"
+                                                : "markdown-image-camo-origin-fallback");
+                                },
                                 TimeSpan.FromMilliseconds(750),
                                 cancellationToken).ConfigureAwait(false);
                         return camoAsset is null
@@ -2227,9 +2266,10 @@ namespace JitHub.Services
                             publicUri!.ToString(),
                             scope,
                             cancellationToken).ConfigureAwait(false)
-                        : await _gitHubImageService.GetAsync(
+                        : await GetMarkdownImageAsync(
                             publicUri!.ToString(),
                             scope,
+                            admission,
                             cancellationToken).ConfigureAwait(false);
                     if (publicImage is null && publicDecision.Access == MarkdownRemoteImageAccess.CacheOnly)
                     {
@@ -2247,6 +2287,7 @@ namespace JitHub.Services
                             publicUri!,
                             source,
                             context,
+                            admission,
                             cancellationToken).ConfigureAwait(false);
                     }
                     return publicAsset is null
@@ -2257,6 +2298,10 @@ namespace JitHub.Services
                 {
                     throw;
                 }
+                catch (MarkdownImageSourceDeferredException)
+                {
+                    throw;
+                }
                 catch (Exception ex)
                 {
                     HandledFailureReporter.Report(ex, "markdown-image-public-fetch");
@@ -2264,6 +2309,7 @@ namespace JitHub.Services
                         publicUri!,
                         source,
                         context,
+                        admission,
                         cancellationToken).ConfigureAwait(false);
                     return fallbackAsset is null
                         ? MarkdownImageResolution.Unavailable
@@ -2295,6 +2341,7 @@ namespace JitHub.Services
                         rawUri,
                         static exception => HandledFailureReporter.Report(
                             exception, "markdown-image-raw-cdn-fallback"),
+                        admission,
                         cancellationToken).ConfigureAwait(false);
                     MarkdownImageAsset? rawAsset = await ReadCachedMarkdownImageAsync(
                         rawImage, rawUri, cancellationToken).ConfigureAwait(false);
@@ -2318,11 +2365,20 @@ namespace JitHub.Services
                 {
                     try
                     {
-                        cachedImage = await _gitHubImageService.GetOrFetchAsync(
-                            rawUri.ToString(),
-                            async (_, token) =>
+                        GitHubImageFetcher fetcher = async (_, token) =>
+                        {
+                            string accessToken = GetAccessTokenOrThrow();
+                            // Contents and Blob API payloads are materialized by
+                            // the authenticated client before decoding. Reserve
+                            // the hard image ceiling before that work and keep
+                            // the lease through cache storage. An LFS pointer
+                            // releases it before the recursive media request.
+                            IDisposable? sourceLease = admission is null
+                                ? null
+                                : await admission.ReserveAsync(
+                                    GitHubImageService.MaxImageBytes, token).ConfigureAwait(false);
+                            try
                             {
-                                string accessToken = GetAccessTokenOrThrow();
                                 RestGitHubRepositoryContent file = await _gitHubClientService.GetRepositoryContentAsync(
                                     accessToken,
                                     imageReference.Owner,
@@ -2345,28 +2401,49 @@ namespace JitHub.Services
 
                                 if (GitLfsPointer.IsPointer(fileBytes))
                                 {
+                                    sourceLease?.Dispose();
+                                    sourceLease = null;
                                     // The Contents API and raw.githubusercontent.com expose
                                     // the LFS pointer itself. GitHub's repository /raw route
                                     // performs the bounded, trusted redirect to the media CDN
                                     // and yields the same bytes rendered by github.com.
                                     Uri lfsRoute = GitHubMarkdownImageUrlResolver
                                         .CreateGitHubRawRouteUri(imageReference);
-                                    GitHubCachedImage? lfsImage = await _gitHubImageService.GetAsync(
+                                    GitHubCachedImage? lfsImage = await GetMarkdownImageAsync(
                                         lfsRoute.AbsoluteUri,
                                         GitHubImageFetchScope.TrustedGitHub,
+                                        admission,
                                         token).ConfigureAwait(false);
                                     return lfsImage?.Bytes is { Length: > 0 } lfsBytes
                                         ? new GitHubImageDownload(lfsBytes, lfsImage.ContentType)
                                         : null;
                                 }
 
-                                return fileBytes.Length == 0
-                                    ? null
-                                    : new GitHubImageDownload(fileBytes, GuessImageContentType(imageReference.Path));
-                            },
-                            cancellationToken).ConfigureAwait(false);
+                                if (fileBytes.Length == 0)
+                                    return null;
+                                GitHubImageDownload download = new(
+                                    fileBytes,
+                                    GuessImageContentType(imageReference.Path),
+                                    SourceByteLease: sourceLease);
+                                sourceLease = null;
+                                return download;
+                            }
+                            finally
+                            {
+                                sourceLease?.Dispose();
+                            }
+                        };
+                        cachedImage = admission is null
+                            ? await _gitHubImageService.GetOrFetchAsync(
+                                rawUri.ToString(), fetcher, cancellationToken).ConfigureAwait(false)
+                            : await _gitHubImageService.GetOrFetchAsync(
+                                rawUri.ToString(), fetcher, admission, cancellationToken).ConfigureAwait(false);
                     }
                     catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                    {
+                        throw;
+                    }
+                    catch (MarkdownImageSourceDeferredException)
                     {
                         throw;
                     }
@@ -2379,9 +2456,10 @@ namespace JitHub.Services
                         // this fallback; relative/private repository assets continue
                         // to use the authenticated repository API path exclusively.
                         Uri directRawUri = CreateRawFallbackUri(imageReference.SourceUri);
-                        cachedImage = await _gitHubImageService.GetAsync(
+                        cachedImage = await GetMarkdownImageAsync(
                             directRawUri.ToString(),
                             GitHubImageFetchScope.TrustedGitHub,
+                            admission,
                             cancellationToken).ConfigureAwait(false);
                     }
                 }
@@ -2399,12 +2477,24 @@ namespace JitHub.Services
             {
                 throw;
             }
+            catch (MarkdownImageSourceDeferredException)
+            {
+                throw;
+            }
             catch (Exception ex)
             {
                 HandledFailureReporter.Report(ex, "markdown-image-github-fetch");
                 return MarkdownImageResolution.Unavailable;
             }
         }
+
+        private Task<GitHubCachedImage?> GetMarkdownImageAsync(
+            string sourceUrl,
+            GitHubImageFetchScope scope,
+            IMarkdownImageSourceByteAdmission? admission,
+            CancellationToken cancellationToken) => admission is null
+            ? _gitHubImageService.GetAsync(sourceUrl, scope, cancellationToken)
+            : _gitHubImageService.GetAsync(sourceUrl, scope, admission, cancellationToken);
 
         private static Task<MarkdownImageAsset?> ReadCachedMarkdownImageAsync(
             GitHubCachedImage? cachedImage,
@@ -2438,6 +2528,7 @@ namespace JitHub.Services
         private async Task<MarkdownImageAsset?> TryResolveViaGitHubCamoAsync(
             string source,
             MarkdownImageResolveContext context,
+            IMarkdownImageSourceByteAdmission? admission,
             CancellationToken cancellationToken)
         {
             MarkdownDocumentSource? document = context.DocumentSource;
@@ -2461,9 +2552,10 @@ namespace JitHub.Services
                 return null;
             }
 
-            GitHubCachedImage? image = await _gitHubImageService.GetAsync(
+            GitHubCachedImage? image = await GetMarkdownImageAsync(
                 camoUri.AbsoluteUri,
                 GitHubImageFetchScope.TrustedGitHub,
+                admission,
                 cancellationToken).ConfigureAwait(false);
             return await ReadCachedMarkdownImageAsync(image, camoUri, cancellationToken)
                 .ConfigureAwait(false);
@@ -2473,6 +2565,7 @@ namespace JitHub.Services
             Uri publicUri,
             string authoredSource,
             MarkdownImageResolveContext context,
+            IMarkdownImageSourceByteAdmission? admission,
             CancellationToken cancellationToken)
         {
             // A Camo endpoint, its canonical HTTPS origin, and GitHub's
@@ -2482,22 +2575,29 @@ namespace JitHub.Services
                 token => TryResolveViaGitHubCamoOriginAsync(
                     publicUri,
                     context,
+                    admission,
                     token),
                 token => TryResolveViaGitHubCamoAsync(
                     authoredSource,
                     context,
+                    admission,
                     token),
-                static (attempt, exception) => HandledFailureReporter.Report(
-                    exception,
-                    attempt == 0
-                        ? "markdown-image-camo-origin-fallback"
-                        : "markdown-image-github-camo-fallback"),
+                static (attempt, exception) =>
+                {
+                    if (exception is not MarkdownImageSourceDeferredException)
+                        HandledFailureReporter.Report(
+                            exception,
+                            attempt == 0
+                                ? "markdown-image-camo-origin-fallback"
+                                : "markdown-image-github-camo-fallback");
+                },
                 cancellationToken).ConfigureAwait(false);
         }
 
         private async Task<MarkdownImageAsset?> TryResolveViaGitHubCamoOriginAsync(
             Uri sourceUri,
             MarkdownImageResolveContext context,
+            IMarkdownImageSourceByteAdmission? admission,
             CancellationToken cancellationToken)
         {
             if (!GitHubCamoImageMapParser.TryDecodeCanonicalSource(sourceUri, out Uri originUri))
@@ -2517,9 +2617,10 @@ namespace JitHub.Services
                     originUri.AbsoluteUri,
                     GitHubImageFetchScope.UserApprovedHttps,
                     cancellationToken).ConfigureAwait(false)
-                : await _gitHubImageService.GetAsync(
+                : await GetMarkdownImageAsync(
                     originUri.AbsoluteUri,
                     GitHubImageFetchScope.UserApprovedHttps,
+                    admission,
                     cancellationToken).ConfigureAwait(false);
             return await ReadCachedMarkdownImageAsync(image, originUri, cancellationToken)
                 .ConfigureAwait(false);

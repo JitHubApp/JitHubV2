@@ -651,11 +651,10 @@ complete before claiming this plan or the 1.0 performance goal is met.
   both fixes under CI. This is CI correctness work, not a performance-gate
   pass; the preview, live benchmark, and current-head top-500 jobs were still
   running or queued at this checkpoint.
-- Open: actual source-byte in-flight admission (a host resolver currently owns
-  its download buffer). It needs priority-aware byte admission across the
-  renderer session and JitHub's HTTP/authenticated fetches, not a per-request
-  semaphore: the authenticated Git LFS fallback calls the same image service
-  recursively, so holding a whole-request permit can deadlock. Global scene
+- Open: qualifying actual source-byte in-flight admission under concurrent
+  memory storms and live workloads. The renderer session now passes a weighted
+  per-source admission to JitHub's HTTP/authenticated fetches, but the full
+  memory and no-false-unavailable gate has not been measured. Global scene
   queue fairness across documents and copy-on-write layout publication with a
   measured ≤2 ms UI commit also remain open.
 - In progress, not yet effective in production: a weighted, document-fair
@@ -672,6 +671,33 @@ complete before claiming this plan or the 1.0 performance goal is met.
   lengths and sources larger than a lowered speculative ceiling. Until that
   integration and memory-storm tests pass, the 64 MiB in-flight goal remains
   open; this primitive alone does not bound current downloads.
+- In progress, pending full validation: the optional
+  resolver contract can now receive a per-request weighted byte admission from
+  the progressive session. Its immutable options lower (but cannot raise) the
+  architecture-specific 64/32 MiB total ceiling and reserve a visible slice;
+  admissions are tied to document fairness and session cancellation. Focused
+  tests cover visible/speculative limits, ordinary-resolver compatibility,
+  cross-document visible supersession of active speculative reads, typed
+  deferral when a source exceeds the speculative ceiling, and disposal while a
+  byte request is queued. JitHub now carries leases through HTTP buffer
+  reads and cache storage, keeps admitted visible/speculative flights separate,
+  uses bounded memory or delete-on-close spill for unknown-length bodies, and
+  reserves the authenticated image ceiling before Contents/Blob materialization.
+  The authenticated LFS pointer releases its lease before the recursive media
+  fetch. An admitted stale-cache revalidation currently completes within the
+  tracked resolution instead of spawning a detached task that could outlive
+  account/session retirement; its latency needs the release benchmark, and a
+  future session-owned refresh scope may restore stale-while-revalidate without
+  losing byte accounting. A privacy-safe current/peak/pending admission snapshot
+  is exposed to the README audit. Focused known/unknown-length HTTP tests, a
+  synthetic 1,800-source admitted storm, 412 renderer and 3,066 app tests,
+  public API baseline verification, and x86/x64/ARM64 Release app builds pass
+  locally. Actual HTTP/authenticated peak-memory storms, account isolation,
+  live README and no-false-unavailable checks remain. The authenticated client
+  still materializes its API response before
+  the local decoded-size check, so additional profiling is needed to establish
+  the real peak including its Base64/JSON overhead. This is not yet an
+  in-flight source-memory gate pass.
 - Open: oversized raster tiling and session-owned SVG/document/GPU preparation
   caches.
 - Open: defer Math/Mermaid scenes and ahead-of-viewport highlighting without

@@ -12,6 +12,7 @@ using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Services.Markdown;
+using MarkdownRenderer.Images;
 
 namespace JitHub.Services;
 
@@ -20,7 +21,8 @@ public sealed record GitHubImageDownload(
     string? ContentType,
     string? ETag = null,
     DateTimeOffset? LastModified = null,
-    bool IsNotModified = false);
+    bool IsNotModified = false,
+    IDisposable? SourceByteLease = null);
 
 public sealed record GitHubCachedImage(
     string FilePath,
@@ -49,6 +51,12 @@ public interface IGitHubImageService
         GitHubImageFetchScope scope,
         CancellationToken cancellationToken = default);
 
+    Task<GitHubCachedImage?> GetAsync(
+        string sourceUrl,
+        GitHubImageFetchScope scope,
+        IMarkdownImageSourceByteAdmission admission,
+        CancellationToken cancellationToken = default);
+
     Task<GitHubCachedImage?> TryGetCachedAsync(
         string sourceUrl,
         GitHubImageFetchScope scope,
@@ -57,6 +65,12 @@ public interface IGitHubImageService
     Task<GitHubCachedImage?> GetOrFetchAsync(
         string sourceUrl,
         GitHubImageFetcher fetcher,
+        CancellationToken cancellationToken = default);
+
+    Task<GitHubCachedImage?> GetOrFetchAsync(
+        string sourceUrl,
+        GitHubImageFetcher fetcher,
+        IMarkdownImageSourceByteAdmission admission,
         CancellationToken cancellationToken = default);
 
     Task InvalidateAsync(string sourceUrl, CancellationToken cancellationToken = default);
@@ -68,7 +82,7 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
     // demonstrations above 10 MiB. Compressed bytes remain bounded here while
     // RasterImageResourceBudget independently caps dimensions, frames, pixels,
     // and decoded memory before the renderer admits the payload.
-    private const int MaxImageBytes = 32 * 1024 * 1024;
+    internal const int MaxImageBytes = 32 * 1024 * 1024;
     // Two consecutive CDN/HTTP2 stream failures were observed in the live
     // README corpus. A third idempotent GET is bounded and only reached for
     // errors classified as transient; policy and permanent responses fail fast.
@@ -146,8 +160,21 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
         CancellationToken cancellationToken = default) =>
         GetOrFetchCoreAsync(
             sourceUrl,
-            (cached, token) => FetchHttpAsync(sourceUrl, cached, scope, token),
+            (cached, token) => FetchHttpAsync(sourceUrl, cached, scope, null, token),
             scope,
+            null,
+            cancellationToken);
+
+    public Task<GitHubCachedImage?> GetAsync(
+        string sourceUrl,
+        GitHubImageFetchScope scope,
+        IMarkdownImageSourceByteAdmission admission,
+        CancellationToken cancellationToken = default) =>
+        GetOrFetchCoreAsync(
+            sourceUrl,
+            (cached, token) => FetchHttpAsync(sourceUrl, cached, scope, admission, token),
+            scope,
+            admission,
             cancellationToken);
 
     public async Task<GitHubCachedImage?> TryGetCachedAsync(
@@ -194,12 +221,26 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
             sourceUrl,
             (cached, token) => FetchWithRetryAsync(fetcher, cached, token),
             GitHubImageFetchScope.UserApprovedHttps,
+            null,
+            cancellationToken).ConfigureAwait(false);
+
+    public async Task<GitHubCachedImage?> GetOrFetchAsync(
+        string sourceUrl,
+        GitHubImageFetcher fetcher,
+        IMarkdownImageSourceByteAdmission admission,
+        CancellationToken cancellationToken = default)
+        => await GetOrFetchCoreAsync(
+            sourceUrl,
+            (cached, token) => FetchWithRetryAsync(fetcher, cached, token),
+            GitHubImageFetchScope.UserApprovedHttps,
+            admission,
             cancellationToken).ConfigureAwait(false);
 
     private async Task<GitHubCachedImage?> GetOrFetchCoreAsync(
         string sourceUrl,
         GitHubImageFetcher fetcher,
         GitHubImageFetchScope scope,
+        IMarkdownImageSourceByteAdmission? admission,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(fetcher);
@@ -212,6 +253,12 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
         using IAccountWorkLease? readLease = EnterAccountWork(accountId, cancellationToken);
         CancellationToken readToken = readLease?.CancellationToken ?? cancellationToken;
         string cacheKey = GetCacheKey(accountId, sourceUrl);
+        // Distinct in-flight identities keep a speculative or unbudgeted
+        // downloader from blocking a visible admitted request. Successful
+        // downloads still share the same account-partitioned cache entry.
+        string flightKey = admission is null
+            ? cacheKey
+            : admission.IsSpeculative ? cacheKey + "#source-speculative" : cacheKey + "#source-visible";
         GitHubImageCacheRead? cached;
         if (!_memoryCache.TryGet(cacheKey, out cached))
         {
@@ -234,7 +281,7 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
 
             Task<GitHubCachedImage?> refreshTask = GetSharedTask(
                 _refreshes,
-                cacheKey,
+                flightKey,
                 token => FetchAndStoreWithLeaseAsync(
                     accountId,
                     cacheKey,
@@ -243,6 +290,18 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
                     fetcher,
                     token),
                 cancellationToken);
+            if (admission is not null)
+            {
+                // The admission is scoped to the renderer's active resolution.
+                // A detached stale-while-revalidate task could outlive that
+                // scope and continue downloading after account/session
+                // retirement. Keep admitted refreshes inside the caller's
+                // tracked lifetime until a separately owned refresh budget
+                // exists. FetchAndStoreAsync preserves the stale asset if
+                // revalidation fails.
+                GitHubCachedImage? refreshed = await refreshTask.ConfigureAwait(false);
+                return refreshed ?? (ToResult(cached, isFromCache: true) with { IsStale = true });
+            }
             return new GitHubCachedImage(
                 cached.Entry.FilePath,
                 cached.Bytes,
@@ -254,7 +313,7 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
 
         Task<GitHubCachedImage?> missTask = GetSharedTask(
             _misses,
-            cacheKey,
+            flightKey,
             token => FetchAndStoreWithLeaseAsync(
                 accountId,
                 cacheKey,
@@ -336,6 +395,7 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
         try
         {
             GitHubImageDownload? download = await fetcher(cached?.Entry, cancellationToken).ConfigureAwait(false);
+            using IDisposable? sourceByteLease = download?.SourceByteLease;
             if (download?.IsNotModified == true && cached is not null)
             {
                 await _cacheStore.MarkFreshAsync(cacheKey, cancellationToken).ConfigureAwait(false);
@@ -400,6 +460,7 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
         string sourceUrl,
         GitHubImageCacheEntry? cached,
         GitHubImageFetchScope scope,
+        IMarkdownImageSourceByteAdmission? admission,
         CancellationToken cancellationToken)
     {
         for (int attempt = 1; attempt <= MaxHttpAttempts; attempt++)
@@ -410,6 +471,7 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
                     sourceUrl,
                     cached,
                     scope,
+                    admission,
                     cancellationToken).ConfigureAwait(false);
             }
             catch (Exception exception) when (
@@ -458,6 +520,7 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
         string sourceUrl,
         GitHubImageCacheEntry? cached,
         GitHubImageFetchScope scope,
+        IMarkdownImageSourceByteAdmission? admission,
         CancellationToken cancellationToken)
     {
         Uri currentUri = new(sourceUrl, UriKind.Absolute);
@@ -510,12 +573,14 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
 
             response.EnsureSuccessStatusCode();
             string? contentType = response.Content.Headers.ContentType?.MediaType;
-            byte[] bytes = await ReadBoundedAsync(response.Content, cancellationToken).ConfigureAwait(false);
+            (byte[] bytes, IDisposable? sourceByteLease) = await ReadBoundedAsync(
+                response.Content, admission, cancellationToken).ConfigureAwait(false);
             return new GitHubImageDownload(
                 bytes,
                 contentType,
                 response.Headers.ETag?.ToString(),
-                response.Content.Headers.LastModified);
+                response.Content.Headers.LastModified,
+                SourceByteLease: sourceByteLease);
         }
 
         throw new InvalidDataException("Remote image exceeded the redirect limit.");
@@ -570,7 +635,10 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
             (status >= 500 && status <= 599 && status is not (501 or 505));
     }
 
-    private async Task<byte[]> ReadBoundedAsync(HttpContent content, CancellationToken cancellationToken)
+    private async Task<(byte[] Bytes, IDisposable? Lease)> ReadBoundedAsync(
+        HttpContent content,
+        IMarkdownImageSourceByteAdmission? admission,
+        CancellationToken cancellationToken)
     {
         if (content.Headers.ContentLength is long contentLength && contentLength > MaxImageBytes)
         {
@@ -580,14 +648,30 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
         await using Stream input = await content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
         if (content.Headers.ContentLength is long knownLength)
         {
-            // Most image responses provide a length. Read directly into the final
-            // array instead of growing a MemoryStream and copying it with ToArray.
-            byte[] bytes = new byte[checked((int)knownLength)];
-            await input.ReadExactlyAsync(bytes, cancellationToken).ConfigureAwait(false);
-            if (await input.ReadAsync(new byte[1], cancellationToken).ConfigureAwait(false) != 0)
-                throw new InvalidDataException("Remote image exceeds its declared content length.");
-            return bytes;
+            IDisposable? lease = null;
+            try
+            {
+                if (admission is not null && knownLength > 0)
+                    lease = await admission.ReserveAsync(knownLength, cancellationToken).ConfigureAwait(false);
+                // Most image responses provide a length. Read directly into the final
+                // array instead of growing a MemoryStream and copying it with ToArray.
+                byte[] bytes = new byte[checked((int)knownLength)];
+                await input.ReadExactlyAsync(bytes, cancellationToken).ConfigureAwait(false);
+                if (await input.ReadAsync(new byte[1], cancellationToken).ConfigureAwait(false) != 0)
+                    throw new InvalidDataException("Remote image exceeds its declared content length.");
+                IDisposable? transferred = lease;
+                lease = null;
+                return (bytes, transferred);
+            }
+            finally
+            {
+                lease?.Dispose();
+            }
         }
+
+        if (admission is not null)
+            return await ReadUnknownLengthAdmittedAsync(input, admission, cancellationToken)
+                .ConfigureAwait(false);
 
         using MemoryStream output = new();
         byte[] buffer = new byte[81920];
@@ -596,7 +680,7 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
             int read = await input.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
             if (read == 0)
             {
-                return output.ToArray();
+                return (output.ToArray(), null);
             }
 
             if (output.Length + read > MaxImageBytes)
@@ -605,6 +689,99 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
             }
 
             output.Write(buffer, 0, read);
+        }
+    }
+
+    private static async Task<(byte[] Bytes, IDisposable Lease)> ReadUnknownLengthAdmittedAsync(
+        Stream input,
+        IMarkdownImageSourceByteAdmission admission,
+        CancellationToken cancellationToken)
+    {
+        // Most chunked badges fit in memory. Reserve both the initial buffer
+        // and its exact-size result before allocating either one. Larger
+        // streams spill to a delete-on-close file instead of growing multiple
+        // unadmitted buffers or holding a partial byte lease while waiting for
+        // more capacity (which could deadlock other chunked readers).
+        int initialCapacity = checked((int)Math.Min(1024L * 1024, admission.MaximumReservationBytes / 2));
+        if (initialCapacity < 1)
+            throw new InvalidDataException("The source-byte admission cannot hold an image chunk.");
+        IDisposable? initialLease = await admission.ReserveAsync(
+            initialCapacity * 2L, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            byte[] buffer = new byte[initialCapacity];
+            int length = 0;
+            while (length < buffer.Length)
+            {
+                int read = await input.ReadAsync(buffer.AsMemory(length), cancellationToken)
+                    .ConfigureAwait(false);
+                if (read == 0)
+                {
+                    byte[] exact = buffer.AsSpan(0, length).ToArray();
+                    IDisposable transferred = initialLease;
+                    initialLease = null;
+                    return (exact, transferred);
+                }
+                length += read;
+            }
+
+            byte[] one = new byte[1];
+            if (await input.ReadAsync(one, cancellationToken).ConfigureAwait(false) == 0)
+            {
+                // A full buffer already has the exact length; the reservation
+                // covers it without an additional array copy.
+                IDisposable transferred = initialLease;
+                initialLease = null;
+                return (buffer, transferred);
+            }
+
+            string temporaryPath = Path.Combine(
+                Path.GetTempPath(), $"jithub-image-{Guid.NewGuid():N}.tmp");
+            await using FileStream spool = new(
+                temporaryPath,
+                FileMode.CreateNew,
+                FileAccess.ReadWrite,
+                FileShare.None,
+                81920,
+                FileOptions.Asynchronous | FileOptions.DeleteOnClose);
+            await spool.WriteAsync(buffer, cancellationToken).ConfigureAwait(false);
+            await spool.WriteAsync(one, cancellationToken).ConfigureAwait(false);
+            int total = checked(length + 1);
+            while (true)
+            {
+                int read = await input.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+                if (read == 0)
+                    break;
+                if (total > MaxImageBytes - read)
+                    throw new InvalidDataException($"Remote image exceeds the {MaxImageBytes}-byte limit.");
+                await spool.WriteAsync(buffer.AsMemory(0, read), cancellationToken)
+                    .ConfigureAwait(false);
+                total += read;
+            }
+
+            // The scratch buffer no longer participates in the read. Release
+            // its lease before waiting for the final array's weighted grant.
+            initialLease.Dispose();
+            initialLease = null;
+            IDisposable finalLease = await admission.ReserveAsync(total, cancellationToken)
+                .ConfigureAwait(false);
+            try
+            {
+                byte[] bytes = new byte[total];
+                spool.Position = 0;
+                await spool.ReadExactlyAsync(bytes, cancellationToken).ConfigureAwait(false);
+                return (bytes, finalLease);
+            }
+            catch
+            {
+                finalLease.Dispose();
+                throw;
+            }
+        }
+        catch
+        {
+            initialLease?.Dispose();
+            throw;
         }
     }
 
