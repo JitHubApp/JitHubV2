@@ -495,14 +495,51 @@ complete before claiming this plan or the 1.0 performance goal is met.
   replays closed cleanly, so this intermittent hosted crash is not yet fixed.
   The audit now retains the app's existing exception logs whenever shutdown is
   unclean, not only when the harness itself throws; the strict clean-exit gate
-  remains. A failed-shard rerun of the original commit is in progress. The
-  current-head Preview Validation separately failed one cancellation-retirement
+  remains. A failed-shard rerun of the original commit later completed. The
+  earlier Preview Validation separately failed one cancellation-retirement
   ordering test because its arbitrary two-second callback-scheduling timeout
   elapsed under CI load. That non-performance timeout is now ten seconds; the
   product performance deadlines are unchanged. Twenty focused Release x64 test
-  iterations,
-  automation-harness build, and 35 harness contract tests pass locally. Neither
-  a local replay nor an incomplete rerun establishes a 500/500 release verdict.
+  iterations, the automation-harness build, and 35 harness contract tests pass
+  locally. Preview Validation passed on `e817da9`. The failed-shard rerun
+  completed cleanly and the consolidated original-commit
+  evidence reports 500/500 with zero unavailable assets, first-render ratio
+  p95 0.435, and full-page ratio p95 0.333. This combines attempts rather than
+  proving a crash fix; the rank-371 stowed exception remains unexplained. The
+  audit also has two individual ratios above 1.10: rank 102
+  (`jaywcjlove/awesome-mac`, full-page 1.525) and rank 395
+  (`scutan90/DeepLearning-500-questions`, first/full 2.664/1.732). The rank-395
+  hosted case had no image sources or scene preparations and spent 5.06 seconds
+  of process CPU before its 10.35-second first render, so an image-network
+  explanation does not apply. Four local Release replays of its identical
+  pinned README SHA with the original Edge evidence passed at 443–530 ms first
+  render and 821–940 ms full traversal. This exposes large environment/run
+  variance, not a proven fix or a waiver for the hosted outlier. Rank 102's
+  full-page outlier includes a 20-second visible-image wait for one
+  OpenCollective contributor SVG: both native fetch attempts returned no bytes
+  after about 31 seconds each, and the browser evidence classifies the asset
+  as broken as well. Its other recorded image responses completed below
+  500 ms. This identifies an upstream-delivery component in that live run,
+  but still requires the offline same-byte replay to isolate client work.
+  A current-head audit, full same-byte corpus, and qualified release benchmark
+  are still required.
+- The `e817da9` audit's rank-181 case (`macrozheng/mall`) reported two valid
+  browser-rendered Chinese-text SVG badges unavailable after separate worker
+  `open` transactions hit the immutable three-second content deadline. Worker
+  CPU during those transactions was only 0 and 15 ms; the source fetches
+  succeeded. The worker's independent cold text initialization primed Latin,
+  Arabic, and emoji fallback, but not the CJK family orders authored by these
+  badges. The warm-up now primes those two CJK fallback orders under the
+  separate initialization deadline without relaxing the per-content deadline.
+  All three pinned worker architectures rebuilt; 16 Rust and 61 Release x64
+  provider tests pass, as do x86/ARM64 managed builds and three exact pinned
+  rank-181 Release replays with zero unavailable images. The three-RID
+  development package is 4,463,298 compressed bytes, below the unchanged
+  5 MiB cap; workers remain unsigned development artifacts, not a production
+  signing pass. Because the hosted timeout was intermittent and did not occur
+  on a pre-change local replay, this is a targeted mitigation, not a proven
+  fix. A new hosted 500/500 audit and cold/contended text SVG evidence are
+  required.
 - Measured: the full x64 repeated-construction release benchmark is not yet
   qualified. Both reference and candidate failed its stationarity contract;
   the candidate's full run dropped to about 121 observed Hz on a configured

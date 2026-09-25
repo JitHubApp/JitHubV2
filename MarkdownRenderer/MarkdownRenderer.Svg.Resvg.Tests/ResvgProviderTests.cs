@@ -137,6 +137,37 @@ public sealed class ResvgProviderTests
         Assert.True(HasVisiblePixel(raster.Pixels.Span));
     }
 
+    [Fact]
+    public async Task CjkBadgeFallback_IsWarmBeforeContentDeadline()
+    {
+        // Pinned, network-free forms of the two font-family orders used by
+        // real-world Chinese SVG badges. Both must pay cold fallback setup
+        // during HELLO, not inside a per-content Open transaction.
+        string[] badges =
+        [
+            "<svg xmlns='http://www.w3.org/2000/svg' width='164' height='20'>" +
+            "<text x='2' y='15' font-family='Verdana,Geneva,DejaVu Sans,sans-serif' " +
+            "font-size='12'>前台商城项目 mall-app-web</text></svg>",
+            "<svg xmlns='http://www.w3.org/2000/svg' width='76' height='20'>" +
+            "<text x='2' y='15' font-family='DejaVu Sans,Verdana,Geneva,sans-serif' " +
+            "font-size='12'>交流 微信群</text></svg>",
+        ];
+        var options = new ResvgMarkdownSvgRendererOptions(
+            requestDeadline: TimeSpan.FromSeconds(1));
+        await using var renderer = new ResvgMarkdownSvgRenderer(options);
+
+        foreach (string badge in badges)
+        {
+            using IMarkdownSvgDocument document = await renderer.OpenAsync(
+                new MarkdownSvgOpenRequest(Svg(badge)));
+            using MarkdownSvgRaster raster = await document.RenderAsync(
+                new MarkdownSvgRenderRequest(164, 20));
+
+            Assert.True(document.Info.HasText);
+            Assert.True(HasVisiblePixel(raster.Pixels.Span));
+        }
+    }
+
     private static byte[] Svg(string value) => Encoding.UTF8.GetBytes(value);
 
     [Fact]
