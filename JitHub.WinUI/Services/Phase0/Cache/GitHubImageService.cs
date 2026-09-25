@@ -1153,9 +1153,13 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
     {
         var settings = new XmlReaderSettings
         {
-            DtdProcessing = DtdProcessing.Prohibit,
+            // Match the SVG preflight's inert legacy external DOCTYPE support.
+            // This check only detects incomplete downloads; the renderer's
+            // preflight remains authoritative for forbidden DTD content.
+            DtdProcessing = DtdProcessing.Parse,
             XmlResolver = null,
             MaxCharactersInDocument = MaxImageBytes,
+            MaxCharactersFromEntities = 1,
         };
         try
         {

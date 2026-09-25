@@ -1259,6 +1259,54 @@ public sealed class GitHubImageServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task GetAsync_AcceptsLegacyExternalDoctypeCamoSvgWithoutRetry()
+    {
+        const string source = "https://camo.githubusercontent.com/legacy-creative-commons.svg";
+        byte[] complete = System.Text.Encoding.UTF8.GetBytes("<?xml version='1.0' encoding='utf-8'?>" +
+            "<!DOCTYPE svg PUBLIC '-//W3C//DTD SVG 1.0//EN' " +
+            "'http://www.w3.org/TR/2001/REC-SVG-20010904/DTD/svg10.dtd'>" +
+            "<svg xmlns='http://www.w3.org/2000/svg' width='64' height='64'>" +
+            "<rect width='64' height='64'/></svg>");
+        GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
+        var handler = new SequencedSvgHandler(complete);
+        using HttpClient client = new(handler);
+        using GitHubImageService service = new(store, client);
+
+        GitHubCachedImage? image = await service.GetAsync(
+            source, GitHubImageFetchScope.TrustedGitHub);
+        GitHubCachedImage? cached = await service.GetAsync(
+            source, GitHubImageFetchScope.TrustedGitHub);
+
+        Assert.NotNull(image);
+        Assert.Equal(complete, image.Bytes);
+        Assert.True(cached!.IsFromCache);
+        Assert.Equal(1, handler.RequestCount);
+    }
+
+    [Fact]
+    public async Task GetAsync_AcceptsLegacyExternalDoctypeFromSignedUserAttachment()
+    {
+        const string signedAsset =
+            "https://github-production-user-asset-6210df.s3.amazonaws.com/1/2.svg" +
+            "?X-Amz-Credential=github%2Frequest&X-Amz-Signature=abc123";
+        byte[] complete = System.Text.Encoding.UTF8.GetBytes(
+            "<!DOCTYPE svg PUBLIC '-//W3C//DTD SVG 1.1//EN' " +
+            "'http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd'>" +
+            "<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8' />");
+        GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
+        RedirectThenImageHandler handler = new(signedAsset, complete, "image/svg+xml");
+        using HttpClient client = new(handler);
+        using GitHubImageService service = new(store, client);
+
+        GitHubCachedImage? image = await service.GetAsync(
+            "https://github.com/user-attachments/assets/9955dda9-1234-5678-9abc-def012345678");
+
+        Assert.NotNull(image);
+        Assert.Equal(complete, image.Bytes);
+        Assert.Equal(2, handler.RequestCount);
+    }
+
+    [Fact]
     public async Task GetAsync_ExhaustsBoundedMalformedCamoSvgRetryWithoutCaching()
     {
         byte[] truncated = "<svg xmlns=\"http://www.w3.org/2000/svg\"><text>cut"u8.ToArray();
@@ -2068,7 +2116,10 @@ public sealed class GitHubImageServiceTests : IDisposable
         }
     }
 
-    private sealed class RedirectThenImageHandler(string destination, byte[] bytes) : HttpMessageHandler
+    private sealed class RedirectThenImageHandler(
+        string destination,
+        byte[] bytes,
+        string contentType = "application/octet-stream") : HttpMessageHandler
     {
         private int _requestCount;
 
@@ -2087,7 +2138,7 @@ public sealed class GitHubImageServiceTests : IDisposable
             }
 
             ByteArrayContent content = new(bytes);
-            content.Headers.ContentType = new("application/octet-stream");
+            content.Headers.ContentType = new(contentType);
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = content });
         }
     }

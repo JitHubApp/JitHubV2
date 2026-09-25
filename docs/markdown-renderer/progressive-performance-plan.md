@@ -862,6 +862,22 @@ complete before claiming this plan or the 1.0 performance goal is met.
   stale audit-owned profiles, the same smoke test left zero before and after;
   the local DevTools startup failure itself remains unresolved, and hosted
   Edge parity must still run. The workflow now runs the profile-lifetime tests.
+- The ongoing `0d80017` top-500 audit has failed multiple shards on valid
+  images marked unavailable. Saved rank-170 (`ByteByteGoHq/system-design-101`)
+  evidence shows four 64×64 Creative Commons SVGs visible in Edge but rejected
+  before native rendering. Their Camo payloads carry an inert external SVG 1.0
+  DOCTYPE; the small-SVG download completeness check prohibited all DTDs even
+  though both authoritative renderer preflights already admit inert external
+  SVG DOCTYPEs and reject internal subsets. Rank-235 (`caddyserver/caddy`)
+  likewise has a valid signed GitHub user-attachment SVG with an external
+  DOCTYPE. The download check now parses that declaration with a null XML
+  resolver and a one-character entity-expansion ceiling, preserving truncated
+  Camo retries and leaving authoritative SVG security checks unchanged.
+  Direct-Camo and signed-attachment regression tests pass, as do all 3,106
+  Release x64 app tests and a zero-warning Release x64 app build. This fixes a
+  demonstrated false-unavailable path but does not establish that every
+  failing shard has the same cause; the new head still needs the full 500-case
+  audit and same-byte/interactive release gates.
 - The rank-367 Edge `net::ERR_NO_BUFFER_SPACE` failure now has one bounded
   fresh-navigation recovery after stopping the failed load and waiting one
   second. The successful attempt gets a post-wait CPU/layout baseline; retry
