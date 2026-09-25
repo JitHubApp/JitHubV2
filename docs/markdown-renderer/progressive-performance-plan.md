@@ -942,6 +942,21 @@ complete before claiming this plan or the 1.0 performance goal is met.
   was 12.0 ms versus 12.9 ms before this sparse index, a difference too small
   and uncontrolled to qualify as a latency-gate pass. The slow external-gate
   mutation fixture and full benchmark remain open.
+- Preview validation at `1121a72` failed the unchanged lean managed-package
+  limit: Core + WinUI contained 1,265,664 bytes against the 1,258,291-byte
+  (1.2 MiB) gate. The local follow-up removes generated record-struct methods
+  from internal transport-only values and stores raw publication timestamps,
+  converting audit-only phase durations when JitHub captures evidence instead
+  of during every renderer commit. A fresh two-package local pack contains
+  1,255,424 managed bytes and 528,559 compressed bytes, below the unchanged
+  1.2 MiB and 525 KiB gates. The Release x64 JitHub build has zero warnings;
+  944 fast Core, 413 GitHub renderer, and 3,129 app tests pass locally. The
+  local schema-2 pinned rank-170 production-app audit also passed with no
+  unavailable images and additive phase evidence. Its one-shot UI publication
+  was 91.5 ms, with 75.7 ms in visible embed realization, so it is explicit
+  evidence against—not for—the ≤2 ms gate. The complete preview job and
+  current-head top-500 audit must still pass in CI; this size fix does not
+  establish any release performance gate.
 - The rank-367 Edge `net::ERR_NO_BUFFER_SPACE` failure now has one bounded
   fresh-navigation recovery after stopping the failed load and waiting one
   second. The successful attempt gets a post-wait CPU/layout baseline; retry

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -620,17 +621,20 @@ public sealed partial class MarkdownViewer : UserControl
                 pipeline.ParseMilliseconds,
                 pipeline.SetupMilliseconds,
                 pipeline.LayoutMilliseconds,
-                pipeline.PublicationMilliseconds,
-                pipeline.CommitMilliseconds,
-                pipeline.OverlayResetMilliseconds,
-                pipeline.PlanConstructionMilliseconds,
-                pipeline.VisibleRealizationMilliseconds,
-                pipeline.EmbedRealizationMilliseconds,
-                pipeline.HighlightSchedulingMilliseconds,
-                pipeline.HighlightRetirementMilliseconds,
-                pipeline.HighlightBandSchedulingMilliseconds,
-                pipeline.AdornmentFocusMilliseconds,
-                pipeline.FinalNotificationMilliseconds));
+                ElapsedMilliseconds(pipeline.PublicationStartedTimestamp, pipeline.PublicationEndedTimestamp),
+                ElapsedMilliseconds(pipeline.PublicationStartedTimestamp, pipeline.CommitEndedTimestamp),
+                ElapsedMilliseconds(pipeline.CommitEndedTimestamp, pipeline.OverlayResetEndedTimestamp),
+                ElapsedMilliseconds(pipeline.OverlayResetEndedTimestamp, pipeline.PlanConstructionEndedTimestamp),
+                ElapsedMilliseconds(pipeline.PlanConstructionEndedTimestamp, pipeline.VisibleRealizationEndedTimestamp),
+                ElapsedMilliseconds(pipeline.PlanConstructionEndedTimestamp, pipeline.EmbedRealizationEndedTimestamp),
+                ElapsedMilliseconds(pipeline.EmbedRealizationEndedTimestamp, pipeline.HighlightSchedulingEndedTimestamp),
+                ElapsedMilliseconds(pipeline.EmbedRealizationEndedTimestamp, pipeline.HighlightRetirementEndedTimestamp),
+                ElapsedMilliseconds(pipeline.HighlightRetirementEndedTimestamp, pipeline.HighlightSchedulingEndedTimestamp),
+                ElapsedMilliseconds(pipeline.HighlightSchedulingEndedTimestamp, pipeline.VisibleRealizationEndedTimestamp),
+                ElapsedMilliseconds(pipeline.VisibleRealizationEndedTimestamp, pipeline.PublicationEndedTimestamp)));
+
+        static double ElapsedMilliseconds(long start, long end) =>
+            Stopwatch.GetElapsedTime(start, end).TotalMilliseconds;
     }
 #pragma warning restore MR1001
 

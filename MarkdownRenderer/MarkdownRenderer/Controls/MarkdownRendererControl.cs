@@ -2853,7 +2853,17 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             MarkdownRenderedHtmlWriter.BuildFragment(semantic, start, end));
     }
 
-    private readonly record struct RenderedSelectionPayload(string Text, string Html);
+    private readonly struct RenderedSelectionPayload
+    {
+        internal readonly string Text;
+        internal readonly string Html;
+
+        internal RenderedSelectionPayload(string text, string html)
+        {
+            Text = text;
+            Html = html;
+        }
+    }
 
     internal void ClearSelectionFromCoordinator()
     {
@@ -4212,17 +4222,15 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             parseMilliseconds,
             setupMilliseconds,
             layoutMilliseconds,
-            Stopwatch.GetElapsedTime(publicationStarted, publicationEnded).TotalMilliseconds,
-            Stopwatch.GetElapsedTime(publicationStarted, commitEnded).TotalMilliseconds,
-            Stopwatch.GetElapsedTime(commitEnded, overlayResetEnded).TotalMilliseconds,
-            Stopwatch.GetElapsedTime(overlayResetEnded, planConstructionEnded).TotalMilliseconds,
-            Stopwatch.GetElapsedTime(planConstructionEnded, visibleRealizationEnded).TotalMilliseconds,
-            Stopwatch.GetElapsedTime(planConstructionEnded, embedRealizationEnded).TotalMilliseconds,
-            Stopwatch.GetElapsedTime(embedRealizationEnded, highlightSchedulingEnded).TotalMilliseconds,
-            Stopwatch.GetElapsedTime(embedRealizationEnded, highlightRetirementEnded).TotalMilliseconds,
-            Stopwatch.GetElapsedTime(highlightRetirementEnded, highlightSchedulingEnded).TotalMilliseconds,
-            Stopwatch.GetElapsedTime(highlightSchedulingEnded, visibleRealizationEnded).TotalMilliseconds,
-            Stopwatch.GetElapsedTime(visibleRealizationEnded, publicationEnded).TotalMilliseconds);
+            publicationStarted,
+            commitEnded,
+            overlayResetEnded,
+            planConstructionEnded,
+            embedRealizationEnded,
+            highlightRetirementEnded,
+            highlightSchedulingEnded,
+            visibleRealizationEnded,
+            publicationEnded);
         } // end of snapshot try-block
         catch
         {
@@ -11490,9 +11498,19 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         return true;
     }
 
-    private readonly record struct LazyLayoutWorkResult(
-        LazyLayoutCommit Commit,
-        (int BlockIndex, double OffsetFromTop)? ScrollAnchor);
+    private readonly struct LazyLayoutWorkResult
+    {
+        internal readonly LazyLayoutCommit Commit;
+        internal readonly (int BlockIndex, double OffsetFromTop)? ScrollAnchor;
+
+        internal LazyLayoutWorkResult(
+            LazyLayoutCommit commit,
+            (int BlockIndex, double OffsetFromTop)? scrollAnchor)
+        {
+            Commit = commit;
+            ScrollAnchor = scrollAnchor;
+        }
+    }
 
     private sealed class ContextMenuTarget
     {
@@ -11503,13 +11521,31 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         public Layout.Boxes.TableBox? Table { get; set; }
     }
 
-    internal readonly record struct LinkTarget(
-        string Url,
-        string? Title,
-        SourceSpan SourceSpan,
-        LinkRun? Run,
-        string? Action = null,
-        bool External = false);
+    internal readonly struct LinkTarget
+    {
+        internal readonly string Url;
+        internal readonly string? Title;
+        internal readonly SourceSpan SourceSpan;
+        internal readonly LinkRun? Run;
+        internal readonly string? Action;
+        internal readonly bool External;
+
+        internal LinkTarget(
+            string url,
+            string? title,
+            SourceSpan sourceSpan,
+            LinkRun? run,
+            string? action = null,
+            bool external = false)
+        {
+            Url = url;
+            Title = title;
+            SourceSpan = sourceSpan;
+            Run = run;
+            Action = action;
+            External = external;
+        }
+    }
 }
 
 /// <summary>Event data for markdown link activation.</summary>
