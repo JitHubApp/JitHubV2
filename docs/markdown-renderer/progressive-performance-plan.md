@@ -548,6 +548,33 @@ complete before claiming this plan or the 1.0 performance goal is met.
   about 240 Hz at 4.46 ms frame p95, while a 20-presentation diagnostic
   allocated about 28-35 MiB per 1 MiB presentation. Reduce construction and
   native-object/GC pressure, then rerun the frozen full counterbalanced gate.
+- A new frozen schema-10 R1,C1,C2,R2 attempt on `8dfdc90` stopped after the
+  first reference leg, as required by the unmodified gate. The Release x64
+  reference harness produced a complete R1 report but failed its own absolute
+  qualification: the 1 MiB mixed-README first-viewport p95 was 413.58 ms
+  uncached and 350.87 ms cached against 250 ms budgets, and five of six
+  first-viewport conditions failed stationarity. Its 12,000-frame scroll had
+  only 32.20 observed Hz on a configured 240 Hz display (33.03 ms frame p95
+  versus 8.33 ms), while measured renderer UI work was 0.26 ms p95, Energy
+  Saver was off, and effective power mode was MaxPerformance. The reference
+  report and fail-closed partial verdict are under the local temporary
+  `jithub-perf-schema10-20260925-0148` run directory. No candidate leg or
+  counterbalanced verdict exists; this is a failed release gate, not an
+  improvement or parity result. The 32 Hz presentation bottleneck and the
+  high/unstable construction cost must be isolated before another qualified
+  full run; do not change the frame, stationarity, or absolute budgets to
+  accommodate this attempt. A separate, explicitly non-gating 120-frame
+  diagnostic on both frozen executables reproduced the presentation limit:
+  reference and candidate observed 32.09 and 32.07 Hz with 32.65 and
+  32.48 ms frame p95, respectively, while renderer UI work remained 0.30 and
+  0.27 ms p95. The console session was active and Windows reported a 239 Hz
+  NVIDIA display. A separate in-flight foreground-window probe found Edge,
+  not the harness, in the foreground while the harness was running. That is
+  a plausible explanation for throttled presentation, not proof of causation;
+  the source of this roughly 30 Hz cadence remains unverified. A qualified
+  rerun needs a dedicated, unattended interactive desktop where the harness
+  stays visible and foreground on a measured 120 Hz-or-faster display. These
+  shortened runs are not release evidence.
 - Locally verified, pending current-head CI and a qualified benchmark:
   ordinary document construction and relayout no longer create the collapsed
   selection Image, drag-shield Border, or two native Button handles and glyphs.
