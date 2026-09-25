@@ -883,6 +883,16 @@ complete before claiming this plan or the 1.0 performance goal is met.
   URL now serves an inert external SVG DOCTYPE; the original failing response
   bodies were not retained, so the `cad7eea` current-head rerun is the required
   confirmation of the download fix, not an assumed 500/500 pass.
+- The `cad7eea` audit started but its ranks 201–225 job failed before auditing
+  any README: the Edge profile-cleanup contract subprocess timed out after
+  15 seconds initializing a Win32_Process CIM query on a busy runner. Cleanup
+  now skips that query when no Edge process exists and retains a bounded
+  30-second watchdog when command-line inspection is actually needed. The
+  generated-profile validation and exact-profile process targeting are
+  unchanged; all 13 local Edge launch/navigation/lifetime tests pass. The
+  older run's remaining shards were canceled after the newer head was pushed;
+  it cannot provide a 500-case verdict. The current-head workflow must verify
+  this CI fix as well as every README.
 - The local Edge oracle's persistent startup failure was a Windows process
   handoff: its launched PID exited successfully before a child wrote
   `DevToolsActivePort`, but the audit immediately treated that zero exit as a

@@ -13,6 +13,9 @@ const stopProfileScript = String.raw`
 $auditEdgeProfilePath = $env:JITHUB_README_EDGE_PROFILE_TO_STOP
 if ([string]::IsNullOrWhiteSpace($auditEdgeProfilePath)) { exit 2 }
 for ($pass = 0; $pass -lt 3; $pass++) {
+    # No Edge process can own this profile. On busy CI hosts even an empty
+    # Win32_Process CIM query may spend many seconds initializing WMI.
+    if (-not (Get-Process -Name msedge -ErrorAction SilentlyContinue)) { break }
     $targets = @(Get-CimInstance Win32_Process -Filter "Name='msedge.exe'" |
         Where-Object {
             $_.CommandLine -and
@@ -41,7 +44,7 @@ export async function stopBrowserProfileProcesses(profileDirectory) {
     stopProfileScript,
   ], {
     windowsHide: true,
-    timeout: 15_000,
+    timeout: 30_000,
     maxBuffer: 64 * 1024,
     env: {
       ...process.env,
