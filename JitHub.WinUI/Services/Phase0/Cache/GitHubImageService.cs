@@ -169,13 +169,16 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
         string sourceUrl,
         GitHubImageFetchScope scope,
         IMarkdownImageSourceByteAdmission admission,
-        CancellationToken cancellationToken = default) =>
-        GetOrFetchCoreAsync(
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(admission);
+        return GetOrFetchCoreAsync(
             sourceUrl,
             (cached, token) => FetchHttpAsync(sourceUrl, cached, scope, admission, token),
             scope,
             admission,
             cancellationToken);
+    }
 
     public async Task<GitHubCachedImage?> TryGetCachedAsync(
         string sourceUrl,
@@ -229,12 +232,15 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
         GitHubImageFetcher fetcher,
         IMarkdownImageSourceByteAdmission admission,
         CancellationToken cancellationToken = default)
-        => await GetOrFetchCoreAsync(
+    {
+        ArgumentNullException.ThrowIfNull(admission);
+        return await GetOrFetchCoreAsync(
             sourceUrl,
             (cached, token) => FetchWithRetryAsync(fetcher, cached, token),
             GitHubImageFetchScope.UserApprovedHttps,
             admission,
             cancellationToken).ConfigureAwait(false);
+    }
 
     private async Task<GitHubCachedImage?> GetOrFetchCoreAsync(
         string sourceUrl,

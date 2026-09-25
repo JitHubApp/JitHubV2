@@ -2151,8 +2151,11 @@ namespace JitHub.Services
             string source,
             MarkdownImageResolveContext context,
             IMarkdownImageSourceByteAdmission admission,
-            CancellationToken cancellationToken) =>
-            ResolveMarkdownImageCoreAsync(source, context, admission, cancellationToken);
+            CancellationToken cancellationToken)
+        {
+            ArgumentNullException.ThrowIfNull(admission);
+            return ResolveMarkdownImageCoreAsync(source, context, admission, cancellationToken);
+        }
 
         private async ValueTask<MarkdownImageResolution> ResolveMarkdownImageCoreAsync(
             string source,
