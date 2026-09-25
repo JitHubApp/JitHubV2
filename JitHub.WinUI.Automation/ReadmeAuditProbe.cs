@@ -265,7 +265,7 @@ internal static partial class ReadmeAuditProbe
 
         return new ReadmeAuditCaseResult
         {
-            SchemaVersion = 2,
+            SchemaVersion = 3,
             CorpusGeneratedAtUtc = manifest.GeneratedAtUtc,
             Rank = repository.Rank,
             FullName = repository.FullName,
@@ -1312,8 +1312,8 @@ internal static partial class ReadmeAuditProbe
         writer.WriteLine($"- Native/Edge first-render ratio: p50 {summary.NativeFirstRenderRatioP50:F3}, p95 {summary.NativeFirstRenderRatioP95:F3}");
         writer.WriteLine($"- Native/Edge full-page ratio: p50 {summary.NativeFullPageRatioP50:F3}, p95 {summary.NativeFullPageRatioP95:F3}");
         writer.WriteLine();
-        writer.WriteLine("| Rank | Repository | Result | Text | Structure | Styled viewport SSIM | Native unavailable | First ratio | Full ratio |");
-        writer.WriteLine("| ---: | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |");
+        writer.WriteLine("| Rank | Repository | Result | Text | Structure | Styled viewport SSIM | Native unavailable | First ratio | Full ratio | Parse/extension ms | Setup ms | Initial layout ms | UI publication ms |");
+        writer.WriteLine("| ---: | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |");
         foreach (ReadmeAuditCaseResult result in results)
         {
             writer.WriteLine(
@@ -1323,7 +1323,11 @@ internal static partial class ReadmeAuditProbe
                 $"{result.Comparison?.MeanTileSsim.ToString("F3", CultureInfo.InvariantCulture) ?? "n/a"} | " +
                 $"{result.Native?.UnavailableImages.ToString(CultureInfo.InvariantCulture) ?? "n/a"} | " +
                 $"{result.Comparison?.NativeToBrowserFirstRenderRatio.ToString("F3", CultureInfo.InvariantCulture) ?? "n/a"} | " +
-                $"{result.Comparison?.NativeToBrowserFullPageRatio.ToString("F3", CultureInfo.InvariantCulture) ?? "n/a"} |");
+                $"{result.Comparison?.NativeToBrowserFullPageRatio.ToString("F3", CultureInfo.InvariantCulture) ?? "n/a"} | " +
+                $"{result.Native?.FirstPerformance?.Pipeline.ParseMilliseconds.ToString("F1", CultureInfo.InvariantCulture) ?? "n/a"} | " +
+                $"{result.Native?.FirstPerformance?.Pipeline.SetupMilliseconds.ToString("F1", CultureInfo.InvariantCulture) ?? "n/a"} | " +
+                $"{result.Native?.FirstPerformance?.Pipeline.LayoutMilliseconds.ToString("F1", CultureInfo.InvariantCulture) ?? "n/a"} | " +
+                $"{result.Native?.FirstPerformance?.Pipeline.PublicationMilliseconds.ToString("F1", CultureInfo.InvariantCulture) ?? "n/a"} |");
         }
         if (summary.AggregateFailures.Count > 0)
         {
@@ -2444,7 +2448,7 @@ internal static partial class ReadmeAuditProbe
             result = JsonSerializer.Deserialize<ReadmeAuditCaseResult>(File.ReadAllText(path), JsonOptions);
             return result is not null &&
                 !result.InfrastructureFailure &&
-                result.SchemaVersion == 2 &&
+                result.SchemaVersion == 3 &&
                 result.CorpusGeneratedAtUtc == manifest.GeneratedAtUtc &&
                 result.Rank == repository.Rank &&
                 string.Equals(result.ReadmeSha, repository.Readme.Sha, StringComparison.Ordinal);

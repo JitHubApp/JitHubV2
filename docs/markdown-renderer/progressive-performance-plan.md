@@ -829,6 +829,19 @@ complete before claiming this plan or the 1.0 performance goal is met.
   original transient inputs. A new full current-head audit and
   qualified interactive benchmark remain required; the latter is still
   queued for an online unlocked `jithub-interactive` runner.
+- Locally verified, pending current-head CI and a live audit: the production
+  README evidence now records the last committed renderer presentation's
+  parse/extension, theme/context setup, initial background-layout wall, and
+  UI-publication wall times, alongside its generation and source length. The
+  capture is internal and allocation-free per rebuild; canceled/superseded
+  builds cannot replace it. The audit reader requires every stage, rejects
+  invalid values, and advances the resumable case schema so older cases cannot
+  silently satisfy this evidence gate. Per-case summaries expose all four
+  stages. All 3,104 Release x64 app and 412 GitHub renderer tests passed, and
+  Release x64 app/audit builds have zero warnings. This is attribution
+  instrumentation only: no current-head live outlier has been reclassified,
+  the existing `RenderCompleted` signal precedes first paint, and neither
+  same-byte parity nor the ≤2 ms publication gate is proved by these tests.
 - The rank-367 Edge `net::ERR_NO_BUFFER_SPACE` failure now has one bounded
   fresh-navigation recovery after stopping the failed load and waiting one
   second. The successful attempt gets a post-wait CPU/layout baseline; retry

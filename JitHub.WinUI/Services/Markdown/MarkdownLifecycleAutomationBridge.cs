@@ -641,7 +641,16 @@ internal static partial class MarkdownLifecycleAutomationBridge
         long ScenePreparationMilliseconds,
         long InFlightSourceBytes,
         long PeakInFlightSourceBytes,
-        int PendingSourceByteRequests);
+        int PendingSourceByteRequests,
+        MarkdownAuditPipelineTimingSnapshot Pipeline);
+
+    internal sealed record MarkdownAuditPipelineTimingSnapshot(
+        long Generation,
+        long SourceUtf16Bytes,
+        double ParseMilliseconds,
+        double SetupMilliseconds,
+        double LayoutMilliseconds,
+        double PublicationMilliseconds);
 
     internal sealed record MarkdownAuditCaptureRequest(
         string RequestId,
@@ -669,6 +678,7 @@ internal static partial class MarkdownLifecycleAutomationBridge
     [JsonSerializable(typeof(SvgWorkerTimeoutSignal), TypeInfoPropertyName = "SvgWorkerTimeoutSignal")]
     [JsonSerializable(typeof(SvgPreflightRejectionSignal), TypeInfoPropertyName = "SvgPreflightRejectionSignal")]
     [JsonSerializable(typeof(MarkdownAuditPerformanceSnapshot), TypeInfoPropertyName = "MarkdownAuditPerformanceSnapshot")]
+    [JsonSerializable(typeof(MarkdownAuditPipelineTimingSnapshot), TypeInfoPropertyName = "MarkdownAuditPipelineTimingSnapshot")]
     [JsonSerializable(typeof(MarkdownAuditCaptureRequest), TypeInfoPropertyName = "MarkdownAuditCaptureRequest")]
     [JsonSerializable(typeof(MarkdownAuditCaptureResponse), TypeInfoPropertyName = "MarkdownAuditCaptureResponse")]
     [JsonSerializable(typeof(MarkdownLifecycleRuntimeSettings), TypeInfoPropertyName = "RuntimeSettings")]

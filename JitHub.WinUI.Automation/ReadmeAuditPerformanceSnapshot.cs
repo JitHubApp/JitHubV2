@@ -26,6 +26,7 @@ internal sealed class ReadmeAuditPerformanceSnapshot
     public required long InFlightSourceBytes { get; init; }
     public required long PeakInFlightSourceBytes { get; init; }
     public required int PendingSourceByteRequests { get; init; }
+    public required ReadmeAuditPipelineTimingSnapshot Pipeline { get; init; }
 
     internal static ReadmeAuditPerformanceSnapshot Parse(JsonElement evidence)
     {
@@ -58,17 +59,38 @@ internal sealed class ReadmeAuditPerformanceSnapshot
             snapshot.InFlightSourceBytes < 0 ||
             snapshot.PeakInFlightSourceBytes < snapshot.InFlightSourceBytes ||
             snapshot.PeakInFlightSourceBytes > X64SourceBudgetBytes ||
-            snapshot.PendingSourceByteRequests < 0)
+            snapshot.PendingSourceByteRequests < 0 ||
+            snapshot.Pipeline is null ||
+            snapshot.Pipeline.Generation <= 0 ||
+            snapshot.Pipeline.SourceUtf16Bytes < 0 ||
+            !IsValidStageDuration(snapshot.Pipeline.ParseMilliseconds) ||
+            !IsValidStageDuration(snapshot.Pipeline.SetupMilliseconds) ||
+            !IsValidStageDuration(snapshot.Pipeline.LayoutMilliseconds) ||
+            !IsValidStageDuration(snapshot.Pipeline.PublicationMilliseconds))
         {
             throw new InvalidDataException("The Markdown performance counters exceed their bounds.");
         }
 
         return snapshot;
     }
+
+    private static bool IsValidStageDuration(double duration) =>
+        double.IsFinite(duration) && duration >= 0;
+}
+
+internal sealed class ReadmeAuditPipelineTimingSnapshot
+{
+    public required long Generation { get; init; }
+    public required long SourceUtf16Bytes { get; init; }
+    public required double ParseMilliseconds { get; init; }
+    public required double SetupMilliseconds { get; init; }
+    public required double LayoutMilliseconds { get; init; }
+    public required double PublicationMilliseconds { get; init; }
 }
 
 [JsonSourceGenerationOptions(PropertyNameCaseInsensitive = true)]
 [JsonSerializable(typeof(ReadmeAuditPerformanceSnapshot))]
+[JsonSerializable(typeof(ReadmeAuditPipelineTimingSnapshot))]
 internal partial class ReadmeAuditPerformanceJsonContext : JsonSerializerContext
 {
 }

@@ -595,6 +595,8 @@ public sealed partial class MarkdownViewer : UserControl
         }
 
         MarkdownPerformanceSnapshot snapshot = session.GetSnapshot();
+        MarkdownRenderer.Controls.MarkdownPipelineTimingSnapshot pipeline =
+            renderer.GetLastPipelineTimingSnapshot();
         return new MarkdownLifecycleAutomationBridge.MarkdownAuditPerformanceSnapshot(
             snapshot.SourceCacheBytes,
             snapshot.SourceCacheHits,
@@ -611,7 +613,14 @@ public sealed partial class MarkdownViewer : UserControl
             snapshot.ScenePreparationMilliseconds,
             snapshot.InFlightSourceBytes,
             snapshot.PeakInFlightSourceBytes,
-            snapshot.PendingSourceByteRequests);
+            snapshot.PendingSourceByteRequests,
+            new MarkdownLifecycleAutomationBridge.MarkdownAuditPipelineTimingSnapshot(
+                pipeline.Generation,
+                pipeline.SourceUtf16Bytes,
+                pipeline.ParseMilliseconds,
+                pipeline.SetupMilliseconds,
+                pipeline.LayoutMilliseconds,
+                pipeline.PublicationMilliseconds));
     }
 #pragma warning restore MR1001
 

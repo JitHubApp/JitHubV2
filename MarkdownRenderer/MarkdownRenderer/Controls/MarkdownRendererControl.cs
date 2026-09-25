@@ -77,6 +77,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     private long _snapshotGeneration;
     private long _snapshotPipelineStartTimestamp;
     private long _snapshotSourceUtf16Bytes;
+    private MarkdownPipelineTimingSnapshot _lastPipelineTiming;
     private CancellationTokenSource? _lazyLayoutCts;
     private Task? _lazyLayoutTask;
     private LayoutSnapshot? _pendingLazyLayoutSnapshot;
@@ -3765,6 +3766,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         MarkdownEngine? engineSnapshot = Engine;
         var reusableDocument = _hasExplicitDocument ? Document : null;
         var source = reusableDocument?.Source ?? Markdown ?? string.Empty;
+        long parseStarted = Stopwatch.GetTimestamp();
 
         if (ct.IsCancellationRequested || generation != _pipelineGeneration)
             return;
@@ -3799,6 +3801,8 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
 
         if (parsed is null || semanticDocument is null || ct.IsCancellationRequested || generation != _pipelineGeneration)
             return;
+        long parseEnded = Stopwatch.GetTimestamp();
+        double parseMilliseconds = Stopwatch.GetElapsedTime(parseStarted, parseEnded).TotalMilliseconds;
 
         // Presentation registrations travel with reusable documents/engines.
         // Keep the legacy control registry only as the fallback parser/layout
@@ -3992,6 +3996,8 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                 viewportHeight * performanceSessionSnapshot.Options.LookAheadViewports,
                 0,
                 6000);
+        long layoutStarted = Stopwatch.GetTimestamp();
+        double setupMilliseconds = Stopwatch.GetElapsedTime(parseEnded, layoutStarted).TotalMilliseconds;
         var snapshot = await Task.Run(
             () => BuildSnapshotOrNullOnCancellation(
                 builder,
@@ -4003,6 +4009,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                 initialLazyOverscan,
                 ct),
             CancellationToken.None).ConfigureAwait(true);
+        double layoutMilliseconds = Stopwatch.GetElapsedTime(layoutStarted).TotalMilliseconds;
         if (snapshot is null || ct.IsCancellationRequested || generation != _pipelineGeneration)
         {
             snapshot?.Dispose();
@@ -4014,6 +4021,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         // `committed` tracks whether the snapshot was written to _snapshot; the catch
         // block must only dispose it if not yet committed (post-commit _snapshot owns it).
         bool committed = false;
+        long publicationStarted = Stopwatch.GetTimestamp();
         try
         {
         if (ct.IsCancellationRequested || generation != _pipelineGeneration)
@@ -4190,6 +4198,13 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             (FrameworkElementAutomationPeer.FromElement(this) as MarkdownAutomationPeer)?
                 .NotifyDocumentChanged();
         }
+        _lastPipelineTiming = new MarkdownPipelineTimingSnapshot(
+            generation,
+            sourceUtf16Bytes,
+            parseMilliseconds,
+            setupMilliseconds,
+            layoutMilliseconds,
+            Stopwatch.GetElapsedTime(publicationStarted).TotalMilliseconds);
         } // end of snapshot try-block
         catch
         {
@@ -4228,6 +4243,12 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             return null;
         }
     }
+
+    // Audit callers run on the UI thread. A canceled or superseded build never
+    // replaces these timings, so the evidence always describes the snapshot
+    // currently committed to the control.
+    internal MarkdownPipelineTimingSnapshot GetLastPipelineTimingSnapshot() =>
+        _lastPipelineTiming;
 
     private void OnScrollViewChanged(object? sender, ScrollViewerViewChangedEventArgs e)
     {

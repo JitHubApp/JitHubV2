@@ -24,7 +24,15 @@ public sealed class ReadmeAuditPerformanceSnapshotTests
             "ScenePreparationMilliseconds": 6,
             "InFlightSourceBytes": 1048576,
             "PeakInFlightSourceBytes": 4194304,
-            "PendingSourceByteRequests": 2
+            "PendingSourceByteRequests": 2,
+            "Pipeline": {
+              "Generation": 3,
+              "SourceUtf16Bytes": 2048,
+              "ParseMilliseconds": 1.5,
+              "SetupMilliseconds": 0.75,
+              "LayoutMilliseconds": 2.5,
+              "PublicationMilliseconds": 0.5
+            }
           }
         }
         """;
@@ -40,6 +48,11 @@ public sealed class ReadmeAuditPerformanceSnapshotTests
         Assert.Equal(1_048_576, snapshot.InFlightSourceBytes);
         Assert.Equal(4_194_304, snapshot.PeakInFlightSourceBytes);
         Assert.Equal(2, snapshot.PendingSourceByteRequests);
+        Assert.Equal(3, snapshot.Pipeline.Generation);
+        Assert.Equal(1.5, snapshot.Pipeline.ParseMilliseconds);
+        Assert.Equal(0.75, snapshot.Pipeline.SetupMilliseconds);
+        Assert.Equal(2.5, snapshot.Pipeline.LayoutMilliseconds);
+        Assert.Equal(0.5, snapshot.Pipeline.PublicationMilliseconds);
     }
 
     [Theory]
@@ -61,6 +74,45 @@ public sealed class ReadmeAuditPerformanceSnapshotTests
 
         Assert.Throws<InvalidDataException>(() =>
             ReadmeAuditPerformanceSnapshot.Parse(evidence.RootElement));
+    }
+
+    [Theory]
+    [InlineData("Generation")]
+    [InlineData("SourceUtf16Bytes")]
+    [InlineData("ParseMilliseconds")]
+    [InlineData("SetupMilliseconds")]
+    [InlineData("LayoutMilliseconds")]
+    [InlineData("PublicationMilliseconds")]
+    public void Parse_RejectsMissingPipelineStage(string property)
+    {
+        JsonNode evidence = JsonNode.Parse(ValidEvidence)!;
+        Assert.True(evidence["Performance"]!["Pipeline"]!.AsObject().Remove(property));
+
+        Assert.Throws<InvalidDataException>(() => Parse(evidence));
+    }
+
+    [Fact]
+    public void Parse_RejectsMissingPipelineEvidence()
+    {
+        JsonNode evidence = JsonNode.Parse(ValidEvidence)!;
+        Assert.True(evidence["Performance"]!.AsObject().Remove("Pipeline"));
+
+        Assert.Throws<InvalidDataException>(() => Parse(evidence));
+    }
+
+    [Theory]
+    [InlineData("Generation", 0)]
+    [InlineData("SourceUtf16Bytes", -1)]
+    [InlineData("ParseMilliseconds", -1)]
+    [InlineData("SetupMilliseconds", -1)]
+    [InlineData("LayoutMilliseconds", -1)]
+    [InlineData("PublicationMilliseconds", -1)]
+    public void Parse_RejectsInvalidPipelineStage(string property, double value)
+    {
+        JsonNode evidence = JsonNode.Parse(ValidEvidence)!;
+        evidence["Performance"]!["Pipeline"]![property] = value;
+
+        Assert.Throws<InvalidDataException>(() => Parse(evidence));
     }
 
     [Theory]
