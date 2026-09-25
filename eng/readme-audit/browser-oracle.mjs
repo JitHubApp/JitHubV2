@@ -1,9 +1,10 @@
 import { spawn } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { DocumentReadinessTimeout, metricDelta, metricMap, navigateReadme } from "./browser-navigation.mjs";
+import { waitForDevToolsPort } from "./browser-launch.mjs";
 import { stopBrowserProfileProcesses } from "./browser-process-lifetime.mjs";
 
 const options = parseArguments(process.argv.slice(2));
@@ -19,6 +20,7 @@ await mkdir(outputDirectory, { recursive: true });
 
 let edge;
 let cdp;
+let edgeError = "";
 const wall = performance.now();
 class ReadmeNotRendered extends Error {}
 try {
@@ -35,12 +37,11 @@ try {
     "about:blank",
   ], { stdio: ["ignore", "ignore", "pipe"], windowsHide: true });
 
-  let edgeError = "";
   edge.stderr.setEncoding("utf8");
   edge.stderr.on("data", chunk => { edgeError = (edgeError + chunk).slice(-8192); });
 
   const portFile = path.join(profileDirectory, "DevToolsActivePort");
-  const port = Number((await waitForFile(portFile, edge, edgeError)).split(/\r?\n/, 1)[0]);
+  const port = Number((await waitForDevToolsPort(portFile, edge, () => edgeError)).split(/\r?\n/, 1)[0]);
   const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
   const pageTarget = targets.find(target => target.type === "page");
   if (!pageTarget?.webSocketDebuggerUrl) {
@@ -484,18 +485,6 @@ function findDefaultEdge() {
   const candidate = candidates.find(value => value && path.isAbsolute(value) && existsSync(value));
   if (!candidate) throw new Error("Microsoft Edge was not found; pass --edge=...");
   return candidate;
-}
-
-async function waitForFile(file, processHandle, recentError) {
-  const deadline = Date.now() + 20_000;
-  while (Date.now() < deadline) {
-    if (processHandle.exitCode !== null) {
-      throw new Error(`Edge exited before DevTools became ready (${processHandle.exitCode}). ${recentError}`);
-    }
-    try { return await readFile(file, "utf8"); } catch {}
-    await delay(50);
-  }
-  throw new Error(`Timed out waiting for Edge DevTools at ${file}. ${recentError}`);
 }
 
 async function connectCdp(url) {

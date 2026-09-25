@@ -862,7 +862,7 @@ complete before claiming this plan or the 1.0 performance goal is met.
   stale audit-owned profiles, the same smoke test left zero before and after;
   the local DevTools startup failure itself remains unresolved, and hosted
   Edge parity must still run. The workflow now runs the profile-lifetime tests.
-- The ongoing `0d80017` top-500 audit has failed multiple shards on valid
+- The `0d80017` top-500 audit failed multiple shards on valid
   images marked unavailable. Saved rank-170 (`ByteByteGoHq/system-design-101`)
   evidence shows four 64×64 Creative Commons SVGs visible in Edge but rejected
   before native rendering. Their Camo payloads carry an inert external SVG 1.0
@@ -878,6 +878,24 @@ complete before claiming this plan or the 1.0 performance goal is met.
   demonstrated false-unavailable path but does not establish that every
   failing shard has the same cause; the new head still needs the full 500-case
   audit and same-byte/interactive release gates.
+- The `0d80017` audit has since finished with 12 failed cases across seven
+  shards. Each failed case includes a valid native-unavailable SVG whose live
+  URL now serves an inert external SVG DOCTYPE; the original failing response
+  bodies were not retained, so the `cad7eea` current-head rerun is the required
+  confirmation of the download fix, not an assumed 500/500 pass.
+- The local Edge oracle's persistent startup failure was a Windows process
+  handoff: its launched PID exited successfully before a child wrote
+  `DevToolsActivePort`, but the audit immediately treated that zero exit as a
+  browser failure. It now waits the bounded 20 seconds for the port after a
+  zero-exit handoff while still failing immediately on nonzero exit, reporting
+  the latest stderr, and reaping only its exact profile. Thirteen navigation,
+  launch, and profile-lifetime tests pass. A full local Edge capture then
+  succeeded with zero audit-owned Edge processes left behind. A pinned rank-478
+  production-app audit passed one case with 100% text, 99.43% structure, zero
+  unavailable images, and native/Edge ratios of 0.517 first and 0.262 full.
+  Its UI-publication stage was 12.9 ms: this single unqualified case still
+  exceeds the ≤2 ms target and does not replace the same-byte corpus, 500-case
+  rerun, or counterbalanced release benchmark.
 - The rank-367 Edge `net::ERR_NO_BUFFER_SPACE` failure now has one bounded
   fresh-navigation recovery after stopping the failed load and waiting one
   second. The successful attempt gets a post-wait CPU/layout baseline; retry
