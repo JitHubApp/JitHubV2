@@ -657,20 +657,16 @@ complete before claiming this plan or the 1.0 performance goal is met.
   memory and no-false-unavailable gate has not been measured. Global scene
   queue fairness across documents and copy-on-write layout publication with a
   measured ≤2 ms UI commit also remain open.
-- In progress, not yet effective in production: a weighted, document-fair
+- Completed foundation, now wired through the production resolver below: a weighted, document-fair
   source-byte admission primitive now enforces a total byte ceiling, a
   speculative sub-ceiling that reserves visible capacity, strict queued
   visible priority, cancellation-safe grants, and idempotent leases. Six
   focused Release x64 tests pass, including a cancellation/grant race; the
   complete 407-test Release x64 GitHub renderer suite and x86/ARM64 optional
-  package builds pass with zero warnings, and the local optional compressed
-  pack is 28,515 bytes under its unchanged 128 KiB cap. It is
-  deliberately not wired to JitHub's reads yet: admission must cover the
-  actual HTTP/authenticated buffer lifetime, avoid holding a lease across
-  recursive Git LFS resolution, and define a safe streaming path for unknown
-  lengths and sources larger than a lowered speculative ceiling. Until that
-  integration and memory-storm tests pass, the 64 MiB in-flight goal remains
-  open; this primitive alone does not bound current downloads.
+  package builds passed with zero warnings, and the local optional compressed
+  pack was 28,515 bytes under its unchanged 128 KiB cap. Those foundation
+  tests did not measure the production HTTP/authenticated path or peak memory;
+  the subsequent integration and its remaining gates are tracked below.
 - In progress, pending full validation: the optional
   resolver contract can now receive a per-request weighted byte admission from
   the progressive session. Its immutable options lower (but cannot raise) the
@@ -698,6 +694,13 @@ complete before claiming this plan or the 1.0 performance goal is met.
   the local decoded-size check, so additional profiling is needed to establish
   the real peak including its Base64/JSON overhead. This is not yet an
   in-flight source-memory gate pass.
+- Follow-up: admitted HTTP reads now reserve source bytes before calling
+  `HttpContent.ReadAsStreamAsync` for both declared and chunked lengths. A
+  custom content regression test asserts this ordering, including an
+  implementation that materializes its stream at that call; the 3,068-test
+  Release x64 app suite passes. This closes one pre-admission allocation gap,
+  not the real concurrent HTTP/authenticated peak-memory or no-false-unavailable
+  release gates.
 - Open: oversized raster tiling and session-owned SVG/document/GPU preparation
   caches.
 - Open: defer Math/Mermaid scenes and ahead-of-viewport highlighting without

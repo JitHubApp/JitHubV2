@@ -169,6 +169,27 @@ public sealed class GitHubImageServiceTests : IDisposable
         Assert.Equal(0, admission.ActiveBytes);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task AdmittedGet_ReservesBytesBeforeHttpContentCreatesItsStream(bool knownLength)
+    {
+        GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
+        var admission = new TrackingAdmission(1024);
+        using HttpClient client = new(new AdmissionAwareHandler(
+            PngBytes, knownLength, () => Assert.True(admission.ActiveBytes > 0)));
+        using GitHubImageService service = new(store, client);
+
+        GitHubCachedImage? image = await service.GetAsync(
+            $"https://images.example.com/admitted-stream-{knownLength}.png",
+            GitHubImageFetchScope.UserApprovedHttps,
+            admission);
+
+        Assert.NotNull(image);
+        Assert.Equal(PngBytes, image.Bytes);
+        Assert.Equal(0, admission.ActiveBytes);
+    }
+
     [Fact]
     public async Task AdmittedGet_DeclaredLengthMismatchReleasesTheByteLease()
     {
@@ -1542,6 +1563,41 @@ public sealed class GitHubImageServiceTests : IDisposable
 
         protected override Task<Stream> CreateContentReadStreamAsync() =>
             Task.FromResult<Stream>(new MemoryStream(bytes, writable: false));
+    }
+
+    private sealed class AdmissionAwareHandler(
+        byte[] bytes,
+        bool knownLength,
+        Action onStreamCreated) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new AdmissionAwareContent(bytes, knownLength, onStreamCreated),
+            });
+    }
+
+    private sealed class AdmissionAwareContent(
+        byte[] bytes,
+        bool knownLength,
+        Action onStreamCreated) : HttpContent
+    {
+        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) =>
+            stream.WriteAsync(bytes).AsTask();
+
+        protected override bool TryComputeLength(out long length)
+        {
+            length = knownLength ? bytes.Length : 0;
+            return knownLength;
+        }
+
+        protected override Task<Stream> CreateContentReadStreamAsync()
+        {
+            onStreamCreated();
+            return Task.FromResult<Stream>(new MemoryStream(bytes, writable: false));
+        }
     }
 
     private sealed class TrackingAdmission(long maximumBytes) : IMarkdownImageSourceByteAdmission

@@ -651,7 +651,6 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
             throw new InvalidDataException($"Remote image exceeds the {MaxImageBytes}-byte limit.");
         }
 
-        await using Stream input = await content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
         if (content.Headers.ContentLength is long knownLength)
         {
             IDisposable? lease = null;
@@ -659,11 +658,15 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
             {
                 if (admission is not null && knownLength > 0)
                     lease = await admission.ReserveAsync(knownLength, cancellationToken).ConfigureAwait(false);
+                // An HttpContent implementation is permitted to materialize its
+                // stream in ReadAsStreamAsync. Admit the declared bytes first.
+                await using Stream knownInput = await content.ReadAsStreamAsync(cancellationToken)
+                    .ConfigureAwait(false);
                 // Most image responses provide a length. Read directly into the final
                 // array instead of growing a MemoryStream and copying it with ToArray.
                 byte[] bytes = new byte[checked((int)knownLength)];
-                await input.ReadExactlyAsync(bytes, cancellationToken).ConfigureAwait(false);
-                if (await input.ReadAsync(new byte[1], cancellationToken).ConfigureAwait(false) != 0)
+                await knownInput.ReadExactlyAsync(bytes, cancellationToken).ConfigureAwait(false);
+                if (await knownInput.ReadAsync(new byte[1], cancellationToken).ConfigureAwait(false) != 0)
                     throw new InvalidDataException("Remote image exceeds its declared content length.");
                 IDisposable? transferred = lease;
                 lease = null;
@@ -676,9 +679,10 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
         }
 
         if (admission is not null)
-            return await ReadUnknownLengthAdmittedAsync(input, admission, cancellationToken)
+            return await ReadUnknownLengthAdmittedAsync(content, admission, cancellationToken)
                 .ConfigureAwait(false);
 
+        await using Stream input = await content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
         using MemoryStream output = new();
         byte[] buffer = new byte[81920];
         while (true)
@@ -699,7 +703,7 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
     }
 
     private static async Task<(byte[] Bytes, IDisposable Lease)> ReadUnknownLengthAdmittedAsync(
-        Stream input,
+        HttpContent content,
         IMarkdownImageSourceByteAdmission admission,
         CancellationToken cancellationToken)
     {
@@ -715,6 +719,8 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
             initialCapacity * 2L, cancellationToken).ConfigureAwait(false);
         try
         {
+            await using Stream input = await content.ReadAsStreamAsync(cancellationToken)
+                .ConfigureAwait(false);
             byte[] buffer = new byte[initialCapacity];
             int length = 0;
             while (length < buffer.Length)
