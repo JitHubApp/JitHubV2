@@ -1660,27 +1660,16 @@ internal static partial class ReadmeAuditProbe
     private static ReadmeAuditPerformanceSnapshot ReadPerformanceSnapshot(string path)
     {
         using JsonDocument document = JsonDocument.Parse(File.ReadAllText(path));
-        if (!document.RootElement.TryGetProperty("Performance", out JsonElement performance) ||
-            performance.ValueKind != JsonValueKind.Object)
+        try
+        {
+            return ReadmeAuditPerformanceSnapshot.Parse(document.RootElement);
+        }
+        catch (InvalidDataException exception)
         {
             throw new InvalidDataException(
-                $"Markdown audit signal '{path}' did not include performance counters.");
+                $"Markdown audit signal '{path}' contained invalid performance counters.",
+                exception);
         }
-
-        ReadmeAuditPerformanceSnapshot? snapshot = performance.Deserialize<ReadmeAuditPerformanceSnapshot>(JsonOptions);
-        if (snapshot is null || snapshot.SourceCacheBytes < 0 || snapshot.SourceCacheHits < 0 ||
-            snapshot.ImageFetches < 0 || snapshot.ImageFetchMilliseconds < 0 ||
-            snapshot.ImageFetchFailures < 0 || snapshot.ImageFetchCancellations < 0 ||
-            snapshot.SourceCacheEvictions < 0 || snapshot.PendingImageFetches < 0 ||
-            snapshot.ActiveImageFetches < 0 || snapshot.CpuPreparations < 0 ||
-            snapshot.CpuPreparationMilliseconds < 0 || snapshot.ScenePreparations < 0 ||
-            snapshot.ScenePreparationMilliseconds < 0)
-        {
-            throw new InvalidDataException(
-                $"Markdown audit signal '{path}' contained invalid performance counters.");
-        }
-
-        return snapshot;
     }
 
     private static void SetScrollPercentWithRetry(
@@ -2515,23 +2504,6 @@ internal static partial class ReadmeAuditProbe
         double DocumentTop,
         string? Error,
         ReadmeAuditPerformanceSnapshot? Performance);
-}
-
-internal sealed class ReadmeAuditPerformanceSnapshot
-{
-    public required long SourceCacheBytes { get; init; }
-    public required long SourceCacheHits { get; init; }
-    public required long ImageFetches { get; init; }
-    public required long ImageFetchMilliseconds { get; init; }
-    public required long ImageFetchFailures { get; init; }
-    public required long ImageFetchCancellations { get; init; }
-    public required long SourceCacheEvictions { get; init; }
-    public required int PendingImageFetches { get; init; }
-    public required int ActiveImageFetches { get; init; }
-    public required long CpuPreparations { get; init; }
-    public required long CpuPreparationMilliseconds { get; init; }
-    public required long ScenePreparations { get; init; }
-    public required long ScenePreparationMilliseconds { get; init; }
 }
 
 internal sealed class ReadmeAuditManifest

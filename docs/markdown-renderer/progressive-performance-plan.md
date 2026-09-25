@@ -709,6 +709,18 @@ complete before claiming this plan or the 1.0 performance goal is met.
   tests pass. These injected-handler tests exercise fetch, admission, and
   cache storage together but do not measure process peak memory, authenticated
   API materialization, live network variability, or the full release storm.
+- Earlier-head live evidence: the `fb121aa` top-500 audit (Actions run
+  `36104116630`) completed 500/500 with zero failed cases. Its consolidated
+  native/Edge p95 ratios were 0.447 first render and 0.368 full traversal;
+  rank 102 `jaywcjlove/awesome-mac` still had a 1.536 individual full-page
+  ratio, so same-byte replay remains necessary. The audit reader was silently
+  dropping the three new source-byte counters even though the app emitted
+  them. It now deserializes them as required evidence and rejects negative,
+  internally inconsistent, or over-64-MiB source/cache byte snapshots. Nine
+  focused contract tests and the 3,079-test Release x64 app suite pass
+  locally, as does the zero-warning Release x64 audit-harness build. This
+  enforces a reported admission ceiling in future audits, not real process
+  peak-memory or current-head top-500 completion.
 - Open: oversized raster tiling and session-owned SVG/document/GPU preparation
   caches.
 - Open: defer Math/Mermaid scenes and ahead-of-viewport highlighting without
