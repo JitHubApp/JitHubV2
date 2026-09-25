@@ -701,6 +701,14 @@ complete before claiming this plan or the 1.0 performance goal is met.
   Release x64 app suite passes. This closes one pre-admission allocation gap,
   not the real concurrent HTTP/authenticated peak-memory or no-false-unavailable
   release gates.
+- Follow-up, local validation only: concurrent app-service tests now force
+  eight distinct declared-length 1 MiB images through a four-image admission
+  and two chunked 1.2 MiB images through the scratch-to-final spill path.
+  Every image resolves, the tracked active reservations return to zero, and
+  neither test exceeds its 4 MiB test admission. All 3,070 Release x64 app
+  tests pass. These injected-handler tests exercise fetch, admission, and
+  cache storage together but do not measure process peak memory, authenticated
+  API materialization, live network variability, or the full release storm.
 - Open: oversized raster tiling and session-owned SVG/document/GPU preparation
   caches.
 - Open: defer Math/Mermaid scenes and ahead-of-viewport highlighting without

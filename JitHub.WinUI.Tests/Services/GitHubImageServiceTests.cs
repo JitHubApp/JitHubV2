@@ -191,6 +191,67 @@ public sealed class GitHubImageServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task AdmittedGet_ConcurrentKnownLengthImagesStayWithinByteBudget()
+    {
+        const int imageBytes = 1024 * 1024;
+        byte[] bytes = new byte[imageBytes];
+        PngBytes.CopyTo(bytes, 0);
+        GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
+        using var admission = new GatedImageAdmission(imageBytes, concurrentImages: 4);
+        GatedImageHandler handler = new(bytes, admission);
+        using HttpClient client = new(handler);
+        using GitHubImageService service = new(store, client);
+
+        Task<GitHubCachedImage?>[] requests = Enumerable.Range(0, 8)
+            .Select(index => service.GetAsync(
+                $"https://images.example.com/storm/{index}.png",
+                GitHubImageFetchScope.UserApprovedHttps,
+                admission))
+            .ToArray();
+        GitHubCachedImage?[] images = await Task.WhenAll(requests)
+            .WaitAsync(TimeSpan.FromSeconds(20));
+
+        Assert.Equal(8, handler.RequestCount);
+        Assert.All(images, image =>
+        {
+            Assert.NotNull(image);
+            Assert.Equal(bytes, image.Bytes);
+        });
+        Assert.Equal(4L * imageBytes, admission.PeakBytes);
+        Assert.Equal(0, admission.ActiveBytes);
+    }
+
+    [Fact]
+    public async Task AdmittedGet_ConcurrentChunkedImagesDoNotHoldScratchLeaseWhileWaitingForFinalBytes()
+    {
+        byte[] bytes = new byte[1_200_000];
+        PngBytes.CopyTo(bytes, 0);
+        GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
+        using var admission = new GatedImageAdmission(2 * 1024 * 1024, concurrentImages: 2);
+        GatedImageHandler handler = new(bytes, admission, knownLength: false);
+        using HttpClient client = new(handler);
+        using GitHubImageService service = new(store, client);
+
+        Task<GitHubCachedImage?>[] requests = Enumerable.Range(0, 2)
+            .Select(index => service.GetAsync(
+                $"https://images.example.com/chunked-storm/{index}.png",
+                GitHubImageFetchScope.UserApprovedHttps,
+                admission))
+            .ToArray();
+        GitHubCachedImage?[] images = await Task.WhenAll(requests)
+            .WaitAsync(TimeSpan.FromSeconds(20));
+
+        Assert.Equal(2, handler.RequestCount);
+        Assert.All(images, image =>
+        {
+            Assert.NotNull(image);
+            Assert.Equal(bytes, image.Bytes);
+        });
+        Assert.Equal(4L * 1024 * 1024, admission.PeakBytes);
+        Assert.Equal(0, admission.ActiveBytes);
+    }
+
+    [Fact]
     public async Task AdmittedGet_DeclaredLengthMismatchReleasesTheByteLease()
     {
         GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
@@ -1597,6 +1658,97 @@ public sealed class GitHubImageServiceTests : IDisposable
         {
             onStreamCreated();
             return Task.FromResult<Stream>(new MemoryStream(bytes, writable: false));
+        }
+    }
+
+    private sealed class GatedImageHandler(
+        byte[] bytes,
+        GatedImageAdmission admission,
+        bool knownLength = true) : HttpMessageHandler
+    {
+        private int _requestCount;
+        internal int RequestCount => Volatile.Read(ref _requestCount);
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref _requestCount);
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new GatedImageContent(bytes, admission, knownLength),
+            });
+        }
+    }
+
+    private sealed class GatedImageContent(
+        byte[] bytes,
+        GatedImageAdmission admission,
+        bool knownLength) : HttpContent
+    {
+        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) =>
+            stream.WriteAsync(bytes).AsTask();
+
+        protected override bool TryComputeLength(out long length)
+        {
+            length = knownLength ? bytes.Length : 0;
+            return knownLength;
+        }
+
+        protected override async Task<Stream> CreateContentReadStreamAsync()
+        {
+            // Fill the configured admission before any body can finish, so
+            // concurrent readers exercise the budget and lease handoff.
+            await admission.WaitUntilFullAsync();
+            return new MemoryStream(bytes, writable: false);
+        }
+    }
+
+    private sealed class GatedImageAdmission(int imageBytes, int concurrentImages)
+        : IMarkdownImageSourceByteAdmission, IDisposable
+    {
+        private readonly SemaphoreSlim _slots = new(concurrentImages, concurrentImages);
+        private readonly TaskCompletionSource<bool> _full =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private long _activeBytes;
+        private long _peakBytes;
+
+        public bool IsSpeculative => false;
+        public long MaximumReservationBytes => (long)imageBytes * concurrentImages;
+        internal long ActiveBytes => Interlocked.Read(ref _activeBytes);
+        internal long PeakBytes => Interlocked.Read(ref _peakBytes);
+
+        internal Task WaitUntilFullAsync() => _full.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        public async ValueTask<IDisposable> ReserveAsync(
+            long bytes,
+            CancellationToken cancellationToken)
+        {
+            Assert.InRange(bytes, 1, imageBytes);
+            await _slots.WaitAsync(cancellationToken);
+            long active = Interlocked.Add(ref _activeBytes, bytes);
+            long peak;
+            while ((peak = Interlocked.Read(ref _peakBytes)) < active &&
+                   Interlocked.CompareExchange(ref _peakBytes, active, peak) != peak)
+            {
+            }
+            if (active == MaximumReservationBytes)
+                _full.TrySetResult(true);
+            return new GatedImageLease(this, bytes);
+        }
+
+        private void Release(long bytes)
+        {
+            Interlocked.Add(ref _activeBytes, -bytes);
+            _slots.Release();
+        }
+
+        public void Dispose() => _slots.Dispose();
+
+        private sealed class GatedImageLease(GatedImageAdmission owner, long bytes) : IDisposable
+        {
+            private GatedImageAdmission? _owner = owner;
+            public void Dispose() => Interlocked.Exchange(ref _owner, null)?.Release(bytes);
         }
     }
 
