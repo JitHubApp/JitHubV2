@@ -1116,6 +1116,20 @@ complete before claiming this plan or the 1.0 performance goal is met.
   clearing any of these individual outliers. The two required interactive
   benchmark jobs remain queued for the `jithub-interactive` runner, whose
   availability this task cannot inspect; no release performance pass is claimed.
+- Locally verified after `2f48718`, pending current-head CI: a pinned rank-295
+  Release app replay passed with 100% text coverage, 99.64% structure, and no
+  unavailable images. Setup-phase instrumentation measured 211.157 of 232.474 ms
+  in theme/context creation, versus 0.930 ms registry and 1.643 ms image scope.
+  A second production-app replay with narrower, fail-closed audit telemetry
+  measured 199.117 of 219.916 ms in `ThemeResolver.CreateSnapshot` itself;
+  first-render and full-page native/Edge live ratios were 0.363 and 0.103.
+  The first replay's theme-key-cache candidate did not show a repeatable gain
+  in a same-machine pinned-source ABBA comparison (patched setup 219/229 ms; baseline
+  254/217 ms), so it was removed. The retained snapshot timing adds only one
+  internal measurement, passes 3,132 app tests and 415 renderer tests, and
+  preserves the unchanged lean size gates (529,689 compressed and 1,257,984
+  managed bytes). The CI outlier's 2.862-second setup has not been reproduced
+  locally, and this diagnostic does not resolve it or prove same-byte parity.
 - Open: oversized raster tiling and session-owned SVG/document/GPU preparation
   caches.
 - Open: defer Math/Mermaid scenes and ahead-of-viewport highlighting without

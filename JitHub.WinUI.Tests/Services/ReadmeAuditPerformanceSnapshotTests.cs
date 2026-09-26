@@ -30,6 +30,7 @@ public sealed class ReadmeAuditPerformanceSnapshotTests
               "SourceUtf16Bytes": 2048,
               "ParseMilliseconds": 1.5,
               "SetupMilliseconds": 0.75,
+              "ThemeSnapshotMilliseconds": 0.2,
               "LayoutMilliseconds": 2.5,
               "PublicationMilliseconds": 0.5,
               "CommitMilliseconds": 0.1,
@@ -61,6 +62,7 @@ public sealed class ReadmeAuditPerformanceSnapshotTests
         Assert.Equal(3, snapshot.Pipeline.Generation);
         Assert.Equal(1.5, snapshot.Pipeline.ParseMilliseconds);
         Assert.Equal(0.75, snapshot.Pipeline.SetupMilliseconds);
+        Assert.Equal(0.2, snapshot.Pipeline.ThemeSnapshotMilliseconds);
         Assert.Equal(2.5, snapshot.Pipeline.LayoutMilliseconds);
         Assert.Equal(0.5, snapshot.Pipeline.PublicationMilliseconds);
         Assert.Equal(0.1, snapshot.Pipeline.CommitMilliseconds);
@@ -101,6 +103,7 @@ public sealed class ReadmeAuditPerformanceSnapshotTests
     [InlineData("SourceUtf16Bytes")]
     [InlineData("ParseMilliseconds")]
     [InlineData("SetupMilliseconds")]
+    [InlineData("ThemeSnapshotMilliseconds")]
     [InlineData("LayoutMilliseconds")]
     [InlineData("PublicationMilliseconds")]
     [InlineData("CommitMilliseconds")]
@@ -135,6 +138,7 @@ public sealed class ReadmeAuditPerformanceSnapshotTests
     [InlineData("SourceUtf16Bytes", -1)]
     [InlineData("ParseMilliseconds", -1)]
     [InlineData("SetupMilliseconds", -1)]
+    [InlineData("ThemeSnapshotMilliseconds", -1)]
     [InlineData("LayoutMilliseconds", -1)]
     [InlineData("PublicationMilliseconds", -1)]
     [InlineData("CommitMilliseconds", -1)]
@@ -160,6 +164,15 @@ public sealed class ReadmeAuditPerformanceSnapshotTests
     {
         JsonNode evidence = JsonNode.Parse(ValidEvidence)!;
         evidence["Performance"]!["Pipeline"]!["PlanConstructionMilliseconds"] = 0.3;
+
+        Assert.Throws<InvalidDataException>(() => Parse(evidence));
+    }
+
+    [Fact]
+    public void Parse_RejectsThemeSnapshotLongerThanSetup()
+    {
+        JsonNode evidence = JsonNode.Parse(ValidEvidence)!;
+        evidence["Performance"]!["Pipeline"]!["ThemeSnapshotMilliseconds"] = 0.8;
 
         Assert.Throws<InvalidDataException>(() => Parse(evidence));
     }

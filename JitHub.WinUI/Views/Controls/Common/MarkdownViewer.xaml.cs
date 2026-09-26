@@ -620,6 +620,7 @@ public sealed partial class MarkdownViewer : UserControl
                 pipeline.SourceUtf16Bytes,
                 pipeline.ParseMilliseconds,
                 pipeline.SetupMilliseconds,
+                pipeline.ThemeSnapshotMilliseconds,
                 pipeline.LayoutMilliseconds,
                 ElapsedMilliseconds(pipeline.PublicationStartedTimestamp, pipeline.PublicationEndedTimestamp),
                 ElapsedMilliseconds(pipeline.PublicationStartedTimestamp, pipeline.CommitEndedTimestamp),

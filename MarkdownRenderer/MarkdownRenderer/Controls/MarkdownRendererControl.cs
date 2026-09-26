@@ -3918,10 +3918,12 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         double textScaleFactor = _environmentSnapshot.TextScaleFactor > 0
             ? _environmentSnapshot.TextScaleFactor
             : 1.0;
+        long themeSnapshotStarted = Stopwatch.GetTimestamp();
         var themeSnapshot = new ThemeResolver(this, theme).CreateSnapshot(
             styleSheetSnapshot,
             textScaleFactor,
             semanticDocument.GetExtensionStyleRoleNames());
+        double themeSnapshotMilliseconds = Stopwatch.GetElapsedTime(themeSnapshotStarted).TotalMilliseconds;
         // Use the shared CanvasDevice (always available, no visual-tree required).
         // CanvasVirtualControl only has a device after CreateResources fires, so
         // passing _canvas directly would crash if layout runs before first draw.
@@ -4248,6 +4250,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             sourceUtf16Bytes,
             parseMilliseconds,
             setupMilliseconds,
+            themeSnapshotMilliseconds,
             layoutMilliseconds,
             publicationStarted,
             commitEnded,

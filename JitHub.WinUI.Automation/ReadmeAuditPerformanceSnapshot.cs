@@ -65,6 +65,7 @@ internal sealed class ReadmeAuditPerformanceSnapshot
             snapshot.Pipeline.SourceUtf16Bytes < 0 ||
             !IsValidStageDuration(snapshot.Pipeline.ParseMilliseconds) ||
             !IsValidStageDuration(snapshot.Pipeline.SetupMilliseconds) ||
+            !IsValidStageDuration(snapshot.Pipeline.ThemeSnapshotMilliseconds) ||
             !IsValidStageDuration(snapshot.Pipeline.LayoutMilliseconds) ||
             !IsValidStageDuration(snapshot.Pipeline.PublicationMilliseconds) ||
             !IsValidStageDuration(snapshot.Pipeline.CommitMilliseconds) ||
@@ -77,6 +78,7 @@ internal sealed class ReadmeAuditPerformanceSnapshot
             !IsValidStageDuration(snapshot.Pipeline.HighlightBandSchedulingMilliseconds) ||
             !IsValidStageDuration(snapshot.Pipeline.AdornmentFocusMilliseconds) ||
             !IsValidStageDuration(snapshot.Pipeline.FinalNotificationMilliseconds) ||
+            snapshot.Pipeline.ThemeSnapshotMilliseconds > snapshot.Pipeline.SetupMilliseconds + 0.01 ||
             Math.Abs(
                 snapshot.Pipeline.HighlightRetirementMilliseconds +
                 snapshot.Pipeline.HighlightBandSchedulingMilliseconds -
@@ -110,6 +112,7 @@ internal sealed class ReadmeAuditPipelineTimingSnapshot
     public required long SourceUtf16Bytes { get; init; }
     public required double ParseMilliseconds { get; init; }
     public required double SetupMilliseconds { get; init; }
+    public required double ThemeSnapshotMilliseconds { get; init; }
     public required double LayoutMilliseconds { get; init; }
     public required double PublicationMilliseconds { get; init; }
     public required double CommitMilliseconds { get; init; }

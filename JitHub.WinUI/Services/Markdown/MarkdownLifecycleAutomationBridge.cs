@@ -649,6 +649,7 @@ internal static partial class MarkdownLifecycleAutomationBridge
         long SourceUtf16Bytes,
         double ParseMilliseconds,
         double SetupMilliseconds,
+        double ThemeSnapshotMilliseconds,
         double LayoutMilliseconds,
         double PublicationMilliseconds,
         double CommitMilliseconds,

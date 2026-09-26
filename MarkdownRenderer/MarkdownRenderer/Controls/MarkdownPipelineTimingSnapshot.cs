@@ -15,6 +15,7 @@ internal readonly struct MarkdownPipelineTimingSnapshot
     internal readonly long SourceUtf16Bytes;
     internal readonly double ParseMilliseconds;
     internal readonly double SetupMilliseconds;
+    internal readonly double ThemeSnapshotMilliseconds;
     internal readonly double LayoutMilliseconds;
     internal readonly long PublicationStartedTimestamp;
     internal readonly long CommitEndedTimestamp;
@@ -31,6 +32,7 @@ internal readonly struct MarkdownPipelineTimingSnapshot
         long sourceUtf16Bytes,
         double parseMilliseconds,
         double setupMilliseconds,
+        double themeSnapshotMilliseconds,
         double layoutMilliseconds,
         long publicationStartedTimestamp,
         long commitEndedTimestamp,
@@ -46,6 +48,7 @@ internal readonly struct MarkdownPipelineTimingSnapshot
         SourceUtf16Bytes = sourceUtf16Bytes;
         ParseMilliseconds = parseMilliseconds;
         SetupMilliseconds = setupMilliseconds;
+        ThemeSnapshotMilliseconds = themeSnapshotMilliseconds;
         LayoutMilliseconds = layoutMilliseconds;
         PublicationStartedTimestamp = publicationStartedTimestamp;
         CommitEndedTimestamp = commitEndedTimestamp;
