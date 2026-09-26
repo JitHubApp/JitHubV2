@@ -31,18 +31,19 @@ public sealed class WorkerSchedulingTests
     }
 
     [Fact]
-    public void WorkerTimeoutEvidenceContainsOnlyPhaseDeadlineAndWorkerCpu()
+    public void WorkerTimeoutEvidenceContainsOnlyTimingAndTransportState()
     {
         using var listener = new TimeoutListener();
 
-        WorkerTimeoutEvents.Log.Timeout((int)WorkerOperation.Render, 3_000, 1_250);
+        WorkerTimeoutEvents.Log.Timeout((int)WorkerOperation.Render, 3_000, 1_250, 2, 4, 0);
 
-        Assert.Contains(((int)WorkerOperation.Render, 3_000, 1_250), listener.Events);
+        Assert.Contains(((int)WorkerOperation.Render, 3_000, 1_250, 2, 4, 0), listener.Events);
     }
 
     private sealed class TimeoutListener : EventListener
     {
-        public ConcurrentQueue<(int Stage, int DeadlineMilliseconds, int WorkerProcessCpuMilliseconds)> Events { get; } = new();
+        public ConcurrentQueue<(int Stage, int DeadlineMilliseconds, int WorkerProcessCpuMilliseconds,
+            int TransportPhase, int RequestWriteMilliseconds, int WorkerExited)> Events { get; } = new();
 
         protected override void OnEventSourceCreated(EventSource eventSource)
         {
@@ -52,11 +53,15 @@ public sealed class WorkerSchedulingTests
 
         protected override void OnEventWritten(EventWrittenEventArgs eventData)
         {
-            if (eventData.EventId == 1 && eventData.Payload is { Count: 3 } payload &&
+            if (eventData.EventId == 1 && eventData.Payload is { Count: 6 } payload &&
                 payload[0] is int stage && payload[1] is int deadlineMilliseconds &&
-                payload[2] is int workerProcessCpuMilliseconds)
+                payload[2] is int workerProcessCpuMilliseconds &&
+                payload[3] is int transportPhase &&
+                payload[4] is int requestWriteMilliseconds &&
+                payload[5] is int workerExited)
             {
-                Events.Enqueue((stage, deadlineMilliseconds, workerProcessCpuMilliseconds));
+                Events.Enqueue((stage, deadlineMilliseconds, workerProcessCpuMilliseconds,
+                    transportPhase, requestWriteMilliseconds, workerExited));
             }
         }
     }

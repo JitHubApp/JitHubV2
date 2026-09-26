@@ -1195,6 +1195,21 @@ complete before claiming this plan or the 1.0 performance goal is met.
   the same documents arriving in tens to hundreds of milliseconds. This is
   live-delivery evidence, not a waiver: identical-byte local replay must still
   isolate client work, especially where the visible wait exceeds fetch time.
+- The next pinned live audit (`36271533386`, head `2d4f995`) failed its
+  ranks 1-25 shard at rank 2 (`sindresorhus/awesome`): the valid 1,310-byte
+  `banner2-direct.svg` resolved in 63 ms but became the only unavailable
+  native image after a three-second isolated-worker `open` deadline. The
+  worker used only 31 ms of process CPU during that transaction, and the app
+  exited cleanly; Windows Application Error had no event for this case. A
+  local Release replay using the pinned manifest passed with zero unavailable
+  images and 100% text coverage. Neither the replay nor the low CPU time
+  explains or waives the hosted timeout. Audit-only deadline evidence now
+  records whether the request was writing, flushing, or waiting for a
+  response, the request-write duration, and whether the worker had exited;
+  it adds no source bytes or URLs and does not relax the three-second hard
+  deadline or replay failed content. Focused renderer/app tests and the x64
+  Release app build passed locally; a hosted recurrence and a complete
+  current-head 500/500 audit remain required.
 - Open: oversized raster tiling and session-owned SVG/document/GPU preparation
   caches.
 - Open: defer Math/Mermaid scenes and ahead-of-viewport highlighting without

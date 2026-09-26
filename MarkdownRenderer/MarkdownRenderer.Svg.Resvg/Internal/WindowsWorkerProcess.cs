@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO.Pipes;
 using System.Runtime.InteropServices;
 using System.Security.AccessControl;
@@ -110,7 +111,10 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
                 WorkerTimeoutEvents.Log.Timeout(
                     stage: 0,
                     deadlineMilliseconds: (int)WorkerSchedulingPolicy.InitializationDeadline.TotalMilliseconds,
-                    workerProcessCpuMilliseconds: -1);
+                    workerProcessCpuMilliseconds: -1,
+                    transportPhase: -1,
+                    requestWriteMilliseconds: -1,
+                    workerExited: -1);
                 throw new WorkerInitializationDeadlineException(
                     "The resvg worker did not complete startup before its initialization deadline.",
                     exception);
@@ -166,17 +170,29 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
 
             // Audit-only evidence must not add a process query to every normal
             // SVG request. The listener is installed before audit rendering.
-            long workerCpuAtStart = WorkerTimeoutEvents.Log.IsEnabled()
+            bool captureTimeoutEvidence = WorkerTimeoutEvents.Log.IsEnabled();
+            long workerCpuAtStart = captureTimeoutEvidence
                 ? GetProcessCpuTicks()
                 : -1;
             using var operation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             operation.CancelAfter(deadline);
             byte[] requestFrame = WorkerProtocol.Encode(request);
             byte[] responseFrame = new byte[WorkerProtocol.ResponseSize];
+            long requestStarted = captureTimeoutEvidence ? Stopwatch.GetTimestamp() : 0;
+            int transportPhase = 0;
+            int requestWriteMilliseconds = -1;
             try
             {
                 await _pipe.WriteAsync(requestFrame, operation.Token).ConfigureAwait(false);
+                transportPhase = 1;
                 await _pipe.FlushAsync(operation.Token).ConfigureAwait(false);
+                if (captureTimeoutEvidence)
+                {
+                    requestWriteMilliseconds = (int)Math.Min(
+                        Stopwatch.GetElapsedTime(requestStarted).TotalMilliseconds,
+                        int.MaxValue);
+                }
+                transportPhase = 2;
                 await _pipe.ReadExactlyAsync(responseFrame, operation.Token).ConfigureAwait(false);
             }
             catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
@@ -188,10 +204,16 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
                     workerCpuAtTimeout >= workerCpuAtStart
                         ? (int)Math.Min((workerCpuAtTimeout - workerCpuAtStart) / 10_000, int.MaxValue)
                         : -1;
-                WorkerTimeoutEvents.Log.Timeout(
-                    stage: (int)request.Operation,
-                    deadlineMilliseconds: (int)deadline.TotalMilliseconds,
-                    workerProcessCpuMilliseconds);
+                if (captureTimeoutEvidence)
+                {
+                    WorkerTimeoutEvents.Log.Timeout(
+                        stage: (int)request.Operation,
+                        deadlineMilliseconds: (int)deadline.TotalMilliseconds,
+                        workerProcessCpuMilliseconds,
+                        transportPhase,
+                        requestWriteMilliseconds,
+                        workerExited: HasExited ? 1 : 0);
+                }
                 DisposeForRestart();
                 throw new WorkerDeadlineException("The resvg worker exceeded its request deadline.", exception);
             }

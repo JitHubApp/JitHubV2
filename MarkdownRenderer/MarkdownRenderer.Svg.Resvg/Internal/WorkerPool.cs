@@ -549,7 +549,10 @@ internal sealed class WorkerPool : IAsyncDisposable, IDisposable
                     WorkerTimeoutEvents.Log.Timeout(
                         (int)WorkerOperation.Hello,
                         (int)WorkerSchedulingPolicy.InitializationDeadline.TotalMilliseconds,
-                        workerCpuMilliseconds);
+                        workerCpuMilliseconds,
+                        transportPhase: -1,
+                        requestWriteMilliseconds: -1,
+                        workerExited: worker.HasExited ? 1 : 0);
                     RecordStartupFailure();
                     throw new WorkerInitializationDeadlineException(
                         "The resvg worker did not initialize its font catalog before the initialization deadline.",
