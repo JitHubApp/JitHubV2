@@ -544,6 +544,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     }
 
     private readonly List<CodeBlockActionPlan> _codeBlockActionPlans = new();
+    private bool _hasMeasuredCodeBlocks;
     private ViewportBandIndex? _codeBlockActionPlanIndex;
     private readonly List<int> _activeCodeBlockActionOrdinals = new();
     private readonly Stack<(Button Button, bool Attached)> _codeBlockCopyButtonPool = new();
@@ -3114,6 +3115,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         _embedPlanIndex = null;
         _activeEmbedOrdinals.Clear();
         _codeBlockActionPlans.Clear();
+        _hasMeasuredCodeBlocks = false;
         _codeBlockActionPlanIndex = null;
         _activeCodeBlockActionOrdinals.Clear();
         _codeBlockCopyButtonPool.Clear();
@@ -4192,6 +4194,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         _embedPlanIndex = null;
         _activeEmbedOrdinals.Clear();
         _codeBlockActionPlans.Clear();
+        _hasMeasuredCodeBlocks = false;
         _codeBlockActionPlanIndex = null;
         _activeCodeBlockActionOrdinals.Clear();
         UnsubscribeAllImages();
@@ -4394,7 +4397,8 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
 
     private void ScheduleVisibleCodeBlockHighlighting()
     {
-        if (!IsCodeBlockSyntaxHighlightingEnabled ||
+        if (!_hasMeasuredCodeBlocks ||
+            !IsCodeBlockSyntaxHighlightingEnabled ||
             CodeHighlighter is not { } highlighter ||
             _snapshot is not { } snapshot ||
             _themeSnapshot is not { } theme ||
@@ -5145,6 +5149,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         _embedPlanIndex = null;
         _activeEmbedOrdinals.Clear();
         _codeBlockActionPlans.Clear();
+        _hasMeasuredCodeBlocks = false;
         _codeBlockActionPlanIndex = null;
         _activeCodeBlockActionOrdinals.Clear();
 
@@ -5688,6 +5693,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             }
             case Layout.Boxes.CodeBlockBox codeBlock:
             {
+                _hasMeasuredCodeBlocks = true;
                 if (codeBlock.IsCopyButtonEnabled && codeBlock.CopyButtonBounds.Width > 0 && codeBlock.CopyButtonBounds.Height > 0)
                     _codeBlockActionPlans.Add(new CodeBlockActionPlan { Box = codeBlock, Rect = codeBlock.CopyButtonBounds, Kind = CodeBlockHostedElementKind.Copy });
                 break;

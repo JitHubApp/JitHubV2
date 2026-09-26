@@ -1022,6 +1022,14 @@ complete before claiming this plan or the 1.0 performance goal is met.
   with clean exits, 100% text coverage, and zero unavailable images. This is
   a focused shutdown regression check; the new-head 500/500 audit and the
   browser-relative performance gates remain required.
+- Local code-highlight scheduling checkpoint, not yet pushed or benchmarked:
+  documents with no measured code blocks now skip the highlight scheduler on
+  scroll and viewport changes. Each layout-plan publication resets and rebuilds
+  the measured-code flag, including nested blocks; a newly measured code block
+  therefore resumes scheduling. The x64 Release renderer builds without
+  warnings, 951 fast Core tests pass, and a fresh lean two-pack remains within
+  the unchanged gates at 1,257,984 managed and 529,691 compressed bytes. This
+  is an avoidable-work fix, not a qualified scroll or Edge-relative verdict.
 - Open: oversized raster tiling and session-owned SVG/document/GPU preparation
   caches.
 - Open: defer Math/Mermaid scenes and ahead-of-viewport highlighting without
