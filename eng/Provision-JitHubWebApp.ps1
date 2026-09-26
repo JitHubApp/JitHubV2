@@ -1,189 +1,95 @@
 param(
-    [string]$ResourceGroup = 'JitHub',
-    [string]$Location = 'westus',
-    [string]$PlanName = 'ASP-JitHub-Web',
-    [string]$WebAppName = 'jithub-web-prod',
-    [string]$Sku = 'B1',
-    [string]$Runtime = 'dotnet:10'
+    [switch]$Deploy
 )
 
 $ErrorActionPreference = 'Stop'
+$subscriptionId = '4023bbcf-2481-4b3c-916f-01017673502c'
+$tenantId = '5556ae28-2fa4-474a-a064-7e0a65a5296e'
+$location = 'centralus'
+$resourceGroupName = 'rg-jithub-prod-centralus'
+$webAppName = 'jithub-web-prod-4023bbcf'
+$vaultName = 'kv-jithub-prod-4023bbcf'
+$template = Join-Path $PSScriptRoot '..\infra\production.bicep'
 
-function Get-AzureCliCommand {
-    $azCommand = Get-Command az -ErrorAction SilentlyContinue
-    if ($azCommand) {
-        return $azCommand.Source
-    }
+function Invoke-AzureCli {
+    param([Parameter(Mandatory)][string[]]$Arguments)
 
-    $defaultWindowsPath = 'C:\Program Files\Microsoft SDKs\Azure\CLI2\wbin\az.cmd'
-    if (Test-Path -LiteralPath $defaultWindowsPath) {
-        return $defaultWindowsPath
-    }
-
-    throw 'Azure CLI was not found. Install Azure CLI or add az to PATH before running this script.'
-}
-
-function Invoke-Az {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string[]]$Arguments
-    )
-
-    & $script:AzPath @Arguments
+    $result = & az @Arguments
     if ($LASTEXITCODE -ne 0) {
-        throw "az $($Arguments -join ' ') failed."
+        throw "Azure CLI failed: az $($Arguments[0..([Math]::Min(2, $Arguments.Length - 1))] -join ' ')"
+    }
+    return $result
+}
+
+$account = Invoke-AzureCli -Arguments @('account', 'show', '--subscription', $subscriptionId, '--output', 'json') | ConvertFrom-Json
+if ($account.id -ne $subscriptionId -or $account.tenantId -ne $tenantId) {
+    throw 'Azure CLI is not signed in to the intended subscription and tenant.'
+}
+
+foreach ($provider in @('Microsoft.Web', 'Microsoft.ManagedIdentity', 'Microsoft.KeyVault', 'Microsoft.OperationalInsights', 'Microsoft.Insights')) {
+    $registrationState = Invoke-AzureCli -Arguments @('provider', 'show', '--namespace', $provider, '--subscription', $subscriptionId, '--query', 'registrationState', '--output', 'tsv')
+    if ($registrationState -ne 'Registered') {
+        Invoke-AzureCli -Arguments @('provider', 'register', '--namespace', $provider, '--subscription', $subscriptionId, '--wait', '--output', 'none') | Out-Null
     }
 }
 
-function Invoke-AzJson {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string[]]$Arguments
-    )
-
-    $previousErrorActionPreference = $ErrorActionPreference
-    $previousNativeCommandPreference = $null
-    $hasNativeCommandPreference = Get-Variable -Name PSNativeCommandUseErrorActionPreference -Scope Global -ErrorAction SilentlyContinue
-
-    if ($hasNativeCommandPreference) {
-        $previousNativeCommandPreference = $global:PSNativeCommandUseErrorActionPreference
-    }
-
+# These global names must be checked before any resource is created.
+foreach ($check in @(
+    @{ Name = $webAppName; Type = 'Microsoft.Web/sites'; ApiVersion = '2024-11-01'; Provider = 'Microsoft.Web'; Action = 'checknameavailability' },
+    @{ Name = $vaultName; Type = 'Microsoft.KeyVault/vaults'; ApiVersion = '2023-07-01'; Provider = 'Microsoft.KeyVault'; Action = 'checkNameAvailability' }
+)) {
+    $body = @{ name = $check.Name; type = $check.Type } | ConvertTo-Json -Compress
+    $url = "https://management.azure.com/subscriptions/$subscriptionId/providers/$($check.Provider)/$($check.Action)?api-version=$($check.ApiVersion)"
+    $bodyFile = New-TemporaryFile
     try {
-        $ErrorActionPreference = 'Continue'
-        if ($hasNativeCommandPreference) {
-            $global:PSNativeCommandUseErrorActionPreference = $false
-        }
-
-        $json = & $script:AzPath @Arguments --output json 2>$null
-        $exitCode = $LASTEXITCODE
+        Set-Content -LiteralPath $bodyFile.FullName -Value $body -NoNewline -Encoding utf8
+        $result = Invoke-AzureCli -Arguments @('rest', '--method', 'post', '--url', $url, '--headers', 'Content-Type=application/json', '--body', "@$($bodyFile.FullName)", '--output', 'json') | ConvertFrom-Json
     }
     finally {
-        $ErrorActionPreference = $previousErrorActionPreference
-        if ($hasNativeCommandPreference) {
-            $global:PSNativeCommandUseErrorActionPreference = $previousNativeCommandPreference
+        Remove-Item -LiteralPath $bodyFile.FullName -ErrorAction SilentlyContinue
+    }
+    if (-not $result.nameAvailable) {
+        $expectedId = "/subscriptions/$subscriptionId/resourceGroups/$resourceGroupName/providers/$($check.Type)/$($check.Name)"
+        $existingId = & az resource show --ids $expectedId --subscription $subscriptionId --query id --output tsv 2>$null
+        if ($LASTEXITCODE -ne 0 -or -not [string]::Equals($existingId, $expectedId, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "The global name '$($check.Name)' is unavailable: $($result.reason). Revise both Bicep and this script before deployment."
         }
+        Write-Host "Already owned in the target group: $($check.Name)"
+        continue
     }
+    Write-Host "Available: $($check.Name)"
+}
 
-    if ($exitCode -ne 0 -or [string]::IsNullOrWhiteSpace($json)) {
-        return $null
+Invoke-AzureCli -Arguments @('bicep', 'build', '--file', $template, '--stdout') | Out-Null
+Write-Host 'Bicep build passed.'
+
+$deploymentName = 'jithub-production-website'
+Invoke-AzureCli -Arguments @('deployment', 'sub', 'what-if', '--name', $deploymentName, '--location', $location, '--subscription', $subscriptionId, '--template-file', $template, '--output', 'table')
+
+if (-not $Deploy) {
+    Write-Host 'Review the what-if, then rerun with -Deploy to create the resources.'
+    return
+}
+
+Invoke-AzureCli -Arguments @('deployment', 'sub', 'create', '--name', $deploymentName, '--location', $location, '--subscription', $subscriptionId, '--template-file', $template, '--output', 'none') | Out-Null
+
+# Application Insights creates this action group outside the Bicep deployment.
+# Give it the same tags as the group once Azure has materialized it.
+$smartDetectionId = "/subscriptions/$subscriptionId/resourceGroups/$resourceGroupName/providers/Microsoft.Insights/actionGroups/Application Insights Smart Detection"
+$groupTags = Invoke-AzureCli -Arguments @('group', 'show', '--name', $resourceGroupName, '--subscription', $subscriptionId, '--query', 'tags', '--output', 'json') | ConvertFrom-Json
+$tagPairs = @($groupTags.PSObject.Properties | ForEach-Object { '{0}={1}' -f $_.Name, $_.Value })
+$smartDetectionFound = $false
+for ($attempt = 0; $attempt -lt 12; $attempt++) {
+    $existingId = & az resource show --ids $smartDetectionId --subscription $subscriptionId --api-version 2023-01-01 --query id --output tsv 2>$null
+    if ($LASTEXITCODE -eq 0 -and $existingId) {
+        Invoke-AzureCli -Arguments (@('resource', 'tag', '--ids', $smartDetectionId, '--subscription', $subscriptionId, '--tags') + $tagPairs + @('--output', 'none')) | Out-Null
+        $smartDetectionFound = $true
+        break
     }
-
-    return $json | ConvertFrom-Json
+    Start-Sleep -Seconds 5
+}
+if (-not $smartDetectionFound) {
+    throw 'Application Insights Smart Detection action group was not found for tagging after deployment.'
 }
 
-$script:AzPath = Get-AzureCliCommand
-
-$account = Invoke-AzJson -Arguments @('account', 'show')
-if (-not $account) {
-    throw 'Azure CLI is not logged in. Run az login, then retry.'
-}
-
-Write-Host "Using Azure subscription '$($account.name)' ($($account.id))."
-
-$resourceGroupInfo = Invoke-AzJson -Arguments @('group', 'show', '--name', $ResourceGroup)
-if (-not $resourceGroupInfo) {
-    Write-Host "Creating resource group '$ResourceGroup' in '$Location'."
-    Invoke-Az -Arguments @('group', 'create', '--name', $ResourceGroup, '--location', $Location, '--output', 'none')
-}
-
-$existingSite = Invoke-AzJson -Arguments @(
-    'resource',
-    'show',
-    '--resource-group', $ResourceGroup,
-    '--resource-type', 'Microsoft.Web/sites',
-    '--name', $WebAppName
-)
-
-if ($existingSite -and $existingSite.kind -like '*functionapp*') {
-    throw @"
-The site name '$WebAppName' is already used by an Azure Function App.
-
-The unified JitHub website is a regular ASP.NET Core App Service Web App, so it cannot be provisioned over that existing Function App.
-
-Choose one migration path:
-1. Delete/retire the Function App, then rerun this script with -WebAppName '$WebAppName' to preserve https://$WebAppName.azurewebsites.net.
-2. Provision a different Web App name, then set GitHub variable JITHUB_WEBAPP_NAME to that name and update GitHub OAuth/custom-domain routing separately.
-"@
-}
-
-$plan = Invoke-AzJson -Arguments @(
-    'appservice',
-    'plan',
-    'show',
-    '--resource-group', $ResourceGroup,
-    '--name', $PlanName
-)
-
-if (-not $plan) {
-    Write-Host "Creating Windows App Service plan '$PlanName' ($Sku) in '$Location'."
-    Invoke-Az -Arguments @(
-        'appservice',
-        'plan',
-        'create',
-        '--resource-group', $ResourceGroup,
-        '--name', $PlanName,
-        '--location', $Location,
-        '--sku', $Sku,
-        '--output', 'none'
-    )
-}
-
-$webApp = Invoke-AzJson -Arguments @(
-    'webapp',
-    'show',
-    '--resource-group', $ResourceGroup,
-    '--name', $WebAppName
-)
-
-if (-not $webApp) {
-    Write-Host "Creating Web App '$WebAppName' with runtime '$Runtime'."
-    Invoke-Az -Arguments @(
-        'webapp',
-        'create',
-        '--resource-group', $ResourceGroup,
-        '--plan', $PlanName,
-        '--name', $WebAppName,
-        '--runtime', $Runtime,
-        '--output', 'none'
-    )
-}
-
-Write-Host "Applying baseline Web App configuration."
-Invoke-Az -Arguments @(
-    'webapp',
-    'update',
-    '--resource-group', $ResourceGroup,
-    '--name', $WebAppName,
-    '--https-only',
-    'true',
-    '--output',
-    'none'
-)
-
-Invoke-Az -Arguments @(
-    'webapp',
-    'config',
-    'set',
-    '--resource-group', $ResourceGroup,
-    '--name', $WebAppName,
-    '--always-on',
-    'true',
-    '--output',
-    'none'
-)
-
-Write-Host ''
-Write-Host 'Provisioning complete. Next steps:'
-Write-Host '1. Configure app settings for the GitHub OAuth app:'
-Write-Host "   az webapp config appsettings set -g $ResourceGroup -n $WebAppName --settings JitHubClientId=<client-id> JithubAppSecret=<client-secret>"
-Write-Host "   The default callback is derived from App Service's read-only WEBSITE_HOSTNAME. Set JITHUB_OAUTH_CALLBACK_URL only when using a custom callback host."
-Write-Host '2. For multi-instance handoffs, configure ConnectionStrings__OAuthHandoffRedis and OAuthHandoff__EncryptionKey.'
-Write-Host '   Without Redis, the app uses a bounded two-minute process-local handoff store and remains available.'
-Write-Host '3. Download the publish profile:'
-Write-Host "   az webapp deployment list-publishing-profiles -g $ResourceGroup -n $WebAppName --xml > jithub-webapp.PublishSettings"
-Write-Host '4. Save it as the GitHub secret JITHUB_WEBAPP_PUBLISH_PROFILE:'
-Write-Host '   gh secret set JITHUB_WEBAPP_PUBLISH_PROFILE --repo JitHubApp/JitHubV2 < jithub-webapp.PublishSettings'
-Write-Host '5. Save the target app name as a GitHub Actions variable:'
-Write-Host "   gh variable set JITHUB_WEBAPP_NAME --repo JitHubApp/JitHubV2 --body $WebAppName"
-Write-Host '6. Move custom domains/OAuth callback hosts after the new Web App passes a smoke test.'
+Write-Host 'Production website resources created. Follow docs/production-website-migration.md for the secret, DNS, TLS, OAuth, and release cutover.'

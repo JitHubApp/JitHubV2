@@ -27,7 +27,7 @@ permissions:
   contents: read
 
 env:
-  AZURE_WEBAPP_NAME: ${{ vars.JITHUB_WEBAPP_NAME || 'jithub-web-prod' }}
+  AZURE_WEBAPP_NAME: ${{ vars.JITHUB_WEBAPP_NAME }}
   WEBSITE_PROJECT: JitHub.Web/JitHub.Web.csproj
   WEBSITE_TEST_PROJECT: JitHub.Web.Tests/JitHub.Web.Tests.csproj
 
@@ -59,7 +59,7 @@ jobs:
         run: |
           log_file="${RUNNER_TEMP}/jithub-web-production.log"
           ASPNETCORE_ENVIRONMENT=Production \
-          WEBSITE_HOSTNAME=jithub-web-prod.azurewebsites.net \
+          WEBSITE_HOSTNAME=${AZURE_WEBAPP_NAME}.azurewebsites.net \
           ASPNETCORE_URLS=http://127.0.0.1:5088 \
             dotnet ./publish/JitHub.Web.dll >"${log_file}" 2>&1 &
           web_pid=$!
@@ -100,6 +100,9 @@ jobs:
     if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
       - name: Download published website
@@ -111,24 +114,27 @@ jobs:
       - name: Validate Azure Web App deployment configuration
         shell: bash
         env:
-          JITHUB_WEBAPP_PUBLISH_PROFILE: ${{ secrets.JITHUB_WEBAPP_PUBLISH_PROFILE }}
+          AZURE_CLIENT_ID: ${{ vars.JITHUB_AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ vars.JITHUB_AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ vars.JITHUB_AZURE_SUBSCRIPTION_ID }}
         run: |
-          if [ -z "${AZURE_WEBAPP_NAME}" ]; then
-            echo "JITHUB_WEBAPP_NAME is empty. Configure the repository variable or set AZURE_WEBAPP_NAME in the workflow."
+          if [ -z "${AZURE_WEBAPP_NAME}" ] || [ -z "${AZURE_CLIENT_ID}" ] || [ -z "${AZURE_TENANT_ID}" ] || [ -z "${AZURE_SUBSCRIPTION_ID}" ]; then
+            echo "Set JITHUB_WEBAPP_NAME and the JITHUB_AZURE_CLIENT_ID, JITHUB_AZURE_TENANT_ID, and JITHUB_AZURE_SUBSCRIPTION_ID repository variables."
             exit 1
           fi
 
-          if [ -z "${JITHUB_WEBAPP_PUBLISH_PROFILE}" ]; then
-            echo "JITHUB_WEBAPP_PUBLISH_PROFILE is required. Create a regular Azure App Service Web App, download its publish profile, and save it as this GitHub secret."
-            exit 1
-          fi
+      - name: Sign in to Azure with GitHub OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.JITHUB_AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.JITHUB_AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.JITHUB_AZURE_SUBSCRIPTION_ID }}
 
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ env.AZURE_WEBAPP_NAME }}
           package: ./publish
-          publish-profile: ${{ secrets.JITHUB_WEBAPP_PUBLISH_PROFILE }}
 
       - name: Verify deployed website health
         shell: bash

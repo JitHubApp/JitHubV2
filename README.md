@@ -107,15 +107,13 @@ $env:JITHUB_OAUTH_CALLBACK_URL = "https://localhost:7284/authorize"
 
 Configure the web project with the matching OAuth client credentials using your preferred ASP.NET Core configuration source. Keep credentials local to your machine and do not commit them.
 
-Production web deployments also require a shared Redis connection and a Base64-encoded 32-byte handoff encryption key:
+Production web deployments use `JITHUB_OAUTH_CALLBACK_URL` to select the exact callback host:
 
 ```text
-ConnectionStrings__OAuthHandoffRedis=<Redis connection string>
-OAuthHandoff__EncryptionKey=<Base64-encoded 32-byte key>
 JITHUB_OAUTH_CALLBACK_URL=https://your-jithub-host.example/authorize
 ```
 
-Redis provides the two-minute distributed TTL and atomic one-time consume semantics across app instances. The encryption key protects GitHub tokens stored in Redis. Production startup fails when either setting is absent; the in-memory backend is limited to the Development environment.
+The single-instance production website uses an in-memory, two-minute OAuth handoff store. Pending sign-ins can be lost during restart. Redis and a Base64-encoded 32-byte `OAuthHandoff__EncryptionKey` are optional when scaling to multiple instances; Redis provides atomic one-time consume semantics across instances and the key protects tokens stored there. See [the production website migration runbook](docs/production-website-migration.md) for the Azure subscription, deployment identity, custom-domain cutover, and release procedure.
 The callback URL is also required in production and is matched exactly before JitHub exchanges an OAuth code. Development accepts the documented local launch callbacks and any additional loopback callback explicitly listed under `GitHubOAuth:DevelopmentCallbackUrls`.
 
 ## Native Code Editor
