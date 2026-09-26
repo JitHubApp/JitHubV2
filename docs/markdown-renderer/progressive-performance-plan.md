@@ -1130,6 +1130,16 @@ complete before claiming this plan or the 1.0 performance goal is met.
   preserves the unchanged lean size gates (529,689 compressed and 1,257,984
   managed bytes). The CI outlier's 2.862-second setup has not been reproduced
   locally, and this diagnostic does not resolve it or prove same-byte parity.
+- A pinned rank-476 (`multica-ai/multica`) Release replay on the local machine
+  passed with 100% text, 99.49% structure, zero unavailable images, and no
+  visible-image wait; native/Edge live ratios were 0.528 first render and
+  0.234 full page. Theme snapshot took 188.011 ms of 195.239 ms setup;
+  publication took 10.507 ms, with a 0.958 ms commit. This does not reproduce
+  or clear the hosted audit's 4.34-second image wait or satisfy the ≤2 ms
+  publication release gate. A temporary rank-295 probe that bypassed app-level
+  `MarkdownRenderer.*` resource lookups measured 185.124 ms theme snapshot
+  versus 199.117 ms in the normal local replay, but changed the styled result;
+  it was removed, not adopted as a customization or performance tradeoff.
 - Open: oversized raster tiling and session-owned SVG/document/GPU preparation
   caches.
 - Open: defer Math/Mermaid scenes and ahead-of-viewport highlighting without
