@@ -65,6 +65,7 @@
     <Compile Include="..\MarkdownRenderer\Controls\MarkdownKeyboardInputPolicy.cs" Link="Core\MarkdownKeyboardInputPolicy.cs" />
     <Compile Include="..\MarkdownRenderer\Controls\MarkdownCanvasInvalidationPolicy.cs" Link="Core\MarkdownCanvasInvalidationPolicy.cs" />
     <Compile Include="..\MarkdownRenderer\Controls\MarkdownLazyLayoutPolicy.cs" Link="Core\MarkdownLazyLayoutPolicy.cs" />
+    <Compile Include="..\MarkdownRenderer\Controls\LazyLayoutScrollAnchorPolicy.cs" Link="Core\LazyLayoutScrollAnchorPolicy.cs" />
     <Compile Include="..\MarkdownRenderer\Controls\MarkdownRebuildDispatchPolicy.cs" Link="Core\MarkdownRebuildDispatchPolicy.cs" />
     <Compile Include="..\MarkdownRenderer\Controls\SnapshotRetirementTracker.cs" Link="Core\SnapshotRetirementTracker.cs" />
     <Compile Include="..\MarkdownRenderer\Controls\OwnedResourceRetirement.cs" Link="Core\OwnedResourceRetirement.cs" />

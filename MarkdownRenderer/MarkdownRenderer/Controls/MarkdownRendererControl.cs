@@ -55,6 +55,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     private CanvasVirtualControl? _canvas;
     private Canvas? _overlay;
     private ScrollViewer? _scroll;
+    private bool _scrollViewIntermediate;
     private Grid? _root;
     private MarkdownEngine? _ownedEngine;
     private bool _synchronizingCodeHighlighter;
@@ -285,6 +286,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     {
         public Rect Rect;
         public FrameworkElement? Realized;
+        public virtual bool HasActiveWork => Realized is not null;
         public abstract object LogicalOwner { get; }
         public abstract void Realize(MarkdownRendererControl owner);
         public abstract void Derealize(MarkdownRendererControl owner);
@@ -398,6 +400,10 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         }
     }
     private readonly List<EmbedPlan> _embedPlans = new();
+    private ViewportBandIndex? _embedPlanIndex;
+    // Document ordinals stay sorted so hit-test rectangles retain their source
+    // order while scroll work visits only the small active realization band.
+    private readonly List<int> _activeEmbedOrdinals = new();
     private sealed class CodeBlockActionPlan
     {
         public Layout.Boxes.CodeBlockBox Box = null!;
@@ -538,6 +544,8 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     }
 
     private readonly List<CodeBlockActionPlan> _codeBlockActionPlans = new();
+    private ViewportBandIndex? _codeBlockActionPlanIndex;
+    private readonly List<int> _activeCodeBlockActionOrdinals = new();
     private readonly Stack<(Button Button, bool Attached)> _codeBlockCopyButtonPool = new();
     private const int CodeBlockCopyButtonPoolCapacity = 8;
     private bool _derealizingAllEmbeds;
@@ -652,6 +660,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         public Layout.Boxes.DeclarativeHostedElementBox Box = null!;
         public IMarkdownHostedElementFactory Factory = null!;
         public override object LogicalOwner => Box;
+        public override bool HasActiveWork => Realized is not null || _realizationGate.HasActive;
 
         public override void Realize(MarkdownRendererControl owner)
         {
@@ -1856,7 +1865,11 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         get
         {
             int n = 0;
-            foreach (var p in _embedPlans) if (p.Realized is not null) n++;
+            foreach (int ordinal in _activeEmbedOrdinals)
+            {
+                if (_embedPlans[ordinal].Realized is not null)
+                    n++;
+            }
             return n;
         }
     }
@@ -3086,6 +3099,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         // Unsubscribe scroll handler so scroll-inertia events after visual-tree
         // removal don't fire OnScrollViewChanged on a partially-torn-down control.
         if (_scroll is not null) _scroll.ViewChanged -= OnScrollViewChanged;
+        _scrollViewIntermediate = false;
         // Unsubscribe all in-flight image load handlers before clearing the plan
         // list; otherwise an async load completing after unload fires
         // OnImageLoadCompleted → RequestRebuild on a torn-down control, causing a
@@ -3097,7 +3111,11 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         // and their event handlers would leak past detach.
         DerealizeAllEmbeds();
         _embedPlans.Clear();
+        _embedPlanIndex = null;
+        _activeEmbedOrdinals.Clear();
         _codeBlockActionPlans.Clear();
+        _codeBlockActionPlanIndex = null;
+        _activeCodeBlockActionOrdinals.Clear();
         _codeBlockCopyButtonPool.Clear();
         _imagePlans.Clear();
         _imagePlanIndex = null;
@@ -4089,6 +4107,8 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         // replacement pipeline is building. Fence that old-snapshot work at
         // the commit boundary before publishing and retiring its owner.
         CancelLazyLayoutRealization();
+        if (!sameDocument)
+            _scrollViewIntermediate = false;
         _snapshot = snapshot;
         // Publish presentation state with the new snapshot before any
         // dependency-property notification can re-enter UIA or menu queries.
@@ -4169,7 +4189,11 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         _blockEmbedRects.Clear();
         _codeBlockActionRects.Clear();
         _embedPlans.Clear();
+        _embedPlanIndex = null;
+        _activeEmbedOrdinals.Clear();
         _codeBlockActionPlans.Clear();
+        _codeBlockActionPlanIndex = null;
+        _activeCodeBlockActionOrdinals.Clear();
         UnsubscribeAllImages();
         _imagePlans.Clear();
         _imagePlanIndex = null;
@@ -4278,6 +4302,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
 
     private void OnScrollViewChanged(object? sender, ScrollViewerViewChangedEventArgs e)
     {
+        _scrollViewIntermediate = e.IsIntermediate;
         var performance = MarkdownPerformanceEventSource.Log;
         bool measure = performance.IsMeasurementEnabled();
         long started = measure ? Stopwatch.GetTimestamp() : 0;
@@ -4971,6 +4996,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                 snapshot,
                 result,
                 failure,
+                anchorOffset,
                 pipelineGeneration,
                 realizationGeneration,
                 cts)))
@@ -4986,6 +5012,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         LayoutSnapshot snapshot,
         LazyLayoutWorkResult result,
         Exception? failure,
+        double? anchorOffset,
         long pipelineGeneration,
         long realizationGeneration,
         CancellationTokenSource cts)
@@ -5032,7 +5059,13 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         }
 
         _appliedLazyLayoutRevision = result.Commit.LayoutRevision;
-        ApplyLazyLayoutCommit(snapshot, result.ScrollAnchor);
+        // A user can jump to an already-measured band while this worker is
+        // finishing. That jump need not queue replacement work, so the old
+        // completion still arrives. Never restore its captured scroll anchor
+        // over a newer viewport position.
+        bool restoreAnchor = LazyLayoutScrollAnchorPolicy.ShouldRestore(
+            anchorOffset, _scroll?.VerticalOffset, _scrollViewIntermediate);
+        ApplyLazyLayoutCommit(snapshot, restoreAnchor ? result.ScrollAnchor : null);
     }
 
     private void CancelLazyLayoutRealization()
@@ -5092,6 +5125,8 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         finally
         {
             _derealizingAllEmbeds = false;
+            _activeEmbedOrdinals.Clear();
+            _activeCodeBlockActionOrdinals.Clear();
         }
     }
 
@@ -5107,10 +5142,17 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         _blockEmbedRects.Clear();
         _codeBlockActionRects.Clear();
         _embedPlans.Clear();
+        _embedPlanIndex = null;
+        _activeEmbedOrdinals.Clear();
         _codeBlockActionPlans.Clear();
+        _codeBlockActionPlanIndex = null;
+        _activeCodeBlockActionOrdinals.Clear();
 
         foreach (var b in snapshot.GetMeasuredTopLevelBlocks())
             CollectEmbedPlans(b);
+
+        _embedPlanIndex = BuildPlanIndex(_embedPlans);
+        _codeBlockActionPlanIndex = BuildPlanIndex(_codeBlockActionPlans);
 
         // Image plans are immutable until the next layout publication. Keep
         // their document order in the list, but query the measured viewport
@@ -5212,7 +5254,53 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             }
         }
 
+        for (int index = 0; index < _embedPlans.Count; index++)
+        {
+            if (_embedPlans[index].HasActiveWork)
+                _activeEmbedOrdinals.Add(index);
+        }
+        for (int index = 0; index < _codeBlockActionPlans.Count; index++)
+        {
+            if (_codeBlockActionPlans[index].Realized is not null)
+                _activeCodeBlockActionOrdinals.Add(index);
+        }
+
         _lastFiredRealizedCount = -1;
+    }
+
+    private static ViewportBandIndex? BuildPlanIndex(List<EmbedPlan> plans)
+    {
+        if (plans.Count == 0)
+            return null;
+        var index = new ViewportBandIndex(plans.Count);
+        for (int ordinal = 0; ordinal < plans.Count; ordinal++)
+        {
+            Rect rect = plans[ordinal].Rect;
+            index.SetEntry(ordinal, ordinal, rect.Top, rect.Bottom);
+        }
+        index.Commit();
+        return index;
+    }
+
+    private static ViewportBandIndex? BuildPlanIndex(List<CodeBlockActionPlan> plans)
+    {
+        if (plans.Count == 0)
+            return null;
+        var index = new ViewportBandIndex(plans.Count);
+        for (int ordinal = 0; ordinal < plans.Count; ordinal++)
+        {
+            Rect rect = plans[ordinal].Rect;
+            index.SetEntry(ordinal, ordinal, rect.Top, rect.Bottom);
+        }
+        index.Commit();
+        return index;
+    }
+
+    private static void AddActiveOrdinal(List<int> ordinals, int ordinal)
+    {
+        int position = ordinals.BinarySearch(ordinal);
+        if (position < 0)
+            ordinals.Insert(~position, ordinal);
     }
 
     private static void AttachRealizedElement(EmbedPlan plan)
@@ -5266,8 +5354,11 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         _blockEmbedRects.Clear();
         _codeBlockActionRects.Clear();
 
-        foreach (var plan in _codeBlockActionPlans)
+        ViewportRange actionRange = _codeBlockActionPlanIndex?.Find(top, bottom) ?? default;
+        for (int index = actionRange.Start; index < actionRange.End; index++)
         {
+            int ordinal = _codeBlockActionPlanIndex!.GetBlockOrdinal(index);
+            CodeBlockActionPlan plan = _codeBlockActionPlans[ordinal];
             double actionTop = plan.Rect.Top;
             double actionBottom = plan.Rect.Bottom;
             // Copy buttons are XAML controls, so retaining them in an overscan
@@ -5278,12 +5369,24 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             if (inRealize)
             {
                 plan.Realize(this);
+                if (plan.Realized is not null)
+                    AddActiveOrdinal(_activeCodeBlockActionOrdinals, ordinal);
             }
-            else
-            {
-                plan.Derealize(this);
-            }
+        }
 
+        for (int index = _activeCodeBlockActionOrdinals.Count - 1; index >= 0; index--)
+        {
+            int ordinal = _activeCodeBlockActionOrdinals[index];
+            CodeBlockActionPlan plan = _codeBlockActionPlans[ordinal];
+            if (plan.Rect.Bottom >= top && plan.Rect.Top <= bottom)
+                continue;
+            plan.Derealize(this);
+            _activeCodeBlockActionOrdinals.RemoveAt(index);
+        }
+
+        foreach (int ordinal in _activeCodeBlockActionOrdinals)
+        {
+            CodeBlockActionPlan plan = _codeBlockActionPlans[ordinal];
             if (plan.Realized is not null)
             {
                 double left = Math.Round(plan.Rect.X);
@@ -5308,45 +5411,64 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             return;
         }
 
-        foreach (var plan in _embedPlans)
+        ViewportRange embedRange = _embedPlanIndex?.Find(
+            top - EmbedVirtualizationOverscanPx,
+            bottom + EmbedVirtualizationOverscanPx) ?? default;
+        for (int index = embedRange.Start; index < embedRange.End; index++)
         {
+            int ordinal = _embedPlanIndex!.GetBlockOrdinal(index);
+            EmbedPlan plan = _embedPlans[ordinal];
             double pTop = plan.Rect.Top;
             double pBottom = plan.Rect.Bottom;
             bool inRealize = EmbedVisibility.IsInRealizeBand(pTop, pBottom, top, bottom, EmbedVirtualizationOverscanPx);
-            bool inDerealize = EmbedVisibility.IsInDerealizeBand(pTop, pBottom, top, bottom, EmbedVirtualizationDerealizeOverscanPx);
             if (inRealize)
             {
                 plan.Realize(this);
+                if (plan.HasActiveWork)
+                    AddActiveOrdinal(_activeEmbedOrdinals, ordinal);
             }
-            else if (!inDerealize)
-            {
-                plan.Derealize(this);
-            }
-            // else: outside realise band but inside derealise band → keep current state (hysteresis).
+        }
 
-            // Rebuild hit-rect caches from realised plans.
-            if (plan.Realized is not null)
+        for (int index = _activeEmbedOrdinals.Count - 1; index >= 0; index--)
+        {
+            int ordinal = _activeEmbedOrdinals[index];
+            EmbedPlan plan = _embedPlans[ordinal];
+            if (EmbedVisibility.IsInDerealizeBand(
+                plan.Rect.Top, plan.Rect.Bottom, top, bottom,
+                EmbedVirtualizationDerealizeOverscanPx))
+                continue;
+            plan.Derealize(this);
+            _activeEmbedOrdinals.RemoveAt(index);
+        }
+
+        foreach (int ordinal in _activeEmbedOrdinals)
+        {
+            EmbedPlan plan = _embedPlans[ordinal];
+            // Pending declarative factories occupy the active band but do not
+            // contribute a hit-test rectangle or a realized-element count.
+            if (plan.Realized is null)
+                continue;
+
+            // Rebuild hit-rect caches from realised plans in document order.
+            if (plan is BlockEmbedPlan bp)
             {
-                if (plan is BlockEmbedPlan bp)
-                {
-                    double left = Math.Round(bp.Box.Bounds.X + bp.Box.Margin.Left);
-                    double t = Math.Round(bp.Box.Bounds.Y + bp.Box.Margin.Top);
-                    double w = Math.Round(bp.Box.Bounds.Width  - bp.Box.Margin.Left - bp.Box.Margin.Right);
-                    double h = Math.Round(bp.Box.Bounds.Height - bp.Box.Margin.Top  - bp.Box.Margin.Bottom);
-                    _blockEmbedRects.Add((bp.Box, new Rect(left, t, w, h)));
-                }
-                else if (plan is InlineEmbedPlan ip)
-                {
-                    double iLeft = Math.Round(ip.Rect.X);
-                    double iTop  = Math.Round(ip.Rect.Y);
-                    double iW    = Math.Round(ip.Rect.X + ip.Rect.Width)  - iLeft;
-                    double iH    = Math.Round(ip.Rect.Y + ip.Rect.Height) - iTop;
-                    _embedRects.Add((ip.Icb, ip.Run, new Rect(iLeft, iTop, iW, iH)));
-                }
-                else if (plan is DeclarativeHostedElementPlan declarative)
-                {
-                    _blockEmbedRects.Add((declarative.Box, declarative.Rect));
-                }
+                double left = Math.Round(bp.Box.Bounds.X + bp.Box.Margin.Left);
+                double t = Math.Round(bp.Box.Bounds.Y + bp.Box.Margin.Top);
+                double w = Math.Round(bp.Box.Bounds.Width  - bp.Box.Margin.Left - bp.Box.Margin.Right);
+                double h = Math.Round(bp.Box.Bounds.Height - bp.Box.Margin.Top  - bp.Box.Margin.Bottom);
+                _blockEmbedRects.Add((bp.Box, new Rect(left, t, w, h)));
+            }
+            else if (plan is InlineEmbedPlan ip)
+            {
+                double iLeft = Math.Round(ip.Rect.X);
+                double iTop  = Math.Round(ip.Rect.Y);
+                double iW    = Math.Round(ip.Rect.X + ip.Rect.Width)  - iLeft;
+                double iH    = Math.Round(ip.Rect.Y + ip.Rect.Height) - iTop;
+                _embedRects.Add((ip.Icb, ip.Run, new Rect(iLeft, iTop, iW, iH)));
+            }
+            else if (plan is DeclarativeHostedElementPlan declarative)
+            {
+                _blockEmbedRects.Add((declarative.Box, declarative.Rect));
             }
         }
 
@@ -5356,7 +5478,11 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         // property-change event storm for any UIA listener bound to a Name
         // property mirror in the subscriber's UI.
         int realised = 0;
-        foreach (var p in _embedPlans) if (p.Realized is not null) realised++;
+        foreach (int ordinal in _activeEmbedOrdinals)
+        {
+            if (_embedPlans[ordinal].Realized is not null)
+                realised++;
+        }
         if (realised != _lastFiredRealizedCount)
         {
             _lastFiredRealizedCount = realised;
@@ -5372,8 +5498,9 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         double bottom = top + viewportHeight;
         realizedCount = 0;
         offscreenCount = 0;
-        foreach (var plan in _codeBlockActionPlans)
+        foreach (int ordinal in _activeCodeBlockActionOrdinals)
         {
+            CodeBlockActionPlan plan = _codeBlockActionPlans[ordinal];
             if (plan.Realized is null)
                 continue;
             realizedCount++;

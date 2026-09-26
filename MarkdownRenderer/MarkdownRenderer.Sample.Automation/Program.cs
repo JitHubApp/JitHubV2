@@ -222,8 +222,14 @@ internal static class Program
             return;
         }
 
+        if (name.Equals("virtualization-bounded-realization", StringComparison.OrdinalIgnoreCase))
+        {
+            RunProbe("virtualization-bounded-realization", () => ProbeVirtualization(window));
+            return;
+        }
+
         throw new ArgumentException(
-            $"Unknown focused probe '{name}'. Supported probes: accessibility-residuals, embeds-selection-does-not-shake, hover-does-not-shake, keyboard-input-residuals.");
+            $"Unknown focused probe '{name}'. Supported probes: accessibility-residuals, embeds-selection-does-not-shake, hover-does-not-shake, keyboard-input-residuals, virtualization-bounded-realization.");
     }
 
     private static int RunNarratorSmoke(string appPath)
@@ -1874,22 +1880,53 @@ internal static class Program
     private static void ProbeVirtualization(Window window)
     {
         SelectSample(window, "Virtualization");
-        Thread.Sleep(1500);
-
         var renderer = FindRenderer(window);
+        bool ready = Retry.WhileFalse(
+            () => GetRendererDocumentText(renderer).Contains("Embed virtualization", StringComparison.Ordinal),
+            timeout: TimeSpan.FromSeconds(10),
+            interval: TimeSpan.FromMilliseconds(100)).Result;
+        Assert(ready, "virtualization sample did not finish rendering");
+
+        static string[] NativeButtonIds(AutomationElement document) =>
+            document.FindAllDescendants(cf => cf.ByControlType(ControlType.Button))
+                .Select(AutomationIdOrEmpty)
+                .Where(id => id.EndsWith("-Native", StringComparison.Ordinal))
+                .ToArray();
+
         int realised = ReadRealizedEmbedCount(renderer);
         Assert(realised < 100, $"virtualization expected ≪100 realised embeds, found {realised}");
         Assert(realised > 0, $"virtualization expected some realised embeds, found {realised}");
+        string firstButtonId = NativeButtonIds(renderer).FirstOrDefault()
+            ?? throw new InvalidOperationException("the initial viewport has no native hosted button");
 
-        renderer.Focus();
-        for (int i = 0; i < 5; i++)
-        {
-            Keyboard.Press(VirtualKeyShort.NEXT); // Page Down
-            Thread.Sleep(120);
-        }
-        Thread.Sleep(400);
+        var scroll = renderer.Patterns.Scroll.Pattern
+            ?? throw new InvalidOperationException("virtualized renderer must expose ScrollPattern");
+        Assert(scroll.VerticallyScrollable.ValueOrDefault,
+            "virtualized renderer must expose vertical scrolling");
+        scroll.SetScrollPercent(-1, 100);
+        bool recycled = Retry.WhileFalse(
+            () => !NativeButtonIds(renderer).Contains(firstButtonId, StringComparer.Ordinal),
+            timeout: TimeSpan.FromSeconds(5),
+            interval: TimeSpan.FromMilliseconds(100)).Result;
+        Assert(recycled, "an initial hosted button was not recycled after leaving the viewport");
         int afterScroll = ReadRealizedEmbedCount(renderer);
         Assert(afterScroll < 100, $"virtualization after scroll expected ≪100 realised embeds, found {afterScroll}");
+        Assert(afterScroll > 0, "the destination viewport has no native hosted buttons");
+
+        scroll.SetScrollPercent(-1, 0);
+        bool returnedToTop = Retry.WhileFalse(
+            () => scroll.VerticalScrollPercent.ValueOrDefault is >= 0 and <= 0.5,
+            timeout: TimeSpan.FromSeconds(10),
+            interval: TimeSpan.FromMilliseconds(100)).Result;
+        Assert(returnedToTop,
+            $"virtualization did not return to the top; scroll percent={scroll.VerticalScrollPercent.ValueOrDefault:0.##}");
+        bool restored = Retry.WhileFalse(
+            () => NativeButtonIds(renderer).Contains(firstButtonId, StringComparer.Ordinal),
+            timeout: TimeSpan.FromSeconds(10),
+            interval: TimeSpan.FromMilliseconds(100)).Result;
+        Assert(restored,
+            $"the initial hosted button {firstButtonId} was not realized after returning to the top; " +
+            $"scroll percent={scroll.VerticalScrollPercent.ValueOrDefault:0.##}");
     }
 
     private static void ProbeImagesSample(Window window)

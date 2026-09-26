@@ -993,6 +993,24 @@ complete before claiming this plan or the 1.0 performance goal is met.
   ceiling. This confirms that the previous wrapper instrumentation hole was
   closed for this shard, not that the full 500-case correctness, actual peak
   process memory, or release benchmark gates passed.
+- Local virtualization checkpoint, pending current-head CI and qualified
+  benchmark: hosted-embed and code-copy realization now query vertical plan
+  indexes instead of scanning every measured plan on each scroll event. Active
+  plans retain document order for hit testing, pending hosted factories remain
+  cancelable when they leave the band, and no offscreen controls are created.
+  A focused 300-embed sample UIA round trip verifies bounded realization,
+  recycling at the bottom, and restoration at the top. That probe exposed a
+  separate lazy-layout scroll-anchor race: during an animated return, layout
+  commits repeatedly retargeted the moving viewport, stranding it about 9%
+  down the document. Anchor restoration now requires both an unchanged offset
+  and a non-intermediate scroll state. Seven focused policy tests, 951 fast
+  Core tests, 415 GitHub renderer tests, and the sample UIA round trip pass
+  locally; the Release x64 renderer build has zero warnings. A local two-pack
+  measures 1,257,984 managed and 529,716 compressed bytes, still below the
+  unchanged lean gates (with only 307 managed bytes of headroom). The slow
+  external-gate mutation suite was not completed in this local run. This is
+  correctness and algorithmic evidence, not measured scroll-frame,
+  publication, or browser-relative performance evidence.
 - Open: oversized raster tiling and session-owned SVG/document/GPU preparation
   caches.
 - Open: defer Math/Mermaid scenes and ahead-of-viewport highlighting without
