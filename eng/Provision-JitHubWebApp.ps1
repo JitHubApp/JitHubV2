@@ -5,8 +5,8 @@ param(
 $ErrorActionPreference = 'Stop'
 $subscriptionId = '4023bbcf-2481-4b3c-916f-01017673502c'
 $tenantId = '5556ae28-2fa4-474a-a064-7e0a65a5296e'
-$location = 'westus'
-$resourceGroupName = 'rg-jithub-prod-westus'
+$location = 'centralus'
+$resourceGroupName = 'rg-jithub-prod-centralus'
 $webAppName = 'jithub-web-prod-4023bbcf'
 $vaultName = 'kv-jithub-prod-4023bbcf'
 $template = Join-Path $PSScriptRoot '..\infra\production.bicep'
@@ -27,7 +27,10 @@ if ($account.id -ne $subscriptionId -or $account.tenantId -ne $tenantId) {
 }
 
 foreach ($provider in @('Microsoft.Web', 'Microsoft.ManagedIdentity', 'Microsoft.KeyVault', 'Microsoft.OperationalInsights', 'Microsoft.Insights')) {
-    Invoke-AzureCli -Arguments @('provider', 'register', '--namespace', $provider, '--subscription', $subscriptionId, '--wait', '--output', 'none') | Out-Null
+    $registrationState = Invoke-AzureCli -Arguments @('provider', 'show', '--namespace', $provider, '--subscription', $subscriptionId, '--query', 'registrationState', '--output', 'tsv')
+    if ($registrationState -ne 'Registered') {
+        Invoke-AzureCli -Arguments @('provider', 'register', '--namespace', $provider, '--subscription', $subscriptionId, '--wait', '--output', 'none') | Out-Null
+    }
 }
 
 # These global names must be checked before any resource is created.

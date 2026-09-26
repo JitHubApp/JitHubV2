@@ -1,8 +1,14 @@
 # Production website subscription migration
 
-The production website is being moved to subscription `4023bbcf-2481-4b3c-916f-01017673502c` (Visual Studio Enterprise Subscription), resource group `rg-jithub-prod-westus`, in West US. The old `jithub-web-prod` app remains in the Pay-As-You-Go subscription during the seven-day compatibility window after the next Store release. The `jithubauth` Function App and the old group's other resources are not part of this migration.
+The live hobby website is being moved to subscription `4023bbcf-2481-4b3c-916f-01017673502c` (Visual Studio Enterprise Subscription), resource group `rg-jithub-prod-centralus`, in Central US. The old `jithub-web-prod` app remains in the Pay-As-You-Go subscription during the seven-day compatibility window after the next Store release. The `jithubauth` Function App and the old group's other resources are not part of this migration.
 
-As of September 25, 2026, the target subscription has a West US B1 App Service VM quota of zero. Azure denied a self-service increase. Support request `2609260010000456` is open for one non-zone-redundant B1 App Service VM in West US. Confirm that both the B1 SKU and total regional App Service VM limits reach at least one before deployment. The normal provider-validated what-if fails on this quota; a template-level what-if can still review the resources, but does not establish deployability. The existing `jithub` CNAME still points to the old app; its TTL was reduced from 3600 to 600 seconds in GoDaddy.
+West US has zero B1 and total regional App Service VM quota in this subscription. The self-service increase failed, and support request `2609260010000456` was closed at the owner's request. Central US had B1 and total regional quota of 30 before deployment. The existing `jithub` CNAME still points to the old app; its TTL was reduced from 3600 to 600 seconds in GoDaddy.
+
+## Current cutover state (September 26, 2026)
+
+The provider-validated what-if was reviewed and the Central US stack was deployed. The resource group and every resource, including the temporary certificate and the Application Insights generated Smart Detection action group, carry `Application=JitHub`, `Environment=Production`, `Owner=JitHubApp`, and `Repository=JitHubApp/JitHubV2`. The Smart Detection group was tagged after Azure created it. The current OAuth secret was transferred directly into the new Key Vault, its App Service reference is resolved, and the temporary operator Secrets Officer grant was removed. The website build from the passing pull-request CI run is deployed to `jithub-web-prod-4023bbcf.azurewebsites.net`; its `/healthz` returns `ok` over verified TLS. Application Insights has ingested requests from the new site. The three `JITHUB_AZURE_*` GitHub repository variables are set.
+
+GoDaddy has the new `asuid.jithub` ownership TXT record. The custom hostname is bound to the new app with a DNS-validated temporary certificate expiring December 25, 2026. A pinned-host request to `https://jithub.zhuowencui.com/healthz` on the new app returned HTTP 200 with valid TLS. The one-time ACME challenge TXT record was removed after issuance. **The public `jithub` CNAME still targets the old app.** Keep it there until the OIDC workflow is merged and its deployment to the new app is verified.
 
 ## Infrastructure
 
@@ -12,7 +18,7 @@ The stack uses a single Windows B1 instance with .NET 10, HTTPS-only, always on,
 
 After deployment, copy the current `JithubAppSecret` value from the old site's app settings directly into the new vault without echoing it, writing it into the repo, or passing it as a CLI argument. Grant the operator temporary Key Vault Secrets Officer on the new vault for this transfer, then remove that grant. Confirm that the app setting resolves to a healthy Key Vault reference. The public `JitHubClientId` and exact `JITHUB_OAUTH_CALLBACK_URL` are set by Bicep.
 
-Set these GitHub **repository variables** before the OIDC workflow lands on `main`:
+The three `JITHUB_AZURE_*` **repository variables** are set. Set the remaining two when the OIDC workflow lands on `main`, so the currently published workflow continues to deploy to the old app until then:
 
 | Variable | Value |
 | --- | --- |

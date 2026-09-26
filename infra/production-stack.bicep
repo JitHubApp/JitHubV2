@@ -10,7 +10,7 @@ var websiteContributorRoleId = subscriptionResourceId('Microsoft.Authorization/r
 var keyVaultSecretsUserRoleId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6')
 
 resource plan 'Microsoft.Web/serverfarms@2024-11-01' = {
-  name: 'asp-jithub-prod-westus'
+  name: 'asp-jithub-prod-centralus'
   location: location
   tags: tags
   kind: 'app'
@@ -26,7 +26,7 @@ resource plan 'Microsoft.Web/serverfarms@2024-11-01' = {
 }
 
 resource logs 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
-  name: 'law-jithub-prod-westus'
+  name: 'law-jithub-prod-centralus'
   location: location
   tags: tags
   properties: {
@@ -41,7 +41,7 @@ resource logs 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
 }
 
 resource insights 'Microsoft.Insights/components@2020-02-02' = {
-  name: 'appi-jithub-prod-westus'
+  name: 'appi-jithub-prod-centralus'
   location: location
   tags: tags
   kind: 'web'

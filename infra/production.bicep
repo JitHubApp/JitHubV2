@@ -1,7 +1,7 @@
 targetScope = 'subscription'
 
 @description('The production Azure region.')
-param location string = 'westus'
+param location string = 'centralus'
 
 @description('The only branch allowed to exchange GitHub Actions OIDC tokens.')
 param githubBranch string = 'main'
@@ -14,7 +14,7 @@ var tags = {
 }
 
 resource productionGroup 'Microsoft.Resources/resourceGroups@2024-03-01' = {
-  name: 'rg-jithub-prod-westus'
+  name: 'rg-jithub-prod-centralus'
   location: location
   tags: tags
 }
