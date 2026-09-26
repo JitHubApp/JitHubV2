@@ -1,0 +1,176 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <RootNamespace>MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common</RootNamespace>
+    <AssemblyName>MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common</AssemblyName>
+    <UseWinUI>true</UseWinUI>
+    <WinUISDKReferences>false</WinUISDKReferences>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <Platforms>x86;x64;ARM64</Platforms>
+    <Platform Condition="'$(Platform)' == '' or '$(Platform)' == 'AnyCPU' or '$(Platform)' == 'Any CPU'">x64</Platform>
+    <!-- This pack embeds managed resources only. A multi-RID lock graph keeps
+         RID-specific consumer restores deterministic without splitting the package. -->
+    <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
+    <IsTrimmable>true</IsTrimmable>
+    <IsAotCompatible>true</IsAotCompatible>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <EnableSingleFileAnalyzer>true</EnableSingleFileAnalyzer>
+    <EnableAotAnalyzer>true</EnableAotAnalyzer>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <PackageId>MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common</PackageId>
+    <Version>1.0.0-preview.1</Version>
+    <Authors>nerocui</Authors>
+    <Description>Curated common-language grammar provider for MarkdownRenderer TextMate highlighting.</Description>
+    <PackageTags>markdown;winui;syntax-highlighting;textmate;grammars;common</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/JitHubApp/JitHubV2</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageProjectUrl>https://github.com/JitHubApp/JitHubV2/tree/main/docs/markdown-renderer</PackageProjectUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>icon-192.png</PackageIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="MarkdownRenderer.SyntaxHighlighting.TextMate.Tests" />
+    <ProjectReference Include="..\MarkdownRenderer.SyntaxHighlighting.TextMate\MarkdownRenderer.SyntaxHighlighting.TextMate.csproj" />
+    <PackageReference Include="TextMateSharp" Version="2.0.3" />
+    <!--
+      TextMateSharp.Grammars publishes every grammar in one assembly. Use that
+      assembly only as an audited build-time source and embed the curated subset;
+      it is not a runtime or transitive package dependency of Common.
+    -->
+    <PackageReference Include="TextMateSharp.Grammars"
+                      Version="2.0.3"
+                      GeneratePathProperty="true"
+                      PrivateAssets="all"
+                      ExcludeAssets="compile;runtime" />
+    <Compile Include="..\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Shared\BundledTextMateGrammarProvider.cs" Link="Internal\BundledTextMateGrammarProvider.cs" />
+    <None Include="..\..\LICENSE" Pack="true" PackagePath="" Visible="false" />
+    <None Include="..\..\docs\markdown-renderer\README.md" Pack="true" PackagePath="README.md" Visible="false" />
+    <None Include="..\..\JitHub.Web\wwwroot\icon-192.png" Pack="true" PackagePath="icon-192.png" Visible="false" />
+    <None Include="..\eng\textmate\THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="THIRD-PARTY-NOTICES.md" Visible="false" />
+    <None Include="..\eng\textmate\GRAMMAR-PROVENANCE.v2.0.3.json" Pack="true" PackagePath="licenses/GRAMMAR-PROVENANCE.json" Visible="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <_CommonTextMateResource Include="TextMateSharp.Grammars.Resources.Grammars.cpp.syntaxes.c.tmLanguage.json" />
+    <_CommonTextMateResource Include="TextMateSharp.Grammars.Resources.Grammars.cpp.syntaxes.cpp.embedded.macro.tmLanguage.json" />
+    <_CommonTextMateResource Include="TextMateSharp.Grammars.Resources.Grammars.cpp.syntaxes.cpp.tmLanguage.json" />
+    <_CommonTextMateResource Include="TextMateSharp.Grammars.Resources.Grammars.cpp.syntaxes.cuda-cpp.tmLanguage.json" />
+    <_CommonTextMateResource Include="TextMateSharp.Grammars.Resources.Grammars.cpp.syntaxes.platform.tmLanguage.json" />
+    <_CommonTextMateResource Include="TextMateSharp.Grammars.Resources.Grammars.csharp.syntaxes.csharp.tmLanguage.json" />
+    <_CommonTextMateResource Include="TextMateSharp.Grammars.Resources.Grammars.css.syntaxes.css.tmLanguage.json" />
+    <_CommonTextMateResource Include="TextMateSharp.Grammars.Resources.Grammars.diff.syntaxes.diff.tmLanguage.json" />
+    <_CommonTextMateResource Include="TextMateSharp.Grammars.Resources.Grammars.docker.syntaxes.docker.tmLanguage.json" />
+    <_CommonTextMateResource Include="TextMateSharp.Grammars.Resources.Grammars.fsharp.syntaxes.fsharp.tmLanguage.json" />
+    <_CommonTextMateResource Include="TextMateSharp.Grammars.Resources.Grammars.go.syntaxes.go.tmLanguage.json" />
+    <_CommonTextMateResource Include="TextMateSharp.Grammars.Resources.Grammars.hlsl.syntaxes.hlsl.tmLanguage.json" />
+    <_CommonTextMateResource Include="TextMateSharp.Grammars.Resources.Grammars.html.syntaxes.html.tmLanguage.json" />
+    <_CommonTextMateResource Include="TextMateSharp.Grammars.Resources.Grammars.html.syntaxes.html-derivative.tmLanguage.json" />
+    <_CommonTextMateResource Include="TextMateSharp.Grammars.Resources.Grammars.java.syntaxes.java.tmLanguage.json" />
+    <_CommonTextMateResource Include="TextMateSharp.Grammars.Resources.Grammars.javascript.syntaxes.JavaScript.tmLanguage.json" />
+    <_CommonTextMateResource Include="TextMateSharp.Grammars.Resources.Grammars.javascript.syntaxes.JavaScriptReact.tmLanguage.json" />
+    <_CommonTextMateResource Include="TextMateSharp.Grammars.Resources.Grammars.json.syntaxes.JSON.tmLanguage.json" />
+    <_CommonTextMateResource Include="TextMateSharp.Grammars.Resources.Grammars.json.syntaxes.JSONC.tmLanguage.json" />
+    <_CommonTextMateResource Include="TextMateSharp.Grammars.Resources.Grammars.lua.syntaxes.lua.tmLanguage.json" />
+    <_CommonTextMateResource Include="TextMateSharp.Grammars.Resources.Grammars.markdownbasics.syntaxes.markdown.tmLanguage.json" />
+    <_CommonTextMateResource Include="TextMateSharp.Grammars.Resources.Grammars.objectivec.syntaxes.objective-c.tmLanguage.json" />
+    <_CommonTextMateResource Include="TextMateSharp.Grammars.Resources.Grammars.objectivec.syntaxes.objective-c++.tmLanguage.json" />
+    <_CommonTextMateResource Include="TextMateSharp.Grammars.Resources.Grammars.php.syntaxes.html.tmLanguage.json" />
+    <_CommonTextMateResource Include="TextMateSharp.Grammars.Resources.Grammars.php.syntaxes.php.tmLanguage.json" />
+    <_CommonTextMateResource Include="TextMateSharp.Grammars.Resources.Grammars.powershell.syntaxes.powershell.tmLanguage.json" />
+    <_CommonTextMateResource Include="TextMateSharp.Grammars.Resources.Grammars.python.syntaxes.MagicPython.tmLanguage.json" />
+    <_CommonTextMateResource Include="TextMateSharp.Grammars.Resources.Grammars.python.syntaxes.MagicRegExp.tmLanguage.json" />
+    <_CommonTextMateResource Include="TextMateSharp.Grammars.Resources.Grammars.ruby.syntaxes.ruby.tmLanguage.json" />
+    <_CommonTextMateResource Include="TextMateSharp.Grammars.Resources.Grammars.rust.syntaxes.rust.tmLanguage.json" />
+    <_CommonTextMateResource Include="TextMateSharp.Grammars.Resources.Grammars.shaderlab.syntaxes.shaderlab.tmLanguage.json" />
+    <_CommonTextMateResource Include="TextMateSharp.Grammars.Resources.Grammars.shellscript.syntaxes.shell-unix-bash.tmLanguage.json" />
+    <_CommonTextMateResource Include="TextMateSharp.Grammars.Resources.Grammars.sql.syntaxes.sql.tmLanguage.json" />
+    <_CommonTextMateResource Include="TextMateSharp.Grammars.Resources.Grammars.swift.syntaxes.swift.tmLanguage.json" />
+    <_CommonTextMateResource Include="TextMateSharp.Grammars.Resources.Grammars.typescriptbasics.syntaxes.TypeScript.tmLanguage.json" />
+    <_CommonTextMateResource Include="TextMateSharp.Grammars.Resources.Grammars.typescriptbasics.syntaxes.TypeScriptReact.tmLanguage.json" />
+    <_CommonTextMateResource Include="TextMateSharp.Grammars.Resources.Grammars.typescriptbasics.syntaxes.jsdoc.js.injection.tmLanguage.json" />
+    <_CommonTextMateResource Include="TextMateSharp.Grammars.Resources.Grammars.typescriptbasics.syntaxes.jsdoc.ts.injection.tmLanguage.json" />
+    <_CommonTextMateResource Include="TextMateSharp.Grammars.Resources.Grammars.vb.syntaxes.asp-vb-net.tmlanguage.json" />
+    <_CommonTextMateResource Include="TextMateSharp.Grammars.Resources.Grammars.xml.syntaxes.xml.tmLanguage.json" />
+    <_CommonTextMateResource Include="TextMateSharp.Grammars.Resources.Grammars.xml.syntaxes.xsl.tmLanguage.json" />
+    <_CommonTextMateResource Include="TextMateSharp.Grammars.Resources.Grammars.yaml.syntaxes.yaml.tmLanguage.json" />
+    <_CommonTextMateResource Include="TextMateSharp.Grammars.Resources.Themes.dark_vs.json" />
+    <_CommonTextMateResource Include="TextMateSharp.Grammars.Resources.Themes.light_vs.json" />
+  </ItemGroup>
+
+  <UsingTask TaskName="ExtractCommonTextMateResources"
+             TaskFactory="RoslynCodeTaskFactory"
+             AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <SourceAssembly ParameterType="System.String" Required="true" />
+      <OutputDirectory ParameterType="System.String" Required="true" />
+      <ResourceNames ParameterType="Microsoft.Build.Framework.ITaskItem[]" Required="true" />
+      <ExtractedFiles ParameterType="Microsoft.Build.Framework.ITaskItem[]" Output="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System" />
+      <Using Namespace="System.Collections.Generic" />
+      <Using Namespace="System.IO" />
+      <Using Namespace="System.Linq" />
+      <Using Namespace="System.Reflection" />
+      <Using Namespace="Microsoft.Build.Framework" />
+      <Using Namespace="Microsoft.Build.Utilities" />
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        Directory.CreateDirectory(OutputDirectory);
+        var assembly = Assembly.LoadFrom(SourceAssembly);
+        var extracted = new List<ITaskItem>(ResourceNames.Length);
+
+        foreach (var resourceItem in ResourceNames)
+        {
+            var resourceName = resourceItem.ItemSpec;
+            using var input = assembly.GetManifestResourceStream(resourceName);
+            if (input is null)
+            {
+                Log.LogError("TextMateSharp.Grammars resource '{0}' was not found in '{1}'.", resourceName, SourceAssembly);
+                continue;
+            }
+
+            var safeName = new string(resourceName
+                .Select(character => char.IsLetterOrDigit(character) ? character : '_')
+                .ToArray());
+            var outputPath = Path.Combine(OutputDirectory, safeName + ".json");
+            using (var output = File.Create(outputPath))
+            {
+                input.CopyTo(output);
+            }
+
+            var extractedItem = new TaskItem(outputPath);
+            extractedItem.SetMetadata("LogicalName", resourceName);
+            extracted.Add(extractedItem);
+        }
+
+        ExtractedFiles = extracted.ToArray();
+      ]]></Code>
+    </Task>
+  </UsingTask>
+
+  <Target Name="EmbedCommonTextMateResources" BeforeTargets="CoreCompile">
+    <PropertyGroup>
+      <_TextMateSharpGrammarsAssembly>$(PkgTextMateSharp_Grammars)\lib\netstandard2.0\TextMateSharp.Grammars.dll</_TextMateSharpGrammarsAssembly>
+      <_CommonTextMateResourceOutput>$(IntermediateOutputPath)CuratedTextMateResources</_CommonTextMateResourceOutput>
+    </PropertyGroup>
+    <Error Condition="!Exists('$(_TextMateSharpGrammarsAssembly)')"
+           Text="The pinned TextMateSharp.Grammars resource assembly was not restored at '$(_TextMateSharpGrammarsAssembly)'." />
+    <ExtractCommonTextMateResources SourceAssembly="$(_TextMateSharpGrammarsAssembly)"
+                                    OutputDirectory="$(_CommonTextMateResourceOutput)"
+                                    ResourceNames="@(_CommonTextMateResource)">
+      <Output TaskParameter="ExtractedFiles" ItemName="_ExtractedCommonTextMateResource" />
+    </ExtractCommonTextMateResources>
+    <ItemGroup>
+      <_CoreCompileResourceInputs Include="@(_ExtractedCommonTextMateResource)">
+        <ManifestResourceName>%(_ExtractedCommonTextMateResource.LogicalName)</ManifestResourceName>
+      </_CoreCompileResourceInputs>
+    </ItemGroup>
+  </Target>
+</Project>

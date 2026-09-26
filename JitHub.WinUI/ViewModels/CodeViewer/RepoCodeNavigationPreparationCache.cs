@@ -1,16 +1,21 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Services;
 using JitHub.Services.CodeViewer;
+using JitHub.WinUI.Helpers;
 
 namespace JitHub.WinUI.ViewModels.CodeViewer;
 
 /// <summary>
-/// Warms the non-visual repository tree projection before navigation. Prepared
+/// Warms the non-visual repository root projection before navigation. Prepared
 /// view models are transferred to one destination page and are never shared.
+/// Directories are deliberately lazy: rendering a README must not download or
+/// project the repository's complete recursive Git tree.
 /// </summary>
 public sealed partial class RepoCodeNavigationPreparationCache
 {
@@ -110,6 +115,18 @@ public sealed partial class RepoCodeNavigationPreparationCache
         }
     }
 
+    internal async Task<RepoCodeLoadResult<Models.CodeViewer.RepoReadmeFile>?> GetReadmeAsync(
+        string owner,
+        string name,
+        string gitRef,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        (_, Entry entry) = GetOrStart(owner, name, gitRef);
+        entry.ClaimForeground();
+        return await entry.Readme.WaitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     internal int Count
     {
         get
@@ -140,10 +157,8 @@ public sealed partial class RepoCodeNavigationPreparationCache
 
             CancellationTokenSource workCancellation = new();
             LinkedListNode<string> node = _lru.AddFirst(key);
-            entry = new Entry(
-                PrepareAsync(owner, name, gitRef, workCancellation.Token),
-                node,
-                workCancellation);
+            PreparationWork work = StartPreparation(owner, name, gitRef, workCancellation.Token);
+            entry = new Entry(work.Preparation, work.Readme, node, workCancellation);
             _entries[key] = entry;
             TrimToBudget(evicted);
         }
@@ -156,25 +171,117 @@ public sealed partial class RepoCodeNavigationPreparationCache
         return (key, entry);
     }
 
-    private async Task<PreparedRepoCodeNavigation> PrepareAsync(
+    private PreparationWork StartPreparation(
         string owner,
         string name,
         string gitRef,
         CancellationToken cancellationToken)
     {
-        RepoCodeLoadResult<Models.CodeViewer.RepoTree> result =
-            await _treeService.LoadTreeAsync(
+        Task<RepoCodeLoadResult<IReadOnlyList<Models.CodeViewer.RepoTreeNode>>> rootTask =
+            _treeService.LoadDirectoryAsync(
                 owner,
                 name,
+                string.Empty,
                 gitRef,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken);
+        Task<RepoCodeLoadResult<Models.CodeViewer.RepoReadmeFile>?> readmeTask =
+            TryLoadReadmeAsync(owner, name, gitRef, cancellationToken);
+        return new PreparationWork(
+            CompletePreparationAsync(rootTask, readmeTask, cancellationToken),
+            readmeTask);
+    }
+
+    private async Task<PreparedRepoCodeNavigation> CompletePreparationAsync(
+        Task<RepoCodeLoadResult<IReadOnlyList<Models.CodeViewer.RepoTreeNode>>> rootTask,
+        Task<RepoCodeLoadResult<Models.CodeViewer.RepoReadmeFile>?> readmeTask,
+        CancellationToken cancellationToken)
+    {
+        RepoCodeLoadResult<Models.CodeViewer.RepoReadmeFile>? readme =
+            await readmeTask.ConfigureAwait(false);
+        RepoCodeLoadResult<Models.CodeViewer.RepoTree> result;
+        bool rootListingUnavailable = false;
+        try
+        {
+            RepoCodeLoadResult<IReadOnlyList<Models.CodeViewer.RepoTreeNode>> root =
+                await rootTask.ConfigureAwait(false);
+            result = RepoRootTreeProjection.Create(root);
+        }
+        catch (GitHubRateLimitException exception) when (
+            readme is { CacheState: CacheState.Fresh } &&
+            readme.Value.Blob.Text is not null &&
+            RepoTreeService.IsAnonymousPublicDataFallbackCandidate(exception))
+        {
+            // Some public organizations deny the authenticated root-listing API
+            // to the current IP even while the canonical README is available.
+            // Keep that fetched document usable, but never present its one file
+            // as an authoritative or complete repository tree.
+            Models.CodeViewer.RepoReadmeFile file = readme.Value;
+            result = new RepoCodeLoadResult<Models.CodeViewer.RepoTree>(
+                new Models.CodeViewer.RepoTree
+                {
+                    Truncated = true,
+                    RootIsAuthoritative = false,
+                    Root = new Models.CodeViewer.RepoTreeNode
+                    {
+                        Name = string.Empty,
+                        Path = string.Empty,
+                        IsDirectory = true,
+                        Children =
+                        [
+                            new Models.CodeViewer.RepoTreeNode
+                            {
+                                Name = file.Name,
+                                Path = file.Path,
+                                Sha = file.Blob.Sha,
+                                Size = file.Blob.Bytes?.Length ?? 0,
+                                IsDirectory = false,
+                                Children = []
+                            }
+                        ]
+                    }
+                },
+                CacheState.Error,
+                RefreshError: UserFacingError.For(
+                    exception,
+                    UserFacingErrorKind.Loading,
+                    "repository-code-root-listing"));
+            rootListingUnavailable = true;
+        }
         RepoFileTreeViewModel.PreparedTree prepared = await Task.Run(
             () => RepoFileTreeViewModel.PrepareTree(
                 result.Value,
                 _languageResolver,
                 cancellationToken),
             cancellationToken).ConfigureAwait(false);
-        return new PreparedRepoCodeNavigation(result, prepared);
+        return new PreparedRepoCodeNavigation(result, prepared, readme, rootListingUnavailable);
+    }
+
+    private async Task<RepoCodeLoadResult<Models.CodeViewer.RepoReadmeFile>?> TryLoadReadmeAsync(
+        string owner,
+        string name,
+        string gitRef,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            // The dedicated endpoint returns the canonical root README and its content in
+            // one response. It runs beside the root listing so initial rendering does not
+            // pay a list-root-then-fetch-blob network waterfall.
+            Task<RepoCodeLoadResult<Models.CodeViewer.RepoReadmeFile>?>? request =
+                _treeService.LoadReadmeAsync(owner, name, gitRef, cancellationToken);
+            return request is null ? null : await request.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception) when (
+            exception is GitHubApiException or HttpRequestException or InvalidDataException or FormatException or NotSupportedException)
+        {
+            // This is an optimization, never a new availability dependency. The page can
+            // still discover the root README and use the ordinary immutable blob path.
+            return null;
+        }
     }
 
     private string CreateKey(string owner, string name, string gitRef)
@@ -306,15 +413,19 @@ public sealed partial class RepoCodeNavigationPreparationCache
 
         public Entry(
             Task<PreparedRepoCodeNavigation> preparation,
+            Task<RepoCodeLoadResult<Models.CodeViewer.RepoReadmeFile>?> readme,
             LinkedListNode<string> node,
             CancellationTokenSource workCancellation)
         {
             Preparation = preparation;
+            Readme = readme;
             Node = node;
             _workCancellation = workCancellation;
         }
 
         public Task<PreparedRepoCodeNavigation> Preparation { get; }
+
+        public Task<RepoCodeLoadResult<Models.CodeViewer.RepoReadmeFile>?> Readme { get; }
 
         public LinkedListNode<string> Node { get; }
 
@@ -338,5 +449,11 @@ public sealed partial class RepoCodeNavigationPreparationCache
 
     internal sealed record PreparedRepoCodeNavigation(
         RepoCodeLoadResult<Models.CodeViewer.RepoTree> Result,
-        RepoFileTreeViewModel.PreparedTree PreparedTree);
+        RepoFileTreeViewModel.PreparedTree PreparedTree,
+        RepoCodeLoadResult<Models.CodeViewer.RepoReadmeFile>? Readme,
+        bool RootListingUnavailable);
+
+    private sealed record PreparationWork(
+        Task<PreparedRepoCodeNavigation> Preparation,
+        Task<RepoCodeLoadResult<Models.CodeViewer.RepoReadmeFile>?> Readme);
 }

@@ -657,4 +657,58 @@
   <data name="toastEnabled.Text" xml:space="preserve">
     <value>Enable toast notification</value>
   </data>
+  <data name="MarkdownRenderer/Document/Name" xml:space="preserve"><value>Tài liệu Markdown</value></data>
+  <data name="MarkdownRenderer/Command/Copy" xml:space="preserve"><value>Sao chép</value></data>
+  <data name="MarkdownRenderer/Command/CopyMarkdown" xml:space="preserve"><value>Sao chép dưới dạng Markdown</value></data>
+  <data name="MarkdownRenderer/Command/CopyLink" xml:space="preserve"><value>Sao chép liên kết</value></data>
+  <data name="MarkdownRenderer/Command/CopyImage" xml:space="preserve"><value>Sao chép hình ảnh</value></data>
+  <data name="MarkdownRenderer/Command/CopyTable" xml:space="preserve"><value>Sao chép bảng</value></data>
+  <data name="MarkdownRenderer/Command/SelectAll" xml:space="preserve"><value>Chọn tất cả</value></data>
+  <data name="MarkdownRenderer/Command/CopyCode" xml:space="preserve"><value>Sao chép mã</value></data>
+  <data name="MarkdownRenderer/Selection/StartHandle" xml:space="preserve"><value>Núm điều khiển đầu vùng chọn</value></data>
+  <data name="MarkdownRenderer/Selection/EndHandle" xml:space="preserve"><value>Núm điều khiển cuối vùng chọn</value></data>
+  <data name="MarkdownRenderer/Selection/HandleHelp" xml:space="preserve"><value>Kéo để điều chỉnh vùng chọn. Dùng các phím mũi tên để điều chỉnh chính xác.</value></data>
+  <data name="MarkdownRenderer/Feedback/CodeCopied" xml:space="preserve"><value>Đã sao chép</value></data>
+  <data name="MarkdownRenderer/Image/Loading" xml:space="preserve"><value>Đang tải {0}...</value></data>
+  <data name="MarkdownRenderer/Image/Error" xml:space="preserve"><value>Không có hình ảnh: {0}</value></data>
+  <data name="MarkdownRenderer/Image/Name" xml:space="preserve"><value>Hình ảnh</value></data>
+  <data name="MarkdownRenderer/Task/Completed" xml:space="preserve"><value>Tác vụ đã hoàn thành</value></data>
+  <data name="MarkdownRenderer/Task/Incomplete" xml:space="preserve"><value>Tác vụ chưa hoàn thành</value></data>
+  <data name="MarkdownRenderer/Task/ReadOnly" xml:space="preserve"><value>Trạng thái tác vụ chỉ đọc</value></data>
+  <data name="MarkdownRenderer/Task/Toggle" xml:space="preserve"><value>Chuyển đổi trạng thái tác vụ</value></data>
+  <data name="MarkdownRenderer/Table/Name" xml:space="preserve"><value>Bảng</value></data>
+  <data name="MarkdownRenderer/List/Name" xml:space="preserve"><value>Danh sách</value></data>
+  <data name="MarkdownRenderer/EmbeddedContent/Name" xml:space="preserve"><value>Nội dung nhúng</value></data>
+  <data name="MarkdownRenderer/Diagram/Name" xml:space="preserve"><value>Sơ đồ</value></data>
+  <data name="MarkdownRenderer/Code/LanguageHelp" xml:space="preserve"><value>Ngôn ngữ: {0}</value></data>
+  <data name="MarkdownRenderer/Html/Details" xml:space="preserve"><value>Chi tiết</value></data>
+  <data name="MarkdownRenderer/Html/BudgetExceeded" xml:space="preserve"><value>Nội dung HTML bổ sung đã bị lược bỏ vì vượt quá giới hạn an toàn của trình kết xuất.</value></data>
+  <data name="MarkdownRenderer/Style/Body" xml:space="preserve"><value>Phần nội dung</value></data>
+  <data name="MarkdownRenderer/Style/Heading1" xml:space="preserve"><value>Tiêu đề 1</value></data>
+  <data name="MarkdownRenderer/Style/Heading2" xml:space="preserve"><value>Tiêu đề 2</value></data>
+  <data name="MarkdownRenderer/Style/Heading3" xml:space="preserve"><value>Tiêu đề 3</value></data>
+  <data name="MarkdownRenderer/Style/Heading4" xml:space="preserve"><value>Tiêu đề 4</value></data>
+  <data name="MarkdownRenderer/Style/Heading5" xml:space="preserve"><value>Tiêu đề 5</value></data>
+  <data name="MarkdownRenderer/Style/Heading6" xml:space="preserve"><value>Tiêu đề 6</value></data>
+  <data name="MarkdownRenderer/Style/CodeBlock" xml:space="preserve"><value>Khối mã</value></data>
+  <data name="MarkdownRenderer/Style/InlineCode" xml:space="preserve"><value>Mã nội tuyến</value></data>
+  <data name="MarkdownRenderer/Style/Quote" xml:space="preserve"><value>Trích dẫn</value></data>
+  <data name="MarkdownRenderer/Style/Link" xml:space="preserve"><value>Liên kết</value></data>
+  <data name="MarkdownRenderer/Style/Strong" xml:space="preserve"><value>Đậm</value></data>
+  <data name="MarkdownRenderer/Style/Emphasis" xml:space="preserve"><value>Nhấn mạnh</value></data>
+  <data name="MarkdownRenderer/Style/Strikethrough" xml:space="preserve"><value>Gạch ngang</value></data>
+  <data name="MarkdownRenderer/Style/Subscript" xml:space="preserve"><value>Chỉ số dưới</value></data>
+  <data name="MarkdownRenderer/Style/Superscript" xml:space="preserve"><value>Chỉ số trên</value></data>
+  <data name="MarkdownRenderer/Style/Inserted" xml:space="preserve"><value>Đã chèn</value></data>
+  <data name="MarkdownRenderer/Style/Marked" xml:space="preserve"><value>Đã đánh dấu</value></data>
+  <data name="MarkdownRenderer/Style/Abbreviation" xml:space="preserve"><value>Từ viết tắt</value></data>
+  <data name="MarkdownRenderer/Style/DefinitionTerm" xml:space="preserve"><value>Thuật ngữ định nghĩa</value></data>
+  <data name="MarkdownRenderer/Style/DefinitionDescription" xml:space="preserve"><value>Định nghĩa</value></data>
+  <data name="MarkdownRenderer/Style/Figure" xml:space="preserve"><value>Hình minh họa</value></data>
+  <data name="MarkdownRenderer/Style/FigureCaption" xml:space="preserve"><value>Chú thích hình</value></data>
+  <data name="MarkdownRenderer/Style/Diagram" xml:space="preserve"><value>Sơ đồ</value></data>
+  <data name="MarkdownRenderer/Style/ListMarker" xml:space="preserve"><value>Dấu đầu dòng</value></data>
+  <data name="MarkdownRenderer/Style/Table" xml:space="preserve"><value>Bảng</value></data>
+  <data name="MarkdownRenderer/Style/TableHeader" xml:space="preserve"><value>Tiêu đề bảng</value></data>
+  <data name="MarkdownRenderer/Style/TableCell" xml:space="preserve"><value>Ô bảng</value></data>
 </root>

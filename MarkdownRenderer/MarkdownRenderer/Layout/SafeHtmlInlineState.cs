@@ -2,24 +2,152 @@ using System;
 using System.Collections.Generic;
 using Markdig.Syntax.Inlines;
 using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Accessibility;
+using MarkdownRenderer.Hosting;
 
 namespace MarkdownRenderer.Layout;
 
 internal sealed class SafeHtmlInlineState
 {
     private readonly List<Scope> _scopes = [];
+    private readonly SafeHtmlRenderPolicy? _policy;
+    private int? _sourceStart;
+    private int _nodeCount;
+    private long _inputLength;
 
-    public InlineRun? Process(HtmlInline html, MarkdownLayoutContext context)
+    internal bool BudgetExceeded { get; private set; }
+
+    // Bound the source extent and retained leaf text, including legacy parsers
+    // without precise spans. Containers are counted as nodes, not duplicate text.
+    // Ordinary Markdown before the first HTML tag does not spend an HTML budget.
+    internal bool TryAcceptNode(Inline node)
     {
-        var span = new SourceSpan(html.Span.Start, html.Span.Length);
-        if (!SafeHtmlParser.TryParseSingleTag(html.Tag, out SafeHtmlTag tag))
+        if (_policy is null)
+            return true;
+        if (BudgetExceeded)
+            return false;
+        if (_sourceStart is null && node is HtmlInline)
+            _sourceStart = node.Span.Start;
+        if (_sourceStart is not { } start)
+            return true;
+
+        // Legacy parser configurations need not enable precise source spans.
+        // Retained literal lengths still enforce the ceiling on those paths.
+        _inputLength += node switch
         {
+            HtmlInline html => html.Tag.Length,
+            LiteralInline literal => literal.Content.Length,
+            CodeInline code => code.Content.Length,
+            LineBreakInline => 1,
+            ContainerInline => 0,
+            _ => System.Math.Max(0, node.Span.Length),
+        };
+        if (_inputLength > _policy.Limits.MaxInputLength ||
+            (long)node.Span.End - start + 1 > _policy.Limits.MaxInputLength ||
+            _nodeCount >= _policy.Limits.MaxNodeCount)
+        {
+            BudgetExceeded = true;
+            return false;
+        }
+        _nodeCount++;
+        return true;
+    }
+
+    internal SafeHtmlInlineState(SafeHtmlRenderPolicy? policy)
+    {
+        _policy = policy;
+    }
+
+    internal bool IsStandaloneImage(HtmlInline html, MarkdownLayoutContext context)
+    {
+        if (_policy is null || html.Tag.Length > _policy.Limits.MaxTagLength)
+            return false;
+
+        return SafeHtmlParser.TryParseSingleTag(
+                   html.Tag,
+                   _policy.Limits,
+                   context.CancellationToken,
+                   out SafeHtmlTag tag,
+                   out _) &&
+               tag.Name == "img" &&
+               tag.Kind is SafeHtmlTagKind.Opening or SafeHtmlTagKind.SelfClosing;
+    }
+
+    public InlineRun? Process(
+        HtmlInline html,
+        MarkdownLayoutContext context,
+        string? containingLinkUrl = null,
+        string? containingLinkTitle = null,
+        SourceSpan? containingSourceSpan = null)
+    {
+        SourceSpan span = containingSourceSpan ?? new SourceSpan(html.Span.Start, html.Span.Length);
+        if (_policy is null)
+        {
+            return new TextRun(html.Tag) { SourceSpan = span };
+        }
+
+        if (html.Tag.Length > _policy.Limits.MaxTagLength)
+        {
+            BudgetExceeded = true;
+            return null;
+        }
+
+        if (!SafeHtmlParser.TryParseSingleTag(
+                html.Tag,
+                _policy.Limits,
+                context.CancellationToken,
+                out SafeHtmlTag tag,
+                out bool scanBudgetExceeded))
+        {
+            if (scanBudgetExceeded)
+            {
+                BudgetExceeded = true;
+                return null;
+            }
+
             return new TextRun(html.Tag) { SourceSpan = span };
         }
 
         if (tag.Kind is SafeHtmlTagKind.Comment or SafeHtmlTagKind.Declaration)
         {
             return null;
+        }
+
+        if (tag.Kind == SafeHtmlTagKind.Opening &&
+            _scopes.Count >= _policy.Limits.MaxNestingDepth)
+        {
+            BudgetExceeded = true;
+            return null;
+        }
+
+        if (SafeHtmlParser.IsSuppressedElement(tag.Name))
+        {
+            if (_policy.RenderUnknownElementsLiterally)
+                return new TextRun(html.Tag) { SourceSpan = span };
+
+            if (tag.Kind == SafeHtmlTagKind.Closing)
+            {
+                PopThrough(tag.Name);
+            }
+            else if (tag.Kind == SafeHtmlTagKind.Opening)
+            {
+                _scopes.Add(new Scope(
+                    tag.Name,
+                    StyleKey: null,
+                    LinkUrl: null,
+                    LinkTitle: null,
+                    Suppressed: true,
+                    StyleAliases: Array.Empty<string>()));
+            }
+
+            return null;
+        }
+
+        if (!IsSupportedElement(tag.Name))
+        {
+            return _policy.RenderUnknownElementsLiterally
+                ? new TextRun(html.Tag) { SourceSpan = span }
+                : null;
         }
 
         if (tag.Kind == SafeHtmlTagKind.Closing)
@@ -32,7 +160,9 @@ internal sealed class SafeHtmlInlineState
         string? styleKey = GetStyleKey(tag.Name);
         string? linkUrl = null;
         string? linkTitle = null;
-        if (tag.Name == "a" && SafeHtmlParser.TryGetSafeLink(tag, out string safeLink))
+        if (_policy.EnableLinks &&
+            tag.Name == "a" &&
+            SafeHtmlParser.TryGetSafeLink(tag, out string safeLink))
         {
             linkUrl = safeLink;
             tag.TryGetAttribute("title", out linkTitle!);
@@ -40,7 +170,13 @@ internal sealed class SafeHtmlInlineState
 
         if (tag.Kind == SafeHtmlTagKind.Opening)
         {
-            _scopes.Add(new Scope(tag.Name, styleKey, linkUrl, linkTitle, suppressed));
+            _scopes.Add(new Scope(
+                tag.Name,
+                styleKey,
+                linkUrl,
+                linkTitle,
+                suppressed,
+                GetClassAliases(tag)));
         }
 
         if (suppressed)
@@ -58,35 +194,116 @@ internal sealed class SafeHtmlInlineState
             return new LineBreakRun(isHard: true) { SourceSpan = span };
         }
 
+        if (tag.Name == "input")
+        {
+            if (!tag.TryGetAttribute("type", out string type) ||
+                !type.Equals("checkbox", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            return TaskMarkerControlFactory.CreateReadOnlyRun(
+                context,
+                tag.TryGetAttribute("checked", out _),
+                span);
+        }
+
+        if (tag.Name is "video" or "audio")
+        {
+            SafeHtmlParser.TryGetSafeImageSource(tag, out string mediaSource);
+            string? posterSource = tag.TryGetAttribute("poster", out string poster) &&
+                SafeHtmlParser.TryNormalizeImageSource(poster, out string safePoster)
+                    ? safePoster
+                    : null;
+            string? accessibilityName = tag.TryGetAttribute("aria-label", out string ariaLabel) &&
+                !string.IsNullOrWhiteSpace(ariaLabel)
+                    ? ariaLabel
+                    : tag.TryGetAttribute("title", out string mediaTitle) &&
+                        !string.IsNullOrWhiteSpace(mediaTitle)
+                            ? mediaTitle
+                            : null;
+            SafeHtmlLength? mediaWidth = SafeHtmlParser.TryGetLength(tag, "width", out SafeHtmlLength parsedWidth)
+                ? parsedWidth
+                : null;
+            SafeHtmlLength? mediaHeight = SafeHtmlParser.TryGetLength(tag, "height", out SafeHtmlLength parsedHeight)
+                ? parsedHeight
+                : null;
+            Scope? containingScope = FindLinkScope();
+            return ApplyAliases(SafeHtmlMediaRunFactory.Create(
+                context,
+                tag.Name == "video",
+                accessibilityName,
+                mediaSource,
+                posterSource,
+                mediaWidth,
+                mediaHeight,
+                span,
+                _policy.EnableLinks ? containingLinkUrl ?? containingScope?.LinkUrl : null,
+                _policy.EnableLinks ? containingLinkTitle ?? containingScope?.LinkTitle : null));
+        }
+
         if (tag.Name != "img")
         {
             return null;
         }
 
-        string alt = tag.TryGetAttribute("alt", out string altValue) ? altValue : "image";
-        if (!SafeHtmlParser.TryGetSafeImageSource(tag, out string source))
+        bool hasExplicitAlt = tag.TryGetAttribute("alt", out string altValue);
+        string alt = hasExplicitAlt
+            ? altValue
+            : SafeHtmlParser.ResolveMissingImageAlternative(
+                tag.TryGetAttribute("src", out string sourceAttribute) ? sourceAttribute : string.Empty,
+                context.ResolveString(MarkdownStringKeys.ImageName, MarkdownLocalizedStrings.ImageName));
+        if (!_policy.EnableImages)
         {
-            return string.IsNullOrWhiteSpace(alt)
+            InlineRun? fallback = string.IsNullOrWhiteSpace(alt)
                 ? null
                 : Apply(new TextRun(alt) { SourceSpan = span });
+            return ApplyContainingLink(fallback, containingLinkUrl, containingLinkTitle);
+        }
+
+        if (!SafeHtmlParser.TryGetSafeImageSource(tag, out string source))
+        {
+            InlineRun? fallback = string.IsNullOrWhiteSpace(alt)
+                ? null
+                : Apply(new TextRun(alt) { SourceSpan = span });
+            return ApplyContainingLink(fallback, containingLinkUrl, containingLinkTitle);
         }
 
         tag.TryGetAttribute("title", out string title);
         SafeHtmlParser.TryGetLength(tag, "width", out SafeHtmlLength width);
         SafeHtmlParser.TryGetLength(tag, "height", out SafeHtmlLength height);
         Scope? link = FindLinkScope();
-        return new InlineImageRun(
+        return ApplyAliases(new InlineImageRun(
             context,
-            string.IsNullOrWhiteSpace(alt) ? "image" : alt,
+            alt,
             source,
             string.IsNullOrWhiteSpace(title) ? null : title,
-            link?.LinkUrl,
-            link?.LinkTitle,
+            _policy.EnableLinks ? containingLinkUrl ?? link?.LinkUrl : null,
+            _policy.EnableLinks ? containingLinkTitle ?? link?.LinkTitle : null,
             width.Value > 0 ? width : null,
             height.Value > 0 ? height : null)
         {
             SourceSpan = span,
-        };
+        });
+    }
+
+    private InlineRun? ApplyContainingLink(
+        InlineRun? run,
+        string? containingLinkUrl,
+        string? containingLinkTitle)
+    {
+        if (run is null ||
+            !_policy!.EnableLinks ||
+            string.IsNullOrWhiteSpace(containingLinkUrl) ||
+            run is LinkRun)
+        {
+            return run;
+        }
+
+        return ApplyAliases(new LinkRun(run.Text, containingLinkUrl, containingLinkTitle)
+        {
+            SourceSpan = run.SourceSpan,
+        });
     }
 
     public InlineRun? Apply(InlineRun? run)
@@ -105,21 +322,21 @@ internal sealed class SafeHtmlInlineState
                 existingLink.IsSuperscript = true;
             }
 
-            return existingLink;
+            return ApplyAliases(existingLink);
         }
 
         if (link?.LinkUrl is { Length: > 0 } href && run is not InlineImageRun)
         {
-            return new LinkRun(run.Text, href, link.LinkTitle)
+            return ApplyAliases(new LinkRun(run.Text, href, link.LinkTitle)
             {
                 SourceSpan = run.SourceSpan,
                 IsSuperscript = styleKey == Theming.MarkdownElementKeys.Superscript,
-            };
+            });
         }
 
         if (run is not TextRun || string.IsNullOrEmpty(styleKey))
         {
-            return run;
+            return ApplyAliases(run);
         }
 
         InlineRun styled = styleKey switch
@@ -135,7 +352,7 @@ internal sealed class SafeHtmlInlineState
             _ => run,
         };
         styled.SourceSpan = run.SourceSpan;
-        return styled;
+        return ApplyAliases(styled);
     }
 
     private bool IsSuppressed
@@ -180,6 +397,52 @@ internal sealed class SafeHtmlInlineState
         return null;
     }
 
+    private IReadOnlyList<string> GetClassAliases(SafeHtmlTag tag)
+    {
+        if (!tag.TryGetAttribute("class", out string value) || string.IsNullOrWhiteSpace(value))
+            return Array.Empty<string>();
+
+        var aliases = new List<string>();
+        foreach (string token in value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (_policy!.IsStyleClassAllowed(token))
+                aliases.Add(Theming.MarkdownElementKeys.Class(token));
+        }
+
+        return aliases.Count == 0 ? Array.Empty<string>() : aliases.ToArray();
+    }
+
+    private InlineRun ApplyAliases(InlineRun run)
+    {
+        int aliasCount = run.StyleAliases.Count;
+        foreach (Scope scope in _scopes)
+            aliasCount += scope.StyleAliases.Count;
+        if (aliasCount == 0)
+            return run;
+
+        var aliases = new string[aliasCount];
+        int written = 0;
+        foreach (Scope scope in _scopes)
+        {
+            foreach (string alias in scope.StyleAliases)
+                aliases[written++] = alias;
+        }
+        foreach (string alias in run.StyleAliases)
+            aliases[written++] = alias;
+        run.SetStyleAliases(aliases);
+        return run;
+    }
+
+    private static bool IsSupportedElement(string name) => name is
+        "a" or "address" or "article" or "aside" or "b" or "blockquote" or "br" or
+        "caption" or "center" or "cite" or "code" or "col" or "colgroup" or "del" or
+        "details" or "div" or "em" or "figcaption" or "figure" or "footer" or "h1" or
+        "h2" or "h3" or "h4" or "h5" or "h6" or "header" or "hr" or "i" or "img" or
+        "ins" or "kbd" or "li" or "main" or "mark" or "nav" or "ol" or "p" or
+        "audio" or "input" or "picture" or "pre" or "s" or "samp" or "section" or "small" or "source" or
+        "span" or "strike" or "strong" or "sub" or "summary" or "sup" or "table" or
+        "tbody" or "td" or "tfoot" or "th" or "thead" or "tr" or "u" or "ul" or "var" or "video";
+
     private void PopThrough(string name)
     {
         for (int index = _scopes.Count - 1; index >= 0; index--)
@@ -212,5 +475,6 @@ internal sealed class SafeHtmlInlineState
         string? StyleKey,
         string? LinkUrl,
         string? LinkTitle,
-        bool Suppressed);
+        bool Suppressed,
+        IReadOnlyList<string> StyleAliases);
 }

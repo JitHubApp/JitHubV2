@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <RootNamespace>MarkdownRenderer.Html</RootNamespace>
+    <AssemblyName>MarkdownRenderer.Html</AssemblyName>
+    <UseWinUI>true</UseWinUI>
+    <WinUISDKReferences>false</WinUISDKReferences>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <DefineConstants>$(DefineConstants);MARKDOWNRENDERER_HTML</DefineConstants>
+    <LangVersion>latest</LangVersion>
+    <Platforms>x86;x64;ARM64</Platforms>
+    <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
+    <Platform Condition="'$(Platform)' == '' or '$(Platform)' == 'AnyCPU' or '$(Platform)' == 'Any CPU'">x64</Platform>
+    <!-- This pack contains managed IL only. One RID-neutral package must be
+         consumable by x86, x64, and ARM64 applications. -->
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <IsTrimmable>true</IsTrimmable>
+    <IsAotCompatible>true</IsAotCompatible>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <EnableSingleFileAnalyzer>true</EnableSingleFileAnalyzer>
+    <EnableAotAnalyzer>true</EnableAotAnalyzer>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <PackageId>MarkdownRenderer.Html</PackageId>
+    <Version>0.1.0-preview.1</Version>
+    <Authors>nerocui</Authors>
+    <Description>Budgeted native safe-HTML parsing and Win2D rendering for MarkdownRenderer, with no browser engine or executable content.</Description>
+    <PackageTags>markdown;winui;html;security;windows</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/JitHubApp/JitHubV2</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageProjectUrl>https://github.com/JitHubApp/JitHubV2/tree/main/docs/markdown-renderer</PackageProjectUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>icon-192.png</PackageIcon>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer.csproj" />
+    <!-- Shared extension-child construction is compiled internally so the safe
+         HTML renderer can lower GitHub Markdown fragments without introducing a
+         package dependency from MarkdownRenderer.Html to MarkdownRenderer.Gfm. -->
+    <Compile Include="..\MarkdownRenderer.Gfm\GfmChildBuilder.cs" Link="Internal\GfmChildBuilder.cs" />
+    <Compile Include="..\MarkdownRenderer.Gfm\Renderers\HtmlBlockRenderer.cs" Link="Renderers\HtmlBlockRenderer.cs" />
+    <None Include="README.md" Pack="true" PackagePath="" />
+    <None Include="..\..\LICENSE" Pack="true" PackagePath="" Visible="false" />
+    <None Include="..\..\JitHub.Web\wwwroot\icon-192.png" Pack="true" PackagePath="icon-192.png" Visible="false" />
+  </ItemGroup>
+</Project>

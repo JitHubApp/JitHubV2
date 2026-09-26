@@ -196,7 +196,8 @@ public sealed partial class RepoFileTreeViewModel : ObservableObject
         string @ref,
         long sourceGeneration,
         bool sourceIsAuthoritative,
-        CancellationToken ct) =>
+        CancellationToken ct,
+        bool reconcileTruncatedRoot = true) =>
         LoadCoreAsync(
             prepared,
             owner,
@@ -204,7 +205,8 @@ public sealed partial class RepoFileTreeViewModel : ObservableObject
             @ref,
             sourceGeneration,
             sourceIsAuthoritative,
-            ct);
+            ct,
+            reconcileTruncatedRoot);
 
     private async Task<bool> LoadCoreAsync(
         PreparedTree prepared,
@@ -213,7 +215,8 @@ public sealed partial class RepoFileTreeViewModel : ObservableObject
         string @ref,
         long sourceGeneration,
         bool sourceIsAuthoritative,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool reconcileTruncatedRoot)
     {
         RepoTree tree = prepared.Tree;
         bool contextChanged =
@@ -230,6 +233,20 @@ public sealed partial class RepoFileTreeViewModel : ObservableObject
             MergeNonAuthoritativeTree(RootNodes, tree.Root.Children, parent: null);
             IsTruncated |= tree.Truncated;
             NotifyTreeChanged();
+            if (tree.Truncated && reconcileTruncatedRoot)
+            {
+                long currentContextGeneration = Volatile.Read(ref _contextGeneration);
+                CancellationScope directoryScope = Volatile.Read(ref _directoryScope);
+                CancellationTokenSource rootRequest = directoryScope.CreateLinkedSource(ct);
+                _rootReconciliationTask = ReconcileRootObservedAsync(
+                    currentContextGeneration,
+                    owner,
+                    repo,
+                    @ref,
+                    rootRequest);
+                OwnReconciliationTask(_rootReconciliationTask);
+            }
+
             return true;
         }
 
@@ -274,7 +291,7 @@ public sealed partial class RepoFileTreeViewModel : ObservableObject
                 tree.Root.Children,
                 parent: null,
                 tree.Truncated ? TreeApplyMode.PartialRecursive : TreeApplyMode.CompleteRecursive,
-                replaceTarget: contextChanged || !tree.Truncated,
+                replaceTarget: contextChanged || !tree.Truncated || tree.RootIsAuthoritative,
                 reuseExisting: !contextChanged,
                 prepared.NodesByPath,
                 budget,
@@ -285,15 +302,19 @@ public sealed partial class RepoFileTreeViewModel : ObservableObject
             : FindByPath(RootNodes, selectedPath);
 
         IsTruncated = tree.Truncated;
-        IsRootAuthoritative = !tree.Truncated;
+        IsRootAuthoritative = tree.RootIsAuthoritative || !tree.Truncated;
         RememberCommittedSourceGeneration(sourceGeneration);
-        if (!tree.Truncated)
+        if (tree.RootIsAuthoritative)
+        {
+            RememberDirectoryVersion(string.Empty, sourceGeneration);
+        }
+        else if (!tree.Truncated)
         {
             RememberCompleteTreeVersion(prepared, sourceGeneration);
         }
         NotifyTreeChanged();
 
-        if (tree.Truncated)
+        if (tree.Truncated && reconcileTruncatedRoot)
         {
             ct.ThrowIfCancellationRequested();
             CancellationTokenSource rootRequest = nextDirectoryScope.CreateLinkedSource(ct);
@@ -322,6 +343,28 @@ public sealed partial class RepoFileTreeViewModel : ObservableObject
             lock (_reconciliationTaskGate)
             {
                 return _ownedReconciliationTask;
+            }
+        }
+    }
+
+    internal async Task AwaitPendingReconciliationSettledAsync(CancellationToken token)
+    {
+        while (true)
+        {
+            Task pending;
+            lock (_reconciliationTaskGate)
+            {
+                pending = _ownedReconciliationTask;
+            }
+
+            await pending.WaitAsync(token).ConfigureAwait(false);
+
+            lock (_reconciliationTaskGate)
+            {
+                if (ReferenceEquals(pending, _ownedReconciliationTask))
+                {
+                    return;
+                }
             }
         }
     }

@@ -7,6 +7,22 @@ namespace JitHub.WinUI.Tests.Services;
 public class GitHubMarkdownImageUrlResolverTests
 {
     [Fact]
+    public void TryResolve_ExclamationDirectoryPreservesRepositoryAssetPath()
+    {
+        var documentSource = new MarkdownRenderer.Images.MarkdownDocumentSource(
+            "repository-readme:owner/repository:main",
+            "owner", "repository", "main", "README.md");
+
+        Assert.True(GitHubMarkdownImageUrlResolver.TryResolve(
+            "!/tags/implemented.svg", documentSource,
+            out GitHubMarkdownImageReference reference));
+        Assert.Equal("!/tags/implemented.svg", reference.Path);
+        Assert.Equal(
+            "https://raw.githubusercontent.com/owner/repository/main/%21/tags/implemented.svg",
+            GitHubMarkdownImageUrlResolver.CreateRawUri(reference).AbsoluteUri);
+    }
+
+    [Fact]
     public void TryResolve_RelativeImage_UsesMarkdownFileDirectory()
     {
         var baseUri = new Uri("https://github.com/octo/repo/blob/main/docs/readme.md");
@@ -37,6 +53,45 @@ public class GitHubMarkdownImageUrlResolverTests
 
         Assert.True(resolved);
         Assert.Equal("docs/images/logo.svg", reference.Path);
+    }
+
+    [Fact]
+    public void TryResolve_ParentBeyondRepositoryRoot_UsesGitHubAssetBranchConvention()
+    {
+        var documentSource = new MarkdownRenderer.Images.MarkdownDocumentSource(
+            "repository-file:jesseduffield/lazygit:README.md",
+            "jesseduffield",
+            "lazygit",
+            "master",
+            "README.md");
+
+        bool resolved = GitHubMarkdownImageUrlResolver.TryResolve(
+            "../assets/demo.gif",
+            documentSource,
+            out GitHubMarkdownImageReference reference);
+
+        Assert.True(resolved);
+        Assert.Equal("assets", reference.Ref);
+        Assert.Equal("demo.gif", reference.Path);
+        Assert.Equal(
+            "https://raw.githubusercontent.com/jesseduffield/lazygit/assets/demo.gif",
+            GitHubMarkdownImageUrlResolver.CreateRawUri(reference).ToString());
+    }
+
+    [Fact]
+    public void TryResolve_MultipleParentsBeyondRepositoryRoot_IsRejected()
+    {
+        var documentSource = new MarkdownRenderer.Images.MarkdownDocumentSource(
+            "repository-file:octo/repo:README.md",
+            "octo",
+            "repo",
+            "main",
+            "README.md");
+
+        Assert.False(GitHubMarkdownImageUrlResolver.TryResolve(
+            "../../outside/image.png",
+            documentSource,
+            out _));
     }
 
     [Fact]
@@ -124,6 +179,56 @@ public class GitHubMarkdownImageUrlResolverTests
         Assert.Equal("repo", reference.Repository);
         Assert.Equal("main", reference.Ref);
         Assert.Equal("assets/logo.png", reference.Path);
+    }
+
+    [Fact]
+    public void GitLfsPointer_RecognizesCanonicalPointer_AndBuildsTrustedMediaRoute()
+    {
+        byte[] pointer = System.Text.Encoding.UTF8.GetBytes(
+            "version https://git-lfs.github.com/spec/v1\n" +
+            "oid sha256:db80c1464c7cbde6ef77682431a3baec4ba27b94485dea0b341623da7e4d1fad\n" +
+            "size 591868\n");
+        var reference = new GitHubMarkdownImageReference(
+            "microsoft",
+            "autogen",
+            "027ecf0a379bcc1d09956d46d12d44a3ad9cee14",
+            "autogen-landing.jpg",
+            new Uri("https://github.com/microsoft/autogen/blob/main/autogen-landing.jpg"));
+
+        Assert.True(GitLfsPointer.IsPointer(pointer));
+        Assert.Equal(
+            "https://github.com/microsoft/autogen/raw/027ecf0a379bcc1d09956d46d12d44a3ad9cee14/autogen-landing.jpg",
+            GitHubMarkdownImageUrlResolver.CreateGitHubRawRouteUri(reference).AbsoluteUri);
+    }
+
+    [Theory]
+    [InlineData("version https://git-lfs.github.com/spec/v1\noid sha256:not-a-hash\nsize 1\n")]
+    [InlineData("version https://git-lfs.github.com/spec/v1\noid sha256:db80c1464c7cbde6ef77682431a3baec4ba27b94485dea0b341623da7e4d1fad\nsize -1\n")]
+    [InlineData("ordinary image bytes")]
+    public void GitLfsPointer_RejectsMalformedOrUnrelatedContent(string value)
+    {
+        Assert.False(GitLfsPointer.IsPointer(System.Text.Encoding.UTF8.GetBytes(value)));
+    }
+
+    [Theory]
+    [InlineData("heads", "main")]
+    [InlineData("tags", "v2.1.0")]
+    public void TryResolve_CanonicalRawGitHubRef_KeepsTheQualifiedRef(
+        string refKind,
+        string refName)
+    {
+        bool resolved = GitHubMarkdownImageUrlResolver.TryResolve(
+            $"https://raw.githubusercontent.com/octo/repo/refs/{refKind}/{refName}/assets/logo.png",
+            null,
+            null,
+            out GitHubMarkdownImageReference reference);
+
+        Assert.True(resolved);
+        Assert.Equal($"refs/{refKind}/{refName}", reference.Ref);
+        Assert.Equal("assets/logo.png", reference.Path);
+        Assert.Equal(
+            $"https://raw.githubusercontent.com/octo/repo/refs/{refKind}/{refName}/assets/logo.png",
+            GitHubMarkdownImageUrlResolver.CreateRawUri(reference).ToString());
     }
 
     [Fact]

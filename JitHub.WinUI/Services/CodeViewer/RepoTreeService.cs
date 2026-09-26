@@ -2,7 +2,11 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Linq;
+using System.Net;
+using System.Net.Http;
+using System.Runtime.ExceptionServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -18,6 +22,7 @@ public sealed class RepoTreeService : IRepoTreeService
     private readonly IGitHubRepoCodeQueryService _queryService;
     private readonly IAuthService _authService;
     private readonly IAccountService _accountService;
+    private readonly IGitHubClientService? _gitHubClientService;
     private readonly object _treeCacheGate = new();
     private readonly Dictionary<string, LinkedListNode<TreeMemoryEntry>> _treeCache = new(StringComparer.Ordinal);
     private readonly LinkedList<TreeMemoryEntry> _treeLru = new();
@@ -27,11 +32,13 @@ public sealed class RepoTreeService : IRepoTreeService
     public RepoTreeService(
         IGitHubRepoCodeQueryService queryService,
         IAuthService authService,
-        IAccountService accountService)
+        IAccountService accountService,
+        IGitHubClientService? gitHubClientService = null)
     {
         _queryService = queryService;
         _authService = authService;
         _accountService = accountService;
+        _gitHubClientService = gitHubClientService;
     }
 
     public async Task<RepoCodeLoadResult<RepoTree>> LoadTreeAsync(
@@ -247,14 +254,32 @@ public sealed class RepoTreeService : IRepoTreeService
         Task.Run(
             async () =>
             {
-                CachedResult<GitHubTree> result = await _queryService.GetTreeAsync(
-                    token,
-                    userId,
-                    owner,
-                    name,
-                    refOrSha,
-                    fetchPolicy,
-                    ct).ConfigureAwait(false);
+                CachedResult<GitHubTree> result;
+                try
+                {
+                    result = await _queryService.GetTreeAsync(
+                        token,
+                        userId,
+                        owner,
+                        name,
+                        refOrSha,
+                        fetchPolicy,
+                        ct).ConfigureAwait(false);
+                }
+                catch (GitHubRateLimitException exception) when (CanRetryPublicDataAnonymously(exception, token))
+                {
+                    result = CreateFreshResult(await ExecuteAnonymousFallbackAsync(
+                        exception,
+                        cancellationToken => _gitHubClientService!.GetTreeAsync(
+                            GitHubAuthenticationConstants.PublicAccessToken,
+                            owner,
+                            name,
+                            refOrSha,
+                            recursive: true,
+                            cancellationToken),
+                        ct).ConfigureAwait(false));
+                }
+
                 GitHubTree tree = result.Value ?? throw new InvalidOperationException("GitHub returned no repository tree.");
                 return MapResult(result, BuildRepoTree(tree));
             },
@@ -371,15 +396,34 @@ public sealed class RepoTreeService : IRepoTreeService
         QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst)
     {
         (string token, string userId) = GetAuthenticationContext();
-        CachedResult<GitHubRepositoryContent[]> result = await _queryService.GetDirectoryAsync(
-            token,
-            userId,
-            owner,
-            name,
-            path,
-            refOrSha,
-            fetchPolicy,
-            ct).ConfigureAwait(false);
+        CachedResult<GitHubRepositoryContent[]> result;
+        try
+        {
+            result = await _queryService.GetDirectoryAsync(
+                token,
+                userId,
+                owner,
+                name,
+                path,
+                refOrSha,
+                fetchPolicy,
+                ct).ConfigureAwait(false);
+        }
+        catch (GitHubRateLimitException exception) when (CanRetryPublicDataAnonymously(exception, token))
+        {
+            IReadOnlyList<GitHubRepositoryContent> publicContents = await ExecuteAnonymousFallbackAsync(
+                exception,
+                cancellationToken => _gitHubClientService!.GetRepositoryContentsAsync(
+                    GitHubAuthenticationConstants.PublicAccessToken,
+                    owner,
+                    name,
+                    path,
+                    refOrSha,
+                    cancellationToken),
+                ct).ConfigureAwait(false);
+            result = CreateFreshResult(publicContents.ToArray());
+        }
+
         GitHubRepositoryContent[] contents = result.Value ?? [];
         IReadOnlyList<RepoTreeNode> nodes = contents
             .Select(static content => new RepoTreeNode
@@ -394,6 +438,99 @@ public sealed class RepoTreeService : IRepoTreeService
             .ThenBy(static node => node.Name, StringComparer.OrdinalIgnoreCase)
             .ToArray();
         return MapResult(result, nodes);
+    }
+
+    public async Task<RepoCodeLoadResult<RepoReadmeFile>?> LoadReadmeAsync(
+        string owner,
+        string name,
+        string refOrSha,
+        CancellationToken ct,
+        QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst)
+    {
+        (string token, string userId) = GetAuthenticationContext();
+        string readmeToken = token;
+        bool sourceCameFromRawFallback = false;
+        CachedResult<GitHubRepositoryContent> result;
+        try
+        {
+            result = await _queryService.GetReadmeAsync(
+                token,
+                userId,
+                owner,
+                name,
+                refOrSha,
+                fetchPolicy,
+                ct).ConfigureAwait(false);
+        }
+        catch (GitHubApiException exception) when (exception.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+        catch (GitHubRateLimitException exception) when (CanRecoverReadmeFromPublicRaw(exception))
+        {
+            (GitHubRepositoryContent Content, bool CameFromRaw) recovered =
+                await RecoverPublicReadmeAsync(
+                    exception,
+                    token,
+                    owner,
+                    name,
+                    refOrSha,
+                    ct).ConfigureAwait(false);
+
+            result = CreateFreshResult(recovered.Content);
+            sourceCameFromRawFallback = recovered.CameFromRaw;
+            readmeToken = GitHubAuthenticationConstants.PublicAccessToken;
+        }
+
+        GitHubRepositoryContent content = result.Value
+            ?? throw new InvalidOperationException("GitHub returned no repository README.");
+        byte[] bytes = await Task.Run(
+            () => DecodeBlob(content.Content, content.Encoding),
+            ct).ConfigureAwait(false);
+        bool isBinary = IsBinaryContent(bytes);
+        string? renderedHtml = null;
+        string readmePath = content.Path ?? string.Empty;
+        if (!isBinary &&
+            _gitHubClientService is not null &&
+            FilePreviewResolver.IsGitHubReadmePath(readmePath) &&
+            !sourceCameFromRawFallback)
+        {
+            try
+            {
+                renderedHtml = GitHubRenderedReadmeHtmlNormalizer.NormalizeForMarkdownPipeline(
+                    await GetRenderedReadmeHtmlWithPublicFallbackAsync(
+                        readmeToken,
+                        owner,
+                        name,
+                        refOrSha,
+                        ct).ConfigureAwait(false));
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                // Rendered HTML improves GitHub-specific fidelity but is not required
+                // to display source Markdown. A transport timeout must not suppress a
+                // successfully downloaded README.
+            }
+            catch (Exception renderedFailure) when (IsOptionalRenderedReadmeFailure(renderedFailure))
+            {
+                // Source Markdown remains authoritative and the renderer resolves its
+                // relative links and images directly when GitHub's HTML representation
+                // is unavailable or over budget.
+            }
+        }
+        RepoReadmeFile readme = new(
+            content.Name ?? string.Empty,
+            readmePath,
+            new RepoFileBlob
+            {
+                Sha = content.Sha,
+                Encoding = content.Encoding,
+                Bytes = bytes,
+                Text = isBinary ? null : DecodeText(bytes),
+                IsBinary = isBinary
+            },
+            renderedHtml);
+        return MapResult(result, readme);
     }
 
     public async Task<RepoCodeLoadResult<RepoFileBlob>> LoadBlobAsync(
@@ -419,15 +556,32 @@ public sealed class RepoTreeService : IRepoTreeService
         QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst)
     {
         (string token, string userId) = GetAuthenticationContext();
-        CachedResult<GitHubBlob> result = await _queryService.GetBlobAsync(
-            token,
-            userId,
-            owner,
-            name,
-            sha,
-            priority,
-            fetchPolicy,
-            ct).ConfigureAwait(false);
+        CachedResult<GitHubBlob> result;
+        try
+        {
+            result = await _queryService.GetBlobAsync(
+                token,
+                userId,
+                owner,
+                name,
+                sha,
+                priority,
+                fetchPolicy,
+                ct).ConfigureAwait(false);
+        }
+        catch (GitHubRateLimitException exception) when (CanRetryPublicDataAnonymously(exception, token))
+        {
+            result = CreateFreshResult(await ExecuteAnonymousFallbackAsync(
+                exception,
+                cancellationToken => _gitHubClientService!.GetBlobAsync(
+                    GitHubAuthenticationConstants.PublicAccessToken,
+                    owner,
+                    name,
+                    sha,
+                    cancellationToken),
+                ct).ConfigureAwait(false));
+        }
+
         GitHubBlob blob = result.Value ?? throw new InvalidOperationException("GitHub returned no repository blob.");
         byte[] bytes = await Task.Run(() => DecodeBlob(blob.Content, blob.Encoding), ct).ConfigureAwait(false);
         bool isBinary = IsBinaryContent(bytes);
@@ -440,6 +594,148 @@ public sealed class RepoTreeService : IRepoTreeService
             IsBinary = isBinary
         };
         return MapResult(result, mapped);
+    }
+
+    internal static bool IsAnonymousPublicDataFallbackCandidate(GitHubRateLimitException exception)
+    {
+        if (exception.RetryAfter is not null ||
+            exception.StatusCode is not (HttpStatusCode.Forbidden or HttpStatusCode.TooManyRequests))
+        {
+            return false;
+        }
+
+        bool authenticationPolicyDenial =
+            exception.RateLimitRemaining is not 0 &&
+            (exception.Message.Contains("IP allow list", StringComparison.OrdinalIgnoreCase) ||
+             exception.Message.Contains("Resource not accessible by integration", StringComparison.OrdinalIgnoreCase));
+        bool authenticatedQuotaExhausted =
+            exception.Message.Contains("API rate limit exceeded", StringComparison.OrdinalIgnoreCase) &&
+            exception.RateLimitRemaining is null or 0;
+        return authenticationPolicyDenial || authenticatedQuotaExhausted;
+    }
+
+    private bool CanRetryPublicDataAnonymously(GitHubRateLimitException exception, string token) =>
+        _gitHubClientService is not null &&
+        !GitHubAuthenticationConstants.IsPublicAccessToken(token) &&
+        IsAnonymousPublicDataFallbackCandidate(exception);
+
+    private bool CanRecoverReadmeFromPublicRaw(GitHubRateLimitException exception) =>
+        _gitHubClientService is not null &&
+        IsAnonymousPublicDataFallbackCandidate(exception);
+
+    private async Task<(GitHubRepositoryContent Content, bool CameFromRaw)> RecoverPublicReadmeAsync(
+        GitHubRateLimitException originalFailure,
+        string token,
+        string owner,
+        string name,
+        string refOrSha,
+        CancellationToken cancellationToken)
+    {
+        if (!GitHubAuthenticationConstants.IsPublicAccessToken(token))
+        {
+            try
+            {
+                GitHubRepositoryContent publicContent = await _gitHubClientService!.GetReadmeAsync(
+                    GitHubAuthenticationConstants.PublicAccessToken,
+                    owner,
+                    name,
+                    refOrSha,
+                    cancellationToken).ConfigureAwait(false);
+                return (publicContent, false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (OperationCanceledException)
+            {
+                // A transport timeout is recoverable; caller cancellation was
+                // handled above and must never start additional network work.
+            }
+            catch (Exception exception) when (IsRecoverableReadRepresentationFailure(exception))
+            {
+                // Continue with the public CDN fallback below.
+            }
+        }
+
+        // Anonymous REST traffic shares a small, IP-scoped quota on hosted
+        // runners and enterprise networks. raw.githubusercontent.com serves
+        // the same public, immutable source without that API quota. The client
+        // probes only GitHub's canonical README locations/names and applies the
+        // same bounded streaming limit as rendered README responses.
+        GitHubRepositoryContent? rawContent = await _gitHubClientService!
+            .GetPublicReadmeSourceAsync(owner, name, refOrSha, cancellationToken)
+            .ConfigureAwait(false);
+        if (rawContent is null)
+        {
+            ExceptionDispatchInfo.Capture(originalFailure).Throw();
+            throw new InvalidOperationException("Unreachable after rethrowing the original README failure.");
+        }
+
+        return (rawContent, true);
+    }
+
+    private static bool IsOptionalRenderedReadmeFailure(Exception exception) =>
+        IsRecoverableReadRepresentationFailure(exception);
+
+    private static bool IsRecoverableReadRepresentationFailure(Exception exception) =>
+        exception is GitHubApiException or HttpRequestException or InvalidDataException or FormatException or NotSupportedException;
+
+    private async Task<string> GetRenderedReadmeHtmlWithPublicFallbackAsync(
+        string token,
+        string owner,
+        string name,
+        string refOrSha,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _gitHubClientService!.GetRenderedReadmeHtmlAsync(
+                token,
+                owner,
+                name,
+                refOrSha,
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (GitHubRateLimitException exception) when (CanRetryPublicDataAnonymously(exception, token))
+        {
+            return await ExecuteAnonymousFallbackAsync(
+                exception,
+                ct => _gitHubClientService!.GetRenderedReadmeHtmlAsync(
+                    GitHubAuthenticationConstants.PublicAccessToken,
+                    owner,
+                    name,
+                    refOrSha,
+                    ct),
+                cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private static CachedResult<T> CreateFreshResult<T>(T value)
+        where T : class
+    {
+        DateTimeOffset fetchedAt = DateTimeOffset.UtcNow;
+        return new CachedResult<T>(value, CacheState.Fresh, fetchedAt, fetchedAt.AddHours(1));
+    }
+
+    private static async Task<T> ExecuteAnonymousFallbackAsync<T>(
+        GitHubRateLimitException authenticatedFailure,
+        Func<CancellationToken, Task<T>> operation,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await operation(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            ExceptionDispatchInfo.Capture(authenticatedFailure).Throw();
+            throw;
+        }
     }
 
     private (string Token, string UserId) GetAuthenticationContext()

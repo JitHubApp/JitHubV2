@@ -439,10 +439,12 @@ appsettings.development.json
 !JitHub.WinUI/appsettings.json
 **/dist
 **/output
+**/native/target/
 JitHub.WinUI/artifacts/
 JitHub.WinUI/JitHub.WinUI/
 .tools/
 **/obj-auth/
+**/obj-public-api/
 **/obj-ris*/
 **/obj-security/
 JitHub.WinUI.Tests/artifacts/

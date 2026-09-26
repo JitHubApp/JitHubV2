@@ -6,6 +6,7 @@ using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using JitHub.Models;
 using JitHub.Services;
+using JitHub.Services.Markdown;
 using JitHub.WinUI.Helpers;
 using JitHub.WinUI.Performance;
 using Microsoft.UI.Composition.SystemBackdrops;
@@ -34,6 +35,7 @@ public sealed partial class MainWindow : Window
     private const uint ImageIcon = 1;
     private const uint LrLoadFromFile = 0x00000010;
     private const uint WmClose = 0x0010;
+    private const uint WmFontChange = 0x001D;
     private const uint WmSetIcon = 0x0080;
     private const uint WmKeyDown = 0x0100;
     private const uint WmSysKeyDown = 0x0104;
@@ -756,18 +758,76 @@ public sealed partial class MainWindow : Window
 
     private async Task DrainDiagnosticsAndCloseAsync()
     {
+        MarkdownLifecycleAutomationBridge.SignalShutdownStage("window-close-requested");
         try
         {
             await DismissActiveContentDialogBeforeCloseAsync();
+            MarkdownLifecycleAutomationBridge.SignalShutdownStage("content-dialog-dismissed");
             App app = (App)Application.Current;
             app.QueueDiagnosticsCloseProbeIfRequested();
             await app.ShutdownBackgroundTasksAsync(TimeSpan.FromSeconds(5));
+            MarkdownLifecycleAutomationBridge.SignalShutdownStage("background-tasks-drained");
             await app.ShutdownDiagnosticsAsync(TimeSpan.FromSeconds(5));
+            MarkdownLifecycleAutomationBridge.SignalShutdownStage("diagnostics-drained");
         }
         finally
         {
+            // Markdown controls borrow the process-wide highlighter, engine,
+            // performance session, and SVG worker. Remove the page tree first:
+            // its Unloaded handlers dispose the controls and detach scroll
+            // callbacks before their shared providers are retired.
+            try
+            {
+                await UnloadPageContentBeforeMarkdownShutdownAsync();
+            }
+            catch (Exception exception)
+            {
+                App.LogHandledException(exception, "markdown-view-shutdown");
+            }
+
+            MarkdownLifecycleAutomationBridge.SignalShutdownStage("markdown-shutdown-started");
+            try
+            {
+                await JitHubMarkdownRuntime.ShutdownAsync();
+                MarkdownLifecycleAutomationBridge.SignalShutdownStage("markdown-shutdown-completed");
+            }
+            catch (Exception exception)
+            {
+                MarkdownLifecycleAutomationBridge.SignalShutdownStage("markdown-shutdown-failed");
+                App.LogHandledException(exception, "markdown-runtime-shutdown");
+            }
+
             _allowCloseAfterDiagnostics = true;
+            MarkdownLifecycleAutomationBridge.SignalShutdownStage("window-final-close");
             Close();
+        }
+    }
+
+    private async Task UnloadPageContentBeforeMarkdownShutdownAsync()
+    {
+        FrameworkElement? page = ContentFrameHost.Content as FrameworkElement;
+        if (page is null)
+        {
+            ContentFrameHost.Content = null;
+            return;
+        }
+
+        bool wasLoaded = page.IsLoaded;
+        var unloaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void OnUnloaded(object sender, RoutedEventArgs args) => unloaded.TrySetResult();
+        if (wasLoaded)
+            page.Unloaded += OnUnloaded;
+
+        try
+        {
+            ContentFrameHost.Content = null;
+            if (wasLoaded)
+                await unloaded.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        }
+        finally
+        {
+            if (wasLoaded)
+                page.Unloaded -= OnUnloaded;
         }
     }
 
@@ -873,6 +933,13 @@ public sealed partial class MainWindow : Window
         if (message == WmClose)
         {
             MarkdownRenderer.MarkdownRendererRuntime.BeginShutdown();
+        }
+
+        if (message == WmFontChange)
+        {
+            UiTaskGuard.Observe(
+                JitHubMarkdownRuntime.NotifyFontsChangedAsync(),
+                "ui-markdown-svg-font-change");
         }
 
         if ((message == WmKeyDown || message == WmSysKeyDown) &&

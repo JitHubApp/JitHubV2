@@ -502,9 +502,17 @@ public sealed partial class ShellPageViewModel : ViewModelBase
             return;
         }
 
-        EnsureHomeTab();
         RefreshUserDisplay();
-        SelectNavigationItem("home");
+        // A direct repository route must not instantiate Home first. Besides
+        // flashing unrelated content, that starts dashboard requests which
+        // contend with the visible repository and README downloads. The Home
+        // tab is still created on demand when the route closes or the user
+        // explicitly navigates there.
+        if (!Program.CurrentLaunchOptions.IsRepositoryPageOverride)
+        {
+            EnsureHomeTab();
+            SelectNavigationItem("home");
+        }
     }
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
@@ -1284,7 +1292,7 @@ public sealed partial class ShellPageViewModel : ViewModelBase
             return false;
         }
 
-        return OpenRepositoryPage(repo, RepoPageType.CodePage, CodeViewerNavArg.CreateWithBranch(repo, repo.DefaultBranch));
+        return OpenRepositoryPage(repo, RepoPageType.CodePage, CodeViewerNavArg.CreateWithRepo(repo));
     }
 
     private void OpenRepositoryFromRail(GitHubRepository repo)
@@ -1314,7 +1322,11 @@ public sealed partial class ShellPageViewModel : ViewModelBase
             RepoPageType.IssuePage => new IssueNavArg(repository, 0),
             RepoPageType.PullRequestPage => new PullRequestPageNavArg(repository, 0),
             RepoPageType.CommitPage => CommitPageNavArg.CreateWithBranch(repository, branch),
-            _ => CodeViewerNavArg.CreateWithBranch(repository, branch)
+            _ => string.IsNullOrWhiteSpace(branch)
+                ? CodeViewerNavArg.CreateWithRepo(repository)
+                : GitReferencePolicy.IsImmutableObjectId(branch)
+                    ? CodeViewerNavArg.CreateWithGitRef(repository, branch)
+                    : CodeViewerNavArg.CreateWithBranch(repository, branch)
         };
 
         return OpenRepositoryPage(repository, pageType, pageArg, branch);
@@ -1456,8 +1468,13 @@ public sealed partial class ShellPageViewModel : ViewModelBase
         object navigationParameter = page == RepoPageType.IssuePage
             ? pageArg.WithRepo(repository)
             : new RepoDetailPageArgs(page, pageArg, repository);
+        string? requestedIdentityBranch = branch ?? (pageArg as CodeViewerNavArg)?.Branch;
+        string? identityBranch = RepositoryBranchNavigationPolicy.ResolveRouteIdentityBranch(
+            pageArg is CodeViewerNavArg { FollowsDefaultBranch: true },
+            requestedIdentityBranch,
+            repository.DefaultBranch);
         bool opened = OpenTab(
-            ShellWorkspaceTabIdentity.Repository(repository, page, branch ?? repository.DefaultBranch),
+            ShellWorkspaceTabIdentity.Repository(repository, page, identityBranch),
             header,
             pageSource,
             navigationParameter);
@@ -1672,7 +1689,7 @@ public sealed partial class ShellPageViewModel : ViewModelBase
             RepoPageType.IssuePage => new IssueNavArg(ActiveRepository, 0),
             RepoPageType.PullRequestPage => new PullRequestPageNavArg(ActiveRepository, 0),
             RepoPageType.CommitPage => CommitPageNavArg.CreateWithBranch(ActiveRepository, ActiveRepository.DefaultBranch),
-            _ => CodeViewerNavArg.CreateWithBranch(ActiveRepository, ActiveRepository.DefaultBranch)
+            _ => CodeViewerNavArg.CreateWithRepo(ActiveRepository)
         };
         return OpenRepositoryPage(ActiveRepository, pageType, pageArg);
     }

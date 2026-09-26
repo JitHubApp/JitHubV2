@@ -8,6 +8,42 @@ namespace MarkdownRenderer.Tests;
 public sealed class MarkdownAccessibilityGeometryTests
 {
     [Fact]
+    public void NormalizeTransformedBounds_HandlesMirroredAxes()
+    {
+        AccessibilityRect result = AccessibilityGeometry.NormalizeTransformedBounds(
+            new AccessibilityPoint(110, 70),
+            new AccessibilityPoint(10, 70),
+            new AccessibilityPoint(110, 20),
+            new AccessibilityPoint(10, 20));
+
+        Assert.Equal(new AccessibilityRect(10, 20, 100, 50), result);
+    }
+
+    [Fact]
+    public void NormalizeTransformedBounds_UsesAllCornersForRotation()
+    {
+        AccessibilityRect result = AccessibilityGeometry.NormalizeTransformedBounds(
+            new AccessibilityPoint(50, 0),
+            new AccessibilityPoint(100, 50),
+            new AccessibilityPoint(0, 50),
+            new AccessibilityPoint(50, 100));
+
+        Assert.Equal(new AccessibilityRect(0, 0, 100, 100), result);
+    }
+
+    [Fact]
+    public void NormalizeTransformedBounds_InvalidCoordinate_ReturnsEmpty()
+    {
+        AccessibilityRect result = AccessibilityGeometry.NormalizeTransformedBounds(
+            new AccessibilityPoint(double.NaN, 0),
+            new AccessibilityPoint(100, 0),
+            new AccessibilityPoint(0, 50),
+            new AccessibilityPoint(100, 50));
+
+        Assert.Equal(default, result);
+    }
+
+    [Fact]
     public void BoundingRectangles_DegenerateRange_ReturnsEmptyWithoutEnumeratingGeometry()
     {
         IEnumerable<AccessibilityRect> ThrowIfEnumerated()

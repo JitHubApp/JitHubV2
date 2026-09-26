@@ -12,7 +12,7 @@ using MarkdownRenderer.Theming;
 
 namespace MarkdownRenderer.Layout.Boxes;
 
-internal sealed class CodeBlockBox : BlockBox
+internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
 {
     private const float HeaderHeight = 38f;
     private const float HeaderPaddingX = 12f;
@@ -22,12 +22,32 @@ internal sealed class CodeBlockBox : BlockBox
     private const float DiffMarkerWidth = 16f;
     private const float LineNumberPadding = 10f;
     private const float CodeTextPaddingLeft = 12f;
+    private const float HorizontalScrollbarHeight = 12f;
+    private const float MinimumScrollbarThumbWidth = 24f;
 
     private readonly MarkdownLayoutContext _context;
     private readonly List<InlineContainerBox> _chunks = new();
+    private CodeBlockHighlightCacheKey? _appliedHighlightKey;
+    private double[] _chunkBottomEdges = Array.Empty<double>();
+    private CodeVisualLineInfo[] _visualLines = Array.Empty<CodeVisualLineInfo>();
+    private double[] _visualLineBottomEdges = Array.Empty<double>();
     private readonly List<CodeLineInfo> _lines;
     private readonly IReadOnlyList<string> _styleContextKeys;
     private readonly IReadOnlyList<string> _styleAliasKeys;
+    private ElementStyle? _codeStyle;
+    private ElementStyle? _headerStyle;
+    private ElementStyle? _languageStyle;
+    private ElementStyle? _gutterStyle;
+    private ElementStyle? _lineNumberStyle;
+    private CanvasTextFormat? _headerTextFormat;
+    private CanvasTextFormat? _lineNumberTextFormat;
+    private float _contentWidth;
+    private float _bodyViewportWidth;
+    private double _horizontalOffset;
+    private float _arrangedX;
+    private float _arrangedY;
+    private float _arrangedWidth;
+    private bool _hasArrangement;
 
     public CodeBlockBox(
         MarkdownLayoutContext context,
@@ -46,11 +66,12 @@ internal sealed class CodeBlockBox : BlockBox
         HeaderText = metadata.HeaderText;
         IsCopyButtonEnabled = isCopyButtonEnabled;
         ShowLineNumbers = showLineNumbers;
-        _lines = BuildLines(CodeText, metadata.IsDiff);
+        _lines = BuildLines(CodeText, metadata.IsDiff, metadata.StartLine);
         Margin = GetCodeStyle().Margin;
     }
 
     public IReadOnlyList<InlineContainerBox> Chunks => _chunks;
+    internal MarkdownLayoutContext Context => _context;
     public CodeBlockMetadata Metadata { get; }
     public string StableKey => Metadata.StableKey;
     public string? CodeLanguage { get; }
@@ -58,13 +79,64 @@ internal sealed class CodeBlockBox : BlockBox
     public string HeaderText { get; }
     public string CodeText { get; }
     public int LineCount => _lines.Count;
+    internal int IndexedVisualLineCount => _visualLines.Length;
     public bool IsCopyButtonEnabled { get; }
     public bool ShowLineNumbers { get; }
     public Rect CopyButtonBounds { get; private set; }
     internal FrameworkElement? RealizedCopyButton { get; set; }
+    public double HorizontalOffset => _horizontalOffset;
+    public double HorizontalExtent => Math.Max(_contentWidth, _bodyViewportWidth);
+    public double HorizontalViewport => _bodyViewportWidth;
+    public bool CanScrollHorizontally => HorizontalExtent > HorizontalViewport + 0.5;
+    public bool IsRightToLeft => _context.FlowDirection == FlowDirection.RightToLeft;
+
+    public Rect HorizontalViewportBounds
+        => CodeViewportRect(OuterRect(), GetCodeStyle());
+
+    public Rect HorizontalScrollTrackBounds
+    {
+        get
+        {
+            if (!CanScrollHorizontally)
+                return Rect.Empty;
+
+            Rect outer = OuterRect();
+            var style = GetCodeStyle();
+            double gutterWidth = ComputeGutterWidth(style);
+            double codeTextPaddingLeft = gutterWidth > 0 ? CodeTextPaddingLeft : 0;
+            double left = outer.Left + style.Padding.Left + gutterWidth + codeTextPaddingLeft;
+            double width = Math.Max(0, outer.Width - style.Padding.Left - style.Padding.Right - gutterWidth - codeTextPaddingLeft);
+            double y = outer.Bottom - style.Padding.Bottom - HorizontalScrollbarHeight;
+            return new Rect(left, y, width, HorizontalScrollbarHeight);
+        }
+    }
+
+    public Rect HorizontalScrollThumbBounds
+    {
+        get
+        {
+            Rect track = HorizontalScrollTrackBounds;
+            if (track.IsEmpty || HorizontalExtent <= 0)
+                return Rect.Empty;
+
+            double thumbWidth = Math.Clamp(
+                track.Width * HorizontalViewport / HorizontalExtent,
+                Math.Min(MinimumScrollbarThumbWidth, track.Width),
+                track.Width);
+            double travel = Math.Max(0, track.Width - thumbWidth);
+            double maximum = Math.Max(0, HorizontalExtent - HorizontalViewport);
+            double fraction = maximum <= 0 ? 0 : HorizontalOffset / maximum;
+            bool rtl = _context.FlowDirection == FlowDirection.RightToLeft;
+            double x = rtl
+                ? track.Right - thumbWidth - travel * fraction
+                : track.Left + travel * fraction;
+            return new Rect(x, track.Y, thumbWidth, track.Height);
+        }
+    }
 
     public void AddChunk(InlineContainerBox chunk)
     {
+        _appliedHighlightKey = null;
         chunk.DrawContainerChrome = false;
         chunk.UseContainerPadding = false;
         chunk.UseContainerMargin = false;
@@ -72,8 +144,16 @@ internal sealed class CodeBlockBox : BlockBox
         _chunks.Add(chunk);
     }
 
-    internal void ApplySyntaxHighlighting(IReadOnlyList<CodeBlockHighlightSpan>? spans)
+    internal bool HasAppliedSyntaxHighlighting(CodeBlockHighlightCacheKey key)
+        => _appliedHighlightKey == key;
+
+    internal bool ApplySyntaxHighlighting(
+        CodeBlockHighlightCacheKey key,
+        IReadOnlyList<CodeBlockHighlightSpan>? spans)
     {
+        if (_appliedHighlightKey == key)
+            return false;
+
         var allSpans = spans ?? Array.Empty<CodeBlockHighlightSpan>();
         foreach (var chunk in _chunks)
         {
@@ -90,6 +170,9 @@ internal sealed class CodeBlockBox : BlockBox
 
             chunk.SetForegroundSpans(local);
         }
+
+        _appliedHighlightKey = key;
+        return true;
     }
 
     public override float Measure(float availableWidth)
@@ -101,38 +184,73 @@ internal sealed class CodeBlockBox : BlockBox
         double innerWidth = Math.Max(1, availableWidth - Margin.Left - Margin.Right);
         double gutterWidth = ComputeGutterWidth(style);
         double codeTextPaddingLeft = gutterWidth > 0 ? CodeTextPaddingLeft : 0;
-        double bodyViewportWidth = Math.Max(1, innerWidth - style.Padding.Left - style.Padding.Right - gutterWidth - codeTextPaddingLeft);
+        _bodyViewportWidth = (float)Math.Max(1, innerWidth - style.Padding.Left - style.Padding.Right - gutterWidth - codeTextPaddingLeft);
         double y = Margin.Top + HeaderHeight + style.Padding.Top;
+        _contentWidth = 0;
 
         foreach (var chunk in _chunks)
         {
             chunk.ThrowIfCancellationRequested();
-            float h = chunk.Measure((float)bodyViewportWidth);
+            float h = chunk.Measure(_bodyViewportWidth);
             chunk.Arrange(
                 (float)(Margin.Left + style.Padding.Left + gutterWidth + codeTextPaddingLeft),
                 (float)y,
-                (float)bodyViewportWidth);
+                _bodyViewportWidth);
+            _contentWidth = Math.Max(_contentWidth, chunk.ContentWidth);
             y += h;
         }
 
+        _horizontalOffset = Math.Clamp(
+            _horizontalOffset,
+            0,
+            Math.Max(0, HorizontalExtent - HorizontalViewport));
         y += style.Padding.Bottom;
+        if (CanScrollHorizontally)
+            y += HorizontalScrollbarHeight;
         y += Margin.Bottom;
 
         Bounds = new Rect(0, 0, availableWidth, Math.Max(0, y));
         UpdateActionBounds();
+        _arrangedX = 0;
+        _arrangedY = 0;
+        _arrangedWidth = availableWidth;
+        _hasArrangement = true;
+        ArrangeChunks();
         return (float)Bounds.Height;
     }
 
     public override void Arrange(float x, float y, float width)
     {
-        float dx = x - (float)Bounds.X;
-        float dy = y - (float)Bounds.Y;
-        foreach (var chunk in _chunks)
-            chunk.Arrange((float)chunk.Bounds.X + dx, (float)chunk.Bounds.Y + dy, (float)chunk.Bounds.Width);
-
         Bounds = new Rect(x, y, width, Bounds.Height);
+        _arrangedX = x;
+        _arrangedY = y;
+        _arrangedWidth = width;
+        _hasArrangement = true;
+        ArrangeChunks();
         UpdateActionBounds();
         IsDirty = false;
+    }
+
+    private void ArrangeChunks()
+    {
+        if (!_hasArrangement)
+            return;
+
+        var style = GetCodeStyle();
+        double gutterWidth = ComputeGutterWidth(style);
+        double codeTextPaddingLeft = gutterWidth > 0 ? CodeTextPaddingLeft : 0;
+        float viewportLeft = (float)(_arrangedX + Margin.Left + style.Padding.Left + gutterWidth + codeTextPaddingLeft);
+        float contentLeft = _context.FlowDirection == FlowDirection.RightToLeft
+            ? viewportLeft + _bodyViewportWidth - _contentWidth + (float)_horizontalOffset
+            : viewportLeft - (float)_horizontalOffset;
+        float y = (float)(_arrangedY + Margin.Top + HeaderHeight + style.Padding.Top);
+        foreach (var chunk in _chunks)
+        {
+            chunk.Arrange(contentLeft, y, _bodyViewportWidth);
+            y += (float)chunk.Bounds.Height;
+        }
+        RefreshChunkBottomEdges();
+        RebuildVisualLineIndex();
     }
 
     internal override void ThrowIfCancellationRequested()
@@ -181,15 +299,23 @@ internal sealed class CodeBlockBox : BlockBox
         DrawBodySurfaces(ds, outer, codeStyle, headerStyle, languageStyle, viewport);
 
         var clip = CodeViewportRect(outer, codeStyle);
-        using (ds.CreateLayer(1.0f, clip))
+        // A CanvasActiveLayer is a comparatively expensive projected/native
+        // allocation. The tile already clips vertically and measured chunks
+        // remain inside the body when the code fits horizontally, so create a
+        // local clip only for a genuinely overflowing no-wrap block.
+        if (_contentWidth > _bodyViewportWidth + 0.5f)
         {
-            foreach (var chunk in _chunks)
+            using (ds.CreateLayer(1.0f, clip))
             {
-                if (chunk.Bounds.Bottom < viewport.Top || chunk.Bounds.Top > viewport.Bottom)
-                    continue;
-                chunk.Paint(ds, viewport);
+                PaintVisibleChunks(ds, viewport);
             }
         }
+        else
+        {
+            PaintVisibleChunks(ds, viewport);
+        }
+
+        PaintHorizontalScrollbar(ds, codeStyle);
 
         if (codeStyle.BorderBrush is { } border && codeStyle.BorderThickness > 0)
         {
@@ -204,6 +330,20 @@ internal sealed class CodeBlockBox : BlockBox
                 radius,
                 border,
                 codeStyle.BorderThickness);
+        }
+    }
+
+    private void PaintVisibleChunks(CanvasDrawingSession ds, Rect viewport)
+    {
+        int first = FindFirstVisibleChunk(viewport.Top);
+        for (int index = first; index < _chunks.Count; index++)
+        {
+            InlineContainerBox chunk = _chunks[index];
+            if (chunk.Bounds.Top > viewport.Bottom)
+                break;
+            if (chunk.Bounds.Bottom < viewport.Top || chunk.Bounds.Top > viewport.Bottom)
+                continue;
+            chunk.Paint(ds, viewport);
         }
     }
 
@@ -249,8 +389,12 @@ internal sealed class CodeBlockBox : BlockBox
             }
 
             double clampedX = Clamp(point.X, codeViewport.Left, codeViewport.Right);
-            foreach (var chunk in _chunks)
+            int firstVisible = FindFirstVisibleChunk(point.Y);
+            for (int index = firstVisible; index < _chunks.Count; index++)
             {
+                InlineContainerBox chunk = _chunks[index];
+                if (chunk.Bounds.Top > point.Y)
+                    break;
                 if (point.Y < chunk.Bounds.Top || point.Y > chunk.Bounds.Bottom)
                     continue;
 
@@ -282,8 +426,12 @@ internal sealed class CodeBlockBox : BlockBox
         var clip = CodeViewportRect(OuterRect(), GetCodeStyle());
         using (ds.CreateLayer(1.0f, clip))
         {
-            foreach (var chunk in _chunks)
+            int first = FindFirstVisibleChunk(viewport.Top);
+            for (int index = first; index < _chunks.Count; index++)
             {
+                InlineContainerBox chunk = _chunks[index];
+                if (chunk.Bounds.Top > viewport.Bottom)
+                    break;
                 if (chunk.Bounds.Bottom < viewport.Top || chunk.Bounds.Top > viewport.Bottom)
                     continue;
                 chunk.PaintSelectionForeground(ds, range, color, viewport);
@@ -293,24 +441,36 @@ internal sealed class CodeBlockBox : BlockBox
 
     public override void Dispose()
     {
+        _headerTextFormat?.Dispose();
+        _headerTextFormat = null;
+        _lineNumberTextFormat?.Dispose();
+        _lineNumberTextFormat = null;
         foreach (var chunk in _chunks)
             chunk.Dispose();
     }
 
     private ElementStyle GetCodeStyle()
-        => _context.ThemeSnapshot.GetStyle(MarkdownElementKeys.CodeBlock, _styleContextKeys, _styleAliasKeys);
+        => _codeStyle ??= GetStyle(MarkdownElementKeys.CodeBlock);
 
     private ElementStyle GetHeaderStyle()
-        => _context.ThemeSnapshot.GetStyle(MarkdownElementKeys.CodeBlockHeader, _styleContextKeys, _styleAliasKeys);
+        => _headerStyle ??= GetStyle(MarkdownElementKeys.CodeBlockHeader);
 
     private ElementStyle GetLanguageStyle()
-        => _context.ThemeSnapshot.GetStyle(MarkdownElementKeys.CodeBlockLanguage, _styleContextKeys, _styleAliasKeys);
+        => _languageStyle ??= GetStyle(MarkdownElementKeys.CodeBlockLanguage);
 
     private ElementStyle GetGutterStyle()
-        => _context.ThemeSnapshot.GetStyle(MarkdownElementKeys.CodeBlockGutter, _styleContextKeys, _styleAliasKeys);
+        => _gutterStyle ??= GetStyle(MarkdownElementKeys.CodeBlockGutter);
 
     private ElementStyle GetLineNumberStyle()
-        => _context.ThemeSnapshot.GetStyle(MarkdownElementKeys.CodeBlockLineNumber, _styleContextKeys, _styleAliasKeys);
+        => _lineNumberStyle ??= GetStyle(MarkdownElementKeys.CodeBlockLineNumber);
+
+    private ElementStyle GetStyle(string elementKey)
+        => _context.ThemeSnapshot.GetStyle(
+            elementKey,
+            _styleContextKeys,
+            _styleAliasKeys,
+            CodeLanguage,
+            Metadata.IsDiff ? "diff" : null);
 
     private Rect OuterRect()
         => new(
@@ -325,9 +485,35 @@ internal sealed class CodeBlockBox : BlockBox
         double codeTextPaddingLeft = gutterWidth > 0 ? CodeTextPaddingLeft : 0;
         double left = outer.Left + style.Padding.Left + gutterWidth + codeTextPaddingLeft;
         double top = outer.Top + HeaderHeight + style.Padding.Top;
-        double height = Math.Max(0, outer.Height - HeaderHeight - style.Padding.Top - style.Padding.Bottom);
+        double scrollbarHeight = CanScrollHorizontally ? HorizontalScrollbarHeight : 0;
+        double height = Math.Max(0, outer.Height - HeaderHeight - style.Padding.Top - style.Padding.Bottom - scrollbarHeight);
         double width = Math.Max(0, outer.Width - style.Padding.Left - style.Padding.Right - gutterWidth - codeTextPaddingLeft);
         return new Rect(left, top, width, height);
+    }
+
+    public bool ScrollHorizontal(double delta)
+        => SetHorizontalOffset(HorizontalOffset + delta);
+
+    public bool SetHorizontalOffset(double offset)
+    {
+        double maximum = Math.Max(0, HorizontalExtent - HorizontalViewport);
+        double next = Math.Clamp(offset, 0, maximum);
+        if (Math.Abs(next - _horizontalOffset) <= 0.1)
+            return false;
+
+        _horizontalOffset = next;
+        ArrangeChunks();
+        return true;
+    }
+
+    private void PaintHorizontalScrollbar(CanvasDrawingSession ds, ElementStyle style)
+    {
+        HorizontalOverflowVisual.Paint(
+            ds,
+            HorizontalScrollTrackBounds,
+            HorizontalScrollThumbBounds,
+            _context.ThemeSnapshot,
+            style.Foreground);
     }
 
     private double ComputeGutterWidth(ElementStyle style)
@@ -343,8 +529,12 @@ internal sealed class CodeBlockBox : BlockBox
 
     private bool TryHitTestChunks(Point point, out DocumentPosition position)
     {
-        foreach (var chunk in _chunks)
+        int first = FindFirstVisibleChunk(point.Y);
+        for (int index = first; index < _chunks.Count; index++)
         {
+            InlineContainerBox chunk = _chunks[index];
+            if (chunk.Bounds.Top > point.Y)
+                break;
             if (chunk.HitTest(point, out position))
                 return true;
         }
@@ -352,6 +542,142 @@ internal sealed class CodeBlockBox : BlockBox
         position = CodeStartPosition();
         return false;
     }
+
+    private int FindFirstVisibleChunk(double viewportTop)
+        => VerticalViewportIndex.FindFirstIntersecting(_chunkBottomEdges, viewportTop);
+
+    internal (int First, int EndExclusive) GetVisibleChunkRange(
+        double viewportTop,
+        double viewportBottom)
+    {
+        int first = FindFirstVisibleChunk(viewportTop);
+        int end = first;
+        while (end < _chunks.Count && _chunks[end].Bounds.Top <= viewportBottom)
+            end++;
+        return (first, end);
+    }
+
+    private int FindFirstChunkEndingAtOrAfter(int textOffset)
+    {
+        int low = 0;
+        int high = _chunks.Count;
+        while (low < high)
+        {
+            int middle = low + ((high - low) >> 1);
+            InlineContainerBox chunk = _chunks[middle];
+            int end = chunk.CodeBlockTextOffset + chunk.CodeBlockTextLength;
+            if (end <= textOffset)
+                low = middle + 1;
+            else
+                high = middle;
+        }
+
+        return low;
+    }
+
+    private int FindFirstLineEndingAtOrAfter(int textOffset)
+    {
+        int low = 0;
+        int high = _lines.Count;
+        while (low < high)
+        {
+            int middle = low + ((high - low) >> 1);
+            CodeLineInfo line = _lines[middle];
+            int end = line.Start + Math.Max(1, line.Length);
+            if (end <= textOffset)
+                low = middle + 1;
+            else
+                high = middle;
+        }
+
+        return low;
+    }
+
+    private void RefreshChunkBottomEdges()
+    {
+        if (_chunkBottomEdges.Length != _chunks.Count)
+            _chunkBottomEdges = new double[_chunks.Count];
+        for (int index = 0; index < _chunks.Count; index++)
+            _chunkBottomEdges[index] = _chunks[index].Bounds.Bottom;
+    }
+
+    private void RebuildVisualLineIndex()
+    {
+        if (_chunks.Count == 0 || _lines.Count == 0)
+        {
+            ClearVisualLineIndex();
+            return;
+        }
+
+        var visualLines = new List<CodeVisualLineInfo>(_lines.Count);
+        foreach (InlineContainerBox chunk in _chunks)
+        {
+            CanvasLineMetrics[]? metrics = chunk.GetLineMetricsSnapshot();
+            if (metrics is null || metrics.Length == 0)
+            {
+                ClearVisualLineIndex();
+                return;
+            }
+
+            int localOffset = 0;
+            double top = chunk.GetTextOriginY();
+            if (!double.IsFinite(top))
+            {
+                ClearVisualLineIndex();
+                return;
+            }
+            foreach (CanvasLineMetrics metric in metrics)
+            {
+                int globalOffset = chunk.CodeBlockTextOffset + localOffset;
+                int logicalLine = FindFirstLineEndingAtOrAfter(globalOffset);
+                if (logicalLine >= _lines.Count)
+                    logicalLine = _lines.Count - 1;
+                if (!double.IsFinite(metric.Height))
+                {
+                    ClearVisualLineIndex();
+                    return;
+                }
+
+                double height = Math.Max(1, metric.Height);
+                if (!double.IsFinite(top + height))
+                {
+                    ClearVisualLineIndex();
+                    return;
+                }
+                visualLines.Add(new CodeVisualLineInfo(logicalLine, top, height));
+                top += height;
+                localOffset += Math.Max(0, metric.CharacterCount);
+            }
+        }
+
+        _visualLines = visualLines.ToArray();
+        _visualLineBottomEdges = new double[_visualLines.Length];
+        for (int index = 0; index < _visualLines.Length; index++)
+            _visualLineBottomEdges[index] = _visualLines[index].Top + _visualLines[index].Height;
+    }
+
+    private void ClearVisualLineIndex()
+    {
+        _visualLines = Array.Empty<CodeVisualLineInfo>();
+        _visualLineBottomEdges = Array.Empty<double>();
+    }
+
+    internal static bool IsDrawableRectangle(Rect rectangle)
+    {
+        double right = rectangle.X + rectangle.Width;
+        double bottom = rectangle.Y + rectangle.Height;
+        return IsCanvasCoordinate(rectangle.X) &&
+               IsCanvasCoordinate(rectangle.Y) &&
+               IsCanvasCoordinate(rectangle.Width) &&
+               IsCanvasCoordinate(rectangle.Height) &&
+               IsCanvasCoordinate(right) &&
+               IsCanvasCoordinate(bottom) &&
+               rectangle.Width > 0 &&
+               rectangle.Height > 0;
+    }
+
+    private static bool IsCanvasCoordinate(double value) =>
+        double.IsFinite(value) && Math.Abs(value) <= float.MaxValue;
 
     private DocumentPosition CodeStartPosition()
     {
@@ -427,12 +753,13 @@ internal sealed class CodeBlockBox : BlockBox
         if (right <= left)
             return;
 
-        using var format = new CanvasTextFormat
+        CanvasTextFormat format = _headerTextFormat ??= new CanvasTextFormat
         {
             FontFamily = style.FontFamily,
             FontSize = style.FontSize,
             FontWeight = style.FontWeight,
             FontStyle = style.FontStyle,
+            LocaleName = _context.Language,
             WordWrapping = CanvasWordWrapping.NoWrap,
             Direction = rtl
                 ? CanvasTextDirection.RightToLeftThenTopToBottom
@@ -487,12 +814,13 @@ internal sealed class CodeBlockBox : BlockBox
         if (_lines.Count == 0)
             return;
 
-        using var lineNumberFormat = new CanvasTextFormat
+        CanvasTextFormat lineNumberFormat = _lineNumberTextFormat ??= new CanvasTextFormat
         {
             FontFamily = lineNumberStyle.FontFamily,
             FontSize = lineNumberStyle.FontSize,
             FontWeight = lineNumberStyle.FontWeight,
             FontStyle = lineNumberStyle.FontStyle,
+            LocaleName = _context.Language,
             WordWrapping = CanvasWordWrapping.NoWrap,
             HorizontalAlignment = CanvasHorizontalAlignment.Right,
             VerticalAlignment = CanvasVerticalAlignment.Top,
@@ -513,18 +841,107 @@ internal sealed class CodeBlockBox : BlockBox
             ? Color.FromArgb(0x00, 0, 0, 0)
             : Color.FromArgb(0x26, 0xFF, 0xD8, 0x66);
 
-        foreach (var line in _lines)
+        if (_visualLines.Length > 0)
         {
+            int firstVisual = VerticalViewportIndex.FindFirstIntersecting(
+                _visualLineBottomEdges,
+                viewport.Top);
+            int previousLogicalLine = -1;
+            for (int visualIndex = firstVisual; visualIndex < _visualLines.Length; visualIndex++)
+            {
+                CodeVisualLineInfo visual = _visualLines[visualIndex];
+                if (visual.Top > viewport.Bottom)
+                    break;
+
+                CodeLineInfo line = _lines[visual.LogicalLineIndex];
+                Color? bg = line.DiffKind switch
+                {
+                    CodeLineDiffKind.Added => additionBg,
+                    CodeLineDiffKind.Removed => removalBg,
+                    _ => Metadata.HighlightedLines.Contains(line.Number) ? highlightBg : null,
+                };
+                if (bg is { A: > 0 } lineBg)
+                {
+                    var backgroundRect = new Rect(
+                        fullLeft,
+                        visual.Top,
+                        fullRight - fullLeft,
+                        visual.Height);
+                    if (IsDrawableRectangle(backgroundRect))
+                        ds.FillRectangle(backgroundRect, lineBg);
+                }
+
+                if (line.Number == previousLogicalLine)
+                    continue;
+                previousLogicalLine = line.Number;
+
+                if (ShowLineNumbers)
+                {
+                    var numberRect = new Rect(numberLeft, visual.Top, numberWidth, visual.Height);
+                    if (IsDrawableRectangle(numberRect))
+                    {
+                        DrawLineNumber(ds, line, numberRect, viewport, lineNumberStyle, lineNumberFormat);
+                    }
+                }
+
+                if (Metadata.IsDiff && line.DiffKind is not CodeLineDiffKind.None)
+                {
+                    string marker = line.DiffKind == CodeLineDiffKind.Added ? "+" : "-";
+                    Color markerColor = line.DiffKind == CodeLineDiffKind.Added
+                        ? Color.FromArgb(0xFF, 0x2E, 0xC2, 0x7E)
+                        : Color.FromArgb(0xFF, 0xF8, 0x51, 0x49);
+                    var markerRect = new Rect(
+                        outer.Left + 4,
+                        visual.Top,
+                        DiffMarkerWidth - 4,
+                        visual.Height);
+                    if (IsDrawableRectangle(markerRect))
+                    {
+                        ds.DrawText(
+                            marker,
+                            markerRect,
+                            _context.ThemeSnapshot.IsHighContrast ? lineNumberStyle.Foreground : markerColor,
+                            lineNumberFormat);
+                    }
+                }
+            }
+
+            return;
+        }
+
+        int firstChunk = FindFirstVisibleChunk(viewport.Top);
+        if (firstChunk >= _chunks.Count)
+            return;
+
+        int lastChunk = firstChunk;
+        while (lastChunk + 1 < _chunks.Count &&
+               _chunks[lastChunk + 1].Bounds.Top <= viewport.Bottom)
+        {
+            lastChunk++;
+        }
+
+        int visibleTextStart = _chunks[firstChunk].CodeBlockTextOffset;
+        InlineContainerBox finalChunk = _chunks[lastChunk];
+        int visibleTextEnd = finalChunk.CodeBlockTextOffset + finalChunk.CodeBlockTextLength;
+        int firstLine = FindFirstLineEndingAtOrAfter(visibleTextStart);
+        for (int lineIndex = firstLine; lineIndex < _lines.Count; lineIndex++)
+        {
+            CodeLineInfo line = _lines[lineIndex];
+            if (line.Start >= visibleTextEnd)
+                break;
             var rects = GetLineRects(line);
             Rect first = Rect.Empty;
             foreach (var rect in rects)
             {
-                if (first.IsEmpty)
-                    first = rect;
+                if (!IsDrawableRectangle(rect))
+                    continue;
+
                 double top = rect.Top;
                 double bottom = rect.Bottom;
                 if (bottom < viewport.Top || top > viewport.Bottom)
                     continue;
+                if (first.IsEmpty)
+                    first = rect;
 
                 Color? bg = line.DiffKind switch
                 {
@@ -533,17 +950,28 @@ internal sealed class CodeBlockBox : BlockBox
                     _ => Metadata.HighlightedLines.Contains(line.Number) ? highlightBg : null,
                 };
                 if (bg is { A: > 0 } lineBg)
-                    ds.FillRectangle(new Rect(fullLeft, top, fullRight - fullLeft, Math.Max(1, bottom - top)), lineBg);
+                {
+                    var backgroundRect = new Rect(
+                        fullLeft,
+                        top,
+                        fullRight - fullLeft,
+                        Math.Max(1, bottom - top));
+                    if (IsDrawableRectangle(backgroundRect))
+                        ds.FillRectangle(backgroundRect, lineBg);
+                }
             }
 
             if (!first.IsEmpty && ShowLineNumbers)
             {
-                var label = (Metadata.StartLine + line.Number - 1).ToString(CultureInfo.InvariantCulture);
-                ds.DrawText(
-                    label,
-                    new Rect(numberLeft, first.Top, numberWidth, Math.Max(1, first.Height)),
-                    lineNumberStyle.Foreground,
-                    lineNumberFormat);
+                var numberRect = new Rect(
+                    numberLeft,
+                    first.Top,
+                    numberWidth,
+                    Math.Max(1, first.Height));
+                if (IsDrawableRectangle(numberRect))
+                {
+                    DrawLineNumber(ds, line, numberRect, viewport, lineNumberStyle, lineNumberFormat);
+                }
             }
 
             if (!first.IsEmpty && Metadata.IsDiff && line.DiffKind is not CodeLineDiffKind.None)
@@ -552,12 +980,83 @@ internal sealed class CodeBlockBox : BlockBox
                 var markerColor = line.DiffKind == CodeLineDiffKind.Added
                     ? Color.FromArgb(0xFF, 0x2E, 0xC2, 0x7E)
                     : Color.FromArgb(0xFF, 0xF8, 0x51, 0x49);
-                ds.DrawText(
-                    marker,
-                    new Rect(outer.Left + 4, first.Top, DiffMarkerWidth - 4, Math.Max(1, first.Height)),
-                    _context.ThemeSnapshot.IsHighContrast ? lineNumberStyle.Foreground : markerColor,
-                    lineNumberFormat);
+                var markerRect = new Rect(
+                    outer.Left + 4,
+                    first.Top,
+                    DiffMarkerWidth - 4,
+                    Math.Max(1, first.Height));
+                if (IsDrawableRectangle(markerRect))
+                {
+                    ds.DrawText(
+                        marker,
+                        markerRect,
+                        _context.ThemeSnapshot.IsHighContrast ? lineNumberStyle.Foreground : markerColor,
+                        lineNumberFormat);
+                }
             }
+        }
+    }
+
+    private static void DrawLineNumber(
+        CanvasDrawingSession ds,
+        CodeLineInfo line,
+        Rect rectangle,
+        Rect viewport,
+        ElementStyle style,
+        CanvasTextFormat format)
+    {
+        try
+        {
+            ds.DrawText(line.Label, rectangle, style.Foreground, format);
+        }
+        catch (ArgumentException exception)
+        {
+            Exception failure = exception;
+            if (exception.HResult == unchecked((int)0x80070057) &&
+                IsDrawableRectangle(rectangle))
+            {
+                // Win2D has intermittently rejected valid gutter geometry
+                // with an app-packaged font during audit capture. Keep the
+                // authored format on the normal path; retry only this
+                // nonessential gutter label with a system monospace family.
+                // A broken device or geometry still fails the second draw,
+                // preserving both exceptions for diagnosis.
+                try
+                {
+                    using var fallbackFormat = new CanvasTextFormat
+                    {
+                        FontFamily = "Consolas",
+                        FontSize = style.FontSize,
+                        FontWeight = style.FontWeight,
+                        FontStyle = style.FontStyle,
+                        LocaleName = format.LocaleName,
+                        WordWrapping = CanvasWordWrapping.NoWrap,
+                        HorizontalAlignment = CanvasHorizontalAlignment.Right,
+                        VerticalAlignment = CanvasVerticalAlignment.Top,
+                    };
+                    ds.DrawText(line.Label, rectangle, style.Foreground, fallbackFormat);
+                    return;
+                }
+                catch (ArgumentException fallbackException)
+                {
+                    failure = new AggregateException(exception, fallbackException);
+                }
+            }
+
+            // Win2D can reject a rectangle or text-format value even after the
+            // generic finite-coordinate check. Preserve the failure while
+            // recording geometry (never code text) for a reproducible fix.
+            string detail = FormattableString.Invariant(
+                $"line={line.Number}, labelLength={line.Label.Length}, ") +
+                FormattableString.Invariant(
+                    $"rectangle={rectangle.X:R},{rectangle.Y:R},{rectangle.Width:R},{rectangle.Height:R}, ") +
+                FormattableString.Invariant(
+                    $"viewport={viewport.X:R},{viewport.Y:R},{viewport.Width:R},{viewport.Height:R}, ") +
+                FormattableString.Invariant(
+                    $"fontSize={style.FontSize:R}, fontFamily={style.FontFamily}.");
+            throw new InvalidOperationException(
+                "Code line-number DrawText rejected: " + detail,
+                failure);
         }
     }
 
@@ -565,9 +1064,13 @@ internal sealed class CodeBlockBox : BlockBox
     {
         int lineStart = line.Start;
         int lineEnd = line.Start + Math.Max(1, line.Length);
-        foreach (var chunk in _chunks)
+        int firstChunk = FindFirstChunkEndingAtOrAfter(lineStart);
+        for (int chunkIndex = firstChunk; chunkIndex < _chunks.Count; chunkIndex++)
         {
+            InlineContainerBox chunk = _chunks[chunkIndex];
             int chunkStart = chunk.CodeBlockTextOffset;
+            if (chunkStart >= lineEnd)
+                break;
             int chunkEnd = chunkStart + chunk.CodeBlockTextLength;
             int overlapStart = Math.Max(lineStart, chunkStart);
             int overlapEnd = Math.Min(lineEnd, chunkEnd);
@@ -579,12 +1082,17 @@ internal sealed class CodeBlockBox : BlockBox
         }
     }
 
-    private static List<CodeLineInfo> BuildLines(string code, bool isDiff)
+    private static List<CodeLineInfo> BuildLines(string code, bool isDiff, int startLine)
     {
         var lines = new List<CodeLineInfo>();
         if (code.Length == 0)
         {
-            lines.Add(new CodeLineInfo(1, 0, 0, CodeLineDiffKind.None));
+            lines.Add(new CodeLineInfo(
+                1,
+                0,
+                0,
+                CodeLineDiffKind.None,
+                startLine.ToString(CultureInfo.InvariantCulture)));
             return lines;
         }
 
@@ -608,7 +1116,12 @@ internal sealed class CodeBlockBox : BlockBox
                     diffKind = CodeLineDiffKind.Removed;
             }
 
-            lines.Add(new CodeLineInfo(number, start, contentLength, diffKind));
+            lines.Add(new CodeLineInfo(
+                number,
+                start,
+                contentLength,
+                diffKind,
+                (startLine + number - 1).ToString(CultureInfo.InvariantCulture)));
             number++;
             start = end;
         }
@@ -630,7 +1143,17 @@ internal sealed class CodeBlockBox : BlockBox
     private static Windows.UI.Color WithAlpha(Windows.UI.Color color, byte alpha)
         => Windows.UI.Color.FromArgb(alpha, color.R, color.G, color.B);
 
-    private readonly record struct CodeLineInfo(int Number, int Start, int Length, CodeLineDiffKind DiffKind);
+    private readonly record struct CodeLineInfo(
+        int Number,
+        int Start,
+        int Length,
+        CodeLineDiffKind DiffKind,
+        string Label);
+
+    private readonly record struct CodeVisualLineInfo(
+        int LogicalLineIndex,
+        double Top,
+        double Height);
 
     private enum CodeLineDiffKind
     {

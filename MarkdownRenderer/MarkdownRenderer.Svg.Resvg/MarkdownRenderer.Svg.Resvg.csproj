@@ -1,0 +1,89 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <RootNamespace>MarkdownRenderer.Svg.Resvg</RootNamespace>
+    <AssemblyName>MarkdownRenderer.Svg.Resvg</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Platforms>x86;x64;ARM64</Platforms>
+    <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
+    <Platform Condition="'$(Platform)' == '' or '$(Platform)' == 'AnyCPU' or '$(Platform)' == 'Any CPU'">x64</Platform>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <IsTrimmable>true</IsTrimmable>
+    <IsAotCompatible>true</IsAotCompatible>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <EnableSingleFileAnalyzer>true</EnableSingleFileAnalyzer>
+    <EnableAotAnalyzer>true</EnableAotAnalyzer>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <PackageId>MarkdownRenderer.Svg.Resvg</PackageId>
+    <Version>1.0.0-preview.1</Version>
+    <Authors>nerocui</Authors>
+    <Description>Optional isolated resvg static SVG renderer for MarkdownRenderer.</Description>
+    <PackageTags>markdown;winui;svg;resvg;windows</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/JitHubApp/JitHubV2</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageProjectUrl>https://github.com/JitHubApp/JitHubV2/tree/main/docs/markdown-renderer</PackageProjectUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>icon-192.png</PackageIcon>
+    <NuGetLockFilePath>$(MSBuildProjectDirectory)\packages.lock.json</NuGetLockFilePath>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <ResvgWorkerRid Condition="'$(RuntimeIdentifier)' == 'win-x86'">win-x86</ResvgWorkerRid>
+    <ResvgWorkerRid Condition="'$(RuntimeIdentifier)' == 'win-x64'">win-x64</ResvgWorkerRid>
+    <ResvgWorkerRid Condition="'$(RuntimeIdentifier)' == 'win-arm64'">win-arm64</ResvgWorkerRid>
+    <ResvgWorkerRid Condition="'$(ResvgWorkerRid)' == '' and '$(Platform)' == 'x86'">win-x86</ResvgWorkerRid>
+    <ResvgWorkerRid Condition="'$(ResvgWorkerRid)' == '' and ('$(Platform)' == 'ARM64' or '$(Platform)' == 'arm64')">win-arm64</ResvgWorkerRid>
+    <ResvgWorkerRid Condition="'$(ResvgWorkerRid)' == ''">win-x64</ResvgWorkerRid>
+    <RequireResvgWorkerSignatures Condition="'$(RequireResvgWorkerSignatures)' == ''">false</RequireResvgWorkerSignatures>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer.csproj" />
+    <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgResourceBudget.cs" Link="Internal\SvgResourceBudget.cs" />
+    <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgStaticSnapshot.cs" Link="Internal\SvgStaticSnapshot.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\LICENSE" Pack="true" PackagePath="" Visible="false" />
+    <None Include="..\..\JitHub.Web\wwwroot\icon-192.png" Pack="true" PackagePath="icon-192.png" Visible="false" />
+    <None Update="README.md" Pack="true" PackagePath="README.md" />
+    <None Update="THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="THIRD-PARTY-NOTICES.md" />
+    <None Update="RESVG_PROVENANCE.json" Pack="true" PackagePath="provenance\RESVG_PROVENANCE.json" />
+    <None Update="NATIVE_RUST_DEPENDENCIES.json" Pack="true" PackagePath="provenance\NATIVE_RUST_DEPENDENCIES.json" />
+    <None Update="licenses\RESVG-LICENSE-MIT.txt" Pack="true" PackagePath="licenses\RESVG-LICENSE-MIT.txt" />
+    <None Update="licenses\RUST-DEPENDENCY-LICENSES.txt" Pack="true" PackagePath="licenses\RUST-DEPENDENCY-LICENSES.txt" />
+    <None Update="native\Cargo.lock" Pack="true" PackagePath="provenance\native\Cargo.lock" />
+    <None Update="native\PROTOCOL.md" Pack="true" PackagePath="build\native\PROTOCOL.md" />
+    <None Update="runtimes\win-x86\native\MarkdownRenderer.Svg.Resvg.Worker.exe" Pack="true" PackagePath="runtimes\win-x86\native\MarkdownRenderer.Svg.Resvg.Worker.exe" Condition="Exists('runtimes\win-x86\native\MarkdownRenderer.Svg.Resvg.Worker.exe')" />
+    <None Update="runtimes\win-x64\native\MarkdownRenderer.Svg.Resvg.Worker.exe" Pack="true" PackagePath="runtimes\win-x64\native\MarkdownRenderer.Svg.Resvg.Worker.exe" Condition="Exists('runtimes\win-x64\native\MarkdownRenderer.Svg.Resvg.Worker.exe')" />
+    <None Update="runtimes\win-arm64\native\MarkdownRenderer.Svg.Resvg.Worker.exe" Pack="true" PackagePath="runtimes\win-arm64\native\MarkdownRenderer.Svg.Resvg.Worker.exe" Condition="Exists('runtimes\win-arm64\native\MarkdownRenderer.Svg.Resvg.Worker.exe')" />
+    <None Update="runtimes\$(ResvgWorkerRid)\native\MarkdownRenderer.Svg.Resvg.Worker.exe"
+          Condition="Exists('runtimes\$(ResvgWorkerRid)\native\MarkdownRenderer.Svg.Resvg.Worker.exe')"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest"
+          TargetPath="MarkdownRenderer.Svg.Resvg.Worker.exe" />
+  </ItemGroup>
+
+  <Target Name="GenerateResvgSupplyChain" Condition="Exists('native\Cargo.toml')">
+    <Exec Command="pwsh -NoProfile -NonInteractive -File &quot;$(MSBuildProjectDirectory)\eng\Generate-ResvgSupplyChain.ps1&quot;" />
+  </Target>
+
+  <Target Name="ValidateResvgSupplyChain" Condition="Exists('native\Cargo.toml')">
+    <Exec Command="pwsh -NoProfile -NonInteractive -File &quot;$(MSBuildProjectDirectory)\eng\Verify-ResvgSupplyChain.ps1&quot;" />
+  </Target>
+
+  <Target Name="ValidateResvgWorkerForPack" BeforeTargets="Pack" DependsOnTargets="ValidateResvgSupplyChain">
+    <Error Condition="!Exists('runtimes\win-x86\native\MarkdownRenderer.Svg.Resvg.Worker.exe')" Text="Missing signed resvg worker for win-x86." />
+    <Error Condition="!Exists('runtimes\win-x64\native\MarkdownRenderer.Svg.Resvg.Worker.exe')" Text="Missing signed resvg worker for win-x64." />
+    <Error Condition="!Exists('runtimes\win-arm64\native\MarkdownRenderer.Svg.Resvg.Worker.exe')" Text="Missing signed resvg worker for win-arm64." />
+    <Exec Condition="'$(RequireResvgWorkerSignatures)' != 'true'"
+          Command="pwsh -NoProfile -NonInteractive -File &quot;$(MSBuildProjectDirectory)\eng\Test-ResvgWorkerSignatures.ps1&quot;" />
+    <Exec Condition="'$(RequireResvgWorkerSignatures)' == 'true'"
+          Command="pwsh -NoProfile -NonInteractive -File &quot;$(MSBuildProjectDirectory)\eng\Test-ResvgWorkerSignatures.ps1&quot; -RequireValid" />
+  </Target>
+</Project>

@@ -675,8 +675,37 @@ public sealed class Phase0TelemetryTests : IDisposable
         StoreTelemetrySink sink = new();
 
         Assert.False(string.IsNullOrWhiteSpace(sink.AvailabilityStatus));
+    }
+
+    [Fact]
+    public async Task StoreTelemetrySink_InitializesTheNativeLoggerOnlyOnItsWorker()
+    {
+        using ManualResetEventSlim initializationStarted = new();
+        using ManualResetEventSlim releaseInitialization = new();
+        int callerThread = Environment.CurrentManagedThreadId;
+        int initializationThread = callerThread;
+        List<string> dispatched = [];
+        StoreTelemetrySink sink = new(
+            () =>
+            {
+                initializationThread = Environment.CurrentManagedThreadId;
+                initializationStarted.Set();
+                Assert.True(releaseInitialization.Wait(TimeSpan.FromSeconds(2)));
+                return dispatched.Add;
+            },
+            TimeSpan.Zero);
+
+        // Construction and enqueueing must not wait for receipt-backed Store
+        // initialization; that work starts only after the worker reads an event.
         sink.TrackEvent("shell.search.submitted");
-        sink.TrackEvent("shell.search.submitted.owner.repo");
+        Assert.True(initializationStarted.Wait(TimeSpan.FromSeconds(2)));
+        Assert.NotEqual(callerThread, initializationThread);
+        Assert.Equal("initializing", sink.AvailabilityStatus);
+
+        releaseInitialization.Set();
+        Assert.True(await sink.WaitForIdleAsync(TimeSpan.FromSeconds(2)));
+        Assert.Equal("available", sink.AvailabilityStatus);
+        Assert.Equal(["shell.search.submitted"], dispatched);
     }
 
     [Fact]

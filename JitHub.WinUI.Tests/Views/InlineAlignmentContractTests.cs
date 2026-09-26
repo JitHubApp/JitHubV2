@@ -210,6 +210,29 @@ public sealed class InlineAlignmentContractTests
                 run.Attribute("Text")?.Value.Contains(binding, StringComparison.Ordinal) == true));
     }
 
+    [Fact]
+    public void MarkdownTaskMarkersUseCenteredScaleAwareSlots()
+    {
+        string rendererSource = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "MarkdownRenderer",
+            "MarkdownRenderer.Gfm",
+            "Renderers",
+            "TaskListItemRenderer.cs"));
+        string factorySource = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "MarkdownRenderer",
+            "MarkdownRenderer",
+            "Layout",
+            "TaskMarkerControlFactory.cs"));
+
+        Assert.Contains("GetTaskMarkerSize(context.ThemeSnapshot, editableRequested)", rendererSource, StringComparison.Ordinal);
+        Assert.Contains("snapshot.MinimumInteractiveSize", factorySource, StringComparison.Ordinal);
+        Assert.Contains("snapshot.TextScaleFactor", factorySource, StringComparison.Ordinal);
+        Assert.Contains("VerticalAlignment = VerticalAlignment.Center", factorySource, StringComparison.Ordinal);
+        Assert.DoesNotContain("new InlineEmbedRun(20f", rendererSource, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("Controls", "Issue", "RepoIssueListPane.xaml", "RepoIssueListItemTemplate")]
     [InlineData("Pages", "", "RepoPullRequestPage.xaml", "RepoPullRequestListItemTemplate")]

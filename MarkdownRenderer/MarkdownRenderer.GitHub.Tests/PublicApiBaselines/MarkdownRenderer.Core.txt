@@ -1,0 +1,718 @@
+# MarkdownRenderer public API baseline
+# Format: 1
+# Assembly: MarkdownRenderer.Core
+# Generated from compiled assembly metadata; update with eng/Update-PublicApiBaselines.ps1.
+
+assembly MarkdownRenderer.Core
+
+public readonly struct MarkdownRenderer.Document.DocumentPosition : System.IComparable<MarkdownRenderer.Document.DocumentPosition>, System.IEquatable<MarkdownRenderer.Document.DocumentPosition> [layout: Sequential; pack: 0; size: 0; charset: Ansi]
+  public DocumentPosition(int BlockIndex, int InlineIndex, int CharacterOffset);
+  public bool Equals(MarkdownRenderer.Document.DocumentPosition other);
+  public int BlockIndex { get; init; }
+  public int CharacterOffset { get; init; }
+  public int CompareTo(MarkdownRenderer.Document.DocumentPosition other);
+  public int InlineIndex { get; init; }
+  public override bool Equals(object obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static bool op_Equality(MarkdownRenderer.Document.DocumentPosition left, MarkdownRenderer.Document.DocumentPosition right);
+  public static bool op_GreaterThan(MarkdownRenderer.Document.DocumentPosition a, MarkdownRenderer.Document.DocumentPosition b);
+  public static bool op_GreaterThanOrEqual(MarkdownRenderer.Document.DocumentPosition a, MarkdownRenderer.Document.DocumentPosition b);
+  public static bool op_Inequality(MarkdownRenderer.Document.DocumentPosition left, MarkdownRenderer.Document.DocumentPosition right);
+  public static bool op_LessThan(MarkdownRenderer.Document.DocumentPosition a, MarkdownRenderer.Document.DocumentPosition b);
+  public static bool op_LessThanOrEqual(MarkdownRenderer.Document.DocumentPosition a, MarkdownRenderer.Document.DocumentPosition b);
+  public static readonly MarkdownRenderer.Document.DocumentPosition Zero;
+  public void Deconstruct(out int BlockIndex, out int InlineIndex, out int CharacterOffset);
+
+public readonly struct MarkdownRenderer.Document.DocumentRange : System.IEquatable<MarkdownRenderer.Document.DocumentRange> [layout: Sequential; pack: 0; size: 0; charset: Ansi]
+  public DocumentRange(MarkdownRenderer.Document.DocumentPosition Start, MarkdownRenderer.Document.DocumentPosition End);
+  public MarkdownRenderer.Document.DocumentPosition End { get; init; }
+  public MarkdownRenderer.Document.DocumentPosition Start { get; init; }
+  public MarkdownRenderer.Document.DocumentRange Normalized();
+  public bool Equals(MarkdownRenderer.Document.DocumentRange other);
+  public bool IsEmpty { get; }
+  public override bool Equals(object obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static MarkdownRenderer.Document.DocumentRange Empty { get; }
+  public static bool op_Equality(MarkdownRenderer.Document.DocumentRange left, MarkdownRenderer.Document.DocumentRange right);
+  public static bool op_Inequality(MarkdownRenderer.Document.DocumentRange left, MarkdownRenderer.Document.DocumentRange right);
+  public void Deconstruct(out MarkdownRenderer.Document.DocumentPosition Start, out MarkdownRenderer.Document.DocumentPosition End);
+
+public sealed class MarkdownRenderer.Document.MarkdownAbbreviation : System.IEquatable<MarkdownRenderer.Document.MarkdownAbbreviation>
+  public MarkdownAbbreviation(string DisplayText, MarkdownRenderer.SourceSpan SourceSpan, int BlockIndex, string Expansion);
+  public MarkdownRenderer.Document.MarkdownAbbreviation <Clone>$();
+  public MarkdownRenderer.SourceSpan SourceSpan { get; init; }
+  public bool Equals(MarkdownRenderer.Document.MarkdownAbbreviation? other);
+  public int BlockIndex { get; init; }
+  public override bool Equals(object? obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static bool op_Equality(MarkdownRenderer.Document.MarkdownAbbreviation? left, MarkdownRenderer.Document.MarkdownAbbreviation? right);
+  public static bool op_Inequality(MarkdownRenderer.Document.MarkdownAbbreviation? left, MarkdownRenderer.Document.MarkdownAbbreviation? right);
+  public string DisplayText { get; init; }
+  public string Expansion { get; init; }
+  public void Deconstruct(out string DisplayText, out MarkdownRenderer.SourceSpan SourceSpan, out int BlockIndex, out string Expansion);
+
+public sealed class MarkdownRenderer.Document.MarkdownCodeBlock : System.IEquatable<MarkdownRenderer.Document.MarkdownCodeBlock>
+  public MarkdownCodeBlock(string DisplayText, MarkdownRenderer.SourceSpan SourceSpan, int BlockIndex, string? Language);
+  public MarkdownRenderer.Document.MarkdownCodeBlock <Clone>$();
+  public MarkdownRenderer.SourceSpan SourceSpan { get; init; }
+  public bool Equals(MarkdownRenderer.Document.MarkdownCodeBlock? other);
+  public int BlockIndex { get; init; }
+  public override bool Equals(object? obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static bool op_Equality(MarkdownRenderer.Document.MarkdownCodeBlock? left, MarkdownRenderer.Document.MarkdownCodeBlock? right);
+  public static bool op_Inequality(MarkdownRenderer.Document.MarkdownCodeBlock? left, MarkdownRenderer.Document.MarkdownCodeBlock? right);
+  public string DisplayText { get; init; }
+  public string? Language { get; init; }
+  public void Deconstruct(out string DisplayText, out MarkdownRenderer.SourceSpan SourceSpan, out int BlockIndex, out string? Language);
+
+public sealed class MarkdownRenderer.Document.MarkdownDefinitionItem : System.IEquatable<MarkdownRenderer.Document.MarkdownDefinitionItem>
+  public MarkdownDefinitionItem(string Term, string Definition, MarkdownRenderer.SourceSpan SourceSpan, int BlockIndex, char Marker);
+  public MarkdownRenderer.Document.MarkdownDefinitionItem <Clone>$();
+  public MarkdownRenderer.SourceSpan SourceSpan { get; init; }
+  public bool Equals(MarkdownRenderer.Document.MarkdownDefinitionItem? other);
+  public char Marker { get; init; }
+  public int BlockIndex { get; init; }
+  public override bool Equals(object? obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static bool op_Equality(MarkdownRenderer.Document.MarkdownDefinitionItem? left, MarkdownRenderer.Document.MarkdownDefinitionItem? right);
+  public static bool op_Inequality(MarkdownRenderer.Document.MarkdownDefinitionItem? left, MarkdownRenderer.Document.MarkdownDefinitionItem? right);
+  public string Definition { get; init; }
+  public string Term { get; init; }
+  public void Deconstruct(out string Term, out string Definition, out MarkdownRenderer.SourceSpan SourceSpan, out int BlockIndex, out char Marker);
+
+public sealed class MarkdownRenderer.Document.MarkdownDiagnostic : System.IEquatable<MarkdownRenderer.Document.MarkdownDiagnostic>
+  public MarkdownDiagnostic(string Code, MarkdownRenderer.Document.MarkdownDiagnosticSeverity Severity, string Message, MarkdownRenderer.SourceSpan SourceSpan);
+  public MarkdownRenderer.Document.MarkdownDiagnostic <Clone>$();
+  public MarkdownRenderer.Document.MarkdownDiagnosticSeverity Severity { get; init; }
+  public MarkdownRenderer.SourceSpan SourceSpan { get; init; }
+  public bool Equals(MarkdownRenderer.Document.MarkdownDiagnostic? other);
+  public override bool Equals(object? obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static bool op_Equality(MarkdownRenderer.Document.MarkdownDiagnostic? left, MarkdownRenderer.Document.MarkdownDiagnostic? right);
+  public static bool op_Inequality(MarkdownRenderer.Document.MarkdownDiagnostic? left, MarkdownRenderer.Document.MarkdownDiagnostic? right);
+  public string Code { get; init; }
+  public string Message { get; init; }
+  public void Deconstruct(out string Code, out MarkdownRenderer.Document.MarkdownDiagnosticSeverity Severity, out string Message, out MarkdownRenderer.SourceSpan SourceSpan);
+
+public enum MarkdownRenderer.Document.MarkdownDiagnosticSeverity
+  Error = 2,
+  Information = 0,
+  Warning = 1,
+
+public sealed class MarkdownRenderer.Document.MarkdownDocument
+  public System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Document.MarkdownAbbreviation> GetAbbreviations();
+  public System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Document.MarkdownCodeBlock> GetCodeBlocks();
+  public System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Document.MarkdownDefinitionItem> GetDefinitionItems();
+  public System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Document.MarkdownDiagnostic> Diagnostics { get; }
+  public System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Document.MarkdownFootnote> GetFootnotes();
+  public System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Document.MarkdownFragment> GetFragments();
+  public System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Document.MarkdownHeading> GetHeadings();
+  public System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Document.MarkdownImage> GetImages();
+  public System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Document.MarkdownLink> GetLinks();
+  public System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Document.MarkdownSourceMapEntry> SourceMap { get; }
+  public System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Extensions.MarkdownContentFragment> GetBlockExtensionContent(MarkdownRenderer.SourceSpan sourceRange);
+  public System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Extensions.MarkdownContentFragment> GetInlineExtensionContent(MarkdownRenderer.SourceSpan sourceRange);
+  public bool HasErrors { get; }
+  public bool TryGetBlockExtensionContent(MarkdownRenderer.SourceSpan sourceRange, out MarkdownRenderer.Extensions.MarkdownContentFragment? fragment);
+  public bool TryGetExtensionContent(MarkdownRenderer.SourceSpan sourceRange, out MarkdownRenderer.Extensions.MarkdownContentFragment? fragment);
+  public bool TryGetInlineExtensionContent(MarkdownRenderer.SourceSpan sourceRange, out MarkdownRenderer.Extensions.MarkdownContentFragment? fragment);
+  public static MarkdownRenderer.Document.MarkdownDocument Empty { get; }
+  public string Source { get; }
+  public string SourceText { get; }
+
+public sealed class MarkdownRenderer.Document.MarkdownFootnote : System.IEquatable<MarkdownRenderer.Document.MarkdownFootnote>
+  public MarkdownFootnote(string Label, string DisplayText, MarkdownRenderer.SourceSpan SourceSpan, int BlockIndex, int Order);
+  public MarkdownRenderer.Document.MarkdownFootnote <Clone>$();
+  public MarkdownRenderer.SourceSpan SourceSpan { get; init; }
+  public bool Equals(MarkdownRenderer.Document.MarkdownFootnote? other);
+  public int BlockIndex { get; init; }
+  public int Order { get; init; }
+  public override bool Equals(object? obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static bool op_Equality(MarkdownRenderer.Document.MarkdownFootnote? left, MarkdownRenderer.Document.MarkdownFootnote? right);
+  public static bool op_Inequality(MarkdownRenderer.Document.MarkdownFootnote? left, MarkdownRenderer.Document.MarkdownFootnote? right);
+  public string DisplayText { get; init; }
+  public string Label { get; init; }
+  public void Deconstruct(out string Label, out string DisplayText, out MarkdownRenderer.SourceSpan SourceSpan, out int BlockIndex, out int Order);
+
+public sealed class MarkdownRenderer.Document.MarkdownFragment : System.IEquatable<MarkdownRenderer.Document.MarkdownFragment>
+  public MarkdownFragment(string Id, MarkdownRenderer.SourceSpan SourceSpan, int BlockIndex);
+  public MarkdownRenderer.Document.MarkdownFragment <Clone>$();
+  public MarkdownRenderer.SourceSpan SourceSpan { get; init; }
+  public bool Equals(MarkdownRenderer.Document.MarkdownFragment? other);
+  public int BlockIndex { get; init; }
+  public override bool Equals(object? obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static bool op_Equality(MarkdownRenderer.Document.MarkdownFragment? left, MarkdownRenderer.Document.MarkdownFragment? right);
+  public static bool op_Inequality(MarkdownRenderer.Document.MarkdownFragment? left, MarkdownRenderer.Document.MarkdownFragment? right);
+  public string Id { get; init; }
+  public void Deconstruct(out string Id, out MarkdownRenderer.SourceSpan SourceSpan, out int BlockIndex);
+
+public sealed class MarkdownRenderer.Document.MarkdownHeading : System.IEquatable<MarkdownRenderer.Document.MarkdownHeading>
+  public MarkdownHeading(string DisplayText, MarkdownRenderer.SourceSpan SourceSpan, int BlockIndex, int Level);
+  public MarkdownRenderer.Document.MarkdownHeading <Clone>$();
+  public MarkdownRenderer.SourceSpan SourceSpan { get; init; }
+  public bool Equals(MarkdownRenderer.Document.MarkdownHeading? other);
+  public int BlockIndex { get; init; }
+  public int Level { get; init; }
+  public override bool Equals(object? obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static bool op_Equality(MarkdownRenderer.Document.MarkdownHeading? left, MarkdownRenderer.Document.MarkdownHeading? right);
+  public static bool op_Inequality(MarkdownRenderer.Document.MarkdownHeading? left, MarkdownRenderer.Document.MarkdownHeading? right);
+  public string DisplayText { get; init; }
+  public void Deconstruct(out string DisplayText, out MarkdownRenderer.SourceSpan SourceSpan, out int BlockIndex, out int Level);
+
+public sealed class MarkdownRenderer.Document.MarkdownImage : System.IEquatable<MarkdownRenderer.Document.MarkdownImage>
+  public MarkdownImage(string DisplayText, MarkdownRenderer.SourceSpan SourceSpan, int BlockIndex, string Source, string AltText, string? Title, bool IsInline);
+  public MarkdownRenderer.Document.MarkdownImage <Clone>$();
+  public MarkdownRenderer.SourceSpan SourceSpan { get; init; }
+  public bool Equals(MarkdownRenderer.Document.MarkdownImage? other);
+  public bool IsInline { get; init; }
+  public int BlockIndex { get; init; }
+  public override bool Equals(object? obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static bool op_Equality(MarkdownRenderer.Document.MarkdownImage? left, MarkdownRenderer.Document.MarkdownImage? right);
+  public static bool op_Inequality(MarkdownRenderer.Document.MarkdownImage? left, MarkdownRenderer.Document.MarkdownImage? right);
+  public string AltText { get; init; }
+  public string DisplayText { get; init; }
+  public string Source { get; init; }
+  public string? Title { get; init; }
+  public void Deconstruct(out string DisplayText, out MarkdownRenderer.SourceSpan SourceSpan, out int BlockIndex, out string Source, out string AltText, out string? Title, out bool IsInline);
+
+public sealed class MarkdownRenderer.Document.MarkdownLink : System.IEquatable<MarkdownRenderer.Document.MarkdownLink>
+  public MarkdownLink(string DisplayText, MarkdownRenderer.SourceSpan SourceSpan, int BlockIndex, string Url, string? Title);
+  public MarkdownRenderer.Document.MarkdownLink <Clone>$();
+  public MarkdownRenderer.SourceSpan SourceSpan { get; init; }
+  public bool Equals(MarkdownRenderer.Document.MarkdownLink? other);
+  public int BlockIndex { get; init; }
+  public override bool Equals(object? obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static bool op_Equality(MarkdownRenderer.Document.MarkdownLink? left, MarkdownRenderer.Document.MarkdownLink? right);
+  public static bool op_Inequality(MarkdownRenderer.Document.MarkdownLink? left, MarkdownRenderer.Document.MarkdownLink? right);
+  public string DisplayText { get; init; }
+  public string Url { get; init; }
+  public string? Title { get; init; }
+  public void Deconstruct(out string DisplayText, out MarkdownRenderer.SourceSpan SourceSpan, out int BlockIndex, out string Url, out string? Title);
+
+public enum MarkdownRenderer.Document.MarkdownSourceElementKind
+  Abbreviation = 6,
+  CodeBlock = 2,
+  DefinitionItem = 5,
+  Footnote = 4,
+  Fragment = 7,
+  Heading = 0,
+  Image = 3,
+  Link = 1,
+
+public sealed class MarkdownRenderer.Document.MarkdownSourceMap
+  public MarkdownSourceMap(string sourceText);
+  public bool TryMapRange(MarkdownRenderer.Document.DocumentRange range, out MarkdownRenderer.SourceSpan sourceSpan);
+  public string Slice(MarkdownRenderer.Document.DocumentRange range);
+  public string SourceText { get; }
+  public void Add(int blockIndex, int inlineIndex, int renderedLength, MarkdownRenderer.SourceSpan span);
+
+public sealed class MarkdownRenderer.Document.MarkdownSourceMapEntry : System.IEquatable<MarkdownRenderer.Document.MarkdownSourceMapEntry>
+  public MarkdownRenderer.Document.MarkdownSourceElementKind Kind { get; init; }
+  public MarkdownRenderer.Document.MarkdownSourceMapEntry <Clone>$();
+  public MarkdownRenderer.SourceSpan SourceSpan { get; init; }
+  public MarkdownSourceMapEntry(MarkdownRenderer.Document.MarkdownSourceElementKind Kind, MarkdownRenderer.SourceSpan SourceSpan, int BlockIndex);
+  public bool Equals(MarkdownRenderer.Document.MarkdownSourceMapEntry? other);
+  public int BlockIndex { get; init; }
+  public override bool Equals(object? obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static bool op_Equality(MarkdownRenderer.Document.MarkdownSourceMapEntry? left, MarkdownRenderer.Document.MarkdownSourceMapEntry? right);
+  public static bool op_Inequality(MarkdownRenderer.Document.MarkdownSourceMapEntry? left, MarkdownRenderer.Document.MarkdownSourceMapEntry? right);
+  public void Deconstruct(out MarkdownRenderer.Document.MarkdownSourceElementKind Kind, out MarkdownRenderer.SourceSpan SourceSpan, out int BlockIndex);
+
+public interface MarkdownRenderer.Extensions.IMarkdownExtension
+  public abstract string Id { get; }
+  public abstract void Configure(MarkdownRenderer.Extensions.MarkdownExtensionBuilder builder);
+
+public enum MarkdownRenderer.Extensions.MarkdownAccessibilityRole
+  Cell = 12,
+  Code = 7,
+  Diagram = 14,
+  Group = 2,
+  Heading = 4,
+  Image = 6,
+  Link = 5,
+  List = 8,
+  ListItem = 9,
+  Math = 13,
+  None = 0,
+  Paragraph = 3,
+  Row = 11,
+  Status = 15,
+  Table = 10,
+  Text = 1,
+
+public delegate System.Threading.Tasks.ValueTask MarkdownRenderer.Extensions.MarkdownAsyncNodeRenderer(MarkdownRenderer.Extensions.MarkdownExtensionContext context, MarkdownRenderer.Extensions.MarkdownContentBuilder content);
+
+public sealed class MarkdownRenderer.Extensions.MarkdownContent
+  public MarkdownRenderer.Extensions.MarkdownAccessibilityRole AccessibilityRole { get; }
+  public MarkdownRenderer.Extensions.MarkdownContentKind Kind { get; }
+  public MarkdownRenderer.Extensions.MarkdownVectorScene? VectorScene { get; }
+  public MarkdownRenderer.SourceSpan SourceSpan { get; }
+  public MarkdownRenderer.Theming.MarkdownStyleRole StyleRole { get; }
+  public System.Collections.Generic.IReadOnlyDictionary<string, string> Attributes { get; }
+  public System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Extensions.MarkdownContent> Children { get; }
+  public string? AccessibilityDescription { get; }
+  public string? AccessibilityName { get; }
+  public string? CustomKind { get; }
+  public string? Destination { get; }
+  public string? FactoryKey { get; }
+  public string? Language { get; }
+  public string? SemanticText { get; }
+  public string? Text { get; }
+
+public static class MarkdownRenderer.Extensions.MarkdownContentAttributes
+  public const string CodeShowLineNumbers = "code.lineNumbers";
+  public const string CodeStartLine = "code.startLine";
+  public const string ImageHeight = "image.height";
+  public const string ImageWidth = "image.width";
+  public const string ListOrdered = "list.ordered";
+  public const string ListStart = "list.start";
+  public const string TableHeaderRow = "table.header";
+  public const string Title = "content.title";
+
+public sealed class MarkdownRenderer.Extensions.MarkdownContentBuilder
+  public MarkdownContentBuilder();
+  public MarkdownRenderer.Extensions.MarkdownContentBuilder AddCodeBlock(string code, string? language, MarkdownRenderer.SourceSpan sourceSpan, MarkdownRenderer.Theming.MarkdownStyleRole styleRole = null, System.Collections.Generic.IReadOnlyDictionary<string, string>? attributes = null);
+  public MarkdownRenderer.Extensions.MarkdownContentBuilder AddContainer(MarkdownRenderer.Extensions.MarkdownContentKind kind, MarkdownRenderer.Theming.MarkdownStyleRole styleRole, MarkdownRenderer.SourceSpan sourceSpan, MarkdownRenderer.Extensions.MarkdownAccessibilityRole accessibilityRole, System.Action<MarkdownRenderer.Extensions.MarkdownContentBuilder> children, string? destination = null, System.Collections.Generic.IReadOnlyDictionary<string, string>? attributes = null, string? accessibilityName = null, string? accessibilityDescription = null, string? semanticText = null);
+  public MarkdownRenderer.Extensions.MarkdownContentBuilder AddCustom(string customKind, MarkdownRenderer.SourceSpan sourceSpan, MarkdownRenderer.Theming.MarkdownStyleRole styleRole, MarkdownRenderer.Extensions.MarkdownAccessibilityRole accessibilityRole, System.Collections.Generic.IReadOnlyDictionary<string, string>? attributes = null, System.Action<MarkdownRenderer.Extensions.MarkdownContentBuilder>? children = null, string? accessibilityName = null, string? accessibilityDescription = null, string? semanticText = null);
+  public MarkdownRenderer.Extensions.MarkdownContentBuilder AddHostedElement(string factoryKey, MarkdownRenderer.SourceSpan sourceSpan, MarkdownRenderer.Theming.MarkdownStyleRole styleRole, MarkdownRenderer.Extensions.MarkdownAccessibilityRole accessibilityRole = MarkdownRenderer.Extensions.MarkdownAccessibilityRole.Group, System.Collections.Generic.IReadOnlyDictionary<string, string>? attributes = null, string? accessibilityName = null, string? accessibilityDescription = null, string? semanticText = null);
+  public MarkdownRenderer.Extensions.MarkdownContentBuilder AddImage(string destination, string? alternativeText, MarkdownRenderer.SourceSpan sourceSpan, MarkdownRenderer.Theming.MarkdownStyleRole styleRole = null, System.Collections.Generic.IReadOnlyDictionary<string, string>? attributes = null);
+  public MarkdownRenderer.Extensions.MarkdownContentBuilder AddText(string text, MarkdownRenderer.SourceSpan sourceSpan, MarkdownRenderer.Theming.MarkdownStyleRole styleRole = null, MarkdownRenderer.Extensions.MarkdownAccessibilityRole accessibilityRole = MarkdownRenderer.Extensions.MarkdownAccessibilityRole.Text);
+  public MarkdownRenderer.Extensions.MarkdownContentBuilder AddVectorScene(MarkdownRenderer.Extensions.MarkdownVectorScene scene, MarkdownRenderer.SourceSpan sourceSpan, MarkdownRenderer.Theming.MarkdownStyleRole styleRole, MarkdownRenderer.Extensions.MarkdownAccessibilityRole accessibilityRole, string? accessibilityName = null, string? accessibilityDescription = null, string? semanticText = null, System.Collections.Generic.IReadOnlyDictionary<string, string>? attributes = null);
+  public MarkdownRenderer.Extensions.MarkdownContentFragment Build();
+
+public sealed class MarkdownRenderer.Extensions.MarkdownContentFragment
+  public System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Extensions.MarkdownContent> Items { get; }
+  public static MarkdownRenderer.Extensions.MarkdownContentFragment Empty { get; }
+
+public enum MarkdownRenderer.Extensions.MarkdownContentKind
+  CodeBlock = 8,
+  Container = 1,
+  Custom = 12,
+  HostedElement = 11,
+  Image = 9,
+  Link = 2,
+  List = 3,
+  ListItem = 4,
+  Table = 5,
+  TableCell = 7,
+  TableRow = 6,
+  Text = 0,
+  VectorScene = 10,
+
+public sealed class MarkdownRenderer.Extensions.MarkdownExtensionBuilder
+  public MarkdownExtensionBuilder();
+  public MarkdownRenderer.Extensions.MarkdownExtensionBuilder Add(MarkdownRenderer.Extensions.IMarkdownExtension extension);
+  public MarkdownRenderer.Extensions.MarkdownExtensionBuilder AddFeature(string featureId);
+  public MarkdownRenderer.Extensions.MarkdownExtensionBuilder Include(MarkdownRenderer.Extensions.MarkdownExtensionSet extensions);
+  public MarkdownRenderer.Extensions.MarkdownExtensionBuilder RegisterBlock(string syntaxKind, MarkdownRenderer.Extensions.MarkdownNodeRenderer renderer);
+  public MarkdownRenderer.Extensions.MarkdownExtensionBuilder RegisterBlockAsync(string syntaxKind, MarkdownRenderer.Extensions.MarkdownAsyncNodeRenderer renderer);
+  public MarkdownRenderer.Extensions.MarkdownExtensionBuilder RegisterInline(string syntaxKind, MarkdownRenderer.Extensions.MarkdownNodeRenderer renderer);
+  public MarkdownRenderer.Extensions.MarkdownExtensionBuilder RegisterInlineAsync(string syntaxKind, MarkdownRenderer.Extensions.MarkdownAsyncNodeRenderer renderer);
+  public MarkdownRenderer.Extensions.MarkdownExtensionSet Build();
+
+public sealed class MarkdownRenderer.Extensions.MarkdownExtensionContext
+  public MarkdownExtensionContext(MarkdownRenderer.Extensions.MarkdownSyntaxNode node, System.Threading.CancellationToken cancellationToken = null);
+  public MarkdownRenderer.Extensions.MarkdownSyntaxNode Node { get; }
+  public System.Threading.CancellationToken CancellationToken { get; }
+  public void ReportDiagnostic(string code, MarkdownRenderer.Document.MarkdownDiagnosticSeverity severity, string message, MarkdownRenderer.SourceSpan sourceSpan);
+
+public static class MarkdownRenderer.Extensions.MarkdownExtensionFeatures
+  public const string DollarMath = "markdown.math.dollar";
+
+public sealed class MarkdownRenderer.Extensions.MarkdownExtensionSet
+  public System.Collections.Generic.IReadOnlyList<string> BlockSyntaxKinds { get; }
+  public System.Collections.Generic.IReadOnlyList<string> ExtensionIds { get; }
+  public System.Collections.Generic.IReadOnlyList<string> Features { get; }
+  public System.Collections.Generic.IReadOnlyList<string> InlineSyntaxKinds { get; }
+  public bool ContainsExtension(string extensionId);
+  public bool HasFeature(string featureId);
+  public bool TryGetAsyncBlockRenderer(string syntaxKind, out MarkdownRenderer.Extensions.MarkdownAsyncNodeRenderer? renderer);
+  public bool TryGetAsyncInlineRenderer(string syntaxKind, out MarkdownRenderer.Extensions.MarkdownAsyncNodeRenderer? renderer);
+  public bool TryGetBlockRenderer(string syntaxKind, out MarkdownRenderer.Extensions.MarkdownNodeRenderer? renderer);
+  public bool TryGetInlineRenderer(string syntaxKind, out MarkdownRenderer.Extensions.MarkdownNodeRenderer? renderer);
+  public static MarkdownRenderer.Extensions.MarkdownExtensionSet Empty { get; }
+
+public static class MarkdownRenderer.Extensions.MarkdownHostedElementAttributes
+  public const string DesiredHeight = "layout.height";
+
+public delegate void MarkdownRenderer.Extensions.MarkdownNodeRenderer(MarkdownRenderer.Extensions.MarkdownExtensionContext context, MarkdownRenderer.Extensions.MarkdownContentBuilder content);
+
+public sealed class MarkdownRenderer.Extensions.MarkdownOwnedExtension
+  public MarkdownOwnedExtension(MarkdownRenderer.Extensions.IMarkdownExtension extension, System.IDisposable resource);
+  public MarkdownRenderer.Extensions.IMarkdownExtension Extension { get; }
+  public System.IDisposable Resource { get; }
+
+public static class MarkdownRenderer.Extensions.MarkdownSyntaxKinds
+
+public static class MarkdownRenderer.Extensions.MarkdownSyntaxKinds.Block
+  public const string FencedCode = "commonmark.block.fenced-code";
+  public const string Heading = "commonmark.block.heading";
+  public const string Html = "commonmark.block.html";
+  public const string IndentedCode = "commonmark.block.indented-code";
+  public const string List = "commonmark.block.list";
+  public const string ListItem = "commonmark.block.list-item";
+  public const string Math = "markdown.block.math";
+  public const string Paragraph = "commonmark.block.paragraph";
+  public const string Quote = "commonmark.block.quote";
+  public const string ThematicBreak = "commonmark.block.thematic-break";
+
+public static class MarkdownRenderer.Extensions.MarkdownSyntaxKinds.Inline
+  public const string Abbreviation = "markdown-extra.inline.abbreviation";
+  public const string AutoLink = "commonmark.inline.autolink";
+  public const string Code = "commonmark.inline.code";
+  public const string Emphasis = "commonmark.inline.emphasis";
+  public const string Entity = "commonmark.inline.entity";
+  public const string Html = "commonmark.inline.html";
+  public const string Image = "commonmark.inline.image";
+  public const string LineBreak = "commonmark.inline.line-break";
+  public const string Link = "commonmark.inline.link";
+  public const string Math = "markdown.inline.math";
+  public const string Text = "commonmark.inline.text";
+
+public sealed class MarkdownRenderer.Extensions.MarkdownSyntaxNode
+  public MarkdownRenderer.SourceSpan SourceSpan { get; }
+  public MarkdownSyntaxNode(string kind, MarkdownRenderer.SourceSpan sourceSpan, string? literal = null, System.Collections.Generic.IEnumerable<System.Collections.Generic.KeyValuePair<string, string>>? attributes = null, System.Collections.Generic.IEnumerable<MarkdownRenderer.Extensions.MarkdownSyntaxNode>? children = null);
+  public System.Collections.Generic.IReadOnlyDictionary<string, string> Attributes { get; }
+  public System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Extensions.MarkdownSyntaxNode> Children { get; }
+  public string Kind { get; }
+  public string? Literal { get; }
+
+public sealed class MarkdownRenderer.Extensions.MarkdownVectorCommand
+  public MarkdownRenderer.Extensions.MarkdownVectorCommandKind Kind { get; }
+  public MarkdownRenderer.Extensions.MarkdownVectorPaintStyle? Style { get; }
+  public MarkdownRenderer.Extensions.MarkdownVectorPoint End { get; }
+  public MarkdownRenderer.Extensions.MarkdownVectorPoint Start { get; }
+  public MarkdownRenderer.Extensions.MarkdownVectorRectangle Rectangle { get; }
+  public MarkdownRenderer.Extensions.MarkdownVectorTextStyle? TextStyle { get; }
+  public MarkdownRenderer.Extensions.MarkdownVectorTransform Transform { get; }
+  public System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Extensions.MarkdownVectorPathOperation> Path { get; }
+  public bool IsClosed { get; }
+  public float StrokeWidth { get; }
+  public int SemanticIndex { get; }
+  public static MarkdownRenderer.Extensions.MarkdownVectorCommand BeginClip(System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Extensions.MarkdownVectorPathOperation> path);
+  public static MarkdownRenderer.Extensions.MarkdownVectorCommand BeginGroup(MarkdownRenderer.Extensions.MarkdownVectorTransform transform, int semanticIndex = -1);
+  public static MarkdownRenderer.Extensions.MarkdownVectorCommand DrawEllipse(MarkdownRenderer.Extensions.MarkdownVectorRectangle rectangle, MarkdownRenderer.Extensions.MarkdownVectorPaintStyle style, int semanticIndex = -1);
+  public static MarkdownRenderer.Extensions.MarkdownVectorCommand DrawLine(MarkdownRenderer.Extensions.MarkdownVectorPoint start, MarkdownRenderer.Extensions.MarkdownVectorPoint end, MarkdownRenderer.Extensions.MarkdownVectorPaintStyle style, int semanticIndex = -1);
+  public static MarkdownRenderer.Extensions.MarkdownVectorCommand DrawPath(System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Extensions.MarkdownVectorPathOperation> path, MarkdownRenderer.Extensions.MarkdownVectorPaintStyle style, bool isClosed = false, int semanticIndex = -1);
+  public static MarkdownRenderer.Extensions.MarkdownVectorCommand DrawRectangle(MarkdownRenderer.Extensions.MarkdownVectorRectangle rectangle, MarkdownRenderer.Extensions.MarkdownVectorPaintStyle style, int semanticIndex = -1);
+  public static MarkdownRenderer.Extensions.MarkdownVectorCommand DrawText(string text, MarkdownRenderer.Extensions.MarkdownVectorPoint baselineOrigin, MarkdownRenderer.Extensions.MarkdownVectorTextStyle textStyle, MarkdownRenderer.Extensions.MarkdownVectorPaintStyle style, int semanticIndex = -1);
+  public static MarkdownRenderer.Extensions.MarkdownVectorCommand EndClip();
+  public static MarkdownRenderer.Extensions.MarkdownVectorCommand EndGroup();
+  public static MarkdownRenderer.Extensions.MarkdownVectorCommand FillPath(System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Extensions.MarkdownVectorPathOperation> path, uint? colorArgb = null);
+  public static MarkdownRenderer.Extensions.MarkdownVectorCommand FillRectangle(MarkdownRenderer.Extensions.MarkdownVectorRectangle rectangle, uint? colorArgb = null);
+  public static MarkdownRenderer.Extensions.MarkdownVectorCommand StrokeLine(MarkdownRenderer.Extensions.MarkdownVectorPoint start, MarkdownRenderer.Extensions.MarkdownVectorPoint end, float strokeWidth, uint? colorArgb = null);
+  public static MarkdownRenderer.Extensions.MarkdownVectorCommand StrokePath(System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Extensions.MarkdownVectorPathOperation> path, float strokeWidth, uint? colorArgb = null);
+  public static MarkdownRenderer.Extensions.MarkdownVectorCommand StrokeRectangle(MarkdownRenderer.Extensions.MarkdownVectorRectangle rectangle, float strokeWidth, uint? colorArgb = null);
+  public string? Text { get; }
+  public uint? ColorArgb { get; }
+
+public enum MarkdownRenderer.Extensions.MarkdownVectorCommandKind
+  BeginClip = 12,
+  BeginGroup = 10,
+  DrawEllipse = 8,
+  DrawLine = 7,
+  DrawPath = 6,
+  DrawRectangle = 5,
+  DrawText = 9,
+  EndClip = 13,
+  EndGroup = 11,
+  FillPath = 0,
+  FillRectangle = 2,
+  StrokeLine = 4,
+  StrokePath = 1,
+  StrokeRectangle = 3,
+
+public enum MarkdownRenderer.Extensions.MarkdownVectorFillRule
+  EvenOdd = 1,
+  Nonzero = 0,
+
+public enum MarkdownRenderer.Extensions.MarkdownVectorFontRole
+  Authored = 0,
+  Host = 1,
+
+public enum MarkdownRenderer.Extensions.MarkdownVectorLineCap
+  Flat = 0,
+  Round = 1,
+  Square = 2,
+
+public enum MarkdownRenderer.Extensions.MarkdownVectorLineJoin
+  Bevel = 2,
+  Miter = 0,
+  Round = 1,
+
+public sealed class MarkdownRenderer.Extensions.MarkdownVectorLinkAction
+  public MarkdownVectorLinkAction(int semanticIndex, string? target, string? action, bool external = false);
+  public bool External { get; }
+  public int SemanticIndex { get; }
+  public string? Action { get; }
+  public string? Target { get; }
+
+public enum MarkdownRenderer.Extensions.MarkdownVectorPaintRole
+  Authored = 0,
+  Foreground = 1,
+  Link = 3,
+  Surface = 2,
+
+public sealed class MarkdownRenderer.Extensions.MarkdownVectorPaintStyle
+  public MarkdownRenderer.Extensions.MarkdownVectorFillRule FillRule { get; }
+  public MarkdownRenderer.Extensions.MarkdownVectorLineCap LineCap { get; }
+  public MarkdownRenderer.Extensions.MarkdownVectorLineJoin LineJoin { get; }
+  public MarkdownRenderer.Extensions.MarkdownVectorPaintRole FillRole { get; }
+  public MarkdownRenderer.Extensions.MarkdownVectorPaintRole StrokeRole { get; }
+  public MarkdownRenderer.Extensions.MarkdownVectorPaintRole? HighContrastFillRole { get; }
+  public MarkdownRenderer.Extensions.MarkdownVectorPaintRole? HighContrastStrokeRole { get; }
+  public MarkdownRenderer.Extensions.MarkdownVectorPaintStyle WithHighContrastRoles(MarkdownRenderer.Extensions.MarkdownVectorPaintRole fillRole, MarkdownRenderer.Extensions.MarkdownVectorPaintRole strokeRole);
+  public MarkdownVectorPaintStyle(uint? fillArgb = null, uint? strokeArgb = null, float strokeWidth = 0F, float opacity = 1F, MarkdownRenderer.Extensions.MarkdownVectorFillRule fillRule = MarkdownRenderer.Extensions.MarkdownVectorFillRule.Nonzero, MarkdownRenderer.Extensions.MarkdownVectorLineCap lineCap = MarkdownRenderer.Extensions.MarkdownVectorLineCap.Flat, MarkdownRenderer.Extensions.MarkdownVectorLineJoin lineJoin = MarkdownRenderer.Extensions.MarkdownVectorLineJoin.Miter, bool nonScalingStroke = false, System.Collections.Generic.IReadOnlyList<float>? dashArray = null, float dashOffset = 0F);
+  public System.Collections.Generic.IReadOnlyList<float> DashArray { get; }
+  public bool NonScalingStroke { get; }
+  public float DashOffset { get; }
+  public float Opacity { get; }
+  public float StrokeWidth { get; }
+  public static MarkdownRenderer.Extensions.MarkdownVectorPaintStyle CreateSemantic(MarkdownRenderer.Extensions.MarkdownVectorPaintRole fillRole, MarkdownRenderer.Extensions.MarkdownVectorPaintRole strokeRole, uint? fillArgb = null, uint? strokeArgb = null, float strokeWidth = 0F, float opacity = 1F, MarkdownRenderer.Extensions.MarkdownVectorFillRule fillRule = MarkdownRenderer.Extensions.MarkdownVectorFillRule.Nonzero, MarkdownRenderer.Extensions.MarkdownVectorLineCap lineCap = MarkdownRenderer.Extensions.MarkdownVectorLineCap.Flat, MarkdownRenderer.Extensions.MarkdownVectorLineJoin lineJoin = MarkdownRenderer.Extensions.MarkdownVectorLineJoin.Miter, bool nonScalingStroke = false, System.Collections.Generic.IReadOnlyList<float>? dashArray = null, float dashOffset = 0F);
+  public uint? FillArgb { get; }
+  public uint? StrokeArgb { get; }
+
+public readonly struct MarkdownRenderer.Extensions.MarkdownVectorPathOperation : System.IEquatable<MarkdownRenderer.Extensions.MarkdownVectorPathOperation> [layout: Sequential; pack: 0; size: 0; charset: Ansi]
+  public MarkdownRenderer.Extensions.MarkdownVectorPathOperationKind Kind { get; }
+  public MarkdownRenderer.Extensions.MarkdownVectorPoint Point1 { get; }
+  public MarkdownRenderer.Extensions.MarkdownVectorPoint Point2 { get; }
+  public MarkdownRenderer.Extensions.MarkdownVectorPoint Point3 { get; }
+  public bool Equals(MarkdownRenderer.Extensions.MarkdownVectorPathOperation other);
+  public override bool Equals(object obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static MarkdownRenderer.Extensions.MarkdownVectorPathOperation Close();
+  public static MarkdownRenderer.Extensions.MarkdownVectorPathOperation CubicBezierTo(MarkdownRenderer.Extensions.MarkdownVectorPoint control1, MarkdownRenderer.Extensions.MarkdownVectorPoint control2, MarkdownRenderer.Extensions.MarkdownVectorPoint end);
+  public static MarkdownRenderer.Extensions.MarkdownVectorPathOperation LineTo(MarkdownRenderer.Extensions.MarkdownVectorPoint point);
+  public static MarkdownRenderer.Extensions.MarkdownVectorPathOperation MoveTo(MarkdownRenderer.Extensions.MarkdownVectorPoint point);
+  public static MarkdownRenderer.Extensions.MarkdownVectorPathOperation QuadraticBezierTo(MarkdownRenderer.Extensions.MarkdownVectorPoint control, MarkdownRenderer.Extensions.MarkdownVectorPoint end);
+  public static bool op_Equality(MarkdownRenderer.Extensions.MarkdownVectorPathOperation left, MarkdownRenderer.Extensions.MarkdownVectorPathOperation right);
+  public static bool op_Inequality(MarkdownRenderer.Extensions.MarkdownVectorPathOperation left, MarkdownRenderer.Extensions.MarkdownVectorPathOperation right);
+
+public enum MarkdownRenderer.Extensions.MarkdownVectorPathOperationKind
+  Close = 4,
+  CubicBezier = 3,
+  Line = 1,
+  Move = 0,
+  QuadraticBezier = 2,
+
+public readonly struct MarkdownRenderer.Extensions.MarkdownVectorPoint : System.IEquatable<MarkdownRenderer.Extensions.MarkdownVectorPoint> [layout: Sequential; pack: 0; size: 0; charset: Ansi]
+  public MarkdownVectorPoint(float x, float y);
+  public bool Equals(MarkdownRenderer.Extensions.MarkdownVectorPoint other);
+  public float X { get; }
+  public float Y { get; }
+  public override bool Equals(object obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static bool op_Equality(MarkdownRenderer.Extensions.MarkdownVectorPoint left, MarkdownRenderer.Extensions.MarkdownVectorPoint right);
+  public static bool op_Inequality(MarkdownRenderer.Extensions.MarkdownVectorPoint left, MarkdownRenderer.Extensions.MarkdownVectorPoint right);
+
+public readonly struct MarkdownRenderer.Extensions.MarkdownVectorRectangle : System.IEquatable<MarkdownRenderer.Extensions.MarkdownVectorRectangle> [layout: Sequential; pack: 0; size: 0; charset: Ansi]
+  public MarkdownVectorRectangle(float x, float y, float width, float height);
+  public bool Equals(MarkdownRenderer.Extensions.MarkdownVectorRectangle other);
+  public float Height { get; }
+  public float Width { get; }
+  public float X { get; }
+  public float Y { get; }
+  public override bool Equals(object obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static bool op_Equality(MarkdownRenderer.Extensions.MarkdownVectorRectangle left, MarkdownRenderer.Extensions.MarkdownVectorRectangle right);
+  public static bool op_Inequality(MarkdownRenderer.Extensions.MarkdownVectorRectangle left, MarkdownRenderer.Extensions.MarkdownVectorRectangle right);
+
+public sealed class MarkdownRenderer.Extensions.MarkdownVectorScene
+  public MarkdownRenderer.Extensions.MarkdownVectorRectangle Viewport { get; }
+  public MarkdownVectorScene(float width, float height, float baseline, System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Extensions.MarkdownVectorCommand> commands, float referenceFontSize = 0F);
+  public MarkdownVectorScene(float width, float height, float baseline, System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Extensions.MarkdownVectorCommand> commands, float referenceFontSize, MarkdownRenderer.Extensions.MarkdownVectorRectangle viewport, System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Extensions.MarkdownVectorSemanticItem> semantics, System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Extensions.MarkdownVectorLinkAction> links);
+  public System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Extensions.MarkdownVectorCommand> Commands { get; }
+  public System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Extensions.MarkdownVectorLinkAction> Links { get; }
+  public System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Extensions.MarkdownVectorSemanticItem> Semantics { get; }
+  public float Baseline { get; }
+  public float Height { get; }
+  public float ReferenceFontSize { get; }
+  public float Width { get; }
+
+[Flags] public enum MarkdownRenderer.Extensions.MarkdownVectorSemanticFlags
+  Decorative = 8,
+  Focusable = 1,
+  Linked = 4,
+  None = 0,
+  Selectable = 2,
+
+public sealed class MarkdownRenderer.Extensions.MarkdownVectorSemanticItem
+  public MarkdownRenderer.Extensions.MarkdownVectorRectangle Bounds { get; }
+  public MarkdownRenderer.Extensions.MarkdownVectorSemanticFlags Flags { get; }
+  public MarkdownRenderer.Extensions.MarkdownVectorSemanticRole Role { get; }
+  public MarkdownRenderer.SourceSpan SourceSpan { get; }
+  public MarkdownVectorSemanticItem(uint sourceId, MarkdownRenderer.Extensions.MarkdownVectorSemanticRole role, string? name, string? description, int parentIndex, MarkdownRenderer.SourceSpan sourceSpan, MarkdownRenderer.Extensions.MarkdownVectorRectangle bounds, MarkdownRenderer.Extensions.MarkdownVectorSemanticFlags flags = MarkdownRenderer.Extensions.MarkdownVectorSemanticFlags.None);
+  public int ParentIndex { get; }
+  public string? Description { get; }
+  public string? Name { get; }
+  public uint SourceId { get; }
+
+public enum MarkdownRenderer.Extensions.MarkdownVectorSemanticRole
+  Diagram = 0,
+  Edge = 3,
+  Group = 1,
+  Label = 4,
+  Legend = 5,
+  Node = 2,
+
+public enum MarkdownRenderer.Extensions.MarkdownVectorTextAlignment
+  Center = 1,
+  End = 2,
+  Start = 0,
+
+public sealed class MarkdownRenderer.Extensions.MarkdownVectorTextStyle
+  public MarkdownRenderer.Extensions.MarkdownVectorFontRole FontRole { get; }
+  public MarkdownRenderer.Extensions.MarkdownVectorTextAlignment Alignment { get; }
+  public MarkdownVectorTextStyle(MarkdownRenderer.Extensions.MarkdownVectorFontRole fontRole, string fontFamily, float fontSize, ushort fontWeight = 400, bool italic = false, bool rightToLeft = false, MarkdownRenderer.Extensions.MarkdownVectorTextAlignment alignment = MarkdownRenderer.Extensions.MarkdownVectorTextAlignment.Start);
+  public MarkdownVectorTextStyle(string fontFamily, float fontSize, ushort fontWeight = 400, bool italic = false, bool rightToLeft = false, MarkdownRenderer.Extensions.MarkdownVectorTextAlignment alignment = MarkdownRenderer.Extensions.MarkdownVectorTextAlignment.Start);
+  public bool Italic { get; }
+  public bool RightToLeft { get; }
+  public float FontSize { get; }
+  public string FontFamily { get; }
+  public ushort FontWeight { get; }
+
+public readonly struct MarkdownRenderer.Extensions.MarkdownVectorTransform : System.IEquatable<MarkdownRenderer.Extensions.MarkdownVectorTransform> [layout: Sequential; pack: 0; size: 0; charset: Ansi]
+  public MarkdownVectorTransform(float m11, float m12, float m21, float m22, float m31, float m32);
+  public bool Equals(MarkdownRenderer.Extensions.MarkdownVectorTransform other);
+  public float M11 { get; }
+  public float M12 { get; }
+  public float M21 { get; }
+  public float M22 { get; }
+  public float M31 { get; }
+  public float M32 { get; }
+  public override bool Equals(object obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static MarkdownRenderer.Extensions.MarkdownVectorTransform Identity { get; }
+  public static bool op_Equality(MarkdownRenderer.Extensions.MarkdownVectorTransform left, MarkdownRenderer.Extensions.MarkdownVectorTransform right);
+  public static bool op_Inequality(MarkdownRenderer.Extensions.MarkdownVectorTransform left, MarkdownRenderer.Extensions.MarkdownVectorTransform right);
+
+public sealed class MarkdownRenderer.MarkdownEngine : System.IDisposable
+  public MarkdownRenderer.Extensions.MarkdownExtensionSet Extensions { get; }
+  public MarkdownRenderer.MarkdownEngineBuilder ToBuilder();
+  public MarkdownRenderer.MarkdownParseLimits ParseLimits { get; }
+  public MarkdownRenderer.MarkdownProfile Profile { get; }
+  public System.Threading.Tasks.Task<MarkdownRenderer.Document.MarkdownDocument> ParseAsync(string? source, System.Threading.CancellationToken cancellationToken = null);
+  public const long DefaultParseCacheBudgetBytes = 16777216;
+  public long ParseCacheBudgetBytes { get; }
+  public static MarkdownRenderer.MarkdownEngine Default { get; }
+  public void Dispose();
+
+public sealed class MarkdownRenderer.MarkdownEngineBuilder
+  public MarkdownEngineBuilder();
+  public MarkdownEngineBuilder(MarkdownRenderer.MarkdownEngine engine);
+  public MarkdownRenderer.MarkdownEngine Build();
+  public MarkdownRenderer.MarkdownEngineBuilder AddProfile(MarkdownRenderer.MarkdownProfile profile);
+  public MarkdownRenderer.MarkdownEngineBuilder UseExtension(MarkdownRenderer.Extensions.IMarkdownExtension extension);
+  public MarkdownRenderer.MarkdownEngineBuilder UseExtensions(MarkdownRenderer.Extensions.MarkdownExtensionSet extensions);
+  public MarkdownRenderer.MarkdownEngineBuilder UseOwnedExtensionFactory(string extensionId, System.Func<MarkdownRenderer.Extensions.MarkdownOwnedExtension> create);
+  public MarkdownRenderer.MarkdownEngineBuilder UseProfile(MarkdownRenderer.MarkdownProfile profile);
+  public MarkdownRenderer.MarkdownEngineBuilder WithParseCacheBudgetBytes(long byteBudget);
+  public MarkdownRenderer.MarkdownEngineBuilder WithParseLimits(MarkdownRenderer.MarkdownParseLimits limits);
+
+public sealed class MarkdownRenderer.MarkdownParseLimits : System.IEquatable<MarkdownRenderer.MarkdownParseLimits>
+  public MarkdownParseLimits(int maximumSourceLength = 4194304, int maximumConcurrentParseCount = 4, int maximumOutstandingParseCount = 16, long maximumOutstandingSourceBytes = 67108864);
+  public bool Equals(MarkdownRenderer.MarkdownParseLimits? other);
+  public const int DefaultMaximumConcurrentParseCount = 4;
+  public const int DefaultMaximumOutstandingParseCount = 16;
+  public const int DefaultMaximumSourceLength = 4194304;
+  public const long DefaultMaximumOutstandingSourceBytes = 67108864;
+  public int MaximumConcurrentParseCount { get; }
+  public int MaximumOutstandingParseCount { get; }
+  public int MaximumSourceLength { get; }
+  public long MaximumOutstandingSourceBytes { get; }
+  public override bool Equals(object? obj);
+  public override int GetHashCode();
+  public static MarkdownRenderer.MarkdownParseLimits Default { get; }
+
+public sealed class MarkdownRenderer.MarkdownProfile : System.IEquatable<MarkdownRenderer.MarkdownProfile>
+  public MarkdownRenderer.MarkdownProfile Combine(MarkdownRenderer.MarkdownProfile additionalProfile);
+  public System.Collections.Generic.IReadOnlyList<string> Features { get; }
+  public bool Equals(MarkdownRenderer.MarkdownProfile? other);
+  public override bool Equals(object? obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public string Id { get; }
+  public string? Specification { get; }
+
+public static class MarkdownRenderer.MarkdownProfiles
+  public static MarkdownRenderer.MarkdownProfile CommonMark { get; }
+  public static MarkdownRenderer.MarkdownProfile GfmStrict { get; }
+  public static MarkdownRenderer.MarkdownProfile GitHubReadme { get; }
+  public static MarkdownRenderer.MarkdownProfile MarkdownExtra { get; }
+
+public readonly struct MarkdownRenderer.SourceSpan : System.IEquatable<MarkdownRenderer.SourceSpan> [layout: Sequential; pack: 0; size: 0; charset: Ansi]
+  public MarkdownRenderer.SourceSpan Union(MarkdownRenderer.SourceSpan other);
+  public SourceSpan(int Start, int Length);
+  public bool Contains(int position);
+  public bool Equals(MarkdownRenderer.SourceSpan other);
+  public bool IsEmpty { get; }
+  public int End { get; }
+  public int Length { get; init; }
+  public int Start { get; init; }
+  public override bool Equals(object obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static MarkdownRenderer.SourceSpan Empty { get; }
+  public static bool op_Equality(MarkdownRenderer.SourceSpan left, MarkdownRenderer.SourceSpan right);
+  public static bool op_Inequality(MarkdownRenderer.SourceSpan left, MarkdownRenderer.SourceSpan right);
+  public void Deconstruct(out int Start, out int Length);
+
+public readonly struct MarkdownRenderer.Theming.MarkdownStyleRole : System.IEquatable<MarkdownRenderer.Theming.MarkdownStyleRole> [layout: Sequential; pack: 0; size: 0; charset: Ansi]
+  public MarkdownStyleRole(string name);
+  public bool Equals(MarkdownRenderer.Theming.MarkdownStyleRole other);
+  public bool IsEmpty { get; }
+  public override bool Equals(object? obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static MarkdownRenderer.Theming.MarkdownStyleRole Body { get; }
+  public static MarkdownRenderer.Theming.MarkdownStyleRole CodeBlock { get; }
+  public static MarkdownRenderer.Theming.MarkdownStyleRole CodeBlockGutter { get; }
+  public static MarkdownRenderer.Theming.MarkdownStyleRole CodeBlockHeader { get; }
+  public static MarkdownRenderer.Theming.MarkdownStyleRole CodeBlockLanguage { get; }
+  public static MarkdownRenderer.Theming.MarkdownStyleRole CodeBlockLineNumber { get; }
+  public static MarkdownRenderer.Theming.MarkdownStyleRole Diagram { get; }
+  public static MarkdownRenderer.Theming.MarkdownStyleRole Emphasis { get; }
+  public static MarkdownRenderer.Theming.MarkdownStyleRole FromElementKey(string elementKey);
+  public static MarkdownRenderer.Theming.MarkdownStyleRole Heading1 { get; }
+  public static MarkdownRenderer.Theming.MarkdownStyleRole Heading2 { get; }
+  public static MarkdownRenderer.Theming.MarkdownStyleRole Heading3 { get; }
+  public static MarkdownRenderer.Theming.MarkdownStyleRole Heading4 { get; }
+  public static MarkdownRenderer.Theming.MarkdownStyleRole Heading5 { get; }
+  public static MarkdownRenderer.Theming.MarkdownStyleRole Heading6 { get; }
+  public static MarkdownRenderer.Theming.MarkdownStyleRole ImageCaption { get; }
+  public static MarkdownRenderer.Theming.MarkdownStyleRole InlineCode { get; }
+  public static MarkdownRenderer.Theming.MarkdownStyleRole Link { get; }
+  public static MarkdownRenderer.Theming.MarkdownStyleRole ListMarker { get; }
+  public static MarkdownRenderer.Theming.MarkdownStyleRole Math { get; }
+  public static MarkdownRenderer.Theming.MarkdownStyleRole Quote { get; }
+  public static MarkdownRenderer.Theming.MarkdownStyleRole Strikethrough { get; }
+  public static MarkdownRenderer.Theming.MarkdownStyleRole Strong { get; }
+  public static MarkdownRenderer.Theming.MarkdownStyleRole Table { get; }
+  public static MarkdownRenderer.Theming.MarkdownStyleRole TableCell { get; }
+  public static MarkdownRenderer.Theming.MarkdownStyleRole TableHeader { get; }
+  public static MarkdownRenderer.Theming.MarkdownStyleRole ThematicBreak { get; }
+  public static bool op_Equality(MarkdownRenderer.Theming.MarkdownStyleRole left, MarkdownRenderer.Theming.MarkdownStyleRole right);
+  public static bool op_Inequality(MarkdownRenderer.Theming.MarkdownStyleRole left, MarkdownRenderer.Theming.MarkdownStyleRole right);
+  public string Name { get; }

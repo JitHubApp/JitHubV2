@@ -42,6 +42,9 @@ public sealed class NativeAotSourceContractTests
         Assert.Contains("<CsWinRTAotWarningLevel>2</CsWinRTAotWarningLevel>", project, StringComparison.Ordinal);
         Assert.Contains("CsWinRT1032", directoryProps, StringComparison.Ordinal);
         Assert.Contains("<RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>", project, StringComparison.Ordinal);
+        Assert.Contains("MarkdownRenderer.Math\\MarkdownRenderer.Math.csproj", project, StringComparison.Ordinal);
+        Assert.Contains("MarkdownRenderer.Mermaid\\MarkdownRenderer.Mermaid.csproj", project, StringComparison.Ordinal);
+        Assert.Contains("MarkdownRenderer.Svg.Resvg\\MarkdownRenderer.Svg.Resvg.csproj", project, StringComparison.Ordinal);
         Assert.Contains("JitHub.WinUI (AotDebug)", launchSettings, StringComparison.Ordinal);
         Assert.Contains("\"nativeDebugging\": true", launchSettings, StringComparison.Ordinal);
     }
@@ -53,11 +56,11 @@ public sealed class NativeAotSourceContractTests
         string root = FindRepositoryRoot();
         string project = File.ReadAllText(Path.Combine(root, "JitHub.WinUI", "JitHub.WinUI.csproj"));
         string ledger = File.ReadAllText(Path.Combine(root, "eng", "native-aot-dependencies.json"));
+        string verifier = File.ReadAllText(Path.Combine(root, "eng", "Verify-NativeAotArtifact.ps1"));
         string graph = project + Environment.NewLine + ledger;
 
         Assert.Contains("WinUIEdit" + "\" Version=\"0.0.5-prerelease", project, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Svg.Skia\" Version=\"5.2.1", project, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("SkiaSharp\" Version=\"4.151.1", project, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("MarkdownRenderer.Svg.Resvg\\MarkdownRenderer.Svg.Resvg.csproj", project, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Microsoft.Services.Store.Engagement\" Version=\"10.2307.3001", project, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("'$(RuntimeIdentifier)' == 'win-arm64'", project, StringComparison.Ordinal);
 
@@ -65,23 +68,31 @@ public sealed class NativeAotSourceContractTests
         {
             "CsvHelper",
             "CommunityToolkit.WinUI.Controls.DataGrid",
+            "MarkdownRenderer.Svg.ThorVG",
+            "Svg.Skia",
+            "SkiaSharp",
             "SkiaSharp.Views.WinUI",
             "Jint",
         })
         {
             Assert.DoesNotContain(removedPackage, graph, StringComparison.OrdinalIgnoreCase);
         }
+
+        Assert.DoesNotContain("libHarfBuzzSharp.dll", verifier, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
     [Trait("Category", "ReleaseSecurity")]
-    public void LockedNativeAotRestore_AlwaysRegeneratesTheAssetsGraph()
+    public void LockedNativeAotRestore_KeepsProjectReferenceLocksOrdinary()
     {
         string root = FindRepositoryRoot();
         string restoreScript = File.ReadAllText(Path.Combine(root, "eng", "Restore-NativeAot.ps1"));
+        string nativeAotProps = File.ReadAllText(Path.Combine(root, "eng", "NativeAot.props"));
 
         Assert.Contains("$arguments += '--locked-mode'", restoreScript, StringComparison.Ordinal);
         Assert.Contains("$arguments += '--force'", restoreScript, StringComparison.Ordinal);
+        Assert.DoesNotContain("'-p:PublishAot=true'", restoreScript, StringComparison.Ordinal);
+        Assert.Contains("<PublishAot>true</PublishAot>", nativeAotProps, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -126,10 +137,42 @@ public sealed class NativeAotSourceContractTests
             "Controls",
             "App",
             "AppSvgViewport.xaml.cs"));
+        string viewportPeer = File.ReadAllText(Path.Combine(
+            root,
+            "JitHub.WinUI",
+            "Views",
+            "Controls",
+            "App",
+            "AppSvgViewportAutomationPeer.cs"));
+        string preview = File.ReadAllText(Path.Combine(
+            root,
+            "JitHub.WinUI",
+            "Views",
+            "Controls",
+            "CodeViewer",
+            "Renderers",
+            "SvgPreview.xaml.cs"));
         string matrix = File.ReadAllText(Path.Combine(root, "eng", "Invoke-NativeAotUiMatrix.ps1"));
 
         Assert.Contains("SvgPreviewRenderedImage", viewport, StringComparison.Ordinal);
         Assert.Contains("AccessibilityView.Content", viewport, StringComparison.Ordinal);
+        Assert.Contains("CanvasBitmap.CreateFromBytes", viewport, StringComparison.Ordinal);
+        Assert.Contains("Task.Run(", viewport, StringComparison.Ordinal);
+        Assert.Contains("() => UploadTile(device, rendered)", viewport, StringComparison.Ordinal);
+        Assert.Contains("RepositorySvgGpuCache.TryReserve", viewport, StringComparison.Ordinal);
+        Assert.Contains("DetachPublishedPlan(plan)", viewport, StringComparison.Ordinal);
+        Assert.Contains("device.ForceSoftwareRenderer", viewport, StringComparison.Ordinal);
+        Assert.Contains("device.IsPixelFormatSupported", viewport, StringComparison.Ordinal);
+        Assert.Contains("DirectXPixelFormat.R8G8B8A8UIntNormalized", viewport, StringComparison.Ordinal);
+        Assert.Contains("DirectXPixelFormat.B8G8R8A8UIntNormalized", viewport, StringComparison.Ordinal);
+        Assert.DoesNotContain("WriteableBitmap", viewport, StringComparison.Ordinal);
+        Assert.DoesNotContain("PixelBuffer", viewport, StringComparison.Ordinal);
+        Assert.Contains("AutomationControlType.Image", viewportPeer, StringComparison.Ordinal);
+        Assert.Contains("_svgRenderer.CacheInvalidated += OnSvgCacheInvalidated", preview, StringComparison.Ordinal);
+        Assert.Contains("_documentHasText", preview, StringComparison.Ordinal);
+        Assert.Contains("exception.Reason == MarkdownSvgFailureReason.Canceled", preview, StringComparison.Ordinal);
+        Assert.Contains("request.CancellationToken.IsCancellationRequested", preview, StringComparison.Ordinal);
+        Assert.Contains("MarkdownSvgFailureReason.Timeout", preview, StringComparison.Ordinal);
         Assert.Contains("Wait-ForElement -AppProcessId $appProcessId -AutomationId 'SvgPreviewRenderedImage'", matrix, StringComparison.Ordinal);
         Assert.Contains("Wait-ForElement -AppProcessId $appProcessId -AutomationId 'DashboardWidget_recent_activity'", matrix, StringComparison.Ordinal);
         Assert.Contains("Wait-ForElement -AppProcessId $appProcessId -AutomationId 'DashboardWidget_overview'", matrix, StringComparison.Ordinal);
@@ -220,6 +263,47 @@ public sealed class NativeAotSourceContractTests
         Assert.Contains("HorizontalSignalRatio", matrix, StringComparison.Ordinal);
         Assert.Contains("VerticalSignalRatio", matrix, StringComparison.Ordinal);
         Assert.Contains("-RouteName \"$($route.Name)-failure\"", matrix, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    [Trait("Category", "ReleaseSecurity")]
+    public void SvgRuntime_UsesStrictGlobalCacheAndCompletesAsyncShutdownBeforeClose()
+    {
+        string root = FindRepositoryRoot();
+        string cache = File.ReadAllText(Path.Combine(
+            root,
+            "JitHub.WinUI",
+            "Services",
+            "CodeViewer",
+            "RepositorySvgGpuCache.cs"));
+        string runtime = File.ReadAllText(Path.Combine(
+            root,
+            "JitHub.WinUI",
+            "Services",
+            "Markdown",
+            "JitHubMarkdownRuntime.cs"));
+        string window = File.ReadAllText(Path.Combine(root, "JitHub.WinUI", "MainWindow.xaml.cs"));
+        string project = File.ReadAllText(Path.Combine(root, "JitHub.WinUI", "JitHub.WinUI.csproj"));
+
+        Assert.Contains("internal static partial class RepositorySvgGpuCache", cache, StringComparison.Ordinal);
+        Assert.Contains("32L * 1024 * 1024", cache, StringComparison.Ordinal);
+        Assert.Contains("64L * 1024 * 1024", cache, StringComparison.Ordinal);
+        Assert.Contains("StrictResourceLeaseCache<DeviceTileKey, CanvasBitmap>", cache, StringComparison.Ordinal);
+        Assert.Contains("AppMemoryUsageIncreased += OnAppMemoryUsageIncreased", cache, StringComparison.Ordinal);
+        Assert.Contains("Cache.Trim();", cache, StringComparison.Ordinal);
+        Assert.Contains("RepositorySvgGpuCache.Shutdown();", runtime, StringComparison.Ordinal);
+        Assert.Contains("RUST-DEPENDENCY-LICENSES.txt", project, StringComparison.Ordinal);
+
+        int drain = window.IndexOf("private async Task DrainDiagnosticsAndCloseAsync()", StringComparison.Ordinal);
+        int unloadViews = window.IndexOf("await UnloadPageContentBeforeMarkdownShutdownAsync();", drain, StringComparison.Ordinal);
+        int shutdown = window.IndexOf("await JitHubMarkdownRuntime.ShutdownAsync();", drain, StringComparison.Ordinal);
+        int allowClose = window.IndexOf("_allowCloseAfterDiagnostics = true;", shutdown, StringComparison.Ordinal);
+        int close = window.IndexOf("Close();", allowClose, StringComparison.Ordinal);
+        Assert.True(drain >= 0);
+        Assert.True(unloadViews > drain);
+        Assert.True(shutdown > unloadViews);
+        Assert.True(allowClose > shutdown);
+        Assert.True(close > allowClose);
     }
 
     [Fact]

@@ -4,6 +4,7 @@ using System.IO;
 using System.Text;
 using JitHub.Models.CodeViewer;
 using JitHub.Services.CodeViewer;
+using MarkdownRenderer;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;
@@ -104,6 +105,7 @@ public class FilePreviewResolverTests
     [InlineData(".heic", "image/heif")]
     [InlineData(".heif", "image/heif")]
     [InlineData(".webp", "image/webp")]
+    [InlineData(".avif", "image/avif")]
     public void Resolve_ImageExtension_ReturnsImageKindWithCorrectMime(string ext, string expectedMime)
     {
         var resolver = CreateResolver();
@@ -144,6 +146,75 @@ public class FilePreviewResolverTests
         var result = resolver.Resolve($"README{ext}", 100, default);
         Assert.Equal(RepoFilePreviewKind.Markdown, result.Kind);
         Assert.Equal("markdown", result.LanguageId);
+    }
+
+    [Fact]
+    public void Resolve_MarkdownAboveEditorBudget_UsesBoundedMarkdownPipeline()
+    {
+        var resolver = CreateResolver();
+        long size = FilePreviewResolver.MaximumInteractiveTextBytes + 1;
+
+        var result = resolver.Resolve("README.md", size, TextBytes("# large readme"));
+
+        Assert.Equal(RepoFilePreviewKind.Markdown, result.Kind);
+    }
+
+    [Theory]
+    [InlineData("README.rst")]
+    [InlineData("readme.adoc")]
+    [InlineData("README.asciidoc")]
+    [InlineData("README.org")]
+    [InlineData("README.textile")]
+    public void Resolve_GitHubMarkupReadme_UsesNativeRichPreview(string path)
+    {
+        FilePreviewDescriptor result = CreateResolver().Resolve(path, 100, TextBytes("heading"));
+
+        Assert.Equal(RepoFilePreviewKind.Markdown, result.Kind);
+        Assert.Equal("github-readme-html", result.LanguageId);
+    }
+
+    [Fact]
+    public void Resolve_NonReadmeRst_RemainsCode()
+    {
+        FilePreviewDescriptor result = CreateResolver().Resolve(
+            "docs/guide.rst",
+            100,
+            TextBytes("Guide"));
+
+        Assert.Equal(RepoFilePreviewKind.Code, result.Kind);
+    }
+
+    [Theory]
+    [InlineData("README.md", true)]
+    [InlineData("readme.markdown", true)]
+    [InlineData("README.asciidoc", true)]
+    [InlineData("docs/README.md", true)]
+    [InlineData("CONTRIBUTING.md", false)]
+    [InlineData("README.txt", false)]
+    public void IsGitHubReadmePath_RecognizesSupportedReadmeMarkup(string path, bool expected)
+    {
+        Assert.Equal(expected, FilePreviewResolver.IsGitHubReadmePath(path));
+    }
+
+    [Fact]
+    public void Resolve_MarkdownAboveRendererAdmissionLimit_ReturnsTooLarge()
+    {
+        var resolver = CreateResolver();
+
+        var result = resolver.Resolve(
+            "README.md",
+            FilePreviewResolver.MaximumMarkdownBytes + 1,
+            TextBytes("# abusive readme"));
+
+        Assert.Equal(RepoFilePreviewKind.TooLarge, result.Kind);
+    }
+
+    [Fact]
+    public void MarkdownBudget_TracksRendererMaximumSourceLength()
+    {
+        Assert.Equal(
+            MarkdownParseLimits.DefaultMaximumSourceLength,
+            FilePreviewResolver.MaximumMarkdownBytes);
     }
 
     // ── CSV / TSV ─────────────────────────────────────────────────────────────

@@ -10,11 +10,14 @@ using JitHub.Models;
 using JitHub.Models.GitHub;
 using JitHub.Security;
 using JitHub.WinUI;
+using JitHub.WinUI.Helpers;
 
 namespace JitHub.Services;
 
 public sealed class AuthService : IAuthService
 {
+    internal static event Action? AuthenticationCleared;
+
     internal const string PendingAuthStateSettingKey = "Auth.PendingState";
     internal const string ProtocolCallbackV3StatePrefix = OAuthHandoffProtocol.ProductionStatePrefix;
     internal const string DebugProtocolCallbackV3StatePrefix = OAuthHandoffProtocol.DevelopmentStatePrefix;
@@ -620,7 +623,7 @@ public sealed class AuthService : IAuthService
     {
         if (Program.CurrentLaunchOptions.IsPublicPreviewOverride)
         {
-            return GitHubClientService.PublicAccessToken;
+            return Program.CurrentLaunchOptions.ResolvePreviewAccessToken(GitHubClientService.PublicAccessToken);
         }
 
         if (userId <= 0)
@@ -889,6 +892,14 @@ public sealed class AuthService : IAuthService
         AuthenticatedUser = null;
         _gitHubService.SetAccessToken(null);
         _initializeTask = Task.CompletedTask;
+        try
+        {
+            AuthenticationCleared?.Invoke();
+        }
+        catch (Exception exception)
+        {
+            HandledFailureReporter.Report(exception, "markdown-account-resource-retirement");
+        }
     }
 
     private bool HasPendingAuthorization()

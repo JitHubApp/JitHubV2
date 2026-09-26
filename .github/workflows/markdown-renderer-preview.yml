@@ -1,0 +1,831 @@
+name: MarkdownRenderer Preview Validation
+
+# Pinned-machine ETW, manual UI Automation, and native ARM64 execution remain
+# separate release gates; hosted CI must not claim that evidence.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - MarkdownRenderer/**
+      - JitHub.WinUI/**
+      - JitHub.WinUI.Tests/**
+      - docs/markdown-renderer/**
+      - JitHub.Web/wwwroot/icon-192.png
+      - JitHub.slnx
+      - .github/workflows/markdown-renderer-preview.yml
+      - Directory.Build.props
+      - .gitattributes
+      - global.json
+      - LICENSE
+      - NuGet.config
+  pull_request:
+    branches:
+      - main
+    paths:
+      - MarkdownRenderer/**
+      - JitHub.WinUI/**
+      - JitHub.WinUI.Tests/**
+      - docs/markdown-renderer/**
+      - JitHub.Web/wwwroot/icon-192.png
+      - JitHub.slnx
+      - .github/workflows/markdown-renderer-preview.yml
+      - Directory.Build.props
+      - .gitattributes
+      - global.json
+      - LICENSE
+      - NuGet.config
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: markdown-renderer-preview-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+  DOTNET_CLI_USE_MSBUILD_SERVER: "0"
+  DOTNET_NOLOGO: "true"
+  MSBUILDDISABLENODEREUSE: "1"
+  NUGET_XMLDOC_MODE: skip
+  CONFIGURATION: Release
+  PLATFORM: x64
+  RID: win-x64
+  BENCHMARK_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || '' }}
+
+jobs:
+  preview-validation:
+    name: Test, benchmark, consume, NativeAOT, pack, and inspect
+    runs-on: windows-latest
+    # The external-gate fixture deliberately validates hundreds of hostile
+    # report mutations in isolated PowerShell processes. Hosted Windows
+    # runners can spend more than an hour in that exhaustive contract suite,
+    # so leave enough time for the independent package/AOT gates that follow.
+    timeout-minutes: 180
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: ./global.json
+
+      - name: Rebuild and verify every pinned resvg worker
+        run: |
+          $manifest = '.\MarkdownRenderer\MarkdownRenderer.Svg.Resvg\native\Cargo.toml'
+          $validationTarget = 'x86_64-pc-windows-msvc'
+          $workerTargets = [ordered]@{
+            'i686-pc-windows-msvc' = 'win-x86'
+            'x86_64-pc-windows-msvc' = 'win-x64'
+            'aarch64-pc-windows-msvc' = 'win-arm64'
+          }
+          & rustup toolchain install 1.96.0 --profile minimal --component clippy --target $validationTarget
+          if ($LASTEXITCODE -ne 0) { throw 'The pinned Rust 1.96.0 toolchain could not be installed.' }
+          foreach ($target in $workerTargets.Keys) {
+            & rustup target add --toolchain 1.96.0 $target
+            if ($LASTEXITCODE -ne 0) { throw "The pinned Rust target $target could not be installed." }
+          }
+
+          # The offline SBOM verifier inventories every target-conditional
+          # dependency in Cargo.lock, not only packages selected by the x64
+          # validation build. Preload the complete locked graph accordingly.
+          & cargo +1.96.0 fetch --manifest-path $manifest --locked
+          if ($LASTEXITCODE -ne 0) { throw 'The pinned resvg dependency graph could not be fetched.' }
+          & cargo +1.96.0 test --manifest-path $manifest --locked --target $validationTarget
+          if ($LASTEXITCODE -ne 0) { throw 'The isolated resvg worker tests failed.' }
+          & cargo +1.96.0 clippy --manifest-path $manifest --locked --target $validationTarget --all-targets -- -D warnings
+          if ($LASTEXITCODE -ne 0) { throw 'The isolated resvg worker failed Clippy.' }
+          $rebuildRoot = Join-Path $env:RUNNER_TEMP 'resvg-worker-rebuilds'
+          $targetRoot = Join-Path $env:RUNNER_TEMP 'resvg-worker-target'
+          New-Item -ItemType Directory -Path $rebuildRoot -Force | Out-Null
+          $rebuiltWorkers = [ordered]@{}
+          foreach ($worker in $workerTargets.GetEnumerator()) {
+            $rebuilt = .\MarkdownRenderer\MarkdownRenderer.Svg.Resvg\eng\Build-ResvgWorker.ps1 `
+              -Target $worker.Key `
+              -TargetDirectory $targetRoot
+            $rebuiltDirectory = Join-Path $rebuildRoot $worker.Value
+            New-Item -ItemType Directory -Path $rebuiltDirectory -Force | Out-Null
+            $rebuiltCopy = Join-Path $rebuiltDirectory 'MarkdownRenderer.Svg.Resvg.Worker.exe'
+            Copy-Item -LiteralPath $rebuilt -Destination $rebuiltCopy -Force
+            $rebuiltWorkers[$worker.Value] = $rebuiltCopy
+          }
+
+          $mismatches = [Collections.Generic.List[string]]::new()
+          foreach ($worker in $workerTargets.GetEnumerator()) {
+            $shipping = ".\MarkdownRenderer\MarkdownRenderer.Svg.Resvg\runtimes\$($worker.Value)\native\MarkdownRenderer.Svg.Resvg.Worker.exe"
+            try {
+              .\MarkdownRenderer\MarkdownRenderer.Svg.Resvg\eng\Compare-ResvgWorkerBinary.ps1 `
+                -Expected $shipping `
+                -Actual $rebuiltWorkers[$worker.Value]
+            }
+            catch {
+              $mismatches.Add("$($worker.Value): $($_.Exception.Message)")
+            }
+          }
+          if ($mismatches.Count -ne 0) {
+            throw "One or more checked-in resvg workers were not reproduced:`n$($mismatches -join "`n")"
+          }
+          .\MarkdownRenderer\MarkdownRenderer.Svg.Resvg\eng\Verify-ResvgSupplyChain.ps1
+
+      - name: Upload rebuilt resvg workers
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: resvg-worker-rebuilds
+          path: ${{ runner.temp }}/resvg-worker-rebuilds/**
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Prepare fresh artifact directories
+        run: |
+          $artifactRoot = [IO.Path]::GetFullPath((Join-Path $env:RUNNER_TEMP 'markdownrenderer-preview'))
+          $runnerTemp = [IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd(
+            [IO.Path]::DirectorySeparatorChar,
+            [IO.Path]::AltDirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+          if (-not $artifactRoot.StartsWith($runnerTemp, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Artifact root escaped RUNNER_TEMP: $artifactRoot"
+          }
+          if (Test-Path -LiteralPath $artifactRoot) {
+            Remove-Item -LiteralPath $artifactRoot -Recurse -Force
+          }
+          foreach ($directory in @(
+            'test-results'
+            'native-aot'
+            'benchmarks'
+            'packages-reference'
+            'packages-candidate'
+            'managed-pack-evidence'
+            'compliance')) {
+            New-Item -ItemType Directory -Path (Join-Path $artifactRoot $directory) | Out-Null
+          }
+
+      - name: Restore test projects in locked mode
+        run: |
+          $projects = @(
+            '.\MarkdownRenderer\MarkdownRenderer.Tests\MarkdownRenderer.Tests.csproj'
+            '.\MarkdownRenderer\MarkdownRenderer.GitHub.Tests\MarkdownRenderer.GitHub.Tests.csproj'
+            '.\MarkdownRenderer\MarkdownRenderer.Html.Tests\MarkdownRenderer.Html.Tests.csproj'
+            '.\MarkdownRenderer\MarkdownRenderer.Math.Tests\MarkdownRenderer.Math.Tests.csproj'
+            '.\MarkdownRenderer\MarkdownRenderer.Mermaid.Tests\MarkdownRenderer.Mermaid.Tests.csproj'
+            '.\MarkdownRenderer\MarkdownRenderer.Svg.Resvg.Tests\MarkdownRenderer.Svg.Resvg.Tests.csproj'
+            '.\MarkdownRenderer\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests.csproj'
+            '.\MarkdownRenderer\MarkdownRenderer.Conformance.Tests\MarkdownRenderer.Conformance.Tests.csproj'
+            '.\MarkdownRenderer\MarkdownRenderer.PixelTests\MarkdownRenderer.PixelTests.csproj'
+          )
+          foreach ($project in $projects) {
+            & dotnet restore $project `
+              -p:Configuration=$env:CONFIGURATION `
+              -p:Platform=$env:PLATFORM `
+              --locked-mode `
+              --disable-build-servers
+            if ($LASTEXITCODE -ne 0) { throw "Locked restore failed for '$project'." }
+          }
+
+      - name: Build test projects without restore
+        run: |
+          $projects = @(
+            '.\MarkdownRenderer\MarkdownRenderer.Tests\MarkdownRenderer.Tests.csproj'
+            '.\MarkdownRenderer\MarkdownRenderer.GitHub.Tests\MarkdownRenderer.GitHub.Tests.csproj'
+            '.\MarkdownRenderer\MarkdownRenderer.Html.Tests\MarkdownRenderer.Html.Tests.csproj'
+            '.\MarkdownRenderer\MarkdownRenderer.Math.Tests\MarkdownRenderer.Math.Tests.csproj'
+            '.\MarkdownRenderer\MarkdownRenderer.Mermaid.Tests\MarkdownRenderer.Mermaid.Tests.csproj'
+            '.\MarkdownRenderer\MarkdownRenderer.Svg.Resvg.Tests\MarkdownRenderer.Svg.Resvg.Tests.csproj'
+            '.\MarkdownRenderer\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests.csproj'
+            '.\MarkdownRenderer\MarkdownRenderer.Conformance.Tests\MarkdownRenderer.Conformance.Tests.csproj'
+            '.\MarkdownRenderer\MarkdownRenderer.PixelTests\MarkdownRenderer.PixelTests.csproj'
+          )
+          foreach ($project in $projects) {
+            & dotnet build $project `
+              --configuration $env:CONFIGURATION `
+              -p:Platform=$env:PLATFORM `
+              -p:UseSharedCompilation=false `
+              --no-restore `
+              --disable-build-servers
+            if ($LASTEXITCODE -ne 0) { throw "Build failed for '$project'." }
+          }
+
+      - name: Prime the external performance-gate script
+        run: |
+          # The first child PowerShell parse on a fresh hosted runner may be
+          # delayed by script scanning. Prime that exact immutable script
+          # before the fixture's bounded child-process checks begin.
+          $script = Resolve-Path '.\MarkdownRenderer\eng\Test-MarkdownWinUIPerformanceGates.ps1'
+          $missingReport = Join-Path $env:RUNNER_TEMP 'expected-missing-performance-report.json'
+          $process = Start-Process `
+            -FilePath 'pwsh' `
+            -ArgumentList @(
+              '-NoLogo',
+              '-NoProfile',
+              '-NonInteractive',
+              '-File',
+              $script.Path,
+              '-ReportPath',
+              $missingReport) `
+            -PassThru `
+            -Wait `
+            -WindowStyle Hidden
+          if ($process.ExitCode -eq 0) {
+            throw 'The performance-gate priming invocation unexpectedly accepted a missing report.'
+          }
+
+      - name: Run Core, GitHub, HTML, Math, Mermaid, SVG, TextMate, and conformance tests
+        run: |
+          $tests = [ordered]@{
+            core = '.\MarkdownRenderer\MarkdownRenderer.Tests\MarkdownRenderer.Tests.csproj'
+            github = '.\MarkdownRenderer\MarkdownRenderer.GitHub.Tests\MarkdownRenderer.GitHub.Tests.csproj'
+            html = '.\MarkdownRenderer\MarkdownRenderer.Html.Tests\MarkdownRenderer.Html.Tests.csproj'
+            math = '.\MarkdownRenderer\MarkdownRenderer.Math.Tests\MarkdownRenderer.Math.Tests.csproj'
+            mermaid = '.\MarkdownRenderer\MarkdownRenderer.Mermaid.Tests\MarkdownRenderer.Mermaid.Tests.csproj'
+            svg = '.\MarkdownRenderer\MarkdownRenderer.Svg.Resvg.Tests\MarkdownRenderer.Svg.Resvg.Tests.csproj'
+            textmate = '.\MarkdownRenderer\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests.csproj'
+            conformance = '.\MarkdownRenderer\MarkdownRenderer.Conformance.Tests\MarkdownRenderer.Conformance.Tests.csproj'
+          }
+          $results = Join-Path $env:RUNNER_TEMP 'markdownrenderer-preview\test-results'
+          foreach ($test in $tests.GetEnumerator()) {
+            & dotnet test $test.Value `
+              --configuration $env:CONFIGURATION `
+              -p:Platform=$env:PLATFORM `
+              --no-build `
+              --disable-build-servers `
+              --results-directory $results `
+              --logger "trx;LogFileName=$($test.Key).trx"
+            if ($LASTEXITCODE -ne 0) { throw "$($test.Key) tests failed." }
+          }
+
+      - name: Build and test the JitHub WinUI consumer
+        run: |
+          $app = '.\JitHub.WinUI\JitHub.WinUI.csproj'
+          $tests = '.\JitHub.WinUI.Tests\JitHub.WinUI.Tests.csproj'
+          foreach ($project in @($tests, $app)) {
+            & dotnet restore $project `
+              -p:Configuration=$env:CONFIGURATION `
+              -p:Platform=$env:PLATFORM `
+              --locked-mode `
+              --disable-build-servers
+            if ($LASTEXITCODE -ne 0) { throw "Locked JitHub restore failed for '$project'." }
+          }
+
+          & dotnet build $tests `
+            --configuration $env:CONFIGURATION `
+            -p:Platform=$env:PLATFORM `
+            -p:UseSharedCompilation=false `
+            --no-restore `
+            --disable-build-servers
+          if ($LASTEXITCODE -ne 0) { throw 'JitHub consumer tests failed to build.' }
+
+          & dotnet build $app `
+            --configuration $env:CONFIGURATION `
+            -p:Platform=$env:PLATFORM `
+            -p:UseSharedCompilation=false `
+            -p:SkipReleaseSecurityGate=true `
+            -p:GenerateAppxPackageOnBuild=false `
+            --no-restore `
+            --disable-build-servers
+          if ($LASTEXITCODE -ne 0) { throw 'JitHub WinUI failed to consume the preview renderer.' }
+
+          $results = Join-Path $env:RUNNER_TEMP 'markdownrenderer-preview\test-results'
+          & dotnet test $tests `
+            --configuration $env:CONFIGURATION `
+            -p:Platform=$env:PLATFORM `
+            --no-build `
+            --no-restore `
+            --disable-build-servers `
+            --results-directory $results `
+            --logger 'trx;LogFileName=jithub-consumer.trx'
+          if ($LASTEXITCODE -ne 0) { throw 'JitHub consumer tests failed.' }
+
+      - name: Run pixel tests
+        env:
+          # The per-PR x64 fidelity lane must never turn green by silently
+          # substituting Chrome or skipping the browser oracle.
+          MARKDOWN_RENDERER_REQUIRE_EDGE_ORACLE: "1"
+        run: |
+          $results = Join-Path $env:RUNNER_TEMP 'markdownrenderer-preview\test-results'
+          & dotnet test '.\MarkdownRenderer\MarkdownRenderer.PixelTests\MarkdownRenderer.PixelTests.csproj' `
+            --configuration $env:CONFIGURATION `
+            -p:Platform=$env:PLATFORM `
+            --no-build `
+            --disable-build-servers `
+            --results-directory $results `
+            --logger 'trx;LogFileName=pixel.trx'
+          if ($LASTEXITCODE -ne 0) { throw 'Pixel tests failed.' }
+
+      - name: Run executable benchmark and allocation gates
+        run: |
+          $artifactRoot = Join-Path $env:RUNNER_TEMP 'markdownrenderer-preview'
+          $benchmarkRoot = Join-Path $artifactRoot 'benchmarks'
+          $candidateArtifacts = Join-Path $benchmarkRoot 'candidate'
+          New-Item -ItemType Directory -Path $candidateArtifacts | Out-Null
+
+          $candidateProject = '.\MarkdownRenderer\MarkdownRenderer.Benchmarks\MarkdownRenderer.Benchmarks.csproj'
+          & dotnet restore $candidateProject `
+            -p:Configuration=$env:CONFIGURATION `
+            -p:Platform=$env:PLATFORM `
+            --locked-mode `
+            --disable-build-servers
+          if ($LASTEXITCODE -ne 0) { throw 'Locked benchmark restore failed.' }
+
+          & dotnet build $candidateProject `
+            --configuration $env:CONFIGURATION `
+            -p:Platform=$env:PLATFORM `
+            -p:UseSharedCompilation=false `
+            --no-restore `
+            --disable-build-servers
+          if ($LASTEXITCODE -ne 0) { throw 'Benchmark project failed to build.' }
+
+          $referenceArtifacts = $null
+          $baseSha = $env:BENCHMARK_BASE_SHA
+          $hasUsableBase = -not [string]::IsNullOrWhiteSpace($baseSha) -and
+            $baseSha -match '^[0-9a-fA-F]{40}$' -and
+            $baseSha -notmatch '^0{40}$'
+          if ($hasUsableBase) {
+            & git cat-file -e "$($baseSha)^{commit}" 2>$null
+            $hasUsableBase = $LASTEXITCODE -eq 0
+          }
+          if ($hasUsableBase) {
+            & git cat-file -e "$($baseSha):MarkdownRenderer/MarkdownRenderer.Benchmarks/MarkdownRenderer.Benchmarks.csproj" 2>$null
+            $hasUsableBase = $LASTEXITCODE -eq 0
+          }
+
+          if ($hasUsableBase) {
+            $baseSource = Join-Path $artifactRoot 'benchmark-reference-source'
+            $resolvedBaseSource = [IO.Path]::GetFullPath($baseSource)
+            $resolvedArtifactRoot = [IO.Path]::GetFullPath($artifactRoot).TrimEnd(
+              [IO.Path]::DirectorySeparatorChar,
+              [IO.Path]::AltDirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+            if (-not $resolvedBaseSource.StartsWith($resolvedArtifactRoot, [StringComparison]::OrdinalIgnoreCase)) {
+              throw "Benchmark worktree escaped the artifact root: $resolvedBaseSource"
+            }
+
+            & git worktree add --detach $resolvedBaseSource $baseSha
+            if ($LASTEXITCODE -ne 0) { throw "Could not create benchmark reference worktree for '$baseSha'." }
+
+            $referenceProject = Join-Path $resolvedBaseSource 'MarkdownRenderer\MarkdownRenderer.Benchmarks\MarkdownRenderer.Benchmarks.csproj'
+            & dotnet restore $referenceProject `
+              -p:Configuration=$env:CONFIGURATION `
+              -p:Platform=$env:PLATFORM `
+              --locked-mode `
+              --disable-build-servers
+            if ($LASTEXITCODE -ne 0) { throw "Locked reference benchmark restore failed for '$baseSha'." }
+
+            & dotnet build $referenceProject `
+              --configuration $env:CONFIGURATION `
+              -p:Platform=$env:PLATFORM `
+              -p:UseSharedCompilation=false `
+              --no-restore `
+              --disable-build-servers
+            if ($LASTEXITCODE -ne 0) { throw "Reference benchmark build failed for '$baseSha'." }
+
+            $referenceArtifacts = Join-Path $benchmarkRoot 'reference'
+            New-Item -ItemType Directory -Path $referenceArtifacts | Out-Null
+            & dotnet run --project $referenceProject `
+              --configuration $env:CONFIGURATION `
+              -p:Platform=$env:PLATFORM `
+              --no-build `
+              --no-restore `
+              -- `
+              --job Short `
+              --iterationCount 10 `
+              --exporters JSON `
+              --artifacts $referenceArtifacts `
+              --filter '*'
+            if ($LASTEXITCODE -ne 0) { throw "Reference benchmarks failed for '$baseSha'." }
+          }
+          else {
+            Write-Host '::notice::No compatible base benchmark project is available; running absolute and allocation gates only.'
+          }
+
+          & dotnet run --project $candidateProject `
+            --configuration $env:CONFIGURATION `
+            -p:Platform=$env:PLATFORM `
+            --no-build `
+            --no-restore `
+            -- `
+            --job Short `
+            --iterationCount 10 `
+            --exporters JSON `
+            --artifacts $candidateArtifacts `
+            --filter '*'
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate benchmarks failed.' }
+
+          $gateArguments = @{ CandidateDirectory = $candidateArtifacts }
+          if ($null -ne $referenceArtifacts) {
+            $gateArguments.ReferenceDirectory = $referenceArtifacts
+          }
+          & '.\MarkdownRenderer\eng\Test-MarkdownBenchmarkGates.ps1' @gateArguments
+
+      - name: Restore NativeAOT smoke projects without mutating canonical locks
+        run: |
+          $nativeAotRoot = Join-Path $env:RUNNER_TEMP 'markdownrenderer-preview\native-aot'
+          $coreSmoke = '.\MarkdownRenderer\MarkdownRenderer.Core.AotSmoke\MarkdownRenderer.Core.AotSmoke.csproj'
+          $coreLock = Join-Path $nativeAotRoot 'MarkdownRenderer.Core.AotSmoke-disabled.lock.json'
+          & dotnet restore $coreSmoke `
+            -p:Configuration=$env:CONFIGURATION `
+            -p:Platform=$env:PLATFORM `
+            -p:PublishAot=true `
+            -p:RestorePackagesWithLockFile=false `
+            "-p:NuGetLockFilePath=$coreLock" `
+            -p:RestoreLockedMode=false `
+            --disable-build-servers
+          if ($LASTEXITCODE -ne 0) { throw "NativeAOT restore failed for '$coreSmoke'." }
+
+          $mermaidSmoke = '.\MarkdownRenderer\MarkdownRenderer.Mermaid.AotSmoke\MarkdownRenderer.Mermaid.AotSmoke.csproj'
+          $mermaidLock = Join-Path $nativeAotRoot 'MarkdownRenderer.Mermaid.AotSmoke-disabled.lock.json'
+          & dotnet restore $mermaidSmoke `
+            -p:Configuration=$env:CONFIGURATION `
+            -p:Platform=$env:PLATFORM `
+            --runtime $env:RID `
+            -p:RestorePackagesWithLockFile=false `
+            "-p:NuGetLockFilePath=$mermaidLock" `
+            -p:RestoreLockedMode=false `
+            --disable-build-servers
+          if ($LASTEXITCODE -ne 0) { throw "NativeAOT restore failed for '$mermaidSmoke'." }
+
+          $svgSmoke = '.\MarkdownRenderer\MarkdownRenderer.Svg.Resvg.AotSmoke\MarkdownRenderer.Svg.Resvg.AotSmoke.csproj'
+          $svgLock = Join-Path $nativeAotRoot 'MarkdownRenderer.Svg.Resvg.AotSmoke-disabled.lock.json'
+          & dotnet restore $svgSmoke `
+            -p:Configuration=$env:CONFIGURATION `
+            -p:Platform=$env:PLATFORM `
+            --runtime $env:RID `
+            -p:RestorePackagesWithLockFile=false `
+            "-p:NuGetLockFilePath=$svgLock" `
+            -p:RestoreLockedMode=false `
+            --disable-build-servers
+          if ($LASTEXITCODE -ne 0) { throw "NativeAOT restore failed for '$svgSmoke'." }
+
+      - name: Publish and run Core, Mermaid, and SVG NativeAOT smokes for win-x64
+        run: |
+          $artifactRoot = Join-Path $env:RUNNER_TEMP 'markdownrenderer-preview\native-aot'
+          $smokes = @(
+            @{ Name = 'MarkdownRenderer.Core.AotSmoke'; Project = '.\MarkdownRenderer\MarkdownRenderer.Core.AotSmoke\MarkdownRenderer.Core.AotSmoke.csproj' }
+            @{ Name = 'MarkdownRenderer.Mermaid.AotSmoke'; Project = '.\MarkdownRenderer\MarkdownRenderer.Mermaid.AotSmoke\MarkdownRenderer.Mermaid.AotSmoke.csproj' }
+            @{ Name = 'MarkdownRenderer.Svg.Resvg.AotSmoke'; Project = '.\MarkdownRenderer\MarkdownRenderer.Svg.Resvg.AotSmoke\MarkdownRenderer.Svg.Resvg.AotSmoke.csproj' }
+          )
+          foreach ($smoke in $smokes) {
+            $output = Join-Path $artifactRoot $smoke.Name
+            $lockPath = Join-Path $artifactRoot "$($smoke.Name)-disabled.lock.json"
+            $arguments = @(
+              'publish'
+              $smoke.Project
+              '--configuration', $env:CONFIGURATION
+              '--runtime', $env:RID
+              '--self-contained', 'true'
+              "-p:Platform=$env:PLATFORM"
+              '-p:UseSharedCompilation=false'
+              '-p:RestorePackagesWithLockFile=false'
+              '-p:RestoreLockedMode=false'
+              "-p:NuGetLockFilePath=$lockPath"
+              '--no-restore'
+              '--disable-build-servers'
+              '--output', $output
+            )
+            if ($smoke.Name -eq 'MarkdownRenderer.Core.AotSmoke') {
+              $arguments += '-p:PublishAot=true'
+            }
+            & dotnet @arguments
+            if ($LASTEXITCODE -ne 0) { throw "NativeAOT publish failed for '$($smoke.Name)'." }
+
+            $executable = Join-Path $output "$($smoke.Name).exe"
+            if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
+              throw "NativeAOT smoke executable was not produced: $executable"
+            }
+            & $executable
+            if ($LASTEXITCODE -ne 0) { throw "NativeAOT smoke failed for '$($smoke.Name)'." }
+          }
+
+      - name: Restore every shipping package in locked mode
+        run: |
+          $projects = @(
+            '.\MarkdownRenderer\MarkdownRenderer.Core\MarkdownRenderer.Core.csproj'
+            '.\MarkdownRenderer\MarkdownRenderer\MarkdownRenderer.csproj'
+            '.\MarkdownRenderer\MarkdownRenderer.Performance\MarkdownRenderer.Performance.csproj'
+            '.\MarkdownRenderer\MarkdownRenderer.Package\MarkdownRenderer.Package.csproj'
+            '.\MarkdownRenderer\MarkdownRenderer.Gfm\MarkdownRenderer.Gfm.csproj'
+            '.\MarkdownRenderer\MarkdownRenderer.Html\MarkdownRenderer.Html.csproj'
+            '.\MarkdownRenderer\MarkdownRenderer.Math\MarkdownRenderer.Math.csproj'
+            '.\MarkdownRenderer\MarkdownRenderer.Mermaid\MarkdownRenderer.Mermaid.csproj'
+            '.\MarkdownRenderer\MarkdownRenderer.Svg.Resvg\MarkdownRenderer.Svg.Resvg.csproj'
+            '.\MarkdownRenderer\MarkdownRenderer.SyntaxHighlighting.TextMate\MarkdownRenderer.SyntaxHighlighting.TextMate.csproj'
+            '.\MarkdownRenderer\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.csproj'
+            '.\MarkdownRenderer\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All.csproj'
+            '.\MarkdownRenderer\MarkdownRenderer.GitHub\MarkdownRenderer.GitHub.csproj'
+            '.\MarkdownRenderer\MarkdownRenderer.All\MarkdownRenderer.All.csproj'
+          )
+          foreach ($project in $projects) {
+            & dotnet restore $project `
+              -p:Configuration=$env:CONFIGURATION `
+              -p:Platform=$env:PLATFORM `
+              --locked-mode `
+              --disable-build-servers
+            if ($LASTEXITCODE -ne 0) { throw "Locked package restore failed for '$project'." }
+          }
+
+      - name: Restore legacy dependency license evidence in locked mode
+        run: |
+          & dotnet restore '.\MarkdownRenderer\eng\ComplianceDependencyRestore\ComplianceDependencyRestore.csproj' `
+            --locked-mode `
+            --disable-build-servers
+          if ($LASTEXITCODE -ne 0) { throw 'Locked restore failed for compliance dependency evidence.' }
+
+      - name: Pack every shipping package twice into clean directories
+        run: |
+          $artifactRoot = Join-Path $env:RUNNER_TEMP 'markdownrenderer-preview'
+          $packageDirectories = @(
+            (Join-Path $artifactRoot 'packages-reference')
+            (Join-Path $artifactRoot 'packages-candidate'))
+          $projects = @(
+            '.\MarkdownRenderer\MarkdownRenderer.Core\MarkdownRenderer.Core.csproj'
+            '.\MarkdownRenderer\MarkdownRenderer\MarkdownRenderer.csproj'
+            '.\MarkdownRenderer\MarkdownRenderer.Performance\MarkdownRenderer.Performance.csproj'
+            '.\MarkdownRenderer\MarkdownRenderer.Package\MarkdownRenderer.Package.csproj'
+            '.\MarkdownRenderer\MarkdownRenderer.Gfm\MarkdownRenderer.Gfm.csproj'
+            '.\MarkdownRenderer\MarkdownRenderer.Html\MarkdownRenderer.Html.csproj'
+            '.\MarkdownRenderer\MarkdownRenderer.Math\MarkdownRenderer.Math.csproj'
+            '.\MarkdownRenderer\MarkdownRenderer.Mermaid\MarkdownRenderer.Mermaid.csproj'
+            '.\MarkdownRenderer\MarkdownRenderer.Svg.Resvg\MarkdownRenderer.Svg.Resvg.csproj'
+            '.\MarkdownRenderer\MarkdownRenderer.SyntaxHighlighting.TextMate\MarkdownRenderer.SyntaxHighlighting.TextMate.csproj'
+            '.\MarkdownRenderer\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.csproj'
+            '.\MarkdownRenderer\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All.csproj'
+            '.\MarkdownRenderer\MarkdownRenderer.GitHub\MarkdownRenderer.GitHub.csproj'
+            '.\MarkdownRenderer\MarkdownRenderer.All\MarkdownRenderer.All.csproj'
+          )
+          foreach ($packageDirectory in $packageDirectories) {
+            if (@(Get-ChildItem -LiteralPath $packageDirectory -Force).Count -ne 0) {
+              throw "Package directory was not clean before packing: $packageDirectory"
+            }
+
+            foreach ($project in $projects) {
+              & dotnet pack $project `
+                --configuration $env:CONFIGURATION `
+                -p:Platform=$env:PLATFORM `
+                -p:UseSharedCompilation=false `
+                --no-restore `
+                --disable-build-servers `
+                --output $packageDirectory
+              if ($LASTEXITCODE -ne 0) { throw "Pack failed for '$project' into '$packageDirectory'." }
+            }
+
+            .\MarkdownRenderer\eng\Normalize-NuGetPackageArchives.ps1 `
+              -PackageDirectory $packageDirectory
+
+            $packages = @(Get-ChildItem -LiteralPath $packageDirectory -Filter '*.nupkg' -File |
+              Where-Object { $_.Name -notlike '*.symbols.nupkg' })
+            if ($packages.Count -ne $projects.Count) {
+              throw "Expected $($projects.Count) shipping packages in '$packageDirectory', found $($packages.Count)."
+            }
+          }
+
+      - name: Consume managed packages in NativeAOT and trimmed single-file deployments
+        run: |
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+          function Get-PeMachine([string] $path) {
+            $bytes = [IO.File]::ReadAllBytes($path)
+            if ($bytes.Length -lt 64 -or $bytes[0] -ne 0x4d -or $bytes[1] -ne 0x5a) {
+              throw "'$path' is not an MZ executable."
+            }
+            $peOffset = [BitConverter]::ToInt32($bytes, 0x3c)
+            if ($peOffset -lt 0 -or $peOffset + 6 -gt $bytes.Length -or
+                $bytes[$peOffset] -ne 0x50 -or $bytes[$peOffset + 1] -ne 0x45) {
+              throw "'$path' has no valid PE signature."
+            }
+            switch ([BitConverter]::ToUInt16($bytes, $peOffset + 4)) {
+              332 { return 'x86' }
+              34404 { return 'x64' }
+              43620 { return 'arm64' }
+              default { throw "'$path' has an unexpected PE machine type." }
+            }
+          }
+
+          $artifactRoot = Join-Path $env:RUNNER_TEMP 'markdownrenderer-preview'
+          $packageDirectory = Join-Path $artifactRoot 'packages-candidate'
+          $evidenceDirectory = Join-Path $artifactRoot 'managed-pack-evidence'
+          $packagesCache = Join-Path $evidenceDirectory 'packages-cache'
+          $smoke = '.\MarkdownRenderer\MarkdownRenderer.ManagedPacks.AotSmoke\MarkdownRenderer.ManagedPacks.AotSmoke.csproj'
+          $managedPackageIds = @(
+            'MarkdownRenderer'
+            'MarkdownRenderer.Core'
+            'MarkdownRenderer.WinUI'
+            'MarkdownRenderer.Performance'
+            'MarkdownRenderer.Gfm'
+            'MarkdownRenderer.GitHub'
+            'MarkdownRenderer.Html'
+          )
+
+          $archives = @()
+          foreach ($id in $managedPackageIds) {
+            # The package ID must be followed by a numeric version. A glob
+            # for MarkdownRenderer.* also matches every subpackage and makes
+            # the meta-package look duplicated.
+            $escapedId = [regex]::Escape($id)
+            $matches = @(Get-ChildItem -LiteralPath $packageDirectory -Filter '*.nupkg' -File |
+              Where-Object {
+                $_.Name -notlike '*.symbols.nupkg' -and
+                $_.Name -match "^${escapedId}\.[0-9][0-9A-Za-z.+-]*\.nupkg$"
+              })
+            if ($matches.Count -ne 1) {
+              throw "Expected exactly one managed package for '$id'; found $($matches.Count)."
+            }
+            $archive = [IO.Compression.ZipFile]::OpenRead($matches[0].FullName)
+            try {
+              if (-not @($archive.Entries | Where-Object { $_.FullName -eq "$id.nuspec" }).Count) {
+                throw "Managed package '$id' does not contain its exact-ID nuspec."
+              }
+              $nativePayload = @($archive.Entries | Where-Object { $_.FullName -match '^runtimes/.+/native/' })
+              if ($nativePayload.Count -ne 0) {
+                throw "Managed package '$id' unexpectedly contains native payload: $($nativePayload.FullName -join ', ')."
+              }
+              $archives += [pscustomobject][ordered]@{
+                id = $id
+                path = $matches[0].FullName
+                compressedBytes = $matches[0].Length
+                sha256 = (Get-FileHash -LiteralPath $matches[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+              }
+            }
+            finally {
+              $archive.Dispose()
+            }
+          }
+
+          $metaArchive = [IO.Compression.ZipFile]::OpenRead(($archives | Where-Object id -eq 'MarkdownRenderer').path)
+          try {
+            $nuspec = $metaArchive.GetEntry('MarkdownRenderer.nuspec')
+            if ($null -eq $nuspec) { throw 'Managed meta-package has no nuspec.' }
+            $reader = [IO.StreamReader]::new($nuspec.Open())
+            try { $packageVersion = [string] ([xml] $reader.ReadToEnd()).package.metadata.version }
+            finally { $reader.Dispose() }
+          }
+          finally {
+            $metaArchive.Dispose()
+          }
+          if ([string]::IsNullOrWhiteSpace($packageVersion)) { throw 'Managed meta-package has no version.' }
+
+          $mtRoot = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\bin'
+          $mt = Get-ChildItem -LiteralPath $mtRoot -Filter 'mt.exe' -File -Recurse |
+            Where-Object { $_.DirectoryName -match '\\x64$' } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+          if ($null -eq $mt) { throw "Windows SDK manifest tool was not found under '$mtRoot'." }
+          $env:PATH = "$($mt.DirectoryName);$env:PATH"
+
+          $hostArchitecture = [Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLowerInvariant()
+          $matrix = @(
+            [pscustomobject]@{ Platform = 'x86'; Rid = 'win-x86'; Machine = 'x86' },
+            [pscustomobject]@{ Platform = 'x64'; Rid = 'win-x64'; Machine = 'x64' },
+            [pscustomobject]@{ Platform = 'ARM64'; Rid = 'win-arm64'; Machine = 'arm64' }
+          )
+          $deployments = @()
+          foreach ($target in $matrix) {
+            foreach ($mode in @('nativeaot', 'trimmed-single-file')) {
+              $lane = "$mode-$($target.Rid)"
+              $lockPath = Join-Path $evidenceDirectory "$lane.lock.json"
+              $publishDirectory = Join-Path $evidenceDirectory $lane
+              $publishProperties = @(
+                "-p:Platform=$($target.Platform)",
+                "-p:ManagedPacksPackageVersion=$packageVersion",
+                "-p:RestoreAdditionalProjectSources=$packageDirectory",
+                '-p:RestorePackagesWithLockFile=false',
+                '-p:RestoreLockedMode=false',
+                "-p:NuGetLockFilePath=$lockPath",
+                "-p:RestorePackagesPath=$packagesCache",
+                '-p:UseSharedCompilation=false'
+              )
+              if ($mode -eq 'nativeaot') {
+                $publishProperties += '-p:PublishAot=true'
+              }
+              else {
+                $publishProperties += @(
+                  '-p:PublishAot=false',
+                  '-p:PublishTrimmed=true',
+                  '-p:TrimMode=full',
+                  '-p:PublishSingleFile=true'
+                )
+              }
+
+              & dotnet restore $smoke -p:Configuration=$env:CONFIGURATION --runtime $target.Rid `
+                @publishProperties --no-cache --disable-parallel --disable-build-servers
+              if ($LASTEXITCODE -ne 0) { throw "Managed package restore failed for '$lane'." }
+
+              & dotnet publish $smoke --configuration $env:CONFIGURATION --runtime $target.Rid `
+                --self-contained true --no-restore --disable-build-servers --output $publishDirectory @publishProperties
+              if ($LASTEXITCODE -ne 0) { throw "Managed package publish failed for '$lane'." }
+
+              $executable = Join-Path $publishDirectory 'MarkdownRenderer.ManagedPacks.AotSmoke.exe'
+              if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
+                throw "Managed package publish did not produce '$executable'."
+              }
+              $machine = Get-PeMachine $executable
+              if ($machine -ne $target.Machine) {
+                throw "Managed package $lane executable is $machine; expected $($target.Machine)."
+              }
+
+              $executed = $false
+              $output = $null
+              $skipReason = $null
+              if ($target.Rid -eq ('win-' + $hostArchitecture) -or
+                  ($hostArchitecture -eq 'x64' -and $target.Rid -eq 'win-x86')) {
+                $output = @(& $executable 2>&1) -join "`n"
+                if ($LASTEXITCODE -ne 0) { throw "Managed package smoke failed for '$lane': $output" }
+                if ($output -notmatch '^gfm-0\.29;github-readme;safe-html-v1$') {
+                  throw "Managed package smoke returned an unexpected contract for '$lane': $output"
+                }
+                $executed = $true
+              }
+              else {
+                $skipReason = "Cross-published $($target.Rid) output cannot execute on the $hostArchitecture CI host."
+              }
+              $deployments += [pscustomobject][ordered]@{
+                mode = $mode
+                rid = $target.Rid
+                executableMachine = $machine
+                executableBytes = (Get-Item -LiteralPath $executable).Length
+                executed = $executed
+                output = $output
+                skipReason = $skipReason
+              }
+            }
+          }
+
+          $report = [pscustomobject][ordered]@{
+            schemaVersion = 1
+            generatedUtc = [DateTime]::UtcNow.ToString('O', [Globalization.CultureInfo]::InvariantCulture)
+            hostArchitecture = $hostArchitecture
+            packageVersion = $packageVersion
+            packages = $archives
+            deployments = $deployments
+          }
+          $reportPath = Join-Path $evidenceDirectory 'managed-package-release-evidence.json'
+          [IO.File]::WriteAllText($reportPath, ($report | ConvertTo-Json -Depth 10) + "`n", [Text.UTF8Encoding]::new($false))
+
+      - name: Test package compliance tooling
+        run: .\MarkdownRenderer\eng\Test-PackageComplianceTools.ps1
+
+      - name: Run strict package compliance
+        run: |
+          $complianceDirectory = Join-Path $env:RUNNER_TEMP 'markdownrenderer-preview\compliance'
+          $referenceManifest = Join-Path $complianceDirectory 'package-reproducibility-reference.json'
+          .\MarkdownRenderer\eng\New-PackageReproducibilityManifest.ps1 `
+            -PackageDirectory (Join-Path $env:RUNNER_TEMP 'markdownrenderer-preview\packages-reference') `
+            -OutputPath $referenceManifest
+
+          .\MarkdownRenderer\eng\Invoke-PackageCompliance.ps1 `
+            -PackageDirectory (Join-Path $env:RUNNER_TEMP 'markdownrenderer-preview\packages-candidate') `
+            -OutputDirectory $complianceDirectory `
+            -ReferenceManifest $referenceManifest `
+            -FailOnUnknownLicense
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: markdownrenderer-preview-test-results
+          path: ${{ runner.temp }}/markdownrenderer-preview/test-results/**/*.trx
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Upload shipping packages
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: markdownrenderer-preview-packages
+          path: ${{ runner.temp }}/markdownrenderer-preview/packages-candidate/*.nupkg
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Upload benchmark evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: markdownrenderer-preview-benchmarks
+          path: ${{ runner.temp }}/markdownrenderer-preview/benchmarks/**
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Upload package compliance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: markdownrenderer-preview-compliance
+          path: ${{ runner.temp }}/markdownrenderer-preview/compliance/**
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Upload managed package release evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: markdownrenderer-preview-managed-package-evidence
+          path: ${{ runner.temp }}/markdownrenderer-preview/managed-pack-evidence/**
+          if-no-files-found: warn
+          retention-days: 7

@@ -1,0 +1,4 @@
+# Rust worker payloads are rebuilt and byte-normalized in CI. Keep their
+# source line endings invariant across Windows developer and hosted-runner
+# checkouts so compiler-emitted panic/source metadata stays reproducible.
+MarkdownRenderer/MarkdownRenderer.Svg.Resvg/native/**/*.rs text eol=lf

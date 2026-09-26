@@ -1,0 +1,12 @@
+<Project>
+  <PropertyGroup>
+    <!-- This subtree owns a nearer Directory.Build.props, so repeat the
+         repository SDK-tools version instead of depending on an implicit
+         import of the root props file. -->
+    <JitHubWindowsSdkBuildToolsVersion>10.0.28000.1721</JitHubWindowsSdkBuildToolsVersion>
+    <!-- Release evidence runs isolate restore/build state in per-lane obj-* and
+         bin-* directories. Keep every generated tree out of SDK source/content
+         globs even when a lane overrides BaseIntermediateOutputPath. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);obj\**;obj-*\**;bin\**;bin-*\**;artifacts\**</DefaultItemExcludes>
+  </PropertyGroup>
+</Project>

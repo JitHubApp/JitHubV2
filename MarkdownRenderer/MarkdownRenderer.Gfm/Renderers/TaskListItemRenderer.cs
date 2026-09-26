@@ -1,12 +1,17 @@
 using System;
+using System.Globalization;
 using Markdig.Extensions.TaskLists;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Accessibility;
+using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Parsing;
 using MarkdownRenderer.Theming;
 
@@ -17,7 +22,7 @@ namespace MarkdownRenderer.Gfm.Renderers;
 /// with a real WinUI <see cref="CheckBox"/> as its marker. The CheckBox is hosted on
 /// the renderer's overlay <c>Canvas</c> vna <see cref="InlineEmbedRun"/>.
 /// </summary>
-public sealed class TaskListItemRenderer : MarkdownNodeRenderer<ListItemBlock>
+internal sealed partial class TaskListItemRenderer : MarkdownNodeRenderer<ListItemBlock>
 {
     /// <inheritdoc />
     public override BlockBox? BuildBlock(ListItemBlock listItem, MarkdownLayoutContext context)
@@ -43,15 +48,75 @@ public sealed class TaskListItemRenderer : MarkdownNodeRenderer<ListItemBlock>
 
         bool isChecked = taskList.Checked;
 
-        var marker = new InlineContainerBox(context, MarkdownElementKeys.ListMarker);
-        marker.BlockIndex = context.NextBlockIndex();
-        marker.Add(new InlineEmbedRun(20f, 20f, () => CreateTaskCheckBox(isChecked))
+        SourceSpan sourceRange = taskList.Span.Length > 0
+            ? new SourceSpan(taskList.Span.Start, taskList.Span.Length)
+            : new SourceSpan(listItem.Span.Start, 0);
+        bool editableRequested = context.IsTaskListEditingEnabled && context.CommandProvider is not null;
+        float markerSize = GetTaskMarkerSize(context.ThemeSnapshot, editableRequested);
+        ElementStyle listStyle = context.ThemeSnapshot.GetStyle(
+            MarkdownElementKeys.ListMarker,
+            context.CreateStyleContextSnapshot(),
+            context.CreateStyleAliasSnapshot());
+        (Windows.UI.Color selectionAccent, Windows.UI.Color selectionForeground) =
+            GetTaskMarkerColors(context.ThemeSnapshot);
+        string completed = ResolveString(
+            context,
+            MarkdownStringKeys.TaskCompleted,
+            MarkdownLocalizedStrings.TaskCompleted);
+        string incomplete = ResolveString(
+            context,
+            MarkdownStringKeys.TaskIncomplete,
+            MarkdownLocalizedStrings.TaskIncomplete);
+        string readOnlyHelp = ResolveString(
+            context,
+            MarkdownStringKeys.TaskReadOnly,
+            MarkdownLocalizedStrings.TaskReadOnly);
+        string toggleHelp = ResolveString(
+            context,
+            MarkdownStringKeys.TaskToggle,
+            MarkdownLocalizedStrings.TaskToggle);
+        TaskToggleCommandSet? taskCommands = null;
+        if (editableRequested && context.CommandProvider is { } taskCommandProvider)
+        {
+            taskCommands = TaskToggleCommandSet.Create(taskCommandProvider, sourceRange);
+        }
+        Func<bool, bool>? canSetState = taskCommands is null ? null : taskCommands.CanSetState;
+        Func<bool, bool>? trySetState = taskCommands is null ? null : taskCommands.TrySetState;
+        var automationMetadata = new InlineEmbedAutomationMetadata(
+            completed,
+            incomplete,
+            readOnlyHelp,
+            toggleHelp,
+            CreateTaskMarkerAutomationId(sourceRange),
+            isChecked,
+            canSetState,
+            trySetState);
+        var markerRun = new InlineEmbedRun(
+            markerSize,
+            markerSize,
+            () => CreateTaskMarker(
+                automationMetadata,
+                taskCommands,
+                context.TaskCommandAvailabilityChanged,
+                markerSize,
+                selectionAccent,
+                selectionForeground))
         {
             ElementKey = MarkdownElementKeys.ListMarker,
-            SourceSpan = taskList.Span.Length > 0
-                ? new MarkdownRenderer.SourceSpan(taskList.Span.Start, taskList.Span.Length)
-                : new MarkdownRenderer.SourceSpan(listItem.Span.Start, 0)
-        });
+            SourceSpan = sourceRange,
+            AutomationMetadata = automationMetadata,
+            Recycle = static element =>
+            {
+                if (element is EditableTaskCheckBox editable)
+                    editable.Dispose();
+            },
+        };
+        var marker = new InlineContainerBox(context, MarkdownElementKeys.ListMarker)
+        {
+            StyleState = isChecked ? "checked" : "unchecked",
+        };
+        marker.BlockIndex = context.NextBlockIndex();
+        marker.Add(markerRun);
 
         var content = new StackBox
         {
@@ -76,10 +141,6 @@ public sealed class TaskListItemRenderer : MarkdownNodeRenderer<ListItemBlock>
             }
         }
 
-        var listStyle = context.ThemeSnapshot.GetStyle(
-            MarkdownElementKeys.ListMarker,
-            context.CreateStyleContextSnapshot(),
-            context.CreateStyleAliasSnapshot());
         float markerWidth = Math.Max(
             1f,
             listStyle.ListIndent + Math.Max(0, context.ListDepth - 1) * listStyle.NestedListIndent);
@@ -90,32 +151,168 @@ public sealed class TaskListItemRenderer : MarkdownNodeRenderer<ListItemBlock>
         };
     }
 
-    private static CheckBox CreateTaskCheckBox(bool isChecked)
+    private static FrameworkElement CreateTaskMarker(
+        InlineEmbedAutomationMetadata automationMetadata,
+        TaskToggleCommandSet? taskCommands,
+        Action? availabilityChanged,
+        float markerSize,
+        Windows.UI.Color selectionAccent,
+        Windows.UI.Color selectionForeground)
     {
-        var checkBox = new CheckBox
+        if (taskCommands is not null)
         {
-            IsChecked = isChecked,
-            IsEnabled = true,
-            IsTabStop = true,
-            MinWidth = 20,
-            MinHeight = 20,
-            Padding = new Thickness(0),
-            Margin = new Thickness(0),
-            HorizontalContentAlignment = HorizontalAlignment.Left,
-            VerticalContentAlignment = VerticalAlignment.Center,
-        };
-
-        AutomationProperties.SetName(checkBox, isChecked ? "Completed task" : "Incomplete task");
-        AutomationProperties.SetHelpText(checkBox, "Read-only task checkbox");
-
-        void RestoreCheckedState(object sender, RoutedEventArgs e)
-        {
-            if (checkBox.IsChecked != isChecked)
-                checkBox.IsChecked = isChecked;
+            return new EditableTaskCheckBox(
+                automationMetadata,
+                taskCommands,
+                availabilityChanged,
+                markerSize,
+                selectionAccent,
+                selectionForeground);
         }
 
-        checkBox.Checked += RestoreCheckedState;
-        checkBox.Unchecked += RestoreCheckedState;
-        return checkBox;
+        return TaskMarkerControlFactory.CreateReadOnly(
+            automationMetadata,
+            markerSize,
+            selectionAccent,
+            selectionForeground);
+    }
+
+    internal static float GetTaskMarkerSize(ThemeSnapshot snapshot, bool editableRequested)
+    {
+        return TaskMarkerControlFactory.GetMarkerSize(snapshot, editableRequested);
+    }
+
+    internal static (Windows.UI.Color Accent, Windows.UI.Color Foreground) GetTaskMarkerColors(
+        ThemeSnapshot snapshot)
+        => TaskMarkerControlFactory.GetColors(snapshot);
+
+    private static MarkdownCommandContext CreateCommandContext(SourceSpan sourceRange, bool isChecked)
+        => new(
+            MarkdownCommandKind.ToggleTask,
+            sourceRange,
+            target: isChecked ? "checked" : "unchecked");
+
+    internal static string CreateTaskMarkerAutomationId(SourceSpan sourceRange) =>
+        TaskMarkerControlFactory.CreateAutomationId(sourceRange);
+
+    private static string ResolveString(
+        MarkdownLayoutContext context,
+        string key,
+        string fallback) => context.ResolveString(key, fallback);
+
+    private sealed partial class EditableTaskCheckBox : CheckBox, IDisposable
+    {
+        private readonly InlineEmbedAutomationMetadata _automationMetadata;
+        private readonly Action? _availabilityChanged;
+        private readonly TaskToggleCommandSet _taskCommands;
+        private readonly IDisposable _commandSubscription;
+        private bool _committedState;
+        private bool _isDisposed;
+        private bool _suppress;
+
+        public EditableTaskCheckBox(
+            InlineEmbedAutomationMetadata automationMetadata,
+            TaskToggleCommandSet taskCommands,
+            Action? availabilityChanged,
+            float markerSize,
+            Windows.UI.Color selectionAccent,
+            Windows.UI.Color selectionForeground)
+        {
+            _automationMetadata = automationMetadata;
+            _availabilityChanged = availabilityChanged;
+            _taskCommands = taskCommands;
+            _committedState = automationMetadata.IsChecked;
+
+            TaskMarkerControlFactory.Configure(
+                this,
+                isInteractive: true,
+                _committedState,
+                markerSize,
+                selectionAccent,
+                selectionForeground);
+            AutomationProperties.SetAutomationId(this, automationMetadata.AutomationId);
+            AutomationProperties.SetHelpText(this, automationMetadata.ToggleHelpText);
+            UpdateAutomationName(_committedState);
+
+            Checked += OnToggleStateChanged;
+            Unchecked += OnToggleStateChanged;
+            _commandSubscription = _taskCommands.Subscribe(OnCommandCanExecuteChanged);
+            RefreshAvailability();
+        }
+
+        public void Dispose()
+        {
+            if (_isDisposed)
+                return;
+
+            _isDisposed = true;
+            Checked -= OnToggleStateChanged;
+            Unchecked -= OnToggleStateChanged;
+            _commandSubscription.Dispose();
+            Command = null;
+        }
+
+        private void OnCommandCanExecuteChanged(object? sender, EventArgs e)
+        {
+            if (_isDisposed)
+                return;
+
+            if (DispatcherQueue.HasThreadAccess)
+            {
+                RefreshAvailability();
+                return;
+            }
+
+            _ = DispatcherQueue.TryEnqueue(RefreshAvailability);
+        }
+
+        private void OnToggleStateChanged(object sender, RoutedEventArgs e)
+        {
+            if (_suppress)
+                return;
+
+            bool requestedState = IsChecked == true;
+            if (!_automationMetadata.TrySetState(requestedState))
+            {
+                RestoreCommittedState();
+                return;
+            }
+
+            _committedState = _automationMetadata.IsChecked;
+            UpdateAutomationName(_committedState);
+            RefreshAvailability();
+        }
+
+        private void RestoreCommittedState()
+        {
+            _suppress = true;
+            IsChecked = _committedState;
+            _suppress = false;
+            UpdateAutomationName(_committedState);
+        }
+
+        private void RefreshAvailability()
+        {
+            if (_isDisposed)
+                return;
+
+            bool canToggle = _taskCommands.CanSetState(!_committedState);
+            bool availabilityChanged = IsEnabled != canToggle;
+            IsEnabled = canToggle;
+            AutomationProperties.SetHelpText(
+                this,
+                canToggle
+                    ? _automationMetadata.ToggleHelpText
+                    : _automationMetadata.ReadOnlyHelpText);
+            if (availabilityChanged)
+                _availabilityChanged?.Invoke();
+        }
+
+        private void UpdateAutomationName(bool isChecked)
+            => AutomationProperties.SetName(
+                this,
+                isChecked
+                    ? _automationMetadata.CheckedName
+                    : _automationMetadata.UncheckedName);
     }
 }

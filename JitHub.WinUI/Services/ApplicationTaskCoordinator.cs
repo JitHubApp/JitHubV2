@@ -145,10 +145,17 @@ public sealed partial class ApplicationTaskCoordinator : IApplicationTaskCoordin
         string partition = GitHubAccountPartition.Require(accountPartition, nameof(accountPartition));
         CancellationTokenSource source = GetAccountCancellation(partition);
         source.Cancel();
-        Task[] accountTasks = _tasks.Values
-            .Where(task => string.Equals(task.AccountPartition, partition, StringComparison.Ordinal))
-            .Select(static task => task.Task)
-            .ToArray();
+        Task[] accountTasks;
+        lock (_gate)
+        {
+            // Observe task removal and completion as one transition. Without
+            // this lock, a finishing task can disappear from the snapshot just
+            // before its returned completion Task is signaled.
+            accountTasks = _tasks.Values
+                .Where(task => string.Equals(task.AccountPartition, partition, StringComparison.Ordinal))
+                .Select(static task => task.Task)
+                .ToArray();
+        }
         if (accountTasks.Length > 0)
         {
             await Task.WhenAll(accountTasks).WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -266,9 +273,12 @@ public sealed partial class ApplicationTaskCoordinator : IApplicationTaskCoordin
         }
         finally
         {
-            _tasks.TryRemove(id, out _);
-            linked.Dispose();
-            completion.TrySetResult();
+            lock (_gate)
+            {
+                _tasks.TryRemove(id, out _);
+                linked.Dispose();
+                completion.TrySetResult();
+            }
         }
     }
 

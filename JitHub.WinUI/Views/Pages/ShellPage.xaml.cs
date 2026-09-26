@@ -18,6 +18,7 @@ using JitHub.WinUI.ViewModels.Pages;
 using JitHub.Services.Layout;
 using JitHub.WinUI.Views.Controls.App;
 using JitHub.WinUI.Views.Dialogs;
+using JitHub.WinUI.Performance;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
@@ -171,8 +172,21 @@ public sealed partial class ShellPage : Page
 
     public ShellPageViewModel ViewModel { get; }
 
-    private static void ShellPage_Loaded(object sender, RoutedEventArgs e) =>
+    private static void ShellPage_Loaded(object sender, RoutedEventArgs e)
+    {
         ProductPerformanceReadiness.CommitApplicationInteractive();
+        if (sender is not ShellPage page)
+        {
+            return;
+        }
+
+        DeferredFrameAction.Schedule(
+            page,
+            () => page.IsLoaded,
+            () => UiTaskGuard.Observe(
+                JitHubMarkdownRuntime.WarmUpSvgRendererAsync(),
+                "ui-markdown-svg-warmup"));
+    }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
@@ -197,7 +211,14 @@ public sealed partial class ShellPage : Page
 
         QueueLaunchRoute(useAutomationSearchResults ? null : e.Parameter as string);
 
-        QueueShellWork("shell.initialize", InitializeShellAsync);
+        // Repository deep links prioritize the requested surface. Starting a
+        // repository-rail refresh here adds several unrelated API requests to
+        // the same cold-navigation critical path; the rail will initialize on
+        // demand when the user opens a shell destination that needs it.
+        if (!Program.CurrentLaunchOptions.IsRepositoryPageOverride)
+        {
+            QueueShellWork("shell.initialize", InitializeShellAsync);
+        }
     }
 
     protected override void OnNavigatingFrom(NavigatingCancelEventArgs e)

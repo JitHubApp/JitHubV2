@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Net;
+using System.Threading;
 
 namespace MarkdownRenderer.Parsing;
 
@@ -64,11 +66,13 @@ internal sealed class SafeHtmlElement : SafeHtmlNode
         string name,
         IReadOnlyDictionary<string, string>? attributes,
         int sourceStart,
-        int sourceLength)
+        int sourceLength,
+        string? rawOpeningTag = null)
         : base(sourceStart, sourceLength)
     {
         Name = name ?? string.Empty;
         _attributes = attributes ?? EmptyAttributes;
+        RawOpeningTag = rawOpeningTag ?? string.Empty;
     }
 
     private static IReadOnlyDictionary<string, string> EmptyAttributes { get; } =
@@ -79,6 +83,16 @@ internal sealed class SafeHtmlElement : SafeHtmlNode
     public IReadOnlyDictionary<string, string> Attributes => _attributes;
 
     public IReadOnlyList<SafeHtmlNode> Children => _children;
+
+    public string RawOpeningTag { get; }
+
+    public string RawClosingTag { get; private set; } = string.Empty;
+
+    public int RawClosingStart { get; private set; }
+
+    public string RawTrailingMarkup { get; private set; } = string.Empty;
+
+    public int RawTrailingStart { get; private set; }
 
     public bool TryGetAttribute(string name, out string value)
     {
@@ -93,6 +107,18 @@ internal sealed class SafeHtmlElement : SafeHtmlNode
     }
 
     internal void Add(SafeHtmlNode node) => _children.Add(node);
+
+    internal void SetClosingTag(string value, int sourceStart)
+    {
+        RawClosingTag = value ?? string.Empty;
+        RawClosingStart = Math.Max(0, sourceStart);
+    }
+
+    internal void SetTrailingMarkup(string value, int sourceStart)
+    {
+        RawTrailingMarkup = value ?? string.Empty;
+        RawTrailingStart = Math.Max(0, sourceStart);
+    }
 }
 
 internal sealed class SafeHtmlDocument
@@ -147,14 +173,41 @@ internal readonly struct SafeHtmlTag
     }
 }
 
+/// <summary>
+/// Renderer-internal copy of the optional pack's immutable resource ceilings.
+/// Keeping this value in the base assembly avoids a dependency from the lean
+/// renderer onto <c>MarkdownRenderer.Html</c>.
+/// </summary>
+internal readonly record struct SafeHtmlParseLimits(
+    int MaxInputLength,
+    int MaxNodeCount,
+    int MaxNestingDepth,
+    int MaxAttributeCount,
+    int MaxAttributeValueLength,
+    int MaxTagLength)
+{
+    internal static SafeHtmlParseLimits Default { get; } = new(
+        SafeHtmlParser.MaxInputLength,
+        SafeHtmlParser.MaxNodeCount,
+        SafeHtmlParser.MaxNestingDepth,
+        SafeHtmlParser.MaxAttributeCount,
+        SafeHtmlParser.MaxAttributeValueLength,
+        SafeHtmlParser.MaxTagLength);
+}
+
 internal static class SafeHtmlParser
 {
     internal const int MaxInputLength = 4 * 1024 * 1024;
-    internal const int MaxNodeCount = 20_000;
+    // GitHub's rendered form of large but ordinary READMEs can exceed 20,000
+    // nodes after syntax highlighting (airbnb/javascript is one example).
+    // Input length, tag length, depth, and attribute ceilings remain the
+    // primary allocation bounds; this ceiling prevents valid documents from
+    // being cut off merely because GitHub emitted many small <span> nodes.
+    internal const int MaxNodeCount = 100_000;
     internal const int MaxNestingDepth = 64;
     internal const int MaxAttributeCount = 32;
     internal const int MaxAttributeValueLength = 16 * 1024;
-    private const int MaxTagLength = 64 * 1024;
+    internal const int MaxTagLength = 64 * 1024;
 
     private static readonly HashSet<string> VoidElements = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -167,38 +220,64 @@ internal static class SafeHtmlParser
         "script", "style", "iframe", "object", "embed", "noscript", "template",
     };
 
-    public static SafeHtmlDocument Parse(string? html)
+    public static SafeHtmlDocument Parse(string? html) =>
+        Parse(html, SafeHtmlParseLimits.Default, CancellationToken.None);
+
+    internal static SafeHtmlDocument Parse(string? html, SafeHtmlParseLimits limits) =>
+        Parse(html, limits, CancellationToken.None);
+
+    internal static SafeHtmlDocument Parse(
+        string? html,
+        SafeHtmlParseLimits limits,
+        CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         string source = html ?? string.Empty;
-        int parseLength = Math.Min(source.Length, MaxInputLength);
+        int parseLength = Math.Min(source.Length, limits.MaxInputLength);
         bool truncated = source.Length > parseLength;
         var root = new SafeHtmlElement("#document", null, 0, parseLength);
         List<SafeHtmlElement> stack = [root];
         int nodeCount = 1;
         int position = 0;
+        var scanBudget = new SafeHtmlScanBudget(parseLength);
 
-        while (position < parseLength && nodeCount < MaxNodeCount)
+        while (position < parseLength && nodeCount < limits.MaxNodeCount)
         {
-            int tagStart = source.IndexOf('<', position, parseLength - position);
+            cancellationToken.ThrowIfCancellationRequested();
+            int tagStart = FindCharacter(source, '<', position, parseLength, cancellationToken);
             if (tagStart < 0)
             {
-                AddText(source, position, parseLength - position, stack[^1], ref nodeCount);
+                AddText(source, position, parseLength - position, stack[^1], ref nodeCount, limits.MaxNodeCount);
                 position = parseLength;
                 break;
             }
 
             if (tagStart > position)
             {
-                AddText(source, position, tagStart - position, stack[^1], ref nodeCount);
-                if (nodeCount >= MaxNodeCount)
+                AddText(source, position, tagStart - position, stack[^1], ref nodeCount, limits.MaxNodeCount);
+                if (nodeCount >= limits.MaxNodeCount)
                 {
                     break;
                 }
             }
 
-            if (!TryReadTag(source, tagStart, parseLength, out SafeHtmlTag tag, out int endExclusive))
+            if (!TryReadTag(
+                    source,
+                    tagStart,
+                    parseLength,
+                    limits,
+                    cancellationToken,
+                    ref scanBudget,
+                    out SafeHtmlTag tag,
+                    out int endExclusive))
             {
-                AddText(source, tagStart, 1, stack[^1], ref nodeCount);
+                if (scanBudget.IsExhausted)
+                {
+                    truncated = true;
+                    break;
+                }
+
+                AddText(source, tagStart, 1, stack[^1], ref nodeCount, limits.MaxNodeCount);
                 position = tagStart + 1;
                 continue;
             }
@@ -211,7 +290,11 @@ internal static class SafeHtmlParser
 
             if (tag.Kind == SafeHtmlTagKind.Closing)
             {
-                PopThroughMatchingElement(stack, tag.Name);
+                PopThroughMatchingElement(
+                    stack,
+                    tag.Name,
+                    source.Substring(tag.SourceStart, tag.SourceLength),
+                    tag.SourceStart);
                 continue;
             }
 
@@ -219,7 +302,8 @@ internal static class SafeHtmlParser
                 tag.Name,
                 tag.Attributes,
                 tag.SourceStart,
-                tag.SourceLength);
+                tag.SourceLength,
+                source.Substring(tag.SourceStart, tag.SourceLength));
             stack[^1].Add(element);
             nodeCount++;
 
@@ -230,11 +314,20 @@ internal static class SafeHtmlParser
 
             if (RawContentElements.Contains(tag.Name))
             {
-                position = SkipRawContent(source, position, parseLength, tag.Name);
+                int trailingStart = position;
+                position = SkipRawContent(
+                    source,
+                    position,
+                    parseLength,
+                    tag.Name,
+                    cancellationToken);
+                element.SetTrailingMarkup(
+                    source.Substring(trailingStart, position - trailingStart),
+                    trailingStart);
                 continue;
             }
 
-            if (stack.Count < MaxNestingDepth)
+            if (stack.Count - 1 < limits.MaxNestingDepth)
             {
                 stack.Add(element);
             }
@@ -244,7 +337,7 @@ internal static class SafeHtmlParser
             }
         }
 
-        if (position < parseLength || nodeCount >= MaxNodeCount)
+        if (position < parseLength || nodeCount >= limits.MaxNodeCount)
         {
             truncated = true;
         }
@@ -253,15 +346,49 @@ internal static class SafeHtmlParser
     }
 
     public static bool TryParseSingleTag(string? text, out SafeHtmlTag tag)
+        => TryParseSingleTag(
+            text,
+            SafeHtmlParseLimits.Default,
+            CancellationToken.None,
+            out tag,
+            out _);
+
+    internal static bool TryParseSingleTag(string? text, SafeHtmlParseLimits limits, out SafeHtmlTag tag)
+        => TryParseSingleTag(text, limits, CancellationToken.None, out tag, out _);
+
+    internal static bool TryParseSingleTag(
+        string? text,
+        SafeHtmlParseLimits limits,
+        CancellationToken cancellationToken,
+        out SafeHtmlTag tag,
+        out bool scanBudgetExceeded)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        scanBudgetExceeded = false;
         string source = text?.Trim() ?? string.Empty;
-        if (!TryReadTag(source, 0, source.Length, out tag, out int endExclusive))
+        if (source.Length > limits.MaxInputLength || source.Length > limits.MaxTagLength)
         {
+            tag = default;
+            return false;
+        }
+        var scanBudget = new SafeHtmlScanBudget(source.Length);
+        if (!TryReadTag(
+                source,
+                0,
+                source.Length,
+                limits,
+                cancellationToken,
+                ref scanBudget,
+                out tag,
+                out int endExclusive))
+        {
+            scanBudgetExceeded = scanBudget.IsExhausted;
             return false;
         }
 
         for (int index = endExclusive; index < source.Length; index++)
         {
+            CheckCancellation(cancellationToken, index);
             if (!char.IsWhiteSpace(source[index]))
             {
                 tag = default;
@@ -273,15 +400,41 @@ internal static class SafeHtmlParser
     }
 
     public static bool TryParseTagSequence(string? html, out IReadOnlyList<SafeHtmlTag> tags)
+        => TryParseTagSequence(
+            html,
+            SafeHtmlParseLimits.Default,
+            CancellationToken.None,
+            out tags,
+            out _);
+
+    internal static bool TryParseTagSequence(string? html, SafeHtmlParseLimits limits, out IReadOnlyList<SafeHtmlTag> tags)
+        => TryParseTagSequence(html, limits, CancellationToken.None, out tags, out _);
+
+    internal static bool TryParseTagSequence(
+        string? html,
+        SafeHtmlParseLimits limits,
+        CancellationToken cancellationToken,
+        out IReadOnlyList<SafeHtmlTag> tags,
+        out bool scanBudgetExceeded)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        scanBudgetExceeded = false;
         string source = html ?? string.Empty;
+        if (source.Length > limits.MaxInputLength)
+        {
+            tags = Array.Empty<SafeHtmlTag>();
+            return false;
+        }
         List<SafeHtmlTag> parsed = [];
         int position = 0;
+        var scanBudget = new SafeHtmlScanBudget(source.Length);
 
         while (position < source.Length)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             while (position < source.Length && char.IsWhiteSpace(source[position]))
             {
+                CheckCancellation(cancellationToken, position);
                 position++;
             }
 
@@ -290,8 +443,18 @@ internal static class SafeHtmlParser
                 break;
             }
 
-            if (!TryReadTag(source, position, source.Length, out SafeHtmlTag tag, out int endExclusive))
+            if (parsed.Count >= limits.MaxNodeCount ||
+                !TryReadTag(
+                    source,
+                    position,
+                    source.Length,
+                    limits,
+                    cancellationToken,
+                    ref scanBudget,
+                    out SafeHtmlTag tag,
+                    out int endExclusive))
             {
+                scanBudgetExceeded = scanBudget.IsExhausted;
                 tags = Array.Empty<SafeHtmlTag>();
                 return false;
             }
@@ -309,20 +472,46 @@ internal static class SafeHtmlParser
     }
 
     public static IReadOnlyList<SafeHtmlTag> ParseTags(string? html)
+        => ParseTags(
+            html,
+            SafeHtmlParseLimits.Default,
+            CancellationToken.None,
+            out _);
+
+    internal static IReadOnlyList<SafeHtmlTag> ParseTags(string? html, SafeHtmlParseLimits limits)
+        => ParseTags(html, limits, CancellationToken.None, out _);
+
+    internal static IReadOnlyList<SafeHtmlTag> ParseTags(
+        string? html,
+        SafeHtmlParseLimits limits,
+        CancellationToken cancellationToken,
+        out bool scanBudgetExceeded)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        scanBudgetExceeded = false;
         string source = html ?? string.Empty;
-        int parseLength = Math.Min(source.Length, MaxInputLength);
+        int parseLength = Math.Min(source.Length, limits.MaxInputLength);
         List<SafeHtmlTag> parsed = [];
         int position = 0;
-        while (position < parseLength && parsed.Count < MaxNodeCount)
+        var scanBudget = new SafeHtmlScanBudget(parseLength);
+        while (position < parseLength && parsed.Count < limits.MaxNodeCount)
         {
-            int tagStart = source.IndexOf('<', position, parseLength - position);
+            cancellationToken.ThrowIfCancellationRequested();
+            int tagStart = FindCharacter(source, '<', position, parseLength, cancellationToken);
             if (tagStart < 0)
             {
                 break;
             }
 
-            if (TryReadTag(source, tagStart, parseLength, out SafeHtmlTag tag, out int endExclusive))
+            if (TryReadTag(
+                    source,
+                    tagStart,
+                    parseLength,
+                    limits,
+                    cancellationToken,
+                    ref scanBudget,
+                    out SafeHtmlTag tag,
+                    out int endExclusive))
             {
                 if (tag.Kind is not (SafeHtmlTagKind.Comment or SafeHtmlTagKind.Declaration))
                 {
@@ -333,6 +522,12 @@ internal static class SafeHtmlParser
             }
             else
             {
+                if (scanBudget.IsExhausted)
+                {
+                    scanBudgetExceeded = true;
+                    break;
+                }
+
                 position = tagStart + 1;
             }
         }
@@ -467,9 +662,10 @@ internal static class SafeHtmlParser
         int start,
         int length,
         SafeHtmlElement parent,
-        ref int nodeCount)
+        ref int nodeCount,
+        int maxNodeCount)
     {
-        if (length <= 0 || nodeCount >= MaxNodeCount)
+        if (length <= 0 || nodeCount >= maxNodeCount)
         {
             return;
         }
@@ -478,7 +674,11 @@ internal static class SafeHtmlParser
         nodeCount++;
     }
 
-    private static void PopThroughMatchingElement(List<SafeHtmlElement> stack, string name)
+    private static void PopThroughMatchingElement(
+        List<SafeHtmlElement> stack,
+        string name,
+        string rawClosingTag,
+        int rawClosingStart)
     {
         for (int index = stack.Count - 1; index > 0; index--)
         {
@@ -487,21 +687,38 @@ internal static class SafeHtmlParser
                 continue;
             }
 
+            stack[index].SetClosingTag(rawClosingTag, rawClosingStart);
             stack.RemoveRange(index, stack.Count - index);
             return;
         }
     }
 
-    private static int SkipRawContent(string source, int position, int parseLength, string name)
+    private static int SkipRawContent(
+        string source,
+        int position,
+        int parseLength,
+        string name,
+        CancellationToken cancellationToken)
     {
         string closingPrefix = $"</{name}";
-        int closingStart = source.IndexOf(closingPrefix, position, parseLength - position, StringComparison.OrdinalIgnoreCase);
+        int closingStart = FindSequence(
+            source,
+            closingPrefix,
+            position,
+            parseLength,
+            StringComparison.OrdinalIgnoreCase,
+            cancellationToken);
         if (closingStart < 0)
         {
             return parseLength;
         }
 
-        int close = source.IndexOf('>', closingStart + closingPrefix.Length, parseLength - closingStart - closingPrefix.Length);
+        int close = FindCharacter(
+            source,
+            '>',
+            closingStart + closingPrefix.Length,
+            parseLength,
+            cancellationToken);
         return close < 0 ? parseLength : close + 1;
     }
 
@@ -509,9 +726,13 @@ internal static class SafeHtmlParser
         string source,
         int start,
         int limit,
+        SafeHtmlParseLimits limits,
+        CancellationToken cancellationToken,
+        ref SafeHtmlScanBudget scanBudget,
         out SafeHtmlTag tag,
         out int endExclusive)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         tag = default;
         endExclusive = start;
         if (start < 0 || start >= limit || source[start] != '<')
@@ -521,7 +742,13 @@ internal static class SafeHtmlParser
 
         if (StartsWith(source, start, limit, "<!--"))
         {
-            int close = source.IndexOf("-->", start + 4, limit - start - 4, StringComparison.Ordinal);
+            int close = FindSequence(
+                source,
+                "-->",
+                start + 4,
+                limit,
+                StringComparison.Ordinal,
+                cancellationToken);
             endExclusive = close < 0 ? limit : close + 3;
             tag = new SafeHtmlTag(
                 SafeHtmlTagKind.Comment,
@@ -532,7 +759,13 @@ internal static class SafeHtmlParser
             return true;
         }
 
-        int closeIndex = FindTagClose(source, start + 1, limit);
+        int closeIndex = FindTagClose(
+            source,
+            start + 1,
+            limit,
+            limits.MaxTagLength,
+            cancellationToken,
+            ref scanBudget);
         if (closeIndex < 0)
         {
             return false;
@@ -540,7 +773,7 @@ internal static class SafeHtmlParser
 
         endExclusive = closeIndex + 1;
         int cursor = start + 1;
-        SkipWhitespace(source, ref cursor, closeIndex);
+        SkipWhitespace(source, ref cursor, closeIndex, cancellationToken);
         if (cursor >= closeIndex)
         {
             return false;
@@ -561,12 +794,13 @@ internal static class SafeHtmlParser
         if (closing)
         {
             cursor++;
-            SkipWhitespace(source, ref cursor, closeIndex);
+            SkipWhitespace(source, ref cursor, closeIndex, cancellationToken);
         }
 
         int nameStart = cursor;
         while (cursor < closeIndex && IsNameCharacter(source[cursor]))
         {
+            CheckCancellation(cancellationToken, cursor);
             cursor++;
         }
 
@@ -581,7 +815,15 @@ internal static class SafeHtmlParser
 
         if (!closing)
         {
-            ParseAttributes(source, ref cursor, closeIndex, attributes, out selfClosing);
+            ParseAttributes(
+                source,
+                ref cursor,
+                closeIndex,
+                attributes,
+                limits.MaxAttributeCount,
+                limits.MaxAttributeValueLength,
+                cancellationToken,
+                out selfClosing);
         }
 
         tag = new SafeHtmlTag(
@@ -600,12 +842,24 @@ internal static class SafeHtmlParser
     private static IReadOnlyDictionary<string, string> EmptyTagAttributes { get; } =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-    private static int FindTagClose(string source, int start, int limit)
+    private static int FindTagClose(
+        string source,
+        int start,
+        int limit,
+        int maxTagLength,
+        CancellationToken cancellationToken,
+        ref SafeHtmlScanBudget scanBudget)
     {
         char quote = '\0';
-        int max = Math.Min(limit, start + MaxTagLength);
+        int max = (int)Math.Min(limit, (long)start + Math.Max(0, maxTagLength));
         for (int index = start; index < max; index++)
         {
+            CheckCancellation(cancellationToken, index);
+            if (!scanBudget.TryConsume())
+            {
+                return -1;
+            }
+
             char character = source[index];
             if (quote != '\0')
             {
@@ -635,12 +889,16 @@ internal static class SafeHtmlParser
         ref int cursor,
         int closeIndex,
         Dictionary<string, string> attributes,
+        int maxAttributeCount,
+        int maxAttributeValueLength,
+        CancellationToken cancellationToken,
         out bool selfClosing)
     {
         selfClosing = false;
         while (cursor < closeIndex)
         {
-            SkipWhitespace(source, ref cursor, closeIndex);
+            CheckCancellation(cancellationToken, cursor);
+            SkipWhitespace(source, ref cursor, closeIndex, cancellationToken);
             if (cursor >= closeIndex)
             {
                 return;
@@ -656,6 +914,7 @@ internal static class SafeHtmlParser
             int nameStart = cursor;
             while (cursor < closeIndex && IsAttributeNameCharacter(source[cursor]))
             {
+                CheckCancellation(cancellationToken, cursor);
                 cursor++;
             }
 
@@ -666,23 +925,33 @@ internal static class SafeHtmlParser
             }
 
             string name = source.Substring(nameStart, cursor - nameStart).ToLowerInvariant();
-            SkipWhitespace(source, ref cursor, closeIndex);
+            SkipWhitespace(source, ref cursor, closeIndex, cancellationToken);
             string value = string.Empty;
             if (cursor < closeIndex && source[cursor] == '=')
             {
                 cursor++;
-                SkipWhitespace(source, ref cursor, closeIndex);
-                value = ReadAttributeValue(source, ref cursor, closeIndex);
+                SkipWhitespace(source, ref cursor, closeIndex, cancellationToken);
+                value = ReadAttributeValue(
+                    source,
+                    ref cursor,
+                    closeIndex,
+                    maxAttributeValueLength,
+                    cancellationToken);
             }
 
-            if (attributes.Count < MaxAttributeCount && !attributes.ContainsKey(name))
+            if (attributes.Count < maxAttributeCount && !attributes.ContainsKey(name))
             {
                 attributes[name] = WebUtility.HtmlDecode(value) ?? string.Empty;
             }
         }
     }
 
-    private static string ReadAttributeValue(string source, ref int cursor, int closeIndex)
+    private static string ReadAttributeValue(
+        string source,
+        ref int cursor,
+        int closeIndex,
+        int maxAttributeValueLength,
+        CancellationToken cancellationToken)
     {
         if (cursor >= closeIndex)
         {
@@ -697,6 +966,7 @@ internal static class SafeHtmlParser
             valueStart = cursor;
             while (cursor < closeIndex && source[cursor] != quote)
             {
+                CheckCancellation(cancellationToken, cursor);
                 cursor++;
             }
 
@@ -714,20 +984,26 @@ internal static class SafeHtmlParser
                    source[cursor] != '>' &&
                    !(source[cursor] == '/' && cursor + 1 == closeIndex))
             {
+                CheckCancellation(cancellationToken, cursor);
                 cursor++;
             }
 
             valueLength = cursor - valueStart;
         }
 
-        valueLength = Math.Min(valueLength, MaxAttributeValueLength);
+        valueLength = Math.Min(valueLength, maxAttributeValueLength);
         return valueLength <= 0 ? string.Empty : source.Substring(valueStart, valueLength);
     }
 
-    private static void SkipWhitespace(string source, ref int cursor, int limit)
+    private static void SkipWhitespace(
+        string source,
+        ref int cursor,
+        int limit,
+        CancellationToken cancellationToken)
     {
         while (cursor < limit && char.IsWhiteSpace(source[cursor]))
         {
+            CheckCancellation(cancellationToken, cursor);
             cursor++;
         }
     }
@@ -741,6 +1017,87 @@ internal static class SafeHtmlParser
     private static bool StartsWith(string source, int start, int limit, string value) =>
         start + value.Length <= limit &&
         source.AsSpan(start, value.Length).Equals(value.AsSpan(), StringComparison.Ordinal);
+
+    private static int FindCharacter(
+        string source,
+        char value,
+        int start,
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        for (int index = start; index < limit; index++)
+        {
+            CheckCancellation(cancellationToken, index);
+            if (source[index] == value)
+            {
+                return index;
+            }
+        }
+
+        return -1;
+    }
+
+    private static int FindSequence(
+        string source,
+        string value,
+        int start,
+        int limit,
+        StringComparison comparison,
+        CancellationToken cancellationToken)
+    {
+        int lastStart = limit - value.Length;
+        for (int index = start; index <= lastStart; index++)
+        {
+            CheckCancellation(cancellationToken, index);
+            if (source.AsSpan(index, value.Length).Equals(value.AsSpan(), comparison))
+            {
+                return index;
+            }
+        }
+
+        return -1;
+    }
+
+    private static void CheckCancellation(CancellationToken cancellationToken, int index)
+    {
+        const int CheckInterval = 256;
+        if ((index & (CheckInterval - 1)) == 0)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+        }
+    }
+
+    /// <summary>
+    /// Successful tag scans advance the caller beyond every inspected
+    /// character. Only malformed candidates can make those scans overlap, so
+    /// cap their aggregate work at twice the admitted input length. This keeps
+    /// worst-case parser work linear without weakening any existing input,
+    /// node, depth, attribute, or tag ceiling.
+    /// </summary>
+    private struct SafeHtmlScanBudget
+    {
+        private long _remaining;
+
+        internal SafeHtmlScanBudget(int inputLength)
+        {
+            _remaining = Math.Max(1L, 2L * Math.Max(0, inputLength));
+            IsExhausted = false;
+        }
+
+        internal bool IsExhausted { get; private set; }
+
+        internal bool TryConsume()
+        {
+            if (_remaining <= 0)
+            {
+                IsExhausted = true;
+                return false;
+            }
+
+            _remaining--;
+            return true;
+        }
+    }
 
     private static SafeHtmlAlignment ParseAlignment(string value) => value.Trim().ToLowerInvariant() switch
     {
@@ -837,5 +1194,36 @@ internal static class SafeHtmlParser
 
         normalized = string.Empty;
         return false;
+    }
+
+    internal static string ResolveMissingImageAlternative(
+        string source,
+        string localizedImageName)
+    {
+        // GitHub assigns the file name as the accessible alternative for
+        // authored animated images that omit alt text. Matching that behavior
+        // keeps large animation galleries useful to screen readers while
+        // leaving ordinary missing-alt images on the localized generic name.
+        // Camo URLs do not expose the original extension in their path, so
+        // remote GIFs continue to receive the same generic name as GitHub.
+        string path = source ?? string.Empty;
+        int suffix = path.IndexOfAny(['?', '#']);
+        if (suffix >= 0)
+            path = path[..suffix];
+
+        string fileName;
+        try
+        {
+            fileName = Uri.UnescapeDataString(Path.GetFileName(path.Replace('\\', '/')));
+        }
+        catch (UriFormatException)
+        {
+            return localizedImageName;
+        }
+
+        return fileName.Length is > 0 and <= 256 &&
+               Path.GetExtension(fileName).Equals(".gif", StringComparison.OrdinalIgnoreCase)
+            ? fileName
+            : localizedImageName;
     }
 }

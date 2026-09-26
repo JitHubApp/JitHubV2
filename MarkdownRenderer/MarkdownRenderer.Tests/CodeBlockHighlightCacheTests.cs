@@ -51,4 +51,41 @@ public sealed class CodeBlockHighlightCacheTests
         Assert.Equal(0, cache.Count);
         Assert.False(cache.TryGetValue("code", out _));
     }
+
+    [Fact]
+    public void TryGet_PromotesEntryForLeastRecentlyUsedEviction()
+    {
+        var cache = new BoundedCodeBlockHighlightCache<string>(2);
+        var first = new CodeBlockHighlightResult([]);
+        var second = new CodeBlockHighlightResult([]);
+
+        cache.Set("first", first);
+        cache.Set("second", second);
+        Assert.True(cache.TryGetValue("first", out _));
+        cache.Set("third", new CodeBlockHighlightResult([]));
+
+        Assert.True(cache.TryGetValue("first", out _));
+        Assert.False(cache.TryGetValue("second", out _));
+        Assert.True(cache.TryGetValue("third", out _));
+    }
+
+    [Fact]
+    public void ByteBudget_RejectsOversizedResultAndRemainsBounded()
+    {
+        var cache = new BoundedCodeBlockHighlightCache<string>(
+            capacity: 10,
+            budgetBytes: 200,
+            keyWeightSelector: static key => key.Length * sizeof(char));
+        var oversized = new CodeBlockHighlightResult(
+            Enumerable.Range(0, 10)
+                .Select(index => new CodeBlockHighlightSpan(index, 1, default))
+                .ToArray());
+
+        cache.Set("oversized", oversized);
+        cache.Set("small", CodeBlockHighlightResult.Empty);
+
+        Assert.False(cache.TryGetValue("oversized", out _));
+        Assert.True(cache.TryGetValue("small", out _));
+        Assert.InRange(cache.RetainedBytes, 1, 200);
+    }
 }

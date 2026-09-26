@@ -33,4 +33,28 @@ public sealed class MarkdownImageCacheIdentityPolicyTests
         Assert.False(MarkdownImageCacheIdentityPolicy.CanUseSourceAfterResolution(
             MarkdownImageResolution.Resolved(new MarkdownImageAsset([1], "image/png"))));
     }
+
+    [Fact]
+    public void ResolverAssetRequiresAnExplicitPartitionedIdentityForSharedCaching()
+    {
+        Assert.Equal(
+            "account-a:https://images.example.test/a.png",
+            MarkdownImageCacheIdentityPolicy.GetResolvedAssetKey(new MarkdownImageAsset(
+                [1],
+                "image/png",
+                new Uri("https://images.example.test/a.png"),
+                "account-a:https://images.example.test/a.png")));
+        Assert.Empty(
+            MarkdownImageCacheIdentityPolicy.GetResolvedAssetKey(new MarkdownImageAsset(
+                [1],
+                "image/png",
+                new Uri("https://images.example.test/a.png"))));
+        Assert.Empty(MarkdownImageCacheIdentityPolicy.GetResolvedAssetKey(new MarkdownImageAsset(
+            [1],
+            "image/png")));
+        Assert.Empty(MarkdownImageCacheIdentityPolicy.GetResolvedAssetKey(new MarkdownImageAsset(
+            [1],
+            "image/png",
+            new Uri("relative.png", UriKind.Relative))));
+    }
 }

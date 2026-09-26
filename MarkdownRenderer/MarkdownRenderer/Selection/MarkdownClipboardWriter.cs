@@ -1,5 +1,4 @@
 using System;
-using Markdig;
 using Windows.ApplicationModel.DataTransfer;
 using MarkdownRenderer.Document;
 
@@ -11,14 +10,12 @@ namespace MarkdownRenderer.Selection;
 /// </summary>
 internal static class MarkdownClipboardWriter
 {
-    private static readonly Lazy<MarkdownPipeline> _clipboardPipeline = new(() =>
-        new MarkdownPipelineBuilder().UseAdvancedExtensions().Build());
-
     public static bool Copy(
         MarkdownSourceMap sourceMap,
         DocumentRange range,
         MarkdownCopyOptions? options = null,
-        string? renderedText = null)
+        string? renderedText = null,
+        string? renderedHtml = null)
     {
         options ??= MarkdownCopyOptions.Default;
         var sourceSlice = sourceMap.Slice(range);
@@ -30,7 +27,13 @@ internal static class MarkdownClipboardWriter
         package.SetText(plainText);
         if (options.IncludeHtml)
         {
-            var html = BuildHtmlFragment(sourceSlice);
+            // HTML is derived from the renderer's committed semantic display
+            // plan. Never reparse source with an unrelated Markdown profile:
+            // doing so can turn strict-profile literal HTML into executable
+            // clipboard markup and bypass host policies.
+            var html = string.IsNullOrEmpty(renderedHtml)
+                ? BuildHtmlFragment(plainText)
+                : renderedHtml;
             if (!string.IsNullOrWhiteSpace(html))
                 package.SetHtmlFormat(HtmlFormatHelper.CreateHtmlFormat(html));
         }
@@ -52,18 +55,14 @@ internal static class MarkdownClipboardWriter
             ? renderedText ?? sourceMarkdown
             : sourceMarkdown;
 
-    internal static string BuildHtmlFragment(string markdown)
+    internal static string BuildHtmlFragment(string renderedText)
     {
-        if (string.IsNullOrEmpty(markdown))
+        if (string.IsNullOrEmpty(renderedText))
             return string.Empty;
 
-        try
-        {
-            return Markdown.ToHtml(markdown, _clipboardPipeline.Value);
-        }
-        catch
-        {
-            return System.Net.WebUtility.HtmlEncode(markdown).Replace("\n", "<br />", StringComparison.Ordinal);
-        }
+        return System.Net.WebUtility.HtmlEncode(renderedText)
+            .Replace("\r\n", "<br />", StringComparison.Ordinal)
+            .Replace("\r", "<br />", StringComparison.Ordinal)
+            .Replace("\n", "<br />", StringComparison.Ordinal);
     }
 }

@@ -1,89 +1,60 @@
 # Native integration and hosted controls
 
-The renderer can host real WinUI controls inside markdown. This is a defining
-feature: markdown can include app-native buttons, checkboxes, cards, pickers, or
-other controls without leaving the native visual/input stack.
+Declarative extensions may request a real WinUI element without coupling the
+extension to the viewer's private layout representation.
 
-## Block embeds
+## Request and factory
 
-Block embeds are created through `IMarkdownEmbedFactory`.
+An extension emits a hosted element with
+`MarkdownContentBuilder.AddHostedElement()`. The request names a stable factory
+key and contains only immutable attributes and a UTF-16 source span. Near the
+effective viewport, the view calls the host's `IMarkdownHostedElementFactory`.
 
 ```csharp
-public interface IMarkdownEmbedFactory
+public sealed class AppElementFactory : IMarkdownHostedElementFactory
 {
-    bool CanCreate(Block block);
-    float MeasureHeight(Block block, float availableWidth);
-    FrameworkElement CreateBlock(Block block);
-    void RecycleBlock(Block block, FrameworkElement element) { }
+    public ValueTask<FrameworkElement?> CreateAsync(
+        MarkdownHostedElementRequest request,
+        CancellationToken cancellationToken)
+    {
+        return request.FactoryKey == "Contoso.IssueCard"
+            ? ValueTask.FromResult<FrameworkElement?>(CreateIssueCard(request))
+            : ValueTask.FromResult<FrameworkElement?>(null);
+    }
+
+    public void Recycle(
+        MarkdownHostedElementRequest request,
+        FrameworkElement element)
+    {
+        // Detach app-owned handlers and release app-owned state.
+    }
 }
+
+view.HostedElementFactory = new AppElementFactory();
 ```
 
-Threading contract:
+`MarkdownHostedElementRequest` exposes the factory key, source range, layout
+bounds, effective viewport, and immutable attributes. It does not expose parser
+or layout implementation objects.
 
-- `CanCreate` runs on the layout thread and must be thread-safe.
-- `MeasureHeight` runs on the layout thread and must not touch WinUI APIs.
-- `CreateBlock` runs on the UI thread.
-- `RecycleBlock` runs when a realized embed is removed from the overlay.
+## Lifecycle and interaction
 
-The renderer guards `CanCreate` and `MeasureHeight`: if either callback is
-reached on the UI dispatcher thread, layout throws with guidance to move
-thread-affine work to `CreateBlock` / `RecycleBlock`.
+- `CreateAsync` runs on the UI thread and is cancellation-aware.
+- The view realizes elements near the effective viewport and may recycle them as
+  they move away.
+- Factories must not assume a single element instance lives for the document's
+  lifetime.
+- A `null` result, factory exception, or element-attachment failure causes that
+  source block to be rebuilt with the native Markdown renderer. The failed
+  request is not retried on every viewport pass; changing the source, document,
+  engine, parser, or hosted-element factory permits a fresh attempt.
+- Normal pointer, focus, and UI Automation behavior belongs to the hosted WinUI
+  element.
+- The viewer coordinates selection and document focus around realized elements.
 
-## Inline embeds
-
-The core layout also has `InlineEmbedRun` support. Inline embeds are placed into
-the text flow and realized as overlay elements at their computed inline rect.
-They are tracked separately from block embeds for hit testing, focus, and
-virtualization.
-
-## Overlay positioning
-
-Hosted controls live on the transparent overlay canvas above the Win2D surface.
-The renderer sets:
-
-- `Width`;
-- `Height`;
-- `Canvas.Left`;
-- `Canvas.Top`.
-
-The hosted element paints and handles input normally through WinUI.
-
-## Virtualization
-
-The renderer does not keep all hosted controls realized forever. It records
-embed plans after layout and realizes only those near the viewport:
-
-- `EmbedVirtualizationOverscanPx = 400`
-- `EmbedVirtualizationDerealizeOverscanPx = 1200`
-
-The larger derealization band prevents create/destroy thrash near viewport edges.
-
-## Input policy
-
-Normal clicks on hosted controls should go to the hosted controls. The renderer
-suppresses its own cursor and link-hover behavior when the pointer is over an
-embed so the embedded element can show its own cursor and handle input.
-
-Selection drag is a special case. During an active markdown selection drag, the
-renderer enables a temporary transparent drag shield above embeds so pointer
-movement remains with the markdown selection system. The shield is disabled on
-release/cancel so normal control interaction resumes.
-
-## Accessibility
-
-Hosted controls expose their own UIA peers through XAML. The renderer bridges
-them into the markdown document by keeping focus order, selection source spans,
-and `RangeFromChild` mappings coherent with the painted document. Manual release
-smoke should still cover complex custom controls because app-authored peers can
-vary.
-
-## Design rules for embed authors
-
-- Never touch WinUI APIs from `CanCreate` or `MeasureHeight`.
-- Treat `CanCreate` and `MeasureHeight` as background-thread callbacks; compute
-  from Markdig block data and primitive values only.
-- Make `MeasureHeight` deterministic for a given block and width.
-- Keep hosted controls lightweight; many embeds can exist in long documents.
-- Use `RecycleBlock` to detach event handlers or dispose expensive resources.
-- Do not assume the same `FrameworkElement` instance will be reused.
-- Treat embed realization as viewport-dependent.
+Hosted elements suit buttons, app cards, and other genuinely interactive native
+UI. The current preview's viewer adapter handles block-level hosted elements and
+containers composed only of hosted elements. Static or repeated declarative
+text, links, lists, tables, code, images, inline content, and custom primitives
+still use the built-in-renderer fallback until their native adapters are
+implemented.

@@ -32,10 +32,12 @@ public static class GitHubMarkdownImageUrlResolver
             return false;
         }
 
-        string imagePath = relativeSourcePath.StartsWith("/", StringComparison.Ordinal)
-            ? NormalizeRepositoryPath(relativeSourcePath.TrimStart('/'))
-            : NormalizeRepositoryPath(JoinRepositoryPath(GetDirectoryName(documentSource.Path!), relativeSourcePath));
-        if (string.IsNullOrWhiteSpace(imagePath) || imagePath.StartsWith("../", StringComparison.Ordinal))
+        if (!TryResolveRelativeRepositoryLocation(
+                relativeSourcePath,
+                documentSource.Path!,
+                documentSource.Ref!,
+                out string imageRef,
+                out string imagePath))
         {
             return false;
         }
@@ -43,12 +45,12 @@ public static class GitHubMarkdownImageUrlResolver
         Uri sourceUri = CreateGitHubBlobUri(
             documentSource.Owner!,
             documentSource.Repository!,
-            documentSource.Ref!,
+            imageRef,
             imagePath);
         reference = new GitHubMarkdownImageReference(
             documentSource.Owner!,
             documentSource.Repository!,
-            documentSource.Ref!,
+            imageRef,
             imagePath,
             sourceUri);
         return true;
@@ -82,11 +84,12 @@ public static class GitHubMarkdownImageUrlResolver
             return false;
         }
 
-        string imagePath = relativeSourcePath.StartsWith("/", StringComparison.Ordinal)
-            ? NormalizeRepositoryPath(relativeSourcePath.TrimStart('/'))
-            : NormalizeRepositoryPath(JoinRepositoryPath(GetDirectoryName(baseReference.Path), relativeSourcePath));
-
-        if (string.IsNullOrWhiteSpace(imagePath) || imagePath.StartsWith("../", StringComparison.Ordinal))
+        if (!TryResolveRelativeRepositoryLocation(
+                relativeSourcePath,
+                baseReference.Path,
+                baseReference.Ref,
+                out string imageRef,
+                out string imagePath))
         {
             return false;
         }
@@ -94,12 +97,12 @@ public static class GitHubMarkdownImageUrlResolver
         Uri sourceUri = CreateGitHubBlobUri(
             baseReference.Owner,
             baseReference.Repository,
-            baseReference.Ref,
+            imageRef,
             imagePath);
         reference = new GitHubMarkdownImageReference(
             baseReference.Owner,
             baseReference.Repository,
-            baseReference.Ref,
+            imageRef,
             imagePath,
             sourceUri);
         return true;
@@ -210,6 +213,19 @@ public static class GitHubMarkdownImageUrlResolver
             }
         }
 
+        // GitHub emits canonical raw URLs with an explicit refs/heads or
+        // refs/tags prefix. Treat that prefix as part of the ref rather than
+        // misclassifying "heads/..." as the repository path.
+        if (refAndPathSegments.Length >= 4 &&
+            refAndPathSegments[0].Equals("refs", StringComparison.OrdinalIgnoreCase) &&
+            (refAndPathSegments[1].Equals("heads", StringComparison.OrdinalIgnoreCase) ||
+             refAndPathSegments[1].Equals("tags", StringComparison.OrdinalIgnoreCase)))
+        {
+            gitRef = string.Join('/', refAndPathSegments.Take(3));
+            path = string.Join('/', refAndPathSegments.Skip(3));
+            return !string.IsNullOrWhiteSpace(path);
+        }
+
         gitRef = refAndPathSegments[0];
         path = string.Join('/', refAndPathSegments.Skip(1));
         return !string.IsNullOrWhiteSpace(gitRef) && !string.IsNullOrWhiteSpace(path);
@@ -220,6 +236,57 @@ public static class GitHubMarkdownImageUrlResolver
         string uri =
             $"https://github.com/{Uri.EscapeDataString(owner)}/{Uri.EscapeDataString(repository)}/blob/{EscapePath(gitRef)}/{EscapePath(path)}";
         return new Uri(uri, UriKind.Absolute);
+    }
+
+    internal static Uri CreateGitHubRawRouteUri(GitHubMarkdownImageReference reference)
+    {
+        string uri =
+            $"https://github.com/{Uri.EscapeDataString(reference.Owner)}/{Uri.EscapeDataString(reference.Repository)}/raw/{EscapePath(reference.Ref)}/{EscapePath(reference.Path)}";
+        return new Uri(uri, UriKind.Absolute);
+    }
+
+    private static bool TryResolveRelativeRepositoryLocation(
+        string relativeSourcePath,
+        string documentPath,
+        string documentRef,
+        out string imageRef,
+        out string imagePath)
+    {
+        imageRef = documentRef;
+        imagePath = relativeSourcePath.StartsWith("/", StringComparison.Ordinal)
+            ? NormalizeRepositoryPath(relativeSourcePath.TrimStart('/'))
+            : NormalizeRepositoryPath(JoinRepositoryPath(GetDirectoryName(documentPath), relativeSourcePath));
+        if (string.IsNullOrWhiteSpace(imagePath))
+        {
+            return false;
+        }
+
+        if (!imagePath.StartsWith("../", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        // GitHub resolves a parent-relative URL that escapes the repository root
+        // against the route segment following /blob/. This convention is used by
+        // repositories such as lazygit to keep README media on an `assets` branch:
+        // README.md + ../assets/demo.gif => ref `assets`, path `demo.gif`.
+        // Admit exactly one escaped segment; additional traversal would leave the
+        // repository route and is therefore rejected.
+        string branchRelative = imagePath[3..];
+        if (branchRelative.StartsWith("../", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        int slash = branchRelative.IndexOf('/');
+        if (slash <= 0 || slash == branchRelative.Length - 1)
+        {
+            return false;
+        }
+
+        imageRef = branchRelative[..slash];
+        imagePath = branchRelative[(slash + 1)..];
+        return true;
     }
 
     private static string JoinRepositoryPath(string? left, string right)
@@ -292,7 +359,7 @@ public static class GitHubMarkdownImageUrlResolver
 
             if (part.Equals("..", StringComparison.Ordinal))
             {
-                if (stack.Count > 0)
+                if (stack.Count > 0 && !stack[^1].Equals("..", StringComparison.Ordinal))
                 {
                     stack.RemoveAt(stack.Count - 1);
                 }

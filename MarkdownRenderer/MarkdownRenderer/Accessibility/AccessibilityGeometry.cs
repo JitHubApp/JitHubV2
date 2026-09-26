@@ -15,6 +15,32 @@ internal readonly record struct AccessibilityRect(double X, double Y, double Wid
 
 internal static class AccessibilityGeometry
 {
+    public static AccessibilityRect NormalizeTransformedBounds(
+        AccessibilityPoint topLeft,
+        AccessibilityPoint topRight,
+        AccessibilityPoint bottomLeft,
+        AccessibilityPoint bottomRight)
+    {
+        if (!IsFinite(topLeft) || !IsFinite(topRight) ||
+            !IsFinite(bottomLeft) || !IsFinite(bottomRight))
+        {
+            return default;
+        }
+
+        double left = Math.Min(Math.Min(topLeft.X, topRight.X), Math.Min(bottomLeft.X, bottomRight.X));
+        double top = Math.Min(Math.Min(topLeft.Y, topRight.Y), Math.Min(bottomLeft.Y, bottomRight.Y));
+        double right = Math.Max(Math.Max(topLeft.X, topRight.X), Math.Max(bottomLeft.X, bottomRight.X));
+        double bottom = Math.Max(Math.Max(topLeft.Y, topRight.Y), Math.Max(bottomLeft.Y, bottomRight.Y));
+        return new AccessibilityRect(
+            left,
+            top,
+            right - left,
+            bottom - top);
+    }
+
+    private static bool IsFinite(AccessibilityPoint point) =>
+        double.IsFinite(point.X) && double.IsFinite(point.Y);
+
     public static bool TryCoercePointToNearestRect(
         AccessibilityPoint point,
         IEnumerable<AccessibilityRect> rects,

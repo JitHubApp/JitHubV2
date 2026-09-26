@@ -6,7 +6,7 @@ namespace MarkdownRenderer.Parsing;
 /// Builds a renderer-specific layout block for a Markdig syntax node.
 /// </summary>
 /// <typeparam name="TNode">The concrete Markdig syntax node type handled by the renderer.</typeparam>
-public interface IMarkdownNodeRenderer<in TNode> where TNode : class
+internal interface IMarkdownNodeRenderer<in TNode> where TNode : class
 {
     /// <summary>
     /// Creates a block for <paramref name="node"/>, or returns <see langword="null"/> to let the default renderer handle it.
@@ -31,10 +31,15 @@ internal interface IMarkdownNodeRendererErased
 /// Typed helper base class. Implementors override the strongly-typed overload;
 /// the erased overload forwards to it.
 /// </summary>
-public abstract class MarkdownNodeRenderer<TNode> : IMarkdownNodeRenderer<TNode>
+internal abstract class MarkdownNodeRenderer<TNode> :
+    IMarkdownNodeRenderer<TNode>,
+    IMarkdownNodeRendererErased
     where TNode : class
 {
     /// <inheritdoc />
     public abstract BlockBox? BuildBlock(TNode node, MarkdownLayoutContext context);
+
+    BlockBox? IMarkdownNodeRendererErased.BuildBlock(object node, MarkdownLayoutContext context)
+        => node is TNode typed ? BuildBlock(typed, context) : null;
 }
 

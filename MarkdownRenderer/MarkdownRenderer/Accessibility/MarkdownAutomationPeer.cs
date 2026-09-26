@@ -1,10 +1,13 @@
+using System;
 using System.Collections.Generic;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Automation.Provider;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Media;
 using MarkdownRenderer.Controls;
 using MarkdownRenderer.Document;
+using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 
@@ -22,6 +25,7 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
     private readonly MarkdownRendererControl _owner;
     private readonly System.Runtime.CompilerServices.ConditionalWeakTable<InlineContainerBox, MarkdownBlockPeer> _peerCache = new();
     private readonly Dictionary<MarkdownSemanticNode, MarkdownNodePeer> _nodePeerCache = new();
+    private readonly MarkdownTextFormatCacheStore _textFormatCacheStore = new();
     private LayoutSnapshot? _semanticSnapshot;
     private MarkdownSemanticDocument? _semanticDocument;
 
@@ -33,11 +37,17 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
     internal MarkdownRendererControl OwnerControl => _owner;
 
     protected override string GetClassNameCore() => "MarkdownRendererControl";
+    protected override string GetAutomationIdCore()
+    {
+        string hostId = AutomationProperties.GetAutomationId(_owner);
+        return string.IsNullOrWhiteSpace(hostId) ? MarkdownAutomationIdentity.Document : hostId;
+    }
+    protected override int GetCultureCore() => _owner.AutomationCultureLcid;
     protected override AutomationControlType GetAutomationControlTypeCore() => AutomationControlType.Document;
     protected override bool IsControlElementCore() => true;
     protected override bool IsContentElementCore() => true;
     protected override bool HasKeyboardFocusCore() =>
-        !_owner.HasKeyboardFocusOnPaintedLink && base.HasKeyboardFocusCore();
+        !_owner.HasKeyboardFocusOnVirtualChild && base.HasKeyboardFocusCore();
 
     protected override void SetFocusCore()
     {
@@ -53,12 +63,23 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
         }
     }
 
-    public SupportedTextSelection SupportedTextSelection => SupportedTextSelection.Single;
+    public SupportedTextSelection SupportedTextSelection => _owner.IsSelectionEnabled
+        ? SupportedTextSelection.Single
+        : SupportedTextSelection.None;
 
     protected override string GetNameCore()
     {
+        string hostName = AutomationProperties.GetName(_owner);
+        if (!string.IsNullOrWhiteSpace(hostName))
+            return hostName;
+
         var doc = GetSemanticDocumentOrNull();
-        if (doc is null) return MarkdownLocalizedStrings.MarkdownDocumentName;
+        if (doc is null)
+        {
+            return _owner.ResolveLocalizedString(
+                MarkdownStringKeys.DocumentName,
+                MarkdownLocalizedStrings.MarkdownDocumentName);
+        }
 
         foreach (var node in EnumerateSemanticNodes(doc.Root))
         {
@@ -70,19 +91,39 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
                 return heading.Length > 120 ? heading.Substring(0, 120) : heading;
         }
 
-        return MarkdownLocalizedStrings.MarkdownDocumentName;
+        return _owner.ResolveLocalizedString(
+            MarkdownStringKeys.DocumentName,
+            MarkdownLocalizedStrings.MarkdownDocumentName);
+    }
+
+    protected override string GetItemStatusCore()
+    {
+        if (!_owner.HasVisibleLoadingImagesForAutomation())
+            return base.GetItemStatusCore();
+
+        string imageName = _owner.ResolveLocalizedString(
+            MarkdownStringKeys.ImageName,
+            MarkdownLocalizedStrings.ImageName);
+        return _owner.ResolveFormattedLocalizedString(
+            MarkdownStringKeys.ImageLoading,
+            MarkdownLocalizedStrings.ImageLoadingFormat,
+            imageName);
     }
 
     protected override IList<AutomationPeer> GetChildrenCore()
     {
         var doc = GetSemanticDocumentOrNull();
-        return doc is null ? new List<AutomationPeer>() : GetChildPeersForSemanticNode(doc.Root);
+        IList<AutomationPeer> children = doc is null
+            ? new List<AutomationPeer>()
+            : GetChildPeersForSemanticNode(doc.Root);
+        _owner.AppendVisibleSelectionHandleAutomationPeers(children);
+        return children;
     }
 
     protected override object GetPatternCore(PatternInterface patternIinterface)
     {
         if (patternIinterface == PatternInterface.Text || patternIinterface == PatternInterface.Text2) return this;
-        if (patternIinterface == PatternInterface.Scroll) return this;
+        if (patternIinterface == PatternInterface.Scroll && _owner.OwnsScrollViewport) return this;
         return base.GetPatternCore(patternIinterface);
     }
 
@@ -121,17 +162,35 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
 
     public void Scroll(ScrollAmount horizontalAmount, ScrollAmount verticalAmount)
     {
+        if (horizontalAmount != ScrollAmount.NoAmount)
+            throw new InvalidOperationException("The markdown document does not scroll horizontally.");
+        if (verticalAmount == ScrollAmount.NoAmount)
+            return;
+        if (!VerticallyScrollable)
+            throw new InvalidOperationException("The markdown document has no vertical overflow.");
+
         _owner.ScrollFromAutomation(verticalAmount);
     }
 
     public void SetScrollPercent(double horizontalPercent, double verticalPercent)
     {
-        if (verticalPercent != NoScroll)
-            _owner.SetAutomationVerticalScrollPercent(verticalPercent);
+        ValidateScrollPercent(horizontalPercent, nameof(horizontalPercent));
+        ValidateScrollPercent(verticalPercent, nameof(verticalPercent));
+        if (horizontalPercent != NoScroll)
+            throw new InvalidOperationException("The markdown document does not scroll horizontally.");
+        if (verticalPercent == NoScroll)
+            return;
+        if (!VerticallyScrollable)
+            throw new InvalidOperationException("The markdown document has no vertical overflow.");
+
+        _owner.SetAutomationVerticalScrollPercent(verticalPercent);
     }
 
     public ITextRangeProvider[] GetSelection()
     {
+        if (!_owner.IsSelectionEnabled)
+            return Array.Empty<ITextRangeProvider>();
+
         var doc = GetSemanticDocument();
         var range = _owner.CurrentSelectionRange;
         if (!range.IsEmpty)
@@ -155,7 +214,15 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
         int? end = null;
         foreach (var span in doc.TextSpans)
         {
-            var bounds = span.InlineBox?.Bounds ?? span.ImageBox?.Bounds ?? span.EmbedBox?.Bounds ?? default;
+            var bounds = span.InlineBox?.Bounds ??
+                         span.ImageBox?.Bounds ??
+                         span.EmbedBox?.Bounds ??
+                         span.HostedElementBox?.Bounds ??
+                         (span.VectorSceneBox is { } vector
+                             ? span.VectorSemanticIndex >= 0
+                                  ? vector.GetVisibleSemanticBounds(span.VectorSemanticIndex)
+                                  : vector.VisibleContentBounds
+                             : default);
             if (bounds.Height <= 0 || bounds.Bottom < viewport.Top || bounds.Top > viewport.Bottom) continue;
             start = start is null ? span.TextStart : System.Math.Min(start.Value, span.TextStart);
             end = end is null ? span.TextEnd : System.Math.Max(end.Value, span.TextEnd);
@@ -193,7 +260,8 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
         var doc = GetSemanticDocument();
         if (_owner.CurrentSnapshot is { } snapshot &&
             TryScreenPointToDocumentPoint(screenLocation, out var docPoint) &&
-            snapshot.HitTest(docPoint, out var position))
+            (snapshot.TryHitTestVectorText(docPoint, out var position) ||
+             snapshot.HitTest(docPoint, out position)))
         {
             int offset = doc.TextOffsetFromDocumentPosition(position);
             return new MarkdownTextRangeProvider(this, offset, offset);
@@ -207,17 +275,39 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
 
     public ITextRangeProvider GetCaretRange(out bool isActive)
     {
-        isActive = _owner.FocusState != Microsoft.UI.Xaml.FocusState.Unfocused;
         var selection = GetSelection();
-        return selection.Length > 0
+        ITextRangeProvider caretRange = selection.Length > 0
             ? selection[0]
             : new MarkdownTextRangeProvider(this, 0, 0);
+        isActive = IsTextCaretActive;
+        return caretRange;
     }
+
+    internal bool IsTextCaretActive => IsCaretActive(
+        _owner.FocusState,
+        _owner.IsSelectionEnabled,
+        _owner.HasKeyboardFocusOnVirtualChild);
+
+    internal static bool IsCaretActive(
+        FocusState focusState,
+        bool selectionEnabled,
+        bool hasVirtualChildFocus) =>
+        selectionEnabled &&
+        !hasVirtualChildFocus &&
+        focusState != FocusState.Unfocused;
 
     internal MarkdownSemanticDocument GetSemanticDocument()
     {
         var doc = GetSemanticDocumentOrNull();
-        return doc ?? MarkdownSemanticDocument.Build(new LayoutSnapshot(System.Array.Empty<BlockBox>(), new MarkdownSourceMap(string.Empty), 0, 0));
+        return doc ?? MarkdownSemanticDocument.Empty;
+    }
+
+    internal MarkdownTextFormatCache GetTextFormatCache()
+    {
+        MarkdownSemanticDocument document = GetSemanticDocument();
+        return _textFormatCacheStore.GetOrCreate(
+            document,
+            _owner.CurrentThemeSnapshot);
     }
 
     internal IList<AutomationPeer> GetChildPeersForSemanticNode(MarkdownSemanticNode node)
@@ -225,10 +315,11 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
         var list = new List<AutomationPeer>();
         foreach (var child in node.Children)
         {
-            if (child.Role == MarkdownSemanticRole.Link)
+            if (child.Role == MarkdownSemanticRole.Link && child.VectorSceneBox is null)
                 continue;
 
             if (child.Role is MarkdownSemanticRole.Paragraph or MarkdownSemanticRole.Heading or MarkdownSemanticRole.CodeBlock &&
+                child.InlineRun is null &&
                 child.InlineBox is { } inline)
             {
                 list.Add(GetOrCreateBlockPeer(inline));
@@ -244,25 +335,23 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
     internal IList<AutomationPeer> GetInlineChildPeers(InlineContainerBox box)
     {
         var doc = GetSemanticDocumentOrNull();
-        if (doc is null) return new List<AutomationPeer>();
-
-        foreach (var node in EnumerateSemanticNodes(doc.Root))
+        if (doc is null ||
+            !doc.TryGetInlineContainerNode(box, out MarkdownSemanticNode node) ||
+            node.Role is not (MarkdownSemanticRole.Paragraph or
+                MarkdownSemanticRole.Heading or
+                MarkdownSemanticRole.CodeBlock))
         {
-            if (ReferenceEquals(node.InlineBox, box) &&
-                node.Role is MarkdownSemanticRole.Paragraph or MarkdownSemanticRole.Heading or MarkdownSemanticRole.CodeBlock)
-            {
-                var peers = new List<AutomationPeer>();
-                foreach (var child in node.Children)
-                {
-                    if (TryGetPeerForSemanticNode(child, out var peer))
-                        peers.Add(peer);
-                }
-
-                return peers;
-            }
+            return new List<AutomationPeer>();
         }
 
-        return new List<AutomationPeer>();
+        var peers = new List<AutomationPeer>(node.Children.Count);
+        foreach (MarkdownSemanticNode child in node.Children)
+        {
+            if (TryGetPeerForSemanticNode(child, out AutomationPeer peer))
+                peers.Add(peer);
+        }
+
+        return peers;
     }
 
     internal bool TryGetProviderForSemanticNode(MarkdownSemanticNode node, out IRawElementProviderSimple provider)
@@ -279,7 +368,18 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
 
     internal bool TryGetPeerForSemanticNode(MarkdownSemanticNode node, out AutomationPeer peer)
     {
+        // Declarative hosted content keeps a stable semantic wrapper while its
+        // XAML child is virtualized in and out. The wrapper carries the
+        // extension's role/name/text; a realized native peer is exposed below
+        // it by MarkdownNodePeer.
+        if (node.HostedElementBox is not null)
+        {
+            peer = GetOrCreateNodePeer(node);
+            return true;
+        }
+
         if (node.Role is MarkdownSemanticRole.Paragraph or MarkdownSemanticRole.Heading or MarkdownSemanticRole.CodeBlock &&
+            node.InlineRun is null &&
             node.InlineBox is { } blockInline)
         {
             peer = GetOrCreateBlockPeer(blockInline);
@@ -308,7 +408,7 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
         {
             var element = node.InlineRun is InlineEmbedRun inlineEmbed
                 ? inlineEmbed.RealizedElement
-                : node.EmbedBox?.RealizedElement;
+                : node.EmbedBox?.RealizedElement ?? node.HostedElementBox?.RealizedElement;
             if (element is not null)
             {
                 var elementPeer = FrameworkElementAutomationPeer.FromElement(element)
@@ -337,6 +437,90 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
         var blockPeer = GetOrCreateBlockPeer(inline);
         var imagePeer = _owner.GetOrCreateLinkedImagePeer(blockPeer, image);
         imagePeer.RaiseAutomationFocusChanged();
+    }
+
+    internal void RaiseFocusForVectorSemantic(VectorSceneBox box, int semanticIndex)
+    {
+        MarkdownSemanticDocument document = GetSemanticDocument();
+        foreach (MarkdownSemanticNode node in EnumerateSemanticNodes(document.Root))
+        {
+            if (ReferenceEquals(node.VectorSceneBox, box) &&
+                node.VectorSemanticIndex == semanticIndex)
+            {
+                GetOrCreateNodePeer(node).RaiseAutomationFocusChanged();
+                return;
+            }
+        }
+    }
+
+    internal void RaiseFocusForHorizontalOverflow(IHorizontalOverflowBox overflow)
+    {
+        MarkdownSemanticDocument document = GetSemanticDocument();
+        MarkdownSemanticNode? node = FindHorizontalOverflowFocusNode(document, overflow);
+        if (node is not null)
+            GetOrCreateNodePeer(node).RaiseAutomationFocusChanged();
+    }
+
+    internal void NotifyHorizontalOverflowScrolled(
+        IHorizontalOverflowBox overflow,
+        double oldPhysicalPercent,
+        double newPhysicalPercent)
+    {
+        MarkdownSemanticDocument document = GetSemanticDocument();
+        MarkdownSemanticNode? node = FindHorizontalOverflowFocusNode(document, overflow);
+        if (node is not null)
+        {
+            GetOrCreateNodePeer(node).NotifyHorizontalScrollChanged(
+                oldPhysicalPercent,
+                newPhysicalPercent);
+        }
+    }
+
+    internal static MarkdownSemanticNode? FindHorizontalOverflowFocusNode(
+        MarkdownSemanticDocument document,
+        IHorizontalOverflowBox overflow)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        ArgumentNullException.ThrowIfNull(overflow);
+        return document.TryGetHorizontalOverflowNode(overflow, out MarkdownSemanticNode node)
+            ? node
+            : null;
+    }
+
+    internal void NotifyImageStatusChanged(ImageBox image)
+    {
+        foreach (KeyValuePair<MarkdownSemanticNode, MarkdownNodePeer> entry in _nodePeerCache)
+        {
+            if (ReferenceEquals(entry.Key.ImageBox, image))
+                entry.Value.NotifyImageStatusChanged();
+        }
+
+        MarkdownSemanticDocument? document = GetSemanticDocumentOrNull();
+        if (document is null)
+            return;
+
+        foreach (MarkdownSemanticNode node in EnumerateSemanticNodes(document.Root))
+        {
+            if (ReferenceEquals(node.ImageBox, image) &&
+                node.InlineRun is InlineImageRun { IsLinked: true } linkedRun &&
+                _owner.TryGetLinkedImagePeer(linkedRun, out MarkdownLinkedImagePeer linkedPeer))
+            {
+                linkedPeer.NotifyImageStatusChanged();
+            }
+        }
+    }
+
+    internal void NotifyDocumentChanged()
+    {
+        _textFormatCacheStore.Invalidate();
+        InvalidatePeer();
+        RaiseAutomationEvent(AutomationEvents.TextPatternOnTextChanged);
+        RaiseAutomationEvent(AutomationEvents.StructureChanged);
+    }
+
+    internal void NotifySelectionChanged()
+    {
+        RaiseAutomationEvent(AutomationEvents.TextPatternOnTextSelectionChanged);
     }
 
     internal IRawElementProviderSimple ProviderFromPeerForTextRange(AutomationPeer peer) => ProviderFromPeer(peer);
@@ -422,15 +606,28 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
                 // layout origin, anchored to the active XamlRoot's physical
                 // screen bounds. This remains correct for popup XAML islands
                 // while accounting for every outer scroll offset.
-                Windows.Foundation.Point rootPoint = _owner
-                    .TransformToVisual(root)
-                    .TransformPoint(new Windows.Foundation.Point());
+                GeneralTransform transform = _owner.TransformToVisual(root);
+                Windows.Foundation.Point topLeft = transform.TransformPoint(
+                    new Windows.Foundation.Point());
+                Windows.Foundation.Point topRight = transform.TransformPoint(
+                    new Windows.Foundation.Point(_owner.ActualWidth, 0));
+                Windows.Foundation.Point bottomLeft = transform.TransformPoint(
+                    new Windows.Foundation.Point(0, _owner.ActualHeight));
+                Windows.Foundation.Point bottomRight = transform.TransformPoint(
+                    new Windows.Foundation.Point(_owner.ActualWidth, _owner.ActualHeight));
+                AccessibilityRect ownerBounds = AccessibilityGeometry.NormalizeTransformedBounds(
+                    new AccessibilityPoint(topLeft.X, topLeft.Y),
+                    new AccessibilityPoint(topRight.X, topRight.Y),
+                    new AccessibilityPoint(bottomLeft.X, bottomLeft.Y),
+                    new AccessibilityPoint(bottomRight.X, bottomRight.Y));
+                if (ownerBounds.Width <= 0 || ownerBounds.Height <= 0)
+                    return default;
                 double scale = _owner.XamlRoot.RasterizationScale;
                 return new Windows.Foundation.Rect(
-                    rootScreen.X + (rootPoint.X * scale),
-                    rootScreen.Y + (rootPoint.Y * scale),
-                    _owner.ActualWidth * scale,
-                    _owner.ActualHeight * scale);
+                    rootScreen.X + (ownerBounds.X * scale),
+                    rootScreen.Y + (ownerBounds.Y * scale),
+                    ownerBounds.Width * scale,
+                    ownerBounds.Height * scale);
             }
         }
 
@@ -439,15 +636,12 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
 
     internal bool TryGetTextRangeForInlineBox(InlineContainerBox box, out int start, out int end)
     {
-        var doc = GetSemanticDocument();
-        foreach (var span in doc.TextSpans)
+        MarkdownSemanticDocument document = GetSemanticDocument();
+        if (document.TryGetInlineContainerNode(box, out MarkdownSemanticNode node))
         {
-            if (ReferenceEquals(span.InlineBox, box))
-            {
-                start = span.TextStart;
-                end = span.TextEnd;
-                return true;
-            }
+            start = node.TextStart;
+            end = node.TextEnd;
+            return true;
         }
 
         start = 0;
@@ -463,8 +657,9 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
         if (!ReferenceEquals(snap, _semanticSnapshot) || _semanticDocument is null)
         {
             _semanticSnapshot = snap;
-            _semanticDocument = MarkdownSemanticDocument.Build(snap);
+            _semanticDocument = snap.SemanticDocument;
             _nodePeerCache.Clear();
+            _textFormatCacheStore.Invalidate();
         }
 
         return _semanticDocument;
@@ -483,6 +678,15 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
 
         maximum = System.Math.Max(0, extent - viewport);
         return maximum > 0;
+    }
+
+    private static void ValidateScrollPercent(double value, string parameterName)
+    {
+        if (value != NoScroll &&
+            (!double.IsFinite(value) || value < 0 || value > 100))
+        {
+            throw new ArgumentOutOfRangeException(parameterName);
+        }
     }
 
     private MarkdownBlockPeer GetOrCreateBlockPeer(InlineContainerBox box)
@@ -556,7 +760,7 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
 
         var element = node.InlineRun is InlineEmbedRun inlineEmbed
             ? inlineEmbed.RealizedElement
-            : node.EmbedBox?.RealizedElement;
+            : node.EmbedBox?.RealizedElement ?? node.HostedElementBox?.RealizedElement;
         if (element is null)
             return false;
 

@@ -1,0 +1,247 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+        JitHub's renderer customization is expressed exclusively through the
+        stable MarkdownResourceKeys contract. These redirects keep the brush
+        instances owned by the app palette, so palette and contrast changes do
+        not allocate a parallel MarkdownTheme graph for every viewer.
+    -->
+    <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Light">
+            <StaticResource x:Key="MarkdownRenderer.CodeInline.FontFamily" ResourceKey="AppMonoFontFamily" />
+            <StaticResource x:Key="MarkdownRenderer.CodeBlock.FontFamily" ResourceKey="AppMonoFontFamily" />
+            <StaticResource x:Key="MarkdownRenderer.CodeBlockGutter.FontFamily" ResourceKey="AppMonoFontFamily" />
+            <StaticResource x:Key="MarkdownRenderer.CodeBlockLineNumber.FontFamily" ResourceKey="AppMonoFontFamily" />
+            <StaticResource x:Key="MarkdownRenderer.Diagram.FontFamily" ResourceKey="AppMonoFontFamily" />
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Dark">
+            <StaticResource x:Key="MarkdownRenderer.CodeInline.FontFamily" ResourceKey="AppMonoFontFamily" />
+            <StaticResource x:Key="MarkdownRenderer.CodeBlock.FontFamily" ResourceKey="AppMonoFontFamily" />
+            <StaticResource x:Key="MarkdownRenderer.CodeBlockGutter.FontFamily" ResourceKey="AppMonoFontFamily" />
+            <StaticResource x:Key="MarkdownRenderer.CodeBlockLineNumber.FontFamily" ResourceKey="AppMonoFontFamily" />
+            <StaticResource x:Key="MarkdownRenderer.Diagram.FontFamily" ResourceKey="AppMonoFontFamily" />
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="HighContrast">
+            <StaticResource x:Key="MarkdownRenderer.CodeInline.FontFamily" ResourceKey="AppHighContrastMonoFontFamily" />
+            <StaticResource x:Key="MarkdownRenderer.CodeBlock.FontFamily" ResourceKey="AppHighContrastMonoFontFamily" />
+            <StaticResource x:Key="MarkdownRenderer.CodeBlockGutter.FontFamily" ResourceKey="AppHighContrastMonoFontFamily" />
+            <StaticResource x:Key="MarkdownRenderer.CodeBlockLineNumber.FontFamily" ResourceKey="AppHighContrastMonoFontFamily" />
+            <StaticResource x:Key="MarkdownRenderer.Diagram.FontFamily" ResourceKey="AppHighContrastMonoFontFamily" />
+        </ResourceDictionary>
+    </ResourceDictionary.ThemeDictionaries>
+
+    <StaticResource x:Key="MarkdownRenderer.Selection.BackgroundBrush" ResourceKey="AppSelectionBrush" />
+    <StaticResource x:Key="MarkdownRenderer.Selection.ForegroundBrush" ResourceKey="AppSelectionForegroundBrush" />
+    <StaticResource x:Key="MarkdownRenderer.FocusVisual.Brush" ResourceKey="AppAccentBrush" />
+    <StaticResource x:Key="MarkdownRenderer.Interaction.MinimumSize" ResourceKey="AppDimension40" />
+    <StaticResource x:Key="MarkdownRenderer.Overflow.IndicatorBrush" ResourceKey="AppInkSubtleBrush" />
+
+    <StaticResource x:Key="MarkdownRenderer.Body.ForegroundBrush" ResourceKey="AppInkBrush" />
+    <StaticResource x:Key="MarkdownRenderer.Body.FontFamily" ResourceKey="AppBodyFontFamily" />
+    <StaticResource x:Key="MarkdownRenderer.Body.FontSize" ResourceKey="AppMarkdownBodyFontSize" />
+    <StaticResource x:Key="MarkdownRenderer.Body.Margin" ResourceKey="AppMarkdownBodyMargin" />
+    <StaticResource x:Key="MarkdownRenderer.Body.LineHeightMultiplier" ResourceKey="AppMarkdownBodyLineHeight" />
+    <StaticResource x:Key="MarkdownRenderer.Body.ListIndent" ResourceKey="AppMarkdownListIndent" />
+    <StaticResource x:Key="MarkdownRenderer.Body.NestedListIndent" ResourceKey="AppMarkdownNestedListIndent" />
+
+    <StaticResource x:Key="MarkdownRenderer.Heading1.ForegroundBrush" ResourceKey="AppInkBrush" />
+    <StaticResource x:Key="MarkdownRenderer.Heading1.FontFamily" ResourceKey="AppBodyFontFamily" />
+    <StaticResource x:Key="MarkdownRenderer.Heading1.FontSize" ResourceKey="AppMarkdownHeading1FontSize" />
+    <StaticResource x:Key="MarkdownRenderer.Heading1.FontWeight" ResourceKey="AppFontWeightSemibold" />
+    <StaticResource x:Key="MarkdownRenderer.Heading1.Margin" ResourceKey="AppMarkdownHeading1Margin" />
+    <StaticResource x:Key="MarkdownRenderer.Heading1.LineHeightMultiplier" ResourceKey="AppMarkdownHeadingLineHeight" />
+    <StaticResource x:Key="MarkdownRenderer.Heading2.ForegroundBrush" ResourceKey="AppInkBrush" />
+    <StaticResource x:Key="MarkdownRenderer.Heading2.FontFamily" ResourceKey="AppBodyFontFamily" />
+    <StaticResource x:Key="MarkdownRenderer.Heading2.FontSize" ResourceKey="AppMarkdownHeading2FontSize" />
+    <StaticResource x:Key="MarkdownRenderer.Heading2.FontWeight" ResourceKey="AppFontWeightSemibold" />
+    <StaticResource x:Key="MarkdownRenderer.Heading2.Margin" ResourceKey="AppMarkdownHeading2Margin" />
+    <StaticResource x:Key="MarkdownRenderer.Heading2.LineHeightMultiplier" ResourceKey="AppMarkdownHeadingLineHeight" />
+    <StaticResource x:Key="MarkdownRenderer.Heading3.ForegroundBrush" ResourceKey="AppInkBrush" />
+    <StaticResource x:Key="MarkdownRenderer.Heading3.FontFamily" ResourceKey="AppBodyFontFamily" />
+    <StaticResource x:Key="MarkdownRenderer.Heading3.FontSize" ResourceKey="AppMarkdownHeading3FontSize" />
+    <StaticResource x:Key="MarkdownRenderer.Heading3.FontWeight" ResourceKey="AppFontWeightSemibold" />
+    <StaticResource x:Key="MarkdownRenderer.Heading3.Margin" ResourceKey="AppMarkdownHeading3Margin" />
+    <StaticResource x:Key="MarkdownRenderer.Heading3.LineHeightMultiplier" ResourceKey="AppMarkdownHeadingLineHeight" />
+    <StaticResource x:Key="MarkdownRenderer.Heading4.ForegroundBrush" ResourceKey="AppInkBrush" />
+    <StaticResource x:Key="MarkdownRenderer.Heading4.FontFamily" ResourceKey="AppBodyFontFamily" />
+    <StaticResource x:Key="MarkdownRenderer.Heading4.FontSize" ResourceKey="AppMarkdownHeading4FontSize" />
+    <StaticResource x:Key="MarkdownRenderer.Heading4.FontWeight" ResourceKey="AppFontWeightSemibold" />
+    <StaticResource x:Key="MarkdownRenderer.Heading4.Margin" ResourceKey="AppMarkdownHeading4Margin" />
+    <StaticResource x:Key="MarkdownRenderer.Heading4.LineHeightMultiplier" ResourceKey="AppMarkdownHeadingLineHeight" />
+    <StaticResource x:Key="MarkdownRenderer.Heading5.ForegroundBrush" ResourceKey="AppInkBrush" />
+    <StaticResource x:Key="MarkdownRenderer.Heading5.FontFamily" ResourceKey="AppBodyFontFamily" />
+    <StaticResource x:Key="MarkdownRenderer.Heading5.FontSize" ResourceKey="AppMarkdownHeading5FontSize" />
+    <StaticResource x:Key="MarkdownRenderer.Heading5.FontWeight" ResourceKey="AppFontWeightSemibold" />
+    <StaticResource x:Key="MarkdownRenderer.Heading5.Margin" ResourceKey="AppMarkdownHeading5Margin" />
+    <StaticResource x:Key="MarkdownRenderer.Heading5.LineHeightMultiplier" ResourceKey="AppMarkdownHeadingLineHeight" />
+    <StaticResource x:Key="MarkdownRenderer.Heading6.ForegroundBrush" ResourceKey="AppInkSubtleBrush" />
+    <StaticResource x:Key="MarkdownRenderer.Heading6.FontFamily" ResourceKey="AppBodyFontFamily" />
+    <StaticResource x:Key="MarkdownRenderer.Heading6.FontSize" ResourceKey="AppMarkdownHeading6FontSize" />
+    <StaticResource x:Key="MarkdownRenderer.Heading6.FontWeight" ResourceKey="AppFontWeightSemibold" />
+    <StaticResource x:Key="MarkdownRenderer.Heading6.Margin" ResourceKey="AppMarkdownHeading6Margin" />
+    <StaticResource x:Key="MarkdownRenderer.Heading6.LineHeightMultiplier" ResourceKey="AppMarkdownHeadingLineHeight" />
+
+    <StaticResource x:Key="MarkdownRenderer.Link.ForegroundBrush" ResourceKey="AppAccentBrush" />
+    <StaticResource x:Key="MarkdownRenderer.Link.HoverForegroundBrush" ResourceKey="AppAccentHoverBrush" />
+    <StaticResource x:Key="MarkdownRenderer.Link.FocusForegroundBrush" ResourceKey="AppAccentHoverBrush" />
+    <StaticResource x:Key="MarkdownRenderer.Link.FontFamily" ResourceKey="AppBodyFontFamily" />
+    <StaticResource x:Key="MarkdownRenderer.Link.FontSize" ResourceKey="AppMarkdownBodyFontSize" />
+    <StaticResource x:Key="MarkdownRenderer.Strong.ForegroundBrush" ResourceKey="AppInkBrush" />
+    <StaticResource x:Key="MarkdownRenderer.Strong.FontFamily" ResourceKey="AppBodyFontFamily" />
+    <StaticResource x:Key="MarkdownRenderer.Strong.FontSize" ResourceKey="AppMarkdownBodyFontSize" />
+    <StaticResource x:Key="MarkdownRenderer.Strong.FontWeight" ResourceKey="AppFontWeightSemibold" />
+    <StaticResource x:Key="MarkdownRenderer.Emphasis.ForegroundBrush" ResourceKey="AppInkBrush" />
+    <StaticResource x:Key="MarkdownRenderer.Emphasis.FontFamily" ResourceKey="AppBodyFontFamily" />
+    <StaticResource x:Key="MarkdownRenderer.Emphasis.FontSize" ResourceKey="AppMarkdownBodyFontSize" />
+    <StaticResource x:Key="MarkdownRenderer.Strikethrough.ForegroundBrush" ResourceKey="AppInkBrush" />
+    <StaticResource x:Key="MarkdownRenderer.Strikethrough.FontFamily" ResourceKey="AppBodyFontFamily" />
+    <StaticResource x:Key="MarkdownRenderer.Strikethrough.FontSize" ResourceKey="AppMarkdownBodyFontSize" />
+    <StaticResource x:Key="MarkdownRenderer.Subscript.ForegroundBrush" ResourceKey="AppInkBrush" />
+    <StaticResource x:Key="MarkdownRenderer.Subscript.FontFamily" ResourceKey="AppBodyFontFamily" />
+    <StaticResource x:Key="MarkdownRenderer.Subscript.FontSize" ResourceKey="AppMarkdownScriptFontSize" />
+    <StaticResource x:Key="MarkdownRenderer.Superscript.ForegroundBrush" ResourceKey="AppInkBrush" />
+    <StaticResource x:Key="MarkdownRenderer.Superscript.FontFamily" ResourceKey="AppBodyFontFamily" />
+    <StaticResource x:Key="MarkdownRenderer.Superscript.FontSize" ResourceKey="AppMarkdownScriptFontSize" />
+    <StaticResource x:Key="MarkdownRenderer.Inserted.ForegroundBrush" ResourceKey="AppInkBrush" />
+    <StaticResource x:Key="MarkdownRenderer.Inserted.FontFamily" ResourceKey="AppBodyFontFamily" />
+    <StaticResource x:Key="MarkdownRenderer.Inserted.FontSize" ResourceKey="AppMarkdownBodyFontSize" />
+    <StaticResource x:Key="MarkdownRenderer.Marked.ForegroundBrush" ResourceKey="AppInkBrush" />
+    <StaticResource x:Key="MarkdownRenderer.Marked.BackgroundBrush" ResourceKey="AppSurfaceSubtleBrush" />
+    <StaticResource x:Key="MarkdownRenderer.Marked.FontFamily" ResourceKey="AppBodyFontFamily" />
+    <StaticResource x:Key="MarkdownRenderer.Marked.FontSize" ResourceKey="AppMarkdownBodyFontSize" />
+    <StaticResource x:Key="MarkdownRenderer.Marked.CornerRadius" ResourceKey="AppGap3" />
+    <StaticResource x:Key="MarkdownRenderer.Abbreviation.ForegroundBrush" ResourceKey="AppInkBrush" />
+    <StaticResource x:Key="MarkdownRenderer.Abbreviation.FontFamily" ResourceKey="AppBodyFontFamily" />
+    <StaticResource x:Key="MarkdownRenderer.Abbreviation.FontSize" ResourceKey="AppMarkdownBodyFontSize" />
+
+    <StaticResource x:Key="MarkdownRenderer.CodeInline.ForegroundBrush" ResourceKey="AppInkBrush" />
+    <StaticResource x:Key="MarkdownRenderer.CodeInline.BackgroundBrush" ResourceKey="AppCanvasInsetBrush" />
+    <StaticResource x:Key="MarkdownRenderer.CodeInline.FontSize" ResourceKey="AppMarkdownCodeFontSize" />
+    <StaticResource x:Key="MarkdownRenderer.CodeInline.CornerRadius" ResourceKey="AppGap5" />
+    <StaticResource x:Key="MarkdownRenderer.CodeInline.Padding" ResourceKey="AppMarkdownInlineCodePadding" />
+    <StaticResource x:Key="MarkdownRenderer.CodeBlock.ForegroundBrush" ResourceKey="AppInkBrush" />
+    <StaticResource x:Key="MarkdownRenderer.CodeBlock.BackgroundBrush" ResourceKey="AppCanvasInsetBrush" />
+    <StaticResource x:Key="MarkdownRenderer.CodeBlock.BorderBrush" ResourceKey="AppOutlineBrush" />
+    <StaticResource x:Key="MarkdownRenderer.CodeBlock.FontSize" ResourceKey="AppMarkdownCodeFontSize" />
+    <StaticResource x:Key="MarkdownRenderer.CodeBlock.BorderThickness" ResourceKey="AppGap1" />
+    <StaticResource x:Key="MarkdownRenderer.CodeBlock.CornerRadius" ResourceKey="AppGap8" />
+    <StaticResource x:Key="MarkdownRenderer.CodeBlock.Padding" ResourceKey="AppMarkdownCodeBlockPadding" />
+    <StaticResource x:Key="MarkdownRenderer.CodeBlock.Margin" ResourceKey="AppMarkdownCodeBlockMargin" />
+    <StaticResource x:Key="MarkdownRenderer.CodeBlockHeader.ForegroundBrush" ResourceKey="AppInkSubtleBrush" />
+    <StaticResource x:Key="MarkdownRenderer.CodeBlockHeader.BackgroundBrush" ResourceKey="AppSurfaceSubtleBrush" />
+    <StaticResource x:Key="MarkdownRenderer.CodeBlockHeader.BorderBrush" ResourceKey="AppOutlineBrush" />
+    <StaticResource x:Key="MarkdownRenderer.CodeBlockHeader.FontFamily" ResourceKey="AppBodyFontFamily" />
+    <StaticResource x:Key="MarkdownRenderer.CodeBlockHeader.FontSize" ResourceKey="AppMarkdownMetaFontSize" />
+    <StaticResource x:Key="MarkdownRenderer.CodeBlockLanguage.ForegroundBrush" ResourceKey="AppInkSubtleBrush" />
+    <StaticResource x:Key="MarkdownRenderer.CodeBlockLanguage.FontFamily" ResourceKey="AppBodyFontFamily" />
+    <StaticResource x:Key="MarkdownRenderer.CodeBlockLanguage.FontSize" ResourceKey="AppMarkdownMetaFontSize" />
+    <StaticResource x:Key="MarkdownRenderer.CodeBlockLanguage.FontWeight" ResourceKey="AppFontWeightSemibold" />
+    <StaticResource x:Key="MarkdownRenderer.CodeBlockGutter.ForegroundBrush" ResourceKey="AppInkSubtleBrush" />
+    <StaticResource x:Key="MarkdownRenderer.CodeBlockGutter.BackgroundBrush" ResourceKey="AppSurfaceSubtleBrush" />
+    <StaticResource x:Key="MarkdownRenderer.CodeBlockGutter.FontSize" ResourceKey="AppMarkdownMetaFontSize" />
+    <StaticResource x:Key="MarkdownRenderer.CodeBlockLineNumber.ForegroundBrush" ResourceKey="AppInkSubtleBrush" />
+    <StaticResource x:Key="MarkdownRenderer.CodeBlockLineNumber.FontSize" ResourceKey="AppMarkdownMetaFontSize" />
+
+    <StaticResource x:Key="MarkdownRenderer.Quote.ForegroundBrush" ResourceKey="AppInkMutedBrush" />
+    <StaticResource x:Key="MarkdownRenderer.Quote.AccentBrush" ResourceKey="AppAccentBrush" />
+    <StaticResource x:Key="MarkdownRenderer.Quote.FontFamily" ResourceKey="AppBodyFontFamily" />
+    <StaticResource x:Key="MarkdownRenderer.Quote.FontSize" ResourceKey="AppMarkdownBodyFontSize" />
+    <StaticResource x:Key="MarkdownRenderer.Quote.Padding" ResourceKey="AppMarkdownQuotePadding" />
+    <StaticResource x:Key="MarkdownRenderer.Quote.Margin" ResourceKey="AppMarkdownQuoteMargin" />
+    <StaticResource x:Key="MarkdownRenderer.ListMarker.ForegroundBrush" ResourceKey="AppInkSubtleBrush" />
+    <StaticResource x:Key="MarkdownRenderer.ListMarker.FontFamily" ResourceKey="AppBodyFontFamily" />
+    <StaticResource x:Key="MarkdownRenderer.ListMarker.FontSize" ResourceKey="AppMarkdownBodyFontSize" />
+    <StaticResource x:Key="MarkdownRenderer.ListMarker.ListIndent" ResourceKey="AppMarkdownListIndent" />
+    <StaticResource x:Key="MarkdownRenderer.ListMarker.NestedListIndent" ResourceKey="AppMarkdownNestedListIndent" />
+    <StaticResource x:Key="MarkdownRenderer.ThematicBreak.ForegroundBrush" ResourceKey="AppOutlineBrush" />
+    <StaticResource x:Key="MarkdownRenderer.ThematicBreak.Margin" ResourceKey="AppMarkdownThematicBreakMargin" />
+    <StaticResource x:Key="MarkdownRenderer.ImageCaption.ForegroundBrush" ResourceKey="AppInkSubtleBrush" />
+    <StaticResource x:Key="MarkdownRenderer.ImageCaption.FontFamily" ResourceKey="AppBodyFontFamily" />
+    <StaticResource x:Key="MarkdownRenderer.ImageCaption.FontSize" ResourceKey="AppMarkdownMetaFontSize" />
+    <StaticResource x:Key="MarkdownRenderer.ImageCaption.Margin" ResourceKey="AppMarkdownCaptionMargin" />
+
+    <StaticResource x:Key="MarkdownRenderer.DefinitionTerm.ForegroundBrush" ResourceKey="AppInkBrush" />
+    <StaticResource x:Key="MarkdownRenderer.DefinitionTerm.FontFamily" ResourceKey="AppBodyFontFamily" />
+    <StaticResource x:Key="MarkdownRenderer.DefinitionTerm.FontSize" ResourceKey="AppMarkdownBodyFontSize" />
+    <StaticResource x:Key="MarkdownRenderer.DefinitionTerm.FontWeight" ResourceKey="AppFontWeightSemibold" />
+    <StaticResource x:Key="MarkdownRenderer.DefinitionTerm.Margin" ResourceKey="AppMarkdownDefinitionTermMargin" />
+    <StaticResource x:Key="MarkdownRenderer.DefinitionDescription.ForegroundBrush" ResourceKey="AppInkBrush" />
+    <StaticResource x:Key="MarkdownRenderer.DefinitionDescription.FontFamily" ResourceKey="AppBodyFontFamily" />
+    <StaticResource x:Key="MarkdownRenderer.DefinitionDescription.FontSize" ResourceKey="AppMarkdownBodyFontSize" />
+    <StaticResource x:Key="MarkdownRenderer.DefinitionDescription.Margin" ResourceKey="AppMarkdownDefinitionDescriptionMargin" />
+    <StaticResource x:Key="MarkdownRenderer.Figure.ForegroundBrush" ResourceKey="AppInkBrush" />
+    <StaticResource x:Key="MarkdownRenderer.Figure.FontFamily" ResourceKey="AppBodyFontFamily" />
+    <StaticResource x:Key="MarkdownRenderer.Figure.FontSize" ResourceKey="AppMarkdownBodyFontSize" />
+    <StaticResource x:Key="MarkdownRenderer.Figure.Margin" ResourceKey="AppMarkdownFigureMargin" />
+    <StaticResource x:Key="MarkdownRenderer.FigureCaption.ForegroundBrush" ResourceKey="AppInkSubtleBrush" />
+    <StaticResource x:Key="MarkdownRenderer.FigureCaption.FontFamily" ResourceKey="AppBodyFontFamily" />
+    <StaticResource x:Key="MarkdownRenderer.FigureCaption.FontSize" ResourceKey="AppMarkdownMetaFontSize" />
+    <StaticResource x:Key="MarkdownRenderer.FigureCaption.Margin" ResourceKey="AppMarkdownCaptionMargin" />
+
+    <StaticResource x:Key="MarkdownRenderer.Diagram.ForegroundBrush" ResourceKey="AppInkBrush" />
+    <StaticResource x:Key="MarkdownRenderer.Diagram.BackgroundBrush" ResourceKey="AppCanvasInsetBrush" />
+    <StaticResource x:Key="MarkdownRenderer.Diagram.BorderBrush" ResourceKey="AppOutlineBrush" />
+    <StaticResource x:Key="MarkdownRenderer.Diagram.FontSize" ResourceKey="AppMarkdownCodeFontSize" />
+    <StaticResource x:Key="MarkdownRenderer.Diagram.BorderThickness" ResourceKey="AppGap1" />
+    <StaticResource x:Key="MarkdownRenderer.Diagram.CornerRadius" ResourceKey="AppGap8" />
+    <StaticResource x:Key="MarkdownRenderer.Diagram.Padding" ResourceKey="AppMarkdownDiagramPadding" />
+    <StaticResource x:Key="MarkdownRenderer.Diagram.Margin" ResourceKey="AppMarkdownDiagramMargin" />
+    <StaticResource x:Key="MarkdownRenderer.Math.ForegroundBrush" ResourceKey="AppInkBrush" />
+    <StaticResource x:Key="MarkdownRenderer.Math.FontFamily" ResourceKey="AppBodyFontFamily" />
+    <StaticResource x:Key="MarkdownRenderer.Math.FontSize" ResourceKey="AppMarkdownBodyFontSize" />
+
+    <StaticResource x:Key="MarkdownRenderer.Table.ForegroundBrush" ResourceKey="AppInkBrush" />
+    <StaticResource x:Key="MarkdownRenderer.Table.BackgroundBrush" ResourceKey="AppSurfaceBrush" />
+    <StaticResource x:Key="MarkdownRenderer.Table.BorderBrush" ResourceKey="AppOutlineBrush" />
+    <StaticResource x:Key="MarkdownRenderer.Table.FontFamily" ResourceKey="AppBodyFontFamily" />
+    <StaticResource x:Key="MarkdownRenderer.Table.FontSize" ResourceKey="AppMarkdownBodyFontSize" />
+    <StaticResource x:Key="MarkdownRenderer.Table.BorderThickness" ResourceKey="AppGap1" />
+    <StaticResource x:Key="MarkdownRenderer.Table.CornerRadius" ResourceKey="AppGap8" />
+    <StaticResource x:Key="MarkdownRenderer.Table.Margin" ResourceKey="AppMarkdownTableMargin" />
+    <StaticResource x:Key="MarkdownRenderer.TableHeader.ForegroundBrush" ResourceKey="AppInkBrush" />
+    <StaticResource x:Key="MarkdownRenderer.TableHeader.BackgroundBrush" ResourceKey="AppSurfaceSubtleBrush" />
+    <StaticResource x:Key="MarkdownRenderer.TableHeader.BorderBrush" ResourceKey="AppOutlineBrush" />
+    <StaticResource x:Key="MarkdownRenderer.TableHeader.FontFamily" ResourceKey="AppBodyFontFamily" />
+    <StaticResource x:Key="MarkdownRenderer.TableHeader.FontSize" ResourceKey="AppMarkdownBodyFontSize" />
+    <StaticResource x:Key="MarkdownRenderer.TableHeader.FontWeight" ResourceKey="AppFontWeightSemibold" />
+    <StaticResource x:Key="MarkdownRenderer.TableHeader.Padding" ResourceKey="AppMarkdownTableCellPadding" />
+    <StaticResource x:Key="MarkdownRenderer.TableCell.ForegroundBrush" ResourceKey="AppInkBrush" />
+    <StaticResource x:Key="MarkdownRenderer.TableCell.BackgroundBrush" ResourceKey="AppSurfaceBrush" />
+    <StaticResource x:Key="MarkdownRenderer.TableCell.BorderBrush" ResourceKey="AppOutlineBrush" />
+    <StaticResource x:Key="MarkdownRenderer.TableCell.FontFamily" ResourceKey="AppBodyFontFamily" />
+    <StaticResource x:Key="MarkdownRenderer.TableCell.FontSize" ResourceKey="AppMarkdownBodyFontSize" />
+    <StaticResource x:Key="MarkdownRenderer.TableCell.Padding" ResourceKey="AppMarkdownTableCellPadding" />
+
+    <StaticResource x:Key="MarkdownRenderer.AlertNote.ForegroundBrush" ResourceKey="AppInkBrush" />
+    <StaticResource x:Key="MarkdownRenderer.AlertNote.AccentBrush" ResourceKey="AppAccentBrush" />
+    <StaticResource x:Key="MarkdownRenderer.AlertNote.FontFamily" ResourceKey="AppBodyFontFamily" />
+    <StaticResource x:Key="MarkdownRenderer.AlertNote.FontSize" ResourceKey="AppMarkdownBodyFontSize" />
+    <StaticResource x:Key="MarkdownRenderer.AlertNote.Padding" ResourceKey="AppMarkdownQuotePadding" />
+    <StaticResource x:Key="MarkdownRenderer.AlertNote.Margin" ResourceKey="AppMarkdownQuoteMargin" />
+    <StaticResource x:Key="MarkdownRenderer.AlertTip.ForegroundBrush" ResourceKey="AppInkBrush" />
+    <StaticResource x:Key="MarkdownRenderer.AlertTip.AccentBrush" ResourceKey="AppSuccessBrush" />
+    <StaticResource x:Key="MarkdownRenderer.AlertTip.FontFamily" ResourceKey="AppBodyFontFamily" />
+    <StaticResource x:Key="MarkdownRenderer.AlertTip.FontSize" ResourceKey="AppMarkdownBodyFontSize" />
+    <StaticResource x:Key="MarkdownRenderer.AlertTip.Padding" ResourceKey="AppMarkdownQuotePadding" />
+    <StaticResource x:Key="MarkdownRenderer.AlertTip.Margin" ResourceKey="AppMarkdownQuoteMargin" />
+    <StaticResource x:Key="MarkdownRenderer.AlertImportant.ForegroundBrush" ResourceKey="AppInkBrush" />
+    <StaticResource x:Key="MarkdownRenderer.AlertImportant.AccentBrush" ResourceKey="AppAccentHoverBrush" />
+    <StaticResource x:Key="MarkdownRenderer.AlertImportant.FontFamily" ResourceKey="AppBodyFontFamily" />
+    <StaticResource x:Key="MarkdownRenderer.AlertImportant.FontSize" ResourceKey="AppMarkdownBodyFontSize" />
+    <StaticResource x:Key="MarkdownRenderer.AlertImportant.Padding" ResourceKey="AppMarkdownQuotePadding" />
+    <StaticResource x:Key="MarkdownRenderer.AlertImportant.Margin" ResourceKey="AppMarkdownQuoteMargin" />
+    <StaticResource x:Key="MarkdownRenderer.AlertWarning.ForegroundBrush" ResourceKey="AppInkBrush" />
+    <StaticResource x:Key="MarkdownRenderer.AlertWarning.AccentBrush" ResourceKey="AppWarmAccentBrush" />
+    <StaticResource x:Key="MarkdownRenderer.AlertWarning.FontFamily" ResourceKey="AppBodyFontFamily" />
+    <StaticResource x:Key="MarkdownRenderer.AlertWarning.FontSize" ResourceKey="AppMarkdownBodyFontSize" />
+    <StaticResource x:Key="MarkdownRenderer.AlertWarning.Padding" ResourceKey="AppMarkdownQuotePadding" />
+    <StaticResource x:Key="MarkdownRenderer.AlertWarning.Margin" ResourceKey="AppMarkdownQuoteMargin" />
+    <StaticResource x:Key="MarkdownRenderer.AlertCaution.ForegroundBrush" ResourceKey="AppInkBrush" />
+    <StaticResource x:Key="MarkdownRenderer.AlertCaution.AccentBrush" ResourceKey="AppDangerBrush" />
+    <StaticResource x:Key="MarkdownRenderer.AlertCaution.FontFamily" ResourceKey="AppBodyFontFamily" />
+    <StaticResource x:Key="MarkdownRenderer.AlertCaution.FontSize" ResourceKey="AppMarkdownBodyFontSize" />
+    <StaticResource x:Key="MarkdownRenderer.AlertCaution.Padding" ResourceKey="AppMarkdownQuotePadding" />
+    <StaticResource x:Key="MarkdownRenderer.AlertCaution.Margin" ResourceKey="AppMarkdownQuoteMargin" />
+</ResourceDictionary>

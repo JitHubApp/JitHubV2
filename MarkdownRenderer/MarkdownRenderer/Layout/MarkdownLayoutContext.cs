@@ -12,8 +12,11 @@ using Markdig.Syntax;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Performance;
 using MarkdownRenderer.Theming;
+using MarkdownRenderer.Accessibility;
 
 namespace MarkdownRenderer.Layout;
 
@@ -22,8 +25,10 @@ namespace MarkdownRenderer.Layout;
 /// metrics, the theme snapshot (pre-resolved, thread-safe), the source map writer,
 /// and a block-index counter.
 /// </summary>
-public sealed class MarkdownLayoutContext
+internal sealed class MarkdownLayoutContext
 {
+    private CancellationToken _cancellationToken;
+
     /// <summary>
     /// Initializes a layout context. Advanced renderer authors receive this object
     /// on a background layout thread and must not use it to touch WinUI objects.
@@ -34,7 +39,8 @@ public sealed class MarkdownLayoutContext
         MarkdownSourceMap sourceMap,
         MarkdownExtensionRegistry registry,
         FlowDirection flowDirection,
-        DispatcherQueue? dispatcher = null)
+        DispatcherQueue? dispatcher = null,
+        string? language = null)
     {
         ResourceCreator = resourceCreator;
         ThemeSnapshot = themeSnapshot;
@@ -42,6 +48,19 @@ public sealed class MarkdownLayoutContext
         Registry = registry;
         FlowDirection = flowDirection;
         Dispatcher = dispatcher;
+        Language = string.IsNullOrWhiteSpace(language)
+            ? System.Globalization.CultureInfo.CurrentUICulture.Name
+            : language.Trim();
+        try
+        {
+            Culture = string.IsNullOrWhiteSpace(Language)
+                ? System.Globalization.CultureInfo.InvariantCulture
+                : System.Globalization.CultureInfo.GetCultureInfo(Language);
+        }
+        catch (System.Globalization.CultureNotFoundException)
+        {
+            Culture = System.Globalization.CultureInfo.InvariantCulture;
+        }
     }
 
     /// <summary>Canvas resource creator used for text and graphics resources.</summary>
@@ -58,6 +77,12 @@ public sealed class MarkdownLayoutContext
 
     /// <summary>Flow direction used for text layout.</summary>
     public FlowDirection FlowDirection { get; }
+
+    /// <summary>BCP-47 language used by DirectWrite text shaping for this pass.</summary>
+    public string Language { get; }
+
+    /// <summary>Culture resolved once from <see cref="Language"/> for this layout pass.</summary>
+    internal System.Globalization.CultureInfo Culture { get; }
     /// <summary>UI-thread dispatcher used to marshal async load completions back
     /// to the thread that owns the canvas. May be null in unit tests.</summary>
     public DispatcherQueue? Dispatcher { get; }
@@ -73,7 +98,18 @@ public sealed class MarkdownLayoutContext
     public double RasterizationScale { get; init; } = 1.0;
 
     /// <summary>Cancellation token for the current background layout pass.</summary>
-    public CancellationToken CancellationToken { get; init; }
+    public CancellationToken CancellationToken
+    {
+        get
+        {
+            // The lazy-pass token is linked to the owning pipeline in normal
+            // control operation, but retaining this check also protects direct
+            // relayout callers and test hosts that supply an independent token.
+            _cancellationToken.ThrowIfCancellationRequested();
+            return LayoutPassCancellation.GetEffectiveToken(_cancellationToken);
+        }
+        init => _cancellationToken = value;
+    }
 
     /// <summary>
     /// Cancellation token for asynchronous image resolution owned by the
@@ -89,8 +125,35 @@ public sealed class MarkdownLayoutContext
     /// <summary>Line-number policy for code blocks.</summary>
     public CodeBlockLineNumberMode CodeBlockLineNumberMode { get; init; } = CodeBlockLineNumberMode.AutoMultiline;
 
+    /// <summary>Wrapping policy for code blocks.</summary>
+    public CodeBlockWrappingMode CodeBlockWrappingMode { get; init; } = CodeBlockWrappingMode.NoWrap;
+
+    /// <summary>True when task-list markers may invoke an explicit host command.</summary>
+    internal bool IsTaskListEditingEnabled { get; init; }
+
+    /// <summary>Host command provider captured for UI-thread hosted-element realization.</summary>
+    internal IMarkdownCommandProvider? CommandProvider { get; init; }
+
+    /// <summary>Refreshes keyboard and automation projections after task command availability changes.</summary>
+    internal Action? TaskCommandAvailabilityChanged { get; init; }
+
+    /// <summary>Host string provider captured for UI-thread hosted-element realization.</summary>
+    internal IMarkdownStringProvider? StringProvider { get; init; }
+
     /// <summary>Optional host-specific image resolver used before public URI loading.</summary>
     public IMarkdownImageResolver? ImageResolver { get; init; }
+
+    /// <summary>Optional host-owned preparation policy captured for this layout generation.</summary>
+    internal IMarkdownPerformanceSessionInternal? PerformanceSession { get; init; }
+
+    /// <summary>Stable identity of the document viewport for fair CPU preparation.</summary>
+    internal object? PerformanceDocumentOwner { get; init; }
+
+    /// <summary>
+    /// Shared static-SVG provider borrowed from the host control. Image boxes
+    /// may own documents opened from it, but never the renderer itself.
+    /// </summary>
+    public IMarkdownSvgRenderer? SvgRenderer { get; init; }
 
     /// <summary>Optional base URI used to resolve relative image sources.</summary>
     public Uri? ImageBaseUri { get; init; }
@@ -105,7 +168,7 @@ public sealed class MarkdownLayoutContext
     public bool AllowThirdPartyRemoteImages { get; init; }
 
     /// <summary>Reports blocked or unavailable image sources to the host control.</summary>
-    public System.Action<string, MarkdownImageUnavailableReason>? ImageUnavailable { get; init; }
+    public System.Action<string, MarkdownImageUnavailableReason, MarkdownSvgFailureReason?>? ImageUnavailable { get; init; }
 
     /// <summary>Snapshot of user-expanded HTML disclosure state for this layout pass.</summary>
     public IReadOnlyDictionary<string, bool> DisclosureStates { get; init; } =
@@ -114,6 +177,41 @@ public sealed class MarkdownLayoutContext
     /// <summary>Returns the effective state of a safe HTML disclosure.</summary>
     public bool IsDisclosureExpanded(string id, bool defaultExpanded) =>
         DisclosureStates.TryGetValue(id, out bool expanded) ? expanded : defaultExpanded;
+
+    internal string ResolveString(string key, string fallback)
+    {
+        string localizedFallback = MarkdownLocalizedStrings.Resolve(key, fallback, Culture);
+        try
+        {
+            string? value = StringProvider?.GetString(
+                key,
+                Culture);
+            return string.IsNullOrWhiteSpace(value) ? localizedFallback : value;
+        }
+        catch
+        {
+            return localizedFallback;
+        }
+    }
+
+    internal string ResolveFormattedString(string key, string fallbackFormat, params object?[] arguments)
+    {
+        string format = ResolveString(key, fallbackFormat);
+        try
+        {
+            return string.Format(
+                Culture,
+                format,
+                arguments);
+        }
+        catch (FormatException)
+        {
+            return string.Format(
+                Culture,
+                fallbackFormat,
+                arguments);
+        }
+    }
 
     /// <summary>Returns the next one-based block index for a custom block.</summary>
     public int NextBlockIndex() => ++_blockIndex;
@@ -170,6 +268,21 @@ public sealed class MarkdownLayoutContext
         int aliasCount = _styleAliasKeys.Count;
         int listDepth = _listDepth;
         AddMarkdownAttributeAliases(markdownObject, _styleAliasKeys);
+        return new StyleScope(this, contextCount, aliasCount, listDepth);
+    }
+
+    internal StyleScope PushStyleAliases(IEnumerable<string> aliases)
+    {
+        ArgumentNullException.ThrowIfNull(aliases);
+        int contextCount = _styleContextKeys.Count;
+        int aliasCount = _styleAliasKeys.Count;
+        int listDepth = _listDepth;
+        foreach (string alias in aliases)
+        {
+            if (!string.IsNullOrWhiteSpace(alias))
+                _styleAliasKeys.Add(alias);
+        }
+
         return new StyleScope(this, contextCount, aliasCount, listDepth);
     }
 

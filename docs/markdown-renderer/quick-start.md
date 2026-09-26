@@ -1,197 +1,162 @@
 # Quick start
 
-This page shows the recommended consumer shape for the packaged renderer. For a
-complete feature matrix, see [Supported markdown](supported-markdown.md).
+`MarkdownRenderer` is the lean WinUI viewer package. It includes the native
+CommonMark viewer and immutable document API; add only the feature packs your app
+uses.
 
-## Add the project
-
-Install the core package and, for the recommended GitHub-flavored markdown path,
-the GFM package:
+## Install
 
 ```powershell
 dotnet add package MarkdownRenderer
-dotnet add package MarkdownRenderer.Gfm
 ```
 
-When developing from this repository, reference the projects directly:
+Optional packages include `MarkdownRenderer.Gfm`, `MarkdownRenderer.GitHub`,
+`MarkdownRenderer.Html`, `MarkdownRenderer.Math`, `MarkdownRenderer.Mermaid`,
+`MarkdownRenderer.Svg.Resvg`, and
+`MarkdownRenderer.SyntaxHighlighting.TextMate`. Add
+`MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common` for the curated
+language set or `.Grammars.All` for the complete pinned corpus. The integration
+package itself contains no grammar or native regular-expression payload.
 
-```xml
-<ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer.csproj" />
-<ProjectReference Include="..\MarkdownRenderer.Gfm\MarkdownRenderer.Gfm.csproj" />
-```
-
-The library targets:
-
-- `net10.0-windows10.0.26100.0`
-- minimum Windows platform `10.0.19041.0`
-- WinUI / Windows App SDK
-
-## Create the control in XAML
-
-```xml
-<Page
-    x:Class="Sample.MarkdownPage"
-    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:md="using:MarkdownRenderer.Controls">
-
-    <md:MarkdownRendererControl
-        x:Name="MarkdownView"
-        IsSelectionEnabled="True" />
-</Page>
-```
-
-## Create a GFM renderer
+For trim- and NativeAOT-safe syntax highlighting, construct the provider
+explicitly:
 
 ```csharp
-using MarkdownRenderer.Controls;
-using MarkdownRenderer.Gfm;
-using MarkdownRenderer.Theming;
+using MarkdownRenderer.SyntaxHighlighting.TextMate;
+using MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common;
 
-var view = GfmMarkdownRenderer.CreateDefault("""
-# Hello MarkdownRenderer
-
-- [x] Task lists
-- Tables
-- Footnotes[^1]
-
-[^1]: Footnote definitions are rendered and linked.
-""");
+var provider = new CommonTextMateGrammarProvider();
+var highlighter = new TextMateCodeBlockSyntaxHighlighter(
+    provider,
+    options: null,
+    ownsProvider: true);
+MarkdownView.UseTextMateSyntaxHighlighting(highlighter);
 ```
 
-The fluent builder exposes the same setup path:
+Dispose `highlighter` when the view/host lifetime ends; it cancels outstanding
+work and then disposes the owned provider. Do not dispose `provider` separately
+in this ownership mode. Constructors without `ownsProvider: true` borrow the
+supplied provider instead; in that mode, keep the provider alive while the view
+uses it and dispose it from the owning host/service afterward. Inputs outside
+the configured code/line/span budgets render as ordinary unhighlighted code.
+
+## Choose the viewport owner
+
+Use `MarkdownScrollView` when the markdown viewer should own vertical scrolling:
+
+```xml
+<md:MarkdownScrollView
+    x:Name="MarkdownView"
+    Markdown="{x:Bind ViewModel.Markdown, Mode=OneWay}" />
+```
+
+Use `MarkdownDocumentView` when a page, workspace, or another ancestor already
+owns the scroll viewport:
+
+```xml
+<ScrollViewer>
+    <md:MarkdownDocumentView
+        x:Name="MarkdownDocument"
+        Markdown="{x:Bind ViewModel.Markdown, Mode=OneWay}" />
+</ScrollViewer>
+```
+
+Do not nest `MarkdownScrollView` inside another vertical `ScrollViewer`.
+`MarkdownRendererControl` remains only as an obsolete compatibility type.
+
+## Parse once and reuse immutable documents
+
+```csharp
+using MarkdownRenderer;
+using MarkdownRenderer.Controls;
+using MarkdownRenderer.Document;
+
+using MarkdownEngine engine = new MarkdownEngineBuilder().Build();
+MarkdownDocument document = await engine.ParseAsync(markdownSource);
+
+var view = new MarkdownScrollView
+{
+    Engine = engine,
+    Document = document,
+};
+```
+
+`MarkdownEngine` has immutable configuration and thread-safe parse coordination.
+Custom extension callbacks can run concurrently and must make their own captured
+state thread-safe. `ParseAsync` returns an immutable
+`MarkdownDocument`, which can be queried or shared by multiple views. Assigning
+`Markdown` is still convenient for one-off content; assigning `Document` makes
+parse ownership and reuse explicit.
+
+## Opt into GFM or the GitHub README profile
+
+Strict GFM:
+
+```csharp
+using MarkdownRenderer.Gfm;
+
+using MarkdownEngine engine = new MarkdownEngineBuilder()
+    .UseGitHubFlavoredMarkdown()
+    .Build();
+
+var view = new MarkdownScrollView().UseGitHubFlavoredMarkdown(engine);
+view.Document = await engine.ParseAsync(markdownSource);
+```
+
+For GitHub README additions such as alerts, footnotes, emoji, generic attributes,
+and the native safe-HTML subset, reference `MarkdownRenderer.GitHub` and use
+`UseGitHubReadme()`. The base renderer follows WinUI/Fluent styling by default;
+GitHub-specific parsing and presentation are opt-in.
+
+The builder is also available when constructing a view in code:
 
 ```csharp
 var view = new MarkdownRendererControlBuilder()
-    .UseGitHubFlavoredMarkdown()
-    .UseMarkdownExtra()
+    .WithEngine(engine)
     .WithMarkdown(markdownSource)
-    .WithTheme(new MarkdownTheme())
     .WithSelectionEnabled(true)
-    .Build();
+    .BuildScrollView();
 ```
 
-Core CommonMark-only setup stays in the core package:
+Call `BuildDocumentView()` instead when an ancestor owns scrolling. `Build()` is
+obsolete for the same reason as the legacy control type.
+
+## Query a document
 
 ```csharp
-var view = MarkdownRendererControl.CreateDefault(markdownSource);
-```
-
-## Query the parsed document
-
-```csharp
-foreach (var heading in view.Document.GetHeadings())
+foreach (var heading in document.GetHeadings())
 {
-    var level = heading.Level;
-    var text = heading.DisplayText;
-    var sourceSpan = heading.SourceSpan;
+    Debug.WriteLine($"H{heading.Level}: {heading.DisplayText}");
 }
 
-var links = view.Document.GetLinks();
-var codeBlocks = view.Document.GetCodeBlocks();
-var images = view.Document.GetImages();
-var footnotes = view.Document.GetFootnotes();
-var definitions = view.Document.GetDefinitionItems();
-var abbreviations = view.Document.GetAbbreviations();
-var fragments = view.Document.GetFragments();
+var links = document.GetLinks();
+var codeBlocks = document.GetCodeBlocks();
+var images = document.GetImages();
+var diagnostics = document.Diagnostics;
 ```
-
-`UseGitHubFlavoredMarkdown()` stays strict to GFM. Call `UseMarkdownExtra()`
-when you also want definition lists, abbreviations, and figure/caption nodes.
-Raw HTML and LaTeX/math are not enabled by these helpers.
 
 ## Copy selection
 
-Keyboard and context-menu copy preserve the markdown source as the plain-text
-clipboard payload and add an HTML payload for formatted paste targets. Apps that
-want rendered semantic plain text can opt in explicitly:
+Keyboard and context-menu copy write rendered semantic text as plain text and a
+formatted `CF_HTML` payload by default. Exact source markdown is an explicit
+alternative:
 
 ```csharp
 using MarkdownRenderer.Selection;
 
 MarkdownView.CopySelectionToClipboard(new MarkdownCopyOptions
 {
-    PlainTextMode = MarkdownPlainTextCopyMode.RenderedText,
+    PlainTextMode = MarkdownPlainTextCopyMode.SourceMarkdown,
+    IncludeHtml = true,
 });
 ```
 
-## Handle links
-
-```csharp
-MarkdownView.LinkClick += (_, e) =>
-{
-    // External links are surfaced here. Internal footnote fragments are handled
-    // by the control.
-    var url = e.Url;
-};
-```
-
-## Apply theme overrides
-
-```csharp
-using MarkdownRenderer.Theming;
-using Microsoft.UI;
-using Microsoft.UI.Text;
-
-var theme = new MarkdownTheme
-{
-    AccentColor = Colors.DeepSkyBlue,
-};
-
-theme.Overrides[MarkdownElementKeys.Link] = new ElementStyleOverride
-{
-    Foreground = Colors.DeepSkyBlue,
-    Underline = false,
-};
-
-theme.Overrides[MarkdownElementKeys.Heading1] = new ElementStyleOverride
-{
-    FontSize = 28,
-    FontWeight = FontWeights.SemiBold,
-};
-
-MarkdownView.Theme = theme;
-
-// Direct override mutations invalidate the assigned theme automatically.
-```
-
-## Host a WinUI control for a markdown block
-
-```csharp
-using Markdig.Syntax;
-using MarkdownRenderer.Hosting;
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
-
-public sealed class DemoEmbedFactory : IMarkdownEmbedFactory
-{
-    public bool CanCreate(Block block)
-        => block is FencedCodeBlock fenced && fenced.Info == "button";
-
-    public float MeasureHeight(Block block, float availableWidth)
-        => 40;
-
-    public FrameworkElement CreateBlock(Block block)
-        => new Button { Content = "Native WinUI Button" };
-}
-
-MarkdownView.EmbedFactory = new DemoEmbedFactory();
-```
-
-Important: `CanCreate` and `MeasureHeight` run on the background layout thread.
-They must not touch WinUI objects. `CreateBlock` runs on the UI thread.
-
-This is also the recommended shape for Mermaid or diagram support: recognize a
-fenced code block whose info string is `mermaid` in `CanCreate`, return a cheap
-measured height in `MeasureHeight`, and host your chosen renderer from
-`CreateBlock`.
+`CopySelectionAsMarkdown()` is the convenience action for that source-copy path.
 
 ## Next steps
 
-- [Public API](public-api.md) for the full consumer surface.
-- [Theming and customization](theming-and-customization.md) for style keys and
-  override composition.
-- [Extensibility API](extensibility-api.md) for custom renderers and hosted
-  controls.
-- [Troubleshooting](troubleshooting.md) for SVG, clipboard, graphics-device, and
-  embed-threading issues.
+- [Public API](public-api.md)
+- [Packages and distribution](packaging-and-distribution.md)
+- [Supported markdown](supported-markdown.md)
+- [Theming and customization](theming-and-customization.md)
+- [Extensibility API](extensibility-api.md)

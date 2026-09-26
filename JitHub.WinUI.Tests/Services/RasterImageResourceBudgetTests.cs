@@ -18,6 +18,20 @@ public sealed class RasterImageResourceBudgetTests
         Assert.Equal(3L * 1024 * 1024, result.DecodedBytes);
     }
 
+    [Fact]
+    [Trait("Category", "ReleaseSecurity")]
+    public void Validate_AcceptsLargeCompressedSourceWithinIndependentDecodedBudget()
+    {
+        byte[] png = CreatePng(1024, 768);
+        Array.Resize(ref png, 11 * 1024 * 1024);
+
+        RasterImageBudgetResult result = RasterImageResourceBudget.Validate(png);
+
+        Assert.True(result.Accepted);
+        Assert.True(png.Length < RasterImageResourceBudget.MaxInputBytes);
+        Assert.Equal(3L * 1024 * 1024, result.DecodedBytes);
+    }
+
     [Theory]
     [Trait("Category", "ReleaseSecurity")]
     [InlineData(100_000, 1)]
@@ -35,6 +49,20 @@ public sealed class RasterImageResourceBudgetTests
 
     [Fact]
     [Trait("Category", "ReleaseSecurity")]
+    public void Validate_AdmitsCommonHighResolutionPngOnlyForBoundedDownsampling()
+    {
+        RasterImageBudgetResult result = RasterImageResourceBudget.Validate(CreatePng(5422, 6201));
+
+        Assert.False(result.Accepted);
+        Assert.True(result.CanRenderStaticPreview);
+        Assert.Equal("PNG", result.Format);
+        Assert.Equal(5422, result.Width);
+        Assert.Equal(6201, result.Height);
+        Assert.Contains("downsampled", result.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    [Trait("Category", "ReleaseSecurity")]
     public void Validate_RejectsApngWhoseFramesExceedDecodedMemoryBudget()
     {
         byte[] hostileApng = CreatePng(4096, 4096, frameCount: 2);
@@ -42,6 +70,7 @@ public sealed class RasterImageResourceBudgetTests
         RasterImageBudgetResult result = RasterImageResourceBudget.Validate(hostileApng);
 
         Assert.False(result.Accepted);
+        Assert.True(result.CanRenderStaticPreview);
         Assert.Contains("decoded-memory", result.Reason, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -54,6 +83,9 @@ public sealed class RasterImageResourceBudgetTests
         RasterImageBudgetResult result = RasterImageResourceBudget.Validate(frameBomb);
 
         Assert.False(result.Accepted);
+        Assert.True(result.CanRenderStaticPreview);
+        Assert.Equal("GIF", result.Format);
+        Assert.Equal(RasterImageResourceBudget.MaxFrameCount + 1, result.FrameCount);
         Assert.Contains("frame count", result.Reason, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -66,6 +98,7 @@ public sealed class RasterImageResourceBudgetTests
         RasterImageBudgetResult result = RasterImageResourceBudget.Validate(frameBomb);
 
         Assert.False(result.Accepted);
+        Assert.True(result.CanRenderStaticPreview);
         Assert.Contains("frame count", result.Reason, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -87,11 +120,14 @@ public sealed class RasterImageResourceBudgetTests
     [Trait("Category", "ReleaseSecurity")]
     public void Validate_RejectsHostileJpegAndBmpDimensions()
     {
-        RasterImageBudgetResult jpeg = RasterImageResourceBudget.Validate(CreateJpeg(9000, 1));
-        RasterImageBudgetResult bmp = RasterImageResourceBudget.Validate(CreateBmp(9000, 1));
+        int hostileDimension = RasterImageResourceBudget.MaxDimension + 1;
+        RasterImageBudgetResult jpeg = RasterImageResourceBudget.Validate(CreateJpeg(hostileDimension, 1));
+        RasterImageBudgetResult bmp = RasterImageResourceBudget.Validate(CreateBmp(hostileDimension, 1));
 
         Assert.False(jpeg.Accepted);
         Assert.False(bmp.Accepted);
+        Assert.False(jpeg.CanRenderStaticPreview);
+        Assert.False(bmp.CanRenderStaticPreview);
         Assert.Contains("budget", jpeg.Reason, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("budget", bmp.Reason, StringComparison.OrdinalIgnoreCase);
     }
@@ -113,8 +149,9 @@ public sealed class RasterImageResourceBudgetTests
     [Trait("Category", "ReleaseSecurity")]
     public void Validate_RejectsIcoDirectoryThatHidesOversizedEmbeddedImages()
     {
-        byte[] hiddenPng = CreateIco([(1, 1, CompletePng(CreatePng(9000, 1)))]);
-        byte[] hiddenDib = CreateIco([(1, 1, CreateIconDib(9000, 1))]);
+        int hostileDimension = RasterImageResourceBudget.MaxDimension + 1;
+        byte[] hiddenPng = CreateIco([(1, 1, CompletePng(CreatePng(hostileDimension, 1)))]);
+        byte[] hiddenDib = CreateIco([(1, 1, CreateIconDib(hostileDimension, 1))]);
 
         Assert.False(RasterImageResourceBudget.Validate(hiddenPng).Accepted);
         Assert.False(RasterImageResourceBudget.Validate(hiddenDib).Accepted);
