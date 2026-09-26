@@ -63,6 +63,8 @@ try {
         '-C'
         'linker=rust-lld.exe'
         '-C'
+        'target-feature=+crt-static'
+        '-C'
         'link-arg=/Brepro'
         # Panic locations retain source paths even in stripped release workers.
         # rust-src installations resolve standard-library locations through

@@ -161,6 +161,9 @@
     <PackageReference Include="Microsoft.Services.Store.Engagement" Version="10.2307.3001" GeneratePathProperty="true" />
     <PackageReference Include="Microsoft.Xaml.Behaviors.WinUI.Managed" Version="3.0.1" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="$(JitHubWindowsSdkBuildToolsVersion)" />
+    <!-- Existing analyzer findings are triaged in Debug; release/AOT builds
+         treat all warnings as errors and must keep their locked graph stable. -->
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools.WinUIAnalyzer" Version="0.7.0" PrivateAssets="all" Condition="'$(Configuration)' == 'Debug'" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260710003" />
     <PackageReference Include="Microsoft.Windows.CsWinRT" Version="2.3.1" PrivateAssets="all" />
     <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="5.6.0" PrivateAssets="all" />

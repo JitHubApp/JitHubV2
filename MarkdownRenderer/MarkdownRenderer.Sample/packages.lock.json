@@ -17,6 +17,12 @@
         "resolved": "10.0.28000.1721",
         "contentHash": "uZvcBnNFklWdlZXuXtb+opS5oi4TdMAsEDT9r2nbWeG1WhkWh2B6IFyHyYYLEhINkVz1HMPGKckJvNq0AaVW+w=="
       },
+      "Microsoft.Windows.SDK.BuildTools.WinUIAnalyzer": {
+        "type": "Direct",
+        "requested": "[0.7.0, )",
+        "resolved": "0.7.0",
+        "contentHash": "s0hK+E+BBXXz65FXXB0LQAJgo85CpZnWZUiEDgi15De9ci+ct28l8Mp5Y+FDgOFmmbk0r/hhsE5/fOtWKJ1tcw=="
+      },
       "Microsoft.WindowsAppSDK": {
         "type": "Direct",
         "requested": "[1.8.260710003, )",

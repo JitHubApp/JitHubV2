@@ -28,15 +28,43 @@ jobs:
 
       - name: Set up Windows App CLI
         uses: microsoft/setup-WinAppCli@v0.1
+        with:
+          version: v0.7.0
 
       - name: Verify Windows App CLI command surface
         shell: pwsh
         run: |
-          winapp --help
+          $version = (winapp --version).Trim()
+          if ($version -notmatch '(\d+)\.(\d+)\.(\d+)') {
+            throw "Could not parse WinApp CLI version '$version'."
+          }
+          if ([version]::new([int]$Matches[1], [int]$Matches[2], [int]$Matches[3]) -lt [version]'0.7.0') {
+            throw "Expected WinApp CLI 0.7 or newer, got '$version'."
+          }
+          winapp run --help
+          winapp package --help
+          winapp target --help
+          winapp find-api --help
           winapp create-debug-identity --help
-          winapp ui --help
+          winapp ui search --help
+          winapp ui invoke --help
 
       - name: Build WinUI debug app
         if: ${{ inputs.verify_debug_build }}
         shell: pwsh
         run: dotnet build .\JitHub.WinUI\JitHub.WinUI.csproj -c Debug -p:Platform=x64
+
+      - name: Check project-resolved WinUI API surface
+        if: ${{ inputs.verify_debug_build }}
+        shell: pwsh
+        run: winapp find-api check-property NavigationView IsBackButtonVisible --project-dir .\JitHub.WinUI --json
+
+      - name: Exercise project-mode development packaging
+        if: ${{ inputs.verify_debug_build }}
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path .\artifacts\winapp-cli -Force | Out-Null
+          winapp package .\JitHub.WinUI\JitHub.WinUI.csproj -c Debug --arch x64 --no-sign --output .\artifacts\winapp-cli\JitHub.Debug.x64.msix
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath .\artifacts\winapp-cli\JitHub.Debug.x64.msix -PathType Leaf)) {
+            throw 'WinApp CLI did not produce the unsigned Debug MSIX.'
+          }

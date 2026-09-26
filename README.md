@@ -170,7 +170,7 @@ Artifacts are written to:
 
 The capture script builds `JitHub.WinUI`, launches scenario-specific pages with launch arguments such as `--page=design-lab`, `--scenario=buttons`, and `--theme=dark`, and then uses the `JitHub.WinUI.Automation` project to capture deterministic UI states through FlaUI.
 
-`winapp ui` is also available as a lightweight command-line proof path. Use `./eng/Invoke-WinAppCliSmoke.ps1` for quick launch/wait/screenshot validation; keep the FlaUI design-lab harness for the full deterministic matrix.
+`winapp ui` is also available as a lightweight command-line proof path. Use `./eng/Invoke-WinAppCliSmoke.ps1 -Sandbox` for an isolated JitHub sign-in-shell check (`-Aot` exercises Native AOT) and `./MarkdownRenderer/eng/Test-SandboxSampleUi.ps1` for Math, Mermaid, HTML, and SVG checks. Both require WinApp CLI 0.7 and Windows Sandbox; see [Windows CLI workflow](docs/windows-cli-workflow.md) for prerequisites. Keep the FlaUI design-lab harness for the full deterministic matrix.
 
 Regenerate the website's paired Light/Dark product media and Home motion clip with:
 

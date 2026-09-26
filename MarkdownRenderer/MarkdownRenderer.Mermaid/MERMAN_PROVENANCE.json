@@ -36,6 +36,7 @@
     "rustc": "1.96.0 (ac68faa20 2026-05-25)",
     "cargo": "1.96.0 (30a34c682 2026-05-25)",
     "llvm": "22.1.2",
+    "msvcCrtLinkage": "static (+crt-static); no VC++ redistributable required",
     "targets": ["i686-pc-windows-msvc", "x86_64-pc-windows-msvc", "aarch64-pc-windows-msvc"],
     "rebuildCommand": "pwsh -NoProfile -File native/Build-Native.ps1"
   },

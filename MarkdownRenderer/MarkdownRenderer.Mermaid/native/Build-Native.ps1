@@ -27,11 +27,24 @@ if (-not $SkipTests) {
     if ($LASTEXITCODE -ne 0) { throw 'Native unit tests failed.' }
 }
 
-foreach ($name in $Platform) {
-    $target = $targets[$name]
-    & cargo build --manifest-path (Join-Path $PSScriptRoot 'Cargo.toml') --locked --release --target $target
-    if ($LASTEXITCODE -ne 0) { throw "Native build failed for $name." }
-    $source = Join-Path $PSScriptRoot "target/$target/release/MarkdownRenderer_Mermaid_Native.dll"
-    $destination = Join-Path (Split-Path -Parent $PSScriptRoot) "runtimes/$($rids[$name])/native/MarkdownRenderer.Mermaid.Native.dll"
-    Copy-Item -LiteralPath $source -Destination $destination -Force
+$previousRustFlags = $env:RUSTFLAGS
+$previousEncodedRustFlags = $env:CARGO_ENCODED_RUSTFLAGS
+try {
+    # Windows Sandbox and clean Store installations need not have the VC++
+    # redistributable. Keep the Rust native engine self-contained instead of
+    # relying on a machine-global VCRUNTIME140.dll.
+    $env:RUSTFLAGS = '-C target-feature=+crt-static'
+    $env:CARGO_ENCODED_RUSTFLAGS = $null
+    foreach ($name in $Platform) {
+        $target = $targets[$name]
+        & cargo build --manifest-path (Join-Path $PSScriptRoot 'Cargo.toml') --locked --release --target $target
+        if ($LASTEXITCODE -ne 0) { throw "Native build failed for $name." }
+        $source = Join-Path $PSScriptRoot "target/$target/release/MarkdownRenderer_Mermaid_Native.dll"
+        $destination = Join-Path (Split-Path -Parent $PSScriptRoot) "runtimes/$($rids[$name])/native/MarkdownRenderer.Mermaid.Native.dll"
+        Copy-Item -LiteralPath $source -Destination $destination -Force
+    }
+}
+finally {
+    $env:RUSTFLAGS = $previousRustFlags
+    $env:CARGO_ENCODED_RUSTFLAGS = $previousEncodedRustFlags
 }
