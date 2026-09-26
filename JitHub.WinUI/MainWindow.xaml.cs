@@ -772,6 +772,19 @@ public sealed partial class MainWindow : Window
         }
         finally
         {
+            // Markdown controls borrow the process-wide highlighter, engine,
+            // performance session, and SVG worker. Remove the page tree first:
+            // its Unloaded handlers dispose the controls and detach scroll
+            // callbacks before their shared providers are retired.
+            try
+            {
+                await UnloadPageContentBeforeMarkdownShutdownAsync();
+            }
+            catch (Exception exception)
+            {
+                App.LogHandledException(exception, "markdown-view-shutdown");
+            }
+
             MarkdownLifecycleAutomationBridge.SignalShutdownStage("markdown-shutdown-started");
             try
             {
@@ -787,6 +800,34 @@ public sealed partial class MainWindow : Window
             _allowCloseAfterDiagnostics = true;
             MarkdownLifecycleAutomationBridge.SignalShutdownStage("window-final-close");
             Close();
+        }
+    }
+
+    private async Task UnloadPageContentBeforeMarkdownShutdownAsync()
+    {
+        FrameworkElement? page = ContentFrameHost.Content as FrameworkElement;
+        if (page is null)
+        {
+            ContentFrameHost.Content = null;
+            return;
+        }
+
+        bool wasLoaded = page.IsLoaded;
+        var unloaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void OnUnloaded(object sender, RoutedEventArgs args) => unloaded.TrySetResult();
+        if (wasLoaded)
+            page.Unloaded += OnUnloaded;
+
+        try
+        {
+            ContentFrameHost.Content = null;
+            if (wasLoaded)
+                await unloaded.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        }
+        finally
+        {
+            if (wasLoaded)
+                page.Unloaded -= OnUnloaded;
         }
     }
 

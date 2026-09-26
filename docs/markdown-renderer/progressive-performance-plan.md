@@ -1011,6 +1011,17 @@ complete before claiming this plan or the 1.0 performance goal is met.
   external-gate mutation suite was not completed in this local run. This is
   correctness and algorithmic evidence, not measured scroll-frame,
   publication, or browser-relative performance evidence.
+- The superseded `09fcb08` top-500 run failed rank 103 (`d3/d3`) on native
+  shutdown, not rendering fidelity: text coverage was 100%, both images were
+  available, and the captured `0xC000027B` WinUI exception showed a late
+  scroll callback reading `TextMateCodeBlockSyntaxHighlighter.Revision` after
+  JitHub had disposed that shared service. The window now removes its page tree
+  and awaits its `Unloaded` event before retiring shared Markdown providers.
+  The Release x64 app and automation harness build without warnings; all 3,129
+  app tests pass. Four local replays of the same pinned rank-103 corpus passed
+  with clean exits, 100% text coverage, and zero unavailable images. This is
+  a focused shutdown regression check; the new-head 500/500 audit and the
+  browser-relative performance gates remain required.
 - Open: oversized raster tiling and session-owned SVG/document/GPU preparation
   caches.
 - Open: defer Math/Mermaid scenes and ahead-of-viewport highlighting without

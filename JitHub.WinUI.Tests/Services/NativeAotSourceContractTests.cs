@@ -295,11 +295,13 @@ public sealed class NativeAotSourceContractTests
         Assert.Contains("RUST-DEPENDENCY-LICENSES.txt", project, StringComparison.Ordinal);
 
         int drain = window.IndexOf("private async Task DrainDiagnosticsAndCloseAsync()", StringComparison.Ordinal);
+        int unloadViews = window.IndexOf("await UnloadPageContentBeforeMarkdownShutdownAsync();", drain, StringComparison.Ordinal);
         int shutdown = window.IndexOf("await JitHubMarkdownRuntime.ShutdownAsync();", drain, StringComparison.Ordinal);
         int allowClose = window.IndexOf("_allowCloseAfterDiagnostics = true;", shutdown, StringComparison.Ordinal);
         int close = window.IndexOf("Close();", allowClose, StringComparison.Ordinal);
         Assert.True(drain >= 0);
-        Assert.True(shutdown > drain);
+        Assert.True(unloadViews > drain);
+        Assert.True(shutdown > unloadViews);
         Assert.True(allowClose > shutdown);
         Assert.True(close > allowClose);
     }
