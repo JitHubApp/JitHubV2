@@ -62,6 +62,9 @@ internal sealed class ThemeResolver
     private PlatformThemeColors? _platformThemeColors;
     private Dictionary<string, object>? _resolvedResourceValues;
     private HashSet<string>? _missingResourceKeys;
+    // A resolver lives for one synchronous UI-thread snapshot. Values are still
+    // read live; only the host-to-root dictionary ancestry is reused.
+    private ResourceDictionary[]? _scopedResourceDictionaries;
 
     internal static IMarkdownSystemThemeProvider? SystemThemeProviderOverride { get; set; }
 
@@ -654,18 +657,26 @@ internal sealed class ThemeResolver
 
     private bool TryResolveScopedResourceValue(string resourceKey, out object value)
     {
+        if (_scopedResourceDictionaries is not { } dictionaries)
+        {
+            var collected = new List<ResourceDictionary>();
+            for (DependencyObject? current = _host; current is not null; current = VisualTreeHelper.GetParent(current))
+            {
+                if (current is FrameworkElement element)
+                    collected.Add(element.Resources);
+            }
+            dictionaries = collected.ToArray();
+            _scopedResourceDictionaries = dictionaries;
+        }
+
         IReadOnlyList<string> themeKeys = GetThemeDictionaryKeys();
         var visited = new HashSet<ResourceDictionary>(ReferenceEqualityComparer.Instance);
-        DependencyObject? current = _host;
-        while (current is not null)
+        foreach (ResourceDictionary resources in dictionaries)
         {
-            if (current is FrameworkElement element &&
-                TryResolveExplicitFromDictionary(element.Resources, themeKeys, resourceKey, visited, out value))
+            if (TryResolveExplicitFromDictionary(resources, themeKeys, resourceKey, visited, out value))
             {
                 return true;
             }
-
-            current = VisualTreeHelper.GetParent(current);
         }
 
         value = null!;
@@ -688,25 +699,11 @@ internal sealed class ThemeResolver
 
         try
         {
-            IReadOnlyList<string> themeKeys = GetThemeDictionaryKeys();
-            var visited = new HashSet<ResourceDictionary>(ReferenceEqualityComparer.Instance);
-            DependencyObject? current = _host;
-            while (current is not null)
+            if (TryResolveScopedResourceValue(resourceKey, out value))
             {
-                if (current is FrameworkElement element &&
-                    TryResolveExplicitFromDictionary(
-                        element.Resources,
-                        themeKeys,
-                        resourceKey,
-                        visited,
-                        out value))
-                {
-                    if (IsScopedPlatformResourceKey(resourceKey))
-                        _resolvedResourceValues?[resourceKey] = value;
-                    return true;
-                }
-
-                current = VisualTreeHelper.GetParent(current);
+                if (IsScopedPlatformResourceKey(resourceKey))
+                    _resolvedResourceValues?[resourceKey] = value;
+                return true;
             }
         }
         catch (Exception ex)

@@ -1140,6 +1140,20 @@ complete before claiming this plan or the 1.0 performance goal is met.
   `MarkdownRenderer.*` resource lookups measured 185.124 ms theme snapshot
   versus 199.117 ms in the normal local replay, but changed the styled result;
   it was removed, not adopted as a customization or performance tradeoff.
+- Locally verified, pending current-head CI: `ThemeResolver` now captures the
+  host-to-root scoped resource-dictionary ancestry once per synchronous theme
+  snapshot while still reading resource values live, preserving nearest-scope,
+  merged-dictionary, and Light/Dark/High Contrast precedence. A pinned-source
+  rank-295 Release replay sequence (candidate/baseline/baseline/candidate)
+  measured theme-snapshot intervals of 154/227/189/157 ms; the final compact
+  candidate measured 168 ms, passed 100% text and 99.64% structure with zero
+  unavailable images, and matched the baseline first-tile visual on inspection.
+  All 415 GitHub renderer and 3,132 app tests passed, the x64 Release app and
+  audit harness built without warnings, and the unchanged lean gates passed
+  (529,685 compressed and 1,257,984 managed bytes). These noisy local replays
+  indicate reduced setup work, not a qualified counterbalanced release result
+  or resolution of the hosted 2.862-second outlier; same-byte and device/theme
+  gates remain open.
 - Open: oversized raster tiling and session-owned SVG/document/GPU preparation
   caches.
 - Open: defer Math/Mermaid scenes and ahead-of-viewport highlighting without
