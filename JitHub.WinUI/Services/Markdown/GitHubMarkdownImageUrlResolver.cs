@@ -121,7 +121,9 @@ public static class GitHubMarkdownImageUrlResolver
         out GitHubMarkdownImageReference reference)
     {
         reference = default;
-        if (uri is null || !uri.IsAbsoluteUri)
+        if (uri is null || !uri.IsAbsoluteUri ||
+            uri.Scheme != Uri.UriSchemeHttps || !uri.IsDefaultPort ||
+            uri.UserInfo.Length != 0)
         {
             return false;
         }
@@ -134,9 +136,12 @@ public static class GitHubMarkdownImageUrlResolver
         if (uri.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase))
         {
             if (segments.Length < 5 ||
-                !segments[2].Equals("blob", StringComparison.OrdinalIgnoreCase) ||
+                !(segments[2].Equals("blob", StringComparison.OrdinalIgnoreCase) ||
+                  segments[2].Equals("raw", StringComparison.OrdinalIgnoreCase)) ||
                 string.IsNullOrWhiteSpace(segments[0]) ||
-                string.IsNullOrWhiteSpace(segments[1]))
+                string.IsNullOrWhiteSpace(segments[1]) ||
+                segments[0].IndexOfAny(['/', '\\']) >= 0 ||
+                segments[1].IndexOfAny(['/', '\\']) >= 0)
             {
                 return false;
             }
@@ -159,7 +164,9 @@ public static class GitHubMarkdownImageUrlResolver
         {
             if (segments.Length < 4 ||
                 string.IsNullOrWhiteSpace(segments[0]) ||
-                string.IsNullOrWhiteSpace(segments[1]))
+                string.IsNullOrWhiteSpace(segments[1]) ||
+                segments[0].IndexOfAny(['/', '\\']) >= 0 ||
+                segments[1].IndexOfAny(['/', '\\']) >= 0)
             {
                 return false;
             }

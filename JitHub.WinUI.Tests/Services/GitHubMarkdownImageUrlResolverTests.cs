@@ -182,6 +182,38 @@ public class GitHubMarkdownImageUrlResolverTests
     }
 
     [Fact]
+    public void TryResolve_GitHubRawRoute_UsesCredentialFreeCdnBeforeRepositoryFallback()
+    {
+        bool resolved = GitHubMarkdownImageUrlResolver.TryResolve(
+            "https://github.com/ionic-team/ionic-framework/raw/main/.github/assets/logo.png?raw=true",
+            null,
+            null,
+            out GitHubMarkdownImageReference reference);
+
+        Assert.True(resolved);
+        Assert.Equal("ionic-team", reference.Owner);
+        Assert.Equal("ionic-framework", reference.Repository);
+        Assert.Equal("main", reference.Ref);
+        Assert.Equal(".github/assets/logo.png", reference.Path);
+        Assert.Equal(
+            "https://raw.githubusercontent.com/ionic-team/ionic-framework/main/.github/assets/logo.png",
+            GitHubMarkdownImageUrlResolver.CreateRawUri(reference).AbsoluteUri);
+    }
+
+    [Theory]
+    [InlineData("http://github.com/octo/repo/raw/main/logo.png")]
+    [InlineData("https://user@github.com/octo/repo/raw/main/logo.png")]
+    [InlineData("https://github.com:444/octo/repo/raw/main/logo.png")]
+    [InlineData("https://github.com.evil.example/octo/repo/raw/main/logo.png")]
+    [InlineData("https://github.com/octo%2Freplaced/repo/raw/main/logo.png")]
+    [InlineData("https://github.com/octo/repo%5Cother/raw/main/logo.png")]
+    public void TryResolve_UntrustedRawRoute_IsNotPromotedToTrustedCdn(string source)
+    {
+        Assert.False(GitHubMarkdownImageUrlResolver.TryResolve(
+            source, null, null, out _));
+    }
+
+    [Fact]
     public void GitLfsPointer_RecognizesCanonicalPointer_AndBuildsTrustedMediaRoute()
     {
         byte[] pointer = System.Text.Encoding.UTF8.GetBytes(

@@ -24,8 +24,10 @@ repository:
   do not prove same-byte parity or replace the release benchmark.
 - if an isolated resvg worker misses a deadline, a separate privacy-safe
   record names the phase (process startup, font catalog, open, render, or
-  maintenance), configured deadline, and worker-process CPU milliseconds during
-  the transaction (-1 if unavailable), without including SVG bytes or URLs.
+  maintenance), configured deadline, worker-process CPU milliseconds during
+  the transaction (-1 if unavailable), transport phase (request write, pipe
+  flush, or response read), request-write duration, and whether the worker
+  had exited. It contains no SVG bytes or URLs.
 - visible-image waits of at least 500 ms record their tile index, duration,
   and whether they reached the 20-second deadline. Only on a deadline does a
   one-time UIA diagnostic count still-loading image peers; zero distinguishes

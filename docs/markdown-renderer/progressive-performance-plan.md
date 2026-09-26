@@ -1210,6 +1210,32 @@ complete before claiming this plan or the 1.0 performance goal is met.
   deadline or replay failed content. Focused renderer/app tests and the x64
   Release app build passed locally; a hosted recurrence and a complete
   current-head 500/500 audit remain required.
+- Consolidation of that run confirmed 499/500 with no other failed case;
+  aggregate live native/Edge p95 ratios were 0.323 first render and 0.276
+  full traversal. Individual full-page ratios above 1.10 remained at rank
+  102 (`jaywcjlove/awesome-mac`, 1.463), rank 126 (`angular/angular`,
+  1.477), and rank 458 (`ionic-team/ionic-framework`, 1.250). Rank 458's
+  first-tile image wait was 5.98 seconds while its logo request took 6.60
+  seconds, consistent with live delivery. Rank 126 waited 4.25 seconds at
+  its first tile even though its four assets all resolved within 147 ms;
+  its initial layout took 1.12 seconds and publication 30 ms, making native
+  work or scheduling a concrete suspect. A local pinned rank-126 Release
+  replay passed without an image wait (173 ms layout, 21 ms publication,
+  857 ms native full traversal). The replay does not clear the hosted
+  outlier: retain it for identical-byte, same-machine investigation.
+- Locally verified, pending current-head CI: JitHub now recognizes authored
+  `https://github.com/<owner>/<repo>/raw/<ref>/<path>` Markdown image URLs
+  as repository media, so the existing credential-free raw CDN is attempted
+  before the private/LFS fallback. The trust promotion is restricted to HTTPS,
+  GitHub's exact host and default port, with no URL user info; insecure or
+  lookalike hosts remain under the ordinary external-image policy. The pinned
+  rank-458 Release replay resolved Ionic's 10,361-byte logo from
+  `raw.githubusercontent.com` in 113 ms, showed no visible-image wait, and
+  finished native full traversal in 659 ms with zero unavailable images. The
+  earlier hosted run fetched the GitHub web `/raw` route in 6.60 seconds; a
+  different-network replay does not by itself prove a stable speedup or waive
+  the individual 1.250 live ratio. The resolver's targeted 24 tests and x64
+  Release app build passed; same-byte and current-head gates remain open.
 - Open: oversized raster tiling and session-owned SVG/document/GPU preparation
   caches.
 - Open: defer Math/Mermaid scenes and ahead-of-viewport highlighting without
