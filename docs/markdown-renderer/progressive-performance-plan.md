@@ -1169,6 +1169,22 @@ complete before claiming this plan or the 1.0 performance goal is met.
   and 1,255,424 managed bytes, within unchanged 525 KiB/1.2 MiB gates.
   Publication remained 7.553 ms in this replay, above the separate 2 ms gate;
   same-byte Edge, full top-500, and physical matrix gates remain open.
+- The current-head `a7a3299` live top-500 run (`36262576598`) has a failed
+  ranks-1–25 shard: rank 1 (`codecrafters-io/build-your-own-x`) rendered with
+  100% text coverage, 99.93% structural fidelity, and zero unavailable images,
+  but the app exited with WinUI stowed-exception code `0xC000027B` after the
+  `window-final-close` stage. No managed exception log was captured. Its
+  6.108-second initial-layout wall interval and 3.562 first-render ratio are
+  separate unresolved cold-host outliers. Seven exact pinned-README Release
+  replays on the local machine (the initial run plus six reusing the same Edge
+  evidence) exited cleanly with zero unavailable images; this does not prove
+  the hosted shutdown race fixed or qualify the 500/500 gate. The remaining
+  shards and current-head preview validation are still in progress. A
+  faulting-module/stowed-exception diagnostic from a hosted recurrence is
+  needed before attributing the shutdown failure. The next audit run will
+  capture only the app's Windows Application Error faulting module, code,
+  offset, process ID, and UTC time when a shard fails; this does not change
+  the mandatory clean-exit verdict or upload raw process dumps.
 - Open: oversized raster tiling and session-owned SVG/document/GPU preparation
   caches.
 - Open: defer Math/Mermaid scenes and ahead-of-viewport highlighting without

@@ -190,6 +190,48 @@ jobs:
             -ManifestPath (Join-Path $env:RUNNER_TEMP 'readme-corpus\top-repositories.json') `
             -OutputRoot $output
 
+      - name: Capture WinUI crash metadata for failed audits
+        if: failure()
+        run: |
+          $output = Join-Path $env:RUNNER_TEMP 'readme-audit'
+          New-Item -ItemType Directory -Force -Path $output | Out-Null
+          $result = [ordered]@{ Status = 'available'; Events = @() }
+          try {
+            $events = @(Get-WinEvent -FilterHashtable @{
+              LogName = 'Application'
+              ProviderName = 'Application Error'
+              Id = 1000
+              StartTime = (Get-Date).AddHours(-4)
+            } -MaxEvents 512 -ErrorAction Stop)
+            $matches = foreach ($event in $events) {
+              [xml]$xml = $event.ToXml()
+              $fields = @{}
+              foreach ($entry in @($xml.Event.EventData.Data)) {
+                if ($entry.Name) { $fields[[string]$entry.Name] = [string]$entry.'#text' }
+              }
+              if ($fields.AppName -ne 'JitHub.WinUI.exe') { continue }
+              [ordered]@{
+                TimeUtc = $event.TimeCreated.ToUniversalTime().ToString('O')
+                FaultingModule = $fields.ModuleName
+                ExceptionCode = $fields.ExceptionCode
+                FaultingOffset = $fields.FaultingOffset
+                ProcessId = $fields.ProcessId
+              }
+            }
+            $result.Events = if ($null -eq $matches) { @() } else { @($matches) }
+          }
+          catch {
+            # Event-log access is diagnostic only; it never waives the failed audit.
+            if ($_.FullyQualifiedErrorId -match '^NoMatchingEventsFound') {
+              $result.Status = 'no-events'
+            }
+            else {
+              $result.Status = 'unavailable'
+              $result.Reason = $_.Exception.GetType().Name
+            }
+          }
+          $result | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $output 'crash-events.json')
+
       - name: Upload full-page evidence
         if: always()
         uses: actions/upload-artifact@v7
@@ -198,6 +240,7 @@ jobs:
           path: |
             ${{ runner.temp }}/readme-audit/summary.json
             ${{ runner.temp }}/readme-audit/summary.md
+            ${{ runner.temp }}/readme-audit/crash-events.json
             ${{ runner.temp }}/readme-audit/cases/**/result.json
             ${{ runner.temp }}/readme-audit/cases/**/browser/**
             ${{ runner.temp }}/readme-audit/cases/**/native/**
