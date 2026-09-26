@@ -1068,6 +1068,18 @@ complete before claiming this plan or the 1.0 performance goal is met.
   and full-page ratios 0.27–0.39. That large variance remains unexplained;
   the same-machine, same-byte Edge/client replay must isolate it before
   declaring the individual outlier resolved.
+- Publication-phase evidence from the current-head run's archived ranks
+  101–175 (75 case result files) makes the absolute UI-commit gap explicit:
+  all 75 first publications exceed the unchanged ≤2 ms target. The minimum
+  was 6.33 ms, median 18.83 ms, nearest-rank p95 38.73 ms, and maximum
+  41.57 ms. Mean plan construction, visible embed realization, and highlight
+  scheduling were 5.44, 4.73, and 4.93 ms respectively. These are
+  one-shot production-audit phase measurements, not the qualified
+  counterbalanced benchmark or a same-byte Edge comparison. They show that
+  deferring network resolution alone cannot close the publication gate;
+  realization-plan preparation and visible UI work need a bounded,
+  generation-fenced commit path. The live 500/500 audit must not be
+  interpreted as satisfying this separate ≤2 ms release requirement.
 - Open: oversized raster tiling and session-owned SVG/document/GPU preparation
   caches.
 - Open: defer Math/Mermaid scenes and ahead-of-viewport highlighting without
