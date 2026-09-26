@@ -1169,22 +1169,32 @@ complete before claiming this plan or the 1.0 performance goal is met.
   and 1,255,424 managed bytes, within unchanged 525 KiB/1.2 MiB gates.
   Publication remained 7.553 ms in this replay, above the separate 2 ms gate;
   same-byte Edge, full top-500, and physical matrix gates remain open.
-- The current-head `a7a3299` live top-500 run (`36262576598`) has a failed
-  ranks-1–25 shard: rank 1 (`codecrafters-io/build-your-own-x`) rendered with
-  100% text coverage, 99.93% structural fidelity, and zero unavailable images,
-  but the app exited with WinUI stowed-exception code `0xC000027B` after the
-  `window-final-close` stage. No managed exception log was captured. Its
-  6.108-second initial-layout wall interval and 3.562 first-render ratio are
-  separate unresolved cold-host outliers. Seven exact pinned-README Release
-  replays on the local machine (the initial run plus six reusing the same Edge
-  evidence) exited cleanly with zero unavailable images; this does not prove
-  the hosted shutdown race fixed or qualify the 500/500 gate. The remaining
-  shards and current-head preview validation are still in progress. A
-  faulting-module/stowed-exception diagnostic from a hosted recurrence is
-  needed before attributing the shutdown failure. The next audit run will
-  capture only the app's Windows Application Error faulting module, code,
-  offset, process ID, and UTC time when a shard fails; this does not change
-  the mandatory clean-exit verdict or upload raw process dumps.
+- The `a7a3299` live top-500 run (`36262576598`) completed 499/500 with zero
+  unavailable images; the aggregate native/Edge live ratios were 0.338 p95
+  first render and 0.283 p95 full traversal. Rank 1
+  (`codecrafters-io/build-your-own-x`) rendered with 100% text coverage and
+  99.93% structural fidelity, but the app exited with WinUI stowed-exception
+  code `0xC000027B` after `window-final-close`. No managed exception log was
+  captured. Its 6.108-second initial-layout wall interval and 3.562
+  first-render ratio are separate unresolved cold-host outliers. Seven exact
+  pinned-README Release replays locally (the initial run plus six reusing the
+  same Edge evidence) exited cleanly with zero unavailable images; this does
+  not prove the hosted shutdown race fixed or qualify the 500/500 gate.
+  Preview validation and NativeAOT checks passed on that head. The next audit
+  run captures only the app's Windows Application Error faulting module, code,
+  offset, process ID, and UTC time when a shard fails; it does not change the
+  mandatory clean-exit verdict or upload raw process dumps.
+- The same live run had four further individual full-page ratios above 1.10:
+  rank 102 (`jaywcjlove/awesome-mac`, 1.569), rank 257
+  (`CompVis/stable-diffusion`, 1.319), rank 414
+  (`Alishahryar1/free-claude-code`, 1.216), and rank 447
+  (`bmad-code-org/BMAD-METHOD`, 1.169). The latter three have zero unavailable
+  images but recorded visible-image waits of 1.55/1.70, 5.95, and 7.36
+  seconds respectively. Their successful source resolutions include 2.7–3.2,
+  6.59, and 8.02-second individual network fetches, despite other assets in
+  the same documents arriving in tens to hundreds of milliseconds. This is
+  live-delivery evidence, not a waiver: identical-byte local replay must still
+  isolate client work, especially where the visible wait exceeds fetch time.
 - Open: oversized raster tiling and session-owned SVG/document/GPU preparation
   caches.
 - Open: defer Math/Mermaid scenes and ahead-of-viewport highlighting without
