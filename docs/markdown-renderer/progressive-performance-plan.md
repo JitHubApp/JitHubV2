@@ -1080,6 +1080,19 @@ complete before claiming this plan or the 1.0 performance goal is met.
   realization-plan preparation and visible UI work need a bounded,
   generation-fenced commit path. The live 500/500 audit must not be
   interpreted as satisfying this separate ≤2 ms release requirement.
+- Local release-harness work advances the first-viewport evidence contract to
+  schema 11: every measured presentation now pairs its first-paint sample
+  with the renderer's generation/source-matched UI-publication interval. The
+  in-process evaluator and independent PowerShell gate recompute each trial
+  and scenario maximum and reject missing, inconsistent, or >2 ms measured
+  commits; quick mode checks shape but remains non-gating. The x64 Release
+  harness builds with zero warnings, 958 non-external managed tests pass,
+  six focused external-gate publication mutations are rejected, and one
+  local quick UI run captured all six conditions (0.11–0.56 ms maxima).
+  That synthetic quick run is not qualified release evidence and does not
+  erase the production README publication gap above. Existing schema-10
+  baselines cannot qualify a schema-11 candidate; a fresh, fully
+  counterbalanced reference/candidate run is still required.
 - Open: oversized raster tiling and session-owned SVG/document/GPU preparation
   caches.
 - Open: defer Math/Mermaid scenes and ahead-of-viewport highlighting without

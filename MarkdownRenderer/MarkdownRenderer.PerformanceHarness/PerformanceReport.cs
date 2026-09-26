@@ -122,7 +122,12 @@ internal sealed class PerformanceReport
             result.WarmupTrials is not null &&
             !result.WarmupTrials.Any(static trial => trial is null) &&
             result.Trials is not null &&
-            !result.Trials.Any(static trial => trial is null));
+            !result.Trials.Any(static trial => trial is null) &&
+            result.PublicationSamplesMilliseconds is not null &&
+            result.WarmupTrials.All(static trial =>
+                trial.PublicationSamplesMilliseconds is not null) &&
+            result.Trials.All(static trial =>
+                trial.PublicationSamplesMilliseconds is not null));
     }
 }
 
@@ -265,6 +270,9 @@ internal sealed class FirstViewportResult
     public List<FirstViewportTrialResult> Trials { get; init; } = [];
     public List<double> SamplesMilliseconds { get; init; } = [];
     public double P95Milliseconds { get; init; }
+    public List<double> PublicationSamplesMilliseconds { get; init; } = [];
+    public double PublicationMaximumMilliseconds { get; init; }
+    public double PublicationBudgetMilliseconds { get; init; }
     public double RegressionP95Milliseconds { get; init; }
     public double RegressionDispersionPercent { get; init; }
     public double TheilSenSlopeMillisecondsPerGlobalOrdinal { get; init; }
@@ -401,7 +409,10 @@ internal sealed class FirstViewportTrialResult
     public DateTimeOffset StartedUtc { get; init; }
     public DateTimeOffset CompletedUtc { get; init; }
     public double SettlingElapsedMilliseconds { get; init; }
+    public double SettlingPublicationMilliseconds { get; init; }
     public List<double> SamplesMilliseconds { get; init; } = [];
+    public List<double> PublicationSamplesMilliseconds { get; init; } = [];
+    public double PublicationMaximumMilliseconds { get; init; }
     public double P95Milliseconds { get; init; }
     public int Gen0Collections { get; init; }
     public int Gen1Collections { get; init; }

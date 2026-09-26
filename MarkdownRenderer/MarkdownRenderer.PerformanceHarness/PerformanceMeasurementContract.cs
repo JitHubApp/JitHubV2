@@ -6,7 +6,7 @@ namespace MarkdownRenderer.PerformanceHarness;
 /// </summary>
 internal static class PerformanceMeasurementContract
 {
-    internal const int SchemaVersion = 10;
+    internal const int SchemaVersion = 11;
     internal const string ProviderName = "MarkdownRenderer-Performance";
     internal const string RuntimeConfigurationPolicy =
         "tiering-pgo-concurrent-gc-readytorun-disabled;dotnet-complus-overrides-unset-v1";
@@ -20,6 +20,7 @@ internal static class PerformanceMeasurementContract
     internal const double TargetRefreshRateHz = 120d;
     internal const double ScrollFrameTimeP95BudgetMilliseconds =
         1_000d / TargetRefreshRateHz;
+    internal const double UiPublicationMaximumBudgetMilliseconds = 2;
     internal const int ReleaseLifecycleCycles = 100;
     internal const int ReleaseCancellationIterations = 40;
     internal const int ReleaseCancellationTrials = 5;

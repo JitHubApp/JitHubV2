@@ -946,6 +946,7 @@ function Get-ValidatedFirstViewportEvidence {
         $warmupP95 = [Collections.Generic.List[double]]::new(3)
         $measuredP95 = [Collections.Generic.List[double]]::new(6)
         $flattenedSamples = [Collections.Generic.List[double]]::new(600)
+        $flattenedPublicationSamples = [Collections.Generic.List[double]]::new(600)
         $observations = [Collections.Generic.List[object]]::new(6)
         $phases = @(
             [pscustomobject]@{ Name = 'warmup'; Trials = @($result.warmupTrials); Count = 3; Offset = 0 },
@@ -1012,8 +1013,21 @@ function Get-ValidatedFirstViewportEvidence {
                 } else {
                     [double]::NaN
                 }
+                $publicationSamples = @($trial.publicationSamplesMilliseconds)
+                $publicationValid = $publicationSamples.Count -eq 100 -and
+                    @($publicationSamples | Where-Object {
+                        -not (Test-FiniteNumber $_) -or [double]$_ -lt 0
+                    }).Count -eq 0
+                $computedPublicationMaximum = if ($publicationValid) {
+                    [double](($publicationSamples | Measure-Object -Maximum).Maximum)
+                } else {
+                    [double]::NaN
+                }
                 $settlingValid = Test-FiniteNumber $trial.settlingElapsedMilliseconds
                 $settlingValid = $settlingValid -and [double]$trial.settlingElapsedMilliseconds -ge 0
+                $settlingPublicationValid =
+                    (Test-FiniteNumber $trial.settlingPublicationMilliseconds) -and
+                    [double]$trial.settlingPublicationMilliseconds -ge 0
                 $countersNonNegative =
                     [int]$trial.gen0Collections -ge 0 -and
                     [int]$trial.gen1Collections -ge 0 -and
@@ -1037,11 +1051,16 @@ function Get-ValidatedFirstViewportEvidence {
                     [int64]$trial.sourceKeyHashCountAfterTrial -eq 1
                 }
                 $computedComplete = $timestampsValid -and $samplesValid -and
-                    $settlingValid -and [double]::IsFinite($computedP95) -and
+                    $publicationValid -and $settlingValid -and $settlingPublicationValid -and
+                    [double]::IsFinite($computedP95) -and
+                    [double]::IsFinite($computedPublicationMaximum) -and
                     $countersNonNegative -and $cacheProof
-                if (-not $timestampsValid -or -not $samplesValid -or -not $settlingValid -or
+                if (-not $timestampsValid -or -not $samplesValid -or -not $publicationValid -or
+                    -not $settlingValid -or -not $settlingPublicationValid -or
                     -not $countersNonNegative -or
                     -not (Test-NearlyEqual ([double]$trial.p95Milliseconds) $computedP95) -or
+                    -not (Test-NearlyEqual `
+                        ([double]$trial.publicationMaximumMilliseconds) $computedPublicationMaximum) -or
                     [bool]$trial.cacheProofPassed -ne $cacheProof -or
                     -not [bool]$trial.cacheProofPassed -or
                     [bool]$trial.complete -ne $computedComplete -or
@@ -1063,10 +1082,16 @@ function Get-ValidatedFirstViewportEvidence {
                 if ($phase.Name -eq 'measured' -and $samplesValid) {
                     foreach ($sample in $trialSamples) { $flattenedSamples.Add([double]$sample) }
                 }
+                if ($phase.Name -eq 'measured' -and $publicationValid) {
+                    foreach ($sample in $publicationSamples) {
+                        $flattenedPublicationSamples.Add([double]$sample)
+                    }
+                }
             }
         }
 
         $pooledSamples = @($result.samplesMilliseconds)
+        $pooledPublicationSamples = @($result.publicationSamplesMilliseconds)
         $pooledValid = $pooledSamples.Count -eq 600 -and
             @($pooledSamples | Where-Object {
                 -not (Test-FiniteNumber $_) -or [double]$_ -lt 0
@@ -1082,6 +1107,26 @@ function Get-ValidatedFirstViewportEvidence {
         }
         $computedPooledP95 = if ($pooledValid) {
             Get-NearestRankPercentile -Values $pooledSamples -Percentile 0.95
+        } else {
+            [double]::NaN
+        }
+        $pooledPublicationValid = $pooledPublicationSamples.Count -eq 600 -and
+            @($pooledPublicationSamples | Where-Object {
+                -not (Test-FiniteNumber $_) -or [double]$_ -lt 0
+            }).Count -eq 0
+        $exactPublicationConcatenation =
+            $pooledPublicationSamples.Count -eq $flattenedPublicationSamples.Count
+        if ($exactPublicationConcatenation) {
+            for ($sampleIndex = 0; $sampleIndex -lt $pooledPublicationSamples.Count; $sampleIndex++) {
+                if ([double]$pooledPublicationSamples[$sampleIndex] -ne
+                    $flattenedPublicationSamples[$sampleIndex]) {
+                    $exactPublicationConcatenation = $false
+                    break
+                }
+            }
+        }
+        $computedPooledPublicationMaximum = if ($pooledPublicationValid) {
+            [double](($pooledPublicationSamples | Measure-Object -Maximum).Maximum)
         } else {
             [double]::NaN
         }
@@ -1119,6 +1164,12 @@ function Get-ValidatedFirstViewportEvidence {
                 [double]::IsFinite($boundaryShift) -and $boundaryShift -le $allowance -and
                 $measuredEnvelopePassed -and $boundaryEndpointEnvelopePassed
             if (-not $pooledValid -or -not $exactConcatenation -or
+                -not $pooledPublicationValid -or -not $exactPublicationConcatenation -or
+                -not (Test-NearlyEqual `
+                    ([double]$result.publicationMaximumMilliseconds) `
+                    $computedPooledPublicationMaximum) -or
+                [double]$result.publicationBudgetMilliseconds -ne 2.0 -or
+                $computedPooledPublicationMaximum -gt 2.0 -or
                 -not (Test-NearlyEqual ([double]$result.p95Milliseconds) $computedPooledP95) -or
                 -not (Test-NearlyEqual ([double]$result.regressionP95Milliseconds) $regressionP95) -or
                 -not (Test-NearlyEqual ([double]$result.regressionDispersionPercent) $dispersion) -or
@@ -1139,7 +1190,7 @@ function Get-ValidatedFirstViewportEvidence {
                 [double]$result.budgetMilliseconds -ne $expectedBudget -or
                 $computedPooledP95 -gt $expectedBudget -or
                 -not [bool]$result.passed) {
-                Add-Failure "$Label scenario $conditionIndex aggregate, stationarity, or budget evidence is invalid."
+                Add-Failure "$Label scenario $conditionIndex aggregate, stationarity, UI-publication, or budget evidence is invalid."
             }
 
             $metric = "firstViewport.$mode.$sourceBytes.p95Ms.hodgesLehmann"
@@ -1330,15 +1381,19 @@ $jsonObjectContracts = @{
         'trialStartPolicy', 'schedulePolicy', 'regressionEstimator', 'stationarityPolicy',
         'measurementThreadAffinityMask', 'measurementProcessorGroup',
         'measurementProcessorNumber', 'measurementThreadPriority', 'warmupTrials', 'trials',
-        'samplesMilliseconds', 'p95Milliseconds', 'regressionP95Milliseconds',
+        'samplesMilliseconds', 'p95Milliseconds', 'publicationSamplesMilliseconds',
+        'publicationMaximumMilliseconds', 'publicationBudgetMilliseconds',
+        'regressionP95Milliseconds',
         'regressionDispersionPercent', 'theilSenSlopeMillisecondsPerGlobalOrdinal',
         'projectedDriftMilliseconds', 'warmupBoundaryShiftMilliseconds',
         'stationarityAllowanceMilliseconds', 'stationarityEvaluated', 'stationarityPassed',
         'budgetMilliseconds', 'passed')
     FirstViewportTrial = @(
         'ordinal', 'globalOrdinal', 'scheduleRow', 'schedulePosition', 'startedUtc',
-        'completedUtc', 'settlingElapsedMilliseconds', 'samplesMilliseconds',
-        'p95Milliseconds', 'gen0Collections', 'gen1Collections', 'gen2Collections',
+        'completedUtc', 'settlingElapsedMilliseconds', 'settlingPublicationMilliseconds',
+        'samplesMilliseconds', 'publicationSamplesMilliseconds',
+        'publicationMaximumMilliseconds', 'p95Milliseconds',
+        'gen0Collections', 'gen1Collections', 'gen2Collections',
         'processAllocatedBytes', 'completedParseCountBeforePrime',
         'completedParseCountAfterPrime', 'completedParseCountAfterTrial',
         'sourceKeyHashCountBeforePrime', 'sourceKeyHashCountAfterPrime',
@@ -1456,8 +1511,9 @@ $jsonObjectArrayChildren = @{
 $jsonArrayProperties = @{
     Report = @('firstUsableViewport', 'retainedMemory', 'failures')
     RuntimeConfiguration = @('overrideEnvironmentVariables')
-    FirstViewport = @('warmupTrials', 'trials', 'samplesMilliseconds')
-    FirstViewportTrial = @('samplesMilliseconds')
+    FirstViewport = @('warmupTrials', 'trials', 'samplesMilliseconds',
+        'publicationSamplesMilliseconds')
+    FirstViewportTrial = @('samplesMilliseconds', 'publicationSamplesMilliseconds')
     Scroll = @('trials')
     ScrollTrial = @(
         'uiThreadWorkElapsedTicks', 'frameIntervalElapsedTicks',
@@ -1472,8 +1528,14 @@ $jsonArrayProperties = @{
 $jsonPrimitiveArrayElementKinds = @{
     Report = @{ failures = 'String' }
     RuntimeConfiguration = @{ overrideEnvironmentVariables = 'String' }
-    FirstViewport = @{ samplesMilliseconds = 'Number' }
-    FirstViewportTrial = @{ samplesMilliseconds = 'Number' }
+    FirstViewport = @{
+        samplesMilliseconds = 'Number'
+        publicationSamplesMilliseconds = 'Number'
+    }
+    FirstViewportTrial = @{
+        samplesMilliseconds = 'Number'
+        publicationSamplesMilliseconds = 'Number'
+    }
     ScrollTrial = @{
         uiThreadWorkElapsedTicks = 'Int64'
         frameIntervalElapsedTicks = 'Int64'
@@ -2200,7 +2262,7 @@ function Get-ValidatedCancellationEvidence {
     }
 }
 
-if ([int]$report.schemaVersion -ne 10) { Add-Failure 'Schema version must be 10.' }
+if ([int]$report.schemaVersion -ne 11) { Add-Failure 'Schema version must be 11.' }
 if ([string]$report.providerName -ne 'MarkdownRenderer-Performance') { Add-Failure 'Unexpected provider name.' }
 if (-not [bool]$report.isReleaseEvidence) { Add-Failure 'Quick/non-release reports cannot satisfy release gates.' }
 if (-not (Test-ReportTimestamps `
@@ -2757,7 +2819,7 @@ elseif ($mode -eq 'candidate') {
     }
 
     if ($null -ne $referenceReport) {
-        if ([int]$referenceReport.schemaVersion -ne 10 -or
+        if ([int]$referenceReport.schemaVersion -ne 11 -or
             [string]$referenceReport.providerName -ne 'MarkdownRenderer-Performance' -or
             -not (Test-ReportTimestamps `
                 -StartedUtcText $referenceReportTimestamps.StartedUtc `

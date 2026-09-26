@@ -40,7 +40,7 @@ MarkdownRenderer is a preview, not a completed 1.0 release.
   retain the
   [post-review disposal evidence](../../MarkdownRenderer/artifacts/live-final/disposal-app-release-matrix-postreview-20260910.json).
 - A prior x64 absolute performance baseline passed the documented first-view,
-  scroll, allocation, cancellation, lifecycle, and memory budgets. Schema 10 now
+  scroll, allocation, cancellation, lifecycle, and memory budgets. Schema 10
   implements six-trial first-viewport Hodges-Lehmann estimates, a balanced
   Williams condition schedule, ordered Theil-Sen drift and warmup-boundary gates,
   per-trial and boundary-endpoint residual envelopes, monotonic UTC chronology,
@@ -61,7 +61,10 @@ MarkdownRenderer is a preview, not a completed 1.0 release.
   and [candidate B](../../MarkdownRenderer/artifacts/performance/performance-candidate-b-optimized-r7-schema8-20260910.json)
   are retained as evidence for the methodology change, not as passing release
   reports. Retained schema-9 r8 reports additionally expose the nonstationarity
-  holes that schema 10 closes. No passing full schema-10 candidate or true
+  holes that schema 10 closes. Schema 11 adds generation/source-matched raw
+  UI-publication samples and an independently checked ≤2 ms measured maximum;
+  the retained schema-10 reports cannot qualify a schema-11 candidate. No passing
+  full schema-11 candidate or true
   cross-revision performance certification is claimed here.
 
 ## 1.0 gates still open

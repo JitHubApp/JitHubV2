@@ -57,7 +57,7 @@ viewport uses the median of 21 Walsh averages from six measured trials; the
 five-trial metrics use 15. Trials cannot be omitted, trimmed, adaptively stopped,
 or retried selectively.
 
-Schema 10 records consistency-scaled median absolute deviation for every
+Schema 11 retains schema 10's consistency-scaled median absolute deviation for every
 comparison population. First-viewport eligibility additionally uses the ordered
 Theil-Sen slope over each condition's actual global trial ordinals, projects it
 across the measured ordinal span, and compares the last two warmup-trial centers
@@ -103,6 +103,10 @@ parses and hash once per settling/recorded presentation; cache-hit trials must
 retain exactly one completed parse and one source hash throughout. Those counters,
 raw warmup and measured samples, timestamps, settling duration, collection deltas,
 and process allocation deltas are serialized and independently checked. Evidence
+also pairs every recorded first viewport with its generation/source-matched
+UI-publication duration. The in-process and external gates independently
+recompute each measured trial and scenario maximum and require it to be at most
+2 ms; quick mode validates the same structure without applying that budget.
 timestamps come from one UTC anchor plus a monotonic clock, every trial has a
 positive duration inside the report interval, and collection deltas must satisfy
 the physically possible `Gen0 >= Gen1 >= Gen2` hierarchy.
@@ -143,7 +147,7 @@ normalization, and provider/render failures. It does not apply release latency,
 memory, refresh-rate, or relative-regression budgets, but any missing, malformed,
 or failed scenario returns a nonzero exit code.
 
-Release evidence is schema 10 and binds the complete private runtime output with
+Release evidence is schema 11 and binds the complete private runtime output with
 the canonical `runtime-output-manifest-v1` digest. The executable, runtimeconfig,
 harness, renderer, and core assemblies retain separate SHA-256 entries for direct
 review, and a candidate also binds the exact reference-report bytes. Candidate and

@@ -18,7 +18,7 @@ public sealed class PerformanceMeasurementContractTests
             "--baseline",
         ]);
 
-        Assert.Equal(10, PerformanceMeasurementContract.SchemaVersion);
+        Assert.Equal(11, PerformanceMeasurementContract.SchemaVersion);
         Assert.Equal("MarkdownRenderer-Performance", PerformanceMeasurementContract.ProviderName);
         Assert.Equal(100, options.FirstViewportIterations);
         Assert.Equal(2_400, options.ScrollFrames);
@@ -29,7 +29,8 @@ public sealed class PerformanceMeasurementContractTests
         Assert.False(options.Quick);
 
         var report = new PerformanceReport();
-        Assert.Equal(10, report.SchemaVersion);
+        Assert.Equal(11, report.SchemaVersion);
+        Assert.Equal(2, PerformanceMeasurementContract.UiPublicationMaximumBudgetMilliseconds);
         Assert.Equal(100, report.SampleRequirements.FirstViewportIterationsRequired);
         Assert.Equal(6, report.SampleRequirements.FirstViewportTrialsRequired);
         Assert.Equal(3, report.SampleRequirements.FirstViewportWarmupTrialsRequired);
@@ -112,7 +113,7 @@ public sealed class PerformanceMeasurementContractTests
     }
 
     [Fact]
-    public void SchemaTenFreezesTheSixConditionWilliamsSchedule()
+    public void SchemaElevenFreezesTheSixConditionWilliamsSchedule()
     {
         Assert.Equal(
             new[] { 0, 1, 5, 2, 4, 3 },
@@ -144,7 +145,7 @@ public sealed class PerformanceMeasurementContractTests
     }
 
     [Fact]
-    public void SchemaTenFreezesHybridNoiseFloorsAndDispersionBudgets()
+    public void SchemaElevenFreezesHybridNoiseFloorsAndDispersionBudgets()
     {
         Assert.Equal(5, PerformanceMeasurementContract.GetFirstViewportNoiseFloorMilliseconds(
             PerformanceMeasurementContract.FirstViewportCacheDisabledMode, 100 * 1024));
@@ -920,6 +921,10 @@ public sealed class PerformanceMeasurementContractTests
                     Trials = [measuredTrial],
                     SamplesMilliseconds = [1],
                     P95Milliseconds = 1,
+                    PublicationSamplesMilliseconds = [1],
+                    PublicationMaximumMilliseconds = 1,
+                    PublicationBudgetMilliseconds =
+                        PerformanceMeasurementContract.UiPublicationMaximumBudgetMilliseconds,
                     RegressionP95Milliseconds = 1,
                     RegressionDispersionPercent = 0,
                     TheilSenSlopeMillisecondsPerGlobalOrdinal = 0,
@@ -966,7 +971,10 @@ public sealed class PerformanceMeasurementContractTests
             StartedUtc = started,
             CompletedUtc = started.AddMilliseconds(1),
             SettlingElapsedMilliseconds = 1,
+            SettlingPublicationMilliseconds = 1,
             SamplesMilliseconds = [1],
+            PublicationSamplesMilliseconds = [1],
+            PublicationMaximumMilliseconds = 1,
             P95Milliseconds = 1,
             Gen0Collections = 0,
             Gen1Collections = 0,

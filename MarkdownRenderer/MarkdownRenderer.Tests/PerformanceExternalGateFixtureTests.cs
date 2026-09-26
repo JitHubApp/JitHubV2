@@ -10,7 +10,7 @@ namespace MarkdownRenderer.Tests;
 public sealed class PerformanceExternalGateFixtureTests
 {
     [Fact]
-    public void CommittedSchema10FixturePassesBaselineAndCandidateAtExactInclusiveEdges()
+    public void CommittedSchema11FixturePassesBaselineAndCandidateAtExactInclusiveEdges()
     {
         using var evidence = GateEvidence.Create();
         GateResult baseline = evidence.RunGate(evidence.BaselinePath, "Baseline");
@@ -266,6 +266,12 @@ public sealed class PerformanceExternalGateFixtureTests
     [InlineData("first-viewport-trial-ordinal")]
     [InlineData("first-viewport-trial-sample-count")]
     [InlineData("first-viewport-trial-p95")]
+    [InlineData("first-viewport-publication-sample-count")]
+    [InlineData("first-viewport-publication-trial-maximum")]
+    [InlineData("first-viewport-publication-concatenation")]
+    [InlineData("first-viewport-publication-aggregate-maximum")]
+    [InlineData("first-viewport-publication-budget")]
+    [InlineData("first-viewport-publication-overbudget")]
     [InlineData("first-viewport-trial-complete")]
     [InlineData("first-viewport-concatenation")]
     [InlineData("first-viewport-pooled-p95")]
@@ -1350,6 +1356,30 @@ public sealed class PerformanceExternalGateFixtureTests
                     JsonNode viewportTrial = report["firstUsableViewport"]![0]!["trials"]![0]!;
                     viewportTrial["p95Milliseconds"] =
                         viewportTrial["p95Milliseconds"]!.GetValue<double>() + 1;
+                    break;
+                case "first-viewport-publication-sample-count":
+                    report["firstUsableViewport"]![0]!["trials"]![0]!["publicationSamplesMilliseconds"]!
+                        .AsArray().RemoveAt(99);
+                    break;
+                case "first-viewport-publication-trial-maximum":
+                    report["firstUsableViewport"]![0]!["trials"]![0]!["publicationMaximumMilliseconds"] = 1.25;
+                    break;
+                case "first-viewport-publication-concatenation":
+                    report["firstUsableViewport"]![0]!["publicationSamplesMilliseconds"]![0] = 1.25;
+                    break;
+                case "first-viewport-publication-aggregate-maximum":
+                    report["firstUsableViewport"]![0]!["publicationMaximumMilliseconds"] = 1.25;
+                    break;
+                case "first-viewport-publication-budget":
+                    report["firstUsableViewport"]![0]!["publicationBudgetMilliseconds"] = 3;
+                    break;
+                case "first-viewport-publication-overbudget":
+                    JsonNode publicationViewport = report["firstUsableViewport"]![0]!;
+                    JsonNode publicationTrial = publicationViewport["trials"]![0]!;
+                    publicationTrial["publicationSamplesMilliseconds"]![0] = 2.5;
+                    publicationTrial["publicationMaximumMilliseconds"] = 2.5;
+                    publicationViewport["publicationSamplesMilliseconds"]![0] = 2.5;
+                    publicationViewport["publicationMaximumMilliseconds"] = 2.5;
                     break;
                 case "first-viewport-trial-complete":
                     report["firstUsableViewport"]![0]!["trials"]![0]!["complete"] = false;
@@ -2699,7 +2729,10 @@ public sealed class PerformanceExternalGateFixtureTests
                             StartedUtc = trialStartedUtc,
                             CompletedUtc = trialStartedUtc.AddMilliseconds(1),
                             SettlingElapsedMilliseconds = measurement,
+                            SettlingPublicationMilliseconds = 1,
                             SamplesMilliseconds = Enumerable.Repeat(measurement, 100).ToList(),
+                            PublicationSamplesMilliseconds = Enumerable.Repeat(1d, 100).ToList(),
+                            PublicationMaximumMilliseconds = 1,
                             P95Milliseconds = measurement,
                             Gen0Collections = 0,
                             Gen1Collections = 0,
@@ -2784,6 +2817,10 @@ public sealed class PerformanceExternalGateFixtureTests
                         Trials = trials,
                         SamplesMilliseconds = pooledSamples,
                         P95Milliseconds = PerformanceStatistics.Percentile(pooledSamples, 0.95),
+                        PublicationSamplesMilliseconds = Enumerable.Repeat(1d, pooledSamples.Count).ToList(),
+                        PublicationMaximumMilliseconds = 1,
+                        PublicationBudgetMilliseconds =
+                            PerformanceMeasurementContract.UiPublicationMaximumBudgetMilliseconds,
                         RegressionP95Milliseconds = regressionP95,
                         RegressionDispersionPercent = dispersion,
                         TheilSenSlopeMillisecondsPerGlobalOrdinal = slope,

@@ -615,6 +615,13 @@ public sealed class PerformanceRegressionEvaluatorTests
     [InlineData("viewport-allocation")]
     [InlineData("viewport-trial-p95")]
     [InlineData("viewport-flattened")]
+    [InlineData("viewport-publication-count")]
+    [InlineData("viewport-publication-settling")]
+    [InlineData("viewport-publication-trial-maximum")]
+    [InlineData("viewport-publication-flattened")]
+    [InlineData("viewport-publication-aggregate-maximum")]
+    [InlineData("viewport-publication-budget")]
+    [InlineData("viewport-publication-overbudget")]
     [InlineData("viewport-regression")]
     [InlineData("viewport-dispersion")]
     [InlineData("viewport-dispersion-derived")]
@@ -1069,6 +1076,12 @@ public sealed class PerformanceRegressionEvaluatorTests
         List<double> flattenedSamples = trials
             .SelectMany(static trial => trial.SamplesMilliseconds)
             .ToList();
+        List<double> publicationSamples = trials
+            .SelectMany(static trial => trial.PublicationSamplesMilliseconds)
+            .ToList();
+        if (mutate && mutation == "viewport-publication-flattened")
+            publicationSamples[0] += 0.25;
+        double publicationMaximum = publicationSamples.Max();
         if (mutate && mutation == "viewport-flattened")
             flattenedSamples[0] += 1;
 
@@ -1150,6 +1163,14 @@ public sealed class PerformanceRegressionEvaluatorTests
             Trials = trials,
             SamplesMilliseconds = flattenedSamples,
             P95Milliseconds = pooledP95,
+            PublicationSamplesMilliseconds = publicationSamples,
+            PublicationMaximumMilliseconds = mutate && mutation == "viewport-publication-aggregate-maximum"
+                ? publicationMaximum + 0.25
+                : publicationMaximum,
+            PublicationBudgetMilliseconds =
+                mutate && mutation == "viewport-publication-budget"
+                    ? 3
+                    : PerformanceMeasurementContract.UiPublicationMaximumBudgetMilliseconds,
             RegressionP95Milliseconds = mutation == "viewport-regression" && mutate
                 ? regressionP95 + 1
                 : regressionP95,
@@ -1173,7 +1194,9 @@ public sealed class PerformanceRegressionEvaluatorTests
                 ? !stationarityPassed
                 : stationarityPassed,
             BudgetMilliseconds = budget,
-            Passed = pooledP95 <= budget && stationarityPassed,
+            Passed = pooledP95 <= budget && stationarityPassed &&
+                publicationMaximum <=
+                    PerformanceMeasurementContract.UiPublicationMaximumBudgetMilliseconds,
         };
     }
 
@@ -1234,9 +1257,19 @@ public sealed class PerformanceRegressionEvaluatorTests
             SettlingElapsedMilliseconds = mutateMeasuredFirst && mutation == "viewport-settling"
                 ? -1
                 : 1,
+            SettlingPublicationMilliseconds = mutateMeasuredFirst &&
+                mutation == "viewport-publication-settling" ? -1 : 1,
             SamplesMilliseconds = Enumerable.Repeat(
                 value,
                 PerformanceMeasurementContract.ReleaseFirstViewportIterations).ToList(),
+            PublicationSamplesMilliseconds = Enumerable.Repeat(
+                mutateMeasuredFirst && mutation == "viewport-publication-overbudget" ? 2.1 : 1d,
+                mutateMeasuredFirst && mutation == "viewport-publication-count"
+                    ? PerformanceMeasurementContract.ReleaseFirstViewportIterations - 1
+                    : PerformanceMeasurementContract.ReleaseFirstViewportIterations).ToList(),
+            PublicationMaximumMilliseconds = mutateMeasuredFirst &&
+                mutation == "viewport-publication-trial-maximum" ? 1.25 :
+                mutateMeasuredFirst && mutation == "viewport-publication-overbudget" ? 2.1 : 1,
             P95Milliseconds = mutateMeasuredFirst && mutation == "viewport-trial-p95"
                 ? value + 1
                 : value,

@@ -277,6 +277,12 @@ internal sealed class PerformanceWindow : Window
             List<double> samples = scenario.Trials
                 .SelectMany(static trial => trial.SamplesMilliseconds)
                 .ToList();
+            List<double> publicationSamples = scenario.Trials
+                .SelectMany(static trial => trial.PublicationSamplesMilliseconds)
+                .ToList();
+            double publicationMaximum = publicationSamples.Count == 0
+                ? double.NaN
+                : publicationSamples.Max();
             double p95 = PerformanceStatistics.Percentile(samples, 0.95);
             double regressionP95 = PerformanceStatistics.HodgesLehmann(
                 scenario.Trials.Select(static trial => trial.P95Milliseconds));
@@ -337,8 +343,11 @@ internal sealed class PerformanceWindow : Window
                 scenario.Trials.Count == requiredTrials &&
                 scenario.Trials.All(static trial => trial.Complete) &&
                 samples.Count == checked(_options.FirstViewportIterations * requiredTrials) &&
+                publicationSamples.Count == checked(_options.FirstViewportIterations * requiredTrials) &&
                 samples.All(static value => double.IsFinite(value) && value >= 0) &&
+                publicationSamples.All(static value => double.IsFinite(value) && value >= 0) &&
                 double.IsFinite(p95) &&
+                double.IsFinite(publicationMaximum) &&
                 double.IsFinite(regressionP95);
 
             _report.FirstUsableViewport.Add(new FirstViewportResult
@@ -366,6 +375,10 @@ internal sealed class PerformanceWindow : Window
                 Trials = scenario.Trials,
                 SamplesMilliseconds = samples,
                 P95Milliseconds = p95,
+                PublicationSamplesMilliseconds = publicationSamples,
+                PublicationMaximumMilliseconds = publicationMaximum,
+                PublicationBudgetMilliseconds =
+                    PerformanceMeasurementContract.UiPublicationMaximumBudgetMilliseconds,
                 RegressionP95Milliseconds = regressionP95,
                 RegressionDispersionPercent = regressionDispersion,
                 TheilSenSlopeMillisecondsPerGlobalOrdinal = theilSenSlope,
@@ -377,6 +390,8 @@ internal sealed class PerformanceWindow : Window
                 BudgetMilliseconds = budget,
                 Passed = populationComplete &&
                          p95 <= budget &&
+                         (_options.Quick || publicationMaximum <=
+                             PerformanceMeasurementContract.UiPublicationMaximumBudgetMilliseconds) &&
                          (_options.Quick || stationarityPassed),
             });
         }
@@ -411,18 +426,20 @@ internal sealed class PerformanceWindow : Window
         int gen2Before = GC.CollectionCount(2);
         long allocatedBefore = GC.GetTotalAllocatedBytes(precise: true);
 
-        FirstViewportEvent settling = await PresentFirstViewportAsync(
+        FirstViewportPresentation settling = await PresentFirstViewportAsync(
             engine,
             scenario.Source,
             scenario.SourceBytes);
         var samples = new List<double>(_options.FirstViewportIterations);
+        var publicationSamples = new List<double>(_options.FirstViewportIterations);
         for (int iteration = 0; iteration < _options.FirstViewportIterations; iteration++)
         {
-            FirstViewportEvent presented = await PresentFirstViewportAsync(
+            FirstViewportPresentation presented = await PresentFirstViewportAsync(
                 engine,
                 scenario.Source,
                 scenario.SourceBytes);
-            samples.Add(presented.ElapsedMilliseconds);
+            samples.Add(presented.FirstViewport.ElapsedMilliseconds);
+            publicationSamples.Add(presented.PublicationMilliseconds);
         }
 
         long allocatedBytes = GC.GetTotalAllocatedBytes(precise: true) - allocatedBefore;
@@ -453,9 +470,13 @@ internal sealed class PerformanceWindow : Window
         double trialP95 = PerformanceStatistics.Percentile(samples, 0.95);
         DateTimeOffset completedUtc = _utcClock.GetUtcNow();
         bool complete = samples.Count == _options.FirstViewportIterations &&
+            publicationSamples.Count == _options.FirstViewportIterations &&
             samples.All(static value => double.IsFinite(value) && value >= 0) &&
-            double.IsFinite(settling.ElapsedMilliseconds) &&
-            settling.ElapsedMilliseconds >= 0 &&
+            publicationSamples.All(static value => double.IsFinite(value) && value >= 0) &&
+            double.IsFinite(settling.FirstViewport.ElapsedMilliseconds) &&
+            settling.FirstViewport.ElapsedMilliseconds >= 0 &&
+            double.IsFinite(settling.PublicationMilliseconds) &&
+            settling.PublicationMilliseconds >= 0 &&
             double.IsFinite(trialP95) &&
             allocatedBytes >= 0 &&
             gen0Collections >= 0 &&
@@ -474,8 +495,13 @@ internal sealed class PerformanceWindow : Window
             SchedulePosition = schedulePosition,
             StartedUtc = startedUtc,
             CompletedUtc = completedUtc,
-            SettlingElapsedMilliseconds = settling.ElapsedMilliseconds,
+            SettlingElapsedMilliseconds = settling.FirstViewport.ElapsedMilliseconds,
+            SettlingPublicationMilliseconds = settling.PublicationMilliseconds,
             SamplesMilliseconds = samples,
+            PublicationSamplesMilliseconds = publicationSamples,
+            PublicationMaximumMilliseconds = publicationSamples.Count == 0
+                ? double.NaN
+                : publicationSamples.Max(),
             P95Milliseconds = trialP95,
             Gen0Collections = gen0Collections,
             Gen1Collections = gen1Collections,
@@ -502,7 +528,11 @@ internal sealed class PerformanceWindow : Window
             _ => throw new UnreachableException(),
         };
 
-    private async Task<FirstViewportEvent> PresentFirstViewportAsync(
+    private readonly record struct FirstViewportPresentation(
+        FirstViewportEvent FirstViewport,
+        double PublicationMilliseconds);
+
+    private async Task<FirstViewportPresentation> PresentFirstViewportAsync(
         MarkdownEngine engine,
         string source,
         int sourceBytes)
@@ -531,8 +561,20 @@ internal sealed class PerformanceWindow : Window
                 sequence,
                 sourceBytes,
                 ViewportTimeout);
+            MarkdownPipelineTimingSnapshot timing = renderer.GetLastPipelineTimingSnapshot();
+            if (timing.Generation != presented.Generation ||
+                timing.SourceUtf16Bytes != sourceBytes ||
+                timing.PublicationStartedTimestamp <= 0 ||
+                timing.PublicationEndedTimestamp < timing.PublicationStartedTimestamp)
+            {
+                throw new InvalidDataException(
+                    "The first-viewport event did not match a complete UI publication.");
+            }
+            double publicationMilliseconds = Stopwatch.GetElapsedTime(
+                timing.PublicationStartedTimestamp,
+                timing.PublicationEndedTimestamp).TotalMilliseconds;
             await WaitForCompositionFramesAsync(2);
-            return presented;
+            return new FirstViewportPresentation(presented, publicationMilliseconds);
         }
         finally
         {
@@ -1517,7 +1559,7 @@ internal sealed class PerformanceWindow : Window
                 _report.FirstUsableViewport))
         {
             _report.Failures.Add(
-                "First-viewport cache-disabled/cache-hit evidence violated its Williams schedule, raw trial, pinned-thread, cache-proof, stationarity, or absolute-budget contract.");
+                "First-viewport cache-disabled/cache-hit evidence violated its Williams schedule, raw trial, pinned-thread, cache-proof, stationarity, UI-publication, or absolute-budget contract.");
         }
 
         if (!IsScrollResultCompleteAndPassing())

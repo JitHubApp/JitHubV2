@@ -464,6 +464,7 @@ internal static class PerformanceReleaseEvidenceValidator
                     result.WarmupTrials is null ||
                     result.Trials is null ||
                     result.SamplesMilliseconds is null ||
+                    result.PublicationSamplesMilliseconds is null ||
                     result.WarmupTrials.Count != warmupTrialCount ||
                     result.Trials.Count != measuredTrialCount)
                 {
@@ -516,6 +517,12 @@ internal static class PerformanceReleaseEvidenceValidator
                 double[] flattenedSamples = result.Trials
                     .SelectMany(static trial => trial.SamplesMilliseconds)
                     .ToArray();
+                double[] publicationSamples = result.Trials
+                    .SelectMany(static trial => trial.PublicationSamplesMilliseconds)
+                    .ToArray();
+                double publicationMaximum = publicationSamples.Length == 0
+                    ? double.NaN
+                    : publicationSamples.Max();
                 double pooledP95 = PerformanceStatistics.Percentile(flattenedSamples, 0.95);
                 double regressionP95 = PerformanceStatistics.HodgesLehmann(
                     result.Trials.Select(static trial => trial.P95Milliseconds));
@@ -567,15 +574,25 @@ internal static class PerformanceReleaseEvidenceValidator
                     result.WarmupTrials.All(static trial => trial.Complete) &&
                     result.Trials.All(static trial => trial.Complete) &&
                     flattenedSamples.Length == checked(iterationsPerTrial * measuredTrialCount) &&
+                    publicationSamples.Length == checked(iterationsPerTrial * measuredTrialCount) &&
                     flattenedSamples.All(IsFiniteNonNegative) &&
+                    publicationSamples.All(IsFiniteNonNegative) &&
                     IsFiniteNonNegative(pooledP95) &&
+                    IsFiniteNonNegative(publicationMaximum) &&
                     IsFiniteNonNegative(regressionP95);
                 bool expectedPassed = populationComplete &&
                     pooledP95 <= expectedBudget &&
+                    (quick || publicationMaximum <=
+                        PerformanceMeasurementContract.UiPublicationMaximumBudgetMilliseconds) &&
                     (quick || stationarityPassed);
 
                 if (result.SamplesMilliseconds.Count != flattenedSamples.Length ||
                     !result.SamplesMilliseconds.SequenceEqual(flattenedSamples) ||
+                    result.PublicationSamplesMilliseconds.Count != publicationSamples.Length ||
+                    !result.PublicationSamplesMilliseconds.SequenceEqual(publicationSamples) ||
+                    !NearlyEqual(result.PublicationMaximumMilliseconds, publicationMaximum) ||
+                    result.PublicationBudgetMilliseconds !=
+                        PerformanceMeasurementContract.UiPublicationMaximumBudgetMilliseconds ||
                     !NearlyEqual(result.P95Milliseconds, pooledP95) ||
                     !NearlyEqual(result.RegressionP95Milliseconds, regressionP95) ||
                     !NearlyEqual(result.RegressionDispersionPercent, dispersion) ||
@@ -611,7 +628,8 @@ internal static class PerformanceReleaseEvidenceValidator
         int scheduleRow,
         int schedulePosition)
     {
-        if (trial is null || trial.SamplesMilliseconds is null)
+        if (trial is null || trial.SamplesMilliseconds is null ||
+            trial.PublicationSamplesMilliseconds is null)
             return false;
 
         int presentations = checked(iterationsPerTrial + 1);
@@ -637,6 +655,14 @@ internal static class PerformanceReleaseEvidenceValidator
         bool complete =
             trial.SamplesMilliseconds.Count == iterationsPerTrial &&
             trial.SamplesMilliseconds.All(IsFiniteNonNegative) &&
+            trial.PublicationSamplesMilliseconds.Count == iterationsPerTrial &&
+            trial.PublicationSamplesMilliseconds.All(IsFiniteNonNegative) &&
+            IsFiniteNonNegative(trial.SettlingPublicationMilliseconds) &&
+            NearlyEqual(
+                trial.PublicationMaximumMilliseconds,
+                trial.PublicationSamplesMilliseconds.Count == 0
+                    ? double.NaN
+                    : trial.PublicationSamplesMilliseconds.Max()) &&
             IsFiniteNonNegative(trial.SettlingElapsedMilliseconds) &&
             IsFiniteNonNegative(p95) &&
             trial.StartedUtc != default &&
