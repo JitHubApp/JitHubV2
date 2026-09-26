@@ -1049,6 +1049,25 @@ complete before claiming this plan or the 1.0 performance goal is met.
   current-head live-audit gate only; dynamic GitHub/CDN delivery means it is
   not the same-byte offline Edge oracle, and the qualified counterbalanced
   release benchmark remains queued and unverified.
+- The same run still has four individual full-page ratios above 1.10, which
+  the aggregate pass does not waive: ranks 101 (`immich-app/immich`, 1.371),
+  102 (`jaywcjlove/awesome-mac`, 1.406), 135
+  (`hacksider/Deep-Live-Cam`, 1.106), and 164
+  (`PanJiaChen/vue-element-admin`, 1.171). Rank 102 spent its 20-second
+  visible-image wait on an OpenCollective/Camo SVG whose two native fetches
+  returned no bytes after about 31 seconds each; Edge also recorded that
+  image broken. Rank 135 fetched a valid 11.4-MB GIF in 2.8 seconds while
+  a separate Camo badge was broken in both clients. Rank 164 waited 4.8
+  seconds at its first tile while a Camo SVG fetch took 5.5 seconds and
+  returned no bytes; Edge recorded that and another badge broken. These are
+  live upstream-delivery contributions, not same-byte client verdicts.
+  Rank 101 had seven successful fetches of at most 162 ms, but recorded
+  1,305 ms of CPU raster preparation and a 4.1-second first-tile wait on
+  the hosted runner. Three exact pinned local replays had 37–72 ms CPU
+  preparation, no visible-image wait, 100% text, zero unavailable images,
+  and full-page ratios 0.27–0.39. That large variance remains unexplained;
+  the same-machine, same-byte Edge/client replay must isolate it before
+  declaring the individual outlier resolved.
 - Open: oversized raster tiling and session-owned SVG/document/GPU preparation
   caches.
 - Open: defer Math/Mermaid scenes and ahead-of-viewport highlighting without
