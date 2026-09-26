@@ -227,6 +227,15 @@ ClientBin/
 *.jfm
 *.pfx
 *.publishsettings
+*.p12
+*.pem
+*.key
+*.snk
+.env
+.env.*
+!.env.example
+*.tfstate
+*.tfstate.*
 orleans.codegen.cs
 
 # Including strong name files can present a security risk
