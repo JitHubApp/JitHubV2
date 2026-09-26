@@ -1041,6 +1041,14 @@ complete before claiming this plan or the 1.0 performance goal is met.
   automation harness builds without warnings and three post-change pinned
   replays pass. This does not convert the failed shard into a pass; a new-head
   full 500/500 audit is still required.
+- Verified on PR #99 head `de6d99b`: the consolidated live top-500 README
+  audit passed 500/500 with zero failed cases and no valid unavailable image
+  reported. Native/Edge live first-render and full-traversal p95 ratios were
+  0.420 and 0.339. Preview validation, code viewer, website, and the
+  x86/x64/ARM64 NativeAOT jobs also passed on this head. This closes the
+  current-head live-audit gate only; dynamic GitHub/CDN delivery means it is
+  not the same-byte offline Edge oracle, and the qualified counterbalanced
+  release benchmark remains queued and unverified.
 - Open: oversized raster tiling and session-owned SVG/document/GPU preparation
   caches.
 - Open: defer Math/Mermaid scenes and ahead-of-viewport highlighting without
