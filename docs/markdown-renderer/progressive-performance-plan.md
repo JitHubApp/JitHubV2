@@ -1093,6 +1093,29 @@ complete before claiming this plan or the 1.0 performance goal is met.
   erase the production README publication gap above. Existing schema-10
   baselines cannot qualify a schema-11 candidate; a fresh, fully
   counterbalanced reference/candidate run is still required.
+- Verified on PR #99 head `610866f`: the consolidated live top-500 audit
+  (Actions run `36243722238`) passed 500/500 with zero failed cases and no
+  valid image marked unavailable. Native/Edge live first-render and full-page
+  p95 ratios were 0.460 and 0.351. The same head passed preview validation,
+  including schema-11 gate tests and the unchanged package compliance checks,
+  plus x86/x64/ARM64 NativeAOT publish jobs. This is current-head live-network
+  correctness evidence, not a same-byte offline Edge comparison, a physical
+  architecture/device matrix, or a qualified counterbalanced release result.
+  Three individual live ratios remain above 1.10: rank 102
+  (`jaywcjlove/awesome-mac`, 1.487 full page) spent 20 seconds waiting for an
+  OpenCollective/Camo SVG that returned no bytes in two roughly 31-second
+  native attempts and was also broken in Edge; rank 295
+  (`bradtraversy/design-resources-for-developers`, 1.452 first render) used
+  4.84 seconds of native first-render process CPU, with 0.924 seconds parse,
+  2.862 seconds setup, and 2.079 seconds layout wall phases; rank 476
+  (`multica-ai/multica`, 1.863 full page) waited 4.34 seconds for a visible
+  image on tile zero although its eight source resolutions each completed in
+  at most 403 ms and aggregate raster/scene admission was 218/3 ms. The
+  latter two are unresolved native-work suspects, not network waivers.
+  Same-machine, identical-byte replay is required before attributing or
+  clearing any of these individual outliers. The two required interactive
+  benchmark jobs remain queued for the `jithub-interactive` runner, whose
+  availability this task cannot inspect; no release performance pass is claimed.
 - Open: oversized raster tiling and session-owned SVG/document/GPU preparation
   caches.
 - Open: defer Math/Mermaid scenes and ahead-of-viewport highlighting without
