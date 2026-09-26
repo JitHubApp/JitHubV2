@@ -1154,6 +1154,21 @@ complete before claiming this plan or the 1.0 performance goal is met.
   indicate reduced setup work, not a qualified counterbalanced release result
   or resolution of the hosted 2.862-second outlier; same-byte and device/theme
   gates remain open.
+- Locally verified, pending current-head CI: scoped renderer/platform resources
+  are now captured once per synchronous snapshot using the existing
+  relevant-key graph traversal; application resources remain finite point
+  lookups, so the large application/XamlControlsResources key projection is not
+  enumerated. The superseded per-key graph resolver and its test-only wrapper
+  were removed, with precedence, theme-fallback, ambient-value, and cycle
+  assertions retargeted to the active capture path. A pinned rank-295 Release
+  replay measured 64.427 ms theme snapshot versus 168.480 ms on the preceding
+  implementation, with 100% text, 99.64% structure, zero unavailable images,
+  and a byte-identical first native tile. This single noisy local comparison
+  is not a counterbalanced release result. All 415 GitHub renderer and 3,132
+  app tests passed; the lean Core+WinUI packages measured 527,990 compressed
+  and 1,255,424 managed bytes, within unchanged 525 KiB/1.2 MiB gates.
+  Publication remained 7.553 ms in this replay, above the separate 2 ms gate;
+  same-byte Edge, full top-500, and physical matrix gates remain open.
 - Open: oversized raster tiling and session-owned SVG/document/GPU preparation
   caches.
 - Open: defer Math/Mermaid scenes and ahead-of-viewport highlighting without

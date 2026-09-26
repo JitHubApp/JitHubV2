@@ -23,7 +23,7 @@ public sealed class ThemeSnapshotContractTests
         resources.Themes["Dark"] = selectedTheme;
         resources.Merged.Add(ordinaryMerged);
 
-        bool found = ThemeResolver.TryResolveFromDictionaryForTesting(
+        bool found = TryResolveFromDictionaryForTesting(
             resources,
             "Dark",
             resourceKey,
@@ -49,7 +49,7 @@ public sealed class ThemeSnapshotContractTests
         defaultTheme.Values[resourceKey] = "default-theme";
         resources.Themes["Default"] = defaultTheme;
 
-        bool found = ThemeResolver.TryResolveFromDictionaryForTesting(
+        bool found = TryResolveFromDictionaryForTesting(
             resources,
             "Dark",
             resourceKey,
@@ -74,7 +74,7 @@ public sealed class ThemeSnapshotContractTests
         defaultTheme.Values[resourceKey] = "default-theme";
         resources.Themes["Default"] = defaultTheme;
 
-        bool found = ThemeResolver.TryResolveFromDictionaryForTesting(
+        bool found = TryResolveFromDictionaryForTesting(
             resources,
             "Dark",
             resourceKey,
@@ -97,7 +97,7 @@ public sealed class ThemeSnapshotContractTests
         defaultTheme.Values[resourceKey] = "default-theme";
         resources.Themes["Default"] = defaultTheme;
 
-        bool found = ThemeResolver.TryResolveFromDictionaryForTesting(
+        bool found = TryResolveFromDictionaryForTesting(
             resources,
             "Dark",
             resourceKey,
@@ -142,7 +142,7 @@ public sealed class ThemeSnapshotContractTests
         resources.Themes["HighContrast"] = new TestResourceDictionary();
         Assert.False(TryResolve(out _));
 
-        bool TryResolve(out object value) => ThemeResolver.TryResolveFromDictionaryForTesting(
+        bool TryResolve(out object value) => TryResolveFromDictionaryForTesting(
             resources,
             ["HighContrast", "Dark", "Default"],
             resourceKey,
@@ -166,7 +166,7 @@ public sealed class ThemeSnapshotContractTests
         defaultTheme.Values[resourceKey] = "default-theme";
         resources.Themes["Default"] = defaultTheme;
 
-        bool found = ThemeResolver.TryResolveFromDictionaryForTesting(
+        bool found = TryResolveFromDictionaryForTesting(
             resources,
             "Dark",
             resourceKey,
@@ -200,7 +200,7 @@ public sealed class ThemeSnapshotContractTests
         static bool TryResolve(
             TestResourceDictionary root,
             string key,
-            out object value) => ThemeResolver.TryResolveFromDictionaryForTesting(
+            out object value) => TryResolveFromDictionaryForTesting(
             root,
             "Light",
             key,
@@ -231,7 +231,7 @@ public sealed class ThemeSnapshotContractTests
         Assert.Equal("scoped-light", scoped);
 
         static bool TryResolveUnrestricted(TestResourceDictionary root, out object value)
-            => ThemeResolver.TryResolveFromDictionaryForTesting(
+            => TryResolveFromDictionaryForTesting(
                 root,
                 "Light",
                 resourceKey,
@@ -243,12 +243,11 @@ public sealed class ThemeSnapshotContractTests
                 out value);
 
         static bool TryResolveExplicit(TestResourceDictionary root, out object value)
-            => ThemeResolver.TryResolveExplicitFromDictionaryForTesting(
+            => TryResolveExplicitFromDictionaryForTesting(
                 root,
                 "Light",
                 resourceKey,
                 static (dictionary, theme) => dictionary.Themes.GetValueOrDefault(theme),
-                static (dictionary, key) => dictionary.Values.ContainsKey(key),
                 static (TestResourceDictionary dictionary, string key, out object result) =>
                     dictionary.TryGetEffectiveValue(key, out result),
                 static dictionary => dictionary.Merged.Count,
@@ -418,28 +417,8 @@ public sealed class ThemeSnapshotContractTests
         var ancestor = new TestResourceDictionary();
         ancestor.Values[resourceKey] = "ancestor";
         Dictionary<string, object> captured = CaptureResources(child, ancestor);
-        var visited = new HashSet<TestResourceDictionary>(ReferenceEqualityComparer.Instance);
-
-        Assert.False(TryResolveExplicit(child, visited, out _));
-        Assert.True(TryResolveExplicit(ancestor, visited, out object resolved));
-        Assert.Equal("ancestor", resolved);
-        Assert.Equal(resolved, captured[resourceKey]);
-
-        static bool TryResolveExplicit(
-            TestResourceDictionary scope,
-            HashSet<TestResourceDictionary> visited,
-            out object value) => ResourceDictionaryGraphResolver.TryResolveExplicit(
-                scope,
-                ["Dark", "Default"],
-                resourceKey,
-                visited,
-                static (dictionary, key) => dictionary.Themes.GetValueOrDefault(key),
-                static (dictionary, key) => dictionary.Values.ContainsKey(key),
-                static (TestResourceDictionary dictionary, string key, out object result) =>
-                    dictionary.TryGetEffectiveValue(key, out result),
-                static dictionary => dictionary.Merged.Count,
-                static (dictionary, index) => dictionary.Merged[index],
-                out value);
+        Assert.DoesNotContain(resourceKey, CaptureResources(child).Keys);
+        Assert.Equal("ancestor", captured[resourceKey]);
     }
 
     [Theory]
@@ -947,6 +926,85 @@ public sealed class ThemeSnapshotContractTests
             textScaleFactor,
             styleSheet,
             minimumInteractiveSize);
+    }
+
+    private static bool TryResolveFromDictionaryForTesting(
+        TestResourceDictionary resources,
+        string themeKey,
+        string resourceKey,
+        Func<TestResourceDictionary, string, TestResourceDictionary?> getThemeDictionary,
+        TryGetGraphResource<TestResourceDictionary> tryGetLocalValue,
+        Func<TestResourceDictionary, int> getMergedCount,
+        Func<TestResourceDictionary, int, TestResourceDictionary> getMergedAt,
+        out object value)
+        => TryResolveFromDictionaryForTesting(
+            resources,
+            themeKey == "Default" ? ["Default"] : [themeKey, "Default"],
+            resourceKey,
+            getThemeDictionary,
+            tryGetLocalValue,
+            getMergedCount,
+            getMergedAt,
+            out value);
+
+    private static bool TryResolveFromDictionaryForTesting(
+        TestResourceDictionary resources,
+        IReadOnlyList<string> themeKeys,
+        string resourceKey,
+        Func<TestResourceDictionary, string, TestResourceDictionary?> getThemeDictionary,
+        TryGetGraphResource<TestResourceDictionary> tryGetLocalValue,
+        Func<TestResourceDictionary, int> getMergedCount,
+        Func<TestResourceDictionary, int, TestResourceDictionary> getMergedAt,
+        out object value)
+        => CaptureSingleValue(
+            resources, themeKeys, resourceKey, getThemeDictionary,
+            static dictionary => EnumerateEffectiveKeys(dictionary),
+            tryGetLocalValue, getMergedCount, getMergedAt, out value);
+
+    private static bool TryResolveExplicitFromDictionaryForTesting(
+        TestResourceDictionary resources,
+        string themeKey,
+        string resourceKey,
+        Func<TestResourceDictionary, string, TestResourceDictionary?> getThemeDictionary,
+        TryGetGraphResource<TestResourceDictionary> tryGetLocalValue,
+        Func<TestResourceDictionary, int> getMergedCount,
+        Func<TestResourceDictionary, int, TestResourceDictionary> getMergedAt,
+        out object value)
+        => CaptureSingleValue(
+            resources,
+            themeKey == "Default" ? ["Default"] : [themeKey, "Default"],
+            resourceKey, getThemeDictionary,
+            static dictionary => dictionary.Values.Keys,
+            tryGetLocalValue, getMergedCount, getMergedAt, out value);
+
+    private static bool CaptureSingleValue(
+        TestResourceDictionary resources,
+        IReadOnlyList<string> themeKeys,
+        string resourceKey,
+        Func<TestResourceDictionary, string, TestResourceDictionary?> getThemeDictionary,
+        Func<TestResourceDictionary, IEnumerable<string>> enumerateLocalKeys,
+        TryGetGraphResource<TestResourceDictionary> tryGetLocalValue,
+        Func<TestResourceDictionary, int> getMergedCount,
+        Func<TestResourceDictionary, int, TestResourceDictionary> getMergedAt,
+        out object value)
+    {
+        var values = new Dictionary<string, object>(StringComparer.Ordinal);
+        ResourceDictionaryGraphResolver.CaptureResolvedValues(
+            resources, themeKeys,
+            new HashSet<TestResourceDictionary>(ReferenceEqualityComparer.Instance),
+            getThemeDictionary, enumerateLocalKeys, tryGetLocalValue,
+            getMergedCount, getMergedAt,
+            key => key == resourceKey,
+            values);
+        return values.TryGetValue(resourceKey, out value!);
+    }
+
+    private static IEnumerable<string> EnumerateEffectiveKeys(TestResourceDictionary dictionary)
+    {
+        foreach (string key in dictionary.Values.Keys)
+            yield return key;
+        foreach (string key in dictionary.AmbientValues.Keys)
+            yield return key;
     }
 
     private static Dictionary<string, object> CaptureResources(

@@ -8,9 +8,9 @@ internal delegate bool TryGetGraphResource<TNode>(TNode node, string resourceKey
     where TNode : class;
 
 /// <summary>
-/// Resolves a resource from a local/merged/theme dictionary graph while visiting
-/// each dictionary at most once. The generic graph core keeps the WinUI adapter
-/// small and makes cyclic precedence behavior testable without activating XAML.
+/// Captures explicit resources from a local/merged/theme dictionary graph while
+/// visiting each dictionary at most once. The generic graph core keeps the WinUI
+/// adapter small and makes cyclic precedence testable without activating XAML.
 /// </summary>
 internal static class ResourceDictionaryGraphResolver
 {
@@ -58,128 +58,6 @@ internal static class ResourceDictionaryGraphResolver
             getMergedAt,
             includeKey,
             destination);
-    }
-
-    internal static bool TryResolve<TNode>(
-        TNode resources,
-        IReadOnlyList<string> themeKeys,
-        string resourceKey,
-        HashSet<TNode> visited,
-        Func<TNode, string, TNode?> getThemeDictionary,
-        TryGetGraphResource<TNode> tryGetLocalValue,
-        Func<TNode, int> getMergedCount,
-        Func<TNode, int, TNode> getMergedAt,
-        out object value)
-        where TNode : class
-        => TryResolveCore(
-            resources,
-            themeKeys,
-            resourceKey,
-            visited,
-            getThemeDictionary,
-            hasExplicitLocalValue: null,
-            tryGetLocalValue,
-            getMergedCount,
-            getMergedAt,
-            out value);
-
-    /// <summary>
-    /// Resolves only values explicitly declared by each dictionary node. This
-    /// prevents projections such as WinUI ResourceDictionary.TryGetValue from
-    /// reporting an ambient application fallback as though it belonged to a
-    /// control- or ancestor-local dictionary.
-    /// </summary>
-    internal static bool TryResolveExplicit<TNode>(
-        TNode resources,
-        IReadOnlyList<string> themeKeys,
-        string resourceKey,
-        HashSet<TNode> visited,
-        Func<TNode, string, TNode?> getThemeDictionary,
-        Func<TNode, string, bool> hasExplicitLocalValue,
-        TryGetGraphResource<TNode> tryGetLocalValue,
-        Func<TNode, int> getMergedCount,
-        Func<TNode, int, TNode> getMergedAt,
-        out object value)
-        where TNode : class
-        => TryResolveCore(
-            resources,
-            themeKeys,
-            resourceKey,
-            visited,
-            getThemeDictionary,
-            hasExplicitLocalValue,
-            tryGetLocalValue,
-            getMergedCount,
-            getMergedAt,
-            out value);
-
-    private static bool TryResolveCore<TNode>(
-        TNode resources,
-        IReadOnlyList<string> themeKeys,
-        string resourceKey,
-        HashSet<TNode> visited,
-        Func<TNode, string, TNode?> getThemeDictionary,
-        Func<TNode, string, bool>? hasExplicitLocalValue,
-        TryGetGraphResource<TNode> tryGetLocalValue,
-        Func<TNode, int> getMergedCount,
-        Func<TNode, int, TNode> getMergedAt,
-        out object value)
-        where TNode : class
-    {
-        if (!visited.Add(resources))
-        {
-            value = null!;
-            return false;
-        }
-
-        if ((hasExplicitLocalValue is null || hasExplicitLocalValue(resources, resourceKey)) &&
-            tryGetLocalValue(resources, resourceKey, out value))
-            return true;
-
-        for (int i = getMergedCount(resources) - 1; i >= 0; i--)
-        {
-            if (TryResolveCore(
-                    getMergedAt(resources, i),
-                    themeKeys,
-                    resourceKey,
-                    visited,
-                    getThemeDictionary,
-                    hasExplicitLocalValue,
-                    tryGetLocalValue,
-                    getMergedCount,
-                    getMergedAt,
-                    out value))
-            {
-                return true;
-            }
-        }
-
-        // WinUI selects exactly one theme dictionary for a ResourceDictionary.
-        // Default is a dictionary-selection fallback, not a per-key fallback
-        // after an existing Light/Dark/HighContrast dictionary misses the key.
-        TNode? themeDictionary = SelectThemeDictionary(
-            resources,
-            themeKeys,
-            getThemeDictionary);
-
-        if (themeDictionary is not null &&
-            TryResolveCore(
-                themeDictionary,
-                themeKeys,
-                resourceKey,
-                visited,
-                getThemeDictionary,
-                hasExplicitLocalValue,
-                tryGetLocalValue,
-                getMergedCount,
-                getMergedAt,
-                out value))
-        {
-            return true;
-        }
-
-        value = null!;
-        return false;
     }
 
     private static void CaptureResolvedValuesCore<TNode>(

@@ -62,9 +62,9 @@ internal sealed class ThemeResolver
     private PlatformThemeColors? _platformThemeColors;
     private Dictionary<string, object>? _resolvedResourceValues;
     private HashSet<string>? _missingResourceKeys;
-    // A resolver lives for one synchronous UI-thread snapshot. Values are still
-    // read live; only the host-to-root dictionary ancestry is reused.
-    private ResourceDictionary[]? _scopedResourceDictionaries;
+    // Scoped dictionaries are small and explicit. Capture their relevant
+    // values once per synchronous snapshot; never enumerate the app dictionary.
+    private Dictionary<string, object>? _scopedResourceValues;
 
     internal static IMarkdownSystemThemeProvider? SystemThemeProviderOverride { get; set; }
 
@@ -98,13 +98,12 @@ internal sealed class ThemeResolver
         IReadOnlyCollection<string>? additionalElementKeys = null)
     {
         // ResourceDictionary.Keys is a WinRT projection. Enumerating an app-level
-        // dictionary also projects the keys from every merged dictionary,
-        // including the very large XamlControlsResources graph. A one-time
-        // "discovery" pass can therefore block the UI thread for seconds. Resolve
-        // only the finite keys needed by the active document and memoize those
-        // point lookups for this immutable snapshot instead.
+        // dictionary also projects the very large XamlControlsResources graph and
+        // can block the UI thread for seconds. Capture only scoped dictionaries;
+        // keep app-level resolution to memoized point lookups for finite keys.
         _resolvedResourceValues = new Dictionary<string, object>(StringComparer.Ordinal);
         _missingResourceKeys = new HashSet<string>(StringComparer.Ordinal);
+        _scopedResourceValues = null;
         var overrides = _theme.GetOverridesSnapshot();
         var allKeys = new HashSet<string>(BuiltInElementKeys, StringComparer.Ordinal);
         foreach (string key in overrides.Keys)
@@ -657,30 +656,39 @@ internal sealed class ThemeResolver
 
     private bool TryResolveScopedResourceValue(string resourceKey, out object value)
     {
-        if (_scopedResourceDictionaries is not { } dictionaries)
+        if (_scopedResourceValues is not { } scopedValues)
         {
-            var collected = new List<ResourceDictionary>();
+            scopedValues = new Dictionary<string, object>(StringComparer.Ordinal);
+            // An exceptional or reentrant lookup must not retry the graph walk
+            // for every style property in this same snapshot.
+            _scopedResourceValues = scopedValues;
+            var visited = new HashSet<ResourceDictionary>(ReferenceEqualityComparer.Instance);
+            IReadOnlyList<string> themeKeys = GetThemeDictionaryKeys();
             for (DependencyObject? current = _host; current is not null; current = VisualTreeHelper.GetParent(current))
             {
                 if (current is FrameworkElement element)
-                    collected.Add(element.Resources);
+                {
+                    ResourceDictionaryGraphResolver.CaptureResolvedValues(
+                        element.Resources,
+                        themeKeys,
+                        visited,
+                        static (dictionary, key) =>
+                            dictionary.ThemeDictionaries.TryGetValue(key, out object? selected) &&
+                            selected is ResourceDictionary selectedDictionary
+                                ? selectedDictionary
+                                : null,
+                        EnumerateRelevantResourceKeys,
+                        static (ResourceDictionary dictionary, string key, out object result) =>
+                            dictionary.TryGetValue(key, out result),
+                        static dictionary => dictionary.MergedDictionaries.Count,
+                        static (dictionary, index) => dictionary.MergedDictionaries[index],
+                        IncludeScopedRendererResource,
+                        scopedValues);
+                }
             }
-            dictionaries = collected.ToArray();
-            _scopedResourceDictionaries = dictionaries;
         }
 
-        IReadOnlyList<string> themeKeys = GetThemeDictionaryKeys();
-        var visited = new HashSet<ResourceDictionary>(ReferenceEqualityComparer.Instance);
-        foreach (ResourceDictionary resources in dictionaries)
-        {
-            if (TryResolveExplicitFromDictionary(resources, themeKeys, resourceKey, visited, out value))
-            {
-                return true;
-            }
-        }
-
-        value = null!;
-        return false;
+        return scopedValues.TryGetValue(resourceKey, out value!);
     }
 
     private bool TryResolveExplicitScopedResourceValue(string resourceKey, out object value)
@@ -745,134 +753,6 @@ internal sealed class ThemeResolver
             (false, true) => DarkThemeDictionaryKeys,
             _ => LightThemeDictionaryKeys,
         };
-
-    private static IReadOnlyList<string> CreateThemeDictionaryKeyFallbacks(string themeKey)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(themeKey);
-        return string.Equals(themeKey, "Default", StringComparison.Ordinal)
-            ? ["Default"]
-            : [themeKey, "Default"];
-    }
-
-    internal static bool TryResolveFromDictionaryForTesting<TNode>(
-        TNode resources,
-        string themeKey,
-        string resourceKey,
-        Func<TNode, string, TNode?> getThemeDictionary,
-        TryGetGraphResource<TNode> tryGetLocalValue,
-        Func<TNode, int> getMergedCount,
-        Func<TNode, int, TNode> getMergedAt,
-        out object value)
-        where TNode : class
-        => TryResolveFromDictionaryForTesting(
-            resources,
-            CreateThemeDictionaryKeyFallbacks(themeKey),
-            resourceKey,
-            getThemeDictionary,
-            tryGetLocalValue,
-            getMergedCount,
-            getMergedAt,
-            out value);
-
-    internal static bool TryResolveFromDictionaryForTesting<TNode>(
-        TNode resources,
-        IReadOnlyList<string> themeKeys,
-        string resourceKey,
-        Func<TNode, string, TNode?> getThemeDictionary,
-        TryGetGraphResource<TNode> tryGetLocalValue,
-        Func<TNode, int> getMergedCount,
-        Func<TNode, int, TNode> getMergedAt,
-        out object value)
-        where TNode : class
-    {
-        var visited = new HashSet<TNode>(ReferenceEqualityComparer.Instance);
-        return ResourceDictionaryGraphResolver.TryResolve(
-            resources,
-            themeKeys,
-            resourceKey,
-            visited,
-            getThemeDictionary,
-            tryGetLocalValue,
-            getMergedCount,
-            getMergedAt,
-            out value);
-    }
-
-    internal static bool TryResolveExplicitFromDictionaryForTesting<TNode>(
-        TNode resources,
-        string themeKey,
-        string resourceKey,
-        Func<TNode, string, TNode?> getThemeDictionary,
-        Func<TNode, string, bool> hasExplicitLocalValue,
-        TryGetGraphResource<TNode> tryGetLocalValue,
-        Func<TNode, int> getMergedCount,
-        Func<TNode, int, TNode> getMergedAt,
-        out object value)
-        where TNode : class
-        => TryResolveExplicitFromDictionaryForTesting(
-            resources,
-            CreateThemeDictionaryKeyFallbacks(themeKey),
-            resourceKey,
-            getThemeDictionary,
-            hasExplicitLocalValue,
-            tryGetLocalValue,
-            getMergedCount,
-            getMergedAt,
-            out value);
-
-    internal static bool TryResolveExplicitFromDictionaryForTesting<TNode>(
-        TNode resources,
-        IReadOnlyList<string> themeKeys,
-        string resourceKey,
-        Func<TNode, string, TNode?> getThemeDictionary,
-        Func<TNode, string, bool> hasExplicitLocalValue,
-        TryGetGraphResource<TNode> tryGetLocalValue,
-        Func<TNode, int> getMergedCount,
-        Func<TNode, int, TNode> getMergedAt,
-        out object value)
-        where TNode : class
-    {
-        var visited = new HashSet<TNode>(ReferenceEqualityComparer.Instance);
-        return ResourceDictionaryGraphResolver.TryResolveExplicit(
-            resources,
-            themeKeys,
-            resourceKey,
-            visited,
-            getThemeDictionary,
-            hasExplicitLocalValue,
-            tryGetLocalValue,
-            getMergedCount,
-            getMergedAt,
-            out value);
-    }
-
-    private static bool TryResolveExplicitFromDictionary(
-        ResourceDictionary resources,
-        IReadOnlyList<string> themeKeys,
-        string resourceKey,
-        HashSet<ResourceDictionary> visited,
-        out object value)
-    {
-        return ResourceDictionaryGraphResolver.TryResolveExplicit(
-            resources,
-            themeKeys,
-            resourceKey,
-            visited,
-            static (dictionary, key) =>
-                dictionary.ThemeDictionaries.TryGetValue(key, out object? selected) &&
-                selected is ResourceDictionary selectedDictionary
-                    ? selectedDictionary
-                    : null,
-            static (dictionary, key) => HasExplicitResourceKey(dictionary, key),
-            static (ResourceDictionary dictionary, string key, out object result) =>
-                dictionary.TryGetValue(key, out result),
-            static dictionary => dictionary.MergedDictionaries.Count,
-            static (dictionary, index) => dictionary.MergedDictionaries[index],
-            out value);
-    }
-
-    private static bool HasExplicitResourceKey(ResourceDictionary resources, string resourceKey)
-        => RelevantResourceKeys.ContainsRelevantKey(resources, resourceKey);
 
     internal static bool IsScopedPlatformResourceKey(string key)
         => key is
