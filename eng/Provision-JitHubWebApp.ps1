@@ -72,4 +72,24 @@ if (-not $Deploy) {
 }
 
 Invoke-AzureCli -Arguments @('deployment', 'sub', 'create', '--name', $deploymentName, '--location', $location, '--subscription', $subscriptionId, '--template-file', $template, '--output', 'none') | Out-Null
+
+# Application Insights creates this action group outside the Bicep deployment.
+# Give it the same tags as the group once Azure has materialized it.
+$smartDetectionId = "/subscriptions/$subscriptionId/resourceGroups/$resourceGroupName/providers/Microsoft.Insights/actionGroups/Application Insights Smart Detection"
+$groupTags = Invoke-AzureCli -Arguments @('group', 'show', '--name', $resourceGroupName, '--subscription', $subscriptionId, '--query', 'tags', '--output', 'json') | ConvertFrom-Json
+$tagPairs = @($groupTags.PSObject.Properties | ForEach-Object { '{0}={1}' -f $_.Name, $_.Value })
+$smartDetectionFound = $false
+for ($attempt = 0; $attempt -lt 12; $attempt++) {
+    $existingId = & az resource show --ids $smartDetectionId --subscription $subscriptionId --api-version 2023-01-01 --query id --output tsv 2>$null
+    if ($LASTEXITCODE -eq 0 -and $existingId) {
+        Invoke-AzureCli -Arguments (@('resource', 'tag', '--ids', $smartDetectionId, '--subscription', $subscriptionId, '--tags') + $tagPairs + @('--output', 'none')) | Out-Null
+        $smartDetectionFound = $true
+        break
+    }
+    Start-Sleep -Seconds 5
+}
+if (-not $smartDetectionFound) {
+    throw 'Application Insights Smart Detection action group was not found for tagging after deployment.'
+}
+
 Write-Host 'Production website resources created. Follow docs/production-website-migration.md for the secret, DNS, TLS, OAuth, and release cutover.'
