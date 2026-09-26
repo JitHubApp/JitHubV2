@@ -3,6 +3,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using FlaUI.Core;
@@ -18,6 +19,7 @@ internal static partial class ReadmeAuditProbe
     private const int ViewportWidth = 1000;
     private const int ViewportHeight = 900;
     private const int SlowVisibleImageWaitMilliseconds = 500;
+    private const int UiaOperationTimeoutHResult = unchecked((int)0x80131505);
     private static readonly TimeSpan NativeTraversalTimeout = TimeSpan.FromMinutes(3);
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -1351,38 +1353,55 @@ internal static partial class ReadmeAuditProbe
     {
         string expectedStatus = "path:" + readmePath;
         Stopwatch stopwatch = Stopwatch.StartNew();
+        COMException? lastAutomationTimeout = null;
         while (stopwatch.Elapsed < timeout)
         {
-            AutomationElement? host = window.FindFirstDescendant(cf => cf.ByAutomationId(HostAutomationId));
-            if (host is not null) return;
-            AutomationElement? item = window.FindAllDescendants(cf => cf.ByControlType(ControlType.TreeItem))
-                .FirstOrDefault(element => string.Equals(
-                    element.Properties.ItemStatus.ValueOrDefault,
-                    expectedStatus,
-                    StringComparison.OrdinalIgnoreCase));
-            if (item is not null)
+            try
             {
-                // Tree rows can be realized outside the clipped viewport, in
-                // which case pointer synthesis has no clickable point. File
-                // selection is the control's native activation contract and
-                // works for keyboard, UIA, compact drawers, and virtualized
-                // rows without depending on screen coordinates.
-                if (item.Patterns.SelectionItem.IsSupported)
+                AutomationElement? host = window.FindFirstDescendant(cf => cf.ByAutomationId(HostAutomationId));
+                if (host is not null) return;
+                AutomationElement? item = window.FindAllDescendants(cf => cf.ByControlType(ControlType.TreeItem))
+                    .FirstOrDefault(element => string.Equals(
+                        element.Properties.ItemStatus.ValueOrDefault,
+                        expectedStatus,
+                        StringComparison.OrdinalIgnoreCase));
+                if (item is not null)
                 {
-                    item.Patterns.SelectionItem.Pattern.Select();
+                    // Tree rows can be realized outside the clipped viewport, in
+                    // which case pointer synthesis has no clickable point. File
+                    // selection is the control's native activation contract and
+                    // works for keyboard, UIA, compact drawers, and virtualized
+                    // rows without depending on screen coordinates.
+                    if (item.Patterns.SelectionItem.IsSupported)
+                    {
+                        item.Patterns.SelectionItem.Pattern.Select();
+                    }
+                    else if (item.Patterns.Invoke.IsSupported)
+                    {
+                        item.Patterns.Invoke.Pattern.Invoke();
+                    }
+                    else
+                    {
+                        item.DoubleClick();
+                    }
+                    return;
                 }
-                else if (item.Patterns.Invoke.IsSupported)
-                {
-                    item.Patterns.Invoke.Pattern.Invoke();
-                }
-                else
-                {
-                    item.DoubleClick();
-                }
-                return;
+            }
+            catch (COMException exception) when (exception.HResult == UiaOperationTimeoutHResult)
+            {
+                // UIA can time out a single cross-process tree query while the
+                // WinUI page is still starting. Keep the original 45-second
+                // deadline and count this delay in the native timing; a hung
+                // app still fails instead of being waived as infrastructure.
+                lastAutomationTimeout = exception;
+                Console.Error.WriteLine($"README UIA query timed out after {stopwatch.Elapsed.TotalSeconds:F1}s; retrying within the existing deadline.");
             }
             Thread.Sleep(150);
         }
+
+        throw new TimeoutException(
+            $"README host or tree item '{readmePath}' did not become available within {timeout.TotalSeconds:F0}s.",
+            lastAutomationTimeout);
     }
 
     private static AutomationElement? WaitForSourceEditorOrRenderedHost(

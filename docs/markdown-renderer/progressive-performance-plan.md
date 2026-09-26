@@ -1022,7 +1022,7 @@ complete before claiming this plan or the 1.0 performance goal is met.
   with clean exits, 100% text coverage, and zero unavailable images. This is
   a focused shutdown regression check; the new-head 500/500 audit and the
   browser-relative performance gates remain required.
-- Local code-highlight scheduling checkpoint, not yet pushed or benchmarked:
+- Local code-highlight scheduling checkpoint, pending current-head CI and benchmark:
   documents with no measured code blocks now skip the highlight scheduler on
   scroll and viewport changes. Each layout-plan publication resets and rebuilds
   the measured-code flag, including nested blocks; a newly measured code block
@@ -1030,6 +1030,17 @@ complete before claiming this plan or the 1.0 performance goal is met.
   warnings, 951 fast Core tests pass, and a fresh lean two-pack remains within
   the unchanged gates at 1,257,984 managed and 529,691 compressed bytes. This
   is an avoidable-work fix, not a qualified scroll or Edge-relative verdict.
+- The `758e4d5` top-500 run completed 499/500; rank 226
+  (`unslothai/unsloth`) failed before README rendering when FlaUI's initial
+  cross-process tree query returned COM timeout `0x80131505`. The archived
+  startup evidence shows a live, responding app, and four local replays of the
+  exact CI-pinned rank passed with 100% text coverage and zero unavailable
+  images. The audit now retries only that UIA timeout within its unchanged
+  45-second open deadline, includes the elapsed time in native timing, and
+  fails explicitly if the host never becomes available. The Release x64
+  automation harness builds without warnings and three post-change pinned
+  replays pass. This does not convert the failed shard into a pass; a new-head
+  full 500/500 audit is still required.
 - Open: oversized raster tiling and session-owned SVG/document/GPU preparation
   caches.
 - Open: defer Math/Mermaid scenes and ahead-of-viewport highlighting without
