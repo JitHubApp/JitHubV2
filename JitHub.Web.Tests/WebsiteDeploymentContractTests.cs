@@ -14,7 +14,9 @@ public sealed class WebsiteDeploymentContractTests
 
         Assert.Contains("Smoke test production startup", workflow, StringComparison.Ordinal);
         Assert.Contains("ASPNETCORE_ENVIRONMENT=Production", workflow, StringComparison.Ordinal);
-        Assert.Contains("WEBSITE_HOSTNAME=jithub-web-prod.azurewebsites.net", workflow, StringComparison.Ordinal);
+        Assert.Contains("WEBSITE_HOSTNAME=${AZURE_WEBAPP_NAME}.azurewebsites.net", workflow, StringComparison.Ordinal);
+        Assert.Contains("azure/login@v2", workflow, StringComparison.Ordinal);
+        Assert.Contains("id-token: write", workflow, StringComparison.Ordinal);
         Assert.Contains("Verify deployed website health", workflow, StringComparison.Ordinal);
         Assert.Contains("/healthz", workflow, StringComparison.Ordinal);
     }
@@ -30,7 +32,7 @@ public sealed class WebsiteDeploymentContractTests
             .GetProperty("AuthorizationCallbackUrl")
             .GetString();
 
-        Assert.Equal("https://jithub-web-prod.azurewebsites.net/authorize", callback);
+        Assert.Equal("https://jithub.zhuowencui.com/authorize", callback);
     }
 
     private static string FindRepositoryRoot()
