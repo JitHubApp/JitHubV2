@@ -7,6 +7,7 @@ using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Performance;
 using MarkdownRenderer.Theming;
 using Microsoft.Graphics.Canvas;
 using Microsoft.UI.Xaml;
@@ -646,6 +647,58 @@ public sealed class ImageBoxSvgRendererTests
         }
     }
 
+    [Fact]
+    public async Task ProgressiveVisibleImageResolutionStartsOffTheCommitThread()
+    {
+        byte[] png = Convert.FromBase64String(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGP6zwAAAgcBApocMXEAAAAASUVORK5CYII=");
+        var resolver = new ThreadRecordingImageResolver(new MarkdownImageAsset(
+            png, "image/png", CacheKey: $"off-thread-{Guid.NewGuid():N}"));
+        using var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
+        var image = new ImageBox(
+            CreateContext(renderer: null, imageResolver: resolver, performanceSession: session),
+            "https://example.test/visible.png",
+            "Visible image");
+
+        try
+        {
+            int commitThread = Environment.CurrentManagedThreadId;
+            await WaitForLoadAsync(image);
+            Assert.NotEqual(commitThread, resolver.InvokedOnThreadId);
+            Assert.NotNull(image.Bitmap);
+            Assert.Equal(MarkdownImageAccessibilityState.Loaded, image.AccessibilityState);
+        }
+        finally
+        {
+            image.Dispose();
+        }
+    }
+
+    [Fact]
+    public async Task DefaultVisibleImageResolutionKeepsTheExistingCallerThreadContract()
+    {
+        byte[] png = Convert.FromBase64String(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGP6zwAAAgcBApocMXEAAAAASUVORK5CYII=");
+        var resolver = new ThreadRecordingImageResolver(new MarkdownImageAsset(
+            png, "image/png", CacheKey: $"caller-thread-{Guid.NewGuid():N}"));
+        var image = new ImageBox(
+            CreateContext(renderer: null, imageResolver: resolver),
+            "https://example.test/default.png",
+            "Default image");
+
+        try
+        {
+            int callerThread = Environment.CurrentManagedThreadId;
+            await WaitForLoadAsync(image);
+            Assert.Equal(callerThread, resolver.InvokedOnThreadId);
+            Assert.NotNull(image.Bitmap);
+        }
+        finally
+        {
+            image.Dispose();
+        }
+    }
+
     private static async Task WaitForLoadAsync(ImageBox image)
     {
         var completion = new TaskCompletionSource(
@@ -674,7 +727,8 @@ public sealed class ImageBoxSvgRendererTests
         IMarkdownSvgRenderer? renderer,
         double rasterizationScale = 1,
         IMarkdownImageResolver? imageResolver = null,
-        Action<string, MarkdownImageUnavailableReason, MarkdownSvgFailureReason?>? imageUnavailable = null)
+        Action<string, MarkdownImageUnavailableReason, MarkdownSvgFailureReason?>? imageUnavailable = null,
+        MarkdownPerformanceSession? performanceSession = null)
     {
         var body = new ElementStyle
         {
@@ -706,6 +760,7 @@ public sealed class ImageBoxSvgRendererTests
             language: "en-US")
         {
             ImageResolver = imageResolver,
+            PerformanceSession = performanceSession,
             ImageUnavailable = imageUnavailable,
             SvgRenderer = renderer,
             ImageCancellationToken = CancellationToken.None,
@@ -870,6 +925,21 @@ public sealed class ImageBoxSvgRendererTests
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult(MarkdownImageResolution.Resolved(asset));
+        }
+    }
+
+    private sealed class ThreadRecordingImageResolver(MarkdownImageAsset asset) : IMarkdownImageResolver
+    {
+        internal int InvokedOnThreadId { get; private set; }
+
+        public ValueTask<MarkdownImageResolution> ResolveAsync(
+            string source,
+            MarkdownImageResolveContext context,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            InvokedOnThreadId = Environment.CurrentManagedThreadId;
             return ValueTask.FromResult(MarkdownImageResolution.Resolved(asset));
         }
     }

@@ -857,7 +857,13 @@ internal sealed class ImageBox : BlockBox
 
         if (_context.ImageResolver is { } resolver)
         {
-            _ = ResolveAndLoadAsync(resolver);
+            // Opt-in prefetch already calls this resolver off the UI thread. A
+            // visible source-cache hit can otherwise run its synchronous
+            // resolver and raster-preparation prefix inside snapshot commit.
+            if (_context.PerformanceSession is not null)
+                _ = Task.Run(() => ResolveAndLoadAsync(resolver));
+            else
+                _ = ResolveAndLoadAsync(resolver);
             return;
         }
 
@@ -903,6 +909,11 @@ internal sealed class ImageBox : BlockBox
 
     private async Task ResolveAndLoadAsync(IMarkdownImageResolver resolver)
     {
+        // A progressive visible load may still be queued when its snapshot is
+        // replaced. Never start host resolution for an already-retired box.
+        if (_disposed)
+            return;
+
         MarkdownImageResolution resolution;
         try
         {
@@ -936,6 +947,9 @@ internal sealed class ImageBox : BlockBox
             PublishFailure(cacheKey: string.Empty);
             return;
         }
+
+        if (_disposed)
+            return;
 
         if (MarkdownImageCacheIdentityPolicy.CanUseSourceAfterResolution(resolution))
         {

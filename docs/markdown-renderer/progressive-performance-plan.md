@@ -954,9 +954,30 @@ complete before claiming this plan or the 1.0 performance goal is met.
   local schema-2 pinned rank-170 production-app audit also passed with no
   unavailable images and additive phase evidence. Its one-shot UI publication
   was 91.5 ms, with 75.7 ms in visible embed realization, so it is explicit
-  evidence against—not for—the ≤2 ms gate. The complete preview job and
-  current-head top-500 audit must still pass in CI; this size fix does not
-  establish any release performance gate.
+  evidence against—not for—the ≤2 ms gate. Those CI jobs were pending at
+  this checkpoint; the size fix itself does not establish a performance gate.
+- CI on `c8257ea` passed preview validation, including the unchanged package
+  gate, and consolidated the current-head live README audit at 500/500 with
+  zero valid images unavailable. The live native/Edge first-render p95 ratio
+  was 0.453 and full-traversal p95 was 0.360. This closes that head's live
+  correctness audit, not the same-byte Edge corpus, individual outlier
+  attribution, counterbalanced interactive benchmark, or device matrix.
+- Locally profiled after `c8257ea`, pending full CI and release benchmarks:
+  the opt-in visible image path now starts host resolution on a worker. The
+  same resolver already runs off-thread for speculative prefetch, and this
+  prevents a synchronous source-cache hit from occupying the UI publication
+  commit. On one pinned 39-image README replay, UI publication fell from
+  91.5 to 10.7 ms and visible embed realization from 75.7 to 1.8 ms, with
+  all 39 image observations and zero unavailable images. A second post-change
+  run measured 12.9 ms publication and 1.8 ms embed realization, again with
+  zero unavailable images. The default no-session path keeps its existing
+  caller-thread resolver behavior; an opt-in thread-contract regression test
+  verifies the off-thread path. All 944 fast Core, 415 GitHub renderer, and
+  3,129 app tests pass locally; the Release x64 app build has zero warnings.
+  A fresh lean two-pack remains below its unchanged gates at 1,255,936 managed
+  and 528,603 compressed bytes. These local before/after diagnostics are not
+  a counterbalanced result or a ≤2 ms pass; residual publication work and
+  burst/cancellation behavior remain to verify.
 - The rank-367 Edge `net::ERR_NO_BUFFER_SPACE` failure now has one bounded
   fresh-navigation recovery after stopping the failed load and waiting one
   second. The successful attempt gets a post-wait CPU/layout baseline; retry
