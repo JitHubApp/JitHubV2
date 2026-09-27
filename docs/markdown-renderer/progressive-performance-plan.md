@@ -1390,7 +1390,22 @@ complete before claiming this plan or the 1.0 performance goal is met.
   image was excluded as browser-broken. That is concrete external-delivery
   evidence for this outlier, not a waiver for any valid image failure or a
   same-byte client-rendering comparison. The `18679a3` current-head audit is
-  still running; the separate interactive benchmark remains queued.
+  reported below; the separate interactive benchmark remains queued.
+- The `18679a3` rendering-head pinned live audit (Actions run `36312263988`)
+  completed 500/500 with no valid image unavailable and no failed cases. Its
+  aggregate native/Edge first-render and full-page p95 ratios were 0.311 and
+  0.259. Three individual full-page ratios exceeded 1.10, while no
+  first-render ratio did. Rank 102 (`jaywcjlove/awesome-mac`, 1.62) again
+  spent 20 seconds waiting for the browser-broken OpenCollective Camo SVG.
+  Rank 235 (`caddyserver/caddy`, 3.02) spent 10.6 seconds in a visible-image
+  wait while a 2,364-byte Sourcegraph badge took 11.4 seconds to resolve.
+  Rank 344 (`coollabsio/coolify`, 1.57) spent 5.6 seconds waiting while its
+  298-byte relative logo took 6.6 seconds to resolve from GitHub raw CDN.
+  All three images resolved or were browser-broken; the recorded waits and
+  resolver timings identify live delivery as the dominant charged delay, not
+  SVG raster time. This does not prove same-byte Edge client parity, guarantee
+  that the intermittent sponsor SVG timeout cannot recur, or satisfy the
+  qualified release benchmark, which remains queued on an interactive runner.
 - Open: oversized raster tiling and session-owned SVG/document/GPU preparation
   caches.
 - Open: defer Math/Mermaid scenes and ahead-of-viewport highlighting without
