@@ -48,7 +48,15 @@ public sealed class WorkerSchedulingTests
                 job,
                 CancellationToken.None);
             Assert.False(worker.HasExited);
+            WindowsWorkerProcess.WorkerMemorySnapshot memory = worker.GetProcessMemorySnapshot();
+            Assert.True(memory.WorkingSetKiB > 0);
+            Assert.True(memory.PrivateCommitKiB > 0,
+                $"working={memory.WorkingSetKiB}, private={memory.PrivateCommitKiB}, faults={memory.PageFaults}");
+            Assert.True(memory.PageFaults >= 0);
             worker.DisposeForRestart();
+            Assert.Equal(
+                WindowsWorkerProcess.WorkerMemorySnapshot.Unavailable,
+                worker.GetProcessMemorySnapshot());
         }
     }
 
@@ -57,16 +65,19 @@ public sealed class WorkerSchedulingTests
     {
         using var listener = new TimeoutListener();
 
-        WorkerTimeoutEvents.Log.Timeout((int)WorkerOperation.Open, 3_000, 1_250, 2, 4, 0, 4);
+        WorkerTimeoutEvents.Log.Timeout((int)WorkerOperation.Open, 3_000, 1_250,
+            2, 4, 0, 4, 120_832, 94_208, 6_400);
 
-        Assert.Contains(((int)WorkerOperation.Open, 3_000, 1_250, 2, 4, 0, 4), listener.Events);
+        Assert.Contains(((int)WorkerOperation.Open, 3_000, 1_250,
+            2, 4, 0, 4, 120_832, 94_208, 6_400), listener.Events);
     }
 
     private sealed class TimeoutListener : EventListener
     {
         public ConcurrentQueue<(int Stage, int DeadlineMilliseconds, int WorkerProcessCpuMilliseconds,
             int TransportPhase, int RequestWriteMilliseconds, int WorkerExited,
-            int OpenProgressPhase)> Events { get; } = new();
+            int OpenProgressPhase, int WorkerWorkingSetKiB,
+            int WorkerPrivateCommitKiB, int WorkerPageFaults)> Events { get; } = new();
 
         protected override void OnEventSourceCreated(EventSource eventSource)
         {
@@ -76,15 +87,19 @@ public sealed class WorkerSchedulingTests
 
         protected override void OnEventWritten(EventWrittenEventArgs eventData)
         {
-            if (eventData.EventId == 1 && eventData.Payload is { Count: 7 } payload &&
+            if (eventData.EventId == 1 && eventData.Payload is { Count: 10 } payload &&
                 payload[0] is int stage && payload[1] is int deadlineMilliseconds &&
                 payload[2] is int workerProcessCpuMilliseconds &&
                 payload[3] is int transportPhase &&
                 payload[4] is int requestWriteMilliseconds &&
-                payload[5] is int workerExited && payload[6] is int openProgressPhase)
+                payload[5] is int workerExited && payload[6] is int openProgressPhase &&
+                payload[7] is int workerWorkingSetKiB &&
+                payload[8] is int workerPrivateCommitKiB &&
+                payload[9] is int workerPageFaults)
             {
                 Events.Enqueue((stage, deadlineMilliseconds, workerProcessCpuMilliseconds,
-                    transportPhase, requestWriteMilliseconds, workerExited, openProgressPhase));
+                    transportPhase, requestWriteMilliseconds, workerExited, openProgressPhase,
+                    workerWorkingSetKiB, workerPrivateCommitKiB, workerPageFaults));
             }
         }
     }

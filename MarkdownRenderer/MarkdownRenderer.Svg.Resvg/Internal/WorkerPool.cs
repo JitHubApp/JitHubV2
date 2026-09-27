@@ -547,6 +547,10 @@ internal sealed class WorkerPool : IAsyncDisposable, IDisposable
                         workerCpuAtTimeout >= workerCpuAtStart
                             ? (int)Math.Min((workerCpuAtTimeout - workerCpuAtStart) / 10_000, int.MaxValue)
                             : -1;
+                    WindowsWorkerProcess.WorkerMemorySnapshot memory =
+                        WorkerTimeoutEvents.Log.IsEnabled()
+                            ? worker.GetProcessMemorySnapshot()
+                            : WindowsWorkerProcess.WorkerMemorySnapshot.Unavailable;
                     WorkerTimeoutEvents.Log.Timeout(
                         (int)WorkerOperation.Hello,
                         (int)WorkerSchedulingPolicy.InitializationDeadline.TotalMilliseconds,
@@ -554,7 +558,10 @@ internal sealed class WorkerPool : IAsyncDisposable, IDisposable
                         transportPhase: -1,
                         requestWriteMilliseconds: -1,
                         workerExited: worker.HasExited ? 1 : 0,
-                        openProgressPhase: -1);
+                        openProgressPhase: -1,
+                        workerWorkingSetKiB: memory.WorkingSetKiB,
+                        workerPrivateCommitKiB: memory.PrivateCommitKiB,
+                        workerPageFaults: memory.PageFaults);
                     RecordStartupFailure();
                     throw new WorkerInitializationDeadlineException(
                         "The resvg worker did not initialize its font catalog before the initialization deadline.",

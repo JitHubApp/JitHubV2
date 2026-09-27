@@ -153,7 +153,10 @@ public sealed class MarkdownSvgWorkerAuditListenerTests
                 transportPhase: 2,
                 requestWriteMilliseconds: 4,
                 workerExited: 0,
-                openProgressPhase: 4);
+                openProgressPhase: 4,
+                workerWorkingSetKiB: 120_832,
+                workerPrivateCommitKiB: 94_208,
+                workerPageFaults: 6_400);
 
             string line = Assert.Single(File.ReadAllLines(path));
             using JsonDocument document = JsonDocument.Parse(line);
@@ -164,6 +167,9 @@ public sealed class MarkdownSvgWorkerAuditListenerTests
             Assert.Equal(4, document.RootElement.GetProperty("RequestWriteMilliseconds").GetInt32());
             Assert.False(document.RootElement.GetProperty("WorkerExited").GetBoolean());
             Assert.Equal("security-inspected", document.RootElement.GetProperty("OpenProgressPhase").GetString());
+            Assert.Equal(120_832, document.RootElement.GetProperty("WorkerWorkingSetKiB").GetInt32());
+            Assert.Equal(94_208, document.RootElement.GetProperty("WorkerPrivateCommitKiB").GetInt32());
+            Assert.Equal(6_400, document.RootElement.GetProperty("WorkerPageFaults").GetInt32());
             Assert.False(document.RootElement.TryGetProperty("Source", out _));
             Assert.False(document.RootElement.TryGetProperty("Url", out _));
         }
@@ -191,10 +197,14 @@ public sealed class MarkdownSvgWorkerAuditListenerTests
             int transportPhase,
             int requestWriteMilliseconds,
             int workerExited,
-            int openProgressPhase) =>
+            int openProgressPhase,
+            int workerWorkingSetKiB,
+            int workerPrivateCommitKiB,
+            int workerPageFaults) =>
             WriteEvent(1, [stage, deadlineMilliseconds, workerProcessCpuMilliseconds,
                 transportPhase, requestWriteMilliseconds, workerExited,
-                openProgressPhase]);
+                openProgressPhase, workerWorkingSetKiB, workerPrivateCommitKiB,
+                workerPageFaults]);
     }
 
     [EventSource(Name = "MarkdownRenderer.Svg.Resvg.Preflight")]

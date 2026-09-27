@@ -115,7 +115,10 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
                     transportPhase: -1,
                     requestWriteMilliseconds: -1,
                     workerExited: -1,
-                    openProgressPhase: -1);
+                    openProgressPhase: -1,
+                    workerWorkingSetKiB: -1,
+                    workerPrivateCommitKiB: -1,
+                    workerPageFaults: -1);
                 throw new WorkerInitializationDeadlineException(
                     "The resvg worker did not complete startup before its initialization deadline.",
                     exception);
@@ -208,6 +211,7 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
                         : -1;
                 if (captureTimeoutEvidence)
                 {
+                    WorkerMemorySnapshot memory = GetProcessMemorySnapshot();
                     WorkerTimeoutEvents.Log.Timeout(
                         stage: (int)request.Operation,
                         deadlineMilliseconds: (int)deadline.TotalMilliseconds,
@@ -215,7 +219,10 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
                         transportPhase,
                         requestWriteMilliseconds,
                         workerExited: HasExited ? 1 : 0,
-                        openProgressPhase: openProgressMemory?.ReadOpenProgressPhase() ?? -1);
+                        openProgressPhase: openProgressMemory?.ReadOpenProgressPhase() ?? -1,
+                        workerWorkingSetKiB: memory.WorkingSetKiB,
+                        workerPrivateCommitKiB: memory.PrivateCommitKiB,
+                        workerPageFaults: memory.PageFaults);
                 }
                 DisposeForRestart();
                 throw new WorkerDeadlineException("The resvg worker exceeded its request deadline.", exception);
@@ -265,6 +272,39 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
         {
             return -1;
         }
+    }
+
+    internal WorkerMemorySnapshot GetProcessMemorySnapshot()
+    {
+        try
+        {
+            var counters = new ProcessMemoryCountersEx
+            {
+                Size = (uint)Marshal.SizeOf<ProcessMemoryCountersEx>()
+            };
+            if (!GetProcessMemoryInfo(_process, ref counters, counters.Size))
+                return WorkerMemorySnapshot.Unavailable;
+
+            return new WorkerMemorySnapshot(
+                ToKiB(counters.WorkingSetSize),
+                ToKiB(counters.PrivateUsage),
+                (int)Math.Min(counters.PageFaultCount, int.MaxValue));
+        }
+        catch (ObjectDisposedException)
+        {
+            return WorkerMemorySnapshot.Unavailable;
+        }
+    }
+
+    private static int ToKiB(nuint bytes) =>
+        (int)Math.Min((ulong)bytes / 1024UL, int.MaxValue);
+
+    internal readonly record struct WorkerMemorySnapshot(
+        int WorkingSetKiB,
+        int PrivateCommitKiB,
+        int PageFaults)
+    {
+        internal static WorkerMemorySnapshot Unavailable => new(-1, -1, -1);
     }
 
     internal void DisposeForRestart() => DisposeCore(waitForExit: true);
@@ -669,6 +709,22 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
         public uint High;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct ProcessMemoryCountersEx
+    {
+        public uint Size;
+        public uint PageFaultCount;
+        public nuint PeakWorkingSetSize;
+        public nuint WorkingSetSize;
+        public nuint QuotaPeakPagedPoolUsage;
+        public nuint QuotaPagedPoolUsage;
+        public nuint QuotaPeakNonPagedPoolUsage;
+        public nuint QuotaNonPagedPoolUsage;
+        public nuint PagefileUsage;
+        public nuint PeakPagefileUsage;
+        public nuint PrivateUsage;
+    }
+
     internal sealed class WorkerJob : IDisposable
     {
         private SafeJobHandle? _handle;
@@ -720,6 +776,13 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
         out FileTime exit,
         out FileTime kernel,
         out FileTime user);
+
+    [LibraryImport("psapi.dll", EntryPoint = "GetProcessMemoryInfo", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool GetProcessMemoryInfo(
+        SafeProcessHandle process,
+        ref ProcessMemoryCountersEx counters,
+        uint size);
 
     [LibraryImport("advapi32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

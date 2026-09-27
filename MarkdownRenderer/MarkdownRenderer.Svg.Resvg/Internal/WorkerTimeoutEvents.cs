@@ -10,7 +10,10 @@ namespace MarkdownRenderer.Svg.Resvg.Internal;
 /// read; -1 means the timeout happened outside a request transaction. The
 /// Open progress phase is a content-free marker: 0 not started, 1 mapping,
 /// 2 hash, 3 XML, 4 security, 5 font gate, 6 tree, 7 document attachment; -1 means the
-/// request was not Open.
+/// request was not Open. Working set, private commit, and page faults are
+/// sampled from the worker only on a hard timeout with an enabled listener.
+/// Memory counters are in KiB; -1 means a counter was unavailable. Page faults
+/// are cumulative for the worker process, not a request-local delta.
 /// </summary>
 [EventSource(Name = "MarkdownRenderer.Svg.Resvg.Worker")]
 internal sealed class WorkerTimeoutEvents : EventSource
@@ -29,11 +32,15 @@ internal sealed class WorkerTimeoutEvents : EventSource
         int transportPhase,
         int requestWriteMilliseconds,
         int workerExited,
-        int openProgressPhase)
+        int openProgressPhase,
+        int workerWorkingSetKiB,
+        int workerPrivateCommitKiB,
+        int workerPageFaults)
     {
         if (IsEnabled())
             WriteEvent(1, [stage, deadlineMilliseconds, workerProcessCpuMilliseconds,
                 transportPhase, requestWriteMilliseconds, workerExited,
-                openProgressPhase]);
+                openProgressPhase, workerWorkingSetKiB, workerPrivateCommitKiB,
+                workerPageFaults]);
     }
 }

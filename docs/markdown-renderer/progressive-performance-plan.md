@@ -1371,6 +1371,17 @@ complete before claiming this plan or the 1.0 performance goal is met.
   failure is not known yet, and memory-pressure evidence, a same-byte replay,
   the current-head top-500 audit, and the qualified release benchmark remain
   open. This diagnostic is not a timeout fix.
+- Locally verified, pending CI and a failing live trace: timeout-only SVG
+  worker evidence now also samples process working set, private commit (KiB),
+  and cumulative page faults through source-generated Windows interop. These
+  are numeric process counters, never SVG bytes or URLs; normal rendering
+  does not query process memory. A live-worker interop test, all 63 resvg
+  tests, all 3,150 x64 app tests, x86/ARM64 provider builds, the Release app
+  build, and an x64 NativeAOT publish plus artifact verification passed. The
+  prior `16419d0` top-500 run
+  has passed rank 153, but is not complete; the new head's full 500-case audit
+  is waiting behind it. No same-byte sponsor replay, memory-pressure verdict,
+  or qualified release performance result has been obtained yet.
 - Open: oversized raster tiling and session-owned SVG/document/GPU preparation
   caches.
 - Open: defer Math/Mermaid scenes and ahead-of-viewport highlighting without
