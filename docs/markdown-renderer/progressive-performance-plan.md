@@ -1294,6 +1294,28 @@ complete before claiming this plan or the 1.0 performance goal is met.
   suite, including a direct lease-retirement regression test, passes locally;
   a full hosted suite rerun is still required. This is
   a lifecycle/CI fix, not a performance-gate pass.
+- The completed `da0bd1a` pinned live audit (Actions run `36291285713`)
+  passed 500/500 with no reported unavailable image; native/Edge live p95
+  ratios were 0.338 first render and 0.292 full traversal. Individual
+  full-page outliers still exceeded 1.10 at ranks 101 (`immich-app/immich`,
+  2.667), 102 (`jaywcjlove/awesome-mac`, 1.508), 301
+  (`facebook/docusaurus`, 1.881), and 401 (`twentyhq/twenty`, 2.969).
+  This earlier-head live pass is neither same-byte parity nor a qualified
+  interactive release benchmark.
+- The next audit at `466a135` (Actions run `36296516592`) failed rank 172
+  (`gin-gonic/gin`): Edge rendered a 153×20 Sourcegraph badge, while JitHub
+  reported it unavailable about 45 seconds after resolution began and recorded
+  a 20-second first-tile image wait. No resolver outcome was recorded for that
+  asset. Inspection found that the Camo/origin hedged resolver awaited its
+  losing request in `finally`, so a successful fast hedge could still be held
+  behind a stalled network loser until the image resolver's hard deadline.
+  Losing requests are now canceled and observed through deferred retirement,
+  without blocking the winner or disposing their token sources early. A
+  deterministic unresponsive-loser regression test, all 3,142 app unit tests,
+  and the x64 Release app build pass locally. A pinned rank-172 UI replay
+  passed with zero unavailable images, but its Camo response arrived in
+  144 ms and did not reproduce the hosted slow-path. Do not count that replay
+  as a waiver: the full post-fix 500-case audit is still required.
 - Open: oversized raster tiling and session-owned SVG/document/GPU preparation
   caches.
 - Open: defer Math/Mermaid scenes and ahead-of-viewport highlighting without

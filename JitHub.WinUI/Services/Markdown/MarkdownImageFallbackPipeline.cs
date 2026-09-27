@@ -55,7 +55,7 @@ internal static class MarkdownImageFallbackPipeline
             throw new ArgumentOutOfRangeException(nameof(hedgeDelay));
 
         cancellationToken.ThrowIfCancellationRequested();
-        using var firstCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var firstCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         using var delayCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         CancellationTokenSource? secondCancellation = null;
         Task<T?> firstTask = TryAsync(
@@ -94,28 +94,51 @@ internal static class MarkdownImageFallbackPipeline
         finally
         {
             delayCancellation.Cancel();
-            firstCancellation.Cancel();
-            secondCancellation?.Cancel();
-            try
+            Task firstCallbacks = firstCancellation.CancelAsync();
+            Task? secondCallbacks = secondCancellation?.CancelAsync();
+            // The winning result must not wait for an unresponsive loser.
+            // Keep both linked sources alive until their registrations and
+            // operations retire, observing any late failures in the background.
+            _ = RetireHedgeAsync(
+                firstTask,
+                secondTask,
+                firstCancellation,
+                secondCancellation,
+                firstCallbacks,
+                secondCallbacks);
+        }
+    }
+
+    private static async Task RetireHedgeAsync<T>(
+        Task<T?> firstTask,
+        Task<T?>? secondTask,
+        CancellationTokenSource firstCancellation,
+        CancellationTokenSource? secondCancellation,
+        Task firstCallbacks,
+        Task? secondCallbacks)
+        where T : class
+    {
+        try
+        {
+            try { await firstCallbacks.ConfigureAwait(false); }
+            catch (Exception) { /* Cancellation registration failures are observed. */ }
+            if (secondCallbacks is not null)
             {
-                await firstTask.ConfigureAwait(false);
+                try { await secondCallbacks.ConfigureAwait(false); }
+                catch (Exception) { /* Cancellation registration failures are observed. */ }
             }
-            catch (Exception)
-            {
-                // A logging callback could itself fail after the winning
-                // representation completed. The loser is still observed.
-            }
+
+            try { await firstTask.ConfigureAwait(false); }
+            catch (Exception) { /* Late loser failures cannot replace the winner. */ }
             if (secondTask is not null)
             {
-                try
-                {
-                    await secondTask.ConfigureAwait(false);
-                }
-                catch (Exception)
-                {
-                    // Preserve the caller cancellation or winning result.
-                }
+                try { await secondTask.ConfigureAwait(false); }
+                catch (Exception) { /* Late loser failures cannot replace the winner. */ }
             }
+        }
+        finally
+        {
+            firstCancellation.Dispose();
             secondCancellation?.Dispose();
         }
     }

@@ -1555,6 +1555,36 @@ public sealed class GitHubImageServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task MarkdownImageFallback_WinnerDoesNotWaitForUnresponsiveLoser()
+    {
+        var releasePrimary = new TaskCompletionSource<string?>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        CancellationToken primaryToken = default;
+        Task<string?> resultTask = MarkdownImageFallbackPipeline.FirstSuccessfulHedgedAsync(
+            token =>
+            {
+                primaryToken = token;
+                return releasePrimary.Task;
+            },
+            _ => Task.FromResult<string?>("origin"),
+            (_, _) => { },
+            TimeSpan.Zero,
+            CancellationToken.None);
+
+        try
+        {
+            Assert.Equal("origin", await resultTask.WaitAsync(TimeSpan.FromSeconds(5)));
+            Assert.True(primaryToken.IsCancellationRequested);
+            Assert.False(releasePrimary.Task.IsCompleted);
+        }
+        finally
+        {
+            releasePrimary.TrySetResult(null);
+            await resultTask.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+    }
+
+    [Fact]
     public async Task MarkdownImageFallback_FailedHedgeStillAcceptsLatePrimary()
     {
         var primary = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
