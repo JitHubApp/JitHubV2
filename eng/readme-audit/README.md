@@ -61,17 +61,18 @@ extra synchronous event/file work deliberately stays **off** in ordinary
 top-500 and release benchmark runs; diagnostic timings are not qualifying
 performance results.
 
-To reproduce an intermittent hosted-runner raster stall, manually dispatch
-`Focused README raster diagnostic` on the renderer branch. Supply the Actions
+To reproduce an intermittent hosted-runner image stall, manually dispatch
+`Focused README image diagnostic` on the renderer branch. Supply the Actions
 run ID of a top-500 audit containing the pinned corpus, the rank to replay,
 and 1–5 independent attempts. The workflow downloads and validates that
 run's exact immutable README manifest, uses the same pinned Windows App
 Runtime as the normal audit, builds Release once, and uploads all attempts'
-diagnostics even if a replay fails. This preserves the original rank/README
-bytes, though externally served image bytes must still be compared by the
-recorded source hashes; the workflow does not freeze CDN responses. Its
-tracing adds overhead and is strictly diagnostic, never a qualifying Edge
-timing or 500/500 result.
+diagnostics even if a replay fails. Enable raster stage tracing only for raster
+stalls; SVG worker timeout stages are recorded without it. This preserves the
+original rank/README bytes, though externally served image bytes must still
+be compared by the recorded source hashes; the workflow does not freeze CDN
+responses. The focused reruns are strictly diagnostic, never a qualifying
+Edge timing or 500/500 result.
 
 Prerequisites are an interactive unlocked Windows desktop, Microsoft Edge, Node.js 22 or newer, and an authenticated GitHub CLI session. The runner passes the current GitHub token only to isolated audit child processes and never persists it in evidence.
 

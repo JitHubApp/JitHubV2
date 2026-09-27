@@ -160,6 +160,19 @@ complete before claiming this plan or the 1.0 performance goal is met.
   stale/disposed failures previously raised the event before that check.
   This removes a false-unavailable path, but neither this change nor the
   one-case replay establishes the original cause or a 500/500 pass.
+- The `3766f88` live audit reproduced the rank-153 failure on the same sponsor
+  asset: Edge rendered it, and JitHub resolved 1,877,124 bytes with SHA-256
+  `9881971D893267A10A872DB575522AF0C20E0E64F1EF87F6E45CF5272C9E69AC`
+  in 132 ms, then reported typed SVG `Timeout`. The isolated worker's 3,000-ms
+  `open` deadline expired while reading its response, after progress
+  `font-gate-passed`; process CPU was 484 ms, private commit 18,332 KiB, and
+  page faults 60,726. A fresh Camo fetch locally produced exactly that hash;
+  the SVG contains 576 embedded JPEGs (380 unique), 1,152 text nodes, and 576
+  clip paths. This is a native worker-opening failure, not an image-download
+  failure or a false-unavailable report. The existing synthetic sponsor test
+  passes locally but does not cover this cold hosted behavior. The new focused
+  hosted image diagnostic must be run, followed by a real fix and a full
+  current-head audit; no waiver or deadline increase is accepted.
 - The `51ab849` top-500 audit reported 499/500 passes. Rank 465
   (`xai-org/grok-1`) failed before Markdown rendering: its authenticated
   repository-root API request was rejected by the organization's IP allow
@@ -1531,9 +1544,9 @@ complete before claiming this plan or the 1.0 performance goal is met.
   of those bytes, but do not prove whether the intermittent cause is WARP,
   worker startup, runner contention, or another native path. Hosted
   stage-level capture and the mandatory same-byte Edge comparison remain open.
-  A manual focused hosted diagnostic workflow is prepared locally to replay
-  one rank from a validated pinned top-500 corpus with opt-in raster-stage
-  tracing and repeated fresh attempts. It has not run in CI, does not pin
+  A manual focused hosted image-diagnostic workflow is prepared locally to
+  replay one rank from a validated pinned top-500 corpus with optional raster-
+  stage tracing and repeated fresh attempts. It has not run in CI, does not pin
   changing CDN image bytes, and its tracing cannot qualify the release timing
   gate. The normal audit retains tracing off; its pinned Windows App Runtime
   installer is shared with the diagnostic to avoid setup drift.

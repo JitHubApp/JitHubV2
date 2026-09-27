@@ -1,8 +1,8 @@
-name: Focused README raster diagnostic
+name: Focused README image diagnostic
 
 # This workflow diagnoses intermittent hosted image stalls. It is intentionally
-# separate from the normal 500-case audit: synchronous raster tracing changes
-# timings and its results must never count toward the release performance gate.
+# separate from the normal 500-case audit: optional synchronous raster tracing
+# changes timings, and these repeated cases never count as release evidence.
 on:
   workflow_dispatch:
     inputs:
@@ -19,6 +19,11 @@ on:
         required: true
         default: 3
         type: number
+      raster_diagnostics:
+        description: Include intrusive raster stage tracing (leave off for SVG)
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   actions: read
@@ -34,7 +39,7 @@ env:
 
 jobs:
   diagnose:
-    name: Replay rank ${{ inputs.rank }} with raster stages
+    name: Replay rank ${{ inputs.rank }} with image diagnostics
     runs-on: windows-latest
     timeout-minutes: 120
     defaults:
@@ -90,9 +95,11 @@ jobs:
           "AUDIT_VALIDATED_RANK=$rank" >> $env:GITHUB_ENV
           "AUDIT_VALIDATED_REPEATS=$repeats" >> $env:GITHUB_ENV
 
-      - name: Replay on the hosted runner with opt-in raster stage tracing
+      - name: Replay on the hosted runner with image diagnostics
+        env:
+          AUDIT_RASTER_DIAGNOSTICS: ${{ inputs.raster_diagnostics }}
         run: |
-          $output = Join-Path $env:RUNNER_TEMP 'readme-raster-diagnostic'
+          $output = Join-Path $env:RUNNER_TEMP 'readme-image-diagnostic'
           New-Item -ItemType Directory -Force -Path $output | Out-Null
           $failures = [Collections.Generic.List[string]]::new()
           for ($attempt = 1; $attempt -le [int]$env:AUDIT_VALIDATED_REPEATS; $attempt++) {
@@ -104,7 +111,9 @@ jobs:
                 Configuration = 'Release'
                 ManifestPath = $env:AUDIT_VALIDATED_CORPUS
                 OutputRoot = $attemptOutput
-                RasterDiagnostics = $true
+              }
+              if ($env:AUDIT_RASTER_DIAGNOSTICS -eq 'true') {
+                $arguments.RasterDiagnostics = $true
               }
               if ($attempt -gt 1) { $arguments.SkipBuild = $true }
               .\eng\Invoke-TopReadmeAudit.ps1 @arguments
@@ -122,7 +131,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: readme-raster-diagnostic-${{ github.run_id }}
-          path: ${{ runner.temp }}/readme-raster-diagnostic
+          name: readme-image-diagnostic-${{ github.run_id }}
+          path: ${{ runner.temp }}/readme-image-diagnostic
           if-no-files-found: warn
           retention-days: 14
