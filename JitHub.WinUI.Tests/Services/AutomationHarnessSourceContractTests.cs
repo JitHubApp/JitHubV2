@@ -174,6 +174,10 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("B8CDA840267AB72797F654F801F9A064AB6D9E508CEDEE3DF79F772F104DB6D6", runtimeInstaller, StringComparison.Ordinal);
         Assert.Contains("Get-AppxPackage -Name 'Microsoft.WindowsAppRuntime.1.8'", runtimeInstaller, StringComparison.Ordinal);
         Assert.Contains("if: github.event_name != 'workflow_dispatch' || inputs.diagnostic_rank == 0", workflow, StringComparison.Ordinal);
+        Assert.Contains("diagnostic_prior_cases:", workflow, StringComparison.Ordinal);
+        Assert.Contains("$priorCases -lt 0 -or $priorCases -gt 4 -or $priorCases -ge $rank", workflow, StringComparison.Ordinal);
+        Assert.Contains("StartRank = [int]$env:AUDIT_VALIDATED_RANK - [int]$env:AUDIT_VALIDATED_PRIOR_CASES", workflow, StringComparison.Ordinal);
+        Assert.Contains("Count = [int]$env:AUDIT_VALIDATED_PRIOR_CASES + 1", workflow, StringComparison.Ordinal);
         Assert.Contains("-ExpectedCount 500 -MaximumAgeDays 14", workflow, StringComparison.Ordinal);
         Assert.Contains("$attempt -le 4", manifestGenerator, StringComparison.Ordinal);
         Assert.Contains("$allowNotFound -and $text -match 'HTTP 404'", manifestGenerator, StringComparison.Ordinal);

@@ -28,7 +28,9 @@ repository:
   the transaction (-1 if unavailable), transport phase (request write, pipe
   flush, or response read), request-write duration, and whether the worker
   had exited. For `open`, it also records the last bounded worker progress
-  phase (mapping, hash, XML, security, font gate, tree, or document attachment).
+  phase (mapping, hash, XML, security, font gate, SVG options initialization,
+  options construction, resolver setup, theme transformation, `usvg` tree
+  construction, tree, or document attachment).
   Timeout-only working set and private commit are reported in KiB, with a
   cumulative process page-fault count; -1 means unavailable. Normal rendering
   never queries these process-memory counters. The record contains no SVG
@@ -75,6 +77,10 @@ original rank/README bytes, though externally served image bytes must still
 be compared by the recorded source hashes; the workflow does not freeze CDN
 responses. The focused reruns are strictly diagnostic, never a qualifying
 Edge timing or 500/500 result.
+If a failure occurs only after earlier cases in a shard, set
+`diagnostic_prior_cases` to 1–4 to replay those immediately preceding ranks
+before the target rank in every attempt. The default is zero, preserving the
+single-rank diagnostic; this context option does not skip or waive any case.
 
 Prerequisites are an interactive unlocked Windows desktop, Microsoft Edge, Node.js 22 or newer, and an authenticated GitHub CLI session. The runner passes the current GitHub token only to isolated audit child processes and never persists it in evidence.
 

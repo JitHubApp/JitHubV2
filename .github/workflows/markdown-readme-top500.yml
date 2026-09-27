@@ -27,6 +27,11 @@ on:
         required: false
         default: 3
         type: number
+      diagnostic_prior_cases:
+        description: Also replay up to four preceding ranks per attempt for shard context
+        required: false
+        default: 0
+        type: number
       diagnostic_raster_stages:
         description: Enable intrusive raster tracing (leave off for SVG)
         required: false
@@ -307,10 +312,12 @@ jobs:
           AUDIT_CORPUS_RUN_ID: ${{ inputs.diagnostic_corpus_run_id }}
           AUDIT_RANK: ${{ inputs.diagnostic_rank }}
           AUDIT_REPEATS: ${{ inputs.diagnostic_repeats }}
+          AUDIT_PRIOR_CASES: ${{ inputs.diagnostic_prior_cases }}
         run: |
           $corpusRunId = 0L
           $rank = 0
           $repeats = 0
+          $priorCases = 0
           if (-not [long]::TryParse($env:AUDIT_CORPUS_RUN_ID, [ref]$corpusRunId) -or $corpusRunId -le 0) {
             throw 'diagnostic_corpus_run_id must be a positive Actions run ID.'
           }
@@ -319,6 +326,10 @@ jobs:
           }
           if (-not [int]::TryParse($env:AUDIT_REPEATS, [ref]$repeats) -or $repeats -lt 1 -or $repeats -gt 5) {
             throw 'diagnostic_repeats must be between 1 and 5.'
+          }
+          if (-not [int]::TryParse($env:AUDIT_PRIOR_CASES, [ref]$priorCases) -or
+              $priorCases -lt 0 -or $priorCases -gt 4 -or $priorCases -ge $rank) {
+            throw 'diagnostic_prior_cases must be between 0 and 4 and less than diagnostic_rank.'
           }
 
           $corpusDirectory = Join-Path $env:RUNNER_TEMP 'readme-image-corpus'
@@ -332,6 +343,7 @@ jobs:
           "AUDIT_VALIDATED_CORPUS=$validated" >> $env:GITHUB_ENV
           "AUDIT_VALIDATED_RANK=$rank" >> $env:GITHUB_ENV
           "AUDIT_VALIDATED_REPEATS=$repeats" >> $env:GITHUB_ENV
+          "AUDIT_VALIDATED_PRIOR_CASES=$priorCases" >> $env:GITHUB_ENV
 
       - name: Replay on the hosted runner with image diagnostics
         env:
@@ -344,8 +356,8 @@ jobs:
             $attemptOutput = Join-Path $output "attempt-$attempt"
             try {
               $arguments = @{
-                StartRank = [int]$env:AUDIT_VALIDATED_RANK
-                Count = 1
+                StartRank = [int]$env:AUDIT_VALIDATED_RANK - [int]$env:AUDIT_VALIDATED_PRIOR_CASES
+                Count = [int]$env:AUDIT_VALIDATED_PRIOR_CASES + 1
                 Configuration = 'Release'
                 ManifestPath = $env:AUDIT_VALIDATED_CORPUS
                 OutputRoot = $attemptOutput

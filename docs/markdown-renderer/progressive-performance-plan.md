@@ -1559,9 +1559,21 @@ complete before claiming this plan or the 1.0 performance goal is met.
   separate Weblate badge returned zero bytes and was broken in Edge as well;
   it is not this native-only failure. The rank-26 hosted diagnostic
   (`36349885686`) also passed all five replays without reproducing its older
-  image-preparation stall. The current full 20-shard audit (`36349875408`)
-  remains in progress with four shards allowed in parallel; no 500/500 verdict
-  exists for this head yet.
+  image-preparation stall. The 20-shard audit (`36349875408`) has since
+  completed ranks 151–175 at 24/25: rank 153 failed again on the same
+  exact-byte sponsor SVG, fetched in 106.6 ms and rejected only after the
+  isolated worker's unchanged 3-second `open` deadline. The worker remained
+  alive, used 406 ms CPU, and last reported progress immediately before
+  usvg tree conversion (`font-gate-passed`); working set was 23,164 KiB and
+  private commit 17,064 KiB. This is a reproduced intermittent native-only
+  liveness failure, not an external asset problem or a 500/500 pass. The
+  other shards were still running at this checkpoint.
+- To reproduce shard context without weakening the full gate, the focused
+  diagnostic now accepts up to four preceding pinned ranks per attempt. A
+  rank-153 replay with two preceding cases can reproduce the original
+  151–153 order; the earlier five single-rank passes cannot rule out
+  preceding-case or runner-pressure effects. This is diagnostic only and
+  does not replace the full audit or an offline same-byte Edge corpus.
 - Local gate setup on this head exposed a committed restore-lock mismatch:
   the x64 performance-gate lockfile has a `win-x64` target while its project
   did not declare that runtime identifier, causing NU1004 before any timing
