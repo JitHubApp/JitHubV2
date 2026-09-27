@@ -1452,15 +1452,21 @@ complete before claiming this plan or the 1.0 performance goal is met.
   The x64 trimmed NativeAOT provider smoke publishes and runs successfully.
   This improves diagnosis of rank 201 and does not
   make its valid image available or relax either deadline.
-- The `8df730b` hosted rerun (Actions run `36325860405`) is still in progress.
-  Its completed 51–75 and 201–225 shards passed all 50 cases: rank 54
+- The `8df730b` hosted rerun (Actions run `36325860405`) completed its
+  consolidated top-500 audit: 500/500 cases passed, no valid image unavailable,
+  first-render and full-page native/Edge p95 ratios 0.325 and 0.294. Rank 54
   (`langgenius/dify`) and rank 201 (`spring-projects/spring-boot`) both rendered
-  every valid image with no unavailable asset. Rank 301
-  (`facebook/docusaurus`) also passed its completed shard with one 160-ms
-  CPU-preparation lease, versus 4,218 ms in the prior hosted audit. These
-  cases are useful recurrence evidence, not a completed 500-case verdict or
-  a proof that the intermittent stalls cannot return. The `de91f61`
-  current-head audit remains queued behind it.
+  every valid image. Rank 301 (`facebook/docusaurus`) passed with one 160-ms
+  CPU-preparation lease, versus 4,218 ms in the prior hosted audit. The only
+  individual ratio above 1.10 was rank 102 (`jaywcjlove/awesome-mac`, full-page
+  1.65): its OpenCollective Camo URL returned no bytes after two 31–33-second
+  resolver attempts, Edge reported the same image complete at natural size
+  0×0, and JitHub charged a 20-second visible-image wait. This is external
+  delivery evidence for that outlier, not a waiver for valid images or a
+  same-byte client-rendering comparison. The queued `de91f61` and `401e303`
+  runs were superseded and canceled after later pushes; the current
+  `8c5d97c` audit is in progress. This earlier-head pass does not substitute for a
+  current-head 500-case verdict or prove intermittent stalls impossible.
 - A focused Release x64 replay of rank 301 at the same pinned commit used by
   the 4,218-ms outlier fetched the exact same 8,948-byte PNG (SHA-256
   `C2E9351FFB8B7BDFB8129ADA3C71AC3BA0CC9EB0CB7717D24C1B81FE6DBB9587`)
