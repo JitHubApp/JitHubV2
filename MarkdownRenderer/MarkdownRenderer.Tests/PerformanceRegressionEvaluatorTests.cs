@@ -25,6 +25,36 @@ public sealed class PerformanceRegressionEvaluatorTests
     }
 
     [Fact]
+    public void ReleasePayloadRejectsAnOccludedMeasurementInterval()
+    {
+        using ArtifactDirectory artifacts = ArtifactDirectory.Create("occluded-measurement");
+        PerformanceReport report = CreateReport(artifacts.Hashes, "occluded-measurement");
+        MeasurementVisibilityEvidence valid = report.MeasurementVisibility;
+        MeasurementVisibilitySample[] samples = [.. valid.Samples];
+        MeasurementVisibilitySample sample = samples[4];
+        samples[4] = new MeasurementVisibilitySample
+        {
+            ElapsedTicks = sample.ElapsedTicks,
+            Source = sample.Source,
+            CaptureSucceeded = sample.CaptureSucceeded,
+            TargetWasForeground = sample.TargetWasForeground,
+            TargetWasVisible = sample.TargetWasVisible,
+            TargetWasMinimized = sample.TargetWasMinimized,
+            TargetWasCloaked = sample.TargetWasCloaked,
+            TargetWasWithinWorkArea = sample.TargetWasWithinWorkArea,
+            TargetWasUnoccluded = false,
+        };
+        report.MeasurementVisibility = PerformanceVisibilityFixture.CreatePassing(
+            report.StartedUtc,
+            samples: samples,
+            intervalOffset: valid.StartedUtc - report.StartedUtc,
+            duration: TimeSpan.FromSeconds(
+                (double)valid.DurationTicks / valid.StopwatchFrequency));
+
+        Assert.False(PerformanceReleaseEvidenceValidator.HasCompleteMeasurementPayload(report));
+    }
+
+    [Fact]
     public void HodgesLehmannUsesTheMedianOfAllWalshAverages()
     {
         double estimate = PerformanceStatistics.HodgesLehmann([1, 1, 1, 10, 10]);
@@ -857,6 +887,10 @@ public sealed class PerformanceRegressionEvaluatorTests
                         artifacts.Executable.Path),
             BuildArtifacts = artifacts,
             RuntimeConfiguration = CreateRuntimeConfiguration(mutation),
+            MeasurementVisibility = PerformanceVisibilityFixture.CreatePassing(
+                DateTimeOffset.Parse("2026-09-10T12:00:00Z"),
+                intervalOffset: TimeSpan.FromSeconds(1),
+                duration: TimeSpan.FromSeconds(10)),
             Machine = new MachineMetadata
             {
                 MachineInstanceSha256 = mutation switch

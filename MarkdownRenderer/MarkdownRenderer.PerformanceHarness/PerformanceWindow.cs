@@ -31,6 +31,7 @@ internal sealed class PerformanceWindow : Window
     private readonly PerformanceReport _report;
     private MarkdownScrollView? _renderer;
     private MarkdownEngine? _ownedRendererEngine;
+    private MeasurementVisibilityMonitor? _visibilityMonitor;
     private int _renderFailures;
     private bool _started;
     private int _completionState;
@@ -83,6 +84,8 @@ internal sealed class PerformanceWindow : Window
 
             await WarmRuntimeAsync();
             Debug.WriteLine("[PerfHarness] runtime warm");
+            if (!_options.Quick)
+                _visibilityMonitor = MeasurementVisibilityMonitor.Start(windowHandle);
             _report.SourceLookup = MeasureSourceLookup();
             Debug.WriteLine("[PerfHarness] source lookup complete");
             await MeasureFirstUsableViewportsAsync();
@@ -110,6 +113,7 @@ internal sealed class PerformanceWindow : Window
                 _host.ActualWidth,
                 _host.ActualHeight,
                 configureProcessPowerThrottling: false);
+            CompleteVisibilityMonitoring();
             // Freeze the serialized report interval before evaluating its
             // evidence. Every recorded trial must be bounded by this exact,
             // positive interval; do not mutate it after the verdict is formed.
@@ -122,6 +126,15 @@ internal sealed class PerformanceWindow : Window
         {
             Debug.WriteLine($"[PerfHarness] run failure: {exception}");
             _report.Failures.Add($"Harness failure: {exception}");
+            try
+            {
+                CompleteVisibilityMonitoring();
+            }
+            catch (Exception visibilityException)
+            {
+                _report.Failures.Add(
+                    $"Could not finalize measurement visibility evidence: {visibilityException}");
+            }
             _report.Passed = false;
             exitCode = 1;
         }
@@ -167,6 +180,7 @@ internal sealed class PerformanceWindow : Window
         try
         {
             _report.Failures.Add($"Unhandled WinUI harness failure: {exception}");
+            CompleteVisibilityMonitoring();
             _report.Passed = false;
             _report.CompletedUtc = _utcClock.GetUtcNow();
             Program.WriteReport(_options.OutputPath, _report);
@@ -186,6 +200,16 @@ internal sealed class PerformanceWindow : Window
 
     private Task WriteReportAsync()
         => PerformanceReportWriter.WriteNewAsync(_options.OutputPath, _report);
+
+    private void CompleteVisibilityMonitoring()
+    {
+        MeasurementVisibilityMonitor? monitor =
+            Interlocked.Exchange(ref _visibilityMonitor, null);
+        if (monitor is null)
+            return;
+
+        _report.MeasurementVisibility = monitor.Complete();
+    }
 
     private async Task WarmRuntimeAsync()
     {
@@ -1586,6 +1610,15 @@ internal sealed class PerformanceWindow : Window
         {
             _report.Failures.Add(
                 "The release report did not satisfy the complete self-verifying evidence contract.");
+        }
+
+        if (!MeasurementVisibilityEvidenceValidator.IsValid(
+                _report.MeasurementVisibility,
+                _report.StartedUtc,
+                _report.CompletedUtc,
+                out string visibilityFailure))
+        {
+            _report.Failures.Add($"Measurement desktop visibility gate failed: {visibilityFailure}");
         }
 
         _report.Passed = _report.IsReleaseEvidence && _report.Failures.Count == 0;

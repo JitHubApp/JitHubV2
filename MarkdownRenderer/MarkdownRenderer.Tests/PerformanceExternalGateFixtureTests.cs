@@ -10,7 +10,7 @@ namespace MarkdownRenderer.Tests;
 public sealed class PerformanceExternalGateFixtureTests
 {
     [Fact]
-    public void CommittedSchema11FixturePassesBaselineAndCandidateAtExactInclusiveEdges()
+    public void CommittedSchema12FixturePassesBaselineAndCandidateAtExactInclusiveEdges()
     {
         using var evidence = GateEvidence.Create();
         GateResult baseline = evidence.RunGate(evidence.BaselinePath, "Baseline");
@@ -181,6 +181,21 @@ public sealed class PerformanceExternalGateFixtureTests
     [Theory]
     [MemberData(nameof(CompletionEnvironmentMutations))]
     public void ExternalGateRejectsCompletionEnvironmentMutation(string mutation)
+    {
+        using var evidence = GateEvidence.Create();
+        evidence.ApplyMutation(mutation);
+
+        GateResult result = evidence.RunGate(evidence.CandidatePath, "Candidate");
+
+        Assert.False(result.Passed, $"Mutation '{mutation}' unexpectedly passed. {result.Output}");
+    }
+
+    [Theory]
+    [InlineData("measurement-visibility-missing")]
+    [InlineData("measurement-visibility-foreground-loss")]
+    [InlineData("measurement-visibility-occluded")]
+    [InlineData("measurement-visibility-private-source")]
+    public void ExternalGateRejectsInvalidMeasurementVisibilityEvidence(string mutation)
     {
         using var evidence = GateEvidence.Create();
         evidence.ApplyMutation(mutation);
@@ -639,7 +654,7 @@ public sealed class PerformanceExternalGateFixtureTests
             GateValues values = JsonSerializer.Deserialize<GateValues>(
                 File.ReadAllText(Path.Combine(fixtureDirectory, "performance-gate-schema10-values.json")),
                 new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
-                ?? throw new InvalidDataException("The schema-10 external-gate fixture was empty.");
+                ?? throw new InvalidDataException("The schema-12 external-gate fixture was empty.");
             string directory = Path.Combine(
                 Path.GetTempPath(),
                 $"markdown-renderer-gate-fixture-{Guid.NewGuid():N}");
@@ -1225,6 +1240,18 @@ public sealed class PerformanceExternalGateFixtureTests
             {
                 case "schema-version":
                     report["schemaVersion"] = 9;
+                    break;
+                case "measurement-visibility-missing":
+                    report.Remove("measurementVisibility");
+                    break;
+                case "measurement-visibility-foreground-loss":
+                    report["measurementVisibility"]!["foregroundLossEvents"] = 1;
+                    break;
+                case "measurement-visibility-occluded":
+                    report["measurementVisibility"]!["samples"]![1]!["targetWasUnoccluded"] = false;
+                    break;
+                case "measurement-visibility-private-source":
+                    report["measurementVisibility"]!["samples"]![1]!["source"] = "Private document title";
                     break;
                 case "provider-name":
                     report["providerName"] = "wrong-provider";
@@ -2616,7 +2643,7 @@ public sealed class PerformanceExternalGateFixtureTests
                         }
                       }
                       """
-                    : $"schema-10-fixture:{fileName}";
+                    : $"schema-12-fixture:{fileName}";
                 File.WriteAllText(path, contents);
                 return new BuildArtifactHash
                 {
@@ -2666,6 +2693,10 @@ public sealed class PerformanceExternalGateFixtureTests
                 },
                 Machine = CreateMachineMetadata(scroll, completion: false),
                 CompletionMachine = CreateMachineMetadata(scroll, completion: true),
+                MeasurementVisibility = PerformanceVisibilityFixture.CreatePassing(
+                    startedUtc,
+                    intervalOffset: TimeSpan.FromMilliseconds(50),
+                    duration: TimeSpan.FromMilliseconds(900)),
                 Scroll = scroll,
                 LifecyclePlateau = new LifecyclePlateauResult
                 {

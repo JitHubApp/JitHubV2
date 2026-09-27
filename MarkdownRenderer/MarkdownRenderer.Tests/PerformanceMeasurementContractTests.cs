@@ -18,7 +18,7 @@ public sealed class PerformanceMeasurementContractTests
             "--baseline",
         ]);
 
-        Assert.Equal(11, PerformanceMeasurementContract.SchemaVersion);
+        Assert.Equal(12, PerformanceMeasurementContract.SchemaVersion);
         Assert.Equal("MarkdownRenderer-Performance", PerformanceMeasurementContract.ProviderName);
         Assert.Equal(100, options.FirstViewportIterations);
         Assert.Equal(2_400, options.ScrollFrames);
@@ -29,7 +29,7 @@ public sealed class PerformanceMeasurementContractTests
         Assert.False(options.Quick);
 
         var report = new PerformanceReport();
-        Assert.Equal(11, report.SchemaVersion);
+        Assert.Equal(12, report.SchemaVersion);
         Assert.Equal(2, PerformanceMeasurementContract.UiPublicationMaximumBudgetMilliseconds);
         Assert.Equal(100, report.SampleRequirements.FirstViewportIterationsRequired);
         Assert.Equal(6, report.SampleRequirements.FirstViewportTrialsRequired);
@@ -225,6 +225,7 @@ public sealed class PerformanceMeasurementContractTests
     [InlineData("buildArtifacts")]
     [InlineData("runtimeConfiguration")]
     [InlineData("machine")]
+    [InlineData("measurementVisibility")]
     [InlineData("regression")]
     public void ReferenceEvidenceRejectsMissingRequiredTopLevelMembers(string member)
     {

@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-Runs the schema-10 WinUI performance harness in a counterbalanced R1,C1,C2,R2 order.
+Runs the schema-12 WinUI performance harness in a counterbalanced R1,C1,C2,R2 order.
 
 .DESCRIPTION
 This is a release-evidence orchestrator, not a benchmark runner with retry logic. It:
@@ -42,7 +42,7 @@ Absolute or relative parent directory beneath which a unique evidence directory 
 created. Existing evidence is never overwritten.
 
 .PARAMETER GateScriptPath
-Path to the strict single-report schema-10 gate. Defaults to the sibling repository
+Path to the strict single-report schema-12 gate. Defaults to the sibling repository
 script.
 
 .PARAMETER RunTimeoutMinutes
@@ -598,7 +598,7 @@ function Assert-ReportRoleBinding {
         -not [bool]$Report.isReleaseEvidence -or
         -not [bool]$Report.passed -or
         [string]$Report.regression.mode -cne $expectedMode) {
-        throw "Generated $Mode report did not retain its gated schema-10 role contract."
+        throw "Generated $Mode report did not retain its gated schema-12 role contract."
     }
 
     if ([string]$Report.buildIdentity -cne $ExpectedBuildIdentity) {

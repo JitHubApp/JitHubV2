@@ -1590,6 +1590,15 @@ complete before claiming this plan or the 1.0 performance goal is met.
   Release x64 app tests pass locally after updating the pinned-runtime
   assertion to inspect the shared installer script used by the workflow;
   current-head CI is still required.
+- The release harness now records measurement-scoped foreground, desktop,
+  visibility, work-area, and occlusion evidence from a separate WinEvent
+  message-pump thread. Schema-12 in-process and external gates reject focus
+  loss, sampling gaps, missing hooks, and unobstructed-visibility failures;
+  120/240 Hz and latency thresholds are unchanged. The x64 Release harness
+  build and 275 focused managed/external-gate tests pass locally. This closes
+  a qualification hole in earlier diagnostics, but no new full live run has
+  passed and the low observed cadence still needs measurement on a quiet
+  foreground desktop.
 - Open: oversized raster tiling and session-owned SVG/document/GPU preparation
   caches.
 - Open: defer Math/Mermaid scenes and ahead-of-viewport highlighting without

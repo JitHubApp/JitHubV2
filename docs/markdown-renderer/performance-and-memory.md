@@ -35,7 +35,23 @@ the middle of its parse. Cancellation remains prompt for queued work and async
 extension processing; hard source and admission limits bound the non-preemptible
 phase.
 
-Schema-10 release evidence uses three excluded, raw 100-sample warmup trials and
+### Release-run foreground and visibility qualification
+
+Release evidence is eligible only when the benchmark window remains the
+foreground, visible, non-minimized, non-cloaked, within the monitor work area,
+and unobstructed for the full measured run. The harness polls these conditions
+every 250 ms and records foreground, desktop-switch, and relevant window
+visibility events. WinEvent hooks run on a dedicated message-pump thread, not
+the WinUI thread, so window enumeration and DWM queries cannot become measured
+UI work. Missing hooks, capture failures, a sampling gap over one second, or
+any observed focus/visibility loss rejects the run; latency and refresh-rate
+thresholds are unchanged, and no trial is retried. Window normalization and
+runtime warmup happen before this interval; report writing and renderer cleanup
+happen after it. Serialized evidence contains only bounded sample-source labels,
+monotonic timings, counters, and visibility booleans—never HWND values, window
+titles, executable paths, or pixels.
+
+Schema-12 release evidence uses three excluded, raw 100-sample warmup trials and
 six ordered 100-sample measured trials for each first-viewport scenario, five
 ordered 2,400-frame warm-scroll trials, and five ordered
 40-sample cancellation trials. Each cancellation trial starts with a full
@@ -57,7 +73,7 @@ viewport uses the median of 21 Walsh averages from six measured trials; the
 five-trial metrics use 15. Trials cannot be omitted, trimmed, adaptively stopped,
 or retried selectively.
 
-Schema 11 retains schema 10's consistency-scaled median absolute deviation for every
+Schema 12 retains schema 11's consistency-scaled median absolute deviation for every
 comparison population. First-viewport eligibility additionally uses the ordered
 Theil-Sen slope over each condition's actual global trial ordinals, projects it
 across the measured ordinal span, and compares the last two warmup-trial centers
@@ -147,7 +163,7 @@ normalization, and provider/render failures. It does not apply release latency,
 memory, refresh-rate, or relative-regression budgets, but any missing, malformed,
 or failed scenario returns a nonzero exit code.
 
-Release evidence is schema 11 and binds the complete private runtime output with
+Release evidence is schema 12 and binds the complete private runtime output with
 the canonical `runtime-output-manifest-v1` digest. The executable, runtimeconfig,
 harness, renderer, and core assemblies retain separate SHA-256 entries for direct
 review, and a candidate also binds the exact reference-report bytes. Candidate and

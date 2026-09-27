@@ -28,6 +28,7 @@ internal sealed class PerformanceReport
     public SourceLookupResult SourceLookup { get; set; } = new();
     public CancellationResult Cancellation { get; set; } = new();
     public RegressionResult Regression { get; set; } = new();
+    public MeasurementVisibilityEvidence MeasurementVisibility { get; set; } = new();
     public List<string> Failures { get; init; } = [];
 
     internal static JsonSerializerOptions JsonOptions { get; } = CreateJsonOptions();
@@ -113,7 +114,10 @@ internal sealed class PerformanceReport
             report.Cancellation.Trials.Any(static item => item is null) ||
             report.Regression is null ||
             report.Regression.Comparisons is null ||
-            report.Regression.Comparisons.Any(static item => item is null))
+            report.Regression.Comparisons.Any(static item => item is null) ||
+            report.MeasurementVisibility is null ||
+            report.MeasurementVisibility.Samples is null ||
+            report.MeasurementVisibility.Samples.Any(static item => item is null))
         {
             return false;
         }

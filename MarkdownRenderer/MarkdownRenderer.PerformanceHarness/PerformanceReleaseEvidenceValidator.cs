@@ -33,6 +33,11 @@ internal static class PerformanceReleaseEvidenceValidator
            PerformanceDeploymentIdentity.IsWellFormed(report.BuildIdentity) &&
            PerformanceArtifactContract.TryValidateStored(report.BuildArtifacts, out _) &&
            PerformanceRuntimeContract.IsValid(report.RuntimeConfiguration) &&
+           MeasurementVisibilityEvidenceValidator.IsValid(
+               report.MeasurementVisibility,
+               report.StartedUtc,
+               report.CompletedUtc,
+               out _) &&
            HasReleaseSampleRequirements(report.SampleRequirements) &&
            IsMachineMetadataComplete(report.Machine) &&
            IsEnvironmentSnapshotComplete(report.CompletionMachine) &&

@@ -6,7 +6,7 @@ namespace MarkdownRenderer.PerformanceHarness;
 /// </summary>
 internal static class PerformanceMeasurementContract
 {
-    internal const int SchemaVersion = 11;
+    internal const int SchemaVersion = 12;
     internal const string ProviderName = "MarkdownRenderer-Performance";
     internal const string RuntimeConfigurationPolicy =
         "tiering-pgo-concurrent-gc-readytorun-disabled;dotnet-complus-overrides-unset-v1";
