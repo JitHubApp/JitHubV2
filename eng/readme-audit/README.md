@@ -61,18 +61,41 @@ browser-evidence reuse:
 .\eng\Invoke-TopReadmeAudit.ps1 -StartRank 1 -Count 1 -CaptureSameByteCorpus
 ```
 
+For a qualified full same-byte release audit, open **Actions → Top 500 README
+browser parity → Run workflow**, select the renderer revision, and enable
+`same_byte_release`. Keep `diagnostic_rank` at `0`. This opt-in dispatch runs the
+same immutable 500-repository manifest through all twenty 25-repository shards,
+captures fresh Edge response bytes for every available pinned README, and makes
+the final merge require same-byte evidence for each such case. It also requires
+the complete rank set, clean native exits, zero unavailable or still-loading
+native images, aggregate first-render and full-page p95 no greater than 110% of
+Edge, and individually checks the previously slow ranks 60 and 203 against that
+same 110% ceiling. A focused rank replay, a mixed set of results with and
+without same-byte capture, or a partial 500-case result cannot pass this release
+path.
+
 Capture pins the raw README to its Git blob SHA and records completed visible
 Edge image responses as content-addressed files. URL lookup values are SHA-256
 keys only; the manifest does not persist source URLs or request headers. The
 fresh JitHub process gets an audit-only resolver over that case's corpus. A
 missing URL, manifest, or mismatched file is blocked; this path has no live
-image-network fallback. Every capture uses a fresh corpus directory and cannot
-resume a completed case. Replaying the saved bytes manually is available with
+image-network fallback. GitHub Camo images are matched using the rendered
+`src`/`currentSrc` and the authored `data-canonical-src` URL, so the same Edge
+response can be replayed for the original Markdown URL without saving either
+URL in clear text. Capture rejects more than 15,000 visible image elements or
+URL lookup aliases, tracks at most 100,000 network requests and 16 MiB of URL
+metadata, and bounds each image to 64 MiB and each README's unique image payloads
+to 256 MiB. Every capture uses a fresh corpus directory and cannot resume a
+completed case. Replaying the saved bytes manually is available with
 `node eng/readme-audit/same-byte-replay-server.mjs --corpus=<case-corpus-dir>`;
 the server binds only to IPv4 loopback and returns 404 for an uncaptured source.
-The capture/replay tests are deterministic and offline, but an interactive
-same-machine Edge/JitHub run and the qualified 500-repository release gate are
-still required before claiming parity.
+The workflow retains each case's privacy-safe `manifest.json` and result JSON.
+The manifest contains only URL and content hashes, byte counts, and MIME types;
+the raw `readme.md` and `assets/**` payloads are excluded from uploaded
+artifacts. This keeps the capture identity and URL-to-content mapping
+verifiable without uploading potentially very large image corpora. The
+capture/replay tests are deterministic and offline; the manual 500-case run is
+the qualification gate.
 
 For a focused raster-preparation investigation, add `-RasterDiagnostics` to
 the audit invocation. This opt-in evidence writes only a preparation ID,

@@ -37,12 +37,17 @@ on:
         required: false
         default: false
         type: boolean
+      same_byte_release:
+        description: Run and qualify a fresh same-byte capture across all 500 pinned README cases
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
 
 concurrency:
-  group: markdown-readme-top500-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.diagnostic_rank > 0 && format('diagnostic-{0}', inputs.diagnostic_rank) || 'full' }}
+  group: markdown-readme-top500-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.diagnostic_rank > 0 && format('diagnostic-{0}', inputs.diagnostic_rank) || (github.event_name == 'workflow_dispatch' && inputs.same_byte_release && 'same-byte-release' || 'full') }}
   cancel-in-progress: false
 
 env:
@@ -99,6 +104,9 @@ jobs:
             # Do this only after snapshot validation has completed.
             $global:LASTEXITCODE = 0
           }
+
+      - name: Verify top-500 merge gates
+        run: .\eng\readme-audit\Merge-TopReadmeAudit.Tests.ps1
 
       - name: Upload pinned corpus
         uses: actions/upload-artifact@v7
@@ -159,7 +167,7 @@ jobs:
           node-version: 22
 
       - name: Verify Edge navigation and profile-lifetime contracts
-        run: node --test .\eng\readme-audit\browser-launch.test.mjs .\eng\readme-audit\browser-navigation.test.mjs .\eng\readme-audit\browser-process-lifetime.test.mjs
+        run: node --test .\eng\readme-audit\browser-launch.test.mjs .\eng\readme-audit\browser-navigation.test.mjs .\eng\readme-audit\browser-process-lifetime.test.mjs .\eng\readme-audit\same-byte-corpus.test.mjs
 
       - name: Install pinned Windows App Runtime 1.8.10
         run: .\eng\readme-audit\Install-PinnedWindowsAppRuntime.ps1
@@ -171,15 +179,22 @@ jobs:
           path: ${{ runner.temp }}/readme-corpus
 
       - name: Compare every README with GitHub in Edge
+        env:
+          AUDIT_CAPTURE_SAME_BYTE_CORPUS: ${{ inputs.same_byte_release }}
         run: |
           $output = Join-Path $env:RUNNER_TEMP 'readme-audit'
           $shardCount = ${{ matrix.end }} - ${{ matrix.start }} + 1
-          .\eng\Invoke-TopReadmeAudit.ps1 `
-            -StartRank ${{ matrix.start }} `
-            -Count $shardCount `
-            -Configuration Release `
-            -ManifestPath (Join-Path $env:RUNNER_TEMP 'readme-corpus\top-repositories.json') `
-            -OutputRoot $output
+          $arguments = @{
+            StartRank = ${{ matrix.start }}
+            Count = $shardCount
+            Configuration = 'Release'
+            ManifestPath = (Join-Path $env:RUNNER_TEMP 'readme-corpus\top-repositories.json')
+            OutputRoot = $output
+          }
+          if ($env:AUDIT_CAPTURE_SAME_BYTE_CORPUS -eq 'true') {
+            $arguments.CaptureSameByteCorpus = $true
+          }
+          .\eng\Invoke-TopReadmeAudit.ps1 @arguments
 
       - name: Capture WinUI crash metadata for failed audits
         if: failure()
@@ -235,6 +250,8 @@ jobs:
             ${{ runner.temp }}/readme-audit/cases/**/result.json
             ${{ runner.temp }}/readme-audit/cases/**/browser/**
             ${{ runner.temp }}/readme-audit/cases/**/native/**
+            !${{ runner.temp }}/readme-audit/cases/**/browser/same-byte-corpus-*/readme.md
+            !${{ runner.temp }}/readme-audit/cases/**/browser/same-byte-corpus-*/assets/**
             !${{ runner.temp }}/readme-audit/cases/**/.runtime/**
           if-no-files-found: warn
           retention-days: 14
@@ -262,11 +279,18 @@ jobs:
           merge-multiple: true
 
       - name: Require one complete top-500 verdict
+        env:
+          AUDIT_REQUIRE_SAME_BYTE_CORPUS: ${{ github.event_name == 'workflow_dispatch' && inputs.same_byte_release }}
         run: |
-          .\eng\readme-audit\Merge-TopReadmeAudit.ps1 `
-            -EvidenceRoot (Join-Path $env:RUNNER_TEMP 'readme-audit-shards') `
-            -ExpectedCount 500 `
-            -OutputDirectory (Join-Path $env:RUNNER_TEMP 'readme-audit-consolidated')
+          $arguments = @{
+            EvidenceRoot = (Join-Path $env:RUNNER_TEMP 'readme-audit-shards')
+            ExpectedCount = 500
+            OutputDirectory = (Join-Path $env:RUNNER_TEMP 'readme-audit-consolidated')
+          }
+          if ($env:AUDIT_REQUIRE_SAME_BYTE_CORPUS -eq 'true') {
+            $arguments.RequireSameByteCorpus = $true
+          }
+          .\eng\readme-audit\Merge-TopReadmeAudit.ps1 @arguments
 
       - name: Upload consolidated verdict
         if: always()
@@ -293,6 +317,10 @@ jobs:
         uses: actions/checkout@v7
         with:
           persist-credentials: false
+
+      - name: Reject a focused run requested as release evidence
+        if: inputs.same_byte_release
+        run: throw 'same_byte_release requires diagnostic_rank=0 so all 500 repositories run through the release gate.'
 
       - name: Set up .NET 10
         uses: actions/setup-dotnet@v6
