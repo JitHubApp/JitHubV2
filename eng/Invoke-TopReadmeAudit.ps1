@@ -14,6 +14,8 @@ param(
 
     [switch]$ReuseBrowserEvidence,
 
+    [switch]$RasterDiagnostics,
+
     [ValidateSet("Debug", "Release")]
     [string]$Configuration = "Release",
 
@@ -100,9 +102,11 @@ $auditAccountId = [Convert]::ToInt64($tokenHash.Substring(0, 15), 16).ToString(
 
 $previousToken = $env:JITHUB_README_AUDIT_GITHUB_TOKEN
 $previousAccountId = $env:JITHUB_README_AUDIT_GITHUB_ACCOUNT_ID
+$previousRasterDiagnostics = $env:JITHUB_README_AUDIT_RASTER_DIAGNOSTICS
 try {
     $env:JITHUB_README_AUDIT_GITHUB_TOKEN = $auditToken
     $env:JITHUB_README_AUDIT_GITHUB_ACCOUNT_ID = $auditAccountId
+    $env:JITHUB_README_AUDIT_RASTER_DIAGNOSTICS = if ($RasterDiagnostics) { "1" } else { $null }
     $arguments = @(
         $runnerPath,
         "--probe=readme-production-audit",
@@ -122,6 +126,7 @@ try {
 finally {
     $env:JITHUB_README_AUDIT_GITHUB_TOKEN = $previousToken
     $env:JITHUB_README_AUDIT_GITHUB_ACCOUNT_ID = $previousAccountId
+    $env:JITHUB_README_AUDIT_RASTER_DIAGNOSTICS = $previousRasterDiagnostics
     $auditToken = $null
     $auditAccountId = $null
 }

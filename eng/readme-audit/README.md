@@ -51,6 +51,16 @@ Run or resume the complete release corpus:
 .\eng\Invoke-TopReadmeAudit.ps1 -Count 500 -Resume
 ```
 
+For a focused raster-preparation investigation, add `-RasterDiagnostics` to
+the audit invocation. This opt-in evidence writes only a preparation ID,
+source byte count/dimensions, and durations for preparation admission,
+stream write, decoder creation, WIC pixel decode, Win2D upload/direct load,
+and bitmap-cache publication to
+`native/raster-preparation.ndjson`. It records no image bytes or URLs. The
+extra synchronous event/file work deliberately stays **off** in ordinary
+top-500 and release benchmark runs; diagnostic timings are not qualifying
+performance results.
+
 Prerequisites are an interactive unlocked Windows desktop, Microsoft Edge, Node.js 22 or newer, and an authenticated GitHub CLI session. The runner passes the current GitHub token only to isolated audit child processes and never persists it in evidence.
 
 Native first-render timing is the Markdown host-ready to render-complete

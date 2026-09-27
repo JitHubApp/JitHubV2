@@ -2,16 +2,20 @@ using System.Diagnostics.Tracing;
 
 namespace JitHub.Services.Markdown;
 
-/// <summary>Listens only during explicit audits; SVG events contain no source data.</summary>
-internal sealed partial class MarkdownSvgWorkerAuditListener : EventListener
+/// <summary>Listens only during explicit audits; events contain no source data.</summary>
+internal sealed partial class MarkdownRendererAuditListener : EventListener
 {
     private const string WorkerSourceName = "MarkdownRenderer.Svg.Resvg.Worker";
     private const string PreflightSourceName = "MarkdownRenderer.Svg.Resvg.Preflight";
+    private const string RasterPreparationSourceName = "MarkdownRenderer-RasterPreparation";
 
     protected override void OnEventSourceCreated(EventSource eventSource)
     {
         if (eventSource.Name is WorkerSourceName or PreflightSourceName)
             EnableEvents(eventSource, EventLevel.Warning);
+        else if (eventSource.Name == RasterPreparationSourceName &&
+            MarkdownLifecycleAutomationBridge.IsRasterPreparationEvidenceEnabled)
+            EnableEvents(eventSource, EventLevel.Informational);
     }
 
     protected override void OnEventWritten(EventWrittenEventArgs eventData)
@@ -53,6 +57,20 @@ internal sealed partial class MarkdownSvgWorkerAuditListener : EventListener
                 reason,
                 sourceByteLength,
                 sourceSha256);
+        }
+        else if (eventData.EventSource.Name == RasterPreparationSourceName &&
+            eventData.EventId is 1 or 2 &&
+            eventData.Payload is { Count: 3 } rasterPayload &&
+            rasterPayload[0] is long preparationId &&
+            rasterPayload[1] is long value &&
+            rasterPayload[2] is long durationOrDimensions)
+        {
+            MarkdownLifecycleAutomationBridge.RecordRasterPreparation(
+                preparationId,
+                eventData.EventId == 1 ? 0 : (int)value,
+                eventData.EventId == 1 ? value : 0,
+                eventData.EventId == 1 ? durationOrDimensions : 0,
+                eventData.EventId == 2 ? durationOrDimensions : 0);
         }
     }
 }

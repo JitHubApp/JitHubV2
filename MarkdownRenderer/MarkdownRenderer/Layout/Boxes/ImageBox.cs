@@ -1263,18 +1263,38 @@ internal sealed class ImageBox : BlockBox
                     long decodeStarted = MarkdownPerformanceEventSource.Log.IsMeasurementEnabled()
                         ? Stopwatch.GetTimestamp()
                         : 0;
+                    long rasterPreparationId = MarkdownRasterPreparationEventSource.Log.Begin(
+                        bytes.Length, budget.Width, budget.Height);
+                    long admissionStarted = rasterPreparationId != 0 ? Stopwatch.GetTimestamp() : 0;
                     using IDisposable? preparationSlot = _context.PerformanceSession is { IsDisposed: false } session &&
                         _context.PerformanceDocumentOwner is { } documentOwner
                         ? await session.EnterCpuPreparationAsync(
                                 documentOwner, _context.ImageCancellationToken)
                             .ConfigureAwait(false)
                         : null;
+                    if (rasterPreparationId != 0)
+                        MarkdownRasterPreparationEventSource.Log.RecordStage(
+                            rasterPreparationId,
+                            MarkdownRasterPreparationStage.PreparationAdmission,
+                            Stopwatch.GetTimestamp() - admissionStarted);
                     using InMemoryRandomAccessStream stream = new();
+                    long stageStarted = rasterPreparationId != 0 ? Stopwatch.GetTimestamp() : 0;
                     await stream.WriteAsync(bytes.AsBuffer());
+                    if (rasterPreparationId != 0)
+                        MarkdownRasterPreparationEventSource.Log.RecordStage(
+                            rasterPreparationId,
+                            MarkdownRasterPreparationStage.StreamWrite,
+                            Stopwatch.GetTimestamp() - stageStarted);
                     stream.Seek(0);
                     if (transformedDecode)
                     {
+                        stageStarted = rasterPreparationId != 0 ? Stopwatch.GetTimestamp() : 0;
                         BitmapDecoder decoder = await BitmapDecoder.CreateAsync(stream);
+                        if (rasterPreparationId != 0)
+                            MarkdownRasterPreparationEventSource.Log.RecordStage(
+                                rasterPreparationId,
+                                MarkdownRasterPreparationStage.DecoderCreation,
+                                Stopwatch.GetTimestamp() - stageStarted);
                         if (decoder.PixelWidth != budget.Width || decoder.PixelHeight != budget.Height)
                         {
                             throw new InvalidDataException("The decoded raster dimensions do not match its validated header.");
@@ -1301,13 +1321,25 @@ internal sealed class ImageBox : BlockBox
                             ScaledHeight = checked((uint)rasterSize.Height),
                             InterpolationMode = BitmapInterpolationMode.Fant,
                         };
+                        stageStarted = rasterPreparationId != 0 ? Stopwatch.GetTimestamp() : 0;
                         using SoftwareBitmap firstFrame = await decoder.GetSoftwareBitmapAsync(
                             BitmapPixelFormat.Bgra8,
                             BitmapAlphaMode.Premultiplied,
                             transform,
                             ExifOrientationMode.RespectExifOrientation,
                             ColorManagementMode.ColorManageToSRgb);
+                        if (rasterPreparationId != 0)
+                            MarkdownRasterPreparationEventSource.Log.RecordStage(
+                                rasterPreparationId,
+                                MarkdownRasterPreparationStage.WicPixelDecode,
+                                Stopwatch.GetTimestamp() - stageStarted);
+                        stageStarted = rasterPreparationId != 0 ? Stopwatch.GetTimestamp() : 0;
                         ownedBitmap = CanvasBitmap.CreateFromSoftwareBitmap(_context.ResourceCreator, firstFrame);
+                        if (rasterPreparationId != 0)
+                            MarkdownRasterPreparationEventSource.Log.RecordStage(
+                                rasterPreparationId,
+                                MarkdownRasterPreparationStage.Win2DBitmapUpload,
+                                Stopwatch.GetTimestamp() - stageStarted);
                         if (budget.CanRenderStaticPreview)
                         {
                             MarkdownDiagnostics.WriteLine(
@@ -1318,15 +1350,27 @@ internal sealed class ImageBox : BlockBox
                     }
                     else
                     {
+                        stageStarted = rasterPreparationId != 0 ? Stopwatch.GetTimestamp() : 0;
                         ownedBitmap = await CanvasBitmap.LoadAsync(_context.ResourceCreator, stream);
+                        if (rasterPreparationId != 0)
+                            MarkdownRasterPreparationEventSource.Log.RecordStage(
+                                rasterPreparationId,
+                                MarkdownRasterPreparationStage.Win2DDirectLoad,
+                                Stopwatch.GetTimestamp() - stageStarted);
                     }
 
                     if (!string.IsNullOrEmpty(bitmapCacheKey))
                     {
+                        stageStarted = rasterPreparationId != 0 ? Stopwatch.GetTimestamp() : 0;
                         bitmapLease = SharedCanvasBitmapCache.StoreAndAcquire(
                             device, bitmapCacheKey, ownedBitmap,
                             transformedDecode ? intrinsicSize : null);
                         ownedBitmap = null; // lease now owns the decoded handle
+                        if (rasterPreparationId != 0)
+                            MarkdownRasterPreparationEventSource.Log.RecordStage(
+                                rasterPreparationId,
+                                MarkdownRasterPreparationStage.CachePublication,
+                                Stopwatch.GetTimestamp() - stageStarted);
                     }
                     if (decodeStarted != 0)
                     {

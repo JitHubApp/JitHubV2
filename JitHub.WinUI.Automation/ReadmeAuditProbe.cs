@@ -393,6 +393,7 @@ internal static partial class ReadmeAuditProbe
         string renderFailure = Path.Combine(runtime, "render-failure.txt");
         string imageEvidence = Path.Combine(runtime, "image-unavailable.ndjson");
         string imageResolutionEvidence = Path.Combine(runtime, "image-resolution.ndjson");
+        string rasterPreparationEvidence = Path.Combine(runtime, "raster-preparation.ndjson");
         string svgWorkerEvidence = Path.Combine(runtime, "svg-worker-timeouts.ndjson");
         string svgPreflightEvidence = Path.Combine(runtime, "svg-preflight-rejections.ndjson");
         string shutdownStageEvidence = Path.Combine(runtime, "shutdown-stage.json");
@@ -401,7 +402,8 @@ internal static partial class ReadmeAuditProbe
         foreach (string stale in new[]
         {
             appReady, hostReady, renderComplete, renderFailure, imageEvidence,
-            imageResolutionEvidence, svgWorkerEvidence, svgPreflightEvidence,
+            imageResolutionEvidence, rasterPreparationEvidence,
+            svgWorkerEvidence, svgPreflightEvidence,
             shutdownStageEvidence,
             captureRequest, captureResponse,
         })
@@ -438,6 +440,9 @@ internal static partial class ReadmeAuditProbe
         startInfo.Environment["JITHUB_MARKDOWN_RENDER_FAILURE_EVIDENCE_PATH"] = renderFailure;
         startInfo.Environment["JITHUB_MARKDOWN_IMAGE_EVIDENCE_PATH"] = imageEvidence;
         startInfo.Environment["JITHUB_MARKDOWN_IMAGE_RESOLUTION_EVIDENCE_PATH"] = imageResolutionEvidence;
+        if (Environment.GetEnvironmentVariable("JITHUB_README_AUDIT_RASTER_DIAGNOSTICS") == "1")
+            startInfo.Environment["JITHUB_MARKDOWN_RASTER_PREPARATION_EVIDENCE_PATH"] =
+                rasterPreparationEvidence;
         startInfo.Environment["JITHUB_MARKDOWN_SVG_WORKER_EVIDENCE_PATH"] = svgWorkerEvidence;
         startInfo.Environment["JITHUB_MARKDOWN_SVG_PREFLIGHT_EVIDENCE_PATH"] = svgPreflightEvidence;
         startInfo.Environment["JITHUB_MARKDOWN_SHUTDOWN_STAGE_PATH"] = shutdownStageEvidence;
@@ -640,6 +645,7 @@ internal static partial class ReadmeAuditProbe
                 traversal.Images);
             PreserveEvidenceFile(imageEvidence, Path.Combine(output, "image-unavailable.ndjson"));
             PreserveEvidenceFile(imageResolutionEvidence, Path.Combine(output, "image-resolution.ndjson"));
+            PreserveEvidenceFile(rasterPreparationEvidence, Path.Combine(output, "raster-preparation.ndjson"));
             PreserveEvidenceFile(svgWorkerEvidence, Path.Combine(output, "svg-worker-timeouts.ndjson"));
             PreserveEvidenceFile(svgPreflightEvidence, Path.Combine(output, "svg-preflight-rejections.ndjson"));
 
@@ -684,6 +690,9 @@ internal static partial class ReadmeAuditProbe
         }
         catch
         {
+            PreserveEvidenceFile(
+                rasterPreparationEvidence,
+                Path.Combine(output, "raster-preparation.ndjson"));
             PreserveStartupDiagnostics(dataRoot, output, launcher);
             throw;
         }

@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Security.Cryptography;
@@ -22,6 +23,7 @@ internal static partial class MarkdownLifecycleAutomationBridge
     private const string LinkEvidencePathVariable = "JITHUB_MARKDOWN_LINK_EVIDENCE_PATH";
     private const string ImageEvidencePathVariable = "JITHUB_MARKDOWN_IMAGE_EVIDENCE_PATH";
     private const string ImageResolutionEvidencePathVariable = "JITHUB_MARKDOWN_IMAGE_RESOLUTION_EVIDENCE_PATH";
+    private const string RasterPreparationEvidencePathVariable = "JITHUB_MARKDOWN_RASTER_PREPARATION_EVIDENCE_PATH";
     private const string SvgWorkerEvidencePathVariable = "JITHUB_MARKDOWN_SVG_WORKER_EVIDENCE_PATH";
     private const string SvgPreflightEvidencePathVariable = "JITHUB_MARKDOWN_SVG_PREFLIGHT_EVIDENCE_PATH";
     private const string RenderFailureEvidencePathVariable = "JITHUB_MARKDOWN_RENDER_FAILURE_EVIDENCE_PATH";
@@ -42,6 +44,9 @@ internal static partial class MarkdownLifecycleAutomationBridge
     public static bool IsEnabled => _launchFixtureEnabled || IsOne(FixtureVariable);
 
     public static bool IsEvidenceEnabled => IsEnabled || _productionAuditEnabled;
+
+    public static bool IsRasterPreparationEvidenceEnabled => IsEvidenceEnabled &&
+        !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(RasterPreparationEvidencePathVariable));
 
     public static bool IsHighContrastEnabled => IsEnabled && IsOne(HighContrastVariable);
 
@@ -336,6 +341,53 @@ internal static partial class MarkdownLifecycleAutomationBridge
             {
             }
             catch (UnauthorizedAccessException)
+            {
+            }
+        }
+    }
+
+    public static void RecordRasterPreparation(
+        long preparationId,
+        int stage,
+        long sourceBytes,
+        long packedDimensions,
+        long elapsedStopwatchTicks)
+    {
+        if (!IsRasterPreparationEvidenceEnabled)
+            return;
+
+        string path = Environment.GetEnvironmentVariable(RasterPreparationEvidencePathVariable)!;
+        lock (SignalGate)
+        {
+            try
+            {
+                string fullPath = Path.GetFullPath(path);
+                Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+                string entry = JsonSerializer.Serialize(
+                    new RasterPreparationSignal(
+                        Environment.ProcessId,
+                        preparationId,
+                        stage,
+                        sourceBytes,
+                        (int)(packedDimensions >> 32),
+                        (int)packedDimensions,
+                        elapsedStopwatchTicks == 0
+                            ? 0
+                            : Stopwatch.GetElapsedTime(0, elapsedStopwatchTicks).TotalMilliseconds,
+                        DateTimeOffset.UtcNow),
+                    MarkdownLifecycleJsonContext.Default.RasterPreparationSignal);
+                File.AppendAllText(fullPath, entry + Environment.NewLine);
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
+            catch (ArgumentException)
+            {
+            }
+            catch (NotSupportedException)
             {
             }
         }
@@ -649,6 +701,16 @@ internal static partial class MarkdownLifecycleAutomationBridge
         double ElapsedMilliseconds,
         DateTimeOffset Timestamp);
 
+    private sealed record RasterPreparationSignal(
+        int ProcessId,
+        long PreparationId,
+        int Stage,
+        long SourceBytes,
+        int SourceWidth,
+        int SourceHeight,
+        double ElapsedMilliseconds,
+        DateTimeOffset Timestamp);
+
     private sealed record RenderCompleteSignal(
         int ProcessId,
         string Host,
@@ -740,6 +802,7 @@ internal static partial class MarkdownLifecycleAutomationBridge
     [JsonSerializable(typeof(LinkRouteSignal), TypeInfoPropertyName = "LinkRouteSignal")]
     [JsonSerializable(typeof(ImageUnavailableSignal), TypeInfoPropertyName = "ImageUnavailableSignal")]
     [JsonSerializable(typeof(ImageResolutionSignal), TypeInfoPropertyName = "ImageResolutionSignal")]
+    [JsonSerializable(typeof(RasterPreparationSignal), TypeInfoPropertyName = "RasterPreparationSignal")]
     [JsonSerializable(typeof(RenderCompleteSignal), TypeInfoPropertyName = "RenderCompleteSignal")]
     [JsonSerializable(typeof(SvgWorkerTimeoutSignal), TypeInfoPropertyName = "SvgWorkerTimeoutSignal")]
     [JsonSerializable(typeof(SvgPreflightRejectionSignal), TypeInfoPropertyName = "SvgPreflightRejectionSignal")]

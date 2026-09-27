@@ -30,7 +30,7 @@ internal static class JitHubMarkdownRuntime
     private static MarkdownEngine? _engine;
     private static TextMateCodeBlockSyntaxHighlighter? _codeHighlighter;
     private static ResvgMarkdownSvgRenderer? _svgRenderer;
-    private static MarkdownSvgWorkerAuditListener? _svgAuditListener;
+    private static MarkdownRendererAuditListener? _rendererAuditListener;
     private static MarkdownPerformanceSession? _performanceSession;
     private static long _performanceAccountId = long.MinValue;
     private static Task? _fontChangeTask;
@@ -79,7 +79,7 @@ internal static class JitHubMarkdownRuntime
             lock (Gate)
             {
                 ObjectDisposedException.ThrowIf(_isShuttingDown, typeof(JitHubMarkdownRuntime));
-                EnsureSvgAuditListenerLocked();
+                EnsureRendererAuditListenerLocked();
                 return _svgRenderer ??= new ResvgMarkdownSvgRenderer();
             }
         }
@@ -128,17 +128,17 @@ internal static class JitHubMarkdownRuntime
         lock (Gate)
         {
             ObjectDisposedException.ThrowIf(_isShuttingDown, typeof(JitHubMarkdownRuntime));
-            EnsureSvgAuditListenerLocked();
+            EnsureRendererAuditListenerLocked();
             renderer = _svgRenderer ??= new ResvgMarkdownSvgRenderer();
         }
 
         await renderer.WarmUpAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    private static void EnsureSvgAuditListenerLocked()
+    private static void EnsureRendererAuditListenerLocked()
     {
         if (MarkdownLifecycleAutomationBridge.IsEvidenceEnabled)
-            _svgAuditListener ??= new MarkdownSvgWorkerAuditListener();
+            _rendererAuditListener ??= new MarkdownRendererAuditListener();
     }
 
     /// <summary>
@@ -180,7 +180,7 @@ internal static class JitHubMarkdownRuntime
         MarkdownEngine? engine;
         TextMateCodeBlockSyntaxHighlighter? codeHighlighter;
         ResvgMarkdownSvgRenderer? svgRenderer;
-        MarkdownSvgWorkerAuditListener? svgAuditListener;
+        MarkdownRendererAuditListener? rendererAuditListener;
         MarkdownPerformanceSession? performanceSession;
         TaskCompletionSource completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
         lock (Gate)
@@ -197,8 +197,8 @@ internal static class JitHubMarkdownRuntime
             _codeHighlighter = null;
             svgRenderer = _svgRenderer;
             _svgRenderer = null;
-            svgAuditListener = _svgAuditListener;
-            _svgAuditListener = null;
+            rendererAuditListener = _rendererAuditListener;
+            _rendererAuditListener = null;
             performanceSession = _performanceSession;
             _performanceSession = null;
             _performanceAccountId = long.MinValue;
@@ -207,7 +207,7 @@ internal static class JitHubMarkdownRuntime
         }
 
         _ = Task.Run(() => ShutdownCoreAsync(
-            engine, codeHighlighter, svgRenderer, svgAuditListener, performanceSession, completion));
+            engine, codeHighlighter, svgRenderer, rendererAuditListener, performanceSession, completion));
         return completion.Task;
     }
 
@@ -220,7 +220,7 @@ internal static class JitHubMarkdownRuntime
         MarkdownEngine? engine;
         TextMateCodeBlockSyntaxHighlighter? codeHighlighter;
         ResvgMarkdownSvgRenderer? svgRenderer;
-        MarkdownSvgWorkerAuditListener? svgAuditListener;
+        MarkdownRendererAuditListener? rendererAuditListener;
         MarkdownPerformanceSession? performanceSession;
         lock (Gate)
         {
@@ -236,8 +236,8 @@ internal static class JitHubMarkdownRuntime
             _codeHighlighter = null;
             svgRenderer = _svgRenderer;
             _svgRenderer = null;
-            svgAuditListener = _svgAuditListener;
-            _svgAuditListener = null;
+            rendererAuditListener = _rendererAuditListener;
+            _rendererAuditListener = null;
             performanceSession = _performanceSession;
             _performanceSession = null;
             _performanceAccountId = long.MinValue;
@@ -250,14 +250,14 @@ internal static class JitHubMarkdownRuntime
         engine?.Dispose();
         RepositorySvgGpuCache.Shutdown();
         svgRenderer?.Dispose();
-        svgAuditListener?.Dispose();
+        rendererAuditListener?.Dispose();
     }
 
     private static async Task ShutdownCoreAsync(
         MarkdownEngine? engine,
         TextMateCodeBlockSyntaxHighlighter? codeHighlighter,
         ResvgMarkdownSvgRenderer? svgRenderer,
-        MarkdownSvgWorkerAuditListener? svgAuditListener,
+        MarkdownRendererAuditListener? rendererAuditListener,
         MarkdownPerformanceSession? performanceSession,
         TaskCompletionSource completion)
     {
@@ -282,7 +282,7 @@ internal static class JitHubMarkdownRuntime
             }
             finally
             {
-                svgAuditListener?.Dispose();
+                rendererAuditListener?.Dispose();
             }
 
             completion.SetResult();

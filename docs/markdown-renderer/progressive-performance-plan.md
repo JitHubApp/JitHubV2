@@ -1452,6 +1452,31 @@ complete before claiming this plan or the 1.0 performance goal is met.
   The x64 trimmed NativeAOT provider smoke publishes and runs successfully.
   This improves diagnosis of rank 201 and does not
   make its valid image available or relax either deadline.
+- The `8df730b` hosted rerun (Actions run `36325860405`) is still in progress.
+  Its completed 51–75 and 201–225 shards passed all 50 cases: rank 54
+  (`langgenius/dify`) and rank 201 (`spring-projects/spring-boot`) both rendered
+  every valid image with no unavailable asset. Rank 301
+  (`facebook/docusaurus`) also passed its completed shard with one 160-ms
+  CPU-preparation lease, versus 4,218 ms in the prior hosted audit. These
+  cases are useful recurrence evidence, not a completed 500-case verdict or
+  a proof that the intermittent stalls cannot return. The `de91f61`
+  current-head audit remains queued behind it.
+- A focused Release x64 replay of rank 301 at the same pinned commit used by
+  the 4,218-ms outlier fetched the exact same 8,948-byte PNG (SHA-256
+  `C2E9351FFB8B7BDFB8129ADA3C71AC3BA0CC9EB0CB7717D24C1B81FE6DBB9587`)
+  and passed text/structure/image gates three times. Its CPU-preparation leases
+  were 65, 30, and 25 ms. Opt-in, content-free raster stage events attributed the
+  first lease to 8.96 ms stream write, 26.02 ms decoder creation, 17.50 ms
+  WIC pixel decode, 1.73 ms Win2D upload, and 0.11 ms cache publication;
+  second lease was faster at every stage. The final replay additionally
+  measured preparation admission and continuation scheduling at 0.55 ms.
+  Thus the prior 4.22-second
+  client-preparation stall is not a persistent cost of those bytes. Its root
+  cause remains open until captured under the stall condition; the focused
+  diagnostic mode is explicitly excluded from qualifying performance gates.
+  A fourth pinned replay without the opt-in passed and produced no raster
+  diagnostic file (26-ms CPU-preparation lease), confirming that ordinary
+  audits leave the extra observer disabled.
 - Open: oversized raster tiling and session-owned SVG/document/GPU preparation
   caches.
 - Open: defer Math/Mermaid scenes and ahead-of-viewport highlighting without
