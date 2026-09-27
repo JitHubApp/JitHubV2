@@ -1518,6 +1518,19 @@ complete before claiming this plan or the 1.0 performance goal is met.
   for the required offline same-byte Edge comparison. This audit is an
   earlier-head pass after the package-size fix and must be rerun on its new
   rendering head.
+- On the pushed `3766f88` package-fix head, four pinned rank-26 local replays
+  fetched exactly the same five image hashes as the 2.48-second hosted
+  preparation case. All passed with zero unavailable images; raster CPU
+  preparation measured 156, 94, 117, and 129 ms, and no visible-image wait
+  occurred. The diagnostic trace on the first replay attributed the 15,810-
+  byte WebP to 8.56 ms stream write, 93.97 ms decoder creation, 23.50 ms
+  WIC decode, and 1.97 ms upload. Three pinned rank-201 local replays likewise
+  fetched the exact same two SVG hashes as the 7.19-second hosted wait; all
+  passed with full traversal around 420–476 ms and no image wait. These
+  same-byte native replays show that neither hosted stall is a persistent cost
+  of those bytes, but do not prove whether the intermittent cause is WARP,
+  worker startup, runner contention, or another native path. Hosted
+  stage-level capture and the mandatory same-byte Edge comparison remain open.
 - Open: oversized raster tiling and session-owned SVG/document/GPU preparation
   caches.
 - Open: defer Math/Mermaid scenes and ahead-of-viewport highlighting without
