@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
 using System.IO;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
@@ -303,6 +304,11 @@ internal static partial class MarkdownLifecycleAutomationBridge
             return;
         }
 
+        // Only audit launches pay the hash cost. The digest identifies the
+        // exact resolved payload for same-byte replays without retaining it.
+        string? contentSha256 = resolution.Asset is { } asset
+            ? Convert.ToHexString(SHA256.HashData(asset.Bytes))
+            : null;
         lock (SignalGate)
         {
             try
@@ -316,6 +322,7 @@ internal static partial class MarkdownLifecycleAutomationBridge
                         resolution.IsHandled,
                         resolution.Asset is not null,
                         resolution.Asset?.Bytes.Length ?? 0,
+                        contentSha256,
                         resolution.Asset?.ContentType,
                         resolution.Asset?.ResolvedUri?.AbsoluteUri,
                         resolution.UnavailableReason.ToString(),
@@ -614,6 +621,7 @@ internal static partial class MarkdownLifecycleAutomationBridge
         bool IsHandled,
         bool HasAsset,
         int ByteLength,
+        string? ContentSha256,
         string? ContentType,
         string? ResolvedUri,
         string Reason,

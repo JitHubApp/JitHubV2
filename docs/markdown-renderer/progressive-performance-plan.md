@@ -1329,6 +1329,30 @@ complete before claiming this plan or the 1.0 performance goal is met.
   total layout wall time. This different-machine, live-asset replay did not
   reproduce or clear the hosted eight-second stall. A hosted recurrence with
   the new phase evidence is needed before choosing a scheduling or layout fix.
+- The current-head `897fc85` pinned live audit (Actions run `36302490737`)
+  failed rank 153 (`louislam/uptime-kuma`) in its 151-175 shard. The
+  1,877,124-byte sponsor SVG resolved successfully in 139 ms and was visible
+  in Edge at 1200×8120, but the isolated worker timed out during `open` at
+  its unchanged three-second hard deadline. The request reached response-read,
+  the worker had not exited, and it accumulated only 578 ms of process CPU;
+  JitHub therefore showed one valid image as unavailable. Rank 172
+  (`gin-gonic/gin`), which failed on an earlier head, passed in this shard
+  with zero unavailable images. The sponsor failure is a recurrence of the
+  earlier rank-153 issue, not an external-download failure. The existing
+  offline sponsor-shaped fixture matches 576 embedded images, 380 unique
+  payloads, 1152 text nodes, and roughly 1.8 MiB of source but uses PNG
+  rather than the live SVG's JPEG payloads. A host/worker phase and memory
+  trace plus a same-byte, same-machine replay are still needed to distinguish
+  worker descheduling, font/image processing, and resource pressure. The
+  live gate remains failed; a different-machine or synthetic-fixture pass
+  must not waive it.
+- Locally verified, pending CI: explicit audit launches now record SHA-256 of
+  each successfully resolved image payload alongside its existing byte length
+  and timing. This is audit-only and stores no payload bytes, so a future
+  hosted timeout can be tied to an exact local replay even when the remote
+  asset changes between runs. All four focused worker/audit-evidence tests
+  pass. This is instrumentation, not a fix for the sponsor timeout or proof
+  of same-byte parity.
 - Open: oversized raster tiling and session-owned SVG/document/GPU preparation
   caches.
 - Open: defer Math/Mermaid scenes and ahead-of-viewport highlighting without

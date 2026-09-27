@@ -1,6 +1,8 @@
 using System.Diagnostics.Tracing;
+using System.Security.Cryptography;
 using System.Text.Json;
 using JitHub.Services.Markdown;
+using MarkdownRenderer.Images;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;
@@ -13,6 +15,52 @@ public sealed class MarkdownSvgWorkerAuditEnvironmentCollection
 [Collection("Markdown SVG worker audit environment")]
 public sealed class MarkdownSvgWorkerAuditListenerTests
 {
+    [Fact]
+    public void ImageResolutionRecordsExactPayloadIdentityWithoutRetainingBytes()
+    {
+        const string variable = "JITHUB_MARKDOWN_IMAGE_RESOLUTION_EVIDENCE_PATH";
+        string path = Path.Combine(
+            Path.GetTempPath(),
+            $"jithub-image-resolution-audit-{Guid.NewGuid():N}.ndjson");
+        string? previousPath = Environment.GetEnvironmentVariable(variable);
+        byte[] bytes = [1, 2, 3, 4, 5];
+        try
+        {
+            Environment.SetEnvironmentVariable(variable, path);
+            MarkdownLifecycleAutomationBridge.ConfigureLaunchOptions(true, null);
+            MarkdownLifecycleAutomationBridge.RecordImageResolution(
+                "fixture.svg",
+                MarkdownImageResolution.Resolved(new MarkdownImageAsset(bytes, "image/svg+xml")),
+                DateTimeOffset.UtcNow,
+                12.5);
+
+            string line = Assert.Single(File.ReadAllLines(path));
+            using JsonDocument document = JsonDocument.Parse(line);
+            Assert.Equal(
+                Convert.ToHexString(SHA256.HashData(bytes)),
+                document.RootElement.GetProperty("ContentSha256").GetString());
+            Assert.Equal(bytes.Length, document.RootElement.GetProperty("ByteLength").GetInt32());
+            Assert.False(document.RootElement.TryGetProperty("Bytes", out _));
+            Assert.False(document.RootElement.TryGetProperty("Payload", out _));
+
+            MarkdownLifecycleAutomationBridge.RecordImageResolution(
+                "missing.svg",
+                MarkdownImageResolution.Unavailable,
+                DateTimeOffset.UtcNow,
+                1);
+            string unavailableLine = File.ReadAllLines(path)[1];
+            using JsonDocument unavailableDocument = JsonDocument.Parse(unavailableLine);
+            Assert.Equal(JsonValueKind.Null,
+                unavailableDocument.RootElement.GetProperty("ContentSha256").ValueKind);
+        }
+        finally
+        {
+            MarkdownLifecycleAutomationBridge.ConfigureLaunchOptions(false, null);
+            Environment.SetEnvironmentVariable(variable, previousPath);
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
     [Fact]
     public void PreflightRejectionRecordsOnlyPolicyAndContentIdentity()
     {
