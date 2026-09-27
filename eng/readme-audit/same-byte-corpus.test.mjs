@@ -155,6 +155,88 @@ test("signed source queries are represented only by URL hashes in the captured c
   assert.equal(manifestText.includes(resourceUrlSha256(signedUrl)), true);
 });
 
+test("GitHub Camo bytes replay under the authored canonical image URL", async t => {
+  const directory = path.join(await mkdtemp(path.join(os.tmpdir(), "jithub-same-byte-output-")), "case");
+  t.after(() => rm(path.dirname(directory), { recursive: true, force: true }));
+  const camoUrl = `https://camo.githubusercontent.com/example/${Buffer.from(imageUrl).toString("hex")}`;
+  const cdp = createFakeCdp();
+  const recorder = createResponseRecorder(cdp);
+  emitImageResponse(cdp, camoUrl);
+
+  await captureSameByteCorpus({
+    directory,
+    repository: repositoryFixture(),
+    readmeUrl,
+    readmePath: "README.md",
+    readmeGitBlobSha1: gitBlobSha1(readmeBytes),
+    readmeByteSize: readmeBytes.length,
+    images: [{ ...imageFixture(camoUrl), canonicalSource: imageUrl }],
+    responseRecorder: recorder,
+    fetchImpl: async () => new Response(readmeBytes, { status: 200 }),
+  });
+  recorder.dispose();
+
+  const manifestText = await readFile(path.join(directory, "manifest.json"), "utf8");
+  const manifest = JSON.parse(manifestText);
+  assert.equal(manifest.assets.length, 2);
+  assert.equal(manifest.assets.some(asset => asset.urlSha256 === resourceUrlSha256(imageUrl)), true);
+  assert.equal(manifestText.includes(imageUrl), false);
+  assert.equal(manifestText.includes(camoUrl), false);
+
+  const replay = await createSameByteReplayServer(directory);
+  t.after(replay.close);
+  const response = await fetch(`${replay.baseUrl}/asset?url=${encodeURIComponent(imageUrl)}`);
+  assert.equal(response.status, 200);
+  assert.deepEqual(Buffer.from(await response.arrayBuffer()), imageBytes);
+  assert.equal(replay.misses, 0);
+});
+
+test("distinct visible images are bounded before searching or reading responses", async () => {
+  const cdp = createFakeCdp();
+  const recorder = createResponseRecorder(cdp);
+  const images = Array.from({ length: 15_001 }, (_, index) => imageFixture(`${imageUrl}?case=${index}`));
+  await assert.rejects(
+    recorder.captureVisibleImages(images),
+    /bounded image-element count/u);
+  recorder.dispose();
+});
+
+test("data and repeated image elements cannot bypass the total element cap", async () => {
+  const cdp = createFakeCdp();
+  const recorder = createResponseRecorder(cdp);
+  const images = Array.from({ length: 15_001 }, (_, index) => imageFixture(
+    index % 2 === 0 ? "data:image/png;base64,iVBORw0KGgo=" : imageUrl));
+  await assert.rejects(
+    recorder.captureVisibleImages(images),
+    /bounded image-element count/u);
+  recorder.dispose();
+});
+
+test("redirect alias storms are rejected before reading any image body", async () => {
+  const cdp = createFakeCdp();
+  const recorder = createResponseRecorder(cdp);
+  for (let request = 0; request < 1_000; request++) {
+    const requestId = `redirect-${request}`;
+    cdp.emit("Network.requestWillBeSent", { requestId, request: { url: imageUrl } });
+    for (let alias = 0; alias < 15; alias++) {
+      cdp.emit("Network.requestWillBeSent", {
+        requestId,
+        request: { url: `${imageUrl}?redirect=${request}-${alias}` },
+      });
+    }
+    cdp.emit("Network.responseReceived", {
+      requestId,
+      type: "Image",
+      response: { url: `${imageUrl}?redirect=${request}-14`, status: 200, mimeType: "image/png" },
+    });
+    cdp.emit("Network.loadingFinished", { requestId, encodedDataLength: imageBytes.length });
+  }
+  await assert.rejects(
+    recorder.captureVisibleImages([imageFixture()]),
+    /bounded URL lookup entry count/u);
+  recorder.dispose();
+});
+
 test("a source-preview README can capture exact Markdown bytes with no Edge image assets", async t => {
   const directory = path.join(await mkdtemp(path.join(os.tmpdir(), "jithub-same-byte-output-")), "case");
   t.after(() => rm(path.dirname(directory), { recursive: true, force: true }));

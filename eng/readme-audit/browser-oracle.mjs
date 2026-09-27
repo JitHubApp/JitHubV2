@@ -206,7 +206,11 @@ try {
       // README <details> elements do not carry this class.
       return !node.classList.contains("details-reset");
     };
-    const images = [...article.querySelectorAll("img")]
+    const imageNodes = article.querySelectorAll("img");
+    if (imageNodes.length > 15_000) {
+      throw new Error("README exceeds the bounded browser image-element count.");
+    }
+    const images = [...imageNodes]
       .filter(isRendered)
       .map(image => {
         const bounds = image.getBoundingClientRect();
@@ -215,6 +219,10 @@ try {
           hasExplicitAlt: image.hasAttribute("alt"),
           source: image.getAttribute("src") || "",
           currentSource: image.currentSrc || "",
+          // GitHub's Camo image URL replaces the authored source. Preserve the
+          // canonical source only in the transient capture; the report writer
+          // hashes it before any artifact is persisted.
+          canonicalSource: image.getAttribute("data-canonical-src") || "",
           complete: image.complete,
           naturalWidth: image.naturalWidth,
           naturalHeight: image.naturalHeight,
@@ -539,7 +547,7 @@ function sanitizeValue(value, propertyName) {
     return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, sanitizeValue(item, key)]));
   }
   if (typeof value !== "string") return value;
-  if (/^(source|currentsource|href|uri|resolveduri|url|repositoryurl|downloadurl)$/iu.test(propertyName)) {
+  if (/^(source|currentsource|canonicalsource|href|uri|resolveduri|url|repositoryurl|downloadurl)$/iu.test(propertyName)) {
     return `sha256:${sha256(Buffer.from(value, "utf8"))}`;
   }
   return redactUrls(value);

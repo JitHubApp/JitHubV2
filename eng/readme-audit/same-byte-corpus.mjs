@@ -187,12 +187,15 @@ export function createResponseRecorder(cdp, { maxAssetBytes = MAX_ASSET_BYTES } 
   return {
     async captureVisibleImages(images) {
       if (recorderFailure) throw new Error(recorderFailure);
+      if (!Array.isArray(images) || images.length > MAX_ASSET_LOOKUP_ENTRIES) {
+        throw new Error("Same-byte corpus exceeds its bounded image-element count.");
+      }
       const selected = new Map();
       for (const image of images) {
         if (!image.complete || image.naturalWidth <= 0 || image.naturalHeight <= 0) {
           throw new Error("A browser-visible image was not fully decoded during same-byte capture.");
         }
-        const aliases = [...new Set([image.currentSource, image.source]
+        const aliases = [...new Set([image.currentSource, image.source, image.canonicalSource]
           .filter(value => typeof value === "string" && value.length > 0))];
         const selectedUrl = image.currentSource || image.source;
         if (!selectedUrl) throw new Error("A visible browser image has no selected source URL.");
@@ -205,12 +208,24 @@ export function createResponseRecorder(cdp, { maxAssetBytes = MAX_ASSET_BYTES } 
         selected.set(selectedKey, existingAliases);
       }
 
-      const assetsByHash = new Map();
-      let uniquePayloadBytes = 0;
+      // Index once: a long README can have thousands of visible images and
+      // many unrelated network requests. Re-scanning every request per image
+      // would make capture quadratic in precisely the stress cases we audit.
+      const requestsByUrl = new Map();
+      for (const record of requests.values()) {
+        if (record.type !== "Image") continue;
+        record.normalizedUrls = new Set([...record.urls].map(normalizeHttpUrl).filter(Boolean));
+        for (const key of record.normalizedUrls) {
+          const matches = requestsByUrl.get(key) ?? [];
+          matches.push(record);
+          requestsByUrl.set(key, matches);
+        }
+      }
+
+      const captureWork = [];
+      const lookupKeys = new Set();
       for (const [requestedUrl, imageAliases] of selected) {
-        const matches = [...requests.values()].filter(record =>
-          record.type === "Image" &&
-          [...record.urls].some(url => normalizeHttpUrl(url) === requestedUrl));
+        const matches = requestsByUrl.get(requestedUrl) ?? [];
         if (matches.length === 0) {
           throw new Error(`No captured network response matches visible image key ${resourceUrlSha256(requestedUrl)}.`);
         }
@@ -218,7 +233,20 @@ export function createResponseRecorder(cdp, { maxAssetBytes = MAX_ASSET_BYTES } 
         if (successful.length === 0) {
           throw new Error(`Visible image key ${resourceUrlSha256(requestedUrl)} has no completed successful response.`);
         }
+        const aliases = new Set(imageAliases);
+        for (const record of matches) {
+          for (const key of record.normalizedUrls) aliases.add(key);
+        }
+        for (const key of aliases) lookupKeys.add(key);
+        if (lookupKeys.size > MAX_ASSET_LOOKUP_ENTRIES) {
+          throw new Error("Same-byte corpus exceeds its bounded URL lookup entry count.");
+        }
+        captureWork.push({ requestedUrl, successful, aliases });
+      }
 
+      const assetsByHash = new Map();
+      let uniquePayloadBytes = 0;
+      for (const { requestedUrl, successful, aliases } of captureWork) {
         let chosenBytes = null;
         let chosenHash = "";
         let chosenMimeType = "";
@@ -258,11 +286,8 @@ export function createResponseRecorder(cdp, { maxAssetBytes = MAX_ASSET_BYTES } 
           asset = { sha256: chosenHash, bytes: chosenBytes, mimeType: chosenMimeType, urlHashes: new Set() };
           assetsByHash.set(chosenHash, asset);
         }
-        for (const urlHash of [
-          ...imageAliases,
-          ...matches.flatMap(record => [...record.urls].map(normalizeHttpUrl).filter(Boolean)),
-        ].map(resourceUrlSha256)) {
-          asset.urlHashes.add(urlHash);
+        for (const alias of aliases) {
+          asset.urlHashes.add(resourceUrlSha256(alias));
         }
       }
       return [...assetsByHash.values()]
@@ -292,7 +317,7 @@ export async function loadSameByteCorpus(directory) {
   }
 
   const assets = new Map();
-  const urlHashes = new Map();
+  const entriesByUrlHash = new Map();
   let totalBytes = 0;
   for (const item of manifest.assets) {
     if (!SHA256_PATTERN.test(item.sha256) || !Number.isSafeInteger(item.byteSize) ||
@@ -307,15 +332,15 @@ export async function loadSameByteCorpus(directory) {
     } else if (asset.length !== item.byteSize) {
       throw new Error("Same-byte corpus maps one image hash to inconsistent byte sizes.");
     }
-    if (!SHA256_PATTERN.test(item.urlSha256 || "") || urlHashes.has(item.urlSha256)) {
+    if (!SHA256_PATTERN.test(item.urlSha256 || "") || entriesByUrlHash.has(item.urlSha256)) {
       throw new Error("Same-byte corpus contains a duplicate or invalid image URL key.");
     }
-    urlHashes.set(item.urlSha256, item.sha256);
+    entriesByUrlHash.set(item.urlSha256, item);
   }
   if (totalBytes > MAX_CORPUS_ASSET_BYTES) {
     throw new Error("Same-byte corpus exceeds its aggregate image byte limit.");
   }
-  return { root, manifest, manifestSha256: sha256(manifestBytes), readmeBytes, assets, urlHashes };
+  return { root, manifest, manifestSha256: sha256(manifestBytes), readmeBytes, assets, entriesByUrlHash };
 }
 
 export async function createSameByteReplayServer(corpusDirectory) {
@@ -340,10 +365,10 @@ export async function createSameByteReplayServer(corpusDirectory) {
       const sourceUrl = url.searchParams.get("url");
       let sourceHash = "";
       try { if (sourceUrl) sourceHash = resourceUrlSha256(sourceUrl); } catch {}
-      const digest = sourceHash && corpus.urlHashes.get(sourceHash);
+      const entry = sourceHash && corpus.entriesByUrlHash.get(sourceHash);
+      const digest = entry?.sha256;
       const bytes = digest && corpus.assets.get(digest);
       if (bytes) {
-        const entry = corpus.manifest.assets.find(candidate => candidate.urlSha256 === sourceHash);
         response.writeHead(200, {
           "content-type": entry.mimeType,
           "content-length": bytes.length,
@@ -398,6 +423,7 @@ function validateManifestShape(manifest) {
       manifest.readme.byteSize < 0 || manifest.readme.byteSize > MAX_README_BYTES ||
       !SHA256_PATTERN.test(manifest.readme?.sha256 || "") ||
       !Array.isArray(manifest.assets) ||
+      manifest.assets.length > MAX_ASSET_LOOKUP_ENTRIES ||
       manifest.limits?.maxReadmeBytes !== MAX_README_BYTES ||
       manifest.limits?.maxAssetBytes !== MAX_ASSET_BYTES ||
       manifest.limits?.maxAggregateAssetBytes !== MAX_CORPUS_ASSET_BYTES) {
