@@ -1377,11 +1377,20 @@ complete before claiming this plan or the 1.0 performance goal is met.
   are numeric process counters, never SVG bytes or URLs; normal rendering
   does not query process memory. A live-worker interop test, all 63 resvg
   tests, all 3,150 x64 app tests, x86/ARM64 provider builds, the Release app
-  build, and an x64 NativeAOT publish plus artifact verification passed. The
-  prior `16419d0` top-500 run
-  has passed rank 153, but is not complete; the new head's full 500-case audit
-  is waiting behind it. No same-byte sponsor replay, memory-pressure verdict,
-  or qualified release performance result has been obtained yet.
+  build, and an x64 NativeAOT publish plus artifact verification passed. No
+  same-byte sponsor replay, memory-pressure verdict, or qualified release
+  performance result has been obtained yet.
+- The earlier-head `16419d0` pinned live audit (Actions run `36305907644`)
+  completed 500/500 with no valid image marked unavailable. Its aggregate
+  native/Edge first-render and full-page p95 ratios were 0.317 and 0.298;
+  rank 153 passed on this run. Rank 102 (`jaywcjlove/awesome-mac`) still had a
+  raw full-page ratio of 1.614. The detailed trace shows one 20,004-ms
+  visible-image wait at tile 125 for an OpenCollective Camo SVG; the same URL
+  completed in Edge with natural size 0×0, and JitHub's one raw unavailable
+  image was excluded as browser-broken. That is concrete external-delivery
+  evidence for this outlier, not a waiver for any valid image failure or a
+  same-byte client-rendering comparison. The `18679a3` current-head audit is
+  still running; the separate interactive benchmark remains queued.
 - Open: oversized raster tiling and session-owned SVG/document/GPU preparation
   caches.
 - Open: defer Math/Mermaid scenes and ahead-of-viewport highlighting without
