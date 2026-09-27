@@ -1316,6 +1316,19 @@ complete before claiming this plan or the 1.0 performance goal is met.
   passed with zero unavailable images, but its Camo response arrived in
   144 ms and did not reproduce the hosted slow-path. Do not count that replay
   as a waiver: the full post-fix 500-case audit is still required.
+- The `da0bd1a` audit's rank 101 (`immich-app/immich`) spent 8,157.8 ms in
+  initial layout wall time but only 93.75 ms of layout-thread CPU. Its seven
+  image resolutions accumulated 1,508 ms and the first tile waited 1,848 ms
+  for images, so image delivery alone does not explain the layout interval.
+  Audit-only layout timing now partitions that interval into queue delay,
+  worker wall time, and UI-continuation delay; the parser requires all three
+  finite nonnegative values to sum to the recorded layout total. The 3,149
+  app tests and x64 Release app/automation builds pass locally. An exact
+  pinned-README rank-101 UI replay passed with zero unavailable images and
+  measured 0.5 ms queue, 90.9 ms worker, 19.7 ms continuation, and 111.1 ms
+  total layout wall time. This different-machine, live-asset replay did not
+  reproduce or clear the hosted eight-second stall. A hosted recurrence with
+  the new phase evidence is needed before choosing a scheduling or layout fix.
 - Open: oversized raster tiling and session-owned SVG/document/GPU preparation
   caches.
 - Open: defer Math/Mermaid scenes and ahead-of-viewport highlighting without

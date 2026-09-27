@@ -68,6 +68,9 @@ internal sealed class ReadmeAuditPerformanceSnapshot
             !IsValidStageDuration(snapshot.Pipeline.ThemeSnapshotMilliseconds) ||
             !IsValidStageDuration(snapshot.Pipeline.LayoutMilliseconds) ||
             !IsValidLayoutCpuDuration(snapshot.Pipeline.LayoutCpuMilliseconds) ||
+            !IsValidStageDuration(snapshot.Pipeline.LayoutQueueMilliseconds) ||
+            !IsValidStageDuration(snapshot.Pipeline.LayoutWorkerWallMilliseconds) ||
+            !IsValidStageDuration(snapshot.Pipeline.LayoutContinuationMilliseconds) ||
             !IsValidStageDuration(snapshot.Pipeline.PublicationMilliseconds) ||
             !IsValidStageDuration(snapshot.Pipeline.CommitMilliseconds) ||
             !IsValidStageDuration(snapshot.Pipeline.OverlayResetMilliseconds) ||
@@ -80,6 +83,11 @@ internal sealed class ReadmeAuditPerformanceSnapshot
             !IsValidStageDuration(snapshot.Pipeline.AdornmentFocusMilliseconds) ||
             !IsValidStageDuration(snapshot.Pipeline.FinalNotificationMilliseconds) ||
             snapshot.Pipeline.ThemeSnapshotMilliseconds > snapshot.Pipeline.SetupMilliseconds + 0.01 ||
+            Math.Abs(
+                snapshot.Pipeline.LayoutQueueMilliseconds +
+                snapshot.Pipeline.LayoutWorkerWallMilliseconds +
+                snapshot.Pipeline.LayoutContinuationMilliseconds -
+                snapshot.Pipeline.LayoutMilliseconds) > 0.01 ||
             Math.Abs(
                 snapshot.Pipeline.HighlightRetirementMilliseconds +
                 snapshot.Pipeline.HighlightBandSchedulingMilliseconds -
@@ -119,6 +127,9 @@ internal sealed class ReadmeAuditPipelineTimingSnapshot
     public required double ThemeSnapshotMilliseconds { get; init; }
     public required double LayoutMilliseconds { get; init; }
     public required double LayoutCpuMilliseconds { get; init; }
+    public required double LayoutQueueMilliseconds { get; init; }
+    public required double LayoutWorkerWallMilliseconds { get; init; }
+    public required double LayoutContinuationMilliseconds { get; init; }
     public required double PublicationMilliseconds { get; init; }
     public required double CommitMilliseconds { get; init; }
     public required double OverlayResetMilliseconds { get; init; }

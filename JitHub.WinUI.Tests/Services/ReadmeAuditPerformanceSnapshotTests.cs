@@ -33,6 +33,9 @@ public sealed class ReadmeAuditPerformanceSnapshotTests
               "ThemeSnapshotMilliseconds": 0.2,
               "LayoutMilliseconds": 2.5,
               "LayoutCpuMilliseconds": 1.25,
+              "LayoutQueueMilliseconds": 0.5,
+              "LayoutWorkerWallMilliseconds": 1.5,
+              "LayoutContinuationMilliseconds": 0.5,
               "PublicationMilliseconds": 0.5,
               "CommitMilliseconds": 0.1,
               "OverlayResetMilliseconds": 0.1,
@@ -66,6 +69,9 @@ public sealed class ReadmeAuditPerformanceSnapshotTests
         Assert.Equal(0.2, snapshot.Pipeline.ThemeSnapshotMilliseconds);
         Assert.Equal(2.5, snapshot.Pipeline.LayoutMilliseconds);
         Assert.Equal(1.25, snapshot.Pipeline.LayoutCpuMilliseconds);
+        Assert.Equal(0.5, snapshot.Pipeline.LayoutQueueMilliseconds);
+        Assert.Equal(1.5, snapshot.Pipeline.LayoutWorkerWallMilliseconds);
+        Assert.Equal(0.5, snapshot.Pipeline.LayoutContinuationMilliseconds);
         Assert.Equal(0.5, snapshot.Pipeline.PublicationMilliseconds);
         Assert.Equal(0.1, snapshot.Pipeline.CommitMilliseconds);
         Assert.Equal(0.1, snapshot.Pipeline.OverlayResetMilliseconds);
@@ -108,6 +114,9 @@ public sealed class ReadmeAuditPerformanceSnapshotTests
     [InlineData("ThemeSnapshotMilliseconds")]
     [InlineData("LayoutMilliseconds")]
     [InlineData("LayoutCpuMilliseconds")]
+    [InlineData("LayoutQueueMilliseconds")]
+    [InlineData("LayoutWorkerWallMilliseconds")]
+    [InlineData("LayoutContinuationMilliseconds")]
     [InlineData("PublicationMilliseconds")]
     [InlineData("CommitMilliseconds")]
     [InlineData("OverlayResetMilliseconds")]
@@ -144,6 +153,9 @@ public sealed class ReadmeAuditPerformanceSnapshotTests
     [InlineData("ThemeSnapshotMilliseconds", -1)]
     [InlineData("LayoutMilliseconds", -1)]
     [InlineData("LayoutCpuMilliseconds", -2)]
+    [InlineData("LayoutQueueMilliseconds", -1)]
+    [InlineData("LayoutWorkerWallMilliseconds", -1)]
+    [InlineData("LayoutContinuationMilliseconds", -1)]
     [InlineData("PublicationMilliseconds", -1)]
     [InlineData("CommitMilliseconds", -1)]
     [InlineData("OverlayResetMilliseconds", -1)]
@@ -168,6 +180,15 @@ public sealed class ReadmeAuditPerformanceSnapshotTests
     {
         JsonNode evidence = JsonNode.Parse(ValidEvidence)!;
         evidence["Performance"]!["Pipeline"]!["PlanConstructionMilliseconds"] = 0.3;
+
+        Assert.Throws<InvalidDataException>(() => Parse(evidence));
+    }
+
+    [Fact]
+    public void Parse_RejectsLayoutPhasesThatDoNotAddToTheReportedTotal()
+    {
+        JsonNode evidence = JsonNode.Parse(ValidEvidence)!;
+        evidence["Performance"]!["Pipeline"]!["LayoutQueueMilliseconds"] = 0.8;
 
         Assert.Throws<InvalidDataException>(() => Parse(evidence));
     }

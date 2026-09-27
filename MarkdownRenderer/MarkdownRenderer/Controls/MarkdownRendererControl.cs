@@ -4030,9 +4030,10 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                 6000);
         long layoutStarted = Stopwatch.GetTimestamp();
         double setupMilliseconds = Stopwatch.GetElapsedTime(parseEnded, layoutStarted).TotalMilliseconds;
-        var (snapshot, layoutCpuMilliseconds) = await Task.Run(
+        var (snapshot, layoutCpuMilliseconds, workerStarted, workerEnded) = await Task.Run(
             () =>
             {
+                long started = Stopwatch.GetTimestamp();
                 // This synchronous build stays on one pool thread. Its CPU
                 // time separates actual layout work from queueing/descheduling
                 // when a live audit reports an anomalous wall-clock stall.
@@ -4051,10 +4052,15 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                 long cpuEnded = cpuStarted < 0
                     ? -1
                     : ThreadCpuClock.ReadCurrentThreadTicks();
-                return (built, ThreadCpuClock.ElapsedMilliseconds(cpuStarted, cpuEnded));
+                long ended = Stopwatch.GetTimestamp();
+                return (built, ThreadCpuClock.ElapsedMilliseconds(cpuStarted, cpuEnded), started, ended);
             },
             CancellationToken.None).ConfigureAwait(true);
-        double layoutMilliseconds = Stopwatch.GetElapsedTime(layoutStarted).TotalMilliseconds;
+        long layoutEnded = Stopwatch.GetTimestamp();
+        double layoutMilliseconds = Stopwatch.GetElapsedTime(layoutStarted, layoutEnded).TotalMilliseconds;
+        double layoutQueueMilliseconds = Stopwatch.GetElapsedTime(layoutStarted, workerStarted).TotalMilliseconds;
+        double layoutWorkerWallMilliseconds = Stopwatch.GetElapsedTime(workerStarted, workerEnded).TotalMilliseconds;
+        double layoutContinuationMilliseconds = Stopwatch.GetElapsedTime(workerEnded, layoutEnded).TotalMilliseconds;
         if (snapshot is null || ct.IsCancellationRequested || generation != _pipelineGeneration)
         {
             snapshot?.Dispose();
@@ -4266,6 +4272,9 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             themeSnapshotMilliseconds,
             layoutMilliseconds,
             layoutCpuMilliseconds,
+            layoutQueueMilliseconds,
+            layoutWorkerWallMilliseconds,
+            layoutContinuationMilliseconds,
             publicationStarted,
             commitEnded,
             overlayResetEnded,

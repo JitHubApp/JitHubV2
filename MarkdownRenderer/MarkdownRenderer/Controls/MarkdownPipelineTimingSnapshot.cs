@@ -18,6 +18,9 @@ internal readonly struct MarkdownPipelineTimingSnapshot
     internal readonly double ThemeSnapshotMilliseconds;
     internal readonly double LayoutMilliseconds;
     internal readonly double LayoutCpuMilliseconds;
+    internal readonly double LayoutQueueMilliseconds;
+    internal readonly double LayoutWorkerWallMilliseconds;
+    internal readonly double LayoutContinuationMilliseconds;
     internal readonly long PublicationStartedTimestamp;
     internal readonly long CommitEndedTimestamp;
     internal readonly long OverlayResetEndedTimestamp;
@@ -36,6 +39,9 @@ internal readonly struct MarkdownPipelineTimingSnapshot
         double themeSnapshotMilliseconds,
         double layoutMilliseconds,
         double layoutCpuMilliseconds,
+        double layoutQueueMilliseconds,
+        double layoutWorkerWallMilliseconds,
+        double layoutContinuationMilliseconds,
         long publicationStartedTimestamp,
         long commitEndedTimestamp,
         long overlayResetEndedTimestamp,
@@ -53,6 +59,9 @@ internal readonly struct MarkdownPipelineTimingSnapshot
         ThemeSnapshotMilliseconds = themeSnapshotMilliseconds;
         LayoutMilliseconds = layoutMilliseconds;
         LayoutCpuMilliseconds = layoutCpuMilliseconds;
+        LayoutQueueMilliseconds = layoutQueueMilliseconds;
+        LayoutWorkerWallMilliseconds = layoutWorkerWallMilliseconds;
+        LayoutContinuationMilliseconds = layoutContinuationMilliseconds;
         PublicationStartedTimestamp = publicationStartedTimestamp;
         CommitEndedTimestamp = commitEndedTimestamp;
         OverlayResetEndedTimestamp = overlayResetEndedTimestamp;

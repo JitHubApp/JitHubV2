@@ -1314,8 +1314,8 @@ internal static partial class ReadmeAuditProbe
         writer.WriteLine($"- Native/Edge first-render ratio: p50 {summary.NativeFirstRenderRatioP50:F3}, p95 {summary.NativeFirstRenderRatioP95:F3}");
         writer.WriteLine($"- Native/Edge full-page ratio: p50 {summary.NativeFullPageRatioP50:F3}, p95 {summary.NativeFullPageRatioP95:F3}");
         writer.WriteLine();
-        writer.WriteLine("| Rank | Repository | Result | Text | Structure | Styled viewport SSIM | Native unavailable | First ratio | Full ratio | Parse/extension ms | Setup ms | Initial layout ms | Layout CPU ms | UI publication ms | Commit ms | Overlay reset ms | Plan construction ms | Visible realization ms | Embed realization ms | Highlight scheduling ms | Highlight retirement ms | Highlight band ms | Adornment/focus ms | Final notification ms |");
-        writer.WriteLine("| ---: | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |");
+        writer.WriteLine("| Rank | Repository | Result | Text | Structure | Styled viewport SSIM | Native unavailable | First ratio | Full ratio | Parse/extension ms | Setup ms | Initial layout ms | Layout CPU ms | Layout queue ms | Layout worker wall ms | Layout continuation ms | UI publication ms | Commit ms | Overlay reset ms | Plan construction ms | Visible realization ms | Embed realization ms | Highlight scheduling ms | Highlight retirement ms | Highlight band ms | Adornment/focus ms | Final notification ms |");
+        writer.WriteLine("| ---: | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |");
         foreach (ReadmeAuditCaseResult result in results)
         {
             writer.WriteLine(
@@ -1330,6 +1330,9 @@ internal static partial class ReadmeAuditProbe
                 $"{result.Native?.FirstPerformance?.Pipeline.SetupMilliseconds.ToString("F1", CultureInfo.InvariantCulture) ?? "n/a"} | " +
                 $"{result.Native?.FirstPerformance?.Pipeline.LayoutMilliseconds.ToString("F1", CultureInfo.InvariantCulture) ?? "n/a"} | " +
                 $"{result.Native?.FirstPerformance?.Pipeline.LayoutCpuMilliseconds.ToString("F1", CultureInfo.InvariantCulture) ?? "n/a"} | " +
+                $"{result.Native?.FirstPerformance?.Pipeline.LayoutQueueMilliseconds.ToString("F1", CultureInfo.InvariantCulture) ?? "n/a"} | " +
+                $"{result.Native?.FirstPerformance?.Pipeline.LayoutWorkerWallMilliseconds.ToString("F1", CultureInfo.InvariantCulture) ?? "n/a"} | " +
+                $"{result.Native?.FirstPerformance?.Pipeline.LayoutContinuationMilliseconds.ToString("F1", CultureInfo.InvariantCulture) ?? "n/a"} | " +
                 $"{result.Native?.FirstPerformance?.Pipeline.PublicationMilliseconds.ToString("F1", CultureInfo.InvariantCulture) ?? "n/a"} | " +
                 $"{result.Native?.FirstPerformance?.Pipeline.CommitMilliseconds.ToString("F1", CultureInfo.InvariantCulture) ?? "n/a"} | " +
                 $"{result.Native?.FirstPerformance?.Pipeline.OverlayResetMilliseconds.ToString("F1", CultureInfo.InvariantCulture) ?? "n/a"} | " +
