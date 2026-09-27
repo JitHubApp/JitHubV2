@@ -7,13 +7,13 @@ using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;
 
-[CollectionDefinition("Markdown SVG worker audit environment", DisableParallelization = true)]
-public sealed class MarkdownSvgWorkerAuditEnvironmentCollection
+[CollectionDefinition("Markdown renderer audit environment", DisableParallelization = true)]
+public sealed class MarkdownRendererAuditEnvironmentCollection
 {
 }
 
-[Collection("Markdown SVG worker audit environment")]
-public sealed class MarkdownSvgWorkerAuditListenerTests
+[Collection("Markdown renderer audit environment")]
+public sealed class MarkdownRendererAuditListenerTests
 {
     [Fact]
     public void ImageResolutionRecordsExactPayloadIdentityWithoutRetainingBytes()
@@ -73,7 +73,7 @@ public sealed class MarkdownSvgWorkerAuditListenerTests
         {
             Environment.SetEnvironmentVariable(variable, path);
             MarkdownLifecycleAutomationBridge.ConfigureLaunchOptions(true, null);
-            using var listener = new MarkdownSvgWorkerAuditListener();
+            using var listener = new MarkdownRendererAuditListener();
 
             TestPreflightEventSource.Log.Rejected("missing-root", 469, new string('A', 64));
 
@@ -144,7 +144,7 @@ public sealed class MarkdownSvgWorkerAuditListenerTests
             MarkdownLifecycleAutomationBridge.ConfigureLaunchOptions(
                 fixtureEnabled: true,
                 targetHost: null);
-            using var listener = new MarkdownSvgWorkerAuditListener();
+            using var listener = new MarkdownRendererAuditListener();
 
             TestWorkerEventSource.Log.Timeout(
                 stage: 2,
@@ -184,6 +184,48 @@ public sealed class MarkdownSvgWorkerAuditListenerTests
         }
     }
 
+    [Fact]
+    public void RasterPreparationStagesRecordOnlyNumericAuditEvidence()
+    {
+        const string variable = "JITHUB_MARKDOWN_RASTER_PREPARATION_EVIDENCE_PATH";
+        string path = Path.Combine(
+            Path.GetTempPath(),
+            $"jithub-raster-preparation-audit-{Guid.NewGuid():N}.ndjson");
+        string? previousPath = Environment.GetEnvironmentVariable(variable);
+        try
+        {
+            Environment.SetEnvironmentVariable(variable, path);
+            MarkdownLifecycleAutomationBridge.ConfigureLaunchOptions(true, null);
+            using var listener = new MarkdownRendererAuditListener();
+
+            TestRasterPreparationEventSource.Log.Started(
+                17, 8_948, ((long)313 << 32) | 38u);
+            TestRasterPreparationEventSource.Log.Stage(17, 7, 10_000);
+
+            string[] lines = File.ReadAllLines(path);
+            Assert.Equal(2, lines.Length);
+            using JsonDocument started = JsonDocument.Parse(lines[0]);
+            Assert.Equal(17, started.RootElement.GetProperty("PreparationId").GetInt64());
+            Assert.Equal(0, started.RootElement.GetProperty("Stage").GetInt32());
+            Assert.Equal(8_948, started.RootElement.GetProperty("SourceBytes").GetInt64());
+            Assert.Equal(313, started.RootElement.GetProperty("SourceWidth").GetInt32());
+            Assert.Equal(38, started.RootElement.GetProperty("SourceHeight").GetInt32());
+            Assert.False(started.RootElement.TryGetProperty("Source", out _));
+            Assert.False(started.RootElement.TryGetProperty("Url", out _));
+            Assert.False(started.RootElement.TryGetProperty("Bytes", out _));
+
+            using JsonDocument stage = JsonDocument.Parse(lines[1]);
+            Assert.Equal(7, stage.RootElement.GetProperty("Stage").GetInt32());
+            Assert.True(stage.RootElement.GetProperty("ElapsedMilliseconds").GetDouble() > 0);
+        }
+        finally
+        {
+            MarkdownLifecycleAutomationBridge.ConfigureLaunchOptions(false, null);
+            Environment.SetEnvironmentVariable(variable, previousPath);
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
     [EventSource(Name = "MarkdownRenderer.Svg.Resvg.Worker")]
     private sealed class TestWorkerEventSource : EventSource
     {
@@ -215,5 +257,19 @@ public sealed class MarkdownSvgWorkerAuditListenerTests
         [Event(1, Level = EventLevel.Warning)]
         public void Rejected(string reason, int sourceByteLength, string sourceSha256) =>
             WriteEvent(1, reason, sourceByteLength, sourceSha256);
+    }
+
+    [EventSource(Name = "MarkdownRenderer-RasterPreparation")]
+    private sealed class TestRasterPreparationEventSource : EventSource
+    {
+        public static readonly TestRasterPreparationEventSource Log = new();
+
+        [Event(1, Level = EventLevel.Informational)]
+        public void Started(long id, long sourceBytes, long packedDimensions) =>
+            WriteEvent(1, id, sourceBytes, packedDimensions);
+
+        [Event(2, Level = EventLevel.Informational)]
+        public void Stage(long id, long stage, long elapsedStopwatchTicks) =>
+            WriteEvent(2, id, stage, elapsedStopwatchTicks);
     }
 }
