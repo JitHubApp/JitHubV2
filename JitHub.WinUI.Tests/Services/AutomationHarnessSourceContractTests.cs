@@ -130,6 +130,11 @@ public sealed class AutomationHarnessSourceContractTests
             "eng",
             "readme-audit",
             "New-TopReadmeManifest.ps1"));
+        string runtimeInstaller = File.ReadAllText(Path.Combine(
+            root,
+            "eng",
+            "readme-audit",
+            "Install-PinnedWindowsAppRuntime.ps1"));
 
         Assert.Contains("Consolidate all 500 results", workflow, StringComparison.Ordinal);
         Assert.Contains("pull_request:", workflow, StringComparison.Ordinal);
@@ -164,9 +169,12 @@ public sealed class AutomationHarnessSourceContractTests
             root,
             "JitHub.WinUI.Automation",
             "ReadmeAuditProbe.cs")), StringComparison.Ordinal);
-        Assert.Contains("windowsappsdk/1.8/1.8.260710003/windowsappruntimeinstall-x64.exe", workflow, StringComparison.Ordinal);
-        Assert.Contains("B8CDA840267AB72797F654F801F9A064AB6D9E508CEDEE3DF79F772F104DB6D6", workflow, StringComparison.Ordinal);
-        Assert.Contains("Get-AppxPackage -Name 'Microsoft.WindowsAppRuntime.1.8'", workflow, StringComparison.Ordinal);
+        Assert.Contains(".\\eng\\readme-audit\\Install-PinnedWindowsAppRuntime.ps1", workflow, StringComparison.Ordinal);
+        Assert.Contains("windowsappsdk/1.8/1.8.260710003/windowsappruntimeinstall-x64.exe", runtimeInstaller, StringComparison.Ordinal);
+        Assert.Contains("B8CDA840267AB72797F654F801F9A064AB6D9E508CEDEE3DF79F772F104DB6D6", runtimeInstaller, StringComparison.Ordinal);
+        Assert.Contains("Get-AppxPackage -Name 'Microsoft.WindowsAppRuntime.1.8'", runtimeInstaller, StringComparison.Ordinal);
+        Assert.Contains("if: github.event_name != 'workflow_dispatch' || inputs.diagnostic_rank == 0", workflow, StringComparison.Ordinal);
+        Assert.Contains("-ExpectedCount 500 -MaximumAgeDays 14", workflow, StringComparison.Ordinal);
         Assert.Contains("$attempt -le 4", manifestGenerator, StringComparison.Ordinal);
         Assert.Contains("$allowNotFound -and $text -match 'HTTP 404'", manifestGenerator, StringComparison.Ordinal);
         Assert.Contains("$text -match 'IP allow list enabled'", manifestGenerator, StringComparison.Ordinal);

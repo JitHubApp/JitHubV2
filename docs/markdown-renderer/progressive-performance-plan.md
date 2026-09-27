@@ -1551,6 +1551,27 @@ complete before claiming this plan or the 1.0 performance goal is met.
   changing CDN image bytes, and its tracing cannot qualify the release timing
   gate. The normal audit retains tracing off; its pinned Windows App Runtime
   installer is shared with the diagnostic to avoid setup drift.
+- The original rank-153 audit failure in run `36342837396` was a native-only
+  timeout while opening a valid 1,877,124-byte sponsor SVG (SHA-256
+  `9881971D893267A10A872DB575522AF0C20E0E64F1EF87F6E45CF5272C9E69AC`).
+  Edge rendered those bytes. Five focused hosted replays in run `36349877520`
+  all passed, so the intermittent timeout is unresolved, not waived. A
+  separate Weblate badge returned zero bytes and was broken in Edge as well;
+  it is not this native-only failure. The rank-26 hosted diagnostic
+  (`36349885686`) also passed all five replays without reproducing its older
+  image-preparation stall. The current full 20-shard audit (`36349875408`)
+  remains in progress with four shards allowed in parallel; no 500/500 verdict
+  exists for this head yet.
+- Local gate setup on this head exposed a committed restore-lock mismatch:
+  the x64 performance-gate lockfile has a `win-x64` target while its project
+  did not declare that runtime identifier, causing NU1004 before any timing
+  could start. The project now declares `win-x64`; a fresh Release x64
+  `-PlanOnly` invocation builds without warnings and produces the frozen
+  560-case plan. This validates build and plan generation only, not a live
+  qualified benchmark. The 35-test audit-source contract suite and all 3,151
+  Release x64 app tests pass locally after updating the pinned-runtime
+  assertion to inspect the shared installer script used by the workflow;
+  current-head CI is still required.
 - Open: oversized raster tiling and session-owned SVG/document/GPU preparation
   caches.
 - Open: defer Math/Mermaid scenes and ahead-of-viewport highlighting without
