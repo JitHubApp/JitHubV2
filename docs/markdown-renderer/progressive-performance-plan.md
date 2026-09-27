@@ -1580,6 +1580,15 @@ complete before claiming this plan or the 1.0 performance goal is met.
   images, including rank 153. This rules out a deterministic failure caused
   simply by those preceding README cases on this machine, but it does not
   resolve the reproduced hosted worker timeout or qualify the full gate.
+- The focused hosted 151–153 replay on instrumented head `0c00ec8` (run
+  `36354332623`) failed one of five independent attempts at rank 153. The
+  exact sponsor SVG hash and 1,877,124-byte size matched the earlier failure;
+  the worker timed out after the unchanged 3,000-ms `open` deadline with only
+  390 ms process CPU while reading the response. Its new last progress marker
+  was `usvg-tree-build`, narrowing the stall to `usvg::Tree::from_xmltree`
+  rather than font-gate setup or the theme transform. The four other hosted
+  attempts passed. This is a confirmed intermittent native-only timeout, not
+  a resolved case; it needs a real fix and another full 500-case pass.
 - Local gate setup on this head exposed a committed restore-lock mismatch:
   the x64 performance-gate lockfile has a `win-x64` target while its project
   did not declare that runtime identifier, causing NU1004 before any timing
@@ -1599,6 +1608,14 @@ complete before claiming this plan or the 1.0 performance goal is met.
   a qualification hole in earlier diagnostics, but no new full live run has
   passed and the low observed cadence still needs measurement on a quiet
   foreground desktop.
+- Focused x64 Release tests now pin the existing oversized ordinary-raster
+  behavior: a 2048×8193 PNG just beyond the full-frame limit is classified
+  for a bounded static preview; under a 65,536-pixel session output ceiling,
+  the WIC/Win2D bitmap stays within that ceiling while the 200-DIP intrinsic
+  aspect/geometry remains stable and completion publishes once. The pure
+  budget suite passed 5/5 and the integration case passed 1/1. These tests
+  cover output/GPU bounds, not every codec's internal decode allocations or
+  visible-tile fidelity; the latter remain to be evaluated separately.
 - Open: oversized raster tiling and session-owned SVG/document/GPU preparation
   caches.
 - Open: defer Math/Mermaid scenes and ahead-of-viewport highlighting without

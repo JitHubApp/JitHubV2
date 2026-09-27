@@ -20,6 +20,21 @@ public sealed class RasterImageResourceBudgetTests
     }
 
     [Fact]
+    public void Validate_UsesStaticPreviewForVeryTallSingleFrameJustOverFullFrameLimit()
+    {
+        byte[] png = CreatePngHeader(width: 2048, height: 8193);
+
+        RasterImageBudgetResult result = RasterImageResourceBudget.Validate(png);
+
+        Assert.False(result.Accepted);
+        Assert.True(result.CanRenderStaticPreview);
+        Assert.Equal(2048, result.Width);
+        Assert.Equal(8193, result.Height);
+        Assert.Equal(16_779_264, result.TotalPixels);
+        Assert.Contains("bounded downsampled preview", result.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void Validate_StillRejectsDimensionBombBeyondGpuLimit()
     {
         byte[] png = CreatePngHeader(width: RasterImageResourceBudget.MaxDimension + 1, height: 1);

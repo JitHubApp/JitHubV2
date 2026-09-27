@@ -217,6 +217,57 @@ public sealed class DisplaySizedRasterDecodeTests
         }
     }
 
+    [Fact]
+    public async Task OversizedTallRasterUsesBoundedStaticPreviewWithoutChangingImageGeometry()
+    {
+        // Just beyond the ordinary full-frame pixel ceiling, but within the
+        // separately bounded single-frame preview allowance. Its displayed
+        // width is small while its full source height is several thousand
+        // pixels, so retaining and uploading source-sized bitmap pixels would
+        // waste GPU memory on detail far below the viewport.
+        const int sourceWidth = 2048;
+        const int sourceHeight = 8193;
+        const long outputPixelLimit = 65_536;
+        byte[] source = CreatePng(sourceWidth, sourceHeight);
+        var resolver = new ByteResolver(source, $"tall-preview-{Guid.NewGuid():N}");
+        using var session = new MarkdownPerformanceSession(
+            MarkdownPerformanceOptions.Progressive with
+            {
+                UseDisplaySizedRasterDecode = false,
+                MaxRasterOutputPixels = outputPixelLimit,
+            });
+        var image = new ImageBox(CreateContext(resolver, session, 1),
+            "https://images.example/tall.png", string.Empty);
+        var publications = new List<bool>();
+        image.LoadCompleted += (_, result) => publications.Add(result.LayoutInvalidated);
+
+        try
+        {
+            image.Measure(200);
+            await WaitForLoadAsync(image);
+
+            Assert.NotNull(image.Bitmap);
+            var pixels = image.Bitmap.SizeInPixels;
+            Assert.True((long)pixels.Width * pixels.Height <= outputPixelLimit);
+            Assert.InRange(
+                pixels.Width / (double)pixels.Height,
+                sourceWidth / (double)sourceHeight * 0.99,
+                sourceWidth / (double)sourceHeight * 1.01);
+
+            image.Measure(200);
+            Assert.Equal(200f, image.MeasuredImageWidth, precision: 2);
+            Assert.Equal(
+                200f * sourceHeight / sourceWidth,
+                image.MeasuredImageHeight,
+                precision: 1);
+            Assert.Equal([true], publications);
+        }
+        finally
+        {
+            image.Dispose();
+        }
+    }
+
     private static async Task WaitForLoadAsync(ImageBox image)
     {
         var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
