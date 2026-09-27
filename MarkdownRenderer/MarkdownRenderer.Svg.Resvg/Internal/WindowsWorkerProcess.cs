@@ -26,18 +26,21 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
         NamedPipeServerStream pipe,
         ulong nonceLow,
         ulong nonceHigh,
+        string? workerExecutableSha256,
         int queueCapacity)
     {
         _process = process;
         _pipe = pipe;
         NonceLow = nonceLow;
         NonceHigh = nonceHigh;
+        WorkerExecutableSha256 = workerExecutableSha256;
         _queueCapacity = queueCapacity;
         InstanceId = Interlocked.Increment(ref s_nextInstanceId);
     }
 
     public ulong NonceLow { get; }
     public ulong NonceHigh { get; }
+    internal string? WorkerExecutableSha256 { get; }
     public long InstanceId { get; }
     public bool IsFontCatalogReady => Volatile.Read(ref _fontCatalogReady) != 0;
     public bool HasExited
@@ -91,14 +94,55 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
         WorkerObjectSecurity.SetLowIntegrityLabel(pipe.SafePipeHandle);
 
         SafeProcessHandle? process = null;
+        string? workerExecutableSha256 = null;
+        long processStartedTimestamp = 0;
         try
         {
-            process = StartRestrictedSuspended(
-                executablePath,
-                pipeName,
-                nonce,
-                Path.GetDirectoryName(executablePath) ?? AppContext.BaseDirectory,
-                job);
+            FileStream? identityFile = null;
+            try
+            {
+                // This is audit-only work. Keep the read handle open until
+                // CreateProcess has loaded the image so the recorded digest
+                // cannot silently refer to a replacement file at the same path.
+                if (WorkerTimeoutEvents.Log.IsEnabled())
+                {
+                    try
+                    {
+                        identityFile = new FileStream(
+                            executablePath,
+                            FileMode.Open,
+                            FileAccess.Read,
+                            FileShare.Read,
+                            bufferSize: 64 * 1024,
+                            FileOptions.Asynchronous | FileOptions.SequentialScan);
+                        byte[] digest = await SHA256.HashDataAsync(identityFile, cancellationToken)
+                            .ConfigureAwait(false);
+                        workerExecutableSha256 = Convert.ToHexString(digest);
+                    }
+                    catch (IOException)
+                    {
+                        identityFile?.Dispose();
+                        identityFile = null;
+                    }
+                    catch (UnauthorizedAccessException)
+                    {
+                        identityFile?.Dispose();
+                        identityFile = null;
+                    }
+                }
+
+                processStartedTimestamp = Stopwatch.GetTimestamp();
+                process = StartRestrictedSuspended(
+                    executablePath,
+                    pipeName,
+                    nonce,
+                    Path.GetDirectoryName(executablePath) ?? AppContext.BaseDirectory,
+                    job);
+            }
+            finally
+            {
+                identityFile?.Dispose();
+            }
 
             using var startup = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             startup.CancelAfter(WorkerSchedulingPolicy.InitializationDeadline);
@@ -118,7 +162,10 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
                     openProgressPhase: -1,
                     workerWorkingSetKiB: -1,
                     workerPrivateCommitKiB: -1,
-                    workerPageFaults: -1);
+                    workerPageFaults: -1,
+                    elapsedWallMilliseconds: GetElapsedMilliseconds(processStartedTimestamp),
+                    workerInputSha256: string.Empty,
+                    workerExecutableSha256: workerExecutableSha256 ?? string.Empty);
                 throw new WorkerInitializationDeadlineException(
                     "The resvg worker did not complete startup before its initialization deadline.",
                     exception);
@@ -129,6 +176,7 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
                 pipe,
                 nonceLow,
                 nonceHigh,
+                workerExecutableSha256,
                 options.QueueCapacity);
             process = null;
             pipe = null!;
@@ -227,7 +275,12 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
                         openProgressPhase: openProgressMemory?.ReadOpenProgressPhase() ?? -1,
                         workerWorkingSetKiB: memory.WorkingSetKiB,
                         workerPrivateCommitKiB: memory.PrivateCommitKiB,
-                        workerPageFaults: memory.PageFaults);
+                        workerPageFaults: memory.PageFaults,
+                        elapsedWallMilliseconds: GetElapsedMilliseconds(evidenceWindow.WallStartedAt),
+                        workerInputSha256: captureTimeoutEvidence
+                            ? Convert.ToHexString(request.ContentHash)
+                            : string.Empty,
+                        workerExecutableSha256: WorkerExecutableSha256 ?? string.Empty);
                 }
                 DisposeForRestart();
                 throw new WorkerDeadlineException("The resvg worker exceeded its request deadline.", exception);
@@ -303,6 +356,11 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
 
     private static int ToKiB(nuint bytes) =>
         (int)Math.Min((ulong)bytes / 1024UL, int.MaxValue);
+
+    private static int GetElapsedMilliseconds(long startedAt) =>
+        startedAt == 0
+            ? -1
+            : (int)Math.Min(Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds, int.MaxValue);
 
     internal readonly record struct WorkerMemorySnapshot(
         int WorkingSetKiB,
@@ -886,13 +944,17 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
 
 internal readonly record struct WorkerTimeoutEvidenceScope(
     TimeSpan TotalDeadline,
-    long WorkerCpuAtStart)
+    long WorkerCpuAtStart,
+    long WallStartedAt = 0)
 {
     internal static WorkerTimeoutEvidenceScope Resolve(
         TimeSpan requestDeadline,
         long requestCpuAtStart,
         WorkerTimeoutEvidenceScope? outerWindow) =>
-        outerWindow ?? new WorkerTimeoutEvidenceScope(requestDeadline, requestCpuAtStart);
+        outerWindow ?? new WorkerTimeoutEvidenceScope(
+            requestDeadline,
+            requestCpuAtStart,
+            Stopwatch.GetTimestamp());
 }
 
 internal class WorkerDeadlineException : Exception

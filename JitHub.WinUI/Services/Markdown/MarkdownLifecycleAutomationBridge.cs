@@ -417,7 +417,10 @@ internal static partial class MarkdownLifecycleAutomationBridge
         int openProgressPhase,
         int workerWorkingSetKiB,
         int workerPrivateCommitKiB,
-        int workerPageFaults)
+        int workerPageFaults,
+        int elapsedWallMilliseconds,
+        string workerInputSha256,
+        string workerExecutableSha256)
     {
         if (!IsEvidenceEnabled)
             return;
@@ -451,13 +454,13 @@ internal static partial class MarkdownLifecycleAutomationBridge
             3 => "xml-parsed",
             4 => "security-inspected",
             5 => "font-gate-passed",
-            6 => "tree-built",
+            6 => "cached-tree-acquired",
             7 => "document-attached",
-            8 => "svg-options-initialization",
-            9 => "svg-options-constructed",
-            10 => "svg-resolver-configured",
-            11 => "svg-theme-transformation",
-            12 => "usvg-tree-build",
+            8 => "svg-options-constructed",
+            9 => "svg-resolver-configured",
+            10 => "svg-theme-ready",
+            11 => "usvg-input-ready",
+            12 => "usvg-tree-built",
             _ => "not-applicable",
         };
         lock (SignalGate)
@@ -479,6 +482,9 @@ internal static partial class MarkdownLifecycleAutomationBridge
                         workerWorkingSetKiB,
                         workerPrivateCommitKiB,
                         workerPageFaults,
+                        elapsedWallMilliseconds,
+                        workerInputSha256,
+                        workerExecutableSha256,
                         DateTimeOffset.UtcNow),
                     MarkdownLifecycleJsonContext.Default.SvgWorkerTimeoutSignal);
                 File.AppendAllText(fullPath, entry + Environment.NewLine);
@@ -748,6 +754,9 @@ internal static partial class MarkdownLifecycleAutomationBridge
         int WorkerWorkingSetKiB,
         int WorkerPrivateCommitKiB,
         int WorkerPageFaults,
+        int ElapsedWallMilliseconds,
+        string WorkerInputSha256,
+        string WorkerExecutableSha256,
         DateTimeOffset Timestamp);
 
     private sealed record SvgPreflightRejectionSignal(

@@ -527,6 +527,7 @@ internal sealed class WorkerPool : IAsyncDisposable, IDisposable
             return;
 
         var elapsed = Stopwatch.StartNew();
+        long initializationWallStarted = Stopwatch.GetTimestamp();
         long workerCpuAtStart = WorkerTimeoutEvents.Log.IsEnabled()
             ? worker.GetProcessCpuTicks()
             : -1;
@@ -561,7 +562,10 @@ internal sealed class WorkerPool : IAsyncDisposable, IDisposable
                         openProgressPhase: -1,
                         workerWorkingSetKiB: memory.WorkingSetKiB,
                         workerPrivateCommitKiB: memory.PrivateCommitKiB,
-                        workerPageFaults: memory.PageFaults);
+                        workerPageFaults: memory.PageFaults,
+                        elapsedWallMilliseconds: (int)Math.Min(elapsed.Elapsed.TotalMilliseconds, int.MaxValue),
+                        workerInputSha256: string.Empty,
+                        workerExecutableSha256: worker.WorkerExecutableSha256 ?? string.Empty);
                     RecordStartupFailure();
                     throw new WorkerInitializationDeadlineException(
                         "The resvg worker did not initialize its font catalog before the initialization deadline.",
@@ -578,7 +582,8 @@ internal sealed class WorkerPool : IAsyncDisposable, IDisposable
                     CancellationToken.None,
                     timeoutEvidenceScope: new WorkerTimeoutEvidenceScope(
                         WorkerSchedulingPolicy.InitializationDeadline,
-                        workerCpuAtStart)).ConfigureAwait(false);
+                        workerCpuAtStart,
+                        initializationWallStarted)).ConfigureAwait(false);
                 cancellationToken.ThrowIfCancellationRequested();
                 if (response.OutputLength != 0)
                     throw new WorkerProtocolException("The resvg worker returned output for font-catalog initialization.");

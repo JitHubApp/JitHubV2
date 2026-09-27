@@ -22,7 +22,7 @@ internal sealed partial class MarkdownRendererAuditListener : EventListener
     {
         if (eventData.EventSource.Name == WorkerSourceName &&
             eventData.EventId == 1 &&
-            eventData.Payload is { Count: 10 } payload &&
+            eventData.Payload is { Count: 13 } payload &&
             payload[0] is int stage &&
             payload[1] is int deadlineMilliseconds &&
             payload[2] is int workerProcessCpuMilliseconds &&
@@ -32,7 +32,10 @@ internal sealed partial class MarkdownRendererAuditListener : EventListener
             payload[6] is int openProgressPhase &&
             payload[7] is int workerWorkingSetKiB &&
             payload[8] is int workerPrivateCommitKiB &&
-            payload[9] is int workerPageFaults)
+            payload[9] is int workerPageFaults &&
+            payload[10] is int elapsedWallMilliseconds &&
+            payload[11] is string workerInputSha256 &&
+            payload[12] is string workerExecutableSha256)
         {
             MarkdownLifecycleAutomationBridge.RecordSvgWorkerTimeout(
                 stage,
@@ -44,7 +47,10 @@ internal sealed partial class MarkdownRendererAuditListener : EventListener
                 openProgressPhase,
                 workerWorkingSetKiB,
                 workerPrivateCommitKiB,
-                workerPageFaults);
+                workerPageFaults,
+                elapsedWallMilliseconds,
+                workerInputSha256,
+                workerExecutableSha256);
         }
         else if (eventData.EventSource.Name == PreflightSourceName &&
             eventData.EventId == 1 &&
