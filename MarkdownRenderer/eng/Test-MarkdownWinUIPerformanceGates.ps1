@@ -3506,7 +3506,7 @@ elseif ($mode -eq 'candidate') {
             -not $candidateTrialPopulations.ContainsKey($metric) -or
             -not $referenceTrialPopulations.ContainsKey($metric) -or
             -not $expectedKinds.ContainsKey($metric)) {
-            Add-Failure "Regression comparison '$metric' is not a frozen schema-10 metric."
+            Add-Failure "Regression comparison '$metric' is not a frozen schema-12 metric."
             continue
         }
 
@@ -3588,5 +3588,5 @@ if ($failures.Count -gt 0) {
 }
 
 Write-Host (
-    'WinUI performance gates passed: schema-10 ordered-stationarity evidence for six first-viewports, five 2,400-frame scroll trials, ' +
+    'WinUI performance gates passed: schema-12 ordered-stationarity evidence for six first-viewports, five 2,400-frame scroll trials, ' +
     'batched source lookup, five 40-sample cancellation trials, 4 KiB renderer allocation, retained memory/plateau, runtime configuration, hashes, and hybrid regression policy.')

@@ -62,9 +62,10 @@ MarkdownRenderer is a preview, not a completed 1.0 release.
   are retained as evidence for the methodology change, not as passing release
   reports. Retained schema-9 r8 reports additionally expose the nonstationarity
   holes that schema 10 closes. Schema 11 adds generation/source-matched raw
-  UI-publication samples and an independently checked ≤2 ms measured maximum;
-  the retained schema-10 reports cannot qualify a schema-11 candidate. No passing
-  full schema-11 candidate or true
+  UI-publication samples and an independently checked ≤2 ms measured maximum.
+  Schema 12 additionally requires measurement-scoped foreground, visible, and
+  unobstructed evidence. The retained schema-10 reports cannot qualify a
+  schema-12 candidate. No passing full schema-12 candidate or true
   cross-revision performance certification is claimed here.
 
 ## 1.0 gates still open
@@ -79,7 +80,7 @@ MarkdownRenderer is a preview, not a completed 1.0 release.
   a customized Windows contrast theme, system languages, mixed RTL/LTR, text
   scaling, keyboard navigation, and hosted elements;
 - actual graphics-device loss/recovery and ETW review on representative hardware;
-- a passing full schema-10 same-machine baseline/candidate run, a true different-
+- a passing full schema-12 same-machine baseline/candidate run, a true different-
   build cross-revision comparison, and retained regression reports; counterbalanced
   multi-run execution remains an external release-validation step; the fixed
   ABBA orchestration itself is implemented;
