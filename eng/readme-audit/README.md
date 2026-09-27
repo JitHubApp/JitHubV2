@@ -27,7 +27,12 @@ repository:
   maintenance), configured deadline, worker-process CPU milliseconds during
   the transaction (-1 if unavailable), transport phase (request write, pipe
   flush, or response read), request-write duration, and whether the worker
-  had exited. It contains no SVG bytes or URLs.
+  had exited. For `open`, it also records the last bounded worker progress
+  phase (mapping, hash, XML, security, font gate, tree, or document attachment).
+  Timeout-only working set and private commit are reported in KiB, with a
+  cumulative process page-fault count; -1 means unavailable. Normal rendering
+  never queries these process-memory counters. The record contains no SVG
+  bytes or URLs.
 - visible-image waits of at least 500 ms record their tile index, duration,
   and whether they reached the 20-second deadline. Only on a deadline does a
   one-time UIA diagnostic count still-loading image peers; zero distinguishes
