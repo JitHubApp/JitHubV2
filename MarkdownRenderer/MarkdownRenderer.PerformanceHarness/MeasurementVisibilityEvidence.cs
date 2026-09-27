@@ -438,8 +438,10 @@ internal sealed class MeasurementVisibilityMonitor : IDisposable
         try
         {
             int messageResult = 0;
-            while (!_completed && (messageResult = GetMessage(out _, IntPtr.Zero, 0, 0)) > 0)
+            while (!_completed && (messageResult = GetMessage(out NativeMessage message, IntPtr.Zero, 0, 0)) > 0)
             {
+                _ = TranslateMessage(in message);
+                _ = DispatchMessage(in message);
             }
 
             if (messageResult < 0)
@@ -478,6 +480,14 @@ internal sealed class MeasurementVisibilityMonitor : IDisposable
 
     private void RecordSampleLocked(string source)
     {
+        if (_samples.Count >= 500_000)
+        {
+            // A burst of desktop events must never grow benchmark evidence
+            // without bound. The release validator rejects this capture.
+            _captureFailures++;
+            return;
+        }
+
         long elapsedTicks = Math.Max(_stopwatch.ElapsedTicks, _lastSampleTicks + 1);
         bool captureSucceeded = false;
         bool targetWasForeground = false;
@@ -739,6 +749,13 @@ internal sealed class MeasurementVisibilityMonitor : IDisposable
         IntPtr window,
         uint minimumMessage,
         uint maximumMessage);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool TranslateMessage(in NativeMessage message);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr DispatchMessage(in NativeMessage message);
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

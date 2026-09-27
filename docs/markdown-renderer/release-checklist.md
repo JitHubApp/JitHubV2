@@ -102,10 +102,10 @@ below.
   stationarity checks, the 1 MiB cache-disabled absolute budget, warm-scroll
   cadence/stall, and refresh qualification (240 Hz configured, 117.72 Hz
   observed); it is failed diagnostic evidence.
-- [ ] Obtain and retain a passing full schema-10 same-machine baseline/candidate
-  run on a qualified, stable display cadence. Neither the failed absolute
-  baseline nor the schema-10 quick smoke proves the release regression budget.
-- [ ] Compare separately built reference and candidate revisions with schema 10.
+- [ ] Obtain and retain a passing full schema-12 same-machine baseline/candidate
+  run on a qualified, stable foreground display cadence. Neither the failed
+  schema-10 absolute baseline nor its quick smoke proves the release regression budget.
+- [ ] Compare separately built reference and candidate revisions with schema 12.
   A same-binary comparison demonstrates repeatability only; a true different-build
   cross-revision result is still required.
 - [x] Implement fixed `R1, C1, C2, R2` counterbalanced orchestration with an ABBA
