@@ -62,11 +62,13 @@ top-500 and release benchmark runs; diagnostic timings are not qualifying
 performance results.
 
 To reproduce an intermittent hosted-runner image stall, manually dispatch
-`Focused README image diagnostic` on the renderer branch. Supply the Actions
-run ID of a top-500 audit containing the pinned corpus, the rank to replay,
-and 1–5 independent attempts. The workflow downloads and validates that
-run's exact immutable README manifest, uses the same pinned Windows App
-Runtime as the normal audit, builds Release once, and uploads all attempts'
+`Top 500 README browser parity` on the renderer branch with a nonzero
+`diagnostic_rank`. Supply `diagnostic_corpus_run_id` from a top-500 audit
+containing the pinned corpus and `diagnostic_repeats` from 1–5. A dispatch
+with rank zero still runs the entire 500-case release audit. The focused job
+downloads and validates that run's exact immutable README manifest. It uses
+the same pinned Windows App Runtime as the normal audit, builds Release once,
+and uploads all attempts'
 diagnostics even if a replay fails. Enable raster stage tracing only for raster
 stalls; SVG worker timeout stages are recorded without it. This preserves the
 original rank/README bytes, though externally served image bytes must still

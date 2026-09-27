@@ -12,12 +12,32 @@ on:
   schedule:
     - cron: "17 7 * * 1"
   workflow_dispatch:
+    inputs:
+      diagnostic_rank:
+        description: Optional focused image diagnostic rank (0 runs all 500)
+        required: false
+        default: 0
+        type: number
+      diagnostic_corpus_run_id:
+        description: Existing full-audit run ID supplying the pinned corpus
+        required: false
+        type: string
+      diagnostic_repeats:
+        description: Independent diagnostic replays (1-5)
+        required: false
+        default: 3
+        type: number
+      diagnostic_raster_stages:
+        description: Enable intrusive raster tracing (leave off for SVG)
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
 
 concurrency:
-  group: markdown-readme-top500-${{ github.ref }}
+  group: markdown-readme-top500-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.diagnostic_rank > 0 && format('diagnostic-{0}', inputs.diagnostic_rank) || 'full' }}
   cancel-in-progress: false
 
 env:
@@ -31,6 +51,7 @@ env:
 jobs:
   corpus:
     name: Pin the current top-500 corpus
+    if: github.event_name != 'workflow_dispatch' || inputs.diagnostic_rank == 0
     runs-on: windows-latest
     timeout-minutes: 20
     defaults:
@@ -85,6 +106,7 @@ jobs:
   audit:
     name: Audit ranks ${{ matrix.start }}-${{ matrix.end }}
     needs: corpus
+    if: github.event_name != 'workflow_dispatch' || inputs.diagnostic_rank == 0
     runs-on: windows-latest
     timeout-minutes: 360
     strategy:
@@ -214,7 +236,7 @@ jobs:
 
   consolidate:
     name: Consolidate all 500 results
-    if: always()
+    if: always() && (github.event_name != 'workflow_dispatch' || inputs.diagnostic_rank == 0)
     needs: audit
     runs-on: windows-latest
     timeout-minutes: 20
@@ -249,3 +271,105 @@ jobs:
           path: ${{ runner.temp }}/readme-audit-consolidated/**
           if-no-files-found: warn
           retention-days: 30
+
+  diagnose:
+    name: Replay rank ${{ inputs.diagnostic_rank }} with image diagnostics
+    if: github.event_name == 'workflow_dispatch' && inputs.diagnostic_rank > 0
+    runs-on: windows-latest
+    timeout-minutes: 120
+    permissions:
+      actions: read
+      contents: read
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout requested renderer revision
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: ./global.json
+
+      - name: Set up Node.js 22 for the Edge oracle
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Install pinned Windows App Runtime 1.8.10
+        run: .\eng\readme-audit\Install-PinnedWindowsAppRuntime.ps1
+
+      - name: Download and validate the exact pinned corpus
+        env:
+          AUDIT_CORPUS_RUN_ID: ${{ inputs.diagnostic_corpus_run_id }}
+          AUDIT_RANK: ${{ inputs.diagnostic_rank }}
+          AUDIT_REPEATS: ${{ inputs.diagnostic_repeats }}
+        run: |
+          $corpusRunId = 0L
+          $rank = 0
+          $repeats = 0
+          if (-not [long]::TryParse($env:AUDIT_CORPUS_RUN_ID, [ref]$corpusRunId) -or $corpusRunId -le 0) {
+            throw 'diagnostic_corpus_run_id must be a positive Actions run ID.'
+          }
+          if (-not [int]::TryParse($env:AUDIT_RANK, [ref]$rank) -or $rank -lt 1 -or $rank -gt 500) {
+            throw 'diagnostic_rank must be between 1 and 500.'
+          }
+          if (-not [int]::TryParse($env:AUDIT_REPEATS, [ref]$repeats) -or $repeats -lt 1 -or $repeats -gt 5) {
+            throw 'diagnostic_repeats must be between 1 and 5.'
+          }
+
+          $corpusDirectory = Join-Path $env:RUNNER_TEMP 'readme-image-corpus'
+          New-Item -ItemType Directory -Force -Path $corpusDirectory | Out-Null
+          gh run download $corpusRunId --repo $env:GITHUB_REPOSITORY --name readme-top500-corpus --dir $corpusDirectory
+          if ($LASTEXITCODE -ne 0) { throw 'Could not download the requested pinned corpus.' }
+          $raw = Join-Path $corpusDirectory 'top-repositories.json'
+          $validated = Join-Path $corpusDirectory 'validated-top-repositories.json'
+          .\eng\readme-audit\Copy-ValidatedTopReadmeManifest.ps1 `
+            -SourcePath $raw -OutputPath $validated -ExpectedCount 500 -MaximumAgeDays 14
+          "AUDIT_VALIDATED_CORPUS=$validated" >> $env:GITHUB_ENV
+          "AUDIT_VALIDATED_RANK=$rank" >> $env:GITHUB_ENV
+          "AUDIT_VALIDATED_REPEATS=$repeats" >> $env:GITHUB_ENV
+
+      - name: Replay on the hosted runner with image diagnostics
+        env:
+          AUDIT_RASTER_DIAGNOSTICS: ${{ inputs.diagnostic_raster_stages }}
+        run: |
+          $output = Join-Path $env:RUNNER_TEMP 'readme-image-diagnostic'
+          New-Item -ItemType Directory -Force -Path $output | Out-Null
+          $failures = [Collections.Generic.List[string]]::new()
+          for ($attempt = 1; $attempt -le [int]$env:AUDIT_VALIDATED_REPEATS; $attempt++) {
+            $attemptOutput = Join-Path $output "attempt-$attempt"
+            try {
+              $arguments = @{
+                StartRank = [int]$env:AUDIT_VALIDATED_RANK
+                Count = 1
+                Configuration = 'Release'
+                ManifestPath = $env:AUDIT_VALIDATED_CORPUS
+                OutputRoot = $attemptOutput
+              }
+              if ($env:AUDIT_RASTER_DIAGNOSTICS -eq 'true') {
+                $arguments.RasterDiagnostics = $true
+              }
+              if ($attempt -gt 1) { $arguments.SkipBuild = $true }
+              .\eng\Invoke-TopReadmeAudit.ps1 @arguments
+            }
+            catch {
+              $failures.Add("Attempt ${attempt}: $($_.Exception.Message)")
+              Write-Warning $failures[$failures.Count - 1]
+            }
+          }
+          if ($failures.Count -gt 0) {
+            throw "$($failures.Count) of $($env:AUDIT_VALIDATED_REPEATS) diagnostic replays failed. See the uploaded evidence."
+          }
+
+      - name: Upload all diagnostic evidence, including failed attempts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: readme-image-diagnostic-${{ github.run_id }}
+          path: ${{ runner.temp }}/readme-image-diagnostic
+          if-no-files-found: warn
+          retention-days: 14
