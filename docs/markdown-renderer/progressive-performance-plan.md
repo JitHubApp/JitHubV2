@@ -1236,6 +1236,25 @@ complete before claiming this plan or the 1.0 performance goal is met.
   different-network replay does not by itself prove a stable speedup or waive
   the individual 1.250 live ratio. The resolver's targeted 24 tests and x64
   Release app build passed; same-byte and current-head gates remain open.
+- The next earlier-head pinned live audit (`36275652370`, head `b8572c2`)
+  passed all 500 cases with zero valid unavailable images and native/Edge
+  p95 ratios of 0.341 first render and 0.303 full traversal. It also exposed
+  four individual full-page ratios above 1.10, so the stricter outlier goal
+  is not met: rank 19 (`NousResearch/hermes-agent`, 1.118), rank 26
+  (`ossu/computer-science`, 2.474 full and 4.488 first), rank 102
+  (`jaywcjlove/awesome-mac`, 1.104), and rank 401 (`twentyhq/twenty`,
+  1.830 full and 3.259 first). Rank 26 spent 5.830 seconds in background
+  layout while its five successful image resolutions each took at most
+  255 ms; this is not attributable to a slow image download. Three pinned
+  Release replays of the same README on the local machine spent 131-140 ms
+  in layout, 498-524 ms to first render, and 644-695 ms in native full
+  traversal, with zero visible-image waits. Rank 401's hosted initial layout
+  was only 143 ms but first render took 3.360 seconds; a pinned local replay
+  took 611 ms to first render with no image wait. These different-machine
+  replays show the stalls are intermittent, not that they are fixed or
+  external. A same-byte, same-machine replay with worker scheduling/CPU
+  evidence is still needed. The current-head `c545490` audit is running;
+  neither this earlier-head pass nor isolated replays qualify it.
 - Open: oversized raster tiling and session-owned SVG/document/GPU preparation
   caches.
 - Open: defer Math/Mermaid scenes and ahead-of-viewport highlighting without
@@ -1256,9 +1275,10 @@ Close the measurable gap across parsing, layout, images, SVG, math, Mermaid,
 highlighting, and scrolling—not just image downloads. Image prefetch now starts
 after parsing and alongside layout, ordinary rasters use display-sized decode,
 and geometry-changing image reflow is prepared off the UI thread. Remaining
-gaps include in-flight source-byte admission, oversized raster tiling, bounded
-scene preparation beyond code highlighting, copy-on-write layout publication,
-and eager Math/Mermaid compilation far below the viewport.
+gaps include qualifying the implemented in-flight source-byte admission under
+live memory storms, oversized raster tiling, bounded scene preparation beyond
+code highlighting, copy-on-write layout publication, and eager Math/Mermaid
+compilation far below the viewport.
 
 The new pipeline is opt-in for library consumers and enabled by JitHub. Browser
 comparisons will separate GitHub’s server/CDN advantage from work both renderers
