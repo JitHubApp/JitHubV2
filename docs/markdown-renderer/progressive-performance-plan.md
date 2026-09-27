@@ -1425,12 +1425,33 @@ complete before claiming this plan or the 1.0 performance goal is met.
   a sub-millisecond remaining deadline, recorded zero CPU milliseconds in
   that probe, and saw only 5,356 KiB working set. This trace does not measure
   CPU consumption over the entire 15-second initialization window. That failure
-  is not explained by Hangul fallback and remains open. The full audit was
-  still running when these cases were inspected; no earlier 500/500 pass
-  waives either recurrence. The three RID workers have been rebuilt and the
+  is not explained by Hangul fallback and remains open. The completed audit
+  reported all 500 ranks: 498 passed, 2 failed, with aggregate native/Edge
+  first-render and full-page p95 ratios of 0.310 and 0.294. No earlier
+  500/500 pass waives either recurrence. Three additional passed cases exceeded
+  the 1.10 individual full-page ratio: rank 24 (`vuejs/vue`, 1.13) waited
+  4.34 seconds at the last image band while a browser-broken OpenCollective
+  Camo URL took 5.05 seconds and yielded no bytes; rank 390
+  (`FoundationAgents/OpenManus`, 3.00) charged a 20-second visible-image
+  wait while three URLs were broken in Edge too. Rank 301
+  (`facebook/docusaurus`, 1.37) is different: its image sources resolved in
+  at most 414 ms with no unavailable asset, while one native CPU-preparation
+  lease lasted 4.22 seconds and a late visible-image band waited 3.51 seconds.
+  That is a client-preparation suspect needing exact-byte replay; the aggregate
+  p95 does not waive it. The three RID workers have been rebuilt and the
   unsigned all-RID development pack is 4,697,877 bytes, below the unchanged
   5 MiB ceiling. Production signing, current-head full audit, and release
   benchmark remain mandatory.
+- Locally verified, pending hosted timeout recurrence: the font-catalog
+  timeout event now attributes the final HELLO pipe probe to the whole
+  15-second initialization window. Previously that probe could report a
+  zero-millisecond deadline and zero CPU even though the worker had spent
+  nearly the entire window initializing fonts. The event retains the same
+  content-free fields and is emitted only on timeout; all 65 x64 Release
+  provider tests pass, including the whole-window attribution contract.
+  The x64 trimmed NativeAOT provider smoke publishes and runs successfully.
+  This improves diagnosis of rank 201 and does not
+  make its valid image available or relax either deadline.
 - Open: oversized raster tiling and session-owned SVG/document/GPU preparation
   caches.
 - Open: defer Math/Mermaid scenes and ahead-of-viewport highlighting without

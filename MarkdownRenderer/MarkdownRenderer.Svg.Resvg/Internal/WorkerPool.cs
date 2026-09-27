@@ -568,10 +568,17 @@ internal sealed class WorkerPool : IAsyncDisposable, IDisposable
                         new TimeoutException());
                 }
 
+                // The last HELLO probe can have less than one millisecond
+                // remaining. Attribute CPU and deadline to the full
+                // initialization window; transport timing still describes
+                // only this final pipe operation.
                 WorkerResponse response = await worker.ExchangeAsync(
                     CreateControlRequest(WorkerOperation.Hello, worker),
                     remaining,
-                    CancellationToken.None).ConfigureAwait(false);
+                    CancellationToken.None,
+                    timeoutEvidenceScope: new WorkerTimeoutEvidenceScope(
+                        WorkerSchedulingPolicy.InitializationDeadline,
+                        workerCpuAtStart)).ConfigureAwait(false);
                 cancellationToken.ThrowIfCancellationRequested();
                 if (response.OutputLength != 0)
                     throw new WorkerProtocolException("The resvg worker returned output for font-catalog initialization.");

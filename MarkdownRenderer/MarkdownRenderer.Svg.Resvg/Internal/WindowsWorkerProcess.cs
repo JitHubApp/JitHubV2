@@ -152,7 +152,8 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
         WorkerRequest request,
         TimeSpan deadline,
         CancellationToken cancellationToken,
-        SharedMemoryLease? openProgressMemory = null)
+        SharedMemoryLease? openProgressMemory = null,
+        WorkerTimeoutEvidenceScope? timeoutEvidenceScope = null)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         int queued = Interlocked.Increment(ref _queued);
@@ -177,8 +178,12 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
             // SVG request. The listener is installed before audit rendering.
             bool captureTimeoutEvidence = WorkerTimeoutEvents.Log.IsEnabled();
             long workerCpuAtStart = captureTimeoutEvidence
-                ? GetProcessCpuTicks()
+                ? timeoutEvidenceScope?.WorkerCpuAtStart ?? GetProcessCpuTicks()
                 : -1;
+            WorkerTimeoutEvidenceScope evidenceWindow = WorkerTimeoutEvidenceScope.Resolve(
+                deadline,
+                workerCpuAtStart,
+                timeoutEvidenceScope);
             using var operation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             operation.CancelAfter(deadline);
             byte[] requestFrame = WorkerProtocol.Encode(request);
@@ -202,19 +207,19 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
             }
             catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
             {
-                long workerCpuAtTimeout = workerCpuAtStart >= 0
+                long workerCpuAtTimeout = evidenceWindow.WorkerCpuAtStart >= 0
                     ? GetProcessCpuTicks()
                     : -1;
-                int workerProcessCpuMilliseconds = workerCpuAtStart >= 0 &&
-                    workerCpuAtTimeout >= workerCpuAtStart
-                        ? (int)Math.Min((workerCpuAtTimeout - workerCpuAtStart) / 10_000, int.MaxValue)
+                int workerProcessCpuMilliseconds = evidenceWindow.WorkerCpuAtStart >= 0 &&
+                    workerCpuAtTimeout >= evidenceWindow.WorkerCpuAtStart
+                        ? (int)Math.Min((workerCpuAtTimeout - evidenceWindow.WorkerCpuAtStart) / 10_000, int.MaxValue)
                         : -1;
                 if (captureTimeoutEvidence)
                 {
                     WorkerMemorySnapshot memory = GetProcessMemorySnapshot();
                     WorkerTimeoutEvents.Log.Timeout(
                         stage: (int)request.Operation,
-                        deadlineMilliseconds: (int)deadline.TotalMilliseconds,
+                        deadlineMilliseconds: (int)evidenceWindow.TotalDeadline.TotalMilliseconds,
                         workerProcessCpuMilliseconds,
                         transportPhase,
                         requestWriteMilliseconds,
@@ -877,6 +882,17 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
     [LibraryImport("kernel32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool CloseHandle(nint handle);
+}
+
+internal readonly record struct WorkerTimeoutEvidenceScope(
+    TimeSpan TotalDeadline,
+    long WorkerCpuAtStart)
+{
+    internal static WorkerTimeoutEvidenceScope Resolve(
+        TimeSpan requestDeadline,
+        long requestCpuAtStart,
+        WorkerTimeoutEvidenceScope? outerWindow) =>
+        outerWindow ?? new WorkerTimeoutEvidenceScope(requestDeadline, requestCpuAtStart);
 }
 
 internal class WorkerDeadlineException : Exception

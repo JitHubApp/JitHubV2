@@ -72,6 +72,25 @@ public sealed class WorkerSchedulingTests
             2, 4, 0, 4, 120_832, 94_208, 6_400), listener.Events);
     }
 
+    [Fact]
+    public void FontCatalogProbeTimeoutEvidenceKeepsTheWholeInitializationWindow()
+    {
+        WorkerTimeoutEvidenceScope initialization = new(TimeSpan.FromSeconds(15), 1_000_000);
+        WorkerTimeoutEvidenceScope finalProbe = WorkerTimeoutEvidenceScope.Resolve(
+            TimeSpan.FromTicks(1),
+            1_200_000,
+            initialization);
+        Assert.Equal(TimeSpan.FromSeconds(15), finalProbe.TotalDeadline);
+        Assert.Equal(1_000_000, finalProbe.WorkerCpuAtStart);
+
+        WorkerTimeoutEvidenceScope ordinaryRequest = WorkerTimeoutEvidenceScope.Resolve(
+            TimeSpan.FromSeconds(3),
+            1_200_000,
+            null);
+        Assert.Equal(TimeSpan.FromSeconds(3), ordinaryRequest.TotalDeadline);
+        Assert.Equal(1_200_000, ordinaryRequest.WorkerCpuAtStart);
+    }
+
     private sealed class TimeoutListener : EventListener
     {
         public ConcurrentQueue<(int Stage, int DeadlineMilliseconds, int WorkerProcessCpuMilliseconds,
