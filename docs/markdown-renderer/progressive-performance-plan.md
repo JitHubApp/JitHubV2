@@ -1483,6 +1483,41 @@ complete before claiming this plan or the 1.0 performance goal is met.
   A fourth pinned replay without the opt-in passed and produced no raster
   diagnostic file (26-ms CPU-preparation lease), confirming that ordinary
   audits leave the extra observer disabled.
+- The `8c5d97c` preview package job found the lean Core + WinUI managed pack
+  717 bytes above its unchanged 1.2 MiB gate (1,259,008 versus 1,258,291
+  bytes). Its sibling NativeAOT contract and x86/x64/ARM64 publish checks
+  passed. The audit-only raster event provider and option validation now live
+  in the opt-in Performance assembly, while the lean renderer retains only
+  internal session hooks. A fresh local pack passes the unchanged size gate:
+  Core + WinUI is 1,257,472 managed bytes and 529,119 compressed bytes; the
+  optional Performance pack is 30,711 compressed bytes. All 416 GitHub
+  renderer tests (including 39 focused performance/raster cases) and five app
+  listener tests pass. One clean local pack of all 14 shipping packages passes
+  size, SBOM/notice, locked-license, and native-asset compliance. A second
+  normalized local pack matches all 14 reference package hashes and sizes;
+  the CI managed-pack NativeAOT smoke still needs to run.
+  A one-case
+  Release audit of pinned rank 301 (`facebook/docusaurus`) passes with no
+  unavailable image and emits raster stage evidence from the relocated
+  provider. The pre-fix full Core suite passed 1,442/1,442 in 1h04m; full
+  current-fix CI and release benchmarks are still required.
+- The `8c5d97c` hosted top-500 audit (Actions run `36335465601`) completed
+  500/500 with no valid image unavailable. Native/Edge p95 ratios were 0.321
+  for first render and 0.277 for full traversal. Four individual full-page
+  ratios still exceeded 1.10: rank 26 (`ossu/computer-science`, 1.67) had a
+  4.01-second native visible-image wait and 2.48 seconds of raster CPU
+  preparation even though all five source responses arrived within 228 ms;
+  rank 201 (`spring-projects/spring-boot`, 2.30) waited 7.19 seconds on two
+  SVGs whose sources resolved within 329 ms. Both are native-preparation
+  suspects and require stage-level same-byte replay, not a waiver. Rank 149
+  (`sherlock-project/sherlock`, 1.73) waited 7.03 seconds while one 99-KiB
+  JPEG source resolution took 8.25 seconds. Rank 102
+  (`jaywcjlove/awesome-mac`, 1.59) again waited 20 seconds for a browser-broken
+  image while two resolver attempts returned no bytes after about 32 seconds.
+  Those latter two have external-delivery evidence, but neither substitutes
+  for the required offline same-byte Edge comparison. This audit is an
+  earlier-head pass after the package-size fix and must be rerun on its new
+  rendering head.
 - Open: oversized raster tiling and session-owned SVG/document/GPU preparation
   caches.
 - Open: defer Math/Mermaid scenes and ahead-of-viewport highlighting without

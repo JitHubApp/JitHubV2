@@ -54,7 +54,7 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
     public MarkdownPerformanceSession(MarkdownPerformanceOptions options)
     {
         Options = options ?? throw new ArgumentNullException(nameof(options));
-        options.Validate();
+        ValidateOptions(options);
         _lifetimeToken = _lifetime.Token;
         _fetchSlots = new SemaphoreSlim(options.MaxConcurrentImageFetches);
         _backgroundAdmission = new FairDocumentAdmission(
@@ -76,6 +76,36 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
         }
     }
 
+    private static void ValidateOptions(MarkdownPerformanceOptions options)
+    {
+        if (options.MaxConcurrentImageFetches < 2 ||
+            options.MaxConcurrentImageFetches > (IntPtr.Size == 4 ? 8 : 16))
+            throw new ArgumentOutOfRangeException(nameof(options.MaxConcurrentImageFetches));
+        if (options.ReservedVisibleImageFetches < 1 ||
+            options.ReservedVisibleImageFetches >= options.MaxConcurrentImageFetches)
+            throw new ArgumentOutOfRangeException(nameof(options.ReservedVisibleImageFetches));
+        if (options.MaxConcurrentCpuPreparations < 1 ||
+            options.MaxConcurrentCpuPreparations > (IntPtr.Size == 4 ? 1 : 2))
+            throw new ArgumentOutOfRangeException(nameof(options.MaxConcurrentCpuPreparations));
+        if (options.MaxConcurrentScenePreparations < 1 ||
+            options.MaxConcurrentScenePreparations > (IntPtr.Size == 4 ? 1 : 2))
+            throw new ArgumentOutOfRangeException(nameof(options.MaxConcurrentScenePreparations));
+        if (options.SourceCacheBudgetBytes < 0 ||
+            options.SourceCacheBudgetBytes > (IntPtr.Size == 4 ? 32L : 64L) * 1024 * 1024)
+            throw new ArgumentOutOfRangeException(nameof(options.SourceCacheBudgetBytes));
+        if (options.MaxInFlightSourceBytes < 2 ||
+            options.MaxInFlightSourceBytes > (IntPtr.Size == 4 ? 32L : 64L) * 1024 * 1024)
+            throw new ArgumentOutOfRangeException(nameof(options.MaxInFlightSourceBytes));
+        if (options.ReservedVisibleSourceBytes < 1 ||
+            options.ReservedVisibleSourceBytes >= options.MaxInFlightSourceBytes)
+            throw new ArgumentOutOfRangeException(nameof(options.ReservedVisibleSourceBytes));
+        if (options.MaxRasterOutputPixels < 1 ||
+            options.MaxRasterOutputPixels > (IntPtr.Size == 4 ? 4_194_304 : 8_388_608))
+            throw new ArgumentOutOfRangeException(nameof(options.MaxRasterOutputPixels));
+        if (options.LookAheadViewports is < 0 or > 4)
+            throw new ArgumentOutOfRangeException(nameof(options.LookAheadViewports));
+    }
+
     /// <summary>Gets the immutable settings captured at construction.</summary>
     public MarkdownPerformanceOptions Options { get; }
 
@@ -84,6 +114,17 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
     internal long ActiveSourceBytes => _sourceByteAdmission.ActiveBytes;
 
     bool IMarkdownPerformanceSessionInternal.IsDisposed => IsDisposed;
+
+    long IMarkdownPerformanceSessionInternal.BeginRasterPreparation(
+        int sourceBytes, int sourceWidth, int sourceHeight) =>
+        MarkdownRasterPreparationEventSource.Log.Begin(sourceBytes, sourceWidth, sourceHeight);
+
+    void IMarkdownPerformanceSessionInternal.RecordRasterPreparationStage(
+        long preparationId,
+        MarkdownRasterPreparationStage stage,
+        long elapsedStopwatchTicks) =>
+        MarkdownRasterPreparationEventSource.Log.RecordStage(
+            preparationId, stage, elapsedStopwatchTicks);
 
     IMarkdownPerformanceDocumentScope IMarkdownPerformanceSessionInternal.OpenDocument(
         IMarkdownImageResolver resolver,

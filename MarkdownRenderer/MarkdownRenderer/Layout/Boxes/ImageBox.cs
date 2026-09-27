@@ -27,6 +27,7 @@ using MarkdownRenderer.Document;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Performance;
 using MarkdownRenderer.Theming;
 using MarkdownRenderer.Utilities;
 
@@ -1263,38 +1264,31 @@ internal sealed class ImageBox : BlockBox
                     long decodeStarted = MarkdownPerformanceEventSource.Log.IsMeasurementEnabled()
                         ? Stopwatch.GetTimestamp()
                         : 0;
-                    long rasterPreparationId = MarkdownRasterPreparationEventSource.Log.Begin(
-                        bytes.Length, budget.Width, budget.Height);
+                    IMarkdownPerformanceSessionInternal? rasterSession = _context.PerformanceSession;
+                    long rasterPreparationId = rasterSession is { IsDisposed: false }
+                        ? rasterSession.BeginRasterPreparation(bytes.Length, budget.Width, budget.Height)
+                        : 0;
                     long admissionStarted = rasterPreparationId != 0 ? Stopwatch.GetTimestamp() : 0;
-                    using IDisposable? preparationSlot = _context.PerformanceSession is { IsDisposed: false } session &&
+                    using IDisposable? preparationSlot = rasterSession is { IsDisposed: false } &&
                         _context.PerformanceDocumentOwner is { } documentOwner
-                        ? await session.EnterCpuPreparationAsync(
+                        ? await rasterSession.EnterCpuPreparationAsync(
                                 documentOwner, _context.ImageCancellationToken)
                             .ConfigureAwait(false)
                         : null;
-                    if (rasterPreparationId != 0)
-                        MarkdownRasterPreparationEventSource.Log.RecordStage(
-                            rasterPreparationId,
-                            MarkdownRasterPreparationStage.PreparationAdmission,
-                            Stopwatch.GetTimestamp() - admissionStarted);
+                    RecordRasterPreparationStage(rasterSession, rasterPreparationId,
+                        MarkdownRasterPreparationStage.PreparationAdmission, admissionStarted);
                     using InMemoryRandomAccessStream stream = new();
                     long stageStarted = rasterPreparationId != 0 ? Stopwatch.GetTimestamp() : 0;
                     await stream.WriteAsync(bytes.AsBuffer());
-                    if (rasterPreparationId != 0)
-                        MarkdownRasterPreparationEventSource.Log.RecordStage(
-                            rasterPreparationId,
-                            MarkdownRasterPreparationStage.StreamWrite,
-                            Stopwatch.GetTimestamp() - stageStarted);
+                    RecordRasterPreparationStage(rasterSession, rasterPreparationId,
+                        MarkdownRasterPreparationStage.StreamWrite, stageStarted);
                     stream.Seek(0);
                     if (transformedDecode)
                     {
                         stageStarted = rasterPreparationId != 0 ? Stopwatch.GetTimestamp() : 0;
                         BitmapDecoder decoder = await BitmapDecoder.CreateAsync(stream);
-                        if (rasterPreparationId != 0)
-                            MarkdownRasterPreparationEventSource.Log.RecordStage(
-                                rasterPreparationId,
-                                MarkdownRasterPreparationStage.DecoderCreation,
-                                Stopwatch.GetTimestamp() - stageStarted);
+                        RecordRasterPreparationStage(rasterSession, rasterPreparationId,
+                            MarkdownRasterPreparationStage.DecoderCreation, stageStarted);
                         if (decoder.PixelWidth != budget.Width || decoder.PixelHeight != budget.Height)
                         {
                             throw new InvalidDataException("The decoded raster dimensions do not match its validated header.");
@@ -1328,18 +1322,12 @@ internal sealed class ImageBox : BlockBox
                             transform,
                             ExifOrientationMode.RespectExifOrientation,
                             ColorManagementMode.ColorManageToSRgb);
-                        if (rasterPreparationId != 0)
-                            MarkdownRasterPreparationEventSource.Log.RecordStage(
-                                rasterPreparationId,
-                                MarkdownRasterPreparationStage.WicPixelDecode,
-                                Stopwatch.GetTimestamp() - stageStarted);
+                        RecordRasterPreparationStage(rasterSession, rasterPreparationId,
+                            MarkdownRasterPreparationStage.WicPixelDecode, stageStarted);
                         stageStarted = rasterPreparationId != 0 ? Stopwatch.GetTimestamp() : 0;
                         ownedBitmap = CanvasBitmap.CreateFromSoftwareBitmap(_context.ResourceCreator, firstFrame);
-                        if (rasterPreparationId != 0)
-                            MarkdownRasterPreparationEventSource.Log.RecordStage(
-                                rasterPreparationId,
-                                MarkdownRasterPreparationStage.Win2DBitmapUpload,
-                                Stopwatch.GetTimestamp() - stageStarted);
+                        RecordRasterPreparationStage(rasterSession, rasterPreparationId,
+                            MarkdownRasterPreparationStage.Win2DBitmapUpload, stageStarted);
                         if (budget.CanRenderStaticPreview)
                         {
                             MarkdownDiagnostics.WriteLine(
@@ -1352,11 +1340,8 @@ internal sealed class ImageBox : BlockBox
                     {
                         stageStarted = rasterPreparationId != 0 ? Stopwatch.GetTimestamp() : 0;
                         ownedBitmap = await CanvasBitmap.LoadAsync(_context.ResourceCreator, stream);
-                        if (rasterPreparationId != 0)
-                            MarkdownRasterPreparationEventSource.Log.RecordStage(
-                                rasterPreparationId,
-                                MarkdownRasterPreparationStage.Win2DDirectLoad,
-                                Stopwatch.GetTimestamp() - stageStarted);
+                        RecordRasterPreparationStage(rasterSession, rasterPreparationId,
+                            MarkdownRasterPreparationStage.Win2DDirectLoad, stageStarted);
                     }
 
                     if (!string.IsNullOrEmpty(bitmapCacheKey))
@@ -1366,11 +1351,8 @@ internal sealed class ImageBox : BlockBox
                             device, bitmapCacheKey, ownedBitmap,
                             transformedDecode ? intrinsicSize : null);
                         ownedBitmap = null; // lease now owns the decoded handle
-                        if (rasterPreparationId != 0)
-                            MarkdownRasterPreparationEventSource.Log.RecordStage(
-                                rasterPreparationId,
-                                MarkdownRasterPreparationStage.CachePublication,
-                                Stopwatch.GetTimestamp() - stageStarted);
+                        RecordRasterPreparationStage(rasterSession, rasterPreparationId,
+                            MarkdownRasterPreparationStage.CachePublication, stageStarted);
                     }
                     if (decodeStarted != 0)
                     {
@@ -3612,6 +3594,18 @@ internal sealed class ImageBox : BlockBox
         weight += (entry.LastBitmapIdentity?.Length ?? 0) * sizeof(char);
 
         return Math.Max(1L, weight);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void RecordRasterPreparationStage(
+        IMarkdownPerformanceSessionInternal? session,
+        long preparationId,
+        MarkdownRasterPreparationStage stage,
+        long startedAt)
+    {
+        if (preparationId != 0)
+            session!.RecordRasterPreparationStage(
+                preparationId, stage, Stopwatch.GetTimestamp() - startedAt);
     }
 
     /// <summary>

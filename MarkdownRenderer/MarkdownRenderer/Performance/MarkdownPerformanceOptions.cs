@@ -43,33 +43,4 @@ public sealed record MarkdownPerformanceOptions
 
     /// <summary>Allows admitted image sources throughout the document to be fetched in spare capacity.</summary>
     public bool PrefetchDocumentImages { get; init; } = true;
-
-    internal void Validate()
-    {
-        if (MaxConcurrentImageFetches < 2 ||
-            MaxConcurrentImageFetches > (IntPtr.Size == 4 ? 8 : 16))
-            throw new ArgumentOutOfRangeException(nameof(MaxConcurrentImageFetches));
-        if (ReservedVisibleImageFetches < 1 || ReservedVisibleImageFetches >= MaxConcurrentImageFetches)
-            throw new ArgumentOutOfRangeException(nameof(ReservedVisibleImageFetches));
-        if (MaxConcurrentCpuPreparations < 1 ||
-            MaxConcurrentCpuPreparations > (IntPtr.Size == 4 ? 1 : 2))
-            throw new ArgumentOutOfRangeException(nameof(MaxConcurrentCpuPreparations));
-        if (MaxConcurrentScenePreparations < 1 ||
-            MaxConcurrentScenePreparations > (IntPtr.Size == 4 ? 1 : 2))
-            throw new ArgumentOutOfRangeException(nameof(MaxConcurrentScenePreparations));
-        if (SourceCacheBudgetBytes < 0 ||
-            SourceCacheBudgetBytes > (IntPtr.Size == 4 ? 32L : 64L) * 1024 * 1024)
-            throw new ArgumentOutOfRangeException(nameof(SourceCacheBudgetBytes));
-        if (MaxInFlightSourceBytes < 2 ||
-            MaxInFlightSourceBytes > (IntPtr.Size == 4 ? 32L : 64L) * 1024 * 1024)
-            throw new ArgumentOutOfRangeException(nameof(MaxInFlightSourceBytes));
-        if (ReservedVisibleSourceBytes < 1 ||
-            ReservedVisibleSourceBytes >= MaxInFlightSourceBytes)
-            throw new ArgumentOutOfRangeException(nameof(ReservedVisibleSourceBytes));
-        if (MaxRasterOutputPixels < 1 ||
-            MaxRasterOutputPixels > (IntPtr.Size == 4 ? 4_194_304 : 8_388_608))
-            throw new ArgumentOutOfRangeException(nameof(MaxRasterOutputPixels));
-        if (LookAheadViewports is < 0 or > 4)
-            throw new ArgumentOutOfRangeException(nameof(LookAheadViewports));
-    }
 }

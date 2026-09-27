@@ -99,6 +99,11 @@ public interface IMarkdownPerformanceSession
 internal interface IMarkdownPerformanceSessionInternal : IMarkdownPerformanceSession
 {
     bool IsDisposed { get; }
+    long BeginRasterPreparation(int sourceBytes, int sourceWidth, int sourceHeight);
+    void RecordRasterPreparationStage(
+        long preparationId,
+        MarkdownRasterPreparationStage stage,
+        long elapsedStopwatchTicks);
     IMarkdownPerformanceDocumentScope OpenDocument(
         IMarkdownImageResolver resolver,
         MarkdownImageResolveContext context);
@@ -108,6 +113,17 @@ internal interface IMarkdownPerformanceSessionInternal : IMarkdownPerformanceSes
     ValueTask<IMarkdownScenePreparationLease> EnterScenePreparationAsync(
         object documentOwner,
         CancellationToken cancellationToken);
+}
+
+internal enum MarkdownRasterPreparationStage
+{
+    StreamWrite = 1,
+    DecoderCreation = 2,
+    WicPixelDecode = 3,
+    Win2DBitmapUpload = 4,
+    Win2DDirectLoad = 5,
+    CachePublication = 6,
+    PreparationAdmission = 7,
 }
 
 internal interface IMarkdownScenePreparationLease : IDisposable

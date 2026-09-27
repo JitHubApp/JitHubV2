@@ -1,18 +1,8 @@
 using System.Diagnostics.Tracing;
 using System.Threading;
+using MarkdownRenderer.Performance;
 
 namespace MarkdownRenderer.Diagnostics;
-
-internal enum MarkdownRasterPreparationStage
-{
-    StreamWrite = 1,
-    DecoderCreation = 2,
-    WicPixelDecode = 3,
-    Win2DBitmapUpload = 4,
-    Win2DDirectLoad = 5,
-    CachePublication = 6,
-    PreparationAdmission = 7,
-}
 
 /// <summary>
 /// Audit-only raster preparation timings. This separate provider lets the
