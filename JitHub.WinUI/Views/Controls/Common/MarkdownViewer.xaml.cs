@@ -361,10 +361,22 @@ public sealed partial class MarkdownViewer : UserControl
         }
 
         _telemetryService = ResolveTelemetryService();
-        IMarkdownImageResolver imageResolver = ResolveImageResolver();
-        _imageResolver = MarkdownLifecycleAutomationBridge.IsEnabled
-            ? new MarkdownLifecycleImageResolver(imageResolver)
-            : imageResolver;
+        string? sameByteCorpusPath = MarkdownLifecycleAutomationBridge.SameByteReplayCorpusPath;
+        if (sameByteCorpusPath is not null)
+        {
+            _imageResolver = new MarkdownSameByteAuditImageResolver(
+                sameByteCorpusPath,
+                Program.CurrentLaunchOptions.RepositoryFullName,
+                Program.CurrentLaunchOptions.Branch ?? string.Empty,
+                MarkdownLifecycleAutomationBridge.SameByteReplayReadmeSha ?? string.Empty);
+        }
+        else
+        {
+            IMarkdownImageResolver imageResolver = ResolveImageResolver();
+            _imageResolver = MarkdownLifecycleAutomationBridge.IsEnabled
+                ? new MarkdownLifecycleImageResolver(imageResolver)
+                : imageResolver;
+        }
         if (MarkdownLifecycleAutomationBridge.IsEvidenceEnabled)
         {
             _imageResolver = new MarkdownAuditImageResolver(_imageResolver);

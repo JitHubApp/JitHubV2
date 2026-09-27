@@ -34,6 +34,8 @@ internal static partial class MarkdownLifecycleAutomationBridge
     private const string HighContrastVariable = "JITHUB_AUTOMATION_HIGH_CONTRAST";
     private const string ResourceMapAbsentVariable = "JITHUB_AUTOMATION_RESOURCE_MAP_ABSENT";
     private const string ResourceMapEvidencePathVariable = "JITHUB_AUTOMATION_RESOURCE_MAP_EVIDENCE_PATH";
+    private const string SameByteReplayCorpusPathVariable = "JITHUB_README_AUDIT_SAME_BYTE_CORPUS";
+    private const string SameByteReplayReadmeShaVariable = "JITHUB_README_AUDIT_SAME_BYTE_README_SHA";
 
     private static readonly object SignalGate = new();
     private static string? _signaledHost;
@@ -44,6 +46,18 @@ internal static partial class MarkdownLifecycleAutomationBridge
     public static bool IsEnabled => _launchFixtureEnabled || IsOne(FixtureVariable);
 
     public static bool IsEvidenceEnabled => IsEnabled || _productionAuditEnabled;
+
+    public static bool IsSameByteReplayEnabled =>
+        _productionAuditEnabled &&
+        !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(SameByteReplayCorpusPathVariable));
+
+    public static string? SameByteReplayCorpusPath => IsSameByteReplayEnabled
+        ? Environment.GetEnvironmentVariable(SameByteReplayCorpusPathVariable)
+        : null;
+
+    public static string? SameByteReplayReadmeSha => IsSameByteReplayEnabled
+        ? Environment.GetEnvironmentVariable(SameByteReplayReadmeShaVariable)
+        : null;
 
     public static bool IsRasterPreparationEvidenceEnabled => IsEvidenceEnabled &&
         !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(RasterPreparationEvidencePathVariable));

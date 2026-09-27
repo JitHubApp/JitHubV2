@@ -14,6 +14,8 @@ param(
 
     [switch]$ReuseBrowserEvidence,
 
+    [switch]$CaptureSameByteCorpus,
+
     [switch]$RasterDiagnostics,
 
     [ValidateSet("Debug", "Release")]
@@ -118,6 +120,7 @@ try {
         "--count=$Count")
     if ($Resume) { $arguments += "--resume" }
     if ($ReuseBrowserEvidence) { $arguments += "--reuse-browser-evidence" }
+    if ($CaptureSameByteCorpus) { $arguments += "--capture-same-byte-corpus" }
     & dotnet @arguments
     if ($LASTEXITCODE -ne 0) {
         throw "Top README audit failed. See '$OutputRoot\summary.md'."

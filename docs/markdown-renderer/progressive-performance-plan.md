@@ -6,6 +6,24 @@ wiring are implemented. The scene scheduler, copy-on-write layout publication,
 expanded corpus, and browser-relative release gates below remain work to
 complete before claiming this plan or the 1.0 performance goal is met.
 
+- Locally implemented an explicit `--capture-same-byte-corpus` foundation for
+  the top-README audit. It captures the pinned public README through a streamed
+  16 MiB cap and verifies Git blob SHA-1 plus content SHA-256; decoded Edge
+  image bodies are checked against actual byte limits even if transfer-length
+  telemetry under-reports. The corpus stores content-addressed assets and
+  SHA-256 URL lookup keys only, and a loopback replay server fails closed on
+  missing or changed data. JitHub gets a separate audit-only resolver that is
+  enabled only for a freshly captured case, validates repository/commit/README
+  identity and asset hashes, and returns a handled miss without network
+  fallback. Raw Edge comparison data exists only in a temporary file outside
+  the artifact tree and is deleted after comparison; persisted source/link
+  fields are hashed. Nine focused Node capture/replay tests and syntax checks
+  pass locally. This is replay infrastructure, not same-byte top-500
+  performance/fidelity evidence; the qualified release benchmark and full
+  top-500 audit remain open. Nine focused Node tests, all seven C# resolver
+  tests, and the automation and WinUI x64 Debug builds pass locally. The app
+  build reports existing WUI analyzer warnings unrelated to this change.
+
 ## Implementation checkpoint
 
 - Done: borrowed per-account performance session and explicit builder/control

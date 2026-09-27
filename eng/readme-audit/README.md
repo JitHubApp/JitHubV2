@@ -53,6 +53,27 @@ Run or resume the complete release corpus:
 .\eng\Invoke-TopReadmeAudit.ps1 -Count 500 -Resume
 ```
 
+To collect a fresh same-byte fixture for a focused rank (this does not qualify
+the release performance gate), use `-CaptureSameByteCorpus` without resume or
+browser-evidence reuse:
+
+```powershell
+.\eng\Invoke-TopReadmeAudit.ps1 -StartRank 1 -Count 1 -CaptureSameByteCorpus
+```
+
+Capture pins the raw README to its Git blob SHA and records completed visible
+Edge image responses as content-addressed files. URL lookup values are SHA-256
+keys only; the manifest does not persist source URLs or request headers. The
+fresh JitHub process gets an audit-only resolver over that case's corpus. A
+missing URL, manifest, or mismatched file is blocked; this path has no live
+image-network fallback. Every capture uses a fresh corpus directory and cannot
+resume a completed case. Replaying the saved bytes manually is available with
+`node eng/readme-audit/same-byte-replay-server.mjs --corpus=<case-corpus-dir>`;
+the server binds only to IPv4 loopback and returns 404 for an uncaptured source.
+The capture/replay tests are deterministic and offline, but an interactive
+same-machine Edge/JitHub run and the qualified 500-repository release gate are
+still required before claiming parity.
+
 For a focused raster-preparation investigation, add `-RasterDiagnostics` to
 the audit invocation. This opt-in evidence writes only a preparation ID,
 source byte count/dimensions, and durations for preparation admission,

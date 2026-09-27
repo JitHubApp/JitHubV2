@@ -18251,6 +18251,7 @@ internal sealed class CaptureOptions
     public int AuditCount { get; init; } = 500;
     public bool AuditResume { get; init; }
     public bool AuditReuseBrowserEvidence { get; init; }
+    public bool AuditCaptureSameByteCorpus { get; init; }
 
     public static CaptureOptions Parse(string[] args)
     {
@@ -18271,6 +18272,7 @@ internal sealed class CaptureOptions
         int auditCount = 500;
         bool auditResume = false;
         bool auditReuseBrowserEvidence = false;
+        bool auditCaptureSameByteCorpus = false;
 
         foreach (string arg in args)
         {
@@ -18342,6 +18344,10 @@ internal sealed class CaptureOptions
             {
                 auditReuseBrowserEvidence = true;
             }
+            else if (string.Equals(arg, "--capture-same-byte-corpus", StringComparison.OrdinalIgnoreCase))
+            {
+                auditCaptureSameByteCorpus = true;
+            }
         }
 
         appPath ??= GuessAppPath();
@@ -18399,7 +18405,8 @@ internal sealed class CaptureOptions
             AuditStartRank = auditStartRank,
             AuditCount = auditCount,
             AuditResume = auditResume,
-            AuditReuseBrowserEvidence = auditReuseBrowserEvidence
+            AuditReuseBrowserEvidence = auditReuseBrowserEvidence,
+            AuditCaptureSameByteCorpus = auditCaptureSameByteCorpus
         };
     }
 

@@ -6,6 +6,7 @@ import path from "node:path";
 import { DocumentReadinessTimeout, metricDelta, metricMap, navigateReadme } from "./browser-navigation.mjs";
 import { waitForDevToolsPort } from "./browser-launch.mjs";
 import { stopBrowserProfileProcesses } from "./browser-process-lifetime.mjs";
+import { captureSameByteCorpus, createResponseRecorder, sha256 } from "./same-byte-corpus.mjs";
 
 const options = parseArguments(process.argv.slice(2));
 const outputDirectory = path.resolve(required("out"));
@@ -20,6 +21,7 @@ await mkdir(outputDirectory, { recursive: true });
 
 let edge;
 let cdp;
+let sameByteRecorder;
 let edgeError = "";
 const wall = performance.now();
 class ReadmeNotRendered extends Error {}
@@ -53,8 +55,14 @@ try {
     cdp.send("Page.enable"),
     cdp.send("Runtime.enable"),
     cdp.send("Performance.enable"),
-    cdp.send("Network.enable"),
+    cdp.send("Network.enable", options["capture-same-byte-corpus"] ? {
+      maxTotalBufferSize: 256 * 1024 * 1024,
+      maxResourceBufferSize: 64 * 1024 * 1024,
+    } : {}),
   ]);
+  sameByteRecorder = options["capture-same-byte-corpus"]
+    ? createResponseRecorder(cdp)
+    : null;
   await cdp.send("Emulation.setDeviceMetricsOverride", {
     width: viewportWidth,
     height: viewportHeight,
@@ -79,7 +87,7 @@ try {
   if (!readmeRendered) {
     const elapsed = performance.now() - navigationStarted;
     const reportPath = path.join(outputDirectory, "browser.json");
-    await writeFile(reportPath, JSON.stringify({
+    const report = {
       schemaVersion: 5,
       repositoryUrl,
       readmeSha,
@@ -89,7 +97,9 @@ try {
       timing: { firstReadmeMs: elapsed, settledReadmeMs: elapsed, fullCaptureMs: elapsed, wallMs: performance.now() - wall, navigationRetries },
       semantic: { text: "", headings: [], links: [], images: [], media: [], unavailableImages: 0, tables: 0, codeBlocks: 0, taskCheckboxes: 0, details: 0 },
       tiles: [],
-    }, null, 2));
+    };
+    await captureCorpusForReport(report, []);
+    await writeBrowserReport(report);
     process.stdout.write(JSON.stringify({ ok: true, readmeRendered: false, report: reportPath }) + "\n");
     throw new ReadmeNotRendered();
   }
@@ -401,7 +411,10 @@ try {
     semantic,
     tiles,
   };
-  await writeFile(path.join(outputDirectory, "browser.json"), JSON.stringify(report, null, 2));
+  await captureCorpusForReport(
+    report,
+    semantic.images.filter(image => image.complete && image.naturalWidth > 0 && image.naturalHeight > 0));
+  await writeBrowserReport(report);
   process.stdout.write(JSON.stringify({ ok: true, report: path.join(outputDirectory, "browser.json") }) + "\n");
 } catch (error) {
   if (error instanceof ReadmeNotRendered) {
@@ -409,12 +422,20 @@ try {
     // as source (for example, an extensionless README). The source-view parity
     // path in the native audit handles this valid outcome.
   } else {
-  const failure = { ok: false, repositoryUrl, error: error?.stack || String(error) };
+  const rawError = error?.stack || String(error);
+  const failure = options["capture-same-byte-corpus"]
+    ? {
+      ok: false,
+      repositoryUrl: `sha256:${sha256(Buffer.from(repositoryUrl, "utf8"))}`,
+      error: redactUrls(rawError),
+    }
+    : { ok: false, repositoryUrl, error: rawError };
   await writeFile(path.join(outputDirectory, "browser-failure.json"), JSON.stringify(failure, null, 2));
   process.stderr.write(failure.error + "\n");
   process.exitCode = 1;
   }
 } finally {
+  try { sameByteRecorder?.dispose(); } catch {}
   // Browser.close can terminate Edge before DevTools sends its response. Never
   // leave the oracle's top-level await attached to that response indefinitely;
   // the process wait/kill path below remains the authoritative cleanup.
@@ -465,6 +486,70 @@ function parseArguments(args) {
   return result;
 }
 
+async function captureCorpusForReport(report, images) {
+  if (!sameByteRecorder) return;
+  const capture = await captureSameByteCorpus({
+    directory: options["capture-same-byte-corpus"],
+    repository: {
+      fullName: required("repo-full-name"),
+      commitSha: required("commit-sha"),
+    },
+    readmeUrl: required("readme-url"),
+    readmePath: required("readme-path"),
+    readmeGitBlobSha1: readmeSha,
+    readmeByteSize: readNonNegativeInteger("readme-byte-size"),
+    images,
+    responseRecorder: sameByteRecorder,
+  });
+  report.sameByteCorpus = {
+    manifest: path.relative(outputDirectory, path.join(capture.directory, "manifest.json")),
+    manifestSha256: capture.manifestSha256,
+    readmeBytes: capture.readmeBytes,
+    assetCount: capture.assetCount,
+    assetBytes: capture.assetBytes,
+  };
+}
+
+async function writeBrowserReport(report) {
+  const reportPath = path.join(outputDirectory, "browser.json");
+  if (sameByteRecorder) {
+    const comparisonReportPath = options["same-byte-comparison-report"];
+    if (comparisonReportPath) {
+      const resolvedComparisonPath = path.resolve(comparisonReportPath);
+      const relativeToOutput = path.relative(outputDirectory, resolvedComparisonPath);
+      if (!relativeToOutput.startsWith(`..${path.sep}`) && relativeToOutput !== ".." && !path.isAbsolute(relativeToOutput)) {
+        throw new Error("Raw same-byte comparison evidence must be written outside the audit artifact directory.");
+      }
+      await writeFile(resolvedComparisonPath, JSON.stringify(report));
+    }
+    await writeFile(reportPath, JSON.stringify(sanitizeReport(report), null, 2));
+  } else {
+    await writeFile(reportPath, JSON.stringify(report, null, 2));
+  }
+  return reportPath;
+}
+
+function sanitizeReport(report) {
+  return sanitizeValue(report, "");
+}
+
+function sanitizeValue(value, propertyName) {
+  if (Array.isArray(value)) return value.map(item => sanitizeValue(item, propertyName));
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, sanitizeValue(item, key)]));
+  }
+  if (typeof value !== "string") return value;
+  if (/^(source|currentsource|href|uri|resolveduri|url|repositoryurl|downloadurl)$/iu.test(propertyName)) {
+    return `sha256:${sha256(Buffer.from(value, "utf8"))}`;
+  }
+  return redactUrls(value);
+}
+
+function redactUrls(value) {
+  return value.replace(/https?:\/\/[^\s"'<>]+/giu, url =>
+    `sha256:${sha256(Buffer.from(url, "utf8"))}`);
+}
+
 function required(name) {
   const value = options[name];
   if (!value) throw new Error(`Missing required --${name}=... argument.`);
@@ -474,6 +559,14 @@ function required(name) {
 function readPositiveInteger(name, fallback) {
   const value = options[name] === undefined ? fallback : Number(options[name]);
   if (!Number.isInteger(value) || value <= 0) throw new Error(`--${name} must be a positive integer.`);
+  return value;
+}
+
+function readNonNegativeInteger(name) {
+  const value = Number(options[name]);
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`--${name} must be a non-negative safe integer.`);
+  }
   return value;
 }
 
@@ -497,6 +590,7 @@ async function connectCdp(url) {
   let sequence = 0;
   const pending = new Map();
   const eventWaiters = new Map();
+  const eventListeners = new Map();
   socket.addEventListener("message", event => {
     const message = JSON.parse(event.data);
     if (message.id) {
@@ -505,6 +599,9 @@ async function connectCdp(url) {
       pending.delete(message.id);
       message.error ? waiter.reject(new Error(message.error.message)) : waiter.resolve(message.result || {});
       return;
+    }
+    for (const listener of eventListeners.get(message.method) || []) {
+      try { listener(message.params || {}); } catch {}
     }
     const waiters = eventWaiters.get(message.method);
     if (!waiters?.length) return;
@@ -525,6 +622,15 @@ async function connectCdp(url) {
         const waiter = { resolve: value => { clearTimeout(timer); resolve(value); }, reject };
         eventWaiters.set(method, [...(eventWaiters.get(method) || []), waiter]);
       });
+    },
+    on(method, listener) {
+      const listeners = eventListeners.get(method) || new Set();
+      listeners.add(listener);
+      eventListeners.set(method, listeners);
+      return () => {
+        listeners.delete(listener);
+        if (listeners.size === 0) eventListeners.delete(method);
+      };
     },
     close() { socket.close(); },
   };

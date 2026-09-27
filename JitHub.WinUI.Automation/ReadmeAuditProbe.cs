@@ -3,9 +3,12 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Globalization;
+using System.Linq;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using FlaUI.Core;
 using FlaUI.Core.AutomationElements;
 using FlaUI.Core.Definitions;
@@ -63,6 +66,11 @@ internal static partial class ReadmeAuditProbe
         {
             throw new InvalidDataException("README audit manifest schema or repository list is invalid.");
         }
+        if (options.AuditCaptureSameByteCorpus && options.AuditReuseBrowserEvidence)
+        {
+            throw new InvalidOperationException(
+                "Same-byte capture cannot reuse an earlier Edge report; capture requires a fresh response trace.");
+        }
 
         string browserScript = options.AuditBrowserScriptPath ?? Path.Combine(
             FindRepositoryRoot(),
@@ -92,7 +100,8 @@ internal static partial class ReadmeAuditProbe
             string caseId = $"{repository.Rank:D3}-{Sanitize(repository.FullName)}";
             string caseDirectory = Path.Combine(options.OutputDirectory, "cases", caseId);
             string caseResultPath = Path.Combine(caseDirectory, "result.json");
-            if (options.AuditResume && TryReadCompletedCase(caseResultPath, manifest, repository, out ReadmeAuditCaseResult? resumed))
+            if (!options.AuditCaptureSameByteCorpus && options.AuditResume &&
+                TryReadCompletedCase(caseResultPath, manifest, repository, out ReadmeAuditCaseResult? resumed))
             {
                 results.Add(resumed!);
                 Console.WriteLine($"README audit {repository.Rank}/{manifest.Repositories.Count}: resume {repository.FullName} ({resumed!.Status}).");
@@ -186,6 +195,9 @@ internal static partial class ReadmeAuditProbe
                         caseDirectory,
                         accessToken,
                         browser?.Semantic.Images,
+                        options.AuditCaptureSameByteCorpus && repository.Readme.Available
+                            ? GetSameByteCorpusDirectory(caseDirectory, repository, browser?.SameByteCorpus)
+                            : null,
                         // GitHub intentionally displays some available README files as
                         // source (for example, extensionless or over-sized Markdown).
                         // Such cases have no comparable browser article. JitHub may
@@ -273,10 +285,16 @@ internal static partial class ReadmeAuditProbe
             FullName = repository.FullName,
             ReadmeSha = repository.Readme.Sha,
             Status = failures.Count == 0 ? "passed" : "failed",
-            Failures = failures,
+            Failures = options.AuditCaptureSameByteCorpus
+                ? failures.Select(RedactUrls).ToArray()
+                : failures,
             InfrastructureFailure = infrastructureFailure,
-            Browser = browser,
-            Native = native,
+            Browser = options.AuditCaptureSameByteCorpus
+                ? SanitizeBrowserAuditResult(browser)
+                : browser,
+            Native = options.AuditCaptureSameByteCorpus
+                ? SanitizeNativeAuditResult(native)
+                : native,
             Comparison = comparison,
             CompletedAtUtc = DateTimeOffset.UtcNow,
         };
@@ -328,6 +346,10 @@ internal static partial class ReadmeAuditProbe
             RedirectStandardError = true,
             WorkingDirectory = FindRepositoryRoot(),
         };
+        bool captureThisRepository = options.AuditCaptureSameByteCorpus && repository.Readme.Available;
+        string? rawComparisonReportPath = captureThisRepository
+            ? Path.Combine(Path.GetTempPath(), $"jithub-same-byte-edge-{Guid.NewGuid():N}.json")
+            : null;
         startInfo.ArgumentList.Add(browserScript);
         startInfo.ArgumentList.Add($"--url={GetSnapshotUrl(repository)}");
         startInfo.ArgumentList.Add($"--readme-sha={GetReadmeEvidenceIdentity(repository)}");
@@ -335,34 +357,72 @@ internal static partial class ReadmeAuditProbe
         startInfo.ArgumentList.Add($"--width={ViewportWidth}");
         startInfo.ArgumentList.Add("--height=700");
         startInfo.ArgumentList.Add("--max-tiles=512");
+        if (captureThisRepository)
+        {
+            if (!repository.Readme.Available)
+            {
+                throw new InvalidDataException(
+                    $"Cannot capture a pinned README source for {repository.FullName}.");
+            }
+            Uri readmeDownloadUrl = GetPinnedReadmeDownloadUri(repository);
+
+            string corpusDirectory = Path.Combine(output, $"same-byte-corpus-{Guid.NewGuid():N}");
+            startInfo.ArgumentList.Add($"--capture-same-byte-corpus={corpusDirectory}");
+            startInfo.ArgumentList.Add($"--same-byte-comparison-report={rawComparisonReportPath}");
+            startInfo.ArgumentList.Add($"--repo-full-name={repository.FullName}");
+            startInfo.ArgumentList.Add($"--commit-sha={repository.CommitSha}");
+            startInfo.ArgumentList.Add($"--readme-url={readmeDownloadUrl.AbsoluteUri}");
+            startInfo.ArgumentList.Add($"--readme-path={repository.Readme.Path}");
+            startInfo.ArgumentList.Add($"--readme-byte-size={repository.Readme.ByteSize.ToString(CultureInfo.InvariantCulture)}");
+        }
         if (!string.IsNullOrWhiteSpace(options.AuditEdgePath))
         {
             startInfo.ArgumentList.Add($"--edge={options.AuditEdgePath}");
         }
 
-        using Process process = Process.Start(startInfo)
-            ?? throw new InvalidOperationException("Could not start the Edge README oracle.");
-        Task<string> stdout = process.StandardOutput.ReadToEndAsync();
-        Task<string> stderr = process.StandardError.ReadToEndAsync();
-        // Full-page evidence for unusually tall READMEs can contain hundreds
-        // of 8K screenshot tiles. That capture is deliberately complete and
-        // must not be truncated merely because audit overhead exceeds the
-        // ordinary three-minute render budget. Per-page renderer timings are
-        // captured before screenshotting and remain independently enforced.
-        if (!process.WaitForExit(600_000))
+        try
         {
-            process.Kill(entireProcessTree: true);
-            throw new TimeoutException("Edge README oracle exceeded its 10-minute full-page evidence deadline.");
-        }
-        Task.WaitAll(stdout, stderr);
-        if (process.ExitCode != 0)
-        {
-            throw new InvalidOperationException(
-                $"Edge README oracle exited with {process.ExitCode}: {stderr.Result.Trim()}");
-        }
+            using Process process = Process.Start(startInfo)
+                ?? throw new InvalidOperationException("Could not start the Edge README oracle.");
+            Task<string> stdout = process.StandardOutput.ReadToEndAsync();
+            Task<string> stderr = process.StandardError.ReadToEndAsync();
+            // Full-page evidence for unusually tall READMEs can contain hundreds
+            // of 8K screenshot tiles. That capture is deliberately complete and
+            // must not be truncated merely because audit overhead exceeds the
+            // ordinary three-minute render budget. Per-page renderer timings are
+            // captured before screenshotting and remain independently enforced.
+            if (!process.WaitForExit(600_000))
+            {
+                process.Kill(entireProcessTree: true);
+                throw new TimeoutException("Edge README oracle exceeded its 10-minute full-page evidence deadline.");
+            }
+            Task.WaitAll(stdout, stderr);
+            if (process.ExitCode != 0)
+            {
+                throw new InvalidOperationException(
+                    $"Edge README oracle exited with {process.ExitCode}: {stderr.Result.Trim()}");
+            }
 
-        return JsonSerializer.Deserialize<BrowserAuditResult>(File.ReadAllText(reportPath), JsonOptions)
-            ?? throw new InvalidDataException("Edge README oracle produced an empty report.");
+            string sourceReportPath = rawComparisonReportPath ?? reportPath;
+            BrowserAuditResult report = JsonSerializer.Deserialize<BrowserAuditResult>(
+                File.ReadAllText(sourceReportPath),
+                JsonOptions) ?? throw new InvalidDataException("Edge README oracle produced an empty report.");
+            if (captureThisRepository)
+            {
+                _ = GetSameByteCorpusDirectory(caseDirectory, repository, report.SameByteCorpus);
+                WriteJson(reportPath, SanitizeBrowserAuditResult(report));
+            }
+            else if (options.AuditCaptureSameByteCorpus)
+            {
+                WriteJson(reportPath, SanitizeBrowserAuditResult(report));
+            }
+            return report;
+        }
+        finally
+        {
+            if (rawComparisonReportPath is not null && File.Exists(rawComparisonReportPath))
+                File.Delete(rawComparisonReportPath);
+        }
     }
 
     private static string GetSnapshotUrl(ReadmeAuditRepository repository) =>
@@ -371,12 +431,198 @@ internal static partial class ReadmeAuditProbe
     private static string GetReadmeEvidenceIdentity(ReadmeAuditRepository repository) =>
         repository.Readme.Available ? repository.Readme.Sha : "absent";
 
+    private static Uri GetPinnedReadmeDownloadUri(ReadmeAuditRepository repository)
+    {
+        string[] repositoryParts = repository.FullName.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (repositoryParts.Length != 2 ||
+            !repository.CommitSha.All(Uri.IsHexDigit) || repository.CommitSha.Length != 40)
+        {
+            throw new InvalidDataException("README capture repository identity is not pinned to a commit.");
+        }
+
+        string[] pathParts = repository.Readme.Path.Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (pathParts.Length == 0 || pathParts.Any(part => part is "." or ".."))
+            throw new InvalidDataException("Pinned README path is invalid.");
+
+        string escapedRepository = string.Join('/', repositoryParts.Select(Uri.EscapeDataString));
+        string escapedPath = string.Join('/', pathParts.Select(Uri.EscapeDataString));
+        return new Uri(
+            $"https://raw.githubusercontent.com/{escapedRepository}/{repository.CommitSha}/{escapedPath}",
+            UriKind.Absolute);
+    }
+
+    private static string GetSameByteCorpusDirectory(
+        string caseDirectory,
+        ReadmeAuditRepository expected,
+        BrowserSameByteCorpusEvidence? evidence)
+    {
+        if (evidence is null || evidence.ReadmeBytes < 0 || evidence.AssetCount < 0 ||
+            evidence.AssetBytes < 0 || !IsSha256(evidence.ManifestSha256) ||
+            string.IsNullOrWhiteSpace(evidence.Manifest) || Path.IsPathRooted(evidence.Manifest))
+        {
+            throw new InvalidDataException("Edge did not produce a valid same-byte corpus manifest reference.");
+        }
+
+        string browserRoot = Path.GetFullPath(Path.Combine(caseDirectory, "browser"));
+        string manifestPath = Path.GetFullPath(Path.Combine(browserRoot, evidence.Manifest));
+        string browserPrefix = browserRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) +
+            Path.DirectorySeparatorChar;
+        if (!manifestPath.StartsWith(browserPrefix, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(Path.GetFileName(manifestPath), "manifest.json", StringComparison.Ordinal))
+        {
+            throw new InvalidDataException("Same-byte corpus manifest path escaped the audit case directory.");
+        }
+
+        FileInfo manifestInfo = new(manifestPath);
+        if (!manifestInfo.Exists || manifestInfo.Length <= 0 || manifestInfo.Length > 4 * 1024 * 1024 ||
+            (manifestInfo.Attributes & FileAttributes.ReparsePoint) != 0)
+        {
+            throw new InvalidDataException("Same-byte corpus manifest is missing, redirected, or oversized.");
+        }
+
+        byte[] manifestBytes = File.ReadAllBytes(manifestPath);
+        if (!string.Equals(HashSha256(manifestBytes), evidence.ManifestSha256, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("Same-byte corpus manifest changed after Edge capture.");
+
+        using JsonDocument document = JsonDocument.Parse(manifestBytes);
+        JsonElement root = document.RootElement;
+        JsonElement pinnedRepository = root.GetProperty("repository");
+        JsonElement readme = root.GetProperty("readme");
+        JsonElement assets = root.GetProperty("assets");
+        if (root.GetProperty("schemaVersion").GetInt32() != 1 ||
+            !root.GetProperty("complete").GetBoolean() ||
+            !string.Equals(pinnedRepository.GetProperty("fullName").GetString(), expected.FullName, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(pinnedRepository.GetProperty("commitSha").GetString(), expected.CommitSha, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(pinnedRepository.GetProperty("readmeGitBlobSha1").GetString(), expected.Readme.Sha, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(readme.GetProperty("file").GetString(), "readme.md", StringComparison.Ordinal) ||
+            readme.GetProperty("byteSize").GetInt64() != evidence.ReadmeBytes ||
+            !IsSha256(readme.GetProperty("sha256").GetString()) ||
+            assets.ValueKind != System.Text.Json.JsonValueKind.Array || assets.GetArrayLength() > 100_000)
+        {
+            throw new InvalidDataException("Same-byte corpus manifest failed its capture identity checks.");
+        }
+
+        return Path.GetDirectoryName(manifestPath)
+            ?? throw new InvalidDataException("Same-byte corpus manifest has no containing directory.");
+    }
+
+    private static bool IsSha256(string? value) =>
+        value is { Length: 64 } && value.All(char.IsAsciiHexDigit);
+
+    private static string HashSha256(ReadOnlySpan<byte> bytes) =>
+        Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+
+    private static string HashSourceIdentity(string? value) =>
+        "sha256:" + HashSha256(Encoding.UTF8.GetBytes(value ?? string.Empty));
+
+    private static string RedactUrls(string value) => Regex.Replace(
+        value,
+        @"https?://[^\s""'<>]+",
+        match => HashSourceIdentity(match.Value),
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    private static BrowserAuditResult? SanitizeBrowserAuditResult(BrowserAuditResult? report)
+    {
+        if (report is null) return null;
+        BrowserSemantic semantic = report.Semantic;
+        return new BrowserAuditResult
+        {
+            SchemaVersion = report.SchemaVersion,
+            RepositoryUrl = HashSourceIdentity(report.RepositoryUrl),
+            ReadmeSha = report.ReadmeSha,
+            ReadmeRendered = report.ReadmeRendered,
+            Timing = report.Timing,
+            SameByteCorpus = report.SameByteCorpus,
+            Semantic = new BrowserSemantic
+            {
+                Text = RedactUrls(semantic.Text),
+                VisibleText = RedactUrls(semantic.VisibleText),
+                Width = semantic.Width,
+                Height = semantic.Height,
+                Headings = semantic.Headings.Select(heading => new BrowserHeading
+                {
+                    Level = heading.Level,
+                    Text = RedactUrls(heading.Text),
+                }).ToList(),
+                Links = semantic.Links.Select(link => new BrowserLink
+                {
+                    Text = RedactUrls(link.Text),
+                    Href = HashSourceIdentity(link.Href),
+                }).ToList(),
+                Images = semantic.Images.Select(image => new BrowserImage
+                {
+                    Alt = RedactUrls(image.Alt),
+                    Source = HashSourceIdentity(image.Source),
+                    CurrentSource = HashSourceIdentity(image.CurrentSource),
+                    Complete = image.Complete,
+                    NaturalWidth = image.NaturalWidth,
+                    NaturalHeight = image.NaturalHeight,
+                    RenderedWidth = image.RenderedWidth,
+                    RenderedHeight = image.RenderedHeight,
+                }).ToList(),
+                Media = semantic.Media.Select(media => new BrowserMedia
+                {
+                    Kind = media.Kind,
+                    Source = HashSourceIdentity(media.Source),
+                    CurrentSource = HashSourceIdentity(media.CurrentSource),
+                    RenderedWidth = media.RenderedWidth,
+                    RenderedHeight = media.RenderedHeight,
+                    AccessibleName = RedactUrls(media.AccessibleName),
+                }).ToList(),
+                VisibleMermaidSources = semantic.VisibleMermaidSources.Select(RedactUrls).ToList(),
+                UnavailableImages = semantic.UnavailableImages,
+                Tables = semantic.Tables,
+                CodeBlocks = semantic.CodeBlocks,
+                TaskCheckboxes = semantic.TaskCheckboxes,
+                Details = semantic.Details,
+            },
+            Tiles = report.Tiles,
+        };
+    }
+
+    private static NativeAuditResult? SanitizeNativeAuditResult(NativeAuditResult? result) => result is null
+        ? null
+        : new NativeAuditResult
+        {
+            FirstRenderMs = result.FirstRenderMs,
+            ExperienceFirstRenderMs = result.ExperienceFirstRenderMs,
+            ColdStartToFirstRenderMs = result.ColdStartToFirstRenderMs,
+            FullTraversalMs = result.FullTraversalMs,
+            AuditOverheadMs = result.AuditOverheadMs,
+            FirstRenderCpuMs = result.FirstRenderCpuMs,
+            CpuMs = result.CpuMs,
+            FirstPerformance = result.FirstPerformance,
+            FullPerformance = result.FullPerformance,
+            PeakWorkingSetBytes = result.PeakWorkingSetBytes,
+            Text = RedactUrls(result.Text),
+            MermaidSources = result.MermaidSources.Select(RedactUrls).ToArray(),
+            Width = result.Width,
+            EstimatedContentHeight = result.EstimatedContentHeight,
+            Tiles = result.Tiles,
+            VisibleImageWaits = result.VisibleImageWaits,
+            HeadingObservations = result.HeadingObservations,
+            LinkObservations = result.LinkObservations,
+            ImageObservations = result.ImageObservations,
+            TableObservations = result.TableObservations,
+            CodeBlockObservations = result.CodeBlockObservations,
+            TaskCheckboxObservations = result.TaskCheckboxObservations,
+            DisclosureObservations = result.DisclosureObservations,
+            ImageSourceCount = result.ImageSourceCount,
+            LoadingImagesAfterTraversal = result.LoadingImagesAfterTraversal,
+            UnavailableImages = result.UnavailableImages,
+            RawUnavailableImages = result.RawUnavailableImages,
+            RenderFailure = result.RenderFailure is null ? null : RedactUrls(result.RenderFailure),
+            CleanExit = result.CleanExit,
+            CloseFailure = result.CloseFailure is null ? null : RedactUrls(result.CloseFailure),
+        };
+
     private static NativeAuditResult RunNativeAudit(
         CaptureOptions options,
         ReadmeAuditRepository repository,
         string caseDirectory,
         string accessToken,
         IReadOnlyList<BrowserImage>? renderedBrowserImages,
+        string? sameByteCorpusPath,
         bool expectRenderedReadme)
     {
         string output = Path.Combine(caseDirectory, "native");
@@ -448,6 +694,18 @@ internal static partial class ReadmeAuditProbe
         startInfo.Environment["JITHUB_MARKDOWN_SHUTDOWN_STAGE_PATH"] = shutdownStageEvidence;
         startInfo.Environment["JITHUB_MARKDOWN_CAPTURE_REQUEST_PATH"] = captureRequest;
         startInfo.Environment["JITHUB_MARKDOWN_CAPTURE_RESPONSE_PATH"] = captureResponse;
+        if (sameByteCorpusPath is not null)
+        {
+            if (string.IsNullOrWhiteSpace(sameByteCorpusPath) ||
+                !Directory.Exists(sameByteCorpusPath) ||
+                !File.Exists(Path.Combine(sameByteCorpusPath, "manifest.json")))
+            {
+                throw new InvalidDataException(
+                    "The freshly captured same-byte corpus is missing or incomplete.");
+            }
+            startInfo.Environment["JITHUB_README_AUDIT_SAME_BYTE_CORPUS"] = sameByteCorpusPath;
+            startInfo.Environment["JITHUB_README_AUDIT_SAME_BYTE_README_SHA"] = repository.Readme.Sha;
+        }
 
         Stopwatch wall = Stopwatch.StartNew();
         using Process launcher = Process.Start(startInfo)
@@ -643,8 +901,16 @@ internal static partial class ReadmeAuditProbe
             int imageSourceCount = Math.Max(
                 CountDistinctImageSources(imageResolutionEvidence),
                 traversal.Images);
-            PreserveEvidenceFile(imageEvidence, Path.Combine(output, "image-unavailable.ndjson"));
-            PreserveEvidenceFile(imageResolutionEvidence, Path.Combine(output, "image-resolution.ndjson"));
+            if (options.AuditCaptureSameByteCorpus)
+            {
+                PreserveSanitizedEvidenceFile(imageEvidence, Path.Combine(output, "image-unavailable.ndjson"));
+                PreserveSanitizedEvidenceFile(imageResolutionEvidence, Path.Combine(output, "image-resolution.ndjson"));
+            }
+            else
+            {
+                PreserveEvidenceFile(imageEvidence, Path.Combine(output, "image-unavailable.ndjson"));
+                PreserveEvidenceFile(imageResolutionEvidence, Path.Combine(output, "image-resolution.ndjson"));
+            }
             PreserveEvidenceFile(rasterPreparationEvidence, Path.Combine(output, "raster-preparation.ndjson"));
             PreserveEvidenceFile(svgWorkerEvidence, Path.Combine(output, "svg-worker-timeouts.ndjson"));
             PreserveEvidenceFile(svgPreflightEvidence, Path.Combine(output, "svg-preflight-rejections.ndjson"));
@@ -713,6 +979,10 @@ internal static partial class ReadmeAuditProbe
                 if (!launcher.HasExited) launcher.Kill(entireProcessTree: true);
             }
             catch { }
+            if (options.AuditCaptureSameByteCorpus)
+            {
+                SanitizeSameByteRuntimeEvidence(runtime);
+            }
         }
     }
 
@@ -2333,6 +2603,101 @@ internal static partial class ReadmeAuditProbe
         }
     }
 
+    private static void PreserveSanitizedEvidenceFile(string source, string destination)
+    {
+        if (File.Exists(source))
+        {
+            SanitizeJsonEvidenceFile(source, destination);
+        }
+    }
+
+    private static void SanitizeSameByteRuntimeEvidence(string runtimeDirectory)
+    {
+        foreach (string name in new[] { "image-unavailable.ndjson", "image-resolution.ndjson" })
+        {
+            string path = Path.Combine(runtimeDirectory, name);
+            if (File.Exists(path)) SanitizeJsonEvidenceFile(path, path);
+        }
+
+        string renderFailure = Path.Combine(runtimeDirectory, "render-failure.txt");
+        if (File.Exists(renderFailure))
+            File.WriteAllText(renderFailure, RedactUrls(File.ReadAllText(renderFailure)));
+    }
+
+    private static void SanitizeJsonEvidenceFile(string source, string destination)
+    {
+        string temporaryPath = destination + ".sanitized.tmp";
+        Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+        using (var writer = new StreamWriter(temporaryPath, append: false, new UTF8Encoding(false)))
+        {
+            foreach (string line in File.ReadLines(source))
+            {
+                if (string.IsNullOrWhiteSpace(line))
+                {
+                    writer.WriteLine();
+                    continue;
+                }
+
+                try
+                {
+                    using JsonDocument document = JsonDocument.Parse(line);
+                    using var buffer = new MemoryStream();
+                    using (var jsonWriter = new Utf8JsonWriter(buffer))
+                    {
+                        WriteSanitizedJsonValue(jsonWriter, document.RootElement, null);
+                    }
+                    writer.WriteLine(Encoding.UTF8.GetString(buffer.ToArray()));
+                }
+                catch (JsonException)
+                {
+                    writer.WriteLine(RedactUrls(line));
+                }
+            }
+        }
+        File.Move(temporaryPath, destination, overwrite: true);
+    }
+
+    private static void WriteSanitizedJsonValue(
+        Utf8JsonWriter writer,
+        JsonElement element,
+        string? propertyName)
+    {
+        switch (element.ValueKind)
+        {
+            case System.Text.Json.JsonValueKind.Object:
+                writer.WriteStartObject();
+                foreach (JsonProperty property in element.EnumerateObject())
+                {
+                    writer.WritePropertyName(property.Name);
+                    WriteSanitizedJsonValue(writer, property.Value, property.Name);
+                }
+                writer.WriteEndObject();
+                break;
+            case System.Text.Json.JsonValueKind.Array:
+                writer.WriteStartArray();
+                foreach (JsonElement item in element.EnumerateArray())
+                    WriteSanitizedJsonValue(writer, item, propertyName);
+                writer.WriteEndArray();
+                break;
+            case System.Text.Json.JsonValueKind.String:
+                string? value = element.GetString();
+                if (propertyName is "Source" or "source" or "CurrentSource" or "currentSource" or
+                    "Href" or "href" or "Uri" or "uri" or "ResolvedUri" or "resolvedUri" or
+                    "Url" or "url" or "RepositoryUrl" or "repositoryUrl" or "DownloadUrl" or "downloadUrl")
+                {
+                    writer.WriteStringValue(HashSourceIdentity(value));
+                }
+                else
+                {
+                    writer.WriteStringValue(RedactUrls(value ?? string.Empty));
+                }
+                break;
+            default:
+                element.WriteTo(writer);
+                break;
+        }
+    }
+
     private static int CountRenderedUnavailableImages(
         string path,
         IReadOnlyList<BrowserImage>? renderedBrowserImages)
@@ -2574,9 +2939,11 @@ internal sealed class ReadmeAuditRepository
 internal sealed class ReadmeAuditReadme
 {
     public bool Available { get; init; }
+    public long ByteSize { get; init; }
     public string Path { get; init; } = string.Empty;
     public string Sha { get; init; } = string.Empty;
     public string HtmlUrl { get; init; } = string.Empty;
+    public string DownloadUrl { get; init; } = string.Empty;
 }
 
 internal sealed class BrowserAuditResult
@@ -2586,8 +2953,18 @@ internal sealed class BrowserAuditResult
     public string ReadmeSha { get; init; } = string.Empty;
     public bool? ReadmeRendered { get; init; }
     public BrowserTiming Timing { get; init; } = new();
+    public BrowserSameByteCorpusEvidence? SameByteCorpus { get; init; }
     public BrowserSemantic Semantic { get; init; } = new();
     public List<AuditTile> Tiles { get; init; } = [];
+}
+
+internal sealed class BrowserSameByteCorpusEvidence
+{
+    public string Manifest { get; init; } = string.Empty;
+    public string ManifestSha256 { get; init; } = string.Empty;
+    public long ReadmeBytes { get; init; }
+    public int AssetCount { get; init; }
+    public long AssetBytes { get; init; }
 }
 
 internal sealed class BrowserTiming
