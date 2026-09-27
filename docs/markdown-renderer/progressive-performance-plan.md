@@ -1406,6 +1406,31 @@ complete before claiming this plan or the 1.0 performance goal is met.
   SVG raster time. This does not prove same-byte Edge client parity, guarantee
   that the intermittent sponsor SVG timeout cannot recur, or satisfy the
   qualified release benchmark, which remains queued on an interactive runner.
+- The subsequent docs-only-head live audit at `39e67c2` (Actions run
+  `36321754144`) exposed two valid-image failures even though the rendering
+  code matched `18679a3`. Rank 54 (`langgenius/dify`) resolved a 1,012-byte
+  Korean Shields/Camo badge; Edge displayed it at 43x20, but the isolated
+  worker exceeded the unchanged three-second **open** deadline after the
+  font gate and before completing SVG tree construction. The timeout-only
+  trace recorded zero worker CPU milliseconds during the wait, 6,492 KiB
+  working set, and 2,216 KiB private commit. The exact SVG bytes and SHA-256
+  were recovered and added as an offline cold-worker regression test. Hangul
+  glyph fallback is now primed with the worker's one-time text pipeline,
+  outside the content deadline; the exact-byte test passes locally under a
+  500-ms content deadline, as do all 64 x64 provider tests and 18 pinned Rust
+  tests. This targets a missing cold font path, but does not prove that the
+  hosted stall or general worker starvation is fixed. Rank 201
+  (`spring-projects/spring-boot`) separately failed a valid SVG before its
+  font catalog finished initialization: the final font-catalog probe had
+  a sub-millisecond remaining deadline, recorded zero CPU milliseconds in
+  that probe, and saw only 5,356 KiB working set. This trace does not measure
+  CPU consumption over the entire 15-second initialization window. That failure
+  is not explained by Hangul fallback and remains open. The full audit was
+  still running when these cases were inspected; no earlier 500/500 pass
+  waives either recurrence. The three RID workers have been rebuilt and the
+  unsigned all-RID development pack is 4,697,877 bytes, below the unchanged
+  5 MiB ceiling. Production signing, current-head full audit, and release
+  benchmark remain mandatory.
 - Open: oversized raster tiling and session-owned SVG/document/GPU preparation
   caches.
 - Open: defer Math/Mermaid scenes and ahead-of-viewport highlighting without

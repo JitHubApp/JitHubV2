@@ -1794,7 +1794,7 @@ fn warm_text_pipeline(database: &Arc<usvg::fontdb::Database>) -> Result<(), Reje
 <text x='1' y='144' font-family='Consolas, Courier New, monospace' font-size='16'>Monospace SVG text</text>
 <text x='1' y='174' font-family='Segoe UI Symbol, Segoe UI Emoji, sans-serif' font-size='16'>&#x2192; &#x2713; &#x1f600;</text>
 <text x='1' y='204' font-family='Verdana,Geneva,DejaVu Sans,sans-serif' font-size='16'>&#x524D;&#x53F0;&#x5546;&#x57CE;&#x9879;&#x76EE; mall-app-web</text>
-<text x='1' y='234' font-family='DejaVu Sans,Verdana,Geneva,sans-serif' font-size='16'>&#x4EA4;&#x6D41; &#x5FAE;&#x4FE1;&#x7FA4;</text>
+<text x='1' y='234' font-family='DejaVu Sans,Verdana,Geneva,sans-serif' font-size='16'>&#x4EA4;&#x6D41; &#x5FAE;&#x4FE1;&#x7FA4; &#xD55C;&#xAD6D;&#xC5B4;</text>
 </svg>"#;
     let options = usvg::Options {
         resources_dir: None,

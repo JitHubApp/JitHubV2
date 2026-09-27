@@ -138,6 +138,30 @@ public sealed class ResvgProviderTests
     }
 
     [Fact]
+    public async Task ColdKoreanShieldsBadge_OpensAndRendersWithinContentDeadline()
+    {
+        // Exact bytes of the 43x20 badge exposed by the top-500 README audit.
+        // Hangul takes a different font fallback path from the existing CJK fixtures.
+        const string source = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"43\" height=\"20\" role=\"img\" aria-label=\"한국어\"><title>한국어</title><filter id=\"blur\"><feGaussianBlur stdDeviation=\"16\"/></filter><linearGradient id=\"s\" x2=\"0\" y2=\"100%\"><stop offset=\"0\" stop-color=\"#bbb\" stop-opacity=\".1\"/><stop offset=\"1\" stop-opacity=\".1\"/></linearGradient><clipPath id=\"r\"><rect width=\"43\" height=\"20\" rx=\"3\"/></clipPath><g clip-path=\"url(#r)\"><rect width=\"0\" height=\"20\" fill=\"#d9d9d9\"/><rect x=\"0\" width=\"43\" height=\"20\" fill=\"#d9d9d9\"/><rect width=\"43\" height=\"20\" fill=\"url(#s)\"/></g><g fill=\"#fff\" text-anchor=\"middle\" font-family=\"Verdana,Geneva,DejaVu Sans,sans-serif\" text-rendering=\"geometricPrecision\" font-size=\"110\"><g transform=\"scale(.1)\"><g aria-hidden=\"true\" fill=\"#ccc\"><text x=\"215\" y=\"150\" fill-opacity=\".8\" filter=\"url(#blur)\" textLength=\"330\">한국어</text><text x=\"215\" y=\"150\" fill-opacity=\".3\" textLength=\"330\">한국어</text></g><text x=\"215\" y=\"140\" textLength=\"330\" fill=\"#333\">한국어</text></g></g></svg>";
+        byte[] bytes = Svg(source);
+        Assert.Equal("3EC0BAD11F076CFE1D23AE2D750851B3BB1DD78A885723325EFB86EED6E841D0",
+            Convert.ToHexString(SHA256.HashData(bytes)));
+
+        var options = new ResvgMarkdownSvgRendererOptions(
+            requestDeadline: TimeSpan.FromMilliseconds(500));
+        await using var renderer = new ResvgMarkdownSvgRenderer(options);
+        using IMarkdownSvgDocument document = await renderer.OpenAsync(
+            new MarkdownSvgOpenRequest(bytes));
+        using MarkdownSvgRaster raster = await document.RenderAsync(
+            new MarkdownSvgRenderRequest(43, 20));
+
+        Assert.True(document.Info.HasText);
+        Assert.Equal(43, raster.WidthPixels);
+        Assert.Equal(20, raster.HeightPixels);
+        Assert.True(HasVisiblePixel(raster.Pixels.Span));
+    }
+
+    [Fact]
     public async Task CjkBadgeFallback_IsWarmBeforeContentDeadline()
     {
         // Pinned, network-free forms of the two font-family orders used by
