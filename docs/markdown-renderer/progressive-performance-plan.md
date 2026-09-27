@@ -1531,6 +1531,12 @@ complete before claiming this plan or the 1.0 performance goal is met.
   of those bytes, but do not prove whether the intermittent cause is WARP,
   worker startup, runner contention, or another native path. Hosted
   stage-level capture and the mandatory same-byte Edge comparison remain open.
+  A manual focused hosted diagnostic workflow is prepared locally to replay
+  one rank from a validated pinned top-500 corpus with opt-in raster-stage
+  tracing and repeated fresh attempts. It has not run in CI, does not pin
+  changing CDN image bytes, and its tracing cannot qualify the release timing
+  gate. The normal audit retains tracing off; its pinned Windows App Runtime
+  installer is shared with the diagnostic to avoid setup drift.
 - Open: oversized raster tiling and session-owned SVG/document/GPU preparation
   caches.
 - Open: defer Math/Mermaid scenes and ahead-of-viewport highlighting without
