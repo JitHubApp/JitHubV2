@@ -74,7 +74,7 @@ Set-StrictMode -Version Latest
 
 $script:AggregateSchemaVersion = 2
 $script:AggregateProviderName = 'MarkdownRenderer-Counterbalanced-Performance'
-$script:AggregatePolicy = 'schema10-r1-c1-c2-r2-abba-contrast-v2'
+$script:AggregatePolicy = 'schema12-r1-c1-c2-r2-abba-contrast-v2'
 $script:RuntimeOutputManifestPolicy = 'runtime-output-manifest-v1'
 $script:Utf8NoBom = [Text.UTF8Encoding]::new($false, $true)
 
@@ -593,7 +593,7 @@ function Assert-ReportRoleBinding {
     )
 
     $expectedMode = $Mode.ToLowerInvariant()
-    if ([int]$Report.schemaVersion -ne 10 -or
+    if ([int]$Report.schemaVersion -ne 12 -or
         [string]$Report.providerName -cne 'MarkdownRenderer-Performance' -or
         -not [bool]$Report.isReleaseEvidence -or
         -not [bool]$Report.passed -or

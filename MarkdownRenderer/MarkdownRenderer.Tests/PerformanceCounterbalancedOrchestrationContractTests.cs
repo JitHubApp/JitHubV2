@@ -534,10 +534,10 @@ public sealed class PerformanceCounterbalancedOrchestrationContractTests
         Assert.DoesNotContain("'--reference', $r1Path", text, StringComparison.Ordinal);
         Assert.Contains("$script:AggregateSchemaVersion = 2", text, StringComparison.Ordinal);
         Assert.Contains(
-            "schema10-r1-c1-c2-r2-abba-contrast-v2",
+            "schema12-r1-c1-c2-r2-abba-contrast-v2",
             text,
             StringComparison.Ordinal);
-        Assert.Contains("[int]$Report.schemaVersion -ne 10", text, StringComparison.Ordinal);
+        Assert.Contains("[int]$Report.schemaVersion -ne 12", text, StringComparison.Ordinal);
         Assert.Contains("if ([int]$gateResult.ExitCode -ne 0)", text, StringComparison.Ordinal);
         Assert.Contains("Assert-ReportRoleBinding", text, StringComparison.Ordinal);
         Assert.Contains("diagnosticsAreNonGating = $true", text, StringComparison.Ordinal);
@@ -663,14 +663,14 @@ public sealed class PerformanceCounterbalancedOrchestrationContractTests
                     }
                 };
             }
-            Assert-ReportRoleBinding -Report (New-Report 10 $true $expectedIdentity) -Mode Baseline -ExpectedArtifactSet $expected -ExpectedBuildIdentity $expectedIdentity;
+            Assert-ReportRoleBinding -Report (New-Report 12 $true $expectedIdentity) -Mode Baseline -ExpectedArtifactSet $expected -ExpectedBuildIdentity $expectedIdentity;
             $rejected=0;
             foreach($invalid in @(
-                (New-Report 9 $true $expectedIdentity),
-                (New-Report 10 $false $expectedIdentity),
-                (New-Report 10 $true ('runtime-output-manifest-v1:' + ('B' * 64))),
+                (New-Report 11 $true $expectedIdentity),
+                (New-Report 12 $false $expectedIdentity),
+                (New-Report 12 $true ('runtime-output-manifest-v1:' + ('B' * 64))),
                 [pscustomobject]@{
-                    schemaVersion=10;providerName='MarkdownRenderer-Performance';
+                    schemaVersion=12;providerName='MarkdownRenderer-Performance';
                     isReleaseEvidence=$true;passed=$true;buildIdentity=$expectedIdentity;
                     regression=[pscustomobject]@{mode='baseline';referencePath='';referenceReportSha256=''};
                     buildArtifacts=[pscustomobject]@{
