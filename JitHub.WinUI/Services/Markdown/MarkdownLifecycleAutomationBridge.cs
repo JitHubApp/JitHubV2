@@ -670,6 +670,7 @@ internal static partial class MarkdownLifecycleAutomationBridge
         double SetupMilliseconds,
         double ThemeSnapshotMilliseconds,
         double LayoutMilliseconds,
+        double LayoutCpuMilliseconds,
         double PublicationMilliseconds,
         double CommitMilliseconds,
         double OverlayResetMilliseconds,

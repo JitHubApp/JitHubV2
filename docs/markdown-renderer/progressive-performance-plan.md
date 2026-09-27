@@ -1253,8 +1253,36 @@ complete before claiming this plan or the 1.0 performance goal is met.
   took 611 ms to first render with no image wait. These different-machine
   replays show the stalls are intermittent, not that they are fixed or
   external. A same-byte, same-machine replay with worker scheduling/CPU
-  evidence is still needed. The current-head `c545490` audit is running;
-  neither this earlier-head pass nor isolated replays qualify it.
+  evidence is still needed. The `c545490` audit was still running at this
+  checkpoint; neither this earlier-head pass nor isolated replays qualified it.
+- The complete pinned live audit at `c545490` (Actions run `36278951232`)
+  passed 500/500 with zero valid unavailable images. Native/Edge p95 ratios
+  were 0.327 first render and 0.288 full traversal. Four individual full-page
+  ratios still exceeded 1.10: rank 102 (`jaywcjlove/awesome-mac`, 1.430),
+  rank 310 (`ZhuLinsen/daily_stock_analysis`, 1.337), rank 352
+  (`termux/termux-app`, 1.323), and rank 430 (`odoo/odoo`, 1.347).
+  Rank 102 waited 20 seconds at a late tile for a Camo image that eventually
+  failed after two roughly 31-second fetch attempts; Edge also reported that
+  image broken, so it is not a valid-image-unavailable regression, but the
+  live timing outlier is retained. Ranks 352 and 430 waited 11.6 and 7.9
+  seconds for visible images whose individual Camo responses took 12.4 and
+  8.5 seconds. Rank 310 instead spent 6.335 seconds in background layout
+  with no image wait. A pinned local Release replay of the identical README
+  SHA, source length, and viewport width took 148 ms in layout, so the cause
+  of that intermittent hosted stall is not yet established. Browser-relative
+  aggregate success and a different-machine replay do not satisfy the
+  same-byte outlier or interactive release gates.
+- Locally verified, pending CI: opt-in layout builds now measure the CPU time
+  of their single background worker thread alongside wall time. The audit
+  preserves both values in machine-readable evidence and its summary so a
+  recurring layout spike can be distinguished from queueing/descheduling
+  without recording source content. The new clock's two focused tests, 960
+  renderer tests outside the long external-gate fixture, and all 3,141
+  Release x64 app tests passed; x64 Release app and automation
+  builds completed with zero warnings, and a pinned rank-310 full UI audit
+  passed with 123 ms layout wall time and 125 ms measured thread CPU time
+  (within timer granularity). This is diagnostic evidence, not a performance
+  fix or release-gate waiver.
 - Open: oversized raster tiling and session-owned SVG/document/GPU preparation
   caches.
 - Open: defer Math/Mermaid scenes and ahead-of-viewport highlighting without

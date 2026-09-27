@@ -32,6 +32,7 @@ public sealed class ReadmeAuditPerformanceSnapshotTests
               "SetupMilliseconds": 0.75,
               "ThemeSnapshotMilliseconds": 0.2,
               "LayoutMilliseconds": 2.5,
+              "LayoutCpuMilliseconds": 1.25,
               "PublicationMilliseconds": 0.5,
               "CommitMilliseconds": 0.1,
               "OverlayResetMilliseconds": 0.1,
@@ -64,6 +65,7 @@ public sealed class ReadmeAuditPerformanceSnapshotTests
         Assert.Equal(0.75, snapshot.Pipeline.SetupMilliseconds);
         Assert.Equal(0.2, snapshot.Pipeline.ThemeSnapshotMilliseconds);
         Assert.Equal(2.5, snapshot.Pipeline.LayoutMilliseconds);
+        Assert.Equal(1.25, snapshot.Pipeline.LayoutCpuMilliseconds);
         Assert.Equal(0.5, snapshot.Pipeline.PublicationMilliseconds);
         Assert.Equal(0.1, snapshot.Pipeline.CommitMilliseconds);
         Assert.Equal(0.1, snapshot.Pipeline.OverlayResetMilliseconds);
@@ -105,6 +107,7 @@ public sealed class ReadmeAuditPerformanceSnapshotTests
     [InlineData("SetupMilliseconds")]
     [InlineData("ThemeSnapshotMilliseconds")]
     [InlineData("LayoutMilliseconds")]
+    [InlineData("LayoutCpuMilliseconds")]
     [InlineData("PublicationMilliseconds")]
     [InlineData("CommitMilliseconds")]
     [InlineData("OverlayResetMilliseconds")]
@@ -140,6 +143,7 @@ public sealed class ReadmeAuditPerformanceSnapshotTests
     [InlineData("SetupMilliseconds", -1)]
     [InlineData("ThemeSnapshotMilliseconds", -1)]
     [InlineData("LayoutMilliseconds", -1)]
+    [InlineData("LayoutCpuMilliseconds", -2)]
     [InlineData("PublicationMilliseconds", -1)]
     [InlineData("CommitMilliseconds", -1)]
     [InlineData("OverlayResetMilliseconds", -1)]

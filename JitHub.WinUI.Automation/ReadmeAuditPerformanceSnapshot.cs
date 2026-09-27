@@ -67,6 +67,7 @@ internal sealed class ReadmeAuditPerformanceSnapshot
             !IsValidStageDuration(snapshot.Pipeline.SetupMilliseconds) ||
             !IsValidStageDuration(snapshot.Pipeline.ThemeSnapshotMilliseconds) ||
             !IsValidStageDuration(snapshot.Pipeline.LayoutMilliseconds) ||
+            !IsValidLayoutCpuDuration(snapshot.Pipeline.LayoutCpuMilliseconds) ||
             !IsValidStageDuration(snapshot.Pipeline.PublicationMilliseconds) ||
             !IsValidStageDuration(snapshot.Pipeline.CommitMilliseconds) ||
             !IsValidStageDuration(snapshot.Pipeline.OverlayResetMilliseconds) ||
@@ -104,6 +105,9 @@ internal sealed class ReadmeAuditPerformanceSnapshot
 
     private static bool IsValidStageDuration(double duration) =>
         double.IsFinite(duration) && duration >= 0;
+
+    private static bool IsValidLayoutCpuDuration(double duration) =>
+        duration == -1 || IsValidStageDuration(duration);
 }
 
 internal sealed class ReadmeAuditPipelineTimingSnapshot
@@ -114,6 +118,7 @@ internal sealed class ReadmeAuditPipelineTimingSnapshot
     public required double SetupMilliseconds { get; init; }
     public required double ThemeSnapshotMilliseconds { get; init; }
     public required double LayoutMilliseconds { get; init; }
+    public required double LayoutCpuMilliseconds { get; init; }
     public required double PublicationMilliseconds { get; init; }
     public required double CommitMilliseconds { get; init; }
     public required double OverlayResetMilliseconds { get; init; }

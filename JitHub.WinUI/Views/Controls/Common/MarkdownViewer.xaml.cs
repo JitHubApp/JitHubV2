@@ -622,6 +622,7 @@ public sealed partial class MarkdownViewer : UserControl
                 pipeline.SetupMilliseconds,
                 pipeline.ThemeSnapshotMilliseconds,
                 pipeline.LayoutMilliseconds,
+                pipeline.LayoutCpuMilliseconds,
                 ElapsedMilliseconds(pipeline.PublicationStartedTimestamp, pipeline.PublicationEndedTimestamp),
                 ElapsedMilliseconds(pipeline.PublicationStartedTimestamp, pipeline.CommitEndedTimestamp),
                 ElapsedMilliseconds(pipeline.CommitEndedTimestamp, pipeline.OverlayResetEndedTimestamp),

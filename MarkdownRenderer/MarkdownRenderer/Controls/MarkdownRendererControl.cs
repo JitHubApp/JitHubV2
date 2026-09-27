@@ -4030,16 +4030,29 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                 6000);
         long layoutStarted = Stopwatch.GetTimestamp();
         double setupMilliseconds = Stopwatch.GetElapsedTime(parseEnded, layoutStarted).TotalMilliseconds;
-        var snapshot = await Task.Run(
-            () => BuildSnapshotOrNullOnCancellation(
-                builder,
-                parsed.Document,
-                width,
-                viewportTop,
-                viewportHeight,
-                useLazyLayout,
-                initialLazyOverscan,
-                ct),
+        var (snapshot, layoutCpuMilliseconds) = await Task.Run(
+            () =>
+            {
+                // This synchronous build stays on one pool thread. Its CPU
+                // time separates actual layout work from queueing/descheduling
+                // when a live audit reports an anomalous wall-clock stall.
+                long cpuStarted = performanceSessionSnapshot is null
+                    ? -1
+                    : ThreadCpuClock.ReadCurrentThreadTicks();
+                LayoutSnapshot? built = BuildSnapshotOrNullOnCancellation(
+                    builder,
+                    parsed.Document,
+                    width,
+                    viewportTop,
+                    viewportHeight,
+                    useLazyLayout,
+                    initialLazyOverscan,
+                    ct);
+                long cpuEnded = cpuStarted < 0
+                    ? -1
+                    : ThreadCpuClock.ReadCurrentThreadTicks();
+                return (built, ThreadCpuClock.ElapsedMilliseconds(cpuStarted, cpuEnded));
+            },
             CancellationToken.None).ConfigureAwait(true);
         double layoutMilliseconds = Stopwatch.GetElapsedTime(layoutStarted).TotalMilliseconds;
         if (snapshot is null || ct.IsCancellationRequested || generation != _pipelineGeneration)
@@ -4252,6 +4265,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             setupMilliseconds,
             themeSnapshotMilliseconds,
             layoutMilliseconds,
+            layoutCpuMilliseconds,
             publicationStarted,
             commitEnded,
             overlayResetEnded,
