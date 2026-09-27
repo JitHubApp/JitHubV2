@@ -347,7 +347,8 @@ internal static partial class MarkdownLifecycleAutomationBridge
         int workerProcessCpuMilliseconds,
         int transportPhase,
         int requestWriteMilliseconds,
-        int workerExited)
+        int workerExited,
+        int openProgressPhase)
     {
         if (!IsEvidenceEnabled)
             return;
@@ -373,6 +374,18 @@ internal static partial class MarkdownLifecycleAutomationBridge
             2 => "response-read",
             _ => "not-applicable",
         };
+        string openProgress = openProgressPhase switch
+        {
+            0 => "not-started",
+            1 => "mapping-opened",
+            2 => "hash-verified",
+            3 => "xml-parsed",
+            4 => "security-inspected",
+            5 => "font-gate-passed",
+            6 => "tree-built",
+            7 => "document-attached",
+            _ => "not-applicable",
+        };
         lock (SignalGate)
         {
             try
@@ -388,6 +401,7 @@ internal static partial class MarkdownLifecycleAutomationBridge
                         transport,
                         requestWriteMilliseconds,
                         workerExited switch { 0 => false, 1 => true, _ => null },
+                        openProgress,
                         DateTimeOffset.UtcNow),
                     MarkdownLifecycleJsonContext.Default.SvgWorkerTimeoutSignal);
                 File.AppendAllText(fullPath, entry + Environment.NewLine);
@@ -643,6 +657,7 @@ internal static partial class MarkdownLifecycleAutomationBridge
         string TransportPhase,
         int RequestWriteMilliseconds,
         bool? WorkerExited,
+        string OpenProgressPhase,
         DateTimeOffset Timestamp);
 
     private sealed record SvgPreflightRejectionSignal(

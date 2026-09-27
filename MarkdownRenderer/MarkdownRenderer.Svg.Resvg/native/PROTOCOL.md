@@ -1,4 +1,4 @@
-# MarkdownRenderer resvg worker protocol v4
+# MarkdownRenderer resvg worker protocol v5
 
 The host and worker exchange fixed-size little-endian frames over one private
 duplex named pipe. SVG bytes and premultiplied pixels are never carried by the
@@ -25,6 +25,15 @@ same persistent source mapping once before rendering. A tile request describes
 its coordinates in the complete output; the output mapping contains only the
 cropped tile. `TrimCache` discards parsed trees and decoded resources, and
 `CloseDocument` forgets the token.
+
+All mappings reserve a 64-byte trailer after the aligned source and exact
+output range. For `Open`, the worker release-stores a one-byte, content-free
+phase marker in the trailer after mapping, hash verification, XML parsing,
+security inspection, passage through the font-catalog gate, tree construction,
+and document attachment. The host
+acquire-loads it only if the hard request deadline expires. The trailer never
+changes source hashing, raster dimensions, or the output lease exposed to
+consumers; neither source nor pixels are logged with a timeout.
 
 `Hello` is a nonblocking text-readiness probe. It returns status 5 while the
 background Windows font catalog and fixed usvg/resvg text-shaping and

@@ -147,21 +147,23 @@ public sealed class MarkdownSvgWorkerAuditListenerTests
             using var listener = new MarkdownSvgWorkerAuditListener();
 
             TestWorkerEventSource.Log.Timeout(
-                stage: 3,
+                stage: 2,
                 deadlineMilliseconds: 3_000,
                 workerProcessCpuMilliseconds: 1_250,
                 transportPhase: 2,
                 requestWriteMilliseconds: 4,
-                workerExited: 0);
+                workerExited: 0,
+                openProgressPhase: 4);
 
             string line = Assert.Single(File.ReadAllLines(path));
             using JsonDocument document = JsonDocument.Parse(line);
-            Assert.Equal("render", document.RootElement.GetProperty("Phase").GetString());
+            Assert.Equal("open", document.RootElement.GetProperty("Phase").GetString());
             Assert.Equal(3_000, document.RootElement.GetProperty("DeadlineMilliseconds").GetInt32());
             Assert.Equal(1_250, document.RootElement.GetProperty("WorkerProcessCpuMilliseconds").GetInt32());
             Assert.Equal("response-read", document.RootElement.GetProperty("TransportPhase").GetString());
             Assert.Equal(4, document.RootElement.GetProperty("RequestWriteMilliseconds").GetInt32());
             Assert.False(document.RootElement.GetProperty("WorkerExited").GetBoolean());
+            Assert.Equal("security-inspected", document.RootElement.GetProperty("OpenProgressPhase").GetString());
             Assert.False(document.RootElement.TryGetProperty("Source", out _));
             Assert.False(document.RootElement.TryGetProperty("Url", out _));
         }
@@ -188,9 +190,11 @@ public sealed class MarkdownSvgWorkerAuditListenerTests
             int workerProcessCpuMilliseconds,
             int transportPhase,
             int requestWriteMilliseconds,
-            int workerExited) =>
+            int workerExited,
+            int openProgressPhase) =>
             WriteEvent(1, [stage, deadlineMilliseconds, workerProcessCpuMilliseconds,
-                transportPhase, requestWriteMilliseconds, workerExited]);
+                transportPhase, requestWriteMilliseconds, workerExited,
+                openProgressPhase]);
     }
 
     [EventSource(Name = "MarkdownRenderer.Svg.Resvg.Preflight")]

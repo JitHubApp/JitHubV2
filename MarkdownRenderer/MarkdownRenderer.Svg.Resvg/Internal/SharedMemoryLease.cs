@@ -6,10 +6,14 @@ namespace MarkdownRenderer.Svg.Resvg.Internal;
 
 internal sealed unsafe partial class SharedMemoryLease : MemoryManager<byte>
 {
+    // A protocol-v5 trailer records bounded worker progress for a timed-out
+    // Open. It is outside both the source and exact raster output ranges.
+    internal const int ProgressAreaBytes = 64;
     private SafeMappingHandle? _mapping;
     private byte* _pointer;
     private readonly int _exposedOffset;
     private readonly int _exposedLength;
+    private readonly int _progressOffset;
 
     public SharedMemoryLease(string name, byte[] source, int outputLength)
     {
@@ -20,7 +24,7 @@ internal sealed unsafe partial class SharedMemoryLease : MemoryManager<byte>
 
         Name = name;
         int sourceArea = Align64(source.Length);
-        long totalLength = checked((long)sourceArea + outputLength);
+        long totalLength = checked((long)sourceArea + outputLength + ProgressAreaBytes);
         using WorkerObjectSecurity.SecurityDescriptorHandle descriptor =
             WorkerObjectSecurity.CreateRestrictedLowIntegrityDescriptor();
         var securityAttributes = new SecurityAttributes
@@ -62,9 +66,16 @@ internal sealed unsafe partial class SharedMemoryLease : MemoryManager<byte>
         source.CopyTo(new Span<byte>(_pointer, source.Length));
         _exposedOffset = sourceArea;
         _exposedLength = outputLength;
+        _progressOffset = checked(sourceArea + outputLength);
     }
 
     public string Name { get; }
+
+    internal int ReadOpenProgressPhase()
+    {
+        ObjectDisposedException.ThrowIf(_mapping is null, this);
+        return Volatile.Read(ref *(_pointer + _progressOffset));
+    }
 
     public override Span<byte> GetSpan()
     {

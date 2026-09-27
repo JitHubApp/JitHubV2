@@ -9,14 +9,16 @@ use std::fs::OpenOptions;
 use std::io::{Read, Write};
 use std::os::windows::ffi::OsStrExt;
 use std::slice;
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::mpsc::TryRecvError;
 use std::sync::{Arc, mpsc};
 use std::thread;
 
 const MAGIC: u32 = 0x4756_534d;
-const VERSION: u16 = 4;
+const VERSION: u16 = 5;
 const REQUEST_SIZE: usize = 512;
 const RESPONSE_SIZE: usize = 256;
+const PROGRESS_AREA_BYTES: usize = 64;
 const KIND_HELLO: u16 = 1;
 const KIND_OPEN: u16 = 2;
 const KIND_RENDER: u16 = 3;
@@ -378,17 +380,24 @@ fn open_document(state: &mut WorkerState, request: &Request) -> Result<Response,
     let bytes = mapping.as_mut_slice();
     let source_length = usize::try_from(request.source_length)
         .map_err(|_| Reject::Resource("source length overflow"))?;
+    // The trailer is disjoint from the immutable source. An atomic phase byte
+    // lets the host classify a hard-deadline timeout without logging content.
+    let progress = unsafe { AtomicU8::from_ptr(bytes.as_mut_ptr().add(align64(source_length))) };
+    progress.store(1, Ordering::Release);
     let source = &bytes[..source_length];
     let actual_hash: [u8; 32] = Sha256::digest(source).into();
     if actual_hash != request.hash {
         return Err(Reject::Worker("source hash mismatch"));
     }
+    progress.store(2, Ordering::Release);
 
     let parsed = parse_svg(source)?;
+    progress.store(3, Ordering::Release);
     let security = inspect_svg_document(&parsed, request)?;
+    progress.store(4, Ordering::Release);
     let key = cache_key(request, &security.metadata);
     let (tree, metadata, cache_key) =
-        acquire_tree(state, request, source, &parsed, &security, key)?;
+        acquire_tree(state, request, source, &parsed, &security, key, progress)?;
     state.documents.insert(
         request.document_id,
         DocumentEntry {
@@ -398,6 +407,7 @@ fn open_document(state: &mut WorkerState, request: &Request) -> Result<Response,
             metadata,
         },
     );
+    progress.store(7, Ordering::Release);
     Ok(Response::ok(request, metadata, 0, 0, 0))
 }
 
@@ -500,6 +510,7 @@ fn mapping_length(request: &Request) -> Result<usize, Reject> {
             usize::try_from(request.output_length)
                 .map_err(|_| Reject::Resource("output length overflow"))?,
         )
+        .and_then(|length| length.checked_add(PROGRESS_AREA_BYTES))
         .ok_or(Reject::Resource("mapping length overflow"))
 }
 
@@ -1658,10 +1669,12 @@ fn acquire_tree(
     parsed: &usvg::roxmltree::Document<'_>,
     inspection: &Inspection,
     key: CacheKey,
+    progress: &AtomicU8,
 ) -> Result<(Arc<usvg::Tree>, Metadata, Option<CacheKey>), Reject> {
     if let Some(entry) = state.cache.get_mut(&key) {
         state.tick = state.tick.wrapping_add(1);
         entry.touched = state.tick;
+        progress.store(6, Ordering::Release);
         return Ok((entry.tree.clone(), entry.metadata, Some(key)));
     }
     let font_database = if inspection.metadata.has_text {
@@ -1670,6 +1683,7 @@ fn acquire_tree(
     } else {
         None
     };
+    progress.store(5, Ordering::Release);
     let mut options = usvg::Options {
         resources_dir: None,
         dpi: 96.0,
@@ -1698,6 +1712,7 @@ fn acquire_tree(
         usvg::Tree::from_xmltree(parsed, &options)
     }
     .map_err(|_| Reject::Unsupported("SVG parsing failed"))?;
+    progress.store(6, Ordering::Release);
     let tree = Arc::new(tree);
     let size = tree.size();
     let mut metadata = inspection.metadata;
@@ -2574,6 +2589,7 @@ mod tests {
         let first_cost = parsed_resource_cost(first.len(), &first_inspection);
         let second_cost = parsed_resource_cost(second.len(), &second_inspection);
         request.max_cache_bytes = first_cost.max(second_cost);
+        let progress = AtomicU8::new(0);
 
         request.hash = Sha256::digest(first).into();
         let first_key = cache_key(&request, &first_inspection.metadata);
@@ -2585,8 +2601,10 @@ mod tests {
             &first_parsed,
             &first_inspection,
             first_key.clone(),
+            &progress,
         )
         .unwrap();
+        assert_eq!(progress.load(Ordering::Acquire), 6);
         assert!(state.cache.contains_key(&first_key));
 
         request.hash = Sha256::digest(second).into();
@@ -2599,6 +2617,7 @@ mod tests {
             &second_parsed,
             &second_inspection,
             second_key.clone(),
+            &progress,
         )
         .unwrap();
         assert_eq!(state.cache.len(), 1);
@@ -2626,10 +2645,20 @@ mod tests {
         let inspection = inspect_svg(source, &request).unwrap();
         let key = cache_key(&request, &inspection.metadata);
         let parsed = parse_svg(source).unwrap();
+        let progress = AtomicU8::new(0);
 
-        let (tree, metadata, cache_key) =
-            acquire_tree(&mut state, &request, source, &parsed, &inspection, key).unwrap();
+        let (tree, metadata, cache_key) = acquire_tree(
+            &mut state,
+            &request,
+            source,
+            &parsed,
+            &inspection,
+            key,
+            &progress,
+        )
+        .unwrap();
 
+        assert_eq!(progress.load(Ordering::Acquire), 6);
         assert_eq!(tree.size().width(), 2.0);
         assert_eq!(metadata.width, 2.0);
         assert!(cache_key.is_none());

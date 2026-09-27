@@ -1353,6 +1353,24 @@ complete before claiming this plan or the 1.0 performance goal is met.
   asset changes between runs. All four focused worker/audit-evidence tests
   pass. This is instrumentation, not a fix for the sponsor timeout or proof
   of same-byte parity.
+- Locally verified, pending CI and a live recurrence: worker protocol v5 now
+  reserves a 64-byte shared-memory trailer outside the source and exact raster
+  output. During `Open`, the isolated worker records bounded progress after
+  mapping, hash verification, XML parsing, security inspection, the font gate,
+  tree construction, and document attachment. Only on a hard timeout with a
+  listener enabled does the host read that content-free phase into the audit
+  signal, alongside its existing process-CPU and transport timings. This can
+  distinguish a font wait from SVG tree/image processing without increasing
+  the immutable three-second deadline or logging image bytes. The pinned
+  x86/x64/ARM64 workers rebuilt; all 18 pinned Rust unit tests, 63 x64 resvg
+  tests, 3,150 x64 app tests, and the x64 Release app build passed locally.
+  The all-RID development pack is 4,696,184 bytes, below the unchanged
+  5 MiB compressed ceiling; its unsigned worker artifacts are not release
+  signing evidence.
+  The phase of the live sponsor
+  failure is not known yet, and memory-pressure evidence, a same-byte replay,
+  the current-head top-500 audit, and the qualified release benchmark remain
+  open. This diagnostic is not a timeout fix.
 - Open: oversized raster tiling and session-owned SVG/document/GPU preparation
   caches.
 - Open: defer Math/Mermaid scenes and ahead-of-viewport highlighting without

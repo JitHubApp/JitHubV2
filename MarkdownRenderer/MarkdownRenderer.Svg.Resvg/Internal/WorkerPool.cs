@@ -236,7 +236,8 @@ internal sealed class WorkerPool : IAsyncDisposable, IDisposable
             WorkerResponse response = await worker.ExchangeAsync(
                 request,
                 deadline,
-                CancellationToken.None).ConfigureAwait(false);
+                CancellationToken.None,
+                sourceMemory).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
             if (preflight.Info.HasText && requestGeneration != FontGeneration)
                 throw new OperationCanceledException("The SVG font environment changed while the document was attaching.");
@@ -552,7 +553,8 @@ internal sealed class WorkerPool : IAsyncDisposable, IDisposable
                         workerCpuMilliseconds,
                         transportPhase: -1,
                         requestWriteMilliseconds: -1,
-                        workerExited: worker.HasExited ? 1 : 0);
+                        workerExited: worker.HasExited ? 1 : 0,
+                        openProgressPhase: -1);
                     RecordStartupFailure();
                     throw new WorkerInitializationDeadlineException(
                         "The resvg worker did not initialize its font catalog before the initialization deadline.",

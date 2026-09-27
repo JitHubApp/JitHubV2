@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics.Tracing;
 using System.Runtime.InteropServices;
+using System.Text;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Svg.Resvg.Internal;
 using Xunit;
@@ -9,6 +10,27 @@ namespace MarkdownRenderer.Svg.Resvg.Tests;
 
 public sealed class WorkerSchedulingTests
 {
+    [Fact]
+    public async Task OpenMappingReportsCompletedPhaseOutsideTheSourceAndRasterRanges()
+    {
+        byte[] source = Encoding.UTF8.GetBytes(
+            "<svg xmlns='http://www.w3.org/2000/svg' width='16' height='8'><rect width='16' height='8'/></svg>");
+        var request = new MarkdownSvgOpenRequest(source);
+        var options = new ResvgMarkdownSvgRendererOptions();
+        SvgPreflightResult preflight = await SvgPreflight.InspectAsync(
+            request, options, CancellationToken.None);
+        using var mapping = new SharedMemoryLease(
+            $"MarkdownRenderer.Resvg.Test.{Guid.NewGuid():N}", preflight.Source, 0);
+        using var pool = new WorkerPool(options);
+
+        WorkerOpenResult result = await pool.OpenDocumentAsync(
+            preflight, request, mapping, CancellationToken.None);
+
+        Assert.Equal(WorkerStatus.Ok, result.Response.Status);
+        Assert.Equal(7, mapping.ReadOpenProgressPhase());
+        Assert.Equal(0, mapping.Memory.Length);
+    }
+
     [Fact]
     public async Task RestartReleasesTheSingleProcessJobSlotBeforeStartingAnotherWorker()
     {
@@ -35,15 +57,16 @@ public sealed class WorkerSchedulingTests
     {
         using var listener = new TimeoutListener();
 
-        WorkerTimeoutEvents.Log.Timeout((int)WorkerOperation.Render, 3_000, 1_250, 2, 4, 0);
+        WorkerTimeoutEvents.Log.Timeout((int)WorkerOperation.Open, 3_000, 1_250, 2, 4, 0, 4);
 
-        Assert.Contains(((int)WorkerOperation.Render, 3_000, 1_250, 2, 4, 0), listener.Events);
+        Assert.Contains(((int)WorkerOperation.Open, 3_000, 1_250, 2, 4, 0, 4), listener.Events);
     }
 
     private sealed class TimeoutListener : EventListener
     {
         public ConcurrentQueue<(int Stage, int DeadlineMilliseconds, int WorkerProcessCpuMilliseconds,
-            int TransportPhase, int RequestWriteMilliseconds, int WorkerExited)> Events { get; } = new();
+            int TransportPhase, int RequestWriteMilliseconds, int WorkerExited,
+            int OpenProgressPhase)> Events { get; } = new();
 
         protected override void OnEventSourceCreated(EventSource eventSource)
         {
@@ -53,15 +76,15 @@ public sealed class WorkerSchedulingTests
 
         protected override void OnEventWritten(EventWrittenEventArgs eventData)
         {
-            if (eventData.EventId == 1 && eventData.Payload is { Count: 6 } payload &&
+            if (eventData.EventId == 1 && eventData.Payload is { Count: 7 } payload &&
                 payload[0] is int stage && payload[1] is int deadlineMilliseconds &&
                 payload[2] is int workerProcessCpuMilliseconds &&
                 payload[3] is int transportPhase &&
                 payload[4] is int requestWriteMilliseconds &&
-                payload[5] is int workerExited)
+                payload[5] is int workerExited && payload[6] is int openProgressPhase)
             {
                 Events.Enqueue((stage, deadlineMilliseconds, workerProcessCpuMilliseconds,
-                    transportPhase, requestWriteMilliseconds, workerExited));
+                    transportPhase, requestWriteMilliseconds, workerExited, openProgressPhase));
             }
         }
     }

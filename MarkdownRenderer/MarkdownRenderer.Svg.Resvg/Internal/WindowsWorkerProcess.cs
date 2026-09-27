@@ -114,7 +114,8 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
                     workerProcessCpuMilliseconds: -1,
                     transportPhase: -1,
                     requestWriteMilliseconds: -1,
-                    workerExited: -1);
+                    workerExited: -1,
+                    openProgressPhase: -1);
                 throw new WorkerInitializationDeadlineException(
                     "The resvg worker did not complete startup before its initialization deadline.",
                     exception);
@@ -147,7 +148,8 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
     public async Task<WorkerResponse> ExchangeAsync(
         WorkerRequest request,
         TimeSpan deadline,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        SharedMemoryLease? openProgressMemory = null)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         int queued = Interlocked.Increment(ref _queued);
@@ -212,7 +214,8 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
                         workerProcessCpuMilliseconds,
                         transportPhase,
                         requestWriteMilliseconds,
-                        workerExited: HasExited ? 1 : 0);
+                        workerExited: HasExited ? 1 : 0,
+                        openProgressPhase: openProgressMemory?.ReadOpenProgressPhase() ?? -1);
                 }
                 DisposeForRestart();
                 throw new WorkerDeadlineException("The resvg worker exceeded its request deadline.", exception);

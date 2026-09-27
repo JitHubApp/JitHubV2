@@ -65,7 +65,7 @@ internal static class WorkerProtocol
     public const int RequestSize = 512;
     public const int ResponseSize = 256;
     public const uint Magic = 0x4756534d;
-    public const ushort Version = 4;
+    public const ushort Version = 5;
     public const string WorkerFileName = "MarkdownRenderer.Svg.Resvg.Worker.exe";
 
     public static byte[] Encode(in WorkerRequest request)
