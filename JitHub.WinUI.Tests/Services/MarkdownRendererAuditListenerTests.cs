@@ -157,8 +157,24 @@ public sealed class MarkdownRendererAuditListenerTests
                 workerWorkingSetKiB: 120_832,
                 workerPrivateCommitKiB: 94_208,
                 workerPageFaults: 6_400);
+            for (int progressPhase = 8; progressPhase <= 12; progressPhase++)
+            {
+                TestWorkerEventSource.Log.Timeout(
+                    stage: 2,
+                    deadlineMilliseconds: 3_000,
+                    workerProcessCpuMilliseconds: 1_250,
+                    transportPhase: 2,
+                    requestWriteMilliseconds: 4,
+                    workerExited: 0,
+                    openProgressPhase: progressPhase,
+                    workerWorkingSetKiB: 120_832,
+                    workerPrivateCommitKiB: 94_208,
+                    workerPageFaults: 6_400);
+            }
 
-            string line = Assert.Single(File.ReadAllLines(path));
+            string[] lines = File.ReadAllLines(path);
+            Assert.Equal(6, lines.Length);
+            string line = lines[0];
             using JsonDocument document = JsonDocument.Parse(line);
             Assert.Equal("open", document.RootElement.GetProperty("Phase").GetString());
             Assert.Equal(3_000, document.RootElement.GetProperty("DeadlineMilliseconds").GetInt32());
@@ -172,6 +188,20 @@ public sealed class MarkdownRendererAuditListenerTests
             Assert.Equal(6_400, document.RootElement.GetProperty("WorkerPageFaults").GetInt32());
             Assert.False(document.RootElement.TryGetProperty("Source", out _));
             Assert.False(document.RootElement.TryGetProperty("Url", out _));
+
+            string[] expectedProgressPhases =
+            [
+                "svg-options-initialization",
+                "svg-options-constructed",
+                "svg-resolver-configured",
+                "svg-theme-transformation",
+                "usvg-tree-build",
+            ];
+            for (int index = 0; index < expectedProgressPhases.Length; index++)
+            {
+                using JsonDocument progressDocument = JsonDocument.Parse(lines[index + 1]);
+                Assert.Equal(expectedProgressPhases[index], progressDocument.RootElement.GetProperty("OpenProgressPhase").GetString());
+            }
         }
         finally
         {

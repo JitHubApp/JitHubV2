@@ -28,9 +28,12 @@ cropped tile. `TrimCache` discards parsed trees and decoded resources, and
 
 All mappings reserve a 64-byte trailer after the aligned source and exact
 output range. For `Open`, the worker release-stores a one-byte, content-free
-phase marker in the trailer after mapping, hash verification, XML parsing,
-security inspection, passage through the font-catalog gate, tree construction,
-and document attachment. The host
+phase marker in the trailer as the request advances through mapping, hash
+verification, XML parsing, security inspection, font setup, tree construction,
+and document attachment. Values 8 through 12 bracket post-font-gate setup:
+8 marks entry to SVG options initialization, 9 marks completed options
+construction, 10 marks configured image resolver and font database, 11 marks
+theme transformation, and 12 marks the `usvg` tree conversion. The host
 acquire-loads it only if the hard request deadline expires. The trailer never
 changes source hashing, raster dimensions, or the output lease exposed to
 consumers; neither source nor pixels are logged with a timeout.

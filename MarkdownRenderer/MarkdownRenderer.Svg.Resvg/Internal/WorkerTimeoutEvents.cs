@@ -9,8 +9,10 @@ namespace MarkdownRenderer.Svg.Resvg.Internal;
 /// Transport phase 0/1/2 identifies request write, pipe flush, or response
 /// read; -1 means the timeout happened outside a request transaction. The
 /// Open progress phase is a content-free marker: 0 not started, 1 mapping,
-/// 2 hash, 3 XML, 4 security, 5 font gate, 6 tree, 7 document attachment; -1 means the
-/// request was not Open. Working set, private commit, and page faults are
+/// 2 hash, 3 XML, 4 security, 5 font gate, 6 tree, 7 document attachment,
+/// 8 options initialization, 9 options constructed, 10 resolver configured,
+/// 11 theme transformation, and 12 usvg conversion; -1 means the request was
+/// not Open. Working set, private commit, and page faults are
 /// sampled from the worker only on a hard timeout with an enabled listener.
 /// Memory counters are in KiB; -1 means a counter was unavailable. Page faults
 /// are cumulative for the worker process, not a request-local delta.

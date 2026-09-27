@@ -1684,6 +1684,10 @@ fn acquire_tree(
         None
     };
     progress.store(5, Ordering::Release);
+    // Split post-font-gate setup from theme processing and usvg conversion.
+    // If the host observes phase 5, the first post-gate phase has not yet been
+    // published; phase 8 is deliberately the next progress operation.
+    progress.store(8, Ordering::Release);
     let mut options = usvg::Options {
         resources_dir: None,
         dpi: 96.0,
@@ -1691,6 +1695,7 @@ fn acquire_tree(
         languages: locale_fallbacks(&request.locale),
         ..Default::default()
     };
+    progress.store(9, Ordering::Release);
     let default_data_resolver = usvg::ImageHrefResolver::default_data_resolver();
     options.image_href_resolver.resolve_data = Box::new(move |mime, data, options| {
         let media_type = normalize_embedded_image_media_type(mime, data.as_slice())?;
@@ -1699,6 +1704,7 @@ fn acquire_tree(
     if let Some(database) = font_database {
         options.fontdb = database;
     }
+    progress.store(10, Ordering::Release);
     // The security walk already parsed this exact source with DTDs disabled.
     // Reuse that XML tree for ordinary artwork instead of copying and parsing
     // large embedded-image payloads a second time. The authored source is
@@ -1706,9 +1712,12 @@ fn acquire_tree(
     let tree = if inspection.metadata.uses_color_scheme
         || (inspection.metadata.uses_current_color && request.flags & FLAG_HAS_SEMANTIC_COLOR != 0)
     {
+        progress.store(11, Ordering::Release);
         let transformed = transform_theme(source, request, &inspection.metadata)?;
+        progress.store(12, Ordering::Release);
         usvg::Tree::from_data(&transformed, &options)
     } else {
+        progress.store(12, Ordering::Release);
         usvg::Tree::from_xmltree(parsed, &options)
     }
     .map_err(|_| Reject::Unsupported("SVG parsing failed"))?;

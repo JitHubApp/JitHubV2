@@ -439,6 +439,11 @@ internal static partial class MarkdownLifecycleAutomationBridge
             5 => "font-gate-passed",
             6 => "tree-built",
             7 => "document-attached",
+            8 => "svg-options-initialization",
+            9 => "svg-options-constructed",
+            10 => "svg-resolver-configured",
+            11 => "svg-theme-transformation",
+            12 => "usvg-tree-build",
             _ => "not-applicable",
         };
         lock (SignalGate)

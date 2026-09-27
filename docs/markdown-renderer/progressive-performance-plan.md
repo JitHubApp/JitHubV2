@@ -1574,6 +1574,12 @@ complete before claiming this plan or the 1.0 performance goal is met.
   151–153 order; the earlier five single-rank passes cannot rule out
   preceding-case or runner-pressure effects. This is diagnostic only and
   does not replace the full audit or an offline same-byte Edge corpus.
+- A local Release audit from an isolated checkout of the exact failing
+  renderer commit `79f7199` and the run `36349875408` pinned manifest replayed
+  ranks 151–153 in order. All three passed with zero native unavailable
+  images, including rank 153. This rules out a deterministic failure caused
+  simply by those preceding README cases on this machine, but it does not
+  resolve the reproduced hosted worker timeout or qualify the full gate.
 - Local gate setup on this head exposed a committed restore-lock mismatch:
   the x64 performance-gate lockfile has a `win-x64` target while its project
   did not declare that runtime identifier, causing NU1004 before any timing
