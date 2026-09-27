@@ -257,6 +257,20 @@ public sealed class MarkdownEngineTests
     }
 
     [Fact]
+    public void CallbackLifetimeReportsRetirementWhenLastLeaseExits()
+    {
+        var lifetime = new MarkdownExtensionCallbackLifetime();
+        MarkdownExtensionCallbackLifetime.Lease lease = lifetime.Enter();
+        Task retirement = lifetime.BeginDispose();
+
+        Assert.False(lifetime.IsRetired);
+        lease.Dispose();
+
+        Assert.True(lifetime.IsRetired);
+        Assert.True(retirement.IsCompletedSuccessfully);
+    }
+
+    [Fact]
     public async Task EngineDisposalCancelsWorkBeforeReleasingOwnedExtensionResources()
     {
         int callbackExited = 0;

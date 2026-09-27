@@ -750,6 +750,13 @@ public sealed class MarkdownEngine : IDisposable
         IReadOnlyList<IDisposable>? resources = null;
         lock (_parseGate)
         {
+            // The callback lease may have retired synchronously while its
+            // RunContinuationsAsynchronously notification is still queued.
+            // Observe the completed lifetime directly on this cleanup path so
+            // disposal does not depend on a free ThreadPool worker.
+            if (!_extensionCallbacksRetired && _extensionCallbackLifetime?.IsRetired == true)
+                _extensionCallbacksRetired = true;
+
             if (!_disposeRequested ||
                 _ownedResourcesDisposed ||
                 _activeParseCount != 0 ||

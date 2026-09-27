@@ -36,6 +36,8 @@ internal sealed class MarkdownExtensionCallbackLifetime
         return _retired.Task;
     }
 
+    internal bool IsRetired => _retired.Task.IsCompleted;
+
     private void Exit()
     {
         int remaining = Interlocked.Decrement(ref _activeCallbacks);

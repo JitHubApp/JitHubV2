@@ -1283,6 +1283,17 @@ complete before claiming this plan or the 1.0 performance goal is met.
   passed with 123 ms layout wall time and 125 ms measured thread CPU time
   (within timer granularity). This is diagnostic evidence, not a performance
   fix or release-gate waiver.
+- The first full preview validation of that head (`da0bd1a`, Actions run
+  `36291285727`) failed one of 1,441 Core tests: disposal of an engine-owned
+  extension resource was not observed within five seconds after a canceled
+  parse. The callback lifetime uses asynchronous continuations, so a retired
+  lease could be complete while its notification was still queued. The cleanup
+  path now observes the completed callback lifetime directly before deciding
+  whether owned resources may be released, without reducing the test's timeout
+  or allowing release while callbacks remain active. The 961-test fast Core
+  suite, including a direct lease-retirement regression test, passes locally;
+  a full hosted suite rerun is still required. This is
+  a lifecycle/CI fix, not a performance-gate pass.
 - Open: oversized raster tiling and session-owned SVG/document/GPU preparation
   caches.
 - Open: defer Math/Mermaid scenes and ahead-of-viewport highlighting without
