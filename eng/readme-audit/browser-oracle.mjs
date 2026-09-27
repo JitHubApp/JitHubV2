@@ -121,7 +121,11 @@ try {
 
   await evaluate(cdp, `new Promise(resolve => {
     const article = document.querySelector("#readme article.markdown-body, article.markdown-body");
-    const pending = [...article.querySelectorAll("img")].filter(image => !image.complete);
+    const imageNodes = article.querySelectorAll("img");
+    if (imageNodes.length > 15_000) {
+      throw new Error("README exceeds the bounded browser image-element count.");
+    }
+    const pending = [...imageNodes].filter(image => !image.complete);
     if (pending.length === 0) { resolve(true); return; }
     let remaining = pending.length;
     const done = () => { if (--remaining === 0) resolve(true); };
