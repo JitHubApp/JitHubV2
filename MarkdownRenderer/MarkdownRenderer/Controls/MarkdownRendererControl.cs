@@ -166,6 +166,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     // that need theme colors after the rebuild is complete.
     private Theming.ThemeSnapshot? _themeSnapshot;
     private MarkdownLocalizationSnapshot? _committedLocalization;
+    private string? _committedImageDocumentId;
     private MarkdownEnvironmentMonitor.Subscription? _environmentSubscription;
     private MarkdownEnvironmentSnapshot _environmentSnapshot;
     private bool _canvasDeviceRecoveryQueued;
@@ -4208,7 +4209,11 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         // same offset so content above the fold shifting (e.g. an image loading)
         // doesn't jump the reader's position.
         (int? BlockIndex, double OffsetFromTop, double OldOffset, double OldHeight)? scrollAnchor = null;
-        if (_scroll is { VerticalOffset: > 0 } scrollSnap && _snapshot is { } prevSnap)
+        string? imageDocumentId = imageDocumentSourceSnapshot?.DocumentId;
+        bool sameDocumentIdentity = _committedImageDocumentId == imageDocumentId;
+        if (sameDocumentIdentity &&
+            _scroll is { VerticalOffset: > 0 } scrollSnap &&
+            _snapshot is { } prevSnap)
         {
             double vTop = scrollSnap.VerticalOffset;
             if (prevSnap.TryCaptureScrollAnchor(vTop, out var capturedAnchor))
@@ -4235,8 +4240,8 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         // CanvasTextLayout / placeholder handles are released without making
         // this UI-thread commit wait for an in-flight lazy measure.
         var old = _snapshot;
-        bool sameDocument = old is not null &&
-            string.Equals(old.SourceMap.SourceText, snapshot.SourceMap.SourceText, StringComparison.Ordinal);
+        bool sameDocument = old is not null && sameDocumentIdentity &&
+            old.SourceMap.SourceText == snapshot.SourceMap.SourceText;
         bool semanticInputChanged = old is null ||
             !sameDocument ||
             !ReferenceEquals(Document, semanticDocument) ||
@@ -4267,6 +4272,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         // the next theme and repaint using the previous one.
         _canvasBackground = themeSnapshot.SurfaceColor;
         _committedLocalization = localizationSnapshot;
+        _committedImageDocumentId = imageDocumentId;
         _snapshotGeneration = generation;
         _snapshotPipelineStartTimestamp = pipelineStartTimestamp;
         _snapshotSourceUtf16Bytes = sourceUtf16Bytes;
@@ -6203,7 +6209,6 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             if (ShakeLogger.IsEnabled)
                 ShakeLogger.LogPaint(
                     "region", regionCount, region.X, region.Y, region.Width, region.Height);
-            bool regionPainted = false;
             try
             {
                 long regionStart = measure ? GC.GetAllocatedBytesForCurrentThread() : 0;
@@ -6250,7 +6255,6 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                         // invalidate and repaint immutable document content.
                         afterInteractive = afterSnapshot;
                         paintedRegion = true;
-                        regionPainted = true;
                     }
                     if (measure)
                     {
@@ -6266,8 +6270,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                     snapshot.EndPaint();
                 }
 
-                if (regionPainted &&
-                    automationPaintCallback is not null &&
+                if (automationPaintCallback is not null &&
                     ReferenceEquals(automationPaintCallback, _automationFirstViewportImagesReadyPaintCallback))
                 {
                     try
@@ -9140,22 +9143,11 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
 
     private void PaintLinkStateOverlay(CanvasDrawingSession drawingSession, Rect viewport)
     {
-        LinkRun? hoveredLink = null;
         if (_lastHoveredRun is LinkRun hover && _lastHoveredBox is { } hoverBox)
-        {
-            hoveredLink = hover;
             hoverBox.PaintLinkStateForeground(drawingSession, hover, focused: false, viewport);
-        }
 
-        if (TryGetFocusedLink(out var focusedBox, out var focusedLink) &&
-            !ReferenceEquals(focusedLink, hoveredLink))
-        {
+        if (TryGetFocusedLink(out var focusedBox, out var focusedLink))
             focusedBox.PaintLinkStateForeground(drawingSession, focusedLink, focused: true, viewport);
-        }
-        else if (TryGetFocusedLink(out focusedBox, out focusedLink))
-        {
-            focusedBox.PaintLinkStateForeground(drawingSession, focusedLink, focused: true, viewport);
-        }
     }
 
     private void ProcessPointerCanceledOrCaptureLost(ref PointerInput e)

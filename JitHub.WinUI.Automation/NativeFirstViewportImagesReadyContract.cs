@@ -1,9 +1,12 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 
 internal static class NativeFirstViewportImagesReadyContract
 {
+    private const double InitialViewportTopToleranceDip = 0.5;
+
     internal static NativeLifecycleReadySignal ReadLifecycleReadySignal(string path)
     {
         using JsonDocument document = JsonDocument.Parse(File.ReadAllText(path));
@@ -91,26 +94,96 @@ internal static class NativeFirstViewportImagesReadyContract
         NativeRenderCompleteSignal renderComplete,
         NativeFirstViewportImagesReadySignal ready)
     {
-        if (ready.ProcessId != processId ||
-            !string.Equals(ready.Host, expectedHost, StringComparison.Ordinal) ||
-            ready.Generation != renderComplete.Generation ||
-            ready.ViewportPaintGeneration != ready.Generation ||
-            ready.PollCount <= 0 ||
-            !double.IsFinite(ready.ProbeWorkMilliseconds) ||
-            ready.ProbeWorkMilliseconds < 0 ||
-            !double.IsFinite(ready.ViewportTop) ||
-            ready.ViewportTop < 0 ||
-            !double.IsFinite(ready.ViewportHeight) ||
-            ready.ViewportHeight <= 0 ||
-            !ready.ViewportMeasured ||
-            ready.HasVisibleLoadingImages ||
-            ready.Timestamp < renderComplete.Timestamp ||
-            ready.Timestamp < hostReady.Timestamp ||
-            !string.Equals(ready.ReadmeGitBlobSha1, expectedReadmeGitBlobSha1, StringComparison.OrdinalIgnoreCase))
+        List<string> mismatches = GetImagesReadySignalMismatches(
+            processId,
+            expectedHost,
+            expectedReadmeGitBlobSha1,
+            hostReady,
+            renderComplete,
+            ready);
+        if (mismatches.Count > 0)
         {
+            // Include field names only. Signal values can contain local process,
+            // host, or repository identity details and are deliberately omitted.
             throw new InvalidDataException(
-                "The native first-viewport readiness signal did not match the launched process, host, render generation, README identity, timestamp, or no-loading state.");
+                "The native first-viewport readiness signal failed these checks: " +
+                string.Join(", ", mismatches) + ".");
         }
+    }
+
+    internal static void ValidateInitialViewportIdentity(
+        NativeFirstViewportImagesReadySignal ready,
+        double capturedInitialDocumentTop)
+    {
+        List<string> mismatches = new(3);
+        bool readyTopValid = double.IsFinite(ready.ViewportTop) && ready.ViewportTop >= 0;
+        bool capturedTopValid = double.IsFinite(capturedInitialDocumentTop) && capturedInitialDocumentTop >= 0;
+        if (!readyTopValid)
+            mismatches.Add(nameof(ready.ViewportTop));
+        if (!capturedTopValid)
+            mismatches.Add(nameof(capturedInitialDocumentTop));
+
+        if (readyTopValid && capturedTopValid &&
+            Math.Abs(ready.ViewportTop - capturedInitialDocumentTop) > InitialViewportTopToleranceDip)
+        {
+            mismatches.Add("ViewportTopMatchesInitialCapture");
+        }
+
+        if (capturedTopValid && capturedInitialDocumentTop > InitialViewportTopToleranceDip)
+            mismatches.Add("InitialCaptureStartsAtDocumentTop");
+
+        if (mismatches.Count > 0)
+        {
+            // This is geometric audit state, but keep diagnostics field-only
+            // so the validation surface never grows to include page content.
+            throw new InvalidDataException(
+                "The native first-viewport readiness signal did not identify the initial document-top capture: " +
+                string.Join(", ", mismatches) + ".");
+        }
+    }
+
+    private static List<string> GetImagesReadySignalMismatches(
+        int processId,
+        string expectedHost,
+        string? expectedReadmeGitBlobSha1,
+        NativeLifecycleReadySignal hostReady,
+        NativeRenderCompleteSignal renderComplete,
+        NativeFirstViewportImagesReadySignal ready)
+    {
+        List<string> mismatches = new(13);
+        if (ready.ProcessId != processId)
+            mismatches.Add(nameof(ready.ProcessId));
+        if (!string.Equals(ready.Host, expectedHost, StringComparison.Ordinal))
+            mismatches.Add(nameof(ready.Host));
+        if (ready.Generation != renderComplete.Generation)
+            mismatches.Add(nameof(ready.Generation));
+        if (ready.ViewportPaintGeneration != ready.Generation)
+            mismatches.Add(nameof(ready.ViewportPaintGeneration));
+        if (ready.PollCount <= 0)
+            mismatches.Add(nameof(ready.PollCount));
+        if (!double.IsFinite(ready.ProbeWorkMilliseconds) || ready.ProbeWorkMilliseconds < 0)
+            mismatches.Add(nameof(ready.ProbeWorkMilliseconds));
+        if (!double.IsFinite(ready.ViewportTop) || ready.ViewportTop < 0)
+            mismatches.Add(nameof(ready.ViewportTop));
+        if (!double.IsFinite(ready.ViewportHeight) || ready.ViewportHeight <= 0)
+            mismatches.Add(nameof(ready.ViewportHeight));
+        if (!ready.ViewportMeasured)
+            mismatches.Add(nameof(ready.ViewportMeasured));
+        if (ready.HasVisibleLoadingImages)
+            mismatches.Add(nameof(ready.HasVisibleLoadingImages));
+        if (ready.Timestamp < renderComplete.Timestamp)
+            mismatches.Add("TimestampAfterRenderComplete");
+        if (ready.Timestamp < hostReady.Timestamp)
+            mismatches.Add("TimestampAfterHostReady");
+        if (!string.Equals(
+                ready.ReadmeGitBlobSha1,
+                expectedReadmeGitBlobSha1,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            mismatches.Add(nameof(ready.ReadmeGitBlobSha1));
+        }
+
+        return mismatches;
     }
 
     private static JsonElement ReadRequiredProperty(JsonElement root, string name, string path)

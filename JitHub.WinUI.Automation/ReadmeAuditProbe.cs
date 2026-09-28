@@ -1307,6 +1307,7 @@ internal static partial class ReadmeAuditProbe
         string output = Path.Combine(caseDirectory, "native");
         string runtime = Path.Combine(caseDirectory, ".runtime");
         string preservedFirstViewportImagesReady = Path.Combine(output, "first-viewport-images-ready.json");
+        string preservedFirstViewportImagesReadyProgress = Path.Combine(output, "first-viewport-images-ready-progress.ndjson");
         // Keep diagnostics from retries isolated. Reusing a case directory used
         // to append a previous run's failures/resolutions to the new evidence.
         string dataRoot = Path.Combine(runtime, $"data-{Guid.NewGuid():N}");
@@ -1317,6 +1318,7 @@ internal static partial class ReadmeAuditProbe
         string hostReady = Path.Combine(runtime, "host-ready.json");
         string renderComplete = Path.Combine(runtime, "render-complete.json");
         string firstViewportImagesReady = Path.Combine(runtime, "first-viewport-images-ready.json");
+        string firstViewportImagesReadyProgress = Path.Combine(runtime, "first-viewport-images-ready-progress.ndjson");
         string renderFailure = Path.Combine(runtime, "render-failure.txt");
         string imageEvidence = Path.Combine(runtime, "image-unavailable.ndjson");
         string imageResolutionEvidence = Path.Combine(runtime, "image-resolution.ndjson");
@@ -1329,7 +1331,7 @@ internal static partial class ReadmeAuditProbe
         string captureResponse = Path.Combine(runtime, "capture-response.json");
         foreach (string stale in new[]
         {
-            appReady, hostReady, renderComplete, firstViewportImagesReady, renderFailure, imageEvidence,
+            appReady, hostReady, renderComplete, firstViewportImagesReady, firstViewportImagesReadyProgress, renderFailure, imageEvidence,
             imageResolutionEvidence, rasterPreparationEvidence,
             svgWorkerEvidence, svgPreflightEvidence,
             readmeSourceEvidence,
@@ -1368,6 +1370,8 @@ internal static partial class ReadmeAuditProbe
         startInfo.Environment["JITHUB_MARKDOWN_RENDER_COMPLETE_EVIDENCE_PATH"] = renderComplete;
         startInfo.Environment["JITHUB_MARKDOWN_FIRST_VIEWPORT_IMAGES_READY_EVIDENCE_PATH"] =
             firstViewportImagesReady;
+        startInfo.Environment["JITHUB_MARKDOWN_FIRST_VIEWPORT_IMAGES_READY_PROGRESS_PATH"] =
+            firstViewportImagesReadyProgress;
         startInfo.Environment["JITHUB_MARKDOWN_RENDER_FAILURE_EVIDENCE_PATH"] = renderFailure;
         startInfo.Environment["JITHUB_MARKDOWN_IMAGE_EVIDENCE_PATH"] = imageEvidence;
         startInfo.Environment["JITHUB_MARKDOWN_IMAGE_RESOLUTION_EVIDENCE_PATH"] = imageResolutionEvidence;
@@ -1455,6 +1459,7 @@ internal static partial class ReadmeAuditProbe
                     Path.Combine(output, "missing-readme-view.png"),
                     captureRequest,
                     captureResponse,
+                    out _,
                     useRendererCapture: false);
                 capture.Stop();
                 appProcess.Refresh();
@@ -1515,6 +1520,7 @@ internal static partial class ReadmeAuditProbe
                         Path.Combine(output, "source-view.png"),
                         captureRequest,
                         captureResponse,
+                        out _,
                         useRendererCapture: false);
                     capture.Stop();
                     appProcess.Refresh();
@@ -1626,6 +1632,9 @@ internal static partial class ReadmeAuditProbe
             PreserveEvidenceFile(
                 firstViewportImagesReady,
                 Path.Combine(output, "first-viewport-images-ready.json"));
+            PreserveEvidenceFile(
+                firstViewportImagesReadyProgress,
+                Path.Combine(output, "first-viewport-images-ready-progress.ndjson"));
             NativeFirstViewportImagesReadyContract.ValidateImagesReadySignal(
                 processId,
                 HostAutomationId,
@@ -1659,6 +1668,7 @@ internal static partial class ReadmeAuditProbe
             NativeTraversalResult traversal = CaptureNativeTiles(
                 window,
                 host,
+                firstImagesReadySignal,
                 output,
                 renderFailure,
                 appProcess,
@@ -1778,6 +1788,9 @@ internal static partial class ReadmeAuditProbe
                 firstViewportImagesReady,
                 Path.Combine(output, "first-viewport-images-ready.json"));
             PreserveEvidenceFile(
+                firstViewportImagesReadyProgress,
+                Path.Combine(output, "first-viewport-images-ready-progress.ndjson"));
+            PreserveEvidenceFile(
                 rasterPreparationEvidence,
                 Path.Combine(output, "raster-preparation.ndjson"));
             PreserveStartupDiagnostics(dataRoot, output, launcher);
@@ -1839,6 +1852,7 @@ internal static partial class ReadmeAuditProbe
     private static NativeTraversalResult CaptureNativeTiles(
         Window window,
         AutomationElement host,
+        NativeFirstViewportImagesReadySignal firstImagesReadySignal,
         string output,
         string renderFailurePath,
         Process appProcess,
@@ -2052,9 +2066,16 @@ internal static partial class ReadmeAuditProbe
                 host,
                 path,
                 captureRequestPath,
-                captureResponsePath);
+                captureResponsePath,
+                out double capturedDocumentTop);
             capture.Stop();
             auditOverheadMs += capture.Elapsed.TotalMilliseconds;
+            if (index == 0)
+            {
+                NativeFirstViewportImagesReadyContract.ValidateInitialViewportIdentity(
+                    firstImagesReadySignal,
+                    capturedDocumentTop);
+            }
             width = Math.Max(width, tileWidth);
             viewportHeight = Math.Max(viewportHeight, tileHeight);
             double elapsedAtCaptureMs = traversalWall.Elapsed.TotalMilliseconds;
@@ -2233,18 +2254,11 @@ internal static partial class ReadmeAuditProbe
             .ToArray();
         WriteJson(Path.Combine(output, "automation-mermaid-sources.json"), nativeMermaidSources);
         headingObservations = descendants.Count(element => element.ControlType == ControlType.Header);
-        // Compare textual link destinations independently from atomic linked
-        // images. GitHub's live DOM removes or rewrites many generated
-        // animated-image self links while the rendered-README API preserves
-        // them, and JitHub intentionally exposes those images as operable UIA
-        // hyperlinks. Images and their source coverage are gated separately.
-        // A single authored text anchor can still expose multiple fragments, so
-        // compare its logical destination rather than its raw peer count.
+        // Image-only anchors are links too. The source-bound Edge oracle counts
+        // them, and JitHub exposes each as an operable MarkdownLinkedImage UIA
+        // hyperlink. Compare distinct destinations so fragmented text anchors
+        // do not inflate the native count; image payloads remain gated apart.
         linkObservations = nativeLinks
-            .Where(link => !string.Equals(
-                link.ClassName,
-                "MarkdownLinkedImage",
-                StringComparison.Ordinal))
             .Select(link => link.HelpText)
             .Where(destination => !string.IsNullOrWhiteSpace(destination))
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -2587,7 +2601,6 @@ internal static partial class ReadmeAuditProbe
             .Count();
         int browserDistinctAtomicMedia = browserDistinctImages + browserDistinctMedia;
         int browserDistinctLinks = sourceSemantic?.DistinctLinkCount ?? browser.Semantic.Links
-            .Where(link => !string.IsNullOrWhiteSpace(link.Text))
             .Select(link => link.Href)
             .Where(destination => !string.IsNullOrWhiteSpace(destination))
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -3458,8 +3471,10 @@ internal static partial class ReadmeAuditProbe
         string path,
         string captureRequestPath,
         string captureResponsePath,
+        out double documentTop,
         bool useRendererCapture = true)
     {
+        documentTop = double.NaN;
         if (useRendererCapture)
         {
             // The warm paint triggers any viewport-tiled SVG work that a
@@ -3478,6 +3493,7 @@ internal static partial class ReadmeAuditProbe
                 save: true);
             if (!File.Exists(path))
                 throw new InvalidOperationException("The Markdown renderer did not publish its requested audit tile.");
+            documentTop = capture.DocumentTop;
             return (capture.Width, capture.Height);
         }
 

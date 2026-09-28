@@ -17,7 +17,11 @@ internal static class PerformanceMeasurementContract
     internal const int FirstViewportConditionCount = 6;
     internal const int ReleaseScrollFrames = 2_400;
     internal const int ReleaseScrollTrials = 5;
+    internal const int ReleaseForegroundReadinessTimeoutMilliseconds = 30_000;
+    internal const int ReleaseForegroundReadinessPollIntervalMilliseconds = 100;
+    internal const int ReleaseForegroundReadinessConsecutiveQualifiedSamples = 5;
     internal const double TargetRefreshRateHz = 120d;
+    internal const double MinimumConfiguredRefreshRateHz = 119d;
     internal const double ScrollFrameTimeP95BudgetMilliseconds =
         1_000d / TargetRefreshRateHz;
     internal const double UiPublicationMaximumBudgetMilliseconds = 2;

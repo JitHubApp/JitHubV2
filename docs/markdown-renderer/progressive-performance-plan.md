@@ -2099,6 +2099,93 @@ complete before claiming this plan or the 1.0 performance goal is met.
   source-contract assertion updates, two subsequent complete local WinUI
   runs pass 3,209/3,209. This fixes false test evidence; it does not close
   the separately failed benchmark cancellation warmup above.
+- September 28 follow-up: PR #99 head `571fe7a` passed the fresh Full Native
+  AOT contract/unit job and x86, x64, and ARM64 publish/package jobs. This is
+  build/package evidence, not runtime-device qualification. A local JitHub
+  paragraph-spacing candidate keeps the existing compact 8-DIP margin inside
+  lists while giving standalone paragraphs a semantic 16-DIP token, avoiding
+  the earlier rank-1 list-density regression. Against the pinned corpus, a
+  Release rank-83 (`kubernetes/kubernetes`) diagnostic passes 100% text,
+  99.38% structure, zero unavailable images, and source-bound page extent
+  1,964/2,048 (0.959), up from the earlier 1,812/2,048 (0.885). Rank 1
+  (`codecrafters-io/build-your-own-x`) likewise passes content and extent at
+  13,514/13,704 (0.986), versus the previous 13,466/13,704 (0.983). The
+  complete local x64 Release WinUI suite still passes 3,209/3,209 after the
+  style-contract update. These are one-case managed diagnostics and do **not**
+  pass first-image-ready performance (rank 83 is 4.17x and rank 1 is 4.75x
+  relative to source-bound Edge). Local rank-60 (`airbnb/javascript`) and rank
+  203 (`d2l-ai/d2l-zh`) failures were mislabeled `visible-image-decode` by a
+  stale replay stage: current runs decode all 19/19 and 5/5 captured images.
+  Rank 203 passes strict source replay with its captured native viewport
+  profile at the correct 623-DIP content width. Rank 60 also passes strict
+  replay at 623 DIP; the earlier `native-movement` diagnostic used an
+  incorrect 660-DIP replay width. Neither result is a full audit pass; the
+  full 500-case source/asset replay and 110% performance gates remain open.
+- September 28 same-byte replay follow-up: focused corpus/replay tests pass
+  39/39, and the complete `eng/readme-audit` Node suite passes 58/58. The
+  retained rank-39 (`CyC2018/CS-Notes`) source replay now passes with 18/18
+  images verified and zero replay misses or blocked requests; rank 43
+  (`ollama/ollama`) passes with one deterministic, unique-alt indexed image
+  alias match and zero misses or blocked requests. These validate the pinned
+  fixtures only; the full 500-case same-byte gate remains open. Rank 2
+  (`sindresorhus/awesome`) is explained by the historical sanitizer deleting
+  the `<picture>` subtree, including its fallback image; the immutable README
+  parses to three images, one under a picture with two source candidates. The
+  replay regression now covers that shape, drops unsupported source nodes,
+  and verifies the fallback survives. Its Actions evidence omitted README,
+  rendered HTML, and asset bytes, so a current full-corpus replay remains
+  unavailable. Rank 7 (`donnemartin/system-design-primer`) remains an
+  unresolved historical `image-map` failure: the sparse artifact has route
+  counts but no captured indexed alt identities, so an ordinal mapping is not
+  justified and the missing-alias gate stays fail-closed.
+- The schema-12 sandbox retry now has a bounded, fail-closed foreground
+  preflight in both pinned reference and candidate harnesses. On the local
+  WinApp CLI 0.7 sandbox, foreground activation passed that preflight but
+  configured refresh remained 32.00 Hz; the harness rejected it before
+  trials, so this sandbox cannot supply 120 Hz release evidence. A separate
+  physical-host diagnostic with the pinned reference window kept foreground
+  for all 94 visibility samples and measured configured/observed 240/246.84
+  Hz, AC power, and Energy Saver off. Its deliberately reduced 1/1/1/1/1
+  populations fail the frozen release sample requirements, as intended; the
+  result only qualifies the physical host as a candidate environment for a
+  full counterbalanced run. No R1,C1,C2,R2 verdict follows from it.
+- September 28 full physical-host attempt `run-20260928-222116498-360dace06ef2`
+  retained its exact pinned reference/candidate hashes and completed the
+  entire R1 reference population, but R1 failed closed; C1/C2/R2 were never
+  admitted. The configured 240 Hz display yielded 119.26 Hz median measured
+  scroll frames, below the unchanged configured-rate-relative qualification;
+  the 4,389-sample visibility trace first lost foreground at 207.6 seconds
+  and recorded 2,302 nonforeground samples. This is an invalid measurement
+  environment, not a counterbalanced verdict. It also exposed reference
+  first-viewport nonstationarity in all six conditions, a 10.013 ms scroll
+  frame p95 against 8.333 ms, and one 29.634 ms cancellation trial against
+  the unchanged 16 ms absolute gate. Do not silently retry or relax any gate:
+  establish a quiescent, foreground physical session at a supported measured
+  refresh mode, diagnose the reference's own absolute failures, then rerun
+  the complete frozen R1,C1,C2,R2 sequence. Local correctness fixes made
+  during this attempt were not in its hashed candidate binary.
+- September 28 current local fidelity checkpoint: a pinned x64 Release
+  rank-34 (`massgravel/Microsoft-Activation-Scripts`) source-bound replay now
+  passes the unchanged case gates at 99.64% text coverage, 99.88% stable
+  structure, 5/5 headings, 13/13 distinct links (including linked images),
+  8/8 images, zero unavailable assets, and a clean exit. This repaired a
+  Markdown heading swallowed after an HTML void tag and blank line, and made
+  native/Edge link accounting symmetric for image-only anchors. The same
+  local case still **fails performance**: native/Edge first-image-ready is
+  470/82 ms (5.73x) and full traversal 460/144 ms (3.20x). Its initial
+  pipeline records 83 ms parse, 87 ms setup including 79 ms theme snapshot,
+  100 ms layout, and 22 ms UI publication. The Core+WinUI lean x64 pack
+  passes the unchanged caps at 1,257,984/1,258,291 managed bytes and
+  530,994/537,600 compressed bytes. The current full local WinUI, GitHub
+  renderer, and README-audit suites pass 3,220/3,220, 460/460, and 58/58;
+  the fast Core suite passes 1,002/1,002. Nested Markdown inside safe HTML
+  now excludes provably unrelated simple ASCII reference definitions before
+  reparse, avoiding needless repeated definition expansion while retaining
+  conservative replay for escaped, entity, Unicode, or unusual-whitespace
+  labels. The external-process Core fixture is under separate verification.
+  These are local correctness and diagnostic measurements, not a qualified
+  110% browser-relative result, full top-500 audit, or counterbalanced release
+  benchmark. Investigate theme/resource lookup and layout work next.
 
 ## Summary
 

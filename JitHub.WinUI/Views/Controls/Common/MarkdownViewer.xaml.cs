@@ -175,6 +175,9 @@ public sealed partial class MarkdownViewer : UserControl
     private long _firstViewportImagesReadyPaintTimestamp;
     private int _firstViewportImagesReadyPollCount;
     private long _firstViewportImagesReadyProbeWorkTicks;
+    private long _firstViewportImagesReadyLastProgressTicks;
+    private string? _firstViewportImagesReadyLastProgressStage;
+    private string? _firstViewportImagesReadyLastProgressReason;
     private int _lifecycleRuntimeSettingsRevision;
     private string? _lastAuditCaptureRequestId;
     private bool _auditCapturePending;
@@ -1042,6 +1045,12 @@ public sealed partial class MarkdownViewer : UserControl
             return;
         }
 
+        if (!string.Equals(
+                (e.OldValue as MarkdownDocumentSource)?.DocumentId,
+                (e.NewValue as MarkdownDocumentSource)?.DocumentId,
+                StringComparison.Ordinal))
+            viewer.ResetOwnedViewportForNewDocument();
+
         viewer._remoteContentConsent.Activate(e.NewValue as MarkdownDocumentSource);
         viewer._reportedImageUnavailableReasons.Clear();
         viewer._renderFailureReportedForDocument = false;
@@ -1055,6 +1064,20 @@ public sealed partial class MarkdownViewer : UserControl
             viewer.RenderErrorInfoBar.IsOpen = false;
         }
         viewer.ApplyRendererSettings();
+    }
+
+    private void ResetOwnedViewportForNewDocument()
+    {
+        // The document source is the logical navigation identity. A reused
+        // README preview must start at its own top; preserving a prior repo's
+        // anchor would also make lazy layout and image-readiness target the
+        // wrong first viewport. Do not move an ancestor/page-owned scroller.
+        if (!OwnsScrollViewport || _renderer is null)
+            return;
+
+        ScrollViewer? viewport = FindDescendantVerticalScrollViewer(_renderer);
+        if (viewport is { VerticalOffset: > 0.5 })
+            viewport.ChangeView(null, 0, null, disableAnimation: true);
     }
 
     private void ResetRemoteContentConsent()
@@ -1134,6 +1157,19 @@ public sealed partial class MarkdownViewer : UserControl
         _currentRendererDisposalCompleted = false;
         _renderer.DisposalCompleted += OnRendererDisposalCompleted;
         _renderer.Theme = _theme;
+        // The source-bound GitHub article uses 16-DIP paragraph spacing, while
+        // its list paragraphs collapse into the list-item flow. Keep JitHub's
+        // compact list token without shortening standalone paragraphs.
+        _renderer.StyleSheet = new MarkdownStyleSheet(
+            new MarkdownStyleRule[]
+            {
+                new MarkdownStyleRule(
+                    new MarkdownStyleSelector(MarkdownStyleRole.Body, minimumNestingDepth: 1),
+                    new ElementStyleOverride
+                    {
+                        Margin = ResolveThickness("AppMarkdownBodyMargin", new Thickness(0, 0, 0, 8)),
+                    }),
+            });
         _renderer.StringProvider = JitHubMarkdownStringProvider.Instance;
         ApplyRendererResources();
         _renderer.IsSelectionEnabled = IsSelectionEnabled;
@@ -1606,7 +1642,8 @@ public sealed partial class MarkdownViewer : UserControl
 #pragma warning restore MR1001
     {
         StopFirstViewportImagesReadyProbe();
-        if (generation <= 0 || !_isLoaded || !ReferenceEquals(renderer, _renderer))
+        if (generation <= 0 || !_isLoaded || !ReferenceEquals(renderer, _renderer) ||
+            !MarkdownLifecycleAutomationBridge.TargetsHost(automationId))
             return;
 
         _firstViewportImagesReadyRenderer = renderer;
@@ -1614,15 +1651,29 @@ public sealed partial class MarkdownViewer : UserControl
         _firstViewportImagesReadyGeneration = generation;
         _firstViewportImagesReadyPollCount = 0;
         _firstViewportImagesReadyProbeWorkTicks = 0;
+        _firstViewportImagesReadyLastProgressTicks = 0;
+        _firstViewportImagesReadyLastProgressStage = null;
+        _firstViewportImagesReadyLastProgressReason = null;
         long ticket = ++_firstViewportImagesReadyProbeTicket;
         var probe = new FirstViewportImagesReadyRendererProbe();
         _firstViewportImagesReadyProbe = probe;
+        RecordFirstViewportImagesReadyProgress(
+            "armed",
+            "waiting-for-paint",
+            renderer,
+            generation,
+            pollCount: 0,
+            currentGeneration: renderer.AutomationPipelineGeneration,
+            publishedGeneration: 0,
+            viewportMeasured: false,
+            hasVisibleLoadingImages: true);
         renderer.BeginAutomationFirstViewportImagesReadyProbe(region =>
         {
             if (ticket != _firstViewportImagesReadyProbeTicket ||
                 !_isLoaded ||
                 _shutdownRequested ||
-                !ReferenceEquals(renderer, _renderer))
+                !ReferenceEquals(renderer, _renderer) ||
+                !MarkdownLifecycleAutomationBridge.TargetsHost(automationId))
             {
                 return false;
             }
@@ -1634,12 +1685,33 @@ public sealed partial class MarkdownViewer : UserControl
             }
             catch (Exception exception)
             {
+                RecordFirstViewportImagesReadyProgress(
+                    "paint-callback",
+                    "invalid-pending-image-mask",
+                    renderer,
+                    generation,
+                    _firstViewportImagesReadyPollCount,
+                    renderer.AutomationPipelineGeneration,
+                    renderer.GetLastPipelineTimingSnapshot().Generation,
+                    viewportMeasured: false,
+                    hasVisibleLoadingImages: true);
                 MarkdownLifecycleAutomationBridge.RecordAuditFailure(
                     "first-viewport-images-ready-paint",
                     exception);
                 StopFirstViewportImagesReadyProbe();
                 return false;
             }
+
+            RecordFirstViewportImagesReadyProgress(
+                "paint-callback",
+                probe.LastReason,
+                renderer,
+                generation,
+                _firstViewportImagesReadyPollCount,
+                renderer.AutomationPipelineGeneration,
+                renderer.GetLastPipelineTimingSnapshot().Generation,
+                viewportMeasured: probe.ViewportWidth > 0 && probe.ViewportHeight > 0,
+                hasVisibleLoadingImages: probe.VisibleImagesLoading);
 
             if (!acknowledged)
                 return false;
@@ -1676,6 +1748,16 @@ public sealed partial class MarkdownViewer : UserControl
             renderer.AutomationPipelineGeneration != generation ||
             !MarkdownLifecycleAutomationBridge.TargetsHost(automationId))
         {
+            RecordFirstViewportImagesReadyProgress(
+                "stopped",
+                "probe-stopped",
+                renderer,
+                generation,
+                _firstViewportImagesReadyPollCount,
+                renderer?.AutomationPipelineGeneration ?? 0,
+                renderer?.GetLastPipelineTimingSnapshot().Generation ?? 0,
+                viewportMeasured: false,
+                hasVisibleLoadingImages: true);
             StopFirstViewportImagesReadyProbe();
             return;
         }
@@ -1696,6 +1778,16 @@ public sealed partial class MarkdownViewer : UserControl
                     currentGeneration,
                     publishedGeneration))
             {
+                RecordFirstViewportImagesReadyProgress(
+                    "polling",
+                    "waiting-for-published-generation",
+                    renderer,
+                    generation,
+                    pollCount,
+                    currentGeneration,
+                    publishedGeneration,
+                    viewportMeasured: false,
+                    hasVisibleLoadingImages: true);
                 StopFirstViewportImagesReadyProbe();
                 return;
             }
@@ -1715,6 +1807,17 @@ public sealed partial class MarkdownViewer : UserControl
                     viewportMeasured))
             {
                 _firstViewportImagesReadyProbeWorkTicks += Stopwatch.GetTimestamp() - probeStartedAt;
+                RecordFirstViewportImagesReadyProgress(
+                    "polling",
+                    "waiting-for-measured-viewport",
+                    renderer,
+                    generation,
+                    pollCount,
+                    currentGeneration,
+                    publishedGeneration,
+                    viewportMeasured,
+                    hasVisibleLoadingImages: true,
+                    viewport);
                 EnsureFirstViewportImagesReadyTimer();
                 return;
             }
@@ -1729,6 +1832,22 @@ public sealed partial class MarkdownViewer : UserControl
                 viewportPaintGeneration = 0;
                 viewportPaintTimestamp = 0;
             }
+
+            RecordFirstViewportImagesReadyProgress(
+                "polling",
+                hasVisibleLoadingImages
+                    ? "visible-images-loading"
+                    : viewportPaintTimestamp > 0
+                        ? "viewport-covered-after-ready-paint"
+                        : "waiting-for-paint",
+                renderer,
+                generation,
+                pollCount,
+                currentGeneration,
+                publishedGeneration,
+                viewportMeasured,
+                hasVisibleLoadingImages,
+                viewport);
         }
         catch (Exception exception)
         {
@@ -1748,6 +1867,17 @@ public sealed partial class MarkdownViewer : UserControl
                 viewportPaintGeneration,
                 hasVisibleLoadingImages))
         {
+            RecordFirstViewportImagesReadyProgress(
+                "ready",
+                "viewport-covered-after-ready-paint",
+                renderer,
+                generation,
+                pollCount,
+                renderer.AutomationPipelineGeneration,
+                renderer.GetLastPipelineTimingSnapshot().Generation,
+                viewportMeasured: true,
+                hasVisibleLoadingImages: false,
+                viewport);
             double probeWorkMilliseconds = Stopwatch.GetElapsedTime(
                 0,
                 _firstViewportImagesReadyProbeWorkTicks).TotalMilliseconds;
@@ -1767,6 +1897,80 @@ public sealed partial class MarkdownViewer : UserControl
 
         EnsureFirstViewportImagesReadyTimer();
     }
+
+#pragma warning disable MR1001 // Audit instrumentation reads state from the legacy renderer control.
+    private void RecordFirstViewportImagesReadyProgress(
+        string stage,
+        string reason,
+        MarkdownRendererControl? renderer,
+        long generation,
+        int pollCount,
+        long currentGeneration,
+        long publishedGeneration,
+        bool viewportMeasured,
+        bool hasVisibleLoadingImages,
+        Windows.Foundation.Rect viewport = default)
+    {
+        if (!MarkdownLifecycleAutomationBridge.IsFirstViewportImagesReadyProgressEnabled ||
+            _firstViewportImagesReadyHost is not { } host ||
+            !MarkdownLifecycleAutomationBridge.TargetsHost(host))
+            return;
+
+        long nowTicks = Stopwatch.GetTimestamp();
+        bool stateChanged = !string.Equals(stage, _firstViewportImagesReadyLastProgressStage, StringComparison.Ordinal) ||
+            !string.Equals(reason, _firstViewportImagesReadyLastProgressReason, StringComparison.Ordinal);
+        if (!stateChanged && _firstViewportImagesReadyLastProgressTicks > 0 &&
+            Stopwatch.GetElapsedTime(_firstViewportImagesReadyLastProgressTicks, nowTicks) < TimeSpan.FromMilliseconds(100))
+        {
+            return;
+        }
+
+        _firstViewportImagesReadyLastProgressTicks = nowTicks;
+        _firstViewportImagesReadyLastProgressStage = stage;
+        _firstViewportImagesReadyLastProgressReason = reason;
+        FirstViewportImagesReadyRendererProbe? probe = _firstViewportImagesReadyProbe;
+        if ((viewport.Width <= 0 || viewport.Height <= 0) &&
+            probe is { ViewportWidth: > 0, ViewportHeight: > 0 })
+        {
+            viewport = new Windows.Foundation.Rect(
+                probe.ViewportLeft,
+                probe.ViewportTop,
+                probe.ViewportWidth,
+                probe.ViewportHeight);
+        }
+
+        MarkdownLifecycleAutomationBridge.RecordFirstViewportImagesReadyProgress(new FirstViewportImagesReadyProgress(
+            DateTimeOffset.UtcNow,
+            stage,
+            reason,
+            Math.Max(0, pollCount),
+            probe?.PaintCallbackCount ?? 0,
+            probe?.PaintedRegionCount ?? 0,
+            Math.Max(0, generation),
+            Math.Max(0, currentGeneration),
+            Math.Max(0, publishedGeneration),
+            Math.Max(0, renderer?.AutomationSnapshotGeneration ?? 0),
+            Math.Max(0, probe?.LayoutRevision ?? 0),
+            Math.Max(0, probe?.RasterizationScale ?? 0),
+            viewport.Left,
+            viewport.Top,
+            viewport.Width,
+            viewport.Height,
+            viewportMeasured,
+            hasVisibleLoadingImages,
+            probe?.VisibleLoadingImageCount ?? 0,
+            probe?.PendingImageRegionCount ?? 0,
+            probe?.CoveredArea ?? 0,
+            probe?.ViewportArea ?? 0,
+            probe?.UncoveredRegionCount ?? 0,
+            probe?.LastPaintedIntersectionArea ?? 0,
+            probe?.LastPaintedRegion.Left ?? 0,
+            probe?.LastPaintedRegion.Top ?? 0,
+            probe?.LastPaintedRegion.Width ?? 0,
+            probe?.LastPaintedRegion.Height ?? 0,
+            probe?.HasPostArmPaintedRegion ?? false));
+    }
+#pragma warning restore MR1001
 
     private void EnsureFirstViewportImagesReadyTimer()
     {
@@ -1809,6 +2013,9 @@ public sealed partial class MarkdownViewer : UserControl
         _firstViewportImagesReadyPaintTimestamp = 0;
         _firstViewportImagesReadyPollCount = 0;
         _firstViewportImagesReadyProbeWorkTicks = 0;
+        _firstViewportImagesReadyLastProgressTicks = 0;
+        _firstViewportImagesReadyLastProgressStage = null;
+        _firstViewportImagesReadyLastProgressReason = null;
     }
 
     private void OnRendererDisclosureToggled(object? sender, MarkdownDisclosureToggledEventArgs e) =>
@@ -2267,6 +2474,11 @@ public sealed partial class MarkdownViewer : UserControl
 
         return fallback;
     }
+
+    private static Thickness ResolveThickness(string tokenName, Thickness fallback)
+        => TryResolveResource(tokenName, out object? value) && value is Thickness thickness
+            ? thickness
+            : fallback;
 
     private static bool TryResolveResource(string tokenName, out object? value)
     {

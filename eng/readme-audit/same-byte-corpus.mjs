@@ -31,6 +31,31 @@ const MARKED_PARSER_PATH = path.join(
 );
 const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
 const GIT_SHA1_PATTERN = /^[0-9a-f]{40}$/u;
+const RENDERED_SNAPSHOT_FAILURE_PREDICATES = new Set([
+  "active-element-tag",
+  "duplicate-image-index",
+  "event-handler-attribute",
+  "external-css-resource",
+  "external-resource-attribute",
+  "invalid-root",
+  "missing-data-image",
+  "missing-image-index",
+  "network-image-data-payload",
+  "stylesheet-link",
+  "style-element",
+]);
+const SNAPSHOT_ACTIVE_TAGS = new Set(["script", "iframe", "object", "embed", "base"]);
+const SNAPSHOT_RESOURCE_ATTRIBUTES = new Set(["src", "srcset", "sizes", "poster", "background"]);
+const SNAPSHOT_DIAGNOSTIC_TAGS = new Set([
+  "a", "article", "audio", "base", "canvas", "code", "div", "embed", "form", "iframe", "img", "link",
+  "object", "p", "picture", "pre", "script", "source", "span", "style", "svg", "table", "use", "video",
+]);
+const SNAPSHOT_DIAGNOSTIC_ATTRIBUTES = new Set([
+  ...SNAPSHOT_RESOURCE_ATTRIBUTES,
+  "data-jithub-image-index",
+  "rel",
+  "style",
+]);
 const CAPTURED_IMAGE_MIMES = new Set([
   "image/avif",
   "image/bmp",
@@ -672,7 +697,7 @@ html,body{margin:0;min-height:100%;background:var(--readme-bg);color:var(--readm
 .markdown-body a{color:var(--readme-link);text-decoration:none}.markdown-body code,.markdown-body pre{font-family:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace}.markdown-body code{padding:.2em .4em;background:var(--readme-code);border-radius:6px;font-size:85%}.markdown-body pre{padding:16px;overflow:auto;background:var(--readme-code);border-radius:6px;font-size:85%;line-height:1.45}.markdown-body pre code{padding:0;background:transparent;font-size:100%}
 .markdown-body blockquote{padding:0 1em;color:var(--readme-muted);border-left:.25em solid var(--readme-border)}
 .markdown-body table{border-spacing:0;border-collapse:collapse;display:block;max-width:100%;overflow:auto}.markdown-body th,.markdown-body td{padding:6px 13px;border:1px solid var(--readme-border)}.markdown-body th{font-weight:600}.markdown-body tr:nth-child(2n){background:color-mix(in srgb,var(--readme-code) 60%,var(--readme-bg))}
-.markdown-body img{max-width:100%;height:auto;vertical-align:middle}.markdown-body hr{height:.25em;padding:0;background:var(--readme-border);border:0}.markdown-body input[type="checkbox"]{margin:0 .25em 0 -1.5em;vertical-align:middle}
+.markdown-body img{max-width:100%;vertical-align:middle}.markdown-body hr{height:.25em;padding:0;background:var(--readme-border);border:0}.markdown-body input[type="checkbox"]{margin:0 .25em 0 -1.5em;vertical-align:middle}
 </style><script defer src="/marked-parser.js" integrity="${parserIntegrity}" crossorigin="anonymous"></script></head><body><main id="readme" class="markdown-body"></main></body></html>`;
 }
 
@@ -809,41 +834,261 @@ function validateManifestShape(manifest) {
 }
 
 function validateRenderedSnapshot(html, imageRoutes) {
-  const hasExternalCssReference = [...html.matchAll(/\sstyle\s*=\s*(["'])(.*?)\1/giu)]
-    .some(match => containsExternalCssResource(match[2]));
-  if (typeof html !== "string" || !/^<article\b/iu.test(html) ||
-      /<(?:script|iframe|object|embed|base)\b|<link\b[^>]*\brel\s*=\s*["']?stylesheet/iu.test(html) ||
-      /\son[a-z][a-z0-9_-]*\s*=/iu.test(html) ||
-      /\s(?:src|srcset|sizes|poster|background)\s*=/iu.test(html) ||
-      /<style\b/iu.test(html) || hasExternalCssReference) {
-    throw new Error("Same-byte rendered HTML contains an active element, external resource URL, or invalid root.");
+  if (typeof html !== "string" || !/^<article\b/iu.test(html)) {
+    rejectRenderedSnapshot("invalid-root", "Same-byte rendered HTML has an invalid root.");
+  }
+  const elements = scanSerializedHtmlElements(html);
+  const activeElement = elements.find(element => SNAPSHOT_ACTIVE_TAGS.has(element.tagName));
+  if (activeElement) {
+    rejectRenderedSnapshot("active-element-tag", "Same-byte rendered HTML contains an active element.", {
+      elementTag: activeElement.tagName,
+    });
+  }
+  const stylesheetLink = elements.find(element => element.tagName === "link" &&
+    (element.attributes.get("rel") || "").toLowerCase().split(/\s+/u).includes("stylesheet"));
+  if (stylesheetLink) {
+    rejectRenderedSnapshot("stylesheet-link", "Same-byte rendered HTML contains a stylesheet link.", {
+      elementTag: stylesheetLink.tagName,
+      attributeName: "rel",
+    });
+  }
+  for (const element of elements) {
+    const eventAttribute = [...element.attributes.keys()].find(name => name.startsWith("on"));
+    if (eventAttribute) {
+      rejectRenderedSnapshot("event-handler-attribute", "Same-byte rendered HTML contains an event-handler attribute.", {
+        elementTag: element.tagName,
+        attributeName: eventAttribute,
+      });
+    }
+  }
+  for (const element of elements) {
+    const resourceAttribute = [...element.attributes.keys()].find(name => SNAPSHOT_RESOURCE_ATTRIBUTES.has(name));
+    if (resourceAttribute) {
+      rejectRenderedSnapshot("external-resource-attribute", "Same-byte rendered HTML contains a live resource attribute.", {
+        elementTag: element.tagName,
+        attributeName: resourceAttribute,
+      });
+    }
+  }
+  const styleElement = elements.find(element => element.tagName === "style");
+  if (styleElement) {
+    rejectRenderedSnapshot("style-element", "Same-byte rendered HTML contains a style element.", {
+      elementTag: styleElement.tagName,
+    });
+  }
+  for (const element of elements) {
+    const style = element.attributes.get("style");
+    if (style !== undefined && containsExternalCssResource(style)) {
+      rejectRenderedSnapshot("external-css-resource", "Same-byte rendered HTML contains an external CSS resource.", {
+        elementTag: element.tagName,
+        attributeName: "style",
+      });
+    }
   }
   const imagesByIndex = new Map();
-  const imageTagPattern = /<img\b([^>]*)>/giu;
-  for (const match of html.matchAll(imageTagPattern)) {
-    const attributes = match[1];
-    const indexMatch = /\bdata-jithub-image-index\s*=\s*["'](\d+)["']/iu.exec(attributes);
-    if (!indexMatch) continue;
-    const index = Number(indexMatch[1]);
+  for (const element of elements) {
+    if (element.tagName !== "img") continue;
+    const indexValue = element.attributes.get("data-jithub-image-index");
+    if (!/^\d+$/u.test(indexValue || "")) continue;
+    const index = Number(indexValue);
     if (!Number.isSafeInteger(index) || imagesByIndex.has(index)) {
-      throw new Error("Same-byte rendered HTML contains a duplicate or invalid image index.");
+      rejectRenderedSnapshot("duplicate-image-index", "Same-byte rendered HTML contains a duplicate or invalid image index.", {
+        elementTag: element.tagName,
+        attributeName: "data-jithub-image-index",
+      });
     }
-    const dataMatch = /\bdata-jithub-image-data\s*=\s*(["'])(.*?)\1/iu.exec(attributes);
-    imagesByIndex.set(index, dataMatch?.[2] || "");
+    imagesByIndex.set(index, element.attributes.get("data-jithub-image-data") || "");
   }
   for (const route of imageRoutes) {
     if (!imagesByIndex.has(route.index)) {
-      throw new Error("Same-byte rendered HTML is missing an indexed captured visible image.");
+      rejectRenderedSnapshot("missing-image-index", "Same-byte rendered HTML is missing an indexed captured visible image.");
     }
     const dataUri = imagesByIndex.get(route.index);
     if (route.dataUri === true) {
       if (!/^data:image\/[a-z0-9.+-]+(?:;[^,]*)?,/iu.test(dataUri)) {
-        throw new Error("Same-byte rendered HTML is missing the selected data image bytes.");
+        rejectRenderedSnapshot("missing-data-image", "Same-byte rendered HTML is missing the selected data image bytes.");
       }
     } else if (dataUri) {
-      throw new Error("A network image route cannot also contain a data-image payload.");
+      rejectRenderedSnapshot("network-image-data-payload", "A network image route cannot also contain a data-image payload.");
     }
   }
+}
+
+function scanSerializedHtmlElements(html) {
+  const elements = [];
+  let cursor = 0;
+  while (cursor < html.length) {
+    const open = html.indexOf("<", cursor);
+    if (open < 0) break;
+    if (html.startsWith("<!--", open)) {
+      const commentEnd = html.indexOf("-->", open + 4);
+      if (commentEnd < 0) {
+        rejectRenderedSnapshot("invalid-root", "Same-byte rendered HTML contains an unterminated comment.");
+      }
+      cursor = commentEnd + 3;
+      continue;
+    }
+    if (html[open + 1] === "!" || html[open + 1] === "?") {
+      rejectRenderedSnapshot("invalid-root", "Same-byte rendered HTML contains an unsupported declaration.");
+    }
+    if (html[open + 1] === "/") {
+      const close = html.indexOf(">", open + 2);
+      if (close < 0) rejectRenderedSnapshot("invalid-root", "Same-byte rendered HTML contains an unterminated closing tag.");
+      cursor = close + 1;
+      continue;
+    }
+    const initial = html[open + 1];
+    if (!initial || !/[a-z]/iu.test(initial)) {
+      cursor = open + 1;
+      continue;
+    }
+
+    let position = open + 2;
+    while (position < html.length && /[a-z0-9:_-]/iu.test(html[position])) position++;
+    const tagName = html.slice(open + 1, position).toLowerCase();
+    const attributes = new Map();
+    let tagClosed = false;
+    while (position < html.length) {
+      while (position < html.length && /[\t\n\f\r ]/u.test(html[position])) position++;
+      if (html[position] === ">") {
+        position++;
+        tagClosed = true;
+        break;
+      }
+      if (html[position] === "/" && html[position + 1] === ">") {
+        position += 2;
+        tagClosed = true;
+        break;
+      }
+      const attributeStart = position;
+      while (position < html.length && !/[\t\n\f\r =>]/u.test(html[position])) position++;
+      if (position === attributeStart) {
+        rejectRenderedSnapshot("invalid-root", "Same-byte rendered HTML contains a malformed start tag.");
+      }
+      const attributeName = html.slice(attributeStart, position).toLowerCase();
+      while (position < html.length && /[\t\n\f\r ]/u.test(html[position])) position++;
+      let attributeValue = "";
+      if (html[position] === "=") {
+        position++;
+        while (position < html.length && /[\t\n\f\r ]/u.test(html[position])) position++;
+        const quote = html[position];
+        if (quote === "\"" || quote === "'") {
+          position++;
+          const valueStart = position;
+          while (position < html.length && html[position] !== quote) position++;
+          if (position >= html.length) {
+            rejectRenderedSnapshot("invalid-root", "Same-byte rendered HTML contains an unterminated attribute.");
+          }
+          attributeValue = html.slice(valueStart, position);
+          position++;
+        } else {
+          const valueStart = position;
+          while (position < html.length && !/[\t\n\f\r >]/u.test(html[position])) position++;
+          attributeValue = html.slice(valueStart, position);
+        }
+      }
+      if (!attributes.has(attributeName)) attributes.set(attributeName, attributeValue);
+    }
+    if (!tagClosed) rejectRenderedSnapshot("invalid-root", "Same-byte rendered HTML contains an unterminated start tag.");
+    elements.push({ tagName, attributes });
+    cursor = position;
+  }
+  return elements;
+}
+
+function rejectRenderedSnapshot(predicate, message, detail = {}) {
+  const error = new Error(message);
+  const elementTag = detail.elementTag;
+  const attributeName = detail.attributeName;
+  Object.defineProperties(error, {
+    sameByteSnapshotFailureStage: { value: "rendered-snapshot-validation" },
+    sameByteSnapshotFailurePredicate: { value: predicate },
+    sameByteSnapshotElementTag: {
+      value: SNAPSHOT_DIAGNOSTIC_TAGS.has(elementTag) ? elementTag : undefined,
+    },
+    sameByteSnapshotAttributeName: {
+      value: SNAPSHOT_DIAGNOSTIC_ATTRIBUTES.has(attributeName) ? attributeName : undefined,
+    },
+  });
+  throw error;
+}
+
+export function readSameByteSnapshotFailureEvidence(error) {
+  if (error?.sameByteSnapshotFailureStage !== "rendered-snapshot-validation" ||
+      !RENDERED_SNAPSHOT_FAILURE_PREDICATES.has(error?.sameByteSnapshotFailurePredicate)) {
+    return null;
+  }
+  const evidence = {
+    failureStage: "rendered-snapshot-validation",
+    failurePredicate: error.sameByteSnapshotFailurePredicate,
+  };
+  if (SNAPSHOT_DIAGNOSTIC_TAGS.has(error.sameByteSnapshotElementTag)) {
+    evidence.elementTag = error.sameByteSnapshotElementTag;
+  }
+  if (SNAPSHOT_DIAGNOSTIC_ATTRIBUTES.has(error.sameByteSnapshotAttributeName)) {
+    evidence.attributeName = error.sameByteSnapshotAttributeName;
+  }
+  return evidence;
+}
+
+export function createCapturedImageAltIdentities(renderedHtmlBytes, imageRoutes) {
+  if (!Buffer.isBuffer(renderedHtmlBytes) || !Array.isArray(imageRoutes)) return [];
+  let elements;
+  try {
+    elements = scanSerializedHtmlElements(renderedHtmlBytes.toString("utf8"));
+  } catch {
+    return [];
+  }
+  const imagesByIndex = new Map();
+  for (const element of elements) {
+    if (element.tagName !== "img") continue;
+    const indexValue = element.attributes.get("data-jithub-image-index") || "";
+    if (!/^(?:0|[1-9][0-9]*)$/u.test(indexValue)) continue;
+    const index = Number(indexValue);
+    if (!Number.isSafeInteger(index) || imagesByIndex.has(index)) return [];
+    imagesByIndex.set(index, element);
+  }
+  if (imagesByIndex.size !== imageRoutes.length) return [];
+  const identities = [];
+  for (const route of imageRoutes) {
+    const image = imagesByIndex.get(route.index);
+    if (!image) return [];
+    const rawAlt = image.attributes.get("alt");
+    const alt = rawAlt === undefined ? null : decodeSerializedHtmlAttribute(rawAlt);
+    identities.push({
+      index: route.index,
+      altSha256: alt && alt.length > 0
+        ? sha256(Buffer.from(alt.normalize("NFC"), "utf8"))
+        : null,
+    });
+  }
+  return identities;
+}
+
+function decodeSerializedHtmlAttribute(value) {
+  let invalid = false;
+  const decoded = value.replace(/&(?:#(?:x[0-9a-f]+|[0-9]+)|amp|lt|gt|quot|apos);/giu, reference => {
+    const body = reference.slice(1, -1);
+    if (body[0] === "#") {
+      const hexadecimal = body[1]?.toLowerCase() === "x";
+      const codePoint = Number.parseInt(body.slice(hexadecimal ? 2 : 1), hexadecimal ? 16 : 10);
+      if (!Number.isSafeInteger(codePoint) || codePoint <= 0 || codePoint > 0x10ffff ||
+          (codePoint >= 0xd800 && codePoint <= 0xdfff)) {
+        invalid = true;
+        return "";
+      }
+      return String.fromCodePoint(codePoint);
+    }
+    return ({
+      amp: "&",
+      apos: "'",
+      gt: ">",
+      lt: "<",
+      quot: "\"",
+    })[body.toLowerCase()];
+  });
+  if (invalid || /&(?:#(?:x[0-9a-f]+|[0-9]+)|[a-z][a-z0-9]+);/iu.test(decoded)) return null;
+  return decoded;
 }
 
 function containsExternalCssResource(value) {

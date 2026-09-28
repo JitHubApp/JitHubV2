@@ -283,7 +283,8 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("automation-mermaid-sources.json", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("MatchEquivalentMermaidSources", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("MatchedMermaidTransformations", nativeProbe, StringComparison.Ordinal);
-        Assert.Contains("link => !string.IsNullOrWhiteSpace(link.Text)", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("Image-only anchors are links too", nativeProbe, StringComparison.Ordinal);
+        Assert.DoesNotContain("link => !string.IsNullOrWhiteSpace(link.Text)", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("double textFidelity = textCoverage", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("Rectangle.Intersect(", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("RequestRendererCapture", nativeProbe, StringComparison.Ordinal);
@@ -1465,7 +1466,7 @@ public sealed class AutomationHarnessSourceContractTests
         string probe = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
             "JitHub.WinUI.Automation",
-            "ReadmeAuditProbe.cs"));
+            "ReadmeAuditProbe.cs")).Replace("\r\n", "\n", StringComparison.Ordinal);
         string viewer = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
             "JitHub.WinUI",
@@ -1520,12 +1521,30 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("ready.ViewportHeight <= 0", contract, StringComparison.Ordinal);
         Assert.Contains("ready.Timestamp < renderComplete.Timestamp", contract, StringComparison.Ordinal);
         Assert.Contains("firstImagesReadySignal.Timestamp - hostReadySignal.Timestamp", probe, StringComparison.Ordinal);
-        Assert.Contains("ready.ReadmeGitBlobSha1, expectedReadmeGitBlobSha1", contract, StringComparison.Ordinal);
+        Assert.Contains("ready.ReadmeGitBlobSha1,", contract, StringComparison.Ordinal);
+        Assert.Contains("expectedReadmeGitBlobSha1", contract, StringComparison.Ordinal);
         Assert.Contains("ApplicationSignalPollCount", probe, StringComparison.Ordinal);
         Assert.Contains("ApplicationSignalProbeWorkMilliseconds", probe, StringComparison.Ordinal);
         Assert.Contains("ApplicationSignalViewportTop", probe, StringComparison.Ordinal);
         Assert.Contains("ApplicationSignalViewportHeight", probe, StringComparison.Ordinal);
         Assert.Contains("JITHUB_MARKDOWN_FIRST_VIEWPORT_IMAGES_READY_EVIDENCE_PATH", probe, StringComparison.Ordinal);
+        Assert.Contains("JITHUB_MARKDOWN_FIRST_VIEWPORT_IMAGES_READY_PROGRESS_PATH", probe, StringComparison.Ordinal);
+        Assert.Contains("first-viewport-images-ready-progress.ndjson", probe, StringComparison.Ordinal);
+        Assert.Contains("firstViewportImagesReadyProgress", probe, StringComparison.Ordinal);
+
+        int initialCapture = probe.IndexOf("NativeTraversalResult CaptureNativeTiles(", StringComparison.Ordinal);
+        Assert.True(initialCapture >= 0);
+        int initialCaptureWrite = probe.IndexOf("out double capturedDocumentTop", initialCapture, StringComparison.Ordinal);
+        Assert.True(initialCaptureWrite > initialCapture);
+        int initialCaptureValidation = probe.IndexOf(
+            "NativeFirstViewportImagesReadyContract.ValidateInitialViewportIdentity(",
+            initialCaptureWrite,
+            StringComparison.Ordinal);
+        Assert.True(initialCaptureValidation > initialCaptureWrite);
+        Assert.Contains("out double documentTop", probe, StringComparison.Ordinal);
+        Assert.Contains("documentTop = capture.DocumentTop", probe, StringComparison.Ordinal);
+        Assert.Contains("InitialCaptureStartsAtDocumentTop", contract, StringComparison.Ordinal);
+        Assert.Contains("ViewportTopMatchesInitialCapture", contract, StringComparison.Ordinal);
 
         Assert.Contains("DispatcherQueuePriority.Low", viewer, StringComparison.Ordinal);
         Assert.Contains("TimeSpan.FromMilliseconds(16)", viewer, StringComparison.Ordinal);
@@ -1541,10 +1560,22 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("FirstViewportImagesReadyProbeContract.IsCurrentPublishedGeneration", viewer, StringComparison.Ordinal);
         Assert.Contains("FirstViewportImagesReadyProbeContract.IsMeasuredViewport", viewer, StringComparison.Ordinal);
         Assert.Contains("StopFirstViewportImagesReadyProbe();", viewer, StringComparison.Ordinal);
+        int probeArm = viewer.IndexOf("private void QueueFirstViewportImagesReadyProbe(", StringComparison.Ordinal);
+        int targetGuard = viewer.IndexOf(
+            "!MarkdownLifecycleAutomationBridge.TargetsHost(automationId)",
+            probeArm,
+            StringComparison.Ordinal);
+        int armedProgress = viewer.IndexOf("\"armed\"", probeArm, StringComparison.Ordinal);
+        Assert.True(probeArm >= 0 && targetGuard > probeArm && targetGuard < armedProgress);
+        Assert.Contains("!MarkdownLifecycleAutomationBridge.TargetsHost(host)", viewer, StringComparison.Ordinal);
         Assert.Contains("IsFirstViewportImagesReadyEvidenceEnabled", bridge, StringComparison.Ordinal);
+        Assert.Contains("FirstViewportImagesReadyEvidenceWriter.TryQueueProgressWrite(", bridge, StringComparison.Ordinal);
         Assert.Contains("FirstViewportImagesReadyEvidenceWriter.TryQueueWrite(", bridge, StringComparison.Ordinal);
         Assert.Contains("IsFirstViewportImagesReadyEvidenceEnabled,", bridge, StringComparison.Ordinal);
-        Assert.Contains("Task.Run(() => TryWrite(", evidenceWriter, StringComparison.Ordinal);
+        Assert.Contains("Task.Run(() => WriteAfterProgressDrainAsync(", evidenceWriter, StringComparison.Ordinal);
+        Assert.Contains("await progressDrain.ConfigureAwait(false)", evidenceWriter, StringComparison.Ordinal);
+        Assert.Contains("PaintCallbackCount", evidenceWriter, StringComparison.Ordinal);
+        Assert.Contains("CoveredArea", evidenceWriter, StringComparison.Ordinal);
         Assert.Contains("JsonSerializer.Serialize(", evidenceWriter, StringComparison.Ordinal);
         Assert.Contains("internal long AutomationPipelineGeneration => _pipelineGeneration", renderer, StringComparison.Ordinal);
         Assert.Contains("internal List<Layout.Boxes.ImageBox> AutomationImagePlans => _imagePlans", renderer, StringComparison.Ordinal);
@@ -1574,9 +1605,12 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("if (!_svgTiles.ContainsKey(key))", imageBox, StringComparison.Ordinal);
         Assert.Contains("lastTileX", imageBox, StringComparison.Ordinal);
         Assert.Contains("lastTileY", imageBox, StringComparison.Ordinal);
-        Assert.Contains("image.HasAllSvgTilesForAutomation(firstTileX, firstTileY, lastTileX, lastTileY)", rendererProbe, StringComparison.Ordinal);
-        Assert.Contains("!IsFiniteRect(destination)", rendererProbe, StringComparison.Ordinal);
-        Assert.Contains("destination.Width <= 0", rendererProbe, StringComparison.Ordinal);
+        Assert.Contains("image.HasAllSvgTilesForAutomation(tileX, tileY, tileX, tileY)", rendererProbe, StringComparison.Ordinal);
+        Assert.Contains("!IsFiniteNonEmptyRect(destination)", rendererProbe, StringComparison.Ordinal);
+        Assert.Contains("_coverage.AddPaintedRegionExcluding(", rendererProbe, StringComparison.Ordinal);
+        Assert.Contains("FirstViewportPaintCoverage.MaximumPendingMasks", rendererProbe, StringComparison.Ordinal);
+        Assert.Contains("pending-mask-count-budget-exceeded", rendererProbe, StringComparison.Ordinal);
+        Assert.DoesNotContain("pendingRegions.Count >= 4096", rendererProbe, StringComparison.Ordinal);
         Assert.Contains("snapshot.IsBandMeasured(LazyLayoutBand.FromViewport(", rendererProbe, StringComparison.Ordinal);
         Assert.Contains("_automationFirstViewportImagesReadyPaintCallback = null", renderer, StringComparison.Ordinal);
         Assert.Contains("CancelAutomationFirstViewportImagesReadyProbe();", renderer[renderer.IndexOf("private void ReleaseLoadedResources()", StringComparison.Ordinal)..], StringComparison.Ordinal);

@@ -1,6 +1,8 @@
 using System.Text.Json;
+using System.Linq;
 using System.Threading.Tasks;
 using JitHub.Services.Markdown;
+using Windows.Foundation;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;
@@ -26,21 +28,148 @@ public sealed class NativeFirstViewportImagesReadyContractTests
     }
 
     [Fact]
-    public void PaintCoverageResetsForImageReadinessAndViewportChanges()
+    public void PendingOverlappingImagesStayUncoveredUntilTheirPixelsAreRepainted()
     {
         var coverage = new FirstViewportPaintCoverage();
-        Assert.False(coverage.AddPaintedRegion(0, 0, 200, 100, 0, 0, 100, 100));
+        Rect[] pendingImageRects =
+        [
+            new Rect(40, 30, 50, 40),
+            new Rect(60, 40, 50, 40),
+        ];
 
-        // The first region contained a placeholder. Once its image completes,
-        // it cannot be credited to the all-resources-ready paint epoch.
-        coverage.Reset();
-        Assert.False(coverage.AddPaintedRegion(0, 0, 200, 100, 100, 0, 100, 100));
+        // A full post-arm paint may contain placeholders. It proves coverage
+        // outside the pending images while those overlapping pixels remain
+        // uncovered (the overlap is unioned once, not double-counted).
+        Assert.False(coverage.AddPaintedRegionExcluding(
+            0, 0, 200, 100,
+            0, 0, 200, 100,
+            pendingImageRects));
+        Assert.Equal(16_900, coverage.CoveredArea);
+        Assert.Equal(3_100, coverage.ViewportArea - coverage.CoveredArea);
         Assert.False(coverage.Covers(0, 0, 200, 100));
-        Assert.True(coverage.AddPaintedRegion(0, 0, 200, 100, 0, 0, 100, 100));
 
+        // Readiness changing is not itself paint evidence. Unrelated partial
+        // regions after the transition still cannot cover the image pixels.
+        Assert.False(coverage.AddPaintedRegion(0, 0, 200, 100, 0, 0, 40, 100));
+        Assert.False(coverage.Covers(0, 0, 200, 100));
+
+        // The settled images repaint their actual destinations in separate
+        // regions; the first is insufficient, and the second completes coverage.
+        Assert.False(coverage.AddPaintedRegion(0, 0, 200, 100, 40, 30, 50, 40));
+        Assert.True(coverage.AddPaintedRegion(0, 0, 200, 100, 60, 40, 50, 40));
+        Assert.True(coverage.Covers(0, 0, 200, 100));
+    }
+
+    [Fact]
+    public void PendingSvgTileMaskDoesNotInvalidateAlreadyPaintedNeighborTiles()
+    {
+        var coverage = new FirstViewportPaintCoverage();
+        Rect oneMissingTile = new(100, 100, 20, 20);
+
+        Assert.False(coverage.AddPaintedRegionExcluding(
+            0, 0, 400, 200,
+            0, 0, 400, 200,
+            [oneMissingTile]));
+        Assert.Equal(79_600, coverage.CoveredArea);
+        Assert.Equal(1, coverage.UncoveredRegionCount);
+        Assert.False(coverage.Covers(0, 0, 400, 200));
+
+        Assert.True(coverage.AddPaintedRegion(0, 0, 400, 200, 100, 100, 20, 20));
+        Assert.True(coverage.Covers(0, 0, 400, 200));
+    }
+
+    [Fact]
+    public void PendingMasksReopenPreviouslyPaintedPixelsWithoutDiscardingNeighborCoverage()
+    {
+        var coverage = new FirstViewportPaintCoverage();
+        Assert.True(coverage.AddPaintedRegion(0, 0, 200, 100, 0, 0, 200, 100));
+
+        Assert.False(coverage.AddPaintedRegionExcluding(
+            0, 0, 200, 100,
+            0, 0, 200, 100,
+            [new Rect(40, 30, 50, 40), new Rect(60, 40, 50, 40)]));
+        Assert.Equal(16_900, coverage.CoveredArea);
+        Assert.False(coverage.Covers(0, 0, 200, 100));
+
+        Assert.True(coverage.AddPaintedRegion(0, 0, 200, 100, 40, 30, 70, 50));
+        Assert.True(coverage.Covers(0, 0, 200, 100));
+    }
+
+    [Fact]
+    public void ExcessiveVisiblePendingMasksFailClosedBeforePaintingWork()
+    {
+        var coverage = new FirstViewportPaintCoverage();
+        Rect[] masks = Enumerable.Range(0, FirstViewportPaintCoverage.MaximumPendingMasks + 1)
+            .Select(index => new Rect(index % 200, index % 100, 1, 1))
+            .ToArray();
+
+        Assert.False(coverage.AddPaintedRegionExcluding(
+            0, 0, 200, 100,
+            0, 0, 200, 100,
+            masks));
+        Assert.Equal(0, coverage.CoveredArea);
+        Assert.Equal("pending-mask-count-budget-exceeded", coverage.LastFailureReason);
+    }
+
+    [Fact]
+    public void FragmentedPendingMasksFailClosedAtThePerPaintWorkBudget()
+    {
+        var coverage = new FirstViewportPaintCoverage();
+        Rect[] masks = Enumerable.Range(0, FirstViewportPaintCoverage.MaximumPendingMasks)
+            .Select(index => new Rect(index * 2, 0, 1, 1))
+            .ToArray();
+
+        Assert.False(coverage.AddPaintedRegionExcluding(
+            0, 0, 1024, 2,
+            0, 0, 1024, 2,
+            masks));
+        Assert.Equal("coverage-work-budget-exceeded", coverage.LastFailureReason);
+        Assert.Equal(0, coverage.CoveredArea);
+    }
+
+    [Fact]
+    public void IdentityChangesResetCoverageForViewportRevisionAndDpi()
+    {
+        var coverage = new FirstViewportPaintCoverage();
+        object snapshot = new();
+        Rect viewport = new(0, 0, 200, 100);
+        Assert.True(coverage.EnsureIdentity(snapshot, 4, 8, 1, viewport));
+        Assert.True(coverage.AddPaintedRegion(0, 0, 200, 100, 0, 0, 200, 100));
+        Assert.True(coverage.Covers(0, 0, 200, 100));
+
+        Assert.True(coverage.EnsureIdentity(snapshot, 4, 9, 1, viewport));
+        Assert.False(coverage.Covers(0, 0, 200, 100));
+        Assert.Equal(20_000, coverage.ViewportArea - coverage.CoveredArea);
+
+        Assert.True(coverage.AddPaintedRegion(0, 0, 200, 100, 0, 0, 200, 100));
+        Assert.True(coverage.EnsureIdentity(snapshot, 4, 9, 1.5, viewport));
+        Assert.False(coverage.Covers(0, 0, 200, 100));
+
+        Assert.True(coverage.AddPaintedRegion(0, 0, 200, 100, 0, 0, 200, 100));
+        Assert.True(coverage.EnsureIdentity(snapshot, 5, 9, 1.5, viewport));
+        Assert.False(coverage.Covers(0, 0, 200, 100));
+
+        Rect movedViewport = new(0, 10, 200, 100);
+        Assert.True(coverage.EnsureIdentity(snapshot, 5, 9, 1.5, movedViewport));
         Assert.False(coverage.Covers(0, 10, 200, 100));
-        Assert.False(coverage.AddPaintedRegion(0, 10, 200, 100, 0, 10, 100, 100));
-        Assert.True(coverage.AddPaintedRegion(0, 10, 200, 100, 100, 10, 100, 100));
+        Assert.True(coverage.EnsureIdentity(new object(), 5, 9, 1.5, movedViewport));
+        Assert.False(coverage.Covers(0, 10, 200, 100));
+    }
+
+    [Fact]
+    public void ExclusionAndCoverageFragmentationRemainBounded()
+    {
+        var coverage = new FirstViewportPaintCoverage();
+        Rect[] excessiveMasks = Enumerable.Range(0, 4097)
+            .Select(index => new Rect(index % 200, index % 100, 0.1, 0.1))
+            .ToArray();
+
+        Assert.False(coverage.AddPaintedRegionExcluding(
+            0, 0, 200, 100,
+            0, 0, 200, 100,
+            excessiveMasks));
+        Assert.Equal(0, coverage.CoveredArea);
+        Assert.Equal(0, coverage.UncoveredRegionCount);
     }
 
     [Fact]
@@ -170,6 +299,205 @@ public sealed class NativeFirstViewportImagesReadyContractTests
         {
             DeleteTemporaryDirectory(temporaryDirectory);
         }
+    }
+
+    [Fact]
+    public void InitialViewportIdentityRequiresReadinessAndFirstCaptureAtDocumentTop()
+    {
+        NativeFirstViewportImagesReadySignal ready = ValidImagesReady();
+
+        NativeFirstViewportImagesReadyContract.ValidateInitialViewportIdentity(ready, capturedInitialDocumentTop: 0);
+        NativeFirstViewportImagesReadyContract.ValidateInitialViewportIdentity(
+            ready with { ViewportTop = 0.25 },
+            capturedInitialDocumentTop: 0);
+        NativeFirstViewportImagesReadyContract.ValidateInitialViewportIdentity(
+            ready with { ViewportTop = 0.25 },
+            capturedInitialDocumentTop: 0.25);
+        NativeFirstViewportImagesReadyContract.ValidateInitialViewportIdentity(
+            ready with { ViewportTop = 0.5 },
+            capturedInitialDocumentTop: 0);
+
+        InvalidDataException mismatched = Assert.Throws<InvalidDataException>(() =>
+            NativeFirstViewportImagesReadyContract.ValidateInitialViewportIdentity(
+                ready with { ViewportTop = 8383.744 },
+                capturedInitialDocumentTop: 0));
+        Assert.Contains("ViewportTopMatchesInitialCapture", mismatched.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("8383.744", mismatched.Message, StringComparison.Ordinal);
+
+        InvalidDataException nonInitial = Assert.Throws<InvalidDataException>(() =>
+            NativeFirstViewportImagesReadyContract.ValidateInitialViewportIdentity(
+                ready with { ViewportTop = 8383.744 },
+                capturedInitialDocumentTop: 8383.744));
+        Assert.Contains("InitialCaptureStartsAtDocumentTop", nonInitial.Message, StringComparison.Ordinal);
+
+        Assert.Throws<InvalidDataException>(() =>
+            NativeFirstViewportImagesReadyContract.ValidateInitialViewportIdentity(
+                ready,
+                capturedInitialDocumentTop: double.NaN));
+    }
+
+    [Fact]
+    public void ProgressWriterPublishesPrivacySafePaintAndCoverageDiagnostics()
+    {
+        string temporaryDirectory = CreateTemporaryDirectory();
+        string path = Path.Combine(temporaryDirectory, "first-viewport-images-ready-progress.ndjson");
+        FirstViewportImagesReadyProgress progress = new(
+            ImagesReadyAt,
+            Stage: "paint-callback",
+            Reason: "visible-images-loading",
+            PollCount: 3,
+            PaintCallbackCount: 2,
+            PaintedRegionCount: 2,
+            Generation: Generation,
+            CurrentGeneration: Generation,
+            PublishedGeneration: Generation,
+            SnapshotGeneration: Generation,
+            LayoutRevision: 5,
+            RasterizationScale: 1.25,
+            ViewportLeft: 0,
+            ViewportTop: 0,
+            ViewportWidth: 800,
+            ViewportHeight: 600,
+            ViewportMeasured: true,
+            HasVisibleLoadingImages: true,
+            VisibleLoadingImageCount: 1,
+            PendingImageRegionCount: 1,
+            CoveredArea: 478_000,
+            ViewportArea: 480_000,
+            UncoveredRegionCount: 1,
+            LastPaintedIntersectionArea: 40_000,
+            LastPaintedRegionLeft: 0,
+            LastPaintedRegionTop: 0,
+            LastPaintedRegionWidth: 200,
+            LastPaintedRegionHeight: 200,
+            HasPostArmPaintedRegion: true);
+        try
+        {
+            Assert.True(FirstViewportImagesReadyEvidenceWriter.TryWriteProgress(
+                path,
+                auditEnabled: true,
+                progress));
+            string jsonLine = File.ReadAllText(path).Trim();
+            using JsonDocument document = JsonDocument.Parse(jsonLine);
+            JsonElement json = document.RootElement;
+            Assert.Equal("paint-callback", json.GetProperty("Stage").GetString());
+            Assert.Equal("visible-images-loading", json.GetProperty("Reason").GetString());
+            Assert.Equal(2, json.GetProperty("PaintCallbackCount").GetInt64());
+            Assert.Equal(2, json.GetProperty("PaintedRegionCount").GetInt64());
+            Assert.Equal(Generation, json.GetProperty("CurrentGeneration").GetInt64());
+            Assert.Equal(Generation, json.GetProperty("PublishedGeneration").GetInt64());
+            Assert.Equal(Generation, json.GetProperty("SnapshotGeneration").GetInt64());
+            Assert.Equal(5, json.GetProperty("LayoutRevision").GetInt64());
+            Assert.Equal(1.25, json.GetProperty("RasterizationScale").GetDouble());
+            Assert.Equal(478_000, json.GetProperty("CoveredArea").GetDouble());
+            Assert.Equal(480_000, json.GetProperty("ViewportArea").GetDouble());
+            Assert.True(json.GetProperty("HasVisibleLoadingImages").GetBoolean());
+            Assert.True(json.GetProperty("HasPostArmPaintedRegion").GetBoolean());
+            Assert.DoesNotContain("Host", jsonLine, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("Readme", jsonLine, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("Url", jsonLine, StringComparison.OrdinalIgnoreCase);
+
+            Assert.False(FirstViewportImagesReadyEvidenceWriter.TryWriteProgress(
+                path,
+                auditEnabled: true,
+                progress with { Stage = "private-owner-name" }));
+        }
+        finally
+        {
+            DeleteTemporaryDirectory(temporaryDirectory);
+        }
+    }
+
+    [Fact]
+    public async Task QueuedReadinessSignalWaitsForTheReadyProgressDrain()
+    {
+        string temporaryDirectory = CreateTemporaryDirectory();
+        string progressPath = Path.Combine(temporaryDirectory, "first-viewport-images-ready-progress.ndjson");
+        string signalPath = Path.Combine(temporaryDirectory, "first-viewport-images-ready.json");
+        try
+        {
+            FirstViewportImagesReadyEvidenceWriter.TryQueueProgressWrite(
+                progressPath,
+                auditEnabled: true,
+                new FirstViewportImagesReadyProgress(
+                    ImagesReadyAt,
+                    Stage: "ready",
+                    Reason: "viewport-covered-after-ready-paint",
+                    PollCount: 3,
+                    PaintCallbackCount: 2,
+                    PaintedRegionCount: 2,
+                    Generation: Generation,
+                    CurrentGeneration: Generation,
+                    PublishedGeneration: Generation,
+                    SnapshotGeneration: Generation,
+                    LayoutRevision: 5,
+                    RasterizationScale: 1,
+                    ViewportLeft: 0,
+                    ViewportTop: 0,
+                    ViewportWidth: 800,
+                    ViewportHeight: 600,
+                    ViewportMeasured: true,
+                    HasVisibleLoadingImages: false,
+                    VisibleLoadingImageCount: 0,
+                    PendingImageRegionCount: 0,
+                    CoveredArea: 480_000,
+                    ViewportArea: 480_000,
+                    UncoveredRegionCount: 0,
+                    LastPaintedIntersectionArea: 480_000,
+                    LastPaintedRegionLeft: 0,
+                    LastPaintedRegionTop: 0,
+                    LastPaintedRegionWidth: 800,
+                    LastPaintedRegionHeight: 600,
+                    HasPostArmPaintedRegion: true));
+
+            Task<bool>? queuedWrite = FirstViewportImagesReadyEvidenceWriter.TryQueueWrite(
+                signalPath,
+                auditEnabled: true,
+                ProcessId,
+                Host,
+                Generation,
+                Generation,
+                pollCount: 3,
+                probeWorkMilliseconds: 0.04,
+                viewportTop: 0,
+                viewportHeight: 600,
+                viewportMeasured: true,
+                hasVisibleLoadingImages: false,
+                ReadmeGitBlobSha1,
+                ImagesReadyAt);
+
+            Assert.NotNull(queuedWrite);
+            Assert.True(await queuedWrite);
+            Assert.True(File.Exists(signalPath));
+            using JsonDocument progressDocument = JsonDocument.Parse(File.ReadAllText(progressPath).Trim());
+            Assert.Equal("ready", progressDocument.RootElement.GetProperty("Stage").GetString());
+        }
+        finally
+        {
+            DeleteTemporaryDirectory(temporaryDirectory);
+        }
+    }
+
+    [Fact]
+    public async Task ReadinessWriteHelperDoesNotInvokeSignalBeforeProgressDrainCompletes()
+    {
+        var progressDrain = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        bool signalWritten = false;
+
+        Task<bool> signalWrite = FirstViewportImagesReadyEvidenceWriter.WriteAfterProgressDrainAsync(
+            progressDrain.Task,
+            () =>
+            {
+                signalWritten = true;
+                return true;
+            });
+
+        Assert.False(signalWrite.IsCompleted);
+        Assert.False(signalWritten);
+        progressDrain.SetResult(true);
+
+        Assert.True(await signalWrite);
+        Assert.True(signalWritten);
     }
 
     [Fact]
@@ -360,6 +688,49 @@ public sealed class NativeFirstViewportImagesReadyContractTests
             Host,
             hostReady,
             renderComplete));
+    }
+
+    [Fact]
+    public void ReadinessFailureNamesMismatchedFieldsWithoutEchoingIdentityValues()
+    {
+        NativeLifecycleReadySignal hostReady = ValidHostReady();
+        NativeRenderCompleteSignal renderComplete = ValidRenderComplete();
+        NativeFirstViewportImagesReadySignal valid = ValidImagesReady();
+
+        (string Field, Action Validate)[] mismatches =
+        [
+            ("ProcessId", () => Validate(valid with { ProcessId = ProcessId + 1 })),
+            ("Host", () => Validate(valid with { Host = "private-host-value" })),
+            ("Generation", () => Validate(valid with { Generation = Generation + 1 })),
+            ("ViewportPaintGeneration", () => Validate(valid with { ViewportPaintGeneration = Generation - 1 })),
+            ("PollCount", () => Validate(valid with { PollCount = 0 })),
+            ("ProbeWorkMilliseconds", () => Validate(valid with { ProbeWorkMilliseconds = double.NaN })),
+            ("ViewportTop", () => Validate(valid with { ViewportTop = -1 })),
+            ("ViewportHeight", () => Validate(valid with { ViewportHeight = 0 })),
+            ("ViewportMeasured", () => Validate(valid with { ViewportMeasured = false })),
+            ("HasVisibleLoadingImages", () => Validate(valid with { HasVisibleLoadingImages = true })),
+            ("TimestampAfterRenderComplete", () => Validate(valid with { Timestamp = RenderCompleteAt.AddTicks(-1) })),
+            ("TimestampAfterHostReady", () => Validate(valid with { Timestamp = HostReadyAt.AddTicks(-1) })),
+            ("ReadmeGitBlobSha1", () => Validate(valid with { ReadmeGitBlobSha1 = new string('b', 40) })),
+        ];
+
+        foreach ((string field, Action validate) in mismatches)
+        {
+            InvalidDataException exception = Assert.Throws<InvalidDataException>(validate);
+            Assert.Contains(field, exception.Message, StringComparison.Ordinal);
+            Assert.DoesNotContain("private-host-value", exception.Message, StringComparison.Ordinal);
+            Assert.DoesNotContain((ProcessId + 1).ToString(), exception.Message, StringComparison.Ordinal);
+            Assert.DoesNotContain(new string('b', 40), exception.Message, StringComparison.Ordinal);
+        }
+
+        void Validate(NativeFirstViewportImagesReadySignal signal) =>
+            NativeFirstViewportImagesReadyContract.ValidateImagesReadySignal(
+                ProcessId,
+                Host,
+                ReadmeGitBlobSha1,
+                hostReady,
+                renderComplete,
+                signal);
     }
 
     [Fact]

@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using System.Text;
 using Markdig;
+using Markdig.Renderers.Html;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
 using MarkdownRenderer.Html.Internal;
@@ -31,6 +32,8 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         "MarkdownRenderer.GitHub.MarkdownInHtmlContainers";
     [ThreadStatic]
     private static int s_nestedMarkdownDepth;
+    [ThreadStatic]
+    private static MarkdownDocument? s_rootDocument;
     private readonly SafeHtmlOptions _options;
 
     internal HtmlBlockRenderer(SafeHtmlOptions? options = null)
@@ -41,37 +44,80 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
     /// <inheritdoc />
     public override BlockBox? BuildBlock(HtmlBlock htmlBlock, MarkdownLayoutContext context)
     {
-        SafeHtmlBudgets budgets = _options.Budgets;
-        SafeHtmlDocument document = SafeHtmlParser.Parse(
-            htmlBlock.Lines.ToString(),
-            new SafeHtmlParseLimits(
+        MarkdownDocument? previousRoot = s_rootDocument;
+        Block rootNode = htmlBlock;
+        while (rootNode.Parent is { } parent)
+            rootNode = parent;
+        s_rootDocument = rootNode as MarkdownDocument;
+        try
+        {
+            SafeHtmlBudgets budgets = _options.Budgets;
+            var limits = new SafeHtmlParseLimits(
                 budgets.MaxInputLength,
                 budgets.MaxNodeCount,
-                 budgets.MaxNestingDepth,
-                 budgets.MaxAttributeCount,
-                 budgets.MaxAttributeValueLength,
-                 budgets.MaxTagLength),
-            context.CancellationToken);
-        var root = CreateStack(context);
-        AppendBlocks(root, document.Root.Children, context, htmlBlock.Span.Start, SafeHtmlAlignment.Inherit);
+                budgets.MaxNestingDepth,
+                budgets.MaxAttributeCount,
+                budgets.MaxAttributeValueLength,
+                budgets.MaxTagLength);
+            string htmlSource = htmlBlock.Lines.ToString();
+            // Markdig can retain Markdown after a whitespace-only blank line
+            // inside a void-element HTML block (for example <hr> followed by
+            // a heading). Split only a pure, closed tag prefix; reparse the
+            // tail under the same GFM pipeline and safe-HTML policy.
+            int markdownTailStart = FindMarkdownTailAfterVoidTags(
+                htmlSource,
+                limits,
+                context.CancellationToken);
+            SafeHtmlDocument document = SafeHtmlParser.Parse(
+                markdownTailStart < 0 ? htmlSource : htmlSource[..markdownTailStart],
+                limits,
+                context.CancellationToken);
+            var root = CreateStack(context);
+            AppendBlocks(root, document.Root.Children, context, htmlBlock.Span.Start, SafeHtmlAlignment.Inherit);
 
-        if (document.IsTruncated)
-        {
-            var notice = CreateInlineBox(context, MarkdownElementKeys.Body, SafeHtmlAlignment.Inherit);
-            notice.Add(new TextRun(context.ResolveString(
-                MarkdownStringKeys.HtmlBudgetExceeded,
-                MarkdownLocalizedStrings.HtmlBudgetExceeded))
+            if (markdownTailStart >= 0)
             {
-                SourceSpan = SourceSpan.Empty,
-            });
-            root.Add(notice);
-        }
+                s_nestedMarkdownDepth++;
+                try
+                {
+                    int absoluteTextStart = htmlBlock.Span.Start + markdownTailStart;
+                    string nestedSource = BuildNestedMarkdownSource(
+                        htmlSource[markdownTailStart..],
+                        absoluteTextStart,
+                        context,
+                        out int bodyOffset);
+                    MarkdownDocument tail = Markdown.Parse(nestedSource, context.Registry.BuildPipeline());
+                    OffsetMarkdownSpans(tail, absoluteTextStart - bodyOffset);
+                    GfmChildBuilder.PopulateChildren(root, tail, context);
+                }
+                finally
+                {
+                    s_nestedMarkdownDepth--;
+                }
+            }
 
-        // A configured safe-HTML renderer owns every HtmlBlock, including blocks
-        // that intentionally produce no visual content (comments, declarations,
-        // and suppressed active elements). Returning null would invoke the core
-        // literal fallback and leak that hidden markup into the document.
-        return root;
+            if (document.IsTruncated)
+            {
+                var notice = CreateInlineBox(context, MarkdownElementKeys.Body, SafeHtmlAlignment.Inherit);
+                notice.Add(new TextRun(context.ResolveString(
+                    MarkdownStringKeys.HtmlBudgetExceeded,
+                    MarkdownLocalizedStrings.HtmlBudgetExceeded))
+                {
+                    SourceSpan = SourceSpan.Empty,
+                });
+                root.Add(notice);
+            }
+
+            // A configured safe-HTML renderer owns every HtmlBlock, including blocks
+            // that intentionally produce no visual content (comments, declarations,
+            // and suppressed active elements). Returning null would invoke the core
+            // literal fallback and leak that hidden markup into the document.
+            return root;
+        }
+        finally
+        {
+            s_rootDocument = previousRoot;
+        }
     }
 
     private static StackBox CreateStack(MarkdownLayoutContext context) => new()
@@ -221,6 +267,54 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         return stack.Children.Count == 0 ? null : stack;
     }
 
+    private static int FindMarkdownTailAfterVoidTags(
+        string source,
+        SafeHtmlParseLimits limits,
+        System.Threading.CancellationToken cancellationToken)
+    {
+        if (s_nestedMarkdownDepth >= MaxNestedMarkdownDepth)
+            return -1;
+
+        int lineStart = 0;
+        while (lineStart < source.Length)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            int lineEnd = source.IndexOfAny(['\r', '\n'], lineStart);
+            if (lineEnd < 0)
+                break;
+            int nextLine = lineEnd + 1;
+            if (source[lineEnd] == '\r' && nextLine < source.Length && source[nextLine] == '\n')
+                nextLine++;
+
+            if (lineStart > 0 &&
+                source.AsSpan(lineStart, lineEnd - lineStart).Trim().IsEmpty &&
+                nextLine < source.Length)
+            {
+                // Later blank lines cannot turn a non-tag prefix into a pure
+                // void-tag prefix, so inspect only the first boundary.
+                if (!SafeHtmlParser.TryParseTagSequence(
+                        source[..lineStart],
+                        limits,
+                        cancellationToken,
+                        out IReadOnlyList<SafeHtmlTag> tags,
+                        out _) || tags.Count == 0)
+                    return -1;
+
+                foreach (SafeHtmlTag tag in tags)
+                {
+                    if (tag.Kind != SafeHtmlTagKind.SelfClosing)
+                        return -1;
+                }
+
+                return nextLine;
+            }
+
+            lineStart = nextLine;
+        }
+
+        return -1;
+    }
+
     private static BlockBox? TryBuildMarkdownContainer(
         SafeHtmlElement element,
         MarkdownLayoutContext context,
@@ -246,10 +340,18 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         s_nestedMarkdownDepth++;
         try
         {
-            MarkdownDocument fragment = Markdown.Parse(
+            int absoluteTextStart = sourceOffset + text.SourceStart;
+            string nestedMarkdownSource = BuildNestedMarkdownSource(
                 text.RawText,
+                absoluteTextStart,
+                context,
+                out int nestedMarkdownBodyOffset);
+            MarkdownDocument fragment = Markdown.Parse(
+                nestedMarkdownSource,
                 context.Registry.BuildPipeline());
-            OffsetMarkdownSpans(fragment, sourceOffset + text.SourceStart);
+            OffsetMarkdownSpans(
+                fragment,
+                absoluteTextStart - nestedMarkdownBodyOffset);
             var stack = CreateStack(context);
             GfmChildBuilder.PopulateChildren(stack, fragment, context);
             ApplyTextAlignment(stack, ToCanvasAlignment(alignment));
@@ -259,6 +361,164 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         {
             s_nestedMarkdownDepth--;
         }
+    }
+
+    private static string BuildNestedMarkdownSource(
+        string rawText,
+        int absoluteTextStart,
+        MarkdownLayoutContext context,
+        out int bodyOffset)
+    {
+        bodyOffset = 0;
+        if (rawText.IndexOf('[') < 0)
+            return rawText;
+
+        string sourceText = context.SourceMap.SourceText;
+        LinkReferenceDefinitionGroup? definitions = s_rootDocument is { } root
+            ? LinkReferenceDefinitionExtensions.GetLinkReferenceDefinitions(root, false)
+            : null;
+        if (definitions is null ||
+            absoluteTextStart < 0 ||
+            absoluteTextStart > sourceText.Length ||
+            rawText.Length > sourceText.Length - absoluteTextStart)
+        {
+            return rawText;
+        }
+
+        int absoluteTextEnd = absoluteTextStart + rawText.Length;
+        bool literalReferenceMatchIsSafe = HasSimpleAsciiReferenceLabels(rawText);
+        var precedingDefinitions = new List<(int Start, int Length)>();
+        var followingDefinitions = new List<(int Start, int Length)>();
+        foreach (LinkReferenceDefinition definition in definitions.Links.Values)
+        {
+            // Generated heading and footnote entries have no source definition
+            // to replay into nested Markdown.
+            if (definition.GetType() != typeof(LinkReferenceDefinition))
+                continue;
+            // The root document can have many definitions while one HTML
+            // fragment references only a few. Replaying every definition into
+            // every fragment makes parsing quadratic. A literal ASCII label
+            // can be excluded only when neither side needs CommonMark's
+            // whitespace, escape, entity, or Unicode normalization; keep the
+            // conservative full replay for those less common cases.
+            if (!MayUseReferenceLabel(rawText, definition.Label, literalReferenceMatchIsSafe))
+                continue;
+            if (!TryGetDefinitionSourceRange(definition, sourceText, out int start, out int length))
+            {
+                continue;
+            }
+
+            int end = start + length;
+            if (end <= absoluteTextStart)
+            {
+                precedingDefinitions.Add((start, length));
+            }
+            else if (start >= absoluteTextEnd)
+            {
+                followingDefinitions.Add((start, length));
+            }
+            // A definition inside this Markdown fragment is already present in
+            // rawText. Overlapping/synthetic spans are intentionally not replayed.
+        }
+
+        if (precedingDefinitions.Count == 0 && followingDefinitions.Count == 0)
+        {
+            return rawText;
+        }
+
+        var combined = new StringBuilder();
+        AppendDefinitionSources(combined, precedingDefinitions, sourceText);
+        if (precedingDefinitions.Count > 0)
+        {
+            combined.Append('\n');
+        }
+
+        bodyOffset = combined.Length;
+        combined.Append(rawText);
+        foreach ((int start, int length) in followingDefinitions)
+        {
+            combined.Append("\n\n");
+            combined.Append(sourceText, start, length);
+            combined.Append('\n');
+        }
+
+        return combined.ToString();
+    }
+
+    internal static bool HasSimpleAsciiReferenceLabels(string? text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return false;
+
+        char previous = '\0';
+        foreach (char current in text)
+        {
+            if (current > 0x7F || current is '\\' or '&' or '\r' or '\n' or '\t' ||
+                (current == ' ' && previous == ' '))
+                return false;
+            previous = current;
+        }
+
+        return true;
+    }
+
+    internal static bool MayUseReferenceLabel(
+        string fragment,
+        string? label,
+        bool literalReferenceMatchIsSafe)
+        => !literalReferenceMatchIsSafe ||
+           !HasSimpleAsciiReferenceLabels(label) ||
+           fragment.IndexOf(label!, StringComparison.OrdinalIgnoreCase) >= 0;
+
+    private static void AppendDefinitionSources(
+        StringBuilder destination,
+        IReadOnlyList<(int Start, int Length)> definitions,
+        string sourceText)
+    {
+        foreach ((int start, int length) in definitions)
+        {
+            destination.Append(sourceText, start, length);
+            destination.Append('\n');
+        }
+    }
+
+    private static bool TryGetDefinitionSourceRange(
+        LinkReferenceDefinition definition,
+        string sourceText,
+        out int start,
+        out int length)
+    {
+        start = -1;
+        int end = -1;
+        IncludeSpan(definition.Span, ref start, ref end);
+        IncludeSpan(definition.LabelSpan, ref start, ref end);
+        IncludeSpan(definition.UrlSpan, ref start, ref end);
+        IncludeSpan(definition.TitleSpan, ref start, ref end);
+        if (start < 0 || end < start || start >= sourceText.Length)
+        {
+            length = 0;
+            return false;
+        }
+
+        int lineEnd = end + 1;
+        while (lineEnd < sourceText.Length && sourceText[lineEnd] is not ('\r' or '\n'))
+        {
+            lineEnd++;
+        }
+
+        length = lineEnd - start;
+        return length > 0;
+    }
+
+    private static void IncludeSpan(Markdig.Syntax.SourceSpan span, ref int start, ref int end)
+    {
+        if (span.IsEmpty || span.Start < 0 || span.End < span.Start)
+        {
+            return;
+        }
+
+        start = start < 0 ? span.Start : Math.Min(start, span.Start);
+        end = Math.Max(end, span.End);
     }
 
     private static void OffsetMarkdownSpans(ContainerBlock container, int offset)

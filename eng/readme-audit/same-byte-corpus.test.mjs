@@ -6,10 +6,12 @@ import path from "node:path";
 import test from "node:test";
 import {
   captureSameByteCorpus,
+  createCapturedImageAltIdentities,
   createResponseRecorder,
   createSameByteReplayServer,
   gitBlobSha1,
   PINNED_GFM_PARSER,
+  readSameByteSnapshotFailureEvidence,
   resourceUrlSha256,
   sha256,
 } from "./same-byte-corpus.mjs";
@@ -21,6 +23,31 @@ const readmeBytes = Buffer.from("![example](docs/image.png)\n", "utf8");
 const imageBytes = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3]);
 const renderedHtml = '<article class="markdown-body"><p>example</p><img alt="example" data-jithub-image-index="0"></article>';
 const renderedHtmlTwoImages = '<article class="markdown-body"><img data-jithub-image-index="0"><img data-jithub-image-index="1"></article>';
+
+test("captured image identity uses validated indexed rendered alts and hashes only", () => {
+  const html = Buffer.from(
+    '<article><img alt="A &amp; B" data-jithub-image-index="1"><img alt="first" data-jithub-image-index="0"></article>',
+    "utf8");
+  const routes = [{ index: 0 }, { index: 1 }];
+  const identities = createCapturedImageAltIdentities(html, routes);
+  assert.deepEqual(identities, [
+    { index: 0, altSha256: sha256(Buffer.from("first", "utf8")) },
+    { index: 1, altSha256: sha256(Buffer.from("A & B", "utf8")) },
+  ]);
+  assert.equal(JSON.stringify(identities).includes("first"), false);
+  assert.equal(JSON.stringify(identities).includes("A & B"), false);
+
+  assert.deepEqual(createCapturedImageAltIdentities(Buffer.from(
+    '<article><img alt="" data-jithub-image-index="0"></article>', "utf8"), [{ index: 0 }]), [
+    { index: 0, altSha256: null },
+  ]);
+  assert.deepEqual(createCapturedImageAltIdentities(Buffer.from(
+    '<article><img alt="ambiguous &amp;alt;" data-jithub-image-index="0"></article>', "utf8"), [{ index: 0 }]), [
+    { index: 0, altSha256: null },
+  ]);
+  assert.deepEqual(createCapturedImageAltIdentities(Buffer.from(
+    '<article><img alt="one" data-jithub-image-index="0"><img alt="two" data-jithub-image-index="0"></article>', "utf8"), [{ index: 0 }]), []);
+});
 
 function repositoryFixture() {
   return {
@@ -373,6 +400,9 @@ test("source-bound Edge page serves exact README and SRI-pinned Marked bytes", a
   assert.match(sourcePage.headers.get("content-security-policy") || "", /default-src 'none'; script-src 'self'/u);
   assert.match(sourceHtml, /src="\/marked-parser\.js" integrity="sha256-[A-Za-z0-9+/]+=*" crossorigin="anonymous"/u);
   assert.match(sourceHtml, /\.markdown-body\{[^}]*font-size:16px;line-height:1\.5;overflow-wrap:break-word/u);
+  assert.match(sourceHtml, /\.markdown-body img\{max-width:100%;vertical-align:middle\}/u);
+  assert.doesNotMatch(sourceHtml, /\.markdown-body img\{[^}]*height:auto/u,
+    "source replay must not override authored HTML image height hints");
   assert.match(sourceHtml, /\.markdown-body li\+li\{margin-top:\.25em\}/u);
   assert.match(sourceHtml, /\.markdown-body pre\{[^}]*padding:16px;[^}]*font-size:85%;line-height:1\.45\}/u);
   assert.match(sourceHtml, /\.markdown-body pre code\{[^}]*font-size:100%\}/u);
@@ -458,7 +488,7 @@ test("data images are bound to the indexed captured HTML without exposing a data
   assert.equal(replay.expectedVisibleImageCount, 1);
 });
 
-test("rendered snapshot fails closed for uncaptured external resources and missing image routes", async t => {
+test("rendered snapshot rejects each active-content predicate with privacy-safe diagnostics", async t => {
   const directory = path.join(await mkdtemp(path.join(os.tmpdir(), "jithub-same-byte-output-")), "case");
   t.after(() => rm(path.dirname(directory), { recursive: true, force: true }));
   const cdp = createFakeCdp();
@@ -478,12 +508,83 @@ test("rendered snapshot fails closed for uncaptured external resources and missi
   await assert.rejects(captureSameByteCorpus({
     ...common,
     renderedHtml: '<article><img src="https://example.org/image.png" data-jithub-image-index="0"></article>',
-  }), /external resource URL/u);
+  }), error => {
+    assert.deepEqual(readSameByteSnapshotFailureEvidence(error), {
+      failureStage: "rendered-snapshot-validation",
+      failurePredicate: "external-resource-attribute",
+      elementTag: "img",
+      attributeName: "src",
+    });
+    return true;
+  });
   await assert.rejects(captureSameByteCorpus({
     ...common,
     renderedHtml: '<article><img data-jithub-image-index="1"></article>',
-  }), /missing an indexed captured visible image/u);
+  }), error => {
+    assert.deepEqual(readSameByteSnapshotFailureEvidence(error), {
+      failureStage: "rendered-snapshot-validation",
+      failurePredicate: "missing-image-index",
+    });
+    return true;
+  });
   recorder.dispose();
+
+  const diagnosticCases = [
+    ["invalid-root", "not-an-article", []],
+    ["active-element-tag", "<article><script>blocked()</script></article>", []],
+    ["stylesheet-link", '<article><link rel="stylesheet" href="https://private.example.invalid/style.css"></article>', []],
+    ["event-handler-attribute", '<article><img onerror="blocked()"></article>', []],
+    ["external-resource-attribute", '<article><img src="https://private.example.invalid/image.png"></article>', []],
+    ["style-element", "<article><style>body{color:red}</style></article>", []],
+    ["external-css-resource", '<article><div style="background-image:url(https://private.example.invalid/image.png)"></div></article>', []],
+    ["duplicate-image-index", '<article><img data-jithub-image-index="0"><img data-jithub-image-index="0"></article>', []],
+    ["missing-image-index", "<article><p>missing image route</p></article>", [{ index: 0, dataUri: false }]],
+    ["missing-data-image", '<article><img data-jithub-image-index="0"></article>', [{ index: 0, dataUri: true }]],
+    ["network-image-data-payload", '<article><img data-jithub-image-index="0" data-jithub-image-data="data:image/png;base64,AA=="></article>', [{ index: 0, dataUri: false }]],
+  ];
+  for (const [predicate, html, imageRoutes] of diagnosticCases) {
+    const diagnosticDirectory = path.join(directory, predicate);
+    const diagnosticRecorder = {
+      captureVisibleImages: async () => ({ assets: [], imageRoutes }),
+    };
+    await assert.rejects(captureSameByteCorpus({
+      ...common,
+      directory: diagnosticDirectory,
+      images: [],
+      renderedHtml: html,
+      responseRecorder: diagnosticRecorder,
+    }), error => {
+      const evidence = readSameByteSnapshotFailureEvidence(error);
+      const expectedEvidence = {
+        failureStage: "rendered-snapshot-validation",
+        failurePredicate: predicate,
+      };
+      const safeDetails = {
+        "active-element-tag": { elementTag: "script" },
+        "stylesheet-link": { elementTag: "link", attributeName: "rel" },
+        "event-handler-attribute": { elementTag: "img" },
+        "external-resource-attribute": { elementTag: "img", attributeName: "src" },
+        "style-element": { elementTag: "style" },
+        "external-css-resource": { elementTag: "div", attributeName: "style" },
+        "duplicate-image-index": { elementTag: "img", attributeName: "data-jithub-image-index" },
+      }[predicate];
+      assert.deepEqual(evidence, { ...expectedEvidence, ...(safeDetails || {}) });
+      const serialized = JSON.stringify(evidence);
+      assert.doesNotMatch(serialized, /https?:\/\/|private\.example|data:image|blocked\(\)|<article/u);
+      return true;
+    });
+  }
+  const escapedTextDirectory = path.join(directory, "escaped-markup-text");
+  await captureSameByteCorpus({
+    ...common,
+    directory: escapedTextDirectory,
+    images: [],
+    renderedHtml: '<article><pre>README example: &lt;img src=&quot;https://private.example.invalid/image.png&quot;&gt;</pre></article>',
+    responseRecorder: { captureVisibleImages: async () => ({ assets: [], imageRoutes: [] }) },
+  });
+  const textOnlyManifest = JSON.parse(await readFile(path.join(escapedTextDirectory, "manifest.json"), "utf8"));
+  assert.equal(textOnlyManifest.imageRoutes.length, 0,
+    "escaped code/text mentioning a resource attribute is not treated as a live element attribute");
 });
 
 test("same-byte replay rejects a missing or mutated asset before serving", async t => {

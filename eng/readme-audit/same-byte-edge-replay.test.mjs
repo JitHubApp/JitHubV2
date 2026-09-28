@@ -22,6 +22,7 @@ import {
 import { replayFunctionDeclaration, replaySameByteInEdge } from "./same-byte-edge-replay.mjs";
 import {
   createSourceReplayFailureReport,
+  createUniqueCapturedImageAltRouteMap,
   readCapturedInlineImageEvidence,
   replaySourceBoundMarkdownInEdge,
   sourceReplayHmacDigestFunctionDeclaration,
@@ -242,6 +243,153 @@ test("source-bound replay failure reports keep status and category without paths
   assert.doesNotMatch(serialized, /C:\\agent|JitHubV2|README\.md|token=secret/iu);
 });
 
+test("source replay failure predicates are allowlisted and stage-bound", () => {
+  for (const [stage, predicate] of [
+    ["sanitize-markdown", "invalid-image-dimension"],
+    ["sanitize-markdown", "responsive-image-candidates"],
+    ["sanitize-markdown", "sanitized-image-count"],
+    ["image-map", "conflicting-image-aliases"],
+    ["image-map", "invalid-image-url"],
+    ["image-map", "invalid-inline-image-data"],
+    ["image-map", "inline-image-byte-mismatch"],
+    ["image-map", "missing-captured-image-alias"],
+    ["image-map", "unsupported-image-url-scheme"],
+    ["inline-image-evidence", "unmatched-inline-image-evidence"],
+  ]) {
+    const supported = new Error("private source detail");
+    Object.defineProperties(supported, {
+      sourceReplayStage: { value: stage },
+      sourceReplayFailurePredicate: { value: predicate },
+    });
+    const report = createSourceReplayFailureReport(supported);
+    assert.equal(report.failureStage, stage);
+    assert.equal(report.failurePredicate, predicate);
+    assert.doesNotMatch(JSON.stringify(report), /private source detail/iu);
+  }
+
+  const unsupported = new Error("private source detail");
+  Object.defineProperties(unsupported, {
+    sourceReplayStage: { value: "sanitize-markdown" },
+    sourceReplayFailurePredicate: { value: "raw-html-value=https://private.example.invalid" },
+  });
+  assert.equal("failurePredicate" in createSourceReplayFailureReport(unsupported), false);
+
+  const missingAlias = new Error("A captured Markdown image could not be verified or decoded.");
+  Object.defineProperties(missingAlias, {
+    sourceReplayStage: { value: "image-map" },
+    sourceReplayFailurePredicate: { value: "missing-captured-image-alias" },
+    sourceReplayImageMapEvidence: {
+      value: {
+        imageIndex: 3,
+        candidateUrlSha256s: ["A".repeat(64), "invalid", "b".repeat(64)],
+        capturedAssetUrlEntryCount: 19,
+        rawUrl: "https://private.example.invalid/image.png?token=secret",
+      },
+    },
+  });
+  const missingAliasReport = createSourceReplayFailureReport(missingAlias);
+  assert.deepEqual(missingAliasReport.imageMapEvidence, {
+    imageIndex: 3,
+    candidateUrlSha256s: ["a".repeat(64), "b".repeat(64)],
+    capturedAssetUrlEntryCount: 19,
+  });
+  assert.doesNotMatch(JSON.stringify(missingAliasReport), /https?:\/\/|private\.example|private source detail/iu);
+
+  const wrongStage = new Error("private source detail");
+  Object.defineProperties(wrongStage, {
+    sourceReplayStage: { value: "image-map" },
+    sourceReplayFailurePredicate: { value: "invalid-image-dimension" },
+  });
+  assert.equal("failurePredicate" in createSourceReplayFailureReport(wrongStage), false);
+});
+
+test("semantic image fallback requires an exact, unique alt identity mapping", () => {
+  const first = "1".repeat(64);
+  const second = "2".repeat(64);
+  const third = "3".repeat(64);
+  const mapping = createUniqueCapturedImageAltRouteMap(
+    [first, second],
+    [{ index: 7, altSha256: second }, { index: 2, altSha256: first }],
+    2,
+  );
+  assert.deepEqual([...mapping.entries()], [[first, 2], [second, 7]]);
+  assert.equal(createUniqueCapturedImageAltRouteMap(
+    [first, first],
+    [{ index: 2, altSha256: first }, { index: 7, altSha256: second }],
+    2,
+  ), null, "duplicate source alts cannot establish identity");
+  assert.equal(createUniqueCapturedImageAltRouteMap(
+    [first, second],
+    [{ index: 2, altSha256: first }, { index: 7, altSha256: first }],
+    2,
+  ), null, "duplicate captured alts cannot establish identity");
+  assert.equal(createUniqueCapturedImageAltRouteMap(
+    [first], [{ index: 2, altSha256: first }, { index: 7, altSha256: second }], 2,
+  ), null, "count mismatches cannot fall back by ordinal");
+  assert.equal(createUniqueCapturedImageAltRouteMap(
+    [first, second], [{ index: 2, altSha256: first }, { index: 7, altSha256: third }], 2,
+  ), null, "nonmatching identity sets cannot fall back by ordinal");
+  assert.equal(createUniqueCapturedImageAltRouteMap(
+    [first, null], [{ index: 2, altSha256: first }, { index: 7, altSha256: second }], 2,
+  ), null, "missing source alt identity fails closed");
+});
+
+test("visible-image decode failures retain only bounded route hashes and decode outcomes", () => {
+  const error = new Error("A visible pinned Markdown image did not decode successfully.");
+  Object.defineProperties(error, {
+    sourceReplayStage: { value: "visible-image-decode" },
+    sourceReplayImageDecodeEvidence: {
+      value: {
+        visibleImageCount: 2,
+        failedVisibleImageCount: 2,
+        images: [
+          {
+            imageIndex: 4,
+            capturedUrlSha256: "A".repeat(64),
+            dataUri: false,
+            ready: false,
+            decodeOutcome: "load-error",
+            rawUrl: "https://private.example.invalid/image.png?token=secret",
+          },
+          {
+            imageIndex: 7,
+            dataUri: true,
+            ready: false,
+            decodeOutcome: "decode-rejected",
+            localPath: "C:\\private\\checkout\\readme.md",
+          },
+        ],
+      },
+    },
+  });
+
+  const report = createSourceReplayFailureReport(error);
+  assert.equal(report.failureCategory, "image");
+  assert.equal(report.failureStage, "visible-image-decode");
+  assert.deepEqual(report.imageDecodeEvidence, {
+    visibleImageCount: 2,
+    failedVisibleImageCount: 2,
+    images: [
+      {
+        imageIndex: 4,
+        capturedUrlSha256: "a".repeat(64),
+        dataUri: false,
+        ready: false,
+        decodeOutcome: "load-error",
+      },
+      {
+        imageIndex: 7,
+        dataUri: true,
+        ready: false,
+        decodeOutcome: "decode-rejected",
+      },
+    ],
+    omittedVisibleImageCount: 0,
+  });
+  const serialized = JSON.stringify(report);
+  assert.doesNotMatch(serialized, /https?:\/\/|private\.example|checkout|readme\.md|token=secret/iu);
+});
+
 test("source-bound replay failures retain only an allowlisted stage and error type", async () => {
   const cdp = {
     on() { return () => {}; },
@@ -256,6 +404,7 @@ test("source-bound replay failures retain only an allowlisted stage and error ty
     baseUrl: "http://127.0.0.1:43210",
     manifest: {
       browserRender: { status: "passed" },
+      imageRoutes: [],
       repository: {
         fullName: "example/repo",
         readmePath: "README.md",
@@ -316,6 +465,7 @@ test("source page failures expose fixed substage and type without persisting exc
     baseUrl: "http://127.0.0.1:43210",
     manifest: {
       browserRender: { status: "passed" },
+      imageRoutes: [],
       repository: {
         fullName: "example/repo",
         readmePath: "README.md",
@@ -383,24 +533,33 @@ test("Edge same-byte replay renders from loopback bytes with client-only timing"
   });
 
   const dataImage = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/3ZkAAAAASUVORK5CYII=";
+  // The pinned rank-2 README shape has multiple responsive source candidates
+  // inside one picture. Drop the unsupported candidates but retain its img fallback.
   const traversalParagraphs = Array.from({ length: 80 }, (_, index) =>
-    `Traversal paragraph ${index + 1} keeps the pinned Markdown article taller than several viewports.`).join("\n\n");
+    `Traversal paragraph ${index + 1} keeps the pinned Markdown article taller than several viewports.`).join("\n\n") +
+    "\n\n<picture><source media=\"(min-width: 1px)\" srcset=\"https://untrusted.invalid/should-not-load.svg\"><source media=\"(min-width: 2px)\" srcset=\"https://untrusted.invalid/also-should-not-load.svg\"><img src=\"picture.svg\" alt=\"picture\" height=\"100px\"></picture>" +
+    "\n\n<img src=\"picture.svg\" alt=\"wide\" width=\"1000px\" height=\"500px\">";
   const readmeBytes = Buffer.from(
     `![offline](image.svg)\n\n${traversalParagraphs}\n\n![deferred](bottom.svg)\n\n![inline](${dataImage})\n\n<details><summary>collapsed</summary><img src=\"not-captured.svg\" alt=\"hidden\"></details>\n`,
     "utf8");
   const imageBytes = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="2" height="2"><rect width="2" height="2" fill="red"/></svg>', "utf8");
   const bottomImageBytes = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="2" height="2"><rect width="2" height="2" fill="blue"/></svg>', "utf8");
+  const pictureImageBytes = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="2" height="2"><rect width="2" height="2" fill="green"/></svg>', "utf8");
   const sourceUrl = "https://raw.githubusercontent.com/example/repo/0123456789012345678901234567890123456789/image.svg";
   const bottomSourceUrl = "https://raw.githubusercontent.com/example/repo/0123456789012345678901234567890123456789/bottom.svg";
+  const pictureSourceUrl = "https://raw.githubusercontent.com/example/repo/0123456789012345678901234567890123456789/picture.svg";
   const imageSha256 = sha256(imageBytes);
   const bottomImageSha256 = sha256(bottomImageBytes);
+  const pictureImageSha256 = sha256(pictureImageBytes);
   const readmeSha256 = sha256(readmeBytes);
+  const capturedImageUrlSha256 = resourceUrlSha256(
+    "https://github.com/example/repo/blob/0123456789012345678901234567890123456789/captured/image.svg?raw=1");
   const traversalHtml = Array.from({ length: 80 }, (_, index) =>
     `<p>Traversal paragraph ${index + 1} keeps the captured article taller than several viewports.</p>`).join("");
-  const html = `<article class="markdown-body" style="width:320px;color:#222;font:14px Arial"><p>offline replay</p><img alt="offline" width="2" height="2" data-jithub-image-index="0">${traversalHtml}<img alt="deferred" width="2" height="2" data-jithub-image-index="1"><img alt="inline" data-jithub-image-index="2" data-jithub-image-data="${dataImage}"></article>`;
+  const html = `<article class="markdown-body" style="width:320px;color:#222;font:14px Arial"><p>offline replay</p><img alt="offline" width="2" height="2" data-jithub-image-index="0">${traversalHtml}<img alt="picture" width="100" height="100" data-jithub-image-index="1"><img alt="wide" width="1000" height="500" data-jithub-image-index="2"><img alt="deferred" width="2" height="2" data-jithub-image-index="3"><img alt="inline" data-jithub-image-index="4" data-jithub-image-data="${dataImage}"></article>`;
   const htmlBytes = Buffer.from(html, "utf8");
-  const urlSha256 = resourceUrlSha256(sourceUrl);
   const bottomUrlSha256 = resourceUrlSha256(bottomSourceUrl);
+  const pictureUrlSha256 = resourceUrlSha256(pictureSourceUrl);
   const manifest = {
     schemaVersion: 2,
     complete: true,
@@ -412,13 +571,16 @@ test("Edge same-byte replay renders from loopback bytes with client-only timing"
     },
     readme: { file: "readme.md", byteSize: readmeBytes.length, sha256: readmeSha256 },
     assets: [
-      { urlSha256, sha256: imageSha256, byteSize: imageBytes.length, mimeType: "image/svg+xml" },
+      { urlSha256: capturedImageUrlSha256, sha256: imageSha256, byteSize: imageBytes.length, mimeType: "image/svg+xml" },
       { urlSha256: bottomUrlSha256, sha256: bottomImageSha256, byteSize: bottomImageBytes.length, mimeType: "image/svg+xml" },
+      { urlSha256: pictureUrlSha256, sha256: pictureImageSha256, byteSize: pictureImageBytes.length, mimeType: "image/svg+xml" },
     ],
     imageRoutes: [
-      { index: 0, urlSha256, sha256: imageSha256, mimeType: "image/svg+xml" },
-      { index: 1, urlSha256: bottomUrlSha256, sha256: bottomImageSha256, mimeType: "image/svg+xml" },
-      { index: 2, dataUri: true },
+      { index: 0, urlSha256: capturedImageUrlSha256, sha256: imageSha256, mimeType: "image/svg+xml" },
+      { index: 1, urlSha256: pictureUrlSha256, sha256: pictureImageSha256, mimeType: "image/svg+xml" },
+      { index: 2, urlSha256: pictureUrlSha256, sha256: pictureImageSha256, mimeType: "image/svg+xml" },
+      { index: 3, urlSha256: bottomUrlSha256, sha256: bottomImageSha256, mimeType: "image/svg+xml" },
+      { index: 4, dataUri: true },
     ],
     browserRender: { status: "passed", file: "rendered.html", byteSize: htmlBytes.length, sha256: sha256(htmlBytes) },
     limits: {
@@ -433,6 +595,7 @@ test("Edge same-byte replay renders from loopback bytes with client-only timing"
   await writeFile(path.join(corpusDirectory, "rendered.html"), htmlBytes);
   await writeFile(path.join(corpusDirectory, "assets", imageSha256), imageBytes);
   await writeFile(path.join(corpusDirectory, "assets", bottomImageSha256), bottomImageBytes);
+  await writeFile(path.join(corpusDirectory, "assets", pictureImageSha256), pictureImageBytes);
   await writeFile(path.join(corpusDirectory, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
 
   const replayServer = await createSameByteReplayServer(corpusDirectory);
@@ -506,10 +669,10 @@ test("Edge same-byte replay renders from loopback bytes with client-only timing"
     maximumTiles: 8,
   });
   assert.equal(replay.status, "passed");
-  assert.equal(replay.assets.expectedVisibleImageCount, 3);
+  assert.equal(replay.assets.expectedVisibleImageCount, 5);
   assert.equal(replay.assets.firstViewportRealizedImageCount, 1);
-  assert.equal(replay.assets.distinctExpectedUrlHashes, 2);
-  assert.equal(replay.assets.distinctServedUrlHashes, 2);
+  assert.equal(replay.assets.distinctExpectedUrlHashes, 3);
+  assert.equal(replay.assets.distinctServedUrlHashes, 3);
   assert.equal(replay.assets.replayMissCount, 0);
   assert.equal(replay.assets.blockedExternalRequestCount, 0);
   assert.equal(replay.timing.viewportStepRatio, SAME_BYTE_TRAVERSAL_VIEWPORT_STEP_RATIO);
@@ -541,6 +704,23 @@ test("Edge same-byte replay renders from loopback bytes with client-only timing"
   assert.equal(JSON.stringify(sourceReplay).includes("ab".repeat(32)), false);
   assert.equal(sourceReplay.source.readmeGitBlobSha1, gitBlobSha1(readmeBytes));
   assert.equal(sourceReplay.source.readmeSha256, readmeSha256);
+  const authoredDimensionsResult = await cdp.send("Runtime.evaluate", {
+    expression: `(() => {
+      const rect = alt => {
+        const image = [...document.querySelectorAll("#readme img")].find(item => item.getAttribute("alt") === alt);
+        if (!image) return null;
+        const bounds = image.getBoundingClientRect();
+        return { width: bounds.width, height: bounds.height };
+      };
+      return { authoredHeight: rect("picture"), authoredRatio: rect("wide") };
+    })()`,
+    returnByValue: true,
+  });
+  assert.equal(authoredDimensionsResult.exceptionDetails, undefined);
+  assert.deepEqual(authoredDimensionsResult.result?.value, {
+    authoredHeight: { width: 100, height: 100 },
+    authoredRatio: { width: 640, height: 320 },
+  }, "authored height remains honored and width/height scales proportionally under max-width containment");
   assert.deepEqual(sourceReplay.parser, {
     name: "marked",
     version: "18.0.5",
@@ -556,14 +736,27 @@ test("Edge same-byte replay renders from loopback bytes with client-only timing"
     edgeInnerHeight: 480,
     edgeDeviceScaleFactor: 1,
   });
-  assert.equal(sourceReplay.assets.expectedImageCount, 3,
+  assert.equal(sourceReplay.assets.expectedImageCount, 5,
     "collapsed details images are excluded from the admitted visible-image set");
-  assert.equal(sourceReplay.assets.verifiedImageCount, 3,
-    "captured network and data images must both decode from the pinned Markdown source");
+  assert.equal(sourceReplay.assets.verifiedImageCount, 5,
+    "captured network, data, picture-fallback, and dimensioned images must decode from the pinned Markdown source");
+  const pictureGeometry = await cdp.send("Runtime.evaluate", {
+    expression: `(() => { const read = alt => { const image = document.querySelector('#readme img[alt="' + alt + '"]'); const rect = image.getBoundingClientRect(); return { width: rect.width, height: rect.height, authoredWidth: image.getAttribute('width'), authoredHeight: image.getAttribute('height') }; }; return { pictureElementCount: document.querySelectorAll('#readme picture').length, sourceElementCount: document.querySelectorAll('#readme source').length, pictureFallbackImageCount: document.querySelectorAll('#readme img[alt="picture"]').length, picture: read('picture'), wide: read('wide') }; })()`,
+    returnByValue: true,
+  });
+  assert.deepEqual(pictureGeometry.result?.value, {
+    pictureElementCount: 0,
+    sourceElementCount: 0,
+    pictureFallbackImageCount: 1,
+    picture: { width: 100, height: 100, authoredWidth: null, authoredHeight: "100px" },
+    wide: { width: 640, height: 320, authoredWidth: "1000px", authoredHeight: "500px" },
+  }, "source replay must preserve pixel-valued HTML hints and their aspect ratio under max-width containment");
   assert.equal(sourceReplay.assets.firstViewportRealizedImageCount, 1,
     "the source-bound Edge replay should start only the top/overscan image before traversal");
-  assert.equal(sourceReplay.assets.distinctExpectedUrlHashes, 2);
-  assert.equal(sourceReplay.assets.distinctServedUrlHashes, 2);
+  assert.equal(sourceReplay.assets.distinctExpectedUrlHashes, 3);
+  assert.equal(sourceReplay.assets.distinctServedUrlHashes, 3);
+  assert.equal(sourceReplay.assets.semanticImageAliasMatchCount, 1,
+    "unique indexed captured alt identity should recover a transformed URL alias");
   assert.equal(sourceReplay.assets.replayMissCount, 0);
   assert.equal(sourceReplay.assets.blockedExternalRequestCount, 0);
   assert.equal(sourceReplay.timing.viewportStepRatio, SAME_BYTE_TRAVERSAL_VIEWPORT_STEP_RATIO);
@@ -637,6 +830,136 @@ test("Edge same-byte replay renders from loopback bytes with client-only timing"
     assert.ok(Math.abs(profiledSourceReplay.timing.captureOffsetsViewportUnits[index] -
       nativeViewportProfile.viewports[index].captureOffsetViewportUnits) <= 1 / 480 + 0.000001);
   }
+
+  const failedDecodeCorpusDirectory = await mkdtemp(path.join(os.tmpdir(), "jithub-same-byte-decode-failure-"));
+  t.after(async () => { await rm(failedDecodeCorpusDirectory, { recursive: true, force: true }); });
+  const failedImageBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const failedImageUrl = "https://raw.githubusercontent.com/example/repo/0123456789012345678901234567890123456789/broken.png";
+  const failedReadmeBytes = Buffer.from("![broken](" + failedImageUrl + ")\n", "utf8");
+  const failedRenderedHtmlBytes = Buffer.from(
+    '<article class="markdown-body"><img alt="broken" data-jithub-image-index="0"></article>',
+    "utf8");
+  const failedImageSha256 = sha256(failedImageBytes);
+  const failedUrlSha256 = resourceUrlSha256(failedImageUrl);
+  await mkdir(path.join(failedDecodeCorpusDirectory, "assets"));
+  await writeFile(path.join(failedDecodeCorpusDirectory, "readme.md"), failedReadmeBytes);
+  await writeFile(path.join(failedDecodeCorpusDirectory, "rendered.html"), failedRenderedHtmlBytes);
+  await writeFile(path.join(failedDecodeCorpusDirectory, "assets", failedImageSha256), failedImageBytes);
+  const failedDecodeManifest = {
+    schemaVersion: 2,
+    complete: true,
+    repository: {
+      fullName: "example/repo",
+      commitSha: "0123456789012345678901234567890123456789",
+      readmePath: "README.md",
+      readmeGitBlobSha1: gitBlobSha1(failedReadmeBytes),
+    },
+    readme: { file: "readme.md", byteSize: failedReadmeBytes.length, sha256: sha256(failedReadmeBytes) },
+    assets: [{
+      urlSha256: failedUrlSha256,
+      sha256: failedImageSha256,
+      byteSize: failedImageBytes.length,
+      mimeType: "image/png",
+    }],
+    imageRoutes: [{
+      index: 0,
+      urlSha256: failedUrlSha256,
+      sha256: failedImageSha256,
+      mimeType: "image/png",
+    }],
+    browserRender: {
+      status: "passed",
+      file: "rendered.html",
+      byteSize: failedRenderedHtmlBytes.length,
+      sha256: sha256(failedRenderedHtmlBytes),
+    },
+    limits: {
+      maxReadmeBytes: 16 * 1024 * 1024,
+      maxRenderedHtmlBytes: 32 * 1024 * 1024,
+      maxAssetBytes: 64 * 1024 * 1024,
+      maxAggregateAssetBytes: 256 * 1024 * 1024,
+    },
+  };
+  await writeFile(
+    path.join(failedDecodeCorpusDirectory, "manifest.json"),
+    JSON.stringify(failedDecodeManifest, null, 2) + "\n");
+  const failedDecodeReplayServer = await createSameByteReplayServer(failedDecodeCorpusDirectory);
+  t.after(async () => { await failedDecodeReplayServer.close(); });
+  let failedDecodeReport;
+  await assert.rejects(replaySourceBoundMarkdownInEdge({
+    cdp,
+    replayServer: failedDecodeReplayServer,
+    outputDirectory,
+    viewport: { width: 640, height: 480 },
+    colorScheme: "light",
+    semanticDigestKey: "ef".repeat(32),
+    maximumTiles: 8,
+  }), error => {
+    assert.equal(error.sourceReplayStage, "visible-image-decode");
+    failedDecodeReport = createSourceReplayFailureReport(error);
+    return true;
+  });
+  assert.equal(failedDecodeReport.failureCategory, "image");
+  const failedImageEvidence = failedDecodeReport.imageDecodeEvidence;
+  assert.equal(failedImageEvidence.visibleImageCount, 1);
+  assert.equal(failedImageEvidence.failedVisibleImageCount, 1);
+  assert.deepEqual(failedImageEvidence.images, [{
+    imageIndex: 0,
+    capturedUrlSha256: failedUrlSha256,
+    dataUri: false,
+    ready: false,
+    decodeOutcome: failedImageEvidence.images[0].decodeOutcome,
+  }]);
+  assert.ok(["load-error", "already-complete-empty"].includes(failedImageEvidence.images[0].decodeOutcome),
+    "a broken pinned payload may reject before or just after Edge observes its error event");
+  assert.equal(failedImageEvidence.omittedVisibleImageCount, 0);
+
+  const invalidDimensionCorpusDirectory = await mkdtemp(path.join(os.tmpdir(), "jithub-same-byte-invalid-image-dimension-"));
+  t.after(async () => { await rm(invalidDimensionCorpusDirectory, { recursive: true, force: true }); });
+  const invalidDimensionReadmeBytes = Buffer.from(
+    `<img src="${failedImageUrl}" alt="bad dimension" width="100%">\n`, "utf8");
+  const invalidDimensionHtmlBytes = Buffer.from(
+    '<article class="markdown-body"><img alt="bad dimension" width="1" height="1" data-jithub-image-index="0"></article>',
+    "utf8");
+  await mkdir(path.join(invalidDimensionCorpusDirectory, "assets"));
+  await writeFile(path.join(invalidDimensionCorpusDirectory, "readme.md"), invalidDimensionReadmeBytes);
+  await writeFile(path.join(invalidDimensionCorpusDirectory, "rendered.html"), invalidDimensionHtmlBytes);
+  await writeFile(path.join(invalidDimensionCorpusDirectory, "assets", failedImageSha256), failedImageBytes);
+  const invalidDimensionManifest = {
+    ...failedDecodeManifest,
+    repository: {
+      ...failedDecodeManifest.repository,
+      readmeGitBlobSha1: gitBlobSha1(invalidDimensionReadmeBytes),
+    },
+    readme: {
+      file: "readme.md",
+      byteSize: invalidDimensionReadmeBytes.length,
+      sha256: sha256(invalidDimensionReadmeBytes),
+    },
+    browserRender: {
+      status: "passed",
+      file: "rendered.html",
+      byteSize: invalidDimensionHtmlBytes.length,
+      sha256: sha256(invalidDimensionHtmlBytes),
+    },
+  };
+  await writeFile(path.join(invalidDimensionCorpusDirectory, "manifest.json"),
+    JSON.stringify(invalidDimensionManifest, null, 2) + "\n");
+  const invalidDimensionReplayServer = await createSameByteReplayServer(invalidDimensionCorpusDirectory);
+  t.after(async () => { await invalidDimensionReplayServer.close(); });
+  await assert.rejects(replaySourceBoundMarkdownInEdge({
+    cdp,
+    replayServer: invalidDimensionReplayServer,
+    outputDirectory,
+    viewport: { width: 640, height: 480 },
+    colorScheme: "light",
+    semanticDigestKey: "ef".repeat(32),
+    maximumTiles: 8,
+  }), error => {
+    assert.equal(error.sourceReplayStage, "sanitize-markdown");
+    assert.match(error.message, /invalid authored width or height/u);
+    return true;
+  });
 });
 
 async function readRenderedSnapshotExpression() {

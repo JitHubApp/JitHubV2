@@ -41,7 +41,7 @@
     <StaticResource x:Key="MarkdownRenderer.Body.ForegroundBrush" ResourceKey="AppInkBrush" />
     <StaticResource x:Key="MarkdownRenderer.Body.FontFamily" ResourceKey="AppBodyFontFamily" />
     <StaticResource x:Key="MarkdownRenderer.Body.FontSize" ResourceKey="AppMarkdownBodyFontSize" />
-    <StaticResource x:Key="MarkdownRenderer.Body.Margin" ResourceKey="AppMarkdownBodyMargin" />
+    <StaticResource x:Key="MarkdownRenderer.Body.Margin" ResourceKey="AppMarkdownStandaloneParagraphMargin" />
     <StaticResource x:Key="MarkdownRenderer.Body.LineHeightMultiplier" ResourceKey="AppMarkdownBodyLineHeight" />
     <StaticResource x:Key="MarkdownRenderer.Body.ListIndent" ResourceKey="AppMarkdownListIndent" />
     <StaticResource x:Key="MarkdownRenderer.Body.NestedListIndent" ResourceKey="AppMarkdownNestedListIndent" />

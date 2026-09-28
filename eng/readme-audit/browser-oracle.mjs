@@ -11,6 +11,7 @@ import {
   captureSameByteCorpus,
   createResponseRecorder,
   createSameByteReplayServer,
+  readSameByteSnapshotFailureEvidence,
   sha256,
 } from "./same-byte-corpus.mjs";
 import { replaySameByteInEdge } from "./same-byte-edge-replay.mjs";
@@ -458,13 +459,15 @@ try {
     // path in the native audit handles this valid outcome.
   } else {
   const rawError = error?.stack || String(error);
+  const snapshotFailureEvidence = readSameByteSnapshotFailureEvidence(error);
   const failure = options["capture-same-byte-corpus"]
     ? {
       ok: false,
       repositoryUrl: `sha256:${sha256(Buffer.from(repositoryUrl, "utf8"))}`,
       error: redactUrls(rawError),
+      ...(snapshotFailureEvidence || {}),
     }
-    : { ok: false, repositoryUrl, error: rawError };
+    : { ok: false, repositoryUrl, error: rawError, ...(snapshotFailureEvidence || {}) };
   await writeFile(path.join(outputDirectory, "browser-failure.json"), JSON.stringify(failure, null, 2));
   process.stderr.write(failure.error + "\n");
   process.exitCode = 1;

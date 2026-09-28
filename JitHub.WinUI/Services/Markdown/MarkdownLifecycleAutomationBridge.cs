@@ -30,6 +30,7 @@ internal static partial class MarkdownLifecycleAutomationBridge
     private const string RenderFailureEvidencePathVariable = "JITHUB_MARKDOWN_RENDER_FAILURE_EVIDENCE_PATH";
     private const string RenderCompleteEvidencePathVariable = "JITHUB_MARKDOWN_RENDER_COMPLETE_EVIDENCE_PATH";
     private const string FirstViewportImagesReadyEvidencePathVariable = "JITHUB_MARKDOWN_FIRST_VIEWPORT_IMAGES_READY_EVIDENCE_PATH";
+    private const string FirstViewportImagesReadyProgressPathVariable = "JITHUB_MARKDOWN_FIRST_VIEWPORT_IMAGES_READY_PROGRESS_PATH";
     private const string CaptureRequestPathVariable = "JITHUB_MARKDOWN_CAPTURE_REQUEST_PATH";
     private const string CaptureResponsePathVariable = "JITHUB_MARKDOWN_CAPTURE_RESPONSE_PATH";
     private const string ShutdownStagePathVariable = "JITHUB_MARKDOWN_SHUTDOWN_STAGE_PATH";
@@ -73,6 +74,21 @@ internal static partial class MarkdownLifecycleAutomationBridge
 
     public static bool IsFirstViewportImagesReadyEvidenceEnabled => _productionAuditEnabled &&
         !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(FirstViewportImagesReadyEvidencePathVariable));
+
+    internal static bool IsFirstViewportImagesReadyProgressEnabled =>
+        IsFirstViewportImagesReadyEvidenceEnabled &&
+        !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(FirstViewportImagesReadyProgressPathVariable));
+
+    internal static void RecordFirstViewportImagesReadyProgress(FirstViewportImagesReadyProgress progress)
+    {
+        if (!IsFirstViewportImagesReadyProgressEnabled)
+            return;
+
+        FirstViewportImagesReadyEvidenceWriter.TryQueueProgressWrite(
+            Environment.GetEnvironmentVariable(FirstViewportImagesReadyProgressPathVariable),
+            auditEnabled: true,
+            progress);
+    }
 
     public static bool IsShutdownAuditDiagnosticsEnabled => IsEvidenceEnabled &&
         !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(ShutdownStagePathVariable));

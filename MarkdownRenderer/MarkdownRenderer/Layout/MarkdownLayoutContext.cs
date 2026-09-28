@@ -244,47 +244,43 @@ internal sealed class MarkdownLayoutContext
 
     internal StyleScope PushStyleContext(string key)
     {
-        int contextCount = _styleContextKeys.Count;
-        int aliasCount = _styleAliasKeys.Count;
-        int listDepth = _listDepth;
+        StyleScope scope = CaptureStyleScope();
         if (!string.IsNullOrWhiteSpace(key))
             _styleContextKeys.Add(key);
-        return new StyleScope(this, contextCount, aliasCount, listDepth);
+        return scope;
     }
 
     internal StyleScope PushListDepth()
     {
-        int contextCount = _styleContextKeys.Count;
-        int aliasCount = _styleAliasKeys.Count;
-        int listDepth = _listDepth;
+        StyleScope scope = CaptureStyleScope();
         _listDepth++;
         _styleContextKeys.Add(MarkdownElementKeys.ListDepth(_listDepth));
-        return new StyleScope(this, contextCount, aliasCount, listDepth);
+        return scope;
     }
 
     internal StyleScope PushMarkdownAttributes(IMarkdownObject markdownObject)
     {
-        int contextCount = _styleContextKeys.Count;
-        int aliasCount = _styleAliasKeys.Count;
-        int listDepth = _listDepth;
+        StyleScope scope = CaptureStyleScope();
         AddMarkdownAttributeAliases(markdownObject, _styleAliasKeys);
-        return new StyleScope(this, contextCount, aliasCount, listDepth);
+        return scope;
     }
 
-    internal StyleScope PushStyleAliases(IEnumerable<string> aliases)
+    internal StyleScope PushStyleAliases(IReadOnlyList<string> aliases)
     {
         ArgumentNullException.ThrowIfNull(aliases);
-        int contextCount = _styleContextKeys.Count;
-        int aliasCount = _styleAliasKeys.Count;
-        int listDepth = _listDepth;
-        foreach (string alias in aliases)
+        StyleScope scope = CaptureStyleScope();
+        for (int index = 0; index < aliases.Count; index++)
         {
+            string alias = aliases[index];
             if (!string.IsNullOrWhiteSpace(alias))
                 _styleAliasKeys.Add(alias);
         }
 
-        return new StyleScope(this, contextCount, aliasCount, listDepth);
+        return scope;
     }
+
+    private StyleScope CaptureStyleScope() =>
+        new(this, _styleContextKeys.Count, _styleAliasKeys.Count, _listDepth);
 
     internal void RegisterMarkdownAttributes(IMarkdownObject markdownObject, int blockIndex)
     {
@@ -292,13 +288,6 @@ internal sealed class MarkdownLayoutContext
         var id = attrs?.Id;
         if (!string.IsNullOrWhiteSpace(id))
             RegisterFragmentTarget(id, blockIndex);
-    }
-
-    internal static IReadOnlyList<string> GetMarkdownAttributeAliases(IMarkdownObject markdownObject)
-    {
-        var aliases = new List<string>();
-        AddMarkdownAttributeAliases(markdownObject, aliases);
-        return aliases;
     }
 
     private static void AddMarkdownAttributeAliases(IMarkdownObject markdownObject, List<string> aliases)

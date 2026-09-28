@@ -5,7 +5,10 @@ using MarkdownRenderer.Html;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Math;
+using MarkdownRenderer.Mermaid;
 using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Performance;
 using MarkdownRenderer.Theming;
 using Microsoft.Graphics.Canvas;
 using Microsoft.UI.Xaml;
@@ -478,6 +481,273 @@ public sealed class SafeHtmlRenderingTests
         Assert.Equal("https://example.test/community", images[0].LinkUrl);
         Assert.Equal("source.png", images[1].Url);
         Assert.Equal("https://example.test/source", images[1].LinkUrl);
+    }
+
+    [Fact]
+    public void GitHubProfileNestedPresentationDivPreservesOuterReferenceDefinitionOrder()
+    {
+        const string source = """
+            [Shared]: before.png
+
+            <div align="center">
+            [![Shared]][shared-link]
+            [![Late]][late-link]
+            </div>
+
+            [Shared]: inside.png
+            [shared-link]: https://example.test/shared
+            [Late]: after.png
+            [late-link]: https://example.test/late
+            """;
+
+        using LayoutSnapshot snapshot = BuildGitHub(source);
+        InlineImageRun[] images = FlattenRuns(snapshot).OfType<InlineImageRun>().ToArray();
+
+        Assert.Equal(2, images.Length);
+        Assert.Equal("before.png", images[0].Url);
+        Assert.Equal("https://example.test/shared", images[0].LinkUrl);
+        Assert.Equal("after.png", images[1].Url);
+        Assert.Equal("https://example.test/late", images[1].LinkUrl);
+    }
+
+    [Theory]
+    [InlineData("[![Badge]][Badge Link]", "badge", true)]
+    [InlineData("[![Badge]][Badge Link]", "badge link", true)]
+    [InlineData("[![Badge]][Badge Link]", "unrelated", false)]
+    [InlineData("[Badge  Link]", "Badge Link", true)]
+    [InlineData("[Badge\\ Link]", "Badge Link", true)]
+    [InlineData("[Badge&amp;Link]", "Badge&Link", true)]
+    [InlineData("[Étiquette]", "étiquette", true)]
+    public void NestedHtmlReferenceFilterExcludesOnlyProvablyAbsentSimpleLabels(
+        string fragment,
+        string label,
+        bool expected)
+    {
+        bool simpleFragment = MarkdownRenderer.Html.Renderers.HtmlBlockRenderer
+            .HasSimpleAsciiReferenceLabels(fragment);
+        Assert.Equal(expected,
+            MarkdownRenderer.Html.Renderers.HtmlBlockRenderer.MayUseReferenceLabel(
+                fragment, label, simpleFragment));
+    }
+
+    [Fact]
+    public void NestedHtmlReferenceWithManyUnrelatedDefinitionsStillResolves()
+    {
+        var source = new System.Text.StringBuilder(
+            "<div>\n[![Used]][target]\n</div>\n\n" +
+            "[Used]: badge.png\n[target]: https://example.test/target\n");
+        for (int index = 0; index < 512; index++)
+            source.Append("[Unrelated").Append(index).Append("]: https://example.test/")
+                .Append(index).Append('\n');
+
+        using LayoutSnapshot snapshot = BuildGitHub(source.ToString());
+        InlineImageRun image = Assert.Single(FlattenRuns(snapshot).OfType<InlineImageRun>());
+        Assert.Equal("badge.png", image.Url);
+        Assert.Equal("https://example.test/target", image.LinkUrl);
+    }
+
+    [Fact]
+    public void VoidHtmlBlockBlankLineMarkdownTailRetainsHeadingAndSourceSpan()
+    {
+        const string source = "<hr>\r\n  \r\n## Following heading\r\n";
+        using MarkdownEngine engine = new MarkdownEngineBuilder().UseGitHubReadme().Build();
+        var registry = Assert.IsType<MarkdownExtensionRegistry>(engine.PresentationConfiguration);
+        Markdig.Syntax.MarkdownDocument parsed = Markdown.Parse(
+            source,
+            registry.BuildPipeline());
+        Assert.Contains(parsed.OfType<Markdig.Syntax.HtmlBlock>(),
+            static block => block.Lines.ToString().Contains("## Following heading", StringComparison.Ordinal));
+
+        using LayoutSnapshot snapshot = Build(source, registry, parsedDocument: parsed);
+        MarkdownRenderer.Accessibility.MarkdownSemanticNode heading = Assert.Single(
+            MarkdownRenderer.Accessibility.MarkdownSemanticDocument
+                .EnumerateDepthFirst(snapshot.SemanticDocument.Root),
+            static node => node.Role == MarkdownRenderer.Accessibility.MarkdownSemanticRole.Heading);
+        Assert.Equal(2, heading.HeadingLevel);
+        Assert.Equal("Following heading", snapshot.SemanticDocument.GetText(heading));
+        TextRun text = Assert.Single(FlattenRuns(snapshot).OfType<TextRun>(),
+            static run => run.Text.Contains("Following heading", StringComparison.Ordinal));
+        Assert.Equal(source.IndexOf("Following heading", StringComparison.Ordinal), text.SourceSpan.Start);
+    }
+
+    [Fact]
+    public async Task GitHubProfileResolvesNumericReferenceImagesInLongPresentationDiv()
+    {
+        string source = """
+            <p align="center"><img src="https://massgrave.dev/img/logo_small.png" alt="MAS Logo"></p>
+
+            <h1 align="center">Microsoft  Activation  Scripts (MAS)</h1>
+
+            <p align="center">Open-source Windows and Office activator featuring HWID, Ohook, TSforge, and Online KMS activation methods, along with advanced troubleshooting.</p>
+
+            <hr>
+            {{SPACE2}}
+            ## How to Activate Windows / Office / Extended Security Updates (ESU)?
+
+            ### Method 1 - PowerShell ❤️
+
+            1. Click the **Start Menu**, type `PowerShell`, and open it.
+
+            2. Copy and paste the code below and press **Enter.**{{SPACE2}}
+               - For **Windows 8.1, 10 and 11**:
+                 ```
+                 irm https://get.activated.win | iex
+                 ```
+            {{TAB}} If the above is blocked (by ISP/DNS), try this (needs updated Windows 10 or 11):{{SPACE2}}
+            {{TAB}} ```
+            {{TAB}} iex (curl.exe -s --doh-url https://1.1.1.1/dns-query https://get.activated.win | Out-String)
+            {{TAB}} ```
+            {{TAB}}- **Script not launching? Use the below-listed Method 2.**
+
+            3. In the menu that appears, type the number corresponding to one of the **Green** options.
+
+            ---
+
+            ### Method 2 - Traditional (Windows Vista and later)
+
+            1.   Download the script:
+                  *   [**MAS_AIO.cmd**](https://dev.azure.com/massgrave/Microsoft-Activation-Scripts/_apis/git/repositories/Microsoft-Activation-Scripts/items?path=/MAS/All-In-One-Version-KL/MAS_AIO.cmd&download=true) (Direct script)
+                  *   [**MAS_AIO.zip**](https://dev.azure.com/massgrave/Microsoft-Activation-Scripts/_apis/git/repositories/Microsoft-Activation-Scripts/items?$format=zip) (If the direct script is blocked by your browser)
+            2.   Run the `MAS_AIO.cmd` file.
+            3.   In the menu that appears, type the number corresponding to one of the **Green** options.
+
+            ---
+
+            > [!TIP]
+            > - Some ISPs/DNS providers block access to our domains. You can bypass this by enabling [DNS-over-HTTPS (DoH)](https://developers.cloudflare.com/1.1.1.1/encryption/dns-over-https/encrypted-dns-browsers/) in your browser.{{SPACE1}}
+            > - **Having trouble**? Visit our [troubleshooting page](https://massgrave.dev/troubleshoot) or raise an issue on [GitHub](https://github.com/massgravel/Microsoft-Activation-Scripts/issues).
+
+            > [!NOTE]
+            >
+            > - The `irm` command in PowerShell downloads a script from a specified URL, and the `iex` command executes it.
+            > - Always double-check the URL before executing the command and verify the source is trustworthy when manually downloading files.
+            > - Be cautious of third parties spreading malware disguised as MAS by altering the URL in the PowerShell command.
+
+            ---
+
+            <div align="center">
+            {{TAB}}
+            ### Homepage - [https://massgrave.dev/](https://massgrave.dev/)
+            {{SPACE2}}
+            [![1.1]][1]
+            [![1.2]][2]
+            [![1.3]][3]
+            [![1.4]][4]
+            [![1.5]][5]
+            [![1.6]][6]
+            [![1.7]][7]
+
+            [1.1]: https://massgrave.dev/img/logo_discord.png (Chat with us without signup)
+            [1.2]: https://massgrave.dev/img/logo_reddit.png (Reddit)
+            [1.3]: https://massgrave.dev/img/logo_bluesky.png (Bluesky)
+            [1.4]: https://massgrave.dev/img/logo_x.png (Twitter)
+
+            [1.5]: https://massgrave.dev/img/logo_github.png (GitHub)
+            [1.6]: https://massgrave.dev/img/logo_azuredevops.png (AzureDevOps)
+            [1.7]: https://massgrave.dev/img/logo_gitea.png (Self-hosted Git)
+
+            [1]: https://discord.gg/j2yFsV5ZVC
+            [2]: https://www.reddit.com/r/MAS_Activator
+            [3]: https://bsky.app/profile/massgrave.dev
+            [4]: https://twitter.com/massgravel
+            [5]: https://github.com/massgravel/Microsoft-Activation-Scripts
+            [6]: https://dev.azure.com/massgrave/_git/Microsoft-Activation-Scripts
+            [7]: https://git.activated.win/Microsoft-Activation-Scripts
+
+            ---
+
+            Latest Version: 3.12{{SPACE2}}
+            Release date: 04-Jul-2026
+            """;
+
+        source = source
+            .Replace("{{TAB}}", "\t", StringComparison.Ordinal)
+            .Replace("{{SPACE1}}", " ", StringComparison.Ordinal)
+            .Replace("{{SPACE2}}", "  ", StringComparison.Ordinal)
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace('\r', '\n')
+            .Replace("\n", "\r\n", StringComparison.Ordinal) + "\r\n";
+        Assert.Equal(3559, System.Text.Encoding.UTF8.GetByteCount(source));
+        Assert.Equal(
+            "1C0839E4B5CFBC5E02C6192F81227BAA6B3DE334F0DEE32D727C37D3BC5F7B38",
+            Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+                System.Text.Encoding.UTF8.GetBytes(source))));
+
+        using MarkdownEngine engine = new MarkdownEngineBuilder()
+            .UseGitHubReadme()
+            .UseMathematics()
+            .UseMermaid()
+            .Build();
+        using MarkdownPerformanceSession session =
+            new(MarkdownPerformanceOptions.Progressive);
+        MarkdownRenderer.Document.MarkdownDocument parsed = Assert.IsType<MarkdownRenderer.Document.MarkdownDocument>(
+            await ((IMarkdownPerformanceSessionInternal)session).ParseAndPrepareDocumentAsync(
+                engine,
+                null,
+                source,
+                new MarkdownExtensionRegistry(),
+                new object(),
+                CancellationToken.None));
+        string presentationHtmlBlock = Assert.Single(
+            parsed.ParsedDocument!
+                .OfType<Markdig.Syntax.HtmlBlock>()
+                .Select(static block => block.Lines.ToString()),
+            static html => html.StartsWith("<div align=\"center\">", StringComparison.Ordinal));
+        Assert.Contains("### Homepage - [https://massgrave.dev/](https://massgrave.dev/)", presentationHtmlBlock);
+        Assert.Contains("[![1.1]][1]", presentationHtmlBlock);
+        Assert.DoesNotContain("[1.1]: https://massgrave.dev/img/logo_discord.png", presentationHtmlBlock);
+
+        var registry = Assert.IsType<MarkdownExtensionRegistry>(engine.PresentationConfiguration);
+        using LayoutSnapshot snapshot = Build(source, registry, parsedDocument: parsed.ParsedDocument);
+        InlineImageRun[] images = FlattenRuns(snapshot).OfType<InlineImageRun>().ToArray();
+        string[] headings = MarkdownRenderer.Accessibility.MarkdownSemanticDocument
+            .EnumerateDepthFirst(snapshot.SemanticDocument.Root)
+            .Where(static node => node.Role == MarkdownRenderer.Accessibility.MarkdownSemanticRole.Heading)
+            .Select(snapshot.SemanticDocument.GetText)
+            .ToArray();
+
+        Assert.Equal(8, images.Length);
+        Assert.Equal(5, headings.Length);
+        Assert.Contains("How to Activate Windows / Office / Extended Security Updates (ESU)?", headings);
+        Assert.Equal("https://massgrave.dev/img/logo_small.png", images[0].Url);
+        string[] expectedBadgeImages =
+        [
+            "https://massgrave.dev/img/logo_discord.png",
+            "https://massgrave.dev/img/logo_reddit.png",
+            "https://massgrave.dev/img/logo_bluesky.png",
+            "https://massgrave.dev/img/logo_x.png",
+            "https://massgrave.dev/img/logo_github.png",
+            "https://massgrave.dev/img/logo_azuredevops.png",
+            "https://massgrave.dev/img/logo_gitea.png",
+        ];
+        string[] expectedBadgeLinks =
+        [
+            "https://discord.gg/j2yFsV5ZVC",
+            "https://www.reddit.com/r/MAS_Activator",
+            "https://bsky.app/profile/massgrave.dev",
+            "https://twitter.com/massgravel",
+            "https://github.com/massgravel/Microsoft-Activation-Scripts",
+            "https://dev.azure.com/massgrave/_git/Microsoft-Activation-Scripts",
+            "https://git.activated.win/Microsoft-Activation-Scripts",
+        ];
+        for (int index = 0; index < 7; index++)
+        {
+            Assert.Equal(expectedBadgeImages[index], images[index + 1].Url);
+            Assert.Equal(expectedBadgeLinks[index], images[index + 1].LinkUrl);
+        }
+
+        using LayoutSnapshot lazySnapshot = Build(
+            source,
+            registry,
+            parsedDocument: parsed.ParsedDocument,
+            lazy: true,
+            availableWidth: 623);
+        Assert.Equal(
+            8,
+            lazySnapshot.GetMeasuredTopLevelBlocks()
+                .SelectMany(FlattenRuns)
+                .OfType<InlineImageRun>()
+                .Count());
     }
 
     [Fact]
@@ -963,9 +1233,13 @@ public sealed class SafeHtmlRenderingTests
     private static LayoutSnapshot Build(
         string source,
         MarkdownExtensionRegistry registry,
-        IMarkdownStringProvider? stringProvider = null)
+        IMarkdownStringProvider? stringProvider = null,
+        Markdig.Syntax.MarkdownDocument? parsedDocument = null,
+        bool lazy = false,
+        float availableWidth = 800)
     {
-        Markdig.Syntax.MarkdownDocument document = Markdown.Parse(source, registry.BuildPipeline());
+        Markdig.Syntax.MarkdownDocument document =
+            parsedDocument ?? Markdown.Parse(source, registry.BuildPipeline());
         var style = new ElementStyle();
         string[] keys =
         [
@@ -1015,7 +1289,25 @@ public sealed class SafeHtmlRenderingTests
         {
             StringProvider = stringProvider,
         };
-        return new LayoutBuilder(context).Build(document, 800);
+        var builder = new LayoutBuilder(context);
+        if (!lazy)
+            return builder.Build(document, availableWidth);
+
+        LayoutSnapshot snapshot = builder.BuildLazy(
+            document,
+            availableWidth,
+            viewportTop: 0,
+            viewportHeight: 499,
+            overscan: 0,
+            cancellationToken: CancellationToken.None);
+        for (int viewport = 0; viewport < 64; viewport++)
+        {
+            double top = viewport * 449;
+            if (top >= snapshot.Size.Height)
+                break;
+            snapshot.EnsureMeasuredViewport(top, 499, 0, CancellationToken.None);
+        }
+        return snapshot;
     }
 
     private static LayoutSnapshot BuildGitHub(string source)

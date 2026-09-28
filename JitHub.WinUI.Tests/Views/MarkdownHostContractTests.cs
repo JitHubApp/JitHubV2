@@ -239,8 +239,10 @@ public sealed class MarkdownHostContractTests
         Assert.Contains("ResourceKey=\"AppHighContrastMonoFontFamily\"", resources, StringComparison.Ordinal);
         Assert.Contains("MarkdownRenderer.TableCell.Padding", resources, StringComparison.Ordinal);
         Assert.Contains("ResourceKey=\"AppMarkdownHeading1Margin\"", resources, StringComparison.Ordinal);
+        Assert.Contains("ResourceKey=\"AppMarkdownStandaloneParagraphMargin\"", resources, StringComparison.Ordinal);
         Assert.Contains("MarkdownResourceKeys.DocumentSurfaceBrush", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("ElementStyleOverride", source, StringComparison.Ordinal);
+        Assert.Contains("new MarkdownStyleSelector(MarkdownStyleRole.Body, minimumNestingDepth: 1)", source, StringComparison.Ordinal);
+        Assert.Contains("Margin = ResolveThickness(\"AppMarkdownBodyMargin\"", source, StringComparison.Ordinal);
         Assert.DoesNotContain("_theme.Overrides", source, StringComparison.Ordinal);
         Assert.Contains("_renderer.RenderCompleted += OnRendererRenderCompleted", source, StringComparison.Ordinal);
         Assert.Contains("_renderer.RenderFailed += OnRendererRenderFailed", source, StringComparison.Ordinal);
@@ -727,10 +729,27 @@ public sealed class MarkdownHostContractTests
         Assert.Contains("new MarkdownScrollView().UseGitHubReadme(SharedGitHubEngine)", source, StringComparison.Ordinal);
         Assert.Contains("if (OwnsScrollViewport)", source, StringComparison.Ordinal);
         Assert.Contains("new PropertyMetadata(false, OnViewportOwnershipChanged)", source, StringComparison.Ordinal);
+        Assert.Contains("viewer.ResetOwnedViewportForNewDocument()", source, StringComparison.Ordinal);
+        Assert.Contains("(e.OldValue as MarkdownDocumentSource)?.DocumentId", source, StringComparison.Ordinal);
+        Assert.Contains("(e.NewValue as MarkdownDocumentSource)?.DocumentId", source, StringComparison.Ordinal);
+        Assert.Contains("if (!OwnsScrollViewport || _renderer is null)", source, StringComparison.Ordinal);
+        Assert.Contains("viewport.ChangeView(null, 0, null, disableAnimation: true)", source, StringComparison.Ordinal);
         Assert.DoesNotContain(viewer.Descendants(), element => element.Name.LocalName == "ScrollViewer");
         Assert.DoesNotContain("DesiredSize", source, StringComparison.Ordinal);
         Assert.Contains("RendererHost.Width = double.NaN", source, StringComparison.Ordinal);
         Assert.Contains("RendererHost.HorizontalAlignment = HorizontalAlignment.Stretch", source, StringComparison.Ordinal);
+
+        string renderer = File.ReadAllText(Path.Combine(
+            root,
+            "MarkdownRenderer",
+            "MarkdownRenderer",
+            "Controls",
+            "MarkdownRendererControl.cs"));
+        Assert.Contains("bool sameDocumentIdentity = _committedImageDocumentId == imageDocumentId", renderer, StringComparison.Ordinal);
+        Assert.Contains("imageDocumentSourceSnapshot?.DocumentId", renderer, StringComparison.Ordinal);
+        Assert.Contains("if (sameDocumentIdentity &&", renderer, StringComparison.Ordinal);
+        Assert.Contains("old is not null && sameDocumentIdentity &&", renderer, StringComparison.Ordinal);
+        Assert.Contains("_committedImageDocumentId = imageDocumentId", renderer, StringComparison.Ordinal);
     }
 
     [Fact]

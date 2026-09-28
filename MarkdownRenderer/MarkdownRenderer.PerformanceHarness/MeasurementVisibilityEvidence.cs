@@ -115,13 +115,7 @@ internal static class MeasurementVisibilityEvidenceValidator
                 return false;
             }
 
-            if (!sample.CaptureSucceeded ||
-                !sample.TargetWasForeground ||
-                !sample.TargetWasVisible ||
-                sample.TargetWasMinimized ||
-                sample.TargetWasCloaked ||
-                !sample.TargetWasWithinWorkArea ||
-                !sample.TargetWasUnoccluded)
+            if (!IsQualifiedSample(sample))
             {
                 failure = "The benchmark window lost foreground, visibility, or unobstructed coverage during measurement.";
                 return false;
@@ -155,9 +149,69 @@ internal static class MeasurementVisibilityEvidenceValidator
         return true;
     }
 
+    internal static bool IsQualifiedSample(MeasurementVisibilitySample? sample)
+        => sample is
+        {
+            CaptureSucceeded: true,
+            TargetWasForeground: true,
+            TargetWasVisible: true,
+            TargetWasMinimized: false,
+            TargetWasCloaked: false,
+            TargetWasWithinWorkArea: true,
+            TargetWasUnoccluded: true,
+        };
+
     private static bool IsSafeSampleSource(string source)
         => source is "start" or "complete" or "poll" or "desktop-switch" or
             "foreground-event" or "window-event";
+}
+
+internal static class MeasurementVisibilityReadinessWaiter
+{
+    internal static async Task<MeasurementVisibilitySample> WaitUntilQualifiedAsync(
+        Func<MeasurementVisibilitySample?> captureSample,
+        int timeoutMilliseconds = PerformanceMeasurementContract.ReleaseForegroundReadinessTimeoutMilliseconds,
+        int pollIntervalMilliseconds = PerformanceMeasurementContract.ReleaseForegroundReadinessPollIntervalMilliseconds,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(captureSample);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(timeoutMilliseconds);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(pollIntervalMilliseconds);
+
+        long startedTimestamp = Stopwatch.GetTimestamp();
+        TimeSpan timeout = TimeSpan.FromMilliseconds(timeoutMilliseconds);
+        TimeSpan pollInterval = TimeSpan.FromMilliseconds(pollIntervalMilliseconds);
+        int consecutiveQualifiedSamples = 0;
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            MeasurementVisibilitySample? sample = captureSample();
+            if (MeasurementVisibilityEvidenceValidator.IsQualifiedSample(sample))
+            {
+                consecutiveQualifiedSamples++;
+                if (consecutiveQualifiedSamples >=
+                    PerformanceMeasurementContract.ReleaseForegroundReadinessConsecutiveQualifiedSamples)
+                {
+                    return sample!;
+                }
+            }
+            else
+            {
+                consecutiveQualifiedSamples = 0;
+            }
+
+            TimeSpan remaining = timeout - Stopwatch.GetElapsedTime(startedTimestamp);
+            if (remaining <= TimeSpan.Zero)
+            {
+                throw new TimeoutException(
+                    $"Release measurement preflight timed out after {timeoutMilliseconds:N0} ms waiting for the benchmark window to be foreground, visible, unminimized, uncloaked, on-screen, and unobstructed.");
+            }
+
+            await Task.Delay(
+                remaining < pollInterval ? remaining : pollInterval,
+                cancellationToken);
+        }
+    }
 }
 
 /// <summary>
@@ -212,6 +266,19 @@ internal sealed class MeasurementVisibilityMonitor : IDisposable
     }
 
     private DateTimeOffset StartedUtc { get; set; }
+
+    internal MeasurementVisibilitySample? InitialSample
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _samples.Count > 0 && _samples[0].Source == "start"
+                    ? _samples[0]
+                    : null;
+            }
+        }
+    }
 
     internal static MeasurementVisibilityMonitor Start(IntPtr targetWindow)
     {
@@ -270,6 +337,12 @@ internal sealed class MeasurementVisibilityMonitor : IDisposable
             }
         }
         return monitor;
+    }
+
+    internal static MeasurementVisibilitySample CaptureReadinessSample(IntPtr targetWindow)
+    {
+        var monitor = new MeasurementVisibilityMonitor(targetWindow);
+        return monitor.CaptureSample("preflight", elapsedTicks: 0);
     }
 
     internal MeasurementVisibilityEvidence Complete()
@@ -489,6 +562,12 @@ internal sealed class MeasurementVisibilityMonitor : IDisposable
         }
 
         long elapsedTicks = Math.Max(_stopwatch.ElapsedTicks, _lastSampleTicks + 1);
+        _samples.Add(CaptureSample(source, elapsedTicks));
+        _lastSampleTicks = elapsedTicks;
+    }
+
+    private MeasurementVisibilitySample CaptureSample(string source, long elapsedTicks)
+    {
         bool captureSucceeded = false;
         bool targetWasForeground = false;
         bool targetWasVisible = false;
@@ -531,7 +610,7 @@ internal sealed class MeasurementVisibilityMonitor : IDisposable
             _captureFailures++;
         }
 
-        _samples.Add(new MeasurementVisibilitySample
+        return new MeasurementVisibilitySample
         {
             ElapsedTicks = elapsedTicks,
             Source = source,
@@ -542,8 +621,7 @@ internal sealed class MeasurementVisibilityMonitor : IDisposable
             TargetWasCloaked = targetWasCloaked,
             TargetWasWithinWorkArea = targetWasWithinWorkArea,
             TargetWasUnoccluded = targetWasUnoccluded,
-        });
-        _lastSampleTicks = elapsedTicks;
+        };
     }
 
     private bool IsTargetForeground(IntPtr foregroundWindow)

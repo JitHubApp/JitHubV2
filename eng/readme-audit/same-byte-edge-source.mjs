@@ -8,7 +8,12 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { waitForDevToolsPort } from "./browser-launch.mjs";
 import { connectCdp } from "./cdp-client.mjs";
 import { stopBrowserProfileProcesses } from "./browser-process-lifetime.mjs";
-import { createSameByteReplayServer, PINNED_GFM_PARSER, sha256 } from "./same-byte-corpus.mjs";
+import {
+  createCapturedImageAltIdentities,
+  createSameByteReplayServer,
+  PINNED_GFM_PARSER,
+  sha256,
+} from "./same-byte-corpus.mjs";
 import {
   MAX_SAME_BYTE_TRAVERSAL_VIEWPORTS,
   SAME_BYTE_TRAVERSAL_VIEWPORT_STEP_RATIO,
@@ -85,6 +90,18 @@ const SOURCE_REPLAY_ERROR_TYPES = new Set([
   "TimeoutError",
   "TypeError",
 ]);
+const SOURCE_REPLAY_FAILURE_PREDICATES = new Set([
+  "conflicting-image-aliases",
+  "invalid-image-url",
+  "invalid-inline-image-data",
+  "invalid-image-dimension",
+  "inline-image-byte-mismatch",
+  "missing-captured-image-alias",
+  "unmatched-inline-image-evidence",
+  "responsive-image-candidates",
+  "sanitized-image-count",
+  "unsupported-image-url-scheme",
+]);
 
 /**
  * Runs the captured raw Markdown through the pinned GFM parser in Edge. The
@@ -112,6 +129,10 @@ export async function replaySourceBoundMarkdownInEdge({
     throw new Error("Source-bound Edge replay requires a captured GitHub-rendered article.");
   }
   const capturedInlineImageEvidence = readCapturedInlineImageEvidence(replayServer);
+  const capturedImageAltIdentities = createCapturedImageAltIdentities(
+    replayServer.renderedHtmlBytes,
+    replayServer.manifest.imageRoutes,
+  );
 
   const origin = new URL(replayServer.baseUrl).origin;
   const blockedExternalUrls = new Set();
@@ -126,7 +147,7 @@ export async function replaySourceBoundMarkdownInEdge({
        requestUrl.pathname === "/manifest" ||
        requestUrl.pathname === "/readme" ||
        requestUrl.pathname === "/favicon.ico" ||
-       /^\/asset-by-url-sha256\/[0-9a-f]{64}$/u.test(requestUrl.pathname));
+       /^\/asset-by-(?:url|content)-sha256\/[0-9a-f]{64}$/u.test(requestUrl.pathname));
     if (!isSourceReplayRequest) {
       blockedExternalUrls.add(event.request.url);
       void cdp.send("Fetch.failRequest", {
@@ -183,6 +204,8 @@ export async function replaySourceBoundMarkdownInEdge({
           manifestSha256: replayServer.manifestSha256,
           assetUrlMapSha256: replayServer.assetUrlMapSha256,
           capturedInlineImageEvidence,
+          capturedImageAltIdentities,
+          capturedImageRouteCount: replayServer.manifest.imageRoutes.length,
           semanticDigestKey,
           parser: {
             name: PINNED_GFM_PARSER.name,
@@ -228,6 +251,20 @@ export async function replaySourceBoundMarkdownInEdge({
           value: replay?.errorType,
           configurable: true,
         });
+        Object.defineProperty(error, "sourceReplayImageDecodeEvidence", {
+          value: replay?.imageDecodeEvidence,
+          configurable: true,
+        });
+        Object.defineProperty(error, "sourceReplayImageMapEvidence", {
+          value: replay?.imageMapEvidence,
+          configurable: true,
+        });
+        if (SOURCE_REPLAY_FAILURE_PREDICATES.has(replay?.failurePredicate)) {
+          Object.defineProperty(error, "sourceReplayFailurePredicate", {
+            value: replay.failurePredicate,
+            configurable: true,
+          });
+        }
       } catch {}
       throw error;
     }
@@ -319,6 +356,7 @@ export async function replaySourceBoundMarkdownInEdge({
         distinctServedUrlHashes: servedUrlHashes.length,
         replayMissCount: replayServer.misses,
         blockedExternalRequestCount: blockedResourceSet.size,
+        semanticImageAliasMatchCount: replay.semanticImageAliasMatchCount,
       },
       timing: {
         firstViewportPaintMs: replay.timing.firstViewportPaintMs,
@@ -396,6 +434,37 @@ function validateReplayArguments({
       replayServer.parser?.version !== PINNED_GFM_PARSER.version) {
     throw new Error("Source-bound Edge replay parser pin does not match the vendored Marked bundle.");
   }
+}
+
+export function createUniqueCapturedImageAltRouteMap(sourceAltSha256s, capturedImageAltIdentities, capturedRouteCount) {
+  if (!Array.isArray(sourceAltSha256s) || !Array.isArray(capturedImageAltIdentities) ||
+      !Number.isSafeInteger(capturedRouteCount) || capturedRouteCount <= 0 ||
+      sourceAltSha256s.length !== capturedRouteCount ||
+      capturedImageAltIdentities.length !== capturedRouteCount) {
+    return null;
+  }
+  const sourceAltSet = new Set();
+  for (const hash of sourceAltSha256s) {
+    if (!/^[0-9a-f]{64}$/iu.test(hash || "") || sourceAltSet.has(hash.toLowerCase())) return null;
+    sourceAltSet.add(hash.toLowerCase());
+  }
+  const capturedIndexByAltHash = new Map();
+  const capturedIndexes = new Set();
+  for (const identity of capturedImageAltIdentities) {
+    const hash = identity?.altSha256;
+    if (!Number.isSafeInteger(identity?.index) || identity.index < 0 ||
+        !/^[0-9a-f]{64}$/iu.test(hash || "") ||
+        capturedIndexes.has(identity.index) || capturedIndexByAltHash.has(hash.toLowerCase())) {
+      return null;
+    }
+    capturedIndexes.add(identity.index);
+    capturedIndexByAltHash.set(hash.toLowerCase(), identity.index);
+  }
+  if (sourceAltSet.size !== capturedIndexByAltHash.size ||
+      [...sourceAltSet].some(hash => !capturedIndexByAltHash.has(hash))) {
+    return null;
+  }
+  return new Map([...sourceAltSet].map(hash => [hash, capturedIndexByAltHash.get(hash)]));
 }
 
 export function validateNativeViewportProfile(profile, viewportHeight) {
@@ -613,10 +682,82 @@ const SOURCE_REPLAY_FAILURE_MESSAGES = Object.freeze({
   timeout: "The source-bound Markdown replay exceeded its deadline.",
 });
 
+const SOURCE_REPLAY_IMAGE_DECODE_OUTCOMES = new Set([
+  "already-complete-empty",
+  "decoded",
+  "decode-empty",
+  "decode-rejected",
+  "load-empty",
+  "load-error",
+  "timeout",
+]);
+
+function sanitizeSourceReplayImageDecodeEvidence(value) {
+  if (!value || !Number.isSafeInteger(value.visibleImageCount) || value.visibleImageCount < 0 ||
+      !Number.isSafeInteger(value.failedVisibleImageCount) || value.failedVisibleImageCount < 0 ||
+      value.failedVisibleImageCount > value.visibleImageCount || !Array.isArray(value.images)) {
+    return null;
+  }
+  const images = [];
+  const seenIndexes = new Set();
+  for (const item of value.images.slice(0, 64)) {
+    if (!item || !Number.isSafeInteger(item.imageIndex) || item.imageIndex < 0 ||
+        seenIndexes.has(item.imageIndex) || typeof item.dataUri !== "boolean" ||
+        typeof item.ready !== "boolean" ||
+        !SOURCE_REPLAY_IMAGE_DECODE_OUTCOMES.has(item.decodeOutcome)) {
+      continue;
+    }
+    if (item.dataUri) {
+      if (item.capturedUrlSha256 !== undefined) continue;
+      images.push({
+        imageIndex: item.imageIndex,
+        dataUri: true,
+        ready: item.ready,
+        decodeOutcome: item.decodeOutcome,
+      });
+    } else {
+      if (!/^[0-9a-f]{64}$/iu.test(item.capturedUrlSha256 || "")) continue;
+      images.push({
+        imageIndex: item.imageIndex,
+        capturedUrlSha256: item.capturedUrlSha256.toLowerCase(),
+        dataUri: false,
+        ready: item.ready,
+        decodeOutcome: item.decodeOutcome,
+      });
+    }
+    seenIndexes.add(item.imageIndex);
+  }
+  return {
+    visibleImageCount: value.visibleImageCount,
+    failedVisibleImageCount: value.failedVisibleImageCount,
+    images,
+    omittedVisibleImageCount: Math.max(0, value.visibleImageCount - images.length),
+  };
+}
+
+function sanitizeSourceReplayImageMapEvidence(value) {
+  if (!value || !Number.isSafeInteger(value.imageIndex) || value.imageIndex < 0 ||
+      !Number.isSafeInteger(value.capturedAssetUrlEntryCount) || value.capturedAssetUrlEntryCount < 0 ||
+      !Array.isArray(value.candidateUrlSha256s)) {
+    return null;
+  }
+  const candidateUrlSha256s = value.candidateUrlSha256s.slice(0, 8)
+    .filter(hash => /^[0-9a-f]{64}$/iu.test(hash || ""))
+    .map(hash => hash.toLowerCase());
+  if (candidateUrlSha256s.length === 0) return null;
+  return {
+    imageIndex: value.imageIndex,
+    candidateUrlSha256s,
+    capturedAssetUrlEntryCount: value.capturedAssetUrlEntryCount,
+  };
+}
+
 export function createSourceReplayFailureDiagnostic(error) {
   const message = String(error?.message || error || "");
   let category = "replay";
-  if (error?.name === "TimeoutError" || /timed out|timeout|deadline/iu.test(message)) {
+  if (error?.sourceReplayStage === "visible-image-decode") {
+    category = "image";
+  } else if (error?.name === "TimeoutError" || /timed out|timeout|deadline/iu.test(message)) {
     category = "timeout";
   } else if (/external resource|request isolation|blocked external/iu.test(message)) {
     category = "external-resource";
@@ -629,13 +770,30 @@ export function createSourceReplayFailureDiagnostic(error) {
   } else if (/devtools|websocket|edge did not expose|edge could not start/iu.test(message)) {
     category = "browser-startup";
   }
+  const stage = SOURCE_REPLAY_STAGES.has(error?.sourceReplayStage) ? error.sourceReplayStage : "initialization";
+  const failurePredicate = SOURCE_REPLAY_FAILURE_PREDICATES.has(error?.sourceReplayFailurePredicate) &&
+    ((stage === "sanitize-markdown" && ["invalid-image-dimension", "responsive-image-candidates", "sanitized-image-count"].includes(error.sourceReplayFailurePredicate)) ||
+     (stage === "image-map" && ["conflicting-image-aliases", "invalid-image-url", "invalid-inline-image-data", "inline-image-byte-mismatch", "missing-captured-image-alias", "unsupported-image-url-scheme"].includes(error.sourceReplayFailurePredicate)) ||
+     (stage === "inline-image-evidence" && error.sourceReplayFailurePredicate === "unmatched-inline-image-evidence"))
+    ? error.sourceReplayFailurePredicate
+    : null;
+  const imageDecodeEvidence = category === "image" && stage === "visible-image-decode"
+    ? sanitizeSourceReplayImageDecodeEvidence(error?.sourceReplayImageDecodeEvidence)
+    : null;
+  const imageMapEvidence = category === "image" && stage === "image-map" &&
+    failurePredicate === "missing-captured-image-alias"
+    ? sanitizeSourceReplayImageMapEvidence(error?.sourceReplayImageMapEvidence)
+    : null;
   return {
     category,
     message: SOURCE_REPLAY_FAILURE_MESSAGES[category],
-    stage: SOURCE_REPLAY_STAGES.has(error?.sourceReplayStage) ? error.sourceReplayStage : "initialization",
+    stage,
     errorType: SOURCE_REPLAY_ERROR_TYPES.has(error?.sourceReplayErrorType)
       ? error.sourceReplayErrorType
       : SOURCE_REPLAY_ERROR_TYPES.has(error?.name) ? error.name : "Error",
+    failurePredicate,
+    imageDecodeEvidence,
+    imageMapEvidence,
   };
 }
 
@@ -648,6 +806,9 @@ export function createSourceReplayFailureReport(error) {
     error: diagnostic.message,
     failureStage: diagnostic.stage,
     errorType: diagnostic.errorType,
+    ...(diagnostic.failurePredicate ? { failurePredicate: diagnostic.failurePredicate } : {}),
+    ...(diagnostic.imageDecodeEvidence ? { imageDecodeEvidence: diagnostic.imageDecodeEvidence } : {}),
+    ...(diagnostic.imageMapEvidence ? { imageMapEvidence: diagnostic.imageMapEvidence } : {}),
   };
 }
 
@@ -731,7 +892,9 @@ export function sourceReplayFunctionDeclaration() {
   return String.raw`async function(baseUrl, expected, imageWaitMs, maximumSteps, viewportStepRatio, nativeViewportProfile) {
     const blockedExternalUris = new Set();
     const inlineObjectUrls = [];
+    const imageDecodeEvidenceByElement = new WeakMap();
     let retainInlineObjectUrls = false;
+    let imageDecodeEvidence = null;
     let failureStage = "viewport";
     const isExternalResource = value => /^(?:https?:|file:|ftp:|ws:|wss:|blob:)/iu.test(value || "");
     const onPolicyViolation = event => {
@@ -743,7 +906,18 @@ export function sourceReplayFunctionDeclaration() {
       return [...new Uint8Array(digest)].map(value => value.toString(16).padStart(2, "0")).join("");
     };
     const hashText = value => hashBytes(new TextEncoder().encode(value));
-    const fail = message => { throw new Error(message); };
+    const fail = (message, failurePredicate, failureEvidence) => {
+      const error = new Error(message);
+      if (["conflicting-image-aliases", "invalid-image-dimension", "invalid-image-url", "invalid-inline-image-data",
+           "inline-image-byte-mismatch", "missing-captured-image-alias", "responsive-image-candidates",
+           "sanitized-image-count", "unmatched-inline-image-evidence", "unsupported-image-url-scheme"]
+          .includes(failurePredicate)) error.sourceReplayFailurePredicate = failurePredicate;
+      if (failurePredicate === "missing-captured-image-alias" && failureEvidence) {
+        error.sourceReplayImageMapEvidence = failureEvidence;
+      }
+      throw error;
+    };
+    const createUniqueCapturedImageAltRouteMap = (${createUniqueCapturedImageAltRouteMap.toString()});
     const validateNativeCaptureObservation = (${validateNativeCaptureObservation.toString()});
     const nextSourceTailOffset = (${nextSourceTailOffset.toString()});
     const createSemanticHmacDigester = (${sourceReplayHmacDigestFunctionDeclaration()});
@@ -825,17 +999,34 @@ export function sourceReplayFunctionDeclaration() {
         }
         return true;
       };
-      const inputImages = [...parsedDocument.body.querySelectorAll("img")].filter(isMarkdownVisibleImage);
+      const parsedImages = [...parsedDocument.body.querySelectorAll("img")];
+      const authoredImageDimensions = new WeakMap();
+      for (const image of parsedImages) {
+        const dimensions = { width: null, height: null };
+        for (const dimension of ["width", "height"]) {
+          if (!image.hasAttribute(dimension)) continue;
+          const value = image.getAttribute(dimension) || "";
+          const match = /^([1-9][0-9]{0,4})(?:px)?$/iu.exec(value);
+          const pixels = match ? Number(match[1]) : Number.NaN;
+          if (!Number.isSafeInteger(pixels) || pixels > 16384) {
+            fail("Markdown image has an invalid authored width or height.", "invalid-image-dimension");
+          }
+          dimensions[dimension] = pixels;
+        }
+        authoredImageDimensions.set(image, dimensions);
+      }
+      const inputImages = parsedImages.filter(isMarkdownVisibleImage);
       for (const image of inputImages) {
         if (image.hasAttribute("srcset") || image.hasAttribute("sizes")) {
-          fail("Markdown image has responsive source candidates that cannot be pinned to one captured asset.");
+            fail("Markdown image has responsive source candidates that cannot be pinned to one captured asset.",
+            "responsive-image-candidates");
         }
       }
       const sourceBearingImages = inputImages.filter(image => Boolean(image.getAttribute("src")));
       const imageSources = sourceBearingImages.map(image => image.getAttribute("src"));
       const sourceHrefByAnchor = new WeakMap();
       const allowedTags = new Set(["a","abbr","b","blockquote","br","code","del","details","div","dl","dt","em","h1","h2","h3","h4","h5","h6","hr","i","img","input","ins","kbd","li","mark","ol","p","pre","s","samp","span","strong","sub","summary","sup","table","tbody","td","tfoot","th","thead","tr","ul"]);
-      const removeSubtree = new Set(["audio","canvas","embed","form","iframe","math","object","picture","script","source","style","svg","template","track","video"]);
+      const removeSubtree = new Set(["audio","canvas","embed","form","iframe","math","object","script","source","style","svg","template","track","video"]);
       for (const element of [...parsedDocument.body.querySelectorAll("*")].reverse()) {
         const tag = element.tagName.toLowerCase();
         if (removeSubtree.has(tag)) { element.remove(); continue; }
@@ -861,6 +1052,16 @@ export function sourceReplayFunctionDeclaration() {
           element.setAttribute("disabled", "");
         }
         if (tag === "img") {
+          const dimensions = authoredImageDimensions.get(element);
+          const width = dimensions?.width;
+          const height = dimensions?.height;
+          if (width && height) {
+            // Keep the authored aspect ratio if max-width has to shrink the
+            // image to the replay viewport. Pixel-unit HTML hints retain their
+            // original attributes; their common px unit cancels in the ratio.
+            element.style.aspectRatio = width + " / " + height;
+            element.style.height = "auto";
+          }
           element.removeAttribute("src");
           element.setAttribute("loading", "lazy");
         }
@@ -873,12 +1074,14 @@ export function sourceReplayFunctionDeclaration() {
       const images = [...article.querySelectorAll("img")]
         .filter(image => sourceBearingImageSet.has(image) && isMarkdownVisibleImage(image));
       if (images.length !== imageSources.length) {
-        fail("Sanitizing the parser output changed its image element count.");
+        fail("Sanitizing the parser output changed its image element count.", "sanitized-image-count");
       }
       const normalizedUrlCandidates = value => {
-        const url = new URL(value, expected.readmeBaseUrl);
+        let url;
+        try { url = new URL(value, expected.readmeBaseUrl); }
+        catch { fail("Markdown image URL is invalid.", "invalid-image-url"); }
         if (!((url.protocol === "https:" || url.protocol === "http:") && !url.username && !url.password)) {
-          fail("Markdown image uses an unsupported or credentialed URL scheme.");
+          fail("Markdown image uses an unsupported or credentialed URL scheme.", "unsupported-image-url-scheme");
         }
         url.hash = "";
         if (url.hostname.toLowerCase() === "github.com" && url.searchParams.size === 1 && url.searchParams.get("raw") === "true") {
@@ -925,6 +1128,17 @@ export function sourceReplayFunctionDeclaration() {
       };
       const expectedUrlHashes = new Set();
       const pendingImageSources = new Map();
+      const sourceImageAltHashes = await Promise.all(images.map(async image => {
+        const alt = image.getAttribute("alt") || "";
+        return alt.length === 0 ? null : await hashText(alt.normalize("NFC"));
+      }));
+      const semanticAltRouteMap = createUniqueCapturedImageAltRouteMap(
+        sourceImageAltHashes,
+        expected.capturedImageAltIdentities,
+        expected.capturedImageRouteCount,
+      );
+      const capturedRouteByIndex = new Map(manifest.imageRoutes.map(route => [route.index, route]));
+      let semanticImageAliasMatchCount = 0;
       const remainingInlineImages = new Map();
       const inlineImageDigests = [];
       for (const item of expected.capturedInlineImageEvidence || []) {
@@ -945,12 +1159,14 @@ export function sourceReplayFunctionDeclaration() {
           const key = decoded.mimeType + ":" + digest;
           const remaining = remainingInlineImages.get(key) || 0;
           if (remaining <= 0) {
-            fail("Markdown inline image bytes do not match a captured visible GitHub image.");
+            fail("Markdown inline image bytes do not match a captured visible GitHub image.",
+              "inline-image-byte-mismatch");
           }
           remainingInlineImages.set(key, remaining - 1);
           inlineImageDigests.push(key);
           const objectUrl = URL.createObjectURL(new Blob([decoded.bytes], { type: decoded.mimeType }));
           inlineObjectUrls.push(objectUrl);
+          imageDecodeEvidenceByElement.set(images[index], { imageIndex: index, dataUri: true });
           pendingImageSources.set(images[index], objectUrl);
           continue;
         }
@@ -961,20 +1177,46 @@ export function sourceReplayFunctionDeclaration() {
           .filter(Boolean))];
         const distinctPayloads = new Set(matchingEntries.map(entry => entry.sha256 + ":" + entry.mimeType));
         if (distinctPayloads.size > 1) {
-          fail("Markdown image URL aliases resolve to conflicting captured payloads.");
+          fail("Markdown image URL aliases resolve to conflicting captured payloads.", "conflicting-image-aliases");
         }
-        const entry = matchingEntries[0];
+        let entry = matchingEntries[0];
+        let imageAssetSource = "";
         if (!entry) {
-          fail("Markdown image asset is missing from the captured URL map.");
+          const sourceAltSha256 = sourceImageAltHashes[index]?.toLowerCase();
+          const capturedRouteIndex = sourceAltSha256 && semanticAltRouteMap?.get(sourceAltSha256);
+          const capturedRoute = capturedRouteByIndex.get(capturedRouteIndex);
+          const capturedEntry = capturedRoute && capturedRoute.dataUri !== true &&
+            /^[0-9a-f]{64}$/iu.test(capturedRoute.urlSha256 || "") &&
+            /^[0-9a-f]{64}$/iu.test(capturedRoute.sha256 || "")
+            ? assetByUrlHash.get(capturedRoute.urlSha256)
+            : null;
+          if (capturedEntry && capturedEntry.sha256 === capturedRoute.sha256 &&
+              capturedEntry.mimeType === capturedRoute.mimeType) {
+            entry = capturedEntry;
+            imageAssetSource = baseUrl + "/asset-by-content-sha256/" +
+              capturedRoute.sha256 + "?index=" + capturedRoute.index;
+            semanticImageAliasMatchCount++;
+          } else {
+            fail("Markdown image asset is missing from the captured URL map.", "missing-captured-image-alias", {
+              imageIndex: index,
+              candidateUrlSha256s: candidateHashes,
+              capturedAssetUrlEntryCount: assetByUrlHash.size,
+            });
+          }
         }
         expectedUrlHashes.add(entry.urlSha256);
-        pendingImageSources.set(
-          images[index],
+        imageDecodeEvidenceByElement.set(images[index], {
+          imageIndex: index,
+          capturedUrlSha256: entry.urlSha256,
+          dataUri: false,
+        });
+        pendingImageSources.set(images[index], imageAssetSource ||
           baseUrl + "/asset-by-url-sha256/" + entry.urlSha256);
       }
       if ([...remainingInlineImages.values()].some(count => count !== 0)) {
         failureStage = "inline-image-evidence";
-        fail("A captured GitHub inline image is missing from the pinned Markdown source.");
+        fail("A captured GitHub inline image is missing from the pinned Markdown source.",
+          "unmatched-inline-image-evidence");
       }
       window.__jithubSourceReplayObjectUrls = inlineObjectUrls;
       retainInlineObjectUrls = true;
@@ -1002,29 +1244,34 @@ export function sourceReplayFunctionDeclaration() {
         }
       };
       const waitImageDecode = async image => {
-        const ready = await new Promise(resolve => {
+        const loadOutcome = await new Promise(resolve => {
           let settled = false;
-          const finish = result => {
+          const finish = outcome => {
             if (settled) return;
             settled = true;
             clearTimeout(timer);
             image.removeEventListener("load", onLoad);
             image.removeEventListener("error", onError);
-            resolve(result);
+            resolve(outcome);
           };
-          const onLoad = () => finish(image.naturalWidth > 0 && image.naturalHeight > 0);
-          const onError = () => finish(false);
-          const timer = setTimeout(() => finish(false), imageWaitMs);
+          const hasDimensions = () => image.naturalWidth > 0 && image.naturalHeight > 0;
+          const onLoad = () => finish(hasDimensions() ? "load" : "load-empty");
+          const onError = () => finish("load-error");
+          const timer = setTimeout(() => finish("timeout"), imageWaitMs);
           image.addEventListener("load", onLoad, { once: true });
           image.addEventListener("error", onError, { once: true });
-          if (image.complete) finish(image.naturalWidth > 0 && image.naturalHeight > 0);
+          if (image.complete) finish(hasDimensions() ? "already-loaded" : "already-complete-empty");
         });
-        if (!ready) return false;
+        if (!["load", "already-loaded"].includes(loadOutcome)) {
+          return { ready: false, outcome: loadOutcome };
+        }
         try {
           await image.decode();
-          return image.complete && image.naturalWidth > 0 && image.naturalHeight > 0;
+          return image.complete && image.naturalWidth > 0 && image.naturalHeight > 0
+            ? { ready: true, outcome: "decoded" }
+            : { ready: false, outcome: "decode-empty" };
         } catch {
-          return false;
+          return { ready: false, outcome: "decode-rejected" };
         }
       };
       const visibleImages = () => images.filter(image => {
@@ -1034,12 +1281,29 @@ export function sourceReplayFunctionDeclaration() {
             style.visibility !== "hidden" && Number(style.opacity) !== 0 &&
             rect.bottom >= 0 && rect.top <= innerHeight &&
             rect.right >= 0 && rect.left <= innerWidth;
-        });
+      });
       const waitVisibleImages = async () => {
+        const previousFailureStage = failureStage;
         failureStage = "visible-image-decode";
         const visible = visibleImages();
-        const ready = await Promise.all(visible.map(waitImageDecode));
-        if (ready.some(value => !value)) fail("A visible pinned Markdown image did not decode successfully.");
+        const outcomes = await Promise.all(visible.map(async image => ({
+          image,
+          ...(await waitImageDecode(image)),
+        })));
+        const failed = outcomes.filter(result => !result.ready);
+        imageDecodeEvidence = {
+          visibleImageCount: outcomes.length,
+          failedVisibleImageCount: failed.length,
+          images: outcomes.slice(0, 64).map(({ image, ready, outcome }) => ({
+            ...imageDecodeEvidenceByElement.get(image),
+            ready,
+            decodeOutcome: outcome,
+          })),
+        };
+        if (failed.length > 0) {
+          fail("A visible pinned Markdown image did not decode successfully.");
+        }
+        failureStage = previousFailureStage;
         return visible.length;
       };
       failureStage = "first-viewport";
@@ -1388,6 +1652,7 @@ export function sourceReplayFunctionDeclaration() {
         verifiedImageCount: images.length,
         firstViewportRealizedImageCount,
         expectedUrlHashes: [...expectedUrlHashes],
+        semanticImageAliasMatchCount,
         blockedExternalUris: [...blockedExternalUris],
         semantic,
       };
@@ -1395,6 +1660,15 @@ export function sourceReplayFunctionDeclaration() {
       return {
         ok: false,
         failureStage,
+        failurePredicate: ["conflicting-image-aliases", "invalid-image-dimension", "invalid-image-url", "invalid-inline-image-data",
+          "inline-image-byte-mismatch", "missing-captured-image-alias", "responsive-image-candidates",
+          "sanitized-image-count", "unmatched-inline-image-evidence", "unsupported-image-url-scheme"]
+          .includes(error?.sourceReplayFailurePredicate) ? error.sourceReplayFailurePredicate : undefined,
+        imageDecodeEvidence,
+        imageMapEvidence: error?.sourceReplayImageMapEvidence &&
+          error?.sourceReplayFailurePredicate === "missing-captured-image-alias"
+          ? error.sourceReplayImageMapEvidence
+          : undefined,
         errorType: ["AbortError", "DOMException", "Error", "RangeError", "ReferenceError", "SyntaxError", "TimeoutError", "TypeError"]
           .includes(error?.name) ? error.name : "Error",
         error: String(error?.message || error).replace(/https?:\/\/[^\s"'<>]+/giu, "[redacted-url]"),
@@ -1494,46 +1768,46 @@ export function sourceReplayFunctionDeclaration() {
 
     function decodeInlineImageDataUri(value) {
       if (typeof value !== "string" || new TextEncoder().encode(value).byteLength > ${MAX_INLINE_IMAGE_URI_BYTES}) {
-        fail("Markdown inline image URL exceeds the bounded byte limit.");
+        fail("Markdown inline image URL exceeds the bounded byte limit.", "invalid-inline-image-data");
       }
       const match = /^data:(image\/[a-z0-9.+-]+)(?:;charset=utf-8)?(;base64)?,([\s\S]*)$/iu.exec(value);
       const mimeType = match?.[1]?.toLowerCase();
       if (!match || !${JSON.stringify([...SOURCE_IMAGE_MIMES])}.includes(mimeType)) {
-        fail("Markdown inline image has an unsupported data URI format.");
+        fail("Markdown inline image has an unsupported data URI format.", "invalid-inline-image-data");
       }
       const payload = match[3];
       let bytes;
       if (match[2]) {
         if (!payload || !/^(?:[a-z0-9+/]{4})*(?:[a-z0-9+/]{2}(?:==)?|[a-z0-9+/]{3}=?)?$/iu.test(payload)) {
-          fail("Markdown inline image contains malformed base64 data.");
+          fail("Markdown inline image contains malformed base64 data.", "invalid-inline-image-data");
         }
         let binary;
-        try { binary = atob(payload); } catch { fail("Markdown inline image contains malformed base64 data."); }
+        try { binary = atob(payload); } catch { fail("Markdown inline image contains malformed base64 data.", "invalid-inline-image-data"); }
         if (binary.length > ${MAX_INLINE_IMAGE_URI_BYTES}) {
-          fail("Markdown inline image exceeds the decoded byte limit.");
+          fail("Markdown inline image exceeds the decoded byte limit.", "invalid-inline-image-data");
         }
         bytes = new Uint8Array(binary.length);
         for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
       } else {
         if (mimeType !== "image/svg+xml") {
-          fail("Non-base64 inline image data is supported only for UTF-8 SVG.");
+          fail("Non-base64 inline image data is supported only for UTF-8 SVG.", "invalid-inline-image-data");
         }
         const encoded = new TextEncoder().encode(payload);
         const decoded = new Uint8Array(encoded.length);
         let written = 0;
         for (let index = 0; index < encoded.length;) {
           if (encoded[index] === 0x25) {
-            if (index + 2 >= encoded.length) fail("Markdown inline SVG contains an incomplete percent escape.");
+            if (index + 2 >= encoded.length) fail("Markdown inline SVG contains an incomplete percent escape.", "invalid-inline-image-data");
             const high = hexValue(encoded[index + 1]);
             const low = hexValue(encoded[index + 2]);
-            if (high < 0 || low < 0) fail("Markdown inline SVG contains an invalid percent escape.");
+            if (high < 0 || low < 0) fail("Markdown inline SVG contains an invalid percent escape.", "invalid-inline-image-data");
             decoded[written++] = (high << 4) | low;
             index += 3;
           } else {
             decoded[written++] = encoded[index++];
           }
         }
-        if (written > ${MAX_INLINE_IMAGE_URI_BYTES}) fail("Markdown inline SVG exceeds the decoded byte limit.");
+        if (written > ${MAX_INLINE_IMAGE_URI_BYTES}) fail("Markdown inline SVG exceeds the decoded byte limit.", "invalid-inline-image-data");
         bytes = decoded.subarray(0, written);
       }
       return { mimeType, bytes };
