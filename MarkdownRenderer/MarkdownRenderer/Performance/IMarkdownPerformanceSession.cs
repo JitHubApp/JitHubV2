@@ -3,6 +3,11 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Diagnostics;
+using MarkdownRenderer.Document;
+using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Layout;
+using MarkdownRenderer.Parsing;
 
 namespace MarkdownRenderer.Performance;
 
@@ -99,6 +104,25 @@ public interface IMarkdownPerformanceSession
 internal interface IMarkdownPerformanceSessionInternal : IMarkdownPerformanceSession
 {
     bool IsDisposed { get; }
+    event EventHandler? Disposed;
+    bool TryGetStyleRoleDemandMask(
+        MarkdownDocument document,
+        CancellationToken cancellationToken,
+        out ulong roleDemandMask);
+    ValueTask<MarkdownDocument?> ParseAndPrepareDocumentAsync(
+        MarkdownEngine? engine,
+        MarkdownDocument? document,
+        string? source,
+        MarkdownExtensionRegistry legacyRegistry,
+        object documentOwner,
+        CancellationToken cancellationToken);
+    bool TryGetDeferredSceneResult(
+        object documentOwner,
+        string marker,
+        out MarkdownContentFragment? result);
+    void AdvanceDeferredSceneGeneration(object documentOwner);
+    void ReleaseDeferredSceneDocument(object documentOwner);
+    bool ScheduleDeferredScenes(object documentOwner);
     long BeginRasterPreparation(int sourceBytes, int sourceWidth, int sourceHeight);
     void RecordRasterPreparationStage(
         long preparationId,
@@ -107,11 +131,28 @@ internal interface IMarkdownPerformanceSessionInternal : IMarkdownPerformanceSes
     IMarkdownPerformanceDocumentScope OpenDocument(
         IMarkdownImageResolver resolver,
         MarkdownImageResolveContext context);
+    IMarkdownPerformanceDocumentScope? PrepareDocumentScope(
+        object documentOwner,
+        string source,
+        int registryRevision,
+        Markdig.Syntax.MarkdownDocument document,
+        MarkdownRenderer.Parsing.SafeHtmlRenderPolicy? safeHtmlPolicy,
+        IMarkdownImageResolver resolver,
+        MarkdownImageResolveContext context);
+    void ReleaseDocumentScope(object documentOwner);
     ValueTask<IDisposable> EnterCpuPreparationAsync(
         object documentOwner,
         CancellationToken cancellationToken);
     ValueTask<IMarkdownScenePreparationLease> EnterScenePreparationAsync(
         object documentOwner,
+        CancellationToken cancellationToken);
+}
+
+internal interface IMarkdownPerformanceLegacyParser
+{
+    Task<ParsedMarkdown?> ParseLegacyMarkdownAsync(
+        string source,
+        MarkdownExtensionRegistry registry,
         CancellationToken cancellationToken);
 }
 

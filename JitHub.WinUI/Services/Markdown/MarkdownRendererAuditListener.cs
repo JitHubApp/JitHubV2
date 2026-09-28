@@ -52,6 +52,13 @@ internal sealed partial class MarkdownRendererAuditListener : EventListener
                 workerInputSha256,
                 workerExecutableSha256);
         }
+        else if (eventData.EventSource.Name == WorkerSourceName &&
+            eventData.EventId == 2 &&
+            eventData.Payload is { Count: 1 } fontPhasePayload &&
+            fontPhasePayload[0] is string initializationPhase)
+        {
+            MarkdownLifecycleAutomationBridge.RecordSvgFontCatalogDeadlinePhase(initializationPhase);
+        }
         else if (eventData.EventSource.Name == PreflightSourceName &&
             eventData.EventId == 1 &&
             eventData.Payload is { Count: 3 } preflightPayload &&

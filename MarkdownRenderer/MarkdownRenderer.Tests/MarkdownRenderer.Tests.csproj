@@ -52,6 +52,7 @@
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgResourceBudget.cs" Link="Core\SvgResourceBudget.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgStaticSnapshot.cs" Link="Core\SvgStaticSnapshot.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\RasterImageResourceBudget.cs" Link="Core\RasterImageResourceBudget.cs" />
+    <Compile Include="..\MarkdownRenderer\Layout\Boxes\RasterImageTilePlanner.cs" Link="Core\RasterImageTilePlanner.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgThemeInjector.cs" Link="Core\SvgThemeInjector.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgTitleExtractor.cs" Link="Core\SvgTitleExtractor.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\LoadCompletedEventArgs.cs" Link="Core\LoadCompletedEventArgs.cs" />

@@ -562,6 +562,7 @@ public interface MarkdownRenderer.Performance.IMarkdownPerformanceSession
 public sealed class MarkdownRenderer.Performance.MarkdownPerformanceOptions : System.IEquatable<MarkdownRenderer.Performance.MarkdownPerformanceOptions>
   public MarkdownPerformanceOptions();
   public MarkdownRenderer.Performance.MarkdownPerformanceOptions <Clone>$();
+  public bool DeferOffscreenScenes { get; init; }
   public bool Equals(MarkdownRenderer.Performance.MarkdownPerformanceOptions? other);
   public bool PrefetchDocumentImages { get; init; }
   public bool UseCachedRasterPreview { get; init; }

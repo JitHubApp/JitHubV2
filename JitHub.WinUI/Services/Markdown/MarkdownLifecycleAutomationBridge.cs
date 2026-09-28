@@ -6,6 +6,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
+using System.Threading.Tasks;
 
 namespace JitHub.Services.Markdown;
 
@@ -28,6 +29,7 @@ internal static partial class MarkdownLifecycleAutomationBridge
     private const string SvgPreflightEvidencePathVariable = "JITHUB_MARKDOWN_SVG_PREFLIGHT_EVIDENCE_PATH";
     private const string RenderFailureEvidencePathVariable = "JITHUB_MARKDOWN_RENDER_FAILURE_EVIDENCE_PATH";
     private const string RenderCompleteEvidencePathVariable = "JITHUB_MARKDOWN_RENDER_COMPLETE_EVIDENCE_PATH";
+    private const string FirstViewportImagesReadyEvidencePathVariable = "JITHUB_MARKDOWN_FIRST_VIEWPORT_IMAGES_READY_EVIDENCE_PATH";
     private const string CaptureRequestPathVariable = "JITHUB_MARKDOWN_CAPTURE_REQUEST_PATH";
     private const string CaptureResponsePathVariable = "JITHUB_MARKDOWN_CAPTURE_RESPONSE_PATH";
     private const string ShutdownStagePathVariable = "JITHUB_MARKDOWN_SHUTDOWN_STAGE_PATH";
@@ -36,16 +38,44 @@ internal static partial class MarkdownLifecycleAutomationBridge
     private const string ResourceMapEvidencePathVariable = "JITHUB_AUTOMATION_RESOURCE_MAP_EVIDENCE_PATH";
     private const string SameByteReplayCorpusPathVariable = "JITHUB_README_AUDIT_SAME_BYTE_CORPUS";
     private const string SameByteReplayReadmeShaVariable = "JITHUB_README_AUDIT_SAME_BYTE_README_SHA";
+    private const string SameByteReadmeSourceEvidencePathVariable = "JITHUB_README_AUDIT_NATIVE_SOURCE_EVIDENCE_PATH";
+    private const int ParsePipelineBeginStage = 0;
+    private const int ParsePipelineEngineParseAndCacheStage = 1;
+    private const int ParsePipelineLegacyParseAndDocumentStage = 2;
+    private const int ParsePipelineProgressiveScenePlanStage = 3;
+    private const int ParsePipelineStyleRoleDemandStage = 4;
+    private const int ParsePipelineSessionTotalStage = 5;
+    internal const double MaximumAuditScrollViewportFraction = 0.95;
 
     private static readonly object SignalGate = new();
+    private static readonly object ParsePipelineTimingGate = new();
     private static string? _signaledHost;
+    private static long _markdownViewerLoadCount;
+    private static long _markdownViewerUnloadCount;
+    private static long _markdownViewerLiveCount;
+    private static string? _shutdownAuditDetails;
     private static bool _launchFixtureEnabled;
     private static bool _productionAuditEnabled;
     private static string? _launchTargetHost;
+    private static int _parsePipelineOwnerIdentity;
+    private static bool _hasParsePipelineTiming;
+    private static double _engineParseAndCacheMilliseconds;
+    private static double _legacyParseAndDocumentMilliseconds;
+    private static double _progressiveScenePlanMilliseconds;
+    private static double _styleRoleDemandMilliseconds;
+    private static double _parseSessionTotalMilliseconds;
 
     public static bool IsEnabled => _launchFixtureEnabled || IsOne(FixtureVariable);
 
     public static bool IsEvidenceEnabled => IsEnabled || _productionAuditEnabled;
+
+    public static bool IsProductionAuditEnabled => _productionAuditEnabled;
+
+    public static bool IsFirstViewportImagesReadyEvidenceEnabled => _productionAuditEnabled &&
+        !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(FirstViewportImagesReadyEvidencePathVariable));
+
+    public static bool IsShutdownAuditDiagnosticsEnabled => IsEvidenceEnabled &&
+        !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(ShutdownStagePathVariable));
 
     public static bool IsSameByteReplayEnabled =>
         _productionAuditEnabled &&
@@ -58,6 +88,19 @@ internal static partial class MarkdownLifecycleAutomationBridge
     public static string? SameByteReplayReadmeSha => IsSameByteReplayEnabled
         ? Environment.GetEnvironmentVariable(SameByteReplayReadmeShaVariable)
         : null;
+
+    public static void RecordSameByteReadmeSource(ReadOnlySpan<byte> bytes)
+    {
+        if (!IsSameByteReplayEnabled)
+            return;
+
+        WriteSignal(
+            Environment.GetEnvironmentVariable(SameByteReadmeSourceEvidencePathVariable),
+            new SameByteReadmeSourceSignal(
+                bytes.Length,
+                Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant()),
+            MarkdownLifecycleJsonContext.Default.SameByteReadmeSourceSignal);
+    }
 
     public static bool IsRasterPreparationEvidenceEnabled => IsEvidenceEnabled &&
         !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(RasterPreparationEvidencePathVariable));
@@ -78,6 +121,90 @@ internal static partial class MarkdownLifecycleAutomationBridge
         _launchFixtureEnabled = fixtureEnabled;
         _productionAuditEnabled = productionAuditEnabled;
         _launchTargetHost = string.IsNullOrWhiteSpace(targetHost) ? null : targetHost.Trim();
+        if (!fixtureEnabled && !productionAuditEnabled)
+        {
+            lock (SignalGate)
+            {
+                _shutdownAuditDetails = null;
+                System.Threading.Interlocked.Exchange(ref _markdownViewerLoadCount, 0);
+                System.Threading.Interlocked.Exchange(ref _markdownViewerUnloadCount, 0);
+                System.Threading.Interlocked.Exchange(ref _markdownViewerLiveCount, 0);
+            }
+            lock (ParsePipelineTimingGate)
+            {
+                _parsePipelineOwnerIdentity = 0;
+                _hasParsePipelineTiming = false;
+                _engineParseAndCacheMilliseconds = 0;
+                _legacyParseAndDocumentMilliseconds = 0;
+                _progressiveScenePlanMilliseconds = 0;
+                _styleRoleDemandMilliseconds = 0;
+                _parseSessionTotalMilliseconds = 0;
+            }
+        }
+    }
+
+    internal static void RecordParsePipelineStage(
+        int ownerIdentity,
+        int stage,
+        long elapsedStopwatchTicks)
+    {
+        if (!IsEvidenceEnabled)
+            return;
+
+        lock (ParsePipelineTimingGate)
+        {
+            if (stage == ParsePipelineBeginStage)
+            {
+                _parsePipelineOwnerIdentity = ownerIdentity;
+                _hasParsePipelineTiming = true;
+                _engineParseAndCacheMilliseconds = 0;
+                _legacyParseAndDocumentMilliseconds = 0;
+                _progressiveScenePlanMilliseconds = 0;
+                _styleRoleDemandMilliseconds = 0;
+                _parseSessionTotalMilliseconds = 0;
+                return;
+            }
+
+            if (!_hasParsePipelineTiming || ownerIdentity != _parsePipelineOwnerIdentity)
+                return;
+
+            double elapsedMilliseconds = elapsedStopwatchTicks > 0
+                ? Stopwatch.GetElapsedTime(0, elapsedStopwatchTicks).TotalMilliseconds
+                : 0;
+            switch (stage)
+            {
+                case ParsePipelineEngineParseAndCacheStage:
+                    _engineParseAndCacheMilliseconds += elapsedMilliseconds;
+                    break;
+                case ParsePipelineLegacyParseAndDocumentStage:
+                    _legacyParseAndDocumentMilliseconds += elapsedMilliseconds;
+                    break;
+                case ParsePipelineProgressiveScenePlanStage:
+                    _progressiveScenePlanMilliseconds = elapsedMilliseconds;
+                    break;
+                case ParsePipelineStyleRoleDemandStage:
+                    _styleRoleDemandMilliseconds = elapsedMilliseconds;
+                    break;
+                case ParsePipelineSessionTotalStage:
+                    _parseSessionTotalMilliseconds = elapsedMilliseconds;
+                    break;
+            }
+        }
+    }
+
+    internal static MarkdownAuditParsePreparationTiming GetParsePreparationTiming(int ownerIdentity)
+    {
+        lock (ParsePipelineTimingGate)
+        {
+            return _hasParsePipelineTiming && ownerIdentity == _parsePipelineOwnerIdentity
+                ? new MarkdownAuditParsePreparationTiming(
+                    _engineParseAndCacheMilliseconds,
+                    _legacyParseAndDocumentMilliseconds,
+                    _progressiveScenePlanMilliseconds,
+                    _styleRoleDemandMilliseconds,
+                    _parseSessionTotalMilliseconds)
+                : default;
+        }
     }
 
     public static bool TargetsHost(string automationId) =>
@@ -299,11 +426,58 @@ internal static partial class MarkdownLifecycleAutomationBridge
 
         lock (SignalGate)
         {
+            string stageWithAuditDetails = _shutdownAuditDetails is { Length: > 0 } details
+                ? $"{stage};{details}"
+                : stage;
             WriteSignal(
                 Environment.GetEnvironmentVariable(ShutdownStagePathVariable),
-                new ShutdownStageSignal(Environment.ProcessId, stage, DateTimeOffset.UtcNow),
+                new ShutdownStageSignal(Environment.ProcessId, stageWithAuditDetails, DateTimeOffset.UtcNow),
                 MarkdownLifecycleJsonContext.Default.ShutdownStageSignal);
         }
+    }
+
+    public static void RecordMarkdownViewerLoaded()
+    {
+        if (!IsShutdownAuditDiagnosticsEnabled)
+            return;
+
+        System.Threading.Interlocked.Increment(ref _markdownViewerLoadCount);
+        System.Threading.Interlocked.Increment(ref _markdownViewerLiveCount);
+    }
+
+    public static void RecordMarkdownViewerUnloaded()
+    {
+        if (!IsShutdownAuditDiagnosticsEnabled)
+            return;
+
+        System.Threading.Interlocked.Increment(ref _markdownViewerUnloadCount);
+        System.Threading.Interlocked.Decrement(ref _markdownViewerLiveCount);
+    }
+
+    public static void RecordMarkdownShutdownAuditSnapshot(
+        MarkdownShutdownAuditPerformanceSnapshot? performance,
+        bool pageUnloadWaitTimedOut,
+        bool shellContentUnloadWaitTimedOut = false,
+        bool markdownRendererDisposalWaitTimedOut = false,
+        int markdownRenderersForceDisposed = 0)
+    {
+        if (!IsShutdownAuditDiagnosticsEnabled)
+            return;
+
+        long loaded = System.Threading.Interlocked.Read(ref _markdownViewerLoadCount);
+        long unloaded = System.Threading.Interlocked.Read(ref _markdownViewerUnloadCount);
+        long live = System.Threading.Interlocked.Read(ref _markdownViewerLiveCount);
+        string performanceDetails = performance is null
+            ? "performanceSnapshotAvailable=false"
+            : FormattableString.Invariant(
+                $"performanceSnapshotAvailable=true;pendingImageFetches={performance.PendingImageFetches};activeImageFetches={performance.ActiveImageFetches};scenePreparationsTotal={performance.ScenePreparationsTotal};pendingSourceByteRequests={performance.PendingSourceByteRequests};inFlightSourceBytes={performance.InFlightSourceBytes}");
+        string details = FormattableString.Invariant(
+            $"markdown-shutdown-audit:pageUnloadWaitTimedOut={(pageUnloadWaitTimedOut ? "true" : "false")};shellContentUnloadWaitTimedOut={(shellContentUnloadWaitTimedOut ? "true" : "false")};markdownRendererDisposalWaitTimedOut={(markdownRendererDisposalWaitTimedOut ? "true" : "false")};markdownRenderersForceDisposed={markdownRenderersForceDisposed};markdownViewsLoaded={loaded};markdownViewsUnloaded={unloaded};markdownViewsStillLoaded={live};{performanceDetails}");
+
+        lock (SignalGate)
+            _shutdownAuditDetails = details;
+
+        SignalShutdownStage("markdown-shutdown-audit-snapshot");
     }
 
     public static void RecordImageResolution(
@@ -498,6 +672,46 @@ internal static partial class MarkdownLifecycleAutomationBridge
         }
     }
 
+    public static void RecordSvgFontCatalogDeadlinePhase(string initializationPhase)
+    {
+        if (!IsEvidenceEnabled)
+            return;
+
+        string? path = Environment.GetEnvironmentVariable(SvgWorkerEvidencePathVariable);
+        if (string.IsNullOrWhiteSpace(path))
+            return;
+
+        // A compromised or malformed worker response must not put source text
+        // into an audit artifact. These are the only protocol phases.
+        string phase = initializationPhase switch
+        {
+            "machine-fonts" or "user-local-fonts" or "user-roaming-fonts" or
+            "font-family-defaults" or "text-pipeline-warmup" => initializationPhase,
+            _ => "unknown",
+        };
+        lock (SignalGate)
+        {
+            try
+            {
+                string fullPath = Path.GetFullPath(path);
+                Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+                string entry = JsonSerializer.Serialize(
+                    new SvgFontCatalogDeadlinePhaseSignal(
+                        Environment.ProcessId,
+                        phase,
+                        DateTimeOffset.UtcNow),
+                    MarkdownLifecycleJsonContext.Default.SvgFontCatalogDeadlinePhaseSignal);
+                File.AppendAllText(fullPath, entry + Environment.NewLine);
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
+        }
+    }
+
     public static void RecordSvgPreflightRejection(
         string reason,
         int sourceByteLength,
@@ -585,10 +799,11 @@ internal static partial class MarkdownLifecycleAutomationBridge
 
     public static void RecordRenderComplete(
         string automationId,
+        long generation,
         DateTimeOffset completedAt,
         MarkdownAuditPerformanceSnapshot? performance)
     {
-        if (!TargetsHost(automationId))
+        if (!TargetsHost(automationId) || generation <= 0)
         {
             return;
         }
@@ -598,9 +813,47 @@ internal static partial class MarkdownLifecycleAutomationBridge
             new RenderCompleteSignal(
                 Environment.ProcessId,
                 automationId,
+                generation,
                 completedAt,
                 performance),
             MarkdownLifecycleJsonContext.Default.RenderCompleteSignal);
+    }
+
+    public static Task<bool>? RecordFirstViewportImagesReady(
+        string automationId,
+        long generation,
+        long viewportPaintGeneration,
+        int pollCount,
+        double probeWorkMilliseconds,
+        double viewportTop,
+        double viewportHeight,
+        bool viewportMeasured,
+        DateTimeOffset readyAt)
+    {
+        if (!IsFirstViewportImagesReadyEvidenceEnabled ||
+            !TargetsHost(automationId) ||
+            generation <= 0 ||
+            viewportPaintGeneration != generation ||
+            pollCount <= 0)
+        {
+            return null;
+        }
+
+        return FirstViewportImagesReadyEvidenceWriter.TryQueueWrite(
+            Environment.GetEnvironmentVariable(FirstViewportImagesReadyEvidencePathVariable),
+            IsFirstViewportImagesReadyEvidenceEnabled,
+            Environment.ProcessId,
+            automationId,
+            generation,
+            viewportPaintGeneration,
+            pollCount,
+            probeWorkMilliseconds,
+            viewportTop,
+            viewportHeight,
+            viewportMeasured,
+            hasVisibleLoadingImages: false,
+            readmeGitBlobSha1: SameByteReplayReadmeSha,
+            timestamp: readyAt);
     }
 
     public static bool TryReadCaptureRequest(
@@ -641,6 +894,32 @@ internal static partial class MarkdownLifecycleAutomationBridge
         }
     }
 
+    public static bool TryGetAuditScrollViewportFraction(
+        MarkdownAuditCaptureRequest request,
+        out double viewportFraction)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        viewportFraction = 0;
+        if (request.ScrollViewportFraction is not double requestedFraction)
+            return false;
+
+        if (!_productionAuditEnabled)
+        {
+            throw new InvalidOperationException(
+                "Programmatic Markdown scrolling is available only during the explicit production README audit.");
+        }
+
+        if (!double.IsFinite(requestedFraction) || requestedFraction == 0 ||
+            Math.Abs(requestedFraction) > MaximumAuditScrollViewportFraction)
+        {
+            throw new InvalidDataException(
+                $"The audit scroll step must be finite, nonzero, and no larger than {MaximumAuditScrollViewportFraction:P0} of one viewport.");
+        }
+
+        viewportFraction = requestedFraction;
+        return true;
+    }
+
     public static void RecordCaptureResponse(
         string requestId,
         bool succeeded,
@@ -648,7 +927,8 @@ internal static partial class MarkdownLifecycleAutomationBridge
         int height,
         double documentTop,
         string? error,
-        MarkdownAuditPerformanceSnapshot? performance)
+        MarkdownAuditPerformanceSnapshot? performance,
+        double scrollOperationMilliseconds = 0)
     {
         WriteSignal(
             Environment.GetEnvironmentVariable(CaptureResponsePathVariable),
@@ -659,7 +939,8 @@ internal static partial class MarkdownLifecycleAutomationBridge
                 height,
                 documentTop,
                 error,
-                performance),
+                performance,
+                scrollOperationMilliseconds),
             MarkdownLifecycleJsonContext.Default.MarkdownAuditCaptureResponse);
     }
 
@@ -739,6 +1020,7 @@ internal static partial class MarkdownLifecycleAutomationBridge
     private sealed record RenderCompleteSignal(
         int ProcessId,
         string Host,
+        long Generation,
         DateTimeOffset Timestamp,
         MarkdownAuditPerformanceSnapshot? Performance);
 
@@ -758,6 +1040,13 @@ internal static partial class MarkdownLifecycleAutomationBridge
         string WorkerInputSha256,
         string WorkerExecutableSha256,
         DateTimeOffset Timestamp);
+
+    private sealed record SvgFontCatalogDeadlinePhaseSignal(
+        int ProcessId,
+        string InitializationPhase,
+        DateTimeOffset Timestamp);
+
+    private sealed record SameByteReadmeSourceSignal(int ByteSize, string Sha256);
 
     private sealed record SvgPreflightRejectionSignal(
         int ProcessId,
@@ -789,6 +1078,12 @@ internal static partial class MarkdownLifecycleAutomationBridge
         long Generation,
         long SourceUtf16Bytes,
         double ParseMilliseconds,
+        double EngineParseAndCacheMilliseconds,
+        double LegacyParseAndDocumentMilliseconds,
+        double ProgressiveScenePlanMilliseconds,
+        double StyleRoleDemandMilliseconds,
+        double ParseSessionTotalMilliseconds,
+        double ParseResumeAndAdapterMilliseconds,
         double SetupMilliseconds,
         double ThemeSnapshotMilliseconds,
         double LayoutMilliseconds,
@@ -808,10 +1103,18 @@ internal static partial class MarkdownLifecycleAutomationBridge
         double AdornmentFocusMilliseconds,
         double FinalNotificationMilliseconds);
 
+    internal readonly record struct MarkdownAuditParsePreparationTiming(
+        double EngineParseAndCacheMilliseconds,
+        double LegacyParseAndDocumentMilliseconds,
+        double ProgressiveScenePlanMilliseconds,
+        double StyleRoleDemandMilliseconds,
+        double SessionTotalMilliseconds);
+
     internal sealed record MarkdownAuditCaptureRequest(
         string RequestId,
         string? OutputPath,
-        bool Save);
+        bool Save,
+        double? ScrollViewportFraction = null);
 
     private sealed record MarkdownAuditCaptureResponse(
         string RequestId,
@@ -820,7 +1123,8 @@ internal static partial class MarkdownLifecycleAutomationBridge
         int Height,
         double DocumentTop,
         string? Error,
-        MarkdownAuditPerformanceSnapshot? Performance);
+        MarkdownAuditPerformanceSnapshot? Performance,
+        double ScrollOperationMilliseconds);
 
     private sealed record MarkdownLifecycleRuntimeSettings(double TextScaleFactor, int Revision);
 
@@ -833,6 +1137,8 @@ internal static partial class MarkdownLifecycleAutomationBridge
     [JsonSerializable(typeof(RasterPreparationSignal), TypeInfoPropertyName = "RasterPreparationSignal")]
     [JsonSerializable(typeof(RenderCompleteSignal), TypeInfoPropertyName = "RenderCompleteSignal")]
     [JsonSerializable(typeof(SvgWorkerTimeoutSignal), TypeInfoPropertyName = "SvgWorkerTimeoutSignal")]
+    [JsonSerializable(typeof(SvgFontCatalogDeadlinePhaseSignal), TypeInfoPropertyName = "SvgFontCatalogDeadlinePhaseSignal")]
+    [JsonSerializable(typeof(SameByteReadmeSourceSignal), TypeInfoPropertyName = "SameByteReadmeSourceSignal")]
     [JsonSerializable(typeof(SvgPreflightRejectionSignal), TypeInfoPropertyName = "SvgPreflightRejectionSignal")]
     [JsonSerializable(typeof(MarkdownAuditPerformanceSnapshot), TypeInfoPropertyName = "MarkdownAuditPerformanceSnapshot")]
     [JsonSerializable(typeof(MarkdownAuditPipelineTimingSnapshot), TypeInfoPropertyName = "MarkdownAuditPipelineTimingSnapshot")]
@@ -843,3 +1149,10 @@ internal static partial class MarkdownLifecycleAutomationBridge
     {
     }
 }
+
+internal sealed record MarkdownShutdownAuditPerformanceSnapshot(
+    int PendingImageFetches,
+    int ActiveImageFetches,
+    long ScenePreparationsTotal,
+    int PendingSourceByteRequests,
+    long InFlightSourceBytes);

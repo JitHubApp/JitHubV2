@@ -5,8 +5,15 @@ import os from "node:os";
 import path from "node:path";
 import { DocumentReadinessTimeout, metricDelta, metricMap, navigateReadme } from "./browser-navigation.mjs";
 import { waitForDevToolsPort } from "./browser-launch.mjs";
+import { connectCdp } from "./cdp-client.mjs";
 import { stopBrowserProfileProcesses } from "./browser-process-lifetime.mjs";
-import { captureSameByteCorpus, createResponseRecorder, sha256 } from "./same-byte-corpus.mjs";
+import {
+  captureSameByteCorpus,
+  createResponseRecorder,
+  createSameByteReplayServer,
+  sha256,
+} from "./same-byte-corpus.mjs";
+import { replaySameByteInEdge } from "./same-byte-edge-replay.mjs";
 
 const options = parseArguments(process.argv.slice(2));
 const outputDirectory = path.resolve(required("out"));
@@ -26,6 +33,11 @@ let edgeError = "";
 const wall = performance.now();
 class ReadmeNotRendered extends Error {}
 try {
+  // Node may need the read-only token to resolve a pinned README symlink.
+  // The untrusted web page in Edge has no reason to inherit that credential.
+  const edgeEnvironment = { ...process.env };
+  delete edgeEnvironment.JITHUB_README_AUDIT_GITHUB_TOKEN;
+  delete edgeEnvironment.JITHUB_README_AUDIT_GITHUB_ACCOUNT_ID;
   edge = spawn(edgePath, [
     "--headless=new",
     "--no-first-run",
@@ -37,14 +49,17 @@ try {
     "--remote-debugging-port=0",
     `--user-data-dir=${profileDirectory}`,
     "about:blank",
-  ], { stdio: ["ignore", "ignore", "pipe"], windowsHide: true });
+  ], { stdio: ["ignore", "ignore", "pipe"], windowsHide: true, env: edgeEnvironment });
 
   edge.stderr.setEncoding("utf8");
   edge.stderr.on("data", chunk => { edgeError = (edgeError + chunk).slice(-8192); });
 
   const portFile = path.join(profileDirectory, "DevToolsActivePort");
   const port = Number((await waitForDevToolsPort(portFile, edge, () => edgeError)).split(/\r?\n/, 1)[0]);
-  const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
+  const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`, {
+    signal: AbortSignal.timeout(10_000),
+  })).json();
+  if (!Array.isArray(targets)) throw new Error("Edge returned an invalid DevTools target list.");
   const pageTarget = targets.find(target => target.type === "page");
   if (!pageTarget?.webSocketDebuggerUrl) {
     throw new Error("Edge did not expose a debuggable page target.");
@@ -98,7 +113,7 @@ try {
       semantic: { text: "", headings: [], links: [], images: [], media: [], unavailableImages: 0, tables: 0, codeBlocks: 0, taskCheckboxes: 0, details: 0 },
       tiles: [],
     };
-    await captureCorpusForReport(report, []);
+    await captureCorpusForReport(report, [], undefined);
     await writeBrowserReport(report);
     process.stdout.write(JSON.stringify({ ok: true, readmeRendered: false, report: reportPath }) + "\n");
     throw new ReadmeNotRendered();
@@ -215,8 +230,9 @@ try {
       throw new Error("README exceeds the bounded browser image-element count.");
     }
     const images = [...imageNodes]
-      .filter(isRendered)
-      .map(image => {
+      .map((image, replayIndex) => ({ image, replayIndex }))
+      .filter(item => isRendered(item.image))
+      .map(({ image, replayIndex }) => {
         const bounds = image.getBoundingClientRect();
         return {
           alt: image.getAttribute("alt") || "",
@@ -227,6 +243,7 @@ try {
           // canonical source only in the transient capture; the report writer
           // hashes it before any artifact is persisted.
           canonicalSource: image.getAttribute("data-canonical-src") || "",
+          replayIndex,
           complete: image.complete,
           naturalWidth: image.naturalWidth,
           naturalHeight: image.naturalHeight,
@@ -382,6 +399,11 @@ try {
     tiles.push({ index, relativeY, width: semantic.width, height, file });
   }
 
+  // This snapshot is private capture input. It is transformed into static
+  // computed presentation and replayed only from loopback with remote requests
+  // denied, keeping GitHub/CDN navigation outside the Edge denominator.
+  const renderedHtml = sameByteRecorder ? await captureRenderedHtmlSnapshot(cdp) : undefined;
+
   const navigationTiming = await evaluate(cdp, `(() => {
     const entry = performance.getEntriesByType("navigation")[0];
     return entry ? {
@@ -425,7 +447,8 @@ try {
   };
   await captureCorpusForReport(
     report,
-    semantic.images.filter(image => image.complete && image.naturalWidth > 0 && image.naturalHeight > 0));
+    semantic.images.filter(image => image.complete && image.naturalWidth > 0 && image.naturalHeight > 0),
+    renderedHtml);
   await writeBrowserReport(report);
   process.stdout.write(JSON.stringify({ ok: true, report: path.join(outputDirectory, "browser.json") }) + "\n");
 } catch (error) {
@@ -498,8 +521,12 @@ function parseArguments(args) {
   return result;
 }
 
-async function captureCorpusForReport(report, images) {
+async function captureCorpusForReport(report, images, renderedHtml) {
   if (!sameByteRecorder) return;
+  const readmeRendered = report.readmeRendered === true;
+  if (readmeRendered && images.length !== report.semantic.images.length) {
+    throw new Error("Same-byte replay cannot qualify while any GitHub-visible image is unavailable.");
+  }
   const capture = await captureSameByteCorpus({
     directory: options["capture-same-byte-corpus"],
     repository: {
@@ -511,15 +538,143 @@ async function captureCorpusForReport(report, images) {
     readmeGitBlobSha1: readmeSha,
     readmeByteSize: readNonNegativeInteger("readme-byte-size"),
     images,
+    renderedHtml,
+    readmeRendered,
     responseRecorder: sameByteRecorder,
   });
+  // The live-page response recorder is no longer needed. Detach it before
+  // replay so loopback responses cannot pollute the captured GitHub trace or
+  // retain a second copy of every image request in host memory.
+  sameByteRecorder.dispose();
   report.sameByteCorpus = {
     manifest: path.relative(outputDirectory, path.join(capture.directory, "manifest.json")),
     manifestSha256: capture.manifestSha256,
     readmeBytes: capture.readmeBytes,
+    readmeSha256: capture.readmeSha256,
     assetCount: capture.assetCount,
     assetBytes: capture.assetBytes,
   };
+  if (!readmeRendered) {
+    report.sameByteHtmlReplay = {
+      schemaVersion: 1,
+      status: "not-applicable",
+      reason: "github-source-view",
+    };
+    return;
+  }
+
+  const replayServer = await createSameByteReplayServer(capture.directory);
+  try {
+    report.sameByteHtmlReplay = await replaySameByteInEdge({
+      cdp,
+      replayServer,
+      outputDirectory,
+      viewport: { width: viewportWidth, height: viewportHeight },
+      maximumTiles,
+    });
+  } finally {
+    await replayServer.close();
+  }
+}
+
+async function captureRenderedHtmlSnapshot(cdpClient) {
+  const html = await evaluate(cdpClient, `(() => {
+    const article = document.querySelector("#readme article.markdown-body, article.markdown-body");
+    if (!article) throw new Error("GitHub README article disappeared before same-byte capture.");
+    const imageNodes = [...article.querySelectorAll("img")];
+    if (imageNodes.length > 15_000) throw new Error("README exceeds the bounded browser image-element count.");
+    const originals = [article, ...article.querySelectorAll("*")];
+    if (originals.length > 200_000) throw new Error("README exceeds the bounded static HTML element count.");
+    const clone = article.cloneNode(true);
+    const copies = [clone, ...clone.querySelectorAll("*")];
+    if (copies.length !== originals.length) throw new Error("GitHub article clone changed its element structure.");
+    const imageIndexByNode = new Map(imageNodes.map((image, index) => [image, index]));
+    const styleProperties = [
+      "display", "visibility", "opacity", "position", "top", "right", "bottom", "left", "z-index",
+      "box-sizing", "width", "height", "min-width", "min-height", "max-width", "max-height",
+      "margin-top", "margin-right", "margin-bottom", "margin-left", "padding-top", "padding-right",
+      "padding-bottom", "padding-left", "border-top-width", "border-right-width", "border-bottom-width",
+      "border-left-width", "border-top-style", "border-right-style", "border-bottom-style", "border-left-style",
+      "border-top-color", "border-right-color", "border-bottom-color", "border-left-color",
+      "border-top-left-radius", "border-top-right-radius", "border-bottom-right-radius", "border-bottom-left-radius",
+      "background-color", "color", "font-family", "font-size", "font-style", "font-weight", "font-stretch",
+      "font-variant", "line-height", "letter-spacing", "word-spacing", "text-align", "text-indent",
+      "text-transform", "text-decoration-line", "text-decoration-style", "text-decoration-color",
+      "text-decoration-thickness", "text-underline-offset", "white-space", "word-break", "overflow-wrap",
+      "text-overflow", "vertical-align", "direction", "unicode-bidi", "writing-mode", "float", "clear",
+      "overflow-x", "overflow-y", "object-fit", "object-position", "aspect-ratio", "table-layout",
+      "border-collapse", "border-spacing", "caption-side", "list-style-type", "list-style-position",
+      "fill", "fill-opacity", "fill-rule", "stroke", "stroke-width", "stroke-opacity", "stroke-linecap",
+      "stroke-linejoin", "stroke-miterlimit", "stroke-dasharray", "stroke-dashoffset", "vector-effect",
+      "paint-order", "shape-rendering", "text-anchor", "dominant-baseline", "clip-path", "filter",
+      "marker-start", "marker-mid", "marker-end",
+      "flex-direction", "flex-wrap", "flex-grow", "flex-shrink", "flex-basis", "align-items",
+      "align-content", "align-self", "justify-content", "justify-items", "justify-self", "gap",
+      "row-gap", "column-gap", "grid-template-columns", "grid-template-rows", "grid-auto-flow",
+      "grid-column-start", "grid-column-end", "grid-row-start", "grid-row-end", "transform",
+      "transform-origin", "columns", "column-count"
+    ];
+    const resourceProperties = [
+      "background-image", "list-style-image", "border-image-source", "mask-image", "mask-border-source",
+      "clip-path", "filter", "fill", "stroke", "marker-start", "marker-mid", "marker-end"
+    ];
+    const hasExternalCssResource = value => {
+      if (/@import/iu.test(value || "")) return true;
+      return [...(value || "").matchAll(/url\\s*\\(\\s*(?:(["'])(.*?)\\1|([^)]+))\\s*\\)/giu)]
+        .some(match => !(match[2] ?? match[3] ?? "").trim().startsWith("#"));
+    };
+    for (let index = 0; index < originals.length; index++) {
+      const source = originals[index];
+      const target = copies[index];
+      if (source.nodeType !== Node.ELEMENT_NODE) continue;
+      const computed = getComputedStyle(source);
+      for (const property of resourceProperties) {
+        if (hasExternalCssResource(computed.getPropertyValue(property))) {
+          throw new Error("GitHub article contains an uncaptured external CSS resource.");
+        }
+      }
+      for (const property of styleProperties) {
+        const value = computed.getPropertyValue(property);
+        if (value) target.style.setProperty(property, value);
+      }
+      for (const attribute of [...target.attributes]) {
+        const name = attribute.name.toLowerCase();
+        if (name.startsWith("on") || /^(?:src|srcset|sizes|poster|background|data-canonical-src|data-src|data-srcset|data-lazy-src)$/u.test(name)) {
+          target.removeAttribute(attribute.name);
+        }
+      }
+      if (source.tagName === "IMG") {
+        target.setAttribute("data-jithub-image-index", String(imageIndexByNode.get(source)));
+        const selectedSource = source.currentSrc || source.getAttribute("src") || "";
+        if (/^data:image\\//iu.test(selectedSource)) {
+          target.setAttribute("data-jithub-image-data", selectedSource);
+        }
+      }
+      if (source.tagName === "A") {
+        const href = source.getAttribute("href") || "";
+        if (/^(?:javascript|vbscript|data|blob):/iu.test(href.trim())) target.removeAttribute("href");
+      }
+      if (["IMAGE", "USE"].includes(source.tagName) && source.namespaceURI === "http://www.w3.org/2000/svg") {
+        const reference = source.getAttribute("href") || source.getAttributeNS("http://www.w3.org/1999/xlink", "href") || "";
+        if (reference && !reference.startsWith("#") && !reference.startsWith("data:image/")) {
+          throw new Error("GitHub article contains an uncaptured external inline-SVG resource.");
+        }
+      }
+    }
+    clone.querySelectorAll("script,iframe,object,embed,base,link[rel~='stylesheet'],style").forEach(node => node.remove());
+    for (const node of clone.querySelectorAll("[href]")) {
+      if (node.tagName === "A") continue;
+      const href = node.getAttribute("href") || "";
+      if (href.startsWith("#") || href.startsWith("data:image/")) continue;
+      node.removeAttribute("href");
+      node.removeAttributeNS("http://www.w3.org/1999/xlink", "href");
+    }
+    return clone.outerHTML;
+  })()`);
+  if (typeof html !== "string" || !/^<article\b/iu.test(html)) {
+    throw new Error("GitHub article did not produce a bounded static HTML snapshot.");
+  }
+  return html;
 }
 
 async function writeBrowserReport(report) {
@@ -590,62 +745,6 @@ function findDefaultEdge() {
   const candidate = candidates.find(value => value && path.isAbsolute(value) && existsSync(value));
   if (!candidate) throw new Error("Microsoft Edge was not found; pass --edge=...");
   return candidate;
-}
-
-async function connectCdp(url) {
-  const socket = new WebSocket(url);
-  await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("Timed out connecting to Edge DevTools.")), 10_000);
-    socket.addEventListener("open", () => { clearTimeout(timer); resolve(); }, { once: true });
-    socket.addEventListener("error", event => { clearTimeout(timer); reject(event.error || new Error("DevTools WebSocket failed.")); }, { once: true });
-  });
-  let sequence = 0;
-  const pending = new Map();
-  const eventWaiters = new Map();
-  const eventListeners = new Map();
-  socket.addEventListener("message", event => {
-    const message = JSON.parse(event.data);
-    if (message.id) {
-      const waiter = pending.get(message.id);
-      if (!waiter) return;
-      pending.delete(message.id);
-      message.error ? waiter.reject(new Error(message.error.message)) : waiter.resolve(message.result || {});
-      return;
-    }
-    for (const listener of eventListeners.get(message.method) || []) {
-      try { listener(message.params || {}); } catch {}
-    }
-    const waiters = eventWaiters.get(message.method);
-    if (!waiters?.length) return;
-    eventWaiters.delete(message.method);
-    for (const waiter of waiters) waiter.resolve(message.params || {});
-  });
-  return {
-    send(method, params = {}) {
-      const id = ++sequence;
-      return new Promise((resolve, reject) => {
-        pending.set(id, { resolve, reject });
-        socket.send(JSON.stringify({ id, method, params }));
-      });
-    },
-    once(method, timeoutMs) {
-      return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error(`Timed out waiting for ${method}.`)), timeoutMs);
-        const waiter = { resolve: value => { clearTimeout(timer); resolve(value); }, reject };
-        eventWaiters.set(method, [...(eventWaiters.get(method) || []), waiter]);
-      });
-    },
-    on(method, listener) {
-      const listeners = eventListeners.get(method) || new Set();
-      listeners.add(listener);
-      eventListeners.set(method, listeners);
-      return () => {
-        listeners.delete(listener);
-        if (listeners.size === 0) eventListeners.delete(method);
-      };
-    },
-    close() { socket.close(); },
-  };
 }
 
 async function evaluate(cdpClient, expression, awaitPromise = false) {

@@ -53,7 +53,7 @@ internal static class Gfm029Compatibility
     internal static PreparedSource PrepareSource(string source, bool enableTables)
     {
         ArgumentNullException.ThrowIfNull(source);
-        if (!enableTables || source.Length == 0)
+        if (!enableTables || source.Length == 0 || source.AsSpan().IndexOf('|') < 0)
             return PreparedSource.Unchanged(source);
 
         List<LineInfo> lines = GetLines(source);
@@ -500,18 +500,19 @@ internal static class Gfm029Compatibility
 
     private static void ReplaceEmailLiteral(LiteralInline literal, string source)
     {
-        string content = literal.Content.ToString();
+        ReadOnlySpan<char> contentSpan = literal.Content.AsSpan();
         int sourceStart = literal.Span.Start;
         if (sourceStart < 0 ||
             literal.Span.End < sourceStart ||
             literal.Span.End >= source.Length ||
-            content.Length != literal.Span.End - sourceStart + 1 ||
-            !source.AsSpan(sourceStart, content.Length).SequenceEqual(content.AsSpan()) ||
-            content.IndexOf('@') < 0)
+            contentSpan.Length != literal.Span.End - sourceStart + 1 ||
+            !source.AsSpan(sourceStart, contentSpan.Length).SequenceEqual(contentSpan) ||
+            contentSpan.IndexOf('@') < 0)
         {
             return;
         }
 
+        string content = contentSpan.ToString();
         List<(int Start, int End)> ranges = FindEmailRanges(content);
         ranges.RemoveAll(range =>
         {

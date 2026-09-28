@@ -311,6 +311,7 @@ public sealed class MarkdownExtensionSet
         {
             using MarkdownExtensionCallbackLifetime.Lease lease = callbackLifetime.Enter();
             await renderer(context, content).ConfigureAwait(false);
+            content.BindDeferredSceneRendererLifetime(callbackLifetime);
         };
 
     private static MarkdownNodeRenderer Wrap(
@@ -319,6 +320,7 @@ public sealed class MarkdownExtensionSet
         {
             using MarkdownExtensionCallbackLifetime.Lease lease = callbackLifetime.Enter();
             renderer(context, content);
+            content.BindDeferredSceneRendererLifetime(callbackLifetime);
         };
 
     private static bool ContainsOrdinal(IReadOnlyList<string> items, string value)

@@ -6,6 +6,10 @@ on:
       - ".github/workflows/markdown-readme-top500.yml"
       - "eng/Invoke-TopReadmeAudit.ps1"
       - "eng/readme-audit/**"
+      - "global.json"
+      - "Directory.Build.props"
+      - "Directory.Build.targets"
+      - "NuGet.config"
       - "JitHub.WinUI/**"
       - "JitHub.WinUI.Automation/**"
       - "MarkdownRenderer/**"
@@ -166,8 +170,8 @@ jobs:
         with:
           node-version: 22
 
-      - name: Verify Edge navigation and profile-lifetime contracts
-        run: node --test .\eng\readme-audit\browser-launch.test.mjs .\eng\readme-audit\browser-navigation.test.mjs .\eng\readme-audit\browser-process-lifetime.test.mjs .\eng\readme-audit\same-byte-corpus.test.mjs
+      - name: Verify Edge navigation, transport, and profile-lifetime contracts
+        run: node --test .\eng\readme-audit\browser-launch.test.mjs .\eng\readme-audit\browser-navigation.test.mjs .\eng\readme-audit\browser-process-lifetime.test.mjs .\eng\readme-audit\cdp-client.test.mjs .\eng\readme-audit\same-byte-corpus.test.mjs .\eng\readme-audit\same-byte-edge-replay.test.mjs
 
       - name: Install pinned Windows App Runtime 1.8.10
         run: .\eng\readme-audit\Install-PinnedWindowsAppRuntime.ps1
@@ -195,6 +199,50 @@ jobs:
             $arguments.CaptureSameByteCorpus = $true
           }
           .\eng\Invoke-TopReadmeAudit.ps1 @arguments
+
+      - name: Enforce per-shard aggregate screenshot quota
+        if: always()
+        id: screenshot_quota
+        env:
+          AUDIT_CAPTURE_SAME_BYTE_CORPUS: ${{ inputs.same_byte_release }}
+        run: |
+          # This is an artifact-storage safety limit, not a fidelity threshold;
+          # every expected browser/native tile is validated and uploaded.
+          $output = Join-Path $env:RUNNER_TEMP 'readme-audit'
+          New-Item -ItemType Directory -Force -Path $output | Out-Null
+          . .\eng\readme-audit\Get-TopReadmeScreenshotEvidence.ps1
+          $tileArguments = @{}
+          if ($env:AUDIT_CAPTURE_SAME_BYTE_CORPUS -eq 'true') {
+            $tileArguments.RequireSameByteTiles = $true
+          }
+          $screenshotEvidence = Get-TopReadmeScreenshotEvidence -AuditRoot $output @tileArguments
+          $screenshotBytes = [long]$screenshotEvidence.screenshotBytes
+          $screenshotCount = [int]$screenshotEvidence.screenshotCount
+          $quotaBytes = [long]1073741824
+          $withinQuota = $screenshotBytes -le $quotaBytes -and $screenshotCount -gt 0 -and
+            $screenshotEvidence.caseTileValidationStatus -eq 'passed'
+          $quotaReport = [ordered]@{
+            schemaVersion = 1
+            startRank = ${{ matrix.start }}
+            endRank = ${{ matrix.end }}
+            status = if ($withinQuota) { 'passed' } else { 'failed' }
+            screenshotCount = $screenshotCount
+            screenshotBytes = $screenshotBytes
+            shardQuotaBytes = $quotaBytes
+            caseTileValidationStatus = $screenshotEvidence.caseTileValidationStatus
+            caseTileValidationFailureCount = $screenshotEvidence.caseTileValidationFailureCount
+            caseTileValidationFailures = @($screenshotEvidence.caseTileValidationFailures)
+          }
+          $json = $quotaReport | ConvertTo-Json -Depth 4
+          [System.IO.File]::WriteAllText(
+            (Join-Path $output ("screenshot-quota-ranks-{0}-{1}.json" -f ${{ matrix.start }}, ${{ matrix.end }})),
+            $json + [Environment]::NewLine,
+            [System.Text.UTF8Encoding]::new($false))
+          "within_quota=$($withinQuota.ToString().ToLowerInvariant())" | Add-Content -LiteralPath $env:GITHUB_OUTPUT
+          Write-Host "Shard screenshot evidence: $screenshotCount images, $screenshotBytes/$quotaBytes bytes."
+          if (-not $withinQuota) {
+            throw "Screenshot evidence is missing expected tiles, empty, or above the 1 GiB per-shard storage safety quota; full artifacts will still be retained for review."
+          }
 
       - name: Capture WinUI crash metadata for failed audits
         if: failure()
@@ -238,22 +286,47 @@ jobs:
           }
           $result | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $output 'crash-events.json')
 
-      - name: Upload full-page evidence
+      - name: Upload audit evidence for consolidation
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: readme-audit-${{ matrix.start }}-${{ matrix.end }}
+          name: readme-audit-evidence-${{ matrix.start }}-${{ matrix.end }}
           path: |
             ${{ runner.temp }}/readme-audit/summary.json
             ${{ runner.temp }}/readme-audit/summary.md
+            ${{ runner.temp }}/readme-audit/app-binary-ranks-*.json
+            ${{ runner.temp }}/readme-audit/screenshot-quota-ranks-*.json
             ${{ runner.temp }}/readme-audit/crash-events.json
             ${{ runner.temp }}/readme-audit/cases/**/result.json
             ${{ runner.temp }}/readme-audit/cases/**/browser/**
             ${{ runner.temp }}/readme-audit/cases/**/native/**
+            !${{ runner.temp }}/readme-audit/cases/**/*.png
+            !${{ runner.temp }}/readme-audit/cases/**/*.jpg
+            !${{ runner.temp }}/readme-audit/cases/**/*.jpeg
+            !${{ runner.temp }}/readme-audit/cases/**/*.webp
             !${{ runner.temp }}/readme-audit/cases/**/browser/same-byte-corpus-*/readme.md
+            !${{ runner.temp }}/readme-audit/cases/**/browser/same-byte-corpus-*/rendered.html
             !${{ runner.temp }}/readme-audit/cases/**/browser/same-byte-corpus-*/assets/**
             !${{ runner.temp }}/readme-audit/cases/**/.runtime/**
           if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload complete visual screenshot evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: readme-audit-visual-${{ matrix.start }}-${{ matrix.end }}
+          path: |
+            ${{ runner.temp }}/readme-audit/cases/**/browser/**/*.png
+            ${{ runner.temp }}/readme-audit/cases/**/browser/**/*.jpg
+            ${{ runner.temp }}/readme-audit/cases/**/browser/**/*.jpeg
+            ${{ runner.temp }}/readme-audit/cases/**/browser/**/*.webp
+            ${{ runner.temp }}/readme-audit/cases/**/native/**/*.png
+            ${{ runner.temp }}/readme-audit/cases/**/native/**/*.jpg
+            ${{ runner.temp }}/readme-audit/cases/**/native/**/*.jpeg
+            ${{ runner.temp }}/readme-audit/cases/**/native/**/*.webp
+            !${{ runner.temp }}/readme-audit/cases/**/browser/same-byte-corpus-*/assets/**
+          if-no-files-found: error
           retention-days: 14
 
   consolidate:
@@ -271,20 +344,29 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Download pinned corpus for identity validation
+        uses: actions/download-artifact@v8
+        with:
+          name: readme-top500-corpus
+          path: ${{ runner.temp }}/readme-audit-corpus
+
       - name: Download every audit shard
         uses: actions/download-artifact@v8
         with:
-          pattern: readme-audit-*
+          pattern: readme-audit-evidence-*
           path: ${{ runner.temp }}/readme-audit-shards
           merge-multiple: true
 
       - name: Require one complete top-500 verdict
         env:
           AUDIT_REQUIRE_SAME_BYTE_CORPUS: ${{ github.event_name == 'workflow_dispatch' && inputs.same_byte_release }}
+          AUDIT_SHARDS_RESULT: ${{ needs.audit.result }}
         run: |
           $arguments = @{
             EvidenceRoot = (Join-Path $env:RUNNER_TEMP 'readme-audit-shards')
             ExpectedCount = 500
+            PinnedManifestPath = (Join-Path $env:RUNNER_TEMP 'readme-audit-corpus\top-repositories.json')
+            ShardWorkflowResult = $env:AUDIT_SHARDS_RESULT
             OutputDirectory = (Join-Path $env:RUNNER_TEMP 'readme-audit-consolidated')
           }
           if ($env:AUDIT_REQUIRE_SAME_BYTE_CORPUS -eq 'true') {

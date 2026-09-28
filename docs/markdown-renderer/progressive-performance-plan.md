@@ -44,6 +44,354 @@ complete before claiming this plan or the 1.0 performance goal is met.
   source bytes need a budgeted lease before retaining tiles. Copy-on-write
   dirty-block layout publication also remains open because mutable boxes and
   UIA geometry still reference the active layout graph.
+- September 27 qualification correction: the first manual 500-case
+  `same_byte_release` dispatch is diagnostic only. It replays captured image
+  bytes for native JitHub, but its Edge denominator still includes live
+  GitHub/CDN navigation and it did not prove that the native Markdown input
+  was the captured README. An offline Edge article/image replay with
+  client-scoped timing, exact native README-source evidence, and per-case
+  known-outlier checks are being implemented. Do not use this first dispatch
+  as the same-byte release verdict even if its workflow turns green.
+- September 28 local qualification checkpoint: schema-2 corpus capture now
+  binds both the Edge-captured README and the native rendered source to the
+  pinned Git blob and SHA-256, validates every replayed asset, and reports
+  zero fallback network requests. Pinned Release one-case diagnostics passed
+  rank 1 (`codecrafters-io/build-your-own-x`) and rank 66 (`vercel/next.js`)
+  with no unavailable images. A separate rank-59 (`airbnb/javascript`) replay
+  exposed a Win2D `E_INVALIDARG` while painting a code diff marker; routing
+  markers through the existing guarded gutter-font path made the pinned
+  Release reproduction pass with 100% text and 99.90% structure coverage.
+  None of these three cases is a current-head 500-case pass.
+- The first offline Edge replay used GitHub's already-rendered article HTML
+  and a 1000-pixel browser content width, while native JitHub parsed raw
+  Markdown in a roughly 623-pixel content pane. Its rank-1 native/Edge ratios
+  (4.44 first, 4.44 full) are diagnostic, **not a qualified source-render
+  comparison**. The release denominator must instead parse the identical
+  captured Markdown in Edge with a pinned client GFM parser, replay exactly
+  the captured asset bytes, and match the measured native content viewport,
+  theme, image-ready boundary, and traversal. Keep the GitHub-HTML replay only
+  as a separate diagnostic. No 110% same-byte performance claim is made.
+- September 28 local source-bound checkpoint: the audit now replays the exact
+  captured README through a pinned MIT GFM parser in Edge at the measured
+  native content viewport and DPR, with only hash-matched captured images.
+  The old GitHub-HTML replay remains diagnostic. All 37 focused Node tests and
+  the positive/negative complete-500 merge fixtures pass. A current-corpus
+  Release rank-1 end-to-end case passed rendering checks (100% text, 99.93%
+  structure, zero unavailable images), including an SVG with an inert external
+  doctype. It did **not** pass the unchanged browser-relative performance
+  gate: native/Edge first-image-ready was 572.8/169.6 ms (3.38x), and full
+  traversal was 934.5/267.9 ms (3.49x). This is one noisy local diagnostic,
+  not a qualified counterbalanced or 500-case result. The current optional
+  scene/role-demand candidate also remains over the immutable lean managed
+  package cap; it must be reduced and remeasured before shipping.
+- September 28 oracle correction: the first source-bound replay accidentally
+  inherited the 14-pixel page font for its Markdown article. Primer's
+  `.markdown-body` uses a 16-pixel font and 1.5 line height, with additional
+  list-item spacing. The replay now follows those documented rules and tests
+  assert them. Replaying the same pinned rank-1 corpus at 660 × 611 DIPs
+  changes the Edge page extent from 10,757 to 13,704 CSS pixels; the prior
+  native extent was 12,824 DIPs (native/Edge 0.936). This corrects a biased
+  fidelity denominator, not the native slowdown: the new Edge one-case
+  image-ready and traversal times were 198.5 and 331.1 ms, respectively.
+  They have not yet been paired with a rebuilt candidate or a qualified run.
+  The audit now also requires complete contiguous source-replay page tiles
+  and keeps the 0.90–1.10 full-page extent gate, rather than accepting only
+  first-viewport text and structure checks.
+- A subsequent rebuilt x64 Release rank-1 diagnostic used the corrected
+  source-bound oracle and passed text (100%), structure (99.93%), complete
+  image resolution, and page extent (12,824/13,704 = 0.936). Native
+  first-image-ready/full-traversal were 375.2/545.5 ms versus Edge
+  87.6/201.9 ms on that run. The style-role-demand mask was unexpectedly
+  unapplied, and theme resolution still took 77.8 ms with 718 app-resource
+  lookups and 747 scoped-resource lookups. Exact-corpus AST fallback diagnosis
+  is in progress. These are one-case, non-counterbalanced observations; they
+  neither meet the 110% performance gate nor replace the top-500 release
+  audit or qualified R1,C1,C2,R2 benchmark.
+- September 28 follow-up: the complete built-in role-demand mask was not
+  applied because the three built-in GitHub/HTML renderer types were checked
+  against the GFM assembly name rather than their actual feature-pack
+  assemblies. The classification is corrected, with a focused regression test
+  (8/8 Release tests passed). Four successive pinned rank-1 cold local audits
+  on that diagnostic build passed source/text/structure/image/extent checks;
+  a fifth rendered correctly but failed the required clean-exit gate with
+  `0xC000027B` during WinUI window teardown. WER reports a COM wrong-thread
+  error (`0x8001010E`); no retained dump identifies the callback yet. Native
+  first-viewport times across the five were 351–701 ms (median 443 ms) versus
+  same-byte Edge 141–169 ms (median 157 ms); native full traversal was
+  702–1,673 ms (median 874 ms) versus Edge 255–285 ms (median 271 ms).
+  These were unbalanced cold diagnostics with noticeable machine variance,
+  **not** a qualified release benchmark. The browser-relative 110% gate is
+  still unmet even after the role-mask fix, and the shutdown crash is open.
+- The temporary per-property theme probes used for that diagnosis were removed
+  after the role-mask correction; app Release x64 and audit automation builds
+  pass with zero errors/warnings, the focused role-mask tests pass 8/8, and
+  audit snapshot contract tests pass 57/57. Excluding the not-yet-integrated
+  ordinary-raster tile planner from the shipping WinUI assembly (while keeping
+  its 13/13 linked pure tests) brought the managed Core+WinUI pack down to
+  1,260,544 bytes. This remains **2,253 bytes above** the unchanged 1,258,291-
+  byte ceiling, so the package gate still fails. It is not a size waiver or
+  evidence that oversized rasters are now tile-bounded in production.
+- The source-bound Edge audit now uses one bounded DevTools transport for both
+  corpus capture and raw-Markdown replay. Connection loss, malformed replies,
+  and unanswered commands fail the case explicitly instead of hanging a shard;
+  browser-close cleanup no longer waits for a missing acknowledgement. All 46
+  focused audit Node tests, including the actual offline Edge replay, pass
+  locally. This is harness reliability, not a renderer speedup or release-gate
+  pass.
+- September 28 local pack E: the Core+WinUI Release x64 NuGet pair now passes
+  both unchanged lean ceilings: 1,256,960/1,258,291 managed bytes and
+  530,693/537,600 compressed bytes. The combined focused Release suite passes
+  50/50 tests, including nested deferred-marker provenance, cancellation,
+  lifecycle, theme/role equivalence, and custom-renderer fallback. The full
+  strict 14-package compliance gate also passes locally with zero license
+  findings, six verified selected-RID native assets, and a reproducibility
+  manifest; public API baseline tests pass 39/39. Packaged SVG workers remain
+  unsigned development artifacts, so production signing, current-head CI,
+  same-byte corpus, and interactive release benchmarking remain open.
+- The rebuilt Pack E x64 Release app and audit automation build with zero
+  warnings. A pinned rank-1 same-byte source replay passes native text (100%),
+  structure (99.93%), zero-unavailable-image, and full-page extent
+  (12,824/13,704) checks. Native/Edge image-ready is 352/129 ms (2.74x), and
+  full traversal is 490/243 ms (2.02x). This is one local diagnostic, not a
+  counterbalanced performance result or the required current-head top-500
+  release corpus; it confirms the unchanged 110% speed goal remains unmet.
+- September 28 local deferred-scene review: publishing one prepared scene now
+  leaves sibling scene work alive while ordinary full/restyle invalidations
+  still cancel it; deferred callbacks retain the producing extension lifetime
+  even when a document is adopted by another engine. A disposed producer
+  yields the readable source fallback instead of invoking captured resources.
+  The full x64 Release GitHub renderer suite passes 444/444 and the unchanged
+  Core+WinUI lean package caps pass at 1,257,984/1,258,291 managed bytes and
+  530,818/537,600 compressed bytes. The fast Core suite passes 992/992; its
+  external-process fixture and current-head app/audit replay are still being
+  verified. Scene materialization still incurs a full theme/layout rebuild,
+  so these correctness fixes are not a browser-relative speed pass.
+- September 28 coordinated local gate: the current x64 Release JitHub app,
+  audit automation, and sample build with zero warnings/errors; the app's
+  postbuild tests pass 79/79, the full WinUI suite passes 3,169/3,169, and
+  the GitHub renderer suite (including public API baselines) passes 444/444.
+  All 47 focused README-audit Node tests pass, including actual offline Edge
+  replay. Two clean normalized pack sets pass the unchanged strict 14-package
+  reproducibility, size, license, SBOM, and six selected-RID native-asset
+  checks: the Core+WinUI pair is 1,257,984/1,258,291 managed bytes and
+  530,842/537,600 compressed bytes. Packaged resvg workers remain unsigned
+  development artifacts; production signing is still required. The external
+  Core gate fixture passes 485/485, the recompiled fast Core suite 994/994,
+  and the conformance, HTML, Math, Mermaid, SVG, and syntax-highlighting suites
+  all pass. These local checks do not
+  qualify the live 500-case same-byte audit or counterbalanced benchmark.
+- The schema-3 source-bound audit now gates the replay against the captured
+  GitHub article in both directions using ephemeral-key HMAC token multisets,
+  independently gates stable GitHub/source structure (headings, tables, task
+  checkboxes, authored details), and has the 500-case merger recompute and
+  check those scores rather than trusting a case's `passed` status. Its
+  positive complete-500 and mutation fixtures pass, including a same-text
+  table-versus-paragraph false-pass regression. This is audit validity, not a
+  product rendering or performance pass; the full current-head 500-case run
+  remains pending.
+- Fresh schema-3 x64 Release focused replays against the pinned corpus pass
+  rank 1 (`codecrafters-io/build-your-own-x`) with 100% GitHub/source text in
+  both directions, 100% GitHub/source stable structure, 99.74% native/source
+  structure, zero unavailable images, and a clean exit. Native/Edge
+  image-ready is 454/127 ms and full traversal 633/240 ms, so the 110% speed
+  goal remains unmet. The first rank-60 (`airbnb/javascript`) replay failed
+  the unchanged height envelope at 81,398/95,085 (0.856), but its 151 code
+  blocks exposed an oracle CSS error: source replay used 16px/24px code lines
+  while the captured GitHub article used 13.6px/19.72px. Those 2,523 code
+  lines account for essentially the entire 10,529px article/replay height
+  difference. Matching the captured code-line metrics in the source-bound
+  Edge replay made a fresh rank-60 case pass at 81,398px native and 0.968
+  native/source extent, with 100% text, 99.89% structure, 19/19 images,
+  zero unavailable images, and a clean exit. No fidelity threshold changed.
+  Native/Edge image-ready and full-traversal ratios still failed performance
+  at 4.90x and 3.23x. Rank 203 (`d2l-ai/d2l-zh`) was a separate actual native
+  typography-density failure at 2,336/2,668 (0.876), with only one code block.
+  Changing the app's Markdown body-size, line-height, and paragraph-spacing
+  tokens initially made rank 203 pass at 2,685/2,623 (1.024), but then
+  regressed rank 1 to 16,642/13,704 (1.214): its 391 list items amplified
+  the doubled bottom margin. Restoring the original 8px margin while retaining
+  16px body text and 1.5 line height made both fresh x64 Release replays pass:
+  rank 1 is 13,466/13,704 (0.983), with 100% text and 99.92% structure;
+  rank 203 is 2,429/2,623 (0.926), with 100% text, 99.74% structure, and
+  5/5 images. Both have zero unavailable images and clean exits. Their native/
+  Edge image-ready ratios remain 2.69x and 3.28x, so the 110% speed goal is
+  open. The updated-typography rank-60 audit exceeded the 180-second native
+  deadline after 107 viewports; a subsequent explicit-percent audit stalled
+  after its first viewport and was stopped. Neither attempt is a current-head
+  rank-60 pass, and the UIA traversal regression is being repaired. These
+  isolated timings are not the qualified counterbalanced benchmark or full
+  500-case verdict.
+- September 28 local traversal diagnosis: an audit `ScrollPattern.Scroll`
+  call blocked after the first viewport on this unattended desktop. The
+  90-second wrapper watchdog terminated and verified the audit process tree
+  and wrote an `infrastructure-timeout` artifact with the performance gate
+  unevaluated. The interactive desktop's invisible `GameInputSvc` foreground
+  window then prevented JitHub activation; both a wheel message posted to
+  JitHub's top-level HWND and global wheel input over its verified hit target
+  produced no measured movement. Those one-case attempts are harness failures,
+  not README rendering or performance verdicts. The replacement audit-only
+  in-app viewport command now completes a pinned rank-1 x64 Release traversal:
+  25 settled viewport positions reach the document bottom with contiguous
+  overlap, zero unavailable images, and a clean app exit. The native first
+  render, image-ready, and full-traversal times were 364, 420, and 618 ms.
+  The source-bound Edge replay then failed before reporting a comparison, so
+  this is traversal reliability evidence, **not** a same-byte or performance
+  pass. A current-head x64 NativeAOT publish and artifact verification also
+  pass; its follow-up audit is recorded below.
+- September 28 strict pack recheck after the scoped-theme capture change:
+  the 14-package reproducibility, license, SPDX/notices, and six selected-RID
+  native-asset checks pass, but the Core+WinUI managed payload is
+  1,259,008/1,258,291 bytes (717 bytes over the unchanged ceiling).
+  `MarkdownRenderer.dll` alone grew 1,024 bytes from the last passing pack.
+  This candidate remains blocked; the size gate is not waived.
+- September 28 NativeAOT rank-1 checkpoint: the source-bound Edge replay now
+  follows the same 25 native capture positions and then captures the 238-DIP
+  Edge-only tail with 373 DIPs of overlap, preserving the 0.90 step and
+  0.90–1.10 page-height gates. All 54 audit Node tests pass. The first AOT
+  audit traversed successfully but hung during synchronous UIA window-close;
+  after replacing that audit-only close with a process-verified `WM_CLOSE`
+  request and a bounded 12-second exit wait, the second pinned run exited
+  cleanly. Its exact-byte text coverage is 100%, structure 99.92%, page-height
+  ratio 0.983, and unavailable-image count zero. NativeAOT first images-ready
+  was 134.9 ms versus source-bound Edge 106.6 ms (1.266×), still above the
+  unchanged 1.10 goal. Native parse/theme/layout/publication measured
+  52.1/15.3/15.8/0.20 ms. The reported full traversal was 217.6/769.3 ms,
+  but Edge's repeated settlement-frame waits may inflate that denominator;
+  it is under audit and is **not** a qualified browser-relative pass. This is
+  one local case, not the 500-case corpus or counterbalanced release run.
+- September 28 timer audit: a controlled source-bound Edge replay measured
+  786.6 ms raw full traversal, including 299.9 ms of successful native-position
+  stability-confirmation frames and 12.2 ms of corresponding tail confirmation
+  frames. Those repeated checks are audit-only: the native timer separately
+  subtracts its UIA settling probes. The source replay now preserves raw wall
+  time and reports a charged timer that excludes only measured successful
+  post-target confirmation and terminal-proof frame waits; parsing, first
+  paint, movement to the first target-correct sample, image decode, and
+  post-decode paint remain charged. The source-bound comparison and complete-
+  500 merger use the charged field with the unchanged 1.10 performance and
+  0.90–1.10 extent gates. All 54 Node tests and the PowerShell merge/mutation
+  suite pass; the current-head C# build, new pinned audit, and full corpus are
+  still pending. No browser-relative speed conclusion follows from the older
+  raw full-traversal ratio.
+- The latest lean Core+WinUI package recheck is 1,258,496/1,258,291 managed
+  bytes, still 205 bytes over the immutable cap; its compressed pair is
+  531,166/537,600 bytes. The strict 14-package recheck has not been repeated
+  on this candidate. An optional parse-preparation stage trace is under test
+  to attribute the 52.1-ms rank-1 interval before changing the renderer;
+  neither an over-cap package nor an unmeasured optimization is accepted.
+- A fresh x64 NativeAOT rank-1 diagnostic with the charged source-bound Edge
+  timer completed 25 native viewports, zero unavailable images, 100% text,
+  99.92% native/source structure, a 0.983 page-height ratio, and clean exit.
+  Native first-images-ready/full traversal were 280.3/452.4 ms; Edge first-
+  images-ready/raw/charged full traversal were 123.8/781.6/466.1 ms. Thus the
+  one-case first-image ratio is 2.264 (fails 1.10), while the charged full
+  ratio is 0.970. The latter is **not** a corpus or qualified benchmark pass.
+  The app's raw audit signal reported parse 118.4 ms, theme snapshot 37.2 ms,
+  and layout 27.3 ms, but all new optional parse-stage fields were zero: the
+  NativeAOT event-listener path did not capture them. The audit runner had
+  inadvertently used an older RID-specific DLL and therefore ignored the
+  new fail-closed fields. The RID-specific runner is rebuilt with those
+  validations; the zero-stage NativeAOT event path must be fixed and this
+  case repeated before attributing or accepting an optimization.
+- A further fresh x64 NativeAOT rank-1 run uses a statically rooted,
+  session-scoped, audit-only parse-stage callback instead of the event-listener
+  transport that produced zero fields under AOT. The exact-byte page again
+  passed its one-case content, image, extent, and clean-exit checks. The new
+  trace reports 56.80 ms outer parse time, comprising 10.22 ms engine parse,
+  0.03 ms scene-plan preparation, 0.10 ms role demand, 10.37 ms total session
+  work, and 46.43 ms between session completion and the renderer's parse-end
+  mark. The latter interval includes the UI-dispatcher continuation; it is
+  not evidence that Markdown parsing itself takes 56.80 ms. Native first-
+  images-ready was 145.46 ms versus 119.50 ms in same-byte Edge (1.217x,
+  above the unchanged 1.10 gate); full traversal was 235.76 ms versus Edge's
+  460.70 ms charged traversal (0.512x). A one-case content PASS explicitly
+  does not evaluate the 500-case p95 performance gate. First-viewport image-
+  wait diagnostics were missing from the sanitized result despite collection
+  in the runner; that forwarding is being repaired before the next audit.
+  The lean Core+WinUI pack is back below its unchanged managed and compressed
+  caps at 1,257,984/1,258,291 and 530,925/537,600 bytes. The fresh strict
+  14-package gate subsequently passed: locked restore, two normalized clean
+  pack passes with 14/14 identical hashes and sizes, SPDX 2.3 SBOM and
+  notices, reviewed licenses with zero unknowns, and six selected-RID native
+  asset checks. This is development-package evidence, not production signing
+  or a performance-release verdict. The audit runner now forwards the image-
+  wait diagnostic through its sanitized result and its focused contract test
+  passes; the subsequent pinned rank-1 run verified live output.
+- That second fresh x64 NativeAOT rank-1 replay passed 25 native viewports,
+  100% text, 99.92% structure, zero unavailable images, a 0.983 page-height
+  ratio, and clean exit. It did not reproduce the UIA stall. The audit now
+  records its last post-render UIA stage and terminates its owned process tree
+  after 90 seconds without progress. Crucially, its first-image-ready value
+  was 346.43 ms while first render was 95.09 ms, yet the UIA image check
+  found no loading images on its only poll and consumed just 0.57 ms. The
+  intervening ~250 ms is unclassified harness setup/wait, not demonstrated
+  renderer work; the resulting 3.023x Edge ratio is **not a valid renderer
+  attribution**. The current host audit starts UIA after a fixed 300-ms
+  activation delay. An app-side, generation-bound image-ready timestamp is
+  required before the first-viewport 1.10 gate can be fairly evaluated.
+  Full traversal was 339.27 ms native versus 466.60 ms charged same-byte
+  Edge (0.727x), but one case still cannot evaluate the 500-case p95 gate.
+- A read-only review of the pre-dispatch 500-case consolidation found that
+  it classified absent READMEs from shard results rather than the pinned
+  top-500 manifest, and did not compare each shard's commit identity to that
+  manifest. A malformed shard could therefore evade same-byte checks or
+  reduce their denominator. The merge must fail closed against the pinned
+  rank/full-name/commit/README identities, with negative mutation tests,
+  before any full same-byte run can count as release evidence.
+- The local merger now binds each available/absent README to the pinned
+  rank, repository, commit, path, byte size, and blob identity; it requires
+  complete per-shard Release executable/dependency fingerprints and checks ten
+  previously slow ranks individually. Full visual artifacts are retained
+  separately from the consolidation metadata, with bounded screenshot storage
+  and a pre-upload check for every expected native/Edge tile. Positive 500-case
+  and negative identity, missing-tile, fingerprint, quota, and slow-rank
+  mutations pass locally. This repairs qualification integrity only; a fresh
+  current-head same-byte 500-case run has not yet passed.
+- The opt-in rank-1 shutdown trace showed one nested Markdown viewer still
+  loaded before shared-provider retirement even though the outer page's unload
+  wait had completed. Shutdown now detaches and waits for the nested shell page,
+  waits for tracked Markdown renderer disposal, and retries any failed disposal
+  after outer-page unload. Shared providers are retired only after every
+  tracked renderer has disposed; unresolved failures are diagnosed and the app
+  closes without an unbounded wait. Fresh rank-60 and rank-203 x64 Release
+  audit traces report zero loaded-view residue, zero disposal/unload timeouts,
+  and zero forced disposals. This removes the observed ordering race but does
+  not establish the cause of the earlier WinUI wrong-thread fail-fast; a
+  repeated shutdown/fault-injection campaign remains open.
+- The local same-byte summary and 500-case merger now use the offline
+  source-bound Edge timings for first-image-ready and full traversal whenever
+  same-byte capture is requested. The merger independently recomputes both
+  native/Edge ratios from the recorded timing fields, rejecting missing,
+  non-finite, or inconsistent stored ratios. The complete-500 positive and
+  mutation fixtures pass. This repairs verdict integrity; it does not turn
+  the current 2–5x focused slowdowns into a performance pass.
+- WinApp CLI 0.7 sandbox smoke now runs the current x64 Release JitHub build
+  after verifying and, when absent, installing the locked Microsoft-signed
+  Store Engagement framework package in the guest. Its unauthenticated
+  sign-in control was reachable at 96 DPI and the smoke-owned process exited
+  cleanly. The separate sample UI suite navigated Math, Mermaid, HTML, SVG
+  stress, and progressive-scenes pages at 100% scale. Neither smoke covered
+  authenticated README content, touch selection, 150%/200% scales, Dark, or
+  High Contrast; those release checks remain open.
+- A targeted GFM 0.29 parse-path change avoids materializing ordinary literal
+  text merely to reject email autolinking, and avoids table-preparation line
+  enumeration when the source contains no raw pipe. Source-span and
+  punctuation regressions pass in the recompiled Core suite, but a controlled
+  uncached parse comparison is still needed before claiming a speedup.
+- The live top-500 GitHub README audit for PR #99 head `1831ed1` finished
+  successfully in Actions run `36361277068`: all 20 shards and the complete-
+  500 consolidation passed. This is valid live-source coverage for that commit,
+  not a same-byte source-bound comparison or evidence for subsequent local
+  changes. Re-run after the pending fixes land.
+- A source-bound schema-12 x64 Release reference harness was prepared in an
+  isolated worktree from renderer checkpoint `1a403a2`, with only publication
+  timestamp observations added to that renderer. Its measurement/schema,
+  orchestration, gate, and visibility tests pass locally; no live benchmark
+  was started. The PR-base `ddd0068` renderer lacks the harness's required
+  APIs, so this reference can show regression against `1a403a2`, not against
+  the pre-1.0 PR base. A same-machine quiet foreground R1,C1,C2,R2 run still
+  has to qualify all four legs against the unchanged 120 Hz and absolute
+  gates before it provides release evidence.
 
 ## Implementation checkpoint
 
@@ -1626,8 +1974,16 @@ complete before claiming this plan or the 1.0 performance goal is met.
   390 ms process CPU while reading the response. Its new last progress marker
   was `usvg-tree-build`, narrowing the stall to `usvg::Tree::from_xmltree`
   rather than font-gate setup or the theme transform. The four other hosted
-  attempts passed. This is a confirmed intermittent native-only timeout, not
-  a resolved case; it needs a real fix and another full 500-case pass.
+  attempts passed. Phase 11 is the input-ready checkpoint immediately before
+  `usvg::Tree::from_xmltree`; phase 12 is recorded only after conversion, so
+  this does not identify a substep inside usvg. The 390 ms process CPU during
+  roughly 3 s wall time leaves scheduler ready time, blocking/page-in, and
+  intermittent conversion cost as competing causes. A diagnostic-only WPR
+  trace of a pinned 151–153 replay (sampled CPU, ready/wait time, hard faults)
+  is the next falsifiable step; it must not affect the normal release run or
+  weaken the worker deadline. This is a confirmed intermittent native-only
+  timeout, not a resolved case; it needs a real fix and another full 500-case
+  pass.
 - Local gate setup on this head exposed a committed restore-lock mismatch:
   the x64 performance-gate lockfile has a `win-x64` target while its project
   did not declare that runtime identifier, causing NU1004 before any timing
@@ -1657,8 +2013,26 @@ complete before claiming this plan or the 1.0 performance goal is met.
   visible-tile fidelity; the latter remain to be evaluated separately.
 - Open: oversized raster tiling and session-owned SVG/document/GPU preparation
   caches.
-- Open: defer Math/Mermaid scenes and ahead-of-viewport highlighting without
-  changing public eager `ParseAsync` semantics or losing diagnostics/UIA.
+- September 28 copy-on-write layout audit: the current `BlockBox` owns mutable
+  measurement, arrangement, bounds, and disposal state. Image completion
+  relayout mutates the dirty box, trailing placements, height cache, indexes,
+  and revision under the live snapshot lock. Copying only a bounds array would
+  not produce a consistent published revision; cloning boxes without explicit
+  leases could double-dispose native image/SVG resources. The safe pilot is a
+  detached dirty-image-block measurement plus suffix-placement revision with
+  resource-sharing leases, generation/base-revision validation, and one atomic
+  publication. Tests must prove the old revision remains readable during
+  preparation, cancellation/stale candidates leave it unchanged, and resources
+  retire only after the final revision owner. This milestone remains open; the
+  existing lock-serialized relayout is not being mislabeled copy-on-write.
+- Partially implemented: the opt-in presentation path defers Math/Mermaid
+  scenes while public `ParseAsync` stays eager, and focused tests cover scene
+  diagnostics, callback lifetime, cancellation, and source fallback. It still
+  schedules only the measured viewport; a completed scene invokes a full
+  theme/layout rebuild rather than publishing a detached dirty-block revision.
+  Directional lookahead, visible-first jump priority, revision-safe publication,
+  and a measured many-scene release case remain open. Ahead-of-viewport
+  highlighting remains a separate open goal.
 - Open: expanded deterministic corpus and live top-500/Edge same-byte release
   gates, device/theme/DPI and x86/ARM64 NativeAOT runtime matrices. The live
   audit requires the read-only GitHub audit credentials specified by its runner.
@@ -1668,6 +2042,36 @@ complete before claiming this plan or the 1.0 performance goal is met.
   the repository runner-status API, so availability cannot be verified from
   this task. An online, unlocked interactive runner with those labels is
   required; queued jobs are not a performance pass.
+- September 28 local working-tree readiness correction: a code review found
+  that the first-viewport images-ready timestamp could be accepted after only
+  one intersecting Win2D invalidation region, before the rest of the viewport
+  painted. The app-owned audit probe now requires exact union coverage of the
+  measured viewport after visible raster/SVG resources settle, resets on
+  placeholder epochs and viewport/snapshot/revision/DPI changes, and samples
+  on a 16 ms rather than 2 ms UI timer. A lean Core post-paint callback and
+  app-owned PNG audit capture kept the unchanged Core+WinUI managed pair at
+  1,257,984/1,258,291 bytes (530,929/537,600 compressed); focused readiness
+  and visible-SVG-tile tests pass. The current-source x64 NativeAOT publish and
+  artifact verification pass. With a freshly rebuilt audit runner, a pinned
+  rank-1 same-byte AOT replay recorded the app paint signal (generation 4,
+  measured 611-DIP viewport, two polls), traversed 25 viewports, passed text
+  100%, structure 99.92%, extent 0.983, zero unavailable images, and clean
+  exit. Native/Edge first-image-ready was 196.5/144.6 ms (1.36x, **above**
+  the unchanged 1.10 gate); charged full traversal was 406/491 ms (0.83x).
+  This is one local diagnostic, not the qualified counterbalanced benchmark or
+  current-head 500-case corpus. The strict current-source 14-package gate now
+  passes two normalized clean packs with identical archive-entry hashes and
+  sizes, 14 SPDX 2.3 SBOMs and notices, zero license findings, and all six
+  selected-RID Mermaid/resvg native assets. The Core+WinUI pair is
+  1,257,984/1,258,291 bytes managed and 530,846/537,600 bytes compressed.
+  Workers are unsigned development artifacts, not production-signing evidence.
+  The earlier-head CI Core run failed one obsolete schema-11 assertion and
+  two wall-clock-sensitive tests during parallel stress. The assertion now
+  pins schema 12; the two deadline/cancellation test classes run in a
+  nonparallel collection without changing their production deadlines, and
+  their focused current-source Release run passes 3/3. Current-head CI, the
+  full regression suite, the first-viewport performance gap, and the release
+  matrices remain open.
 
 ## Summary
 

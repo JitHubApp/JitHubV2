@@ -854,12 +854,7 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
                     break;
 
                 CodeLineInfo line = _lines[visual.LogicalLineIndex];
-                Color? bg = line.DiffKind switch
-                {
-                    CodeLineDiffKind.Added => additionBg,
-                    CodeLineDiffKind.Removed => removalBg,
-                    _ => Metadata.HighlightedLines.Contains(line.Number) ? highlightBg : null,
-                };
+                Color? bg = GetLineBackground(line, additionBg, removalBg, highlightBg);
                 if (bg is { A: > 0 } lineBg)
                 {
                     var backgroundRect = new Rect(
@@ -875,35 +870,17 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
                     continue;
                 previousLogicalLine = line.Number;
 
-                if (ShowLineNumbers)
-                {
-                    var numberRect = new Rect(numberLeft, visual.Top, numberWidth, visual.Height);
-                    if (IsDrawableRectangle(numberRect))
-                    {
-                        DrawLineNumber(ds, line, numberRect, viewport, lineNumberStyle, lineNumberFormat);
-                    }
-                }
-
-                if (Metadata.IsDiff && line.DiffKind is not CodeLineDiffKind.None)
-                {
-                    string marker = line.DiffKind == CodeLineDiffKind.Added ? "+" : "-";
-                    Color markerColor = line.DiffKind == CodeLineDiffKind.Added
-                        ? Color.FromArgb(0xFF, 0x2E, 0xC2, 0x7E)
-                        : Color.FromArgb(0xFF, 0xF8, 0x51, 0x49);
-                    var markerRect = new Rect(
-                        outer.Left + 4,
-                        visual.Top,
-                        DiffMarkerWidth - 4,
-                        visual.Height);
-                    if (IsDrawableRectangle(markerRect))
-                    {
-                        ds.DrawText(
-                            marker,
-                            markerRect,
-                            _context.ThemeSnapshot.IsHighContrast ? lineNumberStyle.Foreground : markerColor,
-                            lineNumberFormat);
-                    }
-                }
+                DrawLineIndicators(
+                    ds,
+                    outer,
+                    line,
+                    visual.Top,
+                    visual.Height,
+                    numberLeft,
+                    numberWidth,
+                    viewport,
+                    lineNumberStyle,
+                    lineNumberFormat);
             }
 
             return;
@@ -929,6 +906,7 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
             CodeLineInfo line = _lines[lineIndex];
             if (line.Start >= visibleTextEnd)
                 break;
+            Color? bg = GetLineBackground(line, additionBg, removalBg, highlightBg);
             var rects = GetLineRects(line);
             Rect first = Rect.Empty;
             foreach (var rect in rects)
@@ -943,12 +921,6 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
                 if (first.IsEmpty)
                     first = rect;
 
-                Color? bg = line.DiffKind switch
-                {
-                    CodeLineDiffKind.Added => additionBg,
-                    CodeLineDiffKind.Removed => removalBg,
-                    _ => Metadata.HighlightedLines.Contains(line.Number) ? highlightBg : null,
-                };
                 if (bg is { A: > 0 } lineBg)
                 {
                     var backgroundRect = new Rect(
@@ -961,39 +933,65 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
                 }
             }
 
-            if (!first.IsEmpty && ShowLineNumbers)
-            {
-                var numberRect = new Rect(
+            if (!first.IsEmpty)
+                DrawLineIndicators(
+                    ds,
+                    outer,
+                    line,
+                    first.Top,
+                    Math.Max(1, first.Height),
                     numberLeft,
-                    first.Top,
                     numberWidth,
-                    Math.Max(1, first.Height));
-                if (IsDrawableRectangle(numberRect))
-                {
-                    DrawLineNumber(ds, line, numberRect, viewport, lineNumberStyle, lineNumberFormat);
-                }
-            }
+                    viewport,
+                    lineNumberStyle,
+                    lineNumberFormat);
+        }
+    }
 
-            if (!first.IsEmpty && Metadata.IsDiff && line.DiffKind is not CodeLineDiffKind.None)
-            {
-                var marker = line.DiffKind == CodeLineDiffKind.Added ? "+" : "-";
-                var markerColor = line.DiffKind == CodeLineDiffKind.Added
-                    ? Color.FromArgb(0xFF, 0x2E, 0xC2, 0x7E)
-                    : Color.FromArgb(0xFF, 0xF8, 0x51, 0x49);
-                var markerRect = new Rect(
-                    outer.Left + 4,
-                    first.Top,
-                    DiffMarkerWidth - 4,
-                    Math.Max(1, first.Height));
-                if (IsDrawableRectangle(markerRect))
-                {
-                    ds.DrawText(
-                        marker,
-                        markerRect,
-                        _context.ThemeSnapshot.IsHighContrast ? lineNumberStyle.Foreground : markerColor,
-                        lineNumberFormat);
-                }
-            }
+    private Color? GetLineBackground(
+        CodeLineInfo line,
+        Color addition,
+        Color removal,
+        Color highlight) => line.DiffKind switch
+    {
+        CodeLineDiffKind.Added => addition,
+        CodeLineDiffKind.Removed => removal,
+        _ => Metadata.HighlightedLines.Contains(line.Number) ? highlight : null,
+    };
+
+    private void DrawLineIndicators(
+        CanvasDrawingSession ds,
+        Rect outer,
+        CodeLineInfo line,
+        double top,
+        double height,
+        double numberLeft,
+        double numberWidth,
+        Rect viewport,
+        ElementStyle lineNumberStyle,
+        CanvasTextFormat lineNumberFormat)
+    {
+        if (ShowLineNumbers)
+        {
+            var numberRect = new Rect(numberLeft, top, numberWidth, height);
+            if (IsDrawableRectangle(numberRect))
+                DrawLineNumber(ds, line, numberRect, viewport, lineNumberStyle, lineNumberFormat);
+        }
+
+        if (!Metadata.IsDiff || line.DiffKind is CodeLineDiffKind.None)
+            return;
+
+        string marker = line.DiffKind == CodeLineDiffKind.Added ? "+" : "-";
+        Color markerColor = line.DiffKind == CodeLineDiffKind.Added
+            ? Color.FromArgb(0xFF, 0x2E, 0xC2, 0x7E)
+            : Color.FromArgb(0xFF, 0xF8, 0x51, 0x49);
+        var markerRect = new Rect(outer.Left + 4, top, DiffMarkerWidth - 4, height);
+        if (IsDrawableRectangle(markerRect))
+        {
+            DrawGutterText(
+                ds, marker, line.Number, "diff marker", markerRect, viewport,
+                _context.ThemeSnapshot.IsHighContrast ? lineNumberStyle.Foreground : markerColor,
+                lineNumberStyle, lineNumberFormat);
         }
     }
 
@@ -1004,10 +1002,24 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
         Rect viewport,
         ElementStyle style,
         CanvasTextFormat format)
+        => DrawGutterText(
+            ds, line.Label, line.Number, "line number", rectangle, viewport,
+            style.Foreground, style, format);
+
+    private static void DrawGutterText(
+        CanvasDrawingSession ds,
+        string text,
+        int lineNumber,
+        string kind,
+        Rect rectangle,
+        Rect viewport,
+        Color foreground,
+        ElementStyle style,
+        CanvasTextFormat format)
     {
         try
         {
-            ds.DrawText(line.Label, rectangle, style.Foreground, format);
+            ds.DrawText(text, rectangle, foreground, format);
         }
         catch (ArgumentException exception)
         {
@@ -1034,7 +1046,7 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
                         HorizontalAlignment = CanvasHorizontalAlignment.Right,
                         VerticalAlignment = CanvasVerticalAlignment.Top,
                     };
-                    ds.DrawText(line.Label, rectangle, style.Foreground, fallbackFormat);
+                    ds.DrawText(text, rectangle, foreground, fallbackFormat);
                     return;
                 }
                 catch (ArgumentException fallbackException)
@@ -1047,7 +1059,7 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
             // generic finite-coordinate check. Preserve the failure while
             // recording geometry (never code text) for a reproducible fix.
             string detail = FormattableString.Invariant(
-                $"line={line.Number}, labelLength={line.Label.Length}, ") +
+                $"line={lineNumber}, kind={kind}, labelLength={text.Length}, ") +
                 FormattableString.Invariant(
                     $"rectangle={rectangle.X:R},{rectangle.Y:R},{rectangle.Width:R},{rectangle.Height:R}, ") +
                 FormattableString.Invariant(
@@ -1055,7 +1067,7 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
                 FormattableString.Invariant(
                     $"fontSize={style.FontSize:R}, fontFamily={style.FontFamily}.");
             throw new InvalidOperationException(
-                "Code line-number DrawText rejected: " + detail,
+                "Code gutter DrawText rejected: " + detail,
                 failure);
         }
     }

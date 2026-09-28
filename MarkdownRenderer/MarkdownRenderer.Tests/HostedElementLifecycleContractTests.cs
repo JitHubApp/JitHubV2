@@ -5,6 +5,7 @@ using Xunit;
 
 namespace MarkdownRenderer.Tests;
 
+[Collection(TimingSensitiveContractCollection.Name)]
 public sealed class HostedElementLifecycleContractTests
 {
     [Fact]

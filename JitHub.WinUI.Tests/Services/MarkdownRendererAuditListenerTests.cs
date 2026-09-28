@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Diagnostics.Tracing;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -218,6 +219,41 @@ public sealed class MarkdownRendererAuditListenerTests
     }
 
     [Fact]
+    public void FontCatalogDeadlineRecordsOnlyKnownPhase()
+    {
+        const string variable = "JITHUB_MARKDOWN_SVG_WORKER_EVIDENCE_PATH";
+        string path = Path.Combine(
+            Path.GetTempPath(),
+            $"jithub-svg-font-phase-{Guid.NewGuid():N}.ndjson");
+        string? previousPath = Environment.GetEnvironmentVariable(variable);
+        try
+        {
+            Environment.SetEnvironmentVariable(variable, path);
+            MarkdownLifecycleAutomationBridge.ConfigureLaunchOptions(true, null);
+            using var listener = new MarkdownRendererAuditListener();
+
+            TestWorkerEventSource.Log.FontCatalogDeadlinePhase("user-roaming-fonts");
+            TestWorkerEventSource.Log.FontCatalogDeadlinePhase("unexpected source payload");
+
+            string[] lines = File.ReadAllLines(path);
+            Assert.Equal(2, lines.Length);
+            using JsonDocument known = JsonDocument.Parse(lines[0]);
+            Assert.Equal("user-roaming-fonts", known.RootElement.GetProperty("InitializationPhase").GetString());
+            Assert.Equal(Environment.ProcessId, known.RootElement.GetProperty("ProcessId").GetInt32());
+            Assert.False(known.RootElement.TryGetProperty("Source", out _));
+            using JsonDocument unknown = JsonDocument.Parse(lines[1]);
+            Assert.Equal("unknown", unknown.RootElement.GetProperty("InitializationPhase").GetString());
+            Assert.DoesNotContain("unexpected source payload", lines[1], StringComparison.Ordinal);
+        }
+        finally
+        {
+            MarkdownLifecycleAutomationBridge.ConfigureLaunchOptions(false, null);
+            Environment.SetEnvironmentVariable(variable, previousPath);
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void RasterPreparationStagesRecordOnlyNumericAuditEvidence()
     {
         const string variable = "JITHUB_MARKDOWN_RASTER_PREPARATION_EVIDENCE_PATH";
@@ -259,6 +295,41 @@ public sealed class MarkdownRendererAuditListenerTests
         }
     }
 
+    [Fact]
+    public void ParsePipelineRecorderIsAuditOnlyAndScopedToLatestOwner()
+    {
+        MarkdownLifecycleAutomationBridge.ConfigureLaunchOptions(true, null);
+        try
+        {
+            const int ownerIdentity = 41;
+            const int otherOwnerIdentity = 42;
+
+            MarkdownLifecycleAutomationBridge.RecordParsePipelineStage(ownerIdentity, 0, 0);
+            MarkdownLifecycleAutomationBridge.RecordParsePipelineStage(
+                ownerIdentity, 1, Stopwatch.Frequency / 4);
+            MarkdownLifecycleAutomationBridge.RecordParsePipelineStage(
+                ownerIdentity, 5, Stopwatch.Frequency / 2);
+
+            MarkdownLifecycleAutomationBridge.MarkdownAuditParsePreparationTiming timing =
+                MarkdownLifecycleAutomationBridge.GetParsePreparationTiming(ownerIdentity);
+            Assert.Equal(250, timing.EngineParseAndCacheMilliseconds, precision: 6);
+            Assert.Equal(500, timing.SessionTotalMilliseconds, precision: 6);
+            Assert.Equal(default, MarkdownLifecycleAutomationBridge.GetParsePreparationTiming(otherOwnerIdentity));
+
+            MarkdownLifecycleAutomationBridge.RecordParsePipelineStage(otherOwnerIdentity, 0, 0);
+            Assert.Equal(default, MarkdownLifecycleAutomationBridge.GetParsePreparationTiming(ownerIdentity));
+            Assert.Equal(0, MarkdownLifecycleAutomationBridge.GetParsePreparationTiming(otherOwnerIdentity).SessionTotalMilliseconds);
+
+            MarkdownLifecycleAutomationBridge.ConfigureLaunchOptions(false, null);
+            MarkdownLifecycleAutomationBridge.RecordParsePipelineStage(ownerIdentity, 0, 0);
+            Assert.Equal(default, MarkdownLifecycleAutomationBridge.GetParsePreparationTiming(ownerIdentity));
+        }
+        finally
+        {
+            MarkdownLifecycleAutomationBridge.ConfigureLaunchOptions(false, null);
+        }
+    }
+
     [EventSource(Name = "MarkdownRenderer.Svg.Resvg.Worker")]
     private sealed class TestWorkerEventSource : EventSource
     {
@@ -284,6 +355,10 @@ public sealed class MarkdownRendererAuditListenerTests
                 openProgressPhase, workerWorkingSetKiB, workerPrivateCommitKiB,
                 workerPageFaults, elapsedWallMilliseconds, workerInputSha256,
                 workerExecutableSha256]);
+
+        [Event(2, Level = EventLevel.Warning)]
+        public void FontCatalogDeadlinePhase(string initializationPhase) =>
+            WriteEvent(2, initializationPhase);
     }
 
     [EventSource(Name = "MarkdownRenderer.Svg.Resvg.Preflight")]
@@ -309,4 +384,5 @@ public sealed class MarkdownRendererAuditListenerTests
         public void Stage(long id, long stage, long elapsedStopwatchTicks) =>
             WriteEvent(2, id, stage, elapsedStopwatchTicks);
     }
+
 }

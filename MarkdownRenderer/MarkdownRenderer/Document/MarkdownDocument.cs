@@ -8,6 +8,7 @@ using Markdig.Syntax.Inlines;
 using Markdig.Extensions.Abbreviations;
 using Markdig.Extensions.DefinitionLists;
 using Markdig.Extensions.Footnotes;
+using Markdig.Extensions.Figures;
 using Markdig.Extensions.Tables;
 using Markdig.Extensions.Mathematics;
 using Markdig.Renderers.Html;
@@ -204,6 +205,7 @@ public sealed class MarkdownDocument
         {
             if (!item.StyleRole.IsEmpty)
                 roles.Add(item.StyleRole.Name);
+
             if (item.Children.Count > 0)
                 CollectStyleRoleNames(item.Children, roles);
         }
@@ -241,7 +243,8 @@ public sealed class MarkdownDocument
         IReadOnlyList<MarkdownDiagnostic> diagnostics,
         MarkdownExtensionSet extensions,
         CancellationToken cancellationToken,
-        IMarkdownPresentationConfiguration? presentationConfiguration = null)
+        IMarkdownPresentationConfiguration? presentationConfiguration = null,
+        bool deferOffscreenScenes = false)
     {
         if (document is null)
             return Empty;
@@ -254,7 +257,8 @@ public sealed class MarkdownDocument
                 builder.SourceText,
                 document,
                 extensions ?? MarkdownExtensionSet.Empty,
-                cancellationToken)
+                cancellationToken,
+                deferOffscreenScenes)
             .ConfigureAwait(false);
         return new MarkdownDocument(
             builder.SourceText,
@@ -402,7 +406,8 @@ public sealed class MarkdownDocument
         string source,
         Markdig.Syntax.MarkdownDocument document,
         MarkdownExtensionSet extensions,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool deferOffscreenScenes)
     {
         if (extensions.BlockSyntaxKinds.Count == 0 && extensions.InlineSyntaxKinds.Count == 0)
             return ExtensionContentSnapshot.Empty;
@@ -439,7 +444,11 @@ public sealed class MarkdownDocument
                     var node = MarkdownSyntaxAdapter.CreateBlockNode(block, source);
                     var content = new MarkdownContentBuilder();
                     await renderer(
-                            new MarkdownExtensionContext(node, cancellationToken, extensionDiagnostics.Add),
+                            new MarkdownExtensionContext(
+                                node,
+                                cancellationToken,
+                                extensionDiagnostics.Add,
+                                deferOffscreenScenes),
                             content)
                         .ConfigureAwait(false);
                     cancellationToken.ThrowIfCancellationRequested();
@@ -473,7 +482,11 @@ public sealed class MarkdownDocument
                     var node = MarkdownSyntaxAdapter.CreateInlineNode(inline, source);
                     var content = new MarkdownContentBuilder();
                     await renderer(
-                            new MarkdownExtensionContext(node, cancellationToken, extensionDiagnostics.Add),
+                            new MarkdownExtensionContext(
+                                node,
+                                cancellationToken,
+                                extensionDiagnostics.Add,
+                                deferOffscreenScenes),
                             content)
                         .ConfigureAwait(false);
                     cancellationToken.ThrowIfCancellationRequested();
@@ -738,7 +751,9 @@ public sealed class MarkdownDocument
             foreach (var child in list)
             {
                 if (child is not DefinitionItem item)
+                {
                     continue;
+                }
 
                 RegisterFragment(item, blockIndex);
                 var terms = new List<string>();

@@ -33,6 +33,10 @@
     <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer.csproj" />
     <Compile Include="..\MarkdownRenderer\Performance\MarkdownPerformanceSession.cs"
              Link="MarkdownPerformanceSession.cs" />
+    <Compile Include="..\MarkdownRenderer\Performance\MarkdownProgressiveScenePlan.cs"
+             Link="MarkdownProgressiveScenePlan.cs" />
+    <Compile Include="..\MarkdownRenderer\Performance\MarkdownStyleRoleDemandCollector.cs"
+             Link="MarkdownStyleRoleDemandCollector.cs" />
     <Compile Include="..\MarkdownRenderer\Diagnostics\MarkdownRasterPreparationEventSource.cs"
              Link="MarkdownRasterPreparationEventSource.cs" />
     <None Include="..\..\LICENSE" Pack="true" PackagePath="" Visible="false" />

@@ -1,5 +1,6 @@
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Performance;
+using Markdig;
 using System.Threading.Channels;
 using Xunit;
 
@@ -7,6 +8,53 @@ namespace MarkdownRenderer.GitHub.Tests;
 
 public sealed class MarkdownPerformanceSessionTests
 {
+    [Fact]
+    public void DisposedSession_NotifiesCurrentAndLateControlObserversExactlyOnce()
+    {
+        var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
+        var api = (IMarkdownPerformanceSessionInternal)session;
+        int notifications = 0;
+        EventHandler currentObserver = (_, _) => Interlocked.Increment(ref notifications);
+        api.Disposed += currentObserver;
+
+        session.Dispose();
+        session.Dispose();
+
+        Assert.Equal(1, notifications);
+        bool lateObserverNotified = false;
+        EventHandler lateObserver = (_, _) => lateObserverNotified = true;
+        api.Disposed += lateObserver;
+        Assert.True(lateObserverNotified);
+        api.Disposed -= lateObserver;
+        api.Disposed -= currentObserver;
+    }
+
+    [Fact]
+    public void SessionOwnsAndReusesControlDocumentScopesUntilIdentityChangesOrOwnerReleases()
+    {
+        using var session = new MarkdownPerformanceSession(new MarkdownPerformanceOptions());
+        var api = (IMarkdownPerformanceSessionInternal)session;
+        var owner = new object();
+        var resolver = new RecordingResolver();
+        var context = new MarkdownImageResolveContext(null);
+        var parsed = Markdown.Parse("![image](image.png)");
+
+        IMarkdownPerformanceDocumentScope first = Assert.IsAssignableFrom<IMarkdownPerformanceDocumentScope>(
+            api.PrepareDocumentScope(owner, "source-a", 4, parsed, null, resolver, context));
+        IMarkdownPerformanceDocumentScope same = Assert.IsAssignableFrom<IMarkdownPerformanceDocumentScope>(
+            api.PrepareDocumentScope(owner, "source-a", 4, parsed, null, resolver, context));
+        IMarkdownPerformanceDocumentScope replacement = Assert.IsAssignableFrom<IMarkdownPerformanceDocumentScope>(
+            api.PrepareDocumentScope(owner, "source-b", 4, parsed, null, resolver, context));
+
+        Assert.Same(first, same);
+        Assert.NotSame(first, replacement);
+        Assert.True(first.IsDisposed);
+        Assert.False(replacement.IsDisposed);
+
+        api.ReleaseDocumentScope(owner);
+        Assert.True(replacement.IsDisposed);
+    }
+
     [Fact]
     public void Options_RejectUnboundedSettings()
     {

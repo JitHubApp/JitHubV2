@@ -29,6 +29,12 @@ public sealed class ReadmeAuditPerformanceSnapshotTests
               "Generation": 3,
               "SourceUtf16Bytes": 2048,
               "ParseMilliseconds": 1.5,
+              "EngineParseAndCacheMilliseconds": 0.7,
+              "LegacyParseAndDocumentMilliseconds": 0,
+              "ProgressiveScenePlanMilliseconds": 0.1,
+              "StyleRoleDemandMilliseconds": 0.1,
+              "ParseSessionTotalMilliseconds": 1,
+              "ParseResumeAndAdapterMilliseconds": 0.5,
               "SetupMilliseconds": 0.75,
               "ThemeSnapshotMilliseconds": 0.2,
               "LayoutMilliseconds": 2.5,
@@ -65,6 +71,12 @@ public sealed class ReadmeAuditPerformanceSnapshotTests
         Assert.Equal(2, snapshot.PendingSourceByteRequests);
         Assert.Equal(3, snapshot.Pipeline.Generation);
         Assert.Equal(1.5, snapshot.Pipeline.ParseMilliseconds);
+        Assert.Equal(0.7, snapshot.Pipeline.EngineParseAndCacheMilliseconds);
+        Assert.Equal(0, snapshot.Pipeline.LegacyParseAndDocumentMilliseconds);
+        Assert.Equal(0.1, snapshot.Pipeline.ProgressiveScenePlanMilliseconds);
+        Assert.Equal(0.1, snapshot.Pipeline.StyleRoleDemandMilliseconds);
+        Assert.Equal(1, snapshot.Pipeline.ParseSessionTotalMilliseconds);
+        Assert.Equal(0.5, snapshot.Pipeline.ParseResumeAndAdapterMilliseconds);
         Assert.Equal(0.75, snapshot.Pipeline.SetupMilliseconds);
         Assert.Equal(0.2, snapshot.Pipeline.ThemeSnapshotMilliseconds);
         Assert.Equal(2.5, snapshot.Pipeline.LayoutMilliseconds);
@@ -110,6 +122,12 @@ public sealed class ReadmeAuditPerformanceSnapshotTests
     [InlineData("Generation")]
     [InlineData("SourceUtf16Bytes")]
     [InlineData("ParseMilliseconds")]
+    [InlineData("EngineParseAndCacheMilliseconds")]
+    [InlineData("LegacyParseAndDocumentMilliseconds")]
+    [InlineData("ProgressiveScenePlanMilliseconds")]
+    [InlineData("StyleRoleDemandMilliseconds")]
+    [InlineData("ParseSessionTotalMilliseconds")]
+    [InlineData("ParseResumeAndAdapterMilliseconds")]
     [InlineData("SetupMilliseconds")]
     [InlineData("ThemeSnapshotMilliseconds")]
     [InlineData("LayoutMilliseconds")]
@@ -149,6 +167,12 @@ public sealed class ReadmeAuditPerformanceSnapshotTests
     [InlineData("Generation", 0)]
     [InlineData("SourceUtf16Bytes", -1)]
     [InlineData("ParseMilliseconds", -1)]
+    [InlineData("EngineParseAndCacheMilliseconds", -1)]
+    [InlineData("LegacyParseAndDocumentMilliseconds", -1)]
+    [InlineData("ProgressiveScenePlanMilliseconds", -1)]
+    [InlineData("StyleRoleDemandMilliseconds", -1)]
+    [InlineData("ParseSessionTotalMilliseconds", -1)]
+    [InlineData("ParseResumeAndAdapterMilliseconds", -1)]
     [InlineData("SetupMilliseconds", -1)]
     [InlineData("ThemeSnapshotMilliseconds", -1)]
     [InlineData("LayoutMilliseconds", -1)]
@@ -216,6 +240,40 @@ public sealed class ReadmeAuditPerformanceSnapshotTests
     {
         JsonNode evidence = JsonNode.Parse(ValidEvidence)!;
         evidence["Performance"]!["Pipeline"]!["HighlightRetirementMilliseconds"] = 0.04;
+
+        Assert.Throws<InvalidDataException>(() => Parse(evidence));
+    }
+
+    [Fact]
+    public void Parse_RejectsParseAdapterRemainderThatDoesNotMatchOuterAndSessionTotals()
+    {
+        JsonNode evidence = JsonNode.Parse(ValidEvidence)!;
+        evidence["Performance"]!["Pipeline"]!["ParseResumeAndAdapterMilliseconds"] = 0.25;
+
+        Assert.Throws<InvalidDataException>(() => Parse(evidence));
+    }
+
+    [Fact]
+    public void Parse_AllowsSessionTotalToSlightlyExceedOuterParseTimer()
+    {
+        JsonNode evidence = JsonNode.Parse(ValidEvidence)!;
+        evidence["Performance"]!["Pipeline"]!["ParseMilliseconds"] = 0.999;
+        evidence["Performance"]!["Pipeline"]!["ParseSessionTotalMilliseconds"] = 1;
+        evidence["Performance"]!["Pipeline"]!["ParseResumeAndAdapterMilliseconds"] = 0;
+
+        ReadmeAuditPerformanceSnapshot snapshot = Parse(evidence);
+
+        Assert.Equal(0.999, snapshot.Pipeline.ParseMilliseconds);
+        Assert.Equal(1, snapshot.Pipeline.ParseSessionTotalMilliseconds);
+        Assert.Equal(0, snapshot.Pipeline.ParseResumeAndAdapterMilliseconds);
+    }
+
+    [Fact]
+    public void Parse_RejectsMissingSessionTimingForNonemptyParsedDocument()
+    {
+        JsonNode evidence = JsonNode.Parse(ValidEvidence)!;
+        evidence["Performance"]!["Pipeline"]!["ParseSessionTotalMilliseconds"] = 0;
+        evidence["Performance"]!["Pipeline"]!["ParseResumeAndAdapterMilliseconds"] = 1.5;
 
         Assert.Throws<InvalidDataException>(() => Parse(evidence));
     }

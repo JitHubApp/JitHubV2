@@ -1,3 +1,8 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Threading;
+using System.Threading.Tasks;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Theming;
@@ -45,7 +50,9 @@ public static class MermaidMarkdownExtensions
 
     private sealed class MermaidMarkdownExtension : IMarkdownExtension
     {
+        private const string DeferredSceneMarkerAttribute = "renderer.internal.deferred-scene";
         private readonly MermaidRenderer _renderer;
+        private long _nextDeferredSceneToken;
 
         internal MermaidMarkdownExtension(MermaidRenderer renderer) => _renderer = renderer;
 
@@ -57,7 +64,7 @@ public static class MermaidMarkdownExtensions
             builder.RegisterBlockAsync(MarkdownSyntaxKinds.Block.FencedCode, RenderFenceAsync);
         }
 
-        private async ValueTask RenderFenceAsync(
+        private ValueTask RenderFenceAsync(
             MarkdownExtensionContext context,
             MarkdownContentBuilder content)
         {
@@ -65,7 +72,35 @@ public static class MermaidMarkdownExtensions
             string source = context.Node.Literal ?? string.Empty;
             context.Node.Attributes.TryGetValue("language", out string? language);
             if (!string.Equals(language, "mermaid", StringComparison.OrdinalIgnoreCase))
-                return;
+                return ValueTask.CompletedTask;
+
+            if (context.ShouldDeferOffscreenScenes)
+            {
+                string marker = string.Concat(
+                    MarkdownSyntaxKinds.Block.FencedCode,
+                    "|",
+                    Interlocked.Increment(ref _nextDeferredSceneToken).ToString(CultureInfo.InvariantCulture));
+                content.AddCodeBlock(
+                    source,
+                    "mermaid",
+                    context.Node.SourceSpan,
+                    MarkdownStyleRole.CodeBlock,
+                    new Dictionary<string, string>(StringComparer.Ordinal)
+                    {
+                        [DeferredSceneMarkerAttribute] = marker,
+                    });
+                return ValueTask.CompletedTask;
+            }
+
+            return RenderFenceCoreAsync(context, content, source);
+        }
+
+        private async ValueTask RenderFenceCoreAsync(
+            MarkdownExtensionContext context,
+            MarkdownContentBuilder content,
+            string source)
+        {
+            context.CancellationToken.ThrowIfCancellationRequested();
 
             MermaidRenderResult result;
             try

@@ -61,6 +61,7 @@ internal static class SampleCatalog
         [
             new("Virtualization", "PageVirtualization", "Virtualization", "\uE950", static () => SampleDocuments.VirtualizationSample),
             new("Stress", "PageStress", "Stress document", "\uE7BA", static () => SampleDocuments.StressSample),
+            new("ProgressiveScenes", "PageProgressiveScenes", "Progressive scenes", "\uE950", static () => SampleDocuments.ProgressiveScenesSample),
             new("AccessibilityLab", "PageAccessibilityLab", "Accessibility lab", "\uE776", static () => SampleDocuments.AccessibilityLabSample),
             new("AuditMatrix", "PageAuditMatrix", "Audit matrix", "\uE9D9", static () => SampleDocuments.AuditMatrixSample),
         ]),

@@ -32,18 +32,22 @@ phase marker in the trailer as the request advances through mapping, hash
 verification, XML parsing, security inspection, font setup, tree construction,
 and document attachment. Values 8 through 12 bracket post-font-gate setup:
 8 marks entry to SVG options initialization, 9 marks completed options
-construction, 10 marks configured image resolver and font database, 11 marks
-theme transformation, and 12 marks the `usvg` tree conversion. The host
-acquire-loads it only if the hard request deadline expires. The trailer never
+construction, 10 marks completed theme transformation, 11 marks input ready
+immediately before `usvg` tree conversion, and 12 marks completed conversion.
+The host acquire-loads it only if the hard request deadline expires. The trailer never
 changes source hashing, raster dimensions, or the output lease exposed to
 consumers; neither source nor pixels are logged with a timeout.
 
 `Hello` is a nonblocking text-readiness probe. It returns status 5 while the
 background Windows font catalog and fixed usvg/resvg text-shaping and
-glyph-raster warmup are in progress, then status 0 when both are ready. The
-host polls before text-bearing requests under one content-independent
-initialization deadline. Exceeding that deadline does not kill a responsive
-worker or restart its font scan; later requests can probe the same worker.
+glyph-raster warmup are in progress, then status 0 when both are ready. A
+pending response's detail field contains a content-free phase name: machine
+fonts, per-user local fonts, per-user roaming fonts, generic-family defaults,
+or text-pipeline warmup. These names identify the current stage without
+including filesystem paths, font names, or SVG content. The host polls before
+text-bearing requests under one content-independent initialization deadline.
+Exceeding that deadline does not kill a responsive worker or restart its font
+scan; later requests can probe the same worker.
 Process warm-up does not send `Hello`. SVGs without text bypass the probe;
 the one-worker scheduler can still queue them behind an active text-readiness
 wait. Priority isolation during that wait remains open.

@@ -15,6 +15,7 @@ internal sealed class MarkdownExtensionRegistry : IMarkdownPresentationConfigura
     private readonly object _gate = new();
     private readonly MarkdownPipeline? _frozenPipeline;
     private readonly MarkdownExtensionRegistry? _baseSnapshot;
+    private bool _hasUnclassifiedStyleRoleRenderers;
     private SafeHtmlRenderPolicy? _safeHtmlPolicy;
 
     internal MarkdownExtensionRegistry()
@@ -31,7 +32,8 @@ internal sealed class MarkdownExtensionRegistry : IMarkdownPresentationConfigura
         SafeHtmlRenderPolicy? safeHtmlPolicy,
         int revision,
         bool freeze,
-        MarkdownExtensionRegistry? baseSnapshot = null)
+        MarkdownExtensionRegistry? baseSnapshot = null,
+        bool hasUnclassifiedStyleRoleRenderers = false)
     {
         _pipelineConfiguration = pipelineConfiguration;
         _renderers = renderers;
@@ -39,6 +41,7 @@ internal sealed class MarkdownExtensionRegistry : IMarkdownPresentationConfigura
         _safeHtmlPolicy = safeHtmlPolicy;
         Revision = revision;
         _baseSnapshot = baseSnapshot;
+        _hasUnclassifiedStyleRoleRenderers = hasUnclassifiedStyleRoleRenderers;
         _frozenPipeline = freeze ? BuildPipelineCore(pipelineConfiguration) : null;
     }
 
@@ -127,6 +130,9 @@ internal sealed class MarkdownExtensionRegistry : IMarkdownPresentationConfigura
                 _renderers[typeof(TNode)] = erased;
             else
                 _renderers[typeof(TNode)] = new ErasedAdapter<TNode>(renderer);
+            // Public renderer registrations are user-extensible and can consume
+            // any style role. Keep the conservative full-resolution fallback.
+            _hasUnclassifiedStyleRoleRenderers = true;
             Revision++;
         }
         return this;
@@ -199,6 +205,24 @@ internal sealed class MarkdownExtensionRegistry : IMarkdownPresentationConfigura
         }
     }
 
+    /// <summary>
+    /// Returns whether a registered renderer is outside the renderer packs
+    /// whose built-in style-role contracts are collected from the full AST.
+    /// Unknown renderers can query any built-in role, so callers must preserve
+    /// the legacy all-role resource resolution path when one is present.
+    /// </summary>
+    internal bool HasUnclassifiedStyleRoleRenderers
+    {
+        get
+        {
+            if (IsFrozen)
+                return _hasUnclassifiedStyleRoleRenderers;
+
+            lock (_gate)
+                return _hasUnclassifiedStyleRoleRenderers;
+        }
+    }
+
     /// <summary>Builds a Markdig pipeline from the registered configuration callbacks.</summary>
     public MarkdownPipeline BuildPipeline()
     {
@@ -223,7 +247,8 @@ internal sealed class MarkdownExtensionRegistry : IMarkdownPresentationConfigura
                 _safeHtmlPolicy,
                 Revision,
                 freeze: true,
-                _baseSnapshot);
+                _baseSnapshot,
+                _hasUnclassifiedStyleRoleRenderers);
         }
     }
 
@@ -238,7 +263,8 @@ internal sealed class MarkdownExtensionRegistry : IMarkdownPresentationConfigura
                 _safeHtmlPolicy,
                 Revision,
                 freeze: false,
-                IsFrozen ? this : _baseSnapshot);
+                IsFrozen ? this : _baseSnapshot,
+                _hasUnclassifiedStyleRoleRenderers);
         }
     }
 
@@ -303,7 +329,10 @@ internal sealed class MarkdownExtensionRegistry : IMarkdownPresentationConfigura
             features,
             frozenOverrides._safeHtmlPolicy ?? frozenBase._safeHtmlPolicy,
             revision,
-            freeze: true);
+            freeze: true,
+            hasUnclassifiedStyleRoleRenderers:
+                frozenBase._hasUnclassifiedStyleRoleRenderers ||
+                frozenOverrides._hasUnclassifiedStyleRoleRenderers);
     }
 
     private bool ContainsSnapshot(MarkdownExtensionRegistry candidate)

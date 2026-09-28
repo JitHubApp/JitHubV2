@@ -15,6 +15,7 @@ using MarkdownRenderer.Html;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Math;
 using MarkdownRenderer.Mermaid;
+using MarkdownRenderer.Performance;
 using MarkdownRenderer.Svg.Resvg;
 using MarkdownRenderer.SyntaxHighlighting.TextMate;
 using MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common;
@@ -36,6 +37,7 @@ public sealed partial class MainWindow : Window
         .UseExtension(SampleHostedElementExtension.Instance)
         .Build();
     private readonly ResvgMarkdownSvgRenderer _svgRenderer = new();
+    private MarkdownPerformanceSession? _performanceSession;
 
     private MarkdownRendererControl _renderer;
     private readonly Grid _rendererHost;
@@ -353,6 +355,7 @@ public sealed partial class MainWindow : Window
             _textMateHighlighter.Dispose();
             _engine.Dispose();
             _svgRenderer.Dispose();
+            _performanceSession?.Dispose();
         };
 
         // Hidden status TextBlock that mirrors RealizedEmbedCount so UI
@@ -677,6 +680,7 @@ public sealed partial class MainWindow : Window
 
         bool isListsPage = string.Equals(page.Key, "Lists", StringComparison.Ordinal);
         bool isTouchSelectionPage = string.Equals(page.Key, "TouchSelection", StringComparison.Ordinal);
+        bool isProgressiveScenesPage = string.Equals(page.Key, "ProgressiveScenes", StringComparison.Ordinal);
         bool supportsTaskEditing = isListsPage || isTouchSelectionPage;
         _taskEditingToggle.Visibility = supportsTaskEditing ? Visibility.Visible : Visibility.Collapsed;
         _viewportOwnershipToggle.Visibility = isTouchSelectionPage ? Visibility.Visible : Visibility.Collapsed;
@@ -709,6 +713,11 @@ public sealed partial class MainWindow : Window
             // anchoring cannot carry a position from one page into another.
             _renderer.ScrollToBlock(FirstDocumentBlockIndex);
             _resetPreviewScrollOnRender = true;
+            // Keep the established Math/Mermaid regression pages eager. Only
+            // this page opts into deferred scenes and their session diagnostics.
+            _renderer.PerformanceSession = isProgressiveScenesPage
+                ? _performanceSession ??= new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive)
+                : null;
             // The TextBox normalizes CRLF line endings to CR. Commands use its
             // text as their source, so the renderer must parse that same text;
             // otherwise source spans after the first newline no longer address
@@ -817,8 +826,24 @@ public sealed partial class MainWindow : Window
 
     private void UpdateDiagnostics()
     {
+        MarkdownDocument? document = _renderer.Document;
         IReadOnlyList<MarkdownDiagnostic> diagnostics =
-            _renderer.Document?.Diagnostics ?? Array.Empty<MarkdownDiagnostic>();
+            document?.Diagnostics ?? Array.Empty<MarkdownDiagnostic>();
+        if (document is not null && _performanceSession is not null &&
+            ReferenceEquals(_renderer.PerformanceSession, _performanceSession))
+        {
+            IReadOnlyList<MarkdownDiagnostic> deferred =
+                _performanceSession.GetDeferredSceneDiagnostics(document);
+            if (deferred.Count > 0)
+            {
+                var combined = new List<MarkdownDiagnostic>(diagnostics.Count + deferred.Count);
+                combined.AddRange(diagnostics);
+                combined.AddRange(deferred);
+                combined.Sort(static (left, right) =>
+                    left.SourceSpan.Start.CompareTo(right.SourceSpan.Start));
+                diagnostics = combined;
+            }
+        }
         if (diagnostics.Count == 0)
         {
             ClearDiagnostics();

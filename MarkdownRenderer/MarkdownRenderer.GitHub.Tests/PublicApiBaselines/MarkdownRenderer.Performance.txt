@@ -9,6 +9,7 @@ public sealed class MarkdownRenderer.Performance.MarkdownPerformanceSession : Ma
   public MarkdownPerformanceSession(MarkdownRenderer.Performance.MarkdownPerformanceOptions options);
   public MarkdownRenderer.Performance.MarkdownPerformanceOptions Options { get; }
   public MarkdownRenderer.Performance.MarkdownPerformanceSnapshot GetSnapshot();
+  public System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Document.MarkdownDiagnostic> GetDeferredSceneDiagnostics(MarkdownRenderer.Document.MarkdownDocument document);
   public System.Threading.Tasks.ValueTask DisposeAsync();
   public void Dispose();
   public void Trim();

@@ -64,6 +64,12 @@ internal sealed class ReadmeAuditPerformanceSnapshot
             snapshot.Pipeline.Generation <= 0 ||
             snapshot.Pipeline.SourceUtf16Bytes < 0 ||
             !IsValidStageDuration(snapshot.Pipeline.ParseMilliseconds) ||
+            !IsValidStageDuration(snapshot.Pipeline.EngineParseAndCacheMilliseconds) ||
+            !IsValidStageDuration(snapshot.Pipeline.LegacyParseAndDocumentMilliseconds) ||
+            !IsValidStageDuration(snapshot.Pipeline.ProgressiveScenePlanMilliseconds) ||
+            !IsValidStageDuration(snapshot.Pipeline.StyleRoleDemandMilliseconds) ||
+            !IsValidStageDuration(snapshot.Pipeline.ParseSessionTotalMilliseconds) ||
+            !IsValidStageDuration(snapshot.Pipeline.ParseResumeAndAdapterMilliseconds) ||
             !IsValidStageDuration(snapshot.Pipeline.SetupMilliseconds) ||
             !IsValidStageDuration(snapshot.Pipeline.ThemeSnapshotMilliseconds) ||
             !IsValidStageDuration(snapshot.Pipeline.LayoutMilliseconds) ||
@@ -82,6 +88,12 @@ internal sealed class ReadmeAuditPerformanceSnapshot
             !IsValidStageDuration(snapshot.Pipeline.HighlightBandSchedulingMilliseconds) ||
             !IsValidStageDuration(snapshot.Pipeline.AdornmentFocusMilliseconds) ||
             !IsValidStageDuration(snapshot.Pipeline.FinalNotificationMilliseconds) ||
+            (snapshot.Pipeline.SourceUtf16Bytes > 0 &&
+             snapshot.Pipeline.ParseMilliseconds > 0 &&
+             snapshot.Pipeline.ParseSessionTotalMilliseconds <= 0) ||
+            Math.Abs(
+                snapshot.Pipeline.ParseResumeAndAdapterMilliseconds -
+                Math.Max(0, snapshot.Pipeline.ParseMilliseconds - snapshot.Pipeline.ParseSessionTotalMilliseconds)) > 0.01 ||
             snapshot.Pipeline.ThemeSnapshotMilliseconds > snapshot.Pipeline.SetupMilliseconds + 0.01 ||
             Math.Abs(
                 snapshot.Pipeline.LayoutQueueMilliseconds +
@@ -123,6 +135,12 @@ internal sealed class ReadmeAuditPipelineTimingSnapshot
     public required long Generation { get; init; }
     public required long SourceUtf16Bytes { get; init; }
     public required double ParseMilliseconds { get; init; }
+    public required double EngineParseAndCacheMilliseconds { get; init; }
+    public required double LegacyParseAndDocumentMilliseconds { get; init; }
+    public required double ProgressiveScenePlanMilliseconds { get; init; }
+    public required double StyleRoleDemandMilliseconds { get; init; }
+    public required double ParseSessionTotalMilliseconds { get; init; }
+    public required double ParseResumeAndAdapterMilliseconds { get; init; }
     public required double SetupMilliseconds { get; init; }
     public required double ThemeSnapshotMilliseconds { get; init; }
     public required double LayoutMilliseconds { get; init; }

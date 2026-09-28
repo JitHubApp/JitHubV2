@@ -19,6 +19,9 @@
 
   <ItemGroup>
     <Compile Include="..\Shared\OAuthHandoffProtocol.cs" Link="Security\OAuthHandoffProtocol.cs" />
+    <Compile Include="..\JitHub.WinUI.Automation\NativeFirstViewportImagesReadyContract.cs" Link="Automation\NativeFirstViewportImagesReadyContract.cs" />
+    <Compile Include="..\JitHub.WinUI\Services\Markdown\FirstViewportImagesReadyEvidenceWriter.cs" Link="Services\Markdown\FirstViewportImagesReadyEvidenceWriter.cs" />
+    <Compile Include="..\JitHub.WinUI\Services\Markdown\FirstViewportPaintCoverage.cs" Link="Services\Markdown\FirstViewportPaintCoverage.cs" />
     <Compile Include="..\JitHub.Web\Services\OAuthHandoffStore.cs" Link="Services\OAuthHandoffStore.cs" />
     <!-- Link pure C# service/model source files from JitHub.WinUI (no WinUI/XAML deps) -->
     <Compile Include="..\JitHub.WinUI\Models\CodeViewer\*.cs" Link="Models\%(Filename)%(Extension)" />
@@ -137,6 +140,7 @@
     <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownSameByteAuditImageResolver.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI.Automation\ReadmeAuditPerformanceSnapshot.cs" Link="Automation\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownRendererAuditListener.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownRendererDisposalCommit.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Views\Controls\Common\MarkdownHostContract.cs" Link="Views\Controls\Common\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Helpers\RepositoryLanguageColorPalette.cs" Link="Helpers\%(Filename)%(Extension)" />
     <Compile Include="..\MarkdownRenderer\MarkdownRenderer\Images\IMarkdownImageResolver.cs" Link="MarkdownRenderer\Images\%(Filename)%(Extension)" />

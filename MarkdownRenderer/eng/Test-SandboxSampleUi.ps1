@@ -24,7 +24,12 @@ function Invoke-WinAppJson {
     }
 
     $result = $text.Substring($jsonStart.Index).Trim() | ConvertFrom-Json
-    if ($exitCode -ne 0 -and $result.matchCount -ne 0) {
+    $missingSearch = $null -ne $result.PSObject.Properties['matchCount'] -and
+        $result.matchCount -eq 0
+    $unsatisfiedWait = $null -ne $result.PSObject.Properties['found'] -and
+        $result.found -eq $false
+    if ($exitCode -ne 0 -and -not ($AllowNoMatch -and $exitCode -eq 1 -and
+            ($missingSearch -or $unsatisfiedWait))) {
         throw "winapp $($Arguments -join ' ') failed ($exitCode): $text"
     }
 
@@ -81,7 +86,8 @@ try {
         @{ Key = 'Math'; Name = 'Math'; Heading = 'Native mathematics' },
         @{ Key = 'Mermaid'; Name = 'Mermaid'; Heading = 'Native Mermaid' },
         @{ Key = 'Html'; Name = 'Safe HTML'; Heading = 'Native safe HTML' },
-        @{ Key = 'SvgStress'; Name = 'SVG rendering'; Heading = 'Browser-class static SVG' }
+        @{ Key = 'SvgStress'; Name = 'SVG rendering'; Heading = 'Browser-class static SVG' },
+        @{ Key = 'ProgressiveScenes'; Name = 'Progressive scenes'; Heading = 'Progressive scene preparation' }
     )
 
     $results = foreach ($page in $pages) {
@@ -131,6 +137,35 @@ try {
             )
             if ($svgImage.element.isOffscreen -or $svgImage.element.width -le 0 -or $svgImage.element.height -le 0) {
                 throw 'The SVG image loaded but has no visible image geometry.'
+            }
+        }
+        if ($page.Key -eq 'ProgressiveScenes') {
+            # The deliberately invalid final formula is prepared only when the
+            # last viewport is reached. Lazy layout can extend the scroll
+            # extent after each jump, so continue to the new bottom until the
+            # final scene publishes or the bounded traversal fails.
+            $diagnostic = $null
+            $lastSection = $null
+            for ($scroll = 0; $scroll -lt 24; $scroll++) {
+                $null = Invoke-WinAppJson -Arguments @(
+                    'ui', 'scroll', 'MarkdownRenderer', '--on', 'sandbox',
+                    '-a', 'MarkdownRenderer.Sample', '--to', 'bottom', '--json'
+                )
+                $diagnostic = Invoke-WinAppJson -AllowNoMatch -Arguments @(
+                    'ui', 'wait-for', 'SampleDiagnosticsMessage', '--on', 'sandbox',
+                    '-a', 'MarkdownRenderer.Sample', '--value', 'MATH100', '--contains',
+                    '-t', '1500', '--json'
+                )
+                $lastSection = Invoke-WinAppJson -AllowNoMatch -Arguments @(
+                    'ui', 'search', 'Section 36', '--on', 'sandbox',
+                    '-a', 'MarkdownRenderer.Sample', '--type', 'Header', '--json'
+                )
+                if ($diagnostic.found -and $lastSection.matchCount -eq 1 -and
+                    -not $lastSection.matches[0].isOffscreen) { break }
+            }
+            if (-not $diagnostic.found -or $lastSection.matchCount -ne 1 -or
+                $lastSection.matches[0].isOffscreen) {
+                throw 'The final deferred Math scene and its MATH100 diagnostic were not visible after bounded traversal.'
             }
         }
 

@@ -96,7 +96,12 @@ internal static class JitHubMarkdownRuntime
             if (_performanceSession is null || _performanceAccountId != accountId)
             {
                 retired = _performanceSession;
-                _performanceSession = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
+                _performanceSession = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive)
+                {
+                    ParseStageDiagnosticRecorder = MarkdownLifecycleAutomationBridge.IsEvidenceEnabled
+                        ? MarkdownLifecycleAutomationBridge.RecordParsePipelineStage
+                        : null,
+                };
                 _performanceAccountId = accountId;
             }
 
@@ -119,6 +124,25 @@ internal static class JitHubMarkdownRuntime
         }
 
         retired?.Dispose();
+    }
+
+    internal static MarkdownShutdownAuditPerformanceSnapshot? GetShutdownAuditSnapshot()
+    {
+        if (!MarkdownLifecycleAutomationBridge.IsShutdownAuditDiagnosticsEnabled)
+            return null;
+
+        lock (Gate)
+        {
+            MarkdownPerformanceSnapshot? snapshot = _performanceSession?.GetSnapshot();
+            return snapshot is null
+                ? null
+                : new MarkdownShutdownAuditPerformanceSnapshot(
+                    snapshot.PendingImageFetches,
+                    snapshot.ActiveImageFetches,
+                    snapshot.ScenePreparations,
+                    snapshot.PendingSourceByteRequests,
+                    snapshot.InFlightSourceBytes);
+        }
     }
 
     /// <summary>Starts the isolated SVG worker without blocking the shell's first frame.</summary>

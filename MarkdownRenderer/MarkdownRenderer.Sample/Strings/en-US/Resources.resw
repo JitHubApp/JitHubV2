@@ -49,6 +49,7 @@
   <data name="PageScrollAnchor" xml:space="preserve"><value>Scroll anchoring</value></data>
   <data name="PageVirtualization" xml:space="preserve"><value>Virtualization</value></data>
   <data name="PageStress" xml:space="preserve"><value>Stress document</value></data>
+  <data name="PageProgressiveScenes" xml:space="preserve"><value>Progressive scenes</value></data>
   <data name="PageAccessibilityLab" xml:space="preserve"><value>Accessibility lab</value></data>
   <data name="PageAuditMatrix" xml:space="preserve"><value>Audit matrix</value></data>
   <data name="DisplayControlsAutomationName" xml:space="preserve"><value>Preview display controls</value></data>

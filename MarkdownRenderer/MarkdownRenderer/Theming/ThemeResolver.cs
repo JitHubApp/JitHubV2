@@ -24,6 +24,34 @@ internal sealed class ThemeResolver
         ["HighContrast", "Light", "Default"];
     private static readonly string[] HighContrastDarkThemeDictionaryKeys =
         ["HighContrast", "Dark", "Default"];
+    private static readonly string[] ScopedPlatformResourceKeys = new string[]
+    {
+        "AccentFillColorDefaultBrush",
+        "AccentFillColorSelectedTextBackgroundBrush",
+        "AccentTextFillColorPrimary",
+        "AccentTextFillColorPrimaryBrush",
+        "ApplicationPageBackgroundThemeBrush",
+        "FocusVisualPrimaryBrush",
+        "LayerFillColorDefaultBrush",
+        "SolidBackgroundFillColorBaseBrush",
+        "SystemColorHighlightColor",
+        "SystemColorHighlightColorBrush",
+        "SystemColorHighlightTextColor",
+        "SystemColorHighlightTextColorBrush",
+        "SystemControlFocusVisualPrimaryBrush",
+        "SystemControlForegroundAccentBrush",
+        "SystemControlHighlightAccentBrush",
+        "TextControlForeground",
+        "TextControlForegroundFocused",
+        "TextControlPlaceholderForeground",
+        "TextControlSelectionHighlightColor",
+        "TextFillColorPrimary",
+        "TextFillColorPrimaryBrush",
+        "TextFillColorSecondary",
+        "TextFillColorSecondaryBrush",
+        "TextOnAccentFillColorSelectedText",
+        "TextOnAccentFillColorSelectedTextBrush",
+    };
 
     private static readonly RelevantResourceKeyCache<ResourceDictionary> RelevantResourceKeys = new(
         static resources => resources.Keys.Count,
@@ -54,14 +82,15 @@ internal sealed class ThemeResolver
         MarkdownElementKeys.AlertImportant, MarkdownElementKeys.AlertWarning,
         MarkdownElementKeys.AlertCaution,
     ];
-
     private readonly FrameworkElement _host;
     private readonly MarkdownTheme _theme;
+    private readonly ResourceDictionary? _applicationResources;
     private readonly IMarkdownSystemThemeProvider _systemTheme;
     private readonly bool _isHighContrast;
     private PlatformThemeColors? _platformThemeColors;
     private Dictionary<string, object>? _resolvedResourceValues;
     private HashSet<string>? _missingResourceKeys;
+    private HashSet<string>? _scopedResourceStyleRoles;
     // Scoped dictionaries are small and explicit. Capture their relevant
     // values once per synchronous snapshot; never enumerate the app dictionary.
     private Dictionary<string, object>? _scopedResourceValues;
@@ -72,6 +101,10 @@ internal sealed class ThemeResolver
     {
         _host = host ?? throw new ArgumentNullException(nameof(host));
         _theme = theme ?? throw new ArgumentNullException(nameof(theme));
+        // Application.Current and its Resources projection are stable for the
+        // lifetime of one resolver. Capture the root once instead of crossing
+        // the WinUI projection for every role/property lookup in the snapshot.
+        _applicationResources = Application.Current?.Resources;
         _systemTheme = SystemThemeProviderOverride ?? new MarkdownSystemThemeProvider(_host);
         _isHighContrast = _systemTheme.IsHighContrast;
     }
@@ -95,7 +128,8 @@ internal sealed class ThemeResolver
     public ThemeSnapshot CreateSnapshot(
         MarkdownStyleSheet? styleSheet = null,
         double textScaleFactor = 1.0,
-        IReadOnlyCollection<string>? additionalElementKeys = null)
+        IReadOnlyCollection<string>? additionalElementKeys = null,
+        ulong? builtInStyleRoleDemandMask = null)
     {
         // ResourceDictionary.Keys is a WinRT projection. Enumerating an app-level
         // dictionary also projects the very large XamlControlsResources graph and
@@ -128,47 +162,93 @@ internal sealed class ThemeResolver
         }
 
         var dict = new Dictionary<string, ElementStyle>(allKeys.Count, StringComparer.Ordinal);
+        HashSet<string> scopedResourceStyleRoles = GetScopedResourceStyleRoles(allKeys, builtInStyleRoleDemandMask);
+        _scopedResourceStyleRoles = scopedResourceStyleRoles;
         foreach (string k in allKeys)
-            dict[k] = GetDefault(k);
+        {
+            // Canonical roles in this set are exactly the ones whose defaults
+            // may resolve role-scoped resources. Invalid legacy aliases never
+            // project resource roles, so skipping that no-op lookup is safe.
+            dict[k] = GetDefault(k, scopedResourceStyleRoles.Contains(k));
+        }
+
         Color surfaceColor = ResolveDocumentSurfaceColor();
         bool isDark = _host.ActualTheme == ElementTheme.Dark;
+        Color selectionHighlightColor = ResolveSelectionHighlightColor();
+        Color selectionForegroundColor = ResolveSelectionForegroundColor();
+        Color focusVisualColor = ResolveFocusVisualColor();
+        float minimumInteractiveSize = ResolveFloatResource(MarkdownResourceKeys.MinimumInteractiveSize) ?? 40f;
+        Thickness documentPadding = ResolveThicknessResource(MarkdownResourceKeys.DocumentPadding) ?? default;
+        float blockSpacing = ResolveFloatResource(MarkdownResourceKeys.BlockSpacing) ?? 0;
+        Color? overflowIndicatorColor = ResolveColorResource(MarkdownResourceKeys.OverflowIndicatorBrush);
+
+        // Resource capture is complete before construction; clearing the
+        // snapshot-only filter here also keeps a reused resolver safe if the
+        // immutable snapshot constructor throws.
+        _scopedResourceStyleRoles = null;
+        _scopedResourceValues = null;
         return new ThemeSnapshot(
             dict,
             overrides,
             surfaceColor,
-            ResolveSelectionHighlightColor(),
-            ResolveSelectionForegroundColor(),
-            ResolveFocusVisualColor(),
+            selectionHighlightColor,
+            selectionForegroundColor,
+            focusVisualColor,
             isDark,
             _isHighContrast,
             textScaleFactor,
             styleSheet: styleSheet,
-            minimumInteractiveSize: ResolveFloatResource(MarkdownResourceKeys.MinimumInteractiveSize) ?? 40f,
-            documentPadding: ResolveThicknessResource(MarkdownResourceKeys.DocumentPadding) ?? default,
-            blockSpacing: ResolveFloatResource(MarkdownResourceKeys.BlockSpacing) ?? 0,
-            overflowIndicatorColor: ResolveColorResource(MarkdownResourceKeys.OverflowIndicatorBrush));
+            minimumInteractiveSize: minimumInteractiveSize,
+            documentPadding: documentPadding,
+            blockSpacing: blockSpacing,
+            overflowIndicatorColor: overflowIndicatorColor);
     }
 
-    private ElementStyle GetDefault(string key)
+    private ElementStyle GetDefault(string key, bool resolveAppResourceOverrides = true)
     {
-        if (_isHighContrast)
-        {
-            var mandatory = GetHighContrastDefault(key);
-            return ThemeSnapshot.EnforceHighContrast(
-                ApplyAppResourceOverrides(key, mandatory),
-                mandatory);
-        }
+        bool isDark = !_isHighContrast && _host.ActualTheme == ElementTheme.Dark;
+        PlatformThemeColors platformColors = _isHighContrast ? default : GetPlatformThemeColors();
+        var mandatory = CreateDefaultStyle(
+            key,
+            isDark,
+            _isHighContrast,
+            _theme.AccentColor,
+            platformColors,
+            FontWeights.SemiBold,
+            _isHighContrast ? _systemTheme : null);
+        var style = resolveAppResourceOverrides ? ApplyAppResourceOverrides(key, mandatory) : mandatory;
+        return _isHighContrast ? ThemeSnapshot.EnforceHighContrast(style, mandatory) : style;
+    }
 
-        bool isDark = _host.ActualTheme == ElementTheme.Dark;
+    internal static ElementStyle CreateDefaultStyle(
+        string key,
+        bool isDark,
+        bool isHighContrast,
+        Color? accentColor,
+        PlatformThemeColors platformColors,
+        Windows.UI.Text.FontWeight semiBoldFontWeight,
+        IMarkdownSystemThemeProvider? systemTheme)
+    {
+        MarkdownHighContrastStyleRoles roles = isHighContrast
+            ? MarkdownHighContrastDefaults.Resolve(key)
+            : default;
+        Color highContrastForeground = isHighContrast
+            ? ResolveHighContrastRole(roles.Foreground, systemTheme!)
+            : default;
+        Color? highContrastBackground = isHighContrast && roles.Background is { } backgroundRole
+            ? ResolveHighContrastRole(backgroundRole, systemTheme!)
+            : null;
+        Color? highContrastAccent = isHighContrast && roles.AccentBar is { } accentRole
+            ? ResolveHighContrastRole(accentRole, systemTheme!)
+            : null;
 
         // Hardcoded Win11 design token equivalents — bypasses the XAML resource system
         // which only works reliably for the app-level theme, not per-element themes.
-        PlatformThemeColors platformColors = GetPlatformThemeColors();
-        var fg = platformColors.PrimaryText;
-        var fgSecondary = platformColors.SecondaryText;
+        var fg = isHighContrast ? highContrastForeground : platformColors.PrimaryText;
+        var fgSecondary = isHighContrast ? highContrastForeground : platformColors.SecondaryText;
         // Accent: try to get the user's accent color, fall back to Win11 blue.
-        var accent      = _theme.AccentColor ?? platformColors.AccentText;
-        var linkHover   = AdjustColor(accent, isDark ? 0.18f : -0.12f);
+        var accent      = isHighContrast ? highContrastForeground : accentColor ?? platformColors.AccentText;
+        var linkHover   = isHighContrast ? highContrastForeground : AdjustColor(accent, isDark ? 0.18f : -0.12f);
         var codeBg      = isDark ? Color.FromArgb(0xFF, 0x1E, 0x1E, 0x1E) : Color.FromArgb(0xFF, 0xF6, 0xF8, 0xFA);
         var codeHeaderBg = isDark ? Color.FromArgb(0xFF, 0x25, 0x25, 0x26) : Color.FromArgb(0xFF, 0xF0, 0xF2, 0xF5);
         var codeBorder = isDark ? Color.FromArgb(0xFF, 0x3A, 0x3A, 0x3C) : Color.FromArgb(0xFF, 0xD0, 0xD7, 0xDE);
@@ -184,53 +264,86 @@ internal sealed class ThemeResolver
         const string font = "Segoe UI Variable Text";
         const string mono = "Consolas";
 
-        var fluentStyle = key switch
+        return key switch
         {
-            MarkdownElementKeys.Heading1 => new ElementStyle { FontFamily = font, FontSize = 32, FontWeight = FontWeights.SemiBold, Foreground = fg, Margin = new Thickness(0, 16, 0, 8) },
-            MarkdownElementKeys.Heading2 => new ElementStyle { FontFamily = font, FontSize = 26, FontWeight = FontWeights.SemiBold, Foreground = fg, Margin = new Thickness(0, 14, 0, 6) },
-            MarkdownElementKeys.Heading3 => new ElementStyle { FontFamily = font, FontSize = 22, FontWeight = FontWeights.SemiBold, Foreground = fg, Margin = new Thickness(0, 12, 0, 4) },
-            MarkdownElementKeys.Heading4 => new ElementStyle { FontFamily = font, FontSize = 18, FontWeight = FontWeights.SemiBold, Foreground = fg, Margin = new Thickness(0, 10, 0, 4) },
-            MarkdownElementKeys.Heading5 => new ElementStyle { FontFamily = font, FontSize = 15, FontWeight = FontWeights.SemiBold, Foreground = fg, Margin = new Thickness(0, 8, 0, 2) },
-            MarkdownElementKeys.Heading6 => new ElementStyle { FontFamily = font, FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = fgSecondary, Margin = new Thickness(0, 6, 0, 2) },
-            MarkdownElementKeys.Body => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Margin = new Thickness(0, 0, 0, 8), ListIndent = 22f, NestedListIndent = 0f },
-            MarkdownElementKeys.CodeBlock => new ElementStyle { FontFamily = mono, FontSize = 13, Foreground = fg, Background = codeBg, BorderBrush = codeBorder, BorderThickness = 1, CornerRadius = 6, Margin = new Thickness(0, 4, 0, 8), Padding = new Thickness(12, 10, 12, 10) },
-            MarkdownElementKeys.CodeBlockHeader => new ElementStyle { FontFamily = font, FontSize = 12, Foreground = codeMuted, Background = codeHeaderBg, BorderBrush = codeBorder },
-            MarkdownElementKeys.CodeBlockLanguage => new ElementStyle { FontFamily = font, FontSize = 12, FontWeight = FontWeights.SemiBold, Foreground = codeMuted },
-            MarkdownElementKeys.CodeBlockGutter => new ElementStyle { FontFamily = mono, FontSize = 12, Foreground = codeMuted, Background = codeHeaderBg },
-            MarkdownElementKeys.CodeBlockLineNumber => new ElementStyle { FontFamily = mono, FontSize = 12, Foreground = codeMuted },
-            MarkdownElementKeys.CodeInline => new ElementStyle { FontFamily = mono, FontSize = 12, Foreground = fg, Background = codeBg, CornerRadius = 3, Padding = new Thickness(2, 0, 2, 0) },
-            MarkdownElementKeys.Quote => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fgSecondary, AccentBar = quoteBar, Margin = new Thickness(0, 4, 0, 4), Padding = new Thickness(12, 2, 8, 2) },
-            MarkdownElementKeys.Link => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = accent, HoverForeground = linkHover, FocusForeground = linkHover, Underline = true },
-            MarkdownElementKeys.Strong => new ElementStyle { FontFamily = font, FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = fg },
+            MarkdownElementKeys.Heading1 or MarkdownElementKeys.Heading2 or MarkdownElementKeys.Heading3 or MarkdownElementKeys.Heading4 or MarkdownElementKeys.Heading5 or MarkdownElementKeys.Heading6 => CreateHeadingStyle(key, font, fg, fgSecondary, semiBoldFontWeight),
+            MarkdownElementKeys.Body => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = highContrastBackground, Margin = new Thickness(0, 0, 0, 8), ListIndent = 22f, NestedListIndent = 0f },
+            MarkdownElementKeys.CodeBlock => new ElementStyle { FontFamily = mono, FontSize = 13, Foreground = fg, Background = isHighContrast ? highContrastBackground : codeBg, AccentBar = highContrastAccent, BorderBrush = isHighContrast ? highContrastAccent : codeBorder, BorderThickness = isHighContrast ? highContrastAccent is null ? 0 : 1 : 1, CornerRadius = isHighContrast ? 0 : 6, Margin = new Thickness(0, 4, 0, 8), Padding = new Thickness(12, 10, 12, 10) },
+            MarkdownElementKeys.CodeBlockHeader or MarkdownElementKeys.CodeBlockGutter => new ElementStyle
+            {
+                FontFamily = key == MarkdownElementKeys.CodeBlockGutter ? mono : font,
+                FontSize = 12,
+                Foreground = isHighContrast ? fg : codeMuted,
+                Background = isHighContrast ? highContrastBackground : codeHeaderBg,
+                BorderBrush = key == MarkdownElementKeys.CodeBlockHeader && !isHighContrast ? codeBorder : highContrastAccent,
+            },
+            MarkdownElementKeys.CodeBlockLanguage => new ElementStyle { FontFamily = font, FontSize = 12, FontWeight = semiBoldFontWeight, Foreground = isHighContrast ? fg : codeMuted },
+            MarkdownElementKeys.CodeBlockLineNumber => new ElementStyle { FontFamily = mono, FontSize = 12, Foreground = isHighContrast ? fg : codeMuted },
+            MarkdownElementKeys.CodeInline => new ElementStyle { FontFamily = mono, FontSize = 12, Foreground = fg, Background = isHighContrast ? highContrastBackground : codeBg, CornerRadius = isHighContrast ? 0 : 3, Padding = new Thickness(2, 0, 2, 0) },
+            MarkdownElementKeys.Quote => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fgSecondary, AccentBar = isHighContrast ? highContrastAccent : quoteBar, Margin = new Thickness(0, 4, 0, 4), Padding = new Thickness(12, 2, 8, 2) },
+            MarkdownElementKeys.Link => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = isHighContrast ? fg : accent, HoverForeground = linkHover, FocusForeground = linkHover, Underline = isHighContrast ? roles.Underline : true },
+            MarkdownElementKeys.Strong => new ElementStyle { FontFamily = font, FontSize = 14, FontWeight = semiBoldFontWeight, Foreground = fg },
             MarkdownElementKeys.Emphasis => new ElementStyle { FontFamily = font, FontSize = 14, FontStyle = FontStyle.Italic, Foreground = fg },
-            MarkdownElementKeys.Strikethrough => new ElementStyle { FontFamily = font, FontSize = 14, Strikethrough = true, Foreground = fgSecondary },
-            MarkdownElementKeys.Subscript => new ElementStyle { FontFamily = font, FontSize = 11, Foreground = fg },
-            MarkdownElementKeys.Superscript => new ElementStyle { FontFamily = font, FontSize = 11, Foreground = fg },
-            MarkdownElementKeys.Inserted => new ElementStyle { FontFamily = font, FontSize = 14, Underline = true, Foreground = fg },
-            MarkdownElementKeys.Marked => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = isDark ? Color.FromArgb(0x45, 0xFF, 0xD8, 0x66) : Color.FromArgb(0x66, 0xFF, 0xE5, 0x8A), CornerRadius = 3 },
-            MarkdownElementKeys.Abbreviation => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, AccentBar = accent, Underline = true },
-            MarkdownElementKeys.DefinitionTerm => new ElementStyle { FontFamily = font, FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = fg, Margin = new Thickness(0, 4, 0, 0) },
-            MarkdownElementKeys.DefinitionDescription => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fgSecondary, Margin = new Thickness(18, 0, 0, 6) },
-            MarkdownElementKeys.Figure => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Margin = new Thickness(0, 8, 0, 10) },
-            MarkdownElementKeys.FigureCaption => new ElementStyle { FontFamily = font, FontSize = 12, FontStyle = FontStyle.Italic, Foreground = fgSecondary, Margin = new Thickness(0, 2, 0, 8) },
-            MarkdownElementKeys.Diagram => new ElementStyle { FontFamily = mono, FontSize = 13, Foreground = fg, Background = codeBg, BorderBrush = quoteBar, BorderThickness = 1, CornerRadius = 4, Padding = new Thickness(12, 8, 12, 8), Margin = new Thickness(0, 6, 0, 8) },
+            MarkdownElementKeys.Strikethrough => new ElementStyle { FontFamily = font, FontSize = 14, Strikethrough = isHighContrast ? roles.Strikethrough : true, Foreground = fgSecondary },
+            MarkdownElementKeys.Subscript or MarkdownElementKeys.Superscript => new ElementStyle { FontFamily = font, FontSize = 11, Foreground = fg },
+            MarkdownElementKeys.Inserted => new ElementStyle { FontFamily = font, FontSize = 14, Underline = isHighContrast ? roles.Underline : true, Foreground = fg },
+            MarkdownElementKeys.Marked => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = isHighContrast ? highContrastBackground : isDark ? Color.FromArgb(0x45, 0xFF, 0xD8, 0x66) : Color.FromArgb(0x66, 0xFF, 0xE5, 0x8A), CornerRadius = isHighContrast ? 0 : 3 },
+            MarkdownElementKeys.Abbreviation => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, AccentBar = isHighContrast ? highContrastAccent : accent, Underline = isHighContrast ? roles.Underline : true },
+            MarkdownElementKeys.DefinitionTerm => new ElementStyle { FontFamily = font, FontSize = 14, FontWeight = semiBoldFontWeight, Foreground = fg, Margin = new Thickness(0, 4, 0, 0) },
+            MarkdownElementKeys.DefinitionDescription => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fgSecondary, Background = highContrastBackground, Margin = new Thickness(18, 0, 0, 6) },
+            MarkdownElementKeys.Figure => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = highContrastBackground, Margin = new Thickness(0, 8, 0, 10) },
+            MarkdownElementKeys.FigureCaption or MarkdownElementKeys.ImageCaption => new ElementStyle { FontFamily = font, FontSize = 12, FontStyle = FontStyle.Italic, Foreground = fgSecondary, Background = key == MarkdownElementKeys.FigureCaption ? highContrastBackground : null, Margin = new Thickness(0, 2, 0, 8) },
+            MarkdownElementKeys.Diagram => new ElementStyle { FontFamily = mono, FontSize = 13, Foreground = fg, Background = isHighContrast ? highContrastBackground : codeBg, AccentBar = highContrastAccent, BorderBrush = isHighContrast ? highContrastAccent : quoteBar, BorderThickness = isHighContrast ? highContrastAccent is null ? 0 : 1 : 1, CornerRadius = isHighContrast ? 0 : 4, Padding = new Thickness(12, 8, 12, 8), Margin = new Thickness(0, 6, 0, 8) },
+            MarkdownElementKeys.Math => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = highContrastBackground, Margin = isHighContrast ? new Thickness(1, 0, 1, 0) : new Thickness(0, 0, 0, 4) },
             MarkdownElementKeys.ListMarker => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fgSecondary, ListIndent = 22f, NestedListIndent = 0f },
-            MarkdownElementKeys.ThematicBreak => new ElementStyle { FontFamily = font, Foreground = quoteBar, Margin = new Thickness(0, 12, 0, 12) },
-            MarkdownElementKeys.ImageCaption => new ElementStyle { FontFamily = font, FontSize = 12, FontStyle = FontStyle.Italic, Foreground = fgSecondary, Margin = new Thickness(0, 2, 0, 8) },
-            MarkdownElementKeys.Table => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = tableBg, BorderBrush = tableBorder, BorderThickness = 1, CornerRadius = 6, Margin = new Thickness(0, 8, 0, 12) },
-            MarkdownElementKeys.TableHeader => new ElementStyle { FontFamily = font, FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = fg, Background = tableHeaderBg, BorderBrush = tableBorder, Padding = new Thickness(12, 9, 12, 9) },
-            MarkdownElementKeys.TableCell => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = tableBg, BorderBrush = tableBorder, Padding = new Thickness(12, 9, 12, 9) },
-            MarkdownElementKeys.AlertNote => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, AccentBar = Color.FromArgb(0xFF, 0x0E, 0xA5, 0xE9), Padding = new Thickness(12, 2, 8, 2), Margin = new Thickness(0, 4, 0, 8) },
-            MarkdownElementKeys.AlertTip => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, AccentBar = Color.FromArgb(0xFF, 0x22, 0xC5, 0x5E), Padding = new Thickness(12, 2, 8, 2), Margin = new Thickness(0, 4, 0, 8) },
-            MarkdownElementKeys.AlertImportant => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, AccentBar = Color.FromArgb(0xFF, 0xA8, 0x55, 0xF7), Padding = new Thickness(12, 2, 8, 2), Margin = new Thickness(0, 4, 0, 8) },
-            MarkdownElementKeys.AlertWarning => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, AccentBar = Color.FromArgb(0xFF, 0xF5, 0x9E, 0x0B), Padding = new Thickness(12, 2, 8, 2), Margin = new Thickness(0, 4, 0, 8) },
-            MarkdownElementKeys.AlertCaution => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, AccentBar = Color.FromArgb(0xFF, 0xEF, 0x44, 0x44), Padding = new Thickness(12, 2, 8, 2), Margin = new Thickness(0, 4, 0, 8) },
-            _ => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Margin = new Thickness(0, 0, 0, 4) }
+            MarkdownElementKeys.ThematicBreak => new ElementStyle { FontFamily = font, Foreground = isHighContrast ? fg : quoteBar, Margin = new Thickness(0, 12, 0, 12) },
+            MarkdownElementKeys.Table => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = isHighContrast ? highContrastBackground : tableBg, BorderBrush = isHighContrast ? highContrastAccent : tableBorder, BorderThickness = isHighContrast ? highContrastAccent is null ? 0 : 1 : 1, CornerRadius = isHighContrast ? 0 : 6, Margin = new Thickness(0, 8, 0, 12) },
+            MarkdownElementKeys.TableHeader => new ElementStyle { FontFamily = font, FontSize = 14, FontWeight = semiBoldFontWeight, Foreground = fg, Background = isHighContrast ? highContrastBackground : tableHeaderBg, BorderBrush = isHighContrast ? highContrastAccent : tableBorder, Padding = new Thickness(12, 9, 12, 9) },
+            MarkdownElementKeys.TableCell => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = isHighContrast ? highContrastBackground : tableBg, BorderBrush = isHighContrast ? highContrastAccent : tableBorder, Padding = new Thickness(12, 9, 12, 9) },
+            MarkdownElementKeys.AlertNote or MarkdownElementKeys.AlertTip or MarkdownElementKeys.AlertImportant or MarkdownElementKeys.AlertWarning or MarkdownElementKeys.AlertCaution => new ElementStyle
+            {
+                FontFamily = font,
+                FontSize = 14,
+                Foreground = fg,
+                AccentBar = isHighContrast ? highContrastAccent : key switch
+                {
+                    MarkdownElementKeys.AlertNote => Color.FromArgb(0xFF, 0x0E, 0xA5, 0xE9),
+                    MarkdownElementKeys.AlertTip => Color.FromArgb(0xFF, 0x22, 0xC5, 0x5E),
+                    MarkdownElementKeys.AlertImportant => Color.FromArgb(0xFF, 0xA8, 0x55, 0xF7),
+                    MarkdownElementKeys.AlertWarning => Color.FromArgb(0xFF, 0xF5, 0x9E, 0x0B),
+                    _ => Color.FromArgb(0xFF, 0xEF, 0x44, 0x44),
+                },
+                Padding = new Thickness(12, 2, 8, 2),
+                Margin = new Thickness(0, 4, 0, 8),
+            },
+            _ => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = highContrastBackground, Margin = new Thickness(0, 0, 0, 4) }
         };
+    }
 
-        // Stable renderer resource keys are resolved once into the immutable
-        // environment snapshot. Painting never performs resource lookups.
-        return ApplyAppResourceOverrides(key, fluentStyle);
+    private static ElementStyle CreateHeadingStyle(
+        string key,
+        string font,
+        Color foreground,
+        Color secondaryForeground,
+        Windows.UI.Text.FontWeight semiBoldFontWeight)
+    {
+        var (fontSize, marginTop, marginBottom) = key switch
+        {
+            MarkdownElementKeys.Heading1 => (32f, 16d, 8d),
+            MarkdownElementKeys.Heading2 => (26f, 14d, 6d),
+            MarkdownElementKeys.Heading3 => (22f, 12d, 4d),
+            MarkdownElementKeys.Heading4 => (18f, 10d, 4d),
+            MarkdownElementKeys.Heading5 => (15f, 8d, 2d),
+            _ => (14f, 6d, 2d),
+        };
+        return new ElementStyle
+        {
+            FontFamily = font,
+            FontSize = fontSize,
+            FontWeight = semiBoldFontWeight,
+            Foreground = key == MarkdownElementKeys.Heading6 ? secondaryForeground : foreground,
+            Margin = new Thickness(0, marginTop, 0, marginBottom),
+        };
     }
 
     private ElementStyle ApplyAppResourceOverrides(string elementKey, ElementStyle style)
@@ -416,67 +529,16 @@ internal sealed class ThemeResolver
             ? thickness
             : null;
 
-    private ElementStyle GetHighContrastDefault(string key)
+    private static Color ResolveHighContrastRole(
+        MarkdownHighContrastColorRole role,
+        IMarkdownSystemThemeProvider systemTheme) => role switch
     {
-        var roles = MarkdownHighContrastDefaults.Resolve(key);
-        var fg = ResolveHighContrastRole(roles.Foreground);
-        var bg = roles.Background is { } backgroundRole ? ResolveHighContrastRole(backgroundRole) : (Color?)null;
-        var accentBar = roles.AccentBar is { } accentRole ? ResolveHighContrastRole(accentRole) : (Color?)null;
-
-        const string font = "Segoe UI Variable Text";
-        const string mono = "Consolas";
-
-        return key switch
-        {
-            MarkdownElementKeys.Heading1 => new ElementStyle { FontFamily = font, FontSize = 32, FontWeight = FontWeights.SemiBold, Foreground = fg, Margin = new Thickness(0, 16, 0, 8) },
-            MarkdownElementKeys.Heading2 => new ElementStyle { FontFamily = font, FontSize = 26, FontWeight = FontWeights.SemiBold, Foreground = fg, Margin = new Thickness(0, 14, 0, 6) },
-            MarkdownElementKeys.Heading3 => new ElementStyle { FontFamily = font, FontSize = 22, FontWeight = FontWeights.SemiBold, Foreground = fg, Margin = new Thickness(0, 12, 0, 4) },
-            MarkdownElementKeys.Heading4 => new ElementStyle { FontFamily = font, FontSize = 18, FontWeight = FontWeights.SemiBold, Foreground = fg, Margin = new Thickness(0, 10, 0, 4) },
-            MarkdownElementKeys.Heading5 => new ElementStyle { FontFamily = font, FontSize = 15, FontWeight = FontWeights.SemiBold, Foreground = fg, Margin = new Thickness(0, 8, 0, 2) },
-            MarkdownElementKeys.Heading6 => new ElementStyle { FontFamily = font, FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = fg, Margin = new Thickness(0, 6, 0, 2) },
-            MarkdownElementKeys.Body => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = bg, Margin = new Thickness(0, 0, 0, 8) },
-            MarkdownElementKeys.CodeBlock => new ElementStyle { FontFamily = mono, FontSize = 13, Foreground = fg, Background = bg, AccentBar = accentBar, BorderBrush = accentBar, BorderThickness = accentBar is null ? 0 : 1, CornerRadius = 0, Margin = new Thickness(0, 4, 0, 8), Padding = new Thickness(12, 10, 12, 10) },
-            MarkdownElementKeys.CodeBlockHeader => new ElementStyle { FontFamily = font, FontSize = 12, Foreground = fg, Background = bg, BorderBrush = accentBar },
-            MarkdownElementKeys.CodeBlockLanguage => new ElementStyle { FontFamily = font, FontSize = 12, FontWeight = FontWeights.SemiBold, Foreground = fg },
-            MarkdownElementKeys.CodeBlockGutter => new ElementStyle { FontFamily = mono, FontSize = 12, Foreground = fg, Background = bg, BorderBrush = accentBar },
-            MarkdownElementKeys.CodeBlockLineNumber => new ElementStyle { FontFamily = mono, FontSize = 12, Foreground = fg },
-            MarkdownElementKeys.CodeInline => new ElementStyle { FontFamily = mono, FontSize = 12, Foreground = fg, Background = bg, Padding = new Thickness(2, 0, 2, 0) },
-            MarkdownElementKeys.Quote => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, AccentBar = accentBar, Margin = new Thickness(0, 4, 0, 4), Padding = new Thickness(12, 2, 8, 2) },
-            MarkdownElementKeys.Link => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, HoverForeground = fg, FocusForeground = fg, Underline = roles.Underline },
-            MarkdownElementKeys.Strong => new ElementStyle { FontFamily = font, FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = fg },
-            MarkdownElementKeys.Emphasis => new ElementStyle { FontFamily = font, FontSize = 14, FontStyle = FontStyle.Italic, Foreground = fg },
-            MarkdownElementKeys.Strikethrough => new ElementStyle { FontFamily = font, FontSize = 14, Strikethrough = roles.Strikethrough, Foreground = fg },
-            MarkdownElementKeys.Subscript => new ElementStyle { FontFamily = font, FontSize = 11, Foreground = fg },
-            MarkdownElementKeys.Superscript => new ElementStyle { FontFamily = font, FontSize = 11, Foreground = fg },
-            MarkdownElementKeys.Inserted => new ElementStyle { FontFamily = font, FontSize = 14, Underline = roles.Underline, Foreground = fg },
-            MarkdownElementKeys.Marked => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = bg },
-            MarkdownElementKeys.Abbreviation => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, AccentBar = accentBar, Underline = roles.Underline },
-            MarkdownElementKeys.DefinitionTerm => new ElementStyle { FontFamily = font, FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = fg, Margin = new Thickness(0, 4, 0, 0) },
-            MarkdownElementKeys.DefinitionDescription => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = bg, Margin = new Thickness(18, 0, 0, 6) },
-            MarkdownElementKeys.Figure => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = bg, Margin = new Thickness(0, 8, 0, 10) },
-            MarkdownElementKeys.FigureCaption => new ElementStyle { FontFamily = font, FontSize = 12, FontStyle = FontStyle.Italic, Foreground = fg, Background = bg, Margin = new Thickness(0, 2, 0, 8) },
-            MarkdownElementKeys.Diagram => new ElementStyle { FontFamily = mono, FontSize = 13, Foreground = fg, Background = bg, AccentBar = accentBar, BorderBrush = accentBar, BorderThickness = accentBar is null ? 0 : 1, Padding = new Thickness(12, 8, 12, 8), Margin = new Thickness(0, 6, 0, 8) },
-            MarkdownElementKeys.Math => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = bg, Margin = new Thickness(1, 0, 1, 0) },
-            MarkdownElementKeys.ListMarker => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, ListIndent = 22f, NestedListIndent = 0f },
-            MarkdownElementKeys.ThematicBreak => new ElementStyle { FontFamily = font, Foreground = fg, Margin = new Thickness(0, 12, 0, 12) },
-            MarkdownElementKeys.ImageCaption => new ElementStyle { FontFamily = font, FontSize = 12, FontStyle = FontStyle.Italic, Foreground = fg, Margin = new Thickness(0, 2, 0, 8) },
-            MarkdownElementKeys.Table => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = bg, BorderBrush = accentBar, BorderThickness = accentBar is null ? 0 : 1, Margin = new Thickness(0, 8, 0, 12) },
-            MarkdownElementKeys.TableHeader => new ElementStyle { FontFamily = font, FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = fg, Background = bg, BorderBrush = accentBar, Padding = new Thickness(12, 9, 12, 9) },
-            MarkdownElementKeys.TableCell => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = bg, BorderBrush = accentBar, Padding = new Thickness(12, 9, 12, 9) },
-            MarkdownElementKeys.AlertNote or MarkdownElementKeys.AlertTip or MarkdownElementKeys.AlertImportant or
-            MarkdownElementKeys.AlertWarning or MarkdownElementKeys.AlertCaution => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, AccentBar = accentBar, Padding = new Thickness(12, 2, 8, 2), Margin = new Thickness(0, 4, 0, 8) },
-            _ => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = bg, Margin = new Thickness(0, 0, 0, 4) }
-        };
-    }
-
-    private Color ResolveHighContrastRole(MarkdownHighContrastColorRole role) => role switch
-    {
-        MarkdownHighContrastColorRole.WindowText => _systemTheme.WindowTextColor,
-        MarkdownHighContrastColorRole.Window => _systemTheme.WindowColor,
-        MarkdownHighContrastColorRole.Hotlight => _systemTheme.HotlightColor,
-        MarkdownHighContrastColorRole.Highlight => _systemTheme.HighlightColor,
-        MarkdownHighContrastColorRole.HighlightText => _systemTheme.HighlightTextColor,
-        _ => _systemTheme.WindowTextColor,
+        MarkdownHighContrastColorRole.WindowText => systemTheme.WindowTextColor,
+        MarkdownHighContrastColorRole.Window => systemTheme.WindowColor,
+        MarkdownHighContrastColorRole.Hotlight => systemTheme.HotlightColor,
+        MarkdownHighContrastColorRole.Highlight => systemTheme.HighlightColor,
+        MarkdownHighContrastColorRole.HighlightText => systemTheme.HighlightTextColor,
+        _ => systemTheme.WindowTextColor,
     };
 
     private Color ResolveSelectionHighlightColor()
@@ -664,6 +726,9 @@ internal sealed class ThemeResolver
             _scopedResourceValues = scopedValues;
             var visited = new HashSet<ResourceDictionary>(ReferenceEqualityComparer.Instance);
             IReadOnlyList<string> themeKeys = GetThemeDictionaryKeys();
+            Predicate<string> includeResource = _scopedResourceStyleRoles is not null
+                ? IncludeScopedResourceForSnapshot
+                : IncludeScopedRendererResource;
             for (DependencyObject? current = _host; current is not null; current = VisualTreeHelper.GetParent(current))
             {
                 if (current is FrameworkElement element)
@@ -682,7 +747,7 @@ internal sealed class ThemeResolver
                             dictionary.TryGetValue(key, out result),
                         static dictionary => dictionary.MergedDictionaries.Count,
                         static (dictionary, index) => dictionary.MergedDictionaries[index],
-                        IncludeScopedRendererResource,
+                        includeResource,
                         scopedValues);
                 }
             }
@@ -728,7 +793,7 @@ internal sealed class ThemeResolver
 
     private bool TryResolveApplicationResourceValue(string resourceKey, out object value)
     {
-        if (Application.Current?.Resources is { } applicationResources)
+        if (_applicationResources is { } applicationResources)
         {
             // ResourceDictionary performs its own indexed lookup across merged
             // dictionaries and the active application theme. Avoid manually
@@ -755,32 +820,50 @@ internal sealed class ThemeResolver
         };
 
     internal static bool IsScopedPlatformResourceKey(string key)
-        => key is
-            "TextControlForegroundFocused" or
-            "TextControlForeground" or
-            "TextFillColorPrimaryBrush" or
-            "TextFillColorPrimary" or
-            "TextFillColorSecondaryBrush" or
-            "TextFillColorSecondary" or
-            "TextControlPlaceholderForeground" or
-            "AccentTextFillColorPrimaryBrush" or
-            "AccentTextFillColorPrimary" or
-            "SystemControlForegroundAccentBrush" or
-            "AccentFillColorDefaultBrush" or
-            "ApplicationPageBackgroundThemeBrush" or
-            "SolidBackgroundFillColorBaseBrush" or
-            "LayerFillColorDefaultBrush" or
-            "TextControlSelectionHighlightColor" or
-            "AccentFillColorSelectedTextBackgroundBrush" or
-            "SystemControlHighlightAccentBrush" or
-            "SystemColorHighlightColorBrush" or
-            "SystemColorHighlightColor" or
-            "TextOnAccentFillColorSelectedTextBrush" or
-            "TextOnAccentFillColorSelectedText" or
-            "SystemColorHighlightTextColorBrush" or
-            "SystemColorHighlightTextColor" or
-            "SystemControlFocusVisualPrimaryBrush" or
-            "FocusVisualPrimaryBrush";
+        => Array.BinarySearch(ScopedPlatformResourceKeys, key, StringComparer.Ordinal) >= 0;
+
+    internal static HashSet<string> GetScopedResourceStyleRoles(
+        IEnumerable<string> elementKeys,
+        ulong? builtInStyleRoleDemandMask)
+    {
+        var roles = new HashSet<string>(StringComparer.Ordinal);
+        foreach (string key in elementKeys)
+        {
+            int roleDemandIndex = Array.IndexOf(BuiltInElementKeys, key);
+            if ((builtInStyleRoleDemandMask is null || roleDemandIndex < 0 ||
+                 (builtInStyleRoleDemandMask.Value & (1UL << roleDemandIndex)) != 0) &&
+                MarkdownStyleRole.TryCreateCanonical(key, out MarkdownStyleRole role))
+            {
+                roles.Add(role.Name);
+            }
+        }
+
+        return roles;
+    }
+
+    internal static bool IsScopedResourceRequiredForSnapshot(
+        string key,
+        HashSet<string> styleRoles)
+    {
+        if (IsScopedPlatformResourceKey(key) || MarkdownResourceKeys.IsGlobalResourceKey(key))
+            return true;
+
+        if (!key.StartsWith(MarkdownResourceKeys.Prefix, StringComparison.Ordinal))
+            return false;
+
+        int propertySeparator = key.LastIndexOf('.');
+        if (propertySeparator <= MarkdownResourceKeys.Prefix.Length)
+            return false;
+
+        ReadOnlySpan<char> roleName = key.AsSpan(
+            MarkdownResourceKeys.Prefix.Length,
+            propertySeparator - MarkdownResourceKeys.Prefix.Length);
+        return styleRoles.GetAlternateLookup<ReadOnlySpan<char>>().Contains(roleName);
+    }
+
+    private bool IncludeScopedResourceForSnapshot(string key)
+        => _scopedResourceStyleRoles is { } styleRoles &&
+            IsScopedResourceRequiredForSnapshot(key, styleRoles);
 
     private static bool IncludeScopedRendererResource(string key)
         => key.StartsWith(MarkdownResourceKeys.Prefix, StringComparison.Ordinal) ||
@@ -933,4 +1016,5 @@ internal sealed class ThemeResolver
         Color SecondaryText,
         Color AccentText,
         Color Surface);
+
 }

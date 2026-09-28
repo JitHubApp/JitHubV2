@@ -53,4 +53,11 @@ internal sealed class WorkerTimeoutEvents : EventSource
                 workerPageFaults, elapsedWallMilliseconds, workerInputSha256,
                 workerExecutableSha256]);
     }
+
+    [Event(2, Level = EventLevel.Warning)]
+    public void FontCatalogDeadlinePhase(string initializationPhase)
+    {
+        if (IsEnabled())
+            WriteEvent(2, initializationPhase);
+    }
 }

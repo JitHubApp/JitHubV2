@@ -170,6 +170,22 @@ public sealed class MarkdownEngine : IDisposable
     public Task<MarkdownDocument> ParseAsync(
         string? source,
         CancellationToken cancellationToken = default)
+        => ParseAsyncCore(source, deferOffscreenScenes: false, cancellationToken);
+
+    /// <summary>
+    /// Parses for a progressive presentation. Only built-in block scene
+    /// extensions may defer expensive materialization; the public ParseAsync
+    /// contract remains eager and uses an independent cache entry.
+    /// </summary>
+    internal Task<MarkdownDocument> ParseForProgressivePresentationAsync(
+        string? source,
+        CancellationToken cancellationToken = default)
+        => ParseAsyncCore(source, deferOffscreenScenes: true, cancellationToken);
+
+    private Task<MarkdownDocument> ParseAsyncCore(
+        string? source,
+        bool deferOffscreenScenes,
+        CancellationToken cancellationToken)
     {
         if (cancellationToken.IsCancellationRequested)
             return Task.FromCanceled<MarkdownDocument>(cancellationToken);
@@ -207,6 +223,7 @@ public sealed class MarkdownEngine : IDisposable
 
                 if (TryGetLastCompletedParseBySourceIdentity(
                         sourceSnapshot,
+                        deferOffscreenScenes,
                         out var identityCachedDocument))
                 {
                     return Task.FromResult(identityCachedDocument);
@@ -214,7 +231,7 @@ public sealed class MarkdownEngine : IDisposable
             }
         }
 
-        SourceKey sourceKey = CreateSourceKey(sourceSnapshot);
+        SourceKey sourceKey = CreateSourceKey(sourceSnapshot, deferOffscreenScenes);
         InFlightParse inFlight;
         bool startParse = false;
         lock (_parseGate)
@@ -381,7 +398,10 @@ public sealed class MarkdownEngine : IDisposable
         Exception? failure = null;
         try
         {
-            document = await ParseCoreAsync(inFlight.Source, inFlight.CancellationToken)
+            document = await ParseCoreAsync(
+                    inFlight.Source,
+                    inFlight.Key.DeferOffscreenScenes,
+                    inFlight.CancellationToken)
                 .ConfigureAwait(false);
             inFlight.CancellationToken.ThrowIfCancellationRequested();
             if (ParseCacheBudgetBytes > 0)
@@ -436,6 +456,7 @@ public sealed class MarkdownEngine : IDisposable
 
     private async ValueTask<MarkdownDocument> ParseCoreAsync(
         string source,
+        bool deferOffscreenScenes,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -464,7 +485,8 @@ public sealed class MarkdownEngine : IDisposable
                 _noDiagnostics,
                 Extensions,
                 cancellationToken,
-                PresentationConfiguration)
+                PresentationConfiguration,
+                deferOffscreenScenes)
             .ConfigureAwait(false);
     }
 
@@ -797,10 +819,12 @@ public sealed class MarkdownEngine : IDisposable
 
     private bool TryGetLastCompletedParseBySourceIdentity(
         string source,
+        bool deferOffscreenScenes,
         out MarkdownDocument document)
     {
         CompletedParse? cached = _lastCompletedParse;
         if (cached is not null &&
+            cached.Key.DeferOffscreenScenes == deferOffscreenScenes &&
             _lastCompletedSourceIdentity is { } identity &&
             identity.TryGetTarget(out string? lastSource) &&
             ReferenceEquals(lastSource, source))
@@ -877,10 +901,10 @@ public sealed class MarkdownEngine : IDisposable
         }
     }
 
-    private SourceKey CreateSourceKey(string source)
+    private SourceKey CreateSourceKey(string source, bool deferOffscreenScenes)
     {
         Interlocked.Increment(ref _sourceKeyHashCount);
-        return SourceKey.Create(source);
+        return SourceKey.Create(source, deferOffscreenScenes);
     }
 
     private static void ObserveFault(Task<MarkdownDocument> parseTask)
@@ -1155,10 +1179,21 @@ public sealed class MarkdownEngine : IDisposable
         }
     }
 
-    private readonly record struct SourceKey(string Source, int OrdinalHashCode)
+    private readonly struct SourceKey
     {
-        internal static SourceKey Create(string source) =>
-            new(source, StringComparer.Ordinal.GetHashCode(source));
+        internal SourceKey(string source, int ordinalHashCode, bool deferOffscreenScenes)
+        {
+            Source = source;
+            OrdinalHashCode = ordinalHashCode;
+            DeferOffscreenScenes = deferOffscreenScenes;
+        }
+
+        internal readonly string Source;
+        internal readonly int OrdinalHashCode;
+        internal readonly bool DeferOffscreenScenes;
+
+        internal static SourceKey Create(string source, bool deferOffscreenScenes)
+            => new(source, StringComparer.Ordinal.GetHashCode(source), deferOffscreenScenes);
     }
 
     private sealed class SourceKeyComparer : IEqualityComparer<SourceKey>
@@ -1167,6 +1202,7 @@ public sealed class MarkdownEngine : IDisposable
 
         public bool Equals(SourceKey x, SourceKey y) =>
             x.OrdinalHashCode == y.OrdinalHashCode &&
+            x.DeferOffscreenScenes == y.DeferOffscreenScenes &&
             (ReferenceEquals(x.Source, y.Source) ||
              string.Equals(x.Source, y.Source, StringComparison.Ordinal));
 

@@ -43,9 +43,9 @@ public sealed class FirstViewportMeasurementContractTests
     }
 
     [Fact]
-    public void SchemaElevenFreezesHonestModesAndTrialShapedPopulations()
+    public void SchemaTwelveFreezesHonestModesAndTrialShapedPopulations()
     {
-        Assert.Equal(11, PerformanceMeasurementContract.SchemaVersion);
+        Assert.Equal(12, PerformanceMeasurementContract.SchemaVersion);
         Assert.Equal(6, PerformanceMeasurementContract.ReleaseFirstViewportTrials);
         Assert.Equal(3, PerformanceMeasurementContract.ReleaseFirstViewportWarmupTrials);
         Assert.Equal("cache-disabled", PerformanceMeasurementContract.FirstViewportCacheDisabledMode);

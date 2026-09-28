@@ -92,6 +92,7 @@ public sealed class MarkdownSyntaxNode
 public sealed class MarkdownExtensionContext
 {
     private readonly Action<MarkdownDiagnostic>? _reportDiagnostic;
+    private readonly bool _deferOffscreenScenes;
     private int _diagnosticCount;
 
     /// <summary>Initializes a renderer context.</summary>
@@ -103,11 +104,13 @@ public sealed class MarkdownExtensionContext
     internal MarkdownExtensionContext(
         MarkdownSyntaxNode node,
         CancellationToken cancellationToken,
-        Action<MarkdownDiagnostic>? reportDiagnostic)
+        Action<MarkdownDiagnostic>? reportDiagnostic,
+        bool deferOffscreenScenes = false)
     {
         Node = node ?? throw new ArgumentNullException(nameof(node));
         CancellationToken = cancellationToken;
         _reportDiagnostic = reportDiagnostic;
+        _deferOffscreenScenes = deferOffscreenScenes;
     }
 
     /// <summary>Gets the parser-independent syntax node.</summary>
@@ -116,6 +119,8 @@ public sealed class MarkdownExtensionContext
     public CancellationToken CancellationToken { get; }
 
     internal int DiagnosticCount => _diagnosticCount;
+
+    internal bool ShouldDeferOffscreenScenes => _deferOffscreenScenes;
 
     /// <summary>
     /// Reports a localized diagnostic for this node. Diagnostics are captured

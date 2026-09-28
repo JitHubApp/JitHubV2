@@ -453,6 +453,50 @@ public sealed class ImageBoxSvgRendererTests
         }
     }
 
+    [Fact]
+    public async Task VisibleSvgTileRangeRemainsLoadingUntilEveryVisibleTileIsPresent()
+    {
+        var renderer = new GatedTileSvgRenderer(new MarkdownSvgDocumentInfo(
+            IntrinsicWidthDips: 5000,
+            IntrinsicHeightDips: 1000,
+            IntrinsicAspectRatio: 5));
+        var image = new ImageBox(
+            CreateContext(renderer, rasterizationScale: 4),
+            CreateSvgDataUri(Guid.NewGuid().ToString("N")),
+            "partially rendered diagram");
+
+        try
+        {
+            image.Measure(5000);
+            await WaitForLoadAsync(image);
+            await WaitUntilAsync(() => image.UsesSvgTilesForTests && image.SvgRasterPixelSize == (20_000, 4_000));
+
+            using var target = new CanvasRenderTarget(
+                CanvasDevice.GetSharedDevice(),
+                600,
+                256,
+                96);
+            using (CanvasDrawingSession drawingSession = target.CreateDrawingSession())
+            {
+                image.Paint(drawingSession, new Rect(0, 0, 600, 256));
+            }
+
+            await renderer.SecondVisibleTileStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await WaitUntilAsync(() => image.HasAllSvgTilesForAutomation(0, 0, 0, 0));
+            Assert.False(image.HasAllSvgTilesForAutomation(0, 0, 1, 0));
+            Assert.False(image.HasAllSvgTilesForAutomation(-1, 0, 0, 0));
+            Assert.False(image.HasAllSvgTilesForAutomation(2, 0, 1, 0));
+
+            renderer.ReleaseSecondVisibleTile.TrySetResult();
+            await WaitUntilAsync(() => image.HasAllSvgTilesForAutomation(0, 0, 1, 0));
+        }
+        finally
+        {
+            renderer.ReleaseSecondVisibleTile.TrySetResult();
+            image.Dispose();
+        }
+    }
+
     [Theory]
     [InlineData(1, 1_000_000, 1)]
     [InlineData(1_000_000, 1, 1_000_000)]
@@ -809,6 +853,67 @@ public sealed class ImageBoxSvgRendererTests
             if (openDelay is { } delay && delay > TimeSpan.Zero)
                 await Task.Delay(delay, cancellationToken);
             return new RecordingSvgDocument(info, RenderRequests);
+        }
+    }
+
+    private sealed class GatedTileSvgRenderer(MarkdownSvgDocumentInfo info) : IMarkdownSvgRenderer
+    {
+        internal TaskCompletionSource SecondVisibleTileStarted { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        internal TaskCompletionSource ReleaseSecondVisibleTile { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public long CacheGeneration => 0;
+
+        public MarkdownSvgSourcePreparation PrepareSource(byte[] source, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return MarkdownSvgSourcePreparation.Admit(source);
+        }
+
+        public ValueTask<IMarkdownSvgDocument> OpenAsync(
+            MarkdownSvgOpenRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult<IMarkdownSvgDocument>(new GatedTileSvgDocument(this, info));
+        }
+    }
+
+    private sealed class GatedTileSvgDocument(
+        GatedTileSvgRenderer owner,
+        MarkdownSvgDocumentInfo info) : IMarkdownSvgDocument
+    {
+        public MarkdownSvgDocumentInfo Info { get; } = info;
+
+        public async ValueTask<MarkdownSvgRaster> RenderAsync(
+            MarkdownSvgRenderRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            if (request.TileRegion is { X: 1024, Y: 0 })
+            {
+                owner.SecondVisibleTileStarted.TrySetResult();
+                await owner.ReleaseSecondVisibleTile.Task.WaitAsync(cancellationToken);
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            int width = request.TileRegion?.Width ?? request.TargetWidthPixels;
+            int height = request.TileRegion?.Height ?? request.TargetHeightPixels;
+            int length = checked(width * height * 4);
+            IMemoryOwner<byte> memory = MemoryPool<byte>.Shared.Rent(length);
+            memory.Memory.Span[..length].Clear();
+            return new MarkdownSvgRaster(
+                memory,
+                length,
+                width,
+                height,
+                checked(width * 4),
+                request.PixelFormat);
+        }
+
+        public void Dispose()
+        {
         }
     }
 

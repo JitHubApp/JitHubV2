@@ -807,6 +807,41 @@ public sealed class MarkdownEngineTests
     }
 
     [Fact]
+    public async Task Gfm029_AutolinkEmailPreservesPunctuationAndExactSourceSpan()
+    {
+        const string email = "foo@bar.baz";
+        const string source = "Contact foo@bar.baz, please.";
+        var document = await new MarkdownEngineBuilder()
+            .UseProfile(MarkdownProfiles.GfmStrict)
+            .WithParseCacheBudgetBytes(0)
+            .Build()
+            .ParseAsync(source);
+
+        var link = Assert.Single(document.GetLinks());
+        Assert.Equal(email, link.DisplayText);
+        Assert.Equal("mailto:" + email, link.Url);
+        Assert.Equal(source.IndexOf(email, StringComparison.Ordinal), link.SourceSpan.Start);
+        Assert.Equal(email.Length, link.SourceSpan.Length);
+        Assert.Equal(',', source[link.SourceSpan.Start + link.SourceSpan.Length]);
+    }
+
+    [Fact]
+    public async Task Gfm029_NoEmailLiteralStaysUnlinkedAndUnchanged()
+    {
+        const string source = "Ordinary literal text has no email address.";
+        var document = await new MarkdownEngineBuilder()
+            .UseProfile(MarkdownProfiles.GfmStrict)
+            .WithParseCacheBudgetBytes(0)
+            .Build()
+            .ParseAsync(source);
+
+        Assert.Empty(document.GetLinks());
+        Assert.Equal(
+            source,
+            CollectInlineText(Assert.IsType<ParagraphBlock>(document.ParsedDocument![0]).Inline!));
+    }
+
+    [Fact]
     public async Task Gfm029_AutolinkEmailRejectsTrailingDomainUnderscore()
     {
         const string source = "foo@bar.baz\n\nfoo@bar.baz_";

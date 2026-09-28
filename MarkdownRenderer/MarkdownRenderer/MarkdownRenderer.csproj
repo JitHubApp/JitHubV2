@@ -55,10 +55,13 @@
     <Compile Remove="Extensions\**\*.cs" />
     <Compile Remove="Theming\MarkdownStyleRole.cs" />
     <Compile Remove="Performance\MarkdownPerformanceSession.cs" />
+    <Compile Remove="Performance\MarkdownStyleRoleDemandCollector.cs" />
+    <Compile Remove="Performance\MarkdownProgressiveScenePlan.cs" />
     <Compile Remove="Diagnostics\MarkdownRasterPreparationEventSource.cs" />
     <Compile Remove="Layout\Boxes\SvgResourceBudget.cs" />
     <Compile Remove="Layout\Boxes\SvgStaticSnapshot.cs" />
     <Compile Remove="Layout\Boxes\SvgThemeInjector.cs" />
+    <Compile Remove="Layout\Boxes\RasterImageTilePlanner.cs" />
   </ItemGroup>
 
   <ItemGroup>

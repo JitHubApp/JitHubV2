@@ -433,7 +433,7 @@ internal sealed class SafeHtmlInlineState
         return run;
     }
 
-    private static bool IsSupportedElement(string name) => name is
+    internal static bool IsSupportedElement(string name) => name is
         "a" or "address" or "article" or "aside" or "b" or "blockquote" or "br" or
         "caption" or "center" or "cite" or "code" or "col" or "colgroup" or "del" or
         "details" or "div" or "em" or "figcaption" or "figure" or "footer" or "h1" or

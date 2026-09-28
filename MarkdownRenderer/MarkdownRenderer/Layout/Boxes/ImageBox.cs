@@ -163,7 +163,7 @@ internal sealed class ImageBox : BlockBox
     // decision is deterministic across hardware, WARP, and CI machines.
     private const int MaxUntiledSvgDimensionPixels = 16_384;
     private const int MaxPooledSvgUploadBytes = 1024 * 1024;
-    private const int SvgTileSizePixels = 1024;
+    internal const int SvgTileSizePixels = 1024;
     private const int MaxRemoteImageBytes = RasterImageResourceBudget.MaxInputBytes;
     // Resolver implementations can have their own bounded network attempt and
     // then switch to a safe alternate representation (for example, from
@@ -374,6 +374,8 @@ internal sealed class ImageBox : BlockBox
     /// <summary>True when this box is using bounded visible SVG tiles.</summary>
     internal bool UsesSvgTilesForTests => _svgUsesTiles;
 
+    internal bool UsesSvgTilesForAutomation => _svgUsesTiles;
+
     /// <summary>Number of admitted SVG operations that have not drained.</summary>
     internal int ActiveSvgWorkCountForTests
     {
@@ -403,12 +405,51 @@ internal sealed class ImageBox : BlockBox
     /// <summary>Test-only: returns the cached bitmap, if any.</summary>
     public CanvasBitmap? Bitmap => _bitmap;
 
+    internal bool HasBitmapForAutomation => _bitmap is not null;
+
     /// <summary>Current state projected into the image's UIA accessible name.</summary>
     internal MarkdownImageAccessibilityState AccessibilityState => _loadFailed
         ? MarkdownImageAccessibilityState.Error
         : _bitmap is not null || _svgHasRenderedTile
             ? MarkdownImageAccessibilityState.Loaded
             : MarkdownImageAccessibilityState.Loading;
+
+    internal Rect AutomationRenderDestination => _isInlineLayout
+        ? Bounds
+        : new Rect(GetContentX(), Bounds.Y + Margin.Top, _imageWidth, _imageHeight);
+
+    internal bool HasAllSvgTilesForAutomation(
+        int firstTileX,
+        int firstTileY,
+        int lastTileX,
+        int lastTileY)
+    {
+        if (firstTileX > lastTileX || firstTileY > lastTileY)
+            return false;
+
+        // The host computes a finite, viewport-clamped tile range before this
+        // atomic check; keep the resource dictionary observation under one lock.
+        lock (_svgTileLock)
+        {
+            for (int tileY = firstTileY; tileY <= lastTileY; tileY++)
+            {
+                for (int tileX = firstTileX; tileX <= lastTileX; tileX++)
+                {
+                    int x = tileX * SvgTileSizePixels;
+                    int y = tileY * SvgTileSizePixels;
+                    SvgTileKey key = new(
+                        x,
+                        y,
+                        Math.Min(SvgTileSizePixels, _svgBitmapWidthPixels - x),
+                        Math.Min(SvgTileSizePixels, _svgBitmapHeightPixels - y));
+                    if (!_svgTiles.ContainsKey(key))
+                        return false;
+                }
+            }
+        }
+
+        return true;
+    }
 
     /// <summary>Test-only: height of the image content area at last measure (excludes margins).</summary>
     public float MeasuredImageHeight => _imageHeight;

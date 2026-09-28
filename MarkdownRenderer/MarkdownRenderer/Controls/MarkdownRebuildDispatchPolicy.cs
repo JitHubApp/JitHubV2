@@ -47,6 +47,9 @@ internal readonly record struct MarkdownRebuildDispatchState(
 
 internal static class MarkdownRebuildDispatchPolicy
 {
+    // Materializing one progressive scene does not invalidate sibling scene work.
+    internal static bool AdvancesDeferredSceneGeneration(bool sceneMaterialized) => !sceneMaterialized;
+
     internal static MarkdownRebuildDispatchPriority SelectPriority(bool requiresFullRebuild) =>
         requiresFullRebuild
             ? MarkdownRebuildDispatchPriority.Normal

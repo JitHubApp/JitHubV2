@@ -79,9 +79,12 @@ public sealed class AutomationHarnessSourceContractTests
             "Program.cs"));
 
         Assert.Contains("GetNewestSourceWriteTimeUtc", source, StringComparison.Ordinal);
+        Assert.Contains("AuditedMarkdownAssemblyNames", source, StringComparison.Ordinal);
+        Assert.Contains("File.GetLastWriteTimeUtc(assembly) < GetNewestProjectSourceWriteTimeUtc(sourceRoot)", source, StringComparison.Ordinal);
         Assert.Contains("IsAppBuildFresh(candidate, baseDirectory)", source, StringComparison.Ordinal);
         Assert.Contains("GetFreshnessArtifact(appPath)", source, StringComparison.Ordinal);
-        Assert.Contains("artifactWrite < newestAppSourceWrite || outputWrite < newestSourceWrite", source, StringComparison.Ordinal);
+        Assert.Contains("GetStaleAppArtifact(appPath, repositoryRoot)", source, StringComparison.Ordinal);
+        Assert.Contains("File.GetLastWriteTimeUtc(appPath) >= GetNewestSourceWriteTimeUtc(", source, StringComparison.Ordinal);
         Assert.Contains("firstSegment.StartsWith(\"obj\"", source, StringComparison.Ordinal);
         Assert.Contains("firstSegment.StartsWith(\"bin\"", source, StringComparison.Ordinal);
         Assert.Contains("No fresh JitHub executable was found for UI automation", source, StringComparison.Ordinal);
@@ -107,8 +110,63 @@ public sealed class AutomationHarnessSourceContractTests
             script,
             StringComparison.Ordinal);
         Assert.Contains("[string]$Configuration = \"Release\"", script, StringComparison.Ordinal);
+        Assert.Contains("[string]$AppExecutablePath = \"\"", script, StringComparison.Ordinal);
+        Assert.Contains("-not $SkipBuild", script, StringComparison.Ordinal);
+        Assert.Contains("[System.IO.Path]::GetFullPath($AppExecutablePath)", script, StringComparison.Ordinal);
+        Assert.Contains("(Get-FileHash -LiteralPath $appPath -Algorithm SHA256).Hash.ToLowerInvariant()", script, StringComparison.Ordinal);
+        Assert.Contains("$dependencyAssemblySha256 = [ordered]@{}", script, StringComparison.Ordinal);
+        Assert.Contains("Get-ChildItem -LiteralPath $appDirectory -File -Filter '*.dll' | Sort-Object Name", script, StringComparison.Ordinal);
+        Assert.Contains("dependencyAssemblySha256 = $dependencyAssemblySha256", script, StringComparison.Ordinal);
+        Assert.Contains("$requiredAssemblies = @('JitHub.WinUI.dll', 'MarkdownRenderer.dll')", script, StringComparison.Ordinal);
+        Assert.Contains("if (-not $dependencyAssemblySha256.Contains($assemblyName))", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("managedAssemblySha256", script, StringComparison.Ordinal);
+        Assert.Contains("app-binary-ranks-{0}-{1}.json", script, StringComparison.Ordinal);
+        Assert.Contains("--app=$appPath", script, StringComparison.Ordinal);
         Assert.Contains("-p:SkipReleaseSecurityGate=true", script, StringComparison.Ordinal);
         Assert.Contains("--reuse-browser-evidence", script, StringComparison.Ordinal);
+        Assert.Contains("$nativeTraversalInactivityWatchdog = [TimeSpan]::FromSeconds(90)", script, StringComparison.Ordinal);
+        Assert.Contains("^README native audit stage: (.+)\\.$", script, StringComparison.Ordinal);
+        Assert.Contains("$lastNativeProgressStage = \"native traversal complete\"", script, StringComparison.Ordinal);
+        Assert.Contains("^README native audit complete\\.$", script, StringComparison.Ordinal);
+        Assert.Contains("^README audit .+: (?:passed|failed);", script, StringComparison.Ordinal);
+        Assert.Contains("lastProgress = $Progress", script, StringComparison.Ordinal);
+        Assert.Contains("-Progress $lastNativeProgressStage", script, StringComparison.Ordinal);
+        Assert.Contains("Stop-ReadmeAuditProcessTree -Process $Process", script, StringComparison.Ordinal);
+        Assert.Contains("$live.CreationDate -eq $entry.CreationDate", script, StringComparison.Ordinal);
+        Assert.Contains("$live.CreationDate -eq $_.CreationDate", script, StringComparison.Ordinal);
+        Assert.Contains("-TimeoutKind \"post-exit-pipe-drain\"", script, StringComparison.Ordinal);
+        Assert.Contains("processTreeTerminated = $ProcessTreeTerminated", script, StringComparison.Ordinal);
+        Assert.Contains("failureCategory = \"infrastructure-timeout\"", script, StringComparison.Ordinal);
+        Assert.Contains("performanceGateEvaluated = $false", script, StringComparison.Ordinal);
+        Assert.Contains("watchdog-failure-$timestamp-$suffix.json", script, StringComparison.Ordinal);
+
+        string nativeProbe = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "JitHub.WinUI.Automation",
+            "ReadmeAuditProbe.cs"));
+        Assert.Contains("WriteNativeAuditStage(\"UIA ItemStatus read starting\")", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("WriteNativeAuditStage(\"acquiring TextPattern\")", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("WriteNativeAuditStage(\"TextPatternRange.GetText first chunk\")", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("WriteNativeAuditStage(\"waiting for app-ready signal\")", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("WriteNativeAuditStage(\"attaching UI Automation application\")", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("WriteNativeAuditStage(\"waiting for app window\")", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("WriteNativeAuditStage(\"waiting for Markdown host\")", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("WriteNativeAuditStage(\"waiting for render-complete signal\")", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("Console.WriteLine(\"README native audit complete.\")", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("WriteNativeAuditStage(\"checking host ScrollPattern support\")", nativeProbe, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TopReadmeAuditShutdownAvoidsBlockingUiaWindowClose()
+    {
+        string source = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "JitHub.WinUI.Automation",
+            "ReadmeAuditProbe.cs"));
+
+        Assert.Contains("NativeMethods.TryRequestGracefulClose(appProcess.Id, out _)", source, StringComparison.Ordinal);
+        Assert.Contains("appProcess.WaitForExit(12_000)", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("window.Close();", source, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -241,7 +299,7 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("CloseProcessExitHandle(appExitHandle)", nativeProbe, StringComparison.Ordinal);
         Assert.True(
             nativeProbe.IndexOf("OpenProcessExitHandle(appProcess.Id)", StringComparison.Ordinal) <
-            nativeProbe.IndexOf("try { window.Close(); }", StringComparison.Ordinal));
+            nativeProbe.IndexOf("NativeMethods.TryRequestGracefulClose(appProcess.Id, out _)", StringComparison.Ordinal));
         Assert.DoesNotContain("appProcess.ExitCode", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("launcher-exit-code-0x", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("CloseFailure = close.Failure", nativeProbe, StringComparison.Ordinal);
@@ -262,6 +320,264 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("cdp.send(\"Browser.close\")", browserOracle, StringComparison.Ordinal);
         Assert.DoesNotContain("cdp.once(\"Page.loadEventFired\"", browserOracle, StringComparison.Ordinal);
         Assert.Contains("process.WaitForExit(600_000)", nativeProbe, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SourceBoundReplayFailuresPersistOnlyBoundedTypedDiagnostics()
+    {
+        string root = FindRepositoryRoot();
+        string sourceReplay = File.ReadAllText(Path.Combine(
+            root,
+            "eng",
+            "readme-audit",
+            "same-byte-edge-source.mjs"));
+        string automationProbe = File.ReadAllText(Path.Combine(
+            root,
+            "JitHub.WinUI.Automation",
+            "ReadmeAuditProbe.cs"));
+
+        int cliStart = sourceReplay.IndexOf("async function runCli()", StringComparison.Ordinal);
+        int cliEnd = sourceReplay.IndexOf("if (process.argv[1]", cliStart, StringComparison.Ordinal);
+        Assert.True(cliStart >= 0 && cliEnd > cliStart);
+        string cli = sourceReplay[cliStart..cliEnd];
+        int failureStart = cli.IndexOf("} catch (error) {", StringComparison.Ordinal);
+        Assert.True(failureStart >= 0);
+        int failureEnd = cli.IndexOf("} finally {", failureStart, StringComparison.Ordinal);
+        Assert.True(failureEnd > failureStart);
+        string successPath = cli[..failureStart];
+        string failurePath = cli[failureStart..failureEnd];
+        Assert.Contains("createSourceReplayFailureReport(error)", cli, StringComparison.Ordinal);
+        Assert.Contains("failureCategory: report.failureCategory", failurePath, StringComparison.Ordinal);
+        Assert.Contains("report: reportPath", successPath, StringComparison.Ordinal);
+        Assert.DoesNotContain("error?.stack", failurePath, StringComparison.Ordinal);
+        Assert.DoesNotContain("report: reportPath", failurePath, StringComparison.Ordinal);
+
+        Assert.Contains("GetSourceBoundReplayFailureCategory(exception)", automationProbe, StringComparison.Ordinal);
+        Assert.Contains("ReadSourceBoundReplayFailureCategory(reportPath)", automationProbe, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"Source-bound Edge replay failed: \" + exception", automationProbe, StringComparison.Ordinal);
+        Assert.Contains("sourceReplay.Semantic is { Complete: true }", automationProbe, StringComparison.Ordinal);
+        Assert.Contains("TokenCoverage(sourceSemantic, comparableNativeText)", automationProbe, StringComparison.Ordinal);
+        Assert.Contains("browser.Semantic);", automationProbe, StringComparison.Ordinal);
+        Assert.Contains("capturedGitHubArticleSemantic.VisibleText", automationProbe, StringComparison.Ordinal);
+        Assert.Contains("TryGetBidirectionalSourceArticleTextCoverage", automationProbe, StringComparison.Ordinal);
+        Assert.Contains("HashSemanticText(semanticDigestKey, token)", automationProbe, StringComparison.Ordinal);
+        Assert.Contains("sourceToGitHubCoverage < 0.985 || gitHubToSourceCoverage < 0.985", automationProbe, StringComparison.Ordinal);
+        Assert.Contains("SourceReplayToCapturedGitHubVisibleTextTokenCoverage = sourceToGitHubCoverage", automationProbe, StringComparison.Ordinal);
+        Assert.Contains("CapturedGitHubToSourceReplayVisibleTextTokenCoverage = gitHubToSourceCoverage", automationProbe, StringComparison.Ordinal);
+        Assert.Contains("CountFidelity(capturedHeadingCount, sourceSemantic.HeadingCount)", automationProbe, StringComparison.Ordinal);
+        Assert.Contains("CountFidelity(capturedGitHubArticleSemantic.Tables, sourceSemantic.TableCount)", automationProbe, StringComparison.Ordinal);
+        Assert.Contains("CountFidelity(capturedGitHubArticleSemantic.TaskCheckboxes, sourceSemantic.TaskCheckboxCount)", automationProbe, StringComparison.Ordinal);
+        Assert.Contains("CountFidelity(capturedGitHubArticleSemantic.Details, sourceSemantic.DetailsCount)", automationProbe, StringComparison.Ordinal);
+        Assert.Contains("double normalizedWeight = domainWeights[index] / totalWeight", automationProbe, StringComparison.Ordinal);
+        Assert.Contains("CapturedGitHubSourceStructureScore = ComputeCapturedGitHubSourceStructureScore(", automationProbe, StringComparison.Ordinal);
+        Assert.Contains("sourceStructureScore < 0.95", automationProbe, StringComparison.Ordinal);
+        Assert.Contains("FidelityReference = sourceSemantic is null ? \"live-github-diagnostic\" : \"same-byte-source\"", automationProbe, StringComparison.Ordinal);
+        Assert.Contains("TileSsimReference = \"live-github-cross-style-diagnostic\"", automationProbe, StringComparison.Ordinal);
+        Assert.Contains("replay.SchemaVersion != 3", automationProbe, StringComparison.Ordinal);
+        Assert.Contains("TokenizationVersion != \"rune-l-n-mn-mc-han-nfc-simple-lower-invariant-v1\"", automationProbe, StringComparison.Ordinal);
+        Assert.Contains("SemanticDigestKeyHex = semanticDigestKey", automationProbe, StringComparison.Ordinal);
+        Assert.Contains("startInfo.Environment.Remove(\"JITHUB_README_AUDIT_GITHUB_TOKEN\")", automationProbe, StringComparison.Ordinal);
+        Assert.Contains("startInfo.Environment.Remove(\"JITHUB_README_AUDIT_GITHUB_ACCOUNT_ID\")", automationProbe, StringComparison.Ordinal);
+        Assert.Contains("startInfo.Environment.Remove(\"JITHUB_README_AUDIT_SEMANTIC_HMAC_KEY\")", automationProbe, StringComparison.Ordinal);
+        string liveBrowserOracle = File.ReadAllText(Path.Combine(root, "eng", "readme-audit", "browser-oracle.mjs"));
+        Assert.Contains("delete edgeEnvironment.JITHUB_README_AUDIT_GITHUB_TOKEN", liveBrowserOracle, StringComparison.Ordinal);
+        Assert.Contains("delete edgeEnvironment.JITHUB_README_AUDIT_GITHUB_ACCOUNT_ID", liveBrowserOracle, StringComparison.Ordinal);
+        Assert.Contains("Text = string.Empty", automationProbe, StringComparison.Ordinal);
+        Assert.Contains("VisibleText = string.Empty", automationProbe, StringComparison.Ordinal);
+        Assert.Contains("VisibleMermaidSources = []", automationProbe, StringComparison.Ordinal);
+        int replaySanitizerStart = automationProbe.IndexOf(
+            "private static BrowserSameByteReplayEvidence? SanitizeSameByteReplayEvidence(",
+            StringComparison.Ordinal);
+        int replaySanitizerEnd = automationProbe.IndexOf(
+            "private static NativeAuditResult? SanitizeNativeAuditResult(",
+            replaySanitizerStart,
+            StringComparison.Ordinal);
+        Assert.True(replaySanitizerStart >= 0 && replaySanitizerEnd > replaySanitizerStart);
+        string replaySanitizer = automationProbe[replaySanitizerStart..replaySanitizerEnd];
+        Assert.DoesNotContain("SemanticDigestKeyHex", replaySanitizer, StringComparison.Ordinal);
+        Assert.DoesNotContain("VisibleTextTokenDigests =", replaySanitizer, StringComparison.Ordinal);
+        Assert.Contains("SourceReplayToCapturedGitHubVisibleTextTokenCoverage =", replaySanitizer, StringComparison.Ordinal);
+        Assert.Contains("CapturedGitHubToSourceReplayVisibleTextTokenCoverage =", replaySanitizer, StringComparison.Ordinal);
+        Assert.Contains("CapturedGitHubSourceStructureScore =", replaySanitizer, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ReadmeAuditSummaryGatesOnCompleteSameByteRatiosAndFailsClosedOnIncompleteCapture()
+    {
+        string source = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "JitHub.WinUI.Automation",
+            "ReadmeAuditProbe.cs"));
+
+        int markdownStart = source.IndexOf("private static void WriteSummaryMarkdown(", StringComparison.Ordinal);
+        int markdownEnd = source.IndexOf("private static void TryOpenReadme(", markdownStart, StringComparison.Ordinal);
+        Assert.True(markdownStart >= 0 && markdownEnd > markdownStart);
+        string markdownWriter = source[markdownStart..markdownEnd];
+        Assert.Contains("summary.PerformanceRatioReference", markdownWriter, StringComparison.Ordinal);
+        Assert.Contains("Native/live GitHub Edge first-render ratio (diagnostic)", markdownWriter, StringComparison.Ordinal);
+        Assert.Contains("Native/live GitHub Edge full-page ratio (diagnostic)", markdownWriter, StringComparison.Ordinal);
+        Assert.Contains("FormatSourceBoundIncomplete", markdownWriter, StringComparison.Ordinal);
+        Assert.Contains("Same-byte first ratio", markdownWriter, StringComparison.Ordinal);
+        Assert.Contains("Same-byte full ratio", markdownWriter, StringComparison.Ordinal);
+        Assert.Contains("Live GitHub first ratio (diagnostic)", markdownWriter, StringComparison.Ordinal);
+        Assert.Contains("Live GitHub full ratio (diagnostic)", markdownWriter, StringComparison.Ordinal);
+        Assert.Contains("NativeToSameByteFirstRenderRatio?.ToString", markdownWriter, StringComparison.Ordinal);
+        Assert.Contains("NativeToSameByteFullPageRatio?.ToString", markdownWriter, StringComparison.Ordinal);
+        Assert.Contains("NativeToBrowserFirstRenderRatio.ToString", markdownWriter, StringComparison.Ordinal);
+        Assert.Contains("NativeToBrowserFullPageRatio.ToString", markdownWriter, StringComparison.Ordinal);
+
+        int summaryStart = source.IndexOf("private static ReadmeAuditSummary BuildSummary(", StringComparison.Ordinal);
+        int summaryEnd = source.IndexOf("private static void WriteSummaryMarkdown(", summaryStart, StringComparison.Ordinal);
+        Assert.True(summaryStart >= 0 && summaryEnd > summaryStart);
+        string gateCalculation = source[summaryStart..summaryEnd];
+        Assert.Contains("result.Comparison!.NativeToBrowserFirstRenderRatio", gateCalculation, StringComparison.Ordinal);
+        Assert.Contains("result.Comparison!.NativeToBrowserFullPageRatio", gateCalculation, StringComparison.Ordinal);
+        Assert.Contains("NativeToSameByteFirstRenderRatio", gateCalculation, StringComparison.Ordinal);
+        Assert.Contains("NativeToSameByteFullPageRatio", gateCalculation, StringComparison.Ordinal);
+        Assert.Contains("native.FullTraversalMs / fullReplay.Timing.ChargedTraversalMs", source, StringComparison.Ordinal);
+        Assert.Contains("FullTraversalMs - replay.Timing.ChargedTraversalMs", source, StringComparison.Ordinal);
+        Assert.Contains("AuditOnlyFrameWaitCount is < 2", source, StringComparison.Ordinal);
+        Assert.Contains("public double ChargedTraversalMs", source, StringComparison.Ordinal);
+        Assert.Contains("public double AuditOnlyFrameWaitMs", source, StringComparison.Ordinal);
+        Assert.Contains("public BrowserSameByteHtmlReplayTiming Timing", source, StringComparison.Ordinal);
+        Assert.Contains("internal sealed class BrowserSameByteHtmlReplayTiming", source, StringComparison.Ordinal);
+        Assert.Contains("raw traversal clock is not the source-bound performance denominator", source, StringComparison.Ordinal);
+        Assert.Contains("bool sameByteRatiosRequired = auditCaptureSameByteCorpus || hasSameByteEvidence", gateCalculation, StringComparison.Ordinal);
+        Assert.Contains("sameByteFirstRatios.Length == comparisonResults.Length", gateCalculation, StringComparison.Ordinal);
+        Assert.Contains("sameByteFullRatios.Length == comparisonResults.Length", gateCalculation, StringComparison.Ordinal);
+        Assert.Contains("double[] firstRatios = sourceBoundRatiosIncomplete", gateCalculation, StringComparison.Ordinal);
+        Assert.Contains("double[] fullRatios = sourceBoundRatiosIncomplete", gateCalculation, StringComparison.Ordinal);
+        Assert.Contains("? []", gateCalculation, StringComparison.Ordinal);
+        Assert.Contains("useSameByteRatios ? sameByteFirstRatios : liveFirstRatios", gateCalculation, StringComparison.Ordinal);
+        Assert.Contains("live GitHub ratios were not substituted", gateCalculation, StringComparison.Ordinal);
+        Assert.Contains("!sourceBoundRatiosIncomplete && firstP95 > 1.10", gateCalculation, StringComparison.Ordinal);
+        Assert.Contains("!sourceBoundRatiosIncomplete && fullP95 > 1.10", gateCalculation, StringComparison.Ordinal);
+        Assert.Contains("PerformanceRatioReference = performanceRatioReference", gateCalculation, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SameByteFullTraversalUsesOneBoundedOverlappingViewportSchedule()
+    {
+        string root = FindRepositoryRoot();
+        string nativeProbe = File.ReadAllText(Path.Combine(
+            root,
+            "JitHub.WinUI.Automation",
+            "ReadmeAuditProbe.cs"));
+        string sharedSchedule = File.ReadAllText(Path.Combine(
+            root,
+            "eng",
+            "readme-audit",
+            "same-byte-traversal.mjs"));
+        string capturedHtmlReplay = File.ReadAllText(Path.Combine(
+            root,
+            "eng",
+            "readme-audit",
+            "same-byte-edge-replay.mjs"));
+        string sourceBoundReplay = File.ReadAllText(Path.Combine(
+            root,
+            "eng",
+            "readme-audit",
+            "same-byte-edge-source.mjs"));
+        int traversalStart = nativeProbe.IndexOf("private static NativeTraversalResult CaptureNativeTiles(", StringComparison.Ordinal);
+        int traversalEnd = nativeProbe.IndexOf("private static double RevisitPendingImages(", traversalStart, StringComparison.Ordinal);
+
+        Assert.True(traversalStart >= 0 && traversalEnd > traversalStart);
+        string nativeTraversal = nativeProbe[traversalStart..traversalEnd];
+        Assert.Contains("SameByteTraversalViewportStepRatio = 0.9", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("MaximumNativeScrollViewportFraction = 0.95", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("MaximumTraversalViewports = 512", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("MaximumNativeScrollAttempts = 3", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("MaximumNativeViewportPositions", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("UiaProviderTransactionTimeout = TimeSpan.FromSeconds(8)", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("automation.TransactionTimeout = UiaProviderTransactionTimeout", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("SAME_BYTE_TRAVERSAL_VIEWPORT_STEP_RATIO = 0.9", sharedSchedule, StringComparison.Ordinal);
+        Assert.Contains("MAX_SAME_BYTE_TRAVERSAL_VIEWPORTS = 512", sharedSchedule, StringComparison.Ordinal);
+        Assert.Contains("innerHeight * viewportStepRatio", capturedHtmlReplay, StringComparison.Ordinal);
+        Assert.Contains("nativeViewportProfile.viewports", sourceBoundReplay, StringComparison.Ordinal);
+        Assert.Contains("scrollTo(0, expectedTop * innerHeight)", sourceBoundReplay, StringComparison.Ordinal);
+        Assert.Contains("movementOffsetsViewportUnits", sourceBoundReplay, StringComparison.Ordinal);
+        Assert.Contains("captureOffsetsViewportUnits", sourceBoundReplay, StringComparison.Ordinal);
+        Assert.Contains("auditOnlyFrameWaitMs += passFrameWaitMs", sourceBoundReplay, StringComparison.Ordinal);
+        Assert.Contains("chargedTraversalMs = fullTraversalMs - auditOnlyFrameWaitMs", sourceBoundReplay, StringComparison.Ordinal);
+        Assert.Contains("int index = tiles.Count", nativeTraversal, StringComparison.Ordinal);
+        Assert.Contains("pendingViewportMovementOffsets.Add(scrollTopViewportUnits)", nativeTraversal, StringComparison.Ordinal);
+        Assert.Contains("positionCorrectionCount++", nativeTraversal, StringComparison.Ordinal);
+        Assert.Contains("RequestRendererScroll(", nativeTraversal, StringComparison.Ordinal);
+        Assert.Contains("for (int attempt = 0; attempt < MaximumNativeScrollAttempts; attempt++)", nativeTraversal, StringComparison.Ordinal);
+        Assert.Contains("scroll = host.Patterns.Scroll.Pattern;", nativeTraversal, StringComparison.Ordinal);
+        Assert.Contains("scrollChange.ElapsedMs - scrollChange.ProbeOverheadMs", nativeTraversal, StringComparison.Ordinal);
+        Assert.Contains("scroll.VerticalScrollPercent.ValueOrDefault", nativeTraversal, StringComparison.Ordinal);
+        Assert.Contains("scroll.VerticalViewSize.ValueOrDefault", nativeTraversal, StringComparison.Ordinal);
+        Assert.Contains("GetScrollTopViewportUnits(actual, currentViewSize)", nativeTraversal, StringComparison.Ordinal);
+        Assert.Contains("automationProbe.Elapsed.TotalMilliseconds -", nativeTraversal, StringComparison.Ordinal);
+        Assert.Contains("scrollResponse.ScrollOperationMilliseconds", nativeTraversal, StringComparison.Ordinal);
+        Assert.Contains("correctionScrollResponse.ScrollOperationMilliseconds", nativeTraversal, StringComparison.Ordinal);
+        Assert.Contains("movementObserved = true;", nativeTraversal, StringComparison.Ordinal);
+        Assert.Contains("after {MaximumNativeScrollAttempts} in-app scroll attempts.", nativeTraversal, StringComparison.Ordinal);
+        Assert.DoesNotContain("scroll.Scroll(", nativeProbe, StringComparison.Ordinal);
+        Assert.DoesNotContain("SetScrollPercent", nativeTraversal, StringComparison.Ordinal);
+        Assert.Contains("scrollViewportFraction: viewportFraction", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("double? ScrollViewportFraction = null", nativeProbe, StringComparison.Ordinal);
+        Assert.DoesNotContain("ScrollNativeHostPhysically", nativeProbe, StringComparison.Ordinal);
+        Assert.DoesNotContain("Mouse.Scroll", nativeProbe, StringComparison.Ordinal);
+        int requestStart = nativeProbe.IndexOf(
+            "private static RendererCaptureResponse RequestRendererCapture(",
+            StringComparison.Ordinal);
+        int requestEnd = nativeProbe.IndexOf(
+            "private static RendererCaptureResponse RequestRendererScroll(",
+            requestStart,
+            StringComparison.Ordinal);
+        Assert.True(requestStart >= 0 && requestEnd > requestStart);
+        string requestHelper = nativeProbe[requestStart..requestEnd];
+        Assert.Contains("if (scrollViewportFraction is not null)", requestHelper, StringComparison.Ordinal);
+        Assert.Contains("did not acknowledge the one-shot audit scroll request", requestHelper, StringComparison.Ordinal);
+        Assert.Contains("sendAttempted = true", requestHelper, StringComparison.Ordinal);
+        Assert.Contains("failed after its atomic send was attempted", requestHelper, StringComparison.Ordinal);
+        Assert.Contains("ScrollOperationMilliseconds", nativeProbe, StringComparison.Ordinal);
+        string viewer = File.ReadAllText(Path.Combine(
+            root,
+            "JitHub.WinUI",
+            "Views",
+            "Controls",
+            "Common",
+            "MarkdownViewer.xaml.cs"));
+        string lifecycleBridge = File.ReadAllText(Path.Combine(
+            root,
+            "JitHub.WinUI",
+            "Services",
+            "Markdown",
+            "MarkdownLifecycleAutomationBridge.cs"));
+        Assert.Contains("TryGetAuditScrollViewportFraction", viewer, StringComparison.Ordinal);
+        Assert.Contains("DispatcherQueue.HasThreadAccess", viewer, StringComparison.Ordinal);
+        Assert.Contains("scrollViewer.ChangeView(", viewer, StringComparison.Ordinal);
+        Assert.Contains("disableAnimation: true", viewer, StringComparison.Ordinal);
+        Assert.Contains("FindAncestorVerticalScrollViewer", viewer, StringComparison.Ordinal);
+        Assert.Contains("FindDescendantVerticalScrollViewer", viewer, StringComparison.Ordinal);
+        Assert.Contains("MaximumAuditScrollViewportFraction = 0.95", lifecycleBridge, StringComparison.Ordinal);
+        Assert.Contains("if (!_productionAuditEnabled)", lifecycleBridge, StringComparison.Ordinal);
+        Assert.Contains("settled >= 100 - 0.000001 || !settledScrollable", nativeTraversal, StringComparison.Ordinal);
+        Assert.Contains("actual >= 100 - 0.000001 ||", nativeTraversal, StringComparison.Ordinal);
+        Assert.Contains("WaitForVisibleImages(host", nativeTraversal, StringComparison.Ordinal);
+        Assert.Contains("terminalCandidatePercent", nativeTraversal, StringComparison.Ordinal);
+        Assert.Contains("loadingAfterTraversal > 0", nativeTraversal, StringComparison.Ordinal);
+        Assert.Contains("captured movement profile is incomplete", nativeTraversal, StringComparison.Ordinal);
+        Assert.Contains("heightAfterPaint !== heightBeforePaint || confirmedTop < confirmedMaxTop", capturedHtmlReplay, StringComparison.Ordinal);
+        Assert.Contains("finalHeight === heightAfterImages &&", sourceBoundReplay, StringComparison.Ordinal);
+        Assert.Contains("imageRealizationOverscanPx = 800", sourceBoundReplay, StringComparison.Ordinal);
+        Assert.Contains("pendingImageSources.size !== 0", sourceBoundReplay, StringComparison.Ordinal);
+        Assert.Contains("firstViewportRealizedImageCount", sourceBoundReplay, StringComparison.Ordinal);
+        Assert.Contains("sourceTailViewportCount", sourceBoundReplay, StringComparison.Ordinal);
+        Assert.Contains("sourceTailMovementCount", sourceBoundReplay, StringComparison.Ordinal);
+        Assert.Contains("sourceTailCaptureOffsetsViewportUnits", sourceBoundReplay, StringComparison.Ordinal);
+        Assert.Contains("traversalViewportCount + sourceTailViewportCount >= maximumSteps", sourceBoundReplay, StringComparison.Ordinal);
+        Assert.Contains("replay.Timing.MovementCount != expectedMovementCount", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("replay.Timing.CaptureOffsetsViewportUnits.Count != native.Tiles.Count", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("SourceTailMovementCount != tailOffsets.Count", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("step > SameByteTraversalViewportStepRatio + 2 * positionTolerance", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("timing.TraversalViewportCount + timing.SourceTailViewportCount > MaximumTraversalViewports", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("Math.Abs(previousOffset - expectedBottom) <= positionTolerance", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("FullTraversalViewportCount = traversal.Tiles.Count", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("TraversalViewportCount is < 1 or > MaximumTraversalViewports", nativeProbe, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1080,6 +1396,188 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.DoesNotContain("CopyFromScreen", capture, StringComparison.Ordinal);
         Assert.Contains("PrintWindow(windowHandle, deviceContext, PwRenderFullContent)", source, StringComparison.Ordinal);
         Assert.Contains("GetPhysicalWindowBounds(windowHandle)", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void FirstViewportImageWaitDiagnosticsKeepTheReadyClockAndPersistOnlyAggregateStates()
+    {
+        string source = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "JitHub.WinUI.Automation",
+            "ReadmeAuditProbe.cs"));
+
+        int waitStart = source.IndexOf("private static VisibleImageWaitResult WaitForVisibleImages(", StringComparison.Ordinal);
+        int waitEnd = source.IndexOf("private static bool IsLoadingImage", waitStart, StringComparison.Ordinal);
+        int diagnosticStart = source.IndexOf("internal sealed class ReadmeAuditFirstViewportImageWait", StringComparison.Ordinal);
+        int transitionStart = source.IndexOf("internal sealed class ReadmeAuditVisibleImageLoadingStateTransition", diagnosticStart, StringComparison.Ordinal);
+        int sanitizerStart = source.IndexOf("private static NativeAuditResult? SanitizeNativeAuditResult", StringComparison.Ordinal);
+        int sanitizerEnd = source.IndexOf("private static NativeAuditResult RunNativeAudit", sanitizerStart, StringComparison.Ordinal);
+        Assert.True(waitStart >= 0 && waitEnd > waitStart);
+        Assert.True(diagnosticStart >= 0 && transitionStart > diagnosticStart);
+        Assert.True(sanitizerStart >= 0 && sanitizerEnd > sanitizerStart);
+
+        string wait = source[waitStart..waitEnd];
+        string diagnostic = source[diagnosticStart..transitionStart];
+        string sanitizer = source[sanitizerStart..sanitizerEnd];
+        Assert.Contains("captureLoadingStateTransitions: true", source, StringComparison.Ordinal);
+        Assert.Contains("firstImagesReadySignal.Timestamp - hostReadySignal.Timestamp", source, StringComparison.Ordinal);
+        Assert.Contains("firstImageWait.ProbeOverheadMs", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("DateTimeOffset.UtcNow - ReadSignalTimestamp(hostReady)", source, StringComparison.Ordinal);
+        Assert.Contains("pollCount++", wait, StringComparison.Ordinal);
+        Assert.Contains("ElapsedMilliseconds = elapsedMilliseconds", wait, StringComparison.Ordinal);
+        Assert.Contains("HasLoadingVisibleImages = isLoading", wait, StringComparison.Ordinal);
+        Assert.Contains("probeOverheadMs += probe.Elapsed.TotalMilliseconds", wait, StringComparison.Ordinal);
+        Assert.Contains("Thread.Sleep(10)", wait, StringComparison.Ordinal);
+        Assert.Contains("public double ElapsedMilliseconds", diagnostic, StringComparison.Ordinal);
+        Assert.Contains("public double ProbeOverheadMs", diagnostic, StringComparison.Ordinal);
+        Assert.Contains("public int PollCount", diagnostic, StringComparison.Ordinal);
+        Assert.Contains("public bool? InitialHasLoadingVisibleImages", diagnostic, StringComparison.Ordinal);
+        Assert.DoesNotContain("string", diagnostic, StringComparison.Ordinal);
+        Assert.DoesNotContain("ItemStatus", diagnostic, StringComparison.Ordinal);
+        Assert.Contains("public ReadmeAuditFirstViewportImageWait? FirstViewportImageWait { get; init; }", source, StringComparison.Ordinal);
+        Assert.Contains("FirstViewportImageWait = result.FirstViewportImageWait is { } firstViewportImageWait", sanitizer, StringComparison.Ordinal);
+        Assert.Contains("ElapsedMilliseconds = firstViewportImageWait.ElapsedMilliseconds", sanitizer, StringComparison.Ordinal);
+        Assert.Contains("ProbeOverheadMs = firstViewportImageWait.ProbeOverheadMs", sanitizer, StringComparison.Ordinal);
+        Assert.Contains("PollCount = firstViewportImageWait.PollCount", sanitizer, StringComparison.Ordinal);
+        Assert.Contains("InitialHasLoadingVisibleImages = firstViewportImageWait.InitialHasLoadingVisibleImages", sanitizer, StringComparison.Ordinal);
+        Assert.Contains("ApplicationSignalGeneration = firstViewportImageWait.ApplicationSignalGeneration", sanitizer, StringComparison.Ordinal);
+        Assert.Contains("ApplicationSignalViewportPaintGeneration = firstViewportImageWait.ApplicationSignalViewportPaintGeneration", sanitizer, StringComparison.Ordinal);
+        Assert.Contains("ApplicationSignalPollCount = firstViewportImageWait.ApplicationSignalPollCount", sanitizer, StringComparison.Ordinal);
+        Assert.Contains("ApplicationSignalProbeWorkMilliseconds = firstViewportImageWait.ApplicationSignalProbeWorkMilliseconds", sanitizer, StringComparison.Ordinal);
+        Assert.Contains("ApplicationSignalViewportTop = firstViewportImageWait.ApplicationSignalViewportTop", sanitizer, StringComparison.Ordinal);
+        Assert.Contains("ApplicationSignalViewportHeight = firstViewportImageWait.ApplicationSignalViewportHeight", sanitizer, StringComparison.Ordinal);
+        Assert.Contains("ApplicationSignalViewportMeasured = firstViewportImageWait.ApplicationSignalViewportMeasured", sanitizer, StringComparison.Ordinal);
+        Assert.Contains("ApplicationSignalAfterRenderCompleteMs = firstViewportImageWait.ApplicationSignalAfterRenderCompleteMs", sanitizer, StringComparison.Ordinal);
+        Assert.Contains("firstViewportImageWait.LoadingStateTransitions", sanitizer, StringComparison.Ordinal);
+        Assert.Contains("ElapsedMilliseconds = transition.ElapsedMilliseconds", sanitizer, StringComparison.Ordinal);
+        Assert.Contains("HasLoadingVisibleImages = transition.HasLoadingVisibleImages", sanitizer, StringComparison.Ordinal);
+        Assert.DoesNotContain("FirstViewportImageWait = result.FirstViewportImageWait,", sanitizer, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void FirstViewportReadyClockUsesGenerationBoundAppEvidenceAndRetainsUiAValidation()
+    {
+        string probe = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "JitHub.WinUI.Automation",
+            "ReadmeAuditProbe.cs"));
+        string viewer = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "JitHub.WinUI",
+            "Views",
+            "Controls",
+            "Common",
+            "MarkdownViewer.xaml.cs"));
+        string bridge = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "JitHub.WinUI",
+            "Services",
+            "Markdown",
+            "MarkdownLifecycleAutomationBridge.cs"));
+        string renderer = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "MarkdownRenderer",
+            "MarkdownRenderer",
+            "Controls",
+            "MarkdownRendererControl.cs"));
+        string imageBox = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "MarkdownRenderer",
+            "MarkdownRenderer",
+            "Layout",
+            "Boxes",
+            "ImageBox.cs"));
+        string rendererProbe = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "JitHub.WinUI",
+            "Services",
+            "Markdown",
+            "FirstViewportImagesReadyRendererProbe.cs"));
+        string evidenceWriter = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "JitHub.WinUI",
+            "Services",
+            "Markdown",
+            "FirstViewportImagesReadyEvidenceWriter.cs"));
+        string contract = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "JitHub.WinUI.Automation",
+            "NativeFirstViewportImagesReadyContract.cs"));
+
+        int uiaWait = probe.IndexOf("VisibleImageWaitResult firstImageWait = WaitForVisibleImages(", StringComparison.Ordinal);
+        int appSignalWait = probe.IndexOf("WaitForNativeFirstViewportImagesReadySignal(", uiaWait, StringComparison.Ordinal);
+        Assert.True(uiaWait >= 0 && appSignalWait > uiaWait);
+        Assert.Contains("ready.Generation != renderComplete.Generation", contract, StringComparison.Ordinal);
+        Assert.Contains("ready.ViewportPaintGeneration != ready.Generation", contract, StringComparison.Ordinal);
+        Assert.Contains("ready.ProcessId != processId", contract, StringComparison.Ordinal);
+        Assert.Contains("ready.HasVisibleLoadingImages", contract, StringComparison.Ordinal);
+        Assert.Contains("!ready.ViewportMeasured", contract, StringComparison.Ordinal);
+        Assert.Contains("ready.ViewportHeight <= 0", contract, StringComparison.Ordinal);
+        Assert.Contains("ready.Timestamp < renderComplete.Timestamp", contract, StringComparison.Ordinal);
+        Assert.Contains("firstImagesReadySignal.Timestamp - hostReadySignal.Timestamp", probe, StringComparison.Ordinal);
+        Assert.Contains("ready.ReadmeGitBlobSha1, expectedReadmeGitBlobSha1", contract, StringComparison.Ordinal);
+        Assert.Contains("ApplicationSignalPollCount", probe, StringComparison.Ordinal);
+        Assert.Contains("ApplicationSignalProbeWorkMilliseconds", probe, StringComparison.Ordinal);
+        Assert.Contains("ApplicationSignalViewportTop", probe, StringComparison.Ordinal);
+        Assert.Contains("ApplicationSignalViewportHeight", probe, StringComparison.Ordinal);
+        Assert.Contains("JITHUB_MARKDOWN_FIRST_VIEWPORT_IMAGES_READY_EVIDENCE_PATH", probe, StringComparison.Ordinal);
+
+        Assert.Contains("DispatcherQueuePriority.Low", viewer, StringComparison.Ordinal);
+        Assert.Contains("TimeSpan.FromMilliseconds(16)", viewer, StringComparison.Ordinal);
+        Assert.Contains("renderer.AutomationPipelineGeneration != generation", viewer, StringComparison.Ordinal);
+        Assert.Contains("FirstViewportImagesReadyRendererProbe.HasVisibleLoadingImages(renderer)", viewer, StringComparison.Ordinal);
+        Assert.Contains("probe.TryAcknowledgeAfterPaint(renderer, generation, region)", viewer, StringComparison.Ordinal);
+        Assert.Contains("_firstViewportImagesReadyPaintGeneration = generation", viewer, StringComparison.Ordinal);
+        Assert.Contains("_firstViewportImagesReadyPaintTimestamp = Stopwatch.GetTimestamp()", viewer, StringComparison.Ordinal);
+        Assert.Contains("DateTimeOffset.UtcNow - Stopwatch.GetElapsedTime(viewportPaintTimestamp)", viewer, StringComparison.Ordinal);
+        Assert.Contains("FirstViewportImagesReadyProbeContract.IsViewportPaintAcknowledged(", viewer, StringComparison.Ordinal);
+        Assert.Contains("ReferenceEquals(sender, _firstViewportImagesReadyTimer)", viewer, StringComparison.Ordinal);
+        Assert.Contains("RecordFirstViewportImagesReady(", viewer, StringComparison.Ordinal);
+        Assert.Contains("FirstViewportImagesReadyProbeContract.IsCurrentPublishedGeneration", viewer, StringComparison.Ordinal);
+        Assert.Contains("FirstViewportImagesReadyProbeContract.IsMeasuredViewport", viewer, StringComparison.Ordinal);
+        Assert.Contains("StopFirstViewportImagesReadyProbe();", viewer, StringComparison.Ordinal);
+        Assert.Contains("IsFirstViewportImagesReadyEvidenceEnabled", bridge, StringComparison.Ordinal);
+        Assert.Contains("FirstViewportImagesReadyEvidenceWriter.TryQueueWrite(", bridge, StringComparison.Ordinal);
+        Assert.Contains("IsFirstViewportImagesReadyEvidenceEnabled,", bridge, StringComparison.Ordinal);
+        Assert.Contains("Task.Run(() => TryWrite(", evidenceWriter, StringComparison.Ordinal);
+        Assert.Contains("JsonSerializer.Serialize(", evidenceWriter, StringComparison.Ordinal);
+        Assert.Contains("internal long AutomationPipelineGeneration => _pipelineGeneration", renderer, StringComparison.Ordinal);
+        Assert.Contains("internal List<Layout.Boxes.ImageBox> AutomationImagePlans => _imagePlans", renderer, StringComparison.Ordinal);
+        Assert.Contains("internal ViewportBandIndex? AutomationImagePlanIndex => _imagePlanIndex", renderer, StringComparison.Ordinal);
+        Assert.Contains("var automationPaintCallback = _automationFirstViewportImagesReadyPaintCallback", renderer, StringComparison.Ordinal);
+        Assert.Contains("catch\n                    {\n                        // Audit-only callback failures must not escape Canvas paint.", renderer, StringComparison.Ordinal);
+        Assert.Contains("internal async Task<(CanvasRenderTarget Target, int Width, int Height, double DocumentTop)> CaptureAuditViewportAsync()", renderer, StringComparison.Ordinal);
+        Assert.Contains("var capture = await renderer.CaptureAuditViewportAsync()", viewer, StringComparison.Ordinal);
+        Assert.Contains("SaveAuditViewportAsync(capture.Target, request.OutputPath)", viewer, StringComparison.Ordinal);
+        Assert.Contains("File.WriteAllBytesAsync(fullPath, bytes)", viewer, StringComparison.Ordinal);
+        Assert.Contains("Task.Run(() =>", viewer, StringComparison.Ordinal);
+        int captureStart = renderer.IndexOf("internal async Task<(CanvasRenderTarget Target, int Width, int Height, double DocumentTop)> CaptureAuditViewportAsync()", StringComparison.Ordinal);
+        int captureEnd = renderer.IndexOf("private void HandleCanvasDeviceLost(", captureStart, StringComparison.Ordinal);
+        string captureMethod = renderer[captureStart..captureEnd];
+        Assert.DoesNotContain("SaveAsync(", captureMethod, StringComparison.Ordinal);
+        Assert.DoesNotContain("WriteAllBytes", captureMethod, StringComparison.Ordinal);
+        int beginPaintProbe = renderer.IndexOf("internal void BeginAutomationFirstViewportImagesReadyProbe(", StringComparison.Ordinal);
+        int cancelPaintProbe = renderer.IndexOf("internal void CancelAutomationFirstViewportImagesReadyProbe(", beginPaintProbe, StringComparison.Ordinal);
+        Assert.True(beginPaintProbe >= 0 && cancelPaintProbe > beginPaintProbe);
+        string paintProbeStart = renderer[beginPaintProbe..cancelPaintProbe];
+        Assert.Contains("paintCallback", paintProbeStart, StringComparison.Ordinal);
+        Assert.True(
+            paintProbeStart.IndexOf("_automationFirstViewportImagesReadyPaintCallback = paintCallback", StringComparison.Ordinal) <
+            paintProbeStart.IndexOf("InvalidateCanvas();", StringComparison.Ordinal));
+        Assert.Contains("Func<Windows.Foundation.Rect, bool> paintCallback", paintProbeStart, StringComparison.Ordinal);
+        Assert.Contains("HasAllSvgTilesForAutomation", imageBox, StringComparison.Ordinal);
+        Assert.Contains("if (!_svgTiles.ContainsKey(key))", imageBox, StringComparison.Ordinal);
+        Assert.Contains("lastTileX", imageBox, StringComparison.Ordinal);
+        Assert.Contains("lastTileY", imageBox, StringComparison.Ordinal);
+        Assert.Contains("image.HasAllSvgTilesForAutomation(firstTileX, firstTileY, lastTileX, lastTileY)", rendererProbe, StringComparison.Ordinal);
+        Assert.Contains("!IsFiniteRect(destination)", rendererProbe, StringComparison.Ordinal);
+        Assert.Contains("destination.Width <= 0", rendererProbe, StringComparison.Ordinal);
+        Assert.Contains("snapshot.IsBandMeasured(LazyLayoutBand.FromViewport(", rendererProbe, StringComparison.Ordinal);
+        Assert.Contains("_automationFirstViewportImagesReadyPaintCallback = null", renderer, StringComparison.Ordinal);
+        Assert.Contains("CancelAutomationFirstViewportImagesReadyProbe();", renderer[renderer.IndexOf("private void ReleaseLoadedResources()", StringComparison.Ordinal)..], StringComparison.Ordinal);
+        int snapshotPaint = renderer.IndexOf("snapshot.Paint(ds, region);", StringComparison.Ordinal);
+        int callbackAfterPaint = renderer.IndexOf("automationPaintCallback(region)", snapshotPaint, StringComparison.Ordinal);
+        Assert.True(snapshotPaint >= 0 && callbackAfterPaint > snapshotPaint);
     }
 
     private static string FindRepositoryRoot()

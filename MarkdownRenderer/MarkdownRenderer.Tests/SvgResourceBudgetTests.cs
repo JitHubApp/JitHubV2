@@ -7,6 +7,7 @@ using Xunit;
 
 namespace MarkdownRenderer.Tests;
 
+[Collection(TimingSensitiveContractCollection.Name)]
 public sealed class SvgResourceBudgetTests
 {
     [Fact]

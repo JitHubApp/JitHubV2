@@ -243,6 +243,54 @@ public sealed partial class ShellPage : Page
         ConnectedAnimationService.GetForCurrentView().PrepareToAnimate("AppLogoLogoutAnimation", AppLogoShellPage);
     }
 
+    internal async Task<bool> DetachNestedContentForMarkdownShutdownAsync(TimeSpan timeout)
+    {
+        FrameworkElement? page = ShellContentFrame.Content as FrameworkElement;
+        if (page is null)
+        {
+            ShellContentFrame.Content = null;
+            MarkdownLifecycleAutomationBridge.SignalShutdownStage(
+                "markdown-shell-content-unload-not-required-no-page");
+            return false;
+        }
+
+        bool wasLoaded = page.IsLoaded;
+        var unloaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void OnUnloaded(object sender, RoutedEventArgs args) => unloaded.TrySetResult();
+        if (wasLoaded)
+            page.Unloaded += OnUnloaded;
+
+        try
+        {
+            ShellContentFrame.Content = null;
+            if (!wasLoaded)
+            {
+                MarkdownLifecycleAutomationBridge.SignalShutdownStage(
+                    "markdown-shell-content-unload-not-required-page-not-loaded");
+                return false;
+            }
+
+            try
+            {
+                await unloaded.Task.WaitAsync(timeout);
+                MarkdownLifecycleAutomationBridge.SignalShutdownStage(
+                    "markdown-shell-content-unload-wait-completed");
+                return false;
+            }
+            catch (TimeoutException)
+            {
+                MarkdownLifecycleAutomationBridge.SignalShutdownStage(
+                    $"markdown-shell-content-unload-wait-timed-out-{timeout.TotalSeconds:0}s");
+                return true;
+            }
+        }
+        finally
+        {
+            if (wasLoaded)
+                page.Unloaded -= OnUnloaded;
+        }
+    }
+
     private void InitializeProductPerformanceBridge()
     {
         if (!ProductPerformanceReadiness.IsEnabled)

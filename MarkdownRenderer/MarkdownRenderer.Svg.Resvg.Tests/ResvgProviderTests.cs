@@ -473,11 +473,15 @@ public sealed class ResvgProviderTests
         System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(response.AsSpan(4), WorkerProtocol.Version);
         System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(response.AsSpan(6), (ushort)WorkerStatus.FontCatalogPending);
         System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(response.AsSpan(8), 41);
+        byte[] phase = Encoding.UTF8.GetBytes("user-roaming-fonts");
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(response.AsSpan(74), checked((ushort)phase.Length));
+        phase.CopyTo(response.AsSpan(80));
 
         WorkerResponse decoded = WorkerProtocol.DecodeResponse(response, 41, 0, 0);
 
         Assert.Equal(WorkerStatus.FontCatalogPending, decoded.Status);
         Assert.Equal(0, decoded.OutputLength);
+        Assert.Equal("user-roaming-fonts", decoded.Detail);
     }
 
     [Fact]

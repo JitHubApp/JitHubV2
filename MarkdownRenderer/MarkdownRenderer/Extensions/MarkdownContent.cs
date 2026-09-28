@@ -181,6 +181,7 @@ public sealed class MarkdownContent
     public string? AccessibilityDescription { get; }
     /// <summary>Gets the text contributed to document text and copy operations.</summary>
     public string? SemanticText { get; }
+
 }
 
 /// <summary>An immutable content fragment produced by one extension renderer.</summary>
@@ -188,9 +189,14 @@ public sealed class MarkdownContentFragment
 {
     private static readonly IReadOnlyList<MarkdownContent> EmptyItems = Array.Empty<MarkdownContent>();
 
-    internal MarkdownContentFragment(IReadOnlyList<MarkdownContent> items)
+    internal MarkdownContentFragment(
+        IReadOnlyList<MarkdownContent> items,
+        MarkdownAsyncNodeRenderer? deferredSceneRenderer = null,
+        MarkdownExtensionCallbackLifetime? deferredSceneRendererLifetime = null)
     {
         Items = items;
+        DeferredSceneRenderer = deferredSceneRenderer;
+        DeferredSceneRendererLifetime = deferredSceneRendererLifetime;
     }
 
     /// <summary>Gets an empty fragment.</summary>
@@ -198,6 +204,11 @@ public sealed class MarkdownContentFragment
 
     /// <summary>Gets the fragment's top-level content in semantic order.</summary>
     public IReadOnlyList<MarkdownContent> Items { get; }
+
+    // An ordered renderer pipeline stops at the first callback that emits
+    // content, so every deferred marker in one fragment has the same producer.
+    internal MarkdownAsyncNodeRenderer? DeferredSceneRenderer { get; }
+    internal MarkdownExtensionCallbackLifetime? DeferredSceneRendererLifetime { get; }
 }
 
 /// <summary>
@@ -211,9 +222,33 @@ public sealed class MarkdownContentBuilder
     private static readonly IReadOnlyList<MarkdownContent> EmptyChildren = Array.Empty<MarkdownContent>();
 
     private readonly List<MarkdownContent> _items = new();
+    private MarkdownAsyncNodeRenderer? _deferredSceneRenderer;
+    private MarkdownExtensionCallbackLifetime? _deferredSceneRendererLifetime;
+    private bool _containsDeferredSceneRenderer;
     private bool _isBuilt;
 
     internal int EmissionCount => _items.Count;
+
+    internal void CaptureDeferredSceneRenderers(MarkdownAsyncNodeRenderer renderer)
+    {
+        if (_deferredSceneRenderer is not null)
+            return;
+
+        EnsureMutable();
+        if (_containsDeferredSceneRenderer)
+            _deferredSceneRenderer = renderer;
+    }
+
+    internal void BindDeferredSceneRendererLifetime(MarkdownExtensionCallbackLifetime callbackLifetime)
+    {
+        if (_deferredSceneRenderer is not { } renderer)
+            return;
+
+        // The immutable document can be presented by a different control and
+        // performance session from the engine that parsed it. Capture the
+        // producer's lifetime here so a later consumer cannot lend its own.
+        _deferredSceneRendererLifetime = callbackLifetime;
+    }
 
     /// <summary>Adds semantic text.</summary>
     public MarkdownContentBuilder AddText(
@@ -405,7 +440,10 @@ public sealed class MarkdownContentBuilder
 
         return _items.Count == 0
             ? MarkdownContentFragment.Empty
-            : new MarkdownContentFragment(new ReadOnlyCollection<MarkdownContent>(_items.ToArray()));
+            : new MarkdownContentFragment(
+                new ReadOnlyCollection<MarkdownContent>(_items.ToArray()),
+                _deferredSceneRenderer,
+                _deferredSceneRendererLifetime);
     }
 
     private void AddLeaf(
@@ -425,6 +463,7 @@ public sealed class MarkdownContentBuilder
     {
         EnsureMutable();
         MarkdownSyntaxNode.ValidateSourceSpan(sourceSpan);
+        IReadOnlyDictionary<string, string> copiedAttributes = CopyAttributes(attributes);
 
         _items.Add(new MarkdownContent(
             kind,
@@ -437,11 +476,13 @@ public sealed class MarkdownContentBuilder
             factoryKey,
             customKind: null,
             vectorScene,
-            CopyAttributes(attributes),
+            copiedAttributes,
             EmptyChildren,
             accessibilityName,
             accessibilityDescription,
             semanticText));
+        if (kind == MarkdownContentKind.CodeBlock && HasDeferredSceneMarker(copiedAttributes))
+            _containsDeferredSceneRenderer = true;
     }
 
     private void AddContainerCore(
@@ -466,6 +507,7 @@ public sealed class MarkdownContentBuilder
             var childBuilder = new MarkdownContentBuilder();
             children(childBuilder);
             childItems = childBuilder.Build().Items;
+            _containsDeferredSceneRenderer |= childBuilder._containsDeferredSceneRenderer;
         }
 
         _items.Add(new MarkdownContent(
@@ -494,6 +536,10 @@ public sealed class MarkdownContentBuilder
             MarkdownContentKind.Table or
             MarkdownContentKind.TableRow or
             MarkdownContentKind.TableCell;
+
+    private static bool HasDeferredSceneMarker(IReadOnlyDictionary<string, string> attributes)
+        => attributes.TryGetValue("renderer.internal.deferred-scene", out string? marker) &&
+            !string.IsNullOrWhiteSpace(marker);
 
     private static MarkdownStyleRole NormalizeRole(
         MarkdownStyleRole role,

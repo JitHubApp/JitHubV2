@@ -12,6 +12,7 @@ using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Performance;
 using MarkdownRenderer.Theming;
 using MarkdownRenderer.Extensions;
 
@@ -489,7 +490,17 @@ internal sealed class LayoutBuilder
             return BuildDeclarativeImage(content);
 
         if (content.Kind == MarkdownContentKind.CodeBlock)
+        {
+            if (content.Attributes.TryGetValue("renderer.internal.deferred-scene", out string? deferredSceneMarker) &&
+                !string.IsNullOrWhiteSpace(deferredSceneMarker) &&
+                _context.PerformanceSession is IMarkdownPerformanceSessionInternal session &&
+                _context.PerformanceDocumentOwner is { } documentOwner &&
+                session.TryGetDeferredSceneResult(documentOwner, deferredSceneMarker, out MarkdownContentFragment? result) &&
+                TryBuildDeclarativeBlock(result!) is { } materialized)
+                return materialized;
+
             return BuildDeclarativeCodeBlock(content);
+        }
 
         if (content.Kind == MarkdownContentKind.List)
             return BuildDeclarativeList(content, fallbackKey);

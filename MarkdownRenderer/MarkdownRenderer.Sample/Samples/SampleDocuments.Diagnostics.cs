@@ -41,6 +41,58 @@ internal static partial class SampleDocuments
 
     internal static string StressSample => StressSampleValue.Value;
 
+    private static readonly Lazy<string> ProgressiveScenesSampleValue = new(
+        GenerateProgressiveScenesSample,
+        LazyThreadSafetyMode.ExecutionAndPublication);
+
+    internal static string ProgressiveScenesSample => ProgressiveScenesSampleValue.Value;
+
+    private static string GenerateProgressiveScenesSample()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("# Progressive scene preparation");
+        sb.AppendLine();
+        sb.AppendLine("Only this sample opts into deferred Math and Mermaid scenes. Scroll to bring a scene into view; its source stays selectable and diagnostics appear above the workspace after the scene is prepared. The other feature pages retain eager parsing.");
+        sb.AppendLine();
+        for (int index = 1; index <= 36; index++)
+        {
+            sb.Append("## Section ").Append(index).AppendLine();
+            sb.AppendLine();
+            sb.Append("Paragraph ").Append(index).AppendLine(": long-document text keeps the viewport moving while offscreen scene preparation remains bounded. Select this text, then continue scrolling to the next scene.");
+            sb.AppendLine();
+
+            if (index % 6 == 0)
+            {
+                sb.AppendLine("$$");
+                sb.AppendLine(index == 36
+                    ? "\\notacommand{x}"
+                    : "\\sum_{k=1}^{n} k = \\frac{n(n+1)}{2}");
+                sb.AppendLine("$$");
+                sb.AppendLine();
+            }
+
+            if (index % 9 == 0)
+            {
+                sb.AppendLine("```mermaid");
+                sb.AppendLine("flowchart LR");
+                sb.Append("  A[Section ").Append(index).AppendLine("] --> B[Visible scene]");
+                sb.AppendLine("  B --> C[Next viewport]");
+                sb.AppendLine("```");
+                sb.AppendLine();
+            }
+
+            if (index % 12 == 0)
+            {
+                sb.AppendLine("```csharp");
+                sb.Append("Console.WriteLine(\"scene ").Append(index).AppendLine("\");");
+                sb.AppendLine("```");
+                sb.AppendLine();
+            }
+        }
+
+        return sb.ToString();
+    }
+
     private static string GenerateStressSample()
     {
         var sb = new System.Text.StringBuilder(800_000);

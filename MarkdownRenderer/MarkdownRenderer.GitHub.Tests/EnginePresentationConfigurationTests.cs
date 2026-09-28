@@ -210,6 +210,42 @@ public sealed class EnginePresentationConfigurationTests
     }
 
     [Fact]
+    public void BuiltInReadmeRenderersAreClassifiedForStyleRoleFiltering()
+    {
+        using MarkdownEngine engine = new MarkdownEngineBuilder()
+            .UseGitHubReadme()
+            .UseMarkdownExtra()
+            .Build();
+        var registry = Assert.IsType<MarkdownExtensionRegistry>(engine.PresentationConfiguration);
+        MarkdownExtensionRegistry viewRegistry = GitHubReadmeExtensions.GetGitHubReadmeRegistry(
+            engine,
+            viewRegistry: null,
+            safeHtmlOptions: null);
+        MarkdownExtensionRegistry effectiveRegistry = MarkdownExtensionRegistry.ComposePresentation(
+            registry,
+            viewRegistry);
+
+        Assert.False(registry.HasUnclassifiedStyleRoleRenderers);
+        Assert.False(viewRegistry.HasUnclassifiedStyleRoleRenderers);
+        Assert.False(effectiveRegistry.HasUnclassifiedStyleRoleRenderers);
+        Assert.True(registry.TryGetRenderer(typeof(HtmlBlock), out var htmlRenderer));
+        Assert.Equal("MarkdownRenderer.Html", htmlRenderer!.GetType().Assembly.GetName().Name);
+    }
+
+    [Fact]
+    public void CustomRendererForcesFullStyleRoleResolution()
+    {
+        var mutableRegistry = new MarkdownExtensionRegistry()
+            .ConfigureGfmRegistry()
+            .RegisterRenderer<Table>(new CustomTableRenderer());
+        Assert.True(mutableRegistry.HasUnclassifiedStyleRoleRenderers);
+
+        MarkdownExtensionRegistry registry = mutableRegistry.Freeze();
+        Assert.True(registry.HasUnclassifiedStyleRoleRenderers);
+        Assert.True(registry.CreateMutableCopy().HasUnclassifiedStyleRoleRenderers);
+    }
+
+    [Fact]
     public void EngineFeaturesAndIndependentViewOverridesComposeExactlyOnce()
     {
         using MarkdownEngine engine = new MarkdownEngineBuilder()
@@ -233,6 +269,7 @@ public sealed class EnginePresentationConfigurationTests
         Assert.Same(viewOverrides, afterGitHubHelper);
         Assert.True(composed.TryGetRenderer(typeof(Table), out var renderer));
         Assert.Same(customTableRenderer, renderer);
+        Assert.True(composed.HasUnclassifiedStyleRoleRenderers);
         Assert.All(
             composed.BuildPipeline().Extensions.GroupBy(static extension => extension.GetType()),
             static group => Assert.Single(group));

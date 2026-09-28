@@ -6,7 +6,10 @@ namespace MarkdownRenderer.Performance;
 public sealed record MarkdownPerformanceOptions
 {
     /// <summary>Balanced progressive preparation for a reading surface.</summary>
-    public static MarkdownPerformanceOptions Progressive { get; } = new();
+    public static MarkdownPerformanceOptions Progressive { get; } = new()
+    {
+        DeferOffscreenScenes = true,
+    };
 
     /// <summary>Maximum number of concurrent image source resolutions.</summary>
     public int MaxConcurrentImageFetches { get; init; } = IntPtr.Size == 4 ? 8 : 16;
@@ -43,4 +46,11 @@ public sealed record MarkdownPerformanceOptions
 
     /// <summary>Allows admitted image sources throughout the document to be fetched in spare capacity.</summary>
     public bool PrefetchDocumentImages { get; init; } = true;
+
+    /// <summary>
+    /// Defers built-in block mathematics and Mermaid scene work until its
+    /// fallback block enters the visible viewport band. Public engine parsing
+    /// remains eager; this option is honored only by progressive controls.
+    /// </summary>
+    public bool DeferOffscreenScenes { get; init; }
 }

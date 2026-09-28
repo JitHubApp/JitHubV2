@@ -252,15 +252,83 @@ jobs:
             conformance = '.\MarkdownRenderer\MarkdownRenderer.Conformance.Tests\MarkdownRenderer.Conformance.Tests.csproj'
           }
           $results = Join-Path $env:RUNNER_TEMP 'markdownrenderer-preview\test-results'
+          $deadlineSensitiveCoreTests = [ordered]@{
+            hostedCancellation = 'MarkdownRenderer.Tests.HostedElementLifecycleContractTests.ThrowingCancellationCallbackCannotEscapeCleanup'
+            inertSvgDoctype = 'MarkdownRenderer.Tests.SvgResourceBudgetTests.Validate_AcceptsInertExternalSvgDoctypeWithoutResolvingIt'
+          }
+          $coreExclusionTerms = [Collections.Generic.List[string]]::new()
+          $coreExclusionTerms.Add('FullyQualifiedName!~PerformanceExternalGateFixtureTests')
+          foreach ($test in $deadlineSensitiveCoreTests.GetEnumerator()) {
+            $coreExclusionTerms.Add("FullyQualifiedName!~$($test.Value)")
+          }
+          $coreTestFilter = $coreExclusionTerms -join '&'
+
           foreach ($test in $tests.GetEnumerator()) {
-            & dotnet test $test.Value `
+            $arguments = @(
+              'test', $test.Value,
+              '--configuration', $env:CONFIGURATION,
+              "-p:Platform=$env:PLATFORM",
+              '--no-build',
+              '--disable-build-servers',
+              '--results-directory', $results,
+              '--logger', "trx;LogFileName=$($test.Key).trx")
+            if ($test.Key -eq 'core') {
+              # The external-gate fixture launches many bounded child processes.
+              # Run it in its own testhost so scheduling pressure cannot turn
+              # wall-clock-bounded security/cancellation tests into false failures.
+              # Two such tests are isolated below to avoid unrelated xUnit load.
+              $arguments += @('--filter', $coreTestFilter)
+            }
+            & dotnet @arguments
+            if ($LASTEXITCODE -ne 0) { throw "$($test.Key) tests failed." }
+          }
+
+          $coreResultsPath = Join-Path $results 'core.trx'
+          [xml]$coreTrx = Get-Content -LiteralPath $coreResultsPath -Raw
+          $coreResultNames = @($coreTrx.TestRun.Results.UnitTestResult | ForEach-Object { [string]$_.testName })
+          if ($coreResultNames.Count -lt 1) {
+            throw 'The broad Core test filter matched no tests.'
+          }
+          foreach ($test in $deadlineSensitiveCoreTests.GetEnumerator()) {
+            if ($coreResultNames -contains $test.Value) {
+              throw "Deadline-sensitive test '$($test.Value)' was not excluded from the parallel Core testhost."
+            }
+          }
+
+          foreach ($test in $deadlineSensitiveCoreTests.GetEnumerator()) {
+            & dotnet test $tests.core `
               --configuration $env:CONFIGURATION `
               -p:Platform=$env:PLATFORM `
               --no-build `
               --disable-build-servers `
               --results-directory $results `
-              --logger "trx;LogFileName=$($test.Key).trx"
-            if ($LASTEXITCODE -ne 0) { throw "$($test.Key) tests failed." }
+              --logger "trx;LogFileName=core-$($test.Key).trx" `
+              --filter "FullyQualifiedName~$($test.Value)"
+            if ($LASTEXITCODE -ne 0) { throw "Isolated core test '$($test.Key)' failed." }
+
+            $isolatedResultPath = Join-Path $results "core-$($test.Key).trx"
+            [xml]$isolatedTrx = Get-Content -LiteralPath $isolatedResultPath -Raw
+            $isolatedResultNames = @($isolatedTrx.TestRun.Results.UnitTestResult | ForEach-Object { [string]$_.testName })
+            if ($isolatedResultNames.Count -ne 1 -or $isolatedResultNames[0] -ne $test.Value) {
+              throw "Isolated filter for '$($test.Value)' did not execute exactly that Core test."
+            }
+          }
+
+          & dotnet test $tests.core `
+              --configuration $env:CONFIGURATION `
+              -p:Platform=$env:PLATFORM `
+              --no-build `
+              --disable-build-servers `
+              --results-directory $results `
+              --logger 'trx;LogFileName=core-external-gate.trx' `
+              --filter 'FullyQualifiedName~PerformanceExternalGateFixtureTests'
+          if ($LASTEXITCODE -ne 0) { throw 'Core external-gate fixture tests failed.' }
+
+          $externalGateResultsPath = Join-Path $results 'core-external-gate.trx'
+          [xml]$externalGateTrx = Get-Content -LiteralPath $externalGateResultsPath -Raw
+          $externalGateResultNames = @($externalGateTrx.TestRun.Results.UnitTestResult | ForEach-Object { [string]$_.testName })
+          if ($externalGateResultNames.Count -lt 1) {
+            throw 'The Core external-gate filter matched no tests.'
           }
 
       - name: Build and test the JitHub WinUI consumer

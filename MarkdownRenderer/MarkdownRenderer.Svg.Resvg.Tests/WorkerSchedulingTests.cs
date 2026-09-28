@@ -122,6 +122,16 @@ public sealed class WorkerSchedulingTests
         Assert.NotEqual(0, ordinaryRequest.WallStartedAt);
     }
 
+    [Fact]
+    public void FontCatalogDeadlineEvidenceIncludesTheContentFreeInitializationPhase()
+    {
+        using var listener = new TimeoutListener();
+
+        WorkerTimeoutEvents.Log.FontCatalogDeadlinePhase("user-roaming-fonts");
+
+        Assert.Contains("user-roaming-fonts", listener.FontCatalogPhases);
+    }
+
     private sealed class TimeoutListener : EventListener
     {
         public ConcurrentQueue<(int Stage, int DeadlineMilliseconds, int WorkerProcessCpuMilliseconds,
@@ -129,6 +139,7 @@ public sealed class WorkerSchedulingTests
             int OpenProgressPhase, int WorkerWorkingSetKiB,
             int WorkerPrivateCommitKiB, int WorkerPageFaults, int ElapsedWallMilliseconds,
             string WorkerInputSha256, string WorkerExecutableSha256)> Events { get; } = new();
+        public ConcurrentQueue<string> FontCatalogPhases { get; } = new();
 
         protected override void OnEventSourceCreated(EventSource eventSource)
         {
@@ -138,6 +149,13 @@ public sealed class WorkerSchedulingTests
 
         protected override void OnEventWritten(EventWrittenEventArgs eventData)
         {
+            if (eventData.EventId == 2 && eventData.Payload is { Count: 1 } phasePayload &&
+                phasePayload[0] is string phase)
+            {
+                FontCatalogPhases.Enqueue(phase);
+                return;
+            }
+
             if (eventData.EventId == 1 && eventData.Payload is { Count: 13 } payload &&
                 payload[0] is int stage && payload[1] is int deadlineMilliseconds &&
                 payload[2] is int workerProcessCpuMilliseconds &&

@@ -10,6 +10,7 @@ internal sealed class CodeBlockMetadata
     public const string PlainCodeLabel = "Code";
 
     private static readonly char[] Whitespace = [' ', '\t', '\r', '\n'];
+    private const string DeferredSceneMarkerAttribute = "renderer.internal.deferred-scene";
 
     private CodeBlockMetadata(
         string? language,
@@ -182,9 +183,12 @@ internal sealed class CodeBlockMetadata
 
         string code = CopyPayload(displayedCodeText);
         ulong codeTextHash = Fnv1A(code);
-        string stableKey = string.Create(
-            CultureInfo.InvariantCulture,
-            $"{sourceSpan.Start}:{sourceSpan.Length}:{codeTextHash:X16}");
+        string stableKey = attributes.TryGetValue(DeferredSceneMarkerAttribute, out string? marker) &&
+            !string.IsNullOrWhiteSpace(marker)
+                ? marker
+                : string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"{sourceSpan.Start}:{sourceSpan.Length}:{codeTextHash:X16}");
         return new CodeBlockMetadata(
             normalizedLanguage,
             DisplayLanguage(normalizedLanguage),

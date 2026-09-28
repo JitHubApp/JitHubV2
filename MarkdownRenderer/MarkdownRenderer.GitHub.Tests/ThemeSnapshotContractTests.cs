@@ -295,6 +295,174 @@ public sealed class ThemeSnapshotContractTests
     }
 
     [Fact]
+    public void BuiltInRoleResourceOverridesRefreshPerSnapshotAndPreferScopedValues()
+    {
+        const string resourceKey = "MarkdownRenderer.Body.ForegroundBrush";
+        const string alertAccentResourceKey = "MarkdownRenderer.AlertWarning.AccentBrush";
+        Color appFirst = Color.FromArgb(0xFF, 0x11, 0x22, 0x33);
+        Color appSecond = Color.FromArgb(0xFF, 0x44, 0x55, 0x66);
+        Color scopedFirst = Color.FromArgb(0xFF, 0x77, 0x88, 0x99);
+        Color scopedSecond = Color.FromArgb(0xFF, 0xAA, 0xBB, 0xCC);
+        Color alertAppFirst = Color.FromArgb(0xFF, 0x13, 0x57, 0x9B);
+        Color alertAppSecond = Color.FromArgb(0xFF, 0x24, 0x68, 0xAC);
+        Color alertScopedFirst = Color.FromArgb(0xFF, 0x35, 0x79, 0xBD);
+        Color alertScopedSecond = Color.FromArgb(0xFF, 0x46, 0x8A, 0xCE);
+        var appResources = new TestResourceDictionary();
+        var scopedResources = new TestResourceDictionary();
+        appResources.Values[resourceKey] = appFirst;
+        scopedResources.Values[resourceKey] = scopedFirst;
+        appResources.Values[alertAccentResourceKey] = alertAppFirst;
+        scopedResources.Values[alertAccentResourceKey] = alertScopedFirst;
+
+        Assert.Equal(scopedFirst, ResolveBodyForeground());
+
+        appResources.Values[resourceKey] = appSecond;
+        Assert.Equal(scopedFirst, ResolveBodyForeground());
+
+        scopedResources.Values[resourceKey] = scopedSecond;
+        Assert.Equal(scopedSecond, ResolveBodyForeground());
+
+        scopedResources.Values.Remove(resourceKey);
+        Assert.Equal(appSecond, ResolveBodyForeground());
+
+        Assert.Equal(alertScopedFirst, ResolveAlertAccent());
+        appResources.Values[alertAccentResourceKey] = alertAppSecond;
+        Assert.Equal(alertScopedFirst, ResolveAlertAccent());
+        scopedResources.Values[alertAccentResourceKey] = alertScopedSecond;
+        Assert.Equal(alertScopedSecond, ResolveAlertAccent());
+        scopedResources.Values.Remove(alertAccentResourceKey);
+        Assert.Equal(alertAppSecond, ResolveAlertAccent());
+
+        Color ResolveBodyForeground()
+        {
+            Dictionary<string, object> captured = CaptureResources(scopedResources, appResources);
+            var baseStyle = new ElementStyle { Foreground = Color.FromArgb(0xFF, 1, 1, 1) };
+            var overrides = new Dictionary<string, ElementStyleOverride>(StringComparer.Ordinal)
+            {
+                [MarkdownElementKeys.Body] = new() { Foreground = (Color)captured[resourceKey] },
+            };
+            return CreateSnapshot(
+                baseStyle,
+                overrides,
+                isHighContrast: false,
+                MarkdownStyleSheet.Empty).GetStyle(MarkdownElementKeys.Body).Foreground;
+        }
+
+        Color ResolveAlertAccent()
+        {
+            Dictionary<string, object> captured = CaptureResources(scopedResources, appResources);
+            Color transparent = Color.FromArgb(0, 0, 0, 0);
+            var styles = new Dictionary<string, ElementStyle>(StringComparer.Ordinal)
+            {
+                [MarkdownElementKeys.AlertWarning] = new() { AccentBar = Color.FromArgb(0xFF, 0xF5, 0x9E, 0x0B) },
+            };
+            var overrides = new Dictionary<string, ElementStyleOverride>(StringComparer.Ordinal)
+            {
+                [MarkdownElementKeys.AlertWarning] = new() { AccentBar = (Color)captured[alertAccentResourceKey] },
+            };
+            var snapshot = new ThemeSnapshot(
+                styles,
+                overrides,
+                transparent,
+                transparent,
+                transparent,
+                transparent,
+                isDark: false,
+                isHighContrast: false,
+                textScaleFactor: 1);
+
+            return snapshot.GetStyle(MarkdownElementKeys.AlertWarning).AccentBar!.Value;
+        }
+    }
+
+    [Fact]
+    public void ScopedResourceCapture_FollowsRoleDemandAndAlwaysRetainsGlobalThemeInputs()
+    {
+        string[] elementKeys =
+        [
+            MarkdownElementKeys.Body,
+            MarkdownElementKeys.CodeBlock,
+            "Extension.Role",
+            " Extension.Role",
+        ];
+
+        HashSet<string> demandedRoles = ThemeResolver.GetScopedResourceStyleRoles(
+            elementKeys,
+            1UL << 6); // Body in ThemeResolver's fixed built-in role order.
+
+        Assert.Equal(new[] { "Body", "Extension.Role" }, demandedRoles.Order(StringComparer.Ordinal));
+        Assert.True(ThemeResolver.IsScopedResourceRequiredForSnapshot(
+            MarkdownResourceKeys.ForRole(MarkdownStyleRole.Body, MarkdownStyleProperty.ForegroundBrush),
+            demandedRoles));
+        Assert.False(ThemeResolver.IsScopedResourceRequiredForSnapshot(
+            MarkdownResourceKeys.ForRole(MarkdownStyleRole.CodeBlock, MarkdownStyleProperty.ForegroundBrush),
+            demandedRoles));
+        Assert.True(ThemeResolver.IsScopedResourceRequiredForSnapshot(
+            MarkdownResourceKeys.DocumentSurfaceBrush,
+            demandedRoles));
+        Assert.True(ThemeResolver.IsScopedResourceRequiredForSnapshot(
+            "TextControlForeground",
+            demandedRoles));
+        Assert.False(ThemeResolver.IsScopedResourceRequiredForSnapshot(
+            "ControlCornerRadius",
+            demandedRoles));
+
+        HashSet<string> fullResolutionRoles = ThemeResolver.GetScopedResourceStyleRoles(
+            elementKeys,
+            builtInStyleRoleDemandMask: null);
+        Assert.Contains("CodeBlock", fullResolutionRoles);
+        Assert.Contains("Extension.Role", fullResolutionRoles);
+    }
+
+    [Fact]
+    public void ScopedResourceCapture_DoesNotReadUndemandedRoleValuesFromDictionaryGraph()
+    {
+        var resources = new TestResourceDictionary();
+        const int extensionRoleCount = 30;
+        foreach (MarkdownStyleProperty property in Enum.GetValues<MarkdownStyleProperty>())
+        {
+            resources.Values[MarkdownResourceKeys.ForRole(MarkdownStyleRole.Body, property)] = property.ToString();
+            resources.Values[MarkdownResourceKeys.ForRole(MarkdownStyleRole.CodeBlock, property)] = property.ToString();
+            for (int index = 0; index < extensionRoleCount; index++)
+            {
+                var role = new MarkdownStyleRole($"Extension{index}");
+                resources.Values[MarkdownResourceKeys.ForRole(role, property)] = property.ToString();
+            }
+        }
+        resources.Values[MarkdownResourceKeys.DocumentSurfaceBrush] = "surface";
+        resources.Values["TextControlForeground"] = "platform-foreground";
+
+        HashSet<string> demandedRoles = ThemeResolver.GetScopedResourceStyleRoles(
+            [MarkdownElementKeys.Body, MarkdownElementKeys.CodeBlock, "Extension12"],
+            1UL << 6);
+        var captured = new Dictionary<string, object>(StringComparer.Ordinal);
+        int reads = 0;
+        ResourceDictionaryGraphResolver.CaptureResolvedValues(
+            resources,
+            ["Dark", "Default"],
+            new HashSet<TestResourceDictionary>(ReferenceEqualityComparer.Instance),
+            static (dictionary, key) => dictionary.Themes.GetValueOrDefault(key),
+            static dictionary => dictionary.Values.Keys,
+            (TestResourceDictionary dictionary, string key, out object value) =>
+            {
+                reads++;
+                return dictionary.Values.TryGetValue(key, out value!);
+            },
+            static dictionary => dictionary.Merged.Count,
+            static (dictionary, index) => dictionary.Merged[index],
+            key => ThemeResolver.IsScopedResourceRequiredForSnapshot(key, demandedRoles),
+            captured);
+
+        int unfilteredValueCount = extensionRoleCount * Enum.GetValues<MarkdownStyleProperty>().Length +
+                                   2 * Enum.GetValues<MarkdownStyleProperty>().Length + 2;
+        int expectedReadCount = 2 * Enum.GetValues<MarkdownStyleProperty>().Length + 2;
+        Assert.Equal(expectedReadCount, reads);
+        Assert.Equal(expectedReadCount, captured.Count);
+        Assert.True(reads < unfilteredValueCount / 10,
+            $"Expected selective capture to read fewer than one tenth of {unfilteredValueCount} values; read {reads}.");
+    }
+
+    [Fact]
     public void RelevantResourceKeyCache_AmortizesDiscoveryAndRefreshesWhenCountChanges()
     {
         const string resourceKey = "MarkdownRenderer.Direct.ForegroundBrush";
@@ -386,6 +554,9 @@ public sealed class ThemeSnapshotContractTests
     public void ScopedPlatformCapture_RejectsUnrelatedPlatformKey()
     {
         Assert.False(ThemeResolver.IsScopedPlatformResourceKey("ControlCornerRadius"));
+        Assert.False(ThemeResolver.IsScopedPlatformResourceKey(null!));
+        Assert.False(ThemeResolver.IsScopedPlatformResourceKey("textControlForeground"));
+        Assert.False(ThemeResolver.IsScopedPlatformResourceKey("TextControlForegroundSuffix"));
     }
 
     [Fact]

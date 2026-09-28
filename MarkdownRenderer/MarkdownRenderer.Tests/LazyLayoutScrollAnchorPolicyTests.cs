@@ -21,10 +21,12 @@ public sealed class LazyLayoutScrollAnchorPolicyTests
     }
 
     [Fact]
-    public void ActiveScrollMustNotBeRetargetedByLazyLayoutCommit()
+    public void DeferredSceneRebuildMustNotRetargetAnActiveOrNewerViewport()
     {
         Assert.False(LazyLayoutScrollAnchorPolicy.ShouldRestore(
             100, 100, scrollInProgress: true));
+        Assert.False(LazyLayoutScrollAnchorPolicy.ShouldRestore(
+            100, 650, scrollInProgress: false));
     }
 
     [Fact]

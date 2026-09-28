@@ -17,6 +17,10 @@ internal static class MathRegressionEvidence
         if (string.IsNullOrWhiteSpace(path)) return;
         view.RenderCompleted += (_, _) =>
         {
+            // This legacy fixture records final eager parser content. The
+            // progressive sample deliberately keeps scene results outside the
+            // immutable document and has its own session diagnostics check.
+            if (view.PerformanceSession?.Options.DeferOffscreenScenes == true) return;
             if (view.Document is not { } document) return;
             using var output = File.Create(path);
             using var json = new Utf8JsonWriter(output, new JsonWriterOptions { Indented = true });

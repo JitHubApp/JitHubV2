@@ -1,15 +1,29 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Diagnostics;
+using MarkdownRenderer.Document;
+using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Layout;
 using Windows.Networking.Connectivity;
 using Windows.System.Power;
 
 namespace MarkdownRenderer.Performance;
+
+internal enum MarkdownParsePipelineStage
+{
+    Begin = 0,
+    EngineParseAndCache = 1,
+    LegacyParseAndDocument = 2,
+    ProgressiveScenePlan = 3,
+    StyleRoleDemand = 4,
+    SessionTotal = 5,
+}
 
 /// <summary>
 /// Shares bounded image preparation between document views in one security partition.
@@ -32,6 +46,14 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
     private readonly CancellationToken _lifetimeToken;
     private readonly bool _memoryPressureSubscribed;
     private readonly object _workGate = new();
+    private readonly object _scenePlansGate = new();
+    private readonly Dictionary<object, MarkdownProgressiveScenePlan> _scenePlans =
+        new(ReferenceEqualityComparer.Instance);
+    private readonly object _styleRoleDemandGate = new();
+    private readonly ConditionalWeakTable<MarkdownDocument, Task<MarkdownStyleRoleDemandResult>> _styleRoleDemandCache = new();
+    private readonly object _documentScopesGate = new();
+    private readonly Dictionary<object, PerformanceDocumentState> _documentScopes =
+        new(ReferenceEqualityComparer.Instance);
     private TaskCompletionSource<bool>? _workDrained;
     private TaskCompletionSource<bool>? _shutdownCompleted;
     private int _activeWork;
@@ -49,6 +71,7 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
     private long _scenePreparations;
     private long _scenePreparationMilliseconds;
     private int _disposed;
+    private EventHandler? _disposedHandlers;
 
     /// <summary>Creates an opt-in session. Use a distinct session for each account/security partition.</summary>
     public MarkdownPerformanceSession(MarkdownPerformanceOptions options)
@@ -75,6 +98,12 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
             // The byte-budgeted LRU still applies in headless and unpackaged hosts.
         }
     }
+
+    // Hosts set this only during an explicit audit. Payloads contain only an
+    // in-process owner identity, fixed stage ID, and stopwatch ticks—never source
+    // content or resource identifiers. A typed callback avoids runtime event
+    // discovery and remains compatible with NativeAOT trimming.
+    internal Action<int, int, long>? ParseStageDiagnosticRecorder { get; set; }
 
     private static void ValidateOptions(MarkdownPerformanceOptions options)
     {
@@ -111,9 +140,444 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
 
     internal bool IsDisposed => Volatile.Read(ref _disposed) != 0;
 
+    event EventHandler? IMarkdownPerformanceSessionInternal.Disposed
+    {
+        add
+        {
+            bool invokeImmediately;
+            lock (_workGate)
+            {
+                invokeImmediately = _disposed != 0;
+                if (!invokeImmediately)
+                    _disposedHandlers += value;
+            }
+
+            if (invokeImmediately && value is not null)
+                NotifyDisposedHandlers(value);
+        }
+        remove
+        {
+            lock (_workGate)
+                _disposedHandlers -= value;
+        }
+    }
+
     internal long ActiveSourceBytes => _sourceByteAdmission.ActiveBytes;
 
     bool IMarkdownPerformanceSessionInternal.IsDisposed => IsDisposed;
+
+    bool IMarkdownPerformanceSessionInternal.TryGetStyleRoleDemandMask(
+        MarkdownDocument document,
+        CancellationToken cancellationToken,
+        out ulong roleDemandMask)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        if (IsDisposed)
+        {
+            roleDemandMask = 0;
+            return false;
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        Task<MarkdownStyleRoleDemandResult>? collection;
+        lock (_styleRoleDemandGate)
+        {
+            if (!_styleRoleDemandCache.TryGetValue(document, out collection) ||
+                !collection.IsCompletedSuccessfully)
+            {
+                roleDemandMask = 0;
+                return false;
+            }
+        }
+
+        MarkdownStyleRoleDemandResult result = collection.GetAwaiter().GetResult();
+        roleDemandMask = result.Mask;
+        return result.IsComplete;
+    }
+
+    private async ValueTask CacheStyleRoleDemandMaskAsync(
+        MarkdownDocument document,
+        CancellationToken cancellationToken)
+    {
+        if (IsDisposed || cancellationToken.IsCancellationRequested)
+            return;
+
+        Task<MarkdownStyleRoleDemandResult> collection;
+        lock (_styleRoleDemandGate)
+        {
+            if (!_styleRoleDemandCache.TryGetValue(document, out collection!))
+            {
+                // Start once per immutable document. The session cache uses a
+                // weak key, and the control only reads completed results.
+                collection = Task.Run(
+                    () => MarkdownStyleRoleDemandCollector.Collect(document));
+                _styleRoleDemandCache.Add(document, collection);
+            }
+        }
+
+        await collection.WaitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private static long StartParseStageTiming(bool enabled) =>
+        enabled ? Stopwatch.GetTimestamp() : 0;
+
+    private static void RecordParseStageTiming(
+        Action<int, int, long>? recorder,
+        int ownerIdentity,
+        MarkdownParsePipelineStage stage,
+        long startedTimestamp)
+    {
+        if (recorder is null)
+            return;
+
+        long elapsedTicks = stage == MarkdownParsePipelineStage.Begin
+            ? 0
+            : Stopwatch.GetTimestamp() - startedTimestamp;
+        recorder(ownerIdentity, (int)stage, elapsedTicks);
+    }
+
+    async ValueTask<MarkdownRenderer.Document.MarkdownDocument?>
+        IMarkdownPerformanceSessionInternal.ParseAndPrepareDocumentAsync(
+        MarkdownEngine? engine,
+        MarkdownRenderer.Document.MarkdownDocument? document,
+        string? source,
+        MarkdownRenderer.Parsing.MarkdownExtensionRegistry legacyRegistry,
+        object documentOwner,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(documentOwner);
+        ArgumentNullException.ThrowIfNull(legacyRegistry);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        Action<int, int, long>? parseStageRecorder = ParseStageDiagnosticRecorder;
+        bool captureParseStageTimings = parseStageRecorder is not null;
+        int ownerIdentity = captureParseStageTimings
+            ? RuntimeHelpers.GetHashCode(documentOwner)
+            : 0;
+        long sessionStarted = StartParseStageTiming(captureParseStageTimings);
+        if (captureParseStageTimings)
+        {
+            RecordParseStageTiming(
+                parseStageRecorder,
+                ownerIdentity,
+                MarkdownParsePipelineStage.Begin,
+                startedTimestamp: 0);
+        }
+
+        bool parseProgressively = engine is not null && Options.DeferOffscreenScenes && !IsDisposed;
+        if (document is null && engine is not null)
+        {
+            long engineParseStarted = StartParseStageTiming(captureParseStageTimings);
+            document = parseProgressively
+                ? await engine.ParseForProgressivePresentationAsync(source, cancellationToken).ConfigureAwait(false)
+                : await engine.ParseAsync(source, cancellationToken).ConfigureAwait(false);
+            if (captureParseStageTimings)
+            {
+                RecordParseStageTiming(
+                    parseStageRecorder,
+                    ownerIdentity,
+                    MarkdownParsePipelineStage.EngineParseAndCache,
+                    engineParseStarted);
+            }
+        }
+        else if (document is null && documentOwner is IMarkdownPerformanceLegacyParser legacyParser)
+        {
+            long legacyParseStarted = StartParseStageTiming(captureParseStageTimings);
+            MarkdownRenderer.Parsing.ParsedMarkdown? parsed = await legacyParser.ParseLegacyMarkdownAsync(
+                source ?? string.Empty,
+                legacyRegistry,
+                cancellationToken).ConfigureAwait(false);
+            if (parsed is not null)
+            {
+                document = await Task.Run(
+                    () => MarkdownRenderer.Document.MarkdownDocument.FromParsed(
+                        parsed.SourceText,
+                        parsed.Document,
+                        diagnostics: [],
+                    cancellationToken),
+                    CancellationToken.None).ConfigureAwait(false);
+            }
+            if (captureParseStageTimings)
+            {
+                RecordParseStageTiming(
+                    parseStageRecorder,
+                    ownerIdentity,
+                    MarkdownParsePipelineStage.LegacyParseAndDocument,
+                    legacyParseStarted);
+            }
+        }
+
+        if (document is null)
+        {
+            ((IMarkdownPerformanceSessionInternal)this).ReleaseDeferredSceneDocument(documentOwner);
+            if (captureParseStageTimings)
+            {
+                RecordParseStageTiming(
+                    parseStageRecorder,
+                    ownerIdentity,
+                    MarkdownParsePipelineStage.SessionTotal,
+                    sessionStarted);
+            }
+            return null;
+        }
+
+        if (engine is null || !parseProgressively)
+        {
+            ((IMarkdownPerformanceSessionInternal)this).ReleaseDeferredSceneDocument(documentOwner);
+            if (MarkdownProgressiveScenePlan.ContainsDeferredSceneFallback(document))
+            {
+                if (engine is not null)
+                {
+                    long engineParseStarted = StartParseStageTiming(captureParseStageTimings);
+                    document = await engine.ParseAsync(document.Source, cancellationToken).ConfigureAwait(false);
+                    if (captureParseStageTimings)
+                    {
+                        RecordParseStageTiming(
+                            parseStageRecorder,
+                            ownerIdentity,
+                            MarkdownParsePipelineStage.EngineParseAndCache,
+                            engineParseStarted);
+                    }
+                }
+                else if (documentOwner is IMarkdownPerformanceLegacyParser legacyParser)
+                {
+                    long legacyParseStarted = StartParseStageTiming(captureParseStageTimings);
+                    MarkdownRenderer.Parsing.ParsedMarkdown? parsed = await legacyParser.ParseLegacyMarkdownAsync(
+                        document.Source,
+                        legacyRegistry,
+                        cancellationToken).ConfigureAwait(false);
+                    if (parsed is not null)
+                    {
+                        document = await Task.Run(
+                            () => MarkdownRenderer.Document.MarkdownDocument.FromParsed(
+                                parsed.SourceText,
+                                parsed.Document,
+                                diagnostics: [],
+                                cancellationToken),
+                                CancellationToken.None).ConfigureAwait(false);
+                    }
+                    if (captureParseStageTimings)
+                    {
+                        RecordParseStageTiming(
+                            parseStageRecorder,
+                            ownerIdentity,
+                            MarkdownParsePipelineStage.LegacyParseAndDocument,
+                            legacyParseStarted);
+                    }
+                }
+            }
+            long roleDemandStarted = StartParseStageTiming(captureParseStageTimings);
+            await CacheStyleRoleDemandMaskAsync(document, cancellationToken).ConfigureAwait(false);
+            if (captureParseStageTimings)
+            {
+                RecordParseStageTiming(
+                    parseStageRecorder,
+                    ownerIdentity,
+                    MarkdownParsePipelineStage.StyleRoleDemand,
+                    roleDemandStarted);
+                RecordParseStageTiming(
+                    parseStageRecorder,
+                    ownerIdentity,
+                    MarkdownParsePipelineStage.SessionTotal,
+                    sessionStarted);
+            }
+            return document;
+        }
+
+        long scenePlanStarted = StartParseStageTiming(captureParseStageTimings);
+        await PrepareProgressiveSceneDocumentAsync(
+            document,
+            documentOwner,
+            cancellationToken).ConfigureAwait(false);
+        if (captureParseStageTimings)
+        {
+            RecordParseStageTiming(
+                parseStageRecorder,
+                ownerIdentity,
+                MarkdownParsePipelineStage.ProgressiveScenePlan,
+                scenePlanStarted);
+        }
+
+        // If the borrowed session is disposed while parse/plan construction is
+        // in flight, never leave this control with a deferred fallback and no
+        // scheduler. Reparse eagerly; disposal remains safe for concurrent
+        // controls because ParseAsync does not depend on the session lifetime.
+        if (IsDisposed && MarkdownProgressiveScenePlan.ContainsDeferredSceneFallback(document))
+        {
+            ((IMarkdownPerformanceSessionInternal)this).ReleaseDeferredSceneDocument(documentOwner);
+            long engineParseStarted = StartParseStageTiming(captureParseStageTimings);
+            document = await engine.ParseAsync(document.Source, cancellationToken).ConfigureAwait(false);
+            if (captureParseStageTimings)
+            {
+                RecordParseStageTiming(
+                    parseStageRecorder,
+                    ownerIdentity,
+                    MarkdownParsePipelineStage.EngineParseAndCache,
+                    engineParseStarted);
+            }
+        }
+
+        long progressiveRoleDemandStarted = StartParseStageTiming(captureParseStageTimings);
+        await CacheStyleRoleDemandMaskAsync(document, cancellationToken).ConfigureAwait(false);
+        if (captureParseStageTimings)
+        {
+            RecordParseStageTiming(
+                parseStageRecorder,
+                ownerIdentity,
+                MarkdownParsePipelineStage.StyleRoleDemand,
+                progressiveRoleDemandStarted);
+            RecordParseStageTiming(
+                parseStageRecorder,
+                ownerIdentity,
+                MarkdownParsePipelineStage.SessionTotal,
+                sessionStarted);
+        }
+        return document;
+    }
+
+    private async ValueTask PrepareProgressiveSceneDocumentAsync(
+        MarkdownRenderer.Document.MarkdownDocument document,
+        object documentOwner,
+        CancellationToken cancellationToken)
+    {
+        MarkdownProgressiveScenePlan? current;
+        lock (_scenePlansGate)
+        {
+            _scenePlans.TryGetValue(documentOwner, out current);
+            if (current?.IsFor(document) == true)
+                return;
+        }
+
+        MarkdownProgressiveScenePlan? candidate = IsDisposed || cancellationToken.IsCancellationRequested
+            ? null
+            : await MarkdownProgressiveScenePlan.TryCreateAsync(
+                document,
+                this,
+                documentOwner,
+                cancellationToken).ConfigureAwait(false);
+        MarkdownProgressiveScenePlan? retired = null;
+        lock (_scenePlansGate)
+        {
+            if (IsDisposed || cancellationToken.IsCancellationRequested)
+            {
+                retired = candidate;
+            }
+            else if (_scenePlans.TryGetValue(documentOwner, out current) && current.IsFor(document))
+            {
+                retired = candidate;
+            }
+            else
+            {
+                if (current is not null)
+                    retired = current;
+                if (candidate is null)
+                    _scenePlans.Remove(documentOwner);
+                else
+                    _scenePlans[documentOwner] = candidate;
+            }
+        }
+
+        retired?.Dispose();
+    }
+
+    bool IMarkdownPerformanceSessionInternal.TryGetDeferredSceneResult(
+        object documentOwner,
+        string marker,
+        out MarkdownContentFragment? result)
+    {
+        MarkdownProgressiveScenePlan? plan;
+        lock (_scenePlansGate)
+            _scenePlans.TryGetValue(documentOwner, out plan);
+        if (plan is not null && plan.TryGetResult(marker, out result))
+            return true;
+        result = null;
+        return false;
+    }
+
+    /// <summary>
+    /// Returns diagnostics reported by deferred scenes in the supplied
+    /// immutable document. They become available after visible scene work is
+    /// published and remain separate from the document's eager diagnostics.
+    /// </summary>
+    public IReadOnlyList<MarkdownDiagnostic> GetDeferredSceneDiagnostics(MarkdownDocument document)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        MarkdownProgressiveScenePlan[] plans;
+        lock (_scenePlansGate)
+            plans = _scenePlans.Values.Where(plan => plan.IsFor(document)).ToArray();
+        if (plans.Length == 0)
+            return Array.Empty<MarkdownDiagnostic>();
+        if (plans.Length == 1)
+            return plans[0].Diagnostics;
+
+        var diagnostics = new HashSet<MarkdownDiagnostic>();
+        foreach (MarkdownProgressiveScenePlan plan in plans)
+            foreach (MarkdownDiagnostic diagnostic in plan.Diagnostics)
+                diagnostics.Add(diagnostic);
+        if (diagnostics.Count == 0)
+            return Array.Empty<MarkdownDiagnostic>();
+
+        List<MarkdownDiagnostic> ordered = diagnostics.ToList();
+        ordered.Sort(static (left, right) =>
+        {
+            int comparison = left.SourceSpan.Start.CompareTo(right.SourceSpan.Start);
+            return comparison != 0
+                ? comparison
+                : string.CompareOrdinal(left.Code, right.Code);
+        });
+        return Array.AsReadOnly(ordered.ToArray());
+    }
+
+    void IMarkdownPerformanceSessionInternal.AdvanceDeferredSceneGeneration(object documentOwner)
+    {
+        MarkdownProgressiveScenePlan? plan;
+        lock (_scenePlansGate)
+            _scenePlans.TryGetValue(documentOwner, out plan);
+        plan?.AdvanceGeneration();
+    }
+
+    void IMarkdownPerformanceSessionInternal.ReleaseDeferredSceneDocument(object documentOwner)
+    {
+        MarkdownProgressiveScenePlan? plan;
+        lock (_scenePlansGate)
+        {
+            if (!_scenePlans.Remove(documentOwner, out plan))
+                return;
+        }
+        plan.Dispose();
+    }
+
+    bool IMarkdownPerformanceSessionInternal.ScheduleDeferredScenes(object documentOwner)
+    {
+        MarkdownProgressiveScenePlan? plan;
+        lock (_scenePlansGate)
+            _scenePlans.TryGetValue(documentOwner, out plan);
+        return plan is not null && plan.ScheduleVisible(documentOwner);
+    }
+
+    private void ReleaseAllProgressiveScenePlans()
+    {
+        MarkdownProgressiveScenePlan[] plans;
+        lock (_scenePlansGate)
+        {
+            plans = [.. _scenePlans.Values];
+            _scenePlans.Clear();
+        }
+        foreach (MarkdownProgressiveScenePlan plan in plans)
+            plan.Dispose();
+    }
+
+    private void ReleaseAllDocumentScopes()
+    {
+        DocumentScope[] scopes;
+        lock (_documentScopesGate)
+        {
+            scopes = _documentScopes.Values.Select(static state => state.Scope).ToArray();
+            _documentScopes.Clear();
+        }
+        foreach (DocumentScope scope in scopes)
+            scope.Dispose();
+    }
 
     long IMarkdownPerformanceSessionInternal.BeginRasterPreparation(
         int sourceBytes, int sourceWidth, int sourceHeight) =>
@@ -129,6 +593,27 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
     IMarkdownPerformanceDocumentScope IMarkdownPerformanceSessionInternal.OpenDocument(
         IMarkdownImageResolver resolver,
         MarkdownImageResolveContext context) => OpenDocument(resolver, context);
+
+    IMarkdownPerformanceDocumentScope?
+        IMarkdownPerformanceSessionInternal.PrepareDocumentScope(
+        object documentOwner,
+        string source,
+        int registryRevision,
+        Markdig.Syntax.MarkdownDocument document,
+        MarkdownRenderer.Parsing.SafeHtmlRenderPolicy? safeHtmlPolicy,
+        IMarkdownImageResolver resolver,
+        MarkdownImageResolveContext context) =>
+        PrepareDocumentScope(
+            documentOwner,
+            source,
+            registryRevision,
+            document,
+            safeHtmlPolicy,
+            resolver,
+            context);
+
+    void IMarkdownPerformanceSessionInternal.ReleaseDocumentScope(object documentOwner)
+        => ReleaseDocumentScope(documentOwner);
 
     ValueTask<IDisposable> IMarkdownPerformanceSessionInternal.EnterCpuPreparationAsync(
         object documentOwner,
@@ -187,6 +672,98 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
         {
             ObjectDisposedException.ThrowIf(_disposed != 0, this);
             return new DocumentScope(this, resolver, context);
+        }
+    }
+
+    private IMarkdownPerformanceDocumentScope? PrepareDocumentScope(
+        object documentOwner,
+        string source,
+        int registryRevision,
+        Markdig.Syntax.MarkdownDocument document,
+        MarkdownRenderer.Parsing.SafeHtmlRenderPolicy? safeHtmlPolicy,
+        IMarkdownImageResolver resolver,
+        MarkdownImageResolveContext context)
+    {
+        DocumentScope? retired = null;
+        DocumentScope scope;
+        bool startPrefetch = false;
+        lock (_documentScopesGate)
+        {
+            if (IsDisposed)
+                return null;
+
+            if (_documentScopes.TryGetValue(documentOwner, out PerformanceDocumentState? current) &&
+                string.Equals(current.Source, source, StringComparison.Ordinal) &&
+                current.RegistryRevision == registryRevision &&
+                current.Scope.Matches(this, resolver, context))
+            {
+                scope = current.Scope;
+            }
+            else
+            {
+                if (current is not null)
+                    retired = current.Scope;
+                try
+                {
+                    scope = OpenDocument(resolver, context);
+                }
+                catch (ObjectDisposedException)
+                {
+                    return null;
+                }
+
+                current = new PerformanceDocumentState(source, registryRevision, scope);
+                _documentScopes[documentOwner] = current;
+            }
+
+            if (Options.PrefetchDocumentImages && !current.PrefetchStarted)
+            {
+                current.PrefetchStarted = true;
+                startPrefetch = true;
+            }
+        }
+
+        retired?.Dispose();
+        if (startPrefetch)
+            _ = PrefetchDocumentImagesObservedAsync(document, safeHtmlPolicy, scope);
+        return scope;
+    }
+
+    private void ReleaseDocumentScope(object documentOwner)
+    {
+        DocumentScope? scope;
+        lock (_documentScopesGate)
+        {
+            if (!_documentScopes.Remove(documentOwner, out PerformanceDocumentState? state))
+                return;
+            scope = state.Scope;
+        }
+        scope.Dispose();
+    }
+
+    private static async Task PrefetchDocumentImagesObservedAsync(
+        Markdig.Syntax.MarkdownDocument document,
+        MarkdownRenderer.Parsing.SafeHtmlRenderPolicy? safeHtmlPolicy,
+        IMarkdownPerformanceDocumentScope scope)
+    {
+        try
+        {
+            CancellationToken cancellationToken = scope.CancellationToken;
+            IReadOnlyList<string> sources = await Task.Run(
+                () => MarkdownImagePrefetchSourceCollector.Collect(
+                    document, safeHtmlPolicy, cancellationToken),
+                cancellationToken).ConfigureAwait(false);
+            await scope.PrefetchAsync(sources, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+        catch (Exception exception)
+        {
+            MarkdownDiagnostics.WriteLine($"[MarkdownRenderer] performance prefetch failed: {exception.Message}");
         }
     }
 
@@ -571,11 +1148,14 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
     {
         Task drain;
         TaskCompletionSource<bool> completed;
+        EventHandler? disposedHandlers;
         lock (_workGate)
         {
             if (_disposed != 0)
                 return;
             _disposed = 1;
+            disposedHandlers = _disposedHandlers;
+            _disposedHandlers = null;
             _workDrained = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             if (_activeWork == 0)
                 _workDrained.SetResult(true);
@@ -583,6 +1163,11 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
             completed = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             _shutdownCompleted = completed;
         }
+
+        ParseStageDiagnosticRecorder = null;
+        ReleaseAllProgressiveScenePlans();
+        ReleaseAllDocumentScopes();
+        NotifyDisposedHandlers(disposedHandlers);
 
         Task cancellation = _lifetime.CancelAsync();
         if (_memoryPressureSubscribed)
@@ -596,6 +1181,25 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
         }
         Trim();
         _ = FinishShutdownAsync(cancellation, drain, completed);
+    }
+
+    private void NotifyDisposedHandlers(EventHandler? handlers)
+    {
+        if (handlers is null)
+            return;
+
+        foreach (Delegate handler in handlers.GetInvocationList())
+        {
+            try
+            {
+                ((EventHandler)handler)(this, EventArgs.Empty);
+            }
+            catch (Exception exception)
+            {
+                MarkdownDiagnostics.WriteLine(
+                    $"[MarkdownPerformanceSession] Disposal observer failed: {exception.Message}");
+            }
+        }
     }
 
     /// <inheritdoc />
@@ -827,6 +1431,17 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
                 _lifetime, Task.WhenAll(admitted));
             _session.RemoveDocumentEntries(this);
         }
+    }
+
+    private sealed class PerformanceDocumentState(
+        string source,
+        int registryRevision,
+        DocumentScope scope)
+    {
+        internal string Source { get; } = source;
+        internal int RegistryRevision { get; } = registryRevision;
+        internal DocumentScope Scope { get; } = scope;
+        internal bool PrefetchStarted { get; set; }
     }
 
     private readonly record struct SourceKey(

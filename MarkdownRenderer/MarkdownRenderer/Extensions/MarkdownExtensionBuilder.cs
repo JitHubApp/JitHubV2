@@ -95,11 +95,21 @@ public sealed class MarkdownExtensionBuilder
         MarkdownNodeRenderer renderer)
     {
         ArgumentNullException.ThrowIfNull(renderer);
+        MarkdownAsyncNodeRenderer deferredRenderer = (context, content) =>
+        {
+            renderer(context, content);
+            return ValueTask.CompletedTask;
+        };
+        MarkdownNodeRenderer trackedRenderer = (context, content) =>
+        {
+            renderer(context, content);
+            content.CaptureDeferredSceneRenderers(deferredRenderer);
+        };
         string kind = RegisterSynchronous(
             _blockRenderers,
             _synchronousBlockRenderers,
             syntaxKind,
-            renderer);
+            trackedRenderer);
         _registrations.Add(MarkdownExtensionRegistration.SynchronousBlock(kind, renderer));
         return this;
     }
@@ -112,11 +122,17 @@ public sealed class MarkdownExtensionBuilder
         string syntaxKind,
         MarkdownAsyncNodeRenderer renderer)
     {
+        ArgumentNullException.ThrowIfNull(renderer);
+        MarkdownAsyncNodeRenderer trackedRenderer = async (context, content) =>
+        {
+            await renderer(context, content).ConfigureAwait(false);
+            content.CaptureDeferredSceneRenderers(renderer);
+        };
         string kind = RegisterAsynchronous(
             _blockRenderers,
             _synchronousBlockRenderers,
             syntaxKind,
-            renderer);
+            trackedRenderer);
         _registrations.Add(MarkdownExtensionRegistration.AsynchronousBlock(kind, renderer));
         return this;
     }

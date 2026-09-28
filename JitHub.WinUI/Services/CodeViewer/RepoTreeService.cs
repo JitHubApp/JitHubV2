@@ -12,6 +12,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Models.CodeViewer;
 using JitHub.Models.GitHub;
+using JitHub.Services.Markdown;
 
 namespace JitHub.Services.CodeViewer;
 
@@ -484,15 +485,39 @@ public sealed class RepoTreeService : IRepoTreeService
 
         GitHubRepositoryContent content = result.Value
             ?? throw new InvalidOperationException("GitHub returned no repository README.");
-        byte[] bytes = await Task.Run(
-            () => DecodeBlob(content.Content, content.Encoding),
-            ct).ConfigureAwait(false);
+        byte[] bytes;
+        string? sameByteCorpusPath = MarkdownLifecycleAutomationBridge.SameByteReplayCorpusPath;
+        if (sameByteCorpusPath is not null)
+        {
+            string expectedReadmeSha = MarkdownLifecycleAutomationBridge.SameByteReplayReadmeSha
+                ?? throw new InvalidDataException("Same-byte audit README identity is missing.");
+            if (!string.Equals(content.Sha, expectedReadmeSha, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidDataException("The repository README response does not match the pinned same-byte source.");
+            }
+            var fixture = new MarkdownSameByteAuditImageResolver(
+                sameByteCorpusPath,
+                $"{owner}/{name}",
+                refOrSha,
+                expectedReadmeSha);
+            bytes = await fixture.LoadPinnedReadmeBytesAsync(
+                content.Path ?? string.Empty,
+                ct).ConfigureAwait(false);
+            MarkdownLifecycleAutomationBridge.RecordSameByteReadmeSource(bytes);
+        }
+        else
+        {
+            bytes = await Task.Run(
+                () => DecodeBlob(content.Content, content.Encoding),
+                ct).ConfigureAwait(false);
+        }
         bool isBinary = IsBinaryContent(bytes);
         string? renderedHtml = null;
         string readmePath = content.Path ?? string.Empty;
         if (!isBinary &&
             _gitHubClientService is not null &&
             FilePreviewResolver.IsGitHubReadmePath(readmePath) &&
+            sameByteCorpusPath is null &&
             !sourceCameFromRawFallback)
         {
             try

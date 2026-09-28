@@ -531,6 +531,7 @@ internal sealed class WorkerPool : IAsyncDisposable, IDisposable
         long workerCpuAtStart = WorkerTimeoutEvents.Log.IsEnabled()
             ? worker.GetProcessCpuTicks()
             : -1;
+        string initializationPhase = "font-worker-startup";
         try
         {
             while (true)
@@ -566,9 +567,10 @@ internal sealed class WorkerPool : IAsyncDisposable, IDisposable
                         elapsedWallMilliseconds: (int)Math.Min(elapsed.Elapsed.TotalMilliseconds, int.MaxValue),
                         workerInputSha256: string.Empty,
                         workerExecutableSha256: worker.WorkerExecutableSha256 ?? string.Empty);
+                    WorkerTimeoutEvents.Log.FontCatalogDeadlinePhase(initializationPhase);
                     RecordStartupFailure();
                     throw new WorkerInitializationDeadlineException(
-                        "The resvg worker did not initialize its font catalog before the initialization deadline.",
+                        $"The resvg worker did not initialize its font catalog before the initialization deadline (phase: {initializationPhase}).",
                         new TimeoutException());
                 }
 
@@ -595,6 +597,16 @@ internal sealed class WorkerPool : IAsyncDisposable, IDisposable
                 if (response.Status != WorkerStatus.FontCatalogPending)
                     throw new WorkerProtocolException("The resvg worker rejected font-catalog initialization.");
 
+                initializationPhase = response.Detail switch
+                {
+                    "machine-fonts" or
+                    "user-local-fonts" or
+                    "user-roaming-fonts" or
+                    "font-family-defaults" or
+                    "text-pipeline-warmup" => response.Detail,
+                    _ => "unknown",
+                };
+
                 remaining = WorkerSchedulingPolicy.InitializationDeadline - elapsed.Elapsed;
                 if (remaining > TimeSpan.Zero)
                     await Task.Delay(TimeSpan.FromMilliseconds(Math.Min(50, remaining.TotalMilliseconds)), cancellationToken)
@@ -610,8 +622,9 @@ internal sealed class WorkerPool : IAsyncDisposable, IDisposable
                 throw new OperationCanceledException(cancellationToken);
             if (exception is WorkerDeadlineException)
             {
+                WorkerTimeoutEvents.Log.FontCatalogDeadlinePhase(initializationPhase);
                 throw new WorkerInitializationDeadlineException(
-                    "The resvg worker did not initialize its font catalog before the initialization deadline.",
+                    $"The resvg worker did not initialize its font catalog before the initialization deadline (phase: {initializationPhase}).",
                     exception);
             }
             throw new WorkerInitializationException(

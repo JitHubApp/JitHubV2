@@ -73,9 +73,20 @@ Edge, and individually checks the previously slow ranks 60 and 203 against that
 same 110% ceiling. A focused rank replay, a mixed set of results with and
 without same-byte capture, or a partial 500-case result cannot pass this release
 path.
+For each rendered case, the merge recomputes the first-render and full-page
+ratios from native and offline Edge timings and rejects missing, non-finite,
+non-positive, or inconsistent stored ratios.
 
-Capture pins the raw README to its Git blob SHA and records completed visible
-Edge image responses as content-addressed files. URL lookup values are SHA-256
+Capture pins README source bytes to the manifest's Git blob SHA and records
+completed visible Edge image responses as content-addressed files. If a raw
+GitHub URL returns a symlink blob instead of the file GitHub renders, capture
+retries only through the authenticated GitHub README Contents endpoint at the
+same pinned commit. The response is streamed under a 24-MiB JSON/base64 cap,
+decoded under the normal 16-MiB README cap, and accepted only when both its API
+SHA/size metadata and a locally recomputed Git blob SHA/size match the manifest.
+The read-only audit token is inherited from `JITHUB_README_AUDIT_GITHUB_TOKEN`,
+sent only as an authorization header, and never written to corpus or report
+files. Any mismatch or unavailable fallback fails closed. URL lookup values are SHA-256
 keys only; the manifest does not persist source URLs or request headers. The
 fresh JitHub process gets an audit-only resolver over that case's corpus. A
 missing URL, manifest, or mismatched file is blocked; this path has no live
@@ -85,17 +96,118 @@ response can be replayed for the original Markdown URL without saving either
 URL in clear text. Capture rejects more than 15,000 visible image elements or
 URL lookup aliases, tracks at most 100,000 network requests and 16 MiB of URL
 metadata, and bounds each image to 64 MiB and each README's unique image payloads
-to 256 MiB. Every capture uses a fresh corpus directory and cannot resume a
-completed case. Replaying the saved bytes manually is available with
+to 256 MiB. Schema version 2 pins the raw README SHA-256 and captures a
+32-MiB-bounded static `article.markdown-body` snapshot with computed presentation
+styles and indexed image routes. `rendered.html` is private, capture-only input:
+it may contain authored links or embedded data-image bytes, so it must never be
+uploaded as a workflow artifact. The manifest stores only its size/hash and
+content-addressed route metadata. GitHub's captured image MIME is canonicalized
+from bounded payload signatures; unknown payloads fail closed. READMEs shown by
+GitHub as source have an explicit `browserRender.status: "not-applicable"`
+result; they still require a clean native source audit and are not assigned
+fabricated renderer timings.
+
+The old captured-HTML Edge replay is retained as `sameByteHtmlReplay` diagnostic
+evidence only; it does not qualify the release performance gate. For a rendered
+README, after native traversal the audit starts a separate headless Edge replay
+from the exact captured raw Markdown bytes. It parses client-side with the
+vendored [Marked GFM parser](https://marked.js.org/) 18.0.5 (MIT; see
+`vendor/marked-18.0.5.LICENSE`), whose exact bundle bytes are SHA-256 pinned in
+code and verified again by the loopback server and browser SRI. The source-bound
+runner accepts the measured native Markdown host viewport and device scale
+factor, verifies Edge's actual `innerWidth`, `innerHeight`, and DPR, and applies
+the same light/dark theme. It admits Markdown image elements only when their
+URL maps unambiguously to a captured URL hash and payload. A bounded indexed
+`data:image` URI is also accepted only when its decoded MIME and SHA-256 match
+the corresponding payload in the hash-verified captured GitHub HTML; replay
+uses a temporary Blob URL rather than broadening the page's CSP. Uncaptured
+images and network dependencies fail the case. Request interception denies all
+non-loopback requests, and CSP plus the closed-miss server fail any incomplete
+asset replay.
+
+The schema-3 `sameByteReplay` report binds the README Git blob/SHA-256, parser
+name/version/license/SHA-256, viewport/theme/actual Edge dimensions, the
+complete CSS-pixel `renderedExtent`, exact asset-URL-map digest,
+expected/verified image counts, blocked/missing request counts, an HMAC-keyed
+visible-text token multiset, and screenshot tiles that continuously cover that
+full extent. Before using that replay for the native comparison, the audit
+re-HMACs the captured GitHub article's visible text with the same per-case
+ephemeral key and checks token-multiset coverage in both directions. Each
+direction must meet the existing 98.5% text floor. The sanitized case result
+retains only the two aggregate coverages, token counts, and the digest-key
+fingerprint; the separate source-replay evidence contains HMAC digests rather
+than plaintext tokens. Neither file persists the key or raw visible prose.
+Native JitHub-versus-source coverage remains a separate comparison using the
+same 98.5% floor. Failure reports retain a bounded category/status and static
+message, never an exception stack, source URL, or checkout path. Its
+`firstViewportPaintMs`,
+`firstViewportImagesReadyMs`, and `fullTraversalMs` clocks begin after the
+manifest/parser are loaded and stop before screenshot capture. The image-ready
+boundary requires successful decode of every visible pinned image; traversal
+uses the same viewport step/visible-image readiness semantics as the native
+audit. This measures client parsing/layout against the same pinned README and
+image bytes as JitHub, without GitHub navigation, CDN, or server-side rendering
+latency in the denominator. Live GitHub timings and `sameByteHtmlReplay` remain
+separate diagnostics. The same-byte merge independently requires finite
+`comparison.textTokenCoverage >= 0.985` and
+`comparison.visualStructureScore >= 0.95` for every rendered case; a `passed`
+status alone cannot satisfy these gates. GitHub-versus-source structure is a
+separate gate over heading, table, task-checkbox, and authored-details counts.
+Each domain uses `CountFidelity` with equal weights normalized to a total of
+one, and its aggregate must also meet 0.95. It is not averaged with the
+native-versus-source score. The merged release recomputes this aggregate from
+the captured GitHub and source counts, then checks the persisted score. The
+summary reports GitHub/source and native/source scores in separate columns.
+For source-bound full-page timing, `fullTraversalMs` remains the raw end-to-end
+replay clock. The release comparison uses `chargedTraversalMs`, which is the
+same clock minus `auditOnlyFrameWaitMs`: measured requestAnimationFrame wait
+intervals from successful post-target stability confirmations and the final two
+terminal-proof frames only. The first target-matching movement sample, first
+paint, Markdown parse/insert, every image decode wait, and the terminal paint
+after image readiness remain charged. The replay persists the raw clock, the
+charged clock, and excluded-frame duration/count; the merge validates their
+arithmetic and recomputes the existing performance ratio from the charged
+clock. The existing 1.10 performance ceiling and 0.90–1.10 extent gate are
+unchanged.
+The browser boundary is an operational analogue, not a claim of compositor
+frame equivalence: native timing charges `ChangeView` through its non-intermediate
+`ViewChanged` event, while UIA settle-probe/transport overhead is removed and
+image-ready work remains charged. Edge charges each movement through its first
+target-matching sample and keeps image-decode work, without asserting that an
+rAF callback maps to a particular native paint event.
+Workflow shard artifacts retain
+manifests, reports, and raster screenshots/tiles for 14 days. Those images are
+intentional visual evidence for public READMEs and can visibly show their text
+and images. The artifact excludes the raw `rendered.html`, `readme.md`, and
+`assets/**` corpus payload files; that exclusion does not mean the raster
+evidence is free of visible README content.
+
+The standalone runner can also be used against an existing case corpus after
+the native viewport is known:
+
+```powershell
+node .\eng\readme-audit\same-byte-edge-source.mjs `
+  --corpus=<case-corpus-dir> --out=<output-dir> `
+  --width=<native-markdown-width-css-px> --height=<native-markdown-height-css-px> `
+  --device-scale-factor=<native-dpi-over-96> --color-scheme=light
+```
+
+Every capture uses a fresh corpus directory and cannot resume a completed case.
+The manual image-source replay server remains available with
 `node eng/readme-audit/same-byte-replay-server.mjs --corpus=<case-corpus-dir>`;
-the server binds only to IPv4 loopback and returns 404 for an uncaptured source.
-The workflow retains each case's privacy-safe `manifest.json` and result JSON.
-The manifest contains only URL and content hashes, byte counts, and MIME types;
-the raw `readme.md` and `assets/**` payloads are excluded from uploaded
-artifacts. This keeps the capture identity and URL-to-content mapping
-verifiable without uploading potentially very large image corpora. The
-capture/replay tests are deterministic and offline; the manual 500-case run is
-the qualification gate.
+it binds only to IPv4 loopback and returns 404 for an uncaptured source.
+Run the local contracts, including a real headless Edge loopback replay when
+Edge is installed, with:
+
+```powershell
+node --test .\eng\readme-audit\*.test.mjs
+```
+
+The manifest contains URL/content hashes, byte counts, and MIME types; excluding
+the source payloads preserves the capture identity and URL-to-content mapping
+without uploading large or potentially sensitive content. The capture/replay
+tests are deterministic and offline; the manual 500-case run is the
+qualification gate.
 
 For a focused raster-preparation investigation, add `-RasterDiagnostics` to
 the audit invocation. This opt-in evidence writes only a preparation ID,
@@ -185,3 +297,68 @@ deployment model. Each hosted runner installs the exact x64 Windows App Runtime
 verifying its pinned SHA-256. Native launch failures preserve isolated startup
 phase/error logs and abort the shard immediately because they occur before any
 repository-specific work and cannot produce meaningful per-case comparisons.
+
+`Test-WinAppManifestOverrideSandbox.ps1` verifies that WinApp CLI `run
+--manifest` honors a supplied manifest without launching an application. Its
+default mode is plan-only and read-only. An explicit `-Execute -InputFolder
+<built loose AppX folder>` creates two random package identity names in a
+private temp copy (the auto-detected manifest gets A; the override gets B),
+verifies both names are absent on host and Sandbox, then runs folder mode with
+`--no-launch --on sandbox`. It passes only if B is registered, then unregisters
+only newly observed A/B candidates and verifies both are absent again. It
+never reads or passes GitHub credentials, touches the host app identity,
+launches a UI, changes system-wide WER settings, or claims an audit result. If
+state is ambiguous or cleanup cannot be proven, it fails closed and preserves
+the exact temp evidence path for review. Coordinate execution with any
+build/pack or Sandbox UI audit; this test mutates only the existing Sandbox
+for the duration of package registration.
+
+#### Token-free Windows Sandbox renderer smoke (documented, not run)
+
+The lifecycle fixture path can also render a local Markdown file without any
+GitHub credential: `--markdown-lifecycle-fixture` enables the bridge and
+`--markdown-corpus=<path>` reads a `.md`/`.markdown` file up to 4 MiB. In a
+Sandbox run, the file must first be copied into the guest with
+`winapp target push sandbox`; this exercises the Markdown pipeline but does
+not replay captured image payloads or bypass normal remote-image policy.
+
+The WinApp-managed Sandbox is persistent, not a fresh VM per command, and this
+machine's existing Sandbox already has app deployments. The manifest proof
+above does not establish cleanup of pushed guest files or app-data roots, so
+this smoke procedure remains non-executable until those paths are proven. Never
+use the production package identity, `--clean`, or an existing guest
+destination. Establish cleanup of both that exact deployment and the unique
+guest file before running it.
+Never use the production package identity, `--clean`, or an existing guest
+destination. Once that isolation/cleanup review is complete, the intended flow
+is:
+
+```powershell
+# Choose a fresh nonce. Before pushing, use read-only target inspection to
+# prove this relative destination does not already exist; never overwrite it.
+$nonce = [guid]::NewGuid().ToString('N')
+$guestCorpus = "readme-smoke-$nonce\README.md"
+winapp target push sandbox .\README.md $guestCorpus
+
+# Use a separately verified temporary manifest/layout; do not use the
+# repository's production Package.appxmanifest identity directly.
+# Replace <resolved-guest-path> only after verifying the target's managed work
+# root and the exact path used by target push. Do not assume a fixed C:\WinApp
+# location from this example.
+winapp run .\JitHub.WinUI\JitHub.WinUI.csproj -c Release --arch x64 --no-build `
+  --manifest <unique-temporary-manifest> --output-appx-directory <unique-layout> `
+  --with-alias --debug-output --symbols --unregister-on-exit `
+  --args "--page=repo-code --repo=codecrafters-io/build-your-own-x --branch=<pinned-commit> --markdown-lifecycle-fixture --markdown-lifecycle-host=MarkdownHost_RepositoryReadme_RepoCodeReadme --markdown-corpus=<resolved-guest-path>" `
+  --on sandbox
+
+# UIA commands must also specify --on sandbox and target only the newly
+# verified guest app PID/window. Do not automate by app name if ambiguous.
+```
+
+This local-corpus route is a renderer/shutdown smoke only: the repo shell may
+still query public metadata, and linked images continue through the ordinary
+image policy. Sandbox app-data cleanup and managed-work-root path are not yet
+established, so the commands above are a reviewed outline, not an executable
+procedure or an invitation to run against the current persistent Sandbox. Do
+not replace the placeholder or execute any command until cleanup and path
+semantics have been verified on a disposable target.

@@ -23,6 +23,7 @@ internal sealed partial class MarkdownSameByteAuditImageResolver :
 {
     private const long MaximumManifestBytes = 4 * 1024 * 1024;
     private const long MaximumReadmeBytes = 16 * 1024 * 1024;
+    private const long MaximumBrowserRenderBytes = 32 * 1024 * 1024;
     private const int MaximumAssetBytes = 64 * 1024 * 1024;
     private const long MaximumAggregateAssetBytes = 256 * 1024 * 1024;
     private readonly string _root;
@@ -107,9 +108,12 @@ internal sealed partial class MarkdownSameByteAuditImageResolver :
             try
             {
                 byte[] bytes = await ReadVerifiedAssetAsync(asset, cancellationToken).ConfigureAwait(false);
+                string contentType = asset.MimeType.Equals("application/octet-stream", StringComparison.OrdinalIgnoreCase)
+                    ? SniffImageMime(bytes)
+                    : asset.MimeType;
                 return MarkdownImageResolution.Resolved(new MarkdownImageAsset(
                     bytes,
-                    asset.MimeType,
+                    contentType,
                     new Uri($"same-byte://sha256/{asset.Sha256}", UriKind.Absolute),
                     $"same-byte:{asset.Sha256}"));
             }
@@ -134,6 +138,35 @@ internal sealed partial class MarkdownSameByteAuditImageResolver :
         return MarkdownImageResolution.Blocked(MarkdownImageUnavailableReason.Offline);
     }
 
+    /// <summary>
+    /// Supplies the exact captured README bytes to the audit's production
+    /// repository path. The app must not render independently fetched or
+    /// server-rendered text while claiming a same-byte comparison.
+    /// </summary>
+    internal async ValueTask<byte[]> LoadPinnedReadmeBytesAsync(
+        string expectedPath,
+        CancellationToken cancellationToken)
+    {
+        FixtureIndex index = await _index.Value.WaitAsync(cancellationToken).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(expectedPath) ||
+            !string.Equals(index.ReadmePath, expectedPath.Replace('\\', '/'), StringComparison.Ordinal))
+        {
+            throw new InvalidDataException("Same-byte fixture README path does not match the opened repository file.");
+        }
+
+        byte[] bytes = await ReadBoundedFileAsync(
+            Path.Combine(_root, "readme.md"), MaximumReadmeBytes, cancellationToken).ConfigureAwait(false);
+        if (bytes.LongLength != index.ReadmeByteSize ||
+            !string.Equals(
+                Convert.ToHexString(SHA256.HashData(bytes)),
+                index.ReadmeSha256,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidDataException("Same-byte fixture README changed after its manifest was admitted.");
+        }
+        return bytes;
+    }
+
     private async Task<FixtureIndex> LoadIndexAsync()
     {
         string manifestPath = Path.Combine(_root, "manifest.json");
@@ -145,7 +178,7 @@ internal sealed partial class MarkdownSameByteAuditImageResolver :
             ?? throw new InvalidDataException("Same-byte fixture manifest is empty.");
 
         if (manifest.Repository is null || manifest.Readme is null || manifest.Assets is null ||
-            manifest.SchemaVersion != 1 || !manifest.Complete ||
+            manifest.BrowserRender is null || manifest.SchemaVersion != 2 || !manifest.Complete ||
             !string.Equals(manifest.Repository.FullName, _expectedRepository, StringComparison.OrdinalIgnoreCase) ||
             !string.Equals(manifest.Repository.CommitSha, _expectedCommit, StringComparison.OrdinalIgnoreCase) ||
             manifest.Readme.ByteSize < 0 ||
@@ -154,8 +187,10 @@ internal sealed partial class MarkdownSameByteAuditImageResolver :
                 manifest.Repository.ReadmeGitBlobSha1,
                 _expectedReadmeGitBlobSha1,
                 StringComparison.OrdinalIgnoreCase) ||
+            string.IsNullOrWhiteSpace(manifest.Repository.ReadmePath) ||
             !string.Equals(manifest.Readme.File, "readme.md", StringComparison.Ordinal) ||
             !IsSha256(manifest.Readme.Sha256) ||
+            !IsValidBrowserRender(manifest.BrowserRender) ||
             manifest.Assets.Count > 100_000)
         {
             throw new InvalidDataException("Same-byte fixture does not match this repository audit request.");
@@ -170,7 +205,8 @@ internal sealed partial class MarkdownSameByteAuditImageResolver :
         {
             if (entry is null || !IsSha256(entry.UrlSha256) || !IsSha256(entry.Sha256) ||
                 entry.ByteSize <= 0 || entry.ByteSize > MaximumAssetBytes ||
-                !IsImageMime(entry.MimeType))
+                !(IsImageMime(entry.MimeType) ||
+                  string.Equals(entry.MimeType, "application/octet-stream", StringComparison.OrdinalIgnoreCase)))
             {
                 throw new InvalidDataException("Same-byte fixture contains an invalid asset entry.");
             }
@@ -196,10 +232,17 @@ internal sealed partial class MarkdownSameByteAuditImageResolver :
             }
         }
 
-        return new FixtureIndex(assetsByUrlHash);
+        return new FixtureIndex(
+            manifest.Repository.ReadmePath,
+            manifest.Readme.ByteSize,
+            manifest.Readme.Sha256,
+            assetsByUrlHash);
     }
 
-    private static async Task<byte[]> ReadBoundedFileAsync(string path, long maximumBytes)
+    private static async Task<byte[]> ReadBoundedFileAsync(
+        string path,
+        long maximumBytes,
+        CancellationToken cancellationToken = default)
     {
         FileInfo info = new(path);
         EnsureRegularFile(info, maximumBytes);
@@ -215,7 +258,7 @@ internal sealed partial class MarkdownSameByteAuditImageResolver :
             throw new InvalidDataException("Same-byte fixture file changed while it was opened.");
 
         byte[] bytes = new byte[expectedLength];
-        await stream.ReadExactlyAsync(bytes, CancellationToken.None).ConfigureAwait(false);
+        await stream.ReadExactlyAsync(bytes, cancellationToken).ConfigureAwait(false);
         if (stream.ReadByte() != -1)
             throw new InvalidDataException("Same-byte fixture file exceeded its bounded length.");
         return bytes;
@@ -361,8 +404,22 @@ internal sealed partial class MarkdownSameByteAuditImageResolver :
             .ToLowerInvariant());
     }
 
-    private static bool IsSha256(string value) =>
+    private static bool IsSha256(string? value) =>
         value is { Length: 64 } && value.All(character => char.IsAsciiHexDigit(character));
+
+    private static bool IsValidBrowserRender(SameByteBrowserRender render) =>
+        render.Status switch
+        {
+            "passed" =>
+                string.Equals(render.File, "rendered.html", StringComparison.Ordinal) &&
+                render.ByteSize is > 0 and <= MaximumBrowserRenderBytes &&
+                IsSha256(render.Sha256),
+            "not-applicable" =>
+                string.Equals(render.Reason, "github-source-view", StringComparison.Ordinal) &&
+                string.IsNullOrEmpty(render.File) && render.ByteSize == 0 &&
+                string.IsNullOrEmpty(render.Sha256),
+            _ => false,
+        };
 
     private static bool IsImageMime(string value)
     {
@@ -372,11 +429,47 @@ internal sealed partial class MarkdownSameByteAuditImageResolver :
             char.IsAsciiLetterOrDigit(character) || character is '.' or '+' or '-');
     }
 
+    private static string SniffImageMime(ReadOnlySpan<byte> bytes)
+    {
+        // Edge can deliver image bytes with the generic octet-stream header.
+        // Admit that declaration only after the content-addressed bytes prove
+        // a supported image type; never pass a generic binary MIME onward.
+        if (bytes.Length >= 8 && bytes[0] == 137 && bytes[1] == 80 &&
+            bytes[2] == 78 && bytes[3] == 71 && bytes[4] == 13 &&
+            bytes[5] == 10 && bytes[6] == 26 && bytes[7] == 10)
+            return "image/png";
+        if (bytes.Length >= 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF)
+            return "image/jpeg";
+        if (bytes.StartsWith("GIF87a"u8) || bytes.StartsWith("GIF89a"u8))
+            return "image/gif";
+        if (bytes.Length >= 12 && bytes.StartsWith("RIFF"u8) &&
+            bytes.Slice(8, 4).SequenceEqual("WEBP"u8))
+            return "image/webp";
+        if (bytes.StartsWith("BM"u8))
+            return "image/bmp";
+        if (bytes.Length >= 4 && bytes[0] == 0 && bytes[1] == 0 &&
+            bytes[2] == 1 && bytes[3] == 0)
+            return "image/x-icon";
+        if (bytes.Length >= 12 && bytes.Slice(4, 4).SequenceEqual("ftyp"u8) &&
+            (bytes.Slice(8, 4).SequenceEqual("avif"u8) ||
+             bytes.Slice(8, 4).SequenceEqual("avis"u8)))
+            return "image/avif";
+        ReadOnlySpan<byte> prefix = bytes[..Math.Min(bytes.Length, 1_024)];
+        if (prefix.IndexOf("<svg"u8) >= 0)
+            return "image/svg+xml";
+
+        throw new InvalidDataException("Generic binary fixture content is not a supported image.");
+    }
+
     private static bool IsFixtureFailure(Exception exception) =>
         exception is IOException or InvalidDataException or UnauthorizedAccessException or JsonException or
             ArgumentException or NotSupportedException or OverflowException;
 
-    private sealed record FixtureIndex(IReadOnlyDictionary<string, FixtureAsset> AssetsByUrlHash);
+    private sealed record FixtureIndex(
+        string ReadmePath,
+        long ReadmeByteSize,
+        string ReadmeSha256,
+        IReadOnlyDictionary<string, FixtureAsset> AssetsByUrlHash);
 
     private sealed record FixtureAsset(string Sha256, int ByteSize, string MimeType);
 
@@ -386,6 +479,7 @@ internal sealed partial class MarkdownSameByteAuditImageResolver :
         public bool Complete { get; init; }
         public SameByteRepository Repository { get; init; } = new();
         public SameByteReadme Readme { get; init; } = new();
+        public SameByteBrowserRender BrowserRender { get; init; } = new();
         public List<SameByteAssetEntry> Assets { get; init; } = [];
     }
 
@@ -393,6 +487,7 @@ internal sealed partial class MarkdownSameByteAuditImageResolver :
     {
         public string FullName { get; init; } = string.Empty;
         public string CommitSha { get; init; } = string.Empty;
+        public string ReadmePath { get; init; } = string.Empty;
         public string ReadmeGitBlobSha1 { get; init; } = string.Empty;
     }
 
@@ -401,6 +496,15 @@ internal sealed partial class MarkdownSameByteAuditImageResolver :
         public string File { get; init; } = string.Empty;
         public long ByteSize { get; init; }
         public string Sha256 { get; init; } = string.Empty;
+    }
+
+    private sealed class SameByteBrowserRender
+    {
+        public string Status { get; init; } = string.Empty;
+        public string? Reason { get; init; }
+        public string? File { get; init; }
+        public long ByteSize { get; init; }
+        public string? Sha256 { get; init; }
     }
 
     private sealed class SameByteAssetEntry

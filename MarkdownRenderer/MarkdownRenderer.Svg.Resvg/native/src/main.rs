@@ -8,6 +8,7 @@ use std::ffi::{OsStr, c_void};
 use std::fs::OpenOptions;
 use std::io::{Read, Write};
 use std::os::windows::ffi::OsStrExt;
+use std::path::PathBuf;
 use std::slice;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::mpsc::TryRecvError;
@@ -103,6 +104,50 @@ struct WorkerState {
     tick: u64,
     font_database: Option<Arc<usvg::fontdb::Database>>,
     font_database_receiver: mpsc::Receiver<Result<Arc<usvg::fontdb::Database>, Reject>>,
+    font_catalog_phase: Arc<AtomicU8>,
+}
+
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum FontCatalogPhase {
+    WorkerStartup = 0,
+    MachineFonts = 1,
+    UserLocalFonts = 2,
+    UserRoamingFonts = 3,
+    FontFamilyDefaults = 4,
+    TextPipelineWarmup = 5,
+    Ready = 6,
+}
+
+impl FontCatalogPhase {
+    fn from_byte(value: u8) -> Self {
+        match value {
+            1 => Self::MachineFonts,
+            2 => Self::UserLocalFonts,
+            3 => Self::UserRoamingFonts,
+            4 => Self::FontFamilyDefaults,
+            5 => Self::TextPipelineWarmup,
+            6 => Self::Ready,
+            _ => Self::WorkerStartup,
+        }
+    }
+
+    fn detail(self) -> &'static str {
+        match self {
+            Self::WorkerStartup => "font-worker-startup",
+            Self::MachineFonts => "machine-fonts",
+            Self::UserLocalFonts => "user-local-fonts",
+            Self::UserRoamingFonts => "user-roaming-fonts",
+            Self::FontFamilyDefaults => "font-family-defaults",
+            Self::TextPipelineWarmup => "text-pipeline-warmup",
+            Self::Ready => "ready",
+        }
+    }
+}
+
+enum FontCatalogProbe {
+    Ready,
+    Pending(FontCatalogPhase),
 }
 
 #[derive(Clone)]
@@ -172,19 +217,17 @@ fn run() -> Result<(), String> {
         .map_err(|error| format!("pipe open failed: {error}"))?;
 
     let (font_sender, font_receiver) = mpsc::channel();
+    let font_catalog_phase = Arc::new(AtomicU8::new(FontCatalogPhase::WorkerStartup as u8));
+    let font_thread_phase = Arc::clone(&font_catalog_phase);
     thread::Builder::new()
         .name("resvg-font-catalog".to_owned())
         .spawn(move || {
-            let mut database = usvg::fontdb::Database::new();
-            database.load_system_fonts();
-            database.set_serif_family("Times New Roman");
-            database.set_sans_serif_family("Segoe UI");
-            database.set_cursive_family("Segoe Script");
-            database.set_fantasy_family("Impact");
-            database.set_monospace_family("Cascadia Mono");
-            let database = Arc::new(database);
-            let result = warm_text_pipeline(&database).map(|()| database);
+            let result = initialize_font_database(&font_thread_phase);
+            let ready = result.is_ok();
             let _ = font_sender.send(result);
+            if ready {
+                font_thread_phase.store(FontCatalogPhase::Ready as u8, Ordering::Release);
+            }
         })
         .map_err(|error| format!("font thread failed: {error}"))?;
 
@@ -195,6 +238,7 @@ fn run() -> Result<(), String> {
         tick: 0,
         font_database: None,
         font_database_receiver: font_receiver,
+        font_catalog_phase,
     };
 
     loop {
@@ -214,11 +258,10 @@ fn run() -> Result<(), String> {
         let response = match request.kind {
             KIND_HELLO => {
                 validate_control_request(&request, false)?;
-                poll_font_database(&mut state).map(|ready| {
-                    if ready {
-                        Response::ok(&request, Metadata::default(), 0, 0, 0)
-                    } else {
-                        Response::font_catalog_pending(&request)
+                poll_font_database(&mut state).map(|probe| match probe {
+                    FontCatalogProbe::Ready => Response::ok(&request, Metadata::default(), 0, 0, 0),
+                    FontCatalogProbe::Pending(phase) => {
+                        Response::font_catalog_pending(&request, phase.detail())
                     }
                 })
             }
@@ -1777,18 +1820,60 @@ fn ensure_font_database(state: &mut WorkerState) -> Result<(), Reject> {
     Ok(())
 }
 
-fn poll_font_database(state: &mut WorkerState) -> Result<bool, Reject> {
+fn poll_font_database(state: &mut WorkerState) -> Result<FontCatalogProbe, Reject> {
     if state.font_database.is_some() {
-        return Ok(true);
+        return Ok(FontCatalogProbe::Ready);
     }
     match state.font_database_receiver.try_recv() {
         Ok(result) => {
             state.font_database = Some(result?);
-            Ok(true)
+            Ok(FontCatalogProbe::Ready)
         }
-        Err(TryRecvError::Empty) => Ok(false),
+        Err(TryRecvError::Empty) => Ok(FontCatalogProbe::Pending(FontCatalogPhase::from_byte(
+            state.font_catalog_phase.load(Ordering::Acquire),
+        ))),
         Err(TryRecvError::Disconnected) => Err(Reject::Worker("font catalog failed")),
     }
+}
+
+fn initialize_font_database(phase: &AtomicU8) -> Result<Arc<usvg::fontdb::Database>, Reject> {
+    let mut database = usvg::fontdb::Database::new();
+
+    // Keep fontdb's complete Windows search set, but publish each root before
+    // scanning it. This keeps HELLO responsive and makes a slow machine or
+    // per-user font location diagnosable without logging a path or font name.
+    phase.store(FontCatalogPhase::MachineFonts as u8, Ordering::Release);
+    let machine_fonts = std::env::var_os("SYSTEMROOT")
+        .map(|root| PathBuf::from(root).join("Fonts"))
+        .unwrap_or_else(|| PathBuf::from("C:\\Windows\\Fonts\\"));
+    database.load_fonts_dir(machine_fonts);
+
+    if let Ok(home) = std::env::var("USERPROFILE") {
+        let home = PathBuf::from(home);
+        phase.store(FontCatalogPhase::UserLocalFonts as u8, Ordering::Release);
+        database.load_fonts_dir(home.join("AppData\\Local\\Microsoft\\Windows\\Fonts"));
+
+        phase.store(FontCatalogPhase::UserRoamingFonts as u8, Ordering::Release);
+        database.load_fonts_dir(home.join("AppData\\Roaming\\Microsoft\\Windows\\Fonts"));
+    }
+
+    phase.store(
+        FontCatalogPhase::FontFamilyDefaults as u8,
+        Ordering::Release,
+    );
+    database.set_serif_family("Times New Roman");
+    database.set_sans_serif_family("Segoe UI");
+    database.set_cursive_family("Segoe Script");
+    database.set_fantasy_family("Impact");
+    database.set_monospace_family("Cascadia Mono");
+
+    phase.store(
+        FontCatalogPhase::TextPipelineWarmup as u8,
+        Ordering::Release,
+    );
+    let database = Arc::new(database);
+    warm_text_pipeline(&database)?;
+    Ok(database)
 }
 
 fn warm_text_pipeline(database: &Arc<usvg::fontdb::Database>) -> Result<(), Reject> {
@@ -2219,7 +2304,7 @@ impl Response {
         }
     }
 
-    fn font_catalog_pending(request: &Request) -> Self {
+    fn font_catalog_pending(request: &Request, phase: &'static str) -> Self {
         Self {
             status: STATUS_FONT_CATALOG_PENDING,
             request_id: request.request_id,
@@ -2230,7 +2315,7 @@ impl Response {
             width: 0,
             height: 0,
             pixel_format: 0,
-            detail: "",
+            detail: phase,
         }
     }
 
@@ -2375,15 +2460,27 @@ mod tests {
             tick: 0,
             font_database: None,
             font_database_receiver: receiver,
+            font_catalog_phase: Arc::new(AtomicU8::new(FontCatalogPhase::UserRoamingFonts as u8)),
         };
 
-        assert!(matches!(poll_font_database(&mut state), Ok(false)));
+        assert!(matches!(
+            poll_font_database(&mut state),
+            Ok(FontCatalogProbe::Pending(
+                FontCatalogPhase::UserRoamingFonts
+            ))
+        ));
         sender
             .send(Ok(Arc::new(usvg::fontdb::Database::new())))
             .unwrap();
-        assert!(matches!(poll_font_database(&mut state), Ok(true)));
+        assert!(matches!(
+            poll_font_database(&mut state),
+            Ok(FontCatalogProbe::Ready)
+        ));
         drop(sender);
-        assert!(matches!(poll_font_database(&mut state), Ok(true)));
+        assert!(matches!(
+            poll_font_database(&mut state),
+            Ok(FontCatalogProbe::Ready)
+        ));
     }
 
     #[test]
@@ -2397,12 +2494,53 @@ mod tests {
             tick: 0,
             font_database: None,
             font_database_receiver: receiver,
+            font_catalog_phase: Arc::new(AtomicU8::new(FontCatalogPhase::TextPipelineWarmup as u8)),
         };
 
         assert!(matches!(
             poll_font_database(&mut state),
             Err(Reject::Worker("font catalog failed"))
         ));
+    }
+
+    #[test]
+    fn font_catalog_phase_details_are_stable_and_content_free() {
+        let phases = [
+            (FontCatalogPhase::WorkerStartup, "font-worker-startup"),
+            (FontCatalogPhase::MachineFonts, "machine-fonts"),
+            (FontCatalogPhase::UserLocalFonts, "user-local-fonts"),
+            (FontCatalogPhase::UserRoamingFonts, "user-roaming-fonts"),
+            (FontCatalogPhase::FontFamilyDefaults, "font-family-defaults"),
+            (FontCatalogPhase::TextPipelineWarmup, "text-pipeline-warmup"),
+            (FontCatalogPhase::Ready, "ready"),
+        ];
+
+        for (phase, expected) in phases {
+            let detail = phase.detail();
+            assert_eq!(detail, expected);
+            assert!(
+                detail
+                    .bytes()
+                    .all(|byte| { byte.is_ascii_lowercase() || byte == b'-' })
+            );
+        }
+    }
+
+    #[test]
+    fn font_catalog_pending_response_carries_its_current_phase() {
+        let mut request = test_request(4);
+        request.kind = KIND_HELLO;
+
+        let response =
+            Response::font_catalog_pending(&request, FontCatalogPhase::UserRoamingFonts.detail())
+                .encode();
+        let detail_length = usize::from(read_u16(&response, 74));
+
+        assert_eq!(read_u16(&response, 6), STATUS_FONT_CATALOG_PENDING);
+        assert_eq!(
+            std::str::from_utf8(&response[80..80 + detail_length]).unwrap(),
+            "user-roaming-fonts"
+        );
     }
 
     fn test_request(max_nested_svg_depth: u32) -> Request {
@@ -2594,6 +2732,7 @@ mod tests {
             tick: 0,
             font_database: None,
             font_database_receiver: font_receiver,
+            font_catalog_phase: Arc::new(AtomicU8::new(FontCatalogPhase::Ready as u8)),
         };
         let first = b"<svg xmlns='http://www.w3.org/2000/svg' width='1' height='1'><rect width='1' height='1'/></svg>";
         let second = b"<svg xmlns='http://www.w3.org/2000/svg' width='2' height='1'><rect width='2' height='1'/></svg>";
@@ -2651,6 +2790,7 @@ mod tests {
             tick: 0,
             font_database: None,
             font_database_receiver: font_receiver,
+            font_catalog_phase: Arc::new(AtomicU8::new(FontCatalogPhase::Ready as u8)),
         };
         let source = b"<svg xmlns='http://www.w3.org/2000/svg' width='2' height='2'><rect width='2' height='2'/></svg>";
         let mut request = test_request(4);

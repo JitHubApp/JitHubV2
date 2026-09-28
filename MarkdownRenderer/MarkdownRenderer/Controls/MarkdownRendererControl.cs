@@ -47,7 +47,8 @@ namespace MarkdownRenderer.Controls;
     "Use MarkdownScrollView for an owned viewport or MarkdownDocumentView for an ancestor-owned viewport.",
     DiagnosticId = "MR1001",
     UrlFormat = "https://github.com/JitHubApp/JitHubV2/tree/main/docs/markdown-renderer#{0}")]
-public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdownEnvironmentListener
+public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdownEnvironmentListener,
+    IMarkdownPerformanceLegacyParser
 {
     private readonly bool _ownsScrollViewport;
     private AppWindow? _windowLifecycleAppWindow;
@@ -78,6 +79,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     private long _snapshotGeneration;
     private long _snapshotPipelineStartTimestamp;
     private long _snapshotSourceUtf16Bytes;
+    private Func<Windows.Foundation.Rect, bool>? _automationFirstViewportImagesReadyPaintCallback;
     private MarkdownPipelineTimingSnapshot _lastPipelineTiming;
     private CancellationTokenSource? _lazyLayoutCts;
     private Task? _lazyLayoutTask;
@@ -197,6 +199,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     // callback. Keep the subscribed instance outside DependencyObject storage
     // so the callback never reads a thread-affine dependency property.
     private IMarkdownSvgRenderer? _subscribedSvgRenderer;
+    private IMarkdownPerformanceSessionInternal? _subscribedPerformanceSession;
     private bool _canvasRenderHandlersAttached;
     private readonly PointerEventHandler _canvasPointerMovedHandler;
     private readonly PointerEventHandler _canvasPointerReleasedHandler;
@@ -217,7 +220,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     private enum ClickMode { Single, Word, Block }
     private enum SelectionHandleEndpoint { None, Start, End }
     private ClickMode _clickMode;
-    private enum RebuildReason { Full, Restyle }
+    private enum RebuildReason { Full, Restyle, SceneMaterialized }
     private readonly record struct PointerSession(uint PointerId, bool IsPrimary)
     {
         public bool IsActive => PointerId != 0;
@@ -584,10 +587,6 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     private MarkdownImageResolveContext? _activeImagePrefetchContext;
     private int _prefetchedImageRegistryRevision = -1;
     private PendingImagePrefetch? _pendingImagePrefetch;
-    private IMarkdownPerformanceDocumentScope? _performanceDocumentScope;
-    private string? _performanceDocumentSource;
-    private int _performanceRegistryRevision = -1;
-    private bool _performancePrefetchStarted;
 
     private sealed record PendingImagePrefetch(
         Markdig.Syntax.MarkdownDocument Document,
@@ -1150,7 +1149,57 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                 "The performance session must be supplied by the optional MarkdownRenderer.Performance package.",
                 nameof(PerformanceSession));
         }
+        DetachPerformanceSessionDisposalNotification();
+        if (args.OldValue is IMarkdownPerformanceSessionInternal oldSession)
+        {
+            oldSession.ReleaseDeferredSceneDocument(this);
+            oldSession.ReleaseDocumentScope(this);
+        }
+        AttachPerformanceSessionDisposalNotification();
         RequestRebuild();
+    }
+
+    private void AttachPerformanceSessionDisposalNotification()
+    {
+        if (_isDisposed || _isUnloaded ||
+            PerformanceSession is not IMarkdownPerformanceSessionInternal session)
+        {
+            return;
+        }
+
+        session.Disposed -= OnPerformanceSessionDisposed;
+        Volatile.Write(ref _subscribedPerformanceSession, session);
+        session.Disposed += OnPerformanceSessionDisposed;
+    }
+
+    private void DetachPerformanceSessionDisposalNotification()
+    {
+        IMarkdownPerformanceSessionInternal? previous =
+            Interlocked.Exchange(ref _subscribedPerformanceSession, null);
+        if (previous is not null)
+            previous.Disposed -= OnPerformanceSessionDisposed;
+    }
+
+    private void OnPerformanceSessionDisposed(object? sender, EventArgs args)
+    {
+        if (!ReferenceEquals(sender, Volatile.Read(ref _subscribedPerformanceSession)) ||
+            Volatile.Read(ref _isDisposed) ||
+            Volatile.Read(ref _isUnloaded))
+        {
+            return;
+        }
+
+        DispatcherQueue?.TryEnqueue(() =>
+        {
+            if (ReferenceEquals(sender, Volatile.Read(ref _subscribedPerformanceSession)) &&
+                !_isDisposed && !_isUnloaded)
+            {
+                // RebuildInternalAsync detects the disposed borrowed session
+                // and uses the eager engine/legacy parser path, replacing any
+                // committed code fallback with its native scene.
+                RequestRebuild();
+            }
+        });
     }
 
     private void OnSvgRendererChanged(DependencyPropertyChangedEventArgs args)
@@ -1735,6 +1784,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     internal void PrepareForSyntheticDeviceReset()
     {
         CancelLazyLayoutRealization();
+        CancelAutomationFirstViewportImagesReadyProbe();
         LayoutSnapshot? snapshot = _snapshot;
         _snapshot = null;
         _snapshotPipelineStartTimestamp = 0;
@@ -2170,6 +2220,37 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         return false;
     }
 
+    internal List<Layout.Boxes.ImageBox> AutomationImagePlans => _imagePlans;
+
+    internal ViewportBandIndex? AutomationImagePlanIndex => _imagePlanIndex;
+
+    internal long AutomationSnapshotGeneration => _snapshotGeneration;
+
+    internal long AutomationPipelineGeneration => _pipelineGeneration;
+
+    internal void BeginAutomationFirstViewportImagesReadyProbe(
+        Func<Windows.Foundation.Rect, bool> paintCallback)
+    {
+        CancelAutomationFirstViewportImagesReadyProbe();
+        if (paintCallback is null ||
+            _isDisposed ||
+            _isUnloaded ||
+            !IsLoaded ||
+            _snapshot is null)
+            return;
+
+        _automationFirstViewportImagesReadyPaintCallback = paintCallback;
+        // RenderCompleted can run after the current viewport was already
+        // painted. Force one post-arm CanvasVirtualControl paint so the probe
+        // cannot wait forever on image-free pages or miss a paint that
+        // happened before this generation's readiness observation.
+        // This is audit-only; normal rendering does not enter this path.
+        InvalidateCanvas();
+    }
+
+    internal void CancelAutomationFirstViewportImagesReadyProbe() =>
+        _automationFirstViewportImagesReadyPaintCallback = null;
+
     internal void ScrollDocumentRectIntoView(Windows.Foundation.Rect rect, bool alignToTop)
     {
         if (_scroll is null)
@@ -2358,7 +2439,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         ScheduleVisibleCodeBlockHighlighting();
     }
 
-    private bool TryGetViewport(out double top, out double height, out double width)
+    internal bool TryGetViewport(out double top, out double height, out double width)
     {
         if (_scroll is not null)
         {
@@ -3020,6 +3101,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             Volatile.Write(ref _subscribedSvgRenderer, svgRenderer);
             svgRenderer.CacheInvalidated += OnSvgRendererCacheInvalidated;
         }
+        AttachPerformanceSessionDisposalNotification();
         RequestRebuild();
     }
 
@@ -3032,6 +3114,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         // (e.g. from OnImageLoadCompleted) that are already in-flight know
         // not to call RequestRebuild after we've torn down.
         _isUnloaded = true;
+        DetachPerformanceSessionDisposalNotification();
         ResetDeferredPointerInput();
         // An unloaded view is reusable and no longer belongs to this window.
         // Do not let a former host destroy it, or retain weak-event wrappers
@@ -3053,6 +3136,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
 
     private void ReleaseLoadedResources()
     {
+        CancelAutomationFirstViewportImagesReadyProbe();
         CloseSelectionContextMenu();
         ClearHorizontalOverflowPointerState();
         HideAbbreviationTooltip();
@@ -3126,11 +3210,11 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         _activeImagePrefetchContext = null;
         _prefetchedImageRegistryRevision = -1;
         _pendingImagePrefetch = null;
-        _performanceDocumentScope?.Dispose();
-        _performanceDocumentScope = null;
-        _performanceDocumentSource = null;
-        _performanceRegistryRevision = -1;
-        _performancePrefetchStarted = false;
+        if (PerformanceSession is IMarkdownPerformanceSessionInternal performanceSession)
+        {
+            performanceSession.ReleaseDeferredSceneDocument(this);
+            performanceSession.ReleaseDocumentScope(this);
+        }
         _embedRects.Clear();
         _blockEmbedRects.Clear();
         ResetSelectionHandleDrag();
@@ -3160,6 +3244,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         _selectionEndHandle = null;
         _focusRing = null; // evicted from overlay above; lazily re-created on re-attach
         var snap = _snapshot;
+        CancelAutomationFirstViewportImagesReadyProbe();
         _snapshot = null;
         RetireSnapshot(snap);
     }
@@ -3211,6 +3296,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     // Release tooling observes actual control teardown without expanding the
     // public API or treating process disappearance as proof of disposal.
     internal event EventHandler? DisposalCompleted;
+
 
     // WinUI does not guarantee a child UserControl receives Unloaded when its
     // top-level window is destroyed. Subscribe to the non-cancelable window
@@ -3435,6 +3521,16 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         if (_isUnloaded)
             return;
 
+        // A published scene is immutable and already passed its plan-generation
+        // fence. Keep sibling renders alive while its presentation is rebuilt;
+        // source/configuration/relayout requests still invalidate the plan.
+        if (MarkdownRebuildDispatchPolicy.AdvancesDeferredSceneGeneration(
+                reason == RebuildReason.SceneMaterialized))
+        {
+            (PerformanceSession as IMarkdownPerformanceSessionInternal)?.AdvanceDeferredSceneGeneration(this);
+        }
+
+        CancelAutomationFirstViewportImagesReadyProbe();
         // Fence the currently active generation at request time, before the
         // queued rebuild callback can be delayed by UI work. This makes a
         // superseded pipeline unable to publish even while its parse worker is
@@ -3781,6 +3877,12 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         return parsed;
     }
 
+    Task<ParsedMarkdown?> IMarkdownPerformanceLegacyParser.ParseLegacyMarkdownAsync(
+        string source,
+        MarkdownExtensionRegistry registry,
+        CancellationToken cancellationToken) =>
+        GetParsedMarkdownAsync(source, registry, cancellationToken);
+
     private async Task RebuildInternalAsync(
         CancellationToken ct,
         RebuildReason reason,
@@ -3794,6 +3896,10 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
 
         MarkdownExtensionRegistry legacyRegistry = ExtensionRegistry ?? _defaultRegistry;
         MarkdownEngine? engineSnapshot = Engine;
+        IMarkdownPerformanceSessionInternal? performanceSessionSnapshot =
+            PerformanceSession as IMarkdownPerformanceSessionInternal;
+        if (performanceSessionSnapshot?.IsDisposed == true)
+            performanceSessionSnapshot = null;
         var reusableDocument = _hasExplicitDocument ? Document : null;
         var source = reusableDocument?.Source ?? Markdown ?? string.Empty;
         long parseStarted = Stopwatch.GetTimestamp();
@@ -3801,11 +3907,24 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         if (ct.IsCancellationRequested || generation != _pipelineGeneration)
             return;
 
-        ParsedMarkdown? parsed;
         MarkdownRenderer.Document.MarkdownDocument? semanticDocument = reusableDocument;
-        if (reusableDocument?.ParsedDocument is { } reusableAst)
+        MarkdownRenderer.Document.MarkdownDocument? reusableParsedDocument =
+            reusableDocument?.ParsedDocument is not null ? reusableDocument : null;
+        if (performanceSessionSnapshot is not null)
         {
-            parsed = new ParsedMarkdown(reusableDocument.Source, reusableAst);
+            semanticDocument = await performanceSessionSnapshot.ParseAndPrepareDocumentAsync(
+                engineSnapshot,
+                reusableParsedDocument,
+                source,
+                legacyRegistry,
+                this,
+                ct).ConfigureAwait(true);
+        }
+
+        ParsedMarkdown? parsed;
+        if (semanticDocument?.ParsedDocument is { } semanticAst)
+        {
+            parsed = new ParsedMarkdown(semanticDocument.Source, semanticAst);
         }
         else if (engineSnapshot is { } engine)
         {
@@ -3852,10 +3971,6 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         var embedFactorySnapshot = EmbedFactory;
         var hostedElementFactorySnapshot = HostedElementFactory;
         var imageResolverSnapshot = ImageResolver;
-        IMarkdownPerformanceSessionInternal? performanceSessionSnapshot =
-            PerformanceSession as IMarkdownPerformanceSessionInternal;
-        if (performanceSessionSnapshot?.IsDisposed == true)
-            performanceSessionSnapshot = null;
         var svgRendererSnapshot = SvgRenderer;
         Uri? imageBaseUriSnapshot = ImageBaseUri;
         string? imageDocumentPathSnapshot = ImageDocumentPath;
@@ -3868,35 +3983,30 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             imageDocumentSourceSnapshot);
         if (performanceSessionSnapshot is not null && imageResolverSnapshot is not null)
         {
-            if (_performanceDocumentScope is not { } currentScope ||
-                !currentScope.Matches(performanceSessionSnapshot, imageResolverSnapshot, imageResolveContext) ||
-                !string.Equals(_performanceDocumentSource, parsed.SourceText, StringComparison.Ordinal) ||
-                _performanceRegistryRevision != layoutRegistry.Revision)
+            IMarkdownPerformanceDocumentScope? scope = performanceSessionSnapshot.PrepareDocumentScope(
+                this,
+                parsed.SourceText,
+                layoutRegistry.Revision,
+                parsed.Document,
+                layoutRegistry.SafeHtmlPolicy,
+                imageResolverSnapshot,
+                imageResolveContext);
+            if (scope is null)
             {
-                _performanceDocumentScope?.Dispose();
-                _performanceDocumentScope = performanceSessionSnapshot.OpenDocument(
-                    imageResolverSnapshot, imageResolveContext);
-                _performanceDocumentSource = parsed.SourceText;
-                _performanceRegistryRevision = layoutRegistry.Revision;
-                _performancePrefetchStarted = false;
+                performanceSessionSnapshot = null;
+                QueueImageSourcePrefetch(
+                    parsed.Document,
+                    parsed.SourceText,
+                    layoutRegistry,
+                    imageResolverSnapshot,
+                    imageResolveContext);
             }
-
-            IMarkdownPerformanceDocumentScope scope = _performanceDocumentScope;
-            imageResolverSnapshot = scope;
-            if (!_performancePrefetchStarted && performanceSessionSnapshot.Options.PrefetchDocumentImages)
-            {
-                _performancePrefetchStarted = true;
-                _ = PrefetchPerformanceImagesObservedAsync(
-                    parsed.Document, layoutRegistry.SafeHtmlPolicy, scope);
-            }
+            else
+                imageResolverSnapshot = scope;
         }
         else
         {
-            _performanceDocumentScope?.Dispose();
-            _performanceDocumentScope = null;
-            _performanceDocumentSource = null;
-            _performanceRegistryRevision = -1;
-            _performancePrefetchStarted = false;
+            performanceSessionSnapshot?.ReleaseDocumentScope(this);
             QueueImageSourcePrefetch(
                 parsed.Document,
                 parsed.SourceText,
@@ -3918,11 +4028,24 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         double textScaleFactor = _environmentSnapshot.TextScaleFactor > 0
             ? _environmentSnapshot.TextScaleFactor
             : 1.0;
+        ulong? styleRoleDemandMask = null;
+        if (performanceSessionSnapshot is not null &&
+            !layoutRegistry.HasUnclassifiedStyleRoleRenderers &&
+            performanceSessionSnapshot.TryGetStyleRoleDemandMask(
+                semanticDocument,
+                ct,
+                out ulong completeStyleRoleDemandMask))
+        {
+            styleRoleDemandMask = completeStyleRoleDemandMask;
+        }
+
         long themeSnapshotStarted = Stopwatch.GetTimestamp();
-        var themeSnapshot = new ThemeResolver(this, theme).CreateSnapshot(
+        var themeResolver = new ThemeResolver(this, theme);
+        var themeSnapshot = themeResolver.CreateSnapshot(
             styleSheetSnapshot,
             textScaleFactor,
-            semanticDocument.GetExtensionStyleRoleNames());
+            semanticDocument.GetExtensionStyleRoleNames(),
+            styleRoleDemandMask);
         double themeSnapshotMilliseconds = Stopwatch.GetElapsedTime(themeSnapshotStarted).TotalMilliseconds;
         // Use the shared CanvasDevice (always available, no visual-tree required).
         // CanvasVirtualControl only has a device after CreateResources fires, so
@@ -4130,6 +4253,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         // replacement pipeline is building. Fence that old-snapshot work at
         // the commit boundary before publishing and retiring its owner.
         CancelLazyLayoutRealization();
+        CancelAutomationFirstViewportImagesReadyProbe();
         if (!sameDocument)
             _scrollViewIntermediate = false;
         _snapshot = snapshot;
@@ -4163,7 +4287,12 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
 
         // Restore scroll anchor: find the anchor block's new Y in the new layout
         // and adjust the scroll offset so the user's read position is unchanged.
-        if (scrollAnchor is { } anchor && _scroll is { } scrollRestore)
+        if (scrollAnchor is { } anchor &&
+            _scroll is { } scrollRestore &&
+            LazyLayoutScrollAnchorPolicy.ShouldRestore(
+                anchor.OldOffset,
+                scrollRestore.VerticalOffset,
+                _scrollViewIntermediate))
         {
             double? newY = null;
             if (anchor.BlockIndex is { } anchorBlock)
@@ -4423,6 +4552,8 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
 
     private void ScheduleVisibleCodeBlockHighlighting()
     {
+        ScheduleVisibleDeferredScenes();
+
         if (!_hasMeasuredCodeBlocks ||
             !IsCodeBlockSyntaxHighlightingEnabled ||
             CodeHighlighter is not { } highlighter ||
@@ -4516,6 +4647,19 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         if (appliedCached)
             InvalidateCanvas();
     }
+
+    internal void ScheduleVisibleDeferredScenes()
+    {
+        IMarkdownPerformanceSessionInternal? session =
+            PerformanceSession as IMarkdownPerformanceSessionInternal;
+        if (session is not null && !session.IsDisposed && session.Options.DeferOffscreenScenes)
+            session.ScheduleDeferredScenes(this);
+    }
+
+    internal LayoutSnapshot? ProgressiveSceneSnapshot => _snapshot;
+
+    internal void RequestRebuildAfterDeferredScene()
+        => RequestRebuild(RebuildReason.SceneMaterialized);
 
     private void TrackCodeBlockHighlightTask(Task task)
     {
@@ -4704,7 +4848,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     private static IEnumerable<Layout.Boxes.CodeBlockBox> EnumerateCodeBlocks(LayoutSnapshot snapshot)
         => EnumerateCodeBlocks(snapshot.GetMeasuredTopLevelBlocks());
 
-    private static IEnumerable<Layout.Boxes.CodeBlockBox> EnumerateCodeBlocks(
+    internal static IEnumerable<Layout.Boxes.CodeBlockBox> EnumerateCodeBlocks(
         IReadOnlyList<BlockBox> blocks)
     {
         foreach (var block in blocks)
@@ -5809,32 +5953,6 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         }
     }
 
-    private static async Task PrefetchPerformanceImagesObservedAsync(
-        Markdig.Syntax.MarkdownDocument document,
-        SafeHtmlRenderPolicy? safeHtmlPolicy,
-        IMarkdownPerformanceDocumentScope scope)
-    {
-        try
-        {
-            CancellationToken cancellationToken = scope.CancellationToken;
-            IReadOnlyList<string> sources = await Task.Run(
-                () => MarkdownImagePrefetchSourceCollector.Collect(
-                    document, safeHtmlPolicy, cancellationToken),
-                cancellationToken).ConfigureAwait(false);
-            await scope.PrefetchAsync(sources, cancellationToken).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-        }
-        catch (ObjectDisposedException)
-        {
-        }
-        catch (Exception exception)
-        {
-            MarkdownDiagnostics.WriteLine($"[MarkdownRenderer] performance prefetch failed: {exception.Message}");
-        }
-    }
-
     private bool RegisterImage(Layout.Boxes.ImageBox image)
     {
         if (!_subscribedImages.Add(image))
@@ -6078,12 +6196,14 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         var frame = ShakeLogger.NextFrame();
         int regionCount = 0;
         bool paintedRegion = false;
+        var automationPaintCallback = _automationFirstViewportImagesReadyPaintCallback;
         foreach (var region in args.InvalidatedRegions)
         {
             regionCount++;
             if (ShakeLogger.IsEnabled)
                 ShakeLogger.LogPaint(
                     "region", regionCount, region.X, region.Y, region.Width, region.Height);
+            bool regionPainted = false;
             try
             {
                 long regionStart = measure ? GC.GetAllocatedBytesForCurrentThread() : 0;
@@ -6130,6 +6250,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                         // invalidate and repaint immutable document content.
                         afterInteractive = afterSnapshot;
                         paintedRegion = true;
+                        regionPainted = true;
                     }
                     if (measure)
                     {
@@ -6143,6 +6264,28 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                 finally
                 {
                     snapshot.EndPaint();
+                }
+
+                if (regionPainted &&
+                    automationPaintCallback is not null &&
+                    ReferenceEquals(automationPaintCallback, _automationFirstViewportImagesReadyPaintCallback))
+                {
+                    try
+                    {
+                        if (automationPaintCallback(region) &&
+                            ReferenceEquals(automationPaintCallback, _automationFirstViewportImagesReadyPaintCallback))
+                        {
+                            _automationFirstViewportImagesReadyPaintCallback = null;
+                            automationPaintCallback = null;
+                        }
+                    }
+                    catch
+                    {
+                        // Audit-only callback failures must not escape Canvas paint.
+                        if (ReferenceEquals(automationPaintCallback, _automationFirstViewportImagesReadyPaintCallback))
+                            _automationFirstViewportImagesReadyPaintCallback = null;
+                        automationPaintCallback = null;
+                    }
                 }
             }
             catch (Exception ex) when (GraphicsDeviceErrors.IsDeviceLost(ex))
@@ -6278,15 +6421,8 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                 4, Stopwatch.GetTimestamp() - started, 1);
     }
 
-    /// <summary>
-    /// Paints the current realized viewport through the production snapshot
-    /// renderer for deterministic visual-audit evidence. This deliberately
-    /// bypasses desktop capture, which cannot see Win2D/DirectComposition
-    /// surfaces in several CI, RDP, and headless configurations.
-    /// </summary>
-    internal async Task<(int Width, int Height, double DocumentTop)> CaptureAuditViewportAsync(
-        string? outputPath,
-        bool save)
+    /// <summary>Creates an owned paint of the realized viewport for visual-audit evidence.</summary>
+    internal async Task<(CanvasRenderTarget Target, int Width, int Height, double DocumentTop)> CaptureAuditViewportAsync()
     {
         if (_isDisposed || _snapshot is null)
             throw new InvalidOperationException("The Markdown renderer has no active layout snapshot.");
@@ -6314,47 +6450,40 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         if (snapshot is null)
             throw new InvalidOperationException("The Markdown layout remained busy while capturing audit evidence.");
 
-        TryGetViewport(out double top, out double viewportHeight, out double viewportWidth);
-        int width = Math.Max(1, checked((int)Math.Ceiling(viewportWidth)));
-        int height = Math.Max(1, checked((int)Math.Ceiling(viewportHeight)));
-        var viewport = new Rect(0, Math.Max(0, top), width, height);
-
         try
         {
-            using var target = new CanvasRenderTarget(
+            // Every operation after acquiring the snapshot paint lease must be
+            // inside this try/finally. In particular, malformed or overflowing
+            // viewport dimensions can throw while converting to target pixels.
+            TryGetViewport(out double top, out double viewportHeight, out double viewportWidth);
+            int width = Math.Max(1, checked((int)Math.Ceiling(viewportWidth)));
+            int height = Math.Max(1, checked((int)Math.Ceiling(viewportHeight)));
+            var viewport = new Rect(0, Math.Max(0, top), width, height);
+
+            var target = new CanvasRenderTarget(
                 _canvas?.Device ?? CanvasDevice.GetSharedDevice(),
                 width,
                 height,
                 96);
-            using (CanvasDrawingSession drawingSession = target.CreateDrawingSession())
+            try
             {
-                drawingSession.Clear(_canvasBackground);
-                drawingSession.TextAntialiasing = Microsoft.Graphics.Canvas.Text.CanvasTextAntialiasing.Grayscale;
-                drawingSession.Transform = Matrix3x2.CreateTranslation(0, (float)-viewport.Top);
-                snapshot.Paint(drawingSession, viewport);
-            }
+                using (CanvasDrawingSession drawingSession = target.CreateDrawingSession())
+                {
+                    drawingSession.Clear(_canvasBackground);
+                    drawingSession.TextAntialiasing = Microsoft.Graphics.Canvas.Text.CanvasTextAntialiasing.Grayscale;
+                    drawingSession.Transform = Matrix3x2.CreateTranslation(0, (float)-viewport.Top);
+                    snapshot.Paint(drawingSession, viewport);
+                }
 
-            if (save)
+                // The caller owns and disposes the render target. Keep PNG
+                // serialization and filesystem work in the host application.
+                return (target, width, height, viewport.Top);
+            }
+            catch
             {
-                ArgumentException.ThrowIfNullOrWhiteSpace(outputPath);
-                string fullPath = System.IO.Path.GetFullPath(outputPath);
-                System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(fullPath)!);
-                using var stream = new InMemoryRandomAccessStream();
-                await target.SaveAsync(stream, CanvasBitmapFileFormat.Png, 1f);
-                if (stream.Size > int.MaxValue)
-                    throw new InvalidOperationException("The Markdown audit tile exceeds the managed evidence budget.");
-                stream.Seek(0);
-                using var reader = new DataReader(stream.GetInputStreamAt(0));
-                uint byteLength = checked((uint)stream.Size);
-                uint loaded = await reader.LoadAsync(byteLength);
-                if (loaded != byteLength)
-                    throw new System.IO.EndOfStreamException("The Markdown audit tile ended before its declared size.");
-                byte[] bytes = new byte[checked((int)byteLength)];
-                reader.ReadBytes(bytes);
-                await System.IO.File.WriteAllBytesAsync(fullPath, bytes);
+                target.Dispose();
+                throw;
             }
-
-            return (width, height, viewport.Top);
         }
         finally
         {
