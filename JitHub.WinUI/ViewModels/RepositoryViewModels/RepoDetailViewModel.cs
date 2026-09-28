@@ -450,7 +450,7 @@ namespace JitHub.WinUI.ViewModels.RepositoryViewModels
             CancellationToken cancellationToken)
         {
             ProductPerformanceReadiness.RecordTraversalStage("repo_detail.resolve.begin");
-            RepositoryQueryContext queryContext = GetRepositoryQueryContext();
+            RepositoryQueryContext queryContext = await GetRepositoryQueryContextAsync(cancellationToken);
             ResolvedRepository resolved;
             if (args.Repo != null)
             {
@@ -1166,6 +1166,21 @@ namespace JitHub.WinUI.ViewModels.RepositoryViewModels
         {
             long accountId = _authService.AuthenticatedUser?.Id ?? _accountService.GetUser();
             string? accessToken = accountId > 0 ? _authService.GetToken(accountId) : null;
+            return CreateRepositoryQueryContext(accountId, accessToken);
+        }
+
+        private async Task<RepositoryQueryContext> GetRepositoryQueryContextAsync(
+            CancellationToken cancellationToken = default)
+        {
+            long accountId = _authService.AuthenticatedUser?.Id ?? _accountService.GetUser();
+            string? accessToken = accountId > 0
+                ? await _authService.GetValidTokenAsync(accountId, cancellationToken)
+                : null;
+            return CreateRepositoryQueryContext(accountId, accessToken);
+        }
+
+        private static RepositoryQueryContext CreateRepositoryQueryContext(long accountId, string? accessToken)
+        {
             if (string.IsNullOrWhiteSpace(accessToken) &&
                 JitHub.WinUI.Program.CurrentLaunchOptions.IsPublicPreviewOverride)
             {
@@ -1585,7 +1600,7 @@ namespace JitHub.WinUI.ViewModels.RepositoryViewModels
             }
 
             Repository repository = Model;
-            RepositoryQueryContext queryContext = GetRepositoryQueryContext();
+            RepositoryQueryContext queryContext = await GetRepositoryQueryContextAsync();
             long generation = _repositoryLoadCoordinator.CurrentGeneration;
             long mutationVersion = Interlocked.Increment(ref _starMutationVersion);
             bool previous = IsStarred;
@@ -1718,7 +1733,7 @@ namespace JitHub.WinUI.ViewModels.RepositoryViewModels
             }
 
             Repository repository = Model;
-            RepositoryQueryContext queryContext = GetRepositoryQueryContext();
+            RepositoryQueryContext queryContext = await GetRepositoryQueryContextAsync();
             long generation = _repositoryLoadCoordinator.CurrentGeneration;
             long mutationVersion = Interlocked.Increment(ref _watchMutationVersion);
             bool previous = IsWatching;
@@ -1881,7 +1896,7 @@ namespace JitHub.WinUI.ViewModels.RepositoryViewModels
                 return;
             }
 
-            RepositoryQueryContext queryContext = GetRepositoryQueryContext();
+            RepositoryQueryContext queryContext = await GetRepositoryQueryContextAsync();
             long sourceGeneration = _repositoryLoadCoordinator.CurrentGeneration;
             string? forkOwner = RepositoryActionAutomationScenario.IsEnabled
                 ? "automation-user"

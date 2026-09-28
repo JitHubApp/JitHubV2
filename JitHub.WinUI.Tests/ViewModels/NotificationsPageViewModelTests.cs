@@ -816,6 +816,8 @@ public sealed class NotificationsPageViewModelTests
         public bool CheckAuth(long userId) => true;
 
         public void SignOut() { }
+
+        public bool HandleAuthenticationFailure(GitHubAuthenticationException exception) { SignOut(); return true; }
     }
 
     private sealed class RecordingTelemetry : ITelemetryService

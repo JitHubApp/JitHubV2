@@ -14,7 +14,7 @@ $automationProject = Join-Path $repoRoot "JitHub.WinUI.Automation\JitHub.WinUI.A
 $automationConfiguration = "Release"
 $runnerAssembly = Join-Path $repoRoot "JitHub.WinUI.Automation\bin\Release\net10.0-windows10.0.19041.0\JitHub.WinUI.Automation.dll"
 if ([string]::IsNullOrWhiteSpace($Destination)) {
-    $Destination = Join-Path $repoRoot "JitHub.Web\wwwroot\media\showcase"
+    $Destination = Join-Path $repoRoot "JitHub.Site\public\media\showcase"
 }
 $Destination = [System.IO.Path]::GetFullPath($Destination)
 

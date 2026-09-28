@@ -967,6 +967,12 @@ public sealed class GistsPageViewModelTests
 
         public bool CheckAuth(long userId) => true;
 
+        public bool HandleAuthenticationFailure(GitHubAuthenticationException exception)
+        {
+            SignOut();
+            return true;
+        }
+
         public void SignOut()
         {
         }

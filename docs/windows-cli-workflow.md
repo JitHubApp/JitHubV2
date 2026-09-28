@@ -48,7 +48,7 @@ Build Debug, apply package identity, and launch JitHub:
 .\eng\Start-JitHubWinUIDebug.ps1
 ```
 
-This command uses the documented .NET debug-identity flow: `dotnet build`, guarded cleanup of stale development registrations, `winapp create-debug-identity`, then direct executable launch. Debug builds use the dedicated `JitHub.WinUI.Debug` package identity and `jithub-dev://` OAuth callback. Store and Release builds retain `54742Neromarah.JitHub` and are the only builds that register `jithub://`.
+This command uses the documented .NET debug-identity flow: `dotnet build`, guarded cleanup of stale development registrations, `winapp create-debug-identity`, then direct executable launch. Debug builds use the dedicated `JitHub.WinUI.Debug` package identity. New Debug and Store builds use GitHub device sign-in and register no OAuth callback protocol.
 
 Useful variants:
 

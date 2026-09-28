@@ -8,12 +8,6 @@ namespace JitHub.Services;
 
 public interface IGitHubClientService
 {
-    Uri CreateLoginUri(
-        string clientId,
-        string? state = null,
-        string? redirectUri = null,
-        IReadOnlyCollection<string>? additionalScopes = null);
-
     Task<IReadOnlySet<string>> GetTokenScopesAsync(
         string token,
         CancellationToken cancellationToken = default);

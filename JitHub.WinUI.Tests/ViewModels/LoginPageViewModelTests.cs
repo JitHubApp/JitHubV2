@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Models.GitHub;
@@ -51,7 +52,7 @@ public sealed class LoginPageViewModelTests
     }
 
     [Fact]
-    public async Task StartLoginAsync_SuccessShowsBrowserCompletionState()
+    public async Task StartLoginAsync_SuccessShowsDeviceCompletionState()
     {
         RecordingTelemetryService telemetry = new();
         LoginPageViewModel viewModel = CreateViewModel(new TestAuthService(), telemetry);
@@ -61,11 +62,11 @@ public sealed class LoginPageViewModelTests
         Assert.False(viewModel.HasLoginError);
         Assert.Empty(viewModel.LoginErrorMessage);
         Assert.Equal(
-            "Finish sign-in in the browser. JitHub will return to this window automatically.",
+            "GitHub sign-in completed.",
             viewModel.StatusText);
         Assert.True(viewModel.IsLoginEnabled);
         Assert.Equal(
-            [TelemetryTaxonomy.Results.Started, TelemetryTaxonomy.Results.Launched],
+            [TelemetryTaxonomy.Results.Started, TelemetryTaxonomy.Results.Success],
             telemetry.Events
                 .Where(static entry => entry.Name == "auth.action.executed")
                 .Select(static entry => entry.Properties["result"]));
@@ -137,7 +138,6 @@ public sealed class LoginPageViewModelTests
     }
 
     [Theory]
-    [InlineData(AuthSessionRecoveryState.InvalidCallback, "verify")]
     [InlineData(AuthSessionRecoveryState.Expired, "expired")]
     public void PrepareForDisplay_ExplainsRecoverableAuthState(
         AuthSessionRecoveryState recoveryState,
@@ -150,6 +150,74 @@ public sealed class LoginPageViewModelTests
         Assert.True(viewModel.HasLoginError);
         Assert.Contains(expectedText, viewModel.LoginErrorMessage, StringComparison.OrdinalIgnoreCase);
         Assert.True(viewModel.IsLoginEnabled);
+    }
+
+    [Fact]
+    public async Task StartLoginAsync_NetworkFailureShowsDeviceError()
+    {
+        LoginPageViewModel viewModel = CreateViewModel(new TestAuthService
+        {
+            AuthenticateHandler = () => Task.FromException(new HttpRequestException("offline"))
+        });
+
+        await viewModel.StartLoginAsync();
+
+        Assert.True(viewModel.HasLoginError);
+        Assert.Equal("GitHub could not complete sign-in. Try again.", viewModel.LoginErrorMessage);
+    }
+
+    [Fact]
+    public async Task StartLoginAsync_MissingPermissionsShowsApprovalGuidance()
+    {
+        LoginPageViewModel viewModel = CreateViewModel(new TestAuthService
+        {
+            AuthenticateHandler = () => Task.FromException(DeviceFlowException.For("insufficient_scope"))
+        });
+
+        await viewModel.StartLoginAsync();
+
+        Assert.True(viewModel.HasLoginError);
+        Assert.Equal("Approve JitHub's requested permissions on GitHub, then try again.", viewModel.LoginErrorMessage);
+    }
+
+    [Fact]
+    public async Task OfflineSession_RetriesAndReturnsToAuthenticatedState()
+    {
+        TestAuthService authService = new() { RecoveryState = AuthSessionRecoveryState.Offline };
+        authService.RefreshHandler = () =>
+        {
+            authService.Authenticated = true;
+            authService.RecoveryState = AuthSessionRecoveryState.None;
+            return Task.FromResult<GitHubUser?>(new GitHubUser { Id = 42, Login = "octocat" });
+        };
+        LoginPageViewModel viewModel = CreateViewModel(authService);
+
+        viewModel.PrepareForDisplay();
+        Assert.True(viewModel.IsSavedSessionRecoveryPending);
+        Assert.Contains("automatically", viewModel.StatusText, StringComparison.Ordinal);
+
+        Assert.True(await viewModel.RetrySavedSessionAsync());
+        Assert.False(viewModel.IsSavedSessionRecoveryPending);
+        Assert.False(viewModel.HasLoginError);
+    }
+
+    [Fact]
+    public async Task OfflineSession_ExpiredRefreshShowsSignInAction()
+    {
+        TestAuthService authService = new() { RecoveryState = AuthSessionRecoveryState.Offline };
+        authService.RefreshHandler = () =>
+        {
+            authService.RecoveryState = AuthSessionRecoveryState.Expired;
+            return Task.FromResult<GitHubUser?>(null);
+        };
+        LoginPageViewModel viewModel = CreateViewModel(authService);
+
+        viewModel.PrepareForDisplay();
+        Assert.False(await viewModel.RetrySavedSessionAsync());
+
+        Assert.True(viewModel.HasLoginError);
+        Assert.Contains("sign in again", viewModel.LoginErrorMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.False(viewModel.IsSavedSessionRecoveryPending);
     }
 
     [Fact]
@@ -194,14 +262,17 @@ public sealed class LoginPageViewModelTests
         public Func<Task> AuthenticateHandler { get; init; } = static () => Task.CompletedTask;
         public bool Authenticated { get; set; }
         public GitHubUser? AuthenticatedUser { get; set; }
-        public AuthSessionRecoveryState RecoveryState { get; init; } = AuthSessionRecoveryState.None;
+        public AuthSessionRecoveryState RecoveryState { get; set; } = AuthSessionRecoveryState.None;
+        public Func<Task<GitHubUser?>>? RefreshHandler { get; set; }
         public Task InitializeAsync() => Task.CompletedTask;
         public Task Authenticate() => AuthenticateHandler();
         public Task<bool> EnsureScopesAsync(params string[] scopes) => Task.FromResult(true);
         public Task<bool> Authorize(string response) => Task.FromResult(true);
-        public Task<GitHubUser?> RefreshAuthenticatedUserAsync() => Task.FromResult(AuthenticatedUser);
+        public Task<GitHubUser?> RefreshAuthenticatedUserAsync() =>
+            RefreshHandler?.Invoke() ?? Task.FromResult(AuthenticatedUser);
         public string? GetToken(long userId) => null;
         public bool CheckAuth(long userId) => false;
         public void SignOut() { }
+        public bool HandleAuthenticationFailure(GitHubAuthenticationException exception) { SignOut(); return true; }
     }
 }

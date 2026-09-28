@@ -207,6 +207,7 @@ public sealed partial class RepoManagePageViewModel : ViewModelBase
 
         if (!_initialized)
         {
+            await _authService.GetValidTokenAsync(_authService.AuthenticatedUser?.Id ?? _accountService.GetUser(), session.Token);
             if (!TryGetActiveToken(out _accessToken))
             {
                 Deactivate();
@@ -240,10 +241,10 @@ public sealed partial class RepoManagePageViewModel : ViewModelBase
         {
             return;
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
             TrackOpened("auth_error", openDuration.Elapsed);
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
             return;
         }
         catch (Exception ex)
@@ -468,6 +469,7 @@ public sealed partial class RepoManagePageViewModel : ViewModelBase
             return RepositoryDeletionResult.Empty;
         }
 
+        await _authService.GetValidTokenAsync(_authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         if (!TryGetActiveToken(out string token))
         {
             return null;
@@ -492,9 +494,9 @@ public sealed partial class RepoManagePageViewModel : ViewModelBase
                         repositoryItem.Repository.Name);
                     deletedIds.Add(repositoryItem.Repository.Id);
                 }
-                catch (GitHubAuthenticationException)
+                catch (GitHubAuthenticationException authError)
                 {
-                    _authService.SignOut();
+                    _authService.HandleAuthenticationFailure(authError);
                     return null;
                 }
                 catch (GitHubApiException ex)
@@ -648,9 +650,9 @@ public sealed partial class RepoManagePageViewModel : ViewModelBase
         catch (OperationCanceledException) when (session.IsCancellationRequested)
         {
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (Exception ex)
         {
@@ -834,7 +836,6 @@ public sealed partial class RepoManagePageViewModel : ViewModelBase
             return true;
         }
 
-        _authService.SignOut();
         return false;
     }
 

@@ -47,7 +47,9 @@
     <Compile Include="..\JitHub.WinUI\Services\IAuthService.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\IAppConfig.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\AuthCredentialStore.cs" Link="Services\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\AuthHandoffClient.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\GitHubDeviceFlowClient.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\IDeviceAuthorizationPrompt.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\ExternalUriLauncher.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\AuthService.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\AccountWorkQuiescence.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\AccountDataRemovalCoordinator.cs" Link="Services\%(Filename)%(Extension)" />
@@ -62,7 +64,6 @@
     <Compile Include="..\JitHub.WinUI\Services\DialogFocusRestorationGate.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\LocalizationService.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Accessibility\HighContrastVisualPolicy.cs" Link="Services\Accessibility\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\AuthProtocolPolicy.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\AppDataPathPolicy.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\AuthLifecycleAutomation.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\DeveloperRoutePolicy.cs" Link="Services\%(Filename)%(Extension)" />

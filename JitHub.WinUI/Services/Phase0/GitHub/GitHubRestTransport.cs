@@ -294,7 +294,8 @@ public sealed class GitHubRestTransport : IGitHubRestTransport
 
         if (response.StatusCode == HttpStatusCode.Unauthorized)
         {
-            throw new GitHubAuthenticationException(message);
+            throw new GitHubAuthenticationException(
+                message, response.RequestMessage?.Headers.Authorization?.Parameter);
         }
 
         TimeSpan? retryDelay = GitHubRetryPolicy.CalculateRetryDelay(

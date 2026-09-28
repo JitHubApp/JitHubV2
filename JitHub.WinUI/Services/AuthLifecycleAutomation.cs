@@ -15,11 +15,12 @@ namespace JitHub.Services;
 internal static class AuthLifecycleScenario
 {
     public const string Cancel = "auth-cancel";
-    public const string InvalidState = "auth-invalid-state";
+    public const string DeviceSuccess = "auth-device-success";
+    public const string CancelAfterApproval = "auth-cancel-after-approval";
     public const string ExpiredToken = "auth-expired-token";
     public const string NotificationReconnect = "auth-notification-reconnect";
     public const string OfflineLaunch = "auth-offline-launch";
-    public const string ProtocolReactivation = "auth-protocol-reactivation";
+    public const string ExpiredOfflineRecovery = "auth-expired-offline-recovery";
     public const string MultiAccountCleanup = "auth-multi-account-cleanup";
 }
 
@@ -30,17 +31,16 @@ internal sealed partial class AuthLifecycleAutomationContext
     internal const string PrimaryToken = "automation-primary-token";
     internal const string SecondaryToken = "automation-secondary-token";
     internal const string ExpiredToken = "automation-expired-token";
-    internal const string ProtocolToken = "automation-protocol-token";
-    internal const string InvalidState = "automation-invalid-state";
 
     private static readonly HashSet<string> KnownScenarios = new(StringComparer.OrdinalIgnoreCase)
     {
         AuthLifecycleScenario.Cancel,
-        AuthLifecycleScenario.InvalidState,
+        AuthLifecycleScenario.DeviceSuccess,
+        AuthLifecycleScenario.CancelAfterApproval,
         AuthLifecycleScenario.ExpiredToken,
         AuthLifecycleScenario.NotificationReconnect,
         AuthLifecycleScenario.OfflineLaunch,
-        AuthLifecycleScenario.ProtocolReactivation,
+        AuthLifecycleScenario.ExpiredOfflineRecovery,
         AuthLifecycleScenario.MultiAccountCleanup
     };
 
@@ -90,30 +90,6 @@ internal sealed partial class AuthLifecycleAutomationContext
         return new AuthLifecycleAutomationContext(scenario, localFolderPath);
     }
 
-    public static bool TryParseProtocolArgument(string? arguments, out Uri? protocolUri)
-    {
-        protocolUri = null;
-        if (!IsKnownScenario(Environment.GetEnvironmentVariable("JITHUB_PREVIEW_SCENARIO")) ||
-            !AppDataPathPolicy.TryGetAutomationRoots(out _, out _) ||
-            string.IsNullOrWhiteSpace(arguments))
-        {
-            return false;
-        }
-
-        const string prefix = "--automation-protocol=";
-        string? value = arguments
-            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .FirstOrDefault(argument => argument.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
-        if (value is null || !Uri.TryCreate(value[prefix.Length..].Trim('"'), UriKind.Absolute, out Uri? parsed) ||
-            !AuthProtocolPolicy.IsExpectedScheme(parsed))
-        {
-            return false;
-        }
-
-        protocolUri = parsed;
-        return true;
-    }
-
     public void Seed(ISettingService settings, IAccountService account, IAuthCredentialStore credentials)
     {
         if (File.Exists(SeedMarkerPath))
@@ -123,11 +99,6 @@ internal sealed partial class AuthLifecycleAutomationContext
 
         switch (Scenario)
         {
-            case AuthLifecycleScenario.InvalidState:
-                string expectedState = $"{AuthService.GetProtocolCallbackStatePrefix()}AUTOMATION_EXPECTED";
-                settings.Save(AuthService.PendingAuthStateSettingKey, expectedState);
-                credentials.SavePendingState(expectedState);
-                break;
             case AuthLifecycleScenario.ExpiredToken:
                 account.SaveUser(PrimaryUserId);
                 credentials.SaveAccountToken(PrimaryUserId, ExpiredToken);
@@ -136,6 +107,12 @@ internal sealed partial class AuthLifecycleAutomationContext
             case AuthLifecycleScenario.OfflineLaunch:
                 account.SaveUser(PrimaryUserId);
                 credentials.SaveAccountToken(PrimaryUserId, PrimaryToken);
+                break;
+            case AuthLifecycleScenario.ExpiredOfflineRecovery:
+                account.SaveUser(PrimaryUserId);
+                credentials.SaveAccountSession(PrimaryUserId, new GitHubTokenSession(
+                    "automation-expired-access", "automation-recovery-refresh",
+                    DateTimeOffset.UtcNow.AddSeconds(-1), DateTimeOffset.UtcNow.AddMonths(6)));
                 break;
             case AuthLifecycleScenario.MultiAccountCleanup:
                 account.SaveUser(PrimaryUserId);
@@ -150,7 +127,7 @@ internal sealed partial class AuthLifecycleAutomationContext
 
     public IExternalUriLauncher CreateUriLauncher() => new AuthLifecycleExternalUriLauncher(this);
 
-    public IAuthHandoffClient CreateHandoffClient() => new AuthLifecycleHandoffClient(this);
+    public IGitHubDeviceFlowClient CreateDeviceFlowClient() => new AuthLifecycleDeviceFlowClient(this);
 
     public HttpMessageHandler CreateHttpMessageHandler() => new AuthLifecycleHttpMessageHandler(this);
 
@@ -161,6 +138,63 @@ internal sealed partial class AuthLifecycleAutomationContext
         lock (_markerGate)
         {
             File.AppendAllText(MarkerPath, entry, Encoding.UTF8);
+        }
+    }
+
+    private sealed class AuthLifecycleDeviceFlowClient : IGitHubDeviceFlowClient
+    {
+        private readonly AuthLifecycleAutomationContext _context;
+
+        public AuthLifecycleDeviceFlowClient(AuthLifecycleAutomationContext context) => _context = context;
+
+        public Task<DeviceAuthorizationChallenge> RequestCodeAsync(
+            string clientId,
+            IReadOnlyCollection<string> scopes,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            _context.Record("device.code.requested", string.Join(' ', scopes));
+            return Task.FromResult(new DeviceAuthorizationChallenge(
+                "automation-device-code", "JITH-UB01", new Uri("https://github.com/login/device"),
+                DateTimeOffset.UtcNow.AddMinutes(15), TimeSpan.FromSeconds(1)));
+        }
+
+        public async Task<GitHubTokenSession> PollAsync(
+            string clientId,
+            DeviceAuthorizationChallenge challenge,
+            CancellationToken cancellationToken = default)
+        {
+            if (_context.Scenario is AuthLifecycleScenario.DeviceSuccess or
+                AuthLifecycleScenario.CancelAfterApproval)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+                _context.Record("device.approved");
+                return new GitHubTokenSession("automation-device-token", "automation-refresh-token",
+                    DateTimeOffset.UtcNow.AddHours(8), DateTimeOffset.UtcNow.AddMonths(6));
+            }
+
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            throw new OperationCanceledException(cancellationToken);
+        }
+
+        public Task<GitHubTokenSession> RefreshAsync(
+            string clientId,
+            string refreshToken,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (_context.Scenario == AuthLifecycleScenario.ExpiredOfflineRecovery &&
+                !File.Exists(Path.Combine(_context.RootPath, "network-restored")))
+            {
+                _context.Record("refresh.offline");
+                return Task.FromException<GitHubTokenSession>(
+                    new HttpRequestException("The deterministic auth lifecycle transport is offline."));
+            }
+
+            _context.Record("refresh.completed");
+            return Task.FromResult(new GitHubTokenSession(
+                "automation-refreshed-token", "automation-rotated-refresh-token",
+                DateTimeOffset.UtcNow.AddHours(8), DateTimeOffset.UtcNow.AddMonths(6)));
         }
     }
 
@@ -189,31 +223,6 @@ internal sealed partial class AuthLifecycleAutomationContext
         }
     }
 
-    private sealed class AuthLifecycleHandoffClient : IAuthHandoffClient
-    {
-        private readonly AuthLifecycleAutomationContext _context;
-
-        public AuthLifecycleHandoffClient(AuthLifecycleAutomationContext context)
-        {
-            _context = context;
-        }
-
-        public Task<string?> RedeemAsync(
-            string? authorizationCallbackUrl,
-            string handoff,
-            string state,
-            string verifier,
-            CancellationToken cancellationToken = default)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            _context.Record("oauth.handoff.redeemed", handoff);
-            return Task.FromResult<string?>(
-                string.Equals(handoff, "automation-protocol-handoff", StringComparison.Ordinal)
-                    ? ProtocolToken
-                    : null);
-        }
-    }
-
 internal sealed partial class AuthLifecycleHttpMessageHandler : HttpMessageHandler
     {
         private const string UserJson = "{\"login\":\"automation-user\",\"id\":101,\"name\":\"Automation User\",\"avatar_url\":\"\",\"html_url\":\"https://github.com/automation-user\",\"public_repos\":0,\"followers\":0,\"following\":0}";
@@ -232,7 +241,8 @@ internal sealed partial class AuthLifecycleHttpMessageHandler : HttpMessageHandl
             string path = request.RequestUri?.PathAndQuery.TrimStart('/') ?? string.Empty;
             _context.Record("http.request", $"{request.Method.Method} {path}");
 
-            if (string.Equals(_context.Scenario, AuthLifecycleScenario.OfflineLaunch, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(_context.Scenario, AuthLifecycleScenario.OfflineLaunch, StringComparison.OrdinalIgnoreCase) &&
+                !File.Exists(Path.Combine(_context.RootPath, "network-restored")))
             {
                 _context.Record("http.offline", path);
                 return Task.FromException<HttpResponseMessage>(new HttpRequestException("The deterministic auth lifecycle transport is offline."));

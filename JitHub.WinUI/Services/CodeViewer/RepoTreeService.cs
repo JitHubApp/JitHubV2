@@ -49,7 +49,7 @@ public sealed class RepoTreeService : IRepoTreeService
         CancellationToken ct,
         QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst)
     {
-        (string token, string userId) = GetAuthenticationContext();
+        (string token, string userId) = await GetAuthenticationContextAsync(ct);
         string cacheKey = CreateTreeCacheKey(userId, owner, name, refOrSha);
         if (fetchPolicy == QueryFetchPolicy.StaleFirst &&
             TryGetCachedTree(cacheKey, out RepoCodeLoadResult<RepoTree> cached))
@@ -396,7 +396,7 @@ public sealed class RepoTreeService : IRepoTreeService
         CancellationToken ct,
         QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst)
     {
-        (string token, string userId) = GetAuthenticationContext();
+        (string token, string userId) = await GetAuthenticationContextAsync(ct);
         CachedResult<GitHubRepositoryContent[]> result;
         try
         {
@@ -448,7 +448,7 @@ public sealed class RepoTreeService : IRepoTreeService
         CancellationToken ct,
         QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst)
     {
-        (string token, string userId) = GetAuthenticationContext();
+        (string token, string userId) = await GetAuthenticationContextAsync(ct);
         string readmeToken = token;
         bool sourceCameFromRawFallback = false;
         CachedResult<GitHubRepositoryContent> result;
@@ -580,7 +580,7 @@ public sealed class RepoTreeService : IRepoTreeService
         CancellationToken ct,
         QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst)
     {
-        (string token, string userId) = GetAuthenticationContext();
+        (string token, string userId) = await GetAuthenticationContextAsync(ct);
         CachedResult<GitHubBlob> result;
         try
         {
@@ -763,10 +763,11 @@ public sealed class RepoTreeService : IRepoTreeService
         }
     }
 
-    private (string Token, string UserId) GetAuthenticationContext()
+    private async Task<(string Token, string UserId)> GetAuthenticationContextAsync(CancellationToken cancellationToken)
     {
         long userId = _authService.AuthenticatedUser?.Id ?? _accountService.GetUser();
-        string token = _authService.GetToken(userId) ?? GitHubAuthenticationConstants.PublicAccessToken;
+        string token = await _authService.GetValidTokenAsync(userId, cancellationToken) ??
+            GitHubAuthenticationConstants.PublicAccessToken;
         string partition = userId > 0 ? userId.ToString(CultureInfo.InvariantCulture) : "current";
         return (token, partition);
     }

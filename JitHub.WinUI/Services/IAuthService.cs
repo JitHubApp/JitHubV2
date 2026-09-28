@@ -1,4 +1,5 @@
 using System.Threading.Tasks;
+using System.Threading;
 using JitHub.Models.GitHub;
 
 namespace JitHub.Services;
@@ -7,7 +8,6 @@ public enum AuthSessionRecoveryState
 {
     None,
     Cancelled,
-    InvalidCallback,
     Expired,
     Offline,
     ServiceUnavailable
@@ -27,13 +27,16 @@ public interface IAuthService
 
     Task<bool> EnsureScopesAsync(params string[] scopes);
 
-    Task<bool> Authorize(string response);
-
     Task<GitHubUser?> RefreshAuthenticatedUserAsync();
 
     string? GetToken(long userId);
 
+    Task<string?> GetValidTokenAsync(long userId, CancellationToken cancellationToken = default) =>
+        Task.FromResult(GetToken(userId));
+
     bool CheckAuth(long userId);
 
     void SignOut();
+
+    bool HandleAuthenticationFailure(GitHubAuthenticationException exception);
 }

@@ -358,6 +358,8 @@ public sealed class RepoTreeServicePublicFallbackTests
         IAuthService auth = Substitute.For<IAuthService>();
         auth.AuthenticatedUser.Returns((GitHubUser?)null);
         auth.GetToken(0).Returns((string?)null);
+        auth.GetValidTokenAsync(0, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<string?>(null));
         IAccountService account = Substitute.For<IAccountService>();
         account.GetUser().Returns(0);
         RepoTreeService service = new(query, auth, account, client);
@@ -444,6 +446,8 @@ public sealed class RepoTreeServicePublicFallbackTests
         IAuthService auth = Substitute.For<IAuthService>();
         auth.AuthenticatedUser.Returns(new GitHubUser { Id = 42, Login = "octo" });
         auth.GetToken(42).Returns("authenticated-token");
+        auth.GetValidTokenAsync(42, Arg.Any<CancellationToken>())
+            .Returns("authenticated-token");
         IAccountService account = Substitute.For<IAccountService>();
         account.GetUser().Returns(42);
         return new RepoTreeService(query, auth, account, client);
