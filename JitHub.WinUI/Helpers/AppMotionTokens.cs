@@ -10,8 +10,10 @@ namespace JitHub.WinUI.Helpers;
 internal static class AppMotionTokens
 {
     private const string MediumDurationResourceKey = "AppMediumDuration";
+    private const string CopyConfirmationDurationResourceKey = "AppCopyConfirmationDuration";
     private const int MaximumMergedDictionaryDepth = 32;
     private static readonly TimeSpan MediumDurationFallback = TimeSpan.FromMilliseconds(180);
+    private static readonly TimeSpan CopyConfirmationDurationFallback = TimeSpan.FromSeconds(2);
     private static readonly Point ShyHeaderOpacityTransitionProgress = new(0.3, 0.3);
     private static long _mediumDurationTicks;
     private static int _resolutionFailureReported;
@@ -38,6 +40,11 @@ internal static class AppMotionTokens
 
     public static Point ShyHeaderOpacityTransitionProgressKey =>
         ShyHeaderOpacityTransitionProgress;
+
+    public static TimeSpan CopyConfirmationDuration =>
+        TryResolveDuration(CopyConfirmationDurationResourceKey, out TimeSpan duration)
+            ? duration
+            : CopyConfirmationDurationFallback;
 
     private static bool TryResolveDuration(string resourceKey, out TimeSpan duration)
     {

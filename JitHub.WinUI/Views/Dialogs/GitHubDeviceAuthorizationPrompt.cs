@@ -53,16 +53,63 @@ public sealed class GitHubDeviceAuthorizationPrompt : IDeviceAuthorizationPrompt
         AutomationProperties.SetName(code, string.Format(
             System.Globalization.CultureInfo.CurrentCulture,
             T("Auth/Device/CodeName", "GitHub device code {0}"), challenge.UserCode));
+        string copyText = T("Auth/Device/CopyCode", "Copy code");
+        string copyName = T("Auth/Device/CopyCodeName", "Copy GitHub device code");
+        SymbolIcon copiedCheck = new(Symbol.Accept)
+        {
+            Visibility = Visibility.Collapsed,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        TextBlock copyLabel = new()
+        {
+            Text = copyText,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        StackPanel copyContent = new()
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = (double)app.Resources["AppGap8"]
+        };
+        copyContent.Children.Add(copiedCheck);
+        copyContent.Children.Add(copyLabel);
         Button copy = new()
         {
-            Content = T("Auth/Device/CopyCode", "Copy code"),
+            Content = copyContent,
             HorizontalAlignment = HorizontalAlignment.Left
         };
         AutomationProperties.SetAutomationId(copy, "CopyGitHubDeviceCode");
-        AutomationProperties.SetName(copy, T("Auth/Device/CopyCodeName", "Copy GitHub device code"));
+        AutomationProperties.SetName(copy, copyName);
+        AutomationProperties.SetLiveSetting(copy, AutomationLiveSetting.Polite);
+        using CancellationTokenSource copyFeedbackLifetime =
+            CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        CancellationToken copyFeedbackToken = copyFeedbackLifetime.Token;
+        TimeSpan copyConfirmationDuration = AppMotionTokens.CopyConfirmationDuration;
+        int copyFeedbackVersion = 0;
+        void SetCopyFeedback(bool showCheck, string label, string accessibleName)
+        {
+            copiedCheck.Visibility = showCheck ? Visibility.Visible : Visibility.Collapsed;
+            copyLabel.Text = label;
+            AutomationProperties.SetName(copy, accessibleName);
+            FrameworkElementAutomationPeer.FromElement(copy)?.RaiseAutomationEvent(
+                AutomationEvents.LiveRegionChanged);
+        }
         copy.Click += (_, _) =>
         {
-            PlatformHelper.CopyString(challenge.UserCode);
+            int version = ++copyFeedbackVersion;
+            bool copied = PlatformHelper.CopyString(challenge.UserCode);
+            SetCopyFeedback(
+                copied,
+                copied ? T("Auth/Device/Copied", "Copied") : T("Auth/Device/CopyFailed", "Copy failed"),
+                copied ? T("Auth/Device/CopiedName", "GitHub device code copied")
+                    : T("Auth/Device/CopyFailedName", "Could not copy GitHub device code"));
+            UiTaskGuard.Run(async () =>
+            {
+                await Task.Delay(copyConfirmationDuration, copyFeedbackToken);
+                if (version == copyFeedbackVersion)
+                {
+                    SetCopyFeedback(false, copyText, copyName);
+                }
+            }, "github-device-copy-feedback");
         };
         TextBlock status = new()
         {
@@ -87,6 +134,7 @@ public sealed class GitHubDeviceAuthorizationPrompt : IDeviceAuthorizationPrompt
         AppDialogStyleCatalog.Apply(dialog);
         AutomationProperties.SetAutomationId(dialog, "GitHubDeviceAuthorizationDialog");
         AutomationProperties.SetName(dialog, T("Auth/Device/DialogName", "GitHub device authorization"));
+        dialog.Closed += (_, _) => copyFeedbackLifetime.Cancel();
         dialog.PrimaryButtonClick += (_, args) =>
         {
             args.Cancel = true;

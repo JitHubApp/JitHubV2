@@ -6442,6 +6442,10 @@
   <data name="Auth/Device/CodeName" xml:space="preserve"><value>⟦GitHub device code {0} ~~~~~~~~⟧</value></data>
   <data name="Auth/Device/CopyCode" xml:space="preserve"><value>⟦Copy code ~~~~~~⟧</value></data>
   <data name="Auth/Device/CopyCodeName" xml:space="preserve"><value>⟦Copy GitHub device code ~~~~~~~~~⟧</value></data>
+  <data name="Auth/Device/Copied" xml:space="preserve"><value>⟦Copied ~~~~~⟧</value></data>
+  <data name="Auth/Device/CopiedName" xml:space="preserve"><value>⟦GitHub device code copied ~~~~~~~~~⟧</value></data>
+  <data name="Auth/Device/CopyFailed" xml:space="preserve"><value>⟦Copy failed ~~~~~~⟧</value></data>
+  <data name="Auth/Device/CopyFailedName" xml:space="preserve"><value>⟦Could not copy GitHub device code ~~~~~~~~~~~~⟧</value></data>
   <data name="Auth/Device/Waiting" xml:space="preserve"><value>⟦Waiting for GitHub approval… ~~~~~~~~~~⟧</value></data>
   <data name="Auth/Device/Title" xml:space="preserve"><value>⟦Sign in with GitHub ~~~~~~~⟧</value></data>
   <data name="Auth/Device/OpenGitHub" xml:space="preserve"><value>⟦Open GitHub ~~~~~~⟧</value></data>
