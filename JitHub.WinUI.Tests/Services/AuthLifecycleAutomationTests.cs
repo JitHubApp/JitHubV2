@@ -15,11 +15,11 @@ public sealed class AuthLifecycleAutomationTests : IDisposable
 
     [Theory]
     [InlineData(AuthLifecycleScenario.Cancel)]
-    [InlineData(AuthLifecycleScenario.InvalidState)]
+    [InlineData(AuthLifecycleScenario.CancelAfterApproval)]
     [InlineData(AuthLifecycleScenario.ExpiredToken)]
     [InlineData(AuthLifecycleScenario.NotificationReconnect)]
     [InlineData(AuthLifecycleScenario.OfflineLaunch)]
-    [InlineData(AuthLifecycleScenario.ProtocolReactivation)]
+    [InlineData(AuthLifecycleScenario.ExpiredOfflineRecovery)]
     [InlineData(AuthLifecycleScenario.MultiAccountCleanup)]
     public void KnownScenariosAreExplicitlyAllowlisted(string scenario)
     {
@@ -92,6 +92,10 @@ public sealed class AuthLifecycleAutomationTests : IDisposable
 
         await Assert.ThrowsAsync<HttpRequestException>(() => client.GetAsync("user"));
         Assert.Contains("http.offline", File.ReadAllText(context.MarkerPath));
+
+        File.WriteAllText(Path.Combine(context.RootPath, "network-restored"), "ready");
+        using HttpResponseMessage recovered = await client.GetAsync("user");
+        Assert.Equal(HttpStatusCode.OK, recovered.StatusCode);
     }
 
     [Fact]
@@ -149,8 +153,7 @@ public sealed class AuthLifecycleAutomationTests : IDisposable
     {
         public Credential Credential { get; } = new()
         {
-            ClientId = "auth-lifecycle-tests",
-            AuthorizationCallbackUrl = "jithub-dev://auth"
+            ClientId = "auth-lifecycle-tests"
         };
     }
 }

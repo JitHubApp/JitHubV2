@@ -301,7 +301,8 @@ public sealed partial class RepoSearchResultPageViewModel : ObservableObject, ID
             ErrorText = string.Empty;
             try
             {
-                string? accessToken = GetActiveToken();
+                string? accessToken = await _authService.GetValidTokenAsync(
+                    _authService.AuthenticatedUser?.Id ?? _accountService.GetUser(), token);
                 if (string.IsNullOrWhiteSpace(accessToken))
                 {
                     throw new GitHubAuthenticationException("GitHub authentication is unavailable.");

@@ -206,7 +206,7 @@ public sealed class RepositoryActionSurfaceContractTests
             "ViewModels",
             "RepositoryViewModels",
             "RepoDetailViewModel.cs"));
-        int capture = viewModel.IndexOf("RepositoryQueryContext queryContext = GetRepositoryQueryContext();", StringComparison.Ordinal);
+        int capture = viewModel.IndexOf("RepositoryQueryContext queryContext = await GetRepositoryQueryContextAsync();", StringComparison.Ordinal);
         int remote = viewModel.IndexOf("_gitHubClientService.StarRepositoryAsync(", capture, StringComparison.Ordinal);
         int library = viewModel.IndexOf("_starLibraryService.NotifyRepositoryStarStateChangedAsync(", remote, StringComparison.Ordinal);
 

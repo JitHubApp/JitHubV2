@@ -1125,6 +1125,9 @@
   <data name="MyWorkItems/Error/AuthenticationUnavailable" xml:space="preserve">
     <value>GitHub authentication is unavailable.</value>
   </data>
+  <data name="MyWorkItems/Error/OfflineRecovery" xml:space="preserve">
+    <value>You are offline. Try again when connected; your saved GitHub session is kept.</value>
+  </data>
   <data name="MyWorkItems/Error/IdentityUnavailable" xml:space="preserve">
     <value>Your GitHub identity could not be loaded. Check the connection and try again.</value>
   </data>
@@ -5643,6 +5646,9 @@
   <data name="Dashboard/Status/AuthenticationUnavailable" xml:space="preserve">
     <value>GitHub authentication is no longer available. Please sign in again.</value>
   </data>
+  <data name="Dashboard/Status/OfflineRecovery" xml:space="preserve">
+    <value>You are offline. Try again when connected; your saved GitHub session is kept.</value>
+  </data>
   <data name="Dashboard/Status/Current" xml:space="preserve">
     <value>Home dashboard is current.</value>
   </data>
@@ -6438,4 +6444,39 @@
   <data name="Settings/Status/PaletteChangeFailed" xml:space="preserve">
     <value>JitHub could not apply that color theme. Your previous theme is still active.</value>
   </data>
+  <data name="Auth/Device/Instructions" xml:space="preserve"><value>Open github.com/login/device and enter this code. Complete the request only if you started sign-in in JitHub.</value></data>
+  <data name="Auth/Device/CodeName" xml:space="preserve"><value>GitHub device code {0}</value></data>
+  <data name="Auth/Device/CopyCode" xml:space="preserve"><value>Copy code</value></data>
+  <data name="Auth/Device/CopyCodeName" xml:space="preserve"><value>Copy GitHub device code</value></data>
+  <data name="Auth/Device/Copied" xml:space="preserve"><value>Copied</value></data>
+  <data name="Auth/Device/CopiedName" xml:space="preserve"><value>GitHub device code copied</value></data>
+  <data name="Auth/Device/CopyFailed" xml:space="preserve"><value>Copy failed</value></data>
+  <data name="Auth/Device/CopyFailedName" xml:space="preserve"><value>Could not copy GitHub device code</value></data>
+  <data name="Auth/Device/Waiting" xml:space="preserve"><value>Waiting for GitHub approval…</value></data>
+  <data name="Auth/Device/Title" xml:space="preserve"><value>Sign in with GitHub</value></data>
+  <data name="Auth/Device/OpenGitHub" xml:space="preserve"><value>Open GitHub</value></data>
+  <data name="Auth/Device/Cancel" xml:space="preserve"><value>Cancel</value></data>
+  <data name="Auth/Device/DialogName" xml:space="preserve"><value>GitHub device authorization</value></data>
+  <data name="Auth/Device/LaunchFailed" xml:space="preserve"><value>Could not open GitHub. Open github.com/login/device in your browser.</value></data>
+  <data name="Auth/Device/Failed" xml:space="preserve"><value>GitHub could not complete sign-in. Try again.</value></data>
+  <data name="Auth/Device/Close" xml:space="preserve"><value>Close</value></data>
+  <data name="Auth/Device/Approved" xml:space="preserve"><value>Approved by GitHub. Finishing sign-in…</value></data>
+  <data name="Login.LaunchErrorTitle" xml:space="preserve"><value>GitHub sign-in needs attention</value></data>
+  <data name="Login.HeroTitle" xml:space="preserve"><value>A native GitHub experience for Windows.</value></data>
+  <data name="Login.HeroDescription" xml:space="preserve"><value>Browse repositories, issues, pull requests, and code in a native desktop client.</value></data>
+  <data name="Login.CallbackDescription" xml:space="preserve"><value>JitHub signs in directly with GitHub using a code shown in the app.</value></data>
+  <data name="Login.SignInTitle" xml:space="preserve"><value>Sign in with GitHub</value></data>
+  <data name="Login.SignInDescription" xml:space="preserve"><value>JitHub will show a code to enter on GitHub. No JitHub server is needed.</value></data>
+  <data name="Login.ContinueWithGitHubButton" xml:space="preserve"><value>Continue with GitHub</value></data>
+  <data name="Login.ExpiredSessionError" xml:space="preserve"><value>Your GitHub session expired. The expired token was removed; sign in again to continue.</value></data>
+  <data name="Login.CancelledStatus" xml:space="preserve"><value>Sign-in was canceled. You can try again.</value></data>
+  <data name="Login.SavedSessionRecoveryStatus" xml:space="preserve"><value>GitHub is unavailable. JitHub will retry your saved session automatically.</value></data>
+  <data name="Login.OpeningBrowserStatus" xml:space="preserve"><value>Requesting a sign-in code from GitHub...</value></data>
+  <data name="Login.CompleteInBrowserStatus" xml:space="preserve"><value>GitHub sign-in completed.</value></data>
+  <data name="Login.DeviceDeniedError" xml:space="preserve"><value>GitHub authorization was cancelled. Try again.</value></data>
+  <data name="Login.DeviceExpiredError" xml:space="preserve"><value>The GitHub sign-in code expired. Try again.</value></data>
+  <data name="Login.DeviceDisabledError" xml:space="preserve"><value>GitHub device sign-in is unavailable for this app.</value></data>
+  <data name="Login.DevicePermissionError" xml:space="preserve"><value>Approve JitHub's requested permissions on GitHub, then try again.</value></data>
+  <data name="Login.DeviceError" xml:space="preserve"><value>GitHub could not complete sign-in. Try again.</value></data>
+  <data name="Login.UnexpectedLaunchError" xml:space="preserve"><value>JitHub could not open GitHub sign-in. Check your default browser and try again.</value></data>
 </root>

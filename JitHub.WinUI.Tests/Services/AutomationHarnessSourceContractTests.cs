@@ -16,15 +16,14 @@ public sealed class AutomationHarnessSourceContractTests
 
         Assert.Contains("\"auth-lifecycle\"", source, StringComparison.Ordinal);
         Assert.Contains("RunAuthCancelScenario", source, StringComparison.Ordinal);
-        Assert.Contains("RunAuthInvalidStateScenario", source, StringComparison.Ordinal);
+        Assert.Contains("RunAuthDeviceSuccessScenario", source, StringComparison.Ordinal);
         Assert.Contains("RunAuthExpiredTokenScenario", source, StringComparison.Ordinal);
         Assert.Contains("RunAuthNotificationReconnectScenario", source, StringComparison.Ordinal);
         Assert.Contains("RunAuthOfflineLaunchScenario", source, StringComparison.Ordinal);
-        Assert.Contains("RunAuthProtocolReactivationScenario", source, StringComparison.Ordinal);
         Assert.Contains("RunAuthMultiAccountCleanupScenario", source, StringComparison.Ordinal);
         Assert.Contains("SignOutRemoveAccountDataCheckBox", source, StringComparison.Ordinal);
-        Assert.Contains("protocol.authorization.completed", source, StringComparison.Ordinal);
-        Assert.Contains("oauth.launch.requested", source, StringComparison.Ordinal);
+        Assert.Contains("device.code.requested", source, StringComparison.Ordinal);
+        Assert.Contains("GitHubDeviceAuthorizationDialog", source, StringComparison.Ordinal);
         Assert.Contains("automation-secondary-token", source, StringComparison.Ordinal);
         Assert.Contains("ReadAuthSetting(root, \"USER_ID\")", source, StringComparison.Ordinal);
     }
@@ -231,8 +230,6 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("new(\"compact\", 640, 600)", source, StringComparison.Ordinal);
         Assert.Contains("double[] textScales = [1, 1.5, 2];", source, StringComparison.Ordinal);
         Assert.Contains("string.IsNullOrWhiteSpace(RequiredViewportName) ||", source, StringComparison.Ordinal);
-        Assert.Contains("protocol completion status dismissed", source, StringComparison.Ordinal);
-        Assert.Contains("ByAutomationId(\"AppStatusHost\")", source, StringComparison.Ordinal);
         Assert.Contains("LauncherControlAutomationId: \"RepoIssuesOpenCommentButton\"", source, StringComparison.Ordinal);
         Assert.Contains("LauncherControlAutomationId: \"RepoPullRequestsOpenCompactCommentButton\"", source, StringComparison.Ordinal);
         string pullRequestPageSource = File.ReadAllText(Path.Combine(

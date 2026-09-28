@@ -940,7 +940,8 @@ public sealed class GitHubGistQueryService : IGitHubGistQueryService
 
         if (response.StatusCode == HttpStatusCode.Unauthorized)
         {
-            throw new GitHubAuthenticationException(message);
+            throw new GitHubAuthenticationException(
+                message, response.RequestMessage?.Headers.Authorization?.Parameter);
         }
 
         throw new GitHubApiException(response.StatusCode, message);

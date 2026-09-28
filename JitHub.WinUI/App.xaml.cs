@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
@@ -22,7 +21,6 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.Windows.AppLifecycle;
-using Windows.ApplicationModel.Activation;
 using Windows.Storage;
 
 namespace JitHub.WinUI;
@@ -32,19 +30,6 @@ public partial class App : Application
     internal const int DiagnosticsCloseProbeBurstCount = 64;
     internal const string DiagnosticsCloseProbeBurstName = "diagnostics.close.probe.burst";
     internal const string DiagnosticsCloseProbeMarkerName = "diagnostics.close.probe.marker";
-    private readonly struct ActivationRequest
-    {
-        public ActivationRequest(ExtendedActivationKind kind, Uri? protocolUri)
-        {
-            Kind = kind;
-            ProtocolUri = protocolUri;
-        }
-
-        public ExtendedActivationKind Kind { get; }
-
-        public Uri? ProtocolUri { get; }
-    }
-
     private readonly DispatcherQueue _dispatcherQueue;
     private readonly ApplicationActivationGate _activationGate = new();
     private string? _storedTheme;
@@ -105,15 +90,11 @@ public partial class App : Application
     {
         try
         {
-            // AppLifecycle can raise redirected activations on a callback thread.
-            // Read the projected activation payload only after reaching WinUI's
-            // dispatcher so protocol callbacks are apartment-safe on every ABI.
-            ActivationRequest activationRequest = CreateActivationRequest(activationArguments);
             _ = GetOrCreateMainWindow();
             _services ??= BuildServices();
             _ = GetService<IApplicationTaskCoordinator>().RunAsync(
                 token => _activationGate.RunAsync(
-                    innerToken => HandleActivationAsync(activationRequest, innerToken),
+                    HandleActivationAsync,
                     token),
                 new ApplicationTaskOptions("app.activation"));
         }
@@ -134,14 +115,12 @@ public partial class App : Application
         }
     }
 
-    private async Task HandleActivationAsync(
-        ActivationRequest activationRequest,
-        CancellationToken cancellationToken)
+    private async Task HandleActivationAsync(CancellationToken cancellationToken)
     {
         Program.LogStartupPhase("activation.async-enter");
         try
         {
-            await ActivateCoreAsync(activationRequest, cancellationToken);
+            await ActivateCoreAsync(cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -167,9 +146,7 @@ public partial class App : Application
         }
     }
 
-    private async Task ActivateCoreAsync(
-        ActivationRequest activationRequest,
-        CancellationToken cancellationToken)
+    private async Task ActivateCoreAsync(CancellationToken cancellationToken)
     {
         MainWindow mainWindow = GetOrCreateMainWindow();
         Program.LogStartupPhase("activation.core.window-ready");
@@ -200,9 +177,6 @@ public partial class App : Application
             }
         }
 
-        IAuthService authService = GetService<IAuthService>();
-        IAccountService accountService = GetService<IAccountService>();
-
         if (_accountRemovalRecoveryIncomplete)
         {
             GetService<NavigationService>().Unauthorized();
@@ -214,54 +188,6 @@ public partial class App : Application
         if (TryHandleLaunchPageOverride())
         {
             Program.LogStartupPhase("activation.core.launch-override-complete");
-            return;
-        }
-
-        if (activationRequest.Kind == ExtendedActivationKind.Protocol &&
-            activationRequest.ProtocolUri is Uri protocolUri)
-        {
-            if (TryGetAuthProtocolActivationResponse(protocolUri, out string? authResponse))
-            {
-                bool authorized = await authService.Authorize(authResponse);
-                if (authorized)
-                {
-                    GetService<NavigationService>().GoHome();
-                    _authLifecycleAutomation?.Record("protocol.authorization.completed");
-                    mainWindow.ShowStatus("GitHub sign-in completed.");
-                }
-                else if (authService.Authenticated)
-                {
-                    GetService<NavigationService>().GoHome();
-                }
-                else if (authService.CheckAuth(accountService.GetUser()))
-                {
-                    await authService.InitializeAsync();
-
-                    if (authService.Authenticated || authService.CheckAuth(accountService.GetUser()))
-                    {
-                        GetService<NavigationService>().GoHome();
-                    }
-                    else
-                    {
-                        GetService<NavigationService>().Unauthorized();
-                    }
-                }
-                else
-                {
-                    GetService<NavigationService>().Unauthorized();
-                }
-
-                if (!authorized)
-                {
-                    _authLifecycleAutomation?.Record("protocol.authorization.rejected", authService.RecoveryState.ToString());
-                    ShowAuthRecoveryState(authService);
-                }
-
-                return;
-            }
-
-            StartStartupSessionRestoreIfNeeded();
-            NavigateStartupPage();
             return;
         }
 
@@ -370,7 +296,9 @@ public partial class App : Application
             services.AddSingleton<IAccountService, AccountService>();
             services.AddSingleton<ICredentialVaultBackend, WindowsCredentialVaultBackend>();
             services.AddSingleton<IAuthCredentialStore, AuthCredentialStore>();
-            services.AddSingleton<IAuthHandoffClient, AuthHandoffClient>();
+            services.AddSingleton<IGitHubDeviceFlowClient, GitHubDeviceFlowClient>();
+            services.AddSingleton<IDeviceAuthorizationPrompt,
+                JitHub.WinUI.Views.Dialogs.GitHubDeviceAuthorizationPrompt>();
             services.AddSingleton<IExternalUriLauncher>(
                 IsLoginLaunchFailurePreview()
                     ? new LoginLaunchFailureExternalUriLauncher()
@@ -391,7 +319,9 @@ public partial class App : Application
         services.AddSingleton(credentialBackend);
         services.AddSingleton(credentials);
         services.AddSingleton(_authLifecycleAutomation.CreateUriLauncher());
-        services.AddSingleton<IAuthHandoffClient>(_authLifecycleAutomation.CreateHandoffClient());
+        services.AddSingleton<IGitHubDeviceFlowClient>(_authLifecycleAutomation.CreateDeviceFlowClient());
+        services.AddSingleton<IDeviceAuthorizationPrompt,
+            JitHub.WinUI.Views.Dialogs.GitHubDeviceAuthorizationPrompt>();
         services.AddSingleton<IGitHubClientService>(new GitHubClientService(
             new System.Net.Http.HttpClient(_authLifecycleAutomation.CreateHttpMessageHandler())));
         services.AddSingleton<IGitHubRestTransport>(new GitHubRestTransport(
@@ -431,7 +361,9 @@ public partial class App : Application
         NavigationService navigationService = GetService<NavigationService>();
         long persistedUserId = accountService.GetUser();
 
-        if (authService.Authenticated || authService.CheckAuth(persistedUserId))
+        if (authService.Authenticated ||
+            (authService.RecoveryState == AuthSessionRecoveryState.None &&
+             authService.CheckAuth(persistedUserId)))
         {
             navigationService.GoHome();
         }
@@ -509,13 +441,12 @@ public partial class App : Application
         }
 
         IAuthService authService = GetService<IAuthService>();
-        IAccountService accountService = GetService<IAccountService>();
 
         if (_mainWindow?.ContentFrameHost.Content is null)
         {
             NavigateStartupPage();
         }
-        else if (!authService.Authenticated && !authService.CheckAuth(accountService.GetUser()))
+        else if (!authService.Authenticated)
         {
             GetService<NavigationService>().Unauthorized();
         }
@@ -531,13 +462,10 @@ public partial class App : Application
                 _mainWindow?.ShowStatus("Your GitHub session expired. Sign in again to continue.");
                 break;
             case AuthSessionRecoveryState.Offline:
-                _mainWindow?.ShowStatus("You are offline. JitHub is showing cached account data and will reconnect automatically.");
+                _mainWindow?.ShowStatus("GitHub is unavailable. JitHub will retry your saved session automatically.");
                 break;
             case AuthSessionRecoveryState.ServiceUnavailable:
-                _mainWindow?.ShowStatus("GitHub is temporarily unavailable. Cached account data remains available.");
-                break;
-            case AuthSessionRecoveryState.InvalidCallback:
-                _mainWindow?.ShowStatus("GitHub sign-in could not be verified. No token was accepted.");
+                _mainWindow?.ShowStatus("GitHub is temporarily unavailable. JitHub will retry your saved session.");
                 break;
         }
     }
@@ -602,137 +530,6 @@ public partial class App : Application
         {
             Source = new Uri(source, UriKind.Absolute)
         });
-    }
-
-    private static bool TryGetAuthProtocolActivationResponse(Uri uri, out string response)
-    {
-        response = string.Empty;
-
-        if (!AuthProtocolPolicy.IsExpectedScheme(uri))
-        {
-            return false;
-        }
-
-        string original = WebUtility.HtmlDecode(uri.OriginalString);
-        string normalizedHost = uri.Host.Trim('/');
-        string normalizedPath = uri.AbsolutePath.Trim('/');
-        string query = uri.Query.TrimStart('?');
-        string fragment = uri.Fragment.TrimStart('#');
-
-        bool authEndpoint =
-            string.Equals(normalizedHost, "auth", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(normalizedPath, "auth", StringComparison.OrdinalIgnoreCase) ||
-            IsAuthEndpoint(original);
-        bool hasAuthPayload =
-            ContainsKeyValue(query, "handoff") ||
-            ContainsKeyValue(query, "state") ||
-            ContainsKeyValue(fragment, "handoff") ||
-            ContainsKeyValue(fragment, "state");
-
-        if (!authEndpoint && !hasAuthPayload)
-        {
-            return false;
-        }
-
-        response = WebUtility.HtmlDecode(CombineKeyValuePayload(query, fragment, original));
-        return true;
-    }
-
-    private static string CombineKeyValuePayload(string query, string fragment, string? original = null)
-    {
-        if (string.IsNullOrWhiteSpace(query) && string.IsNullOrWhiteSpace(fragment) && !string.IsNullOrWhiteSpace(original))
-        {
-            string? originalQuery = TryExtractOriginalComponent(original, '?', '#');
-            string? originalFragment = TryExtractOriginalComponent(original, '#');
-            query = string.IsNullOrWhiteSpace(originalQuery) ? query : originalQuery;
-            fragment = string.IsNullOrWhiteSpace(originalFragment) ? fragment : originalFragment;
-        }
-
-        if (string.IsNullOrWhiteSpace(query))
-        {
-            return fragment;
-        }
-
-        if (string.IsNullOrWhiteSpace(fragment))
-        {
-            return query;
-        }
-
-        return $"{query}&{fragment}";
-    }
-
-    private static bool IsAuthEndpoint(string original)
-    {
-        if (string.IsNullOrWhiteSpace(original))
-        {
-            return false;
-        }
-
-        int schemeSeparatorIndex = original.IndexOf("://", StringComparison.Ordinal);
-        string remainder = schemeSeparatorIndex >= 0
-            ? original[(schemeSeparatorIndex + 3)..]
-            : original;
-        int queryIndex = remainder.IndexOfAny(new[] { '?', '#' });
-        string endpoint = (queryIndex >= 0 ? remainder[..queryIndex] : remainder).Trim('/');
-
-        return endpoint.StartsWith("auth", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static string? TryExtractOriginalComponent(string original, char startDelimiter, char? endDelimiter = null)
-    {
-        if (string.IsNullOrWhiteSpace(original))
-        {
-            return null;
-        }
-
-        int startIndex = original.IndexOf(startDelimiter);
-        if (startIndex < 0 || startIndex == original.Length - 1)
-        {
-            return null;
-        }
-
-        int contentStartIndex = startIndex + 1;
-        int endIndex = endDelimiter is null
-            ? -1
-            : original.IndexOf(endDelimiter.Value, contentStartIndex);
-        if (endIndex < 0)
-        {
-            endIndex = original.Length;
-        }
-
-        return original[contentStartIndex..endIndex];
-    }
-
-    private static bool ContainsKeyValue(string source, string key)
-    {
-        if (string.IsNullOrWhiteSpace(source))
-        {
-            return false;
-        }
-
-        foreach (string pair in source.Split('&', StringSplitOptions.RemoveEmptyEntries))
-        {
-            int valueSeparatorIndex = pair.IndexOf('=');
-            string rawKey = valueSeparatorIndex >= 0 ? pair[..valueSeparatorIndex] : pair;
-            string currentKey = NormalizePayloadKey(rawKey);
-            if (string.Equals(currentKey, key, StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static string NormalizePayloadKey(string key)
-    {
-        string normalizedKey = key.TrimStart('?', '#', '/');
-        while (normalizedKey.StartsWith("amp;", StringComparison.OrdinalIgnoreCase))
-        {
-            normalizedKey = normalizedKey[4..].TrimStart('?', '#', '/');
-        }
-
-        return normalizedKey;
     }
 
     private MainWindow GetOrCreateMainWindow()
@@ -854,27 +651,6 @@ public partial class App : Application
     }
 
     internal MainWindow CurrentMainWindow => GetOrCreateMainWindow();
-
-    private static ActivationRequest CreateActivationRequest(AppActivationArguments activationArguments)
-    {
-        Uri? protocolUri = null;
-
-        if (activationArguments.Kind == ExtendedActivationKind.Protocol &&
-            activationArguments.Data is IProtocolActivatedEventArgs protocolArgs)
-        {
-            protocolUri = protocolArgs.Uri;
-        }
-
-        if (protocolUri is null &&
-            activationArguments.Kind == ExtendedActivationKind.Launch &&
-            activationArguments.Data is ILaunchActivatedEventArgs launchArgs &&
-            AuthLifecycleAutomationContext.TryParseProtocolArgument(launchArgs.Arguments, out Uri? automationProtocolUri))
-        {
-            return new ActivationRequest(ExtendedActivationKind.Protocol, automationProtocolUri);
-        }
-
-        return new ActivationRequest(activationArguments.Kind, protocolUri);
-    }
 
     private static string FormatActivationError(Exception ex)
     {

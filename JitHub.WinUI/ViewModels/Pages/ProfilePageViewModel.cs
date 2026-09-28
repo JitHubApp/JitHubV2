@@ -345,7 +345,7 @@ public sealed partial class ProfilePageViewModel : ViewModelBase
                 || string.Equals(requestedLogin, authenticated?.Login, StringComparison.OrdinalIgnoreCase);
             string? targetLogin = forceAuthenticatedUser ? authenticated?.Login : requestedLogin;
             long tokenUserId = authenticated?.Id ?? _accountService.GetUser();
-            string token = _authService.GetToken(tokenUserId) ?? GitHubAuthenticationConstants.PublicAccessToken;
+            string token = await _authService.GetValidTokenAsync(tokenUserId) ?? GitHubAuthenticationConstants.PublicAccessToken;
             _currentAccessToken = token;
             _currentUserPartition = tokenUserId.ToString(CultureInfo.InvariantCulture);
             _loadedModes.Clear();
@@ -423,13 +423,13 @@ public sealed partial class ProfilePageViewModel : ViewModelBase
         {
             TrackError("cancelled", loadStopwatch.Elapsed, TelemetryTaxonomy.Results.Cancelled);
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
             StatusText = ProfileText.L(
                 "Profile.Status.AuthenticationExpired",
                 "GitHub authentication is no longer valid. Please sign in again.");
             TrackError("authentication", loadStopwatch.Elapsed);
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (Exception ex)
         {
@@ -537,7 +537,7 @@ public sealed partial class ProfilePageViewModel : ViewModelBase
         CancellationToken cancellationToken = default)
     {
         long userId = _authService.AuthenticatedUser?.Id ?? _accountService.GetUser();
-        string? token = _authService.GetToken(userId);
+        string? token = await _authService.GetValidTokenAsync(userId, cancellationToken);
         if (string.IsNullOrWhiteSpace(token))
         {
             StatusText = ProfileText.L("Profile.Status.SignInToEdit", "Sign in again to edit your profile.");

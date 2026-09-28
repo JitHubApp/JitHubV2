@@ -138,7 +138,6 @@
 
   <ItemGroup>
     <AdditionalFiles Include="..\eng\BannedSymbols.txt" />
-    <Compile Include="..\Shared\OAuthHandoffProtocol.cs" Link="Security\OAuthHandoffProtocol.cs" />
     <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer\MarkdownRenderer.csproj" />
     <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer.Gfm\MarkdownRenderer.Gfm.csproj" />
   </ItemGroup>

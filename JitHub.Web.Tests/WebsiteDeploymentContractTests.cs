@@ -6,7 +6,7 @@ namespace JitHub.Web.Tests;
 public sealed class WebsiteDeploymentContractTests
 {
     [Fact]
-    public void DeploymentRunsProductionStartupAndLiveHealthChecks()
+    public void LegacyWebsiteStillChecksProductionStartupWithoutDeploying()
     {
         string root = FindRepositoryRoot();
         string workflow = File.ReadAllText(
@@ -15,22 +15,21 @@ public sealed class WebsiteDeploymentContractTests
         Assert.Contains("Smoke test production startup", workflow, StringComparison.Ordinal);
         Assert.Contains("ASPNETCORE_ENVIRONMENT=Production", workflow, StringComparison.Ordinal);
         Assert.Contains("WEBSITE_HOSTNAME=jithub-web-prod.azurewebsites.net", workflow, StringComparison.Ordinal);
-        Assert.Contains("Verify deployed website health", workflow, StringComparison.Ordinal);
         Assert.Contains("/healthz", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("azure/webapps-deploy", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("JITHUB_WEBAPP_PUBLISH_PROFILE", workflow, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void PackagedAppUsesTheDeployedProductionCallback()
+    public void PackagedAppUsesDeviceSignInWithoutACallback()
     {
         string root = FindRepositoryRoot();
         using JsonDocument settings = JsonDocument.Parse(
             File.ReadAllText(Path.Combine(root, "JitHub.WinUI", "appsettings.json")));
-        string? callback = settings.RootElement
-            .GetProperty("Credential")
-            .GetProperty("AuthorizationCallbackUrl")
-            .GetString();
-
-        Assert.Equal("https://jithub-web-prod.azurewebsites.net/authorize", callback);
+        Assert.False(settings.RootElement.GetProperty("Credential")
+            .TryGetProperty("AuthorizationCallbackUrl", out _));
+        Assert.Equal("jithub.app", File.ReadAllText(
+            Path.Combine(root, "JitHub.Site", "public", "CNAME")).Trim());
     }
 
     private static string FindRepositoryRoot()

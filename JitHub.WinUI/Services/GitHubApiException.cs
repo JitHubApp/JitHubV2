@@ -1,5 +1,7 @@
 using System;
 using System.Net;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace JitHub.Services;
 
@@ -16,10 +18,18 @@ public class GitHubApiException : Exception
 
 public sealed class GitHubAuthenticationException : GitHubApiException
 {
-    public GitHubAuthenticationException(string message)
+    public GitHubAuthenticationException(string message, string? rejectedAccessToken = null)
         : base(HttpStatusCode.Unauthorized, message)
     {
+        RejectedTokenFingerprint = Fingerprint(rejectedAccessToken);
     }
+
+    public string? RejectedTokenFingerprint { get; }
+
+    internal static string? Fingerprint(string? accessToken) =>
+        string.IsNullOrWhiteSpace(accessToken)
+            ? null
+            : Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(accessToken)));
 }
 
 public sealed class GitHubRateLimitException : GitHubApiException

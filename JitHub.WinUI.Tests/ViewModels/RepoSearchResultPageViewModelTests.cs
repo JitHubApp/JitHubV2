@@ -304,5 +304,6 @@ public sealed class RepoSearchResultPageViewModelTests
         public string? GetToken(long userId) => "token";
         public bool CheckAuth(long userId) => true;
         public void SignOut() { }
+        public bool HandleAuthenticationFailure(GitHubAuthenticationException exception) { SignOut(); return true; }
     }
 }

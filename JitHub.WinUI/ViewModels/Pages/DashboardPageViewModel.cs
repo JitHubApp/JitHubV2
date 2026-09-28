@@ -245,10 +245,14 @@ public sealed partial class DashboardPageViewModel : ViewModelBase
         }
 
         Stopwatch refreshDuration = Stopwatch.StartNew();
-        string? token = GetActiveToken();
+        string? token = await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser(), cancellationToken);
         if (string.IsNullOrWhiteSpace(token))
         {
-            DashboardStatusText = L("Dashboard/Status/AuthenticationUnavailable", "GitHub authentication is no longer available. Please sign in again.");
+            bool offline = _authService.RecoveryState == AuthSessionRecoveryState.Offline;
+            DashboardStatusText = offline
+                ? L("Dashboard/Status/OfflineRecovery", "You are offline. Try again when connected; your saved GitHub session is kept.")
+                : L("Dashboard/Status/AuthenticationUnavailable", "GitHub authentication is no longer available. Please sign in again.");
             _telemetryService.TrackEvent(
                 "dashboard.refresh.completed",
                 new Dictionary<string, string?>
@@ -257,7 +261,10 @@ public sealed partial class DashboardPageViewModel : ViewModelBase
                     ["result"] = TelemetryTaxonomy.Results.AuthError,
                     ["duration_bucket"] = TelemetrySanitizer.CreateDurationBucket(refreshDuration.Elapsed)
                 });
-            _authService.SignOut();
+            if (_authService.RecoveryState == AuthSessionRecoveryState.Expired)
+            {
+                _authService.SignOut();
+            }
             return;
         }
 
@@ -307,7 +314,7 @@ public sealed partial class DashboardPageViewModel : ViewModelBase
                 });
             throw;
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
             DashboardStatusText = L("Dashboard/Status/AuthenticationInvalid", "GitHub authentication is no longer valid. Please sign in again.");
             _telemetryService.TrackEvent(
@@ -318,7 +325,7 @@ public sealed partial class DashboardPageViewModel : ViewModelBase
                     ["result"] = "auth_error",
                     ["duration_bucket"] = TelemetrySanitizer.CreateDurationBucket(refreshDuration.Elapsed)
                 });
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (Exception ex) when (ex is GitHubApiException or System.Net.Http.HttpRequestException)
         {
@@ -1080,11 +1087,12 @@ public sealed partial class DashboardPageViewModel : ViewModelBase
         _shellViewModel.OpenRepositoryTarget(repository, page, pageArg);
     }
 
-    private Task OpenNotificationAsync(GitHubNotificationThread notification)
+    private async Task OpenNotificationAsync(GitHubNotificationThread notification)
     {
-        string? token = GetActiveToken();
+        string? token = await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         string accountId = string.IsNullOrWhiteSpace(token) ? string.Empty : GetActiveUserPartition(token);
-        return _notificationOpenWorkflow.ExecuteAsync(
+        await _notificationOpenWorkflow.ExecuteAsync(
             token,
             accountId,
             notification,

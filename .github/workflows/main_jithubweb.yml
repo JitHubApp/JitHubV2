@@ -1,4 +1,4 @@
-name: Build and deploy JitHub website
+name: Build legacy JitHub auth website
 
 on:
   push:
@@ -27,7 +27,6 @@ permissions:
   contents: read
 
 env:
-  AZURE_WEBAPP_NAME: ${{ vars.JITHUB_WEBAPP_NAME || 'jithub-web-prod' }}
   WEBSITE_PROJECT: JitHub.Web/JitHub.Web.csproj
   WEBSITE_TEST_PROJECT: JitHub.Web.Tests/JitHub.Web.Tests.csproj
 
@@ -94,56 +93,3 @@ jobs:
           name: jithub-web-publish
           path: ./publish
           if-no-files-found: error
-
-  deploy:
-    name: Deploy website
-    if: github.event_name != 'pull_request'
-    needs: build
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Download published website
-        uses: actions/download-artifact@v4
-        with:
-          name: jithub-web-publish
-          path: ./publish
-
-      - name: Validate Azure Web App deployment configuration
-        shell: bash
-        env:
-          JITHUB_WEBAPP_PUBLISH_PROFILE: ${{ secrets.JITHUB_WEBAPP_PUBLISH_PROFILE }}
-        run: |
-          if [ -z "${AZURE_WEBAPP_NAME}" ]; then
-            echo "JITHUB_WEBAPP_NAME is empty. Configure the repository variable or set AZURE_WEBAPP_NAME in the workflow."
-            exit 1
-          fi
-
-          if [ -z "${JITHUB_WEBAPP_PUBLISH_PROFILE}" ]; then
-            echo "JITHUB_WEBAPP_PUBLISH_PROFILE is required. Create a regular Azure App Service Web App, download its publish profile, and save it as this GitHub secret."
-            exit 1
-          fi
-
-      - name: Deploy to Azure Web App
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: ${{ env.AZURE_WEBAPP_NAME }}
-          package: ./publish
-          publish-profile: ${{ secrets.JITHUB_WEBAPP_PUBLISH_PROFILE }}
-
-      - name: Verify deployed website health
-        shell: bash
-        env:
-          JITHUB_WEBAPP_HEALTH_URL: ${{ vars.JITHUB_WEBAPP_HEALTH_URL }}
-        run: |
-          health_url="${JITHUB_WEBAPP_HEALTH_URL:-https://${AZURE_WEBAPP_NAME}.azurewebsites.net/healthz}"
-          for attempt in {1..30}; do
-            if [ "$(curl --silent --show-error --fail --max-time 10 "${health_url}" || true)" = "ok" ]; then
-              echo "Production website is healthy at ${health_url}."
-              exit 0
-            fi
-
-            sleep 10
-          done
-
-          echo "Production website did not become healthy at ${health_url}."
-          exit 1

@@ -118,27 +118,6 @@ public sealed class SecurityReleaseGateTests
         Assert.Null(uri);
     }
 
-    [Fact]
-    [Trait("Category", "ReleaseSecurity")]
-    public void OAuthProtocolPolicy_DeniesUnregisteredAndCrossBuildSchemes()
-    {
-        Assert.True(AuthProtocolPolicy.IsExpectedScheme(
-            new Uri("jithub://auth?state=state"),
-            useDevelopmentScheme: false));
-        Assert.False(AuthProtocolPolicy.IsExpectedScheme(
-            new Uri("jithub-dev://auth?state=state"),
-            useDevelopmentScheme: false));
-        Assert.True(AuthProtocolPolicy.IsExpectedScheme(
-            new Uri("jithub-dev://auth?state=state"),
-            useDevelopmentScheme: true));
-        Assert.False(AuthProtocolPolicy.IsExpectedScheme(
-            new Uri("https://attacker.test/auth?state=state"),
-            useDevelopmentScheme: true));
-        Assert.False(AuthProtocolPolicy.IsExpectedScheme(
-            new Uri("file:///auth?state=state"),
-            useDevelopmentScheme: true));
-    }
-
     [Theory]
     [Trait("Category", "ReleaseSecurity")]
     [InlineData("ghp_abcdefghijklmnopqrstuvwxyz123456")]
@@ -187,27 +166,20 @@ public sealed class SecurityReleaseGateTests
 
         store.SaveAccountToken(41, "token-one");
         store.SaveAccountToken(42, "token-two");
-        store.SavePendingToken("pending-token");
-        store.SavePendingState("pending-state");
-        store.SavePendingVerifier("pending-verifier");
+        store.SaveAccountSession(42, new GitHubTokenSession(
+            "rotating-access", "rotating-refresh", DateTimeOffset.UtcNow.AddHours(8),
+            DateTimeOffset.UtcNow.AddMonths(6), ["repo", "gist"]));
         store.SaveAccountToken(41, "token-one-replaced");
 
         Assert.Equal("token-one-replaced", store.GetAccountToken(41));
-        Assert.Equal("token-two", store.GetAccountToken(42));
-        Assert.Equal("pending-token", store.GetPendingToken());
-        Assert.Equal("pending-state", store.GetPendingState());
-        Assert.Equal("pending-verifier", store.GetPendingVerifier());
+        Assert.Equal("rotating-access", store.GetAccountToken(42));
+        Assert.Equal("rotating-refresh", store.GetAccountSession(42)?.RefreshToken);
+        Assert.Contains("gist", store.GetAccountSession(42)?.GrantedScopes ?? []);
 
         store.RemoveAccountToken(41);
-        store.RemovePendingToken();
-        store.RemovePendingState();
-        store.RemovePendingVerifier();
 
         Assert.Null(store.GetAccountToken(41));
-        Assert.Equal("token-two", store.GetAccountToken(42));
-        Assert.Null(store.GetPendingToken());
-        Assert.Null(store.GetPendingState());
-        Assert.Null(store.GetPendingVerifier());
+        Assert.Equal("rotating-access", store.GetAccountToken(42));
         Assert.DoesNotContain(backend.Values.Keys, key => key.UserName == "41");
     }
 

@@ -76,9 +76,9 @@ public sealed class BrandAssetContractTests
         [
             (Path.Combine(root, "JitHub.WinUI", "Assets", "JitHubLogo.png"), CanonicalLogoHash),
             (Path.Combine(root, "JitHub.WinUI", "Assets", "JitHubLogoTitleBar.png"), CanonicalLogoHash),
-            (Path.Combine(root, "JitHub.Web", "wwwroot", "JitHubLogo.png"), CanonicalLogoHash),
-            (Path.Combine(root, "JitHub.Web", "wwwroot", "favicon.png"), "e265ac0f2dda1e5dfa65b1adf330722bb3ef7789115283604d8cd19f098f1f08"),
-            (Path.Combine(root, "JitHub.Web", "wwwroot", "icon-192.png"), "0dba506aaebc6526f92283e8b0112b33541605fb1b4f1a49aa15344448bac0fe"),
+            (Path.Combine(root, "JitHub.Site", "public", "JitHubLogo.png"), CanonicalLogoHash),
+            (Path.Combine(root, "JitHub.Site", "public", "favicon.png"), "e265ac0f2dda1e5dfa65b1adf330722bb3ef7789115283604d8cd19f098f1f08"),
+            (Path.Combine(root, "JitHub.Site", "public", "icon-192.png"), "0dba506aaebc6526f92283e8b0112b33541605fb1b4f1a49aa15344448bac0fe"),
         ];
 
         Assert.All(assets, asset => AssertSha256(asset.Path, asset.Hash));

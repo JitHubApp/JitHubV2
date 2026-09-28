@@ -517,12 +517,15 @@ public sealed partial class ShellPageViewModel : ViewModelBase
         CancellationToken cancellationToken = default,
         bool forceRefresh = false)
     {
-        string? token = GetActiveToken();
+        string? token = await GetActiveTokenAsync(cancellationToken);
         if (string.IsNullOrWhiteSpace(token))
         {
             RepositoryRailStatusText = "GitHub authentication is unavailable.";
             HasRepositoryRailError = true;
-            _authService.SignOut();
+            if (_authService.RecoveryState == AuthSessionRecoveryState.Expired)
+            {
+                _authService.SignOut();
+            }
             return;
         }
 
@@ -558,11 +561,11 @@ public sealed partial class ShellPageViewModel : ViewModelBase
                     ["result"] = "success"
                 });
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
             RepositoryRailStatusText = "GitHub authentication is unavailable.";
             HasRepositoryRailError = true;
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (GitHubApiException ex)
         {
@@ -623,7 +626,7 @@ public sealed partial class ShellPageViewModel : ViewModelBase
         List<ShellCommandSearchResult> results = BuildCommandResults(term).ToList();
         results.Add(CreateSearchQueryResult(term));
 
-        string? accessToken = GetActiveToken();
+        string? accessToken = await GetActiveTokenAsync(token);
         if (!string.IsNullOrWhiteSpace(accessToken))
         {
             Searching = true;
@@ -659,13 +662,13 @@ public sealed partial class ShellPageViewModel : ViewModelBase
                 TrackSearchCompletion(TelemetryTaxonomy.Results.Cancelled, searchDuration.Elapsed);
                 throw;
             }
-            catch (GitHubAuthenticationException)
+            catch (GitHubAuthenticationException authError)
             {
                 TrackSearchCompletion(
                     TelemetryTaxonomy.Results.AuthError,
                     searchDuration.Elapsed,
                     errorKind: "authentication");
-                _authService.SignOut();
+                _authService.HandleAuthenticationFailure(authError);
             }
             catch (GitHubApiException)
             {
@@ -1048,7 +1051,7 @@ public sealed partial class ShellPageViewModel : ViewModelBase
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(notification);
-        string? token = GetActiveToken();
+        string? token = await GetActiveTokenAsync(cancellationToken);
         if (string.IsNullOrWhiteSpace(token) ||
             string.IsNullOrWhiteSpace(notification.Repository.FullName) ||
             !NotificationDestinationPolicy.TryResolveInternal(
@@ -1218,7 +1221,7 @@ public sealed partial class ShellPageViewModel : ViewModelBase
     public async Task<RepoDetailPageArgs?> GetFeedbackNavigationArgsAsync(
         CancellationToken cancellationToken = default)
     {
-        string? token = GetActiveToken();
+        string? token = await GetActiveTokenAsync(cancellationToken);
         if (string.IsNullOrWhiteSpace(token))
         {
             return null;
@@ -2278,6 +2281,12 @@ public sealed partial class ShellPageViewModel : ViewModelBase
     {
         long userId = _authService.AuthenticatedUser?.Id ?? _accountService.GetUser();
         return _authService.GetToken(userId);
+    }
+
+    private Task<string?> GetActiveTokenAsync(CancellationToken cancellationToken = default)
+    {
+        long userId = _authService.AuthenticatedUser?.Id ?? _accountService.GetUser();
+        return _authService.GetValidTokenAsync(userId, cancellationToken);
     }
 
     private string GetActiveUserPartition(string token)

@@ -213,7 +213,8 @@ public sealed partial class StarLibraryPageViewModel : ViewModelBase, IDisposabl
 
         _initialized = true;
         Stopwatch loadDuration = Stopwatch.StartNew();
-        _accessToken = GetActiveToken() ?? string.Empty;
+        _accessToken = await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser(), cancellationToken) ?? string.Empty;
         _userId = GetActiveUserPartition(_accessToken);
         if (string.IsNullOrWhiteSpace(_accessToken))
         {
@@ -397,6 +398,7 @@ public sealed partial class StarLibraryPageViewModel : ViewModelBase, IDisposabl
         }
 
         IReadOnlyList<string> categoryIds = viewItem.Item.Categories.Select(static category => category.Id).ToArray();
+        await RefreshAccessTokenAsync(cancellationToken);
         await _libraryService.UnstarAsync(_accessToken, _userId, viewItem.Item, cancellationToken);
         await RefreshFromStoreAsync();
         StatusText = FormatString("Stars/Status/UnstarredRepositoryFormat", "Unstarred {0}.", viewItem.FullName);
@@ -405,6 +407,7 @@ public sealed partial class StarLibraryPageViewModel : ViewModelBase, IDisposabl
 
     public async Task UnstarManyAsync(IReadOnlyList<StarRepositoryViewItem> items, CancellationToken cancellationToken = default)
     {
+        await RefreshAccessTokenAsync(cancellationToken);
         foreach (StarRepositoryViewItem item in items)
         {
             await _libraryService.UnstarAsync(_accessToken, _userId, item.Item, cancellationToken);
@@ -421,6 +424,7 @@ public sealed partial class StarLibraryPageViewModel : ViewModelBase, IDisposabl
             return;
         }
 
+        await RefreshAccessTokenAsync(cancellationToken);
         await _libraryService.RestoreStarAsync(_accessToken, _userId, undo.Item, undo.CategoryIds, cancellationToken);
         await RefreshFromStoreAsync();
         StatusText = FormatString("Stars/Status/RestoredRepositoryFormat", "Restored {0}.", undo.Item.Repository.FullName);
@@ -714,6 +718,7 @@ public sealed partial class StarLibraryPageViewModel : ViewModelBase, IDisposabl
 
     private async Task RefreshNavigationAsync(CancellationToken cancellationToken = default)
     {
+        await RefreshAccessTokenAsync(cancellationToken);
         StarLibrarySnapshot snapshot = await _libraryService.InitializeAsync(
             _accessToken,
             _userId,
@@ -728,6 +733,7 @@ public sealed partial class StarLibraryPageViewModel : ViewModelBase, IDisposabl
         IsSyncing = true;
         try
         {
+            await RefreshAccessTokenAsync(cancellationToken);
             StarSyncState state = await _libraryService.SynchronizeAsync(
                 _accessToken,
                 _userId,
@@ -1087,6 +1093,19 @@ public sealed partial class StarLibraryPageViewModel : ViewModelBase, IDisposabl
     {
         long userId = _authService.AuthenticatedUser?.Id ?? _accountService.GetUser();
         return _authService.GetToken(userId);
+    }
+
+    private async Task RefreshAccessTokenAsync(CancellationToken cancellationToken)
+    {
+        long userId = _authService.AuthenticatedUser?.Id ?? _accountService.GetUser();
+        string? token = await _authService.GetValidTokenAsync(userId, cancellationToken);
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            throw new GitHubAuthenticationException("GitHub authentication is unavailable.");
+        }
+
+        _accessToken = token;
+        _userId = GetActiveUserPartition(token);
     }
 
     private string GetActiveUserPartition(string token)

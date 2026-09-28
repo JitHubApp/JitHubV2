@@ -354,6 +354,8 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
 
     private async Task InitializeCoreAsync(IssueNavArg? navArg, bool returnAfterCachedDetail)
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         int initializationVersion = ++_navigationInitializationVersion;
         CancelActiveListLoad();
         CancelActiveDetailLoad();
@@ -444,6 +446,8 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
 
     public async Task ReloadAsync()
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         if (Issues.Count == 0 && _lastFocusedIssueNumber > 0)
         {
             await LoadIssuesAsync(_lastFocusedIssueNumber, preservePreferredIssueOutsideQuery: false);
@@ -489,6 +493,8 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
 
     public async Task CreateIssueAsync(string title, string? body)
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         LastDialogMutationSucceeded = false;
         if (_navArg is null || !CanCreateIssue || !TryGetActiveToken(out string token))
         {
@@ -515,10 +521,10 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
             StatusText = FormatString("RepoIssue.CreatedStatus", "Created issue #{0}.", issue.Number);
             await LoadIssuesAsync(issue.Number);
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
             TrackIssueAction(IssueActionKind.Create, IssueActionOutcome.AuthenticationError);
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (GitHubApiException ex)
         {
@@ -535,6 +541,8 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
 
     public async Task UpdateSelectedIssueAsync(string title, string? body)
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         LastDialogMutationSucceeded = false;
         if (_navArg is null || SelectedIssue is null || !CanEditIssue || !TryGetActiveToken(out string token))
         {
@@ -566,10 +574,10 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
                 token,
                 GetString("RepoIssue.UpdateRefreshError", "Issue updated, but JitHub could not refresh issue details."));
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
             TrackIssueAction(IssueActionKind.Edit, IssueActionOutcome.AuthenticationError);
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (GitHubApiException ex)
         {
@@ -596,6 +604,8 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
 
     public async Task<IssueMetadataDialogData?> LoadSelectedIssueMetadataDialogDataAsync()
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         if (DialogMatrixAutomationScenario.IsEnabled && SelectedIssue is not null)
         {
             return new IssueMetadataDialogData(
@@ -639,9 +649,9 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
                 metadata.Labels,
                 metadata.Milestones);
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (GitHubApiException ex)
         {
@@ -664,6 +674,8 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
 
     public async Task UpdateSelectedIssueMetadataAsync(IssueMetadataUpdate update)
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         LastDialogMutationSucceeded = false;
         if (_navArg is null || SelectedIssue is null || !CanManageIssueMetadata || !TryGetActiveToken(out string token))
         {
@@ -701,10 +713,10 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
                 token,
                 GetString("RepoIssue.MetadataRefreshError", "Issue metadata updated, but JitHub could not refresh issue details."));
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
             TrackIssueAction(IssueActionKind.Metadata, IssueActionOutcome.AuthenticationError);
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (GitHubApiException ex)
         {
@@ -731,6 +743,8 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
 
     public async Task ToggleSelectedIssueStateAsync()
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         if (_navArg is null || SelectedIssue is null || !CanChangeIssueState || !TryGetActiveToken(out string token))
         {
             return;
@@ -767,10 +781,10 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
                 token,
                 GetString("RepoIssue.StateRefreshError", "Issue state updated, but JitHub could not refresh issue details."));
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
             TrackIssueAction(IssueActionKind.ToggleState, IssueActionOutcome.AuthenticationError);
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (GitHubApiException ex)
         {
@@ -797,6 +811,8 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
 
     public async Task AddIssueCommentAsync()
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         if (_navArg is null || SelectedIssue is null || !IsAddCommentEnabled || !TryGetActiveToken(out string token))
         {
             return;
@@ -841,10 +857,10 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
                 token,
                 GetString("RepoIssue.CommentRefreshError", "Comment added, but JitHub could not refresh issue details."));
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
             TrackIssueAction(IssueActionKind.Comment, IssueActionOutcome.AuthenticationError);
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (GitHubApiException ex)
         {
@@ -876,6 +892,8 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
 
     public async Task<IReadOnlyList<GitHubReaction>?> GetSelectedIssueReactionsAsync()
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         if (DialogMatrixAutomationScenario.IsEnabled && SelectedIssue is not null)
         {
             return [];
@@ -903,9 +921,9 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
 
             return reactions.Items;
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (GitHubApiException ex)
         {
@@ -928,6 +946,8 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
 
     public async Task<IReadOnlyList<GitHubReaction>?> GetIssueCommentReactionsAsync(long commentId)
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         if (_navArg is null || SelectedIssue is null || !AreIssueActionsEnabled || !TryGetActiveToken(out string token))
         {
             return null;
@@ -948,9 +968,9 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
 
             return reactions.Items;
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (GitHubApiException ex)
         {
@@ -968,6 +988,8 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         HashSet<string> selectedContents,
         Dictionary<string, long> existingReactionIds)
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         LastDialogMutationSucceeded = false;
         if (_navArg is null || SelectedIssue is null || !CanReactToIssue || !TryGetActiveToken(out string token))
         {
@@ -1007,10 +1029,10 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
 
             await RefreshIssueSelectionAsync(_loadedIssues.FirstOrDefault(issue => issue.Number == currentIssue.Number) ?? currentIssue, token);
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
             TrackIssueAction(IssueActionKind.Reaction, IssueActionOutcome.AuthenticationError);
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (GitHubApiException ex)
         {
@@ -1040,6 +1062,8 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         HashSet<string> selectedContents,
         Dictionary<string, long> existingReactionIds)
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         if (_navArg is null || SelectedIssue is null || !CanReactToIssue || !TryGetActiveToken(out string token))
         {
             return;
@@ -1076,10 +1100,10 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
 
             await RefreshIssueSelectionAsync(_loadedIssues.FirstOrDefault(issue => issue.Number == currentIssue.Number) ?? currentIssue, token);
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
             TrackIssueAction(IssueActionKind.CommentReaction, IssueActionOutcome.AuthenticationError);
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (GitHubApiException ex)
         {
@@ -1166,6 +1190,8 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         IssueActionKind action,
         string status)
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         if (_navArg is null || SelectedIssue is null || !TryGetActiveToken(out string token))
         {
             return false;
@@ -1189,10 +1215,10 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
             TrackIssueAction(action, IssueActionOutcome.Success);
             return true;
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
             TrackIssueAction(action, IssueActionOutcome.AuthenticationError);
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (GitHubApiException ex)
         {
@@ -1293,6 +1319,8 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         bool preservePreferredIssueOutsideQuery = true,
         bool preserveCurrentDetailDuringLoad = false)
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         if (_navArg is null || !TryGetActiveToken(out string token))
         {
             return;
@@ -1443,7 +1471,7 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
                 StatusText = preferredIssueLoadFailureStatus;
             }
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
             loadResult = "auth_error";
             if (requestId != _listRequestId)
@@ -1453,7 +1481,7 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
 
             AreIssueActionsEnabled = previousAreIssueActionsEnabled;
             IsAddCommentEnabled = previousIsAddCommentEnabled;
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (GitHubApiException ex)
         {
@@ -1506,6 +1534,8 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
 
     private async Task ShowIssueAsync(GitHubIssue? issue, bool preserveCurrentState, bool preserveStatusText = false)
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         string preservedStatusText = StatusText;
         if (issue is null || _navArg is null)
         {
@@ -1600,14 +1630,14 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
                     ? preservedStatusText
                     : FormatString("RepoIssue.LoadedStatus", "Issue #{0} loaded.", latestIssue.Number);
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
             if (requestId != _detailRequestId)
             {
                 return;
             }
 
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (GitHubApiException ex)
         {
@@ -2303,9 +2333,9 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         {
             return await RefreshIssueSelectionAsync(issue, token);
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (GitHubApiException)
         {
@@ -2607,6 +2637,8 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         IssueNavigationSnapshot snapshot,
         int initializationVersion)
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         // Cached content is already local; reserve an input window before realizing the
         // Markdown conversation and starting stale-list reconciliation.
         TimeSpan commentDelay = CachedNavigationCommentQuietPeriod;
@@ -3138,7 +3170,6 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
             return true;
         }
 
-        _authService.SignOut();
         return false;
     }
 

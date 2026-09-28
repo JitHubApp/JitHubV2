@@ -5586,8 +5586,8 @@ static void RunLoginAuthUiProbe(CaptureOptions options)
             AssertProbe(string.Equals(signInButton.Name, "Continue with GitHub", StringComparison.Ordinal),
                 $"The {theme} login button exposed the unexpected accessible name '{signInButton.Name}'.");
             AssertProbe(signInButton.IsEnabled, $"The {theme} login button was not enabled.");
-            AssertProbe(status.Name.Contains("opens GitHub", StringComparison.OrdinalIgnoreCase),
-                $"The {theme} login status did not describe the browser sign-in flow.");
+            AssertProbe(status.Name.Contains("code", StringComparison.OrdinalIgnoreCase),
+                $"The {theme} login status did not describe device sign-in.");
             AssertProbe(IsInsideWindowBounds(root, window), $"The {theme} login root escaped the app window.");
             AssertProbe(IsInsideElementBounds(signInButton, card, 1.5),
                 $"The {theme} login button escaped the sign-in card.");
@@ -5610,54 +5610,7 @@ static void RunLoginAuthUiProbe(CaptureOptions options)
 
     AssertLoginThemeContrast(screenshotPaths["light"], screenshotPaths["dark"]);
 
-    using (var app = LaunchApplication(
-        options.AppPath,
-        "--page=login",
-        "--scenario=login-launch-failure",
-        "--theme=dark"))
-    using (var automation = new UIA3Automation())
-    {
-        try
-        {
-            Window window = GetReadyWindow(app, automation, "login-auth-ui launch failure");
-            ResizeWindow(window, 1180, 760);
-            AutomationElement signInButton = AssertNamedAutomationElement(
-                window,
-                "LoginSignInButton",
-                ControlType.Button);
-
-            InvokeOrClick(signInButton);
-            AutomationElement error = WaitForElement(
-                "LoginErrorInfoBar",
-                () =>
-                {
-                    AutomationElement? candidate = window.FindFirstDescendant(
-                        cf => cf.ByAutomationId("LoginErrorInfoBar"));
-                    return IsVisible(candidate) ? candidate : null;
-                },
-                TimeSpan.FromSeconds(8));
-
-            string errorText = string.Join(
-                " ",
-                error.FindAllDescendants(cf => cf.ByControlType(ControlType.Text))
-                    .Select(GetElementName)
-                    .Where(static text => !string.IsNullOrWhiteSpace(text)));
-            AssertProbe(errorText.Contains("could not open GitHub sign-in", StringComparison.OrdinalIgnoreCase),
-                $"Login launch failure did not expose the expected accessible error. Actual: '{errorText}'.");
-            WaitUntil("login retry button to re-enable", () => signInButton.IsEnabled, TimeSpan.FromSeconds(5));
-
-            string errorPath = Path.Combine(options.OutputDirectory, "dark-login-launch-error.png");
-            CaptureWindow(window, errorPath);
-            AssertLoginThemeScreenshot(errorPath, "dark");
-            Console.WriteLine(
-                $"login-auth-ui probe: light={screenshotPaths["light"]}, dark={screenshotPaths["dark"]}, error={errorPath}");
-        }
-        finally
-        {
-            TryClose(app);
-            KillExistingApplicationInstances(options.AppPath);
-        }
-    }
+    Console.WriteLine($"login-auth-ui probe: light={screenshotPaths["light"]}, dark={screenshotPaths["dark"]}");
 }
 
 static void RunAuthLifecycleProbe(CaptureOptions options)
@@ -5669,55 +5622,71 @@ static void RunAuthLifecycleProbe(CaptureOptions options)
 
     RunAuthCancelScenario(options, "light");
     RunAuthCancelScenario(options, "dark");
-    RunAuthInvalidStateScenario(options);
+    RunAuthDeviceSuccessScenario(options);
+    RunAuthCancelAfterApprovalScenario(options);
     RunAuthExpiredTokenScenario(options);
     RunAuthNotificationReconnectScenario(options);
     RunAuthOfflineLaunchScenario(options);
-    RunAuthProtocolReactivationScenario(options);
+    RunAuthExpiredOfflineRecoveryScenario(options);
     RunAuthMultiAccountCleanupScenario(options);
     Console.WriteLine("auth-lifecycle probe completed all deterministic production-path scenarios.");
 }
 
 static void RunAuthCancelScenario(CaptureOptions options, string theme)
 {
-    RunIsolatedAuthScenario(options, "auth-cancel", theme, (window, _, root) =>
+    RunIsolatedAuthScenario(options, "auth-cancel", theme, (window, automation, root) =>
     {
         AutomationElement signIn = WaitForVisibleAutomationElement(window, "LoginSignInButton");
         InvokeOrClick(signIn);
+        AutomationElement dialog = WaitForVisibleAutomationElement(window, "GitHubDeviceAuthorizationDialog");
+        AssertProbe(IsVisible(WaitForVisibleAutomationElement(window, "GitHubDeviceCode")),
+            "Device authorization did not show a user code.");
+        InvokeOrClick(FindDialogButton(dialog, automation, "Cancel"));
         WaitUntil(
             "cancelled sign-in status",
             () => AutomationElementText(window.FindFirstDescendant(cf => cf.ByAutomationId("LoginStatusText")))
                 .Contains("canceled", StringComparison.OrdinalIgnoreCase),
             TimeSpan.FromSeconds(8));
         AssertProbe(signIn.IsEnabled, "Sign-in was not recoverable after cancellation.");
-        AssertAuthMarker(root, "oauth.launch.cancelled");
-        CaptureWindow(window, Path.Combine(options.OutputDirectory, $"auth-cancel-{theme}.png"));
+        AssertAuthMarker(root, "device.code.requested");
     });
 }
 
-static void RunAuthInvalidStateScenario(CaptureOptions options)
+static void RunAuthDeviceSuccessScenario(CaptureOptions options)
 {
-    string scheme = GetAuthProtocolScheme(options.AppPath);
-    RunIsolatedAuthScenario(
-        options,
-        "auth-invalid-state",
-        "dark",
-        (window, _, root) =>
-        {
-            AutomationElement error = WaitForVisibleAutomationElement(window, "LoginErrorInfoBar");
-            string text = AutomationElementText(error);
-            AssertProbe(
-                text.Contains("verify", StringComparison.OrdinalIgnoreCase) ||
-                text.Contains("No token was accepted", StringComparison.OrdinalIgnoreCase),
-                $"Invalid OAuth state did not expose a recoverable explanation. Actual: '{text}'.");
-            IReadOnlyDictionary<string, string> credentials = ReadAuthCredentials(root);
-            AssertProbe(!credentials.ContainsKey("__pending__"), "Invalid callback retained a pending OAuth token.");
-            AssertProbe(!credentials.ContainsKey("__pending_state__"), "Invalid callback retained pending OAuth state.");
-            AssertProbe(!credentials.ContainsKey("101"), "Invalid callback accepted an account token.");
-            AssertAuthMarker(root, "protocol.authorization.rejected");
-            CaptureWindow(window, Path.Combine(options.OutputDirectory, "auth-invalid-state-dark.png"));
-        },
-        $"--automation-protocol={scheme}://auth/v3?handoff=automation-protocol-handoff&state=automation-invalid-state");
+    RunIsolatedAuthScenario(options, "auth-device-success", "light", (window, _, root) =>
+    {
+        InvokeOrClick(WaitForVisibleAutomationElement(window, "LoginSignInButton"));
+        WaitForVisibleAutomationElement(window, "GitHubDeviceAuthorizationDialog");
+        WaitForVisibleAutomationElement(window, "ShellRoot", TimeSpan.FromSeconds(20));
+        AssertAuthMarker(root, "device.approved");
+        AssertProbe(ReadAuthCredentials(root).ContainsKey("101"),
+            "Device sign-in did not persist the authenticated account session.");
+        CaptureWindow(window, Path.Combine(options.OutputDirectory, "auth-device-success-light.png"));
+    });
+}
+
+static void RunAuthCancelAfterApprovalScenario(CaptureOptions options)
+{
+    RunIsolatedAuthScenario(options, "auth-cancel-after-approval", "dark", (window, automation, root) =>
+    {
+        InvokeOrClick(WaitForVisibleAutomationElement(window, "LoginSignInButton"));
+        AutomationElement dialog = WaitForVisibleAutomationElement(window, "GitHubDeviceAuthorizationDialog");
+        WaitUntil(
+            "GitHub device approval before dismissal",
+            () => AutomationElementText(window.FindFirstDescendant(cf => cf.ByAutomationId("GitHubDeviceStatus")))
+                .Contains("Approved by GitHub", StringComparison.OrdinalIgnoreCase),
+            TimeSpan.FromSeconds(8));
+        InvokeOrClick(FindDialogButton(dialog, automation, "Cancel"));
+        WaitUntil(
+            "cancelled approved sign-in status",
+            () => AutomationElementText(window.FindFirstDescendant(cf => cf.ByAutomationId("LoginStatusText")))
+                .Contains("canceled", StringComparison.OrdinalIgnoreCase),
+            TimeSpan.FromSeconds(8));
+        AssertAuthMarker(root, "device.approved");
+        AssertProbe(!ReadAuthCredentials(root).ContainsKey("101"),
+            "Dismissal after approval persisted the cancelled sign-in session.");
+    });
 }
 
 static void RunAuthExpiredTokenScenario(CaptureOptions options)
@@ -5739,81 +5708,62 @@ static void RunAuthOfflineLaunchScenario(CaptureOptions options)
 {
     RunIsolatedAuthScenario(options, "auth-offline-launch", "light", (window, _, root) =>
     {
-        WaitForVisibleAutomationElement(window, "ShellRoot");
+        WaitForVisibleAutomationElement(window, "LoginStatusText");
         WaitUntil(
-            "offline launch status",
-            () => AutomationElementText(window.FindFirstDescendant(cf => cf.ByAutomationId("AppStatusText")))
-                .Contains("offline", StringComparison.OrdinalIgnoreCase),
+            "saved session retry status",
+            () => AutomationElementText(window.FindFirstDescendant(cf => cf.ByAutomationId("LoginStatusText")))
+                .Contains("retry your saved session", StringComparison.OrdinalIgnoreCase),
             TimeSpan.FromSeconds(12));
         AssertProbe(ReadAuthCredentials(root).ContainsKey("101"), "Offline launch removed the reusable account token.");
         AssertProbe(ReadAuthSetting(root, "USER_ID") == "101", "Offline launch lost the active account id.");
         AssertAuthMarker(root, "http.offline");
-        CaptureWindow(window, Path.Combine(options.OutputDirectory, "auth-offline-launch-light.png"));
+
+        File.WriteAllText(Path.Combine(root, "Local", "AuthLifecycle", "network-restored"), "ready");
+        WaitForVisibleAutomationElement(window, "ShellRoot", TimeSpan.FromSeconds(20));
+        AssertProbe(ReadAuthCredentials(root).ContainsKey("101"),
+            "Automatic recovery did not retain the saved access token.");
+        CaptureWindow(window, Path.Combine(options.OutputDirectory, "auth-offline-recovered-light.png"));
+    });
+}
+
+static void RunAuthExpiredOfflineRecoveryScenario(CaptureOptions options)
+{
+    RunIsolatedAuthScenario(options, "auth-expired-offline-recovery", "light", (window, _, root) =>
+    {
+        WaitUntil(
+            "saved session retry status",
+            () => AutomationElementText(window.FindFirstDescendant(cf => cf.ByAutomationId("LoginStatusText")))
+                .Contains("retry your saved session", StringComparison.OrdinalIgnoreCase),
+            TimeSpan.FromSeconds(12));
+        AssertProbe(ReadAuthCredentials(root).ContainsKey("101"),
+            "Offline startup removed the rotating token pair.");
+        AssertAuthMarker(root, "refresh.offline");
+
+        File.WriteAllText(Path.Combine(root, "Local", "AuthLifecycle", "network-restored"), "ready");
+        WaitForVisibleAutomationElement(window, "ShellRoot", TimeSpan.FromSeconds(20));
+        AssertAuthMarker(root, "refresh.completed");
+        AssertProbe(ReadAuthCredentials(root).ContainsKey("101"),
+            "Automatic recovery did not retain the rotated token pair.");
+        CaptureWindow(window, Path.Combine(options.OutputDirectory, "auth-expired-offline-recovered-light.png"));
     });
 }
 
 static void RunAuthNotificationReconnectScenario(CaptureOptions options)
 {
-    RunIsolatedAuthScenario(options, "auth-notification-reconnect", "dark", (window, _, root) =>
+    RunIsolatedAuthScenario(options, "auth-notification-reconnect", "dark", (window, automation, root) =>
     {
         AutomationElement reconnect = WaitForVisibleAutomationElement(window, "DashboardReconnectButton", TimeSpan.FromSeconds(20));
         InvokeOrClick(reconnect);
-        string authorizationUri = WaitForAuthMarkerValue(root, "oauth.launch.requested", TimeSpan.FromSeconds(8));
-        Uri uri = new(authorizationUri);
-        string query = Uri.UnescapeDataString(uri.Query);
-        AssertProbe(query.Contains("notifications", StringComparison.OrdinalIgnoreCase),
-            $"Reconnect OAuth request omitted notifications scope: '{authorizationUri}'.");
+        AutomationElement dialog = WaitForVisibleAutomationElement(window, "GitHubDeviceAuthorizationDialog");
+        string requestedScopes = WaitForAuthMarkerValue(root, "device.code.requested", TimeSpan.FromSeconds(8));
+        AssertProbe(requestedScopes.Contains("notifications", StringComparison.OrdinalIgnoreCase) &&
+            requestedScopes.Contains("repo", StringComparison.OrdinalIgnoreCase),
+            "Reconnect device request omitted new or previously granted scopes.");
+        InvokeOrClick(FindDialogButton(dialog, automation, "Cancel"));
         AssertProbe(ReadAuthCredentials(root).ContainsKey("101"), "Notification reconnect removed the current session.");
         AssertAuthMarker(root, "notifications.scope.required");
         CaptureWindow(window, Path.Combine(options.OutputDirectory, "auth-notification-reconnect-dark.png"));
     });
-}
-
-static void RunAuthProtocolReactivationScenario(CaptureOptions options)
-{
-    const string scenario = "auth-protocol-reactivation";
-    string root = PrepareAuthScenarioRoot(scenario);
-    using var app = LaunchApplicationWithDataRoot(
-        options.AppPath,
-        root,
-        killExisting: true,
-        $"--scenario={scenario}",
-        "--theme=light");
-    using var automation = new UIA3Automation();
-    try
-    {
-        Window window = GetReadyWindow(app, automation, scenario);
-        ResizeWindow(window, 1180, 760);
-        InvokeOrClick(WaitForVisibleAutomationElement(window, "LoginSignInButton"));
-        string state = WaitForCredential(root, "__pending_state__", TimeSpan.FromSeconds(8));
-        string callback = $"{GetAuthProtocolScheme(options.AppPath)}://auth/v3?handoff=automation-protocol-handoff&state={Uri.EscapeDataString(state)}";
-        StartRedirectedAuthActivation(options.AppPath, root, scenario, callback);
-
-        WaitForVisibleAutomationElement(window, "ShellRoot", TimeSpan.FromSeconds(20));
-        WaitUntil(
-            "protocol completion status",
-            () => AutomationElementText(window.FindFirstDescendant(cf => cf.ByAutomationId("AppStatusText")))
-                .Contains("completed", StringComparison.OrdinalIgnoreCase),
-            TimeSpan.FromSeconds(10));
-        AssertProbe(ReadAuthCredentials(root).TryGetValue("101", out string? token) && token == "automation-protocol-token",
-            "Protocol reactivation did not persist the authenticated account token.");
-        AssertProbe(!ReadAuthCredentials(root).ContainsKey("__pending_state__"),
-            "Protocol reactivation retained consumed OAuth state.");
-        AssertAuthMarker(root, "protocol.authorization.completed");
-        CaptureWindow(window, Path.Combine(options.OutputDirectory, "auth-protocol-reactivation-light.png"));
-        WaitUntil(
-            "protocol completion status dismissed",
-            () => !IsVisible(window.FindFirstDescendant(cf => cf.ByAutomationId("AppStatusHost"))),
-            TimeSpan.FromSeconds(8));
-        CaptureWindow(window, Path.Combine(
-            options.OutputDirectory,
-            "auth-protocol-reactivation-status-dismissed-light.png"));
-    }
-    finally
-    {
-        TryClose(app);
-        KillExistingApplicationInstances(options.AppPath);
-    }
 }
 
 static void RunAuthMultiAccountCleanupScenario(CaptureOptions options)
@@ -5916,35 +5866,6 @@ static string PrepareAuthScenarioRoot(string scenario)
     return root;
 }
 
-static string GetAuthProtocolScheme(string appPath)
-{
-    _ = appPath;
-#if DEBUG
-    return "jithub-dev";
-#else
-    return "jithub";
-#endif
-}
-
-static void StartRedirectedAuthActivation(string appPath, string dataRoot, string scenario, string callback)
-{
-    var startInfo = new ProcessStartInfo(appPath)
-    {
-        WorkingDirectory = Path.GetDirectoryName(appPath) ?? Environment.CurrentDirectory,
-        UseShellExecute = false
-    };
-    string[] arguments = [$"--scenario={scenario}", $"--automation-protocol={callback}"];
-    foreach (string argument in arguments)
-    {
-        startInfo.ArgumentList.Add(argument);
-    }
-    AddPreviewEnvironment(startInfo, arguments, dataRoot);
-    using Process process = Process.Start(startInfo)
-        ?? throw new InvalidOperationException("Could not start the protocol reactivation process.");
-    AssertProbe(process.WaitForExit(15000), "The redirected protocol activation process did not exit.");
-    AssertProbe(process.ExitCode == 0, $"The redirected protocol activation process exited with {process.ExitCode}.");
-}
-
 static IReadOnlyDictionary<string, string> ReadAuthCredentials(string dataRoot)
 {
     string path = Path.Combine(dataRoot, "Local", "AuthLifecycle", "credentials.vault");
@@ -5997,16 +5918,6 @@ static string? ReadAuthSetting(string dataRoot, string key)
         }
     }
     return null;
-}
-
-static string WaitForCredential(string dataRoot, string userName, TimeSpan timeout)
-{
-    string? value = null;
-    WaitUntil(
-        $"credential '{userName}'",
-        () => ReadAuthCredentials(dataRoot).TryGetValue(userName, out value),
-        timeout);
-    return value!;
 }
 
 static void AssertAuthMarker(string dataRoot, string marker) =>
