@@ -142,7 +142,13 @@ public sealed partial class GitHubDeviceFlowClient : IGitHubDeviceFlowClient, ID
                 throw DeviceFlowException.For(error);
             }
 
-            return ReadToken(root);
+            GitHubTokenSession session = ReadToken(root);
+            if (string.IsNullOrWhiteSpace(session.RefreshToken) ||
+                session.AccessTokenExpiresAt is null || session.RefreshTokenExpiresAt is null)
+            {
+                throw new InvalidOperationException("GitHub did not return an expiring token and refresh token.");
+            }
+            return session;
         }
 
         throw DeviceFlowException.For("expired_token");
@@ -164,9 +170,10 @@ public sealed partial class GitHubDeviceFlowClient : IGitHubDeviceFlowClient, ID
             }, cancellationToken).ConfigureAwait(false);
         ThrowIfError(response.RootElement);
         GitHubTokenSession session = ReadToken(response.RootElement);
-        if (string.IsNullOrWhiteSpace(session.RefreshToken))
+        if (string.IsNullOrWhiteSpace(session.RefreshToken) ||
+            session.AccessTokenExpiresAt is null || session.RefreshTokenExpiresAt is null)
         {
-            throw new InvalidOperationException("GitHub did not return a replacement refresh token.");
+            throw new InvalidOperationException("GitHub did not return a complete replacement token pair.");
         }
 
         return session;
@@ -182,11 +189,23 @@ public sealed partial class GitHubDeviceFlowClient : IGitHubDeviceFlowClient, ID
             Content = new FormUrlEncodedContent(form)
         };
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        using HttpResponseMessage response = await _httpClient.SendAsync(
-            request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
-        response.EnsureSuccessStatusCode();
-        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-        return await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
+        HttpResponseMessage response;
+        try
+        {
+            response = await _httpClient.SendAsync(
+                request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException exception) when (
+            !cancellationToken.IsCancellationRequested && exception.InnerException is TimeoutException)
+        {
+            throw new HttpRequestException("The GitHub request timed out.", exception);
+        }
+        using (response)
+        {
+            response.EnsureSuccessStatusCode();
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+            return await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
     }
 
     private GitHubTokenSession ReadToken(JsonElement root)
@@ -249,8 +268,9 @@ public sealed class DeviceFlowException : Exception
     internal static DeviceFlowException For(string? code) => code switch
     {
         "access_denied" => new(code, "GitHub authorization was cancelled."),
-        "expired_token" => new(code, "The GitHub sign-in code expired. Try again."),
+        "expired_token" or "token_expired" => new("expired_token", "The GitHub sign-in code expired. Try again."),
         "device_flow_disabled" => new(code, "GitHub device sign-in is not enabled for this app."),
+        "insufficient_scope" => new(code, "GitHub did not grant the permissions JitHub needs."),
         "incorrect_client_credentials" => new(code, "GitHub rejected this app's client ID."),
         _ => new(code ?? "unknown", "GitHub could not complete sign-in. Try again.")
     };

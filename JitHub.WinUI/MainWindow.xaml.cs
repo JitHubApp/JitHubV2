@@ -234,6 +234,8 @@ public sealed partial class MainWindow : Window
         _activationStatusTimer.Start();
     }
 
+    public void ClearStatus() => HideActivationStatus();
+
     private void ActivationStatusTimer_Tick(
         Microsoft.UI.Dispatching.DispatcherQueueTimer sender,
         object args) =>

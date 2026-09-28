@@ -69,6 +69,8 @@ public sealed class AuthService : IAuthService
 
     public async Task Authenticate()
     {
+        AuthSessionRecoveryState priorRecoveryState = RecoveryState;
+        long priorUserId = _accountService.GetUser();
         Stopwatch stopwatch = Stopwatch.StartNew();
         TrackEvent(
             "auth.flow.started",
@@ -84,9 +86,21 @@ public sealed class AuthService : IAuthService
                     TelemetryTaxonomy.Results.Success,
                     stopwatch.Elapsed));
         }
+        catch (OperationCanceledException exception) when (IsTransportTimeout(exception))
+        {
+            RestoreSavedSessionAfterFailedSignIn(priorRecoveryState, priorUserId, AuthSessionRecoveryState.None);
+            stopwatch.Stop();
+            TrackFlowCompletion(
+                TelemetryTaxonomy.Sources.SignIn,
+                TelemetryTaxonomy.Results.Error,
+                stopwatch.Elapsed,
+                TelemetryTaxonomy.ErrorKinds.Network);
+            TrackAuthError(TelemetryTaxonomy.Sources.SignIn, "network", stopwatch.Elapsed);
+            throw new HttpRequestException("GitHub sign-in timed out.", exception);
+        }
         catch (OperationCanceledException)
         {
-            RecoveryState = AuthSessionRecoveryState.Cancelled;
+            RestoreSavedSessionAfterFailedSignIn(priorRecoveryState, priorUserId, AuthSessionRecoveryState.Cancelled);
             stopwatch.Stop();
             TrackFlowCompletion(
                 TelemetryTaxonomy.Sources.SignIn,
@@ -97,6 +111,7 @@ public sealed class AuthService : IAuthService
         }
         catch (Exception ex)
         {
+            RestoreSavedSessionAfterFailedSignIn(priorRecoveryState, priorUserId, AuthSessionRecoveryState.None);
             stopwatch.Stop();
             TrackFlowCompletion(
                 TelemetryTaxonomy.Sources.SignIn,
@@ -135,7 +150,6 @@ public sealed class AuthService : IAuthService
         string? token = await GetValidTokenAsync(userId);
         try
         {
-            IReadOnlyCollection<string> savedScopes = _credentialStore.GetAccountSession(userId)?.GrantedScopes ?? [];
             IReadOnlySet<string> granted = string.IsNullOrWhiteSpace(token)
                 ? new HashSet<string>(StringComparer.Ordinal)
                 : await _gitHubClientService.GetTokenScopesAsync(token);
@@ -147,8 +161,11 @@ public sealed class AuthService : IAuthService
                 return true;
             }
 
+            IReadOnlyCollection<string> scopesToPreserve = string.IsNullOrWhiteSpace(token)
+                ? _credentialStore.GetAccountSession(userId)?.GrantedScopes ?? []
+                : granted.ToArray();
             string[] requested = OAuthScopePolicy.BuildRequestedScopes(
-                granted.Concat(savedScopes).Concat(requiredScopes).ToArray())
+                scopesToPreserve.Concat(requiredScopes).ToArray())
                 .Append("offline_access").ToArray();
             long generation = Interlocked.Read(ref _sessionGeneration);
             GitHubTokenSession? session = await _devicePrompt.AuthorizeAsync(
@@ -161,6 +178,8 @@ public sealed class AuthService : IAuthService
                 return false;
             }
 
+            ValidateDeviceSession(session);
+
             GitHubUser user = await _gitHubClientService.GetCurrentUserAsync(session.AccessToken);
             if (user.Id != userId)
             {
@@ -168,7 +187,7 @@ public sealed class AuthService : IAuthService
             }
 
             IReadOnlySet<string> updatedScopes = await _gitHubClientService.GetTokenScopesAsync(session.AccessToken);
-            if (!OAuthScopePolicy.HasAll(updatedScopes, requiredScopes))
+            if (!OAuthScopePolicy.HasAll(updatedScopes, OAuthScopePolicy.BuildRequestedScopes(requiredScopes)))
             {
                 throw new InvalidOperationException("GitHub did not grant the requested permission.");
             }
@@ -199,6 +218,17 @@ public sealed class AuthService : IAuthService
             TrackEvent("auth.flow.completed", AuthProperties(
                 TelemetryTaxonomy.Sources.Scope, TelemetryTaxonomy.Results.Success, stopwatch.Elapsed));
             return true;
+        }
+        catch (OperationCanceledException exception) when (IsTransportTimeout(exception))
+        {
+            stopwatch.Stop();
+            TrackFlowCompletion(
+                TelemetryTaxonomy.Sources.Scope,
+                TelemetryTaxonomy.Results.Error,
+                stopwatch.Elapsed,
+                TelemetryTaxonomy.ErrorKinds.Network);
+            TrackAuthError(TelemetryTaxonomy.Sources.Scope, "network", stopwatch.Elapsed);
+            throw new HttpRequestException("GitHub permission request timed out.", exception);
         }
         catch (OperationCanceledException)
         {
@@ -236,8 +266,14 @@ public sealed class AuthService : IAuthService
             throw new OperationCanceledException("GitHub sign-in was cancelled.");
         }
 
+        ValidateDeviceSession(session);
+
         GitHubUser user = await _gitHubClientService.GetCurrentUserAsync(session.AccessToken);
         IReadOnlySet<string> grantedScopes = await _gitHubClientService.GetTokenScopesAsync(session.AccessToken);
+        if (!OAuthScopePolicy.HasAll(grantedScopes, OAuthScopePolicy.BuildRequestedScopes()))
+        {
+            throw DeviceFlowException.For("insufficient_scope");
+        }
         if (generation != Interlocked.Read(ref _sessionGeneration))
         {
             throw new OperationCanceledException("Sign-in was cancelled while GitHub authorized the account.");
@@ -325,6 +361,21 @@ public sealed class AuthService : IAuthService
                 TelemetryTaxonomy.Results.Success,
                 stopwatch.Elapsed);
             return user;
+        }
+        catch (OperationCanceledException exception) when (IsTransportTimeout(exception))
+        {
+            if (!Authenticated)
+            {
+                RecoveryState = AuthSessionRecoveryState.Offline;
+            }
+            stopwatch.Stop();
+            TrackAuthAction(
+                TelemetryTaxonomy.Actions.RefreshUser,
+                TelemetryTaxonomy.Results.Error,
+                stopwatch.Elapsed,
+                TelemetryTaxonomy.ErrorKinds.Network);
+            TrackAuthError("refresh", "network", stopwatch.Elapsed);
+            return AuthenticatedUser;
         }
         catch (OperationCanceledException)
         {
@@ -528,7 +579,9 @@ public sealed class AuthService : IAuthService
                 RecoveryState = AuthSessionRecoveryState.None;
                 return replacement.AccessToken;
             }
-            catch (HttpRequestException)
+            catch (Exception exception) when (exception is HttpRequestException ||
+                exception is OperationCanceledException canceled &&
+                !cancellationToken.IsCancellationRequested && IsTransportTimeout(canceled))
             {
                 if (requestGeneration != Interlocked.Read(ref _sessionGeneration) ||
                     _accountService.GetUser() != userId)
@@ -735,7 +788,8 @@ public sealed class AuthService : IAuthService
             stopwatch.Stop();
             TrackAuthError("startup", "api", stopwatch.Elapsed);
         }
-        catch (HttpRequestException)
+        catch (Exception exception) when (exception is HttpRequestException ||
+            exception is OperationCanceledException canceled && IsTransportTimeout(canceled))
         {
             if (generation != Interlocked.Read(ref _sessionGeneration) ||
                 _accountService.GetUser() != userId)
@@ -853,5 +907,36 @@ public sealed class AuthService : IAuthService
         AuthenticatedUser = null;
         _gitHubService.SetAccessToken(null);
         _initializeTask = Task.CompletedTask;
+    }
+
+    private void RestoreSavedSessionAfterFailedSignIn(
+        AuthSessionRecoveryState priorState,
+        long userId,
+        AuthSessionRecoveryState fallbackState)
+    {
+        if (userId > 0 && _accountService.GetUser() == userId &&
+            _credentialStore.GetAccountSession(userId) is not null)
+        {
+            _initializeTask = null;
+            RecoveryState = priorState is AuthSessionRecoveryState.Offline or AuthSessionRecoveryState.ServiceUnavailable
+                ? priorState
+                : AuthSessionRecoveryState.ServiceUnavailable;
+            return;
+        }
+
+        RecoveryState = fallbackState;
+    }
+
+    private static bool IsTransportTimeout(OperationCanceledException exception) =>
+        exception.InnerException is TimeoutException;
+
+    private static void ValidateDeviceSession(GitHubTokenSession session)
+    {
+        if (string.IsNullOrWhiteSpace(session.AccessToken) ||
+            string.IsNullOrWhiteSpace(session.RefreshToken) ||
+            session.AccessTokenExpiresAt is null || session.RefreshTokenExpiresAt is null)
+        {
+            throw new InvalidOperationException("GitHub did not return an expiring token and refresh token.");
+        }
     }
 }

@@ -522,7 +522,7 @@ public sealed partial class ShellPageViewModel : ViewModelBase
         {
             RepositoryRailStatusText = "GitHub authentication is unavailable.";
             HasRepositoryRailError = true;
-            if (_authService.RecoveryState != AuthSessionRecoveryState.Offline)
+            if (_authService.RecoveryState == AuthSessionRecoveryState.Expired)
             {
                 _authService.SignOut();
             }

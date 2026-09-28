@@ -3170,10 +3170,6 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
             return true;
         }
 
-        if (_authService.RecoveryState != AuthSessionRecoveryState.Offline)
-        {
-            _authService.SignOut();
-        }
         return false;
     }
 

@@ -91,6 +91,69 @@ public sealed class GitHubDeviceFlowClientTests
         Assert.Equal("access_denied", error.Code);
     }
 
+    [Fact]
+    public async Task Poll_TokenExpiredResponseReportsExpiredCode()
+    {
+        QueueHandler handler = new("""{"error":"token_expired"}""");
+        ManualClock clock = new();
+        using GitHubDeviceFlowClient client = new(
+            new HttpClient(handler), (delay, _) =>
+            {
+                clock.Advance(delay);
+                return Task.CompletedTask;
+            }, clock, true);
+        DeviceAuthorizationChallenge challenge = new(
+            "device", "ABCD-1234", new Uri("https://github.com/login/device"),
+            clock.GetUtcNow().AddMinutes(15), TimeSpan.FromSeconds(5));
+
+        DeviceFlowException error = await Assert.ThrowsAsync<DeviceFlowException>(() =>
+            client.PollAsync("public-client", challenge));
+
+        Assert.Equal("expired_token", error.Code);
+    }
+
+    [Fact]
+    public async Task Refresh_HttpTimeoutIsReportedAsNetworkFailure()
+    {
+        using HttpClient httpClient = new(new TimeoutHandler());
+        using GitHubDeviceFlowClient client = new(httpClient, Task.Delay, TimeProvider.System);
+
+        HttpRequestException error = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            client.RefreshAsync("public-client", "refresh"));
+
+        Assert.IsType<TaskCanceledException>(error.InnerException);
+    }
+
+    [Fact]
+    public async Task Poll_RejectsIncompleteRotatingTokenPair()
+    {
+        QueueHandler handler = new("""{"access_token":"access"}""");
+        ManualClock clock = new();
+        using GitHubDeviceFlowClient client = new(
+            new HttpClient(handler), (delay, _) =>
+            {
+                clock.Advance(delay);
+                return Task.CompletedTask;
+            }, clock, true);
+        DeviceAuthorizationChallenge challenge = new(
+            "device", "ABCD-1234", new Uri("https://github.com/login/device"),
+            clock.GetUtcNow().AddMinutes(15), TimeSpan.FromSeconds(5));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            client.PollAsync("public-client", challenge));
+    }
+
+    [Fact]
+    public async Task Refresh_RejectsReplacementWithoutExpiration()
+    {
+        QueueHandler handler = new("""{"access_token":"access","refresh_token":"refresh"}""");
+        using GitHubDeviceFlowClient client = new(
+            new HttpClient(handler), Task.Delay, TimeProvider.System, true);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            client.RefreshAsync("public-client", "old-refresh"));
+    }
+
     private sealed class ManualClock : TimeProvider
     {
         private DateTimeOffset _now = new(2026, 9, 27, 0, 0, 0, TimeSpan.Zero);
@@ -114,5 +177,14 @@ public sealed class GitHubDeviceFlowClientTests
                 Content = new StringContent(_replies.Dequeue(), Encoding.UTF8, "application/json")
             };
         }
+    }
+
+    private sealed class TimeoutHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken) =>
+            Task.FromException<HttpResponseMessage>(
+                new TaskCanceledException("timeout", new TimeoutException()));
     }
 }

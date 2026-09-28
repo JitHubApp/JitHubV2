@@ -4139,7 +4139,6 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
             return true;
         }
 
-        _authService.SignOut();
         return false;
     }
 

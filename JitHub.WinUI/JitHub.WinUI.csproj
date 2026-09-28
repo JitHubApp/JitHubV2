@@ -137,8 +137,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Remove="Services\AuthHandoffClient.cs" />
-    <Compile Remove="Services\AuthProtocolPolicy.cs" />
     <AdditionalFiles Include="..\eng\BannedSymbols.txt" />
     <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer\MarkdownRenderer.csproj" />
     <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer.Gfm\MarkdownRenderer.Gfm.csproj" />

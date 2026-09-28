@@ -6476,6 +6476,7 @@
   <data name="Login.DeviceDeniedError" xml:space="preserve"><value>GitHub authorization was cancelled. Try again.</value></data>
   <data name="Login.DeviceExpiredError" xml:space="preserve"><value>The GitHub sign-in code expired. Try again.</value></data>
   <data name="Login.DeviceDisabledError" xml:space="preserve"><value>GitHub device sign-in is unavailable for this app.</value></data>
+  <data name="Login.DevicePermissionError" xml:space="preserve"><value>Approve JitHub's requested permissions on GitHub, then try again.</value></data>
   <data name="Login.DeviceError" xml:space="preserve"><value>GitHub could not complete sign-in. Try again.</value></data>
   <data name="Login.UnexpectedLaunchError" xml:space="preserve"><value>JitHub could not open GitHub sign-in. Check your default browser and try again.</value></data>
 </root>

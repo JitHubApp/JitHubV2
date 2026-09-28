@@ -34,11 +34,17 @@ public sealed partial class LoginPage : Page
     {
         if (ViewModel.IsAuthenticated)
         {
+            ((App)Application.Current).CurrentMainWindow.ClearStatus();
             _navigationService.GoHome();
             return;
         }
 
         ViewModel.PrepareForDisplay();
+        StartOfflineSessionRecovery();
+    }
+
+    private void StartOfflineSessionRecovery()
+    {
         StopOfflineSessionRecovery();
         _offlineRecoveryLifetime = new CancellationTokenSource();
         CancellationToken token = _offlineRecoveryLifetime.Token;
@@ -51,6 +57,7 @@ public sealed partial class LoginPage : Page
         cancellationToken.ThrowIfCancellationRequested();
         if (ViewModel.IsAuthenticated)
         {
+            ((App)Application.Current).CurrentMainWindow.ClearStatus();
             _navigationService.GoHome();
             return;
         }
@@ -63,6 +70,7 @@ public sealed partial class LoginPage : Page
             if (await ViewModel.RetrySavedSessionAsync())
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                ((App)Application.Current).CurrentMainWindow.ClearStatus();
                 _navigationService.GoHome();
                 return;
             }
@@ -87,7 +95,12 @@ public sealed partial class LoginPage : Page
             await ViewModel.StartLoginAsync();
             if (ViewModel.IsAuthenticated)
             {
+                ((App)Application.Current).CurrentMainWindow.ClearStatus();
                 _navigationService.GoHome();
+            }
+            else if (IsLoaded && ViewModel.IsSavedSessionRecoveryPending)
+            {
+                StartOfflineSessionRecovery();
             }
         }, "ui-login-page");
     }

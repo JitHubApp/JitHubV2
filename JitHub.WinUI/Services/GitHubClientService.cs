@@ -46,34 +46,6 @@ public sealed class GitHubClientService : IGitHubClientService
         }
     }
 
-    public Uri CreateLoginUri(
-        string clientId,
-        string? state = null,
-        string? redirectUri = null,
-        IReadOnlyCollection<string>? additionalScopes = null)
-    {
-        IReadOnlyList<string> scopes = OAuthScopePolicy.BuildRequestedScopes(additionalScopes);
-
-        List<string> queryParts =
-        [
-            $"client_id={Uri.EscapeDataString(clientId)}",
-            $"scope={Uri.EscapeDataString(string.Join(' ', scopes))}"
-        ];
-
-        if (!string.IsNullOrWhiteSpace(redirectUri))
-        {
-            queryParts.Add($"redirect_uri={Uri.EscapeDataString(redirectUri)}");
-        }
-
-        if (!string.IsNullOrWhiteSpace(state))
-        {
-            queryParts.Add($"state={Uri.EscapeDataString(state)}");
-        }
-
-        string query = string.Join("&", queryParts);
-        return new Uri($"https://github.com/login/oauth/authorize?{query}", UriKind.Absolute);
-    }
-
     public async Task<IReadOnlySet<string>> GetTokenScopesAsync(
         string token,
         CancellationToken cancellationToken = default)

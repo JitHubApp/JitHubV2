@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Net.Http;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using JitHub.Services;
@@ -196,12 +197,22 @@ public sealed partial class LoginPageViewModel : ObservableObject
                 "access_denied" => GetText("Login.DeviceDeniedError", "GitHub authorization was cancelled. Try again."),
                 "expired_token" => GetText("Login.DeviceExpiredError", "The GitHub sign-in code expired. Try again."),
                 "device_flow_disabled" => GetText("Login.DeviceDisabledError", "GitHub device sign-in is unavailable for this app."),
+                "insufficient_scope" => GetText("Login.DevicePermissionError", "Approve JitHub's requested permissions on GitHub, then try again."),
                 _ => GetText("Login.DeviceError", "GitHub could not complete sign-in. Try again.")
             });
             TrackLoginOutcome(
                 TelemetryTaxonomy.Results.Error,
                 stopwatch.Elapsed,
                 TelemetryTaxonomy.ErrorKinds.Authentication);
+        }
+        catch (HttpRequestException)
+        {
+            stopwatch.Stop();
+            ShowLoginError(GetText("Login.DeviceError", "GitHub could not complete sign-in. Try again."));
+            TrackLoginOutcome(
+                TelemetryTaxonomy.Results.Error,
+                stopwatch.Elapsed,
+                TelemetryTaxonomy.ErrorKinds.Network);
         }
         catch (Exception)
         {

@@ -724,7 +724,7 @@ public abstract partial class MeSearchPageViewModelBase : ViewModelBase
                 ? GetString("MyWorkItems/Error/OfflineRecovery", "You are offline. Try again when connected; your saved GitHub session is kept.")
                 : GetString("MyWorkItems.Error.AuthenticationUnavailable", "GitHub authentication is unavailable.");
             trace.SetProperty("result", TelemetryTaxonomy.Results.AuthError);
-            if (!offline)
+            if (_authService.RecoveryState == AuthSessionRecoveryState.Expired)
             {
                 _authService.SignOut();
             }

@@ -2145,7 +2145,6 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
             return true;
         }
 
-        _authService.SignOut();
         return false;
     }
 

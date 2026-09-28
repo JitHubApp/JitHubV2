@@ -18,6 +18,9 @@ test('published page contains the complete static landing page', async () => {
   assert.ok(!html.includes('<!--JITHUB_APP-->'));
   assert.ok(!html.includes('GithubCodeToHandoff'));
   assert.ok(!html.includes('RedeemGithubHandoff'));
+  assert.ok(!html.includes('<noscript><img'));
+  assert.ok(!html.includes('data:image/gif'));
+  assert.match(html, /<img[^>]*class="product-frame__image"[^>]*src="\/media\/showcase\/pull-request-conversation-light\.png"/);
 });
 
 test('site assets and inert retired callback are publishable', async () => {

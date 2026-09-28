@@ -19,6 +19,8 @@ public sealed class AuthServiceSecurityTests
             .Returns(pair);
         context.GitHubClient.GetCurrentUserAsync(pair.AccessToken, Arg.Any<CancellationToken>())
             .Returns(new GitHubUser { Id = 42, Login = "octocat" });
+        context.GitHubClient.GetTokenScopesAsync(pair.AccessToken, Arg.Any<CancellationToken>())
+            .Returns(new HashSet<string>(["user", "repo", "notifications"]));
 
         await context.Service.Authenticate();
 
@@ -55,6 +57,64 @@ public sealed class AuthServiceSecurityTests
 
         Assert.Equal("existing-token", context.CredentialStore.GetAccountToken(42));
         Assert.Equal(42, context.Account.UserId);
+    }
+
+    [Fact]
+    [Trait("Category", "ReleaseSecurity")]
+    public async Task CancelledManualSignIn_RestoresExistingSessionBeforeInitialLoad()
+    {
+        TestContext context = CreateContext();
+        context.Account.SaveUser(42);
+        context.CredentialStore.SaveAccountToken(42, "existing-token");
+        context.Prompt.AuthorizeAsync(Arg.Any<string>(), Arg.Any<IReadOnlyCollection<string>>(), Arg.Any<CancellationToken>())
+            .Returns((GitHubTokenSession?)null);
+        context.GitHubClient.GetCurrentUserAsync("existing-token", Arg.Any<CancellationToken>())
+            .Returns(new GitHubUser { Id = 42, Login = "octocat" });
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() => context.Service.Authenticate());
+        Assert.Equal(AuthSessionRecoveryState.ServiceUnavailable, context.Service.RecoveryState);
+
+        await context.Service.InitializeAsync();
+
+        Assert.True(context.Service.Authenticated);
+        Assert.Equal(AuthSessionRecoveryState.None, context.Service.RecoveryState);
+        Assert.Equal("existing-token", context.CredentialStore.GetAccountToken(42));
+    }
+
+    [Fact]
+    [Trait("Category", "ReleaseSecurity")]
+    public async Task DeviceSignIn_RejectsMissingBaselineScopeWithoutReplacingSession()
+    {
+        TestContext context = CreateContext();
+        context.Account.SaveUser(42);
+        context.CredentialStore.SaveAccountToken(42, "existing-token");
+        context.Prompt.AuthorizeAsync(Arg.Any<string>(), Arg.Any<IReadOnlyCollection<string>>(), Arg.Any<CancellationToken>())
+            .Returns(NewSession("limited-access", "limited-refresh"));
+        context.GitHubClient.GetCurrentUserAsync("limited-access", Arg.Any<CancellationToken>())
+            .Returns(new GitHubUser { Id = 99, Login = "limited" });
+        context.GitHubClient.GetTokenScopesAsync("limited-access", Arg.Any<CancellationToken>())
+            .Returns(new HashSet<string>(["user", "repo"]));
+
+        DeviceFlowException error = await Assert.ThrowsAsync<DeviceFlowException>(() => context.Service.Authenticate());
+        Assert.Equal("insufficient_scope", error.Code);
+
+        Assert.Equal("existing-token", context.CredentialStore.GetAccountToken(42));
+        Assert.Null(context.CredentialStore.GetAccountSession(99));
+        Assert.Equal(42, context.Account.UserId);
+    }
+
+    [Fact]
+    [Trait("Category", "ReleaseSecurity")]
+    public async Task DeviceSignIn_HttpTimeoutIsNotReportedAsUserCancellation()
+    {
+        TestContext context = CreateContext();
+        context.Prompt.AuthorizeAsync(Arg.Any<string>(), Arg.Any<IReadOnlyCollection<string>>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromException<GitHubTokenSession?>(
+                new TaskCanceledException("timeout", new TimeoutException())));
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => context.Service.Authenticate());
+
+        Assert.NotEqual(AuthSessionRecoveryState.Cancelled, context.Service.RecoveryState);
     }
 
     [Fact]
@@ -121,6 +181,99 @@ public sealed class AuthServiceSecurityTests
         Assert.Null(await context.Service.GetValidTokenAsync(42));
         Assert.Equal(AuthSessionRecoveryState.Offline, context.Service.RecoveryState);
         Assert.Equal("old-refresh", context.CredentialStore.GetAccountSession(42)?.RefreshToken);
+    }
+
+    [Fact]
+    [Trait("Category", "ReleaseSecurity")]
+    public async Task Refresh_TimeoutPreservesPairAndAllowsRetry()
+    {
+        TestContext context = CreateContext();
+        context.Account.SaveUser(42);
+        context.CredentialStore.SaveAccountSession(42,
+            NewSession("old-access", "old-refresh", DateTimeOffset.UtcNow.AddSeconds(-1)));
+        bool timedOut = true;
+        context.DeviceClient.RefreshAsync("security-test-client", "old-refresh", Arg.Any<CancellationToken>())
+            .Returns(_ => timedOut
+                ? Task.FromException<GitHubTokenSession>(new TaskCanceledException("timeout", new TimeoutException()))
+                : Task.FromResult(NewSession("new-access", "new-refresh")));
+        context.GitHubClient.GetCurrentUserAsync("new-access", Arg.Any<CancellationToken>())
+            .Returns(new GitHubUser { Id = 42, Login = "octocat" });
+
+        Assert.Null(await context.Service.RefreshAuthenticatedUserAsync());
+        Assert.Equal(AuthSessionRecoveryState.Offline, context.Service.RecoveryState);
+        Assert.Equal("old-refresh", context.CredentialStore.GetAccountSession(42)?.RefreshToken);
+
+        timedOut = false;
+        Assert.Equal(42, (await context.Service.RefreshAuthenticatedUserAsync())?.Id);
+        Assert.Equal("new-refresh", context.CredentialStore.GetAccountSession(42)?.RefreshToken);
+    }
+
+    [Fact]
+    [Trait("Category", "ReleaseSecurity")]
+    public async Task AccountLookup_TimeoutKeepsSavedSessionForRetry()
+    {
+        TestContext context = CreateContext();
+        context.Account.SaveUser(42);
+        context.CredentialStore.SaveAccountSession(42, NewSession("access", "refresh"));
+        bool timedOut = true;
+        context.GitHubClient.GetCurrentUserAsync("access", Arg.Any<CancellationToken>())
+            .Returns(_ => timedOut
+                ? Task.FromException<GitHubUser>(new TaskCanceledException("timeout", new TimeoutException()))
+                : Task.FromResult(new GitHubUser { Id = 42, Login = "octocat" }));
+
+        Assert.Null(await context.Service.RefreshAuthenticatedUserAsync());
+        Assert.Equal(AuthSessionRecoveryState.Offline, context.Service.RecoveryState);
+        Assert.Equal("refresh", context.CredentialStore.GetAccountSession(42)?.RefreshToken);
+
+        timedOut = false;
+        Assert.Equal(42, (await context.Service.RefreshAuthenticatedUserAsync())?.Id);
+    }
+
+    [Fact]
+    [Trait("Category", "ReleaseSecurity")]
+    public async Task Refresh_ExplicitCancellationIsNotTreatedAsTimeout()
+    {
+        TestContext context = CreateContext();
+        context.Account.SaveUser(42);
+        context.CredentialStore.SaveAccountSession(42,
+            NewSession("old-access", "old-refresh", DateTimeOffset.UtcNow.AddSeconds(-1)));
+        using CancellationTokenSource cancellation = new();
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            context.Service.GetValidTokenAsync(42, cancellation.Token));
+
+        Assert.Equal(AuthSessionRecoveryState.None, context.Service.RecoveryState);
+        Assert.Equal("old-refresh", context.CredentialStore.GetAccountSession(42)?.RefreshToken);
+    }
+
+    [Fact]
+    [Trait("Category", "ReleaseSecurity")]
+    public async Task CancelledManualSignIn_ResumesPendingSavedSessionRecovery()
+    {
+        TestContext context = CreateContext();
+        context.Account.SaveUser(42);
+        context.CredentialStore.SaveAccountSession(42,
+            NewSession("old-access", "old-refresh", DateTimeOffset.UtcNow.AddSeconds(-1)));
+        bool offline = true;
+        context.DeviceClient.RefreshAsync("security-test-client", "old-refresh", Arg.Any<CancellationToken>())
+            .Returns(_ => offline
+                ? Task.FromException<GitHubTokenSession>(new HttpRequestException("offline"))
+                : Task.FromResult(NewSession("new-access", "new-refresh")));
+        context.Prompt.AuthorizeAsync(Arg.Any<string>(), Arg.Any<IReadOnlyCollection<string>>(), Arg.Any<CancellationToken>())
+            .Returns((GitHubTokenSession?)null);
+        context.GitHubClient.GetCurrentUserAsync("new-access", Arg.Any<CancellationToken>())
+            .Returns(new GitHubUser { Id = 42, Login = "octocat" });
+
+        Assert.Null(await context.Service.RefreshAuthenticatedUserAsync());
+        Assert.Equal(AuthSessionRecoveryState.Offline, context.Service.RecoveryState);
+        await Assert.ThrowsAsync<OperationCanceledException>(() => context.Service.Authenticate());
+        Assert.Equal(AuthSessionRecoveryState.Offline, context.Service.RecoveryState);
+        Assert.Equal("old-refresh", context.CredentialStore.GetAccountSession(42)?.RefreshToken);
+
+        offline = false;
+        await context.Service.InitializeAsync();
+        Assert.True(context.Service.Authenticated);
     }
 
     [Fact]
@@ -370,7 +523,7 @@ public sealed class AuthServiceSecurityTests
 
     [Fact]
     [Trait("Category", "ReleaseSecurity")]
-    public async Task PermissionRequest_PreservesScopesAcrossRefresh()
+    public async Task PermissionRequest_DoesNotRestoreRevokedScopeAfterRefresh()
     {
         TestContext context = CreateContext();
         context.Account.SaveUser(42);
@@ -380,21 +533,21 @@ public sealed class AuthServiceSecurityTests
         context.DeviceClient.RefreshAsync("security-test-client", "old-refresh", Arg.Any<CancellationToken>())
             .Returns(NewSession("new-access", "new-refresh"));
         context.GitHubClient.GetTokenScopesAsync("new-access", Arg.Any<CancellationToken>())
-            .Returns(new HashSet<string>(["repo", "user"]));
+            .Returns(new HashSet<string>(["repo", "user", "notifications"]));
         context.Prompt.AuthorizeAsync(Arg.Any<string>(), Arg.Any<IReadOnlyCollection<string>>(), Arg.Any<CancellationToken>())
             .Returns(NewSession("granted-access", "granted-refresh"));
         context.GitHubClient.GetCurrentUserAsync("granted-access", Arg.Any<CancellationToken>())
             .Returns(new GitHubUser { Id = 42, Login = "octocat" });
         context.GitHubClient.GetTokenScopesAsync("granted-access", Arg.Any<CancellationToken>())
-            .Returns(new HashSet<string>(["repo", "user", "gist", "delete_repo"]));
+            .Returns(new HashSet<string>(["repo", "user", "notifications", "delete_repo"]));
 
         Assert.True(await context.Service.EnsureScopesAsync("delete_repo"));
         await context.Prompt.Received(1).AuthorizeAsync(
             "security-test-client",
             Arg.Is<IReadOnlyCollection<string>>(scopes =>
-                scopes.Contains("gist") && scopes.Contains("delete_repo") && scopes.Contains("offline_access")),
+                !scopes.Contains("gist") && scopes.Contains("delete_repo") && scopes.Contains("offline_access")),
             Arg.Any<CancellationToken>());
-        Assert.Contains("gist", context.CredentialStore.GetAccountSession(42)?.GrantedScopes ?? []);
+        Assert.DoesNotContain("gist", context.CredentialStore.GetAccountSession(42)?.GrantedScopes ?? []);
     }
 
     [Fact]
@@ -412,7 +565,7 @@ public sealed class AuthServiceSecurityTests
         context.GitHubClient.GetCurrentUserAsync("granted-access", Arg.Any<CancellationToken>())
             .Returns(new GitHubUser { Id = 42, Login = "octocat" });
         context.GitHubClient.GetTokenScopesAsync("granted-access", Arg.Any<CancellationToken>())
-            .Returns(new HashSet<string>(["repo", "user", "gist"]));
+            .Returns(new HashSet<string>(["repo", "user", "notifications", "gist"]));
 
         Assert.True(await context.Service.EnsureScopesAsync("gist"));
 
@@ -471,7 +624,7 @@ public sealed class AuthServiceSecurityTests
         context.GitHubClient.GetCurrentUserAsync("new-access", Arg.Any<CancellationToken>())
             .Returns(new GitHubUser { Id = 99, Login = "new-account" });
         context.GitHubClient.GetTokenScopesAsync("new-access", Arg.Any<CancellationToken>())
-            .Returns(new HashSet<string>(["repo", "user"]));
+            .Returns(new HashSet<string>(["repo", "user", "notifications"]));
         await context.Service.Authenticate();
     }
 

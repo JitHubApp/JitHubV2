@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Models.GitHub;
@@ -149,6 +150,34 @@ public sealed class LoginPageViewModelTests
         Assert.True(viewModel.HasLoginError);
         Assert.Contains(expectedText, viewModel.LoginErrorMessage, StringComparison.OrdinalIgnoreCase);
         Assert.True(viewModel.IsLoginEnabled);
+    }
+
+    [Fact]
+    public async Task StartLoginAsync_NetworkFailureShowsDeviceError()
+    {
+        LoginPageViewModel viewModel = CreateViewModel(new TestAuthService
+        {
+            AuthenticateHandler = () => Task.FromException(new HttpRequestException("offline"))
+        });
+
+        await viewModel.StartLoginAsync();
+
+        Assert.True(viewModel.HasLoginError);
+        Assert.Equal("GitHub could not complete sign-in. Try again.", viewModel.LoginErrorMessage);
+    }
+
+    [Fact]
+    public async Task StartLoginAsync_MissingPermissionsShowsApprovalGuidance()
+    {
+        LoginPageViewModel viewModel = CreateViewModel(new TestAuthService
+        {
+            AuthenticateHandler = () => Task.FromException(DeviceFlowException.For("insufficient_scope"))
+        });
+
+        await viewModel.StartLoginAsync();
+
+        Assert.True(viewModel.HasLoginError);
+        Assert.Equal("Approve JitHub's requested permissions on GitHub, then try again.", viewModel.LoginErrorMessage);
     }
 
     [Fact]

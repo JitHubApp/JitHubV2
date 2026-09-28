@@ -261,7 +261,7 @@ public sealed partial class DashboardPageViewModel : ViewModelBase
                     ["result"] = TelemetryTaxonomy.Results.AuthError,
                     ["duration_bucket"] = TelemetrySanitizer.CreateDurationBucket(refreshDuration.Elapsed)
                 });
-            if (!offline)
+            if (_authService.RecoveryState == AuthSessionRecoveryState.Expired)
             {
                 _authService.SignOut();
             }

@@ -2,7 +2,6 @@ import React from 'react';
 
 const store = 'https://apps.microsoft.com/store/detail/jithub/9MXRBJBB552V';
 const source = 'https://github.com/JitHubApp/JitHubV2';
-const transparentPixel = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
 const media = {
   home: ['home-workspace', 'JitHub’s customizable Home workspace with global search, navigation, repository rail, overview, and activity widgets.', 'Recent work, repositories, and account activity in one Home view.'],
   pull: ['pull-request-conversation', 'A JitHub pull request conversation with navigation, Markdown, reactions, comments, and review actions.', 'A pull request with its discussion and review context together.'],
@@ -81,12 +80,9 @@ function ThemeImage({ item, className, eager = false }) {
   const [id, alt] = item;
   const light = `/media/showcase/${id}-light.png`;
   const dark = `/media/showcase/${id}-dark.png`;
-  return <>
-    <img className={className} src={transparentPixel} data-theme-media="" data-theme-immediate={eager ? 'true' : undefined}
+  return <img className={className} src={light} data-theme-media="" data-theme-immediate={eager ? 'true' : undefined}
       data-theme-light-src={light} data-theme-dark-src={dark} alt={alt} width="3200" height="1800"
-      loading={eager ? 'eager' : 'lazy'} decoding="async" fetchPriority={eager ? 'high' : 'auto'} />
-    <noscript><img className={className} src={light} alt={alt} width="3200" height="1800" /></noscript>
-  </>;
+      loading={eager ? 'eager' : 'lazy'} decoding="async" fetchPriority={eager ? 'high' : 'auto'} />;
 }
 
 function PalettePreview({ palette, mode }) {

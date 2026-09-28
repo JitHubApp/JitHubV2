@@ -118,27 +118,6 @@ public sealed class SecurityReleaseGateTests
         Assert.Null(uri);
     }
 
-    [Fact]
-    [Trait("Category", "ReleaseSecurity")]
-    public void OAuthProtocolPolicy_DeniesUnregisteredAndCrossBuildSchemes()
-    {
-        Assert.True(AuthProtocolPolicy.IsExpectedScheme(
-            new Uri("jithub://auth?state=state"),
-            useDevelopmentScheme: false));
-        Assert.False(AuthProtocolPolicy.IsExpectedScheme(
-            new Uri("jithub-dev://auth?state=state"),
-            useDevelopmentScheme: false));
-        Assert.True(AuthProtocolPolicy.IsExpectedScheme(
-            new Uri("jithub-dev://auth?state=state"),
-            useDevelopmentScheme: true));
-        Assert.False(AuthProtocolPolicy.IsExpectedScheme(
-            new Uri("https://attacker.test/auth?state=state"),
-            useDevelopmentScheme: true));
-        Assert.False(AuthProtocolPolicy.IsExpectedScheme(
-            new Uri("file:///auth?state=state"),
-            useDevelopmentScheme: true));
-    }
-
     [Theory]
     [Trait("Category", "ReleaseSecurity")]
     [InlineData("ghp_abcdefghijklmnopqrstuvwxyz123456")]
