@@ -15,9 +15,11 @@ public sealed class AuthLifecycleAutomationTests : IDisposable
 
     [Theory]
     [InlineData(AuthLifecycleScenario.Cancel)]
+    [InlineData(AuthLifecycleScenario.CancelAfterApproval)]
     [InlineData(AuthLifecycleScenario.ExpiredToken)]
     [InlineData(AuthLifecycleScenario.NotificationReconnect)]
     [InlineData(AuthLifecycleScenario.OfflineLaunch)]
+    [InlineData(AuthLifecycleScenario.ExpiredOfflineRecovery)]
     [InlineData(AuthLifecycleScenario.MultiAccountCleanup)]
     public void KnownScenariosAreExplicitlyAllowlisted(string scenario)
     {

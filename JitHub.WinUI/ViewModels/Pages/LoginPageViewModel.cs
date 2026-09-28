@@ -59,6 +59,22 @@ public sealed partial class LoginPageViewModel : ObservableObject
 
     public bool IsAuthenticated => _authService.Authenticated;
 
+    public bool IsSavedSessionRecoveryPending =>
+        _authService.RecoveryState is AuthSessionRecoveryState.Offline or
+            AuthSessionRecoveryState.ServiceUnavailable;
+
+    public Task WaitForStoredSessionAsync() => _authService.InitializeAsync();
+
+    public void ShowSavedSessionRecoveryStatus()
+    {
+        if (IsSavedSessionRecoveryPending)
+        {
+            StatusText = GetText(
+                "Login.SavedSessionRecoveryStatus",
+                "GitHub is unavailable. JitHub will retry your saved session automatically.");
+        }
+    }
+
     [ObservableProperty]
     public partial string StatusText { get; set; } = string.Empty;
 
@@ -95,7 +111,34 @@ public sealed partial class LoginPageViewModel : ObservableObject
                     "Login.CancelledStatus",
                     "Sign-in was canceled. You can try again.");
                 break;
+            case AuthSessionRecoveryState.Offline:
+            case AuthSessionRecoveryState.ServiceUnavailable:
+                ShowSavedSessionRecoveryStatus();
+                break;
         }
+    }
+
+    public async Task<bool> RetrySavedSessionAsync()
+    {
+        if (!IsSavedSessionRecoveryPending)
+        {
+            return IsAuthenticated;
+        }
+
+        await _authService.RefreshAuthenticatedUserAsync();
+        if (IsAuthenticated)
+        {
+            return true;
+        }
+
+        if (_authService.RecoveryState == AuthSessionRecoveryState.Expired)
+        {
+            ShowLoginError(GetText(
+                "Login.ExpiredSessionError",
+                "Your GitHub session expired. The expired token was removed; sign in again to continue."));
+        }
+
+        return false;
     }
 
     public async Task StartLoginAsync()

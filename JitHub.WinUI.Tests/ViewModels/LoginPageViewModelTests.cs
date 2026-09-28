@@ -152,6 +152,46 @@ public sealed class LoginPageViewModelTests
     }
 
     [Fact]
+    public async Task OfflineSession_RetriesAndReturnsToAuthenticatedState()
+    {
+        TestAuthService authService = new() { RecoveryState = AuthSessionRecoveryState.Offline };
+        authService.RefreshHandler = () =>
+        {
+            authService.Authenticated = true;
+            authService.RecoveryState = AuthSessionRecoveryState.None;
+            return Task.FromResult<GitHubUser?>(new GitHubUser { Id = 42, Login = "octocat" });
+        };
+        LoginPageViewModel viewModel = CreateViewModel(authService);
+
+        viewModel.PrepareForDisplay();
+        Assert.True(viewModel.IsSavedSessionRecoveryPending);
+        Assert.Contains("automatically", viewModel.StatusText, StringComparison.Ordinal);
+
+        Assert.True(await viewModel.RetrySavedSessionAsync());
+        Assert.False(viewModel.IsSavedSessionRecoveryPending);
+        Assert.False(viewModel.HasLoginError);
+    }
+
+    [Fact]
+    public async Task OfflineSession_ExpiredRefreshShowsSignInAction()
+    {
+        TestAuthService authService = new() { RecoveryState = AuthSessionRecoveryState.Offline };
+        authService.RefreshHandler = () =>
+        {
+            authService.RecoveryState = AuthSessionRecoveryState.Expired;
+            return Task.FromResult<GitHubUser?>(null);
+        };
+        LoginPageViewModel viewModel = CreateViewModel(authService);
+
+        viewModel.PrepareForDisplay();
+        Assert.False(await viewModel.RetrySavedSessionAsync());
+
+        Assert.True(viewModel.HasLoginError);
+        Assert.Contains("sign in again", viewModel.LoginErrorMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.False(viewModel.IsSavedSessionRecoveryPending);
+    }
+
+    [Fact]
     public void ActiveLoginPage_UsesCompiledBindingsAndStableAutomationIdentity()
     {
         string xamlPath = FindRepositoryFile("JitHub.WinUI", "Views", "Pages", "LoginPage.xaml");
@@ -193,12 +233,14 @@ public sealed class LoginPageViewModelTests
         public Func<Task> AuthenticateHandler { get; init; } = static () => Task.CompletedTask;
         public bool Authenticated { get; set; }
         public GitHubUser? AuthenticatedUser { get; set; }
-        public AuthSessionRecoveryState RecoveryState { get; init; } = AuthSessionRecoveryState.None;
+        public AuthSessionRecoveryState RecoveryState { get; set; } = AuthSessionRecoveryState.None;
+        public Func<Task<GitHubUser?>>? RefreshHandler { get; set; }
         public Task InitializeAsync() => Task.CompletedTask;
         public Task Authenticate() => AuthenticateHandler();
         public Task<bool> EnsureScopesAsync(params string[] scopes) => Task.FromResult(true);
         public Task<bool> Authorize(string response) => Task.FromResult(true);
-        public Task<GitHubUser?> RefreshAuthenticatedUserAsync() => Task.FromResult(AuthenticatedUser);
+        public Task<GitHubUser?> RefreshAuthenticatedUserAsync() =>
+            RefreshHandler?.Invoke() ?? Task.FromResult(AuthenticatedUser);
         public string? GetToken(long userId) => null;
         public bool CheckAuth(long userId) => false;
         public void SignOut() { }

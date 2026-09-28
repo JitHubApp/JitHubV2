@@ -4,5 +4,6 @@
     <Duration x:Key="AppFastDuration">0:0:0.08</Duration>
     <Duration x:Key="AppMediumDuration">0:0:0.18</Duration>
     <Duration x:Key="AppCopyConfirmationDuration">0:0:2</Duration>
+    <Duration x:Key="AppDeviceApprovalDuration">0:0:0.6</Duration>
     <TransitionCollection x:Key="AppNoTransitions" />
 </ResourceDictionary>

@@ -201,7 +201,40 @@ public sealed class GitHubDeviceAuthorizationPrompt : IDeviceAuthorizationPrompt
         }
 
         status.Text = T("Auth/Device/Approved", "Approved by GitHub. Finishing sign-in…");
-        await Task.Delay(TimeSpan.FromMilliseconds(600), cancellationToken);
+        TimeSpan approvalDuration = Program.CurrentLaunchOptions.Scenario == AuthLifecycleScenario.CancelAfterApproval &&
+            AppDataPathPolicy.TryGetAutomationRoots(out _, out _)
+                ? TimeSpan.FromSeconds(3)
+                : AppMotionTokens.DeviceApprovalDuration;
+        Task approvalDelay = Task.Delay(approvalDuration, cancellationToken);
+        if (await Task.WhenAny(approvalDelay, dialogTask) == dialogTask)
+        {
+            await dialogTask;
+            return null;
+        }
+
+        try
+        {
+            await approvalDelay;
+        }
+        catch (OperationCanceledException)
+        {
+            dialog.Hide();
+            await dialogTask;
+            throw;
+        }
+
+        if (dialogTask.IsCompleted)
+        {
+            await dialogTask;
+            return null;
+        }
+
+        if (cancellationToken.IsCancellationRequested)
+        {
+            dialog.Hide();
+            await dialogTask;
+            cancellationToken.ThrowIfCancellationRequested();
+        }
         dialog.Hide();
         await dialogTask;
         return await tokenTask;

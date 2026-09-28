@@ -1,3 +1,6 @@
+using System;
+using System.Threading;
+using System.Threading.Tasks;
 using JitHub.Services;
 using JitHub.WinUI.ViewModels.Pages;
 using Microsoft.UI.Xaml;
@@ -7,7 +10,13 @@ namespace JitHub.WinUI.Views.Pages;
 
 public sealed partial class LoginPage : Page
 {
+    private static TimeSpan OfflineRetryInterval =>
+        Program.CurrentLaunchOptions.Scenario == AuthLifecycleScenario.ExpiredOfflineRecovery &&
+        AppDataPathPolicy.TryGetAutomationRoots(out _, out _)
+            ? TimeSpan.FromSeconds(1)
+            : TimeSpan.FromSeconds(30);
     private readonly NavigationService _navigationService;
+    private CancellationTokenSource? _offlineRecoveryLifetime;
     public LoginPageViewModel ViewModel { get; }
 
     public LoginPage()
@@ -17,6 +26,7 @@ public sealed partial class LoginPage : Page
         InitializeComponent();
         DataContext = ViewModel;
         Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -28,10 +38,49 @@ public sealed partial class LoginPage : Page
         }
 
         ViewModel.PrepareForDisplay();
+        StopOfflineSessionRecovery();
+        _offlineRecoveryLifetime = new CancellationTokenSource();
+        CancellationToken token = _offlineRecoveryLifetime.Token;
+        UiTaskGuard.Run(() => ObserveStoredSessionAsync(token), "ui-login-offline-recovery");
+    }
+
+    private async Task ObserveStoredSessionAsync(CancellationToken cancellationToken)
+    {
+        await ViewModel.WaitForStoredSessionAsync();
+        cancellationToken.ThrowIfCancellationRequested();
+        if (ViewModel.IsAuthenticated)
+        {
+            _navigationService.GoHome();
+            return;
+        }
+
+        ViewModel.ShowSavedSessionRecoveryStatus();
+        while (ViewModel.IsSavedSessionRecoveryPending)
+        {
+            await Task.Delay(OfflineRetryInterval, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (await ViewModel.RetrySavedSessionAsync())
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                _navigationService.GoHome();
+                return;
+            }
+        }
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e) => StopOfflineSessionRecovery();
+
+    private void StopOfflineSessionRecovery()
+    {
+        CancellationTokenSource? lifetime = _offlineRecoveryLifetime;
+        _offlineRecoveryLifetime = null;
+        lifetime?.Cancel();
+        lifetime?.Dispose();
     }
 
     private void LoginButton_Click(object sender, RoutedEventArgs e)
     {
+        StopOfflineSessionRecovery();
         UiTaskGuard.Run(async () =>
         {
             await ViewModel.StartLoginAsync();

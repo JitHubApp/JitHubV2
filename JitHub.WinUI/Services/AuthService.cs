@@ -212,7 +212,7 @@ public sealed class AuthService : IAuthService
     private async Task AuthenticateCoreAsync(IReadOnlyCollection<string> additionalScopes)
     {
         RecoveryState = AuthSessionRecoveryState.None;
-        long generation = Interlocked.Read(ref _sessionGeneration);
+        long generation = Interlocked.Increment(ref _sessionGeneration);
         string[] scopes = OAuthScopePolicy.BuildRequestedScopes(additionalScopes)
             .Append("offline_access").ToArray();
         GitHubTokenSession? session = await _devicePrompt.AuthorizeAsync(
@@ -265,13 +265,13 @@ public sealed class AuthService : IAuthService
             return null;
         }
 
+        long generation = Interlocked.Read(ref _sessionGeneration);
         try
         {
-            _gitHubService.SetAccessToken(token);
-
             if (Program.CurrentLaunchOptions.IsPublicPreviewOverride && GitHubClientService.IsPublicAccessToken(token))
             {
                 GitHubUser previewUser = CreatePublicPreviewUser();
+                _gitHubService.SetAccessToken(token);
                 AuthenticatedUser = previewUser;
                 Authenticated = true;
                 stopwatch.Stop();
@@ -284,11 +284,16 @@ public sealed class AuthService : IAuthService
             }
 
             GitHubUser user = await _gitHubClientService.GetCurrentUserAsync(token);
+            if (generation != Interlocked.Read(ref _sessionGeneration) ||
+                _accountService.GetUser() != expectedUserId)
+            {
+                throw new OperationCanceledException("The active account changed during session refresh.");
+            }
             if (expectedUserId > 0 && user.Id != expectedUserId)
             {
                 throw new GitHubAuthenticationException("The stored GitHub session belongs to a different account.");
             }
-            SaveToken(token, user.Id);
+            _gitHubService.SetAccessToken(_credentialStore.GetAccountSession(user.Id)?.AccessToken ?? token);
             _accountService.SaveUser(user.Id);
             _accountWork.Activate(user.Id.ToString(System.Globalization.CultureInfo.InvariantCulture));
             AuthenticatedUser = user;
@@ -327,6 +332,10 @@ public sealed class AuthService : IAuthService
         }
         catch (GitHubApiException)
         {
+            if (!Authenticated)
+            {
+                RecoveryState = AuthSessionRecoveryState.ServiceUnavailable;
+            }
             stopwatch.Stop();
             TrackAuthAction(
                 TelemetryTaxonomy.Actions.RefreshUser,
@@ -338,6 +347,10 @@ public sealed class AuthService : IAuthService
         }
         catch (HttpRequestException)
         {
+            if (!Authenticated)
+            {
+                RecoveryState = AuthSessionRecoveryState.Offline;
+            }
             stopwatch.Stop();
             TrackAuthAction(
                 TelemetryTaxonomy.Actions.RefreshUser,
@@ -546,7 +559,8 @@ public sealed class AuthService : IAuthService
         string? token = userId > 0 ? await GetValidTokenAsync(userId) : null;
         if (string.IsNullOrWhiteSpace(token))
         {
-            if (userId > 0 && _credentialStore.GetAccountSession(userId) is not null)
+            if (userId > 0 && RecoveryState == AuthSessionRecoveryState.Offline &&
+                _credentialStore.GetAccountSession(userId) is not null)
             {
                 // An expired token can be refreshed after connectivity returns.
                 Authenticated = false;
@@ -559,6 +573,7 @@ public sealed class AuthService : IAuthService
 
             if (userId > 0)
             {
+                _credentialStore.RemoveAccountToken(userId);
                 _accountService.RemoveUser();
             }
 
@@ -703,14 +718,6 @@ public sealed class AuthService : IAuthService
         OperationCanceledException => "canceled",
         _ => "unexpected"
     };
-
-    private void SaveToken(string token, long userId)
-    {
-        if (_credentialStore.GetAccountSession(userId)?.AccessToken != token)
-        {
-            _credentialStore.SaveAccountToken(userId, token);
-        }
-    }
 
     private void ClearAuthenticationState(bool clearPersistedSession)
     {

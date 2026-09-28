@@ -719,11 +719,15 @@ public abstract partial class MeSearchPageViewModelBase : ViewModelBase
         string? token = await GetActiveTokenAsync(cancellationToken);
         if (string.IsNullOrWhiteSpace(token))
         {
-            StatusText = GetString(
-                "MyWorkItems.Error.AuthenticationUnavailable",
-                "GitHub authentication is unavailable.");
+            bool offline = _authService.RecoveryState == AuthSessionRecoveryState.Offline;
+            StatusText = offline
+                ? GetString("MyWorkItems/Error/OfflineRecovery", "You are offline. Try again when connected; your saved GitHub session is kept.")
+                : GetString("MyWorkItems.Error.AuthenticationUnavailable", "GitHub authentication is unavailable.");
             trace.SetProperty("result", TelemetryTaxonomy.Results.AuthError);
-            _authService.SignOut();
+            if (!offline)
+            {
+                _authService.SignOut();
+            }
             return;
         }
 

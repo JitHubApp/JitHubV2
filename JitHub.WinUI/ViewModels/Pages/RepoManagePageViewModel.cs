@@ -836,7 +836,10 @@ public sealed partial class RepoManagePageViewModel : ViewModelBase
             return true;
         }
 
-        _authService.SignOut();
+        if (_authService.RecoveryState != AuthSessionRecoveryState.Offline)
+        {
+            _authService.SignOut();
+        }
         return false;
     }
 

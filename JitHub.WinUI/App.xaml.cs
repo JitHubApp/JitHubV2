@@ -461,10 +461,10 @@ public partial class App : Application
                 _mainWindow?.ShowStatus("Your GitHub session expired. Sign in again to continue.");
                 break;
             case AuthSessionRecoveryState.Offline:
-                _mainWindow?.ShowStatus("You are offline. JitHub is showing cached account data and will reconnect automatically.");
+                _mainWindow?.ShowStatus("GitHub is unavailable. JitHub will retry your saved session automatically.");
                 break;
             case AuthSessionRecoveryState.ServiceUnavailable:
-                _mainWindow?.ShowStatus("GitHub is temporarily unavailable. Cached account data remains available.");
+                _mainWindow?.ShowStatus("GitHub is temporarily unavailable. JitHub will retry your saved session.");
                 break;
         }
     }

@@ -16,9 +16,11 @@ internal static class AuthLifecycleScenario
 {
     public const string Cancel = "auth-cancel";
     public const string DeviceSuccess = "auth-device-success";
+    public const string CancelAfterApproval = "auth-cancel-after-approval";
     public const string ExpiredToken = "auth-expired-token";
     public const string NotificationReconnect = "auth-notification-reconnect";
     public const string OfflineLaunch = "auth-offline-launch";
+    public const string ExpiredOfflineRecovery = "auth-expired-offline-recovery";
     public const string MultiAccountCleanup = "auth-multi-account-cleanup";
 }
 
@@ -34,9 +36,11 @@ internal sealed partial class AuthLifecycleAutomationContext
     {
         AuthLifecycleScenario.Cancel,
         AuthLifecycleScenario.DeviceSuccess,
+        AuthLifecycleScenario.CancelAfterApproval,
         AuthLifecycleScenario.ExpiredToken,
         AuthLifecycleScenario.NotificationReconnect,
         AuthLifecycleScenario.OfflineLaunch,
+        AuthLifecycleScenario.ExpiredOfflineRecovery,
         AuthLifecycleScenario.MultiAccountCleanup
     };
 
@@ -104,6 +108,12 @@ internal sealed partial class AuthLifecycleAutomationContext
                 account.SaveUser(PrimaryUserId);
                 credentials.SaveAccountToken(PrimaryUserId, PrimaryToken);
                 break;
+            case AuthLifecycleScenario.ExpiredOfflineRecovery:
+                account.SaveUser(PrimaryUserId);
+                credentials.SaveAccountSession(PrimaryUserId, new GitHubTokenSession(
+                    "automation-expired-access", "automation-recovery-refresh",
+                    DateTimeOffset.UtcNow.AddSeconds(-1), DateTimeOffset.UtcNow.AddMonths(6)));
+                break;
             case AuthLifecycleScenario.MultiAccountCleanup:
                 account.SaveUser(PrimaryUserId);
                 credentials.SaveAccountToken(PrimaryUserId, PrimaryToken);
@@ -154,7 +164,8 @@ internal sealed partial class AuthLifecycleAutomationContext
             DeviceAuthorizationChallenge challenge,
             CancellationToken cancellationToken = default)
         {
-            if (_context.Scenario == AuthLifecycleScenario.DeviceSuccess)
+            if (_context.Scenario is AuthLifecycleScenario.DeviceSuccess or
+                AuthLifecycleScenario.CancelAfterApproval)
             {
                 await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
                 _context.Record("device.approved");
@@ -169,9 +180,22 @@ internal sealed partial class AuthLifecycleAutomationContext
         public Task<GitHubTokenSession> RefreshAsync(
             string clientId,
             string refreshToken,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult(new GitHubTokenSession("automation-refreshed-token", "automation-rotated-refresh-token",
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (_context.Scenario == AuthLifecycleScenario.ExpiredOfflineRecovery &&
+                !File.Exists(Path.Combine(_context.RootPath, "network-restored")))
+            {
+                _context.Record("refresh.offline");
+                return Task.FromException<GitHubTokenSession>(
+                    new HttpRequestException("The deterministic auth lifecycle transport is offline."));
+            }
+
+            _context.Record("refresh.completed");
+            return Task.FromResult(new GitHubTokenSession(
+                "automation-refreshed-token", "automation-rotated-refresh-token",
                 DateTimeOffset.UtcNow.AddHours(8), DateTimeOffset.UtcNow.AddMonths(6)));
+        }
     }
 
     internal sealed class AuthLifecycleExternalUriLauncher : IExternalUriLauncher

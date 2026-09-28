@@ -5623,9 +5623,11 @@ static void RunAuthLifecycleProbe(CaptureOptions options)
     RunAuthCancelScenario(options, "light");
     RunAuthCancelScenario(options, "dark");
     RunAuthDeviceSuccessScenario(options);
+    RunAuthCancelAfterApprovalScenario(options);
     RunAuthExpiredTokenScenario(options);
     RunAuthNotificationReconnectScenario(options);
     RunAuthOfflineLaunchScenario(options);
+    RunAuthExpiredOfflineRecoveryScenario(options);
     RunAuthMultiAccountCleanupScenario(options);
     Console.WriteLine("auth-lifecycle probe completed all deterministic production-path scenarios.");
 }
@@ -5664,6 +5666,29 @@ static void RunAuthDeviceSuccessScenario(CaptureOptions options)
     });
 }
 
+static void RunAuthCancelAfterApprovalScenario(CaptureOptions options)
+{
+    RunIsolatedAuthScenario(options, "auth-cancel-after-approval", "dark", (window, automation, root) =>
+    {
+        InvokeOrClick(WaitForVisibleAutomationElement(window, "LoginSignInButton"));
+        AutomationElement dialog = WaitForVisibleAutomationElement(window, "GitHubDeviceAuthorizationDialog");
+        WaitUntil(
+            "GitHub device approval before dismissal",
+            () => AutomationElementText(window.FindFirstDescendant(cf => cf.ByAutomationId("GitHubDeviceStatus")))
+                .Contains("Approved by GitHub", StringComparison.OrdinalIgnoreCase),
+            TimeSpan.FromSeconds(8));
+        InvokeOrClick(FindDialogButton(dialog, automation, "Cancel"));
+        WaitUntil(
+            "cancelled approved sign-in status",
+            () => AutomationElementText(window.FindFirstDescendant(cf => cf.ByAutomationId("LoginStatusText")))
+                .Contains("canceled", StringComparison.OrdinalIgnoreCase),
+            TimeSpan.FromSeconds(8));
+        AssertAuthMarker(root, "device.approved");
+        AssertProbe(!ReadAuthCredentials(root).ContainsKey("101"),
+            "Dismissal after approval persisted the cancelled sign-in session.");
+    });
+}
+
 static void RunAuthExpiredTokenScenario(CaptureOptions options)
 {
     RunIsolatedAuthScenario(options, "auth-expired-token", "dark", (window, _, root) =>
@@ -5693,6 +5718,28 @@ static void RunAuthOfflineLaunchScenario(CaptureOptions options)
         AssertProbe(ReadAuthSetting(root, "USER_ID") == "101", "Offline launch lost the active account id.");
         AssertAuthMarker(root, "http.offline");
         CaptureWindow(window, Path.Combine(options.OutputDirectory, "auth-offline-launch-light.png"));
+    });
+}
+
+static void RunAuthExpiredOfflineRecoveryScenario(CaptureOptions options)
+{
+    RunIsolatedAuthScenario(options, "auth-expired-offline-recovery", "light", (window, _, root) =>
+    {
+        WaitUntil(
+            "saved session retry status",
+            () => AutomationElementText(window.FindFirstDescendant(cf => cf.ByAutomationId("LoginStatusText")))
+                .Contains("retry your saved session", StringComparison.OrdinalIgnoreCase),
+            TimeSpan.FromSeconds(12));
+        AssertProbe(ReadAuthCredentials(root).ContainsKey("101"),
+            "Offline startup removed the rotating token pair.");
+        AssertAuthMarker(root, "refresh.offline");
+
+        File.WriteAllText(Path.Combine(root, "Local", "AuthLifecycle", "network-restored"), "ready");
+        WaitForVisibleAutomationElement(window, "ShellRoot", TimeSpan.FromSeconds(20));
+        AssertAuthMarker(root, "refresh.completed");
+        AssertProbe(ReadAuthCredentials(root).ContainsKey("101"),
+            "Automatic recovery did not retain the rotated token pair.");
+        CaptureWindow(window, Path.Combine(options.OutputDirectory, "auth-expired-offline-recovered-light.png"));
     });
 }
 

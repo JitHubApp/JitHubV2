@@ -11,9 +11,11 @@ internal static class AppMotionTokens
 {
     private const string MediumDurationResourceKey = "AppMediumDuration";
     private const string CopyConfirmationDurationResourceKey = "AppCopyConfirmationDuration";
+    private const string DeviceApprovalDurationResourceKey = "AppDeviceApprovalDuration";
     private const int MaximumMergedDictionaryDepth = 32;
     private static readonly TimeSpan MediumDurationFallback = TimeSpan.FromMilliseconds(180);
     private static readonly TimeSpan CopyConfirmationDurationFallback = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan DeviceApprovalDurationFallback = TimeSpan.FromMilliseconds(600);
     private static readonly Point ShyHeaderOpacityTransitionProgress = new(0.3, 0.3);
     private static long _mediumDurationTicks;
     private static int _resolutionFailureReported;
@@ -45,6 +47,11 @@ internal static class AppMotionTokens
         TryResolveDuration(CopyConfirmationDurationResourceKey, out TimeSpan duration)
             ? duration
             : CopyConfirmationDurationFallback;
+
+    public static TimeSpan DeviceApprovalDuration =>
+        TryResolveDuration(DeviceApprovalDurationResourceKey, out TimeSpan duration)
+            ? duration
+            : DeviceApprovalDurationFallback;
 
     private static bool TryResolveDuration(string resourceKey, out TimeSpan duration)
     {

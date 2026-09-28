@@ -249,7 +249,10 @@ public sealed partial class DashboardPageViewModel : ViewModelBase
             _authService.AuthenticatedUser?.Id ?? _accountService.GetUser(), cancellationToken);
         if (string.IsNullOrWhiteSpace(token))
         {
-            DashboardStatusText = L("Dashboard/Status/AuthenticationUnavailable", "GitHub authentication is no longer available. Please sign in again.");
+            bool offline = _authService.RecoveryState == AuthSessionRecoveryState.Offline;
+            DashboardStatusText = offline
+                ? L("Dashboard/Status/OfflineRecovery", "You are offline. Try again when connected; your saved GitHub session is kept.")
+                : L("Dashboard/Status/AuthenticationUnavailable", "GitHub authentication is no longer available. Please sign in again.");
             _telemetryService.TrackEvent(
                 "dashboard.refresh.completed",
                 new Dictionary<string, string?>
@@ -258,7 +261,10 @@ public sealed partial class DashboardPageViewModel : ViewModelBase
                     ["result"] = TelemetryTaxonomy.Results.AuthError,
                     ["duration_bucket"] = TelemetrySanitizer.CreateDurationBucket(refreshDuration.Elapsed)
                 });
-            _authService.SignOut();
+            if (!offline)
+            {
+                _authService.SignOut();
+            }
             return;
         }
 

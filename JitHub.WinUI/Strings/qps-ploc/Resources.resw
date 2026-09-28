@@ -1125,6 +1125,9 @@
   <data name="MyWorkItems/Error/AuthenticationUnavailable" xml:space="preserve">
     <value>⟦GitHub authentication is unavailable. ~~~~~~~~~~~~~⟧</value>
   </data>
+  <data name="MyWorkItems/Error/OfflineRecovery" xml:space="preserve">
+    <value>⟦You are offline. Try again when connected; your saved GitHub session is kept. ~~~~~~~~~~~~~~~~~~~~⟧</value>
+  </data>
   <data name="MyWorkItems/Error/IdentityUnavailable" xml:space="preserve">
     <value>⟦Your GitHub identity could not be loaded. Check the connection and try again. ~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧</value>
   </data>
@@ -5643,6 +5646,9 @@
   <data name="Dashboard/Status/AuthenticationUnavailable" xml:space="preserve">
     <value>⟦GitHub authentication is no longer available. Please sign in again. ~~~~~~~~~~~~~~~~~~~~~~~~⟧</value>
   </data>
+  <data name="Dashboard/Status/OfflineRecovery" xml:space="preserve">
+    <value>⟦You are offline. Try again when connected; your saved GitHub session is kept. ~~~~~~~~~~~~~~~~~~~~⟧</value>
+  </data>
   <data name="Dashboard/Status/Current" xml:space="preserve">
     <value>⟦Home dashboard is current. ~~~~~~~~~~⟧</value>
   </data>
@@ -6464,6 +6470,7 @@
   <data name="Login.ContinueWithGitHubButton" xml:space="preserve"><value>⟦Continue with GitHub ~~~~~~~⟧</value></data>
   <data name="Login.ExpiredSessionError" xml:space="preserve"><value>⟦Your GitHub session expired. The expired token was removed; sign in again to continue. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧</value></data>
   <data name="Login.CancelledStatus" xml:space="preserve"><value>⟦Sign-in was canceled. You can try again. ~~~~~~~~~~~~~~⟧</value></data>
+  <data name="Login.SavedSessionRecoveryStatus" xml:space="preserve"><value>⟦GitHub is unavailable. JitHub will retry your saved session automatically. ~~~~~~~~~~~~~~~~~~~~~~~~~⟧</value></data>
   <data name="Login.OpeningBrowserStatus" xml:space="preserve"><value>⟦Requesting a sign-in code from GitHub... ~~~~~~~~~~~~~~⟧</value></data>
   <data name="Login.CompleteInBrowserStatus" xml:space="preserve"><value>⟦GitHub sign-in completed. ~~~~~~~~~⟧</value></data>
   <data name="Login.DeviceDeniedError" xml:space="preserve"><value>⟦GitHub authorization was cancelled. Try again. ~~~~~~~~~~~~~~~~~⟧</value></data>

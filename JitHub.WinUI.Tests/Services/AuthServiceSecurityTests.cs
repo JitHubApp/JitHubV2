@@ -125,6 +125,112 @@ public sealed class AuthServiceSecurityTests
 
     [Fact]
     [Trait("Category", "ReleaseSecurity")]
+    public async Task RefreshAuthenticatedUser_DoesNotOverwriteAConcurrentTokenRotation()
+    {
+        TestContext context = CreateContext();
+        context.Account.SaveUser(42);
+        context.CredentialStore.SaveAccountSession(42, NewSession("old-access", "old-refresh"));
+        TaskCompletionSource<GitHubUser> response = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        context.GitHubClient.GetCurrentUserAsync("old-access", Arg.Any<CancellationToken>())
+            .Returns(_ => response.Task);
+
+        Task<GitHubUser?> pending = context.Service.RefreshAuthenticatedUserAsync();
+        GitHubTokenSession rotated = NewSession("new-access", "new-refresh");
+        context.CredentialStore.SaveAccountSession(42, rotated);
+        response.SetResult(new GitHubUser { Id = 42, Login = "octocat" });
+
+        Assert.Equal(42, (await pending)?.Id);
+        GitHubTokenSession? saved = context.CredentialStore.GetAccountSession(42);
+        Assert.Equal(rotated.AccessToken, saved?.AccessToken);
+        Assert.Equal(rotated.RefreshToken, saved?.RefreshToken);
+        Assert.Equal(rotated.AccessToken, context.GitHubService.AccessToken);
+    }
+
+    [Fact]
+    [Trait("Category", "ReleaseSecurity")]
+    public async Task RefreshAuthenticatedUser_DoesNotRestoreAUserAfterSignOut()
+    {
+        TestContext context = CreateContext();
+        context.Account.SaveUser(42);
+        context.CredentialStore.SaveAccountSession(42, NewSession("old-access", "old-refresh"));
+        TaskCompletionSource<GitHubUser> response = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        context.GitHubClient.GetCurrentUserAsync("old-access", Arg.Any<CancellationToken>())
+            .Returns(_ => response.Task);
+
+        Task<GitHubUser?> pending = context.Service.RefreshAuthenticatedUserAsync();
+        context.Service.SignOut();
+        response.SetResult(new GitHubUser { Id = 42, Login = "octocat" });
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);
+        Assert.False(context.Service.Authenticated);
+        Assert.Null(context.CredentialStore.GetAccountSession(42));
+    }
+
+    [Fact]
+    [Trait("Category", "ReleaseSecurity")]
+    public async Task Restore_OfflineExpiredSessionCanRetryWithoutAnotherSignIn()
+    {
+        TestContext context = CreateContext();
+        context.Account.SaveUser(42);
+        context.CredentialStore.SaveAccountSession(42,
+            NewSession("old-access", "old-refresh", DateTimeOffset.UtcNow.AddSeconds(-1)));
+        int attempts = 0;
+        context.DeviceClient.RefreshAsync("security-test-client", "old-refresh", Arg.Any<CancellationToken>())
+            .Returns(_ => ++attempts == 1
+                ? Task.FromException<GitHubTokenSession>(new HttpRequestException("offline"))
+                : Task.FromResult(NewSession("new-access", "new-refresh")));
+        context.GitHubClient.GetCurrentUserAsync("new-access", Arg.Any<CancellationToken>())
+            .Returns(new GitHubUser { Id = 42, Login = "octocat" });
+
+        await context.Service.InitializeAsync();
+        Assert.Equal(AuthSessionRecoveryState.Offline, context.Service.RecoveryState);
+        Assert.Equal("old-refresh", context.CredentialStore.GetAccountSession(42)?.RefreshToken);
+
+        Assert.Equal(42, (await context.Service.RefreshAuthenticatedUserAsync())?.Id);
+        Assert.True(context.Service.Authenticated);
+        Assert.Equal(AuthSessionRecoveryState.None, context.Service.RecoveryState);
+        Assert.Equal("new-refresh", context.CredentialStore.GetAccountSession(42)?.RefreshToken);
+    }
+
+    [Fact]
+    [Trait("Category", "ReleaseSecurity")]
+    public async Task Retry_WhenAccountLookupIsOffline_KeepsRecoveryPending()
+    {
+        TestContext context = CreateContext();
+        context.Account.SaveUser(42);
+        context.CredentialStore.SaveAccountSession(42,
+            NewSession("old-access", "old-refresh", DateTimeOffset.UtcNow.AddSeconds(-1)));
+        context.DeviceClient.RefreshAsync("security-test-client", "old-refresh", Arg.Any<CancellationToken>())
+            .Returns(NewSession("new-access", "new-refresh"));
+        context.GitHubClient.GetCurrentUserAsync("new-access", Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromException<GitHubUser>(new HttpRequestException("offline")));
+
+        Assert.Null(await context.Service.RefreshAuthenticatedUserAsync());
+
+        Assert.Equal(AuthSessionRecoveryState.Offline, context.Service.RecoveryState);
+        Assert.Equal("new-refresh", context.CredentialStore.GetAccountSession(42)?.RefreshToken);
+        Assert.Equal(42, context.Account.UserId);
+    }
+
+    [Fact]
+    [Trait("Category", "ReleaseSecurity")]
+    public async Task Restore_ExpiredRefreshTokenRequiresNewSignIn()
+    {
+        TestContext context = CreateContext();
+        context.Account.SaveUser(42);
+        context.CredentialStore.SaveAccountSession(42,
+            NewSession("old-access", "old-refresh", DateTimeOffset.UtcNow.AddSeconds(-1)) with
+            { RefreshTokenExpiresAt = DateTimeOffset.UtcNow.AddSeconds(-1) });
+
+        await context.Service.InitializeAsync();
+
+        Assert.Equal(AuthSessionRecoveryState.Expired, context.Service.RecoveryState);
+        Assert.Null(context.CredentialStore.GetAccountSession(42));
+        Assert.Equal(0, context.Account.UserId);
+    }
+
+    [Fact]
+    [Trait("Category", "ReleaseSecurity")]
     public async Task Refresh_DoesNotRestoreCredentialAfterSignOut()
     {
         TestContext context = CreateContext();
