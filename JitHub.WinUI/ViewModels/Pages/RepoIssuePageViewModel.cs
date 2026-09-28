@@ -354,6 +354,8 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
 
     private async Task InitializeCoreAsync(IssueNavArg? navArg, bool returnAfterCachedDetail)
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         int initializationVersion = ++_navigationInitializationVersion;
         CancelActiveListLoad();
         CancelActiveDetailLoad();
@@ -444,6 +446,8 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
 
     public async Task ReloadAsync()
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         if (Issues.Count == 0 && _lastFocusedIssueNumber > 0)
         {
             await LoadIssuesAsync(_lastFocusedIssueNumber, preservePreferredIssueOutsideQuery: false);
@@ -489,6 +493,8 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
 
     public async Task CreateIssueAsync(string title, string? body)
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         LastDialogMutationSucceeded = false;
         if (_navArg is null || !CanCreateIssue || !TryGetActiveToken(out string token))
         {
@@ -535,6 +541,8 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
 
     public async Task UpdateSelectedIssueAsync(string title, string? body)
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         LastDialogMutationSucceeded = false;
         if (_navArg is null || SelectedIssue is null || !CanEditIssue || !TryGetActiveToken(out string token))
         {
@@ -596,6 +604,8 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
 
     public async Task<IssueMetadataDialogData?> LoadSelectedIssueMetadataDialogDataAsync()
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         if (DialogMatrixAutomationScenario.IsEnabled && SelectedIssue is not null)
         {
             return new IssueMetadataDialogData(
@@ -664,6 +674,8 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
 
     public async Task UpdateSelectedIssueMetadataAsync(IssueMetadataUpdate update)
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         LastDialogMutationSucceeded = false;
         if (_navArg is null || SelectedIssue is null || !CanManageIssueMetadata || !TryGetActiveToken(out string token))
         {
@@ -731,6 +743,8 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
 
     public async Task ToggleSelectedIssueStateAsync()
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         if (_navArg is null || SelectedIssue is null || !CanChangeIssueState || !TryGetActiveToken(out string token))
         {
             return;
@@ -797,6 +811,8 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
 
     public async Task AddIssueCommentAsync()
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         if (_navArg is null || SelectedIssue is null || !IsAddCommentEnabled || !TryGetActiveToken(out string token))
         {
             return;
@@ -876,6 +892,8 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
 
     public async Task<IReadOnlyList<GitHubReaction>?> GetSelectedIssueReactionsAsync()
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         if (DialogMatrixAutomationScenario.IsEnabled && SelectedIssue is not null)
         {
             return [];
@@ -928,6 +946,8 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
 
     public async Task<IReadOnlyList<GitHubReaction>?> GetIssueCommentReactionsAsync(long commentId)
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         if (_navArg is null || SelectedIssue is null || !AreIssueActionsEnabled || !TryGetActiveToken(out string token))
         {
             return null;
@@ -968,6 +988,8 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         HashSet<string> selectedContents,
         Dictionary<string, long> existingReactionIds)
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         LastDialogMutationSucceeded = false;
         if (_navArg is null || SelectedIssue is null || !CanReactToIssue || !TryGetActiveToken(out string token))
         {
@@ -1040,6 +1062,8 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         HashSet<string> selectedContents,
         Dictionary<string, long> existingReactionIds)
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         if (_navArg is null || SelectedIssue is null || !CanReactToIssue || !TryGetActiveToken(out string token))
         {
             return;
@@ -1166,6 +1190,8 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         IssueActionKind action,
         string status)
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         if (_navArg is null || SelectedIssue is null || !TryGetActiveToken(out string token))
         {
             return false;
@@ -1293,6 +1319,8 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         bool preservePreferredIssueOutsideQuery = true,
         bool preserveCurrentDetailDuringLoad = false)
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         if (_navArg is null || !TryGetActiveToken(out string token))
         {
             return;
@@ -1506,6 +1534,8 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
 
     private async Task ShowIssueAsync(GitHubIssue? issue, bool preserveCurrentState, bool preserveStatusText = false)
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         string preservedStatusText = StatusText;
         if (issue is null || _navArg is null)
         {
@@ -2607,6 +2637,8 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         IssueNavigationSnapshot snapshot,
         int initializationVersion)
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         // Cached content is already local; reserve an input window before realizing the
         // Markdown conversation and starting stale-list reconciliation.
         TimeSpan commentDelay = CachedNavigationCommentQuietPeriod;

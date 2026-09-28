@@ -10,20 +10,17 @@ namespace JitHub.WinUI.Tests.Services;
 public sealed class OAuthProtocolIdentityContractTests
 {
     private const string AppxNamespace = "http://schemas.microsoft.com/appx/manifest/foundation/windows10";
-    private const string UapNamespace = "http://schemas.microsoft.com/appx/manifest/uap/windows10";
-
     [Fact]
-    public void DebugAndReleaseManifestsOwnDistinctProtocolSchemes()
+    public void DebugAndReleaseManifestsDoNotRegisterAuthenticationProtocols()
     {
         ManifestIdentity release = ReadManifest("JitHub.WinUI", "Package.appxmanifest");
         ManifestIdentity debug = ReadManifest("JitHub.WinUI", "Package.Debug.appxmanifest");
 
         Assert.Equal("54742Neromarah.JitHub", release.PackageName);
-        Assert.Equal("jithub", release.Protocol);
         Assert.Equal("JitHub.WinUI.Debug", debug.PackageName);
-        Assert.Equal("jithub-dev", debug.Protocol);
         Assert.NotEqual(release.PackageName, debug.PackageName);
-        Assert.NotEqual(release.Protocol, debug.Protocol);
+        Assert.False(release.HasProtocol);
+        Assert.False(debug.HasProtocol);
     }
 
     [Fact]
@@ -64,15 +61,13 @@ public sealed class OAuthProtocolIdentityContractTests
     }
 
     [Fact]
-    public void ActivationPolicyAcceptsOnlyTheSchemeForTheActiveIdentity()
+    public void DesktopConfigurationDoesNotIncludeCallbackAddresses()
     {
-        Uri production = new("jithub://auth/v3?handoff=value&state=WINUI3V3_value");
-        Uri development = new("jithub-dev://auth/v3?handoff=value&state=WINUI3V3DEBUG_value");
-
-        Assert.True(AuthProtocolPolicy.IsExpectedScheme(production, useDevelopmentScheme: false));
-        Assert.False(AuthProtocolPolicy.IsExpectedScheme(development, useDevelopmentScheme: false));
-        Assert.True(AuthProtocolPolicy.IsExpectedScheme(development, useDevelopmentScheme: true));
-        Assert.False(AuthProtocolPolicy.IsExpectedScheme(production, useDevelopmentScheme: true));
+        string configuration = File.ReadAllText(Path.Combine(FindRepositoryRoot(), "JitHub.WinUI", "appsettings.json"));
+        string activation = File.ReadAllText(Path.Combine(FindRepositoryRoot(), "JitHub.WinUI", "App.xaml.cs"));
+        Assert.DoesNotContain("AuthorizationCallbackUrl", configuration, StringComparison.Ordinal);
+        Assert.DoesNotContain("Authorize(authResponse)", activation, StringComparison.Ordinal);
+        Assert.DoesNotContain("TryGetAuthProtocolActivationResponse", activation, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -95,10 +90,9 @@ public sealed class OAuthProtocolIdentityContractTests
     {
         XDocument document = XDocument.Load(Path.Combine([FindRepositoryRoot(), .. pathParts]));
         XNamespace appx = AppxNamespace;
-        XNamespace uap = UapNamespace;
         XElement package = Assert.Single(document.Descendants(appx + "Identity"));
-        XElement protocol = Assert.Single(document.Descendants(uap + "Protocol"));
-        return new((string)package.Attribute("Name")!, (string)protocol.Attribute("Name")!);
+        bool hasProtocol = document.Descendants().Any(element => element.Name.LocalName == "Protocol");
+        return new((string)package.Attribute("Name")!, hasProtocol);
     }
 
     private static string FindRepositoryRoot()
@@ -113,5 +107,5 @@ public sealed class OAuthProtocolIdentityContractTests
             ?? throw new DirectoryNotFoundException("Could not locate the JitHub repository root.");
     }
 
-    private sealed record ManifestIdentity(string PackageName, string Protocol);
+    private sealed record ManifestIdentity(string PackageName, bool HasProtocol);
 }

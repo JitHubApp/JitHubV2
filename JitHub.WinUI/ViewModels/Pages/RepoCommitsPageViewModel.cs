@@ -489,6 +489,8 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
 
     public async Task AddCommitCommentAsync()
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         if (_navArg?.Repo is null || SelectedCommit is null || !IsCommitCommentEnabled || !TryGetActiveToken(out string token))
         {
             return;
@@ -540,6 +542,8 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
 
     public async Task RunCompareAsync()
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         if (_navArg?.Repo is null || !TryGetActiveToken(out string token))
         {
             return;
@@ -898,6 +902,8 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
 
     private async Task LoadBranchesAsync()
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         if (_navArg?.Repo is null || !TryGetActiveToken(out string token))
         {
             return;
@@ -944,6 +950,8 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
         bool preservePreferredCommitOutsideQuery = true,
         bool preserveCurrentDetailDuringLoad = false)
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         if (_navArg?.Repo is null || !TryGetActiveToken(out string token))
         {
             return;
@@ -1313,6 +1321,8 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
 
     private async Task ShowCommitAsync(GitHubCommit? commit, bool populateSummary = true)
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         int requestId = ++_detailRequestId;
         if (populateSummary)
         {

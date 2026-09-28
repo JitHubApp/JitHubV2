@@ -35,6 +35,10 @@ public sealed partial class LoginPage : Page
         UiTaskGuard.Run(async () =>
         {
             await ViewModel.StartLoginAsync();
+            if (ViewModel.IsAuthenticated)
+            {
+                _navigationService.GoHome();
+            }
         }, "ui-login-page");
     }
 }

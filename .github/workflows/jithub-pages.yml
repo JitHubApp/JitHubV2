@@ -1,0 +1,62 @@
+name: Build and publish JitHub static site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'JitHub.Site/**'
+      - 'JitHub.WinUI/Models/ThemePaletteCatalog.cs'
+      - '.github/workflows/jithub-pages.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'JitHub.Site/**'
+      - 'JitHub.WinUI/Models/ThemePaletteCatalog.cs'
+      - '.github/workflows/jithub-pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jithub-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: JitHub.Site/package-lock.json
+      - uses: actions/configure-pages@v5
+        if: github.event_name != 'pull_request'
+      - name: Install and build
+        working-directory: JitHub.Site
+        run: |
+          npm ci
+          npm run build
+          npm test
+      - name: Upload static site
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: JitHub.Site/dist
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      actions: read
+      pages: write
+      id-token: write
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

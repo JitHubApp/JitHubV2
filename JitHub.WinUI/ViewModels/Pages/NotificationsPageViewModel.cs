@@ -415,6 +415,7 @@ public sealed partial class NotificationsPageViewModel : ObservableObject, IDisp
         }
 
         await EnsureSubscriptionStateAsync(item);
+        await RefreshSessionAsync(LifetimeToken);
         if (!item.IsSubscriptionStateKnown || item.IsBusy || !TryGetSession(out string token, out string userId))
         {
             return;
@@ -489,6 +490,7 @@ public sealed partial class NotificationsPageViewModel : ObservableObject, IDisp
         }
 
         await EnsureSubscriptionStateAsync(item);
+        await RefreshSessionAsync(LifetimeToken);
         if (!item.IsSubscriptionStateKnown || item.IsBusy || !TryGetSession(out string token, out string userId))
         {
             return;
@@ -546,6 +548,7 @@ public sealed partial class NotificationsPageViewModel : ObservableObject, IDisp
 
     public async Task EnsureSubscriptionStateAsync(NotificationViewItem? item)
     {
+        await RefreshSessionAsync(LifetimeToken);
         if (item is null || item.IsSubscriptionStateKnown || item.IsBusy || !TryGetSession(out string token, out string userId))
         {
             return;
@@ -726,6 +729,7 @@ public sealed partial class NotificationsPageViewModel : ObservableObject, IDisp
     [RelayCommand(CanExecute = nameof(CanMarkAllRead))]
     private async Task MarkAllReadAsync()
     {
+        await RefreshSessionAsync(LifetimeToken);
         if (!CanMarkAllRead() || !TryGetSession(out string token, out string userId))
         {
             return;
@@ -804,6 +808,7 @@ public sealed partial class NotificationsPageViewModel : ObservableObject, IDisp
 
     private async Task MarkReadCoreAsync(NotificationViewItem item, CancellationToken cancellationToken)
     {
+        await RefreshSessionAsync(cancellationToken);
         if (IsMarkAllReadInProgress || item.IsBusy || !item.IsUnread || !TryGetSession(out string token, out string userId))
         {
             return;
@@ -894,6 +899,7 @@ public sealed partial class NotificationsPageViewModel : ObservableObject, IDisp
     {
         Stopwatch loadDuration = Stopwatch.StartNew();
         int version = expectedVersion ?? _loadVersion;
+        await RefreshSessionAsync(cancellationToken);
         if (!TryGetSession(out string token, out string userId))
         {
             ShowError("Sign in to view notifications.");
@@ -1060,6 +1066,7 @@ public sealed partial class NotificationsPageViewModel : ObservableObject, IDisp
 
     internal async Task SynchronizeVisibleFirstPageAsync(CancellationToken cancellationToken = default)
     {
+        await RefreshSessionAsync(cancellationToken);
         if (!TryGetSession(out string token, out string userId))
         {
             return;
@@ -1238,6 +1245,15 @@ public sealed partial class NotificationsPageViewModel : ObservableObject, IDisp
 
     private CancellationToken LifetimeToken =>
         _lifetimeCancellationTokenSource?.Token ?? CancellationToken.None;
+
+    private async Task RefreshSessionAsync(CancellationToken cancellationToken)
+    {
+        long accountId = _authService.AuthenticatedUser?.Id ?? _accountService.GetUser();
+        if (accountId > 0)
+        {
+            await _authService.GetValidTokenAsync(accountId, cancellationToken);
+        }
+    }
 
     private bool TryGetSession(out string token, out string userId)
     {

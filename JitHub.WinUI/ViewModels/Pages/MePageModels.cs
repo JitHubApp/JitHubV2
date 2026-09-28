@@ -716,7 +716,7 @@ public abstract partial class MeSearchPageViewModelBase : ViewModelBase
                 ["status"] = TelemetryTaxonomy.EnumValue(WorkItemState)
             });
 
-        string? token = GetActiveToken();
+        string? token = await GetActiveTokenAsync(cancellationToken);
         if (string.IsNullOrWhiteSpace(token))
         {
             StatusText = GetString(
@@ -1022,7 +1022,7 @@ public abstract partial class MeSearchPageViewModelBase : ViewModelBase
             return;
         }
 
-        string? token = GetActiveToken();
+        string? token = await GetActiveTokenAsync(cancellationToken);
         if (string.IsNullOrWhiteSpace(token))
         {
             DetailStatusText = GetString(
@@ -1209,7 +1209,7 @@ public abstract partial class MeSearchPageViewModelBase : ViewModelBase
             return;
         }
 
-        string? token = GetActiveToken();
+        string? token = await GetActiveTokenAsync(parentCancellationToken);
         string userPartition = GetActiveUserPartition(token ?? string.Empty);
         (string owner, string repositoryName) = MeWorkItemViewItem.SplitRepositoryName(selectedItem.RepositoryFullName);
         if (string.IsNullOrWhiteSpace(token) ||
@@ -1683,6 +1683,12 @@ public abstract partial class MeSearchPageViewModelBase : ViewModelBase
     {
         long userId = _authService.AuthenticatedUser?.Id ?? _accountService.GetUser();
         return _authService.GetToken(userId);
+    }
+
+    private Task<string?> GetActiveTokenAsync(CancellationToken cancellationToken = default)
+    {
+        long userId = _authService.AuthenticatedUser?.Id ?? _accountService.GetUser();
+        return _authService.GetValidTokenAsync(userId, cancellationToken);
     }
 
     private string GetActiveUserPartition(string token)

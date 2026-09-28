@@ -550,6 +550,7 @@ public sealed partial class GistsPageViewModel : ViewModelBase, IDisposable, IAs
             return;
         }
 
+        await RefreshSessionAsync(cancellationToken);
         if (!TryGetSession(out string accessToken, out string userId))
         {
             if (_activeAccountPartition is not null)
@@ -677,6 +678,7 @@ public sealed partial class GistsPageViewModel : ViewModelBase, IDisposable, IAs
     private async Task<bool> CreateGistCoreAsync(GistEditorSession session, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        await RefreshSessionAsync(cancellationToken);
         if (!TryGetSession(out string accessToken, out string userId))
         {
             ShowError("Sign in to create a gist.");
@@ -746,6 +748,7 @@ public sealed partial class GistsPageViewModel : ViewModelBase, IDisposable, IAs
     private async Task<bool> UpdateSelectedGistCoreAsync(GistEditorSession session, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        await RefreshSessionAsync(cancellationToken);
         if (SelectedGistItem is not { } selected || !TryGetSession(out string accessToken, out string userId))
         {
             return false;
@@ -821,6 +824,7 @@ public sealed partial class GistsPageViewModel : ViewModelBase, IDisposable, IAs
     private async Task<bool> DeleteSelectedGistCoreAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        await RefreshSessionAsync(cancellationToken);
         if (SelectedGistItem is not { } selected || !TryGetSession(out string accessToken, out string userId))
         {
             return false;
@@ -1140,6 +1144,7 @@ public sealed partial class GistsPageViewModel : ViewModelBase, IDisposable, IAs
         Stopwatch detailStopwatch = Stopwatch.StartNew();
         int version = ++_detailLoadVersion;
         int generation = _synchronizationGate.Capture();
+        await RefreshSessionAsync(cancellationToken);
         if (!TryGetSession(out string accessToken, out string userId))
         {
             return;
@@ -1503,6 +1508,7 @@ public sealed partial class GistsPageViewModel : ViewModelBase, IDisposable, IAs
 
     private async Task LoadFullFileAsync()
     {
+        await RefreshSessionAsync(CancellationToken.None);
         if (SelectedGistItem is not { } selectedGist ||
             SelectedFile is not { File.Truncated: true } selectedFile ||
             string.IsNullOrWhiteSpace(selectedFile.File.RawUrl) ||
@@ -1880,6 +1886,15 @@ public sealed partial class GistsPageViewModel : ViewModelBase, IDisposable, IAs
     }
 
     private void UpdateEmptyState() => IsEmpty = !IsLoading && Gists.Count == 0;
+
+    private async Task RefreshSessionAsync(CancellationToken cancellationToken)
+    {
+        long accountId = _authService.AuthenticatedUser?.Id ?? _accountService.GetUser();
+        if (accountId > 0)
+        {
+            await _authService.GetValidTokenAsync(accountId, cancellationToken);
+        }
+    }
 
     private bool TryGetSession(out string accessToken, out string userId)
     {

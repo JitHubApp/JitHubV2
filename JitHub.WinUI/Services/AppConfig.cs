@@ -7,7 +7,6 @@ namespace JitHub.Services;
 public class AppConfig : IAppConfig
 {
     private const string OAuthClientIdEnvironmentVariable = "JITHUB_OAUTH_CLIENT_ID";
-    private const string OAuthCallbackUrlEnvironmentVariable = "JITHUB_OAUTH_CALLBACK_URL";
 
     private readonly IConfigurationRoot _configurationRoot;
 
@@ -34,17 +33,6 @@ public class AppConfig : IAppConfig
             else if (useDevelopmentCredential && !string.IsNullOrWhiteSpace(credential.DevelopmentClientId))
             {
                 credential.ClientId = credential.DevelopmentClientId.Trim();
-            }
-
-            string? environmentCallbackUrl = Environment.GetEnvironmentVariable(OAuthCallbackUrlEnvironmentVariable);
-            if (!string.IsNullOrWhiteSpace(environmentCallbackUrl))
-            {
-                credential.AuthorizationCallbackUrl = environmentCallbackUrl.Trim();
-            }
-            else if (useDevelopmentCredential &&
-                !string.IsNullOrWhiteSpace(credential.DevelopmentAuthorizationCallbackUrl))
-            {
-                credential.AuthorizationCallbackUrl = credential.DevelopmentAuthorizationCallbackUrl.Trim();
             }
 
             return credential;

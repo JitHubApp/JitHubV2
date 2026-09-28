@@ -51,7 +51,7 @@ public sealed class LoginPageViewModelTests
     }
 
     [Fact]
-    public async Task StartLoginAsync_SuccessShowsBrowserCompletionState()
+    public async Task StartLoginAsync_SuccessShowsDeviceCompletionState()
     {
         RecordingTelemetryService telemetry = new();
         LoginPageViewModel viewModel = CreateViewModel(new TestAuthService(), telemetry);
@@ -61,11 +61,11 @@ public sealed class LoginPageViewModelTests
         Assert.False(viewModel.HasLoginError);
         Assert.Empty(viewModel.LoginErrorMessage);
         Assert.Equal(
-            "Finish sign-in in the browser. JitHub will return to this window automatically.",
+            "GitHub sign-in completed.",
             viewModel.StatusText);
         Assert.True(viewModel.IsLoginEnabled);
         Assert.Equal(
-            [TelemetryTaxonomy.Results.Started, TelemetryTaxonomy.Results.Launched],
+            [TelemetryTaxonomy.Results.Started, TelemetryTaxonomy.Results.Success],
             telemetry.Events
                 .Where(static entry => entry.Name == "auth.action.executed")
                 .Select(static entry => entry.Properties["result"]));
@@ -137,7 +137,6 @@ public sealed class LoginPageViewModelTests
     }
 
     [Theory]
-    [InlineData(AuthSessionRecoveryState.InvalidCallback, "verify")]
     [InlineData(AuthSessionRecoveryState.Expired, "expired")]
     public void PrepareForDisplay_ExplainsRecoverableAuthState(
         AuthSessionRecoveryState recoveryState,

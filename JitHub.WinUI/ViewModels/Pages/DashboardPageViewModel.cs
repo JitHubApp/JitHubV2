@@ -245,7 +245,8 @@ public sealed partial class DashboardPageViewModel : ViewModelBase
         }
 
         Stopwatch refreshDuration = Stopwatch.StartNew();
-        string? token = GetActiveToken();
+        string? token = await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser(), cancellationToken);
         if (string.IsNullOrWhiteSpace(token))
         {
             DashboardStatusText = L("Dashboard/Status/AuthenticationUnavailable", "GitHub authentication is no longer available. Please sign in again.");
@@ -1080,11 +1081,12 @@ public sealed partial class DashboardPageViewModel : ViewModelBase
         _shellViewModel.OpenRepositoryTarget(repository, page, pageArg);
     }
 
-    private Task OpenNotificationAsync(GitHubNotificationThread notification)
+    private async Task OpenNotificationAsync(GitHubNotificationThread notification)
     {
-        string? token = GetActiveToken();
+        string? token = await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         string accountId = string.IsNullOrWhiteSpace(token) ? string.Empty : GetActiveUserPartition(token);
-        return _notificationOpenWorkflow.ExecuteAsync(
+        await _notificationOpenWorkflow.ExecuteAsync(
             token,
             accountId,
             notification,

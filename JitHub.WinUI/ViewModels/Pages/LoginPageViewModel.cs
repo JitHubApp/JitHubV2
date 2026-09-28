@@ -40,17 +40,17 @@ public sealed partial class LoginPageViewModel : ObservableObject
 
     public string HeroDescription => GetText(
         "Login.HeroDescription",
-        "Browse repositories, issues, pull requests, and code in a desktop client that stays fast and keeps the browser-based GitHub sign-in flow.");
+        "Browse repositories, issues, pull requests, and code in a native desktop client.");
 
     public string CallbackDescription => GetText(
         "Login.CallbackDescription",
-        "This WinUI 3 host already reuses the running app instance for jithub:// protocol callbacks, so GitHub sign-in returns to the existing window instead of opening a second one.");
+        "JitHub signs in directly with GitHub using a code shown in the app.");
 
     public string SignInTitle => GetText("Login.SignInTitle", "Sign in with GitHub");
 
     public string SignInDescription => GetText(
         "Login.SignInDescription",
-        "JitHub opens GitHub in your browser.");
+        "JitHub will show a code to enter on GitHub. No JitHub server is needed.");
 
     public string ContinueWithGitHubButtonText => GetText("Login.ContinueWithGitHubButton", "Continue with GitHub");
 
@@ -85,11 +85,6 @@ public sealed partial class LoginPageViewModel : ObservableObject
         LoginErrorMessage = string.Empty;
         switch (_authService.RecoveryState)
         {
-            case AuthSessionRecoveryState.InvalidCallback:
-                ShowLoginError(GetText(
-                    "Login.InvalidCallbackError",
-                    "GitHub returned a sign-in response that JitHub could not verify. No token was accepted. Try signing in again."));
-                break;
             case AuthSessionRecoveryState.Expired:
                 ShowLoginError(GetText(
                     "Login.ExpiredSessionError",
@@ -116,16 +111,16 @@ public sealed partial class LoginPageViewModel : ObservableObject
         IsLoginEnabled = false;
         HasLoginError = false;
         LoginErrorMessage = string.Empty;
-        StatusText = GetText("Login.OpeningBrowserStatus", "Opening GitHub sign-in in your browser...");
+        StatusText = GetText("Login.OpeningBrowserStatus", "Requesting a sign-in code from GitHub...");
 
         try
         {
             await _authService.Authenticate();
             StatusText = GetText(
                 "Login.CompleteInBrowserStatus",
-                "Finish sign-in in the browser. JitHub will return to this window automatically.");
+                "GitHub sign-in completed.");
             stopwatch.Stop();
-            TrackLoginOutcome(TelemetryTaxonomy.Results.Launched, stopwatch.Elapsed);
+            TrackLoginOutcome(TelemetryTaxonomy.Results.Success, stopwatch.Elapsed);
         }
         catch (OperationCanceledException)
         {
@@ -149,6 +144,21 @@ public sealed partial class LoginPageViewModel : ObservableObject
                 TelemetryTaxonomy.Results.Error,
                 stopwatch.Elapsed,
                 TelemetryTaxonomy.ErrorKinds.Launch);
+        }
+        catch (DeviceFlowException ex)
+        {
+            stopwatch.Stop();
+            ShowLoginError(ex.Code switch
+            {
+                "access_denied" => GetText("Login.DeviceDeniedError", "GitHub authorization was cancelled. Try again."),
+                "expired_token" => GetText("Login.DeviceExpiredError", "The GitHub sign-in code expired. Try again."),
+                "device_flow_disabled" => GetText("Login.DeviceDisabledError", "GitHub device sign-in is unavailable for this app."),
+                _ => GetText("Login.DeviceError", "GitHub could not complete sign-in. Try again.")
+            });
+            TrackLoginOutcome(
+                TelemetryTaxonomy.Results.Error,
+                stopwatch.Elapsed,
+                TelemetryTaxonomy.ErrorKinds.Authentication);
         }
         catch (Exception)
         {

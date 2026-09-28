@@ -145,6 +145,7 @@ public sealed class RepoTreeServiceMemoryCacheTests
         IAuthService auth = Substitute.For<IAuthService>();
         auth.AuthenticatedUser.Returns(new GitHubUser { Id = 42, Login = "octo" });
         auth.GetToken(42).Returns("token");
+        auth.GetValidTokenAsync(42, Arg.Any<CancellationToken>()).Returns("token");
         IAccountService account = Substitute.For<IAccountService>();
         account.GetUser().Returns(42);
         return new Harness(new RepoTreeService(query, auth, account), query);

@@ -519,6 +519,8 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
 
     public async Task InitializeAsync(PullRequestPageNavArg? navArg)
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         _listRequestId++;
         CancelActiveListLoad(restoreUiState: true);
         CancelPredictivePrefetches();
@@ -670,6 +672,8 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
 
     public async Task<PullRequestCreateDialogData?> LoadCreateDialogDataAsync()
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         if (DialogMatrixAutomationScenario.IsEnabled && _navArg is not null)
         {
             string defaultBase = string.IsNullOrWhiteSpace(_navArg.Repo.DefaultBranch)
@@ -727,6 +731,8 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
 
     public async Task CreatePullRequestAsync(string title, string head, string baseBranch, string? body)
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         if (_navArg is null || !TryGetActiveToken(out string token))
         {
             return;
@@ -771,6 +777,8 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
 
     public async Task UpdateSelectedPullRequestAsync(string title, string? body)
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         if (_navArg is null || SelectedPullRequest is null || !CanEditPullRequest || !TryGetActiveToken(out string token))
         {
             return;
@@ -824,6 +832,8 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
 
     public async Task<PullRequestMetadataDialogData?> LoadSelectedPullRequestMetadataDialogDataAsync()
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         if (DialogMatrixAutomationScenario.IsEnabled && SelectedPullRequest is not null)
         {
             return new PullRequestMetadataDialogData(
@@ -920,6 +930,8 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
 
     public async Task UpdateSelectedPullRequestMetadataAsync(PullRequestMetadataUpdate update)
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         if (_navArg is null
             || SelectedPullRequest is null
             || _selectedPullRequestIssue is null
@@ -1063,6 +1075,8 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
 
     public async Task ToggleSelectedPullRequestStateAsync()
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         if (_navArg is null
             || SelectedPullRequest is null
             || !IsTogglePullRequestStateEnabled
@@ -1134,6 +1148,8 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
 
     public async Task AddPullRequestCommentAsync()
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         if (_navArg is null || SelectedPullRequest is null || !IsPullRequestCommentEnabled || !TryGetActiveToken(out string token))
         {
             return;
@@ -1206,6 +1222,8 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
 
     public async Task<IReadOnlyList<GitHubReaction>?> GetSelectedPullRequestReactionsAsync()
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         if (DialogMatrixAutomationScenario.IsEnabled && SelectedPullRequest is not null)
         {
             return [];
@@ -1256,6 +1274,8 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
 
     public async Task<IReadOnlyList<GitHubReaction>?> GetPullRequestCommentReactionsAsync(long commentId)
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         if (_navArg is null || SelectedPullRequest is null || !CanReactToPullRequest || !TryGetActiveToken(out string token))
         {
             return null;
@@ -1301,6 +1321,8 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
 
     public async Task<IReadOnlyList<GitHubReaction>?> GetReviewCommentReactionsAsync(long commentId)
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         if (_navArg is null || SelectedPullRequest is null || !CanReactToPullRequest || !TryGetActiveToken(out string token))
         {
             return null;
@@ -1453,6 +1475,8 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         string action,
         string status)
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         if (_navArg is null || SelectedPullRequest is null || !TryGetActiveToken(out string token))
         {
             return false;
@@ -1515,6 +1539,8 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
 
     public async Task ReplyToReviewCommentAsync(PullRequestReviewThreadItem threadItem)
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         if (_navArg is null || SelectedPullRequest is null || !_canCommentOnPullRequest || !TryGetActiveToken(out string token))
         {
             return;
@@ -1617,6 +1643,8 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         PullRequestReviewDecision decision,
         string? body)
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         if (_navArg is null ||
             SelectedPullRequest is null ||
             !CanSubmitReview(decision) ||
@@ -1712,6 +1740,8 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         string? commitTitle,
         string? commitMessage)
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         if (_navArg is null || SelectedPullRequest is null || !IsMergeEnabled ||
             !IsMergeMethodAllowed(mergeMethod) || !TryGetActiveToken(out string token))
         {
@@ -1981,6 +2011,8 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         bool preserveCurrentDetailDuringLoad = false,
         bool deferSelectedDetails = false)
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         if (_navArg is null)
         {
             return;
@@ -2277,6 +2309,8 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
 
     private async Task ShowPullRequestAsync(GitHubPullRequest? pullRequest, bool preserveCurrentState, bool preserveStatusText = false)
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         string preservedStatusText = StatusText;
         string preservedCommentDraft = string.Empty;
         Dictionary<long, string> preservedReplyDrafts = new();
@@ -3498,6 +3532,8 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         HashSet<string> selectedContents,
         Dictionary<string, long> existingReactionIds)
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         if (_navArg is null || SelectedPullRequest is null || !CanReactToPullRequest || !TryGetActiveToken(out string token))
         {
             return;

@@ -207,6 +207,7 @@ public sealed partial class RepoManagePageViewModel : ViewModelBase
 
         if (!_initialized)
         {
+            await _authService.GetValidTokenAsync(_authService.AuthenticatedUser?.Id ?? _accountService.GetUser(), session.Token);
             if (!TryGetActiveToken(out _accessToken))
             {
                 Deactivate();
@@ -468,6 +469,7 @@ public sealed partial class RepoManagePageViewModel : ViewModelBase
             return RepositoryDeletionResult.Empty;
         }
 
+        await _authService.GetValidTokenAsync(_authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         if (!TryGetActiveToken(out string token))
         {
             return null;
