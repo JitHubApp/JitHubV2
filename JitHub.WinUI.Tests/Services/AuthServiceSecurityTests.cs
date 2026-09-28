@@ -188,6 +188,24 @@ public sealed class AuthServiceSecurityTests
             .RefreshAsync(default!, default!, default);
     }
 
+    [Fact]
+    [Trait("Category", "ReleaseSecurity")]
+    public async Task Restore_RejectsTokenForDifferentStoredAccount()
+    {
+        TestContext context = CreateContext();
+        context.Account.SaveUser(42);
+        context.CredentialStore.SaveAccountToken(42, "other-account-token");
+        context.GitHubClient.GetCurrentUserAsync("other-account-token", Arg.Any<CancellationToken>())
+            .Returns(new GitHubUser { Id = 99, Login = "other" });
+
+        await context.Service.InitializeAsync();
+
+        Assert.False(context.Service.Authenticated);
+        Assert.Null(context.CredentialStore.GetAccountSession(42));
+        Assert.Null(context.GitHubService.AccessToken);
+        Assert.Equal(AuthSessionRecoveryState.Expired, context.Service.RecoveryState);
+    }
+
     private static GitHubTokenSession NewSession(
         string access,
         string refresh,

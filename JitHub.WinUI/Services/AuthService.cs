@@ -247,7 +247,8 @@ public sealed class AuthService : IAuthService
                 TelemetryTaxonomy.Sources.User,
                 TelemetryTaxonomy.Results.Started,
                 action: TelemetryTaxonomy.Actions.RefreshUser));
-        string? token = await GetValidTokenAsync(AuthenticatedUser?.Id ?? _accountService.GetUser());
+        long expectedUserId = AuthenticatedUser?.Id ?? _accountService.GetUser();
+        string? token = await GetValidTokenAsync(expectedUserId);
         if (string.IsNullOrWhiteSpace(token))
         {
             if (Authenticated)
@@ -283,6 +284,10 @@ public sealed class AuthService : IAuthService
             }
 
             GitHubUser user = await _gitHubClientService.GetCurrentUserAsync(token);
+            if (expectedUserId > 0 && user.Id != expectedUserId)
+            {
+                throw new GitHubAuthenticationException("The stored GitHub session belongs to a different account.");
+            }
             SaveToken(token, user.Id);
             _accountService.SaveUser(user.Id);
             _accountWork.Activate(user.Id.ToString(System.Globalization.CultureInfo.InvariantCulture));
@@ -569,6 +574,10 @@ public sealed class AuthService : IAuthService
         try
         {
             AuthenticatedUser = await _gitHubClientService.GetCurrentUserAsync(token);
+            if (AuthenticatedUser.Id != userId)
+            {
+                throw new GitHubAuthenticationException("The stored GitHub session belongs to a different account.");
+            }
 
 
             _accountWork.Activate(AuthenticatedUser.Id.ToString(System.Globalization.CultureInfo.InvariantCulture));
