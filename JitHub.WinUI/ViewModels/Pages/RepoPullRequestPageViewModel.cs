@@ -713,9 +713,9 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
                 branches.Items,
                 branches.Completeness);
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (GitHubApiException ex)
         {
@@ -758,10 +758,10 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
             await LoadPullRequestsAsync(pullRequest.Number);
             TrackPullRequestAction(TelemetryTaxonomy.Actions.Create, TelemetryTaxonomy.Results.Success);
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
             TrackPullRequestAction(TelemetryTaxonomy.Actions.Create, TelemetryTaxonomy.Results.AuthError);
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (GitHubApiException ex)
         {
@@ -802,10 +802,10 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
                 GetString("RepoPullRequest.UpdateRefreshError", "Pull request updated, but JitHub could not refresh pull request details."));
             TrackPullRequestAction(TelemetryTaxonomy.Actions.Edit, TelemetryTaxonomy.Results.Success);
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
             TrackPullRequestAction(TelemetryTaxonomy.Actions.Edit, TelemetryTaxonomy.Results.AuthError);
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (GitHubApiException ex)
         {
@@ -906,9 +906,9 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
                 milestones.Items,
                 CombineCompleteness(metadataStates));
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (GitHubApiException ex)
         {
@@ -991,10 +991,10 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
                         reviewersToRemove);
                 }
             }
-            catch (GitHubAuthenticationException)
+            catch (GitHubAuthenticationException authError)
             {
                 TrackPullRequestAction(TelemetryTaxonomy.Actions.Metadata, TelemetryTaxonomy.Results.AuthError);
-                _authService.SignOut();
+                _authService.HandleAuthenticationFailure(authError);
                 return;
             }
             catch (GitHubApiException ex)
@@ -1045,10 +1045,10 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
             }
             TrackPullRequestAction(TelemetryTaxonomy.Actions.Metadata, TelemetryTaxonomy.Results.Success);
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
             TrackPullRequestAction(TelemetryTaxonomy.Actions.Metadata, TelemetryTaxonomy.Results.AuthError);
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (GitHubApiException ex)
         {
@@ -1112,12 +1112,12 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
                 nextState == "closed" ? TelemetryTaxonomy.Actions.Close : TelemetryTaxonomy.Actions.Reopen,
                 TelemetryTaxonomy.Results.Success);
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
             TrackPullRequestAction(
                 nextState == "closed" ? TelemetryTaxonomy.Actions.Close : TelemetryTaxonomy.Actions.Reopen,
                 TelemetryTaxonomy.Results.AuthError);
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (GitHubApiException ex)
         {
@@ -1187,10 +1187,10 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
                 GetString("RepoPullRequest.CommentRefreshError", "Comment added, but JitHub could not refresh pull request details."));
             TrackPullRequestAction(TelemetryTaxonomy.Actions.Comment, TelemetryTaxonomy.Results.Success);
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
             TrackPullRequestAction(TelemetryTaxonomy.Actions.Comment, TelemetryTaxonomy.Results.AuthError);
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (GitHubApiException ex)
         {
@@ -1252,9 +1252,9 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
                 pullRequestNumber);
             return section.Items;
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (GitHubApiException ex)
         {
@@ -1299,9 +1299,9 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
                 commentId);
             return section.Items;
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (GitHubApiException ex)
         {
@@ -1346,9 +1346,9 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
                 commentId);
             return section.Items;
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (GitHubApiException ex)
         {
@@ -1494,10 +1494,10 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
             TrackPullRequestAction(action, TelemetryTaxonomy.Results.Success);
             return true;
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
             TrackPullRequestAction(action, TelemetryTaxonomy.Results.AuthError);
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (GitHubApiException ex)
         {
@@ -1583,10 +1583,10 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
                 GetString("RepoPullRequest.ReplyRefreshError", "Reply posted, but JitHub could not refresh pull request details."));
             TrackPullRequestAction(TelemetryTaxonomy.Actions.ReviewReply, TelemetryTaxonomy.Results.Success);
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
             TrackPullRequestAction(TelemetryTaxonomy.Actions.ReviewReply, TelemetryTaxonomy.Results.AuthError);
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (GitHubApiException ex)
         {
@@ -1704,10 +1704,10 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
 
             TrackPullRequestAction(action, TelemetryTaxonomy.Results.Success);
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
             TrackPullRequestAction(action, TelemetryTaxonomy.Results.AuthError);
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (GitHubApiException ex)
         {
@@ -1791,10 +1791,10 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
                 GetString("RepoPullRequest.MergeRefreshError", "Pull request merged, but JitHub could not refresh pull request details."));
             TrackPullRequestAction(TelemetryTaxonomy.Actions.Merge, TelemetryTaxonomy.Results.Success);
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
             TrackPullRequestAction(TelemetryTaxonomy.Actions.Merge, TelemetryTaxonomy.Results.AuthError);
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (GitHubApiException ex)
         {
@@ -2207,7 +2207,7 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
                 StatusText = preferredPullRequestLoadFailureStatus;
             }
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
             if (CompleteSupersededPullRequestListRead(requestId, listDuration.Elapsed))
             {
@@ -2220,7 +2220,7 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
                 TelemetryTaxonomy.Results.AuthError,
                 listDuration.Elapsed,
                 errorKind: "authentication");
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (GitHubApiException ex)
         {
@@ -2479,14 +2479,14 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         catch (OperationCanceledException) when (diffBuildCancellationTokenSource.IsCancellationRequested)
         {
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
             if (requestId != _detailRequestId)
             {
                 return;
             }
 
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (GitHubApiException ex)
         {
@@ -2968,9 +2968,9 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         {
             return await RefreshPullRequestSelectionAsync(pullRequest, token);
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (GitHubApiException)
         {
@@ -3579,10 +3579,10 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
             await RefreshPullRequestSelectionAsync(_loadedPullRequests.FirstOrDefault(pullRequest => pullRequest.Number == targetPullRequest.Number) ?? targetPullRequest, token);
             TrackPullRequestAction(TelemetryTaxonomy.Actions.Reaction, TelemetryTaxonomy.Results.Success);
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
             TrackPullRequestAction(TelemetryTaxonomy.Actions.Reaction, TelemetryTaxonomy.Results.AuthError);
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (GitHubApiException ex)
         {
@@ -3766,9 +3766,9 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
             SetSelectedPullRequest(snapshot.PullRequest);
             PopulatePullRequest(snapshot.PullRequest);
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
     }
 

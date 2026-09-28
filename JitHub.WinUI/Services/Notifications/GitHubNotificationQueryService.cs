@@ -292,7 +292,8 @@ public sealed class GitHubNotificationQueryService : IGitHubNotificationQuerySer
 
         string message = await ReadErrorMessageAsync(response, cancellationToken);
         throw response.StatusCode == HttpStatusCode.Unauthorized
-            ? new GitHubAuthenticationException(message)
+            ? new GitHubAuthenticationException(
+                message, response.RequestMessage?.Headers.Authorization?.Parameter)
             : new GitHubApiException(response.StatusCode, message);
     }
 

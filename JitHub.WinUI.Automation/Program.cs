@@ -5708,16 +5708,21 @@ static void RunAuthOfflineLaunchScenario(CaptureOptions options)
 {
     RunIsolatedAuthScenario(options, "auth-offline-launch", "light", (window, _, root) =>
     {
-        WaitForVisibleAutomationElement(window, "ShellRoot");
+        WaitForVisibleAutomationElement(window, "LoginStatusText");
         WaitUntil(
-            "offline launch status",
-            () => AutomationElementText(window.FindFirstDescendant(cf => cf.ByAutomationId("AppStatusText")))
-                .Contains("offline", StringComparison.OrdinalIgnoreCase),
+            "saved session retry status",
+            () => AutomationElementText(window.FindFirstDescendant(cf => cf.ByAutomationId("LoginStatusText")))
+                .Contains("retry your saved session", StringComparison.OrdinalIgnoreCase),
             TimeSpan.FromSeconds(12));
         AssertProbe(ReadAuthCredentials(root).ContainsKey("101"), "Offline launch removed the reusable account token.");
         AssertProbe(ReadAuthSetting(root, "USER_ID") == "101", "Offline launch lost the active account id.");
         AssertAuthMarker(root, "http.offline");
-        CaptureWindow(window, Path.Combine(options.OutputDirectory, "auth-offline-launch-light.png"));
+
+        File.WriteAllText(Path.Combine(root, "Local", "AuthLifecycle", "network-restored"), "ready");
+        WaitForVisibleAutomationElement(window, "ShellRoot", TimeSpan.FromSeconds(20));
+        AssertProbe(ReadAuthCredentials(root).ContainsKey("101"),
+            "Automatic recovery did not retain the saved access token.");
+        CaptureWindow(window, Path.Combine(options.OutputDirectory, "auth-offline-recovered-light.png"));
     });
 }
 

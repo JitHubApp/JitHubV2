@@ -868,7 +868,7 @@ public abstract partial class MeSearchPageViewModelBase : ViewModelBase
         catch (GitHubAuthenticationException ex)
         {
             trace.SetProperty("result", MeListTelemetryOutcomePolicy.ForException(ex));
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(ex);
         }
         catch (Exception ex) when (ex is GitHubApiException or System.Net.Http.HttpRequestException)
         {

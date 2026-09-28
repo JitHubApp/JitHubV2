@@ -561,11 +561,11 @@ public sealed partial class ShellPageViewModel : ViewModelBase
                     ["result"] = "success"
                 });
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
             RepositoryRailStatusText = "GitHub authentication is unavailable.";
             HasRepositoryRailError = true;
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (GitHubApiException ex)
         {
@@ -662,13 +662,13 @@ public sealed partial class ShellPageViewModel : ViewModelBase
                 TrackSearchCompletion(TelemetryTaxonomy.Results.Cancelled, searchDuration.Elapsed);
                 throw;
             }
-            catch (GitHubAuthenticationException)
+            catch (GitHubAuthenticationException authError)
             {
                 TrackSearchCompletion(
                     TelemetryTaxonomy.Results.AuthError,
                     searchDuration.Elapsed,
                     errorKind: "authentication");
-                _authService.SignOut();
+                _authService.HandleAuthenticationFailure(authError);
             }
             catch (GitHubApiException)
             {

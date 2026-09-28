@@ -2097,7 +2097,8 @@ public sealed class GitHubClientService : IGitHubClientService
 
         if (response.StatusCode == HttpStatusCode.Unauthorized)
         {
-            throw new GitHubAuthenticationException(message);
+            throw new GitHubAuthenticationException(
+                message, response.RequestMessage?.Headers.Authorization?.Parameter);
         }
 
         if (TryGetRateLimitRetryDelay(response, message, out TimeSpan retryDelay))

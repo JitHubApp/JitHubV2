@@ -92,6 +92,10 @@ public sealed class AuthLifecycleAutomationTests : IDisposable
 
         await Assert.ThrowsAsync<HttpRequestException>(() => client.GetAsync("user"));
         Assert.Contains("http.offline", File.ReadAllText(context.MarkerPath));
+
+        File.WriteAllText(Path.Combine(context.RootPath, "network-restored"), "ready");
+        using HttpResponseMessage recovered = await client.GetAsync("user");
+        Assert.Equal(HttpStatusCode.OK, recovered.StatusCode);
     }
 
     [Fact]

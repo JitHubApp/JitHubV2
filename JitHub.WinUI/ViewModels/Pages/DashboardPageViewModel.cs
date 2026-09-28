@@ -314,7 +314,7 @@ public sealed partial class DashboardPageViewModel : ViewModelBase
                 });
             throw;
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
             DashboardStatusText = L("Dashboard/Status/AuthenticationInvalid", "GitHub authentication is no longer valid. Please sign in again.");
             _telemetryService.TrackEvent(
@@ -325,7 +325,7 @@ public sealed partial class DashboardPageViewModel : ViewModelBase
                     ["result"] = "auth_error",
                     ["duration_bucket"] = TelemetrySanitizer.CreateDurationBucket(refreshDuration.Elapsed)
                 });
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (Exception ex) when (ex is GitHubApiException or System.Net.Http.HttpRequestException)
         {

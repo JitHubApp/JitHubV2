@@ -241,10 +241,10 @@ public sealed partial class RepoManagePageViewModel : ViewModelBase
         {
             return;
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
             TrackOpened("auth_error", openDuration.Elapsed);
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
             return;
         }
         catch (Exception ex)
@@ -494,9 +494,9 @@ public sealed partial class RepoManagePageViewModel : ViewModelBase
                         repositoryItem.Repository.Name);
                     deletedIds.Add(repositoryItem.Repository.Id);
                 }
-                catch (GitHubAuthenticationException)
+                catch (GitHubAuthenticationException authError)
                 {
-                    _authService.SignOut();
+                    _authService.HandleAuthenticationFailure(authError);
                     return null;
                 }
                 catch (GitHubApiException ex)
@@ -650,9 +650,9 @@ public sealed partial class RepoManagePageViewModel : ViewModelBase
         catch (OperationCanceledException) when (session.IsCancellationRequested)
         {
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (Exception ex)
         {

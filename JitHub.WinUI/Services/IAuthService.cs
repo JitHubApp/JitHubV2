@@ -37,4 +37,6 @@ public interface IAuthService
     bool CheckAuth(long userId);
 
     void SignOut();
+
+    bool HandleAuthenticationFailure(GitHubAuthenticationException exception);
 }

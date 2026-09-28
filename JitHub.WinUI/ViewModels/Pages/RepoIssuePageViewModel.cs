@@ -521,10 +521,10 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
             StatusText = FormatString("RepoIssue.CreatedStatus", "Created issue #{0}.", issue.Number);
             await LoadIssuesAsync(issue.Number);
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
             TrackIssueAction(IssueActionKind.Create, IssueActionOutcome.AuthenticationError);
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (GitHubApiException ex)
         {
@@ -574,10 +574,10 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
                 token,
                 GetString("RepoIssue.UpdateRefreshError", "Issue updated, but JitHub could not refresh issue details."));
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
             TrackIssueAction(IssueActionKind.Edit, IssueActionOutcome.AuthenticationError);
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (GitHubApiException ex)
         {
@@ -649,9 +649,9 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
                 metadata.Labels,
                 metadata.Milestones);
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (GitHubApiException ex)
         {
@@ -713,10 +713,10 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
                 token,
                 GetString("RepoIssue.MetadataRefreshError", "Issue metadata updated, but JitHub could not refresh issue details."));
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
             TrackIssueAction(IssueActionKind.Metadata, IssueActionOutcome.AuthenticationError);
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (GitHubApiException ex)
         {
@@ -781,10 +781,10 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
                 token,
                 GetString("RepoIssue.StateRefreshError", "Issue state updated, but JitHub could not refresh issue details."));
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
             TrackIssueAction(IssueActionKind.ToggleState, IssueActionOutcome.AuthenticationError);
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (GitHubApiException ex)
         {
@@ -857,10 +857,10 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
                 token,
                 GetString("RepoIssue.CommentRefreshError", "Comment added, but JitHub could not refresh issue details."));
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
             TrackIssueAction(IssueActionKind.Comment, IssueActionOutcome.AuthenticationError);
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (GitHubApiException ex)
         {
@@ -921,9 +921,9 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
 
             return reactions.Items;
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (GitHubApiException ex)
         {
@@ -968,9 +968,9 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
 
             return reactions.Items;
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (GitHubApiException ex)
         {
@@ -1029,10 +1029,10 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
 
             await RefreshIssueSelectionAsync(_loadedIssues.FirstOrDefault(issue => issue.Number == currentIssue.Number) ?? currentIssue, token);
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
             TrackIssueAction(IssueActionKind.Reaction, IssueActionOutcome.AuthenticationError);
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (GitHubApiException ex)
         {
@@ -1100,10 +1100,10 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
 
             await RefreshIssueSelectionAsync(_loadedIssues.FirstOrDefault(issue => issue.Number == currentIssue.Number) ?? currentIssue, token);
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
             TrackIssueAction(IssueActionKind.CommentReaction, IssueActionOutcome.AuthenticationError);
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (GitHubApiException ex)
         {
@@ -1215,10 +1215,10 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
             TrackIssueAction(action, IssueActionOutcome.Success);
             return true;
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
             TrackIssueAction(action, IssueActionOutcome.AuthenticationError);
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (GitHubApiException ex)
         {
@@ -1471,7 +1471,7 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
                 StatusText = preferredIssueLoadFailureStatus;
             }
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
             loadResult = "auth_error";
             if (requestId != _listRequestId)
@@ -1481,7 +1481,7 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
 
             AreIssueActionsEnabled = previousAreIssueActionsEnabled;
             IsAddCommentEnabled = previousIsAddCommentEnabled;
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (GitHubApiException ex)
         {
@@ -1630,14 +1630,14 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
                     ? preservedStatusText
                     : FormatString("RepoIssue.LoadedStatus", "Issue #{0} loaded.", latestIssue.Number);
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
             if (requestId != _detailRequestId)
             {
                 return;
             }
 
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (GitHubApiException ex)
         {
@@ -2333,9 +2333,9 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         {
             return await RefreshIssueSelectionAsync(issue, token);
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (GitHubApiException)
         {

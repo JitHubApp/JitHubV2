@@ -520,10 +520,10 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
             }
             TrackCommitAction(CommitActionKind.Comment, CommitActionOutcome.Success);
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
             TrackCommitAction(CommitActionKind.Comment, CommitActionOutcome.AuthenticationError);
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (Exception ex) when (ex is GitHubApiException or HttpRequestException)
         {
@@ -607,7 +607,7 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
                     ["duration_bucket"] = TelemetrySanitizer.CreateDurationBucket(compareDuration.Elapsed)
                 });
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
             if (requestId != _compareRequestId)
             {
@@ -623,7 +623,7 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
                     ["result"] = "auth_error",
                     ["duration_bucket"] = TelemetrySanitizer.CreateDurationBucket(compareDuration.Elapsed)
                 });
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (Exception ex) when (ex is GitHubApiException or HttpRequestException)
         {
@@ -935,9 +935,9 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
                     StringComparison.OrdinalIgnoreCase))
                 ?? Branches.FirstOrDefault();
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch
         {
@@ -1046,7 +1046,7 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
                 commitShaToSelect,
                 loadDuration);
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
             TrackEvent(
                 "commits.list.loaded",
@@ -1056,7 +1056,7 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
                     ["result"] = "auth_error",
                     ["duration_bucket"] = TelemetrySanitizer.CreateDurationBucket(loadDuration.Elapsed)
                 });
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (Exception ex) when (ex is GitHubApiException or HttpRequestException)
         {
@@ -1137,11 +1137,11 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
                     ["duration_bucket"] = TelemetrySanitizer.CreateDurationBucket(loadDuration.Elapsed)
                 });
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
             if (requestId == _listRequestId)
             {
-                _authService.SignOut();
+                _authService.HandleAuthenticationFailure(authError);
             }
         }
         catch (Exception ex) when (ex is GitHubApiException or HttpRequestException)
@@ -1357,9 +1357,9 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
             StoreNavigationSnapshot(aggregate.Commit, "selection");
             StatusText = FormatString("RepoCommits.SelectedStatus", "Showing commit {0}.", aggregate.Commit.ShortSha);
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (Exception ex) when (ex is GitHubApiException or HttpRequestException)
         {

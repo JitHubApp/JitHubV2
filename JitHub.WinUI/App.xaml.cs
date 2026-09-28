@@ -361,7 +361,9 @@ public partial class App : Application
         NavigationService navigationService = GetService<NavigationService>();
         long persistedUserId = accountService.GetUser();
 
-        if (authService.Authenticated || authService.CheckAuth(persistedUserId))
+        if (authService.Authenticated ||
+            (authService.RecoveryState == AuthSessionRecoveryState.None &&
+             authService.CheckAuth(persistedUserId)))
         {
             navigationService.GoHome();
         }
@@ -439,13 +441,12 @@ public partial class App : Application
         }
 
         IAuthService authService = GetService<IAuthService>();
-        IAccountService accountService = GetService<IAccountService>();
 
         if (_mainWindow?.ContentFrameHost.Content is null)
         {
             NavigateStartupPage();
         }
-        else if (!authService.Authenticated && !authService.CheckAuth(accountService.GetUser()))
+        else if (!authService.Authenticated)
         {
             GetService<NavigationService>().Unauthorized();
         }

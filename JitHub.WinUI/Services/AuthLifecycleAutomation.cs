@@ -241,7 +241,8 @@ internal sealed partial class AuthLifecycleHttpMessageHandler : HttpMessageHandl
             string path = request.RequestUri?.PathAndQuery.TrimStart('/') ?? string.Empty;
             _context.Record("http.request", $"{request.Method.Method} {path}");
 
-            if (string.Equals(_context.Scenario, AuthLifecycleScenario.OfflineLaunch, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(_context.Scenario, AuthLifecycleScenario.OfflineLaunch, StringComparison.OrdinalIgnoreCase) &&
+                !File.Exists(Path.Combine(_context.RootPath, "network-restored")))
             {
                 _context.Record("http.offline", path);
                 return Task.FromException<HttpResponseMessage>(new HttpRequestException("The deterministic auth lifecycle transport is offline."));

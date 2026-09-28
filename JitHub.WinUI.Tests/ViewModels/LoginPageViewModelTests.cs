@@ -244,5 +244,6 @@ public sealed class LoginPageViewModelTests
         public string? GetToken(long userId) => null;
         public bool CheckAuth(long userId) => false;
         public void SignOut() { }
+        public bool HandleAuthenticationFailure(GitHubAuthenticationException exception) { SignOut(); return true; }
     }
 }

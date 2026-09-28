@@ -11,7 +11,8 @@ namespace JitHub.WinUI.Views.Pages;
 public sealed partial class LoginPage : Page
 {
     private static TimeSpan OfflineRetryInterval =>
-        Program.CurrentLaunchOptions.Scenario == AuthLifecycleScenario.ExpiredOfflineRecovery &&
+        (Program.CurrentLaunchOptions.Scenario is
+            AuthLifecycleScenario.ExpiredOfflineRecovery or AuthLifecycleScenario.OfflineLaunch) &&
         AppDataPathPolicy.TryGetAutomationRoots(out _, out _)
             ? TimeSpan.FromSeconds(1)
             : TimeSpan.FromSeconds(30);

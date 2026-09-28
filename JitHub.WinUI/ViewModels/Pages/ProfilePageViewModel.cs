@@ -423,13 +423,13 @@ public sealed partial class ProfilePageViewModel : ViewModelBase
         {
             TrackError("cancelled", loadStopwatch.Elapsed, TelemetryTaxonomy.Results.Cancelled);
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
             StatusText = ProfileText.L(
                 "Profile.Status.AuthenticationExpired",
                 "GitHub authentication is no longer valid. Please sign in again.");
             TrackError("authentication", loadStopwatch.Elapsed);
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (Exception ex)
         {

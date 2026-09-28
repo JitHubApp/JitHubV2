@@ -137,10 +137,9 @@ public sealed class AuthService : IAuthService
         {
             IReadOnlyCollection<string> savedScopes = _credentialStore.GetAccountSession(userId)?.GrantedScopes ?? [];
             IReadOnlySet<string> granted = string.IsNullOrWhiteSpace(token)
-                ? savedScopes.ToHashSet(StringComparer.Ordinal)
-                : (await _gitHubClientService.GetTokenScopesAsync(token))
-                    .Concat(savedScopes).ToHashSet(StringComparer.Ordinal);
-            if (OAuthScopePolicy.HasAll(granted, requiredScopes))
+                ? new HashSet<string>(StringComparer.Ordinal)
+                : await _gitHubClientService.GetTokenScopesAsync(token);
+            if (!string.IsNullOrWhiteSpace(token) && OAuthScopePolicy.HasAll(granted, requiredScopes))
             {
                 stopwatch.Stop();
                 TrackEvent("auth.flow.completed", AuthProperties(
@@ -149,7 +148,8 @@ public sealed class AuthService : IAuthService
             }
 
             string[] requested = OAuthScopePolicy.BuildRequestedScopes(
-                granted.Concat(requiredScopes).ToArray()).Append("offline_access").ToArray();
+                granted.Concat(savedScopes).Concat(requiredScopes).ToArray())
+                .Append("offline_access").ToArray();
             long generation = Interlocked.Read(ref _sessionGeneration);
             GitHubTokenSession? session = await _devicePrompt.AuthorizeAsync(
                 _appConfigService.Credential.ClientId, requested);
@@ -179,8 +179,22 @@ public sealed class AuthService : IAuthService
             {
                 throw new OperationCanceledException("The active account changed during authorization.");
             }
-            _credentialStore.SaveAccountSession(userId, session);
-            _gitHubService.SetAccessToken(session.AccessToken);
+            await _refreshGate.WaitAsync();
+            try
+            {
+                if (generation != Interlocked.Read(ref _sessionGeneration) ||
+                    _accountService.GetUser() != userId)
+                {
+                    throw new OperationCanceledException("The active account changed during authorization.");
+                }
+                _credentialStore.SaveAccountSession(userId, session);
+                _gitHubService.SetAccessToken(session.AccessToken);
+                Interlocked.Increment(ref _sessionGeneration);
+            }
+            finally
+            {
+                _refreshGate.Release();
+            }
             stopwatch.Stop();
             TrackEvent("auth.flow.completed", AuthProperties(
                 TelemetryTaxonomy.Sources.Scope, TelemetryTaxonomy.Results.Success, stopwatch.Elapsed));
@@ -248,7 +262,13 @@ public sealed class AuthService : IAuthService
                 TelemetryTaxonomy.Results.Started,
                 action: TelemetryTaxonomy.Actions.RefreshUser));
         long expectedUserId = AuthenticatedUser?.Id ?? _accountService.GetUser();
+        long generation = Interlocked.Read(ref _sessionGeneration);
         string? token = await GetValidTokenAsync(expectedUserId);
+        if (generation != Interlocked.Read(ref _sessionGeneration) ||
+            _accountService.GetUser() != expectedUserId)
+        {
+            throw new OperationCanceledException("The active account changed during session refresh.");
+        }
         if (string.IsNullOrWhiteSpace(token))
         {
             if (Authenticated)
@@ -265,7 +285,6 @@ public sealed class AuthService : IAuthService
             return null;
         }
 
-        long generation = Interlocked.Read(ref _sessionGeneration);
         try
         {
             if (Program.CurrentLaunchOptions.IsPublicPreviewOverride && GitHubClientService.IsPublicAccessToken(token))
@@ -317,10 +336,17 @@ public sealed class AuthService : IAuthService
                 TelemetryTaxonomy.ErrorKinds.Cancelled);
             throw;
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException exception)
         {
-            SignOut();
-            RecoveryState = AuthSessionRecoveryState.Expired;
+            bool invalidated = HandleAuthenticationFailure(exception);
+            if (invalidated)
+            {
+                RecoveryState = AuthSessionRecoveryState.Expired;
+            }
+            else if (!Authenticated)
+            {
+                RecoveryState = AuthSessionRecoveryState.ServiceUnavailable;
+            }
             stopwatch.Stop();
             TrackAuthAction(
                 TelemetryTaxonomy.Actions.RefreshUser,
@@ -328,7 +354,7 @@ public sealed class AuthService : IAuthService
                 stopwatch.Elapsed,
                 TelemetryTaxonomy.ErrorKinds.Authentication);
             TrackAuthError("refresh", "authentication", stopwatch.Elapsed);
-            return null;
+            return invalidated ? null : AuthenticatedUser;
         }
         catch (GitHubApiException)
         {
@@ -454,6 +480,7 @@ public sealed class AuthService : IAuthService
             return null;
         }
 
+        long requestGeneration = Interlocked.Read(ref _sessionGeneration);
         GitHubTokenSession? session = _credentialStore.GetAccountSession(userId);
         if (session is null || session.AccessTokenExpiresAt is not { } expiry ||
             expiry > DateTimeOffset.UtcNow.AddMinutes(5))
@@ -464,6 +491,10 @@ public sealed class AuthService : IAuthService
         await _refreshGate.WaitAsync(cancellationToken);
         try
         {
+            if (requestGeneration != Interlocked.Read(ref _sessionGeneration))
+            {
+                throw new OperationCanceledException("The active session changed during token refresh.");
+            }
             // Another request may have rotated this pair while we waited.
             session = _credentialStore.GetAccountSession(userId);
             if (session is null || session.AccessTokenExpiresAt is not { } currentExpiry ||
@@ -482,15 +513,14 @@ public sealed class AuthService : IAuthService
                 return currentExpiry > DateTimeOffset.UtcNow ? session.AccessToken : null;
             }
 
-            long generation = Interlocked.Read(ref _sessionGeneration);
             try
             {
                 GitHubTokenSession replacement = await _deviceClient.RefreshAsync(
                     _appConfigService.Credential.ClientId, session.RefreshToken, cancellationToken);
-                if (generation != Interlocked.Read(ref _sessionGeneration) ||
+                if (requestGeneration != Interlocked.Read(ref _sessionGeneration) ||
                     _accountService.GetUser() != userId)
                 {
-                    return null;
+                    throw new OperationCanceledException("The active session changed during token refresh.");
                 }
                 replacement = replacement with { GrantedScopes = session.GrantedScopes };
                 _credentialStore.SaveAccountSession(userId, replacement);
@@ -500,6 +530,11 @@ public sealed class AuthService : IAuthService
             }
             catch (HttpRequestException)
             {
+                if (requestGeneration != Interlocked.Read(ref _sessionGeneration) ||
+                    _accountService.GetUser() != userId)
+                {
+                    throw new OperationCanceledException("The active session changed during token refresh.");
+                }
                 if (currentExpiry <= DateTimeOffset.UtcNow)
                 {
                     RecoveryState = AuthSessionRecoveryState.Offline;
@@ -508,7 +543,12 @@ public sealed class AuthService : IAuthService
             }
             catch (DeviceFlowException exception) when (exception.Code == "bad_refresh_token")
             {
-                if (generation == Interlocked.Read(ref _sessionGeneration) &&
+                if (requestGeneration != Interlocked.Read(ref _sessionGeneration) ||
+                    _accountService.GetUser() != userId)
+                {
+                    throw new OperationCanceledException("The active session changed during token refresh.");
+                }
+                if (requestGeneration == Interlocked.Read(ref _sessionGeneration) &&
                     _accountService.GetUser() == userId &&
                     _credentialStore.GetAccountSession(userId)?.RefreshToken == session.RefreshToken)
                 {
@@ -552,11 +592,63 @@ public sealed class AuthService : IAuthService
         }
     }
 
+    public bool HandleAuthenticationFailure(GitHubAuthenticationException exception)
+    {
+        ArgumentNullException.ThrowIfNull(exception);
+        if (exception.RejectedTokenFingerprint is not { } rejectedFingerprint)
+        {
+            SignOut();
+            return true;
+        }
+
+        // GitHub invalidates the old access token before a refresh is persisted.
+        if (!_refreshGate.Wait(0))
+        {
+            return false;
+        }
+
+        try
+        {
+            long userId = _accountService.GetUser();
+            string? currentToken = _credentialStore.GetAccountSession(userId)?.AccessToken;
+            if (!string.Equals(
+                    GitHubAuthenticationException.Fingerprint(currentToken),
+                    rejectedFingerprint,
+                    StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            SignOut();
+            return true;
+        }
+        finally
+        {
+            _refreshGate.Release();
+        }
+    }
+
     private async Task RestoreSessionAsync()
     {
         Stopwatch stopwatch = Stopwatch.StartNew();
         long userId = _accountService.GetUser();
-        string? token = userId > 0 ? await GetValidTokenAsync(userId) : null;
+        long generation = Interlocked.Read(ref _sessionGeneration);
+        string? token;
+        try
+        {
+            token = userId > 0 ? await GetValidTokenAsync(userId) : null;
+        }
+        catch (OperationCanceledException) when (
+            generation != Interlocked.Read(ref _sessionGeneration) ||
+            _accountService.GetUser() != userId)
+        {
+            return;
+        }
+        if (generation != Interlocked.Read(ref _sessionGeneration) ||
+            _accountService.GetUser() != userId)
+        {
+            return;
+        }
         if (string.IsNullOrWhiteSpace(token))
         {
             if (userId > 0 && RecoveryState == AuthSessionRecoveryState.Offline &&
@@ -588,29 +680,53 @@ public sealed class AuthService : IAuthService
 
         try
         {
-            AuthenticatedUser = await _gitHubClientService.GetCurrentUserAsync(token);
-            if (AuthenticatedUser.Id != userId)
+            GitHubUser restoredUser = await _gitHubClientService.GetCurrentUserAsync(token);
+            if (generation != Interlocked.Read(ref _sessionGeneration) ||
+                _accountService.GetUser() != userId)
+            {
+                return;
+            }
+            if (restoredUser.Id != userId)
             {
                 throw new GitHubAuthenticationException("The stored GitHub session belongs to a different account.");
             }
 
-
-            _accountWork.Activate(AuthenticatedUser.Id.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            AuthenticatedUser = restoredUser;
+            _accountWork.Activate(restoredUser.Id.ToString(System.Globalization.CultureInfo.InvariantCulture));
             Authenticated = true;
             RecoveryState = AuthSessionRecoveryState.None;
             _initializeTask = Task.CompletedTask;
             stopwatch.Stop();
             TrackEvent("auth.session.loaded", AuthProperties("startup", "success", stopwatch.Elapsed));
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException exception)
         {
-            ClearAuthenticationState(clearPersistedSession: true);
-            RecoveryState = AuthSessionRecoveryState.Expired;
+            if (generation != Interlocked.Read(ref _sessionGeneration) ||
+                _accountService.GetUser() != userId)
+            {
+                return;
+            }
+            if (HandleAuthenticationFailure(exception))
+            {
+                RecoveryState = AuthSessionRecoveryState.Expired;
+            }
+            else
+            {
+                Authenticated = false;
+                AuthenticatedUser = null;
+                _initializeTask = null;
+                RecoveryState = AuthSessionRecoveryState.ServiceUnavailable;
+            }
             stopwatch.Stop();
             TrackAuthError("startup", "authentication", stopwatch.Elapsed);
         }
         catch (GitHubApiException)
         {
+            if (generation != Interlocked.Read(ref _sessionGeneration) ||
+                _accountService.GetUser() != userId)
+            {
+                return;
+            }
             Authenticated = false;
             AuthenticatedUser = null;
             _gitHubService.SetAccessToken(token);
@@ -621,6 +737,11 @@ public sealed class AuthService : IAuthService
         }
         catch (HttpRequestException)
         {
+            if (generation != Interlocked.Read(ref _sessionGeneration) ||
+                _accountService.GetUser() != userId)
+            {
+                return;
+            }
             Authenticated = false;
             AuthenticatedUser = null;
             _gitHubService.SetAccessToken(token);

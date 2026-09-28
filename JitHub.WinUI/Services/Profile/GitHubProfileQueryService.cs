@@ -1303,7 +1303,8 @@ public sealed class GitHubProfileQueryService : IGitHubProfileQueryService
         string messageText = await ReadErrorMessageAsync(response, cancellationToken);
         if (response.StatusCode == HttpStatusCode.Unauthorized)
         {
-            throw new GitHubAuthenticationException(messageText);
+            throw new GitHubAuthenticationException(
+                messageText, response.RequestMessage?.Headers.Authorization?.Parameter);
         }
 
         throw new GitHubApiException(response.StatusCode, messageText);
