@@ -489,6 +489,8 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
 
     public async Task AddCommitCommentAsync()
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         if (_navArg?.Repo is null || SelectedCommit is null || !IsCommitCommentEnabled || !TryGetActiveToken(out string token))
         {
             return;
@@ -518,10 +520,10 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
             }
             TrackCommitAction(CommitActionKind.Comment, CommitActionOutcome.Success);
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
             TrackCommitAction(CommitActionKind.Comment, CommitActionOutcome.AuthenticationError);
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (Exception ex) when (ex is GitHubApiException or HttpRequestException)
         {
@@ -540,6 +542,8 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
 
     public async Task RunCompareAsync()
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         if (_navArg?.Repo is null || !TryGetActiveToken(out string token))
         {
             return;
@@ -603,7 +607,7 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
                     ["duration_bucket"] = TelemetrySanitizer.CreateDurationBucket(compareDuration.Elapsed)
                 });
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
             if (requestId != _compareRequestId)
             {
@@ -619,7 +623,7 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
                     ["result"] = "auth_error",
                     ["duration_bucket"] = TelemetrySanitizer.CreateDurationBucket(compareDuration.Elapsed)
                 });
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (Exception ex) when (ex is GitHubApiException or HttpRequestException)
         {
@@ -898,6 +902,8 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
 
     private async Task LoadBranchesAsync()
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         if (_navArg?.Repo is null || !TryGetActiveToken(out string token))
         {
             return;
@@ -929,9 +935,9 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
                     StringComparison.OrdinalIgnoreCase))
                 ?? Branches.FirstOrDefault();
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch
         {
@@ -944,6 +950,8 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
         bool preservePreferredCommitOutsideQuery = true,
         bool preserveCurrentDetailDuringLoad = false)
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         if (_navArg?.Repo is null || !TryGetActiveToken(out string token))
         {
             return;
@@ -1038,7 +1046,7 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
                 commitShaToSelect,
                 loadDuration);
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
             TrackEvent(
                 "commits.list.loaded",
@@ -1048,7 +1056,7 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
                     ["result"] = "auth_error",
                     ["duration_bucket"] = TelemetrySanitizer.CreateDurationBucket(loadDuration.Elapsed)
                 });
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (Exception ex) when (ex is GitHubApiException or HttpRequestException)
         {
@@ -1129,11 +1137,11 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
                     ["duration_bucket"] = TelemetrySanitizer.CreateDurationBucket(loadDuration.Elapsed)
                 });
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
             if (requestId == _listRequestId)
             {
-                _authService.SignOut();
+                _authService.HandleAuthenticationFailure(authError);
             }
         }
         catch (Exception ex) when (ex is GitHubApiException or HttpRequestException)
@@ -1313,6 +1321,8 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
 
     private async Task ShowCommitAsync(GitHubCommit? commit, bool populateSummary = true)
     {
+        await _authService.GetValidTokenAsync(
+            _authService.AuthenticatedUser?.Id ?? _accountService.GetUser());
         int requestId = ++_detailRequestId;
         if (populateSummary)
         {
@@ -1347,9 +1357,9 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
             StoreNavigationSnapshot(aggregate.Commit, "selection");
             StatusText = FormatString("RepoCommits.SelectedStatus", "Showing commit {0}.", aggregate.Commit.ShortSha);
         }
-        catch (GitHubAuthenticationException)
+        catch (GitHubAuthenticationException authError)
         {
-            _authService.SignOut();
+            _authService.HandleAuthenticationFailure(authError);
         }
         catch (Exception ex) when (ex is GitHubApiException or HttpRequestException)
         {
@@ -2135,7 +2145,6 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
             return true;
         }
 
-        _authService.SignOut();
         return false;
     }
 

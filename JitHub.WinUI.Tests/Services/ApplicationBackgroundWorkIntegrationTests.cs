@@ -13,11 +13,11 @@ public sealed class ApplicationBackgroundWorkIntegrationTests
 
         Assert.Contains("ApplicationActivationGate _activationGate", source, StringComparison.Ordinal);
         Assert.Contains("new ApplicationTaskOptions(\"app.activation\")", source, StringComparison.Ordinal);
-        Assert.Contains("HandleActivationAsync(activationRequest, innerToken)", source, StringComparison.Ordinal);
+        Assert.Contains("HandleActivationAsync,", source, StringComparison.Ordinal);
         Assert.Contains("ResumePendingAccountRemovalAsync(cancellationToken)", source, StringComparison.Ordinal);
         Assert.Contains("catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)", source, StringComparison.Ordinal);
         Assert.Contains("throw;", ExtractMethod(source, "private async Task HandleActivationAsync", "private async Task ActivateCoreAsync"), StringComparison.Ordinal);
-        Assert.DoesNotContain("_ = HandleActivationAsync(activationRequest)", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("_ = HandleActivationAsync(", source, StringComparison.Ordinal);
     }
 
     [Fact]

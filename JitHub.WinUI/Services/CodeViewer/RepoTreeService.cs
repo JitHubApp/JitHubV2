@@ -49,8 +49,43 @@ public sealed class RepoTreeService : IRepoTreeService
         CancellationToken ct,
         QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst)
     {
-        (string token, string userId) = GetAuthenticationContext();
-        string cacheKey = CreateTreeCacheKey(userId, owner, name, refOrSha);
+        ct.ThrowIfCancellationRequested();
+        long accountId = GetActiveUserId();
+        string accountPartition = GetAccountPartition(accountId);
+        string cacheKey = CreateTreeCacheKey(accountPartition, owner, name, refOrSha);
+        if (fetchPolicy == QueryFetchPolicy.StaleFirst &&
+            TryGetCachedTree(cacheKey, out RepoCodeLoadResult<RepoTree> cachedBeforeAuthentication) &&
+            GetActiveUserId() == accountId)
+        {
+            if (!IsStale(cachedBeforeAuthentication))
+            {
+                return cachedBeforeAuthentication;
+            }
+
+            _ = Task.Run(() => RefreshCachedTreeAsync(
+                accountId,
+                accountPartition,
+                cacheKey,
+                owner,
+                name,
+                refOrSha));
+            if (GetActiveUserId() == accountId)
+            {
+                return cachedBeforeAuthentication with
+                {
+                    CacheState = CacheState.Stale,
+                    IsRefreshInProgress = true
+                };
+            }
+        }
+
+        (string token, string userId) = await GetAuthenticationContextAsync(ct);
+        cacheKey = CreateTreeCacheKey(userId, owner, name, refOrSha);
+        if (GetAccountPartition(GetActiveUserId()) != userId)
+        {
+            throw new OperationCanceledException("The active account changed while loading the repository tree.", ct);
+        }
+
         if (fetchPolicy == QueryFetchPolicy.StaleFirst &&
             TryGetCachedTree(cacheKey, out RepoCodeLoadResult<RepoTree> cached))
         {
@@ -82,7 +117,13 @@ public sealed class RepoTreeService : IRepoTreeService
             name,
             refOrSha,
             fetchPolicy);
-        return await load.Task.WaitAsync(ct).ConfigureAwait(false);
+        RepoCodeLoadResult<RepoTree> result = await load.Task.WaitAsync(ct).ConfigureAwait(false);
+        if (GetAccountPartition(GetActiveUserId()) != userId)
+        {
+            throw new OperationCanceledException("The active account changed while loading the repository tree.", ct);
+        }
+
+        return result;
     }
 
     public async Task PrefetchTreeAsync(
@@ -286,6 +327,49 @@ public sealed class RepoTreeService : IRepoTreeService
             },
             ct);
 
+    private async Task RefreshCachedTreeAsync(
+        long accountId,
+        string accountPartition,
+        string cacheKey,
+        string owner,
+        string name,
+        string refOrSha)
+    {
+        try
+        {
+            if (GetActiveUserId() != accountId ||
+                !TryGetCachedTree(cacheKey, out RepoCodeLoadResult<RepoTree> cached) ||
+                !IsStale(cached))
+            {
+                return;
+            }
+
+            string token = await _authService.GetValidTokenAsync(accountId, CancellationToken.None)
+                .ConfigureAwait(false) ?? GitHubAuthenticationConstants.PublicAccessToken;
+            if (GetActiveUserId() != accountId ||
+                GetAccountPartition(GetActiveUserId()) != accountPartition ||
+                !TryGetCachedTree(cacheKey, out cached) ||
+                !IsStale(cached))
+            {
+                return;
+            }
+
+            SharedTreeLoad load = GetOrStartTreeLoad(
+                cacheKey,
+                token,
+                accountPartition,
+                owner,
+                name,
+                refOrSha,
+                QueryFetchPolicy.NetworkOnly);
+            await load.Task.ConfigureAwait(false);
+        }
+        catch
+        {
+            // The cached tree remains available when a background refresh cannot complete.
+        }
+    }
+
     private bool TryGetCachedTree(string key, out RepoCodeLoadResult<RepoTree> result)
     {
         lock (_treeCacheGate)
@@ -396,7 +480,7 @@ public sealed class RepoTreeService : IRepoTreeService
         CancellationToken ct,
         QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst)
     {
-        (string token, string userId) = GetAuthenticationContext();
+        (string token, string userId) = await GetAuthenticationContextAsync(ct);
         CachedResult<GitHubRepositoryContent[]> result;
         try
         {
@@ -448,7 +532,7 @@ public sealed class RepoTreeService : IRepoTreeService
         CancellationToken ct,
         QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst)
     {
-        (string token, string userId) = GetAuthenticationContext();
+        (string token, string userId) = await GetAuthenticationContextAsync(ct);
         string readmeToken = token;
         bool sourceCameFromRawFallback = false;
         CachedResult<GitHubRepositoryContent> result;
@@ -580,7 +664,7 @@ public sealed class RepoTreeService : IRepoTreeService
         CancellationToken ct,
         QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst)
     {
-        (string token, string userId) = GetAuthenticationContext();
+        (string token, string userId) = await GetAuthenticationContextAsync(ct);
         CachedResult<GitHubBlob> result;
         try
         {
@@ -763,13 +847,24 @@ public sealed class RepoTreeService : IRepoTreeService
         }
     }
 
-    private (string Token, string UserId) GetAuthenticationContext()
+    private async Task<(string Token, string UserId)> GetAuthenticationContextAsync(CancellationToken cancellationToken)
     {
-        long userId = _authService.AuthenticatedUser?.Id ?? _accountService.GetUser();
-        string token = _authService.GetToken(userId) ?? GitHubAuthenticationConstants.PublicAccessToken;
-        string partition = userId > 0 ? userId.ToString(CultureInfo.InvariantCulture) : "current";
+        long userId = GetActiveUserId();
+        string token = await _authService.GetValidTokenAsync(userId, cancellationToken) ??
+            GitHubAuthenticationConstants.PublicAccessToken;
+        if (GetActiveUserId() != userId)
+        {
+            throw new OperationCanceledException("The active account changed while refreshing repository credentials.", cancellationToken);
+        }
+
+        string partition = GetAccountPartition(userId);
         return (token, partition);
     }
+
+    private long GetActiveUserId() => _authService.AuthenticatedUser?.Id ?? _accountService.GetUser();
+
+    private static string GetAccountPartition(long userId) =>
+        userId > 0 ? userId.ToString(CultureInfo.InvariantCulture) : "current";
 
     internal static RepoTree BuildRepoTree(GitHubTree gitTree)
     {

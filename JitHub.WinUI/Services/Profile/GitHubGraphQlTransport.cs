@@ -57,7 +57,7 @@ public sealed class GitHubGraphQlTransport : IGitHubGraphQlTransport
             string messageText = await ReadErrorMessageAsync(response, cancellationToken);
             if (response.StatusCode == HttpStatusCode.Unauthorized)
             {
-                throw new GitHubAuthenticationException(messageText);
+                throw new GitHubAuthenticationException(messageText, accessToken);
             }
 
             TimeSpan? retryDelay = GitHubRetryPolicy.CalculateRetryDelay(

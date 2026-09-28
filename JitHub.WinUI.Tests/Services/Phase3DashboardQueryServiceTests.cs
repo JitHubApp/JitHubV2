@@ -126,35 +126,6 @@ public sealed class Phase3DashboardQueryServiceTests
     }
 
     [Fact]
-    public void OAuthLoginUri_UsesLeastPrivilegeDefaultScopes()
-    {
-        GitHubClientService client = new();
-
-        Uri uri = client.CreateLoginUri("client-id", "state", "jithub://auth");
-        string decoded = Uri.UnescapeDataString(uri.Query);
-
-        Assert.Contains("scope=user repo notifications", decoded);
-        Assert.DoesNotContain("gist", decoded);
-        Assert.DoesNotContain("delete_repo", decoded);
-    }
-
-    [Fact]
-    public void OAuthLoginUri_AddsDestructiveScopeOnlyWhenRequested()
-    {
-        GitHubClientService client = new();
-
-        Uri uri = client.CreateLoginUri(
-            "client-id",
-            "state",
-            "jithub://auth",
-            ["delete_repo", "delete_repo"]);
-        string decoded = Uri.UnescapeDataString(uri.Query);
-
-        Assert.Contains("scope=user repo notifications delete_repo", decoded);
-        Assert.Equal(1, decoded.Split("delete_repo", StringSplitOptions.None).Length - 1);
-    }
-
-    [Fact]
     public void OAuthScopePolicy_RecognizesGrantedAndMissingScopes()
     {
         HashSet<string> granted = new(["user", "repo", "notifications", "delete_repo"], StringComparer.Ordinal);

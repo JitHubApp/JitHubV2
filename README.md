@@ -1,5 +1,5 @@
 <p align="center">
-  <span><img src="JitHub.Web/wwwroot/JitHubLogo.png" alt="JitHub Logo" width="96" height="96"></span>
+  <span><img src="JitHub.Site/public/JitHubLogo.png" alt="JitHub Logo" width="96" height="96"></span>
   <h1 align="center">JitHub</h1>
 </p>
 
@@ -26,18 +26,18 @@
 ## Screenshots
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="JitHub.Web/wwwroot/media/showcase/home-workspace-dark.png">
-  <img src="JitHub.Web/wwwroot/media/showcase/home-workspace-light.png" alt="JitHub's customizable Home workspace with global search, repository navigation, overview, and activity widgets." width="1100">
+  <source media="(prefers-color-scheme: dark)" srcset="JitHub.Site/public/media/showcase/home-workspace-dark.png">
+  <img src="JitHub.Site/public/media/showcase/home-workspace-light.png" alt="JitHub's customizable Home workspace with global search, repository navigation, overview, and activity widgets." width="1100">
 </picture>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="JitHub.Web/wwwroot/media/showcase/pull-request-conversation-dark.png">
-  <img src="JitHub.Web/wwwroot/media/showcase/pull-request-conversation-light.png" alt="A JitHub pull request conversation with Markdown, reactions, comments, and review actions." width="1100">
+  <source media="(prefers-color-scheme: dark)" srcset="JitHub.Site/public/media/showcase/pull-request-conversation-dark.png">
+  <img src="JitHub.Site/public/media/showcase/pull-request-conversation-light.png" alt="A JitHub pull request conversation with Markdown, reactions, comments, and review actions." width="1100">
 </picture>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="JitHub.Web/wwwroot/media/showcase/commit-diff-dark.png">
-  <img src="JitHub.Web/wwwroot/media/showcase/commit-diff-light.png" alt="JitHub's commit workspace with history, a changed-file tree, virtualized diff, comments, checks, and compare tools." width="1100">
+  <source media="(prefers-color-scheme: dark)" srcset="JitHub.Site/public/media/showcase/commit-diff-dark.png">
+  <img src="JitHub.Site/public/media/showcase/commit-diff-light.png" alt="JitHub's commit workspace with history, a changed-file tree, virtualized diff, comments, checks, and compare tools." width="1100">
 </picture>
 
 ## Tech Stack
@@ -45,24 +45,25 @@
 - `.NET 10` with `global.json` pinning SDK `10.0.202`
 - Windows App SDK and WinUI 3 for the packaged desktop app
 - Self-contained Native AOT Release and Store builds for x86, x64, and ARM64
-- ASP.NET Core Blazor Web App with static server rendering for the public website and auth callback host
-- Lightweight JavaScript for the browser-to-app authorization handoff
+- React/Vite build-time rendering for the public static website, published through GitHub Pages
+- GitHub device authorization in the desktop app, with credentials in Windows Credential Locker
 - FlaUI-based UI automation for screenshot proof and smoke checks
 - Native WinUIEdit/Scintilla code editing with app-owned tokenized chrome
 
 ## Project Structure
 
 - `JitHub.WinUI`: the desktop app
-- `JitHub.Web`: the website, `/authorize` callback page, and short-lived OAuth handoff APIs
+- `JitHub.Site`: the static public website
+- `JitHub.Web`: the temporary legacy sign-in host for Store builds released before device sign-in
 - `JitHub.WinUI.Automation`: screenshot and UI smoke-test harness for the app design lab
 - `MarkdownRenderer`: preview native WinUI markdown renderer with immutable documents and opt-in feature packs, documented in [`docs/markdown-renderer`](docs/markdown-renderer/README.md)
 - `eng`: local helper scripts for app launch, screenshot capture, packaging, and build checks
 
 ## Runtime Shape
 
-- The desktop app starts GitHub sign-in in the browser.
-- The web callback page exchanges GitHub's temporary code and launches the desktop app through the `jithub://auth/v2` protocol.
-- The website is server-rendered by default and does not ship a Blazor WebAssembly runtime.
+- The desktop app shows a GitHub device code, opens GitHub's verification page, and exchanges the approval directly with GitHub.
+- Access and refresh tokens stay in Windows Credential Locker. The static website never handles sign-in.
+- Older Store builds still use the temporary legacy sign-in host during the release transition.
 - The desktop UI is driven by semantic WinUI resource dictionaries and reusable app-owned controls.
 
 ## Build From Source
@@ -88,35 +89,13 @@ Install missing local helpers with:
 
 ## Local OAuth Setup
 
-Local sign-in uses a GitHub OAuth app that you create in GitHub Developer settings.
-
-Use this callback URL for local development:
-
-```text
-https://localhost:7284/authorize
-```
-
-The callback route is `/authorize`, not `/auth/callback`. The authorize page exchanges GitHub's temporary code for a short-lived, one-time handoff and launches the app through the `jithub://` protocol callback. The bearer token never enters browser JavaScript or the protocol URI; the app redeems the handoff directly with a verifier stored in Windows Credential Locker.
-
-Configure the desktop app with your OAuth app's client ID and callback URL. You can use `JitHub.WinUI/appsettings.json` for local development or override values with these environment variables:
+Local sign-in uses a GitHub OAuth app with **Enable Device Flow** selected in GitHub Developer settings. Configure the desktop app with that app's public client ID in `JitHub.WinUI/appsettings.json` or override it locally:
 
 ```powershell
 $env:JITHUB_OAUTH_CLIENT_ID = "<your GitHub OAuth client ID>"
-$env:JITHUB_OAUTH_CALLBACK_URL = "https://localhost:7284/authorize"
 ```
 
-Configure the web project with the matching OAuth client credentials using your preferred ASP.NET Core configuration source. Keep credentials local to your machine and do not commit them.
-
-Production web deployments also require a shared Redis connection and a Base64-encoded 32-byte handoff encryption key:
-
-```text
-ConnectionStrings__OAuthHandoffRedis=<Redis connection string>
-OAuthHandoff__EncryptionKey=<Base64-encoded 32-byte key>
-JITHUB_OAUTH_CALLBACK_URL=https://your-jithub-host.example/authorize
-```
-
-Redis provides the two-minute distributed TTL and atomic one-time consume semantics across app instances. The encryption key protects GitHub tokens stored in Redis. Production startup fails when either setting is absent; the in-memory backend is limited to the Development environment.
-The callback URL is also required in production and is matched exactly before JitHub exchanges an OAuth code. Development accepts the documented local launch callbacks and any additional loopback callback explicitly listed under `GitHubOAuth:DevelopmentCallbackUrls`.
+Device sign-in does not use a callback URL or client secret. Do not put credentials or tokens in this public repository.
 
 ## Native Code Editor
 
@@ -124,13 +103,16 @@ The desktop app uses the native WinUIEdit/Scintilla component through its first-
 
 ## Local Website Development
 
-Run the website locally with:
+Build and test the static site locally with Node.js 22:
 
-```powershell
-dotnet run --project .\JitHub.Web\JitHub.Web.csproj --launch-profile https
+```text
+cd JitHub.Site
+npm ci
+npm run build
+npm test
 ```
 
-The website does not require `wasm-tools`. The landing page is static SSR, and the authorize flow uses a tiny JavaScript bridge instead of Blazor WebAssembly.
+The output in `JitHub.Site/dist` contains only static files.
 
 ## Running The App Locally
 
@@ -142,7 +124,7 @@ To build Debug, apply a debug package identity with the Windows App CLI, and lau
 .\eng\Start-JitHubWinUIDebug.ps1
 ```
 
-This builds `JitHub.WinUI` as `Debug|x64`, removes stale development registrations, registers the dedicated `JitHub.WinUI.Debug` identity, and launches `JitHub.WinUI.exe`. Debug OAuth callbacks use `jithub-dev://`; Store and Release builds remain the sole owners of `jithub://`.
+This builds `JitHub.WinUI` as `Debug|x64`, registers the dedicated `JitHub.WinUI.Debug` identity, and launches `JitHub.WinUI.exe`.
 
 To launch a different platform or pass app arguments:
 

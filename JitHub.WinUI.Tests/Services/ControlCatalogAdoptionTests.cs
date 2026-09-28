@@ -73,6 +73,7 @@ public sealed partial class ControlCatalogAdoptionTests
         new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
         {
             [Path.Combine("Views", "Dialogs", "AccountSignOutDialogFlow.cs")] = 1,
+            [Path.Combine("Views", "Dialogs", "GitHubDeviceAuthorizationPrompt.cs")] = 1,
             [Path.Combine("Views", "Pages", "GistsPage.xaml.cs")] = 2,
             [Path.Combine("Views", "Pages", "ProfilePage.xaml.cs")] = 1,
             [Path.Combine("Views", "Pages", "RepoIssuePage.xaml.cs")] = 5,

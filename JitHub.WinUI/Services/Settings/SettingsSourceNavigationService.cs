@@ -35,7 +35,7 @@ public sealed class SettingsSourceNavigationService : ISettingsSourceNavigationS
         CancellationToken cancellationToken = default)
     {
         long userId = _authService.AuthenticatedUser?.Id ?? _accountService.GetUser();
-        string? token = _authService.GetToken(userId);
+        string? token = await _authService.GetValidTokenAsync(userId, cancellationToken);
         if (string.IsNullOrWhiteSpace(token) ||
             (!GitHubAuthenticationConstants.IsPublicAccessToken(token) && userId <= 0))
         {

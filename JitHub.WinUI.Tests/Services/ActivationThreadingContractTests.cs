@@ -27,7 +27,7 @@ public sealed class ActivationThreadingContractTests
     }
 
     [Fact]
-    public void RedirectedPayload_IsProjectedOnlyOnTheWinUiDispatcher()
+    public void RedirectedActivation_IsQueuedOnTheWinUiDispatcherWithoutProtocolParsing()
     {
         string source = ReadProductFile("App.xaml.cs");
         string handle = Slice(
@@ -42,7 +42,8 @@ public sealed class ActivationThreadingContractTests
         Assert.DoesNotContain("CreateActivationRequest", handle, StringComparison.Ordinal);
         Assert.Contains("_dispatcherQueue.TryEnqueue(", handle, StringComparison.Ordinal);
         Assert.Contains("() => QueueActivation(activationArguments)", handle, StringComparison.Ordinal);
-        Assert.Contains("ActivationRequest activationRequest = CreateActivationRequest(activationArguments);", queue, StringComparison.Ordinal);
+        Assert.DoesNotContain("CreateActivationRequest", queue, StringComparison.Ordinal);
+        Assert.Contains("HandleActivationAsync,", queue, StringComparison.Ordinal);
         Assert.Contains("try", queue, StringComparison.Ordinal);
         Assert.Contains("catch (Exception exception)", queue, StringComparison.Ordinal);
     }

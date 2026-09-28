@@ -24,6 +24,7 @@ public sealed partial class GitHubReadArchitectureConformanceTests
             "GitHubProfileQueryService.cs",
             // Remote image traffic is separately constrained by MarkdownRemoteImagePolicy.
             "GitHubImageService.cs"
+            ,"GitHubDeviceFlowClient.cs"
         };
 
     [Fact]
@@ -165,7 +166,7 @@ public sealed partial class GitHubReadArchitectureConformanceTests
     {
         if (fileName.Equals("AuthService.cs", StringComparison.OrdinalIgnoreCase))
         {
-            return method == "GetCurrentUserAsync";
+            return method is "GetCurrentUserAsync" or "GetTokenScopesAsync";
         }
 
         if (fileName is "GitHubClientService.cs" or "GitHubService.cs" or "GitHubService.Post.cs")

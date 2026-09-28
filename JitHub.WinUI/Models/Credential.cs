@@ -6,7 +6,4 @@ public class Credential
 
     public string? DevelopmentClientId { get; set; }
 
-    public string? AuthorizationCallbackUrl { get; set; }
-
-    public string? DevelopmentAuthorizationCallbackUrl { get; set; }
 }
