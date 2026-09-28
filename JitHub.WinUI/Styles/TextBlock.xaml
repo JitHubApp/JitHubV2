@@ -40,6 +40,18 @@
         <Setter Property="FontWeight" Value="{ThemeResource AppFontWeightSemibold}" />
     </Style>
     <Style
+        x:Key="AppNavigationLabelTextBlockStyle"
+        BasedOn="{StaticResource ListItemTitleTextBlockStyle}"
+        TargetType="TextBlock">
+        <Setter Property="LineHeight" Value="{ThemeResource AppLineHeight20}" />
+        <Setter Property="TextLineBounds" Value="Tight" />
+        <Setter Property="RenderTransform">
+            <Setter.Value>
+                <TranslateTransform Y="{ThemeResource AppSettingsNavigationLabelFontMetricOffset}" />
+            </Setter.Value>
+        </Setter>
+    </Style>
+    <Style
         x:Key="SectionSecondaryTextBlockStyle"
         BasedOn="{StaticResource SectionBodyTextBlockStyle}"
         TargetType="TextBlock">

@@ -559,14 +559,13 @@
                     Command="{x:Bind ViewModel.OpenNotificationsCommand, Mode=OneWay}"
                     Style="{StaticResource AppToolbarButtonStyle}"
                     ToolTipService.ToolTip="Notifications">
-                    <Grid Width="{ThemeResource AppDimension24}" Height="{ThemeResource AppDimension24}">
+                    <Grid Width="{ThemeResource AppDimension36}" Height="{ThemeResource AppDimension36}">
                         <FontIcon
                             HorizontalAlignment="Center"
                             VerticalAlignment="Center"
                             FontFamily="{StaticResource SegoeFluentIcons}"
                             Glyph="&#xEA8F;" />
                         <StackPanel
-                            Margin="{ThemeResource AppMargin0_Neg7_Neg9_0}"
                             HorizontalAlignment="Right"
                             VerticalAlignment="Top"
                             AutomationProperties.AccessibilityView="Raw"
