@@ -141,7 +141,8 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("merge-multiple: true", workflow, StringComparison.Ordinal);
         Assert.Contains("-ExpectedCount 500", workflow, StringComparison.Ordinal);
         Assert.Contains("$shardCount = ${{ matrix.end }} - ${{ matrix.start }} + 1", workflow, StringComparison.Ordinal);
-        Assert.Contains("-Count $shardCount", workflow, StringComparison.Ordinal);
+        Assert.Contains("Count = $shardCount", workflow, StringComparison.Ordinal);
+        Assert.Contains(".\\eng\\Invoke-TopReadmeAudit.ps1 @arguments", workflow, StringComparison.Ordinal);
         // GitHub's Windows checkout may use CRLF even when the local checkout
         // uses LF. Validate both representations, including exact rank coverage.
         string lfWorkflow = workflow.Replace("\r\n", "\n", StringComparison.Ordinal);

@@ -186,16 +186,19 @@ public sealed class MarkdownRendererAuditListenerTests
             Assert.Equal(120_832, document.RootElement.GetProperty("WorkerWorkingSetKiB").GetInt32());
             Assert.Equal(94_208, document.RootElement.GetProperty("WorkerPrivateCommitKiB").GetInt32());
             Assert.Equal(6_400, document.RootElement.GetProperty("WorkerPageFaults").GetInt32());
+            Assert.Equal(2_987, document.RootElement.GetProperty("ElapsedWallMilliseconds").GetInt32());
+            Assert.Equal(new string('a', 64), document.RootElement.GetProperty("WorkerInputSha256").GetString());
+            Assert.Equal(new string('b', 64), document.RootElement.GetProperty("WorkerExecutableSha256").GetString());
             Assert.False(document.RootElement.TryGetProperty("Source", out _));
             Assert.False(document.RootElement.TryGetProperty("Url", out _));
 
             string[] expectedProgressPhases =
             [
-                "svg-options-initialization",
                 "svg-options-constructed",
                 "svg-resolver-configured",
-                "svg-theme-transformation",
-                "usvg-tree-build",
+                "svg-theme-ready",
+                "usvg-input-ready",
+                "usvg-tree-built",
             ];
             for (int index = 0; index < expectedProgressPhases.Length; index++)
             {
@@ -272,11 +275,15 @@ public sealed class MarkdownRendererAuditListenerTests
             int openProgressPhase,
             int workerWorkingSetKiB,
             int workerPrivateCommitKiB,
-            int workerPageFaults) =>
+            int workerPageFaults,
+            int elapsedWallMilliseconds = 2_987,
+            string workerInputSha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            string workerExecutableSha256 = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb") =>
             WriteEvent(1, [stage, deadlineMilliseconds, workerProcessCpuMilliseconds,
                 transportPhase, requestWriteMilliseconds, workerExited,
                 openProgressPhase, workerWorkingSetKiB, workerPrivateCommitKiB,
-                workerPageFaults]);
+                workerPageFaults, elapsedWallMilliseconds, workerInputSha256,
+                workerExecutableSha256]);
     }
 
     [EventSource(Name = "MarkdownRenderer.Svg.Resvg.Preflight")]
