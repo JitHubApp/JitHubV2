@@ -111,7 +111,8 @@ public sealed class GitHubDeviceAuthorizationPrompt : IDeviceAuthorizationPrompt
 
         using CancellationTokenSource polling = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         Task<GitHubTokenSession> tokenTask = _client.PollAsync(clientId, challenge, polling.Token);
-        Task<ContentDialogResult> dialogTask = AppContentDialogPresenter.ShowAsync(dialog, root);
+        Task<ContentDialogResult> dialogTask = AppContentDialogPresenter.ShowAsync(
+            dialog, root, AppDialogLayoutKind.CompactForm);
         Task completed = await Task.WhenAny(tokenTask, dialogTask);
         if (completed == dialogTask)
         {
