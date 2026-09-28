@@ -105,6 +105,8 @@
              Link="Performance\CancellationMeasurementPlan.cs" />
     <Compile Include="..\MarkdownRenderer.PerformanceHarness\PerformanceMeasurementContract.cs"
              Link="Performance\PerformanceMeasurementContract.cs" />
+    <Compile Include="..\MarkdownRenderer.PerformanceHarness\MeasurementVisibilityEvidence.cs"
+             Link="Performance\MeasurementVisibilityEvidence.cs" />
     <Compile Include="..\MarkdownRenderer.PerformanceHarness\MonotonicUtcClock.cs"
              Link="Performance\MonotonicUtcClock.cs" />
     <Compile Include="..\MarkdownRenderer.PerformanceHarness\PinnedMeasurementThreadScope.cs"

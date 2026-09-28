@@ -76,6 +76,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     private long _snapshotGeneration;
     private long _snapshotPipelineStartTimestamp;
     private long _snapshotSourceUtf16Bytes;
+    private MarkdownPipelineTimingSnapshot _lastPipelineTiming;
     private CancellationTokenSource? _lazyLayoutCts;
     private Task? _lazyLayoutTask;
     private LayoutSnapshot? _pendingLazyLayoutSnapshot;
@@ -3908,6 +3909,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         // `committed` tracks whether the snapshot was written to _snapshot; the catch
         // block must only dispose it if not yet committed (post-commit _snapshot owns it).
         bool committed = false;
+        long publicationStartedTimestamp = Stopwatch.GetTimestamp();
         try
         {
         if (ct.IsCancellationRequested || generation != _pipelineGeneration)
@@ -4083,6 +4085,11 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             (FrameworkElementAutomationPeer.FromElement(this) as MarkdownAutomationPeer)?
                 .NotifyDocumentChanged();
         }
+        _lastPipelineTiming = new MarkdownPipelineTimingSnapshot(
+            generation,
+            sourceUtf16Bytes,
+            publicationStartedTimestamp,
+            Stopwatch.GetTimestamp());
         } // end of snapshot try-block
         catch
         {
@@ -4120,6 +4127,12 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             return null;
         }
     }
+
+    // Measurement harnesses read this on the UI thread after the matching
+    // first-viewport event. The timestamp pair brackets the committed UI
+    // publication work and adds no allocations or changes to rendering.
+    internal MarkdownPipelineTimingSnapshot GetLastPipelineTimingSnapshot() =>
+        _lastPipelineTiming;
 
     private void OnScrollViewChanged(object? sender, ScrollViewerViewChangedEventArgs e)
     {

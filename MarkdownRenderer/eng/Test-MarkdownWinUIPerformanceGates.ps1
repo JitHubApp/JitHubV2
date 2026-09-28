@@ -946,6 +946,7 @@ function Get-ValidatedFirstViewportEvidence {
         $warmupP95 = [Collections.Generic.List[double]]::new(3)
         $measuredP95 = [Collections.Generic.List[double]]::new(6)
         $flattenedSamples = [Collections.Generic.List[double]]::new(600)
+        $flattenedPublicationSamples = [Collections.Generic.List[double]]::new(600)
         $observations = [Collections.Generic.List[object]]::new(6)
         $phases = @(
             [pscustomobject]@{ Name = 'warmup'; Trials = @($result.warmupTrials); Count = 3; Offset = 0 },
@@ -1012,8 +1013,21 @@ function Get-ValidatedFirstViewportEvidence {
                 } else {
                     [double]::NaN
                 }
+                $publicationSamples = @($trial.publicationSamplesMilliseconds)
+                $publicationValid = $publicationSamples.Count -eq 100 -and
+                    @($publicationSamples | Where-Object {
+                        -not (Test-FiniteNumber $_) -or [double]$_ -lt 0
+                    }).Count -eq 0
+                $computedPublicationMaximum = if ($publicationValid) {
+                    [double](($publicationSamples | Measure-Object -Maximum).Maximum)
+                } else {
+                    [double]::NaN
+                }
                 $settlingValid = Test-FiniteNumber $trial.settlingElapsedMilliseconds
                 $settlingValid = $settlingValid -and [double]$trial.settlingElapsedMilliseconds -ge 0
+                $settlingPublicationValid =
+                    (Test-FiniteNumber $trial.settlingPublicationMilliseconds) -and
+                    [double]$trial.settlingPublicationMilliseconds -ge 0
                 $countersNonNegative =
                     [int]$trial.gen0Collections -ge 0 -and
                     [int]$trial.gen1Collections -ge 0 -and
@@ -1037,11 +1051,16 @@ function Get-ValidatedFirstViewportEvidence {
                     [int64]$trial.sourceKeyHashCountAfterTrial -eq 1
                 }
                 $computedComplete = $timestampsValid -and $samplesValid -and
-                    $settlingValid -and [double]::IsFinite($computedP95) -and
+                    $publicationValid -and $settlingValid -and $settlingPublicationValid -and
+                    [double]::IsFinite($computedP95) -and
+                    [double]::IsFinite($computedPublicationMaximum) -and
                     $countersNonNegative -and $cacheProof
-                if (-not $timestampsValid -or -not $samplesValid -or -not $settlingValid -or
+                if (-not $timestampsValid -or -not $samplesValid -or -not $publicationValid -or
+                    -not $settlingValid -or -not $settlingPublicationValid -or
                     -not $countersNonNegative -or
                     -not (Test-NearlyEqual ([double]$trial.p95Milliseconds) $computedP95) -or
+                    -not (Test-NearlyEqual `
+                        ([double]$trial.publicationMaximumMilliseconds) $computedPublicationMaximum) -or
                     [bool]$trial.cacheProofPassed -ne $cacheProof -or
                     -not [bool]$trial.cacheProofPassed -or
                     [bool]$trial.complete -ne $computedComplete -or
@@ -1063,10 +1082,16 @@ function Get-ValidatedFirstViewportEvidence {
                 if ($phase.Name -eq 'measured' -and $samplesValid) {
                     foreach ($sample in $trialSamples) { $flattenedSamples.Add([double]$sample) }
                 }
+                if ($phase.Name -eq 'measured' -and $publicationValid) {
+                    foreach ($sample in $publicationSamples) {
+                        $flattenedPublicationSamples.Add([double]$sample)
+                    }
+                }
             }
         }
 
         $pooledSamples = @($result.samplesMilliseconds)
+        $pooledPublicationSamples = @($result.publicationSamplesMilliseconds)
         $pooledValid = $pooledSamples.Count -eq 600 -and
             @($pooledSamples | Where-Object {
                 -not (Test-FiniteNumber $_) -or [double]$_ -lt 0
@@ -1082,6 +1107,26 @@ function Get-ValidatedFirstViewportEvidence {
         }
         $computedPooledP95 = if ($pooledValid) {
             Get-NearestRankPercentile -Values $pooledSamples -Percentile 0.95
+        } else {
+            [double]::NaN
+        }
+        $pooledPublicationValid = $pooledPublicationSamples.Count -eq 600 -and
+            @($pooledPublicationSamples | Where-Object {
+                -not (Test-FiniteNumber $_) -or [double]$_ -lt 0
+            }).Count -eq 0
+        $exactPublicationConcatenation =
+            $pooledPublicationSamples.Count -eq $flattenedPublicationSamples.Count
+        if ($exactPublicationConcatenation) {
+            for ($sampleIndex = 0; $sampleIndex -lt $pooledPublicationSamples.Count; $sampleIndex++) {
+                if ([double]$pooledPublicationSamples[$sampleIndex] -ne
+                    $flattenedPublicationSamples[$sampleIndex]) {
+                    $exactPublicationConcatenation = $false
+                    break
+                }
+            }
+        }
+        $computedPooledPublicationMaximum = if ($pooledPublicationValid) {
+            [double](($pooledPublicationSamples | Measure-Object -Maximum).Maximum)
         } else {
             [double]::NaN
         }
@@ -1119,6 +1164,12 @@ function Get-ValidatedFirstViewportEvidence {
                 [double]::IsFinite($boundaryShift) -and $boundaryShift -le $allowance -and
                 $measuredEnvelopePassed -and $boundaryEndpointEnvelopePassed
             if (-not $pooledValid -or -not $exactConcatenation -or
+                -not $pooledPublicationValid -or -not $exactPublicationConcatenation -or
+                -not (Test-NearlyEqual `
+                    ([double]$result.publicationMaximumMilliseconds) `
+                    $computedPooledPublicationMaximum) -or
+                [double]$result.publicationBudgetMilliseconds -ne 2.0 -or
+                $computedPooledPublicationMaximum -gt 2.0 -or
                 -not (Test-NearlyEqual ([double]$result.p95Milliseconds) $computedPooledP95) -or
                 -not (Test-NearlyEqual ([double]$result.regressionP95Milliseconds) $regressionP95) -or
                 -not (Test-NearlyEqual ([double]$result.regressionDispersionPercent) $dispersion) -or
@@ -1139,7 +1190,7 @@ function Get-ValidatedFirstViewportEvidence {
                 [double]$result.budgetMilliseconds -ne $expectedBudget -or
                 $computedPooledP95 -gt $expectedBudget -or
                 -not [bool]$result.passed) {
-                Add-Failure "$Label scenario $conditionIndex aggregate, stationarity, or budget evidence is invalid."
+                Add-Failure "$Label scenario $conditionIndex aggregate, stationarity, UI-publication, or budget evidence is invalid."
             }
 
             $metric = "firstViewport.$mode.$sourceBytes.p95Ms.hodgesLehmann"
@@ -1174,6 +1225,7 @@ function Get-ValidatedFirstViewportEvidence {
 $requiredPaths = @(
     'schemaVersion', 'providerName', 'startedUtc', 'completedUtc', 'isReleaseEvidence',
     'passed', 'buildIdentity', 'buildArtifacts', 'runtimeConfiguration', 'completionMachine',
+    'measurementVisibility',
     'sampleRequirements', 'firstUsableViewport', 'scroll',
     'retainedMemory', 'lifecyclePlateau', 'sourceLookup', 'cancellation', 'regression', 'failures',
     'machine.machineInstanceSha256', 'machine.cpu', 'machine.logicalProcessorCount',
@@ -1218,6 +1270,16 @@ $requiredPaths = @(
     'runtimeConfiguration.tieredPgoEnabled', 'runtimeConfiguration.concurrentGcEnabled',
     'runtimeConfiguration.readyToRunEnabled',
     'runtimeConfiguration.overrideEnvironmentVariables', 'runtimeConfiguration.passed',
+    'measurementVisibility.policy', 'measurementVisibility.startedUtc',
+    'measurementVisibility.completedUtc', 'measurementVisibility.stopwatchFrequency',
+    'measurementVisibility.durationTicks', 'measurementVisibility.pollIntervalMs',
+    'measurementVisibility.maximumSampleGapMs',
+    'measurementVisibility.foregroundHookInstalled',
+    'measurementVisibility.desktopSwitchHookInstalled',
+    'measurementVisibility.windowEventHookInstalled',
+    'measurementVisibility.foregroundLossEvents',
+    'measurementVisibility.desktopSwitchEvents', 'measurementVisibility.captureFailures',
+    'measurementVisibility.samples',
     'scroll.corpus', 'scroll.sourceUtf16Bytes', 'scroll.stopwatchFrequency',
     'scroll.requestedFrames', 'scroll.measuredFrameIntervals', 'scroll.framesWithRendererWork',
     'scroll.regressionEstimator', 'scroll.trials',
@@ -1296,7 +1358,7 @@ $jsonObjectContracts = @{
     Report = @(
         'schemaVersion', 'providerName', 'startedUtc', 'completedUtc', 'isReleaseEvidence',
         'passed', 'buildIdentity', 'buildArtifacts', 'runtimeConfiguration', 'machine',
-        'completionMachine', 'sampleRequirements',
+        'completionMachine', 'measurementVisibility', 'sampleRequirements',
         'firstUsableViewport', 'scroll', 'retainedMemory', 'lifecyclePlateau',
         'sourceLookup', 'cancellation', 'regression', 'failures')
     BuildArtifacts = @(
@@ -1306,6 +1368,15 @@ $jsonObjectContracts = @{
     RuntimeConfiguration = @(
         'policy', 'tieredCompilationEnabled', 'tieredPgoEnabled', 'concurrentGcEnabled',
         'readyToRunEnabled', 'overrideEnvironmentVariables', 'passed')
+    MeasurementVisibility = @(
+        'policy', 'startedUtc', 'completedUtc', 'stopwatchFrequency', 'durationTicks',
+        'pollIntervalMs', 'maximumSampleGapMs', 'foregroundHookInstalled',
+        'desktopSwitchHookInstalled', 'windowEventHookInstalled', 'foregroundLossEvents',
+        'desktopSwitchEvents', 'captureFailures', 'samples')
+    MeasurementVisibilitySample = @(
+        'elapsedTicks', 'source', 'captureSucceeded', 'targetWasForeground',
+        'targetWasVisible', 'targetWasMinimized', 'targetWasCloaked',
+        'targetWasWithinWorkArea', 'targetWasUnoccluded')
     Machine = @(
         'machineInstanceSha256', 'cpu', 'logicalProcessorCount', 'osDescription', 'osVersion',
         'osArchitecture', 'processArchitecture', 'frameworkDescription', 'dpiScale',
@@ -1330,15 +1401,19 @@ $jsonObjectContracts = @{
         'trialStartPolicy', 'schedulePolicy', 'regressionEstimator', 'stationarityPolicy',
         'measurementThreadAffinityMask', 'measurementProcessorGroup',
         'measurementProcessorNumber', 'measurementThreadPriority', 'warmupTrials', 'trials',
-        'samplesMilliseconds', 'p95Milliseconds', 'regressionP95Milliseconds',
+        'samplesMilliseconds', 'p95Milliseconds', 'publicationSamplesMilliseconds',
+        'publicationMaximumMilliseconds', 'publicationBudgetMilliseconds',
+        'regressionP95Milliseconds',
         'regressionDispersionPercent', 'theilSenSlopeMillisecondsPerGlobalOrdinal',
         'projectedDriftMilliseconds', 'warmupBoundaryShiftMilliseconds',
         'stationarityAllowanceMilliseconds', 'stationarityEvaluated', 'stationarityPassed',
         'budgetMilliseconds', 'passed')
     FirstViewportTrial = @(
         'ordinal', 'globalOrdinal', 'scheduleRow', 'schedulePosition', 'startedUtc',
-        'completedUtc', 'settlingElapsedMilliseconds', 'samplesMilliseconds',
-        'p95Milliseconds', 'gen0Collections', 'gen1Collections', 'gen2Collections',
+        'completedUtc', 'settlingElapsedMilliseconds', 'settlingPublicationMilliseconds',
+        'samplesMilliseconds', 'publicationSamplesMilliseconds',
+        'publicationMaximumMilliseconds', 'p95Milliseconds',
+        'gen0Collections', 'gen1Collections', 'gen2Collections',
         'processAllocatedBytes', 'completedParseCountBeforePrime',
         'completedParseCountAfterPrime', 'completedParseCountAfterTrial',
         'sourceKeyHashCountBeforePrime', 'sourceKeyHashCountAfterPrime',
@@ -1431,6 +1506,7 @@ $jsonObjectChildren = @{
     Report = @{
         buildArtifacts = 'BuildArtifacts'; runtimeConfiguration = 'RuntimeConfiguration';
         machine = 'Machine'; completionMachine = 'Machine';
+        measurementVisibility = 'MeasurementVisibility';
         sampleRequirements = 'SampleRequirements';
         scroll = 'Scroll'; lifecyclePlateau = 'Lifecycle'; sourceLookup = 'SourceLookup';
         cancellation = 'Cancellation'; regression = 'Regression'
@@ -1442,10 +1518,14 @@ $jsonObjectChildren = @{
     }
 }
 
+$jsonObjectChildren.MeasurementVisibility = @{}
+$jsonObjectChildren.MeasurementVisibilitySample = @{}
+
 $jsonObjectArrayChildren = @{
     Report = @{
         firstUsableViewport = 'FirstViewport'; retainedMemory = 'RetainedMemory'
     }
+    MeasurementVisibility = @{ samples = 'MeasurementVisibilitySample' }
     FirstViewport = @{ warmupTrials = 'FirstViewportTrial'; trials = 'FirstViewportTrial' }
     Scroll = @{ trials = 'ScrollTrial' }
     SourceLookup = @{ regressionTrials = 'SourceLookupTrial' }
@@ -1455,9 +1535,11 @@ $jsonObjectArrayChildren = @{
 
 $jsonArrayProperties = @{
     Report = @('firstUsableViewport', 'retainedMemory', 'failures')
+    MeasurementVisibility = @('samples')
     RuntimeConfiguration = @('overrideEnvironmentVariables')
-    FirstViewport = @('warmupTrials', 'trials', 'samplesMilliseconds')
-    FirstViewportTrial = @('samplesMilliseconds')
+    FirstViewport = @('warmupTrials', 'trials', 'samplesMilliseconds',
+        'publicationSamplesMilliseconds')
+    FirstViewportTrial = @('samplesMilliseconds', 'publicationSamplesMilliseconds')
     Scroll = @('trials')
     ScrollTrial = @(
         'uiThreadWorkElapsedTicks', 'frameIntervalElapsedTicks',
@@ -1472,8 +1554,14 @@ $jsonArrayProperties = @{
 $jsonPrimitiveArrayElementKinds = @{
     Report = @{ failures = 'String' }
     RuntimeConfiguration = @{ overrideEnvironmentVariables = 'String' }
-    FirstViewport = @{ samplesMilliseconds = 'Number' }
-    FirstViewportTrial = @{ samplesMilliseconds = 'Number' }
+    FirstViewport = @{
+        samplesMilliseconds = 'Number'
+        publicationSamplesMilliseconds = 'Number'
+    }
+    FirstViewportTrial = @{
+        samplesMilliseconds = 'Number'
+        publicationSamplesMilliseconds = 'Number'
+    }
     ScrollTrial = @{
         uiThreadWorkElapsedTicks = 'Int64'
         frameIntervalElapsedTicks = 'Int64'
@@ -1491,6 +1579,9 @@ $jsonPrimitiveArrayElementKinds = @{
 $jsonInt32Properties = @{
     Report = @('schemaVersion')
     Machine = @('logicalProcessorCount')
+    MeasurementVisibility = @(
+        'pollIntervalMs', 'maximumSampleGapMs', 'foregroundLossEvents',
+        'desktopSwitchEvents', 'captureFailures')
     SampleRequirements = @(
         'firstViewportIterationsRequired', 'firstViewportTrialsRequired',
         'firstViewportWarmupTrialsRequired', 'scrollFramesRequired', 'scrollTrialsRequired',
@@ -1531,6 +1622,8 @@ $jsonInt32Properties = @{
 }
 
 $jsonInt64Properties = @{
+    MeasurementVisibility = @('stopwatchFrequency', 'durationTicks')
+    MeasurementVisibilitySample = @('elapsedTicks')
     FirstViewport = @('parseCacheBudgetBytes')
     FirstViewportTrial = @(
         'processAllocatedBytes', 'sourceKeyHashCountBeforePrime',
@@ -1555,6 +1648,8 @@ $jsonInt64Properties = @{
 
 $jsonStringProperties = @{
     Report = @('providerName', 'startedUtc', 'completedUtc', 'buildIdentity')
+    MeasurementVisibility = @('policy', 'startedUtc', 'completedUtc')
+    MeasurementVisibilitySample = @('source')
     BuildArtifacts = @('hashAlgorithm')
     Artifact = @('fileName', 'path', 'sha256')
     RuntimeConfiguration = @('policy')
@@ -1586,6 +1681,11 @@ $jsonStringProperties = @{
 $jsonBooleanProperties = @{
     Report = @('isReleaseEvidence', 'passed')
     Machine = @('isAtLeast120Hz', 'gcServer')
+    MeasurementVisibility = @(
+        'foregroundHookInstalled', 'desktopSwitchHookInstalled', 'windowEventHookInstalled')
+    MeasurementVisibilitySample = @(
+        'captureSucceeded', 'targetWasForeground', 'targetWasVisible', 'targetWasMinimized',
+        'targetWasCloaked', 'targetWasWithinWorkArea', 'targetWasUnoccluded')
     RuntimeConfiguration = @(
         'tieredCompilationEnabled', 'tieredPgoEnabled', 'concurrentGcEnabled',
         'readyToRunEnabled', 'passed')
@@ -1701,7 +1801,7 @@ function Test-StrictJsonObjectContract {
                       $value.ValueKind -eq [Text.Json.JsonValueKind]::Null)) {
                 Add-Failure "$Label.$name must be a JSON string."
             }
-            elseif ($Contract -in @('Report', 'FirstViewportTrial') -and
+            elseif ($Contract -in @('Report', 'FirstViewportTrial', 'MeasurementVisibility') -and
                     $name -in @('startedUtc', 'completedUtc')) {
                 try {
                     $timestamp = [DateTimeOffset]::Parse(
@@ -2200,9 +2300,110 @@ function Get-ValidatedCancellationEvidence {
     }
 }
 
-if ([int]$report.schemaVersion -ne 10) { Add-Failure 'Schema version must be 10.' }
+function Test-MeasurementVisibilityEvidence {
+    param(
+        [Parameter(Mandatory)][object] $Evidence,
+        [Parameter(Mandatory)][string] $ReportStartedUtc,
+        [Parameter(Mandatory)][string] $ReportCompletedUtc,
+        [Parameter(Mandatory)][string] $Label
+    )
+
+    try {
+        $reportStart = [DateTimeOffset]::Parse(
+            $ReportStartedUtc,
+            [Globalization.CultureInfo]::InvariantCulture,
+            [Globalization.DateTimeStyles]::RoundtripKind)
+        $reportEnd = [DateTimeOffset]::Parse(
+            $ReportCompletedUtc,
+            [Globalization.CultureInfo]::InvariantCulture,
+            [Globalization.DateTimeStyles]::RoundtripKind)
+        $started = ([DateTimeOffset]$Evidence.startedUtc).ToUniversalTime()
+        $completed = ([DateTimeOffset]$Evidence.completedUtc).ToUniversalTime()
+        $frequency = [int64]$Evidence.stopwatchFrequency
+        $durationTicks = [int64]$Evidence.durationTicks
+        $pollIntervalMs = [int]$Evidence.pollIntervalMs
+        $maximumGapMs = [int]$Evidence.maximumSampleGapMs
+        $samples = @($Evidence.samples)
+    }
+    catch {
+        Add-Failure "$Label measurement visibility evidence has invalid timestamps, counters, or samples."
+        return $false
+    }
+
+    if ([string]$Evidence.policy -ne 'foreground-visible-unoccluded-v1' -or
+        $pollIntervalMs -ne 250 -or $maximumGapMs -ne 1000 -or
+        $started -le $reportStart -or $completed -lt $started -or $completed -gt $reportEnd -or
+        $started.Offset -ne [TimeSpan]::Zero -or $completed.Offset -ne [TimeSpan]::Zero -or
+        $frequency -le 0 -or $frequency -gt 1000000000 -or $durationTicks -le 0 -or
+        $durationTicks -gt ($frequency * 86400) -or
+        -not [bool]$Evidence.foregroundHookInstalled -or
+        -not [bool]$Evidence.desktopSwitchHookInstalled -or
+        -not [bool]$Evidence.windowEventHookInstalled -or
+        [int]$Evidence.foregroundLossEvents -ne 0 -or
+        [int]$Evidence.desktopSwitchEvents -ne 0 -or
+        [int]$Evidence.captureFailures -ne 0 -or
+        $samples.Count -lt 2 -or $samples.Count -gt 500000) {
+        Add-Failure "$Label visibility monitor was unavailable or observed focus, desktop, or coverage failures."
+        return $false
+    }
+
+    $maximumGapTicks = [Math]::Floor($frequency * $maximumGapMs / 1000.0)
+    $previousTicks = -1L
+    foreach ($sample in $samples) {
+        try { $elapsedTicks = [int64]$sample.elapsedTicks }
+        catch {
+            Add-Failure "$Label visibility sample has an invalid monotonic timestamp."
+            return $false
+        }
+
+        if ($elapsedTicks -lt 0 -or $elapsedTicks -le $previousTicks -or
+            $elapsedTicks -gt $durationTicks) {
+            Add-Failure "$Label visibility samples are missing, unordered, or outside their monotonic interval."
+            return $false
+        }
+        if ([string]$sample.source -notin @(
+                'start', 'complete', 'poll', 'desktop-switch', 'foreground-event', 'window-event')) {
+            Add-Failure "$Label visibility sample source is unknown or not privacy-safe."
+            return $false
+        }
+        if (-not [bool]$sample.captureSucceeded -or
+            -not [bool]$sample.targetWasForeground -or
+            -not [bool]$sample.targetWasVisible -or
+            [bool]$sample.targetWasMinimized -or
+            [bool]$sample.targetWasCloaked -or
+            -not [bool]$sample.targetWasWithinWorkArea -or
+            -not [bool]$sample.targetWasUnoccluded) {
+            Add-Failure "$Label benchmark window was not continuously foreground, visible, and unobstructed."
+            return $false
+        }
+        if ($previousTicks -ge 0 -and $elapsedTicks - $previousTicks -gt $maximumGapTicks) {
+            Add-Failure "$Label visibility samples leave an uncovered measurement gap."
+            return $false
+        }
+        $previousTicks = $elapsedTicks
+    }
+
+    $lastSampleAgeTicks = $durationTicks - $previousTicks
+    $wallDurationMs = ($completed - $started).TotalMilliseconds
+    $monotonicDurationMs = $durationTicks * 1000.0 / $frequency
+    if ($samples[0].elapsedTicks -gt ($frequency / 2) -or
+        $lastSampleAgeTicks -gt $maximumGapTicks -or
+        [Math]::Abs($wallDurationMs - $monotonicDurationMs) -gt 1000) {
+        Add-Failure "$Label visibility samples do not bracket the measured interval or its clocks disagree."
+        return $false
+    }
+
+    return $true
+}
+
+if ([int]$report.schemaVersion -ne 12) { Add-Failure 'Schema version must be 12.' }
 if ([string]$report.providerName -ne 'MarkdownRenderer-Performance') { Add-Failure 'Unexpected provider name.' }
 if (-not [bool]$report.isReleaseEvidence) { Add-Failure 'Quick/non-release reports cannot satisfy release gates.' }
+Test-MeasurementVisibilityEvidence `
+    -Evidence $report.measurementVisibility `
+    -ReportStartedUtc $candidateReportTimestamps.StartedUtc `
+    -ReportCompletedUtc $candidateReportTimestamps.CompletedUtc `
+    -Label 'Candidate report' | Out-Null
 if (-not (Test-ReportTimestamps `
         -StartedUtcText $candidateReportTimestamps.StartedUtc `
         -CompletedUtcText $candidateReportTimestamps.CompletedUtc)) {
@@ -2665,6 +2866,7 @@ elseif ($mode -eq 'candidate') {
         $referenceRequiredPaths = @(
             'schemaVersion', 'providerName', 'startedUtc', 'completedUtc', 'isReleaseEvidence',
             'passed', 'buildIdentity', 'runtimeConfiguration', 'completionMachine', 'failures',
+            'measurementVisibility',
             'buildArtifacts.hashAlgorithm', 'buildArtifacts.executable',
             'buildArtifacts.performanceHarnessDll', 'buildArtifacts.markdownRendererDll',
             'buildArtifacts.markdownRendererCoreDll', 'buildArtifacts.runtimeConfig',
@@ -2680,6 +2882,16 @@ elseif ($mode -eq 'candidate') {
             'runtimeConfiguration.tieredPgoEnabled', 'runtimeConfiguration.concurrentGcEnabled',
             'runtimeConfiguration.readyToRunEnabled',
             'runtimeConfiguration.overrideEnvironmentVariables', 'runtimeConfiguration.passed',
+            'measurementVisibility.policy', 'measurementVisibility.startedUtc',
+            'measurementVisibility.completedUtc', 'measurementVisibility.stopwatchFrequency',
+            'measurementVisibility.durationTicks', 'measurementVisibility.pollIntervalMs',
+            'measurementVisibility.maximumSampleGapMs',
+            'measurementVisibility.foregroundHookInstalled',
+            'measurementVisibility.desktopSwitchHookInstalled',
+            'measurementVisibility.windowEventHookInstalled',
+            'measurementVisibility.foregroundLossEvents',
+            'measurementVisibility.desktopSwitchEvents', 'measurementVisibility.captureFailures',
+            'measurementVisibility.samples',
             'firstUsableViewport', 'scroll', 'retainedMemory', 'lifecyclePlateau',
             'sourceLookup', 'cancellation', 'sampleRequirements',
             'machine.machineInstanceSha256', 'machine.cpu', 'machine.logicalProcessorCount',
@@ -2757,7 +2969,7 @@ elseif ($mode -eq 'candidate') {
     }
 
     if ($null -ne $referenceReport) {
-        if ([int]$referenceReport.schemaVersion -ne 10 -or
+        if ([int]$referenceReport.schemaVersion -ne 12 -or
             [string]$referenceReport.providerName -ne 'MarkdownRenderer-Performance' -or
             -not (Test-ReportTimestamps `
                 -StartedUtcText $referenceReportTimestamps.StartedUtc `
@@ -2780,8 +2992,13 @@ elseif ($mode -eq 'candidate') {
             -not [string]::IsNullOrEmpty([string]$referenceReport.regression.referencePath) -or
             -not [string]::IsNullOrEmpty([string]$referenceReport.regression.referenceReportSha256) -or
             -not [string]::IsNullOrEmpty([string]$referenceReport.regression.referenceBuildIdentity)) {
-            Add-Failure 'Candidate reference is not an accepted schema-10 release baseline.'
+            Add-Failure 'Candidate reference is not an accepted schema-12 release baseline.'
         }
+        Test-MeasurementVisibilityEvidence `
+            -Evidence $referenceReport.measurementVisibility `
+            -ReportStartedUtc $referenceReportTimestamps.StartedUtc `
+            -ReportCompletedUtc $referenceReportTimestamps.CompletedUtc `
+            -Label 'Candidate reference' | Out-Null
         if ([string]::IsNullOrWhiteSpace([string]$regression.referenceBuildIdentity) -or
             -not [string]::Equals(
                 [string]$regression.referenceBuildIdentity,
@@ -3289,7 +3506,7 @@ elseif ($mode -eq 'candidate') {
             -not $candidateTrialPopulations.ContainsKey($metric) -or
             -not $referenceTrialPopulations.ContainsKey($metric) -or
             -not $expectedKinds.ContainsKey($metric)) {
-            Add-Failure "Regression comparison '$metric' is not a frozen schema-10 metric."
+            Add-Failure "Regression comparison '$metric' is not a frozen schema-12 metric."
             continue
         }
 
@@ -3371,5 +3588,5 @@ if ($failures.Count -gt 0) {
 }
 
 Write-Host (
-    'WinUI performance gates passed: schema-10 ordered-stationarity evidence for six first-viewports, five 2,400-frame scroll trials, ' +
+    'WinUI performance gates passed: schema-12 ordered-stationarity evidence for six first-viewports, five 2,400-frame scroll trials, ' +
     'batched source lookup, five 40-sample cancellation trials, 4 KiB renderer allocation, retained memory/plateau, runtime configuration, hashes, and hybrid regression policy.')

@@ -10,7 +10,7 @@ namespace MarkdownRenderer.Tests;
 public sealed class PerformanceExternalGateFixtureTests
 {
     [Fact]
-    public void CommittedSchema10FixturePassesBaselineAndCandidateAtExactInclusiveEdges()
+    public void CommittedSchema12FixturePassesBaselineAndCandidateAtExactInclusiveEdges()
     {
         using var evidence = GateEvidence.Create();
         GateResult baseline = evidence.RunGate(evidence.BaselinePath, "Baseline");
@@ -191,6 +191,21 @@ public sealed class PerformanceExternalGateFixtureTests
     }
 
     [Theory]
+    [InlineData("measurement-visibility-missing")]
+    [InlineData("measurement-visibility-foreground-loss")]
+    [InlineData("measurement-visibility-occluded")]
+    [InlineData("measurement-visibility-private-source")]
+    public void ExternalGateRejectsInvalidMeasurementVisibilityEvidence(string mutation)
+    {
+        using var evidence = GateEvidence.Create();
+        evidence.ApplyMutation(mutation);
+
+        GateResult result = evidence.RunGate(evidence.CandidatePath, "Candidate");
+
+        Assert.False(result.Passed, $"Mutation '{mutation}' unexpectedly passed. {result.Output}");
+    }
+
+    [Theory]
     [InlineData("schema-version")]
     [InlineData("provider-name")]
     [InlineData("timestamp-order")]
@@ -266,6 +281,12 @@ public sealed class PerformanceExternalGateFixtureTests
     [InlineData("first-viewport-trial-ordinal")]
     [InlineData("first-viewport-trial-sample-count")]
     [InlineData("first-viewport-trial-p95")]
+    [InlineData("first-viewport-publication-sample-count")]
+    [InlineData("first-viewport-publication-trial-maximum")]
+    [InlineData("first-viewport-publication-concatenation")]
+    [InlineData("first-viewport-publication-aggregate-maximum")]
+    [InlineData("first-viewport-publication-budget")]
+    [InlineData("first-viewport-publication-overbudget")]
     [InlineData("first-viewport-trial-complete")]
     [InlineData("first-viewport-concatenation")]
     [InlineData("first-viewport-pooled-p95")]
@@ -633,7 +654,7 @@ public sealed class PerformanceExternalGateFixtureTests
             GateValues values = JsonSerializer.Deserialize<GateValues>(
                 File.ReadAllText(Path.Combine(fixtureDirectory, "performance-gate-schema10-values.json")),
                 new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
-                ?? throw new InvalidDataException("The schema-10 external-gate fixture was empty.");
+                ?? throw new InvalidDataException("The schema-12 external-gate fixture was empty.");
             string directory = Path.Combine(
                 Path.GetTempPath(),
                 $"markdown-renderer-gate-fixture-{Guid.NewGuid():N}");
@@ -1220,6 +1241,18 @@ public sealed class PerformanceExternalGateFixtureTests
                 case "schema-version":
                     report["schemaVersion"] = 9;
                     break;
+                case "measurement-visibility-missing":
+                    report.Remove("measurementVisibility");
+                    break;
+                case "measurement-visibility-foreground-loss":
+                    report["measurementVisibility"]!["foregroundLossEvents"] = 1;
+                    break;
+                case "measurement-visibility-occluded":
+                    report["measurementVisibility"]!["samples"]![1]!["targetWasUnoccluded"] = false;
+                    break;
+                case "measurement-visibility-private-source":
+                    report["measurementVisibility"]!["samples"]![1]!["source"] = "Private document title";
+                    break;
                 case "provider-name":
                     report["providerName"] = "wrong-provider";
                     break;
@@ -1350,6 +1383,30 @@ public sealed class PerformanceExternalGateFixtureTests
                     JsonNode viewportTrial = report["firstUsableViewport"]![0]!["trials"]![0]!;
                     viewportTrial["p95Milliseconds"] =
                         viewportTrial["p95Milliseconds"]!.GetValue<double>() + 1;
+                    break;
+                case "first-viewport-publication-sample-count":
+                    report["firstUsableViewport"]![0]!["trials"]![0]!["publicationSamplesMilliseconds"]!
+                        .AsArray().RemoveAt(99);
+                    break;
+                case "first-viewport-publication-trial-maximum":
+                    report["firstUsableViewport"]![0]!["trials"]![0]!["publicationMaximumMilliseconds"] = 1.25;
+                    break;
+                case "first-viewport-publication-concatenation":
+                    report["firstUsableViewport"]![0]!["publicationSamplesMilliseconds"]![0] = 1.25;
+                    break;
+                case "first-viewport-publication-aggregate-maximum":
+                    report["firstUsableViewport"]![0]!["publicationMaximumMilliseconds"] = 1.25;
+                    break;
+                case "first-viewport-publication-budget":
+                    report["firstUsableViewport"]![0]!["publicationBudgetMilliseconds"] = 3;
+                    break;
+                case "first-viewport-publication-overbudget":
+                    JsonNode publicationViewport = report["firstUsableViewport"]![0]!;
+                    JsonNode publicationTrial = publicationViewport["trials"]![0]!;
+                    publicationTrial["publicationSamplesMilliseconds"]![0] = 2.5;
+                    publicationTrial["publicationMaximumMilliseconds"] = 2.5;
+                    publicationViewport["publicationSamplesMilliseconds"]![0] = 2.5;
+                    publicationViewport["publicationMaximumMilliseconds"] = 2.5;
                     break;
                 case "first-viewport-trial-complete":
                     report["firstUsableViewport"]![0]!["trials"]![0]!["complete"] = false;
@@ -2586,7 +2643,7 @@ public sealed class PerformanceExternalGateFixtureTests
                         }
                       }
                       """
-                    : $"schema-10-fixture:{fileName}";
+                    : $"schema-12-fixture:{fileName}";
                 File.WriteAllText(path, contents);
                 return new BuildArtifactHash
                 {
@@ -2636,6 +2693,10 @@ public sealed class PerformanceExternalGateFixtureTests
                 },
                 Machine = CreateMachineMetadata(scroll, completion: false),
                 CompletionMachine = CreateMachineMetadata(scroll, completion: true),
+                MeasurementVisibility = PerformanceVisibilityFixture.CreatePassing(
+                    startedUtc,
+                    intervalOffset: TimeSpan.FromMilliseconds(50),
+                    duration: TimeSpan.FromMilliseconds(900)),
                 Scroll = scroll,
                 LifecyclePlateau = new LifecyclePlateauResult
                 {
@@ -2699,7 +2760,10 @@ public sealed class PerformanceExternalGateFixtureTests
                             StartedUtc = trialStartedUtc,
                             CompletedUtc = trialStartedUtc.AddMilliseconds(1),
                             SettlingElapsedMilliseconds = measurement,
+                            SettlingPublicationMilliseconds = 1,
                             SamplesMilliseconds = Enumerable.Repeat(measurement, 100).ToList(),
+                            PublicationSamplesMilliseconds = Enumerable.Repeat(1d, 100).ToList(),
+                            PublicationMaximumMilliseconds = 1,
                             P95Milliseconds = measurement,
                             Gen0Collections = 0,
                             Gen1Collections = 0,
@@ -2784,6 +2848,10 @@ public sealed class PerformanceExternalGateFixtureTests
                         Trials = trials,
                         SamplesMilliseconds = pooledSamples,
                         P95Milliseconds = PerformanceStatistics.Percentile(pooledSamples, 0.95),
+                        PublicationSamplesMilliseconds = Enumerable.Repeat(1d, pooledSamples.Count).ToList(),
+                        PublicationMaximumMilliseconds = 1,
+                        PublicationBudgetMilliseconds =
+                            PerformanceMeasurementContract.UiPublicationMaximumBudgetMilliseconds,
                         RegressionP95Milliseconds = regressionP95,
                         RegressionDispersionPercent = dispersion,
                         TheilSenSlopeMillisecondsPerGlobalOrdinal = slope,

@@ -1,0 +1,42 @@
+Schema-12 reference harness source provenance
+
+Reference renderer source commit: 1a403a296358a18ed754e74bf8d3c23df58341d2
+Reference branch: codex/perf-reference-schema12
+Measurement-only schema-12 harness and gate source commit: cf0e1882d38b1117703c73166f99e59815e014ff
+
+The following files are copied byte-for-byte from the measurement-only source commit above:
+EB0606EB75630B6C72121AB48AFA7622FD0D1095D4D4229E520A33925001FD09  MarkdownRenderer/MarkdownRenderer.PerformanceHarness/MeasurementVisibilityEvidence.cs
+621166395E7ACA1AC929534E6D12FB1EAAD840AAEED9E7AC24DE74B3E5A903FC  MarkdownRenderer/MarkdownRenderer.PerformanceHarness/PerformanceMeasurementContract.cs
+0C538543D139CC42939B30EDB95AA76167754B05C97F98F6149486BF8F3A64D9  MarkdownRenderer/MarkdownRenderer.PerformanceHarness/PerformanceReleaseEvidenceValidator.cs
+E0F178C07831E3BE785C16931E9B350385E4005C09C08A92BC180BA4386D251B  MarkdownRenderer/MarkdownRenderer.PerformanceHarness/PerformanceReport.cs
+23D41E7DD0EF6238408765A9F07868ED248447DD21C4DD480C7FFBDC7C2952CE  MarkdownRenderer/MarkdownRenderer.PerformanceHarness/PerformanceWindow.cs
+485A50B3952BAB395D151E94865C1C75DB0F1F2EE45AC3C2132B3278426D28DA  MarkdownRenderer/eng/Invoke-MarkdownWinUICounterbalancedPerformance.ps1
+73E506D7423CF2872F99503EE3E34244594E069099D40A83C162D7EF807E50CF  MarkdownRenderer/eng/Test-MarkdownWinUIPerformanceGates.ps1
+
+Schema-12 contract test sources copied byte-for-byte from the same commit:
+E43DFCCF8A8E03A0CA98083025A44B64AF19E23A9F15373017B3793E8231B2D0  MarkdownRenderer/MarkdownRenderer.Tests/MeasurementVisibilityEvidenceTests.cs
+C8E5F611EC47B32C7DA79C6A133DC7809BC858C94FAD56358B5DC7B5CF4A71D7  MarkdownRenderer/MarkdownRenderer.Tests/PerformanceCounterbalancedOrchestrationContractTests.cs
+509055589AD74B69DAA78999A4864199004C30F9F9E1E4090FD79B4E84B57A2C  MarkdownRenderer/MarkdownRenderer.Tests/PerformanceExternalGateFixtureTests.cs
+B51800669C2E93DABD734F64B073473C96DCC4DF1B661A03E71EC550D6DE2F9A  MarkdownRenderer/MarkdownRenderer.Tests/PerformanceMeasurementContractTests.cs
+FB5024A756AF80B65ED829EA48EC0670C9E1049F28D9581F77C65AB2B237567A  MarkdownRenderer/MarkdownRenderer.Tests/MarkdownRenderer.Tests.csproj (minimal baseline project with the single test source link added)
+The reference test project includes only the MeasurementVisibilityEvidence.cs
+source link needed by these tests; unrelated later product/test-project links
+were intentionally not transplanted.
+
+Release x64 output built from this branch's working-tree source diff:
+DACB1EE58414546A7BF8D9E576708AD51C0DD51129127B7EC55841699606D34F  MarkdownRenderer.PerformanceHarness.exe
+DC23E5AA4D282DCB3F0CFE0753549396895FF52A0619DD468B3E65176AE57F47  MarkdownRenderer.PerformanceHarness.dll
+DDD147C2C0EE5ADC7A870A336B0435A909A7D19F254C06B3CA5A8A0EEECD8E60  MarkdownRenderer.dll
+01785E490D412E17C10443399AD57C52F62BDA86D849DC6558A63A59E914E3AC  MarkdownRenderer.Core.dll
+57DA1D6A50D9D83CD4B0D2144DC015B89C97A97DDF65A2F900D780B1D28A9690  MarkdownRenderer.PerformanceHarness.runtimeconfig.json
+98297F8EA16941270AF063791436A59C71233E8E51551F8FADD8EE7C4D289A1A  MarkdownRenderer.PerformanceHarness.deps.json
+
+The only renderer-source change is a pair of timestamp observations around
+the baseline's existing committed UI publication. It does not change layout,
+rendering, scheduling, allocation policy, or public API. The harness consumes
+only generation, source byte count, and publication start/end timestamps.
+
+This build can compare the renderer at the pinned reference commit to a
+schema-12 candidate on the same machine. It does not compare against the
+repository's older pre-1.0 PR base, and the historical schema-10 R1 at this
+reference commit failed the 120 Hz/stationarity absolute gates.
