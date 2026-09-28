@@ -169,7 +169,7 @@
                                     Grid.Column="1"
                                     VerticalAlignment="Center"
                                     MaxLines="2"
-                                    Style="{StaticResource ListItemTitleTextBlockStyle}"
+                                    Style="{StaticResource AppNavigationLabelTextBlockStyle}"
                                     Text="{x:Bind Title, Mode=OneWay}"
                                     TextWrapping="WrapWholeWords" />
                             </Grid>
@@ -245,7 +245,7 @@
                                         Grid.Column="1"
                                         MaxLines="3"
                                         VerticalAlignment="Center"
-                                        Style="{StaticResource ListItemTitleTextBlockStyle}"
+                                        Style="{StaticResource AppNavigationLabelTextBlockStyle}"
                                         Text="{x:Bind Title, Mode=OneWay}"
                                         TextWrapping="WrapWholeWords" />
                                 </Grid>
