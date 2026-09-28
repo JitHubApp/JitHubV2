@@ -2,3 +2,7 @@
 # source line endings invariant across Windows developer and hosted-runner
 # checkouts so compiler-emitted panic/source metadata stays reproducible.
 MarkdownRenderer/MarkdownRenderer.Svg.Resvg/native/**/*.rs text eol=lf
+
+# The source-bound Edge audit checks the vendored parser's exact SHA-256.
+# Windows checkout must not rewrite its bytes to CRLF.
+eng/readme-audit/vendor/* text eol=lf
