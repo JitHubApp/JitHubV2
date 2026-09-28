@@ -64,7 +64,15 @@ public sealed partial class CachedImage : UserControl
     {
         if (dependencyObject is CachedImage image)
         {
-            UiTaskGuard.Observe(image.LoadAsync(args.NewValue as string), "ui-cached-image");
+            image.ImageElement.Source = null;
+            if (Volatile.Read(ref image._isLoaded) != 0)
+            {
+                UiTaskGuard.Observe(image.LoadAsync(args.NewValue as string), "ui-cached-image");
+            }
+            else
+            {
+                Interlocked.Increment(ref image._loadVersion);
+            }
         }
     }
 

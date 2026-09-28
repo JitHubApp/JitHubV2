@@ -517,6 +517,8 @@ public sealed partial class ShellPageViewModel : ViewModelBase
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
+        await _authService.InitializeAsync();
+        cancellationToken.ThrowIfCancellationRequested();
         RefreshUserDisplay();
         await RefreshRepositoryRailAsync(cancellationToken);
     }
@@ -2203,7 +2205,11 @@ public sealed partial class ShellPageViewModel : ViewModelBase
         UserSubtitle = !string.IsNullOrWhiteSpace(login) && !string.Equals(login, UserDisplayName, StringComparison.OrdinalIgnoreCase)
             ? $"@{login}"
             : "GitHub account";
-        UserAvatarUrl = user?.AvatarUrl?.Trim() ?? string.Empty;
+        UserAvatarUrl = !string.IsNullOrWhiteSpace(user?.AvatarUrl)
+            ? user.AvatarUrl.Trim()
+            : user is { Id: > 0 }
+                ? $"https://avatars.githubusercontent.com/u/{user.Id}"
+                : string.Empty;
     }
 
     private void RepositoryIndexService_Changed(object? sender, AccountRepositoryIndexChangedEventArgs e)

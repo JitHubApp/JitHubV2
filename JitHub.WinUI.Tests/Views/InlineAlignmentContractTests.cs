@@ -65,6 +65,37 @@ public sealed class InlineAlignmentContractTests
     }
 
     [Fact]
+    public void SettingsSectionLabels_UseTightCenteredNavigationMetrics()
+    {
+        XDocument page = XDocument.Load(Path.Combine(ViewsRoot(), "Pages", "SettingsPage.xaml"));
+        XElement[] labels = page.Descendants()
+            .Where(element => element.Name.LocalName == "TextBlock" &&
+                element.Attribute("Text")?.Value == "{x:Bind Title, Mode=OneWay}")
+            .ToArray();
+
+        Assert.Equal(2, labels.Length);
+        Assert.All(labels, label =>
+        {
+            Assert.Equal("Center", label.Attribute("VerticalAlignment")?.Value);
+            Assert.Equal("{StaticResource AppNavigationLabelTextBlockStyle}", label.Attribute("Style")?.Value);
+            XElement icon = Assert.Single(label.Parent!.Elements(), element => element.Name.LocalName == "FontIcon");
+            Assert.Equal("Center", icon.Attribute("VerticalAlignment")?.Value);
+        });
+
+        XDocument styles = XDocument.Load(Path.Combine(FindRepositoryRoot(), "JitHub.WinUI", "Styles", "TextBlock.xaml"));
+        XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+        XElement navigationStyle = Assert.Single(styles.Descendants(), element =>
+            element.Name.LocalName == "Style" && element.Attribute(x + "Key")?.Value == "AppNavigationLabelTextBlockStyle");
+        Assert.Contains(navigationStyle.Elements(), element =>
+            element.Name.LocalName == "Setter" &&
+            element.Attribute("Property")?.Value == "TextLineBounds" &&
+            element.Attribute("Value")?.Value == "Tight");
+        Assert.Contains(navigationStyle.Descendants(), element =>
+            element.Name.LocalName == "TranslateTransform" &&
+            element.Attribute("Y")?.Value == "{ThemeResource AppSettingsNavigationLabelFontMetricOffset}");
+    }
+
+    [Fact]
     public void MixedTypographyInlineText_UsesOneTextBlockUnlessItIsIconLikeContent()
     {
         List<string> offenders = [];
