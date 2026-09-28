@@ -117,8 +117,11 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("$dependencyAssemblySha256 = [ordered]@{}", script, StringComparison.Ordinal);
         Assert.Contains("Get-ChildItem -LiteralPath $appDirectory -File -Filter '*.dll' | Sort-Object Name", script, StringComparison.Ordinal);
         Assert.Contains("dependencyAssemblySha256 = $dependencyAssemblySha256", script, StringComparison.Ordinal);
-        Assert.Contains("$requiredAssemblies = @('JitHub.WinUI.dll', 'MarkdownRenderer.dll')", script, StringComparison.Ordinal);
+        Assert.Contains("foreach ($assemblyName in @('JitHub.WinUI.dll', 'MarkdownRenderer.dll'))", script, StringComparison.Ordinal);
         Assert.Contains("if (-not $dependencyAssemblySha256.Contains($assemblyName))", script, StringComparison.Ordinal);
+        Assert.Contains("if ($NativeAotArtifact)", script, StringComparison.Ordinal);
+        Assert.Contains("Verify-NativeAotArtifact.ps1", script, StringComparison.Ordinal);
+        Assert.Contains("runtimeFlavor = if ($NativeAotArtifact) { 'native-aot' } else { 'managed' }", script, StringComparison.Ordinal);
         Assert.DoesNotContain("managedAssemblySha256", script, StringComparison.Ordinal);
         Assert.Contains("app-binary-ranks-{0}-{1}.json", script, StringComparison.Ordinal);
         Assert.Contains("--app=$appPath", script, StringComparison.Ordinal);
@@ -233,6 +236,8 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("B8CDA840267AB72797F654F801F9A064AB6D9E508CEDEE3DF79F772F104DB6D6", runtimeInstaller, StringComparison.Ordinal);
         Assert.Contains("Get-AppxPackage -Name 'Microsoft.WindowsAppRuntime.1.8'", runtimeInstaller, StringComparison.Ordinal);
         Assert.Contains("if: github.event_name != 'workflow_dispatch' || inputs.diagnostic_rank == 0", workflow, StringComparison.Ordinal);
+        Assert.Contains("if: github.event_name == 'workflow_dispatch' && inputs.diagnostic_rank != 0", workflow, StringComparison.Ordinal);
+        Assert.Contains("$rank -lt 1 -or $rank -gt 500", workflow, StringComparison.Ordinal);
         Assert.Contains("diagnostic_prior_cases:", workflow, StringComparison.Ordinal);
         Assert.Contains("$priorCases -lt 0 -or $priorCases -gt 4 -or $priorCases -ge $rank", workflow, StringComparison.Ordinal);
         Assert.Contains("StartRank = [int]$env:AUDIT_VALIDATED_RANK - [int]$env:AUDIT_VALIDATED_PRIOR_CASES", workflow, StringComparison.Ordinal);
@@ -1479,7 +1484,7 @@ public sealed class AutomationHarnessSourceContractTests
             "MarkdownRenderer",
             "MarkdownRenderer",
             "Controls",
-            "MarkdownRendererControl.cs"));
+            "MarkdownRendererControl.cs")).Replace("\r\n", "\n", StringComparison.Ordinal);
         string imageBox = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
             "MarkdownRenderer",

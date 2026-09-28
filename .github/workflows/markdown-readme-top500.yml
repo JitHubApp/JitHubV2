@@ -385,7 +385,9 @@ jobs:
 
   diagnose:
     name: Replay rank ${{ inputs.diagnostic_rank }} with image diagnostics
-    if: github.event_name == 'workflow_dispatch' && inputs.diagnostic_rank > 0
+    # Every nonzero rank enters the validator below. A negative input must
+    # fail the workflow rather than skipping both the focused and full audit.
+    if: github.event_name == 'workflow_dispatch' && inputs.diagnostic_rank != 0
     runs-on: windows-latest
     timeout-minutes: 120
     permissions:

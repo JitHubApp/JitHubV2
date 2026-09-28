@@ -2072,6 +2072,33 @@ complete before claiming this plan or the 1.0 performance goal is met.
   their focused current-source Release run passes 3/3. Current-head CI, the
   full regression suite, the first-viewport performance gap, and the release
   matrices remain open.
+- September 28 local schema-12 release-run attempt on the pinned reference
+  and candidate started an R1,C1,C2,R2 sequence in a WinApp CLI sandbox, but
+  R1 failed closed after producing its complete report, so C1/C2/R2 were not
+  run and there is **no qualified counterbalanced verdict**. The reference
+  report recorded a configured/measured 32.00/32.01 Hz display and 7,841
+  visibility samples with the target window never foreground. Its warm-scroll
+  renderer UI work p95 was 0.2544 ms, but frame p95 was 32.3948 ms against
+  the unchanged 8.333 ms 120 Hz budget. The first-viewport evidence contract,
+  scroll gate, cancellation gate, and self-verification also failed; the
+  cancellation report's aggregate p95 was 0.6163 ms with zero stale commits,
+  but one trial-local first-call warmup took 16.5907 ms, exceeding its 16 ms
+  absolute contract. That is a real failed run, though the background/32 Hz
+  environment prevents attributing it to the renderer alone. The run is
+  retained at
+  `E:\worktrees\artifacts\markdownrenderer-abba-7c1c06f\evidence-r1-failed`.
+  The next local step is to establish a continuously foreground, measured
+  120 Hz target before repeating the full sequence; no cadence or threshold
+  is waived. The same-byte top-500 run `36474960050` is still in progress
+  and already has failing shards, so it is not a current-head release pass.
+- The current-source full x64 Release WinUI test suite initially failed one
+  cancellation assertion that used a disposable token callback as its proof.
+  During cancellation, `Task.Delay` can finish and dispose that registration
+  before the callback is visited; the durable check is the transport token's
+  canceled state plus queue drain. With that test correction and the two
+  source-contract assertion updates, two subsequent complete local WinUI
+  runs pass 3,209/3,209. This fixes false test evidence; it does not close
+  the separately failed benchmark cancellation warmup above.
 
 ## Summary
 
