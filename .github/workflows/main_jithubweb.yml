@@ -27,7 +27,6 @@ permissions:
   contents: read
 
 env:
-  AZURE_WEBAPP_NAME: ${{ vars.JITHUB_WEBAPP_NAME || 'jithub-web-prod' }}
   WEBSITE_PROJECT: JitHub.Web/JitHub.Web.csproj
   WEBSITE_TEST_PROJECT: JitHub.Web.Tests/JitHub.Web.Tests.csproj
 
