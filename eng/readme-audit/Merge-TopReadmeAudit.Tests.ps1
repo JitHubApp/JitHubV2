@@ -15,7 +15,7 @@ function New-Case([int]$Rank, [bool]$IncludeSameByte = $true, [bool]$AbsentReadm
     if ($IncludeSameByte -and -not $AbsentReadme) {
         $sameByte = [ordered]@{
             manifest = ('same-byte-corpus-' + ('c' * 32) + '/manifest.json')
-            manifestSha256 = 'a' * 64
+            manifestSha256 = ''
             readmeBytes = 10
             assetCount = 1
             assetBytes = 16
@@ -53,6 +53,24 @@ function Write-Cases([string]$Root, [int]$Count, [scriptblock]$Factory) {
         $case = & $Factory $rank
         $caseDirectory = Join-Path $Root ("cases\{0:D3}-example-repository-{0}" -f $rank)
         New-Item -ItemType Directory -Force -Path $caseDirectory | Out-Null
+        if ($null -ne $case.browser.sameByteCorpus) {
+            $manifestPath = Join-Path (Join-Path $caseDirectory 'browser') $case.browser.sameByteCorpus.manifest
+            $manifestDirectory = Split-Path -Parent $manifestPath
+            New-Item -ItemType Directory -Force -Path $manifestDirectory | Out-Null
+            $manifest = [ordered]@{
+                schemaVersion = 1
+                complete = $true
+                repository = [ordered]@{
+                    fullName = $case.fullName
+                    readmeGitBlobSha1 = $case.readmeSha
+                }
+                readme = [ordered]@{ file = 'readme.md'; byteSize = 10 }
+                assets = @()
+            }
+            $manifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $manifestPath -Encoding utf8
+            $case.browser.sameByteCorpus.manifestSha256 =
+                (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash
+        }
         $case | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath (Join-Path $caseDirectory 'result.json') -Encoding utf8
     }
 }
@@ -79,6 +97,16 @@ try {
     if (-not $positiveSummary.passed -or $positiveSummary.sameByteCases -ne 499 -or $positiveSummary.sameByteExpectedCases -ne 499) {
         throw 'The complete same-byte release merge did not pass with one legitimate absent-README case.'
     }
+
+    $tamperedManifest = Join-Path $positive 'cases\002-example-repository-2\browser\same-byte-corpus-cccccccccccccccccccccccccccccccc\manifest.json'
+    Add-Content -LiteralPath $tamperedManifest -Value 'tampered'
+    $tamperedRejected = $false
+    try { Invoke-Merge $positive (Join-Path $resolvedTempRoot 'tampered-output') 500 -RequireSameByte }
+    catch {
+        $tamperedSummary = Get-Content -LiteralPath (Join-Path $resolvedTempRoot 'tampered-output\summary.json') -Raw | ConvertFrom-Json
+        $tamperedRejected = (@($tamperedSummary.failures) -join "`n") -match 'hash-matched same-byte manifest'
+    }
+    if (-not $tamperedRejected) { throw 'The merge did not reject changed same-byte manifest artifact bytes.' }
 
     $mixed = Join-Path $resolvedTempRoot 'mixed'
     Write-Cases $mixed 500 { param($rank) New-Case $rank -IncludeSameByte:($rank -ne 2) }
@@ -132,7 +160,7 @@ try {
         }
     }
 
-    Write-Host 'Top-500 merge tests passed: absent-README handling, a positive 500-case same-byte verdict, mixed same-byte rejection, unavailable-image rejection, outlier sentinels, and artifact/workflow opt-in.'
+    Write-Host 'Top-500 merge tests passed: absent-README handling, a positive 500-case same-byte verdict, changed-manifest rejection, mixed same-byte rejection, unavailable-image rejection, outlier sentinels, and artifact/workflow opt-in.'
 }
 finally {
     if (Test-Path -LiteralPath $resolvedTempRoot) {

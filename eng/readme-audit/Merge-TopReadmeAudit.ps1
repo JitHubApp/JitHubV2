@@ -25,6 +25,12 @@ $caseFiles = @(Get-ChildItem -LiteralPath $EvidenceRoot -Recurse -File -Filter r
 $cases = @($caseFiles | ForEach-Object {
     Get-Content -LiteralPath $_.FullName -Raw | ConvertFrom-Json
 })
+$caseDirectoryByRank = [Collections.Generic.Dictionary[int, string]]::new()
+for ($index = 0; $index -lt $cases.Count; $index++) {
+    [void]$caseDirectoryByRank.TryAdd(
+        [int]$cases[$index].rank,
+        $caseFiles[$index].DirectoryName)
+}
 
 $failures = [Collections.Generic.List[string]]::new()
 if ($cases.Count -ne $ExpectedCount) {
@@ -92,6 +98,39 @@ if ($RequireSameByteCorpus) {
             $null -eq $sameByte.assetCount -or [int]$sameByte.assetCount -lt 0 -or [int]$sameByte.assetCount -gt 15000 -or
             $null -eq $sameByte.assetBytes -or [long]$sameByte.assetBytes -lt 0 -or [long]$sameByte.assetBytes -gt 256MB) {
             $failures.Add("Rank $($case.rank) is missing valid same-byte capture evidence for its pinned README.")
+            continue
+        }
+
+        # The artifact deliberately omits source bytes, but retains its
+        # privacy-safe manifest. Bind the case verdict to those uploaded bytes
+        # rather than accepting a plausible-looking digest in result.json.
+        $caseDirectory = ''
+        if (-not $caseDirectoryByRank.TryGetValue([int]$case.rank, [ref]$caseDirectory)) {
+            $failures.Add("Rank $($case.rank) has no case directory for its same-byte manifest.")
+            continue
+        }
+        $manifestFile = Join-Path (Join-Path $caseDirectory 'browser') $manifestPath
+        $manifestItem = Get-Item -LiteralPath $manifestFile -ErrorAction SilentlyContinue
+        if ($null -eq $manifestItem -or $manifestItem.PSIsContainer -or
+            $manifestItem.Length -le 0 -or $manifestItem.Length -gt 4MB -or
+            ($manifestItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+            (Get-FileHash -LiteralPath $manifestFile -Algorithm SHA256).Hash -ne
+                [string]$sameByte.manifestSha256) {
+            $failures.Add("Rank $($case.rank) is missing its hash-matched same-byte manifest artifact.")
+            continue
+        }
+        try {
+            $manifest = Get-Content -LiteralPath $manifestFile -Raw | ConvertFrom-Json
+            if ($manifest.schemaVersion -ne 1 -or $manifest.complete -ne $true -or
+                [string]$manifest.repository.fullName -ne [string]$case.fullName -or
+                [string]$manifest.repository.readmeGitBlobSha1 -ne [string]$case.readmeSha -or
+                [string]$manifest.readme.file -ne 'readme.md' -or
+                [long]$manifest.readme.byteSize -ne [long]$sameByte.readmeBytes) {
+                throw 'manifest identity mismatch'
+            }
+        }
+        catch {
+            $failures.Add("Rank $($case.rank) has a malformed or mismatched same-byte manifest artifact.")
             continue
         }
         $sameByteCases++

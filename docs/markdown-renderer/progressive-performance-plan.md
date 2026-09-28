@@ -17,12 +17,33 @@ complete before claiming this plan or the 1.0 performance goal is met.
   identity and asset hashes, and returns a handled miss without network
   fallback. Raw Edge comparison data exists only in a temporary file outside
   the artifact tree and is deleted after comparison; persisted source/link
-  fields are hashed. Nine focused Node capture/replay tests and syntax checks
-  pass locally. This is replay infrastructure, not same-byte top-500
+  fields are hashed. The focused Node capture/replay tests, all seven C#
+  resolver tests, and the automation and WinUI x64 Debug builds pass locally.
+  The app build reports existing WUI analyzer warnings unrelated to this
+  change. This is replay infrastructure, not same-byte top-500
   performance/fidelity evidence; the qualified release benchmark and full
-  top-500 audit remain open. Nine focused Node tests, all seven C# resolver
-  tests, and the automation and WinUI x64 Debug builds pass locally. The app
-  build reports existing WUI analyzer warnings unrelated to this change.
+  top-500 audit remain open.
+- September 27 local checkpoint: bounded the Edge image-DOM and response-alias
+  indexes, and made canonical GitHub Camo URLs replay against the identical
+  captured original image bytes. All 26 focused audit Node tests pass. A
+  pinned rank-1 Debug x64 end-to-end replay used the same README and four
+  captured image assets in Edge and JitHub, with no unavailable image; it is a
+  one-case diagnostic, not Release top-500 evidence. The opt-in 500-case
+  same-byte CI path and its positive complete-500 merge fixture now exist
+  locally, but have not run as a release audit. An earlier local Release
+  external-gate fixture completed 485/485 tests before the latest scene
+  changes; no qualified foreground counterbalanced benchmark has passed.
+- September 27 local checkpoint: the isolated SVG worker now records precise
+  late-stage progress, elapsed time, and worker-input/executable hashes for
+  the intermittent exact-byte rank-153 timeout. This is diagnostic provenance,
+  not a timeout fix. Scene deferral is under implementation, but its current
+  Core+WinUI pack exceeds the unchanged managed-size gate by 3,789 bytes;
+  it cannot be accepted until the gate passes. The current live top-500 run
+  is still in progress. Oversized ordinary-raster tiling remains open: the
+  existing WIC transform does not guarantee tile-bounded decode memory, and
+  source bytes need a budgeted lease before retaining tiles. Copy-on-write
+  dirty-block layout publication also remains open because mutable boxes and
+  UIA geometry still reference the active layout graph.
 
 ## Implementation checkpoint
 
