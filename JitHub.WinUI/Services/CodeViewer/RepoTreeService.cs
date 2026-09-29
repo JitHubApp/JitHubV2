@@ -575,15 +575,29 @@ public sealed class RepoTreeService : IRepoTreeService
         {
             string expectedReadmeSha = MarkdownLifecycleAutomationBridge.SameByteReplayReadmeSha
                 ?? throw new InvalidDataException("Same-byte audit README identity is missing.");
-            if (!string.Equals(content.Sha, expectedReadmeSha, StringComparison.OrdinalIgnoreCase))
-            {
-                throw new InvalidDataException("The repository README response does not match the pinned same-byte source.");
-            }
             var fixture = new MarkdownSameByteAuditImageResolver(
                 sameByteCorpusPath,
                 $"{owner}/{name}",
                 refOrSha,
                 expectedReadmeSha);
+            if (!string.Equals(content.Sha, expectedReadmeSha, StringComparison.OrdinalIgnoreCase))
+            {
+                if (!GitHubAuthenticationConstants.IsPublicAccessToken(token))
+                    throw new InvalidDataException("The repository README response does not match the pinned same-byte source.");
+
+                // The signed-out query service intentionally returns a generic
+                // preview instead of a GitHub response. In audit mode only,
+                // take identity and path from the validated, commit-bound
+                // corpus; never treat that generic preview as a real README.
+                string pinnedPath = await fixture.GetPinnedReadmePathAsync(ct).ConfigureAwait(false);
+                content = new GitHubRepositoryContent
+                {
+                    Name = Path.GetFileName(pinnedPath),
+                    Path = pinnedPath,
+                    Sha = expectedReadmeSha,
+                };
+                result = CreateFreshResult(content);
+            }
             bytes = await fixture.LoadPinnedReadmeBytesAsync(
                 content.Path ?? string.Empty,
                 ct).ConfigureAwait(false);

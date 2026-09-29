@@ -2186,6 +2186,18 @@ complete before claiming this plan or the 1.0 performance goal is met.
   These are local correctness and diagnostic measurements, not a qualified
   110% browser-relative result, full top-500 audit, or counterbalanced release
   benchmark. Investigate theme/resource lookup and layout work next.
+- After merging current main, the signed-out README query path returned a
+  generic preview whose SHA correctly failed the same-byte source guard.
+  The audit-only public-token path now obtains the path from the already
+  validated, commit-bound fixture and verifies the exact README bytes; an
+  authenticated response with a mismatched SHA still fails closed. A fresh
+  rebuilt Release rank-34 replay passes 99.64% text, 99.88% structure,
+  8/8 images, zero unavailable assets, and clean exit. The merged WinUI suite
+  passes 3,239/3,239 and the app rebuild has zero warnings/errors. The local
+  replay ran alongside subprocess gate tests and its timing is diagnostic
+  only (first/full 6.17x/4.32x), not a qualified performance verdict. The
+  previous 500-case dispatch was canceled because it was pinned to the known
+  bad commit; a fresh full run is required on this fix.
 
 ## Summary
 

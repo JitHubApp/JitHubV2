@@ -167,6 +167,12 @@ internal sealed partial class MarkdownSameByteAuditImageResolver :
         return bytes;
     }
 
+    internal async ValueTask<string> GetPinnedReadmePathAsync(CancellationToken cancellationToken)
+    {
+        FixtureIndex index = await _index.Value.WaitAsync(cancellationToken).ConfigureAwait(false);
+        return index.ReadmePath;
+    }
+
     private async Task<FixtureIndex> LoadIndexAsync()
     {
         string manifestPath = Path.Combine(_root, "manifest.json");

@@ -14,9 +14,12 @@ public sealed class MarkdownSameByteAuditImageResolverTests
     public async Task LoadsExactPinnedReadmeBytesForNativeDocument()
     {
         await using var fixture = await Fixture.CreateAsync();
-        byte[] bytes = await fixture.Resolver().LoadPinnedReadmeBytesAsync(
-            "README.md", CancellationToken.None);
+        var resolver = fixture.Resolver();
+        string path = await resolver.GetPinnedReadmePathAsync(CancellationToken.None);
+        byte[] bytes = await resolver.LoadPinnedReadmeBytesAsync(
+            path, CancellationToken.None);
 
+        Assert.Equal("README.md", path);
         Assert.Equal(fixture.PinnedReadmeBytes, bytes);
     }
 
