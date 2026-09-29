@@ -248,11 +248,14 @@ internal static class PerformanceReleaseEvidenceValidator
     internal static bool IsReleasePowerEnvironment(MachineMetadata machine)
         => machine.PowerSource == "AC" && machine.EnergySaverState == "Off";
 
+    internal static bool IsConfiguredRefreshRateQualified(double configuredRefreshRateHz)
+        => double.IsFinite(configuredRefreshRateHz) &&
+           configuredRefreshRateHz >= PerformanceMeasurementContract.MinimumConfiguredRefreshRateHz;
+
     internal static bool HasQualifiedRefresh(MachineMetadata machine)
         => machine.IsAtLeast120Hz &&
-           double.IsFinite(machine.ConfiguredRefreshRateHz) &&
+           IsConfiguredRefreshRateQualified(machine.ConfiguredRefreshRateHz) &&
            double.IsFinite(machine.ObservedRefreshRateHz) &&
-           machine.ConfiguredRefreshRateHz >= 119 &&
            machine.ObservedRefreshRateHz >= Math.Max(
                115,
                machine.ConfiguredRefreshRateHz * 0.95);

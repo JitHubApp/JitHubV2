@@ -24,6 +24,76 @@ public sealed class MeasurementVisibilityEvidenceTests
     }
 
     [Fact]
+    public void InitialVisibilitySampleUsesTheSameQualificationPredicateAsReleaseEvidence()
+    {
+        MeasurementVisibilitySample passingSample = PerformanceVisibilityFixture.CreatePassing(
+            ReportStarted).Samples[0];
+
+        Assert.True(MeasurementVisibilityEvidenceValidator.IsQualifiedSample(passingSample));
+        Assert.False(MeasurementVisibilityEvidenceValidator.IsQualifiedSample(null));
+
+        Assert.False(MeasurementVisibilityEvidenceValidator.IsQualifiedSample(
+            Copy(passingSample, targetWasForeground: false)));
+        Assert.False(MeasurementVisibilityEvidenceValidator.IsQualifiedSample(
+            Copy(passingSample, targetWasVisible: false)));
+        Assert.False(MeasurementVisibilityEvidenceValidator.IsQualifiedSample(
+            Copy(passingSample, targetWasMinimized: true)));
+        Assert.False(MeasurementVisibilityEvidenceValidator.IsQualifiedSample(
+            Copy(passingSample, targetWasCloaked: true)));
+        Assert.False(MeasurementVisibilityEvidenceValidator.IsQualifiedSample(
+            Copy(passingSample, targetWasWithinWorkArea: false)));
+        Assert.False(MeasurementVisibilityEvidenceValidator.IsQualifiedSample(
+            Copy(passingSample, targetWasUnoccluded: false)));
+        Assert.False(MeasurementVisibilityEvidenceValidator.IsQualifiedSample(
+            Copy(passingSample, captureSucceeded: false)));
+    }
+
+    [Fact]
+    public async Task ForegroundReadinessWaitsForAQualifiedSample()
+    {
+        MeasurementVisibilitySample qualified = PerformanceVisibilityFixture.CreatePassing(
+            ReportStarted).Samples[0];
+        MeasurementVisibilitySample unqualified = Copy(qualified, targetWasForeground: false);
+        MeasurementVisibilitySample[] samples = [
+            unqualified,
+            qualified,
+            unqualified,
+            qualified,
+            qualified,
+            qualified,
+            qualified,
+            qualified,
+        ];
+        int sampleIndex = 0;
+
+        MeasurementVisibilitySample result =
+            await MeasurementVisibilityReadinessWaiter.WaitUntilQualifiedAsync(
+                () => samples[Math.Min(sampleIndex++, samples.Length - 1)],
+                timeoutMilliseconds: 1_000,
+                pollIntervalMilliseconds: 1);
+
+        Assert.Same(qualified, result);
+        Assert.Equal(samples.Length, sampleIndex);
+    }
+
+    [Fact]
+    public async Task ForegroundReadinessFailsClosedWhenTimeoutExpires()
+    {
+        MeasurementVisibilitySample unqualified = Copy(
+            PerformanceVisibilityFixture.CreatePassing(ReportStarted).Samples[0],
+            targetWasForeground: false);
+
+        TimeoutException exception = await Assert.ThrowsAsync<TimeoutException>(
+            () => MeasurementVisibilityReadinessWaiter.WaitUntilQualifiedAsync(
+                () => unqualified,
+                timeoutMilliseconds: 10,
+                pollIntervalMilliseconds: 1));
+
+        Assert.Contains("timed out", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("foreground", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void AForegroundLossBetweenPollsInvalidatesTheEntireRun()
     {
         MeasurementVisibilityEvidence evidence = PerformanceVisibilityFixture.CreatePassing(

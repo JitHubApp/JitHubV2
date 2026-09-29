@@ -74,6 +74,12 @@ internal sealed class PerformanceWindow : Window
             await NormalizeMeasurementWindowAsync();
             double dpiScale = _host.XamlRoot?.RasterizationScale ?? 0;
             IntPtr windowHandle = WindowNative.GetWindowHandle(this);
+            if (!_options.Quick)
+            {
+                await MeasurementVisibilityReadinessWaiter.WaitUntilQualifiedAsync(
+                    () => MeasurementVisibilityMonitor.CaptureReadinessSample(windowHandle));
+            }
+
             _report.Machine = MachineProbe.Capture(
                 windowHandle,
                 CanvasDevice.GetSharedDevice(),
@@ -82,10 +88,30 @@ internal sealed class PerformanceWindow : Window
                 _host.ActualHeight,
                 configureProcessPowerThrottling: true);
 
+            if (!_options.Quick &&
+                !PerformanceReleaseEvidenceValidator.IsConfiguredRefreshRateQualified(
+                    _report.Machine.ConfiguredRefreshRateHz))
+            {
+                throw new InvalidOperationException(
+                    $"Release measurement preflight requires a configured display refresh rate of at least " +
+                    $"{PerformanceMeasurementContract.MinimumConfiguredRefreshRateHz:N0} Hz " +
+                    $"(configured {_report.Machine.ConfiguredRefreshRateHz:N2} Hz).");
+            }
+
             await WarmRuntimeAsync();
             Debug.WriteLine("[PerfHarness] runtime warm");
             if (!_options.Quick)
-                _visibilityMonitor = MeasurementVisibilityMonitor.Start(windowHandle);
+            {
+                MeasurementVisibilityMonitor visibilityMonitor =
+                    MeasurementVisibilityMonitor.Start(windowHandle);
+                _visibilityMonitor = visibilityMonitor;
+                if (!MeasurementVisibilityEvidenceValidator.IsQualifiedSample(
+                        visibilityMonitor.InitialSample))
+                {
+                    throw new InvalidOperationException(
+                        "Release measurement preflight requires the benchmark window to be foreground, visible, and unobstructed.");
+                }
+            }
             _report.SourceLookup = MeasureSourceLookup();
             Debug.WriteLine("[PerfHarness] source lookup complete");
             await MeasureFirstUsableViewportsAsync();
@@ -96,7 +122,8 @@ internal sealed class PerformanceWindow : Window
                 PerformanceReleaseEvidenceValidator.CalculateObservedRefreshRateHz(
                     _report.Scroll);
             _report.Machine.IsAtLeast120Hz =
-                _report.Machine.ConfiguredRefreshRateHz >= 119 &&
+                PerformanceReleaseEvidenceValidator.IsConfiguredRefreshRateQualified(
+                    _report.Machine.ConfiguredRefreshRateHz) &&
                 _report.Machine.ObservedRefreshRateHz >= Math.Max(
                     115,
                     _report.Machine.ConfiguredRefreshRateHz * 0.95);

@@ -8,6 +8,28 @@ namespace MarkdownRenderer.Tests;
 
 public sealed class PerformanceMeasurementContractTests
 {
+    [Theory]
+    [InlineData(32d, false)]
+    [InlineData(118.99d, false)]
+    [InlineData(119d, true)]
+    [InlineData(120d, true)]
+    public void ReleasePreflightUsesTheExistingConfiguredRefreshThreshold(
+        double configuredRefreshRateHz,
+        bool expectedQualified)
+    {
+        Assert.Equal(
+            expectedQualified,
+            PerformanceReleaseEvidenceValidator.IsConfiguredRefreshRateQualified(
+                configuredRefreshRateHz));
+    }
+
+    [Fact]
+    public void ReleasePreflightRejectsNonFiniteConfiguredRefreshRates()
+    {
+        Assert.False(PerformanceReleaseEvidenceValidator.IsConfiguredRefreshRateQualified(double.NaN));
+        Assert.False(PerformanceReleaseEvidenceValidator.IsConfiguredRefreshRateQualified(double.PositiveInfinity));
+    }
+
     [Fact]
     public void ReleaseDefaultsUseStatisticallyMeaningfulPercentilePopulations()
     {
