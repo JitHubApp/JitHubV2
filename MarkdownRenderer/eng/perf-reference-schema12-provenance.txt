@@ -1,6 +1,7 @@
 Schema-12 reference harness source provenance
 
-Reference renderer source commit: 1a403a296358a18ed754e74bf8d3c23df58341d2
+Reference renderer behavior checkpoint: 1a403a296358a18ed754e74bf8d3c23df58341d2
+Renderer measurement-probe source commit: 7ac710c3645f0c751cd8de66a2e6ccab5ac369c0
 Reference branch: codex/perf-reference-schema12
 Measurement-only schema-12 harness and gate baseline source commit:
 cf0e1882d38b1117703c73166f99e59815e014ff
@@ -8,6 +9,7 @@ cf0e1882d38b1117703c73166f99e59815e014ff
 The final reference source retains that baseline and adds preflight checks for
 foreground readiness and configured refresh rate. The SHA-256 digests below
 identify the exact current source snapshot to be used for the fresh build.
+Final readiness source commit: 1437a186dc871b4d5fae4a536f15444088bed98a
 12ECEAF3158DDEE75E5272D343F7C3995D156BF3CDC9291FC695AC6157C13789  MarkdownRenderer/MarkdownRenderer.PerformanceHarness/MeasurementVisibilityEvidence.cs
 71457B13E2F823834EB35C78881672C5E5B2C0E0B0FD772696D28AAA9F0849E5  MarkdownRenderer/MarkdownRenderer.PerformanceHarness/PerformanceMeasurementContract.cs
 294F8E549ECB9152FA42746E8C2118779CD85A681D64CB490127BAE85A3C92C5  MarkdownRenderer/MarkdownRenderer.PerformanceHarness/PerformanceReleaseEvidenceValidator.cs
@@ -27,6 +29,9 @@ MeasurementVisibilityEvidence.cs source link added; unrelated later
 product/test-project links are absent. The focused schema-12, foreground, and
 refresh contract run passed 121/121 tests in Release x64. The exhaustive
 external-gate fixture suite was not run because it contains long stress rows.
+Command: dotnet test MarkdownRenderer/MarkdownRenderer.Tests/MarkdownRenderer.Tests.csproj
+-c Release -p:Platform=x64 --filter
+"FullyQualifiedName~MeasurementVisibilityEvidenceTests|FullyQualifiedName~PerformanceMeasurementContractTests|FullyQualifiedName~PerformanceCounterbalancedOrchestrationContractTests"
 
 The pre-readiness Release x64 output, retained as an archival artifact, was
 built after commit 7ac710c from:
@@ -37,6 +42,26 @@ MarkdownRenderer/MarkdownRenderer.PerformanceHarness/artifacts/perf-reference-sc
 6E1BA36D2309A7955CE1D0A932A7263D252FF5CF8787C28E2C4E0F301892A311  MarkdownRenderer.Core.dll
 57DA1D6A50D9D83CD4B0D2144DC015B89C97A97DDF65A2F900D780B1D28A9690  MarkdownRenderer.PerformanceHarness.runtimeconfig.json
 98297F8EA16941270AF063791436A59C71233E8E51551F8FADD8EE7C4D289A1A  MarkdownRenderer.PerformanceHarness.deps.json
+
+Fresh readiness Release x64 build from source commit
+1437a186dc871b4d5fae4a536f15444088bed98a:
+Command: dotnet build MarkdownRenderer/MarkdownRenderer.PerformanceHarness/MarkdownRenderer.PerformanceHarness.csproj
+-c Release -p:Platform=x64 --artifacts-path
+E:\worktrees\artifacts\perf-reference-schema12-ready-r1-20260929 --no-incremental
+Build result: succeeded with 0 warnings and 0 errors. The apphost PE machine
+is x64 (0x8664), the deps runtime target is win-x64, and runtimeconfig selects
+.NET 10.0.0.
+Runtime directory:
+E:\worktrees\artifacts\perf-reference-schema12-ready-r1-20260929\bin\MarkdownRenderer.PerformanceHarness\release_win-x64
+3A8CF212C8DB538B376F3A69EC018598F0676968B09B9C1ADD803E04F2F0A70F  MarkdownRenderer.PerformanceHarness.exe
+8C4DA4D0EF474CA1AF8F9C8983C29EAD7D8DFA86EBB92B5F2E1548553C5FF4EC  MarkdownRenderer.PerformanceHarness.dll
+596744FE2AC52BA20FA55A84E5E2C8900597E6B62EADDD0ABB40C5DF6622CB59  MarkdownRenderer.dll
+70CC9AE365416F7AC22553FAD70C0FD7577E6381B726DFC9C0E12C466838BA05  MarkdownRenderer.Core.dll
+57DA1D6A50D9D83CD4B0D2144DC015B89C97A97DDF65A2F900D780B1D28A9690  MarkdownRenderer.PerformanceHarness.runtimeconfig.json
+98297F8EA16941270AF063791436A59C71233E8E51551F8FADD8EE7C4D289A1A  MarkdownRenderer.PerformanceHarness.deps.json
+The runtime-output-manifest-v1 policy found 50 runtime files and produced
+SHA-256 248AF6D38F18204F2FA123CAEE48C0A2EFAEA4CDEA2FEED18E1A1D45E61D3C22
+in two consecutive snapshots. This artifact has not been launched or measured.
 
 The only renderer-source change is a pair of timestamp observations around
 the baseline's existing committed UI publication. It does not change layout,
