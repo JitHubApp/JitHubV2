@@ -119,7 +119,7 @@ Store package versions use `Major.Minor.Build.0`. Microsoft reserves the fourth 
 
 It now uses the Microsoft Store Developer CLI as the release control plane:
 
-- `microsoft/microsoft-store-apppublisher@v1.4` installs the pinned `msstore` version on the runner. The workflow passes an explicit upload timeout because `msstore` v0.4.1 otherwise resolves the omitted option to zero; keep the version pin and timeout until a newer CLI release is deliberately validated.
+- `microsoft/microsoft-store-apppublisher@v1.4` installs the pinned `msstore` version on the runner. The workflow passes an explicit upload timeout because the `.appxupload` is sent to Azure blob storage as a single PUT, so the timeout has to cover the whole transfer rather than one chunk; keep the version pin and timeout until a newer CLI release is deliberately validated.
 - `msstore reconfigure` authenticates with the protected `microsoft-store` GitHub environment secrets.
 - `msstore publish` receives the exact `.appxupload` or `.msixupload` file produced by `eng/Build-JitHubWinUIStorePackage.ps1` as the publish command's positional input.
 - `use_signing_certificate` is optional. Leave it `false` to match the existing UWP Store-upload flow where Partner Center accepts and re-signs the submitted package; enable it only when `STORE_PACKAGE_CERTIFICATE_BASE64` and `STORE_PACKAGE_CERTIFICATE_PASSWORD` are configured.
