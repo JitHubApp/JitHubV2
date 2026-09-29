@@ -14,7 +14,7 @@ namespace MarkdownRenderer.Gfm.Renderers;
 /// of the document. Each footnote is a <see cref="ListItemBox"/> with a superscript marker
 /// and a ↩ back-link that scrolls to the inline citation.
 /// </summary>
-public sealed class FootnoteRenderer : MarkdownNodeRenderer<FootnoteGroup>
+internal sealed class FootnoteRenderer : MarkdownNodeRenderer<FootnoteGroup>
 {
     /// <inheritdoc />
     public override BlockBox? BuildBlock(FootnoteGroup grouu, MarkdownLayoutContext context)

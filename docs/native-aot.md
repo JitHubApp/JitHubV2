@@ -51,7 +51,7 @@ The Store script performs locked restores, runs the release-security gate once, 
 ## Dependency policy
 
 - WinUIEdit stays behind the app-owned editor wrapper and consumes its generated NuGet WinMD path.
-- SVG rendering uses `Svg.Skia` and `SkiaSharp` through `IRepositorySvgRasterizer` and `AppSvgViewport`; JavaScript and `SkiaSharp.Views.WinUI` are not part of the runtime graph.
+- SVG rendering uses the statically referenced `MarkdownRenderer.Svg.Resvg` provider and its architecture-specific isolated worker through `IRepositorySvgRasterizer` and `AppSvgViewport`; browser hosting, JavaScript, ThorVG, Svg.Skia, and SkiaSharp are not part of the runtime graph.
 - CSV and TSV parsing and presentation are first-party through `CsvDocumentParser` and `AppDataTable`; CsvHelper and the discontinued Toolkit DataGrid are not shipped.
 - Store engagement telemetry uses the generated typed projection on x86, x64, and ARM64. Calls run through the app-owned bounded, coalescing dispatcher so Store SDK work is serialized off the UI thread while local diagnostics retain full fidelity.
 

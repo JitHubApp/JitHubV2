@@ -27,8 +27,34 @@ internal abstract class InlineRun
     /// </summary>
     public IReadOnlyList<string> StyleAliases { get; internal set; } = Array.Empty<string>();
 
+    /// <summary>
+    /// Inline element styles inherited from a formatting container that had to
+    /// be split into multiple runs (for example, <c>**before [link](...) after**</c>).
+    /// Keeping these modifiers separate preserves the interactive link run while
+    /// retaining the surrounding emphasis.
+    /// </summary>
+    internal IReadOnlyList<string> StyleModifierKeys { get; set; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Heading style/semantics inherited from safe HTML that is flattened into
+    /// an inline-only host such as a table cell. Ordinary Markdown headings
+    /// remain block containers and leave this empty.
+    /// </summary>
+    internal string SemanticHeadingKey { get; set; } = string.Empty;
+
     public void SetStyleAliases(IReadOnlyList<string> styleAliases)
         => StyleAliases = styleAliases ?? Array.Empty<string>();
+
+    internal bool HasStyleModifier(string elementKey)
+    {
+        foreach (string key in StyleModifierKeys)
+        {
+            if (string.Equals(key, elementKey, StringComparison.Ordinal))
+                return true;
+        }
+
+        return false;
+    }
 
     /// <summary>The text contributed by this run to the inline buffer.</summary>
     public abstract string Text { get; }
@@ -228,7 +254,7 @@ internal sealed class InlineImageRun : InlineRun
 
     public override string Text => InlineEmbedRun.PlaceholderChar;
 
-    public override string AccessibleText => string.IsNullOrWhiteSpace(AltText) ? "image" : AltText;
+    public override string AccessibleText => AltText;
 
     internal void Measure(float maxWidth, float lineHeight)
     {

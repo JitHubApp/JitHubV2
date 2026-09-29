@@ -20,6 +20,13 @@ public sealed partial class RepoFilePreviewViewModel : ObservableObject
     [ObservableProperty]
     public partial string? Text { get; set; }
 
+    /// <summary>
+    /// Content consumed by the native rich renderer. This differs from
+    /// <see cref="Text"/> only for GitHub-rendered non-Markdown READMEs.
+    /// </summary>
+    [ObservableProperty]
+    public partial string? RenderedText { get; set; }
+
     [ObservableProperty]
     public partial byte[]? Bytes { get; set; }
 
@@ -60,6 +67,7 @@ public sealed partial class RepoFilePreviewViewModel : ObservableObject
         Kind = RepoFilePreviewKind.Code;
         LanguageId = string.Empty;
         Text = null;
+        RenderedText = null;
         Bytes = null;
         ImageMimeType = null;
         ByteSize = 0;
@@ -76,6 +84,7 @@ public sealed partial class RepoFilePreviewViewModel : ObservableObject
         Kind = RepoFilePreviewKind.Code;
         LanguageId = string.Empty;
         Text = null;
+        RenderedText = null;
         Bytes = null;
         ImageMimeType = null;
         ByteSize = 0;

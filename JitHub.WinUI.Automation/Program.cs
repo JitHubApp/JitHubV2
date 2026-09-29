@@ -378,6 +378,12 @@ if (string.Equals(options.Probe, "markdown-host-lifecycle", StringComparison.Ord
     return;
 }
 
+if (string.Equals(options.Probe, ReadmeAuditProbe.ProbeName, StringComparison.OrdinalIgnoreCase))
+{
+    ReadmeAuditProbe.Run(options);
+    return;
+}
+
 if (string.Equals(options.Probe, "diagnostics-launch-close", StringComparison.OrdinalIgnoreCase))
 {
     RunDiagnosticsLaunchCloseProbe(options);
@@ -18148,6 +18154,15 @@ internal sealed class CaptureOptions
     public string? AttachProcess { get; init; }
     public string? Configuration { get; init; }
     public IReadOnlyList<string> ShowcaseIds { get; init; } = [];
+    public string? AuditManifestPath { get; init; }
+    public string? AuditBrowserScriptPath { get; init; }
+    public string? AuditEdgePath { get; init; }
+    public string AuditNodePath { get; init; } = "node";
+    public int AuditStartRank { get; init; } = 1;
+    public int AuditCount { get; init; } = 500;
+    public bool AuditResume { get; init; }
+    public bool AuditReuseBrowserEvidence { get; init; }
+    public bool AuditCaptureSameByteCorpus { get; init; }
 
     public static CaptureOptions Parse(string[] args)
     {
@@ -18160,6 +18175,15 @@ internal sealed class CaptureOptions
         string[] themes = ["light", "dark"];
         string[] targetNames = ["buttons", "inputs", "segments", "navigation", "settings", "repo", "conversation", "pr-timeline", "empty", "login", "settings-page"];
         string[] showcaseIds = [];
+        string? auditManifestPath = null;
+        string? auditBrowserScriptPath = null;
+        string? auditEdgePath = null;
+        string auditNodePath = "node";
+        int auditStartRank = 1;
+        int auditCount = 500;
+        bool auditResume = false;
+        bool auditReuseBrowserEvidence = false;
+        bool auditCaptureSameByteCorpus = false;
 
         foreach (string arg in args)
         {
@@ -18198,6 +18222,42 @@ internal sealed class CaptureOptions
             else if (arg.StartsWith("--configuration=", StringComparison.OrdinalIgnoreCase))
             {
                 configuration = arg[16..].Trim();
+            }
+            else if (arg.StartsWith("--manifest=", StringComparison.OrdinalIgnoreCase))
+            {
+                auditManifestPath = Path.GetFullPath(arg[11..].Trim());
+            }
+            else if (arg.StartsWith("--browser-script=", StringComparison.OrdinalIgnoreCase))
+            {
+                auditBrowserScriptPath = Path.GetFullPath(arg[17..].Trim());
+            }
+            else if (arg.StartsWith("--edge=", StringComparison.OrdinalIgnoreCase))
+            {
+                auditEdgePath = Path.GetFullPath(arg[7..].Trim());
+            }
+            else if (arg.StartsWith("--node=", StringComparison.OrdinalIgnoreCase))
+            {
+                auditNodePath = arg[7..].Trim();
+            }
+            else if (arg.StartsWith("--start-rank=", StringComparison.OrdinalIgnoreCase))
+            {
+                auditStartRank = int.Parse(arg[13..], System.Globalization.CultureInfo.InvariantCulture);
+            }
+            else if (arg.StartsWith("--count=", StringComparison.OrdinalIgnoreCase))
+            {
+                auditCount = int.Parse(arg[8..], System.Globalization.CultureInfo.InvariantCulture);
+            }
+            else if (string.Equals(arg, "--resume", StringComparison.OrdinalIgnoreCase))
+            {
+                auditResume = true;
+            }
+            else if (string.Equals(arg, "--reuse-browser-evidence", StringComparison.OrdinalIgnoreCase))
+            {
+                auditReuseBrowserEvidence = true;
+            }
+            else if (string.Equals(arg, "--capture-same-byte-corpus", StringComparison.OrdinalIgnoreCase))
+            {
+                auditCaptureSameByteCorpus = true;
             }
         }
 
@@ -18248,7 +18308,16 @@ internal sealed class CaptureOptions
             Probe = probe,
             AttachProcess = attachProcess,
             Configuration = configuration,
-            ShowcaseIds = showcaseIds
+            ShowcaseIds = showcaseIds,
+            AuditManifestPath = auditManifestPath,
+            AuditBrowserScriptPath = auditBrowserScriptPath,
+            AuditEdgePath = auditEdgePath,
+            AuditNodePath = auditNodePath,
+            AuditStartRank = auditStartRank,
+            AuditCount = auditCount,
+            AuditResume = auditResume,
+            AuditReuseBrowserEvidence = auditReuseBrowserEvidence,
+            AuditCaptureSameByteCorpus = auditCaptureSameByteCorpus
         };
     }
 
@@ -18264,7 +18333,6 @@ internal sealed class CaptureOptions
             Path.Combine(baseDirectory, "JitHub.WinUI", "bin", "x64", "Release", "net10.0-windows10.0.26100.0", "win-x64", "publish", "JitHub.WinUI.exe")
         ];
 
-        DateTime newestSourceWrite = GetNewestSourceWriteTimeUtc(baseDirectory);
         string? freshCandidate = candidates.FirstOrDefault(candidate =>
         {
             if (!File.Exists(candidate))
@@ -18272,9 +18340,7 @@ internal sealed class CaptureOptions
                 return false;
             }
 
-            string? freshnessArtifact = GetFreshnessArtifact(candidate);
-            return freshnessArtifact is not null &&
-                File.GetLastWriteTimeUtc(freshnessArtifact) >= newestSourceWrite;
+            return IsAppBuildFresh(candidate, baseDirectory);
         });
 
         if (freshCandidate is not null)
@@ -18300,16 +18366,68 @@ internal sealed class CaptureOptions
         }
 
         string repositoryRoot = FindRepositoryRoot();
-        DateTime newestSourceWrite = GetNewestSourceWriteTimeUtc(repositoryRoot);
-        DateTime artifactWrite = File.GetLastWriteTimeUtc(freshnessArtifact);
-        if (artifactWrite < newestSourceWrite)
+        string? staleArtifact = GetStaleAppArtifact(appPath, repositoryRoot);
+        if (staleArtifact is not null)
         {
             throw new InvalidOperationException(
                 $"Refusing stale JitHub automation binary '{appPath}'. " +
-                $"Artifact timestamp {artifactWrite:O} predates source timestamp {newestSourceWrite:O}. " +
+                $"Missing or stale output: '{staleArtifact}'. " +
                 "Rebuild the app and pass the rebuilt executable.");
         }
     }
+
+    private static bool IsAppBuildFresh(string appPath, string repositoryRoot)
+    {
+        return GetFreshnessArtifact(appPath) is not null &&
+            GetStaleAppArtifact(appPath, repositoryRoot) is null;
+    }
+
+    private static string? GetStaleAppArtifact(string appPath, string repositoryRoot)
+    {
+        string directory = Path.GetDirectoryName(appPath)!;
+        string appAssembly = Path.Combine(directory, "JitHub.WinUI.dll");
+        if (!File.Exists(appAssembly))
+        {
+            // A NativeAOT image contains the managed dependency graph. Its PE
+            // timestamp must be newer than every relevant source file.
+            return IsNativeAotExecutable(appPath) &&
+                File.GetLastWriteTimeUtc(appPath) >= GetNewestSourceWriteTimeUtc(
+                    repositoryRoot, includeDependencies: true)
+                ? null
+                : appPath;
+        }
+
+        if (File.GetLastWriteTimeUtc(appAssembly) < GetNewestSourceWriteTimeUtc(
+                repositoryRoot, includeDependencies: false))
+        {
+            return appAssembly;
+        }
+
+        // Comparing the newest source with the newest output can accept a
+        // stale renderer DLL merely because an unrelated DLL was rebuilt.
+        // Check each app-local project reference against its own source root.
+        foreach (string name in AuditedMarkdownAssemblyNames)
+        {
+            string assembly = Path.Combine(directory, name + ".dll");
+            string sourceRoot = Path.Combine(repositoryRoot, "MarkdownRenderer", name);
+            if (!File.Exists(assembly) ||
+                File.GetLastWriteTimeUtc(assembly) < GetNewestProjectSourceWriteTimeUtc(sourceRoot))
+            {
+                return assembly;
+            }
+        }
+
+        return null;
+    }
+
+    private static readonly string[] AuditedMarkdownAssemblyNames =
+    [
+        "MarkdownRenderer.Core", "MarkdownRenderer", "MarkdownRenderer.Gfm",
+        "MarkdownRenderer.Html", "MarkdownRenderer.Math", "MarkdownRenderer.Mermaid",
+        "MarkdownRenderer.Performance", "MarkdownRenderer.GitHub",
+        "MarkdownRenderer.Svg.Resvg", "MarkdownRenderer.SyntaxHighlighting.TextMate",
+        "MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common"
+    ];
 
     private static string? GetFreshnessArtifact(string appPath)
     {
@@ -18357,44 +18475,52 @@ internal sealed class CaptureOptions
             ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
     }
 
-    private static DateTime GetNewestSourceWriteTimeUtc(string baseDirectory)
+    private static DateTime GetNewestSourceWriteTimeUtc(
+        string baseDirectory,
+        bool includeDependencies)
     {
-        string[] sourceRoots =
-        [
-            Path.Combine(baseDirectory, "JitHub.WinUI"),
-            Path.Combine(baseDirectory, "MarkdownRenderer", "MarkdownRenderer"),
-            Path.Combine(baseDirectory, "MarkdownRenderer", "MarkdownRenderer.Gfm")
-        ];
-        string[] sourceExtensions = [".cs", ".xaml", ".csproj", ".props", ".targets"];
+        string appSourceRoot = Path.Combine(baseDirectory, "JitHub.WinUI");
+        IEnumerable<string> sourceRoots = includeDependencies
+            ? AuditedMarkdownAssemblyNames
+                .Select(name => Path.Combine(baseDirectory, "MarkdownRenderer", name))
+                .Prepend(appSourceRoot)
+            : [appSourceRoot];
         DateTime newest = DateTime.MinValue;
 
         foreach (string sourceRoot in sourceRoots.Where(Directory.Exists))
         {
-            foreach (string sourcePath in Directory.EnumerateFiles(sourceRoot, "*", SearchOption.AllDirectories))
+            DateTime sourceWrite = GetNewestProjectSourceWriteTimeUtc(sourceRoot);
+            if (sourceWrite > newest)
+                newest = sourceWrite;
+        }
+
+        return newest;
+    }
+
+    private static DateTime GetNewestProjectSourceWriteTimeUtc(string sourceRoot)
+    {
+        string[] sourceExtensions = [".cs", ".xaml", ".csproj", ".props", ".targets", ".rs", ".toml"];
+        DateTime newest = DateTime.MinValue;
+        foreach (string sourcePath in Directory.EnumerateFiles(sourceRoot, "*", SearchOption.AllDirectories))
+        {
+            string relativePath = Path.GetRelativePath(sourceRoot, sourcePath);
+            string firstSegment = relativePath.Split(
+                [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
+                2,
+                StringSplitOptions.RemoveEmptyEntries)[0];
+            if (firstSegment.StartsWith("bin", StringComparison.OrdinalIgnoreCase) ||
+                firstSegment.StartsWith("obj", StringComparison.OrdinalIgnoreCase) ||
+                firstSegment.Equals("artifacts", StringComparison.OrdinalIgnoreCase))
             {
-                string relativePath = Path.GetRelativePath(sourceRoot, sourcePath);
-                string firstSegment = relativePath.Split(
-                    [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
-                    2,
-                    StringSplitOptions.RemoveEmptyEntries)[0];
-                if (firstSegment.StartsWith("bin", StringComparison.OrdinalIgnoreCase) ||
-                    firstSegment.StartsWith("obj", StringComparison.OrdinalIgnoreCase) ||
-                    firstSegment.Equals("artifacts", StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                if (!sourceExtensions.Contains(Path.GetExtension(sourcePath), StringComparer.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                DateTime writeTime = File.GetLastWriteTimeUtc(sourcePath);
-                if (writeTime > newest)
-                {
-                    newest = writeTime;
-                }
+                continue;
             }
+
+            if (!sourceExtensions.Contains(Path.GetExtension(sourcePath), StringComparer.OrdinalIgnoreCase))
+                continue;
+
+            DateTime writeTime = File.GetLastWriteTimeUtc(sourcePath);
+            if (writeTime > newest)
+                newest = writeTime;
         }
 
         return newest;

@@ -46,6 +46,14 @@ public interface IRepoTreeService
         CancellationToken ct,
         QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst);
 
+    Task<RepoCodeLoadResult<RepoReadmeFile>?> LoadReadmeAsync(
+        string owner,
+        string name,
+        string refOrSha,
+        CancellationToken ct,
+        QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst) =>
+        Task.FromResult<RepoCodeLoadResult<RepoReadmeFile>?>(null);
+
     Task<RepoCodeLoadResult<RepoFileBlob>> LoadBlobAsync(
         string owner,
         string name,

@@ -71,9 +71,14 @@ internal sealed class SelectionController
         }
         if (box is TableBox tb)
         {
+            Rect clip = tb.HorizontalViewportBounds;
             foreach (var cell in tb.GetCellBoxes())
                 foreach (var r in EnumerateBlockRects(cell, range))
-                    yield return r;
+                {
+                    Rect clipped = Intersect(r, clip);
+                    if (clipped.Width > 0 && clipped.Height > 0)
+                        yield return clipped;
+                }
             yield break;
         }
         if (box is StackBox sb)
@@ -84,6 +89,17 @@ internal sealed class SelectionController
             yield break;
         }
         foreach (var r in box.GetSelectionRects(range)) yield return r;
+    }
+
+    private static Rect Intersect(Rect left, Rect right)
+    {
+        double x1 = System.Math.Max(left.Left, right.Left);
+        double y1 = System.Math.Max(left.Top, right.Top);
+        double x2 = System.Math.Min(left.Right, right.Right);
+        double y2 = System.Math.Min(left.Bottom, right.Bottom);
+        return x2 <= x1 || y2 <= y1
+            ? Rect.Empty
+            : new Rect(x1, y1, x2 - x1, y2 - y1);
     }
 
     public void PaintHighlight(CanvasDrawingSession ds, LayoutSnapshot snapshot, Color color)

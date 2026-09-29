@@ -66,6 +66,90 @@ public sealed class RepoTreeServiceMemoryCacheTests
     }
 
     [Fact]
+    public async Task StalePublicTree_RendersBeforeValidTokenRefreshCompletes()
+    {
+        Harness harness = CreatePublicHarness(
+            TreeResult("stale-public", CacheState.Stale, DateTimeOffset.UtcNow.AddMinutes(-1)),
+            FreshTree("fresh-public"));
+        _ = await harness.Service.LoadTreeAsync("octo", "app", "main", CancellationToken.None);
+
+        TaskCompletionSource<string?> tokenRefresh = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> refreshStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        harness.Auth.GetValidTokenAsync(0, Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                refreshStarted.TrySetResult(true);
+                return tokenRefresh.Task;
+            });
+
+        Task<RepoCodeLoadResult<RepoTree>> pending =
+            harness.Service.LoadTreeAsync("octo", "app", "main", CancellationToken.None);
+        try
+        {
+            await refreshStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            Task completed = await Task.WhenAny(pending, Task.Delay(TimeSpan.FromSeconds(2)));
+            Assert.Same(pending, completed);
+
+            RepoCodeLoadResult<RepoTree> visible = await pending;
+            Assert.Equal("stale-public", visible.Value.Sha);
+            Assert.Equal(CacheState.Stale, visible.CacheState);
+            Assert.True(visible.IsRefreshInProgress);
+            await harness.Query.DidNotReceive().GetTreeAsync(
+                Arg.Any<string>(),
+                Arg.Any<string>(),
+                "octo",
+                "app",
+                "main",
+                QueryFetchPolicy.NetworkOnly,
+                Arg.Any<CancellationToken>());
+
+            tokenRefresh.TrySetResult(null);
+            await EventuallyAsync(async () =>
+            {
+                await harness.Query.Received(1).GetTreeAsync(
+                    Arg.Any<string>(),
+                    "current",
+                    "octo",
+                    "app",
+                    "main",
+                    QueryFetchPolicy.NetworkOnly,
+                    Arg.Any<CancellationToken>());
+            });
+        }
+        finally
+        {
+            tokenRefresh.TrySetResult(null);
+        }
+    }
+
+    [Fact]
+    public async Task StaleTree_IsNotReusedAfterActiveAccountChanges()
+    {
+        Harness harness = CreateHarness(
+            TreeResult("private-for-42", CacheState.Stale, DateTimeOffset.UtcNow.AddMinutes(-1)),
+            FreshTree("private-for-43"));
+        _ = await harness.Service.LoadTreeAsync("octo", "app", "main", CancellationToken.None);
+
+        harness.Auth.AuthenticatedUser.Returns(new GitHubUser { Id = 43, Login = "octo" });
+        harness.Account.GetUser().Returns(43);
+        harness.Auth.GetToken(43).Returns("token-43");
+        harness.Auth.GetValidTokenAsync(43, Arg.Any<CancellationToken>()).Returns("token-43");
+
+        RepoCodeLoadResult<RepoTree> visible =
+            await harness.Service.LoadTreeAsync("octo", "app", "main", CancellationToken.None);
+
+        Assert.Equal("private-for-43", visible.Value.Sha);
+        await harness.Query.Received(1).GetTreeAsync(
+            "token-43",
+            "43",
+            "octo",
+            "app",
+            "main",
+            QueryFetchPolicy.StaleFirst,
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task CancelledPrefetch_DoesNotCancelForegroundWaiterOrDuplicateRequest()
     {
         TaskCompletionSource<CachedResult<GitHubTree>> response =
@@ -148,7 +232,17 @@ public sealed class RepoTreeServiceMemoryCacheTests
         auth.GetValidTokenAsync(42, Arg.Any<CancellationToken>()).Returns("token");
         IAccountService account = Substitute.For<IAccountService>();
         account.GetUser().Returns(42);
-        return new Harness(new RepoTreeService(query, auth, account), query);
+        return new Harness(new RepoTreeService(query, auth, account), query, auth, account);
+    }
+
+    private static Harness CreatePublicHarness(params CachedResult<GitHubTree>[] results)
+    {
+        Harness harness = CreateHarness(results);
+        harness.Auth.AuthenticatedUser.Returns((GitHubUser?)null);
+        harness.Auth.GetValidTokenAsync(42, Arg.Any<CancellationToken>()).Returns((string?)null);
+        harness.Account.GetUser().Returns(0);
+        harness.Auth.GetValidTokenAsync(0, Arg.Any<CancellationToken>()).Returns((string?)null);
+        return harness;
     }
 
     private static CachedResult<GitHubTree> FreshTree(string sha) =>
@@ -198,5 +292,7 @@ public sealed class RepoTreeServiceMemoryCacheTests
 
     private sealed record Harness(
         RepoTreeService Service,
-        IGitHubRepoCodeQueryService Query);
+        IGitHubRepoCodeQueryService Query,
+        IAuthService Auth,
+        IAccountService Account);
 }

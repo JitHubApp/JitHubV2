@@ -697,4 +697,58 @@
   <data name="toastEnabled.Text" xml:space="preserve">
     <value>Enable toast notification</value>
   </data>
+  <data name="MarkdownRenderer/Document/Name" xml:space="preserve"><value>Markdown-dokumentum</value></data>
+  <data name="MarkdownRenderer/Command/Copy" xml:space="preserve"><value>Másolás</value></data>
+  <data name="MarkdownRenderer/Command/CopyMarkdown" xml:space="preserve"><value>Másolás Markdownként</value></data>
+  <data name="MarkdownRenderer/Command/CopyLink" xml:space="preserve"><value>Hivatkozás másolása</value></data>
+  <data name="MarkdownRenderer/Command/CopyImage" xml:space="preserve"><value>Kép másolása</value></data>
+  <data name="MarkdownRenderer/Command/CopyTable" xml:space="preserve"><value>Táblázat másolása</value></data>
+  <data name="MarkdownRenderer/Command/SelectAll" xml:space="preserve"><value>Az összes kijelölése</value></data>
+  <data name="MarkdownRenderer/Command/CopyCode" xml:space="preserve"><value>Kód másolása</value></data>
+  <data name="MarkdownRenderer/Selection/StartHandle" xml:space="preserve"><value>Kijelölés kezdő fogópontja</value></data>
+  <data name="MarkdownRenderer/Selection/EndHandle" xml:space="preserve"><value>Kijelölés záró fogópontja</value></data>
+  <data name="MarkdownRenderer/Selection/HandleHelp" xml:space="preserve"><value>Húzza a kijelölés módosításához. A pontos beállításhoz használja a nyílbillentyűket.</value></data>
+  <data name="MarkdownRenderer/Feedback/CodeCopied" xml:space="preserve"><value>Másolva</value></data>
+  <data name="MarkdownRenderer/Image/Loading" xml:space="preserve"><value>{0} betöltése...</value></data>
+  <data name="MarkdownRenderer/Image/Error" xml:space="preserve"><value>A kép nem érhető el: {0}</value></data>
+  <data name="MarkdownRenderer/Image/Name" xml:space="preserve"><value>Kép</value></data>
+  <data name="MarkdownRenderer/Task/Completed" xml:space="preserve"><value>Befejezett feladat</value></data>
+  <data name="MarkdownRenderer/Task/Incomplete" xml:space="preserve"><value>Befejezetlen feladat</value></data>
+  <data name="MarkdownRenderer/Task/ReadOnly" xml:space="preserve"><value>Csak olvasható feladatállapot</value></data>
+  <data name="MarkdownRenderer/Task/Toggle" xml:space="preserve"><value>Feladatállapot váltása</value></data>
+  <data name="MarkdownRenderer/Table/Name" xml:space="preserve"><value>Táblázat</value></data>
+  <data name="MarkdownRenderer/List/Name" xml:space="preserve"><value>Lista</value></data>
+  <data name="MarkdownRenderer/EmbeddedContent/Name" xml:space="preserve"><value>Beágyazott tartalom</value></data>
+  <data name="MarkdownRenderer/Diagram/Name" xml:space="preserve"><value>Diagram</value></data>
+  <data name="MarkdownRenderer/Code/LanguageHelp" xml:space="preserve"><value>Nyelv: {0}</value></data>
+  <data name="MarkdownRenderer/Html/Details" xml:space="preserve"><value>Részletek</value></data>
+  <data name="MarkdownRenderer/Html/BudgetExceeded" xml:space="preserve"><value>A további HTML-tartalom kimaradt, mert túllépte a megjelenítő biztonsági korlátját.</value></data>
+  <data name="MarkdownRenderer/Style/Body" xml:space="preserve"><value>Törzsszöveg</value></data>
+  <data name="MarkdownRenderer/Style/Heading1" xml:space="preserve"><value>Címsor 1</value></data>
+  <data name="MarkdownRenderer/Style/Heading2" xml:space="preserve"><value>Címsor 2</value></data>
+  <data name="MarkdownRenderer/Style/Heading3" xml:space="preserve"><value>Címsor 3</value></data>
+  <data name="MarkdownRenderer/Style/Heading4" xml:space="preserve"><value>Címsor 4</value></data>
+  <data name="MarkdownRenderer/Style/Heading5" xml:space="preserve"><value>Címsor 5</value></data>
+  <data name="MarkdownRenderer/Style/Heading6" xml:space="preserve"><value>Címsor 6</value></data>
+  <data name="MarkdownRenderer/Style/CodeBlock" xml:space="preserve"><value>Kódblokk</value></data>
+  <data name="MarkdownRenderer/Style/InlineCode" xml:space="preserve"><value>Sorközi kód</value></data>
+  <data name="MarkdownRenderer/Style/Quote" xml:space="preserve"><value>Idézet</value></data>
+  <data name="MarkdownRenderer/Style/Link" xml:space="preserve"><value>Hivatkozás</value></data>
+  <data name="MarkdownRenderer/Style/Strong" xml:space="preserve"><value>Félkövér</value></data>
+  <data name="MarkdownRenderer/Style/Emphasis" xml:space="preserve"><value>Kiemelés</value></data>
+  <data name="MarkdownRenderer/Style/Strikethrough" xml:space="preserve"><value>Áthúzott</value></data>
+  <data name="MarkdownRenderer/Style/Subscript" xml:space="preserve"><value>Alsó index</value></data>
+  <data name="MarkdownRenderer/Style/Superscript" xml:space="preserve"><value>Felső index</value></data>
+  <data name="MarkdownRenderer/Style/Inserted" xml:space="preserve"><value>Beszúrt</value></data>
+  <data name="MarkdownRenderer/Style/Marked" xml:space="preserve"><value>Megjelölt</value></data>
+  <data name="MarkdownRenderer/Style/Abbreviation" xml:space="preserve"><value>Rövidítés</value></data>
+  <data name="MarkdownRenderer/Style/DefinitionTerm" xml:space="preserve"><value>Definíciós kifejezés</value></data>
+  <data name="MarkdownRenderer/Style/DefinitionDescription" xml:space="preserve"><value>Definíció</value></data>
+  <data name="MarkdownRenderer/Style/Figure" xml:space="preserve"><value>Ábra</value></data>
+  <data name="MarkdownRenderer/Style/FigureCaption" xml:space="preserve"><value>Ábrafelirat</value></data>
+  <data name="MarkdownRenderer/Style/Diagram" xml:space="preserve"><value>Diagram</value></data>
+  <data name="MarkdownRenderer/Style/ListMarker" xml:space="preserve"><value>Listajelölő</value></data>
+  <data name="MarkdownRenderer/Style/Table" xml:space="preserve"><value>Táblázat</value></data>
+  <data name="MarkdownRenderer/Style/TableHeader" xml:space="preserve"><value>Táblázatfejléc</value></data>
+  <data name="MarkdownRenderer/Style/TableCell" xml:space="preserve"><value>Táblázatcella</value></data>
 </root>

@@ -15,7 +15,7 @@ internal sealed partial class AppSvgViewportAutomationPeer : FrameworkElementAut
 
     protected override string GetClassNameCore() => nameof(AppSvgViewport);
 
-    protected override AutomationControlType GetAutomationControlTypeCore() => AutomationControlType.Pane;
+    protected override AutomationControlType GetAutomationControlTypeCore() => AutomationControlType.Image;
 
     protected override string GetItemStatusCore() => _owner.RenderStatus;
 

@@ -1,15 +1,18 @@
 using System;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
+using System.Threading.Tasks;
 
 namespace JitHub.Services.Markdown;
 
 /// <summary>
-/// File-backed lifecycle coordination used only by isolated Markdown automation runs.
-/// Production behavior is unchanged unless the explicit lifecycle fixture is enabled.
+/// File-backed coordination for isolated Markdown lifecycle and production-content audits.
+/// Production behavior is unchanged unless an explicit automation launch mode is enabled.
 /// </summary>
 internal static partial class MarkdownLifecycleAutomationBridge
 {
@@ -20,41 +23,215 @@ internal static partial class MarkdownLifecycleAutomationBridge
     private const string RuntimeSettingsPathVariable = "JITHUB_MARKDOWN_RUNTIME_SETTINGS_PATH";
     private const string LinkEvidencePathVariable = "JITHUB_MARKDOWN_LINK_EVIDENCE_PATH";
     private const string ImageEvidencePathVariable = "JITHUB_MARKDOWN_IMAGE_EVIDENCE_PATH";
+    private const string ImageResolutionEvidencePathVariable = "JITHUB_MARKDOWN_IMAGE_RESOLUTION_EVIDENCE_PATH";
+    private const string RasterPreparationEvidencePathVariable = "JITHUB_MARKDOWN_RASTER_PREPARATION_EVIDENCE_PATH";
+    private const string SvgWorkerEvidencePathVariable = "JITHUB_MARKDOWN_SVG_WORKER_EVIDENCE_PATH";
+    private const string SvgPreflightEvidencePathVariable = "JITHUB_MARKDOWN_SVG_PREFLIGHT_EVIDENCE_PATH";
     private const string RenderFailureEvidencePathVariable = "JITHUB_MARKDOWN_RENDER_FAILURE_EVIDENCE_PATH";
+    private const string RenderCompleteEvidencePathVariable = "JITHUB_MARKDOWN_RENDER_COMPLETE_EVIDENCE_PATH";
+    private const string FirstViewportImagesReadyEvidencePathVariable = "JITHUB_MARKDOWN_FIRST_VIEWPORT_IMAGES_READY_EVIDENCE_PATH";
+    private const string FirstViewportImagesReadyProgressPathVariable = "JITHUB_MARKDOWN_FIRST_VIEWPORT_IMAGES_READY_PROGRESS_PATH";
+    private const string CaptureRequestPathVariable = "JITHUB_MARKDOWN_CAPTURE_REQUEST_PATH";
+    private const string CaptureResponsePathVariable = "JITHUB_MARKDOWN_CAPTURE_RESPONSE_PATH";
+    private const string ShutdownStagePathVariable = "JITHUB_MARKDOWN_SHUTDOWN_STAGE_PATH";
     private const string HighContrastVariable = "JITHUB_AUTOMATION_HIGH_CONTRAST";
     private const string ResourceMapAbsentVariable = "JITHUB_AUTOMATION_RESOURCE_MAP_ABSENT";
     private const string ResourceMapEvidencePathVariable = "JITHUB_AUTOMATION_RESOURCE_MAP_EVIDENCE_PATH";
+    private const string SameByteReplayCorpusPathVariable = "JITHUB_README_AUDIT_SAME_BYTE_CORPUS";
+    private const string SameByteReplayReadmeShaVariable = "JITHUB_README_AUDIT_SAME_BYTE_README_SHA";
+    private const string SameByteReadmeSourceEvidencePathVariable = "JITHUB_README_AUDIT_NATIVE_SOURCE_EVIDENCE_PATH";
+    private const int ParsePipelineBeginStage = 0;
+    private const int ParsePipelineEngineParseAndCacheStage = 1;
+    private const int ParsePipelineLegacyParseAndDocumentStage = 2;
+    private const int ParsePipelineProgressiveScenePlanStage = 3;
+    private const int ParsePipelineStyleRoleDemandStage = 4;
+    private const int ParsePipelineSessionTotalStage = 5;
+    internal const double MaximumAuditScrollViewportFraction = 0.95;
 
     private static readonly object SignalGate = new();
+    private static readonly object ParsePipelineTimingGate = new();
     private static string? _signaledHost;
+    private static long _markdownViewerLoadCount;
+    private static long _markdownViewerUnloadCount;
+    private static long _markdownViewerLiveCount;
+    private static string? _shutdownAuditDetails;
     private static bool _launchFixtureEnabled;
+    private static bool _productionAuditEnabled;
     private static string? _launchTargetHost;
+    private static int _parsePipelineOwnerIdentity;
+    private static bool _hasParsePipelineTiming;
+    private static double _engineParseAndCacheMilliseconds;
+    private static double _legacyParseAndDocumentMilliseconds;
+    private static double _progressiveScenePlanMilliseconds;
+    private static double _styleRoleDemandMilliseconds;
+    private static double _parseSessionTotalMilliseconds;
 
     public static bool IsEnabled => _launchFixtureEnabled || IsOne(FixtureVariable);
+
+    public static bool IsEvidenceEnabled => IsEnabled || _productionAuditEnabled;
+
+    public static bool IsProductionAuditEnabled => _productionAuditEnabled;
+
+    public static bool IsFirstViewportImagesReadyEvidenceEnabled => _productionAuditEnabled &&
+        !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(FirstViewportImagesReadyEvidencePathVariable));
+
+    internal static bool IsFirstViewportImagesReadyProgressEnabled =>
+        IsFirstViewportImagesReadyEvidenceEnabled &&
+        !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(FirstViewportImagesReadyProgressPathVariable));
+
+    internal static void RecordFirstViewportImagesReadyProgress(FirstViewportImagesReadyProgress progress)
+    {
+        if (!IsFirstViewportImagesReadyProgressEnabled)
+            return;
+
+        FirstViewportImagesReadyEvidenceWriter.TryQueueProgressWrite(
+            Environment.GetEnvironmentVariable(FirstViewportImagesReadyProgressPathVariable),
+            auditEnabled: true,
+            progress);
+    }
+
+    public static bool IsShutdownAuditDiagnosticsEnabled => IsEvidenceEnabled &&
+        !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(ShutdownStagePathVariable));
+
+    public static bool IsSameByteReplayEnabled =>
+        _productionAuditEnabled &&
+        !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(SameByteReplayCorpusPathVariable));
+
+    public static string? SameByteReplayCorpusPath => IsSameByteReplayEnabled
+        ? Environment.GetEnvironmentVariable(SameByteReplayCorpusPathVariable)
+        : null;
+
+    public static string? SameByteReplayReadmeSha => IsSameByteReplayEnabled
+        ? Environment.GetEnvironmentVariable(SameByteReplayReadmeShaVariable)
+        : null;
+
+    public static void RecordSameByteReadmeSource(ReadOnlySpan<byte> bytes)
+    {
+        if (!IsSameByteReplayEnabled)
+            return;
+
+        WriteSignal(
+            Environment.GetEnvironmentVariable(SameByteReadmeSourceEvidencePathVariable),
+            new SameByteReadmeSourceSignal(
+                bytes.Length,
+                Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant()),
+            MarkdownLifecycleJsonContext.Default.SameByteReadmeSourceSignal);
+    }
+
+    public static bool IsRasterPreparationEvidenceEnabled => IsEvidenceEnabled &&
+        !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(RasterPreparationEvidencePathVariable));
 
     public static bool IsHighContrastEnabled => IsEnabled && IsOne(HighContrastVariable);
 
     public static bool IsResourceMapForcedAbsent => IsEnabled && IsOne(ResourceMapAbsentVariable);
 
-    public static string? TargetHost => IsEnabled
+    public static string? TargetHost => IsEvidenceEnabled
         ? _launchTargetHost ?? Environment.GetEnvironmentVariable(TargetHostVariable)
         : null;
 
-    public static void ConfigureLaunchOptions(bool fixtureEnabled, string? targetHost)
+    public static void ConfigureLaunchOptions(
+        bool fixtureEnabled,
+        string? targetHost,
+        bool productionAuditEnabled = false)
     {
         _launchFixtureEnabled = fixtureEnabled;
+        _productionAuditEnabled = productionAuditEnabled;
         _launchTargetHost = string.IsNullOrWhiteSpace(targetHost) ? null : targetHost.Trim();
+        if (!fixtureEnabled && !productionAuditEnabled)
+        {
+            lock (SignalGate)
+            {
+                _shutdownAuditDetails = null;
+                System.Threading.Interlocked.Exchange(ref _markdownViewerLoadCount, 0);
+                System.Threading.Interlocked.Exchange(ref _markdownViewerUnloadCount, 0);
+                System.Threading.Interlocked.Exchange(ref _markdownViewerLiveCount, 0);
+            }
+            lock (ParsePipelineTimingGate)
+            {
+                _parsePipelineOwnerIdentity = 0;
+                _hasParsePipelineTiming = false;
+                _engineParseAndCacheMilliseconds = 0;
+                _legacyParseAndDocumentMilliseconds = 0;
+                _progressiveScenePlanMilliseconds = 0;
+                _styleRoleDemandMilliseconds = 0;
+                _parseSessionTotalMilliseconds = 0;
+            }
+        }
+    }
+
+    internal static void RecordParsePipelineStage(
+        int ownerIdentity,
+        int stage,
+        long elapsedStopwatchTicks)
+    {
+        if (!IsEvidenceEnabled)
+            return;
+
+        lock (ParsePipelineTimingGate)
+        {
+            if (stage == ParsePipelineBeginStage)
+            {
+                _parsePipelineOwnerIdentity = ownerIdentity;
+                _hasParsePipelineTiming = true;
+                _engineParseAndCacheMilliseconds = 0;
+                _legacyParseAndDocumentMilliseconds = 0;
+                _progressiveScenePlanMilliseconds = 0;
+                _styleRoleDemandMilliseconds = 0;
+                _parseSessionTotalMilliseconds = 0;
+                return;
+            }
+
+            if (!_hasParsePipelineTiming || ownerIdentity != _parsePipelineOwnerIdentity)
+                return;
+
+            double elapsedMilliseconds = elapsedStopwatchTicks > 0
+                ? Stopwatch.GetElapsedTime(0, elapsedStopwatchTicks).TotalMilliseconds
+                : 0;
+            switch (stage)
+            {
+                case ParsePipelineEngineParseAndCacheStage:
+                    _engineParseAndCacheMilliseconds += elapsedMilliseconds;
+                    break;
+                case ParsePipelineLegacyParseAndDocumentStage:
+                    _legacyParseAndDocumentMilliseconds += elapsedMilliseconds;
+                    break;
+                case ParsePipelineProgressiveScenePlanStage:
+                    _progressiveScenePlanMilliseconds = elapsedMilliseconds;
+                    break;
+                case ParsePipelineStyleRoleDemandStage:
+                    _styleRoleDemandMilliseconds = elapsedMilliseconds;
+                    break;
+                case ParsePipelineSessionTotalStage:
+                    _parseSessionTotalMilliseconds = elapsedMilliseconds;
+                    break;
+            }
+        }
+    }
+
+    internal static MarkdownAuditParsePreparationTiming GetParsePreparationTiming(int ownerIdentity)
+    {
+        lock (ParsePipelineTimingGate)
+        {
+            return _hasParsePipelineTiming && ownerIdentity == _parsePipelineOwnerIdentity
+                ? new MarkdownAuditParsePreparationTiming(
+                    _engineParseAndCacheMilliseconds,
+                    _legacyParseAndDocumentMilliseconds,
+                    _progressiveScenePlanMilliseconds,
+                    _styleRoleDemandMilliseconds,
+                    _parseSessionTotalMilliseconds)
+                : default;
+        }
     }
 
     public static bool TargetsHost(string automationId) =>
-        IsEnabled &&
+        IsEvidenceEnabled &&
         !string.IsNullOrWhiteSpace(automationId) &&
         (string.IsNullOrWhiteSpace(TargetHost) ||
          automationId.StartsWith(TargetHost, StringComparison.Ordinal));
 
     public static void SignalAppReady()
     {
-        if (!IsEnabled)
+        if (!IsEvidenceEnabled)
         {
             return;
         }
@@ -67,7 +244,7 @@ internal static partial class MarkdownLifecycleAutomationBridge
 
     public static void SignalHostReady(string automationId)
     {
-        if (!IsEnabled || string.IsNullOrWhiteSpace(automationId))
+        if (!IsEvidenceEnabled || string.IsNullOrWhiteSpace(automationId))
         {
             return;
         }
@@ -216,7 +393,8 @@ internal static partial class MarkdownLifecycleAutomationBridge
     public static void RecordImageUnavailable(
         string automationId,
         string source,
-        MarkdownRenderer.Images.MarkdownImageUnavailableReason reason)
+        MarkdownRenderer.Images.MarkdownImageUnavailableReason reason,
+        MarkdownRenderer.Images.MarkdownSvgFailureReason? svgFailureReason = null)
     {
         if (!TargetsHost(automationId))
         {
@@ -241,8 +419,341 @@ internal static partial class MarkdownLifecycleAutomationBridge
                         automationId,
                         source,
                         reason.ToString(),
+                        svgFailureReason?.ToString(),
                         DateTimeOffset.UtcNow),
                     MarkdownLifecycleJsonContext.Default.ImageUnavailableSignal);
+                File.AppendAllText(fullPath, entry + Environment.NewLine);
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
+        }
+    }
+
+    public static void SignalShutdownStage(string stage)
+    {
+        if (!IsEvidenceEnabled)
+        {
+            return;
+        }
+
+        lock (SignalGate)
+        {
+            string stageWithAuditDetails = _shutdownAuditDetails is { Length: > 0 } details
+                ? $"{stage};{details}"
+                : stage;
+            WriteSignal(
+                Environment.GetEnvironmentVariable(ShutdownStagePathVariable),
+                new ShutdownStageSignal(Environment.ProcessId, stageWithAuditDetails, DateTimeOffset.UtcNow),
+                MarkdownLifecycleJsonContext.Default.ShutdownStageSignal);
+        }
+    }
+
+    public static void RecordMarkdownViewerLoaded()
+    {
+        if (!IsShutdownAuditDiagnosticsEnabled)
+            return;
+
+        System.Threading.Interlocked.Increment(ref _markdownViewerLoadCount);
+        System.Threading.Interlocked.Increment(ref _markdownViewerLiveCount);
+    }
+
+    public static void RecordMarkdownViewerUnloaded()
+    {
+        if (!IsShutdownAuditDiagnosticsEnabled)
+            return;
+
+        System.Threading.Interlocked.Increment(ref _markdownViewerUnloadCount);
+        System.Threading.Interlocked.Decrement(ref _markdownViewerLiveCount);
+    }
+
+    public static void RecordMarkdownShutdownAuditSnapshot(
+        MarkdownShutdownAuditPerformanceSnapshot? performance,
+        bool pageUnloadWaitTimedOut,
+        bool shellContentUnloadWaitTimedOut = false,
+        bool markdownRendererDisposalWaitTimedOut = false,
+        int markdownRenderersForceDisposed = 0)
+    {
+        if (!IsShutdownAuditDiagnosticsEnabled)
+            return;
+
+        long loaded = System.Threading.Interlocked.Read(ref _markdownViewerLoadCount);
+        long unloaded = System.Threading.Interlocked.Read(ref _markdownViewerUnloadCount);
+        long live = System.Threading.Interlocked.Read(ref _markdownViewerLiveCount);
+        string performanceDetails = performance is null
+            ? "performanceSnapshotAvailable=false"
+            : FormattableString.Invariant(
+                $"performanceSnapshotAvailable=true;pendingImageFetches={performance.PendingImageFetches};activeImageFetches={performance.ActiveImageFetches};scenePreparationsTotal={performance.ScenePreparationsTotal};pendingSourceByteRequests={performance.PendingSourceByteRequests};inFlightSourceBytes={performance.InFlightSourceBytes}");
+        string details = FormattableString.Invariant(
+            $"markdown-shutdown-audit:pageUnloadWaitTimedOut={(pageUnloadWaitTimedOut ? "true" : "false")};shellContentUnloadWaitTimedOut={(shellContentUnloadWaitTimedOut ? "true" : "false")};markdownRendererDisposalWaitTimedOut={(markdownRendererDisposalWaitTimedOut ? "true" : "false")};markdownRenderersForceDisposed={markdownRenderersForceDisposed};markdownViewsLoaded={loaded};markdownViewsUnloaded={unloaded};markdownViewsStillLoaded={live};{performanceDetails}");
+
+        lock (SignalGate)
+            _shutdownAuditDetails = details;
+
+        SignalShutdownStage("markdown-shutdown-audit-snapshot");
+    }
+
+    public static void RecordImageResolution(
+        string source,
+        MarkdownRenderer.Images.MarkdownImageResolution resolution,
+        DateTimeOffset startedAt,
+        double elapsedMilliseconds)
+    {
+        if (!IsEvidenceEnabled)
+        {
+            return;
+        }
+
+        string? path = Environment.GetEnvironmentVariable(ImageResolutionEvidencePathVariable);
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
+        // Only audit launches pay the hash cost. The digest identifies the
+        // exact resolved payload for same-byte replays without retaining it.
+        string? contentSha256 = resolution.Asset is { } asset
+            ? Convert.ToHexString(SHA256.HashData(asset.Bytes))
+            : null;
+        lock (SignalGate)
+        {
+            try
+            {
+                string fullPath = Path.GetFullPath(path);
+                Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+                string entry = JsonSerializer.Serialize(
+                    new ImageResolutionSignal(
+                        Environment.ProcessId,
+                        source,
+                        resolution.IsHandled,
+                        resolution.Asset is not null,
+                        resolution.Asset?.Bytes.Length ?? 0,
+                        contentSha256,
+                        resolution.Asset?.ContentType,
+                        resolution.Asset?.ResolvedUri?.AbsoluteUri,
+                        resolution.UnavailableReason.ToString(),
+                        startedAt,
+                        elapsedMilliseconds,
+                        DateTimeOffset.UtcNow),
+                    MarkdownLifecycleJsonContext.Default.ImageResolutionSignal);
+                File.AppendAllText(fullPath, entry + Environment.NewLine);
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
+        }
+    }
+
+    public static void RecordRasterPreparation(
+        long preparationId,
+        int stage,
+        long sourceBytes,
+        long packedDimensions,
+        long elapsedStopwatchTicks)
+    {
+        if (!IsRasterPreparationEvidenceEnabled)
+            return;
+
+        string path = Environment.GetEnvironmentVariable(RasterPreparationEvidencePathVariable)!;
+        lock (SignalGate)
+        {
+            try
+            {
+                string fullPath = Path.GetFullPath(path);
+                Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+                string entry = JsonSerializer.Serialize(
+                    new RasterPreparationSignal(
+                        Environment.ProcessId,
+                        preparationId,
+                        stage,
+                        sourceBytes,
+                        (int)(packedDimensions >> 32),
+                        (int)packedDimensions,
+                        elapsedStopwatchTicks == 0
+                            ? 0
+                            : Stopwatch.GetElapsedTime(0, elapsedStopwatchTicks).TotalMilliseconds,
+                        DateTimeOffset.UtcNow),
+                    MarkdownLifecycleJsonContext.Default.RasterPreparationSignal);
+                File.AppendAllText(fullPath, entry + Environment.NewLine);
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
+            catch (ArgumentException)
+            {
+            }
+            catch (NotSupportedException)
+            {
+            }
+        }
+    }
+
+    public static void RecordSvgWorkerTimeout(
+        int stage,
+        int deadlineMilliseconds,
+        int workerProcessCpuMilliseconds,
+        int transportPhase,
+        int requestWriteMilliseconds,
+        int workerExited,
+        int openProgressPhase,
+        int workerWorkingSetKiB,
+        int workerPrivateCommitKiB,
+        int workerPageFaults,
+        int elapsedWallMilliseconds,
+        string workerInputSha256,
+        string workerExecutableSha256)
+    {
+        if (!IsEvidenceEnabled)
+            return;
+
+        string? path = Environment.GetEnvironmentVariable(SvgWorkerEvidencePathVariable);
+        if (string.IsNullOrWhiteSpace(path))
+            return;
+
+        string phase = stage switch
+        {
+            0 => "process-startup",
+            1 => "font-catalog",
+            2 => "open",
+            3 => "render",
+            4 => "cache-trim",
+            5 => "close-document",
+            _ => "unknown",
+        };
+        string transport = transportPhase switch
+        {
+            0 => "request-write",
+            1 => "pipe-flush",
+            2 => "response-read",
+            _ => "not-applicable",
+        };
+        string openProgress = openProgressPhase switch
+        {
+            0 => "not-started",
+            1 => "mapping-opened",
+            2 => "hash-verified",
+            3 => "xml-parsed",
+            4 => "security-inspected",
+            5 => "font-gate-passed",
+            6 => "cached-tree-acquired",
+            7 => "document-attached",
+            8 => "svg-options-constructed",
+            9 => "svg-resolver-configured",
+            10 => "svg-theme-ready",
+            11 => "usvg-input-ready",
+            12 => "usvg-tree-built",
+            _ => "not-applicable",
+        };
+        lock (SignalGate)
+        {
+            try
+            {
+                string fullPath = Path.GetFullPath(path);
+                Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+                string entry = JsonSerializer.Serialize(
+                    new SvgWorkerTimeoutSignal(
+                        Environment.ProcessId,
+                        phase,
+                        deadlineMilliseconds,
+                        workerProcessCpuMilliseconds,
+                        transport,
+                        requestWriteMilliseconds,
+                        workerExited switch { 0 => false, 1 => true, _ => null },
+                        openProgress,
+                        workerWorkingSetKiB,
+                        workerPrivateCommitKiB,
+                        workerPageFaults,
+                        elapsedWallMilliseconds,
+                        workerInputSha256,
+                        workerExecutableSha256,
+                        DateTimeOffset.UtcNow),
+                    MarkdownLifecycleJsonContext.Default.SvgWorkerTimeoutSignal);
+                File.AppendAllText(fullPath, entry + Environment.NewLine);
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
+        }
+    }
+
+    public static void RecordSvgFontCatalogDeadlinePhase(string initializationPhase)
+    {
+        if (!IsEvidenceEnabled)
+            return;
+
+        string? path = Environment.GetEnvironmentVariable(SvgWorkerEvidencePathVariable);
+        if (string.IsNullOrWhiteSpace(path))
+            return;
+
+        // A compromised or malformed worker response must not put source text
+        // into an audit artifact. These are the only protocol phases.
+        string phase = initializationPhase switch
+        {
+            "machine-fonts" or "user-local-fonts" or "user-roaming-fonts" or
+            "font-family-defaults" or "text-pipeline-warmup" => initializationPhase,
+            _ => "unknown",
+        };
+        lock (SignalGate)
+        {
+            try
+            {
+                string fullPath = Path.GetFullPath(path);
+                Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+                string entry = JsonSerializer.Serialize(
+                    new SvgFontCatalogDeadlinePhaseSignal(
+                        Environment.ProcessId,
+                        phase,
+                        DateTimeOffset.UtcNow),
+                    MarkdownLifecycleJsonContext.Default.SvgFontCatalogDeadlinePhaseSignal);
+                File.AppendAllText(fullPath, entry + Environment.NewLine);
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
+        }
+    }
+
+    public static void RecordSvgPreflightRejection(
+        string reason,
+        int sourceByteLength,
+        string sourceSha256)
+    {
+        if (!IsEvidenceEnabled)
+            return;
+
+        string? path = Environment.GetEnvironmentVariable(SvgPreflightEvidencePathVariable);
+        if (string.IsNullOrWhiteSpace(path))
+            return;
+
+        lock (SignalGate)
+        {
+            try
+            {
+                string fullPath = Path.GetFullPath(path);
+                Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+                string entry = JsonSerializer.Serialize(
+                    new SvgPreflightRejectionSignal(
+                        Environment.ProcessId,
+                        reason,
+                        sourceByteLength,
+                        sourceSha256,
+                        DateTimeOffset.UtcNow),
+                    MarkdownLifecycleJsonContext.Default.SvgPreflightRejectionSignal);
                 File.AppendAllText(fullPath, entry + Environment.NewLine);
             }
             catch (IOException)
@@ -262,6 +773,23 @@ internal static partial class MarkdownLifecycleAutomationBridge
             return;
         }
 
+        RecordAuditFailure("markdown-render", exception);
+    }
+
+    /// <summary>
+    /// Records a production-audit failure that prevents the targeted Markdown
+    /// surface from being created. This is inert outside explicit automation
+    /// launches and preserves the original exception for the audit report.
+    /// </summary>
+    public static void RecordAuditFailure(string stage, Exception exception)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(stage);
+        ArgumentNullException.ThrowIfNull(exception);
+        if (!IsEvidenceEnabled)
+        {
+            return;
+        }
+
         string? path = Environment.GetEnvironmentVariable(RenderFailureEvidencePathVariable);
         if (string.IsNullOrWhiteSpace(path))
         {
@@ -274,7 +802,7 @@ internal static partial class MarkdownLifecycleAutomationBridge
             {
                 string fullPath = Path.GetFullPath(path);
                 Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
-                File.WriteAllText(fullPath, exception.ToString());
+                File.WriteAllText(fullPath, $"Stage: {stage}{Environment.NewLine}{exception}");
             }
             catch (IOException)
             {
@@ -283,6 +811,153 @@ internal static partial class MarkdownLifecycleAutomationBridge
             {
             }
         }
+    }
+
+    public static void RecordRenderComplete(
+        string automationId,
+        long generation,
+        DateTimeOffset completedAt,
+        MarkdownAuditPerformanceSnapshot? performance)
+    {
+        if (!TargetsHost(automationId) || generation <= 0)
+        {
+            return;
+        }
+
+        WriteSignal(
+            Environment.GetEnvironmentVariable(RenderCompleteEvidencePathVariable),
+            new RenderCompleteSignal(
+                Environment.ProcessId,
+                automationId,
+                generation,
+                completedAt,
+                performance),
+            MarkdownLifecycleJsonContext.Default.RenderCompleteSignal);
+    }
+
+    public static Task<bool>? RecordFirstViewportImagesReady(
+        string automationId,
+        long generation,
+        long viewportPaintGeneration,
+        int pollCount,
+        double probeWorkMilliseconds,
+        double viewportTop,
+        double viewportHeight,
+        bool viewportMeasured,
+        DateTimeOffset readyAt)
+    {
+        if (!IsFirstViewportImagesReadyEvidenceEnabled ||
+            !TargetsHost(automationId) ||
+            generation <= 0 ||
+            viewportPaintGeneration != generation ||
+            pollCount <= 0)
+        {
+            return null;
+        }
+
+        return FirstViewportImagesReadyEvidenceWriter.TryQueueWrite(
+            Environment.GetEnvironmentVariable(FirstViewportImagesReadyEvidencePathVariable),
+            IsFirstViewportImagesReadyEvidenceEnabled,
+            Environment.ProcessId,
+            automationId,
+            generation,
+            viewportPaintGeneration,
+            pollCount,
+            probeWorkMilliseconds,
+            viewportTop,
+            viewportHeight,
+            viewportMeasured,
+            hasVisibleLoadingImages: false,
+            readmeGitBlobSha1: SameByteReplayReadmeSha,
+            timestamp: readyAt);
+    }
+
+    public static bool TryReadCaptureRequest(
+        string automationId,
+        out MarkdownAuditCaptureRequest? request)
+    {
+        request = null;
+        if (!TargetsHost(automationId))
+            return false;
+
+        string? path = Environment.GetEnvironmentVariable(CaptureRequestPathVariable);
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            return false;
+
+        try
+        {
+            using FileStream stream = new(
+                Path.GetFullPath(path),
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete);
+            request = JsonSerializer.Deserialize(
+                stream,
+                MarkdownLifecycleJsonContext.Default.MarkdownAuditCaptureRequest);
+            return request is { RequestId.Length: > 0 };
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    public static bool TryGetAuditScrollViewportFraction(
+        MarkdownAuditCaptureRequest request,
+        out double viewportFraction)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        viewportFraction = 0;
+        if (request.ScrollViewportFraction is not double requestedFraction)
+            return false;
+
+        if (!_productionAuditEnabled)
+        {
+            throw new InvalidOperationException(
+                "Programmatic Markdown scrolling is available only during the explicit production README audit.");
+        }
+
+        if (!double.IsFinite(requestedFraction) || requestedFraction == 0 ||
+            Math.Abs(requestedFraction) > MaximumAuditScrollViewportFraction)
+        {
+            throw new InvalidDataException(
+                $"The audit scroll step must be finite, nonzero, and no larger than {MaximumAuditScrollViewportFraction:P0} of one viewport.");
+        }
+
+        viewportFraction = requestedFraction;
+        return true;
+    }
+
+    public static void RecordCaptureResponse(
+        string requestId,
+        bool succeeded,
+        int width,
+        int height,
+        double documentTop,
+        string? error,
+        MarkdownAuditPerformanceSnapshot? performance,
+        double scrollOperationMilliseconds = 0)
+    {
+        WriteSignal(
+            Environment.GetEnvironmentVariable(CaptureResponsePathVariable),
+            new MarkdownAuditCaptureResponse(
+                requestId,
+                succeeded,
+                width,
+                height,
+                documentTop,
+                error,
+                performance,
+                scrollOperationMilliseconds),
+            MarkdownLifecycleJsonContext.Default.MarkdownAuditCaptureResponse);
     }
 
     private static bool IsOne(string variable) => string.Equals(
@@ -315,6 +990,8 @@ internal static partial class MarkdownLifecycleAutomationBridge
 
     private sealed record LifecycleReadySignal(int ProcessId, string Stage, DateTimeOffset Timestamp);
 
+    private sealed record ShutdownStageSignal(int ProcessId, string Stage, DateTimeOffset Timestamp);
+
     private sealed record ResourceMapFallbackSignal(int ProcessId, string Fallback, DateTimeOffset Timestamp);
 
     private sealed record LinkRouteSignal(
@@ -329,16 +1006,169 @@ internal static partial class MarkdownLifecycleAutomationBridge
         string Host,
         string Source,
         string Reason,
+        string? SvgFailureReason,
         DateTimeOffset Timestamp);
+
+    private sealed record ImageResolutionSignal(
+        int ProcessId,
+        string Source,
+        bool IsHandled,
+        bool HasAsset,
+        int ByteLength,
+        string? ContentSha256,
+        string? ContentType,
+        string? ResolvedUri,
+        string Reason,
+        DateTimeOffset StartedAt,
+        double ElapsedMilliseconds,
+        DateTimeOffset Timestamp);
+
+    private sealed record RasterPreparationSignal(
+        int ProcessId,
+        long PreparationId,
+        int Stage,
+        long SourceBytes,
+        int SourceWidth,
+        int SourceHeight,
+        double ElapsedMilliseconds,
+        DateTimeOffset Timestamp);
+
+    private sealed record RenderCompleteSignal(
+        int ProcessId,
+        string Host,
+        long Generation,
+        DateTimeOffset Timestamp,
+        MarkdownAuditPerformanceSnapshot? Performance);
+
+    private sealed record SvgWorkerTimeoutSignal(
+        int ProcessId,
+        string Phase,
+        int DeadlineMilliseconds,
+        int WorkerProcessCpuMilliseconds,
+        string TransportPhase,
+        int RequestWriteMilliseconds,
+        bool? WorkerExited,
+        string OpenProgressPhase,
+        int WorkerWorkingSetKiB,
+        int WorkerPrivateCommitKiB,
+        int WorkerPageFaults,
+        int ElapsedWallMilliseconds,
+        string WorkerInputSha256,
+        string WorkerExecutableSha256,
+        DateTimeOffset Timestamp);
+
+    private sealed record SvgFontCatalogDeadlinePhaseSignal(
+        int ProcessId,
+        string InitializationPhase,
+        DateTimeOffset Timestamp);
+
+    private sealed record SameByteReadmeSourceSignal(int ByteSize, string Sha256);
+
+    private sealed record SvgPreflightRejectionSignal(
+        int ProcessId,
+        string Reason,
+        int SourceByteLength,
+        string SourceSha256,
+        DateTimeOffset Timestamp);
+
+    internal sealed record MarkdownAuditPerformanceSnapshot(
+        long SourceCacheBytes,
+        long SourceCacheHits,
+        long ImageFetches,
+        long ImageFetchMilliseconds,
+        long ImageFetchFailures,
+        long ImageFetchCancellations,
+        long SourceCacheEvictions,
+        int PendingImageFetches,
+        int ActiveImageFetches,
+        long CpuPreparations,
+        long CpuPreparationMilliseconds,
+        long ScenePreparations,
+        long ScenePreparationMilliseconds,
+        long InFlightSourceBytes,
+        long PeakInFlightSourceBytes,
+        int PendingSourceByteRequests,
+        MarkdownAuditPipelineTimingSnapshot Pipeline);
+
+    internal sealed record MarkdownAuditPipelineTimingSnapshot(
+        long Generation,
+        long SourceUtf16Bytes,
+        double ParseMilliseconds,
+        double EngineParseAndCacheMilliseconds,
+        double LegacyParseAndDocumentMilliseconds,
+        double ProgressiveScenePlanMilliseconds,
+        double StyleRoleDemandMilliseconds,
+        double ParseSessionTotalMilliseconds,
+        double ParseResumeAndAdapterMilliseconds,
+        double SetupMilliseconds,
+        double ThemeSnapshotMilliseconds,
+        double LayoutMilliseconds,
+        double LayoutCpuMilliseconds,
+        double LayoutQueueMilliseconds,
+        double LayoutWorkerWallMilliseconds,
+        double LayoutContinuationMilliseconds,
+        double PublicationMilliseconds,
+        double CommitMilliseconds,
+        double OverlayResetMilliseconds,
+        double PlanConstructionMilliseconds,
+        double VisibleRealizationMilliseconds,
+        double EmbedRealizationMilliseconds,
+        double HighlightSchedulingMilliseconds,
+        double HighlightRetirementMilliseconds,
+        double HighlightBandSchedulingMilliseconds,
+        double AdornmentFocusMilliseconds,
+        double FinalNotificationMilliseconds);
+
+    internal readonly record struct MarkdownAuditParsePreparationTiming(
+        double EngineParseAndCacheMilliseconds,
+        double LegacyParseAndDocumentMilliseconds,
+        double ProgressiveScenePlanMilliseconds,
+        double StyleRoleDemandMilliseconds,
+        double SessionTotalMilliseconds);
+
+    internal sealed record MarkdownAuditCaptureRequest(
+        string RequestId,
+        string? OutputPath,
+        bool Save,
+        double? ScrollViewportFraction = null);
+
+    private sealed record MarkdownAuditCaptureResponse(
+        string RequestId,
+        bool Succeeded,
+        int Width,
+        int Height,
+        double DocumentTop,
+        string? Error,
+        MarkdownAuditPerformanceSnapshot? Performance,
+        double ScrollOperationMilliseconds);
 
     private sealed record MarkdownLifecycleRuntimeSettings(double TextScaleFactor, int Revision);
 
     [JsonSerializable(typeof(LifecycleReadySignal), TypeInfoPropertyName = "LifecycleReadySignal")]
+    [JsonSerializable(typeof(ShutdownStageSignal), TypeInfoPropertyName = "ShutdownStageSignal")]
     [JsonSerializable(typeof(ResourceMapFallbackSignal), TypeInfoPropertyName = "ResourceMapFallbackSignal")]
     [JsonSerializable(typeof(LinkRouteSignal), TypeInfoPropertyName = "LinkRouteSignal")]
     [JsonSerializable(typeof(ImageUnavailableSignal), TypeInfoPropertyName = "ImageUnavailableSignal")]
+    [JsonSerializable(typeof(ImageResolutionSignal), TypeInfoPropertyName = "ImageResolutionSignal")]
+    [JsonSerializable(typeof(RasterPreparationSignal), TypeInfoPropertyName = "RasterPreparationSignal")]
+    [JsonSerializable(typeof(RenderCompleteSignal), TypeInfoPropertyName = "RenderCompleteSignal")]
+    [JsonSerializable(typeof(SvgWorkerTimeoutSignal), TypeInfoPropertyName = "SvgWorkerTimeoutSignal")]
+    [JsonSerializable(typeof(SvgFontCatalogDeadlinePhaseSignal), TypeInfoPropertyName = "SvgFontCatalogDeadlinePhaseSignal")]
+    [JsonSerializable(typeof(SameByteReadmeSourceSignal), TypeInfoPropertyName = "SameByteReadmeSourceSignal")]
+    [JsonSerializable(typeof(SvgPreflightRejectionSignal), TypeInfoPropertyName = "SvgPreflightRejectionSignal")]
+    [JsonSerializable(typeof(MarkdownAuditPerformanceSnapshot), TypeInfoPropertyName = "MarkdownAuditPerformanceSnapshot")]
+    [JsonSerializable(typeof(MarkdownAuditPipelineTimingSnapshot), TypeInfoPropertyName = "MarkdownAuditPipelineTimingSnapshot")]
+    [JsonSerializable(typeof(MarkdownAuditCaptureRequest), TypeInfoPropertyName = "MarkdownAuditCaptureRequest")]
+    [JsonSerializable(typeof(MarkdownAuditCaptureResponse), TypeInfoPropertyName = "MarkdownAuditCaptureResponse")]
     [JsonSerializable(typeof(MarkdownLifecycleRuntimeSettings), TypeInfoPropertyName = "RuntimeSettings")]
     private sealed partial class MarkdownLifecycleJsonContext : JsonSerializerContext
     {
     }
 }
+
+internal sealed record MarkdownShutdownAuditPerformanceSnapshot(
+    int PendingImageFetches,
+    int ActiveImageFetches,
+    long ScenePreparationsTotal,
+    int PendingSourceByteRequests,
+    long InFlightSourceBytes);

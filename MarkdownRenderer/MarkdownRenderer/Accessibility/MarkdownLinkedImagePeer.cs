@@ -1,5 +1,6 @@
 using MarkdownRenderer.Controls;
 using MarkdownRenderer.Layout;
+using MarkdownRenderer.Hosting;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Automation.Provider;
@@ -16,6 +17,7 @@ internal sealed partial class MarkdownLinkedImagePeer : FrameworkElementAutomati
     private readonly MarkdownRendererControl _owner;
     private readonly MarkdownBlockPeer _parent;
     private readonly InlineImageRun _run;
+    private MarkdownImageAccessibilityState _lastImageState;
 
     public MarkdownLinkedImagePeer(
         MarkdownRendererControl owner,
@@ -26,6 +28,7 @@ internal sealed partial class MarkdownLinkedImagePeer : FrameworkElementAutomati
         _owner = owner;
         _parent = parent;
         _run = run;
+        _lastImageState = run.Image.AccessibilityState;
     }
 
     internal InlineImageRun Run => _run;
@@ -35,16 +38,34 @@ internal sealed partial class MarkdownLinkedImagePeer : FrameworkElementAutomati
     protected override AutomationControlType GetAutomationControlTypeCore() =>
         AutomationControlType.Hyperlink;
 
-    protected override string GetNameCore() => string.IsNullOrWhiteSpace(_run.AltText)
-        ? MarkdownLocalizedStrings.ImageName
-        : _run.AltText;
+    protected override string GetNameCore() => GetImageName(_run.Image.AccessibilityState);
 
     protected override string GetHelpTextCore() => _run.LinkUrl ?? string.Empty;
+
+    protected override string GetItemStatusCore() =>
+        _run.Image.AccessibilityState == MarkdownImageAccessibilityState.Loading
+            ? GetImageName(MarkdownImageAccessibilityState.Loading)
+            : string.Empty;
+
+    protected override string GetAutomationIdCore() =>
+        MarkdownAutomationIdentity.ForRun("LinkedImage", _parent.Box, _run);
+
+    protected override int GetCultureCore() => _owner.AutomationCultureLcid;
+
+    protected override AutomationLiveSetting GetLiveSettingCore() => AutomationLiveSetting.Polite;
 
     protected override bool IsKeyboardFocusableCore() => true;
 
     protected override bool HasKeyboardFocusCore() =>
         _owner.IsKeyboardFocusOnLinkedImage(_run);
+
+    protected override System.Collections.Generic.IList<AutomationPeer> GetChildrenCore()
+    {
+        // The peer is synthetic and shares the document control as its XAML
+        // owner. It is a semantic leaf; base visual-child enumeration would
+        // point back at the owner's tree and make UIA navigation cyclic.
+        return System.Array.Empty<AutomationPeer>();
+    }
 
     protected override void SetFocusCore()
     {
@@ -67,16 +88,7 @@ internal sealed partial class MarkdownLinkedImagePeer : FrameworkElementAutomati
         if (docRect.Width <= 0 || docRect.Height <= 0)
             return _parent.GetBoundingRectangleCoreInternal();
 
-        var ownerScreen = base.GetBoundingRectangleCore();
-        if (ownerScreen.Width <= 0 || ownerScreen.Height <= 0)
-            return _parent.GetBoundingRectangleCoreInternal();
-
-        double scale = _owner.XamlRoot?.RasterizationScale ?? 1.0;
-        return new Windows.Foundation.Rect(
-            ownerScreen.X + docRect.X * scale,
-            ownerScreen.Y + (_owner.CurrentContentOffsetY + docRect.Y - _owner.CurrentScrollOffsetY) * scale,
-            docRect.Width * scale,
-            docRect.Height * scale);
+        return _parent.GetScreenRectForDocumentRect(docRect);
     }
 
     protected override bool IsOffscreenCore() =>
@@ -85,5 +97,45 @@ internal sealed partial class MarkdownLinkedImagePeer : FrameworkElementAutomati
     internal void RaiseAutomationFocusChanged()
     {
         RaiseAutomationEvent(AutomationEvents.AutomationFocusChanged);
+    }
+
+    internal void NotifyImageStatusChanged()
+    {
+        MarkdownImageAccessibilityState current = _run.Image.AccessibilityState;
+        if (current == _lastImageState)
+            return;
+
+        string oldName = GetImageName(_lastImageState);
+        string newName = GetImageName(current);
+        string oldStatus = _lastImageState == MarkdownImageAccessibilityState.Loading ? oldName : string.Empty;
+        string newStatus = current == MarkdownImageAccessibilityState.Loading ? newName : string.Empty;
+        _lastImageState = current;
+        RaisePropertyChangedEvent(AutomationElementIdentifiers.NameProperty, oldName, newName);
+        RaisePropertyChangedEvent(AutomationElementIdentifiers.ItemStatusProperty, oldStatus, newStatus);
+        RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
+    }
+
+    private string GetImageName(MarkdownImageAccessibilityState state)
+    {
+        string description = string.IsNullOrWhiteSpace(_run.AltText)
+            ? string.IsNullOrWhiteSpace(_run.LinkTitle)
+                ? _owner.ResolveLocalizedString(
+                    MarkdownStringKeys.ImageName,
+                    MarkdownLocalizedStrings.ImageName)
+                : _run.LinkTitle!
+            : _run.AltText;
+
+        return state switch
+        {
+            MarkdownImageAccessibilityState.Loading => _owner.ResolveFormattedLocalizedString(
+                MarkdownStringKeys.ImageLoading,
+                MarkdownLocalizedStrings.ImageLoadingFormat,
+                description),
+            MarkdownImageAccessibilityState.Error => _owner.ResolveFormattedLocalizedString(
+                MarkdownStringKeys.ImageError,
+                MarkdownLocalizedStrings.ImageErrorFormat,
+                description),
+            _ => description,
+        };
     }
 }

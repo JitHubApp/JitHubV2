@@ -17,7 +17,7 @@ public sealed class TextMateCodeBlockSyntaxHighlighterTests
     [InlineData("diff", "+added\n-removed")]
     public async Task HighlightAsync_TokenizesRepresentativeLanguages(string language, string code)
     {
-        var highlighter = new TextMateCodeBlockSyntaxHighlighter();
+        using var highlighter = CreateHighlighter();
         var request = new CodeBlockHighlightRequest(language, code, CodeBlockThemeVariant.Dark, CancellationToken.None);
 
         var result = await highlighter.HighlightAsync(request);
@@ -34,7 +34,7 @@ public sealed class TextMateCodeBlockSyntaxHighlighterTests
     [Fact]
     public async Task HighlightAsync_UnknownLanguage_ReturnsEmptyResult()
     {
-        var highlighter = new TextMateCodeBlockSyntaxHighlighter();
+        using var highlighter = CreateHighlighter();
         var request = new CodeBlockHighlightRequest("definitely-not-real", "hello", CodeBlockThemeVariant.Dark, CancellationToken.None);
 
         var result = await highlighter.HighlightAsync(request);
@@ -46,7 +46,7 @@ public sealed class TextMateCodeBlockSyntaxHighlighterTests
     [Fact]
     public async Task HighlightAsync_HighContrastSuppressesTokenColors()
     {
-        var highlighter = new TextMateCodeBlockSyntaxHighlighter();
+        using var highlighter = CreateHighlighter();
         var request = new CodeBlockHighlightRequest("csharp", "public class Demo { }", CodeBlockThemeVariant.HighContrast, CancellationToken.None);
 
         var result = await highlighter.HighlightAsync(request);
@@ -58,7 +58,7 @@ public sealed class TextMateCodeBlockSyntaxHighlighterTests
     [Fact]
     public async Task HighlightAsync_ReusesProviderAcrossLanguages()
     {
-        var highlighter = new TextMateCodeBlockSyntaxHighlighter();
+        using var highlighter = CreateHighlighter();
         const string csharp = "// comment\npublic sealed class Demo { public string Name => \"ok\"; }";
         var first = await highlighter.HighlightAsync(new CodeBlockHighlightRequest("csharp", csharp, CodeBlockThemeVariant.Dark, CancellationToken.None));
 
@@ -88,7 +88,7 @@ public sealed class TextMateCodeBlockSyntaxHighlighterTests
     [Fact]
     public async Task HighlightAsync_HandlesCarriageReturnLineEndings()
     {
-        var highlighter = new TextMateCodeBlockSyntaxHighlighter();
+        using var highlighter = CreateHighlighter();
         const string code = "// comment\rpublic sealed class Demo\r{\r    public string Name => \"ok\";\r}";
 
         var result = await highlighter.HighlightAsync(new CodeBlockHighlightRequest("csharp", code, CodeBlockThemeVariant.Dark, CancellationToken.None));
@@ -103,10 +103,15 @@ public sealed class TextMateCodeBlockSyntaxHighlighterTests
     {
         using var cts = new CancellationTokenSource();
         await cts.CancelAsync();
-        var highlighter = new TextMateCodeBlockSyntaxHighlighter();
+        using var highlighter = CreateHighlighter();
         var request = new CodeBlockHighlightRequest("csharp", "public class Demo { }", CodeBlockThemeVariant.Dark, cts.Token);
 
         var result = await highlighter.HighlightAsync(request);
         Assert.Null(result);
     }
+
+    private static TextMateCodeBlockSyntaxHighlighter CreateHighlighter() => new(
+        TextMateGrammarProviderFactory.CreateDefault(),
+        options: null,
+        ownsProvider: true);
 }

@@ -19,6 +19,7 @@ public sealed class XamlBindingPatternTests
 
         foreach (string path in Directory.EnumerateFiles(viewsRoot, "*.xaml", SearchOption.AllDirectories)
             .Where(path => !path.StartsWith(looseTemplatesRoot, StringComparison.OrdinalIgnoreCase))
+            .Where(path => !IsGeneratedPath(winuiRoot, path))
             .Order())
         {
             string relativePath = Path.GetRelativePath(winuiRoot, path);
@@ -85,6 +86,11 @@ public sealed class XamlBindingPatternTests
 
         foreach (string path in Directory.EnumerateFiles(winuiRoot, "*.xaml", SearchOption.AllDirectories).Order())
         {
+            if (IsGeneratedPath(winuiRoot, path))
+            {
+                continue;
+            }
+
             string relativePath = Path.GetRelativePath(winuiRoot, path);
             string text = File.ReadAllText(path);
 
@@ -127,6 +133,14 @@ public sealed class XamlBindingPatternTests
 
     private static int GetLineNumber(string text, int index)
         => text[..Math.Max(0, index)].Count(character => character == '\n') + 1;
+
+    private static bool IsGeneratedPath(string projectRoot, string path)
+    {
+        string relativePath = Path.GetRelativePath(projectRoot, path);
+        return relativePath.StartsWith($"obj{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase)
+            || relativePath.StartsWith($"bin{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase)
+            || relativePath.StartsWith($"artifacts{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase);
+    }
 
     private static string FindWinUIProjectRoot()
     {

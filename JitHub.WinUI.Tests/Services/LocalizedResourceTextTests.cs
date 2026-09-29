@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Runtime.InteropServices;
 using JitHub.WinUI.Helpers;
 using Xunit;
@@ -59,6 +60,27 @@ public sealed class LocalizedResourceTextTests
             LocalizedResourceText.GetString(
                 "Shell.Navigation.CollapsePane",
                 "Collapse navigation pane"));
+    }
+
+    [Fact]
+    public void GetString_ForwardsExplicitRendererCulture()
+    {
+        CultureInfo requestedCulture = CultureInfo.GetCultureInfo("fr-FR");
+        CultureInfo? observedCulture = null;
+        using IDisposable restore = LocalizedResourceText.OverrideCultureAwareResourceLookupForTests(
+            (key, culture) =>
+            {
+                observedCulture = culture;
+                return key == "MarkdownRenderer/Command/Copy" ? "Copier" : null;
+            });
+
+        string value = LocalizedResourceText.GetString(
+            "MarkdownRenderer.Command.Copy",
+            "Copy",
+            requestedCulture);
+
+        Assert.Equal("Copier", value);
+        Assert.Same(requestedCulture, observedCulture);
     }
 
     [Fact]

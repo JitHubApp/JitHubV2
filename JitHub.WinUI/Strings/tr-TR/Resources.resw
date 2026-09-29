@@ -651,5 +651,59 @@
   <data name="Sign_Out.Content" xml:space="preserve">
     <value>Oturumu kapat</value>
   </data>
+  <data name="MarkdownRenderer/Document/Name" xml:space="preserve"><value>Markdown belgesi</value></data>
+  <data name="MarkdownRenderer/Command/Copy" xml:space="preserve"><value>Kopyala</value></data>
+  <data name="MarkdownRenderer/Command/CopyMarkdown" xml:space="preserve"><value>Markdown olarak kopyala</value></data>
+  <data name="MarkdownRenderer/Command/CopyLink" xml:space="preserve"><value>Bağlantıyı kopyala</value></data>
+  <data name="MarkdownRenderer/Command/CopyImage" xml:space="preserve"><value>Görseli kopyala</value></data>
+  <data name="MarkdownRenderer/Command/CopyTable" xml:space="preserve"><value>Tabloyu kopyala</value></data>
+  <data name="MarkdownRenderer/Command/SelectAll" xml:space="preserve"><value>Tümünü seç</value></data>
+  <data name="MarkdownRenderer/Command/CopyCode" xml:space="preserve"><value>Kodu kopyala</value></data>
+  <data name="MarkdownRenderer/Selection/StartHandle" xml:space="preserve"><value>Seçim başlangıç tutamacı</value></data>
+  <data name="MarkdownRenderer/Selection/EndHandle" xml:space="preserve"><value>Seçim bitiş tutamacı</value></data>
+  <data name="MarkdownRenderer/Selection/HandleHelp" xml:space="preserve"><value>Seçimi ayarlamak için sürükleyin. Hassas ayarlama için ok tuşlarını kullanın.</value></data>
+  <data name="MarkdownRenderer/Feedback/CodeCopied" xml:space="preserve"><value>Kopyalandı</value></data>
+  <data name="MarkdownRenderer/Image/Loading" xml:space="preserve"><value>{0} yükleniyor...</value></data>
+  <data name="MarkdownRenderer/Image/Error" xml:space="preserve"><value>Görsel kullanılamıyor: {0}</value></data>
+  <data name="MarkdownRenderer/Image/Name" xml:space="preserve"><value>Görsel</value></data>
+  <data name="MarkdownRenderer/Task/Completed" xml:space="preserve"><value>Tamamlanmış görev</value></data>
+  <data name="MarkdownRenderer/Task/Incomplete" xml:space="preserve"><value>Tamamlanmamış görev</value></data>
+  <data name="MarkdownRenderer/Task/ReadOnly" xml:space="preserve"><value>Salt okunur görev durumu</value></data>
+  <data name="MarkdownRenderer/Task/Toggle" xml:space="preserve"><value>Görev durumunu değiştir</value></data>
+  <data name="MarkdownRenderer/Table/Name" xml:space="preserve"><value>Tablo</value></data>
+  <data name="MarkdownRenderer/List/Name" xml:space="preserve"><value>Liste</value></data>
+  <data name="MarkdownRenderer/EmbeddedContent/Name" xml:space="preserve"><value>Gömülü içerik</value></data>
+  <data name="MarkdownRenderer/Diagram/Name" xml:space="preserve"><value>Diyagram</value></data>
+  <data name="MarkdownRenderer/Code/LanguageHelp" xml:space="preserve"><value>Dil: {0}</value></data>
+  <data name="MarkdownRenderer/Html/Details" xml:space="preserve"><value>Ayrıntılar</value></data>
+  <data name="MarkdownRenderer/Html/BudgetExceeded" xml:space="preserve"><value>Ek HTML içeriği, oluşturucunun güvenlik sınırını aştığı için atlandı.</value></data>
+  <data name="MarkdownRenderer/Style/Body" xml:space="preserve"><value>Gövde</value></data>
+  <data name="MarkdownRenderer/Style/Heading1" xml:space="preserve"><value>Başlık 1</value></data>
+  <data name="MarkdownRenderer/Style/Heading2" xml:space="preserve"><value>Başlık 2</value></data>
+  <data name="MarkdownRenderer/Style/Heading3" xml:space="preserve"><value>Başlık 3</value></data>
+  <data name="MarkdownRenderer/Style/Heading4" xml:space="preserve"><value>Başlık 4</value></data>
+  <data name="MarkdownRenderer/Style/Heading5" xml:space="preserve"><value>Başlık 5</value></data>
+  <data name="MarkdownRenderer/Style/Heading6" xml:space="preserve"><value>Başlık 6</value></data>
+  <data name="MarkdownRenderer/Style/CodeBlock" xml:space="preserve"><value>Kod bloğu</value></data>
+  <data name="MarkdownRenderer/Style/InlineCode" xml:space="preserve"><value>Satır içi kod</value></data>
+  <data name="MarkdownRenderer/Style/Quote" xml:space="preserve"><value>Alıntı</value></data>
+  <data name="MarkdownRenderer/Style/Link" xml:space="preserve"><value>Bağlantı</value></data>
+  <data name="MarkdownRenderer/Style/Strong" xml:space="preserve"><value>Kalın</value></data>
+  <data name="MarkdownRenderer/Style/Emphasis" xml:space="preserve"><value>Vurgu</value></data>
+  <data name="MarkdownRenderer/Style/Strikethrough" xml:space="preserve"><value>Üstü çizili</value></data>
+  <data name="MarkdownRenderer/Style/Subscript" xml:space="preserve"><value>Alt simge</value></data>
+  <data name="MarkdownRenderer/Style/Superscript" xml:space="preserve"><value>Üst simge</value></data>
+  <data name="MarkdownRenderer/Style/Inserted" xml:space="preserve"><value>Eklenen</value></data>
+  <data name="MarkdownRenderer/Style/Marked" xml:space="preserve"><value>İşaretli</value></data>
+  <data name="MarkdownRenderer/Style/Abbreviation" xml:space="preserve"><value>Kısaltma</value></data>
+  <data name="MarkdownRenderer/Style/DefinitionTerm" xml:space="preserve"><value>Tanım terimi</value></data>
+  <data name="MarkdownRenderer/Style/DefinitionDescription" xml:space="preserve"><value>Tanım</value></data>
+  <data name="MarkdownRenderer/Style/Figure" xml:space="preserve"><value>Şekil</value></data>
+  <data name="MarkdownRenderer/Style/FigureCaption" xml:space="preserve"><value>Şekil açıklaması</value></data>
+  <data name="MarkdownRenderer/Style/Diagram" xml:space="preserve"><value>Diyagram</value></data>
+  <data name="MarkdownRenderer/Style/ListMarker" xml:space="preserve"><value>Liste işareti</value></data>
+  <data name="MarkdownRenderer/Style/Table" xml:space="preserve"><value>Tablo</value></data>
+  <data name="MarkdownRenderer/Style/TableHeader" xml:space="preserve"><value>Tablo başlığı</value></data>
+  <data name="MarkdownRenderer/Style/TableCell" xml:space="preserve"><value>Tablo hücresi</value></data>
 </root>
 

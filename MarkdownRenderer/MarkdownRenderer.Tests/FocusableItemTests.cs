@@ -30,4 +30,18 @@ public sealed class FocusableItemTests
         Assert.True(item.IsBlockEmbed);
         Assert.False(item.IsLink);
     }
+
+    [Fact]
+    public void VectorSemanticsAndPlainOverflowHaveDistinctKeyboardKinds()
+    {
+        var vectorSemantic = new FocusableItem(8, 3, FocusableItemKind.VectorSemantic);
+        var overflow = new FocusableItem(9, 0, FocusableItemKind.HorizontalOverflow);
+
+        Assert.False(vectorSemantic.IsLink);
+        Assert.True(vectorSemantic.IsVectorSemantic);
+        Assert.False(vectorSemantic.IsHorizontalOverflow);
+        Assert.False(overflow.IsLink);
+        Assert.True(overflow.IsHorizontalOverflow);
+    }
+
 }

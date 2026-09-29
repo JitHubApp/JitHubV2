@@ -657,4 +657,58 @@
   <data name="toastEnabled.Text" xml:space="preserve">
     <value>Enable toast notification</value>
   </data>
+  <data name="MarkdownRenderer/Document/Name" xml:space="preserve"><value>Έγγραφο Markdown</value></data>
+  <data name="MarkdownRenderer/Command/Copy" xml:space="preserve"><value>Αντιγραφή</value></data>
+  <data name="MarkdownRenderer/Command/CopyMarkdown" xml:space="preserve"><value>Αντιγραφή ως Markdown</value></data>
+  <data name="MarkdownRenderer/Command/CopyLink" xml:space="preserve"><value>Αντιγραφή συνδέσμου</value></data>
+  <data name="MarkdownRenderer/Command/CopyImage" xml:space="preserve"><value>Αντιγραφή εικόνας</value></data>
+  <data name="MarkdownRenderer/Command/CopyTable" xml:space="preserve"><value>Αντιγραφή πίνακα</value></data>
+  <data name="MarkdownRenderer/Command/SelectAll" xml:space="preserve"><value>Επιλογή όλων</value></data>
+  <data name="MarkdownRenderer/Command/CopyCode" xml:space="preserve"><value>Αντιγραφή κώδικα</value></data>
+  <data name="MarkdownRenderer/Selection/StartHandle" xml:space="preserve"><value>Λαβή έναρξης επιλογής</value></data>
+  <data name="MarkdownRenderer/Selection/EndHandle" xml:space="preserve"><value>Λαβή λήξης επιλογής</value></data>
+  <data name="MarkdownRenderer/Selection/HandleHelp" xml:space="preserve"><value>Σύρετε για να προσαρμόσετε την επιλογή. Χρησιμοποιήστε τα πλήκτρα βέλους για ακριβή προσαρμογή.</value></data>
+  <data name="MarkdownRenderer/Feedback/CodeCopied" xml:space="preserve"><value>Αντιγράφηκε</value></data>
+  <data name="MarkdownRenderer/Image/Loading" xml:space="preserve"><value>Φόρτωση του στοιχείου {0}...</value></data>
+  <data name="MarkdownRenderer/Image/Error" xml:space="preserve"><value>Η εικόνα δεν είναι διαθέσιμη: {0}</value></data>
+  <data name="MarkdownRenderer/Image/Name" xml:space="preserve"><value>Εικόνα</value></data>
+  <data name="MarkdownRenderer/Task/Completed" xml:space="preserve"><value>Ολοκληρωμένη εργασία</value></data>
+  <data name="MarkdownRenderer/Task/Incomplete" xml:space="preserve"><value>Μη ολοκληρωμένη εργασία</value></data>
+  <data name="MarkdownRenderer/Task/ReadOnly" xml:space="preserve"><value>Κατάσταση εργασίας μόνο για ανάγνωση</value></data>
+  <data name="MarkdownRenderer/Task/Toggle" xml:space="preserve"><value>Εναλλαγή κατάστασης εργασίας</value></data>
+  <data name="MarkdownRenderer/Table/Name" xml:space="preserve"><value>Πίνακας</value></data>
+  <data name="MarkdownRenderer/List/Name" xml:space="preserve"><value>Λίστα</value></data>
+  <data name="MarkdownRenderer/EmbeddedContent/Name" xml:space="preserve"><value>Ενσωματωμένο περιεχόμενο</value></data>
+  <data name="MarkdownRenderer/Diagram/Name" xml:space="preserve"><value>Διάγραμμα</value></data>
+  <data name="MarkdownRenderer/Code/LanguageHelp" xml:space="preserve"><value>Γλώσσα: {0}</value></data>
+  <data name="MarkdownRenderer/Html/Details" xml:space="preserve"><value>Λεπτομέρειες</value></data>
+  <data name="MarkdownRenderer/Html/BudgetExceeded" xml:space="preserve"><value>Το πρόσθετο περιεχόμενο HTML παραλείφθηκε επειδή υπερέβη το όριο ασφαλείας του προγράμματος απόδοσης.</value></data>
+  <data name="MarkdownRenderer/Style/Body" xml:space="preserve"><value>Κυρίως κείμενο</value></data>
+  <data name="MarkdownRenderer/Style/Heading1" xml:space="preserve"><value>Επικεφαλίδα 1</value></data>
+  <data name="MarkdownRenderer/Style/Heading2" xml:space="preserve"><value>Επικεφαλίδα 2</value></data>
+  <data name="MarkdownRenderer/Style/Heading3" xml:space="preserve"><value>Επικεφαλίδα 3</value></data>
+  <data name="MarkdownRenderer/Style/Heading4" xml:space="preserve"><value>Επικεφαλίδα 4</value></data>
+  <data name="MarkdownRenderer/Style/Heading5" xml:space="preserve"><value>Επικεφαλίδα 5</value></data>
+  <data name="MarkdownRenderer/Style/Heading6" xml:space="preserve"><value>Επικεφαλίδα 6</value></data>
+  <data name="MarkdownRenderer/Style/CodeBlock" xml:space="preserve"><value>Μπλοκ κώδικα</value></data>
+  <data name="MarkdownRenderer/Style/InlineCode" xml:space="preserve"><value>Ενσωματωμένος κώδικας</value></data>
+  <data name="MarkdownRenderer/Style/Quote" xml:space="preserve"><value>Παράθεση</value></data>
+  <data name="MarkdownRenderer/Style/Link" xml:space="preserve"><value>Σύνδεσμος</value></data>
+  <data name="MarkdownRenderer/Style/Strong" xml:space="preserve"><value>Έντονα</value></data>
+  <data name="MarkdownRenderer/Style/Emphasis" xml:space="preserve"><value>Έμφαση</value></data>
+  <data name="MarkdownRenderer/Style/Strikethrough" xml:space="preserve"><value>Διαγραμμένο</value></data>
+  <data name="MarkdownRenderer/Style/Subscript" xml:space="preserve"><value>Δείκτης κάτω</value></data>
+  <data name="MarkdownRenderer/Style/Superscript" xml:space="preserve"><value>Εκθέτης</value></data>
+  <data name="MarkdownRenderer/Style/Inserted" xml:space="preserve"><value>Εισαγμένο</value></data>
+  <data name="MarkdownRenderer/Style/Marked" xml:space="preserve"><value>Επισημασμένο</value></data>
+  <data name="MarkdownRenderer/Style/Abbreviation" xml:space="preserve"><value>Συντομογραφία</value></data>
+  <data name="MarkdownRenderer/Style/DefinitionTerm" xml:space="preserve"><value>Όρος ορισμού</value></data>
+  <data name="MarkdownRenderer/Style/DefinitionDescription" xml:space="preserve"><value>Ορισμός</value></data>
+  <data name="MarkdownRenderer/Style/Figure" xml:space="preserve"><value>Σχήμα</value></data>
+  <data name="MarkdownRenderer/Style/FigureCaption" xml:space="preserve"><value>Λεζάντα σχήματος</value></data>
+  <data name="MarkdownRenderer/Style/Diagram" xml:space="preserve"><value>Διάγραμμα</value></data>
+  <data name="MarkdownRenderer/Style/ListMarker" xml:space="preserve"><value>Δείκτης λίστας</value></data>
+  <data name="MarkdownRenderer/Style/Table" xml:space="preserve"><value>Πίνακας</value></data>
+  <data name="MarkdownRenderer/Style/TableHeader" xml:space="preserve"><value>Κεφαλίδα πίνακα</value></data>
+  <data name="MarkdownRenderer/Style/TableCell" xml:space="preserve"><value>Κελί πίνακα</value></data>
 </root>

@@ -1,5 +1,14 @@
 <Project>
   <PropertyGroup>
+    <!-- Keep the Windows SDK command-line tools consistent for WinUI and
+         self-contained renderer hosts. Projects that merge app manifests
+         must reference this package directly; transitive build assets are
+         intentionally not a reliable tool-discovery mechanism. -->
+    <JitHubWindowsSdkBuildToolsVersion>10.0.28000.1721</JitHubWindowsSdkBuildToolsVersion>
+    <!-- SDK defaults follow BaseIntermediateOutputPath/BaseOutputPath. Keep the
+         conventional and lane-specific generated trees excluded as well so a
+         diagnostic build cannot compile output from another lane. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);obj\**;obj-*\**;bin\**;bin-*\**;artifacts\**</DefaultItemExcludes>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <NuGetAudit>true</NuGetAudit>
     <NuGetAuditMode>all</NuGetAuditMode>

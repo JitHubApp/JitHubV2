@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "upstream": {
+    "repository": "https://github.com/verybadcat/CSharpMath.git",
+    "tag": "v0.5.2",
+    "commit": "2d7dec98695dac6944027d90c73ec50fe45c5964",
+    "typographySubmoduleCommit": "d331968f3ee714332a8ea4fa95a21c15812a8d93"
+  },
+  "compiledSnapshot": {
+    "fileCountIncludingFonts": 112,
+    "compilePolicy": "Explicit CFF-only MSBuild allowlist; WOFF/WOFF2, bitmap/SVG/color, TrueType, variable-font, general shaping, and unrelated table readers are excluded.",
+    "aggregateAlgorithm": "For each ordinally sorted repository-relative path: uint32 little-endian UTF-8 path byte count, path bytes, uint64 little-endian content byte count, content bytes; then SHA-256",
+    "upstreamAggregateSha256": "0f4c10eb62015a3cf9704605127cfaf801d292eca2700642f8d70779f2515fc1",
+    "patchedAggregateSha256": "912b2b7a85cc0be5dbe4bad84d5cf0c31f2856f1466b1b0645e10f6b019d579c"
+  },
+  "fonts": [
+    {
+      "file": "AMS-Capital-Blackboard-Bold.otf",
+      "sha256": "9578b5b9c86e6ab03846080b9d6fa4f7bc6b3044ac15604b8e7bfd4330295dda",
+      "license": "OFL-1.1"
+    },
+    {
+      "file": "cyrillic-modern-nmr10.otf",
+      "sha256": "5b8e360154685a1117e7f93542b89d5263db58f41a40d6df8f131c5fe5032c0c",
+      "license": "OFL-1.1"
+    },
+    {
+      "file": "latinmodern-math.otf",
+      "sha256": "6075562b771f8b82f0c179e363389684f2dd09de30038269e2628e504bd7be0f",
+      "license": "GUST-FONT-LICENSE"
+    }
+  ]
+}

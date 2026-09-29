@@ -6,7 +6,10 @@ internal enum FocusableItemKind
     Link,
     InlineEmbed,
     BlockEmbed,
+    DeclarativeHostedElement,
     CodeBlockCopy,
+    VectorSemantic,
+    HorizontalOverflow,
 }
 
 /// <summary>Represents a keyboard-focusable element in the document.</summary>
@@ -22,8 +25,11 @@ internal readonly struct FocusableItem
     public int InlineIndex { get; }
     public FocusableItemKind Kind { get; }
     public bool IsLink => Kind == FocusableItemKind.Link;
+    public bool IsVectorSemantic => Kind == FocusableItemKind.VectorSemantic;
     public bool IsInlineEmbed => Kind == FocusableItemKind.InlineEmbed;
     public bool IsBlockEmbed => Kind == FocusableItemKind.BlockEmbed;
+    public bool IsDeclarativeHostedElement => Kind == FocusableItemKind.DeclarativeHostedElement;
     public bool IsCodeBlockCopy => Kind == FocusableItemKind.CodeBlockCopy;
+    public bool IsHorizontalOverflow => Kind == FocusableItemKind.HorizontalOverflow;
     public bool IsCodeBlockAction => IsCodeBlockCopy;
 }

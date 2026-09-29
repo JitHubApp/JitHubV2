@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Markdig;
 using Markdig.Syntax;
 using MarkdownRenderer.Layout;
@@ -26,6 +27,23 @@ public sealed class CodeBlockMetadataTests
         string payload = CodeBlockMetadata.CopyPayload("alpha\rbeta\r\ngamma");
 
         Assert.Equal("alpha\nbeta\ngamma", payload);
+    }
+
+    [Fact]
+    public void CodeTextHash_ReusesTheNormalizedStableKeyHash()
+    {
+        var attributes = new Dictionary<string, string>();
+        var span = new MarkdownRenderer.SourceSpan(2, 12);
+        CodeBlockMetadata crlf = CodeBlockMetadata.FromDeclarative(
+            span, "alpha\r\nbeta", "text", attributes);
+        CodeBlockMetadata lf = CodeBlockMetadata.FromDeclarative(
+            span, "alpha\nbeta", "text", attributes);
+        CodeBlockMetadata changed = CodeBlockMetadata.FromDeclarative(
+            span, "alpha\ngamma", "text", attributes);
+
+        Assert.Equal(crlf.CodeTextHash, lf.CodeTextHash);
+        Assert.EndsWith($":{crlf.CodeTextHash:X16}", crlf.StableKey);
+        Assert.NotEqual(crlf.CodeTextHash, changed.CodeTextHash);
     }
 
     [Theory]

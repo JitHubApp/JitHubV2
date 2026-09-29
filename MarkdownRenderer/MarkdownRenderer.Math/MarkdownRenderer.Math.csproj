@@ -1,0 +1,98 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <RootNamespace>MarkdownRenderer.Math</RootNamespace>
+    <AssemblyName>MarkdownRenderer.Math</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <Platforms>x86;x64;ARM64</Platforms>
+    <Platform Condition="'$(Platform)' == '' or '$(Platform)' == 'AnyCPU' or '$(Platform)' == 'Any CPU'">x64</Platform>
+    <!-- The pack is pure managed IL and must remain consumable by every target
+         architecture from one RID-neutral package. -->
+    <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsTrimmable>true</IsTrimmable>
+    <IsAotCompatible>true</IsAotCompatible>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <EnableSingleFileAnalyzer>true</EnableSingleFileAnalyzer>
+    <EnableAotAnalyzer>true</EnableAotAnalyzer>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <DefaultItemExcludes>$(DefaultItemExcludes);obj\**;obj-*\**;bin\**;bin-*\**;artifacts\**</DefaultItemExcludes>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <PackageId>MarkdownRenderer.Math</PackageId>
+    <Version>0.1.0-preview.1</Version>
+    <Authors>nerocui</Authors>
+    <Description>Native, AOT-compatible TeX parsing and immutable vector formula scenes for MarkdownRenderer.</Description>
+    <PackageTags>markdown;winui;math;tex;windows</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/JitHubApp/JitHubV2</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <PackageProjectUrl>https://github.com/JitHubApp/JitHubV2/tree/main/docs/markdown-renderer</PackageProjectUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>icon-192.png</PackageIcon>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\MarkdownRenderer.Core\MarkdownRenderer.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Remove="ThirdParty\CSharpMath.Rendering\Text\**\*.cs" />
+    <Compile Remove="ThirdParty\CSharpMath.Rendering\FrontEnd\MathKeyboard.cs" />
+    <Compile Remove="ThirdParty\CSharpMath.Rendering\FrontEnd\TextPainter.cs" />
+    <Compile Remove="ThirdParty\CSharpMath.Rendering\Settings.cs" />
+    <!-- Typography is deliberately opt-in at the file level. The bundled fonts
+         are fixed CFF OpenType resources, so WebFont, bitmap/SVG, TrueType,
+         variable-font, shaping, color-font, and general table readers are not
+         part of the compiled product or its attack surface. -->
+    <Compile Remove="ThirdParty\Typography\**\*.cs" />
+    <Compile Include="ThirdParty\Typography\Contours\GlyphOutlineBuilderBase.cs" />
+    <Compile Include="ThirdParty\Typography\Typography.OpenFont\Bounds.cs" />
+    <Compile Include="ThirdParty\Typography\Typography.OpenFont\Glyph.cs" />
+    <Compile Include="ThirdParty\Typography\Typography.OpenFont\IGlyphTranslator.cs" />
+    <Compile Include="ThirdParty\Typography\Typography.OpenFont\OpenFontReader.cs" />
+    <Compile Include="ThirdParty\Typography\Typography.OpenFont\Typeface.cs" />
+    <Compile Include="ThirdParty\Typography\Typography.OpenFont\IO\ByteOrderSwappingBinaryReader.cs" />
+    <Compile Include="ThirdParty\Typography\Typography.OpenFont\Tables\CharacterMap.cs" />
+    <Compile Include="ThirdParty\Typography\Typography.OpenFont\Tables\Cmap.cs" />
+    <Compile Include="ThirdParty\Typography\Typography.OpenFont\Tables\Head.cs" />
+    <Compile Include="ThirdParty\Typography\Typography.OpenFont\Tables\HorizontalHeader.cs" />
+    <Compile Include="ThirdParty\Typography\Typography.OpenFont\Tables\HorizontalMetrics.cs" />
+    <Compile Include="ThirdParty\Typography\Typography.OpenFont\Tables\MaxProfile.cs" />
+    <Compile Include="ThirdParty\Typography\Typography.OpenFont\Tables\TableEntry.cs" />
+    <Compile Include="ThirdParty\Typography\Typography.OpenFont\Tables\TableHeader.cs" />
+    <Compile Include="ThirdParty\Typography\Typography.OpenFont\Tables\Utils.cs" />
+    <Compile Include="ThirdParty\Typography\Typography.OpenFont\Tables.AdvancedLayout\CoverageTable.cs" />
+    <Compile Include="ThirdParty\Typography\Typography.OpenFont\Tables.AdvancedLayout\MathTable.cs" />
+    <Compile Include="ThirdParty\Typography\Typography.OpenFont\Tables.CFF\CFF.cs" />
+    <Compile Include="ThirdParty\Typography\Typography.OpenFont\Tables.CFF\CffEvaluationEngine.cs" />
+    <Compile Include="ThirdParty\Typography\Typography.OpenFont\Tables.CFF\CFFTable.cs" />
+    <Compile Include="ThirdParty\Typography\Typography.OpenFont\Tables.CFF\Type2CharStringParser.cs" />
+    <Compile Include="ThirdParty\Typography\Typography.OpenFont\Tables.CFF\Type2InstructionCompacter.cs" />
+    <EmbeddedResource Include="ThirdParty\CSharpMath.Rendering\Reference Fonts\AMS-Capital-Blackboard-Bold.otf">
+      <LogicalName>CSharpMath.Rendering.Reference_Fonts.AMS-Capital-Blackboard-Bold.otf</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="ThirdParty\CSharpMath.Rendering\Reference Fonts\cyrillic-modern-nmr10.otf">
+      <LogicalName>CSharpMath.Rendering.Reference_Fonts.cyrillic-modern-nmr10.otf</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="ThirdParty\CSharpMath.Rendering\Reference Fonts\latinmodern-math.otf">
+      <LogicalName>CSharpMath.Rendering.Reference_Fonts.latinmodern-math.otf</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\LICENSE" Pack="true" PackagePath="" Visible="false" />
+    <None Include="..\..\JitHub.Web\wwwroot\icon-192.png" Pack="true" PackagePath="icon-192.png" Visible="false" />
+    <None Include="README.md" Pack="true" PackagePath="" />
+    <None Include="THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="" />
+    <None Include="UPSTREAM-PATCHES.md" Pack="true" PackagePath="" />
+    <None Include="ThirdParty\CSHARPMATH-LICENSE.txt" Pack="true" PackagePath="licenses\" />
+    <None Include="ThirdParty\TYPOGRAPHY-LICENSE.md" Pack="true" PackagePath="licenses\" />
+    <None Include="ThirdParty\GUST-FONT-LICENSE.txt" Pack="true" PackagePath="licenses\" />
+    <None Include="ThirdParty\OFL-1.1.txt" Pack="true" PackagePath="licenses\" />
+    <None Include="ThirdParty\PROVENANCE.json" Pack="true" PackagePath="licenses\" />
+  </ItemGroup>
+</Project>

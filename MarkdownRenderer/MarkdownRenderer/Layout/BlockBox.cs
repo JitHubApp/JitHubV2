@@ -8,7 +8,7 @@ namespace MarkdownRenderer.Layout;
 /// <summary>
 /// Base class for all block-level boxes (paragraphs, headings, lists, etc.).
 /// </summary>
-public abstract class BlockBox
+internal abstract class BlockBox
 {
     /// <summary>Gets or sets the logical block index assigned during layout.</summary>
     public int BlockIndex { get; set; }
@@ -67,6 +67,16 @@ public abstract class BlockBox
         position = new Document.DocumentPosition(BlockIndex, 0, 0);
         return Bounds.Contains(point);
     }
+
+    /// <summary>
+    /// Hit tests an endpoint while an existing selection is being extended.
+    /// Atomic visual blocks can override this without making their otherwise
+    /// non-selectable background start a new pointer selection.
+    /// </summary>
+    internal virtual bool HitTestSelectionEndpoint(
+        Point point,
+        out Document.DocumentPosition position) =>
+        HitTest(point, out position);
 
     /// <summary>
     /// Returns rectangles to highlight when this block participates in a

@@ -1,7 +1,7 @@
 # Generates ≥80 SVG pixel-compare fixtures across 20 categories.
 # Each fixture has a fixed width/height set in the root <svg> and a viewBox
 # so the headless browser shim renders it at the same pixel dimensions our
-# ThorVG rasterizer is asked to produce.
+# isolated resvg provider is asked to produce.
 $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
 function W($cat, $name, $body) {
@@ -83,7 +83,7 @@ W "12-viewbox" "preserve-meet"  '<svg xmlns="http://www.w3.org/2000/svg" width="
 W "12-viewbox" "preserve-slice" '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="60" viewBox="0 0 60 60" preserveAspectRatio="xMidYMid slice"><rect width="60" height="60" fill="#107C10"/></svg>'
 W "12-viewbox" "preserve-none"  '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="60" viewBox="0 0 60 60" preserveAspectRatio="none"><rect width="60" height="60" fill="#D13438"/></svg>'
 
-# 13 — Text  (ThorVG text support is limited; we still ship fixtures to track it)
+# 13 — Text
 W "13-text" "basic"      '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="40" viewBox="0 0 120 40"><text x="10" y="28" font-family="Segoe UI, Arial" font-size="20" fill="#222">Hello</text></svg>'
 W "13-text" "anchor-mid" '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="40" viewBox="0 0 120 40"><text x="60" y="28" font-family="Segoe UI, Arial" font-size="20" text-anchor="middle" fill="#0078D4">Mid</text></svg>'
 

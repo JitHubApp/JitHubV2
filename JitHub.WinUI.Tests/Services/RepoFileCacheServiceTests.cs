@@ -15,6 +15,10 @@ namespace JitHub.WinUI.Tests.Services;
 
 public class RepoFileCacheServiceTests : IDisposable
 {
+    // The follow-up operations below include disk I/O. This bounds a leaked
+    // key lock without treating a busy CI filesystem as a two-second SLA.
+    private static readonly TimeSpan PostCancellationCompletionTimeout = TimeSpan.FromSeconds(10);
+
     [Fact]
     public void ProductionCache_UsesThirtyDayImmutableBlobPolicy()
     {
@@ -526,7 +530,7 @@ public class RepoFileCacheServiceTests : IDisposable
             maintenanceLock.Release();
         }
 
-        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(2));
+        using CancellationTokenSource timeout = new(PostCancellationCompletionTimeout);
         Assert.Null(await cache.GetAsync(key, timeout.Token));
     }
 
@@ -553,7 +557,7 @@ public class RepoFileCacheServiceTests : IDisposable
             maintenanceLock.Release();
         }
 
-        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(2));
+        using CancellationTokenSource timeout = new(PostCancellationCompletionTimeout);
         await cache.PutAsync(key, entry, timeout.Token);
         Assert.Equal("content", (await cache.GetAsync(key, timeout.Token))!.Text);
     }

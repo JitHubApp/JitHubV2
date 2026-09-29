@@ -27,12 +27,90 @@ public sealed class SecurityReleaseGateTests
         Assert.Contains("<RestoreLockedMode>true</RestoreLockedMode>", nativeAotProps, StringComparison.Ordinal);
         Assert.Contains("NU1901;NU1902;NU1903;NU1904", props, StringComparison.Ordinal);
         Assert.Contains("Verify-DependencySecurity.ps1", project, StringComparison.Ordinal);
+        Assert.Contains("Category=ReleaseSecurity", project, StringComparison.Ordinal);
+        Assert.Contains("-p:RestoreLockedMode=true", project, StringComparison.Ordinal);
+        Assert.DoesNotContain("--no-restore", project, StringComparison.Ordinal);
         Assert.Contains("--locked-mode", script, StringComparison.Ordinal);
         Assert.Contains("-p:Configuration=Release", script, StringComparison.Ordinal);
         Assert.Contains("--vulnerable", script, StringComparison.Ordinal);
         Assert.Contains("--include-transitive", script, StringComparison.Ordinal);
         Assert.Contains("allowedPrereleasePackages", script, StringComparison.Ordinal);
         Assert.Contains("UriSchemeHttps", script, StringComparison.Ordinal);
+        Assert.Contains("Get-ProjectFilesPruned", script, StringComparison.Ordinal);
+        Assert.Contains("EnumerateDirectories", script, StringComparison.Ordinal);
+        Assert.Contains("[System.IO.FileAttributes]::ReparsePoint", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("Get-ChildItem -LiteralPath $repositoryRoot -Recurse", script, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    [Trait("Category", "ReleaseSecurity")]
+    public void RidNeutralShippingProjects_DeclareSupportedRuntimes_AndAppGraphLocksThem()
+    {
+        string root = FindRepositoryRoot();
+        (string RelativePath, bool ProducesManagedAssembly, bool CoveredByAppReleaseGate)[] projects =
+        [
+            (Path.Combine("MarkdownRenderer", "MarkdownRenderer.Core", "MarkdownRenderer.Core.csproj"), true, true),
+            (Path.Combine("MarkdownRenderer", "MarkdownRenderer.Math", "MarkdownRenderer.Math.csproj"), true, false),
+            (Path.Combine("MarkdownRenderer", "MarkdownRenderer.SyntaxHighlighting.TextMate", "MarkdownRenderer.SyntaxHighlighting.TextMate.csproj"), true, true),
+            (Path.Combine("MarkdownRenderer", "MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common", "MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.csproj"), true, true),
+            (Path.Combine("MarkdownRenderer", "MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All", "MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All.csproj"), true, false),
+            (Path.Combine("MarkdownRenderer", "MarkdownRenderer.Package", "MarkdownRenderer.Package.csproj"), false, false),
+            (Path.Combine("MarkdownRenderer", "MarkdownRenderer.All", "MarkdownRenderer.All.csproj"), false, false)
+        ];
+        string[] expectedRids = ["win-arm64", "win-x64", "win-x86"];
+
+        foreach ((string relativePath, bool producesManagedAssembly, bool coveredByAppReleaseGate) in projects)
+        {
+            string projectPath = Path.Combine(root, relativePath);
+            XDocument project = XDocument.Load(projectPath);
+            XElement projectRoot = Assert.IsType<XElement>(project.Root);
+            XElement runtimeIdentifiers = Assert.Single(
+                projectRoot.Elements("PropertyGroup").Elements("RuntimeIdentifiers"));
+            string[] declaredRids = runtimeIdentifiers.Value
+                .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            Assert.Equal(expectedRids, declaredRids.Order(StringComparer.Ordinal));
+
+            if (producesManagedAssembly)
+            {
+                XElement platformTarget = Assert.Single(
+                    projectRoot.Elements("PropertyGroup").Elements("PlatformTarget"));
+                Assert.Equal("AnyCPU", platformTarget.Value);
+            }
+            else
+            {
+                XElement includeBuildOutput = Assert.Single(
+                    projectRoot.Elements("PropertyGroup").Elements("IncludeBuildOutput"));
+                Assert.Equal("false", includeBuildOutput.Value, ignoreCase: true);
+            }
+
+            if (coveredByAppReleaseGate)
+            {
+                // The JitHub release gate restores and audits only the app graph.
+                // Feature packs outside that graph own their locks in their
+                // package-specific release gates and must not couple this build
+                // to unrelated restore-lane state.
+                string lockPath = Path.Combine(Path.GetDirectoryName(projectPath)!, "packages.lock.json");
+                using System.Text.Json.JsonDocument lockFile = System.Text.Json.JsonDocument.Parse(
+                    File.ReadAllText(lockPath));
+                string[] targetFrameworks = lockFile.RootElement
+                    .GetProperty("dependencies")
+                    .EnumerateObject()
+                    .Select(static property => property.Name)
+                    .ToArray();
+
+                string neutralTarget = Assert.Single(
+                    targetFrameworks,
+                    static target => !target.Contains('/', StringComparison.Ordinal));
+                string[] expectedTargets =
+                [
+                    neutralTarget,
+                    .. expectedRids.Select(rid => $"{neutralTarget}/{rid}")
+                ];
+                Assert.Equal(
+                    expectedTargets.Order(StringComparer.Ordinal),
+                    targetFrameworks.Order(StringComparer.Ordinal));
+            }
+        }
     }
 
     [Fact]

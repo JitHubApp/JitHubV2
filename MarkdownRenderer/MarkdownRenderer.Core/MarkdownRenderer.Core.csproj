@@ -1,0 +1,53 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <RootNamespace>MarkdownRenderer</RootNamespace>
+    <AssemblyName>MarkdownRenderer.Core</AssemblyName>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <Platforms>x86;x64;ARM64</Platforms>
+    <Platform Condition="'$(Platform)' == '' or '$(Platform)' == 'AnyCPU' or '$(Platform)' == 'Any CPU'">x64</Platform>
+    <!-- Core has no native payload. Keep its library IL architecture-neutral even
+         when a RID-specific consumer drives the outer build with Platform=x64,
+         x86, or ARM64. -->
+    <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <IsTrimmable>true</IsTrimmable>
+    <IsAotCompatible>true</IsAotCompatible>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <EnableSingleFileAnalyzer>true</EnableSingleFileAnalyzer>
+    <EnableAotAnalyzer>true</EnableAotAnalyzer>
+    <!-- Evidence runs use per-lane obj-* directories. Preserve the canonical
+         artifact exclusions even when BaseIntermediateOutputPath is overridden,
+         otherwise generated assembly attributes are globbed as source. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);obj\**;obj-*\**;bin\**;bin-*\**;artifacts\**</DefaultItemExcludes>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <PackageId>MarkdownRenderer.Core</PackageId>
+    <Version>1.0.0-preview.1</Version>
+    <Authors>nerocui</Authors>
+    <Description>Immutable markdown documents, standards profiles, UTF-16 source maps, diagnostics, and declarative extensions with no WinUI or native payload.</Description>
+    <PackageTags>markdown;commonmark;gfm;windows;aot</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/JitHubApp/JitHubV2</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageProjectUrl>https://github.com/JitHubApp/JitHubV2/tree/main/docs/markdown-renderer</PackageProjectUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>icon-192.png</PackageIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\MarkdownRenderer\SourceSpan.cs" Link="SourceSpan.cs" />
+    <Compile Include="..\MarkdownRenderer\Document\*.cs" Link="Document\%(Filename)%(Extension)" />
+    <Compile Include="..\MarkdownRenderer\Engine\*.cs" Link="Engine\%(Filename)%(Extension)" />
+    <Compile Include="..\MarkdownRenderer\Extensions\*.cs" Link="Extensions\%(Filename)%(Extension)" />
+    <Compile Include="..\MarkdownRenderer\Theming\MarkdownStyleRole.cs" Link="Theming\MarkdownStyleRole.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Markdig" Version="0.42.0" />
+    <None Include="..\..\LICENSE" Pack="true" PackagePath="" Visible="false" />
+    <None Include="..\..\docs\markdown-renderer\README.md" Pack="true" PackagePath="README.md" Visible="false" />
+    <None Include="..\..\JitHub.Web\wwwroot\icon-192.png" Pack="true" PackagePath="icon-192.png" Visible="false" />
+  </ItemGroup>
+</Project>

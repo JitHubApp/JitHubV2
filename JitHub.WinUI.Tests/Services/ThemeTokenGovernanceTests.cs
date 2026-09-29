@@ -38,7 +38,6 @@ public sealed class ThemeTokenGovernanceTests
         "MenuFlyoutItem",
         "MenuFlyoutSeparator",
         "MenuFlyoutSubItem",
-        "PersonPicture",
         "Pivot",
         "ProgressBar",
         "ProgressRing",
@@ -259,6 +258,7 @@ public sealed class ThemeTokenGovernanceTests
         Assert.DoesNotContain("DefaultSelectorBarStyle", navigation, StringComparison.Ordinal);
         Assert.DoesNotContain("DefaultSelectorBarItemStyle", navigation, StringComparison.Ordinal);
         Assert.DoesNotContain("DefaultTreeViewStyle", lists, StringComparison.Ordinal);
+        Assert.DoesNotContain("DefaultPersonPictureStyle", lists, StringComparison.Ordinal);
         Assert.Contains("<Style TargetType=\"muxc:SelectorBar\">", navigation, StringComparison.Ordinal);
         Assert.Contains("<Style TargetType=\"muxc:SelectorBarItem\">", navigation, StringComparison.Ordinal);
         Assert.Contains("<Style TargetType=\"TreeView\">", lists, StringComparison.Ordinal);

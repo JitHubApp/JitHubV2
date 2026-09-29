@@ -13,6 +13,7 @@ internal sealed record LaunchOptions(
     bool MarkdownLifecycleFixture = false,
     string? MarkdownLifecycleHost = null,
     string? MarkdownCorpusPath = null,
+    bool ReadmeProductionAudit = false,
     bool WebsiteShowcase = false)
 {
     private const int MaximumActivationArgumentLength = 32_767;
@@ -47,6 +48,48 @@ internal sealed record LaunchOptions(
     public string RepositoryFullName =>
         string.IsNullOrWhiteSpace(Repository) ? DefaultRepository : Repository.Trim();
 
+    internal string ResolvePreviewAccessToken(string publicAccessToken)
+    {
+        if (!ReadmeProductionAudit)
+        {
+            return publicAccessToken;
+        }
+
+        string? token = System.Environment.GetEnvironmentVariable("JITHUB_README_AUDIT_GITHUB_TOKEN");
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            throw new System.InvalidOperationException(
+                "README production audit requires JITHUB_README_AUDIT_GITHUB_TOKEN.");
+        }
+
+        return token.Trim();
+    }
+
+    internal long ResolveReadmeAuditAccountId()
+    {
+        if (!ReadmeProductionAudit)
+        {
+            throw new System.InvalidOperationException(
+                "A README audit account partition is only available during a production README audit.");
+        }
+
+        string? rawAccountId = System.Environment.GetEnvironmentVariable(
+            "JITHUB_README_AUDIT_GITHUB_ACCOUNT_ID");
+        if (!long.TryParse(
+                rawAccountId,
+                System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out long accountId) ||
+            accountId <= 0)
+        {
+            throw new System.InvalidOperationException(
+                "README production audit requires a stable positive " +
+                "JITHUB_README_AUDIT_GITHUB_ACCOUNT_ID cache partition.");
+        }
+
+        return accountId;
+    }
+
     public static LaunchOptions Parse(string[]? args, string? activationArguments = null)
     {
         string? page = null;
@@ -58,6 +101,7 @@ internal sealed record LaunchOptions(
         bool markdownLifecycleFixture = false;
         string? markdownLifecycleHost = null;
         string? markdownCorpusPath = null;
+        bool readmeProductionAudit = false;
         bool websiteShowcase = false;
 
         IEnumerable<string> effectiveArguments = TokenizeActivationArguments(activationArguments)
@@ -124,6 +168,12 @@ internal sealed record LaunchOptions(
                 continue;
             }
 
+            if (string.Equals(arg, "--readme-production-audit", System.StringComparison.OrdinalIgnoreCase))
+            {
+                readmeProductionAudit = true;
+                continue;
+            }
+
             if (string.Equals(arg, "--website-showcase", System.StringComparison.OrdinalIgnoreCase))
             {
                 websiteShowcase = true;
@@ -161,6 +211,7 @@ internal sealed record LaunchOptions(
             markdownLifecycleFixture,
             markdownLifecycleHost,
             markdownCorpusPath,
+            readmeProductionAudit,
             websiteShowcase);
     }
 

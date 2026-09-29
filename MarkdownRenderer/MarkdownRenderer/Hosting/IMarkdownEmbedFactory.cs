@@ -21,7 +21,7 @@ namespace MarkdownRenderer.Hosting;
 /// the Win2D paint surface and sized to the block's measured bounds.
 /// </para>
 /// </remarks>
-public interface IMarkdownEmbedFactory
+internal interface IMarkdownEmbedFactory
 {
     /// <summary>
     /// Background-thread only: returns true if this factory wants to replace

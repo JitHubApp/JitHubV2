@@ -21,7 +21,7 @@ public sealed class RepoDetailPageArgs
     {
         Page = page;
         Repo = repo;
-        Ref = CodeViewerNavArg.CreateWithBranch(repo, repo?.DefaultBranch);
+        Ref = CodeViewerNavArg.CreateWithRepo(repo);
     }
 
     public RepoDetailPageArgs(RepoPageType page, Repository? repo)

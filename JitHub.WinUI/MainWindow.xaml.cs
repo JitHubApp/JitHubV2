@@ -6,8 +6,11 @@ using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using JitHub.Models;
 using JitHub.Services;
+using JitHub.Services.Markdown;
 using JitHub.WinUI.Helpers;
 using JitHub.WinUI.Performance;
+using JitHub.WinUI.Views.Controls.Common;
+using JitHub.WinUI.Views.Pages;
 using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Input;
@@ -34,6 +37,7 @@ public sealed partial class MainWindow : Window
     private const uint ImageIcon = 1;
     private const uint LrLoadFromFile = 0x00000010;
     private const uint WmClose = 0x0010;
+    private const uint WmFontChange = 0x001D;
     private const uint WmSetIcon = 0x0080;
     private const uint WmKeyDown = 0x0100;
     private const uint WmSysKeyDown = 0x0104;
@@ -82,6 +86,11 @@ public sealed partial class MainWindow : Window
     private bool _followSystemTheme;
     private bool _suppressActiveThemeBrushRefresh;
     private bool _allowCloseAfterDiagnostics;
+    private bool _markdownPageUnloadWaitTimedOut;
+    private bool _markdownShellContentUnloadWaitTimedOut;
+    private bool _markdownRendererDisposalWaitTimedOut;
+    private bool _markdownRendererDisposalConfirmed;
+    private int _markdownRenderersForceDisposed;
     private bool _closingRequestedRaised;
     private Task? _diagnosticsCloseTask;
     private ContentDialog? _activeContentDialog;
@@ -758,18 +767,198 @@ public sealed partial class MainWindow : Window
 
     private async Task DrainDiagnosticsAndCloseAsync()
     {
+        MarkdownLifecycleAutomationBridge.SignalShutdownStage("window-close-requested");
         try
         {
             await DismissActiveContentDialogBeforeCloseAsync();
+            MarkdownLifecycleAutomationBridge.SignalShutdownStage("content-dialog-dismissed");
             App app = (App)Application.Current;
             app.QueueDiagnosticsCloseProbeIfRequested();
             await app.ShutdownBackgroundTasksAsync(TimeSpan.FromSeconds(5));
+            MarkdownLifecycleAutomationBridge.SignalShutdownStage("background-tasks-drained");
             await app.ShutdownDiagnosticsAsync(TimeSpan.FromSeconds(5));
+            MarkdownLifecycleAutomationBridge.SignalShutdownStage("diagnostics-drained");
         }
         finally
         {
+            // Markdown controls borrow the process-wide highlighter, engine,
+            // performance session, and SVG worker. Remove the page tree first:
+            // its Unloaded handlers dispose the controls and detach scroll
+            // callbacks before their shared providers are retired.
+            _markdownPageUnloadWaitTimedOut = false;
+            try
+            {
+                await UnloadPageContentBeforeMarkdownShutdownAsync();
+            }
+            catch (Exception exception)
+            {
+                App.LogHandledException(exception, "markdown-view-shutdown");
+            }
+
+            try
+            {
+                MarkdownLifecycleAutomationBridge.RecordMarkdownShutdownAuditSnapshot(
+                    JitHubMarkdownRuntime.GetShutdownAuditSnapshot(),
+                    pageUnloadWaitTimedOut: _markdownPageUnloadWaitTimedOut || _markdownShellContentUnloadWaitTimedOut,
+                    shellContentUnloadWaitTimedOut: _markdownShellContentUnloadWaitTimedOut,
+                    markdownRendererDisposalWaitTimedOut: _markdownRendererDisposalWaitTimedOut,
+                    markdownRenderersForceDisposed: _markdownRenderersForceDisposed);
+            }
+            catch (Exception exception)
+            {
+                App.LogHandledException(exception, "markdown-shutdown-audit");
+            }
+
+            if (_markdownRendererDisposalConfirmed)
+            {
+                MarkdownLifecycleAutomationBridge.SignalShutdownStage("markdown-shutdown-started");
+                try
+                {
+                    await JitHubMarkdownRuntime.ShutdownAsync();
+                    MarkdownLifecycleAutomationBridge.SignalShutdownStage("markdown-shutdown-completed");
+                }
+                catch (Exception exception)
+                {
+                    MarkdownLifecycleAutomationBridge.SignalShutdownStage("markdown-shutdown-failed");
+                    App.LogHandledException(exception, "markdown-runtime-shutdown");
+                }
+            }
+            else
+            {
+                // A borrowed renderer may still call into these providers. Do not
+                // retire them on the way out; closing remains bounded and process
+                // teardown will reclaim them after the window is gone.
+                MarkdownLifecycleAutomationBridge.SignalShutdownStage(
+                    "markdown-shutdown-skipped-undisposed-renderers");
+            }
+
             _allowCloseAfterDiagnostics = true;
+            MarkdownLifecycleAutomationBridge.SignalShutdownStage("window-final-close");
             Close();
+        }
+    }
+
+    private async Task UnloadPageContentBeforeMarkdownShutdownAsync()
+    {
+        FrameworkElement? page = ContentFrameHost.Content as FrameworkElement;
+
+        if (page is ShellPage shellPage)
+        {
+            try
+            {
+                _markdownShellContentUnloadWaitTimedOut =
+                    await shellPage.DetachNestedContentForMarkdownShutdownAsync(TimeSpan.FromSeconds(2));
+                if (_markdownShellContentUnloadWaitTimedOut)
+                    _markdownPageUnloadWaitTimedOut = true;
+            }
+            catch (Exception exception)
+            {
+                _markdownShellContentUnloadWaitTimedOut = true;
+                _markdownPageUnloadWaitTimedOut = true;
+                MarkdownLifecycleAutomationBridge.SignalShutdownStage(
+                    "markdown-shell-content-unload-failed");
+                App.LogHandledException(exception, "markdown-shell-content-shutdown");
+            }
+
+            await DrainMarkdownViewersBeforeProviderShutdownAsync();
+        }
+
+        if (page is null)
+        {
+            try
+            {
+                ContentFrameHost.Content = null;
+                MarkdownLifecycleAutomationBridge.SignalShutdownStage("markdown-page-unload-not-required-no-page");
+            }
+            finally
+            {
+                await DrainMarkdownViewersBeforeProviderShutdownAsync();
+            }
+
+            return;
+        }
+
+        bool wasLoaded = page.IsLoaded;
+        var unloaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void OnUnloaded(object sender, RoutedEventArgs args) => unloaded.TrySetResult();
+        if (wasLoaded)
+            page.Unloaded += OnUnloaded;
+
+        try
+        {
+            ContentFrameHost.Content = null;
+            if (wasLoaded)
+            {
+                try
+                {
+                    await unloaded.Task.WaitAsync(TimeSpan.FromSeconds(2));
+                    MarkdownLifecycleAutomationBridge.SignalShutdownStage("markdown-page-unload-wait-completed");
+                }
+                catch (TimeoutException)
+                {
+                    _markdownPageUnloadWaitTimedOut = true;
+                    MarkdownLifecycleAutomationBridge.SignalShutdownStage("markdown-page-unload-wait-timed-out-2s");
+                }
+            }
+            else
+            {
+                MarkdownLifecycleAutomationBridge.SignalShutdownStage("markdown-page-unload-not-required-page-not-loaded");
+            }
+        }
+        finally
+        {
+            if (wasLoaded)
+                page.Unloaded -= OnUnloaded;
+
+            await DrainMarkdownViewersBeforeProviderShutdownAsync();
+        }
+    }
+
+    private async Task DrainMarkdownViewersBeforeProviderShutdownAsync()
+    {
+        bool rendererDisposalCompleted = await MarkdownViewer.WaitForRendererDisposalAsync(
+            TimeSpan.FromSeconds(2));
+        if (!rendererDisposalCompleted)
+        {
+            _markdownRendererDisposalWaitTimedOut = true;
+            MarkdownLifecycleAutomationBridge.SignalShutdownStage(
+                "markdown-renderer-disposal-wait-timed-out-2s");
+        }
+        else
+        {
+            MarkdownLifecycleAutomationBridge.SignalShutdownStage(
+                "markdown-renderer-disposal-wait-completed");
+        }
+
+        int rendererCountBeforePreparation = MarkdownViewer.GetActiveRendererCountForShutdown();
+        try
+        {
+            MarkdownViewer.PrepareAllForApplicationShutdown();
+        }
+        catch (Exception exception)
+        {
+            MarkdownLifecycleAutomationBridge.SignalShutdownStage(
+                "markdown-renderer-force-disposal-failed");
+            App.LogHandledException(exception, "markdown-renderer-shutdown");
+        }
+
+        int activeRendererCount = MarkdownViewer.GetActiveRendererCountForShutdown();
+        _markdownRenderersForceDisposed += Math.Max(0, rendererCountBeforePreparation - activeRendererCount);
+        _markdownRendererDisposalConfirmed = activeRendererCount == 0;
+        if (_markdownRenderersForceDisposed > 0)
+        {
+            MarkdownLifecycleAutomationBridge.SignalShutdownStage(
+                $"markdown-renderers-force-disposed-{_markdownRenderersForceDisposed}");
+        }
+
+        if (_markdownRendererDisposalConfirmed)
+        {
+            MarkdownLifecycleAutomationBridge.SignalShutdownStage("markdown-renderer-disposal-confirmed");
+        }
+        else
+        {
+            MarkdownLifecycleAutomationBridge.SignalShutdownStage(
+                $"markdown-renderers-disposal-unresolved-{activeRendererCount}");
         }
     }
 
@@ -875,6 +1064,13 @@ public sealed partial class MainWindow : Window
         if (message == WmClose)
         {
             MarkdownRenderer.MarkdownRendererRuntime.BeginShutdown();
+        }
+
+        if (message == WmFontChange)
+        {
+            UiTaskGuard.Observe(
+                JitHubMarkdownRuntime.NotifyFontsChangedAsync(),
+                "ui-markdown-svg-font-change");
         }
 
         if ((message == WmKeyDown || message == WmSysKeyDown) &&

@@ -600,4 +600,58 @@
   <data name="toastEnabled.Text" xml:space="preserve">
     <value>Enable toast notification</value>
   </data>
+  <data name="MarkdownRenderer/Document/Name" xml:space="preserve"><value>Documento Markdown</value></data>
+  <data name="MarkdownRenderer/Command/Copy" xml:space="preserve"><value>Copia</value></data>
+  <data name="MarkdownRenderer/Command/CopyMarkdown" xml:space="preserve"><value>Copia come Markdown</value></data>
+  <data name="MarkdownRenderer/Command/CopyLink" xml:space="preserve"><value>Copia collegamento</value></data>
+  <data name="MarkdownRenderer/Command/CopyImage" xml:space="preserve"><value>Copia immagine</value></data>
+  <data name="MarkdownRenderer/Command/CopyTable" xml:space="preserve"><value>Copia tabella</value></data>
+  <data name="MarkdownRenderer/Command/SelectAll" xml:space="preserve"><value>Seleziona tutto</value></data>
+  <data name="MarkdownRenderer/Command/CopyCode" xml:space="preserve"><value>Copia codice</value></data>
+  <data name="MarkdownRenderer/Selection/StartHandle" xml:space="preserve"><value>Maniglia iniziale della selezione</value></data>
+  <data name="MarkdownRenderer/Selection/EndHandle" xml:space="preserve"><value>Maniglia finale della selezione</value></data>
+  <data name="MarkdownRenderer/Selection/HandleHelp" xml:space="preserve"><value>Trascina per modificare la selezione. Usa i tasti di direzione per una regolazione precisa.</value></data>
+  <data name="MarkdownRenderer/Feedback/CodeCopied" xml:space="preserve"><value>Copiato</value></data>
+  <data name="MarkdownRenderer/Image/Loading" xml:space="preserve"><value>Caricamento di {0}...</value></data>
+  <data name="MarkdownRenderer/Image/Error" xml:space="preserve"><value>Immagine non disponibile: {0}</value></data>
+  <data name="MarkdownRenderer/Image/Name" xml:space="preserve"><value>Immagine</value></data>
+  <data name="MarkdownRenderer/Task/Completed" xml:space="preserve"><value>Attività completata</value></data>
+  <data name="MarkdownRenderer/Task/Incomplete" xml:space="preserve"><value>Attività incompleta</value></data>
+  <data name="MarkdownRenderer/Task/ReadOnly" xml:space="preserve"><value>Stato dell’attività di sola lettura</value></data>
+  <data name="MarkdownRenderer/Task/Toggle" xml:space="preserve"><value>Cambia lo stato dell’attività</value></data>
+  <data name="MarkdownRenderer/Table/Name" xml:space="preserve"><value>Tabella</value></data>
+  <data name="MarkdownRenderer/List/Name" xml:space="preserve"><value>Elenco</value></data>
+  <data name="MarkdownRenderer/EmbeddedContent/Name" xml:space="preserve"><value>Contenuto incorporato</value></data>
+  <data name="MarkdownRenderer/Diagram/Name" xml:space="preserve"><value>Diagramma</value></data>
+  <data name="MarkdownRenderer/Code/LanguageHelp" xml:space="preserve"><value>Lingua: {0}</value></data>
+  <data name="MarkdownRenderer/Html/Details" xml:space="preserve"><value>Dettagli</value></data>
+  <data name="MarkdownRenderer/Html/BudgetExceeded" xml:space="preserve"><value>Il contenuto HTML aggiuntivo è stato omesso perché superava il limite di sicurezza del motore di rendering.</value></data>
+  <data name="MarkdownRenderer/Style/Body" xml:space="preserve"><value>Corpo</value></data>
+  <data name="MarkdownRenderer/Style/Heading1" xml:space="preserve"><value>Titolo 1</value></data>
+  <data name="MarkdownRenderer/Style/Heading2" xml:space="preserve"><value>Titolo 2</value></data>
+  <data name="MarkdownRenderer/Style/Heading3" xml:space="preserve"><value>Titolo 3</value></data>
+  <data name="MarkdownRenderer/Style/Heading4" xml:space="preserve"><value>Titolo 4</value></data>
+  <data name="MarkdownRenderer/Style/Heading5" xml:space="preserve"><value>Titolo 5</value></data>
+  <data name="MarkdownRenderer/Style/Heading6" xml:space="preserve"><value>Titolo 6</value></data>
+  <data name="MarkdownRenderer/Style/CodeBlock" xml:space="preserve"><value>Blocco di codice</value></data>
+  <data name="MarkdownRenderer/Style/InlineCode" xml:space="preserve"><value>Codice inline</value></data>
+  <data name="MarkdownRenderer/Style/Quote" xml:space="preserve"><value>Citazione</value></data>
+  <data name="MarkdownRenderer/Style/Link" xml:space="preserve"><value>Collegamento</value></data>
+  <data name="MarkdownRenderer/Style/Strong" xml:space="preserve"><value>Grassetto</value></data>
+  <data name="MarkdownRenderer/Style/Emphasis" xml:space="preserve"><value>Enfasi</value></data>
+  <data name="MarkdownRenderer/Style/Strikethrough" xml:space="preserve"><value>Barrato</value></data>
+  <data name="MarkdownRenderer/Style/Subscript" xml:space="preserve"><value>Pedice</value></data>
+  <data name="MarkdownRenderer/Style/Superscript" xml:space="preserve"><value>Apice</value></data>
+  <data name="MarkdownRenderer/Style/Inserted" xml:space="preserve"><value>Inserito</value></data>
+  <data name="MarkdownRenderer/Style/Marked" xml:space="preserve"><value>Evidenziato</value></data>
+  <data name="MarkdownRenderer/Style/Abbreviation" xml:space="preserve"><value>Abbreviazione</value></data>
+  <data name="MarkdownRenderer/Style/DefinitionTerm" xml:space="preserve"><value>Termine di definizione</value></data>
+  <data name="MarkdownRenderer/Style/DefinitionDescription" xml:space="preserve"><value>Definizione</value></data>
+  <data name="MarkdownRenderer/Style/Figure" xml:space="preserve"><value>Figura</value></data>
+  <data name="MarkdownRenderer/Style/FigureCaption" xml:space="preserve"><value>Didascalia della figura</value></data>
+  <data name="MarkdownRenderer/Style/Diagram" xml:space="preserve"><value>Diagramma</value></data>
+  <data name="MarkdownRenderer/Style/ListMarker" xml:space="preserve"><value>Indicatore di elenco</value></data>
+  <data name="MarkdownRenderer/Style/Table" xml:space="preserve"><value>Tabella</value></data>
+  <data name="MarkdownRenderer/Style/TableHeader" xml:space="preserve"><value>Intestazione di tabella</value></data>
+  <data name="MarkdownRenderer/Style/TableCell" xml:space="preserve"><value>Cella di tabella</value></data>
 </root>

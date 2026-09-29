@@ -560,6 +560,8 @@ public sealed class AdaptivePrefetchPolicyTests
     public async Task LatestWinsScheduler_HoverStormStartsOnlyFinalPrediction()
     {
         LatestWinsPrefetchScheduler scheduler = new();
+        TaskCompletionSource finalStarted = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
         int startedCount = 0;
         int startedItem = -1;
         for (int item = 0; item < 100; item++)
@@ -571,11 +573,16 @@ public sealed class AdaptivePrefetchPolicyTests
                 {
                     Interlocked.Increment(ref startedCount);
                     Volatile.Write(ref startedItem, captured);
+                    if (captured == 99)
+                        finalStarted.TrySetResult();
                     return new RecordingDisposable();
                 });
         }
 
-        await Task.Delay(150);
+        // Runner load can postpone a 30 ms timer far beyond a fixed 150 ms
+        // sleep. Wait for the actual final callback, then assert that no
+        // superseded prediction was started.
+        await finalStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.Equal(1, Volatile.Read(ref startedCount));
         Assert.Equal(99, Volatile.Read(ref startedItem));

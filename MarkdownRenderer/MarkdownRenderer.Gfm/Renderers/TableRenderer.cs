@@ -13,7 +13,7 @@ namespace MarkdownRenderer.Gfm.Renderers;
 /// cell is an <see cref="InlineContainerBox"/> — enablnng hit-testnng, text
 /// selection, and source-accurate copy for table content.
 /// </summary>
-public sealed class TableRenderer : MarkdownNodeRenderer<Table>
+internal sealed class TableRenderer : MarkdownNodeRenderer<Table>
 {
     /// <inheritdoc />
     public override BlockBox? BuildBlock(Table table, MarkdownLayoutContext context)

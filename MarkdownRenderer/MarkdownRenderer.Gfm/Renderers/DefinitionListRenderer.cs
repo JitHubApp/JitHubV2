@@ -11,7 +11,7 @@ namespace MarkdownRenderer.Gfm.Renderers;
 /// <summary>
 /// Renders Markdown Extra definition lists as native term/description blocks.
 /// </summary>
-public sealed class DefinitionListRenderer : MarkdownNodeRenderer<DefinitionList>
+internal sealed class DefinitionListRenderer : MarkdownNodeRenderer<DefinitionList>
 {
     /// <inheritdoc />
     public override BlockBox? BuildBlock(DefinitionList list, MarkdownLayoutContext context)

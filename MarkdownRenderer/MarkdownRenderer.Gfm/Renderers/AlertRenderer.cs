@@ -15,7 +15,7 @@ namespace MarkdownRenderer.Gfm.Renderers;
 /// starts with a GFM alert tag (<c>[!NOTE]</c>, <c>[!TIP]</c>, etc.).
 /// Returns <c>null</c> for ulann blockquotes so the core renderer handles them.
 /// </summary>
-public sealed class AlertRenderer : MarkdownNodeRenderer<QuoteBlock>
+internal sealed class AlertRenderer : MarkdownNodeRenderer<QuoteBlock>
 {
     private readonly record struct AlertKind(string Tag, string Title, string Icon, Color AccentColor, string StyleKey);
 

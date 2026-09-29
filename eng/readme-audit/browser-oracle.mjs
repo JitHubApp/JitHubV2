@@ -1,0 +1,804 @@
+import { spawn } from "node:child_process";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { DocumentReadinessTimeout, metricDelta, metricMap, navigateReadme } from "./browser-navigation.mjs";
+import { waitForDevToolsPort } from "./browser-launch.mjs";
+import { connectCdp } from "./cdp-client.mjs";
+import { stopBrowserProfileProcesses } from "./browser-process-lifetime.mjs";
+import {
+  captureSameByteCorpus,
+  createResponseRecorder,
+  createSameByteReplayServer,
+  readSameByteSnapshotFailureEvidence,
+  sha256,
+} from "./same-byte-corpus.mjs";
+import { replaySameByteInEdge } from "./same-byte-edge-replay.mjs";
+
+const options = parseArguments(process.argv.slice(2));
+const outputDirectory = path.resolve(required("out"));
+const repositoryUrl = required("url");
+const readmeSha = required("readme-sha");
+const edgePath = options.edge || findDefaultEdge();
+const viewportWidth = readPositiveInteger("width", 1000);
+const viewportHeight = readPositiveInteger("height", 700);
+const maximumTiles = readPositiveInteger("max-tiles", 512);
+const profileDirectory = await mkdtemp(path.join(os.tmpdir(), "jithub-readme-edge-"));
+await mkdir(outputDirectory, { recursive: true });
+
+let edge;
+let cdp;
+let sameByteRecorder;
+let edgeError = "";
+const wall = performance.now();
+class ReadmeNotRendered extends Error {}
+try {
+  // Node may need the read-only token to resolve a pinned README symlink.
+  // The untrusted web page in Edge has no reason to inherit that credential.
+  const edgeEnvironment = { ...process.env };
+  delete edgeEnvironment.JITHUB_README_AUDIT_GITHUB_TOKEN;
+  delete edgeEnvironment.JITHUB_README_AUDIT_GITHUB_ACCOUNT_ID;
+  edge = spawn(edgePath, [
+    "--headless=new",
+    "--no-first-run",
+    "--no-default-browser-check",
+    "--disable-background-networking",
+    "--disable-component-update",
+    "--disable-sync",
+    "--metrics-recording-only",
+    "--remote-debugging-port=0",
+    `--user-data-dir=${profileDirectory}`,
+    "about:blank",
+  ], { stdio: ["ignore", "ignore", "pipe"], windowsHide: true, env: edgeEnvironment });
+
+  edge.stderr.setEncoding("utf8");
+  edge.stderr.on("data", chunk => { edgeError = (edgeError + chunk).slice(-8192); });
+
+  const portFile = path.join(profileDirectory, "DevToolsActivePort");
+  const port = Number((await waitForDevToolsPort(portFile, edge, () => edgeError)).split(/\r?\n/, 1)[0]);
+  const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`, {
+    signal: AbortSignal.timeout(10_000),
+  })).json();
+  if (!Array.isArray(targets)) throw new Error("Edge returned an invalid DevTools target list.");
+  const pageTarget = targets.find(target => target.type === "page");
+  if (!pageTarget?.webSocketDebuggerUrl) {
+    throw new Error("Edge did not expose a debuggable page target.");
+  }
+
+  cdp = await connectCdp(pageTarget.webSocketDebuggerUrl);
+  await Promise.all([
+    cdp.send("Page.enable"),
+    cdp.send("Runtime.enable"),
+    cdp.send("Performance.enable"),
+    cdp.send("Network.enable", options["capture-same-byte-corpus"] ? {
+      maxTotalBufferSize: 256 * 1024 * 1024,
+      maxResourceBufferSize: 64 * 1024 * 1024,
+    } : {}),
+  ]);
+  sameByteRecorder = options["capture-same-byte-corpus"]
+    ? createResponseRecorder(cdp)
+    : null;
+  await cdp.send("Emulation.setDeviceMetricsOverride", {
+    width: viewportWidth,
+    height: viewportHeight,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  await cdp.send("Emulation.setEmulatedMedia", {
+    media: "screen",
+    features: [{ name: "prefers-color-scheme", value: "light" }],
+  });
+
+  const { navigationStarted, navigationRetries, retryMetricBaseline } =
+    await navigateReadme(
+      cdp,
+      repositoryUrl,
+      waitForDocumentReady,
+      () => evaluate(cdp, "performance.timeOrigin"));
+  const readmeRendered = await waitForOptionalExpression(
+    cdp,
+    `Boolean(document.querySelector("#readme article.markdown-body, article.markdown-body"))`,
+    30_000);
+  if (!readmeRendered) {
+    const elapsed = performance.now() - navigationStarted;
+    const reportPath = path.join(outputDirectory, "browser.json");
+    const report = {
+      schemaVersion: 5,
+      repositoryUrl,
+      readmeSha,
+      readmeRendered: false,
+      capturedAtUtc: new Date().toISOString(),
+      viewport: { width: viewportWidth, height: viewportHeight, deviceScaleFactor: 1 },
+      timing: { firstReadmeMs: elapsed, settledReadmeMs: elapsed, fullCaptureMs: elapsed, wallMs: performance.now() - wall, navigationRetries },
+      semantic: { text: "", headings: [], links: [], images: [], media: [], unavailableImages: 0, tables: 0, codeBlocks: 0, taskCheckboxes: 0, details: 0 },
+      tiles: [],
+    };
+    await captureCorpusForReport(report, [], undefined);
+    await writeBrowserReport(report);
+    process.stdout.write(JSON.stringify({ ok: true, readmeRendered: false, report: reportPath }) + "\n");
+    throw new ReadmeNotRendered();
+  }
+  const firstReadmeMs = performance.now() - navigationStarted;
+
+  await evaluate(cdp, `new Promise(async resolve => {
+    const article = document.querySelector("#readme article.markdown-body, article.markdown-body");
+    const top = article.getBoundingClientRect().top + scrollY;
+    const bottom = top + article.getBoundingClientRect().height;
+    const step = Math.max(240, Math.floor(innerHeight * 0.72));
+    for (let y = top; y < bottom; y += step) {
+      scrollTo(0, y);
+      await new Promise(done => setTimeout(done, 70));
+    }
+    scrollTo(0, top);
+    await new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done)));
+    resolve(true);
+  })`, true);
+
+  await evaluate(cdp, `new Promise(resolve => {
+    const article = document.querySelector("#readme article.markdown-body, article.markdown-body");
+    const imageNodes = article.querySelectorAll("img");
+    if (imageNodes.length > 15_000) {
+      throw new Error("README exceeds the bounded browser image-element count.");
+    }
+    const pending = [...imageNodes].filter(image => !image.complete);
+    if (pending.length === 0) { resolve(true); return; }
+    let remaining = pending.length;
+    const done = () => { if (--remaining === 0) resolve(true); };
+    for (const image of pending) {
+      image.addEventListener("load", done, { once: true });
+      image.addEventListener("error", done, { once: true });
+    }
+    setTimeout(() => resolve(false), 15000);
+  })`, true);
+
+  const semantic = await evaluate(cdp, `(() => {
+    const article = document.querySelector("#readme article.markdown-body, article.markdown-body");
+    const rect = article.getBoundingClientRect();
+    const clean = value => (value || "").replace(/\\s+/gu, " ").trim();
+    const isRendered = node => {
+      // Chromium can retain layout rectangles for descendants hidden by a
+      // closed <details>. Match what a user can actually see, including links
+      // inside the visible summary, rather than counting clipped descendants.
+      for (let ancestor = node.parentElement; ancestor && ancestor !== article; ancestor = ancestor.parentElement) {
+        if (ancestor.tagName !== "DETAILS" || ancestor.hasAttribute("open")) continue;
+        const summary = ancestor.querySelector(":scope > summary");
+        if (!summary?.contains(node)) return false;
+      }
+      return [...node.getClientRects()]
+        .some(bounds => bounds.width > 0 && bounds.height > 0);
+    };
+    const isImageSelfLink = node => {
+      // GitHub automatically wraps otherwise unlinked README images in a
+      // lightbox anchor whose target is that same rendered image. This is
+      // repository-page chrome, not an authored Markdown link, so exclude it
+      // from parity counts while retaining authored linked images whose target
+      // leads somewhere else.
+      if (clean(node.innerText)) return false;
+      if (node.children.length !== 1 ||
+          !["IMG", "PICTURE"].includes(node.children[0].tagName)) return false;
+      const image = node.children[0].tagName === "IMG"
+        ? node.children[0]
+        : node.children[0].querySelector("img");
+      if (!image) return false;
+      // GitHub's animated-image wrapper is an actual interaction that opens
+      // the full animation. JitHub deliberately preserves that link while
+      // removing the inert lightbox wrapper around static images.
+      if (image.hasAttribute("data-animated-image")) return false;
+      const normalized = value => {
+        try {
+          const url = new URL(value, location.href);
+          url.hash = "";
+          if (url.searchParams.size === 1 && url.searchParams.get("raw") === "true") {
+            url.search = "";
+          }
+          const host = url.hostname.toLowerCase();
+          const segments = url.pathname.split("/").filter(Boolean);
+          if (host === "github.com" && segments.length >= 5 &&
+              (segments[2] === "blob" || segments[2] === "raw")) {
+            return "github-asset://" + segments[0].toLowerCase() + "/" +
+              segments[1].toLowerCase() + "/" + segments[3] + "/" + segments.slice(4).join("/");
+          }
+          if (host === "raw.githubusercontent.com" && segments.length >= 4) {
+            return "github-asset://" + segments[0].toLowerCase() + "/" +
+              segments[1].toLowerCase() + "/" + segments[2] + "/" + segments.slice(3).join("/");
+          }
+          return url.href;
+        } catch {
+          return "";
+        }
+      };
+      const href = normalized(node.href);
+      return href && [
+        image.currentSrc,
+        image.src,
+        image.getAttribute("src"),
+        image.getAttribute("data-canonical-src"),
+      ]
+        .map(normalized)
+        .some(source => source === href);
+    };
+    const isAuthoredDisclosure = node => {
+      // GitHub wraps bare video-attachment URLs in its own media-player
+      // <details class="details-reset ..."> shell. That wrapper is repository
+      // page chrome, not an authored Markdown disclosure, and JitHub must not
+      // be penalized for omitting GitHub's web-only player controls. Genuine
+      // README <details> elements do not carry this class.
+      return !node.classList.contains("details-reset");
+    };
+    const imageNodes = article.querySelectorAll("img");
+    if (imageNodes.length > 15_000) {
+      throw new Error("README exceeds the bounded browser image-element count.");
+    }
+    const images = [...imageNodes]
+      .map((image, replayIndex) => ({ image, replayIndex }))
+      .filter(item => isRendered(item.image))
+      .map(({ image, replayIndex }) => {
+        const bounds = image.getBoundingClientRect();
+        return {
+          alt: image.getAttribute("alt") || "",
+          hasExplicitAlt: image.hasAttribute("alt"),
+          source: image.getAttribute("src") || "",
+          currentSource: image.currentSrc || "",
+          // GitHub's Camo image URL replaces the authored source. Preserve the
+          // canonical source only in the transient capture; the report writer
+          // hashes it before any artifact is persisted.
+          canonicalSource: image.getAttribute("data-canonical-src") || "",
+          replayIndex,
+          complete: image.complete,
+          naturalWidth: image.naturalWidth,
+          naturalHeight: image.naturalHeight,
+          renderedWidth: bounds.width,
+          renderedHeight: bounds.height,
+        };
+      })
+      // GitHub can retain failed or inactive <picture> candidates with no
+      // layout box. They are not part of the rendered README and therefore
+      // must not create a false "unavailable" result or image-count mismatch.
+      .filter(image => image.renderedWidth > 0 && image.renderedHeight > 0)
+      // GitHub uses empty-src spacer <img> elements in a few READMEs. They have
+      // layout boxes but no image resource, so they are neither a rendered image
+      // nor an unavailable resource JitHub could be expected to reproduce.
+      .filter(image => image.source || image.currentSource);
+    const media = [...article.querySelectorAll("video,audio")]
+      .filter(isRendered)
+      .map(node => {
+        const bounds = node.getBoundingClientRect();
+        return {
+          kind: node.tagName.toLowerCase(),
+          source: node.getAttribute("src") || "",
+          currentSource: node.currentSrc || "",
+          renderedWidth: bounds.width,
+          renderedHeight: bounds.height,
+          accessibleName: clean(node.getAttribute("aria-label") || node.getAttribute("title")) || "Embedded content",
+        };
+      })
+      .filter(item => item.renderedWidth > 0 && item.renderedHeight > 0)
+      .filter(item => item.source || item.currentSource);
+    const visibleMermaidSources = [];
+    const readMermaidPayload = container => {
+      const payload = container.querySelector("[data-json]")?.getAttribute("data-json");
+      if (!payload) return "";
+      try {
+        const parsed = JSON.parse(payload);
+        return typeof parsed?.data === "string" ? parsed.data : "";
+      } catch {
+        return "";
+      }
+    };
+    const addVisibleMermaidSource = (container, source) => {
+      const sourceNode = [...container.querySelectorAll("pre,code")]
+        .find(node => isRendered(node));
+      if (!sourceNode) return;
+      const visibleSource = source || sourceNode.innerText || sourceNode.textContent || "";
+      // Count only GitHub's visible source fallback. A successfully enriched
+      // Mermaid diagram can retain the original source in data-json, but that
+      // source is not part of the browser's visible-text oracle.
+      if (source && !clean(sourceNode.innerText).includes(clean(source))) return;
+      if (visibleSource) visibleMermaidSources.push(visibleSource);
+    };
+    for (const section of article.querySelectorAll('section[data-type="mermaid"]')) {
+      addVisibleMermaidSource(section, readMermaidPayload(section));
+    }
+    for (const container of article.querySelectorAll(".highlight-source-mermaid")) {
+      if (!container.closest('section[data-type="mermaid"]')) {
+        addVisibleMermaidSource(container, "");
+      }
+    }
+    for (const pre of article.querySelectorAll('pre[lang="mermaid"],pre[data-language="mermaid"]')) {
+      if (!pre.closest('section[data-type="mermaid"],.highlight-source-mermaid') && isRendered(pre)) {
+        visibleMermaidSources.push(pre.innerText || pre.textContent || "");
+      }
+    }
+    // JitHub's UIA TextPattern represents an atomic image by its accessible
+    // alt text. innerText intentionally omits image alternatives, so append the
+    // rendered images' alt values to compare equivalent accessible documents.
+    const accessibleText = clean([
+      article.innerText,
+      ...images
+        .map(image => image.alt || (!image.hasExplicitAlt ? "Image" : ""))
+        .filter(Boolean),
+      ...media.map(item => item.accessibleName),
+    ].join(" "));
+    return {
+      finalUrl: location.href,
+      title: document.title,
+      text: accessibleText,
+      visibleText: clean(article.innerText),
+      documentX: rect.left + scrollX,
+      documentY: rect.top + scrollY,
+      width: rect.width,
+      height: rect.height,
+      headings: [...article.querySelectorAll("h1,h2,h3,h4,h5,h6")]
+        .filter(isRendered)
+        .map(node => ({
+          level: Number(node.tagName.slice(1)), text: clean(node.innerText),
+        })),
+      links: [...article.querySelectorAll("a[href]")]
+        .filter(isRendered)
+        .filter(node => !isImageSelfLink(node))
+        .filter(node => {
+          const text = clean(node.innerText);
+          return text || !node.href.includes("#");
+        })
+        .map(node => ({
+        text: clean(node.innerText), href: node.href,
+      })),
+      images,
+      media,
+      visibleMermaidSources,
+      unavailableImages: images.filter(image => !image.complete || image.naturalWidth <= 0).length,
+      tables: [...article.querySelectorAll("table")].filter(isRendered).length,
+      codeBlocks: [...article.querySelectorAll("pre")].filter(isRendered).length,
+      taskCheckboxes: [...article.querySelectorAll('input[type="checkbox"]')]
+        .filter(isRendered).length,
+      details: [...article.querySelectorAll("details")]
+        .filter(isRendered)
+        .filter(isAuthoredDisclosure).length,
+    };
+  })()`);
+  const settledReadmeMs = performance.now() - navigationStarted;
+  // Capture the page's work metrics before screenshotting. Full-document CDP
+  // captures can be expensive and are audit overhead, not GitHub rendering
+  // work; including them made the native/Edge CPU comparison meaningless.
+  const settledMetrics = await cdp.send("Performance.getMetrics");
+  const settledMetricMap = metricMap(settledMetrics);
+  const settledMetricDelta = name => metricDelta(
+    settledMetricMap, retryMetricBaseline, name);
+
+  if (!(semantic.width > 0) || !(semantic.height > 0)) {
+    throw new Error(`GitHub README has invalid bounds ${semantic.width}x${semantic.height}.`);
+  }
+
+  // Larger document-space tiles avoid asking Edge to re-raster an enormous
+  // article once per 700px viewport while still keeping artifact images easy
+  // to inspect and compare.
+  const tileHeight = Math.min(Math.max(viewportHeight, 8192), Math.ceil(semantic.height));
+  const tileCount = Math.max(1, Math.ceil(semantic.height / tileHeight));
+  if (tileCount > maximumTiles) {
+    throw new Error(`README needs ${tileCount} browser tiles, above the ${maximumTiles} safety ceiling.`);
+  }
+
+  const tiles = [];
+  for (let index = 0; index < tileCount; index++) {
+    const relativeY = Math.min(index * tileHeight, Math.max(0, semantic.height - tileHeight));
+    const height = Math.min(tileHeight, semantic.height - relativeY);
+    const capture = await cdp.send("Page.captureScreenshot", {
+      format: "png",
+      fromSurface: true,
+      captureBeyondViewport: true,
+      clip: {
+        x: semantic.documentX,
+        y: semantic.documentY + relativeY,
+        width: semantic.width,
+        height,
+        scale: 1,
+      },
+    });
+    const file = `tile-${String(index).padStart(4, "0")}.png`;
+    await writeFile(path.join(outputDirectory, file), Buffer.from(capture.data, "base64"));
+    tiles.push({ index, relativeY, width: semantic.width, height, file });
+  }
+
+  // This snapshot is private capture input. It is transformed into static
+  // computed presentation and replayed only from loopback with remote requests
+  // denied, keeping GitHub/CDN navigation outside the Edge denominator.
+  const renderedHtml = sameByteRecorder ? await captureRenderedHtmlSnapshot(cdp) : undefined;
+
+  const navigationTiming = await evaluate(cdp, `(() => {
+    const entry = performance.getEntriesByType("navigation")[0];
+    return entry ? {
+      responseEndMs: entry.responseEnd,
+      domContentLoadedMs: entry.domContentLoadedEventEnd,
+      loadMs: entry.loadEventEnd,
+      transferBytes: entry.transferSize,
+      decodedBytes: entry.decodedBodySize,
+    } : null;
+  })()`);
+  const fullCaptureMetrics = await cdp.send("Performance.getMetrics");
+  const fullCaptureMetricMap = metricMap(fullCaptureMetrics);
+  const report = {
+    schemaVersion: 5,
+    repositoryUrl,
+    readmeSha,
+    readmeRendered: true,
+    capturedAtUtc: new Date().toISOString(),
+    viewport: { width: viewportWidth, height: viewportHeight, deviceScaleFactor: 1 },
+    timing: {
+      firstReadmeMs,
+      settledReadmeMs,
+      fullCaptureMs: performance.now() - navigationStarted,
+      wallMs: performance.now() - wall,
+      navigationRetries,
+      navigation: navigationTiming,
+      taskDurationMs: settledMetricDelta("TaskDuration") * 1000,
+      scriptDurationMs: settledMetricDelta("ScriptDuration") * 1000,
+      layoutDurationMs: settledMetricDelta("LayoutDuration") * 1000,
+      recalcStyleDurationMs: settledMetricDelta("RecalcStyleDuration") * 1000,
+      layoutCount: settledMetricDelta("LayoutCount"),
+      recalcStyleCount: settledMetricDelta("RecalcStyleCount"),
+      domNodes: settledMetricMap.Nodes || 0,
+      documents: settledMetricMap.Documents || 0,
+      jsHeapUsedBytes: settledMetricMap.JSHeapUsedSize || 0,
+      fullCaptureTaskDurationMs: metricDelta(
+        fullCaptureMetricMap, retryMetricBaseline, "TaskDuration") * 1000,
+    },
+    semantic,
+    tiles,
+  };
+  await captureCorpusForReport(
+    report,
+    semantic.images.filter(image => image.complete && image.naturalWidth > 0 && image.naturalHeight > 0),
+    renderedHtml);
+  await writeBrowserReport(report);
+  process.stdout.write(JSON.stringify({ ok: true, report: path.join(outputDirectory, "browser.json") }) + "\n");
+} catch (error) {
+  if (error instanceof ReadmeNotRendered) {
+    // A repository can have a README file that GitHub intentionally presents
+    // as source (for example, an extensionless README). The source-view parity
+    // path in the native audit handles this valid outcome.
+  } else {
+  const rawError = error?.stack || String(error);
+  const snapshotFailureEvidence = readSameByteSnapshotFailureEvidence(error);
+  const failure = options["capture-same-byte-corpus"]
+    ? {
+      ok: false,
+      repositoryUrl: `sha256:${sha256(Buffer.from(repositoryUrl, "utf8"))}`,
+      error: redactUrls(rawError),
+      ...(snapshotFailureEvidence || {}),
+    }
+    : { ok: false, repositoryUrl, error: rawError, ...(snapshotFailureEvidence || {}) };
+  await writeFile(path.join(outputDirectory, "browser-failure.json"), JSON.stringify(failure, null, 2));
+  process.stderr.write(failure.error + "\n");
+  process.exitCode = 1;
+  }
+} finally {
+  try { sameByteRecorder?.dispose(); } catch {}
+  // Browser.close can terminate Edge before DevTools sends its response. Never
+  // leave the oracle's top-level await attached to that response indefinitely;
+  // the process wait/kill path below remains the authoritative cleanup.
+  try {
+    if (cdp) {
+      await Promise.race([
+        cdp.send("Browser.close"),
+        delay(1000),
+      ]);
+    }
+  } catch {}
+  try { cdp?.close(); } catch {}
+  if (edge && edge.exitCode === null) {
+    await Promise.race([
+      new Promise(resolve => edge.once("exit", resolve)),
+      delay(1500),
+    ]);
+  }
+  if (edge && edge.exitCode === null) {
+    edge.kill();
+    await Promise.race([
+      new Promise(resolve => edge.once("exit", resolve)),
+      delay(1500),
+    ]);
+  }
+  try {
+    await stopBrowserProfileProcesses(profileDirectory);
+  } catch (error) {
+    process.stderr.write(`warning: could not stop Edge profile processes: ${error.message}\n`);
+  }
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      await rm(profileDirectory, { recursive: true, force: true });
+      break;
+    } catch (error) {
+      if (attempt === 4) process.stderr.write(`warning: could not remove Edge profile: ${error.message}\n`);
+      await delay(200 * (attempt + 1));
+    }
+  }
+}
+
+function parseArguments(args) {
+  const result = {};
+  for (const argument of args) {
+    const match = /^--([^=]+)=(.*)$/u.exec(argument);
+    if (match) result[match[1]] = match[2];
+  }
+  return result;
+}
+
+async function captureCorpusForReport(report, images, renderedHtml) {
+  if (!sameByteRecorder) return;
+  const readmeRendered = report.readmeRendered === true;
+  if (readmeRendered && images.length !== report.semantic.images.length) {
+    throw new Error("Same-byte replay cannot qualify while any GitHub-visible image is unavailable.");
+  }
+  const capture = await captureSameByteCorpus({
+    directory: options["capture-same-byte-corpus"],
+    repository: {
+      fullName: required("repo-full-name"),
+      commitSha: required("commit-sha"),
+    },
+    readmeUrl: required("readme-url"),
+    readmePath: required("readme-path"),
+    readmeGitBlobSha1: readmeSha,
+    readmeByteSize: readNonNegativeInteger("readme-byte-size"),
+    images,
+    renderedHtml,
+    readmeRendered,
+    responseRecorder: sameByteRecorder,
+  });
+  // The live-page response recorder is no longer needed. Detach it before
+  // replay so loopback responses cannot pollute the captured GitHub trace or
+  // retain a second copy of every image request in host memory.
+  sameByteRecorder.dispose();
+  report.sameByteCorpus = {
+    manifest: path.relative(outputDirectory, path.join(capture.directory, "manifest.json")),
+    manifestSha256: capture.manifestSha256,
+    readmeBytes: capture.readmeBytes,
+    readmeSha256: capture.readmeSha256,
+    assetCount: capture.assetCount,
+    assetBytes: capture.assetBytes,
+  };
+  if (!readmeRendered) {
+    report.sameByteHtmlReplay = {
+      schemaVersion: 1,
+      status: "not-applicable",
+      reason: "github-source-view",
+    };
+    return;
+  }
+
+  const replayServer = await createSameByteReplayServer(capture.directory);
+  try {
+    report.sameByteHtmlReplay = await replaySameByteInEdge({
+      cdp,
+      replayServer,
+      outputDirectory,
+      viewport: { width: viewportWidth, height: viewportHeight },
+      maximumTiles,
+    });
+  } finally {
+    await replayServer.close();
+  }
+}
+
+async function captureRenderedHtmlSnapshot(cdpClient) {
+  const html = await evaluate(cdpClient, `(() => {
+    const article = document.querySelector("#readme article.markdown-body, article.markdown-body");
+    if (!article) throw new Error("GitHub README article disappeared before same-byte capture.");
+    const imageNodes = [...article.querySelectorAll("img")];
+    if (imageNodes.length > 15_000) throw new Error("README exceeds the bounded browser image-element count.");
+    const originals = [article, ...article.querySelectorAll("*")];
+    if (originals.length > 200_000) throw new Error("README exceeds the bounded static HTML element count.");
+    const clone = article.cloneNode(true);
+    const copies = [clone, ...clone.querySelectorAll("*")];
+    if (copies.length !== originals.length) throw new Error("GitHub article clone changed its element structure.");
+    const imageIndexByNode = new Map(imageNodes.map((image, index) => [image, index]));
+    const styleProperties = [
+      "display", "visibility", "opacity", "position", "top", "right", "bottom", "left", "z-index",
+      "box-sizing", "width", "height", "min-width", "min-height", "max-width", "max-height",
+      "margin-top", "margin-right", "margin-bottom", "margin-left", "padding-top", "padding-right",
+      "padding-bottom", "padding-left", "border-top-width", "border-right-width", "border-bottom-width",
+      "border-left-width", "border-top-style", "border-right-style", "border-bottom-style", "border-left-style",
+      "border-top-color", "border-right-color", "border-bottom-color", "border-left-color",
+      "border-top-left-radius", "border-top-right-radius", "border-bottom-right-radius", "border-bottom-left-radius",
+      "background-color", "color", "font-family", "font-size", "font-style", "font-weight", "font-stretch",
+      "font-variant", "line-height", "letter-spacing", "word-spacing", "text-align", "text-indent",
+      "text-transform", "text-decoration-line", "text-decoration-style", "text-decoration-color",
+      "text-decoration-thickness", "text-underline-offset", "white-space", "word-break", "overflow-wrap",
+      "text-overflow", "vertical-align", "direction", "unicode-bidi", "writing-mode", "float", "clear",
+      "overflow-x", "overflow-y", "object-fit", "object-position", "aspect-ratio", "table-layout",
+      "border-collapse", "border-spacing", "caption-side", "list-style-type", "list-style-position",
+      "fill", "fill-opacity", "fill-rule", "stroke", "stroke-width", "stroke-opacity", "stroke-linecap",
+      "stroke-linejoin", "stroke-miterlimit", "stroke-dasharray", "stroke-dashoffset", "vector-effect",
+      "paint-order", "shape-rendering", "text-anchor", "dominant-baseline", "clip-path", "filter",
+      "marker-start", "marker-mid", "marker-end",
+      "flex-direction", "flex-wrap", "flex-grow", "flex-shrink", "flex-basis", "align-items",
+      "align-content", "align-self", "justify-content", "justify-items", "justify-self", "gap",
+      "row-gap", "column-gap", "grid-template-columns", "grid-template-rows", "grid-auto-flow",
+      "grid-column-start", "grid-column-end", "grid-row-start", "grid-row-end", "transform",
+      "transform-origin", "columns", "column-count"
+    ];
+    const resourceProperties = [
+      "background-image", "list-style-image", "border-image-source", "mask-image", "mask-border-source",
+      "clip-path", "filter", "fill", "stroke", "marker-start", "marker-mid", "marker-end"
+    ];
+    const hasExternalCssResource = value => {
+      if (/@import/iu.test(value || "")) return true;
+      return [...(value || "").matchAll(/url\\s*\\(\\s*(?:(["'])(.*?)\\1|([^)]+))\\s*\\)/giu)]
+        .some(match => !(match[2] ?? match[3] ?? "").trim().startsWith("#"));
+    };
+    for (let index = 0; index < originals.length; index++) {
+      const source = originals[index];
+      const target = copies[index];
+      if (source.nodeType !== Node.ELEMENT_NODE) continue;
+      const computed = getComputedStyle(source);
+      for (const property of resourceProperties) {
+        if (hasExternalCssResource(computed.getPropertyValue(property))) {
+          throw new Error("GitHub article contains an uncaptured external CSS resource.");
+        }
+      }
+      for (const property of styleProperties) {
+        const value = computed.getPropertyValue(property);
+        if (value) target.style.setProperty(property, value);
+      }
+      for (const attribute of [...target.attributes]) {
+        const name = attribute.name.toLowerCase();
+        if (name.startsWith("on") || /^(?:src|srcset|sizes|poster|background|data-canonical-src|data-src|data-srcset|data-lazy-src)$/u.test(name)) {
+          target.removeAttribute(attribute.name);
+        }
+      }
+      if (source.tagName === "IMG") {
+        target.setAttribute("data-jithub-image-index", String(imageIndexByNode.get(source)));
+        const selectedSource = source.currentSrc || source.getAttribute("src") || "";
+        if (/^data:image\\//iu.test(selectedSource)) {
+          target.setAttribute("data-jithub-image-data", selectedSource);
+        }
+      }
+      if (source.tagName === "A") {
+        const href = source.getAttribute("href") || "";
+        if (/^(?:javascript|vbscript|data|blob):/iu.test(href.trim())) target.removeAttribute("href");
+      }
+      if (["IMAGE", "USE"].includes(source.tagName) && source.namespaceURI === "http://www.w3.org/2000/svg") {
+        const reference = source.getAttribute("href") || source.getAttributeNS("http://www.w3.org/1999/xlink", "href") || "";
+        if (reference && !reference.startsWith("#") && !reference.startsWith("data:image/")) {
+          throw new Error("GitHub article contains an uncaptured external inline-SVG resource.");
+        }
+      }
+    }
+    clone.querySelectorAll("script,iframe,object,embed,base,link[rel~='stylesheet'],style").forEach(node => node.remove());
+    for (const node of clone.querySelectorAll("[href]")) {
+      if (node.tagName === "A") continue;
+      const href = node.getAttribute("href") || "";
+      if (href.startsWith("#") || href.startsWith("data:image/")) continue;
+      node.removeAttribute("href");
+      node.removeAttributeNS("http://www.w3.org/1999/xlink", "href");
+    }
+    return clone.outerHTML;
+  })()`);
+  if (typeof html !== "string" || !/^<article\b/iu.test(html)) {
+    throw new Error("GitHub article did not produce a bounded static HTML snapshot.");
+  }
+  return html;
+}
+
+async function writeBrowserReport(report) {
+  const reportPath = path.join(outputDirectory, "browser.json");
+  if (sameByteRecorder) {
+    const comparisonReportPath = options["same-byte-comparison-report"];
+    if (comparisonReportPath) {
+      const resolvedComparisonPath = path.resolve(comparisonReportPath);
+      const relativeToOutput = path.relative(outputDirectory, resolvedComparisonPath);
+      if (!relativeToOutput.startsWith(`..${path.sep}`) && relativeToOutput !== ".." && !path.isAbsolute(relativeToOutput)) {
+        throw new Error("Raw same-byte comparison evidence must be written outside the audit artifact directory.");
+      }
+      await writeFile(resolvedComparisonPath, JSON.stringify(report));
+    }
+    await writeFile(reportPath, JSON.stringify(sanitizeReport(report), null, 2));
+  } else {
+    await writeFile(reportPath, JSON.stringify(report, null, 2));
+  }
+  return reportPath;
+}
+
+function sanitizeReport(report) {
+  return sanitizeValue(report, "");
+}
+
+function sanitizeValue(value, propertyName) {
+  if (Array.isArray(value)) return value.map(item => sanitizeValue(item, propertyName));
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, sanitizeValue(item, key)]));
+  }
+  if (typeof value !== "string") return value;
+  if (/^(source|currentsource|canonicalsource|href|uri|resolveduri|url|repositoryurl|downloadurl)$/iu.test(propertyName)) {
+    return `sha256:${sha256(Buffer.from(value, "utf8"))}`;
+  }
+  return redactUrls(value);
+}
+
+function redactUrls(value) {
+  return value.replace(/https?:\/\/[^\s"'<>]+/giu, url =>
+    `sha256:${sha256(Buffer.from(url, "utf8"))}`);
+}
+
+function required(name) {
+  const value = options[name];
+  if (!value) throw new Error(`Missing required --${name}=... argument.`);
+  return value;
+}
+
+function readPositiveInteger(name, fallback) {
+  const value = options[name] === undefined ? fallback : Number(options[name]);
+  if (!Number.isInteger(value) || value <= 0) throw new Error(`--${name} must be a positive integer.`);
+  return value;
+}
+
+function readNonNegativeInteger(name) {
+  const value = Number(options[name]);
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`--${name} must be a non-negative safe integer.`);
+  }
+  return value;
+}
+
+function findDefaultEdge() {
+  const candidates = [
+    path.join(process.env["ProgramFiles(x86)"] || "", "Microsoft", "Edge", "Application", "msedge.exe"),
+    path.join(process.env.ProgramFiles || "", "Microsoft", "Edge", "Application", "msedge.exe"),
+  ];
+  const candidate = candidates.find(value => value && path.isAbsolute(value) && existsSync(value));
+  if (!candidate) throw new Error("Microsoft Edge was not found; pass --edge=...");
+  return candidate;
+}
+
+async function evaluate(cdpClient, expression, awaitPromise = false) {
+  const result = await cdpClient.send("Runtime.evaluate", {
+    expression,
+    awaitPromise,
+    returnByValue: true,
+    userGesture: false,
+  });
+  if (result.exceptionDetails) {
+    throw new Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text);
+  }
+  return result.result?.value;
+}
+
+async function waitForExpression(cdpClient, expression, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await evaluate(cdpClient, expression)) return;
+    await delay(100);
+  }
+  throw new Error(`Timed out waiting for browser condition: ${expression}`);
+}
+
+async function waitForDocumentReady(cdpClient, previousTimeOrigin, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const ready = await evaluate(
+        cdpClient,
+        `location.href !== "about:blank" && performance.timeOrigin !== ${JSON.stringify(previousTimeOrigin)} && (document.readyState === "interactive" || document.readyState === "complete")`);
+      if (ready) return;
+    } catch {
+      // Navigation replaces the JavaScript execution context. Retry against
+      // the next context instead of treating that normal transition as a
+      // failed oracle run.
+    }
+    await delay(100);
+  }
+  throw new DocumentReadinessTimeout("Timed out waiting for the GitHub document to become interactive.");
+}
+
+async function waitForOptionalExpression(cdpClient, expression, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await evaluate(cdpClient, expression)) return true;
+    await delay(100);
+  }
+  return false;
+}
+
+function delay(milliseconds) {
+  return new Promise(resolve => setTimeout(resolve, milliseconds));
+}

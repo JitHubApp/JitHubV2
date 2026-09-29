@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "component": "resvg",
+  "version": "0.48.1",
+  "repository": "https://github.com/linebender/resvg.git",
+  "tag": "v0.48.1",
+  "commit": "68b14c4c3bccdb60344c777406486b54c36ec1a4",
+  "commitDate": "2026-08-02T15:07:24+01:00",
+  "dependency": "git-rev-and-version-pinned",
+  "licenseExpression": "Apache-2.0 OR MIT",
+  "selectedLicense": "MIT",
+  "features": [
+    "text",
+    "system-fonts",
+    "memmap-fonts",
+    "raster-images"
+  ],
+  "rustToolchain": "1.96.0",
+  "targets": [
+    "i686-pc-windows-msvc",
+    "x86_64-pc-windows-msvc",
+    "aarch64-pc-windows-msvc"
+  ],
+  "lockFile": "native/Cargo.lock",
+  "protocol": "native/PROTOCOL.md",
+  "reproducibleBuild": "eng/Build-ResvgWorker.ps1 -Target <target>",
+  "linker": "rust-lld from Rust 1.96.0",
+  "msvcCrtLinkage": "static (+crt-static); no VC++ redistributable required",
+  "verification": "normalized PE payload SHA-256 via eng/Compare-ResvgWorkerBinary.ps1",
+  "authenticode": "required-before-production-pack"
+}

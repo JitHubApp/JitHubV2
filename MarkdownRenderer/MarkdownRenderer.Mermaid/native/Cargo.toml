@@ -1,0 +1,27 @@
+[package]
+name = "markdown-renderer-mermaid-native"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[lib]
+name = "MarkdownRenderer_Mermaid_Native"
+crate-type = ["cdylib"]
+
+[dependencies]
+merman = { git = "https://github.com/Latias94/merman.git", rev = "ac53f21ba97e5bd8da7f849fbcdffe64695171e6", default-features = false, features = ["complete-svg"] }
+roxmltree = "0.21.1"
+serde_json = "1.0.145"
+svgtypes = "0.16.0"
+windows = { version = "0.61.3", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_DirectWrite",
+] }
+
+[profile.release]
+codegen-units = 1
+lto = "fat"
+opt-level = "z"
+panic = "unwind"
+strip = "symbols"

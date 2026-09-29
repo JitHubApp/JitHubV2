@@ -1,0 +1,19 @@
+# Warning suppressions in this file apply only to the pinned, audited vendor
+# snapshot. Renderer-owned sources continue to build with warnings as errors.
+root = false
+
+[*.cs]
+dotnet_diagnostic.CS0162.severity = none
+dotnet_diagnostic.CS0168.severity = none
+dotnet_diagnostic.CS0219.severity = none
+dotnet_diagnostic.CS0649.severity = none
+dotnet_diagnostic.CS1572.severity = none
+dotnet_diagnostic.CS1573.severity = none
+dotnet_diagnostic.CS1584.severity = none
+dotnet_diagnostic.CS1587.severity = none
+dotnet_diagnostic.CS1591.severity = none
+dotnet_diagnostic.CS1658.severity = none
+dotnet_diagnostic.CS8602.severity = none
+dotnet_diagnostic.CS8604.severity = none
+dotnet_diagnostic.CS8765.severity = none
+dotnet_diagnostic.CS8769.severity = none

@@ -101,6 +101,14 @@ internal sealed class ListItemBox : BlockBox
         return Bounds.Contains(point);
     }
 
+    internal override bool HitTestSelectionEndpoint(Point point, out DocumentPosition position)
+    {
+        if (_marker.HitTestSelectionEndpoint(point, out position)) return true;
+        if (_content.HitTestSelectionEndpoint(point, out position)) return true;
+        position = new DocumentPosition(BlockIndex, 0, 0);
+        return Bounds.Contains(point);
+    }
+
     public override void Dispose()
     {
         _marker.Dispose();

@@ -35,6 +35,12 @@ internal sealed class InlineEmbedRun : InlineRun
     public Action<FrameworkElement>? Recycle { get; set; }
 
     /// <summary>
+    /// Optional UI-object-free metadata used to preserve semantic identity and
+    /// state while the hosted element is outside the realization band.
+    /// </summary>
+    internal InlineEmbedAutomationMetadata? AutomationMetadata { get; init; }
+
+    /// <summary>
     /// Set by <see cref="MarkdownRenderer.Layout.Boxes.InlineContainerBox"/>
     /// once the element is realized on the UI thread.
     /// </summary>
@@ -49,4 +55,71 @@ internal sealed class InlineEmbedRun : InlineRun
     }
 
     public override string Text => PlaceholderChar;
+
+    public override string AccessibleText =>
+        AutomationMetadata?.CurrentName ?? PlaceholderChar;
+}
+
+/// <summary>Semantic state shared by virtualized inline hosted elements and UIA.</summary>
+internal sealed class InlineEmbedAutomationMetadata
+{
+    private readonly Func<bool, bool>? _canSetState;
+    private readonly Func<bool, bool>? _trySetState;
+
+    internal InlineEmbedAutomationMetadata(
+        string checkedName,
+        string uncheckedName,
+        string readOnlyHelpText,
+        string toggleHelpText,
+        string automationId,
+        bool isChecked,
+        Func<bool, bool>? canSetState = null,
+        Func<bool, bool>? trySetState = null)
+    {
+        CheckedName = checkedName;
+        UncheckedName = uncheckedName;
+        ReadOnlyHelpText = readOnlyHelpText;
+        ToggleHelpText = toggleHelpText;
+        AutomationId = automationId;
+        IsChecked = isChecked;
+        _canSetState = canSetState;
+        _trySetState = trySetState;
+    }
+
+    internal string CheckedName { get; }
+    internal string UncheckedName { get; }
+    internal string ReadOnlyHelpText { get; }
+    internal string ToggleHelpText { get; }
+    internal string AutomationId { get; }
+    internal bool IsChecked { get; private set; }
+    internal string CurrentName => IsChecked ? CheckedName : UncheckedName;
+    internal bool CanToggle => CanSetState(!IsChecked);
+    internal string CurrentHelpText => CanToggle ? ToggleHelpText : ReadOnlyHelpText;
+
+    internal bool CanSetState(bool requestedState)
+    {
+        if (_trySetState is null)
+            return false;
+
+        try { return _canSetState?.Invoke(requestedState) ?? true; }
+        catch { return false; }
+    }
+
+    internal bool TrySetState(bool requestedState)
+    {
+        if (_trySetState is null)
+            return false;
+
+        try
+        {
+            if (!_trySetState.Invoke(requestedState))
+                return false;
+            IsChecked = requestedState;
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
 }

@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "component": "Merman",
+  "repository": "https://github.com/Latias94/merman",
+  "revision": "ac53f21ba97e5bd8da7f849fbcdffe64695171e6",
+  "tree": "d15030d6fbc09b0e4b82409cec74a7ad3d994e24",
+  "revisionDate": "2026-08-31T12:13:23+08:00",
+  "crateVersion": "0.8.0-alpha.6",
+  "mermaidCompatibility": {
+    "version": "11.16.1",
+    "upstreamTag": "mermaid@11.16.1",
+    "upstreamCommit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
+    "parityDashboard": "https://github.com/Latias94/merman/blob/ac53f21ba97e5bd8da7f849fbcdffe64695171e6/docs/alignment/STATUS.md",
+    "parityDashboardSnapshot": "MERMAN_PARITY_BASELINE.md",
+    "parityDashboardSha256": "f8708ac36d7385cc4cc0ac52427699cadb951de994d3f5fd8e37510ac8c70241",
+    "upstreamLockSha256": "f35f205806b58c03a018d7cfd7b36b6146fa3da3003297b004b480ffa9e782c6"
+  },
+  "license": {
+    "selected": "MIT",
+    "file": "licenses/MERMAN-LICENSE-MIT.txt",
+    "sha256": "645fe3acd17f0ec18b05a5cbc8071c16fc888bfa8356d9087c265df69464d893",
+    "thirdPartyNotices": "licenses/MERMAN-THIRD-PARTY-NOTICES.md",
+    "thirdPartyNoticesSha256": "5226375f9543c873b80656d2a396253e7b617e0ed1e7c766d0b9bf622c1cc3ac"
+  },
+  "cargo": {
+    "defaultFeatures": false,
+    "features": ["complete-svg"],
+    "thirdPartyNoticeArtifactScope": "ratex-render (complete SVG without elk-render)",
+    "lockFile": "native/Cargo.lock",
+    "lockFileSha256": "6b0eacfb2cad795631799a9ffb4b21ac9b762194bd93e1348969eaf5e6f94ab1",
+    "dependencyInventory": "NATIVE_RUST_DEPENDENCIES.json",
+    "dependencyInventorySha256": "614c72e5b522136f4edc02fb32ab534515d0e0bd65003e86fbe182173575ee07"
+  },
+  "build": {
+    "rustToolchain": "stable-x86_64-pc-windows-msvc",
+    "rustc": "1.96.0 (ac68faa20 2026-05-25)",
+    "cargo": "1.96.0 (30a34c682 2026-05-25)",
+    "llvm": "22.1.2",
+    "msvcCrtLinkage": "static (+crt-static); no VC++ redistributable required",
+    "targets": ["i686-pc-windows-msvc", "x86_64-pc-windows-msvc", "aarch64-pc-windows-msvc"],
+    "rebuildCommand": "pwsh -NoProfile -File native/Build-Native.ps1"
+  },
+  "licensingBoundary": {
+    "elkShipped": false,
+    "forbiddenFeatures": ["layout-elk"],
+    "forbiddenCrates": ["merman-layout-elk", "eclipse-elk", "elkjs"],
+    "behavior": "Every explicit or embedded ELK request returns MMIR_STATUS_UNSUPPORTED_LAYOUT and the managed layer preserves the original code fence."
+  },
+  "downstreamPatchLedger": "MERMAN_PATCH_LEDGER.md"
+}

@@ -1,0 +1,211 @@
+# MarkdownRenderer public API baseline
+# Format: 1
+# Assembly: MarkdownRenderer.Math
+# Generated from compiled assembly metadata; update with eng/Update-PublicApiBaselines.ps1.
+
+assembly MarkdownRenderer.Math
+
+public sealed class MarkdownRenderer.Math.DefaultMathAccessibilityFormatter : MarkdownRenderer.Math.IMathAccessibilityFormatter
+  public DefaultMathAccessibilityFormatter(MarkdownRenderer.Math.IMathStringProvider? strings = null);
+  public System.Threading.Tasks.ValueTask<MarkdownRenderer.Math.MathAccessibilityDescription> FormatAsync(MarkdownRenderer.Math.MathFormulaRequest request, System.Threading.CancellationToken cancellationToken = null);
+
+public interface MarkdownRenderer.Math.IMathAccessibilityFormatter
+  public abstract System.Threading.Tasks.ValueTask<MarkdownRenderer.Math.MathAccessibilityDescription> FormatAsync(MarkdownRenderer.Math.MathFormulaRequest request, System.Threading.CancellationToken cancellationToken = null);
+
+public interface MarkdownRenderer.Math.IMathStringProvider
+  public abstract string? GetString(string resourceKey, string? languageTag);
+
+public sealed class MarkdownRenderer.Math.MathAccessibilityDescription
+  public MathAccessibilityDescription(string automationName, string structuralSpeech, string helpText, string copyText);
+  public string AutomationName { get; }
+  public string CopyText { get; }
+  public string HelpText { get; }
+  public string StructuralSpeech { get; }
+
+public sealed class MarkdownRenderer.Math.MathDelimiterScanResult
+  public System.Collections.Immutable.ImmutableArray<MarkdownRenderer.Math.MathFormulaDiagnostic> Diagnostics { get; }
+  public System.Collections.Immutable.ImmutableArray<MarkdownRenderer.Math.MathFormulaRequest> Formulas { get; }
+
+public static class MarkdownRenderer.Math.MathDelimiterScanner
+  public static MarkdownRenderer.Math.MathDelimiterScanResult Scan(string? source, int sourceOffset = 0, string? languageTag = null);
+  public static MarkdownRenderer.Math.MathDelimiterScanResult Scan(string? source, int sourceOffset, string? languageTag, MarkdownRenderer.Math.IMathStringProvider? strings);
+
+public static class MarkdownRenderer.Math.MathFeature
+  public const bool IncludesNativeFormulaProcessor = true;
+  public const int ContractVersion = 1;
+  public const string CSharpMathRevision = "2d7dec98695dac6944027d90c73ec50fe45c5964";
+  public const string PackageId = "MarkdownRenderer.Math";
+  public const string ParserFeatureId = "markdown.math.dollar";
+
+public sealed class MarkdownRenderer.Math.MathFormulaDiagnostic
+  public MarkdownRenderer.Math.MathSourceRange SourceRange { get; }
+  public MathFormulaDiagnostic(string code, string message, MarkdownRenderer.Math.MathSourceRange sourceRange);
+  public string Code { get; }
+  public string Message { get; }
+
+public enum MarkdownRenderer.Math.MathFormulaDisplayMode
+  Display = 1,
+  Inline = 0,
+
+public sealed class MarkdownRenderer.Math.MathFormulaProcessor
+  public MathFormulaProcessor(MarkdownRenderer.Math.IMathAccessibilityFormatter? accessibilityFormatter = null, MarkdownRenderer.Math.IMathStringProvider? strings = null);
+  public System.Threading.Tasks.ValueTask<MarkdownRenderer.Math.MathFormulaResult> ProcessAsync(MarkdownRenderer.Math.MathFormulaRequest request, MarkdownRenderer.Math.MathProcessingOptions? options = null, System.Threading.CancellationToken cancellationToken = null);
+
+public sealed class MarkdownRenderer.Math.MathFormulaRequest
+  public MarkdownRenderer.Math.MathFormulaDisplayMode DisplayMode { get; }
+  public MarkdownRenderer.Math.MathSourceRange ContentRange { get; }
+  public MarkdownRenderer.Math.MathSourceRange SourceRange { get; }
+  public MathFormulaRequest(string originalSource, string texSource, MarkdownRenderer.Math.MathSourceRange sourceRange, MarkdownRenderer.Math.MathSourceRange contentRange, MarkdownRenderer.Math.MathFormulaDisplayMode displayMode, string? languageTag = null);
+  public string OriginalSource { get; }
+  public string TexSource { get; }
+  public string? LanguageTag { get; }
+
+public sealed class MarkdownRenderer.Math.MathFormulaResult
+  public MarkdownRenderer.Math.MathAccessibilityDescription? Accessibility { get; }
+  public MarkdownRenderer.Math.MathFormulaDiagnostic? Diagnostic { get; }
+  public MarkdownRenderer.Math.MathFormulaRequest Request { get; }
+  public MarkdownRenderer.Math.MathFormulaResultKind Kind { get; }
+  public MarkdownRenderer.Math.MathScene? Scene { get; }
+  public bool IsAccepted { get; }
+  public static MarkdownRenderer.Math.MathFormulaResult Accepted(MarkdownRenderer.Math.MathFormulaRequest request, MarkdownRenderer.Math.MathScene scene, MarkdownRenderer.Math.MathAccessibilityDescription accessibility);
+  public static MarkdownRenderer.Math.MathFormulaResult Failed(MarkdownRenderer.Math.MathFormulaRequest request, MarkdownRenderer.Math.MathFormulaDiagnostic diagnostic, MarkdownRenderer.Math.MathAccessibilityDescription? accessibility = null);
+  public static MarkdownRenderer.Math.MathFormulaResult InvalidSource(MarkdownRenderer.Math.MathFormulaRequest request, MarkdownRenderer.Math.MathFormulaDiagnostic diagnostic, MarkdownRenderer.Math.MathAccessibilityDescription? accessibility = null);
+  public static MarkdownRenderer.Math.MathFormulaResult Unsupported(MarkdownRenderer.Math.MathFormulaRequest request, MarkdownRenderer.Math.MathFormulaDiagnostic diagnostic, MarkdownRenderer.Math.MathAccessibilityDescription? accessibility = null);
+  public string? FallbackSource { get; }
+
+public enum MarkdownRenderer.Math.MathFormulaResultKind
+  Accepted = 0,
+  Failed = 3,
+  InvalidSource = 1,
+  Unsupported = 2,
+
+public static class MarkdownRenderer.Math.MathMarkdownExtensions
+  public static MarkdownRenderer.MarkdownEngineBuilder UseMathematics(this MarkdownRenderer.MarkdownEngineBuilder builder, MarkdownRenderer.Math.MathProcessingOptions? options = null, MarkdownRenderer.Math.IMathAccessibilityFormatter? accessibilityFormatter = null, MarkdownRenderer.Math.IMathStringProvider? strings = null);
+
+public readonly struct MarkdownRenderer.Math.MathPathOperation : System.IEquatable<MarkdownRenderer.Math.MathPathOperation> [layout: Sequential; pack: 0; size: 0; charset: Ansi]
+  public MarkdownRenderer.Math.MathPathOperationKind Kind { get; }
+  public MarkdownRenderer.Math.MathPoint Point1 { get; }
+  public MarkdownRenderer.Math.MathPoint Point2 { get; }
+  public MarkdownRenderer.Math.MathPoint Point3 { get; }
+  public bool Equals(MarkdownRenderer.Math.MathPathOperation other);
+  public override bool Equals(object obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static MarkdownRenderer.Math.MathPathOperation Close();
+  public static MarkdownRenderer.Math.MathPathOperation CubicBezierTo(MarkdownRenderer.Math.MathPoint control1, MarkdownRenderer.Math.MathPoint control2, MarkdownRenderer.Math.MathPoint end);
+  public static MarkdownRenderer.Math.MathPathOperation LineTo(MarkdownRenderer.Math.MathPoint point);
+  public static MarkdownRenderer.Math.MathPathOperation MoveTo(MarkdownRenderer.Math.MathPoint point);
+  public static MarkdownRenderer.Math.MathPathOperation QuadraticBezierTo(MarkdownRenderer.Math.MathPoint control, MarkdownRenderer.Math.MathPoint end);
+  public static bool op_Equality(MarkdownRenderer.Math.MathPathOperation left, MarkdownRenderer.Math.MathPathOperation right);
+  public static bool op_Inequality(MarkdownRenderer.Math.MathPathOperation left, MarkdownRenderer.Math.MathPathOperation right);
+
+public enum MarkdownRenderer.Math.MathPathOperationKind
+  Close = 4,
+  CubicBezier = 3,
+  Line = 1,
+  Move = 0,
+  QuadraticBezier = 2,
+
+public readonly struct MarkdownRenderer.Math.MathPoint : System.IEquatable<MarkdownRenderer.Math.MathPoint> [layout: Sequential; pack: 0; size: 0; charset: Ansi]
+  public MathPoint(float x, float y);
+  public bool Equals(MarkdownRenderer.Math.MathPoint other);
+  public float X { get; }
+  public float Y { get; }
+  public override bool Equals(object obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static bool op_Equality(MarkdownRenderer.Math.MathPoint left, MarkdownRenderer.Math.MathPoint right);
+  public static bool op_Inequality(MarkdownRenderer.Math.MathPoint left, MarkdownRenderer.Math.MathPoint right);
+
+public sealed class MarkdownRenderer.Math.MathProcessingOptions
+  public MathProcessingOptions(int maximumTexLength = 65536, int maximumNestingDepth = 128, int maximumSceneCommands = 100000, int maximumPathOperations = 1000000, float maximumSceneDimension = 1000000F, float fontSize = 16F, long maximumWorkingMemoryBytes = 33554432, System.TimeSpan? maximumProcessingTime = null);
+  public System.Globalization.CultureInfo? LocalizationCulture { get; init; }
+  public System.TimeSpan MaximumProcessingTime { get; }
+  public float FontSize { get; }
+  public float MaximumSceneDimension { get; }
+  public int MaximumNestingDepth { get; }
+  public int MaximumPathOperations { get; }
+  public int MaximumSceneCommands { get; }
+  public int MaximumTexLength { get; }
+  public long MaximumWorkingMemoryBytes { get; }
+  public static MarkdownRenderer.Math.MathProcessingOptions Default { get; }
+
+public readonly struct MarkdownRenderer.Math.MathRectangle : System.IEquatable<MarkdownRenderer.Math.MathRectangle> [layout: Sequential; pack: 0; size: 0; charset: Ansi]
+  public MathRectangle(float x, float y, float width, float height);
+  public bool Equals(MarkdownRenderer.Math.MathRectangle other);
+  public float Height { get; }
+  public float Width { get; }
+  public float X { get; }
+  public float Y { get; }
+  public override bool Equals(object obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static bool op_Equality(MarkdownRenderer.Math.MathRectangle left, MarkdownRenderer.Math.MathRectangle right);
+  public static bool op_Inequality(MarkdownRenderer.Math.MathRectangle left, MarkdownRenderer.Math.MathRectangle right);
+
+public sealed class MarkdownRenderer.Math.MathScene
+  public System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Math.MathSceneCommand> Commands { get; }
+  public float Baseline { get; }
+  public float Height { get; }
+  public float Width { get; }
+
+public sealed class MarkdownRenderer.Math.MathSceneCommand
+  public MarkdownRenderer.Math.MathPoint End { get; }
+  public MarkdownRenderer.Math.MathPoint Start { get; }
+  public MarkdownRenderer.Math.MathRectangle Rectangle { get; }
+  public MarkdownRenderer.Math.MathSceneCommandKind Kind { get; }
+  public System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Math.MathPathOperation> Path { get; }
+  public float StrokeWidth { get; }
+  public uint? ColorArgb { get; }
+
+public enum MarkdownRenderer.Math.MathSceneCommandKind
+  FillPath = 0,
+  FillRectangle = 2,
+  StrokeLine = 4,
+  StrokePath = 1,
+  StrokeRectangle = 3,
+
+public readonly struct MarkdownRenderer.Math.MathSourceRange : System.IEquatable<MarkdownRenderer.Math.MathSourceRange> [layout: Sequential; pack: 0; size: 0; charset: Ansi]
+  public MathSourceRange(int start, int length);
+  public System.ReadOnlySpan<char> Slice(string source);
+  public bool Contains(MarkdownRenderer.Math.MathSourceRange range);
+  public bool Equals(MarkdownRenderer.Math.MathSourceRange other);
+  public bool IsEmpty { get; }
+  public int End { get; }
+  public int Length { get; }
+  public int Start { get; }
+  public override bool Equals(object obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static MarkdownRenderer.Math.MathSourceRange FromBounds(int start, int end);
+  public static bool op_Equality(MarkdownRenderer.Math.MathSourceRange left, MarkdownRenderer.Math.MathSourceRange right);
+  public static bool op_Inequality(MarkdownRenderer.Math.MathSourceRange left, MarkdownRenderer.Math.MathSourceRange right);
+
+public static class MarkdownRenderer.Math.MathStringKeys
+  public const string AutomationName = "Math.AutomationName";
+  public const string Denominator = "Math.Denominator";
+  public const string DividedBy = "Math.DividedBy";
+  public const string EndFraction = "Math.EndFraction";
+  public const string EndRoot = "Math.EndRoot";
+  public const string EndSubscript = "Math.EndSubscript";
+  public const string EndSuperscript = "Math.EndSuperscript";
+  public const string EqualsOperator = "Math.Equals";
+  public const string Fraction = "Math.Fraction";
+  public const string InvalidFormula = "Math.InvalidFormula";
+  public const string Minus = "Math.Minus";
+  public const string NestingTooDeep = "Math.NestingTooDeep";
+  public const string Numerator = "Math.Numerator";
+  public const string OriginalTex = "Math.OriginalTex";
+  public const string Plus = "Math.Plus";
+  public const string ProcessingFailed = "Math.ProcessingFailed";
+  public const string ProcessingTimedOut = "Math.ProcessingTimedOut";
+  public const string SceneTooComplex = "Math.SceneTooComplex";
+  public const string SceneTooLarge = "Math.SceneTooLarge";
+  public const string SourceTooLong = "Math.SourceTooLong";
+  public const string SquareRoot = "Math.SquareRoot";
+  public const string Subscript = "Math.Subscript";
+  public const string Superscript = "Math.Superscript";
+  public const string Times = "Math.Times";
+  public const string UnmatchedDisplayDelimiter = "Math.UnmatchedDisplayDelimiter";
+  public const string UnmatchedInlineDelimiter = "Math.UnmatchedInlineDelimiter";
+  public const string WorkingMemoryExceeded = "Math.WorkingMemoryExceeded";

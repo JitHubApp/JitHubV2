@@ -34,8 +34,20 @@ internal sealed partial class MarkdownLinkPeer : FrameworkElementAutomationPeer,
         _run.IsDisclosure ? AutomationControlType.Button : AutomationControlType.Hyperlink;
     protected override string GetNameCore() => _run.AccessibleText;
     protected override string GetHelpTextCore() => _run.IsDisclosure ? string.Empty : _run.Url;
+    protected override string GetAutomationIdCore() =>
+        MarkdownAutomationIdentity.ForRun("Link", _parent.Box, _run);
+    protected override int GetCultureCore() => _owner.AutomationCultureLcid;
     protected override bool IsKeyboardFocusableCore() => true;
     protected override bool HasKeyboardFocusCore() => _owner.IsKeyboardFocusOnLink(_run);
+
+    protected override System.Collections.Generic.IList<AutomationPeer> GetChildrenCore()
+    {
+        // This is a synthetic inline peer whose FrameworkElement owner is the
+        // document control. Letting the base implementation enumerate that
+        // owner's visual children would create a UIA cycle back into the
+        // document/hosted-element tree.
+        return System.Array.Empty<AutomationPeer>();
+    }
 
     protected override void SetFocusCore()
     {
@@ -73,16 +85,7 @@ internal sealed partial class MarkdownLinkPeer : FrameworkElementAutomationPeer,
         if (docRect.Width <= 0 || docRect.Height <= 0)
             return _parent.GetBoundingRectangleCoreInternal();
 
-        var ownerScreen = base.GetBoundingRectangleCore();
-        if (ownerScreen.Width <= 0 || ownerScreen.Height <= 0)
-            return _parent.GetBoundingRectangleCoreInternal();
-
-        double scale = _owner.XamlRoot?.RasterizationScale ?? 1.0;
-        return new Windows.Foundation.Rect(
-            ownerScreen.X + docRect.X * scale,
-            ownerScreen.Y + (_owner.CurrentContentOffsetY + docRect.Y - _owner.CurrentScrollOffsetY) * scale,
-            docRect.Width * scale,
-            docRect.Height * scale);
+        return _parent.GetScreenRectForDocumentRect(docRect);
     }
 
     protected override bool IsOffscreenCore() =>

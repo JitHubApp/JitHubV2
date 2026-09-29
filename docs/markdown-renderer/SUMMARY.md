@@ -17,6 +17,7 @@ Use this page as the canonical table of contents for a generated docs site.
 - [Images, SVG, and assets](images-svg-and-assets.md)
 - [Native integration and hosted controls](native-integration-and-hosted-controls.md)
 - [Performance and memory](performance-and-memory.md)
+- [Progressive performance plan (proposed)](progressive-performance-plan.md)
 
 ## Customization
 

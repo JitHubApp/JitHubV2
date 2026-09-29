@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- The shipping Markdig/Onigwrap nuspecs reference this package for
+         legacy TFMs that the net10 build does not otherwise restore. The
+         offline compliance gate still needs its exact archive and license. -->
+    <PackageReference Include="System.Memory" Version="[4.6.0]" />
+  </ItemGroup>
+</Project>

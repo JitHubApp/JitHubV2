@@ -1,0 +1,32 @@
+[package]
+name = "markdown-renderer-resvg-worker"
+version = "1.0.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT"
+publish = false
+
+[[bin]]
+name = "markdown_renderer_resvg_worker"
+path = "src/main.rs"
+
+[dependencies]
+base64 = "=0.22.1"
+data-url = "=0.3.2"
+imagesize = "=0.15.0"
+resvg = { git = "https://github.com/linebender/resvg.git", rev = "68b14c4c3bccdb60344c777406486b54c36ec1a4", version = "=0.48.1", default-features = false, features = ["text", "system-fonts", "memmap-fonts", "raster-images"] }
+sha2 = "=0.10.9"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+incremental = false
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+all = "deny"

@@ -1,37 +1,37 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Runtime.InteropServices.WindowsRuntime;
+using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Services.CodeViewer;
 using JitHub.WinUI.Helpers;
+using MarkdownRenderer.Images;
+using Microsoft.Graphics.Canvas;
+using Microsoft.Graphics.Canvas.UI;
+using Microsoft.Graphics.Canvas.UI.Xaml;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.Foundation;
+using Windows.Graphics.DirectX;
 
 namespace JitHub.WinUI.Views.Controls.App;
 
 public sealed partial class AppSvgViewport : UserControl
 {
-    private const long MaximumCacheBytes = 64L * 1024 * 1024;
-    private const double CanvasInset = 16;
     private const double TileSeamOverlapPixels = 1;
     private static readonly TimeSpan ZoomSettleDelay = TimeSpan.FromMilliseconds(120);
 
     private readonly DispatcherQueueTimer _settleTimer;
-    private readonly SvgTileCache _cache = new(MaximumCacheBytes);
     private readonly SettledZoomTracker _zoomTracker = new();
-    private IRepositorySvgRasterizer _rasterizer = new RepositorySvgRasterizer();
+    private IRepositorySvgRasterizer? _rasterizer;
     private RepositorySvgDocument? _document;
     private ScrollViewer? _scrollHost;
     private CancellationTokenSource? _renderCancellation;
+    private SvgPublishedPlan? _publishedPlan;
+    private CanvasDevice? _canvasDevice;
     private long _renderGeneration;
     private bool _eventsAttached;
     private string _renderStatus = "empty";
@@ -44,6 +44,9 @@ public sealed partial class AppSvgViewport : UserControl
     {
         InitializeComponent();
         AutomationProperties.SetName(this, L("RepoCode/Svg/AutomationName", "SVG preview"));
+        AutomationProperties.SetAccessibilityView(this, AccessibilityView.Content);
+        AutomationProperties.SetAccessibilityView(TileCanvas, AccessibilityView.Raw);
+        TileCanvas.Draw += TileCanvas_Draw;
         SetRenderStatus("empty");
         _settleTimer = DispatcherQueue.CreateTimer();
         _settleTimer.Interval = ZoomSettleDelay;
@@ -72,7 +75,8 @@ public sealed partial class AppSvgViewport : UserControl
 
     internal void SetDocument(
         RepositorySvgDocument document,
-        IRepositorySvgRasterizer rasterizer)
+        IRepositorySvgRasterizer rasterizer,
+        bool retainCurrentBitmap = false)
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(rasterizer);
@@ -82,9 +86,12 @@ public sealed partial class AppSvgViewport : UserControl
         _document = document;
         _rasterizer = rasterizer;
         _zoomTracker.Reset(_scrollHost?.ZoomFactor ?? 1);
-        _cache.Clear();
-        TileCanvas.Children.Clear();
+        if (!retainCurrentBitmap)
+        {
+            ReplacePublishedPlan(null);
+        }
         DisposeDocument(previous);
+        AutomationProperties.SetHelpText(this, document.Info.Description ?? string.Empty);
         SetRenderStatus("rendering");
         ScheduleRender(immediate: true);
     }
@@ -93,11 +100,12 @@ public sealed partial class AppSvgViewport : UserControl
     {
         RepositorySvgDocument? previous = _document;
         _document = null;
+        _rasterizer = null;
         _zoomTracker.ClearPending();
         CancelRender();
-        _cache.Clear();
-        TileCanvas.Children.Clear();
+        ReplacePublishedPlan(null);
         DisposeDocument(previous);
+        AutomationProperties.SetHelpText(this, string.Empty);
         SetRenderStatus("empty");
     }
 
@@ -238,140 +246,259 @@ public sealed partial class AppSvgViewport : UserControl
     private void RenderNow()
     {
         RepositorySvgDocument? document = _document;
-        SvgRenderPlan? plan = document is null ? null : CreateRenderPlan(document);
-        if (document is null || plan is null || plan.Tiles.Count == 0)
+        IRepositorySvgRasterizer? rasterizer = _rasterizer;
+        CanvasDevice? device = _canvasDevice;
+        SvgRenderPlan? plan = document is null || device is null
+            ? null
+            : CreateRenderPlan(document, SelectPixelFormat(device));
+        if (document is null ||
+            rasterizer is null ||
+            device is null ||
+            plan is null ||
+            plan.Tiles.Count == 0)
         {
             return;
         }
 
         CancelRender();
+        if (!SvgRenderWork.TryCreate(plan, device, out SvgRenderWork? work))
+        {
+            // A retained transition bitmap is allowed only while it fits in the
+            // same aggregate budget as the replacement. Release it and retry
+            // before reporting a typed resource-limit failure.
+            ReplacePublishedPlan(null);
+            if (!SvgRenderWork.TryCreate(plan, device, out work))
+            {
+                SetRenderStatus("failed");
+                RenderFailed?.Invoke(
+                    this,
+                    new AppSvgRenderFailedEventArgs(
+                        new MarkdownSvgException(MarkdownSvgFailureReason.ResourceLimitExceeded)));
+                return;
+            }
+        }
+
         CancellationTokenSource cancellation = new();
         _renderCancellation = cancellation;
         long generation = ++_renderGeneration;
-        UiTaskGuard.Observe(RenderAndPublishAsync(document, plan, generation, cancellation.Token), "ui-app-svg-viewport");
+        UiTaskGuard.Observe(
+            RenderAndPublishAsync(
+                document,
+                rasterizer,
+                device,
+                plan,
+                work!,
+                generation,
+                cancellation.Token),
+            "ui-app-svg-viewport");
     }
 
     private async Task RenderAndPublishAsync(
         RepositorySvgDocument document,
+        IRepositorySvgRasterizer rasterizer,
+        CanvasDevice device,
         SvgRenderPlan plan,
+        SvgRenderWork work,
         long generation,
         CancellationToken cancellationToken)
     {
         try
         {
-            List<SvgTilePresentation> missing = [];
-            Dictionary<SvgTileKey, RepositorySvgTile> tiles = new();
-            foreach (SvgTilePresentation presentation in plan.Tiles)
+            foreach (SvgTilePresentation presentation in work.MissingTiles)
             {
-                if (_cache.TryGet(presentation.Key, out RepositorySvgTile? cached))
-                {
-                    tiles.Add(presentation.Key, cached!);
-                }
-                else
-                {
-                    missing.Add(presentation);
-                }
-            }
-
-            if (missing.Count > 0)
-            {
-                RepositorySvgTile[] rendered = await Task.Run(() =>
-                {
-                    RepositorySvgTile[] output = new RepositorySvgTile[missing.Count];
-                    for (int index = 0; index < missing.Count; index++)
-                    {
-                        cancellationToken.ThrowIfCancellationRequested();
-                        output[index] = _rasterizer.RasterizeTile(
-                            document,
-                            missing[index].Request,
-                            cancellationToken);
-                    }
-
-                    return output;
-                }, cancellationToken);
-
                 cancellationToken.ThrowIfCancellationRequested();
-                for (int index = 0; index < rendered.Length; index++)
+                using RepositorySvgTile rendered = await rasterizer.RasterizeTileAsync(
+                    document,
+                    presentation.Request,
+                    plan.PixelFormat,
+                    cancellationToken).ConfigureAwait(false);
+                cancellationToken.ThrowIfCancellationRequested();
+                CanvasBitmap? bitmap = await Task.Run(
+                    () => UploadTile(device, rendered),
+                    cancellationToken).ConfigureAwait(false);
+                RepositorySvgGpuCache.Lease? lease = null;
+                try
                 {
-                    SvgTileKey key = missing[index].Key;
-                    _cache.Add(key, rendered[index]);
-                    tiles[key] = rendered[index];
+                    cancellationToken.ThrowIfCancellationRequested();
+                    lease = RepositorySvgGpuCache.StoreAndAcquire(
+                        device,
+                        presentation.Key.CacheIdentity,
+                        bitmap,
+                        rendered.ByteCount,
+                        work.Reservation);
+                    bitmap = null;
+                    work.Add(presentation.Key, lease);
+                    lease = null;
+                }
+                finally
+                {
+                    lease?.Dispose();
+                    bitmap?.Dispose();
                 }
             }
 
             cancellationToken.ThrowIfCancellationRequested();
-            if (generation != _renderGeneration || !ReferenceEquals(document, _document) || !IsLoaded)
+            await RunOnUiAsync(() =>
             {
-                return;
-            }
+                cancellationToken.ThrowIfCancellationRequested();
+                if (generation != _renderGeneration || !ReferenceEquals(document, _document) || !IsLoaded)
+                {
+                    return;
+                }
 
-            PublishTiles(plan, tiles);
+                SvgPublishedPlan published = work.DetachPublishedPlan(plan);
+                ReplacePublishedPlan(published);
+                SetRenderStatus($"rendered:tiles:{published.TileCount}");
+            }).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
         }
+        catch (MarkdownSvgException exception) when (
+            exception.Reason == MarkdownSvgFailureReason.Canceled &&
+            cancellationToken.IsCancellationRequested)
+        {
+        }
         catch (Exception exception)
         {
-            if (generation == _renderGeneration && ReferenceEquals(document, _document) && IsLoaded)
+            await RunOnUiAsync(() =>
             {
-                SetRenderStatus("failed");
-                RenderFailed?.Invoke(this, new AppSvgRenderFailedEventArgs(exception));
+                if (generation == _renderGeneration && ReferenceEquals(document, _document) && IsLoaded)
+                {
+                    SetRenderStatus("failed");
+                    RenderFailed?.Invoke(this, new AppSvgRenderFailedEventArgs(exception));
+                }
+            }).ConfigureAwait(false);
+        }
+        finally
+        {
+            work.Dispose();
+            if (!ReferenceEquals(device, Volatile.Read(ref _canvasDevice)))
+            {
+                RepositorySvgGpuCache.ReleaseDevice(device);
             }
         }
     }
 
-    private void PublishTiles(
-        SvgRenderPlan plan,
-        IReadOnlyDictionary<SvgTileKey, RepositorySvgTile> tiles)
+    private static CanvasBitmap UploadTile(CanvasDevice device, RepositorySvgTile tile)
     {
-        List<Image> images = new(plan.Tiles.Count);
-        bool hasAccessibleImage = false;
-        foreach (SvgTilePresentation presentation in plan.Tiles)
+        int rowBytes = checked(tile.PixelWidth * 4);
+        byte[] pixels = GC.AllocateUninitializedArray<byte>(checked(rowBytes * tile.PixelHeight));
+        ReadOnlySpan<byte> source = tile.BgraPixels.Span;
+        if (tile.StrideBytes == rowBytes)
         {
-            if (!tiles.TryGetValue(presentation.Key, out RepositorySvgTile? tile))
+            source[..pixels.Length].CopyTo(pixels);
+        }
+        else
+        {
+            Span<byte> destination = pixels;
+            for (int row = 0; row < tile.PixelHeight; row++)
             {
-                continue;
+                source.Slice(checked(row * tile.StrideBytes), rowBytes)
+                    .CopyTo(destination.Slice(checked(row * rowBytes), rowBytes));
             }
-
-            WriteableBitmap bitmap = new(tile.PixelWidth, tile.PixelHeight);
-            using (Stream stream = bitmap.PixelBuffer.AsStream())
-            {
-                stream.Write(tile.BgraPixels, 0, tile.BgraPixels.Length);
-            }
-
-            bitmap.Invalidate();
-            Image image = new()
-            {
-                Source = bitmap,
-                Width = presentation.LogicalWidth,
-                Height = presentation.LogicalHeight,
-                Stretch = Stretch.Fill,
-                IsHitTestVisible = false,
-            };
-            if (!hasAccessibleImage)
-            {
-                AutomationProperties.SetAutomationId(image, "SvgPreviewRenderedImage");
-                AutomationProperties.SetName(image, L("RepoCode/Svg/AutomationName", "Rendered SVG"));
-                AutomationProperties.SetAccessibilityView(image, AccessibilityView.Content);
-                hasAccessibleImage = true;
-            }
-            else
-            {
-                AutomationProperties.SetAccessibilityView(image, AccessibilityView.Raw);
-            }
-
-            Canvas.SetLeft(image, presentation.LogicalX);
-            Canvas.SetTop(image, presentation.LogicalY);
-            images.Add(image);
         }
 
-        TileCanvas.Children.Clear();
-        foreach (Image image in images)
+        CanvasBitmap bitmap = CanvasBitmap.CreateFromBytes(
+            device,
+            pixels,
+            tile.PixelWidth,
+            tile.PixelHeight,
+            tile.PixelFormat == MarkdownSvgPixelFormat.Rgba8Premultiplied
+                ? DirectXPixelFormat.R8G8B8A8UIntNormalized
+                : DirectXPixelFormat.B8G8R8A8UIntNormalized);
+        return bitmap;
+    }
+
+    private static MarkdownSvgPixelFormat SelectPixelFormat(CanvasDevice device) =>
+        RepositorySvgPixelFormatPolicy.Select(
+            device.ForceSoftwareRenderer,
+            device.IsPixelFormatSupported(DirectXPixelFormat.R8G8B8A8UIntNormalized));
+
+    private void TileCanvas_Draw(CanvasControl sender, CanvasDrawEventArgs args)
+    {
+        SvgPublishedPlan? published = _publishedPlan;
+        if (published is null)
         {
-            TileCanvas.Children.Add(image);
+            return;
         }
 
-        SetRenderStatus($"rendered:tiles:{images.Count}");
+        foreach (SvgPublishedTile tile in published.Tiles)
+        {
+            args.DrawingSession.DrawImage(
+                tile.Bitmap.Bitmap,
+                new Rect(
+                    tile.Presentation.LogicalX,
+                    tile.Presentation.LogicalY,
+                    tile.Presentation.LogicalWidth,
+                    tile.Presentation.LogicalHeight));
+        }
+    }
+
+    private void TileCanvas_CreateResources(
+        CanvasControl sender,
+        CanvasCreateResourcesEventArgs args)
+    {
+        CanvasDevice? previousDevice = _canvasDevice;
+        _canvasDevice = sender.Device;
+        if (args.Reason != CanvasCreateResourcesReason.NewDevice)
+        {
+            if (_document is not null)
+            {
+                ScheduleRender(immediate: true);
+            }
+
+            return;
+        }
+
+        CancelRender();
+        if (previousDevice is not null)
+        {
+            RepositorySvgGpuCache.ReleaseDevice(previousDevice);
+        }
+
+        ReplacePublishedPlan(null);
+        if (_document is not null)
+        {
+            SetRenderStatus("rendering");
+            ScheduleRender(immediate: true);
+        }
+    }
+
+    private void ReplacePublishedPlan(SvgPublishedPlan? replacement)
+    {
+        SvgPublishedPlan? previous = _publishedPlan;
+        _publishedPlan = replacement;
+        TileCanvas.Invalidate();
+        previous?.Dispose();
+    }
+
+    private Task RunOnUiAsync(Action action)
+    {
+        if (DispatcherQueue.HasThreadAccess)
+        {
+            action();
+            return Task.CompletedTask;
+        }
+
+        TaskCompletionSource completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!DispatcherQueue.TryEnqueue(() =>
+        {
+            try
+            {
+                action();
+                completion.TrySetResult();
+            }
+            catch (Exception exception)
+            {
+                completion.TrySetException(exception);
+            }
+        }))
+        {
+            completion.TrySetException(new InvalidOperationException("The SVG viewport dispatcher is unavailable."));
+        }
+
+        return completion.Task;
     }
 
     internal string RenderStatus => _renderStatus;
@@ -425,10 +552,17 @@ public sealed partial class AppSvgViewport : UserControl
     private void SetRenderStatus(string status)
     {
         _renderStatus = status;
+        AutomationProperties.SetAutomationId(
+            this,
+            status.StartsWith("rendered:", StringComparison.Ordinal)
+                ? "SvgPreviewRenderedImage"
+                : "SvgPreviewViewport");
         AutomationProperties.SetItemStatus(this, status);
     }
 
-    private SvgRenderPlan? CreateRenderPlan(RepositorySvgDocument document)
+    private SvgRenderPlan? CreateRenderPlan(
+        RepositorySvgDocument document,
+        MarkdownSvgPixelFormat pixelFormat)
     {
         double canvasWidth = TileCanvas.ActualWidth;
         double canvasHeight = TileCanvas.ActualHeight;
@@ -454,8 +588,8 @@ public sealed partial class AppSvgViewport : UserControl
         int outputWidth = Math.Max(1, checked((int)Math.Ceiling(imageWidth * pixelsPerLogicalUnit)));
         int outputHeight = Math.Max(1, checked((int)Math.Ceiling(imageHeight * pixelsPerLogicalUnit)));
 
-        double visibleLeft = ((_scrollHost?.HorizontalOffset ?? 0) / zoom) - CanvasInset;
-        double visibleTop = ((_scrollHost?.VerticalOffset ?? 0) / zoom) - CanvasInset;
+        double visibleLeft = ((_scrollHost?.HorizontalOffset ?? 0) / zoom) - TileCanvas.Margin.Left;
+        double visibleTop = ((_scrollHost?.VerticalOffset ?? 0) / zoom) - TileCanvas.Margin.Top;
         double visibleWidth = (_scrollHost?.ViewportWidth ?? canvasWidth) / zoom;
         double visibleHeight = (_scrollHost?.ViewportHeight ?? canvasHeight) / zoom;
         int visiblePixelLeft = Math.Clamp(
@@ -504,12 +638,30 @@ public sealed partial class AppSvgViewport : UserControl
                 }
 
                 RepositorySvgTileRequest request = new(
+                    outputWidth,
+                    outputHeight,
                     pixelX,
                     pixelY,
                     pixelWidth,
-                    pixelHeight,
-                    pixelsPerSourceUnit);
-                SvgTileKey key = new(outputWidth, outputHeight, scaleBits, pixelX, pixelY);
+                    pixelHeight);
+                string tileIdentity = string.Concat(
+                    document.CacheIdentity,
+                    "|raster:",
+                    outputWidth.ToString(CultureInfo.InvariantCulture),
+                    "x",
+                    outputHeight.ToString(CultureInfo.InvariantCulture),
+                    "|scale:",
+                    scaleBits.ToString(CultureInfo.InvariantCulture),
+                    "|tile:",
+                    pixelX.ToString(CultureInfo.InvariantCulture),
+                    ",",
+                    pixelY.ToString(CultureInfo.InvariantCulture),
+                    ",",
+                    pixelWidth.ToString(CultureInfo.InvariantCulture),
+                    "x",
+                    pixelHeight.ToString(CultureInfo.InvariantCulture));
+                tileIdentity = string.Concat(tileIdentity, "|format:", pixelFormat.ToString());
+                SvgTileKey key = new(tileIdentity);
                 presentations.Add(new SvgTilePresentation(
                     key,
                     request,
@@ -520,7 +672,7 @@ public sealed partial class AppSvgViewport : UserControl
             }
         }
 
-        return new SvgRenderPlan(presentations);
+        return new SvgRenderPlan(presentations, pixelFormat);
     }
 
     private void CancelRender()
@@ -542,19 +694,14 @@ public sealed partial class AppSvgViewport : UserControl
         {
             UiTaskGuard.Observe(
                 Task.Run(document.Dispose),
-                "ui-app-svg-viewport");
+                "ui-app-svg-document-dispose");
         }
     }
 
     private static string L(string key, string fallback) =>
         LocalizedResourceText.GetString(key, fallback);
 
-    private readonly record struct SvgTileKey(
-        int OutputWidth,
-        int OutputHeight,
-        int ScaleBits,
-        int PixelX,
-        int PixelY);
+    private readonly record struct SvgTileKey(string CacheIdentity);
 
     private sealed record SvgTilePresentation(
         SvgTileKey Key,
@@ -564,56 +711,163 @@ public sealed partial class AppSvgViewport : UserControl
         double LogicalWidth,
         double LogicalHeight);
 
-    private sealed record SvgRenderPlan(IReadOnlyList<SvgTilePresentation> Tiles);
+    private sealed record SvgRenderPlan(
+        IReadOnlyList<SvgTilePresentation> Tiles,
+        MarkdownSvgPixelFormat PixelFormat);
 
-    private sealed class SvgTileCache(long maximumBytes)
+    private sealed record SvgPublishedTile(
+        SvgTilePresentation Presentation,
+        RepositorySvgGpuCache.Lease Bitmap);
+
+    private sealed partial class SvgRenderWork : IDisposable
     {
-        private readonly Dictionary<SvgTileKey, LinkedListNode<Entry>> _entries = [];
-        private readonly LinkedList<Entry> _lru = [];
-        private long _bytes;
+        private Dictionary<SvgTileKey, RepositorySvgGpuCache.Lease> _tiles = [];
+        private RepositorySvgGpuCache.Reservation? _reservation;
 
-        public bool TryGet(SvgTileKey key, out RepositorySvgTile? tile)
+        private SvgRenderWork(
+            IReadOnlyList<SvgTilePresentation> missingTiles,
+            RepositorySvgGpuCache.Reservation reservation)
         {
-            if (!_entries.TryGetValue(key, out LinkedListNode<Entry>? node))
-            {
-                tile = null;
-                return false;
-            }
-
-            _lru.Remove(node);
-            _lru.AddLast(node);
-            tile = node.Value.Tile;
-            return true;
+            MissingTiles = missingTiles;
+            _reservation = reservation;
         }
 
-        public void Add(SvgTileKey key, RepositorySvgTile tile)
-        {
-            if (_entries.TryGetValue(key, out LinkedListNode<Entry>? existing))
-            {
-                _bytes -= existing.Value.Tile.ByteCount;
-                _lru.Remove(existing);
-                _entries.Remove(key);
-            }
+        internal IReadOnlyList<SvgTilePresentation> MissingTiles { get; }
 
-            LinkedListNode<Entry> node = _lru.AddLast(new Entry(key, tile));
-            _entries.Add(key, node);
-            _bytes += tile.ByteCount;
-            while (_bytes > maximumBytes && _lru.First is { } oldest)
+        internal RepositorySvgGpuCache.Reservation Reservation =>
+            _reservation ?? throw new ObjectDisposedException(nameof(SvgRenderWork));
+
+        internal static bool TryCreate(
+            SvgRenderPlan plan,
+            CanvasDevice device,
+            out SvgRenderWork? work)
+        {
+            Dictionary<SvgTileKey, RepositorySvgGpuCache.Lease> acquired = [];
+            List<SvgTilePresentation> missing = [];
+            long missingBytes = 0;
+            try
             {
-                _lru.RemoveFirst();
-                _entries.Remove(oldest.Value.Key);
-                _bytes -= oldest.Value.Tile.ByteCount;
+                foreach (SvgTilePresentation presentation in plan.Tiles)
+                {
+                    if (RepositorySvgGpuCache.TryAcquire(
+                        device,
+                        presentation.Key.CacheIdentity,
+                        out RepositorySvgGpuCache.Lease? lease))
+                    {
+                        acquired.Add(presentation.Key, lease!);
+                    }
+                    else
+                    {
+                        missing.Add(presentation);
+                        missingBytes = checked(
+                            missingBytes +
+                            ((long)presentation.Request.PixelWidth *
+                             presentation.Request.PixelHeight *
+                             4));
+                    }
+                }
+
+                if (!RepositorySvgGpuCache.TryReserve(
+                    missingBytes,
+                    out RepositorySvgGpuCache.Reservation? reservation))
+                {
+                    work = null;
+                    return false;
+                }
+
+                work = new SvgRenderWork(missing, reservation!) { _tiles = acquired };
+                acquired = [];
+                return true;
+            }
+            finally
+            {
+                foreach (RepositorySvgGpuCache.Lease lease in acquired.Values)
+                {
+                    lease.Dispose();
+                }
             }
         }
 
-        public void Clear()
+        internal void Add(SvgTileKey key, RepositorySvgGpuCache.Lease lease) =>
+            _tiles.Add(key, lease);
+
+        internal SvgPublishedPlan DetachPublishedPlan(SvgRenderPlan plan)
         {
-            _entries.Clear();
-            _lru.Clear();
-            _bytes = 0;
+            if (_tiles.Count != plan.Tiles.Count)
+            {
+                throw new InvalidOperationException("The complete visible SVG tile set is unavailable.");
+            }
+
+            _reservation?.Dispose();
+            _reservation = null;
+            Dictionary<SvgTileKey, RepositorySvgGpuCache.Lease> tiles = _tiles;
+            _tiles = [];
+            return new SvgPublishedPlan(plan, tiles);
         }
 
-        private sealed record Entry(SvgTileKey Key, RepositorySvgTile Tile);
+        public void Dispose()
+        {
+            _reservation?.Dispose();
+            _reservation = null;
+            foreach (RepositorySvgGpuCache.Lease tile in _tiles.Values)
+            {
+                tile.Dispose();
+            }
+
+            _tiles.Clear();
+        }
+    }
+
+    private sealed partial class SvgPublishedPlan : IDisposable
+    {
+        private readonly List<SvgPublishedTile> _tiles;
+        private readonly Dictionary<SvgTileKey, RepositorySvgGpuCache.Lease> _bitmaps;
+
+        public SvgPublishedPlan(
+            SvgRenderPlan plan,
+            Dictionary<SvgTileKey, RepositorySvgGpuCache.Lease> bitmaps)
+        {
+            _bitmaps = bitmaps;
+            _tiles = new List<SvgPublishedTile>(plan.Tiles.Count);
+            try
+            {
+                foreach (SvgTilePresentation presentation in plan.Tiles)
+                {
+                    if (bitmaps.TryGetValue(
+                        presentation.Key,
+                        out RepositorySvgGpuCache.Lease? bitmap))
+                    {
+                        _tiles.Add(new SvgPublishedTile(presentation, bitmap));
+                    }
+                }
+            }
+            catch
+            {
+                foreach (RepositorySvgGpuCache.Lease bitmap in _bitmaps.Values)
+                {
+                    bitmap.Dispose();
+                }
+
+                _bitmaps.Clear();
+                _tiles.Clear();
+                throw;
+            }
+        }
+
+        public IReadOnlyList<SvgPublishedTile> Tiles => _tiles;
+
+        public int TileCount => _tiles.Count;
+
+        public void Dispose()
+        {
+            foreach (RepositorySvgGpuCache.Lease bitmap in _bitmaps.Values)
+            {
+                bitmap.Dispose();
+            }
+
+            _bitmaps.Clear();
+            _tiles.Clear();
+        }
     }
 }
 

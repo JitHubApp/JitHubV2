@@ -1,0 +1,17 @@
+# MarkdownRenderer public API baseline
+# Format: 1
+# Assembly: MarkdownRenderer.GitHub
+# Generated from compiled assembly metadata; update with eng/Update-PublicApiBaselines.ps1.
+
+assembly MarkdownRenderer.GitHub
+
+public static class MarkdownRenderer.GitHub.GitHubReadmeExtensions
+  public static MarkdownRenderer.Controls.MarkdownDocumentView UseGitHubReadme(this MarkdownRenderer.Controls.MarkdownDocumentView view, MarkdownRenderer.MarkdownEngine? engine = null, MarkdownRenderer.Html.SafeHtmlOptions? safeHtmlOptions = null);
+  public static MarkdownRenderer.Controls.MarkdownRendererControlBuilder UseGitHubReadme(this MarkdownRenderer.Controls.MarkdownRendererControlBuilder builder, MarkdownRenderer.Html.SafeHtmlOptions? safeHtmlOptions = null);
+  public static MarkdownRenderer.Controls.MarkdownScrollView UseGitHubReadme(this MarkdownRenderer.Controls.MarkdownScrollView view, MarkdownRenderer.MarkdownEngine? engine = null, MarkdownRenderer.Html.SafeHtmlOptions? safeHtmlOptions = null);
+  public static MarkdownRenderer.MarkdownEngineBuilder UseGitHubReadme(this MarkdownRenderer.MarkdownEngineBuilder builder);
+  public static MarkdownRenderer.MarkdownEngineBuilder UseGitHubReadme(this MarkdownRenderer.MarkdownEngineBuilder builder, MarkdownRenderer.Html.SafeHtmlOptions safeHtmlOptions);
+
+public static class MarkdownRenderer.GitHub.GitHubReadmeMarkdownRenderer
+  public static MarkdownRenderer.Controls.MarkdownScrollView CreateDefault(string? markdown = null, MarkdownRenderer.Theming.MarkdownTheme? theme = null, bool isSelectionEnabled = true, MarkdownRenderer.Images.IMarkdownImageResolver? imageResolver = null, System.Uri? imageBaseUri = null, string? imageDocumentPath = null);
+  public static MarkdownRenderer.MarkdownEngine SharedEngine { get; }

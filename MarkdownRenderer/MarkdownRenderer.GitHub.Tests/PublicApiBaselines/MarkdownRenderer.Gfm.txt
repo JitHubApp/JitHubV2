@@ -1,0 +1,20 @@
+# MarkdownRenderer public API baseline
+# Format: 1
+# Assembly: MarkdownRenderer.Gfm
+# Generated from compiled assembly metadata; update with eng/Update-PublicApiBaselines.ps1.
+
+assembly MarkdownRenderer.Gfm
+
+public static class MarkdownRenderer.Gfm.GfmExtensions
+  public static MarkdownRenderer.Controls.MarkdownDocumentView UseGitHubFlavoredMarkdown(this MarkdownRenderer.Controls.MarkdownDocumentView view, MarkdownRenderer.MarkdownEngine? engine = null);
+  public static MarkdownRenderer.Controls.MarkdownDocumentView UseMarkdownExtra(this MarkdownRenderer.Controls.MarkdownDocumentView view, MarkdownRenderer.MarkdownEngine? engine = null);
+  public static MarkdownRenderer.Controls.MarkdownRendererControlBuilder UseGitHubFlavoredMarkdown(this MarkdownRenderer.Controls.MarkdownRendererControlBuilder builder);
+  public static MarkdownRenderer.Controls.MarkdownRendererControlBuilder UseMarkdownExtra(this MarkdownRenderer.Controls.MarkdownRendererControlBuilder builder);
+  public static MarkdownRenderer.Controls.MarkdownScrollView UseGitHubFlavoredMarkdown(this MarkdownRenderer.Controls.MarkdownScrollView view, MarkdownRenderer.MarkdownEngine? engine = null);
+  public static MarkdownRenderer.Controls.MarkdownScrollView UseMarkdownExtra(this MarkdownRenderer.Controls.MarkdownScrollView view, MarkdownRenderer.MarkdownEngine? engine = null);
+  public static MarkdownRenderer.MarkdownEngineBuilder UseGitHubFlavoredMarkdown(this MarkdownRenderer.MarkdownEngineBuilder builder);
+  public static MarkdownRenderer.MarkdownEngineBuilder UseMarkdownExtra(this MarkdownRenderer.MarkdownEngineBuilder builder);
+
+public static class MarkdownRenderer.Gfm.GfmMarkdownRenderer
+  public static MarkdownRenderer.Controls.MarkdownScrollView CreateDefault(string? markdown = null, MarkdownRenderer.Theming.MarkdownTheme? theme = null, bool isSelectionEnabled = true, MarkdownRenderer.Images.IMarkdownImageResolver? imageResolver = null, System.Uri? imageBaseUri = null, string? imageDocumentPath = null);
+  public static MarkdownRenderer.MarkdownEngine SharedEngine { get; }

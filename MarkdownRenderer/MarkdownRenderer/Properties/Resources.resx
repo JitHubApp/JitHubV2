@@ -18,6 +18,12 @@
   <data name="ImageName" xml:space="preserve">
     <value>Image</value>
   </data>
+  <data name="ImageLoadingFormat" xml:space="preserve">
+    <value>Loading {0}...</value>
+  </data>
+  <data name="ImageErrorFormat" xml:space="preserve">
+    <value>Image unavailable: {0}</value>
+  </data>
   <data name="TableName" xml:space="preserve">
     <value>Table</value>
   </data>
@@ -87,8 +93,32 @@
   <data name="ContextMenuCopy" xml:space="preserve">
     <value>Copy</value>
   </data>
+  <data name="ContextMenuCopyMarkdown" xml:space="preserve">
+    <value>Copy as Markdown</value>
+  </data>
+  <data name="ContextMenuCopyLink" xml:space="preserve">
+    <value>Copy link</value>
+  </data>
+  <data name="ContextMenuCopyImage" xml:space="preserve">
+    <value>Copy image</value>
+  </data>
+  <data name="ContextMenuCopyCode" xml:space="preserve">
+    <value>Copy code</value>
+  </data>
+  <data name="ContextMenuCopyTable" xml:space="preserve">
+    <value>Copy table</value>
+  </data>
   <data name="ContextMenuSelectAll" xml:space="preserve">
     <value>Select All</value>
+  </data>
+  <data name="SelectionStartHandle" xml:space="preserve">
+    <value>Selection start handle</value>
+  </data>
+  <data name="SelectionEndHandle" xml:space="preserve">
+    <value>Selection end handle</value>
+  </data>
+  <data name="SelectionHandleHelp" xml:space="preserve">
+    <value>Drag to adjust the selection. Use the arrow keys for precise adjustment.</value>
   </data>
   <data name="CodeBlockCopy" xml:space="preserve">
     <value>Copy</value>
@@ -98,5 +128,26 @@
   </data>
   <data name="CodeBlockCopyAutomationName" xml:space="preserve">
     <value>Copy code</value>
+  </data>
+  <data name="TaskCompleted" xml:space="preserve">
+    <value>Completed task</value>
+  </data>
+  <data name="TaskIncomplete" xml:space="preserve">
+    <value>Incomplete task</value>
+  </data>
+  <data name="TaskReadOnly" xml:space="preserve">
+    <value>Read-only task state</value>
+  </data>
+  <data name="TaskToggle" xml:space="preserve">
+    <value>Toggle task state</value>
+  </data>
+  <data name="HtmlDetails" xml:space="preserve">
+    <value>Details</value>
+  </data>
+  <data name="DiagramName" xml:space="preserve">
+    <value>Diagram</value>
+  </data>
+  <data name="HtmlBudgetExceeded" xml:space="preserve">
+    <value>Additional HTML content was omitted because it exceeded the renderer safety limit.</value>
   </data>
 </root>

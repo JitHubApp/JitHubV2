@@ -35,6 +35,8 @@
                 VerticalAlignment="Center"
                 Spacing="{ThemeResource AppGap6}">
                 <PersonPicture
+                    Background="{ThemeResource AppSurfaceSubtleBrush}"
+                    Foreground="{ThemeResource AppInkBrush}"
                     ProfilePicture="{x:Bind Person.ImageSource, Mode=OneWay}"
                     Width="{ThemeResource AppDimension86}"
                     Margin="{ThemeResource AppMargin0_0_0_6}"

@@ -57,7 +57,10 @@ GFM keys:
 - `AlertWarning`
 - `AlertCaution`
 
-Custom extensions may use any string key.
+Custom extensions may use any string key in `MarkdownTheme.Overrides`, including
+the context, class, and identifier aliases produced by `MarkdownElementKeys`.
+Those legacy lookup aliases are distinct from the stricter
+`MarkdownStyleRole` identifiers used by style sheets and WinUI resource keys.
 
 ## Style properties
 
@@ -124,11 +127,64 @@ theme.Overrides[MarkdownElementKeys.Link] = new ElementStyleOverride
 renderer.Theme = theme;
 ```
 
+## WinUI resource overrides
+
+Apps may place the stable keys from `MarkdownResourceKeys` in a control,
+ancestor, or application resource dictionary. The resolver captures them into
+the immutable theme snapshot on the UI thread; layout and paint never query
+WinUI resources on a worker or per frame.
+
+Relevant resource-key discovery is weakly cached per dictionary, while each
+snapshot re-reads the current value for every discovered key. Adding or removing
+a key normally refreshes discovery because the dictionary count changes. After
+an advanced runtime edit that swaps one key for another without changing the
+count, call `renderer.InvalidateThemeResources()`. This clears key discovery and
+requests a restyle whether or not the renderer has a `MarkdownTheme` assigned.
+
+Lookup follows WinUI dictionary precedence within each scope: the dictionary's
+own value, merged dictionaries in reverse declaration order, then exactly one
+selected theme dictionary. Theme selection tries `Light` or `Dark` and then
+`Default`; in high contrast it tries the documented generic `HighContrast`
+dictionary first, then the active `Light`/`Dark` dictionary, then `Default`.
+Use the generic `HighContrast` key for renderer customizations; scheme names are
+arbitrary/localized system values and are deliberately not guessed as
+`HighContrastBlack`, `HighContrastWhite`, or `HighContrastCustom`.
+
+Document-wide resources include:
+
+- `DocumentPadding`: a `Thickness` around top-level content. Each component is
+  constrained to 0–4096 DIPs.
+- `BlockSpacing`: a non-negative numeric value inserted between adjacent
+  top-level blocks, constrained to 0–1024 DIPs.
+- `MinimumInteractiveSize`: a non-negative numeric value constrained to
+  24–128 DIPs.
+- `OverflowIndicatorBrush`: a `Color` or `SolidColorBrush` used by the local
+  horizontal-overflow affordance on code, table, and vector blocks.
+
+`MarkdownResourceKeys.ForRole(role, MarkdownStyleProperty.TextDecorations)`
+accepts a `Windows.UI.Text.TextDecorations` value or its named string form and
+maps `Underline` and `Strikethrough` independently. Invalid types and unknown
+flags are ignored. In High Contrast, color resources and the overflow indicator
+use mandatory system roles, and a decoration required by a semantic role cannot
+be removed by an override.
+
+Custom resource role names are canonical, case-sensitive identifiers of at most
+128 characters. `MarkdownStyleRole` trims its constructor input, while a raw
+`MarkdownRenderer.<role>.<property>` resource key must already contain the
+canonical trimmed name. Control characters are rejected.
+`Document`, `Selection`, `FocusVisual`, `Interaction`, and `Overflow` are
+reserved global resource scopes and cannot be used as style roles.
+These resource-role restrictions do not constrain legacy keys stored in
+`MarkdownTheme.Overrides`; non-role aliases simply skip WinUI role-resource
+projection and continue to receive their dictionary override.
+
 ## Dynamic theme switching
 
-The control listens to `ActualThemeChanged`. If a `MarkdownTheme` is assigned,
-the control calls `theme.Invalidate()`, which raises `Theme.Changed` and triggers
-a rebuild. If no custom theme is assigned, it rebuilds directly.
+The control listens to `ActualThemeChanged` and resolves a fresh theme snapshot.
+When a `MarkdownTheme` is assigned, the control raises its change notification
+so every subscribing renderer can restyle; without one, it requests the restyle
+directly. Theme switching does not flush resource-key discovery because it does
+not change the dictionaries' key sets.
 
 The control also listens to `Microsoft.UI.System.ThemeSettings.Changed` for the
 current window. When Windows enters or leaves a contrast theme, the renderer
@@ -139,13 +195,15 @@ so high contrast does not leave a light/dark hardcoded background behind.
 High contrast defaults avoid scheme-name-specific palettes. The role mapping
 lives in `MarkdownHighContrastDefaults` and is unit-tested with deterministic
 roles; the sample automation also forces a fake high-contrast palette and checks
-the resulting UIA text attributes. Consumer `MarkdownTheme` overrides are still
-honored as explicit overrides, so app authors remain responsible for ensuring
-custom colors meet contrast requirements.
+the resulting UIA text attributes. When a contrast theme is active, renderer and
+consumer color overrides are mapped onto mandatory system-color roles rather
+than painted literally. Typography, spacing, and decoration overrides remain in
+effect, while Window/WindowText, Hotlight, Highlight, and HighlightText preserve
+the user's contrast scheme.
 
-Theme changes reuse the cached parsed AST when the markdown source and extension
-registry revision are unchanged. Layout/text metrics and colors are rebuilt from
-a fresh `ThemeSnapshot`. Real Windows contrast-theme smoke still needs to cover
+Theme changes can reuse the immutable parsed document when source and engine
+configuration are unchanged. Layout/text metrics and colors are rebuilt for the
+new environment. Real Windows contrast-theme smoke still needs to cover
 every built-in theme plus customized palettes because those OS settings are
 intrusive and environment-dependent.
 
@@ -164,8 +222,10 @@ theme.Overrides[MarkdownElementKeys.Link] = new ElementStyleOverride
 // No explicit Invalidate call is required for normal mutations.
 ```
 
-`MarkdownTheme.Invalidate()` remains available as an explicit escape hatch for
-advanced callers.
+`MarkdownTheme.Invalidate()` remains available when advanced mutations to the
+theme object itself need an explicit change notification. It does not invalidate
+WinUI resource-dictionary key discovery; use
+`renderer.InvalidateThemeResources()` for that case.
 
 ## Styling non-goals
 

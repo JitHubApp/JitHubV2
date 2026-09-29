@@ -10,6 +10,7 @@ internal sealed class CodeBlockMetadata
     public const string PlainCodeLabel = "Code";
 
     private static readonly char[] Whitespace = [' ', '\t', '\r', '\n'];
+    private const string DeferredSceneMarkerAttribute = "renderer.internal.deferred-scene";
 
     private CodeBlockMetadata(
         string? language,
@@ -20,7 +21,8 @@ internal sealed class CodeBlockMetadata
         bool? showLineNumbers,
         int startLine,
         bool isDiff,
-        string stableKey)
+        string stableKey,
+        ulong codeTextHash)
     {
         Language = language;
         LanguageDisplay = displayLanguage;
@@ -31,6 +33,7 @@ internal sealed class CodeBlockMetadata
         StartLine = startLine;
         IsDiff = isDiff;
         StableKey = stableKey;
+        CodeTextHash = codeTextHash;
     }
 
     public string? Language { get; }
@@ -47,6 +50,7 @@ internal sealed class CodeBlockMetadata
     public int StartLine { get; }
     public bool IsDiff { get; }
     public string StableKey { get; }
+    public ulong CodeTextHash { get; }
 
     public static CodeBlockMetadata FromBlock(LeafBlock block, string displayedCodeText)
     {
@@ -139,7 +143,8 @@ internal sealed class CodeBlockMetadata
             }
         }
 
-        string stableKey = CreateStableKey(block, CopyPayload(displayedCodeText));
+        ulong codeTextHash = Fnv1A(CopyPayload(displayedCodeText));
+        string stableKey = CreateStableKey(block, codeTextHash);
         return new CodeBlockMetadata(
             language,
             DisplayLanguage(language),
@@ -149,7 +154,52 @@ internal sealed class CodeBlockMetadata
             showLineNumbers,
             startLine,
             isDiff,
-            stableKey);
+            stableKey,
+            codeTextHash);
+    }
+
+    internal static CodeBlockMetadata FromDeclarative(
+        SourceSpan sourceSpan,
+        string displayedCodeText,
+        string? language,
+        IReadOnlyDictionary<string, string> attributes)
+    {
+        ArgumentNullException.ThrowIfNull(attributes);
+
+        string? normalizedLanguage = NormalizeLanguage(language);
+        bool? showLineNumbers = null;
+        if (attributes.TryGetValue(Extensions.MarkdownContentAttributes.CodeShowLineNumbers, out string? rawLineNumbers) &&
+            TryParseBoolean(rawLineNumbers, out bool parsedLineNumbers))
+        {
+            showLineNumbers = parsedLineNumbers;
+        }
+
+        int startLine = 1;
+        if (attributes.TryGetValue(Extensions.MarkdownContentAttributes.CodeStartLine, out string? rawStartLine) &&
+            int.TryParse(rawStartLine, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedStartLine))
+        {
+            startLine = Math.Max(1, parsedStartLine);
+        }
+
+        string code = CopyPayload(displayedCodeText);
+        ulong codeTextHash = Fnv1A(code);
+        string stableKey = attributes.TryGetValue(DeferredSceneMarkerAttribute, out string? marker) &&
+            !string.IsNullOrWhiteSpace(marker)
+                ? marker
+                : string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"{sourceSpan.Start}:{sourceSpan.Length}:{codeTextHash:X16}");
+        return new CodeBlockMetadata(
+            normalizedLanguage,
+            DisplayLanguage(normalizedLanguage),
+            title: null,
+            fileName: null,
+            CodeLineRangeSet.Empty,
+            showLineNumbers,
+            startLine,
+            isDiff: string.Equals(normalizedLanguage, "diff", StringComparison.OrdinalIgnoreCase),
+            stableKey,
+            codeTextHash);
     }
 
     public static string CopyPayload(string? displayedCodeText) => NormalizeCodeLineEndings(displayedCodeText);
@@ -213,8 +263,8 @@ internal sealed class CodeBlockMetadata
         };
     }
 
-    private static string CreateStableKey(LeafBlock block, string code)
-        => string.Create(CultureInfo.InvariantCulture, $"{block.Span.Start}:{block.Span.Length}:{Fnv1A(code):X16}");
+    private static string CreateStableKey(LeafBlock block, ulong codeTextHash)
+        => string.Create(CultureInfo.InvariantCulture, $"{block.Span.Start}:{block.Span.Length}:{codeTextHash:X16}");
 
     private static ulong Fnv1A(string value)
     {

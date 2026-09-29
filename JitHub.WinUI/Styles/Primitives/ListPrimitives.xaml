@@ -25,11 +25,6 @@
         <Setter Property="Foreground" Value="{ThemeResource AppAccentBrush}" />
     </Style>
 
-    <Style TargetType="PersonPicture" BasedOn="{StaticResource DefaultPersonPictureStyle}">
-        <Setter Property="Background" Value="{ThemeResource AppSurfaceSubtleBrush}" />
-        <Setter Property="Foreground" Value="{ThemeResource AppInkBrush}" />
-    </Style>
-
     <Style TargetType="TreeView">
         <Setter Property="Background" Value="{ThemeResource AppTransparentBrush}" />
         <Setter Property="Foreground" Value="{ThemeResource AppInkBrush}" />

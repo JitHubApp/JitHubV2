@@ -30,6 +30,7 @@
           "Pipelines.Sockets.Unofficial": "2.2.8"
         }
       }
-    }
+    },
+    "net10.0/win-x64": {}
   }
 }

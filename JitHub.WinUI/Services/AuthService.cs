@@ -8,11 +8,14 @@ using System.Threading.Tasks;
 using JitHub.Models;
 using JitHub.Models.GitHub;
 using JitHub.WinUI;
+using JitHub.WinUI.Helpers;
 
 namespace JitHub.Services;
 
 public sealed class AuthService : IAuthService
 {
+    internal static event Action? AuthenticationCleared;
+
     private readonly IAppConfig _appConfigService;
     private readonly IAccountService _accountService;
     private readonly IGitHubClientService _gitHubClientService;
@@ -464,7 +467,7 @@ public sealed class AuthService : IAuthService
     {
         if (Program.CurrentLaunchOptions.IsPublicPreviewOverride)
         {
-            return GitHubClientService.PublicAccessToken;
+            return Program.CurrentLaunchOptions.ResolvePreviewAccessToken(GitHubClientService.PublicAccessToken);
         }
 
         if (userId <= 0)
@@ -907,6 +910,14 @@ public sealed class AuthService : IAuthService
         AuthenticatedUser = null;
         _gitHubService.SetAccessToken(null);
         _initializeTask = Task.CompletedTask;
+        try
+        {
+            AuthenticationCleared?.Invoke();
+        }
+        catch (Exception exception)
+        {
+            HandledFailureReporter.Report(exception, "markdown-account-resource-retirement");
+        }
     }
 
     private void RestoreSavedSessionAfterFailedSignIn(

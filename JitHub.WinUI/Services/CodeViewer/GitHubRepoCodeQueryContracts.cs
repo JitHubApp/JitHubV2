@@ -1,3 +1,4 @@
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Models.GitHub;
@@ -24,6 +25,17 @@ public interface IGitHubRepoCodeQueryService
         string gitRef,
         QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst,
         CancellationToken cancellationToken = default);
+
+    Task<CachedResult<GitHubRepositoryContent>> GetReadmeAsync(
+        string accessToken,
+        string userId,
+        string owner,
+        string repositoryName,
+        string gitRef,
+        QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst,
+        CancellationToken cancellationToken = default) =>
+        Task.FromException<CachedResult<GitHubRepositoryContent>>(
+            new NotSupportedException("This repository query service does not expose the README endpoint."));
 
     Task<CachedResult<GitHubBlob>> GetBlobAsync(
         string accessToken,

@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "packages": [
+    {
+      "id": "Microsoft.Graphics.Win2D",
+      "version": "1.4.0",
+      "packageSha256": "e13866088b3c50205aae36e9e4cb3c23b21d11c4b4590ddcbeaafa9ea2c79f48",
+      "licenseExpression": "MIT",
+      "evidenceUrl": "https://github.com/microsoft/Win2D/blob/winappsdk/main/LICENSE.txt",
+      "reviewNote": "The signed NuGet package uses a legacy licenseUrl; the official upstream repository declares MIT. The package hash binds this reviewed exception to 1.4.0."
+    },
+    {
+      "id": "Microsoft.Web.WebView2",
+      "version": "1.0.3179.45",
+      "packageSha256": "70bd381c5d67f97a6a80294001cde125ab5b24b6d36098ad901d8e15efd752d0",
+      "licenseExpression": "BSD-3-Clause",
+      "evidenceUrl": "https://www.nuget.org/packages/Microsoft.Web.WebView2/1.0.3179.45/license",
+      "reviewNote": "The signed package embeds the BSD 3-Clause text in LICENSE.txt but does not declare an SPDX expression. The package hash binds this review to the exact restored archive."
+    },
+    {
+      "id": "Microsoft.Windows.SDK.BuildTools",
+      "version": "10.0.26100.4654",
+      "packageSha256": "5f5783658a200f83ea2addfd406e2303a901b27ad7c49b0347c34aefcc21883d",
+      "licenseExpression": "LicenseRef-Microsoft-Windows-SDK",
+      "evidenceUrl": "https://aka.ms/WinSDKLicenseURL",
+      "reviewNote": "The signed package declares this license URL but no SPDX expression or embedded license file. The package hash binds the LicenseRef to the exact restored archive."
+    },
+    {
+      "id": "Microsoft.Windows.SDK.BuildTools.MSIX",
+      "version": "1.7.20250829.1",
+      "packageSha256": "7c3e3aa18c66b86037eef55eccd9a46855b2c214ec96c62c4b614f01aa487f71",
+      "licenseExpression": "LicenseRef-Microsoft-Windows-SDK-MSIX",
+      "evidenceUrl": "https://www.nuget.org/packages/Microsoft.Windows.SDK.BuildTools.MSIX/1.7.20250829.1/license",
+      "reviewNote": "This development-only package embeds the Microsoft Windows SDK terms in sdk_license.txt. The package hash binds the LicenseRef to the exact restored build-tool archive; it is not a runtime library."
+    },
+    {
+      "id": "Microsoft.WindowsAppSDK.Base",
+      "version": "1.8.251216001",
+      "packageSha256": "58f0c69ad99293e7efd36b7f8c6ead0e20940a5e91866b16901b9610b08642c9",
+      "licenseExpression": "LicenseRef-Microsoft-Windows-App-SDK",
+      "evidenceUrl": "https://www.nuget.org/packages/Microsoft.WindowsAppSDK.Base/1.8.251216001/license",
+      "reviewNote": "The exact package embeds Windows App SDK redistribution terms. Section 3 expressly permits files binplaced by the package in framework-dependent and self-contained applications."
+    },
+    {
+      "id": "Microsoft.WindowsAppSDK.Foundation",
+      "version": "1.8.260203002",
+      "packageSha256": "76504afed42c2f0a30da895a4f232f2a43ea2e00c48b0062d39d5a8c465e4fd6",
+      "licenseExpression": "LicenseRef-Microsoft-Windows-App-SDK",
+      "evidenceUrl": "https://www.nuget.org/packages/Microsoft.WindowsAppSDK.Foundation/1.8.260203002/license",
+      "reviewNote": "The exact package embeds Windows App SDK redistribution terms and is reviewed only as an unmodified Windows application runtime dependency."
+    },
+    {
+      "id": "Microsoft.WindowsAppSDK.InteractiveExperiences",
+      "version": "1.8.260125001",
+      "packageSha256": "dbbf2a9fd670416f6c19012f1e975f04367a86546e3afaa5f6f666d79fef385d",
+      "licenseExpression": "LicenseRef-Microsoft-Windows-App-SDK",
+      "evidenceUrl": "https://www.nuget.org/packages/Microsoft.WindowsAppSDK.InteractiveExperiences/1.8.260125001/license",
+      "reviewNote": "The exact package embeds Windows App SDK redistribution terms and is reviewed only as an unmodified Windows application runtime dependency."
+    },
+    {
+      "id": "Microsoft.WindowsAppSDK.WinUI",
+      "version": "1.8.260204000",
+      "packageSha256": "b072adda92f9960747825b43cdf4d4af61ace52d7b28d9538595fa739cdc353b",
+      "licenseExpression": "LicenseRef-Microsoft-Windows-App-SDK",
+      "evidenceUrl": "https://www.nuget.org/packages/Microsoft.WindowsAppSDK.WinUI/1.8.260204000/license",
+      "reviewNote": "The exact package embeds Windows App SDK redistribution terms and is reviewed only as an unmodified Windows application runtime dependency."
+    }
+  ]
+}
