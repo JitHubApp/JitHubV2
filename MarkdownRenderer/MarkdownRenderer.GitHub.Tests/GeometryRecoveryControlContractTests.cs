@@ -77,8 +77,41 @@ public sealed class GeometryRecoveryControlContractTests
 
         int recovery = body.IndexOf("RequestGeometryRecoveryIfRequired(snapshot)", StringComparison.Ordinal);
         int staleGeneration = body.IndexOf("if (realizationGeneration != _lazyLayoutGeneration)", StringComparison.Ordinal);
-        int canceled = body.IndexOf("canceled ||", StringComparison.Ordinal);
-        Assert.True(recovery >= 0 && staleGeneration > recovery && canceled > recovery);
+        int cancellationCapture = body.IndexOf(
+            "bool operationWasCanceled = canceled || operationToken.IsCancellationRequested;",
+            StringComparison.Ordinal);
+        int retirement = body.IndexOf(
+            "RetireCancellationTokenSource(completedCts, completedTask);",
+            StringComparison.Ordinal);
+        int canceled = body.IndexOf("operationWasCanceled ||", retirement, StringComparison.Ordinal);
+        Assert.True(recovery >= 0 && staleGeneration > recovery);
+        Assert.True(cancellationCapture > staleGeneration && retirement > cancellationCapture && canceled > retirement);
+        Assert.DoesNotContain("operationToken.IsCancellationRequested", body[canceled..], StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(true, false, true)]
+    [InlineData(false, true, true)]
+    public async Task RetiringLazyWorkDoesNotChangeItsCapturedCancellationOutcome(
+        bool workerReportedCanceled,
+        bool tokenCanceledBeforeRetirement,
+        bool expectedCanceled)
+    {
+        using var source = new CancellationTokenSource();
+        if (tokenCanceledBeforeRetirement)
+            source.Cancel();
+        CancellationToken operationToken = source.Token;
+
+        // Match the production completion decision. Retirement still cancels
+        // even a successfully completed source so registrations can drain, but
+        // that cleanup must not retroactively change the captured outcome.
+        bool operationWasCanceled = workerReportedCanceled || operationToken.IsCancellationRequested;
+        Task callbacks = CancellationTokenSourceRetirement.RequestCancellation(source);
+
+        Assert.True(operationToken.IsCancellationRequested);
+        Assert.Equal(expectedCanceled, operationWasCanceled);
+        await callbacks;
     }
 
     [Fact]

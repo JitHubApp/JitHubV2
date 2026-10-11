@@ -6894,6 +6894,10 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         LazyLayoutBand attemptedVisibleBand = _activeLazyLayoutVisibleVectorBand;
         long attemptedCapacityGeneration = snapshot?.ActiveCapacityGeneration ??
             _activeLazyLayoutCapacityGeneration;
+        // Retirement requests cancellation as part of disposal. Capture the
+        // operation's outcome first so a successful completion isn't mistaken
+        // for superseded work merely because this method is now retiring its CTS.
+        bool operationWasCanceled = canceled || operationToken.IsCancellationRequested;
         _lazyLayoutCts = null;
         _lazyLayoutTask = null;
         _activeLazyLayoutSnapshot = null;
@@ -6906,8 +6910,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         // keep observing a completed but permanently active operation.
         if (_isDisposed ||
             _isUnloaded ||
-            canceled ||
-            operationToken.IsCancellationRequested ||
+            operationWasCanceled ||
             pipelineGeneration != _pipelineGeneration ||
             snapshot is null ||
             !ReferenceEquals(snapshot, _snapshot))
