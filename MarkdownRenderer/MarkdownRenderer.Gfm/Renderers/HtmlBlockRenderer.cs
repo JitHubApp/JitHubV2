@@ -26,6 +26,13 @@ namespace MarkdownRenderer.Html.Renderers;
 /// </summary>
 internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
 {
+    private enum InlineFragmentMarginPolicy
+    {
+        PreserveExisting,
+        AnonymousContainerFlow,
+        Paragraph,
+    }
+
     private const int MaxTableColumns = 64;
     private const int MaxNestedMarkdownDepth = 4;
     private static readonly HashSet<string> SupportedPictureSourceTypes = new(StringComparer.OrdinalIgnoreCase)
@@ -160,7 +167,8 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         IReadOnlyList<SafeHtmlNode> nodes,
         MarkdownLayoutContext context,
         int sourceOffset,
-        SafeHtmlAlignment inheritedAlignment)
+        SafeHtmlAlignment inheritedAlignment,
+        InlineFragmentMarginPolicy inlineFragmentMarginPolicy = InlineFragmentMarginPolicy.PreserveExisting)
     {
         List<SafeHtmlNode> inlineNodes = [];
         foreach (SafeHtmlNode node in nodes)
@@ -168,7 +176,13 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             context.CancellationToken.ThrowIfCancellationRequested();
             if (node is SafeHtmlElement element && IsBlockElement(element.Name))
             {
-                FlushInlineNodes(destination, inlineNodes, context, sourceOffset, inheritedAlignment);
+                FlushInlineNodes(
+                    destination,
+                    inlineNodes,
+                    context,
+                    sourceOffset,
+                    inheritedAlignment,
+                    inlineFragmentMarginPolicy);
                 BlockBox? block = BuildElementBlock(element, context, sourceOffset, inheritedAlignment);
                 if (block is not null)
                 {
@@ -181,7 +195,13 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             }
         }
 
-        FlushInlineNodes(destination, inlineNodes, context, sourceOffset, inheritedAlignment);
+        FlushInlineNodes(
+            destination,
+            inlineNodes,
+            context,
+            sourceOffset,
+            inheritedAlignment,
+            inlineFragmentMarginPolicy);
     }
 
     private void FlushInlineNodes(
@@ -189,7 +209,8 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         List<SafeHtmlNode> inlineNodes,
         MarkdownLayoutContext context,
         int sourceOffset,
-        SafeHtmlAlignment alignment)
+        SafeHtmlAlignment alignment,
+        InlineFragmentMarginPolicy inlineFragmentMarginPolicy)
     {
         if (inlineNodes.Count == 0)
         {
@@ -200,7 +221,14 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         PopulateInline(box, inlineNodes, context, sourceOffset, HtmlInlineContext.Empty);
         if (box.Runs.Count > 0)
         {
-            ConfigureStandaloneBreakBox(box, preserveParagraphMargin: false);
+            ConfigureStandaloneBreakBox(
+                box,
+                preserveParagraphMargin: inlineFragmentMarginPolicy == InlineFragmentMarginPolicy.Paragraph);
+            if (inlineFragmentMarginPolicy == InlineFragmentMarginPolicy.AnonymousContainerFlow)
+            {
+                box.UseContainerMargin = false;
+                box.Margin = default;
+            }
             AddChild(destination, box, context);
         }
         else
@@ -296,11 +324,27 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             ConfigureStandaloneBreakBox(
                 inline,
                 preserveParagraphMargin: element.Name == "p");
+            if (element.Name != "p")
+            {
+                // Body styling supplies Markdown paragraph spacing. A plain
+                // safe-HTML container is a block boundary, but its anonymous
+                // inline contents are not a paragraph of their own.
+                inline.UseContainerMargin = false;
+                inline.Margin = default;
+            }
             return ReturnIfNonEmpty(inline, context);
         }
 
         var stack = CreateStack(context, collapsePositiveAdjacentMargins: true);
-        AppendBlocks(stack, element.Children, context, sourceOffset, alignment);
+        AppendBlocks(
+            stack,
+            element.Children,
+            context,
+            sourceOffset,
+            alignment,
+            element.Name == "p"
+                ? InlineFragmentMarginPolicy.Paragraph
+                : InlineFragmentMarginPolicy.AnonymousContainerFlow);
         return ReturnIfNonEmpty(stack, context);
     }
 

@@ -3,6 +3,7 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
@@ -111,6 +112,99 @@ public sealed class HtmlBreakImageSpacingTests(ITestOutputHelper output)
         Assert.Equal("<br>", snapshot.SourceMap.Slice(new DocumentRange(
             new DocumentPosition(breakBox.BlockIndex, lineBreak.InlineIndex, 0),
             new DocumentPosition(breakBox.BlockIndex, lineBreak.InlineIndex, 1))));
+    }
+
+    [Fact]
+    public void AnonymousInlineFragmentsInSafeHtmlContainersDoNotAcquireParagraphMargins()
+    {
+        const string source = """
+            <div>
+            <img src="https://example.test/logo.png" width="40" height="20" alt="logo"><br><br><br><br>
+            <div><span>Nested caption</span></div>
+            Before section<br>
+            <section><span>Section content</span></section>
+            Tail fragment
+            <p>Explicit paragraph<br>Paragraph tail</p>
+            Final tail fragment
+            </div>
+            """;
+
+        using LayoutSnapshot snapshot = BuildGitHub(source);
+        StackBox htmlBlock = Assert.IsType<StackBox>(Assert.Single(snapshot.Blocks));
+        StackBox outerContainer = Assert.IsType<StackBox>(Assert.Single(htmlBlock.Children));
+        InlineContainerBox[] inlineChildren = outerContainer.Children.OfType<InlineContainerBox>().ToArray();
+
+        InlineContainerBox imageAndBreaks = Assert.Single(
+            inlineChildren,
+            static box => box.Runs.OfType<InlineImageRun>().Any());
+        InlineContainerBox nestedCaption = Assert.Single(
+            inlineChildren,
+            static box => box.Runs.Any(static run => run.Text.Contains("Nested caption", StringComparison.Ordinal)));
+        InlineContainerBox beforeSection = Assert.Single(
+            inlineChildren,
+            static box => box.Runs.Any(static run => run.Text.Contains("Before section", StringComparison.Ordinal)));
+        InlineContainerBox sectionContent = Assert.Single(
+            inlineChildren,
+            static box => box.Runs.Any(static run => run.Text.Contains("Section content", StringComparison.Ordinal)));
+        InlineContainerBox tail = Assert.Single(
+            inlineChildren,
+            static box => box.Runs.Any(static run => run.Text.Contains("Tail fragment", StringComparison.Ordinal)));
+        InlineContainerBox paragraph = Assert.Single(
+            inlineChildren,
+            static box => box.Runs.Any(static run => run.Text.Contains("Explicit paragraph", StringComparison.Ordinal)));
+        InlineContainerBox finalTail = Assert.Single(
+            inlineChildren,
+            static box => box.Runs.Any(static run => run.Text.Contains("Final tail fragment", StringComparison.Ordinal)));
+
+        Assert.Equal(default, imageAndBreaks.Margin);
+        Assert.Equal(default, nestedCaption.Margin);
+        Assert.Equal(default, beforeSection.Margin);
+        Assert.Equal(default, sectionContent.Margin);
+        Assert.Equal(default, tail.Margin);
+        Assert.Equal(new Thickness(0, 0, 0, 16), paragraph.Margin);
+        Assert.Equal(default, finalTail.Margin);
+
+        Assert.Equal(4, imageAndBreaks.Runs.OfType<LineBreakRun>().Count());
+        Assert.Single(paragraph.Runs.OfType<LineBreakRun>());
+        LineBreakRun[] allBreaks = inlineChildren
+            .SelectMany(static box => box.Runs.OfType<LineBreakRun>())
+            .ToArray();
+        Assert.Equal(6, allBreaks.Length);
+        foreach (InlineContainerBox box in inlineChildren)
+        {
+            foreach (LineBreakRun lineBreak in box.Runs.OfType<LineBreakRun>())
+            {
+                var range = new DocumentRange(
+                    new DocumentPosition(box.BlockIndex, lineBreak.InlineIndex, 0),
+                    new DocumentPosition(box.BlockIndex, lineBreak.InlineIndex, lineBreak.Text.Length));
+                Assert.Equal("<br>", snapshot.SourceMap.Slice(range));
+                int semanticStart = snapshot.SemanticDocument.TextOffsetFromDocumentPosition(range.Start);
+                int semanticEnd = snapshot.SemanticDocument.TextOffsetFromDocumentPosition(range.End);
+                Assert.Equal("\n", snapshot.SemanticDocument.Text.Substring(
+                    semanticStart,
+                    semanticEnd - semanticStart));
+                Assert.NotEmpty(box.GetSelectionRects(range));
+            }
+        }
+    }
+
+    [Fact]
+    public void MarkdownReparsedSafeHtmlContainerRetainsItsRealParagraphMargin()
+    {
+        const string source = """
+            <div>
+            Reparsed markdown paragraph
+            </div>
+            """;
+
+        using LayoutSnapshot snapshot = BuildGitHub(source);
+        StackBox htmlBlock = Assert.IsType<StackBox>(Assert.Single(snapshot.Blocks));
+        StackBox markdownContainer = Assert.IsType<StackBox>(Assert.Single(htmlBlock.Children));
+        InlineContainerBox paragraph = Assert.IsType<InlineContainerBox>(Assert.Single(markdownContainer.Children));
+
+        Assert.Contains(paragraph.Runs, static run =>
+            run.Text.Contains("Reparsed markdown paragraph", StringComparison.Ordinal));
+        Assert.Equal(new Thickness(0, 0, 0, 16), paragraph.Margin);
     }
 
     [Fact]
