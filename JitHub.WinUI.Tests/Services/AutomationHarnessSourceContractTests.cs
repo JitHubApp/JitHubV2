@@ -556,7 +556,7 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("isImageSelfLink", browserOracle, StringComparison.Ordinal);
         Assert.Contains("data-canonical-src", browserOracle, StringComparison.Ordinal);
         Assert.Contains("github-asset://", browserOracle, StringComparison.Ordinal);
-        Assert.Contains("WaitForVisibleImages(host", nativeProbe, StringComparison.Ordinal);
+        Assert.Matches(@"WaitForVisibleImages\(\s*host\s*,", nativeProbe);
         Assert.Contains("IsVisibleRenderedBrowserImage", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("ReadAutomationString", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("browserDistinctLinks", nativeProbe, StringComparison.Ordinal);
@@ -570,7 +570,7 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("Rectangle.Intersect(", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("RequestRendererCapture", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("save: false", nativeProbe, StringComparison.Ordinal);
-        Assert.Contains("WaitForVisibleImages(host", nativeProbe, StringComparison.Ordinal);
+        Assert.Matches(@"WaitForVisibleImages\(\s*host\s*,", nativeProbe);
         Assert.Contains("if (!repository.Readme.Available)", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("WaitForSourceEditorOrRenderedHost", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("RepoCodeFileTree", nativeProbe, StringComparison.Ordinal);
@@ -962,7 +962,7 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("if (!_productionAuditEnabled)", lifecycleBridge, StringComparison.Ordinal);
         Assert.Contains("NativeScrollTerminalContract.IsTerminalNoOpCandidate(", nativeTraversal, StringComparison.Ordinal);
         Assert.Contains("NativeScrollTerminalContract.IsStableTerminalConfirmation(", nativeTraversal, StringComparison.Ordinal);
-        Assert.Contains("WaitForVisibleImages(host", nativeTraversal, StringComparison.Ordinal);
+        Assert.Matches(@"WaitForVisibleImages\(\s*host\s*,", nativeTraversal);
         Assert.Contains("terminalCandidatePercent", nativeTraversal, StringComparison.Ordinal);
         Assert.Contains("loadingAfterTraversal > 0", nativeTraversal, StringComparison.Ordinal);
         Assert.Contains("captured movement profile is incomplete", nativeTraversal, StringComparison.Ordinal);

@@ -1920,7 +1920,9 @@ internal static partial class ReadmeAuditProbe
                 TimeSpan.FromSeconds(20),
                 phase: "first-viewport",
                 viewportIndex: 0,
-                captureLoadingStateTransitions: true);
+                captureLoadingStateTransitions: true,
+                captureRequestPath: captureRequest,
+                captureResponsePath: captureResponse);
             WriteNativeAuditStage("first-viewport UIA image wait complete");
             if (firstImageWait.TimedOut)
             {
@@ -2345,7 +2347,11 @@ internal static partial class ReadmeAuditProbe
                     host,
                     TimeSpan.FromSeconds(20),
                     phase: "traversal-viewport",
-                    viewportIndex: index);
+                    viewportIndex: index,
+                    captureRequestPath: captureRequestPath,
+                    captureResponsePath: captureResponsePath,
+                    absoluteDeadlineClock: traversalWall,
+                    absoluteDeadline: NativeTraversalTimeout);
                 auditOverheadMs += imageWait.ProbeOverheadMs;
                 visibleImageWaitElapsedMs += imageWait.ElapsedMilliseconds;
                 if (imageWait.TimedOut)
@@ -2981,7 +2987,11 @@ internal static partial class ReadmeAuditProbe
                     TimeSpan.FromSeconds(20),
                     "image revisit visible-image wait"),
                 phase: "image-revisit-viewport",
-                viewportIndex: index);
+                viewportIndex: index,
+                captureRequestPath: captureRequestPath,
+                captureResponsePath: captureResponsePath,
+                absoluteDeadlineClock: traversalWall,
+                absoluteDeadline: NativeTraversalTimeout);
             auditOverheadMs += imageWait.ProbeOverheadMs;
             if (imageWait.TimedOut)
             {
@@ -4150,7 +4160,11 @@ internal static partial class ReadmeAuditProbe
         TimeSpan timeout,
         string phase = "unspecified",
         int? viewportIndex = null,
-        bool captureLoadingStateTransitions = false)
+        bool captureLoadingStateTransitions = false,
+        string? captureRequestPath = null,
+        string? captureResponsePath = null,
+        Stopwatch? absoluteDeadlineClock = null,
+        TimeSpan? absoluteDeadline = null)
     {
         Stopwatch stopwatch = Stopwatch.StartNew();
         double probeOverheadMs = 0;
@@ -4213,7 +4227,18 @@ internal static partial class ReadmeAuditProbe
         ReadmeAuditVisibleImageTimeoutSnapshot timeoutSnapshot = CaptureVisibleImageTimeoutSnapshot(
             host,
             lastHostItemStatus);
+        string rendererReadiness = CaptureRendererReadinessDiagnostic(
+            captureRequestPath,
+            captureResponsePath,
+            absoluteDeadlineClock,
+            absoluteDeadline);
         diagnosticProbe.Stop();
+        string failureDiagnostic = ReadmeAuditVisibleImageWaitDiagnostics.FormatFailure(
+            phase,
+            viewportIndex,
+            timeoutSnapshot);
+        if (rendererReadiness.Length != 0)
+            failureDiagnostic = AppendBoundedReadinessDiagnostic(failureDiagnostic, rendererReadiness);
         return new VisibleImageWaitResult(
             probeOverheadMs + diagnosticProbe.Elapsed.TotalMilliseconds,
             true,
@@ -4222,10 +4247,52 @@ internal static partial class ReadmeAuditProbe
             pollCount,
             initialHasLoadingVisibleImages,
             loadingStateTransitions ?? [],
-            ReadmeAuditVisibleImageWaitDiagnostics.FormatFailure(
-                phase,
-                viewportIndex,
-                timeoutSnapshot));
+            failureDiagnostic);
+    }
+
+    private static string CaptureRendererReadinessDiagnostic(
+        string? requestPath,
+        string? responsePath,
+        Stopwatch? absoluteDeadlineClock,
+        TimeSpan? absoluteDeadline)
+    {
+        if (string.IsNullOrWhiteSpace(requestPath) || string.IsNullOrWhiteSpace(responsePath))
+            return "[renderer-readiness unavailable=request-paths-not-provided].";
+
+        try
+        {
+            RendererCaptureResponse response = RequestRendererCapture(
+                requestPath,
+                responsePath,
+                outputPath: null,
+                save: false,
+                responseTimeout: TimeSpan.FromSeconds(2),
+                absoluteDeadlineClock: absoluteDeadlineClock,
+                absoluteDeadline: absoluteDeadline,
+                readinessDiagnosticOnly: true);
+            return string.IsNullOrWhiteSpace(response.ReadinessDiagnostic)
+                ? "[renderer-readiness unavailable=response-payload-missing]."
+                : "[renderer-readiness " + response.ReadinessDiagnostic + "].";
+        }
+        catch (Exception exception)
+        {
+            // The diagnostic must never replace the original UIA timeout. Keep
+            // the failure actionable without copying exception data or paths.
+            return "[renderer-readiness unavailable=" + exception.GetType().Name + "].";
+        }
+    }
+
+    private static string AppendBoundedReadinessDiagnostic(string failure, string rendererReadiness)
+    {
+        const int maximumCharacters = 12_288;
+        if (failure.Length >= maximumCharacters)
+            return failure[..maximumCharacters];
+        int available = maximumCharacters - failure.Length - Environment.NewLine.Length;
+        if (available <= 0)
+            return failure;
+        if (rendererReadiness.Length > available)
+            rendererReadiness = rendererReadiness[..available];
+        return failure + Environment.NewLine + rendererReadiness;
     }
 
     private static ReadmeAuditVisibleImageTimeoutSnapshot CaptureVisibleImageTimeoutSnapshot(
@@ -4661,7 +4728,12 @@ internal static partial class ReadmeAuditProbe
                 captureResponsePath,
                 outputPath: null,
                 save: false);
-            _ = WaitForVisibleImages(host, TimeSpan.FromSeconds(20));
+            _ = WaitForVisibleImages(
+                host,
+                TimeSpan.FromSeconds(20),
+                phase: "capture-host",
+                captureRequestPath: captureRequestPath,
+                captureResponsePath: captureResponsePath);
             RendererCaptureResponse capture = RequestRendererCapture(
                 captureRequestPath,
                 captureResponsePath,
@@ -4703,12 +4775,20 @@ internal static partial class ReadmeAuditProbe
         double? scrollViewportFraction = null,
         TimeSpan? responseTimeout = null,
         Stopwatch? absoluteDeadlineClock = null,
-        TimeSpan? absoluteDeadline = null)
+        TimeSpan? absoluteDeadline = null,
+        bool readinessDiagnosticOnly = false)
     {
         if ((absoluteDeadlineClock is null) != (absoluteDeadline is null))
             throw new ArgumentException("An absolute deadline requires both a clock and deadline value.");
         if (responseTimeout is { } boundedResponseTimeout && boundedResponseTimeout <= TimeSpan.Zero)
             throw new ArgumentOutOfRangeException(nameof(responseTimeout));
+        if (readinessDiagnosticOnly &&
+            (outputPath is not null || save || scrollViewportFraction is not null))
+        {
+            throw new ArgumentException(
+                "A readiness-only renderer request cannot capture, save, or scroll the viewport.",
+                nameof(readinessDiagnosticOnly));
+        }
 
         if (scrollViewportFraction is double requestedFraction &&
             (!double.IsFinite(requestedFraction) || requestedFraction == 0 ||
@@ -4720,7 +4800,8 @@ internal static partial class ReadmeAuditProbe
         }
 
         Exception? lastFailure = null;
-        for (int attempt = 0; attempt < 5; attempt++)
+        int maximumAttempts = readinessDiagnosticOnly ? 1 : 5;
+        for (int attempt = 0; attempt < maximumAttempts; attempt++)
         {
             ThrowIfRendererRequestDeadlineExpired(absoluteDeadlineClock, absoluteDeadline);
             string requestId = Guid.NewGuid().ToString("N");
@@ -4734,7 +4815,8 @@ internal static partial class ReadmeAuditProbe
                     requestId,
                     outputPath,
                     save,
-                    scrollViewportFraction);
+                    scrollViewportFraction,
+                    readinessDiagnosticOnly);
                 File.WriteAllText(temporaryPath, JsonSerializer.Serialize(request, JsonOptions));
                 ThrowIfRendererRequestDeadlineExpired(absoluteDeadlineClock, absoluteDeadline);
                 sendAttempted = true;
@@ -4790,7 +4872,10 @@ internal static partial class ReadmeAuditProbe
                         if (response is not null &&
                             string.Equals(response.RequestId, requestId, StringComparison.Ordinal))
                         {
-                            if (response.Succeeded && response.Width > 0 && response.Height > 0)
+                            if (response.Succeeded &&
+                                (readinessDiagnosticOnly
+                                    ? !string.IsNullOrWhiteSpace(response.ReadinessDiagnostic)
+                                    : response.Width > 0 && response.Height > 0))
                                 return response;
 
                             lastFailure = new InvalidOperationException(
@@ -5883,7 +5968,8 @@ internal static partial class ReadmeAuditProbe
         string RequestId,
         string? OutputPath,
         bool Save,
-        double? ScrollViewportFraction = null);
+        double? ScrollViewportFraction = null,
+        bool ReadinessDiagnosticOnly = false);
 
     private sealed record RendererCaptureResponse(
         string RequestId,
@@ -5893,7 +5979,8 @@ internal static partial class ReadmeAuditProbe
         double DocumentTop,
         string? Error,
         ReadmeAuditPerformanceSnapshot? Performance,
-        double ScrollOperationMilliseconds);
+        double ScrollOperationMilliseconds,
+        string? ReadinessDiagnostic);
 }
 
 internal sealed class ReadmeAuditManifest

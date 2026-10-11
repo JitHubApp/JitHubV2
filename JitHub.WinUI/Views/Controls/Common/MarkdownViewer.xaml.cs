@@ -776,6 +776,24 @@ public sealed partial class MarkdownViewer : UserControl
     {
         try
         {
+            if (MarkdownLifecycleAutomationBridge.TryGetAuditReadinessDiagnosticOnly(request))
+            {
+                // This request is issued only after the external UIA image wait
+                // expires. It must remain a read-only observation: do not
+                // scroll, paint, serialize a bitmap, or wait for layout here.
+                string readinessDiagnostic = renderer.CaptureAuditReadinessDiagnostic();
+                MarkdownLifecycleAutomationBridge.RecordCaptureResponse(
+                    request.RequestId,
+                    succeeded: true,
+                    width: 0,
+                    height: 0,
+                    documentTop: 0,
+                    error: null,
+                    performance: null,
+                    readinessDiagnostic: readinessDiagnostic);
+                return;
+            }
+
             if (MarkdownLifecycleAutomationBridge.TryGetAuditScrollViewportFraction(
                     request,
                     out double viewportFraction))

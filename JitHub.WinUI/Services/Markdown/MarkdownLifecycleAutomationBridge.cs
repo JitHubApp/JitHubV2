@@ -1871,6 +1871,27 @@ internal static partial class MarkdownLifecycleAutomationBridge
         return true;
     }
 
+    public static bool TryGetAuditReadinessDiagnosticOnly(MarkdownAuditCaptureRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (!request.ReadinessDiagnosticOnly)
+            return false;
+
+        if (!_productionAuditEnabled)
+        {
+            throw new InvalidOperationException(
+                "Renderer readiness diagnostics are available only during the explicit production README audit.");
+        }
+
+        if (request.Save || request.OutputPath is not null || request.ScrollViewportFraction is not null)
+        {
+            throw new InvalidDataException(
+                "A readiness-only audit request cannot save, capture, or scroll the Markdown viewport.");
+        }
+
+        return true;
+    }
+
     public static void RecordCaptureResponse(
         string requestId,
         bool succeeded,
@@ -1879,7 +1900,8 @@ internal static partial class MarkdownLifecycleAutomationBridge
         double documentTop,
         string? error,
         MarkdownAuditPerformanceSnapshot? performance,
-        double scrollOperationMilliseconds = 0)
+        double scrollOperationMilliseconds = 0,
+        string? readinessDiagnostic = null)
     {
         WriteSignal(
             Environment.GetEnvironmentVariable(CaptureResponsePathVariable),
@@ -1891,7 +1913,8 @@ internal static partial class MarkdownLifecycleAutomationBridge
                 documentTop,
                 error,
                 performance,
-                scrollOperationMilliseconds),
+                scrollOperationMilliseconds,
+                readinessDiagnostic),
             MarkdownLifecycleJsonContext.Default.MarkdownAuditCaptureResponse);
     }
 
@@ -2217,7 +2240,8 @@ internal static partial class MarkdownLifecycleAutomationBridge
         string RequestId,
         string? OutputPath,
         bool Save,
-        double? ScrollViewportFraction = null);
+        double? ScrollViewportFraction = null,
+        bool ReadinessDiagnosticOnly = false);
 
     private sealed record MarkdownAuditCaptureResponse(
         string RequestId,
@@ -2227,7 +2251,8 @@ internal static partial class MarkdownLifecycleAutomationBridge
         double DocumentTop,
         string? Error,
         MarkdownAuditPerformanceSnapshot? Performance,
-        double ScrollOperationMilliseconds);
+        double ScrollOperationMilliseconds,
+        string? ReadinessDiagnostic);
 
     private sealed record MarkdownLifecycleRuntimeSettings(double TextScaleFactor, int Revision);
 
