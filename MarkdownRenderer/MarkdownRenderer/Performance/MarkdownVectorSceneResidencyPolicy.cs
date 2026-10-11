@@ -401,8 +401,17 @@ internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneR
                         band,
                         placements,
                         topLevelOrdinalByBlockIndex,
-                        out LazyLayoutBand rootLocalBand) ||
-                    !TryCollectVisibleBlockScenes(
+                        out LazyLayoutBand rootLocalBand))
+                    return false;
+
+                // The prepared inline index is pixel-snapped in its root's
+                // published placement. Query with that same placement, or a
+                // fractional translation shifts the local band outside the
+                // index even when all of its scenes are already prepared.
+                LayoutRootPlacement placement = placements.GetPlacement(ordinal);
+                using LayoutPlacementTransformContext.Scope placementScope =
+                    LayoutPlacementTransformContext.Enter(placement.TranslationX, placement.TranslationY);
+                if (!TryCollectVisibleBlockScenes(
                         _blocks[ordinal],
                         rootLocalBand,
                         _readinessScratch,
@@ -670,8 +679,13 @@ internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneR
                     band,
                     placements,
                     topLevelOrdinalByBlockIndex,
-                    out LazyLayoutBand rootLocalBand) ||
-                !TryCollectVisibleBlockScenes(
+                    out LazyLayoutBand rootLocalBand))
+                return;
+
+            LayoutRootPlacement placement = placements.GetPlacement(ordinal);
+            using LayoutPlacementTransformContext.Scope placementScope =
+                LayoutPlacementTransformContext.Enter(placement.TranslationX, placement.TranslationY);
+            if (!TryCollectVisibleBlockScenes(
                     _blocks[ordinal],
                     rootLocalBand,
                     candidates,
