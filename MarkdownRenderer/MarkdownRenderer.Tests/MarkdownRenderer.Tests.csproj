@@ -144,6 +144,8 @@
              Link="Performance\PerformanceRuntimeContract.cs" />
     <Compile Include="..\MarkdownRenderer.PerformanceHarness\PerformanceOptions.cs"
              Link="Performance\PerformanceOptions.cs" />
+    <Compile Include="..\MarkdownRenderer.PerformanceHarness\FirstViewportStageProfileSelection.cs"
+             Link="Performance\FirstViewportStageProfileSelection.cs" />
     <Compile Include="..\MarkdownRenderer.PerformanceHarness\PerformanceReport.cs"
              Link="Performance\PerformanceReport.cs" />
     <Compile Include="..\MarkdownRenderer.PerformanceHarness\PerformanceReportWriter.cs"

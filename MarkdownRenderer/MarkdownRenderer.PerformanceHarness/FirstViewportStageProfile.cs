@@ -3,13 +3,13 @@ using System.Text.Json.Serialization;
 namespace MarkdownRenderer.PerformanceHarness;
 
 /// <summary>
-/// Separate, opt-in, non-gating diagnostic output for attributing the 1 MiB
+/// Separate, opt-in, non-gating diagnostic output for attributing a selected
 /// first-viewport pipeline. This deliberately does not extend the release
 /// report schema.
 /// </summary>
 internal sealed class FirstViewportStageProfileArtifact
 {
-    internal const int CurrentSchemaVersion = 1;
+    internal const int CurrentSchemaVersion = 2;
     internal const string ProfileKind = "markdown-first-viewport-stage-profile";
 
     public int SchemaVersion { get; init; }
@@ -60,6 +60,10 @@ internal sealed class FirstViewportStageProfileSample
     public double? PublicationFinalizationMilliseconds { get; init; }
     public long ProcessAllocatedBytes { get; init; }
     public long? UiThreadAllocatedBytes { get; init; }
+    public double? UiThreadCpuThroughFirstViewportMilliseconds { get; init; }
+    public int? ProcessGen0CollectionsThroughFirstViewport { get; init; }
+    public int? ProcessGen1CollectionsThroughFirstViewport { get; init; }
+    public int? ProcessGen2CollectionsThroughFirstViewport { get; init; }
 #if MARKDOWN_LAYOUT_DIAGNOSTICS
     public int? LayoutTopLevelBlockCount { get; init; }
     public int? CanvasTextLayoutConstructorCalls { get; init; }

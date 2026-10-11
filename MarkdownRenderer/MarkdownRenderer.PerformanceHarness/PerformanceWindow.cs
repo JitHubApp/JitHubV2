@@ -17,7 +17,6 @@ internal sealed class PerformanceWindow : Window
     private const double MeasurementWidthDips = 1100;
     private const double MeasurementHeightDips = 760;
     private const double ScrollResetToleranceDips = 0.5;
-    private const int StageProfileSourceBytes = 1024 * 1024;
     private const string StageProfilePathEnvironmentVariable =
         "MARKDOWNRENDERER_PERF_STAGE_PROFILE_PATH";
     private static readonly TimeSpan ViewportTimeout = TimeSpan.FromMinutes(3);
@@ -36,6 +35,7 @@ internal sealed class PerformanceWindow : Window
     private readonly PerformanceReport _report;
     private readonly string? _stageProfilePath;
     private readonly string? _stageProfileConfigurationError;
+    private readonly int _stageProfileSourceBytes;
     private readonly List<FirstViewportStageProfileSample>? _stageProfileSamples;
     private MarkdownScrollView? _renderer;
     private MarkdownEngine? _ownedRendererEngine;
@@ -47,8 +47,12 @@ internal sealed class PerformanceWindow : Window
     internal PerformanceWindow(PerformanceOptions options)
     {
         _options = options;
-        _stageProfilePath = ResolveStageProfilePath(options, out string? stageProfileConfigurationError);
+        _stageProfilePath = ResolveStageProfilePath(
+            options,
+            out string? stageProfileConfigurationError,
+            out int stageProfileSourceBytes);
         _stageProfileConfigurationError = stageProfileConfigurationError;
+        _stageProfileSourceBytes = stageProfileSourceBytes;
         _stageProfileSamples = _stageProfilePath is null ? null : [];
         Title = "MarkdownRenderer pinned-machine performance harness";
         AppWindow.Resize(new SizeInt32(1100, 760));
@@ -676,7 +680,8 @@ internal sealed class PerformanceWindow : Window
     private sealed record FirstViewportStageProfileMeasurements(
         MarkdownPipelineTimingSnapshot Timing,
         long ProcessAllocatedBytes,
-        long? UiThreadAllocatedBytes);
+        long? UiThreadAllocatedBytes,
+        FirstViewportStageProfileThreadMetrics? ThreadMetrics);
 
     private async Task<FirstViewportPresentation> PresentFirstViewportAsync(
         MarkdownEngine engine,
@@ -692,7 +697,7 @@ internal sealed class PerformanceWindow : Window
             // condition and invalidate both the cache proof and the measurement.
             await WaitForCompositionFramesAsync(1);
             bool captureStageProfile =
-                _stageProfileSamples is not null && sourceBytes == StageProfileSourceBytes;
+                _stageProfileSamples is not null && sourceBytes == _stageProfileSourceBytes;
             long processAllocatedBefore = captureStageProfile
                 ? GC.GetTotalAllocatedBytes(precise: true)
                 : 0;
@@ -703,6 +708,8 @@ internal sealed class PerformanceWindow : Window
                 ? Environment.CurrentManagedThreadId
                 : 0;
             long sequence = _events.CurrentSequence;
+            if (captureStageProfile)
+                _events.BeginStageProfilePresentation(sequence, sourceBytes);
             var renderer = new MarkdownScrollView
             {
                 Engine = engine,
@@ -736,6 +743,12 @@ internal sealed class PerformanceWindow : Window
             double publicationMilliseconds = Stopwatch.GetElapsedTime(
                 timing.PublicationStartedTimestamp,
                 timing.PublicationEndedTimestamp).TotalMilliseconds;
+            FirstViewportStageProfileThreadMetrics? threadMetrics = null;
+            if (captureStageProfile &&
+                _events.TryConsumeStageProfileMetrics(presented, out FirstViewportStageProfileThreadMetrics captured))
+            {
+                threadMetrics = captured;
+            }
             long processAllocatedBytes = captureStageProfile
                 ? Math.Max(0, GC.GetTotalAllocatedBytes(precise: true) - processAllocatedBefore)
                 : 0;
@@ -747,7 +760,8 @@ internal sealed class PerformanceWindow : Window
                 ? new FirstViewportStageProfileMeasurements(
                     timing,
                     processAllocatedBytes,
-                    uiThreadAllocatedBytes)
+                    uiThreadAllocatedBytes,
+                    threadMetrics)
                 : null;
             await WaitForCompositionFramesAsync(2);
             return new FirstViewportPresentation(
@@ -775,7 +789,7 @@ internal sealed class PerformanceWindow : Window
         List<FirstViewportStageProfileSample>? samples = _stageProfileSamples;
         FirstViewportStageProfileMeasurements? profile = presentation.StageProfileMeasurements;
         if (samples is null ||
-            scenario.SourceBytes != StageProfileSourceBytes ||
+            scenario.SourceBytes != _stageProfileSourceBytes ||
             profile is null)
             return;
 
@@ -829,6 +843,14 @@ internal sealed class PerformanceWindow : Window
                 timing.PublicationEndedTimestamp),
             ProcessAllocatedBytes = profile.ProcessAllocatedBytes,
             UiThreadAllocatedBytes = profile.UiThreadAllocatedBytes,
+            UiThreadCpuThroughFirstViewportMilliseconds =
+                profile.ThreadMetrics?.UiThreadCpuMilliseconds,
+            ProcessGen0CollectionsThroughFirstViewport =
+                profile.ThreadMetrics?.ProcessGen0Collections,
+            ProcessGen1CollectionsThroughFirstViewport =
+                profile.ThreadMetrics?.ProcessGen1Collections,
+            ProcessGen2CollectionsThroughFirstViewport =
+                profile.ThreadMetrics?.ProcessGen2Collections,
 #if MARKDOWN_LAYOUT_DIAGNOSTICS
             LayoutTopLevelBlockCount = timing.LayoutTopLevelBlockCount,
             CanvasTextLayoutConstructorCalls = timing.CanvasTextLayoutConstructorCalls,
@@ -855,20 +877,32 @@ internal sealed class PerformanceWindow : Window
 
     private static string? ResolveStageProfilePath(
         PerformanceOptions options,
-        out string? configurationError)
+        out string? configurationError,
+        out int sourceUtf16Bytes)
     {
         configurationError = null;
+        sourceUtf16Bytes = FirstViewportStageProfileSelection.DefaultSourceUtf16Bytes;
         string? configuredPath = Environment.GetEnvironmentVariable(
             StageProfilePathEnvironmentVariable);
-        if (string.IsNullOrWhiteSpace(configuredPath))
-            return null;
-        if (!options.Quick)
+        string? configuredSourceBytes = Environment.GetEnvironmentVariable(
+            FirstViewportStageProfileSelection.SourceBytesEnvironmentVariable);
+        try
         {
-            configurationError =
-                $"{StageProfilePathEnvironmentVariable} is diagnostic-only and requires --quick; " +
-                "it must not instrument a release-gate run.";
+            FirstViewportStageProfileSelection selection =
+                FirstViewportStageProfileSelection.Resolve(
+                    options.Quick,
+                    !string.IsNullOrWhiteSpace(configuredPath),
+                    configuredSourceBytes);
+            sourceUtf16Bytes = selection.SourceUtf16Bytes;
+        }
+        catch (ArgumentException exception)
+        {
+            configurationError = exception.Message;
             return null;
         }
+
+        if (string.IsNullOrWhiteSpace(configuredPath))
+            return null;
 
         try
         {
@@ -936,8 +970,8 @@ internal sealed class PerformanceWindow : Window
                 BuildArtifacts = CopyBuildArtifactHashes(_report.BuildArtifacts),
                 StartedUtc = _report.StartedUtc,
                 CompletedUtc = _report.CompletedUtc,
-                SourceUtf16Bytes = StageProfileSourceBytes,
-                Corpus = PerformanceDocumentFactory.ReadmeMixedCorpus,
+                SourceUtf16Bytes = _stageProfileSourceBytes,
+                Corpus = PerformanceDocumentFactory.GetCorpusName(_stageProfileSourceBytes),
 #if MARKDOWN_LAYOUT_DIAGNOSTICS
                 LayoutDiagnosticsEnabled = true,
 #else
@@ -945,9 +979,14 @@ internal sealed class PerformanceWindow : Window
 #endif
                 AllocationScope =
                     "Process allocated bytes from immediately before MarkdownScrollView construction through " +
-                    "the first-viewport event and timing snapshot; includes all process threads and is not " +
-                    "attributed to individual stages. UI-thread bytes cover the same interval only when the " +
-                    "continuation returns to the initiating managed thread; otherwise they are null.",
+                    "the first-viewport event and timing snapshot; includes all process threads and the " +
+                    "opt-in diagnostic capture/observation allocations, and is not attributed to individual " +
+                    "stages. UI-thread bytes cover the same interval only when the " +
+                    "continuation returns to the initiating managed thread; otherwise they are null. UI-thread " +
+                    "CPU is measured on that thread from immediately before control construction through the " +
+                    "synchronous first-viewport event; it is not a per-publication-stage CPU measurement. " +
+                    "GC collection deltas are process-wide over the same event boundary and are coincident, " +
+                    "not attributed to this presentation.",
                 Presentations = samples,
             },
             FirstViewportStageProfileJsonContext.Default.FirstViewportStageProfileArtifact);

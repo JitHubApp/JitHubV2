@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using MarkdownRenderer.Controls;
 using MarkdownRenderer.Diagnostics;
 
 namespace MarkdownRenderer.PerformanceHarness;
@@ -17,6 +18,9 @@ internal sealed class PerformanceEventListener : IMarkdownPerformanceSink, IDisp
     private TaskCompletionSource _changed = NewSignal();
     private long _sequence;
     private CancellationToken _measurementEnvironmentAbortToken;
+    private FirstViewportStageProfileCapture? _stageProfileCapture;
+    private FirstViewportStageProfileObservation? _stageProfileObservation;
+    private bool _disposed;
 
     internal PerformanceEventListener()
     {
@@ -30,6 +34,54 @@ internal sealed class PerformanceEventListener : IMarkdownPerformanceSink, IDisp
 
     internal void SetMeasurementEnvironmentAbortToken(CancellationToken cancellationToken)
         => _measurementEnvironmentAbortToken = cancellationToken;
+
+    internal void BeginStageProfilePresentation(long afterSequence, long sourceUtf16Bytes)
+    {
+        var capture = new FirstViewportStageProfileCapture(
+            afterSequence,
+            sourceUtf16Bytes,
+            Environment.CurrentManagedThreadId,
+            ThreadCpuClock.ReadCurrentThreadTicks(),
+            GC.CollectionCount(0),
+            GC.CollectionCount(1),
+            GC.CollectionCount(2));
+        lock (_gate)
+        {
+            if (_disposed)
+                return;
+
+            _stageProfileObservation = null;
+            _stageProfileCapture = capture;
+        }
+    }
+
+    internal bool TryConsumeStageProfileMetrics(
+        FirstViewportEvent presentation,
+        out FirstViewportStageProfileThreadMetrics metrics)
+    {
+        lock (_gate)
+        {
+            FirstViewportStageProfileObservation? observation = _stageProfileObservation;
+            _stageProfileObservation = null;
+            if (!observation.HasValue)
+            {
+                metrics = default;
+                return false;
+            }
+
+            FirstViewportStageProfileObservation value = observation.Value;
+            if (value.Sequence != presentation.Sequence ||
+                value.Generation != presentation.Generation ||
+                value.SourceUtf16Bytes != presentation.SourceUtf16Bytes)
+            {
+                metrics = default;
+                return false;
+            }
+
+            metrics = value.Metrics;
+            return true;
+        }
+    }
 
     internal IReadOnlyList<FirstViewportEvent> FirstViewports
     {
@@ -68,14 +120,57 @@ internal sealed class PerformanceEventListener : IMarkdownPerformanceSink, IDisp
     {
         lock (_gate)
         {
+            if (_disposed)
+                return;
+
+            long sequence = ++_sequence;
+            if (_stageProfileCapture is not null)
+                CaptureStageProfileMetricsNoLock(sequence, generation, sourceUtf16Bytes);
             _firstViewports.Add(new FirstViewportEvent(
-                ++_sequence,
+                sequence,
                 generation,
                 sourceUtf16Bytes,
                 ToMilliseconds(elapsedStopwatchTicks)));
             SignalWaitersNoLock();
         }
     }
+
+    private void CaptureStageProfileMetricsNoLock(
+        long sequence,
+        long generation,
+        long sourceUtf16Bytes)
+    {
+        FirstViewportStageProfileCapture? capture = _stageProfileCapture;
+        if (capture is null ||
+            sequence <= capture.AfterSequence ||
+            sourceUtf16Bytes != capture.SourceUtf16Bytes)
+        {
+            return;
+        }
+
+        _stageProfileCapture = null;
+        bool sameManagedThread = Environment.CurrentManagedThreadId == capture.ManagedThreadId;
+        long cpuCompleted = sameManagedThread
+            ? ThreadCpuClock.ReadCurrentThreadTicks()
+            : -1;
+        double elapsedCpuMilliseconds = sameManagedThread
+            ? ThreadCpuClock.ElapsedMilliseconds(capture.CpuStartedTicks, cpuCompleted)
+            : -1;
+
+        var metrics = new FirstViewportStageProfileThreadMetrics(
+            elapsedCpuMilliseconds >= 0 ? elapsedCpuMilliseconds : null,
+            CollectionDelta(capture.Gen0Collections, GC.CollectionCount(0)),
+            CollectionDelta(capture.Gen1Collections, GC.CollectionCount(1)),
+            CollectionDelta(capture.Gen2Collections, GC.CollectionCount(2)));
+        _stageProfileObservation = new FirstViewportStageProfileObservation(
+            sequence,
+            generation,
+            sourceUtf16Bytes,
+            metrics);
+    }
+
+    private static int? CollectionDelta(int before, int after)
+        => after >= before ? after - before : null;
 
     public void ScrollWork(long logicalFrameId, long elapsedStopwatchTicks, long allocatedBytes)
     {
@@ -212,6 +307,12 @@ internal sealed class PerformanceEventListener : IMarkdownPerformanceSink, IDisp
     public void Dispose()
     {
         MarkdownPerformanceEventSource.SetInProcessSink(null);
+        lock (_gate)
+        {
+            _disposed = true;
+            _stageProfileCapture = null;
+            _stageProfileObservation = null;
+        }
     }
 
     private void SignalWaitersNoLock()
@@ -389,6 +490,27 @@ internal readonly record struct FirstViewportEvent(
     long Generation,
     long SourceUtf16Bytes,
     double ElapsedMilliseconds);
+
+internal readonly record struct FirstViewportStageProfileThreadMetrics(
+    double? UiThreadCpuMilliseconds,
+    int? ProcessGen0Collections,
+    int? ProcessGen1Collections,
+    int? ProcessGen2Collections);
+
+internal sealed record FirstViewportStageProfileCapture(
+    long AfterSequence,
+    long SourceUtf16Bytes,
+    int ManagedThreadId,
+    long CpuStartedTicks,
+    int Gen0Collections,
+    int Gen1Collections,
+    int Gen2Collections);
+
+internal readonly record struct FirstViewportStageProfileObservation(
+    long Sequence,
+    long Generation,
+    long SourceUtf16Bytes,
+    FirstViewportStageProfileThreadMetrics Metrics);
 
 internal readonly record struct SupersessionEvent(long Sequence, long Generation);
 
