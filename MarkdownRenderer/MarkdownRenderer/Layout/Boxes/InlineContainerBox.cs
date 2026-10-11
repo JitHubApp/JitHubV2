@@ -1291,7 +1291,11 @@ internal sealed partial class InlineContainerBox : BlockBox
         NativeResourceRetirementRecord? replacementLayoutRetirementRecord = null;
         InlineSceneGeometry[]? replacementSceneGeometry = null;
         float measuredHeight;
-        Thickness margin = UseContainerMargin ? style.Margin : Margin;
+        // Measure with the same effective margin that Arrange/paint will use.
+        // Resolving from the current style keeps remeasurement correct when a
+        // theme changes authored margins, without publishing state before the
+        // measurement succeeds.
+        Thickness margin = UseContainerMargin ? ResolvePlacementMargin(style.Margin) : Margin;
         float horizontalPadding = (float)(padding.Left + padding.Right);
         float layoutWidth = Math.Max(1f, availableWidth - horizontalPadding);
 

@@ -33,18 +33,24 @@ internal abstract class BlockBox
     /// <summary>Gets or sets the outer margin.</summary>
     public Thickness Margin
     {
-        get
-        {
-            if (CollapsedTopMargin <= 0 && !SuppressTopMargin && !SuppressBottomMargin)
-                return _margin;
-
-            return new Thickness(
-                _margin.Left,
-                SuppressTopMargin ? 0 : CollapsedTopMargin > 0 ? _margin.Top - CollapsedTopMargin : _margin.Top,
-                _margin.Right,
-                SuppressBottomMargin ? 0 : _margin.Bottom);
-        }
+        get => ResolvePlacementMargin(_margin);
         set => _margin = value;
+    }
+
+    /// <summary>
+    /// Applies the placement-time collapse and suppression metadata to an
+    /// authored margin without publishing that margin on this box.
+    /// </summary>
+    internal Thickness ResolvePlacementMargin(Thickness rawMargin)
+    {
+        if (CollapsedTopMargin <= 0 && !SuppressTopMargin && !SuppressBottomMargin)
+            return rawMargin;
+
+        return new Thickness(
+            rawMargin.Left,
+            SuppressTopMargin ? 0 : CollapsedTopMargin > 0 ? rawMargin.Top - CollapsedTopMargin : rawMargin.Top,
+            rawMargin.Right,
+            SuppressBottomMargin ? 0 : rawMargin.Bottom);
     }
 
     /// <summary>
