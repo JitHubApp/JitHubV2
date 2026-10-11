@@ -821,8 +821,8 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("Live GitHub full ratio (diagnostic)", markdownWriter, StringComparison.Ordinal);
         Assert.Contains("NativeToSameByteFirstRenderRatio?.ToString", markdownWriter, StringComparison.Ordinal);
         Assert.Contains("NativeToSameByteFullPageRatio?.ToString", markdownWriter, StringComparison.Ordinal);
-        Assert.Contains("NativeToBrowserFirstRenderRatio.ToString", markdownWriter, StringComparison.Ordinal);
-        Assert.Contains("NativeToBrowserFullPageRatio.ToString", markdownWriter, StringComparison.Ordinal);
+        Assert.Contains("NativeToBrowserFirstRenderRatio?.ToString", markdownWriter, StringComparison.Ordinal);
+        Assert.Contains("NativeToBrowserFullPageRatio?.ToString", markdownWriter, StringComparison.Ordinal);
 
         int summaryStart = source.IndexOf("private static ReadmeAuditSummary BuildSummary(", StringComparison.Ordinal);
         int summaryEnd = source.IndexOf("private static void WriteSummaryMarkdown(", summaryStart, StringComparison.Ordinal);
@@ -832,7 +832,10 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("result.Comparison!.NativeToBrowserFullPageRatio", gateCalculation, StringComparison.Ordinal);
         Assert.Contains("NativeToSameByteFirstRenderRatio", gateCalculation, StringComparison.Ordinal);
         Assert.Contains("NativeToSameByteFullPageRatio", gateCalculation, StringComparison.Ordinal);
-        Assert.Contains("native.FullTraversalMs / fullReplay.Timing.ChargedTraversalMs", source, StringComparison.Ordinal);
+        Assert.Contains("ReadmeAuditTimingRatio.Calculate(native.FullTraversalMs, fullReplay.Timing.ChargedTraversalMs)", source, StringComparison.Ordinal);
+        Assert.Contains("public double? NativeToBrowserFirstRenderRatio", source, StringComparison.Ordinal);
+        Assert.Contains("public double? NativeToBrowserFullPageRatio", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("double.PositiveInfinity", source, StringComparison.Ordinal);
         Assert.Contains("FullTraversalMs - replay.Timing.ChargedTraversalMs", source, StringComparison.Ordinal);
         Assert.Contains("AuditOnlyFrameWaitCount is < 2", source, StringComparison.Ordinal);
         Assert.Contains("public double ChargedTraversalMs", source, StringComparison.Ordinal);
@@ -2323,7 +2326,7 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("admission.StopwatchTicks > renderComplete.StopwatchTicks", contract, StringComparison.Ordinal);
         Assert.Contains("admission.DecodedTextSha256", contract, StringComparison.Ordinal);
         Assert.Contains("SourceAvailableToFirstViewportImagesReadyMs = sourceAvailableToFirstViewportImagesReadyMs", probe, StringComparison.Ordinal);
-        Assert.Contains("sourceAvailableReadyMs / replay.Timing.FirstViewportImagesReadyMs", probe, StringComparison.Ordinal);
+        Assert.Contains("ReadmeAuditTimingRatio.Calculate(sourceAvailableReadyMs, replay.Timing.FirstViewportImagesReadyMs)", probe, StringComparison.Ordinal);
         Assert.Contains("replay.Source.DecodedTextSha256", probe, StringComparison.Ordinal);
         Assert.Contains("MatchSameByteReadmeSource(", viewer, StringComparison.Ordinal);
         Assert.Contains("GetSameByteReadmeGitBlobSha1(", viewer, StringComparison.Ordinal);

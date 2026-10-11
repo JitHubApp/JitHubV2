@@ -3399,12 +3399,13 @@ internal static partial class ReadmeAuditProbe
             }
         }
 
-        double nativeToBrowserFirst = browser.Timing.FirstReadmeMs <= 0
-            ? double.PositiveInfinity
-            : native.FirstRenderMs / browser.Timing.FirstReadmeMs;
-        double nativeToBrowserFull = browser.Timing.SettledReadmeMs <= 0
-            ? double.PositiveInfinity
-            : native.FullTraversalMs / browser.Timing.SettledReadmeMs;
+        // Offline capture intentionally has no live GitHub timings. Represent
+        // those diagnostics as missing so strict JSON can retain the real
+        // same-byte comparison (including its failures) and continue the audit.
+        double? nativeToBrowserFirst = ReadmeAuditTimingRatio.Calculate(
+            native.FirstRenderMs, browser.Timing.FirstReadmeMs);
+        double? nativeToBrowserFull = ReadmeAuditTimingRatio.Calculate(
+            native.FullTraversalMs, browser.Timing.SettledReadmeMs);
         // Live GitHub timings include CDN delivery and server work. They remain
         // diagnostics, never the qualified same-byte performance denominator.
         // The offline replay starts with the captured, hash-bound article and
@@ -3413,11 +3414,11 @@ internal static partial class ReadmeAuditProbe
             IsFinitePositive(replay.Timing.FirstViewportImagesReadyMs) &&
             native.SourceAvailableToFirstViewportImagesReadyMs is double sourceAvailableReadyMs &&
             IsFinitePositive(sourceAvailableReadyMs)
-                ? sourceAvailableReadyMs / replay.Timing.FirstViewportImagesReadyMs
+                ? ReadmeAuditTimingRatio.Calculate(sourceAvailableReadyMs, replay.Timing.FirstViewportImagesReadyMs)
                 : null;
         double? nativeToSameByteFull = browser.SameByteReplay is { SchemaVersion: 3, Status: "passed" } fullReplay &&
             IsFinitePositive(fullReplay.Timing.ChargedTraversalMs)
-                ? native.FullTraversalMs / fullReplay.Timing.ChargedTraversalMs
+                ? ReadmeAuditTimingRatio.Calculate(native.FullTraversalMs, fullReplay.Timing.ChargedTraversalMs)
                 : null;
         double? sourceBoundLayoutExtentRatio = browser.SameByteReplay is { SchemaVersion: 3, Status: "passed" } extentReplay &&
             extentReplay.RenderedExtent.Height > 0 && native.EstimatedContentHeight > 0
@@ -3624,13 +3625,15 @@ internal static partial class ReadmeAuditProbe
             .Where(result => result.Comparison is not null)
             .ToArray();
         double[] liveFirstRatios = comparisonResults
-            .Where(result => double.IsFinite(result.Comparison!.NativeToBrowserFirstRenderRatio))
             .Select(result => result.Comparison!.NativeToBrowserFirstRenderRatio)
+            .Where(value => value.HasValue && IsFinitePositive(value.Value))
+            .Select(value => value!.Value)
             .OrderBy(value => value)
             .ToArray();
         double[] liveFullRatios = comparisonResults
-            .Where(result => double.IsFinite(result.Comparison!.NativeToBrowserFullPageRatio))
             .Select(result => result.Comparison!.NativeToBrowserFullPageRatio)
+            .Where(value => value.HasValue && IsFinitePositive(value.Value))
+            .Select(value => value!.Value)
             .OrderBy(value => value)
             .ToArray();
         double[] sameByteFirstRatios = comparisonResults
@@ -3730,13 +3733,15 @@ internal static partial class ReadmeAuditProbe
         IReadOnlyList<ReadmeAuditCaseResult> results)
     {
         double[] liveFirstRatios = results
-            .Where(result => result.Comparison is not null && double.IsFinite(result.Comparison.NativeToBrowserFirstRenderRatio))
-            .Select(result => result.Comparison!.NativeToBrowserFirstRenderRatio)
+            .Select(result => result.Comparison?.NativeToBrowserFirstRenderRatio)
+            .Where(value => value.HasValue && IsFinitePositive(value.Value))
+            .Select(value => value!.Value)
             .OrderBy(value => value)
             .ToArray();
         double[] liveFullRatios = results
-            .Where(result => result.Comparison is not null && double.IsFinite(result.Comparison.NativeToBrowserFullPageRatio))
-            .Select(result => result.Comparison!.NativeToBrowserFullPageRatio)
+            .Select(result => result.Comparison?.NativeToBrowserFullPageRatio)
+            .Where(value => value.HasValue && IsFinitePositive(value.Value))
+            .Select(value => value!.Value)
             .OrderBy(value => value)
             .ToArray();
         double[] sameByteFirstRatios = results
@@ -3805,8 +3810,8 @@ internal static partial class ReadmeAuditProbe
                 $"{result.Native?.UnavailableImages.ToString(CultureInfo.InvariantCulture) ?? "n/a"} | " +
                 $"{result.Comparison?.NativeToSameByteFirstRenderRatio?.ToString("F3", CultureInfo.InvariantCulture) ?? "n/a"} | " +
                 $"{result.Comparison?.NativeToSameByteFullPageRatio?.ToString("F3", CultureInfo.InvariantCulture) ?? "n/a"} | " +
-                $"{result.Comparison?.NativeToBrowserFirstRenderRatio.ToString("F3", CultureInfo.InvariantCulture) ?? "n/a"} | " +
-                $"{result.Comparison?.NativeToBrowserFullPageRatio.ToString("F3", CultureInfo.InvariantCulture) ?? "n/a"} | " +
+                $"{result.Comparison?.NativeToBrowserFirstRenderRatio?.ToString("F3", CultureInfo.InvariantCulture) ?? "n/a"} | " +
+                $"{result.Comparison?.NativeToBrowserFullPageRatio?.ToString("F3", CultureInfo.InvariantCulture) ?? "n/a"} | " +
                 $"{result.Native?.FirstPerformance?.Pipeline.ParseMilliseconds.ToString("F1", CultureInfo.InvariantCulture) ?? "n/a"} | " +
                 $"{result.Native?.FirstPerformance?.Pipeline.SetupMilliseconds.ToString("F1", CultureInfo.InvariantCulture) ?? "n/a"} | " +
                 $"{result.Native?.FirstPerformance?.Pipeline.LayoutMilliseconds.ToString("F1", CultureInfo.InvariantCulture) ?? "n/a"} | " +
@@ -6433,8 +6438,8 @@ internal sealed class ReadmeAuditComparison
     public double CodeBlockCountFidelity { get; init; }
     public double TaskCheckboxCountFidelity { get; init; }
     public double DetailsCountFidelity { get; init; }
-    public double NativeToBrowserFirstRenderRatio { get; init; }
-    public double NativeToBrowserFullPageRatio { get; init; }
+    public double? NativeToBrowserFirstRenderRatio { get; init; }
+    public double? NativeToBrowserFullPageRatio { get; init; }
     public double? NativeToSameByteFirstRenderRatio { get; init; }
     public double? NativeToSameByteFullPageRatio { get; init; }
     public int BrowserImageCount { get; init; }

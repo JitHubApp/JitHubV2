@@ -33,6 +33,7 @@
     <Compile Include="..\JitHub.WinUI.Automation\SourceReplayTerminalClampContract.cs" Link="Automation\SourceReplayTerminalClampContract.cs" />
     <Compile Include="..\JitHub.WinUI.Automation\ReadmeAuditVisualComparisonPolicy.cs" Link="Automation\ReadmeAuditVisualComparisonPolicy.cs" />
     <Compile Include="..\JitHub.WinUI.Automation\AuditBitmapFile.cs" Link="Automation\AuditBitmapFile.cs" />
+    <Compile Include="..\JitHub.WinUI.Automation\ReadmeAuditTimingRatio.cs" Link="Automation\ReadmeAuditTimingRatio.cs" />
     <Compile Include="..\JitHub.WinUI.Automation\ReadmeLinkDestinationIdentity.cs" Link="Automation\ReadmeLinkDestinationIdentity.cs" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\FirstViewportImagesReadyEvidenceWriter.cs" Link="Services\Markdown\FirstViewportImagesReadyEvidenceWriter.cs" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\FirstViewportImagesReadyPaintAcknowledgementLifecycle.cs" Link="Services\Markdown\FirstViewportImagesReadyPaintAcknowledgementLifecycle.cs" />
