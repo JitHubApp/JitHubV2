@@ -5764,13 +5764,13 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             QueueLazyLayoutForViewport();
             if (measure)
                 afterLazyLayout = GC.GetAllocatedBytesForCurrentThread();
-            UpdateSelectionAdornerViewport();
-            // Scrolling CanvasVirtualControl already requests newly exposed
-            // tiles. Avoid a second full invalidation when there is no
-            // selection/link/focus adorner to repaint; the WinRT invalidate
-            // call alone allocates several KiB per scroll frame.
-            if (HasInteractiveTextAdornerContent())
-                InvalidateSelectionAdorner();
+            // CanvasVirtualControl already requests newly exposed document
+            // tiles. Only viewport-refresh the separate text adorner when it
+            // has visible, pending, or interactive state that can change.
+            // UpdateSelectionAdornerViewport includes the invalidation, so do
+            // not issue a second request for the same scroll callback.
+            if (ShouldRefreshSelectionAdornerForScroll())
+                UpdateSelectionAdornerViewport();
             if (measure)
                 afterAdorner = GC.GetAllocatedBytesForCurrentThread();
             // Run a final realisation pass after intermediate-view bursts settle
@@ -12016,6 +12016,28 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         => (_selection.IsActive && _selectionAdornerRects.Count > 0) ||
            (_lastHoveredRun is LinkRun && _lastHoveredBox is not null) ||
            TryGetFocusedLink(out _, out _);
+
+    private bool ShouldRefreshSelectionAdornerForScroll()
+    {
+        bool hasHoveredLink = _lastHoveredRun is LinkRun && _lastHoveredBox is not null;
+        IReadOnlyList<Layout.FocusableItem>? focusableItems = _focusableItems;
+        bool hasFocusedLink = focusableItems is not null &&
+            (uint)_focusedItemIndex < (uint)focusableItems.Count &&
+            focusableItems[_focusedItemIndex].Kind == Layout.FocusableItemKind.Link;
+        bool hasVisibleAdorner = _selectionAdorner?.Visibility == Visibility.Visible;
+        bool hasRetainedRectangles = _selectionAdornerRects.Count > 0;
+        bool hasPendingRefresh = _selectionAdornerRetryState.IsPending ||
+            _selectionAdornerRefreshInProgress;
+
+        return SelectionAdornerScrollRefreshPolicy.ShouldRefreshForScroll(
+            hasActiveSelection: _selection.IsActive,
+            hasHoveredLink: hasHoveredLink,
+            hasFocusedLink: hasFocusedLink,
+            hasVisibleAdorner: hasVisibleAdorner,
+            hasRetainedRectangles: hasRetainedRectangles,
+            hasTouchHandles: _touchSelection.ShouldShowHandles,
+            hasPendingRefresh: hasPendingRefresh);
+    }
 
     private Microsoft.UI.Xaml.Controls.Image CreateSelectionAdorner()
     {

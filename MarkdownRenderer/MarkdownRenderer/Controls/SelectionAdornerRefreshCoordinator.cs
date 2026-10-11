@@ -58,6 +58,30 @@ internal static class SelectionAdornerRefreshCoordinator
 }
 
 /// <summary>
+/// Determines whether a viewport change can affect selection-adornment state.
+/// Kept value-only so the scroll callback can skip redundant Rendering
+/// subscriptions without inspecting layout or allocating.
+/// </summary>
+internal static class SelectionAdornerScrollRefreshPolicy
+{
+    internal static bool ShouldRefreshForScroll(
+        bool hasActiveSelection,
+        bool hasHoveredLink,
+        bool hasFocusedLink,
+        bool hasVisibleAdorner,
+        bool hasRetainedRectangles,
+        bool hasTouchHandles,
+        bool hasPendingRefresh)
+        => hasActiveSelection ||
+           hasHoveredLink ||
+           hasFocusedLink ||
+           hasVisibleAdorner ||
+           hasRetainedRectangles ||
+           hasTouchHandles ||
+           hasPendingRefresh;
+}
+
+/// <summary>
 /// Value-only coalescing state for a frame-paced retry. A rendering callback
 /// consumes one pending attempt; Busy calls Request again for the next frame.
 /// It deliberately owns no control, snapshot, box, or native resource.
