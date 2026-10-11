@@ -23,6 +23,8 @@ const MAX_CORPUS_ASSET_BYTES = 256 * 1024 * 1024;
 const MAX_TRACKED_NETWORK_REQUESTS = 100_000;
 const MAX_TRACKED_URL_BYTES = 16 * 1024 * 1024;
 const MAX_ASSET_LOOKUP_ENTRIES = 15_000;
+const MAX_UNAVAILABLE_IMAGE_DIAGNOSTIC_EXAMPLES = 8;
+const MAX_IMAGE_REQUEST_DIAGNOSTIC_EXAMPLES = 4;
 const MAX_HTML_IMAGE_SOURCE_SCAN_BYTES = 32 * 1024 * 1024;
 const MAX_HTML_TAG_BYTES = 64 * 1024;
 const MAX_SRCSET_CANDIDATES_PER_TAG = 32;
@@ -113,6 +115,23 @@ const CAPTURED_IMAGE_MIMES = new Set([
   "image/svg+xml",
   "image/webp",
   "image/x-icon",
+]);
+const SAFE_CDP_BLOCKED_REASONS = new Set([
+  "other",
+  "csp",
+  "mixed-content",
+  "origin",
+  "inspector",
+  "subresource-filter",
+  "content-type",
+  "coep-frame-resource-needs-coep-header",
+  "corp-not-same-origin-after-defaulted-to-same-origin-by-coep",
+  "corp-not-same-site",
+]);
+const SAFE_CDP_RESOURCE_TYPES = new Set([
+  "Document", "Stylesheet", "Image", "Media", "Font", "Script", "XHR", "Fetch",
+  "EventSource", "WebSocket", "Manifest", "Other", "Preflight", "Ping", "CSPViolationReport",
+  "SignedExchange", "WebBundle", "WebTransport",
 ]);
 
 export async function captureSameByteCorpus({
@@ -573,6 +592,35 @@ export function createNonRenderedDecorativeImageExclusionEntries(images, readmeU
   });
 }
 
+function boundedHttpStatus(value) {
+  return Number.isInteger(value) && value >= 100 && value <= 599 ? value : null;
+}
+
+function safeNetworkFailureCode(value) {
+  return typeof value === "string" && /^net::ERR_[A-Z0-9_]{1,64}$/u.test(value)
+    ? value
+    : null;
+}
+
+function safeBlockedReason(value) {
+  return typeof value === "string" && SAFE_CDP_BLOCKED_REASONS.has(value) ? value : null;
+}
+
+function safeResourceType(value) {
+  return typeof value === "string" && SAFE_CDP_RESOURCE_TYPES.has(value) ? value : "Other";
+}
+
+function classifyUnavailableImageRequest(record) {
+  if (record.blockedReason) return "browser-blocked";
+  if (record.failed) return record.canceled ? "network-canceled" : "network-failed";
+  if (record.status >= 400) return "http-error";
+  if (record.status >= 300) return "http-non-success";
+  if (record.status >= 200 && record.status < 300) {
+    return record.finished ? "http-success-image-unavailable" : "http-response-incomplete";
+  }
+  return record.finished ? "finished-without-http-status" : "no-final-response";
+}
+
 export function createResponseRecorder(cdp, { maxAssetBytes = MAX_ASSET_BYTES } = {}) {
   const requests = new Map();
   const cleanups = [];
@@ -602,9 +650,10 @@ export function createResponseRecorder(cdp, { maxAssetBytes = MAX_ASSET_BYTES } 
         recorderFailure = "Edge network request trace exceeded its bounded request count.";
         return;
       }
-      record = { requestId: event.requestId, urls: new Set(), status: 0, mimeType: "", type: "", finished: false };
+      record = { requestId: event.requestId, urls: new Set(), status: 0, mimeType: "", type: "", finished: false, failed: false };
       requests.set(event.requestId, record);
     }
+    if (event.type) record.type = safeResourceType(event.type);
     if (event.redirectResponse) {
       record.status = event.redirectResponse.status || record.status;
       record.mimeType = event.redirectResponse.mimeType || record.mimeType;
@@ -615,9 +664,9 @@ export function createResponseRecorder(cdp, { maxAssetBytes = MAX_ASSET_BYTES } 
     const record = requests.get(event.requestId);
     if (!record) return;
     addRequestUrl(record, event.response.url);
-    record.status = event.response.status;
+    record.status = boundedHttpStatus(event.response.status) || 0;
     record.mimeType = event.response.mimeType || "";
-    record.type = event.type || "";
+    if (event.type) record.type = safeResourceType(event.type);
   });
   addListener("Network.loadingFinished", event => {
     const record = requests.get(event.requestId);
@@ -627,7 +676,11 @@ export function createResponseRecorder(cdp, { maxAssetBytes = MAX_ASSET_BYTES } 
   });
   addListener("Network.loadingFailed", event => {
     const record = requests.get(event.requestId);
-    if (record) record.failure = event.errorText || "Network.loadingFailed";
+    if (!record) return;
+    record.failed = true;
+    record.failureCode = safeNetworkFailureCode(event.errorText);
+    record.blockedReason = safeBlockedReason(event.blockedReason);
+    record.canceled = event.canceled === true;
   });
 
   return {
@@ -765,6 +818,81 @@ export function createResponseRecorder(cdp, { maxAssetBytes = MAX_ASSET_BYTES } 
         .map(asset => ({ ...asset, urlHashes: [...asset.urlHashes].sort() }))
         .sort((left, right) => left.sha256 < right.sha256 ? -1 : left.sha256 > right.sha256 ? 1 : 0),
         imageRoutes,
+      };
+    },
+    getUnavailableVisibleImageResponseEvidence(images) {
+      if (!Array.isArray(images) || images.length > MAX_ASSET_LOOKUP_ENTRIES) {
+        return {
+          traceStatus: "invalid-image-list",
+          unavailableImageCount: 0,
+          examples: [],
+        };
+      }
+      const unavailable = images.filter(image => !image || image.complete !== true ||
+        !Number.isFinite(image.naturalWidth) || image.naturalWidth <= 0 ||
+        !Number.isFinite(image.naturalHeight) || image.naturalHeight <= 0);
+      const examples = unavailable.slice(0, MAX_UNAVAILABLE_IMAGE_DIAGNOSTIC_EXAMPLES);
+      const targetUrls = new Set();
+      for (const image of examples) {
+        for (const value of [image?.currentSource, image?.source, image?.canonicalSource]) {
+          const normalized = normalizeHttpUrl(value);
+          if (normalized) targetUrls.add(normalized);
+        }
+      }
+
+      // This diagnostic runs only on the existing hard-failure path. Keep its
+      // work bounded by the recorder's request and alias ceilings, and index
+      // only URLs belonging to the at-most-eight unavailable-image examples.
+      const requestsByUrl = new Map();
+      for (const record of requests.values()) {
+        const visitedRecordUrls = new Set();
+        for (const value of record.urls) {
+          const normalized = normalizeHttpUrl(value);
+          if (!normalized || !targetUrls.has(normalized) || visitedRecordUrls.has(normalized)) continue;
+          visitedRecordUrls.add(normalized);
+          const matches = requestsByUrl.get(normalized) ?? { count: 0, examples: [] };
+          matches.count++;
+          if (matches.examples.length < MAX_IMAGE_REQUEST_DIAGNOSTIC_EXAMPLES) {
+            matches.examples.push(record);
+          }
+          requestsByUrl.set(normalized, matches);
+        }
+      }
+
+      return {
+        traceStatus: recorderFailure ? "bounded-network-trace-incomplete" : "observed",
+        unavailableImageCount: unavailable.length,
+        examples: examples.map(image => {
+          const sources = [];
+          const seen = new Set();
+          for (const value of [image?.currentSource, image?.source, image?.canonicalSource]) {
+            const normalized = normalizeHttpUrl(value);
+            if (!normalized || seen.has(normalized)) continue;
+            seen.add(normalized);
+            const matches = requestsByUrl.get(normalized) ?? { count: 0, examples: [] };
+            const matchingRequestCount = matches.count;
+            sources.push({
+              urlSha256: resourceUrlSha256(normalized),
+              matchingRequestCount,
+              requestsTruncated: matchingRequestCount > MAX_IMAGE_REQUEST_DIAGNOSTIC_EXAMPLES,
+              requests: matches.examples.map(record => ({
+                resourceType: safeResourceType(record.type),
+                httpStatus: boundedHttpStatus(record.status),
+                finished: record.finished === true,
+                failed: record.failed === true,
+                classification: classifyUnavailableImageRequest(record),
+                networkFailureCode: record.failureCode || null,
+                blockedReason: record.blockedReason || null,
+                canceled: record.canceled === true,
+              })),
+            });
+          }
+          return {
+            replayIndex: Number.isSafeInteger(image?.replayIndex) && image.replayIndex >= 0 &&
+              image.replayIndex < MAX_ASSET_LOOKUP_ENTRIES ? image.replayIndex : null,
+            sources,
+          };
+        }),
       };
     },
     dispose() {

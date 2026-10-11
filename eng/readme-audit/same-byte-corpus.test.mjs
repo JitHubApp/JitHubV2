@@ -102,6 +102,199 @@ function emitImageResponse(cdp, url = imageUrl, encodedDataLength = imageBytes.l
   cdp.emit("Network.loadingFinished", { requestId: "image-1", encodedDataLength });
 }
 
+function unavailableImageFixture(source, replayIndex) {
+  return {
+    source,
+    currentSource: source,
+    replayIndex,
+    complete: true,
+    naturalWidth: 0,
+    naturalHeight: 0,
+    renderedWidth: 120,
+    renderedHeight: 24,
+  };
+}
+
+test("unavailable-image diagnostics classify HTTP, network, browser-blocked, and completed-response outcomes without URLs", () => {
+  const cdp = createFakeCdp();
+  const recorder = createResponseRecorder(cdp);
+  const sources = [
+    "https://assets.example.invalid/broken.png?token=private-http",
+    "https://assets.example.invalid/unreachable.png?token=private-network",
+    "https://assets.example.invalid/invalid-payload.png?token=private-decode",
+    "https://assets.example.invalid/blocked.png?token=private-blocked",
+    "https://assets.example.invalid/unknown-failure.png?token=private-unknown-failure",
+    "https://assets.example.invalid/unknown-cancel.png?token=private-unknown-cancel",
+  ];
+  const emitRequest = (requestId, url, type = "Image") => cdp.emit("Network.requestWillBeSent", {
+    requestId,
+    type,
+    request: { url },
+  });
+
+  emitRequest("http-404", sources[0]);
+  cdp.emit("Network.responseReceived", {
+    requestId: "http-404",
+    type: "Image",
+    response: { url: sources[0], status: 404, mimeType: "text/html" },
+  });
+  cdp.emit("Network.loadingFinished", { requestId: "http-404", encodedDataLength: 42 });
+  for (let retry = 0; retry < 6; retry++) {
+    const requestId = `retry-${retry}`;
+    emitRequest(requestId, sources[0]);
+    cdp.emit("Network.responseReceived", {
+      requestId,
+      type: "Image",
+      response: { url: sources[0], status: 503, mimeType: "text/html" },
+    });
+    cdp.emit("Network.loadingFinished", { requestId, encodedDataLength: 42 });
+  }
+
+  emitRequest("dns-failure", sources[1]);
+  cdp.emit("Network.loadingFailed", {
+    requestId: "dns-failure",
+    errorText: "net::ERR_NAME_NOT_RESOLVED",
+    canceled: false,
+  });
+
+  emitRequest("decode-failure", sources[2]);
+  cdp.emit("Network.responseReceived", {
+    requestId: "decode-failure",
+    type: "Image",
+    response: { url: sources[2], status: 200, mimeType: "image/png" },
+  });
+  cdp.emit("Network.loadingFinished", { requestId: "decode-failure", encodedDataLength: 42 });
+
+  emitRequest("blocked", sources[3]);
+  cdp.emit("Network.loadingFailed", {
+    requestId: "blocked",
+    errorText: "net::ERR_BLOCKED_BY_CLIENT https://secret.example.invalid/raw",
+    blockedReason: "csp",
+    canceled: true,
+  });
+
+  emitRequest("unknown-failure", sources[4]);
+  cdp.emit("Network.loadingFailed", {
+    requestId: "unknown-failure",
+    errorText: "private diagnostic text https://secret.example.invalid/failure",
+    blockedReason: "future-browser-reason-not-in-allowlist",
+    canceled: false,
+  });
+
+  emitRequest("unknown-cancel", sources[5]);
+  cdp.emit("Network.loadingFailed", {
+    requestId: "unknown-cancel",
+    errorText: "private cancellation detail",
+    canceled: true,
+  });
+
+  const evidence = recorder.getUnavailableVisibleImageResponseEvidence(
+    sources.map((source, index) => unavailableImageFixture(source, index)));
+  recorder.dispose();
+
+  assert.equal(evidence.traceStatus, "observed");
+  assert.equal(evidence.unavailableImageCount, 6);
+  assert.deepEqual(evidence.examples.map(item => item.replayIndex), [0, 1, 2, 3, 4, 5]);
+  const requestAt = index => evidence.examples[index].sources[0].requests[0];
+  assert.equal(evidence.examples[0].sources[0].matchingRequestCount, 7);
+  assert.equal(evidence.examples[0].sources[0].requestsTruncated, true);
+  assert.equal(evidence.examples[0].sources[0].requests.length, 4);
+  assert.equal(requestAt(0).httpStatus, 404);
+  assert.equal(requestAt(0).failed, false);
+  assert.equal(requestAt(0).classification, "http-error");
+  assert.equal(requestAt(1).classification, "network-failed");
+  assert.equal(requestAt(1).networkFailureCode, "net::ERR_NAME_NOT_RESOLVED");
+  assert.equal(requestAt(2).httpStatus, 200);
+  assert.equal(requestAt(2).finished, true);
+  assert.equal(requestAt(2).classification, "http-success-image-unavailable");
+  assert.equal(requestAt(3).classification, "browser-blocked");
+  assert.equal(requestAt(3).blockedReason, "csp");
+  assert.equal(requestAt(3).networkFailureCode, null);
+  assert.equal(requestAt(3).failed, true);
+  assert.equal(requestAt(4).classification, "network-failed");
+  assert.equal(requestAt(4).failed, true);
+  assert.equal(requestAt(4).networkFailureCode, null);
+  assert.equal(requestAt(4).blockedReason, null);
+  assert.equal(requestAt(5).classification, "network-canceled");
+  assert.equal(requestAt(5).failed, true);
+  assert.equal(requestAt(5).networkFailureCode, null);
+  const serialized = JSON.stringify(evidence);
+  for (const privateValue of [...sources, "private-http", "private-network", "private-decode", "private-blocked", "private-unknown-failure", "private-unknown-cancel", "secret.example.invalid", "private diagnostic text", "private cancellation detail"]) {
+    assert.equal(serialized.includes(privateValue), false);
+  }
+  assert.equal(serialized.includes(resourceUrlSha256(sources[0])), true);
+});
+
+test("unavailable-image diagnostics collapse redirect URL aliases into one request", () => {
+  const cdp = createFakeCdp();
+  const recorder = createResponseRecorder(cdp);
+  const originalUrl = "https://assets.example.invalid/redirected.png?private=redirect-original";
+  const finalUrl = "https://cdn.example.invalid/image.png?private=redirect-final";
+  cdp.emit("Network.requestWillBeSent", {
+    requestId: "redirected-image",
+    type: "Image",
+    request: { url: originalUrl },
+  });
+  cdp.emit("Network.requestWillBeSent", {
+    requestId: "redirected-image",
+    type: "Image",
+    redirectResponse: { url: originalUrl, status: 302, mimeType: "text/html" },
+    request: { url: finalUrl },
+  });
+  cdp.emit("Network.responseReceived", {
+    requestId: "redirected-image",
+    type: "Image",
+    response: { url: finalUrl, status: 200, mimeType: "image/png" },
+  });
+  cdp.emit("Network.loadingFinished", { requestId: "redirected-image", encodedDataLength: 42 });
+
+  const evidence = recorder.getUnavailableVisibleImageResponseEvidence([
+    unavailableImageFixture(originalUrl, 9),
+  ]);
+  recorder.dispose();
+
+  const source = evidence.examples[0].sources[0];
+  assert.equal(source.urlSha256, resourceUrlSha256(originalUrl));
+  assert.equal(source.matchingRequestCount, 1);
+  assert.equal(source.requests.length, 1);
+  assert.equal(source.requests[0].httpStatus, 200);
+  assert.equal(source.requests[0].resourceType, "Image");
+  assert.equal(source.requests[0].failed, false);
+  assert.equal(source.requests[0].classification, "http-success-image-unavailable");
+  const serialized = JSON.stringify(evidence);
+  assert.equal(serialized.includes("redirect-original"), false);
+  assert.equal(serialized.includes("redirect-final"), false);
+  assert.equal(serialized.includes("assets.example.invalid"), false);
+  assert.equal(serialized.includes("cdn.example.invalid"), false);
+});
+
+test("unavailable-image response evidence keeps diagnostic output bounded", () => {
+  const cdp = createFakeCdp();
+  const recorder = createResponseRecorder(cdp);
+  const images = Array.from({ length: 10 }, (_, index) =>
+    unavailableImageFixture(`https://assets.example.invalid/${index}.png?private=${index}`, index));
+  const evidence = recorder.getUnavailableVisibleImageResponseEvidence(images);
+  recorder.dispose();
+
+  assert.equal(evidence.unavailableImageCount, 10);
+  assert.equal(evidence.examples.length, 8);
+  assert.equal(evidence.examples[0].sources[0].requests.length, 0);
+  assert.ok(Buffer.byteLength(JSON.stringify(evidence), "utf8") < 32 * 1024);
+  assert.equal(JSON.stringify(evidence).includes("assets.example.invalid"), false);
+});
+
+test("browser oracle attaches network evidence without changing unavailable-image failure", async () => {
+  const source = await readFile(new URL("./browser-oracle.mjs", import.meta.url), "utf8");
+  const start = source.indexOf("if (readmeRendered && images.length !== report.semantic.images.length)");
+  const end = source.indexOf("\n  const capture = await captureSameByteCorpus", start);
+  assert.ok(start >= 0 && end > start, "expected unavailable-image capture gate");
+  const gate = source.slice(start, end);
+  assert.match(gate, /Same-byte replay cannot qualify while any GitHub-visible image is unavailable/u);
+  assert.match(gate, /getUnavailableVisibleImageResponseEvidence\(\s*report\.semantic\.images\s*\)/u);
+  assert.match(gate, /catch\s*\{[\s\S]*?Diagnostics must never replace or weaken the original hard failure/u);
+  assert.match(gate, /throw error\s*;/u);
+});
+
 async function createFixture(t, { image = imageBytes } = {}) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "jithub-same-byte-"));
   t.after(() => rm(directory, { recursive: true, force: true }));

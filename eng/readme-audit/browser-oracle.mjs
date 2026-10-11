@@ -603,8 +603,21 @@ async function captureCorpusForReport(report, images, renderedHtml) {
   const readmeRendered = report.readmeRendered === true;
   if (readmeRendered && images.length !== report.semantic.images.length) {
     const error = new Error("Same-byte replay cannot qualify while any GitHub-visible image is unavailable.");
-    error.unavailableVisibleImageEvidence =
-      createUnavailableVisibleImageEvidence(report.semantic.images);
+    const evidence = createUnavailableVisibleImageEvidence(report.semantic.images);
+    if (evidence) {
+      try {
+        evidence.networkResponses = sameByteRecorder.getUnavailableVisibleImageResponseEvidence(
+          report.semantic.images);
+      } catch {
+        // Diagnostics must never replace or weaken the original hard failure.
+        evidence.networkResponses = {
+          traceStatus: "diagnostic-failed",
+          unavailableImageCount: evidence.unavailableImageCount,
+          examples: [],
+        };
+      }
+    }
+    error.unavailableVisibleImageEvidence = evidence;
     throw error;
   }
   const capture = await captureSameByteCorpus({
