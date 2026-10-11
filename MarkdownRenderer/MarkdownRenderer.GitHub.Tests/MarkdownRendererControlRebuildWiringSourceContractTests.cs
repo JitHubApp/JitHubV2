@@ -140,6 +140,79 @@ public sealed class MarkdownRendererControlRebuildWiringSourceContractTests
     }
 
     [Fact]
+    public void SelectionAdornerRetryMeasuresOnlyActiveWorkAgainstItsCapturedLogicalFrame()
+    {
+        string control = File.ReadAllText(FindControlSource());
+        int retry = control.IndexOf("private void OnSelectionAdornerRetryFrame(", StringComparison.Ordinal);
+        int nextMethod = control.IndexOf("private void ScheduleSelectionAdornerRetry()", retry, StringComparison.Ordinal);
+        Assert.True(retry >= 0 && nextMethod > retry);
+        string method = control[retry..nextMethod];
+
+        int pendingWork = method.IndexOf(
+            "_selectionAdornerRetryState.IsPending || _selectionAdornerRefreshInProgress",
+            StringComparison.Ordinal);
+        int measurementEnabled = method.IndexOf("performance.IsMeasurementEnabled()", StringComparison.Ordinal);
+        int captureFrame = method.IndexOf("MarkdownPerformanceEventSource.GetLogicalFrameId()", StringComparison.Ordinal);
+        int measuredAttempt = method.LastIndexOf("TrySelectionAdornerRefreshAttempt();", StringComparison.Ordinal);
+        int finallyBlock = method.LastIndexOf("finally", StringComparison.Ordinal);
+        int paintWork = method.IndexOf("performance.PaintWork(", StringComparison.Ordinal);
+
+        Assert.True(pendingWork >= 0 && measurementEnabled > pendingWork);
+        Assert.True(captureFrame > measurementEnabled && measuredAttempt > captureFrame);
+        Assert.Equal(1, method.Split("GetLogicalFrameId()", StringSplitOptions.None).Length - 1);
+        Assert.Contains("!_canvasDeviceRecoveryQueued", method, StringComparison.Ordinal);
+        Assert.Contains("if (!measure)", method, StringComparison.Ordinal);
+        Assert.True(finallyBlock > measuredAttempt && paintWork > finallyBlock);
+        Assert.Contains("logicalFrameId,", method[paintWork..], StringComparison.Ordinal);
+        Assert.Contains("Stopwatch.GetTimestamp() - started", method[paintWork..], StringComparison.Ordinal);
+        Assert.Contains("GC.GetAllocatedBytesForCurrentThread() - allocatedBefore", method[paintWork..], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ScrollHarnessLogicalFrameIdLabelsTheOpenIntervalOnEitherSideOfItsRenderingSample()
+    {
+        string source = File.ReadAllText(FindPerformanceWindowSource());
+        int runFrames = source.IndexOf("private async Task RunScrollFramesAsync(", StringComparison.Ordinal);
+        Assert.True(runFrames >= 0);
+        int nextMethod = source.IndexOf("private Task WaitForScrollTopAsync(", runFrames, StringComparison.Ordinal);
+        Assert.True(nextMethod > runFrames);
+        string method = source[runFrames..nextMethod];
+
+        int timestampSample = method.IndexOf("long now = Stopwatch.GetTimestamp();", StringComparison.Ordinal);
+        Assert.True(timestampSample >= 0);
+        int intervalCapture = method.IndexOf(
+            "intervalsMilliseconds.Add(elapsedTicks * 1000.0 / Stopwatch.Frequency);",
+            timestampSample,
+            StringComparison.Ordinal);
+        Assert.True(intervalCapture > timestampSample);
+        int nextFrameId = method.IndexOf(
+            "MarkdownPerformanceEventSource.SetLogicalFrameId(firstFrameId + frame);",
+            intervalCapture,
+            StringComparison.Ordinal);
+        int frameWork = method.IndexOf("_renderer.SetAutomationVerticalScrollPercent(", nextFrameId, StringComparison.Ordinal);
+
+        Assert.True(nextFrameId > intervalCapture && frameWork > nextFrameId);
+    }
+
+    private static string FindPerformanceWindowSource()
+    {
+        for (DirectoryInfo? directory = new(AppContext.BaseDirectory);
+             directory is not null;
+             directory = directory.Parent)
+        {
+            string path = Path.Combine(
+                directory.FullName,
+                "MarkdownRenderer",
+                "MarkdownRenderer.PerformanceHarness",
+                "PerformanceWindow.cs");
+            if (File.Exists(path))
+                return path;
+        }
+
+        throw new FileNotFoundException("Could not locate PerformanceWindow.cs from the test base directory.");
+    }
+
+    [Fact]
     public void CompletionDoesNotRetirePublishedPipelineLifetime()
     {
         string control = File.ReadAllText(FindControlSource());

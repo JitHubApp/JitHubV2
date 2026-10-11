@@ -11470,7 +11470,41 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             return;
         }
 
-        TrySelectionAdornerRefreshAttempt();
+        var performance = MarkdownPerformanceEventSource.Log;
+        bool hasPendingWork =
+            _selectionAdornerRetryState.IsPending || _selectionAdornerRefreshInProgress;
+        bool measure = hasPendingWork &&
+            !_canvasDeviceRecoveryQueued &&
+            performance.IsMeasurementEnabled();
+        // The harness changes this thread-static ID at its Rendering sample;
+        // it labels the interval currently open. Work before that sample uses
+        // the prior ID, while work after it uses the new ID, in either handler
+        // subscription order.
+        long logicalFrameId = measure
+            ? MarkdownPerformanceEventSource.GetLogicalFrameId()
+            : 0;
+        measure = logicalFrameId > 0;
+        if (!measure)
+        {
+            // Keep idle, uncorrelated, and device-recovery callbacks on the
+            // normal path without adding timing/allocation probes to them.
+            TrySelectionAdornerRefreshAttempt();
+            return;
+        }
+
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        long started = Stopwatch.GetTimestamp();
+        try
+        {
+            TrySelectionAdornerRefreshAttempt();
+        }
+        finally
+        {
+            performance.PaintWork(
+                logicalFrameId,
+                Stopwatch.GetTimestamp() - started,
+                Math.Max(0, GC.GetAllocatedBytesForCurrentThread() - allocatedBefore));
+        }
     }
 
     private void ScheduleSelectionAdornerRetry()
