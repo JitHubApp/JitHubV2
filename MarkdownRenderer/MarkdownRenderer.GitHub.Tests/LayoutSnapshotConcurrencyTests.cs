@@ -67,7 +67,11 @@ public sealed class LayoutSnapshotConcurrencyTests
         Assert.Equal(
             FocusTargetLayoutState.Ready,
             snapshot.TryGetFocusTargetLayoutState(item.BlockIndex, out _));
-        Assert.Equal(1, snapshot.MeasuredTopLevelBlockCount);
+        // The first owner's real height is smaller than its estimate. Its
+        // successor therefore enters the original requested band and must also
+        // be realized before that final band can be declared ready.
+        Assert.True(estimatedBand.Intersects(trailingTarget.Bounds.Top, trailingTarget.Bounds.Bottom));
+        Assert.Equal(2, snapshot.MeasuredTopLevelBlockCount);
     }
 
     [Fact]
@@ -92,6 +96,59 @@ public sealed class LayoutSnapshotConcurrencyTests
         }
 
         await measure.WaitAsync(TimeSpan.FromSeconds(2));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CommittedMetadataReadsDoNotWaitForOrExposeBackgroundCandidates(bool cancel)
+    {
+        var block = new BlockingMeasureBox();
+        using var snapshot = CreateLazySnapshot(block);
+        Size oldSize = snapshot.Size;
+        long oldRevision = snapshot.LayoutRevision;
+        int oldCount = snapshot.MeasuredTopLevelBlockCount;
+        using var cancellation = new CancellationTokenSource();
+        Task measure = Task.Run(() =>
+            snapshot.EnsureMeasuredBand(new LazyLayoutBand(0, 100), cancellation.Token));
+        Assert.True(block.MeasureEntered.Wait(TimeSpan.FromSeconds(2)));
+
+        try
+        {
+            Task read = Task.Run(() =>
+            {
+                for (int probe = 0; probe < 100; probe++)
+                {
+                    Assert.Equal(oldSize, snapshot.Size);
+                    Assert.Equal(oldRevision, snapshot.LayoutRevision);
+                    Assert.Equal(oldCount, snapshot.MeasuredTopLevelBlockCount);
+                }
+            });
+            Assert.Same(read, await Task.WhenAny(read, Task.Delay(500)));
+            await read;
+            if (cancel)
+                cancellation.Cancel();
+        }
+        finally
+        {
+            block.ReleaseMeasure.Set();
+        }
+
+        if (cancel)
+        {
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+                measure.WaitAsync(TimeSpan.FromSeconds(2)));
+            Assert.Equal(oldSize, snapshot.Size);
+            Assert.Equal(oldRevision, snapshot.LayoutRevision);
+            Assert.Equal(oldCount, snapshot.MeasuredTopLevelBlockCount);
+        }
+        else
+        {
+            await measure.WaitAsync(TimeSpan.FromSeconds(2));
+            Assert.Equal(48, snapshot.Size.Height);
+            Assert.Equal(oldRevision + 1, snapshot.LayoutRevision);
+            Assert.Equal(1, snapshot.MeasuredTopLevelBlockCount);
+        }
     }
 
     [Fact]

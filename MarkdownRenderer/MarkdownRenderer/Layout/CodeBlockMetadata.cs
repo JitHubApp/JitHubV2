@@ -36,21 +36,21 @@ internal sealed class CodeBlockMetadata
         CodeTextHash = codeTextHash;
     }
 
-    public string? Language { get; }
-    public string LanguageDisplay { get; }
-    public string? Title { get; }
-    public string? FileName { get; }
+    public readonly string? Language;
+    public readonly string LanguageDisplay;
+    public readonly string? Title;
+    public readonly string? FileName;
     public string HeaderText => !string.IsNullOrWhiteSpace(Title)
         ? Title!
         : !string.IsNullOrWhiteSpace(FileName)
             ? FileName!
             : LanguageDisplay;
-    public CodeLineRangeSet HighlightedLines { get; }
-    public bool? ShowLineNumbers { get; }
-    public int StartLine { get; }
-    public bool IsDiff { get; }
-    public string StableKey { get; }
-    public ulong CodeTextHash { get; }
+    public readonly CodeLineRangeSet HighlightedLines;
+    public readonly bool? ShowLineNumbers;
+    public readonly int StartLine;
+    public readonly bool IsDiff;
+    public readonly string StableKey;
+    public readonly ulong CodeTextHash;
 
     public static CodeBlockMetadata FromBlock(LeafBlock block, string displayedCodeText)
     {

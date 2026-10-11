@@ -4,6 +4,7 @@ using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Controls;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Performance;
 using Windows.Foundation;
 
 namespace JitHub.Services.Markdown;
@@ -36,6 +37,8 @@ internal sealed class FirstViewportImagesReadyRendererProbe
     internal bool TryAcknowledgeAfterPaint(
         MarkdownRendererControl renderer,
         long generation,
+        LayoutSnapshot paintedSnapshot,
+        long paintedLayoutRevision,
         Rect paintedRegion)
 #pragma warning restore MR1001
     {
@@ -43,16 +46,72 @@ internal sealed class FirstViewportImagesReadyRendererProbe
         PaintedRegionCount++;
         LastPaintedRegion = paintedRegion;
         LastReason = "validating-paint";
+        // OnCanvasDraw releases the paint lock before invoking this callback.
+        // Reacquire it so a background lazy-layout mutation cannot make these
+        // old pixels appear to cover a newer revision during the identity check.
+        if (!ReferenceEquals(renderer.CurrentSnapshot, paintedSnapshot) ||
+            !paintedSnapshot.TryBeginPaint())
+        {
+            ResetCoverage();
+            LastReason = "painted-snapshot-no-longer-current";
+            return false;
+        }
+
+        try
+        {
+            if (!FirstViewportImagesReadyProbeContract.IsPaintedSnapshotIdentityCurrent(
+                    renderer.CurrentSnapshot,
+                    paintedSnapshot,
+                    paintedSnapshot.LayoutRevision,
+                    paintedLayoutRevision))
+            {
+                ResetCoverage();
+                LastReason = "painted-snapshot-identity-changed";
+                return false;
+            }
+
+            return TryAcknowledgeUnderSnapshotReadLock(
+                renderer,
+                generation,
+                paintedSnapshot,
+                paintedLayoutRevision,
+                paintedRegion);
+        }
+        finally
+        {
+            paintedSnapshot.EndPaint();
+        }
+    }
+
+#pragma warning disable MR1001 // Audit wiring intentionally targets the legacy control type.
+    private bool TryAcknowledgeUnderSnapshotReadLock(
+        MarkdownRendererControl renderer,
+        long generation,
+        LayoutSnapshot snapshot,
+        long paintedLayoutRevision,
+        Rect paintedRegion)
+#pragma warning restore MR1001
+    {
+        Size snapshotSize = snapshot.Size;
 
         if (renderer.AutomationPipelineGeneration != generation ||
             renderer.AutomationSnapshotGeneration != generation ||
-            renderer.CurrentSnapshot is not { } snapshot ||
+            !FirstViewportImagesReadyProbeContract.IsPaintedSnapshotIdentityCurrent(
+                renderer.CurrentSnapshot,
+                snapshot,
+                snapshot.LayoutRevision,
+                paintedLayoutRevision) ||
             !renderer.TryGetVisibleDocumentRect(out Rect viewport) ||
             !IsFiniteNonEmptyRect(viewport) ||
             !IsFiniteNonEmptyRect(paintedRegion) ||
+            !FirstViewportPaintCoverage.TryGetPaintableViewport(
+                viewport,
+                snapshotSize.Width,
+                snapshotSize.Height,
+                out Rect paintableViewport) ||
             !snapshot.IsBandMeasured(LazyLayoutBand.FromViewport(
-                viewport.Top,
-                viewport.Height,
+                paintableViewport.Top,
+                paintableViewport.Height,
                 overscan: 0)))
         {
             ResetCoverage();
@@ -60,12 +119,27 @@ internal sealed class FirstViewportImagesReadyRendererProbe
             return false;
         }
 
-        long revision = snapshot.LayoutRevision;
+        long revision = paintedLayoutRevision;
         double scale = renderer.XamlRoot?.RasterizationScale ?? 0;
         if (!double.IsFinite(scale) || scale <= 0)
         {
             ResetCoverage();
             LastReason = "invalid-rasterization-scale";
+            return false;
+        }
+
+        if (renderer.GetVisibleDeferredSceneReadinessForAutomation(
+                snapshot,
+                generation,
+                paintedLayoutRevision,
+                paintableViewport) != MarkdownVisibleSceneReadiness.Ready)
+        {
+            // The visible code fallback is intentionally painted while the
+            // scene compiler runs, but it is not the final visual snapshot.
+            // Do not let placeholder pixels accumulate toward the first-paint
+            // acknowledgement.
+            ResetCoverage();
+            LastReason = "visible-deferred-scene-pending-or-unverified";
             return false;
         }
 
@@ -75,7 +149,7 @@ internal sealed class FirstViewportImagesReadyRendererProbe
         ViewportHeight = viewport.Height;
         LayoutRevision = revision;
         RasterizationScale = scale;
-        if (!_coverage.EnsureIdentity(snapshot, generation, revision, scale, viewport))
+        if (!_coverage.EnsureIdentity(snapshot, generation, revision, scale, paintableViewport))
         {
             LastReason = "invalid-coverage-identity";
             return false;
@@ -85,7 +159,7 @@ internal sealed class FirstViewportImagesReadyRendererProbe
         bool hasVisibleLoadingImages = TryCollectVisibleLoadingImages(
                 renderer.AutomationImagePlans,
                 renderer.AutomationImagePlanIndex,
-                viewport,
+                paintableViewport,
                 hasViewport: true,
                 _pendingImageRegions,
                 out int visibleLoadingImageCount,
@@ -110,10 +184,10 @@ internal sealed class FirstViewportImagesReadyRendererProbe
         // uncovered so a later successful image paint can complete exact
         // viewport coverage without requiring an unrelated full repaint.
         bool covered = _coverage.AddPaintedRegionExcluding(
-            viewport.Left,
-            viewport.Top,
-            viewport.Width,
-            viewport.Height,
+            paintableViewport.Left,
+            paintableViewport.Top,
+            paintableViewport.Width,
+            paintableViewport.Height,
             paintedRegion.Left,
             paintedRegion.Top,
             paintedRegion.Width,
@@ -141,16 +215,31 @@ internal sealed class FirstViewportImagesReadyRendererProbe
 #pragma warning restore MR1001
     {
         LayoutSnapshot? snapshot = renderer.CurrentSnapshot;
+        Size snapshotSize = snapshot?.Size ?? default;
         return renderer.AutomationPipelineGeneration == generation &&
             renderer.AutomationSnapshotGeneration == generation &&
             snapshot is not null &&
+            FirstViewportPaintCoverage.TryGetPaintableViewport(
+                viewport,
+                snapshotSize.Width,
+                snapshotSize.Height,
+                out Rect paintableViewport) &&
             _coverage.IsIdentityCurrent(
                 snapshot,
                 generation,
                 snapshot.LayoutRevision,
                 renderer.XamlRoot?.RasterizationScale ?? 0,
-                viewport) &&
-            _coverage.Covers(viewport.Left, viewport.Top, viewport.Width, viewport.Height);
+                paintableViewport) &&
+            renderer.GetVisibleDeferredSceneReadinessForAutomation(
+                snapshot,
+                generation,
+                snapshot.LayoutRevision,
+                paintableViewport) == MarkdownVisibleSceneReadiness.Ready &&
+            _coverage.Covers(
+                paintableViewport.Left,
+                paintableViewport.Top,
+                paintableViewport.Width,
+                paintableViewport.Height);
     }
 
     private void ResetCoverage()

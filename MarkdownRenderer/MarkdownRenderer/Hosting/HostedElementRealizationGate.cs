@@ -90,7 +90,6 @@ internal sealed class HostedElementRealizationGate<TRequest>
     {
         private readonly object _gate = new();
         private CancellationTokenSource? _cancellation;
-        private readonly CancellationToken _token;
         private CancellationTokenRegistration _lifetimeRegistration;
         private bool _hasLifetimeRegistration;
         private Task _cancellationCallbacks = Task.CompletedTask;
@@ -100,7 +99,7 @@ internal sealed class HostedElementRealizationGate<TRequest>
         {
             Request = request;
             _cancellation = new CancellationTokenSource();
-            _token = _cancellation.Token;
+            CancellationToken = _cancellation.Token;
             if (lifetimeToken.CanBeCanceled)
             {
                 // Keep the child source independently owned. A linked CTS does
@@ -115,9 +114,9 @@ internal sealed class HostedElementRealizationGate<TRequest>
             }
         }
 
-        internal TRequest Request { get; }
+        internal readonly TRequest Request;
 
-        internal CancellationToken CancellationToken => _token;
+        internal readonly CancellationToken CancellationToken;
 
         internal Task Retirement
         {
@@ -132,7 +131,7 @@ internal sealed class HostedElementRealizationGate<TRequest>
         {
             lock (_gate)
             {
-                if (_cancellation is null || _token.IsCancellationRequested)
+                if (_cancellation is null || CancellationToken.IsCancellationRequested)
                     return;
 
                 _cancellationCallbacks =

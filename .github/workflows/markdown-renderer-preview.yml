@@ -71,13 +71,13 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           persist-credentials: false
 
       - name: Set up .NET 10
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           global-json-file: ./global.json
 
@@ -102,9 +102,12 @@ jobs:
           # validation build. Preload the complete locked graph accordingly.
           & cargo +1.96.0 fetch --manifest-path $manifest --locked
           if ($LASTEXITCODE -ne 0) { throw 'The pinned resvg dependency graph could not be fetched.' }
-          & cargo +1.96.0 test --manifest-path $manifest --locked --target $validationTarget
+          & cargo +1.96.0 test --manifest-path $manifest --locked --workspace --target $validationTarget
           if ($LASTEXITCODE -ne 0) { throw 'The isolated resvg worker tests failed.' }
-          & cargo +1.96.0 clippy --manifest-path $manifest --locked --target $validationTarget --all-targets -- -D warnings
+          # Keep the original strict worker bin/test lint gate. Vendored crates
+          # joined the workspace for the full test suite above, not to rewrite
+          # their unrelated upstream style under our newer pinned Clippy.
+          & cargo +1.96.0 clippy --manifest-path $manifest --locked --target $validationTarget --package markdown-renderer-resvg-worker --all-targets --no-deps -- -D warnings
           if ($LASTEXITCODE -ne 0) { throw 'The isolated resvg worker failed Clippy.' }
           $rebuildRoot = Join-Path $env:RUNNER_TEMP 'resvg-worker-rebuilds'
           $targetRoot = Join-Path $env:RUNNER_TEMP 'resvg-worker-target'
@@ -136,11 +139,15 @@ jobs:
           if ($mismatches.Count -ne 0) {
             throw "One or more checked-in resvg workers were not reproduced:`n$($mismatches -join "`n")"
           }
+          .\MarkdownRenderer\MarkdownRenderer.Svg.Resvg\eng\Test-ResvgLicenseSelection.ps1
           .\MarkdownRenderer\MarkdownRenderer.Svg.Resvg\eng\Verify-ResvgSupplyChain.ps1
+          .\MarkdownRenderer\MarkdownRenderer.Svg.Resvg\eng\Test-ResvgWorkerIdentity.ps1
+          .\MarkdownRenderer\MarkdownRenderer.Svg.Resvg\eng\Verify-ResvgWorkerIdentity.ps1 `
+            -WorkerRoot '.\MarkdownRenderer\MarkdownRenderer.Svg.Resvg' -Rid 'win-x64'
 
       - name: Upload rebuilt resvg workers
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: resvg-worker-rebuilds
           path: ${{ runner.temp }}/resvg-worker-rebuilds/**
@@ -165,6 +172,7 @@ jobs:
             'benchmarks'
             'packages-reference'
             'packages-candidate'
+            'package-rebuild-evidence'
             'managed-pack-evidence'
             'compliance')) {
             New-Item -ItemType Directory -Path (Join-Path $artifactRoot $directory) | Out-Null
@@ -378,6 +386,7 @@ jobs:
           # The per-PR x64 fidelity lane must never turn green by silently
           # substituting Chrome or skipping the browser oracle.
           MARKDOWN_RENDERER_REQUIRE_EDGE_ORACLE: "1"
+          MARKDOWN_RENDERER_SVG_ARTIFACT_ROOT: ${{ runner.temp }}\markdownrenderer-preview\svg-pixel-diffs
         run: |
           $results = Join-Path $env:RUNNER_TEMP 'markdownrenderer-preview\test-results'
           & dotnet test '.\MarkdownRenderer\MarkdownRenderer.PixelTests\MarkdownRenderer.PixelTests.csproj' `
@@ -609,6 +618,8 @@ jobs:
       - name: Pack every shipping package twice into clean directories
         run: |
           $artifactRoot = Join-Path $env:RUNNER_TEMP 'markdownrenderer-preview'
+          $evidenceRoot = Join-Path $artifactRoot 'package-rebuild-evidence'
+          $targetFramework = 'net10.0-windows10.0.26100.0'
           $packageDirectories = @(
             (Join-Path $artifactRoot 'packages-reference')
             (Join-Path $artifactRoot 'packages-candidate'))
@@ -633,14 +644,143 @@ jobs:
               throw "Package directory was not clean before packing: $packageDirectory"
             }
 
+            $passName = Split-Path -Leaf $packageDirectory
+            $passEvidenceDirectory = Join-Path $evidenceRoot $passName
+            $binlogDirectory = Join-Path $passEvidenceDirectory 'binlogs'
+            $generatedRoot = Join-Path $passEvidenceDirectory 'generated-source'
+            New-Item -ItemType Directory -Path $binlogDirectory -Force | Out-Null
+            New-Item -ItemType Directory -Path $generatedRoot -Force | Out-Null
+
+            # Rebuild every shipping project once in validated topological order.
+            # Project references are consumed from the earlier rebuilds, avoiding
+            # repeated dependency compilation and cross-project output races.
+            $rebuildResults = [System.Collections.Generic.List[object]]::new()
+            $rebuildFailure = $null
+            try {
+              $shippingProjectPaths = [System.Collections.Generic.HashSet[string]]::new(
+                [System.StringComparer]::OrdinalIgnoreCase)
+              foreach ($project in $projects) {
+                $projectPath = (Resolve-Path -LiteralPath $project).Path
+                if (-not $shippingProjectPaths.Add($projectPath)) {
+                  throw "Shipping project is listed more than once: '$project'."
+                }
+              }
+
+              $rebuiltProjectPaths = [System.Collections.Generic.HashSet[string]]::new(
+                [System.StringComparer]::OrdinalIgnoreCase)
+              foreach ($project in $projects) {
+                $projectPath = (Resolve-Path -LiteralPath $project).Path
+                [xml]$projectXml = Get-Content -LiteralPath $projectPath -Raw
+                $projectDirectory = Split-Path -Parent $projectPath
+                foreach ($reference in $projectXml.SelectNodes("//*[local-name()='ProjectReference']")) {
+                  $include = $reference.GetAttribute('Include')
+                  if ([string]::IsNullOrWhiteSpace($include)) { continue }
+                  if ($include -match '[*?]' -or $include -match '\$\(|@\(|%\(') {
+                    throw "Unsupported MSBuild expression or wildcard in ProjectReference '$include' from '$project'."
+                  }
+                  $referencePath = [IO.Path]::GetFullPath((Join-Path $projectDirectory $include))
+                  if (-not $shippingProjectPaths.Contains($referencePath)) {
+                    throw "Shipping project '$project' references unlisted project '$include'; add it to the shipping rebuild and package list."
+                  }
+                  if (-not $rebuiltProjectPaths.Contains($referencePath)) {
+                    throw "Shipping project order is not topological: '$project' references '$include' before it is rebuilt."
+                  }
+                }
+                $rebuiltProjectPaths.Add($projectPath) | Out-Null
+              }
+              if ($rebuiltProjectPaths.Count -ne $shippingProjectPaths.Count) {
+                throw 'The shipping graph validation did not visit every project exactly once.'
+              }
+            }
+            catch {
+              $rebuildFailure = "Shipping graph order validation failed: $($_.Exception.Message)"
+            }
+
+            if ($null -eq $rebuildFailure) {
+              foreach ($project in $projects) {
+                $projectPath = (Resolve-Path -LiteralPath $project).Path
+                $projectName = [IO.Path]::GetFileNameWithoutExtension($projectPath)
+                $binlogPath = Join-Path $binlogDirectory ("{0}.binlog" -f $projectName)
+                $exitCode = -1
+                try {
+                  & dotnet build $project `
+                    --configuration $env:CONFIGURATION `
+                    -p:Platform=$env:PLATFORM `
+                    -p:UseSharedCompilation=false `
+                    -p:BuildInParallel=false `
+                    -p:BuildProjectReferences=false `
+                    -p:EmitCompilerGeneratedFiles=true `
+                    -target:Rebuild `
+                    --no-restore `
+                    --disable-build-servers `
+                    "-bl:$binlogPath" `
+                    -m:1
+                  $exitCode = $LASTEXITCODE
+                }
+                catch {
+                  $rebuildFailure = "Shipping graph rebuild could not run for '$project': $($_.Exception.Message)"
+                }
+
+                $rebuildResults.Add([pscustomobject][ordered]@{
+                  project = $project
+                  exitCode = $exitCode
+                  binlog = [IO.Path]::GetFileName($binlogPath)
+                })
+                if ($null -ne $rebuildFailure) { break }
+                if ($exitCode -ne 0) {
+                  $rebuildFailure = "Shipping graph rebuild failed for '$project' with exit code $exitCode."
+                  break
+                }
+              }
+            }
+
+            # Preserve the per-project generator output after both successful
+            # and failed rebuilds. This is diagnostic evidence, not a shared
+            # CompilerGeneratedFilesOutputPath, so project outputs cannot race
+            # or overwrite one another.
+            foreach ($project in $projects) {
+              try {
+                $projectPath = (Resolve-Path -LiteralPath $project).Path
+                $projectDirectory = Split-Path -Parent $projectPath
+                $projectName = [IO.Path]::GetFileNameWithoutExtension($projectPath)
+                $generatedDirectory = Join-Path $projectDirectory (
+                  "obj\{0}\{1}\{2}\generated" -f $env:PLATFORM, $env:CONFIGURATION, $targetFramework)
+                if (-not (Test-Path -LiteralPath $generatedDirectory -PathType Container)) { continue }
+
+                $projectCapturePath = Join-Path $generatedRoot $projectName
+                New-Item -ItemType Directory -Path $projectCapturePath -Force | Out-Null
+                Get-ChildItem -LiteralPath $generatedDirectory -Force |
+                  Copy-Item -Destination $projectCapturePath -Recurse -Force
+              }
+              catch {
+                Write-Warning "Could not preserve generated-source evidence for '$project': $($_.Exception.Message)"
+              }
+            }
+
+            $rebuildReport = [pscustomobject][ordered]@{
+              schemaVersion = 1
+              pass = $passName
+              generatedUtc = [DateTime]::UtcNow.ToString('O', [Globalization.CultureInfo]::InvariantCulture)
+              projects = $rebuildResults
+              failure = $rebuildFailure
+            }
+            [IO.File]::WriteAllText(
+              (Join-Path $passEvidenceDirectory 'shipping-graph-rebuild.json'),
+              ($rebuildReport | ConvertTo-Json -Depth 5) + "`n",
+              [Text.UTF8Encoding]::new($false))
+            if ($null -ne $rebuildFailure) { throw $rebuildFailure }
+
             foreach ($project in $projects) {
               & dotnet pack $project `
                 --configuration $env:CONFIGURATION `
                 -p:Platform=$env:PLATFORM `
                 -p:UseSharedCompilation=false `
+                -p:BuildInParallel=false `
                 --no-restore `
+                --no-build `
                 --disable-build-servers `
-                --output $packageDirectory
+                --output $packageDirectory `
+                -m:1
               if ($LASTEXITCODE -ne 0) { throw "Pack failed for '$project' into '$packageDirectory'." }
             }
 
@@ -653,6 +793,15 @@ jobs:
               throw "Expected $($projects.Count) shipping packages in '$packageDirectory', found $($packages.Count)."
             }
           }
+
+      - name: Upload package rebuild reproducibility evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: markdownrenderer-preview-package-rebuild-evidence
+          path: ${{ runner.temp }}/markdownrenderer-preview/package-rebuild-evidence/**
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Consume managed packages in NativeAOT and trimmed single-file deployments
         run: |
@@ -855,7 +1004,7 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: markdownrenderer-preview-test-results
           path: ${{ runner.temp }}/markdownrenderer-preview/test-results/**/*.trx
@@ -864,7 +1013,7 @@ jobs:
 
       - name: Upload shipping packages
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: markdownrenderer-preview-packages
           path: ${{ runner.temp }}/markdownrenderer-preview/packages-candidate/*.nupkg
@@ -873,7 +1022,7 @@ jobs:
 
       - name: Upload benchmark evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: markdownrenderer-preview-benchmarks
           path: ${{ runner.temp }}/markdownrenderer-preview/benchmarks/**
@@ -882,7 +1031,7 @@ jobs:
 
       - name: Upload package compliance evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: markdownrenderer-preview-compliance
           path: ${{ runner.temp }}/markdownrenderer-preview/compliance/**
@@ -891,7 +1040,7 @@ jobs:
 
       - name: Upload managed package release evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: markdownrenderer-preview-managed-package-evidence
           path: ${{ runner.temp }}/markdownrenderer-preview/managed-pack-evidence/**

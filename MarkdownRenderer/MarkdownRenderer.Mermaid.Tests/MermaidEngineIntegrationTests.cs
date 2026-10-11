@@ -53,6 +53,37 @@ public sealed class MermaidEngineIntegrationTests
         Assert.InRange(text.TextStyle.FontWeight, (ushort)1, (ushort)999);
     }
 
+    [Theory]
+    [InlineData("Segoe UI")]
+    [InlineData("Consolas")]
+    public async Task MermaidLabelsPreserveThePrimaryConfiguredFontCatalogFamily(string primaryFamily)
+    {
+        string fallbackFamily = string.Equals(primaryFamily, "Segoe UI", StringComparison.Ordinal)
+            ? "Consolas"
+            : "Segoe UI";
+        var catalog = new MermaidFontCatalog([primaryFamily, fallbackFamily]);
+        using var renderer = new MermaidRenderer(fontCatalog: catalog);
+        using MarkdownEngine engine = new MarkdownEngineBuilder()
+            .UseMermaid(renderer)
+            .WithParseCacheBudgetBytes(0)
+            .Build();
+
+        MarkdownDocument document = await engine.ParseAsync($"```mermaid\n{DiagramSource}\n```");
+        MarkdownCodeBlock codeBlock = Assert.Single(document.GetCodeBlocks());
+        Assert.True(document.TryGetBlockExtensionContent(codeBlock.SourceSpan, out MarkdownContentFragment? fragment));
+        MarkdownVectorScene scene = Assert.IsType<MarkdownVectorScene>(Assert.Single(fragment!.Items).VectorScene);
+        MarkdownVectorCommand[] labels = scene.Commands
+            .Where(static command => command.Kind == MarkdownVectorCommandKind.DrawText)
+            .ToArray();
+
+        Assert.NotEmpty(labels);
+        Assert.All(labels, label =>
+        {
+            Assert.Equal(MarkdownVectorFontRole.Authored, label.TextStyle!.FontRole);
+            Assert.Equal(primaryFamily, label.TextStyle.FontFamily);
+        });
+    }
+
     [Fact]
     public async Task MermaidLinkSurvivesTheDeclarativeVectorSceneAdapter()
     {

@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using System.Diagnostics.Tracing;
+using System.Linq;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using JitHub.Services.Markdown;
 using MarkdownRenderer.Images;
@@ -25,13 +27,20 @@ public sealed class MarkdownRendererAuditListenerTests
             $"jithub-image-resolution-audit-{Guid.NewGuid():N}.ndjson");
         string? previousPath = Environment.GetEnvironmentVariable(variable);
         byte[] bytes = [1, 2, 3, 4, 5];
+        const string credentialBearingSource =
+            "https://source-user:source-password@images.example.test/private/source.png?token=source-secret";
+        var credentialBearingResolvedUri = new Uri(
+            "https://cdn-user:cdn-password@cdn.example.test/private/resolved.png?signature=resolved-secret");
         try
         {
             Environment.SetEnvironmentVariable(variable, path);
             MarkdownLifecycleAutomationBridge.ConfigureLaunchOptions(true, null);
             MarkdownLifecycleAutomationBridge.RecordImageResolution(
-                "fixture.svg",
-                MarkdownImageResolution.Resolved(new MarkdownImageAsset(bytes, "image/svg+xml")),
+                credentialBearingSource,
+                MarkdownImageResolution.Resolved(new MarkdownImageAsset(
+                    bytes,
+                    "image/svg+xml",
+                    credentialBearingResolvedUri)),
                 DateTimeOffset.UtcNow,
                 12.5);
 
@@ -41,18 +50,41 @@ public sealed class MarkdownRendererAuditListenerTests
                 Convert.ToHexString(SHA256.HashData(bytes)),
                 document.RootElement.GetProperty("ContentSha256").GetString());
             Assert.Equal(bytes.Length, document.RootElement.GetProperty("ByteLength").GetInt32());
+            Assert.Equal(
+                Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(credentialBearingSource))).ToLowerInvariant(),
+                document.RootElement.GetProperty("SourceSha256").GetString());
+            Assert.Equal("absolute-https", document.RootElement.GetProperty("SourceKind").GetString());
+            Assert.Equal(
+                Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(credentialBearingResolvedUri.AbsoluteUri))).ToLowerInvariant(),
+                document.RootElement.GetProperty("ResolvedUriSha256").GetString());
+            Assert.False(document.RootElement.TryGetProperty("Source", out _));
+            Assert.False(document.RootElement.TryGetProperty("ResolvedUri", out _));
             Assert.False(document.RootElement.TryGetProperty("Bytes", out _));
             Assert.False(document.RootElement.TryGetProperty("Payload", out _));
+            Assert.DoesNotContain("source-password", line, StringComparison.Ordinal);
+            Assert.DoesNotContain("source-secret", line, StringComparison.Ordinal);
+            Assert.DoesNotContain("cdn-password", line, StringComparison.Ordinal);
+            Assert.DoesNotContain("resolved-secret", line, StringComparison.Ordinal);
+            Assert.DoesNotContain("private/source.png", line, StringComparison.Ordinal);
+            Assert.DoesNotContain("private/resolved.png", line, StringComparison.Ordinal);
 
             MarkdownLifecycleAutomationBridge.RecordImageResolution(
                 "missing.svg",
                 MarkdownImageResolution.Unavailable,
                 DateTimeOffset.UtcNow,
-                1);
+                1,
+                imageResolveContext: new MarkdownImageResolveContext(
+                    null,
+                    "docs/README.md",
+                    AllowThirdPartyRemoteImages: false));
             string unavailableLine = File.ReadAllLines(path)[1];
             using JsonDocument unavailableDocument = JsonDocument.Parse(unavailableLine);
             Assert.Equal(JsonValueKind.Null,
                 unavailableDocument.RootElement.GetProperty("ContentSha256").ValueKind);
+            Assert.Equal(
+                "missing-document-context",
+                unavailableDocument.RootElement.GetProperty("ResolutionDiagnostic")
+                    .GetProperty("FailureClass").GetString());
         }
         finally
         {
@@ -60,6 +92,200 @@ public sealed class MarkdownRendererAuditListenerTests
             Environment.SetEnvironmentVariable(variable, previousPath);
             if (File.Exists(path)) File.Delete(path);
         }
+    }
+
+    [Fact]
+    public void ImageUnavailableEvidencePreservesReasonAndSourceIdentityWithoutRawUrl()
+    {
+        const string evidenceVariable = "JITHUB_MARKDOWN_IMAGE_EVIDENCE_PATH";
+        const string targetHostVariable = "JITHUB_MARKDOWN_LIFECYCLE_HOST";
+        const string source =
+            "https://image-user:image-password@cdn.example.test/private/avatar.png?token=do-not-log";
+        const string automationId = "MarkdownViewer-RepoReadme";
+        string path = Path.Combine(
+            Path.GetTempPath(),
+            $"jithub-image-unavailable-audit-{Guid.NewGuid():N}.ndjson");
+        string? previousEvidencePath = Environment.GetEnvironmentVariable(evidenceVariable);
+        string? previousTargetHost = Environment.GetEnvironmentVariable(targetHostVariable);
+
+        try
+        {
+            Environment.SetEnvironmentVariable(evidenceVariable, path);
+            Environment.SetEnvironmentVariable(targetHostVariable, null);
+            MarkdownLifecycleAutomationBridge.ConfigureLaunchOptions(true, null);
+            MarkdownLifecycleAutomationBridge.RecordImageUnavailable(
+                automationId,
+                source,
+                MarkdownImageUnavailableReason.InsecureRemoteContent);
+
+            string line = Assert.Single(File.ReadAllLines(path));
+            using JsonDocument document = JsonDocument.Parse(line);
+            JsonElement signal = document.RootElement;
+            Assert.Equal(automationId, signal.GetProperty("Host").GetString());
+            Assert.Equal("InsecureRemoteContent", signal.GetProperty("Reason").GetString());
+            Assert.Equal("absolute-https", signal.GetProperty("SourceKind").GetString());
+            Assert.Equal(
+                Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(source))).ToLowerInvariant(),
+                signal.GetProperty("SourceSha256").GetString());
+            Assert.Equal(
+                MarkdownImageResolutionAuditDiagnostic.GetSourceMatchSha256(source),
+                signal.GetProperty("SourceMatchSha256").EnumerateArray()
+                    .Select(static value => value.GetString()!)
+                    .ToArray());
+            Assert.False(signal.TryGetProperty("Source", out _));
+            Assert.DoesNotContain("image-password", line, StringComparison.Ordinal);
+            Assert.DoesNotContain("do-not-log", line, StringComparison.Ordinal);
+            Assert.DoesNotContain("private/avatar.png", line, StringComparison.Ordinal);
+        }
+        finally
+        {
+            MarkdownLifecycleAutomationBridge.ConfigureLaunchOptions(false, null);
+            Environment.SetEnvironmentVariable(evidenceVariable, previousEvidencePath);
+            Environment.SetEnvironmentVariable(targetHostVariable, previousTargetHost);
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void ImageUnavailableIdentityCanMatchRepositoryRelativeSourceToBrowserRoute()
+    {
+        string markdownSource = "./assets/images/character.png";
+        string browserSource = "https://github.com/example/project/blob/main/assets/images/character.png?raw=true";
+
+        string[] sourceHashes = MarkdownImageResolutionAuditDiagnostic.GetSourceMatchSha256(markdownSource);
+        string[] browserHashes = MarkdownImageResolutionAuditDiagnostic.GetSourceMatchSha256(browserSource);
+
+        Assert.NotEmpty(sourceHashes);
+        Assert.NotEmpty(browserHashes);
+        Assert.NotEmpty(sourceHashes.Intersect(browserHashes, StringComparer.Ordinal));
+        Assert.All(sourceHashes.Concat(browserHashes), static hash => Assert.Equal(64, hash.Length));
+        Assert.DoesNotContain("character.png", string.Join(string.Empty, sourceHashes), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ImageResolutionAuditBudget_IsPerDocumentBoundedAndResettable()
+    {
+        var budget = new MarkdownImageResolutionAuditBudget(
+            maximumDocuments: 2,
+            maximumDiagnosticsPerDocument: 2);
+        MarkdownImageResolutionAuditDiagnostic firstDocument = CreateDiagnostic("docs/README.md");
+        MarkdownImageResolutionAuditDiagnostic secondDocument = CreateDiagnostic("examples/README.md");
+        MarkdownImageResolutionAuditDiagnostic thirdDocument = CreateDiagnostic("nested/README.md");
+
+        Assert.True(budget.TryReserve(firstDocument));
+        Assert.True(budget.TryReserve(firstDocument));
+        Assert.False(budget.TryReserve(firstDocument));
+        Assert.True(budget.TryReserve(secondDocument));
+        Assert.True(budget.TryReserve(secondDocument));
+        Assert.False(budget.TryReserve(thirdDocument));
+
+        budget.Reset();
+        Assert.True(budget.TryReserve(thirdDocument));
+
+        var baseUriBudget = new MarkdownImageResolutionAuditBudget(
+            maximumDocuments: 2,
+            maximumDiagnosticsPerDocument: 1);
+        MarkdownImageResolutionAuditDiagnostic baseUriDocumentA = CreateBaseUriDiagnostic(
+            "https://user:secret@example.test/docs/a/README.md?token=one");
+        MarkdownImageResolutionAuditDiagnostic baseUriDocumentB = CreateBaseUriDiagnostic(
+            "https://other:secret@example.test/docs/b/README.md?token=two");
+        Assert.True(baseUriBudget.TryReserve(baseUriDocumentA));
+        Assert.False(baseUriBudget.TryReserve(baseUriDocumentA));
+        Assert.True(baseUriBudget.TryReserve(baseUriDocumentB));
+        Assert.DoesNotContain("secret", baseUriDocumentA.DocumentPathSha256, StringComparison.Ordinal);
+        Assert.DoesNotContain("token=one", baseUriDocumentA.DocumentPathSha256, StringComparison.Ordinal);
+
+        static MarkdownImageResolutionAuditDiagnostic CreateDiagnostic(string path)
+        {
+            var source = new MarkdownDocumentSource(
+                $"repository-file:octo/repo:main:{path}",
+                "octo",
+                "repo",
+                "main",
+                path);
+            var context = new MarkdownImageResolveContext(
+                new Uri($"https://github.com/octo/repo/blob/main/{path}"),
+                path,
+                AllowThirdPartyRemoteImages: false,
+                DocumentSource: source);
+            return MarkdownImageResolutionAuditDiagnostic.Create(
+                "missing.png",
+                context,
+                MarkdownImageResolution.Unavailable);
+        }
+
+        static MarkdownImageResolutionAuditDiagnostic CreateBaseUriDiagnostic(string baseUri)
+        {
+            var context = new MarkdownImageResolveContext(new Uri(baseUri));
+            return MarkdownImageResolutionAuditDiagnostic.Create(
+                "missing.png",
+                context,
+                MarkdownImageResolution.Unavailable);
+        }
+    }
+
+    [Fact]
+    public void ImageResolutionAuditDiagnostic_HashesDocumentAndRequestPathsWithoutUrlCredentials()
+    {
+        var documentSource = new MarkdownDocumentSource(
+            "repository-file:sherlock-project/sherlock:commit:docs/README.md",
+            "sherlock-project",
+            "sherlock",
+            "e40a45ec2a074b90703b3b4b842c8a3adbd6ada3",
+            "docs/README.md");
+        var context = new MarkdownImageResolveContext(
+            new Uri("https://github.com/sherlock-project/sherlock/blob/e40a45ec2a074b90703b3b4b842c8a3adbd6ada3/docs/README.md"),
+            "docs/README.md",
+            AllowThirdPartyRemoteImages: false,
+            DocumentSource: documentSource);
+
+        MarkdownImageResolutionAuditDiagnostic diagnostic = MarkdownImageResolutionAuditDiagnostic.Create(
+            "images/sherlock-logo.png",
+            context,
+            MarkdownImageResolution.Unavailable);
+
+        Assert.Equal("fetch-or-resolver-miss", diagnostic.FailureClass);
+        Assert.Equal("repository", diagnostic.DocumentContextKind);
+        Assert.Equal("relative", diagnostic.SourceKind);
+        Assert.Equal("repository-relative", diagnostic.RouteClass);
+        Assert.Equal(64, diagnostic.DocumentPathSha256?.Length);
+        Assert.Equal(64, diagnostic.DocumentRefIdentitySha256?.Length);
+        Assert.Equal("raw.githubusercontent.com", diagnostic.AttemptedUriHost);
+        Assert.Equal(64, diagnostic.AttemptedUriPathSha256?.Length);
+        Assert.DoesNotContain("sherlock-project", diagnostic.DocumentPathSha256, StringComparison.Ordinal);
+        Assert.DoesNotContain("sherlock-logo.png", diagnostic.AttemptedUriPathSha256, StringComparison.Ordinal);
+        Assert.DoesNotContain("https://", diagnostic.AttemptedUriHost, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ImageResolutionAuditDiagnostic_ClassifiesMissingContextAndPolicyWithoutLoggingQuery()
+    {
+        MarkdownImageResolutionAuditDiagnostic missingContext = MarkdownImageResolutionAuditDiagnostic.Create(
+            "./assets/screenshot-1.png",
+            null,
+            MarkdownImageResolution.Unavailable);
+
+        Assert.Equal("missing-document-context", missingContext.FailureClass);
+        Assert.Equal("missing", missingContext.DocumentContextKind);
+        Assert.Equal("relative-missing-document-context", missingContext.RouteClass);
+        Assert.Null(missingContext.DocumentPathSha256);
+        Assert.Null(missingContext.DocumentRefIdentitySha256);
+        Assert.Null(missingContext.AttemptedUriHost);
+        Assert.Null(missingContext.AttemptedUriPathSha256);
+
+        const string secretQuery = "token=not-for-evidence";
+        MarkdownImageResolutionAuditDiagnostic policyBlocked = MarkdownImageResolutionAuditDiagnostic.Create(
+            $"https://images.example.test/private.png?{secretQuery}",
+            null,
+            MarkdownImageResolution.Blocked(MarkdownImageUnavailableReason.RemoteContentBlocked));
+
+        Assert.Equal("policy", policyBlocked.FailureClass);
+        Assert.Equal("absolute-uri", policyBlocked.RouteClass);
+        Assert.Equal("images.example.test", policyBlocked.AttemptedUriHost);
+        Assert.Equal(64, policyBlocked.AttemptedUriPathSha256?.Length);
+        Assert.DoesNotContain(secretQuery, policyBlocked.AttemptedUriPathSha256, StringComparison.Ordinal);
+        Assert.DoesNotContain("private.png", policyBlocked.AttemptedUriPathSha256, StringComparison.Ordinal);
+        Assert.DoesNotContain("https://", policyBlocked.AttemptedUriHost, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -296,6 +522,170 @@ public sealed class MarkdownRendererAuditListenerTests
     }
 
     [Fact]
+    public void SvgStageTracePersistsOnlyNumericMetadataWhenExplicitlyEnabled()
+    {
+        const string pathVariable = "JITHUB_MARKDOWN_SVG_STAGE_EVIDENCE_PATH";
+        const string fixtureVariable = "JITHUB_MARKDOWN_LIFECYCLE_FIXTURE";
+        string path = Path.Combine(
+            Path.GetTempPath(),
+            $"jithub-svg-stage-audit-{Guid.NewGuid():N}.ndjson");
+        string? previousPath = Environment.GetEnvironmentVariable(pathVariable);
+        string? previousFixture = Environment.GetEnvironmentVariable(fixtureVariable);
+        try
+        {
+            Environment.SetEnvironmentVariable(fixtureVariable, null);
+            Environment.SetEnvironmentVariable(pathVariable, path);
+            MarkdownLifecycleAutomationBridge.ConfigureLaunchOptions(false, null);
+            MarkdownLifecycleAutomationBridge.RecordSvgWorkStage(
+                workId: 14,
+                elapsedStopwatchTicks: Stopwatch.Frequency / 4,
+                packedMetrics: PackSvgStageMetrics(stageId: 6, sourceBytes: 777, targetPixels: 12_345));
+            Assert.False(File.Exists(path));
+
+            MarkdownLifecycleAutomationBridge.ConfigureLaunchOptions(true, null);
+            MarkdownLifecycleAutomationBridge.RecordSvgWorkStage(
+                workId: 14,
+                elapsedStopwatchTicks: Stopwatch.Frequency / 4,
+                packedMetrics: PackSvgStageMetrics(stageId: 6, sourceBytes: 777, targetPixels: 12_345));
+            MarkdownLifecycleAutomationBridge.RecordSvgWorkStage(
+                workId: 14,
+                elapsedStopwatchTicks: Stopwatch.Frequency / 4,
+                packedMetrics: PackSvgStageMetrics(stageId: 15, sourceBytes: 777, targetPixels: 12_345));
+            MarkdownLifecycleAutomationBridge.RecordSvgWorkStage(
+                workId: 14,
+                elapsedStopwatchTicks: Stopwatch.Frequency / 4,
+                packedMetrics: PackSvgStageMetrics(stageId: 16, sourceBytes: 777, targetPixels: 12_345));
+
+            string[] lines = File.ReadAllLines(path);
+            Assert.Equal(3, lines.Length);
+            using JsonDocument document = JsonDocument.Parse(lines[0]);
+            JsonElement signal = document.RootElement;
+            Assert.Equal(
+                new[]
+                {
+                    "ProcessId", "EventId", "WorkId", "StageId", "SourceBytes", "TargetPixels",
+                    "ElapsedStopwatchTicks", "ElapsedMilliseconds", "Timestamp",
+                },
+                signal.EnumerateObject().Select(property => property.Name).ToArray());
+            Assert.Equal(Environment.ProcessId, signal.GetProperty("ProcessId").GetInt32());
+            Assert.Equal(12, signal.GetProperty("EventId").GetInt32());
+            Assert.Equal(14, signal.GetProperty("WorkId").GetInt64());
+            Assert.Equal(6, signal.GetProperty("StageId").GetInt32());
+            Assert.Equal(777, signal.GetProperty("SourceBytes").GetInt64());
+            Assert.Equal(12_345, signal.GetProperty("TargetPixels").GetInt64());
+            Assert.Equal(Stopwatch.Frequency / 4, signal.GetProperty("ElapsedStopwatchTicks").GetInt64());
+            Assert.InRange(signal.GetProperty("ElapsedMilliseconds").GetDouble(), 249, 251);
+            Assert.Equal(JsonValueKind.String, signal.GetProperty("Timestamp").ValueKind);
+            Assert.False(signal.TryGetProperty("Source", out _));
+            Assert.False(signal.TryGetProperty("Url", out _));
+            Assert.False(signal.TryGetProperty("ContentSha256", out _));
+            Assert.False(signal.TryGetProperty("Formula", out _));
+
+            using JsonDocument extendedStageDocument = JsonDocument.Parse(lines[1]);
+            JsonElement extendedStage = extendedStageDocument.RootElement;
+            Assert.Equal(12, extendedStage.GetProperty("EventId").GetInt32());
+            Assert.Equal(15, extendedStage.GetProperty("StageId").GetInt32());
+            Assert.Equal(777, extendedStage.GetProperty("SourceBytes").GetInt64());
+            Assert.Equal(12_345, extendedStage.GetProperty("TargetPixels").GetInt64());
+
+            using JsonDocument dispatchStageDocument = JsonDocument.Parse(lines[2]);
+            JsonElement dispatchStage = dispatchStageDocument.RootElement;
+            Assert.Equal(16, dispatchStage.GetProperty("StageId").GetInt32());
+            Assert.Equal(777, dispatchStage.GetProperty("SourceBytes").GetInt64());
+            Assert.Equal(12_345, dispatchStage.GetProperty("TargetPixels").GetInt64());
+        }
+        finally
+        {
+            MarkdownLifecycleAutomationBridge.ConfigureLaunchOptions(false, null);
+            Environment.SetEnvironmentVariable(pathVariable, previousPath);
+            Environment.SetEnvironmentVariable(fixtureVariable, previousFixture);
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+    [Fact]
+    public void SvgPipeStagesAreBoundedNumericAuditEvidence()
+    {
+        const string variable = "JITHUB_MARKDOWN_SVG_STAGE_EVIDENCE_PATH";
+        string path = Path.Combine(
+            Path.GetTempPath(),
+            $"jithub-svg-pipe-stage-{Guid.NewGuid():N}.ndjson");
+        long workId = CreateUniqueWorkId();
+        string? previousPath = Environment.GetEnvironmentVariable(variable);
+        try
+        {
+            Environment.SetEnvironmentVariable(variable, path);
+            MarkdownLifecycleAutomationBridge.ConfigureLaunchOptions(true, null);
+            foreach (int stageId in new[] { 117, 118, 119, 120 })
+            {
+                MarkdownLifecycleAutomationBridge.RecordSvgWorkerStage(
+                    workId,
+                    stageId,
+                    workerInstanceId: 1,
+                    requestId: 2,
+                    documentId: 3,
+                    elapsedStopwatchTicks: Stopwatch.Frequency / 50,
+                    workerCpuTicks: -1,
+                    sourceBytes: 0,
+                    targetPixels: 0);
+            }
+            MarkdownLifecycleAutomationBridge.RecordSvgWorkerStage(
+                workId,
+                stageId: 117,
+                workerInstanceId: 1,
+                requestId: 2,
+                documentId: 3,
+                elapsedStopwatchTicks: Stopwatch.Frequency / 50,
+                workerCpuTicks: -1,
+                sourceBytes: 1,
+                targetPixels: 0);
+            MarkdownLifecycleAutomationBridge.RecordSvgWorkerStage(
+                workId,
+                stageId: 121,
+                workerInstanceId: 1,
+                requestId: 2,
+                documentId: 3,
+                elapsedStopwatchTicks: Stopwatch.Frequency / 50,
+                workerCpuTicks: -1,
+                sourceBytes: 0,
+                targetPixels: 0);
+
+            string[] lines = ReadCorrelatedSvgWorkerStageRows(path, workId, 1, 2, 3);
+            Assert.Equal(4, lines.Length);
+            for (int index = 0; index < lines.Length; index++)
+            {
+                using JsonDocument document = JsonDocument.Parse(lines[index]);
+                JsonElement signal = document.RootElement;
+                Assert.Equal(117 + index, signal.GetProperty("StageId").GetInt32());
+                Assert.Equal(Environment.ProcessId, signal.GetProperty("ProcessId").GetInt32());
+                Assert.Equal(13, signal.GetProperty("EventId").GetInt32());
+                Assert.Equal(workId, signal.GetProperty("WorkId").GetInt64());
+                Assert.Equal(1, signal.GetProperty("WorkerInstanceId").GetInt64());
+                Assert.Equal(2, signal.GetProperty("RequestId").GetInt64());
+                Assert.Equal(3, signal.GetProperty("DocumentId").GetInt64());
+                Assert.Equal(Stopwatch.Frequency / 50, signal.GetProperty("ElapsedStopwatchTicks").GetInt64());
+                Assert.Equal(-1, signal.GetProperty("WorkerCpuTicks").GetInt64());
+                Assert.Equal(0, signal.GetProperty("SourceBytes").GetInt64());
+                Assert.Equal(0, signal.GetProperty("TargetPixels").GetInt64());
+                Assert.InRange(signal.GetProperty("ElapsedMilliseconds").GetDouble(), 19, 21);
+                Assert.Equal(-1d, signal.GetProperty("WorkerCpuMilliseconds").GetDouble());
+                Assert.Equal(JsonValueKind.String, signal.GetProperty("Timestamp").ValueKind);
+                Assert.False(signal.TryGetProperty("Source", out _));
+                Assert.False(signal.TryGetProperty("Url", out _));
+                Assert.False(signal.TryGetProperty("Hash", out _));
+            }
+        }
+        finally
+        {
+            MarkdownLifecycleAutomationBridge.ConfigureLaunchOptions(false, null);
+            Environment.SetEnvironmentVariable(variable, previousPath);
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+#endif
+
+    [Fact]
     public void ParsePipelineRecorderIsAuditOnlyAndScopedToLatestOwner()
     {
         MarkdownLifecycleAutomationBridge.ConfigureLaunchOptions(true, null);
@@ -384,5 +774,32 @@ public sealed class MarkdownRendererAuditListenerTests
         public void Stage(long id, long stage, long elapsedStopwatchTicks) =>
             WriteEvent(2, id, stage, elapsedStopwatchTicks);
     }
+
+    private static long PackSvgStageMetrics(int stageId, long sourceBytes, long targetPixels) =>
+        (((long)stageId & 0x1F) << 49) |
+        ((Math.Min(sourceBytes, 0x00FF_FFFFL) & 0x00FF_FFFFL) << 25) |
+        (Math.Min(targetPixels, 0x01FF_FFFFL) & 0x01FF_FFFFL);
+
+    private static long CreateUniqueWorkId() => Random.Shared.NextInt64(1, long.MaxValue);
+
+    private static string[] ReadCorrelatedSvgWorkerStageRows(
+        string path,
+        long workId,
+        long workerInstanceId,
+        long requestId,
+        long documentId) =>
+        File.ReadAllLines(path)
+            .Where(line =>
+            {
+                using JsonDocument document = JsonDocument.Parse(line);
+                JsonElement signal = document.RootElement;
+                return signal.GetProperty("ProcessId").GetInt32() == Environment.ProcessId &&
+                    signal.GetProperty("EventId").GetInt32() == 13 &&
+                    signal.GetProperty("WorkId").GetInt64() == workId &&
+                    signal.GetProperty("WorkerInstanceId").GetInt64() == workerInstanceId &&
+                    signal.GetProperty("RequestId").GetInt64() == requestId &&
+                    signal.GetProperty("DocumentId").GetInt64() == documentId;
+            })
+            .ToArray();
 
 }

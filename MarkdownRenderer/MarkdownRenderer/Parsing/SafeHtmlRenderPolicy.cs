@@ -26,13 +26,13 @@ internal sealed class SafeHtmlRenderPolicy
             : new HashSet<string>(allowedStyleClasses, StringComparer.Ordinal);
     }
 
-    internal bool EnableLinks { get; }
+    internal readonly bool EnableLinks;
 
-    internal bool EnableImages { get; }
+    internal readonly bool EnableImages;
 
-    internal bool RenderUnknownElementsLiterally { get; }
+    internal readonly bool RenderUnknownElementsLiterally;
 
-    internal SafeHtmlParseLimits Limits { get; }
+    internal readonly SafeHtmlParseLimits Limits;
 
     internal bool IsStyleClassAllowed(string className) =>
         _allowedStyleClasses.Contains(className);

@@ -31,9 +31,9 @@ internal sealed class MarkdownTextFormatCache
         _boundaries = boundaries;
     }
 
-    internal MarkdownSemanticDocument Document { get; }
+    internal readonly MarkdownSemanticDocument Document;
 
-    internal ThemeSnapshot? Theme { get; }
+    internal readonly ThemeSnapshot? Theme;
 
     internal int RunCount => _runs.Length;
 
@@ -157,7 +157,7 @@ internal sealed class MarkdownTextFormatCache
 
             string atomicElementKey = span.VectorSceneBox?.ElementKey ?? MarkdownElementKeys.Body;
             ElementStyle atomicStyle = span.VectorSceneBox is { } vector
-                ? vector.ResolveSemanticTextStyle(span.VectorSemanticIndex)
+                ? span.VectorTextStyle ?? vector.ResolvedStyle
                 : ResolveStyle(theme, MarkdownElementKeys.Body);
             result.Add(new MarkdownTextStyleRun(
                 span.TextStart,
@@ -178,7 +178,7 @@ internal sealed class MarkdownTextFormatCache
         int cumulative = 0;
         foreach (InlineRun run in inline.Runs)
         {
-            int length = run.Text.Length;
+            int length = run.TextLength;
             if (length <= 0)
                 continue;
 
@@ -293,10 +293,18 @@ internal sealed class MarkdownTextFormatCacheStore
     internal void Invalidate() => Volatile.Write(ref _cache, null);
 }
 
-internal readonly record struct MarkdownTextStyleRun(
+internal readonly struct MarkdownTextStyleRun(
     int Start,
     int End,
     string ElementKey,
     bool IsSubscript,
     bool IsSuperscript,
-    ElementStyle Style);
+    ElementStyle Style)
+{
+    internal int Start { get; init; } = Start;
+    internal int End { get; init; } = End;
+    internal readonly string ElementKey = ElementKey;
+    internal readonly bool IsSubscript = IsSubscript;
+    internal readonly bool IsSuperscript = IsSuperscript;
+    internal readonly ElementStyle Style = Style;
+}

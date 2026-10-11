@@ -3,6 +3,7 @@ using MarkdownRenderer.Document;
 using MarkdownRenderer.GitHub;
 using MarkdownRenderer.Html;
 using MarkdownRenderer.Hosting;
+using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Math;
@@ -11,7 +12,9 @@ using MarkdownRenderer.Parsing;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Theming;
 using Microsoft.Graphics.Canvas;
+using Microsoft.Graphics.Canvas.Text;
 using Microsoft.UI.Xaml;
+using Windows.Foundation;
 using Windows.UI;
 using Xunit;
 
@@ -165,6 +168,552 @@ public sealed class SafeHtmlRenderingTests
     }
 
     [Fact]
+    public void RankEightOpeningHtmlFlowsThroughMarkdownParserAsSiblingLayoutBlocks()
+    {
+        const string source =
+            "<p align=\"center\">\n" +
+            "  <a href=\"https://roadmap.sh/\"><img src=\"https://roadmap.sh/img/brand.png\" height=\"70\"></a>\n" +
+            "  <h2 align=\"center\"><a href=\"https://roadmap.sh\">roadmap.sh</a></h2>\n" +
+            "  <p align=\"center\">Community-driven roadmaps, articles and resources for developers</p>\n" +
+            "  <p align=\"center\">\n" +
+            "    <a href=\"https://roadmap.sh/roadmaps\">\n" +
+            "\t        <img src=\"https://img.shields.io/badge/%E2%9C%A8-Roadmaps%20-0a0a0a.svg?style=flat&colorA=0a0a0a\" alt=\"roadmaps\" />\n" +
+            "    </a>\n" +
+            "    <a href=\"https://roadmap.sh/best-practices\">\n" +
+            "\t        <img src=\"https://img.shields.io/badge/%E2%9C%A8-Best%20Practices-0a0a0a.svg?style=flat&colorA=0a0a0a\" alt=\"best practices\" />\n" +
+            "    </a>\n" +
+            "    <a href=\"https://roadmap.sh/questions\">\n" +
+            "\t        <img src=\"https://img.shields.io/badge/%E2%9C%A8-Questions-0a0a0a.svg?style=flat&colorA=0a0a0a\" alt=\"videos\" />\n" +
+            "    </a>\n" +
+            "    <a href=\"https://www.youtube.com/channel/UCA0H2KIWgWTwpTFjSxp0now?sub_confirmation=1\">\n" +
+            "\t        <img src=\"https://img.shields.io/badge/%E2%9C%A8-YouTube%20Channel-0a0a0a.svg?style=flat&colorA=0a0a0a\" alt=\"roadmaps\" />\n" +
+            "    </a>\n" +
+            "  </p>\n" +
+            "</p>";
+
+        // These are the canonical Primer profile's paragraph and h2 margins.
+        // The test checks the production path with unequal adjacent margins,
+        // where CSS normal flow keeps max(16px, 24px), not their 40px sum.
+        var bodyStyle = new ElementStyle
+        {
+            FontSize = 16,
+            LineHeightMultiplier = 1.5f,
+            Margin = new Thickness(0, 0, 0, 16),
+        };
+        var heading2Style = new ElementStyle
+        {
+            FontSize = 24,
+            FontWeight = new Windows.UI.Text.FontWeight { Weight = 600 },
+            LineHeightMultiplier = 1.25f,
+            Margin = new Thickness(0, 24, 0, 16),
+        };
+        var profileStyles = new Dictionary<string, ElementStyle>(StringComparer.Ordinal)
+        {
+            [MarkdownElementKeys.Body] = bodyStyle,
+            [MarkdownElementKeys.Heading2] = heading2Style,
+        };
+
+        // BuildGitHub runs Markdig's GFM pipeline and registered
+        // HtmlBlockRenderer; this checks actual production boxes and margins.
+        using LayoutSnapshot snapshot = BuildGitHub(
+            source,
+            keyedStyles: profileStyles,
+            availableWidth: 660);
+        StackBox htmlBlock = Assert.IsType<StackBox>(Assert.Single(snapshot.Blocks));
+        Assert.Equal(4, htmlBlock.Children.Count);
+        Assert.True(htmlBlock.CollapsePositiveAdjacentMargins);
+
+        InlineContainerBox logo = Assert.IsType<InlineContainerBox>(htmlBlock.Children[0]);
+        InlineContainerBox heading = Assert.IsType<InlineContainerBox>(htmlBlock.Children[1]);
+        InlineContainerBox subtitle = Assert.IsType<InlineContainerBox>(htmlBlock.Children[2]);
+        InlineContainerBox badges = Assert.IsType<InlineContainerBox>(htmlBlock.Children[3]);
+        Assert.Equal(MarkdownElementKeys.Heading2, heading.ElementKey);
+        Assert.Contains(heading.Runs.OfType<LinkRun>(), static run => run.Text == "roadmap.sh");
+        Assert.Contains(subtitle.Runs, static run => run.Text.Contains("Community-driven roadmaps", StringComparison.Ordinal));
+        Assert.Single(logo.Runs.OfType<InlineImageRun>(), static image => image.Url.EndsWith("/brand.png", StringComparison.Ordinal));
+        Assert.Equal(4, badges.Runs.OfType<InlineImageRun>().Count());
+        Assert.DoesNotContain(FlattenRuns(snapshot), static run => run.Text.Contains("<h2", StringComparison.Ordinal));
+
+        Assert.Equal(new Thickness(0, 0, 0, 16), logo.Margin);
+        Assert.Equal(new Thickness(0, 24, 0, 16), heading.Margin);
+        Assert.Equal(40, logo.Margin.Bottom + heading.Margin.Top, precision: 1);
+        double headingContentTop = heading.Bounds.Top + heading.Margin.Top;
+        double logoContentBottom = logo.Bounds.Bottom - logo.Margin.Bottom;
+        Assert.Equal(24, headingContentTop - logoContentBottom, precision: 1);
+
+        // The opt-in is deliberately limited to safe-HTML local flow. Plain
+        // Markdown continues to add its paragraph-bottom and heading-top
+        // margins, protecting the application-wide block layout contract.
+        using LayoutSnapshot markdownSnapshot = BuildGitHub(
+            "Paragraph.\n\n## Heading",
+            keyedStyles: profileStyles,
+            availableWidth: 660);
+        InlineContainerBox markdownParagraph = Assert.IsType<InlineContainerBox>(markdownSnapshot.Blocks[0]);
+        InlineContainerBox markdownHeading = Assert.IsType<InlineContainerBox>(markdownSnapshot.Blocks[1]);
+        double markdownGap = markdownHeading.Bounds.Top + markdownHeading.Margin.Top -
+            (markdownParagraph.Bounds.Bottom - markdownParagraph.Margin.Bottom);
+        Assert.Equal(40, markdownGap, precision: 1);
+    }
+
+    [Fact]
+    public void PictureLogoKeepsCenteredLinksAndFollowingPageContentBelowItsBounds()
+    {
+        const string source = """
+            <p align="center"><picture>
+            <source media="(prefers-color-scheme: light)" srcset="https://example.test/rust-logo.svg">
+            <img src="https://example.test/rust-logo.svg" alt="Rust" width="311" height="155">
+            </picture><br>
+            <a href="https://www.rust-lang.org">Rust homepage</a> |
+            <a href="https://doc.rust-lang.org">API documentation</a></p>
+            <p>Following page content remains below the logo.</p>
+            """;
+
+        using MarkdownEngine engine = new MarkdownEngineBuilder()
+            .UseGitHubReadme()
+            .Build();
+        var registry = Assert.IsType<MarkdownExtensionRegistry>(engine.PresentationConfiguration);
+        using LayoutSnapshot snapshot = Build(source, registry, availableWidth: 660f);
+        InlineContainerBox host = Assert.Single(
+            FlattenBoxes(snapshot).OfType<InlineContainerBox>(),
+            static box => box.Runs.OfType<InlineImageRun>().Any() &&
+                          box.Runs.OfType<LinkRun>().Count() == 2);
+        InlineImageRun image = Assert.Single(host.Runs.OfType<InlineImageRun>());
+        Rect imageBounds = Assert.Single(host.EnumerateInlineImageRects()).Rect;
+        Rect[] linkBounds = host.Runs
+            .OfType<LinkRun>()
+            .Select(link => host.GetRunRect(link.InlineIndex))
+            .ToArray();
+
+        Assert.Equal("https://example.test/rust-logo.svg", image.Url);
+        Assert.Equal(311d, imageBounds.Width, precision: 1);
+        Assert.Equal(155d, imageBounds.Height, precision: 1);
+        Assert.All(linkBounds, bounds => Assert.True(
+            bounds.Top >= imageBounds.Bottom - 0.5,
+            $"Centered link at y={bounds.Top:F2} overlaps the picture ending at y={imageBounds.Bottom:F2}."));
+        Assert.True(
+            snapshot.Size.Height >= imageBounds.Bottom,
+            $"Document height {snapshot.Size.Height:F2} does not contain the picture ending at y={imageBounds.Bottom:F2}.");
+        Assert.Contains(
+            FlattenRuns(snapshot),
+            static run => run is TextRun && run.Text.Contains("Following page content", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void SplitCenteredDivScopeAlignsClosingHtmlBlockButNotFollowingMarkdown()
+    {
+        const string source = """
+            <div align="center">
+
+            <h3>Inside centered scope</h3></div>
+
+            Outside paragraph.
+            """;
+
+        using LayoutSnapshot snapshot = BuildGitHub(source);
+        InlineContainerBox heading = Assert.Single(
+            FlattenBoxes(snapshot).OfType<InlineContainerBox>(),
+            static box => box.ElementKey == MarkdownElementKeys.Heading3 &&
+                          box.Runs.Any(run => run.Text == "Inside centered scope"));
+        InlineContainerBox outsideParagraph = Assert.Single(
+            FlattenBoxes(snapshot).OfType<InlineContainerBox>(),
+            static box => box.ElementKey == MarkdownElementKeys.Body &&
+                          box.Runs.Any(run => run.Text == "Outside paragraph."));
+
+        Assert.Equal(CanvasHorizontalAlignment.Center, heading.TextAlignment);
+        Assert.Equal(CanvasHorizontalAlignment.Left, outsideParagraph.TextAlignment);
+    }
+
+    [Fact]
+    public void SplitCenteredDivScopeDoesNotOverrideNestedHeadingAlignment()
+    {
+        const string source = """
+            <div align="center">
+
+            <h3 align="right">Nested right heading</h3></div>
+            """;
+
+        using LayoutSnapshot snapshot = BuildGitHub(source);
+        InlineContainerBox heading = Assert.Single(
+            FlattenBoxes(snapshot).OfType<InlineContainerBox>(),
+            static box => box.ElementKey == MarkdownElementKeys.Heading3 &&
+                          box.Runs.Any(run => run.Text == "Nested right heading"));
+
+        Assert.Equal(CanvasHorizontalAlignment.Right, heading.TextAlignment);
+    }
+
+    [Fact]
+    public void SplitCenteredDivScopeKeepsLocalAndInheritedParagraphAlignments()
+    {
+        const string source = """
+            <div align="center">
+
+            <p align="right">Right paragraph</p><p>Inherited centered paragraph</p></div>
+
+            Outside paragraph.
+            """;
+
+        using LayoutSnapshot snapshot = BuildGitHub(source);
+        InlineContainerBox rightParagraph = Assert.Single(
+            FlattenBoxes(snapshot).OfType<InlineContainerBox>(),
+            static box => box.ElementKey == MarkdownElementKeys.Body &&
+                          box.Runs.Any(run => run.Text == "Right paragraph"));
+        InlineContainerBox inheritedParagraph = Assert.Single(
+            FlattenBoxes(snapshot).OfType<InlineContainerBox>(),
+            static box => box.ElementKey == MarkdownElementKeys.Body &&
+                          box.Runs.Any(run => run.Text == "Inherited centered paragraph"));
+        InlineContainerBox outsideParagraph = Assert.Single(
+            FlattenBoxes(snapshot).OfType<InlineContainerBox>(),
+            static box => box.ElementKey == MarkdownElementKeys.Body &&
+                          box.Runs.Any(run => run.Text == "Outside paragraph."));
+
+        Assert.Equal(CanvasHorizontalAlignment.Right, rightParagraph.TextAlignment);
+        Assert.Equal(CanvasHorizontalAlignment.Center, inheritedParagraph.TextAlignment);
+        Assert.Equal(CanvasHorizontalAlignment.Left, outsideParagraph.TextAlignment);
+    }
+
+    [Fact]
+    public void SplitInlineFragmentsInCenteredDivKeepBadgeRowsTogetherAndIgnoreCommentBoxes()
+    {
+        const string source = """
+            <div align="center">
+
+            <a><img src="https://example.test/first-row.png" width="40" height="20" alt="first row"></a>
+
+            <!-- a source-only separator between badge rows -->
+
+            <br><a><img src="https://example.test/second-row.png" width="40" height="20" alt="second row"></a>
+
+            </div>
+            """;
+
+        using LayoutSnapshot snapshot = BuildGitHub(source);
+        InlineContainerBox firstRow = Assert.Single(
+            FlattenBoxes(snapshot).OfType<InlineContainerBox>(),
+            static box => box.Runs.OfType<InlineImageRun>()
+                .Any(static image => image.Url.EndsWith("/first-row.png", StringComparison.Ordinal)));
+        InlineContainerBox secondRow = Assert.Single(
+            FlattenBoxes(snapshot).OfType<InlineContainerBox>(),
+            static box => box.Runs.OfType<InlineImageRun>()
+                .Any(static image => image.Url.EndsWith("/second-row.png", StringComparison.Ordinal)));
+        Rect firstImage = Assert.Single(firstRow.EnumerateInlineImageRects()).Rect;
+        Rect secondImage = Assert.Single(secondRow.EnumerateInlineImageRects()).Rect;
+
+        Assert.True(StackBox.SharesSafeHtmlInlineFlow(firstRow, secondRow));
+        Assert.True(
+            secondImage.Top - firstImage.Bottom <= 6,
+            $"Adjacent badge rows in one HTML flow are separated by {secondImage.Top - firstImage.Bottom:F2} DIPs.");
+        Assert.DoesNotContain(snapshot.Blocks, static block => block is StackBox { Children.Count: 0 });
+    }
+
+    [Fact]
+    public void SeparateHtmlParagraphsKeepTheirBlockSpacingInsidePersistentDiv()
+    {
+        const string source = """
+            <div align="center">
+
+            <p>First paragraph</p>
+
+            <p>Second paragraph</p>
+
+            </div>
+            """;
+
+        using LayoutSnapshot snapshot = BuildGitHub(
+            source,
+            new ElementStyle { Margin = new Thickness(0, 0, 0, 8) });
+        InlineContainerBox firstParagraph = Assert.Single(
+            FlattenBoxes(snapshot).OfType<InlineContainerBox>(),
+            static box => box.Runs.Any(static run => run.Text == "First paragraph"));
+        InlineContainerBox secondParagraph = Assert.Single(
+            FlattenBoxes(snapshot).OfType<InlineContainerBox>(),
+            static box => box.Runs.Any(static run => run.Text == "Second paragraph"));
+        InlineRun firstText = Assert.Single(firstParagraph.Runs, static run => run.Text == "First paragraph");
+        InlineRun secondText = Assert.Single(secondParagraph.Runs, static run => run.Text == "Second paragraph");
+        Rect firstTextBounds = firstParagraph.GetRunRect(firstText.InlineIndex);
+        Rect secondTextBounds = secondParagraph.GetRunRect(secondText.InlineIndex);
+        double visibleTextGap = secondTextBounds.Top - firstTextBounds.Bottom;
+
+        Assert.False(StackBox.SharesSafeHtmlInlineFlow(firstParagraph, secondParagraph));
+        Assert.True(
+            visibleTextGap >= 7.5,
+            $"Distinct HTML paragraph blocks must retain their normal spacing; the visible text gap was {visibleTextGap:F2} DIPs.");
+    }
+
+    [Fact]
+    public void InlineDivAndFirstBadgeRowInSameHtmlBlockJoinFollowingFragment()
+    {
+        const string source = """
+            <div align="center"><a><img src="https://example.test/same-block-first.png" width="40" height="20" alt="first"></a>
+
+            <br><a><img src="https://example.test/same-block-second.png" width="40" height="20" alt="second"></a>
+
+            </div>
+            """;
+
+        using LayoutSnapshot snapshot = BuildGitHub(source);
+        InlineContainerBox firstRow = Assert.Single(
+            FlattenBoxes(snapshot).OfType<InlineContainerBox>(),
+            static box => box.Runs.OfType<InlineImageRun>()
+                .Any(static image => image.Url.EndsWith("/same-block-first.png", StringComparison.Ordinal)));
+        InlineContainerBox secondRow = Assert.Single(
+            FlattenBoxes(snapshot).OfType<InlineContainerBox>(),
+            static box => box.Runs.OfType<InlineImageRun>()
+                .Any(static image => image.Url.EndsWith("/same-block-second.png", StringComparison.Ordinal)));
+        Rect firstImage = Assert.Single(firstRow.EnumerateInlineImageRects()).Rect;
+        Rect secondImage = Assert.Single(secondRow.EnumerateInlineImageRects()).Rect;
+        BlockBox firstFlowBlock = Assert.Single(
+            snapshot.Blocks,
+            static block => FlattenRuns(block).OfType<InlineImageRun>()
+                .Any(static image => image.Url.EndsWith("/same-block-first.png", StringComparison.Ordinal)));
+        BlockBox secondFlowBlock = Assert.Single(
+            snapshot.Blocks,
+            static block => FlattenRuns(block).OfType<InlineImageRun>()
+                .Any(static image => image.Url.EndsWith("/same-block-second.png", StringComparison.Ordinal)));
+
+        Assert.True(StackBox.SharesSafeHtmlInlineFlow(firstFlowBlock, secondFlowBlock));
+        Assert.True(
+            secondImage.Top - firstImage.Bottom <= 6,
+            "An inline div opener and its first row in one HtmlBlock must join its next split fragment.");
+    }
+
+    [Fact]
+    public void ClosingDivBeforeInlineContentDoesNotReuseThePreviousFlowMarker()
+    {
+        const string source = """
+            <div align="center">
+
+            <a><img src="https://example.test/inside.png" width="40" height="20" alt="inside"></a>
+
+            </div><br><a><img src="https://example.test/outside.png" width="40" height="20" alt="outside"></a>
+            """;
+
+        using LayoutSnapshot snapshot = BuildGitHub(source);
+        InlineContainerBox inside = Assert.Single(
+            FlattenBoxes(snapshot).OfType<InlineContainerBox>(),
+            static box => box.Runs.OfType<InlineImageRun>()
+                .Any(static image => image.Url.EndsWith("/inside.png", StringComparison.Ordinal)));
+        InlineContainerBox outside = Assert.Single(
+            FlattenBoxes(snapshot).OfType<InlineContainerBox>(),
+            static box => box.Runs.OfType<InlineImageRun>()
+                .Any(static image => image.Url.EndsWith("/outside.png", StringComparison.Ordinal)));
+
+        Assert.NotNull(inside.SafeHtmlInlineFlowScopeId);
+        Assert.Null(outside.SafeHtmlInlineFlowScopeId);
+        Assert.False(StackBox.SharesSafeHtmlInlineFlow(inside, outside));
+    }
+
+    [Fact]
+    public void MarkdownEnabledHtmlContainerInheritsAlignmentAtChildEntry()
+    {
+        const string source = """
+            <div align="center" markdown="1">
+            ## Centered nested heading
+
+            Centered nested paragraph.
+
+            - Centered nested list item
+            </div>
+            """;
+
+        using LayoutSnapshot snapshot = BuildGitHub(source);
+        InlineContainerBox heading = Assert.Single(
+            FlattenBoxes(snapshot).OfType<InlineContainerBox>(),
+            static box => box.ElementKey == MarkdownElementKeys.Heading2 &&
+                          box.Runs.Any(static run => run.Text == "Centered nested heading"));
+        InlineContainerBox paragraph = Assert.Single(
+            FlattenBoxes(snapshot).OfType<InlineContainerBox>(),
+            static box => box.Runs.Any(static run => run.Text == "Centered nested paragraph."));
+
+        Assert.Equal(CanvasHorizontalAlignment.Center, heading.TextAlignment);
+        Assert.Equal(CanvasHorizontalAlignment.Center, paragraph.TextAlignment);
+    }
+
+    [Fact]
+    public void PersistentCenteredHtmlBlockKeepsNestedRightHeadingAndCenteredSibling()
+    {
+        const string source = """
+            <div align="center">
+            <h3 align="right">Persistent nested right heading</h3>
+            <p>Persistent centered sibling</p>
+            """;
+
+        using LayoutSnapshot snapshot = BuildGitHub(source);
+        InlineContainerBox heading = Assert.Single(
+            FlattenBoxes(snapshot).OfType<InlineContainerBox>(),
+            static box => box.ElementKey == MarkdownElementKeys.Heading3 &&
+                          box.Runs.Any(run => run.Text == "Persistent nested right heading"));
+        InlineContainerBox paragraph = Assert.Single(
+            FlattenBoxes(snapshot).OfType<InlineContainerBox>(),
+            static box => box.ElementKey == MarkdownElementKeys.Body &&
+                          box.Runs.Any(run => run.Text == "Persistent centered sibling"));
+
+        Assert.Equal(CanvasHorizontalAlignment.Right, heading.TextAlignment);
+        Assert.Equal(CanvasHorizontalAlignment.Center, paragraph.TextAlignment);
+    }
+
+    [Fact]
+    public void CenteredLargeHtmlImageReservesFlowBeforeFollowingHeadingAndProse()
+    {
+        const string source = """
+            免费的编程中文书籍索引
+            ============================
+
+            [![](https://img.shields.io/github/issues/justjavac/free-programming-books-zh_CN.svg)](https://github.com/justjavac/free-programming-books-zh_CN/issues)  [![](https://img.shields.io/github/forks/justjavac/free-programming-books-zh_CN.svg)](https://github.com/justjavac/free-programming-books-zh_CN/network) [![](https://img.shields.io/github/stars/justjavac/free-programming-books-zh_CN.svg)](https://github.com/justjavac/free-programming-books-zh_CN/stargazers) [![](https://travis-ci.org/justjavac/free-programming-books-zh_CN.svg?branch=master)](https://travis-ci.org/justjavac/free-programming-books-zh_CN) [![](https://img.shields.io/github/release/justjavac/free-programming-books-zh_CN.svg)](https://github.com/justjavac/free-programming-books-zh_CN/releases)
+
+            免费的编程中文书籍索引，欢迎投稿。
+
+            - 国外程序员在 [stackoverflow](http://stackoverflow.com/questions/1711/what-is-the-single-most-influential-book-every-programmer-should-read/1713%231713) 推荐的程序员必读书籍，[中文版](http://justjavac.com/other/2012/05/15/qualified-programmer-should-read-what-books.html "一个合格的程序员应该读过哪些书")。
+            - 程序员应该阅读的非编程类书籍有哪些？ [中文版](what-non-programming-books-should-programmers-read.md)（原帖为 stackoverflow 上已删除的[问题 38210](https://web.archive.org/web/20170103152138/http://stackoverflow.com/questions/38210/what-non-programming-books-should-programmers-read)）
+            - [github](https://github.com/EbookFoundation/free-programming-books) 上的一个流行的编程书籍索引  [中文版](https://github.com/EbookFoundation/free-programming-books/blob/main/books/free-programming-books-zh.md)
+
+            如果这个仓库对你有帮助，欢迎 star。如果这个仓库帮你提升了技能找到了工作，可以请我喝杯咖啡：
+
+            <p align="center"><img src="https://example.test/buy-me-a-coffee-wechat.png" width="320" height="320" alt="" /></p>
+
+            ## 参与交流
+
+            欢迎大家将珍藏已久的经典免费书籍共享出来，您可以：
+            """;
+
+        using MarkdownEngine engine = new MarkdownEngineBuilder()
+            .UseGitHubReadme()
+            .Build();
+        var registry = Assert.IsType<MarkdownExtensionRegistry>(engine.PresentationConfiguration);
+        using LayoutSnapshot snapshot = Build(
+            source,
+            registry,
+            lazy: true,
+            availableWidth: 660,
+            measureAllLazyViewports: false);
+        InlineContainerBox imageHost = Assert.Single(
+            FlattenBoxes(snapshot).OfType<InlineContainerBox>(),
+            static box => box.Runs.OfType<InlineImageRun>()
+                .Any(static image => image.Url == "https://example.test/buy-me-a-coffee-wechat.png"));
+        InlineImageRun image = Assert.Single(imageHost.Runs.OfType<InlineImageRun>());
+        Rect imageBounds = Assert.Single(imageHost.EnumerateInlineImageRects()).Rect;
+        InlineContainerBox heading = Assert.Single(
+            FlattenBoxes(snapshot).OfType<InlineContainerBox>(),
+            static box => box.Runs.OfType<TextRun>()
+                .Any(static run => run.Text.Contains("参与交流", StringComparison.Ordinal)));
+        InlineContainerBox prose = Assert.Single(
+            FlattenBoxes(snapshot).OfType<InlineContainerBox>(),
+            static box => box.Runs.OfType<TextRun>()
+                .Any(static run => run.Text.Contains("欢迎大家将珍藏已久的经典免费书籍共享出来", StringComparison.Ordinal)));
+
+        Assert.Equal(320f, image.DesiredWidth, precision: 1);
+        Assert.Equal(320f, image.DesiredHeight, precision: 1);
+        Assert.Equal(320d, imageBounds.Width, precision: 1);
+        Assert.Equal(320d, imageBounds.Height, precision: 1);
+        Assert.True(
+            imageBounds.Bottom <= heading.Bounds.Top + 0.5,
+            $"The following heading at y={heading.Bounds.Top:F2} overlaps the painted 320-DIP image ending at y={imageBounds.Bottom:F2}; image paragraph flow ends at y={imageHost.Bounds.Bottom:F2}.");
+        Assert.True(
+            heading.Bounds.Bottom <= prose.Bounds.Top + 0.5,
+            $"The following prose at y={prose.Bounds.Top:F2} overlaps its heading ending at y={heading.Bounds.Bottom:F2}.");
+        Assert.True(
+            imageHost.Bounds.Bottom <= heading.Bounds.Top + 0.5,
+            $"The image paragraph's flow box ends at y={imageHost.Bounds.Bottom:F2}, after the following heading starts at y={heading.Bounds.Top:F2}.");
+    }
+
+    [Fact]
+    public async Task LateCenteredHtmlImageDecodeKeepsFollowingContentOutOfPublishedImageBounds()
+    {
+        const string source = """
+            If this repository helps you, you can buy me a coffee:
+
+            <p align="center"><img src="https://example.test/buy-me-a-coffee-wechat.png" width="320" height="320" alt="" /></p>
+
+            ## 参与交流
+
+            欢迎大家将珍藏已久的经典免费书籍共享出来，您可以：
+            """;
+        var resolver = new DeferredImageResolver();
+        using MarkdownEngine engine = new MarkdownEngineBuilder()
+            .UseGitHubReadme()
+            .Build();
+        var registry = Assert.IsType<MarkdownExtensionRegistry>(engine.PresentationConfiguration);
+        using LayoutSnapshot snapshot = Build(
+            source,
+            registry,
+            lazy: true,
+            availableWidth: 660,
+            measureAllLazyViewports: false,
+            imageResolver: resolver);
+
+        InlineContainerBox imageHost = Assert.Single(
+            FlattenBoxes(snapshot).OfType<InlineContainerBox>(),
+            static box => box.Runs.OfType<InlineImageRun>().Any());
+        InlineImageRun image = Assert.Single(imageHost.Runs.OfType<InlineImageRun>());
+        InlineContainerBox heading = Assert.Single(
+            FlattenBoxes(snapshot).OfType<InlineContainerBox>(),
+            static box => box.Runs.OfType<TextRun>()
+                .Any(static run => run.Text.Contains("参与交流", StringComparison.Ordinal)));
+        InlineContainerBox prose = Assert.Single(
+            FlattenBoxes(snapshot).OfType<InlineContainerBox>(),
+            static box => box.Runs.OfType<TextRun>()
+                .Any(static run => run.Text.Contains("欢迎大家将珍藏已久的经典免费书籍共享出来", StringComparison.Ordinal)));
+        Rect initialImageRect = Assert.Single(imageHost.EnumerateInlineImageRects()).Rect;
+        Assert.True(initialImageRect.Bottom <= heading.Bounds.Top + 0.5,
+            "The initial lazy measurement must reserve the explicit 320-DIP image height.");
+
+        var imagePublished = new TaskCompletionSource<(bool LayoutInvalidated, double HostBottom, double HeadingTop, bool HasBitmap)>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        EventHandler<LoadCompletedEventArgs> onLoadCompleted = (_, args) =>
+            imagePublished.TrySetResult((
+                args.LayoutInvalidated,
+                imageHost.Bounds.Bottom,
+                heading.Bounds.Top,
+                image.Image.Bitmap is not null));
+        image.Image.LoadCompleted += onLoadCompleted;
+        try
+        {
+            image.Image.EnsureLoading();
+            await resolver.ResolveStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            resolver.Complete(MarkdownImageResolution.Resolved(new MarkdownImageAsset(
+                Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGP6zwAAAgcBApocMXEAAAAASUVORK5CYII="),
+                ContentType: "image/png",
+                CacheKey: $"safe-html-late-image-{Guid.NewGuid():N}")));
+
+            // Observe the exact first publication point, before the control's
+            // queued block relayout can run. This is where a newly available
+            // CanvasBitmap can first be painted over neighboring content.
+            (bool layoutInvalidated, double hostBottomAtPublish, double headingTopAtPublish, bool hasBitmap) =
+                await imagePublished.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+            Assert.True(hasBitmap, "The resolver/decode path must publish the raster before signaling completion.");
+            Assert.True(layoutInvalidated, "The first raster publication must request the host's normal relayout path.");
+            Assert.True(
+                hostBottomAtPublish <= headingTopAtPublish + 0.5,
+                $"At bitmap publication the image paragraph ends at y={hostBottomAtPublish:F2}, after the heading starts at y={headingTopAtPublish:F2}.");
+
+            // Exercise the same changed-block relayout requested by the host
+            // after the asynchronous publication.
+            snapshot.RelayoutChangedBlocks(
+                [imageHost.BlockIndex],
+                660,
+                CancellationToken.None);
+
+            Rect loadedImageRect = Assert.Single(imageHost.EnumerateInlineImageRects()).Rect;
+            Assert.NotNull(image.Image.Bitmap);
+            Assert.Equal(320d, loadedImageRect.Width, precision: 1);
+            Assert.Equal(320d, loadedImageRect.Height, precision: 1);
+            Assert.True(
+                loadedImageRect.Bottom <= heading.Bounds.Top + 0.5,
+                $"After async relayout the heading at y={heading.Bounds.Top:F2} overlaps the image ending at y={loadedImageRect.Bottom:F2}.");
+            Assert.True(
+                heading.Bounds.Bottom <= prose.Bounds.Top + 0.5,
+                $"The prose at y={prose.Bounds.Top:F2} overlaps the heading ending at y={heading.Bounds.Bottom:F2}.");
+        }
+        finally
+        {
+            // Always release the deferred source so a failed assertion cannot
+            // leave an image-load task waiting after the snapshot is disposed.
+            resolver.Complete(MarkdownImageResolution.Unavailable);
+            image.Image.LoadCompleted -= onLoadCompleted;
+        }
+    }
+
+    [Fact]
     public void MissingAltAnimatedImageUsesItsFileNameLikeGitHub()
     {
         const string source = "<p><img src='/art/android-PullRefreshLayout.gif' width='49%'></p>";
@@ -249,6 +798,52 @@ public sealed class SafeHtmlRenderingTests
         Assert.Equal("light.svg", image.Url);
         Assert.Equal("Project logo", image.AltText);
         Assert.DoesNotContain("<picture", string.Concat(runs.Select(static run => run.Text)));
+    }
+
+    [Fact]
+    public void GitHubPictureMarkupUsesSingleTypedRasterSource()
+    {
+        const string source = """
+            <picture>
+              <source type="image/gif" srcset="animation.gif">
+              <img src="poster.jpg" alt="Animated preview">
+            </picture>
+            """;
+
+        SafeHtmlDocument parsed = SafeHtmlParser.Parse(source);
+        SafeHtmlElement picture = Assert.IsType<SafeHtmlElement>(Assert.Single(parsed.Root.Children));
+        SafeHtmlElement typedSource = Assert.Single(
+            picture.Children.OfType<SafeHtmlElement>(),
+            static element => element.Name == "source");
+        Assert.Equal("image/gif", typedSource.Attributes["type"]);
+        Assert.Equal("animation.gif", typedSource.Attributes["srcset"]);
+
+        using LayoutSnapshot snapshot = Build(source, SafeHtmlOptions.Default);
+        InlineImageRun image = Assert.Single(FlattenRuns(snapshot).OfType<InlineImageRun>());
+
+        Assert.Equal("animation.gif", image.Url);
+        Assert.Equal("Animated preview", image.AltText);
+    }
+
+    [Theory]
+    [InlineData("<source type='image/avif' srcset='candidate.avif'>")]
+    [InlineData("<source type='image/gif' srcset='one.gif 1x, two.gif 2x'>")]
+    [InlineData("<source type='image/gif' srcset='one.gif 2x'>")]
+    [InlineData("<source type='image/gif' media='(min-width: 500px)' srcset='candidate.gif'>")]
+    [InlineData("<source media='(prefers-color-scheme: light) and (min-width: 500px)' srcset='candidate.gif'>")]
+    [InlineData("<source type='image/avif' media='(prefers-color-scheme: light)' srcset='candidate.avif'>")]
+    [InlineData("<source type='image/gif' sizes='50vw' srcset='candidate.gif'>")]
+    [InlineData("<source srcset='candidate.gif'>")]
+    public void GitHubPictureMarkupUsesFallbackWhenSourceSelectionIsAmbiguousOrUnsupported(string sourceMarkup)
+    {
+        string source = "<picture>\n" + sourceMarkup +
+            "\n<img src='poster.jpg' alt='Fallback preview'>\n</picture>";
+
+        using LayoutSnapshot snapshot = Build(source, SafeHtmlOptions.Default);
+        InlineImageRun image = Assert.Single(FlattenRuns(snapshot).OfType<InlineImageRun>());
+
+        Assert.Equal("poster.jpg", image.Url);
+        Assert.Equal("Fallback preview", image.AltText);
     }
 
     [Fact]
@@ -1236,11 +1831,15 @@ public sealed class SafeHtmlRenderingTests
         IMarkdownStringProvider? stringProvider = null,
         Markdig.Syntax.MarkdownDocument? parsedDocument = null,
         bool lazy = false,
-        float availableWidth = 800)
+        float availableWidth = 800,
+        bool measureAllLazyViewports = true,
+        IMarkdownImageResolver? imageResolver = null,
+        ElementStyle? elementStyle = null,
+        IReadOnlyDictionary<string, ElementStyle>? keyedStyles = null)
     {
         Markdig.Syntax.MarkdownDocument document =
             parsedDocument ?? Markdown.Parse(source, registry.BuildPipeline());
-        var style = new ElementStyle();
+        var style = elementStyle ?? new ElementStyle();
         string[] keys =
         [
             MarkdownElementKeys.Body,
@@ -1269,6 +1868,11 @@ public sealed class SafeHtmlRenderingTests
         ];
         var styles = keys.Distinct(StringComparer.Ordinal)
             .ToDictionary(static key => key, _ => style, StringComparer.Ordinal);
+        if (keyedStyles is not null)
+        {
+            foreach ((string key, ElementStyle keyedStyle) in keyedStyles)
+                styles[key] = keyedStyle;
+        }
         Color transparent = Color.FromArgb(0, 0, 0, 0);
         var theme = new ThemeSnapshot(
             styles,
@@ -1288,6 +1892,7 @@ public sealed class SafeHtmlRenderingTests
             FlowDirection.LeftToRight)
         {
             StringProvider = stringProvider,
+            ImageResolver = imageResolver,
         };
         var builder = new LayoutBuilder(context);
         if (!lazy)
@@ -1300,6 +1905,8 @@ public sealed class SafeHtmlRenderingTests
             viewportHeight: 499,
             overscan: 0,
             cancellationToken: CancellationToken.None);
+        if (!measureAllLazyViewports)
+            return snapshot;
         for (int viewport = 0; viewport < 64; viewport++)
         {
             double top = viewport * 449;
@@ -1310,13 +1917,22 @@ public sealed class SafeHtmlRenderingTests
         return snapshot;
     }
 
-    private static LayoutSnapshot BuildGitHub(string source)
+    private static LayoutSnapshot BuildGitHub(
+        string source,
+        ElementStyle? elementStyle = null,
+        IReadOnlyDictionary<string, ElementStyle>? keyedStyles = null,
+        float availableWidth = 800)
     {
         using MarkdownEngine engine = new MarkdownEngineBuilder()
             .UseGitHubReadme()
             .Build();
         var registry = Assert.IsType<MarkdownExtensionRegistry>(engine.PresentationConfiguration);
-        return Build(source, registry);
+        return Build(
+            source,
+            registry,
+            availableWidth: availableWidth,
+            elementStyle: elementStyle,
+            keyedStyles: keyedStyles);
     }
 
     private static void AssertDisabledLinkAndImageFallback(LayoutSnapshot snapshot)
@@ -1402,5 +2018,25 @@ public sealed class SafeHtmlRenderingTests
     {
         public string? GetString(string key, System.Globalization.CultureInfo culture) =>
             key == MarkdownStringKeys.HtmlBudgetExceeded ? "localized budget notice" : null;
+    }
+
+    private sealed class DeferredImageResolver : IMarkdownImageResolver
+    {
+        private readonly TaskCompletionSource<MarkdownImageResolution> _resolution = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource ResolveStarted { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public ValueTask<MarkdownImageResolution> ResolveAsync(
+            string source,
+            MarkdownImageResolveContext context,
+            CancellationToken cancellationToken)
+        {
+            ResolveStarted.TrySetResult();
+            return new ValueTask<MarkdownImageResolution>(_resolution.Task.WaitAsync(cancellationToken));
+        }
+
+        public void Complete(MarkdownImageResolution resolution) => _resolution.TrySetResult(resolution);
     }
 }

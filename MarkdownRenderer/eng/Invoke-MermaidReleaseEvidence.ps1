@@ -283,6 +283,11 @@ $nativeCompliancePath = Join-Path $runDirectory 'native-package-compliance.json'
     -PackageDirectory $packageDirectory `
     -OutputPath $nativeCompliancePath
 
+$managedArchitecturePath = Join-Path $runDirectory 'managed-package-architecture.json'
+& (Join-Path $PSScriptRoot 'Test-ManagedPackageArchitecture.ps1') `
+    -PackageDirectory $packageDirectory `
+    -OutputPath $managedArchitecturePath
+
 $consumerDirectory = Join-Path $runDirectory 'package-consumer'
 [IO.Directory]::CreateDirectory($consumerDirectory) | Out-Null
 $consumerProject = @'
@@ -494,6 +499,7 @@ $report = [pscustomobject][ordered]@{
         nativeOptimizationTargetBytes = $nativeOptimizationTarget
     }
     nativeCompliance = $nativeCompliancePath
+    managedPackageArchitecture = $managedArchitecturePath
     deployments = @($deployments)
     projectReferenceRidSelection = @($projectReferenceDeployments)
 }

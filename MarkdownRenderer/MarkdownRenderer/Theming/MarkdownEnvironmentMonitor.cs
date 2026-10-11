@@ -162,6 +162,7 @@ internal sealed class MarkdownEnvironmentMonitor
         _themeSettings = null;
     }
 
+    [System.Diagnostics.Conditional("DEBUG")]
     private static void LogDetachFailure(string eventName, Exception exception)
         => MarkdownDiagnostics.WriteLine(
             $"[MarkdownEnvironmentMonitor] {eventName} detach failed: {exception.Message}");
@@ -355,10 +356,13 @@ internal sealed class MarkdownEnvironmentMonitor
         }
     }
 
-    private readonly record struct ListenerEntry(
-        int Id,
-        WeakReference<IMarkdownEnvironmentListener> Listener)
+    private readonly struct ListenerEntry(
+        int id,
+        WeakReference<IMarkdownEnvironmentListener> listener)
     {
+        public readonly int Id = id;
+        public readonly WeakReference<IMarkdownEnvironmentListener> Listener = listener;
+
         public ListenerEntry(int id, IMarkdownEnvironmentListener listener)
             : this(id, new WeakReference<IMarkdownEnvironmentListener>(listener))
         {
@@ -381,7 +385,7 @@ internal sealed class MarkdownEnvironmentMonitor
         }
 
         /// <summary>Gets the environment captured when the lease was acquired.</summary>
-        public MarkdownEnvironmentSnapshot Snapshot { get; }
+        public readonly MarkdownEnvironmentSnapshot Snapshot;
 
         public void Dispose()
             => Interlocked.Exchange(ref _owner, null)?.RemoveListener(_listenerId);

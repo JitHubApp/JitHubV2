@@ -17,6 +17,10 @@
             <x:Double x:Key="SampleEditorFontSize">13</x:Double>
             <x:Double x:Key="SampleDiagnosticsMaxHeight">144</x:Double>
             <x:Double x:Key="SampleWorkspaceSplitterWidth">4</x:Double>
+
+            <Style x:Key="SampleShellRootStyle" TargetType="Grid">
+                <Setter Property="Background" Value="{ThemeResource ApplicationPageBackgroundThemeBrush}" />
+            </Style>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

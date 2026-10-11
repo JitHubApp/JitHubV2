@@ -28,6 +28,12 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
 {
     private const int MaxTableColumns = 64;
     private const int MaxNestedMarkdownDepth = 4;
+    private static readonly HashSet<string> SupportedPictureSourceTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "image/gif",
+        "image/jpeg",
+        "image/png",
+    };
     private const string GitHubMarkdownContainersFeature =
         "MarkdownRenderer.GitHub.MarkdownInHtmlContainers";
     [ThreadStatic]
@@ -72,8 +78,10 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
                 markdownTailStart < 0 ? htmlSource : htmlSource[..markdownTailStart],
                 limits,
                 context.CancellationToken);
-            var root = CreateStack(context);
-            AppendBlocks(root, document.Root.Children, context, htmlBlock.Span.Start, SafeHtmlAlignment.Inherit);
+            var root = CreateStack(context, collapsePositiveAdjacentMargins: true);
+            root.HasResolvedSafeHtmlAlignment = true;
+            SafeHtmlAlignment inheritedAlignment = context.SafeHtmlBlockAlignment;
+            AppendBlocks(root, document.Root.Children, context, htmlBlock.Span.Start, inheritedAlignment);
 
             if (markdownTailStart >= 0)
             {
@@ -98,14 +106,27 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
 
             if (document.IsTruncated)
             {
-                var notice = CreateInlineBox(context, MarkdownElementKeys.Body, SafeHtmlAlignment.Inherit);
+                var notice = CreateInlineBox(context, MarkdownElementKeys.Body, inheritedAlignment);
                 notice.Add(new TextRun(context.ResolveString(
                     MarkdownStringKeys.HtmlBudgetExceeded,
                     MarkdownLocalizedStrings.HtmlBudgetExceeded))
                 {
                     SourceSpan = SourceSpan.Empty,
                 });
-                root.Add(notice);
+                AddChild(root, notice, context);
+            }
+
+            if (context.SafeHtmlInlineFlowScopeId is int inlineFlowScopeId &&
+                IsInlineOnlyHtmlFragment(document.Root.Children) &&
+                root.Children.Count == 1 &&
+                root.Children[0] is InlineContainerBox inlineFragment)
+            {
+                root.SafeHtmlInlineFlowScopeId = inlineFlowScopeId;
+                // Raw inline content in a persistent HTML div is not a
+                // Markdown paragraph, so the theme's Body paragraph margin
+                // must not separate source fragments of that same flow.
+                inlineFragment.UseContainerMargin = false;
+                inlineFragment.Margin = default;
             }
 
             // A configured safe-HTML renderer owns every HtmlBlock, including blocks
@@ -120,11 +141,19 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         }
     }
 
-    private static StackBox CreateStack(MarkdownLayoutContext context) => new()
+    private static StackBox CreateStack(
+        MarkdownLayoutContext context,
+        bool collapsePositiveAdjacentMargins = false)
     {
-        BlockIndex = context.NextBlockIndex(),
-        FlowDirection = context.FlowDirection,
-    };
+        var stack = new StackBox
+        {
+            BlockIndex = context.NextBlockIndex(),
+            FlowDirection = context.FlowDirection,
+            CollapsePositiveAdjacentMargins = collapsePositiveAdjacentMargins,
+        };
+        context.RegisterConstructionBlock(stack);
+        return stack;
+    }
 
     private void AppendBlocks(
         StackBox destination,
@@ -143,7 +172,7 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
                 BlockBox? block = BuildElementBlock(element, context, sourceOffset, inheritedAlignment);
                 if (block is not null)
                 {
-                    destination.Add(block);
+                    AddChild(destination, block, context);
                 }
             }
             else
@@ -171,7 +200,12 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         PopulateInline(box, inlineNodes, context, sourceOffset, HtmlInlineContext.Empty);
         if (box.Runs.Count > 0)
         {
-            destination.Add(box);
+            ConfigureStandaloneBreakBox(box, preserveParagraphMargin: false);
+            AddChild(destination, box, context);
+        }
+        else
+        {
+            context.DiscardConstructionBlock(box);
         }
 
         inlineNodes.Clear();
@@ -197,12 +231,12 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             {
                 var unknown = CreateInlineBox(context, MarkdownElementKeys.Body, inheritedAlignment);
                 AddLiteralElement(unknown, element, sourceOffset, HtmlInlineContext.Empty);
-                return unknown.Runs.Count == 0 ? null : unknown;
+                return ReturnIfNonEmpty(unknown, context);
             }
 
             var inline = CreateInlineBox(context, MarkdownElementKeys.Body, inheritedAlignment);
             PopulateInline(inline, element.Children, context, sourceOffset, HtmlInlineContext.Empty);
-            return inline.Runs.Count == 0 ? null : inline;
+            return ReturnIfNonEmpty(inline, context);
         }
 
         using var classScope = context.PushStyleAliases(GetAllowedClassAliases(element));
@@ -213,7 +247,7 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         {
             InlineContainerBox heading = CreateInlineBox(context, headingKey, alignment);
             PopulateInline(heading, element.Children, context, sourceOffset, HtmlInlineContext.Empty);
-            return heading.Runs.Count == 0 ? null : heading;
+            return ReturnIfNonEmpty(heading, context);
         }
 
         if (element.Name is "video" or "audio")
@@ -223,12 +257,12 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
                 MarkdownElementKeys.Body,
                 alignment);
             AddMediaRun(media, element, context, sourceOffset, HtmlInlineContext.Empty);
-            return media.Runs.Count == 0 ? null : media;
+            return ReturnIfNonEmpty(media, context);
         }
 
         return element.Name switch
         {
-            "hr" => new ThematicBreakBox(context) { BlockIndex = context.NextBlockIndex() },
+            "hr" => TrackBlock(context, new ThematicBreakBox(context) { BlockIndex = context.NextBlockIndex() }),
             "table" => BuildTable(element, context, sourceOffset),
             "blockquote" => BuildQuote(element, context, sourceOffset, alignment),
             "pre" => BuildPreformatted(element, context, sourceOffset, alignment),
@@ -259,12 +293,34 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         {
             InlineContainerBox inline = CreateInlineBox(context, MarkdownElementKeys.Body, alignment);
             PopulateInline(inline, element.Children, context, sourceOffset, HtmlInlineContext.Empty);
-            return inline.Runs.Count == 0 ? null : inline;
+            ConfigureStandaloneBreakBox(
+                inline,
+                preserveParagraphMargin: element.Name == "p");
+            return ReturnIfNonEmpty(inline, context);
         }
 
-        var stack = CreateStack(context);
+        var stack = CreateStack(context, collapsePositiveAdjacentMargins: true);
         AppendBlocks(stack, element.Children, context, sourceOffset, alignment);
-        return stack.Children.Count == 0 ? null : stack;
+        return ReturnIfNonEmpty(stack, context);
+    }
+
+    private static void ConfigureStandaloneBreakBox(
+        InlineContainerBox box,
+        bool preserveParagraphMargin)
+    {
+        if (box.Runs.Count != 1 || box.Runs[0] is not LineBreakRun lineBreak)
+            return;
+
+        // A standalone <br> in an HTML block establishes one empty line box;
+        // its enclosing HTML <p>, when present, still owns the paragraph margin.
+        // Keep the run's semantic newline/source span intact for selection,
+        // copy, and UI Automation while the layout uses a same-length blank.
+        lineBreak.UseSingleLineLayout = true;
+        if (!preserveParagraphMargin)
+        {
+            box.UseContainerMargin = false;
+            box.Margin = default;
+        }
     }
 
     private static int FindMarkdownTailAfterVoidTags(
@@ -353,9 +409,8 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
                 fragment,
                 absoluteTextStart - nestedMarkdownBodyOffset);
             var stack = CreateStack(context);
-            GfmChildBuilder.PopulateChildren(stack, fragment, context);
-            ApplyTextAlignment(stack, ToCanvasAlignment(alignment));
-            return stack.Children.Count == 0 ? null : stack;
+            GfmChildBuilder.PopulateChildren(stack, fragment, context, alignment);
+            return ReturnIfNonEmpty(stack, context);
         }
         finally
         {
@@ -557,23 +612,27 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         }
     }
 
-    private static void ApplyTextAlignment(BlockBox block, CanvasHorizontalAlignment alignment)
+    private static bool IsInlineOnlyHtmlFragment(IReadOnlyList<SafeHtmlNode> nodes)
     {
-        if (block is InlineContainerBox inline)
+        if (nodes.Count == 0)
         {
-            inline.TextAlignment = alignment;
-            return;
+            return false;
         }
 
-        if (block is not StackBox stack)
+        if (nodes.Count == 1 &&
+            nodes[0] is SafeHtmlElement { Name: "div" or "center" } flowContainer)
         {
-            return;
+            return !flowContainer.Children.Any(
+                static child => child is SafeHtmlElement element && IsBlockElement(element.Name));
         }
 
-        foreach (BlockBox child in stack.Children)
+        foreach (SafeHtmlNode node in nodes)
         {
-            ApplyTextAlignment(child, alignment);
+            if (node is SafeHtmlElement element && IsBlockElement(element.Name))
+                return false;
         }
+
+        return true;
     }
 
     private static void OffsetMarkdownSpan(MarkdownObject node, int offset)
@@ -633,7 +692,7 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
                 sourceOffset + (summary?.SourceStart ?? details.SourceStart),
                 summary?.SourceLength ?? details.SourceLength),
         });
-        stack.Add(summaryBox);
+        AddChild(stack, summaryBox, context);
 
         if (summary is not null)
         {
@@ -651,7 +710,7 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
                     sourceOffset,
                     alignment);
                 if (codeBlock is not null)
-                    stack.Add(codeBlock);
+                    AddChild(stack, codeBlock, context);
             }
         }
 
@@ -673,9 +732,9 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
                 context,
                 sourceOffset,
                 HtmlInlineContext.Empty);
-            InlineImageRun[] summaryImages = summaryContent.Runs
-                .OfType<InlineImageRun>()
-                .ToArray();
+            InlineImageRun[] summaryImages = summaryContent.DetachInlineImagesForTransfer();
+            foreach (InlineImageRun image in summaryImages)
+                context.RegisterConstructionBlock(image.Image);
             if (summaryImages.Length > 0)
             {
                 InlineContainerBox summaryMedia = CreateInlineBox(
@@ -683,9 +742,14 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
                     MarkdownElementKeys.Body,
                     alignment);
                 foreach (InlineImageRun image in summaryImages)
-                    summaryMedia.Add(image);
-                stack.Add(summaryMedia);
+                    AddRun(summaryMedia, image);
+                AddChild(stack, summaryMedia, context);
             }
+
+            // The summary box was only a staging owner for atomic media. Image
+            // runs have been detached above; dispose the remaining temporary
+            // text/vector runs instead of forgetting their native resources.
+            context.DiscardConstructionBlock(summaryContent);
         }
 
         if (!expanded)
@@ -702,10 +766,14 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         AppendBlocks(bodyStack, body, context, sourceOffset, alignment);
         if (bodyStack.Children.Count > 0)
         {
-            stack.Add(bodyStack);
+            AddChild(stack, bodyStack, context);
+        }
+        else
+        {
+            context.DiscardConstructionBlock(bodyStack);
         }
 
-        return stack.Children.Count == 0 ? null : stack;
+        return ReturnIfNonEmpty(stack, context);
     }
 
     private BlockBox? BuildQuote(
@@ -718,21 +786,18 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             MarkdownElementKeys.Quote,
             context.CreateStyleContextSnapshot(),
             context.CreateStyleAliasSnapshot());
-        var stack = new StackBox
-        {
-            BlockIndex = context.NextBlockIndex(),
-            ContentPadding = style.Padding,
-            AccentBar = style.AccentBar,
-            Background = style.Background,
-            BorderBrush = style.BorderBrush,
-            BorderThickness = style.BorderThickness,
-            CornerRadius = style.CornerRadius,
-            Margin = style.Margin,
-            FlowDirection = context.FlowDirection,
-        };
+        var stack = CreateStack(context);
+        stack.ContentPadding = style.Padding;
+        stack.AccentBar = style.AccentBar;
+        stack.Background = style.Background;
+        stack.BorderBrush = style.BorderBrush;
+        stack.BorderThickness = style.BorderThickness;
+        stack.CornerRadius = style.CornerRadius;
+        stack.Margin = style.Margin;
+        stack.FlowDirection = context.FlowDirection;
         using var scope = context.PushStyleContext(MarkdownElementKeys.Quote);
         AppendBlocks(stack, quote.Children, context, sourceOffset, alignment);
-        return stack.Children.Count == 0 ? null : stack;
+        return ReturnIfNonEmpty(stack, context);
     }
 
     private static BlockBox? BuildPreformatted(
@@ -763,6 +828,7 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         {
             BlockIndex = context.NextBlockIndex(),
         };
+        context.RegisterConstructionBlock(codeBlock);
         var chunk = new InlineContainerBox(context, MarkdownElementKeys.CodeBlock)
         {
             BlockIndex = context.NextBlockIndex(),
@@ -771,7 +837,9 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             CodeBlockTextLength = text.Length,
         };
         chunk.Add(new TextRun(text) { SourceSpan = sourceSpan });
+        context.RegisterConstructionBlock(chunk);
         codeBlock.AddChunk(chunk);
+        context.AdoptConstructionBlock(chunk);
         return codeBlock;
     }
 
@@ -816,17 +884,26 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             AppendBlocks(content, item.Children, context, sourceOffset, alignment);
             if (content.Children.Count > 0)
             {
-                stack.Add(new ListItemBox(marker, content, markerWidth)
+                var listItem = new ListItemBox(marker, content, markerWidth)
                 {
                     BlockIndex = context.NextBlockIndex(),
                     FlowDirection = context.FlowDirection,
-                });
+                };
+                context.RegisterConstructionBlock(listItem);
+                context.AdoptConstructionBlock(marker);
+                context.AdoptConstructionBlock(content);
+                AddChild(stack, listItem, context);
+            }
+            else
+            {
+                context.DiscardConstructionBlock(content);
+                context.DiscardConstructionBlock(marker);
             }
 
             index++;
         }
 
-        return stack.Children.Count == 0 ? null : stack;
+        return ReturnIfNonEmpty(stack, context);
     }
 
     private BlockBox? BuildTable(
@@ -895,10 +972,24 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             (row.IsHeader ? headerRows : bodyRows).Add(cells);
         }
 
-        return new TableBox(context, headerRows.ToArray(), bodyRows.ToArray(), alignments)
+        InlineContainerBox[][] publishedHeaderRows = headerRows.ToArray();
+        InlineContainerBox[][] publishedBodyRows = bodyRows.ToArray();
+        var tableBox = new TableBox(context, publishedHeaderRows, publishedBodyRows, alignments)
         {
             BlockIndex = context.NextBlockIndex(),
         };
+        context.RegisterConstructionBlock(tableBox);
+        foreach (InlineContainerBox[] row in publishedHeaderRows)
+        {
+            foreach (InlineContainerBox cell in row)
+                context.AdoptConstructionBlock(cell);
+        }
+        foreach (InlineContainerBox[] row in publishedBodyRows)
+        {
+            foreach (InlineContainerBox cell in row)
+                context.AdoptConstructionBlock(cell);
+        }
+        return tableBox;
     }
 
     private static InlineContainerBox BuildPreformattedTableCell(
@@ -917,6 +1008,7 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             CodeBlockTextOffset = 0,
             CodeBlockTextLength = text.Length,
         };
+        context.RegisterConstructionBlock(box);
         if (text.Length > 0)
         {
             box.Add(new TextRun(text)
@@ -1006,7 +1098,44 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             BlockIndex = context.NextBlockIndex(),
             TextAlignment = ToCanvasAlignment(alignment),
         };
+        context.RegisterConstructionBlock(box);
         return box;
+    }
+
+    private static T TrackBlock<T>(MarkdownLayoutContext context, T block) where T : BlockBox
+    {
+        context.RegisterConstructionBlock(block);
+        return block;
+    }
+
+    private static void AddChild(StackBox parent, BlockBox child, MarkdownLayoutContext context)
+    {
+        parent.Add(child);
+        context.AdoptConstructionBlock(child);
+    }
+
+    private static void AddRun(InlineContainerBox parent, InlineRun run)
+    {
+        if (run is InlineImageRun image)
+            parent.Context.RegisterConstructionBlock(image.Image);
+        parent.Add(run);
+        if (run is InlineImageRun addedImage)
+            parent.Context.AdoptConstructionBlock(addedImage.Image);
+    }
+
+    private static BlockBox? ReturnIfNonEmpty(BlockBox block, MarkdownLayoutContext context)
+    {
+        bool hasContent = block switch
+        {
+            StackBox stack => stack.Children.Count > 0,
+            InlineContainerBox inline => inline.Runs.Count > 0,
+            _ => true,
+        };
+        if (hasContent)
+            return block;
+
+        context.DiscardConstructionBlock(block);
+        return null;
     }
 
     private void PopulateInline(
@@ -1079,7 +1208,7 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         if (run is LinkRun && !string.IsNullOrEmpty(context.StyleKey))
             run.StyleModifierKeys = new[] { context.StyleKey };
         run.SetStyleAliases(context.StyleAliases);
-        box.Add(run);
+        AddRun(box, run);
     }
 
     private static bool IsCollapsibleWhitespace(char value) =>
@@ -1270,11 +1399,8 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             ? SelectPictureSource(element, context.ThemeSnapshot.IsDark)
             : null;
         string source = string.Empty;
-        if (selectedSource is not null && selectedSource.TryGetAttribute("srcset", out string sourceSet))
-        {
-            string candidate = sourceSet.Split(',')[0].Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries)[0];
-            SafeHtmlParser.TryNormalizeImageSource(candidate, out source);
-        }
+        if (selectedSource is not null)
+            TryGetSinglePictureSourceCandidate(selectedSource, out source);
 
         if (source.Length == 0 && !SafeHtmlParser.TryGetSafeImageSource(image, out source))
         {
@@ -1309,7 +1435,7 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             SemanticHeadingKey = inlineContext.HeadingKey ?? string.Empty,
         };
         run.SetStyleAliases(inlineContext.StyleAliases);
-        box.Add(run);
+        AddRun(box, run);
     }
 
     private static void AddInputRun(
@@ -1376,7 +1502,7 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             inlineContext.LinkUrl,
             inlineContext.LinkTitle);
         run.SetStyleAliases(inlineContext.StyleAliases);
-        box.Add(run);
+        AddRun(box, run);
     }
 
     private static void AddInlineSvgRun(
@@ -1422,7 +1548,7 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             SourceSpan = new SourceSpan(sourceOffset + svg.SourceStart, svg.SourceLength),
         };
         run.SetStyleAliases(inlineContext.StyleAliases);
-        box.Add(run);
+        AddRun(box, run);
     }
 
     private static void AppendRawMarkup(StringBuilder destination, SafeHtmlElement element)
@@ -1475,21 +1601,74 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
 
     private static SafeHtmlElement? SelectPictureSource(SafeHtmlElement picture, bool isDark)
     {
+        SafeHtmlElement[] sources = picture.Children.OfType<SafeHtmlElement>()
+            .Where(static element => element.Name == "source")
+            .ToArray();
         string expected = isDark ? "dark" : "light";
-        foreach (SafeHtmlElement source in picture.Children.OfType<SafeHtmlElement>().Where(element => element.Name == "source"))
+        foreach (SafeHtmlElement source in sources)
         {
             if (source.TryGetAttribute("media", out string media) &&
-                NormalizeMediaQuery(media).Contains($"prefers-color-scheme:{expected}", StringComparison.OrdinalIgnoreCase))
+                NormalizeMediaQuery(media).Equals($"(prefers-color-scheme:{expected})", StringComparison.OrdinalIgnoreCase) &&
+                (!source.TryGetAttribute("type", out string type) ||
+                 IsSupportedPictureSourceType(type)) &&
+                TryGetSinglePictureSourceCandidate(source, out _))
             {
                 return source;
             }
         }
 
+        // Match the deterministic subset of <picture> source selection that we
+        // can reproduce without viewport/DPR-dependent srcset negotiation:
+        // an explicitly supported raster MIME type, no media/sizes condition,
+        // and exactly one URL with no density/width descriptor. Anything more
+        // complex remains on the authored <img> fallback rather than guessing.
+        foreach (SafeHtmlElement source in sources)
+        {
+            if (source.TryGetAttribute("media", out _) ||
+                source.TryGetAttribute("sizes", out _) ||
+                !source.TryGetAttribute("type", out string type) ||
+                !IsSupportedPictureSourceType(type) ||
+                !TryGetSinglePictureSourceCandidate(source, out _))
+            {
+                continue;
+            }
+
+            return source;
+        }
+
         return null;
+    }
+
+    private static bool TryGetSinglePictureSourceCandidate(SafeHtmlElement source, out string candidate)
+    {
+        candidate = string.Empty;
+        if (!source.TryGetAttribute("srcset", out string sourceSet) ||
+            string.IsNullOrWhiteSpace(sourceSet) ||
+            sourceSet.Contains(','))
+        {
+            return false;
+        }
+
+        string[] parts = sourceSet.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length != 1 || !SafeHtmlParser.TryNormalizeImageSource(parts[0], out candidate))
+        {
+            candidate = string.Empty;
+            return false;
+        }
+
+        return true;
     }
 
     private static string NormalizeMediaQuery(string media) =>
         string.Concat(media.Where(character => !char.IsWhiteSpace(character)));
+
+    private static bool IsSupportedPictureSourceType(string type)
+    {
+        string normalized = type.Trim();
+        return SupportedPictureSourceTypes.Contains(normalized) ||
+            normalized.Equals("image/svg+xml", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Equals("image/webp", StringComparison.OrdinalIgnoreCase);
+    }
 
     private static SafeHtmlElement? FindDescendant(SafeHtmlElement parent, string name)
     {
@@ -1693,7 +1872,7 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             : new TextRun(text);
         run.SourceSpan = new SourceSpan(sourceStart, text.Length);
         run.SetStyleAliases(context.StyleAliases);
-        box.Add(run);
+        AddRun(box, run);
     }
 
     private IReadOnlyList<string> GetAllowedClassAliases(SafeHtmlElement element)
@@ -1758,7 +1937,17 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         return null;
     }
 
-    private sealed record HtmlTableCell(SafeHtmlElement Element, int ColumnSpan);
+    // Construction-only holders are never equality keys or copied with `with`.
+    // Keep them immutable without emitting record equality/printing helpers.
+    private sealed class HtmlTableCell(SafeHtmlElement Element, int ColumnSpan)
+    {
+        internal SafeHtmlElement Element { get; } = Element;
+        internal int ColumnSpan { get; } = ColumnSpan;
+    }
 
-    private sealed record HtmlTableRow(IReadOnlyList<HtmlTableCell> Cells, bool IsHeader);
+    private sealed class HtmlTableRow(IReadOnlyList<HtmlTableCell> Cells, bool IsHeader)
+    {
+        internal IReadOnlyList<HtmlTableCell> Cells { get; } = Cells;
+        internal bool IsHeader { get; } = IsHeader;
+    }
 }

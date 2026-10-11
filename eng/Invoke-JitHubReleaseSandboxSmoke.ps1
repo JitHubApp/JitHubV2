@@ -2,6 +2,8 @@
 param(
     [string]$ProjectPath = (Join-Path $PSScriptRoot '..\JitHub.WinUI\JitHub.WinUI.csproj'),
     [string]$ScreenshotPath = (Join-Path $PSScriptRoot '..\artifacts\screenshots\winapp-cli\jithub-release-sandbox.png'),
+    [switch]$NativeAot,
+    [string]$PublishDirectory = '',
     [switch]$SkipScreenshot
 )
 
@@ -36,13 +38,13 @@ ConvertTo-Json -InputObject $packages -Compress -Depth 4
     }
 
     try {
-        $packages = ConvertFrom-Json -InputObject $output
+        $packages = @(ConvertFrom-Json -InputObject $output)
     }
     catch {
         throw "The sandbox package query did not return valid JSON: $output"
     }
 
-    return @($packages)
+    return $packages
 }
 
 function Test-ExpectedEngagementPackage {
@@ -54,6 +56,43 @@ function Test-ExpectedEngagementPackage {
         $_.Architecture -eq 'X64' -and
         $_.Publisher -match '^CN=Microsoft Corporation(?:,|$)'
     })
+}
+
+function Get-ReleaseSandboxRunArguments {
+    param(
+        [Parameter(Mandatory = $true)][string]$ProjectPath,
+        [switch]$NativeAot,
+        [string]$PublishDirectory = ''
+    )
+
+    $arguments = @('run', $ProjectPath, '--on', 'sandbox', '--detach', '--json', '-c', 'Release', '--arch', 'x64')
+    if ($NativeAot) {
+        # WinApp CLI always publishes in AOT mode and rejects --no-build.
+        # Keep the explicit output directory. Reverify it after the publish,
+        # then compare the activated bytes with that verified artifact.
+        $publishDirectoryForMsBuild = $PublishDirectory.TrimEnd([char[]]@('\', '/')) + [IO.Path]::DirectorySeparatorChar
+        $arguments += @('--aot', '--no-restore', '-p', "PublishDir=$publishDirectoryForMsBuild")
+    }
+    else {
+        $arguments += '--no-build'
+    }
+
+    return $arguments
+}
+
+function Assert-NativeAotGuestIdentity {
+    param(
+        [Parameter(Mandatory = $true)][object]$GuestProof,
+        [Parameter(Mandatory = $true)][int]$ExpectedProcessId,
+        [Parameter(Mandatory = $true)][string]$ExpectedSha256
+    )
+
+    if ($ExpectedProcessId -le 0 -or $ExpectedSha256 -cnotmatch '^[0-9a-f]{64}$' -or
+        [int]$GuestProof.ProcessId -ne $ExpectedProcessId -or
+        [string]$GuestProof.ExecutableSha256 -cne $ExpectedSha256 -or
+        @($GuestProof.LoadedForbiddenModules).Count -ne 0) {
+        throw 'The running Sandbox executable does not match the verified NativeAOT publish or loaded a managed runtime.'
+    }
 }
 
 Require-Command -Name 'winapp'
@@ -75,6 +114,39 @@ if ($resolvedProject -ine $expectedProject) {
 if (-not (Test-Path -LiteralPath $expectedProject -PathType Leaf)) {
     throw "JitHub project file was not found: $expectedProject"
 }
+
+$executionMode = if ($NativeAot) { 'native-aot' } else { 'release-jit' }
+$resolvedPublishDirectory = $null
+$expectedAotExecutableSha256 = $null
+if ($NativeAot) {
+    if ([string]::IsNullOrWhiteSpace($PublishDirectory)) {
+        throw '-NativeAot requires an existing -PublishDirectory from the exact x64 NativeAOT publish to activate.'
+    }
+
+    $resolvedPublishDirectory = [IO.Path]::GetFullPath($PublishDirectory)
+    if (-not (Test-Path -LiteralPath $resolvedPublishDirectory -PathType Container)) {
+        throw "The explicit NativeAOT publish directory does not exist: $resolvedPublishDirectory"
+    }
+
+    & (Join-Path $PSScriptRoot 'Verify-NativeAotArtifact.ps1') `
+        -InputPath $resolvedPublishDirectory `
+        -Architecture 'x64'
+    if (-not $?) {
+        throw "NativeAOT artifact verification failed for the explicit publish directory: $resolvedPublishDirectory"
+    }
+
+    $expectedAotExecutablePath = Join-Path $resolvedPublishDirectory 'JitHub.WinUI.exe'
+    if (-not (Test-Path -LiteralPath $expectedAotExecutablePath -PathType Leaf)) {
+        throw "The verified NativeAOT publish is missing its expected executable: $expectedAotExecutablePath"
+    }
+    $expectedAotExecutableSha256 = (Get-FileHash -LiteralPath $expectedAotExecutablePath -Algorithm SHA256).Hash.ToLowerInvariant()
+    Write-Host "Preflight verified the exact x64 NativeAOT publish directory: $resolvedPublishDirectory"
+}
+elseif (-not [string]::IsNullOrWhiteSpace($PublishDirectory)) {
+    throw '-PublishDirectory is accepted only together with -NativeAot; the default Release smoke is managed/JIT.'
+}
+
+Write-Host "Sandbox smoke execution mode: $executionMode."
 
 $lockPath = Join-Path (Split-Path -Parent $expectedProject) 'packages.lock.json'
 if (-not (Test-Path -LiteralPath $lockPath -PathType Leaf)) {
@@ -169,8 +241,8 @@ if (-not $snapshot.running -or
     throw 'The WinApp sandbox must be running with an x64 interactive desktop before this smoke can continue.'
 }
 
-$guestPackages = Get-EngagementGuestPackages
-$expectedGuestPackages = Test-ExpectedEngagementPackage -Packages $guestPackages
+$guestPackages = @(Get-EngagementGuestPackages)
+$expectedGuestPackages = @(Test-ExpectedEngagementPackage -Packages $guestPackages)
 if ($expectedGuestPackages.Count -eq 1 -and $guestPackages.Count -eq 1) {
     Write-Host "Sandbox already has $($expectedGuestPackages[0].PackageFullName)."
 }
@@ -190,8 +262,8 @@ elseif ($guestPackages.Count -eq 0) {
         throw "Could not install the signed Engagement SDK Appx in the sandbox: $installText"
     }
 
-    $guestPackages = Get-EngagementGuestPackages
-    $expectedGuestPackages = Test-ExpectedEngagementPackage -Packages $guestPackages
+    $guestPackages = @(Get-EngagementGuestPackages)
+    $expectedGuestPackages = @(Test-ExpectedEngagementPackage -Packages $guestPackages)
     if ($expectedGuestPackages.Count -ne 1 -or $guestPackages.Count -ne 1) {
         throw "The sandbox did not report the expected Engagement SDK package after installation: $(ConvertTo-Json -InputObject $guestPackages -Compress -Depth 4)"
     }
@@ -206,7 +278,7 @@ $previousWorkflowId = $env:WINAPP_UI_WORKFLOW_ID
 $env:WINAPP_UI_WORKFLOW_ID = "jithub-release-sandbox-$([guid]::NewGuid().ToString('N'))"
 $launched = $false
 try {
-    $runArguments = @('run', $expectedProject, '--on', 'sandbox', '--detach', '--json', '-c', 'Release', '--arch', 'x64', '--no-build')
+    $runArguments = @(Get-ReleaseSandboxRunArguments -ProjectPath $expectedProject -NativeAot:$NativeAot -PublishDirectory $resolvedPublishDirectory)
     $runText = (& winapp @runArguments 2>&1 | Out-String)
     if ($LASTEXITCODE -ne 0) {
         throw "JitHub Release x64 did not launch in Windows Sandbox: $runText"
@@ -216,13 +288,69 @@ try {
         throw "The sandbox launch did not return JSON: $runText"
     }
     $run = $runText.Substring($jsonStarts[$jsonStarts.Count - 1].Index).Trim() | ConvertFrom-Json
-    if (-not $run.Sandbox -or $run.ProcessScope -ne 'sandbox' -or $run.ProcessId -le 0) {
+    if ($null -eq $run.ProcessId -or [int]$run.ProcessId -le 0 -or
+        -not $run.Sandbox -or $run.ProcessScope -ne 'sandbox') {
         throw 'WinApp CLI did not report a sandbox-scoped JitHub Release process.'
     }
 
     $launched = $true
-    $appProcessId = [string]$run.ProcessId
-    Write-Host "JitHub Release x64 started in Windows Sandbox (PID $appProcessId)."
+    $appProcessId = [int]$run.ProcessId
+    $expectedUiTargetArgs = "--on sandbox -a $appProcessId"
+    if ([string]$run.UiTargetArgs -cne $expectedUiTargetArgs) {
+        throw "WinApp CLI did not report the exact Sandbox UI target arguments for PID $appProcessId. Expected '$expectedUiTargetArgs'; got '$($run.UiTargetArgs)'."
+    }
+    Write-Host "JitHub x64 started in Windows Sandbox (PID $appProcessId; mode $executionMode)."
+
+    if ($NativeAot) {
+        # --aot necessarily republishes. Its output may differ from the earlier
+        # preflight artifact (including when project evaluation adds properties).
+        # Verify the output produced by this launch, not stale pre-publish bytes.
+        # Guest identity still must match this exact verified native executable.
+        & (Join-Path $PSScriptRoot 'Verify-NativeAotArtifact.ps1') `
+            -InputPath $resolvedPublishDirectory `
+            -Architecture 'x64'
+        if (-not $?) {
+            throw 'The NativeAOT output produced by WinApp failed artifact verification.'
+        }
+        $prePublishExecutableSha256 = $expectedAotExecutableSha256
+        $expectedAotExecutableSha256 = (Get-FileHash -LiteralPath $expectedAotExecutablePath -Algorithm SHA256).Hash.ToLowerInvariant()
+        Write-Host "Verified post-publish NativeAOT executable (before: $prePublishExecutableSha256; after: $expectedAotExecutableSha256)."
+
+        $verifyGuestExecutableProbe = @'
+$processId = __APP_PID__
+$process = Get-Process -Id $processId -ErrorAction Stop
+$executablePath = [string]$process.Path
+if ([string]::IsNullOrWhiteSpace($executablePath) -or
+    [IO.Path]::GetFileName($executablePath) -ine 'JitHub.WinUI.exe') {
+    throw "Sandbox PID $processId does not resolve to the JitHub.WinUI executable: '$executablePath'."
+}
+$sha256 = (Get-FileHash -LiteralPath $executablePath -Algorithm SHA256).Hash.ToLowerInvariant()
+$forbiddenModules = @('coreclr.dll', 'clrjit.dll', 'hostfxr.dll', 'hostpolicy.dll', 'createdump.exe')
+$loadedForbiddenModules = @($process.Modules | ForEach-Object { [string]$_.ModuleName } |
+    Where-Object { $forbiddenModules -contains $_ })
+if ($loadedForbiddenModules.Count -gt 0) {
+    throw "The AOT Sandbox process loaded managed runtime modules: $($loadedForbiddenModules -join ', ')."
+}
+[pscustomobject]@{
+    ProcessId = $processId
+    ExecutablePath = $executablePath
+    ExecutableSha256 = $sha256
+    LoadedForbiddenModules = $loadedForbiddenModules
+} | ConvertTo-Json -Compress
+'@ -replace '__APP_PID__', [string]$appProcessId
+        $guestProofText = (& winapp target exec sandbox -- powershell -NoProfile -NonInteractive -Command $verifyGuestExecutableProbe 2>&1 | Out-String).Trim()
+        if ($LASTEXITCODE -ne 0) {
+            throw "Could not verify the running AOT executable in the Sandbox: $guestProofText"
+        }
+        try {
+            $guestProof = ConvertFrom-Json -InputObject $guestProofText
+        }
+        catch {
+            throw "The Sandbox AOT executable proof did not return valid JSON: $guestProofText"
+        }
+        Assert-NativeAotGuestIdentity -GuestProof $guestProof -ExpectedProcessId $appProcessId -ExpectedSha256 $expectedAotExecutableSha256
+        Write-Host "Verified Sandbox AOT executable bytes against '$resolvedPublishDirectory' (SHA-256 $expectedAotExecutableSha256); no managed runtime modules were loaded."
+    }
 
     $waitText = (& winapp ui wait-for LoginSignInButton --on sandbox -a $appProcessId --type Button -t 15000 2>&1 | Out-String).Trim()
     if ($LASTEXITCODE -ne 0) {
@@ -254,6 +382,11 @@ try {
             throw "Could not capture the JitHub Release sandbox window: $screenshotText"
         }
         Write-Host "Screenshot written to $fullScreenshotPath"
+    }
+
+    if ($NativeAot -and
+        (Get-FileHash -LiteralPath $expectedAotExecutablePath -Algorithm SHA256).Hash.ToLowerInvariant() -cne $expectedAotExecutableSha256) {
+        throw 'The verified NativeAOT publish changed while the Sandbox smoke was running.'
     }
 }
 finally {

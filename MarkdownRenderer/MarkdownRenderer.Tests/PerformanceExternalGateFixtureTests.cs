@@ -21,6 +21,61 @@ public sealed class PerformanceExternalGateFixtureTests
     }
 
     [Fact]
+    public void SourceLookupDiagnosticTrialTelemetryIsAcceptedWhenPresentOrAbsent()
+    {
+        using var evidence = GateEvidence.Create();
+        GateResult populated = evidence.RunGate(evidence.CandidatePath, "Candidate");
+        Assert.True(populated.Passed, populated.Output);
+
+        evidence.ApplyMutation("source-lookup-diagnostic-unsupported-counters");
+        GateResult unavailableCounters = evidence.RunGate(evidence.CandidatePath, "Candidate");
+        Assert.True(unavailableCounters.Passed, unavailableCounters.Output);
+
+        evidence.ApplyMutation("source-lookup-diagnostic-fields-absent");
+        GateResult legacyShape = evidence.RunGate(evidence.CandidatePath, "Candidate");
+        Assert.True(legacyShape.Passed, legacyShape.Output);
+    }
+
+    [Theory]
+    [InlineData("source-lookup-trial-unknown-member")]
+    [InlineData("reference-source-lookup-trial-unknown-member")]
+    public void StrictSchemaRejectsUnknownSourceLookupTrialProperties(string mutation)
+    {
+        using var evidence = GateEvidence.Create();
+        evidence.ApplyMutation(mutation);
+
+        GateResult result = evidence.RunGate(evidence.CandidatePath, "Candidate");
+
+        Assert.False(result.Passed, result.Output);
+        Assert.Contains("unmapped JSON", result.Output, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("unexpectedDiagnostic", result.Output, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("source-lookup-diagnostic-timestamp-order")]
+    [InlineData("source-lookup-diagnostic-timestamp-pair")]
+    [InlineData("source-lookup-diagnostic-elapsed-negative")]
+    [InlineData("source-lookup-diagnostic-elapsed-fractional")]
+    [InlineData("source-lookup-diagnostic-elapsed-shorter-than-samples")]
+    [InlineData("source-lookup-diagnostic-cpu-negative")]
+    [InlineData("source-lookup-diagnostic-cpu-fractional")]
+    [InlineData("source-lookup-diagnostic-cpu-exceeds-stopwatch")]
+    [InlineData("source-lookup-diagnostic-cycles-negative")]
+    [InlineData("source-lookup-diagnostic-cycles-fractional")]
+    [InlineData("source-lookup-diagnostic-gc-negative")]
+    [InlineData("source-lookup-diagnostic-gc-fractional")]
+    [InlineData("reference-source-lookup-diagnostic-timestamp-order")]
+    public void ExternalGateRejectsMalformedSourceLookupDiagnosticTelemetry(string mutation)
+    {
+        using var evidence = GateEvidence.Create();
+        evidence.ApplyMutation(mutation);
+
+        GateResult result = evidence.RunGate(evidence.CandidatePath, "Candidate");
+
+        Assert.False(result.Passed, $"Mutation '{mutation}' unexpectedly passed. {result.Output}");
+    }
+
+    [Fact]
     public void QualifiedObservedRefreshRatesNeedNotMatchAcrossReports()
     {
         using var evidence = GateEvidence.Create();
@@ -705,6 +760,57 @@ public sealed class PerformanceExternalGateFixtureTests
 
         internal void ApplyMutation(string mutation)
         {
+            if (mutation == "source-lookup-diagnostic-fields-absent")
+            {
+                ApplyReferenceMutation((baseline, candidate) =>
+                {
+                    RemoveSourceLookupDiagnosticFields(baseline);
+                    RemoveSourceLookupDiagnosticFields(candidate);
+                });
+                return;
+            }
+            if (mutation == "source-lookup-diagnostic-unsupported-counters")
+            {
+                ApplyReferenceMutation((baseline, candidate) =>
+                {
+                    SetUnavailableSourceLookupDiagnosticCounters(baseline);
+                    SetUnavailableSourceLookupDiagnosticCounters(candidate);
+                });
+                return;
+            }
+            const string referenceLookupDiagnosticPrefix = "reference-source-lookup-diagnostic-";
+            if (mutation.StartsWith(referenceLookupDiagnosticPrefix, StringComparison.Ordinal))
+            {
+                ApplyReferenceMutation((baseline, _) => ApplySourceLookupDiagnosticMutation(
+                    baseline,
+                    mutation[referenceLookupDiagnosticPrefix.Length..]));
+                return;
+            }
+            const string lookupDiagnosticPrefix = "source-lookup-diagnostic-";
+            if (mutation.StartsWith(lookupDiagnosticPrefix, StringComparison.Ordinal))
+            {
+                JsonObject candidate = JsonNode.Parse(File.ReadAllText(CandidatePath))!.AsObject();
+                ApplySourceLookupDiagnosticMutation(candidate, mutation[lookupDiagnosticPrefix.Length..]);
+                File.WriteAllText(
+                    CandidatePath,
+                    candidate.ToJsonString(PerformanceReport.JsonOptions));
+                return;
+            }
+            if (mutation == "source-lookup-trial-unknown-member")
+            {
+                JsonObject candidate = JsonNode.Parse(File.ReadAllText(CandidatePath))!.AsObject();
+                candidate["sourceLookup"]!["regressionTrials"]![0]!["unexpectedDiagnostic"] = 1;
+                File.WriteAllText(
+                    CandidatePath,
+                    candidate.ToJsonString(PerformanceReport.JsonOptions));
+                return;
+            }
+            if (mutation == "reference-source-lookup-trial-unknown-member")
+            {
+                ApplyReferenceMutation((baseline, _) =>
+                    baseline["sourceLookup"]!["regressionTrials"]![0]!["unexpectedDiagnostic"] = 1);
+                return;
+            }
             if (mutation == "deployment-unmanifested-file")
             {
                 File.WriteAllText(
@@ -3038,6 +3144,14 @@ public sealed class PerformanceExternalGateFixtureTests
                 PerformanceMeasurementContract.SourceLookupRegressionTrialCount);
             for (int ordinal = 0; ordinal < regressionTicks.Length; ordinal++)
             {
+                long elapsedStopwatchTicks = checked(
+                    regressionTicks[ordinal] *
+                    PerformanceMeasurementContract.SourceLookupRegressionObservationCount +
+                    100);
+                long elapsed100NsTicks = (long)Math.Round(
+                    elapsedStopwatchTicks * 10_000_000d / Stopwatch.Frequency,
+                    MidpointRounding.AwayFromZero);
+                DateTimeOffset startedUtc = DateTimeOffset.UnixEpoch.AddMinutes(ordinal);
                 double nanoseconds = regressionTicks[ordinal] * nanosecondsPerTick /
                     PerformanceMeasurementContract.SourceLookupRegressionBatchSize;
                 trials.Add(new SourceLookupTrialResult
@@ -3053,6 +3167,14 @@ public sealed class PerformanceExternalGateFixtureTests
                         PerformanceMeasurementContract.SourceLookupRegressionObservationCount).ToList(),
                     P95Nanoseconds = nanoseconds,
                     AllocatedBytes = 0,
+                    StartedUtc = startedUtc,
+                    CompletedUtc = startedUtc.AddTicks(Math.Max(1, elapsed100NsTicks)),
+                    ElapsedStopwatchTicks = elapsedStopwatchTicks,
+                    ThreadCpuTime100NsTicks = Math.Max(0, elapsed100NsTicks - 1),
+                    ThreadCycleDelta = 0,
+                    Gen0Collections = 0,
+                    Gen1Collections = 0,
+                    Gen2Collections = 0,
                     Complete = true,
                 });
             }
@@ -3081,6 +3203,85 @@ public sealed class PerformanceExternalGateFixtureTests
                 RegressionAllocatedBytes = trials.Sum(static trial => trial.AllocatedBytes),
                 Passed = true,
             };
+        }
+
+        private static void RemoveSourceLookupDiagnosticFields(JsonObject report)
+        {
+            string[] names =
+            [
+                "startedUtc",
+                "completedUtc",
+                "elapsedStopwatchTicks",
+                "threadCpuTime100NsTicks",
+                "threadCycleDelta",
+                "gen0Collections",
+                "gen1Collections",
+                "gen2Collections",
+            ];
+            foreach (JsonNode? trial in report["sourceLookup"]!["regressionTrials"]!.AsArray())
+            {
+                JsonObject trialObject = trial!.AsObject();
+                foreach (string name in names)
+                {
+                    trialObject.Remove(name);
+                }
+            }
+        }
+
+        private static void SetUnavailableSourceLookupDiagnosticCounters(JsonObject report)
+        {
+            foreach (JsonNode? trial in report["sourceLookup"]!["regressionTrials"]!.AsArray())
+            {
+                JsonObject trialObject = trial!.AsObject();
+                trialObject["threadCpuTime100NsTicks"] = -1;
+                trialObject["threadCycleDelta"] = null;
+            }
+        }
+
+        private static void ApplySourceLookupDiagnosticMutation(JsonObject report, string mutation)
+        {
+            JsonObject trial = report["sourceLookup"]!["regressionTrials"]![0]!.AsObject();
+            switch (mutation)
+            {
+                case "timestamp-order":
+                    trial["completedUtc"] = trial["startedUtc"]!.DeepClone();
+                    break;
+                case "timestamp-pair":
+                    trial.Remove("completedUtc");
+                    break;
+                case "elapsed-negative":
+                    trial["elapsedStopwatchTicks"] = -1;
+                    break;
+                case "elapsed-fractional":
+                    trial["elapsedStopwatchTicks"] = 1.5;
+                    break;
+                case "elapsed-shorter-than-samples":
+                    trial["elapsedStopwatchTicks"] = 1;
+                    break;
+                case "cpu-negative":
+                    trial["threadCpuTime100NsTicks"] = -2;
+                    break;
+                case "cpu-fractional":
+                    trial["threadCpuTime100NsTicks"] = 1.5;
+                    break;
+                case "cpu-exceeds-stopwatch":
+                    trial["threadCpuTime100NsTicks"] = long.MaxValue;
+                    break;
+                case "cycles-negative":
+                    trial["threadCycleDelta"] = -1;
+                    break;
+                case "cycles-fractional":
+                    trial["threadCycleDelta"] = 1.5;
+                    break;
+                case "gc-negative":
+                    trial["gen0Collections"] = -1;
+                    break;
+                case "gc-fractional":
+                    trial["gen0Collections"] = 0.5;
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(mutation), mutation, null);
+            }
         }
 
         private static CancellationResult CreateCancellation(GateValues values, bool candidate)

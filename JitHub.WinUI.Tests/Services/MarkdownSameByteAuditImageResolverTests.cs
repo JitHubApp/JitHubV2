@@ -1,11 +1,19 @@
 using System.Security.Cryptography;
 using System.Text;
+using JitHub.Models.CodeViewer;
+using JitHub.Services;
+using JitHub.Services.CodeViewer;
 using JitHub.Services.Markdown;
+using JitHub.WinUI.ViewModels.CodeViewer;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Performance;
+using NSubstitute;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;
 
+[Trait("Category", "ReleaseSecurity")]
+[Collection("Markdown renderer audit environment")]
 public sealed class MarkdownSameByteAuditImageResolverTests
 {
     private sealed record FixtureAsset(string Source, byte[] Bytes, string MimeType);
@@ -21,6 +29,140 @@ public sealed class MarkdownSameByteAuditImageResolverTests
 
         Assert.Equal("README.md", path);
         Assert.Equal(fixture.PinnedReadmeBytes, bytes);
+    }
+
+    [Fact]
+    public async Task OfflinePinnedReadmeFlowsThroughRepositoryPageAndRemainsAnExplicitPartialTree()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await WithOfflineAuditEnvironmentAsync(fixture, readmeAvailable: true, async () =>
+        {
+            var query = Substitute.For<IGitHubRepoCodeQueryService>();
+            var auth = Substitute.For<IAuthService>();
+            var account = Substitute.For<IAccountService>();
+            var service = new RepoTreeService(query, auth, account);
+
+            RepoTree directTree = (await service.LoadTreeAsync(
+                "example",
+                "repo",
+                fixture.CommitSha,
+                CancellationToken.None)).Value;
+            Assert.True(directTree.Truncated);
+            Assert.False(directTree.RootIsAuthoritative);
+            RepoTreeNode directReadme = Assert.Single(directTree.Root.Children);
+            Assert.Equal("README.md", directReadme.Path);
+            Assert.Equal(fixture.ReadmeGitBlobSha1, directReadme.Sha);
+
+            LanguageIdResolver languageResolver = new();
+            RepoCodePageViewModel viewModel = new(
+                service,
+                Substitute.For<IRepoFileCacheService>(),
+                new FilePreviewResolver(languageResolver),
+                languageResolver,
+                account,
+                Substitute.For<ITelemetryService>());
+
+            await viewModel.InitializeAsync("example", "repo", fixture.CommitSha, CancellationToken.None);
+            await viewModel.ReconciliationTask;
+            await viewModel.DefaultPreviewTask;
+
+            Assert.True(viewModel.UseRawReadmeSourceForSameByteAudit);
+            Assert.True(viewModel.Tree.IsTruncated);
+            Assert.False(viewModel.Tree.IsRootAuthoritative);
+            Assert.Equal("README.md", viewModel.Preview.CurrentFile?.Path);
+            Assert.Equal(fixture.ReadmeBytes, viewModel.Preview.Bytes);
+            Assert.Equal(Encoding.UTF8.GetString(fixture.ReadmeBytes), viewModel.Preview.Text);
+            Assert.Equal(viewModel.Preview.Text, viewModel.Preview.RenderedText);
+            Assert.Equal(viewModel.Preview.Text, viewModel.Preview.RichPreviewDocument?.Markdown);
+            Assert.Equal("README.md", viewModel.Preview.RichPreviewDocument?.DocumentPath);
+            Assert.Equal(fixture.ReadmeGitBlobSha1, viewModel.Preview.CurrentFile?.Sha);
+            Assert.Empty(query.ReceivedCalls());
+            Assert.Empty(auth.ReceivedCalls());
+        });
+    }
+
+    [Fact]
+    public async Task OfflinePinnedNoReadmeStaysEmptyAndDoesNotClaimACompleteTree()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await WithOfflineAuditEnvironmentAsync(fixture, readmeAvailable: false, async () =>
+        {
+            var query = Substitute.For<IGitHubRepoCodeQueryService>();
+            var auth = Substitute.For<IAuthService>();
+            var account = Substitute.For<IAccountService>();
+            var service = new RepoTreeService(query, auth, account);
+
+            RepoTree directTree = (await service.LoadTreeAsync(
+                "example",
+                "repo",
+                fixture.CommitSha,
+                CancellationToken.None)).Value;
+            Assert.True(directTree.Truncated);
+            Assert.False(directTree.RootIsAuthoritative);
+            Assert.Empty(directTree.Root.Children);
+            Assert.Null(await service.LoadReadmeAsync(
+                "example",
+                "repo",
+                fixture.CommitSha,
+                CancellationToken.None));
+
+            LanguageIdResolver languageResolver = new();
+            RepoCodePageViewModel viewModel = new(
+                service,
+                Substitute.For<IRepoFileCacheService>(),
+                new FilePreviewResolver(languageResolver),
+                languageResolver,
+                account,
+                Substitute.For<ITelemetryService>());
+
+            await viewModel.InitializeAsync("example", "repo", fixture.CommitSha, CancellationToken.None);
+            await viewModel.ReconciliationTask;
+            await viewModel.DefaultPreviewTask;
+
+            Assert.True(viewModel.Tree.IsTruncated);
+            Assert.False(viewModel.Tree.IsRootAuthoritative);
+            Assert.Empty(viewModel.Tree.RootNodes);
+            Assert.Null(viewModel.Preview.CurrentFile);
+            Assert.Null(viewModel.Preview.RichPreviewDocument);
+            Assert.Empty(query.ReceivedCalls());
+            Assert.Empty(auth.ReceivedCalls());
+        });
+    }
+
+    [Fact]
+    public async Task RegistrySharesValidatedFixtureBetweenSourceAndImagePaths()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var registry = new MarkdownSameByteAuditResolverRegistry();
+        MarkdownSameByteAuditImageResolver sourceResolver = registry.GetOrCreate(
+            fixture.DirectoryPath, fixture.Repository, fixture.CommitSha, fixture.ReadmeGitBlobSha1);
+        _ = await sourceResolver.LoadPinnedReadmeBytesAsync("README.md", CancellationToken.None);
+
+        MarkdownSameByteAuditImageResolver imageResolver = registry.GetOrCreate(
+            fixture.DirectoryPath, fixture.Repository, fixture.CommitSha, fixture.ReadmeGitBlobSha1);
+        MarkdownImageResolution image = await imageResolver.ResolveAsync(
+            "docs/image.png", fixture.Context, CancellationToken.None);
+
+        Assert.Same(sourceResolver, imageResolver);
+        Assert.Equal(fixture.AssetBytes, image.Asset?.Bytes);
+    }
+
+    [Fact]
+    public async Task RegistryRejectsIdentityDriftAndClearsBetweenAuditLaunches()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var registry = new MarkdownSameByteAuditResolverRegistry();
+        MarkdownSameByteAuditImageResolver first = registry.GetOrCreate(
+            fixture.DirectoryPath, fixture.Repository, fixture.CommitSha, fixture.ReadmeGitBlobSha1);
+
+        Assert.Throws<InvalidDataException>(() => registry.GetOrCreate(
+            fixture.DirectoryPath, fixture.Repository, "different-commit", fixture.ReadmeGitBlobSha1));
+        Assert.Throws<InvalidDataException>(() => registry.GetOrCreate(
+            fixture.DirectoryPath, fixture.Repository, fixture.CommitSha, "different-readme"));
+        registry.Clear();
+        MarkdownSameByteAuditImageResolver next = registry.GetOrCreate(
+            fixture.DirectoryPath, fixture.Repository, fixture.CommitSha, fixture.ReadmeGitBlobSha1);
+        Assert.NotSame(first, next);
     }
 
     [Fact]
@@ -61,6 +203,213 @@ public sealed class MarkdownSameByteAuditImageResolverTests
         Assert.Equal("image/png", result.Asset.ContentType);
         Assert.Equal($"same-byte://sha256/{fixture.AssetSha256}", result.Asset.ResolvedUri?.AbsoluteUri);
         Assert.Equal($"same-byte:{fixture.AssetSha256}", result.Asset.CacheKey);
+    }
+
+    [Fact]
+    public async Task StageDiagnosticsReportWarmIndexAndVerifiedAssetSubstagesWithoutChangingBytes()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var resolver = fixture.Resolver();
+        _ = await resolver.LoadPinnedReadmeBytesAsync("README.md", CancellationToken.None);
+
+        MarkdownSameByteImageResolutionDiagnostic diagnostic = await resolver.ResolveWithStageDiagnosticsAsync(
+            "docs/image.png",
+            fixture.Context,
+            correlationId: 73,
+            CancellationToken.None);
+
+        Assert.True(diagnostic.Resolution.IsHandled);
+        Assert.NotNull(diagnostic.Resolution.Asset);
+        Assert.Equal(fixture.AssetBytes, diagnostic.Resolution.Asset.Bytes);
+        Assert.Equal(73, diagnostic.StageEvidence.CorrelationId);
+        Assert.True(diagnostic.StageEvidence.IndexTaskWasCreatedAtStart);
+        Assert.True(diagnostic.StageEvidence.IndexTaskWasCompletedBeforeAwait);
+        Assert.True(diagnostic.StageEvidence.SourceHashCandidateCount > 0);
+        Assert.Null(diagnostic.StageEvidence.FailureStage);
+        Assert.True(diagnostic.StageEvidence.IndexWaitMilliseconds >= 0);
+        Assert.True(diagnostic.StageEvidence.SourceHashLookupMilliseconds >= 0);
+        Assert.True(diagnostic.StageEvidence.SourceHashIndexLookupMilliseconds >= 0);
+        Assert.True(diagnostic.StageEvidence.AssetStatMilliseconds >= 0);
+        Assert.True(diagnostic.StageEvidence.AssetOpenMilliseconds >= 0);
+        Assert.True(diagnostic.StageEvidence.AssetLengthCheckMilliseconds >= 0);
+        Assert.True(diagnostic.StageEvidence.AssetBufferAllocationMilliseconds >= 0);
+        Assert.True(diagnostic.StageEvidence.AssetReadMilliseconds >= 0);
+        Assert.True(diagnostic.StageEvidence.AssetReadExactlyMilliseconds >= 0);
+        Assert.True(diagnostic.StageEvidence.AssetEofProbeMilliseconds >= 0);
+        Assert.True(diagnostic.StageEvidence.AssetSha256VerificationMilliseconds >= 0);
+        Assert.True(diagnostic.StageEvidence.AssetDisposeMilliseconds >= 0);
+        Assert.True(diagnostic.StageEvidence.ContentTypeValidationMilliseconds >= 0);
+    }
+
+    [Fact]
+    public void SynchronousAssetReadPolicyIsLimitedToEightMiB()
+    {
+        const int threshold = 8 * 1024 * 1024;
+
+        Assert.False(MarkdownSameByteAuditImageResolver.ShouldUseSynchronousAssetRead(0));
+        Assert.False(MarkdownSameByteAuditImageResolver.ShouldUseSynchronousAssetRead(-1));
+        Assert.True(MarkdownSameByteAuditImageResolver.ShouldUseSynchronousAssetRead(1));
+        Assert.True(MarkdownSameByteAuditImageResolver.ShouldUseSynchronousAssetRead(threshold));
+        Assert.False(MarkdownSameByteAuditImageResolver.ShouldUseSynchronousAssetRead(threshold + 1));
+    }
+
+    [Fact]
+    public async Task ResolvesAssetAboveSynchronousReadLimitThroughAsyncPath()
+    {
+        byte[] largeAssetBytes = new byte[8 * 1024 * 1024 + 1];
+        Array.Fill(largeAssetBytes, (byte)0x5A);
+        await using var fixture = await Fixture.CreateAsync(
+            new FixtureAsset("docs/image.png", largeAssetBytes, "image/png"));
+
+        MarkdownImageResolution result = await fixture.Resolver().ResolveAsync(
+            "docs/image.png", fixture.Context, CancellationToken.None);
+
+        Assert.True(result.IsHandled);
+        Assert.NotNull(result.Asset);
+        Assert.Equal(largeAssetBytes, result.Asset.Bytes);
+    }
+
+    [Fact]
+    public async Task ResolvesRelativeAssetAtPinnedCommitWhenDocumentSourceUsesBranchName()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        MarkdownDocumentSource branchSource = fixture.Context.DocumentSource! with { Ref = "main" };
+        MarkdownImageResolveContext branchContext = fixture.Context with { DocumentSource = branchSource };
+
+        MarkdownImageResolution result = await fixture.Resolver().ResolveAsync(
+            "docs/image.png",
+            branchContext,
+            CancellationToken.None);
+
+        Assert.True(result.IsHandled);
+        Assert.NotNull(result.Asset);
+        Assert.Equal(fixture.AssetBytes, result.Asset.Bytes);
+        Assert.Equal($"same-byte://sha256/{fixture.AssetSha256}", result.Asset.ResolvedUri?.AbsoluteUri);
+    }
+
+    [Fact]
+    public async Task LeasedResolutionReservesExactValidatedSizeUntilCallerDisposes()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var admission = new RecordingSourceAdmission();
+
+        MarkdownImageResolutionLease lease = await fixture.Resolver().ResolveWithSourceLeaseAsync(
+            "docs/image.png", fixture.Context, admission, CancellationToken.None);
+
+        Assert.Equal(new long[] { fixture.AssetBytes.Length }, admission.RequestedBytes);
+        Assert.Equal(0, admission.DisposeCount);
+        Assert.Equal(fixture.AssetBytes, lease.Resolution.Asset?.Bytes);
+        lease.Dispose();
+        lease.Dispose();
+        Assert.Equal(1, admission.DisposeCount);
+        Assert.Throws<ObjectDisposedException>(() => _ = lease.Resolution);
+    }
+
+    [Fact]
+    public async Task RejectedAdmissionPreventsAssetResolutionAndLeavesNoReservation()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var admission = new RecordingSourceAdmission
+        {
+            ReserveFailure = new InvalidOperationException("test admission rejection"),
+        };
+
+        InvalidOperationException exception = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            await fixture.Resolver().ResolveWithSourceLeaseAsync(
+                "docs/image.png", fixture.Context, admission, CancellationToken.None));
+
+        Assert.Equal("test admission rejection", exception.Message);
+        Assert.Equal(new long[] { fixture.AssetBytes.Length }, admission.RequestedBytes);
+        Assert.Equal(0, admission.DisposeCount);
+    }
+
+    [Fact]
+    public async Task CanceledLeasedResolutionDoesNotAcquireAdmission()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        var admission = new RecordingSourceAdmission();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+            await fixture.Resolver().ResolveWithSourceLeaseAsync(
+                "docs/image.png", fixture.Context, admission, cancellation.Token));
+
+        Assert.Empty(admission.RequestedBytes);
+        Assert.Equal(0, admission.DisposeCount);
+    }
+
+    [Fact]
+    public async Task CancellationImmediatelyAfterAdmissionReleasesReservation()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        using var cancellation = new CancellationTokenSource();
+        var admission = new RecordingSourceAdmission
+        {
+            OnReserve = cancellation.Cancel,
+        };
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+            await fixture.Resolver().ResolveWithSourceLeaseAsync(
+                "docs/image.png", fixture.Context, admission, cancellation.Token));
+
+        Assert.Equal(new long[] { fixture.AssetBytes.Length }, admission.RequestedBytes);
+        Assert.Equal(1, admission.DisposeCount);
+    }
+
+    [Fact]
+    public async Task LeasedStageDiagnosticsKeepsTheReservationWithItsResult()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var resolver = fixture.Resolver();
+        var admission = new RecordingSourceAdmission();
+
+        MarkdownSameByteLeasedImageResolutionDiagnostic diagnostic =
+            await resolver.ResolveWithLeasedStageDiagnosticsAsync(
+                "docs/image.png", fixture.Context, 105, admission, CancellationToken.None);
+
+        Assert.Equal(fixture.AssetBytes, diagnostic.Lease.Resolution.Asset?.Bytes);
+        Assert.Equal(105, diagnostic.StageEvidence.CorrelationId);
+        Assert.True(diagnostic.StageEvidence.AssetBufferAllocationMilliseconds >= 0);
+        Assert.Equal(new long[] { fixture.AssetBytes.Length }, admission.RequestedBytes);
+        Assert.Equal(0, admission.DisposeCount);
+        diagnostic.Lease.Dispose();
+        Assert.Equal(1, admission.DisposeCount);
+    }
+
+    [Fact]
+    public async Task InvalidAssetHashReleasesAdmissionBeforeReturningUnavailableLease()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await File.WriteAllBytesAsync(
+            fixture.AssetPath,
+            Enumerable.Repeat((byte)0xA5, fixture.AssetBytes.Length).ToArray());
+        var admission = new RecordingSourceAdmission();
+
+        using MarkdownImageResolutionLease lease = await fixture.Resolver().ResolveWithSourceLeaseAsync(
+            "docs/image.png", fixture.Context, admission, CancellationToken.None);
+
+        Assert.True(lease.Resolution.IsHandled);
+        Assert.Null(lease.Resolution.Asset);
+        Assert.Equal(MarkdownImageUnavailableReason.Unavailable, lease.Resolution.UnavailableReason);
+        Assert.Equal(new long[] { fixture.AssetBytes.Length }, admission.RequestedBytes);
+        Assert.Equal(1, admission.DisposeCount);
+    }
+
+    [Fact]
+    public async Task UnmatchedLeasedSourceStaysOfflineWithoutAdmission()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var admission = new RecordingSourceAdmission();
+
+        using MarkdownImageResolutionLease lease = await fixture.Resolver().ResolveWithSourceLeaseAsync(
+            "https://images.example.invalid/not-captured.png", fixture.Context, admission, CancellationToken.None);
+
+        Assert.True(lease.Resolution.IsHandled);
+        Assert.Null(lease.Resolution.Asset);
+        Assert.Equal(MarkdownImageUnavailableReason.Offline, lease.Resolution.UnavailableReason);
+        Assert.Empty(admission.RequestedBytes);
+        Assert.Equal(0, admission.DisposeCount);
     }
 
     [Fact]
@@ -132,6 +481,27 @@ public sealed class MarkdownSameByteAuditImageResolverTests
     }
 
     [Fact]
+    public async Task StageDiagnosticsAttributeSameLengthTamperingToHashVerificationBeforeDisposal()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        byte[] tampered = Enumerable.Repeat((byte)0xA5, fixture.AssetBytes.Length).ToArray();
+        await File.WriteAllBytesAsync(fixture.AssetPath, tampered);
+
+        MarkdownSameByteImageResolutionDiagnostic diagnostic = await fixture.Resolver()
+            .ResolveWithStageDiagnosticsAsync(
+                "docs/image.png",
+                fixture.Context,
+                correlationId: 91,
+                CancellationToken.None);
+
+        Assert.True(diagnostic.Resolution.IsHandled);
+        Assert.Null(diagnostic.Resolution.Asset);
+        Assert.Equal(MarkdownImageUnavailableReason.Unavailable, diagnostic.Resolution.UnavailableReason);
+        Assert.Equal("asset-sha256-verification", diagnostic.StageEvidence.FailureStage);
+        Assert.True(diagnostic.StageEvidence.AssetDisposeMilliseconds >= 0);
+    }
+
+    [Fact]
     public async Task ReadmeHashMismatchFailsClosedBeforeResolvingAnyAsset()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -195,6 +565,138 @@ public sealed class MarkdownSameByteAuditImageResolverTests
         Assert.True(result.IsHandled);
         Assert.Null(result.Asset);
         Assert.Equal(MarkdownImageUnavailableReason.Unavailable, result.UnavailableReason);
+    }
+
+    private sealed class RecordingSourceAdmission : IMarkdownImageSourceByteAdmission
+    {
+        private int _disposeCount;
+
+        public bool IsSpeculative => false;
+        public long MaximumReservationBytes => 64 * 1024 * 1024;
+        public List<long> RequestedBytes { get; } = [];
+        public int DisposeCount => Volatile.Read(ref _disposeCount);
+        public Exception? ReserveFailure { get; init; }
+        public Action? OnReserve { get; init; }
+
+        public ValueTask<IDisposable> ReserveAsync(long bytes, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            RequestedBytes.Add(bytes);
+            Exception? reserveFailure = ReserveFailure;
+            if (reserveFailure is not null)
+                return ValueTask.FromException<IDisposable>(reserveFailure);
+
+            var reservation = new Reservation(this);
+            OnReserve?.Invoke();
+            return ValueTask.FromResult<IDisposable>(reservation);
+        }
+
+        private sealed class Reservation(RecordingSourceAdmission owner) : IDisposable
+        {
+            private RecordingSourceAdmission? _owner = owner;
+
+            public void Dispose()
+            {
+                RecordingSourceAdmission? owner = Interlocked.Exchange(ref _owner, null);
+                if (owner is not null)
+                    Interlocked.Increment(ref owner._disposeCount);
+            }
+        }
+    }
+
+    private static async Task WithOfflineAuditEnvironmentAsync(
+        Fixture fixture,
+        bool readmeAvailable,
+        Func<Task> action)
+    {
+        string[] variableNames =
+        [
+            "JITHUB_README_AUDIT_PINNED_MANIFEST_PATH",
+            "JITHUB_README_AUDIT_PINNED_MANIFEST_RANK",
+            "JITHUB_README_AUDIT_PINNED_MANIFEST_SHA256",
+            "JITHUB_README_AUDIT_GITHUB_TOKEN",
+            "JITHUB_README_AUDIT_GITHUB_ACCOUNT_ID",
+            "JITHUB_README_AUDIT_SAME_BYTE_CORPUS",
+            "JITHUB_README_AUDIT_SAME_BYTE_README_SHA",
+            "JITHUB_README_AUDIT_SAME_BYTE_README_ABSENT",
+        ];
+        string?[] originalValues = variableNames
+            .Select(Environment.GetEnvironmentVariable)
+            .ToArray();
+        string manifestPath = Path.Combine(fixture.DirectoryPath, "top500-pinned.json");
+        byte[] manifestBytes = CreatePinnedTop500Manifest(fixture, readmeAvailable);
+        await File.WriteAllBytesAsync(manifestPath, manifestBytes);
+
+        try
+        {
+            Environment.SetEnvironmentVariable(variableNames[0], Path.GetFullPath(manifestPath));
+            Environment.SetEnvironmentVariable(variableNames[1], "1");
+            Environment.SetEnvironmentVariable(variableNames[2], Convert.ToHexString(SHA256.HashData(manifestBytes)));
+            Environment.SetEnvironmentVariable(variableNames[3], null);
+            Environment.SetEnvironmentVariable(variableNames[4], null);
+            Environment.SetEnvironmentVariable(
+                variableNames[5],
+                readmeAvailable ? fixture.DirectoryPath : null);
+            Environment.SetEnvironmentVariable(
+                variableNames[6],
+                readmeAvailable ? fixture.ReadmeGitBlobSha1 : null);
+            Environment.SetEnvironmentVariable(variableNames[7], readmeAvailable ? null : "1");
+            var launchOptions = new JitHub.WinUI.LaunchOptions(
+                Page: "repo-code",
+                Repository: fixture.Repository,
+                Branch: fixture.CommitSha,
+                ReadmeProductionAudit: true,
+                OfflineSameByteReadmeAudit: true);
+            JitHub.WinUI.OfflineSameByteReadmeAuditPin pin = Assert.IsType<JitHub.WinUI.OfflineSameByteReadmeAuditPin>(
+                launchOptions.ValidateOfflineSameByteReadmeAuditPin());
+            MarkdownLifecycleAutomationBridge.ConfigureLaunchOptions(
+                fixtureEnabled: false,
+                targetHost: null,
+                productionAuditEnabled: true,
+                offlineSameBytePublicAuditEnabled: true,
+                offlineSameByteReadmeAuditPin: pin);
+
+            await action();
+        }
+        finally
+        {
+            MarkdownLifecycleAutomationBridge.ConfigureLaunchOptions(fixtureEnabled: false, targetHost: null);
+            for (int index = 0; index < variableNames.Length; index++)
+            {
+                Environment.SetEnvironmentVariable(variableNames[index], originalValues[index]);
+            }
+        }
+    }
+
+    private static byte[] CreatePinnedTop500Manifest(Fixture fixture, bool readmeAvailable)
+    {
+        using MemoryStream stream = new();
+        using (System.Text.Json.Utf8JsonWriter writer = new(stream))
+        {
+            writer.WriteStartObject();
+            writer.WriteNumber("schemaVersion", 2);
+            writer.WritePropertyName("repositories");
+            writer.WriteStartArray();
+            for (int rank = 1; rank <= 500; rank++)
+            {
+                writer.WriteStartObject();
+                writer.WriteNumber("rank", rank);
+                writer.WriteString("fullName", rank == 1 ? fixture.Repository : $"owner/repo-{rank}");
+                writer.WriteString("commitSha", fixture.CommitSha);
+                writer.WritePropertyName("readme");
+                writer.WriteStartObject();
+                writer.WriteBoolean("available", rank == 1 && readmeAvailable);
+                writer.WriteNumber("byteSize", rank == 1 && readmeAvailable ? fixture.ReadmeBytes.Length : 0);
+                writer.WriteString("path", rank == 1 && readmeAvailable ? "README.md" : string.Empty);
+                writer.WriteString("sha", rank == 1 && readmeAvailable ? fixture.ReadmeGitBlobSha1 : string.Empty);
+                writer.WriteEndObject();
+                writer.WriteEndObject();
+            }
+            writer.WriteEndArray();
+            writer.WriteEndObject();
+        }
+
+        return stream.ToArray();
     }
 
     private sealed class Fixture : IAsyncDisposable

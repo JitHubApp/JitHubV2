@@ -85,26 +85,27 @@ internal sealed class ThemeSnapshot
             _simpleStyles,
             _minimumInteractiveSize,
             DocumentPadding,
-            _blockSpacing);
+            _blockSpacing,
+            _compiledStyleSheet.LayoutPolicy);
     }
 
     /// <summary>Resolved document surface color.</summary>
-    public Color SurfaceColor { get; }
+    public readonly Color SurfaceColor;
 
     /// <summary>Resolved selection highlight color.</summary>
-    public Color SelectionHighlightColor { get; }
+    public readonly Color SelectionHighlightColor;
 
     /// <summary>Resolved selected-text foreground color.</summary>
-    public Color SelectionForegroundColor { get; }
+    public readonly Color SelectionForegroundColor;
 
     /// <summary>Resolved keyboard focus visual color.</summary>
-    public Color FocusVisualColor { get; }
+    public readonly Color FocusVisualColor;
 
     /// <summary>Gets whether the snapshot was captured from a dark theme.</summary>
-    public bool IsDark { get; }
+    public readonly bool IsDark;
 
     /// <summary>Gets whether the snapshot was captured in a high-contrast theme.</summary>
-    public bool IsHighContrast { get; }
+    public readonly bool IsHighContrast;
 
     /// <summary>Gets the text-scale factor compiled into this snapshot.</summary>
     public double TextScaleFactor => _textScaleFactor;
@@ -113,10 +114,12 @@ internal sealed class ThemeSnapshot
     public double MinimumInteractiveSize => _minimumInteractiveSize;
 
     /// <summary>Gets the sanitized padding around the document's top-level content.</summary>
-    public Thickness DocumentPadding { get; }
+    public readonly Thickness DocumentPadding;
 
     /// <summary>Gets the sanitized spacing inserted between adjacent top-level blocks.</summary>
     public double BlockSpacing => _blockSpacing;
+
+    internal byte LayoutPolicy => _compiledStyleSheet.LayoutPolicy;
 
     /// <summary>
     /// Resolves the shared local-overflow colors without consulting WinUI resources on
@@ -138,7 +141,7 @@ internal sealed class ThemeSnapshot
     /// values are deliberately excluded so brush-only environment changes can
     /// reuse device-independent layout metrics.
     /// </summary>
-    internal ulong LayoutFingerprint { get; }
+    internal readonly ulong LayoutFingerprint;
 
     /// <summary>Gets the effective style for an element key.</summary>
     public ElementStyle GetStyle(string elementKey)
@@ -222,13 +225,17 @@ internal sealed class ThemeSnapshot
         IReadOnlyDictionary<string, ElementStyle> styles,
         float minimumInteractiveSize,
         Thickness documentPadding,
-        float blockSpacing)
+        float blockSpacing,
+        byte layoutPolicy)
     {
         const ulong offset = 14695981039346656037UL;
         var keys = new List<string>(styles.Keys);
         keys.Sort(StringComparer.Ordinal);
 
-        ulong hash = Mix(offset, BitConverter.SingleToUInt32Bits(minimumInteractiveSize));
+        // Salt the seed so the effective layout policy participates in the
+        // fingerprint without feeding an extra four-byte word through Mix.
+        ulong hash = offset ^ layoutPolicy;
+        hash = Mix(hash, BitConverter.SingleToUInt32Bits(minimumInteractiveSize));
         hash = Mix(hash, documentPadding);
         hash = Mix(hash, BitConverter.SingleToUInt32Bits(blockSpacing));
         foreach (string key in keys)
@@ -239,6 +246,8 @@ internal sealed class ThemeSnapshot
             hash = Mix(hash, BitConverter.SingleToUInt32Bits(style.FontSize));
             hash = Mix(hash, style.FontWeight.Weight);
             hash = Mix(hash, (uint)style.FontStyle);
+            hash = Mix(hash, BitConverter.SingleToUInt32Bits(style.AccentBarThickness));
+            hash = Mix(hash, style.AccentBarAffectsContentLayout ? 1u : 0u);
             hash = Mix(hash, BitConverter.SingleToUInt32Bits(style.BorderThickness));
             hash = Mix(hash, BitConverter.SingleToUInt32Bits(style.CornerRadius));
             hash = Mix(hash, BitConverter.SingleToUInt32Bits(style.ListIndent));
@@ -388,7 +397,10 @@ internal sealed class ThemeSnapshot
             FocusForeground = style.FocusForeground,
             Background = style.Background,
             AccentBar = style.AccentBar,
+            AccentBarThickness = style.AccentBarThickness,
+            AccentBarAffectsContentLayout = style.AccentBarAffectsContentLayout,
             BorderBrush = style.BorderBrush,
+            HeadingBorderBottomOnly = style.HeadingBorderBottomOnly,
             BorderThickness = style.BorderThickness,
             CornerRadius = style.CornerRadius,
             ListIndent = style.ListIndent,
@@ -454,15 +466,15 @@ internal sealed class ThemeSnapshot
             _hashCode = ComputeHashCode(elementKey, contextKeys, aliasKeys, language, state);
         }
 
-        private string ElementKey { get; }
+        private readonly string ElementKey;
 
-        private IReadOnlyList<string>? ContextKeys { get; }
+        private readonly IReadOnlyList<string>? ContextKeys;
 
-        private IReadOnlyList<string>? AliasKeys { get; }
+        private readonly IReadOnlyList<string>? AliasKeys;
 
-        private string? Language { get; }
+        private readonly string? Language;
 
-        private string? State { get; }
+        private readonly string? State;
 
         internal static StyleCacheKey CreateLookup(
             string elementKey,
@@ -587,6 +599,10 @@ internal sealed class ThemeSnapshot
     private ElementStyle GetBaseStyle(string elementKey)
     {
         if (_styles.TryGetValue(elementKey, out var s)) return s;
+        // Lists are structural containers, not body paragraphs. Sparse custom
+        // snapshots historically lay them out with zero margin, so do not let
+        // the generic Body fallback introduce paragraph margins at the list edge.
+        if (elementKey == MarkdownElementKeys.List) return new ElementStyle();
         if (_styles.TryGetValue(MarkdownElementKeys.Body, out var body)) return body;
         return new ElementStyle();
     }
@@ -609,7 +625,13 @@ internal sealed class ThemeSnapshot
             FocusForeground = ov.FocusForeground ?? defaults.FocusForeground,
             Background = ov.Background ?? defaults.Background,
             AccentBar = ov.AccentBar ?? defaults.AccentBar,
+            AccentBarThickness = ov.AccentBarThickness ?? defaults.AccentBarThickness,
+            AccentBarAffectsContentLayout = ov.AccentBarAffectsContentLayout ?? defaults.AccentBarAffectsContentLayout,
             BorderBrush = ov.BorderBrush ?? defaults.BorderBrush,
+            HeadingBorderBottomOnly = ov.HeadingBorderBottomOnly ??
+                (ov.BorderBrush is not null || ov.BorderThickness is not null
+                    ? false
+                    : defaults.HeadingBorderBottomOnly),
             BorderThickness = ov.BorderThickness ?? defaults.BorderThickness,
             CornerRadius = ov.CornerRadius ?? defaults.CornerRadius,
             ListIndent = ov.ListIndent ?? defaults.ListIndent,
@@ -637,7 +659,10 @@ internal sealed class ThemeSnapshot
             FocusForeground = mandatory.FocusForeground,
             Background = mandatory.Background,
             AccentBar = mandatory.AccentBar,
+            AccentBarThickness = customized.AccentBarThickness,
+            AccentBarAffectsContentLayout = customized.AccentBarAffectsContentLayout,
             BorderBrush = mandatory.BorderBrush,
+            HeadingBorderBottomOnly = customized.HeadingBorderBottomOnly,
             BorderThickness = Math.Max(customized.BorderThickness, mandatory.BorderThickness),
             CornerRadius = customized.CornerRadius,
             ListIndent = customized.ListIndent,

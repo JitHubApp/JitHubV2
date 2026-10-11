@@ -161,24 +161,178 @@ internal static class MeasurementVisibilityEvidenceValidator
             TargetWasUnoccluded: true,
         };
 
+    internal static string DescribeUnqualifiedSample(MeasurementVisibilitySample sample)
+    {
+        ArgumentNullException.ThrowIfNull(sample);
+        if (!sample.CaptureSucceeded)
+            return "the benchmark window could not be inspected";
+        if (!sample.TargetWasForeground)
+            return "the benchmark window lost foreground";
+        if (!sample.TargetWasVisible)
+            return "the benchmark window became hidden";
+        if (sample.TargetWasMinimized)
+            return "the benchmark window was minimized";
+        if (sample.TargetWasCloaked)
+            return "the benchmark window was cloaked";
+        if (!sample.TargetWasWithinWorkArea)
+            return "the benchmark window left the monitor work area";
+        if (!sample.TargetWasUnoccluded)
+            return "the benchmark window became occluded";
+        return "the benchmark window no longer met the visibility policy";
+    }
+
     private static bool IsSafeSampleSource(string source)
         => source is "start" or "complete" or "poll" or "desktop-switch" or
             "foreground-event" or "window-event";
 }
 
+/// <summary>
+/// Latches the first visibility-policy violation for a benchmark leg. Once
+/// the window leaves the qualified measurement environment, later recovery
+/// cannot make the already-contaminated leg valid again.
+/// </summary>
+internal sealed class MeasurementVisibilityInvalidation : IDisposable
+{
+    private readonly object _gate = new();
+    private readonly CancellationTokenSource _cancellation = new();
+    private readonly CancellationToken _cancellationToken;
+    private MeasurementVisibilitySample? _firstUnqualifiedSample;
+    private string? _firstViolationReason;
+    private bool _cancellationStarted;
+    private int _cancellationInFlight;
+    private bool _disposed;
+
+    internal MeasurementVisibilityInvalidation()
+        => _cancellationToken = _cancellation.Token;
+
+    internal CancellationToken CancellationToken => _cancellationToken;
+    internal MeasurementVisibilitySample? FirstUnqualifiedSample
+    {
+        get { lock (_gate) return _firstUnqualifiedSample; }
+    }
+    internal string? FirstViolationReason
+    {
+        get { lock (_gate) return _firstViolationReason; }
+    }
+
+    internal bool TryInvalidate(
+        MeasurementVisibilitySample sample,
+        string? irreversibleViolationReason = null)
+    {
+        ArgumentNullException.ThrowIfNull(sample);
+        if (MeasurementVisibilityEvidenceValidator.IsQualifiedSample(sample) &&
+            string.IsNullOrWhiteSpace(irreversibleViolationReason))
+        {
+            return false;
+        }
+
+        bool requestCancellation = false;
+        bool firstByElapsedTime = false;
+        lock (_gate)
+        {
+            if (_disposed)
+                return false;
+
+            // Monitor callbacks append under their own lock, then signal
+            // cancellation after releasing it. A timer callback and a WinEvent
+            // callback can therefore reach this latch out of order; retain the
+            // earliest sample from their shared monotonic clock.
+            if (_firstUnqualifiedSample is null ||
+                sample.ElapsedTicks < _firstUnqualifiedSample.ElapsedTicks)
+            {
+                _firstUnqualifiedSample = sample;
+                _firstViolationReason = string.IsNullOrWhiteSpace(irreversibleViolationReason)
+                    ? MeasurementVisibilityEvidenceValidator.DescribeUnqualifiedSample(sample)
+                    : irreversibleViolationReason;
+                firstByElapsedTime = true;
+            }
+
+            if (!_cancellationStarted)
+            {
+                _cancellationStarted = true;
+                _cancellationInFlight++;
+                requestCancellation = true;
+            }
+        }
+
+        if (requestCancellation)
+        {
+            try
+            {
+                // Cancellation callbacks may resume harness continuations. Run
+                // them after releasing both the monitor's evidence lock and our
+                // own state lock.
+                _cancellation.Cancel();
+            }
+            finally
+            {
+                bool disposeCancellationSource;
+                lock (_gate)
+                {
+                    _cancellationInFlight--;
+                    disposeCancellationSource = _disposed && _cancellationInFlight == 0;
+                }
+
+                if (disposeCancellationSource)
+                    _cancellation.Dispose();
+            }
+        }
+
+        return firstByElapsedTime;
+    }
+
+    public void Dispose()
+    {
+        bool disposeCancellationSource;
+        lock (_gate)
+        {
+            if (_disposed)
+                return;
+            _disposed = true;
+            // If Dispose is reached from a cancellation continuation, defer
+            // CTS disposal until Cancel has returned rather than waiting for
+            // the callback stack to unwind itself.
+            disposeCancellationSource = _cancellationInFlight == 0;
+        }
+
+        if (disposeCancellationSource)
+            _cancellation.Dispose();
+    }
+}
+
 internal static class MeasurementVisibilityReadinessWaiter
 {
-    internal static async Task<MeasurementVisibilitySample> WaitUntilQualifiedAsync(
+    internal static Task<MeasurementVisibilitySample> WaitUntilQualifiedAsync(
         Func<MeasurementVisibilitySample?> captureSample,
         int timeoutMilliseconds = PerformanceMeasurementContract.ReleaseForegroundReadinessTimeoutMilliseconds,
         int pollIntervalMilliseconds = PerformanceMeasurementContract.ReleaseForegroundReadinessPollIntervalMilliseconds,
         CancellationToken cancellationToken = default)
+        => WaitUntilQualifiedAsync(
+            captureSample,
+            timeoutMilliseconds,
+            pollIntervalMilliseconds,
+            cancellationToken,
+            Stopwatch.GetTimestamp,
+            static (delay, token) => Task.Delay(delay, token));
+
+    // The clock and delay seam keeps policy tests deterministic under loaded
+    // CI hosts. Production continues to use Stopwatch and cancellable Task.Delay
+    // with the unchanged release timeout and poll interval.
+    internal static async Task<MeasurementVisibilitySample> WaitUntilQualifiedAsync(
+        Func<MeasurementVisibilitySample?> captureSample,
+        int timeoutMilliseconds,
+        int pollIntervalMilliseconds,
+        CancellationToken cancellationToken,
+        Func<long> getTimestamp,
+        Func<TimeSpan, CancellationToken, Task> delayAsync)
     {
         ArgumentNullException.ThrowIfNull(captureSample);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(timeoutMilliseconds);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(pollIntervalMilliseconds);
+        ArgumentNullException.ThrowIfNull(getTimestamp);
+        ArgumentNullException.ThrowIfNull(delayAsync);
 
-        long startedTimestamp = Stopwatch.GetTimestamp();
+        long startedTimestamp = getTimestamp();
         TimeSpan timeout = TimeSpan.FromMilliseconds(timeoutMilliseconds);
         TimeSpan pollInterval = TimeSpan.FromMilliseconds(pollIntervalMilliseconds);
         int consecutiveQualifiedSamples = 0;
@@ -200,14 +354,16 @@ internal static class MeasurementVisibilityReadinessWaiter
                 consecutiveQualifiedSamples = 0;
             }
 
-            TimeSpan remaining = timeout - Stopwatch.GetElapsedTime(startedTimestamp);
+            TimeSpan remaining = timeout - Stopwatch.GetElapsedTime(
+                startedTimestamp,
+                getTimestamp());
             if (remaining <= TimeSpan.Zero)
             {
                 throw new TimeoutException(
                     $"Release measurement preflight timed out after {timeoutMilliseconds:N0} ms waiting for the benchmark window to be foreground, visible, unminimized, uncloaked, on-screen, and unobstructed.");
             }
 
-            await Task.Delay(
+            await delayAsync(
                 remaining < pollInterval ? remaining : pollInterval,
                 cancellationToken);
         }
@@ -245,6 +401,7 @@ internal sealed class MeasurementVisibilityMonitor : IDisposable
     private readonly Stopwatch _stopwatch = new();
     private readonly MonotonicUtcClock _utcClock = new();
     private readonly List<MeasurementVisibilitySample> _samples = [];
+    private readonly MeasurementVisibilityInvalidation _invalidation;
     private Timer? _timer;
     private Thread? _eventThread;
     private readonly IntPtr[] _hooks = new IntPtr[3];
@@ -258,9 +415,12 @@ internal sealed class MeasurementVisibilityMonitor : IDisposable
     private volatile bool _started;
     private volatile bool _completed;
 
-    private MeasurementVisibilityMonitor(IntPtr targetWindow)
+    private MeasurementVisibilityMonitor(
+        IntPtr targetWindow,
+        MeasurementVisibilityInvalidation invalidation)
     {
         _targetWindow = targetWindow;
+        _invalidation = invalidation;
         _ = GetWindowThreadProcessId(targetWindow, out uint targetProcessId);
         _targetProcessId = checked((int)targetProcessId);
     }
@@ -280,11 +440,14 @@ internal sealed class MeasurementVisibilityMonitor : IDisposable
         }
     }
 
-    internal static MeasurementVisibilityMonitor Start(IntPtr targetWindow)
+    internal static MeasurementVisibilityMonitor Start(
+        IntPtr targetWindow,
+        MeasurementVisibilityInvalidation invalidation)
     {
         if (targetWindow == IntPtr.Zero)
             throw new ArgumentException("A valid benchmark HWND is required.", nameof(targetWindow));
-        var monitor = new MeasurementVisibilityMonitor(targetWindow);
+        ArgumentNullException.ThrowIfNull(invalidation);
+        var monitor = new MeasurementVisibilityMonitor(targetWindow, invalidation);
         if (Interlocked.CompareExchange(ref s_activeMonitor, monitor, null) is not null)
         {
             monitor.Dispose();
@@ -314,6 +477,7 @@ internal sealed class MeasurementVisibilityMonitor : IDisposable
                 monitor._captureFailures++;
         }
 
+        MeasurementVisibilitySample? startSample = null;
         lock (monitor._gate)
         {
             monitor._stopwatch.Start();
@@ -321,7 +485,7 @@ internal sealed class MeasurementVisibilityMonitor : IDisposable
             monitor._started = true;
             try
             {
-                monitor.RecordSampleLocked("start");
+                startSample = monitor.RecordSampleLocked("start");
                 monitor._timer = new Timer(
                     static state => ((MeasurementVisibilityMonitor)state!).RecordSample("poll"),
                     monitor,
@@ -336,26 +500,32 @@ internal sealed class MeasurementVisibilityMonitor : IDisposable
                 monitor._captureFailures++;
             }
         }
+        if (startSample is not null)
+            _ = invalidation.TryInvalidate(startSample);
         return monitor;
     }
 
     internal static MeasurementVisibilitySample CaptureReadinessSample(IntPtr targetWindow)
     {
-        var monitor = new MeasurementVisibilityMonitor(targetWindow);
+        using var invalidation = new MeasurementVisibilityInvalidation();
+        var monitor = new MeasurementVisibilityMonitor(targetWindow, invalidation);
         return monitor.CaptureSample("preflight", elapsedTicks: 0);
     }
 
     internal MeasurementVisibilityEvidence Complete()
     {
         uint eventThreadId;
+        Timer? timer = null;
+        MeasurementVisibilitySample? completionSample = null;
         lock (_gate)
         {
             if (!_completed)
             {
-                _timer?.Dispose();
+                timer = _timer;
+                _timer = null;
                 if (_started)
                 {
-                    RecordSampleLocked("complete");
+                    completionSample = RecordSampleLocked("complete");
                     _stopwatch.Stop();
                     _durationTicks = Math.Max(_stopwatch.ElapsedTicks, _lastSampleTicks);
                 }
@@ -364,6 +534,19 @@ internal sealed class MeasurementVisibilityMonitor : IDisposable
                 _ = Interlocked.CompareExchange(ref s_activeMonitor, null, this);
             }
             eventThreadId = _eventThreadId;
+        }
+
+        if (completionSample is not null)
+            _ = _invalidation.TryInvalidate(completionSample);
+        if (timer is not null)
+        {
+            using var callbacksDrained = new ManualResetEvent(initialState: false);
+            if (timer.Dispose(callbacksDrained) &&
+                !callbacksDrained.WaitOne(TimeSpan.FromSeconds(2)))
+            {
+                lock (_gate)
+                    _captureFailures++;
+            }
         }
 
         if (eventThreadId != 0)
@@ -429,18 +612,25 @@ internal sealed class MeasurementVisibilityMonitor : IDisposable
     {
         if (eventType == EventSystemDesktopSwitch)
         {
+            MeasurementVisibilitySample? sample;
             lock (_gate)
             {
                 if (!_started || _completed)
                     return;
                 _desktopSwitchEvents++;
-                RecordSampleLocked("desktop-switch");
+                sample = RecordSampleLocked("desktop-switch");
             }
+            if (sample is not null)
+                _ = _invalidation.TryInvalidate(
+                    sample,
+                    "the active desktop changed during measurement");
             return;
         }
 
         if (eventType == EventSystemForeground)
         {
+            MeasurementVisibilitySample? sample;
+            string? irreversibleViolationReason;
             lock (_gate)
             {
                 if (!_started || _completed)
@@ -448,8 +638,13 @@ internal sealed class MeasurementVisibilityMonitor : IDisposable
                 bool isTargetForeground = IsTargetForeground(hwnd);
                 if (!isTargetForeground)
                     _foregroundLossEvents++;
-                RecordSampleLocked("foreground-event");
+                irreversibleViolationReason = isTargetForeground
+                    ? null
+                    : "the benchmark window lost foreground";
+                sample = RecordSampleLocked("foreground-event");
             }
+            if (sample is not null)
+                _ = _invalidation.TryInvalidate(sample, irreversibleViolationReason);
             return;
         }
 
@@ -458,9 +653,13 @@ internal sealed class MeasurementVisibilityMonitor : IDisposable
 
         bool canIntroduceOcclusion = eventType is
             EventObjectShow or EventObjectReorder or EventObjectLocationChange;
-        if (hwnd == _targetWindow ||
-            (canIntroduceOcclusion && MayOccludeTarget(hwnd)))
+        bool mayOcclude = canIntroduceOcclusion && MayOccludeTarget(hwnd);
+        if (hwnd == _targetWindow || mayOcclude)
         {
+            // The event is only a trigger to take a fresh sample. A window
+            // moving through an overlapping rectangle does not itself prove
+            // that the benchmark lost coverage; the captured unoccluded
+            // predicate remains authoritative for this event class.
             RecordSample("window-event");
         }
     }
@@ -542,28 +741,34 @@ internal sealed class MeasurementVisibilityMonitor : IDisposable
         }
     }
 
-    private void RecordSample(string source)
+    private void RecordSample(string source, string? irreversibleViolationReason = null)
     {
+        MeasurementVisibilitySample? sample;
         lock (_gate)
         {
-            if (_started && !_completed)
-                RecordSampleLocked(source);
+            if (!_started || _completed)
+                return;
+            sample = RecordSampleLocked(source);
         }
+        if (sample is not null)
+            _ = _invalidation.TryInvalidate(sample, irreversibleViolationReason);
     }
 
-    private void RecordSampleLocked(string source)
+    private MeasurementVisibilitySample? RecordSampleLocked(string source)
     {
         if (_samples.Count >= 500_000)
         {
             // A burst of desktop events must never grow benchmark evidence
             // without bound. The release validator rejects this capture.
             _captureFailures++;
-            return;
+            return null;
         }
 
         long elapsedTicks = Math.Max(_stopwatch.ElapsedTicks, _lastSampleTicks + 1);
-        _samples.Add(CaptureSample(source, elapsedTicks));
+        MeasurementVisibilitySample sample = CaptureSample(source, elapsedTicks);
+        _samples.Add(sample);
         _lastSampleTicks = elapsedTicks;
+        return sample;
     }
 
     private MeasurementVisibilitySample CaptureSample(string source, long elapsedTicks)

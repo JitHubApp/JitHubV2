@@ -63,7 +63,11 @@ function Get-NearestRankPercentile {
     )
 
     if ($Values.Count -eq 0) { return [double]::NaN }
-    $sorted = @($Values | ForEach-Object { [double]$_ } | Sort-Object)
+    $sorted = [double[]]::new($Values.Count)
+    for ($index = 0; $index -lt $Values.Count; $index++) {
+        $sorted[$index] = [double]$Values[$index]
+    }
+    [Array]::Sort($sorted)
     $rank = [Math]::Clamp([int][Math]::Ceiling($Percentile * $sorted.Count) - 1, 0, $sorted.Count - 1)
     return [double]$sorted[$rank]
 }
@@ -87,10 +91,14 @@ function Get-TrueMedian {
     param([Parameter(Mandatory)][object[]] $Values)
 
     if ($Values.Count -eq 0) { return [double]::NaN }
-    $sorted = @($Values | ForEach-Object { [double]$_ } | Sort-Object)
-    if (@($sorted | Where-Object { -not [double]::IsFinite($_) }).Count -ne 0) {
-        return [double]::NaN
+    $sorted = [double[]]::new($Values.Count)
+    for ($index = 0; $index -lt $Values.Count; $index++) {
+        $sorted[$index] = [double]$Values[$index]
     }
+    for ($index = 0; $index -lt $sorted.Length; $index++) {
+        if (-not [double]::IsFinite($sorted[$index])) { return [double]::NaN }
+    }
+    [Array]::Sort($sorted)
 
     $middle = [int][Math]::Floor($sorted.Count / 2.0)
     if (($sorted.Count % 2) -ne 0) { return [double]$sorted[$middle] }
@@ -101,30 +109,47 @@ function Get-HodgesLehmann {
     param([Parameter(Mandatory)][object[]] $Values)
 
     if ($Values.Count -eq 0) { return [double]::NaN }
-    $samples = @($Values | ForEach-Object { [double]$_ })
-    if (@($samples | Where-Object { -not [double]::IsFinite($_) }).Count -ne 0) {
-        return [double]::NaN
+    $samples = [double[]]::new($Values.Count)
+    for ($index = 0; $index -lt $Values.Count; $index++) {
+        $samples[$index] = [double]$Values[$index]
+    }
+    for ($index = 0; $index -lt $samples.Length; $index++) {
+        if (-not [double]::IsFinite($samples[$index])) { return [double]::NaN }
     }
 
-    $walshAverages = [Collections.Generic.List[double]]::new(
-        [int]($samples.Count * ($samples.Count + 1) / 2))
+    $pairCount = [int]($samples.Count * ($samples.Count + 1) / 2)
+    $walshAverages = [double[]]::new($pairCount)
+    $pairIndex = 0
     for ($left = 0; $left -lt $samples.Count; $left++) {
         for ($right = $left; $right -lt $samples.Count; $right++) {
-            $walshAverages.Add((Get-TwoValueCenter -First $samples[$left] -Second $samples[$right]))
+            $first = $samples[$left]
+            $second = $samples[$right]
+            if (($first -lt 0) -eq ($second -lt 0)) {
+                $walshAverages[$pairIndex] = $first + (($second - $first) / 2.0)
+            } else {
+                $walshAverages[$pairIndex] = ($first + $second) / 2.0
+            }
+            $pairIndex++
         }
     }
-    return Get-TrueMedian -Values @($walshAverages)
+    return Get-TrueMedian -Values $walshAverages
 }
 
 function Get-RobustDispersionPercent {
     param([Parameter(Mandatory)][object[]] $Values)
 
     if ($Values.Count -eq 0) { return [double]::NaN }
-    $samples = @($Values | ForEach-Object { [double]$_ })
+    $samples = [double[]]::new($Values.Count)
+    for ($index = 0; $index -lt $Values.Count; $index++) {
+        $samples[$index] = [double]$Values[$index]
+    }
     $location = Get-HodgesLehmann -Values $samples
     if (-not [double]::IsFinite($location)) { return [double]::NaN }
     $median = Get-TrueMedian -Values $samples
-    $deviations = @($samples | ForEach-Object { [Math]::Abs($_ - $median) })
+    $deviations = [double[]]::new($samples.Length)
+    for ($index = 0; $index -lt $samples.Length; $index++) {
+        $deviations[$index] = [Math]::Abs($samples[$index] - $median)
+    }
     $mad = Get-TrueMedian -Values $deviations
     if (-not [double]::IsFinite($mad)) { return [double]::NaN }
     if ([Math]::Abs($location) -le 1e-12) {
@@ -1004,22 +1029,39 @@ function Get-ValidatedFirstViewportEvidence {
                 }
 
                 $trialSamples = @($trial.samplesMilliseconds)
-                $samplesValid = $trialSamples.Count -eq 100 -and
-                    @($trialSamples | Where-Object {
-                        -not (Test-FiniteNumber $_) -or [double]$_ -lt 0
-                    }).Count -eq 0
+                $samplesValid = $trialSamples.Count -eq 100
+                if ($samplesValid) {
+                    for ($sampleIndex = 0; $sampleIndex -lt $trialSamples.Count; $sampleIndex++) {
+                        $sample = $trialSamples[$sampleIndex]
+                        if (-not (Test-FiniteNumber $sample) -or [double]$sample -lt 0) {
+                            $samplesValid = $false
+                            break
+                        }
+                    }
+                }
                 $computedP95 = if ($samplesValid) {
                     Get-NearestRankPercentile -Values $trialSamples -Percentile 0.95
                 } else {
                     [double]::NaN
                 }
                 $publicationSamples = @($trial.publicationSamplesMilliseconds)
-                $publicationValid = $publicationSamples.Count -eq 100 -and
-                    @($publicationSamples | Where-Object {
-                        -not (Test-FiniteNumber $_) -or [double]$_ -lt 0
-                    }).Count -eq 0
+                $publicationValid = $publicationSamples.Count -eq 100
+                if ($publicationValid) {
+                    for ($sampleIndex = 0; $sampleIndex -lt $publicationSamples.Count; $sampleIndex++) {
+                        $sample = $publicationSamples[$sampleIndex]
+                        if (-not (Test-FiniteNumber $sample) -or [double]$sample -lt 0) {
+                            $publicationValid = $false
+                            break
+                        }
+                    }
+                }
                 $computedPublicationMaximum = if ($publicationValid) {
-                    [double](($publicationSamples | Measure-Object -Maximum).Maximum)
+                    $maximum = [double]$publicationSamples[0]
+                    for ($sampleIndex = 1; $sampleIndex -lt $publicationSamples.Count; $sampleIndex++) {
+                        $candidate = [double]$publicationSamples[$sampleIndex]
+                        if ($candidate -gt $maximum) { $maximum = $candidate }
+                    }
+                    $maximum
                 } else {
                     [double]::NaN
                 }
@@ -1092,10 +1134,16 @@ function Get-ValidatedFirstViewportEvidence {
 
         $pooledSamples = @($result.samplesMilliseconds)
         $pooledPublicationSamples = @($result.publicationSamplesMilliseconds)
-        $pooledValid = $pooledSamples.Count -eq 600 -and
-            @($pooledSamples | Where-Object {
-                -not (Test-FiniteNumber $_) -or [double]$_ -lt 0
-            }).Count -eq 0
+        $pooledValid = $pooledSamples.Count -eq 600
+        if ($pooledValid) {
+            for ($sampleIndex = 0; $sampleIndex -lt $pooledSamples.Count; $sampleIndex++) {
+                $sample = $pooledSamples[$sampleIndex]
+                if (-not (Test-FiniteNumber $sample) -or [double]$sample -lt 0) {
+                    $pooledValid = $false
+                    break
+                }
+            }
+        }
         $exactConcatenation = $pooledSamples.Count -eq $flattenedSamples.Count
         if ($exactConcatenation) {
             for ($sampleIndex = 0; $sampleIndex -lt $pooledSamples.Count; $sampleIndex++) {
@@ -1110,10 +1158,16 @@ function Get-ValidatedFirstViewportEvidence {
         } else {
             [double]::NaN
         }
-        $pooledPublicationValid = $pooledPublicationSamples.Count -eq 600 -and
-            @($pooledPublicationSamples | Where-Object {
-                -not (Test-FiniteNumber $_) -or [double]$_ -lt 0
-            }).Count -eq 0
+        $pooledPublicationValid = $pooledPublicationSamples.Count -eq 600
+        if ($pooledPublicationValid) {
+            for ($sampleIndex = 0; $sampleIndex -lt $pooledPublicationSamples.Count; $sampleIndex++) {
+                $sample = $pooledPublicationSamples[$sampleIndex]
+                if (-not (Test-FiniteNumber $sample) -or [double]$sample -lt 0) {
+                    $pooledPublicationValid = $false
+                    break
+                }
+            }
+        }
         $exactPublicationConcatenation =
             $pooledPublicationSamples.Count -eq $flattenedPublicationSamples.Count
         if ($exactPublicationConcatenation) {
@@ -1126,7 +1180,12 @@ function Get-ValidatedFirstViewportEvidence {
             }
         }
         $computedPooledPublicationMaximum = if ($pooledPublicationValid) {
-            [double](($pooledPublicationSamples | Measure-Object -Maximum).Maximum)
+            $maximum = [double]$pooledPublicationSamples[0]
+            for ($sampleIndex = 1; $sampleIndex -lt $pooledPublicationSamples.Count; $sampleIndex++) {
+                $candidate = [double]$pooledPublicationSamples[$sampleIndex]
+                if ($candidate -gt $maximum) { $maximum = $candidate }
+            }
+            $maximum
         } else {
             [double]::NaN
         }
@@ -1144,18 +1203,26 @@ function Get-ValidatedFirstViewportEvidence {
             $warmupCenter = Get-TwoValueCenter -First $warmupP95[1] -Second $warmupP95[2]
             $measuredCenter = Get-TwoValueCenter -First $measuredP95[0] -Second $measuredP95[1]
             $boundaryShift = [Math]::Abs($warmupCenter - $measuredCenter)
-            $measuredEnvelopePassed = @($measuredP95 | Where-Object {
-                [Math]::Abs([double]$_ - $regressionP95) -gt $allowance
-            }).Count -eq 0
+            $measuredEnvelopePassed = $true
+            for ($sampleIndex = 0; $sampleIndex -lt $measuredP95.Count; $sampleIndex++) {
+                if ([Math]::Abs([double]$measuredP95[$sampleIndex] - $regressionP95) -gt $allowance) {
+                    $measuredEnvelopePassed = $false
+                    break
+                }
+            }
             $boundaryEndpoints = @(
                 $warmupP95[1],
                 $warmupP95[2],
                 $measuredP95[0],
                 $measuredP95[1]
             )
-            $boundaryEndpointEnvelopePassed = @($boundaryEndpoints | Where-Object {
-                [Math]::Abs([double]$_ - $regressionP95) -gt $allowance
-            }).Count -eq 0
+            $boundaryEndpointEnvelopePassed = $true
+            for ($sampleIndex = 0; $sampleIndex -lt $boundaryEndpoints.Count; $sampleIndex++) {
+                if ([Math]::Abs([double]$boundaryEndpoints[$sampleIndex] - $regressionP95) -gt $allowance) {
+                    $boundaryEndpointEnvelopePassed = $false
+                    break
+                }
+            }
             $stationarity = $null -ne $theilSen -and
                 [double]::IsFinite($dispersion) -and $dispersion -le 25.0 -and
                 [double]::IsFinite($theilSen.Slope) -and
@@ -1479,7 +1546,9 @@ $jsonObjectContracts = @{
         'regressionEstimator', 'regressionTrialCount', 'regressionTrials', 'passed')
     SourceLookupTrial = @(
         'ordinal', 'observationCount', 'operationCount', 'samplesElapsedTicks',
-        'samplesNanosecondsPerLookup', 'p95Nanoseconds', 'allocatedBytes', 'complete')
+        'samplesNanosecondsPerLookup', 'p95Nanoseconds', 'allocatedBytes', 'complete',
+        'startedUtc', 'completedUtc', 'elapsedStopwatchTicks', 'threadCpuTime100NsTicks',
+        'threadCycleDelta', 'gen0Collections', 'gen1Collections', 'gen2Collections')
     Cancellation = @(
         'requestedIterations', 'iterationsPerTrial', 'warmupIterations',
         'warmupElapsedMilliseconds', 'warmupStaleCommits', 'observedCancellations',
@@ -1576,6 +1645,15 @@ $jsonPrimitiveArrayElementKinds = @{
     CancellationTrial = @{ samplesMilliseconds = 'Number' }
 }
 
+# Diagnostic-only additions remain optional so existing schema-12 reports keep the
+# same acceptance contract; unknown properties are still rejected and present values
+# are subject to the strict type and sanity checks below.
+$jsonOptionalProperties = @{
+    SourceLookupTrial = @(
+        'startedUtc', 'completedUtc', 'elapsedStopwatchTicks', 'threadCpuTime100NsTicks',
+        'threadCycleDelta', 'gen0Collections', 'gen1Collections', 'gen2Collections')
+}
+
 $jsonInt32Properties = @{
     Report = @('schemaVersion')
     Machine = @('logicalProcessorCount')
@@ -1611,7 +1689,8 @@ $jsonInt32Properties = @{
         'mappingCount', 'queryCount', 'measurementProcessorGroup', 'measurementProcessorNumber',
         'regressionWarmupPasses', 'regressionBatchSize', 'regressionObservationCount',
         'regressionOperationCount', 'regressionTrialCount')
-    SourceLookupTrial = @('ordinal', 'observationCount', 'operationCount')
+    SourceLookupTrial = @('ordinal', 'observationCount', 'operationCount',
+        'gen0Collections', 'gen1Collections', 'gen2Collections')
     Cancellation = @(
         'requestedIterations', 'iterationsPerTrial', 'warmupIterations',
         'warmupStaleCommits', 'observedCancellations', 'staleCommits')
@@ -1643,7 +1722,7 @@ $jsonInt64Properties = @{
         'checkpoint80ManagedBytes', 'checkpoint100ManagedBytes',
         'checkpoint80PrivateBytes', 'checkpoint100PrivateBytes')
     SourceLookup = @('stopwatchFrequency', 'allocatedBytes', 'regressionAllocatedBytes')
-    SourceLookupTrial = @('allocatedBytes')
+    SourceLookupTrial = @('allocatedBytes', 'elapsedStopwatchTicks', 'threadCpuTime100NsTicks')
 }
 
 $jsonStringProperties = @{
@@ -1666,6 +1745,7 @@ $jsonStringProperties = @{
         'regressionEstimator', 'stationarityPolicy', 'measurementThreadAffinityMask',
         'measurementThreadPriority')
     FirstViewportTrial = @('startedUtc', 'completedUtc')
+    SourceLookupTrial = @('startedUtc', 'completedUtc')
     Scroll = @('corpus', 'regressionEstimator', 'rawAllocationScope', 'allocationGateBasis',
         'platformProjectionAllocationScope')
     RetainedMemory = @('corpus')
@@ -1703,6 +1783,10 @@ $jsonBooleanProperties = @{
     RegressionComparison = @('passed')
 }
 
+$jsonNullableUInt64Properties = @{
+    SourceLookupTrial = @('threadCycleDelta')
+}
+
 function Test-StrictJsonObjectContract {
     param(
         [Parameter(Mandatory)][Text.Json.JsonElement] $Element,
@@ -1727,7 +1811,11 @@ function Test-StrictJsonObjectContract {
     [string[]]$booleanNames = @($jsonBooleanProperties[$Contract])
     [string[]]$int32Names = @($jsonInt32Properties[$Contract])
     [string[]]$int64Names = @($jsonInt64Properties[$Contract])
+    [string[]]$nullableUInt64Names = @($jsonNullableUInt64Properties[$Contract])
+    [string[]]$optionalNames = @($jsonOptionalProperties[$Contract])
     $primitiveArrayKinds = $jsonPrimitiveArrayElementKinds[$Contract]
+    $sourceLookupStartedUtc = $null
+    $sourceLookupCompletedUtc = $null
 
     foreach ($property in $Element.EnumerateObject()) {
         $name = [string]$property.Name
@@ -1801,7 +1889,7 @@ function Test-StrictJsonObjectContract {
                       $value.ValueKind -eq [Text.Json.JsonValueKind]::Null)) {
                 Add-Failure "$Label.$name must be a JSON string."
             }
-            elseif ($Contract -in @('Report', 'FirstViewportTrial', 'MeasurementVisibility') -and
+            elseif ($Contract -in @('Report', 'FirstViewportTrial', 'MeasurementVisibility', 'SourceLookupTrial') -and
                     $name -in @('startedUtc', 'completedUtc')) {
                 try {
                     $timestamp = [DateTimeOffset]::Parse(
@@ -1811,6 +1899,14 @@ function Test-StrictJsonObjectContract {
                     if ($timestamp -eq [DateTimeOffset]::MinValue -or
                         $timestamp.Offset -ne [TimeSpan]::Zero) {
                         Add-Failure "$Label.$name must be a non-default UTC timestamp."
+                    }
+                    elseif ($Contract -eq 'SourceLookupTrial') {
+                        if ($name -eq 'startedUtc') {
+                            $sourceLookupStartedUtc = $timestamp
+                        }
+                        else {
+                            $sourceLookupCompletedUtc = $timestamp
+                        }
                     }
                 }
                 catch {
@@ -1839,14 +1935,36 @@ function Test-StrictJsonObjectContract {
                 Add-Failure "$Label.$name must be a signed 64-bit JSON integer."
             }
         }
+        elseif ($nullableUInt64Names -contains $name) {
+            [uint64]$integer64 = 0
+            if ($value.ValueKind -ne [Text.Json.JsonValueKind]::Null -and
+                ($value.ValueKind -ne [Text.Json.JsonValueKind]::Number -or
+                 -not $value.TryGetUInt64([ref]$integer64))) {
+                Add-Failure "$Label.$name must be null or an unsigned 64-bit JSON integer."
+            }
+        }
         elseif ($value.ValueKind -ne [Text.Json.JsonValueKind]::Number) {
             Add-Failure "$Label.$name must be a JSON number."
         }
     }
 
     foreach ($name in $expectedNames) {
-        if (-not $seen.Contains($name)) {
+        if (-not $seen.Contains($name) -and $name -notin $optionalNames) {
             Add-Failure "$Label lacks required JSON property '$name'."
+        }
+    }
+
+    if ($Contract -eq 'SourceLookupTrial') {
+        $hasStartedUtc = $seen.Contains('startedUtc')
+        $hasCompletedUtc = $seen.Contains('completedUtc')
+        if ($hasStartedUtc -ne $hasCompletedUtc) {
+            Add-Failure "$Label must provide both diagnostic timestamps or neither."
+        }
+        elseif ($hasStartedUtc -and
+                $null -ne $sourceLookupStartedUtc -and
+                $null -ne $sourceLookupCompletedUtc -and
+                $sourceLookupStartedUtc -ge $sourceLookupCompletedUtc) {
+            Add-Failure "$Label diagnostic timestamps must be strictly increasing."
         }
     }
 }
@@ -1868,6 +1986,85 @@ function Test-StrictPerformanceReportJson {
     }
     finally {
         if ($null -ne $document) { $document.Dispose() }
+    }
+}
+
+function Test-SourceLookupDiagnosticTrial {
+    param(
+        [Parameter(Mandatory)][object] $Trial,
+        [Parameter(Mandatory)][double] $StopwatchFrequency,
+        [Parameter(Mandatory)][string] $Label,
+        [Parameter(Mandatory)][int] $Ordinal
+    )
+
+    $properties = $Trial.PSObject.Properties
+    $hasElapsed = $null -ne $properties['elapsedStopwatchTicks']
+    $hasCpu = $null -ne $properties['threadCpuTime100NsTicks']
+    $elapsedTicks = 0L
+    $elapsedValid = $false
+    if ($hasElapsed) {
+        $rawElapsed = $Trial.elapsedStopwatchTicks
+        if ((Test-FiniteNumber $rawElapsed) -and
+            [double]$rawElapsed -gt 0 -and
+            [double]$rawElapsed -le [int64]::MaxValue -and
+            [double]$rawElapsed -eq [double][int64]$rawElapsed) {
+            $elapsedTicks = [int64]$rawElapsed
+            $elapsedValid = $true
+        }
+        else {
+            Add-Failure "$Label trial $Ordinal has invalid elapsedStopwatchTicks diagnostic evidence."
+        }
+    }
+
+    if ($hasCpu) {
+        $rawCpu = $Trial.threadCpuTime100NsTicks
+        if (-not (Test-FiniteNumber $rawCpu) -or
+            [double]$rawCpu -lt -1 -or
+            [double]$rawCpu -gt [int64]::MaxValue -or
+            [double]$rawCpu -ne [double][int64]$rawCpu) {
+            Add-Failure "$Label trial $Ordinal has invalid threadCpuTime100NsTicks diagnostic evidence."
+        }
+        elseif ([int64]$rawCpu -ge 0 -and $elapsedValid -and
+                (Test-FiniteNumber $StopwatchFrequency) -and $StopwatchFrequency -gt 0) {
+            # Thread CPU is serialized in 100-ns ticks. A single measurement thread
+            # cannot consume materially more CPU time than the Stopwatch wall interval.
+            $wallTicks100Ns = [double]$elapsedTicks * 10000000.0 / $StopwatchFrequency
+            $clockTolerance100Ns = [Math]::Max(200000.0, $wallTicks100Ns * 0.05)
+            if ([double]$rawCpu -gt ($wallTicks100Ns + $clockTolerance100Ns)) {
+                Add-Failure "$Label trial $Ordinal CPU-time diagnostic exceeds its Stopwatch wall interval."
+            }
+        }
+    }
+
+    if ($elapsedValid) {
+        $sampleTicks = @($Trial.samplesElapsedTicks)
+        $sampleTotal = [decimal]0
+        $sampleTotalValid = $sampleTicks.Count -gt 0
+        foreach ($rawSampleTicks in $sampleTicks) {
+            if (-not (Test-FiniteNumber $rawSampleTicks) -or
+                [double]$rawSampleTicks -le 0 -or
+                [double]$rawSampleTicks -gt [int64]::MaxValue -or
+                [double]$rawSampleTicks -ne [double][int64]$rawSampleTicks) {
+                $sampleTotalValid = $false
+                break
+            }
+            $sampleTotal += [decimal]$rawSampleTicks
+        }
+        if ($sampleTotalValid -and $sampleTotal -gt [decimal]$elapsedTicks) {
+            Add-Failure "$Label trial $Ordinal elapsedStopwatchTicks is shorter than its serialized sample total."
+        }
+    }
+
+    $generationNames = @('gen0Collections', 'gen1Collections', 'gen2Collections')
+    foreach ($name in $generationNames) {
+        if ($null -eq $properties[$name]) { continue }
+        $rawCount = $Trial.$name
+        if (-not (Test-FiniteNumber $rawCount) -or
+            [double]$rawCount -lt 0 -or
+            [double]$rawCount -gt [int]::MaxValue -or
+            [double]$rawCount -ne [double][int]$rawCount) {
+            Add-Failure "$Label trial $Ordinal has invalid $name diagnostic evidence."
+        }
     }
 }
 
@@ -2033,12 +2230,22 @@ function Get-ValidatedScrollEvidence {
         $computedUiP95 = (Get-NearestRankPercentile -Values $uiTicks -Percentile 0.95) * $millisecondsPerTick
         $computedUiP99 = (Get-NearestRankPercentile -Values $uiTicks -Percentile 0.99) * $millisecondsPerTick
         $computedFrameP95 = (Get-NearestRankPercentile -Values $frameTicks -Percentile 0.95) * $millisecondsPerTick
-        $computedFramesOver = @($frameTicks | Where-Object {
-            [double]$_ * $millisecondsPerTick -gt 16.7
-        }).Count * 100.0 / 2400.0
-        $computedMaximumStall = ([double]($frameTicks | Measure-Object -Maximum).Maximum) * $millisecondsPerTick
+        $framesOverThreshold = 0
+        $maximumFrameTicks = [double]$frameTicks[0]
+        for ($sampleIndex = 0; $sampleIndex -lt $frameTicks.Count; $sampleIndex++) {
+            $frameTick = [double]$frameTicks[$sampleIndex]
+            if ($frameTick * $millisecondsPerTick -gt 16.7) { $framesOverThreshold++ }
+            if ($sampleIndex -gt 0 -and $frameTick -gt $maximumFrameTicks) { $maximumFrameTicks = $frameTick }
+        }
+        $computedFramesOver = $framesOverThreshold * 100.0 / 2400.0
+        $computedMaximumStall = $maximumFrameTicks * $millisecondsPerTick
         $computedAllocationP95 = Get-NearestRankPercentile -Values $rendererAllocations -Percentile 0.95
-        $computedMaximumAllocation = [int64]($rendererAllocations | Measure-Object -Maximum).Maximum
+        $maximumAllocation = [double]$rendererAllocations[0]
+        for ($sampleIndex = 1; $sampleIndex -lt $rendererAllocations.Count; $sampleIndex++) {
+            $allocation = [double]$rendererAllocations[$sampleIndex]
+            if ($allocation -gt $maximumAllocation) { $maximumAllocation = $allocation }
+        }
+        $computedMaximumAllocation = [int64]$maximumAllocation
         $computedTrialValues = @{
             uiThreadWorkP95Milliseconds = $computedUiP95
             uiThreadWorkP99Milliseconds = $computedUiP99
@@ -2074,12 +2281,24 @@ function Get-ValidatedScrollEvidence {
     $pooledUiP95 = (Get-NearestRankPercentile -Values @($allUiTicks) -Percentile 0.95) * $millisecondsPerTick
     $pooledUiP99 = (Get-NearestRankPercentile -Values @($allUiTicks) -Percentile 0.99) * $millisecondsPerTick
     $pooledFrameP95 = (Get-NearestRankPercentile -Values @($allFrameTicks) -Percentile 0.95) * $millisecondsPerTick
-    $pooledFramesOver = @($allFrameTicks | Where-Object {
-        [double]$_ * $millisecondsPerTick -gt 16.7
-    }).Count * 100.0 / 12000.0
-    $pooledMaximumStall = ([double]($allFrameTicks | Measure-Object -Maximum).Maximum) * $millisecondsPerTick
+    $pooledFramesOverThreshold = 0
+    $pooledMaximumFrameTicks = [double]$allFrameTicks[0]
+    for ($sampleIndex = 0; $sampleIndex -lt $allFrameTicks.Count; $sampleIndex++) {
+        $frameTick = [double]$allFrameTicks[$sampleIndex]
+        if ($frameTick * $millisecondsPerTick -gt 16.7) { $pooledFramesOverThreshold++ }
+        if ($sampleIndex -gt 0 -and $frameTick -gt $pooledMaximumFrameTicks) {
+            $pooledMaximumFrameTicks = $frameTick
+        }
+    }
+    $pooledFramesOver = $pooledFramesOverThreshold * 100.0 / 12000.0
+    $pooledMaximumStall = $pooledMaximumFrameTicks * $millisecondsPerTick
     $pooledAllocationP95 = Get-NearestRankPercentile -Values @($allRendererAllocations) -Percentile 0.95
-    $pooledMaximumAllocation = [int64]($allRendererAllocations | Measure-Object -Maximum).Maximum
+    $pooledMaximumAllocation = [double]$allRendererAllocations[0]
+    for ($sampleIndex = 1; $sampleIndex -lt $allRendererAllocations.Count; $sampleIndex++) {
+        $allocation = [double]$allRendererAllocations[$sampleIndex]
+        if ($allocation -gt $pooledMaximumAllocation) { $pooledMaximumAllocation = $allocation }
+    }
+    $pooledMaximumAllocation = [int64]$pooledMaximumAllocation
     $aggregateValues = @{
         uiThreadWorkP95Milliseconds = $pooledUiP95
         uiThreadWorkP99Milliseconds = $pooledUiP99
@@ -2732,6 +2951,11 @@ if ($regressionLookupTrials.Count -eq 5 -and $lookupFrequency -gt 0 -and
     [int]$lookup.regressionBatchSize -eq 4096) {
     for ($trialIndex = 0; $trialIndex -lt 5; $trialIndex++) {
         $trial = $regressionLookupTrials[$trialIndex]
+        Test-SourceLookupDiagnosticTrial `
+            -Trial $trial `
+            -StopwatchFrequency $lookupFrequency `
+            -Label 'Source-lookup regression' `
+            -Ordinal $trialIndex
         $trialComplete = $true
         foreach ($name in @(
             'ordinal', 'observationCount', 'operationCount', 'samplesElapsedTicks',
@@ -3311,6 +3535,11 @@ elseif ($mode -eq 'candidate') {
             [int]$referenceLookup.regressionBatchSize -eq 4096) {
             for ($trialIndex = 0; $trialIndex -lt 5; $trialIndex++) {
                 $referenceTrial = $referenceLookupTrials[$trialIndex]
+                Test-SourceLookupDiagnosticTrial `
+                    -Trial $referenceTrial `
+                    -StopwatchFrequency $referenceLookupFrequency `
+                    -Label 'Reference source-lookup regression' `
+                    -Ordinal $trialIndex
                 $referenceTrialComplete = $true
                 foreach ($name in @(
                     'ordinal', 'observationCount', 'operationCount', 'samplesElapsedTicks',

@@ -9,6 +9,7 @@ namespace MarkdownRenderer.Tests;
 /// Exercises the word-boundary detection algorithm used by double-click and
 /// the InlineContainerBox word-selection helper.
 /// </summary>
+[Collection(AllocationSensitiveContractCollection.Name)]
 public class TextBoundaryHelperTests
 {
     // ── Basic word selection ──────────────────────────────────────────────────
@@ -248,5 +249,339 @@ public class TextBoundaryHelperTests
 
         Assert.Equal(0, allocated);
         Assert.InRange(offset, 0, text.Length);
+    }
+
+    [Fact]
+    public void ImplicitAsciiBoundariesMatchStringInfoOracleForEveryOffsetAndMove()
+    {
+        // The ordered ASCII repertoire contains every ASCII category while avoiding
+        // an adjacent CRLF pair (which StringInfo treats as one text element).
+        string allAscii = new(Enumerable.Range(0, 128).Select(static value => (char)value).ToArray());
+        string readableAscii = "  one foo,bar\t33_  ";
+        string bmpLettersAndSymbols = "ASCII ☑ CJK 中文✓";
+
+        AssertMatchesStringInfoOracle(allAscii);
+        AssertMatchesStringInfoOracle(readableAscii);
+        AssertMatchesStringInfoOracle(bmpLettersAndSymbols);
+    }
+
+    [Fact]
+    public void NonAsciiAndCrLfFallbackMatchStringInfoOracle()
+    {
+        string[] fallbackInputs =
+        [
+            string.Empty,
+            "a\r\nb",
+            "a\rb\nc",
+            "e\u0301",
+            "👩🏽‍💻",
+            "🇺🇸",
+            "क्‍ष",
+            "A\u0301\r\n😀",
+        ];
+
+        foreach (string text in fallbackInputs)
+            AssertMatchesStringInfoOracle(text);
+
+        Assert.Equal((1, 3), new TextElementBoundaryIndex("a\r\nb").FindBoundaries(2));
+        Assert.Equal(1, TextBoundaryHelper.FindPreviousTextElementStart("a\r\nb", 3));
+        Assert.Equal(2, TextBoundaryHelper.FindPreviousTextElementStart("😀😃", 4));
+        Assert.Equal(4, TextBoundaryHelper.FindPreviousWordStart("one two", 7));
+    }
+
+    [Fact]
+    public void SparseMultiUnitBoundariesMatchStringInfoForEveryOffsetAndMove()
+    {
+        string[] sparseInputs =
+        [
+            "prefix e\u0301 middle A\u0308 suffix",
+            "start \U0001F469\u200D\U0001F4BB middle \U0001F1FA\U0001F1F8 end",
+            "left\r\nright\r\nend",
+            "before \uD800 invalid-high \uDC00 invalid-low after",
+            "RTL \u05D0\u05B0\u05D1 and \u0644\u0627",
+            "a\u0301\U0001F600\r\nb\uD800c\uDC00d",
+        ];
+
+        foreach (string text in sparseInputs)
+            AssertMatchesStringInfoOracle(text);
+    }
+
+    [Fact]
+    public void SparseMultiUnitMoveCrossesClustersWithoutLosingOrdinalAccounting()
+    {
+        const string text = "ab e\u0301 cd \U0001F600 ef\r\ngh";
+        int[] starts = StringInfo.ParseCombiningCharacters(text);
+
+        for (int ordinal = 0; ordinal < starts.Length; ordinal++)
+        {
+            int actual = TextBoundaryHelper.MoveByTextElements(text, 0, ordinal, out int moved);
+            Assert.Equal(starts[ordinal], actual);
+            Assert.Equal(ordinal, moved);
+
+            int remaining = starts.Length - ordinal;
+            Assert.Equal(text.Length, TextBoundaryHelper.MoveByTextElements(text, actual, remaining, out int movedToEnd));
+            Assert.Equal(remaining, movedToEnd);
+        }
+    }
+
+    [Fact]
+    public void LongMostlySingleUnitTextWithSparseUnicodeDoesNotAllocatePerCharacterStorage()
+    {
+        string text = new string('a', 400_000) + "e\u0301" +
+            new string('b', 400_000) + "\U0001F469\u200D\U0001F4BB" +
+            new string('c', 199_000) + "\r\n";
+
+        // Warm StringInfo and the sparse representation before measuring this
+        // thread's allocations; the retained index must be bounded by the few
+        // exceptional graphemes, not the million UTF-16 positions.
+        _ = new TextElementBoundaryIndex("x e\u0301 \U0001F600\r\ny");
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        TextElementBoundaryIndex index = new(text);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.Equal(text.Length, index.TextLength);
+        Assert.InRange(allocated, 0, 4096);
+        Assert.Equal((400_000, 400_002), index.FindBoundaries(400_001));
+        Assert.Equal((800_002, 800_007), index.FindBoundaries(800_004));
+        Assert.Equal((999_007, 999_009), index.FindBoundaries(999_008));
+        Assert.Equal(text.Length, index.Move(0, int.MaxValue, out int movedForward));
+        Assert.Equal(text.Length - (1 + 4 + 1), movedForward);
+        Assert.Equal(0, index.Move(text.Length, int.MinValue, out int movedBackward));
+        Assert.Equal(-movedForward, movedBackward);
+        GC.KeepAlive(index);
+    }
+
+    [Fact]
+    public void DenseMultiUnitInputFallsBackAndStillMatchesStringInfoOracle()
+    {
+        string text = string.Concat(Enumerable.Repeat("e\u0301!", 4_200));
+
+        AssertMatchesStringInfoOracle(text);
+    }
+
+    [Fact]
+    public void PreviousStartAtTextLengthReturnsTheLastGraphemeForAscii()
+    {
+        Assert.Equal(1, TextBoundaryHelper.FindPreviousTextElementStart("ab", 2));
+    }
+
+    [Fact]
+    public void LargeSingleUnitTextIndexDoesNotAllocatePerCharacterBoundaryStorage()
+    {
+        string text = new string('a', 999_997) + "☑中語";
+        _ = new TextElementBoundaryIndex("warmup");
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        TextElementBoundaryIndex index = new(text);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.Equal(text.Length, index.TextLength);
+        Assert.InRange(allocated, 0, 256);
+        Assert.Equal((500_000, 500_001), index.FindBoundaries(500_000));
+        Assert.Equal(text.Length - 1, index.FindPreviousStart(text.Length));
+        Assert.Equal(text.Length, index.Move(0, int.MaxValue, out int movedForward));
+        Assert.Equal(text.Length, movedForward);
+        Assert.Equal(0, index.Move(text.Length, int.MinValue, out int movedBackward));
+        Assert.Equal(-text.Length, movedBackward);
+        GC.KeepAlive(index);
+    }
+
+    private static void AssertMatchesStringInfoOracle(string text)
+    {
+        var index = new TextElementBoundaryIndex(text);
+        var boundaries = new StringInfoBoundaryOracle(text);
+
+        for (int offset = -2; offset <= text.Length + 2; offset++)
+        {
+            Assert.Equal(boundaries.FindBoundaries(offset), index.FindBoundaries(offset));
+            Assert.Equal(boundaries.FindNextStart(offset), index.FindNextStart(offset));
+            Assert.Equal(boundaries.FindPreviousStart(offset), index.FindPreviousStart(offset));
+            Assert.Equal(boundaries.FindWordBoundaries(offset), index.FindWordBoundaries(offset));
+            Assert.Equal(boundaries.FindNextWordStart(offset), index.FindNextWordStart(offset));
+            Assert.Equal(boundaries.FindPreviousWordStart(offset), index.FindPreviousWordStart(offset));
+
+            foreach (int count in new[]
+                     {
+                         int.MinValue, -text.Length - 1, -3, -1, 0, 1, 3,
+                         text.Length + 1, int.MaxValue,
+                     })
+            {
+                int expected = boundaries.Move(offset, count, out int expectedMoved);
+                int actual = index.Move(offset, count, out int actualMoved);
+                Assert.Equal(expected, actual);
+                Assert.Equal(expectedMoved, actualMoved);
+            }
+        }
+    }
+
+    private sealed class StringInfoBoundaryOracle
+    {
+        private readonly string _text;
+        private readonly int[] _starts;
+
+        public StringInfoBoundaryOracle(string text)
+        {
+            _text = text;
+            _starts = StringInfo.ParseCombiningCharacters(text);
+        }
+
+        public (int Start, int End) FindBoundaries(int charIndex)
+        {
+            if (_text.Length == 0) return (0, 0);
+            int offset = Math.Clamp(charIndex, 0, _text.Length);
+            if (offset == _text.Length) return (_text.Length, _text.Length);
+            int start = StartAtOrBefore(offset);
+            int next = Array.BinarySearch(_starts, start) + 1;
+            int end = next < _starts.Length ? _starts[next] : _text.Length;
+            return (start, end);
+        }
+
+        public int FindNextStart(int charIndex)
+        {
+            if (_text.Length == 0) return 0;
+            int offset = Math.Clamp(charIndex, 0, _text.Length);
+            if (offset >= _text.Length) return _text.Length;
+            int current = StartAtOrBefore(offset);
+            int next = Array.BinarySearch(_starts, current) + 1;
+            return next < _starts.Length ? _starts[next] : _text.Length;
+        }
+
+        public int FindPreviousStart(int charIndex)
+        {
+            if (_text.Length == 0) return 0;
+            int offset = Math.Clamp(charIndex, 0, _text.Length);
+            if (offset <= 0) return 0;
+            int current = offset == _text.Length ? _text.Length : StartAtOrBefore(offset);
+            int previous = PreviousStart(current);
+            return previous >= 0 ? previous : 0;
+        }
+
+        public int Move(int charIndex, int count, out int moved)
+        {
+            moved = 0;
+            if (_text.Length == 0 || count == 0)
+                return Math.Clamp(charIndex, 0, _text.Length);
+
+            int offset = Math.Clamp(charIndex, 0, _text.Length);
+            int found = Array.BinarySearch(_starts, offset);
+            int currentIndex = offset == _text.Length
+                ? _starts.Length
+                : Math.Max(0, found >= 0 ? found : ~found - 1);
+            long requested = (long)currentIndex + count;
+            int target = (int)Math.Clamp(requested, 0L, _starts.Length);
+            moved = target - currentIndex;
+            return target == _starts.Length ? _text.Length : _starts[target];
+        }
+
+        public (int Start, int End) FindWordBoundaries(int charIndex)
+        {
+            if (_text.Length == 0) return (0, 0);
+            int index = StartAtOrBefore(Math.Clamp(charIndex, 0, Math.Max(0, _text.Length - 1)));
+            if (!IsWordTextElement(index))
+            {
+                int previous = PreviousStart(index);
+                if (previous >= 0 && IsWordTextElement(previous))
+                {
+                    index = previous;
+                }
+                else
+                {
+                    int forward = Math.Min(_text.Length, NextStart(index));
+                    while (forward < _text.Length && !IsWordTextElement(forward))
+                        forward = Math.Min(_text.Length, NextStart(forward));
+                    if (forward < _text.Length)
+                        index = forward;
+                    else
+                        return (index, index);
+                }
+            }
+
+            int start = index;
+            while (true)
+            {
+                int previous = PreviousStart(start);
+                if (previous < 0 || !IsWordTextElement(previous)) break;
+                start = previous;
+            }
+
+            int end = Math.Min(_text.Length, NextStart(index));
+            while (end < _text.Length && IsWordTextElement(end))
+                end = Math.Min(_text.Length, NextStart(end));
+            return (start, end);
+        }
+
+        public int FindNextWordStart(int charIndex)
+        {
+            if (_text.Length == 0) return 0;
+            int index = Math.Clamp(charIndex, 0, _text.Length);
+            if (index >= _text.Length) return _text.Length;
+            index = StartAtOrBefore(index);
+            if (IsWordTextElement(index))
+                index = FindWordBoundaries(index).End;
+            while (index < _text.Length && !IsWordTextElement(index))
+                index = NextStart(index);
+            return Math.Min(index, _text.Length);
+        }
+
+        public int FindPreviousWordStart(int charIndex)
+        {
+            if (_text.Length == 0) return 0;
+            int index = Math.Clamp(charIndex, 0, _text.Length);
+            if (index <= 0) return 0;
+            index = PreviousStart(index);
+            while (index >= 0 && !IsWordTextElement(index))
+                index = PreviousStart(index);
+            return index < 0 ? 0 : FindWordBoundaries(index).Start;
+        }
+
+        private int StartAtOrBefore(int offset)
+        {
+            int found = Array.BinarySearch(_starts, offset);
+            if (found >= 0) return _starts[found];
+            return _starts[Math.Clamp(~found - 1, 0, _starts.Length - 1)];
+        }
+
+        private int NextStart(int current)
+        {
+            int found = Array.BinarySearch(_starts, current);
+            if (found < 0) found = ~found - 1;
+            return found + 1 < _starts.Length ? _starts[found + 1] : int.MaxValue;
+        }
+
+        private int PreviousStart(int current)
+        {
+            if (current == _text.Length)
+                return _starts.Length > 0 ? _starts[^1] : -1;
+            int found = Array.BinarySearch(_starts, current);
+            if (found < 0) found = ~found - 1;
+            return found > 0 ? _starts[found - 1] : -1;
+        }
+
+        private bool IsWordTextElement(int start)
+        {
+            if (start < 0 || start >= _text.Length) return false;
+            return CharUnicodeInfo.GetUnicodeCategory(_text, start) switch
+            {
+                UnicodeCategory.UppercaseLetter or
+                UnicodeCategory.LowercaseLetter or
+                UnicodeCategory.TitlecaseLetter or
+                UnicodeCategory.ModifierLetter or
+                UnicodeCategory.OtherLetter or
+                UnicodeCategory.DecimalDigitNumber or
+                UnicodeCategory.LetterNumber or
+                UnicodeCategory.OtherNumber or
+                UnicodeCategory.NonSpacingMark or
+                UnicodeCategory.SpacingCombiningMark or
+                UnicodeCategory.ConnectorPunctuation => true,
+                _ => false,
+            };
+        }
     }
 }

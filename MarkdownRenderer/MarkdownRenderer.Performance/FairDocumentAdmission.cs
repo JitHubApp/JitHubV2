@@ -24,18 +24,43 @@ internal sealed class FairDocumentAdmission
         _capacity = capacity;
     }
 
-    internal ValueTask<IDisposable> EnterAsync(object owner, CancellationToken cancellationToken)
+    /// <summary>Current queued work, sampled under the admission lock.</summary>
+    internal int PendingRequests
+    {
+        get
+        {
+            lock (_gate)
+            {
+                int count = 0;
+                foreach (OwnerQueue queue in _queues.Values)
+                    count += queue.Waiters.Count;
+                return count;
+            }
+        }
+    }
+
+    internal ValueTask<IDisposable> EnterAsync(object owner, CancellationToken cancellationToken) =>
+        EnterAsync(owner, exclusive: false, cancellationToken);
+
+    internal ValueTask<IDisposable> EnterAsync(
+        object owner, bool exclusive, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(owner);
         cancellationToken.ThrowIfCancellationRequested();
 
+        int slots = exclusive ? _capacity : 1;
         Waiter? waiter = null;
         lock (_gate)
         {
-            if (_active < _capacity && _rotation.Count == 0)
+            // The caller can be canceled while blocked acquiring _gate after
+            // the initial fast check above. Do not grant capacity or enqueue a
+            // waiter that is already canceled when this critical section starts.
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (slots <= _capacity - _active && _rotation.Count == 0)
             {
-                _active++;
-                return ValueTask.FromResult<IDisposable>(new Lease(this));
+                _active += slots;
+                return ValueTask.FromResult<IDisposable>(new Lease(this, slots));
             }
 
             if (!_queues.TryGetValue(owner, out OwnerQueue? queue))
@@ -45,7 +70,7 @@ internal sealed class FairDocumentAdmission
                 queue.RotationNode = _rotation.AddLast(queue);
             }
 
-            waiter = new Waiter(queue);
+            waiter = new Waiter(queue, slots);
             waiter.Node = queue.Waiters.AddLast(waiter);
             DispatchNoLock();
         }
@@ -94,20 +119,20 @@ internal sealed class FairDocumentAdmission
                     // WaitAsync may report cancellation at the same instant a
                     // slot is granted. The caller never receives that lease.
                     waiter.State = WaiterState.Canceled;
-                    _active--;
+                    _active -= waiter.Slots;
                     DispatchNoLock();
                     break;
             }
         }
     }
 
-    private void Release()
+    private void Release(int slots)
     {
         lock (_gate)
         {
-            if (_active <= 0)
+            if (_active < slots)
                 throw new InvalidOperationException("A document work slot was released twice.");
-            _active--;
+            _active -= slots;
             DispatchNoLock();
         }
     }
@@ -117,9 +142,13 @@ internal sealed class FairDocumentAdmission
         while (_active < _capacity && _rotation.First is { } node)
         {
             OwnerQueue queue = node.Value;
+            Waiter waiter = queue.Waiters.First!.Value;
+            // Do not bypass an exclusive waiter with new one-slot work. Let
+            // existing work drain so a large source cannot starve forever.
+            if (waiter.Slots > _capacity - _active)
+                return;
             _rotation.RemoveFirst();
             queue.RotationNode = null;
-            Waiter waiter = queue.Waiters.First!.Value;
             queue.Waiters.RemoveFirst();
             waiter.Node = null;
             if (queue.Waiters.Count == 0)
@@ -128,8 +157,8 @@ internal sealed class FairDocumentAdmission
                 queue.RotationNode = _rotation.AddLast(queue);
 
             waiter.State = WaiterState.Granted;
-            _active++;
-            waiter.Completion.TrySetResult(new Lease(this));
+            _active += waiter.Slots;
+            waiter.Completion.TrySetResult(new Lease(this, waiter.Slots));
         }
     }
 
@@ -147,9 +176,10 @@ internal sealed class FairDocumentAdmission
         internal LinkedListNode<OwnerQueue>? RotationNode { get; set; }
     }
 
-    private sealed class Waiter(OwnerQueue owner)
+    private sealed class Waiter(OwnerQueue owner, int slots)
     {
         internal OwnerQueue Owner { get; } = owner;
+        internal int Slots { get; } = slots;
         internal LinkedListNode<Waiter>? Node { get; set; }
         internal WaiterState State { get; set; } = WaiterState.Queued;
         internal TaskCompletionSource<Lease> Completion { get; } =
@@ -158,9 +188,9 @@ internal sealed class FairDocumentAdmission
 
     private enum WaiterState { Queued, Granted, Canceled }
 
-    private sealed class Lease(FairDocumentAdmission owner) : IDisposable
+    private sealed class Lease(FairDocumentAdmission owner, int slots) : IDisposable
     {
         private FairDocumentAdmission? _owner = owner;
-        public void Dispose() => Interlocked.Exchange(ref _owner, null)?.Release();
+        public void Dispose() => Interlocked.Exchange(ref _owner, null)?.Release(slots);
     }
 }

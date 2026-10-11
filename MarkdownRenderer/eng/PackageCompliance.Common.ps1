@@ -225,6 +225,106 @@ function Get-NuGetPackageEvidence {
     }
 }
 
+function Get-ExpectedReleasePackageIds {
+    return @(
+        'MarkdownRenderer'
+        'MarkdownRenderer.All'
+        'MarkdownRenderer.Core'
+        'MarkdownRenderer.Gfm'
+        'MarkdownRenderer.GitHub'
+        'MarkdownRenderer.Html'
+        'MarkdownRenderer.Math'
+        'MarkdownRenderer.Mermaid'
+        'MarkdownRenderer.Performance'
+        'MarkdownRenderer.Svg.Resvg'
+        'MarkdownRenderer.SyntaxHighlighting.TextMate'
+        'MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All'
+        'MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common'
+        'MarkdownRenderer.WinUI'
+    )
+}
+
+function Get-ExpectedPackageIdsForScope {
+    # Focused evidence scripts pack only their declared dependency slice.
+    # Keep each slice fixed here; never infer a passing scope from whatever
+    # happens to be present in a package directory.
+    param(
+        [ValidateSet('FullRelease', 'Math', 'SvgResvg', 'TextMate')]
+        [string] $Scope = 'FullRelease'
+    )
+
+    switch ($Scope) {
+        'FullRelease' { return @(Get-ExpectedReleasePackageIds) }
+        'Math' { return @('MarkdownRenderer.Core', 'MarkdownRenderer.Math') }
+        'SvgResvg' {
+            return @(
+                'MarkdownRenderer.Core'
+                'MarkdownRenderer.WinUI'
+                'MarkdownRenderer'
+                'MarkdownRenderer.Svg.Resvg'
+            )
+        }
+        'TextMate' {
+            return @(
+                'MarkdownRenderer.Core'
+                'MarkdownRenderer.WinUI'
+                'MarkdownRenderer.SyntaxHighlighting.TextMate'
+                'MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common'
+                'MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All'
+            )
+        }
+    }
+}
+
+function Assert-ExpectedReleasePackageSet {
+    param(
+        [Parameter(Mandatory)][string] $PackageDirectory,
+        [ValidateSet('FullRelease', 'Math', 'SvgResvg', 'TextMate')]
+        [string] $Scope = 'FullRelease'
+    )
+
+    if (-not (Test-Path -LiteralPath $PackageDirectory -PathType Container)) {
+        throw "Package directory '$PackageDirectory' does not exist."
+    }
+
+    $expectedIds = @(Get-ExpectedPackageIdsForScope -Scope $Scope)
+    $packageFiles = @(Get-ChildItem -LiteralPath $PackageDirectory -Filter '*.nupkg' -File | Sort-Object Name)
+    if ($packageFiles.Count -ne $expectedIds.Count) {
+        $kind = if ($Scope -eq 'FullRelease') { 'release' } else { "$Scope component" }
+        throw "Expected exactly $($expectedIds.Count) $kind packages in '$PackageDirectory'; found $($packageFiles.Count). Expected IDs: $($expectedIds -join ', ')."
+    }
+
+    $packageEvidence = @($packageFiles | ForEach-Object { Get-NuGetPackageEvidence -Package $_ })
+    $actualIds = @($packageEvidence | ForEach-Object { $_.Id })
+    $duplicateIds = @(
+        $actualIds |
+            Group-Object { $_.ToUpperInvariant() } |
+            Where-Object { $_.Count -gt 1 } |
+            ForEach-Object { $_.Group[0] }
+    )
+    if ($duplicateIds.Count -gt 0) {
+        throw "$Scope package IDs must be unique; duplicate IDs in '$PackageDirectory': $($duplicateIds -join ', ')."
+    }
+
+    $actualIdSet = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($packageId in $actualIds) {
+        [void] $actualIdSet.Add($packageId)
+    }
+
+    $expectedIdSet = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($packageId in $expectedIds) {
+        [void] $expectedIdSet.Add($packageId)
+    }
+
+    $missingIds = @($expectedIds | Where-Object { -not $actualIdSet.Contains($_) })
+    $unexpectedIds = @($actualIds | Where-Object { -not $expectedIdSet.Contains($_) })
+    if ($missingIds.Count -gt 0 -or $unexpectedIds.Count -gt 0) {
+        throw "$Scope package ID set mismatch in '$PackageDirectory'. Missing: $($missingIds -join ', '). Unexpected: $($unexpectedIds -join ', ')."
+    }
+
+    Write-Host "Validated exact $Scope package set ($($expectedIds.Count) IDs) in '$PackageDirectory'."
+}
+
 function Write-DeterministicText {
     param(
         [Parameter(Mandatory)][string] $Path,

@@ -15,6 +15,7 @@ using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;
 
+[Collection(AllocationSensitiveContractCollection.Name)]
 public sealed class AccessibilityResidualContractTests
 {
     [Fact]

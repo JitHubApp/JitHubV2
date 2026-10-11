@@ -29,7 +29,17 @@ internal static class SvgTitleExtractor
     /// Both fields are null when the SVG is unparseable or the elements
     /// are missing; callers fall back to alt text.
     /// </summary>
-    public readonly record struct Metadata(string? Title, string? Desc);
+    public readonly struct Metadata
+    {
+        public Metadata(string? Title, string? Desc)
+        {
+            this.Title = Title;
+            this.Desc = Desc;
+        }
+
+        public string? Title { get; init; }
+        public string? Desc { get; init; }
+    }
 
     /// <summary>
     /// Parses <paramref name="svgBytes"/> as UTF-8 and returns the first

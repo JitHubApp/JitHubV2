@@ -56,11 +56,11 @@ internal static class PerformanceDocumentFactory
 
         var builder = new StringBuilder(characterCount, characterCount);
         string prefix = $"<!-- perf:{salt} -->\n";
-        builder.Append(prefix.AsSpan(0, Math.Min(prefix.Length, characterCount)));
+        builder.Append(prefix.AsSpan(0, global::System.Math.Min(prefix.Length, characterCount)));
         while (builder.Length < characterCount)
         {
             int remaining = characterCount - builder.Length;
-            builder.Append(Section.AsSpan(0, Math.Min(Section.Length, remaining)));
+            builder.Append(Section.AsSpan(0, global::System.Math.Min(Section.Length, remaining)));
         }
 
         return builder.ToString();

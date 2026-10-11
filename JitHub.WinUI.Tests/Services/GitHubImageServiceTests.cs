@@ -41,6 +41,165 @@ public sealed class GitHubImageServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task MemoryPressure_EvictsMemoryBytesAndReusesDiskCacheWithoutNetwork()
+    {
+        GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
+        CountingHandler handler = new(PngBytes);
+        using HttpClient client = new(handler);
+        MemoryPressureSource pressure = new();
+        using GitHubImageService service = new(
+            store,
+            client,
+            subscribeMemoryPressure: pressure.Subscribe,
+            unsubscribeMemoryPressure: pressure.Unsubscribe);
+        const string source = "https://avatars.githubusercontent.com/u/memory-pressure.png";
+
+        GitHubCachedImage? first = await service.GetAsync(source);
+        Assert.NotNull(first);
+        Assert.Equal(1, pressure.SubscriberCount);
+
+        pressure.Raise();
+        GitHubCachedImage? afterPressure = await service.GetAsync(source);
+
+        Assert.NotNull(afterPressure);
+        Assert.True(afterPressure!.IsFromCache);
+        Assert.Equal(PngBytes, afterPressure.Bytes);
+        Assert.NotSame(first!.Bytes, afterPressure.Bytes);
+        Assert.Equal(1, handler.RequestCount);
+        Assert.Equal(1, pressure.SubscriberCount);
+    }
+
+    [Fact]
+    public void Dispose_UnsubscribesOnceAndCapturedLatePressureCallbackIsHarmless()
+    {
+        GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
+        using HttpClient client = new(new CountingHandler(PngBytes));
+        MemoryPressureSource pressure = new();
+        GitHubImageService service = new(
+            store,
+            client,
+            subscribeMemoryPressure: pressure.Subscribe,
+            unsubscribeMemoryPressure: pressure.Unsubscribe);
+        EventHandler<object>? captured = pressure.CaptureHandlers();
+
+        Assert.Equal(1, pressure.SubscriberCount);
+        service.Dispose();
+        service.Dispose();
+
+        Assert.Equal(0, pressure.SubscriberCount);
+        Assert.NotNull(captured);
+        Exception? lateCallbackFailure = Record.Exception(
+            () => captured!(pressure, EventArgs.Empty));
+        Assert.Null(lateCallbackFailure);
+        pressure.Raise();
+        Assert.Equal(0, pressure.SubscriberCount);
+    }
+
+    [Fact]
+    public void Constructor_PartialPressureSubscribeFailureRollsBackAndDisposesOwnedClient()
+    {
+        GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
+        DisposalTrackingHandler transport = new();
+        HttpClient client = new(transport);
+        MemoryPressureSource pressure = new();
+
+        InvalidOperationException failure = Assert.Throws<InvalidOperationException>(() =>
+            new GitHubImageService(
+                store,
+                client,
+                ownsHttpClient: true,
+                subscribeMemoryPressure: pressure.SubscribeThenThrow,
+                unsubscribeMemoryPressure: pressure.Unsubscribe));
+
+        Assert.Equal("Injected partial memory-pressure subscription failure.", failure.Message);
+        Assert.Equal(0, pressure.SubscriberCount);
+        Assert.True(transport.IsDisposed);
+    }
+
+    [Fact]
+    public void Dispose_UnsubscribeFailureStillCleansOwnedStateAndDoesNotRootService()
+    {
+        GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
+        MemoryPressureSource pressure = new()
+        {
+            UnsubscribeFailure = new InvalidOperationException(
+                "Injected memory-pressure unsubscribe failure."),
+        };
+        (WeakReference<GitHubImageService> service, EventHandler<object> callback,
+            DisposalTrackingHandler transport) = CreateServiceWithFailingPressureUnsubscribe(
+                store,
+                pressure);
+
+        Assert.True(transport.IsDisposed);
+        Assert.Equal(1, pressure.SubscriberCount);
+        for (int attempt = 0; attempt < 3 && IsImageServiceAlive(service); attempt++)
+        {
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+            GC.WaitForPendingFinalizers();
+        }
+        Assert.False(IsImageServiceAlive(service));
+        Exception? lateCallbackFailure = Record.Exception(
+            () => callback(pressure, EventArgs.Empty));
+        Assert.Null(lateCallbackFailure);
+    }
+
+    [Fact]
+    public void Dispose_ExpectedWinRtUnsubscribeFailureStillFinishesCleanup()
+    {
+        GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
+        MemoryPressureSource pressure = new()
+        {
+            UnsubscribeFailure = new PlatformNotSupportedException(
+                "Injected unavailable WinRT event removal."),
+        };
+        DisposalTrackingHandler transport = new();
+        HttpClient client = new(transport);
+        GitHubImageService service = new(
+            store,
+            client,
+            ownsHttpClient: true,
+            subscribeMemoryPressure: pressure.Subscribe,
+            unsubscribeMemoryPressure: pressure.Unsubscribe);
+        EventHandler<object> callback = pressure.CaptureHandlers()!;
+
+        service.Dispose();
+
+        Assert.True(transport.IsDisposed);
+        Assert.Equal(1, pressure.SubscriberCount);
+        Exception? lateCallbackFailure = Record.Exception(
+            () => callback(pressure, EventArgs.Empty));
+        Assert.Null(lateCallbackFailure);
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(
+        System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static bool IsImageServiceAlive(WeakReference<GitHubImageService> service) =>
+        service.TryGetTarget(out _);
+
+    [System.Runtime.CompilerServices.MethodImpl(
+        System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static (WeakReference<GitHubImageService> Service, EventHandler<object> Callback,
+        DisposalTrackingHandler Transport) CreateServiceWithFailingPressureUnsubscribe(
+            GitHubImageCacheStore store,
+            MemoryPressureSource pressure)
+    {
+        DisposalTrackingHandler transport = new();
+        HttpClient client = new(transport);
+        GitHubImageService service = new(
+            store,
+            client,
+            ownsHttpClient: true,
+            subscribeMemoryPressure: pressure.Subscribe,
+            unsubscribeMemoryPressure: pressure.Unsubscribe);
+        EventHandler<object> callback = pressure.CaptureHandlers()!;
+        WeakReference<GitHubImageService> weakService = new(service);
+
+        InvalidOperationException failure = Assert.Throws<InvalidOperationException>(service.Dispose);
+        Assert.Equal("Injected memory-pressure unsubscribe failure.", failure.Message);
+        return (weakService, callback, transport);
+    }
+
+    [Fact]
     public async Task GetAsync_DeduplicatesConcurrentRequests()
     {
         GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
@@ -1673,6 +1832,53 @@ public sealed class GitHubImageServiceTests : IDisposable
             ByteArrayContent content = new(bytes);
             content.Headers.ContentType = new("image/png");
             return new HttpResponseMessage(HttpStatusCode.OK) { Content = content };
+        }
+    }
+
+    private sealed class MemoryPressureSource
+    {
+        private EventHandler<object>? _handlers;
+
+        internal Exception? UnsubscribeFailure { get; init; }
+
+        internal int SubscriberCount => _handlers?.GetInvocationList().Length ?? 0;
+
+        internal void Subscribe(EventHandler<object> handler) => _handlers += handler;
+
+        internal void SubscribeThenThrow(EventHandler<object> handler)
+        {
+            _handlers += handler;
+            throw new InvalidOperationException("Injected partial memory-pressure subscription failure.");
+        }
+
+        internal void Unsubscribe(EventHandler<object> handler)
+        {
+            if (UnsubscribeFailure is { } failure)
+                throw failure;
+            _handlers -= handler;
+        }
+
+        internal EventHandler<object>? CaptureHandlers() => _handlers;
+
+        internal void Raise() => _handlers?.Invoke(this, EventArgs.Empty);
+    }
+
+    private sealed class DisposalTrackingHandler : HttpMessageHandler
+    {
+        private int _disposed;
+
+        internal bool IsDisposed => Volatile.Read(ref _disposed) != 0;
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken) =>
+            throw new NotSupportedException("This handler is used only to verify disposal.");
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+                Interlocked.Exchange(ref _disposed, 1);
+            base.Dispose(disposing);
         }
     }
 

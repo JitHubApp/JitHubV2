@@ -39,6 +39,18 @@
     <ProjectReference Include="..\MarkdownRenderer.Html\MarkdownRenderer.Html.csproj" />
     <Compile Include="..\MarkdownRenderer.Gfm\Renderers\AlertRenderer.cs" Link="Renderers\AlertRenderer.cs" />
     <Compile Include="..\MarkdownRenderer.Gfm\Renderers\FootnoteRenderer.cs" Link="Renderers\FootnoteRenderer.cs" />
+    <EmbeddedResource Include="..\..\eng\readme-audit\profiles\github-primer-light-v1.css"
+                      Link="Profiles\github-primer-light-v1.css"
+                      LogicalName="MarkdownRenderer.GitHub.Profiles.github-primer-light-v1.css" />
+    <EmbeddedResource Include="..\..\eng\readme-audit\profiles\github-primer-light-v2.css"
+                      Link="Profiles\github-primer-light-v2.css"
+                      LogicalName="MarkdownRenderer.GitHub.Profiles.github-primer-light-v2.css" />
+    <EmbeddedResource Include="..\..\eng\readme-audit\profiles\github-primer-light-v3.css"
+                      Link="Profiles\github-primer-light-v3.css"
+                      LogicalName="MarkdownRenderer.GitHub.Profiles.github-primer-light-v3.css" />
+    <EmbeddedResource Include="..\..\eng\readme-audit\profiles\github-primer-light-v4.css"
+                      Link="Profiles\github-primer-light-v4.css"
+                      LogicalName="MarkdownRenderer.GitHub.Profiles.github-primer-light-v4.css" />
     <None Include="README.md" Pack="true" PackagePath="" />
     <None Include="..\..\LICENSE" Pack="true" PackagePath="" Visible="false" />
     <None Include="..\..\JitHub.Web\wwwroot\icon-192.png" Pack="true" PackagePath="icon-192.png" Visible="false" />

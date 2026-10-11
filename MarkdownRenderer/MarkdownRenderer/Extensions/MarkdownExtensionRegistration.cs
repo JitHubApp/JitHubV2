@@ -23,15 +23,15 @@ internal sealed class MarkdownExtensionRegistration
         OwnedFactory = ownedFactory;
     }
 
-    internal MarkdownExtensionRegistrationKind Kind { get; }
+    internal readonly MarkdownExtensionRegistrationKind Kind;
 
-    internal string? Identifier { get; }
+    internal readonly string? Identifier;
 
-    internal MarkdownNodeRenderer? SynchronousRenderer { get; }
+    internal readonly MarkdownNodeRenderer? SynchronousRenderer;
 
-    internal MarkdownAsyncNodeRenderer? AsynchronousRenderer { get; }
+    internal readonly MarkdownAsyncNodeRenderer? AsynchronousRenderer;
 
-    internal MarkdownOwnedExtensionFactory? OwnedFactory { get; }
+    internal readonly MarkdownOwnedExtensionFactory? OwnedFactory;
 
     internal static MarkdownExtensionRegistration Extension(string id) =>
         new(MarkdownExtensionRegistrationKind.Extension, identifier: id);

@@ -15,5 +15,13 @@ repository-compatible MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, Zlib,
 Unlicense/0BSD, and Unicode-3.0 terms. Dual-licensed dependencies are consumed
 under MIT where offered.
 
+The worker includes reviewed local changes to resvg, usvg, tiny-skia and
+tiny-skia-path. Their `native/vendor/*/UPSTREAM.json` manifests retain the
+original source identities and list patched or added files. Original
+tiny-skia/tiny-skia-path code retains its BSD-3-Clause terms; the local
+bounded-rendering additions are MIT-licensed. Both notices are included in
+the generated license collection, and the combined distribution is recorded
+as `BSD-3-Clause AND MIT` rather than replacing the upstream license.
+
 No resvg trademark rights are granted. This product is not endorsed by the
 resvg authors.

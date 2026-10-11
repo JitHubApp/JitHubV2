@@ -10,8 +10,17 @@ using System.Xml;
 
 namespace MarkdownRenderer.Layout.Boxes;
 
-internal readonly record struct SvgResourceBudgetResult(bool Accepted, string? Reason)
+internal readonly struct SvgResourceBudgetResult
 {
+    public SvgResourceBudgetResult(bool Accepted, string? Reason)
+    {
+        this.Accepted = Accepted;
+        this.Reason = Reason;
+    }
+
+    public bool Accepted { get; }
+    public string? Reason { get; }
+
     public static SvgResourceBudgetResult Success => new(true, null);
 
     public static SvgResourceBudgetResult Reject(string reason) => new(false, reason);
@@ -46,20 +55,52 @@ internal static class SvgResourceBudget
     private const string SvgNamespace = "http://www.w3.org/2000/svg";
 
     public static SvgResourceBudgetResult Validate(byte[]? bytes, CancellationToken cancellationToken)
+        => ValidateCore(bytes, cancellationToken, metadataCollector: null, out _);
+
+    public static SvgResourceBudgetResult ValidateWithMetadata(
+        byte[]? bytes,
+        CancellationToken cancellationToken,
+        out SvgSourceMetadata metadata)
+        => ValidateCore(bytes, cancellationToken, new SvgMetadataCollector(cancellationToken), out metadata);
+
+    private static SvgResourceBudgetResult ValidateCore(
+        byte[]? bytes,
+        CancellationToken cancellationToken,
+        SvgMetadataCollector? metadataCollector,
+        out SvgSourceMetadata metadata)
     {
+        metadata = default;
         if (bytes is null || bytes.Length == 0)
             return SvgResourceBudgetResult.Reject("empty");
         if (bytes.Length > MaxInputBytes)
             return SvgResourceBudgetResult.Reject("input-bytes");
 
         var context = new ValidationContext(Stopwatch.GetTimestamp(), cancellationToken);
-        return ValidateDocument(bytes, context, nestedDepth: 0);
+        SvgResourceBudgetResult result = ValidateDocument(bytes, context, nestedDepth: 0, metadataCollector);
+        if (result.Accepted && metadataCollector is not null)
+        {
+            try
+            {
+                // Keep the successful metadata path inside the same active
+                // deadline, including bounded final string/geometry work.
+                context.ThrowIfStopped();
+                SvgSourceMetadata collected = metadataCollector.GetMetadata();
+                context.ThrowIfStopped();
+                metadata = collected;
+            }
+            catch (SvgValidationDeadlineException)
+            {
+                return SvgResourceBudgetResult.Reject("validation-deadline");
+            }
+        }
+        return result;
     }
 
     private static SvgResourceBudgetResult ValidateDocument(
         byte[] bytes,
         ValidationContext context,
-        int nestedDepth)
+        int nestedDepth,
+        SvgMetadataCollector? metadataCollector)
     {
         if (nestedDepth > MaxNestedSvgDepth)
             return SvgResourceBudgetResult.Reject("nested-svg-depth");
@@ -104,6 +145,7 @@ internal static class SvgResourceBudget
                 if (reader.NodeType == XmlNodeType.Element)
                 {
                     string elementName = reader.LocalName;
+                    int elementDepth = reader.Depth;
                     bool isSvgElement = IsSvgNamespace(reader.NamespaceURI);
                     if (!sawSvgRoot)
                     {
@@ -112,6 +154,12 @@ internal static class SvgResourceBudget
                         if (!sawSvgRoot)
                             return SvgResourceBudgetResult.Reject("missing-root");
                     }
+
+                    metadataCollector?.ObserveElement(
+                        elementDepth,
+                        elementName,
+                        reader.NamespaceURI,
+                        reader.IsEmptyElement);
 
                     if (++context.ElementCount > MaxElements)
                         return SvgResourceBudgetResult.Reject("element-count");
@@ -147,6 +195,11 @@ internal static class SvgResourceBudget
 
                             string name = reader.LocalName;
                             string value = reader.Value;
+                            metadataCollector?.ObserveAttribute(
+                                elementDepth,
+                                name,
+                                reader.NamespaceURI,
+                                value);
                             if (name.StartsWith("on", StringComparison.OrdinalIgnoreCase))
                                 return SvgResourceBudgetResult.Reject("event-handler");
 
@@ -204,6 +257,7 @@ internal static class SvgResourceBudget
                 }
                 else if (reader.NodeType == XmlNodeType.EndElement)
                 {
+                    metadataCollector?.EndElement(reader.Depth);
                     if (styleElementDepth == reader.Depth &&
                         reader.LocalName.Equals("style", StringComparison.OrdinalIgnoreCase))
                     {
@@ -218,12 +272,18 @@ internal static class SvgResourceBudget
                     if (context.TextCharacters > MaxTextCharacters)
                         return SvgResourceBudgetResult.Reject("text-length");
 
+                    metadataCollector?.AppendText(reader.Depth, reader.Value.AsSpan());
+
                     if (styleElementDepth >= 0)
                     {
                         SvgResourceBudgetResult styleResult = ValidateCss(reader.Value);
                         if (!styleResult.Accepted)
                             return styleResult;
                     }
+                }
+                else if (reader.NodeType == XmlNodeType.Whitespace)
+                {
+                    metadataCollector?.AppendText(reader.Depth, reader.Value.AsSpan());
                 }
             }
         }
@@ -289,7 +349,7 @@ internal static class SvgResourceBudget
             context.ComplexityUnits += Math.Max(1L, payload.LongLength / 256L);
             if (context.ComplexityUnits > MaxComplexityUnits)
                 return SvgResourceBudgetResult.Reject("structural-complexity");
-            return ValidateDocument(payload, context, nestedDepth + 1);
+            return ValidateDocument(payload, context, nestedDepth + 1, metadataCollector: null);
         }
 
         RasterImageBudgetResult raster = RasterImageResourceBudget.Validate(payload);

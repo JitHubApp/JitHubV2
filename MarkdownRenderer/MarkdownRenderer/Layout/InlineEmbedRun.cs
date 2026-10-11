@@ -14,15 +14,15 @@ internal sealed class InlineEmbedRun : InlineRun
 {
     public const string PlaceholderChar = "\uFFFC";
 
-    public float DesiredWidth { get; }
-    public float DesiredHeight { get; }
+    public readonly float DesiredWidth;
+    public readonly float DesiredHeight;
 
     /// <summary>
     /// UI-thread factory invoked when the embed is realized. Closures may
     /// capture primitives (e.g. <c>Checked</c>) but MUST NOT capture
     /// FrameworkElements created on a different thread.
     /// </summary>
-    public Func<FrameworkElement> ElementFactory { get; }
+    public readonly Func<FrameworkElement> ElementFactory;
 
     /// <summary>
     /// Optional UI-thread hook invoked when a previously-realised inline
@@ -86,11 +86,11 @@ internal sealed class InlineEmbedAutomationMetadata
         _trySetState = trySetState;
     }
 
-    internal string CheckedName { get; }
-    internal string UncheckedName { get; }
-    internal string ReadOnlyHelpText { get; }
-    internal string ToggleHelpText { get; }
-    internal string AutomationId { get; }
+    internal readonly string CheckedName;
+    internal readonly string UncheckedName;
+    internal readonly string ReadOnlyHelpText;
+    internal readonly string ToggleHelpText;
+    internal readonly string AutomationId;
     internal bool IsChecked { get; private set; }
     internal string CurrentName => IsChecked ? CheckedName : UncheckedName;
     internal bool CanToggle => CanSetState(!IsChecked);

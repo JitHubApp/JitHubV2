@@ -21,9 +21,9 @@ internal readonly struct FocusableItem
     public FocusableItem(int blockIndex, int inlineIndex, FocusableItemKind kind) =>
         (BlockIndex, InlineIndex, Kind) = (blockIndex, inlineIndex, kind);
 
-    public int BlockIndex { get; }
-    public int InlineIndex { get; }
-    public FocusableItemKind Kind { get; }
+    public readonly int BlockIndex;
+    public readonly int InlineIndex;
+    public readonly FocusableItemKind Kind;
     public bool IsLink => Kind == FocusableItemKind.Link;
     public bool IsVectorSemantic => Kind == FocusableItemKind.VectorSemantic;
     public bool IsInlineEmbed => Kind == FocusableItemKind.InlineEmbed;

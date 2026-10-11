@@ -28,10 +28,12 @@ internal sealed class GitHubDetailsBlockRenderer : MarkdownNodeRenderer<GitHubDe
             FlowDirection = context.FlowDirection,
             Margin = GetDisclosureMargin(context),
         };
+        context.RegisterConstructionBlock(stack);
         var summary = new InlineContainerBox(context, MarkdownElementKeys.Strong)
         {
             BlockIndex = context.NextBlockIndex(),
         };
+        context.RegisterConstructionBlock(summary);
         summary.Add(new LinkRun(
             $"{(expanded ? "\u25BE" : "\u25B8")} {summaryText}",
             $"markdown-disclosure:{disclosureId}")
@@ -43,6 +45,7 @@ internal sealed class GitHubDetailsBlockRenderer : MarkdownNodeRenderer<GitHubDe
             SourceSpan = new SourceSpan(details.Span.Start, details.Span.Length),
         });
         stack.Add(summary);
+        context.AdoptConstructionBlock(summary);
 
         AppendSummarySupplementalContent(stack, details, context);
 
@@ -64,6 +67,11 @@ internal sealed class GitHubDetailsBlockRenderer : MarkdownNodeRenderer<GitHubDe
         if (body.Children.Count > 0)
         {
             stack.Add(body);
+            context.AdoptConstructionBlock(body);
+        }
+        else
+        {
+            context.DiscardConstructionBlock(body);
         }
 
         return stack;
@@ -117,32 +125,61 @@ internal sealed class GitHubDetailsBlockRenderer : MarkdownNodeRenderer<GitHubDe
             BlockIndex = context.NextBlockIndex(),
             FlowDirection = context.FlowDirection,
         };
+        context.RegisterConstructionBlock(rendered);
         GfmChildBuilder.PopulateChildren(rendered, fragment, context);
 
+        if (rendered.Children.Count == 0)
+        {
+            context.DiscardConstructionBlock(rendered);
+            return;
+        }
+
+        BlockBox[] children = rendered.DetachChildrenForTransfer();
+        foreach (BlockBox child in children)
+            context.RegisterConstructionBlock(child);
+
         bool first = true;
-        foreach (BlockBox child in rendered.Children)
+        foreach (BlockBox child in children)
         {
             if (first && child is InlineContainerBox leading)
             {
                 first = false;
-                InlineImageRun[] images = leading.Runs.OfType<InlineImageRun>().ToArray();
-                if (images.Length == 0)
-                    continue;
-
-                var media = new InlineContainerBox(context, MarkdownElementKeys.Body)
-                {
-                    BlockIndex = context.NextBlockIndex(),
-                    TextAlignment = leading.TextAlignment,
-                };
+                InlineImageRun[] images = leading.DetachInlineImagesForTransfer();
                 foreach (InlineImageRun image in images)
-                    media.Add(image);
-                destination.Add(media);
+                    context.RegisterConstructionBlock(image.Image);
+
+                if (images.Length > 0)
+                {
+                    var media = new InlineContainerBox(context, MarkdownElementKeys.Body)
+                    {
+                        BlockIndex = context.NextBlockIndex(),
+                        TextAlignment = leading.TextAlignment,
+                    };
+                    context.RegisterConstructionBlock(media);
+                    foreach (InlineImageRun image in images)
+                    {
+                        media.Add(image);
+                        context.AdoptConstructionBlock(image.Image);
+                    }
+                    destination.Add(media);
+                    context.AdoptConstructionBlock(media);
+                }
+
+                // The source container is only a staging owner. Transferred
+                // images now belong to `media`; all other inline runs (notably
+                // vector scenes) must be retired with the discarded container.
+                context.DiscardConstructionBlock(leading);
                 continue;
             }
 
             first = false;
             destination.Add(child);
+            context.AdoptConstructionBlock(child);
         }
+
+        // Children have been detached and reparented, leaving the staging
+        // stack empty. Retire it rather than forgetting a temporary owner.
+        context.DiscardConstructionBlock(rendered);
     }
 
     private static void OffsetMarkdownSpans(ContainerBlock container, int offset)

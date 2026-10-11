@@ -15,34 +15,92 @@ internal sealed unsafe partial class SharedMemoryLease : MemoryManager<byte>
     private readonly int _exposedLength;
     private readonly int _progressOffset;
 
-    public SharedMemoryLease(string name, byte[] source, int outputLength)
+    internal SharedMemoryLease(string name, SvgSourceBuffer source, int outputLength)
+        : this(name, source, source?.Length ?? throw new ArgumentNullException(nameof(source)), outputLength, securityContext: null)
+    {
+    }
+
+    internal SharedMemoryLease(
+        string name,
+        SvgSourceBuffer source,
+        int outputLength,
+        WorkerObjectSecurity.WorkerObjectSecurityContext securityContext)
+        : this(name, source, source?.Length ?? throw new ArgumentNullException(nameof(source)), outputLength,
+            securityContext ?? throw new ArgumentNullException(nameof(securityContext)))
+    {
+    }
+
+    internal SharedMemoryLease(string name, int outputLength)
+        : this(name, null, 0, outputLength, securityContext: null)
+    {
+    }
+
+    internal SharedMemoryLease(
+        string name,
+        int outputLength,
+        WorkerObjectSecurity.WorkerObjectSecurityContext securityContext)
+        : this(name, null, 0, outputLength, securityContext ?? throw new ArgumentNullException(nameof(securityContext)))
+    {
+    }
+
+    private SharedMemoryLease(
+        string name,
+        SvgSourceBuffer? source,
+        int sourceLength,
+        int outputLength,
+        WorkerObjectSecurity.WorkerObjectSecurityContext? securityContext)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
-        ArgumentNullException.ThrowIfNull(source);
         if (outputLength < 0)
             throw new ArgumentOutOfRangeException(nameof(outputLength));
+        if (sourceLength < 0 || source is null && sourceLength != 0)
+            throw new ArgumentOutOfRangeException(nameof(sourceLength));
+        ObjectDisposedException.ThrowIf(source?.IsReleased == true, source!);
 
         Name = name;
-        int sourceArea = Align64(source.Length);
+        int sourceArea = Align64(sourceLength);
+        int progressOffset = checked(sourceArea + outputLength);
         long totalLength = checked((long)sourceArea + outputLength + ProgressAreaBytes);
-        using WorkerObjectSecurity.SecurityDescriptorHandle descriptor =
+        // The worker-generation context is the production path. The contextless
+        // overloads are retained for isolated test fixtures; production pool
+        // factories always pass the selected worker's captured primary-token
+        // descriptor explicitly.
+        bool ownsDescriptor = securityContext is null;
+        WorkerObjectSecurity.SecurityDescriptorHandle descriptor = securityContext?.Descriptor ??
             WorkerObjectSecurity.CreateRestrictedLowIntegrityDescriptor();
-        var securityAttributes = new SecurityAttributes
+        bool descriptorReferenceAdded = false;
+        nint rawMapping;
+        int mappingError = 0;
+        try
         {
-            Length = checked((uint)Marshal.SizeOf<SecurityAttributes>()),
-            SecurityDescriptor = descriptor.DangerousGetHandle(),
-            InheritHandle = 0,
-        };
-        nint rawMapping = CreateFileMappingW(
-            new nint(-1),
-            ref securityAttributes,
-            PageReadWrite,
-            checked((uint)((ulong)totalLength >> 32)),
-            checked((uint)totalLength),
-            name);
+            descriptor.DangerousAddRef(ref descriptorReferenceAdded);
+            var securityAttributes = new SecurityAttributes
+            {
+                Length = checked((uint)Marshal.SizeOf<SecurityAttributes>()),
+                SecurityDescriptor = descriptor.DangerousGetHandle(),
+                InheritHandle = 0,
+            };
+            rawMapping = CreateFileMappingW(
+                new nint(-1),
+                ref securityAttributes,
+                PageReadWrite,
+                checked((uint)((ulong)totalLength >> 32)),
+                checked((uint)totalLength),
+                name: null);
+            if (rawMapping == 0 || rawMapping == -1)
+                mappingError = Marshal.GetLastPInvokeError();
+        }
+        finally
+        {
+            if (descriptorReferenceAdded)
+                descriptor.DangerousRelease();
+            if (ownsDescriptor)
+                descriptor.Dispose();
+        }
+
         if (rawMapping == 0 || rawMapping == -1)
             throw new System.ComponentModel.Win32Exception(
-                Marshal.GetLastPInvokeError(),
+                mappingError,
                 "The restricted SVG shared-memory object could not be created.");
 
         _mapping = new SafeMappingHandle(rawMapping);
@@ -63,13 +121,31 @@ internal sealed unsafe partial class SharedMemoryLease : MemoryManager<byte>
         }
 
         _pointer = (byte*)view;
-        source.CopyTo(new Span<byte>(_pointer, source.Length));
         _exposedOffset = sourceArea;
         _exposedLength = outputLength;
-        _progressOffset = checked(sourceArea + outputLength);
+        _progressOffset = progressOffset;
+        try
+        {
+            if (source is not null)
+                source.CopyTo(new Span<byte>(_pointer, sourceLength));
+        }
+        catch
+        {
+            // A source owner can be retired before this constructor captures
+            // its backing. Constructor failure must release both the mapped
+            // view and handle; closing only the handle does not unmap the view.
+            Dispose(disposing: true);
+            throw;
+        }
     }
 
     public string Name { get; }
+
+    // Name is only a host-side admission identity. The section is anonymous:
+    // restricted primary tokens cannot reliably resolve the session object
+    // namespace, even when the section DACL and integrity label permit access.
+    internal WorkerMappingLease DuplicateInto(SafeProcessHandle process, bool readOnly = false) =>
+        WorkerMappingLease.Create(_mapping ?? throw new ObjectDisposedException(nameof(SharedMemoryLease)), process, readOnly);
 
     internal int ReadOpenProgressPhase()
     {
@@ -138,7 +214,7 @@ internal sealed unsafe partial class SharedMemoryLease : MemoryManager<byte>
         uint protect,
         uint maximumSizeHigh,
         uint maximumSizeLow,
-        string name);
+        string? name);
 
     [LibraryImport("kernel32.dll", SetLastError = true)]
     private static partial nint MapViewOfFile(

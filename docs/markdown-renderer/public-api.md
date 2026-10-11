@@ -119,6 +119,14 @@ keeps the established behavior. `GetSnapshot()` reports aggregate counters
 without URLs or image bytes, and `Trim()` drops retained source bytes. See the
 [performance plan](progressive-performance-plan.md) for the remaining 1.0 gates.
 
+Lease-aware image resolvers that start detached fallback or hedge work can
+probe their source admission for `IMarkdownImageSourceWorkTracker` and register
+a source-free completion task before starting that work. The task must cover
+actual operation completion and owned-result cleanup, not just cancellation.
+The session includes it in asynchronous shutdown even when the branch never
+reserved image bytes, observes faults without surfacing their messages, and
+rejects registrations after the resolver call has returned.
+
 ## Themes and host services
 
 The base visual design follows WinUI/Fluent resources, including light, dark,
@@ -131,11 +139,22 @@ roles through `MarkdownStyleSheet`, `MarkdownStyleRole`, and
 Stable host contracts include:
 
 - `IImageResolver` / `IMarkdownImageResolver` for application image policy;
+- `IMarkdownSvgRenderer` for an explicitly registered, borrowed SVG provider;
 - `ICodeHighlighter` for asynchronous code highlighting;
 - `IMarkdownStringProvider` for localization;
 - `IMarkdownCommandProvider` for target-aware actions;
 - `IMarkdownHostedElementFactory` for viewport-aware WinUI elements requested
   by declarative extensions.
+
+For `IMarkdownSvgRenderer.OpenAsync`, keep the memory backing
+`MarkdownSvgOpenRequest.SanitizedSvgBytes` alive and unchanged until the
+asynchronous operation actually completes (also on failure or cancellation).
+A pending `ValueTask` returned from the call is not completion. Providers snapshot
+the input by completion; callers can then reuse their input memory. Controls
+dispose their SVG document handles, not the shared provider. Resvg retains its
+private source through admitted renders and cancellation callbacks before
+document retirement releases it; this lifetime contract is not an aggregate
+source-memory cap.
 
 ## Clipboard
 

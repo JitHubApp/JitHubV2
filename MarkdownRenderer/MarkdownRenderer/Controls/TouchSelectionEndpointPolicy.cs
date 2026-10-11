@@ -43,9 +43,17 @@ internal static class TouchSelectionEndpointPolicy
     }
 }
 
-internal readonly record struct TouchSelectionEndpointAdjustment(
-    int Offset,
-    bool IsStartEndpoint);
+internal readonly struct TouchSelectionEndpointAdjustment
+{
+    public TouchSelectionEndpointAdjustment(int Offset, bool IsStartEndpoint)
+    {
+        this.Offset = Offset;
+        this.IsStartEndpoint = IsStartEndpoint;
+    }
+
+    public int Offset { get; init; }
+    public bool IsStartEndpoint { get; init; }
+}
 
 /// <summary>
 /// Maps a half-open selection boundary to the character side owned by that
@@ -89,6 +97,14 @@ internal static class TouchSelectionCaretPolicy
     }
 }
 
-internal readonly record struct TouchSelectionCaretQuery(
-    int CharacterIndex,
-    bool TrailingSideOfCharacter);
+internal readonly struct TouchSelectionCaretQuery
+{
+    public TouchSelectionCaretQuery(int CharacterIndex, bool TrailingSideOfCharacter)
+    {
+        this.CharacterIndex = CharacterIndex;
+        this.TrailingSideOfCharacter = TrailingSideOfCharacter;
+    }
+
+    public int CharacterIndex { get; init; }
+    public bool TrailingSideOfCharacter { get; init; }
+}

@@ -1,6 +1,8 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO.Pipes;
+using System.Runtime.CompilerServices;
+using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using System.Security.AccessControl;
 using System.Security.Cryptography;
@@ -15,10 +17,16 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
     private static long s_nextInstanceId;
     private readonly SafeProcessHandle _process;
     private readonly NamedPipeServerStream _pipe;
+    private WorkerObjectSecurity.WorkerObjectSecurityContext? _objectSecurity;
+    private readonly object _disposeGate = new();
     private readonly SemaphoreSlim _transactions = new(1, 1);
+    private readonly byte[] _requestFrame = new byte[WorkerProtocol.RequestSize];
+    private readonly byte[] _responseFrame = new byte[WorkerProtocol.ResponseSize];
+    internal WorkerDocumentStateGate DocumentStateGate { get; } = new();
     private readonly int _queueCapacity;
     private int _queued;
-    private int _fontCatalogReady;
+    private readonly WorkerFontCatalogGeneration _fontCatalogGeneration = new();
+    private WorkerTerminationWait? _terminationWait;
     private int _disposed;
 
     private WindowsWorkerProcess(
@@ -27,10 +35,12 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
         ulong nonceLow,
         ulong nonceHigh,
         string? workerExecutableSha256,
-        int queueCapacity)
+        int queueCapacity,
+        WorkerObjectSecurity.WorkerObjectSecurityContext objectSecurity)
     {
         _process = process;
         _pipe = pipe;
+        _objectSecurity = objectSecurity;
         NonceLow = nonceLow;
         NonceHigh = nonceHigh;
         WorkerExecutableSha256 = workerExecutableSha256;
@@ -41,8 +51,11 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
     public ulong NonceLow { get; }
     public ulong NonceHigh { get; }
     internal string? WorkerExecutableSha256 { get; }
+    internal WorkerObjectSecurity.WorkerObjectSecurityContext ObjectSecurity =>
+        Volatile.Read(ref _objectSecurity) ?? throw new ObjectDisposedException(nameof(WindowsWorkerProcess));
     public long InstanceId { get; }
-    public bool IsFontCatalogReady => Volatile.Read(ref _fontCatalogReady) != 0;
+    public long ReadyFontGeneration => _fontCatalogGeneration.ReadyGeneration;
+    public bool IsFontCatalogReady => ReadyFontGeneration >= 0;
     public bool HasExited
     {
         get
@@ -76,28 +89,35 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
         ulong nonceHigh = BitConverter.ToUInt64(nonceBytes, 8);
         string nonce = $"{nonceHigh:x16}{nonceLow:x16}";
         string pipeName = $"MarkdownRenderer.Resvg.{Environment.ProcessId}.{nonce}";
-        var pipeSecurity = new PipeSecurity();
-        pipeSecurity.SetSecurityDescriptorSddlForm(
-            WorkerObjectSecurity.CreateRestrictedDaclSddl(),
-            AccessControlSections.Access);
-        var pipe = NamedPipeServerStreamAcl.Create(
-            pipeName,
-            PipeDirection.InOut,
-            1,
-            PipeTransmissionMode.Byte,
-            PipeOptions.Asynchronous | PipeOptions.WriteThrough,
-            WorkerProtocol.ResponseSize,
-            WorkerProtocol.RequestSize,
-            pipeSecurity,
-            HandleInheritability.None,
-            (PipeAccessRights)0);
-        WorkerObjectSecurity.SetLowIntegrityLabel(pipe.SafePipeHandle);
+        using SafeTokenHandle sourceToken = OpenCurrentPrimaryTokenForWorker();
+        WorkerObjectSecurity.WorkerObjectSecurityContext? objectSecurity =
+            WorkerObjectSecurity.CreateForPrimaryToken(sourceToken);
 
         SafeProcessHandle? process = null;
+        NamedPipeServerStream? pipe = null;
         string? workerExecutableSha256 = null;
         long processStartedTimestamp = 0;
         try
         {
+            var pipeSecurity = new PipeSecurity();
+            pipeSecurity.SetSecurityDescriptorSddlForm(
+                objectSecurity.RestrictedDaclSddl,
+                AccessControlSections.Access);
+            pipe = NamedPipeServerStreamAcl.Create(
+                pipeName,
+                PipeDirection.InOut,
+                1,
+                PipeTransmissionMode.Byte,
+                PipeOptions.Asynchronous | PipeOptions.WriteThrough,
+                WorkerProtocol.ResponseSize,
+                WorkerProtocol.RequestSize,
+                pipeSecurity,
+                HandleInheritability.None,
+                (PipeAccessRights)0);
+
+            // Keep the newly created pipe inside the same ownership scope as
+            // startup so a label failure cannot leak its server handle.
+            WorkerObjectSecurity.SetLowIntegrityLabel(pipe.SafePipeHandle);
             FileStream? identityFile = null;
             try
             {
@@ -137,7 +157,9 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
                     pipeName,
                     nonce,
                     Path.GetDirectoryName(executablePath) ?? AppContext.BaseDirectory,
-                    job);
+                    job,
+                    sourceToken,
+                    objectSecurity);
             }
             finally
             {
@@ -148,7 +170,10 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
             startup.CancelAfter(WorkerSchedulingPolicy.InitializationDeadline);
             try
             {
-                await pipe.WaitForConnectionAsync(startup.Token).ConfigureAwait(false);
+                await WorkerStartupWait.WaitForConnectionAsync(
+                    token => pipe.WaitForConnectionAsync(token),
+                    process,
+                    startup.Token).ConfigureAwait(false);
             }
             catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
             {
@@ -177,8 +202,10 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
                 nonceLow,
                 nonceHigh,
                 workerExecutableSha256,
-                options.QueueCapacity);
+                options.QueueCapacity,
+                objectSecurity);
             process = null;
+            objectSecurity = null;
             pipe = null!;
             return worker;
         }
@@ -191,17 +218,33 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
                 process.Dispose();
             }
             pipe?.Dispose();
+            objectSecurity?.Dispose();
         }
     }
 
-    public void MarkFontCatalogReady() => Volatile.Write(ref _fontCatalogReady, 1);
+    public void MarkFontCatalogReady(long generation) => _fontCatalogGeneration.MarkReady(generation);
 
-    public async Task<WorkerResponse> ExchangeAsync(
+    // Every internal caller consumes this operation exactly once. The runtime
+    // pool clears its state machine (request, mapping and execution context)
+    // when consumed; source/raster ownership is never pooled here. Callers that
+    // need Task semantics must convert once with AsTask before sharing it.
+    [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
+    public async ValueTask<WorkerResponse> ExchangeAsync(
         WorkerRequest request,
         TimeSpan deadline,
         CancellationToken cancellationToken,
-        SharedMemoryLease? openProgressMemory = null,
-        WorkerTimeoutEvidenceScope? timeoutEvidenceScope = null)
+        SharedMemoryLease? sharedMemory = null,
+        WorkerTimeoutEvidenceScope? timeoutEvidenceScope = null
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+        ,
+        long diagnosticWorkId = 0,
+        int diagnosticStageId = 0,
+        ulong diagnosticDocumentId = 0,
+        long diagnosticSourceBytes = -1,
+        long diagnosticTargetPixels = -1)
+#else
+        )
+#endif
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         int queued = Interlocked.Increment(ref _queued);
@@ -214,14 +257,42 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
         }
 
         bool entered = false;
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+        long transactionQueueStartedAt = SvgWorkerStageTrace.Start(diagnosticWorkId);
+#endif
         try
         {
             await _transactions.WaitAsync(cancellationToken).ConfigureAwait(false);
             entered = true;
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+            SvgWorkerStageTrace.Record(
+                diagnosticWorkId,
+                SvgWorkerStageId.WorkerTransactionQueueWait,
+                InstanceId,
+                request.RequestId,
+                diagnosticDocumentId != 0 ? diagnosticDocumentId : request.DocumentId,
+                transactionQueueStartedAt,
+                sourceBytes: diagnosticSourceBytes >= 0 ? diagnosticSourceBytes : request.SourceLength,
+                targetPixels: diagnosticTargetPixels >= 0
+                    ? diagnosticTargetPixels
+                    : (long)request.TargetWidth * request.TargetHeight);
+#endif
             ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
             if (HasExited)
                 throw new WorkerProtocolException("The resvg worker exited before the request.");
 
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+            int effectiveStageId = request.Operation == WorkerOperation.Render &&
+                diagnosticStageId == (int)SvgWorkerStageId.RenderTransaction
+                ? (int)SvgWorkerStageId.RenderTransaction
+                : diagnosticStageId;
+            long diagnosticTransactionStartedAt = SvgWorkerStageTrace.Start(
+                diagnosticWorkId > 0 && effectiveStageId != 0 ? diagnosticWorkId : 0);
+            long diagnosticWorkerCpuStartedAt = diagnosticTransactionStartedAt != 0 &&
+                request.Operation is WorkerOperation.Open or WorkerOperation.Render
+                    ? GetProcessCpuTicks()
+                    : -1;
+#endif
             // Audit-only evidence must not add a process query to every normal
             // SVG request. The listener is installed before audit rendering.
             bool captureTimeoutEvidence = WorkerTimeoutEvents.Log.IsEnabled();
@@ -234,16 +305,45 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
                 timeoutEvidenceScope);
             using var operation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             operation.CancelAfter(deadline);
-            byte[] requestFrame = WorkerProtocol.Encode(request);
-            byte[] responseFrame = new byte[WorkerProtocol.ResponseSize];
+            bool needsMapping = request.Operation is WorkerOperation.Open or WorkerOperation.Render or WorkerOperation.FontCatalog;
+            if (needsMapping != (sharedMemory is not null) || request.MappingHandle != 0)
+                throw new WorkerProtocolException("The SVG exchange has an invalid shared-memory owner.");
+            using WorkerMappingLease? mappingLease = sharedMemory?.DuplicateInto(_process,
+                readOnly: request.Operation == WorkerOperation.FontCatalog);
+            request = request with { MappingHandle = mappingLease?.ProtocolHandle ?? 0 };
+            WorkerProtocol.Encode(request, _requestFrame);
+            byte[] requestFrame = _requestFrame;
+            byte[] responseFrame = _responseFrame;
             long requestStarted = captureTimeoutEvidence ? Stopwatch.GetTimestamp() : 0;
             int transportPhase = 0;
             int requestWriteMilliseconds = -1;
             try
             {
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+                long pipeStageStartedAt = SvgWorkerStageTrace.Start(diagnosticWorkId);
+#endif
                 await _pipe.WriteAsync(requestFrame, operation.Token).ConfigureAwait(false);
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+                SvgWorkerStageTrace.Record(
+                    diagnosticWorkId,
+                    SvgWorkerStageId.PipeRequestWrite,
+                    InstanceId,
+                    request.RequestId,
+                    diagnosticDocumentId != 0 ? diagnosticDocumentId : request.DocumentId,
+                    pipeStageStartedAt);
+                pipeStageStartedAt = SvgWorkerStageTrace.Start(diagnosticWorkId);
+#endif
                 transportPhase = 1;
                 await _pipe.FlushAsync(operation.Token).ConfigureAwait(false);
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+                SvgWorkerStageTrace.Record(
+                    diagnosticWorkId,
+                    SvgWorkerStageId.PipeRequestFlush,
+                    InstanceId,
+                    request.RequestId,
+                    diagnosticDocumentId != 0 ? diagnosticDocumentId : request.DocumentId,
+                    pipeStageStartedAt);
+#endif
                 if (captureTimeoutEvidence)
                 {
                     requestWriteMilliseconds = (int)Math.Min(
@@ -251,7 +351,19 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
                         int.MaxValue);
                 }
                 transportPhase = 2;
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+                pipeStageStartedAt = SvgWorkerStageTrace.Start(diagnosticWorkId);
+#endif
                 await _pipe.ReadExactlyAsync(responseFrame, operation.Token).ConfigureAwait(false);
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+                SvgWorkerStageTrace.Record(
+                    diagnosticWorkId,
+                    SvgWorkerStageId.PipeResponseRead,
+                    InstanceId,
+                    request.RequestId,
+                    diagnosticDocumentId != 0 ? diagnosticDocumentId : request.DocumentId,
+                    pipeStageStartedAt);
+#endif
             }
             catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
             {
@@ -272,7 +384,8 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
                         transportPhase,
                         requestWriteMilliseconds,
                         workerExited: HasExited ? 1 : 0,
-                        openProgressPhase: openProgressMemory?.ReadOpenProgressPhase() ?? -1,
+                        openProgressPhase: request.Operation == WorkerOperation.Open
+                            ? sharedMemory?.ReadOpenProgressPhase() ?? -1 : -1,
                         workerWorkingSetKiB: memory.WorkingSetKiB,
                         workerPrivateCommitKiB: memory.PrivateCommitKiB,
                         workerPageFaults: memory.PageFaults,
@@ -296,16 +409,66 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
                 throw new WorkerProtocolException("The resvg worker transport failed.", exception);
             }
 
-            return WorkerProtocol.DecodeResponse(
-                responseFrame,
-                request.RequestId,
-                NonceLow,
-                NonceHigh);
+            WorkerResponse decoded;
+            try
+            {
+                decoded = WorkerProtocol.DecodeResponse(
+                    responseFrame,
+                    request.RequestId,
+                    NonceLow,
+                    NonceHigh,
+                    request.Operation);
+            }
+            catch (Exception exception) when (exception is WorkerProtocolException or OverflowException)
+            {
+                // An untrusted/malformed reply does not acknowledge that the
+                // worker released its view. Retire it before reclaiming the
+                // remote mapping handle or admitting another transaction.
+                DisposeForRestart();
+                throw new WorkerProtocolException("The resvg worker returned an invalid response.", exception);
+            }
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+            if (request.Operation == WorkerOperation.Render &&
+                decoded.Status == WorkerStatus.DocumentMissing)
+            {
+                effectiveStageId = (int)SvgWorkerStageId.DocumentMissingProbe;
+            }
+            long diagnosticWorkerCpuTicks = -1;
+            if (diagnosticWorkerCpuStartedAt >= 0 && diagnosticWorkerCpuStartedAt != -1)
+            {
+                long workerCpuAtEnd = GetProcessCpuTicks();
+                if (workerCpuAtEnd >= diagnosticWorkerCpuStartedAt)
+                    diagnosticWorkerCpuTicks = workerCpuAtEnd - diagnosticWorkerCpuStartedAt;
+            }
+            if (Enum.IsDefined(typeof(SvgWorkerStageId), effectiveStageId))
+            {
+                SvgWorkerStageTrace.Record(
+                    diagnosticWorkId,
+                    (SvgWorkerStageId)effectiveStageId,
+                    InstanceId,
+                    request.RequestId,
+                    diagnosticDocumentId != 0 ? diagnosticDocumentId : request.DocumentId,
+                    diagnosticTransactionStartedAt,
+                    diagnosticWorkerCpuTicks,
+                    diagnosticSourceBytes >= 0 ? diagnosticSourceBytes : request.SourceLength,
+                    diagnosticTargetPixels >= 0
+                        ? diagnosticTargetPixels
+                        : (long)request.TargetWidth * request.TargetHeight);
+            }
+#endif
+            return decoded;
         }
         finally
         {
             if (entered)
+            {
+                // The shared frame buffers are protected by the transaction
+                // gate. Scrub the transferred mapping handle and reply bytes
+                // before admitting the next request, including fault paths.
+                _requestFrame.AsSpan().Clear();
+                _responseFrame.AsSpan().Clear();
                 _transactions.Release();
+            }
             Interlocked.Decrement(ref _queued);
         }
     }
@@ -374,28 +537,183 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
 
     private void DisposeCore(bool waitForExit)
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0)
-            return;
-        _pipe.Dispose();
-        _ = TerminateProcess(_process, WorkerTerminationExitCode);
-        if (waitForExit)
+        WorkerTerminationWait? terminationWait;
+        bool waitForPrimaryHandle = false;
+        bool waitedOnPrimaryHandle = false;
+        bool retireFontPreparation = false;
+        Exception? cleanupFailure = null;
+        lock (_disposeGate)
         {
-            // TerminateProcess is asynchronous. The job counts a dying process
-            // until it is signaled; immediately launching its replacement can
-            // exceed the one/two-process job limit and fail unrelated queued
-            // images in a cascade after one content timeout.
-            _ = WaitForSingleObject(_process, WorkerTerminationWaitMilliseconds);
+            if (Interlocked.Exchange(ref _disposed, 1) == 0)
+            {
+                retireFontPreparation = true;
+                try
+                {
+                    _pipe.Dispose();
+                }
+                catch (Exception exception)
+                {
+                    cleanupFailure ??= exception;
+                }
+
+                // Keep an independent, registered process wait before closing
+                // the primary handle. A concurrent ordinary Dispose may start
+                // shutdown first, but a later restart Dispose must still be
+                // able to await process exit before admitting its replacement.
+                try
+                {
+                    _terminationWait = WorkerTerminationWait.Register(
+                        _process,
+                        checked((int)WorkerTerminationWaitMilliseconds));
+                }
+                catch (Exception exception)
+                {
+                    // Termination remains best-effort if Windows refuses the
+                    // duplicate wait handle. Keep the SafeHandle open on an
+                    // ordinary Dispose so a later restart-dispose can wait on
+                    // it; SafeHandle finalization remains the last-resort
+                    // cleanup if no restart caller follows.
+                    cleanupFailure ??= exception;
+                }
+
+                try
+                {
+                    _ = TerminateProcess(_process, WorkerTerminationExitCode);
+                }
+                catch (Exception exception)
+                {
+                    cleanupFailure ??= exception;
+                }
+                finally
+                {
+                    if (_terminationWait is not null)
+                    {
+                        _process.Dispose();
+                    }
+                    else if (waitForExit)
+                    {
+                        try
+                        {
+                            // TerminateProcess is asynchronous. The job counts
+                            // a dying process until signaled, so preserve the
+                            // bounded restart wait if registration failed.
+                            _ = WaitForSingleObject(_process, WorkerTerminationWaitMilliseconds);
+                            waitedOnPrimaryHandle = true;
+                        }
+                        catch (Exception exception)
+                        {
+                            cleanupFailure ??= exception;
+                        }
+                        finally
+                        {
+                            _process.Dispose();
+                        }
+                    }
+                }
+            }
+
+            terminationWait = _terminationWait;
+            waitForPrimaryHandle = waitForExit && terminationWait is null && !_process.IsClosed &&
+                !waitedOnPrimaryHandle;
         }
-        _process.Dispose();
+
+        // Cancellation may run continuations synchronously. Publish native
+        // termination first, outside the dispose lock, before those callbacks
+        // can attempt a restart wait or release remote font handles.
+        if (retireFontPreparation)
+        {
+            try { RetireFontCatalogPreparation(); }
+            catch (Exception exception) { cleanupFailure ??= exception; }
+            ReleaseObjectSecurityWhenFontCatalogDrained();
+        }
+
+        if (waitForExit && terminationWait is not null)
+        {
+            // This is a task wait backed by a registered native wait, not a
+            // blocked polling thread. Ordinary Dispose never waits here.
+            _ = terminationWait.WaitForExit(checked((int)WorkerTerminationWaitMilliseconds));
+        }
+        else if (waitForPrimaryHandle)
+        {
+            try
+            {
+                _ = WaitForSingleObject(_process, WorkerTerminationWaitMilliseconds);
+            }
+            catch (Exception exception)
+            {
+                cleanupFailure ??= exception;
+            }
+            finally
+            {
+                _process.Dispose();
+            }
+        }
+
+        if (cleanupFailure is not null)
+            ExceptionDispatchInfo.Capture(cleanupFailure).Throw();
+
         // An active ExchangeAsync releases this gate in its finally block.
         // SemaphoreSlim owns no native handle, so retaining it avoids masking
         // the typed cancellation/transport failure during concurrent disposal.
     }
 
-    public ValueTask DisposeAsync()
+    private void ReleaseObjectSecurityWhenFontCatalogDrained()
     {
-        Dispose();
-        return ValueTask.CompletedTask;
+        Task? preparation;
+        lock (_fontPreparationGate)
+            preparation = _fontPreparationTask;
+
+        if (preparation is null || preparation.IsCompleted)
+        {
+            ReleaseObjectSecurity();
+            return;
+        }
+
+        _ = preparation.ContinueWith(
+            static (_, state) => ((WindowsWorkerProcess)state!).ReleaseObjectSecurity(),
+            this,
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+    }
+
+    private void ReleaseObjectSecurity() => Interlocked.Exchange(ref _objectSecurity, null)?.Dispose();
+
+    public async ValueTask DisposeAsync()
+    {
+        Exception? failure = null;
+        try { Dispose(); }
+        catch (Exception exception) { failure = exception; }
+        try { await DrainFontCatalogPreparationAsync().ConfigureAwait(false); }
+        catch (Exception exception)
+        {
+            failure = failure is null ? exception : new AggregateException(failure, exception);
+        }
+        ReleaseObjectSecurity();
+
+        try
+        {
+            WorkerTerminationWait? terminationWait;
+            lock (_disposeGate)
+                terminationWait = _terminationWait;
+            if (terminationWait is null)
+            {
+                // If native wait registration failed, release the retained
+                // primary handle after the existing bounded fallback wait.
+                // This cannot certify shutdown; do not report a false success.
+                await Task.Run(() => DisposeCore(waitForExit: true)).ConfigureAwait(false);
+                throw new InvalidOperationException("The SVG worker shutdown could not be monitored.");
+            }
+            if (!await terminationWait.WaitForExitAsync().ConfigureAwait(false))
+                throw new TimeoutException("The SVG worker did not exit within the shutdown deadline.");
+        }
+        catch (Exception exception)
+        {
+            failure = failure is null ? exception : new AggregateException(failure, exception);
+        }
+
+        if (failure is not null)
+            ExceptionDispatchInfo.Capture(failure).Throw();
     }
 
     internal static WorkerJob CreateConstrainedJob(long commitBytes, int activeProcessLimit)
@@ -434,131 +752,138 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
         string pipeName,
         string nonce,
         string workingDirectory,
-        WorkerJob job)
+        WorkerJob job,
+        SafeTokenHandle sourceToken,
+        WorkerObjectSecurity.WorkerObjectSecurityContext objectSecurity)
+    {
+        byte[] restrictedCodeSid = GetSidBytes("S-1-5-12");
+        fixed (byte* restrictedCodeSidPointer = restrictedCodeSid)
+        {
+            var restrictingSid = new SidAndAttributes
+            {
+                Sid = (nint)restrictedCodeSidPointer,
+                Attributes = 0,
+            };
+            if (!CreateRestrictedToken(
+                    sourceToken,
+                    DisableMaxPrivilege,
+                    0,
+                    0,
+                    0,
+                    0,
+                    1,
+                    (nint)(&restrictingSid),
+                    out SafeTokenHandle restrictedToken))
+            {
+                int error = Marshal.GetLastPInvokeError();
+                throw new Win32Exception(error, $"A restricted SVG worker token could not be created (Win32 error {error}).");
+            }
+
+            using (restrictedToken)
+            {
+                SetLowIntegrity(restrictedToken);
+                SetRestrictedDefaultDacl(restrictedToken, objectSecurity);
+                string commandLine = $"\"{executablePath}\" --pipe {pipeName} --nonce {nonce}";
+                char[] mutableCommandLine = [.. commandLine, '\0'];
+                char[] sanitizedEnvironment = BuildSanitizedEnvironment();
+                nuint attributeBytes = 0;
+                _ = InitializeProcThreadAttributeList(0, 1, 0, ref attributeBytes);
+                if (attributeBytes == 0)
+                    throw new Win32Exception(Marshal.GetLastPInvokeError(), "The SVG worker mitigation list size could not be determined.");
+                nint attributeList = Marshal.AllocHGlobal(checked((nint)attributeBytes));
+                try
+                {
+                    if (!InitializeProcThreadAttributeList(attributeList, 1, 0, ref attributeBytes))
+                    {
+                        throw new Win32Exception(Marshal.GetLastPInvokeError(), "The SVG worker mitigation list could not be initialized.");
+                    }
+
+                    try
+                    {
+                        ulong mitigationPolicy = CreateMitigationPolicy();
+                        if (!UpdateProcThreadAttribute(
+                                attributeList,
+                                0,
+                                ProcThreadAttributeMitigationPolicy,
+                                (nint)(&mitigationPolicy),
+                                checked((nuint)sizeof(ulong)),
+                                0,
+                                0))
+                        {
+                            throw new Win32Exception(Marshal.GetLastPInvokeError(), "The SVG worker process mitigations could not be applied.");
+                        }
+
+                        var startup = new StartupInfoEx
+                        {
+                            StartupInfo = new StartupInfo
+                            {
+                                Size = checked((uint)Marshal.SizeOf<StartupInfoEx>()),
+                            },
+                            AttributeList = attributeList,
+                        };
+                        fixed (char* commandLinePointer = mutableCommandLine)
+                        fixed (char* environmentPointer = sanitizedEnvironment)
+                        {
+                            if (!CreateProcessAsUserW(
+                                    restrictedToken,
+                                    executablePath,
+                                    commandLinePointer,
+                                    0,
+                                    0,
+                                    inheritHandles: false,
+                                    CreateNoWindow | CreateSuspended | CreateUnicodeEnvironment | ExtendedStartupInfoPresent,
+                                    (nint)environmentPointer,
+                                    workingDirectory,
+                                    ref startup,
+                                    out ProcessInformation information))
+                            {
+                                throw new Win32Exception(Marshal.GetLastPInvokeError(), "The restricted SVG worker could not start.");
+                            }
+
+                            var process = new SafeProcessHandle(information.Process, ownsHandle: true);
+                            using var thread = new SafeWaitHandle(information.Thread, ownsHandle: true);
+                            try
+                            {
+                                job.Assign(process);
+                                if (ResumeThread(thread) == uint.MaxValue)
+                                    throw new Win32Exception(Marshal.GetLastPInvokeError(), "The resvg worker could not leave its suspended launch state.");
+                                return process;
+                            }
+                            catch
+                            {
+                                _ = TerminateProcess(process, WorkerTerminationExitCode);
+                                _ = WaitForSingleObject(process, WorkerTerminationWaitMilliseconds);
+                                process.Dispose();
+                                throw;
+                            }
+                        }
+                    }
+                    finally
+                    {
+                        DeleteProcThreadAttributeList(attributeList);
+                    }
+                }
+                finally
+                {
+                    Marshal.FreeHGlobal(attributeList);
+                }
+            }
+        }
+    }
+
+    internal static SafeTokenHandle OpenCurrentPrimaryTokenForWorker()
     {
         if (!OpenProcessToken(
                 GetCurrentProcess(),
                 TokenAssignPrimary | TokenDuplicate | TokenQuery | TokenAdjustDefault,
                 out SafeTokenHandle sourceToken))
         {
-            throw new Win32Exception(Marshal.GetLastPInvokeError(), "The host process token could not be opened for SVG worker isolation.");
+            throw new Win32Exception(
+                Marshal.GetLastPInvokeError(),
+                "The host process primary token could not be opened for SVG worker isolation.");
         }
 
-        using (sourceToken)
-        {
-            byte[] restrictedCodeSid = GetSidBytes("S-1-5-12");
-            fixed (byte* restrictedCodeSidPointer = restrictedCodeSid)
-            {
-                var restrictingSid = new SidAndAttributes
-                {
-                    Sid = (nint)restrictedCodeSidPointer,
-                    Attributes = 0,
-                };
-                if (!CreateRestrictedToken(
-                        sourceToken,
-                        DisableMaxPrivilege,
-                        1,
-                        (nint)(&restrictingSid),
-                        0,
-                        0,
-                        0,
-                        0,
-                        out SafeTokenHandle restrictedToken))
-                {
-                    int error = Marshal.GetLastPInvokeError();
-                    throw new Win32Exception(error, $"A restricted SVG worker token could not be created (Win32 error {error}).");
-                }
-
-                using (restrictedToken)
-                {
-                    SetLowIntegrity(restrictedToken);
-                    string commandLine = $"\"{executablePath}\" --pipe {pipeName} --nonce {nonce}";
-                    char[] mutableCommandLine = [.. commandLine, '\0'];
-                    char[] sanitizedEnvironment = BuildSanitizedEnvironment();
-                    nuint attributeBytes = 0;
-                    _ = InitializeProcThreadAttributeList(0, 1, 0, ref attributeBytes);
-                    if (attributeBytes == 0)
-                        throw new Win32Exception(Marshal.GetLastPInvokeError(), "The SVG worker mitigation list size could not be determined.");
-                    nint attributeList = Marshal.AllocHGlobal(checked((nint)attributeBytes));
-                    try
-                    {
-                        if (!InitializeProcThreadAttributeList(attributeList, 1, 0, ref attributeBytes))
-                        {
-                            throw new Win32Exception(Marshal.GetLastPInvokeError(), "The SVG worker mitigation list could not be initialized.");
-                        }
-
-                        try
-                        {
-                            ulong mitigationPolicy = CreateMitigationPolicy();
-                            if (!UpdateProcThreadAttribute(
-                                    attributeList,
-                                    0,
-                                    ProcThreadAttributeMitigationPolicy,
-                                    (nint)(&mitigationPolicy),
-                                    checked((nuint)sizeof(ulong)),
-                                    0,
-                                    0))
-                            {
-                                throw new Win32Exception(Marshal.GetLastPInvokeError(), "The SVG worker process mitigations could not be applied.");
-                            }
-
-                            var startup = new StartupInfoEx
-                            {
-                                StartupInfo = new StartupInfo
-                                {
-                                    Size = checked((uint)Marshal.SizeOf<StartupInfoEx>()),
-                                },
-                                AttributeList = attributeList,
-                            };
-                            fixed (char* commandLinePointer = mutableCommandLine)
-                            fixed (char* environmentPointer = sanitizedEnvironment)
-                            {
-                                if (!CreateProcessAsUserW(
-                                        restrictedToken,
-                                        executablePath,
-                                        commandLinePointer,
-                                        0,
-                                        0,
-                                        inheritHandles: false,
-                                        CreateNoWindow | CreateSuspended | CreateUnicodeEnvironment | ExtendedStartupInfoPresent,
-                                        (nint)environmentPointer,
-                                        workingDirectory,
-                                        ref startup,
-                                        out ProcessInformation information))
-                                {
-                                    throw new Win32Exception(Marshal.GetLastPInvokeError(), "The restricted SVG worker could not start.");
-                                }
-
-                                var process = new SafeProcessHandle(information.Process, ownsHandle: true);
-                                using var thread = new SafeWaitHandle(information.Thread, ownsHandle: true);
-                                try
-                                {
-                                    job.Assign(process);
-                                    if (ResumeThread(thread) == uint.MaxValue)
-                                        throw new Win32Exception(Marshal.GetLastPInvokeError(), "The resvg worker could not leave its suspended launch state.");
-                                    return process;
-                                }
-                                catch
-                                {
-                                    _ = TerminateProcess(process, WorkerTerminationExitCode);
-                                    _ = WaitForSingleObject(process, WorkerTerminationWaitMilliseconds);
-                                    process.Dispose();
-                                    throw;
-                                }
-                            }
-                        }
-                        finally
-                        {
-                            DeleteProcThreadAttributeList(attributeList);
-                        }
-                    }
-                    finally
-                    {
-                        Marshal.FreeHGlobal(attributeList);
-                    }
-                }
-            }
-        }
+        return sourceToken;
     }
 
     private static ulong CreateMitigationPolicy()
@@ -601,6 +926,42 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
             {
                 throw new Win32Exception(Marshal.GetLastPInvokeError(), "The SVG worker token could not be lowered to low integrity.");
             }
+        }
+    }
+
+    private static unsafe void SetRestrictedDefaultDacl(
+        SafeTokenHandle token,
+        WorkerObjectSecurity.WorkerObjectSecurityContext objectSecurity)
+    {
+        // The inherited user-only DACL fails the token's second (restricting-SID)
+        // access check when the loader or runtime opens its own kernel objects.
+        // Change only defaults for objects created with this worker token; never
+        // grant the worker access to host files, the desktop or existing objects.
+        WorkerObjectSecurity.SecurityDescriptorHandle descriptor = objectSecurity.Descriptor;
+        bool descriptorReferenceAdded = false;
+        try
+        {
+            descriptor.DangerousAddRef(ref descriptorReferenceAdded);
+            if (!GetSecurityDescriptorDacl(
+                    descriptor.DangerousGetHandle(), out int present, out nint dacl, out _) ||
+                present == 0 || dacl == 0)
+            {
+                throw new Win32Exception(Marshal.GetLastPInvokeError(),
+                    "The SVG worker default object permissions could not be created.");
+            }
+
+            var information = new TokenDefaultDacl { DefaultDacl = dacl };
+            if (!SetTokenInformation(token, TokenInformationClass.TokenDefaultDacl,
+                    (nint)(&information), checked((uint)sizeof(TokenDefaultDacl))))
+            {
+                throw new Win32Exception(Marshal.GetLastPInvokeError(),
+                    "The SVG worker default object permissions could not be applied.");
+            }
+        }
+        finally
+        {
+            if (descriptorReferenceAdded)
+                descriptor.DangerousRelease();
         }
     }
 
@@ -674,7 +1035,14 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
 
     private enum TokenInformationClass
     {
+        TokenDefaultDacl = 6,
         TokenIntegrityLevel = 25,
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct TokenDefaultDacl
+    {
+        public nint DefaultDacl;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -818,7 +1186,7 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
         protected override bool ReleaseHandle() => CloseHandle(handle);
     }
 
-    private sealed class SafeTokenHandle : SafeHandleZeroOrMinusOneIsInvalid
+    internal sealed class SafeTokenHandle : SafeHandleZeroOrMinusOneIsInvalid
     {
         public SafeTokenHandle()
             : base(ownsHandle: true)
@@ -866,6 +1234,11 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
         uint restrictedSidCount,
         nint sidsToRestrict,
         out SafeTokenHandle restrictedToken);
+
+    [LibraryImport("advapi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool GetSecurityDescriptorDacl(
+        nint securityDescriptor, out int daclPresent, out nint dacl, out int daclDefaulted);
 
     [LibraryImport("advapi32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

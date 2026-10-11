@@ -50,6 +50,13 @@ public sealed class ResvgMarkdownSvgRendererOptions
             : Path.GetFullPath(workerExecutablePath);
     }
 
+    /// <summary>Maximum prepared SVG bytes admitted by <see cref="ResvgMarkdownSvgRenderer.OpenAsync"/>.</summary>
+    /// <remarks>
+    /// Source preparation may remove inert branches from a larger original,
+    /// which remains subject to <see cref="HardMaxSourceBytes"/>. This ceiling
+    /// bounds prepared output, not DOM memory or aggregate source retention.
+    /// A direct OpenAsync call must already satisfy this prepared-byte ceiling.
+    /// </remarks>
     public int MaxSourceBytes { get; }
     public int MaxXmlDepth { get; }
     public int MaxNestedSvgDepth { get; }

@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using Microsoft.Graphics.Canvas;
 using Microsoft.UI.Xaml;
 using Windows.Foundation;
@@ -10,16 +12,14 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// Lays out a list item as two side-by-side columns: a fixed-width marker gutter
 /// on the left (bullet or number) and a varnable-width content area on the right.
 /// </summary>
-internal sealed class ListItemBox : BlockBox
+internal sealed partial class ListItemBox : BlockBox
 {
-    private readonly InlineContainerBox _marker;
-    private readonly StackBox _content;
+    public readonly InlineContainerBox Marker;
+    public readonly StackBox Content;
     private readonly float _markerWidth;
 
     /// <summary>The marker (bullet or number) box on the left.</summary>
-    public InlineContainerBox Marker => _marker;
     /// <summary>The content (rest of list item) StackBox on the right.</summary>
-    public StackBox Content => _content;
     public float MarkerWidth => _markerWidth;
 
     /// <summary>Flow direction for this list item. When RightToLeft, the marker is placed on the right and content on the left.</summary>
@@ -27,8 +27,8 @@ internal sealed class ListItemBox : BlockBox
 
     public ListItemBox(InlineContainerBox marker, StackBox content, float markerWidth)
     {
-        _marker = marker;
-        _content = content;
+        Marker = marker;
+        Content = content;
         _markerWidth = markerWidth;
     }
 
@@ -36,22 +36,22 @@ internal sealed class ListItemBox : BlockBox
     {
         float contentWidth = Math.Max(1f, availableWidth - _markerWidth - (float)(Margin.Left + Margin.Right));
 
-        _marker.Measure(_markerWidth);
-        float contentHeight = _content.Measure(contentWidth);
+        Marker.Measure(_markerWidth);
+        float contentHeight = Content.Measure(contentWidth);
 
         bool rtl = FlowDirection == FlowDirection.RightToLeft;
         if (rtl)
         {
-            _marker.Arrange(contentWidth, 0, _markerWidth);
-            _content.Arrange(0, 0, contentWidth);
+            Marker.Arrange(contentWidth, 0, _markerWidth);
+            Content.Arrange(0, 0, contentWidth);
         }
         else
         {
-            _marker.Arrange(0, 0, _markerWidth);
-            _content.Arrange(_markerWidth, 0, contentWidth);
+            Marker.Arrange(0, 0, _markerWidth);
+            Content.Arrange(_markerWidth, 0, contentWidth);
         }
 
-        float height = Math.Max((float)_marker.Bounds.Height, contentHeight)
+        float height = Math.Max((float)Marker.Bounds.Height, contentHeight)
                        + (float)(Margin.Top + Margin.Bottom);
         Bounds = new Rect(0, 0, availableWidth, height);
         return height;
@@ -59,26 +59,26 @@ internal sealed class ListItemBox : BlockBox
 
     public override void Arrange(float x, float y, float width)
     {
-        float dx = x - (float)Bounds.X;
-        float dy = y - (float)Bounds.Y;
-        _marker.Arrange(
-            (float)_marker.Bounds.X + dx + (float)Margin.Left,
-            (float)_marker.Bounds.Y + dy + (float)Margin.Top,
-            _markerWidth);
         float contentWidth = Math.Max(1f, width - _markerWidth - (float)(Margin.Left + Margin.Right));
-        _content.Arrange(
-            (float)_content.Bounds.X + dx + (float)Margin.Left,
-            (float)_content.Bounds.Y + dy + (float)Margin.Top,
+        bool rtl = FlowDirection == FlowDirection.RightToLeft;
+        float markerX = x + (rtl ? contentWidth : 0f) + (float)Margin.Left;
+        float contentX = x + (rtl ? 0f : _markerWidth) + (float)Margin.Left;
+        float contentY = y + (float)Margin.Top;
+        Marker.Arrange(markerX, contentY, _markerWidth);
+        Content.Arrange(
+            contentX,
+            contentY,
             contentWidth);
         Bounds = new Rect(x, y, width, Bounds.Height);
+        IsDirty = false;
     }
 
     public override void Paint(CanvasDrawingSession ds, Rect viewport)
     {
-        if (_marker.Bounds.Bottom >= viewport.Top && _marker.Bounds.Top <= viewport.Bottom)
-            _marker.Paint(ds, viewport);
-        if (_content.Bounds.Bottom >= viewport.Top && _content.Bounds.Top <= viewport.Bottom)
-            _content.Paint(ds, viewport);
+        if (Marker.Bounds.Bottom >= viewport.Top && Marker.Bounds.Top <= viewport.Bottom)
+            Marker.Paint(ds, viewport);
+        if (Content.Bounds.Bottom >= viewport.Top && Content.Bounds.Top <= viewport.Bottom)
+            Content.Paint(ds, viewport);
     }
 
     public override void PaintSelectionForeground(
@@ -87,31 +87,41 @@ internal sealed class ListItemBox : BlockBox
         Windows.UI.Color color,
         Rect viewport)
     {
-        if (_marker.Bounds.Bottom >= viewport.Top && _marker.Bounds.Top <= viewport.Bottom)
-            _marker.PaintSelectionForeground(ds, range, color, viewport);
-        if (_content.Bounds.Bottom >= viewport.Top && _content.Bounds.Top <= viewport.Bottom)
-            _content.PaintSelectionForeground(ds, range, color, viewport);
+        if (Marker.Bounds.Bottom >= viewport.Top && Marker.Bounds.Top <= viewport.Bottom)
+            Marker.PaintSelectionForeground(ds, range, color, viewport);
+        if (Content.Bounds.Bottom >= viewport.Top && Content.Bounds.Top <= viewport.Bottom)
+            Content.PaintSelectionForeground(ds, range, color, viewport);
     }
 
     public override bool HitTest(Point point, out DocumentPosition position)
     {
-        if (_marker.HitTest(point, out position)) return true;
-        if (_content.HitTest(point, out position)) return true;
+        if (Marker.HitTest(point, out position)) return true;
+        if (Content.HitTest(point, out position)) return true;
         position = new DocumentPosition(BlockIndex, 0, 0);
         return Bounds.Contains(point);
     }
 
     internal override bool HitTestSelectionEndpoint(Point point, out DocumentPosition position)
     {
-        if (_marker.HitTestSelectionEndpoint(point, out position)) return true;
-        if (_content.HitTestSelectionEndpoint(point, out position)) return true;
+        if (Marker.HitTestSelectionEndpoint(point, out position)) return true;
+        if (Content.HitTestSelectionEndpoint(point, out position)) return true;
         position = new DocumentPosition(BlockIndex, 0, 0);
         return Bounds.Contains(point);
     }
 
     public override void Dispose()
     {
-        _marker.Dispose();
-        _content.Dispose();
+        var cleanup = new BlockBoxCleanupScope();
+        cleanup.TryDispose(Marker);
+        cleanup.TryDispose(Content);
+        cleanup.ThrowIfAny("disposing a list item");
+    }
+
+    internal override void CollectRetirementTasks(List<Task> pendingTasks)
+    {
+        var cleanup = new BlockBoxCleanupScope();
+        cleanup.TryCollectRetirementTasks(Marker, pendingTasks);
+        cleanup.TryCollectRetirementTasks(Content, pendingTasks);
+        cleanup.ThrowIfAny("collecting list-item retirement tasks");
     }
 }

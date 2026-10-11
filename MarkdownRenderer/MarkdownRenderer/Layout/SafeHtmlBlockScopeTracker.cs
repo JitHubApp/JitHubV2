@@ -14,11 +14,26 @@ internal sealed class SafeHtmlBlockScopeTracker
     private readonly SafeHtmlParseLimits _limits;
     private long _inputLength;
     private int _nodeCount;
+    private bool _suppressContentAfterBudget;
 
     internal SafeHtmlBlockScopeTracker(SafeHtmlParseLimits? limits = null)
         => _limits = limits ?? SafeHtmlParseLimits.Default;
 
     internal bool BudgetExceeded { get; private set; }
+
+    /// <summary>
+    /// Creates the independent block-stream tracker used by a nested builder.
+    /// It inherits open tag/suppression state, but keeps a fresh work counter as
+    /// before. A parent denial is sticky so nesting cannot re-enable HTML work.
+    /// </summary>
+    internal SafeHtmlBlockScopeTracker CloneForNestedContent()
+    {
+        var clone = new SafeHtmlBlockScopeTracker(_limits);
+        clone.BudgetExceeded = BudgetExceeded;
+        clone._suppressContentAfterBudget = _suppressContentAfterBudget;
+        clone._scopes.AddRange(_scopes);
+        return clone;
+    }
 
     public SafeHtmlAlignment CurrentAlignment
     {
@@ -40,6 +55,9 @@ internal sealed class SafeHtmlBlockScopeTracker
     {
         get
         {
+            if (_suppressContentAfterBudget)
+                return true;
+
             int summaryIndex = _scopes.FindLastIndex(static scope => scope.Name == "summary");
             if (summaryIndex > 0)
             {
@@ -62,6 +80,26 @@ internal sealed class SafeHtmlBlockScopeTracker
             }
 
             return _scopes.Exists(static scope => scope.SuppressContent);
+        }
+    }
+
+    /// <summary>
+    /// Source identity of the open div/center flow containing the current
+    /// block. Markdig may split one HTML flow at blank lines; preserving this
+    /// identity lets layout join only its inline fragments without collapsing
+    /// separate HTML paragraphs.
+    /// </summary>
+    internal int? CurrentInlineFlowScopeId
+    {
+        get
+        {
+            for (int index = _scopes.Count - 1; index >= 0; index--)
+            {
+                if (_scopes[index].InlineFlowScopeId is int scopeId)
+                    return scopeId;
+            }
+
+            return null;
         }
     }
 
@@ -103,12 +141,14 @@ internal sealed class SafeHtmlBlockScopeTracker
         }
 
         bool containsDetailsOpening = false;
+        bool allTagsAreScopeTags = true;
         foreach (SafeHtmlTag tag in tags)
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (_nodeCount >= _limits.MaxNodeCount)
                 return ExceedBudget();
             _nodeCount++;
+            allTagsAreScopeTags &= tag.Name is ("div" or "p" or "center" or "details" or "summary");
             if (tag.Kind == SafeHtmlTagKind.Closing)
             {
                 if (tag.Name is "details" or "summary" or "div" or "p" or "center")
@@ -133,13 +173,13 @@ internal sealed class SafeHtmlBlockScopeTracker
                 string id = (sourceOffset + tag.SourceStart).ToString(System.Globalization.CultureInfo.InvariantCulture);
                 bool defaultExpanded = tag.TryGetAttribute("open", out _);
                 bool expanded = disclosureStates.TryGetValue(id, out bool state) ? state : defaultExpanded;
-                _scopes.Add(new Scope(tag.Name, SafeHtmlAlignment.Inherit, SuppressContent: !expanded));
+                _scopes.Add(new Scope(tag.Name, SafeHtmlAlignment.Inherit, suppressContent: !expanded));
                 continue;
             }
 
             if (tag.Name == "summary")
             {
-                _scopes.Add(new Scope(tag.Name, SafeHtmlAlignment.Inherit, SuppressContent: false));
+                _scopes.Add(new Scope(tag.Name, SafeHtmlAlignment.Inherit, suppressContent: false));
                 continue;
             }
 
@@ -148,13 +188,18 @@ internal sealed class SafeHtmlBlockScopeTracker
                 SafeHtmlAlignment alignment = tag.Name == "center"
                     ? SafeHtmlAlignment.Center
                     : SafeHtmlParser.GetAlignment(tag);
-                _scopes.Add(new Scope(tag.Name, alignment, SuppressContent: false));
+                int? inlineFlowScopeId = tag.Name is "div" or "center"
+                    ? sourceOffset + tag.SourceStart
+                    : null;
+                _scopes.Add(new Scope(
+                    tag.Name,
+                    alignment,
+                    suppressContent: false,
+                    inlineFlowScopeId: inlineFlowScopeId));
             }
         }
 
-        return isTagSequence &&
-            !containsDetailsOpening &&
-            tags.All(static tag => tag.Name is "div" or "p" or "center" or "details" or "summary");
+        return isTagSequence && !containsDetailsOpening && allTagsAreScopeTags;
     }
 
     /// <summary>
@@ -233,7 +278,18 @@ internal sealed class SafeHtmlBlockScopeTracker
     private bool ExceedBudget()
     {
         BudgetExceeded = true;
-        _scopes.Clear();
+        if (_scopes.Exists(static scope => scope.Name == "details" && scope.SuppressContent))
+            _suppressContentAfterBudget = true;
+
+        // Keep disclosure state after denial so a hidden details body cannot
+        // become visible just because its closing tag was beyond the budget.
+        // Alignment scopes are discarded: once the tag stream is denied they
+        // must not seed a nested renderer with a partially scanned alignment.
+        for (int index = _scopes.Count - 1; index >= 0; index--)
+        {
+            if (_scopes[index].Name is not ("details" or "summary"))
+                _scopes.RemoveAt(index);
+        }
         return false;
     }
 
@@ -251,5 +307,23 @@ internal sealed class SafeHtmlBlockScopeTracker
         }
     }
 
-    private sealed record Scope(string Name, SafeHtmlAlignment Alignment, bool SuppressContent);
+    private readonly struct Scope
+    {
+        internal Scope(
+            string name,
+            SafeHtmlAlignment alignment,
+            bool suppressContent,
+            int? inlineFlowScopeId = null)
+        {
+            Name = name;
+            Alignment = alignment;
+            SuppressContent = suppressContent;
+            InlineFlowScopeId = inlineFlowScopeId;
+        }
+
+        internal readonly string Name;
+        internal readonly SafeHtmlAlignment Alignment;
+        internal readonly bool SuppressContent;
+        internal readonly int? InlineFlowScopeId;
+    }
 }

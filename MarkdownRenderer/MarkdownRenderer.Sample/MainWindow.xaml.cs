@@ -39,6 +39,7 @@ public sealed partial class MainWindow : Window
     private readonly ResvgMarkdownSvgRenderer _svgRenderer = new();
     private MarkdownPerformanceSession? _performanceSession;
 
+    private readonly Grid _shellRoot;
     private MarkdownRendererControl _renderer;
     private readonly Grid _rendererHost;
     private readonly TextBox _editor;
@@ -509,7 +510,12 @@ public sealed partial class MainWindow : Window
 
         navigationView.SelectedItem = initialItem;
         navigationView.SelectionChanged += OnSampleNavigationChanged;
-        Content = navigationView;
+        _shellRoot = new Grid
+        {
+            Style = (Style)Application.Current.Resources["SampleShellRootStyle"],
+        };
+        _shellRoot.Children.Add(navigationView);
+        Content = _shellRoot;
         navigationView.Loaded += OnNavigationLoaded;
 
         if (initialPage is not null)
@@ -1041,7 +1047,11 @@ public sealed partial class MainWindow : Window
     private void SetTheme(ElementTheme theme)
     {
         MarkThemeStatusPending();
-        if (Content is FrameworkElement fe) fe.RequestedTheme = theme;
+        // The application/window host remains on the startup theme. Give the
+        // complete sample shell one explicit theme boundary and opaque
+        // system-themed backdrop so translucent WinUI surfaces do not blend
+        // dark foregrounds over the host's Light background.
+        _shellRoot.RequestedTheme = theme;
     }
 
     private void MarkThemeStatusPending()

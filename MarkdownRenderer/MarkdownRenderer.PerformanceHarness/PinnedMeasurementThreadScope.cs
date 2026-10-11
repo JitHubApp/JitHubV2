@@ -48,6 +48,15 @@ internal sealed class PinnedMeasurementThreadScope : IDisposable
     internal int ProcessorNumber { get; }
     internal string ThreadPriority { get; }
 
+    internal bool TryGetThreadCycleCount(out ulong cycleCount)
+    {
+        if (QueryThreadCycleTime(_thread, out cycleCount))
+            return true;
+
+        cycleCount = 0;
+        return false;
+    }
+
     internal static bool IsEvidenceValid(
         string affinityMask,
         int processorGroup,
@@ -273,4 +282,10 @@ internal sealed class PinnedMeasurementThreadScope : IDisposable
 
     [DllImport("kernel32.dll")]
     private static extern uint GetActiveProcessorCount(ushort groupNumber);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool QueryThreadCycleTime(
+        SafeWaitHandle thread,
+        out ulong cycleTime);
 }

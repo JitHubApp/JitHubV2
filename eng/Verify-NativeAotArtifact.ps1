@@ -164,34 +164,52 @@ function Assert-NativeLayout {
         throw "Unsupported artifact architecture: $CurrentArchitecture"
     }
 
+    $layoutItem = Get-Item -LiteralPath $LayoutPath -Force -ErrorAction Stop
+    if (-not $layoutItem.PSIsContainer -or
+        ($layoutItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw "Native artifact layout root must be a regular directory: $LayoutPath"
+    }
+
+    # Include hidden/system entries in every security scan. Do not follow
+    # junctions or symlinks: reject them before checking file names so a
+    # payload cannot hide runtime files or PE images behind a reparse point.
+    $entries = @(Get-ChildItem -LiteralPath $LayoutPath -Recurse -Force -ErrorAction Stop)
+    $reparseEntries = @($entries | Where-Object {
+        ($_.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0
+    })
+    if ($reparseEntries.Count -ne 0) {
+        throw "Reparse-point entries are forbidden in a Native AOT artifact: $($reparseEntries.FullName -join ', ')"
+    }
+    $layoutFiles = @($entries | Where-Object { -not $_.PSIsContainer })
+
     foreach ($requiredFile in $requiredNativeFiles) {
-        if (-not (Test-Path -LiteralPath (Join-Path $LayoutPath $requiredFile))) {
+        if (-not (Test-Path -LiteralPath (Join-Path $LayoutPath $requiredFile) -PathType Leaf)) {
             throw "Required $CurrentArchitecture native dependency is missing: $requiredFile"
         }
     }
 
-    $forbidden = Get-ChildItem -LiteralPath $LayoutPath -Recurse -File |
-        Where-Object { $forbiddenRuntimeFiles.Contains($_.Name) }
+    $forbidden = @($layoutFiles | Where-Object { $forbiddenRuntimeFiles.Contains($_.Name) })
     if ($forbidden) {
         throw "CoreCLR/JIT host payload is forbidden: $($forbidden.FullName -join ', ')"
     }
 
-    $managedHostMetadata = Get-ChildItem -LiteralPath $LayoutPath -Recurse -File |
-        Where-Object { $_.Name -like '*.deps.json' -or $_.Name -like '*.runtimeconfig.json' }
+    $managedHostMetadata = @($layoutFiles | Where-Object {
+        $_.Name -like '*.deps.json' -or $_.Name -like '*.runtimeconfig.json'
+    })
     if ($managedHostMetadata) {
         throw "Managed host metadata is forbidden in a Native AOT artifact: $($managedHostMetadata.Name -join ', ')"
     }
 
     if ($IsPackaged) {
-        $packagedSymbols = Get-ChildItem -LiteralPath $LayoutPath -Recurse -File |
+        $packagedSymbols = @($layoutFiles |
             Where-Object { $_.Extension -in @('.pdb', '.appxsym') }
+        )
         if ($packagedSymbols) {
             throw "Symbols must be published separately from the MSIX payload: $($packagedSymbols.Name -join ', ')"
         }
     }
 
-    $peFiles = Get-ChildItem -LiteralPath $LayoutPath -Recurse -File |
-        Where-Object { $_.Extension -in @('.exe', '.dll') }
+    $peFiles = @($layoutFiles | Where-Object { $_.Extension -in @('.exe', '.dll') })
     if (-not $peFiles) {
         throw "No executable PE files were found in $LayoutPath."
     }

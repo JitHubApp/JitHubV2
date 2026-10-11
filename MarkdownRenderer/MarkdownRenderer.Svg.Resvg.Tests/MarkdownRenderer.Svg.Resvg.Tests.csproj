@@ -4,6 +4,7 @@
     <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <IsTestProject>true</IsTestProject>
     <IsPackable>false</IsPackable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
@@ -11,9 +12,19 @@
     <Platforms>x64</Platforms>
     <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
     <Platform Condition="'$(Platform)' == '' or '$(Platform)' == 'AnyCPU' or '$(Platform)' == 'Any CPU'">x64</Platform>
+    <ResvgWorkerRid Condition="'$(RuntimeIdentifier)' == 'win-x86'">win-x86</ResvgWorkerRid>
+    <ResvgWorkerRid Condition="'$(RuntimeIdentifier)' == 'win-x64'">win-x64</ResvgWorkerRid>
+    <ResvgWorkerRid Condition="'$(RuntimeIdentifier)' == 'win-arm64'">win-arm64</ResvgWorkerRid>
+    <ResvgWorkerRid Condition="'$(ResvgWorkerRid)' == '' and '$(Platform)' == 'x86'">win-x86</ResvgWorkerRid>
+    <ResvgWorkerRid Condition="'$(ResvgWorkerRid)' == '' and ('$(Platform)' == 'ARM64' or '$(Platform)' == 'arm64')">win-arm64</ResvgWorkerRid>
+    <ResvgWorkerRid Condition="'$(ResvgWorkerRid)' == ''">win-x64</ResvgWorkerRid>
+    <ResvgWorkerDirectory Condition="'$(ResvgWorkerDirectory)' == ''">$(MSBuildThisFileDirectory)..\MarkdownRenderer.Svg.Resvg</ResvgWorkerDirectory>
     <UseWinUI>false</UseWinUI>
     <WindowsAppSdkSelfContained>true</WindowsAppSdkSelfContained>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(EnableMarkdownLayoutDiagnostics)' == 'true'">
+    <DefineConstants>$(DefineConstants);MARKDOWN_LAYOUT_DIAGNOSTICS</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="$(JitHubWindowsSdkBuildToolsVersion)" PrivateAssets="all" />
@@ -26,12 +37,17 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\MarkdownRenderer.Svg.Resvg\MarkdownRenderer.Svg.Resvg.csproj" />
+    <Compile Include="..\MarkdownRenderer.Svg.Resvg.AotSmoke\SmokeRasterValidation.cs" Link="SmokeRasterValidation.cs" />
   </ItemGroup>
   <ItemGroup>
-    <Content Include="..\MarkdownRenderer.Svg.Resvg\runtimes\win-x64\native\MarkdownRenderer.Svg.Resvg.Worker.exe">
+    <Content Include="$(ResvgWorkerDirectory)\runtimes\$(ResvgWorkerRid)\native\MarkdownRenderer.Svg.Resvg.Worker.exe">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <TargetPath>MarkdownRenderer.Svg.Resvg.Worker.exe</TargetPath>
       <Link>MarkdownRenderer.Svg.Resvg.Worker.exe</Link>
     </Content>
   </ItemGroup>
+
+  <Target Name="ValidateResvgTestWorkerIdentity" BeforeTargets="PrepareForBuild" Condition="'$(DesignTimeBuild)' != 'true'">
+    <Exec Command="pwsh -NoProfile -NonInteractive -File &quot;$(MSBuildThisFileDirectory)..\MarkdownRenderer.Svg.Resvg\eng\Verify-ResvgWorkerIdentity.ps1&quot; -WorkerRoot &quot;$(ResvgWorkerDirectory)&quot; -Rid &quot;$(ResvgWorkerRid)&quot;" />
+  </Target>
 </Project>

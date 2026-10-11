@@ -539,13 +539,26 @@ public sealed class MarkdownDocument
                 ? new Dictionary<TNode, MarkdownContentFragment>(ReferenceEqualityComparer.Instance)
                 : new Dictionary<TNode, MarkdownContentFragment>(content, ReferenceEqualityComparer.Instance));
 
-    private sealed record ExtensionContentSnapshot(
+    // This is an implementation-only snapshot. A record would emit value
+    // equality, hashing, cloning, and formatting members that callers cannot
+    // use and that are never part of snapshot semantics.
+    private sealed class ExtensionContentSnapshot(
         IReadOnlyDictionary<SourceSpan, List<MarkdownContentFragment>> Blocks,
         IReadOnlyDictionary<SourceSpan, List<MarkdownContentFragment>> Inlines,
         IReadOnlyDictionary<Block, MarkdownContentFragment> BlockNodes,
         IReadOnlyDictionary<Inline, MarkdownContentFragment> InlineNodes,
         IReadOnlyList<MarkdownDiagnostic> Diagnostics)
     {
+        internal readonly IReadOnlyDictionary<SourceSpan, List<MarkdownContentFragment>> Blocks = Blocks;
+
+        internal readonly IReadOnlyDictionary<SourceSpan, List<MarkdownContentFragment>> Inlines = Inlines;
+
+        internal readonly IReadOnlyDictionary<Block, MarkdownContentFragment> BlockNodes = BlockNodes;
+
+        internal readonly IReadOnlyDictionary<Inline, MarkdownContentFragment> InlineNodes = InlineNodes;
+
+        internal readonly IReadOnlyList<MarkdownDiagnostic> Diagnostics = Diagnostics;
+
         internal static ExtensionContentSnapshot Empty { get; } = new(
             new Dictionary<SourceSpan, List<MarkdownContentFragment>>(),
             new Dictionary<SourceSpan, List<MarkdownContentFragment>>(),

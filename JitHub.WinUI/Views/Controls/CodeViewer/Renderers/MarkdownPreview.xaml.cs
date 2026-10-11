@@ -2,9 +2,7 @@ using System.ComponentModel;
 using JitHub.WinUI.ViewModels.CodeViewer;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using JitHub.Services.Markdown;
 using JitHub.WinUI.Views.Controls.CodeViewer;
-using MarkdownRenderer.Images;
 
 namespace JitHub.WinUI.Views.Controls.CodeViewer.Renderers;
 
@@ -28,22 +26,12 @@ public sealed partial class MarkdownPreview : UserControl
 
     private RepoFilePreviewViewModel? ViewModel => DataContext as RepoFilePreviewViewModel;
 
-    private string? CurrentBaseUrl => ViewModel?.GitHubBlobUrl;
-
-    private string? CurrentDocumentPath => ViewModel?.CurrentFile?.Path;
-
-    private MarkdownDocumentSource? CurrentDocumentSource =>
-        MarkdownDocumentSourceFactory.TryCreateRepositoryFile(
-            ViewModel?.CurrentFile?.Sha ?? ViewModel?.CurrentFile?.Path ?? "unknown",
-            CurrentBaseUrl,
-            CurrentDocumentPath);
-
     private void OnDataContextChanged(FrameworkElement sender, DataContextChangedEventArgs args)
     {
         SubscribeToViewModel(DataContext as RepoFilePreviewViewModel);
         SyncSegmented();
         SyncPanels();
-        Bindings.Update();
+        RichPanel.SetDocumentPayload(ViewModel?.RichPreviewDocument);
     }
 
     private void SubscribeToViewModel(RepoFilePreviewViewModel? viewModel)
@@ -79,15 +67,20 @@ public sealed partial class MarkdownPreview : UserControl
             _plainPanel.Text = ViewModel?.Text ?? string.Empty;
         }
 
-        if (args.PropertyName is nameof(RepoFilePreviewViewModel.CurrentFile)
-            or nameof(RepoFilePreviewViewModel.GitHubBlobUrl))
+        if (args.PropertyName == nameof(RepoFilePreviewViewModel.RichPreviewDocument))
         {
-            Bindings.Update();
+            RichPanel.SetDocumentPayload(ViewModel?.RichPreviewDocument);
         }
     }
 
-    private void OnLoaded(object sender, RoutedEventArgs e) =>
-        SubscribeToViewModel(DataContext as RepoFilePreviewViewModel);
+    private void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        RepoFilePreviewViewModel? viewModel = ViewModel;
+        SubscribeToViewModel(viewModel);
+        SyncSegmented();
+        SyncPanels();
+        RichPanel.SetDocumentPayload(viewModel?.RichPreviewDocument);
+    }
 
     private void OnUnloaded(object sender, RoutedEventArgs e) => SubscribeToViewModel(null);
 

@@ -14,6 +14,9 @@ else {
 }
 $sbomPath = Join-Path $provider 'NATIVE_RUST_DEPENDENCIES.json'
 $licenseNoticesPath = Join-Path $provider 'licenses\RUST-DEPENDENCY-LICENSES.txt'
+. (Join-Path $PSScriptRoot 'SpdxLicenseSelection.ps1')
+. (Join-Path $PSScriptRoot 'ResvgVendoredSources.ps1')
+$vendoredSources = @(Get-ResvgVendoredSourcesProvenance -ProviderRoot $provider)
 
 function Get-LockedPackages([string] $path) {
     $text = Get-Content -LiteralPath $path -Raw
@@ -88,10 +91,10 @@ if ($difference.Count -ne 0) {
     throw "SBOM component inventory does not match Cargo.lock: $($difference | Out-String)"
 }
 
-$allowed = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
-foreach ($identifier in $policy.allowedSpdxIdentifiers) {
-    [void]$allowed.Add([string]$identifier)
-}
+$approvedIdentifiers = @($policy.allowedSpdxIdentifiers | ForEach-Object { [string]$_ })
+$additionalKnownIdentifiers = Get-ResvgAdditionalKnownLicenseIdentifiers `
+    -ApprovedIdentifiers $approvedIdentifiers `
+    -InventoryIdentifiers @($sbom.licensePolicy.requiredAdditionalIdentifiers | ForEach-Object { [string]$_ })
 $metadataByIdentity = @{}
 foreach ($package in $metadata.packages) {
     $identity = "$($package.name)@$($package.version)"
@@ -112,6 +115,11 @@ foreach ($record in $packageRecords) {
     }
     $package = $metadataByIdentity[$identity]
     $lockedPackage = $locked[$identity]
+    Assert-ResvgNativePackageSource `
+        -Package $package `
+        -LockedPackage $lockedPackage `
+        -ProviderRoot $provider `
+        -VendoredSources $vendoredSources
     $expression = [string]$package.license
     if ([string]::IsNullOrWhiteSpace($expression) -or [string]$record.license -ne $expression) {
         throw "Unknown or stale license expression for $identity."
@@ -132,6 +140,9 @@ foreach ($record in $packageRecords) {
         throw "Non-registry package $identity unexpectedly declares a registry checksum."
     }
     $evidenceHashes = @($record.licenseEvidenceSha256)
+    if ($identity -in @('resvg@0.48.1', 'usvg@0.48.1', 'tiny-skia@0.12.0', 'tiny-skia-path@0.12.0') -and $evidenceHashes.Count -eq 0) {
+        throw "Vendored package $identity has no license-file evidence."
+    }
     if (-not [string]::IsNullOrEmpty([string]$record.source) -and $evidenceHashes.Count -eq 0) {
         throw "Dependency $identity has no vendored license evidence."
     }
@@ -146,23 +157,33 @@ foreach ($record in $packageRecords) {
     if ([string]::IsNullOrWhiteSpace($selection)) {
         throw "No selected license is recorded for $identity."
     }
-    $selectedIdentifiers = @($selection -split '\s+AND\s+' | ForEach-Object { $_.Trim('(', ')', ' ') })
-    foreach ($identifier in $selectedIdentifiers) {
-        if (-not $allowed.Contains($identifier)) {
-            throw "Selected license $identifier for $identity is not repository-compatible."
-        }
-        if ($expression -notmatch "(?<![A-Za-z0-9.-])$([regex]::Escape($identifier))(?![A-Za-z0-9.-])") {
-            throw "Selected license $identifier is not offered by $identity ($expression)."
-        }
-    }
+    [void](Assert-SpdxLicenseSelection `
+        -Expression $expression `
+        -Selection $selection `
+        -ApprovedIdentifiers $approvedIdentifiers `
+        -AdditionalKnownIdentifiers $additionalKnownIdentifiers `
+        -Subject $identity)
 }
 
-$resvg = @($metadata.packages | Where-Object name -EQ 'resvg')
-if ($resvg.Count -ne 1 -or $resvg[0].version -ne '0.48.1' -or
-    $resvg[0].source -notmatch '68b14c4c3bccdb60344c777406486b54c36ec1a4') {
-    throw 'The resvg package is not pinned to the approved 0.48.1 source commit.'
+$expectedVendoredSources = @($vendoredSources | ForEach-Object { $_.SbomRecord })
+$actualVendoredSources = @($sbom.vendoredSources)
+if ($actualVendoredSources.Count -ne $expectedVendoredSources.Count) {
+    throw 'The native SBOM vendored-source inventory is missing or contains unapproved entries.'
 }
-if ($sbom.resvgCommit -ne '68b14c4c3bccdb60344c777406486b54c36ec1a4') {
+$expectedVendorJson = $expectedVendoredSources | ConvertTo-Json -Depth 16 -Compress
+$actualVendorJson = $actualVendoredSources | ConvertTo-Json -Depth 16 -Compress
+if ($expectedVendorJson -cne $actualVendorJson) {
+    throw 'The native SBOM vendored-source provenance differs from the pinned source and patch manifests.'
+}
+
+$resvgPackages = @($metadata.packages | Where-Object name -EQ 'resvg')
+$resvgProvenance = @($vendoredSources | Where-Object { [string]$_.PackageName -ceq 'resvg' })
+if ($resvgPackages.Count -ne 1 -or $resvgPackages[0].version -ne '0.48.1' -or
+    $resvgPackages[0].source -ne $null -or $resvgProvenance.Count -ne 1 -or
+    $resvgProvenance[0].Revision -ne '68b14c4c3bccdb60344c777406486b54c36ec1a4') {
+    throw 'The resvg package is not pinned to the approved vendored 0.48.1 source commit.'
+}
+if ($sbom.resvgCommit -ne [string]$resvgProvenance[0].Revision) {
     throw 'The native SBOM resvg commit is stale.'
 }
 

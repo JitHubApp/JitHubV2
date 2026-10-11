@@ -24,8 +24,17 @@ internal enum SafeHtmlAlignment
     Right,
 }
 
-internal readonly record struct SafeHtmlLength(float Value, bool IsPercent)
+internal readonly struct SafeHtmlLength
 {
+    public SafeHtmlLength(float Value, bool IsPercent)
+    {
+        this.Value = Value;
+        this.IsPercent = IsPercent;
+    }
+
+    public float Value { get; init; }
+    public bool IsPercent { get; init; }
+
     public float Resolve(float available) => IsPercent
         ? Math.Max(0, available) * Math.Clamp(Value, 0, 100) / 100f
         : Math.Max(0, Value);
@@ -150,15 +159,15 @@ internal readonly struct SafeHtmlTag
         SourceLength = sourceLength;
     }
 
-    public SafeHtmlTagKind Kind { get; }
+    public readonly SafeHtmlTagKind Kind;
 
-    public string Name { get; }
+    public readonly string Name;
 
-    public IReadOnlyDictionary<string, string> Attributes { get; }
+    public readonly IReadOnlyDictionary<string, string> Attributes;
 
-    public int SourceStart { get; }
+    public readonly int SourceStart;
 
-    public int SourceLength { get; }
+    public readonly int SourceLength;
 
     public bool TryGetAttribute(string name, out string value)
     {
@@ -178,14 +187,31 @@ internal readonly struct SafeHtmlTag
 /// Keeping this value in the base assembly avoids a dependency from the lean
 /// renderer onto <c>MarkdownRenderer.Html</c>.
 /// </summary>
-internal readonly record struct SafeHtmlParseLimits(
-    int MaxInputLength,
-    int MaxNodeCount,
-    int MaxNestingDepth,
-    int MaxAttributeCount,
-    int MaxAttributeValueLength,
-    int MaxTagLength)
+internal readonly struct SafeHtmlParseLimits
 {
+    public SafeHtmlParseLimits(
+        int MaxInputLength,
+        int MaxNodeCount,
+        int MaxNestingDepth,
+        int MaxAttributeCount,
+        int MaxAttributeValueLength,
+        int MaxTagLength)
+    {
+        this.MaxInputLength = MaxInputLength;
+        this.MaxNodeCount = MaxNodeCount;
+        this.MaxNestingDepth = MaxNestingDepth;
+        this.MaxAttributeCount = MaxAttributeCount;
+        this.MaxAttributeValueLength = MaxAttributeValueLength;
+        this.MaxTagLength = MaxTagLength;
+    }
+
+    public int MaxInputLength { get; init; }
+    public int MaxNodeCount { get; init; }
+    public int MaxNestingDepth { get; init; }
+    public int MaxAttributeCount { get; init; }
+    public int MaxAttributeValueLength { get; init; }
+    public int MaxTagLength { get; init; }
+
     internal static SafeHtmlParseLimits Default { get; } = new(
         SafeHtmlParser.MaxInputLength,
         SafeHtmlParser.MaxNodeCount,
@@ -218,6 +244,25 @@ internal static class SafeHtmlParser
     private static readonly HashSet<string> RawContentElements = new(StringComparer.OrdinalIgnoreCase)
     {
         "script", "style", "iframe", "object", "embed", "noscript", "template",
+    };
+
+    // These start tags close an open paragraph in HTML's "in body" insertion
+    // mode. Keep this compatibility behavior deliberately bounded: this is not
+    // a general-purpose HTML5 tree builder, and it does not synthesize nodes.
+    private static readonly HashSet<string> ParagraphClosingBlockStarts = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "address", "article", "aside", "blockquote", "center", "details", "dialog", "dir", "div", "dl",
+        "fieldset", "figcaption", "figure", "footer", "form", "h1", "h2", "h3", "h4", "h5", "h6",
+        "header", "hgroup", "hr", "listing", "main", "menu", "nav", "ol", "p", "pre", "search",
+        "section", "summary", "table", "ul",
+    };
+
+    // A paragraph is only implicitly closed when it is in button scope. These
+    // elements stop the backwards stack search, matching the relevant HTML
+    // scope boundaries without changing the parser's existing safety model.
+    private static readonly HashSet<string> ButtonScopeBoundaries = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "applet", "button", "caption", "marquee", "object", "table", "td", "th", "template",
     };
 
     public static SafeHtmlDocument Parse(string? html) =>
@@ -297,6 +342,8 @@ internal static class SafeHtmlParser
                     tag.SourceStart);
                 continue;
             }
+
+            CloseOpenParagraphForBlockStart(stack, tag.Name);
 
             var element = new SafeHtmlElement(
                 tag.Name,
@@ -690,6 +737,34 @@ internal static class SafeHtmlParser
             stack[index].SetClosingTag(rawClosingTag, rawClosingStart);
             stack.RemoveRange(index, stack.Count - index);
             return;
+        }
+    }
+
+    private static void CloseOpenParagraphForBlockStart(
+        List<SafeHtmlElement> stack,
+        string startTagName)
+    {
+        if (!ParagraphClosingBlockStarts.Contains(startTagName))
+        {
+            return;
+        }
+
+        for (int index = stack.Count - 1; index > 0; index--)
+        {
+            string openName = stack[index].Name;
+            if (openName.Equals("p", StringComparison.OrdinalIgnoreCase))
+            {
+                // Implicit closure has no source token. Pop the paragraph and
+                // any malformed inline descendants without fabricating a
+                // closing-tag span or disturbing their original source spans.
+                stack.RemoveRange(index, stack.Count - index);
+                return;
+            }
+
+            if (ButtonScopeBoundaries.Contains(openName))
+            {
+                return;
+            }
         }
     }
 

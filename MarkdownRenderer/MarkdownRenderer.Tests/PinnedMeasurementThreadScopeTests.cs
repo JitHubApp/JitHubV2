@@ -58,6 +58,21 @@ public sealed class PinnedMeasurementThreadScopeTests
     }
 
     [Fact]
+    public void ThreadCycleEvidenceIsMonotonicWhenThePlatformSupportsIt()
+    {
+        using PinnedMeasurementThreadScope scope = PinnedMeasurementThreadScope.Enter(
+            ThreadPriority.Normal,
+            "cycle-evidence-contract-test");
+
+        bool hasStart = scope.TryGetThreadCycleCount(out ulong start);
+        Thread.SpinWait(100_000);
+        bool hasEnd = scope.TryGetThreadCycleCount(out ulong end);
+
+        if (hasStart && hasEnd)
+            Assert.True(end >= start);
+    }
+
+    [Fact]
     public void EvidenceRejectsProcessorsOutsideTheActiveNativeTopology()
     {
         ushort activeGroupCount = GetActiveProcessorGroupCount();

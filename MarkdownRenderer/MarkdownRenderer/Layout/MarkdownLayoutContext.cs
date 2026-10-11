@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Text;
 using Microsoft.UI.Dispatching;
@@ -9,6 +10,7 @@ using Microsoft.UI.Xaml;
 using Markdig.Extensions.Footnotes;
 using Markdig.Renderers.Html;
 using Markdig.Syntax;
+using Markdig.Syntax.Inlines;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Images;
@@ -17,6 +19,7 @@ using MarkdownRenderer.Parsing;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Theming;
 using MarkdownRenderer.Accessibility;
+using MarkdownRenderer.Layout.Boxes;
 
 namespace MarkdownRenderer.Layout;
 
@@ -27,7 +30,61 @@ namespace MarkdownRenderer.Layout;
 /// </summary>
 internal sealed class MarkdownLayoutContext
 {
+    private const int MaximumRetirementFailureDetails = 32;
+
     private CancellationToken _cancellationToken;
+    private SafeHtmlAlignment _safeHtmlBlockAlignment;
+    private SafeHtmlBlockScopeTracker? _safeHtmlNestedScopes;
+    private int? _safeHtmlInlineFlowScopeId;
+    private bool _safeHtmlInlineFlowContinuesPrevious;
+    private readonly object _retirementGate = new();
+    private List<Task>? _pendingRetirementTasks;
+    private HashSet<Task>? _retirementTaskIdentities;
+    private MarkdownLayoutConstructionScope? _constructionScope;
+    private Action<InlineContainerBox, ContainerInline, Func<Inline, bool>?, int>? _childInlineBuilder;
+
+    // Optional built-in container renderers must use the owning layout build's
+    // semantic extension fragments, not a second reduced inline implementation.
+    // Scope this callback to construction so contexts do not retain a builder
+    // or its semantic document after publication, failure or cancellation.
+    internal ChildInlineBuildScope PushChildInlineBuilder(
+        Action<InlineContainerBox, ContainerInline, Func<Inline, bool>?, int> builder)
+    {
+        var previous = _childInlineBuilder;
+        _childInlineBuilder = builder;
+        return new ChildInlineBuildScope(this, previous);
+    }
+
+    internal bool TryAppendChildInlines(
+        InlineContainerBox box, ContainerInline inlines,
+        Func<Inline, bool>? skipFirstIf, int inheritedAliasStart)
+    {
+        if (_childInlineBuilder is not { } builder)
+            return false;
+        if (!ReferenceEquals(box.Context, this))
+            throw new InvalidOperationException("Child inline construction must use its owning layout context.");
+        builder(box, inlines, skipFirstIf, inheritedAliasStart);
+        return true;
+    }
+
+    internal readonly struct ChildInlineBuildScope : IDisposable
+    {
+        private readonly MarkdownLayoutContext? _owner;
+        private readonly Action<InlineContainerBox, ContainerInline, Func<Inline, bool>?, int>? _previous;
+
+        internal ChildInlineBuildScope(MarkdownLayoutContext owner,
+            Action<InlineContainerBox, ContainerInline, Func<Inline, bool>?, int>? previous)
+        {
+            _owner = owner;
+            _previous = previous;
+        }
+
+        public void Dispose()
+        {
+            if (_owner is not null)
+                _owner._childInlineBuilder = _previous;
+        }
+    }
 
     /// <summary>
     /// Initializes a layout context. Advanced renderer authors receive this object
@@ -64,28 +121,139 @@ internal sealed class MarkdownLayoutContext
     }
 
     /// <summary>Canvas resource creator used for text and graphics resources.</summary>
-    public ICanvasResourceCreator ResourceCreator { get; }
+    public readonly ICanvasResourceCreator ResourceCreator;
 
     /// <summary>Resolved theme snapshot for the current layout pass.</summary>
-    public ThemeSnapshot ThemeSnapshot { get; }
+    public readonly ThemeSnapshot ThemeSnapshot;
 
     /// <summary>Source map being populated by the current layout pass.</summary>
-    public MarkdownSourceMap SourceMap { get; }
+    public readonly MarkdownSourceMap SourceMap;
 
     /// <summary>Extension registry used by the current layout pass.</summary>
-    public MarkdownExtensionRegistry Registry { get; }
+    public readonly MarkdownExtensionRegistry Registry;
+
+    internal SafeHtmlAlignment SafeHtmlBlockAlignment => _safeHtmlBlockAlignment;
+
+    internal SafeHtmlBlockScopeTracker? SafeHtmlNestedScopes => _safeHtmlNestedScopes;
+
+    internal int? SafeHtmlInlineFlowScopeId => _safeHtmlInlineFlowScopeId;
+
+    internal bool SafeHtmlInlineFlowContinuesPrevious => _safeHtmlInlineFlowContinuesPrevious;
 
     /// <summary>Flow direction used for text layout.</summary>
-    public FlowDirection FlowDirection { get; }
+    public readonly FlowDirection FlowDirection;
 
     /// <summary>BCP-47 language used by DirectWrite text shaping for this pass.</summary>
-    public string Language { get; }
+    public readonly string Language;
 
     /// <summary>Culture resolved once from <see cref="Language"/> for this layout pass.</summary>
-    internal System.Globalization.CultureInfo Culture { get; }
+    internal readonly System.Globalization.CultureInfo Culture;
     /// <summary>UI-thread dispatcher used to marshal async load completions back
     /// to the thread that owns the canvas. May be null in unit tests.</summary>
-    public DispatcherQueue? Dispatcher { get; }
+    public readonly DispatcherQueue? Dispatcher;
+
+    /// <summary>
+    /// Receives asynchronous retirement barriers from boxes discarded before
+    /// snapshot publication. The host uses this to include failed-build work
+    /// in its normal shutdown drain without blocking the layout worker.
+    /// </summary>
+    internal Action<Task>? RetirementSink { get; init; }
+
+    /// <summary>Registers failed-build native retirement without waiting on the layout worker.</summary>
+    internal void RegisterRetirement(Task retirementTask)
+    {
+        ArgumentNullException.ThrowIfNull(retirementTask);
+        if (retirementTask.IsCompletedSuccessfully)
+            return;
+
+        lock (_retirementGate)
+        {
+            _retirementTaskIdentities ??= new HashSet<Task>(ReferenceEqualityComparer.Instance);
+            if (!_retirementTaskIdentities.Add(retirementTask))
+                return;
+
+            (_pendingRetirementTasks ??= new List<Task>()).Add(retirementTask);
+        }
+
+        try
+        {
+            RetirementSink?.Invoke(retirementTask);
+        }
+        catch
+        {
+            // The pipeline-owned drain below remains authoritative if an
+            // optional host observer is unavailable during teardown.
+        }
+    }
+
+    /// <summary>
+    /// Awaits all pending retirement registered by this construction context.
+    /// The owner calls this outside snapshot/layout locks before completing the
+    /// corresponding pipeline task, closing teardown epoch races.
+    /// </summary>
+    internal async Task DrainOwnedRetirementsAsync(Exception? primaryFailure = null)
+    {
+        List<Exception>? failures = null;
+        int failureCount = 0;
+
+        void AddFailure(Exception exception)
+        {
+            failureCount++;
+            if (failureCount <= MaximumRetirementFailureDetails)
+                (failures ??= new List<Exception>()).Add(new MarkdownLayoutRetirementFailureSummary(exception));
+        }
+
+        while (true)
+        {
+            List<Task>? batch;
+            lock (_retirementGate)
+            {
+                batch = _pendingRetirementTasks;
+                _pendingRetirementTasks = null;
+                if (batch is null || batch.Count == 0)
+                    _retirementTaskIdentities = null;
+            }
+
+            if (batch is null || batch.Count == 0)
+                break;
+
+            try
+            {
+                await Task.WhenAll(batch).ConfigureAwait(false);
+            }
+            catch
+            {
+                foreach (Task task in batch)
+                {
+                    if (task.IsFaulted && task.Exception is { } taskFailure)
+                    {
+                        foreach (Exception exception in taskFailure.Flatten().InnerExceptions)
+                            AddFailure(exception);
+                    }
+                    else if (task.IsCanceled)
+                        AddFailure(new TaskCanceledException(task));
+                }
+            }
+        }
+
+        if (failures is not null)
+        {
+            if (failureCount > MaximumRetirementFailureDetails)
+            {
+                failures.Add(new MarkdownLayoutRetirementFailureSummary(
+                    failureCount - MaximumRetirementFailureDetails));
+            }
+
+            throw new MarkdownLayoutRetirementException(
+                new AggregateException("Failed layout resources did not retire cleanly.", failures),
+                primaryFailure);
+        }
+    }
+
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+    /// <summary>Optional audit-only timing sink for the current immutable layout build.</summary>
+    internal MarkdownLayoutDiagnostics? LayoutDiagnostics { get; init; }
+#endif
 
     /// <summary>
     /// Effective rasterization scale of the host control (matches
@@ -111,6 +279,133 @@ internal sealed class MarkdownLayoutContext
         init => _cancellationToken = value;
     }
 
+    internal void SetCancellationToken(CancellationToken cancellationToken) =>
+        _cancellationToken = cancellationToken;
+
+    // Placement candidates borrow the immutable layout environment, never the
+    // previous pass's mutable registries, cancellation or retirement ledger.
+    // Future image reactivation still uses the captured resolver and policy.
+    internal MarkdownLayoutContext CreateRasterPlacementContext(
+        CancellationToken imageCancellationToken,
+        object imagePreparationOwner,
+        Action<Task>? retirementSink,
+        Action<string, MarkdownImageUnavailableReason, MarkdownSvgFailureReason?>? imageUnavailable)
+    {
+        ArgumentNullException.ThrowIfNull(imagePreparationOwner);
+        return new(ResourceCreator, ThemeSnapshot, SourceMap, Registry, FlowDirection, Dispatcher, Language)
+        {
+            CancellationToken = CancellationToken.None,
+            ImageCancellationToken = imageCancellationToken,
+            RetirementSink = retirementSink,
+            ImageUnavailable = imageUnavailable,
+            RasterizationScale = RasterizationScale,
+            IsCodeBlockCopyEnabled = IsCodeBlockCopyEnabled,
+            CodeBlockLineNumberMode = CodeBlockLineNumberMode,
+            CodeBlockWrappingMode = CodeBlockWrappingMode,
+            CodeBlockChromeMode = CodeBlockChromeMode,
+            IsTaskListEditingEnabled = IsTaskListEditingEnabled,
+            CommandProvider = CommandProvider,
+            StringProvider = StringProvider,
+            ImageResolver = ImageResolver,
+            PerformanceSession = PerformanceSession,
+            PerformanceDocumentOwner = null,
+            ImagePreparationOwner = imagePreparationOwner,
+            SvgRenderer = SvgRenderer,
+            ImageBaseUri = ImageBaseUri,
+            ImageDocumentPath = ImageDocumentPath,
+            ImageDocumentSource = ImageDocumentSource,
+            AllowThirdPartyRemoteImages = AllowThirdPartyRemoteImages,
+            DisclosureStates = DisclosureStates,
+        };
+    }
+
+    /// <summary>
+    /// Begins synchronous construction ownership for one layout pass. Builders
+    /// register newly-created block roots here and remove them only after the
+    /// parent successfully accepts ownership. The context is single-build at a
+    /// time, matching its other mutable per-pass registries.
+    /// </summary>
+    internal MarkdownLayoutConstructionScope BeginConstructionScope()
+    {
+        if (_constructionScope is not null)
+            throw new InvalidOperationException("A layout construction scope is already active.");
+
+        return _constructionScope = new MarkdownLayoutConstructionScope(this);
+    }
+
+    internal void RegisterConstructionBlock(BlockBox block)
+    {
+        ArgumentNullException.ThrowIfNull(block);
+        _constructionScope?.Register(block);
+    }
+
+    internal void RegisterConstructionResource(IDisposable resource)
+    {
+        ArgumentNullException.ThrowIfNull(resource);
+        _constructionScope?.Register(resource);
+    }
+
+    internal void AdoptConstructionBlock(BlockBox child)
+    {
+        ArgumentNullException.ThrowIfNull(child);
+        _constructionScope?.Adopt(child);
+    }
+
+    internal void AdoptConstructionResource(IDisposable resource)
+    {
+        ArgumentNullException.ThrowIfNull(resource);
+        _constructionScope?.Adopt(resource);
+    }
+
+    internal void ForgetConstructionBlock(BlockBox block)
+    {
+        ArgumentNullException.ThrowIfNull(block);
+        _constructionScope?.Forget(block);
+    }
+
+    /// <summary>Disposes a deliberately omitted build object and observes its async retirement.</summary>
+    internal void DiscardConstructionBlock(BlockBox block)
+    {
+        ArgumentNullException.ThrowIfNull(block);
+        ForgetConstructionBlock(block);
+        var retirementTasks = new List<Task>();
+        try
+        {
+            block.CollectRetirementTasks(retirementTasks);
+        }
+        catch (Exception exception)
+        {
+            retirementTasks.Add(Task.FromException(exception));
+        }
+
+        try
+        {
+            block.Dispose();
+        }
+        catch (Exception exception)
+        {
+            retirementTasks.Add(Task.FromException(exception));
+        }
+
+        foreach (Task task in retirementTasks)
+        {
+            try
+            {
+                RegisterRetirement(task);
+            }
+            catch
+            {
+                // Discard is best-effort and must not replace a primary build failure.
+            }
+        }
+    }
+
+    internal void EndConstructionScope(MarkdownLayoutConstructionScope scope)
+    {
+        if (ReferenceEquals(_constructionScope, scope))
+            _constructionScope = null;
+    }
+
     /// <summary>
     /// Cancellation token for asynchronous image resolution owned by the
     /// renderer's loaded lifetime. Image work must survive routine layout
@@ -127,6 +422,9 @@ internal sealed class MarkdownLayoutContext
 
     /// <summary>Wrapping policy for code blocks.</summary>
     public CodeBlockWrappingMode CodeBlockWrappingMode { get; init; } = CodeBlockWrappingMode.NoWrap;
+
+    /// <summary>Chrome policy for code blocks.</summary>
+    public CodeBlockChromeMode CodeBlockChromeMode { get; init; } = CodeBlockChromeMode.Enhanced;
 
     /// <summary>True when task-list markers may invoke an explicit host command.</summary>
     internal bool IsTaskListEditingEnabled { get; init; }
@@ -146,8 +444,21 @@ internal sealed class MarkdownLayoutContext
     /// <summary>Optional host-owned preparation policy captured for this layout generation.</summary>
     internal IMarkdownPerformanceSessionInternal? PerformanceSession { get; init; }
 
+    /// <summary>
+    /// True only while a builder is constructing the actual lazy snapshot
+    /// whose performance session owns vector-scene residency. A progressive
+    /// session alone does not defer native resources in eager/non-lazy builds.
+    /// </summary>
+    internal bool UseProgressiveNativeSceneResidency { get; set; }
+
     /// <summary>Stable identity of the document viewport for fair CPU preparation.</summary>
     internal object? PerformanceDocumentOwner { get; init; }
+    // Scene/deferred-document ownership remains tied to the document host.
+    // Image admission instead uses an opaque per-control identity, so private
+    // no-scene raster candidates need not retain the control as their owner.
+    internal object? ImagePreparationOwner { get; init; }
+    internal object? EffectiveImagePreparationOwner =>
+        ImagePreparationOwner ?? PerformanceDocumentOwner;
 
     /// <summary>
     /// Shared static-SVG provider borrowed from the host control. Image boxes
@@ -217,6 +528,13 @@ internal sealed class MarkdownLayoutContext
     public int NextBlockIndex() => ++_blockIndex;
     private int _blockIndex;
 
+    /// <summary>
+    /// Captures the upper bound of IDs issued by this layout context. IDs may
+    /// have holes when optional or custom construction paths do not publish a
+    /// box, so consumers must not infer a count from this value.
+    /// </summary>
+    internal int GeneratedBlockIndexUpperBound => _blockIndex;
+
     private readonly List<string> _styleContextKeys = new();
     private readonly List<string> _styleAliasKeys = new();
     private int _listDepth;
@@ -277,6 +595,70 @@ internal sealed class MarkdownLayoutContext
         }
 
         return scope;
+    }
+
+    internal SafeHtmlBlockRenderScope PushSafeHtmlBlockContext(
+        SafeHtmlAlignment alignment,
+        SafeHtmlBlockScopeTracker? nestedScopes,
+        int? inlineFlowScopeId,
+        bool inlineFlowContinuesPrevious = false)
+    {
+        SafeHtmlAlignment previousAlignment = _safeHtmlBlockAlignment;
+        SafeHtmlBlockScopeTracker? previousNestedScopes = _safeHtmlNestedScopes;
+        int? previousInlineFlowScopeId = _safeHtmlInlineFlowScopeId;
+        bool previousInlineFlowContinuesPrevious = _safeHtmlInlineFlowContinuesPrevious;
+        _safeHtmlBlockAlignment = alignment;
+        _safeHtmlNestedScopes = nestedScopes;
+        _safeHtmlInlineFlowScopeId = inlineFlowScopeId;
+        _safeHtmlInlineFlowContinuesPrevious = inlineFlowContinuesPrevious;
+        return new SafeHtmlBlockRenderScope(
+            this,
+            previousAlignment,
+            previousNestedScopes,
+            previousInlineFlowScopeId,
+            previousInlineFlowContinuesPrevious);
+    }
+
+    private void RestoreSafeHtmlBlockContext(
+        SafeHtmlAlignment alignment,
+        SafeHtmlBlockScopeTracker? nestedScopes,
+        int? inlineFlowScopeId,
+        bool inlineFlowContinuesPrevious)
+    {
+        _safeHtmlBlockAlignment = alignment;
+        _safeHtmlNestedScopes = nestedScopes;
+        _safeHtmlInlineFlowScopeId = inlineFlowScopeId;
+        _safeHtmlInlineFlowContinuesPrevious = inlineFlowContinuesPrevious;
+    }
+
+    internal readonly struct SafeHtmlBlockRenderScope : IDisposable
+    {
+        private readonly MarkdownLayoutContext? _owner;
+        private readonly SafeHtmlAlignment _alignment;
+        private readonly SafeHtmlBlockScopeTracker? _nestedScopes;
+        private readonly int? _inlineFlowScopeId;
+        private readonly bool _inlineFlowContinuesPrevious;
+
+        internal SafeHtmlBlockRenderScope(
+            MarkdownLayoutContext owner,
+            SafeHtmlAlignment alignment,
+            SafeHtmlBlockScopeTracker? nestedScopes,
+            int? inlineFlowScopeId,
+            bool inlineFlowContinuesPrevious)
+        {
+            _owner = owner;
+            _alignment = alignment;
+            _nestedScopes = nestedScopes;
+            _inlineFlowScopeId = inlineFlowScopeId;
+            _inlineFlowContinuesPrevious = inlineFlowContinuesPrevious;
+        }
+
+        public void Dispose()
+            => _owner?.RestoreSafeHtmlBlockContext(
+                _alignment,
+                _nestedScopes,
+                _inlineFlowScopeId,
+                _inlineFlowContinuesPrevious);
     }
 
     private StyleScope CaptureStyleScope() =>
@@ -429,5 +811,208 @@ internal sealed class MarkdownLayoutContext
         if (id.StartsWith("#", StringComparison.Ordinal))
             id = id.Substring(1);
         return id;
+    }
+}
+
+/// <summary>
+/// Tracks renderer-created boxes and staged inline resources until their parent or published snapshot has
+/// accepted ownership. Only the current synchronous build uses this ledger.
+/// </summary>
+internal sealed class MarkdownLayoutConstructionScope : IDisposable
+{
+    private readonly MarkdownLayoutContext _context;
+    private HashSet<object>? _roots = new(ReferenceEqualityComparer.Instance);
+    private int _disposed;
+
+    internal MarkdownLayoutConstructionScope(MarkdownLayoutContext context)
+    {
+        _context = context;
+    }
+
+    internal void Register(object resource)
+    {
+        if (Volatile.Read(ref _disposed) != 0 || _roots is not { } roots || !roots.Add(resource))
+            return;
+    }
+
+    internal void Adopt(object child) => _roots?.Remove(child);
+
+    internal void Forget(BlockBox block) => _roots?.Remove(block);
+
+    internal void TransferToSnapshot(IReadOnlyList<BlockBox> publishedRoots)
+    {
+        ArgumentNullException.ThrowIfNull(publishedRoots);
+        if (_roots is null || _roots.Count == 0 || publishedRoots.Count == 0)
+            return;
+
+        // Some built-in renderers attach children directly instead of going
+        // through a builder helper that can explicitly adopt each child. Walk
+        // only the actual snapshot-owned graph, removing those boxes from the
+        // construction ledger while leaving genuinely unpublished objects for
+        // Dispose() to retire.
+        var visited = new HashSet<BlockBox>(ReferenceEqualityComparer.Instance);
+        var pending = new Stack<BlockBox>(publishedRoots.Count);
+        for (int index = 0; index < publishedRoots.Count; index++)
+            pending.Push(publishedRoots[index]);
+
+        while (pending.Count > 0)
+        {
+            BlockBox current = pending.Pop();
+            if (!visited.Add(current))
+                continue;
+
+            _roots.Remove(current);
+            switch (current)
+            {
+                case StackBox stack:
+                    for (int index = 0; index < stack.Children.Count; index++)
+                        pending.Push(stack.Children[index]);
+                    break;
+                case ListItemBox listItem:
+                    pending.Push(listItem.Marker);
+                    pending.Push(listItem.Content);
+                    break;
+                case CodeBlockBox codeBlock:
+                    for (int index = 0; index < codeBlock.Chunks.Count; index++)
+                        pending.Push(codeBlock.Chunks[index]);
+                    break;
+                case TableBox table:
+                    foreach (InlineContainerBox cell in table.GetCellBoxes())
+                        pending.Push(cell);
+                    break;
+                case InlineContainerBox inline:
+                    IReadOnlyList<InlineRun> runs = inline.Runs;
+                    for (int index = 0; index < runs.Count; index++)
+                        if (runs[index] is InlineVectorSceneRun vector)
+                            _roots.Remove(vector);
+                    IReadOnlyList<(InlineImageRun Run, int Offset)> images = inline.InlineImageRuns;
+                    for (int index = 0; index < images.Count; index++)
+                        pending.Push(images[index].Run.Image);
+                    break;
+            }
+        }
+    }
+
+    internal List<Task> DisposeRootsBestEffort()
+    {
+        var retirementTasks = new List<Task>();
+        HashSet<object>? roots = _roots;
+        if (roots is null || roots.Count == 0)
+            return retirementTasks;
+
+        object[] pendingRoots = new object[roots.Count];
+        roots.CopyTo(pendingRoots);
+        roots.Clear();
+        foreach (object root in pendingRoots)
+        {
+            try
+            {
+                if (root is BlockBox block)
+                    block.CollectRetirementTasks(retirementTasks);
+            }
+            catch (Exception exception)
+            {
+                retirementTasks.Add(Task.FromException(exception));
+            }
+        }
+
+        foreach (object root in pendingRoots)
+        {
+            try
+            {
+                if (root is BlockBox block)
+                    block.Dispose();
+                else
+                    ((IDisposable)root).Dispose();
+            }
+            catch (Exception exception)
+            {
+                retirementTasks.Add(Task.FromException(exception));
+            }
+        }
+
+        return retirementTasks;
+    }
+
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+            return;
+
+        try
+        {
+            // This is a last-resort guard for future build paths that forget to
+            // explicitly abort or transfer. Normal callers drain returned
+            // barriers in their failure path before leaving the scope.
+            foreach (Task task in DisposeRootsBestEffort())
+            {
+                try
+                {
+                    _context.RegisterRetirement(task);
+                }
+                catch
+                {
+                    // Teardown remains best-effort and never masks construction failure.
+                }
+            }
+        }
+        finally
+        {
+            _roots = null;
+            _context.EndConstructionScope(this);
+        }
+    }
+}
+
+/// <summary>
+/// Identifies failed-build resource teardown faults so the owning pipeline can
+/// fail shutdown closed without confusing them with an ordinary render failure.
+/// </summary>
+internal sealed class MarkdownLayoutRetirementException : Exception
+{
+    private Exception? _primaryFailure;
+
+    internal MarkdownLayoutRetirementException(
+        AggregateException innerException,
+        Exception? primaryFailure = null)
+        : base("One or more unpublished markdown layout resources failed to retire.", innerException)
+    {
+        _primaryFailure = primaryFailure;
+    }
+
+    internal Exception? PrimaryFailure => Volatile.Read(ref _primaryFailure);
+
+    /// <summary>
+    /// Transfers the original build failure to its public diagnostic observer
+    /// without retaining its potentially large exception graph on the failed
+    /// retirement task.
+    /// </summary>
+    internal Exception? TakePrimaryFailure() => Interlocked.Exchange(ref _primaryFailure, null);
+}
+
+/// <summary>Privacy-safe bounded summary of a failed retirement operation.</summary>
+internal sealed class MarkdownLayoutRetirementFailureSummary : Exception
+{
+    internal MarkdownLayoutRetirementFailureSummary(Exception exception)
+        : base(CreateMessage(exception))
+    {
+        ExceptionType = exception.GetType().FullName ?? exception.GetType().Name;
+        HResultCode = exception.HResult;
+    }
+
+    internal MarkdownLayoutRetirementFailureSummary(int omittedFailureCount)
+        : base($"{omittedFailureCount} additional layout retirement failures omitted.")
+    {
+        OmittedFailureCount = omittedFailureCount;
+    }
+
+    internal readonly string? ExceptionType;
+    internal readonly int? HResultCode;
+    internal readonly int? OmittedFailureCount;
+
+    private static string CreateMessage(Exception exception)
+    {
+        string typeName = exception.GetType().FullName ?? exception.GetType().Name;
+        return $"Layout retirement failed: {typeName} (HResult=0x{exception.HResult:X8}).";
     }
 }

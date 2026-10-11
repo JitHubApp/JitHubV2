@@ -2,6 +2,7 @@ using System;
 using System.Buffers;
 using System.Threading;
 using System.Threading.Tasks;
+using MarkdownRenderer.Layout.Boxes;
 
 namespace MarkdownRenderer.Images;
 
@@ -30,6 +31,11 @@ public interface IMarkdownSvgRenderer
     /// Gets a monotonic token that changes when environment state can alter a
     /// rendered result, such as the installed-font generation.
     /// </summary>
+    /// <remarks>
+    /// This synchronous getter is also queried during UI publication. Return a
+    /// thread-safe, inexpensive snapshot; do not perform I/O, wait for worker
+    /// startup, or dispatch synchronously to a UI thread from this getter.
+    /// </remarks>
     long CacheGeneration => 0;
 
     /// <summary>
@@ -55,14 +61,18 @@ public interface IMarkdownSvgRenderer
 /// <summary>Inert SVG bytes or a typed host-preflight rejection.</summary>
 public sealed class MarkdownSvgSourcePreparation
 {
+    private readonly PreparedMetadataHolder? _preparedMetadata;
+
     private MarkdownSvgSourcePreparation(
         byte[]? sanitizedBytes,
         MarkdownSvgFailureReason? failureReason,
-        string? failureDescription)
+        string? failureDescription,
+        PreparedMetadataHolder? preparedMetadata = null)
     {
         SanitizedBytes = sanitizedBytes;
         FailureReason = failureReason;
         FailureDescription = failureDescription;
+        _preparedMetadata = preparedMetadata;
     }
 
     /// <summary>Gets the admitted static source, or null for a rejection.</summary>
@@ -81,6 +91,33 @@ public sealed class MarkdownSvgSourcePreparation
         return new MarkdownSvgSourcePreparation(sanitizedBytes, null, null);
     }
 
+    internal static MarkdownSvgSourcePreparation AdmitWithMetadata(
+        byte[] sanitizedBytes,
+        SvgSourceMetadata metadata)
+    {
+        ArgumentNullException.ThrowIfNull(sanitizedBytes);
+        return new MarkdownSvgSourcePreparation(
+            sanitizedBytes,
+            null,
+            null,
+            new PreparedMetadataHolder(metadata));
+    }
+
+    internal bool TryGetPreparedMetadata(
+        byte[] expectedSource,
+        out SvgSourceMetadata metadata)
+    {
+        ArgumentNullException.ThrowIfNull(expectedSource);
+        if (ReferenceEquals(SanitizedBytes, expectedSource) && _preparedMetadata is { } holder)
+        {
+            metadata = holder.Metadata;
+            return true;
+        }
+
+        metadata = default;
+        return false;
+    }
+
     /// <summary>Creates a deterministic rejection without throwing.</summary>
     public static MarkdownSvgSourcePreparation Reject(
         MarkdownSvgFailureReason reason,
@@ -91,6 +128,11 @@ public sealed class MarkdownSvgSourcePreparation
             throw new ArgumentOutOfRangeException(nameof(reason));
         ArgumentException.ThrowIfNullOrWhiteSpace(description);
         return new MarkdownSvgSourcePreparation(null, reason, description);
+    }
+
+    private sealed class PreparedMetadataHolder(SvgSourceMetadata metadata)
+    {
+        internal SvgSourceMetadata Metadata { get; } = metadata;
     }
 }
 
@@ -124,8 +166,11 @@ public interface IMarkdownSvgDocument : IDisposable
 /// <param name="SanitizedSvgBytes">
 /// Sanitized SVG bytes admitted by the host. Providers must repeat all
 /// authoritative security and resource checks rather than trusting preflight,
-/// and must snapshot the bytes before <c>OpenAsync</c> returns. The caller may
-/// release or reuse the backing memory after that point.
+/// and must snapshot the bytes before the asynchronous <c>OpenAsync</c>
+/// operation completes. The caller must keep the backing memory unchanged and
+/// alive until that operation has completed (including cancellation or failure),
+/// and may release or reuse it afterwards. Returning a pending
+/// <c>ValueTask</c> does not complete the operation.
 /// </param>
 /// <param name="Locale">Optional BCP-47 locale used for SVG text and generic-family fallback.</param>
 /// <param name="ColorScheme">Resolved light or dark color scheme.</param>
@@ -152,7 +197,29 @@ public sealed record MarkdownSvgRenderRequest(
     int TargetHeightPixels,
     MarkdownSvgTileRegion? TileRegion = null,
     MarkdownSvgPixelFormat PixelFormat = MarkdownSvgPixelFormat.Rgba8Premultiplied,
-    MarkdownSvgRenderPriority Priority = MarkdownSvgRenderPriority.Visible);
+    MarkdownSvgRenderPriority Priority = MarkdownSvgRenderPriority.Visible)
+{
+    /// <summary>
+    /// Gets the optional exact physical-pixel viewport for the complete output.
+    /// Its ceiling must equal <see cref="TargetWidthPixels"/> and
+    /// <see cref="TargetHeightPixels"/>. The integer target remains the raster
+    /// allocation size; this value changes only the physical SVG scale and clip.
+    /// </summary>
+    public MarkdownSvgPhysicalViewport? PhysicalViewport { get; init; }
+}
+
+/// <summary>Exact physical-pixel viewport dimensions for a fractional SVG raster.</summary>
+/// <param name="Width">Positive finite viewport width in physical pixels.</param>
+/// <param name="Height">Positive finite viewport height in physical pixels.</param>
+/// <remarks>
+/// The viewport is separate from its integer raster allocation. For example,
+/// a viewport of 1112.5 by 197.5 pixels is stored in an allocation of 1113 by
+/// 198 pixels. The renderer validates that each viewport dimension rounds up
+/// to the corresponding allocation dimension before dispatching native work.
+/// </remarks>
+public readonly record struct MarkdownSvgPhysicalViewport(
+    double Width,
+    double Height);
 
 /// <summary>Host scheduling class for work that has not entered the worker.</summary>
 public enum MarkdownSvgRenderPriority

@@ -5,8 +5,14 @@ on:
     paths:
       - ".github/workflows/markdown-readme-top500.yml"
       - "eng/Invoke-TopReadmeAudit.ps1"
+      - "eng/Restore-NativeAot.ps1"
+      - "eng/New-NativeAotProvenance.ps1"
+      - "eng/Verify-NativeAotArtifact.ps1"
+      - "eng/readme-audit/NativeAotProvenance.psm1"
+      - "eng/NativeAot.props"
       - "eng/readme-audit/**"
       - "global.json"
+      - "Directory.Packages.props"
       - "Directory.Build.props"
       - "Directory.Build.targets"
       - "NuGet.config"
@@ -26,6 +32,11 @@ on:
         description: Existing full-audit run ID supplying the pinned corpus
         required: false
         type: string
+      diagnostic_corpus_run_attempt:
+        description: Attempt number when the pinned corpus comes from same-byte release mode (0 selects legacy non-release runs)
+        required: false
+        default: 0
+        type: number
       diagnostic_repeats:
         description: Independent diagnostic replays (1-5)
         required: false
@@ -46,12 +57,46 @@ on:
         required: false
         default: false
         type: boolean
+  workflow_call:
+    inputs:
+      same_byte_release:
+        description: Require a fresh full 500-case same-byte release qualification
+        required: true
+        type: boolean
+    outputs:
+      passed:
+        description: Whether the consolidated same-byte top-500 release gate passed
+        value: ${{ jobs.consolidate.outputs.release_passed }}
+      source_commit_sha:
+        description: Candidate source commit verified by every NativeAOT shard
+        value: ${{ jobs.consolidate.outputs.source_commit_sha }}
+      workflow_run_id:
+        description: Actions run ID bound into the NativeAOT provenance
+        value: ${{ jobs.consolidate.outputs.workflow_run_id }}
+      summary_sha256:
+        description: SHA-256 of the consolidated top-500 summary
+        value: ${{ jobs.consolidate.outputs.summary_sha256 }}
+      total_cases:
+        description: Number of consolidated README cases
+        value: ${{ jobs.consolidate.outputs.total_cases }}
+      passed_cases:
+        description: Number of README cases that passed
+        value: ${{ jobs.consolidate.outputs.passed_cases }}
+      same_byte_cases:
+        description: Number of cases with same-byte capture evidence
+        value: ${{ jobs.consolidate.outputs.same_byte_cases }}
+      same_byte_expected_cases:
+        description: Number of cases requiring same-byte capture evidence
+        value: ${{ jobs.consolidate.outputs.same_byte_expected_cases }}
+      consolidated_artifact_name:
+        description: Exact attempt-scoped consolidated artifact name for this successful workflow attempt
+        value: ${{ jobs.consolidate.outputs.consolidated_artifact_name }}
 
 permissions:
   contents: read
 
 concurrency:
-  group: markdown-readme-top500-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.diagnostic_rank > 0 && format('diagnostic-{0}', inputs.diagnostic_rank) || (github.event_name == 'workflow_dispatch' && inputs.same_byte_release && 'same-byte-release' || 'full') }}
+  group: markdown-readme-top500-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.diagnostic_rank > 0 && format('diagnostic-{0}', inputs.diagnostic_rank) || ((github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && inputs.same_byte_release && 'same-byte-release' || 'full') }}
   cancel-in-progress: false
 
 env:
@@ -77,7 +122,13 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Require full same-byte mode for reusable release callers
+        if: github.event_name == 'workflow_call' && inputs.same_byte_release != true
+        run: throw 'Reusable top-500 callers must request the full same_byte_release gate.'
+
       - name: Generate immutable repository and README manifest
+        env:
+          AUDIT_REQUIRE_CURRENT_CORPUS: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && inputs.same_byte_release }}
         run: |
           $output = Join-Path $env:RUNNER_TEMP 'readme-corpus\top-repositories.json'
           New-Item -ItemType Directory -Force -Path (Split-Path -Parent $output) | Out-Null
@@ -85,13 +136,19 @@ jobs:
             .\eng\readme-audit\New-TopReadmeManifest.ps1 -Count 500 -OutputPath $output
           }
           catch {
+            # A release qualification must use metadata observed during this
+            # run. A validated historical snapshot remains useful only for
+            # diagnostics; it cannot establish the current top-500 gate.
+            if ($env:AUDIT_REQUIRE_CURRENT_CORPUS -eq 'true') {
+              throw
+            }
             # The ephemeral GITHUB_TOKEN can occasionally be unavailable to
             # gh even though Actions injected it (for example while GitHub is
             # rotating an installation token). Treat that the same as a
             # metadata rate limit: use only the recent, rigorously validated
             # immutable snapshot. Parsing, validation, and integrity failures
             # remain fatal and cannot silently fall back.
-            if ($_.Exception.ToString() -notmatch '(?i)(rate limit exceeded|GitHub CLI must be authenticated)') {
+            if ($_.Exception.ToString() -notmatch '(?i)(rate limit exceeded|secondary rate limit|GitHub CLI must be authenticated)') {
               throw
             }
 
@@ -112,17 +169,79 @@ jobs:
       - name: Verify top-500 merge gates
         run: .\eng\readme-audit\Merge-TopReadmeAudit.Tests.ps1
 
+      - name: Verify NativeAOT artifact guard mutations
+        run: .\eng\readme-audit\Verify-NativeAotArtifact.Tests.ps1
+
+      - name: Verify NativeAOT provenance mutations
+        run: .\eng\readme-audit\NativeAotProvenance.Tests.ps1
+
       - name: Upload pinned corpus
         uses: actions/upload-artifact@v7
         with:
-          name: readme-top500-corpus
+          name: readme-top500-corpus${{ (github.event_name == 'workflow_call' || (github.event_name == 'workflow_dispatch' && inputs.same_byte_release)) && format('-attempt-{0}', github.run_attempt) || '' }}
           path: ${{ runner.temp }}/readme-corpus/top-repositories.json
           if-no-files-found: error
           retention-days: 14
 
+  native_aot:
+    name: Publish the canonical x64 NativeAOT audit app
+    needs: corpus
+    if: github.event_name != 'workflow_dispatch' || inputs.diagnostic_rank == 0
+    runs-on: windows-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: ./global.json
+
+      - name: Restore locked x64 NativeAOT graph
+        run: .\eng\Restore-NativeAot.ps1 -Architecture x64
+
+      - name: Publish and verify the app used by every shard
+        env:
+          SOURCE_COMMIT_SHA: ${{ github.sha }}
+          SOURCE_WORKFLOW_RUN_ID: ${{ github.run_id }}
+          SOURCE_WORKFLOW_REPOSITORY: ${{ github.repository }}
+          SOURCE_WORKFLOW_REF: ${{ github.ref }}
+        run: |
+          $publishDirectory = Join-Path $env:RUNNER_TEMP 'readme-native-aot-app'
+          & dotnet publish .\JitHub.WinUI\JitHub.WinUI.csproj `
+            -c Release -r win-x64 -p:Platform=x64 `
+            -p:GenerateAppxPackageOnBuild=false `
+            -p:SkipReleaseSecurityGate=true `
+            --no-restore --disable-build-servers -m:1 `
+            -o $publishDirectory
+          if ($LASTEXITCODE -ne 0) { throw 'README audit NativeAOT publish failed.' }
+          .\eng\Verify-NativeAotArtifact.ps1 -InputPath $publishDirectory -Architecture x64
+          .\eng\New-NativeAotProvenance.ps1 `
+            -InputPath $publishDirectory `
+            -RepositoryPath $env:GITHUB_WORKSPACE `
+            -SourceCommitSha $env:SOURCE_COMMIT_SHA `
+            -WorkflowRunId $env:SOURCE_WORKFLOW_RUN_ID `
+            -WorkflowRepository $env:SOURCE_WORKFLOW_REPOSITORY `
+            -WorkflowRef $env:SOURCE_WORKFLOW_REF
+
+      - name: Upload immutable NativeAOT audit app
+        uses: actions/upload-artifact@v7
+        with:
+          name: readme-native-aot-app${{ (github.event_name == 'workflow_call' || (github.event_name == 'workflow_dispatch' && inputs.same_byte_release)) && format('-attempt-{0}', github.run_attempt) || '' }}
+          path: ${{ runner.temp }}/readme-native-aot-app
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
   audit:
     name: Audit ranks ${{ matrix.start }}-${{ matrix.end }}
-    needs: corpus
+    needs: [corpus, native_aot]
     if: github.event_name != 'workflow_dispatch' || inputs.diagnostic_rank == 0
     runs-on: windows-latest
     timeout-minutes: 360
@@ -171,7 +290,7 @@ jobs:
           node-version: 22
 
       - name: Verify Edge navigation, transport, and profile-lifetime contracts
-        run: node --test .\eng\readme-audit\browser-launch.test.mjs .\eng\readme-audit\browser-navigation.test.mjs .\eng\readme-audit\browser-process-lifetime.test.mjs .\eng\readme-audit\cdp-client.test.mjs .\eng\readme-audit\same-byte-corpus.test.mjs .\eng\readme-audit\same-byte-edge-replay.test.mjs
+        run: node --test .\eng\readme-audit\browser-launch.test.mjs .\eng\readme-audit\browser-navigation.test.mjs .\eng\readme-audit\browser-process-lifetime.test.mjs .\eng\readme-audit\browser-process-lifetime.integration.test.mjs .\eng\readme-audit\browser-profile-cleanup.test.mjs .\eng\readme-audit\cdp-client.test.mjs .\eng\readme-audit\same-byte-corpus.test.mjs .\eng\readme-audit\same-byte-edge-replay.test.mjs .\eng\readme-audit\vendor\github-emoji-shortcodes.test.mjs .\eng\readme-audit\vendor\generate-github-emoji-shortcodes.integration.test.mjs
 
       - name: Install pinned Windows App Runtime 1.8.10
         run: .\eng\readme-audit\Install-PinnedWindowsAppRuntime.ps1
@@ -179,12 +298,19 @@ jobs:
       - name: Download pinned corpus
         uses: actions/download-artifact@v8
         with:
-          name: readme-top500-corpus
+          name: readme-top500-corpus${{ (github.event_name == 'workflow_call' || (github.event_name == 'workflow_dispatch' && inputs.same_byte_release)) && format('-attempt-{0}', github.run_attempt) || '' }}
           path: ${{ runner.temp }}/readme-corpus
+
+      - name: Download the same verified NativeAOT app for every shard
+        uses: actions/download-artifact@v8
+        with:
+          name: readme-native-aot-app${{ (github.event_name == 'workflow_call' || (github.event_name == 'workflow_dispatch' && inputs.same_byte_release)) && format('-attempt-{0}', github.run_attempt) || '' }}
+          path: ${{ runner.temp }}/readme-native-aot-app
 
       - name: Compare every README with GitHub in Edge
         env:
           AUDIT_CAPTURE_SAME_BYTE_CORPUS: ${{ inputs.same_byte_release }}
+          JITHUB_README_AUDIT_GITHUB_TOKEN: ${{ github.token }}
         run: |
           $output = Join-Path $env:RUNNER_TEMP 'readme-audit'
           $shardCount = ${{ matrix.end }} - ${{ matrix.start }} + 1
@@ -194,6 +320,10 @@ jobs:
             Configuration = 'Release'
             ManifestPath = (Join-Path $env:RUNNER_TEMP 'readme-corpus\top-repositories.json')
             OutputRoot = $output
+            AppExecutablePath = (Join-Path $env:RUNNER_TEMP 'readme-native-aot-app\JitHub.WinUI.exe')
+            NativeAotArtifact = $true
+            NativeAotProvenancePath = (Join-Path $env:RUNNER_TEMP 'readme-native-aot-app\native-aot-provenance.json')
+            SkipBuild = $true
           }
           if ($env:AUDIT_CAPTURE_SAME_BYTE_CORPUS -eq 'true') {
             $arguments.CaptureSameByteCorpus = $true
@@ -290,11 +420,12 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: readme-audit-evidence-${{ matrix.start }}-${{ matrix.end }}
+          name: readme-audit-evidence-${{ matrix.start }}-${{ matrix.end }}${{ (github.event_name == 'workflow_call' || (github.event_name == 'workflow_dispatch' && inputs.same_byte_release)) && format('-attempt-{0}', github.run_attempt) || '' }}
           path: |
             ${{ runner.temp }}/readme-audit/summary.json
             ${{ runner.temp }}/readme-audit/summary.md
             ${{ runner.temp }}/readme-audit/app-binary-ranks-*.json
+            ${{ runner.temp }}/readme-audit/native-aot-provenance-ranks-*.json
             ${{ runner.temp }}/readme-audit/screenshot-quota-ranks-*.json
             ${{ runner.temp }}/readme-audit/crash-events.json
             ${{ runner.temp }}/readme-audit/cases/**/result.json
@@ -315,7 +446,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: readme-audit-visual-${{ matrix.start }}-${{ matrix.end }}
+          name: readme-audit-visual-${{ matrix.start }}-${{ matrix.end }}${{ (github.event_name == 'workflow_call' || (github.event_name == 'workflow_dispatch' && inputs.same_byte_release)) && format('-attempt-{0}', github.run_attempt) || '' }}
           path: |
             ${{ runner.temp }}/readme-audit/cases/**/browser/**/*.png
             ${{ runner.temp }}/readme-audit/cases/**/browser/**/*.jpg
@@ -330,11 +461,21 @@ jobs:
           retention-days: 14
 
   consolidate:
-    name: Consolidate all 500 results
+    name: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && inputs.same_byte_release && 'Qualify same-byte top-500 release gate' || 'Consolidate live top-500 diagnostics (not release qualified)' }}
     if: always() && (github.event_name != 'workflow_dispatch' || inputs.diagnostic_rank == 0)
     needs: audit
     runs-on: windows-latest
     timeout-minutes: 20
+    outputs:
+      release_passed: ${{ steps.release_outputs.outputs.passed }}
+      source_commit_sha: ${{ steps.release_outputs.outputs.source_commit_sha }}
+      workflow_run_id: ${{ steps.release_outputs.outputs.workflow_run_id }}
+      summary_sha256: ${{ steps.release_outputs.outputs.summary_sha256 }}
+      total_cases: ${{ steps.release_outputs.outputs.total_cases }}
+      passed_cases: ${{ steps.release_outputs.outputs.passed_cases }}
+      same_byte_cases: ${{ steps.release_outputs.outputs.same_byte_cases }}
+      same_byte_expected_cases: ${{ steps.release_outputs.outputs.same_byte_expected_cases }}
+      consolidated_artifact_name: ${{ steps.release_outputs.outputs.consolidated_artifact_name }}
     defaults:
       run:
         shell: pwsh
@@ -347,19 +488,19 @@ jobs:
       - name: Download pinned corpus for identity validation
         uses: actions/download-artifact@v8
         with:
-          name: readme-top500-corpus
+          name: readme-top500-corpus${{ (github.event_name == 'workflow_call' || (github.event_name == 'workflow_dispatch' && inputs.same_byte_release)) && format('-attempt-{0}', github.run_attempt) || '' }}
           path: ${{ runner.temp }}/readme-audit-corpus
 
       - name: Download every audit shard
         uses: actions/download-artifact@v8
         with:
-          pattern: readme-audit-evidence-*
+          pattern: readme-audit-evidence-*${{ (github.event_name == 'workflow_call' || (github.event_name == 'workflow_dispatch' && inputs.same_byte_release)) && format('-attempt-{0}', github.run_attempt) || '' }}
           path: ${{ runner.temp }}/readme-audit-shards
           merge-multiple: true
 
       - name: Require one complete top-500 verdict
         env:
-          AUDIT_REQUIRE_SAME_BYTE_CORPUS: ${{ github.event_name == 'workflow_dispatch' && inputs.same_byte_release }}
+          AUDIT_REQUIRE_SAME_BYTE_CORPUS: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && inputs.same_byte_release }}
           AUDIT_SHARDS_RESULT: ${{ needs.audit.result }}
         run: |
           $arguments = @{
@@ -374,11 +515,27 @@ jobs:
           }
           .\eng\readme-audit\Merge-TopReadmeAudit.ps1 @arguments
 
+      - name: Publish reusable qualification outputs from the verified summary
+        if: always()
+        id: release_outputs
+        shell: pwsh
+        env:
+          AUDIT_EVENT_NAME: ${{ github.event_name }}
+          AUDIT_SAME_BYTE_RELEASE: ${{ inputs.same_byte_release }}
+          AUDIT_RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          .\MarkdownRenderer\eng\Publish-MarkdownRendererTop500WorkflowOutputs.ps1 `
+            -SummaryPath (Join-Path $env:RUNNER_TEMP 'readme-audit-consolidated\summary.json') `
+            -OutputPath $env:GITHUB_OUTPUT `
+            -WorkflowEventName $env:AUDIT_EVENT_NAME `
+            -SameByteRelease $env:AUDIT_SAME_BYTE_RELEASE `
+            -WorkflowRunAttempt $env:AUDIT_RUN_ATTEMPT
+
       - name: Upload consolidated verdict
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: readme-audit-consolidated
+          name: readme-audit-consolidated${{ (github.event_name == 'workflow_call' || (github.event_name == 'workflow_dispatch' && inputs.same_byte_release)) && format('-attempt-{0}', github.run_attempt) || '' }}
           path: ${{ runner.temp }}/readme-audit-consolidated/**
           if-no-files-found: warn
           retention-days: 30
@@ -422,6 +579,7 @@ jobs:
       - name: Download and validate the exact pinned corpus
         env:
           AUDIT_CORPUS_RUN_ID: ${{ inputs.diagnostic_corpus_run_id }}
+          AUDIT_CORPUS_RUN_ATTEMPT: ${{ inputs.diagnostic_corpus_run_attempt }}
           AUDIT_RANK: ${{ inputs.diagnostic_rank }}
           AUDIT_REPEATS: ${{ inputs.diagnostic_repeats }}
           AUDIT_PRIOR_CASES: ${{ inputs.diagnostic_prior_cases }}
@@ -430,6 +588,7 @@ jobs:
           $rank = 0
           $repeats = 0
           $priorCases = 0
+          $corpusRunAttempt = 0
           if (-not [long]::TryParse($env:AUDIT_CORPUS_RUN_ID, [ref]$corpusRunId) -or $corpusRunId -le 0) {
             throw 'diagnostic_corpus_run_id must be a positive Actions run ID.'
           }
@@ -443,10 +602,14 @@ jobs:
               $priorCases -lt 0 -or $priorCases -gt 4 -or $priorCases -ge $rank) {
             throw 'diagnostic_prior_cases must be between 0 and 4 and less than diagnostic_rank.'
           }
+          if (-not [int]::TryParse($env:AUDIT_CORPUS_RUN_ATTEMPT, [ref]$corpusRunAttempt) -or $corpusRunAttempt -lt 0) {
+            throw 'diagnostic_corpus_run_attempt must be zero or a positive attempt number.'
+          }
 
           $corpusDirectory = Join-Path $env:RUNNER_TEMP 'readme-image-corpus'
           New-Item -ItemType Directory -Force -Path $corpusDirectory | Out-Null
-          gh run download $corpusRunId --repo $env:GITHUB_REPOSITORY --name readme-top500-corpus --dir $corpusDirectory
+          $corpusArtifactName = if ($corpusRunAttempt -gt 0) { "readme-top500-corpus-attempt-$corpusRunAttempt" } else { 'readme-top500-corpus' }
+          gh run download $corpusRunId --repo $env:GITHUB_REPOSITORY --name $corpusArtifactName --dir $corpusDirectory
           if ($LASTEXITCODE -ne 0) { throw 'Could not download the requested pinned corpus.' }
           $raw = Join-Path $corpusDirectory 'top-repositories.json'
           $validated = Join-Path $corpusDirectory 'validated-top-repositories.json'

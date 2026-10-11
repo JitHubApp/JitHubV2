@@ -77,6 +77,23 @@ internal sealed class ReadmeAuditPerformanceSnapshot
             !IsValidStageDuration(snapshot.Pipeline.LayoutQueueMilliseconds) ||
             !IsValidStageDuration(snapshot.Pipeline.LayoutWorkerWallMilliseconds) ||
             !IsValidStageDuration(snapshot.Pipeline.LayoutContinuationMilliseconds) ||
+            snapshot.Pipeline.LayoutTopLevelBlockCount < 0 ||
+            snapshot.Pipeline.CanvasTextLayoutConstructorCalls < 0 ||
+            !IsValidStageDuration(snapshot.Pipeline.CanvasTextLayoutConstructorMilliseconds) ||
+            !IsValidStageDuration(snapshot.Pipeline.LayoutBlockConstructionMilliseconds) ||
+            !IsValidStageDuration(snapshot.Pipeline.LayoutMeasureArrangeMilliseconds) ||
+            !IsValidStageDuration(snapshot.Pipeline.LayoutSnapshotConstructionMilliseconds) ||
+            !IsValidStageDuration(
+                snapshot.Pipeline.InitialLayoutDispatcherSentinelDelayMilliseconds) ||
+            snapshot.Pipeline.InitialLayoutDispatcherHeartbeatSampleCount < 0 ||
+            !IsValidStageDuration(
+                snapshot.Pipeline.InitialLayoutDispatcherHeartbeatMaxGapMilliseconds) ||
+            (snapshot.Pipeline.InitialLayoutDispatcherSentinelDispatched &&
+             !snapshot.Pipeline.InitialLayoutDispatcherSentinelEnqueued) ||
+            (!snapshot.Pipeline.InitialLayoutDispatcherSentinelDispatched &&
+             snapshot.Pipeline.InitialLayoutDispatcherSentinelDelayMilliseconds > 0) ||
+            (snapshot.Pipeline.InitialLayoutDispatcherHeartbeatSampleCount == 0 &&
+             snapshot.Pipeline.InitialLayoutDispatcherHeartbeatMaxGapMilliseconds > 0) ||
             !IsValidStageDuration(snapshot.Pipeline.PublicationMilliseconds) ||
             !IsValidStageDuration(snapshot.Pipeline.CommitMilliseconds) ||
             !IsValidStageDuration(snapshot.Pipeline.OverlayResetMilliseconds) ||
@@ -148,6 +165,19 @@ internal sealed class ReadmeAuditPipelineTimingSnapshot
     public required double LayoutQueueMilliseconds { get; init; }
     public required double LayoutWorkerWallMilliseconds { get; init; }
     public required double LayoutContinuationMilliseconds { get; init; }
+    public required int LayoutTopLevelBlockCount { get; init; }
+    public required int CanvasTextLayoutConstructorCalls { get; init; }
+    public required double CanvasTextLayoutConstructorMilliseconds { get; init; }
+    public required double LayoutBlockConstructionMilliseconds { get; init; }
+    public required double LayoutMeasureArrangeMilliseconds { get; init; }
+    public required double LayoutSnapshotConstructionMilliseconds { get; init; }
+    // Optional for compatibility with performance evidence emitted before the
+    // dispatcher-delay diagnostics were added.
+    public bool InitialLayoutDispatcherSentinelEnqueued { get; init; }
+    public bool InitialLayoutDispatcherSentinelDispatched { get; init; }
+    public double InitialLayoutDispatcherSentinelDelayMilliseconds { get; init; }
+    public int InitialLayoutDispatcherHeartbeatSampleCount { get; init; }
+    public double InitialLayoutDispatcherHeartbeatMaxGapMilliseconds { get; init; }
     public required double PublicationMilliseconds { get; init; }
     public required double CommitMilliseconds { get; init; }
     public required double OverlayResetMilliseconds { get; init; }

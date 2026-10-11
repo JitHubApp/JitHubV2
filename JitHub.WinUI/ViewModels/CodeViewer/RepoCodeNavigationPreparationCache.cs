@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Services;
 using JitHub.Services.CodeViewer;
+using JitHub.Services.Markdown;
 using JitHub.WinUI.Helpers;
 
 namespace JitHub.WinUI.ViewModels.CodeViewer;
@@ -253,6 +254,10 @@ public sealed partial class RepoCodeNavigationPreparationCache
                 _languageResolver,
                 cancellationToken),
             cancellationToken).ConfigureAwait(false);
+        // The offline audit's root is intentionally a one-file projection. Do not
+        // schedule a second root request that could promote the partial list to an
+        // authoritative repository listing or introduce unrelated repository data.
+        rootListingUnavailable |= MarkdownLifecycleAutomationBridge.IsOfflineSameBytePublicAuditEnabled;
         return new PreparedRepoCodeNavigation(result, prepared, readme, rootListingUnavailable);
     }
 

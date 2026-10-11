@@ -1,10 +1,16 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 
 internal static class NativeFirstViewportImagesReadyContract
 {
+    internal const string ExpectedVisualProfileId = "github-primer-light";
+    internal const int ExpectedVisualProfileVersion = 4;
+    internal const string ExpectedVisualProfileCssSha256 =
+        "d1f276efd42d802835c33480c90cd54544afab7a20eae1be00d8b0a7f881f8f1";
+
     private const double InitialViewportTopToleranceDip = 0.5;
 
     internal static NativeLifecycleReadySignal ReadLifecycleReadySignal(string path)
@@ -25,7 +31,62 @@ internal static class NativeFirstViewportImagesReadyContract
             ReadRequiredInt32(root, "ProcessId", path),
             ReadRequiredString(root, "Host", path),
             ReadRequiredInt64(root, "Generation", path),
-            ReadRequiredTimestamp(root, "Timestamp", path));
+            ReadRequiredTimestamp(root, "Timestamp", path),
+            ReadRequiredInt64(root, "StopwatchTicks", path),
+            ReadRequiredInt64(root, "StopwatchFrequency", path),
+            ReadOptionalSameByteReadmeSourceAdmission(root, path),
+            ReadOptionalSameByteReadmeSourceAdmissionFailure(root, path),
+            ReadOptionalVisualProfile(root, path));
+    }
+
+    // The audit route normally opens its README while the shell starts. A
+    // source-bound render signal is sufficient to avoid a redundant UIA tree
+    // query, but it is not a replacement for the later viewport-ready and
+    // full-traversal validation.
+    internal static bool MatchesAlreadyRenderedReadme(
+        NativeRenderCompleteSignal render,
+        int processId,
+        string expectedHost,
+        string expectedRepositoryFullName,
+        string expectedRef,
+        string expectedPath,
+        string expectedReadmeGitBlobSha1,
+        string expectedRawSha256,
+        long expectedRawByteSize)
+    {
+        NativeVisualProfileSignal? visualProfile = render.VisualProfile;
+        NativeSameByteReadmeSourceAdmissionSignal? source =
+            render.SameByteReadmeSourceAdmission;
+        return processId > 0 &&
+            render.ProcessId == processId &&
+            string.Equals(render.Host, expectedHost, StringComparison.Ordinal) &&
+            render.Generation > 0 &&
+            render.StopwatchTicks > 0 &&
+            render.StopwatchFrequency > 0 &&
+            visualProfile is not null &&
+            string.Equals(visualProfile.Id, ExpectedVisualProfileId, StringComparison.Ordinal) &&
+            visualProfile.Version == ExpectedVisualProfileVersion &&
+            string.Equals(
+                visualProfile.CssSha256,
+                ExpectedVisualProfileCssSha256,
+                StringComparison.OrdinalIgnoreCase) &&
+            render.SameByteReadmeSourceAdmissionFailure is null &&
+            source is not null &&
+            source.ProcessId == processId &&
+            string.Equals(source.Host, expectedHost, StringComparison.Ordinal) &&
+            source.Generation == render.Generation &&
+            source.StopwatchTicks > 0 &&
+            source.StopwatchFrequency == render.StopwatchFrequency &&
+            source.StopwatchTicks <= render.StopwatchTicks &&
+            string.Equals(
+                $"{source.SourceOwner}/{source.SourceRepository}",
+                expectedRepositoryFullName,
+                StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(source.SourceRef, expectedRef, StringComparison.Ordinal) &&
+            string.Equals(source.SourcePath, expectedPath, StringComparison.Ordinal) &&
+            source.RawByteSize == expectedRawByteSize &&
+            string.Equals(source.RawSha256, expectedRawSha256, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(source.ReadmeGitBlobSha1, expectedReadmeGitBlobSha1, StringComparison.OrdinalIgnoreCase);
     }
 
     internal static NativeFirstViewportImagesReadySignal ReadImagesReadySignal(string path)
@@ -65,7 +126,9 @@ internal static class NativeFirstViewportImagesReadyContract
             viewportMeasured.GetBoolean(),
             loadingImages.GetBoolean(),
             readmeGitBlobSha1,
-            ReadRequiredTimestamp(root, "Timestamp", path));
+            ReadRequiredTimestamp(root, "Timestamp", path),
+            ReadRequiredInt64(root, "StopwatchTicks", path),
+            ReadRequiredInt64(root, "StopwatchFrequency", path));
     }
 
     internal static void ValidateRenderIdentity(
@@ -79,6 +142,8 @@ internal static class NativeFirstViewportImagesReadyContract
             renderComplete.ProcessId != processId ||
             !string.Equals(renderComplete.Host, expectedHost, StringComparison.Ordinal) ||
             renderComplete.Generation <= 0 ||
+            renderComplete.StopwatchTicks <= 0 ||
+            renderComplete.StopwatchFrequency <= 0 ||
             renderComplete.Timestamp < hostReady.Timestamp)
         {
             throw new InvalidDataException(
@@ -175,6 +240,15 @@ internal static class NativeFirstViewportImagesReadyContract
             mismatches.Add("TimestampAfterRenderComplete");
         if (ready.Timestamp < hostReady.Timestamp)
             mismatches.Add("TimestampAfterHostReady");
+        if (ready.StopwatchTicks <= 0)
+            mismatches.Add(nameof(ready.StopwatchTicks));
+        if (ready.StopwatchFrequency <= 0 ||
+            ready.StopwatchFrequency != renderComplete.StopwatchFrequency)
+        {
+            mismatches.Add(nameof(ready.StopwatchFrequency));
+        }
+        if (ready.StopwatchTicks < renderComplete.StopwatchTicks)
+            mismatches.Add("StopwatchTicksAfterRenderComplete");
         if (!string.Equals(
                 ready.ReadmeGitBlobSha1,
                 expectedReadmeGitBlobSha1,
@@ -184,6 +258,80 @@ internal static class NativeFirstViewportImagesReadyContract
         }
 
         return mismatches;
+    }
+
+    internal static double ValidateSameByteSourceTiming(
+        int processId,
+        string expectedHost,
+        string expectedReadmeGitBlobSha1,
+        int expectedRawByteSize,
+        string expectedRawSha256,
+        int expectedDecodedTextUtf8ByteSize,
+        string expectedDecodedTextSha256,
+        NativeRenderCompleteSignal renderComplete,
+        NativeFirstViewportImagesReadySignal ready)
+    {
+        List<string> mismatches = new(14);
+        NativeSameByteReadmeSourceAdmissionSignal? admission = renderComplete.SameByteReadmeSourceAdmission;
+        if (admission is null)
+        {
+            mismatches.Add(nameof(renderComplete.SameByteReadmeSourceAdmission));
+        }
+        else
+        {
+            if (admission.ProcessId != processId)
+                mismatches.Add(nameof(admission.ProcessId));
+            if (!string.Equals(admission.Host, expectedHost, StringComparison.Ordinal))
+                mismatches.Add(nameof(admission.Host));
+            if (admission.Generation != renderComplete.Generation || admission.Generation != ready.Generation)
+                mismatches.Add(nameof(admission.Generation));
+            if (admission.RawByteSize != expectedRawByteSize)
+                mismatches.Add(nameof(admission.RawByteSize));
+            if (!string.Equals(admission.RawSha256, expectedRawSha256, StringComparison.OrdinalIgnoreCase))
+                mismatches.Add(nameof(admission.RawSha256));
+            if (admission.DecodedTextUtf8ByteSize != expectedDecodedTextUtf8ByteSize)
+                mismatches.Add(nameof(admission.DecodedTextUtf8ByteSize));
+            if (!string.Equals(admission.DecodedTextSha256, expectedDecodedTextSha256, StringComparison.OrdinalIgnoreCase))
+                mismatches.Add(nameof(admission.DecodedTextSha256));
+            if (!string.Equals(admission.ReadmeGitBlobSha1, expectedReadmeGitBlobSha1, StringComparison.OrdinalIgnoreCase))
+                mismatches.Add(nameof(admission.ReadmeGitBlobSha1));
+            if (admission.StopwatchTicks <= 0)
+                mismatches.Add(nameof(admission.StopwatchTicks));
+            if (admission.StopwatchFrequency <= 0 ||
+                admission.StopwatchFrequency != renderComplete.StopwatchFrequency ||
+                admission.StopwatchFrequency != ready.StopwatchFrequency)
+            {
+                mismatches.Add(nameof(admission.StopwatchFrequency));
+            }
+            if (admission.StopwatchTicks > renderComplete.StopwatchTicks)
+                mismatches.Add("StopwatchTicksBeforeRenderComplete");
+            if (renderComplete.StopwatchTicks > ready.StopwatchTicks)
+                mismatches.Add("RenderCompleteBeforeReadyStopwatchTicks");
+        }
+
+        if (expectedRawByteSize <= 0 || !IsSha256(expectedRawSha256))
+            mismatches.Add("ExpectedRawIdentity");
+        if (expectedDecodedTextUtf8ByteSize < 0 || !IsSha256(expectedDecodedTextSha256))
+            mismatches.Add("ExpectedDecodedTextIdentity");
+        if (!IsGitSha1(expectedReadmeGitBlobSha1))
+            mismatches.Add("ExpectedReadmeGitBlobSha1");
+
+        if (mismatches.Count > 0)
+        {
+            throw new InvalidDataException(
+                "The native same-byte source-admission timing failed these checks: " +
+                string.Join(", ", mismatches) + ".");
+        }
+
+        long elapsedTicks = ready.StopwatchTicks - admission!.StopwatchTicks;
+        double elapsedMilliseconds = elapsedTicks * 1000d / admission.StopwatchFrequency;
+        if (elapsedTicks <= 0 || !double.IsFinite(elapsedMilliseconds) || elapsedMilliseconds <= 0)
+        {
+            throw new InvalidDataException(
+                "The native same-byte source-admission timing was not a finite positive monotonic interval.");
+        }
+
+        return elapsedMilliseconds;
     }
 
     private static JsonElement ReadRequiredProperty(JsonElement root, string name, string path)
@@ -197,12 +345,104 @@ internal static class NativeFirstViewportImagesReadyContract
         return value;
     }
 
+    private static NativeSameByteReadmeSourceAdmissionSignal? ReadOptionalSameByteReadmeSourceAdmission(
+        JsonElement root,
+        string path)
+    {
+        if (!root.TryGetProperty("SameByteReadmeSourceAdmission", out JsonElement value) ||
+            value.ValueKind == JsonValueKind.Null)
+        {
+            return null;
+        }
+
+        if (value.ValueKind != JsonValueKind.Object)
+            throw new InvalidDataException($"Native lifecycle signal '{path}' has an invalid same-byte source-admission object.");
+
+        return new NativeSameByteReadmeSourceAdmissionSignal(
+            ReadRequiredInt32(value, "ProcessId", path),
+            ReadRequiredString(value, "Host", path),
+            ReadRequiredInt64(value, "Generation", path),
+            ReadRequiredInt32(value, "RawByteSize", path),
+            ReadRequiredString(value, "RawSha256", path),
+            ReadRequiredInt32(value, "DecodedTextUtf8ByteSize", path),
+            ReadRequiredString(value, "DecodedTextSha256", path),
+            ReadRequiredString(value, "ReadmeGitBlobSha1", path),
+            ReadRequiredInt64(value, "StopwatchTicks", path),
+            ReadRequiredInt64(value, "StopwatchFrequency", path),
+            ReadOptionalString(value, "SourceOwner", path),
+            ReadOptionalString(value, "SourceRepository", path),
+            ReadOptionalString(value, "SourceRef", path),
+            ReadOptionalString(value, "SourcePath", path));
+    }
+
+    private static NativeSameByteReadmeSourceAdmissionFailureSignal? ReadOptionalSameByteReadmeSourceAdmissionFailure(
+        JsonElement root,
+        string path)
+    {
+        if (!root.TryGetProperty("SameByteReadmeSourceAdmissionFailure", out JsonElement value) ||
+            value.ValueKind == JsonValueKind.Null)
+        {
+            return null;
+        }
+
+        if (value.ValueKind != JsonValueKind.Object)
+            throw new InvalidDataException($"Native lifecycle signal '{path}' has an invalid same-byte source-admission failure object.");
+
+        string status = ReadRequiredString(value, "Status", path);
+        if (status is not (
+            "audit-disabled" or
+            "document-identity-missing" or
+            "source-evidence-missing" or
+            "git-blob-mismatch" or
+            "decoded-text-size-mismatch" or
+            "decoded-text-digest-mismatch" or
+            "generation-not-advanced" or
+            "assignment-generation-unavailable" or
+            "assignment-generation-superseded" or
+            "source-identity-changed" or
+            "monotonic-clock-invalid" or
+            "markdown-unchanged" or
+            "mutable-source-ref" or
+            "rendered-document-changed" or
+            "admission-state-invalid"))
+        {
+            throw new InvalidDataException($"Native lifecycle signal '{path}' has an unknown same-byte source-admission failure status.");
+        }
+
+        return new NativeSameByteReadmeSourceAdmissionFailureSignal(
+            ReadRequiredString(value, "Host", path),
+            ReadRequiredInt64(value, "Generation", path),
+            status);
+    }
+
     private static int ReadRequiredInt32(JsonElement root, string name, string path)
     {
         JsonElement value = ReadRequiredProperty(root, name, path);
         if (value.ValueKind != JsonValueKind.Number || !value.TryGetInt32(out int result))
             throw new InvalidDataException($"Native lifecycle signal '{path}' has an invalid '{name}' value.");
         return result;
+    }
+
+    private static NativeVisualProfileSignal? ReadOptionalVisualProfile(
+        JsonElement root,
+        string path)
+    {
+        if (!root.TryGetProperty("VisualProfile", out JsonElement value) ||
+            value.ValueKind == JsonValueKind.Null)
+        {
+            return null;
+        }
+
+        if (value.ValueKind != JsonValueKind.Object)
+            throw new InvalidDataException($"Native lifecycle signal '{path}' has an invalid visual profile object.");
+
+        string id = ReadRequiredString(value, "Id", path);
+        int version = ReadRequiredInt32(value, "Version", path);
+        string cssSha256 = ReadRequiredString(value, "CssSha256", path);
+        if (version < 1 || !IsSha256(cssSha256))
+            throw new InvalidDataException($"Native lifecycle signal '{path}' has an invalid visual profile identity.");
+
+        return new NativeVisualProfileSignal(id, version, cssSha256.ToLowerInvariant());
     }
 
     private static long ReadRequiredInt64(JsonElement root, string name, string path)
@@ -229,6 +469,15 @@ internal static class NativeFirstViewportImagesReadyContract
         return value.GetString()!;
     }
 
+    private static string? ReadOptionalString(JsonElement root, string name, string path)
+    {
+        if (!root.TryGetProperty(name, out JsonElement value) || value.ValueKind == JsonValueKind.Null)
+            return null;
+        if (value.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(value.GetString()))
+            throw new InvalidDataException($"Native lifecycle signal '{path}' has an invalid '{name}' value.");
+        return value.GetString();
+    }
+
     private static DateTimeOffset ReadRequiredTimestamp(JsonElement root, string name, string path)
     {
         JsonElement value = ReadRequiredProperty(root, name, path);
@@ -236,6 +485,12 @@ internal static class NativeFirstViewportImagesReadyContract
             throw new InvalidDataException($"Native lifecycle signal '{path}' has an invalid '{name}' value.");
         return timestamp;
     }
+
+    private static bool IsSha256(string value) =>
+        value.Length == 64 && value.All(Uri.IsHexDigit);
+
+    private static bool IsGitSha1(string value) =>
+        value.Length == 40 && value.All(Uri.IsHexDigit);
 }
 
 internal sealed record NativeLifecycleReadySignal(
@@ -247,7 +502,17 @@ internal sealed record NativeRenderCompleteSignal(
     int ProcessId,
     string Host,
     long Generation,
-    DateTimeOffset Timestamp);
+    DateTimeOffset Timestamp,
+    long StopwatchTicks,
+    long StopwatchFrequency,
+    NativeSameByteReadmeSourceAdmissionSignal? SameByteReadmeSourceAdmission = null,
+    NativeSameByteReadmeSourceAdmissionFailureSignal? SameByteReadmeSourceAdmissionFailure = null,
+    NativeVisualProfileSignal? VisualProfile = null);
+
+internal sealed record NativeVisualProfileSignal(
+    string Id,
+    int Version,
+    string CssSha256);
 
 internal sealed record NativeFirstViewportImagesReadySignal(
     int ProcessId,
@@ -261,4 +526,68 @@ internal sealed record NativeFirstViewportImagesReadySignal(
     bool ViewportMeasured,
     bool HasVisibleLoadingImages,
     string? ReadmeGitBlobSha1,
-    DateTimeOffset Timestamp);
+    DateTimeOffset Timestamp,
+    long StopwatchTicks,
+    long StopwatchFrequency);
+
+internal sealed record NativeSameByteReadmeSourceAdmissionSignal(
+    int ProcessId,
+    string Host,
+    long Generation,
+    int RawByteSize,
+    string RawSha256,
+    int DecodedTextUtf8ByteSize,
+    string DecodedTextSha256,
+    string ReadmeGitBlobSha1,
+    long StopwatchTicks,
+    long StopwatchFrequency,
+    string? SourceOwner = null,
+    string? SourceRepository = null,
+    string? SourceRef = null,
+    string? SourcePath = null);
+
+internal sealed record NativeSameByteReadmeSourceAdmissionFailureSignal(
+    string Host,
+    long Generation,
+    string Status);
+
+internal static class NativeScrollTerminalContract
+{
+    private const double ScrollPercentTolerance = 0.01;
+    private const double TerminalScrollPercent = 100 - 0.000001;
+
+    internal static bool IsTerminalNoOpCandidate(
+        double currentPercent,
+        double settledPercent,
+        double settledViewSize,
+        bool verticallyScrollable)
+    {
+        return double.IsFinite(currentPercent) &&
+            double.IsFinite(settledPercent) &&
+            double.IsFinite(settledViewSize) &&
+            settledViewSize > 0 && settledViewSize <= 100 &&
+            Math.Abs(settledPercent - currentPercent) <= ScrollPercentTolerance &&
+            HasTerminalEvidence(settledPercent, verticallyScrollable);
+    }
+
+    internal static bool IsStableTerminalConfirmation(
+        double candidatePercent,
+        double candidateViewSize,
+        double currentPercent,
+        double currentViewSize,
+        bool verticallyScrollable)
+    {
+        return double.IsFinite(candidatePercent) &&
+            double.IsFinite(candidateViewSize) &&
+            double.IsFinite(currentPercent) &&
+            double.IsFinite(currentViewSize) &&
+            candidateViewSize > 0 && candidateViewSize <= 100 &&
+            currentViewSize > 0 && currentViewSize <= 100 &&
+            Math.Abs(currentPercent - candidatePercent) <= ScrollPercentTolerance &&
+            Math.Abs(currentViewSize - candidateViewSize) <= ScrollPercentTolerance &&
+            HasTerminalEvidence(currentPercent, verticallyScrollable);
+    }
+
+    private static bool HasTerminalEvidence(double percent, bool verticallyScrollable) =>
+        percent >= TerminalScrollPercent || !verticallyScrollable;
+}

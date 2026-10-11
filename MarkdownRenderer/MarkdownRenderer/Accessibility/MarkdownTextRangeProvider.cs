@@ -19,7 +19,8 @@ namespace MarkdownRenderer.Accessibility;
 internal sealed partial class MarkdownTextRangeProvider : ITextRangeProvider
 {
     private readonly MarkdownAutomationPeer _peer;
-    private readonly InlineContainerBox? _exactRangeScope;
+    private readonly int? _exactRangeScopeBlockIndex;
+    private readonly long _documentGeneration;
     private int _start;
     private int _end;
 
@@ -30,28 +31,67 @@ internal sealed partial class MarkdownTextRangeProvider : ITextRangeProvider
         InlineContainerBox? exactRangeScope = null)
     {
         _peer = peer;
-        _exactRangeScope = exactRangeScope;
-        var doc = _peer.GetSemanticDocument();
+        _exactRangeScopeBlockIndex = exactRangeScope?.BlockIndex;
+        var doc = _peer.GetCurrentTextRangeDocument(out long generation);
+        _documentGeneration = generation;
         _start = Math.Clamp(start, 0, doc.Text.Length);
         _end = Math.Clamp(end, _start, doc.Text.Length);
     }
 
+    internal MarkdownTextRangeProvider(
+        MarkdownAutomationPeer peer,
+        int start,
+        int end,
+        int? exactRangeScopeBlockIndex,
+        long documentGeneration,
+        int documentLength)
+    {
+        _peer = peer;
+        _exactRangeScopeBlockIndex = exactRangeScopeBlockIndex;
+        _documentGeneration = documentGeneration;
+        _start = Math.Clamp(start, 0, documentLength);
+        _end = Math.Clamp(end, _start, documentLength);
+    }
+
     public void AddToSelection() => Select();
 
-    public ITextRangeProvider Clone() =>
-        new MarkdownTextRangeProvider(_peer, _start, _end, _exactRangeScope);
+    public ITextRangeProvider Clone()
+    {
+        MarkdownSemanticDocument document = GetCurrentDocument();
+        return new MarkdownTextRangeProvider(
+            _peer,
+            _start,
+            _end,
+            _exactRangeScopeBlockIndex,
+            _documentGeneration,
+            document.Text.Length);
+    }
 
     public bool Compare(ITextRangeProvider range)
     {
-        return range is MarkdownTextRangeProvider other &&
+        _ = GetCurrentDocument();
+        if (range is not MarkdownTextRangeProvider other)
+            return false;
+
+        _ = other.GetCurrentDocument();
+
+        return
                ReferenceEquals(other._peer, _peer) &&
+               other._documentGeneration == _documentGeneration &&
                other._start == _start &&
                other._end == _end;
     }
 
     public int CompareEndpoints(TextPatternRangeEndpoint endpoint, ITextRangeProvider targetRange, TextPatternRangeEndpoint targetEndpoint)
     {
+        _ = GetCurrentDocument();
         if (targetRange is not MarkdownTextRangeProvider other) return 0;
+        _ = other.GetCurrentDocument();
+        if (!ReferenceEquals(other._peer, _peer))
+            return 0;
+
+        if (other._documentGeneration != _documentGeneration)
+            return 0;
         int a = endpoint == TextPatternRangeEndpoint.Start ? _start : _end;
         int b = targetEndpoint == TextPatternRangeEndpoint.Start ? other._start : other._end;
         return a.CompareTo(b);
@@ -60,7 +100,7 @@ internal sealed partial class MarkdownTextRangeProvider : ITextRangeProvider
     public void ExpandToEnclosingUnit(TextUnit unit)
     {
         unit = NormalizeSupportedTextUnit(unit);
-        var doc = _peer.GetSemanticDocument();
+        var doc = GetCurrentDocument();
         switch (unit)
         {
             case TextUnit.Character:
@@ -102,6 +142,7 @@ internal sealed partial class MarkdownTextRangeProvider : ITextRangeProvider
 
     public ITextRangeProvider? FindAttribute(int attributeId, object value, bool backward)
     {
+        _ = GetCurrentDocument();
         var attribute = (AutomationTextAttributesEnum)attributeId;
         var fixedValue = GetFixedAttributeValue(attribute);
         if (fixedValue is not UnsupportedAttributeValue)
@@ -110,7 +151,7 @@ internal sealed partial class MarkdownTextRangeProvider : ITextRangeProvider
         }
 
         MarkdownTextFormatCache cache = GetFormatRunCache();
-        var doc = _peer.GetSemanticDocument();
+        var doc = GetCurrentDocument();
         int rangeStart = Math.Clamp(_start, 0, doc.Text.Length);
         int rangeEnd = Math.Clamp(_end, rangeStart, doc.Text.Length);
         bool collapsed = rangeStart == rangeEnd;
@@ -125,8 +166,7 @@ internal sealed partial class MarkdownTextRangeProvider : ITextRangeProvider
             var candidate = GetStyleAttributeValue(attribute, run);
             if (AttributeValuesEqual(candidate, value))
             {
-                return new MarkdownTextRangeProvider(
-                    _peer,
+                return CreateRange(
                     collapsed ? rangeStart : Math.Max(rangeStart, run.Start),
                     collapsed ? rangeStart : Math.Min(rangeEnd, run.End));
             }
@@ -137,8 +177,8 @@ internal sealed partial class MarkdownTextRangeProvider : ITextRangeProvider
 
     public ITextRangeProvider? FindText(string text, bool backward, bool ignoreCase)
     {
+        var doc = GetCurrentDocument();
         if (string.IsNullOrEmpty(text)) return null;
-        var doc = _peer.GetSemanticDocument();
         int rangeStart = Math.Clamp(_start, 0, doc.Text.Length);
         int rangeEnd = Math.Clamp(_end, rangeStart, doc.Text.Length);
         if (rangeEnd - rangeStart < text.Length) return null;
@@ -152,12 +192,13 @@ internal sealed partial class MarkdownTextRangeProvider : ITextRangeProvider
         int index = relative >= 0 ? rangeStart + relative : -1;
 
         return index >= 0
-            ? new MarkdownTextRangeProvider(_peer, index, index + text.Length)
+            ? CreateRange(index, index + text.Length)
             : null;
     }
 
     public object GetAttributeValue(int attributeId)
     {
+        _ = GetCurrentDocument();
         var attribute = (AutomationTextAttributesEnum)attributeId;
         var fixedValue = GetFixedAttributeValue(attribute);
         if (fixedValue is not UnsupportedAttributeValue)
@@ -187,12 +228,31 @@ internal sealed partial class MarkdownTextRangeProvider : ITextRangeProvider
 
     public void GetBoundingRectangles(out double[] boundingRectangles)
     {
-        var doc = _peer.GetSemanticDocument();
+        var doc = GetCurrentDocument();
+        if (!_peer.TryReadLayoutGeometry(
+                doc,
+                _documentGeneration,
+                (Document: doc, Range: this),
+                static (snapshot, state) => state.Document.GetDocumentRects(
+                    state.Range._start,
+                    state.Range._end,
+                    expandDegenerate: false,
+                    placementTransform: snapshot.ToLogicalRectForBlockIndexUnderPaint,
+                    placementScope: snapshot.EnterPlacementTransformScopeForBlockIndexUnderPaint).ToArray(),
+                out Windows.Foundation.Rect[] documentRects))
+        {
+            boundingRectangles = Array.Empty<double>();
+            return;
+        }
+
         var visibleBounds = _peer.GetVisibleScreenBounds();
+        for (int index = 0; index < documentRects.Length; index++)
+            documentRects[index] = _peer.GetScreenRectForDocumentRect(documentRects[index]);
+
         boundingRectangles = BuildVisibleBoundingRectangles(
             _start,
             _end,
-            doc.GetDocumentRects(_start, _end).Select(_peer.GetScreenRectForDocumentRect),
+            documentRects,
             visibleBounds);
     }
 
@@ -221,12 +281,12 @@ internal sealed partial class MarkdownTextRangeProvider : ITextRangeProvider
 
     public IRawElementProviderSimple[] GetChildren()
     {
+        var doc = GetCurrentDocument();
         var providers = new List<IRawElementProviderSimple>();
-        var doc = _peer.GetSemanticDocument();
-        MarkdownSemanticNode enclosing = doc.GetEnclosingNodeForTextRange(
+        MarkdownSemanticNode enclosing = doc.GetEnclosingNodeForTextRangeByBlockIndex(
             _start,
             _end,
-            _exactRangeScope);
+            _exactRangeScopeBlockIndex);
         foreach (MarkdownSemanticNode node in
                  doc.GetImmediateChildrenIntersectingTextRange(enclosing, _start, _end))
         {
@@ -239,11 +299,11 @@ internal sealed partial class MarkdownTextRangeProvider : ITextRangeProvider
 
     public IRawElementProviderSimple GetEnclosingElement()
     {
-        MarkdownSemanticDocument document = _peer.GetSemanticDocument();
-        MarkdownSemanticNode enclosing = document.GetEnclosingNodeForTextRange(
+        MarkdownSemanticDocument document = GetCurrentDocument();
+        MarkdownSemanticNode enclosing = document.GetEnclosingNodeForTextRangeByBlockIndex(
             _start,
             _end,
-            _exactRangeScope);
+            _exactRangeScopeBlockIndex);
         return !ReferenceEquals(enclosing, document.Root) &&
                _peer.TryGetPeerForSemanticNode(enclosing, out AutomationPeer peer)
             ? _peer.ProviderFromPeerForTextRange(peer)
@@ -252,7 +312,7 @@ internal sealed partial class MarkdownTextRangeProvider : ITextRangeProvider
 
     public string GetText(int maxLength)
     {
-        var doc = _peer.GetSemanticDocument();
+        var doc = GetCurrentDocument();
         int start = Math.Clamp(_start, 0, doc.Text.Length);
         int end = Math.Clamp(_end, start, doc.Text.Length);
         int length = end - start;
@@ -262,11 +322,11 @@ internal sealed partial class MarkdownTextRangeProvider : ITextRangeProvider
 
     public int Move(TextUnit unit, int count)
     {
+        var doc = GetCurrentDocument();
         if (count == 0) return 0;
         unit = NormalizeSupportedTextUnit(unit);
         if (unit == TextUnit.Format)
             return MoveByFormat(count);
-        var doc = _peer.GetSemanticDocument();
         string text = doc.Text;
         if (text.Length == 0)
         {
@@ -284,17 +344,23 @@ internal sealed partial class MarkdownTextRangeProvider : ITextRangeProvider
 
     public void MoveEndpointByRange(TextPatternRangeEndpoint endpoint, ITextRangeProvider targetRange, TextPatternRangeEndpoint targetEndpoint)
     {
+        _ = GetCurrentDocument();
         if (targetRange is not MarkdownTextRangeProvider other) return;
+        _ = other.GetCurrentDocument();
+        if (!ReferenceEquals(other._peer, _peer))
+            throw new InvalidOperationException("Text ranges from different documents cannot be combined.");
+        if (other._documentGeneration != _documentGeneration)
+            throw new InvalidOperationException("Text ranges from different document generations cannot be combined.");
         int target = targetEndpoint == TextPatternRangeEndpoint.Start ? other._start : other._end;
         SetEndpoint(endpoint, target);
     }
 
     public int MoveEndpointByUnit(TextPatternRangeEndpoint endpoint, TextUnit unit, int count)
     {
+        var doc = GetCurrentDocument();
         unit = NormalizeSupportedTextUnit(unit);
         int current = endpoint == TextPatternRangeEndpoint.Start ? _start : _end;
         int actual;
-        var doc = _peer.GetSemanticDocument();
         int moved = unit == TextUnit.Format
             ? MoveFormatOffset(current, count, out actual)
             : MoveOffset(doc.Text, doc.TextElementBoundaries, current, unit, count, out actual);
@@ -304,21 +370,35 @@ internal sealed partial class MarkdownTextRangeProvider : ITextRangeProvider
 
     public void RemoveFromSelection()
     {
+        _ = GetCurrentDocument();
         _peer.OwnerControl.ClearAutomationSelection();
     }
 
     public void ScrollIntoView(bool alignToTop)
     {
-        var doc = _peer.GetSemanticDocument();
+        var doc = GetCurrentDocument();
         foreach (var image in doc.GetImagesIntersectingTextRange(_start, _end))
             image.EnsureLoading();
 
         bool hasDocumentRange = doc.TryGetDocumentRange(_start, _end, out var documentRange);
 
-        foreach (var rect in doc.GetDocumentRects(_start, _end, expandDegenerate: true))
+        if (_peer.TryReadLayoutGeometry(
+                doc,
+                _documentGeneration,
+                (Document: doc, Range: this),
+                static (snapshot, state) => state.Document.GetDocumentRects(
+                    state.Range._start,
+                    state.Range._end,
+                    expandDegenerate: true,
+                    placementTransform: snapshot.ToLogicalRectForBlockIndexUnderPaint,
+                    placementScope: snapshot.EnterPlacementTransformScopeForBlockIndexUnderPaint).ToArray(),
+                out Windows.Foundation.Rect[] documentRects))
         {
-            _peer.OwnerControl.ScrollDocumentRectIntoView(rect, alignToTop);
-            return;
+            foreach (var rect in documentRects)
+            {
+                _peer.OwnerControl.ScrollDocumentRectIntoView(rect, alignToTop);
+                return;
+            }
         }
 
         // Lazy layout can expose semantic text before the target block has a
@@ -330,13 +410,43 @@ internal sealed partial class MarkdownTextRangeProvider : ITextRangeProvider
 
     public void Select()
     {
-        var doc = _peer.GetSemanticDocument();
+        var doc = GetCurrentDocument();
         if (doc.TryGetDocumentRange(_start, _end, out var range))
             _peer.OwnerControl.SelectAutomationRange(range);
     }
 
-    internal int Start => _start;
-    internal int End => _end;
+    internal int Start
+    {
+        get
+        {
+            _ = GetCurrentDocument();
+            return _start;
+        }
+    }
+
+    internal int End
+    {
+        get
+        {
+            _ = GetCurrentDocument();
+            return _end;
+        }
+    }
+
+    private MarkdownSemanticDocument GetCurrentDocument() =>
+        _peer.GetTextRangeDocument(_documentGeneration);
+
+    private MarkdownTextRangeProvider CreateRange(int start, int end)
+    {
+        MarkdownSemanticDocument document = GetCurrentDocument();
+        return new MarkdownTextRangeProvider(
+            _peer,
+            start,
+            end,
+            null,
+            _documentGeneration,
+            document.Text.Length);
+    }
 
     private sealed class UnsupportedAttributeValue
     {
@@ -441,7 +551,7 @@ internal sealed partial class MarkdownTextRangeProvider : ITextRangeProvider
 
     private IEnumerable<MarkdownTextStyleRun> EnumerateTextStyleRuns()
     {
-        var doc = _peer.GetSemanticDocument();
+        var doc = GetCurrentDocument();
         int rangeStart = Math.Clamp(_start, 0, doc.Text.Length);
         int rangeEnd = Math.Clamp(_end, rangeStart, doc.Text.Length);
         bool collapsed = rangeStart == rangeEnd;
@@ -469,7 +579,7 @@ internal sealed partial class MarkdownTextRangeProvider : ITextRangeProvider
 
     private MarkdownTextStyleRun GetFormatRunAt(int offset)
     {
-        var doc = _peer.GetSemanticDocument();
+        var doc = GetCurrentDocument();
         MarkdownTextFormatCache cache = GetFormatRunCache();
         if (cache.RunCount == 0)
         {
@@ -529,7 +639,7 @@ internal sealed partial class MarkdownTextRangeProvider : ITextRangeProvider
         if (cache.RunCount == 0)
             return 0;
 
-        int documentLength = _peer.GetSemanticDocument().Text.Length;
+        int documentLength = GetCurrentDocument().Text.Length;
         int currentIndex = FindFormatRunIndex(
             cache,
             Math.Clamp(_start, 0, documentLength),
@@ -546,7 +656,7 @@ internal sealed partial class MarkdownTextRangeProvider : ITextRangeProvider
 
     private int MoveFormatOffset(int offset, int count, out int moved)
     {
-        var doc = _peer.GetSemanticDocument();
+        var doc = GetCurrentDocument();
         int current = Math.Clamp(offset, 0, doc.Text.Length);
         return GetFormatRunCache().MoveAcrossBoundaries(current, count, out moved);
     }
@@ -664,7 +774,7 @@ internal sealed partial class MarkdownTextRangeProvider : ITextRangeProvider
 
     private void SetEndpoint(TextPatternRangeEndpoint endpoint, int value)
     {
-        var doc = _peer.GetSemanticDocument();
+        var doc = GetCurrentDocument();
         value = Math.Clamp(value, 0, doc.Text.Length);
         if (endpoint == TextPatternRangeEndpoint.Start)
         {

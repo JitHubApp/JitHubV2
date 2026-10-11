@@ -51,6 +51,37 @@ public sealed class NativeAotSourceContractTests
 
     [Fact]
     [Trait("Category", "ReleaseSecurity")]
+    public void CsWinRtAotDisposableImplementations_ArePartialForGeneratedAbi()
+    {
+        string root = FindRepositoryRoot();
+        string candidate = File.ReadAllText(Path.Combine(
+            root,
+            "JitHub.WinUI",
+            "Services",
+            "Markdown",
+            "GitHubMarkdownImageCandidate.cs"));
+        string lease = File.ReadAllText(Path.Combine(
+            root,
+            "JitHub.WinUI",
+            "Services",
+            "Phase0",
+            "Cache",
+            "GitHubImageSourceLease.cs"));
+        string fallback = File.ReadAllText(Path.Combine(
+            root,
+            "JitHub.WinUI",
+            "Services",
+            "Markdown",
+            "MarkdownImageFallbackPipeline.cs"));
+
+        Assert.Contains("internal sealed partial class GitHubMarkdownImageCandidate : IDisposable", candidate, StringComparison.Ordinal);
+        Assert.Contains("internal sealed partial class GitHubImageSourceLease : IDisposable", lease, StringComparison.Ordinal);
+        Assert.Contains("internal static partial class MarkdownImageFallbackPipeline", fallback, StringComparison.Ordinal);
+        Assert.Contains("private sealed partial class CandidateCancellation : IDisposable", fallback, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    [Trait("Category", "ReleaseSecurity")]
     public void RuntimeGraph_UsesTheReviewedAotReplacements()
     {
         string root = FindRepositoryRoot();
@@ -123,6 +154,55 @@ public sealed class NativeAotSourceContractTests
         Assert.Contains("resources.pri", launcher, StringComparison.Ordinal);
         Assert.Contains("Copy-Item -LiteralPath $resourceIndexPath", launcher, StringComparison.Ordinal);
         Assert.Contains("finally {", launcher, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    [Trait("Category", "ReleaseSecurity")]
+    public void ReleaseSandboxSmoke_ActivatesOnlyAnExplicitlyVerifiedAotPublish()
+    {
+        string smoke = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "eng",
+            "Invoke-JitHubReleaseSandboxSmoke.ps1"));
+
+        Assert.Contains("[switch]$NativeAot", smoke, StringComparison.Ordinal);
+        Assert.Contains("[string]$PublishDirectory = ''", smoke, StringComparison.Ordinal);
+        Assert.Contains("$executionMode = if ($NativeAot) { 'native-aot' } else { 'release-jit' }", smoke, StringComparison.Ordinal);
+        Assert.Contains("if ($NativeAot) {", smoke, StringComparison.Ordinal);
+        Assert.Contains("if ([string]::IsNullOrWhiteSpace($PublishDirectory))", smoke, StringComparison.Ordinal);
+        Assert.Contains("throw '-NativeAot requires an existing -PublishDirectory", smoke, StringComparison.Ordinal);
+        Assert.Contains("elseif (-not [string]::IsNullOrWhiteSpace($PublishDirectory))", smoke, StringComparison.Ordinal);
+        Assert.Contains("throw '-PublishDirectory is accepted only together with -NativeAot", smoke, StringComparison.Ordinal);
+        Assert.Contains("Verify-NativeAotArtifact.ps1", smoke, StringComparison.Ordinal);
+        Assert.Contains("-InputPath $resolvedPublishDirectory", smoke, StringComparison.Ordinal);
+        Assert.Contains("-Architecture 'x64'", smoke, StringComparison.Ordinal);
+        Assert.Contains("$arguments += @('--aot', '--no-restore', '-p', \"PublishDir=$publishDirectoryForMsBuild\")", smoke, StringComparison.Ordinal);
+        Assert.Contains("Sandbox smoke execution mode: $executionMode", smoke, StringComparison.Ordinal);
+        Assert.Contains("$run.UiTargetArgs -cne $expectedUiTargetArgs", smoke, StringComparison.Ordinal);
+        Assert.Contains("$expectedUiTargetArgs = \"--on sandbox -a $appProcessId\"", smoke, StringComparison.Ordinal);
+        Assert.Contains("ExecutableSha256 = $sha256", smoke, StringComparison.Ordinal);
+        Assert.Contains("$GuestProof.ExecutableSha256 -cne $ExpectedSha256", smoke, StringComparison.Ordinal);
+        Assert.Contains("Assert-NativeAotGuestIdentity -GuestProof $guestProof -ExpectedProcessId $appProcessId -ExpectedSha256 $expectedAotExecutableSha256", smoke, StringComparison.Ordinal);
+        Assert.Contains("$forbiddenModules = @('coreclr.dll', 'clrjit.dll', 'hostfxr.dll', 'hostpolicy.dll', 'createdump.exe')", smoke, StringComparison.Ordinal);
+        Assert.Contains("mode $executionMode", smoke, StringComparison.Ordinal);
+
+        int verifyAotOutput = smoke.IndexOf("Verify-NativeAotArtifact.ps1", StringComparison.Ordinal);
+        int inspectSandbox = smoke.IndexOf("$snapshotText = (& winapp target snapshot sandbox --json", StringComparison.Ordinal);
+        Assert.True(verifyAotOutput >= 0 && inspectSandbox > verifyAotOutput,
+            "The explicit AOT artifact must be verified before inspecting or changing the Sandbox.");
+        int runPublish = smoke.IndexOf("$runText = (& winapp @runArguments", StringComparison.Ordinal);
+        int verifyPublishedOutput = smoke.IndexOf("Verify-NativeAotArtifact.ps1", runPublish, StringComparison.Ordinal);
+        int verifyGuestIdentity = smoke.IndexOf("Assert-NativeAotGuestIdentity -GuestProof", verifyPublishedOutput, StringComparison.Ordinal);
+        Assert.True(verifyPublishedOutput > runPublish && verifyGuestIdentity > verifyPublishedOutput,
+            "WinApp republishes in AOT mode; guest bytes must match the newly verified post-publish output.");
+        Assert.Contains("The verified NativeAOT publish changed while the Sandbox smoke was running.", smoke, StringComparison.Ordinal);
+
+        Assert.Contains("$runArguments = @(Get-ReleaseSandboxRunArguments", smoke, StringComparison.Ordinal);
+        string executableTests = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(), "eng", "tests", "Invoke-JitHubReleaseSandboxSmoke.Tests.ps1"));
+        Assert.Contains("$aotArguments -contains '--no-build'", executableTests, StringComparison.Ordinal);
+        Assert.Contains("$jitArguments -contains '--aot'", executableTests, StringComparison.Ordinal);
+        Assert.Contains("identity verification rejects", executableTests, StringComparison.Ordinal);
     }
 
     [Fact]

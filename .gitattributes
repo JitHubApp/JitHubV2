@@ -6,3 +6,14 @@ MarkdownRenderer/MarkdownRenderer.Svg.Resvg/native/**/*.rs text eol=lf
 # The source-bound Edge audit checks the vendored parser's exact SHA-256.
 # Windows checkout must not rewrite its bytes to CRLF.
 eng/readme-audit/vendor/* text eol=lf
+
+# The native GitHub README profile fingerprints these canonical Edge CSS bytes.
+# Keep the embedded resource identical on Windows and non-Windows checkouts.
+eng/readme-audit/profiles/github-primer-light-v1.css text eol=lf
+eng/readme-audit/profiles/github-primer-light-v2.css text eol=lf
+eng/readme-audit/profiles/github-primer-light-v3.css text eol=lf
+eng/readme-audit/profiles/github-primer-light-v4.css text eol=lf
+
+# The vendored native packages are verified against exact upstream and patch
+# byte hashes. Do not let a Windows checkout rewrite pinned text files.
+MarkdownRenderer/MarkdownRenderer.Svg.Resvg/native/vendor/** -text !eol

@@ -1,3 +1,5 @@
+using MarkdownRenderer.Layout;
+
 namespace MarkdownRenderer.Controls;
 
 /// <summary>
@@ -21,6 +23,19 @@ internal readonly struct MarkdownPipelineTimingSnapshot
     internal readonly double LayoutQueueMilliseconds;
     internal readonly double LayoutWorkerWallMilliseconds;
     internal readonly double LayoutContinuationMilliseconds;
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+    internal readonly int LayoutTopLevelBlockCount;
+    internal readonly int CanvasTextLayoutConstructorCalls;
+    internal readonly double CanvasTextLayoutConstructorMilliseconds;
+    internal readonly double LayoutBlockConstructionMilliseconds;
+    internal readonly double LayoutMeasureArrangeMilliseconds;
+    internal readonly double LayoutSnapshotConstructionMilliseconds;
+    internal readonly bool InitialLayoutDispatcherSentinelEnqueued;
+    internal readonly bool InitialLayoutDispatcherSentinelDispatched;
+    internal readonly double InitialLayoutDispatcherSentinelDelayMilliseconds;
+    internal readonly int InitialLayoutDispatcherHeartbeatSampleCount;
+    internal readonly double InitialLayoutDispatcherHeartbeatMaxGapMilliseconds;
+#endif
     internal readonly long PublicationStartedTimestamp;
     internal readonly long CommitEndedTimestamp;
     internal readonly long OverlayResetEndedTimestamp;
@@ -42,6 +57,19 @@ internal readonly struct MarkdownPipelineTimingSnapshot
         double layoutQueueMilliseconds,
         double layoutWorkerWallMilliseconds,
         double layoutContinuationMilliseconds,
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+        int layoutTopLevelBlockCount,
+        int canvasTextLayoutConstructorCalls,
+        double canvasTextLayoutConstructorMilliseconds,
+        double layoutBlockConstructionMilliseconds,
+        double layoutMeasureArrangeMilliseconds,
+        double layoutSnapshotConstructionMilliseconds,
+        bool initialLayoutDispatcherSentinelEnqueued,
+        bool initialLayoutDispatcherSentinelDispatched,
+        double initialLayoutDispatcherSentinelDelayMilliseconds,
+        int initialLayoutDispatcherHeartbeatSampleCount,
+        double initialLayoutDispatcherHeartbeatMaxGapMilliseconds,
+#endif
         long publicationStartedTimestamp,
         long commitEndedTimestamp,
         long overlayResetEndedTimestamp,
@@ -62,6 +90,19 @@ internal readonly struct MarkdownPipelineTimingSnapshot
         LayoutQueueMilliseconds = layoutQueueMilliseconds;
         LayoutWorkerWallMilliseconds = layoutWorkerWallMilliseconds;
         LayoutContinuationMilliseconds = layoutContinuationMilliseconds;
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+        LayoutTopLevelBlockCount = layoutTopLevelBlockCount;
+        CanvasTextLayoutConstructorCalls = canvasTextLayoutConstructorCalls;
+        CanvasTextLayoutConstructorMilliseconds = canvasTextLayoutConstructorMilliseconds;
+        LayoutBlockConstructionMilliseconds = layoutBlockConstructionMilliseconds;
+        LayoutMeasureArrangeMilliseconds = layoutMeasureArrangeMilliseconds;
+        LayoutSnapshotConstructionMilliseconds = layoutSnapshotConstructionMilliseconds;
+        InitialLayoutDispatcherSentinelEnqueued = initialLayoutDispatcherSentinelEnqueued;
+        InitialLayoutDispatcherSentinelDispatched = initialLayoutDispatcherSentinelDispatched;
+        InitialLayoutDispatcherSentinelDelayMilliseconds = initialLayoutDispatcherSentinelDelayMilliseconds;
+        InitialLayoutDispatcherHeartbeatSampleCount = initialLayoutDispatcherHeartbeatSampleCount;
+        InitialLayoutDispatcherHeartbeatMaxGapMilliseconds = initialLayoutDispatcherHeartbeatMaxGapMilliseconds;
+#endif
         PublicationStartedTimestamp = publicationStartedTimestamp;
         CommitEndedTimestamp = commitEndedTimestamp;
         OverlayResetEndedTimestamp = overlayResetEndedTimestamp;
@@ -72,4 +113,40 @@ internal readonly struct MarkdownPipelineTimingSnapshot
         VisibleRealizationEndedTimestamp = visibleRealizationEndedTimestamp;
         PublicationEndedTimestamp = publicationEndedTimestamp;
     }
+
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+    internal MarkdownPipelineTimingSnapshot WithInitialLayoutDispatcherDiagnostics(
+        MarkdownInitialLayoutDispatcherDiagnosticsSnapshot dispatcherDiagnostics) =>
+        new(
+            Generation,
+            SourceUtf16Bytes,
+            ParseMilliseconds,
+            SetupMilliseconds,
+            ThemeSnapshotMilliseconds,
+            LayoutMilliseconds,
+            LayoutCpuMilliseconds,
+            LayoutQueueMilliseconds,
+            LayoutWorkerWallMilliseconds,
+            LayoutContinuationMilliseconds,
+            LayoutTopLevelBlockCount,
+            CanvasTextLayoutConstructorCalls,
+            CanvasTextLayoutConstructorMilliseconds,
+            LayoutBlockConstructionMilliseconds,
+            LayoutMeasureArrangeMilliseconds,
+            LayoutSnapshotConstructionMilliseconds,
+            dispatcherDiagnostics.SentinelEnqueued,
+            dispatcherDiagnostics.SentinelDispatched,
+            dispatcherDiagnostics.SentinelDelayMilliseconds,
+            dispatcherDiagnostics.HeartbeatSampleCount,
+            dispatcherDiagnostics.HeartbeatMaxGapMilliseconds,
+            PublicationStartedTimestamp,
+            CommitEndedTimestamp,
+            OverlayResetEndedTimestamp,
+            PlanConstructionEndedTimestamp,
+            EmbedRealizationEndedTimestamp,
+            HighlightRetirementEndedTimestamp,
+            HighlightSchedulingEndedTimestamp,
+            VisibleRealizationEndedTimestamp,
+            PublicationEndedTimestamp);
+#endif
 }

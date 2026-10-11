@@ -95,21 +95,11 @@ public sealed class MarkdownExtensionBuilder
         MarkdownNodeRenderer renderer)
     {
         ArgumentNullException.ThrowIfNull(renderer);
-        MarkdownAsyncNodeRenderer deferredRenderer = (context, content) =>
-        {
-            renderer(context, content);
-            return ValueTask.CompletedTask;
-        };
-        MarkdownNodeRenderer trackedRenderer = (context, content) =>
-        {
-            renderer(context, content);
-            content.CaptureDeferredSceneRenderers(deferredRenderer);
-        };
         string kind = RegisterSynchronous(
             _blockRenderers,
             _synchronousBlockRenderers,
             syntaxKind,
-            trackedRenderer);
+            TrackDeferredScenes(renderer));
         _registrations.Add(MarkdownExtensionRegistration.SynchronousBlock(kind, renderer));
         return this;
     }
@@ -123,16 +113,11 @@ public sealed class MarkdownExtensionBuilder
         MarkdownAsyncNodeRenderer renderer)
     {
         ArgumentNullException.ThrowIfNull(renderer);
-        MarkdownAsyncNodeRenderer trackedRenderer = async (context, content) =>
-        {
-            await renderer(context, content).ConfigureAwait(false);
-            content.CaptureDeferredSceneRenderers(renderer);
-        };
         string kind = RegisterAsynchronous(
             _blockRenderers,
             _synchronousBlockRenderers,
             syntaxKind,
-            trackedRenderer);
+            TrackDeferredScenes(renderer));
         _registrations.Add(MarkdownExtensionRegistration.AsynchronousBlock(kind, renderer));
         return this;
     }
@@ -151,7 +136,7 @@ public sealed class MarkdownExtensionBuilder
             _inlineRenderers,
             _synchronousInlineRenderers,
             syntaxKind,
-            renderer);
+            TrackDeferredScenes(renderer));
         _registrations.Add(MarkdownExtensionRegistration.SynchronousInline(kind, renderer));
         return this;
     }
@@ -164,11 +149,13 @@ public sealed class MarkdownExtensionBuilder
         string syntaxKind,
         MarkdownAsyncNodeRenderer renderer)
     {
+        _ = ValidateIdentifier(syntaxKind, nameof(syntaxKind));
+        ArgumentNullException.ThrowIfNull(renderer);
         string kind = RegisterAsynchronous(
             _inlineRenderers,
             _synchronousInlineRenderers,
             syntaxKind,
-            renderer);
+            TrackDeferredScenes(renderer));
         _registrations.Add(MarkdownExtensionRegistration.AsynchronousInline(kind, renderer));
         return this;
     }
@@ -428,7 +415,31 @@ public sealed class MarkdownExtensionBuilder
         _registrations.AddRange(snapshot.Registrations);
     }
 
-    private sealed record BuilderSnapshot(
+    private static MarkdownNodeRenderer TrackDeferredScenes(MarkdownNodeRenderer renderer)
+    {
+        MarkdownAsyncNodeRenderer deferredRenderer = (context, content) =>
+        {
+            renderer(context, content);
+            return ValueTask.CompletedTask;
+        };
+        return (context, content) =>
+        {
+            renderer(context, content);
+            content.CaptureDeferredSceneRenderers(deferredRenderer);
+        };
+    }
+
+    private static MarkdownAsyncNodeRenderer TrackDeferredScenes(MarkdownAsyncNodeRenderer renderer) =>
+        async (context, content) =>
+        {
+            await renderer(context, content).ConfigureAwait(false);
+            content.CaptureDeferredSceneRenderers(renderer);
+        };
+
+    // This is only a rollback bundle. Record-generated value semantics are
+    // unused here and add methods to the Core package for an implementation
+    // detail with reference identity.
+    private sealed class BuilderSnapshot(
         string[] ExtensionIds,
         string[] Features,
         Dictionary<string, MarkdownAsyncNodeRenderer> BlockRenderers,
@@ -436,5 +447,22 @@ public sealed class MarkdownExtensionBuilder
         Dictionary<string, MarkdownNodeRenderer> SynchronousBlockRenderers,
         Dictionary<string, MarkdownNodeRenderer> SynchronousInlineRenderers,
         MarkdownOwnedExtensionFactory[] OwnedExtensionFactories,
-        MarkdownExtensionRegistration[] Registrations);
+        MarkdownExtensionRegistration[] Registrations)
+    {
+        internal readonly string[] ExtensionIds = ExtensionIds;
+
+        internal readonly string[] Features = Features;
+
+        internal readonly Dictionary<string, MarkdownAsyncNodeRenderer> BlockRenderers = BlockRenderers;
+
+        internal readonly Dictionary<string, MarkdownAsyncNodeRenderer> InlineRenderers = InlineRenderers;
+
+        internal readonly Dictionary<string, MarkdownNodeRenderer> SynchronousBlockRenderers = SynchronousBlockRenderers;
+
+        internal readonly Dictionary<string, MarkdownNodeRenderer> SynchronousInlineRenderers = SynchronousInlineRenderers;
+
+        internal readonly MarkdownOwnedExtensionFactory[] OwnedExtensionFactories = OwnedExtensionFactories;
+
+        internal readonly MarkdownExtensionRegistration[] Registrations = Registrations;
+    }
 }

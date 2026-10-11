@@ -25,6 +25,27 @@ public sealed class PerformanceCounterbalancedOrchestrationContractTests
     }
 
     [Fact]
+    public void InvalidMeasurementEnvironmentAbortIsNotSentThroughRendererGate()
+    {
+        string script = File.ReadAllText(FindOrchestrator());
+        int abortBranch = script.IndexOf(
+            "if ([int]$processResult.ExitCode -eq 4)",
+            StringComparison.Ordinal);
+        int genericExitCheck = script.IndexOf(
+            "if ([int]$processResult.ExitCode -ne 0)",
+            StringComparison.Ordinal);
+        int strictGateInvocation = script.IndexOf(
+            "Strictly validating $($run.Role)",
+            StringComparison.Ordinal);
+
+        Assert.True(abortBranch >= 0, "The environment-invalid exit code needs an explicit branch.");
+        Assert.True(genericExitCheck > abortBranch, "The environment abort must be distinguished before generic harness failures.");
+        Assert.True(strictGateInvocation > genericExitCheck, "The strict renderer gate must only run after a successful leg.");
+        Assert.Contains("Renderer pass/fail was not evaluated.", script, StringComparison.Ordinal);
+        Assert.Contains("Invalid measurement environment:", script, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void OrchestratorRejectsTheSameExecutableBeforeCreatingEvidence()
     {
         string scriptPath = FindOrchestrator();
@@ -532,11 +553,19 @@ public sealed class PerformanceCounterbalancedOrchestrationContractTests
         Assert.Equal(4, CountOccurrences(text, "GateMode = 'Baseline'"));
         Assert.DoesNotContain("GateMode = 'Candidate'", text, StringComparison.Ordinal);
         Assert.DoesNotContain("'--reference', $r1Path", text, StringComparison.Ordinal);
-        Assert.Contains("$script:AggregateSchemaVersion = 2", text, StringComparison.Ordinal);
+        Assert.Contains("$script:AggregateSchemaVersion = 3", text, StringComparison.Ordinal);
         Assert.Contains(
-            "schema12-r1-c1-c2-r2-abba-contrast-v2",
+            "schema12-r1-c1-c2-r2-abba-contrast-v3-source-provenance",
             text,
             StringComparison.Ordinal);
+        Assert.Contains("[switch] $RequireSourceProvenance", text, StringComparison.Ordinal);
+        Assert.Contains("Get-VerifiedSourceProvenance", text, StringComparison.Ordinal);
+        Assert.Contains("Assert-JsonTrue -Value $Report.isReleaseEvidence", text, StringComparison.Ordinal);
+        Assert.Contains("Assert-JsonTrue -Value $Report.passed", text, StringComparison.Ordinal);
+        Assert.Contains("$environmentPassed.Value -isnot [bool]", text, StringComparison.Ordinal);
+        Assert.Contains("sourceProvenance = $sourceProvenance", text, StringComparison.Ordinal);
+        Assert.Contains("reference-source-provenance:", text, StringComparison.Ordinal);
+        Assert.Contains("candidate-source-provenance:", text, StringComparison.Ordinal);
         Assert.Contains("[int]$Report.schemaVersion -ne 12", text, StringComparison.Ordinal);
         Assert.Contains("if ([int]$gateResult.ExitCode -ne 0)", text, StringComparison.Ordinal);
         Assert.Contains("Assert-ReportRoleBinding", text, StringComparison.Ordinal);
@@ -633,7 +662,7 @@ public sealed class PerformanceCounterbalancedOrchestrationContractTests
             $tokens=$null;$errors=$null;
             $ast=[Management.Automation.Language.Parser]::ParseFile('{{escapedPath}}',[ref]$tokens,[ref]$errors);
             if($errors.Count){exit 20};
-            foreach($name in @('Test-PathEqual','Assert-ReportRoleBinding')){
+            foreach($name in @('Test-PathEqual','Assert-JsonTrue','Assert-ReportRoleBinding')){
                 $node=@($ast.FindAll({param($item) $item -is [Management.Automation.Language.FunctionDefinitionAst] -and $item.Name -ceq $name},$true));
                 if($node.Count -ne 1){exit 21};
                 Invoke-Expression $node[0].Extent.Text;

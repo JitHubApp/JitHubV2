@@ -14,12 +14,6 @@ namespace MarkdownRenderer.PixelTests;
 /// </summary>
 public static class PixelComparer
 {
-    // Different conforming rasterizers distribute fractional coverage across
-    // the two pixels straddling the same vector edge. Treat those pixels as
-    // the same alpha boundary while the exact premultiplied-color and SSIM
-    // gates below continue to detect shifts, blur, and coverage changes.
-    private const int AlphaBoundaryTolerancePixels = 1;
-
     /// <summary>Aggregated per-pixel diff statistics.</summary>
     public readonly record struct DiffReport(
         int WidthPx,
@@ -32,13 +26,25 @@ public static class PixelComparer
 
     /// <summary>Loads a PNG from disk into a top-down RGBA8888 byte buffer.</summary>
     public static (byte[] Rgba, int Width, int Height) LoadPngAsRgba(string path)
+        => LoadPngAsRgba(File.ReadAllBytes(path));
+
+    /// <summary>Decodes a completed browser protocol PNG without a staging file.</summary>
+    public static (byte[] Rgba, int Width, int Height) LoadPngAsRgba(byte[] png)
     {
         // Bitmap(string) still delegates path handling to GDI+, which rejects
         // otherwise valid long worktree/CI paths. System.IO reads those paths
         // correctly; keep the stream alive for the lifetime of the bitmap.
-        using var stream = new MemoryStream(File.ReadAllBytes(path), writable: false);
+        using var stream = new MemoryStream(png, writable: false);
         using var bmp = new Bitmap(stream);
         return BitmapToRgba(bmp);
+    }
+
+    internal static byte[] EncodeRgbaAsPng(byte[] rgba, int width, int height)
+    {
+        using var bitmap = RgbaToBitmap(rgba, width, height);
+        using var stream = new MemoryStream();
+        bitmap.Save(stream, ImageFormat.Png);
+        return stream.ToArray();
     }
 
     /// <summary>Saves an RGBA8888 byte buffer as a PNG.</summary>
@@ -187,187 +193,75 @@ public static class PixelComparer
         }
         double mean = (double)sumDelta / totalChannels;
         double frac = (double)differing / (width * height);
-        double alphaIou = CalculateBoundaryTolerantAlphaIou(a, b, width, height);
-        double ssim = CalculateAlphaWeightedSsim(
-            a,
-            b,
-            width,
-            height,
-            channelTolerance);
+        double alphaIou = CalculateAlphaIou(a, b);
+        double ssim = CalculateSsim(a, b, width, height);
         return new DiffReport(width, height, maxDelta, mean, frac, ssim, alphaIou);
     }
 
-    private static double CalculateBoundaryTolerantAlphaIou(
-        byte[] a,
-        byte[] b,
-        int width,
-        int height)
+    private static double CalculateAlphaIou(byte[] a, byte[] b)
     {
-        double totalA = 0;
-        double totalB = 0;
-        double matchedA = 0;
-        double matchedB = 0;
-
-        for (int y = 0; y < height; y++)
+        long intersection = 0;
+        long union = 0;
+        for (int offset = 3; offset < a.Length; offset += 4)
         {
-            for (int x = 0; x < width; x++)
-            {
-                int offset = ((y * width) + x) * 4;
-                byte alphaA = a[offset + 3];
-                byte alphaB = b[offset + 3];
-                totalA += alphaA;
-                totalB += alphaB;
+            intersection += Math.Min(a[offset], b[offset]);
+            union += Math.Max(a[offset], b[offset]);
+        }
+        // Exact coverage intersection/union at corresponding pixels: no
+        // dilation, nearest-neighbor matches, opacity threshold or alignment.
+        return union == 0 ? 1 : (double)intersection / union;
+    }
 
-                if (alphaA != 0 && HasVisibleAlphaNear(b, width, height, x, y))
-                    matchedA += alphaA;
-                if (alphaB != 0 && HasVisibleAlphaNear(a, width, height, x, y))
-                    matchedB += alphaB;
+    private static double CalculateSsim(byte[] a, byte[] b, int width, int height)
+    {
+        const double c1 = 6.5025;  // (0.01 * 255)^2
+        const double c2 = 58.5225; // (0.03 * 255)^2
+        const int windowSize = 8;
+        double weightedScore = 0;
+        long totalPixels = 0;
+        // Local, uniformly weighted SSIM windows cover every output pixel,
+        // including partial edge windows. Transparent RGB is premultiplied,
+        // not ignored; no candidate color is snapped to the reference.
+        for (int top = 0; top < height; top += windowSize)
+        {
+            for (int left = 0; left < width; left += windowSize)
+            {
+                int right = Math.Min(width, left + windowSize);
+                int bottom = Math.Min(height, top + windowSize);
+                int count = (right - left) * (bottom - top);
+                double sumA = 0, sumB = 0, squaresA = 0, squaresB = 0, products = 0;
+                for (int y = top; y < bottom; y++)
+                {
+                    for (int x = left; x < right; x++)
+                    {
+                        int offset = (y * width + x) * 4;
+                        double valueA = PremultipliedLuminance(a, offset);
+                        double valueB = PremultipliedLuminance(b, offset);
+                        sumA += valueA;
+                        sumB += valueB;
+                        squaresA += valueA * valueA;
+                        squaresB += valueB * valueB;
+                        products += valueA * valueB;
+                    }
+                }
+                double meanA = sumA / count;
+                double meanB = sumB / count;
+                double varianceA = Math.Max(0, squaresA / count - meanA * meanA);
+                double varianceB = Math.Max(0, squaresB / count - meanB * meanB);
+                double covariance = products / count - meanA * meanB;
+                double score = ((2 * meanA * meanB + c1) * (2 * covariance + c2)) /
+                    ((meanA * meanA + meanB * meanB + c1) * (varianceA + varianceB + c2));
+                weightedScore += score * count;
+                totalPixels += count;
             }
         }
-
-        double total = totalA + totalB;
-        if (total == 0)
-            return 1;
-
-        // The symmetric matched-mass ratio is a boundary-tolerant Dice score.
-        // Convert it to the equivalent IoU scale so the public report and the
-        // release thresholds retain their established interpretation.
-        double dice = Math.Clamp((matchedA + matchedB) / total, 0, 1);
-        return dice == 0 ? 0 : dice / (2 - dice);
+        return totalPixels == 0 ? 1 : Math.Clamp(weightedScore / totalPixels, -1, 1);
     }
 
-    private static bool HasVisibleAlphaNear(
-        byte[] rgba,
-        int width,
-        int height,
-        int x,
-        int y)
-    {
-        int top = Math.Max(0, y - AlphaBoundaryTolerancePixels);
-        int bottom = Math.Min(height - 1, y + AlphaBoundaryTolerancePixels);
-        int left = Math.Max(0, x - AlphaBoundaryTolerancePixels);
-        int right = Math.Min(width - 1, x + AlphaBoundaryTolerancePixels);
-        for (int candidateY = top; candidateY <= bottom; candidateY++)
-        {
-            for (int candidateX = left; candidateX <= right; candidateX++)
-            {
-                int offset = ((candidateY * width) + candidateX) * 4;
-                if (rgba[offset + 3] != 0)
-                    return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static double CalculateAlphaWeightedSsim(
-        byte[] a,
-        byte[] b,
-        int width,
-        int height,
-        int channelTolerance)
-    {
-        const double c1 = 6.5025;   // (0.01 * 255)^2
-        const double c2 = 58.5225;  // (0.03 * 255)^2
-        double weightSum = 0;
-        double meanA = 0;
-        double meanB = 0;
-        for (int index = 0; index < width * height; index++)
-        {
-            int offset = index * 4;
-            byte alphaA = a[offset + 3];
-            byte alphaB = b[offset + 3];
-            if (alphaA == 0 || alphaB == 0)
-                continue;
-
-            // Alpha-squared weighting reflects visual confidence: RGB recovered
-            // from a nearly transparent premultiplied edge is quantized and is
-            // not stable enough to carry the same SSIM weight as an opaque fill.
-            double sharedAlpha = Math.Min(alphaA, alphaB) / 255d;
-            double weight = sharedAlpha * sharedAlpha;
-            double luminanceA = VisibleColorLuminance(a, offset);
-            double luminanceB = ComparableColorLuminance(
-                a,
-                b,
-                offset,
-                channelTolerance);
-            meanA += luminanceA * weight;
-            meanB += luminanceB * weight;
-            weightSum += weight;
-        }
-
-        // Geometry and opacity have independent exact-mean and tolerant-alpha
-        // gates. With no shared color evidence, those gates own the result.
-        if (weightSum == 0)
-            return 1;
-
-        meanA /= weightSum;
-        meanB /= weightSum;
-
-        double varianceA = 0;
-        double varianceB = 0;
-        double covariance = 0;
-        for (int index = 0; index < width * height; index++)
-        {
-            int offset = index * 4;
-            byte alphaA = a[offset + 3];
-            byte alphaB = b[offset + 3];
-            if (alphaA == 0 || alphaB == 0)
-                continue;
-
-            double sharedAlpha = Math.Min(alphaA, alphaB) / 255d;
-            double weight = sharedAlpha * sharedAlpha;
-            double deltaA = VisibleColorLuminance(a, offset) - meanA;
-            double deltaB = ComparableColorLuminance(
-                    a,
-                    b,
-                    offset,
-                    channelTolerance) - meanB;
-            varianceA += weight * deltaA * deltaA;
-            varianceB += weight * deltaB * deltaB;
-            covariance += weight * deltaA * deltaB;
-        }
-
-        varianceA /= weightSum;
-        varianceB /= weightSum;
-        covariance /= weightSum;
-        return ((2 * meanA * meanB + c1) * (2 * covariance + c2)) /
-            ((meanA * meanA + meanB * meanB + c1) * (varianceA + varianceB + c2));
-    }
-
-    private static double ComparableColorLuminance(
-        byte[] reference,
-        byte[] candidate,
-        int offset,
-        int channelTolerance)
-    {
-        int red = NormalizeComparableChannel(
-            reference[offset],
-            candidate[offset],
-            channelTolerance);
-        int green = NormalizeComparableChannel(
-            reference[offset + 1],
-            candidate[offset + 1],
-            channelTolerance);
-        int blue = NormalizeComparableChannel(
-            reference[offset + 2],
-            candidate[offset + 2],
-            channelTolerance);
-        return (0.2126 * red) + (0.7152 * green) + (0.0722 * blue);
-    }
-
-    private static int NormalizeComparableChannel(
-        byte reference,
-        byte candidate,
-        int channelTolerance) =>
-        Math.Abs(reference - candidate) <= channelTolerance
-            ? reference
-            : candidate;
-
-    private static double VisibleColorLuminance(byte[] rgba, int offset) =>
-        (0.2126 * rgba[offset]) +
-        (0.7152 * rgba[offset + 1]) +
-        (0.0722 * rgba[offset + 2]);
+    private static double PremultipliedLuminance(byte[] rgba, int offset) =>
+        (0.2126 * Premultiply(rgba[offset], rgba[offset + 3])) +
+        (0.7152 * Premultiply(rgba[offset + 1], rgba[offset + 3])) +
+        (0.0722 * Premultiply(rgba[offset + 2], rgba[offset + 3]));
 
     private static int Premultiply(byte color, byte alpha) =>
         (color * alpha + 127) / 255;

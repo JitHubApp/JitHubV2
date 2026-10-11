@@ -245,8 +245,8 @@ internal static class MarkdownStyleRoleDemandCollector
                 case FigureCaption:
                     Add(StyleRoleDemand.FigureCaption);
                     break;
-                case HtmlBlock:
-                    MarkIncomplete(block);
+                case HtmlBlock htmlBlock:
+                    VisitHtmlBlock(htmlBlock);
                     break;
                 case ParagraphBlock:
                     break;
@@ -296,6 +296,264 @@ internal static class MarkdownStyleRoleDemandCollector
                     MarkIncomplete(inline);
                     break;
             }
+        }
+
+        private void VisitHtmlBlock(HtmlBlock htmlBlock)
+        {
+            string source = htmlBlock.Lines.ToString();
+
+            // SafeHtml can reparse Markdown in two narrowly defined cases:
+            // Markdown after a void-tag-only prefix, and one-text-child
+            // presentation containers. The nested pipeline can produce any
+            // Markdown/extension role, so retain full resolution instead of
+            // trying to duplicate that pipeline here. Detect the shape even
+            // when the feature is currently disabled: this keeps the result
+            // independent of optional-pack registration and registry cache
+            // identity.
+            if (HasMarkdownTailAfterVoidTags(source))
+            {
+                MarkIncomplete(htmlBlock);
+                return;
+            }
+
+            SafeHtmlDocument document = SafeHtmlParser.Parse(
+                source,
+                SafeHtmlParseLimits.Default,
+                _cancellationToken);
+            if (document.IsTruncated || HasMarkdownContainerReparseCandidate(document.Root))
+            {
+                MarkIncomplete(htmlBlock);
+                return;
+            }
+
+            VisitSafeHtmlNodes(document.Root.Children);
+        }
+
+        private bool HasMarkdownContainerReparseCandidate(SafeHtmlElement root)
+        {
+            foreach (SafeHtmlNode node in root.Children)
+            {
+                _cancellationToken.ThrowIfCancellationRequested();
+                if (node is not SafeHtmlElement element ||
+                    SafeHtmlParser.IsSuppressedElement(element.Name))
+                {
+                    continue;
+                }
+
+                if (element.Name is ("article" or "aside" or "center" or "div" or "main" or "section") &&
+                    element.Children.Count == 1 &&
+                    element.Children[0] is SafeHtmlText text &&
+                    !string.IsNullOrWhiteSpace(text.RawText))
+                {
+                    return true;
+                }
+
+                if (HasMarkdownContainerReparseCandidate(element))
+                    return true;
+            }
+
+            return false;
+        }
+
+        private bool HasMarkdownTailAfterVoidTags(string source)
+        {
+            int lineStart = 0;
+            while (lineStart < source.Length)
+            {
+                _cancellationToken.ThrowIfCancellationRequested();
+                int lineEnd = source.IndexOfAny(['\r', '\n'], lineStart);
+                if (lineEnd < 0)
+                    break;
+
+                int nextLine = lineEnd + 1;
+                if (source[lineEnd] == '\r' && nextLine < source.Length && source[nextLine] == '\n')
+                    nextLine++;
+
+                if (lineStart > 0 &&
+                    source.AsSpan(lineStart, lineEnd - lineStart).Trim().IsEmpty &&
+                    nextLine < source.Length)
+                {
+                    if (!SafeHtmlParser.TryParseTagSequence(
+                            source[..lineStart],
+                            SafeHtmlParseLimits.Default,
+                            _cancellationToken,
+                            out IReadOnlyList<SafeHtmlTag> tags,
+                            out _) || tags.Count == 0)
+                    {
+                        return false;
+                    }
+
+                    foreach (SafeHtmlTag tag in tags)
+                    {
+                        if (tag.Kind != SafeHtmlTagKind.SelfClosing)
+                            return false;
+                    }
+
+                    return true;
+                }
+
+                lineStart = nextLine;
+            }
+
+            return false;
+        }
+
+        private void VisitSafeHtmlNodes(IReadOnlyList<SafeHtmlNode> nodes)
+        {
+            foreach (SafeHtmlNode node in nodes)
+            {
+                _cancellationToken.ThrowIfCancellationRequested();
+                if (node is not SafeHtmlElement element ||
+                    SafeHtmlParser.IsSuppressedElement(element.Name) ||
+                    element.Name is "form" or "button")
+                {
+                    continue;
+                }
+
+                switch (element.Name)
+                {
+                    case "h1": Add(StyleRoleDemand.Heading1); break;
+                    case "h2": Add(StyleRoleDemand.Heading2); break;
+                    case "h3": Add(StyleRoleDemand.Heading3); break;
+                    case "h4": Add(StyleRoleDemand.Heading4); break;
+                    case "h5": Add(StyleRoleDemand.Heading5); break;
+                    case "h6": Add(StyleRoleDemand.Heading6); break;
+                    case "a": Add(StyleRoleDemand.Link); break;
+                    case "b":
+                    case "strong": Add(StyleRoleDemand.Strong); break;
+                    case "i":
+                    case "em":
+                    case "cite":
+                    case "var": Add(StyleRoleDemand.Emphasis); break;
+                    case "s":
+                    case "strike":
+                    case "del": Add(StyleRoleDemand.Strikethrough); break;
+                    case "sub": Add(StyleRoleDemand.Subscript); break;
+                    case "sup": Add(StyleRoleDemand.Superscript); break;
+                    case "ins":
+                    case "u": Add(StyleRoleDemand.Inserted); break;
+                    case "mark": Add(StyleRoleDemand.Marked); break;
+                    case "code":
+                    case "kbd":
+                    case "samp": Add(StyleRoleDemand.CodeInline); break;
+                    case "blockquote": Add(StyleRoleDemand.Quote); break;
+                    case "ul":
+                    case "ol": Add(StyleRoleDemand.ListMarker); break;
+                    case "hr": Add(StyleRoleDemand.ThematicBreak); break;
+                    case "table": AddTableDemand(); break;
+                    case "pre":
+                        AddCodeBlockDemand();
+                        // SafeHtml flattens preformatted descendants to text;
+                        // nested inline markup does not acquire its own role.
+                        continue;
+                    case "details":
+                        // The disclosure control always reads Body. Its
+                        // summary defaults to Strong unless a nested heading
+                        // supplies the semantic style. The renderer also
+                        // searches the summary for headings/pre blocks even
+                        // below inline wrappers that normal HTML traversal
+                        // prunes, so collect those special reads explicitly.
+                        SafeHtmlElement? summary = FindDirectChild(element, "summary");
+                        StyleRoleDemand summaryHeading = FindDescendantHeadingDemand(summary);
+                        Add(StyleRoleDemand.Body |
+                            (summaryHeading == StyleRoleDemand.None
+                                ? StyleRoleDemand.Strong
+                                : summaryHeading));
+                        if (ContainsDescendantPreformatted(summary))
+                            AddCodeBlockDemand();
+                        break;
+                    case "img":
+                    case "picture":
+                    case "svg":
+                    case "video":
+                    case "audio":
+                        Add(StyleRoleDemand.ImageCaption);
+                        // These are lowered to one atomic image run; their
+                        // parsed HTML descendants are metadata/source inputs,
+                        // not independently styled document content.
+                        continue;
+                    case "input":
+                        if (element.TryGetAttribute("type", out string inputType) &&
+                            inputType.Equals("checkbox", StringComparison.OrdinalIgnoreCase))
+                        {
+                            Add(StyleRoleDemand.ListMarker);
+                        }
+                        break;
+                }
+
+                // Unknown elements are either rendered literally or unwrapped
+                // by SafeHtml. Walking descendants is a safe superset for both
+                // policies and catches recognized formatting nested inside an
+                // unsupported wrapper.
+                VisitSafeHtmlNodes(element.Children);
+            }
+        }
+
+        private static SafeHtmlElement? FindDirectChild(SafeHtmlElement parent, string name)
+        {
+            foreach (SafeHtmlNode node in parent.Children)
+            {
+                if (node is SafeHtmlElement element && element.Name == name)
+                    return element;
+            }
+
+            return null;
+        }
+
+        private static StyleRoleDemand FindDescendantHeadingDemand(SafeHtmlElement? parent)
+        {
+            if (parent is null)
+                return StyleRoleDemand.None;
+
+            // Match HtmlBlockRenderer.FindDescendantHeadingKey: first heading
+            // in document order wins, including a heading nested in pre,
+            // suppressed wrappers, or otherwise non-rendered inline wrappers.
+            foreach (SafeHtmlNode node in parent.Children)
+            {
+                if (node is not SafeHtmlElement element)
+                    continue;
+
+                StyleRoleDemand heading = element.Name switch
+                {
+                    "h1" => StyleRoleDemand.Heading1,
+                    "h2" => StyleRoleDemand.Heading2,
+                    "h3" => StyleRoleDemand.Heading3,
+                    "h4" => StyleRoleDemand.Heading4,
+                    "h5" => StyleRoleDemand.Heading5,
+                    "h6" => StyleRoleDemand.Heading6,
+                    _ => StyleRoleDemand.None,
+                };
+                if (heading != StyleRoleDemand.None)
+                    return heading;
+
+                heading = FindDescendantHeadingDemand(element);
+                if (heading != StyleRoleDemand.None)
+                    return heading;
+            }
+
+            return StyleRoleDemand.None;
+        }
+
+        private static bool ContainsDescendantPreformatted(SafeHtmlElement? parent)
+        {
+            if (parent is null)
+                return false;
+
+            // Match HtmlBlockRenderer.DescendantPreformatted, which searches
+            // through form/button wrappers but skips active/raw-content trees.
+            foreach (SafeHtmlNode node in parent.Children)
+            {
+                if (node is not SafeHtmlElement element ||
+                    SafeHtmlParser.IsSuppressedElement(element.Name))
+                {
+                    continue;
+                }
+
+                if (element.Name == "pre" || ContainsDescendantPreformatted(element))
+                    return true;
+            }
+
+            return false;
         }
 
         private static bool IsRoleNeutralUnsupportedHtml(HtmlInline html)

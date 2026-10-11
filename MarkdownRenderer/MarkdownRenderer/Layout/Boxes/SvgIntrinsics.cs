@@ -11,14 +11,31 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// </summary>
 internal static class SvgIntrinsics
 {
-    public readonly record struct SvgRootGeometry(
-        double IntrinsicWidth,
-        double IntrinsicHeight,
-        double ViewBoxX,
-        double ViewBoxY,
-        double ViewBoxWidth,
-        double ViewBoxHeight)
+    public readonly struct SvgRootGeometry
     {
+        public SvgRootGeometry(
+            double IntrinsicWidth,
+            double IntrinsicHeight,
+            double ViewBoxX,
+            double ViewBoxY,
+            double ViewBoxWidth,
+            double ViewBoxHeight)
+        {
+            this.IntrinsicWidth = IntrinsicWidth;
+            this.IntrinsicHeight = IntrinsicHeight;
+            this.ViewBoxX = ViewBoxX;
+            this.ViewBoxY = ViewBoxY;
+            this.ViewBoxWidth = ViewBoxWidth;
+            this.ViewBoxHeight = ViewBoxHeight;
+        }
+
+        public readonly double IntrinsicWidth;
+        public readonly double IntrinsicHeight;
+        public readonly double ViewBoxX;
+        public readonly double ViewBoxY;
+        public readonly double ViewBoxWidth;
+        public readonly double ViewBoxHeight;
+
         public bool HasIntrinsicSize => IntrinsicWidth > 0 && IntrinsicHeight > 0;
         public bool HasViewBox => ViewBoxWidth > 0 && ViewBoxHeight > 0;
 
@@ -73,53 +90,61 @@ internal static class SvgIntrinsics
             if (rootEnd < 0) return default;
             string opening = xml.Substring(rootStart, rootEnd - rootStart);
 
-            double width = ParseAttribute(opening, "width");
-            double height = ParseAttribute(opening, "height");
-
-            double viewBoxX = 0;
-            double viewBoxY = 0;
-            double viewBoxWidth = 0;
-            double viewBoxHeight = 0;
-            string? vb = ParseStringAttribute(opening, "viewBox");
-            if (vb is not null)
-            {
-                var parts = vb.Split(new[] { ' ', ',' }, StringSplitOptions.RemoveEmptyEntries);
-                if (parts.Length == 4
-                    && double.TryParse(parts[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var vx)
-                    && double.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var vy)
-                    && double.TryParse(parts[2], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var vw)
-                    && double.TryParse(parts[3], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var vh)
-                    && vw > 0 && vh > 0)
-                {
-                    viewBoxX = vx;
-                    viewBoxY = vy;
-                    viewBoxWidth = vw;
-                    viewBoxHeight = vh;
-                }
-            }
-
-            if (width <= 0 || height <= 0)
-            {
-                width = viewBoxWidth;
-                height = viewBoxHeight;
-            }
-
-            return new SvgRootGeometry(width, height, viewBoxX, viewBoxY, viewBoxWidth, viewBoxHeight);
+            return ParseRootGeometry(
+                ParseStringAttribute(opening, "width"),
+                ParseStringAttribute(opening, "height"),
+                ParseStringAttribute(opening, "viewBox"));
         }
         catch { return default; }
     }
 
-    private static double ParseAttribute(string element, string attr)
+    internal static SvgRootGeometry ParseRootGeometry(
+        string? widthValue,
+        string? heightValue,
+        string? viewBoxValue)
     {
-        var s = ParseStringAttribute(element, attr);
-        if (s is null) return 0;
+        double width = ParseLength(widthValue);
+        double height = ParseLength(heightValue);
+        double viewBoxX = 0;
+        double viewBoxY = 0;
+        double viewBoxWidth = 0;
+        double viewBoxHeight = 0;
+        if (viewBoxValue is not null)
+        {
+            var parts = viewBoxValue.Split(new[] { ' ', ',' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 4
+                && double.TryParse(parts[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var vx)
+                && double.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var vy)
+                && double.TryParse(parts[2], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var vw)
+                && double.TryParse(parts[3], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var vh)
+                && vw > 0 && vh > 0)
+            {
+                viewBoxX = vx;
+                viewBoxY = vy;
+                viewBoxWidth = vw;
+                viewBoxHeight = vh;
+            }
+        }
+
+        if (width <= 0 || height <= 0)
+        {
+            width = viewBoxWidth;
+            height = viewBoxHeight;
+        }
+
+        return new SvgRootGeometry(width, height, viewBoxX, viewBoxY, viewBoxWidth, viewBoxHeight);
+    }
+
+    private static double ParseLength(string? value)
+    {
+        if (value is null) return 0;
         int len = 0;
-        while (len < s.Length && (char.IsDigit(s[len]) || s[len] == '.' || s[len] == '-')) len++;
+        while (len < value.Length && (char.IsDigit(value[len]) || value[len] == '.' || value[len] == '-')) len++;
         if (len == 0) return 0;
         // Reject relative units — percentages on the root <svg> are not intrinsic
         // dimensions and should defer to viewBox per the SVG sizing spec.
-        if (len < s.Length && s[len] == '%') return 0;
-        return double.TryParse(s.Substring(0, len), System.Globalization.NumberStyles.Float,
+        if (len < value.Length && value[len] == '%') return 0;
+        return double.TryParse(value.Substring(0, len), System.Globalization.NumberStyles.Float,
             System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : 0;
     }
 

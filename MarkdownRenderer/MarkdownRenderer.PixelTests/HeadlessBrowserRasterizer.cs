@@ -83,7 +83,7 @@ public static class HeadlessBrowserRasterizer
             // PR fidelity uses Edge's deterministic WARP path. `--disable-gpu`
             // is not equivalent: it selects a different software raster path
             // with measurably different edge coverage.
-            "--use-angle=warp",
+            "--use-angle=d3d11-warp",
             "--use-gl=angle",
             "--no-sandbox",
             "--no-first-run",

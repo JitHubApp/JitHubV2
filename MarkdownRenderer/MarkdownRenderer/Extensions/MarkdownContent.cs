@@ -481,7 +481,7 @@ public sealed class MarkdownContentBuilder
             accessibilityName,
             accessibilityDescription,
             semanticText));
-        if (kind == MarkdownContentKind.CodeBlock && HasDeferredSceneMarker(copiedAttributes))
+        if (HasDeferredSceneMarker(copiedAttributes))
             _containsDeferredSceneRenderer = true;
     }
 
@@ -509,6 +509,7 @@ public sealed class MarkdownContentBuilder
             childItems = childBuilder.Build().Items;
             _containsDeferredSceneRenderer |= childBuilder._containsDeferredSceneRenderer;
         }
+        IReadOnlyDictionary<string, string> copiedAttributes = CopyAttributes(attributes);
 
         _items.Add(new MarkdownContent(
             kind,
@@ -521,11 +522,12 @@ public sealed class MarkdownContentBuilder
             factoryKey: null,
             customKind,
             vectorScene: null,
-            CopyAttributes(attributes),
+            copiedAttributes,
             childItems,
             accessibilityName,
             accessibilityDescription,
             semanticText));
+        _containsDeferredSceneRenderer |= HasDeferredSceneMarker(copiedAttributes);
     }
 
     private static bool CanContainChildren(MarkdownContentKind kind)

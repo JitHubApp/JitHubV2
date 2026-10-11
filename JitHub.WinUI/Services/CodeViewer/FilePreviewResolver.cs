@@ -80,7 +80,7 @@ public sealed class FilePreviewResolver : IFilePreviewResolver
         // layout pipeline rather than Scintilla. Admit it against that
         // pipeline's audited source ceiling before applying the synchronous
         // editor budget used by ordinary text files.
-        if (MarkdownExtensions.Contains(ext))
+        if (MarkdownExtensions.Contains(ext) || IsExtensionlessReadmePath(path))
         {
             return byteSize <= MaximumMarkdownBytes
                 ? new FilePreviewDescriptor(RepoFilePreviewKind.Markdown, "markdown", null, false)
@@ -168,9 +168,13 @@ public sealed class FilePreviewResolver : IFilePreviewResolver
         string fileName = Path.GetFileNameWithoutExtension(path);
         string extension = Path.GetExtension(path);
         return fileName.Equals("README", StringComparison.OrdinalIgnoreCase) &&
-            (MarkdownExtensions.Contains(extension) ||
+            (extension.Length == 0 ||
+             MarkdownExtensions.Contains(extension) ||
              GitHubRenderedReadmeExtensions.Contains(extension));
     }
+
+    private static bool IsExtensionlessReadmePath(string path) =>
+        Path.GetFileName(path).Equals("README", StringComparison.OrdinalIgnoreCase);
 
     private static string GetImageMime(string ext) => ext.ToLowerInvariant() switch
     {

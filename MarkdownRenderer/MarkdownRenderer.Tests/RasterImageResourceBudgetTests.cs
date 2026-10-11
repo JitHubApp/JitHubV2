@@ -7,6 +7,27 @@ namespace MarkdownRenderer.Tests;
 public sealed class RasterImageResourceBudgetTests
 {
     [Fact]
+    public void OrientedDimensionsPreserveSourceAdmissionMetadata()
+    {
+        RasterImageBudgetResult original = RasterImageResourceBudget.Validate(
+            CreatePngHeader(width: 2048, height: 8193));
+
+        RasterImageBudgetResult oriented = original.WithDimensions(original.Height, original.Width);
+
+        Assert.Equal(2048, original.Width);
+        Assert.Equal(8193, original.Height);
+        Assert.Equal(8193, oriented.Width);
+        Assert.Equal(2048, oriented.Height);
+        Assert.Equal(original.Accepted, oriented.Accepted);
+        Assert.Equal(original.CanRenderStaticPreview, oriented.CanRenderStaticPreview);
+        Assert.Equal(original.Format, oriented.Format);
+        Assert.Equal(original.FrameCount, oriented.FrameCount);
+        Assert.Equal(original.TotalPixels, oriented.TotalPixels);
+        Assert.Equal(original.DecodedBytes, oriented.DecodedBytes);
+        Assert.Equal(original.Reason, oriented.Reason);
+    }
+
+    [Fact]
     public void Validate_AcceptsNarrowTallReadmeScreenshotWithinDecodedBudget()
     {
         byte[] png = CreatePngHeader(width: 1464, height: 9187);

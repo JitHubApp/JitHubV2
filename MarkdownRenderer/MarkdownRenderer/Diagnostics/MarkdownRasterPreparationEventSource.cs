@@ -48,7 +48,7 @@ internal sealed class MarkdownRasterPreparationEventSource : EventSource
         WriteEvent(1, id, sourceBytes, packedDimensions);
 
     /// <summary>
-    /// Stage IDs: 1 stream write, 2 decoder creation, 3 WIC pixel decode,
+    /// Stage IDs: 1 borrowed source stream open, 2 decoder creation, 3 WIC pixel decode,
     /// 4 Win2D bitmap upload, 5 direct Win2D load, 6 cache publication,
     /// 7 preparation admission and continuation scheduling.
     /// </summary>

@@ -7,11 +7,23 @@ param(
         'aarch64-pc-windows-msvc')]
     [string]$Target,
 
-    [string]$TargetDirectory = ''
+    [string]$TargetDirectory = '',
+    [switch]$RefreshIdentity
 )
 
 $ErrorActionPreference = 'Stop'
 $providerRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+$identityModule = Join-Path $PSScriptRoot 'ResvgWorkerIdentity.psm1'
+Import-Module $identityModule -Force
+if ($RefreshIdentity) {
+    & (Join-Path $PSScriptRoot 'Verify-ResvgSupplyChain.ps1') | Out-Null
+}
+$sourceFingerprintBefore = if ($RefreshIdentity) {
+    Get-ResvgWorkerSourceFingerprint $providerRoot
+}
+else {
+    ''
+}
 $nativeRoot = [IO.Path]::GetFullPath((Join-Path $providerRoot 'native'))
 $manifest = Join-Path $nativeRoot 'Cargo.toml'
 if ([string]::IsNullOrWhiteSpace($TargetDirectory)) {
@@ -34,6 +46,7 @@ $rustCommitHash = @($verboseVersion | Where-Object { $_ -like 'commit-hash: *' }
 if ($rustCommitHash.Count -ne 1 -or $rustCommitHash[0] -notmatch '^[0-9a-f]{40}$') {
     throw 'The pinned Rust 1.96.0 commit hash could not be resolved.'
 }
+$rustcCommit = $rustCommitHash[0].ToLowerInvariant()
 $lldDirectory = Join-Path $sysroot "lib\rustlib\$($hostTarget[0])\bin"
 $lld = Join-Path $lldDirectory 'rust-lld.exe'
 if (-not (Test-Path -LiteralPath $lld -PathType Leaf)) {
@@ -98,6 +111,48 @@ finally {
 $binary = Join-Path $TargetDirectory "$Target\release\markdown_renderer_resvg_worker.exe"
 if (-not (Test-Path -LiteralPath $binary -PathType Leaf)) {
     throw "The resvg worker build did not produce '$binary'."
+}
+
+if ($RefreshIdentity) {
+    $sourceFingerprintAfter = Get-ResvgWorkerSourceFingerprint $providerRoot
+    if ($sourceFingerprintAfter -cne $sourceFingerprintBefore) {
+        throw 'Worker source/build inputs changed during compilation; refusing to record an identity.'
+    }
+    $runtimeRid = switch ($Target) {
+        'i686-pc-windows-msvc' { 'win-x86' }
+        'x86_64-pc-windows-msvc' { 'win-x64' }
+        'aarch64-pc-windows-msvc' { 'win-arm64' }
+    }
+    $runtimeBinary = Join-Path $providerRoot "runtimes\$runtimeRid\native\MarkdownRenderer.Svg.Resvg.Worker.exe"
+    if (-not (Test-Path -LiteralPath $runtimeBinary -PathType Leaf)) {
+        throw "Cannot refresh identity before the compared runtime worker exists: '$runtimeBinary'."
+    }
+    & (Join-Path $PSScriptRoot 'Compare-ResvgWorkerBinary.ps1') -Expected $runtimeBinary -Actual $binary | Out-Null
+    $protocol = Get-ResvgWorkerProtocolVersions $providerRoot
+    $image = Get-ResvgWorkerImageInfo $binary
+    $buildFingerprint = Get-ResvgWorkerBuildFingerprint $sourceFingerprintBefore $Target $rustcCommit
+    $receiptPath = Join-Path ([IO.Path]::GetDirectoryName($binary)) 'worker-identity-receipt.json'
+    $receipt = [ordered]@{
+        schemaVersion = 1
+        target = $Target
+        rid = $runtimeRid
+        sourceFingerprintBefore = $sourceFingerprintBefore
+        sourceFingerprintAfter = $sourceFingerprintAfter
+        buildFingerprint = $buildFingerprint
+        rustcCommit = $rustcCommit
+        hostProtocolVersion = $protocol.Host
+        nativeProtocolVersion = $protocol.Native
+        reproducibleComparisonPassed = $true
+        outputPath = [IO.Path]::GetFullPath($binary)
+        outputBytes = [long]$image.bytes
+        outputSha256 = $image.sha256
+        outputNormalizedSha256 = $image.normalizedSha256
+    }
+    [IO.File]::WriteAllText(
+        $receiptPath,
+        (($receipt | ConvertTo-Json -Depth 6) + "`n"),
+        [Text.UTF8Encoding]::new($false))
+    & (Join-Path $PSScriptRoot 'Update-ResvgWorkerIdentity.ps1') -Target $Target -BuildReceipt $receiptPath
 }
 
 Write-Output $binary

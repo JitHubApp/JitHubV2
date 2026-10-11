@@ -22,6 +22,25 @@ $ErrorActionPreference = "Stop"
 # tile-coverage, or visual-fidelity requirement is waived by these values.
 $screenshotShardQuotaBytes = 1073741824
 $screenshotAggregateQuotaBytes = 8589934592
+
+function Get-NativeAotFileMapSha256([Collections.IDictionary]$FileMap) {
+    $canonical = [Collections.Generic.SortedDictionary[string, string]]::new([StringComparer]::Ordinal)
+    foreach ($key in $FileMap.Keys) {
+        $path = [string]$key
+        $hash = [string]$FileMap[$key]
+        if ([string]::IsNullOrWhiteSpace($path) -or
+            $path.StartsWith('/') -or $path.Contains('\') -or $path.Contains(':') -or
+            @($path.Split('/') | Where-Object { $_ -in @('', '.', '..') }).Count -ne 0 -or
+            $hash -notmatch '^[0-9a-fA-F]{64}$') {
+            throw 'invalid NativeAOT file-map path or SHA-256'
+        }
+        $canonical.Add($path, $hash.ToLowerInvariant())
+    }
+    $lines = @($canonical.GetEnumerator() | ForEach-Object { "$($_.Key)`0$($_.Value)" })
+    return [Convert]::ToHexString(
+        [Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($lines -join "`n"))).ToLowerInvariant()
+}
+
 if ($RequireSameByteCorpus -and $ExpectedCount -ne 500) {
     throw "A same-byte release verdict requires all 500 pinned repository cases."
 }
@@ -176,6 +195,113 @@ function Get-AssetMapSha256([string]$ManifestFile) {
     finally { $document.Dispose() }
 }
 
+function Get-UniqueManifestAssetSummary([object[]]$Assets) {
+    if ($Assets.Count -gt 15000) {
+        throw 'The same-byte asset URL alias map exceeds its bounded entry count.'
+    }
+
+    $urlHashes = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    $payloadSizes = [System.Collections.Generic.Dictionary[string, long]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($asset in $Assets) {
+        if ($null -eq $asset) { throw 'The same-byte asset alias map contains a null entry.' }
+
+        $urlSha256 = [string]$asset.urlSha256
+        $sha256 = [string]$asset.sha256
+        if ($urlSha256 -notmatch '^[0-9a-fA-F]{64}$' -or $sha256 -notmatch '^[0-9a-fA-F]{64}$') {
+            throw 'The same-byte asset alias map contains a malformed hash.'
+        }
+        if (-not $urlHashes.Add($urlSha256)) {
+            throw 'The same-byte asset alias map contains a duplicate URL alias.'
+        }
+
+        if ($null -eq $asset.byteSize -or $asset.byteSize -isnot [System.ValueType] -or $asset.byteSize -is [bool]) {
+            throw 'The same-byte asset alias map contains a malformed byte size.'
+        }
+        try { $decimalByteSize = [decimal]$asset.byteSize }
+        catch { throw 'The same-byte asset alias map contains a malformed byte size.' }
+        if ($decimalByteSize -ne [decimal]::Truncate($decimalByteSize)) {
+            throw 'The same-byte asset alias map contains a non-integer byte size.'
+        }
+        $byteSize = [long]$decimalByteSize
+        if ($byteSize -le 0 -or $byteSize -gt 64MB) {
+            throw 'The same-byte asset alias map contains an out-of-range resource size.'
+        }
+
+        if ($payloadSizes.ContainsKey($sha256)) {
+            if ($payloadSizes[$sha256] -ne $byteSize) {
+                throw 'A same-byte payload hash is associated with conflicting resource sizes.'
+            }
+        }
+        else {
+            $payloadSizes.Add($sha256, $byteSize)
+        }
+    }
+
+    [long]$uniquePayloadBytes = 0
+    foreach ($byteSize in $payloadSizes.Values) { $uniquePayloadBytes += $byteSize }
+    if ($uniquePayloadBytes -gt 256MB) {
+        throw 'The same-byte unique payload set exceeds its aggregate byte limit.'
+    }
+
+    return [pscustomobject]@{
+        AssetCount = $payloadSizes.Count
+        AssetBytes = $uniquePayloadBytes
+    }
+}
+
+function Get-ManifestImageRouteCount([object]$Manifest, [object[]]$Assets) {
+    $routeProperty = $Manifest.PSObject.Properties['imageRoutes']
+    if ($null -eq $routeProperty -or $routeProperty.Value -isnot [System.Array] -or
+        $routeProperty.Value.Count -gt 15000) {
+        throw 'The same-byte manifest image-route list is missing or over its bounded count.'
+    }
+
+    $assetByUrlHash = [System.Collections.Generic.Dictionary[string, object]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($asset in $Assets) {
+        $assetByUrlHash.Add([string]$asset.urlSha256, $asset)
+    }
+
+    $seenIndexes = [System.Collections.Generic.HashSet[int]]::new()
+    $supportedMimes = @(
+        'image/avif', 'image/bmp', 'image/gif', 'image/jpeg',
+        'image/png', 'image/svg+xml', 'image/webp', 'image/x-icon'
+    )
+    foreach ($route in $routeProperty.Value) {
+        if ($null -eq $route) { throw 'The same-byte manifest contains a null image route.' }
+        $routeIndex = Get-ValidatedSemanticCount -Value $route.index
+        if ($null -eq $routeIndex -or $routeIndex -ge 15000 -or -not $seenIndexes.Add([int]$routeIndex)) {
+            throw 'The same-byte manifest contains a duplicate or invalid image-route index.'
+        }
+        if ($route.dataUri -eq $true) {
+            if ($null -ne $route.PSObject.Properties['urlSha256'] -or
+                $null -ne $route.PSObject.Properties['sha256'] -or
+                $null -ne $route.PSObject.Properties['mimeType']) {
+                throw 'A same-byte inline image route contains an external payload mapping.'
+            }
+            continue
+        }
+
+        $urlSha256 = [string]$route.urlSha256
+        $sha256 = [string]$route.sha256
+        $mimeType = [string]$route.mimeType
+        $asset = $null
+        if ($urlSha256 -notmatch '^[0-9a-fA-F]{64}$' -or
+            $sha256 -notmatch '^[0-9a-fA-F]{64}$' -or
+            $supportedMimes -cnotcontains $mimeType -or
+            -not $assetByUrlHash.TryGetValue($urlSha256, [ref]$asset) -or
+            [string]$asset.sha256 -cne $sha256 -or
+            [string]$asset.mimeType -cne $mimeType) {
+            throw 'The same-byte manifest contains an unbound or invalid image route.'
+        }
+    }
+
+    if ([string]$Manifest.browserRender.status -eq 'not-applicable' -and
+        ($routeProperty.Value.Count -ne 0 -or $Assets.Count -ne 0)) {
+        throw 'A GitHub source-view manifest cannot contain rendered image routes.'
+    }
+    return [int]$routeProperty.Value.Count
+}
+
 function Test-FiniteAuditMetric([object]$Value, [double]$Minimum) {
     if ($null -eq $Value -or $Value -isnot [System.ValueType] -or $Value -is [bool]) {
         return $false
@@ -205,6 +331,103 @@ function Get-ValidatedSemanticCount([object]$Value) {
         return $null
     }
     return [int]$number
+}
+
+# This is an evidence-completeness check, not a pixel-fidelity verdict. Keep
+# SSIM bounded and present, but do not invent a score floor while calibration
+# against the supported visual matrix remains open.
+function Test-SameByteVisualEvidenceComplete([object]$Comparison, [object]$NativeTiles) {
+    if ($null -eq $Comparison -or
+        [string]$Comparison.sameByteTileSsimReference -cne 'same-byte-source-matched-viewport' -or
+        [string]$Comparison.sameByteTileSsimUnavailableReason -cne '' -or
+        $null -eq $NativeTiles -or
+        $NativeTiles -is [string] -or
+        $NativeTiles -isnot [System.Collections.IList]) {
+        return $false
+    }
+
+    $actualNativeTileCount = Get-ValidatedSemanticCount $NativeTiles.Count
+    $matched = Get-ValidatedSemanticCount $Comparison.sameByteMatchedViewportCount
+    $total = Get-ValidatedSemanticCount $Comparison.sameByteTotalViewportCount
+    $coverage = $Comparison.sameByteTileCoverage
+    $meanSsim = $Comparison.sameByteMeanTileSsim
+    $minimumSsim = $Comparison.sameByteMinimumTileSsim
+    if ($null -eq $actualNativeTileCount -or $actualNativeTileCount -le 0 -or
+        $null -eq $matched -or $null -eq $total -or $total -le 0 -or
+        $total -ne $actualNativeTileCount -or $matched -ne $total -or
+        -not (Test-FiniteAuditMetric -Value $coverage -Minimum 0.0) -or
+        [double]$coverage -gt 1.0 -or [Math]::Abs([double]$coverage - 1.0) -gt 0.000001 -or
+        -not (Test-FiniteAuditMetric -Value $meanSsim -Minimum 0.0) -or
+        [double]$meanSsim -gt 1.0 -or
+        -not (Test-FiniteAuditMetric -Value $minimumSsim -Minimum 0.0) -or
+        [double]$minimumSsim -gt 1.0 -or
+        [double]$minimumSsim -gt [double]$meanSsim + 0.000001) {
+        return $false
+    }
+
+    $countCoverage = [double]$matched / [double]$total
+    return [Math]::Abs([double]$coverage - $countCoverage) -le 0.000001
+}
+
+function Get-StyleProfileIdentityMismatches([object]$NativeProfile, [object]$EdgeProfile) {
+    $mismatches = [Collections.Generic.List[string]]::new()
+    if ($null -eq $NativeProfile) { $mismatches.Add('native profile missing') }
+    if ($null -eq $EdgeProfile) { $mismatches.Add('Edge profile missing') }
+    if ($mismatches.Count -gt 0) { return $mismatches.ToArray() }
+
+    $nativeIdProperty = $NativeProfile.PSObject.Properties['id']
+    $edgeIdProperty = $EdgeProfile.PSObject.Properties['id']
+    $nativeVersionProperty = $NativeProfile.PSObject.Properties['version']
+    $edgeVersionProperty = $EdgeProfile.PSObject.Properties['version']
+    $nativeShaProperty = $NativeProfile.PSObject.Properties['cssSha256']
+    $edgeShaProperty = $EdgeProfile.PSObject.Properties['sha256']
+    $edgeLoadedProperty = $EdgeProfile.PSObject.Properties['edgeStylesheetLoaded']
+    $edgeIntegrityProperty = $EdgeProfile.PSObject.Properties['edgeIntegrityAttributeMatched']
+    $edgeResponseCountProperty = $EdgeProfile.PSObject.Properties['loopbackResponseCount']
+
+    $nativeId = if ($null -eq $nativeIdProperty) { $null } else { $nativeIdProperty.Value }
+    $edgeId = if ($null -eq $edgeIdProperty) { $null } else { $edgeIdProperty.Value }
+    if ($nativeId -isnot [string] -or [string]::IsNullOrWhiteSpace($nativeId) -or
+        $edgeId -isnot [string] -or [string]::IsNullOrWhiteSpace($edgeId) -or
+        [string]$nativeId -cne [string]$edgeId) {
+        $mismatches.Add('profile id')
+    }
+
+    $nativeVersion = if ($null -eq $nativeVersionProperty) { $null } else { Get-ValidatedSemanticCount $nativeVersionProperty.Value }
+    $edgeVersion = if ($null -eq $edgeVersionProperty) { $null } else { Get-ValidatedSemanticCount $edgeVersionProperty.Value }
+    if ($null -eq $nativeVersion -or $nativeVersion -le 0 -or
+        $null -eq $edgeVersion -or $edgeVersion -le 0 -or
+        $nativeVersion -ne $edgeVersion) {
+        $mismatches.Add('profile version')
+    }
+
+    $nativeSha = if ($null -eq $nativeShaProperty) { $null } else { $nativeShaProperty.Value }
+    $edgeSha = if ($null -eq $edgeShaProperty) { $null } else { $edgeShaProperty.Value }
+    if ($nativeSha -isnot [string] -or $nativeSha -notmatch '^[0-9a-fA-F]{64}$' -or
+        $edgeSha -isnot [string] -or $edgeSha -notmatch '^[0-9a-fA-F]{64}$' -or
+        [string]$nativeSha -ine [string]$edgeSha) {
+        $mismatches.Add('profile CSS SHA-256')
+    }
+
+    if ($null -eq $edgeLoadedProperty -or $edgeLoadedProperty.Value -isnot [bool] -or
+        $edgeLoadedProperty.Value -ne $true) {
+        $mismatches.Add('Edge stylesheet not loaded')
+    }
+    if ($null -eq $edgeIntegrityProperty -or $edgeIntegrityProperty.Value -isnot [bool] -or
+        $edgeIntegrityProperty.Value -ne $true) {
+        $mismatches.Add('Edge stylesheet integrity mismatch')
+    }
+    $edgeResponseCount = if ($null -eq $edgeResponseCountProperty) {
+        $null
+    }
+    else {
+        Get-ValidatedSemanticCount $edgeResponseCountProperty.Value
+    }
+    if ($null -eq $edgeResponseCount -or $edgeResponseCount -le 0) {
+        $mismatches.Add('Edge stylesheet response missing')
+    }
+
+    return $mismatches.ToArray()
 }
 
 function Get-CountFidelity([int]$Expected, [int]$Actual) {
@@ -290,6 +513,14 @@ if ($RequireSameByteCorpus) {
     $binaryEvidenceFiles = @(Get-ChildItem -LiteralPath $EvidenceRoot -Recurse -File -Filter 'app-binary-ranks-*.json' -ErrorAction SilentlyContinue)
     $coveredBuildRanks = [Collections.Generic.HashSet[int]]::new()
     $sourceCommitSha = ''
+    $sharedExecutableSha256 = ''
+    $sharedArtifactManifestSha256 = ''
+    $sharedProvenanceSha256 = ''
+    $sharedWorkflowRunId = ''
+    $sharedWorkflowRepository = ''
+    $sharedWorkflowRef = ''
+    $coveredProvenanceRanks = [Collections.Generic.HashSet[int]]::new()
+    $expectedProvenanceEvidenceNames = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     if ($binaryEvidenceFiles.Count -eq 0) {
         $failures.Add('Same-byte release evidence is missing per-shard Release app binary fingerprints.')
     }
@@ -302,30 +533,177 @@ if ($RequireSameByteCorpus) {
             $binary = Get-Content -LiteralPath $binaryFile.FullName -Raw | ConvertFrom-Json -Depth 8
             $startRank = [int]$binary.startRank
             $endRank = [int]$binary.endRank
+            $expectedShardEndRank = [Math]::Min($startRank + 24, $ExpectedCount)
             $expectedFileName = 'app-binary-ranks-{0}-{1}.json' -f $startRank, $endRank
             $assembliesProperty = $binary.PSObject.Properties['dependencyAssemblySha256']
             $assemblies = if ($null -eq $assembliesProperty) { $null } else { $assembliesProperty.Value }
-            if ($binary.schemaVersion -ne 1 -or
+            $artifactFilesProperty = $binary.PSObject.Properties['artifactFileSha256']
+            $artifactFiles = if ($null -eq $artifactFilesProperty) { $null } else { $artifactFilesProperty.Value }
+            if ($binary.schemaVersion -ne 2 -or
                 $startRank -lt 1 -or $endRank -lt $startRank -or $endRank -gt $ExpectedCount -or
+                (($startRank - 1) % 25) -ne 0 -or $endRank -ne $expectedShardEndRank -or
                 $binaryFile.Name -cne $expectedFileName -or
                 [string]$binary.sourceCommitSha -notmatch '^[0-9a-fA-F]{40}$' -or
                 [string]$binary.configuration -cne 'Release' -or
+                [string]$binary.runtimeFlavor -cne 'native-aot' -or
+                $binary.provenanceVerified -ne $true -or
+                [string]$binary.provenanceStatus -cne 'verified-canonical-workflow-artifact' -or
+                $binary.provenanceWorkingTreeClean -ne $true -or
+                [string]$binary.provenanceSha256 -notmatch '^[0-9a-fA-F]{64}$' -or
+                [string]$binary.workflowRunId -notmatch '^[1-9][0-9]{0,18}$' -or
+                [string]::IsNullOrWhiteSpace([string]$binary.workflowRepository) -or
+                [string]::IsNullOrWhiteSpace([string]$binary.workflowRef) -or
                 [string]$binary.executableName -cne 'JitHub.WinUI.exe' -or
                 [string]$binary.executableSha256 -notmatch '^[0-9a-fA-F]{64}$' -or
-                $null -eq $assemblies) {
-                throw 'invalid Release build identity'
+                $null -eq $assemblies -or $null -eq $artifactFiles) {
+                throw 'invalid Release build or provenance identity'
             }
-            foreach ($requiredAssembly in @('JitHub.WinUI.dll', 'MarkdownRenderer.dll')) {
-                $assemblyProperty = $assemblies.PSObject.Properties[$requiredAssembly]
-                if ($null -eq $assemblyProperty -or
-                    [string]$assemblyProperty.Value -notmatch '^[0-9a-fA-F]{64}$') {
-                    throw "missing or invalid $requiredAssembly hash"
+            foreach ($forbiddenManagedAssembly in @('JitHub.WinUI.dll', 'MarkdownRenderer.dll')) {
+                if ($null -ne $assemblies.PSObject.Properties[$forbiddenManagedAssembly]) {
+                    throw "NativeAOT audit app contains managed $forbiddenManagedAssembly"
                 }
             }
             foreach ($assemblyProperty in $assemblies.PSObject.Properties) {
                 if ([string]$assemblyProperty.Value -notmatch '^[0-9a-fA-F]{64}$') {
                     throw 'invalid dependency assembly hash'
                 }
+            }
+            $executableSha256 = ([string]$binary.executableSha256).ToLowerInvariant()
+            $canonicalFiles = [Collections.Generic.SortedDictionary[string, string]]::new([StringComparer]::Ordinal)
+            $canonicalPathSet = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+            $artifactFileProperties = @($artifactFiles.PSObject.Properties)
+            if ($artifactFileProperties.Count -lt 1 -or $artifactFileProperties.Count -gt 4096) {
+                throw 'invalid NativeAOT artifact file count'
+            }
+            foreach ($fileProperty in $artifactFileProperties) {
+                $relativePath = [string]$fileProperty.Name
+                if ([string]::IsNullOrWhiteSpace($relativePath) -or
+                    $relativePath.StartsWith('/') -or
+                    $relativePath.Contains('\') -or
+                    $relativePath.Contains(':') -or
+                    @($relativePath.Split('/') | Where-Object { $_ -eq '' -or $_ -eq '.' -or $_ -eq '..' }).Count -ne 0 -or
+                    [string]$fileProperty.Value -notmatch '^[0-9a-fA-F]{64}$') {
+                    throw 'invalid NativeAOT artifact file identity'
+                }
+                if (-not $canonicalPathSet.Add($relativePath)) {
+                    throw 'case-ambiguous NativeAOT artifact file identity'
+                }
+                $canonicalFiles.Add($relativePath, ([string]$fileProperty.Value).ToLowerInvariant())
+            }
+            if ($canonicalFiles.Count -eq 0 -or
+                -not $canonicalFiles.ContainsKey('JitHub.WinUI.exe') -or
+                $canonicalFiles['JitHub.WinUI.exe'] -cne $executableSha256) {
+                throw 'missing or mismatched NativeAOT executable in artifact manifest'
+            }
+            $provenanceSha256 = ([string]$binary.provenanceSha256).ToLowerInvariant()
+            if (-not $canonicalFiles.ContainsKey('native-aot-provenance.json') -or
+                $canonicalFiles['native-aot-provenance.json'] -cne $provenanceSha256) {
+                throw 'NativeAOT sidecar hash is absent from the complete artifact manifest'
+            }
+
+            $expectedProvenanceFileName = 'native-aot-provenance-ranks-{0}-{1}.json' -f $startRank, $endRank
+            $provenanceFiles = @(Get-ChildItem -LiteralPath $EvidenceRoot -Recurse -File -Filter $expectedProvenanceFileName -ErrorAction SilentlyContinue)
+            if ($provenanceFiles.Count -ne 1 -or
+                $provenanceFiles[0].Length -le 0 -or $provenanceFiles[0].Length -gt 4MB -or
+                ($provenanceFiles[0].Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+                (Get-FileHash -LiteralPath $provenanceFiles[0].FullName -Algorithm SHA256).Hash -ine $provenanceSha256) {
+                throw 'missing, duplicate, or hash-mismatched per-shard NativeAOT provenance sidecar'
+            }
+            [void]$expectedProvenanceEvidenceNames.Add($expectedProvenanceFileName)
+            $provenance = Get-Content -LiteralPath $provenanceFiles[0].FullName -Raw | ConvertFrom-Json -Depth 16
+            if ($provenance.schemaVersion -ne 1 -or
+                $provenance.provenanceVerified -ne $true -or
+                $provenance.workingTreeClean -ne $true -or
+                [string]$provenance.sourceCommitSha -ine [string]$binary.sourceCommitSha -or
+                [string]$provenance.configuration -cne 'Release' -or
+                [string]$provenance.runtimeFlavor -cne 'native-aot' -or
+                [string]$provenance.architecture -cne 'x64' -or
+                [string]$provenance.runtimeIdentifier -cne 'win-x64' -or
+                [string]$provenance.executableName -cne 'JitHub.WinUI.exe' -or
+                [string]$provenance.executableSha256 -ine $executableSha256 -or
+                [string]$provenance.workflowRunId -cne [string]$binary.workflowRunId -or
+                [string]$provenance.workflowRepository -cne [string]$binary.workflowRepository -or
+                [string]$provenance.workflowRef -cne [string]$binary.workflowRef -or
+                $null -eq $provenance.artifactFileSha256) {
+                throw 'per-shard NativeAOT sidecar identity does not match its verified app evidence'
+            }
+            $sidecarPayloadFiles = [Collections.Generic.SortedDictionary[string, string]]::new([StringComparer]::Ordinal)
+            $sidecarProperties = @($provenance.artifactFileSha256.PSObject.Properties)
+            if ($sidecarProperties.Count -lt 1 -or $sidecarProperties.Count -gt 4096) {
+                throw 'invalid file count in per-shard NativeAOT provenance sidecar'
+            }
+            $sidecarPathSet = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+            foreach ($property in $sidecarProperties) {
+                $relativePath = [string]$property.Name
+                if ([string]::IsNullOrWhiteSpace($relativePath) -or
+                    $relativePath.StartsWith('/') -or $relativePath.Contains('\') -or $relativePath.Contains(':') -or
+                    @($relativePath.Split('/') | Where-Object { $_ -in @('', '.', '..') }).Count -ne 0 -or
+                    [string]$property.Value -notmatch '^[0-9a-fA-F]{64}$') {
+                    throw 'invalid file identity in per-shard NativeAOT provenance sidecar'
+                }
+                if (-not $sidecarPathSet.Add($relativePath)) {
+                    throw 'case-ambiguous file identity in per-shard NativeAOT provenance sidecar'
+                }
+                $sidecarPayloadFiles.Add($relativePath, ([string]$property.Value).ToLowerInvariant())
+            }
+            $publishedPayloadFiles = [Collections.Generic.SortedDictionary[string, string]]::new([StringComparer]::Ordinal)
+            foreach ($relativePath in $canonicalFiles.Keys) {
+                if ($relativePath -cne 'native-aot-provenance.json') {
+                    $publishedPayloadFiles.Add($relativePath, $canonicalFiles[$relativePath])
+                }
+            }
+            if ($sidecarPayloadFiles.Count -ne $publishedPayloadFiles.Count) {
+                throw 'NativeAOT provenance payload file count differs from the published audit app'
+            }
+            foreach ($relativePath in $sidecarPayloadFiles.Keys) {
+                if (-not $publishedPayloadFiles.ContainsKey($relativePath) -or
+                    $sidecarPayloadFiles[$relativePath] -cne $publishedPayloadFiles[$relativePath]) {
+                    throw 'NativeAOT provenance payload file map differs from the published audit app'
+                }
+            }
+            $sidecarPayloadManifestSha256 = Get-NativeAotFileMapSha256 $sidecarPayloadFiles
+            if ([string]$provenance.artifactManifestSha256 -notmatch '^[0-9a-fA-F]{64}$' -or
+                $sidecarPayloadManifestSha256 -cne ([string]$provenance.artifactManifestSha256).ToLowerInvariant()) {
+                throw 'NativeAOT provenance payload digest does not match its file map'
+            }
+            foreach ($assemblyProperty in $assemblies.PSObject.Properties) {
+                if (-not $canonicalFiles.ContainsKey([string]$assemblyProperty.Name) -or
+                    $canonicalFiles[[string]$assemblyProperty.Name] -cne ([string]$assemblyProperty.Value).ToLowerInvariant()) {
+                    throw 'missing or mismatched native dependency in artifact manifest'
+                }
+            }
+            foreach ($forbiddenManagedAssembly in @('JitHub.WinUI.dll', 'MarkdownRenderer.dll')) {
+                if ($canonicalFiles.ContainsKey($forbiddenManagedAssembly)) {
+                    throw "NativeAOT artifact contains managed $forbiddenManagedAssembly"
+                }
+            }
+            $manifestLines = @($canonicalFiles.GetEnumerator() | ForEach-Object { "$($_.Key)`0$($_.Value)" })
+            $artifactManifestSha256 = [Convert]::ToHexString(
+                [Security.Cryptography.SHA256]::HashData(
+                    [Text.Encoding]::UTF8.GetBytes($manifestLines -join "`n"))).ToLowerInvariant()
+            if ([string]::IsNullOrWhiteSpace($sharedArtifactManifestSha256)) {
+                $sharedArtifactManifestSha256 = $artifactManifestSha256
+            }
+            elseif ($artifactManifestSha256 -cne $sharedArtifactManifestSha256) {
+                throw 'Release shards used different NativeAOT artifact files'
+            }
+            if ([string]::IsNullOrWhiteSpace($sharedExecutableSha256)) {
+                $sharedExecutableSha256 = $executableSha256
+            }
+            elseif ($executableSha256 -cne $sharedExecutableSha256) {
+                throw 'Release shards used different NativeAOT executables'
+            }
+            if ([string]::IsNullOrWhiteSpace($sharedProvenanceSha256)) {
+                $sharedProvenanceSha256 = $provenanceSha256
+                $sharedWorkflowRunId = [string]$binary.workflowRunId
+                $sharedWorkflowRepository = [string]$binary.workflowRepository
+                $sharedWorkflowRef = [string]$binary.workflowRef
+            }
+            elseif ($provenanceSha256 -cne $sharedProvenanceSha256 -or
+                [string]$binary.workflowRunId -cne $sharedWorkflowRunId -or
+                [string]$binary.workflowRepository -cne $sharedWorkflowRepository -or
+                [string]$binary.workflowRef -cne $sharedWorkflowRef) {
+                throw 'Release shards used different NativeAOT provenance or workflow runs'
             }
             if ([string]::IsNullOrWhiteSpace($sourceCommitSha)) {
                 $sourceCommitSha = ([string]$binary.sourceCommitSha).ToLowerInvariant()
@@ -337,6 +715,9 @@ if ($RequireSameByteCorpus) {
                 if (-not $coveredBuildRanks.Add($rank)) {
                     throw "Release build rank $rank is covered by more than one shard"
                 }
+                if (-not $coveredProvenanceRanks.Add($rank)) {
+                    throw "Release provenance rank $rank is covered by more than one shard"
+                }
             }
             $buildEvidence.Add([pscustomobject]@{
                 artifactFile = $binaryFile.Name
@@ -344,7 +725,16 @@ if ($RequireSameByteCorpus) {
                 endRank = $endRank
                 sourceCommitSha = ([string]$binary.sourceCommitSha).ToLowerInvariant()
                 configuration = [string]$binary.configuration
-                executableSha256 = ([string]$binary.executableSha256).ToLowerInvariant()
+                runtimeFlavor = [string]$binary.runtimeFlavor
+                provenanceVerified = [bool]$binary.provenanceVerified
+                provenanceStatus = [string]$binary.provenanceStatus
+                provenanceWorkingTreeClean = [bool]$binary.provenanceWorkingTreeClean
+                provenanceSha256 = $provenanceSha256
+                workflowRunId = [string]$binary.workflowRunId
+                workflowRepository = [string]$binary.workflowRepository
+                workflowRef = [string]$binary.workflowRef
+                executableSha256 = $executableSha256
+                artifactManifestSha256 = $artifactManifestSha256
                 dependencyAssemblySha256 = $assemblies
             })
         }
@@ -354,6 +744,18 @@ if ($RequireSameByteCorpus) {
     }
     if ($coveredBuildRanks.Count -ne $ExpectedCount) {
         $failures.Add("Release binary evidence covers $($coveredBuildRanks.Count)/$ExpectedCount ranks.")
+    }
+    if ($coveredProvenanceRanks.Count -ne $ExpectedCount) {
+        $failures.Add("Release provenance evidence covers $($coveredProvenanceRanks.Count)/$ExpectedCount ranks.")
+    }
+    $allProvenanceEvidenceFiles = @(Get-ChildItem -LiteralPath $EvidenceRoot -Recurse -File -Filter 'native-aot-provenance-ranks-*.json' -ErrorAction SilentlyContinue)
+    if ($allProvenanceEvidenceFiles.Count -ne $binaryEvidenceFiles.Count) {
+        $failures.Add('Per-shard NativeAOT provenance evidence does not exactly cover the Release binary shards.')
+    }
+    foreach ($provenanceFile in $allProvenanceEvidenceFiles) {
+        if (-not $expectedProvenanceEvidenceNames.Contains($provenanceFile.Name)) {
+            $failures.Add("Unexpected per-shard NativeAOT provenance evidence '$($provenanceFile.Name)'.")
+        }
     }
 
     $screenshotEvidenceFiles = @(Get-ChildItem -LiteralPath $EvidenceRoot -Recurse -File -Filter 'screenshot-quota-ranks-*.json' -ErrorAction SilentlyContinue)
@@ -436,6 +838,22 @@ if ($RequireSameByteCorpus) {
         (Get-FileHash -LiteralPath $pinnedParserPath -Algorithm SHA256).Hash -ne $pinnedParserSha256) {
         $failures.Add('The pinned source-bound Edge GFM parser is missing or changed.')
     }
+    $pinnedEmojiMapPath = Join-Path $PSScriptRoot 'vendor\github-emoji-shortcodes.json'
+    $pinnedEmojiMapSha256 = '44980486df12fa536479d4a8c28e57b65654b373a263a894f79ccc7ceb335cf5'
+    $pinnedEmojiExtensionPath = Join-Path $PSScriptRoot 'vendor\github-emoji-shortcodes.js'
+    $pinnedEmojiExtensionSha256 = '89f772b065e6ba0114a9a8aaba19de071b20e2c44af065f83d09865c5bcb4d87'
+    $pinnedEmojiLicensePath = Join-Path $PSScriptRoot 'vendor\GITHUB-GEMOJI.LICENSE'
+    $pinnedEmojiLicenseSha256 = 'bab932cd28676c262d38eb7aedd7c366ebae15a07d823cc51854ec16ec045dba'
+    foreach ($pinnedEmojiFile in @(
+        @{ Path = $pinnedEmojiMapPath; Sha256 = $pinnedEmojiMapSha256; Name = 'GitHub emoji shortcode map' },
+        @{ Path = $pinnedEmojiExtensionPath; Sha256 = $pinnedEmojiExtensionSha256; Name = 'GitHub emoji shortcode extension' },
+        @{ Path = $pinnedEmojiLicensePath; Sha256 = $pinnedEmojiLicenseSha256; Name = 'GitHub emoji source license' }
+    )) {
+        if (-not (Test-Path -LiteralPath $pinnedEmojiFile.Path -PathType Leaf) -or
+            (Get-FileHash -LiteralPath $pinnedEmojiFile.Path -Algorithm SHA256).Hash -ne $pinnedEmojiFile.Sha256) {
+            $failures.Add("The pinned $($pinnedEmojiFile.Name) is missing or changed.")
+        }
+    }
     foreach ($case in $orderedCases) {
         $rank = [int]$case.rank
         if (-not $pinnedManifestValid -or -not $pinnedRepositoriesByRank.ContainsKey($rank)) {
@@ -495,6 +913,8 @@ if ($RequireSameByteCorpus) {
         try {
             $manifest = Get-Content -LiteralPath $manifestFile -Raw | ConvertFrom-Json
             $assetMapSha256 = Get-AssetMapSha256 $manifestFile
+            $assetSummary = Get-UniqueManifestAssetSummary -Assets @($manifest.assets)
+            $imageRouteCount = Get-ManifestImageRouteCount -Manifest $manifest -Assets @($manifest.assets)
             if ($manifest.schemaVersion -ne 2 -or $manifest.complete -ne $true -or
                 [string]$manifest.repository.fullName -ine [string]$expectedRepository.fullName -or
                 [string]$manifest.repository.commitSha -ine [string]$expectedRepository.commitSha -or
@@ -504,8 +924,8 @@ if ($RequireSameByteCorpus) {
                 [long]$manifest.readme.byteSize -ne [long]$expectedRepository.readmeByteSize -or
                 [long]$manifest.readme.byteSize -ne [long]$sameByte.readmeBytes -or
                 [string]$manifest.readme.sha256 -ne [string]$sameByte.readmeSha256 -or
-                @($manifest.assets).Count -ne [int]$sameByte.assetCount -or
-                [long](($manifest.assets | Measure-Object -Property byteSize -Sum).Sum) -ne [long]$sameByte.assetBytes) {
+                $assetSummary.AssetCount -ne [int]$sameByte.assetCount -or
+                $assetSummary.AssetBytes -ne [long]$sameByte.assetBytes) {
                 throw 'manifest identity mismatch'
             }
         }
@@ -533,6 +953,16 @@ if ($RequireSameByteCorpus) {
             }
         }
         else {
+            # Legacy diagnostic merges may predate style-profile evidence. Only
+            # the qualified release path reaches this merger with the strict
+            # same-byte requirement enabled, where profile parity is mandatory.
+            $profileMismatches = @(Get-StyleProfileIdentityMismatches `
+                -NativeProfile $case.native.visualProfile `
+                -EdgeProfile $replay.styleProfile)
+            foreach ($profileMismatch in $profileMismatches) {
+                $failures.Add("Rank $($case.rank) has missing or mismatched native and offline Edge style profile identity ($profileMismatch).")
+            }
+
             $sourceSemantic = $replay.semantic
             if ($null -eq $sourceSemantic -or $sourceSemantic.complete -ne $true -or
                 [string]$sourceSemantic.incompleteReason -ne '' -or
@@ -568,6 +998,9 @@ if ($RequireSameByteCorpus) {
             }
             $htmlReplay = $case.browser.sameByteHtmlReplay
             $timing = $replay.timing
+            $expectedReplayImageCount = Get-ValidatedSemanticCount -Value $replay.assets.expectedImageCount
+            $verifiedReplayImageCount = Get-ValidatedSemanticCount -Value $replay.assets.verifiedImageCount
+            $semanticReplayImageCount = Get-ValidatedSemanticCount -Value $sourceSemantic.imageCount
             $auditOnlyFrameWaitCount = Get-ValidatedSemanticCount -Value $timing.auditOnlyFrameWaitCount
             $maximumAuditOnlyFrameWaitCount = 512 * 17 * 3 + 2
             if ([string]$manifest.browserRender.file -ne 'rendered.html' -or
@@ -580,10 +1013,21 @@ if ($RequireSameByteCorpus) {
                 [string]$replay.source.readmeGitBlobSha1 -ine $expectedReadmeSha -or
                 [string]$replay.source.readmeSha256 -ne [string]$sameByte.readmeSha256 -or
                 [long]$replay.source.byteSize -ne [long]$sameByte.readmeBytes -or
+                [string]$case.native.readmeSourceDecodedTextSha256 -notmatch '^[0-9a-fA-F]{64}$' -or
+                [string]$replay.source.decodedTextSha256 -notmatch '^[0-9a-fA-F]{64}$' -or
+                [string]$replay.source.decodedTextSha256 -ine [string]$case.native.readmeSourceDecodedTextSha256 -or
                 [string]$replay.parser.name -ne 'marked' -or
                 [string]$replay.parser.version -ne '18.0.5' -or
                 [string]$replay.parser.license -ne 'MIT' -or
                 [string]$replay.parser.sha256 -ne $pinnedParserSha256 -or
+                [string]$replay.parser.emojiShortcodeSource -ne 'github/gemoji/db/emoji.json' -or
+                [string]$replay.parser.emojiShortcodeSourceCommit -ne 'fadaeaf1f1a9be82b321316a6c5502e43138b2f6' -or
+                [string]$replay.parser.emojiShortcodeSourceSha256 -ne 'b174ae2aeb321b52f64adb9ff412f966a7f338839d780784dd15dcad702c2dd6' -or
+                [string]$replay.parser.emojiShortcodeLicense -ne 'MIT' -or
+                [string]$replay.parser.emojiShortcodeLicenseSha256 -ne $pinnedEmojiLicenseSha256 -or
+                [string]$replay.parser.emojiShortcodeMapSha256 -ne $pinnedEmojiMapSha256 -or
+                [string]$replay.parser.emojiShortcodeExtensionSha256 -ne $pinnedEmojiExtensionSha256 -or
+                [int]$replay.parser.emojiShortcodeAliasCount -ne 1913 -or
                 [int]$replay.viewport.width -ne [int]$case.native.contentViewportWidth -or
                 [int]$replay.viewport.height -ne [int]$case.native.contentViewportHeight -or
                 [int]$replay.viewport.edgeInnerWidth -ne [int]$case.native.contentViewportWidth -or
@@ -596,8 +1040,12 @@ if ($RequireSameByteCorpus) {
                 [string]$replay.viewport.colorScheme -ne 'light' -or
                 [string]$replay.assets.assetUrlMapSha256 -ne $assetMapSha256 -or
                 $null -eq $replay.assets -or
-                [int]$replay.assets.expectedImageCount -lt 0 -or
-                [int]$replay.assets.verifiedImageCount -ne [int]$replay.assets.expectedImageCount -or
+                $null -eq $expectedReplayImageCount -or
+                $null -eq $verifiedReplayImageCount -or
+                $null -eq $semanticReplayImageCount -or
+                $expectedReplayImageCount -ne $imageRouteCount -or
+                $verifiedReplayImageCount -ne $imageRouteCount -or
+                $semanticReplayImageCount -ne $imageRouteCount -or
                 [int]$replay.assets.replayMissCount -ne 0 -or
                 [int]$replay.assets.blockedExternalRequestCount -ne 0 -or
                 [int]$replay.assets.distinctServedUrlHashes -ne [int]$replay.assets.distinctExpectedUrlHashes -or
@@ -606,6 +1054,7 @@ if ($RequireSameByteCorpus) {
                 [double]$timing.firstViewportPaintMs -le 0 -or
                 -not (Test-FiniteAuditMetric -Value $timing.firstViewportImagesReadyMs -Minimum 0.0) -or
                 [double]$timing.firstViewportImagesReadyMs -lt [double]$timing.firstViewportPaintMs -or
+                [string]$timing.firstViewportImagesReadyBoundary -ne 'same source-available start through successful decode of every visible pinned image' -or
                 -not (Test-FiniteAuditMetric -Value $timing.fullTraversalMs -Minimum 0.0) -or
                 [double]$timing.fullTraversalMs -lt [double]$timing.firstViewportImagesReadyMs -or
                 -not (Test-FiniteAuditMetric -Value $timing.chargedTraversalMs -Minimum 0.0) -or
@@ -620,6 +1069,8 @@ if ($RequireSameByteCorpus) {
                 [Math]::Abs([double]$timing.fullTraversalMs - [double]$timing.chargedTraversalMs -
                     [double]$timing.auditOnlyFrameWaitMs) -gt 0.001 -or
                 [double]$case.native.firstViewportImagesReadyMs -le 0 -or
+                -not (Test-FiniteAuditMetric -Value $case.native.sourceAvailableToFirstViewportImagesReadyMs -Minimum 0.0) -or
+                [double]$case.native.sourceAvailableToFirstViewportImagesReadyMs -le 0 -or
                 -not (Test-SourceReplayTileCoverage $replay)) {
                 $failures.Add("Rank $($case.rank) has incomplete or mismatched offline Edge replay evidence.")
             }
@@ -630,10 +1081,13 @@ if ($RequireSameByteCorpus) {
                 [double]$extentRatio -lt 0.90 -or [double]$extentRatio -gt 1.10) {
                 $failures.Add("Rank $($case.rank) is outside the source-bound 0.90–1.10 full-page extent gate or omitted its ratio.")
             }
+            if (-not (Test-SameByteVisualEvidenceComplete $case.comparison $case.native.tiles)) {
+                $failures.Add("Rank $($case.rank) has incomplete source-matched visual evidence (all native viewports must have finite same-byte SSIM observations).")
+            }
             $timingRatioInputs = @(
                 @{
                     Name = 'nativeToSameByteFirstRenderRatio'
-                    Native = $case.native.firstViewportImagesReadyMs
+                    Native = $case.native.sourceAvailableToFirstViewportImagesReadyMs
                     Replay = $replay.timing.firstViewportImagesReadyMs
                 },
                 @{
@@ -681,11 +1135,10 @@ if ($RequireSameByteCorpus) {
         $failures.Add("Only $sameByteCases/$sameByteExpectedCases available README cases have same-byte capture evidence.")
     }
 
-    # Keep known high-cost ranks visible in every release run. Aggregate p95
-    # can hide a single slow page, so the full same-byte qualification also
-    # checks these previously observed outliers individually against the same
-    # 110% Edge ceiling.
-    foreach ($sentinelRank in @(26, 60, 102, 149, 153, 201, 203, 295, 395, 476)) {
+    # Keep known high-cost ranks and recently reproduced latency outliers
+    # visible in every release run. Aggregate p95 can hide a single slow page,
+    # so each is checked against the unchanged 110% Edge ceiling.
+    foreach ($sentinelRank in @(2, 5, 8, 22, 26, 60, 102, 149, 153, 201, 203, 295, 395, 476)) {
         $case = $orderedCases | Where-Object { [int]$_.rank -eq $sentinelRank } | Select-Object -First 1
         if ($null -eq $case) {
             $failures.Add("Same-byte release evidence is missing performance sentinel rank $sentinelRank.")
@@ -793,14 +1246,13 @@ $markdown.Add('')
 if ($buildEvidence.Count -gt 0) {
     $markdown.Add('## Release app build identities')
     $markdown.Add('')
-    $markdown.Add('| Ranks | Source commit | Executable SHA-256 | JitHub.WinUI.dll SHA-256 | MarkdownRenderer.dll SHA-256 |')
-    $markdown.Add('| --- | --- | --- | --- | --- |')
+    $markdown.Add('| Ranks | Source commit | Runtime | Executable SHA-256 | Artifact SHA-256 | Native dependency DLLs |')
+    $markdown.Add('| --- | --- | --- | --- | --- | ---: |')
     foreach ($build in @($buildEvidence | Sort-Object startRank)) {
-        $appAssemblySha256 = [string]$build.dependencyAssemblySha256.'JitHub.WinUI.dll'
-        $rendererAssemblySha256 = [string]$build.dependencyAssemblySha256.'MarkdownRenderer.dll'
-        $markdown.Add(("| {0}-{1} | {2} | {3} | {4} | {5} |" -f
+        $nativeDependencyCount = @($build.dependencyAssemblySha256.PSObject.Properties).Count
+        $markdown.Add(("| {0}-{1} | {2} | {3} | {4} | {5} | {6} |" -f
             $build.startRank, $build.endRank, $build.sourceCommitSha,
-            $build.executableSha256, $appAssemblySha256, $rendererAssemblySha256))
+            $build.runtimeFlavor, $build.executableSha256, $build.artifactManifestSha256, $nativeDependencyCount))
     }
     $markdown.Add('')
 }

@@ -1,10 +1,14 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Microsoft.Graphics.Canvas;
+using Microsoft.Graphics.Canvas.Text;
 using Windows.Foundation;
 using Windows.UI;
+using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Layout;
 using MarkdownRenderer.Theming;
 
 namespace MarkdownRenderer.Layout.Boxes;
@@ -19,13 +23,33 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox
     private const float HorizontalScrollbarHeight = 12f;
     private const float MinimumScrollbarThumbWidth = 24f;
 
-    private readonly MarkdownLayoutContext _context;
-    private readonly MarkdownVectorScene _scene;
-    private readonly VectorSceneDrawing _drawing;
-    private readonly string _elementKey;
+    internal readonly MarkdownLayoutContext LayoutContext;
+    private VectorSceneDrawing _drawing;
+    private CanvasTextLayout? _detachedFallbackLayout;
+    private bool _detachedFallbackCleanupPending;
+    private NativeResourceRetirementRecord? _detachedFallbackRetirementRecord;
+    private NativeResourceRetirementRecord? _detachedFallbackCandidateRecord;
+    private readonly MarkdownVectorRectangle _semanticViewport;
+    internal readonly IReadOnlyList<MarkdownVectorSemanticItem> SemanticItems;
+    private readonly IReadOnlyList<MarkdownVectorLinkAction?> _semanticLinks;
+    private readonly ReadOnlyMemory<int> _semanticDepths;
+    internal readonly SourceSpan SourceRange;
+    internal readonly MarkdownAccessibilityRole AccessibilityRole;
+    internal readonly string? AccessibilityName;
+    internal readonly string? AccessibilityDescription;
+    internal readonly string? SemanticText;
+    internal readonly string ElementKey;
+    private readonly float _sceneWidth;
+    private readonly float _sceneHeight;
     private readonly float _referenceFontSize;
-    private readonly int[] _semanticTextCommandIndices;
-    private readonly int[] _semanticBackgroundCommandIndices;
+    private readonly string _capacityFallbackText;
+    private readonly string _capacityFallbackFailureText;
+    // Projection metadata is O(semantic count), replacing two retained int
+    // command-index entries with one object reference per semantic (8 vs 8
+    // bytes on x64; 4 vs 8 on x86). Each indexed text semantic also retains
+    // one frozen ElementStyle object; non-text semantics share the container
+    // style. No command, scene, or native object is retained.
+    private readonly ElementStyle[] _semanticTextStyles;
     private readonly IReadOnlyList<string> _styleContextKeys;
     private readonly IReadOnlyList<string> _styleAliasKeys;
     private ElementStyle? _style;
@@ -34,39 +58,272 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox
     private float _contentHeight;
     private double _horizontalOffset;
     private Rect _contentBounds;
+    private bool _initialMeasurePreparedResources;
+    private bool _disposed;
+    private volatile bool _graphRebindFailed;
 
     internal VectorSceneBox(
         MarkdownLayoutContext context,
         MarkdownContent content,
-        string elementKey)
+        string elementKey,
+        VectorNativeResourceAdmission? nativeAdmission = null)
     {
-        _context = context ?? throw new ArgumentNullException(nameof(context));
-        Content = content ?? throw new ArgumentNullException(nameof(content));
-        _scene = content.VectorScene ?? throw new ArgumentException("Vector content requires a scene.", nameof(content));
-        _elementKey = string.IsNullOrWhiteSpace(elementKey) ? MarkdownElementKeys.Diagram : elementKey;
-        _referenceFontSize = ResolveReferenceFontSize(_scene);
-        (_semanticTextCommandIndices, _semanticBackgroundCommandIndices) =
-            IndexSemanticCommands(_scene);
+        LayoutContext = context ?? throw new ArgumentNullException(nameof(context));
+        ArgumentNullException.ThrowIfNull(content);
+        MarkdownVectorScene scene = content.VectorScene ?? throw new ArgumentException("Vector content requires a scene.", nameof(content));
+        _semanticViewport = scene.Viewport;
+        SemanticItems = scene.Semantics;
+        _semanticLinks = scene.SemanticLinks;
+        _semanticDepths = scene.SemanticDepths;
+        SourceRange = content.SourceSpan;
+        AccessibilityRole = content.AccessibilityRole;
+        AccessibilityName = content.AccessibilityName;
+        AccessibilityDescription = content.AccessibilityDescription;
+        SemanticText = content.SemanticText;
+        VectorNativeResourceAdmission? resolvedNativeAdmission =
+            VectorSceneCapacityFallback.ResolveNativeAdmission(context, nativeAdmission);
+        _capacityFallbackText = resolvedNativeAdmission is null
+            ? string.Empty
+            : VectorSceneCapacityFallback.CreateBlockText(
+                context,
+                SourceRange,
+                SemanticText,
+                AccessibilityName,
+                failed: false);
+        _capacityFallbackFailureText = resolvedNativeAdmission is null
+            ? string.Empty
+            : VectorSceneCapacityFallback.CreateBlockText(
+                context,
+                SourceRange,
+                SemanticText,
+                AccessibilityName,
+                failed: true);
+        ElementKey = string.IsNullOrWhiteSpace(elementKey) ? MarkdownElementKeys.Diagram : elementKey;
+        _sceneWidth = scene.Width;
+        _sceneHeight = scene.Height;
+        (int[] textCommandIndices, int[] backgroundCommandIndices, float referenceFontSize) =
+            IndexSemanticCommands(scene, context.CancellationToken);
+        _referenceFontSize = referenceFontSize;
         _styleContextKeys = context.CreateStyleContextSnapshot();
         _styleAliasKeys = context.CreateStyleAliasSnapshot();
         _drawing = new VectorSceneDrawing(
             context.ResourceCreator,
-            _scene,
+            scene,
             context.CancellationToken,
-            Style.FontFamily);
+            Style.FontFamily
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+            , context.LayoutDiagnostics
+#endif
+            , deferNativeResources: true,
+            nativeAdmission: resolvedNativeAdmission);
         Margin = Style.Margin;
+        _semanticTextStyles = BuildSemanticTextStyles(
+            scene,
+            textCommandIndices,
+            backgroundCommandIndices);
     }
 
-    internal MarkdownContent Content { get; }
+    // Drawing is the sole scene owner. Terminal retirement clears its scene
+    // reference; immutable projections retain exact semantic/accessibility
+    // metadata without retaining the command graph.
+    internal MarkdownVectorScene Scene => _drawing.Scene;
 
-    internal MarkdownVectorScene Scene => _scene;
+    // Borrowed by optional preparation code. The context owns no scene command
+    // graph, and callers capture drawing inputs under snapshot exclusion before
+    // doing replacement work off-lock.
+    internal bool IsGraphDetached => !_disposed && !_drawing.HasScene;
+
+    internal bool GraphRebindFailed => _graphRebindFailed;
+
+    internal MarkdownDeferredSceneBinding? DeferredSceneBinding { get; init; }
+
+    internal MarkdownVectorLinkAction? GetSemanticLinkAction(int semanticIndex) =>
+        (uint)semanticIndex < (uint)_semanticLinks.Count ? _semanticLinks[semanticIndex] : null;
 
     internal Rect ContentBounds => _contentBounds;
 
     internal Rect VisibleContentBounds =>
         VectorViewportTransform.Intersect(_contentBounds, HorizontalViewportBounds);
 
-    internal string ElementKey => _elementKey;
+    internal bool IsNativeResourcesPrepared => _drawing.IsPrepared;
+
+    /// <summary>Admission ledger used by this scene, or null for legacy eager rendering.</summary>
+    internal VectorNativeResourceAdmission? NativeAdmission => _drawing.NativeResourceAdmission;
+
+    /// <summary>Most recent bounded-admission result for native scene resources.</summary>
+    internal VectorNativePreparationStatus NativePreparationStatus => _drawing.NativePreparationStatus;
+
+    /// <summary>
+    /// True only when a capacity/size denial has a prewarmed, bounded text
+    /// representation. This is independent of native-scene readiness.
+    /// </summary>
+    internal bool IsCapacityFallbackPaintable =>
+        IsCapacityPreparationStatus(NativePreparationStatus) && HasCapacityFallbackText &&
+        VectorSceneCapacityFallback.TryGetFormat(LayoutContext.FlowDirection, out _);
+
+    /// <summary>
+    /// Recreates this scene's device resources before paint. Callers must do
+    /// this from the background layout/preparation path, never from Paint.
+    /// </summary>
+    internal void PrepareNativeResources(CancellationToken cancellationToken)
+        => _ = TryPrepareNativeResources(cancellationToken, out _);
+
+    internal bool TryPrepareNativeResources(
+        CancellationToken cancellationToken,
+        out VectorNativePreparationOutcome outcome)
+    {
+        bool prepared = _drawing.TryPrepareNativeResources(cancellationToken, out outcome);
+        if (outcome.Status is VectorNativePreparationStatus.DeferredCapacity or VectorNativePreparationStatus.TooLarge)
+            _ = PrepareCapacityFallback(cancellationToken);
+        return prepared;
+    }
+
+    /// <summary>Warms the borrowed process-wide fallback descriptor off the paint path.</summary>
+    internal bool PrepareCapacityFallback(CancellationToken cancellationToken)
+        => PrepareCapacityFallback(cancellationToken, _drawing.NativeResourceAdmission);
+
+    private bool PrepareCapacityFallback(
+        CancellationToken cancellationToken,
+        VectorNativeResourceAdmission? nativeAdmission)
+    {
+        if (_disposed || nativeAdmission is null || !HasCapacityFallbackText)
+            return false;
+        cancellationToken.ThrowIfCancellationRequested();
+        // Capacity denial is the only typed non-exceptional fallback result.
+        // A DirectWrite/Win2D descriptor creation failure must escape through
+        // the existing device/native-resource recovery path; swallowing it
+        // would publish an unpaintable scene as a settled capacity fallback.
+        return VectorSceneCapacityFallback.PrepareFormat(LayoutContext.FlowDirection);
+    }
+
+    /// <summary>Releases only device resources; the immutable scene stays owned by this box.</summary>
+    internal void ReleaseNativeResources()
+    {
+        Exception? drawingFailure = null;
+        try
+        {
+            _drawing.ReleaseNativeResources();
+        }
+        catch (Exception exception)
+        {
+            drawingFailure = exception;
+        }
+        try
+        {
+            DisposeDetachedFallback();
+        }
+        catch (Exception fallbackFailure) when (drawingFailure is not null)
+        {
+            throw new AggregateException(
+                "Vector drawing and detached fallback cleanup both failed.",
+                drawingFailure, fallbackFailure);
+        }
+        if (drawingFailure is not null)
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(drawingFailure).Throw();
+    }
+
+    /// <summary>Releases device resources and detaches the immutable command graph.</summary>
+    internal void ReleaseSceneGraph()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        _drawing.DetachSceneGraph();
+        DisposeDetachedFallback();
+    }
+
+    internal bool IsDisposed => _disposed;
+
+    internal bool HasDetachedFallback =>
+        (_detachedFallbackLayout is not null && !_detachedFallbackCleanupPending) ||
+        (NativeAdmission is not null && IsGraphDetached && HasCapacityFallbackText &&
+            VectorSceneCapacityFallback.TryGetFormat(LayoutContext.FlowDirection, out _));
+
+    /// <summary>Transfers a staged layout; the caller disposes any rejected candidate.</summary>
+    internal bool TryAdoptDetachedFallback(
+        ref CanvasTextLayout? candidate,
+        CancellationToken cancellationToken)
+    {
+        if (candidate is null)
+            return false;
+        NativeResourceRetirementRecord? candidateRecord = Volatile.Read(ref _detachedFallbackCandidateRecord);
+        if (candidateRecord is null)
+            return false;
+        if (ReferenceEquals(_detachedFallbackLayout, candidate))
+        {
+            candidateRecord.SetTemporary(0, null);
+            candidate = null;
+            return false;
+        }
+        cancellationToken.ThrowIfCancellationRequested();
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (!IsGraphDetached)
+            return false;
+        // Do not sever the old layout's owner before successful cleanup. On a
+        // failure the caller still owns its candidate and this box retains only
+        // the old, non-paintable cleanup slot for a later retirement attempt.
+        DisposeDetachedFallback();
+        _detachedFallbackLayout = candidate;
+        _detachedFallbackRetirementRecord = candidateRecord;
+        candidate = null;
+        return true;
+    }
+
+    internal bool TryBeginDetachedFallbackCandidate(NativeResourceRetirementRecord retirementRecord)
+    {
+        ArgumentNullException.ThrowIfNull(retirementRecord);
+        if (_disposed || Interlocked.CompareExchange(
+                ref _detachedFallbackCandidateRecord, retirementRecord, null) is not null)
+            return false;
+        if (!_disposed)
+            return true;
+        Interlocked.CompareExchange(ref _detachedFallbackCandidateRecord, null, retirementRecord);
+        return false;
+    }
+
+    internal NativeResourceRetirementRecord? GetDetachedFallbackCandidateRecord() =>
+        Volatile.Read(ref _detachedFallbackCandidateRecord);
+
+    internal void EndDetachedFallbackCandidate(NativeResourceRetirementRecord retirementRecord) =>
+        Interlocked.CompareExchange(ref _detachedFallbackCandidateRecord, null, retirementRecord);
+
+    /// <summary>Marks a failed visible-band graph rebind and refreshes its fallback status.</summary>
+    internal void MarkGraphRebindFailed()
+    {
+        if (_disposed)
+            return;
+
+        _graphRebindFailed = true;
+    }
+
+    /// <summary>Atomically adopts a prepared replacement for a detached scene.</summary>
+    internal void AdoptPreparedReplacement(VectorSceneDrawing replacement)
+    {
+        ArgumentNullException.ThrowIfNull(replacement);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (!IsGraphDetached)
+            throw new InvalidOperationException("A scene replacement can only be adopted by a detached vector box.");
+        bool replacementPrepared = replacement.IsPrepared;
+        bool replacementCapacityFallbackReady =
+            (replacement.NativePreparationStatus is VectorNativePreparationStatus.DeferredCapacity or
+                VectorNativePreparationStatus.TooLarge) &&
+            replacement.NativeResourceAdmission is not null &&
+            HasCapacityFallbackText &&
+            VectorSceneCapacityFallback.TryGetFormat(LayoutContext.FlowDirection, out _);
+        if (ReferenceEquals(replacement, _drawing) || !replacement.HasScene ||
+            (!replacementPrepared && !replacementCapacityFallbackReady))
+        {
+            throw new InvalidOperationException(
+                "A replacement drawing must own a prepared scene or a prewarmed bounded-capacity fallback.");
+        }
+
+        DisposeDetachedFallback();
+        VectorSceneDrawing previous = _drawing;
+        // The previous drawing is already detached and has no device resources.
+        // Dispose it before the field swap so any unexpected cleanup failure
+        // leaves the caller owning the prepared replacement.
+        previous.Dispose();
+        _drawing = replacement;
+        _graphRebindFailed = false;
+    }
 
     internal ElementStyle ResolvedStyle => Style;
 
@@ -78,7 +335,7 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox
 
     public bool CanScrollHorizontally => HorizontalExtent > HorizontalViewport + 0.5;
 
-    public bool IsRightToLeft => _context.FlowDirection == Microsoft.UI.Xaml.FlowDirection.RightToLeft;
+    public bool IsRightToLeft => LayoutContext.FlowDirection == Microsoft.UI.Xaml.FlowDirection.RightToLeft;
 
     public Rect HorizontalViewportBounds => new(
         Bounds.X + Margin.Left + Style.Padding.Left,
@@ -120,6 +377,7 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox
 
     public override float Measure(float availableWidth)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         ThrowIfCancellationRequested();
         Margin = Style.Margin;
         _viewportWidth = (float)Math.Max(
@@ -128,15 +386,28 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox
         float scale = ResolveContentScale(
             _referenceFontSize,
             Style.FontSize,
-            _context.ThemeSnapshot.TextScaleFactor);
-        _contentWidth = Math.Max(1, _scene.Width * scale);
-        _contentHeight = Math.Max(1, _scene.Height * scale);
+            LayoutContext.ThemeSnapshot.TextScaleFactor);
+        _contentWidth = Math.Max(1, _sceneWidth * scale);
+        _contentHeight = Math.Max(1, _sceneHeight * scale);
         _horizontalOffset = Math.Clamp(_horizontalOffset, 0, Math.Max(0, HorizontalExtent - HorizontalViewport));
         double height = Margin.Top + Style.Padding.Top + _contentHeight + Style.Padding.Bottom + Margin.Bottom;
         if (CanScrollHorizontally)
             height += HorizontalScrollbarHeight;
         Bounds = new Rect(0, 0, availableWidth, height);
         UpdateContentBounds();
+        // Block scenes are prepared during layout, not in the per-frame paint
+        // callback. In a lazy snapshot this work is limited to the measured
+        // viewport band; off-band resources can later be retired safely.
+        if (_drawing.HasScene &&
+            !LayoutContext.UseProgressiveNativeSceneResidency &&
+            !_initialMeasurePreparedResources)
+        {
+            if (_drawing.NativeResourceAdmission is null)
+                _drawing.PrepareNativeResources(LayoutContext.CancellationToken);
+            else
+                _ = TryPrepareNativeResources(LayoutContext.CancellationToken, out _);
+            _initialMeasurePreparedResources = true;
+        }
         return (float)height;
     }
 
@@ -148,10 +419,17 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox
     }
 
     internal override void ThrowIfCancellationRequested() =>
-        _context.CancellationToken.ThrowIfCancellationRequested();
+        LayoutContext.CancellationToken.ThrowIfCancellationRequested();
 
     public override void Paint(CanvasDrawingSession ds, Rect viewport)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        bool paintScene = _drawing.HasScene && _drawing.IsPrepared;
+        bool paintFallback = IsGraphDetached && HasDetachedFallback;
+        bool paintCapacityFallback = !IsGraphDetached && IsCapacityFallbackPaintable;
+        if (!paintScene && !paintFallback && !paintCapacityFallback)
+            return;
+
         Rect outer = OuterBounds;
         if (outer.Width <= 0 || outer.Height <= 0)
             return;
@@ -159,7 +437,12 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox
         if (Style.Background is { } background)
             ds.FillRoundedRectangle(outer, radius, radius, background);
 
-        PaintScene(ds);
+        if (paintScene)
+            PaintScene(ds);
+        else if (paintFallback)
+            PaintDetachedFallback(ds, Style.Foreground);
+        else
+            PaintCapacityFallback(ds, Style.Foreground);
 
         if (Style.BorderBrush is { } border && Style.BorderThickness > 0)
         {
@@ -178,7 +461,7 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox
 
     public override bool HitTest(Point point, out DocumentPosition position)
     {
-        if (_scene.Semantics.Count == 0)
+        if (SemanticItems.Count == 0)
         {
             position = new DocumentPosition(BlockIndex, -1, point.X <= _contentBounds.Left ? 0 : 1);
             return Bounds.Contains(point);
@@ -200,12 +483,15 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox
 
     internal Rect GetSemanticBounds(int semanticIndex)
     {
-        if ((uint)semanticIndex >= (uint)_scene.Semantics.Count)
+        // Semantic metadata survives command-graph retirement. Position still
+        // comes from this box's current managed bounds; this is not an immutable
+        // geometry snapshot or a replacement for layout read exclusion.
+        if ((uint)semanticIndex >= (uint)SemanticItems.Count)
             return _contentBounds;
         VectorViewportTransform transform = VectorViewportTransform.Create(
-            _scene.Viewport,
+            _semanticViewport,
             _contentBounds);
-        return transform.Transform(_scene.Semantics[semanticIndex].Bounds);
+        return transform.Transform(SemanticItems[semanticIndex].Bounds);
     }
 
     internal Rect GetVisibleSemanticBounds(int semanticIndex) =>
@@ -249,7 +535,8 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox
 
     public override IEnumerable<Rect> GetSelectionRects(DocumentRange range)
     {
-        if (SelectionIntersectsAtomicSlot(range))
+        if ((_drawing.IsPrepared || IsGraphDetached || IsCapacityFallbackPaintable) &&
+            SelectionIntersectsAtomicSlot(range))
             yield return Bounds;
     }
 
@@ -259,7 +546,10 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox
         Color color,
         Rect viewport)
     {
-        if (!SelectionIntersectsAtomicSlot(range) ||
+        bool detached = IsGraphDetached;
+        bool capacityFallback = !detached && IsCapacityFallbackPaintable;
+        if ((!_drawing.IsPrepared && !detached && !capacityFallback) ||
+            !SelectionIntersectsAtomicSlot(range) ||
             Bounds.Right < viewport.Left || Bounds.Left > viewport.Right ||
             Bounds.Bottom < viewport.Top || Bounds.Top > viewport.Bottom)
         {
@@ -275,20 +565,45 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox
         // edges, labels, and authored colors remain legible. High Contrast uses
         // the system Highlight/HighlightText pair at full opacity; retaining
         // normal scene colors or translucency can make selected content vanish.
-        bool highContrast = _context.ThemeSnapshot.IsHighContrast;
+        bool highContrast = LayoutContext.ThemeSnapshot.IsHighContrast;
         VectorScenePaintPalette? selectedPalette = highContrast
             ? new VectorScenePaintPalette(
                 color,
-                _context.ThemeSnapshot.SelectionHighlightColor,
+                LayoutContext.ThemeSnapshot.SelectionHighlightColor,
                 color)
             : null;
-        using (ds.CreateLayer(highContrast ? 1f : 0.82f, sceneViewport))
-            PaintScene(ds, selectedPalette);
+        NativePaintSessionResources.LayerLease sceneLayer =
+            NativePaintSessionResources.CreateLayer(ds, highContrast ? 1f : 0.82f, sceneViewport);
+        try
+        {
+            if (_drawing.IsPrepared)
+                PaintScene(ds, selectedPalette);
+            else if (capacityFallback)
+                PaintCapacityFallback(ds, color, clipAlreadyApplied: true);
+            else if (HasDetachedFallback)
+                PaintDetachedFallback(ds, color);
+        }
+        catch (Exception primary)
+        {
+            sceneLayer.ClosePreservingPrimary(primary);
+            throw;
+        }
+        sceneLayer.Close();
 
         if (CanScrollHorizontally)
         {
-            using (ds.CreateLayer(0.82f, HorizontalScrollTrackBounds))
+            NativePaintSessionResources.LayerLease scrollbarLayer =
+                NativePaintSessionResources.CreateLayer(ds, 0.82f, HorizontalScrollTrackBounds);
+            try
+            {
                 PaintHorizontalScrollbar(ds);
+            }
+            catch (Exception primary)
+            {
+                scrollbarLayer.ClosePreservingPrimary(primary);
+                throw;
+            }
+            scrollbarLayer.Close();
         }
 
         Rect outline = VisibleContentBounds;
@@ -301,12 +616,8 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox
 
     internal bool TryGetLinkAt(Point point, out MarkdownVectorLinkAction? link)
     {
-        if (TryGetSemanticAt(point, SemanticHitKind.Linked, out int semanticIndex) &&
-            _scene.GetLinkAction(semanticIndex) is { } action)
-        {
-            link = action;
-            return true;
-        }
+        if (TryGetSemanticAt(point, SemanticHitKind.Linked, out int semanticIndex))
+            return TryGetLink(semanticIndex, out link);
 
         link = null;
         return false;
@@ -314,10 +625,10 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox
 
     internal bool TryGetLink(int semanticIndex, out MarkdownVectorLinkAction? link)
     {
-        if ((uint)semanticIndex < (uint)_scene.Semantics.Count)
+        if ((uint)semanticIndex < (uint)SemanticItems.Count)
         {
-            MarkdownVectorSemanticItem semantic = _scene.Semantics[semanticIndex];
-            MarkdownVectorLinkAction? action = _scene.GetLinkAction(semanticIndex);
+            MarkdownVectorSemanticItem semantic = SemanticItems[semanticIndex];
+            MarkdownVectorLinkAction? action = _semanticLinks[semanticIndex];
             if (MarkdownVectorSemanticPolicy.IsInvokable(semantic.Flags, action is not null))
             {
                 link = action;
@@ -330,82 +641,18 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox
     }
 
     internal MarkdownVectorSemanticItem? GetSemanticItem(int semanticIndex) =>
-        (uint)semanticIndex < (uint)_scene.Semantics.Count ? _scene.Semantics[semanticIndex] : null;
+        (uint)semanticIndex < (uint)SemanticItems.Count ? SemanticItems[semanticIndex] : null;
 
-    /// <summary>
-    /// Projects the immutable scene's effective draw-time text attributes into
-    /// UI Automation. The containing diagram style remains the semantic style
-    /// context, while command typography and semantic paint roles match what
-    /// <see cref="VectorSceneDrawing"/> actually paints.
-    /// </summary>
-    internal ElementStyle ResolveSemanticTextStyle(int semanticIndex)
-    {
-        ElementStyle containerStyle = Style;
-        if ((uint)semanticIndex >= (uint)_semanticTextCommandIndices.Length ||
-            _semanticTextCommandIndices[semanticIndex] < 0)
-        {
-            return containerStyle;
-        }
+    internal CancellationToken CancellationToken => LayoutContext.CancellationToken;
 
-        MarkdownVectorCommand command = _scene.Commands[_semanticTextCommandIndices[semanticIndex]];
-        MarkdownVectorPaintStyle paintStyle = command.Style!;
-        MarkdownVectorTextStyle textStyle = command.TextStyle!;
-        uint? textArgb = paintStyle.FillArgb ?? paintStyle.StrokeArgb;
-        MarkdownVectorPaintRole declaredRole =
-            paintStyle.FillArgb is not null || paintStyle.StrokeArgb is null
-                ? paintStyle.FillRole
-                : paintStyle.StrokeRole;
-        MarkdownVectorPaintRole highContrastRole =
-            paintStyle.FillArgb is not null || paintStyle.StrokeArgb is null
-                ? paintStyle.HighContrastFillRole ?? MarkdownVectorPaintRole.Foreground
-                : paintStyle.HighContrastStrokeRole ?? MarkdownVectorPaintRole.Foreground;
-        bool linkedSemantic = _scene.GetLinkAction(semanticIndex) is not null;
-        MarkdownVectorPaintRole effectiveRole = VectorSceneDrawing.ResolvePaintRole(
-            command,
-            declaredRole,
-            textArgb,
-            highContrastRole,
-            _context.ThemeSnapshot.IsHighContrast,
-            linkedSemantic);
-        Color effectiveForeground = VectorSceneDrawing.ResolveColor(
-            textArgb,
-            paintStyle.Opacity,
-            CreatePaintPalette(),
-            effectiveRole,
-            _context.ThemeSnapshot.IsHighContrast);
-        Color? effectiveBackground = ResolveSemanticBackgroundColor(
-            semanticIndex,
-            containerStyle.Background);
-        float sceneUnitScale = ResolveSceneUnitScale(containerStyle);
-
-        return new ElementStyle
-        {
-            FontFamily = VectorSceneDrawing.ResolveFontFamily(textStyle, containerStyle.FontFamily),
-            FontSize = Math.Max(1f, textStyle.FontSize * sceneUnitScale),
-            FontWeight = new Windows.UI.Text.FontWeight { Weight = textStyle.FontWeight },
-            FontStyle = textStyle.Italic
-                ? Windows.UI.Text.FontStyle.Italic
-                : Windows.UI.Text.FontStyle.Normal,
-            Foreground = effectiveForeground,
-            HoverForeground = containerStyle.HoverForeground,
-            FocusForeground = containerStyle.FocusForeground,
-            Background = effectiveBackground,
-            AccentBar = containerStyle.AccentBar,
-            BorderBrush = containerStyle.BorderBrush,
-            BorderThickness = containerStyle.BorderThickness,
-            CornerRadius = containerStyle.CornerRadius,
-            ListIndent = containerStyle.ListIndent,
-            NestedListIndent = containerStyle.NestedListIndent,
-            Underline = containerStyle.Underline,
-            Strikethrough = containerStyle.Strikethrough,
-            Margin = containerStyle.Margin,
-            Padding = containerStyle.Padding,
-            LineHeightMultiplier = containerStyle.LineHeightMultiplier,
-        };
-    }
+    /// <summary>Returns the frozen draw-time typography and semantic paint projection.</summary>
+    internal ElementStyle ResolveSemanticTextStyle(int semanticIndex) =>
+        (uint)semanticIndex < (uint)_semanticTextStyles.Length
+            ? _semanticTextStyles[semanticIndex]
+            : Style;
 
     internal bool IsSelectableAt(Point point) =>
-        _scene.Semantics.Count == 0
+        SemanticItems.Count == 0
             ? Bounds.Contains(point)
             : TryGetSemanticAt(point, SemanticHitKind.Selectable, out _);
 
@@ -423,18 +670,51 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox
         return true;
     }
 
-    public override void Dispose() => _drawing.Dispose();
-
-    internal static float ResolveContentScale(
-        MarkdownVectorScene scene,
-        float resolvedStyleFontSize,
-        double textScaleFactor)
+    public override void Dispose()
     {
-        ArgumentNullException.ThrowIfNull(scene);
-        return ResolveContentScale(
-            ResolveReferenceFontSize(scene),
-            resolvedStyleFontSize,
-            textScaleFactor);
+        // LayoutSnapshot serializes terminal disposal with paint/interaction
+        // readers. A retained retired box must not pin provider command trees;
+        // scalar and semantic projections intentionally survive for UIA reads.
+        BlockBoxCleanupScope cleanup = default;
+        cleanup.TryDispose(_drawing);
+        _detachedFallbackCleanupPending = true;
+        cleanup.TryDisposeAndClear(
+            ref _detachedFallbackLayout,
+            _detachedFallbackRetirementRecord?.Disposer);
+        _detachedFallbackCleanupPending = _detachedFallbackLayout is not null;
+        if (_detachedFallbackLayout is { } retainedFallback)
+        {
+            NativeResourceRetirementRecord? retirement = _detachedFallbackRetirementRecord;
+            if (retirement is not null)
+            {
+                // Transfer the already-reserved native slot before releasing
+                // this terminal owner. No queue node or callback is allocated.
+                retirement.SetTemporary(0, retainedFallback);
+                _detachedFallbackLayout = null;
+                _detachedFallbackRetirementRecord = null;
+                _disposed = true;
+                retirement.Publish();
+            }
+            else
+            {
+                // Every adopted fallback is paired with a preallocated record.
+                // Retain the field if that invariant is ever violated rather
+                // than silently losing the only remaining native owner.
+                _disposed = true;
+            }
+        }
+        else
+        {
+            NativeResourceRetirementRecord? retirement = _detachedFallbackRetirementRecord;
+            _detachedFallbackRetirementRecord = null;
+            _disposed = true;
+            if (retirement is not null)
+            {
+                retirement.SetTemporary(0, null);
+                retirement.Publish();
+            }
+        }
+        cleanup.ThrowIfAny("disposing vector scene box");
     }
 
     private static float ResolveContentScale(
@@ -448,37 +728,152 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox
         return (float)Math.Clamp(double.IsFinite(scale) ? scale : 1d, 0.1d, 10d);
     }
 
-    private static float ResolveReferenceFontSize(MarkdownVectorScene scene) =>
-        scene.ReferenceFontSize > 0
-            ? scene.ReferenceFontSize
-            : ResolveRepresentativeTextSize(scene);
-
-    private ElementStyle Style => _style ??= _context.ThemeSnapshot.GetStyle(
-        _elementKey,
+    private ElementStyle Style => _style ??= LayoutContext.ThemeSnapshot.GetStyle(
+        ElementKey,
         _styleContextKeys,
         _styleAliasKeys);
 
     private VectorScenePaintPalette CreatePaintPalette()
     {
-        Color surface = Style.Background ?? _context.ThemeSnapshot.SurfaceColor;
-        Color link = _context.ThemeSnapshot.GetStyle(
+        Color surface = Style.Background ?? LayoutContext.ThemeSnapshot.SurfaceColor;
+        Color link = LayoutContext.ThemeSnapshot.GetStyle(
             MarkdownElementKeys.Link,
             _styleContextKeys,
             _styleAliasKeys).Foreground;
         return new VectorScenePaintPalette(Style.Foreground, surface, link);
     }
 
+    private void PaintDetachedFallback(CanvasDrawingSession drawingSession, Color foreground)
+    {
+        if (NativeAdmission is not null)
+        {
+            PaintCapacityFallback(drawingSession, foreground);
+            return;
+        }
+
+        CanvasTextLayout? layout = _detachedFallbackLayout;
+        if (layout is null)
+            return;
+
+        Rect clip = VectorViewportTransform.Intersect(_contentBounds, HorizontalViewportBounds);
+        if (clip.Width <= 0 || clip.Height <= 0)
+            return;
+
+        Rect textBounds = layout.LayoutBounds;
+        float left = (float)_contentBounds.X;
+        float top = (float)(_contentBounds.Y + Math.Max(0, (_contentBounds.Height - textBounds.Height) / 2d));
+        NativePaintSessionResources.LayerLease fallbackLayer =
+            NativePaintSessionResources.CreateLayer(drawingSession, 1f, clip);
+        try
+        {
+            PlacementAwareTextDrawing.DrawAtRootLocalOrigin(
+                drawingSession,
+                layout,
+                left,
+                top,
+                foreground);
+        }
+        catch (Exception primary)
+        {
+            fallbackLayer.ClosePreservingPrimary(primary);
+            throw;
+        }
+        fallbackLayer.Close();
+    }
+
+    private void PaintCapacityFallback(
+        CanvasDrawingSession drawingSession,
+        Color foreground,
+        bool clipAlreadyApplied = false)
+    {
+        if (!VectorSceneCapacityFallback.TryGetFormat(
+                LayoutContext.FlowDirection,
+                out CanvasTextFormat format))
+        {
+            return;
+        }
+
+        string text = _graphRebindFailed ? _capacityFallbackFailureText : _capacityFallbackText;
+        if (text.Length == 0)
+            return;
+
+        Rect clip = VectorViewportTransform.Intersect(_contentBounds, HorizontalViewportBounds);
+        if (clip.Width <= 0 || clip.Height <= 0)
+            return;
+
+        if (clipAlreadyApplied)
+        {
+            VectorSceneCapacityFallback.DrawTextWithScale(
+                drawingSession,
+                text,
+                _contentBounds,
+                foreground,
+                format,
+                LayoutContext.ThemeSnapshot.TextScaleFactor);
+            return;
+        }
+
+        NativePaintSessionResources.LayerLease fallbackLayer =
+            NativePaintSessionResources.CreateLayer(drawingSession, 1f, clip);
+        try
+        {
+            VectorSceneCapacityFallback.DrawTextWithScale(
+                drawingSession,
+                text,
+                _contentBounds,
+                foreground,
+                format,
+                LayoutContext.ThemeSnapshot.TextScaleFactor);
+        }
+        catch (Exception primary)
+        {
+            fallbackLayer.ClosePreservingPrimary(primary);
+            throw;
+        }
+        fallbackLayer.Close();
+    }
+
+    private void DisposeDetachedFallback()
+    {
+        BlockBoxCleanupScope cleanup = default;
+        _detachedFallbackCleanupPending = true;
+        cleanup.TryDisposeAndClear(
+            ref _detachedFallbackLayout,
+            _detachedFallbackRetirementRecord?.Disposer);
+        _detachedFallbackCleanupPending = _detachedFallbackLayout is not null;
+        if (!_detachedFallbackCleanupPending)
+            CompleteDetachedFallbackRetirement();
+        cleanup.ThrowIfAny("disposing detached vector scene fallback");
+    }
+
+    private void CompleteDetachedFallbackRetirement()
+    {
+        NativeResourceRetirementRecord? retirement = _detachedFallbackRetirementRecord;
+        if (retirement is null)
+            return;
+
+        retirement.SetTemporary(0, null);
+        retirement.Publish();
+        _detachedFallbackRetirementRecord = null;
+    }
+
+    private bool HasCapacityFallbackText =>
+        _capacityFallbackText.Length > 0 || _capacityFallbackFailureText.Length > 0;
+
+    private static bool IsCapacityPreparationStatus(VectorNativePreparationStatus status) =>
+        status is VectorNativePreparationStatus.DeferredCapacity or VectorNativePreparationStatus.TooLarge;
+
     private float ResolveSceneUnitScale(ElementStyle containerStyle)
     {
         float contentScale = ResolveContentScale(
             _referenceFontSize,
             containerStyle.FontSize,
-            _context.ThemeSnapshot.TextScaleFactor);
-        double scaleX = _scene.Viewport.Width > 0
-            ? _scene.Width * contentScale / _scene.Viewport.Width
+            LayoutContext.ThemeSnapshot.TextScaleFactor);
+        double scaleX = _semanticViewport.Width > 0
+            ? _sceneWidth * contentScale / _semanticViewport.Width
             : contentScale;
-        double scaleY = _scene.Viewport.Height > 0
-            ? _scene.Height * contentScale / _scene.Viewport.Height
+        double scaleY = _semanticViewport.Height > 0
+            ? _sceneHeight * contentScale / _semanticViewport.Height
             : contentScale;
         double scale = Math.Min(scaleX, scaleY);
         return (float)Math.Clamp(double.IsFinite(scale) ? scale : contentScale, 0.01d, 100d);
@@ -492,12 +887,21 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox
         VectorScenePaintPalette palette = paletteOverride ?? CreatePaintPalette();
         if (CanScrollHorizontally)
         {
-            using CanvasActiveLayer layer = ds.CreateLayer(1f, clip);
-            _drawing.Paint(ds, _contentBounds, palette, _context.ThemeSnapshot.IsHighContrast);
+            NativePaintSessionResources.LayerLease layer = NativePaintSessionResources.CreateLayer(ds, 1f, clip);
+            try
+            {
+                _drawing.Paint(ds, _contentBounds, palette, LayoutContext.ThemeSnapshot.IsHighContrast);
+            }
+            catch (Exception primary)
+            {
+                layer.ClosePreservingPrimary(primary);
+                throw;
+            }
+            layer.Close();
         }
         else
         {
-            _drawing.Paint(ds, _contentBounds, palette, _context.ThemeSnapshot.IsHighContrast);
+            _drawing.Paint(ds, _contentBounds, palette, LayoutContext.ThemeSnapshot.IsHighContrast);
         }
     }
 
@@ -525,17 +929,152 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox
         return true;
     }
 
-    private static (int[] Text, int[] Background) IndexSemanticCommands(
-        MarkdownVectorScene scene)
+    private ElementStyle[] BuildSemanticTextStyles(
+        MarkdownVectorScene scene,
+        int[] textCommandIndices,
+        int[] backgroundCommandIndices)
     {
-        var textIndices = new int[scene.Semantics.Count];
-        var backgroundIndices = new int[scene.Semantics.Count];
-        var ambiguousBackgrounds = new bool[scene.Semantics.Count];
+        int count = SemanticItems.Count;
+        if (count == 0)
+            return Array.Empty<ElementStyle>();
+
+        ElementStyle containerStyle = Style;
+        VectorScenePaintPalette palette = CreatePaintPalette();
+        var styles = new ElementStyle[count];
+        Color?[]? backgrounds = null;
+        byte[]? backgroundStates = null;
+        int[]? path = null;
+        float sceneUnitScale = ResolveSceneUnitScale(containerStyle);
+        for (int semanticIndex = 0; semanticIndex < count; semanticIndex++)
+        {
+            ThrowIfCancellationRequested();
+            int textCommandIndex = textCommandIndices[semanticIndex];
+            if (textCommandIndex < 0)
+            {
+                styles[semanticIndex] = containerStyle;
+                continue;
+            }
+
+            backgrounds ??= new Color?[count];
+            backgroundStates ??= new byte[count];
+            path ??= new int[count];
+            Color? background = ResolveSemanticBackgroundColor(
+                scene,
+                semanticIndex,
+                backgroundCommandIndices,
+                backgrounds,
+                backgroundStates,
+                path,
+                containerStyle.Background,
+                palette);
+            styles[semanticIndex] = BuildSemanticTextStyle(
+                scene,
+                semanticIndex,
+                textCommandIndex,
+                containerStyle,
+                background,
+                sceneUnitScale,
+                palette);
+        }
+
+        return styles;
+    }
+
+    private ElementStyle BuildSemanticTextStyle(
+        MarkdownVectorScene scene,
+        int semanticIndex,
+        int commandIndex,
+        ElementStyle containerStyle,
+        Color? effectiveBackground,
+        float sceneUnitScale,
+        VectorScenePaintPalette palette)
+    {
+        MarkdownVectorCommand command = scene.Commands[commandIndex];
+        MarkdownVectorPaintStyle paintStyle = command.Style!;
+        MarkdownVectorTextStyle textStyle = command.TextStyle!;
+        uint? textArgb = paintStyle.FillArgb ?? paintStyle.StrokeArgb;
+        MarkdownVectorPaintRole declaredRole =
+            paintStyle.FillArgb is not null || paintStyle.StrokeArgb is null
+                ? paintStyle.FillRole
+                : paintStyle.StrokeRole;
+        MarkdownVectorPaintRole highContrastRole =
+            paintStyle.FillArgb is not null || paintStyle.StrokeArgb is null
+                ? paintStyle.HighContrastFillRole ?? MarkdownVectorPaintRole.Foreground
+                : paintStyle.HighContrastStrokeRole ?? MarkdownVectorPaintRole.Foreground;
+        bool linkedSemantic = _semanticLinks[semanticIndex] is not null;
+        MarkdownVectorPaintRole effectiveRole = VectorSceneDrawing.ResolvePaintRole(
+            command,
+            declaredRole,
+            textArgb,
+            highContrastRole,
+            LayoutContext.ThemeSnapshot.IsHighContrast,
+            linkedSemantic);
+        Color effectiveForeground = VectorSceneDrawing.ResolveColor(
+            textArgb,
+            paintStyle.Opacity,
+            palette,
+            effectiveRole,
+            LayoutContext.ThemeSnapshot.IsHighContrast);
+
+        return new ElementStyle
+        {
+            FontFamily = VectorSceneDrawing.ResolveFontFamily(textStyle, containerStyle.FontFamily),
+            FontSize = Math.Max(1f, textStyle.FontSize * sceneUnitScale),
+            FontWeight = new Windows.UI.Text.FontWeight { Weight = textStyle.FontWeight },
+            FontStyle = textStyle.Italic
+                ? Windows.UI.Text.FontStyle.Italic
+                : Windows.UI.Text.FontStyle.Normal,
+            Foreground = effectiveForeground,
+            HoverForeground = containerStyle.HoverForeground,
+            FocusForeground = containerStyle.FocusForeground,
+            Background = effectiveBackground,
+            AccentBar = containerStyle.AccentBar,
+            BorderBrush = containerStyle.BorderBrush,
+            BorderThickness = containerStyle.BorderThickness,
+            CornerRadius = containerStyle.CornerRadius,
+            ListIndent = containerStyle.ListIndent,
+            NestedListIndent = containerStyle.NestedListIndent,
+            Underline = containerStyle.Underline,
+            Strikethrough = containerStyle.Strikethrough,
+            Margin = containerStyle.Margin,
+            Padding = containerStyle.Padding,
+            LineHeightMultiplier = containerStyle.LineHeightMultiplier,
+        };
+    }
+
+    private static (int[] Text, int[] Background, float ReferenceFontSize) IndexSemanticCommands(
+        MarkdownVectorScene scene,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        int semanticCount = scene.Semantics.Count;
+        if (semanticCount == 0 && scene.ReferenceFontSize > 0)
+        {
+            return (Array.Empty<int>(), Array.Empty<int>(), scene.ReferenceFontSize);
+        }
+
+        var textIndices = semanticCount == 0 ? Array.Empty<int>() : new int[semanticCount];
+        var backgroundIndices = semanticCount == 0 ? Array.Empty<int>() : new int[semanticCount];
+        var ambiguousBackgrounds = semanticCount == 0 ? Array.Empty<bool>() : new bool[semanticCount];
         Array.Fill(textIndices, -1);
         Array.Fill(backgroundIndices, -1);
+        double weightedTextSize = 0;
+        long textUnits = 0;
+        bool inferReferenceFontSize = scene.ReferenceFontSize <= 0;
         for (int i = 0; i < scene.Commands.Count; i++)
         {
+            if ((i & 0x3F) == 0)
+                cancellationToken.ThrowIfCancellationRequested();
             MarkdownVectorCommand command = scene.Commands[i];
+            if (inferReferenceFontSize &&
+                command.Kind == MarkdownVectorCommandKind.DrawText &&
+                command.TextStyle is { FontSize: > 0 } textStyle)
+            {
+                int weight = Math.Max(1, command.Text?.Length ?? 0);
+                weightedTextSize += textStyle.FontSize * weight;
+                textUnits += weight;
+            }
+
             if ((uint)command.SemanticIndex >= (uint)textIndices.Length)
                 continue;
 
@@ -573,20 +1112,46 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox
             }
         }
 
-        return (textIndices, backgroundIndices);
+        float referenceFontSize = scene.ReferenceFontSize > 0
+            ? scene.ReferenceFontSize
+            : textUnits > 0
+                ? (float)(weightedTextSize / textUnits)
+                : 0;
+        return (textIndices, backgroundIndices, referenceFontSize);
     }
 
-    private Color? ResolveSemanticBackgroundColor(int semanticIndex, Color? fallback)
+    private Color? ResolveSemanticBackgroundColor(
+        MarkdownVectorScene scene,
+        int semanticIndex,
+        int[] backgroundCommandIndices,
+        Color?[] resolvedBackgrounds,
+        byte[] resolvedStates,
+        int[] path,
+        Color? fallback,
+        VectorScenePaintPalette palette)
     {
         int current = semanticIndex;
-        while ((uint)current < (uint)_semanticBackgroundCommandIndices.Length)
+        int pathCount = 0;
+        Color? background = fallback;
+        while ((uint)current < (uint)SemanticItems.Count)
         {
-            int commandIndex = _semanticBackgroundCommandIndices[current];
+            if (resolvedStates[current] != 0)
+            {
+                background = resolvedBackgrounds[current];
+                break;
+            }
+
+            int commandIndex = backgroundCommandIndices[current];
             if (commandIndex == AmbiguousBackgroundCommandIndex)
-                return fallback;
+            {
+                resolvedBackgrounds[current] = fallback;
+                resolvedStates[current] = 1;
+                background = fallback;
+                break;
+            }
             if (commandIndex >= 0)
             {
-                MarkdownVectorCommand command = _scene.Commands[commandIndex];
+                MarkdownVectorCommand command = scene.Commands[commandIndex];
                 MarkdownVectorPaintStyle style = command.Style!;
                 MarkdownVectorPaintRole role = VectorSceneDrawing.ResolvePaintRole(
                     command,
@@ -595,21 +1160,34 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox
                     style.HighContrastFillRole ?? VectorSceneDrawing.InferFillRole(
                         command,
                         style,
-                        _scene.Semantics[current].Role),
-                    _context.ThemeSnapshot.IsHighContrast,
-                    _scene.GetLinkAction(current) is not null);
-                return VectorSceneDrawing.ResolveColor(
+                        SemanticItems[current].Role),
+                    LayoutContext.ThemeSnapshot.IsHighContrast,
+                    _semanticLinks[current] is not null);
+                background = VectorSceneDrawing.ResolveColor(
                     style.FillArgb,
                     style.Opacity,
-                    CreatePaintPalette(),
+                    palette,
                     role,
-                    _context.ThemeSnapshot.IsHighContrast);
+                    LayoutContext.ThemeSnapshot.IsHighContrast);
+                resolvedBackgrounds[current] = background;
+                resolvedStates[current] = 1;
+                break;
             }
 
-            current = _scene.Semantics[current].ParentIndex;
+            path[pathCount++] = current;
+            if ((pathCount & 0x3F) == 0)
+                ThrowIfCancellationRequested();
+            current = SemanticItems[current].ParentIndex;
         }
 
-        return fallback;
+        while (pathCount > 0)
+        {
+            int pathIndex = path[--pathCount];
+            resolvedBackgrounds[pathIndex] = background;
+            resolvedStates[pathIndex] = 1;
+        }
+
+        return background;
     }
 
     private static bool TryGetVisibleBackgroundStyle(
@@ -643,27 +1221,6 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox
         left.HighContrastFillRole == right.HighContrastFillRole &&
         Math.Abs(left.Opacity - right.Opacity) < 0.001f;
 
-    private static float ResolveRepresentativeTextSize(MarkdownVectorScene scene)
-    {
-        double weightedSize = 0;
-        long textUnits = 0;
-        for (int i = 0; i < scene.Commands.Count; i++)
-        {
-            MarkdownVectorCommand command = scene.Commands[i];
-            if (command.Kind != MarkdownVectorCommandKind.DrawText ||
-                command.TextStyle is not { FontSize: > 0 } textStyle)
-            {
-                continue;
-            }
-
-            int weight = Math.Max(1, command.Text?.Length ?? 0);
-            weightedSize += textStyle.FontSize * weight;
-            textUnits += weight;
-        }
-
-        return textUnits > 0 ? (float)(weightedSize / textUnits) : 0;
-    }
-
     private bool TryGetSemanticAt(
         Point point,
         SemanticHitKind kind,
@@ -675,15 +1232,16 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox
 
         int bestDepth = -1;
         double bestArea = double.PositiveInfinity;
-        for (int i = 0; i < _scene.Semantics.Count; i++)
+        ReadOnlySpan<int> semanticDepths = _semanticDepths.Span;
+        for (int i = 0; i < SemanticItems.Count; i++)
         {
-            MarkdownVectorSemanticItem semantic = _scene.Semantics[i];
+            MarkdownVectorSemanticItem semantic = SemanticItems[i];
             bool eligible = kind switch
             {
                 SemanticHitKind.Selectable => MarkdownVectorSemanticPolicy.IsSelectable(semantic.Flags),
                 SemanticHitKind.Linked => MarkdownVectorSemanticPolicy.IsInvokable(
                     semantic.Flags,
-                    _scene.GetLinkAction(i) is not null),
+                    _semanticLinks[i] is not null),
                 SemanticHitKind.Text => MarkdownVectorSemanticPolicy.IsExposed(semantic.Flags) &&
                                         !string.IsNullOrWhiteSpace(semantic.Name) &&
                                         !(semantic.ParentIndex < 0 &&
@@ -697,7 +1255,7 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox
             if (!bounds.Contains(point))
                 continue;
 
-            int depth = _scene.GetSemanticDepth(i);
+            int depth = semanticDepths[i];
             double area = bounds.Width * bounds.Height;
             if (depth < bestDepth || (depth == bestDepth && area > bestArea))
                 continue;
@@ -744,7 +1302,7 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox
             ds,
             HorizontalScrollTrackBounds,
             HorizontalScrollThumbBounds,
-            _context.ThemeSnapshot,
+            LayoutContext.ThemeSnapshot,
             Style.Foreground);
     }
 }

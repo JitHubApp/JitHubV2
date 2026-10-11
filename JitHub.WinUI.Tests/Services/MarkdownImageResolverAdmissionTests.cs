@@ -1,5 +1,6 @@
 using JitHub.Services.Markdown;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Performance;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;
@@ -64,6 +65,125 @@ public sealed class MarkdownImageResolverAdmissionTests
         Assert.Equal(0, admission.Reservations);
     }
 
+    [Fact]
+    public async Task FactoryChainPreservesLeasedCapabilityAndTheExactOwnershipHandle()
+    {
+        var inner = new LeasedResolver();
+        IMarkdownImageResolver lifecycle = MarkdownLifecycleImageResolver.Create(inner);
+        IMarkdownImageResolver audit = MarkdownAuditImageResolver.Create(lifecycle);
+        var admission = new CountingAdmission();
+        var context = new MarkdownImageResolveContext(null);
+        var leased = Assert.IsAssignableFrom<IMarkdownLeasedImageResolver>(audit);
+        using MarkdownImageResolutionLease result = await leased.ResolveWithSourceLeaseAsync(
+            "image.png", context, admission, CancellationToken.None);
+
+        Assert.Same(inner.LastLease, result);
+        Assert.Same(admission, inner.LastAdmission);
+        Assert.Same(context, inner.LastContext);
+        Assert.Equal(3, admission.ActiveBytes);
+        Assert.Equal(0, inner.LegacyCalls);
+        result.Dispose();
+        Assert.Equal(0, admission.ActiveBytes);
+    }
+
+    [Fact]
+    public async Task LeasedLifecycleFixtureReservesBeforeExposingItsBytesUntilFinalHandle()
+    {
+        var inner = new LeasedResolver();
+        var leased = Assert.IsAssignableFrom<IMarkdownLeasedImageResolver>(
+            MarkdownLifecycleImageResolver.Create(inner));
+        var admission = new CountingAdmission();
+        using MarkdownImageResolutionLease result = await leased.ResolveWithSourceLeaseAsync(
+            "docs/images/lifecycle-relative.png", new(null), admission, CancellationToken.None);
+        using MarkdownImageResolutionLease retained = result.Retain();
+
+        int length = result.Resolution.Asset!.Bytes.Length;
+        Assert.True(length > 0);
+        Assert.Equal(length, admission.ActiveBytes);
+        Assert.Equal(1, admission.Reservations);
+        Assert.Null(inner.LastLease);
+        result.Dispose();
+        Assert.Equal(length, admission.ActiveBytes);
+        retained.Dispose();
+        Assert.Equal(0, admission.ActiveBytes);
+    }
+
+    [Fact]
+    public async Task LeasedLifecycleBlockedFixtureDoesNotReserveOrCallTheInnerResolver()
+    {
+        var inner = new LeasedResolver();
+        var leased = Assert.IsAssignableFrom<IMarkdownLeasedImageResolver>(
+            MarkdownLifecycleImageResolver.Create(inner));
+        var admission = new CountingAdmission();
+        using MarkdownImageResolutionLease result = await leased.ResolveWithSourceLeaseAsync(
+            "https://example.invalid/jithub-markdown-lifecycle.png", new(null), admission, CancellationToken.None);
+
+        Assert.Equal(MarkdownImageUnavailableReason.RemoteContentBlocked, result.Resolution.UnavailableReason);
+        Assert.Null(inner.LastLease);
+        Assert.Equal(0, admission.Reservations);
+    }
+
+    [Fact]
+    public async Task LeasedLifecycleCancellationAfterGrantReleasesFixtureReservation()
+    {
+        var inner = new LeasedResolver();
+        var leased = Assert.IsAssignableFrom<IMarkdownLeasedImageResolver>(
+            MarkdownLifecycleImageResolver.Create(inner));
+        using var cancellation = new CancellationTokenSource();
+        var admission = new CountingAdmission { AfterGrant = cancellation.Cancel };
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+            await leased.ResolveWithSourceLeaseAsync("docs/images/lifecycle-relative.png", new(null),
+                admission, cancellation.Token));
+
+        Assert.Equal(1, admission.Reservations);
+        Assert.Equal(0, admission.ActiveBytes);
+        Assert.Null(inner.LastLease);
+    }
+
+    [Fact]
+    public void FactoriesDoNotAdvertiseLeasedCapabilityForLegacyResolvers()
+    {
+        IMarkdownImageResolver lifecycle = MarkdownLifecycleImageResolver.Create(new OrdinaryResolver());
+        Assert.False(lifecycle is IMarkdownLeasedImageResolver);
+        Assert.False(MarkdownAuditImageResolver.Create(lifecycle) is IMarkdownLeasedImageResolver);
+    }
+
+    private sealed class LeasedResolver : IMarkdownLeasedImageResolver
+    {
+        internal int LegacyCalls { get; private set; }
+        internal MarkdownImageResolutionLease? LastLease { get; private set; }
+        internal IMarkdownImageSourceByteAdmission? LastAdmission { get; private set; }
+        internal MarkdownImageResolveContext? LastContext { get; private set; }
+
+        public ValueTask<MarkdownImageResolution> ResolveAsync(
+            string source, MarkdownImageResolveContext context, CancellationToken cancellationToken)
+        {
+            LegacyCalls++;
+            return ValueTask.FromResult(MarkdownImageResolution.Unavailable);
+        }
+
+        public async ValueTask<MarkdownImageResolutionLease> ResolveWithSourceLeaseAsync(
+            string source, MarkdownImageResolveContext context,
+            IMarkdownImageSourceByteAdmission admission, CancellationToken cancellationToken)
+        {
+            LastAdmission = admission;
+            LastContext = context;
+            IDisposable reservation = await admission.ReserveAsync(3, cancellationToken);
+            try
+            {
+                LastLease = new MarkdownImageResolutionLease(
+                    MarkdownImageResolution.Resolved(new MarkdownImageAsset([1, 2, 3], "image/png")), reservation);
+                return LastLease;
+            }
+            catch
+            {
+                reservation.Dispose();
+                throw;
+            }
+        }
+    }
+
     private sealed class RecordingAdmittedResolver : IMarkdownImageSourceByteAdmittedResolver
     {
         public int AdmittedCalls { get; private set; }
@@ -113,12 +233,14 @@ public sealed class MarkdownImageResolverAdmissionTests
         public long MaximumReservationBytes => 64;
         public int Reservations { get; private set; }
         public int ActiveBytes => Volatile.Read(ref _activeBytes);
+        internal Action? AfterGrant { get; init; }
 
         public ValueTask<IDisposable> ReserveAsync(long bytes, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             Reservations++;
             Interlocked.Add(ref _activeBytes, checked((int)bytes));
+            AfterGrant?.Invoke();
             return ValueTask.FromResult<IDisposable>(new ByteLease(this, checked((int)bytes)));
         }
 

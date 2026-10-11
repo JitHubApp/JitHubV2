@@ -294,14 +294,32 @@ export function replayFunctionDeclaration() {
         }
       };
       const visibleImages = () => [...document.images].filter(image => {
-          const rect = image.getBoundingClientRect();
-          return rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.top < innerHeight &&
-            rect.right > 0 && rect.left < innerWidth;
+        const rect = image.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.top < innerHeight &&
+          rect.right > 0 && rect.left < innerWidth;
         });
+      const describeImageFailure = image => {
+        const indexText = image.getAttribute("data-jithub-image-index");
+        const index = indexText !== null && /^\\d{1,7}$/u.test(indexText)
+          ? Number(indexText) : NaN;
+        const validIndex = Number.isSafeInteger(index);
+        const route = validIndex ? routeByIndex.get(index) : undefined;
+        // Only bounded route identity and decode state leave the isolated page.
+        // Neither the captured URL nor alt text belongs in audit diagnostics.
+        return "index=" + (validIndex ? index : "invalid") +
+          " route=" + (route ? (route.dataUri === true ? "data" : "asset") : "missing") +
+          " pending=" + pendingImageSources.has(image) +
+          " complete=" + image.complete +
+          " natural=" + image.naturalWidth + "x" + image.naturalHeight;
+      };
       const waitVisibleImages = async () => {
         const visible = visibleImages();
         const ready = await Promise.all(visible.map(waitImageDecode));
-        if (ready.some(value => !value)) throw new Error("A visible offline image did not decode successfully.");
+        const failureIndex = ready.findIndex(value => !value);
+        if (failureIndex >= 0) {
+          throw new Error("A visible offline image did not decode successfully (" +
+            describeImageFailure(visible[failureIndex]) + ").");
+        }
         return visible.length;
       };
       const capturedImages = [...document.images].filter(image =>
@@ -347,8 +365,10 @@ export function replayFunctionDeclaration() {
           throw new Error("Offline traversal reached its terminal viewport with captured images outside the realization band.");
         }
         const readyImages = await Promise.all(capturedImages.map(waitImageDecode));
-        if (readyImages.some(value => !value)) {
-          throw new Error("Offline traversal left a captured image unavailable.");
+        const unavailableIndex = readyImages.findIndex(value => !value);
+        if (unavailableIndex >= 0) {
+          throw new Error("Offline traversal left a captured image unavailable (" +
+            describeImageFailure(capturedImages[unavailableIndex]) + ").");
         }
         loadedImageCount = capturedImages.length;
         const heightBeforePaint = document.documentElement.scrollHeight;

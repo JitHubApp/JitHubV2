@@ -151,7 +151,10 @@ public sealed class MarkdownHostContractTests
             {
                 bool internalFormPreview = path.EndsWith("MarkdownForm.xaml", StringComparison.OrdinalIgnoreCase) &&
                     host.Name.LocalName == "MarkdownViewer";
-                if (internalFormPreview || host.Attribute("DocumentSource") is not null)
+                bool atomicRepositoryPreview = path.EndsWith("MarkdownPreview.xaml", StringComparison.OrdinalIgnoreCase) &&
+                    File.ReadAllText(Path.ChangeExtension(path, ".xaml.cs"))
+                        .Contains("RichPanel.SetDocumentPayload", StringComparison.Ordinal);
+                if (internalFormPreview || atomicRepositoryPreview || host.Attribute("DocumentSource") is not null)
                 {
                     continue;
                 }
@@ -212,6 +215,7 @@ public sealed class MarkdownHostContractTests
         Assert.DoesNotContain("ThemeSettingsHelper", source, StringComparison.Ordinal);
         Assert.DoesNotContain("ActualThemeChanged", source, StringComparison.Ordinal);
         Assert.Contains("MarkdownEnvironmentMonitor applies it", source, StringComparison.Ordinal);
+        Assert.Contains("_renderer.RequestedTheme = ElementTheme.Light", source, StringComparison.Ordinal);
         Assert.Contains("GetLifecycleTokenScaleFactor", source, StringComparison.Ordinal);
         Assert.Contains("Math.Clamp(requestedScale, 1, 3) / systemScale", source, StringComparison.Ordinal);
         Assert.Contains("QueueRendererResourceRefresh", source, StringComparison.Ordinal);
@@ -291,6 +295,10 @@ public sealed class MarkdownHostContractTests
         string root = FindRepositoryRoot();
         string snapshot = File.ReadAllText(Path.Combine(
             root, "MarkdownRenderer", "MarkdownRenderer", "Layout", "LayoutSnapshot.cs"));
+        string snapshotIndexes = File.ReadAllText(Path.Combine(
+            root, "MarkdownRenderer", "MarkdownRenderer", "Layout", "LayoutSnapshotIndexBuilder.cs"));
+        string semanticDocument = File.ReadAllText(Path.Combine(
+            root, "MarkdownRenderer", "MarkdownRenderer", "Accessibility", "MarkdownSemanticDocument.cs"));
         string control = File.ReadAllText(Path.Combine(
             root, "MarkdownRenderer", "MarkdownRenderer", "Controls", "MarkdownRendererControl.cs"));
         string automationPeer = File.ReadAllText(Path.Combine(
@@ -298,15 +306,29 @@ public sealed class MarkdownHostContractTests
         string imagePeer = File.ReadAllText(Path.Combine(
             root, "MarkdownRenderer", "MarkdownRenderer", "Accessibility", "MarkdownLinkedImagePeer.cs"));
 
-        Assert.Contains("InlineImageRun { IsLinked: true }", snapshot, StringComparison.Ordinal);
-        Assert.Contains("TryGetFocusedLinkedImage", control, StringComparison.Ordinal);
+        Assert.Contains("MarkdownSemanticDocument.Build(this, matchingTextProjection, indexBuilder)", snapshot, StringComparison.Ordinal);
+        Assert.Contains("_focusablePlan = indexBuilder.CompleteFocusablePlan();", snapshot, StringComparison.Ordinal);
+        Assert.Contains("if (run is LinkRun or InlineImageRun { IsLinked: true } or", snapshotIndexes, StringComparison.Ordinal);
+        int observeInlineRun = semanticDocument.IndexOf("_layoutIndexes?.ObserveInlineRun(inline, run);", StringComparison.Ordinal);
+        int decorativeImageFilter = semanticDocument.IndexOf(
+            "if (run is InlineImageRun { IsLinked: false } && accessibleLength == 0)",
+            StringComparison.Ordinal);
+        Assert.True(observeInlineRun >= 0, "Inline layout indexes must be observed from semantic construction.");
+        Assert.True(
+            decorativeImageFilter > observeInlineRun,
+            "The focus planner must observe linked images before decorative empty-alt runs are omitted from UIA semantics.");
+        Assert.Contains("TryGetFocusedLinkedAtomic", control, StringComparison.Ordinal);
+        Assert.Contains("case InlineImageRun { IsLinked: true, LinkUrl: { } imageUrl } image:", control, StringComparison.Ordinal);
         Assert.Contains("RaiseLinkedImageClickFromAutomation", control, StringComparison.Ordinal);
         Assert.Contains("InvalidateAutomationLayout();", control, StringComparison.Ordinal);
         Assert.Contains("FrameworkElementAutomationPeer.FromElement(this)?.InvalidatePeer();", control, StringComparison.Ordinal);
         Assert.Contains("RaiseFocusForLinkedImage", automationPeer, StringComparison.Ordinal);
         Assert.Contains("IInvokeProvider", imagePeer, StringComparison.Ordinal);
         Assert.Contains("AutomationControlType.Hyperlink", imagePeer, StringComparison.Ordinal);
-        Assert.Contains("_run.AltText", imagePeer, StringComparison.Ordinal);
+        Assert.Contains("GetImageName(_run, state)", imagePeer, StringComparison.Ordinal);
+        Assert.Contains("private string GetImageName(InlineImageRun run,", imagePeer, StringComparison.Ordinal);
+        Assert.Contains("string.IsNullOrWhiteSpace(run.AltText)", imagePeer, StringComparison.Ordinal);
+        Assert.Contains(": run.AltText;", imagePeer, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -341,7 +363,7 @@ public sealed class MarkdownHostContractTests
 
         Assert.Contains("MarkdownRemoteContentConsent", source, StringComparison.Ordinal);
         Assert.Contains("DocumentSourceProperty", source, StringComparison.Ordinal);
-        Assert.Contains("_renderer.ImageDocumentSource = DocumentSource", source, StringComparison.Ordinal);
+        Assert.Contains("_renderer.ImageDocumentSource = documentSource", source, StringComparison.Ordinal);
         Assert.Contains("_remoteContentConsent.Grant()", source, StringComparison.Ordinal);
         Assert.Contains("AllowThirdPartyRemoteImagesByDefaultProperty", source, StringComparison.Ordinal);
         Assert.Contains("new PropertyMetadata(true, OnRendererPropertyChanged)", source, StringComparison.Ordinal);
@@ -729,9 +751,8 @@ public sealed class MarkdownHostContractTests
         Assert.Contains("new MarkdownScrollView().UseGitHubReadme(SharedGitHubEngine)", source, StringComparison.Ordinal);
         Assert.Contains("if (OwnsScrollViewport)", source, StringComparison.Ordinal);
         Assert.Contains("new PropertyMetadata(false, OnViewportOwnershipChanged)", source, StringComparison.Ordinal);
-        Assert.Contains("viewer.ResetOwnedViewportForNewDocument()", source, StringComparison.Ordinal);
-        Assert.Contains("(e.OldValue as MarkdownDocumentSource)?.DocumentId", source, StringComparison.Ordinal);
-        Assert.Contains("(e.NewValue as MarkdownDocumentSource)?.DocumentId", source, StringComparison.Ordinal);
+        Assert.Contains("ResetOwnedViewportForNewDocument();", source, StringComparison.Ordinal);
+        Assert.Contains("oldSource?.DocumentId, newSource?.DocumentId", source, StringComparison.Ordinal);
         Assert.Contains("if (!OwnsScrollViewport || _renderer is null)", source, StringComparison.Ordinal);
         Assert.Contains("viewport.ChangeView(null, 0, null, disableAnimation: true)", source, StringComparison.Ordinal);
         Assert.DoesNotContain(viewer.Descendants(), element => element.Name.LocalName == "ScrollViewer");
@@ -826,6 +847,33 @@ public sealed class MarkdownHostContractTests
         Assert.Contains("private void EnsurePlainPanel()", source, StringComparison.Ordinal);
         Assert.Contains("if (!rich)", source, StringComparison.Ordinal);
         Assert.Contains("_plainPanel = new CodeEditorControl", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RepositoryMarkdownPreview_ResynchronizesLatestViewModelStateAfterReload()
+    {
+        string root = FindRepositoryRoot();
+        string source = File.ReadAllText(Path.Combine(
+            root,
+            "JitHub.WinUI",
+            "Views",
+            "Controls",
+            "CodeViewer",
+            "Renderers",
+            "MarkdownPreview.xaml.cs"));
+        const string loadedSignature = "private void OnLoaded(object sender, RoutedEventArgs e)";
+        int loadedStart = source.IndexOf(loadedSignature, StringComparison.Ordinal);
+        int unloadedStart = source.IndexOf("private void OnUnloaded", loadedStart, StringComparison.Ordinal);
+
+        Assert.True(loadedStart >= 0, "MarkdownPreview must synchronize its state when loaded.");
+        Assert.True(unloadedStart > loadedStart, "MarkdownPreview must keep load and unload lifecycle handlers distinct.");
+
+        string onLoaded = source[loadedStart..unloadedStart];
+        Assert.Contains("RepoFilePreviewViewModel? viewModel = ViewModel;", onLoaded, StringComparison.Ordinal);
+        Assert.Contains("SubscribeToViewModel(viewModel);", onLoaded, StringComparison.Ordinal);
+        Assert.Contains("SyncSegmented();", onLoaded, StringComparison.Ordinal);
+        Assert.Contains("SyncPanels();", onLoaded, StringComparison.Ordinal);
+        Assert.Contains("RichPanel.SetDocumentPayload(viewModel?.RichPreviewDocument);", onLoaded, StringComparison.Ordinal);
     }
 
     private static string FindRepositoryRoot()

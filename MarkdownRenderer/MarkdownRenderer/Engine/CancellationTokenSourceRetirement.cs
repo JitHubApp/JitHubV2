@@ -2,6 +2,7 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using static MarkdownRenderer.TaskFaultObservation;
 
 namespace MarkdownRenderer;
 
@@ -75,24 +76,6 @@ internal static class CancellationTokenSourceRetirement
             catch (ObjectDisposedException) { }
             _cancellationStates.Remove(source);
         }
-    }
-
-    private static void ObserveFault(Task task)
-    {
-        if (task.IsFaulted)
-        {
-            _ = task.Exception;
-            return;
-        }
-
-        if (task.IsCompleted)
-            return;
-
-        _ = task.ContinueWith(
-            static completed => _ = completed.Exception,
-            CancellationToken.None,
-            TaskContinuationOptions.ExecuteSynchronously | TaskContinuationOptions.OnlyOnFaulted,
-            TaskScheduler.Default);
     }
 
     private static void ObserveCompletedFault(Task task)

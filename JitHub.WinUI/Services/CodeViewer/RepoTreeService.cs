@@ -50,6 +50,12 @@ public sealed class RepoTreeService : IRepoTreeService
         QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst)
     {
         ct.ThrowIfCancellationRequested();
+        if (MarkdownLifecycleAutomationBridge.OfflineSameByteReadmeAuditPin is { } offlinePin)
+        {
+            EnsureOfflineAuditRepository(owner, name, refOrSha, offlinePin);
+            return CreateOfflineFreshResult(BuildOfflinePinnedReadmeTree(offlinePin));
+        }
+
         long accountId = GetActiveUserId();
         string accountPartition = GetAccountPartition(accountId);
         string cacheKey = CreateTreeCacheKey(accountPartition, owner, name, refOrSha);
@@ -480,6 +486,19 @@ public sealed class RepoTreeService : IRepoTreeService
         CancellationToken ct,
         QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst)
     {
+        ct.ThrowIfCancellationRequested();
+        if (MarkdownLifecycleAutomationBridge.OfflineSameByteReadmeAuditPin is { } offlinePin)
+        {
+            EnsureOfflineAuditRepository(owner, name, refOrSha, offlinePin);
+            RepoTreeNode directory = FindTreeNodeByPath(BuildOfflinePinnedReadmeTree(offlinePin).Root, path)
+                ?? throw new InvalidDataException("Offline same-byte replay requested a path outside the pinned README tree.");
+            if (!directory.IsDirectory)
+                throw new InvalidDataException("Offline same-byte replay cannot enumerate a file as a directory.");
+
+            RepoTreeNode[] children = directory.Children.ToArray();
+            return CreateOfflineFreshResult<IReadOnlyList<RepoTreeNode>>(children);
+        }
+
         (string token, string userId) = await GetAuthenticationContextAsync(ct);
         CachedResult<GitHubRepositoryContent[]> result;
         try
@@ -532,6 +551,12 @@ public sealed class RepoTreeService : IRepoTreeService
         CancellationToken ct,
         QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst)
     {
+        if (MarkdownLifecycleAutomationBridge.OfflineSameByteReadmeAuditPin is { } offlinePin)
+        {
+            EnsureOfflineAuditRepository(owner, name, refOrSha, offlinePin);
+            return await LoadOfflinePinnedReadmeAsync(offlinePin, ct).ConfigureAwait(false);
+        }
+
         (string token, string userId) = await GetAuthenticationContextAsync(ct);
         string readmeToken = token;
         bool sourceCameFromRawFallback = false;
@@ -575,7 +600,7 @@ public sealed class RepoTreeService : IRepoTreeService
         {
             string expectedReadmeSha = MarkdownLifecycleAutomationBridge.SameByteReplayReadmeSha
                 ?? throw new InvalidDataException("Same-byte audit README identity is missing.");
-            var fixture = new MarkdownSameByteAuditImageResolver(
+            MarkdownSameByteAuditImageResolver fixture = MarkdownLifecycleAutomationBridge.GetSameByteFixtureResolver(
                 sameByteCorpusPath,
                 $"{owner}/{name}",
                 refOrSha,
@@ -601,7 +626,6 @@ public sealed class RepoTreeService : IRepoTreeService
             bytes = await fixture.LoadPinnedReadmeBytesAsync(
                 content.Path ?? string.Empty,
                 ct).ConfigureAwait(false);
-            MarkdownLifecycleAutomationBridge.RecordSameByteReadmeSource(bytes);
         }
         else
         {
@@ -610,6 +634,14 @@ public sealed class RepoTreeService : IRepoTreeService
                 ct).ConfigureAwait(false);
         }
         bool isBinary = IsBinaryContent(bytes);
+        string? readmeText = isBinary ? null : DecodeText(bytes);
+        if (sameByteCorpusPath is not null && readmeText is not null)
+        {
+            MarkdownLifecycleAutomationBridge.RecordSameByteReadmeSource(
+                bytes,
+                readmeText,
+                content.Sha ?? string.Empty);
+        }
         string? renderedHtml = null;
         string readmePath = content.Path ?? string.Empty;
         if (!isBinary &&
@@ -649,7 +681,7 @@ public sealed class RepoTreeService : IRepoTreeService
                 Sha = content.Sha,
                 Encoding = content.Encoding,
                 Bytes = bytes,
-                Text = isBinary ? null : DecodeText(bytes),
+                Text = readmeText,
                 IsBinary = isBinary
             },
             renderedHtml);
@@ -678,6 +710,12 @@ public sealed class RepoTreeService : IRepoTreeService
         CancellationToken ct,
         QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst)
     {
+        if (MarkdownLifecycleAutomationBridge.IsOfflineSameBytePublicAuditEnabled)
+        {
+            throw new InvalidDataException(
+                "Offline same-byte README replay does not admit repository blob requests outside the pinned README corpus.");
+        }
+
         (string token, string userId) = await GetAuthenticationContextAsync(ct);
         CachedResult<GitHubBlob> result;
         try
@@ -717,6 +755,123 @@ public sealed class RepoTreeService : IRepoTreeService
             IsBinary = isBinary
         };
         return MapResult(result, mapped);
+    }
+
+    private static async Task<RepoCodeLoadResult<RepoReadmeFile>?> LoadOfflinePinnedReadmeAsync(
+        JitHub.WinUI.OfflineSameByteReadmeAuditPin pin,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!pin.ReadmeAvailable)
+            return null;
+
+        string? corpusPath = MarkdownLifecycleAutomationBridge.SameByteReplayCorpusPath;
+        if (string.IsNullOrWhiteSpace(corpusPath))
+            throw new InvalidDataException("Offline same-byte README corpus was not supplied for an available pinned README.");
+
+        MarkdownSameByteAuditImageResolver fixture = MarkdownLifecycleAutomationBridge.GetSameByteFixtureResolver(
+            corpusPath,
+            pin.Repository,
+            pin.CommitSha,
+            pin.ReadmeGitBlobSha1);
+        byte[] bytes = await fixture.LoadPinnedReadmeBytesAsync(
+            pin.ReadmePath,
+            cancellationToken).ConfigureAwait(false);
+        string? text = IsBinaryContent(bytes) ? null : DecodeText(bytes);
+        if (text is null)
+            throw new InvalidDataException("The pinned same-byte README is not decodable as Markdown text.");
+
+        MarkdownLifecycleAutomationBridge.RecordSameByteReadmeSource(
+            bytes,
+            text,
+            pin.ReadmeGitBlobSha1);
+        RepoReadmeFile readme = new(
+            Path.GetFileName(pin.ReadmePath),
+            pin.ReadmePath,
+            new RepoFileBlob
+            {
+                Sha = pin.ReadmeGitBlobSha1,
+                Encoding = "utf-8",
+                Bytes = bytes,
+                Text = text,
+                IsBinary = false,
+            });
+        return CreateOfflineFreshResult<RepoReadmeFile>(readme);
+    }
+
+    private static RepoTree BuildOfflinePinnedReadmeTree(
+        JitHub.WinUI.OfflineSameByteReadmeAuditPin pin)
+    {
+        GitHubTreeEntry[] entries = pin.ReadmeAvailable
+            ?
+            [
+                new GitHubTreeEntry
+                {
+                    Path = pin.ReadmePath,
+                    Type = "blob",
+                    Sha = pin.ReadmeGitBlobSha1,
+                    Size = pin.ReadmeByteSize,
+                }
+            ]
+            : [];
+        RepoTree tree = BuildRepoTree(new GitHubTree
+        {
+            Sha = pin.CommitSha,
+            // The offline audit intentionally projects only the pinned README.
+            // Even when that file exists, this is not the repository's complete
+            // root tree and must never be presented as one.
+            Truncated = true,
+            Tree = entries,
+        });
+        return new RepoTree
+        {
+            Sha = tree.Sha,
+            Truncated = true,
+            RootIsAuthoritative = false,
+            Root = tree.Root,
+        };
+    }
+
+    private static RepoTreeNode? FindTreeNodeByPath(RepoTreeNode root, string path)
+    {
+        if (string.IsNullOrEmpty(path))
+            return root;
+
+        Stack<RepoTreeNode> pending = new();
+        pending.Push(root);
+        while (pending.TryPop(out RepoTreeNode? node))
+        {
+            if (string.Equals(node.Path, path, StringComparison.Ordinal))
+                return node;
+            foreach (RepoTreeNode child in node.Children)
+                pending.Push(child);
+        }
+
+        return null;
+    }
+
+    private static void EnsureOfflineAuditRepository(
+        string owner,
+        string name,
+        string refOrSha,
+        JitHub.WinUI.OfflineSameByteReadmeAuditPin pin)
+    {
+        if (!string.Equals($"{owner}/{name}", pin.Repository, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(refOrSha, pin.CommitSha, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidDataException("Offline same-byte request does not match the validated repository and commit pin.");
+        }
+    }
+
+    private static RepoCodeLoadResult<T> CreateOfflineFreshResult<T>(T value)
+        where T : class
+    {
+        DateTimeOffset fetchedAt = DateTimeOffset.UtcNow;
+        return new RepoCodeLoadResult<T>(
+            value,
+            JitHub.Services.CacheState.Fresh,
+            FetchedAt: fetchedAt,
+            StaleAfter: fetchedAt.AddHours(1));
     }
 
     internal static bool IsAnonymousPublicDataFallbackCandidate(GitHubRateLimitException exception)

@@ -622,6 +622,7 @@
   <data name="MarkdownRenderer/Table/Name" xml:space="preserve"><value>Tabella</value></data>
   <data name="MarkdownRenderer/List/Name" xml:space="preserve"><value>Elenco</value></data>
   <data name="MarkdownRenderer/EmbeddedContent/Name" xml:space="preserve"><value>Contenuto incorporato</value></data>
+  <data name="MarkdownRenderer/EmbeddedContent/Unavailable" xml:space="preserve"><value>Il contenuto incorporato non è disponibile.</value></data>
   <data name="MarkdownRenderer/Diagram/Name" xml:space="preserve"><value>Diagramma</value></data>
   <data name="MarkdownRenderer/Code/LanguageHelp" xml:space="preserve"><value>Lingua: {0}</value></data>
   <data name="MarkdownRenderer/Html/Details" xml:space="preserve"><value>Dettagli</value></data>

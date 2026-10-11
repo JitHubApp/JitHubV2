@@ -1,9 +1,15 @@
 import { createHash } from "node:crypto";
 import { constants, existsSync } from "node:fs";
 import { lstat, mkdir, open, readFile, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { captureVerifiedMarkdownImageAliases } from "./verified-source-image-aliases.mjs";
+import {
+  loadPinnedGitHubEmojiShortcodes,
+  PINNED_GITHUB_EMOJI_SHORTCODES,
+} from "./vendor/github-emoji-shortcodes.mjs";
 
 const MAX_MANIFEST_BYTES = 4 * 1024 * 1024;
 const MAX_README_BYTES = 16 * 1024 * 1024;
@@ -17,6 +23,11 @@ const MAX_CORPUS_ASSET_BYTES = 256 * 1024 * 1024;
 const MAX_TRACKED_NETWORK_REQUESTS = 100_000;
 const MAX_TRACKED_URL_BYTES = 16 * 1024 * 1024;
 const MAX_ASSET_LOOKUP_ENTRIES = 15_000;
+const MAX_HTML_IMAGE_SOURCE_SCAN_BYTES = 32 * 1024 * 1024;
+const MAX_HTML_TAG_BYTES = 64 * 1024;
+const MAX_SRCSET_CANDIDATES_PER_TAG = 32;
+const MAX_NON_RENDERED_DECORATIVE_IMAGE_EXCLUSIONS = 128;
+const MAX_DECORATIVE_IMAGE_URL_HASHES = 16;
 export const PINNED_GFM_PARSER = Object.freeze({
   name: "marked",
   version: "18.0.5",
@@ -24,13 +35,50 @@ export const PINNED_GFM_PARSER = Object.freeze({
   sha256: "2dc4769dfde29f51c7aca1a539c6407c789c8ea644cf8b7d01ded28a9c1d800b",
   npmIntegrity: "sha512-S6GcvALHg6K4ohtu4E7x0a1AqhAjp6cV8KhLSyN9qVapnzJkusVBxZRcIU9AeYsbe6P1hKDusSbEOzGyyuce6w==",
 });
+export const PINNED_GITHUB_EMOJI_PARSER = Object.freeze({
+  source: PINNED_GITHUB_EMOJI_SHORTCODES.source,
+  sourceCommit: PINNED_GITHUB_EMOJI_SHORTCODES.sourceCommit,
+  sourceSha256: PINNED_GITHUB_EMOJI_SHORTCODES.sourceSha256,
+  license: PINNED_GITHUB_EMOJI_SHORTCODES.sourceLicense,
+  licenseSha256: PINNED_GITHUB_EMOJI_SHORTCODES.sourceLicenseSha256,
+  mapSha256: PINNED_GITHUB_EMOJI_SHORTCODES.mapSha256,
+  extensionSha256: PINNED_GITHUB_EMOJI_SHORTCODES.extensionSha256,
+  aliasCount: PINNED_GITHUB_EMOJI_SHORTCODES.aliasCount,
+});
+export const PINNED_SOURCE_REPLAY_PARSER = Object.freeze({
+  name: PINNED_GFM_PARSER.name,
+  version: PINNED_GFM_PARSER.version,
+  license: PINNED_GFM_PARSER.license,
+  sha256: PINNED_GFM_PARSER.sha256,
+  emojiShortcodeSource: PINNED_GITHUB_EMOJI_PARSER.source,
+  emojiShortcodeSourceCommit: PINNED_GITHUB_EMOJI_PARSER.sourceCommit,
+  emojiShortcodeSourceSha256: PINNED_GITHUB_EMOJI_PARSER.sourceSha256,
+  emojiShortcodeLicense: PINNED_GITHUB_EMOJI_PARSER.license,
+  emojiShortcodeLicenseSha256: PINNED_GITHUB_EMOJI_PARSER.licenseSha256,
+  emojiShortcodeMapSha256: PINNED_GITHUB_EMOJI_PARSER.mapSha256,
+  emojiShortcodeExtensionSha256: PINNED_GITHUB_EMOJI_PARSER.extensionSha256,
+  emojiShortcodeAliasCount: PINNED_GITHUB_EMOJI_PARSER.aliasCount,
+});
 const MARKED_PARSER_PATH = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
   "vendor",
   `marked-${PINNED_GFM_PARSER.version}.umd.js`,
 );
+const GITHUB_PRIMER_LIGHT_V4_CSS_PATH = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "profiles",
+  "github-primer-light-v4.css",
+);
+const require = createRequire(import.meta.url);
 const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
 const GIT_SHA1_PATTERN = /^[0-9a-f]{40}$/u;
+export const PINNED_GITHUB_README_STYLE_PROFILE = Object.freeze({
+  id: "github-primer-light",
+  version: 4,
+  colorScheme: "light",
+  cssPath: "/github-primer-light-v4.css",
+  sha256: "d1f276efd42d802835c33480c90cd54544afab7a20eae1be00d8b0a7f881f8f1",
+});
 const RENDERED_SNAPSHOT_FAILURE_PREDICATES = new Set([
   "active-element-tag",
   "duplicate-image-index",
@@ -75,6 +123,7 @@ export async function captureSameByteCorpus({
   readmeGitBlobSha1,
   readmeByteSize,
   images,
+  nonRenderedDecorativeImages = [],
   renderedHtml,
   readmeRendered = true,
   responseRecorder,
@@ -109,11 +158,17 @@ export async function captureSameByteCorpus({
       throw new Error("Pinned README redirected outside the credential-free GitHub HTTPS source set.");
     }
   }
-  if (!response.ok || !response.body) {
+  const throttled = response.status === 403 || response.status === 429 || response.status === 503;
+  if ((!response.ok || !response.body) && !throttled) {
     throw new Error(`Pinned README fetch failed with HTTP ${response.status}.`);
   }
-  let readmeBytes = await readBoundedResponse(response, MAX_README_BYTES);
-  if (readmeBytes.length !== readmeByteSize ||
+  if (throttled && (!githubToken || typeof githubToken !== "string")) {
+    throw new Error(`Pinned README fetch failed with HTTP ${response.status}; authenticated pinned fallback is unavailable.`);
+  }
+  let readmeBytes = response.ok && response.body
+    ? await readBoundedResponse(response, MAX_README_BYTES)
+    : null;
+  if (!readmeBytes || readmeBytes.length !== readmeByteSize ||
       gitBlobSha1(readmeBytes) !== readmeGitBlobSha1.toLowerCase()) {
     // A raw GitHub URL addresses the symlink blob itself. GitHub's README
     // Contents endpoint resolves that symlink at the pinned commit, which is
@@ -134,13 +189,34 @@ export async function captureSameByteCorpus({
       (!readmeRendered && (renderedHtml !== undefined || images?.length))) {
     throw new Error("Same-byte capture requires a bounded rendered HTML snapshot or an explicit source-view status.");
   }
+  const decorativeImageExclusions = createNonRenderedDecorativeImageExclusionEntries(
+    nonRenderedDecorativeImages,
+    readmeUrl,
+  );
+  if (!readmeRendered && decorativeImageExclusions.length > 0) {
+    throw new Error("A GitHub source-view corpus cannot contain rendered decorative-image exclusions.");
+  }
   const renderedHtmlBytes = readmeRendered ? Buffer.from(renderedHtml, "utf8") : null;
   if (renderedHtmlBytes && (renderedHtmlBytes.length === 0 || renderedHtmlBytes.length > MAX_RENDERED_HTML_BYTES)) {
     throw new Error(`Rendered GitHub HTML exceeds the ${MAX_RENDERED_HTML_BYTES}-byte safety limit or is empty.`);
   }
 
   const captured = await responseRecorder.captureVisibleImages(images);
-  const assets = captured.assets;
+  const markdownImageSources = readmeRendered
+    ? await collectPinnedMarkdownImageSources(readmeBytes)
+    : [];
+  const sourceAssets = await captureVerifiedMarkdownImageAliases({
+    sources: markdownImageSources,
+    repository,
+    commitSha: repository.commitSha,
+    readmePath,
+    assets: captured.assets,
+    fetchImpl,
+    maxAssetBytes: MAX_ASSET_BYTES,
+    maxAggregateAssetBytes: MAX_CORPUS_ASSET_BYTES,
+    maxLookupEntries: MAX_ASSET_LOOKUP_ENTRIES,
+  });
+  const assets = sourceAssets.assets;
   const imageRoutes = captured.imageRoutes;
   let totalAssetBytes = 0;
   for (const asset of assets) {
@@ -190,6 +266,7 @@ export async function captureSameByteCorpus({
     },
     assets: assetEntries,
     imageRoutes,
+    nonRenderedDecorativeImageExclusions: decorativeImageExclusions,
     browserRender: renderedHtmlBytes
       ? {
         status: "passed",
@@ -214,6 +291,15 @@ export async function captureSameByteCorpus({
     directory: output,
     assetCount: assets.length,
     assetBytes: totalAssetBytes,
+    sourceImageAliases: {
+      reusedCount: sourceAssets.reusedCount,
+      fetchedCount: sourceAssets.fetchedCount,
+      skippedCount: sourceAssets.skippedCount,
+      byteMismatchCount: sourceAssets.byteMismatchCount,
+      sourceFetchAttemptCount: sourceAssets.sourceFetchAttemptCount,
+      sourceFetchBytes: sourceAssets.sourceFetchBytes,
+      sourceFetchBudgetExhausted: sourceAssets.sourceFetchBudgetExhausted,
+    },
     readmeBytes: readmeBytes.length,
     readmeSha256: sha256(readmeBytes),
     browserRender: manifest.browserRender,
@@ -221,6 +307,270 @@ export async function captureSameByteCorpus({
     assetUrlMapSha256: sha256(Buffer.from(JSON.stringify(assetEntries), "utf8")),
     manifestSha256: sha256(manifestBytes),
   };
+}
+
+async function collectPinnedMarkdownImageSources(readmeBytes) {
+  const parserBytes = await readBoundedFile(MARKED_PARSER_PATH, 8 * 1024 * 1024);
+  if (sha256(parserBytes) !== PINNED_GFM_PARSER.sha256) {
+    throw new Error("Pinned Markdown image extraction parser does not match its recorded SHA-256.");
+  }
+  const parserModule = require(MARKED_PARSER_PATH);
+  const lexer = parserModule?.marked?.lexer;
+  if (typeof lexer !== "function") {
+    throw new Error("Pinned Markdown image extraction parser is unavailable.");
+  }
+  const tokens = lexer(readmeBytes.toString("utf8"), {
+    gfm: true,
+    breaks: false,
+    pedantic: false,
+  });
+  const pending = [...tokens].reverse();
+  const markdownSources = [];
+  const responsiveSources = [];
+  const htmlImageSources = [];
+  const seen = new Set();
+  let scannedHtmlBytes = 0;
+  while (pending.length > 0) {
+    const token = pending.pop();
+    if (!token || typeof token !== "object") continue;
+    if (token.type === "image" && typeof token.href === "string") {
+      markdownSources.push(token.href);
+    }
+    if ((token.type === "html" || token.type === "table") && typeof token.raw === "string") {
+      scannedHtmlBytes += Buffer.byteLength(token.raw, "utf8");
+      if (scannedHtmlBytes > MAX_HTML_IMAGE_SOURCE_SCAN_BYTES) {
+        throw new Error("Pinned README exceeds the bounded HTML image-source scan budget.");
+      }
+      const extracted = extractHtmlImageSourceCandidates(token.raw);
+      responsiveSources.push(...extracted.responsive);
+      htmlImageSources.push(...extracted.images);
+    }
+    if (Array.isArray(token.tokens)) pending.push(...[...token.tokens].reverse());
+    if (Array.isArray(token.items)) {
+      for (const item of [...token.items].reverse()) {
+        if (Array.isArray(item?.tokens)) pending.push(...[...item.tokens].reverse());
+      }
+    }
+  }
+  // Prefer browser-selected <picture>/<source srcset> candidates to their
+  // <img src> fallback. The helper accepts an alias only when those exact
+  // candidate bytes already exist in the browser capture.
+  const sources = [];
+  for (const source of [...responsiveSources, ...markdownSources, ...htmlImageSources]) {
+    if (typeof source !== "string" || source.length === 0 || seen.has(source)) continue;
+    seen.add(source);
+    sources.push(source);
+    if (sources.length > MAX_ASSET_LOOKUP_ENTRIES) {
+      throw new Error("Pinned README exceeds the bounded Markdown/HTML image source count.");
+    }
+  }
+  return sources;
+}
+
+function extractHtmlImageSourceCandidates(raw) {
+  const responsive = [];
+  const images = [];
+  let index = 0;
+  while (index < raw.length) {
+    const open = raw.indexOf("<", index);
+    if (open < 0) break;
+    if (raw.startsWith("<!--", open)) {
+      const commentEnd = raw.indexOf("-->", open + 4);
+      index = commentEnd < 0 ? raw.length : commentEnd + 3;
+      continue;
+    }
+
+    const end = findHtmlTagEnd(raw, open);
+    if (end < 0) {
+      index = open + 1;
+      continue;
+    }
+    const tag = raw.slice(open, end);
+    const tagName = /^<\s*([A-Za-z][A-Za-z0-9:-]*)\b/u.exec(tag)?.[1]?.toLowerCase();
+    if (!tagName) {
+      index = end;
+      continue;
+    }
+    if (["script", "style", "textarea", "title"].includes(tagName) && !/^<\s*\//u.test(tag)) {
+      const closeStart = raw.toLowerCase().indexOf(`</${tagName}`, end);
+      if (closeStart < 0) break;
+      const closeEnd = findHtmlTagEnd(raw, closeStart);
+      index = closeEnd < 0 ? raw.length : closeEnd;
+      continue;
+    }
+
+    if (!/^<\s*\//u.test(tag)) {
+      const attributes = readHtmlAttributes(tag, tagName);
+      if (attributes) {
+        if (tagName === "source" && attributes.has("srcset")) {
+          responsive.push(...parseSrcsetUrls(attributes.get("srcset")));
+        } else if (tagName === "img") {
+          for (const name of ["data-canonical-src", "src"]) {
+            const value = attributes.get(name);
+            if (value) images.push(value);
+          }
+        }
+      }
+    }
+    index = end;
+  }
+  return { responsive, images };
+}
+
+function findHtmlTagEnd(raw, open) {
+  let quote = "";
+  const limit = Math.min(raw.length, open + MAX_HTML_TAG_BYTES);
+  for (let index = open + 1; index < limit; index++) {
+    const character = raw[index];
+    if (quote) {
+      if (character === quote) quote = "";
+    } else if (character === "\"" || character === "'") {
+      quote = character;
+    } else if (character === ">") {
+      return index + 1;
+    }
+  }
+  return -1;
+}
+
+function readHtmlAttributes(tag, tagName) {
+  const names = new Set(["src", "data-canonical-src", "srcset"]);
+  const found = new Map();
+  let index = 1;
+  while (index < tag.length && /[\t\n\f\r ]/u.test(tag[index])) index++;
+  while (index < tag.length && /[A-Za-z0-9:-]/u.test(tag[index])) index++;
+  if (tag.slice(1, index).toLowerCase() !== tagName) return null;
+  while (index < tag.length) {
+    while (index < tag.length && /[\t\n\f\r /]/u.test(tag[index])) index++;
+    if (index >= tag.length || tag[index] === ">") break;
+    const nameStart = index;
+    while (index < tag.length && !/[\t\n\f\r />=]/u.test(tag[index])) index++;
+    if (nameStart === index) return null;
+    const name = tag.slice(nameStart, index).toLowerCase();
+    while (index < tag.length && /[\t\n\f\r ]/u.test(tag[index])) index++;
+    let value = "";
+    if (tag[index] === "=") {
+      index++;
+      while (index < tag.length && /[\t\n\f\r ]/u.test(tag[index])) index++;
+      if (tag[index] === "\"" || tag[index] === "'") {
+        const quote = tag[index++];
+        const valueStart = index;
+        while (index < tag.length && tag[index] !== quote) index++;
+        if (index >= tag.length) return null;
+        value = tag.slice(valueStart, index++);
+      } else {
+        const valueStart = index;
+        while (index < tag.length && !/[\t\n\f\r >]/u.test(tag[index])) {
+          if (tag[index] === "\"" || tag[index] === "'" || tag[index] === "`" || tag[index] === "<") return null;
+          index++;
+        }
+        value = tag.slice(valueStart, index);
+      }
+    }
+    if (names.has(name)) {
+      if (found.has(name)) return null;
+      const decoded = decodeHtmlImageAttribute(value);
+      if (decoded === null) return null;
+      found.set(name, decoded);
+    }
+  }
+  return found;
+}
+
+function decodeHtmlImageAttribute(value) {
+  if (!value.includes("&")) return value;
+  const named = new Map([["amp", "&"], ["quot", "\""], ["apos", "'"], ["lt", "<"], ["gt", ">"]]);
+  const entityPattern = /&(?:#(x[0-9a-f]{1,6}|[0-9]{1,7})|([A-Za-z][A-Za-z0-9]{0,31}));/giu;
+  let output = "";
+  let cursor = 0;
+  for (const match of value.matchAll(entityPattern)) {
+    const prefix = value.slice(cursor, match.index);
+    if (prefix.includes("&")) return null;
+    output += prefix;
+    let replacement;
+    if (match[1]) {
+      const numeric = match[1].toLowerCase();
+      const codePoint = numeric.startsWith("x")
+        ? Number.parseInt(numeric.slice(1), 16)
+        : Number.parseInt(numeric, 10);
+      if (!Number.isInteger(codePoint) || codePoint <= 0 || codePoint > 0x10ffff ||
+          (codePoint >= 0xd800 && codePoint <= 0xdfff)) return null;
+      replacement = String.fromCodePoint(codePoint);
+    } else {
+      replacement = named.get(match[2].toLowerCase());
+      if (replacement === undefined) return null;
+    }
+    output += replacement;
+    cursor = match.index + match[0].length;
+  }
+  if (value.slice(cursor).includes("&")) return null;
+  output += value.slice(cursor);
+  return output;
+}
+
+function parseSrcsetUrls(value) {
+  const candidates = [];
+  let index = 0;
+  while (index < value.length) {
+    while (index < value.length && /[\t\n\f\r ,]/u.test(value[index])) index++;
+    if (index >= value.length) break;
+    const start = index;
+    while (index < value.length && !/[\t\n\f\r ]/u.test(value[index])) index++;
+    let url = value.slice(start, index);
+    let hadTrailingComma = false;
+    while (url.endsWith(",")) {
+      hadTrailingComma = true;
+      url = url.slice(0, -1);
+    }
+    if (url && !hadTrailingComma) {
+      let depth = 0;
+      while (index < value.length) {
+        const character = value[index++];
+        if (character === "(") depth++;
+        else if (character === ")" && depth > 0) depth--;
+        else if (character === "," && depth === 0) break;
+      }
+    }
+    if (url) candidates.push(url);
+    if (candidates.length > MAX_SRCSET_CANDIDATES_PER_TAG) return [];
+  }
+  return candidates;
+}
+
+export function createNonRenderedDecorativeImageExclusionEntries(images, readmeUrl) {
+  if (!Array.isArray(images) || images.length > MAX_NON_RENDERED_DECORATIVE_IMAGE_EXCLUSIONS) {
+    throw new Error("Same-byte corpus exceeds its bounded non-rendered decorative-image evidence count.");
+  }
+  const seenReplayIndexes = new Set();
+  return images.map(image => {
+    if (!image || !Number.isSafeInteger(image.replayIndex) || image.replayIndex < 0 ||
+        image.replayIndex >= MAX_ASSET_LOOKUP_ENTRIES || seenReplayIndexes.has(image.replayIndex) ||
+        image.explicitEmptyAlt !== true || image.failedDecode !== true || image.zeroBounds !== true) {
+      throw new Error("Same-byte corpus contains unproven or ambiguous non-rendered decorative-image evidence.");
+    }
+    seenReplayIndexes.add(image.replayIndex);
+    const urlSha256s = new Set();
+    for (const value of [image.canonicalSource, image.source, image.currentSource]) {
+      if (typeof value !== "string" || value.length === 0 || /^data:/iu.test(value)) continue;
+      let normalized;
+      try {
+        normalized = normalizeHttpUrl(new URL(value, readmeUrl).href);
+      } catch {
+        normalized = "";
+      }
+      if (!normalized) continue;
+      urlSha256s.add(sha256(Buffer.from(normalized, "utf8")));
+    }
+    if (urlSha256s.size === 0 || urlSha256s.size > MAX_DECORATIVE_IMAGE_URL_HASHES) {
+      throw new Error("Same-byte corpus contains a non-rendered image without a bounded HTTP source identity.");
+    }
+    return {
+      urlSha256s: [...urlSha256s].sort(),
+      explicitEmptyAlt: true,
+      failedDecode: true,
+      zeroBounds: true,
+    };
+  });
 }
 
 export function createResponseRecorder(cdp, { maxAssetBytes = MAX_ASSET_BYTES } = {}) {
@@ -517,7 +867,15 @@ export async function createSameByteReplayServer(corpusDirectory) {
   if (sha256(markedParserBytes) !== PINNED_GFM_PARSER.sha256) {
     throw new Error("Vendored Marked parser does not match the pinned SHA-256.");
   }
+  const styleProfileBytes = await readBoundedFile(GITHUB_PRIMER_LIGHT_V4_CSS_PATH, 64 * 1024);
+  if (sha256(styleProfileBytes) !== PINNED_GITHUB_README_STYLE_PROFILE.sha256) {
+    throw new Error("Canonical GitHub README style profile does not match its pinned SHA-256.");
+  }
+  const emojiShortcodes = await loadPinnedGitHubEmojiShortcodes();
   let markedParserRequests = 0;
+  let emojiExtensionRequests = 0;
+  let emojiMapRequests = 0;
+  let styleProfileRequests = 0;
   let misses = 0;
   let servedImageRoutes = 0;
   const servedUrlHashes = new Set();
@@ -525,6 +883,18 @@ export async function createSameByteReplayServer(corpusDirectory) {
     const url = new URL(request.url || "/", "http://127.0.0.1");
     if (request.method !== "GET") {
       response.writeHead(405, { "content-type": "text/plain; charset=utf-8" }).end("Method Not Allowed");
+      return;
+    }
+    if (url.pathname === PINNED_GITHUB_README_STYLE_PROFILE.cssPath) {
+      styleProfileRequests++;
+      response.writeHead(200, {
+        "content-type": "text/css; charset=utf-8",
+        "content-length": styleProfileBytes.length,
+        "cache-control": "no-store",
+        "x-content-sha256": PINNED_GITHUB_README_STYLE_PROFILE.sha256,
+        "x-markdown-style-profile-id": PINNED_GITHUB_README_STYLE_PROFILE.id,
+        "x-markdown-style-profile-version": String(PINNED_GITHUB_README_STYLE_PROFILE.version),
+      }).end(styleProfileBytes);
       return;
     }
     if (url.pathname === "/replay") {
@@ -544,9 +914,13 @@ export async function createSameByteReplayServer(corpusDirectory) {
       response.writeHead(200, {
         "content-type": "text/html; charset=utf-8",
         "cache-control": "no-store",
-        "content-security-policy": "default-src 'none'; script-src 'self'; connect-src 'self'; img-src 'self' blob:; style-src 'unsafe-inline'; font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+        "content-security-policy": "default-src 'none'; script-src 'self'; connect-src 'self'; img-src 'self' blob:; style-src 'self' 'unsafe-inline'; font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
         "x-content-sha256": corpus.manifestSha256,
-      }).end(sourceReplayHtml(`sha256-${Buffer.from(PINNED_GFM_PARSER.sha256, "hex").toString("base64")}`));
+      }).end(sourceReplayHtml(
+        `sha256-${Buffer.from(PINNED_GFM_PARSER.sha256, "hex").toString("base64")}`,
+        `sha256-${Buffer.from(PINNED_GITHUB_EMOJI_PARSER.extensionSha256, "hex").toString("base64")}`,
+        `sha256-${Buffer.from(PINNED_GITHUB_README_STYLE_PROFILE.sha256, "hex").toString("base64")}`,
+      ));
       return;
     }
     if (url.pathname === "/marked-parser.js") {
@@ -557,6 +931,26 @@ export async function createSameByteReplayServer(corpusDirectory) {
         "cache-control": "no-store",
         "x-content-sha256": PINNED_GFM_PARSER.sha256,
       }).end(markedParserBytes);
+      return;
+    }
+    if (url.pathname === "/github-emoji-shortcodes.js") {
+      emojiExtensionRequests++;
+      response.writeHead(200, {
+        "content-type": "application/javascript; charset=utf-8",
+        "content-length": emojiShortcodes.extensionBytes.length,
+        "cache-control": "no-store",
+        "x-content-sha256": PINNED_GITHUB_EMOJI_PARSER.extensionSha256,
+      }).end(emojiShortcodes.extensionBytes);
+      return;
+    }
+    if (url.pathname === "/github-emoji-shortcodes.json") {
+      emojiMapRequests++;
+      response.writeHead(200, {
+        "content-type": "application/json; charset=utf-8",
+        "content-length": emojiShortcodes.mapBytes.length,
+        "cache-control": "no-store",
+        "x-content-sha256": PINNED_GITHUB_EMOJI_PARSER.mapSha256,
+      }).end(emojiShortcodes.mapBytes);
       return;
     }
     if (url.pathname === "/manifest") {
@@ -575,6 +969,20 @@ export async function createSameByteReplayServer(corpusDirectory) {
         "cache-control": "no-store",
         "x-content-sha256": corpus.manifest.readme.sha256,
       }).end(corpus.readmeBytes);
+      return;
+    }
+    if (url.pathname === "/rendered-html") {
+      if (!corpus.renderedHtmlBytes) {
+        response.writeHead(409, { "content-type": "text/plain; charset=utf-8" })
+          .end("This README has no GitHub rendered article.");
+        return;
+      }
+      response.writeHead(200, {
+        "content-type": "text/html; charset=utf-8",
+        "content-length": corpus.renderedHtmlBytes.length,
+        "cache-control": "no-store",
+        "x-content-sha256": corpus.manifest.browserRender.sha256,
+      }).end(corpus.renderedHtmlBytes);
       return;
     }
     if (url.pathname === "/asset") {
@@ -669,8 +1077,12 @@ export async function createSameByteReplayServer(corpusDirectory) {
     imageRoutes: corpus.manifest.imageRoutes,
     expectedVisibleImageCount: corpus.imageRoutesByIndex.size,
     expectedUrlHashes: [...new Set(corpus.manifest.imageRoutes.filter(route => route.dataUri !== true).map(route => route.urlSha256))].sort(),
-    parser: { ...PINNED_GFM_PARSER },
+    parser: { ...PINNED_SOURCE_REPLAY_PARSER },
+    styleProfile: { ...PINNED_GITHUB_README_STYLE_PROFILE },
     get servedParserCount() { return markedParserRequests; },
+    get servedEmojiExtensionCount() { return emojiExtensionRequests; },
+    get servedEmojiMapCount() { return emojiMapRequests; },
+    get servedStyleProfileCount() { return styleProfileRequests; },
     get misses() { return misses; },
     get servedImageRoutes() { return servedImageRoutes; },
     get servedUrlSha256s() { return [...servedUrlHashes].sort(); },
@@ -678,27 +1090,12 @@ export async function createSameByteReplayServer(corpusDirectory) {
   };
 }
 
-function sourceReplayHtml(parserIntegrity) {
+function sourceReplayHtml(parserIntegrity, emojiExtensionIntegrity, styleProfileIntegrity) {
   return `<!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Source-bound GFM replay</title>
-<style>
-:root{color-scheme:light;--readme-fg:#1f2328;--readme-bg:#fff;--readme-muted:#59636e;--readme-border:#d1d9e0;--readme-link:#0969da;--readme-code:#f6f8fa}
-:root[data-color-scheme="dark"]{color-scheme:dark;--readme-fg:#e6edf3;--readme-bg:#0d1117;--readme-muted:#9198a1;--readme-border:#3d444d;--readme-link:#4493f8;--readme-code:#151b23}
-html,body{margin:0;min-height:100%;background:var(--readme-bg);color:var(--readme-fg);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
-/* Primer's Markdown body uses its 16px h4 token, not the 14px page-body token. */
-.markdown-body{box-sizing:border-box;width:100%;max-width:none;margin:0;padding:0;color:var(--readme-fg);font-size:16px;line-height:1.5;overflow-wrap:break-word}
-.markdown-body>*:first-child{margin-top:0!important}.markdown-body>*:last-child{margin-bottom:0!important}
-.markdown-body h1,.markdown-body h2{padding-bottom:.3em;border-bottom:1px solid var(--readme-border)}
-.markdown-body h1{font-size:2em}.markdown-body h2{font-size:1.5em}.markdown-body h3{font-size:1.25em}.markdown-body h4{font-size:1em}.markdown-body h5{font-size:.875em}.markdown-body h6{font-size:.85em;color:var(--readme-muted)}
-.markdown-body h1,.markdown-body h2,.markdown-body h3,.markdown-body h4,.markdown-body h5,.markdown-body h6{font-weight:600;line-height:1.25;margin:24px 0 16px}
-.markdown-body p,.markdown-body blockquote,.markdown-body ul,.markdown-body ol,.markdown-body dl,.markdown-body table,.markdown-body pre{margin:0 0 16px}
-.markdown-body ul,.markdown-body ol{padding-left:2em}.markdown-body li+li{margin-top:.25em}
-.markdown-body a{color:var(--readme-link);text-decoration:none}.markdown-body code,.markdown-body pre{font-family:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace}.markdown-body code{padding:.2em .4em;background:var(--readme-code);border-radius:6px;font-size:85%}.markdown-body pre{padding:16px;overflow:auto;background:var(--readme-code);border-radius:6px;font-size:85%;line-height:1.45}.markdown-body pre code{padding:0;background:transparent;font-size:100%}
-.markdown-body blockquote{padding:0 1em;color:var(--readme-muted);border-left:.25em solid var(--readme-border)}
-.markdown-body table{border-spacing:0;border-collapse:collapse;display:block;max-width:100%;overflow:auto}.markdown-body th,.markdown-body td{padding:6px 13px;border:1px solid var(--readme-border)}.markdown-body th{font-weight:600}.markdown-body tr:nth-child(2n){background:color-mix(in srgb,var(--readme-code) 60%,var(--readme-bg))}
-.markdown-body img{max-width:100%;vertical-align:middle}.markdown-body hr{height:.25em;padding:0;background:var(--readme-border);border:0}.markdown-body input[type="checkbox"]{margin:0 .25em 0 -1.5em;vertical-align:middle}
-</style><script defer src="/marked-parser.js" integrity="${parserIntegrity}" crossorigin="anonymous"></script></head><body><main id="readme" class="markdown-body"></main></body></html>`;
+<link rel="stylesheet" href="${PINNED_GITHUB_README_STYLE_PROFILE.cssPath}" data-markdown-style-profile="${PINNED_GITHUB_README_STYLE_PROFILE.id}" data-markdown-style-profile-version="${PINNED_GITHUB_README_STYLE_PROFILE.version}" integrity="${styleProfileIntegrity}" crossorigin="anonymous">
+<script defer src="/marked-parser.js" integrity="${parserIntegrity}" crossorigin="anonymous"></script><script defer src="/github-emoji-shortcodes.js" integrity="${emojiExtensionIntegrity}" crossorigin="anonymous"></script></head><body><main id="readme" class="markdown-body"></main></body></html>`;
 }
 
 async function fetchResolvedPinnedReadme({
@@ -820,6 +1217,8 @@ function validateManifestShape(manifest) {
       manifest.assets.length > MAX_ASSET_LOOKUP_ENTRIES ||
       !Array.isArray(manifest.imageRoutes) ||
       manifest.imageRoutes.length > MAX_ASSET_LOOKUP_ENTRIES ||
+      (manifest.nonRenderedDecorativeImageExclusions !== undefined &&
+       !isValidNonRenderedDecorativeImageExclusionList(manifest.nonRenderedDecorativeImageExclusions)) ||
       manifest.limits?.maxReadmeBytes !== MAX_README_BYTES ||
       manifest.limits?.maxRenderedHtmlBytes !== MAX_RENDERED_HTML_BYTES ||
       manifest.limits?.maxAssetBytes !== MAX_ASSET_BYTES ||
@@ -831,6 +1230,27 @@ function validateManifestShape(manifest) {
        Object.hasOwn(manifest.browserRender, "byteSize"))) {
     throw new Error("A source-view corpus cannot claim a rendered HTML snapshot.");
   }
+  if (manifest.browserRender.status === "not-applicable" &&
+      (manifest.nonRenderedDecorativeImageExclusions?.length || 0) > 0) {
+    throw new Error("A GitHub source-view corpus cannot contain rendered decorative-image exclusions.");
+  }
+}
+
+function isValidNonRenderedDecorativeImageExclusionList(value) {
+  if (!Array.isArray(value) || value.length > MAX_NON_RENDERED_DECORATIVE_IMAGE_EXCLUSIONS) return false;
+  return value.every(item => {
+    if (!item || item.explicitEmptyAlt !== true || item.failedDecode !== true || item.zeroBounds !== true ||
+        !Array.isArray(item.urlSha256s) || item.urlSha256s.length < 1 ||
+        item.urlSha256s.length > MAX_DECORATIVE_IMAGE_URL_HASHES) {
+      return false;
+    }
+    const hashes = new Set();
+    for (const hash of item.urlSha256s) {
+      if (!SHA256_PATTERN.test(hash || "") || hashes.has(hash.toLowerCase())) return false;
+      hashes.add(hash.toLowerCase());
+    }
+    return true;
+  });
 }
 
 function validateRenderedSnapshot(html, imageRoutes) {

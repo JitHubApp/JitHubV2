@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="128" viewBox="0 0 256 128">
+  <g font-family="Arial" font-size="22" fill="#101010" direction="rtl" unicode-bidi="bidi-override">
+    <text x="128" y="30" text-anchor="start">שלום</text>
+    <text x="128" y="65" text-anchor="middle">שלום</text>
+    <text x="128" y="100" text-anchor="end">שלום</text>
+  </g>
+</svg>

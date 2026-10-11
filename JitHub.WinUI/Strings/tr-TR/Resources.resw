@@ -673,6 +673,7 @@
   <data name="MarkdownRenderer/Table/Name" xml:space="preserve"><value>Tablo</value></data>
   <data name="MarkdownRenderer/List/Name" xml:space="preserve"><value>Liste</value></data>
   <data name="MarkdownRenderer/EmbeddedContent/Name" xml:space="preserve"><value>Gömülü içerik</value></data>
+  <data name="MarkdownRenderer/EmbeddedContent/Unavailable" xml:space="preserve"><value>Gömülü içerik kullanılamıyor.</value></data>
   <data name="MarkdownRenderer/Diagram/Name" xml:space="preserve"><value>Diyagram</value></data>
   <data name="MarkdownRenderer/Code/LanguageHelp" xml:space="preserve"><value>Dil: {0}</value></data>
   <data name="MarkdownRenderer/Html/Details" xml:space="preserve"><value>Ayrıntılar</value></data>

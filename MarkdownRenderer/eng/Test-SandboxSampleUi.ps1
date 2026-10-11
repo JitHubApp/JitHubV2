@@ -1,6 +1,8 @@
 param(
     [switch]$NoBuild,
-    [string]$OutputDirectory = (Join-Path $PSScriptRoot '..\..\artifacts\winapp-sandbox')
+    [string]$OutputDirectory = (Join-Path $PSScriptRoot '..\..\artifacts\winapp-sandbox'),
+    [ValidateSet('Debug', 'Release')]
+    [string]$Configuration = 'Debug'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -59,7 +61,7 @@ $env:WINAPP_UI_WORKFLOW_ID = "markdown-sandbox-$([guid]::NewGuid().ToString('N')
 $sandboxStarted = $false
 
 try {
-    $runArguments = @('run', $projectPath, '--on', 'sandbox', '--detach', '--json', '-c', 'Debug', '--arch', 'x64')
+    $runArguments = @('run', $projectPath, '--on', 'sandbox', '--detach', '--json', '-c', $Configuration, '--arch', 'x64')
     if ($NoBuild) {
         $runArguments += '--no-build'
     }

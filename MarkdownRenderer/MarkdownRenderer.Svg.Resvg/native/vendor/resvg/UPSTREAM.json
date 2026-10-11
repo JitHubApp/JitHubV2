@@ -1,0 +1,197 @@
+{
+  "schemaVersion": 1,
+  "repository": "https://github.com/linebender/resvg.git",
+  "revision": "68b14c4c3bccdb60344c777406486b54c36ec1a4",
+  "packagePath": "crates/resvg",
+  "sourceTree": "973a9a5c57b063ad942b22d44dee962bd2638b60",
+  "packageName": "resvg",
+  "packageVersion": "0.48.1",
+  "license": "Apache-2.0 OR MIT",
+  "sourceInventorySha256": "222759c0ff6177b5bf847b4d984f5d4e5819897edb204b96ecb459687643b3e0",
+  "patchSetSha256": "5c5013c19ac3e4cd50c97f15dfd68271493b35fd5f13f418eff37e4531e5902b",
+  "sourceFiles": [
+    {
+      "path": "Cargo.toml",
+      "sha256": "a57ff43f304e9dd7284ac36b7c058675e510f7268321c52d2b5238da31e5d496"
+    },
+    {
+      "path": "src/filter/mod.rs",
+      "sha256": "b24535fa0686ebcde56bbefa42924bc90f36e0302ccba561355b6ae56dd442d2"
+    },
+    {
+      "path": "src/filter/lighting.rs",
+      "sha256": "55c68c61f27b831d81f30c62e3adf56f131d40664ce34ece4acfacfe0ddcdf71"
+    },
+    {
+      "path": "src/filter/iir_blur.rs",
+      "sha256": "b489b4d6c905ca246b72a9d9cddb2ffd40cbef7ca2b51c15d63d13902e9cc5a4"
+    },
+    {
+      "path": "src/filter/displacement_map.rs",
+      "sha256": "e54274bb502bd7d262c6daa98b447ef2c90ee49a084e32f6892782bd9d678687"
+    },
+    {
+      "path": "src/filter/convolve_matrix.rs",
+      "sha256": "d4e8b2e7604b93866a8d02ac1524e16c914e5803f0a05285f40cef6785631a09"
+    },
+    {
+      "path": "src/filter/composite.rs",
+      "sha256": "391394fceb347771bb6c930882635f99e022a7b6108df66cf7616aa83d13a1af"
+    },
+    {
+      "path": "src/filter/component_transfer.rs",
+      "sha256": "78c6961374d9d0829cb37dca470dee1e4a868f8597c91a2735646ab76edf562d"
+    },
+    {
+      "path": "src/filter/color_matrix.rs",
+      "sha256": "5f721bd5b56bd6ceeba3e0dfce8cf788d49943dd808ea6beca2b045345f8f616"
+    },
+    {
+      "path": "src/filter/box_blur.rs",
+      "sha256": "a25c600532f7a7b3df9022f10c17243a24ba718d64958c566f26feade3d9c5a2"
+    },
+    {
+      "path": "src/render.rs",
+      "sha256": "9a91c2d4272b500dd4e0aeab32d00e7b465d00aeb3b575f571a6e23845dfac18"
+    },
+    {
+      "path": "src/path.rs",
+      "sha256": "cf49f94eba8a16cc3f730f544b49fbf1928b053dc4620c485677d1500dd897c7"
+    },
+    {
+      "path": "src/mask.rs",
+      "sha256": "dc9e0d6dd22d2dd9981ff68e27f2ac45d303f574c4ca293877dfdd5af2a3c37d"
+    },
+    {
+      "path": "src/filter/morphology.rs",
+      "sha256": "f31ad2ea03659309f544c003aeec4e0c09f0c71630e0fe9218994418e174057e"
+    },
+    {
+      "path": "src/main.rs",
+      "sha256": "6227dc655cd7ecbdaa68271fcd3f4f2ce007a3435e08dee152dc8e750ab5c299"
+    },
+    {
+      "path": "src/image.rs",
+      "sha256": "41b548fc8627822cda2357c653eb86092f91eabd45ff8ed5d3f9b16fee89734e"
+    },
+    {
+      "path": "src/geom.rs",
+      "sha256": "2231dd54f9444399f2a2c528b8c163b0a930f4861e9e32927f62fa2289fa10e3"
+    },
+    {
+      "path": "src/clip.rs",
+      "sha256": "bbfece2b312ea419c8c8844d01051946b66797aeab2675c71574414ecb95a067"
+    },
+    {
+      "path": "examples/minimal.rs",
+      "sha256": "e0da5ccf8cf7acc6c40fc6385c322edbc5dc8c446877feacfce74baf2b613f0b"
+    },
+    {
+      "path": "examples/ferris.png",
+      "sha256": "0529d9c05718d9abde17d0d989b45d9c21dc4205e6db182f00101893e892e3bc"
+    },
+    {
+      "path": "examples/draw_bboxes.rs",
+      "sha256": "7f61e829e2b5d36bbb82eb5e97e56c092e84c802f9cf093c62890ff860cc859e"
+    },
+    {
+      "path": "examples/custom_href_resolver.svg",
+      "sha256": "15cad01edccd71ed786d1d32dfb2334209e4e46778b9f3a95d2be1c37448855b"
+    },
+    {
+      "path": "examples/custom_href_resolver.rs",
+      "sha256": "df99856abb07c0729699b21349ed9377670d605bfdc69432fcde42e247a5e3fa"
+    },
+    {
+      "path": "examples/bboxes.svg",
+      "sha256": "c3bdea9d43ca1006d146b61aad704c0c9271dc972197639cf21278036ab1a6fa"
+    },
+    {
+      "path": "README.md",
+      "sha256": "2e6b214593e6a0ff609a9fe5be3fb7f8c23d729b79d5b77a3081ba347a6e3e96"
+    },
+    {
+      "path": "LICENSE-MIT",
+      "sha256": "f5d934dc281b44e0003ee461ac740b18b6629a454decd872c774d34e4ee0b21d"
+    },
+    {
+      "path": "LICENSE-APACHE",
+      "sha256": "a6cba85bc92e0cff7a450b1d873c0eaa2e9fc96bf472df0247a26bec77bf3ff9"
+    },
+    {
+      "path": "src/lib.rs",
+      "sha256": "d90f2f77488c28ff6e79ce334dcffdb05eefc5fcfd718ba1d0316c023c8f19f3"
+    },
+    {
+      "path": "src/filter/turbulence.rs",
+      "sha256": "2b4c288e174664836d17f829831809bee0fc55f02e6eab8425447f2ab778d974"
+    }
+  ],
+  "patches": [
+    {
+      "path": "Cargo.toml",
+      "upstreamSha256": "a57ff43f304e9dd7284ac36b7c058675e510f7268321c52d2b5238da31e5d496",
+      "patchedSha256": "3478619a8ad54f5eb78322e111363ee8929bbdeccfdccb384bb4b6ec8df193d7"
+    },
+    {
+      "path": "src/clip.rs",
+      "upstreamSha256": "bbfece2b312ea419c8c8844d01051946b66797aeab2675c71574414ecb95a067",
+      "patchedSha256": "e4ac7d51a52a57bd24a16f774f3a6f7394bac37cb4d8c306f5ca39c665ec7d48"
+    },
+    {
+      "path": "src/filter/box_blur.rs",
+      "upstreamSha256": "a25c600532f7a7b3df9022f10c17243a24ba718d64958c566f26feade3d9c5a2",
+      "patchedSha256": "e821fa1133a3e515b1c93c8113c4a2f019a615914416e5eb4d56e4bbf2521127"
+    },
+    {
+      "path": "src/filter/convolve_matrix.rs",
+      "upstreamSha256": "d4e8b2e7604b93866a8d02ac1524e16c914e5803f0a05285f40cef6785631a09",
+      "patchedSha256": "4b7561fd68071d7652ca0e983758ab3585f853753fcc19e63862d6eab8ca75d8"
+    },
+    {
+      "path": "src/filter/iir_blur.rs",
+      "upstreamSha256": "b489b4d6c905ca246b72a9d9cddb2ffd40cbef7ca2b51c15d63d13902e9cc5a4",
+      "patchedSha256": "303a19baa307c31897aa9ea985776df8d7f0d331938c494a797c4b1b7418c1f4"
+    },
+    {
+      "path": "src/filter/mod.rs",
+      "upstreamSha256": "b24535fa0686ebcde56bbefa42924bc90f36e0302ccba561355b6ae56dd442d2",
+      "patchedSha256": "42e7481318e6dc24651a59317cc7c4ea0318733b06fcca55c9f6eff502502c69"
+    },
+    {
+      "path": "src/filter/morphology.rs",
+      "upstreamSha256": "f31ad2ea03659309f544c003aeec4e0c09f0c71630e0fe9218994418e174057e",
+      "patchedSha256": "8ce06663c4add2478eb7a7b8b0ad0affc21bf97680080df3efad9fb8ae8dc5b4"
+    },
+    {
+      "path": "src/filter/turbulence.rs",
+      "upstreamSha256": "2b4c288e174664836d17f829831809bee0fc55f02e6eab8425447f2ab778d974",
+      "patchedSha256": "902f88005202da9c70dd9c18e639484ffe561c48a53c1d2acce200e188daa670"
+    },
+    {
+      "path": "src/image.rs",
+      "upstreamSha256": "41b548fc8627822cda2357c653eb86092f91eabd45ff8ed5d3f9b16fee89734e",
+      "patchedSha256": "c7f7867ba7b92126b62c7aa26703567aa5c73b729c05a9432423a67a25ebc6bb"
+    },
+    {
+      "path": "src/lib.rs",
+      "upstreamSha256": "d90f2f77488c28ff6e79ce334dcffdb05eefc5fcfd718ba1d0316c023c8f19f3",
+      "patchedSha256": "943f48694c343f591f966915f8dc67dc33fa3b61678dea41e013d6952718ce4e"
+    },
+    {
+      "path": "src/mask.rs",
+      "upstreamSha256": "dc9e0d6dd22d2dd9981ff68e27f2ac45d303f574c4ca293877dfdd5af2a3c37d",
+      "patchedSha256": "be86800f45acce93ac9459e63f77c797dbffa2f141babe928e735261ea37fa3f"
+    },
+    {
+      "path": "src/path.rs",
+      "upstreamSha256": "cf49f94eba8a16cc3f730f544b49fbf1928b053dc4620c485677d1500dd897c7",
+      "patchedSha256": "34002a997584db2c42b006517e9a82a89fdaa3d00d9511ee04b0d269edbe2a06"
+    },
+    {
+      "path": "src/render.rs",
+      "upstreamSha256": "9a91c2d4272b500dd4e0aeab32d00e7b465d00aeb3b575f571a6e23845dfac18",
+      "patchedSha256": "cb84850009e37ba9b80e20f8f6d08498b2e37dc3c972d90a107fe00a9ebf8b10"
+    }
+  ]
+}

@@ -172,47 +172,47 @@ internal sealed class SharedLayoutMetricsKey : IEquatable<SharedLayoutMetricsKey
         _hashCode = hash.ToHashCode();
     }
 
-    internal object DocumentIdentity { get; }
+    internal readonly object DocumentIdentity;
 
-    internal int WidthInSixtyFourthDips { get; }
+    internal readonly int WidthInSixtyFourthDips;
 
-    internal ulong TypographyFingerprint { get; }
+    internal readonly ulong TypographyFingerprint;
 
-    internal int FlowDirection { get; }
+    internal readonly int FlowDirection;
 
-    internal int CodeWrappingMode { get; }
+    internal readonly int CodeWrappingMode;
 
-    internal int LineNumberMode { get; }
+    internal readonly int LineNumberMode;
 
-    internal bool CodeCopyEnabled { get; }
+    internal readonly bool CodeCopyEnabled;
 
-    internal bool TaskEditingEnabled { get; }
+    internal readonly bool TaskEditingEnabled;
 
-    internal int RasterScaleInThousandths { get; }
+    internal readonly int RasterScaleInThousandths;
 
-    internal string Language { get; }
+    internal readonly string Language;
 
-    internal int RegistryRevision { get; }
+    internal readonly int RegistryRevision;
 
-    internal ulong DisclosureFingerprint { get; }
+    internal readonly ulong DisclosureFingerprint;
 
-    internal SharedLayoutImageContext ImageContext { get; }
+    internal readonly SharedLayoutImageContext ImageContext;
 
-    internal object? StyleSheet { get; }
+    internal readonly object? StyleSheet;
 
-    internal object? Registry { get; }
+    internal readonly object? Registry;
 
-    internal object? EmbedFactory { get; }
+    internal readonly object? EmbedFactory;
 
-    internal object? HostedElementFactory { get; }
+    internal readonly object? HostedElementFactory;
 
-    internal object? ImageResolver { get; }
+    internal readonly object? ImageResolver;
 
-    internal object? SvgRenderer { get; }
+    internal readonly object? SvgRenderer;
 
-    internal object? CommandProvider { get; }
+    internal readonly object? CommandProvider;
 
-    internal object? StringProvider { get; }
+    internal readonly object? StringProvider;
 
     internal long EstimatedKeyWeightBytes => 256L;
 
@@ -250,11 +250,28 @@ internal sealed class SharedLayoutMetricsKey : IEquatable<SharedLayoutMetricsKey
         hash.Add(value is null ? 0 : RuntimeHelpers.GetHashCode(value));
 }
 
-internal readonly record struct SharedLayoutImageContext(
+internal readonly struct SharedLayoutImageContext(
     string? BaseUri,
     string? DocumentPath,
     bool AllowThirdPartyRemoteImages,
-    MarkdownDocumentSource? DocumentSource);
+    MarkdownDocumentSource? DocumentSource) : IEquatable<SharedLayoutImageContext>
+{
+    internal readonly string? BaseUri = BaseUri;
+    internal readonly string? DocumentPath = DocumentPath;
+    internal readonly bool AllowThirdPartyRemoteImages = AllowThirdPartyRemoteImages;
+    internal readonly MarkdownDocumentSource? DocumentSource = DocumentSource;
+
+    // MarkdownDocumentSource is itself a public value record. Preserve its
+    // value equality, not reference identity, in this private composition key.
+    public bool Equals(SharedLayoutImageContext other) =>
+        string.Equals(BaseUri, other.BaseUri, StringComparison.Ordinal) &&
+        string.Equals(DocumentPath, other.DocumentPath, StringComparison.Ordinal) &&
+        AllowThirdPartyRemoteImages == other.AllowThirdPartyRemoteImages &&
+        Equals(DocumentSource, other.DocumentSource);
+
+    public override bool Equals(object? obj) => obj is SharedLayoutImageContext other && Equals(other);
+    public override int GetHashCode() => HashCode.Combine(BaseUri, DocumentPath, AllowThirdPartyRemoteImages, DocumentSource);
+}
 
 /// <summary>
 /// Concurrent reusable height observations. A zero slot means no observation;
@@ -277,7 +294,7 @@ internal sealed class SharedLayoutMetrics
 
     internal int TopLevelBlockCount => _heights.Length;
 
-    internal long EstimatedWeightBytes { get; }
+    internal readonly long EstimatedWeightBytes;
 
     internal bool TryGetHeight(int ordinal, out float height)
     {

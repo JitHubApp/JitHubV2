@@ -26,23 +26,66 @@ internal enum MarkdownEnvironmentChange
 /// Immutable, UI-object-free description of the effective rendering
 /// environment. It is safe to retain with background layout work.
 /// </summary>
-internal readonly record struct MarkdownEnvironmentSnapshot(
-    long Revision,
-    long BrushRevision,
-    long LayoutRevision,
-    int Theme,
-    bool IsHighContrast,
-    double TextScaleFactor,
-    string Language,
-    int FlowDirection,
-    double RasterizationScale,
-    double Width,
-    uint AccentColor,
-    uint ForegroundColor,
-    uint BackgroundColor)
+internal readonly struct MarkdownEnvironmentSnapshot
 {
     private const double ScaleTolerance = 0.0001;
     private const double WidthTolerance = 0.5;
+
+    public MarkdownEnvironmentSnapshot(
+        long Revision,
+        long BrushRevision,
+        long LayoutRevision,
+        int Theme,
+        bool IsHighContrast,
+        double TextScaleFactor,
+        string Language,
+        int FlowDirection,
+        double RasterizationScale,
+        double Width,
+        uint AccentColor,
+        uint ForegroundColor,
+        uint BackgroundColor)
+    {
+        this.Revision = Revision;
+        this.BrushRevision = BrushRevision;
+        this.LayoutRevision = LayoutRevision;
+        this.Theme = Theme;
+        this.IsHighContrast = IsHighContrast;
+        this.TextScaleFactor = TextScaleFactor;
+        this.Language = Language;
+        this.FlowDirection = FlowDirection;
+        this.RasterizationScale = RasterizationScale;
+        this.Width = Width;
+        this.AccentColor = AccentColor;
+        this.ForegroundColor = ForegroundColor;
+        this.BackgroundColor = BackgroundColor;
+    }
+
+    public long Revision { get; init; }
+
+    public long BrushRevision { get; init; }
+
+    public long LayoutRevision { get; init; }
+
+    public int Theme { get; init; }
+
+    public bool IsHighContrast { get; init; }
+
+    public double TextScaleFactor { get; init; }
+
+    public string Language { get; init; }
+
+    public int FlowDirection { get; init; }
+
+    public double RasterizationScale { get; init; }
+
+    public double Width { get; init; }
+
+    public uint AccentColor { get; init; }
+
+    public uint ForegroundColor { get; init; }
+
+    public uint BackgroundColor { get; init; }
 
     /// <summary>Returns the changes needed to move from <paramref name="previous"/> to this snapshot.</summary>
     public MarkdownEnvironmentChange ChangesFrom(in MarkdownEnvironmentSnapshot previous)

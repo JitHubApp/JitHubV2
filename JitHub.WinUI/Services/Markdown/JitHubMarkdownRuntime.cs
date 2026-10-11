@@ -3,6 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Services.CodeViewer;
 using MarkdownRenderer;
+using MarkdownRenderer.Diagnostics;
 using MarkdownRenderer.GitHub;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Math;
@@ -96,16 +97,17 @@ internal static class JitHubMarkdownRuntime
             if (_performanceSession is null || _performanceAccountId != accountId)
             {
                 retired = _performanceSession;
-                _performanceSession = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive)
-                {
-                    ParseStageDiagnosticRecorder = MarkdownLifecycleAutomationBridge.IsEvidenceEnabled
-                        ? MarkdownLifecycleAutomationBridge.RecordParsePipelineStage
-                        : null,
-                };
+                _performanceSession = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
                 _performanceAccountId = accountId;
             }
 
             current = _performanceSession;
+            current.ParseStageDiagnosticRecorder = MarkdownLifecycleAutomationBridge.IsEvidenceEnabled
+                ? MarkdownLifecycleAutomationBridge.RecordParsePipelineStage
+                : null;
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+            current.IsLayoutDiagnosticCaptureEnabled = MarkdownLifecycleAutomationBridge.IsEvidenceEnabled;
+#endif
         }
 
         retired?.Dispose();
@@ -163,6 +165,26 @@ internal static class JitHubMarkdownRuntime
     {
         if (MarkdownLifecycleAutomationBridge.IsEvidenceEnabled)
             _rendererAuditListener ??= new MarkdownRendererAuditListener();
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+        // NativeAOT can strip EventListener delivery. The diagnostic-only,
+        // statically rooted callback records the same numeric stage payload.
+        MarkdownPerformanceEventSource.SetSvgStageDiagnosticRecorder(
+            MarkdownLifecycleAutomationBridge.IsSvgStageEvidenceEnabled
+                ? MarkdownLifecycleAutomationBridge.RecordSvgWorkStage
+                : null);
+        MarkdownPerformanceEventSource.SetSvgWorkerStageDiagnosticRecorder(
+            MarkdownLifecycleAutomationBridge.IsSvgStageEvidenceEnabled
+                ? MarkdownLifecycleAutomationBridge.RecordSvgWorkerStage
+                : null);
+        MarkdownPerformanceEventSource.SetSvgWorkerPolicyDiagnosticRecorder(
+            MarkdownLifecycleAutomationBridge.IsSvgStageEvidenceEnabled
+                ? MarkdownLifecycleAutomationBridge.RecordSvgWorkerPolicy
+                : null);
+        MarkdownPerformanceEventSource.SetImageActivationTraceDiagnosticRecorder(
+            MarkdownLifecycleAutomationBridge.IsSvgStageEvidenceEnabled
+                ? MarkdownLifecycleAutomationBridge.RecordImageActivationTrace
+                : null);
+#endif
     }
 
     /// <summary>
@@ -191,6 +213,11 @@ internal static class JitHubMarkdownRuntime
                 {
                     if (!_isShuttingDown && ReferenceEquals(renderer, _svgRenderer))
                     {
+                        // Only notifications awaiting dispatch are coalesced.
+                        // A later font change must not join this Task after its
+                        // generation has already been published but before the
+                        // Task runner has marked completion.
+                        _fontChangeTask = null;
                         renderer.NotifyFontsChanged();
                     }
                 }
@@ -269,12 +296,25 @@ internal static class JitHubMarkdownRuntime
             _shutdownTask = Task.CompletedTask;
         }
 
-        codeHighlighter?.Dispose();
-        performanceSession?.Dispose();
-        engine?.Dispose();
-        RepositorySvgGpuCache.Shutdown();
-        svgRenderer?.Dispose();
-        rendererAuditListener?.Dispose();
+        try
+        {
+            codeHighlighter?.Dispose();
+            performanceSession?.Dispose();
+            engine?.Dispose();
+            RepositorySvgGpuCache.Shutdown();
+            svgRenderer?.Dispose();
+        }
+        finally
+        {
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+            MarkdownLifecycleAutomationBridge.FlushDeferredSvgStageEvidence();
+            MarkdownPerformanceEventSource.SetSvgStageDiagnosticRecorder(null);
+            MarkdownPerformanceEventSource.SetSvgWorkerStageDiagnosticRecorder(null);
+            MarkdownPerformanceEventSource.SetSvgWorkerPolicyDiagnosticRecorder(null);
+            MarkdownPerformanceEventSource.SetImageActivationTraceDiagnosticRecorder(null);
+#endif
+            rendererAuditListener?.Dispose();
+        }
     }
 
     private static async Task ShutdownCoreAsync(
@@ -306,6 +346,13 @@ internal static class JitHubMarkdownRuntime
             }
             finally
             {
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+                MarkdownLifecycleAutomationBridge.FlushDeferredSvgStageEvidence();
+                MarkdownPerformanceEventSource.SetSvgStageDiagnosticRecorder(null);
+                MarkdownPerformanceEventSource.SetSvgWorkerStageDiagnosticRecorder(null);
+                MarkdownPerformanceEventSource.SetSvgWorkerPolicyDiagnosticRecorder(null);
+                MarkdownPerformanceEventSource.SetImageActivationTraceDiagnosticRecorder(null);
+#endif
                 rendererAuditListener?.Dispose();
             }
 

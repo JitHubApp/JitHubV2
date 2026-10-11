@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -7,9 +8,10 @@ using System.Threading.Tasks;
 namespace MarkdownRenderer.Controls;
 
 /// <summary>
-/// Tracks only currently pending snapshot retirements. Retirement faults are
-/// observed immediately and stored in bounded per-drain epochs, so one fault
-/// cannot retain every later Task.WhenAll graph for the lifetime of a control.
+/// Tracks only currently pending resource/work retirements. Retirement faults
+/// are observed immediately and stored in bounded per-drain epochs, so one
+/// fault cannot retain every later Task.WhenAll graph for the lifetime of a
+/// control.
 /// </summary>
 internal sealed class SnapshotRetirementTracker
 {
@@ -17,6 +19,7 @@ internal sealed class SnapshotRetirementTracker
 
     private readonly object _gate = new();
     private readonly Dictionary<Task, long> _pending = new();
+    private readonly ConditionalWeakTable<Task, TrackedSource> _trackedSources = new();
     private readonly Dictionary<long, FailureBucket> _failureBuckets = new();
     private readonly Action<Exception>? _failureObserver;
     private long _currentEpoch;
@@ -62,6 +65,13 @@ internal sealed class SnapshotRetirementTracker
         Task observed;
         lock (_gate)
         {
+            if (retirement.IsCompletedSuccessfully ||
+                _trackedSources.TryGetValue(retirement, out _))
+            {
+                return;
+            }
+
+            _trackedSources.Add(retirement, new TrackedSource());
             long epoch = _currentEpoch;
             long sequence = ++_sequence;
             observed = ObserveAsync(retirement, epoch, sequence);
@@ -108,6 +118,25 @@ internal sealed class SnapshotRetirementTracker
         }
 
         return DrainCoreAsync(pending, epoch);
+    }
+
+    /// <summary>
+    /// Returns a non-faulting barrier for every currently pending task,
+    /// including tasks already captured by another drain epoch. This is used
+    /// when an owned provider must stay alive until all prior users retire; it
+    /// deliberately does not consume or re-report failures owned by a drain.
+    /// </summary>
+    internal Task WaitForPendingAsync()
+    {
+        lock (_gate)
+        {
+            if (_pending.Count == 0)
+                return Task.CompletedTask;
+
+            Task[] pending = new Task[_pending.Count];
+            _pending.Keys.CopyTo(pending, 0);
+            return Task.WhenAll(pending);
+        }
     }
 
     private async Task ObserveAsync(Task retirement, long epoch, long sequence)
@@ -169,7 +198,7 @@ internal sealed class SnapshotRetirementTracker
 
     private sealed class FailureBucket
     {
-        internal List<RetirementFailure> Details { get; } = new(MaximumRetainedFailureDetails);
+        internal readonly List<RetirementFailure> Details = new(MaximumRetainedFailureDetails);
 
         internal long OmittedCount { get; private set; }
 
@@ -195,5 +224,11 @@ internal sealed class SnapshotRetirementTracker
         }
     }
 
-    private readonly record struct RetirementFailure(long Sequence, Exception Exception);
+    private readonly struct RetirementFailure(long Sequence, Exception Exception)
+    {
+        public readonly long Sequence = Sequence;
+        public readonly Exception Exception = Exception;
+    }
+
+    private sealed class TrackedSource { }
 }

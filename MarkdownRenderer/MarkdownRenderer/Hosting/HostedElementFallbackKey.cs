@@ -15,7 +15,7 @@ internal readonly struct HostedElementFallbackKey : IEquatable<HostedElementFall
         Fragment = fragment ?? throw new ArgumentNullException(nameof(fragment));
     }
 
-    internal MarkdownContentFragment Fragment { get; }
+    internal readonly MarkdownContentFragment Fragment;
 
     public bool Equals(HostedElementFallbackKey other) =>
         ReferenceEquals(Fragment, other.Fragment);

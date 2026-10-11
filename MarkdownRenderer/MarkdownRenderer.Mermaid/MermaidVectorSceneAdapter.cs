@@ -60,7 +60,7 @@ internal static class MermaidVectorSceneAdapter
                         NormalizeLabelText(source.Strings[command.TextIndex]),
                         baseline,
                         new MarkdownVectorTextStyle(
-                            MarkdownVectorFontRole.Host,
+                            MarkdownVectorFontRole.Authored,
                             command.FontFamilyIndex >= 0 ? source.Strings[command.FontFamilyIndex] : "Segoe UI",
                             GetTextSize(source, command),
                             GetTextWeight(source, command),

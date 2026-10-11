@@ -15,12 +15,21 @@ param(
 
     [string] $StoreDeploymentEvidence,
 
-    [string] $LiveAuditEvidence
+    [string] $LiveAuditEvidence,
+
+    [string] $SignedWorkerDirectory,
+
+    [string] $UnsignedWorkerDirectory,
+
+    [string] $WorkerSignerThumbprint,
+
+    [string] $WorkerTimestampServer
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 Add-Type -AssemblyName System.IO.Compression.FileSystem
+. (Join-Path $PSScriptRoot 'PackageSizeGates.Common.ps1')
 
 $markdownRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $repositoryRoot = (Resolve-Path -LiteralPath (Join-Path $markdownRoot '..')).Path
@@ -34,6 +43,43 @@ $candidatePackages = Join-Path $runDirectory 'packages-candidate'
 $referencePackages = Join-Path $runDirectory 'packages-reference'
 $evidenceLockPath = Join-Path $runDirectory 'evidence.packages.lock.json'
 $requireReleaseEvidence = $Mode -eq 'Release'
+$resvgWorkerDirectory = $providerRoot
+$resvgUnsignedWorkerDirectory = $providerRoot
+$expectedWorkerSignerThumbprint = ''
+if (-not [string]::IsNullOrWhiteSpace($SignedWorkerDirectory)) {
+    if (-not (Test-Path -LiteralPath $SignedWorkerDirectory -PathType Container)) {
+        throw "Signed worker directory '$SignedWorkerDirectory' does not exist."
+    }
+    $resvgWorkerDirectory = [IO.Path]::GetFullPath((Resolve-Path -LiteralPath $SignedWorkerDirectory).Path)
+}
+if (-not [string]::IsNullOrWhiteSpace($UnsignedWorkerDirectory)) {
+    if (-not (Test-Path -LiteralPath $UnsignedWorkerDirectory -PathType Container)) {
+        throw "Unsigned worker directory '$UnsignedWorkerDirectory' does not exist."
+    }
+    $resvgUnsignedWorkerDirectory = [IO.Path]::GetFullPath((Resolve-Path -LiteralPath $UnsignedWorkerDirectory).Path)
+}
+if ($requireReleaseEvidence) {
+    if ([string]::IsNullOrWhiteSpace($SignedWorkerDirectory)) {
+        throw 'Release mode requires a separately staged, signed all-RID worker directory; use Sign-ResvgWorkers.ps1 with approved signing material.'
+    }
+    if ([string]::IsNullOrWhiteSpace($UnsignedWorkerDirectory)) {
+        throw 'Release mode requires the exact unsigned all-RID worker directory that was supplied to the signing stage.'
+    }
+    if ([string]::IsNullOrWhiteSpace($WorkerSignerThumbprint) -or
+        $WorkerSignerThumbprint.Replace(' ', '') -notmatch '^(?i:[0-9a-f]{40})$') {
+        throw 'Release mode requires an explicit approved worker signer thumbprint.'
+    }
+    if ([string]::IsNullOrWhiteSpace($WorkerTimestampServer) -or
+        $WorkerTimestampServer -notmatch '^https?://[^\s]+$') {
+        throw 'Release mode requires an explicit approved Authenticode timestamp server.'
+    }
+    $expectedWorkerSignerThumbprint = $WorkerSignerThumbprint.Replace(' ', '').ToUpperInvariant()
+    & (Join-Path $providerRoot 'eng\Verify-ResvgWorkerSigningEvidence.ps1') `
+        -WorkerRoot $resvgWorkerDirectory `
+        -UnsignedWorkerRoot $resvgUnsignedWorkerDirectory `
+        -ExpectedSignerThumbprint $expectedWorkerSignerThumbprint `
+        -ExpectedTimestampServer $WorkerTimestampServer | Write-Host
+}
 foreach ($directory in @(
     $runDirectory,
     $testResultsDirectory,
@@ -199,9 +245,14 @@ if (-not (Test-Path -LiteralPath $cargoLockPath -PathType Leaf)) { throw 'The pi
 
 $signatureEvidencePath = Join-Path $runDirectory 'worker-signatures.json'
 $signatureArguments = @{
+    WorkerRoot = $resvgWorkerDirectory
     OutputPath = $signatureEvidencePath
 }
-if ($requireReleaseEvidence) { $signatureArguments.RequireValid = $true }
+if ($requireReleaseEvidence) {
+    $signatureArguments.RequireValid = $true
+    $signatureArguments.ExpectedSignerThumbprint = $expectedWorkerSignerThumbprint
+    $signatureArguments.RequireTimestamp = $true
+}
 & (Join-Path $providerRoot 'eng\Test-ResvgWorkerSignatures.ps1') @signatureArguments | Write-Host
 
 # Performance/device/store evidence is produced by pinned-machine and signed
@@ -356,6 +407,13 @@ try {
             )
             if ($project -eq $packageProjects[-1] -and $requireReleaseEvidence) {
                 $packArguments += '-p:RequireResvgWorkerSignatures=true'
+                $packArguments += "-p:ResvgWorkerDirectory=$resvgWorkerDirectory"
+                $packArguments += "-p:ResvgUnsignedWorkerDirectory=$resvgUnsignedWorkerDirectory"
+                $packArguments += "-p:ResvgWorkerSignerThumbprint=$expectedWorkerSignerThumbprint"
+                $packArguments += "-p:ResvgWorkerTimestampServer=$WorkerTimestampServer"
+            }
+            elseif ($project -eq $packageProjects[-1] -and $resvgWorkerDirectory -cne $providerRoot) {
+                $packArguments += "-p:ResvgWorkerDirectory=$resvgWorkerDirectory"
             }
             Invoke-DotNet $packArguments
         }
@@ -379,6 +437,7 @@ $complianceDirectory = Join-Path $runDirectory 'package-compliance'
     -PackageDirectory $candidatePackages `
     -OutputDirectory $complianceDirectory `
     -ReferenceManifest $referenceManifest `
+    -PackageScope SvgResvg `
     -FailOnUnknownLicense `
     -SkipSizeGates
 
@@ -410,6 +469,8 @@ $requiredEntries = @(
 )
 $expectedMachines = @{ 'win-x86' = 'x86'; 'win-x64' = 'x64'; 'win-arm64' = 'arm64' }
 $nativeAssets = [Collections.Generic.List[object]]::new()
+$selectedDeployments = [Collections.Generic.List[object]]::new()
+$providerAssemblyPath = 'lib/net10.0-windows10.0.26100/MarkdownRenderer.Svg.Resvg.dll'
 $archive = [IO.Compression.ZipFile]::OpenRead($package.FullName)
 try {
     $entryNames = @($archive.Entries.FullName)
@@ -420,11 +481,33 @@ try {
         $_.FullName -match '^runtimes/win-(x86|x64|arm64)/native/MarkdownRenderer\.Svg\.Resvg\.Worker\.exe$'
     })
     if ($nativeEntries.Count -ne 3) { throw 'The resvg package must contain exactly one worker for x86, x64, and ARM64.' }
+    $deploymentEntries = @($archive.Entries | ForEach-Object {
+        [pscustomobject]@{
+            Name = $_.FullName
+            Length = [long] $_.Length
+        }
+    })
     foreach ($entry in $nativeEntries) {
         if ($entry.Length -gt $selectedDeploymentCapBytes) {
-            throw "Selected deployment worker '$($entry.FullName)' is $($entry.Length) bytes; the cap is $selectedDeploymentCapBytes bytes."
+            throw "Selected-RID worker '$($entry.FullName)' is $($entry.Length) bytes; the per-worker gate is $selectedDeploymentCapBytes bytes."
         }
         $rid = ([regex]::Match($entry.FullName, '^runtimes/(?<rid>win-(x86|x64|arm64))/')).Groups['rid'].Value
+        $deployment = Get-ResvgSelectedDeploymentPayload `
+            -Entries $deploymentEntries `
+            -Rid $rid `
+            -ProviderAssemblyPath $providerAssemblyPath
+        Assert-ResvgSelectedDeploymentWithinCap `
+            -Deployment $deployment `
+            -MaximumBytes $selectedDeploymentCapBytes
+        $selectedDeployments.Add([pscustomobject][ordered]@{
+            rid = $deployment.rid
+            workerPath = $deployment.workerPath
+            workerBytes = $deployment.workerBytes
+            providerAssemblyPath = $deployment.providerAssemblyPath
+            providerAssemblyBytes = $deployment.providerAssemblyBytes
+            totalBytes = $deployment.totalBytes
+            capBytes = $selectedDeploymentCapBytes
+        })
         $stream = $entry.Open()
         $temporaryWorker = Join-Path $runDirectory ("package-$rid-worker.exe")
         try {
@@ -437,8 +520,13 @@ try {
             throw "Packaged worker '$($entry.FullName)' is $machine, expected $($expectedMachines[$rid])."
         }
         $signature = Get-AuthenticodeSignature -LiteralPath $temporaryWorker
-        if ($requireReleaseEvidence -and $signature.Status -ne [Management.Automation.SignatureStatus]::Valid) {
-            throw "Packaged release worker '$($entry.FullName)' has invalid Authenticode status $($signature.Status)."
+        $signerThumbprint = if ($null -eq $signature.SignerCertificate) { '' } else { $signature.SignerCertificate.Thumbprint.Replace(' ', '').ToUpperInvariant() }
+        $timestampSubject = if ($null -eq $signature.TimeStamperCertificate) { '' } else { $signature.TimeStamperCertificate.Subject }
+        if ($requireReleaseEvidence -and
+            ($signature.Status -ne [Management.Automation.SignatureStatus]::Valid -or
+                $signerThumbprint -cne $expectedWorkerSignerThumbprint -or
+                [string]::IsNullOrWhiteSpace($timestampSubject))) {
+            throw "Packaged release worker '$($entry.FullName)' failed the trusted signer/timestamp gate (status=$($signature.Status), signer=$signerThumbprint)."
         }
         $nativeAssets.Add([pscustomobject][ordered]@{
             path = $entry.FullName
@@ -447,6 +535,8 @@ try {
             compressedBytes = $entry.CompressedLength
             sha256 = Get-Sha256 $temporaryWorker
             authenticodeStatus = $signature.Status.ToString()
+            signerThumbprint = if ([string]::IsNullOrEmpty($signerThumbprint)) { $null } else { $signerThumbprint }
+            timestampSubject = if ([string]::IsNullOrEmpty($timestampSubject)) { $null } else { $timestampSubject }
         })
     }
 
@@ -474,6 +564,7 @@ $consumerProject = @'
     <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Platforms>x86;x64;ARM64</Platforms>
     <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
     <Platform Condition="'$(Platform)' == '' or '$(Platform)' == 'AnyCPU'">x64</Platform>
@@ -497,6 +588,8 @@ $consumerProject = @'
     $consumerProject,
     [Text.UTF8Encoding]::new($false))
 [IO.File]::Copy((Join-Path $markdownRoot 'MarkdownRenderer.Svg.Resvg.AotSmoke\Program.cs'), (Join-Path $consumerDirectory 'Program.cs'))
+[IO.File]::Copy((Join-Path $markdownRoot 'MarkdownRenderer.Svg.Resvg.AotSmoke\WorkerIsolationProbe.cs'), (Join-Path $consumerDirectory 'WorkerIsolationProbe.cs'))
+[IO.File]::Copy((Join-Path $markdownRoot 'MarkdownRenderer.Svg.Resvg.AotSmoke\SmokeRasterValidation.cs'), (Join-Path $consumerDirectory 'SmokeRasterValidation.cs'))
 $consumerProjectPath = Join-Path $consumerDirectory 'SvgResvgPackageConsumer.csproj'
 
 Push-Location $repositoryRoot
@@ -612,6 +705,13 @@ $report = [pscustomobject][ordered]@{
     contractAndFaultTests = $contractEvidence
     edgePixelTests = $pixelEvidence
     edgeOracleRequired = $requireReleaseEvidence
+    workerSigningPolicy = [pscustomobject][ordered]@{
+        required = $requireReleaseEvidence
+        signerThumbprint = if ($requireReleaseEvidence) { $expectedWorkerSignerThumbprint } else { $null }
+        timestampServer = if ($requireReleaseEvidence) { $WorkerTimestampServer } else { $null }
+        stagedDirectoryProvided = -not [string]::IsNullOrWhiteSpace($SignedWorkerDirectory)
+        unsignedSourceDirectory = if ($requireReleaseEvidence) { $resvgUnsignedWorkerDirectory } else { $null }
+    }
     mandatoryReleaseEvidence = [pscustomobject][ordered]@{
         edgePerformanceAndEfficiency = $edgePerformance
         deviceThemeDpiMatrix = $deviceMatrix
@@ -628,6 +728,7 @@ $report = [pscustomobject][ordered]@{
         compressedCapBytes = $packageCapBytes
         sha256 = Get-Sha256 $package.FullName
         selectedDeploymentCapBytes = $selectedDeploymentCapBytes
+        selectedDeployments = @($selectedDeployments)
         workers = @($nativeAssets)
     }
     compliance = [pscustomobject][ordered]@{

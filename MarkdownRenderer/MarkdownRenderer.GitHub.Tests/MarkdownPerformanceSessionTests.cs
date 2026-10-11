@@ -1,5 +1,7 @@
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Math;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Parsing;
 using Markdig;
 using System.Threading.Channels;
 using Xunit;
@@ -30,6 +32,160 @@ public sealed class MarkdownPerformanceSessionTests
     }
 
     [Fact]
+    public async Task LayoutWork_ReturnsSchedulerTaskAndSessionDisposalDrainsActiveWork()
+    {
+        var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
+        var api = (IMarkdownPerformanceSessionInternal)session;
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        Task<int> scheduled = api.ScheduleLayoutWorkAsync(
+            MarkdownLayoutWorkPriority.Primary,
+            _ =>
+            {
+                entered.Set();
+                release.Wait();
+                return 42;
+            },
+            CancellationToken.None);
+
+        try
+        {
+            Assert.True(entered.Wait(TimeSpan.FromSeconds(5)));
+            Assert.Equal(typeof(Task<int>), scheduled.GetType());
+
+            Task retirement = session.DisposeAsync().AsTask();
+            Assert.False(retirement.IsCompleted);
+            release.Set();
+
+            Assert.Equal(42, await scheduled.WaitAsync(TimeSpan.FromSeconds(5)));
+            await retirement.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        finally
+        {
+            release.Set();
+            await session.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        }
+    }
+
+    [Fact]
+    public async Task DisposeAsync_DrainsAnInFlightSessionParseBeforeFinalRetirementDrain()
+    {
+        var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
+        var parser = new BlockingLegacyParser();
+        var api = (IMarkdownPerformanceSessionInternal)session;
+
+        Task<MarkdownRenderer.Document.MarkdownDocument?> parse = api.ParseAndPrepareDocumentAsync(
+            engine: null,
+            document: null,
+            source: "parse held through shutdown",
+            legacyRegistry: new MarkdownExtensionRegistry(),
+            documentOwner: parser,
+            cancellationToken: CancellationToken.None).AsTask();
+
+        try
+        {
+            await parser.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Task shutdown = session.DisposeAsync().AsTask();
+            Assert.False(shutdown.IsCompleted);
+
+            parser.Release.TrySetResult(true);
+            MarkdownRenderer.Document.MarkdownDocument? document =
+                await parse.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.NotNull(document);
+            Assert.Equal("parse held through shutdown", document!.Source);
+            await shutdown.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        finally
+        {
+            parser.Release.TrySetResult(true);
+            await session.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        }
+    }
+
+    [Fact]
+    public async Task DeferredPlanRelease_AndSessionShutdownCanRaceWithoutLosingRetirement()
+    {
+        using MarkdownEngine engine = new MarkdownEngineBuilder()
+            .UseMathematics()
+            .Build();
+        var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
+        try
+        {
+            var api = (IMarkdownPerformanceSessionInternal)session;
+            var owner = new object();
+            const string source = "before $\\frac{1}{2}$ after";
+            MarkdownRenderer.Document.MarkdownDocument document =
+                Assert.IsType<MarkdownRenderer.Document.MarkdownDocument>(
+                    await api.ParseAndPrepareDocumentAsync(
+                        engine,
+                        document: null,
+                        source: source,
+                        legacyRegistry: new MarkdownExtensionRegistry(),
+                        documentOwner: owner,
+                        cancellationToken: CancellationToken.None));
+            Assert.True(api.HasRegisteredDeferredSceneWork(owner));
+
+            var start = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            Task release = Task.Run(async () =>
+            {
+                await start.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                await api.ReleaseDeferredSceneDocument(owner).WaitAsync(TimeSpan.FromSeconds(5));
+            });
+            Task shutdown = Task.Run(async () =>
+            {
+                await start.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                await session.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+            });
+
+            start.TrySetResult(true);
+            await Task.WhenAll(release, shutdown).WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.False(api.HasRegisteredDeferredSceneWork(owner));
+            Assert.Equal(source, document.Source);
+        }
+        finally
+        {
+            await session.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        }
+    }
+
+    [Fact]
+    public async Task LayoutWork_PreCanceledCallerTokenRetiresTrackedAdmission()
+    {
+        await using var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
+        var api = (IMarkdownPerformanceSessionInternal)session;
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        Task<int> canceled = api.ScheduleLayoutWorkAsync(
+            MarkdownLayoutWorkPriority.Primary,
+            _ => 42,
+            cancellation.Token);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => canceled.WaitAsync(TimeSpan.FromSeconds(5)));
+        await session.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task LayoutWorkRejectedAfterDisposalReturnsCanceledTask()
+    {
+        var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
+        await session.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        var api = (IMarkdownPerformanceSessionInternal)session;
+        int workRuns = 0;
+
+        Task<int> rejected = api.ScheduleLayoutWorkAsync(
+            MarkdownLayoutWorkPriority.Primary,
+            _ => Interlocked.Increment(ref workRuns),
+            CancellationToken.None);
+
+        Assert.Equal(TaskStatus.Canceled, rejected.Status);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => rejected.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Equal(0, Volatile.Read(ref workRuns));
+    }
+
+    [Fact]
     public void SessionOwnsAndReusesControlDocumentScopesUntilIdentityChangesOrOwnerReleases()
     {
         using var session = new MarkdownPerformanceSession(new MarkdownPerformanceOptions());
@@ -56,8 +212,50 @@ public sealed class MarkdownPerformanceSessionTests
     }
 
     [Fact]
+    public async Task PreparingDocument_NeverRunsSpeculativeResolverOnCallerThread()
+    {
+        using var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
+        var api = (IMarkdownPerformanceSessionInternal)session;
+        var owner = new object();
+        var resolver = new ThreadRecordingResolver();
+        var context = new MarkdownImageResolveContext(null);
+        var parsed = Markdown.Parse("![image](image.png)");
+        int callerThread = 0;
+        Exception? callerFailure = null;
+        IMarkdownPerformanceDocumentScope? prepared = null;
+        var caller = new Thread(() =>
+        {
+            callerThread = Environment.CurrentManagedThreadId;
+            try
+            {
+                prepared = api.PrepareDocumentScope(
+                    owner, "![image](image.png)", 1, parsed, null, resolver, context);
+            }
+            catch (Exception exception)
+            {
+                callerFailure = exception;
+            }
+        });
+        caller.Start();
+        Assert.True(caller.Join(TimeSpan.FromSeconds(5)));
+        Assert.Null(callerFailure);
+        Assert.NotNull(prepared);
+        int resolverThread = await resolver.CalledOnThread.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.NotEqual(callerThread, resolverThread);
+        api.ReleaseDocumentScope(owner);
+    }
+
+    [Fact]
     public void Options_RejectUnboundedSettings()
     {
+        Assert.Throws<ArgumentOutOfRangeException>(() => new MarkdownPerformanceSession(
+            MarkdownPerformanceOptions.Progressive with { SceneCacheBudgetBytes = -1 }));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new MarkdownPerformanceSession(
+            MarkdownPerformanceOptions.Progressive with
+            {
+                SceneCacheBudgetBytes = (IntPtr.Size == 4 ? 32L : 64L) * 1024 * 1024 + 1,
+            }));
         Assert.Throws<ArgumentOutOfRangeException>(() => new MarkdownPerformanceSession(
             MarkdownPerformanceOptions.Progressive with { SourceCacheBudgetBytes = 65L * 1024 * 1024 }));
         Assert.Throws<ArgumentOutOfRangeException>(() => new MarkdownPerformanceSession(
@@ -448,6 +646,38 @@ public sealed class MarkdownPerformanceSessionTests
     }
 
     [Fact]
+    public async Task ExclusiveRasterPreparationBlocksSmallSourcesUntilItsPixelsAreRetired()
+    {
+        await using var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
+        var service = (IMarkdownPerformanceSessionInternal)session;
+        using IDisposable active = await service.EnterCpuPreparationAsync(
+            new object(), exclusive: true, CancellationToken.None);
+        Task<IDisposable> small = service.EnterCpuPreparationAsync(
+            new object(), exclusive: false, CancellationToken.None).AsTask();
+        Assert.False(small.IsCompleted);
+        active.Dispose();
+        using IDisposable next = await small.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(2, session.GetSnapshot().CpuPreparations);
+    }
+
+    [Fact]
+    public async Task SessionRetirementCancelsQueuedExclusiveRasterAndDrainsAllSlots()
+    {
+        var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
+        using IDisposable active = await session.EnterCpuPreparationAsync(
+            new object(), CancellationToken.None);
+        Task<IDisposable> large = session.EnterCpuPreparationAsync(
+            new object(), exclusive: true, CancellationToken.None).AsTask();
+        Task retirement = session.DisposeAsync().AsTask();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => large.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.False(retirement.IsCompleted);
+        active.Dispose();
+        await retirement.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(1, session.GetSnapshot().CpuPreparations);
+    }
+
+    [Fact]
     public async Task SessionRetirement_CancelsQueuedRasterPreparationAndDrainsActiveWork()
     {
         var session = new MarkdownPerformanceSession(
@@ -510,7 +740,11 @@ public sealed class MarkdownPerformanceSessionTests
         Task retirement = session.DisposeAsync().AsTask();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(
             () => queued.WaitAsync(TimeSpan.FromSeconds(5)));
-        Assert.True(active.CancellationToken.IsCancellationRequested);
+        using (var cancellationWait = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
+        {
+            while (!active.CancellationToken.IsCancellationRequested)
+                await Task.Delay(10, cancellationWait.Token);
+        }
         Assert.False(retirement.IsCompleted);
         active.Dispose();
         await retirement.WaitAsync(TimeSpan.FromSeconds(5));
@@ -601,6 +835,35 @@ public sealed class MarkdownPerformanceSessionTests
     }
 
     [Fact]
+    public async Task SynchronousResolverPrefix_DoesNotBlockOtherSourceFlights()
+    {
+        using var resolver = new SynchronousBlockingResolver();
+        await using var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
+        var context = new MarkdownImageResolveContext(null);
+        using var document = session.OpenDocument(resolver, context);
+
+        Task<MarkdownImageResolution> blocked = Task.Run(async () =>
+            await document.ResolveAsync("blocked.png", context, CancellationToken.None));
+        await resolver.BlockedStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        try
+        {
+            MarkdownImageResolution visible = await Task.Run(async () =>
+                await document.ResolveAsync("visible.png", context, CancellationToken.None))
+                .WaitAsync(TimeSpan.FromSeconds(5));
+
+            Assert.True(visible.IsHandled);
+            Assert.Equal(1, resolver.BlockedCalls);
+            Assert.Equal(1, resolver.VisibleCalls);
+        }
+        finally
+        {
+            resolver.ReleaseBlocked();
+            await blocked.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+    }
+
+    [Fact]
     public async Task OneDocumentCancellation_DoesNotAbortAnotherWaiter()
     {
         var resolver = new BlockingResolver();
@@ -648,6 +911,40 @@ public sealed class MarkdownPerformanceSessionTests
             CancellationToken cancellationToken)
         {
             Interlocked.Increment(ref _callCount);
+            return ValueTask.FromResult(MarkdownImageResolution.Resolved(
+                new MarkdownImageAsset([1, 2, 3], "image/png", CacheKey: source)));
+        }
+    }
+
+    private sealed class BlockingLegacyParser : IMarkdownPerformanceLegacyParser
+    {
+        internal TaskCompletionSource<bool> Started { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource<bool> Release { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async Task<ParsedMarkdown?> ParseLegacyMarkdownAsync(
+            string source,
+            MarkdownExtensionRegistry registry,
+            CancellationToken cancellationToken)
+        {
+            Started.TrySetResult(true);
+            await Release.Task.WaitAsync(cancellationToken);
+            return new ParsedMarkdown(source, Markdown.Parse(source));
+        }
+    }
+
+    private sealed class ThreadRecordingResolver : IMarkdownImageResolver
+    {
+        internal TaskCompletionSource<int> CalledOnThread { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public ValueTask<MarkdownImageResolution> ResolveAsync(
+            string source,
+            MarkdownImageResolveContext context,
+            CancellationToken cancellationToken)
+        {
+            CalledOnThread.TrySetResult(Environment.CurrentManagedThreadId);
             return ValueTask.FromResult(MarkdownImageResolution.Resolved(
                 new MarkdownImageAsset([1, 2, 3], "image/png", CacheKey: source)));
         }
@@ -854,6 +1151,40 @@ public sealed class MarkdownPerformanceSessionTests
 
             return MarkdownImageResolution.Resolved(
                 new MarkdownImageAsset([1, 2, 3], "image/png", CacheKey: source));
+        }
+    }
+
+    private sealed class SynchronousBlockingResolver : IMarkdownImageResolver, IDisposable
+    {
+        private readonly ManualResetEventSlim _releaseBlocked = new();
+        private int _visibleCalls;
+        private int _blockedCalls;
+        internal int VisibleCalls => Volatile.Read(ref _visibleCalls);
+        internal int BlockedCalls => Volatile.Read(ref _blockedCalls);
+        internal TaskCompletionSource<bool> BlockedStarted { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        internal void ReleaseBlocked() => _releaseBlocked.Set();
+        public void Dispose() => _releaseBlocked.Dispose();
+
+        public ValueTask<MarkdownImageResolution> ResolveAsync(
+            string source,
+            MarkdownImageResolveContext context,
+            CancellationToken cancellationToken)
+        {
+            if (source == "blocked.png")
+            {
+                Interlocked.Increment(ref _blockedCalls);
+                BlockedStarted.TrySetResult(true);
+                _releaseBlocked.Wait(cancellationToken);
+            }
+            else
+            {
+                Interlocked.Increment(ref _visibleCalls);
+            }
+
+            return ValueTask.FromResult(MarkdownImageResolution.Resolved(
+                new MarkdownImageAsset([1, 2, 3], "image/png", CacheKey: source)));
         }
     }
 

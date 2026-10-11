@@ -6,6 +6,7 @@ using MarkdownRenderer.Parsing;
 using MarkdownRenderer.Theming;
 using Markdig.Syntax;
 using Microsoft.Graphics.Canvas;
+using Microsoft.Graphics.Canvas.Text;
 using Microsoft.UI.Xaml;
 using Windows.Foundation;
 using Windows.UI;
@@ -72,6 +73,117 @@ public sealed class DeclarativeLayoutAdapterTests
         using LayoutSnapshot snapshot = Build(document);
 
         Assert.IsType(expectedType, Assert.Single(snapshot.Blocks));
+    }
+
+    [Theory]
+    [InlineData(FlowDirection.LeftToRight)]
+    [InlineData(FlowDirection.RightToLeft)]
+    public async Task DeclarativeListCentersOnlyUnorderedMarkersWithoutMovingContent(
+        FlowDirection flowDirection)
+    {
+        var engine = CreateEngine(builder =>
+            builder.RegisterBlock(MarkdownSyntaxKinds.Block.Paragraph, (context, content) =>
+            {
+                SourceSpan span = context.Node.SourceSpan;
+                content.AddContainer(
+                    MarkdownContentKind.List,
+                    MarkdownStyleRole.Body,
+                    span,
+                    MarkdownAccessibilityRole.List,
+                    list =>
+                    {
+                        list.AddContainer(
+                            MarkdownContentKind.ListItem,
+                            MarkdownStyleRole.Body,
+                            span,
+                            MarkdownAccessibilityRole.ListItem,
+                            item =>
+                            {
+                                item.AddText("outer", span);
+                                item.AddContainer(
+                                    MarkdownContentKind.List,
+                                    MarkdownStyleRole.Body,
+                                    span,
+                                    MarkdownAccessibilityRole.List,
+                                    nested => nested.AddContainer(
+                                        MarkdownContentKind.ListItem,
+                                        MarkdownStyleRole.Body,
+                                        span,
+                                        MarkdownAccessibilityRole.ListItem,
+                                        nestedItem => nestedItem.AddText("nested", span)));
+                            });
+                        list.AddContainer(
+                            MarkdownContentKind.ListItem,
+                            MarkdownStyleRole.Body,
+                            span,
+                            MarkdownAccessibilityRole.ListItem,
+                            item => item.AddText("after", span));
+                    });
+                content.AddContainer(
+                    MarkdownContentKind.List,
+                    MarkdownStyleRole.Body,
+                    span,
+                    MarkdownAccessibilityRole.List,
+                    list =>
+                    {
+                        list.AddContainer(
+                            MarkdownContentKind.ListItem,
+                            MarkdownStyleRole.Body,
+                            span,
+                            MarkdownAccessibilityRole.ListItem,
+                            item => item.AddText("ordered seven", span));
+                        list.AddContainer(
+                            MarkdownContentKind.ListItem,
+                            MarkdownStyleRole.Body,
+                            span,
+                            MarkdownAccessibilityRole.ListItem,
+                            item => item.AddText("ordered eight", span));
+                    },
+                    attributes: new Dictionary<string, string>
+                    {
+                        [MarkdownContentAttributes.ListOrdered] = "true",
+                        [MarkdownContentAttributes.ListStart] = "7",
+                    });
+            }));
+        MarkdownRenderer.Document.MarkdownDocument document = await engine.ParseAsync("lists");
+
+        using LayoutSnapshot snapshot = Build(
+            document,
+            width: 600,
+            flowDirection: flowDirection,
+            listMarkerStyle: new ElementStyle { ListIndent = 32, NestedListIndent = 8 });
+
+        ListItemBox[] items = EnumerateListItems(snapshot.Blocks).ToArray();
+        Assert.Equal(5, items.Length);
+        Assert.Equal(new[] { "•", "•", "•" }, items
+            .Where(static item => Assert.Single(item.Marker.Runs).Text == "•")
+            .Select(static item => Assert.Single(item.Marker.Runs).Text));
+        Assert.Equal(new[] { "7.", "8." }, items
+            .Where(static item => Assert.Single(item.Marker.Runs).Text != "•")
+            .Select(static item => Assert.Single(item.Marker.Runs).Text));
+
+        ListItemBox[] unordered = items
+            .Where(static item => Assert.Single(item.Marker.Runs).Text == "•")
+            .ToArray();
+        ListItemBox[] ordered = items
+            .Where(static item => Assert.Single(item.Marker.Runs).Text != "•")
+            .ToArray();
+        Assert.All(unordered, item =>
+            Assert.Equal(CanvasHorizontalAlignment.Center, item.Marker.TextAlignment));
+        Assert.All(ordered, item =>
+            Assert.NotEqual(CanvasHorizontalAlignment.Center, item.Marker.TextAlignment));
+        Assert.Equal(new[] { 32f, 40f, 32f, 32f, 32f }, items
+            .Select(static item => item.MarkerWidth));
+
+        foreach (ListItemBox item in items)
+        {
+            AssertClose(item.MarkerWidth, item.Marker.Bounds.Width);
+            AssertClose(item.Bounds.Width, item.MarkerWidth + item.Content.Bounds.Width);
+            if (flowDirection == FlowDirection.RightToLeft)
+                AssertClose(item.Content.Bounds.Right, item.Marker.Bounds.Left);
+            else
+                AssertClose(item.Marker.Bounds.Right, item.Content.Bounds.Left);
+        }
     }
 
     [Fact]
@@ -391,7 +503,9 @@ public sealed class DeclarativeLayoutAdapterTests
     private static LayoutSnapshot Build(
         MarkdownRenderer.Document.MarkdownDocument document,
         float width = 800,
-        double rasterizationScale = 1)
+        double rasterizationScale = 1,
+        FlowDirection flowDirection = FlowDirection.LeftToRight,
+        ElementStyle? listMarkerStyle = null)
     {
         var style = new ElementStyle();
         string[] keys =
@@ -411,6 +525,8 @@ public sealed class DeclarativeLayoutAdapterTests
             MarkdownElementKeys.TableCell,
         ];
         var styles = keys.ToDictionary(static key => key, _ => style, StringComparer.Ordinal);
+        if (listMarkerStyle is not null)
+            styles[MarkdownElementKeys.ListMarker] = listMarkerStyle;
         Color transparent = Color.FromArgb(0, 0, 0, 0);
         var snapshot = new ThemeSnapshot(
             styles,
@@ -428,7 +544,7 @@ public sealed class DeclarativeLayoutAdapterTests
             snapshot,
             sourceMap,
             new MarkdownExtensionRegistry(),
-            FlowDirection.LeftToRight)
+            flowDirection)
         {
             RasterizationScale = rasterizationScale,
         };
@@ -438,6 +554,27 @@ public sealed class DeclarativeLayoutAdapterTests
             semanticDocument: document)
             .Build(document.ParsedDocument!, width);
     }
+
+    private static IEnumerable<ListItemBox> EnumerateListItems(IEnumerable<BlockBox> boxes)
+    {
+        foreach (BlockBox box in boxes)
+        {
+            if (box is ListItemBox item)
+            {
+                yield return item;
+                foreach (ListItemBox nested in EnumerateListItems(item.Content.Children))
+                    yield return nested;
+            }
+            else if (box is StackBox stack)
+            {
+                foreach (ListItemBox nested in EnumerateListItems(stack.Children))
+                    yield return nested;
+            }
+        }
+    }
+
+    private static void AssertClose(double expected, double actual) =>
+        Assert.InRange(actual, expected - 0.001, expected + 0.001);
 
     private sealed class TestExtension(Action<MarkdownExtensionBuilder> configure) : IMarkdownExtension
     {

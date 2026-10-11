@@ -173,9 +173,9 @@ public sealed class MarkdownEngine : IDisposable
         => ParseAsyncCore(source, deferOffscreenScenes: false, cancellationToken);
 
     /// <summary>
-    /// Parses for a progressive presentation. Only built-in block scene
-    /// extensions may defer expensive materialization; the public ParseAsync
-    /// contract remains eager and uses an independent cache entry.
+    /// Parses for a progressive presentation. Built-in block and inline scene
+    /// extensions may defer expensive materialization; public ParseAsync stays
+    /// eager and uses an independent cache entry.
     /// </summary>
     internal Task<MarkdownDocument> ParseForProgressivePresentationAsync(
         string? source,
@@ -261,7 +261,7 @@ public sealed class MarkdownEngine : IDisposable
                 _inFlightParses[sourceKey] = inFlight;
                 _outstandingParseCount++;
                 _outstandingSourceBytes += sourceBytes;
-                ObserveFault(inFlight.ParseTask);
+                TaskFaultObservation.ObserveFault(inFlight.ParseTask);
 
                 if (_activeParseCount < ParseLimits.MaximumConcurrentParseCount)
                 {
@@ -907,15 +907,6 @@ public sealed class MarkdownEngine : IDisposable
         return SourceKey.Create(source, deferOffscreenScenes);
     }
 
-    private static void ObserveFault(Task<MarkdownDocument> parseTask)
-    {
-        _ = parseTask.ContinueWith(
-            static completedTask => _ = completedTask.Exception,
-            CancellationToken.None,
-            TaskContinuationOptions.ExecuteSynchronously | TaskContinuationOptions.OnlyOnFaulted,
-            TaskScheduler.Default);
-    }
-
     private static void AddSemanticEntry(
         ref long weight,
         string? first = null,
@@ -1095,15 +1086,15 @@ public sealed class MarkdownEngine : IDisposable
             ParseGeneration = parseGeneration;
         }
 
-        internal MarkdownDocument Document { get; }
+        internal readonly MarkdownDocument Document;
 
-        internal SourceKey Key { get; }
+        internal readonly SourceKey Key;
 
-        internal long ParseGeneration { get; }
+        internal readonly long ParseGeneration;
 
         internal LinkedListNode<CompletedParse> RecencyNode { get; set; } = null!;
 
-        internal long WeightBytes { get; }
+        internal readonly long WeightBytes;
 
         internal bool WasObserved { get; set; }
     }
@@ -1123,7 +1114,7 @@ public sealed class MarkdownEngine : IDisposable
             CancellationToken = _cancellation.Token;
         }
 
-        internal CancellationToken CancellationToken { get; }
+        internal readonly CancellationToken CancellationToken;
 
         internal bool IsAbandoned { get; set; }
 
@@ -1131,20 +1122,20 @@ public sealed class MarkdownEngine : IDisposable
 
         internal bool IsStarted { get; set; }
 
-        internal SourceKey Key { get; }
+        internal readonly SourceKey Key;
 
-        internal TaskCompletionSource<MarkdownDocument> Completion { get; } =
+        internal readonly TaskCompletionSource<MarkdownDocument> Completion =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         internal Task<MarkdownDocument> ParseTask => Completion.Task;
 
-        internal long ParseGeneration { get; }
+        internal readonly long ParseGeneration;
 
         internal LinkedListNode<InFlightParse>? QueueNode { get; set; }
 
         internal string Source => Key.Source;
 
-        internal long SourceBytes { get; }
+        internal readonly long SourceBytes;
 
         internal int SuccessfulWaiterCount { get; set; }
 

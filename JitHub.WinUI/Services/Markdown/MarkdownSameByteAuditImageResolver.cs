@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -10,6 +11,7 @@ using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Performance;
 
 namespace JitHub.Services.Markdown;
 
@@ -19,12 +21,14 @@ namespace JitHub.Services.Markdown;
 /// </summary>
 internal sealed partial class MarkdownSameByteAuditImageResolver :
     IMarkdownImageResolver,
+    IMarkdownLeasedImageResolver,
     IMarkdownImagePrefetcher
 {
     private const long MaximumManifestBytes = 4 * 1024 * 1024;
     private const long MaximumReadmeBytes = 16 * 1024 * 1024;
     private const long MaximumBrowserRenderBytes = 32 * 1024 * 1024;
     private const int MaximumAssetBytes = 64 * 1024 * 1024;
+    private const int MaximumSynchronousAssetReadBytes = 8 * 1024 * 1024;
     private const long MaximumAggregateAssetBytes = 256 * 1024 * 1024;
     private readonly string _root;
     private readonly string _expectedRepository;
@@ -71,16 +75,117 @@ internal sealed partial class MarkdownSameByteAuditImageResolver :
         }
     }
 
-    public async ValueTask<MarkdownImageResolution> ResolveAsync(
+    public ValueTask<MarkdownImageResolution> ResolveAsync(
         string source,
         MarkdownImageResolveContext context,
+        CancellationToken cancellationToken) =>
+        ResolveLegacyCoreAsync(source, context, cancellationToken, diagnostics: null);
+
+    /// <summary>
+    /// Resolves only a captured same-byte fixture asset, reserving its manifest-validated
+    /// byte length before allocating, reading, or hashing the source buffer.
+    /// </summary>
+    /// <remarks>
+    /// The returned lease owns the reservation until its final retained handle is disposed.
+    /// No network fallback is attempted. Fixture cache/index metadata is separate from this
+    /// per-resolution source-byte reservation.
+    /// </remarks>
+    public async ValueTask<MarkdownImageResolutionLease> ResolveWithSourceLeaseAsync(
+        string source,
+        MarkdownImageResolveContext context,
+        IMarkdownImageSourceByteAdmission admission,
         CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        FixtureIndex index;
+        ArgumentNullException.ThrowIfNull(admission);
+        CoreResolution result = await ResolveCoreAsync(
+            source, context, admission, cancellationToken, diagnostics: null).ConfigureAwait(false);
+        return CreateLease(result);
+    }
+
+    internal async ValueTask<MarkdownSameByteImageResolutionDiagnostic> ResolveWithStageDiagnosticsAsync(
+        string source,
+        MarkdownImageResolveContext context,
+        long correlationId,
+        CancellationToken cancellationToken)
+    {
+        var diagnostics = new ResolverStageRecorder(correlationId);
+        CoreResolution result = await ResolveCoreAsync(
+            source, context, null, cancellationToken, diagnostics).ConfigureAwait(false);
+        return new MarkdownSameByteImageResolutionDiagnostic(result.Resolution, diagnostics.Snapshot());
+    }
+
+    /// <summary>
+    /// Resolves a fixture asset with stage evidence while preserving the source reservation
+    /// in the returned lease for the full duration of audit-side consumption.
+    /// </summary>
+    internal async ValueTask<MarkdownSameByteLeasedImageResolutionDiagnostic> ResolveWithLeasedStageDiagnosticsAsync(
+        string source,
+        MarkdownImageResolveContext context,
+        long correlationId,
+        IMarkdownImageSourceByteAdmission admission,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(admission);
+        var diagnostics = new ResolverStageRecorder(correlationId);
+        CoreResolution result = await ResolveCoreAsync(
+            source, context, admission, cancellationToken, diagnostics).ConfigureAwait(false);
+        MarkdownImageResolutionLease? lease = CreateLease(result);
         try
         {
-            index = await _index.Value.WaitAsync(cancellationToken).ConfigureAwait(false);
+            var diagnostic = new MarkdownSameByteLeasedImageResolutionDiagnostic(
+                lease,
+                diagnostics.Snapshot());
+            lease = null;
+            return diagnostic;
+        }
+        finally
+        {
+            lease?.Dispose();
+        }
+    }
+
+    private async ValueTask<MarkdownImageResolution> ResolveLegacyCoreAsync(
+        string source,
+        MarkdownImageResolveContext context,
+        CancellationToken cancellationToken,
+        ResolverStageRecorder? diagnostics)
+    {
+        CoreResolution result = await ResolveCoreAsync(
+            source, context, null, cancellationToken, diagnostics).ConfigureAwait(false);
+        return result.Resolution;
+    }
+
+    private static MarkdownImageResolutionLease CreateLease(CoreResolution result)
+    {
+        // MarkdownImageResolutionLease takes ownership only after its constructor succeeds.
+        // Keep an explicit rollback here so even validation/allocation failures release quota.
+        try
+        {
+            return new MarkdownImageResolutionLease(result.Resolution, result.SourceReservation);
+        }
+        catch
+        {
+            result.SourceReservation?.Dispose();
+            throw;
+        }
+    }
+
+    private async ValueTask<CoreResolution> ResolveCoreAsync(
+        string source,
+        MarkdownImageResolveContext context,
+        IMarkdownImageSourceByteAdmission? admission,
+        CancellationToken cancellationToken,
+        ResolverStageRecorder? diagnostics)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        diagnostics?.SetIndexWasCreatedAtStart(_index.IsValueCreated);
+        FixtureIndex index;
+        long indexWaitStarted = diagnostics is null ? 0 : Stopwatch.GetTimestamp();
+        try
+        {
+            Task<FixtureIndex> indexTask = _index.Value;
+            diagnostics?.SetIndexWasCompletedBeforeAwait(indexTask.IsCompleted);
+            index = await indexTask.WaitAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -88,54 +193,110 @@ internal sealed partial class MarkdownSameByteAuditImageResolver :
         }
         catch (Exception exception) when (IsFixtureFailure(exception))
         {
-            return MarkdownImageResolution.Blocked(MarkdownImageUnavailableReason.Unavailable);
+            diagnostics?.SetFailure("index-wait");
+            return new CoreResolution(
+                MarkdownImageResolution.Blocked(MarkdownImageUnavailableReason.Unavailable), null);
         }
+        finally
+        {
+            if (diagnostics is not null)
+                diagnostics.SetIndexWaitMilliseconds(Stopwatch.GetElapsedTime(indexWaitStarted).TotalMilliseconds);
+        }
+
         IReadOnlyList<string> sourceHashes;
+        diagnostics?.SetCurrentStage("source-hash-lookup");
+        long sourceHashStarted = diagnostics is null ? 0 : Stopwatch.GetTimestamp();
         try
         {
             sourceHashes = GetSourceUrlHashes(source, context);
         }
         catch (Exception exception) when (exception is ArgumentException or FormatException)
         {
-            return MarkdownImageResolution.Blocked(MarkdownImageUnavailableReason.Offline);
+            diagnostics?.SetFailure("source-hash-lookup");
+            return new CoreResolution(
+                MarkdownImageResolution.Blocked(MarkdownImageUnavailableReason.Offline), null);
+        }
+        finally
+        {
+            if (diagnostics is not null)
+                diagnostics.SetSourceHashLookupMilliseconds(Stopwatch.GetElapsedTime(sourceHashStarted).TotalMilliseconds);
         }
 
+        diagnostics?.SetSourceHashCandidateCount(sourceHashes.Count);
+        diagnostics?.SetCurrentStage("source-hash-index-lookup");
+        long sourceIndexLookupStarted = diagnostics is null ? 0 : Stopwatch.GetTimestamp();
+        FixtureAsset? matchedAsset = null;
         foreach (string urlHash in sourceHashes)
         {
-            if (!index.AssetsByUrlHash.TryGetValue(urlHash, out FixtureAsset? asset))
-                continue;
-
-            try
+            if (index.AssetsByUrlHash.TryGetValue(urlHash, out FixtureAsset? asset))
             {
-                byte[] bytes = await ReadVerifiedAssetAsync(asset, cancellationToken).ConfigureAwait(false);
-                string contentType = asset.MimeType.Equals("application/octet-stream", StringComparison.OrdinalIgnoreCase)
-                    ? SniffImageMime(bytes)
-                    : asset.MimeType;
-                return MarkdownImageResolution.Resolved(new MarkdownImageAsset(
-                    bytes,
-                    contentType,
-                    new Uri($"same-byte://sha256/{asset.Sha256}", UriKind.Absolute),
-                    $"same-byte:{asset.Sha256}"));
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                throw;
-            }
-            catch (IOException)
-            {
-                return MarkdownImageResolution.Blocked(MarkdownImageUnavailableReason.Unavailable);
-            }
-            catch (UnauthorizedAccessException)
-            {
-                return MarkdownImageResolution.Blocked(MarkdownImageUnavailableReason.Unavailable);
-            }
-            catch (InvalidDataException)
-            {
-                return MarkdownImageResolution.Blocked(MarkdownImageUnavailableReason.Unavailable);
+                matchedAsset = asset;
+                break;
             }
         }
+        if (diagnostics is not null)
+            diagnostics.SetSourceHashIndexLookupMilliseconds(Stopwatch.GetElapsedTime(sourceIndexLookupStarted).TotalMilliseconds);
 
-        return MarkdownImageResolution.Blocked(MarkdownImageUnavailableReason.Offline);
+        if (matchedAsset is null)
+            return new CoreResolution(
+                MarkdownImageResolution.Blocked(MarkdownImageUnavailableReason.Offline), null);
+
+        try
+        {
+            VerifiedAssetRead verified = await ReadVerifiedAssetAsync(
+                matchedAsset, admission, cancellationToken, diagnostics).ConfigureAwait(false);
+            IDisposable? sourceReservation = verified.SourceReservation;
+            try
+            {
+                diagnostics?.SetCurrentStage("content-type-validation");
+                long contentTypeStarted = diagnostics is null ? 0 : Stopwatch.GetTimestamp();
+                string contentType;
+                try
+                {
+                    contentType = matchedAsset.MimeType.Equals("application/octet-stream", StringComparison.OrdinalIgnoreCase)
+                        ? SniffImageMime(verified.Bytes)
+                        : matchedAsset.MimeType;
+                }
+                finally
+                {
+                    if (diagnostics is not null)
+                        diagnostics.SetContentTypeValidationMilliseconds(Stopwatch.GetElapsedTime(contentTypeStarted).TotalMilliseconds);
+                }
+                var result = new CoreResolution(MarkdownImageResolution.Resolved(new MarkdownImageAsset(
+                    verified.Bytes,
+                    contentType,
+                    new Uri($"same-byte://sha256/{matchedAsset.Sha256}", UriKind.Absolute),
+                    $"same-byte:{matchedAsset.Sha256}")), sourceReservation);
+                sourceReservation = null;
+                return result;
+            }
+            finally
+            {
+                sourceReservation?.Dispose();
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (IOException)
+        {
+            diagnostics?.SetFailure(diagnostics.CurrentStage);
+            return new CoreResolution(
+                MarkdownImageResolution.Blocked(MarkdownImageUnavailableReason.Unavailable), null);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            diagnostics?.SetFailure(diagnostics.CurrentStage);
+            return new CoreResolution(
+                MarkdownImageResolution.Blocked(MarkdownImageUnavailableReason.Unavailable), null);
+        }
+        catch (InvalidDataException)
+        {
+            diagnostics?.SetFailure(diagnostics.CurrentStage);
+            return new CoreResolution(
+                MarkdownImageResolution.Blocked(MarkdownImageUnavailableReason.Unavailable), null);
+        }
     }
 
     /// <summary>
@@ -313,39 +474,201 @@ internal sealed partial class MarkdownSameByteAuditImageResolver :
         }
     }
 
-    private async Task<byte[]> ReadVerifiedAssetAsync(
+    private async Task<VerifiedAssetRead> ReadVerifiedAssetAsync(
         FixtureAsset asset,
-        CancellationToken cancellationToken)
+        IMarkdownImageSourceByteAdmission? admission,
+        CancellationToken cancellationToken,
+        ResolverStageRecorder? diagnostics)
     {
         string assetsDirectory = Path.Combine(_root, "assets");
-        FileAttributes directoryAttributes = File.GetAttributes(assetsDirectory);
-        if ((directoryAttributes & FileAttributes.Directory) == 0 ||
-            (directoryAttributes & FileAttributes.ReparsePoint) != 0)
-        {
-            throw new InvalidDataException("Same-byte fixture asset directory is not a regular directory.");
-        }
-
         string path = Path.Combine(assetsDirectory, asset.Sha256);
-        EnsureRegularFile(new FileInfo(path), MaximumAssetBytes);
-        await using FileStream stream = new(
-            path,
-            FileMode.Open,
-            FileAccess.Read,
-            FileShare.Read,
-            bufferSize: 64 * 1024,
-            FileOptions.Asynchronous | FileOptions.SequentialScan);
-        if (stream.Length != asset.ByteSize)
-            throw new InvalidDataException("Same-byte fixture asset length changed after capture.");
-
-        byte[] bytes = new byte[asset.ByteSize];
-        await stream.ReadExactlyAsync(bytes, cancellationToken).ConfigureAwait(false);
-        if (stream.ReadByte() != -1 ||
-            !string.Equals(Convert.ToHexString(SHA256.HashData(bytes)), asset.Sha256, StringComparison.OrdinalIgnoreCase))
+        long stageStarted = diagnostics is null ? 0 : Stopwatch.GetTimestamp();
+        try
         {
-            throw new InvalidDataException("Same-byte fixture asset hash does not match its content address.");
+            diagnostics?.SetCurrentStage("asset-stat");
+            FileAttributes directoryAttributes = File.GetAttributes(assetsDirectory);
+            if ((directoryAttributes & FileAttributes.Directory) == 0 ||
+                (directoryAttributes & FileAttributes.ReparsePoint) != 0)
+            {
+                throw new InvalidDataException("Same-byte fixture asset directory is not a regular directory.");
+            }
+
+            var assetInfo = new FileInfo(path);
+            EnsureRegularFile(assetInfo, MaximumAssetBytes);
+            if (assetInfo.Length != asset.ByteSize)
+                throw new InvalidDataException("Same-byte fixture asset length changed after capture.");
         }
-        return bytes;
+        finally
+        {
+            if (diagnostics is not null)
+                diagnostics.SetAssetStatMilliseconds(Stopwatch.GetElapsedTime(stageStarted).TotalMilliseconds);
+        }
+
+        bool synchronousRead = ShouldUseSynchronousAssetRead(asset.ByteSize);
+        FileOptions fileOptions = FileOptions.SequentialScan;
+        if (!synchronousRead)
+            fileOptions |= FileOptions.Asynchronous;
+
+        IDisposable? sourceReservation = null;
+        try
+        {
+            if (admission is not null)
+            {
+                diagnostics?.SetCurrentStage("source-byte-admission");
+                sourceReservation = await admission.ReserveAsync(asset.ByteSize, cancellationToken)
+                    .ConfigureAwait(false)
+                    ?? throw new InvalidOperationException("Source-byte admission returned no reservation.");
+            }
+            cancellationToken.ThrowIfCancellationRequested();
+
+            FileStream stream;
+            stageStarted = diagnostics is null ? 0 : Stopwatch.GetTimestamp();
+            try
+            {
+                diagnostics?.SetCurrentStage("asset-open");
+                stream = new FileStream(
+                    path,
+                    FileMode.Open,
+                    FileAccess.Read,
+                    FileShare.Read,
+                    bufferSize: 64 * 1024,
+                    fileOptions);
+            }
+            finally
+            {
+                if (diagnostics is not null)
+                    diagnostics.SetAssetOpenMilliseconds(Stopwatch.GetElapsedTime(stageStarted).TotalMilliseconds);
+            }
+
+            byte[] bytes;
+            try
+            {
+                stageStarted = diagnostics is null ? 0 : Stopwatch.GetTimestamp();
+                try
+                {
+                    diagnostics?.SetCurrentStage("asset-length-check");
+                    if (stream.Length != asset.ByteSize)
+                        throw new InvalidDataException("Same-byte fixture asset length changed after capture.");
+                }
+                finally
+                {
+                    if (diagnostics is not null)
+                        diagnostics.SetAssetLengthCheckMilliseconds(Stopwatch.GetElapsedTime(stageStarted).TotalMilliseconds);
+                }
+
+                cancellationToken.ThrowIfCancellationRequested();
+
+                stageStarted = diagnostics is null ? 0 : Stopwatch.GetTimestamp();
+                try
+                {
+                    diagnostics?.SetCurrentStage("asset-buffer-allocation");
+                    bytes = new byte[asset.ByteSize];
+                }
+                finally
+                {
+                    if (diagnostics is not null)
+                        diagnostics.SetAssetBufferAllocationMilliseconds(Stopwatch.GetElapsedTime(stageStarted).TotalMilliseconds);
+                }
+
+                stageStarted = diagnostics is null ? 0 : Stopwatch.GetTimestamp();
+                try
+                {
+                    long readExactlyStarted = diagnostics is null ? 0 : Stopwatch.GetTimestamp();
+                    try
+                    {
+                        diagnostics?.SetCurrentStage(synchronousRead
+                            ? "asset-read-exactly-sync"
+                            : "asset-read-exactly-async");
+                        if (synchronousRead)
+                        {
+                            cancellationToken.ThrowIfCancellationRequested();
+                            stream.ReadExactly(bytes);
+                            cancellationToken.ThrowIfCancellationRequested();
+                        }
+                        else
+                        {
+                            await stream.ReadExactlyAsync(bytes, cancellationToken).ConfigureAwait(false);
+                        }
+                    }
+                    finally
+                    {
+                        if (diagnostics is not null)
+                        {
+                            diagnostics.SetAssetReadExactlyMilliseconds(
+                                Stopwatch.GetElapsedTime(readExactlyStarted).TotalMilliseconds);
+                        }
+                    }
+
+                    long eofProbeStarted = diagnostics is null ? 0 : Stopwatch.GetTimestamp();
+                    try
+                    {
+                        diagnostics?.SetCurrentStage("asset-eof-probe");
+                        if (stream.ReadByte() != -1)
+                            throw new InvalidDataException("Same-byte fixture asset exceeded its bounded length.");
+                    }
+                    finally
+                    {
+                        if (diagnostics is not null)
+                            diagnostics.SetAssetEofProbeMilliseconds(Stopwatch.GetElapsedTime(eofProbeStarted).TotalMilliseconds);
+                    }
+                }
+                finally
+                {
+                    if (diagnostics is not null)
+                        diagnostics.SetAssetReadMilliseconds(Stopwatch.GetElapsedTime(stageStarted).TotalMilliseconds);
+                }
+
+                stageStarted = diagnostics is null ? 0 : Stopwatch.GetTimestamp();
+                try
+                {
+                    diagnostics?.SetCurrentStage("asset-sha256-verification");
+                    if (!string.Equals(Convert.ToHexString(SHA256.HashData(bytes)), asset.Sha256, StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidDataException("Same-byte fixture asset hash does not match its content address.");
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
+                finally
+                {
+                    if (diagnostics is not null)
+                        diagnostics.SetAssetSha256VerificationMilliseconds(Stopwatch.GetElapsedTime(stageStarted).TotalMilliseconds);
+                }
+            }
+            catch
+            {
+                // Preserve the stage that actually failed before cleanup replaces it.
+                diagnostics?.SetFailure(diagnostics.CurrentStage);
+                throw;
+            }
+            finally
+            {
+                stageStarted = diagnostics is null ? 0 : Stopwatch.GetTimestamp();
+                try
+                {
+                    diagnostics?.SetCurrentStage("asset-stream-disposal");
+                    if (synchronousRead)
+                        stream.Dispose();
+                    else
+                        await stream.DisposeAsync().ConfigureAwait(false);
+                }
+                finally
+                {
+                    if (diagnostics is not null)
+                        diagnostics.SetAssetDisposeMilliseconds(Stopwatch.GetElapsedTime(stageStarted).TotalMilliseconds);
+                }
+            }
+
+            var result = new VerifiedAssetRead(bytes, sourceReservation);
+            sourceReservation = null;
+            return result;
+        }
+        finally
+        {
+            // A failed read, hash, cancellation, or stream disposal must release admission.
+            sourceReservation?.Dispose();
+        }
     }
+
+    internal static bool ShouldUseSynchronousAssetRead(int byteSize) =>
+        byteSize is > 0 and <= MaximumSynchronousAssetReadBytes;
 
     private static void EnsureRegularFile(FileInfo info, long maximumBytes)
     {
@@ -357,7 +680,7 @@ internal sealed partial class MarkdownSameByteAuditImageResolver :
         }
     }
 
-    private static IReadOnlyList<string> GetSourceUrlHashes(
+    private IReadOnlyList<string> GetSourceUrlHashes(
         string source,
         MarkdownImageResolveContext context)
     {
@@ -382,9 +705,33 @@ internal sealed partial class MarkdownSameByteAuditImageResolver :
         {
             AddUrlHash(reference.SourceUri.AbsoluteUri, hashes);
             AddUrlHash(GitHubMarkdownImageUrlResolver.CreateRawUri(reference).AbsoluteUri, hashes);
+
+            // A same-byte corpus is pinned to the README commit, while the
+            // live document context may still name a branch such as "main".
+            // Relative assets in that same repository are therefore also
+            // looked up at the corpus commit. Do not rewrite absolute URLs or
+            // GitHub's deliberate ../assets-branch convention: those identify
+            // an explicitly different resource ref.
+            if (Uri.TryCreate(source, UriKind.Relative, out _) &&
+                context.DocumentSource is { HasRepositoryContext: true } documentSource &&
+                string.Equals(reference.Ref, documentSource.Ref, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(
+                    $"{reference.Owner}/{reference.Repository}",
+                    _expectedRepository,
+                    StringComparison.OrdinalIgnoreCase) &&
+                IsCommitSha(_expectedCommit) &&
+                !string.Equals(reference.Ref, _expectedCommit, StringComparison.OrdinalIgnoreCase))
+            {
+                AddUrlHash(
+                    GitHubMarkdownImageUrlResolver.CreateRawUri(reference with { Ref = _expectedCommit.ToLowerInvariant() }).AbsoluteUri,
+                    hashes);
+            }
         }
         return hashes.ToArray();
     }
+
+    private static bool IsCommitSha(string? value) =>
+        value is { Length: 40 } && value.All(char.IsAsciiHexDigit);
 
     private static void AddUrlHash(string? source, HashSet<string> hashes)
     {
@@ -479,6 +826,14 @@ internal sealed partial class MarkdownSameByteAuditImageResolver :
 
     private sealed record FixtureAsset(string Sha256, int ByteSize, string MimeType);
 
+    private readonly record struct CoreResolution(
+        MarkdownImageResolution Resolution,
+        IDisposable? SourceReservation);
+
+    private readonly record struct VerifiedAssetRead(
+        byte[] Bytes,
+        IDisposable? SourceReservation);
+
     private sealed class SameByteManifest
     {
         public int SchemaVersion { get; init; }
@@ -526,4 +881,100 @@ internal sealed partial class MarkdownSameByteAuditImageResolver :
     private sealed partial class SameByteFixtureJsonContext : JsonSerializerContext
     {
     }
+
+    private sealed class ResolverStageRecorder(long correlationId)
+    {
+        public long CorrelationId { get; } = correlationId;
+        public string CurrentStage { get; private set; } = "index-wait";
+        private bool _indexTaskWasCreatedAtStart;
+        private bool _indexTaskWasCompletedBeforeAwait;
+        private int _sourceHashCandidateCount;
+        private string? _failureStage;
+        private double _indexWaitMilliseconds;
+        private double _sourceHashLookupMilliseconds;
+        private double _sourceHashIndexLookupMilliseconds;
+        private double _assetStatMilliseconds;
+        private double _assetOpenMilliseconds;
+        private double _assetLengthCheckMilliseconds;
+        private double _assetBufferAllocationMilliseconds;
+        private double _assetReadMilliseconds;
+        private double _assetReadExactlyMilliseconds;
+        private double _assetEofProbeMilliseconds;
+        private double _assetSha256VerificationMilliseconds;
+        private double _assetDisposeMilliseconds;
+        private double _contentTypeValidationMilliseconds;
+
+        public void SetIndexWasCreatedAtStart(bool value) => _indexTaskWasCreatedAtStart = value;
+        public void SetIndexWasCompletedBeforeAwait(bool value) => _indexTaskWasCompletedBeforeAwait = value;
+        public void SetSourceHashCandidateCount(int value) => _sourceHashCandidateCount = value;
+        public void SetCurrentStage(string value) => CurrentStage = value;
+        public void SetFailure(string? stage) => _failureStage ??= stage;
+        public void SetIndexWaitMilliseconds(double value) => _indexWaitMilliseconds = value;
+        public void SetSourceHashLookupMilliseconds(double value) => _sourceHashLookupMilliseconds = value;
+        public void SetSourceHashIndexLookupMilliseconds(double value) => _sourceHashIndexLookupMilliseconds = value;
+        public void SetAssetStatMilliseconds(double value) => _assetStatMilliseconds = value;
+        public void SetAssetOpenMilliseconds(double value) => _assetOpenMilliseconds = value;
+        public void SetAssetLengthCheckMilliseconds(double value) => _assetLengthCheckMilliseconds = value;
+        public void SetAssetBufferAllocationMilliseconds(double value) => _assetBufferAllocationMilliseconds = value;
+        public void SetAssetReadMilliseconds(double value) => _assetReadMilliseconds = value;
+        public void SetAssetReadExactlyMilliseconds(double value) => _assetReadExactlyMilliseconds = value;
+        public void SetAssetEofProbeMilliseconds(double value) => _assetEofProbeMilliseconds = value;
+        public void SetAssetSha256VerificationMilliseconds(double value) => _assetSha256VerificationMilliseconds = value;
+        public void SetAssetDisposeMilliseconds(double value) => _assetDisposeMilliseconds = value;
+        public void SetContentTypeValidationMilliseconds(double value) => _contentTypeValidationMilliseconds = value;
+
+        public MarkdownSameByteResolverStageEvidence Snapshot() => new(
+            CorrelationId,
+            _indexTaskWasCreatedAtStart,
+            _indexTaskWasCompletedBeforeAwait,
+            _indexWaitMilliseconds,
+            _sourceHashLookupMilliseconds,
+            _sourceHashCandidateCount,
+            _sourceHashIndexLookupMilliseconds,
+            _assetStatMilliseconds,
+            _assetOpenMilliseconds,
+            _assetLengthCheckMilliseconds,
+            _assetBufferAllocationMilliseconds,
+            _assetReadMilliseconds,
+            _assetReadExactlyMilliseconds,
+            _assetEofProbeMilliseconds,
+            _assetSha256VerificationMilliseconds,
+            _assetDisposeMilliseconds,
+            _contentTypeValidationMilliseconds,
+            _failureStage,
+            UnattributedResolverMilliseconds: 0);
+    }
 }
+
+internal sealed record MarkdownSameByteImageResolutionDiagnostic(
+    MarkdownImageResolution Resolution,
+    MarkdownSameByteResolverStageEvidence StageEvidence);
+
+/// <summary>
+/// Stage evidence paired with the same lease that owns the resolved fixture bytes.
+/// The caller owns and must dispose <see cref="Lease"/> after its final byte access.
+/// </summary>
+internal sealed record MarkdownSameByteLeasedImageResolutionDiagnostic(
+    MarkdownImageResolutionLease Lease,
+    MarkdownSameByteResolverStageEvidence StageEvidence);
+
+internal sealed record MarkdownSameByteResolverStageEvidence(
+    long CorrelationId,
+    bool IndexTaskWasCreatedAtStart,
+    bool IndexTaskWasCompletedBeforeAwait,
+    double IndexWaitMilliseconds,
+    double SourceHashLookupMilliseconds,
+    int SourceHashCandidateCount,
+    double SourceHashIndexLookupMilliseconds,
+    double AssetStatMilliseconds,
+    double AssetOpenMilliseconds,
+    double AssetLengthCheckMilliseconds,
+    double AssetBufferAllocationMilliseconds,
+    double AssetReadMilliseconds,
+    double AssetReadExactlyMilliseconds,
+    double AssetEofProbeMilliseconds,
+    double AssetSha256VerificationMilliseconds,
+    double AssetDisposeMilliseconds,
+    double ContentTypeValidationMilliseconds,
+    string? FailureStage,
+    double UnattributedResolverMilliseconds);

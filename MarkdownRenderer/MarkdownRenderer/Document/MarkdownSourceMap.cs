@@ -10,8 +10,12 @@ namespace MarkdownRenderer.Document;
 /// </summary>
 public sealed class MarkdownSourceMap
 {
-    private readonly Dictionary<int, BlockEntryBounds> _blockEntryBounds = new();
-    private readonly List<Entry> _entries = new();
+    // Layout entries are normally appended in document order. Avoid building
+    // this all-block index for that common case: source affixes can be located
+    // directly in the ordered entry list. Preserve a dictionary fallback for
+    // callers that append out-of-order keys.
+    private Dictionary<int, BlockEntryBounds>? _blockEntryBounds;
+    private readonly PagedEntryBuffer<Entry> _entries = new();
     private readonly object _gate = new();
     private readonly string _sourceText;
     private EntryIndex? _entryIndex;
@@ -67,7 +71,8 @@ public sealed class MarkdownSourceMap
             }
 
             _entries.Add(entry);
-            TrackBlockEntry(entry, insertionOrder);
+            if (_blockEntryBounds is { } blockEntryBounds)
+                TrackBlockEntry(blockEntryBounds, entry, insertionOrder);
             _entryIndex = null;
         }
     }
@@ -80,8 +85,27 @@ public sealed class MarkdownSourceMap
     {
         lock (_gate)
         {
-            if (!_blockEntryBounds.TryGetValue(blockIndex, out var bounds))
-                return;
+            BlockEntryBounds bounds;
+            if (_blockEntryBounds is { } blockEntryBounds)
+            {
+                if (!blockEntryBounds.TryGetValue(blockIndex, out bounds))
+                    return;
+            }
+            else if (_entriesWereAddedInOrder)
+            {
+                if (!TryFindOrderedBlockEntryBounds(blockIndex, out bounds))
+                    return;
+            }
+            else
+            {
+                // Out-of-order public additions retain the legacy semantics.
+                // Materialize once on the first affix request, then track all
+                // later additions incrementally.
+                blockEntryBounds = BuildBlockEntryBounds();
+                _blockEntryBounds = blockEntryBounds;
+                if (!blockEntryBounds.TryGetValue(blockIndex, out bounds))
+                    return;
+            }
 
             sourceStart = Math.Clamp(sourceStart, 0, _sourceText.Length);
             sourceEnd = Math.Clamp(sourceEnd, sourceStart, _sourceText.Length);
@@ -232,14 +256,70 @@ public sealed class MarkdownSourceMap
         return (int)Math.Clamp(absoluteOffset, minimum, (long)_sourceText.Length);
     }
 
-    private void TrackBlockEntry(Entry entry, int entryIndex)
+    private bool TryFindOrderedBlockEntryBounds(int blockIndex, out BlockEntryBounds bounds)
+    {
+        // _entriesWereAddedInOrder means the complete (block, inline,
+        // insertion-order) key is monotone, so a block occupies one contiguous
+        // range. Use allocation-free lower/upper bounds rather than retaining a
+        // dictionary entry for every ordinary rendered run.
+        int low = 0;
+        int high = _entries.Count;
+        while (low < high)
+        {
+            int middle = low + ((high - low) / 2);
+            if (_entries[middle].BlockIndex < blockIndex)
+                low = middle + 1;
+            else
+                high = middle;
+        }
+
+        int first = low;
+        low = first;
+        high = _entries.Count;
+        while (low < high)
+        {
+            int middle = low + ((high - low) / 2);
+            if (_entries[middle].BlockIndex <= blockIndex)
+                low = middle + 1;
+            else
+                high = middle;
+        }
+
+        int end = low;
+        while (first < end && _entries[first].Span.IsEmpty)
+            first++;
+        while (end > first && _entries[end - 1].Span.IsEmpty)
+            end--;
+
+        if (first >= end)
+        {
+            bounds = default;
+            return false;
+        }
+
+        bounds = new BlockEntryBounds(first, end - 1);
+        return true;
+    }
+
+    private Dictionary<int, BlockEntryBounds> BuildBlockEntryBounds()
+    {
+        var blockEntryBounds = new Dictionary<int, BlockEntryBounds>();
+        for (int index = 0; index < _entries.Count; index++)
+            TrackBlockEntry(blockEntryBounds, _entries[index], index);
+        return blockEntryBounds;
+    }
+
+    private void TrackBlockEntry(
+        Dictionary<int, BlockEntryBounds> blockEntryBounds,
+        Entry entry,
+        int entryIndex)
     {
         if (entry.Span.IsEmpty)
             return;
 
-        if (!_blockEntryBounds.TryGetValue(entry.BlockIndex, out var bounds))
+        if (!blockEntryBounds.TryGetValue(entry.BlockIndex, out var bounds))
         {
-            _blockEntryBounds.Add(entry.BlockIndex, new BlockEntryBounds(entryIndex, entryIndex));
+            blockEntryBounds.Add(entry.BlockIndex, new BlockEntryBounds(entryIndex, entryIndex));
             return;
         }
 
@@ -251,7 +331,7 @@ public sealed class MarkdownSourceMap
         if (CompareDocumentOrder(entry, _entries[lastEntryIndex]) > 0)
             lastEntryIndex = entryIndex;
 
-        _blockEntryBounds[entry.BlockIndex] = new BlockEntryBounds(firstEntryIndex, lastEntryIndex);
+        blockEntryBounds[entry.BlockIndex] = new BlockEntryBounds(firstEntryIndex, lastEntryIndex);
     }
 
     private EntryIndex GetEntryIndex()
@@ -387,7 +467,7 @@ public sealed class MarkdownSourceMap
 
     internal IReadOnlyList<Entry> Entries => GetEntryIndex().ReadOnlyEntries;
 
-    internal readonly record struct Entry(
+    internal readonly struct Entry(
         int BlockIndex,
         int InlineIndex,
         int RenderedLength,
@@ -395,7 +475,17 @@ public sealed class MarkdownSourceMap
         int SourcePrefixLength,
         int SourceSuffixLength,
         SourceProjection? Projection,
-        int InsertionOrder);
+        int InsertionOrder)
+    {
+        public int BlockIndex { get; } = BlockIndex;
+        public int InlineIndex { get; } = InlineIndex;
+        public int RenderedLength { get; } = RenderedLength;
+        public SourceSpan Span { get; init; } = Span;
+        public int SourcePrefixLength { get; init; } = SourcePrefixLength;
+        public int SourceSuffixLength { get; init; } = SourceSuffixLength;
+        public SourceProjection? Projection { get; } = Projection;
+        public int InsertionOrder { get; } = InsertionOrder;
+    }
 
     /// <summary>
     /// Piecewise UTF-16 projection for a transformed inline run. Each rendered
@@ -410,33 +500,35 @@ public sealed class MarkdownSourceMap
         private const int MaxEntityLength = 64;
         private const int MaxEmojiShortcodeLength = 64;
 
-        private readonly int[] _unitSourceStarts;
-        private readonly int[] _unitSourceEnds;
+        // Each range stores two span-relative offsets in one 32-bit word.
+        // MaxSourceLength is intentionally <= UInt16.MaxValue so this is exact;
+        // retain the explicit TryCreate guard below so a future ceiling increase
+        // cannot silently truncate source offsets.
+        private readonly uint[] _unitSourceRanges;
 
-        private SourceProjection(int[] unitSourceStarts, int[] unitSourceEnds)
+        private SourceProjection(uint[] unitSourceRanges)
         {
-            _unitSourceStarts = unitSourceStarts;
-            _unitSourceEnds = unitSourceEnds;
+            _unitSourceRanges = unitSourceRanges;
         }
 
         internal int ProjectStart(int renderedOffset)
         {
-            if (_unitSourceStarts.Length == 0 || renderedOffset <= 0)
+            if (_unitSourceRanges.Length == 0 || renderedOffset <= 0)
                 return 0;
-            if (renderedOffset >= _unitSourceStarts.Length)
-                return _unitSourceEnds[^1];
+            if (renderedOffset >= _unitSourceRanges.Length)
+                return GetRangeEnd(_unitSourceRanges[^1]);
 
-            return _unitSourceStarts[renderedOffset];
+            return GetRangeStart(_unitSourceRanges[renderedOffset]);
         }
 
         internal int ProjectEnd(int renderedOffset)
         {
-            if (_unitSourceEnds.Length == 0 || renderedOffset <= 0)
+            if (_unitSourceRanges.Length == 0 || renderedOffset <= 0)
                 return 0;
-            if (renderedOffset >= _unitSourceEnds.Length)
-                return _unitSourceEnds[^1];
+            if (renderedOffset >= _unitSourceRanges.Length)
+                return GetRangeEnd(_unitSourceRanges[^1]);
 
-            return _unitSourceEnds[renderedOffset - 1];
+            return GetRangeEnd(_unitSourceRanges[renderedOffset - 1]);
         }
 
         internal static SourceProjection? TryCreate(string sourceText, SourceSpan span, string renderedText)
@@ -446,7 +538,8 @@ public sealed class MarkdownSourceMap
                 span.Length <= 0 ||
                 span.End > sourceText.Length ||
                 renderedText.Length > MaxRenderedLength ||
-                span.Length > MaxSourceLength)
+                span.Length > MaxSourceLength ||
+                span.Length > ushort.MaxValue)
             {
                 return null;
             }
@@ -455,8 +548,7 @@ public sealed class MarkdownSourceMap
             if (source.SequenceEqual(renderedText.AsSpan()))
                 return null;
 
-            var starts = new int[renderedText.Length];
-            var ends = new int[renderedText.Length];
+            var ranges = new uint[renderedText.Length];
             int sourceCursor = 0;
             int renderedCursor = 0;
 
@@ -468,18 +560,25 @@ public sealed class MarkdownSourceMap
                     // producer is host-defined (for example a custom emoji map).
                     if (renderedCursor == 0 && GetScalarLength(renderedText, 0) == renderedText.Length)
                     {
-                        Array.Fill(starts, 0);
-                        Array.Fill(ends, source.Length);
-                        return new SourceProjection(starts, ends);
+                        Array.Fill(ranges, PackRange(0, source.Length));
+                        return new SourceProjection(ranges);
                     }
 
                     return null;
                 }
 
+                // The span limit above makes these casts exact. Keep this local
+                // guard too, so any future change to emission/bounds fails closed.
+                if ((uint)emission.SourceStart > ushort.MaxValue ||
+                    (uint)emission.SourceEnd > ushort.MaxValue)
+                {
+                    return null;
+                }
+
+                uint packedRange = PackRange(emission.SourceStart, emission.SourceEnd);
                 for (int index = 0; index < emission.RenderedLength; index++)
                 {
-                    starts[renderedCursor + index] = emission.SourceStart;
-                    ends[renderedCursor + index] = emission.SourceEnd;
+                    ranges[renderedCursor + index] = packedRange;
                 }
 
                 sourceCursor = emission.SourceEnd;
@@ -488,14 +587,23 @@ public sealed class MarkdownSourceMap
 
             // Source-only opening and closing syntax belongs to the corresponding
             // edge selection, while interior selections remain delimiter-free.
-            starts[0] = 0;
-            ends[^1] = source.Length;
+            ranges[0] = PackRange(0, GetRangeEnd(ranges[0]));
+            ranges[^1] = PackRange(GetRangeStart(ranges[^1]), source.Length);
 
-            if (!IsValidProjection(starts, ends, source.Length))
+            if (!IsValidProjection(ranges, source.Length))
                 return null;
 
-            return new SourceProjection(starts, ends);
+            return new SourceProjection(ranges);
         }
+
+        private static uint PackRange(int sourceStart, int sourceEnd) =>
+            (uint)sourceStart | ((uint)sourceEnd << 16);
+
+        private static int GetRangeStart(uint packedRange) =>
+            (int)(packedRange & ushort.MaxValue);
+
+        private static int GetRangeEnd(uint packedRange) =>
+            (int)(packedRange >> 16);
 
         private static bool TryFindNextEmission(
             ReadOnlySpan<char> source,
@@ -634,32 +742,46 @@ public sealed class MarkdownSourceMap
                 ? 2
                 : 1;
 
-        private static bool IsValidProjection(int[] starts, int[] ends, int sourceLength)
+        private static bool IsValidProjection(uint[] ranges, int sourceLength)
         {
             int previousStart = -1;
             int previousEnd = -1;
-            for (int index = 0; index < starts.Length; index++)
+            for (int index = 0; index < ranges.Length; index++)
             {
-                if (starts[index] < 0 ||
-                    ends[index] < starts[index] ||
-                    ends[index] > sourceLength ||
-                    starts[index] < previousStart ||
-                    ends[index] < previousEnd)
+                uint packedRange = ranges[index];
+                int start = GetRangeStart(packedRange);
+                int end = GetRangeEnd(packedRange);
+                if (end < start ||
+                    end > sourceLength ||
+                    start < previousStart ||
+                    end < previousEnd)
                 {
                     return false;
                 }
 
-                previousStart = starts[index];
-                previousEnd = ends[index];
+                previousStart = start;
+                previousEnd = end;
             }
 
             return true;
         }
 
-        private readonly record struct Emission(int SourceStart, int SourceEnd, int RenderedLength);
+        private readonly struct Emission(int sourceStart, int sourceEnd, int renderedLength)
+        {
+            internal readonly int SourceStart = sourceStart;
+
+            internal readonly int SourceEnd = sourceEnd;
+
+            internal readonly int RenderedLength = renderedLength;
+        }
     }
 
-    private readonly record struct BlockEntryBounds(int FirstEntryIndex, int LastEntryIndex);
+    private readonly struct BlockEntryBounds(int firstEntryIndex, int lastEntryIndex)
+    {
+        internal readonly int FirstEntryIndex = firstEntryIndex;
+
+        internal readonly int LastEntryIndex = lastEntryIndex;
+    }
 
     private sealed class EntryDocumentOrderComparer : IComparer<Entry>
     {
@@ -676,8 +798,8 @@ public sealed class MarkdownSourceMap
             ReadOnlyEntries = Array.AsReadOnly(entries);
         }
 
-        internal Entry[] Entries { get; }
+        internal readonly Entry[] Entries;
 
-        internal ReadOnlyCollection<Entry> ReadOnlyEntries { get; }
+        internal readonly ReadOnlyCollection<Entry> ReadOnlyEntries;
     }
 }

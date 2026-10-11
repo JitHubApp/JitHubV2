@@ -6,6 +6,7 @@ using JitHub.Models.NavArgs;
 using JitHub.Services;
 using JitHub.Services.CodeViewer;
 using JitHub.Services.Layout;
+using JitHub.Services.Markdown;
 using JitHub.WinUI.Helpers;
 using JitHub.WinUI.Performance;
 using JitHub.WinUI.ViewModels.CodeViewer;
@@ -39,6 +40,8 @@ public sealed partial class RepoCodePage : Page, IRepositoryCompactCommandProvid
     public RepoCodePage()
     {
         ViewModel = _app.GetService<RepoCodePageViewModel>();
+        ViewModel.UseRawReadmeSourceForSameByteAudit =
+            MarkdownLifecycleAutomationBridge.IsSameByteReplayEnabled;
         InitializeComponent();
         ProductPerformanceReadiness.RecordTraversalStage("repo_code.xaml.ready");
         PreviewHost.ActionExecuted += ViewModel.TrackAction;

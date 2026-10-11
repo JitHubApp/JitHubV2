@@ -51,6 +51,10 @@
     <DefineConstants>$(DefineConstants);PSEUDO_LOCALIZATION_BUILD</DefineConstants>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(EnableMarkdownLayoutDiagnostics)' == 'true'">
+    <DefineConstants>$(DefineConstants);MARKDOWN_LAYOUT_DIAGNOSTICS</DefineConstants>
+  </PropertyGroup>
+
   <PropertyGroup>
     <GenerateProjectPriFileDependsOn>InvalidateProjectPriWhenPseudoLocalizationModeChanges;$(GenerateProjectPriFileDependsOn)</GenerateProjectPriFileDependsOn>
   </PropertyGroup>

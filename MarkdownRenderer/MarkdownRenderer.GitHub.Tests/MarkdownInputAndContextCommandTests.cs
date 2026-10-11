@@ -188,9 +188,21 @@ public sealed class MarkdownInputAndContextCommandTests
     }
 
     [Fact]
+    public void LinkActivationDecision_PreservesNamedConstructionAndHostFallbackState()
+    {
+        var decision = new MarkdownLinkActivationDecision(
+            InputKind: MarkdownLinkInputKind.Automation,
+            Result: MarkdownLinkActivationPolicyResult.RaiseHostEvent);
+
+        Assert.Equal(MarkdownLinkInputKind.Automation, decision.InputKind);
+        Assert.Equal(MarkdownLinkActivationPolicyResult.RaiseHostEvent, decision.Result);
+        Assert.False(decision.IsHandled);
+    }
+
+    [Fact]
     public void TableClipboardFormatter_ProducesTsvAndSafeRichHtml()
     {
-        IReadOnlyList<IReadOnlyList<string>> rows =
+        string[][] rows =
         [
             new[] { "Name", "Value" },
             new[] { "<unsafe>", "line 1\nline 2\tend" },
@@ -204,6 +216,17 @@ public sealed class MarkdownInputAndContextCommandTests
             "<table><thead><tr><th>Name</th><th>Value</th></tr></thead>" +
             "<tbody><tr><td>&lt;unsafe&gt;</td><td>line 1 line 2 end</td></tr></tbody></table>",
             payload.Html);
+    }
+
+    [Fact]
+    public void TableClipboardPayload_PreservesNamedConstructionAndValues()
+    {
+        var payload = new MarkdownTableClipboardPayload(
+            Text: "first\tsecond",
+            Html: "<table></table>");
+
+        Assert.Equal("first\tsecond", payload.Text);
+        Assert.Equal("<table></table>", payload.Html);
     }
 
     private sealed class RecordingProvider(ICommand? command) : IMarkdownCommandProvider

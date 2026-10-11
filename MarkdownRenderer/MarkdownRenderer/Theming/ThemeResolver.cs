@@ -1,5 +1,9 @@
 using System;
 using System.Collections.Generic;
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+using System.Diagnostics;
+using System.Globalization;
+#endif
 using Microsoft.UI;
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
@@ -72,7 +76,7 @@ internal sealed class ThemeResolver
         MarkdownElementKeys.Subscript, MarkdownElementKeys.Superscript,
         MarkdownElementKeys.Inserted, MarkdownElementKeys.Marked,
         MarkdownElementKeys.Abbreviation,
-        MarkdownElementKeys.ListMarker, MarkdownElementKeys.ThematicBreak,
+        MarkdownElementKeys.List, MarkdownElementKeys.ListMarker, MarkdownElementKeys.ThematicBreak,
         MarkdownElementKeys.ImageCaption, MarkdownElementKeys.Figure,
         MarkdownElementKeys.FigureCaption, MarkdownElementKeys.Diagram,
         MarkdownElementKeys.Math,
@@ -94,6 +98,18 @@ internal sealed class ThemeResolver
     // Scoped dictionaries are small and explicit. Capture their relevant
     // values once per synchronous snapshot; never enumerate the app dictionary.
     private Dictionary<string, object>? _scopedResourceValues;
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+    private bool _themeDiagnosticsEnabled;
+    private int _themeApplicationLookupCount;
+    private int _themeApplicationLookupHitCount;
+    private int _themeApplicationLookupMissCount;
+    private long _themeApplicationLookupTicks;
+    private int _themeScopedQueryCount;
+    private int _themeScopedCaptureCount;
+    private int _themeScopedValueCount;
+    private int _themeScopedVisualResourceCount;
+    private long _themeScopedCaptureTicks;
+#endif
 
     internal static IMarkdownSystemThemeProvider? SystemThemeProviderOverride { get; set; }
 
@@ -131,6 +147,24 @@ internal sealed class ThemeResolver
         IReadOnlyCollection<string>? additionalElementKeys = null,
         ulong? builtInStyleRoleDemandMask = null)
     {
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+        _themeDiagnosticsEnabled = ShakeLogger.IsEnabled;
+        long snapshotStarted = _themeDiagnosticsEnabled ? Stopwatch.GetTimestamp() : 0;
+        long phaseStarted = snapshotStarted;
+        long keyPreparationTicks = 0;
+        long roleSelectionTicks = 0;
+        long styleResolutionTicks = 0;
+        long globalResourceTicks = 0;
+        _themeApplicationLookupCount = 0;
+        _themeApplicationLookupHitCount = 0;
+        _themeApplicationLookupMissCount = 0;
+        _themeApplicationLookupTicks = 0;
+        _themeScopedQueryCount = 0;
+        _themeScopedCaptureCount = 0;
+        _themeScopedValueCount = 0;
+        _themeScopedVisualResourceCount = 0;
+        _themeScopedCaptureTicks = 0;
+#endif
         // ResourceDictionary.Keys is a WinRT projection. Enumerating an app-level
         // dictionary also projects the very large XamlControlsResources graph and
         // can block the UI thread for seconds. Capture only scoped dictionaries;
@@ -139,7 +173,7 @@ internal sealed class ThemeResolver
         _missingResourceKeys = new HashSet<string>(StringComparer.Ordinal);
         _scopedResourceValues = null;
         var overrides = _theme.GetOverridesSnapshot();
-        var allKeys = new HashSet<string>(BuiltInElementKeys, StringComparer.Ordinal);
+        HashSet<string> allKeys = new(BuiltInElementKeys, StringComparer.Ordinal);
         foreach (string key in overrides.Keys)
         {
             if (!string.IsNullOrWhiteSpace(key))
@@ -161,9 +195,25 @@ internal sealed class ThemeResolver
             }
         }
 
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+        if (_themeDiagnosticsEnabled)
+        {
+            long now = Stopwatch.GetTimestamp();
+            keyPreparationTicks = now - phaseStarted;
+            phaseStarted = now;
+        }
+#endif
         var dict = new Dictionary<string, ElementStyle>(allKeys.Count, StringComparer.Ordinal);
         HashSet<string> scopedResourceStyleRoles = GetScopedResourceStyleRoles(allKeys, builtInStyleRoleDemandMask);
         _scopedResourceStyleRoles = scopedResourceStyleRoles;
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+        if (_themeDiagnosticsEnabled)
+        {
+            long now = Stopwatch.GetTimestamp();
+            roleSelectionTicks = now - phaseStarted;
+            phaseStarted = now;
+        }
+#endif
         foreach (string k in allKeys)
         {
             // Canonical roles in this set are exactly the ones whose defaults
@@ -172,6 +222,14 @@ internal sealed class ThemeResolver
             dict[k] = GetDefault(k, scopedResourceStyleRoles.Contains(k));
         }
 
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+        if (_themeDiagnosticsEnabled)
+        {
+            long now = Stopwatch.GetTimestamp();
+            styleResolutionTicks = now - phaseStarted;
+            phaseStarted = now;
+        }
+#endif
         Color surfaceColor = ResolveDocumentSurfaceColor();
         bool isDark = _host.ActualTheme == ElementTheme.Dark;
         Color selectionHighlightColor = ResolveSelectionHighlightColor();
@@ -181,13 +239,21 @@ internal sealed class ThemeResolver
         Thickness documentPadding = ResolveThicknessResource(MarkdownResourceKeys.DocumentPadding) ?? default;
         float blockSpacing = ResolveFloatResource(MarkdownResourceKeys.BlockSpacing) ?? 0;
         Color? overflowIndicatorColor = ResolveColorResource(MarkdownResourceKeys.OverflowIndicatorBrush);
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+        if (_themeDiagnosticsEnabled)
+        {
+            long now = Stopwatch.GetTimestamp();
+            globalResourceTicks = now - phaseStarted;
+            phaseStarted = now;
+        }
+#endif
 
         // Resource capture is complete before construction; clearing the
         // snapshot-only filter here also keeps a reused resolver safe if the
         // immutable snapshot constructor throws.
         _scopedResourceStyleRoles = null;
         _scopedResourceValues = null;
-        return new ThemeSnapshot(
+        var snapshot = new ThemeSnapshot(
             dict,
             overrides,
             surfaceColor,
@@ -202,7 +268,25 @@ internal sealed class ThemeResolver
             documentPadding: documentPadding,
             blockSpacing: blockSpacing,
             overflowIndicatorColor: overflowIndicatorColor);
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+        if (_themeDiagnosticsEnabled)
+        {
+            long ended = Stopwatch.GetTimestamp();
+            long constructionTicks = ended - phaseStarted;
+            string payload = string.Create(
+                CultureInfo.InvariantCulture,
+                $"totalMs={ToMilliseconds(ended - snapshotStarted):F3} keySetMs={ToMilliseconds(keyPreparationTicks):F3} roleSelectMs={ToMilliseconds(roleSelectionTicks):F3} roleStyleMs={ToMilliseconds(styleResolutionTicks):F3} globalResourcesMs={ToMilliseconds(globalResourceTicks):F3} snapshotMs={ToMilliseconds(constructionTicks):F3} roleCount={allKeys.Count} scopedRoleCount={scopedResourceStyleRoles.Count} appLookupMs={ToMilliseconds(_themeApplicationLookupTicks):F3} appLookupCount={_themeApplicationLookupCount} appLookupHits={_themeApplicationLookupHitCount} appLookupMisses={_themeApplicationLookupMissCount} scopedCaptureMs={ToMilliseconds(_themeScopedCaptureTicks):F3} scopedCaptureCount={_themeScopedCaptureCount} scopedQueryCount={_themeScopedQueryCount} scopedValueCount={_themeScopedValueCount} visualResourceCount={_themeScopedVisualResourceCount}");
+            ShakeLogger.Log("markdown-theme-snapshot", payload);
+            _themeDiagnosticsEnabled = false;
+        }
+#endif
+        return snapshot;
     }
+
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+    private static double ToMilliseconds(long elapsedStopwatchTicks)
+        => elapsedStopwatchTicks * 1000.0 / Stopwatch.Frequency;
+#endif
 
     private ElementStyle GetDefault(string key, bool resolveAppResourceOverrides = true)
     {
@@ -295,6 +379,7 @@ internal sealed class ThemeResolver
             MarkdownElementKeys.FigureCaption or MarkdownElementKeys.ImageCaption => new ElementStyle { FontFamily = font, FontSize = 12, FontStyle = FontStyle.Italic, Foreground = fgSecondary, Background = key == MarkdownElementKeys.FigureCaption ? highContrastBackground : null, Margin = new Thickness(0, 2, 0, 8) },
             MarkdownElementKeys.Diagram => new ElementStyle { FontFamily = mono, FontSize = 13, Foreground = fg, Background = isHighContrast ? highContrastBackground : codeBg, AccentBar = highContrastAccent, BorderBrush = isHighContrast ? highContrastAccent : quoteBar, BorderThickness = isHighContrast ? highContrastAccent is null ? 0 : 1 : 1, CornerRadius = isHighContrast ? 0 : 4, Padding = new Thickness(12, 8, 12, 8), Margin = new Thickness(0, 6, 0, 8) },
             MarkdownElementKeys.Math => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = highContrastBackground, Margin = isHighContrast ? new Thickness(1, 0, 1, 0) : new Thickness(0, 0, 0, 4) },
+            MarkdownElementKeys.List => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = highContrastBackground },
             MarkdownElementKeys.ListMarker => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fgSecondary, ListIndent = 22f, NestedListIndent = 0f },
             MarkdownElementKeys.ThematicBreak => new ElementStyle { FontFamily = font, Foreground = isHighContrast ? fg : quoteBar, Margin = new Thickness(0, 12, 0, 12) },
             MarkdownElementKeys.Table => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = isHighContrast ? highContrastBackground : tableBg, BorderBrush = isHighContrast ? highContrastAccent : tableBorder, BorderThickness = isHighContrast ? highContrastAccent is null ? 0 : 1 : 1, CornerRadius = isHighContrast ? 0 : 6, Margin = new Thickness(0, 8, 0, 12) },
@@ -718,6 +803,10 @@ internal sealed class ThemeResolver
 
     private bool TryResolveScopedResourceValue(string resourceKey, out object value)
     {
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+        if (_themeDiagnosticsEnabled)
+            _themeScopedQueryCount++;
+#endif
         if (_scopedResourceValues is not { } scopedValues)
         {
             scopedValues = new Dictionary<string, object>(StringComparer.Ordinal);
@@ -729,10 +818,17 @@ internal sealed class ThemeResolver
             Predicate<string> includeResource = _scopedResourceStyleRoles is not null
                 ? IncludeScopedResourceForSnapshot
                 : IncludeScopedRendererResource;
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+            long captureStarted = _themeDiagnosticsEnabled ? Stopwatch.GetTimestamp() : 0;
+#endif
             for (DependencyObject? current = _host; current is not null; current = VisualTreeHelper.GetParent(current))
             {
                 if (current is FrameworkElement element)
                 {
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+                    if (_themeDiagnosticsEnabled)
+                        _themeScopedVisualResourceCount++;
+#endif
                     ResourceDictionaryGraphResolver.CaptureResolvedValues(
                         element.Resources,
                         themeKeys,
@@ -751,6 +847,14 @@ internal sealed class ThemeResolver
                         scopedValues);
                 }
             }
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+            if (_themeDiagnosticsEnabled)
+            {
+                _themeScopedCaptureTicks += Stopwatch.GetTimestamp() - captureStarted;
+                _themeScopedCaptureCount++;
+                _themeScopedValueCount += scopedValues.Count;
+            }
+#endif
         }
 
         return scopedValues.TryGetValue(resourceKey, out value!);
@@ -798,6 +902,29 @@ internal sealed class ThemeResolver
             // ResourceDictionary performs its own indexed lookup across merged
             // dictionaries and the active application theme. Avoid manually
             // walking and enumerating the app graph for every renderer snapshot.
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+            if (_themeDiagnosticsEnabled)
+            {
+                long started = Stopwatch.GetTimestamp();
+                bool completed = false;
+                bool found = false;
+                try
+                {
+                    found = applicationResources.TryGetValue(resourceKey, out value);
+                    completed = true;
+                    return found;
+                }
+                finally
+                {
+                    _themeApplicationLookupTicks += Stopwatch.GetTimestamp() - started;
+                    _themeApplicationLookupCount++;
+                    if (completed && found)
+                        _themeApplicationLookupHitCount++;
+                    else if (completed)
+                        _themeApplicationLookupMissCount++;
+                }
+            }
+#endif
             return applicationResources.TryGetValue(resourceKey, out value);
         }
 
@@ -1005,16 +1132,50 @@ internal sealed class ThemeResolver
         return fallback;
     }
 
-    internal readonly record struct PlatformThemeColorOverrides(
-        Color? PrimaryText = null,
-        Color? SecondaryText = null,
-        Color? AccentText = null,
-        Color? Surface = null);
+    internal readonly struct PlatformThemeColorOverrides
+    {
+        public PlatformThemeColorOverrides(
+            Color? PrimaryText = null,
+            Color? SecondaryText = null,
+            Color? AccentText = null,
+            Color? Surface = null)
+        {
+            this.PrimaryText = PrimaryText;
+            this.SecondaryText = SecondaryText;
+            this.AccentText = AccentText;
+            this.Surface = Surface;
+        }
 
-    internal readonly record struct PlatformThemeColors(
-        Color PrimaryText,
-        Color SecondaryText,
-        Color AccentText,
-        Color Surface);
+        public readonly Color? PrimaryText;
+
+        public readonly Color? SecondaryText;
+
+        public readonly Color? AccentText;
+
+        public readonly Color? Surface;
+    }
+
+    internal readonly struct PlatformThemeColors
+    {
+        public PlatformThemeColors(
+            Color PrimaryText,
+            Color SecondaryText,
+            Color AccentText,
+            Color Surface)
+        {
+            this.PrimaryText = PrimaryText;
+            this.SecondaryText = SecondaryText;
+            this.AccentText = AccentText;
+            this.Surface = Surface;
+        }
+
+        public readonly Color PrimaryText;
+
+        public readonly Color SecondaryText;
+
+        public readonly Color AccentText;
+
+        public readonly Color Surface;
+    }
 
 }

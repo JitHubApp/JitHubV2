@@ -4,7 +4,7 @@ using System.Collections.Generic;
 
 namespace MarkdownRenderer.Layout.Boxes;
 
-internal sealed record RasterImageBudgetResult(
+internal sealed class RasterImageBudgetResult(
     bool Accepted,
     bool CanRenderStaticPreview,
     string? Format,
@@ -13,8 +13,26 @@ internal sealed record RasterImageBudgetResult(
     int FrameCount,
     long TotalPixels,
     long DecodedBytes,
-    string? Reason)
+    string? Reason,
+    (int Left, int Top, int Width, int Height)? FirstFrame = null)
 {
+    public readonly bool Accepted = Accepted;
+    public readonly bool CanRenderStaticPreview = CanRenderStaticPreview;
+    public readonly string? Format = Format;
+    public readonly int Width = Width;
+    public readonly int Height = Height;
+    public readonly int FrameCount = FrameCount;
+    public readonly long TotalPixels = TotalPixels;
+    public readonly long DecodedBytes = DecodedBytes;
+    public readonly string? Reason = Reason;
+    internal readonly (int Left, int Top, int Width, int Height)? FirstFrame = FirstFrame;
+
+    // Orientation changes the planning axes, not the admitted source budget.
+    // Keep the validated frame/pixel/byte metadata unchanged.
+    internal RasterImageBudgetResult WithDimensions(int width, int height) =>
+        new(Accepted, CanRenderStaticPreview, Format, width, height,
+            FrameCount, TotalPixels, DecodedBytes, Reason, FirstFrame);
+
     public static RasterImageBudgetResult Reject(string reason) =>
         new(false, false, null, 0, 0, 0, 0, 0, reason);
 
@@ -25,8 +43,9 @@ internal sealed record RasterImageBudgetResult(
         int frameCount,
         long totalPixels,
         long decodedBytes,
-        string reason) =>
-        new(false, true, format, width, height, frameCount, totalPixels, decodedBytes, reason);
+        string reason,
+        (int Left, int Top, int Width, int Height)? firstFrame = null) =>
+        new(false, true, format, width, height, frameCount, totalPixels, decodedBytes, reason, firstFrame);
 
     public static RasterImageBudgetResult RequireStaticPreview(
         string format,
@@ -35,8 +54,9 @@ internal sealed record RasterImageBudgetResult(
         int frameCount,
         long totalPixels,
         long decodedBytes,
-        string reason) =>
-        new(false, true, format, width, height, frameCount, totalPixels, decodedBytes, reason);
+        string reason,
+        (int Left, int Top, int Width, int Height)? firstFrame = null) =>
+        new(false, true, format, width, height, frameCount, totalPixels, decodedBytes, reason, firstFrame);
 }
 
 internal static class RasterImageResourceBudget
@@ -114,7 +134,7 @@ internal static class RasterImageResourceBudget
                     header.FrameCount,
                     totalPixels,
                     decodedBytes,
-                    "The raster image requires a bounded downsampled preview.")
+                    "The raster image requires a bounded downsampled preview.", header.FirstFrame)
                 : RasterImageBudgetResult.Reject("The raster image pixel count exceeds the safe budget.");
         }
 
@@ -127,7 +147,7 @@ internal static class RasterImageResourceBudget
                 header.FrameCount,
                 totalPixels,
                 decodedBytes,
-                "The raster animation frame count exceeds the safe budget.");
+                "The raster animation frame count exceeds the safe budget.", header.FirstFrame);
         }
 
         if (totalPixels < pixelsPerFrame)
@@ -145,7 +165,7 @@ internal static class RasterImageResourceBudget
                     header.FrameCount,
                     totalPixels,
                     decodedBytes,
-                    "The raster image decoded-memory budget is exceeded.")
+                    "The raster image decoded-memory budget is exceeded.", header.FirstFrame)
                 : RasterImageBudgetResult.Reject("The raster image decoded-memory budget is exceeded.");
         }
 
@@ -158,7 +178,8 @@ internal static class RasterImageResourceBudget
             header.FrameCount,
             totalPixels,
             decodedBytes,
-            null);
+            null,
+            header.FirstFrame);
     }
 
     private static HeaderInfo? TryReadPng(ReadOnlySpan<byte> bytes)
@@ -350,58 +371,76 @@ internal static class RasterImageResourceBudget
 
         int width = BinaryPrimitives.ReadUInt16LittleEndian(bytes[6..]);
         int height = BinaryPrimitives.ReadUInt16LittleEndian(bytes[8..]);
+        long canvasPixels = (long)width * height;
+        if (width <= 0 || height <= 0 || width > MaxDimension || height > MaxDimension ||
+            canvasPixels > MaxDownsampleSourcePixels)
+        {
+            return null;
+        }
+
         int offset = 13;
         if ((bytes[10] & 0x80) != 0)
         {
             int tableBytes = 3 * (1 << ((bytes[10] & 0x07) + 1));
             if (!TryAdvance(ref offset, tableBytes, bytes.Length))
-            {
                 return null;
-            }
         }
 
         int frames = 0;
+        long framePixels = 0;
+        (int Left, int Top, int Width, int Height)? firstFrame = null;
         while (offset < bytes.Length)
         {
             byte marker = bytes[offset++];
             if (marker == 0x3B)
             {
-                break;
+                // The logical canvas is the display/intrinsic geometry; WIC
+                // exposes just the first descriptor's frame axes. Keep both.
+                return frames == 0 ? null : new HeaderInfo(
+                    "GIF", width, height, frames, Math.Max(canvasPixels, framePixels), firstFrame);
             }
 
             if (marker == 0x21)
             {
                 if (!TryAdvance(ref offset, 1, bytes.Length) || !TrySkipSubBlocks(bytes, ref offset))
-                {
                     return null;
-                }
-
                 continue;
             }
 
-            if (marker != 0x2C || !TryAdvance(ref offset, 9, bytes.Length))
+            if (marker != 0x2C || offset > bytes.Length - 9)
+                return null;
+
+            int left = BinaryPrimitives.ReadUInt16LittleEndian(bytes[offset..]);
+            int top = BinaryPrimitives.ReadUInt16LittleEndian(bytes[(offset + 2)..]);
+            int frameWidth = BinaryPrimitives.ReadUInt16LittleEndian(bytes[(offset + 4)..]);
+            int frameHeight = BinaryPrimitives.ReadUInt16LittleEndian(bytes[(offset + 6)..]);
+            // Validate every descriptor, not only the one we will draw.
+            // Subtraction avoids overflow in right/bottom comparisons.
+            if (frameWidth <= 0 || frameHeight <= 0 ||
+                left > width || top > height ||
+                frameWidth > width - left || frameHeight > height - top)
             {
                 return null;
             }
-
+            firstFrame ??= (left, top, frameWidth, frameHeight);
+            framePixels = checked(framePixels + (long)frameWidth * frameHeight);
             frames++;
-            byte packed = bytes[offset - 1];
+            byte packed = bytes[offset + 8];
+            offset += 9;
             if ((packed & 0x80) != 0)
             {
                 int tableBytes = 3 * (1 << ((packed & 0x07) + 1));
                 if (!TryAdvance(ref offset, tableBytes, bytes.Length))
-                {
                     return null;
-                }
             }
 
             if (!TryAdvance(ref offset, 1, bytes.Length) || !TrySkipSubBlocks(bytes, ref offset))
-            {
                 return null;
-            }
         }
 
-        return frames == 0 ? null : new HeaderInfo("GIF", width, height, frames);
+        // A complete admitted source must include the GIF trailer, even if
+        // an earlier frame was valid. Do not accept truncated later content.
+        return null;
     }
 
     private static HeaderInfo? TryReadJpeg(ReadOnlySpan<byte> bytes)
@@ -848,15 +887,26 @@ internal static class RasterImageResourceBudget
     private static int ReadUInt24LittleEndian(ReadOnlySpan<byte> bytes, int offset) =>
         bytes[offset] | (bytes[offset + 1] << 8) | (bytes[offset + 2] << 16);
 
-    private sealed record HeaderInfo(
+    private sealed class HeaderInfo(
         string Format,
         int Width,
         int Height,
         int FrameCount,
-        long? TotalPixels = null);
-
-    private readonly record struct IconPayloadRange(int Offset, int Length)
+        long? TotalPixels = null,
+        (int Left, int Top, int Width, int Height)? FirstFrame = null)
     {
+        public readonly string Format = Format;
+        public readonly int Width = Width;
+        public readonly int Height = Height;
+        public readonly int FrameCount = FrameCount;
+        public readonly long? TotalPixels = TotalPixels;
+        public readonly (int Left, int Top, int Width, int Height)? FirstFrame = FirstFrame;
+    }
+
+    private readonly struct IconPayloadRange(int Offset, int Length)
+    {
+        public readonly int Offset = Offset;
+        public readonly int Length = Length;
         public int End => Offset + Length;
     }
 }

@@ -18,6 +18,9 @@ internal static class MarkdownLocalizedStrings
     public static string TableName => Get("TableName", "Table");
     public static string ListName => Get("ListName", "List");
     public static string EmbeddedContentName => Get("EmbeddedContentName", "Embedded content");
+    public static string EmbeddedContentUnavailable => Get(
+        MarkdownStringKeys.EmbeddedContentUnavailable,
+        "Embedded content unavailable.");
     public static string ContextMenuCopy => Get("ContextMenuCopy", "Copy");
     public static string ContextMenuCopyMarkdown => Get("ContextMenuCopyMarkdown", "Copy as Markdown");
     public static string ContextMenuCopyLink => Get("ContextMenuCopyLink", "Copy link");
@@ -48,71 +51,53 @@ internal static class MarkdownLocalizedStrings
 
     public static string CodeLanguageHelpFormat => Get("CodeLanguageHelpFormat", "Language: {0}");
 
-    public static string StyleName(string elementKey) => elementKey switch
+    public static string StyleName(string elementKey)
     {
-        Theming.MarkdownElementKeys.Body => Get("StyleBody", "Body"),
-        Theming.MarkdownElementKeys.Heading1 => Get("StyleHeading1", "Heading 1"),
-        Theming.MarkdownElementKeys.Heading2 => Get("StyleHeading2", "Heading 2"),
-        Theming.MarkdownElementKeys.Heading3 => Get("StyleHeading3", "Heading 3"),
-        Theming.MarkdownElementKeys.Heading4 => Get("StyleHeading4", "Heading 4"),
-        Theming.MarkdownElementKeys.Heading5 => Get("StyleHeading5", "Heading 5"),
-        Theming.MarkdownElementKeys.Heading6 => Get("StyleHeading6", "Heading 6"),
-        Theming.MarkdownElementKeys.CodeBlock => Get("StyleCodeBlock", "Code block"),
-        Theming.MarkdownElementKeys.CodeInline => Get("StyleInlineCode", "Inline code"),
-        Theming.MarkdownElementKeys.Quote => Get("StyleQuote", "Quote"),
-        Theming.MarkdownElementKeys.Link => Get("StyleLink", "Link"),
-        Theming.MarkdownElementKeys.Strong => Get("StyleStrong", "Strong"),
-        Theming.MarkdownElementKeys.Emphasis => Get("StyleEmphasis", "Emphasis"),
-        Theming.MarkdownElementKeys.Strikethrough => Get("StyleStrikethrough", "Strikethrough"),
-        Theming.MarkdownElementKeys.Subscript => Get("StyleSubscript", "Subscript"),
-        Theming.MarkdownElementKeys.Superscript => Get("StyleSuperscript", "Superscript"),
-        Theming.MarkdownElementKeys.Inserted => Get("StyleInserted", "Inserted"),
-        Theming.MarkdownElementKeys.Marked => Get("StyleMarked", "Marked"),
-        Theming.MarkdownElementKeys.Abbreviation => Get("StyleAbbreviation", "Abbreviation"),
-        Theming.MarkdownElementKeys.DefinitionTerm => Get("StyleDefinitionTerm", "Definition term"),
-        Theming.MarkdownElementKeys.DefinitionDescription => Get("StyleDefinitionDescription", "Definition"),
-        Theming.MarkdownElementKeys.Figure => Get("StyleFigure", "Figure"),
-        Theming.MarkdownElementKeys.FigureCaption => Get("StyleFigureCaption", "Figure caption"),
-        Theming.MarkdownElementKeys.Diagram => Get("StyleDiagram", "Diagram"),
-        Theming.MarkdownElementKeys.ListMarker => Get("StyleListMarker", "List marker"),
-        Theming.MarkdownElementKeys.Table => Get("StyleTable", "Table"),
-        Theming.MarkdownElementKeys.TableHeader => Get("StyleTableHeader", "Table header"),
-        Theming.MarkdownElementKeys.TableCell => Get("StyleTableCell", "Table cell"),
-        _ => elementKey,
-    };
+        var definition = GetStyleNameDefinition(elementKey);
+        return definition.Key is null
+            ? definition.Fallback
+            : Get(definition.Key, definition.Fallback);
+    }
 
-    public static string? StyleNameKey(string elementKey) => elementKey switch
-    {
-        Theming.MarkdownElementKeys.Body => MarkdownStringKeys.StyleBody,
-        Theming.MarkdownElementKeys.Heading1 => MarkdownStringKeys.StyleHeading1,
-        Theming.MarkdownElementKeys.Heading2 => MarkdownStringKeys.StyleHeading2,
-        Theming.MarkdownElementKeys.Heading3 => MarkdownStringKeys.StyleHeading3,
-        Theming.MarkdownElementKeys.Heading4 => MarkdownStringKeys.StyleHeading4,
-        Theming.MarkdownElementKeys.Heading5 => MarkdownStringKeys.StyleHeading5,
-        Theming.MarkdownElementKeys.Heading6 => MarkdownStringKeys.StyleHeading6,
-        Theming.MarkdownElementKeys.CodeBlock => MarkdownStringKeys.StyleCodeBlock,
-        Theming.MarkdownElementKeys.CodeInline => MarkdownStringKeys.StyleInlineCode,
-        Theming.MarkdownElementKeys.Quote => MarkdownStringKeys.StyleQuote,
-        Theming.MarkdownElementKeys.Link => MarkdownStringKeys.StyleLink,
-        Theming.MarkdownElementKeys.Strong => MarkdownStringKeys.StyleStrong,
-        Theming.MarkdownElementKeys.Emphasis => MarkdownStringKeys.StyleEmphasis,
-        Theming.MarkdownElementKeys.Strikethrough => MarkdownStringKeys.StyleStrikethrough,
-        Theming.MarkdownElementKeys.Subscript => MarkdownStringKeys.StyleSubscript,
-        Theming.MarkdownElementKeys.Superscript => MarkdownStringKeys.StyleSuperscript,
-        Theming.MarkdownElementKeys.Inserted => MarkdownStringKeys.StyleInserted,
-        Theming.MarkdownElementKeys.Marked => MarkdownStringKeys.StyleMarked,
-        Theming.MarkdownElementKeys.Abbreviation => MarkdownStringKeys.StyleAbbreviation,
-        Theming.MarkdownElementKeys.DefinitionTerm => MarkdownStringKeys.StyleDefinitionTerm,
-        Theming.MarkdownElementKeys.DefinitionDescription => MarkdownStringKeys.StyleDefinitionDescription,
-        Theming.MarkdownElementKeys.Figure => MarkdownStringKeys.StyleFigure,
-        Theming.MarkdownElementKeys.FigureCaption => MarkdownStringKeys.StyleFigureCaption,
-        Theming.MarkdownElementKeys.Diagram => MarkdownStringKeys.StyleDiagram,
-        Theming.MarkdownElementKeys.ListMarker => MarkdownStringKeys.StyleListMarker,
-        Theming.MarkdownElementKeys.Table => MarkdownStringKeys.StyleTable,
-        Theming.MarkdownElementKeys.TableHeader => MarkdownStringKeys.StyleTableHeader,
-        Theming.MarkdownElementKeys.TableCell => MarkdownStringKeys.StyleTableCell,
-        _ => null,
-    };
+    public static string? StyleNameKey(string elementKey) =>
+        GetStyleNameDefinition(elementKey).Key;
+
+    // Keep the resource key and fallback in one value mapping so localized UIA
+    // names and host string-provider keys cannot drift. The tuple is a value
+    // type; this does not introduce a dictionary or allocate per lookup.
+    private static (string? Key, string Fallback) GetStyleNameDefinition(string elementKey) =>
+        elementKey switch
+        {
+            Theming.MarkdownElementKeys.Body => (MarkdownStringKeys.StyleBody, "Body"),
+            Theming.MarkdownElementKeys.Heading1 => (MarkdownStringKeys.StyleHeading1, "Heading 1"),
+            Theming.MarkdownElementKeys.Heading2 => (MarkdownStringKeys.StyleHeading2, "Heading 2"),
+            Theming.MarkdownElementKeys.Heading3 => (MarkdownStringKeys.StyleHeading3, "Heading 3"),
+            Theming.MarkdownElementKeys.Heading4 => (MarkdownStringKeys.StyleHeading4, "Heading 4"),
+            Theming.MarkdownElementKeys.Heading5 => (MarkdownStringKeys.StyleHeading5, "Heading 5"),
+            Theming.MarkdownElementKeys.Heading6 => (MarkdownStringKeys.StyleHeading6, "Heading 6"),
+            Theming.MarkdownElementKeys.CodeBlock => (MarkdownStringKeys.StyleCodeBlock, "Code block"),
+            Theming.MarkdownElementKeys.CodeInline => (MarkdownStringKeys.StyleInlineCode, "Inline code"),
+            Theming.MarkdownElementKeys.Quote => (MarkdownStringKeys.StyleQuote, "Quote"),
+            Theming.MarkdownElementKeys.Link => (MarkdownStringKeys.StyleLink, "Link"),
+            Theming.MarkdownElementKeys.Strong => (MarkdownStringKeys.StyleStrong, "Strong"),
+            Theming.MarkdownElementKeys.Emphasis => (MarkdownStringKeys.StyleEmphasis, "Emphasis"),
+            Theming.MarkdownElementKeys.Strikethrough => (MarkdownStringKeys.StyleStrikethrough, "Strikethrough"),
+            Theming.MarkdownElementKeys.Subscript => (MarkdownStringKeys.StyleSubscript, "Subscript"),
+            Theming.MarkdownElementKeys.Superscript => (MarkdownStringKeys.StyleSuperscript, "Superscript"),
+            Theming.MarkdownElementKeys.Inserted => (MarkdownStringKeys.StyleInserted, "Inserted"),
+            Theming.MarkdownElementKeys.Marked => (MarkdownStringKeys.StyleMarked, "Marked"),
+            Theming.MarkdownElementKeys.Abbreviation => (MarkdownStringKeys.StyleAbbreviation, "Abbreviation"),
+            Theming.MarkdownElementKeys.DefinitionTerm => (MarkdownStringKeys.StyleDefinitionTerm, "Definition term"),
+            Theming.MarkdownElementKeys.DefinitionDescription => (MarkdownStringKeys.StyleDefinitionDescription, "Definition"),
+            Theming.MarkdownElementKeys.Figure => (MarkdownStringKeys.StyleFigure, "Figure"),
+            Theming.MarkdownElementKeys.FigureCaption => (MarkdownStringKeys.StyleFigureCaption, "Figure caption"),
+            Theming.MarkdownElementKeys.Diagram => (MarkdownStringKeys.StyleDiagram, "Diagram"),
+            Theming.MarkdownElementKeys.ListMarker => (MarkdownStringKeys.StyleListMarker, "List marker"),
+            Theming.MarkdownElementKeys.Table => (MarkdownStringKeys.StyleTable, "Table"),
+            Theming.MarkdownElementKeys.TableHeader => (MarkdownStringKeys.StyleTableHeader, "Table header"),
+            Theming.MarkdownElementKeys.TableCell => (MarkdownStringKeys.StyleTableCell, "Table cell"),
+            _ => (null, elementKey),
+        };
 
     internal static string Resolve(string key, string fallback, CultureInfo culture)
     {

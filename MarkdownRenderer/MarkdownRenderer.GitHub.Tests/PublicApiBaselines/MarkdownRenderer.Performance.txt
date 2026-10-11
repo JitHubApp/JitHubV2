@@ -5,6 +5,18 @@
 
 assembly MarkdownRenderer.Performance
 
+public interface MarkdownRenderer.Performance.IMarkdownImageSourceWorkTracker
+  public abstract void TrackWork(System.Threading.Tasks.Task completion);
+
+public interface MarkdownRenderer.Performance.IMarkdownLeasedImageResolver : MarkdownRenderer.Images.IMarkdownImageResolver
+  public abstract System.Threading.Tasks.ValueTask<MarkdownRenderer.Performance.MarkdownImageResolutionLease> ResolveWithSourceLeaseAsync(string source, MarkdownRenderer.Images.MarkdownImageResolveContext context, MarkdownRenderer.Images.IMarkdownImageSourceByteAdmission admission, System.Threading.CancellationToken cancellationToken);
+
+public sealed class MarkdownRenderer.Performance.MarkdownImageResolutionLease : System.IDisposable
+  public MarkdownImageResolutionLease(MarkdownRenderer.Images.MarkdownImageResolution resolution, System.IDisposable? sourceReservation);
+  public MarkdownRenderer.Images.MarkdownImageResolution Resolution { get; }
+  public MarkdownRenderer.Performance.MarkdownImageResolutionLease Retain();
+  public void Dispose();
+
 public sealed class MarkdownRenderer.Performance.MarkdownPerformanceSession : MarkdownRenderer.Performance.IMarkdownPerformanceSession, System.IAsyncDisposable, System.IDisposable
   public MarkdownPerformanceSession(MarkdownRenderer.Performance.MarkdownPerformanceOptions options);
   public MarkdownRenderer.Performance.MarkdownPerformanceOptions Options { get; }

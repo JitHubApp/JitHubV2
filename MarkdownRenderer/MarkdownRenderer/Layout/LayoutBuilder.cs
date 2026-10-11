@@ -1,5 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+using System.Diagnostics;
+#endif
 using System.Threading;
 using Microsoft.Graphics.Canvas.Text;
 using Microsoft.UI.Xaml;
@@ -20,6 +24,9 @@ namespace MarkdownRenderer.Layout;
 
 internal sealed class LayoutBuilder
 {
+    private const string ListContainerStyleRole = MarkdownElementKeys.List;
+    private const string DeferredSceneMarkerAttribute = "renderer.internal.deferred-scene";
+
     private const int MaxMonolithicTextLayoutLength = 32_768;
     private const int MaxCodeBlockLinesPerChunk = 128;
 
@@ -30,6 +37,11 @@ internal sealed class LayoutBuilder
     private readonly IReadOnlySet<HostedElementFallbackKey> _hostedElementFallbacks;
     private readonly MarkdownEngine? _sharedLayoutEngine;
     private readonly SharedLayoutMetricsKey? _sharedLayoutMetricsKey;
+    // A worker result may contain nested containers or several scene owners.
+    // Scope its scene-free identity through construction, never its fragment.
+    private string? _materializedSceneMarker;
+    private int _materializedSceneOrdinal;
+    private object? _materializedSceneProjectionIdentity;
 
     public LayoutBuilder(
         MarkdownLayoutContext context,
@@ -54,43 +66,140 @@ internal sealed class LayoutBuilder
 
     public LayoutSnapshot Build(MarkdownDocument document, float availableWidth, CancellationToken cancellationToken)
     {
-        var blocks = BuildBlocks(document, cancellationToken);
-        SharedLayoutMetrics? sharedMetrics = AcquireSharedMetrics(blocks.Count);
-
-        Thickness documentPadding = _context.ThemeSnapshot.DocumentPadding;
-        float contentX = (float)documentPadding.Left;
-        float contentWidth = (float)Math.Max(
-            1,
-            availableWidth - documentPadding.Left - documentPadding.Right);
-        float blockSpacing = (float)_context.ThemeSnapshot.BlockSpacing;
-        float y = (float)documentPadding.Top;
-        for (int blockOrdinal = 0; blockOrdinal < blocks.Count; blockOrdinal++)
+        // Build is deliberately eager even when the context borrows a
+        // progressive performance session. Clear any stale builder hint before
+        // constructing runs and leave the reusable context in its neutral state.
+        _context.UseProgressiveNativeSceneResidency = false;
+        try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            BlockBox b = blocks[blockOrdinal];
-            b.ThrowIfCancellationRequested();
-            float h = b.Measure(contentWidth);
-            b.Arrange(contentX, y, contentWidth);
-            sharedMetrics?.RecordHeight(blockOrdinal, h);
-            y += h;
-            if (blockOrdinal < blocks.Count - 1)
-                y += blockSpacing;
+            return BuildEagerCore(document, availableWidth, cancellationToken);
         }
-        y += (float)documentPadding.Bottom;
+        finally
+        {
+            _context.UseProgressiveNativeSceneResidency = false;
+        }
+    }
 
-        var (defs, refs) = _context.SnapshotFootnoteRegistry();
-        var fragments = _context.SnapshotFragmentTargets();
-        return new LayoutSnapshot(
-            blocks,
-            _context.SourceMap,
-            availableWidth,
-            y,
-            defs,
-            refs,
-            fragments,
-            sharedMetrics,
-            documentPadding,
-            blockSpacing);
+    private LayoutSnapshot BuildEagerCore(
+        MarkdownDocument document,
+        float availableWidth,
+        CancellationToken cancellationToken)
+    {
+        CancellationToken effectiveCancellationToken = cancellationToken.CanBeCanceled
+            ? cancellationToken : _context.CancellationToken;
+        using var cancellationScope = LayoutPassCancellation.Push(effectiveCancellationToken);
+        effectiveCancellationToken.ThrowIfCancellationRequested();
+        MarkdownLayoutConstructionScope ownership = BeginBlockBuildOwnership();
+        LayoutSnapshot? snapshot = null;
+        IMarkdownVectorSceneResidencyPolicy? vectorSceneResidencyPolicy = null;
+        try
+        {
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+            MarkdownLayoutDiagnostics? diagnostics = _context.LayoutDiagnostics;
+            if (diagnostics?.IsCaptured == true)
+                diagnostics = null;
+            long phaseStarted = diagnostics is null ? 0 : Stopwatch.GetTimestamp();
+#endif
+            var blocks = BuildBlocks(document, effectiveCancellationToken);
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+            if (diagnostics is not null)
+            {
+                diagnostics.RecordBlockConstruction(Stopwatch.GetTimestamp() - phaseStarted);
+                diagnostics.SetTopLevelBlockCount(blocks.Count);
+            }
+#endif
+
+            SharedLayoutMetrics? sharedMetrics = AcquireSharedMetrics(blocks.Count);
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+            if (diagnostics is not null)
+                phaseStarted = Stopwatch.GetTimestamp();
+#endif
+
+            Thickness documentPadding = _context.ThemeSnapshot.DocumentPadding;
+            float contentX = (float)documentPadding.Left;
+            float contentWidth = (float)Math.Max(
+                1,
+                availableWidth - documentPadding.Left - documentPadding.Right);
+            float blockSpacing = (float)_context.ThemeSnapshot.BlockSpacing;
+            float y = (float)documentPadding.Top;
+            for (int blockOrdinal = 0; blockOrdinal < blocks.Count; blockOrdinal++)
+            {
+                effectiveCancellationToken.ThrowIfCancellationRequested();
+                BlockBox b = blocks[blockOrdinal];
+                b.ThrowIfCancellationRequested();
+                float h = b.Measure(contentWidth);
+                b.Arrange(contentX, y, contentWidth);
+                sharedMetrics?.RecordHeight(blockOrdinal, h);
+                y += h;
+                if (blockOrdinal < blocks.Count - 1 &&
+                    !StackBox.SharesSafeHtmlInlineFlow(b, blocks[blockOrdinal + 1]))
+                    y += blockSpacing;
+            }
+            effectiveCancellationToken.ThrowIfCancellationRequested();
+            y += (float)documentPadding.Bottom;
+
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+            if (diagnostics is not null)
+            {
+                diagnostics.RecordMeasureArrange(Stopwatch.GetTimestamp() - phaseStarted);
+                phaseStarted = Stopwatch.GetTimestamp();
+            }
+#endif
+
+            var (defs, refs) = _context.SnapshotFootnoteRegistry();
+            var fragments = _context.SnapshotFragmentTargets();
+            vectorSceneResidencyPolicy =
+                _context.PerformanceSession?.CreateVectorSceneResidencyPolicy(
+                    blocks, _context.PerformanceDocumentOwner);
+            snapshot = new LayoutSnapshot(
+                blocks,
+                _context.SourceMap,
+                availableWidth,
+                y,
+                generatedBlockIndexUpperBound: _context.GeneratedBlockIndexUpperBound,
+                footnoteDefBlocks: defs,
+                footnoteRefBlocks: refs,
+                fragmentTargetBlocks: fragments,
+                sharedLayoutMetrics: sharedMetrics,
+                documentPadding: documentPadding,
+                blockSpacing: blockSpacing,
+                vectorSceneResidencyPolicy: vectorSceneResidencyPolicy);
+            vectorSceneResidencyPolicy = null;
+            ownership.TransferToSnapshot(blocks);
+            if (snapshot.VectorSceneResidencyPolicy is not null)
+            {
+                // The explicit eager API keeps its all-document measure/arrange
+                // contract. When the caller has opted into native admission,
+                // attach the policy and make the whole eagerly built document
+                // its initial residency band so any capacity fallback remains
+                // owned and can later be narrowed/refilled by a viewport host.
+                LazyLayoutBand eagerDocumentBand = LazyLayoutBand.FromViewport(
+                    0, snapshot.Size.Height, overscan: 0);
+                snapshot.EnsureMeasuredBand(
+                    eagerDocumentBand, eagerDocumentBand, effectiveCancellationToken);
+            }
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+            if (diagnostics is not null)
+                diagnostics.RecordSnapshotConstruction(Stopwatch.GetTimestamp() - phaseStarted);
+#endif
+            return snapshot;
+        }
+        catch
+        {
+            if (snapshot is null)
+            {
+                if (vectorSceneResidencyPolicy is not null)
+                    DisposePreservingBuildFailure(vectorSceneResidencyPolicy);
+                TrackRetirementTasks(ownership.DisposeRootsBestEffort());
+            }
+            else
+                TrackRetirementTask(RetireSnapshotPreservingBuildFailure(snapshot));
+            throw;
+        }
+        finally
+        {
+            EndBlockBuildOwnership(ownership);
+        }
     }
 
     public LayoutSnapshot BuildLazy(
@@ -100,26 +209,165 @@ internal sealed class LayoutBuilder
         double viewportHeight,
         double overscan,
         CancellationToken cancellationToken)
-    {
-        var blocks = BuildBlocks(document, cancellationToken);
-        cancellationToken.ThrowIfCancellationRequested();
-        SharedLayoutMetrics? sharedMetrics = AcquireSharedMetrics(blocks.Count);
-
-        var (defs, refs) = _context.SnapshotFootnoteRegistry();
-        var fragments = _context.SnapshotFragmentTargets();
-        var snapshot = new LayoutSnapshot(
-            blocks,
-            _context.SourceMap,
+        => BuildLazyWithVisibleVectorBand(
+            document,
             availableWidth,
-            0,
-            defs,
-            refs,
-            fragments,
-            sharedMetrics,
-            _context.ThemeSnapshot.DocumentPadding,
-            _context.ThemeSnapshot.BlockSpacing);
-        snapshot.EnableLazyLayout(availableWidth, viewportTop, viewportHeight, overscan, cancellationToken);
-        return snapshot;
+            viewportTop,
+            viewportHeight,
+            overscan,
+            initialVisibleVectorBand: null,
+            cancellationToken: cancellationToken);
+
+    /// <summary>
+    /// Progressive renderer entry point: layout/image realization retains its
+    /// look-ahead band while native vector residency starts from the actual
+    /// viewport captured by the owning control.
+    /// </summary>
+    internal LayoutSnapshot BuildLazyForViewport(
+        MarkdownDocument document,
+        float availableWidth,
+        double viewportTop,
+        double viewportHeight,
+        double overscan,
+        CancellationToken cancellationToken)
+        => BuildLazyWithVisibleVectorBand(
+            document,
+            availableWidth,
+            viewportTop,
+            viewportHeight,
+            overscan,
+            LazyLayoutBand.FromViewport(viewportTop, viewportHeight, overscan: 0),
+            cancellationToken);
+
+    private LayoutSnapshot BuildLazyWithVisibleVectorBand(
+        MarkdownDocument document,
+        float availableWidth,
+        double viewportTop,
+        double viewportHeight,
+        double overscan,
+        LazyLayoutBand? initialVisibleVectorBand,
+        CancellationToken cancellationToken)
+    {
+        IMarkdownPerformanceSessionInternal? session = _context.PerformanceSession;
+        _context.UseProgressiveNativeSceneResidency = session is not null &&
+            !session.IsDisposed &&
+            session.Options.DeferOffscreenScenes;
+        try
+        {
+            return BuildLazyCore(
+                document,
+                availableWidth,
+                viewportTop,
+                viewportHeight,
+                overscan,
+                cancellationToken,
+                initialVisibleVectorBand);
+        }
+        finally
+        {
+            // Context instances can be reused by a later eager build. The
+            // residency flag is a scoped construction hint, not a session-wide
+            // behavior switch.
+            _context.UseProgressiveNativeSceneResidency = false;
+        }
+    }
+
+    private LayoutSnapshot BuildLazyCore(
+        MarkdownDocument document,
+        float availableWidth,
+        double viewportTop,
+        double viewportHeight,
+        double overscan,
+        CancellationToken cancellationToken,
+        LazyLayoutBand? initialVisibleVectorBand)
+    {
+        CancellationToken effectiveCancellationToken = cancellationToken.CanBeCanceled
+            ? cancellationToken : _context.CancellationToken;
+        using var cancellationScope = LayoutPassCancellation.Push(effectiveCancellationToken);
+        effectiveCancellationToken.ThrowIfCancellationRequested();
+        MarkdownLayoutConstructionScope ownership = BeginBlockBuildOwnership();
+        LayoutSnapshot? snapshot = null;
+        IMarkdownVectorSceneResidencyPolicy? vectorSceneResidencyPolicy = null;
+        try
+        {
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+            MarkdownLayoutDiagnostics? diagnostics = _context.LayoutDiagnostics;
+            if (diagnostics?.IsCaptured == true)
+                diagnostics = null;
+            long phaseStarted = diagnostics is null ? 0 : Stopwatch.GetTimestamp();
+#endif
+            var blocks = BuildBlocks(document, effectiveCancellationToken);
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+            if (diagnostics is not null)
+            {
+                diagnostics.RecordBlockConstruction(Stopwatch.GetTimestamp() - phaseStarted);
+                diagnostics.SetTopLevelBlockCount(blocks.Count);
+            }
+#endif
+
+            effectiveCancellationToken.ThrowIfCancellationRequested();
+            SharedLayoutMetrics? sharedMetrics = AcquireSharedMetrics(blocks.Count);
+
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+            if (diagnostics is not null)
+                phaseStarted = Stopwatch.GetTimestamp();
+#endif
+            var (defs, refs) = _context.SnapshotFootnoteRegistry();
+            var fragments = _context.SnapshotFragmentTargets();
+            vectorSceneResidencyPolicy =
+                _context.PerformanceSession?.CreateVectorSceneResidencyPolicy(
+                    blocks, _context.PerformanceDocumentOwner);
+            snapshot = new LayoutSnapshot(
+                blocks,
+                _context.SourceMap,
+                availableWidth,
+                0,
+                generatedBlockIndexUpperBound: _context.GeneratedBlockIndexUpperBound,
+                footnoteDefBlocks: defs,
+                footnoteRefBlocks: refs,
+                fragmentTargetBlocks: fragments,
+                sharedLayoutMetrics: sharedMetrics,
+                documentPadding: _context.ThemeSnapshot.DocumentPadding,
+                blockSpacing: _context.ThemeSnapshot.BlockSpacing,
+                vectorSceneResidencyPolicy: vectorSceneResidencyPolicy);
+            vectorSceneResidencyPolicy = null;
+            ownership.TransferToSnapshot(blocks);
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+            if (diagnostics is not null)
+            {
+                diagnostics.RecordSnapshotConstruction(Stopwatch.GetTimestamp() - phaseStarted);
+                phaseStarted = Stopwatch.GetTimestamp();
+            }
+#endif
+            snapshot.EnableLazyLayout(
+                availableWidth,
+                viewportTop,
+                viewportHeight,
+                overscan,
+                effectiveCancellationToken,
+                initialVisibleVectorBand);
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+            if (diagnostics is not null)
+                diagnostics.RecordMeasureArrange(Stopwatch.GetTimestamp() - phaseStarted);
+#endif
+            return snapshot;
+        }
+        catch
+        {
+            if (snapshot is not null)
+                TrackRetirementTask(RetireSnapshotPreservingBuildFailure(snapshot));
+            else
+            {
+                if (vectorSceneResidencyPolicy is not null)
+                    DisposePreservingBuildFailure(vectorSceneResidencyPolicy);
+                TrackRetirementTasks(ownership.DisposeRootsBestEffort());
+            }
+            throw;
+        }
+        finally
+        {
+            EndBlockBuildOwnership(ownership);
+        }
     }
 
     private SharedLayoutMetrics? AcquireSharedMetrics(int topLevelBlockCount)
@@ -135,6 +383,7 @@ internal sealed class LayoutBuilder
 
     private List<BlockBox> BuildBlocks(MarkdownDocument document, CancellationToken cancellationToken)
     {
+        using var childInlineScope = _context.PushChildInlineBuilder(AddExtensionContainerInlines);
         var blocks = new List<BlockBox>();
         SafeHtmlBlockScopeTracker? htmlScopes = _context.Registry.SafeHtmlPolicy is null
             ? null
@@ -144,11 +393,26 @@ internal sealed class LayoutBuilder
         {
             cancellationToken.ThrowIfCancellationRequested();
             bool suppressedBeforeBlock = htmlScopes?.IsContentSuppressed == true;
+            SafeHtmlAlignment alignmentAtBlockEntry = htmlScopes?.CurrentAlignment ?? SafeHtmlAlignment.Inherit;
+            int? inlineFlowScopeIdAtBlockEntry = htmlScopes?.CurrentInlineFlowScopeId;
             bool scopeOnly = b is HtmlBlock htmlBlock && htmlScopes?.Process(
                     htmlBlock.Lines.ToString(),
                     htmlBlock.Span.Start,
                     _context.DisclosureStates,
                     cancellationToken) == true;
+            int? inlineFlowScopeIdForBlock = htmlScopes?.CurrentInlineFlowScopeId;
+            if (inlineFlowScopeIdAtBlockEntry is int entryScopeId &&
+                inlineFlowScopeIdForBlock != entryScopeId)
+            {
+                // Fail closed when this HtmlBlock exits the flow that was open
+                // at entry (for example `</div><br>outside`). A newly opened
+                // scope may still qualify if the renderer confirms the block is
+                // exactly that scope's inline-only content.
+                inlineFlowScopeIdForBlock = null;
+            }
+            bool inlineFlowContinuesPrevious = inlineFlowScopeIdForBlock is int scopeId &&
+                blocks.Count > 0 &&
+                blocks[^1].SafeHtmlInlineFlowScopeId == scopeId;
             if (suppressedBeforeBlock && b is not HtmlBlock)
             {
                 htmlScopes?.ObserveBlockTags(
@@ -165,6 +429,7 @@ internal sealed class LayoutBuilder
                     {
                         BlockIndex = _context.NextBlockIndex(),
                     };
+                    TrackBlock(notice);
                     AddHtmlBudgetNotice(notice);
                     blocks.Add(notice);
                     htmlBudgetNoticeAdded = true;
@@ -182,11 +447,42 @@ internal sealed class LayoutBuilder
                 continue;
             }
 
-            var box = BuildBlock(b);
+            BlockBox? box;
+            SafeHtmlBlockScopeTracker? nestedScopes = b is ContainerBlock or HtmlBlock
+                ? htmlScopes?.CloneForNestedContent()
+                : null;
+            using (_context.PushSafeHtmlBlockContext(
+                       alignmentAtBlockEntry,
+                       nestedScopes,
+                       inlineFlowScopeIdForBlock,
+                       inlineFlowContinuesPrevious))
+                box = BuildBlock(b);
             if (box is not null)
             {
-                if (htmlScopes is not null)
-                    ApplyHtmlAlignment(box, htmlScopes.CurrentAlignment);
+                // The safe renderer has already claimed this HtmlBlock, so an
+                // empty renderer-owned root must not reintroduce vertical gap
+                // for comments/declarations. It cannot fall back to literal
+                // core rendering because BuildBlock has already dispatched it.
+                if (b is HtmlBlock && box is StackBox { Children.Count: 0 })
+                {
+                    DiscardUnpublishedBlock(box);
+                    continue;
+                }
+
+                if (htmlScopes is not null &&
+                    b is not HtmlBlock)
+                    ApplyHtmlAlignment(box, alignmentAtBlockEntry);
+
+                if (b is ParagraphBlock paragraph &&
+                    box is InlineContainerBox inlineParagraph &&
+                    inlineFlowScopeIdForBlock is int inlineFlowScopeId &&
+                    IsBadgeOnlyHtmlFlowParagraph(paragraph))
+                {
+                    inlineParagraph.SafeHtmlInlineFlowScopeId = inlineFlowScopeId;
+                    inlineParagraph.UseContainerMargin = false;
+                    inlineParagraph.Margin = default;
+                }
+
                 blocks.Add(box);
             }
 
@@ -202,6 +498,7 @@ internal sealed class LayoutBuilder
                     {
                         BlockIndex = _context.NextBlockIndex(),
                     };
+                    TrackBlock(notice);
                     AddHtmlBudgetNotice(notice);
                     blocks.Add(notice);
                     htmlBudgetNoticeAdded = true;
@@ -209,11 +506,23 @@ internal sealed class LayoutBuilder
             }
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
+
+        byte layoutPolicy = _context.ThemeSnapshot.LayoutPolicy;
+        if ((layoutPolicy & 4) != 0)
+            TopLevelBlockMarginCollapse.ResetLeadingTopMargin(blocks);
+        if ((layoutPolicy & 1) != 0)
+            TopLevelBlockMarginCollapse.Apply(blocks);
+        if ((layoutPolicy & 2) != 0)
+            TopLevelBlockMarginCollapse.ResetTrailingBottomMargin(blocks);
         return blocks;
     }
 
     private static void ApplyHtmlAlignment(BlockBox box, SafeHtmlAlignment alignment)
     {
+        if (box is StackBox { HasResolvedSafeHtmlAlignment: true })
+            return;
+
         if (alignment == SafeHtmlAlignment.Inherit)
         {
             return;
@@ -266,6 +575,7 @@ internal sealed class LayoutBuilder
                 goto SkipEmbedFactory;
 
             var eb = new EmbedBox(block, ef, _context);
+            TrackBlock(eb);
             eb.BlockIndex = _context.NextBlockIndex();
             // Register the source span so Ctrl+C across an embed copies the
             // original markdown that produced it.
@@ -304,7 +614,10 @@ internal sealed class LayoutBuilder
         };
 
         if (box is not null)
+        {
+            TrackBlock(box);
             _context.RegisterMarkdownAttributes(block, box.BlockIndex);
+        }
 
         return box;
     }
@@ -315,6 +628,7 @@ internal sealed class LayoutBuilder
         {
             BlockIndex = _context.NextBlockIndex(),
         };
+        TrackBlock(box);
         string source = block.Lines.ToString();
         box.Add(new TextRun(source)
         {
@@ -347,15 +661,23 @@ internal sealed class LayoutBuilder
             FlowDirection = _context.FlowDirection,
             BlockIndex = _context.NextBlockIndex(),
         };
+        TrackBlock(stack);
         foreach (MarkdownContent content in fragment.Items)
         {
             var child = TryBuildDeclarativeContent(content, fallbackKey);
             if (child is null)
+            {
+                DiscardUnpublishedBlock(stack);
                 return null;
-            stack.Add(child);
+            }
+            AddStackChild(stack, child);
         }
 
-        return stack.Children.Count > 0 ? stack : null;
+        if (stack.Children.Count > 0)
+            return stack;
+
+        DiscardUnpublishedBlock(stack);
+        return null;
     }
 
     private bool CanBuildDeclarativeContent(MarkdownContent content) => content.Kind switch
@@ -455,6 +777,7 @@ internal sealed class LayoutBuilder
             {
                 BlockIndex = _context.NextBlockIndex(),
             };
+            TrackBlock(box);
             if (!content.SourceSpan.IsEmpty)
                 _context.SourceMap.Add(box.BlockIndex, 0, 1, content.SourceSpan);
             return box;
@@ -472,7 +795,9 @@ internal sealed class LayoutBuilder
                         : MarkdownElementKeys.Diagram))
             {
                 BlockIndex = _context.NextBlockIndex(),
+                DeferredSceneBinding = NextMaterializedSceneBinding(),
             };
+            TrackBlock(vector);
             if (!content.SourceSpan.IsEmpty)
                 _context.SourceMap.Add(vector.BlockIndex, 0, 1, content.SourceSpan);
             return vector;
@@ -495,8 +820,9 @@ internal sealed class LayoutBuilder
                 !string.IsNullOrWhiteSpace(deferredSceneMarker) &&
                 _context.PerformanceSession is IMarkdownPerformanceSessionInternal session &&
                 _context.PerformanceDocumentOwner is { } documentOwner &&
-                session.TryGetDeferredSceneResult(documentOwner, deferredSceneMarker, out MarkdownContentFragment? result) &&
-                TryBuildDeclarativeBlock(result!) is { } materialized)
+                session.TryGetDeferredSceneResult(documentOwner, deferredSceneMarker,
+                    out MarkdownContentFragment? result, out object? projectionIdentity) &&
+                TryBuildMaterializedSceneBlock(deferredSceneMarker, result!, projectionIdentity) is { } materialized)
                 return materialized;
 
             return BuildDeclarativeCodeBlock(content);
@@ -517,12 +843,21 @@ internal sealed class LayoutBuilder
                 FlowDirection = _context.FlowDirection,
                 BlockIndex = _context.NextBlockIndex(),
             };
+            TrackBlock(stack);
             foreach (MarkdownContent childContent in content.Children)
             {
                 var child = TryBuildDeclarativeContent(childContent, fallbackKey);
                 if (child is null)
+                {
+                    DiscardUnpublishedBlock(stack);
                     return null;
-                stack.Add(child);
+                }
+                AddStackChild(stack, child);
+            }
+            if (stack.Children.Count == 0)
+            {
+                DiscardUnpublishedBlock(stack);
+                return null;
             }
             return stack;
         }
@@ -539,10 +874,11 @@ internal sealed class LayoutBuilder
                 ? CanvasHorizontalAlignment.Center
                 : CanvasHorizontalAlignment.Left,
         };
+        TrackBlock(box);
         var runs = new List<InlineRun>();
         AppendDeclarativeInline(content, runs);
         foreach (InlineRun run in runs)
-            box.Add(run);
+            AddInlineRun(box, run);
         return box;
     }
 
@@ -559,12 +895,13 @@ internal sealed class LayoutBuilder
         {
             BlockIndex = _context.NextBlockIndex(),
         };
+        TrackBlock(box);
         if (!content.SourceSpan.IsEmpty)
             _context.SourceMap.Add(box.BlockIndex, 0, 1, content.SourceSpan);
         return box;
     }
 
-    private BlockBox BuildDeclarativeList(
+    private BlockBox? BuildDeclarativeList(
         MarkdownContent content,
         HostedElementFallbackKey fallbackKey)
     {
@@ -574,18 +911,26 @@ internal sealed class LayoutBuilder
             BlockIndex = _context.NextBlockIndex(),
             FlowDirection = _context.FlowDirection,
         };
+        TrackBlock(stack);
         bool ordered = GetBooleanAttribute(content, MarkdownContentAttributes.ListOrdered);
         int ordinal = GetPositiveIntegerAttribute(content, MarkdownContentAttributes.ListStart, 1);
         foreach (MarkdownContent item in content.Children)
         {
-            stack.Add(BuildDeclarativeListItem(item, fallbackKey, ordered, ordinal));
+            ListItemBox? listItem = BuildDeclarativeListItem(item, fallbackKey, ordered, ordinal);
+            if (listItem is null)
+            {
+                DiscardUnpublishedBlock(stack);
+                return null;
+            }
+
+            AddStackChild(stack, listItem);
             ordinal++;
         }
 
         return stack;
     }
 
-    private ListItemBox BuildDeclarativeListItem(
+    private ListItemBox? BuildDeclarativeListItem(
         MarkdownContent item,
         HostedElementFallbackKey fallbackKey,
         bool ordered,
@@ -601,7 +946,11 @@ internal sealed class LayoutBuilder
         var marker = new InlineContainerBox(_context, MarkdownElementKeys.ListMarker)
         {
             BlockIndex = _context.NextBlockIndex(),
+            TextAlignment = ordered
+                ? CanvasHorizontalAlignment.Left
+                : CanvasHorizontalAlignment.Center,
         };
+        TrackBlock(marker);
         marker.Add(new TextRun(ordered ? $"{ordinal}." : "\u2022")
         {
             ElementKey = MarkdownElementKeys.ListMarker,
@@ -613,14 +962,29 @@ internal sealed class LayoutBuilder
             BlockIndex = _context.NextBlockIndex(),
             FlowDirection = _context.FlowDirection,
         };
+        TrackBlock(body);
         foreach (MarkdownContent childContent in item.Children)
-            body.Add(TryBuildDeclarativeContent(childContent, fallbackKey)!);
+        {
+            BlockBox? child = TryBuildDeclarativeContent(childContent, fallbackKey);
+            if (child is null)
+            {
+                DiscardUnpublishedBlock(body);
+                DiscardUnpublishedBlock(marker);
+                return null;
+            }
 
-        return new ListItemBox(marker, body, markerWidth)
+            AddStackChild(body, child);
+        }
+
+        var listItem = new ListItemBox(marker, body, markerWidth)
         {
             BlockIndex = _context.NextBlockIndex(),
             FlowDirection = _context.FlowDirection,
         };
+        TrackBlock(listItem);
+        AdoptBlock(marker);
+        AdoptBlock(body);
+        return listItem;
     }
 
     private TableBox BuildDeclarativeTable(MarkdownContent content)
@@ -639,10 +1003,18 @@ internal sealed class LayoutBuilder
             (isHeader ? headerRows : bodyRows).Add(cells);
         }
 
-        return new TableBox(_context, headerRows.ToArray(), bodyRows.ToArray())
+        var table = new TableBox(_context, headerRows.ToArray(), bodyRows.ToArray())
         {
             BlockIndex = _context.NextBlockIndex(),
         };
+        TrackBlock(table);
+        foreach (InlineContainerBox[] row in headerRows)
+            foreach (InlineContainerBox cell in row)
+                AdoptBlock(cell);
+        foreach (InlineContainerBox[] row in bodyRows)
+            foreach (InlineContainerBox cell in row)
+                AdoptBlock(cell);
+        return table;
     }
 
     private InlineContainerBox BuildDeclarativeTableCell(MarkdownContent cell, bool isHeader)
@@ -654,11 +1026,12 @@ internal sealed class LayoutBuilder
         {
             BlockIndex = _context.NextBlockIndex(),
         };
+        TrackBlock(box);
         var runs = new List<InlineRun>();
         foreach (MarkdownContent child in cell.Children)
             AppendDeclarativeInline(child, runs);
         foreach (InlineRun run in runs)
-            box.Add(run);
+            AddInlineRun(box, run);
         return box;
     }
 
@@ -682,8 +1055,74 @@ internal sealed class LayoutBuilder
         return result.Count > 0;
     }
 
+    private MarkdownDeferredSceneBinding? NextMaterializedSceneBinding() =>
+        _materializedSceneMarker is { } marker
+            ? new MarkdownDeferredSceneBinding(marker, _materializedSceneOrdinal++, _materializedSceneProjectionIdentity)
+            : null;
+
+    private BlockBox? TryBuildMaterializedSceneBlock(
+        string marker,
+        MarkdownContentFragment fragment,
+        object? projectionIdentity)
+    {
+        string? previousMarker = _materializedSceneMarker;
+        int previousOrdinal = _materializedSceneOrdinal;
+        object? previousIdentity = _materializedSceneProjectionIdentity;
+        _materializedSceneMarker = marker;
+        _materializedSceneOrdinal = 0;
+        _materializedSceneProjectionIdentity = projectionIdentity;
+        try
+        {
+            return TryBuildDeclarativeBlock(fragment);
+        }
+        finally
+        {
+            _materializedSceneMarker = previousMarker;
+            _materializedSceneOrdinal = previousOrdinal;
+            _materializedSceneProjectionIdentity = previousIdentity;
+        }
+    }
+
+    private void AppendMaterializedSceneInline(
+        string marker,
+        MarkdownContentFragment fragment,
+        object? projectionIdentity,
+        List<InlineRun> destination)
+    {
+        string? previousMarker = _materializedSceneMarker;
+        int previousOrdinal = _materializedSceneOrdinal;
+        object? previousIdentity = _materializedSceneProjectionIdentity;
+        _materializedSceneMarker = marker;
+        _materializedSceneOrdinal = 0;
+        _materializedSceneProjectionIdentity = projectionIdentity;
+        try
+        {
+            foreach (MarkdownContent item in fragment.Items)
+                AppendDeclarativeInline(item, destination);
+        }
+        finally
+        {
+            _materializedSceneMarker = previousMarker;
+            _materializedSceneOrdinal = previousOrdinal;
+            _materializedSceneProjectionIdentity = previousIdentity;
+        }
+    }
+
     private void AppendDeclarativeInline(MarkdownContent content, List<InlineRun> destination)
     {
+        if (content.Kind == MarkdownContentKind.VectorScene &&
+            content.Attributes.TryGetValue(DeferredSceneMarkerAttribute, out string? marker) &&
+            !string.IsNullOrWhiteSpace(marker) &&
+            _context.PerformanceSession is IMarkdownPerformanceSessionInternal session &&
+            _context.PerformanceDocumentOwner is { } documentOwner &&
+            session.TryGetDeferredSceneResult(documentOwner, marker,
+                out MarkdownContentFragment? materialized, out object? projectionIdentity) &&
+            materialized is not null && materialized.Items.Count > 0)
+        {
+            AppendMaterializedSceneInline(marker, materialized, projectionIdentity, destination);
+            return;
+        }
+
         switch (content.Kind)
         {
             case MarkdownContentKind.Text:
@@ -704,7 +1143,8 @@ internal sealed class LayoutBuilder
                         content.AccessibilityRole == MarkdownAccessibilityRole.Math
                             ? MarkdownElementKeys.Math
                             : MarkdownElementKeys.Diagram);
-                    destination.Add(new InlineVectorSceneRun(
+                    string? deferredMarker = GetAttribute(content, DeferredSceneMarkerAttribute);
+                    var run = new InlineVectorSceneRun(
                         _context,
                         content.VectorScene,
                         content.SemanticText ?? string.Empty,
@@ -714,7 +1154,13 @@ internal sealed class LayoutBuilder
                     {
                         ElementKey = elementKey,
                         SourceSpan = content.SourceSpan,
-                    });
+                        DeferredSceneMarker = deferredMarker,
+                        DeferredSceneBinding = deferredMarker is null
+                            ? NextMaterializedSceneBinding()
+                            : null,
+                    };
+                    _context.RegisterConstructionResource(run);
+                    destination.Add(run);
                 }
                 break;
             case MarkdownContentKind.Link:
@@ -751,7 +1197,7 @@ internal sealed class LayoutBuilder
     {
         TryGetDeclarativeLength(image, MarkdownContentAttributes.ImageWidth, out SafeHtmlLength width);
         TryGetDeclarativeLength(image, MarkdownContentAttributes.ImageHeight, out SafeHtmlLength height);
-        return new InlineImageRun(
+        return TrackInlineImageRun(new InlineImageRun(
             _context,
             image.Text ?? string.Empty,
             image.Destination ?? string.Empty,
@@ -762,7 +1208,7 @@ internal sealed class LayoutBuilder
             height.Value > 0 ? height : null)
         {
             SourceSpan = image.SourceSpan,
-        };
+        });
     }
 
     private static string CollectDeclarativeText(MarkdownContent content)
@@ -852,7 +1298,19 @@ internal sealed class LayoutBuilder
                 var altSb = new System.Text.StringBuilder();
                 FlattenContainer(onlyImage, altSb);
                 string alt = altSb.ToString();
-                var img = new ImageBox(_context, url, alt);
+                ElementStyle paragraphStyle = _context.ThemeSnapshot.GetStyle(
+                    MarkdownElementKeys.Body,
+                    _context.CreateStyleContextSnapshot(),
+                    _context.CreateStyleAliasSnapshot());
+                var img = new ImageBox(_context, url, alt)
+                {
+                    // This block represents the entire image-only paragraph, not
+                    // only its image element. Reuse paragraph-flow margins while
+                    // keeping the image atomic for painting and accessibility.
+                    Margin = paragraphStyle.Margin,
+                    MinimumParagraphLineHeight = paragraphStyle.FontSize * paragraphStyle.LineHeightMultiplier,
+                };
+                TrackBlock(img);
                 img.BlockIndex = _context.NextBlockIndex();
                 // Register the source span so Ctrl+C copies the original ![alt](url).
                 var span = new MarkdownRenderer.SourceSpan(u.Span.Start, u.Span.Length);
@@ -866,6 +1324,7 @@ internal sealed class LayoutBuilder
     private BlockBox MakeThematicBreak()
     {
         var box = new ThematicBreakBox(_context);
+        TrackBlock(box);
         box.BlockIndex = _context.NextBlockIndex();
         return box;
     }
@@ -882,6 +1341,7 @@ internal sealed class LayoutBuilder
             _ => MarkdownElementKeys.Heading6
         };
         var box = new InlineContainerBox(_context, key);
+        TrackBlock(box);
         box.BlockIndex = _context.NextBlockIndex();
         AddInlines(box, h.Inline);
         if (h.Span.Start >= 0 && h.Span.Length > 0)
@@ -892,9 +1352,91 @@ internal sealed class LayoutBuilder
     private InlineContainerBox BuildParagraph(ParagraphBlock u)
     {
         var box = new InlineContainerBox(_context, MarkdownElementKeys.Body);
+        TrackBlock(box);
         box.BlockIndex = _context.NextBlockIndex();
-        AddInlines(box, u.Inline);
+        Inline? leadingFlowBreak = _context.SafeHtmlInlineFlowContinuesPrevious
+            ? FindLeadingHtmlBreak(u.Inline)
+            : null;
+        AddInlines(box, u.Inline, skipInline: leadingFlowBreak);
         return box;
+    }
+
+    private static bool IsBadgeOnlyHtmlFlowParagraph(ParagraphBlock paragraph)
+    {
+        bool containsImage = false;
+        return paragraph.Inline is { } inline &&
+            ContainsOnlyBadgeHtml(inline, ref containsImage) &&
+            containsImage;
+    }
+
+    private static bool ContainsOnlyBadgeHtml(ContainerInline inline, ref bool containsImage)
+    {
+        foreach (Inline child in inline)
+        {
+            if (child is HtmlInline html)
+            {
+                if (!SafeHtmlParser.TryParseTagSequence(
+                        html.Tag,
+                        SafeHtmlParseLimits.Default,
+                        out IReadOnlyList<SafeHtmlTag> tags) ||
+                    tags.Count == 0)
+                {
+                    return false;
+                }
+
+                foreach (SafeHtmlTag tag in tags)
+                {
+                    if (tag.Name is not ("a" or "br" or "img" or "picture" or "source" or "span"))
+                        return false;
+                    containsImage |= tag.Name == "img";
+                }
+
+                continue;
+            }
+
+            if (child is LiteralInline literal &&
+                string.IsNullOrWhiteSpace(literal.Content.ToString()))
+            {
+                continue;
+            }
+
+            if (child is ContainerInline nested && ContainsOnlyBadgeHtml(nested, ref containsImage))
+                continue;
+
+            return false;
+        }
+
+        return true;
+    }
+
+    private static Inline? FindLeadingHtmlBreak(ContainerInline? inline)
+    {
+        if (inline is null)
+            return null;
+
+        foreach (Inline child in inline)
+        {
+            if (child is LiteralInline literal &&
+                string.IsNullOrWhiteSpace(literal.Content.ToString()))
+            {
+                continue;
+            }
+
+            if (child is HtmlInline html &&
+                SafeHtmlParser.TryParseTagSequence(
+                    html.Tag,
+                    SafeHtmlParseLimits.Default,
+                    out IReadOnlyList<SafeHtmlTag> tags) &&
+                tags.Count == 1 &&
+                tags[0].Name == "br")
+            {
+                return child;
+            }
+
+            return null;
+        }
+
+        return null;
     }
 
     private BlockBox BuildCodeBlock(LeafBlock block, string text)
@@ -939,11 +1481,12 @@ internal sealed class LayoutBuilder
         {
             BlockIndex = _context.NextBlockIndex(),
         };
+        TrackBlock(codeBox);
 
         if (text.Length <= MaxMonolithicTextLayoutLength &&
             lineCount <= MaxCodeBlockLinesPerChunk)
         {
-            codeBox.AddChunk(BuildCodeBlockChunk(metadata, text, 0, text.Length, sourceSpan));
+            AddCodeBlockChunk(codeBox, BuildCodeBlockChunk(metadata, text, 0, text.Length, sourceSpan));
             return codeBox;
         }
 
@@ -953,7 +1496,7 @@ internal sealed class LayoutBuilder
             _context.CancellationToken.ThrowIfCancellationRequested();
             int length = GetCodeBlockChunkLength(text, offset);
 
-            codeBox.AddChunk(BuildCodeBlockChunk(
+            AddCodeBlockChunk(codeBox, BuildCodeBlockChunk(
                 metadata,
                 text.Substring(offset, length),
                 offset,
@@ -1008,6 +1551,7 @@ internal sealed class LayoutBuilder
                 ? Microsoft.Graphics.Canvas.Text.CanvasWordWrapping.Wrap
                 : Microsoft.Graphics.Canvas.Text.CanvasWordWrapping.NoWrap,
         };
+        TrackBlock(box);
         box.BlockIndex = _context.NextBlockIndex();
         // No ElementKey on the run: it inherits the container's CodeBlock style.
         // Setting ElementKey = CodeBlock would cause DrawDecorations to draw a
@@ -1060,6 +1604,8 @@ internal sealed class LayoutBuilder
         {
             ContentPadding = style.Padding,
             AccentBar = style.AccentBar,
+            AccentBarThickness = style.AccentBarThickness,
+            AccentBarAffectsContentLayout = style.AccentBarAffectsContentLayout,
             Background = style.Background,
             BorderBrush = style.BorderBrush,
             BorderThickness = style.BorderThickness,
@@ -1067,19 +1613,82 @@ internal sealed class LayoutBuilder
             Margin = style.Margin,
             FlowDirection = _context.FlowDirection,
         };
+        TrackBlock(stack);
         stack.BlockIndex = _context.NextBlockIndex();
         using var quoteScoue = _context.PushStyleContext(MarkdownElementKeys.Quote);
         PopulateBlockChildren(stack, qb);
+        CollapseTrailingQuoteParagraphMargin(stack);
         return stack;
+    }
+
+    private void CollapseTrailingQuoteParagraphMargin(StackBox quote)
+    {
+        // CSS collapses a last child's bottom margin with its parent's bottom
+        // margin only when no bottom padding or border separates them. Keep the
+        // larger positive margin, and limit this to stylesheets that opt into
+        // margin collapse so authored/default additive layouts remain intact.
+        if ((_context.ThemeSnapshot.LayoutPolicy & 1) == 0 ||
+            quote.ContentPadding.Bottom > 0 ||
+            quote.BorderThickness > 0 ||
+            quote.Children.Count == 0)
+        {
+            return;
+        }
+
+        BlockBox trailingBlock = quote.Children[quote.Children.Count - 1];
+        Thickness paragraphMargin;
+        switch (trailingBlock)
+        {
+            case InlineContainerBox trailingParagraph:
+                paragraphMargin = trailingParagraph.Margin;
+                break;
+            case ImageBox trailingImage:
+                // Markdown image-only paragraphs are promoted to ImageBox but
+                // still carry the paragraph's margin and line-box geometry.
+                paragraphMargin = trailingImage.Margin;
+                break;
+            default:
+                return;
+        }
+
+        double collapsedMargin = StackBox.GetPositiveCollapsedMargin(
+            paragraphMargin.Bottom,
+            quote.Margin.Bottom);
+        if (collapsedMargin <= 0)
+            return;
+
+        quote.RememberCollapsedTrailingChildMargin(trailingBlock, paragraphMargin);
+
+        var collapsedParagraphMargin = new Thickness(
+            paragraphMargin.Left,
+            paragraphMargin.Top,
+            paragraphMargin.Right,
+            paragraphMargin.Bottom - collapsedMargin);
+        if (trailingBlock is InlineContainerBox inlineParagraph)
+        {
+            inlineParagraph.Margin = collapsedParagraphMargin;
+            inlineParagraph.UseContainerMargin = false;
+        }
+        else if (trailingBlock is ImageBox imageParagraph)
+        {
+            imageParagraph.Margin = collapsedParagraphMargin;
+        }
     }
 
     private StackBox BuildList(ListBlock list)
     {
         using var listScope = _context.PushListDepth();
+        Thickness listMargin = _context.ThemeSnapshot.GetStyle(
+            ListContainerStyleRole,
+            _context.CreateStyleContextSnapshot(),
+            _context.CreateStyleAliasSnapshot()).Margin;
         var stack = new StackBox
         {
             FlowDirection = _context.FlowDirection,
+            Margin = listMargin,
+            InterChildSpacing = list.IsLoose ? 0 : GetTightListSiblingSpacing(),
         };
+        TrackBlock(stack);
         stack.BlockIndex = _context.NextBlockIndex();
         // Honour the ordered-list start number from the source (e.g. `5.`).
         // Markdig stores this as a string on ListBlock.OrderedStart.
@@ -1113,18 +1722,23 @@ internal sealed class LayoutBuilder
                     itemRenderer is not null)
                     itemBox = itemRenderer.BuildBlock(ln, _context);
 
-                itemBox ??= BuildDefaultListItem(ln, list.IsOrdered, index);
+                itemBox ??= BuildDefaultListItem(ln, list.IsOrdered, index, isTightList: !list.IsLoose);
 
+                TrackBlock(itemBox);
                 if (itemBox.BlockIndex == 0) itemBox.BlockIndex = _context.NextBlockIndex();
                 _context.RegisterMarkdownAttributes(ln, itemBox.BlockIndex);
-                stack.Add(itemBox);
+                AddStackChild(stack, itemBox);
             }
             index++;
         }
         return stack;
     }
 
-    private ListItemBox BuildDefaultListItem(ListItemBlock ln, bool isOrdered, int index)
+    private ListItemBox BuildDefaultListItem(
+        ListItemBlock ln,
+        bool isOrdered,
+        int index,
+        bool isTightList)
     {
         var listStyle = _context.ThemeSnapshot.GetStyle(
             MarkdownElementKeys.ListMarker,
@@ -1132,9 +1746,14 @@ internal sealed class LayoutBuilder
             _context.CreateStyleAliasSnapshot());
         float markerWidth = Math.Max(1f, listStyle.ListIndent + Math.Max(0, _context.ListDepth - 1) * listStyle.NestedListIndent);
 
-        // Marker gutter — fixed width, right-aligned bullet/number.
+        // Marker gutter — fixed width; center the unordered bullet without
+        // changing the content column or ordered-marker alignment.
         var marker = new InlineContainerBox(_context, MarkdownElementKeys.ListMarker);
+        TrackBlock(marker);
         marker.BlockIndex = _context.NextBlockIndex();
+        marker.TextAlignment = isOrdered
+            ? CanvasHorizontalAlignment.Left
+            : CanvasHorizontalAlignment.Center;
         string markerText = isOrdered ? $"{index}." : "•";
         marker.Add(new TextRun(markerText)
         {
@@ -1147,13 +1766,18 @@ internal sealed class LayoutBuilder
         {
             FlowDirection = _context.FlowDirection,
         };
+        TrackBlock(content);
         content.BlockIndex = _context.NextBlockIndex();
-        PopulateBlockChildren(content, ln);
+        PopulateBlockChildren(content, ln, suppressDirectParagraphMargins: isTightList);
 
-        return new ListItemBox(marker, content, markerWidth)
+        var itemBox = new ListItemBox(marker, content, markerWidth)
         {
             FlowDirection = _context.FlowDirection,
         };
+        TrackBlock(itemBox);
+        AdoptBlock(marker);
+        AdoptBlock(content);
+        return itemBox;
     }
 
     private StackBox BuildGenericContainer(ContainerBlock cb)
@@ -1162,26 +1786,54 @@ internal sealed class LayoutBuilder
         {
             FlowDirection = _context.FlowDirection,
         };
+        TrackBlock(stack);
         stack.BlockIndex = _context.NextBlockIndex();
         PopulateBlockChildren(stack, cb);
         return stack;
     }
 
-    private void PopulateBlockChildren(StackBox destination, ContainerBlock container)
+    private float GetTightListSiblingSpacing()
+    {
+        ElementStyle bodyStyle = _context.ThemeSnapshot.GetStyle(
+            MarkdownElementKeys.Body,
+            _context.CreateStyleContextSnapshot(),
+            _context.CreateStyleAliasSnapshot());
+        float fontSize = bodyStyle.FontSize;
+        return float.IsFinite(fontSize) && fontSize > 0
+            ? fontSize * 0.25f
+            : 0;
+    }
+
+    private void PopulateBlockChildren(
+        StackBox destination,
+        ContainerBlock container,
+        bool suppressDirectParagraphMargins = false)
     {
         SafeHtmlBlockScopeTracker? htmlScopes = _context.Registry.SafeHtmlPolicy is null
             ? null
-            : new SafeHtmlBlockScopeTracker(_context.Registry.SafeHtmlPolicy.Limits);
-        bool htmlBudgetNoticeAdded = false;
+            : _context.SafeHtmlNestedScopes ??
+              new SafeHtmlBlockScopeTracker(_context.Registry.SafeHtmlPolicy.Limits);
+        bool htmlBudgetNoticeAdded = htmlScopes?.BudgetExceeded == true;
         foreach (Block child in container)
         {
             _context.CancellationToken.ThrowIfCancellationRequested();
             bool suppressedBeforeBlock = htmlScopes?.IsContentSuppressed == true;
+            SafeHtmlAlignment alignmentAtBlockEntry = htmlScopes?.CurrentAlignment ?? SafeHtmlAlignment.Inherit;
+            int? inlineFlowScopeIdAtBlockEntry = htmlScopes?.CurrentInlineFlowScopeId;
             bool scopeOnly = child is HtmlBlock htmlBlock && htmlScopes?.Process(
                     htmlBlock.Lines.ToString(),
                     htmlBlock.Span.Start,
                     _context.DisclosureStates,
                     _context.CancellationToken) == true;
+            int? inlineFlowScopeIdForBlock = htmlScopes?.CurrentInlineFlowScopeId;
+            if (inlineFlowScopeIdAtBlockEntry is int entryScopeId &&
+                inlineFlowScopeIdForBlock != entryScopeId)
+            {
+                inlineFlowScopeIdForBlock = null;
+            }
+            bool inlineFlowContinuesPrevious = inlineFlowScopeIdForBlock is int scopeId &&
+                destination.Children.Count > 0 &&
+                destination.Children[^1].SafeHtmlInlineFlowScopeId == scopeId;
             if (suppressedBeforeBlock && child is not HtmlBlock)
             {
                 htmlScopes?.ObserveBlockTags(
@@ -1198,8 +1850,9 @@ internal sealed class LayoutBuilder
                     {
                         BlockIndex = _context.NextBlockIndex(),
                     };
+                    TrackBlock(notice);
                     AddHtmlBudgetNotice(notice);
-                    destination.Add(notice);
+                    AddStackChild(destination, notice);
                     htmlBudgetNoticeAdded = true;
                 }
 
@@ -1210,13 +1863,41 @@ internal sealed class LayoutBuilder
             if (scopeOnly || suppressedBeforeBlock)
                 continue;
 
-            BlockBox? box = BuildBlock(child);
+            SafeHtmlBlockScopeTracker? nestedScopes = child is ContainerBlock or HtmlBlock
+                ? htmlScopes?.CloneForNestedContent()
+                : null;
+            BlockBox? box;
+            using (_context.PushSafeHtmlBlockContext(
+                       alignmentAtBlockEntry,
+                       nestedScopes,
+                       inlineFlowScopeIdForBlock,
+                       inlineFlowContinuesPrevious))
+                box = BuildBlock(child);
             if (box is null)
                 continue;
 
-            if (htmlScopes is not null)
-                ApplyHtmlAlignment(box, htmlScopes.CurrentAlignment);
-            destination.Add(box);
+            if (suppressDirectParagraphMargins && child is ParagraphBlock)
+            {
+                Thickness margin = box.Margin;
+                box.Margin = new Thickness(margin.Left, 0, margin.Right, 0);
+                if (box is InlineContainerBox paragraphBox)
+                    paragraphBox.UseContainerMargin = false;
+            }
+
+            if (htmlScopes is not null && child is not HtmlBlock)
+                ApplyHtmlAlignment(box, alignmentAtBlockEntry);
+
+            if (child is ParagraphBlock paragraph &&
+                box is InlineContainerBox inlineParagraph &&
+                inlineFlowScopeIdForBlock is int inlineFlowScopeId &&
+                IsBadgeOnlyHtmlFlowParagraph(paragraph))
+            {
+                inlineParagraph.SafeHtmlInlineFlowScopeId = inlineFlowScopeId;
+                inlineParagraph.UseContainerMargin = false;
+                inlineParagraph.Margin = default;
+            }
+
+            AddStackChild(destination, box);
 
             if (!suppressedBeforeBlock && child is not HtmlBlock)
             {
@@ -1230,15 +1911,131 @@ internal sealed class LayoutBuilder
                     {
                         BlockIndex = _context.NextBlockIndex(),
                     };
+                    TrackBlock(notice);
                     AddHtmlBudgetNotice(notice);
-                    destination.Add(notice);
+                    AddStackChild(destination, notice);
                     htmlBudgetNoticeAdded = true;
                 }
             }
         }
     }
 
-    private void AddInlines(InlineContainerBox box, ContainerInline? inline, int inheritedAliasStart = -1)
+    private MarkdownLayoutConstructionScope BeginBlockBuildOwnership() =>
+        _context.BeginConstructionScope();
+
+    private void EndBlockBuildOwnership(MarkdownLayoutConstructionScope ownership) =>
+        ownership.Dispose();
+
+    private T TrackBlock<T>(T block) where T : BlockBox
+    {
+        _context.RegisterConstructionBlock(block);
+        return block;
+    }
+
+    private void AdoptBlock(BlockBox child) => _context.AdoptConstructionBlock(child);
+
+    private void AddStackChild(StackBox parent, BlockBox child)
+    {
+        parent.Add(child);
+        AdoptBlock(child);
+    }
+
+    private InlineImageRun TrackInlineImageRun(InlineImageRun run)
+    {
+        TrackBlock(run.Image);
+        return run;
+    }
+
+    private InlineRun? TrackInlineImageRun(InlineRun? run)
+    {
+        if (run is InlineImageRun image)
+            TrackBlock(image.Image);
+        return run;
+    }
+
+    private void AddInlineRun(InlineContainerBox parent, InlineRun run)
+    {
+        parent.Add(run);
+        if (run is InlineImageRun image)
+            AdoptBlock(image.Image);
+        else if (run is InlineVectorSceneRun vector)
+            _context.AdoptConstructionResource(vector);
+    }
+
+    private void AddCodeBlockChunk(CodeBlockBox parent, InlineContainerBox child)
+    {
+        parent.AddChunk(child);
+        AdoptBlock(child);
+    }
+
+    private void DiscardUnpublishedBlock(BlockBox block)
+    {
+        _context.DiscardConstructionBlock(block);
+    }
+
+    private void DisposePreservingBuildFailure(IDisposable resource)
+    {
+        try
+        {
+            resource.Dispose();
+        }
+        catch (Exception exception)
+        {
+            TrackRetirementTask(Task.FromException(exception));
+        }
+    }
+
+    private static Task RetireSnapshotPreservingBuildFailure(LayoutSnapshot snapshot)
+    {
+        try
+        {
+            return snapshot.Retire();
+        }
+        catch (Exception retirementFailure)
+        {
+            try
+            {
+                snapshot.Dispose();
+            }
+            catch (Exception disposalFailure)
+            {
+                return Task.FromException(new AggregateException(
+                    "Snapshot retirement scheduling and synchronous fallback both failed.",
+                    retirementFailure,
+                    disposalFailure));
+            }
+
+            return Task.FromException(retirementFailure);
+        }
+    }
+
+    private void TrackRetirementTasks(List<Task> retirementTasks)
+    {
+        foreach (Task task in retirementTasks)
+            TrackRetirementTask(task);
+    }
+
+    private void TrackRetirementTask(Task task)
+    {
+        if (task.IsCompletedSuccessfully)
+            return;
+
+        try
+        {
+            _context.RegisterRetirement(task);
+        }
+        catch (Exception)
+        {
+            // Keep the original build failure if retirement accounting itself
+            // is unavailable; the synchronous disposal was still attempted.
+        }
+    }
+
+    private void AddInlines(
+        InlineContainerBox box,
+        ContainerInline? inline,
+        int inheritedAliasStart = -1,
+        Inline? skipInline = null)
     {
         if (inline is null) return;
         var htmlState = new SafeHtmlInlineState(_context.Registry.SafeHtmlPolicy);
@@ -1249,9 +2046,21 @@ internal sealed class LayoutBuilder
             inheritedAliasStart,
             Array.Empty<string>(),
             containingLinkUrl: null,
-            containingLinkTitle: null);
+            containingLinkTitle: null,
+            skipInline: skipInline);
         if (htmlState.BudgetExceeded)
             AddHtmlBudgetNotice(box);
+    }
+
+    private void AddExtensionContainerInlines(
+        InlineContainerBox box, ContainerInline inlines,
+        Func<Inline, bool>? skipFirstIf, int inheritedAliasStart)
+    {
+        TrackBlock(box);
+        _context.CancellationToken.ThrowIfCancellationRequested();
+        Inline? first = inlines.FirstChild;
+        Inline? skip = first is not null && skipFirstIf?.Invoke(first) == true ? first : null;
+        AddInlines(box, inlines, inheritedAliasStart, skip);
     }
 
     private void AddHtmlBudgetNotice(InlineContainerBox box) => box.Add(new TextRun(
@@ -1267,10 +2076,14 @@ internal sealed class LayoutBuilder
         int inheritedAliasStart,
         IReadOnlyList<string> inheritedStyleModifiers,
         string? containingLinkUrl,
-        string? containingLinkTitle)
+        string? containingLinkTitle,
+        Inline? skipInline = null)
     {
         foreach (var n in inline)
         {
+            if (ReferenceEquals(n, skipInline))
+                continue;
+
             _context.CancellationToken.ThrowIfCancellationRequested();
             if (!htmlState.TryAcceptNode(n))
                 break;
@@ -1285,10 +2098,14 @@ internal sealed class LayoutBuilder
                 int declarativeAliasStart = inheritedAliasStart >= 0 ? inheritedAliasStart : aliasStart;
                 IReadOnlyList<string> aliases = _context.CreateStyleAliasSnapshotFrom(declarativeAliasStart);
                 _context.RegisterMarkdownAttributes(n, box.BlockIndex);
-                foreach (InlineRun declarativeRun in declarativeRuns)
+                foreach (InlineRun sourceRun in declarativeRuns)
                 {
+                    InlineRun declarativeRun = ApplyContainingLink(
+                        sourceRun,
+                        containingLinkUrl,
+                        containingLinkTitle) ?? sourceRun;
                     declarativeRun.StyleAliases = aliases;
-                    box.Add(declarativeRun);
+                    AddInlineRun(box, declarativeRun);
                 }
                 continue;
             }
@@ -1313,26 +2130,26 @@ internal sealed class LayoutBuilder
             InlineRun? run;
             if (n is HtmlInline html)
             {
-                run = htmlState.Process(
+                run = TrackInlineImageRun(htmlState.Process(
                     html,
                     _context,
                     containingLinkUrl,
-                    containingLinkTitle);
+                    containingLinkTitle));
             }
             else if (n is LinkInline link &&
                      TryGetOnlyHtmlImageChild(link, out HtmlInline? linkedHtmlImage) &&
                      htmlState.IsStandaloneImage(linkedHtmlImage, _context))
             {
-                run = htmlState.Process(
+                run = TrackInlineImageRun(htmlState.Process(
                     linkedHtmlImage,
                     _context,
                     link.Url,
                     link.Title,
-                    GetLinkedHtmlImageSourceSpan(link, linkedHtmlImage, _context));
+                    GetLinkedHtmlImageSourceSpan(link, linkedHtmlImage, _context)));
             }
             else if (n is LinkInline mixedLink &&
                      !mixedLink.IsImage &&
-                     ContainsRenderableImage(mixedLink, htmlState, _context))
+                     ContainsRenderableLinkedInlineObject(mixedLink, htmlState, _context))
             {
                 _context.RegisterMarkdownAttributes(n, box.BlockIndex);
                 int effectiveAliasStart = inheritedAliasStart >= 0 ? inheritedAliasStart : aliasStart;
@@ -1371,7 +2188,7 @@ internal sealed class LayoutBuilder
                     run.StyleAliases,
                     _context.CreateStyleAliasSnapshotFrom(effectiveAliasStart));
                 _context.RegisterMarkdownAttributes(n, box.BlockIndex);
-                box.Add(run);
+                AddInlineRun(box, run);
             }
             else if (n is ContainerInline nested)
             {
@@ -1389,7 +2206,7 @@ internal sealed class LayoutBuilder
         }
     }
 
-    private static bool ContainsRenderableImage(
+    private bool ContainsRenderableLinkedInlineObject(
         ContainerInline container,
         SafeHtmlInlineState htmlState,
         MarkdownLayoutContext context)
@@ -1400,11 +2217,34 @@ internal sealed class LayoutBuilder
                 return true;
             if (child is HtmlInline html && htmlState.IsStandaloneImage(html, context))
                 return true;
-            if (child is ContainerInline nested && ContainsRenderableImage(nested, htmlState, context))
+            if (_semanticDocument is not null &&
+                _semanticDocument.TryGetInlineExtensionContent(child, out MarkdownContentFragment? fragment) &&
+                fragment is not null &&
+                ContainsRenderableVectorScene(fragment.Items))
+            {
                 return true;
+            }
+            if (child is ContainerInline nested &&
+                ContainsRenderableLinkedInlineObject(nested, htmlState, context))
+            {
+                return true;
+            }
         }
 
         return false;
+
+        static bool ContainsRenderableVectorScene(IReadOnlyList<MarkdownContent> content)
+        {
+            foreach (MarkdownContent item in content)
+            {
+                if (item.Kind == MarkdownContentKind.VectorScene && item.VectorScene is not null)
+                    return true;
+                if (item.Children.Count > 0 && ContainsRenderableVectorScene(item.Children))
+                    return true;
+            }
+
+            return false;
+        }
     }
 
     private static InlineRun? ApplyContainingLink(
@@ -1417,6 +2257,16 @@ internal sealed class LayoutBuilder
             string.IsNullOrWhiteSpace(containingLinkUrl))
         {
             return run;
+        }
+
+        if (run is InlineVectorSceneRun vectorScene)
+        {
+            vectorScene.LinkUrl = containingLinkUrl;
+            vectorScene.LinkTitle = containingLinkTitle;
+            vectorScene.StyleModifierKeys = AppendStyleModifier(
+                vectorScene.StyleModifierKeys,
+                MarkdownElementKeys.Link);
+            return vectorScene;
         }
 
         var linked = new LinkRun(run.Text, containingLinkUrl, containingLinkTitle)
@@ -1493,10 +2343,28 @@ internal sealed class LayoutBuilder
         switch (inline)
         {
             case LiteralInline lit:
+            {
+                var span = new SourceSpan(lit.Span.Start, lit.Span.Length);
+                string? sourceText = lit.Content.Text;
+                if (sourceText is not null &&
+                    ReferenceEquals(sourceText, _context.SourceMap.SourceText) &&
+                    span.Length > 0 &&
+                    span.Start >= 0 &&
+                    span.Start <= sourceText.Length - span.Length &&
+                    lit.Content.Start == span.Start &&
+                    lit.Content.Length == span.Length)
+                {
+                    return new SourceSliceTextRun(sourceText, span.Start, span.Length)
+                    {
+                        SourceSpan = span,
+                    };
+                }
+
                 return new TextRun(lit.Content.ToString())
                 {
-                    SourceSpan = new SourceSpan(lit.Span.Start, lit.Span.Length)
+                    SourceSpan = span,
                 };
+            }
             case CodeInline cn:
                 return new CodeInlineRun(cn.Content)
                 {
@@ -1608,7 +2476,7 @@ internal sealed class LayoutBuilder
             requestedHeight = sizedImage.RequestedHeight;
         }
 
-        return new InlineImageRun(
+        return TrackInlineImageRun(new InlineImageRun(
             _context,
             altText,
             imageLink.Url ?? string.Empty,
@@ -1619,7 +2487,7 @@ internal sealed class LayoutBuilder
             requestedHeight)
         {
             SourceSpan = new SourceSpan(sourceStart, sourceLength)
-        };
+        });
     }
 
     private static bool TryGetOnlyImageChild(ContainerInline container, out LinkInline imageLink)
@@ -1734,13 +2602,37 @@ internal sealed class LayoutBuilder
         return -1;
     }
 
-    private static void FlattenContainer(ContainerInline container, System.Text.StringBuilder sb)
+    private void FlattenContainer(ContainerInline container, System.Text.StringBuilder sb)
     {
         foreach (var child in container)
         {
             switch (child)
             {
-                case LiteralInline lit: sb.Append(lit.Content.ToString()); break;
+                case LiteralInline lit:
+                {
+                    // A parser literal that is an exact slice of the original
+                    // Markdown can be copied into the final wrapper string
+                    // directly. Keep the same strict guard as BuildInline so
+                    // decoded/transformed/provider-owned content retains the
+                    // legacy StringSlice.ToString() behavior.
+                    SourceSpan span = new(lit.Span.Start, lit.Span.Length);
+                    string? sourceText = lit.Content.Text;
+                    if (sourceText is not null &&
+                        ReferenceEquals(sourceText, _context.SourceMap.SourceText) &&
+                        span.Length > 0 &&
+                        span.Start >= 0 &&
+                        span.Start <= sourceText.Length - span.Length &&
+                        lit.Content.Start == span.Start &&
+                        lit.Content.Length == span.Length)
+                    {
+                        sb.Append(sourceText, span.Start, span.Length);
+                    }
+                    else
+                    {
+                        sb.Append(lit.Content.ToString());
+                    }
+                    break;
+                }
                 case CodeInline cn: sb.Append(cn.Content); break;
                 case AbbreviationInline ab: sb.Append(ab.Abbreviation?.Label ?? string.Empty); break;
                 case LineBreakInline lineBreak: sb.Append(lineBreak.IsHard ? '\n' : ' '); break;

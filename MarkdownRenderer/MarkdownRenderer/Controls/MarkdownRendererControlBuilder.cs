@@ -43,6 +43,7 @@ public sealed class MarkdownRendererControlBuilder
     private Func<ICodeHighlighter>? _ownedCodeHighlighterFactory;
     private CodeBlockLineNumberMode _codeBlockLineNumberMode = CodeBlockLineNumberMode.AutoMultiline;
     private CodeBlockWrappingMode _codeBlockWrappingMode = CodeBlockWrappingMode.NoWrap;
+    private CodeBlockChromeMode _codeBlockChromeMode = CodeBlockChromeMode.Enhanced;
 
     /// <summary>Sets the markdown source shown by the control.</summary>
     /// <param name="markdown">Markdown source text. A null value is treated as an empty string.</param>
@@ -329,6 +330,13 @@ public sealed class MarkdownRendererControlBuilder
         return this;
     }
 
+    /// <summary>Sets whether code blocks show the enhanced header or plain Markdown chrome.</summary>
+    public MarkdownRendererControlBuilder WithCodeBlockChromeMode(CodeBlockChromeMode mode)
+    {
+        _codeBlockChromeMode = mode;
+        return this;
+    }
+
     /// <summary>Creates a configured view that owns its vertical viewport.</summary>
     public MarkdownScrollView BuildScrollView() => Configure(new MarkdownScrollView());
 
@@ -399,6 +407,7 @@ public sealed class MarkdownRendererControlBuilder
 #pragma warning restore CS0618
             control.CodeBlockLineNumberMode = _codeBlockLineNumberMode;
             control.CodeBlockWrappingMode = _codeBlockWrappingMode;
+            control.CodeBlockChromeMode = _codeBlockChromeMode;
             return control;
         }
         catch

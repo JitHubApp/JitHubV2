@@ -72,6 +72,8 @@ public static class MarkdownElementKeys
     public const string Math = "Math";
     /// <summary>List bullet or ordinal marker.</summary>
     public const string ListMarker = "ListMarker";
+    /// <summary>Unordered or ordered list container.</summary>
+    public const string List = "List";
     /// <summary>Thematic break separator.</summary>
     public const string ThematicBreak = "ThematicBreak";
     /// <summary>Image caption text.</summary>
@@ -157,8 +159,17 @@ public sealed class ElementStyle
     public Color? Background { get; init; }
     /// <summary>Optional accent bar color for quote-like containers.</summary>
     public Color? AccentBar { get; init; }
+    /// <summary>Thickness of an accent bar in device-independent pixels.</summary>
+    public float AccentBarThickness { get; init; } = 3f;
+    /// <summary>
+    /// Gets whether an accent bar consumes its own leading content inset instead
+    /// of being painted over the element's padding.
+    /// </summary>
+    public bool AccentBarAffectsContentLayout { get; init; }
     /// <summary>Optional border color.</summary>
     public Color? BorderBrush { get; init; }
+    /// <summary>Internal profile hint for rendering a heading border as a bottom rule.</summary>
+    internal bool HeadingBorderBottomOnly { get; init; }
     /// <summary>Border thickness in device-independent pixels.</summary>
     public float BorderThickness { get; init; }
     /// <summary>Corner radius in device-independent pixels.</summary>
@@ -207,8 +218,18 @@ public sealed class ElementStyleOverride
     public Color? Background { get; init; }
     /// <summary>Optional accent bar color override.</summary>
     public Color? AccentBar { get; init; }
+    /// <summary>Optional accent bar thickness override in device-independent pixels.</summary>
+    public float? AccentBarThickness { get; init; }
+    /// <summary>Optional override for whether the accent bar consumes a content inset.</summary>
+    public bool? AccentBarAffectsContentLayout { get; init; }
     /// <summary>Optional border color override.</summary>
     public Color? BorderBrush { get; init; }
+    /// <summary>
+    /// Gets whether an h1/h2 border is painted only along its bottom edge.
+    /// Set this when customizing a profile heading rule's brush or thickness
+    /// while retaining its bottom-rule geometry.
+    /// </summary>
+    public bool? HeadingBorderBottomOnly { get; init; }
     /// <summary>Optional border thickness override.</summary>
     public float? BorderThickness { get; init; }
     /// <summary>Optional corner radius override.</summary>

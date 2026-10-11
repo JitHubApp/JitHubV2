@@ -22,6 +22,30 @@ namespace MarkdownRenderer.GitHub.Tests;
 public sealed class AccessibilityReleaseGateTests
 {
     [Fact]
+    public void EmbeddedUnavailableStatusUsesPackagedEnglishResourceWhenProviderHasNoValue()
+    {
+        const string key = MarkdownStringKeys.EmbeddedContentUnavailable;
+        const string english = "Embedded content unavailable.";
+        CultureInfo culture = CultureInfo.GetCultureInfo("en-US");
+
+        Assert.Equal(english, MarkdownLocalizedStrings.Resolve(key, "missing resource", culture));
+        Assert.Equal(english, MarkdownLocalizedStrings.EmbeddedContentUnavailable);
+        Assert.Equal(english, CreateContext("en-US").ResolveString(key, "explicit fallback"));
+    }
+
+    [Fact]
+    public void EmbeddedUnavailableStatusCanBeOverriddenByHostStringProvider()
+    {
+        const string key = MarkdownStringKeys.EmbeddedContentUnavailable;
+        const string custom = "Your embedded view could not be opened.";
+        MarkdownLayoutContext context = CreateContext(
+            "en-US",
+            new TestStringProvider((MarkdownStringKeys.EmbeddedContentUnavailable, custom)));
+
+        Assert.Equal(custom, context.ResolveString(key, MarkdownLocalizedStrings.EmbeddedContentUnavailable));
+    }
+
+    [Fact]
     public void SemanticListsExposeStableLevelPositionAndSetSize()
     {
         MarkdownLayoutContext context = CreateContext("en-US");

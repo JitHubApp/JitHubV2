@@ -51,6 +51,42 @@ internal sealed class FirstViewportPaintCoverage
 
     internal bool HasIdentity => _hasIdentity;
 
+    /// <summary>
+    /// The CanvasVirtualControl is explicitly sized to the layout snapshot, not
+    /// to its ScrollViewer. A short or narrow document therefore has no Win2D
+    /// pixels in the remainder of the viewport. Only the intersection can ever
+    /// produce an invalidated paint region; keeping the blank remainder in the
+    /// coverage target would make readiness impossible for a fully painted page.
+    /// </summary>
+    internal static bool TryGetPaintableViewport(
+        Rect viewport,
+        double surfaceWidth,
+        double surfaceHeight,
+        out Rect paintableViewport)
+    {
+        paintableViewport = default;
+        if (!TryCreateRegion(viewport.Left, viewport.Top, viewport.Width, viewport.Height, out Region visible) ||
+            !double.IsFinite(surfaceWidth) || surfaceWidth < 0 ||
+            !double.IsFinite(surfaceHeight) || surfaceHeight < 0)
+        {
+            return false;
+        }
+
+        // ApplySnapshotSize gives the canvas a one-DIP minimum in each axis,
+        // even for an empty snapshot. Match that actual paintable surface.
+        Region surface = new(0, 0, Math.Max(1, surfaceWidth), Math.Max(1, surfaceHeight));
+        Region intersection = Intersect(visible, surface);
+        if (!IsNonEmpty(intersection))
+            return false;
+
+        paintableViewport = new Rect(
+            intersection.Left,
+            intersection.Top,
+            intersection.Right - intersection.Left,
+            intersection.Bottom - intersection.Top);
+        return true;
+    }
+
     internal bool EnsureIdentity(
         object snapshot,
         long generation,

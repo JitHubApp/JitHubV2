@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Automation.Provider;
@@ -22,7 +23,8 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
 {
     private readonly MarkdownRendererControl _owner;
     private readonly MarkdownAutomationPeer _root;
-    private readonly MarkdownSemanticNode _node;
+    private readonly WeakReference<MarkdownSemanticNode> _nodeReference;
+    private readonly MarkdownAutomationPeerLifetime _lifetime;
     private MarkdownImageAccessibilityState? _lastImageState;
     private MarkdownCodeBlockCopyPeer? _codeBlockCopyPeer;
 
@@ -30,14 +32,23 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
     {
         _owner = owner;
         _root = root;
-        _node = node;
+        _nodeReference = new(node);
+        _lifetime = MarkdownAutomationPeerLifetime.Capture(owner, root);
         _lastImageState = node.ImageBox?.AccessibilityState;
     }
 
-    internal MarkdownSemanticNode Node => _node;
+    internal MarkdownSemanticNode Node
+    {
+        get
+        {
+            EnsureCurrentDocument();
+            return _node;
+        }
+    }
 
     protected override string GetClassNameCore()
     {
+        EnsureCurrentDocument();
         if (TaskMetadata is { } task)
             return task.CanToggle ? "MarkdownTaskCheckBox" : "MarkdownTaskState";
 
@@ -95,12 +106,25 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
         };
     }
 
-    protected override bool IsControlElementCore() => true;
-    protected override bool IsContentElementCore() => true;
+    protected override bool IsControlElementCore()
+    {
+        EnsureCurrentDocument();
+        return true;
+    }
+
+    protected override bool IsContentElementCore()
+    {
+        EnsureCurrentDocument();
+        return true;
+    }
+
     protected override bool IsKeyboardFocusableCore()
     {
+        EnsureCurrentDocument();
         if (IsVectorSemanticNode)
             return MarkdownVectorSemanticPolicy.IsKeyboardFocusable(_node.VectorSemanticFlags);
+        if (LinkedInlineVectorScene is not null)
+            return true;
         if (HorizontalOverflow is { } overflow)
             return _owner.IsHorizontalOverflowKeyboardFocusable(overflow);
         // Ordinary semantic peers share the renderer as their FrameworkElement
@@ -111,10 +135,14 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
 
     protected override bool HasKeyboardFocusCore()
     {
+        EnsureCurrentDocument();
         if (IsVectorSemanticNode && _node.VectorSceneBox is { } vector)
         {
             return _owner.IsKeyboardFocusOnVectorSemantic(vector, _node.VectorSemanticIndex);
         }
+
+        if (LinkedInlineVectorScene is { } inlineScene)
+            return _owner.IsKeyboardFocusOnLinkedInlineVectorScene(inlineScene);
 
         if (HorizontalOverflow is { } overflow)
             return _owner.IsKeyboardFocusOnHorizontalOverflow(overflow);
@@ -124,6 +152,7 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
 
     protected override void SetFocusCore()
     {
+        EnsureCurrentDocument();
         if (IsVectorSemanticNode)
         {
             if (MarkdownVectorSemanticPolicy.IsKeyboardFocusable(_node.VectorSemanticFlags) &&
@@ -131,6 +160,12 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
             {
                 _owner.FocusVectorSemanticFromAutomation(vector, _node.VectorSemanticIndex);
             }
+            return;
+        }
+
+        if (LinkedInlineVectorScene is { } inlineScene)
+        {
+            _owner.FocusInlineVectorSceneFromAutomation(inlineScene);
             return;
         }
 
@@ -147,6 +182,7 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
 
     protected override AutomationControlType GetAutomationControlTypeCore()
     {
+        EnsureCurrentDocument();
         if (TaskMetadata is { } task)
             return task.CanToggle ? AutomationControlType.CheckBox : AutomationControlType.Text;
 
@@ -168,6 +204,9 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
                 _ => AutomationControlType.Custom,
             };
         }
+
+        if (LinkedInlineVectorScene is not null)
+            return AutomationControlType.Hyperlink;
 
         if (_node.VectorSceneBox is not null && _node.VectorSemanticIndex >= 0)
         {
@@ -196,19 +235,24 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
         };
     }
 
-    protected override AutomationHeadingLevel GetHeadingLevelCore() => _node.HeadingLevel switch
+    protected override AutomationHeadingLevel GetHeadingLevelCore()
     {
-        1 => AutomationHeadingLevel.Level1,
-        2 => AutomationHeadingLevel.Level2,
-        3 => AutomationHeadingLevel.Level3,
-        4 => AutomationHeadingLevel.Level4,
-        5 => AutomationHeadingLevel.Level5,
-        6 => AutomationHeadingLevel.Level6,
-        _ => AutomationHeadingLevel.None,
-    };
+        EnsureCurrentDocument();
+        return _node.HeadingLevel switch
+        {
+            1 => AutomationHeadingLevel.Level1,
+            2 => AutomationHeadingLevel.Level2,
+            3 => AutomationHeadingLevel.Level3,
+            4 => AutomationHeadingLevel.Level4,
+            5 => AutomationHeadingLevel.Level5,
+            6 => AutomationHeadingLevel.Level6,
+            _ => AutomationHeadingLevel.None,
+        };
+    }
 
     protected override string GetNameCore()
     {
+        EnsureCurrentDocument();
         if (TaskMetadata is { } task)
             return task.CurrentName;
 
@@ -258,6 +302,7 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
 
     protected override string GetHelpTextCore()
     {
+        EnsureCurrentDocument();
         if (TaskMetadata is { } task)
             return task.CurrentHelpText;
 
@@ -278,6 +323,10 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
 
     protected override string GetItemStatusCore()
     {
+        EnsureCurrentDocument();
+        if (_node.Box is Layout.Boxes.VectorSceneBox { GraphRebindFailed: true })
+            return _owner.ResolveLocalizedString(MarkdownStringKeys.EmbeddedContentUnavailable,
+                MarkdownLocalizedStrings.EmbeddedContentUnavailable);
         if (_node.Role == MarkdownSemanticRole.Image &&
             _node.ImageBox?.AccessibilityState == MarkdownImageAccessibilityState.Loading)
         {
@@ -288,22 +337,39 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
         return string.Empty;
     }
 
-    protected override string GetAutomationIdCore() =>
-        _node.AutomationId ?? MarkdownAutomationIdentity.ForNode(_node);
+    protected override string GetAutomationIdCore()
+    {
+        EnsureCurrentDocument();
+        return _node.AutomationId ?? MarkdownAutomationIdentity.ForNode(_node);
+    }
 
-    protected override int GetCultureCore() => _owner.AutomationCultureLcid;
+    protected override int GetCultureCore()
+    {
+        EnsureCurrentDocument();
+        return _owner.AutomationCultureLcid;
+    }
 
-    protected override int GetLevelCore() =>
-        _node.Level > 0 ? _node.Level : base.GetLevelCore();
+    protected override int GetLevelCore()
+    {
+        EnsureCurrentDocument();
+        return _node.Level > 0 ? _node.Level : base.GetLevelCore();
+    }
 
-    protected override int GetPositionInSetCore() =>
-        _node.PositionInSet > 0 ? _node.PositionInSet : base.GetPositionInSetCore();
+    protected override int GetPositionInSetCore()
+    {
+        EnsureCurrentDocument();
+        return _node.PositionInSet > 0 ? _node.PositionInSet : base.GetPositionInSetCore();
+    }
 
-    protected override int GetSizeOfSetCore() =>
-        _node.SizeOfSet > 0 ? _node.SizeOfSet : base.GetSizeOfSetCore();
+    protected override int GetSizeOfSetCore()
+    {
+        EnsureCurrentDocument();
+        return _node.SizeOfSet > 0 ? _node.SizeOfSet : base.GetSizeOfSetCore();
+    }
 
     protected override AutomationLiveSetting GetLiveSettingCore()
     {
+        EnsureCurrentDocument();
         if (_node.Role == MarkdownSemanticRole.Image ||
             _node.AccessibilityRole == MarkdownAccessibilityRole.Status)
         {
@@ -315,6 +381,7 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
 
     protected override IList<AutomationPeer> GetChildrenCore()
     {
+        EnsureCurrentDocument();
         var children = _root.GetChildPeersForSemanticNode(_node);
         if (_node.HostedElementBox?.RealizedElement is { } element)
         {
@@ -325,9 +392,9 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
         }
 
         if (_node.Role == MarkdownSemanticRole.CodeBlock &&
-            _node.Box is CodeBlockBox { IsCopyButtonEnabled: true } codeBlock)
+            _node.Box is CodeBlockBox { HasCopyButtonAction: true } codeBlock)
         {
-            _codeBlockCopyPeer ??= new MarkdownCodeBlockCopyPeer(_owner, _root, codeBlock);
+            _codeBlockCopyPeer ??= new MarkdownCodeBlockCopyPeer(_owner, _root, codeBlock, _lifetime);
             children.Add(_codeBlockCopyPeer);
         }
 
@@ -336,6 +403,7 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
 
     protected override object GetPatternCore(PatternInterface patternIinterface)
     {
+        EnsureCurrentDocument();
         if (_node.Role == MarkdownSemanticRole.Table &&
             (patternIinterface == PatternInterface.Grid || patternIinterface == PatternInterface.Table))
         {
@@ -355,7 +423,7 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
         }
 
         if (patternIinterface == PatternInterface.Invoke &&
-            IsVectorSemanticInvokable)
+            (IsVectorSemanticInvokable || LinkedInlineVectorScene is not null))
         {
             return this;
         }
@@ -368,10 +436,18 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
 
     protected override Windows.Foundation.Rect GetBoundingRectangleCore()
     {
-        Windows.Foundation.Rect rect = IsVectorSemanticNode &&
-                                      _node.VectorSceneBox is { } vector
-            ? vector.GetVisibleSemanticBounds(_node.VectorSemanticIndex)
-            : _node.Bounds;
+        EnsureCurrentDocument();
+        MarkdownSemanticNode node = _node;
+        MarkdownSemanticDocument document = _lifetime.GetCurrentSemanticDocument();
+        if (!_root.TryReadNodeBounds(
+                node,
+                document,
+                _lifetime.DocumentGeneration,
+                out Windows.Foundation.Rect rect))
+        {
+            return default;
+        }
+
         if (IsVectorSemanticNode && (rect.Width <= 0 || rect.Height <= 0))
             return default;
         return rect.Width <= 0 || rect.Height <= 0
@@ -379,14 +455,25 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
             : _root.GetScreenRectForDocumentRect(rect);
     }
 
-    protected override bool IsOffscreenCore() =>
-        _root.IsScreenRectOffscreen(GetBoundingRectangleCore());
+    protected override bool IsOffscreenCore()
+    {
+        EnsureCurrentDocument();
+        return _root.IsScreenRectOffscreen(GetBoundingRectangleCore());
+    }
 
-    int IGridProvider.ColumnCount => _node.ColumnCount;
-    int IGridProvider.RowCount => _node.RowCount;
+    int IGridProvider.ColumnCount
+    {
+        get { EnsureCurrentDocument(); return _node.ColumnCount; }
+    }
+
+    int IGridProvider.RowCount
+    {
+        get { EnsureCurrentDocument(); return _node.RowCount; }
+    }
 
     IRawElementProviderSimple IGridProvider.GetItem(int row, int column)
     {
+        EnsureCurrentDocument();
         foreach (var child in _node.Children)
         {
             if (child.Role == MarkdownSemanticRole.TableCell &&
@@ -403,6 +490,7 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
 
     IRawElementProviderSimple[] ITableProvider.GetColumnHeaders()
     {
+        EnsureCurrentDocument();
         var providers = new List<IRawElementProviderSimple>();
         foreach (var child in _node.Children)
         {
@@ -417,19 +505,42 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
         return providers.ToArray();
     }
 
-    IRawElementProviderSimple[] ITableProvider.GetRowHeaders() => System.Array.Empty<IRawElementProviderSimple>();
+    IRawElementProviderSimple[] ITableProvider.GetRowHeaders()
+    {
+        EnsureCurrentDocument();
+        return System.Array.Empty<IRawElementProviderSimple>();
+    }
 
-    RowOrColumnMajor ITableProvider.RowOrColumnMajor => RowOrColumnMajor.RowMajor;
+    RowOrColumnMajor ITableProvider.RowOrColumnMajor
+    {
+        get { EnsureCurrentDocument(); return RowOrColumnMajor.RowMajor; }
+    }
 
-    int IGridItemProvider.Column => _node.Column;
-    int IGridItemProvider.ColumnSpan => _node.ColumnSpan;
-    int IGridItemProvider.Row => _node.Row;
-    int IGridItemProvider.RowSpan => _node.RowSpan;
+    int IGridItemProvider.Column
+    {
+        get { EnsureCurrentDocument(); return _node.Column; }
+    }
+
+    int IGridItemProvider.ColumnSpan
+    {
+        get { EnsureCurrentDocument(); return _node.ColumnSpan; }
+    }
+
+    int IGridItemProvider.Row
+    {
+        get { EnsureCurrentDocument(); return _node.Row; }
+    }
+
+    int IGridItemProvider.RowSpan
+    {
+        get { EnsureCurrentDocument(); return _node.RowSpan; }
+    }
 
     IRawElementProviderSimple IGridItemProvider.ContainingGrid
     {
         get
         {
+            EnsureCurrentDocument();
             var table = FindAncestorTable(_node);
             return table is not null && _root.TryGetProviderForSemanticNode(table, out var provider)
                 ? provider
@@ -439,6 +550,7 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
 
     IRawElementProviderSimple[] ITableItemProvider.GetColumnHeaderItems()
     {
+        EnsureCurrentDocument();
         var table = FindAncestorTable(_node);
         if (table is null) return System.Array.Empty<IRawElementProviderSimple>();
 
@@ -457,14 +569,22 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
         return providers.ToArray();
     }
 
-    IRawElementProviderSimple[] ITableItemProvider.GetRowHeaderItems() => System.Array.Empty<IRawElementProviderSimple>();
+    IRawElementProviderSimple[] ITableItemProvider.GetRowHeaderItems()
+    {
+        EnsureCurrentDocument();
+        return System.Array.Empty<IRawElementProviderSimple>();
+    }
 
-    bool IScrollProvider.HorizontallyScrollable => HorizontalOverflow is { CanScrollHorizontally: true };
+    bool IScrollProvider.HorizontallyScrollable
+    {
+        get { EnsureCurrentDocument(); return HorizontalOverflow is { CanScrollHorizontally: true }; }
+    }
 
     double IScrollProvider.HorizontalScrollPercent
     {
         get
         {
+            EnsureCurrentDocument();
             var overflow = HorizontalOverflow;
             if (overflow is null || !overflow.CanScrollHorizontally)
                 return -1;
@@ -481,6 +601,7 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
     {
         get
         {
+            EnsureCurrentDocument();
             var overflow = HorizontalOverflow;
             if (overflow is null || overflow.HorizontalExtent <= 0)
                 return 100;
@@ -488,12 +609,24 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
         }
     }
 
-    bool IScrollProvider.VerticallyScrollable => false;
-    double IScrollProvider.VerticalScrollPercent => -1;
-    double IScrollProvider.VerticalViewSize => 100;
+    bool IScrollProvider.VerticallyScrollable
+    {
+        get { EnsureCurrentDocument(); return false; }
+    }
+
+    double IScrollProvider.VerticalScrollPercent
+    {
+        get { EnsureCurrentDocument(); return -1; }
+    }
+
+    double IScrollProvider.VerticalViewSize
+    {
+        get { EnsureCurrentDocument(); return 100; }
+    }
 
     void IScrollProvider.Scroll(ScrollAmount horizontalAmount, ScrollAmount verticalAmount)
     {
+        EnsureCurrentDocument();
         if (verticalAmount != ScrollAmount.NoAmount)
             throw new System.InvalidOperationException("This markdown block scrolls horizontally only.");
         if (horizontalAmount == ScrollAmount.NoAmount)
@@ -507,6 +640,7 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
 
     void IScrollProvider.SetScrollPercent(double horizontalPercent, double verticalPercent)
     {
+        EnsureCurrentDocument();
         if (verticalPercent != -1)
             throw new System.ArgumentOutOfRangeException(nameof(verticalPercent));
         if (horizontalPercent == -1)
@@ -521,12 +655,19 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
     }
 
     private bool IsVectorSemanticNode =>
-        _node.VectorSceneBox is not null && _node.VectorSemanticIndex >= 0;
+        IsCurrentDocument() && _node.VectorSceneBox is not null && _node.VectorSemanticIndex >= 0;
+
+    private InlineVectorSceneRun? LinkedInlineVectorScene =>
+        IsCurrentDocument() && _node.InlineRun is InlineVectorSceneRun { IsLinked: true } inlineScene
+            ? inlineScene
+            : null;
 
     private bool IsVectorSemanticInvokable
     {
         get
         {
+            if (!IsCurrentDocument())
+                return false;
             if (!IsVectorSemanticNode || _node.VectorSceneBox is not { } vector)
                 return false;
             return MarkdownVectorSemanticPolicy.IsInvokable(
@@ -536,13 +677,18 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
     }
 
     private IHorizontalOverflowBox? HorizontalOverflow =>
-        _node.VectorSemanticIndex < 0 ? _node.Box as IHorizontalOverflowBox : null;
+        IsCurrentDocument() && _node.VectorSemanticIndex < 0 ? _node.Box as IHorizontalOverflowBox : null;
     private InlineEmbedAutomationMetadata? TaskMetadata =>
-        (_node.InlineRun as InlineEmbedRun)?.AutomationMetadata;
+        IsCurrentDocument() ? (_node.InlineRun as InlineEmbedRun)?.AutomationMetadata : null;
 
     internal void NotifyImageStatusChanged()
     {
-        if (_node.ImageBox is not { } image)
+        // Image completions are asynchronous and may race snapshot replacement.
+        // A stale peer must not raise UIA events for a retired image.
+        if (!_lifetime.TryGetCurrentPayload(_nodeReference, out MarkdownSemanticNode? node) || node is null)
+            return;
+
+        if (node.ImageBox is not { } image)
             return;
 
         MarkdownImageAccessibilityState current = image.AccessibilityState;
@@ -550,7 +696,7 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
         if (previous == current)
             return;
 
-        string text = _root.GetSemanticDocument().GetText(_node);
+        string text = _root.GetSemanticDocument().GetText(node);
         string oldName = GetImageName(text, previous);
         string newName = GetImageName(text, current);
         string oldStatus = previous == MarkdownImageAccessibilityState.Loading ? oldName : string.Empty;
@@ -561,13 +707,26 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
         RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
     }
 
-    internal void RaiseAutomationFocusChanged() =>
-        RaiseAutomationEvent(AutomationEvents.AutomationFocusChanged);
+    internal void NotifyVectorSceneStatusMayHaveChanged()
+    {
+        if (_lifetime.TryGetCurrentPayload(_nodeReference, out MarkdownSemanticNode? node) &&
+            node?.VectorSceneBox is not null)
+            InvalidatePeer();
+    }
+
+    internal void RaiseAutomationFocusChanged()
+    {
+        if (IsCurrentDocument())
+            RaiseAutomationEvent(AutomationEvents.AutomationFocusChanged);
+    }
 
     internal void NotifyHorizontalScrollChanged(
         double oldPhysicalPercent,
         double newPhysicalPercent)
     {
+        if (!IsCurrentDocument())
+            return;
+
         if (HorizontalOverflow is null ||
             System.Math.Abs(newPhysicalPercent - oldPhysicalPercent) <= 0.0001)
         {
@@ -582,17 +741,30 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
 
     void IInvokeProvider.Invoke()
     {
+        EnsureCurrentDocument();
+        if (LinkedInlineVectorScene is { } inlineScene)
+        {
+            _owner.RaiseInlineVectorSceneClickFromAutomation(inlineScene);
+            return;
+        }
+
         if (!IsVectorSemanticInvokable || _node.VectorSceneBox is null)
             throw new System.InvalidOperationException("This semantic item is not invokable.");
         _owner.RaiseVectorSceneLinkClickFromAutomation(_node.VectorSceneBox, _node.VectorSemanticIndex);
     }
 
-    ToggleState IToggleProvider.ToggleState => TaskMetadata?.IsChecked == true
-        ? ToggleState.On
-        : ToggleState.Off;
+    ToggleState IToggleProvider.ToggleState
+    {
+        get
+        {
+            EnsureCurrentDocument();
+            return TaskMetadata?.IsChecked == true ? ToggleState.On : ToggleState.Off;
+        }
+    }
 
     void IToggleProvider.Toggle()
     {
+        EnsureCurrentDocument();
         InlineEmbedAutomationMetadata task = TaskMetadata ??
             throw new System.InvalidOperationException("This semantic item is not a task state.");
         bool previousState = task.IsChecked;
@@ -619,6 +791,12 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
 
         return null;
     }
+
+    private bool IsCurrentDocument() => _lifetime.IsCurrent();
+
+    private void EnsureCurrentDocument() => _lifetime.EnsureCurrent();
+
+    private MarkdownSemanticNode _node => MarkdownAutomationPeerLifetime.GetPayloadOrThrow(_nodeReference);
 
     private string GetImageName(string text, MarkdownImageAccessibilityState? state)
     {

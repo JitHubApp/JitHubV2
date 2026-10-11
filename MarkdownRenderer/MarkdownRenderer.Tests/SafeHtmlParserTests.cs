@@ -82,6 +82,136 @@ public sealed class SafeHtmlParserTests
     }
 
     [Fact]
+    public void Parse_RankEightDeveloperRoadmapFragmentClosesParagraphsBeforeBlockStarts()
+    {
+        // This is the pinned rank-8 README's opening logo, heading, subtitle,
+        // and badge markup. Chromium implicitly closes the first <p> at <h2>
+        // and the subtitle <p> at the badge <p>.
+        const string html =
+            "<p align=\"center\">\n" +
+            "  <a href=\"https://roadmap.sh/\"><img src=\"https://roadmap.sh/img/brand.png\" height=\"70\"></a>\n" +
+            "  <h2 align=\"center\"><a href=\"https://roadmap.sh\">roadmap.sh</a></h2>\n" +
+            "  <p align=\"center\">Community-driven roadmaps, articles and resources for developers</p>\n" +
+            "  <p align=\"center\">\n" +
+            "    <a href=\"https://roadmap.sh/roadmaps\">\n" +
+            "\t        <img src=\"https://img.shields.io/badge/%E2%9C%A8-Roadmaps%20-0a0a0a.svg?style=flat&colorA=0a0a0a\" alt=\"roadmaps\" />\n" +
+            "    </a>\n" +
+            "    <a href=\"https://roadmap.sh/best-practices\">\n" +
+            "\t        <img src=\"https://img.shields.io/badge/%E2%9C%A8-Best%20Practices-0a0a0a.svg?style=flat&colorA=0a0a0a\" alt=\"best practices\" />\n" +
+            "    </a>\n" +
+            "    <a href=\"https://roadmap.sh/questions\">\n" +
+            "\t        <img src=\"https://img.shields.io/badge/%E2%9C%A8-Questions-0a0a0a.svg?style=flat&colorA=0a0a0a\" alt=\"videos\" />\n" +
+            "    </a>\n" +
+            "    <a href=\"https://www.youtube.com/channel/UCA0H2KIWgWTwpTFjSxp0now?sub_confirmation=1\">\n" +
+            "\t        <img src=\"https://img.shields.io/badge/%E2%9C%A8-YouTube%20Channel-0a0a0a.svg?style=flat&colorA=0a0a0a\" alt=\"roadmaps\" />\n" +
+            "    </a>\n" +
+            "  </p>\n" +
+            "</p>";
+
+        SafeHtmlDocument document = SafeHtmlParser.Parse(html);
+        SafeHtmlElement[] blocks = document.Root.Children.OfType<SafeHtmlElement>().ToArray();
+        Assert.False(document.IsTruncated);
+        Assert.Equal(["p", "h2", "p", "p"], blocks.Select(element => element.Name));
+
+        SafeHtmlElement logoParagraph = blocks[0];
+        SafeHtmlElement logoLink = Assert.Single(logoParagraph.Children.OfType<SafeHtmlElement>());
+        SafeHtmlElement logo = Assert.IsType<SafeHtmlElement>(Assert.Single(logoLink.Children));
+        Assert.Equal("img", logo.Name);
+        Assert.True(SafeHtmlParser.TryGetSafeLink(logoLink, out string logoHref));
+        Assert.Equal("https://roadmap.sh/", logoHref);
+        Assert.True(SafeHtmlParser.TryGetSafeImageSource(logo, out string logoSource));
+        Assert.Equal("https://roadmap.sh/img/brand.png", logoSource);
+
+        SafeHtmlElement heading = blocks[1];
+        SafeHtmlElement headingLink = Assert.IsType<SafeHtmlElement>(Assert.Single(heading.Children));
+        Assert.Equal("roadmap.sh", Assert.IsType<SafeHtmlText>(Assert.Single(headingLink.Children)).DecodedText);
+
+        SafeHtmlElement subtitle = blocks[2];
+        Assert.Equal(
+            "Community-driven roadmaps, articles and resources for developers",
+            Assert.IsType<SafeHtmlText>(Assert.Single(subtitle.Children)).DecodedText);
+
+        SafeHtmlElement badges = blocks[3];
+        SafeHtmlElement[] badgeLinks = badges.Children.OfType<SafeHtmlElement>().ToArray();
+        Assert.Equal(4, badgeLinks.Length);
+        Assert.All(badgeLinks, link => Assert.True(SafeHtmlParser.TryGetSafeLink(link, out _)));
+        Assert.All(badgeLinks, link =>
+            Assert.True(SafeHtmlParser.TryGetSafeImageSource(
+                Assert.Single(link.Children.OfType<SafeHtmlElement>()), out _)));
+
+        // Implicit closure adds no synthetic source markup; explicit opening
+        // spans remain anchored to their original byte-decoded character offsets.
+        Assert.Equal(FindOpeningTag(html, "<p align=\"center\">", 0), logoParagraph.SourceStart);
+        Assert.Equal("<p align=\"center\">".Length, logoParagraph.SourceLength);
+        Assert.Equal(FindOpeningTag(html, "<h2 align=\"center\">", 0), heading.SourceStart);
+        Assert.Equal(FindOpeningTag(html, "<p align=\"center\">", logoParagraph.SourceStart + 1), subtitle.SourceStart);
+        Assert.Equal(
+            FindOpeningTag(html, "<p align=\"center\">", subtitle.SourceStart + 1),
+            badges.SourceStart);
+        Assert.Equal("", logoParagraph.RawClosingTag);
+        Assert.Equal("</p>", badges.RawClosingTag);
+    }
+
+    [Fact]
+    public void Parse_ImplicitParagraphClosureHandlesMalformedNestingWithoutRelaxingSafety()
+    {
+        const string html = "<p><em>one<p><a href=\"javascript:alert(1)\">two</a><div><script><img src='https://example.com/tracker.png'>alert(1)</script>three</div>tail";
+
+        SafeHtmlDocument document = SafeHtmlParser.Parse(html);
+        SafeHtmlElement[] blocks = document.Root.Children.OfType<SafeHtmlElement>().ToArray();
+        Assert.False(document.IsTruncated);
+        Assert.Equal(["p", "p", "div"], blocks.Select(element => element.Name));
+
+        SafeHtmlElement firstParagraph = blocks[0];
+        SafeHtmlElement emphasis = Assert.IsType<SafeHtmlElement>(Assert.Single(firstParagraph.Children));
+        Assert.Equal("em", emphasis.Name);
+        Assert.Equal(html.IndexOf("<em>", StringComparison.Ordinal), emphasis.SourceStart);
+
+        SafeHtmlElement secondParagraph = blocks[1];
+        SafeHtmlElement unsafeLink = Assert.IsType<SafeHtmlElement>(Assert.Single(secondParagraph.Children));
+        Assert.False(SafeHtmlParser.TryGetSafeLink(unsafeLink, out _));
+        Assert.Equal(html.IndexOf("<p>", html.IndexOf("<p>", StringComparison.Ordinal) + 1, StringComparison.Ordinal), secondParagraph.SourceStart);
+
+        SafeHtmlElement div = blocks[2];
+        SafeHtmlElement script = Assert.IsType<SafeHtmlElement>(div.Children[0]);
+        Assert.True(SafeHtmlParser.IsSuppressedElement(script.Name));
+        Assert.Empty(script.Children);
+        Assert.IsType<SafeHtmlText>(div.Children[1]);
+        Assert.Equal("tail", Assert.IsType<SafeHtmlText>(document.Root.Children[^1]).DecodedText);
+    }
+
+    [Fact]
+    public void Parse_ExplicitParagraphClosuresAndInlineContentKeepTheirOriginalTree()
+    {
+        const string html = "<p>before <span>inline</span> after</p><div><p>nested</p></div>";
+
+        SafeHtmlDocument document = SafeHtmlParser.Parse(html);
+        SafeHtmlElement[] blocks = document.Root.Children.OfType<SafeHtmlElement>().ToArray();
+        Assert.False(document.IsTruncated);
+        Assert.Equal(["p", "div"], blocks.Select(element => element.Name));
+        Assert.Equal("</p>", blocks[0].RawClosingTag);
+        Assert.Equal(["span"], blocks[0].Children.OfType<SafeHtmlElement>().Select(element => element.Name));
+        Assert.Equal("</p>", Assert.IsType<SafeHtmlElement>(Assert.Single(blocks[1].Children)).RawClosingTag);
+        Assert.Equal("</div>", blocks[1].RawClosingTag);
+    }
+
+    [Fact]
+    public void Parse_ImplicitParagraphClosureStopsAtButtonScopeBoundary()
+    {
+        const string html = "<p><button><div>inside</div></button>after</p>";
+
+        SafeHtmlDocument document = SafeHtmlParser.Parse(html);
+        SafeHtmlElement paragraph = Assert.IsType<SafeHtmlElement>(Assert.Single(document.Root.Children));
+        SafeHtmlElement button = Assert.IsType<SafeHtmlElement>(paragraph.Children[0]);
+
+        Assert.Equal("p", paragraph.Name);
+        Assert.Equal("button", button.Name);
+        Assert.Equal("div", Assert.IsType<SafeHtmlElement>(Assert.Single(button.Children)).Name);
+        Assert.Equal("</p>", paragraph.RawClosingTag);
+        Assert.Equal("after", Assert.IsType<SafeHtmlText>(paragraph.Children[1]).DecodedText);
+    }
+
+    [Fact]
     public void Parse_SupportsUnquotedAttributesEntitiesAndSafeInlineFormatting()
     {
         const string html = "<sup><a href=docs/guide.md>Guide&nbsp;&amp;&nbsp;setup</a></sup><br>";
@@ -171,6 +301,61 @@ public sealed class SafeHtmlParserTests
     }
 
     [Fact]
+    public void AlignmentScopesTrackSplitNestedOpeningsAndClosings()
+    {
+        SafeHtmlBlockScopeTracker tracker = new();
+        IReadOnlyDictionary<string, bool> disclosureStates = new Dictionary<string, bool>();
+
+        Assert.True(tracker.Process("<div align=\"center\">", 0, disclosureStates));
+        Assert.Equal(SafeHtmlAlignment.Center, tracker.CurrentAlignment);
+        Assert.True(tracker.Process("<div align=\"right\">", 20, disclosureStates));
+        Assert.Equal(SafeHtmlAlignment.Right, tracker.CurrentAlignment);
+        Assert.True(tracker.Process("</div>", 41, disclosureStates));
+        Assert.Equal(SafeHtmlAlignment.Center, tracker.CurrentAlignment);
+        Assert.True(tracker.Process("</div>", 48, disclosureStates));
+        Assert.Equal(SafeHtmlAlignment.Inherit, tracker.CurrentAlignment);
+
+        SafeHtmlBlockScopeTracker sameBlockTracker = new();
+        Assert.False(sameBlockTracker.Process(
+            "<div align=\"center\"><h3>Same block</h3></div>",
+            0,
+            disclosureStates));
+        Assert.Equal(SafeHtmlAlignment.Inherit, sameBlockTracker.CurrentAlignment);
+    }
+
+    [Fact]
+    public void NestedScopeCopyKeepsBudgetDenialAndClosedDetailsSuppression()
+    {
+        SafeHtmlParseLimits limits = SafeHtmlParseLimits.Default with { MaxInputLength = 40 };
+        SafeHtmlBlockScopeTracker parent = new(limits);
+        IReadOnlyDictionary<string, bool> disclosureStates = new Dictionary<string, bool>();
+
+        Assert.False(parent.Process(
+            "<details><summary>title</summary>",
+            sourceOffset: 0,
+            disclosureStates));
+        Assert.True(parent.IsContentSuppressed);
+
+        Assert.False(parent.Process(
+            "<p>" + new string('x', 20) + "</p>",
+            sourceOffset: 33,
+            disclosureStates));
+        Assert.True(parent.BudgetExceeded);
+        Assert.True(parent.IsContentSuppressed);
+
+        // A nested scope copy cannot turn a parent denial into a fresh active
+        // HTML tracker or discard a closed disclosure's suppression state.
+        SafeHtmlBlockScopeTracker nested = parent.CloneForNestedContent();
+        Assert.True(nested.BudgetExceeded);
+        Assert.True(nested.IsContentSuppressed);
+        Assert.Equal(SafeHtmlAlignment.Inherit, nested.CurrentAlignment);
+        Assert.False(nested.Process("<div align=\"center\">", 60, disclosureStates));
+        Assert.True(nested.BudgetExceeded);
+        Assert.True(nested.IsContentSuppressed);
+        Assert.Equal(SafeHtmlAlignment.Inherit, nested.CurrentAlignment);
+    }
+
+    [Fact]
     public void Parse_BoundsDeepAndOversizedInputWithoutThrowing()
     {
         string deep = string.Concat(Enumerable.Repeat("<div>", SafeHtmlParser.MaxNestingDepth + 20)) +
@@ -250,6 +435,13 @@ public sealed class SafeHtmlParserTests
     {
         Assert.True(SafeHtmlParser.TryGetLength(element, name, out SafeHtmlLength length));
         return length;
+    }
+
+    private static int FindOpeningTag(string html, string tag, int startIndex)
+    {
+        int index = html.IndexOf(tag, startIndex, StringComparison.Ordinal);
+        Assert.True(index >= 0, $"Expected opening tag {tag} after source offset {startIndex}.");
+        return index;
     }
 
     private static SafeHtmlElement ElementWithAttribute(string name, string attribute, string value) => new(

@@ -137,10 +137,11 @@ public class FilePreviewResolverTests
     // ── Markdown ──────────────────────────────────────────────────────────────
 
     [Theory]
+    [InlineData("")]
     [InlineData(".md")]
     [InlineData(".markdown")]
     [InlineData(".mdx")]
-    public void Resolve_MarkdownExtension_ReturnsMarkdownKind(string ext)
+    public void Resolve_MarkdownReadme_ReturnsMarkdownKind(string ext)
     {
         var resolver = CreateResolver();
         var result = resolver.Resolve($"README{ext}", 100, default);
@@ -186,6 +187,8 @@ public class FilePreviewResolverTests
 
     [Theory]
     [InlineData("README.md", true)]
+    [InlineData("README", true)]
+    [InlineData("docs/README", true)]
     [InlineData("readme.markdown", true)]
     [InlineData("README.asciidoc", true)]
     [InlineData("docs/README.md", true)]

@@ -15,3 +15,21 @@ public static class MarkdownRenderer.GitHub.GitHubReadmeExtensions
 public static class MarkdownRenderer.GitHub.GitHubReadmeMarkdownRenderer
   public static MarkdownRenderer.Controls.MarkdownScrollView CreateDefault(string? markdown = null, MarkdownRenderer.Theming.MarkdownTheme? theme = null, bool isSelectionEnabled = true, MarkdownRenderer.Images.IMarkdownImageResolver? imageResolver = null, System.Uri? imageBaseUri = null, string? imageDocumentPath = null);
   public static MarkdownRenderer.MarkdownEngine SharedEngine { get; }
+
+public sealed class MarkdownRenderer.GitHub.GitHubReadmeVisualStyleProfile
+  public MarkdownRenderer.CodeBlocks.CodeBlockChromeMode CodeBlockChromeMode { get; }
+  public MarkdownRenderer.CodeBlocks.CodeBlockLineNumberMode CodeBlockLineNumberMode { get; }
+  public MarkdownRenderer.Theming.MarkdownStyleSheet StyleSheet { get; }
+  public MarkdownRenderer.Theming.MarkdownTheme CreateTheme();
+  public Windows.UI.Color AccentColor { get; }
+  public Windows.UI.Color SurfaceColor { get; }
+  public bool IsCodeBlockCopyEnabled { get; }
+  public int Version { get; }
+  public string Fingerprint { get; }
+  public string Id { get; }
+
+public static class MarkdownRenderer.GitHub.GitHubReadmeVisualStyleProfiles
+  public static MarkdownRenderer.GitHub.GitHubReadmeVisualStyleProfile PrimerLightV1 { get; }
+  public static MarkdownRenderer.GitHub.GitHubReadmeVisualStyleProfile PrimerLightV2 { get; }
+  public static MarkdownRenderer.GitHub.GitHubReadmeVisualStyleProfile PrimerLightV3 { get; }
+  public static MarkdownRenderer.GitHub.GitHubReadmeVisualStyleProfile PrimerLightV4 { get; }

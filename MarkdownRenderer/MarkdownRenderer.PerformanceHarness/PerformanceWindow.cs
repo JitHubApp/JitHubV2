@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.Json;
 using Microsoft.Graphics.Canvas;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -16,6 +17,9 @@ internal sealed class PerformanceWindow : Window
     private const double MeasurementWidthDips = 1100;
     private const double MeasurementHeightDips = 760;
     private const double ScrollResetToleranceDips = 0.5;
+    private const int StageProfileSourceBytes = 1024 * 1024;
+    private const string StageProfilePathEnvironmentVariable =
+        "MARKDOWNRENDERER_PERF_STAGE_PROFILE_PATH";
     private static readonly TimeSpan ViewportTimeout = TimeSpan.FromMinutes(3);
     private static readonly int[] FirstViewportSourceSizes =
     [
@@ -26,9 +30,13 @@ internal sealed class PerformanceWindow : Window
 
     private readonly PerformanceOptions _options;
     private readonly PerformanceEventListener _events = new();
+    private readonly MeasurementVisibilityInvalidation _measurementInvalidation = new();
     private readonly Grid _host = new();
     private readonly MonotonicUtcClock _utcClock = new();
     private readonly PerformanceReport _report;
+    private readonly string? _stageProfilePath;
+    private readonly string? _stageProfileConfigurationError;
+    private readonly List<FirstViewportStageProfileSample>? _stageProfileSamples;
     private MarkdownScrollView? _renderer;
     private MarkdownEngine? _ownedRendererEngine;
     private MeasurementVisibilityMonitor? _visibilityMonitor;
@@ -39,6 +47,9 @@ internal sealed class PerformanceWindow : Window
     internal PerformanceWindow(PerformanceOptions options)
     {
         _options = options;
+        _stageProfilePath = ResolveStageProfilePath(options, out string? stageProfileConfigurationError);
+        _stageProfileConfigurationError = stageProfileConfigurationError;
+        _stageProfileSamples = _stageProfilePath is null ? null : [];
         Title = "MarkdownRenderer pinned-machine performance harness";
         AppWindow.Resize(new SizeInt32(1100, 760));
         Content = _host;
@@ -68,9 +79,13 @@ internal sealed class PerformanceWindow : Window
     private async Task RunGuardedAsync()
     {
         Debug.WriteLine("[PerfHarness] run started");
+        _events.SetMeasurementEnvironmentAbortToken(_measurementInvalidation.CancellationToken);
         int exitCode;
         try
         {
+            if (_stageProfileConfigurationError is not null)
+                throw new InvalidOperationException(_stageProfileConfigurationError);
+
             await NormalizeMeasurementWindowAsync();
             double dpiScale = _host.XamlRoot?.RasterizationScale ?? 0;
             IntPtr windowHandle = WindowNative.GetWindowHandle(this);
@@ -103,13 +118,15 @@ internal sealed class PerformanceWindow : Window
             if (!_options.Quick)
             {
                 MeasurementVisibilityMonitor visibilityMonitor =
-                    MeasurementVisibilityMonitor.Start(windowHandle);
+                    MeasurementVisibilityMonitor.Start(windowHandle, _measurementInvalidation);
                 _visibilityMonitor = visibilityMonitor;
                 if (!MeasurementVisibilityEvidenceValidator.IsQualifiedSample(
                         visibilityMonitor.InitialSample))
                 {
-                    throw new InvalidOperationException(
-                        "Release measurement preflight requires the benchmark window to be foreground, visible, and unobstructed.");
+                    _ = _measurementInvalidation.TryInvalidate(
+                        visibilityMonitor.InitialSample ?? new MeasurementVisibilitySample(),
+                        "the benchmark window did not qualify when measurement began");
+                    throw new OperationCanceledException(_measurementInvalidation.CancellationToken);
                 }
             }
             _report.SourceLookup = MeasureSourceLookup();
@@ -141,6 +158,11 @@ internal sealed class PerformanceWindow : Window
                 _host.ActualHeight,
                 configureProcessPowerThrottling: false);
             CompleteVisibilityMonitoring();
+            // The final visibility sample is part of the frozen interval too.
+            // If foreground or coverage was lost immediately before teardown,
+            // classify the run as an invalid environment rather than evaluating
+            // its renderer measurements.
+            _measurementInvalidation.CancellationToken.ThrowIfCancellationRequested();
             // Freeze the serialized report interval before evaluating its
             // evidence. Every recorded trial must be bounded by this exact,
             // positive interval; do not mutate it after the verdict is formed.
@@ -148,6 +170,30 @@ internal sealed class PerformanceWindow : Window
             _report.Regression = RegressionEvaluator.Evaluate(_report, _options);
             ValidateReport();
             exitCode = _report.Passed ? 0 : 1;
+        }
+        catch (OperationCanceledException) when (
+            _measurementInvalidation.FirstUnqualifiedSample is not null)
+        {
+            MeasurementVisibilitySample sample =
+                _measurementInvalidation.FirstUnqualifiedSample!;
+            string reason = _measurementInvalidation.FirstViolationReason ??
+                MeasurementVisibilityEvidenceValidator.DescribeUnqualifiedSample(sample);
+            Debug.WriteLine($"[PerfHarness] measurement environment invalidated: {reason}");
+            try
+            {
+                CompleteVisibilityMonitoring();
+            }
+            catch (Exception visibilityException)
+            {
+                _report.Failures.Add(
+                    $"Could not finalize measurement visibility evidence: {visibilityException}");
+            }
+            _report.CompletedUtc = _utcClock.GetUtcNow();
+            _report.Failures.Add(
+                $"Invalid measurement environment: {reason} (source={sample.Source}, elapsedTicks={sample.ElapsedTicks}). " +
+                "Renderer performance gates were not evaluated.");
+            _report.Passed = false;
+            exitCode = 4;
         }
         catch (Exception exception)
         {
@@ -178,9 +224,27 @@ internal sealed class PerformanceWindow : Window
         }
         try
         {
+            if (_stageProfilePath is not null && _stageProfileSamples is not null)
+            {
+                try
+                {
+                    WriteStageProfileArtifact();
+                    Console.WriteLine($"First-viewport stage profile: {_stageProfilePath}");
+                }
+                catch (Exception exception)
+                {
+                    Console.Error.WriteLine($"Could not write first-viewport stage profile: {exception}");
+                    _report.Failures.Add($"Could not write first-viewport stage profile artifact: {exception}");
+                    _report.Passed = false;
+                    exitCode = 2;
+                }
+            }
+
             await WriteReportAsync();
             Console.WriteLine($"Performance report: {_options.OutputPath}");
-            Console.WriteLine(_options.Quick
+            Console.WriteLine(exitCode == 4
+                ? "Invalid measurement environment; renderer performance gates were not evaluated."
+                : _options.Quick
                 ? _report.Passed
                     ? "Quick performance smoke completed; release gates were not evaluated."
                     : "Quick performance smoke failed."
@@ -196,6 +260,7 @@ internal sealed class PerformanceWindow : Window
 
         await DisposeRendererAsync();
         _events.Dispose();
+        _measurementInvalidation.Dispose();
         Environment.Exit(exitCode);
     }
 
@@ -222,6 +287,7 @@ internal sealed class PerformanceWindow : Window
         {
             _ = DisposeRendererAsync();
             _events.Dispose();
+            _measurementInvalidation.Dispose();
         }
     }
 
@@ -301,7 +367,8 @@ internal sealed class PerformanceWindow : Window
                     row,
                     globalOrdinal++,
                     row,
-                    position));
+                    position,
+                    isWarmup: true));
             }
         }
 
@@ -319,7 +386,8 @@ internal sealed class PerformanceWindow : Window
                     row,
                     globalOrdinal++,
                     row,
-                    position));
+                    position,
+                    isWarmup: false));
             }
         }
 
@@ -453,7 +521,8 @@ internal sealed class PerformanceWindow : Window
         int ordinal,
         int globalOrdinal,
         int scheduleRow,
-        int schedulePosition)
+        int schedulePosition,
+        bool isWarmup)
     {
         using MarkdownEngine engine = CreateEngine(
             scenario.SourceBytes,
@@ -463,10 +532,10 @@ internal sealed class PerformanceWindow : Window
         long hashesBeforePrime = engine.SourceKeyHashCount;
         if (scenario.Mode == PerformanceMeasurementContract.FirstViewportCacheHitMode)
         {
-            _ = await engine.ParseAsync(scenario.Source);
+            _ = await engine.ParseAsync(scenario.Source, _measurementInvalidation.CancellationToken);
             // Verify the exact same source identity resolves through the
             // completed-cache fast path before any measurement boundary.
-            _ = await engine.ParseAsync(scenario.Source);
+            _ = await engine.ParseAsync(scenario.Source, _measurementInvalidation.CancellationToken);
         }
 
         int completedAfterPrime = engine.CompletedParseCount;
@@ -481,6 +550,16 @@ internal sealed class PerformanceWindow : Window
             engine,
             scenario.Source,
             scenario.SourceBytes);
+        RecordFirstViewportStageProfile(
+            scenario,
+            ordinal,
+            globalOrdinal,
+            scheduleRow,
+            schedulePosition,
+            isWarmup,
+            "settling",
+            -1,
+            settling);
         var samples = new List<double>(_options.FirstViewportIterations);
         var publicationSamples = new List<double>(_options.FirstViewportIterations);
         for (int iteration = 0; iteration < _options.FirstViewportIterations; iteration++)
@@ -489,6 +568,16 @@ internal sealed class PerformanceWindow : Window
                 engine,
                 scenario.Source,
                 scenario.SourceBytes);
+            RecordFirstViewportStageProfile(
+                scenario,
+                ordinal,
+                globalOrdinal,
+                scheduleRow,
+                schedulePosition,
+                isWarmup,
+                "sample",
+                iteration,
+                presented);
             samples.Add(presented.FirstViewport.ElapsedMilliseconds);
             publicationSamples.Add(presented.PublicationMilliseconds);
         }
@@ -581,7 +670,13 @@ internal sealed class PerformanceWindow : Window
 
     private readonly record struct FirstViewportPresentation(
         FirstViewportEvent FirstViewport,
-        double PublicationMilliseconds);
+        double PublicationMilliseconds,
+        FirstViewportStageProfileMeasurements? StageProfileMeasurements);
+
+    private sealed record FirstViewportStageProfileMeasurements(
+        MarkdownPipelineTimingSnapshot Timing,
+        long ProcessAllocatedBytes,
+        long? UiThreadAllocatedBytes);
 
     private async Task<FirstViewportPresentation> PresentFirstViewportAsync(
         MarkdownEngine engine,
@@ -596,10 +691,27 @@ internal sealed class PerformanceWindow : Window
             // renderer first would interleave empty-source parses with the cache
             // condition and invalidate both the cache proof and the measurement.
             await WaitForCompositionFramesAsync(1);
+            bool captureStageProfile =
+                _stageProfileSamples is not null && sourceBytes == StageProfileSourceBytes;
+            long processAllocatedBefore = captureStageProfile
+                ? GC.GetTotalAllocatedBytes(precise: true)
+                : 0;
+            long uiThreadAllocatedBefore = captureStageProfile
+                ? GC.GetAllocatedBytesForCurrentThread()
+                : 0;
+            int uiThreadBefore = captureStageProfile
+                ? Environment.CurrentManagedThreadId
+                : 0;
             long sequence = _events.CurrentSequence;
             var renderer = new MarkdownScrollView
             {
                 Engine = engine,
+                // The sidecar is explicitly diagnostic-only and quick-run-only.
+                // Enable stage counters before Markdown starts the initial build;
+                // regular quick/release measurements retain the uninstrumented path.
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+                EnableStandaloneLayoutDiagnostics = captureStageProfile,
+#endif
                 Markdown = source,
                 HorizontalAlignment = HorizontalAlignment.Stretch,
                 VerticalAlignment = VerticalAlignment.Stretch,
@@ -624,14 +736,242 @@ internal sealed class PerformanceWindow : Window
             double publicationMilliseconds = Stopwatch.GetElapsedTime(
                 timing.PublicationStartedTimestamp,
                 timing.PublicationEndedTimestamp).TotalMilliseconds;
+            long processAllocatedBytes = captureStageProfile
+                ? Math.Max(0, GC.GetTotalAllocatedBytes(precise: true) - processAllocatedBefore)
+                : 0;
+            long? uiThreadAllocatedBytes = captureStageProfile &&
+                Environment.CurrentManagedThreadId == uiThreadBefore
+                    ? Math.Max(0, GC.GetAllocatedBytesForCurrentThread() - uiThreadAllocatedBefore)
+                    : null;
+            FirstViewportStageProfileMeasurements? stageProfileMeasurements = captureStageProfile
+                ? new FirstViewportStageProfileMeasurements(
+                    timing,
+                    processAllocatedBytes,
+                    uiThreadAllocatedBytes)
+                : null;
             await WaitForCompositionFramesAsync(2);
-            return new FirstViewportPresentation(presented, publicationMilliseconds);
+            return new FirstViewportPresentation(
+                presented,
+                publicationMilliseconds,
+                stageProfileMeasurements);
         }
         finally
         {
             await DisposeRendererAsync();
         }
     }
+
+    private void RecordFirstViewportStageProfile(
+        FirstViewportScenario scenario,
+        int trialOrdinal,
+        int globalOrdinal,
+        int scheduleRow,
+        int schedulePosition,
+        bool isWarmup,
+        string presentationRole,
+        int sampleIndex,
+        FirstViewportPresentation presentation)
+    {
+        List<FirstViewportStageProfileSample>? samples = _stageProfileSamples;
+        FirstViewportStageProfileMeasurements? profile = presentation.StageProfileMeasurements;
+        if (samples is null ||
+            scenario.SourceBytes != StageProfileSourceBytes ||
+            profile is null)
+            return;
+
+        MarkdownPipelineTimingSnapshot timing = profile.Timing;
+        samples.Add(new FirstViewportStageProfileSample
+        {
+            Corpus = PerformanceDocumentFactory.GetCorpusName(scenario.SourceBytes),
+            Mode = scenario.Mode,
+            SourceUtf16Bytes = scenario.SourceBytes,
+            TrialKind = isWarmup ? "warmup" : "measured",
+            TrialOrdinal = trialOrdinal,
+            GlobalOrdinal = globalOrdinal,
+            ScheduleRow = scheduleRow,
+            SchedulePosition = schedulePosition,
+            PresentationRole = presentationRole,
+            SampleIndex = sampleIndex,
+            Generation = presentation.FirstViewport.Generation,
+            FirstViewportMilliseconds = presentation.FirstViewport.ElapsedMilliseconds,
+            ParseMilliseconds = timing.ParseMilliseconds,
+            SetupMilliseconds = timing.SetupMilliseconds,
+            ThemeSnapshotMilliseconds = timing.ThemeSnapshotMilliseconds,
+            LayoutMilliseconds = timing.LayoutMilliseconds,
+            LayoutCpuMilliseconds = timing.LayoutCpuMilliseconds,
+            LayoutQueueMilliseconds = timing.LayoutQueueMilliseconds,
+            LayoutWorkerWallMilliseconds = timing.LayoutWorkerWallMilliseconds,
+            LayoutContinuationMilliseconds = timing.LayoutContinuationMilliseconds,
+            PublicationMilliseconds = presentation.PublicationMilliseconds,
+            PublicationCommitMilliseconds = GetTimestampDeltaMilliseconds(
+                timing.PublicationStartedTimestamp,
+                timing.CommitEndedTimestamp),
+            PublicationOverlayResetMilliseconds = GetTimestampDeltaMilliseconds(
+                timing.CommitEndedTimestamp,
+                timing.OverlayResetEndedTimestamp),
+            PublicationPlanConstructionMilliseconds = GetTimestampDeltaMilliseconds(
+                timing.OverlayResetEndedTimestamp,
+                timing.PlanConstructionEndedTimestamp),
+            PublicationEmbedRealizationMilliseconds = GetTimestampDeltaMilliseconds(
+                timing.PlanConstructionEndedTimestamp,
+                timing.EmbedRealizationEndedTimestamp),
+            PublicationHighlightRetirementMilliseconds = GetTimestampDeltaMilliseconds(
+                timing.EmbedRealizationEndedTimestamp,
+                timing.HighlightRetirementEndedTimestamp),
+            PublicationHighlightSchedulingMilliseconds = GetTimestampDeltaMilliseconds(
+                timing.HighlightRetirementEndedTimestamp,
+                timing.HighlightSchedulingEndedTimestamp),
+            PublicationVisibleRealizationMilliseconds = GetTimestampDeltaMilliseconds(
+                timing.HighlightSchedulingEndedTimestamp,
+                timing.VisibleRealizationEndedTimestamp),
+            PublicationFinalizationMilliseconds = GetTimestampDeltaMilliseconds(
+                timing.VisibleRealizationEndedTimestamp,
+                timing.PublicationEndedTimestamp),
+            ProcessAllocatedBytes = profile.ProcessAllocatedBytes,
+            UiThreadAllocatedBytes = profile.UiThreadAllocatedBytes,
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+            LayoutTopLevelBlockCount = timing.LayoutTopLevelBlockCount,
+            CanvasTextLayoutConstructorCalls = timing.CanvasTextLayoutConstructorCalls,
+            CanvasTextLayoutConstructorMilliseconds = timing.CanvasTextLayoutConstructorMilliseconds,
+            LayoutBlockConstructionMilliseconds = timing.LayoutBlockConstructionMilliseconds,
+            LayoutMeasureArrangeMilliseconds = timing.LayoutMeasureArrangeMilliseconds,
+            LayoutSnapshotConstructionMilliseconds = timing.LayoutSnapshotConstructionMilliseconds,
+            InitialLayoutDispatcherSentinelEnqueued = timing.InitialLayoutDispatcherSentinelEnqueued,
+            InitialLayoutDispatcherSentinelDispatched = timing.InitialLayoutDispatcherSentinelDispatched,
+            InitialLayoutDispatcherSentinelDelayMilliseconds =
+                timing.InitialLayoutDispatcherSentinelDelayMilliseconds,
+            InitialLayoutDispatcherHeartbeatSampleCount =
+                timing.InitialLayoutDispatcherHeartbeatSampleCount,
+            InitialLayoutDispatcherHeartbeatMaxGapMilliseconds =
+                timing.InitialLayoutDispatcherHeartbeatMaxGapMilliseconds,
+#endif
+        });
+    }
+
+    private static double? GetTimestampDeltaMilliseconds(long start, long end)
+        => start > 0 && end >= start
+            ? Stopwatch.GetElapsedTime(start, end).TotalMilliseconds
+            : null;
+
+    private static string? ResolveStageProfilePath(
+        PerformanceOptions options,
+        out string? configurationError)
+    {
+        configurationError = null;
+        string? configuredPath = Environment.GetEnvironmentVariable(
+            StageProfilePathEnvironmentVariable);
+        if (string.IsNullOrWhiteSpace(configuredPath))
+            return null;
+        if (!options.Quick)
+        {
+            configurationError =
+                $"{StageProfilePathEnvironmentVariable} is diagnostic-only and requires --quick; " +
+                "it must not instrument a release-gate run.";
+            return null;
+        }
+
+        try
+        {
+            string fullPath = Path.GetFullPath(configuredPath);
+            string executablePath = Environment.ProcessPath ??
+                throw new InvalidOperationException("The performance executable path is unavailable.");
+            if (PerformanceDeploymentIdentity.IsPathWithinDeploymentDirectory(fullPath, executablePath))
+            {
+                throw new ArgumentException(
+                    $"{StageProfilePathEnvironmentVariable} must be outside the executable deployment directory.");
+            }
+            if (string.Equals(fullPath, options.OutputPath, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(fullPath, options.ReferencePath, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ArgumentException(
+                    $"{StageProfilePathEnvironmentVariable} must be distinct from the primary report and reference paths.");
+            }
+            if (File.Exists(fullPath) || Directory.Exists(fullPath))
+            {
+                throw new IOException(
+                    $"Stage profile path '{fullPath}' already exists and will not be overwritten.");
+            }
+
+            return fullPath;
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException or IOException or UnauthorizedAccessException or
+                NotSupportedException or InvalidOperationException)
+        {
+            configurationError =
+                $"Invalid {StageProfilePathEnvironmentVariable} configuration: {exception.Message}";
+            return null;
+        }
+    }
+
+    private void WriteStageProfileArtifact()
+    {
+        string path = _stageProfilePath ??
+            throw new InvalidOperationException("No stage profile path was configured.");
+        List<FirstViewportStageProfileSample> samples = _stageProfileSamples ??
+            throw new InvalidOperationException("Stage profile collection was not initialized.");
+        string? directory = Path.GetDirectoryName(path);
+        if (string.IsNullOrWhiteSpace(directory))
+            throw new InvalidOperationException("Stage profile path must have a parent directory.");
+
+        Directory.CreateDirectory(directory);
+        using FileStream stream = new(
+            path,
+            new FileStreamOptions
+            {
+                Mode = FileMode.CreateNew,
+                Access = FileAccess.Write,
+                Share = FileShare.None,
+                Options = FileOptions.SequentialScan,
+            });
+        JsonSerializer.Serialize(
+            stream,
+            new FirstViewportStageProfileArtifact
+            {
+                SchemaVersion = FirstViewportStageProfileArtifact.CurrentSchemaVersion,
+                Kind = FirstViewportStageProfileArtifact.ProfileKind,
+                EvidenceClassification = "quick-non-gating-diagnostic",
+                BuildIdentity = _report.BuildIdentity,
+                PerformanceReportPath = _options.OutputPath,
+                BuildArtifacts = CopyBuildArtifactHashes(_report.BuildArtifacts),
+                StartedUtc = _report.StartedUtc,
+                CompletedUtc = _report.CompletedUtc,
+                SourceUtf16Bytes = StageProfileSourceBytes,
+                Corpus = PerformanceDocumentFactory.ReadmeMixedCorpus,
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+                LayoutDiagnosticsEnabled = true,
+#else
+                LayoutDiagnosticsEnabled = false,
+#endif
+                AllocationScope =
+                    "Process allocated bytes from immediately before MarkdownScrollView construction through " +
+                    "the first-viewport event and timing snapshot; includes all process threads and is not " +
+                    "attributed to individual stages. UI-thread bytes cover the same interval only when the " +
+                    "continuation returns to the initiating managed thread; otherwise they are null.",
+                Presentations = samples,
+            },
+            FirstViewportStageProfileJsonContext.Default.FirstViewportStageProfileArtifact);
+        stream.Flush(flushToDisk: true);
+    }
+
+    private static BuildArtifactHashes CopyBuildArtifactHashes(BuildArtifactHashes source)
+        => new()
+        {
+            HashAlgorithm = source.HashAlgorithm,
+            Executable = CopyBuildArtifactHash(source.Executable),
+            PerformanceHarnessDll = CopyBuildArtifactHash(source.PerformanceHarnessDll),
+            MarkdownRendererDll = CopyBuildArtifactHash(source.MarkdownRendererDll),
+            MarkdownRendererCoreDll = CopyBuildArtifactHash(source.MarkdownRendererCoreDll),
+            RuntimeConfig = CopyBuildArtifactHash(source.RuntimeConfig),
+        };
+
+    private static BuildArtifactHash CopyBuildArtifactHash(BuildArtifactHash source)
+        => new()
+        {
+            FileName = source.FileName,
+            Path = source.Path,
+            Sha256 = source.Sha256,
+        };
 
     private sealed class FirstViewportScenario(
         int condition,
@@ -656,7 +996,7 @@ internal sealed class PerformanceWindow : Window
         const int sourceBytes = 1024 * 1024;
         string source = PerformanceDocumentFactory.CreateWarmScrollStress(sourceBytes);
         MarkdownEngine engine = CreateEngine(sourceBytes);
-        _ = await engine.ParseAsync(source);
+        _ = await engine.ParseAsync(source, _measurementInvalidation.CancellationToken);
         await ReplaceRendererAsync(engine);
         long sequence = _events.CurrentSequence;
         _renderer!.Markdown = source;
@@ -1252,7 +1592,7 @@ internal sealed class PerformanceWindow : Window
         return (cancellation.ElapsedMilliseconds, staleCommits);
     }
 
-    private static SourceLookupResult MeasureSourceLookup()
+    private SourceLookupResult MeasureSourceLookup()
     {
         const int mappingCount = PerformanceMeasurementContract.SourceLookupMappingCount;
         const int queryCount = PerformanceMeasurementContract.SourceLookupAbsoluteQueryCount;
@@ -1311,6 +1651,14 @@ internal sealed class PerformanceWindow : Window
         for (int trialOrdinal = 0; trialOrdinal < regressionTrialCount; trialOrdinal++)
         {
             var trialElapsed = new long[regressionObservationCount];
+            DateTimeOffset trialStartedUtc = _utcClock.GetUtcNow();
+            long trialStartedTimestamp = Stopwatch.GetTimestamp();
+            long threadCpuStarted = ThreadCpuClock.ReadCurrentThreadTicks();
+            bool hasThreadCyclesAtStart = measurementScope.TryGetThreadCycleCount(
+                out ulong threadCyclesStarted);
+            int gen0Before = GC.CollectionCount(0);
+            int gen1Before = GC.CollectionCount(1);
+            int gen2Before = GC.CollectionCount(2);
             long trialAllocatedBefore = GC.GetAllocatedBytesForCurrentThread();
             for (int observation = 0; observation < regressionObservationCount; observation++)
             {
@@ -1325,6 +1673,23 @@ internal sealed class PerformanceWindow : Window
             }
             long trialAllocated =
                 GC.GetAllocatedBytesForCurrentThread() - trialAllocatedBefore;
+            long trialCompletedTimestamp = Stopwatch.GetTimestamp();
+            DateTimeOffset trialCompletedUtc = _utcClock.GetUtcNow();
+            long threadCpuCompleted = ThreadCpuClock.ReadCurrentThreadTicks();
+            bool hasThreadCyclesAtEnd = measurementScope.TryGetThreadCycleCount(
+                out ulong threadCyclesCompleted);
+            long threadCpuElapsed = threadCpuStarted >= 0 &&
+                threadCpuCompleted >= threadCpuStarted
+                    ? threadCpuCompleted - threadCpuStarted
+                    : -1;
+            ulong? threadCycleDelta = hasThreadCyclesAtStart &&
+                hasThreadCyclesAtEnd &&
+                threadCyclesCompleted >= threadCyclesStarted
+                    ? threadCyclesCompleted - threadCyclesStarted
+                    : null;
+            int gen0Collections = GC.CollectionCount(0) - gen0Before;
+            int gen1Collections = GC.CollectionCount(1) - gen1Before;
+            int gen2Collections = GC.CollectionCount(2) - gen2Before;
             regressionAllocated = checked(regressionAllocated + trialAllocated);
             double[] trialNanosecondsPerLookup = trialElapsed
                 .Select(value => value * nanosecondsPerTick / regressionBatchSize)
@@ -1341,6 +1706,14 @@ internal sealed class PerformanceWindow : Window
                 SamplesNanosecondsPerLookup = trialNanosecondsPerLookup.ToList(),
                 P95Nanoseconds = trialP95,
                 AllocatedBytes = trialAllocated,
+                StartedUtc = trialStartedUtc,
+                CompletedUtc = trialCompletedUtc,
+                ElapsedStopwatchTicks = trialCompletedTimestamp - trialStartedTimestamp,
+                ThreadCpuTime100NsTicks = threadCpuElapsed,
+                ThreadCycleDelta = threadCycleDelta,
+                Gen0Collections = gen0Collections,
+                Gen1Collections = gen1Collections,
+                Gen2Collections = gen2Collections,
                 Complete = trialElapsed.All(static value => value > 0) &&
                            trialNanosecondsPerLookup.All(
                                static value => double.IsFinite(value) && value > 0) &&
@@ -1497,8 +1870,18 @@ internal sealed class PerformanceWindow : Window
         };
 
         CompositionTarget.Rendering += handler;
-        await completion.Task.WaitAsync(TimeSpan.FromMinutes(2));
-        await WaitForCompositionFramesAsync(4);
+        try
+        {
+            await completion.Task.WaitAsync(
+                TimeSpan.FromMinutes(2),
+                _measurementInvalidation.CancellationToken);
+            await WaitForCompositionFramesAsync(4);
+        }
+        finally
+        {
+            CompositionTarget.Rendering -= handler;
+            MarkdownPerformanceEventSource.SetLogicalFrameId(0);
+        }
     }
 
     private Task WaitForScrollTopAsync(string operation)
@@ -1513,7 +1896,7 @@ internal sealed class PerformanceWindow : Window
             ViewportTimeout,
             $"{operation} to reach offset zero");
 
-    private static async Task WaitForCompositionFramesAsync(int count)
+    private async Task WaitForCompositionFramesAsync(int count)
     {
         for (int index = 0; index < count; index++)
         {
@@ -1525,18 +1908,30 @@ internal sealed class PerformanceWindow : Window
                 completion.TrySetResult();
             };
             CompositionTarget.Rendering += handler;
-            await completion.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            try
+            {
+                await completion.Task.WaitAsync(
+                    TimeSpan.FromSeconds(10),
+                    _measurementInvalidation.CancellationToken);
+            }
+            finally
+            {
+                CompositionTarget.Rendering -= handler;
+            }
         }
     }
 
-    private static async Task WaitUntilAsync(Func<bool> condition, TimeSpan timeout, string description)
+    private async Task WaitUntilAsync(Func<bool> condition, TimeSpan timeout, string description)
     {
         long started = Stopwatch.GetTimestamp();
-        while (!condition())
+        while (true)
         {
+            _measurementInvalidation.CancellationToken.ThrowIfCancellationRequested();
+            if (condition())
+                return;
             if (Stopwatch.GetElapsedTime(started) >= timeout)
                 throw new TimeoutException($"Timed out waiting for {description}.");
-            await Task.Delay(10);
+            await Task.Delay(10, _measurementInvalidation.CancellationToken);
         }
     }
 
@@ -1550,7 +1945,7 @@ internal sealed class PerformanceWindow : Window
                 parseCacheBudgetBytes ?? Math.Max(0, sourceBytes * 8L))
             .Build();
 
-    private static async Task ForceCollectionAsync()
+    private async Task ForceCollectionAsync()
     {
         await WaitForCompositionFramesAsync(3);
         try { CanvasDevice.GetSharedDevice().Trim(); } catch { }
@@ -1559,7 +1954,7 @@ internal sealed class PerformanceWindow : Window
         GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
     }
 
-    private static async Task ForceManagedCollectionAsync()
+    private async Task ForceManagedCollectionAsync()
     {
         await WaitForCompositionFramesAsync(3);
         GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);

@@ -42,6 +42,12 @@ public sealed class ReadmeAuditPerformanceSnapshotTests
               "LayoutQueueMilliseconds": 0.5,
               "LayoutWorkerWallMilliseconds": 1.5,
               "LayoutContinuationMilliseconds": 0.5,
+              "LayoutTopLevelBlockCount": 20,
+              "CanvasTextLayoutConstructorCalls": 31,
+              "CanvasTextLayoutConstructorMilliseconds": 0.75,
+              "LayoutBlockConstructionMilliseconds": 0.25,
+              "LayoutMeasureArrangeMilliseconds": 1.25,
+              "LayoutSnapshotConstructionMilliseconds": 0.15,
               "PublicationMilliseconds": 0.5,
               "CommitMilliseconds": 0.1,
               "OverlayResetMilliseconds": 0.1,
@@ -84,6 +90,12 @@ public sealed class ReadmeAuditPerformanceSnapshotTests
         Assert.Equal(0.5, snapshot.Pipeline.LayoutQueueMilliseconds);
         Assert.Equal(1.5, snapshot.Pipeline.LayoutWorkerWallMilliseconds);
         Assert.Equal(0.5, snapshot.Pipeline.LayoutContinuationMilliseconds);
+        Assert.Equal(20, snapshot.Pipeline.LayoutTopLevelBlockCount);
+        Assert.Equal(31, snapshot.Pipeline.CanvasTextLayoutConstructorCalls);
+        Assert.Equal(0.75, snapshot.Pipeline.CanvasTextLayoutConstructorMilliseconds);
+        Assert.Equal(0.25, snapshot.Pipeline.LayoutBlockConstructionMilliseconds);
+        Assert.Equal(1.25, snapshot.Pipeline.LayoutMeasureArrangeMilliseconds);
+        Assert.Equal(0.15, snapshot.Pipeline.LayoutSnapshotConstructionMilliseconds);
         Assert.Equal(0.5, snapshot.Pipeline.PublicationMilliseconds);
         Assert.Equal(0.1, snapshot.Pipeline.CommitMilliseconds);
         Assert.Equal(0.1, snapshot.Pipeline.OverlayResetMilliseconds);
@@ -95,6 +107,89 @@ public sealed class ReadmeAuditPerformanceSnapshotTests
         Assert.Equal(0.03, snapshot.Pipeline.HighlightBandSchedulingMilliseconds);
         Assert.Equal(0.05, snapshot.Pipeline.AdornmentFocusMilliseconds);
         Assert.Equal(0.05, snapshot.Pipeline.FinalNotificationMilliseconds);
+    }
+
+    [Fact]
+    public void Parse_DefaultsDispatcherDiagnosticsWhenReadingOlderEvidence()
+    {
+        using JsonDocument evidence = JsonDocument.Parse(ValidEvidence);
+
+        ReadmeAuditPerformanceSnapshot snapshot =
+            ReadmeAuditPerformanceSnapshot.Parse(evidence.RootElement);
+
+        Assert.False(snapshot.Pipeline.InitialLayoutDispatcherSentinelEnqueued);
+        Assert.False(snapshot.Pipeline.InitialLayoutDispatcherSentinelDispatched);
+        Assert.Equal(0d, snapshot.Pipeline.InitialLayoutDispatcherSentinelDelayMilliseconds);
+        Assert.Equal(0, snapshot.Pipeline.InitialLayoutDispatcherHeartbeatSampleCount);
+        Assert.Equal(0d, snapshot.Pipeline.InitialLayoutDispatcherHeartbeatMaxGapMilliseconds);
+    }
+
+    [Fact]
+    public void Parse_PreservesInitialLayoutDispatcherDiagnostics()
+    {
+        JsonNode evidence = JsonNode.Parse(ValidEvidence)!;
+        JsonObject pipeline = evidence["Performance"]!["Pipeline"]!.AsObject();
+        pipeline["InitialLayoutDispatcherSentinelEnqueued"] = true;
+        pipeline["InitialLayoutDispatcherSentinelDispatched"] = true;
+        pipeline["InitialLayoutDispatcherSentinelDelayMilliseconds"] = 42.5;
+        pipeline["InitialLayoutDispatcherHeartbeatSampleCount"] = 12;
+        pipeline["InitialLayoutDispatcherHeartbeatMaxGapMilliseconds"] = 48.25;
+
+        ReadmeAuditPerformanceSnapshot snapshot = Parse(evidence);
+
+        Assert.True(snapshot.Pipeline.InitialLayoutDispatcherSentinelEnqueued);
+        Assert.True(snapshot.Pipeline.InitialLayoutDispatcherSentinelDispatched);
+        Assert.Equal(42.5, snapshot.Pipeline.InitialLayoutDispatcherSentinelDelayMilliseconds);
+        Assert.Equal(12, snapshot.Pipeline.InitialLayoutDispatcherHeartbeatSampleCount);
+        Assert.Equal(48.25, snapshot.Pipeline.InitialLayoutDispatcherHeartbeatMaxGapMilliseconds);
+    }
+
+    [Theory]
+    [InlineData("InitialLayoutDispatcherSentinelDelayMilliseconds", -1)]
+    [InlineData("InitialLayoutDispatcherHeartbeatMaxGapMilliseconds", -1)]
+    public void Parse_RejectsNegativeDispatcherDurations(string property, double value)
+    {
+        JsonNode evidence = JsonNode.Parse(ValidEvidence)!;
+        evidence["Performance"]!["Pipeline"]![property] = value;
+
+        Assert.Throws<InvalidDataException>(() => Parse(evidence));
+    }
+
+    [Fact]
+    public void Parse_RejectsNegativeDispatcherHeartbeatSampleCount()
+    {
+        JsonNode evidence = JsonNode.Parse(ValidEvidence)!;
+        evidence["Performance"]!["Pipeline"]![
+            "InitialLayoutDispatcherHeartbeatSampleCount"] = -1;
+
+        Assert.Throws<InvalidDataException>(() => Parse(evidence));
+    }
+
+    [Theory]
+    [InlineData(false, true, 0d)]
+    [InlineData(true, false, 1d)]
+    public void Parse_RejectsInconsistentDispatcherSentinelState(
+        bool enqueued,
+        bool dispatched,
+        double delayMilliseconds)
+    {
+        JsonNode evidence = JsonNode.Parse(ValidEvidence)!;
+        JsonObject pipeline = evidence["Performance"]!["Pipeline"]!.AsObject();
+        pipeline["InitialLayoutDispatcherSentinelEnqueued"] = enqueued;
+        pipeline["InitialLayoutDispatcherSentinelDispatched"] = dispatched;
+        pipeline["InitialLayoutDispatcherSentinelDelayMilliseconds"] = delayMilliseconds;
+
+        Assert.Throws<InvalidDataException>(() => Parse(evidence));
+    }
+
+    [Fact]
+    public void Parse_RejectsHeartbeatGapWithoutAnyHeartbeatSamples()
+    {
+        JsonNode evidence = JsonNode.Parse(ValidEvidence)!;
+        evidence["Performance"]!["Pipeline"]![
+            "InitialLayoutDispatcherHeartbeatMaxGapMilliseconds"] = 1;
+
+        Assert.Throws<InvalidDataException>(() => Parse(evidence));
     }
 
     [Theory]
@@ -135,6 +230,12 @@ public sealed class ReadmeAuditPerformanceSnapshotTests
     [InlineData("LayoutQueueMilliseconds")]
     [InlineData("LayoutWorkerWallMilliseconds")]
     [InlineData("LayoutContinuationMilliseconds")]
+    [InlineData("LayoutTopLevelBlockCount")]
+    [InlineData("CanvasTextLayoutConstructorCalls")]
+    [InlineData("CanvasTextLayoutConstructorMilliseconds")]
+    [InlineData("LayoutBlockConstructionMilliseconds")]
+    [InlineData("LayoutMeasureArrangeMilliseconds")]
+    [InlineData("LayoutSnapshotConstructionMilliseconds")]
     [InlineData("PublicationMilliseconds")]
     [InlineData("CommitMilliseconds")]
     [InlineData("OverlayResetMilliseconds")]
@@ -180,6 +281,10 @@ public sealed class ReadmeAuditPerformanceSnapshotTests
     [InlineData("LayoutQueueMilliseconds", -1)]
     [InlineData("LayoutWorkerWallMilliseconds", -1)]
     [InlineData("LayoutContinuationMilliseconds", -1)]
+    [InlineData("CanvasTextLayoutConstructorMilliseconds", -1)]
+    [InlineData("LayoutBlockConstructionMilliseconds", -1)]
+    [InlineData("LayoutMeasureArrangeMilliseconds", -1)]
+    [InlineData("LayoutSnapshotConstructionMilliseconds", -1)]
     [InlineData("PublicationMilliseconds", -1)]
     [InlineData("CommitMilliseconds", -1)]
     [InlineData("OverlayResetMilliseconds", -1)]
@@ -195,6 +300,17 @@ public sealed class ReadmeAuditPerformanceSnapshotTests
     {
         JsonNode evidence = JsonNode.Parse(ValidEvidence)!;
         evidence["Performance"]!["Pipeline"]![property] = value;
+
+        Assert.Throws<InvalidDataException>(() => Parse(evidence));
+    }
+
+    [Theory]
+    [InlineData("LayoutTopLevelBlockCount")]
+    [InlineData("CanvasTextLayoutConstructorCalls")]
+    public void Parse_RejectsNegativeLayoutCounts(string property)
+    {
+        JsonNode evidence = JsonNode.Parse(ValidEvidence)!;
+        evidence["Performance"]!["Pipeline"]![property] = -1;
 
         Assert.Throws<InvalidDataException>(() => Parse(evidence));
     }

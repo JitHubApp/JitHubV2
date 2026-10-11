@@ -10,10 +10,13 @@ using CommunityToolkit.Mvvm.DependencyInjection;
 using JitHub.Models.GitHub;
 using JitHub.Models.NavArgs;
 using JitHub.Services;
+using JitHub.Services.CodeViewer;
 using JitHub.Services.Markdown;
 using JitHub.WinUI.Helpers;
+using JitHub.WinUI.ViewModels.CodeViewer;
 using JitHub.WinUI.ViewModels.Pages;
 using MarkdownRenderer;
+using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Controls;
 using MarkdownRenderer.GitHub;
 using MarkdownRenderer.Images;
@@ -149,25 +152,43 @@ public sealed partial class MarkdownViewer : UserControl
     ];
 
     private readonly MarkdownTheme _theme = new();
+    private readonly GitHubReadmeVisualStyleProfile? _sameByteVisualProfile;
+    private readonly MarkdownTheme? _sameByteVisualTheme;
+    private readonly SolidColorBrush? _sameByteSurfaceBrush;
     private readonly IMarkdownImageResolver _imageResolver;
     private readonly ITelemetryService? _telemetryService;
     private readonly MarkdownRemoteContentConsent _remoteContentConsent = new();
     private readonly HashSet<MarkdownImageUnavailableReason> _reportedImageUnavailableReasons = [];
+    private MarkdownViewerDocumentPayload? _documentPayload;
+    private PendingSameByteReadmeSourceAdmission? _pendingSameByteSourceAdmission;
 #pragma warning disable MR1001 // Common storage for the two explicit viewport control types; never constructed directly.
     private MarkdownRendererControl? _renderer;
 #pragma warning restore MR1001
     private bool _currentRendererDisposalCompleted;
     private bool _rendererDisposalFaulted;
+#pragma warning disable MR1001 // Borrow either explicit viewport control while its shared retirement barrier drains.
+    private MarkdownRendererControl? _rendererRetirementPending;
+#pragma warning restore MR1001
     private bool _isLoaded;
     private bool _shutdownRequested;
     private bool _rendererCreationQueued;
+    private bool _rendererLoadedSettingsHandlerAttached;
+    private bool _rendererLayoutSettingsHandlerAttached;
+    private bool _rendererInitialLayoutReady;
+    private EventHandler<object>? _rendererLayoutSettingsHandler;
+    private long _rendererLayoutSettingsTicket;
+#pragma warning disable MR1001 // Retain the explicit viewport renderer owning the initial-layout subscription.
+    private MarkdownRendererControl? _rendererLayoutSettingsTarget;
+#pragma warning restore MR1001
     private bool _paletteSubscribed;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _lifecycleRuntimeSettingsTimer;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _firstViewportImagesReadyTimer;
+    private readonly FirstViewportImagesReadyPaintAcknowledgementLifecycle _firstViewportImagesReadyPaintLifecycle = new();
 #pragma warning disable MR1001 // The audit probe borrows either explicit viewport control through their shared base.
     private MarkdownRendererControl? _firstViewportImagesReadyRenderer;
 #pragma warning restore MR1001
     private FirstViewportImagesReadyRendererProbe? _firstViewportImagesReadyProbe;
+    private Func<LayoutSnapshot, long, Windows.Foundation.Rect, bool>? _firstViewportImagesReadyPaintCallback;
     private string? _firstViewportImagesReadyHost;
     private long _firstViewportImagesReadyGeneration;
     private long _firstViewportImagesReadyProbeTicket;
@@ -410,7 +431,13 @@ public sealed partial class MarkdownViewer : UserControl
         string? sameByteCorpusPath = MarkdownLifecycleAutomationBridge.SameByteReplayCorpusPath;
         if (sameByteCorpusPath is not null)
         {
-            _imageResolver = new MarkdownSameByteAuditImageResolver(
+            // The source-bound Edge fixture uses the same versioned Light
+            // presentation profile. Keep it local to this explicit audit mode;
+            // ordinary JitHub documents retain the app palette and typography.
+            _sameByteVisualProfile = GitHubReadmeVisualStyleProfiles.PrimerLightV4;
+            _sameByteVisualTheme = _sameByteVisualProfile.CreateTheme();
+            _sameByteSurfaceBrush = new SolidColorBrush(_sameByteVisualProfile.SurfaceColor);
+            _imageResolver = MarkdownLifecycleAutomationBridge.GetSameByteFixtureResolver(
                 sameByteCorpusPath,
                 Program.CurrentLaunchOptions.RepositoryFullName,
                 Program.CurrentLaunchOptions.Branch ?? string.Empty,
@@ -420,12 +447,12 @@ public sealed partial class MarkdownViewer : UserControl
         {
             IMarkdownImageResolver imageResolver = ResolveImageResolver();
             _imageResolver = MarkdownLifecycleAutomationBridge.IsEnabled
-                ? new MarkdownLifecycleImageResolver(imageResolver)
+                ? MarkdownLifecycleImageResolver.Create(imageResolver)
                 : imageResolver;
         }
         if (MarkdownLifecycleAutomationBridge.IsEvidenceEnabled)
         {
-            _imageResolver = new MarkdownAuditImageResolver(_imageResolver);
+            _imageResolver = MarkdownAuditImageResolver.Create(_imageResolver);
         }
 
         Loaded += (_, _) =>
@@ -580,8 +607,14 @@ public sealed partial class MarkdownViewer : UserControl
     {
         try
         {
-            return Ioc.Default.GetService<IGitHubService>() as IMarkdownImageResolver
-                ?? DenyAllMarkdownImageResolver.Instance;
+            IGitHubService? gitHubService = Ioc.Default.GetService<IGitHubService>();
+            return gitHubService switch
+            {
+                GitHubService concreteService => concreteService.CreateMarkdownImageResolver(),
+                IGitHubMarkdownImageResolverProvider provider => provider.CreateMarkdownImageResolver(),
+                IMarkdownImageResolver resolver => resolver,
+                _ => DenyAllMarkdownImageResolver.Instance,
+            };
         }
         catch
         {
@@ -988,6 +1021,31 @@ public sealed partial class MarkdownViewer : UserControl
                 pipeline.LayoutQueueMilliseconds,
                 pipeline.LayoutWorkerWallMilliseconds,
                 pipeline.LayoutContinuationMilliseconds,
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+                pipeline.LayoutTopLevelBlockCount,
+                pipeline.CanvasTextLayoutConstructorCalls,
+                pipeline.CanvasTextLayoutConstructorMilliseconds,
+                pipeline.LayoutBlockConstructionMilliseconds,
+                pipeline.LayoutMeasureArrangeMilliseconds,
+                pipeline.LayoutSnapshotConstructionMilliseconds,
+                pipeline.InitialLayoutDispatcherSentinelEnqueued,
+                pipeline.InitialLayoutDispatcherSentinelDispatched,
+                pipeline.InitialLayoutDispatcherSentinelDelayMilliseconds,
+                pipeline.InitialLayoutDispatcherHeartbeatSampleCount,
+                pipeline.InitialLayoutDispatcherHeartbeatMaxGapMilliseconds,
+#else
+                0,
+                0,
+                0d,
+                0d,
+                0d,
+                0d,
+                false,
+                false,
+                0d,
+                0,
+                0d,
+#endif
                 ElapsedMilliseconds(pipeline.PublicationStartedTimestamp, pipeline.PublicationEndedTimestamp),
                 ElapsedMilliseconds(pipeline.PublicationStartedTimestamp, pipeline.CommitEndedTimestamp),
                 ElapsedMilliseconds(pipeline.CommitEndedTimestamp, pipeline.OverlayResetEndedTimestamp),
@@ -1045,25 +1103,48 @@ public sealed partial class MarkdownViewer : UserControl
             return;
         }
 
-        if (!string.Equals(
-                (e.OldValue as MarkdownDocumentSource)?.DocumentId,
-                (e.NewValue as MarkdownDocumentSource)?.DocumentId,
-                StringComparison.Ordinal))
-            viewer.ResetOwnedViewportForNewDocument();
-
-        viewer._remoteContentConsent.Activate(e.NewValue as MarkdownDocumentSource);
-        viewer._reportedImageUnavailableReasons.Clear();
-        viewer._renderFailureReportedForDocument = false;
-        viewer._retryRenderPending = false;
-        if (viewer.RemoteImageInfoBar is not null)
-        {
-            viewer.RemoteImageInfoBar.IsOpen = false;
-        }
-        if (!viewer._rendererDisposalFaulted && viewer.RenderErrorInfoBar is not null)
-        {
-            viewer.RenderErrorInfoBar.IsOpen = false;
-        }
+        viewer.OnDocumentSourceTransition(
+            e.OldValue as MarkdownDocumentSource,
+            e.NewValue as MarkdownDocumentSource);
         viewer.ApplyRendererSettings();
+    }
+
+    internal void SetDocumentPayload(MarkdownViewerDocumentPayload? payload)
+    {
+        if (Equals(_documentPayload, payload))
+            return;
+
+        MarkdownDocumentSource? oldSource = _documentPayload?.DocumentSource ?? DocumentSource;
+        _documentPayload = payload;
+        MarkdownDocumentSource? newSource = _documentPayload is null
+            ? DocumentSource
+            : _documentPayload.DocumentSource;
+        OnDocumentSourceTransition(oldSource, newSource);
+        ApplyRendererSettings();
+    }
+
+    private void OnDocumentSourceTransition(
+        MarkdownDocumentSource? oldSource,
+        MarkdownDocumentSource? newSource)
+    {
+        if (!string.Equals(oldSource?.DocumentId, newSource?.DocumentId, StringComparison.Ordinal))
+        {
+            _pendingSameByteSourceAdmission = null;
+            ResetOwnedViewportForNewDocument();
+        }
+
+        _remoteContentConsent.Activate(newSource);
+        _reportedImageUnavailableReasons.Clear();
+        _renderFailureReportedForDocument = false;
+        _retryRenderPending = false;
+        if (RemoteImageInfoBar is not null)
+        {
+            RemoteImageInfoBar.IsOpen = false;
+        }
+        if (!_rendererDisposalFaulted && RenderErrorInfoBar is not null)
+        {
+            RenderErrorInfoBar.IsOpen = false;
+        }
     }
 
     private void ResetOwnedViewportForNewDocument()
@@ -1098,7 +1179,11 @@ public sealed partial class MarkdownViewer : UserControl
 
     private void QueueRendererCreation()
     {
-        if (_shutdownRequested || _renderer is not null || _rendererCreationQueued || !_isLoaded)
+        if (_shutdownRequested ||
+            _renderer is not null ||
+            _rendererRetirementPending is not null ||
+            _rendererCreationQueued ||
+            !_isLoaded)
         {
             return;
         }
@@ -1135,11 +1220,19 @@ public sealed partial class MarkdownViewer : UserControl
             return;
         }
 
+        // The old control is already disposed, but its published snapshot may
+        // still be releasing device resources on the pool. Do not reattach it
+        // if this viewer is loaded again before that retirement completes.
+        if (_rendererRetirementPending is not null)
+            return;
+
         if (_renderer is not null)
         {
             if (!RendererHost.Children.Contains(_renderer))
             {
+                EnsureRendererLoadedSettingsHandler(_renderer);
                 RendererHost.Children.Add(_renderer);
+                ApplyRendererSettings();
             }
 
             return;
@@ -1156,11 +1249,18 @@ public sealed partial class MarkdownViewer : UserControl
         RecordRendererCreated();
         _currentRendererDisposalCompleted = false;
         _renderer.DisposalCompleted += OnRendererDisposalCompleted;
-        _renderer.Theme = _theme;
+        _renderer.Theme = _sameByteVisualTheme ?? _theme;
+        if (_sameByteVisualProfile is not null)
+        {
+            // The audit profile is pinned to GitHub's Light presentation even
+            // when the surrounding app is Dark. MarkdownRenderer still
+            // resolves High Contrast from the Windows environment separately.
+            _renderer.RequestedTheme = ElementTheme.Light;
+        }
         // The source-bound GitHub article uses 16-DIP paragraph spacing, while
         // its list paragraphs collapse into the list-item flow. Keep JitHub's
         // compact list token without shortening standalone paragraphs.
-        _renderer.StyleSheet = new MarkdownStyleSheet(
+        _renderer.StyleSheet = _sameByteVisualProfile?.StyleSheet ?? new MarkdownStyleSheet(
             new MarkdownStyleRule[]
             {
                 new MarkdownStyleRule(
@@ -1173,13 +1273,16 @@ public sealed partial class MarkdownViewer : UserControl
         _renderer.StringProvider = JitHubMarkdownStringProvider.Instance;
         ApplyRendererResources();
         _renderer.IsSelectionEnabled = IsSelectionEnabled;
-        _renderer.IsCodeBlockCopyEnabled = IsCodeBlockCopyEnabled;
+        _renderer.CodeBlockChromeMode = _sameByteVisualProfile?.CodeBlockChromeMode ?? CodeBlockChromeMode.Enhanced;
+        _renderer.CodeBlockLineNumberMode = _sameByteVisualProfile?.CodeBlockLineNumberMode ?? CodeBlockLineNumberMode.AutoMultiline;
+        _renderer.IsCodeBlockCopyEnabled = _sameByteVisualProfile?.IsCodeBlockCopyEnabled ?? IsCodeBlockCopyEnabled;
         _renderer.ImageResolver = _imageResolver;
         _renderer.SvgRenderer = JitHubMarkdownRuntime.SvgRenderer;
         _renderer.PerformanceSession = SharedPerformanceSession;
-        _renderer.ImageBaseUri = GetBaseUri();
-        _renderer.ImageDocumentPath = DocumentPath;
-        _renderer.ImageDocumentSource = DocumentSource;
+        MarkdownViewerDocumentPayload? documentPayload = _documentPayload;
+        _renderer.ImageBaseUri = GetBaseUri(documentPayload is null ? BaseUrl : documentPayload.BaseUrl);
+        _renderer.ImageDocumentPath = documentPayload is null ? DocumentPath : documentPayload.DocumentPath;
+        _renderer.ImageDocumentSource = documentPayload is null ? DocumentSource : documentPayload.DocumentSource;
         _renderer.AllowThirdPartyRemoteImages = ShouldAllowThirdPartyRemoteImages();
         _renderer.LinkClick += OnRendererLinkClick;
         _renderer.DisclosureToggled += OnRendererDisclosureToggled;
@@ -1193,9 +1296,105 @@ public sealed partial class MarkdownViewer : UserControl
         MarkdownLifecycleAutomationBridge.SignalHostReady(automationId);
         _renderer.HorizontalAlignment = HorizontalAlignment.Stretch;
         _renderer.VerticalAlignment = VerticalAlignment.Stretch;
+        EnsureRendererLoadedSettingsHandler(_renderer);
         RendererHost.Children.Add(_renderer);
         ApplyRendererSettings();
     }
+
+#pragma warning disable MR1001 // Subscribe through the shared base of the two explicit viewport controls.
+    private void EnsureRendererLoadedSettingsHandler(MarkdownRendererControl renderer)
+    {
+        if (renderer.IsLoaded)
+        {
+            EnsureRendererLayoutSettingsHandler(renderer);
+            return;
+        }
+
+        _rendererInitialLayoutReady = false;
+        if (_rendererLoadedSettingsHandlerAttached)
+            return;
+
+        // ApplyRendererSettings can be reached as soon as the child is added,
+        // before its own Loaded event has made the renderer able to accept a
+        // pipeline. Install one handler before attachment so the first Loaded
+        // turn can register for the completed initial layout before assignment.
+        renderer.Loaded += OnRendererLoadedForSettings;
+        _rendererLoadedSettingsHandlerAttached = true;
+    }
+
+    private void OnRendererLoadedForSettings(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not MarkdownRendererControl renderer || !ReferenceEquals(renderer, _renderer))
+            return;
+
+        renderer.Loaded -= OnRendererLoadedForSettings;
+        _rendererLoadedSettingsHandlerAttached = false;
+        if (_shutdownRequested || !_isLoaded)
+            return;
+
+        _rendererInitialLayoutReady = false;
+        EnsureRendererLayoutSettingsHandler(renderer);
+    }
+
+    private void EnsureRendererLayoutSettingsHandler(MarkdownRendererControl renderer)
+    {
+        if (_rendererInitialLayoutReady || _rendererLayoutSettingsHandlerAttached)
+            return;
+
+        long ticket = ++_rendererLayoutSettingsTicket;
+        EventHandler<object> handler = (_, _) => OnRendererLayoutUpdatedForSettings(renderer, ticket);
+        _rendererLayoutSettingsHandler = handler;
+        _rendererLayoutSettingsTarget = renderer;
+        renderer.LayoutUpdated += handler;
+        _rendererLayoutSettingsHandlerAttached = true;
+    }
+
+#pragma warning disable MR1001 // The handler is scoped to the explicit renderer captured at subscription time.
+    private void OnRendererLayoutUpdatedForSettings(MarkdownRendererControl renderer, long ticket)
+    {
+        // WinUI raises LayoutUpdated with a null sender after all SizeChanged
+        // events in a layout sequence, so use the renderer currently owned by
+        // this viewer and validate its measured width directly. Capturing both
+        // renderer and ticket prevents an already-queued old callback from
+        // admitting a replacement renderer.
+        if (ticket != _rendererLayoutSettingsTicket ||
+            !ReferenceEquals(renderer, _rendererLayoutSettingsTarget) ||
+            !ReferenceEquals(renderer, _renderer) ||
+            !_rendererLayoutSettingsHandlerAttached)
+            return;
+
+        if (_shutdownRequested || !_isLoaded)
+        {
+            ClearRendererLayoutSettingsHandler();
+            return;
+        }
+
+        if (!renderer.IsLoaded ||
+            !double.IsFinite(renderer.ActualWidth) || renderer.ActualWidth <= 0 ||
+            !double.IsFinite(renderer.ActualHeight) || renderer.ActualHeight <= 0)
+            return;
+
+        ClearRendererLayoutSettingsHandler();
+        _rendererInitialLayoutReady = true;
+        ApplyRendererSettings();
+    }
+#pragma warning restore MR1001
+
+#pragma warning disable MR1001 // Remove the event from the retained explicit renderer instance.
+    private void ClearRendererLayoutSettingsHandler()
+    {
+        MarkdownRendererControl? renderer = _rendererLayoutSettingsTarget;
+        EventHandler<object>? handler = _rendererLayoutSettingsHandler;
+        _rendererLayoutSettingsTarget = null;
+        _rendererLayoutSettingsHandler = null;
+        _rendererLayoutSettingsHandlerAttached = false;
+        ++_rendererLayoutSettingsTicket;
+
+        if (renderer is not null && handler is not null)
+            renderer.LayoutUpdated -= handler;
+    }
+#pragma warning restore MR1001
+#pragma warning restore MR1001
 
     private void DisposeRenderer()
     {
@@ -1205,29 +1404,192 @@ public sealed partial class MarkdownViewer : UserControl
             return;
         }
 
+        // Repeated Unloaded/shutdown paths must join the original drain rather
+        // than start a second one or release the same renderer twice.
+        if (ReferenceEquals(_rendererRetirementPending, renderer))
+            return;
+
+        Microsoft.UI.Dispatching.DispatcherQueue? retirementDispatcher = DispatcherQueue;
+        _pendingSameByteSourceAdmission = null;
+
         if (ReferenceEquals(renderer, _firstViewportImagesReadyRenderer))
             StopFirstViewportImagesReadyProbe();
 
-        MarkdownRendererDisposalCommit.Execute(
-            detachAndDispose: () =>
+        _rendererRetirementPending = renderer;
+        Task retirementCompletion;
+        try
+        {
+            retirementCompletion = MarkdownRendererDisposalCommit.Execute(
+                detachAndDispose: () =>
+                {
+                    renderer.Loaded -= OnRendererLoadedForSettings;
+                    ClearRendererLayoutSettingsHandler();
+                    _rendererLoadedSettingsHandlerAttached = false;
+                    _rendererInitialLayoutReady = false;
+                    renderer.LinkClick -= OnRendererLinkClick;
+                    renderer.DisclosureToggled -= OnRendererDisclosureToggled;
+                    renderer.CopyCompleted -= OnRendererCopyCompleted;
+                    renderer.ImageUnavailable -= OnRendererImageUnavailable;
+                    renderer.RenderCompleted -= OnRendererRenderCompleted;
+                    renderer.RenderFailed -= OnRendererRenderFailed;
+                    RendererHost.Children.Remove(renderer);
+                    renderer.Dispose();
+                },
+                disposalCompletedSuccessfully: () => _currentRendererDisposalCompleted,
+                retirementBegan: () => _renderer = null,
+                drainRetiredResources: renderer.DrainRetiredSnapshotsAsync,
+                releaseTracking: () => ReleaseRendererTrackingOnDispatcherAsync(renderer, retirementDispatcher));
+        }
+        catch
+        {
+            // If Dispose did not publish its completion signal, the existing
+            // retry/failure path still owns this renderer. If retirement had
+            // already begun, retain the pending latch and active count.
+            if (!_currentRendererDisposalCompleted)
+                _rendererRetirementPending = null;
+            throw;
+        }
+
+        UiTaskGuard.Observe(
+            ObserveRendererRetirementAsync(renderer, retirementCompletion, retirementDispatcher),
+            "ui-markdown-retirement");
+    }
+
+#pragma warning disable MR1001 // Retirement tracks the shared base of the two explicit viewport controls; it never constructs the obsolete control.
+    private Task ReleaseRendererTrackingOnDispatcherAsync(
+        MarkdownRendererControl renderer,
+        Microsoft.UI.Dispatching.DispatcherQueue? dispatcher)
+#pragma warning restore MR1001
+    {
+        if (dispatcher is null)
+        {
+            return Task.FromException(new InvalidOperationException(
+                "The Markdown viewer dispatcher was unavailable before renderer retirement completed."));
+        }
+
+        if (dispatcher.HasThreadAccess)
+        {
+            ReleaseRendererTracking(renderer);
+            return Task.CompletedTask;
+        }
+
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!dispatcher.TryEnqueue(() =>
             {
-                renderer.LinkClick -= OnRendererLinkClick;
-                renderer.DisclosureToggled -= OnRendererDisclosureToggled;
-                renderer.CopyCompleted -= OnRendererCopyCompleted;
-                renderer.ImageUnavailable -= OnRendererImageUnavailable;
-                renderer.RenderCompleted -= OnRendererRenderCompleted;
-                renderer.RenderFailed -= OnRendererRenderFailed;
-                RendererHost.Children.Remove(renderer);
-                renderer.Dispose();
-            },
-            disposalCompletedSuccessfully: () => _currentRendererDisposalCompleted,
-            releaseTracking: () =>
+                try
+                {
+                    ReleaseRendererTracking(renderer);
+                    completion.TrySetResult();
+                }
+                catch (Exception exception)
+                {
+                    completion.TrySetException(exception);
+                }
+            }))
+        {
+            completion.TrySetException(new InvalidOperationException(
+                "The Markdown viewer dispatcher rejected renderer-retirement completion."));
+        }
+
+        return completion.Task;
+    }
+
+#pragma warning disable MR1001 // The retired instance is borrowed from an explicit MarkdownDocumentView or MarkdownScrollView.
+    private void ReleaseRendererTracking(MarkdownRendererControl renderer)
+#pragma warning restore MR1001
+    {
+        if (_renderer is not null ||
+            !ReferenceEquals(_rendererRetirementPending, renderer))
+        {
+            throw new InvalidOperationException(
+                "The Markdown renderer changed before its snapshot retirement completed.");
+        }
+
+        renderer.DisposalCompleted -= OnRendererDisposalCompleted;
+        _renderer = null;
+        _currentRendererDisposalCompleted = false;
+        _rendererRetirementPending = null;
+        RecordRendererDisposed();
+
+        // A fast unload/reload or viewport ownership change can request a new
+        // renderer while the old snapshot drains. Recreate only after its
+        // ownership has been fully released.
+        if (_isLoaded && !_shutdownRequested && !_rendererDisposalFaulted)
+            QueueRendererCreation();
+    }
+
+#pragma warning disable MR1001 // Observe the explicit viewport renderer through its shared retirement contract.
+    private async Task ObserveRendererRetirementAsync(
+        MarkdownRendererControl renderer,
+        Task retirementCompletion,
+        Microsoft.UI.Dispatching.DispatcherQueue? dispatcher)
+#pragma warning restore MR1001
+    {
+        try
+        {
+            await retirementCompletion.ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            try
             {
-                renderer.DisposalCompleted -= OnRendererDisposalCompleted;
-                _renderer = null;
-                _currentRendererDisposalCompleted = false;
-                RecordRendererDisposed();
-            });
+                Trace.TraceError(
+                    "Markdown renderer snapshot retirement failed: {0}; HRESULT=0x{1:X8}",
+                    exception.GetType().Name,
+                    exception.HResult);
+
+                void ReportFailure()
+                {
+                    try
+                    {
+                        if (!ReferenceEquals(_rendererRetirementPending, renderer))
+                            return;
+
+                        _rendererDisposalFaulted = true;
+                        ShowRendererDisposalFailure();
+                        MarkdownLifecycleAutomationBridge.RecordRenderFailure(
+                            MarkdownHostContract.GetAutomationId(HostKind, AutomationInstanceId),
+                            new InvalidOperationException(
+                                $"Snapshot retirement failed with {exception.GetType().Name} " +
+                                $"(HRESULT 0x{exception.HResult:X8})."));
+                    }
+                    catch (Exception reportingException)
+                    {
+                        Trace.TraceError(
+                            "Markdown renderer retirement failure reporting failed: {0}; HRESULT=0x{1:X8}",
+                            reportingException.GetType().Name,
+                            reportingException.HResult);
+                    }
+                }
+
+                if (dispatcher is { HasThreadAccess: true })
+                {
+                    ReportFailure();
+                }
+                else if (dispatcher is null || !dispatcher.TryEnqueue(ReportFailure))
+                {
+                    // Keep the active-renderer count latched. The close path will
+                    // therefore skip shared-provider teardown rather than treating
+                    // an unreported or rejected completion as success.
+                    Trace.TraceError("Markdown viewer dispatcher rejected retirement-failure reporting.");
+                }
+            }
+            catch (Exception observerException)
+            {
+                // This observer is intentionally terminal: even diagnostics
+                // failure must not surface as an unobserved task exception.
+                try
+                {
+                    Trace.TraceError(
+                        "Markdown renderer retirement observer failed: {0}; HRESULT=0x{1:X8}",
+                        observerException.GetType().Name,
+                        observerException.HResult);
+                }
+                catch
+                {
+                }
+            }
+        }
     }
 
     private void OnRendererDisposalCompleted(object? sender, EventArgs e)
@@ -1305,8 +1667,23 @@ public sealed partial class MarkdownViewer : UserControl
             return;
         }
 
-        string markdown = GetEffectiveMarkdown();
-        if (!string.Equals(_lastAppliedMarkdown, markdown, StringComparison.Ordinal))
+        if (!_renderer.IsLoaded || !_rendererInitialLayoutReady)
+        {
+            // A source tick is meaningful only when Markdown assignment can
+            // request the pipeline at its measured width. The one-shot
+            // LayoutUpdated handler runs after the initial SizeChanged events,
+            // so the exact source will not be superseded by the first measure.
+            return;
+        }
+
+        long pipelineGenerationAtEntry = _renderer.AutomationPipelineGeneration;
+        MarkdownViewerDocumentPayload? documentPayload = _documentPayload;
+        string? documentPath = documentPayload is null ? DocumentPath : documentPayload.DocumentPath;
+        MarkdownDocumentSource? documentSource = documentPayload is null ? DocumentSource : documentPayload.DocumentSource;
+        string? baseUrl = documentPayload is null ? BaseUrl : documentPayload.BaseUrl;
+        string markdown = GetEffectiveMarkdown(documentPayload is null ? Text : documentPayload.Markdown);
+        bool markdownChanged = !string.Equals(_renderer.Markdown, markdown, StringComparison.Ordinal);
+        if (markdownChanged)
         {
             _lastAppliedMarkdown = markdown;
             _renderFailureReportedForDocument = false;
@@ -1314,31 +1691,177 @@ public sealed partial class MarkdownViewer : UserControl
             RenderErrorInfoBar.IsOpen = false;
         }
 
-        _renderer.Markdown = markdown;
-        _renderer.IsSelectionEnabled = IsSelectionEnabled;
-        _renderer.IsCodeBlockCopyEnabled = IsCodeBlockCopyEnabled;
-        _renderer.CodeBlockCopyButtonStyle = TryResolveResource("AppToolbarButtonStyle", out object? copyStyle)
+        // Apply every renderer setting before associating this document with
+        // its final generation. Several of these properties request a rebuild
+        // and advance the pipeline generation. The source-available tick below
+        // remains immediately before Markdown assignment, matching the frozen
+        // client/Edge comparison boundary.
+        if (_renderer.IsSelectionEnabled != IsSelectionEnabled)
+            _renderer.IsSelectionEnabled = IsSelectionEnabled;
+        CodeBlockChromeMode chromeMode = _sameByteVisualProfile?.CodeBlockChromeMode ?? CodeBlockChromeMode.Enhanced;
+        CodeBlockLineNumberMode lineNumberMode = _sameByteVisualProfile?.CodeBlockLineNumberMode ?? CodeBlockLineNumberMode.AutoMultiline;
+        bool copyEnabled = _sameByteVisualProfile?.IsCodeBlockCopyEnabled ?? IsCodeBlockCopyEnabled;
+        if (_renderer.CodeBlockChromeMode != chromeMode)
+            _renderer.CodeBlockChromeMode = chromeMode;
+        if (_renderer.CodeBlockLineNumberMode != lineNumberMode)
+            _renderer.CodeBlockLineNumberMode = lineNumberMode;
+        if (_renderer.IsCodeBlockCopyEnabled != copyEnabled)
+            _renderer.IsCodeBlockCopyEnabled = copyEnabled;
+        Style? copyButtonStyle = TryResolveResource("AppToolbarButtonStyle", out object? copyStyle)
             ? copyStyle as Style
             : null;
-        _renderer.CodeHighlighter = IsSyntaxHighlightingEnabled
+        if (!ReferenceEquals(_renderer.CodeBlockCopyButtonStyle, copyButtonStyle))
+            _renderer.CodeBlockCopyButtonStyle = copyButtonStyle;
+        var codeHighlighter = IsSyntaxHighlightingEnabled
             ? JitHubMarkdownRuntime.CodeHighlighter
             : null;
-        _renderer.IsCodeBlockSyntaxHighlightingEnabled = IsSyntaxHighlightingEnabled;
+        if (!ReferenceEquals(_renderer.CodeHighlighter, codeHighlighter))
+            _renderer.CodeHighlighter = codeHighlighter;
+        if (_renderer.IsCodeBlockSyntaxHighlightingEnabled != IsSyntaxHighlightingEnabled)
+            _renderer.IsCodeBlockSyntaxHighlightingEnabled = IsSyntaxHighlightingEnabled;
 
-        _renderer.ImageResolver = _imageResolver;
-        _renderer.SvgRenderer = JitHubMarkdownRuntime.SvgRenderer;
-        _renderer.PerformanceSession = SharedPerformanceSession;
-        _renderer.ImageBaseUri = GetBaseUri();
-        _renderer.ImageDocumentPath = DocumentPath;
-        _renderer.ImageDocumentSource = DocumentSource;
-        _renderer.AllowThirdPartyRemoteImages = ShouldAllowThirdPartyRemoteImages();
+        if (!ReferenceEquals(_renderer.ImageResolver, _imageResolver))
+            _renderer.ImageResolver = _imageResolver;
+        IMarkdownSvgRenderer svgRenderer = JitHubMarkdownRuntime.SvgRenderer;
+        if (!ReferenceEquals(_renderer.SvgRenderer, svgRenderer))
+            _renderer.SvgRenderer = svgRenderer;
+        MarkdownRenderer.Performance.MarkdownPerformanceSession performanceSession = SharedPerformanceSession;
+        if (!ReferenceEquals(_renderer.PerformanceSession, performanceSession))
+            _renderer.PerformanceSession = performanceSession;
+        Uri imageBaseUri = GetBaseUri(baseUrl);
+        if (!Equals(_renderer.ImageBaseUri, imageBaseUri))
+            _renderer.ImageBaseUri = imageBaseUri;
+        if (!string.Equals(_renderer.ImageDocumentPath, documentPath, StringComparison.Ordinal))
+            _renderer.ImageDocumentPath = documentPath;
+        if (!Equals(_renderer.ImageDocumentSource, documentSource))
+            _renderer.ImageDocumentSource = documentSource;
+        bool allowThirdPartyRemoteImages = ShouldAllowThirdPartyRemoteImages();
+        if (_renderer.AllowThirdPartyRemoteImages != allowThirdPartyRemoteImages)
+            _renderer.AllowThirdPartyRemoteImages = allowThirdPartyRemoteImages;
+
+        SameByteReadmeSourceIdentity? sameByteSourceIdentity = null;
+        string? sameByteSourceAdmissionFailure = null;
+        bool sameByteReplayEnabled = MarkdownLifecycleAutomationBridge.IsSameByteReplayEnabled;
+        string automationId = MarkdownHostContract.GetAutomationId(HostKind, AutomationInstanceId);
+        long generationBeforeMarkdown = _renderer.AutomationPipelineGeneration;
+        if (sameByteReplayEnabled && markdownChanged)
+        {
+            string? expectedReadmeGitBlobSha1 = GetSameByteReadmeGitBlobSha1(
+                documentPath,
+                documentSource,
+                out sameByteSourceAdmissionFailure);
+            if (sameByteSourceAdmissionFailure is null)
+            {
+                sameByteSourceIdentity = MarkdownLifecycleAutomationBridge.MatchSameByteReadmeSource(
+                    markdown,
+                    expectedReadmeGitBlobSha1,
+                    out sameByteSourceAdmissionFailure);
+            }
+        }
+        else if (sameByteReplayEnabled &&
+            (_pendingSameByteSourceAdmission is null ||
+             !_pendingSameByteSourceAdmission.Matches(markdown, documentPath, documentSource)))
+        {
+            // A source change with byte-identical text has no new Markdown
+            // assignment boundary. It must not borrow the old document's tick.
+            sameByteSourceAdmissionFailure = "markdown-unchanged";
+        }
+
+        long sourceAdmissionStopwatchFrequency = sameByteSourceIdentity is null ? 0 : Stopwatch.Frequency;
+        long sourceAdmissionStopwatchTicks = sameByteSourceIdentity is null ? 0 : Stopwatch.GetTimestamp();
+        if (sameByteReplayEnabled && (markdownChanged || sameByteSourceAdmissionFailure is not null))
+        {
+            // Capture the frozen source boundary immediately before Markdown
+            // assignment. The exact requested pipeline generation is bound
+            // immediately after the assignment below.
+            _pendingSameByteSourceAdmission = new PendingSameByteReadmeSourceAdmission(
+                markdown,
+                documentPath,
+                documentSource,
+                sameByteSourceIdentity,
+                sameByteSourceAdmissionFailure ?? "matched",
+                sourceAdmissionStopwatchTicks,
+                sourceAdmissionStopwatchFrequency);
+        }
+        else if (!sameByteReplayEnabled)
+        {
+            _pendingSameByteSourceAdmission = null;
+        }
+        if (MarkdownLifecycleAutomationBridge.IsSameByteAdmissionTraceEnabled)
+            MarkdownLifecycleAutomationBridge.TraceSameByteAdmission(
+                $"assignment-before:{automationId}:changed={markdownChanged}:entry={pipelineGenerationAtEntry}:before={generationBeforeMarkdown}:matched={(sameByteSourceIdentity is not null)}:failure={sameByteSourceAdmissionFailure ?? "none"}");
+        _renderer.Markdown = markdown;
+        long assignmentPipelineGeneration = _renderer.AutomationPipelineGeneration;
+        if (sameByteReplayEnabled &&
+            (markdownChanged || sameByteSourceAdmissionFailure is not null) &&
+            _pendingSameByteSourceAdmission is { } pendingAssignment)
+        {
+            if (pendingAssignment.Identity is not null && assignmentPipelineGeneration <= 0)
+            {
+                // A renderer that is still unloaded has not requested a
+                // pipeline for this assignment. Do not let its source tick be
+                // claimed by the unrelated first restyle after loading.
+                pendingAssignment = pendingAssignment with
+                {
+                    Identity = null,
+                    FailureReason = "assignment-generation-unavailable",
+                };
+            }
+
+            _pendingSameByteSourceAdmission = pendingAssignment with
+            {
+                AssignmentPipelineGeneration = assignmentPipelineGeneration,
+            };
+        }
+        if (MarkdownLifecycleAutomationBridge.IsSameByteAdmissionTraceEnabled)
+            MarkdownLifecycleAutomationBridge.TraceSameByteAdmission(
+                $"assignment-after:{automationId}:generation={assignmentPipelineGeneration}");
         AutomationProperties.SetName(_renderer, MarkdownHostContract.GetAutomationName(HostKind));
-        AutomationProperties.SetAutomationId(_renderer, MarkdownHostContract.GetAutomationId(HostKind, AutomationInstanceId));
+        AutomationProperties.SetAutomationId(_renderer, automationId);
     }
 
-    private string GetEffectiveMarkdown()
+    private string? GetSameByteReadmeGitBlobSha1(
+        string? documentPath,
+        MarkdownDocumentSource? documentSource,
+        out string? failureReason)
     {
-        string markdown = Text ?? string.Empty;
+        failureReason = null;
+        if (MarkdownHostContract.Parse(HostKind) != MarkdownHostKind.RepositoryReadme ||
+            string.IsNullOrWhiteSpace(documentPath) ||
+            !FilePreviewResolver.IsGitHubReadmePath(documentPath) ||
+            documentSource is not { } source ||
+            !string.Equals(source.Path, documentPath, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        // The blob ID pins Markdown bytes, but symbolic refs can move and alter
+        // relative-image resolution. Without a resolved immutable commit ref,
+        // fail closed for the same-byte audit (normal image resolution remains).
+        if (!GitReferencePolicy.IsImmutableObjectId(source.Ref))
+        {
+            failureReason = "mutable-source-ref";
+            return null;
+        }
+
+        string documentId = source.DocumentId;
+        int lastSeparator = documentId.LastIndexOf(':');
+        if (lastSeparator < 0 || documentId.Length - lastSeparator - 1 != 40)
+            return null;
+
+        string readmeGitBlobSha1 = documentId[(lastSeparator + 1)..];
+        foreach (char character in readmeGitBlobSha1)
+        {
+            if (!Uri.IsHexDigit(character))
+                return null;
+        }
+
+        return readmeGitBlobSha1;
+    }
+
+    private string GetEffectiveMarkdown(string? sourceMarkdown)
+    {
+        string markdown = sourceMarkdown ?? string.Empty;
         if (!MarkdownLifecycleAutomationBridge.IsEnabled)
         {
             return markdown;
@@ -1611,11 +2134,67 @@ public sealed partial class MarkdownViewer : UserControl
                 string automationId = MarkdownHostContract.GetAutomationId(HostKind, AutomationInstanceId);
                 long generation = renderer.AutomationPipelineGeneration;
                 DateTimeOffset completedAt = DateTimeOffset.UtcNow;
+                long completedStopwatchTicks = Stopwatch.GetTimestamp();
+                long completedStopwatchFrequency = Stopwatch.Frequency;
+                if (MarkdownLifecycleAutomationBridge.IsSameByteReplayEnabled &&
+                    _pendingSameByteSourceAdmission is { } pendingAdmission)
+                {
+                    // Consume every pending boundary at its first current
+                    // RenderCompleted. A superseding restyle is not allowed
+                    // to rebind an old source tick to its own generation.
+                    _pendingSameByteSourceAdmission = null;
+                    MarkdownViewerDocumentPayload? payload = _documentPayload;
+                    string? documentPath = payload is null ? DocumentPath : payload.DocumentPath;
+                    MarkdownDocumentSource? documentSource = payload is null ? DocumentSource : payload.DocumentSource;
+                    bool matchesCompletedDocument = pendingAdmission.Matches(
+                        renderer.Markdown,
+                        documentPath,
+                        documentSource);
+                    bool matchesAssignmentGeneration = pendingAdmission.IsBoundToPipelineGeneration(generation);
+                    string admissionFailureReason;
+                    if (!matchesCompletedDocument)
+                    {
+                        admissionFailureReason = "rendered-document-changed";
+                    }
+                    else if (pendingAdmission.Identity is null)
+                    {
+                        admissionFailureReason = pendingAdmission.FailureReason;
+                    }
+                    else if (pendingAdmission.AssignmentPipelineGeneration <= 0)
+                    {
+                        admissionFailureReason = "assignment-generation-unavailable";
+                    }
+                    else if (!matchesAssignmentGeneration)
+                    {
+                        admissionFailureReason = "assignment-generation-superseded";
+                    }
+                    else
+                    {
+                        admissionFailureReason = pendingAdmission.FailureReason;
+                    }
+                    MarkdownLifecycleAutomationBridge.RecordSameByteReadmeSourceAdmission(
+                        automationId,
+                        generation,
+                        pendingAdmission.StopwatchTicks,
+                        pendingAdmission.StopwatchFrequency,
+                        matchesCompletedDocument && matchesAssignmentGeneration
+                            ? pendingAdmission.Identity
+                            : null,
+                        admissionFailureReason,
+                        matchesCompletedDocument && matchesAssignmentGeneration
+                            ? pendingAdmission.DocumentSource
+                            : null);
+                }
                 MarkdownLifecycleAutomationBridge.RecordRenderComplete(
                     automationId,
                     generation,
                     completedAt,
-                    CaptureAuditPerformance(renderer));
+                    completedStopwatchTicks,
+                    completedStopwatchFrequency,
+                    CaptureAuditPerformance(renderer),
+                    _sameByteVisualProfile?.Id,
+                    _sameByteVisualProfile?.Version,
+                    _sameByteVisualProfile?.Fingerprint);
 
                 if (MarkdownLifecycleAutomationBridge.IsFirstViewportImagesReadyEvidenceEnabled)
                     QueueFirstViewportImagesReadyProbe(renderer, automationId, generation);
@@ -1649,6 +2228,7 @@ public sealed partial class MarkdownViewer : UserControl
         _firstViewportImagesReadyRenderer = renderer;
         _firstViewportImagesReadyHost = automationId;
         _firstViewportImagesReadyGeneration = generation;
+        _firstViewportImagesReadyPaintLifecycle.Begin(generation);
         _firstViewportImagesReadyPollCount = 0;
         _firstViewportImagesReadyProbeWorkTicks = 0;
         _firstViewportImagesReadyLastProgressTicks = 0;
@@ -1667,7 +2247,8 @@ public sealed partial class MarkdownViewer : UserControl
             publishedGeneration: 0,
             viewportMeasured: false,
             hasVisibleLoadingImages: true);
-        renderer.BeginAutomationFirstViewportImagesReadyProbe(region =>
+        Func<LayoutSnapshot, long, Windows.Foundation.Rect, bool> paintCallback =
+            (paintedSnapshot, paintedLayoutRevision, region) =>
         {
             if (ticket != _firstViewportImagesReadyProbeTicket ||
                 !_isLoaded ||
@@ -1678,13 +2259,19 @@ public sealed partial class MarkdownViewer : UserControl
                 return false;
             }
 
-            bool acknowledged;
+            bool probeAccepted;
             try
             {
-                acknowledged = probe.TryAcknowledgeAfterPaint(renderer, generation, region);
+                probeAccepted = probe.TryAcknowledgeAfterPaint(
+                    renderer,
+                    generation,
+                    paintedSnapshot,
+                    paintedLayoutRevision,
+                    region);
             }
             catch (Exception exception)
             {
+                _firstViewportImagesReadyPaintLifecycle.RecordPaintCallbackOutcome(null, null);
                 RecordFirstViewportImagesReadyProgress(
                     "paint-callback",
                     "invalid-pending-image-mask",
@@ -1702,6 +2289,22 @@ public sealed partial class MarkdownViewer : UserControl
                 return false;
             }
 
+            bool? acknowledgementRecorded = null;
+            if (probeAccepted)
+            {
+                long paintTimestamp = Stopwatch.GetTimestamp();
+                acknowledgementRecorded =
+                    _firstViewportImagesReadyPaintLifecycle.RecordAcceptedPaint(generation, paintTimestamp);
+                if (acknowledgementRecorded.Value)
+                {
+                    _firstViewportImagesReadyPaintGeneration = generation;
+                    _firstViewportImagesReadyPaintTimestamp = paintTimestamp;
+                }
+            }
+
+            _firstViewportImagesReadyPaintLifecycle.RecordPaintCallbackOutcome(
+                probeAccepted,
+                acknowledgementRecorded);
             RecordFirstViewportImagesReadyProgress(
                 "paint-callback",
                 probe.LastReason,
@@ -1711,15 +2314,14 @@ public sealed partial class MarkdownViewer : UserControl
                 renderer.AutomationPipelineGeneration,
                 renderer.GetLastPipelineTimingSnapshot().Generation,
                 viewportMeasured: probe.ViewportWidth > 0 && probe.ViewportHeight > 0,
-                hasVisibleLoadingImages: probe.VisibleImagesLoading);
+                hasVisibleLoadingImages: probe.VisibleImagesLoading,
+                paintProbeAccepted: probeAccepted,
+                paintAcknowledgementRecorded: acknowledgementRecorded);
 
-            if (!acknowledged)
-                return false;
-
-            _firstViewportImagesReadyPaintGeneration = generation;
-            _firstViewportImagesReadyPaintTimestamp = Stopwatch.GetTimestamp();
-            return true;
-        });
+            return acknowledgementRecorded is true;
+        };
+        _firstViewportImagesReadyPaintCallback = paintCallback;
+        renderer.BeginAutomationFirstViewportImagesReadyProbe(paintCallback);
         var dispatcher = DispatcherQueue;
         if (dispatcher is null ||
             !dispatcher.TryEnqueue(
@@ -1769,6 +2371,8 @@ public sealed partial class MarkdownViewer : UserControl
         long viewportPaintTimestamp;
         bool viewportMeasured;
         Windows.Foundation.Rect viewport;
+        FirstViewportImagesReadyPaintPollAction paintPollAction =
+            FirstViewportImagesReadyPaintPollAction.WaitingForPaint;
         try
         {
             long currentGeneration = renderer.AutomationPipelineGeneration;
@@ -1826,20 +2430,36 @@ public sealed partial class MarkdownViewer : UserControl
                 FirstViewportImagesReadyRendererProbe.HasVisibleLoadingImages(renderer);
             viewportPaintGeneration = _firstViewportImagesReadyPaintGeneration;
             viewportPaintTimestamp = _firstViewportImagesReadyPaintTimestamp;
-            if (_firstViewportImagesReadyProbe is not { } probe ||
-                !probe.IsCurrentAcknowledgement(renderer, generation, viewport))
+            bool acknowledgementIsCurrent =
+                _firstViewportImagesReadyProbe is { } probe &&
+                viewportPaintTimestamp > 0 &&
+                probe.IsCurrentAcknowledgement(renderer, generation, viewport);
+            if (!acknowledgementIsCurrent)
             {
                 viewportPaintGeneration = 0;
                 viewportPaintTimestamp = 0;
             }
 
+            paintPollAction = _firstViewportImagesReadyPaintLifecycle.ObservePoll(
+                generation,
+                acknowledgementIsCurrent,
+                hasVisibleLoadingImages);
+            if (paintPollAction == FirstViewportImagesReadyPaintPollAction.RearmForCurrentViewport)
+            {
+                _firstViewportImagesReadyPaintGeneration = 0;
+                _firstViewportImagesReadyPaintTimestamp = 0;
+                if (_firstViewportImagesReadyPaintCallback is { } paintCallback)
+                    renderer.BeginAutomationFirstViewportImagesReadyProbe(paintCallback);
+            }
+
             RecordFirstViewportImagesReadyProgress(
                 "polling",
-                hasVisibleLoadingImages
-                    ? "visible-images-loading"
-                    : viewportPaintTimestamp > 0
-                        ? "viewport-covered-after-ready-paint"
-                        : "waiting-for-paint",
+                paintPollAction switch
+                {
+                    FirstViewportImagesReadyPaintPollAction.RearmForCurrentViewport => "paint-rearmed",
+                    FirstViewportImagesReadyPaintPollAction.Ready => "viewport-covered-after-ready-paint",
+                    _ => hasVisibleLoadingImages ? "visible-images-loading" : "waiting-for-paint",
+                },
                 renderer,
                 generation,
                 pollCount,
@@ -1847,7 +2467,9 @@ public sealed partial class MarkdownViewer : UserControl
                 publishedGeneration,
                 viewportMeasured,
                 hasVisibleLoadingImages,
-                viewport);
+                viewport,
+                paintAcknowledgementIsCurrent: acknowledgementIsCurrent,
+                paintPollAction: paintPollAction);
         }
         catch (Exception exception)
         {
@@ -1861,6 +2483,7 @@ public sealed partial class MarkdownViewer : UserControl
 
         _firstViewportImagesReadyProbeWorkTicks += Stopwatch.GetTimestamp() - probeStartedAt;
         if (!hasVisibleLoadingImages &&
+            paintPollAction == FirstViewportImagesReadyPaintPollAction.Ready &&
             viewportPaintTimestamp > 0 &&
             FirstViewportImagesReadyProbeContract.IsViewportPaintAcknowledged(
                 generation,
@@ -1877,7 +2500,9 @@ public sealed partial class MarkdownViewer : UserControl
                 renderer.GetLastPipelineTimingSnapshot().Generation,
                 viewportMeasured: true,
                 hasVisibleLoadingImages: false,
-                viewport);
+                viewport,
+                paintAcknowledgementIsCurrent: true,
+                paintPollAction: paintPollAction);
             double probeWorkMilliseconds = Stopwatch.GetElapsedTime(
                 0,
                 _firstViewportImagesReadyProbeWorkTicks).TotalMilliseconds;
@@ -1890,7 +2515,9 @@ public sealed partial class MarkdownViewer : UserControl
                 viewport.Top,
                 viewport.Height,
                 viewportMeasured: true,
-                readyAt: DateTimeOffset.UtcNow - Stopwatch.GetElapsedTime(viewportPaintTimestamp));
+                readyAt: DateTimeOffset.UtcNow - Stopwatch.GetElapsedTime(viewportPaintTimestamp),
+                viewportPaintStopwatchTicks: viewportPaintTimestamp,
+                generationCancellationToken: renderer.GetAutomationPipelineCancellationToken(generation));
             StopFirstViewportImagesReadyProbe();
             return;
         }
@@ -1909,7 +2536,11 @@ public sealed partial class MarkdownViewer : UserControl
         long publishedGeneration,
         bool viewportMeasured,
         bool hasVisibleLoadingImages,
-        Windows.Foundation.Rect viewport = default)
+        Windows.Foundation.Rect viewport = default,
+        bool? paintProbeAccepted = null,
+        bool? paintAcknowledgementRecorded = null,
+        bool? paintAcknowledgementIsCurrent = null,
+        FirstViewportImagesReadyPaintPollAction paintPollAction = FirstViewportImagesReadyPaintPollAction.NotPolled)
     {
         if (!MarkdownLifecycleAutomationBridge.IsFirstViewportImagesReadyProgressEnabled ||
             _firstViewportImagesReadyHost is not { } host ||
@@ -1968,7 +2599,14 @@ public sealed partial class MarkdownViewer : UserControl
             probe?.LastPaintedRegion.Top ?? 0,
             probe?.LastPaintedRegion.Width ?? 0,
             probe?.LastPaintedRegion.Height ?? 0,
-            probe?.HasPostArmPaintedRegion ?? false));
+            probe?.HasPostArmPaintedRegion ?? false,
+            paintProbeAccepted ?? _firstViewportImagesReadyPaintLifecycle.LastPaintProbeAccepted,
+            paintAcknowledgementRecorded ?? _firstViewportImagesReadyPaintLifecycle.LastPaintAcknowledgementRecorded,
+            _firstViewportImagesReadyPaintLifecycle.RequestedGeneration,
+            _firstViewportImagesReadyPaintLifecycle.PaintedGeneration,
+            _firstViewportImagesReadyPaintLifecycle.PaintedAtTicks,
+            paintAcknowledgementIsCurrent,
+            (int)paintPollAction));
     }
 #pragma warning restore MR1001
 
@@ -2007,8 +2645,10 @@ public sealed partial class MarkdownViewer : UserControl
 
         _firstViewportImagesReadyRenderer = null;
         _firstViewportImagesReadyProbe = null;
+        _firstViewportImagesReadyPaintCallback = null;
         _firstViewportImagesReadyHost = null;
         _firstViewportImagesReadyGeneration = 0;
+        _firstViewportImagesReadyPaintLifecycle.Begin(0);
         _firstViewportImagesReadyPaintGeneration = 0;
         _firstViewportImagesReadyPaintTimestamp = 0;
         _firstViewportImagesReadyPollCount = 0;
@@ -2094,9 +2734,21 @@ public sealed partial class MarkdownViewer : UserControl
     private bool ShouldAllowThirdPartyRemoteImages() =>
         AllowThirdPartyRemoteImagesByDefault || _remoteContentConsent.IsGranted;
 
-    private Uri GetBaseUri()
+    private Uri GetEffectiveBaseUri()
     {
-        return Uri.TryCreate(BaseUrl, UriKind.Absolute, out Uri? baseUri)
+        MarkdownViewerDocumentPayload? documentPayload = _documentPayload;
+        return GetBaseUri(documentPayload is null ? BaseUrl : documentPayload.BaseUrl);
+    }
+
+    private MarkdownDocumentSource? GetEffectiveDocumentSource()
+    {
+        MarkdownViewerDocumentPayload? documentPayload = _documentPayload;
+        return documentPayload is null ? DocumentSource : documentPayload.DocumentSource;
+    }
+
+    private static Uri GetBaseUri(string? baseUrl)
+    {
+        return Uri.TryCreate(baseUrl, UriKind.Absolute, out Uri? baseUri)
             ? baseUri
             : DefaultBaseUri;
     }
@@ -2114,7 +2766,7 @@ public sealed partial class MarkdownViewer : UserControl
             MarkdownGitHubRoute route = MarkdownLinkNavigationPolicy.ClassifyGitHubRoute(uri);
             string disposition = mayNavigateInternally && route.Kind is (MarkdownGitHubRouteKind.User or MarkdownGitHubRouteKind.Repository or MarkdownGitHubRouteKind.Issue or MarkdownGitHubRouteKind.PullRequest) ? route.Kind.ToString().ToLowerInvariant() : "external-browser";
             string automationId = MarkdownHostContract.GetAutomationId(HostKind, AutomationInstanceId);
-            if (MarkdownLifecycleAutomationBridge.RecordLinkRoute(automationId, uri, disposition))
+            if (MarkdownLifecycleAutomationBridge.RecordLinkRoute(automationId, disposition))
             {
                 TrackMarkdownEvent("markdown.action.executed", TelemetryTaxonomy.Actions.OpenLink, TelemetryTaxonomy.Results.Success, resource: "link");
                 return;
@@ -2240,8 +2892,8 @@ public sealed partial class MarkdownViewer : UserControl
         out bool mayNavigateInternally)
         => MarkdownLinkNavigationPolicy.TryResolveLaunchUri(
             url,
-            GetBaseUri(),
-            DocumentSource,
+            GetEffectiveBaseUri(),
+            GetEffectiveDocumentSource(),
             out uri,
             out mayNavigateInternally);
 
@@ -2255,7 +2907,10 @@ public sealed partial class MarkdownViewer : UserControl
         ResourceDictionary resources = _renderer.Resources;
         RemoveLocalRendererResources(resources);
 
-        if (TryResolveHostSurfaceBrush(out SolidColorBrush? hostSurface))
+        SolidColorBrush? hostSurface = _sameByteSurfaceBrush;
+        if (hostSurface is null)
+            TryResolveHostSurfaceBrush(out hostSurface);
+        if (hostSurface is not null)
         {
             resources[MarkdownResourceKeys.DocumentSurfaceBrush] = hostSurface;
             foreach (string role in HostSurfaceRoles)
@@ -2266,7 +2921,8 @@ public sealed partial class MarkdownViewer : UserControl
             }
         }
 
-        if (MarkdownLifecycleAutomationBridge.GetTextScaleFactor() is double requestedScale)
+        if (_sameByteVisualProfile is null &&
+            MarkdownLifecycleAutomationBridge.GetTextScaleFactor() is double requestedScale)
         {
             double tokenScale = GetLifecycleTokenScaleFactor(requestedScale);
             foreach ((string role, string token, double fallback) in ScalableRoleFonts)
@@ -2286,7 +2942,7 @@ public sealed partial class MarkdownViewer : UserControl
         // The renderer recompiles one immutable style snapshot. Its shared
         // environment monitor remains the sole owner of real theme, accent,
         // High Contrast, text scale, language, flow direction, and DPI events.
-        _theme.Invalidate();
+        (_sameByteVisualTheme ?? _theme).Invalidate();
     }
 
     private static void RemoveLocalRendererResources(ResourceDictionary resources)

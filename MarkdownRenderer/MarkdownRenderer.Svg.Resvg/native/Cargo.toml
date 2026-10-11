@@ -6,6 +6,10 @@ rust-version = "1.85"
 license = "MIT"
 publish = false
 
+[workspace]
+members = ["vendor/resvg", "vendor/usvg", "vendor/tiny-skia", "vendor/tiny-skia-path"]
+resolver = "3"
+
 [[bin]]
 name = "markdown_renderer_resvg_worker"
 path = "src/main.rs"
@@ -16,6 +20,16 @@ data-url = "=0.3.2"
 imagesize = "=0.15.0"
 resvg = { git = "https://github.com/linebender/resvg.git", rev = "68b14c4c3bccdb60344c777406486b54c36ec1a4", version = "=0.48.1", default-features = false, features = ["text", "system-fonts", "memmap-fonts", "raster-images"] }
 sha2 = "=0.10.9"
+
+# Preserve the approved revision while carrying narrowly scoped rendering and
+# text fixes in reproducible, inventory-verified upstream source trees.
+[patch."https://github.com/linebender/resvg.git"]
+resvg = { path = "vendor/resvg" }
+usvg = { path = "vendor/usvg" }
+
+[patch.crates-io]
+tiny-skia = { path = "vendor/tiny-skia" }
+tiny-skia-path = { path = "vendor/tiny-skia-path" }
 
 [profile.release]
 opt-level = 3

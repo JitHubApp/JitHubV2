@@ -71,6 +71,7 @@ internal sealed class SourceByteAdmission
         Waiter waiter;
         lock (_gate)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             if (CanGrantNoLock(bytes, background) &&
                 _visible.Rotation.Count == 0 &&
                 (!background || _background.Rotation.Count == 0))
@@ -125,12 +126,16 @@ internal sealed class SourceByteAdmission
             switch (waiter.State)
             {
                 case WaiterState.Queued:
-                    waiter.Owner.Waiters.Remove(waiter.Node!);
+                    OwnerQueue owner = waiter.Owner!;
+                    PriorityQueue priority = waiter.Priority!;
+                    ClearBypassReservationNoLock(priority, waiter);
+                    owner.Waiters.Remove(waiter.Node!);
                     waiter.Node = null;
                     waiter.State = WaiterState.Canceled;
                     _pendingRequests--;
-                    if (waiter.Owner.Waiters.Count == 0)
-                        RemoveOwnerNoLock(waiter.Priority, waiter.Owner);
+                    if (owner.Waiters.Count == 0)
+                        RemoveOwnerNoLock(priority, owner);
+                    waiter.ClearQueueReferences();
                     waiter.Completion.TrySetCanceled();
                     DispatchNoLock();
                     break;
@@ -191,7 +196,35 @@ internal sealed class SourceByteAdmission
 
     private bool TryDispatchNoLock(PriorityQueue priority)
     {
+        if (priority.BypassReservation is { } reserved)
+        {
+            if (reserved.State != WaiterState.Queued)
+            {
+                ClearBypassReservationNoLock(priority, reserved);
+            }
+            else if (CanGrantNoLock(reserved.Bytes, reserved.Background))
+            {
+                OwnerQueue owner = reserved.Owner!;
+                GrantWaiterNoLock(priority, owner, reserved);
+                ClearBypassReservationNoLock(priority, reserved);
+                return true;
+            }
+            else if (priority.HasUsedBypass)
+            {
+                return false;
+            }
+            else
+            {
+                // A single fitting request may pass the blocked head. Once it
+                // does, keep the head reserved until active leases drain or it
+                // is canceled. This bounds same-priority bypass without
+                // preempting any buffer that is already in use.
+                return TryGrantFittingBypassNoLock(priority, reserved);
+            }
+        }
+
         int ownersToCheck = priority.Rotation.Count;
+        Waiter? firstBlocked = null;
         while (ownersToCheck-- > 0 && priority.Rotation.First is { } node)
         {
             OwnerQueue owner = node.Value;
@@ -201,23 +234,83 @@ internal sealed class SourceByteAdmission
             if (!CanGrantNoLock(waiter.Bytes, waiter.Background))
             {
                 owner.RotationNode = priority.Rotation.AddLast(owner);
+                firstBlocked ??= waiter;
                 continue;
             }
 
-            owner.Waiters.RemoveFirst();
-            waiter.Node = null;
-            _pendingRequests--;
-            if (owner.Waiters.Count == 0)
-                priority.Owners.Remove(owner.Owner);
-            else
-                owner.RotationNode = priority.Rotation.AddLast(owner);
-
-            waiter.State = WaiterState.Granted;
-            GrantBytesNoLock(waiter.Bytes, waiter.Background);
-            waiter.Completion.TrySetResult(new Lease(this, waiter.Bytes, waiter.Background));
+            if (firstBlocked is not null)
+            {
+                priority.BypassReservation = firstBlocked;
+                priority.HasUsedBypass = true;
+            }
+            GrantWaiterNoLock(priority, owner, waiter);
             return true;
         }
+
+        if (firstBlocked is not null)
+        {
+            priority.BypassReservation = firstBlocked;
+            priority.HasUsedBypass = false;
+        }
         return false;
+    }
+
+    private bool TryGrantFittingBypassNoLock(PriorityQueue priority, Waiter reserved)
+    {
+        int ownersToCheck = priority.Rotation.Count;
+        while (ownersToCheck-- > 0 && priority.Rotation.First is { } node)
+        {
+            OwnerQueue owner = node.Value;
+            priority.Rotation.RemoveFirst();
+            owner.RotationNode = null;
+            Waiter waiter = owner.Waiters.First!.Value;
+            if (ReferenceEquals(waiter, reserved) ||
+                !CanGrantNoLock(waiter.Bytes, waiter.Background))
+            {
+                owner.RotationNode = priority.Rotation.AddLast(owner);
+                continue;
+            }
+
+            priority.HasUsedBypass = true;
+            GrantWaiterNoLock(priority, owner, waiter);
+            return true;
+        }
+
+        return false;
+    }
+
+    private void GrantWaiterNoLock(PriorityQueue priority, OwnerQueue owner, Waiter waiter)
+    {
+        if (owner.RotationNode is { } rotationNode)
+        {
+            priority.Rotation.Remove(rotationNode);
+            owner.RotationNode = null;
+        }
+
+        owner.Waiters.Remove(waiter.Node!);
+        waiter.Node = null;
+        _pendingRequests--;
+        if (owner.Waiters.Count == 0)
+            priority.Owners.Remove(owner.Owner);
+        else
+            owner.RotationNode = priority.Rotation.AddLast(owner);
+
+        waiter.State = WaiterState.Granted;
+        GrantBytesNoLock(waiter.Bytes, waiter.Background);
+        // Detach queue ownership before waking the awaiting continuation, so
+        // the terminal waiter no longer carries unnecessary document/queue
+        // references.
+        waiter.ClearQueueReferences();
+        waiter.Completion.TrySetResult(new Lease(this, waiter.Bytes, waiter.Background));
+    }
+
+    private static void ClearBypassReservationNoLock(PriorityQueue priority, Waiter waiter)
+    {
+        if (!ReferenceEquals(priority.BypassReservation, waiter))
+            return;
+
+        priority.BypassReservation = null;
+        priority.HasUsedBypass = false;
     }
 
     private static void RemoveOwnerNoLock(PriorityQueue priority, OwnerQueue owner)
@@ -229,6 +322,8 @@ internal sealed class SourceByteAdmission
 
     private sealed class PriorityQueue
     {
+        internal Waiter? BypassReservation { get; set; }
+        internal bool HasUsedBypass { get; set; }
         internal Dictionary<object, OwnerQueue> Owners { get; } =
             new(ReferenceEqualityComparer.Instance);
         internal LinkedList<OwnerQueue> Rotation { get; } = new();
@@ -243,14 +338,20 @@ internal sealed class SourceByteAdmission
 
     private sealed class Waiter(PriorityQueue priority, OwnerQueue owner, long bytes, bool background)
     {
-        internal PriorityQueue Priority { get; } = priority;
-        internal OwnerQueue Owner { get; } = owner;
+        internal PriorityQueue? Priority { get; private set; } = priority;
+        internal OwnerQueue? Owner { get; private set; } = owner;
         internal long Bytes { get; } = bytes;
         internal bool Background { get; } = background;
         internal LinkedListNode<Waiter>? Node { get; set; }
         internal WaiterState State { get; set; } = WaiterState.Queued;
         internal TaskCompletionSource<Lease> Completion { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        internal void ClearQueueReferences()
+        {
+            Priority = null;
+            Owner = null;
+        }
     }
 
     private enum WaiterState { Queued, Granted, Canceled }

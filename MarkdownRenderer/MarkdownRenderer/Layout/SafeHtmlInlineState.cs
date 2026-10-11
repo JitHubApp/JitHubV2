@@ -133,11 +133,11 @@ internal sealed class SafeHtmlInlineState
             {
                 _scopes.Add(new Scope(
                     tag.Name,
-                    StyleKey: null,
-                    LinkUrl: null,
-                    LinkTitle: null,
-                    Suppressed: true,
-                    StyleAliases: Array.Empty<string>()));
+                    styleKey: null,
+                    linkUrl: null,
+                    linkTitle: null,
+                    suppressed: true,
+                    styleAliases: Array.Empty<string>()));
             }
 
             return null;
@@ -327,7 +327,7 @@ internal sealed class SafeHtmlInlineState
 
         if (link?.LinkUrl is { Length: > 0 } href && run is not InlineImageRun)
         {
-            return ApplyAliases(new LinkRun(run.Text, href, link.LinkTitle)
+            return ApplyAliases(new LinkRun(run.Text, href, link?.LinkTitle)
             {
                 SourceSpan = run.SourceSpan,
                 IsSuperscript = styleKey == Theming.MarkdownElementKeys.Superscript,
@@ -470,11 +470,29 @@ internal sealed class SafeHtmlInlineState
         _ => null,
     };
 
-    private sealed record Scope(
-        string Name,
-        string? StyleKey,
-        string? LinkUrl,
-        string? LinkTitle,
-        bool Suppressed,
-        IReadOnlyList<string> StyleAliases);
+    private readonly struct Scope
+    {
+        internal Scope(
+            string name,
+            string? styleKey,
+            string? linkUrl,
+            string? linkTitle,
+            bool suppressed,
+            IReadOnlyList<string> styleAliases)
+        {
+            Name = name;
+            StyleKey = styleKey;
+            LinkUrl = linkUrl;
+            LinkTitle = linkTitle;
+            Suppressed = suppressed;
+            StyleAliases = styleAliases;
+        }
+
+        internal readonly string Name;
+        internal readonly string? StyleKey;
+        internal readonly string? LinkUrl;
+        internal readonly string? LinkTitle;
+        internal readonly bool Suppressed;
+        internal readonly IReadOnlyList<string> StyleAliases;
+    }
 }

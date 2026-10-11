@@ -9,11 +9,15 @@ namespace MarkdownRenderer.Layout;
 /// Maps a vector scene's source viewport into its destination using the same
 /// centered uniform "meet" transform for painting, hit testing, and UIA.
 /// </summary>
-internal readonly record struct VectorViewportTransform(
+internal readonly struct VectorViewportTransform(
     float Scale,
     float TranslationX,
     float TranslationY)
 {
+    internal readonly float Scale = Scale;
+    internal readonly float TranslationX = TranslationX;
+    internal readonly float TranslationY = TranslationY;
+
     internal Matrix3x2 Matrix => new(
         Scale,
         0,

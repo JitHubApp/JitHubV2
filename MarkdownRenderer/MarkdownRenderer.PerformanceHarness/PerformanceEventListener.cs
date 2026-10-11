@@ -3,6 +3,8 @@ using MarkdownRenderer.Diagnostics;
 
 namespace MarkdownRenderer.PerformanceHarness;
 
+using Math = System.Math;
+
 internal sealed class PerformanceEventListener : IMarkdownPerformanceSink, IDisposable
 {
     private readonly object _gate = new();
@@ -14,6 +16,7 @@ internal sealed class PerformanceEventListener : IMarkdownPerformanceSink, IDisp
     private readonly List<string> _providerErrors = [];
     private TaskCompletionSource _changed = NewSignal();
     private long _sequence;
+    private CancellationToken _measurementEnvironmentAbortToken;
 
     internal PerformanceEventListener()
     {
@@ -25,6 +28,9 @@ internal sealed class PerformanceEventListener : IMarkdownPerformanceSink, IDisp
         get { lock (_gate) return _sequence; }
     }
 
+    internal void SetMeasurementEnvironmentAbortToken(CancellationToken cancellationToken)
+        => _measurementEnvironmentAbortToken = cancellationToken;
+
     internal IReadOnlyList<FirstViewportEvent> FirstViewports
     {
         get { lock (_gate) return _firstViewports.ToArray(); }
@@ -33,6 +39,17 @@ internal sealed class PerformanceEventListener : IMarkdownPerformanceSink, IDisp
     internal IReadOnlyList<string> ProviderErrors
     {
         get { lock (_gate) return _providerErrors.ToArray(); }
+    }
+
+    public void BitmapCacheCleanupFailed(int hresult)
+    {
+        lock (_gate)
+        {
+            // One sanitized health failure is enough to fail qualification.
+            // An eviction storm must not retain one string per failed bitmap.
+            if (_providerErrors.Count == 0)
+                _providerErrors.Add($"Bitmap cache cleanup failed (HResult=0x{hresult:X8}).");
+        }
     }
 
     public void PipelineStarted(long generation, long sourceUtf16Bytes)
@@ -277,11 +294,15 @@ internal sealed class PerformanceEventListener : IMarkdownPerformanceSink, IDisp
         string description,
         CancellationToken cancellationToken)
     {
-        using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        CancellationToken environmentAbortToken = _measurementEnvironmentAbortToken;
+        using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken,
+            environmentAbortToken);
         timeoutSource.CancelAfter(timeout);
 
         while (true)
         {
+            timeoutSource.Token.ThrowIfCancellationRequested();
             Task changed;
             lock (_gate)
             {
@@ -295,7 +316,9 @@ internal sealed class PerformanceEventListener : IMarkdownPerformanceSink, IDisp
             {
                 await changed.WaitAsync(timeoutSource.Token).ConfigureAwait(true);
             }
-            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            catch (OperationCanceledException) when (
+                !cancellationToken.IsCancellationRequested &&
+                !environmentAbortToken.IsCancellationRequested)
             {
                 throw new TimeoutException($"Timed out waiting for {description}.");
             }

@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using JitHub.Services.Markdown;
+using JitHub.WinUI.ViewModels.CodeViewer;
 using MarkdownRenderer.Images;
 using Xunit;
 
@@ -114,6 +115,58 @@ public sealed class MarkdownLinkNavigationPolicyTests
         Assert.True(mayNavigateInternally);
         Assert.Equal(MarkdownGitHubRouteKind.ExternalGitHub,
             MarkdownLinkNavigationPolicy.ClassifyGitHubRoute(uri).Kind);
+    }
+
+    [Fact]
+    public void PayloadBackedNestedReadme_ResolvesRelativeLinkFromPayloadContext()
+    {
+        const string commit = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        const string blob = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+        const string readmePath = "docs/guides/README.md";
+        string baseUrl = $"https://github.com/owner/repository/blob/{commit}/{readmePath}";
+        MarkdownDocumentSource source = MarkdownDocumentSourceFactory.TryCreateRepositoryFile(
+            blob,
+            baseUrl,
+            readmePath) ?? throw new InvalidOperationException("The test README source should be valid.");
+        var payload = new MarkdownViewerDocumentPayload(
+            "# Guide",
+            baseUrl,
+            readmePath,
+            source);
+        const string relativeLink = "../setup/install.md";
+
+        Assert.True(MarkdownLinkNavigationPolicy.TryResolveLaunchUri(
+            relativeLink,
+            new Uri(payload.BaseUrl!, UriKind.Absolute),
+            payload.DocumentSource,
+            out Uri? resolved,
+            out bool mayNavigateInternally));
+        Assert.Equal(
+            $"https://github.com/owner/repository/blob/{commit}/docs/setup/install.md",
+            resolved!.ToString());
+        Assert.True(mayNavigateInternally);
+
+        // MarkdownPreview supplies repository context only through its atomic
+        // payload. Keep the actual MarkdownViewer event path tied to that same
+        // context so it cannot regress to the unbound dependency properties.
+        string root = FindRepositoryRoot();
+        string viewerSource = File.ReadAllText(Path.Combine(
+            root,
+            "JitHub.WinUI",
+            "Views",
+            "Controls",
+            "Common",
+            "MarkdownViewer.xaml.cs"));
+        int resolverStart = viewerSource.IndexOf("private bool TryCreateLaunchUri(", StringComparison.Ordinal);
+        int resolverEnd = resolverStart < 0
+            ? -1
+            : viewerSource.IndexOf("private void ApplyRendererResources(", resolverStart, StringComparison.Ordinal);
+        Assert.True(resolverStart >= 0 && resolverEnd > resolverStart);
+        string resolverBody = viewerSource[resolverStart..resolverEnd];
+        Assert.Contains("GetEffectiveBaseUri()", resolverBody, StringComparison.Ordinal);
+        Assert.Contains("GetEffectiveDocumentSource()", resolverBody, StringComparison.Ordinal);
+        Assert.Contains("documentPayload is null ? BaseUrl : documentPayload.BaseUrl", viewerSource, StringComparison.Ordinal);
+        Assert.Contains("documentPayload is null ? DocumentSource : documentPayload.DocumentSource", viewerSource, StringComparison.Ordinal);
     }
 
     [Fact]

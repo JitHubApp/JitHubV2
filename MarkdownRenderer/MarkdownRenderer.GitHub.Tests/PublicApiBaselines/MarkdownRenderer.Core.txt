@@ -704,6 +704,7 @@ public readonly struct MarkdownRenderer.Theming.MarkdownStyleRole : System.IEqua
   public static MarkdownRenderer.Theming.MarkdownStyleRole ImageCaption { get; }
   public static MarkdownRenderer.Theming.MarkdownStyleRole InlineCode { get; }
   public static MarkdownRenderer.Theming.MarkdownStyleRole Link { get; }
+  public static MarkdownRenderer.Theming.MarkdownStyleRole List { get; }
   public static MarkdownRenderer.Theming.MarkdownStyleRole ListMarker { get; }
   public static MarkdownRenderer.Theming.MarkdownStyleRole Math { get; }
   public static MarkdownRenderer.Theming.MarkdownStyleRole Quote { get; }

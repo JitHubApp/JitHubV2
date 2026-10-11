@@ -476,6 +476,7 @@ $complianceDirectory = Join-Path $runDirectory 'package-compliance'
 & (Join-Path $PSScriptRoot 'Invoke-PackageCompliance.ps1') `
     -PackageDirectory $packageDirectoryA `
     -OutputDirectory $complianceDirectory `
+    -PackageScope TextMate `
     -FailOnUnknownLicense `
     -SkipSizeGates
 if ($LASTEXITCODE -ne 0) { throw 'TextMate package compliance failed.' }

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Text;
@@ -11,12 +12,28 @@ namespace MarkdownRenderer.Controls;
 /// stable public command data; live layout objects remain private to the
 /// control that owns them.
 /// </summary>
-internal readonly record struct MarkdownTargetCommand(
-    MarkdownCommandKind Kind,
-    SourceSpan SourceRange,
-    string? Target = null,
-    string? Language = null)
+internal readonly struct MarkdownTargetCommand
 {
+    public MarkdownTargetCommand(
+        MarkdownCommandKind Kind,
+        SourceSpan SourceRange,
+        string? Target = null,
+        string? Language = null)
+    {
+        this.Kind = Kind;
+        this.SourceRange = SourceRange;
+        this.Target = Target;
+        this.Language = Language;
+    }
+
+    public readonly MarkdownCommandKind Kind;
+
+    public readonly SourceSpan SourceRange;
+
+    public readonly string? Target;
+
+    public readonly string? Language;
+
     internal MarkdownCommandContext CreateContext()
         => new(Kind, SourceRange, Target, Language);
 }
@@ -26,6 +43,7 @@ internal enum MarkdownTargetCommandDispatchResult
     NotProvided,
     Disabled,
     Executed,
+    StaleInteraction,
 }
 
 internal enum MarkdownLinkActivationPolicyResult
@@ -34,12 +52,23 @@ internal enum MarkdownLinkActivationPolicyResult
     DisabledCommand,
     ExecutedCommand,
     RaiseHostEvent,
+    StaleInteraction,
 }
 
-internal readonly record struct MarkdownLinkActivationDecision(
-    MarkdownLinkInputKind InputKind,
-    MarkdownLinkActivationPolicyResult Result)
+internal readonly struct MarkdownLinkActivationDecision
 {
+    public MarkdownLinkActivationDecision(
+        MarkdownLinkInputKind InputKind,
+        MarkdownLinkActivationPolicyResult Result)
+    {
+        this.InputKind = InputKind;
+        this.Result = Result;
+    }
+
+    public readonly MarkdownLinkInputKind InputKind;
+
+    public readonly MarkdownLinkActivationPolicyResult Result;
+
     internal bool IsHandled => Result != MarkdownLinkActivationPolicyResult.RaiseHostEvent;
 }
 
@@ -60,12 +89,30 @@ internal static class MarkdownTargetCommandDispatcher
     internal static MarkdownTargetCommandDispatchResult Execute(
         IMarkdownCommandProvider? provider,
         MarkdownTargetCommand target)
+        => ExecuteCore(provider, target, isCurrent: null);
+
+    internal static MarkdownTargetCommandDispatchResult Execute(
+        IMarkdownCommandProvider? provider,
+        MarkdownTargetCommand target,
+        Func<bool> isCurrent)
+        => ExecuteCore(provider, target, isCurrent);
+
+    private static MarkdownTargetCommandDispatchResult ExecuteCore(
+        IMarkdownCommandProvider? provider,
+        MarkdownTargetCommand target,
+        Func<bool>? isCurrent)
     {
         MarkdownCommandContext context = target.CreateContext();
         ICommand? command = provider?.GetCommand(context);
+        if (isCurrent is not null && !isCurrent())
+            return MarkdownTargetCommandDispatchResult.StaleInteraction;
         if (command is null)
             return MarkdownTargetCommandDispatchResult.NotProvided;
-        if (!command.CanExecute(context))
+
+        bool canExecute = command.CanExecute(context);
+        if (isCurrent is not null && !isCurrent())
+            return MarkdownTargetCommandDispatchResult.StaleInteraction;
+        if (!canExecute)
             return MarkdownTargetCommandDispatchResult.Disabled;
 
         command.Execute(context);
@@ -87,7 +134,48 @@ internal static class MarkdownLinkActivationPolicy
         SourceSpan sourceRange,
         string url,
         string? action)
+        => EvaluateCore(
+            inputKind,
+            internalTargetHandled,
+            provider,
+            sourceRange,
+            url,
+            action,
+            isCurrent: null);
+
+    internal static MarkdownLinkActivationDecision Evaluate(
+        MarkdownLinkInputKind inputKind,
+        bool internalTargetHandled,
+        IMarkdownCommandProvider? provider,
+        SourceSpan sourceRange,
+        string url,
+        string? action,
+        Func<bool> isCurrent)
+        => EvaluateCore(
+            inputKind,
+            internalTargetHandled,
+            provider,
+            sourceRange,
+            url,
+            action,
+            isCurrent);
+
+    private static MarkdownLinkActivationDecision EvaluateCore(
+        MarkdownLinkInputKind inputKind,
+        bool internalTargetHandled,
+        IMarkdownCommandProvider? provider,
+        SourceSpan sourceRange,
+        string url,
+        string? action,
+        Func<bool>? isCurrent)
     {
+        if (isCurrent is not null && !isCurrent())
+        {
+            return new MarkdownLinkActivationDecision(
+                inputKind,
+                MarkdownLinkActivationPolicyResult.StaleInteraction);
+        }
+
         if (internalTargetHandled)
         {
             return new MarkdownLinkActivationDecision(
@@ -96,19 +184,28 @@ internal static class MarkdownLinkActivationPolicy
         }
 
         string commandTarget = string.IsNullOrWhiteSpace(action) ? url : action;
-        MarkdownTargetCommandDispatchResult dispatch =
-            MarkdownTargetCommandDispatcher.Execute(
-                provider,
-                new MarkdownTargetCommand(
-                    MarkdownCommandKind.Activate,
-                    sourceRange,
-                    commandTarget));
+        MarkdownTargetCommand target = new(
+            MarkdownCommandKind.Activate,
+            sourceRange,
+            commandTarget);
+        MarkdownTargetCommandDispatchResult dispatch = isCurrent is null
+            ? MarkdownTargetCommandDispatcher.Execute(provider, target)
+            : MarkdownTargetCommandDispatcher.Execute(provider, target, isCurrent);
+        if (isCurrent is not null && !isCurrent())
+        {
+            return new MarkdownLinkActivationDecision(
+                inputKind,
+                MarkdownLinkActivationPolicyResult.StaleInteraction);
+        }
+
         MarkdownLinkActivationPolicyResult result = dispatch switch
         {
             MarkdownTargetCommandDispatchResult.Executed =>
                 MarkdownLinkActivationPolicyResult.ExecutedCommand,
             MarkdownTargetCommandDispatchResult.Disabled =>
                 MarkdownLinkActivationPolicyResult.DisabledCommand,
+            MarkdownTargetCommandDispatchResult.StaleInteraction =>
+                MarkdownLinkActivationPolicyResult.StaleInteraction,
             _ => MarkdownLinkActivationPolicyResult.RaiseHostEvent,
         };
         return new MarkdownLinkActivationDecision(inputKind, result);
@@ -119,23 +216,34 @@ internal static class MarkdownLinkActivationPolicy
         new(inputKind, MarkdownLinkActivationPolicyResult.RaiseHostEvent);
 }
 
-internal readonly record struct MarkdownTableClipboardPayload(string Text, string Html);
+internal readonly struct MarkdownTableClipboardPayload
+{
+    public MarkdownTableClipboardPayload(string Text, string Html)
+    {
+        this.Text = Text;
+        this.Html = Html;
+    }
+
+    public readonly string Text;
+
+    public readonly string Html;
+}
 
 /// <summary>Builds a conservative rendered table payload for clipboard fallbacks.</summary>
 internal static class MarkdownTableClipboardFormatter
 {
     internal static MarkdownTableClipboardPayload Format(
-        IReadOnlyList<IReadOnlyList<string>> rows,
+        string[][] rows,
         int headerRowCount)
     {
         var text = new StringBuilder();
         var html = new StringBuilder("<table>");
-        if (rows.Count == 0)
+        if (rows.Length == 0)
             return new MarkdownTableClipboardPayload(string.Empty, "<table></table>");
 
-        int boundedHeaderRows = System.Math.Clamp(headerRowCount, 0, rows.Count);
+        int boundedHeaderRows = System.Math.Clamp(headerRowCount, 0, rows.Length);
 
-        for (int rowIndex = 0; rowIndex < rows.Count; rowIndex++)
+        for (int rowIndex = 0; rowIndex < rows.Length; rowIndex++)
         {
             if (rowIndex == 0 && boundedHeaderRows > 0)
                 html.Append("<thead>");
@@ -148,8 +256,8 @@ internal static class MarkdownTableClipboardFormatter
                 text.AppendLine();
             html.Append("<tr>");
 
-            IReadOnlyList<string> row = rows[rowIndex];
-            for (int columnIndex = 0; columnIndex < row.Count; columnIndex++)
+            string[] row = rows[rowIndex];
+            for (int columnIndex = 0; columnIndex < row.Length; columnIndex++)
             {
                 if (columnIndex > 0)
                     text.Append('\t');
@@ -165,7 +273,7 @@ internal static class MarkdownTableClipboardFormatter
             html.Append("</tr>");
         }
 
-        if (boundedHeaderRows > 0 && boundedHeaderRows == rows.Count)
+        if (boundedHeaderRows > 0 && boundedHeaderRows == rows.Length)
             html.Append("</thead>");
         else
             html.Append("</tbody>");

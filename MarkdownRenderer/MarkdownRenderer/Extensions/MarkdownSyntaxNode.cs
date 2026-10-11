@@ -120,6 +120,7 @@ public sealed class MarkdownExtensionContext
 
     internal int DiagnosticCount => _diagnosticCount;
 
+    /// <summary>True only for the renderer control's opt-in progressive parse path.</summary>
     internal bool ShouldDeferOffscreenScenes => _deferOffscreenScenes;
 
     /// <summary>

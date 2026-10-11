@@ -62,8 +62,86 @@ public static class MathMarkdownExtensions
                 .RegisterBlockAsync(MarkdownSyntaxKinds.Block.Math, RenderBlockAsync);
         }
 
-        private ValueTask RenderInlineAsync(MarkdownExtensionContext context, MarkdownContentBuilder content) =>
-            RenderAsync(context, content, MathFormulaDisplayMode.Inline);
+        private ValueTask RenderInlineAsync(MarkdownExtensionContext context, MarkdownContentBuilder content)
+        {
+            string original = context.Node.Literal ?? string.Empty;
+            if (context.ShouldDeferOffscreenScenes &&
+                TryReadContentRange(context.Node, original.Length, out int contentOffset, out int contentLength))
+            {
+                string tex = original.Substring(contentOffset, contentLength);
+                string marker = string.Concat(
+                    MarkdownSyntaxKinds.Inline.Math,
+                    "|",
+                    Interlocked.Increment(ref _nextDeferredSceneToken).ToString(CultureInfo.InvariantCulture));
+                content.AddVectorScene(
+                    CreateDeferredInlineScene(tex),
+                    context.Node.SourceSpan,
+                    MarkdownStyleRole.Math,
+                    MarkdownAccessibilityRole.Math,
+                    accessibilityName: MathStringResolver.GetEnglishString(MathStringKeys.AutomationName),
+                    accessibilityDescription: original,
+                    semanticText: tex,
+                    attributes: new Dictionary<string, string>(StringComparer.Ordinal)
+                    {
+                        [DeferredSceneMarkerAttribute] = marker,
+                    });
+                return ValueTask.CompletedTask;
+            }
+
+            return RenderAsync(context, content, MathFormulaDisplayMode.Inline);
+        }
+
+        private MarkdownVectorScene CreateDeferredInlineScene(string source)
+        {
+            // Keep the pending representation bounded. The whole exact source
+            // remains the run's semantic/accessibility text and source span;
+            // only its visual preview is shortened for exceptionally large
+            // formulas so a progressive parse does not create an unbounded
+            // native text layout before the formula is admitted for rendering.
+            const int maximumPreviewLength = 96;
+            const float maximumPreviewWidth = 1200f;
+            float fontSize = System.Math.Clamp(_options.FontSize * 0.75f, 9f, 18f);
+            var preview = new System.Text.StringBuilder(System.Math.Min(source.Length, maximumPreviewLength));
+            for (int index = 0; index < source.Length && preview.Length < maximumPreviewLength; index++)
+            {
+                char current = source[index];
+                if (current is '\r' or '\n' or '\t')
+                {
+                    if (preview.Length == 0 || preview[^1] != ' ')
+                        preview.Append(' ');
+                }
+                else
+                {
+                    preview.Append(current);
+                }
+            }
+
+            string previewText = preview.Length == 0 ? "…" : preview.ToString();
+            if (source.Length > maximumPreviewLength)
+                previewText = string.Concat(previewText[..System.Math.Min(previewText.Length, maximumPreviewLength - 1)], "…");
+
+            float width = System.Math.Clamp(previewText.Length * fontSize * 0.62f + 4f, 24f, maximumPreviewWidth);
+            float height = fontSize * 1.5f;
+            float baseline = fontSize * 1.1f;
+            var textStyle = new MarkdownVectorTextStyle(
+                MarkdownVectorFontRole.Authored,
+                "Consolas",
+                fontSize);
+            MarkdownVectorPaintStyle paintStyle = MarkdownVectorPaintStyle.CreateSemantic(
+                MarkdownVectorPaintRole.Foreground,
+                MarkdownVectorPaintRole.Foreground);
+            var text = MarkdownVectorCommand.DrawText(
+                previewText,
+                new MarkdownVectorPoint(0, baseline),
+                textStyle,
+                paintStyle);
+            return new MarkdownVectorScene(
+                width,
+                height,
+                baseline,
+                new[] { text },
+                referenceFontSize: _options.FontSize);
+        }
 
         private ValueTask RenderBlockAsync(MarkdownExtensionContext context, MarkdownContentBuilder content)
         {

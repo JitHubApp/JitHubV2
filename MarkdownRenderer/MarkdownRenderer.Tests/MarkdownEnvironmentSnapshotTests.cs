@@ -67,6 +67,11 @@ public sealed class MarkdownEnvironmentSnapshotTests
         var previous = CreateSnapshot();
         var next = previous.WithRevisions(99, 27, 31);
 
+        Assert.Equal(99, next.Revision);
+        Assert.Equal(27, next.BrushRevision);
+        Assert.Equal(31, next.LayoutRevision);
+        Assert.Equal(previous.Theme, next.Theme);
+        Assert.Equal(previous.Language, next.Language);
         Assert.Equal(MarkdownEnvironmentChange.None, next.ChangesFrom(previous));
     }
 

@@ -50,4 +50,11 @@
     <None Include="..\..\docs\markdown-renderer\README.md" Pack="true" PackagePath="README.md" Visible="false" />
     <None Include="..\..\JitHub.Web\wwwroot\icon-192.png" Pack="true" PackagePath="icon-192.png" Visible="false" />
   </ItemGroup>
+  <!-- Match the WinUI pack: keep every exact public/protected XML member, but
+       do not ship documentation for private implementation/lifetime helpers.
+       The metadata-only filter fails closed on unknown signatures. -->
+  <Target Name="FilterPublicXmlDocumentationForPack" BeforeTargets="GenerateNuspec"
+          Condition="Exists('$(TargetPath)') and Exists('$(TargetDir)$(AssemblyName).xml')">
+    <Exec Command="pwsh -NoProfile -NonInteractive -File &quot;$(MSBuildProjectDirectory)\..\eng\Filter-PublicXmlDocumentation.ps1&quot; -AssemblyPath &quot;$(TargetPath)&quot; -XmlPath &quot;$(TargetDir)$(AssemblyName).xml&quot;" />
+  </Target>
 </Project>

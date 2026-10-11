@@ -6,6 +6,10 @@ $manifest = Join-Path $provider 'native\Cargo.toml'
 $lockFile = Join-Path $provider 'native\Cargo.lock'
 $sbomPath = Join-Path $provider 'NATIVE_RUST_DEPENDENCIES.json'
 $licenseNoticesPath = Join-Path $provider 'licenses\RUST-DEPENDENCY-LICENSES.txt'
+$repositoryPolicyPath = Join-Path (Split-Path -Parent $provider) 'eng\license-compatibility-policy.json'
+. (Join-Path $PSScriptRoot 'SpdxLicenseSelection.ps1')
+. (Join-Path $PSScriptRoot 'ResvgVendoredSources.ps1')
+$vendoredSources = @(Get-ResvgVendoredSourcesProvenance -ProviderRoot $provider)
 
 function Get-LockedPackages([string] $path) {
     $text = Get-Content -LiteralPath $path -Raw
@@ -38,6 +42,11 @@ if ($LASTEXITCODE -ne 0) {
 $metadata = $metadataText | ConvertFrom-Json -Depth 64
 $locked = Get-LockedPackages $lockFile
 $existing = Get-Content -LiteralPath $sbomPath -Raw | ConvertFrom-Json -Depth 32
+$repositoryPolicy = Get-Content -LiteralPath $repositoryPolicyPath -Raw | ConvertFrom-Json -Depth 32
+$approvedIdentifiers = @($repositoryPolicy.allowedSpdxIdentifiers | ForEach-Object { [string]$_ })
+$additionalKnownIdentifiers = Get-ResvgAdditionalKnownLicenseIdentifiers `
+    -ApprovedIdentifiers $approvedIdentifiers `
+    -InventoryIdentifiers @($existing.licensePolicy.requiredAdditionalIdentifiers | ForEach-Object { [string]$_ })
 $overrides = @{}
 foreach ($property in $existing.licensePolicy.selectionOverrides.PSObject.Properties) {
     $overrides[$property.Name] = [string]$property.Value
@@ -49,11 +58,22 @@ $packages = @($metadata.packages | Sort-Object name, version | ForEach-Object {
     if (-not $locked.ContainsKey($identity)) {
         throw "Cargo metadata package $identity is absent from Cargo.lock."
     }
+    Assert-ResvgNativePackageSource `
+        -Package $_ `
+        -LockedPackage $locked[$identity] `
+        -ProviderRoot $provider `
+        -VendoredSources $vendoredSources
     $selection = if ($overrides.ContainsKey($identity)) {
         $overrides[$identity]
     } else {
         [string]$existing.licensePolicy.defaultLicenseSelection
     }
+    [void](Assert-SpdxLicenseSelection `
+        -Expression ([string]$_.license) `
+        -Selection $selection `
+        -ApprovedIdentifiers $approvedIdentifiers `
+        -AdditionalKnownIdentifiers $additionalKnownIdentifiers `
+        -Subject $identity)
     $evidenceHashes = @()
     $manifestDirectory = Split-Path -Parent ([string]$_.manifest_path)
     $licenseFiles = @(Get-ChildItem -LiteralPath $manifestDirectory -File | Where-Object Name -Match '^(LICENSE|LICENCE|COPYING|UNLICENSE|COPYRIGHT|NOTICE)([-_.].*)?$' | Sort-Object Name)
@@ -87,12 +107,18 @@ $packages = @($metadata.packages | Sort-Object name, version | ForEach-Object {
     }
 })
 
+$vendoredResvg = @($vendoredSources | Where-Object { [string]$_.PackageName -ceq 'resvg' })
+if ($vendoredResvg.Count -ne 1) {
+    throw 'The pinned vendored resvg source inventory must contain exactly one package.'
+}
+
 $document = [ordered]@{
     schemaVersion = 2
     bomFormat = [string]$existing.bomFormat
     generatedFrom = [string]$existing.generatedFrom
     packageCount = $packages.Count
-    resvgCommit = [string]$existing.resvgCommit
+    resvgCommit = [string]$vendoredResvg[0].Revision
+    vendoredSources = @($vendoredSources | ForEach-Object { $_.SbomRecord })
     licensePolicy = $existing.licensePolicy
     components = @($packages | ForEach-Object { "$($_.name)@$($_.version)" })
     packages = $packages

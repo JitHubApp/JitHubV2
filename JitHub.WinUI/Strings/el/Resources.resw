@@ -679,6 +679,7 @@
   <data name="MarkdownRenderer/Table/Name" xml:space="preserve"><value>Πίνακας</value></data>
   <data name="MarkdownRenderer/List/Name" xml:space="preserve"><value>Λίστα</value></data>
   <data name="MarkdownRenderer/EmbeddedContent/Name" xml:space="preserve"><value>Ενσωματωμένο περιεχόμενο</value></data>
+  <data name="MarkdownRenderer/EmbeddedContent/Unavailable" xml:space="preserve"><value>Το ενσωματωμένο περιεχόμενο δεν είναι διαθέσιμο.</value></data>
   <data name="MarkdownRenderer/Diagram/Name" xml:space="preserve"><value>Διάγραμμα</value></data>
   <data name="MarkdownRenderer/Code/LanguageHelp" xml:space="preserve"><value>Γλώσσα: {0}</value></data>
   <data name="MarkdownRenderer/Html/Details" xml:space="preserve"><value>Λεπτομέρειες</value></data>

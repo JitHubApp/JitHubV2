@@ -1,9 +1,9 @@
 using System;
-using System.Security.Cryptography;
 using System.Text;
 using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Utilities;
 
 namespace MarkdownRenderer.Layout;
 
@@ -89,8 +89,7 @@ internal static class SafeHtmlMediaRunFactory
         if (string.IsNullOrWhiteSpace(mediaSource))
             return isVideo ? VideoPlaceholder : AudioPlaceholder;
 
-        byte[] digest = SHA256.HashData(Encoding.UTF8.GetBytes(mediaSource));
-        string identity = Convert.ToHexString(digest.AsSpan(0, 8));
+        string identity = Utf8Sha256.GetHexString(mediaSource, digestBytes: 8);
         return isVideo
             ? CreatePlaceholder("Video", VideoGlyph, 640, 360, 12, identity)
             : CreatePlaceholder("Audio", AudioGlyph, 320, 48, 8, identity);

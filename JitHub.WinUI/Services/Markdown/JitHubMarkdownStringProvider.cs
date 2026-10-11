@@ -57,6 +57,7 @@ internal sealed class JitHubMarkdownStringProvider : IMarkdownStringProvider
         MarkdownStringKeys.TableName => "Table",
         MarkdownStringKeys.ListName => "List",
         MarkdownStringKeys.EmbeddedContentName => "Embedded content",
+        MarkdownStringKeys.EmbeddedContentUnavailable => "Embedded content unavailable.",
         MarkdownStringKeys.DiagramName => "Diagram",
         MarkdownStringKeys.CodeLanguageHelp => "Language: {0}",
         MarkdownStringKeys.HtmlDetails => "Details",

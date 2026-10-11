@@ -7,6 +7,7 @@
     <IsPackable>false</IsPackable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <RootNamespace>MarkdownRenderer.Tests</RootNamespace>
+    <DefineConstants>$(DefineConstants);MARKDOWN_LAYOUT_DIAGNOSTICS</DefineConstants>
     <Platforms>x64</Platforms>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <!-- Avoid pulling in WinUI and Win2D for pure-logic tests -->
@@ -34,6 +35,7 @@
     <Compile Include="..\MarkdownRenderer\Document\MarkdownDocument.cs" Link="Core\MarkdownDocument.cs" />
     <Compile Include="..\MarkdownRenderer\Document\MarkdownSyntaxAdapter.cs" Link="Core\MarkdownSyntaxAdapter.cs" />
     <Compile Include="..\MarkdownRenderer\Document\MarkdownSourceMap.cs" Link="Core\MarkdownSourceMap.cs" />
+    <Compile Include="..\MarkdownRenderer\Document\PagedEntryBuffer.cs" Link="Core\PagedEntryBuffer.cs" />
     <Compile Include="..\MarkdownRenderer\Parsing\MarkdigParser.cs" Link="Core\MarkdigParser.cs" />
     <Compile Include="..\MarkdownRenderer\Parsing\ForgivingDataUriFixer.cs" Link="Core\ForgivingDataUriFixer.cs" />
     <Compile Include="..\MarkdownRenderer\Parsing\SafeHtmlParser.cs" Link="Core\SafeHtmlParser.cs" />
@@ -49,15 +51,18 @@
     <Compile Include="..\MarkdownRenderer\Hosting\HostedElementRealizationGate.cs" Link="Core\HostedElementRealizationGate.cs" />
     <Compile Include="..\MarkdownRenderer\Hosting\HostedElementFallbackKey.cs" Link="Core\HostedElementFallbackKey.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgIntrinsics.cs" Link="Core\SvgIntrinsics.cs" />
+    <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgSourceMetadata.cs" Link="Core\SvgSourceMetadata.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgResourceBudget.cs" Link="Core\SvgResourceBudget.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgStaticSnapshot.cs" Link="Core\SvgStaticSnapshot.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\RasterImageResourceBudget.cs" Link="Core\RasterImageResourceBudget.cs" />
+    <Compile Include="..\MarkdownRenderer\Layout\Boxes\RasterImageSizingRequest.cs" Link="Core\RasterImageSizingRequest.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\RasterImageTilePlanner.cs" Link="Core\RasterImageTilePlanner.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgThemeInjector.cs" Link="Core\SvgThemeInjector.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgTitleExtractor.cs" Link="Core\SvgTitleExtractor.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\LoadCompletedEventArgs.cs" Link="Core\LoadCompletedEventArgs.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\LazyLayoutBand.cs" Link="Core\LazyLayoutBand.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\LayoutPassCancellation.cs" Link="Core\LayoutPassCancellation.cs" />
+    <Compile Include="..\MarkdownRenderer\Layout\MarkdownLayoutDiagnostics.cs" Link="Core\MarkdownLayoutDiagnostics.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\DeclarativeBlockSelection.cs" Link="Core\DeclarativeBlockSelection.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\ViewportBandIndex.cs" Link="Core\ViewportBandIndex.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\VerticalViewportIndex.cs" Link="Core\VerticalViewportIndex.cs" />
@@ -69,8 +74,12 @@
     <Compile Include="..\MarkdownRenderer\Controls\ThreadCpuClock.cs" Link="Core\ThreadCpuClock.cs" />
     <Compile Include="..\MarkdownRenderer\Controls\LazyLayoutScrollAnchorPolicy.cs" Link="Core\LazyLayoutScrollAnchorPolicy.cs" />
     <Compile Include="..\MarkdownRenderer\Controls\MarkdownRebuildDispatchPolicy.cs" Link="Core\MarkdownRebuildDispatchPolicy.cs" />
+    <Compile Include="..\MarkdownRenderer\Performance\MarkdownLayoutWorkPriority.cs" Link="Performance\MarkdownLayoutWorkPriority.cs" />
+    <Compile Include="..\MarkdownRenderer.Performance\BoundedMarkdownLayoutScheduler.cs" Link="Performance\BoundedMarkdownLayoutScheduler.cs" />
     <Compile Include="..\MarkdownRenderer\Controls\SnapshotRetirementTracker.cs" Link="Core\SnapshotRetirementTracker.cs" />
     <Compile Include="..\MarkdownRenderer\Controls\OwnedResourceRetirement.cs" Link="Core\OwnedResourceRetirement.cs" />
+    <Compile Include="..\MarkdownRenderer\Controls\WeakSnapshotPublication.cs" Link="Core\WeakSnapshotPublication.cs" />
+    <Compile Include="..\MarkdownRenderer\Controls\ImageRelayoutWorkPayload.cs" Link="Core\ImageRelayoutWorkPayload.cs" />
     <Compile Include="..\MarkdownRenderer.Sample.Automation\ProcessExitValidation.cs" Link="Core\ProcessExitValidation.cs" />
     <Compile Include="..\MarkdownRenderer\Controls\SelectionAutoScroll.cs" Link="Core\SelectionAutoScroll.cs" />
     <Compile Include="..\MarkdownRenderer\Controls\MarkdownTouchSelectionSession.cs" Link="Core\MarkdownTouchSelectionSession.cs" />
@@ -90,11 +99,18 @@
     <Compile Include="..\MarkdownRenderer\Layout\CodeBlockMetadata.cs" Link="Core\CodeBlockMetadata.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\FocusableItem.cs" Link="Core\FocusableItem.cs" />
     <Compile Include="..\MarkdownRenderer\Images\IMarkdownImageResolver.cs" Link="Core\IMarkdownImageResolver.cs" />
+    <Compile Include="..\MarkdownRenderer\Images\IMarkdownImageResolutionLease.cs" Link="Core\IMarkdownImageResolutionLease.cs" />
+    <Compile Include="..\MarkdownRenderer.Performance\MarkdownImageResolutionLease.cs" Link="Performance\MarkdownImageResolutionLease.cs" />
+    <Compile Include="..\MarkdownRenderer.Performance\IMarkdownLeasedImageResolver.cs" Link="Performance\IMarkdownLeasedImageResolver.cs" />
     <Compile Include="..\MarkdownRenderer\Images\IMarkdownSvgRenderer.cs" Link="Core\IMarkdownSvgRenderer.cs" />
+    <Compile Include="..\MarkdownRenderer\Images\MarkdownSvgHostAdmission.cs" Link="Core\MarkdownSvgHostAdmission.cs" />
+    <Compile Include="..\MarkdownRenderer\Images\MarkdownSvgDemandTicket.cs" Link="Core\MarkdownSvgDemandTicket.cs" />
+    <Compile Include="..\MarkdownRenderer\Images\IMarkdownImageActivationDemand.cs" Link="Core\IMarkdownImageActivationDemand.cs" />
     <Compile Include="..\MarkdownRenderer\Images\MarkdownRemoteImageLoadingPolicy.cs" Link="Core\MarkdownRemoteImageLoadingPolicy.cs" />
     <Compile Include="..\MarkdownRenderer\Images\MarkdownImageCacheIdentityPolicy.cs" Link="Core\MarkdownImageCacheIdentityPolicy.cs" />
     <Compile Include="..\MarkdownRenderer\Images\MarkdownBuiltInImageSourcePolicy.cs" Link="Core\MarkdownBuiltInImageSourcePolicy.cs" />
     <Compile Include="..\MarkdownRenderer\Images\ImageResolverDeadline.cs" Link="Core\ImageResolverDeadline.cs" />
+    <Compile Include="..\MarkdownRenderer\Images\MarkdownDataUriDecoder.cs" Link="Core\MarkdownDataUriDecoder.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\FocusNavigationHelper.cs" Link="Core\FocusNavigationHelper.cs" />
     <Compile Include="..\MarkdownRenderer\Theming\MarkdownHighContrastDefaults.cs" Link="Core\MarkdownHighContrastDefaults.cs" />
     <Compile Include="..\MarkdownRenderer\Theming\MarkdownEnvironmentSnapshot.cs" Link="Core\MarkdownEnvironmentSnapshot.cs" />

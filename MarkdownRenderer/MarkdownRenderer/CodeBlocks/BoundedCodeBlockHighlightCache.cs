@@ -102,8 +102,11 @@ internal sealed class BoundedCodeBlockHighlightCache<TKey>
         return 128L + keyWeight + spanWeight;
     }
 
-    private sealed record Entry(
-        TKey Key,
-        CodeBlockHighlightResult Result,
-        long Weight);
+    // Recency nodes have identity; their payload is never compared or cloned.
+    private sealed class Entry(TKey key, CodeBlockHighlightResult result, long weight)
+    {
+        internal readonly TKey Key = key;
+        internal readonly CodeBlockHighlightResult Result = result;
+        internal readonly long Weight = weight;
+    }
 }

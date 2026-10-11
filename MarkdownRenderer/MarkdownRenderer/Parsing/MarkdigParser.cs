@@ -129,4 +129,10 @@ internal sealed class MarkdigParser
         : new Markdig.Syntax.SourceSpan(span.Start + offset, span.End + offset);
 }
 
-internal sealed record ParsedMarkdown(string SourceText, MarkdownDocument Document);
+// This is a parse-result owner, not a value/equality key. Source and syntax tree
+// retain the same reference identity without generated record cloning helpers.
+internal sealed class ParsedMarkdown(string sourceText, MarkdownDocument document)
+{
+    internal readonly string SourceText = sourceText;
+    internal readonly MarkdownDocument Document = document;
+}

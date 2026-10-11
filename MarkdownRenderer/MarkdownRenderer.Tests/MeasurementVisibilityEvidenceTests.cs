@@ -49,6 +49,105 @@ public sealed class MeasurementVisibilityEvidenceTests
     }
 
     [Fact]
+    public void QualifiedSamplesDoNotAbortTheMeasurementEnvironment()
+    {
+        using var invalidation = new MeasurementVisibilityInvalidation();
+        MeasurementVisibilitySample qualified = PerformanceVisibilityFixture.CreatePassing(
+            ReportStarted).Samples[0];
+
+        Assert.False(invalidation.TryInvalidate(qualified));
+        Assert.False(invalidation.CancellationToken.IsCancellationRequested);
+        Assert.Null(invalidation.FirstUnqualifiedSample);
+        Assert.Null(invalidation.FirstViolationReason);
+    }
+
+    [Fact]
+    public void FirstUnqualifiedSampleCancelsAndLatchesTheEnvironmentFailure()
+    {
+        using var invalidation = new MeasurementVisibilityInvalidation();
+        MeasurementVisibilitySample qualified = PerformanceVisibilityFixture.CreatePassing(
+            ReportStarted).Samples[0];
+        MeasurementVisibilitySample foregroundLost = Copy(
+            qualified,
+            elapsedTicks: 123,
+            source: "foreground-event",
+            targetWasForeground: false);
+
+        Assert.True(invalidation.TryInvalidate(foregroundLost));
+        Assert.True(invalidation.CancellationToken.IsCancellationRequested);
+        Assert.Same(foregroundLost, invalidation.FirstUnqualifiedSample);
+        Assert.Equal("the benchmark window lost foreground", invalidation.FirstViolationReason);
+
+        MeasurementVisibilitySample laterFailure = Copy(
+            qualified,
+            elapsedTicks: 456,
+            source: "window-event",
+            targetWasUnoccluded: false);
+        Assert.False(invalidation.TryInvalidate(laterFailure));
+        Assert.Same(foregroundLost, invalidation.FirstUnqualifiedSample);
+        Assert.Equal("the benchmark window lost foreground", invalidation.FirstViolationReason);
+    }
+
+    [Fact]
+    public void ConcurrentInvalidationDeliveryPreservesEarliestMonotonicSample()
+    {
+        using var invalidation = new MeasurementVisibilityInvalidation();
+        MeasurementVisibilitySample qualified = PerformanceVisibilityFixture.CreatePassing(
+            ReportStarted).Samples[0];
+        MeasurementVisibilitySample laterOcclusion = Copy(
+            qualified,
+            elapsedTicks: 456,
+            source: "window-event",
+            targetWasUnoccluded: false);
+        MeasurementVisibilitySample earlierForegroundLoss = Copy(
+            qualified,
+            elapsedTicks: 123,
+            source: "foreground-event",
+            targetWasForeground: false);
+
+        Assert.True(invalidation.TryInvalidate(laterOcclusion));
+        Assert.True(invalidation.TryInvalidate(earlierForegroundLoss));
+
+        Assert.True(invalidation.CancellationToken.IsCancellationRequested);
+        Assert.Same(earlierForegroundLoss, invalidation.FirstUnqualifiedSample);
+        Assert.Equal("the benchmark window lost foreground", invalidation.FirstViolationReason);
+    }
+
+    [Fact]
+    public void CancellationCallbackCanDisposeLatchWithoutRacingItsSource()
+    {
+        using var invalidation = new MeasurementVisibilityInvalidation();
+        CancellationToken token = invalidation.CancellationToken;
+        using CancellationTokenRegistration registration = token.Register(invalidation.Dispose);
+        MeasurementVisibilitySample foregroundLost = Copy(
+            PerformanceVisibilityFixture.CreatePassing(ReportStarted).Samples[0],
+            source: "foreground-event",
+            targetWasForeground: false);
+
+        Assert.True(invalidation.TryInvalidate(foregroundLost));
+        Assert.True(token.IsCancellationRequested);
+        Assert.Same(foregroundLost, invalidation.FirstUnqualifiedSample);
+    }
+
+    [Fact]
+    public void IrreversibleDesktopChangeCanInvalidateEvenIfCaptureAlreadyShowsRecovery()
+    {
+        using var invalidation = new MeasurementVisibilityInvalidation();
+        MeasurementVisibilitySample recovered = PerformanceVisibilityFixture.CreatePassing(
+            ReportStarted).Samples[0];
+
+        Assert.True(invalidation.TryInvalidate(
+            recovered,
+            "the active desktop changed during measurement"));
+
+        Assert.True(invalidation.CancellationToken.IsCancellationRequested);
+        Assert.Same(recovered, invalidation.FirstUnqualifiedSample);
+        Assert.Equal(
+            "the active desktop changed during measurement",
+            invalidation.FirstViolationReason);
+    }
+
+    [Fact]
     public async Task ForegroundReadinessWaitsForAQualifiedSample()
     {
         MeasurementVisibilitySample qualified = PerformanceVisibilityFixture.CreatePassing(
@@ -65,15 +164,21 @@ public sealed class MeasurementVisibilityEvidenceTests
             qualified,
         ];
         int sampleIndex = 0;
+        var clock = new VirtualReadinessWaitClock();
 
         MeasurementVisibilitySample result =
             await MeasurementVisibilityReadinessWaiter.WaitUntilQualifiedAsync(
                 () => samples[Math.Min(sampleIndex++, samples.Length - 1)],
-                timeoutMilliseconds: 1_000,
-                pollIntervalMilliseconds: 1);
+                timeoutMilliseconds: PerformanceMeasurementContract.ReleaseForegroundReadinessTimeoutMilliseconds,
+                pollIntervalMilliseconds: 1,
+                cancellationToken: default,
+                getTimestamp: clock.GetTimestamp,
+                delayAsync: clock.DelayAsync);
 
         Assert.Same(qualified, result);
         Assert.Equal(samples.Length, sampleIndex);
+        Assert.Equal(samples.Length - 1, clock.DelayCount);
+        Assert.Equal(TimeSpan.FromMilliseconds(samples.Length - 1), clock.Elapsed);
     }
 
     [Fact]
@@ -82,15 +187,85 @@ public sealed class MeasurementVisibilityEvidenceTests
         MeasurementVisibilitySample unqualified = Copy(
             PerformanceVisibilityFixture.CreatePassing(ReportStarted).Samples[0],
             targetWasForeground: false);
+        var clock = new VirtualReadinessWaitClock();
 
         TimeoutException exception = await Assert.ThrowsAsync<TimeoutException>(
             () => MeasurementVisibilityReadinessWaiter.WaitUntilQualifiedAsync(
                 () => unqualified,
                 timeoutMilliseconds: 10,
-                pollIntervalMilliseconds: 1));
+                pollIntervalMilliseconds: 1,
+                cancellationToken: default,
+                getTimestamp: clock.GetTimestamp,
+                delayAsync: clock.DelayAsync));
 
         Assert.Contains("timed out", exception.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("foreground", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(TimeSpan.FromMilliseconds(10), clock.Elapsed);
+    }
+
+    [Fact]
+    public async Task QualifiedSampleObservedAtDeadlineIsAccepted()
+    {
+        MeasurementVisibilitySample qualified = PerformanceVisibilityFixture.CreatePassing(
+            ReportStarted).Samples[0];
+        var clock = new VirtualReadinessWaitClock();
+
+        MeasurementVisibilitySample result =
+            await MeasurementVisibilityReadinessWaiter.WaitUntilQualifiedAsync(
+                () => qualified,
+                timeoutMilliseconds: 4,
+                pollIntervalMilliseconds: 1,
+                cancellationToken: default,
+                getTimestamp: clock.GetTimestamp,
+                delayAsync: clock.DelayAsync);
+
+        Assert.Same(qualified, result);
+        Assert.Equal(PerformanceMeasurementContract.ReleaseForegroundReadinessConsecutiveQualifiedSamples,
+            clock.DelayCount + 1);
+        Assert.Equal(TimeSpan.FromMilliseconds(4), clock.Elapsed);
+    }
+
+    [Fact]
+    public async Task ForegroundReadinessHonorsCancellationDuringWait()
+    {
+        MeasurementVisibilitySample unqualified = Copy(
+            PerformanceVisibilityFixture.CreatePassing(ReportStarted).Samples[0],
+            targetWasForeground: false);
+        using var cancellation = new CancellationTokenSource();
+        var clock = new VirtualReadinessWaitClock();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => MeasurementVisibilityReadinessWaiter.WaitUntilQualifiedAsync(
+                () => unqualified,
+                timeoutMilliseconds: 10,
+                pollIntervalMilliseconds: 1,
+                cancellationToken: cancellation.Token,
+                getTimestamp: clock.GetTimestamp,
+                delayAsync: (delay, token) =>
+                {
+                    cancellation.Cancel();
+                    return Task.FromCanceled(token);
+                }));
+    }
+
+    private sealed class VirtualReadinessWaitClock
+    {
+        private long _timestamp;
+
+        internal int DelayCount { get; private set; }
+        internal TimeSpan Elapsed => System.Diagnostics.Stopwatch.GetElapsedTime(0, _timestamp);
+
+        internal long GetTimestamp() => _timestamp;
+
+        internal Task DelayAsync(TimeSpan delay, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            long increment = checked(delay.Ticks * System.Diagnostics.Stopwatch.Frequency /
+                TimeSpan.TicksPerSecond);
+            _timestamp = checked(_timestamp + Math.Max(1, increment));
+            DelayCount++;
+            return Task.CompletedTask;
+        }
     }
 
     [Fact]

@@ -100,6 +100,8 @@ public static class MarkdownStringKeys
     public const string ListName = "List.Name";
     /// <summary>Default accessible name for embedded content.</summary>
     public const string EmbeddedContentName = "EmbeddedContent.Name";
+    /// <summary>Accessible status shown when embedded content is unavailable.</summary>
+    public const string EmbeddedContentUnavailable = "EmbeddedContent.Unavailable";
     /// <summary>Default accessible name for a diagram.</summary>
     public const string DiagramName = "Diagram.Name";
     /// <summary>Code-language help-text format. Placeholder <c>{0}</c> is the language name.</summary>

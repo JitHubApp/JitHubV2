@@ -5,6 +5,10 @@
 
 assembly MarkdownRenderer
 
+public enum MarkdownRenderer.CodeBlocks.CodeBlockChromeMode
+  Enhanced = 0,
+  PlainMarkdown = 1,
+
 public sealed class MarkdownRenderer.CodeBlocks.CodeBlockHighlightRequest
   public CodeBlockHighlightRequest(string? language, string code, MarkdownRenderer.CodeBlocks.CodeBlockThemeVariant themeVariant, System.Threading.CancellationToken cancellationToken);
   public MarkdownRenderer.CodeBlocks.CodeBlockThemeVariant ThemeVariant { get; }
@@ -109,6 +113,7 @@ public sealed class MarkdownRenderer.Controls.MarkdownRenderFailedEventArgs : Sy
 [Obsolete("Use MarkdownScrollView for an owned viewport or MarkdownDocumentView for an ancestor-owned viewport.", DiagnosticId = "MR1001", UrlFormat = "https://github.com/JitHubApp/JitHubV2/tree/main/docs/markdown-renderer#{0}")] public class MarkdownRenderer.Controls.MarkdownRendererControl : Microsoft.UI.Xaml.Controls.UserControl, System.IDisposable
   protected MarkdownRendererControl(bool ownsScrollViewport);
   protected override Microsoft.UI.Xaml.Automation.Peers.AutomationPeer OnCreateAutomationPeer();
+  public MarkdownRenderer.CodeBlocks.CodeBlockChromeMode CodeBlockChromeMode { get; set; }
   public MarkdownRenderer.CodeBlocks.CodeBlockLineNumberMode CodeBlockLineNumberMode { get; set; }
   public MarkdownRenderer.CodeBlocks.CodeBlockWrappingMode CodeBlockWrappingMode { get; set; }
   public MarkdownRenderer.CodeBlocks.ICodeBlockSyntaxHighlighter? CodeBlockSyntaxHighlighter { get; set; } [Obsolete("Use CodeHighlighter for explicit cancellation support.")]
@@ -147,6 +152,7 @@ public sealed class MarkdownRenderer.Controls.MarkdownRenderFailedEventArgs : Sy
   public int RealizedEmbedCount { get; }
   public static MarkdownRenderer.Controls.MarkdownScrollView CreateDefault(string? markdown = null, MarkdownRenderer.Theming.MarkdownTheme? theme = null, bool isSelectionEnabled = true, bool isCodeBlockCopyEnabled = true, MarkdownRenderer.CodeBlocks.ICodeBlockSyntaxHighlighter? codeBlockSyntaxHighlighter = null, string? codeBlockCopyButtonLabel = null, string? codeBlockCopiedButtonLabel = null, MarkdownRenderer.Images.IMarkdownImageResolver? imageResolver = null, System.Uri? imageBaseUri = null, string? imageDocumentPath = null, MarkdownRenderer.CodeBlocks.CodeBlockWrappingMode codeBlockWrappingMode = MarkdownRenderer.CodeBlocks.CodeBlockWrappingMode.NoWrap);
   public static readonly Microsoft.UI.Xaml.DependencyProperty AllowThirdPartyRemoteImagesProperty;
+  public static readonly Microsoft.UI.Xaml.DependencyProperty CodeBlockChromeModeProperty;
   public static readonly Microsoft.UI.Xaml.DependencyProperty CodeBlockCopiedButtonLabelProperty;
   public static readonly Microsoft.UI.Xaml.DependencyProperty CodeBlockCopyButtonLabelProperty;
   public static readonly Microsoft.UI.Xaml.DependencyProperty CodeBlockCopyButtonStyleProperty;
@@ -185,6 +191,7 @@ public sealed class MarkdownRenderer.Controls.MarkdownRendererControlBuilder
   public MarkdownRenderer.Controls.MarkdownDocumentView BuildDocumentView();
   public MarkdownRenderer.Controls.MarkdownRendererControl Build() [Obsolete("Use BuildScrollView or BuildDocumentView to make viewport ownership explicit.")];
   public MarkdownRenderer.Controls.MarkdownRendererControlBuilder AddProfile(MarkdownRenderer.MarkdownProfile profile);
+  public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithCodeBlockChromeMode(MarkdownRenderer.CodeBlocks.CodeBlockChromeMode mode);
   public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithCodeBlockCopiedButtonLabel(string? label);
   public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithCodeBlockCopyButtonLabel(string? label);
   public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithCodeBlockCopyEnabled(bool enabled = true);
@@ -279,6 +286,7 @@ public static class MarkdownRenderer.Hosting.MarkdownStringKeys
   public const string DiagramName = "Diagram.Name";
   public const string DocumentName = "Document.Name";
   public const string EmbeddedContentName = "EmbeddedContent.Name";
+  public const string EmbeddedContentUnavailable = "EmbeddedContent.Unavailable";
   public const string HtmlBudgetExceeded = "Html.BudgetExceeded";
   public const string HtmlDetails = "Html.Details";
   public const string ImageError = "Image.Error";
@@ -494,6 +502,18 @@ public sealed class MarkdownRenderer.Images.MarkdownSvgOpenRequest : System.IEqu
   public string? Locale { get; init; }
   public void Deconstruct(out System.ReadOnlyMemory<byte> SanitizedSvgBytes, out string? Locale, out MarkdownRenderer.Images.MarkdownSvgColorScheme ColorScheme, out MarkdownRenderer.Images.MarkdownSvgColor? SemanticColor, out MarkdownRenderer.Images.MarkdownSvgRenderPriority Priority);
 
+public readonly struct MarkdownRenderer.Images.MarkdownSvgPhysicalViewport : System.IEquatable<MarkdownRenderer.Images.MarkdownSvgPhysicalViewport> [layout: Sequential; pack: 0; size: 0; charset: Ansi]
+  public MarkdownSvgPhysicalViewport(double Width, double Height);
+  public bool Equals(MarkdownRenderer.Images.MarkdownSvgPhysicalViewport other);
+  public double Height { get; init; }
+  public double Width { get; init; }
+  public override bool Equals(object obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static bool op_Equality(MarkdownRenderer.Images.MarkdownSvgPhysicalViewport left, MarkdownRenderer.Images.MarkdownSvgPhysicalViewport right);
+  public static bool op_Inequality(MarkdownRenderer.Images.MarkdownSvgPhysicalViewport left, MarkdownRenderer.Images.MarkdownSvgPhysicalViewport right);
+  public void Deconstruct(out double Width, out double Height);
+
 public enum MarkdownRenderer.Images.MarkdownSvgPixelFormat
   Bgra8Premultiplied = 1,
   Rgba8Premultiplied = 0,
@@ -513,6 +533,7 @@ public enum MarkdownRenderer.Images.MarkdownSvgRenderPriority
   Visible = 1,
 
 public sealed class MarkdownRenderer.Images.MarkdownSvgRenderRequest : System.IEquatable<MarkdownRenderer.Images.MarkdownSvgRenderRequest>
+  public MarkdownRenderer.Images.MarkdownSvgPhysicalViewport? PhysicalViewport { get; init; }
   public MarkdownRenderer.Images.MarkdownSvgPixelFormat PixelFormat { get; init; }
   public MarkdownRenderer.Images.MarkdownSvgRenderPriority Priority { get; init; }
   public MarkdownRenderer.Images.MarkdownSvgRenderRequest <Clone>$();
@@ -565,6 +586,7 @@ public sealed class MarkdownRenderer.Performance.MarkdownPerformanceOptions : Sy
   public bool DeferOffscreenScenes { get; init; }
   public bool Equals(MarkdownRenderer.Performance.MarkdownPerformanceOptions? other);
   public bool PrefetchDocumentImages { get; init; }
+  public bool ReleaseOffscreenImageResources { get; init; }
   public bool UseCachedRasterPreview { get; init; }
   public bool UseDisplaySizedRasterDecode { get; init; }
   public int LookAheadViewports { get; init; }
@@ -575,6 +597,7 @@ public sealed class MarkdownRenderer.Performance.MarkdownPerformanceOptions : Sy
   public long MaxInFlightSourceBytes { get; init; }
   public long MaxRasterOutputPixels { get; init; }
   public long ReservedVisibleSourceBytes { get; init; }
+  public long SceneCacheBudgetBytes { get; init; }
   public long SourceCacheBudgetBytes { get; init; }
   public override bool Equals(object? obj);
   public override int GetHashCode();
@@ -595,6 +618,9 @@ public sealed class MarkdownRenderer.Performance.MarkdownPerformanceSnapshot
   public long ImageFetches { get; }
   public long InFlightSourceBytes { get; }
   public long PeakInFlightSourceBytes { get; }
+  public long SceneCacheEstimatedBytes { get; }
+  public long SceneCacheEvictions { get; }
+  public long SceneCacheHits { get; }
   public long ScenePreparationMilliseconds { get; }
   public long ScenePreparations { get; }
   public long SourceCacheBytes { get; }
@@ -623,8 +649,10 @@ public sealed class MarkdownRenderer.Theming.ElementStyle
   public Windows.UI.Color? HoverForeground { get; init; }
   public Windows.UI.Text.FontStyle FontStyle { get; init; }
   public Windows.UI.Text.FontWeight FontWeight { get; init; }
+  public bool AccentBarAffectsContentLayout { get; init; }
   public bool Strikethrough { get; init; }
   public bool Underline { get; init; }
+  public float AccentBarThickness { get; init; }
   public float BorderThickness { get; init; }
   public float CornerRadius { get; init; }
   public float FontSize { get; init; }
@@ -645,8 +673,11 @@ public sealed class MarkdownRenderer.Theming.ElementStyleOverride
   public Windows.UI.Color? HoverForeground { get; init; }
   public Windows.UI.Text.FontStyle? FontStyle { get; init; }
   public Windows.UI.Text.FontWeight? FontWeight { get; init; }
+  public bool? AccentBarAffectsContentLayout { get; init; }
+  public bool? HeadingBorderBottomOnly { get; init; }
   public bool? Strikethrough { get; init; }
   public bool? Underline { get; init; }
+  public float? AccentBarThickness { get; init; }
   public float? BorderThickness { get; init; }
   public float? CornerRadius { get; init; }
   public float? FontSize { get; init; }
@@ -684,6 +715,7 @@ public static class MarkdownRenderer.Theming.MarkdownElementKeys
   public const string ImageCaption = "ImageCaption";
   public const string Inserted = "Inserted";
   public const string Link = "Link";
+  public const string List = "List";
   public const string ListMarker = "ListMarker";
   public const string Marked = "Marked";
   public const string Math = "Math";
@@ -768,7 +800,9 @@ public sealed class MarkdownRenderer.Theming.MarkdownStyleSelector
 
 public sealed class MarkdownRenderer.Theming.MarkdownStyleSheet
   public MarkdownRenderer.Theming.ElementStyle Resolve(MarkdownRenderer.Theming.ElementStyle baseStyle, MarkdownRenderer.Theming.MarkdownStyleContext context);
+  public MarkdownRenderer.Theming.MarkdownStyleSheet WithPositiveAdjacentMarginCollapse();
   public MarkdownRenderer.Theming.MarkdownStyleSheet WithRule(MarkdownRenderer.Theming.MarkdownStyleRule rule);
+  public MarkdownRenderer.Theming.MarkdownStyleSheet WithZeroTrailingTopLevelBlockMargin();
   public MarkdownStyleSheet(System.Collections.Generic.IEnumerable<MarkdownRenderer.Theming.MarkdownStyleRule> rules);
   public System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Theming.MarkdownStyleRule> Rules { get; }
   public static MarkdownRenderer.Theming.MarkdownStyleSheet Empty { get; }

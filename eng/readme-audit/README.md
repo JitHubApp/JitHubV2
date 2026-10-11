@@ -40,6 +40,12 @@ repository:
   one-time UIA diagnostic count still-loading image peers; zero distinguishes
   a stale aggregate status, while `-1` means that diagnostic walk failed.
 
+A GitHub-visible image that has not decoded still fails corpus capture. Its
+failure report records only bounded image indexes, dimensions, completion
+state, source kind, and source hashes for up to eight failures, never the raw
+URL or alt text. Offline Edge decode failures similarly identify a bounded
+captured route and decode state without relaxing the complete-image requirement.
+
 Run an optimized smoke audit (Release is the default and is required for
 browser-relative performance evidence):
 
@@ -61,11 +67,33 @@ browser-evidence reuse:
 .\eng\Invoke-TopReadmeAudit.ps1 -StartRank 1 -Count 1 -CaptureSameByteCorpus
 ```
 
+Pull-request and scheduled 500-case runs are live diagnostics. Their
+consolidated check is deliberately labeled **not release qualified** because
+they do not collect the mandatory same-byte Edge corpus. A green diagnostic
+check must not be used as the MarkdownRenderer 1.0 release verdict.
+
 For a qualified full same-byte release audit, open **Actions → Top 500 README
 browser parity → Run workflow**, select the renderer revision, and enable
 `same_byte_release`. Keep `diagnostic_rank` at `0`. This opt-in dispatch runs the
 same immutable 500-repository manifest through all twenty 25-repository shards,
-captures fresh Edge response bytes for every available pinned README, and makes
+using one verified x64 NativeAOT publication of the shipping app for every
+shard. The canonical publish job writes a `native-aot-provenance.json` sidecar
+only after checking that the source commit matches the workflow revision and
+the checkout is clean. The sidecar hashes every published payload file; each
+shard records and rechecks that sidecar, its workflow run/repository/ref, and
+the complete app file map. The final merge requires exact 25-rank shard
+boundaries, full 1–500 coverage, one shared sidecar hash, and one shared
+workflow identity. A local NativeAOT run without that canonical sidecar may
+still collect diagnostics, but is explicitly unqualified and cannot satisfy
+the release merge. The merge rejects managed app evidence and any per-shard executable
+or complete published-artifact file/hash drift, even when the source commit is
+identical. Hidden managed-runtime payloads and reparse-point entries are
+rejected by the NativeAOT verifier and its CI mutation tests. The audit harness is
+built separately on every invocation, including `-SkipBuild`, so a stale
+RID-specific runner cannot enforce an older evidence contract. Neither its
+managed runtime nor the legacy GitHub-HTML replay is the native performance
+candidate. The dispatch captures fresh Edge response
+bytes for every available pinned README, and makes
 the final merge require same-byte evidence for each such case. It also requires
 the complete rank set, clean native exits, zero unavailable or still-loading
 native images, aggregate first-render and full-page p95 no greater than 110% of
@@ -125,8 +153,25 @@ images and network dependencies fail the case. Request interception denies all
 non-loopback requests, and CSP plus the closed-miss server fail any incomplete
 asset replay.
 
-The schema-3 `sameByteReplay` report binds the README Git blob/SHA-256, parser
-name/version/license/SHA-256, viewport/theme/actual Edge dimensions, the
+Before parsing, the source replay installs the offline GitHub emoji-shortcode
+adapter over Marked text tokens. Its alias map is generated from the pinned
+`github/gemoji/db/emoji.json` commit and MIT license; the source, license, map,
+and adapter hashes plus alias count are recorded in parser evidence and checked
+by the automation probe and strict merge. Only ordinary Markdown text tokens
+are rewritten, leaving code, raw HTML, link/image destinations, and unknown
+shortcodes literal. The replay serves no emoji network artwork or external
+service. Unit tests exercise token boundaries and fail-closed tampering for the
+source generator, map, adapter, and license.
+
+A source Markdown image may be omitted from Edge only when the captured live
+GitHub article proves that the exact source URL is a decorative image with an
+explicit empty alt, failed decode, and zero bounds. The proof is persisted as
+URL hashes bound to the captured README manifest and must uniquely match the
+empty-alt source image; ordinal matching cannot establish an exclusion.
+
+The schema-3 `sameByteReplay` report binds the README Git blob/SHA-256, Marked
+name/version/license/SHA-256 and GitHub emoji source/commit/license/map/adapter
+hashes plus alias count, viewport/theme/actual Edge dimensions, the
 complete CSS-pixel `renderedExtent`, exact asset-URL-map digest,
 expected/verified image counts, blocked/missing request counts, an HMAC-keyed
 visible-text token multiset, and screenshot tiles that continuously cover that
@@ -142,11 +187,18 @@ same 98.5% floor. Failure reports retain a bounded category/status and static
 message, never an exception stack, source URL, or checkout path. Its
 `firstViewportPaintMs`,
 `firstViewportImagesReadyMs`, and `fullTraversalMs` clocks begin after the
-manifest/parser are loaded and stop before screenshot capture. The image-ready
-boundary requires successful decode of every visible pinned image; traversal
-uses the same viewport step/visible-image readiness semantics as the native
-audit. This measures client parsing/layout against the same pinned README and
-image bytes as JitHub, without GitHub navigation, CDN, or server-side rendering
+manifest/parser are loaded, the exact fatal UTF-8 decoded README string has
+been hashed, and stop before screenshot capture. The image-ready boundary
+requires successful decode of every visible pinned image; traversal uses the
+same viewport step/visible-image readiness semantics as the native audit. The
+same-byte first-render ratio compares only source-available intervals: native
+time starts immediately before assigning the hash-matched decoded Markdown to
+its renderer, and Edge time starts immediately before parsing that same
+decoded-string digest. Raw-byte and decoded-string hashes, host/process, and
+pipeline generation must match or the comparison fails closed. Existing
+host-ready-to-render and total-experience timings remain separate diagnostics.
+This measures client parsing/layout against the same pinned README and image
+bytes as JitHub, without GitHub navigation, CDN, or server-side rendering
 latency in the denominator. Live GitHub timings and `sameByteHtmlReplay` remain
 separate diagnostics. The same-byte merge independently requires finite
 `comparison.textTokenCoverage >= 0.985` and
@@ -196,17 +248,47 @@ Every capture uses a fresh corpus directory and cannot resume a completed case.
 The manual image-source replay server remains available with
 `node eng/readme-audit/same-byte-replay-server.mjs --corpus=<case-corpus-dir>`;
 it binds only to IPv4 loopback and returns 404 for an uncaptured source.
-Run the local contracts, including a real headless Edge loopback replay when
-Edge is installed, with:
+Process-free helper unit tests inject the process executor and exercise the
+exported generator logic against temporary files. They do not prove Windows
+process launch or browser replay. The distinct `*.integration.test.mjs` files
+retain real scoped PowerShell cleanup and Node CLI-launch assertions; the CI
+workflow explicitly requires these files alongside the same-byte Edge tests.
+An execution restriction such as `spawn EPERM` fails that integration partition
+and cannot be treated as browser or release qualification.
+Profile cleanup parses Windows command-line arguments and accepts only one
+canonical, case-exact `--user-data-dir=<profile>` argument for the generated
+temporary profile. Similar path prefixes, duplicate/alias switches, arguments
+after `--`, and switch-like text inside another argument do not establish
+process ownership. Recognized ambiguous switches or paths that could designate
+this profile are unknown ownership, not unrelated processes. A held process
+handle and matching creation time guard against PID reuse. An unreadable command
+line or a live process omitted from the CIM snapshot fails cleanup; a stale row
+is skipped only after a fresh same-name inventory confirms its PID is absent.
+Its synthetic matcher tests neither query nor terminate processes; the real
+cleanup launch remains an integration requirement. The emoji generator also
+checks Windows filesystem identity for direct invocation, rather than assuming
+case-folded paths name the same file in every directory.
+The three browser callers bound graceful browser shutdown, require confirmed
+scoped cleanup before publishing a passing report, and fail the run if cleanup
+cannot be confirmed. They preserve the profile when process shutdown fails and
+still attempt every replay-server close. Render-only evidence retained after a
+cleanup failure is explicitly unqualified and cannot become a reusable browser
+pass. Report writes are create-new so a failed retry cannot overwrite history.
+
+Run the complete contracts, including the vendor tests and a real headless Edge
+loopback replay when Edge is installed, only in an authorized test environment
+(use the Sandbox test environment for UI/browser automation):
 
 ```powershell
-node --test .\eng\readme-audit\*.test.mjs
+node --test .\eng\readme-audit\*.test.mjs .\eng\readme-audit\vendor\*.test.mjs
 ```
 
 The manifest contains URL/content hashes, byte counts, and MIME types; excluding
 the source payloads preserves the capture identity and URL-to-content mapping
-without uploading large or potentially sensitive content. The capture/replay
-tests are deterministic and offline; the manual 500-case run is the
+without uploading large or potentially sensitive content. The source fixtures
+and replay server are deterministic and offline. The browser and process-launch
+partitions additionally require a functioning authorized execution environment;
+the manual 500-case run is the
 qualification gate.
 
 For a focused raster-preparation investigation, add `-RasterDiagnostics` to

@@ -5,8 +5,11 @@ namespace MarkdownRenderer.Layout;
 /// <summary>
 /// Pure helper for viewport-relative lazy layout bands.
 /// </summary>
-internal readonly record struct LazyLayoutBand(double Top, double Bottom)
+internal readonly struct LazyLayoutBand(double Top, double Bottom)
 {
+    internal readonly double Top = Top;
+    internal readonly double Bottom = Bottom;
+
     public static LazyLayoutBand FromViewport(double viewportTop, double viewportHeight, double overscan)
     {
         if (double.IsNaN(viewportTop) || double.IsInfinity(viewportTop))

@@ -19,9 +19,9 @@ internal sealed class MarkdownLocalizationSnapshot
         StringProvider = stringProvider;
     }
 
-    public CultureInfo Culture { get; }
+    public readonly CultureInfo Culture;
 
-    public IMarkdownStringProvider? StringProvider { get; }
+    public readonly IMarkdownStringProvider? StringProvider;
 
     public static MarkdownLocalizationSnapshot Capture(
         string? language,

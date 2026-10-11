@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Models;
 using JitHub.Models.GitHub;
+using JitHub.Services.Markdown;
 using JitHub.WinUI;
 using JitHub.WinUI.Helpers;
 
@@ -293,6 +294,16 @@ public sealed class AuthService : IAuthService
 
     public async Task<GitHubUser?> RefreshAuthenticatedUserAsync()
     {
+        if (MarkdownLifecycleAutomationBridge.IsOfflineSameBytePublicAuditEnabled)
+        {
+            _gitHubService.SetAccessToken(GitHubAuthenticationConstants.PublicAccessToken);
+            AuthenticatedUser = null;
+            Authenticated = false;
+            RecoveryState = AuthSessionRecoveryState.None;
+            _initializeTask = Task.CompletedTask;
+            return null;
+        }
+
         Stopwatch stopwatch = Stopwatch.StartNew();
         TrackEvent(
             "auth.action.executed",
@@ -686,6 +697,18 @@ public sealed class AuthService : IAuthService
 
     private async Task RestoreSessionAsync()
     {
+        if (MarkdownLifecycleAutomationBridge.IsOfflineSameBytePublicAuditEnabled)
+        {
+            // This explicit automation mode must not inspect or project the user's
+            // persisted account into the public, pinned-corpus replay.
+            _gitHubService.SetAccessToken(GitHubAuthenticationConstants.PublicAccessToken);
+            AuthenticatedUser = null;
+            Authenticated = false;
+            RecoveryState = AuthSessionRecoveryState.None;
+            _initializeTask = Task.CompletedTask;
+            return;
+        }
+
         Stopwatch stopwatch = Stopwatch.StartNew();
         long userId = _accountService.GetUser();
         long generation = Interlocked.Read(ref _sessionGeneration);

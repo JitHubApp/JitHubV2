@@ -10,9 +10,14 @@ if (-not $resolvedTempRoot.StartsWith($expectedParent, [StringComparison]::Ordin
 }
 New-Item -ItemType Directory -Path $resolvedTempRoot | Out-Null
 
-function New-Case([int]$Rank, [bool]$IncludeSameByte = $true, [bool]$AbsentReadme = $false, [bool]$SourceView = $false, [double]$FirstRatio = 0.5, [double]$FullRatio = 0.6, [int]$UnavailableImages = 0) {
+$fixtureStyleProfileId = 'fixture-github-readme'
+$fixtureStyleProfileVersion = 7
+$fixtureStyleProfileSha256 = 'a' * 64
+
+function New-Case([int]$Rank, [bool]$IncludeSameByte = $true, [bool]$AbsentReadme = $false, [bool]$SourceView = $false, [double]$FirstRatio = 0.5, [double]$FullRatio = 0.6, [int]$UnavailableImages = 0, [bool]$IncludeVisualProfile = $true) {
     $readmeSha = if ($AbsentReadme) { '' } else { 'b' * 40 }
     $readmeSha256 = 'd' * 64
+    $decodedTextSha256 = 'f' * 64
     $renderedSha256 = 'e' * 64
     $assetMapSha256 = '4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945'
     $sameByte = $null
@@ -30,6 +35,15 @@ function New-Case([int]$Rank, [bool]$IncludeSameByte = $true, [bool]$AbsentReadm
         fidelityReference = 'same-byte-source'
         textTokenCoverage = 1.0
         visualStructureScore = 1.0
+        # Complete matched-viewport evidence only; this deliberately does not
+        # encode a numeric SSIM fidelity floor.
+        sameByteTileSsimReference = 'same-byte-source-matched-viewport'
+        sameByteTileSsimUnavailableReason = ''
+        sameByteMeanTileSsim = 0.5
+        sameByteMinimumTileSsim = 0.25
+        sameByteTileCoverage = 1.0
+        sameByteMatchedViewportCount = 1
+        sameByteTotalViewportCount = 1
         nativeToBrowserFirstRenderRatio = $FirstRatio
         nativeToBrowserFullPageRatio = $FullRatio
         nativeToSameByteFirstRenderRatio = $FirstRatio
@@ -58,13 +72,31 @@ function New-Case([int]$Rank, [bool]$IncludeSameByte = $true, [bool]$AbsentReadm
                     readmeGitBlobSha1 = $readmeSha
                     readmeSha256 = $readmeSha256
                     byteSize = 10
+                    decodedTextSha256 = $decodedTextSha256
                 }
                 parser = [ordered]@{
                     name = 'marked'
                     version = '18.0.5'
                     license = 'MIT'
                     sha256 = '2dc4769dfde29f51c7aca1a539c6407c789c8ea644cf8b7d01ded28a9c1d800b'
+                    emojiShortcodeSource = 'github/gemoji/db/emoji.json'
+                    emojiShortcodeSourceCommit = 'fadaeaf1f1a9be82b321316a6c5502e43138b2f6'
+                    emojiShortcodeSourceSha256 = 'b174ae2aeb321b52f64adb9ff412f966a7f338839d780784dd15dcad702c2dd6'
+                    emojiShortcodeLicense = 'MIT'
+                    emojiShortcodeLicenseSha256 = 'bab932cd28676c262d38eb7aedd7c366ebae15a07d823cc51854ec16ec045dba'
+                    emojiShortcodeMapSha256 = '44980486df12fa536479d4a8c28e57b65654b373a263a894f79ccc7ceb335cf5'
+                    emojiShortcodeExtensionSha256 = '89f772b065e6ba0114a9a8aaba19de071b20e2c44af065f83d09865c5bcb4d87'
+                    emojiShortcodeAliasCount = 1913
                 }
+                styleProfile = if ($IncludeVisualProfile) { [ordered]@{
+                    id = $fixtureStyleProfileId
+                    version = $fixtureStyleProfileVersion
+                    sha256 = $fixtureStyleProfileSha256
+                    colorScheme = 'light'
+                    edgeStylesheetLoaded = $true
+                    edgeIntegrityAttributeMatched = $true
+                    loopbackResponseCount = 1
+                } } else { $null }
                 viewport = [ordered]@{
                     width = 623
                     height = 700
@@ -91,6 +123,7 @@ function New-Case([int]$Rank, [bool]$IncludeSameByte = $true, [bool]$AbsentReadm
                     chargedTraversalMs = 200
                     auditOnlyFrameWaitMs = 10
                     auditOnlyFrameWaitCount = 2
+                    firstViewportImagesReadyBoundary = 'same source-available start through successful decode of every visible pinned image'
                 }
                 semantic = [ordered]@{
                     complete = $true
@@ -137,12 +170,20 @@ function New-Case([int]$Rank, [bool]$IncludeSameByte = $true, [bool]$AbsentReadm
             loadingImagesAfterTraversal = 0
             renderFailure = $null
             readmeSourceSha256 = if ($AbsentReadme) { $null } else { $readmeSha256 }
-            firstViewportImagesReadyMs = 100 * $FirstRatio
+            readmeSourceDecodedTextSha256 = if ($AbsentReadme) { $null } else { $decodedTextSha256 }
+            visualProfile = if ($IncludeVisualProfile -and -not $AbsentReadme -and -not $SourceView) { [ordered]@{
+                id = $fixtureStyleProfileId
+                version = $fixtureStyleProfileVersion
+                cssSha256 = $fixtureStyleProfileSha256
+            } } else { $null }
+            firstViewportImagesReadyMs = 200
+            sourceAvailableToFirstViewportImagesReadyMs = 100 * $FirstRatio
             fullTraversalMs = 200 * $FullRatio
             contentViewportWidth = 623
             contentViewportHeight = 700
             estimatedContentHeight = 700
             rasterizationScale = 1
+            tiles = @([ordered]@{ index = 0; file = 'tile-0000.png' })
         }
         comparison = $comparison
     }
@@ -196,6 +237,7 @@ function Write-Cases([string]$Root, [int]$Count, [scriptblock]$Factory) {
                     sha256 = 'e' * 64
                 } }
                 assets = @()
+                imageRoutes = @()
             }
             $manifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $manifestPath -Encoding utf8
             $case.browser.sameByteCorpus.manifestSha256 =
@@ -217,25 +259,62 @@ function Write-Cases([string]$Root, [int]$Count, [scriptblock]$Factory) {
     for ($startRank = 1; $startRank -le $Count; $startRank += 25) {
         $endRank = [Math]::Min($Count, $startRank + 24)
         $executableHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData(
-            [Text.Encoding]::UTF8.GetBytes("fixture-app-$startRank"))).ToLowerInvariant()
-        $appAssemblyHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData(
-            [Text.Encoding]::UTF8.GetBytes("fixture-app-assembly-$startRank"))).ToLowerInvariant()
-        $rendererAssemblyHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData(
-            [Text.Encoding]::UTF8.GetBytes("fixture-renderer-assembly-$startRank"))).ToLowerInvariant()
-        $build = [ordered]@{
+            [Text.Encoding]::UTF8.GetBytes('fixture-shared-native-aot-app'))).ToLowerInvariant()
+        $payloadFiles = [ordered]@{
+            'JitHub.WinUI.exe' = $executableHash
+            'e_sqlite3.dll' = 'b' * 64
+            'runtimes/win-x64/MarkdownRenderer.Svg.Resvg.Worker.exe' = 'a' * 64
+        }
+        $payloadLines = @($payloadFiles.GetEnumerator() | ForEach-Object { "$($_.Key)`0$($_.Value)" })
+        $payloadManifestHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData(
+            [Text.Encoding]::UTF8.GetBytes($payloadLines -join "`n"))).ToLowerInvariant()
+        $provenance = [ordered]@{
             schemaVersion = 1
+            provenanceVerified = $true
+            workingTreeClean = $true
+            sourceCommitSha = '1' * 40
+            configuration = 'Release'
+            runtimeFlavor = 'native-aot'
+            architecture = 'x64'
+            runtimeIdentifier = 'win-x64'
+            executableName = 'JitHub.WinUI.exe'
+            executableSha256 = $executableHash
+            workflowRunId = '123456789'
+            workflowRepository = 'JitHubApp/JitHubV2'
+            workflowRef = 'refs/heads/main'
+            artifactFileSha256 = $payloadFiles
+            artifactManifestSha256 = $payloadManifestHash
+        }
+        $provenanceBytes = [Text.UTF8Encoding]::new($false).GetBytes(($provenance | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
+        $provenanceHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($provenanceBytes)).ToLowerInvariant()
+        $build = [ordered]@{
+            schemaVersion = 2
             startRank = $startRank
             endRank = $endRank
             sourceCommitSha = '1' * 40
             configuration = 'Release'
+            runtimeFlavor = 'native-aot'
+            provenanceVerified = $true
+            provenanceStatus = 'verified-canonical-workflow-artifact'
+            provenanceSha256 = $provenanceHash
+            provenanceWorkingTreeClean = $true
+            workflowRunId = '123456789'
+            workflowRepository = 'JitHubApp/JitHubV2'
+            workflowRef = 'refs/heads/main'
             executableName = 'JitHub.WinUI.exe'
             executableSha256 = $executableHash
             dependencyAssemblySha256 = [ordered]@{
-                'JitHub.WinUI.dll' = $appAssemblyHash
-                'MarkdownRenderer.dll' = $rendererAssemblyHash
+                'e_sqlite3.dll' = 'b' * 64
+            }
+            artifactFileSha256 = [ordered]@{
+                'JitHub.WinUI.exe' = $executableHash
+                'e_sqlite3.dll' = 'b' * 64
+                'runtimes/win-x64/MarkdownRenderer.Svg.Resvg.Worker.exe' = 'a' * 64
+                'native-aot-provenance.json' = $provenanceHash
             }
         }
         $build | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $Root ("app-binary-ranks-{0}-{1}.json" -f $startRank, $endRank)) -Encoding utf8
+        [IO.File]::WriteAllBytes((Join-Path $Root ("native-aot-provenance-ranks-{0}-{1}.json" -f $startRank, $endRank)), $provenanceBytes)
         $screenshotQuota = [ordered]@{
             schemaVersion = 1
             startRank = $startRank
@@ -304,6 +383,9 @@ function Assert-RejectedManifestMutation(
         & $Mutation $case $manifest
         $manifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $manifestPath -Encoding utf8
         $case.browser.sameByteCorpus.manifestSha256 = (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash
+        if ($null -ne $case.browser.sameByteReplay.assets) {
+            $case.browser.sameByteReplay.assets.assetUrlMapSha256 = Get-TestAssetMapSha256 $manifestPath
+        }
         $case | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $casePath -Encoding utf8
         $output = Join-Path $resolvedTempRoot $Name
         $rejected = $false
@@ -312,12 +394,52 @@ function Assert-RejectedManifestMutation(
             $summary = Get-Content -LiteralPath (Join-Path $output 'summary.json') -Raw | ConvertFrom-Json
             $rejected = (@($summary.failures) -join "`n") -match 'malformed or mismatched same-byte manifest artifact'
         }
-        if (-not $rejected) { throw "The same-byte merge accepted an invalid pinned README manifest identity in '$Name'." }
+        if (-not $rejected) { throw "The same-byte merge accepted an invalid manifest identity in '$Name'." }
     }
     finally {
         [IO.File]::WriteAllBytes($manifestPath, $manifestBytes)
         [IO.File]::WriteAllBytes($casePath, $caseBytes)
     }
+}
+
+function Get-TestAssetMapSha256([string]$ManifestFile) {
+    $document = [System.Text.Json.JsonDocument]::Parse([string][IO.File]::ReadAllText($ManifestFile))
+    try {
+        $options = [System.Text.Json.JsonSerializerOptions]::new()
+        $options.Encoder = [System.Text.Encodings.Web.JavaScriptEncoder]::UnsafeRelaxedJsonEscaping
+        $json = [System.Text.Json.JsonSerializer]::Serialize($document.RootElement.GetProperty('assets'), $options)
+        return [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($json))).ToLowerInvariant()
+    }
+    finally { $document.Dispose() }
+}
+
+function Set-DuplicatePayloadAliasFixture([string]$Root, [int]$Rank) {
+    $casePath = Join-Path $Root ("cases\{0:D3}-example-repository-{0}\result.json" -f $Rank)
+    $case = Get-Content -LiteralPath $casePath -Raw | ConvertFrom-Json
+    $manifestPath = Join-Path (Join-Path (Split-Path -Parent $casePath) 'browser') $case.browser.sameByteCorpus.manifest
+    $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+    $manifest.assets = @(
+        [ordered]@{ urlSha256 = 'a' * 64; sha256 = '1' * 64; byteSize = 10; mimeType = 'image/png' },
+        [ordered]@{ urlSha256 = 'b' * 64; sha256 = '1' * 64; byteSize = 10; mimeType = 'image/png' },
+        [ordered]@{ urlSha256 = 'c' * 64; sha256 = '2' * 64; byteSize = 15; mimeType = 'image/webp' }
+    )
+    $manifest.imageRoutes = @(
+        [ordered]@{ index = 0; urlSha256 = 'a' * 64; sha256 = '1' * 64; mimeType = 'image/png' },
+        [ordered]@{ index = 1; urlSha256 = 'b' * 64; sha256 = '1' * 64; mimeType = 'image/png' },
+        [ordered]@{ index = 2; urlSha256 = 'c' * 64; sha256 = '2' * 64; mimeType = 'image/webp' }
+    )
+    $manifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $manifestPath -Encoding utf8
+    $case.browser.sameByteCorpus.assetCount = 2
+    $case.browser.sameByteCorpus.assetBytes = 25
+    $case.browser.sameByteCorpus.manifestSha256 = (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash
+    $case.browser.sameByteReplay.assets.assetUrlMapSha256 = Get-TestAssetMapSha256 $manifestPath
+    $case.browser.sameByteReplay.assets.expectedImageCount = 3
+    $case.browser.sameByteReplay.assets.verifiedImageCount = 3
+    $case.browser.sameByteReplay.assets.distinctExpectedUrlHashes = 3
+    $case.browser.sameByteReplay.assets.distinctServedUrlHashes = 3
+    $case.browser.sameByteReplay.semantic.imageCount = 3
+    $case.browser.sameByteReplay.semantic.distinctImageCount = 3
+    $case | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $casePath -Encoding utf8
 }
 
 function Assert-RejectedBuildEvidenceMutation(
@@ -342,6 +464,30 @@ function Assert-RejectedBuildEvidenceMutation(
     }
     finally {
         [IO.File]::WriteAllBytes($buildPath, $originalBytes)
+    }
+}
+
+function Assert-RejectedProvenanceMutation(
+    [string]$Root,
+    [string]$FileName,
+    [scriptblock]$Mutation) {
+    $provenancePath = Join-Path $Root $FileName
+    $originalBytes = [IO.File]::ReadAllBytes($provenancePath)
+    try {
+        $provenance = Get-Content -LiteralPath $provenancePath -Raw | ConvertFrom-Json
+        & $Mutation $provenance
+        $provenance | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $provenancePath -Encoding utf8
+        $output = Join-Path $resolvedTempRoot ("provenance-evidence-{0}" -f [Guid]::NewGuid().ToString('N'))
+        $rejected = $false
+        try { Invoke-Merge $Root $output 500 -RequireSameByte }
+        catch {
+            $summary = Get-Content -LiteralPath (Join-Path $output 'summary.json') -Raw | ConvertFrom-Json
+            $rejected = (@($summary.failures) -join "`n") -match 'Release binary evidence'
+        }
+        if (-not $rejected) { throw "The same-byte merge accepted tampered provenance evidence in '$FileName'." }
+    }
+    finally {
+        [IO.File]::WriteAllBytes($provenancePath, $originalBytes)
     }
 }
 
@@ -388,7 +534,9 @@ try {
     }
 
     $baseline = Join-Path $resolvedTempRoot 'baseline'
-    Write-Cases $baseline 2 { param($rank) New-Case $rank -AbsentReadme:($rank -eq 2) }
+    # Nonrelease diagnostics intentionally continue to accept legacy cases
+    # without either side of the style-profile identity contract.
+    Write-Cases $baseline 2 { param($rank) New-Case $rank -AbsentReadme:($rank -eq 2) -IncludeVisualProfile:$false }
     Invoke-Merge $baseline (Join-Path $resolvedTempRoot 'baseline-output') 2
 
     $positive = Join-Path $resolvedTempRoot 'positive-same-byte'
@@ -404,9 +552,15 @@ try {
         throw 'The complete same-byte release merge did not pass with legitimate absent-README and source-view cases.'
     }
     if (@($positiveSummary.buildEvidence).Count -ne 20 -or
-        @($positiveSummary.buildEvidence | Select-Object -ExpandProperty executableSha256 -Unique).Count -ne 20 -or
+        @($positiveSummary.buildEvidence | Select-Object -ExpandProperty executableSha256 -Unique).Count -ne 1 -or
+        @($positiveSummary.buildEvidence | Select-Object -ExpandProperty artifactManifestSha256 -Unique).Count -ne 1 -or
+        @($positiveSummary.buildEvidence | Select-Object -ExpandProperty runtimeFlavor -Unique).Count -ne 1 -or
+        @($positiveSummary.buildEvidence | Select-Object -ExpandProperty provenanceSha256 -Unique).Count -ne 1 -or
+        @($positiveSummary.buildEvidence | Select-Object -ExpandProperty workflowRunId -Unique).Count -ne 1 -or
+        @($positiveSummary.buildEvidence | Where-Object { $_.provenanceVerified -ne $true -or $_.provenanceStatus -cne 'verified-canonical-workflow-artifact' }).Count -ne 0 -or
+        [string]$positiveSummary.buildEvidence[0].runtimeFlavor -cne 'native-aot' -or
         @($positiveSummary.buildEvidence | Select-Object -ExpandProperty sourceCommitSha -Unique).Count -ne 1) {
-        throw 'The release merge did not preserve distinct per-shard binary hashes under one source commit.'
+        throw 'The release merge did not prove one shared, provenance-qualified NativeAOT binary under one source commit and workflow run.'
     }
     if ($positiveSummary.screenshotEvidenceBytes -ne 2000 -or
         $positiveSummary.screenshotAggregateQuotaBytes -ne 8589934592 -or
@@ -423,6 +577,83 @@ try {
     $positiveMarkdown = Get-Content -LiteralPath (Join-Path $resolvedTempRoot 'positive-same-byte-output\summary.md') -Raw
     if (-not $positiveMarkdown.Contains('| Native/source | GitHub/source |')) {
         throw 'The same-byte summary does not distinguish native/source from GitHub/source structural fidelity.'
+    }
+
+    Assert-RejectedMutation $positive 2 'missing-native-style-profile' {
+        param($case)
+        $case.native.visualProfile = $null
+    } 'native profile missing'
+    Assert-RejectedMutation $positive 2 'missing-edge-style-profile' {
+        param($case)
+        $case.browser.sameByteReplay.styleProfile = $null
+    } 'Edge profile missing'
+    Assert-RejectedMutation $positive 2 'mismatched-style-profile-id' {
+        param($case)
+        $case.native.visualProfile.id = 'different-fixture-profile'
+    } 'profile id'
+    Assert-RejectedMutation $positive 2 'mismatched-style-profile-version' {
+        param($case)
+        $case.native.visualProfile.version++
+    } 'profile version'
+    Assert-RejectedMutation $positive 2 'mismatched-style-profile-css-sha256' {
+        param($case)
+        $case.native.visualProfile.cssSha256 = '0' * 64
+    } 'profile CSS SHA-256'
+    Assert-RejectedMutation $positive 2 'edge-style-profile-stylesheet-not-loaded' {
+        param($case)
+        $case.browser.sameByteReplay.styleProfile.edgeStylesheetLoaded = $false
+    } 'Edge stylesheet not loaded'
+    Assert-RejectedMutation $positive 2 'edge-style-profile-integrity-not-matched' {
+        param($case)
+        $case.browser.sameByteReplay.styleProfile.edgeIntegrityAttributeMatched = $false
+    } 'Edge stylesheet integrity mismatch'
+    Assert-RejectedMutation $positive 2 'edge-style-profile-loopback-response-missing' {
+        param($case)
+        $case.browser.sameByteReplay.styleProfile.loopbackResponseCount = 0
+    } 'Edge stylesheet response missing'
+
+    # Manifest rows are URL aliases; counters describe unique payloads. Two
+    # different URLs may legitimately serve identical bytes and must count once.
+    Set-DuplicatePayloadAliasFixture $positive 4
+    $aliasOutput = Join-Path $resolvedTempRoot 'duplicate-payload-aliases-output'
+    try { Invoke-Merge $positive $aliasOutput 500 -RequireSameByte }
+    catch {
+        $aliasSummary = Get-Content -LiteralPath (Join-Path $aliasOutput 'summary.json') -Raw | ConvertFrom-Json
+        throw ("Valid duplicate-payload aliases were rejected: {0}" -f (@($aliasSummary.failures) -join '; '))
+    }
+    $aliasSummary = Get-Content -LiteralPath (Join-Path $aliasOutput 'summary.json') -Raw | ConvertFrom-Json
+    if (-not $aliasSummary.passed -or $aliasSummary.sameByteCases -ne 499 -or $aliasSummary.sameByteExpectedCases -ne 499) {
+        throw 'The same-byte merger did not accept URL aliases backed by the same unique payload bytes.'
+    }
+    Assert-RejectedManifestMutation $positive 4 'url-alias-counters-must-not-count-payloads' {
+        param($case, $manifest)
+        $case.browser.sameByteCorpus.assetCount = 3
+        $case.browser.sameByteCorpus.assetBytes = 35
+    }
+    Assert-RejectedManifestMutation $positive 4 'duplicate-url-alias-hash' {
+        param($case, $manifest)
+        $manifest.assets[1].urlSha256 = $manifest.assets[0].urlSha256
+    }
+    Assert-RejectedManifestMutation $positive 4 'duplicate-image-route-index' {
+        param($case, $manifest)
+        $manifest.imageRoutes = @(
+            [ordered]@{ index = 0; dataUri = $true },
+            [ordered]@{ index = 0; dataUri = $true }
+        )
+    }
+    Assert-RejectedManifestMutation $positive 4 'unbound-image-route-payload' {
+        param($case, $manifest)
+        $manifest.imageRoutes = @(
+            [ordered]@{ index = 0; urlSha256 = 'a' * 64; sha256 = 'b' * 64; mimeType = 'image/png' }
+        )
+    }
+    Assert-RejectedManifestMutation $positive 4 'conflicting-size-for-aliased-payload' {
+        param($case, $manifest)
+        $manifest.assets[1].byteSize = 11
+    }
+    Assert-RejectedManifestMutation $positive 4 'fractional-asset-byte-size' {
+        param($case, $manifest)
+        $manifest.assets[2].byteSize = 15.5
     }
 
     Assert-RejectedMutation $positive 2 'wrong-native-readme' {
@@ -513,6 +744,67 @@ try {
         param($case)
         $case.comparison.visualStructureScore = 0.9499
     } 'finite comparison.visualStructureScore at or above 95.0%'
+    Assert-RejectedMutation $positive 3 'missing-same-byte-visual-reference' {
+        param($case)
+        $case.comparison.PSObject.Properties.Remove('sameByteTileSsimReference')
+    } 'incomplete source-matched visual evidence'
+    Assert-RejectedMutation $positive 3 'wrong-same-byte-visual-reference' {
+        param($case)
+        $case.comparison.sameByteTileSsimReference = 'live-github-cross-style-diagnostic-absolute-offset'
+    } 'incomplete source-matched visual evidence'
+    Assert-RejectedMutation $positive 3 'same-byte-visual-reference-with-unavailable-reason' {
+        param($case)
+        $case.comparison.sameByteTileSsimUnavailableReason = 'source-tile-coverage-incomplete'
+    } 'incomplete source-matched visual evidence'
+    Assert-RejectedMutation $positive 3 'missing-same-byte-visual-coverage' {
+        param($case)
+        $case.comparison.PSObject.Properties.Remove('sameByteTileCoverage')
+    } 'incomplete source-matched visual evidence'
+    Assert-RejectedMutation $positive 3 'partial-same-byte-visual-coverage' {
+        param($case)
+        $case.comparison.sameByteTileCoverage = 0.5
+        $case.comparison.sameByteMatchedViewportCount = 1
+        $case.comparison.sameByteTotalViewportCount = 2
+    } 'incomplete source-matched visual evidence'
+    Assert-RejectedMutation $positive 3 'mismatched-same-byte-visual-counts' {
+        param($case)
+        $case.comparison.sameByteMatchedViewportCount = 2
+    } 'incomplete source-matched visual evidence'
+    Assert-RejectedMutation $positive 3 'same-byte-visual-count-omits-native-tile' {
+        param($case)
+        $case.native.tiles = @($case.native.tiles) + @([ordered]@{ index = 1; file = 'tile-0001.png' })
+        # The comparison continues to claim complete 1/1 coverage, but the
+        # actual native capture contains two viewports.
+    } 'incomplete source-matched visual evidence'
+    Assert-RejectedMutation $positive 3 'missing-same-byte-visual-count' {
+        param($case)
+        $case.comparison.PSObject.Properties.Remove('sameByteTotalViewportCount')
+    } 'incomplete source-matched visual evidence'
+    Assert-RejectedMutation $positive 3 'missing-same-byte-mean-ssim' {
+        param($case)
+        $case.comparison.PSObject.Properties.Remove('sameByteMeanTileSsim')
+    } 'incomplete source-matched visual evidence'
+    Assert-RejectedMutation $positive 3 'non-finite-same-byte-mean-ssim' {
+        param($case)
+        $case.comparison.sameByteMeanTileSsim = [double]::NaN
+    } 'incomplete source-matched visual evidence'
+    Assert-RejectedMutation $positive 3 'non-finite-same-byte-minimum-ssim' {
+        param($case)
+        $case.comparison.sameByteMinimumTileSsim = [double]::NaN
+    } 'incomplete source-matched visual evidence'
+    Assert-RejectedMutation $positive 3 'out-of-range-same-byte-mean-ssim' {
+        param($case)
+        $case.comparison.sameByteMeanTileSsim = 1.0001
+    } 'incomplete source-matched visual evidence'
+    Assert-RejectedMutation $positive 3 'out-of-range-same-byte-minimum-ssim' {
+        param($case)
+        $case.comparison.sameByteMinimumTileSsim = 1.0001
+    } 'incomplete source-matched visual evidence'
+    Assert-RejectedMutation $positive 3 'inverted-same-byte-ssim-range' {
+        param($case)
+        $case.comparison.sameByteMinimumTileSsim = 0.75
+        $case.comparison.sameByteMeanTileSsim = 0.5
+    } 'incomplete source-matched visual evidence'
     Assert-RejectedMutation $positive 3 'inconsistent-first-render-ratio' {
         param($case)
         $case.comparison.nativeToSameByteFirstRenderRatio = 0.51
@@ -525,6 +817,14 @@ try {
         param($case)
         $case.browser.sameByteReplay.timing.firstViewportImagesReadyMs = [double]::NaN
     } 'missing finite positive native or offline Edge timing needed to recompute nativeToSameByteFirstRenderRatio'
+    Assert-RejectedMutation $positive 3 'missing-source-available-native-timing' {
+        param($case)
+        $case.native.PSObject.Properties.Remove('sourceAvailableToFirstViewportImagesReadyMs')
+    } 'incomplete or mismatched offline Edge replay evidence'
+    Assert-RejectedMutation $positive 3 'mismatched-decoded-source-identity' {
+        param($case)
+        $case.browser.sameByteReplay.source.decodedTextSha256 = '0' * 64
+    } 'incomplete or mismatched offline Edge replay evidence'
     Assert-RejectedMutation $positive 3 'missing-edge-charged-traversal-timing' {
         param($case)
         $case.browser.sameByteReplay.timing.PSObject.Properties.Remove('chargedTraversalMs')
@@ -557,6 +857,26 @@ try {
         param($case)
         $case.browser.sameByteReplay.parser.sha256 = '0' * 64
     } 'incomplete or mismatched offline Edge replay evidence'
+    Assert-RejectedMutation $positive 3 'wrong-emoji-shortcode-source-pin' {
+        param($case)
+        $case.browser.sameByteReplay.parser.emojiShortcodeSourceSha256 = '0' * 64
+    } 'incomplete or mismatched offline Edge replay evidence'
+    Assert-RejectedMutation $positive 3 'wrong-emoji-shortcode-license-pin' {
+        param($case)
+        $case.browser.sameByteReplay.parser.emojiShortcodeLicenseSha256 = '0' * 64
+    } 'incomplete or mismatched offline Edge replay evidence'
+    Assert-RejectedMutation $positive 3 'wrong-emoji-shortcode-map-pin' {
+        param($case)
+        $case.browser.sameByteReplay.parser.emojiShortcodeMapSha256 = '0' * 64
+    } 'incomplete or mismatched offline Edge replay evidence'
+    Assert-RejectedMutation $positive 3 'wrong-emoji-shortcode-extension-pin' {
+        param($case)
+        $case.browser.sameByteReplay.parser.emojiShortcodeExtensionSha256 = '0' * 64
+    } 'incomplete or mismatched offline Edge replay evidence'
+    Assert-RejectedMutation $positive 3 'wrong-emoji-shortcode-alias-count' {
+        param($case)
+        $case.browser.sameByteReplay.parser.emojiShortcodeAliasCount = 2
+    } 'incomplete or mismatched offline Edge replay evidence'
     Assert-RejectedMutation $positive 3 'wrong-native-viewport' {
         param($case)
         $case.browser.sameByteReplay.viewport.width = 1000
@@ -574,9 +894,19 @@ try {
         param($case)
         $case.browser.sameByteReplay.assets.expectedImageCount = 1
     } 'incomplete or mismatched offline Edge replay evidence'
+    Assert-RejectedMutation $positive 3 'source-image-route-count-mismatch' {
+        param($case)
+        $case.browser.sameByteReplay.assets.expectedImageCount = 1
+        $case.browser.sameByteReplay.assets.verifiedImageCount = 1
+        $case.browser.sameByteReplay.semantic.imageCount = 1
+    } 'incomplete or mismatched offline Edge replay evidence'
+    Assert-RejectedMutation $positive 3 'source-semantic-image-count-mismatch' {
+        param($case)
+        $case.browser.sameByteReplay.semantic.imageCount = 1
+    } 'incomplete or mismatched offline Edge replay evidence'
     Assert-RejectedMutation $positive 60 'offline-sentinel' {
         param($case)
-        $case.native.firstViewportImagesReadyMs = 111
+        $case.native.sourceAvailableToFirstViewportImagesReadyMs = 111
         $case.comparison.nativeToSameByteFirstRenderRatio = 1.11
         $case.comparison.nativeToBrowserFirstRenderRatio = 0.5
     } 'sentinel rank 60'
@@ -661,6 +991,63 @@ try {
         $build.sourceCommitSha = 'f' * 40
     } 'malformed, mismatched, or overlaps another shard'
 
+    Assert-RejectedBuildEvidenceMutation $positive 'app-binary-ranks-26-50.json' {
+        param($build)
+        $build.runtimeFlavor = 'managed'
+    } 'malformed, mismatched, or overlaps another shard'
+
+    Assert-RejectedBuildEvidenceMutation $positive 'app-binary-ranks-26-50.json' {
+        param($build)
+        $build.executableSha256 = 'f' * 64
+    } 'malformed, mismatched, or overlaps another shard'
+
+    Assert-RejectedBuildEvidenceMutation $positive 'app-binary-ranks-26-50.json' {
+        param($build)
+        $build.artifactFileSha256.'runtimes/win-x64/MarkdownRenderer.Svg.Resvg.Worker.exe' = 'f' * 64
+    } 'malformed, mismatched, or overlaps another shard'
+
+    Assert-RejectedBuildEvidenceMutation $positive 'app-binary-ranks-26-50.json' {
+        param($build)
+        $build.dependencyAssemblySha256.'e_sqlite3.dll' = 'f' * 64
+    } 'malformed, mismatched, or overlaps another shard'
+
+    Assert-RejectedBuildEvidenceMutation $positive 'app-binary-ranks-26-50.json' {
+        param($build)
+        $build.artifactFileSha256.PSObject.Properties.Remove('runtimes/win-x64/MarkdownRenderer.Svg.Resvg.Worker.exe')
+    } 'malformed, mismatched, or overlaps another shard'
+
+    Assert-RejectedBuildEvidenceMutation $positive 'app-binary-ranks-26-50.json' {
+        param($build)
+        $build.provenanceVerified = $false
+        $build.provenanceStatus = 'verified-artifact-local-diagnostic-only'
+    } 'malformed, mismatched, or overlaps another shard'
+
+    Assert-RejectedBuildEvidenceMutation $positive 'app-binary-ranks-26-50.json' {
+        param($build)
+        $build.workflowRunId = '987654321'
+    } 'malformed, mismatched, or overlaps another shard'
+
+    Assert-RejectedProvenanceMutation $positive 'native-aot-provenance-ranks-26-50.json' {
+        param($provenance)
+        $provenance.sourceCommitSha = 'f' * 40
+    }
+
+    $extraProvenancePath = Join-Path $positive 'native-aot-provenance-ranks-501-525.json'
+    [IO.File]::WriteAllText($extraProvenancePath, '{}')
+    try {
+        $extraProvenanceOutput = Join-Path $resolvedTempRoot 'extra-provenance-output'
+        $extraProvenanceRejected = $false
+        try { Invoke-Merge $positive $extraProvenanceOutput 500 -RequireSameByte }
+        catch {
+            $extraProvenanceSummary = Get-Content -LiteralPath (Join-Path $extraProvenanceOutput 'summary.json') -Raw | ConvertFrom-Json
+            $extraProvenanceRejected = (@($extraProvenanceSummary.failures) -join "`n") -match 'Unexpected per-shard NativeAOT provenance evidence'
+        }
+        if (-not $extraProvenanceRejected) { throw 'The same-byte merge accepted unpaired per-shard NativeAOT provenance.' }
+    }
+    finally {
+        Remove-Item -LiteralPath $extraProvenancePath -Force
+    }
+
     $missingBuildPath = Join-Path $positive 'app-binary-ranks-1-25.json'
     $missingBuildBytes = [IO.File]::ReadAllBytes($missingBuildPath)
     try {
@@ -722,8 +1109,7 @@ try {
     $sentinel = Join-Path $resolvedTempRoot 'sentinel'
     Write-Cases $sentinel 500 {
         param($rank)
-        if ($rank -eq 26) { New-Case $rank -FirstRatio 1.11 -FullRatio 0.8 }
-        elseif ($rank -eq 60) { New-Case $rank -FirstRatio 1.11 -FullRatio 0.8 }
+        if ($rank -in @(2, 5, 8, 22, 26, 60)) { New-Case $rank -FirstRatio 1.11 -FullRatio 0.8 }
         elseif ($rank -eq 203) { New-Case $rank -FirstRatio 0.8 -FullRatio 1.11 }
         else { New-Case $rank }
     }
@@ -734,17 +1120,31 @@ try {
     catch {
         $sentinelSummary = Get-Content -LiteralPath (Join-Path $resolvedTempRoot 'sentinel-output\summary.json') -Raw | ConvertFrom-Json
         $sentinelFailures = @($sentinelSummary.failures) -join "`n"
-        $sentinelRejected = $sentinelFailures -match 'sentinel rank 26' -and
-            $sentinelFailures -match 'sentinel rank 60' -and
-            $sentinelFailures -match 'sentinel rank 203'
+        $requiredSentinelRanks = @(2, 5, 8, 22, 26, 60, 203)
+        $sentinelRejected = @($requiredSentinelRanks | Where-Object {
+            $sentinelFailures -notmatch ("sentinel rank {0} " -f $_)
+        }).Count -eq 0
     }
-    if (-not $sentinelRejected) { throw 'The same-byte release merge did not enforce the newly added rank 26 and existing performance sentinels.' }
+    if (-not $sentinelRejected) { throw 'The same-byte release merge did not enforce the newly added rank 2, 5, 8, and 22 plus existing performance sentinels.' }
 
     $workflow = Get-Content -LiteralPath $workflowPath -Raw
     foreach ($requiredText in @(
         'same_byte_release:',
+        'native_aot:',
+        'needs: [corpus, native_aot]',
+        'Verify-NativeAotArtifact.ps1',
+        'Verify-NativeAotArtifact.Tests.ps1',
+        'New-NativeAotProvenance.ps1',
+        'NativeAotProvenance.Tests.ps1',
+        'NativeAotProvenancePath = (Join-Path $env:RUNNER_TEMP',
+        'SOURCE_WORKFLOW_RUN_ID: ${{ github.run_id }}',
+        'SOURCE_WORKFLOW_REPOSITORY: ${{ github.repository }}',
+        'SOURCE_WORKFLOW_REF: ${{ github.ref }}',
+        'native-aot-provenance-ranks-*.json',
+        'NativeAotArtifact = $true',
         'CaptureSameByteCorpus = $true',
         'RequireSameByteCorpus = $true',
+        'github-emoji-shortcodes.test.mjs',
         'PinnedManifestPath = (Join-Path $env:RUNNER_TEMP',
         'ShardWorkflowResult = $env:AUDIT_SHARDS_RESULT',
         '${{ runner.temp }}/readme-audit/app-binary-ranks-*.json',
@@ -765,7 +1165,7 @@ try {
         }
     }
 
-    Write-Host 'Top-500 merge tests passed: pinned corpus rank/repository/commit/README path/size/blob identity, absent/source-view handling, positive 500-case offline text/structure metrics, per-shard Release app hash provenance, aggregate screenshot quotas, timing-derived ratio consistency, bidirectional source-to-GitHub token coverage, GitHub/source table-structure regression, independent rendered-case fidelity floors, native README identity, replay qualification, changed-manifest rejection, mixed same-byte rejection, unavailable-image rejection, offline outlier sentinels, and artifact/workflow opt-in.'
+    Write-Host 'Top-500 merge tests passed: pinned corpus rank/repository/commit/README path/size/blob identity, GitHub emoji source/license/map/adapter provenance and tamper rejection, offline shortcode token-boundary and data-integrity tests, absent/source-view handling, positive 500-case offline text/structure metrics, one shared NativeAOT Release executable and full-artifact file/hash identity, aggregate screenshot quotas, timing-derived ratio consistency, bidirectional source-to-GitHub token coverage, GitHub/source table-structure regression, independent rendered-case fidelity floors, native README identity, replay qualification, changed-manifest rejection, mixed same-byte rejection, unavailable-image rejection, offline outlier sentinels, and artifact/workflow opt-in.'
 }
 finally {
     if (Test-Path -LiteralPath $resolvedTempRoot) {

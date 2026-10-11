@@ -15,13 +15,15 @@ using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Models.GitHub;
 using System.Linq;
+using MarkdownRenderer.Images;
 
 namespace JitHub.Services;
 
-public sealed class GitHubClientService : IGitHubClientService
+public sealed class GitHubClientService : IGitHubClientService, IGitHubRepositoryImageClient
 {
     public const string PublicAccessToken = GitHubAuthenticationConstants.PublicAccessToken;
     private const string CommentApiVersion = "2026-03-10";
+    private const int MaximumGitHubErrorBodyBytes = 64 * 1024;
     private const int MaximumPublicReadmeBytes = 8 * 1024 * 1024;
     private static readonly string[] PublicReadmeLocations = [".github/", "", "docs/"];
     private static readonly string[] PublicReadmeCandidates =
@@ -1757,6 +1759,55 @@ public sealed class GitHubClientService : IGitHubClientService
             cancellationToken);
     }
 
+    private async Task<GitHubImageDownload?> GetRepositoryImageContentAsync(
+        string token,
+        string owner,
+        string name,
+        string path,
+        string? gitRef,
+        IMarkdownImageSourceByteAdmission admission,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(admission);
+        string requestPath = BuildRepositoryContentsPath(owner, name, path, gitRef);
+        using HttpRequestMessage request = CreateAuthenticatedRequest(HttpMethod.Get, requestPath, token);
+        request.Headers.Accept.Clear();
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github.raw+json"));
+
+        using HttpResponseMessage response = await _httpClient.SendAsync(
+            request,
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken).ConfigureAwait(false);
+        await EnsureSuccessAsync(response, cancellationToken).ConfigureAwait(false);
+
+        (byte[] bytes, IDisposable? sourceByteLease) = await AdmittedImageContentReader.ReadAsync(
+            response.Content,
+            GitHubImageService.MaxImageBytes,
+            admission,
+            cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (bytes.Length == 0)
+                return null;
+
+            GitHubImageDownload download = new(
+                bytes,
+                response.Content.Headers.ContentType?.MediaType,
+                response.Headers.ETag?.ToString(),
+                response.Content.Headers.LastModified,
+                SourceByteLease: sourceByteLease);
+            sourceByteLease = null;
+            return download;
+        }
+        finally
+        {
+            // Completed faulted tasks must not retain bytes after admission is
+            // released; successful downloads independently own the same array.
+            bytes = Array.Empty<byte>();
+            sourceByteLease?.Dispose();
+        }
+    }
+
     public async Task<GitHubRepositoryContent> GetReadmeAsync(
         string token,
         string owner,
@@ -2280,20 +2331,59 @@ public sealed class GitHubClientService : IGitHubClientService
             return;
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
+
         GitHubApiError? error = null;
-        try
+        byte[]? body = await ReadBoundedErrorBodyAsync(response.Content, cancellationToken).ConfigureAwait(false);
+        if (body is not null)
         {
-            error = await response.Content.ReadFromJsonAsync(
-                GitHubJsonSerializerContext.Default.GitHubApiError,
-                cancellationToken);
-        }
-        catch (JsonException)
-        {
-        }
-        catch (NotSupportedException)
-        {
+            try
+            {
+                error = JsonSerializer.Deserialize(
+                    body,
+                    GitHubJsonSerializerContext.Default.GitHubApiError);
+            }
+            catch (JsonException)
+            {
+            }
+            catch (NotSupportedException)
+            {
+            }
         }
 
+        ThrowForFailureResponse(response, error);
+    }
+
+    private static async Task<byte[]?> ReadBoundedErrorBodyAsync(
+        HttpContent content,
+        CancellationToken cancellationToken)
+    {
+        if (content.Headers.ContentLength is long contentLength &&
+            contentLength > MaximumGitHubErrorBodyBytes)
+        {
+            return null;
+        }
+
+        await using Stream input = await content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        using MemoryStream output = new();
+        byte[] buffer = new byte[8192];
+        while (true)
+        {
+            int remainingWithProbe = MaximumGitHubErrorBodyBytes + 1 - checked((int)output.Length);
+            int read = await input.ReadAsync(
+                buffer.AsMemory(0, Math.Min(buffer.Length, remainingWithProbe)),
+                cancellationToken).ConfigureAwait(false);
+            if (read == 0)
+                return output.ToArray();
+            if (read > MaximumGitHubErrorBodyBytes - output.Length)
+                return null;
+
+            output.Write(buffer, 0, read);
+        }
+    }
+
+    private static void ThrowForFailureResponse(HttpResponseMessage response, GitHubApiError? error)
+    {
         string message = string.IsNullOrWhiteSpace(error?.Message)
             ? $"GitHub request failed with status code {(int)response.StatusCode}."
             : error.Message;
@@ -2373,4 +2463,15 @@ public sealed class GitHubClientService : IGitHubClientService
     private static bool IsRateLimitMessage(string message) =>
         message.Contains("rate limit", StringComparison.OrdinalIgnoreCase) ||
         message.Contains("abuse detection", StringComparison.OrdinalIgnoreCase);
+
+    Task<GitHubImageDownload?> IGitHubRepositoryImageClient.GetRepositoryImageContentAsync(
+        string token,
+        string owner,
+        string name,
+        string path,
+        string? gitRef,
+        IMarkdownImageSourceByteAdmission admission,
+        CancellationToken cancellationToken) =>
+        GetRepositoryImageContentAsync(
+            token, owner, name, path, gitRef, admission, cancellationToken);
 }

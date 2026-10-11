@@ -679,9 +679,9 @@ internal static class Gfm029Compatibility
             HasChanges = insertions.Length > 0 || hasMaskedSeparators;
         }
 
-        internal string Text { get; }
+        internal readonly string Text;
 
-        internal bool HasChanges { get; }
+        internal readonly bool HasChanges;
 
         internal static PreparedSource Unchanged(string source)
             => new(source, Array.Empty<int>(), hasMaskedSeparators: false);
@@ -729,7 +729,12 @@ internal static class Gfm029Compatibility
         }
     }
 
-    private readonly record struct LineInfo(int Start, int Length);
+    private readonly struct LineInfo(int start, int length)
+    {
+        internal readonly int Start = start;
+
+        internal readonly int Length = length;
+    }
 
     private static string FilterDisallowedRawHtml(string html)
     {

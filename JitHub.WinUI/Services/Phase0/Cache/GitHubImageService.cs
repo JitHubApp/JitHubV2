@@ -13,6 +13,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Xml;
 using JitHub.Services.Markdown;
+using JitHub.WinUI.Helpers;
 using MarkdownRenderer.Images;
 
 namespace JitHub.Services;
@@ -110,6 +111,11 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
     private readonly bool _validateDnsBeforeRequest;
     private readonly bool _ownsHttpClient;
     private readonly IAccountWorkQuiescence? _accountWork;
+    private readonly EventHandler<object> _memoryPressureHandler;
+    private readonly Action<EventHandler<object>>? _memoryPressureUnsubscribe;
+    private int _disposed;
+    private bool _memoryPressureSubscribed;
+    private bool _observableCacheSubscribed;
     private readonly MemoryImageCache _memoryCache = new(
         MemoryCacheByteBudget,
         MemoryCacheEntryBudget);
@@ -138,8 +144,13 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
         bool ownsHttpClient = false,
         Func<long>? partitionProvider = null,
         Func<string, CancellationToken, Task<IPAddress[]>>? hostAddressResolver = null,
-        IAccountWorkQuiescence? accountWork = null)
+        IAccountWorkQuiescence? accountWork = null,
+        Action<EventHandler<object>>? subscribeMemoryPressure = null,
+        Action<EventHandler<object>>? unsubscribeMemoryPressure = null)
     {
+        if ((subscribeMemoryPressure is null) != (unsubscribeMemoryPressure is null))
+            throw new ArgumentException("Memory-pressure subscription callbacks must be supplied as a pair.");
+
         _cacheStore = cacheStore;
         _httpClient = httpClient;
         _ownsHttpClient = ownsHttpClient;
@@ -153,9 +164,75 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
         _validateDnsBeforeRequest = !ownsHttpClient && hostAddressResolver is not null;
         _accountWork = accountWork;
         _observableCacheStore = cacheStore as GitHubImageCacheStore;
-        if (_observableCacheStore is not null)
+        _memoryPressureHandler = new MemoryPressureRelay(this).OnAppMemoryUsageIncreased;
+        _memoryPressureUnsubscribe = unsubscribeMemoryPressure;
+
+        try
         {
-            _observableCacheStore.CacheContentInvalidated += ClearMemoryCache;
+            try
+            {
+                if (subscribeMemoryPressure is not null)
+                    subscribeMemoryPressure(_memoryPressureHandler);
+                else
+                    Windows.System.MemoryManager.AppMemoryUsageIncreased += _memoryPressureHandler;
+                _memoryPressureSubscribed = true;
+            }
+            catch (Exception exception) when (IsMemoryPressureUnavailable(exception))
+            {
+                // An event add may partially register before the projection
+                // reports that notifications are unavailable. Remove any such
+                // registration, then retain the ordinary bounded LRU behavior.
+                Exception? rollbackFailure = TryUnsubscribeMemoryPressure();
+                if (rollbackFailure is not null)
+                    HandledFailureReporter.Report(rollbackFailure, "github-image-memory-pressure-rollback");
+            }
+
+            if (_observableCacheStore is not null)
+            {
+                // Mark before invoking add so the outer rollback also attempts
+                // removal if an event accessor throws after partial registration.
+                _observableCacheSubscribed = true;
+                _observableCacheStore.CacheContentInvalidated += ClearMemoryCache;
+            }
+        }
+        catch (Exception registrationFailure)
+        {
+            List<Exception> cleanupFailures = [];
+            if (TryUnsubscribeMemoryPressure() is { } memoryPressureFailure)
+                cleanupFailures.Add(memoryPressureFailure);
+            if (_observableCacheSubscribed && _observableCacheStore is not null)
+            {
+                try
+                {
+                    _observableCacheStore.CacheContentInvalidated -= ClearMemoryCache;
+                    _observableCacheSubscribed = false;
+                }
+                catch (Exception cacheUnsubscribeFailure)
+                {
+                    cleanupFailures.Add(cacheUnsubscribeFailure);
+                }
+            }
+            if (_ownsHttpClient)
+            {
+                try
+                {
+                    _httpClient.Dispose();
+                }
+                catch (Exception clientDisposeFailure)
+                {
+                    cleanupFailures.Add(clientDisposeFailure);
+                }
+            }
+
+            if (cleanupFailures.Count > 0)
+            {
+                cleanupFailures.Insert(0, registrationFailure);
+                throw new AggregateException(
+                    "GitHub image service subscription failed and rollback was incomplete.",
+                    cleanupFailures);
+            }
+
+            throw;
         }
     }
 
@@ -375,6 +452,34 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
 
     private void ClearMemoryCache() => _memoryCache.Clear();
 
+    private void OnAppMemoryUsageIncreased(object? sender, object args)
+    {
+        if (Volatile.Read(ref _disposed) == 0)
+            ClearMemoryCache();
+    }
+
+    private static bool IsMemoryPressureUnavailable(Exception exception) =>
+        exception is System.Runtime.InteropServices.COMException or
+            PlatformNotSupportedException or TypeInitializationException;
+
+    private Exception? TryUnsubscribeMemoryPressure()
+    {
+        try
+        {
+            if (_memoryPressureUnsubscribe is not null)
+                _memoryPressureUnsubscribe(_memoryPressureHandler);
+            else
+                Windows.System.MemoryManager.AppMemoryUsageIncreased -= _memoryPressureHandler;
+            _memoryPressureSubscribed = false;
+            return null;
+        }
+        catch (Exception exception)
+        {
+            _memoryPressureSubscribed = false;
+            return exception;
+        }
+    }
+
     private async Task<GitHubImageCacheRead?> ReadCachedForResolutionAsync(
         string cacheKey,
         IMarkdownImageSourceByteAdmission? admission,
@@ -432,9 +537,17 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
 
     public void Dispose()
     {
-        if (_observableCacheStore is not null)
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+            return;
+
+        Exception? memoryPressureUnsubscribeFailure = _memoryPressureSubscribed
+            ? TryUnsubscribeMemoryPressure()
+            : null;
+
+        if (_observableCacheSubscribed && _observableCacheStore is not null)
         {
             _observableCacheStore.CacheContentInvalidated -= ClearMemoryCache;
+            _observableCacheSubscribed = false;
         }
 
         _memoryCache.Clear();
@@ -448,9 +561,19 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
             request.Cancel();
         }
 
+        CancelLeasedRequests();
+
         if (_ownsHttpClient)
         {
             _httpClient.Dispose();
+        }
+
+        if (memoryPressureUnsubscribeFailure is not null &&
+            !IsMemoryPressureUnavailable(memoryPressureUnsubscribeFailure))
+        {
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo
+                .Capture(memoryPressureUnsubscribeFailure)
+                .Throw();
         }
     }
 
@@ -646,8 +769,8 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
 
             response.EnsureSuccessStatusCode();
             string? contentType = response.Content.Headers.ContentType?.MediaType;
-            (byte[] bytes, IDisposable? sourceByteLease) = await ReadBoundedAsync(
-                response.Content, admission, cancellationToken).ConfigureAwait(false);
+            (byte[] bytes, IDisposable? sourceByteLease) = await AdmittedImageContentReader.ReadAsync(
+                response.Content, MaxImageBytes, admission, cancellationToken).ConfigureAwait(false);
             try
             {
                 // Camo can briefly return a truncated SVG with HTTP 200 and
@@ -666,17 +789,21 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
                     throw new InvalidDataException("Remote SVG is not well-formed XML.");
                 }
 
-                return new GitHubImageDownload(
+                GitHubImageDownload download = new(
                     bytes,
                     contentType,
                     response.Headers.ETag?.ToString(),
                     response.Content.Headers.LastModified,
                     SourceByteLease: sourceByteLease);
+                sourceByteLease = null;
+                return download;
             }
-            catch
+            finally
             {
+                // Rejecting a downloaded SVG must release its buffer reference
+                // before returning the quota, even if its task is retained.
+                bytes = Array.Empty<byte>();
                 sourceByteLease?.Dispose();
-                throw;
             }
         }
 
@@ -733,162 +860,6 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
         int status = (int)apiException.StatusCode;
         return status is 408 or 425 or 429 ||
             (status >= 500 && status <= 599 && status is not (501 or 505));
-    }
-
-    private async Task<(byte[] Bytes, IDisposable? Lease)> ReadBoundedAsync(
-        HttpContent content,
-        IMarkdownImageSourceByteAdmission? admission,
-        CancellationToken cancellationToken)
-    {
-        if (content.Headers.ContentLength is long contentLength && contentLength > MaxImageBytes)
-        {
-            throw new InvalidDataException($"Remote image exceeds the {MaxImageBytes}-byte limit.");
-        }
-
-        if (content.Headers.ContentLength is long knownLength)
-        {
-            IDisposable? lease = null;
-            try
-            {
-                if (admission is not null && knownLength > 0)
-                    lease = await admission.ReserveAsync(knownLength, cancellationToken).ConfigureAwait(false);
-                // An HttpContent implementation is permitted to materialize its
-                // stream in ReadAsStreamAsync. Admit the declared bytes first.
-                await using Stream knownInput = await content.ReadAsStreamAsync(cancellationToken)
-                    .ConfigureAwait(false);
-                // Most image responses provide a length. Read directly into the final
-                // array instead of growing a MemoryStream and copying it with ToArray.
-                byte[] bytes = new byte[checked((int)knownLength)];
-                await knownInput.ReadExactlyAsync(bytes, cancellationToken).ConfigureAwait(false);
-                if (await knownInput.ReadAsync(new byte[1], cancellationToken).ConfigureAwait(false) != 0)
-                    throw new InvalidDataException("Remote image exceeds its declared content length.");
-                IDisposable? transferred = lease;
-                lease = null;
-                return (bytes, transferred);
-            }
-            finally
-            {
-                lease?.Dispose();
-            }
-        }
-
-        if (admission is not null)
-            return await ReadUnknownLengthAdmittedAsync(content, admission, cancellationToken)
-                .ConfigureAwait(false);
-
-        await using Stream input = await content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-        using MemoryStream output = new();
-        byte[] buffer = new byte[81920];
-        while (true)
-        {
-            int read = await input.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
-            if (read == 0)
-            {
-                return (output.ToArray(), null);
-            }
-
-            if (output.Length + read > MaxImageBytes)
-            {
-                throw new InvalidDataException($"Remote image exceeds the {MaxImageBytes}-byte limit.");
-            }
-
-            output.Write(buffer, 0, read);
-        }
-    }
-
-    private static async Task<(byte[] Bytes, IDisposable Lease)> ReadUnknownLengthAdmittedAsync(
-        HttpContent content,
-        IMarkdownImageSourceByteAdmission admission,
-        CancellationToken cancellationToken)
-    {
-        // Most chunked badges fit in memory. Reserve both the initial buffer
-        // and its exact-size result before allocating either one. Larger
-        // streams spill to a delete-on-close file instead of growing multiple
-        // unadmitted buffers or holding a partial byte lease while waiting for
-        // more capacity (which could deadlock other chunked readers).
-        int initialCapacity = checked((int)Math.Min(1024L * 1024, admission.MaximumReservationBytes / 2));
-        if (initialCapacity < 1)
-            throw new InvalidDataException("The source-byte admission cannot hold an image chunk.");
-        IDisposable? initialLease = await admission.ReserveAsync(
-            initialCapacity * 2L, cancellationToken).ConfigureAwait(false);
-        try
-        {
-            await using Stream input = await content.ReadAsStreamAsync(cancellationToken)
-                .ConfigureAwait(false);
-            byte[] buffer = new byte[initialCapacity];
-            int length = 0;
-            while (length < buffer.Length)
-            {
-                int read = await input.ReadAsync(buffer.AsMemory(length), cancellationToken)
-                    .ConfigureAwait(false);
-                if (read == 0)
-                {
-                    byte[] exact = buffer.AsSpan(0, length).ToArray();
-                    IDisposable transferred = initialLease;
-                    initialLease = null;
-                    return (exact, transferred);
-                }
-                length += read;
-            }
-
-            byte[] one = new byte[1];
-            if (await input.ReadAsync(one, cancellationToken).ConfigureAwait(false) == 0)
-            {
-                // A full buffer already has the exact length; the reservation
-                // covers it without an additional array copy.
-                IDisposable transferred = initialLease;
-                initialLease = null;
-                return (buffer, transferred);
-            }
-
-            string temporaryPath = Path.Combine(
-                Path.GetTempPath(), $"jithub-image-{Guid.NewGuid():N}.tmp");
-            await using FileStream spool = new(
-                temporaryPath,
-                FileMode.CreateNew,
-                FileAccess.ReadWrite,
-                FileShare.None,
-                81920,
-                FileOptions.Asynchronous | FileOptions.DeleteOnClose);
-            await spool.WriteAsync(buffer, cancellationToken).ConfigureAwait(false);
-            await spool.WriteAsync(one, cancellationToken).ConfigureAwait(false);
-            int total = checked(length + 1);
-            while (true)
-            {
-                int read = await input.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
-                if (read == 0)
-                    break;
-                if (total > MaxImageBytes - read)
-                    throw new InvalidDataException($"Remote image exceeds the {MaxImageBytes}-byte limit.");
-                await spool.WriteAsync(buffer.AsMemory(0, read), cancellationToken)
-                    .ConfigureAwait(false);
-                total += read;
-            }
-
-            // The scratch buffer no longer participates in the read. Release
-            // its lease before waiting for the final array's weighted grant.
-            initialLease.Dispose();
-            initialLease = null;
-            IDisposable finalLease = await admission.ReserveAsync(total, cancellationToken)
-                .ConfigureAwait(false);
-            try
-            {
-                byte[] bytes = new byte[total];
-                spool.Position = 0;
-                await spool.ReadExactlyAsync(bytes, cancellationToken).ConfigureAwait(false);
-                return (bytes, finalLease);
-            }
-            catch
-            {
-                finalLease.Dispose();
-                throw;
-            }
-        }
-        catch
-        {
-            initialLease?.Dispose();
-            throw;
-        }
     }
 
     private static Task<GitHubCachedImage?> GetSharedTask(
@@ -1295,6 +1266,17 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
     }
 
     internal readonly record struct SharedImageRequestRelease(bool ShouldRetire, bool ShouldCancel);
+
+    private sealed class MemoryPressureRelay(GitHubImageService owner)
+    {
+        private readonly WeakReference<GitHubImageService> _owner = new(owner);
+
+        internal void OnAppMemoryUsageIncreased(object? sender, object args)
+        {
+            if (_owner.TryGetTarget(out GitHubImageService? service))
+                service.OnAppMemoryUsageIncreased(sender, args);
+        }
+    }
 
     private sealed class MemoryImageCache
     {

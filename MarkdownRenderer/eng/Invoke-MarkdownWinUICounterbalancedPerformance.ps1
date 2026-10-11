@@ -49,6 +49,10 @@ script.
 Maximum wall-clock time for each harness process. A timeout terminates that process
 tree and fails the sequence; it is not retried.
 
+.PARAMETER RequireSourceProvenance
+Require a clean source-provenance sidecar beside each build and bind both source
+commits, their clean tree identities, and one Actions run into the verdict.
+
 .OUTPUTS
 The absolute path of counterbalanced-verdict.json after a complete passing run.
 #>
@@ -66,15 +70,31 @@ param(
     [string] $GateScriptPath = (Join-Path $PSScriptRoot 'Test-MarkdownWinUIPerformanceGates.ps1'),
 
     [ValidateRange(1, 240)]
-    [int] $RunTimeoutMinutes = 45
+    [int] $RunTimeoutMinutes = 45,
+
+    [switch] $RequireSourceProvenance,
+
+    [ValidatePattern('^[0-9a-fA-F]{40}$')]
+    [string] $ExpectedReferenceCommitSha,
+
+    [ValidatePattern('^[0-9a-fA-F]{40}$')]
+    [string] $ExpectedCandidateCommitSha,
+
+    [ValidatePattern('^[1-9][0-9]{0,18}$')]
+    [string] $ExpectedWorkflowRunId,
+
+    [ValidatePattern('^[^/\s]+/[^/\s]+$')]
+    [string] $ExpectedWorkflowRepository,
+
+    [string] $ExpectedWorkflowRef
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-$script:AggregateSchemaVersion = 2
+$script:AggregateSchemaVersion = 3
 $script:AggregateProviderName = 'MarkdownRenderer-Counterbalanced-Performance'
-$script:AggregatePolicy = 'schema12-r1-c1-c2-r2-abba-contrast-v2'
+$script:AggregatePolicy = 'schema12-r1-c1-c2-r2-abba-contrast-v3-source-provenance'
 $script:RuntimeOutputManifestPolicy = 'runtime-output-manifest-v1'
 $script:Utf8NoBom = [Text.UTF8Encoding]::new($false, $true)
 
@@ -283,6 +303,56 @@ function Get-RuntimeOutputManifest {
     }
 }
 
+function Get-VerifiedSourceProvenance {
+    param(
+        [Parameter(Mandatory)][string] $ExecutablePath,
+        [Parameter(Mandatory)][ValidateSet('reference', 'candidate')][string] $ExpectedBuildRole,
+        [Parameter(Mandatory)][string] $ExpectedCommitSha,
+        [Parameter(Mandatory)][string] $ExpectedRunId,
+        [Parameter(Mandatory)][string] $ExpectedRepository,
+        [Parameter(Mandatory)][string] $ExpectedRef
+    )
+
+    $path = Join-Path ([IO.Path]::GetDirectoryName($ExecutablePath)) 'markdown-renderer-source-provenance.json'
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        throw "The $ExpectedBuildRole source-provenance sidecar is missing: '$path'."
+    }
+    $item = Get-Item -LiteralPath $path -Force
+    if ($item.Length -le 0 -or $item.Length -gt 16KB -or
+        ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw "The $ExpectedBuildRole source-provenance sidecar has an invalid size or file type."
+    }
+    $evidence = Read-JsonEvidence -Path $path
+    $value = $evidence.Value
+    $sourceCommit = ([string]$value.sourceCommitSha).ToLowerInvariant()
+    $sourceTree = ([string]$value.sourceTreeSha).ToLowerInvariant()
+    if ([int]$value.schemaVersion -ne 1 -or
+        [string]$value.providerName -cne 'MarkdownRenderer-Physical-Release-Source' -or
+        [string]$value.buildRole -cne $ExpectedBuildRole -or
+        $sourceCommit -cne $ExpectedCommitSha.ToLowerInvariant() -or
+        $sourceCommit -notmatch '^[0-9a-f]{40}$' -or
+        $sourceTree -notmatch '^[0-9a-f]{40}$' -or
+        $value.workingTreeClean -isnot [bool] -or -not [bool]$value.workingTreeClean -or
+        [string]$value.workflowRunId -cne $ExpectedRunId -or
+        [string]$value.workflowRepository -ine $ExpectedRepository -or
+        [string]$value.workflowRef -cne $ExpectedRef) {
+        throw "The $ExpectedBuildRole source-provenance sidecar does not match the expected clean checkout and workflow identity."
+    }
+
+    return [ordered]@{
+        path = $path
+        sha256 = $evidence.Sha256
+        schemaVersion = [int]$value.schemaVersion
+        buildRole = [string]$value.buildRole
+        sourceCommitSha = $sourceCommit
+        sourceTreeSha = $sourceTree
+        workingTreeClean = [bool]$value.workingTreeClean
+        workflowRunId = [string]$value.workflowRunId
+        workflowRepository = ([string]$value.workflowRepository).ToLowerInvariant()
+        workflowRef = [string]$value.workflowRef
+    }
+}
+
 function Assert-RuntimeOutputManifestUnchanged {
     param(
         [Parameter(Mandatory)][object] $ExpectedManifest,
@@ -446,6 +516,13 @@ function Read-JsonEvidence {
     }
 }
 
+function Assert-JsonTrue {
+    param([AllowNull()][object] $Value, [Parameter(Mandatory)][string] $Label)
+    if ($Value -isnot [bool] -or -not $Value) {
+        throw "$Label must be the JSON boolean true."
+    }
+}
+
 function Invoke-StrictReportGate {
     param(
         [Parameter(Mandatory)][string] $PowerShellPath,
@@ -593,10 +670,10 @@ function Assert-ReportRoleBinding {
     )
 
     $expectedMode = $Mode.ToLowerInvariant()
+    Assert-JsonTrue -Value $Report.isReleaseEvidence -Label 'Harness isReleaseEvidence'
+    Assert-JsonTrue -Value $Report.passed -Label 'Harness passed'
     if ([int]$Report.schemaVersion -ne 12 -or
         [string]$Report.providerName -cne 'MarkdownRenderer-Performance' -or
-        -not [bool]$Report.isReleaseEvidence -or
-        -not [bool]$Report.passed -or
         [string]$Report.regression.mode -cne $expectedMode) {
         throw "Generated $Mode report did not retain its gated schema-12 role contract."
     }
@@ -917,6 +994,7 @@ function Get-EvidenceSetSha256 {
         [Parameter(Mandatory)][string] $OrchestratorSha256,
         [Parameter(Mandatory)][string] $GatePath,
         [Parameter(Mandatory)][string] $GateSha256,
+        [Parameter(Mandatory)][Collections.IDictionary] $SourceProvenance,
         [Parameter(Mandatory)][object[]] $RunRecords
     )
 
@@ -929,6 +1007,8 @@ function Get-EvidenceSetSha256 {
     }
     $lines.Add("orchestrator:${OrchestratorPath}|$OrchestratorSha256")
     $lines.Add("strict-gate:${GatePath}|$GateSha256")
+    $lines.Add("reference-source-provenance:$($SourceProvenance.reference.sourceCommitSha)|$($SourceProvenance.reference.sourceTreeSha)|$($SourceProvenance.reference.sha256)")
+    $lines.Add("candidate-source-provenance:$($SourceProvenance.candidate.sourceCommitSha)|$($SourceProvenance.candidate.sourceTreeSha)|$($SourceProvenance.candidate.sha256)")
     foreach ($record in $RunRecords) {
         $lines.Add("$($record.role)-report:$($record.reportPath)|$($record.reportSha256)")
         $lines.Add("$($record.role)-harness-stdout:$($record.harness.stdoutPath)|$($record.harness.stdoutSha256)")
@@ -951,6 +1031,41 @@ $orchestratorScript = Resolve-RequiredFile `
 
 if (Test-PathEqual -Left $referenceHarness -Right $candidateHarness) {
     throw 'Reference and candidate harnesses must be different files.'
+}
+
+$sourceProvenance = $null
+if ($RequireSourceProvenance) {
+    if ([string]::IsNullOrWhiteSpace($ExpectedReferenceCommitSha) -or
+        [string]::IsNullOrWhiteSpace($ExpectedCandidateCommitSha) -or
+        [string]::IsNullOrWhiteSpace($ExpectedWorkflowRunId) -or
+        [string]::IsNullOrWhiteSpace($ExpectedWorkflowRepository) -or
+        [string]::IsNullOrWhiteSpace($ExpectedWorkflowRef)) {
+        throw 'Strict source provenance requires both expected commits and the workflow run, repository, and ref.'
+    }
+    if ($ExpectedReferenceCommitSha -ieq $ExpectedCandidateCommitSha) {
+        throw 'Reference and candidate source commits must be different.'
+    }
+    $referenceSourceProvenance = Get-VerifiedSourceProvenance `
+        -ExecutablePath $referenceHarness `
+        -ExpectedBuildRole reference `
+        -ExpectedCommitSha $ExpectedReferenceCommitSha `
+        -ExpectedRunId $ExpectedWorkflowRunId `
+        -ExpectedRepository $ExpectedWorkflowRepository `
+        -ExpectedRef $ExpectedWorkflowRef
+    $candidateSourceProvenance = Get-VerifiedSourceProvenance `
+        -ExecutablePath $candidateHarness `
+        -ExpectedBuildRole candidate `
+        -ExpectedCommitSha $ExpectedCandidateCommitSha `
+        -ExpectedRunId $ExpectedWorkflowRunId `
+        -ExpectedRepository $ExpectedWorkflowRepository `
+        -ExpectedRef $ExpectedWorkflowRef
+    $sourceProvenance = [ordered]@{
+        workflowRunId = $ExpectedWorkflowRunId
+        workflowRepository = $ExpectedWorkflowRepository.ToLowerInvariant()
+        workflowRef = $ExpectedWorkflowRef
+        reference = $referenceSourceProvenance
+        candidate = $candidateSourceProvenance
+    }
 }
 
 $fullOutputRoot = [IO.Path]::GetFullPath($OutputRoot)
@@ -1067,6 +1182,26 @@ try {
         if ($processResult.TimedOut) {
             throw "Role $($run.Role) exceeded the $RunTimeoutMinutes minute timeout."
         }
+        if ([int]$processResult.ExitCode -eq 4) {
+            if (-not (Test-Path -LiteralPath $run.ReportPath -PathType Leaf)) {
+                throw "Role $($run.Role) reported an invalid measurement environment without writing its report."
+            }
+            $environmentReport = Read-JsonEvidence -Path $run.ReportPath
+            $environmentPassed = $environmentReport.Value.PSObject.Properties['passed']
+            $environmentFailures = @($environmentReport.Value.failures | Where-Object {
+                $_ -is [string] -and
+                $_.StartsWith('Invalid measurement environment:', [StringComparison]::Ordinal) -and
+                $_.Contains('Renderer performance gates were not evaluated.', [StringComparison]::Ordinal)
+            })
+            if ($null -eq $environmentPassed -or
+                $environmentPassed.Value -isnot [bool] -or
+                $environmentPassed.Value -or
+                $environmentFailures.Count -ne 1) {
+                throw "Role $($run.Role) used the environment-abort exit code without a valid environment-invalid report."
+            }
+            throw "Role $($run.Role) aborted because the measurement environment became invalid. " +
+                "Renderer pass/fail was not evaluated. $($environmentFailures[0]) Report: $($run.ReportPath)"
+        }
         if ([int]$processResult.ExitCode -ne 0) {
             throw "Role $($run.Role) harness exited with code $($processResult.ExitCode)."
         }
@@ -1174,7 +1309,7 @@ try {
     }
 
     $metrics = @(Get-AggregateMetricVerdicts -ReportsByRole $reportsByRole)
-    $metricFailures = @($metrics | Where-Object { -not [bool]$_.passed })
+    $metricFailures = @($metrics | Where-Object { $_.passed -isnot [bool] -or -not $_.passed })
     $aggregatePassed = $metricFailures.Count -eq 0
     $aggregateFailures = @($metricFailures | ForEach-Object {
         "Metric '$($_.metric)' produced '$($_.decision)' in the counterbalanced aggregate."
@@ -1188,6 +1323,7 @@ try {
         -OrchestratorSha256 $orchestratorSha256 `
         -GatePath $gateScript `
         -GateSha256 $gateSha256 `
+        -SourceProvenance $(if ($null -ne $sourceProvenance) { $sourceProvenance } else { [ordered]@{ reference = [ordered]@{}; candidate = [ordered]@{} } }) `
         -RunRecords @($runRecords)
 
     $verdict = [ordered]@{
@@ -1201,6 +1337,7 @@ try {
         complete = $true
         passed = $aggregatePassed
         evidenceSetSha256 = $evidenceSetSha256
+        sourceProvenance = $sourceProvenance
         orchestrator = [ordered]@{ path = $orchestratorScript; sha256 = $orchestratorSha256 }
         strictGate = [ordered]@{ path = $gateScript; sha256 = $gateSha256 }
         builds = [ordered]@{
@@ -1235,6 +1372,7 @@ finally {
             completedUtc = [DateTimeOffset]::UtcNow
             complete = $false
             passed = $false
+            sourceProvenance = $sourceProvenance
             orchestrator = [ordered]@{ path = $orchestratorScript; sha256 = $orchestratorSha256 }
             strictGate = [ordered]@{ path = $gateScript; sha256 = $gateSha256 }
             builds = [ordered]@{

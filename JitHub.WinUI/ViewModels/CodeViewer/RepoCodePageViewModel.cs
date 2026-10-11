@@ -78,6 +78,7 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
         Tree = new RepoFileTreeViewModel(treeService, languageResolver);
         Preview = new RepoFilePreviewViewModel();
         Breadcrumb = new RepoCodeBreadcrumbViewModel();
+        UseRawReadmeSourceForSameByteAudit = MarkdownLifecycleAutomationBridge.IsSameByteReplayEnabled;
         Tree.OnSelectNode = NavigateTreeNodeAsync;
         Tree.OnPrefetchNode = PrefetchTreeNodeAsync;
         Tree.OnCancelPrefetch = CancelTreeNodePrefetch;
@@ -100,6 +101,11 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
     public RepoFileTreeViewModel Tree { get; }
     public RepoFilePreviewViewModel Preview { get; }
     public RepoCodeBreadcrumbViewModel Breadcrumb { get; }
+
+    internal bool UseRawReadmeSourceForSameByteAudit { get; set; }
+
+    // Lets tests coordinate a preview completion across the cached-tree refresh boundary.
+    internal Func<CancellationToken, Task>? BeforeRefreshedTreeApplyAsyncForTest { get; set; }
 
     [ObservableProperty]
     public partial bool IsLoading { get; set; }
@@ -253,7 +259,8 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
                 navigationPreparation.PreparedTree,
                 reconcileTruncatedRoot: !navigationPreparation.RootListingUnavailable &&
                     !result.Value.RootIsAuthoritative && !result.IsRefreshInProgress,
-                preparedReadme: navigationPreparation.Readme)
+                preparedReadme: navigationPreparation.Readme,
+                hadCommittedState: hadCommittedState)
                 .ConfigureAwait(false);
             TrackLoadResult(result, loadTimer.Elapsed);
 
@@ -390,7 +397,10 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
                 refreshSourceGeneration,
                 sourceIsAuthoritative: true,
                 routeToken,
-                reconcileTruncatedRoot: false).ConfigureAwait(false);
+                reconcileTruncatedRoot: false,
+                hadCommittedState: true,
+                markdownReloadRevision: $"refresh-{refreshSourceGeneration.ToString(CultureInfo.InvariantCulture)}")
+                .ConfigureAwait(false);
             await AwaitReconciliationSettledAsync(routeToken).ConfigureAwait(false);
             await AwaitDefaultPreviewSettledAsync(routeToken).ConfigureAwait(false);
             TrackLoadResult(refreshed, refreshTimer.Elapsed);
@@ -695,21 +705,39 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
         CancellationToken ct,
         RepoFileTreeViewModel.PreparedTree? preparedTree = null,
         bool reconcileTruncatedRoot = true,
-        RepoCodeLoadResult<RepoReadmeFile>? preparedReadme = null)
+        RepoCodeLoadResult<RepoReadmeFile>? preparedReadme = null,
+        bool hadCommittedState = false,
+        string? markdownReloadRevision = null)
     {
         RepoFileTreeViewModel.PreparedTree prepared = preparedTree ??
             await Tree.PrepareLoadAsync(result.Value, ct).ConfigureAwait(false);
+        bool readmePathAmbiguous = false;
         (RepoTreeNode Node, PreparedFilePreview Preview)? defaultReadme =
-            PrepareNavigationReadme(owner, name, @ref, prepared, preparedReadme);
+            PrepareNavigationReadme(owner, name, @ref, prepared, preparedReadme, out readmePathAmbiguous);
+        if (defaultReadme is null &&
+            preparedReadme is { } unmatchedReadme &&
+            GitReferencePolicy.IsImmutableObjectId(@ref) &&
+            (readmePathAmbiguous || UseRawReadmeSourceForSameByteAudit))
+        {
+            // The pinned README remains authoritative when it cannot be represented by
+            // the current tree snapshot. Case-collisions are ambiguous in normal mode;
+            // exact-byte audit mode can also have a deliberately synthetic preview tree,
+            // which must not replace the corpus-bound document with its sample README.
+            // The audit path is safe here because LoadReadmeAsync binds preparedReadme
+            // to the immutable corpus identity before publishing it.
+            defaultReadme = PrepareEarlyReadme(owner, name, @ref, unmatchedReadme);
+        }
         RepoTreeNode? currentFile = null;
         string? visiblePath = null;
         bool identityChanged = false;
+        string? previousRootTreeSha = null;
         await RunOnUiAsync(() =>
         {
             if (!IsCurrentInitialize(generation)) return;
             currentFile = Preview.CurrentFile;
             visiblePath = GetPendingVisiblePath(generation) ?? currentFile?.Path;
             identityChanged = !IsRepositoryIdentity(owner, name, @ref);
+            previousRootTreeSha = Tree.RootTreeSha;
         }, ct).ConfigureAwait(false);
 
         PreparedFilePreview? preparedVisibleFile = null;
@@ -732,9 +760,16 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
         bool shouldReloadFile = false;
         bool shouldOpenReadme = false;
         bool retainedResolvedReadme = false;
+        bool appliedPreparedReadme = false;
         await RunOnUiAsync(async () =>
         {
             if (!IsCurrentInitialize(generation)) return;
+
+            if (markdownReloadRevision is not null &&
+                BeforeRefreshedTreeApplyAsyncForTest is { } beforeRefreshedTreeApply)
+            {
+                await beforeRefreshedTreeApply(ct);
+            }
 
             bool treeApplied = await Tree.LoadIncrementallyAsync(
                 prepared,
@@ -751,6 +786,12 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
                 IsLoading = false;
                 return;
             }
+
+            // The tree diff can yield while a README preview started from the cached
+            // tree is still loading. Re-read the visible state after that await so the
+            // refreshed tree reconciles the file that actually became visible.
+            currentFile = Preview.CurrentFile;
+            visiblePath = GetPendingVisiblePath(generation) ?? currentFile?.Path;
 
             _owner = owner;
             _repositoryName = name;
@@ -790,7 +831,17 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
                 shouldReloadFile = !retainedResolvedReadme && (identityChanged ||
                     currentFile is null ||
                     !string.Equals(currentFile.Path, fileToRestore.Path, StringComparison.Ordinal) ||
-                    !string.Equals(currentFile?.Sha, fileToRestore.Sha, StringComparison.Ordinal));
+                    !string.Equals(currentFile?.Sha, fileToRestore.Sha, StringComparison.Ordinal) ||
+                    // Moving refs can change relative Markdown assets even when
+                    // the Markdown blob is unchanged. Reapply the preview on a
+                    // repository reload so its tree/reload identity revokes old
+                    // consent and cannot reuse the previous pending admission.
+                    ShouldReloadMarkdownForRepositoryTreeRevision(
+                        fileToRestore.Path,
+                        hadCommittedState,
+                        @ref,
+                        previousRootTreeSha,
+                        Tree.RootTreeSha));
                 if (!shouldReloadFile)
                 {
                     RepoTreeNode committedNode = retainedResolvedReadme
@@ -801,6 +852,28 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
                     PushBackStack(committedNode);
                     ClearPendingVisiblePath(generation);
                 }
+            }
+            else if (!string.IsNullOrEmpty(visiblePath) &&
+                defaultReadme is { } preparedVisibleReadme &&
+                string.Equals(
+                    visiblePath,
+                    preparedVisibleReadme.Node.Path,
+                    StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(
+                    currentFile?.Sha,
+                    preparedVisibleReadme.Node.Sha,
+                    StringComparison.Ordinal))
+            {
+                // Root navigation deliberately projects only the top level and marks
+                // the tree truncated. If the early visible document is this README,
+                // the safe exact/unique endpoint match is already enough to canonicalize
+                // it; do so before the generic truncated-tree deferral.
+                ApplyPreparedFilePreview(
+                    preparedVisibleReadme.Node,
+                    preparedVisibleReadme.Preview,
+                    push: false);
+                ClearPendingVisiblePath(generation);
+                appliedPreparedReadme = true;
             }
             else if (!string.IsNullOrEmpty(visiblePath) && result.Value.Truncated)
             {
@@ -820,10 +893,20 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
                 if (defaultReadme is { } readyReadme)
                 {
                     ApplyPreparedFilePreview(readyReadme.Node, readyReadme.Preview, push: true);
+                    // The README endpoint has already supplied the authoritative bytes
+                    // for this navigation. This path is used when the endpoint's path
+                    // casing differs from the unique tree entry, or when an immutable
+                    // README path is ambiguous by case and must remain standalone. Do
+                    // not let a follow-up tree reconciliation replace those bytes with
+                    // a synthetic or arbitrarily selected blob.
+                    appliedPreparedReadme = true;
                 }
                 else
                 {
-                    shouldOpenReadme = true;
+                    // The dedicated README endpoint may identify a path whose casing
+                    // collides with multiple tree entries. Do not let the generic
+                    // first-README fallback silently choose one of those entries.
+                    shouldOpenReadme = !readmePathAmbiguous;
                 }
             }
         }, ct).ConfigureAwait(false);
@@ -831,7 +914,8 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
         if (!IsCurrentInitialize(generation)) return;
         if (result.Value.RootIsAuthoritative &&
             !string.IsNullOrEmpty(visiblePath) &&
-            !retainedResolvedReadme)
+            !retainedResolvedReadme &&
+            !appliedPreparedReadme)
         {
             // Queue only after the page identity has committed. RepoFileTreeViewModel
             // cannot safely raise this while ApplyTreeAsync still exposes the old route.
@@ -842,7 +926,11 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
 
         if (!identityChanged && fileToRestore is not null && shouldReloadFile)
         {
-            bool restored = await SelectFileWithNewGenerationAsync(fileToRestore, ct, push: true).ConfigureAwait(false);
+            bool restored = await SelectFileWithNewGenerationAsync(
+                fileToRestore,
+                ct,
+                push: true,
+                markdownReloadRevision: markdownReloadRevision).ConfigureAwait(false);
             if (restored)
             {
                 ClearPendingVisiblePath(generation);
@@ -973,13 +1061,18 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
         }
     }
 
-    private async Task<bool> SelectFileWithNewGenerationAsync(RepoTreeNode node, CancellationToken ct, bool push)
+    private async Task<bool> SelectFileWithNewGenerationAsync(
+        RepoTreeNode node,
+        CancellationToken ct,
+        bool push,
+        string? markdownReloadRevision = null)
     {
         (long generation, RequestCancellation request) = ReserveSelection(ct);
 
         try
         {
-            return await SelectFileAsyncInternal(node, request.Token, generation, push).ConfigureAwait(false);
+            return await SelectFileAsyncInternal(
+                node, request.Token, generation, push, markdownReloadRevision).ConfigureAwait(false);
         }
         finally
         {
@@ -1007,7 +1100,8 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
         RepoTreeNode node,
         CancellationToken token,
         long generation,
-        bool push)
+        bool push,
+        string? markdownReloadRevision = null)
     {
         if (node.IsDirectory || string.IsNullOrWhiteSpace(node.Sha)) return false;
 
@@ -1047,7 +1141,7 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
                     return;
                 }
 
-                ApplyPreparedFilePreview(node, prepared, push);
+                ApplyPreparedFilePreview(node, prepared, push, markdownReloadRevision);
                 applied = true;
             }, token).ConfigureAwait(false);
             return applied && IsCurrentSelection(generation, owner, repositoryName, gitRef);
@@ -1147,17 +1241,35 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
         string repositoryName,
         string gitRef,
         RepoFileTreeViewModel.PreparedTree preparedTree,
-        RepoCodeLoadResult<RepoReadmeFile>? preparedReadme)
+        RepoCodeLoadResult<RepoReadmeFile>? preparedReadme,
+        out bool pathAmbiguous)
     {
+        pathAmbiguous = false;
         RepoReadmeFile? readme = preparedReadme?.Value;
         RepoFileBlob? blob = readme?.Blob;
         if (readme is null ||
             blob is null ||
             string.IsNullOrWhiteSpace(readme.Path) ||
-            string.IsNullOrWhiteSpace(blob.Sha) ||
-            !preparedTree.NodesByPath.TryGetValue(readme.Path, out RepoTreeNodeViewModel? candidate) ||
-            candidate.IsDirectory)
+            string.IsNullOrWhiteSpace(blob.Sha))
         {
+            return null;
+        }
+
+        RepoTreeNodeViewModel? candidate = FindReadmeTreeNode(
+            preparedTree.NodesByPath,
+            readme.Path,
+            out pathAmbiguous);
+        if (candidate is null)
+        {
+            return null;
+        }
+
+        if (UseRawReadmeSourceForSameByteAudit &&
+            !string.Equals(candidate.Path, readme.Path, StringComparison.Ordinal))
+        {
+            // A synthetic preview tree can have a case-insensitive decoy at
+            // the README endpoint's path. Preserve the endpoint's exact path
+            // for repository-relative assets and source-bound audit evidence.
             return null;
         }
 
@@ -1194,6 +1306,37 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
             node,
             readme,
             preparedReadme?.FetchedAt);
+    }
+
+    private static RepoTreeNodeViewModel? FindReadmeTreeNode(
+        IReadOnlyDictionary<string, RepoTreeNodeViewModel> nodesByPath,
+        string readmePath,
+        out bool ambiguous)
+    {
+        ambiguous = false;
+        if (nodesByPath.TryGetValue(readmePath, out RepoTreeNodeViewModel? exact))
+        {
+            return exact.IsDirectory ? null : exact;
+        }
+
+        RepoTreeNodeViewModel? match = null;
+        foreach (KeyValuePair<string, RepoTreeNodeViewModel> entry in nodesByPath)
+        {
+            if (!string.Equals(entry.Key, readmePath, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (match is not null)
+            {
+                ambiguous = true;
+                return null;
+            }
+
+            match = entry.Value;
+        }
+
+        return match is { IsDirectory: false } ? match : null;
     }
 
     private (RepoTreeNode Node, PreparedFilePreview Preview)? PrepareEarlyReadme(
@@ -1358,10 +1501,15 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
     private void ApplyPreparedFilePreview(
         RepoTreeNode node,
         PreparedFilePreview prepared,
-        bool push)
+        bool push,
+        string? markdownReloadRevision = null)
     {
         RepoFileCacheEntry entry = prepared.Entry;
         FilePreviewDescriptor descriptor = prepared.Descriptor;
+        string filePath = node.Path ?? throw new InvalidDataException("Prepared repository file has no path.");
+        bool useRawReadmeSourceForAudit = UseRawReadmeSourceForSameByteAudit &&
+            descriptor.Kind == RepoFilePreviewKind.Markdown &&
+            FilePreviewResolver.IsGitHubReadmePath(filePath);
         Preview.Kind = descriptor.Kind;
         Preview.LanguageId = descriptor.LanguageId;
         Preview.ByteSize = entry.ByteLength;
@@ -1372,24 +1520,44 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
         Preview.Text = descriptor.Kind is RepoFilePreviewKind.TooLarge or RepoFilePreviewKind.Unsupported || descriptor.IsLikelyBinary
             ? null
             : entry.Text;
+        // Raw text updates the on-demand plain editor only. Publish the file
+        // identity after it, preserving the lazy preview binding order, but
+        // before RenderedText reaches MarkdownViewer. Its source-admission
+        // tick then sees this file's blob SHA on both README paths.
+        Preview.CurrentFile = node;
         Preview.RenderedText = descriptor.Kind is RepoFilePreviewKind.TooLarge or RepoFilePreviewKind.Unsupported || descriptor.IsLikelyBinary
             ? null
-            : prepared.RichText ?? entry.Text;
+            : useRawReadmeSourceForAudit
+                ? entry.Text
+                : prepared.RichText ?? entry.Text;
         Preview.Bytes = descriptor.Kind is RepoFilePreviewKind.TooLarge or RepoFilePreviewKind.Unsupported
             ? null
             : entry.Bytes;
         Preview.ErrorMessage = null;
-        Preview.CurrentFile = node;
         Preview.IsLoading = false;
+        Preview.RichPreviewDocument = descriptor.Kind == RepoFilePreviewKind.Markdown &&
+            Preview.RenderedText is { } renderedMarkdown
+                ? new MarkdownViewerDocumentPayload(
+                    renderedMarkdown,
+                    prepared.GitHubUrl,
+                    filePath,
+                    MarkdownDocumentSourceFactory.TryCreateRepositoryFile(
+                        node.Sha ?? filePath,
+                        prepared.GitHubUrl,
+                        filePath,
+                        Tree.RootTreeSha,
+                        markdownReloadRevision ??
+                            Volatile.Read(ref _initializeGeneration).ToString(CultureInfo.InvariantCulture)))
+                : null;
 
         if (Breadcrumb.IsPathTransitioning ||
-            !string.Equals(Breadcrumb.CurrentPath, node.Path, StringComparison.Ordinal))
+            !string.Equals(Breadcrumb.CurrentPath, filePath, StringComparison.Ordinal))
         {
-            Breadcrumb.BuildFromPath(_repositoryName, node.Path);
+            Breadcrumb.BuildFromPath(_repositoryName, filePath);
         }
         Breadcrumb.CurrentRawUrl = prepared.RawUrl;
         Breadcrumb.CurrentGitHubUrl = prepared.GitHubUrl;
-        Tree.SelectedNode = Tree.FindNodeByPath(node.Path);
+        Tree.SelectedNode = Tree.FindNodeByPath(filePath);
         if (push) PushBackStack(node);
         _telemetryService.TrackEvent(
             "repo_code.selected",
@@ -2193,6 +2361,54 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
         Size = viewModel.Size,
         IsDirectory = viewModel.IsDirectory
     };
+
+    private static bool IsMarkdownPreviewPath(string path)
+    {
+        string extension = Path.GetExtension(path);
+        return extension.Equals(".md", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".markdown", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".mdx", StringComparison.OrdinalIgnoreCase) ||
+            FilePreviewResolver.IsGitHubRenderedReadmePath(path);
+    }
+
+    internal static bool ShouldReloadMarkdownForRepositoryTreeRevision(
+        string path,
+        bool hadCommittedState,
+        string gitRef,
+        string? previousRootTreeSha,
+        string? currentRootTreeSha)
+    {
+        if (!IsMarkdownPreviewPath(path))
+        {
+            return false;
+        }
+
+        bool previousTreeIsKnown = GitReferencePolicy.IsImmutableObjectId(previousRootTreeSha);
+        bool currentTreeIsKnown = GitReferencePolicy.IsImmutableObjectId(currentRootTreeSha);
+        if (previousTreeIsKnown && currentTreeIsKnown)
+        {
+            // A tree SHA scopes all relative Markdown assets. Case is
+            // immaterial for hexadecimal object IDs.
+            return !string.Equals(
+                previousRootTreeSha,
+                currentRootTreeSha,
+                StringComparison.OrdinalIgnoreCase);
+        }
+
+        if (!string.Equals(previousRootTreeSha, currentRootTreeSha, StringComparison.OrdinalIgnoreCase))
+        {
+            // Transitioning between a known and unknown snapshot changes the
+            // source context and must rebuild under the new identity.
+            return true;
+        }
+
+        // Root-listing-only navigation may not expose a tree object ID. Keep
+        // mutable refs fresh on a subsequent initialization only in that
+        // unpinned case; a matching authoritative tree needs no re-fetch.
+        return hadCommittedState &&
+            !GitReferencePolicy.IsImmutableObjectId(gitRef) &&
+            (!previousTreeIsKnown || !currentTreeIsKnown);
+    }
 
     private sealed record PendingVisiblePath(long Generation, string Path);
 

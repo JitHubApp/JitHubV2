@@ -12,14 +12,13 @@ namespace MarkdownRenderer.Hosting;
 internal sealed class LegacyCodeHighlighterAdapter : ICodeHighlighter
 {
 #pragma warning disable CS0618 // Compatibility adapter owns the obsolete surface.
-    private readonly ICodeBlockSyntaxHighlighter _inner;
 
     internal LegacyCodeHighlighterAdapter(ICodeBlockSyntaxHighlighter inner)
-        => _inner = inner ?? throw new ArgumentNullException(nameof(inner));
+        => Inner = inner ?? throw new ArgumentNullException(nameof(inner));
 
-    internal ICodeBlockSyntaxHighlighter Inner => _inner;
+    internal readonly ICodeBlockSyntaxHighlighter Inner;
 
-    public int Revision => _inner.Revision;
+    public int Revision => Inner.Revision;
 
     public async ValueTask<CodeBlockHighlightResult?> HighlightAsync(
         CodeBlockHighlightRequest request,
@@ -27,7 +26,7 @@ internal sealed class LegacyCodeHighlighterAdapter : ICodeHighlighter
     {
         ArgumentNullException.ThrowIfNull(request);
         if (request.CancellationToken == cancellationToken)
-            return await _inner.HighlightAsync(request).ConfigureAwait(false);
+            return await Inner.HighlightAsync(request).ConfigureAwait(false);
 
         using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(
             request.CancellationToken,
@@ -37,7 +36,7 @@ internal sealed class LegacyCodeHighlighterAdapter : ICodeHighlighter
             request.Code,
             request.ThemeVariant,
             linked.Token);
-        return await _inner.HighlightAsync(forwarded).ConfigureAwait(false);
+        return await Inner.HighlightAsync(forwarded).ConfigureAwait(false);
     }
 #pragma warning restore CS0618
 }

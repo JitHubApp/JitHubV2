@@ -146,19 +146,21 @@ public sealed class MermaidSemanticPaintRoleTests
     [InlineData(MermaidThemeVariant.HighContrast)]
     [InlineData(MermaidThemeVariant.Forest)]
     [InlineData(MermaidThemeVariant.Neutral)]
-    public async Task MermaidTextUsesTheHostDiagramFontRole(MermaidThemeVariant theme)
+    public async Task MermaidTextUsesConfiguredPrimaryFontFamilyAcrossThemes(MermaidThemeVariant theme)
     {
-        MarkdownVectorScene scene = await ParseSceneAsync(theme);
+        const string primaryFamily = "Consolas";
+        var fontCatalog = new MermaidFontCatalog([primaryFamily, "Segoe UI"]);
+        MarkdownVectorScene scene = await ParseSceneAsync(theme, fontCatalog: fontCatalog);
         MarkdownVectorCommand[] textCommands = scene.Commands
             .Where(static command => command.Kind == MarkdownVectorCommandKind.DrawText)
             .ToArray();
 
         Assert.NotEmpty(textCommands);
-        Assert.All(
-            textCommands,
-            static command => Assert.Equal(
-                MarkdownVectorFontRole.Host,
-                command.TextStyle!.FontRole));
+        Assert.All(textCommands, command =>
+        {
+            Assert.Equal(MarkdownVectorFontRole.Authored, command.TextStyle!.FontRole);
+            Assert.Equal(primaryFamily, command.TextStyle.FontFamily);
+        });
     }
 
     private static bool IsSemanticRole(
@@ -171,10 +173,11 @@ public sealed class MermaidSemanticPaintRoleTests
 
     private static async Task<MarkdownVectorScene> ParseSceneAsync(
         MermaidThemeVariant theme,
-        string source = Source)
+        string source = Source,
+        MermaidFontCatalog? fontCatalog = null)
     {
         var options = MermaidRenderOptions.Default with { Theme = theme };
-        using var renderer = new MermaidRenderer(options);
+        using var renderer = new MermaidRenderer(options, fontCatalog);
         MarkdownEngine engine = new MarkdownEngineBuilder()
             .UseMermaid(renderer)
             .WithParseCacheBudgetBytes(0)

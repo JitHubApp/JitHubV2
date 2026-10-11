@@ -1,0 +1,384 @@
+name: MarkdownRenderer physical release qualification
+run-name: MarkdownRenderer physical release ${{ github.sha }}
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate_release_input:
+    name: Validate approved frozen schema-12 reference
+    runs-on: windows-latest
+    timeout-minutes: 15
+    outputs:
+      reference_commit_sha: ${{ steps.validate.outputs.reference_commit_sha }}
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout candidate source to validate the reference object
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          path: markdown-renderer-candidate
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require the configured frozen baseline before release work
+        id: validate
+        env:
+          CANDIDATE_COMMIT: ${{ github.sha }}
+          REFERENCE_COMMIT: ${{ vars.MARKDOWN_RENDERER_RELEASE_REFERENCE_SHA }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $candidateRoot = Join-Path $env:GITHUB_WORKSPACE 'markdown-renderer-candidate'
+          $referenceValidator = Join-Path $candidateRoot 'MarkdownRenderer\eng\Test-MarkdownRendererReleaseReference.ps1'
+          $referenceSha = [string](& $referenceValidator `
+            -RepositoryPath $candidateRoot `
+            -CandidateCommitSha $env:CANDIDATE_COMMIT `
+            -ReferenceCommitSha $env:REFERENCE_COMMIT)
+          if ($referenceSha -notmatch '^[0-9a-f]{40}$') {
+            throw 'The frozen-reference validator did not return a full normalized commit SHA.'
+          }
+          "reference_commit_sha=$referenceSha" >> $env:GITHUB_OUTPUT
+
+  physical:
+    name: Physical foreground R1,C1,C2,R2 benchmark
+    needs: [validate_release_input, same_byte_top500]
+    if: needs.validate_release_input.result == 'success' && needs.same_byte_top500.result == 'success' && needs.same_byte_top500.outputs.passed == 'true' && needs.same_byte_top500.outputs.consolidated_artifact_name != ''
+    outputs:
+      artifact_name: ${{ steps.physical_artifact_name.outputs.name }}
+    # The markdown-renderer-physical label is an administrator assertion that
+    # this runner is the approved bare-metal test machine. Win32 OS/session
+    # checks below prove an interactive active console, not bare-metal identity.
+    # Administrators must keep this label off VMs and unqualified hosts.
+    runs-on: [self-hosted, Windows, X64, markdown-renderer-physical]
+    timeout-minutes: 360
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout the candidate commit into a clean source directory
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          path: markdown-renderer-candidate
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Checkout the reference commit into an isolated source directory
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.validate_release_input.outputs.reference_commit_sha }}
+          path: markdown-renderer-reference
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require a physical interactive Windows 11 runner and exact commits
+        env:
+          EXPECTED_CANDIDATE_SHA: ${{ github.sha }}
+          EXPECTED_REFERENCE_SHA: ${{ needs.validate_release_input.outputs.reference_commit_sha }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-StrictMode -Version Latest
+          if ($env:RUNNER_ENVIRONMENT -cne 'self-hosted') {
+            throw 'Physical release qualification requires the dedicated self-hosted hardware runner.'
+          }
+          $os = Get-CimInstance -ClassName Win32_OperatingSystem
+          $computer = Get-CimInstance -ClassName Win32_ComputerSystem
+          $sessionId = [Diagnostics.Process]::GetCurrentProcess().SessionId
+          Add-Type -TypeDefinition @'
+          using System.Runtime.InteropServices;
+          public static class MarkdownRendererSessionProbe {
+              [DllImport("kernel32.dll")]
+              public static extern uint WTSGetActiveConsoleSessionId();
+          }
+          '@
+          $consoleSessionId = [int][MarkdownRendererSessionProbe]::WTSGetActiveConsoleSessionId()
+          if ([int]$os.BuildNumber -lt 26100 -or
+              ([string]$os.Caption -notmatch '^Microsoft Windows 11(?:\s|$)') -or
+              [string]$computer.UserName -eq '' -or
+              $sessionId -eq 0 -or $sessionId -ne $consoleSessionId) {
+            throw 'Runner must be the active signed-in Windows 11 24H2+ console session; Session 0 and non-console sessions are disallowed.'
+          }
+          Write-Host 'Hardware identity assurance is operator-configured through the markdown-renderer-physical runner label; bare metal is not independently attested.'
+          foreach ($entry in @(
+              @{ Path = (Join-Path $env:GITHUB_WORKSPACE 'markdown-renderer-candidate'); Expected = $env:EXPECTED_CANDIDATE_SHA; Label = 'candidate' },
+              @{ Path = (Join-Path $env:GITHUB_WORKSPACE 'markdown-renderer-reference'); Expected = $env:EXPECTED_REFERENCE_SHA; Label = 'reference' })) {
+            $actual = (& git -C $entry.Path rev-parse HEAD 2>&1 | Out-String).Trim()
+            if ($LASTEXITCODE -ne 0 -or $actual -cne $entry.Expected) {
+              throw "$($entry.Label) checkout '$actual' does not match its requested full commit SHA."
+            }
+            $status = @(& git -C $entry.Path status --porcelain=v1 --untracked-files=all)
+            if ($LASTEXITCODE -ne 0 -or $status.Count -ne 0) {
+              throw "$($entry.Label) source checkout is not clean before building."
+            }
+          }
+          $candidate = $env:EXPECTED_CANDIDATE_SHA.ToLowerInvariant()
+          $reference = $env:EXPECTED_REFERENCE_SHA.ToLowerInvariant()
+          if ($candidate -notmatch '^[0-9a-f]{40}$' -or $reference -notmatch '^[0-9a-f]{40}$' -or $candidate -ceq $reference) {
+            throw 'Candidate and reference must be different, complete 40-character commit SHAs.'
+          }
+          & git -C (Join-Path $env:GITHUB_WORKSPACE 'markdown-renderer-candidate') merge-base --is-ancestor $reference $candidate
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Reference commit must be an ancestor of the candidate commit in this repository.'
+          }
+
+      - name: Set up the repository-pinned .NET SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: markdown-renderer-candidate/global.json
+
+      - name: Test the joined-evidence validator against release mutations
+        working-directory: markdown-renderer-candidate
+        run: .\MarkdownRenderer\eng\Test-MarkdownRendererReleaseEvidence.Tests.ps1
+
+      - name: Build both isolated Release harnesses
+        working-directory: markdown-renderer-candidate
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $candidateProject = Join-Path $env:GITHUB_WORKSPACE 'markdown-renderer-candidate\MarkdownRenderer\MarkdownRenderer.PerformanceHarness\MarkdownRenderer.PerformanceHarness.csproj'
+          $referenceProject = Join-Path $env:GITHUB_WORKSPACE 'markdown-renderer-reference\MarkdownRenderer\MarkdownRenderer.PerformanceHarness\MarkdownRenderer.PerformanceHarness.csproj'
+          foreach ($project in @($referenceProject, $candidateProject)) {
+            & dotnet build $project -c Release -p:Platform=x64 -p:GenerateAppxPackageOnBuild=false --disable-build-servers -m:1
+            if ($LASTEXITCODE -ne 0) { throw "Release harness build failed: '$project'." }
+          }
+          $candidateOutput = Join-Path (Split-Path -Parent $candidateProject) 'bin\x64\Release\net10.0-windows10.0.26100.0\win-x64'
+          $referenceOutput = Join-Path (Split-Path -Parent $referenceProject) 'bin\x64\Release\net10.0-windows10.0.26100.0\win-x64'
+          foreach ($output in @($referenceOutput, $candidateOutput)) {
+            $executable = Join-Path $output 'MarkdownRenderer.PerformanceHarness.exe'
+            if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
+              throw "Release performance harness was not produced: '$executable'."
+            }
+          }
+          "REFERENCE_HARNESS=$(Join-Path $referenceOutput 'MarkdownRenderer.PerformanceHarness.exe')" >> $env:GITHUB_ENV
+          "CANDIDATE_HARNESS=$(Join-Path $candidateOutput 'MarkdownRenderer.PerformanceHarness.exe')" >> $env:GITHUB_ENV
+          "REFERENCE_OUTPUT=$referenceOutput" >> $env:GITHUB_ENV
+          "CANDIDATE_OUTPUT=$candidateOutput" >> $env:GITHUB_ENV
+
+      - name: Stamp both binaries from verified clean checkouts
+        env:
+          EXPECTED_CANDIDATE_SHA: ${{ github.sha }}
+          EXPECTED_REFERENCE_SHA: ${{ needs.validate_release_input.outputs.reference_commit_sha }}
+          WORKFLOW_RUN_ID: ${{ github.run_id }}
+          WORKFLOW_REPOSITORY: ${{ github.repository }}
+          WORKFLOW_REF: ${{ github.ref }}
+        run: |
+          $candidateRoot = Join-Path $env:GITHUB_WORKSPACE 'markdown-renderer-candidate'
+          $referenceRoot = Join-Path $env:GITHUB_WORKSPACE 'markdown-renderer-reference'
+          $script = Join-Path $candidateRoot 'MarkdownRenderer\eng\New-MarkdownRendererSourceProvenance.ps1'
+          if (-not (Test-Path -LiteralPath $script -PathType Leaf)) { throw 'Candidate source-provenance script is missing.' }
+          & $script -SourcePath $referenceRoot -RuntimeOutputPath $env:REFERENCE_OUTPUT `
+            -ExpectedSourceCommitSha $env:EXPECTED_REFERENCE_SHA -WorkflowRunId $env:WORKFLOW_RUN_ID `
+            -WorkflowRepository $env:WORKFLOW_REPOSITORY -WorkflowRef $env:WORKFLOW_REF -BuildRole reference
+          & $script -SourcePath $candidateRoot -RuntimeOutputPath $env:CANDIDATE_OUTPUT `
+            -ExpectedSourceCommitSha $env:EXPECTED_CANDIDATE_SHA -WorkflowRunId $env:WORKFLOW_RUN_ID `
+            -WorkflowRepository $env:WORKFLOW_REPOSITORY -WorkflowRef $env:WORKFLOW_REF -BuildRole candidate
+
+      - name: Start the pinned foreground coordinator
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $candidateRoot = Join-Path $env:GITHUB_WORKSPACE 'markdown-renderer-candidate'
+          $coordinatorScript = Join-Path $candidateRoot 'MarkdownRenderer\eng\Invoke-MarkdownWinUIForegroundCoordinator.ps1'
+          $directoryName = "markdown-renderer-release-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          $directory = Join-Path $env:RUNNER_TEMP $directoryName
+          if (Test-Path -LiteralPath $directory) {
+            throw "Refusing to reuse pre-existing release evidence directory '$directory'."
+          }
+          [IO.Directory]::CreateDirectory($directory) | Out-Null
+          $ready = Join-Path $directory 'foreground-coordinator.ready'
+          $stop = Join-Path $directory 'foreground-coordinator.stop'
+          $stdout = Join-Path $directory 'foreground-coordinator.stdout.log'
+          $stderr = Join-Path $directory 'foreground-coordinator.stderr.log'
+          foreach ($marker in @($ready, $stop, $stdout, $stderr)) {
+            if (Test-Path -LiteralPath $marker) {
+              throw "Refusing to reuse pre-existing coordinator marker/log '$marker'."
+            }
+          }
+          $pwsh = (Get-Command pwsh -ErrorAction Stop).Source
+          $arguments = @('-NoLogo', '-NoProfile', '-File', $coordinatorScript,
+            '-ReferenceExecutablePath', $env:REFERENCE_HARNESS,
+            '-CandidateExecutablePath', $env:CANDIDATE_HARNESS,
+            '-ReadyFilePath', $ready,
+            '-StopFilePath', $stop,
+            '-CoordinatorTimeoutMinutes', '190')
+          $coordinator = Start-Process -FilePath $pwsh -ArgumentList $arguments -PassThru -WindowStyle Hidden `
+            -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+          $deadline = [DateTimeOffset]::UtcNow.AddSeconds(45)
+          try {
+            while (-not (Test-Path -LiteralPath $ready -PathType Leaf) -and [DateTimeOffset]::UtcNow -lt $deadline) {
+              if ($coordinator.HasExited) { throw "Foreground coordinator exited early with code $($coordinator.ExitCode)." }
+              Start-Sleep -Milliseconds 250
+            }
+            if (-not (Test-Path -LiteralPath $ready -PathType Leaf)) { throw 'Foreground coordinator did not report readiness.' }
+          }
+          catch {
+            New-Item -ItemType File -Force -Path $stop | Out-Null
+            if (-not $coordinator.HasExited -and -not $coordinator.WaitForExit(5000)) {
+              $coordinator.Kill($true)
+              $coordinator.WaitForExit()
+            }
+            throw
+          }
+          "MARKDOWN_RENDERER_RELEASE_ROOT=$directory" >> $env:GITHUB_ENV
+          "FOREGROUND_COORDINATOR_PID=$($coordinator.Id)" >> $env:GITHUB_ENV
+          "FOREGROUND_COORDINATOR_STOP=$stop" >> $env:GITHUB_ENV
+          "FOREGROUND_COORDINATOR_STDOUT=$stdout" >> $env:GITHUB_ENV
+          "FOREGROUND_COORDINATOR_STDERR=$stderr" >> $env:GITHUB_ENV
+
+      - name: Run strict physical R1,C1,C2,R2 sequence once
+        env:
+          EXPECTED_CANDIDATE_SHA: ${{ github.sha }}
+          EXPECTED_REFERENCE_SHA: ${{ needs.validate_release_input.outputs.reference_commit_sha }}
+          WORKFLOW_RUN_ID: ${{ github.run_id }}
+          WORKFLOW_REPOSITORY: ${{ github.repository }}
+          WORKFLOW_REF: ${{ github.ref }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $candidateRoot = Join-Path $env:GITHUB_WORKSPACE 'markdown-renderer-candidate'
+          $output = Join-Path $env:MARKDOWN_RENDERER_RELEASE_ROOT 'counterbalanced'
+          New-Item -ItemType Directory -Force -Path $output | Out-Null
+          try {
+            & (Join-Path $candidateRoot 'MarkdownRenderer\eng\Invoke-MarkdownWinUICounterbalancedPerformance.ps1') `
+              -ReferenceHarnessPath $env:REFERENCE_HARNESS `
+              -CandidateHarnessPath $env:CANDIDATE_HARNESS `
+              -OutputRoot $output `
+              -RequireSourceProvenance `
+              -ExpectedReferenceCommitSha $env:EXPECTED_REFERENCE_SHA `
+              -ExpectedCandidateCommitSha $env:EXPECTED_CANDIDATE_SHA `
+              -ExpectedWorkflowRunId $env:WORKFLOW_RUN_ID `
+              -ExpectedWorkflowRepository $env:WORKFLOW_REPOSITORY `
+              -ExpectedWorkflowRef $env:WORKFLOW_REF `
+              -RunTimeoutMinutes 45
+            $verdicts = @(Get-ChildItem -LiteralPath $output -Recurse -File -Filter 'counterbalanced-verdict.json')
+            if ($verdicts.Count -ne 1) { throw 'Counterbalanced R1,C1,C2,R2 did not produce exactly one final verdict.' }
+          }
+          finally {
+            New-Item -ItemType File -Force -Path $env:FOREGROUND_COORDINATOR_STOP | Out-Null
+            $coordinator = Get-Process -Id ([int]$env:FOREGROUND_COORDINATOR_PID) -ErrorAction SilentlyContinue
+            if ($null -ne $coordinator -and -not $coordinator.WaitForExit(15000)) {
+              $coordinator.Kill($true)
+              $coordinator.WaitForExit()
+            }
+          }
+
+      - name: Publish physical evidence artifact name
+        if: always()
+        id: physical_artifact_name
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $attempt = 0
+          if ($env:GITHUB_RUN_ATTEMPT -notmatch '^[1-9][0-9]{0,8}$' -or
+              -not [int]::TryParse($env:GITHUB_RUN_ATTEMPT, [ref]$attempt) -or
+              $attempt -lt 1) {
+            throw 'Workflow run attempt must be a positive integer.'
+          }
+          $artifactName = "markdown-renderer-counterbalanced-$env:GITHUB_RUN_ATTEMPT"
+          "name=$artifactName" >> $env:GITHUB_OUTPUT
+
+      - name: Upload physical evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.physical_artifact_name.outputs.name }}
+          path: ${{ runner.temp }}/markdown-renderer-release-${{ github.run_id }}-${{ github.run_attempt }}/**
+          if-no-files-found: warn
+          retention-days: 30
+
+  same_byte_top500:
+    name: Same-run fresh NativeAOT same-byte top-500
+    needs: [validate_release_input]
+    if: needs.validate_release_input.result == 'success'
+    uses: ./.github/workflows/markdown-readme-top500.yml
+    with:
+      same_byte_release: true
+
+  join_release_evidence:
+    name: Join physical and same-byte top-500 release evidence
+    if: always()
+    needs: [validate_release_input, physical, same_byte_top500]
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout the exact candidate source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Download physical and same-run top-500 evidence
+        if: needs.physical.result == 'success' && needs.same_byte_top500.result == 'success'
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.physical.outputs.artifact_name }}
+          path: ${{ runner.temp }}/markdown-renderer-release-inputs/physical
+
+      - name: Download the reusable top-500 summary from this workflow run
+        if: needs.physical.result == 'success' && needs.same_byte_top500.result == 'success'
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.same_byte_top500.outputs.consolidated_artifact_name }}
+          path: ${{ runner.temp }}/markdown-renderer-release-inputs/top500
+
+      - name: Verify and join release evidence against the current run
+        env:
+          EXPECTED_CANDIDATE_SHA: ${{ github.sha }}
+          EXPECTED_REFERENCE_SHA: ${{ needs.validate_release_input.outputs.reference_commit_sha }}
+          EXPECTED_WORKFLOW_RUN_ID: ${{ github.run_id }}
+          EXPECTED_WORKFLOW_REPOSITORY: ${{ github.repository }}
+          EXPECTED_WORKFLOW_REF: ${{ github.ref }}
+          PHYSICAL_JOB_RESULT: ${{ needs.physical.result }}
+          TOP500_JOB_RESULT: ${{ needs.same_byte_top500.result }}
+          TOP500_PASSED: ${{ needs.same_byte_top500.outputs.passed }}
+          TOP500_SOURCE_COMMIT_SHA: ${{ needs.same_byte_top500.outputs.source_commit_sha }}
+          TOP500_WORKFLOW_RUN_ID: ${{ needs.same_byte_top500.outputs.workflow_run_id }}
+          TOP500_SUMMARY_SHA256: ${{ needs.same_byte_top500.outputs.summary_sha256 }}
+          TOP500_TOTAL_CASES: ${{ needs.same_byte_top500.outputs.total_cases }}
+          TOP500_PASSED_CASES: ${{ needs.same_byte_top500.outputs.passed_cases }}
+          TOP500_SAME_BYTE_CASES: ${{ needs.same_byte_top500.outputs.same_byte_cases }}
+          TOP500_SAME_BYTE_EXPECTED_CASES: ${{ needs.same_byte_top500.outputs.same_byte_expected_cases }}
+        run: |
+          $inputRoot = Join-Path $env:RUNNER_TEMP 'markdown-renderer-release-inputs'
+          $physicalRoot = Join-Path $inputRoot 'physical'
+          $top500Root = Join-Path $inputRoot 'top500'
+          $physicalVerdicts = @(Get-ChildItem -LiteralPath $physicalRoot -Recurse -File -Filter 'counterbalanced-verdict.json' -ErrorAction SilentlyContinue)
+          $top500Summaries = @(Get-ChildItem -LiteralPath $top500Root -Recurse -File -Filter 'summary.json' -ErrorAction SilentlyContinue)
+          if ($physicalVerdicts.Count -ne 1 -or $top500Summaries.Count -ne 1) {
+            throw "Expected one physical verdict and one same-run top-500 summary (found $($physicalVerdicts.Count) and $($top500Summaries.Count))."
+          }
+          $physicalVerdict = $physicalVerdicts[0].FullName
+          $top500Summary = $top500Summaries[0].FullName
+          $output = Join-Path $env:GITHUB_WORKSPACE 'artifacts\markdown-renderer-release\MarkdownRendererReleaseQualification.json'
+          & .\MarkdownRenderer\eng\Test-MarkdownRendererReleaseEvidence.ps1 `
+            -CounterbalancedVerdictPath $physicalVerdict `
+            -Top500SummaryPath $top500Summary `
+            -OutputPath $output `
+            -ExpectedCandidateCommitSha $env:EXPECTED_CANDIDATE_SHA `
+            -ExpectedReferenceCommitSha $env:EXPECTED_REFERENCE_SHA `
+            -ExpectedWorkflowRunId $env:EXPECTED_WORKFLOW_RUN_ID `
+            -ExpectedWorkflowRepository $env:EXPECTED_WORKFLOW_REPOSITORY `
+            -ExpectedWorkflowRef $env:EXPECTED_WORKFLOW_REF `
+            -PhysicalJobResult $env:PHYSICAL_JOB_RESULT `
+            -Top500JobResult $env:TOP500_JOB_RESULT `
+            -Top500WorkflowPassed $env:TOP500_PASSED `
+            -Top500WorkflowSourceCommitSha $env:TOP500_SOURCE_COMMIT_SHA `
+            -Top500WorkflowRunId $env:TOP500_WORKFLOW_RUN_ID `
+            -Top500WorkflowSummarySha256 $env:TOP500_SUMMARY_SHA256 `
+            -Top500WorkflowTotalCases $env:TOP500_TOTAL_CASES `
+            -Top500WorkflowPassedCases $env:TOP500_PASSED_CASES `
+            -Top500WorkflowSameByteCases $env:TOP500_SAME_BYTE_CASES `
+            -Top500WorkflowSameByteExpectedCases $env:TOP500_SAME_BYTE_EXPECTED_CASES
+
+      - name: Upload joined release qualification
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: markdown-renderer-release-qualification-${{ github.run_attempt }}
+          path: artifacts/markdown-renderer-release/**
+          if-no-files-found: warn
+          retention-days: 90

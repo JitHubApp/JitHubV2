@@ -254,7 +254,7 @@ public sealed class MermaidHighContrastAccessibilityTests
         MarkdownVectorScene scene,
         MarkdownVectorCommand command,
         bool highContrast) =>
-        VectorSceneDrawing.ResolveColorForTesting(
+        VectorSceneDrawing.ResolveColor(
             command.Style!.FillArgb,
             command.Style.Opacity,
             HighContrastPalette,
@@ -265,7 +265,7 @@ public sealed class MermaidHighContrastAccessibilityTests
         MarkdownVectorScene scene,
         MarkdownVectorCommand command,
         bool highContrast) =>
-        VectorSceneDrawing.ResolveColorForTesting(
+        VectorSceneDrawing.ResolveColor(
             command.Style!.StrokeArgb,
             command.Style.Opacity,
             HighContrastPalette,

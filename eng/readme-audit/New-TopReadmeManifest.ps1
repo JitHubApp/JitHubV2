@@ -24,15 +24,22 @@ if ($LASTEXITCODE -ne 0) {
 $repositories = [System.Collections.Generic.List[object]]::new()
 $pageCount = [Math]::Ceiling($Count / 100)
 for ($page = 1; $page -le $pageCount; $page++) {
-    $response = & gh api -X GET search/repositories `
+    $responseText = @(& gh api -X GET search/repositories `
         -f q='stars:>1' `
         -f sort='stars' `
         -f order='desc' `
         -f per_page='100' `
-        -f page=$page | ConvertFrom-Json
+        -f page=$page 2>&1)
     if ($LASTEXITCODE -ne 0) {
+        # Preserve the safe failure category so the diagnostic workflow can
+        # distinguish temporary rate limiting from other metadata failures.
+        # Never print the raw CLI response, which may contain request details.
+        if (($responseText -join ' ') -match '(?i)(rate limit exceeded|secondary rate limit)') {
+            throw "GitHub repository search rate limit exceeded for page $page."
+        }
         throw "GitHub repository search failed for page $page."
     }
+    $response = ($responseText -join "`n") | ConvertFrom-Json
 
     foreach ($item in $response.items) {
         if ($repositories.Count -ge $Count) { break }

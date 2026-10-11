@@ -694,7 +694,8 @@ public partial class App : Application
             string previewAccessToken = Program.CurrentLaunchOptions.ResolvePreviewAccessToken(
                 GitHubClientService.PublicAccessToken);
             GetService<IGitHubService>().SetAccessToken(previewAccessToken);
-            if (Program.CurrentLaunchOptions.ReadmeProductionAudit)
+            if (Program.CurrentLaunchOptions.ReadmeProductionAudit &&
+                !Program.CurrentLaunchOptions.OfflineSameByteReadmeAudit)
             {
                 // The production audit deliberately injects a short-lived token
                 // without writing it to the user's credential store. Supply the
@@ -707,6 +708,12 @@ public partial class App : Application
                     Login = "readme-render-audit"
                 };
                 authService.Authenticated = true;
+            }
+            else if (Program.CurrentLaunchOptions.OfflineSameByteReadmeAudit)
+            {
+                IAuthService authService = GetService<IAuthService>();
+                authService.AuthenticatedUser = null;
+                authService.Authenticated = false;
             }
             if (string.Equals(Program.CurrentLaunchOptions.Page, "profile", StringComparison.OrdinalIgnoreCase))
             {

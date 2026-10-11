@@ -87,4 +87,39 @@ public sealed class SnapshotRetirementTrackerTests
             exception => Assert.Equal("first", exception.Message),
             exception => Assert.Equal("second", exception.Message));
     }
+
+    [Fact]
+    public async Task WaitForPendingIncludesWorkAlreadyCapturedByEarlierDrain()
+    {
+        var tracker = new SnapshotRetirementTracker();
+        var work = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var failure = new InvalidOperationException("retirement failed");
+        tracker.Track(work.Task);
+
+        Task priorDrain = tracker.DrainAsync();
+        Task barrier = tracker.WaitForPendingAsync();
+        Assert.False(barrier.IsCompleted);
+
+        work.TrySetException(failure);
+        await barrier.WaitAsync(TimeSpan.FromSeconds(2));
+        InvalidOperationException observed = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => priorDrain.WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.Same(failure, observed);
+    }
+
+    [Fact]
+    public async Task TrackingTheSameFaultedLifetimeTwiceDoesNotDuplicateFailure()
+    {
+        var tracker = new SnapshotRetirementTracker();
+        var failure = new InvalidOperationException("one lifetime");
+        Task lifetime = Task.FromException(failure);
+
+        tracker.Track(lifetime);
+        tracker.Track(lifetime);
+
+        InvalidOperationException observed = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => tracker.DrainAsync());
+        Assert.Same(failure, observed);
+        Assert.Equal(0, tracker.RetainedFailureDetailCount);
+    }
 }

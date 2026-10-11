@@ -10,19 +10,40 @@ namespace MarkdownRenderer.Layout;
 /// </summary>
 internal sealed class TextElementBoundaryIndex
 {
+    // Sparse text commonly contains only a handful of multi-code-unit graphemes.
+    // Keep that case proportional to the exceptional clusters rather than the
+    // total number of text elements. Highly clustered inputs retain the original
+    // dense StringInfo representation, with a hard bound on sparse metadata.
+    private const int MaximumSparseMultiUnitElements = 4096;
+
     private readonly string _buffer;
     private readonly int[] _starts;
+    private readonly MultiUnitElement[] _multiUnitElements;
+    private readonly bool _hasImplicitSingleUnitBoundaries;
 
     public TextElementBoundaryIndex(string? buffer)
     {
         _buffer = buffer ?? string.Empty;
         TextLength = _buffer.Length;
-        _starts = TextLength == 0
-            ? Array.Empty<int>()
-            : StringInfo.ParseCombiningCharacters(_buffer);
+
+        if (TryBuildSparseMultiUnitElements(_buffer, out MultiUnitElement[] sparseElements))
+        {
+            _starts = Array.Empty<int>();
+            _multiUnitElements = sparseElements;
+            _hasImplicitSingleUnitBoundaries = sparseElements.Length == 0;
+        }
+        else
+        {
+            // The number of exceptional graphemes exceeded the bounded sparse
+            // representation. Preserve StringInfo as the authority for this
+            // dense case rather than growing an unbounded exception table.
+            _starts = StringInfo.ParseCombiningCharacters(_buffer);
+            _multiUnitElements = Array.Empty<MultiUnitElement>();
+            _hasImplicitSingleUnitBoundaries = false;
+        }
     }
 
-    public int TextLength { get; }
+    public readonly int TextLength;
 
     public (int Start, int End) FindBoundaries(int charIndex)
     {
@@ -30,6 +51,8 @@ internal sealed class TextElementBoundaryIndex
         int offset = Math.Clamp(charIndex, 0, TextLength);
         if (offset == TextLength)
             return (TextLength, TextLength);
+        if (_hasImplicitSingleUnitBoundaries)
+            return (offset, offset + 1);
         int start = TextElementStartAtOrBefore(offset);
         int end = Math.Min(TextLength, NextStart(start));
         return (start, end);
@@ -40,6 +63,8 @@ internal sealed class TextElementBoundaryIndex
         if (TextLength == 0) return 0;
         int offset = Math.Clamp(charIndex, 0, TextLength);
         if (offset >= TextLength) return TextLength;
+        if (_hasImplicitSingleUnitBoundaries)
+            return offset + 1;
         int start = TextElementStartAtOrBefore(offset);
         return Math.Min(TextLength, NextStart(start));
     }
@@ -49,6 +74,8 @@ internal sealed class TextElementBoundaryIndex
         if (TextLength == 0) return 0;
         int offset = Math.Clamp(charIndex, 0, TextLength);
         if (offset <= 0) return 0;
+        if (_hasImplicitSingleUnitBoundaries)
+            return offset - 1;
         int current = offset == TextLength
             ? TextLength
             : TextElementStartAtOrBefore(offset);
@@ -63,6 +90,28 @@ internal sealed class TextElementBoundaryIndex
             return Math.Clamp(charIndex, 0, TextLength);
 
         int offset = Math.Clamp(charIndex, 0, TextLength);
+        if (_hasImplicitSingleUnitBoundaries)
+        {
+            long requestedAsciiOffset = (long)offset + count;
+            int targetAsciiOffset = (int)Math.Clamp(requestedAsciiOffset, 0L, TextLength);
+            moved = targetAsciiOffset - offset;
+            return targetAsciiOffset;
+        }
+
+        if (_multiUnitElements.Length != 0)
+        {
+            int elementCount = TextLength - _multiUnitElements[^1].CumulativeExtraUnits;
+            int currentSparseIndex = offset == TextLength
+                ? elementCount
+                : SparseElementOrdinalAtOrBefore(offset);
+            long requestedSparseIndex = (long)currentSparseIndex + count;
+            int targetSparseIndex = (int)Math.Clamp(requestedSparseIndex, 0L, elementCount);
+            moved = targetSparseIndex - currentSparseIndex;
+            return targetSparseIndex == elementCount
+                ? TextLength
+                : SparseBoundaryOffsetAtOrdinal(targetSparseIndex);
+        }
+
         int currentIndex;
         if (offset == TextLength)
         {
@@ -174,6 +223,23 @@ internal sealed class TextElementBoundaryIndex
 
     private int TextElementStartAtOrBefore(int charIndex)
     {
+        if (_hasImplicitSingleUnitBoundaries)
+            return Math.Clamp(charIndex, 0, TextLength - 1);
+        if (_multiUnitElements.Length != 0)
+        {
+            int sparseIndex = LastMultiUnitElementStartingAtOrBefore(charIndex);
+            if (sparseIndex < 0)
+                return charIndex;
+
+            MultiUnitElement element = _multiUnitElements[sparseIndex];
+            if (charIndex < element.End)
+                return element.Start;
+            // This method returns a UTF-16 position, not an element ordinal.
+            // After the exceptional grapheme, each later single-unit element
+            // begins at its original buffer offset.
+            return charIndex;
+        }
+
         int index = Array.BinarySearch(_starts, charIndex);
         if (index >= 0) return _starts[index];
         index = ~index - 1;
@@ -182,6 +248,19 @@ internal sealed class TextElementBoundaryIndex
 
     private int NextStart(int currentStart)
     {
+        if (_hasImplicitSingleUnitBoundaries)
+            return currentStart < TextLength ? currentStart + 1 : int.MaxValue;
+        if (_multiUnitElements.Length != 0)
+        {
+            if (currentStart >= TextLength)
+                return int.MaxValue;
+            int normalizedStart = TextElementStartAtOrBefore(currentStart);
+            int sparseIndex = FindMultiUnitElementAtExactStart(normalizedStart);
+            return sparseIndex >= 0
+                ? _multiUnitElements[sparseIndex].End
+                : normalizedStart + 1;
+        }
+
         int index = Array.BinarySearch(_starts, currentStart);
         if (index < 0) index = ~index - 1;
         return index + 1 < _starts.Length ? _starts[index + 1] : int.MaxValue;
@@ -189,10 +268,189 @@ internal sealed class TextElementBoundaryIndex
 
     private int PreviousStart(int currentStart)
     {
+        if (currentStart == TextLength)
+        {
+            if (_hasImplicitSingleUnitBoundaries)
+                return TextLength - 1;
+            if (_multiUnitElements.Length != 0)
+            {
+                MultiUnitElement last = _multiUnitElements[^1];
+                return last.End == TextLength ? last.Start : TextLength - 1;
+            }
+            return _starts[^1];
+        }
+
+        if (_hasImplicitSingleUnitBoundaries)
+            return currentStart > 0 ? currentStart - 1 : -1;
+        if (_multiUnitElements.Length != 0)
+        {
+            int currentOrdinal = SparseElementOrdinalAtOrBefore(currentStart);
+            return currentOrdinal > 0
+                ? SparseBoundaryOffsetAtOrdinal(currentOrdinal - 1)
+                : -1;
+        }
+
         int index = Array.BinarySearch(_starts, currentStart);
         if (index < 0) index = ~index - 1;
         return index > 0 ? _starts[index - 1] : -1;
     }
+
+    private int SparseElementOrdinalAtOrBefore(int charIndex)
+    {
+        int index = LastMultiUnitElementStartingAtOrBefore(charIndex);
+        if (index < 0)
+            return charIndex;
+
+        MultiUnitElement element = _multiUnitElements[index];
+        int extraBefore = element.CumulativeExtraUnits - (element.End - element.Start - 1);
+        if (charIndex < element.End)
+            return element.Start - extraBefore;
+        return charIndex - element.CumulativeExtraUnits;
+    }
+
+    private int SparseBoundaryOffsetAtOrdinal(int ordinal)
+    {
+        int low = 0;
+        int high = _multiUnitElements.Length;
+        while (low < high)
+        {
+            int middle = low + ((high - low) >> 1);
+            MultiUnitElement element = _multiUnitElements[middle];
+            int extraBefore = element.CumulativeExtraUnits - (element.End - element.Start - 1);
+            int elementOrdinal = element.Start - extraBefore;
+            if (elementOrdinal < ordinal)
+                low = middle + 1;
+            else
+                high = middle;
+        }
+
+        int cumulativeExtra = low == 0 ? 0 : _multiUnitElements[low - 1].CumulativeExtraUnits;
+        return ordinal + cumulativeExtra;
+    }
+
+    private int LastMultiUnitElementStartingAtOrBefore(int offset)
+    {
+        int low = 0;
+        int high = _multiUnitElements.Length;
+        while (low < high)
+        {
+            int middle = low + ((high - low) >> 1);
+            if (_multiUnitElements[middle].Start <= offset)
+                low = middle + 1;
+            else
+                high = middle;
+        }
+        return low - 1;
+    }
+
+    private int LowerBoundMultiUnitElementStart(int offset)
+    {
+        int low = 0;
+        int high = _multiUnitElements.Length;
+        while (low < high)
+        {
+            int middle = low + ((high - low) >> 1);
+            if (_multiUnitElements[middle].Start < offset)
+                low = middle + 1;
+            else
+                high = middle;
+        }
+        return low;
+    }
+
+    private int FindMultiUnitElementAtExactStart(int offset)
+    {
+        int index = LowerBoundMultiUnitElementStart(offset);
+        return index < _multiUnitElements.Length && _multiUnitElements[index].Start == offset
+            ? index
+            : -1;
+    }
+
+    private static bool TryBuildSparseMultiUnitElements(
+        string text,
+        out MultiUnitElement[] elements)
+    {
+        MultiUnitElement[] collected = Array.Empty<MultiUnitElement>();
+        int count = 0;
+        int cumulativeExtraUnits = 0;
+        ReadOnlySpan<char> span = text.AsSpan();
+
+        for (int start = 0; start < span.Length;)
+        {
+            char current = span[start];
+            int elementLength;
+            if (current <= 0x7f &&
+                !(current == '\r' && start + 1 < span.Length && span[start + 1] == '\n') &&
+                (start + 1 >= span.Length || span[start + 1] <= 0x7f))
+            {
+                // Ordinary ASCII runs (including isolated ASCII controls) have
+                // one-code-unit StringInfo boundaries. CRLF and ASCII followed
+                // by a possible combining/format character use StringInfo.
+                elementLength = 1;
+            }
+            else
+            {
+                elementLength = StringInfo.GetNextTextElementLength(span[start..]);
+            }
+
+            if (elementLength <= 0 || elementLength > span.Length - start)
+            {
+                elements = Array.Empty<MultiUnitElement>();
+                return false;
+            }
+
+            if (elementLength > 1)
+            {
+                if (count == MaximumSparseMultiUnitElements)
+                {
+                    elements = Array.Empty<MultiUnitElement>();
+                    return false;
+                }
+
+                if (count == collected.Length)
+                {
+                    int newCapacity = Math.Min(
+                        MaximumSparseMultiUnitElements,
+                        collected.Length == 0 ? 8 : collected.Length * 2);
+                    Array.Resize(ref collected, newCapacity);
+                }
+
+                cumulativeExtraUnits += elementLength - 1;
+                collected[count++] = new MultiUnitElement(
+                    start,
+                    elementLength,
+                    cumulativeExtraUnits);
+            }
+
+            start += elementLength;
+        }
+
+        if (count == 0)
+        {
+            elements = Array.Empty<MultiUnitElement>();
+            return true;
+        }
+
+        if (count != collected.Length)
+            Array.Resize(ref collected, count);
+        elements = collected;
+        return true;
+    }
+
+    private readonly struct MultiUnitElement
+    {
+        public MultiUnitElement(int start, int length, int cumulativeExtraUnits)
+        {
+            Start = start;
+            End = start + length;
+            CumulativeExtraUnits = cumulativeExtraUnits;
+        }
+
+        public readonly int Start;
+        public readonly int End;
+        public readonly int CumulativeExtraUnits;
+    }
+
 }
 
 /// <summary>

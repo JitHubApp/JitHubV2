@@ -9,6 +9,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using JitHub.WinUI.Automation;
 using FlaUI.Core;
 using FlaUI.Core.AutomationElements;
 using FlaUI.Core.Definitions;
@@ -18,13 +19,17 @@ using FlaUI.UIA3;
 internal static partial class ReadmeAuditProbe
 {
     internal const string ProbeName = "readme-production-audit";
+    internal const string OfflineSameByteProbeName = "readme-offline-same-byte";
+    internal const string PublicSameByteCaptureProbeName = "readme-public-same-byte-capture";
     private const string HostAutomationId = "MarkdownHost_RepositoryReadme_RepoCodeReadme";
     private const int ViewportWidth = 1000;
     private const int ViewportHeight = 900;
     private const int SlowVisibleImageWaitMilliseconds = 500;
+    private const int MaximumImageSourceMatchLength = 4096;
     private const double SameByteTraversalViewportStepRatio = 0.9;
     private const double MaximumNativeScrollViewportFraction = 0.95;
     private const int MaximumTraversalViewports = 512;
+    private const int MaximumPendingImagePeersForRevisit = 16_384;
     private const int MaximumViewportPositionCorrections = 16;
     private const int MaximumNativeScrollAttempts = 3;
     private const int MaximumNativeViewportPositions =
@@ -33,6 +38,7 @@ internal static partial class ReadmeAuditProbe
     private const double MinimumScrollPercentChange = 0.000001;
     private static readonly TimeSpan UiaProviderConnectionTimeout = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan UiaProviderTransactionTimeout = TimeSpan.FromSeconds(8);
+    private static readonly TimeSpan RendererRequestResponseTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan NativeTraversalTimeout = TimeSpan.FromMinutes(3);
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -133,6 +139,16 @@ internal static partial class ReadmeAuditProbe
                 $"README audit {repository.FullName}: {result.Status}; " +
                 $"text={result.Comparison?.TextTokenCoverage:P2}; structure={result.Comparison?.VisualStructureScore:P2}; " +
                 $"native unavailable={result.Native?.UnavailableImages ?? -1}.");
+            if (result.Status == "failed")
+            {
+                Console.WriteLine(ReadmeAuditTerminalDiagnostic.CreateFailureSummary(
+                    repository.Rank,
+                    result.Browser is not null,
+                    result.Native is not null,
+                    result.InfrastructureFailure,
+                    Path.Combine(caseDirectory, "native", "first-viewport-images-ready-progress.ndjson"),
+                    result.NativeFailureDiagnostic));
+            }
             if (result.InfrastructureFailure)
             {
                 ReadmeAuditSummary partial = BuildSummary(
@@ -168,6 +184,7 @@ internal static partial class ReadmeAuditProbe
         BrowserAuditResult? browser = null;
         NativeAuditResult? native = null;
         bool infrastructureFailure = false;
+        ReadmeAuditNativeFailureDiagnostic? nativeFailureDiagnostic = null;
         var failures = new List<string>();
         try
         {
@@ -241,6 +258,10 @@ internal static partial class ReadmeAuditProbe
 
             if (native is null)
                 throw new InvalidOperationException("Native README audit produced no result.");
+            if (native.ImageTransportDiagnosticsEnabled)
+            {
+                failures.Add("Image transport diagnostics were enabled; synchronous diagnostic hashing and IO exclude this case from release performance qualification.");
+            }
             if (native.UnavailableImages != 0)
             {
                 failures.Add($"JitHub reported {native.UnavailableImages} unavailable image(s).");
@@ -263,10 +284,12 @@ internal static partial class ReadmeAuditProbe
         catch (NativeAuditInfrastructureException exception)
         {
             infrastructureFailure = true;
+            nativeFailureDiagnostic = ReadmeAuditTerminalDiagnostic.CreateNativeFailureDiagnostic(exception);
             failures.Add("Native JitHub audit infrastructure failed: " + exception);
         }
         catch (Exception exception)
         {
+            nativeFailureDiagnostic = ReadmeAuditTerminalDiagnostic.CreateNativeFailureDiagnostic(exception);
             failures.Add("Native JitHub audit failed: " + exception);
         }
 
@@ -356,6 +379,7 @@ internal static partial class ReadmeAuditProbe
                 ? failures.Select(RedactUrls).ToArray()
                 : failures,
             InfrastructureFailure = infrastructureFailure,
+            NativeFailureDiagnostic = nativeFailureDiagnostic,
             Browser = options.AuditCaptureSameByteCorpus
                 ? SanitizeBrowserAuditResult(browser)
                 : browser,
@@ -653,29 +677,45 @@ internal static partial class ReadmeAuditProbe
         BrowserSameByteCorpusEvidence corpusEvidence,
         BrowserSameByteHtmlReplayEvidence? htmlReplay,
         NativeAuditResult native,
-        BrowserSemantic capturedGitHubArticleSemantic)
+        BrowserSemantic? capturedGitHubArticleSemantic,
+        bool capturedGitHubArticleRendered = true)
     {
         if (native.ContentViewportWidth is < 64 or > 8192 ||
             native.ContentViewportHeight is < 64 or > 8192 ||
             native.RasterizationScale is < 0.5 or > 4 ||
             Math.Abs(native.Width - native.ContentViewportWidth) > 2 ||
-            !IsFinitePositive(native.FirstViewportImagesReadyMs))
+            native.SourceAvailableToFirstViewportImagesReadyMs is not double sourceAvailableReadyMs ||
+            !IsFinitePositive(sourceAvailableReadyMs) ||
+            !IsSha256(native.ReadmeSourceDecodedTextSha256))
         {
             throw new InvalidDataException(
                 "The native visible content viewport or image-ready boundary is not qualified for Edge comparison.");
         }
         string semanticDigestKey = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
 
-        string script = Path.Combine(FindRepositoryRoot(), "eng", "readme-audit", "same-byte-edge-source.mjs");
-        string parser = Path.Combine(FindRepositoryRoot(), "eng", "readme-audit", "vendor", "marked-18.0.5.umd.js");
+        string repositoryRoot = FindRepositoryRoot();
+        string script = Path.Combine(repositoryRoot, "eng", "readme-audit", "same-byte-edge-source.mjs");
+        string vendorDirectory = Path.Combine(repositoryRoot, "eng", "readme-audit", "vendor");
+        string parser = Path.Combine(vendorDirectory, "marked-18.0.5.umd.js");
         const string parserSha256 = "2dc4769dfde29f51c7aca1a539c6407c789c8ea644cf8b7d01ded28a9c1d800b";
-        FileInfo parserInfo = new(parser);
-        if (!parserInfo.Exists || parserInfo.Length is <= 0 or > 2_097_152 ||
-            (parserInfo.Attributes & FileAttributes.ReparsePoint) != 0 ||
-            !string.Equals(HashSha256(File.ReadAllBytes(parser)), parserSha256, StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidDataException("The pinned Edge GFM parser is missing or changed.");
-        }
+        const string emojiSource = "github/gemoji/db/emoji.json";
+        const string emojiSourceCommit = "fadaeaf1f1a9be82b321316a6c5502e43138b2f6";
+        const string emojiSourceSha256 = "b174ae2aeb321b52f64adb9ff412f966a7f338839d780784dd15dcad702c2dd6";
+        const string emojiLicense = "MIT";
+        const string emojiLicenseSha256 = "bab932cd28676c262d38eb7aedd7c366ebae15a07d823cc51854ec16ec045dba";
+        const string emojiMapSha256 = "44980486df12fa536479d4a8c28e57b65654b373a263a894f79ccc7ceb335cf5";
+        const string emojiExtensionSha256 = "89f772b065e6ba0114a9a8aaba19de071b20e2c44af065f83d09865c5bcb4d87";
+        const int emojiAliasCount = 1913;
+        RequirePinnedReadmeAuditFile(parser, parserSha256, 2_097_152, "pinned Edge GFM parser");
+        RequirePinnedReadmeAuditFile(
+            Path.Combine(vendorDirectory, "github-emoji-shortcodes.json"), emojiMapSha256, 128 * 1024,
+            "pinned GitHub emoji shortcode map");
+        RequirePinnedReadmeAuditFile(
+            Path.Combine(vendorDirectory, "github-emoji-shortcodes.js"), emojiExtensionSha256, 64 * 1024,
+            "pinned GitHub emoji shortcode extension");
+        RequirePinnedReadmeAuditFile(
+            Path.Combine(vendorDirectory, "GITHUB-GEMOJI.LICENSE"), emojiLicenseSha256, 16 * 1024,
+            "pinned GitHub emoji source license");
 
         string output = Path.Combine(caseDirectory, "browser", "source-replay");
         Directory.CreateDirectory(output);
@@ -686,6 +726,11 @@ internal static partial class ReadmeAuditProbe
         {
             schemaVersion = 1,
             viewportHeight = native.ContentViewportHeight,
+            readmeGitBlobSha1 = repository.Readme.Sha,
+            readmeSha256 = native.ReadmeSourceSha256,
+            readmeByteSize = corpusEvidence.ReadmeBytes,
+            decodedTextSha256 = native.ReadmeSourceDecodedTextSha256,
+            nativeEstimatedContentHeightPx = native.EstimatedContentHeight,
             viewports = native.Tiles.Select(tile => new
             {
                 movementOffsetsViewportUnits = tile.NativeViewportMovementOffsets,
@@ -703,8 +748,7 @@ internal static partial class ReadmeAuditProbe
         };
         // Offline replay needs only the captured corpus. Do not pass the
         // wrapper's live GitHub credential or account partition to Node/Edge.
-        startInfo.Environment.Remove("JITHUB_README_AUDIT_GITHUB_TOKEN");
-        startInfo.Environment.Remove("JITHUB_README_AUDIT_GITHUB_ACCOUNT_ID");
+        RemoveOfflineGitHubCredentialEnvironment(startInfo);
         startInfo.Environment["JITHUB_README_AUDIT_SEMANTIC_HMAC_KEY"] = semanticDigestKey;
         startInfo.ArgumentList.Add(script);
         startInfo.ArgumentList.Add($"--corpus={corpusDirectory}");
@@ -747,7 +791,7 @@ internal static partial class ReadmeAuditProbe
         string validatedCorpus = GetSameByteCorpusDirectory(
             caseDirectory, repository, corpusEvidence,
             replay: htmlReplay,
-            readmeRendered: true);
+            readmeRendered: capturedGitHubArticleRendered);
         // Revalidate the immutable capture after the child process exits. The
         // source-runner itself independently hashes all served bytes.
         if (!string.Equals(validatedCorpus, corpusDirectory, StringComparison.OrdinalIgnoreCase))
@@ -760,13 +804,38 @@ internal static partial class ReadmeAuditProbe
             {
                 Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
             })));
+        string? preflightFailureCategory = GetSourceBoundReplayPreflightFailureCategory(
+            replay,
+            native,
+            repository.Readme.Sha,
+            corpusEvidence,
+            semanticDigestKey,
+            replay.RenderedExtent.Height,
+            replay.Assets.ExpectedImageCount,
+            native.ContentViewportWidth,
+            native.ContentViewportHeight);
+        if (preflightFailureCategory is not null)
+            throw new SourceBoundEdgeReplayException(preflightFailureCategory);
+
         if (replay.SchemaVersion != 3 || replay.Status != "passed" ||
             !string.Equals(replay.Source.ReadmeGitBlobSha1, repository.Readme.Sha, StringComparison.OrdinalIgnoreCase) ||
             !string.Equals(replay.Source.ReadmeSha256, corpusEvidence.ReadmeSha256, StringComparison.OrdinalIgnoreCase) ||
             replay.Source.ByteSize != corpusEvidence.ReadmeBytes ||
+            !string.Equals(
+                replay.Source.DecodedTextSha256,
+                native.ReadmeSourceDecodedTextSha256,
+                StringComparison.OrdinalIgnoreCase) ||
             replay.Parser.Name != "marked" || replay.Parser.Version != "18.0.5" ||
             replay.Parser.License != "MIT" ||
             !string.Equals(replay.Parser.Sha256, parserSha256, StringComparison.OrdinalIgnoreCase) ||
+            replay.Parser.EmojiShortcodeSource != emojiSource ||
+            replay.Parser.EmojiShortcodeSourceCommit != emojiSourceCommit ||
+            !string.Equals(replay.Parser.EmojiShortcodeSourceSha256, emojiSourceSha256, StringComparison.OrdinalIgnoreCase) ||
+            replay.Parser.EmojiShortcodeLicense != emojiLicense ||
+            !string.Equals(replay.Parser.EmojiShortcodeLicenseSha256, emojiLicenseSha256, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(replay.Parser.EmojiShortcodeMapSha256, emojiMapSha256, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(replay.Parser.EmojiShortcodeExtensionSha256, emojiExtensionSha256, StringComparison.OrdinalIgnoreCase) ||
+            replay.Parser.EmojiShortcodeAliasCount != emojiAliasCount ||
             replay.Viewport.Width != native.ContentViewportWidth ||
             replay.Viewport.Height != native.ContentViewportHeight ||
             replay.Viewport.EdgeInnerWidth != native.ContentViewportWidth ||
@@ -790,25 +859,43 @@ internal static partial class ReadmeAuditProbe
             !IsFinitePositive(replay.Timing.AuditOnlyFrameWaitMs) ||
             replay.Timing.AuditOnlyFrameWaitCount is < 2 or > MaximumTraversalViewports * 17 * 3 + 2 ||
             replay.Timing.FirstViewportImagesReadyMs < replay.Timing.FirstViewportPaintMs ||
+            replay.Timing.FirstViewportImagesReadyBoundary !=
+                "same source-available start through successful decode of every visible pinned image" ||
             replay.Timing.FullTraversalMs < replay.Timing.FirstViewportImagesReadyMs ||
             replay.Timing.ChargedTraversalMs < replay.Timing.FirstViewportImagesReadyMs ||
             replay.Timing.FullTraversalMs < replay.Timing.ChargedTraversalMs ||
             Math.Abs(replay.Timing.FullTraversalMs - replay.Timing.ChargedTraversalMs -
                 replay.Timing.AuditOnlyFrameWaitMs) > 0.001 ||
-            Math.Abs(replay.Timing.ViewportStepRatio - native.FullTraversalViewportStepRatio) >
-                1.0 / native.ContentViewportHeight ||
+            !SourceReplayTerminalClampContract.HasConsistentMeasuredStepRatio(
+                replay.Timing.CaptureOffsetsViewportUnits,
+                replay.Timing.ViewportStepRatio,
+                native.ContentViewportHeight) ||
             !string.Equals(replay.Timing.ViewportProfileSha256, viewportProfileSha256, StringComparison.OrdinalIgnoreCase) ||
             replay.Timing.TraversalViewportCount != native.FullTraversalViewportCount ||
             replay.Timing.MovementCount != expectedMovementCount ||
             replay.Timing.MovementCount is < 0 or > MaximumNativeViewportPositions ||
-            replay.Timing.CaptureOffsetsViewportUnits is null ||
-            replay.Timing.CaptureOffsetsViewportUnits.Count != native.Tiles.Count ||
-            replay.Timing.CaptureOffsetsViewportUnits.Where((offset, index) =>
-                !double.IsFinite(offset) ||
-                Math.Abs(offset - native.Tiles[index].ScrollTopViewportUnits) > 1.0 / native.ContentViewportHeight).Any() ||
+            !SourceReplayTerminalClampContract.IsComplete(
+                native.Tiles.Select(tile => (
+                    tile.ScrollTopViewportUnits,
+                    tile.NativeViewportMovementOffsets)).ToArray(),
+                replay.Timing.CaptureOffsetsViewportUnits,
+                replay.Timing.TerminalClampObservations,
+                replay.RenderedExtent.Height,
+                native.EstimatedContentHeight,
+                native.ContentViewportHeight,
+                new SourceReplayReadmeIdentity(
+                    repository.Readme.Sha,
+                    native.ReadmeSourceSha256 ?? string.Empty,
+                    corpusEvidence.ReadmeBytes,
+                    native.ReadmeSourceDecodedTextSha256 ?? string.Empty),
+                new SourceReplayReadmeIdentity(
+                    replay.Source.ReadmeGitBlobSha1,
+                    replay.Source.ReadmeSha256,
+                    replay.Source.ByteSize,
+                    replay.Source.DecodedTextSha256)) ||
             !HasCompleteSourceReplayTail(
                 replay.Timing,
-                native.Tiles,
+                replay.Timing.CaptureOffsetsViewportUnits,
                 replay.RenderedExtent.Height,
                 native.ContentViewportHeight) ||
             replay.Tiles.Count is < 1 or > 512 ||
@@ -823,25 +910,108 @@ internal static partial class ReadmeAuditProbe
             throw new InvalidDataException("Source-bound Edge replay did not qualify for comparison.");
         }
 
-        if (!TryGetBidirectionalSourceArticleTextCoverage(
-                replay.Semantic,
-                capturedGitHubArticleSemantic.VisibleText,
-                semanticDigestKey,
-                out double sourceToGitHubCoverage,
-                out double gitHubToSourceCoverage) ||
-            sourceToGitHubCoverage < 0.985 || gitHubToSourceCoverage < 0.985)
+        double sourceToGitHubCoverage = 0;
+        double gitHubToSourceCoverage = 0;
+        bool hasCapturedGitHubArticleSemantic = capturedGitHubArticleSemantic is not null;
+        bool sourceArticleCoveragePassed = !hasCapturedGitHubArticleSemantic ||
+            (TryGetBidirectionalSourceArticleTextCoverage(
+                    replay.Semantic,
+                    capturedGitHubArticleSemantic!.VisibleText,
+                    semanticDigestKey,
+                    out sourceToGitHubCoverage,
+                    out gitHubToSourceCoverage) &&
+                sourceToGitHubCoverage >= 0.985 &&
+                gitHubToSourceCoverage >= 0.985);
+        if (!sourceArticleCoveragePassed)
         {
-            throw new InvalidDataException(
-                "Source-bound Edge visible text did not match the captured GitHub article in both directions at 98.5%.");
+            // Preserve only aggregate ratios for failed corpus cases. Token
+            // text and the per-run HMAC key must never enter the audit artifact.
+            WriteJson(Path.Combine(output, "source-replay-coverage-diagnostic.json"), new
+            {
+                schemaVersion = 1,
+                status = "failed",
+                reason = "text-coverage",
+                sourceVisibleTextTokenCount = replay.Semantic.VisibleTextTokenCount,
+                sourceToCapturedGitHubCoverage = sourceToGitHubCoverage,
+                capturedGitHubToSourceCoverage = gitHubToSourceCoverage,
+            });
+            throw new SourceBoundEdgeReplayException("text-coverage");
         }
 
         replay.Semantic.SemanticDigestKeyHex = semanticDigestKey;
-        replay.Semantic.SourceReplayToCapturedGitHubVisibleTextTokenCoverage = sourceToGitHubCoverage;
-        replay.Semantic.CapturedGitHubToSourceReplayVisibleTextTokenCoverage = gitHubToSourceCoverage;
-        replay.Semantic.CapturedGitHubSourceStructureScore = ComputeCapturedGitHubSourceStructureScore(
-            capturedGitHubArticleSemantic,
-            replay.Semantic);
+        if (hasCapturedGitHubArticleSemantic)
+        {
+            // Keep the established authenticated/live comparison unchanged;
+            // offline replay deliberately has no captured GitHub article and
+            // leaves these fields null instead of implying that comparison ran.
+            replay.Semantic.SourceReplayToCapturedGitHubVisibleTextTokenCoverage = sourceToGitHubCoverage;
+            replay.Semantic.CapturedGitHubToSourceReplayVisibleTextTokenCoverage = gitHubToSourceCoverage;
+            replay.Semantic.CapturedGitHubSourceStructureScore = ComputeCapturedGitHubSourceStructureScore(
+                capturedGitHubArticleSemantic!,
+                replay.Semantic);
+        }
         return replay;
+    }
+
+    private static string? GetSourceBoundReplayPreflightFailureCategory(
+        BrowserSameByteReplayEvidence replay,
+        NativeAuditResult native,
+        string expectedReadmeGitBlobSha1,
+        BrowserSameByteCorpusEvidence corpusEvidence,
+        string semanticDigestKey,
+        int renderedHeight,
+        int expectedImageCount,
+        int viewportWidth,
+        int viewportHeight)
+    {
+        if (replay.SchemaVersion != 3 || replay.Status != "passed" ||
+            !string.Equals(replay.Source.ReadmeGitBlobSha1, expectedReadmeGitBlobSha1, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(replay.Source.ReadmeSha256, corpusEvidence.ReadmeSha256, StringComparison.OrdinalIgnoreCase) ||
+            replay.Source.ByteSize != corpusEvidence.ReadmeBytes ||
+            !string.Equals(
+                replay.Source.DecodedTextSha256,
+                native.ReadmeSourceDecodedTextSha256,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return "digest-mismatch";
+        }
+
+        if (!replay.Semantic.Complete || !string.IsNullOrEmpty(replay.Semantic.IncompleteReason))
+            return "semantic-incomplete";
+
+        if (!HasCompleteSourceReplayTail(
+                replay.Timing,
+                replay.Timing.CaptureOffsetsViewportUnits,
+                renderedHeight,
+                viewportHeight))
+        {
+            return "tail-coverage";
+        }
+
+        string expectedSemanticDigestKeySha256 = HashSha256(Convert.FromHexString(semanticDigestKey));
+        if (!string.Equals(
+                replay.Semantic.DigestKeySha256,
+                expectedSemanticDigestKeySha256,
+                StringComparison.OrdinalIgnoreCase) ||
+            replay.Semantic.VisibleTextTokenDigests is null ||
+            replay.Semantic.VisibleTextTokenDigests.Keys.Any(digest => !IsSha256(digest)) ||
+            replay.Semantic.VisibleMermaidSourceDigests is null ||
+            replay.Semantic.VisibleMermaidSourceDigests.Any(digest => !IsSha256(digest)))
+        {
+            return "digest-mismatch";
+        }
+
+        if (!HasCompleteSourceReplaySemantics(
+                replay.Semantic,
+                semanticDigestKey,
+                viewportWidth,
+                renderedHeight,
+                expectedImageCount))
+        {
+            return "semantic-validation";
+        }
+
+        return null;
     }
 
     private static string ReadSourceBoundReplayFailureCategory(string reportPath)
@@ -932,12 +1102,12 @@ internal static partial class ReadmeAuditProbe
 
     private static bool HasCompleteSourceReplayTail(
         BrowserSameByteReplayTiming timing,
-        IReadOnlyList<AuditTile> nativeTiles,
+        IReadOnlyList<double> captureOffsets,
         int renderedHeight,
         int viewportHeight)
     {
         IReadOnlyList<double>? tailOffsets = timing.SourceTailCaptureOffsetsViewportUnits;
-        if (nativeTiles.Count < 1 || tailOffsets is null ||
+        if (captureOffsets.Count < 1 || tailOffsets is null ||
             viewportHeight < 1 || renderedHeight < viewportHeight ||
             timing.SourceTailViewportCount != tailOffsets.Count ||
             timing.SourceTailMovementCount != tailOffsets.Count ||
@@ -949,7 +1119,7 @@ internal static partial class ReadmeAuditProbe
         }
 
         double positionTolerance = 1.0 / viewportHeight + 0.000001;
-        double previousOffset = nativeTiles[^1].ScrollTopViewportUnits;
+        double previousOffset = captureOffsets[^1];
         if (!double.IsFinite(previousOffset) || previousOffset < 0)
             return false;
 
@@ -1103,10 +1273,28 @@ internal static partial class ReadmeAuditProbe
     private static bool IsSha256(string? value) =>
         value is { Length: 64 } && value.All(char.IsAsciiHexDigit);
 
+    private static bool IsGitSha1(string? value) =>
+        value is { Length: 40 } && value.All(char.IsAsciiHexDigit);
+
     private static bool IsFinitePositive(double value) => double.IsFinite(value) && value > 0;
 
     private static string HashSha256(ReadOnlySpan<byte> bytes) =>
         Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+
+    private static void RequirePinnedReadmeAuditFile(
+        string path,
+        string expectedSha256,
+        long maximumBytes,
+        string description)
+    {
+        FileInfo file = new(path);
+        if (!file.Exists || file.Length is <= 0 || file.Length > maximumBytes ||
+            (file.Attributes & FileAttributes.ReparsePoint) != 0 ||
+            !string.Equals(HashSha256(File.ReadAllBytes(path)), expectedSha256, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidDataException($"The {description} is missing, oversized, or changed.");
+        }
+    }
 
     private static string HashSourceIdentity(string? value) =>
         "sha256:" + HashSha256(Encoding.UTF8.GetBytes(value ?? string.Empty));
@@ -1191,6 +1379,7 @@ internal static partial class ReadmeAuditProbe
             Reason = replay.Reason,
             Source = replay.Source,
             Parser = replay.Parser,
+            StyleProfile = replay.StyleProfile,
             Viewport = replay.Viewport,
             RenderedExtent = replay.RenderedExtent,
             Assets = replay.Assets,
@@ -1232,6 +1421,7 @@ internal static partial class ReadmeAuditProbe
         {
             FirstRenderMs = result.FirstRenderMs,
             FirstViewportImagesReadyMs = result.FirstViewportImagesReadyMs,
+            SourceAvailableToFirstViewportImagesReadyMs = result.SourceAvailableToFirstViewportImagesReadyMs,
             FirstViewportImageWait = result.FirstViewportImageWait is { } firstViewportImageWait
                 ? new ReadmeAuditFirstViewportImageWait
                 {
@@ -1272,12 +1462,18 @@ internal static partial class ReadmeAuditProbe
             Width = result.Width,
             ContentViewportWidth = result.ContentViewportWidth,
             ContentViewportHeight = result.ContentViewportHeight,
+            PhysicalContentViewportWidthPixels = result.PhysicalContentViewportWidthPixels,
+            PhysicalContentViewportHeightPixels = result.PhysicalContentViewportHeightPixels,
             RasterizationScale = result.RasterizationScale,
+            ColorScheme = result.ColorScheme,
             EstimatedContentHeight = result.EstimatedContentHeight,
             Tiles = result.Tiles,
             VisibleImageWaits = result.VisibleImageWaits,
             HeadingObservations = result.HeadingObservations,
             LinkObservations = result.LinkObservations,
+            LinkElementObservations = result.LinkElementObservations,
+            RawLinkDestinationObservations = result.RawLinkDestinationObservations,
+            InvalidLinkDestinationObservations = result.InvalidLinkDestinationObservations,
             ImageObservations = result.ImageObservations,
             TableObservations = result.TableObservations,
             CodeBlockObservations = result.CodeBlockObservations,
@@ -1291,6 +1487,8 @@ internal static partial class ReadmeAuditProbe
             CleanExit = result.CleanExit,
             CloseFailure = result.CloseFailure is null ? null : RedactUrls(result.CloseFailure),
             ReadmeSourceSha256 = result.ReadmeSourceSha256,
+            ReadmeSourceDecodedTextSha256 = result.ReadmeSourceDecodedTextSha256,
+            VisualProfile = result.VisualProfile,
         };
 
     private static NativeAuditResult RunNativeAudit(
@@ -1302,12 +1500,36 @@ internal static partial class ReadmeAuditProbe
         string? sameByteCorpusPath,
         string? expectedReadmeSha256,
         long? expectedReadmeBytes,
-        bool expectRenderedReadme)
+        bool expectRenderedReadme,
+        bool removeGitHubCredentials = false,
+        bool offlineSameBytePublicAudit = false,
+        string? pinnedManifestPath = null,
+        int? pinnedManifestRank = null,
+        string? pinnedManifestSha256 = null)
     {
+        if (offlineSameBytePublicAudit &&
+            (!removeGitHubCredentials || string.IsNullOrWhiteSpace(pinnedManifestPath) ||
+             pinnedManifestRank is null or < 1 or > 500 ||
+             string.IsNullOrWhiteSpace(pinnedManifestSha256) ||
+             repository.Readme.Available != (sameByteCorpusPath is not null)))
+        {
+            throw new InvalidOperationException(
+                "Offline same-byte app replay requires cleared GitHub credentials and the exact pinned manifest identity/corpus.");
+        }
+
+        Uri? pinnedReadmeBaseUri = ReadmeLinkDestinationIdentity.TryCreatePinnedReadmeBaseUri(
+            repository.FullName,
+            repository.CommitSha,
+            repository.Readme.Path,
+            out Uri? createdReadmeBaseUri)
+                ? createdReadmeBaseUri
+                : null;
         string output = Path.Combine(caseDirectory, "native");
         string runtime = Path.Combine(caseDirectory, ".runtime");
         string preservedFirstViewportImagesReady = Path.Combine(output, "first-viewport-images-ready.json");
         string preservedFirstViewportImagesReadyProgress = Path.Combine(output, "first-viewport-images-ready-progress.ndjson");
+        string preservedReadinessPublicationOutcomes = NativeReadinessProgressDiagnostic.GetPublicationOutcomePath(
+            preservedFirstViewportImagesReadyProgress);
         // Keep diagnostics from retries isolated. Reusing a case directory used
         // to append a previous run's failures/resolutions to the new evidence.
         string dataRoot = Path.Combine(runtime, $"data-{Guid.NewGuid():N}");
@@ -1319,10 +1541,14 @@ internal static partial class ReadmeAuditProbe
         string renderComplete = Path.Combine(runtime, "render-complete.json");
         string firstViewportImagesReady = Path.Combine(runtime, "first-viewport-images-ready.json");
         string firstViewportImagesReadyProgress = Path.Combine(runtime, "first-viewport-images-ready-progress.ndjson");
+        string readinessPublicationOutcomes = NativeReadinessProgressDiagnostic.GetPublicationOutcomePath(
+            firstViewportImagesReadyProgress);
         string renderFailure = Path.Combine(runtime, "render-failure.txt");
         string imageEvidence = Path.Combine(runtime, "image-unavailable.ndjson");
         string imageResolutionEvidence = Path.Combine(runtime, "image-resolution.ndjson");
+        string imageTransportEvidence = Path.Combine(runtime, "image-transport.ndjson");
         string rasterPreparationEvidence = Path.Combine(runtime, "raster-preparation.ndjson");
+        string svgStageEvidence = Path.Combine(runtime, "svg-work-stages.ndjson");
         string svgWorkerEvidence = Path.Combine(runtime, "svg-worker-timeouts.ndjson");
         string svgPreflightEvidence = Path.Combine(runtime, "svg-preflight-rejections.ndjson");
         string readmeSourceEvidence = Path.Combine(runtime, "readme-source.json");
@@ -1331,8 +1557,11 @@ internal static partial class ReadmeAuditProbe
         string captureResponse = Path.Combine(runtime, "capture-response.json");
         foreach (string stale in new[]
         {
-            appReady, hostReady, renderComplete, firstViewportImagesReady, firstViewportImagesReadyProgress, renderFailure, imageEvidence,
-            imageResolutionEvidence, rasterPreparationEvidence,
+            appReady, hostReady, renderComplete, firstViewportImagesReady, firstViewportImagesReadyProgress,
+            readinessPublicationOutcomes, preservedReadinessPublicationOutcomes,
+            preservedFirstViewportImagesReadyProgress, renderFailure, imageEvidence,
+            imageResolutionEvidence, imageTransportEvidence, rasterPreparationEvidence,
+            svgStageEvidence,
             svgWorkerEvidence, svgPreflightEvidence,
             readmeSourceEvidence,
             shutdownStageEvidence,
@@ -1351,6 +1580,8 @@ internal static partial class ReadmeAuditProbe
             "--readme-production-audit",
             $"--markdown-lifecycle-host={HostAutomationId}",
         ];
+        if (offlineSameBytePublicAudit)
+            arguments = [.. arguments, "--readme-offline-same-byte-audit"];
         var startInfo = new ProcessStartInfo(options.AppPath)
         {
             UseShellExecute = false,
@@ -1362,9 +1593,17 @@ internal static partial class ReadmeAuditProbe
         startInfo.Environment["JITHUB_PREVIEW_REPOSITORY"] = repository.FullName;
         startInfo.Environment["JITHUB_PREVIEW_BRANCH"] = repository.CommitSha;
         startInfo.Environment["JITHUB_AUTOMATION_DATA_ROOT"] = dataRoot;
-        startInfo.Environment["JITHUB_README_AUDIT_GITHUB_TOKEN"] = accessToken;
-        startInfo.Environment["JITHUB_README_AUDIT_GITHUB_ACCOUNT_ID"] =
-            Environment.GetEnvironmentVariable("JITHUB_README_AUDIT_GITHUB_ACCOUNT_ID")!;
+        if (removeGitHubCredentials)
+        {
+            foreach (string name in OfflineGitHubCredentialEnvironmentNames)
+                startInfo.Environment.Remove(name);
+        }
+        else
+        {
+            startInfo.Environment["JITHUB_README_AUDIT_GITHUB_TOKEN"] = accessToken;
+            startInfo.Environment["JITHUB_README_AUDIT_GITHUB_ACCOUNT_ID"] =
+                Environment.GetEnvironmentVariable("JITHUB_README_AUDIT_GITHUB_ACCOUNT_ID")!;
+        }
         startInfo.Environment["JITHUB_MARKDOWN_APP_READY_PATH"] = appReady;
         startInfo.Environment["JITHUB_MARKDOWN_HOST_READY_PATH"] = hostReady;
         startInfo.Environment["JITHUB_MARKDOWN_RENDER_COMPLETE_EVIDENCE_PATH"] = renderComplete;
@@ -1375,9 +1614,20 @@ internal static partial class ReadmeAuditProbe
         startInfo.Environment["JITHUB_MARKDOWN_RENDER_FAILURE_EVIDENCE_PATH"] = renderFailure;
         startInfo.Environment["JITHUB_MARKDOWN_IMAGE_EVIDENCE_PATH"] = imageEvidence;
         startInfo.Environment["JITHUB_MARKDOWN_IMAGE_RESOLUTION_EVIDENCE_PATH"] = imageResolutionEvidence;
+        // Diagnostic replays opt in explicitly. Keep extra transport hashing/IO
+        // out of ordinary release-audit timings and never inherit a stale path.
+        bool imageTransportDiagnosticsEnabled =
+            Environment.GetEnvironmentVariable("JITHUB_README_AUDIT_IMAGE_TRANSPORT_DIAGNOSTICS") == "1";
+        startInfo.Environment["JITHUB_MARKDOWN_IMAGE_TRANSPORT_EVIDENCE_PATH"] =
+            imageTransportDiagnosticsEnabled
+                ? imageTransportEvidence
+                : null;
         if (Environment.GetEnvironmentVariable("JITHUB_README_AUDIT_RASTER_DIAGNOSTICS") == "1")
             startInfo.Environment["JITHUB_MARKDOWN_RASTER_PREPARATION_EVIDENCE_PATH"] =
                 rasterPreparationEvidence;
+        startInfo.Environment["JITHUB_MARKDOWN_SVG_STAGE_EVIDENCE_PATH"] = null;
+        if (Environment.GetEnvironmentVariable("JITHUB_README_AUDIT_SVG_STAGE_DIAGNOSTICS") == "1")
+            startInfo.Environment["JITHUB_MARKDOWN_SVG_STAGE_EVIDENCE_PATH"] = svgStageEvidence;
         startInfo.Environment["JITHUB_MARKDOWN_SVG_WORKER_EVIDENCE_PATH"] = svgWorkerEvidence;
         startInfo.Environment["JITHUB_MARKDOWN_SVG_PREFLIGHT_EVIDENCE_PATH"] = svgPreflightEvidence;
         startInfo.Environment["JITHUB_MARKDOWN_SHUTDOWN_STAGE_PATH"] = shutdownStageEvidence;
@@ -1386,6 +1636,22 @@ internal static partial class ReadmeAuditProbe
         startInfo.Environment["JITHUB_README_AUDIT_SAME_BYTE_CORPUS"] = null;
         startInfo.Environment["JITHUB_README_AUDIT_SAME_BYTE_README_SHA"] = null;
         startInfo.Environment["JITHUB_README_AUDIT_NATIVE_SOURCE_EVIDENCE_PATH"] = null;
+        startInfo.Environment["JITHUB_README_AUDIT_PINNED_MANIFEST_PATH"] = null;
+        startInfo.Environment["JITHUB_README_AUDIT_PINNED_MANIFEST_RANK"] = null;
+        startInfo.Environment["JITHUB_README_AUDIT_PINNED_MANIFEST_SHA256"] = null;
+        startInfo.Environment["JITHUB_README_AUDIT_SAME_BYTE_README_ABSENT"] = null;
+        if (offlineSameBytePublicAudit)
+        {
+            startInfo.Environment["JITHUB_README_AUDIT_PINNED_MANIFEST_PATH"] =
+                Path.GetFullPath(pinnedManifestPath!);
+            startInfo.Environment["JITHUB_README_AUDIT_PINNED_MANIFEST_RANK"] =
+                pinnedManifestRank!.Value.ToString(CultureInfo.InvariantCulture);
+            startInfo.Environment["JITHUB_README_AUDIT_PINNED_MANIFEST_SHA256"] = pinnedManifestSha256;
+            if (!repository.Readme.Available)
+            {
+                startInfo.Environment["JITHUB_README_AUDIT_SAME_BYTE_README_ABSENT"] = "1";
+            }
+        }
         if (sameByteCorpusPath is not null)
         {
             if (string.IsNullOrWhiteSpace(sameByteCorpusPath) ||
@@ -1473,6 +1739,7 @@ internal static partial class ReadmeAuditProbe
                 if (!absentClose.CleanExit)
                     PreserveShutdownExceptionDiagnostics(dataRoot, output);
                 PreserveEvidenceFile(shutdownStageEvidence, Path.Combine(output, "shutdown-stage.json"));
+                PreserveEvidenceFile(svgStageEvidence, Path.Combine(output, "svg-work-stages.ndjson"));
                 PreserveEvidenceFile(svgPreflightEvidence, Path.Combine(output, "svg-preflight-rejections.ndjson"));
                 window = null;
                 Console.WriteLine("README native audit complete.");
@@ -1488,6 +1755,7 @@ internal static partial class ReadmeAuditProbe
                     PeakWorkingSetBytes = absentPeakWorkingSetBytes,
                     Text = treeText,
                     Width = width,
+                    ColorScheme = "light",
                     EstimatedContentHeight = height,
                     UnavailableImages = absentRawUnavailable,
                     RawUnavailableImages = absentRawUnavailable,
@@ -1498,7 +1766,38 @@ internal static partial class ReadmeAuditProbe
             }
 
             WriteNativeAuditStage("opening pinned README");
-            TryOpenReadme(window, repository.Readme.Path, TimeSpan.FromSeconds(45));
+            bool renderedTargetAlreadyOpen = false;
+            bool sawOtherRenderedSource = false;
+            if (sameByteCorpusPath is not null &&
+                !string.IsNullOrWhiteSpace(expectedReadmeSha256) &&
+                expectedReadmeBytes is > 0)
+            {
+                renderedTargetAlreadyOpen = WaitForAlreadyRenderedReadme(
+                    renderComplete,
+                    renderFailure,
+                    processId,
+                    repository.FullName,
+                    repository.CommitSha,
+                    repository.Readme.Path,
+                    repository.Readme.Sha,
+                    expectedReadmeSha256,
+                    expectedReadmeBytes.Value,
+                    TimeSpan.FromSeconds(15),
+                    out sawOtherRenderedSource);
+            }
+            if (!renderedTargetAlreadyOpen)
+            {
+                WriteNativeAuditStage("pinned README source was not already rendered; opening exact tree path");
+                TryOpenReadme(
+                    window,
+                    repository.Readme.Path,
+                    TimeSpan.FromSeconds(sameByteCorpusPath is null ? 45 : 30),
+                    allowExistingHost: !sawOtherRenderedSource);
+            }
+            else
+            {
+                WriteNativeAuditStage("pinned README source already rendered; skipping redundant UIA open");
+            }
             WriteNativeAuditStage("pinned README open request completed");
             if (!expectRenderedReadme)
             {
@@ -1533,11 +1832,16 @@ internal static partial class ReadmeAuditProbe
                     if (!sourceClose.CleanExit)
                         PreserveShutdownExceptionDiagnostics(dataRoot, output);
                     PreserveEvidenceFile(shutdownStageEvidence, Path.Combine(output, "shutdown-stage.json"));
+                    PreserveEvidenceFile(svgStageEvidence, Path.Combine(output, "svg-work-stages.ndjson"));
                     PreserveEvidenceFile(svgPreflightEvidence, Path.Combine(output, "svg-preflight-rejections.ndjson"));
-                    string? sourceReadmeSha256 = sameByteCorpusPath is null
+                    NativeSameByteReadmeSourceIdentity? sourceReadmeIdentity = sameByteCorpusPath is null
                         ? null
                         : ReadSameByteSourceEvidence(
-                            readmeSourceEvidence, output, expectedReadmeSha256, expectedReadmeBytes);
+                            readmeSourceEvidence,
+                            output,
+                            repository.Readme.Sha,
+                            expectedReadmeSha256,
+                            expectedReadmeBytes);
                     window = null;
                     Console.WriteLine("README native audit complete.");
                     return new NativeAuditResult
@@ -1558,7 +1862,8 @@ internal static partial class ReadmeAuditProbe
                         RenderFailure = sourceFailure,
                         CleanExit = sourceClose.CleanExit,
                         CloseFailure = sourceClose.Failure,
-                        ReadmeSourceSha256 = sourceReadmeSha256,
+                        ReadmeSourceSha256 = sourceReadmeIdentity?.RawSha256,
+                        ReadmeSourceDecodedTextSha256 = sourceReadmeIdentity?.DecodedTextSha256,
                     };
                 }
             }
@@ -1621,31 +1926,85 @@ internal static partial class ReadmeAuditProbe
             string? expectedReadmeGitBlobSha1 = sameByteCorpusPath is null
                 ? null
                 : repository.Readme.Sha;
-            NativeFirstViewportImagesReadySignal firstImagesReadySignal =
-                WaitForNativeFirstViewportImagesReadySignal(
+            NativeSameByteReadmeSourceIdentity? nativeReadmeIdentity = sameByteCorpusPath is null
+                ? null
+                : ReadSameByteSourceEvidence(
+                    readmeSourceEvidence,
+                    output,
+                    expectedReadmeGitBlobSha1,
+                    expectedReadmeSha256,
+                    expectedReadmeBytes);
+            NativeRenderCompleteSignal readinessRenderCompleteSignal = renderCompleteSignal;
+            NativeFirstViewportImagesReadySignal firstImagesReadySignal;
+            if (sameByteCorpusPath is not null)
+            {
+                (readinessRenderCompleteSignal, firstImagesReadySignal) =
+                    WaitForSameByteSourceReadyPair(
+                        renderComplete,
+                        firstViewportImagesReady,
+                        renderFailure,
+                        processId,
+                        appProcess!,
+                        firstViewportImagesReadyProgress,
+                        HostAutomationId,
+                        repository.FullName,
+                        repository.CommitSha,
+                        repository.Readme.Path,
+                        nativeReadmeIdentity!,
+                        TimeSpan.FromSeconds(15));
+                NativeFirstViewportImagesReadyContract.ValidateRenderIdentity(
+                    processId,
+                    HostAutomationId,
+                    hostReadySignal,
+                    readinessRenderCompleteSignal);
+            }
+            else
+            {
+                firstImagesReadySignal = WaitForNativeFirstViewportImagesReadySignal(
                     firstViewportImagesReady,
                     processId,
+                    appProcess!,
+                    firstViewportImagesReadyProgress,
                     HostAutomationId,
                     renderCompleteSignal,
                     expectedReadmeGitBlobSha1,
                     TimeSpan.FromSeconds(2));
+            }
             PreserveEvidenceFile(
                 firstViewportImagesReady,
                 Path.Combine(output, "first-viewport-images-ready.json"));
             PreserveEvidenceFile(
                 firstViewportImagesReadyProgress,
                 Path.Combine(output, "first-viewport-images-ready-progress.ndjson"));
+            NativeReadinessProgressDiagnostic.TryPreservePublicationOutcomes(
+                readinessPublicationOutcomes, preservedReadinessPublicationOutcomes);
             NativeFirstViewportImagesReadyContract.ValidateImagesReadySignal(
                 processId,
                 HostAutomationId,
                 expectedReadmeGitBlobSha1,
                 hostReadySignal,
-                renderCompleteSignal,
+                readinessRenderCompleteSignal,
                 firstImagesReadySignal);
+            double? sourceAvailableToFirstViewportImagesReadyMs = null;
+            if (sameByteCorpusPath is not null)
+            {
+                NativeSameByteReadmeSourceIdentity sourceIdentity = nativeReadmeIdentity!;
+                sourceAvailableToFirstViewportImagesReadyMs =
+                    NativeFirstViewportImagesReadyContract.ValidateSameByteSourceTiming(
+                        processId,
+                        HostAutomationId,
+                        sourceIdentity.ReadmeGitBlobSha1,
+                        sourceIdentity.RawByteSize,
+                        sourceIdentity.RawSha256,
+                        sourceIdentity.DecodedTextUtf8ByteSize,
+                        sourceIdentity.DecodedTextSha256,
+                        readinessRenderCompleteSignal,
+                        firstImagesReadySignal);
+            }
             double firstViewportImagesReadyMs =
                 (firstImagesReadySignal.Timestamp - hostReadySignal.Timestamp).TotalMilliseconds;
             double readyDetectionAfterRenderCompleteMs =
-                (firstImagesReadySignal.Timestamp - renderCompleteSignal.Timestamp).TotalMilliseconds;
+                (firstImagesReadySignal.Timestamp - readinessRenderCompleteSignal.Timestamp).TotalMilliseconds;
             if (!double.IsFinite(firstViewportImagesReadyMs) ||
                 firstViewportImagesReadyMs < firstRenderMs ||
                 !double.IsFinite(readyDetectionAfterRenderCompleteMs) ||
@@ -1669,11 +2028,25 @@ internal static partial class ReadmeAuditProbe
                 window,
                 host,
                 firstImagesReadySignal,
+                pinnedReadmeBaseUri,
                 output,
                 renderFailure,
                 appProcess,
                 captureRequest,
                 captureResponse);
+            if (!ReadmeAuditVisualComparisonPolicy.TryResolveCapturedViewportDipSize(
+                    visibleHostPixels.Width,
+                    visibleHostPixels.Height,
+                    rasterizationScale,
+                    traversal.Tiles.Select(tile => new ReadmeAuditVisualCapturedViewportSize(
+                        tile.Width,
+                        tile.Height)).ToArray(),
+                    out contentViewportWidth,
+                    out contentViewportHeight))
+            {
+                throw new InvalidDataException(
+                    "README renderer captures changed viewport size or did not match the measured physical host bounds.");
+            }
             ReadmeAuditPerformanceSnapshot fullPerformance = ReadPerformanceSnapshot(captureResponse);
             // Keep repository navigation, API loading, UIA stability checks, and
             // screenshot capture out of the renderer comparison. The lifecycle
@@ -1712,6 +2085,7 @@ internal static partial class ReadmeAuditProbe
                 PreserveEvidenceFile(imageResolutionEvidence, Path.Combine(output, "image-resolution.ndjson"));
             }
             PreserveEvidenceFile(rasterPreparationEvidence, Path.Combine(output, "raster-preparation.ndjson"));
+            PreserveEvidenceFile(imageTransportEvidence, Path.Combine(output, "image-transport.ndjson"));
             PreserveEvidenceFile(svgWorkerEvidence, Path.Combine(output, "svg-worker-timeouts.ndjson"));
             PreserveEvidenceFile(svgPreflightEvidence, Path.Combine(output, "svg-preflight-rejections.ndjson"));
 
@@ -1719,16 +2093,15 @@ internal static partial class ReadmeAuditProbe
             if (!close.CleanExit)
                 PreserveShutdownExceptionDiagnostics(dataRoot, output);
             PreserveEvidenceFile(shutdownStageEvidence, Path.Combine(output, "shutdown-stage.json"));
-            string? nativeReadmeSha256 = sameByteCorpusPath is null
-                ? null
-                : ReadSameByteSourceEvidence(
-                    readmeSourceEvidence, output, expectedReadmeSha256, expectedReadmeBytes);
+            PreserveEvidenceFile(svgStageEvidence, Path.Combine(output, "svg-work-stages.ndjson"));
             window = null;
             Console.WriteLine("README native audit complete.");
             return new NativeAuditResult
             {
+                ImageTransportDiagnosticsEnabled = imageTransportDiagnosticsEnabled,
                 FirstRenderMs = firstRenderMs,
                 FirstViewportImagesReadyMs = firstViewportImagesReadyMs,
+                SourceAvailableToFirstViewportImagesReadyMs = sourceAvailableToFirstViewportImagesReadyMs,
                 FirstViewportImageWait = new ReadmeAuditFirstViewportImageWait
                 {
                     ElapsedMilliseconds = firstImageWait.ElapsedMilliseconds,
@@ -1761,12 +2134,18 @@ internal static partial class ReadmeAuditProbe
                 Width = traversal.Width,
                 ContentViewportWidth = contentViewportWidth,
                 ContentViewportHeight = contentViewportHeight,
+                PhysicalContentViewportWidthPixels = visibleHostPixels.Width,
+                PhysicalContentViewportHeightPixels = visibleHostPixels.Height,
                 RasterizationScale = rasterizationScale,
+                ColorScheme = "light",
                 EstimatedContentHeight = traversal.EstimatedContentHeight,
                 Tiles = traversal.Tiles,
                 VisibleImageWaits = traversal.VisibleImageWaits,
                 HeadingObservations = traversal.Headings,
-                LinkObservations = traversal.Links,
+                LinkObservations = traversal.LinkDestinations.DistinctCanonicalDestinationCount,
+                LinkElementObservations = traversal.LinkDestinations.LinkElementCount,
+                RawLinkDestinationObservations = traversal.LinkDestinations.DistinctRawDestinationCount,
+                InvalidLinkDestinationObservations = traversal.LinkDestinations.InvalidDestinationCount,
                 ImageObservations = traversal.Images,
                 TableObservations = traversal.Tables,
                 CodeBlockObservations = traversal.CodeBlocks,
@@ -1779,7 +2158,9 @@ internal static partial class ReadmeAuditProbe
                 RenderFailure = failure,
                 CleanExit = close.CleanExit,
                 CloseFailure = close.Failure,
-                ReadmeSourceSha256 = nativeReadmeSha256,
+                ReadmeSourceSha256 = nativeReadmeIdentity?.RawSha256,
+                ReadmeSourceDecodedTextSha256 = nativeReadmeIdentity?.DecodedTextSha256,
+                VisualProfile = readinessRenderCompleteSignal.VisualProfile,
             };
         }
         catch
@@ -1790,9 +2171,14 @@ internal static partial class ReadmeAuditProbe
             PreserveEvidenceFile(
                 firstViewportImagesReadyProgress,
                 Path.Combine(output, "first-viewport-images-ready-progress.ndjson"));
+            NativeReadinessProgressDiagnostic.TryPreservePublicationOutcomes(
+                readinessPublicationOutcomes, preservedReadinessPublicationOutcomes);
             PreserveEvidenceFile(
                 rasterPreparationEvidence,
                 Path.Combine(output, "raster-preparation.ndjson"));
+            PreserveEvidenceFile(
+                svgStageEvidence,
+                Path.Combine(output, "svg-work-stages.ndjson"));
             PreserveStartupDiagnostics(dataRoot, output, launcher);
             throw;
         }
@@ -1820,13 +2206,16 @@ internal static partial class ReadmeAuditProbe
         }
     }
 
-    private static string ReadSameByteSourceEvidence(
+    private static NativeSameByteReadmeSourceIdentity ReadSameByteSourceEvidence(
         string evidencePath,
         string outputDirectory,
+        string? expectedReadmeGitBlobSha1,
         string? expectedSha256,
         long? expectedBytes)
     {
-        if (!IsSha256(expectedSha256) || expectedBytes is null or < 0 or > 16_777_216)
+        if (!IsGitSha1(expectedReadmeGitBlobSha1) ||
+            !IsSha256(expectedSha256) ||
+            expectedBytes is null or <= 0 or > 16_777_216)
             throw new InvalidDataException("Same-byte README capture identity is missing or over budget.");
 
         FileInfo info = new(evidencePath);
@@ -1838,21 +2227,35 @@ internal static partial class ReadmeAuditProbe
 
         using JsonDocument sourceEvidence = JsonDocument.Parse(File.ReadAllBytes(evidencePath));
         JsonElement root = sourceEvidence.RootElement;
-        string? actualSha256 = root.GetProperty("Sha256").GetString();
-        if (root.GetProperty("ByteSize").GetInt64() != expectedBytes ||
-            !string.Equals(actualSha256, expectedSha256, StringComparison.OrdinalIgnoreCase))
+        int actualRawByteSize = root.GetProperty("ByteSize").GetInt32();
+        string? actualRawSha256 = root.GetProperty("Sha256").GetString();
+        int decodedTextUtf8ByteSize = root.GetProperty("DecodedTextUtf8ByteSize").GetInt32();
+        string? decodedTextSha256 = root.GetProperty("DecodedTextSha256").GetString();
+        string? readmeGitBlobSha1 = root.GetProperty("ReadmeGitBlobSha1").GetString();
+        if (actualRawByteSize != expectedBytes ||
+            !string.Equals(actualRawSha256, expectedSha256, StringComparison.OrdinalIgnoreCase) ||
+            decodedTextUtf8ByteSize < 0 || decodedTextUtf8ByteSize > 50_331_648 ||
+            !IsSha256(decodedTextSha256) ||
+            !string.Equals(readmeGitBlobSha1, expectedReadmeGitBlobSha1, StringComparison.OrdinalIgnoreCase))
         {
-            throw new InvalidDataException("JitHub rendered README bytes outside the captured corpus.");
+            throw new InvalidDataException(
+                "JitHub's raw and decoded README source identity did not match the captured corpus.");
         }
 
         PreserveEvidenceFile(evidencePath, Path.Combine(outputDirectory, "readme-source.json"));
-        return actualSha256!;
+        return new NativeSameByteReadmeSourceIdentity(
+            actualRawByteSize,
+            actualRawSha256!,
+            decodedTextUtf8ByteSize,
+            decodedTextSha256!,
+            readmeGitBlobSha1!);
     }
 
     private static NativeTraversalResult CaptureNativeTiles(
         Window window,
         AutomationElement host,
         NativeFirstViewportImagesReadySignal firstImagesReadySignal,
+        Uri? pinnedReadmeBaseUri,
         string output,
         string renderFailurePath,
         Process appProcess,
@@ -1868,7 +2271,7 @@ internal static partial class ReadmeAuditProbe
         var tiles = new List<AuditTile>();
         var visibleImageWaits = new List<ReadmeAuditVisibleImageWait>();
         int headingObservations = 0;
-        int linkObservations = 0;
+        ReadmeLinkDestinationSummary linkDestinations = default;
         int imageObservations = 0;
         int tableObservations = 0;
         int codeBlockObservations = 0;
@@ -1881,6 +2284,9 @@ internal static partial class ReadmeAuditProbe
         bool reachedBottom = false;
         double terminalCandidatePercent = double.NaN;
         double terminalCandidateViewSize = double.NaN;
+        double lastPositionCorrectionViewportFraction = double.NaN;
+        double lastPositionCorrectionDocumentTop = double.NaN;
+        double lastPositionCorrectionOperationMilliseconds = double.NaN;
         var pendingViewportMovementOffsets = new List<double>();
         bool pendingNativeMovement = false;
         int positionCorrectionCount = 0;
@@ -1969,11 +2375,12 @@ internal static partial class ReadmeAuditProbe
             if (double.IsFinite(terminalCandidatePercent))
             {
                 scroll = host.Patterns.Scroll.Pattern;
-                bool hasTerminalEvidence = actual >= 100 - 0.000001 ||
-                    !scroll.VerticallyScrollable.ValueOrDefault;
-                if (Math.Abs(actual - terminalCandidatePercent) <= 0.01 &&
-                    Math.Abs(currentViewSize - terminalCandidateViewSize) <= 0.01 &&
-                    hasTerminalEvidence)
+                if (NativeScrollTerminalContract.IsStableTerminalConfirmation(
+                        terminalCandidatePercent,
+                        terminalCandidateViewSize,
+                        actual,
+                        currentViewSize,
+                        scroll.VerticallyScrollable.ValueOrDefault))
                 {
                     // A no-op in-app audit scroll is terminal only with independent
                     // 100% or non-scrollable evidence; this ready re-check
@@ -2006,8 +2413,27 @@ internal static partial class ReadmeAuditProbe
                 {
                     if (positionCorrectionCount >= MaximumViewportPositionCorrections)
                     {
+                        double priorCapturedViewportTop = tiles[^1].ScrollTopViewportUnits;
+                        WriteNativeViewportMovementFailure(
+                            output,
+                            index,
+                            positionCorrectionCount,
+                            actual,
+                            currentViewSize,
+                            priorCapturedViewportTop,
+                            scrollTopViewportUnits,
+                            movementSinceCapture,
+                            lastPositionCorrectionViewportFraction,
+                            lastPositionCorrectionDocumentTop,
+                            lastPositionCorrectionOperationMilliseconds);
                         throw new InvalidOperationException(
-                            $"README native viewport position {scrollTopViewportUnits:F4} could not be corrected to a monotonic overlapping step.");
+                            $"README native viewport position {scrollTopViewportUnits:F4} could not be corrected to a monotonic overlapping step " +
+                            $"(viewport {index}, previous {priorCapturedViewportTop:F4}, movement {movementSinceCapture:F4}, " +
+                            $"scroll {actual:F4}% / view {currentViewSize:F4}%, " +
+                            $"last correction {lastPositionCorrectionViewportFraction:F4} viewports, " +
+                            $"app offset {lastPositionCorrectionDocumentTop:F2} DIPs / " +
+                            $"{lastPositionCorrectionOperationMilliseconds:F2} ms, " +
+                            $"corrections {positionCorrectionCount}/{MaximumViewportPositionCorrections}).");
                     }
 
                     double correctionViewportFraction = movementSinceCapture > SameByteTraversalViewportStepRatio
@@ -2024,6 +2450,9 @@ internal static partial class ReadmeAuditProbe
                         captureRequestPath,
                         captureResponsePath,
                         correctionViewportFraction);
+                    lastPositionCorrectionViewportFraction = correctionViewportFraction;
+                    lastPositionCorrectionDocumentTop = correctionScrollResponse.DocumentTop;
+                    lastPositionCorrectionOperationMilliseconds = correctionScrollResponse.ScrollOperationMilliseconds;
                     automationProbe.Stop();
                     auditOverheadMs += Math.Max(
                         0,
@@ -2076,6 +2505,11 @@ internal static partial class ReadmeAuditProbe
                     firstImagesReadySignal,
                     capturedDocumentTop);
             }
+            if (!double.IsFinite(capturedDocumentTop) || capturedDocumentTop < 0)
+            {
+                throw new InvalidDataException(
+                    "README renderer capture did not report a finite document position.");
+            }
             width = Math.Max(width, tileWidth);
             viewportHeight = Math.Max(viewportHeight, tileHeight);
             double elapsedAtCaptureMs = traversalWall.Elapsed.TotalMilliseconds;
@@ -2084,6 +2518,7 @@ internal static partial class ReadmeAuditProbe
                 Index = index,
                 ScrollPercent = actual,
                 ScrollTopViewportUnits = scrollTopViewportUnits,
+                RendererDocumentTopDip = capturedDocumentTop,
                 VerticalViewSize = currentViewSize,
                 NativeViewportMovementOffsets = pendingViewportMovementOffsets.ToArray(),
                 Width = tileWidth,
@@ -2093,6 +2528,9 @@ internal static partial class ReadmeAuditProbe
                 NativeChargedAtCaptureMs = Math.Max(0, elapsedAtCaptureMs - auditOverheadMs),
             });
             positionCorrectionCount = 0;
+            lastPositionCorrectionViewportFraction = double.NaN;
+            lastPositionCorrectionDocumentTop = double.NaN;
+            lastPositionCorrectionOperationMilliseconds = double.NaN;
 
             WriteNativeTraversalProgress(
                 $"viewport {index:D4}/{MaximumTraversalViewports}; captured at {actual:F2}% (top {scrollTopViewportUnits:F4} viewports)");
@@ -2167,16 +2605,15 @@ internal static partial class ReadmeAuditProbe
                 auditOverheadMs += Math.Max(
                     0,
                     scrollChange.ElapsedMs - scrollChange.ProbeOverheadMs);
-                bool hasTerminalEvidence = settled >= 100 - 0.000001 || !settledScrollable;
-                if (double.IsFinite(settled) && double.IsFinite(settledViewSize) &&
-                    Math.Abs(settled - actual) <= 0.01 &&
-                    Math.Abs(settledViewSize - currentViewSize) <= 0.01 &&
-                    hasTerminalEvidence)
+                if (NativeScrollTerminalContract.IsTerminalNoOpCandidate(
+                        actual,
+                        settled,
+                        settledViewSize,
+                        settledScrollable))
                 {
-                    // A stable in-app-scroll no-op is terminal only when UIA
-                    // independently reports 100% or says the content is not
-                    // scrollable. Re-enter the image-ready loop to confirm the
-                    // extent after visible lazy images have settled.
+                    // Independent terminal position is only a candidate. The
+                    // next image-ready loop must confirm the same position and
+                    // stable view size after lazy-layout extent changes settle.
                     terminalCandidatePercent = Math.Clamp(settled, 0, 100);
                     terminalCandidateViewSize = settledViewSize;
                     terminalCandidateFound = true;
@@ -2215,13 +2652,51 @@ internal static partial class ReadmeAuditProbe
 
         Stopwatch semanticProbe = Stopwatch.StartNew();
         AutomationElement[] descendants = host.FindAllDescendants();
-        loadingAfterTraversal = descendants.Count(IsLoadingImage);
+        AutomationElement[] pendingImagePeers = descendants.Where(IsLoadingImage).ToArray();
+        PendingImagePeerIdentity[] pendingImagePeerIdentities = CapturePendingImagePeerIdentities(
+            pendingImagePeers,
+            host);
+        loadingAfterTraversal = pendingImagePeers.Length;
         semanticProbe.Stop();
         auditOverheadMs += semanticProbe.Elapsed.TotalMilliseconds;
+        if (pendingImagePeers.Length > 0)
+        {
+            WriteNativeTraversalProgress(
+                $"revisiting {pendingImagePeers.Length} documented pending image peer(s) over the covered path");
+            auditOverheadMs += RevisitPendingImages(
+                host,
+                ref scroll,
+                appProcess,
+                renderFailurePath,
+                traversalWall,
+                captureRequestPath,
+                captureResponsePath,
+                pendingImagePeerIdentities);
+
+            // Re-materialize the full semantic tree after the revisit. The
+            // original global zero-placeholder gate remains authoritative;
+            // checking only visible status would let unresolved offscreen peers
+            // disappear from the audit unnoticed.
+            semanticProbe.Restart();
+            descendants = host.FindAllDescendants();
+            loadingAfterTraversal = descendants.Count(IsLoadingImage);
+            semanticProbe.Stop();
+            auditOverheadMs += semanticProbe.Elapsed.TotalMilliseconds;
+        }
+
         if (loadingAfterTraversal > 0)
         {
             throw new InvalidOperationException(
-                $"README native full traversal left {loadingAfterTraversal} deferred image placeholder(s); the captured movement profile is incomplete.");
+                $"README native full traversal left {loadingAfterTraversal} deferred image placeholder(s) after traversal and any bounded revisit; the captured movement profile is incomplete.");
+        }
+        if (pendingImagePeers.Length > 0)
+        {
+            semanticProbe.Restart();
+            EnsurePendingImagePeersRemainDocumented(
+                pendingImagePeerIdentities,
+                descendants);
+            semanticProbe.Stop();
+            auditOverheadMs += semanticProbe.Elapsed.TotalMilliseconds;
         }
         semanticProbe.Restart();
         Dictionary<string, int> automationSemanticHistogram = descendants
@@ -2242,7 +2717,31 @@ internal static partial class ReadmeAuditProbe
                     () => element.Properties.HelpText.ValueOrDefault),
             })
             .ToArray();
-        WriteJson(Path.Combine(output, "automation-links.json"), nativeLinks);
+        linkDestinations = ReadmeLinkDestinationIdentity.Measure(
+            nativeLinks.Select(link => link.HelpText),
+            pinnedReadmeBaseUri);
+        WriteJson(
+            Path.Combine(output, "automation-links.json"),
+            nativeLinks.Select(link =>
+            {
+                bool hasRawDestination = !string.IsNullOrWhiteSpace(link.HelpText);
+                bool isCanonicalizable = ReadmeLinkDestinationIdentity.TryNormalizeDestination(
+                    link.HelpText,
+                    pinnedReadmeBaseUri,
+                    out Uri? normalizedDestination);
+                return new
+                {
+                    NameSha256 = HashSourceIdentity(link.Name),
+                    ClassName = link.ClassName,
+                    RawDestinationSha256 = hasRawDestination
+                        ? HashSourceIdentity(link.HelpText)
+                        : null,
+                    CanonicalDestinationSha256 = isCanonicalizable
+                        ? HashSourceIdentity(normalizedDestination!.AbsoluteUri.ToLowerInvariant())
+                        : null,
+                };
+            }).ToArray());
+        WriteJson(Path.Combine(output, "automation-link-summary.json"), linkDestinations);
         string[] nativeMermaidSources = descendants
             .Where(element => string.Equals(
                 ReadAutomationString(() => element.ClassName),
@@ -2258,11 +2757,6 @@ internal static partial class ReadmeAuditProbe
         // them, and JitHub exposes each as an operable MarkdownLinkedImage UIA
         // hyperlink. Compare distinct destinations so fragmented text anchors
         // do not inflate the native count; image payloads remain gated apart.
-        linkObservations = nativeLinks
-            .Select(link => link.HelpText)
-            .Where(destination => !string.IsNullOrWhiteSpace(destination))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Count();
         AutomationElement[] nativeImages = descendants.Where(element =>
             string.Equals(element.ClassName, "MarkdownImage", StringComparison.Ordinal) ||
             string.Equals(element.ClassName, "MarkdownLinkedImage", StringComparison.Ordinal) ||
@@ -2277,6 +2771,11 @@ internal static partial class ReadmeAuditProbe
         disclosureObservations = descendants.Count(element =>
             string.Equals(element.ClassName, "MarkdownDisclosure", StringComparison.Ordinal));
         loadingAfterTraversal = descendants.Count(IsLoadingImage);
+        if (loadingAfterTraversal > 0)
+        {
+            throw new InvalidOperationException(
+                $"README native full traversal left {loadingAfterTraversal} deferred image placeholder(s) during final semantic verification; the captured movement profile is incomplete.");
+        }
         semanticProbe.Stop();
         auditOverheadMs += semanticProbe.Elapsed.TotalMilliseconds;
         double viewSize = Math.Clamp(scroll.VerticalViewSize.ValueOrDefault, 0.1, 100);
@@ -2297,7 +2796,7 @@ internal static partial class ReadmeAuditProbe
             estimatedHeight,
             tiles,
             headingObservations,
-            linkObservations,
+            linkDestinations,
             imageObservations,
             tableObservations,
             codeBlockObservations,
@@ -2310,6 +2809,125 @@ internal static partial class ReadmeAuditProbe
             viewportStepRatio);
     }
 
+    private static PendingImagePeerIdentity[] CapturePendingImagePeerIdentities(
+        IReadOnlyList<AutomationElement> pendingImagePeers,
+        AutomationElement host)
+    {
+        if (pendingImagePeers.Count > MaximumPendingImagePeersForRevisit)
+        {
+            throw new InvalidOperationException(
+                $"README traversal found {pendingImagePeers.Count} pending image peers, above the {MaximumPendingImagePeersForRevisit}-peer revisit safety ceiling.");
+        }
+
+        Rectangle hostBounds = host.BoundingRectangle;
+        if (hostBounds.Width <= 0 || hostBounds.Height <= 0)
+        {
+            throw new InvalidOperationException(
+                "README traversal could not document the pending image peers because the host has no realized UIA bounds.");
+        }
+
+        var identities = new HashSet<string>(StringComparer.Ordinal);
+        var snapshots = new PendingImagePeerIdentity[pendingImagePeers.Count];
+        for (int index = 0; index < pendingImagePeers.Count; index++)
+        {
+            AutomationElement peer = pendingImagePeers[index];
+            Rectangle bounds = peer.BoundingRectangle;
+            if (bounds.Width <= 0 || bounds.Height <= 0)
+            {
+                throw new InvalidOperationException(
+                    $"README traversal found pending image peer {index} without realized UIA bounds; it cannot be safely revisited.");
+            }
+
+            string automationId = peer.Properties.AutomationId.ValueOrDefault ?? string.Empty;
+            string className = peer.ClassName ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(automationId))
+            {
+                throw new InvalidOperationException(
+                    $"README traversal found pending image peer {index} without a stable UIA identity; it cannot be safely reconciled after revisit.");
+            }
+
+            string identity = $"{peer.ControlType}|{className}|{automationId}";
+            if (!identities.Add(identity))
+            {
+                throw new InvalidOperationException(
+                    "README traversal found duplicate pending image peer identities; it cannot safely reconcile the revisit.");
+            }
+
+            snapshots[index] = new PendingImagePeerIdentity(identity);
+        }
+
+        return snapshots;
+    }
+
+    private static void EnsurePendingImagePeersRemainDocumented(
+        IReadOnlyList<PendingImagePeerIdentity> originalPendingPeers,
+        IReadOnlyList<AutomationElement> finalDescendants)
+    {
+        if (originalPendingPeers.Count == 0)
+            return;
+
+        var finalImagePeers = finalDescendants.Where(IsImagePeer).ToArray();
+        foreach (PendingImagePeerIdentity originalPeer in originalPendingPeers)
+        {
+            int matches = 0;
+            foreach (AutomationElement candidate in finalImagePeers)
+            {
+                if (string.Equals(
+                        GetPendingImagePeerIdentity(candidate),
+                        originalPeer.Identity,
+                        StringComparison.Ordinal))
+                {
+                    matches++;
+                }
+            }
+
+            if (matches != 1)
+            {
+                throw new InvalidOperationException(
+                    "README image revisit could not reconcile every originally pending, documented image peer with the final UIA tree.");
+            }
+        }
+    }
+
+    private static string GetPendingImagePeerIdentity(AutomationElement peer)
+    {
+        string automationId = peer.Properties.AutomationId.ValueOrDefault ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(automationId))
+        {
+            throw new InvalidOperationException(
+                "README image revisit encountered an image peer without a stable UIA identity.");
+        }
+
+        return $"{peer.ControlType}|{peer.ClassName ?? string.Empty}|{automationId}";
+    }
+
+    private static bool IsImagePeer(AutomationElement element) =>
+        element.ControlType == ControlType.Image ||
+        string.Equals(element.ClassName, "MarkdownLinkedImage", StringComparison.Ordinal);
+
+    private static TimeSpan GetRemainingNativeTraversalTime(
+        Stopwatch traversalWall,
+        string stage)
+    {
+        TimeSpan remaining = NativeTraversalTimeout - traversalWall.Elapsed;
+        if (remaining <= TimeSpan.Zero)
+        {
+            throw new TimeoutException(
+                $"README {stage} exceeded the original {NativeTraversalTimeout.TotalSeconds:F0}-second native traversal deadline.");
+        }
+
+        return remaining;
+    }
+
+    private static TimeSpan GetBoundedNativeTraversalWait(
+        Stopwatch traversalWall,
+        TimeSpan maximum,
+        string stage)
+    {
+        TimeSpan remaining = GetRemainingNativeTraversalTime(traversalWall, stage);
+        return remaining < maximum ? remaining : maximum;
+    }
+
     private static double RevisitPendingImages(
         AutomationElement host,
         ref IScrollPattern scroll,
@@ -2317,27 +2935,40 @@ internal static partial class ReadmeAuditProbe
         string renderFailurePath,
         Stopwatch traversalWall,
         string captureRequestPath,
-        string captureResponsePath)
+        string captureResponsePath,
+        IReadOnlyList<PendingImagePeerIdentity> pendingImagePeers)
     {
+        if (pendingImagePeers.Count is < 1 or > MaximumPendingImagePeersForRevisit)
+        {
+            throw new InvalidOperationException(
+                "README image revisit requires a nonempty, safety-bounded snapshot of documented pending image peers.");
+        }
+
         double auditOverheadMs = 0;
         int visited = 0;
         for (int index = 0; index < MaximumTraversalViewports; index++)
         {
-            if (traversalWall.Elapsed >= NativeTraversalTimeout)
-            {
-                throw new TimeoutException(
-                    $"README image completion exceeded the {NativeTraversalTimeout.TotalSeconds:F0}-second native deadline.");
-            }
+            _ = GetRemainingNativeTraversalTime(traversalWall, "image completion");
             if (appProcess.HasExited)
                 throw new InvalidOperationException("JitHub exited while completing deferred README images.");
             if (File.Exists(renderFailurePath))
                 throw new InvalidOperationException("JitHub reported a renderer exception while completing deferred images.");
 
             scroll = host.Patterns.Scroll.Pattern;
-            auditOverheadMs += WaitForScrollSettled(scroll, TimeSpan.FromSeconds(2));
+            auditOverheadMs += WaitForScrollSettled(
+                scroll,
+                GetBoundedNativeTraversalWait(
+                    traversalWall,
+                    TimeSpan.FromSeconds(2),
+                    "image revisit scroll settle"));
             // Only UIA probing is audit overhead. Time spent waiting for an
             // actual visible image remains part of native full-page latency.
-            VisibleImageWaitResult imageWait = WaitForVisibleImages(host, TimeSpan.FromSeconds(20));
+            VisibleImageWaitResult imageWait = WaitForVisibleImages(
+                host,
+                GetBoundedNativeTraversalWait(
+                    traversalWall,
+                    TimeSpan.FromSeconds(20),
+                    "image revisit visible-image wait"));
             auditOverheadMs += imageWait.ProbeOverheadMs;
             if (imageWait.TimedOut)
             {
@@ -2345,11 +2976,25 @@ internal static partial class ReadmeAuditProbe
             }
 
             scroll = host.Patterns.Scroll.Pattern;
+            auditOverheadMs += WaitForScrollSettled(
+                scroll,
+                GetBoundedNativeTraversalWait(
+                    traversalWall,
+                    TimeSpan.FromSeconds(2),
+                    "image revisit post-image settle"));
+            scroll = host.Patterns.Scroll.Pattern;
             Stopwatch probe = Stopwatch.StartNew();
             double actual = scroll.VerticalScrollPercent.ValueOrDefault;
+            double viewSize = scroll.VerticalViewSize.ValueOrDefault;
             bool verticallyScrollable = scroll.VerticallyScrollable.ValueOrDefault;
             probe.Stop();
             auditOverheadMs += probe.Elapsed.TotalMilliseconds;
+            if (!double.IsFinite(actual) || actual < 0 || actual > 100 ||
+                !double.IsFinite(viewSize) || viewSize <= 0 || viewSize > 100)
+            {
+                throw new InvalidOperationException(
+                    "README image revisit observed an invalid UIA scroll position or viewport size.");
+            }
             if (!verticallyScrollable || actual <= 0.000001)
             {
                 WriteNativeTraversalProgress($"revisit {visited:D4}; reached top at {actual:F2}%");
@@ -2362,21 +3007,36 @@ internal static partial class ReadmeAuditProbe
             RendererCaptureResponse scrollResponse = RequestRendererScroll(
                 captureRequestPath,
                 captureResponsePath,
-                -SameByteTraversalViewportStepRatio);
+                -SameByteTraversalViewportStepRatio,
+                traversalWall);
             scrollRequest.Stop();
             auditOverheadMs += Math.Max(
                 0,
                 scrollRequest.Elapsed.TotalMilliseconds - scrollResponse.ScrollOperationMilliseconds);
-            ScrollWaitResult scrollChange = WaitForScrollChange(scroll, actual, TimeSpan.FromSeconds(2));
+            scroll = host.Patterns.Scroll.Pattern;
+            ScrollWaitResult scrollChange = WaitForScrollChange(
+                scroll,
+                actual,
+                GetBoundedNativeTraversalWait(
+                    traversalWall,
+                    TimeSpan.FromSeconds(2),
+                    "image revisit scroll change"));
             auditOverheadMs += scrollChange.ProbeOverheadMs;
             if (scrollChange.Succeeded)
             {
                 continue;
             }
 
-            auditOverheadMs += WaitForScrollSettled(scroll, TimeSpan.FromSeconds(2));
+            scroll = host.Patterns.Scroll.Pattern;
+            auditOverheadMs += WaitForScrollSettled(
+                scroll,
+                GetBoundedNativeTraversalWait(
+                    traversalWall,
+                    TimeSpan.FromSeconds(2),
+                    "image revisit no-op settle"));
             probe.Restart();
             double settled = scroll.VerticalScrollPercent.ValueOrDefault;
+            double settledViewSize = scroll.VerticalViewSize.ValueOrDefault;
             bool settledScrollable = scroll.VerticallyScrollable.ValueOrDefault;
             probe.Stop();
             auditOverheadMs += probe.Elapsed.TotalMilliseconds;
@@ -2387,7 +3047,7 @@ internal static partial class ReadmeAuditProbe
             }
 
             throw new InvalidOperationException(
-                $"README image revisit stopped at {settled:F2}% before returning to the document start.");
+                $"README image revisit stopped at {settled:F2}% / {settledViewSize:F2}% before returning to the document start.");
         }
 
         throw new InvalidOperationException(
@@ -2398,6 +3058,51 @@ internal static partial class ReadmeAuditProbe
     {
         Console.WriteLine($"README native traversal {progress}.");
         Console.Out.Flush();
+    }
+
+    private static void WriteNativeViewportMovementFailure(
+        string outputDirectory,
+        int viewportIndex,
+        int correctionCount,
+        double scrollPercent,
+        double viewSize,
+        double previousViewportTop,
+        double currentViewportTop,
+        double movementSinceCapture,
+        double lastCorrectionViewportFraction,
+        double lastCorrectionDocumentTop,
+        double lastCorrectionOperationMilliseconds)
+    {
+        try
+        {
+            WriteJson(Path.Combine(outputDirectory, "native-viewport-movement-failure.json"), new
+            {
+                schemaVersion = 1,
+                viewportIndex,
+                correctionCount,
+                maximumCorrections = MaximumViewportPositionCorrections,
+                scrollPercent,
+                viewSizePercent = viewSize,
+                previousViewportTopUnits = previousViewportTop,
+                currentViewportTopUnits = currentViewportTop,
+                movementSinceCaptureUnits = movementSinceCapture,
+                lastCorrectionViewportFraction = double.IsFinite(lastCorrectionViewportFraction)
+                    ? lastCorrectionViewportFraction
+                    : (double?)null,
+                lastCorrectionDocumentTopDip = double.IsFinite(lastCorrectionDocumentTop)
+                    ? lastCorrectionDocumentTop
+                    : (double?)null,
+                lastCorrectionOperationMilliseconds = double.IsFinite(lastCorrectionOperationMilliseconds)
+                    ? lastCorrectionOperationMilliseconds
+                    : (double?)null,
+            });
+        }
+        catch (Exception)
+        {
+            // Movement telemetry contains only bounded geometry, but it is
+            // optional diagnostics and must not replace the hard traversal
+            // failure if the case artifact cannot be written.
+        }
     }
 
     private static void WriteNativeAuditStage(string stage)
@@ -2419,6 +3124,15 @@ internal static partial class ReadmeAuditProbe
 
     private static void EnsureNativeViewportCoverage(IReadOnlyList<AuditTile> tiles)
     {
+        if (!ReadmeAuditVisualComparisonPolicy.HasMonotonicNativeViewportCoverage(
+                tiles.Select(tile => new ReadmeAuditVisualCapturedViewport(
+                    tile.RendererDocumentTopDip,
+                    tile.Height)).ToArray()))
+        {
+            throw new InvalidOperationException(
+                "README renderer captures did not preserve a finite, monotonic, complete document-position profile.");
+        }
+
         if (tiles.Count is < 1 or > MaximumTraversalViewports ||
             !double.IsFinite(tiles[0].ScrollTopViewportUnits) ||
             Math.Abs(tiles[0].ScrollTopViewportUnits) > 1.0 / Math.Max(1, tiles[0].Height) ||
@@ -2497,66 +3211,165 @@ internal static partial class ReadmeAuditProbe
             : TokenCoverage(sourceSemantic, comparableNativeText);
         double textPrecision = TokenCoverage(native.Text, browser.Semantic.Text);
         double textFidelity = textCoverage;
-        var similarities = new List<double>();
+        var liveGitHubSimilarities = new List<double>();
+        var sameByteSimilarities = new List<double>();
+        int liveGitHubMatchedViewportCount = 0;
+        int sameByteMatchedViewportCount = 0;
         string browserDirectory = Path.Combine(caseDirectory, "browser");
         string nativeDirectory = Path.Combine(caseDirectory, "native");
-        Bitmap? cachedBrowserTile = null;
-        string? cachedBrowserTilePath = null;
-        try
+        using (var liveTileCache = new AuditTileBitmapCache(capacity: 2))
         {
+            bool haveLiveImageScale = TryGetTileImageScale(
+                browser.Tiles,
+                browserDirectory,
+                liveTileCache,
+                out double liveImagePixelsPerMetadataUnit);
             foreach (AuditTile tile in native.Tiles)
             {
                 using var nativeBitmap = new Bitmap(Path.Combine(nativeDirectory, tile.File));
-                double widthScale = browser.Semantic.Width / Math.Max(1, nativeBitmap.Width);
-                int browserViewportHeight = Math.Clamp(
-                    (int)Math.Round(nativeBitmap.Height * widthScale),
-                    1,
-                    Math.Max(1, (int)Math.Ceiling(browser.Semantic.Height)));
-                double fraction = Math.Clamp(tile.ScrollPercent / 100, 0, 1);
-                double browserScrollableHeight = Math.Max(
-                    0,
-                    browser.Semantic.Height - browserViewportHeight);
-                double browserY = fraction * browserScrollableHeight;
-                AuditTile browserTile = browser.Tiles
-                    .Where(candidate =>
-                        candidate.RelativeY <= browserY + 0.5 &&
-                        candidate.RelativeY + candidate.Height >= browserY + browserViewportHeight - 0.5)
-                    .OrderByDescending(candidate => candidate.RelativeY)
-                    .FirstOrDefault()
-                    ?? browser.Tiles
-                        .Where(candidate =>
-                            candidate.RelativeY <= browserY + 0.5 &&
-                            candidate.RelativeY + candidate.Height > browserY)
-                        .OrderByDescending(candidate => candidate.RelativeY)
-                        .FirstOrDefault()
-                    ?? browser.Tiles
-                        .OrderBy(candidate => Math.Abs(candidate.RelativeY - browserY))
-                        .First();
+                if (!haveLiveImageScale || native.ContentViewportWidth <= 0 || native.ContentViewportHeight <= 0)
+                    continue;
 
-                string browserTilePath = Path.Combine(browserDirectory, browserTile.File);
-                if (!string.Equals(cachedBrowserTilePath, browserTilePath, StringComparison.Ordinal))
+                double livePixelsPerNativeDip =
+                    browser.Tiles[0].Width / (double)native.ContentViewportWidth * liveImagePixelsPerMetadataUnit;
+                var position = new ReadmeAuditVisualViewportPosition(
+                    tile.ScrollTopViewportUnits,
+                    tile.ScrollPercent,
+                    tile.VerticalViewSize);
+                if (!ReadmeAuditVisualComparisonPolicy.TryGetViewportPixelBounds(
+                        position,
+                        native.ContentViewportHeight,
+                        livePixelsPerNativeDip,
+                        out int liveTopPixel,
+                        out int liveHeightPixels))
                 {
-                    cachedBrowserTile?.Dispose();
-                    cachedBrowserTile = new Bitmap(browserTilePath);
-                    cachedBrowserTilePath = browserTilePath;
+                    continue;
                 }
 
-                Bitmap browserTileBitmap = cachedBrowserTile
-                    ?? throw new InvalidOperationException("The browser comparison tile was not loaded.");
-                int cropHeight = Math.Min(browserViewportHeight, browserTileBitmap.Height);
-                int cropY = Math.Clamp(
-                    (int)Math.Round(browserY - browserTile.RelativeY),
-                    0,
-                    browserTileBitmap.Height - cropHeight);
-                using Bitmap browserViewport = browserTileBitmap.Clone(
-                    new Rectangle(0, cropY, browserTileBitmap.Width, cropHeight),
-                    PixelFormat.Format32bppArgb);
-                similarities.Add(CalculateSsim(nativeBitmap, browserViewport));
+                int liveWidthPixels = checked((int)Math.Round(
+                    native.ContentViewportWidth * livePixelsPerNativeDip));
+                using Bitmap? browserViewport = TryCreateComparisonViewport(
+                    browser.Tiles,
+                    browserDirectory,
+                    liveTileCache,
+                    liveImagePixelsPerMetadataUnit,
+                    liveTopPixel,
+                    liveWidthPixels,
+                    liveHeightPixels);
+                if (browserViewport is null)
+                    continue;
+
+                liveGitHubSimilarities.Add(CalculateSsim(nativeBitmap, browserViewport));
+                liveGitHubMatchedViewportCount++;
             }
         }
-        finally
+
+        string sameByteSsimReference = "unavailable";
+        string sameByteSsimUnavailableReason = "same-byte-replay-unavailable";
+        if (browser.SameByteReplay is { SchemaVersion: 3, Status: "passed" } visualReplay)
         {
-            cachedBrowserTile?.Dispose();
+            var nativeVisualProfile = new ReadmeAuditVisualViewportProfile(
+                native.ContentViewportWidth,
+                native.ContentViewportHeight,
+                native.RasterizationScale,
+                native.ColorScheme,
+                native.ContentViewportWidth,
+                native.ContentViewportWidth,
+                native.ContentViewportWidth);
+            var replayVisualProfile = new ReadmeAuditVisualViewportProfile(
+                visualReplay.Viewport.Width,
+                visualReplay.Viewport.Height,
+                visualReplay.Viewport.DeviceScaleFactor,
+                visualReplay.Viewport.ColorScheme,
+                visualReplay.Viewport.DocumentClientWidth,
+                visualReplay.Viewport.BodyClientWidth,
+                visualReplay.Viewport.ArticleWidth);
+            bool profileMatches = ReadmeAuditVisualComparisonPolicy.HasMatchedSourceProfile(
+                native.ReadmeSourceSha256,
+                browser.SameByteCorpus?.ReadmeSha256,
+                visualReplay.Source.ReadmeSha256,
+                nativeVisualProfile,
+                replayVisualProfile,
+                out sameByteSsimUnavailableReason);
+            if (profileMatches)
+            {
+                sameByteSsimReference = "same-byte-source-matched-viewport";
+                using var sameByteTileCache = new AuditTileBitmapCache(capacity: 2);
+                string sourceReplayDirectory = Path.Combine(browserDirectory, "source-replay");
+                bool haveSourceImageScale = TryGetTileImageScale(
+                    visualReplay.Tiles,
+                    sourceReplayDirectory,
+                    sameByteTileCache,
+                    out double sourceImagePixelsPerMetadataUnit);
+                foreach (AuditTile tile in native.Tiles)
+                {
+                    using var nativeBitmap = new Bitmap(Path.Combine(nativeDirectory, tile.File));
+                    if (!haveSourceImageScale ||
+                        !ReadmeAuditVisualComparisonPolicy.IsCaptureWithinMeasuredHostViewport(
+                            nativeBitmap.Width,
+                            nativeBitmap.Height,
+                            native.PhysicalContentViewportWidthPixels,
+                            native.PhysicalContentViewportHeightPixels))
+                        continue;
+
+                    // Use this captured native bitmap's exact physical extent:
+                    // the Edge CSS viewport can be ceil(DIP), making its raw
+                    // screenshot a few pixels larger at high DPI. The source
+                    // compositor crops to this physical rectangle before SSIM.
+                    int sourceWidthPixels = nativeBitmap.Width;
+                    // The source replay has already passed the exact-byte,
+                    // movement-profile, and terminal-clamp contracts. Use the
+                    // renderer's exact document top instead of UIA's inferred
+                    // percent/view-size top; Edge's shorter terminal viewport
+                    // is matched only with a documented clamp observation.
+                    bool terminalClampObserved = visualReplay.Timing.TerminalClampObservations?
+                        .Any(observation => observation.ViewportIndex == tile.Index &&
+                            observation.MovementIndex == -1) == true;
+                    if (!ReadmeAuditVisualComparisonPolicy.TryGetReplayViewportPixelBounds(
+                            tile.Index,
+                            native.Tiles.Count,
+                            visualReplay.Timing.CaptureOffsetsViewportUnits,
+                            tile.RendererDocumentTopDip ?? double.NaN,
+                            visualReplay.RenderedExtent.Height,
+                            terminalClampObserved,
+                            visualReplay.Viewport.Height,
+                            nativeBitmap.Height,
+                            sourceImagePixelsPerMetadataUnit,
+                            out int sourceTopPixel,
+                            out int sourceHeightPixels))
+                    {
+                        continue;
+                    }
+
+                    using Bitmap? sourceViewport = TryCreateComparisonViewport(
+                        visualReplay.Tiles,
+                        sourceReplayDirectory,
+                        sameByteTileCache,
+                        sourceImagePixelsPerMetadataUnit,
+                        sourceTopPixel,
+                        sourceWidthPixels,
+                        sourceHeightPixels);
+                    if (sourceViewport is null)
+                        continue;
+
+                    sameByteSimilarities.Add(CalculateSsim(nativeBitmap, sourceViewport));
+                    sameByteMatchedViewportCount++;
+                }
+
+                if (sameByteMatchedViewportCount == 0)
+                {
+                    sameByteSsimReference = "same-byte-source-no-covered-viewports";
+                    sameByteSsimUnavailableReason = "source-tile-coverage-incomplete";
+                }
+                else if (sameByteMatchedViewportCount < native.Tiles.Count)
+                {
+                    sameByteSsimUnavailableReason = "source-tile-coverage-incomplete";
+                }
+            }
+            else
+            {
+                sameByteSsimReference = "not-comparable";
+            }
         }
 
         double nativeToBrowserFirst = browser.Timing.FirstReadmeMs <= 0
@@ -2571,8 +3384,9 @@ internal static partial class ReadmeAuditProbe
         // image bytes already local on the same machine.
         double? nativeToSameByteFirst = browser.SameByteReplay is { SchemaVersion: 3, Status: "passed" } replay &&
             IsFinitePositive(replay.Timing.FirstViewportImagesReadyMs) &&
-            IsFinitePositive(native.FirstViewportImagesReadyMs)
-                ? native.FirstViewportImagesReadyMs / replay.Timing.FirstViewportImagesReadyMs
+            native.SourceAvailableToFirstViewportImagesReadyMs is double sourceAvailableReadyMs &&
+            IsFinitePositive(sourceAvailableReadyMs)
+                ? sourceAvailableReadyMs / replay.Timing.FirstViewportImagesReadyMs
                 : null;
         double? nativeToSameByteFull = browser.SameByteReplay is { SchemaVersion: 3, Status: "passed" } fullReplay &&
             IsFinitePositive(fullReplay.Timing.ChargedTraversalMs)
@@ -2650,12 +3464,29 @@ internal static partial class ReadmeAuditProbe
         return new ReadmeAuditComparison
         {
             FidelityReference = sourceSemantic is null ? "live-github-diagnostic" : "same-byte-source",
-            TileSsimReference = "live-github-cross-style-diagnostic",
+            TileSsimReference = "live-github-cross-style-diagnostic-absolute-offset",
+            SameByteTileSsimReference = sameByteSsimReference,
+            SameByteTileSsimUnavailableReason = sameByteSsimUnavailableReason,
             TextTokenCoverage = textCoverage,
             TextTokenPrecision = textPrecision,
             TextTokenFidelity = textFidelity,
-            MeanTileSsim = similarities.Count == 0 ? 0 : similarities.Average(),
-            MinimumTileSsim = similarities.Count == 0 ? 0 : similarities.Min(),
+            MeanTileSsim = liveGitHubSimilarities.Count == 0 ? 0 : liveGitHubSimilarities.Average(),
+            MinimumTileSsim = liveGitHubSimilarities.Count == 0 ? 0 : liveGitHubSimilarities.Min(),
+            LiveGitHubTileCoverage = native.Tiles.Count == 0
+                ? 0
+                : (double)liveGitHubMatchedViewportCount / native.Tiles.Count,
+            LiveGitHubMatchedViewportCount = liveGitHubMatchedViewportCount,
+            SameByteMeanTileSsim = sameByteSimilarities.Count == 0 ? null : sameByteSimilarities.Average(),
+            SameByteMinimumTileSsim = sameByteSimilarities.Count == 0 ? null : sameByteSimilarities.Min(),
+            SameByteTileCoverage = sameByteSsimReference.StartsWith(
+                    "same-byte-source-",
+                    StringComparison.Ordinal)
+                ? native.Tiles.Count == 0
+                    ? 0
+                    : (double)sameByteMatchedViewportCount / native.Tiles.Count
+                : null,
+            SameByteMatchedViewportCount = sameByteMatchedViewportCount,
+            SameByteTotalViewportCount = native.Tiles.Count,
             VisualStructureScore = visualStructureScore,
             LayoutExtentRatio = layoutExtentRatio,
             SourceBoundLayoutExtentRatio = sourceBoundLayoutExtentRatio,
@@ -2680,6 +3511,9 @@ internal static partial class ReadmeAuditProbe
             NativeHeadingObservations = native.HeadingObservations,
             BrowserLinkCount = browserDistinctLinks,
             NativeLinkObservations = native.LinkObservations,
+            NativeLinkElementObservations = native.LinkElementObservations,
+            NativeRawLinkDestinationObservations = native.RawLinkDestinationObservations,
+            NativeInvalidLinkDestinationObservations = native.InvalidLinkDestinationObservations,
             BrowserTableCount = sourceSemantic?.TableCount ?? browser.Semantic.Tables,
             NativeTableObservations = native.TableObservations,
             BrowserCodeBlockCount = sourceSemantic?.CodeBlockCount ?? browser.Semantic.CodeBlocks,
@@ -2930,14 +3764,16 @@ internal static partial class ReadmeAuditProbe
             writer.WriteLine($"- Native/live GitHub Edge full-page ratio (diagnostic): {FormatPercentiles(liveFullRatios)}");
         }
         writer.WriteLine();
-        writer.WriteLine("| Rank | Repository | Result | Text | Structure | Styled viewport SSIM | Native unavailable | Same-byte first ratio | Same-byte full ratio | Live GitHub first ratio (diagnostic) | Live GitHub full ratio (diagnostic) | Parse/extension ms | Setup ms | Initial layout ms | Layout CPU ms | Layout queue ms | Layout worker wall ms | Layout continuation ms | UI publication ms | Commit ms | Overlay reset ms | Plan construction ms | Visible realization ms | Embed realization ms | Highlight scheduling ms | Highlight retirement ms | Highlight band ms | Adornment/focus ms | Final notification ms |");
-        writer.WriteLine("| ---: | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |");
+        writer.WriteLine("| Rank | Repository | Result | Text | Structure | Same-byte viewport SSIM | Same-byte visual coverage | Live GitHub cross-style SSIM (diagnostic) | Native unavailable | Same-byte first ratio | Same-byte full ratio | Live GitHub first ratio (diagnostic) | Live GitHub full ratio (diagnostic) | Parse/extension ms | Setup ms | Initial layout ms | Layout CPU ms | Layout queue ms | Layout worker wall ms | Layout continuation ms | UI publication ms | Commit ms | Overlay reset ms | Plan construction ms | Visible realization ms | Embed realization ms | Highlight scheduling ms | Highlight retirement ms | Highlight band ms | Adornment/focus ms | Final notification ms |");
+        writer.WriteLine("| ---: | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |");
         foreach (ReadmeAuditCaseResult result in results)
         {
             writer.WriteLine(
                 $"| {result.Rank} | {result.FullName} | {result.Status} | " +
                 $"{result.Comparison?.TextTokenCoverage.ToString("P2", CultureInfo.InvariantCulture) ?? "n/a"} | " +
                 $"{result.Comparison?.VisualStructureScore.ToString("P2", CultureInfo.InvariantCulture) ?? "n/a"} | " +
+                $"{result.Comparison?.SameByteMeanTileSsim?.ToString("F3", CultureInfo.InvariantCulture) ?? "n/a"} | " +
+                $"{result.Comparison?.SameByteTileCoverage?.ToString("P1", CultureInfo.InvariantCulture) ?? "n/a"} | " +
                 $"{result.Comparison?.MeanTileSsim.ToString("F3", CultureInfo.InvariantCulture) ?? "n/a"} | " +
                 $"{result.Native?.UnavailableImages.ToString(CultureInfo.InvariantCulture) ?? "n/a"} | " +
                 $"{result.Comparison?.NativeToSameByteFirstRenderRatio?.ToString("F3", CultureInfo.InvariantCulture) ?? "n/a"} | " +
@@ -2971,7 +3807,11 @@ internal static partial class ReadmeAuditProbe
         }
     }
 
-    private static void TryOpenReadme(Window window, string readmePath, TimeSpan timeout)
+    private static void TryOpenReadme(
+        Window window,
+        string readmePath,
+        TimeSpan timeout,
+        bool allowExistingHost = true)
     {
         string expectedStatus = "path:" + readmePath;
         Stopwatch stopwatch = Stopwatch.StartNew();
@@ -2980,8 +3820,12 @@ internal static partial class ReadmeAuditProbe
         {
             try
             {
-                AutomationElement? host = window.FindFirstDescendant(cf => cf.ByAutomationId(HostAutomationId));
-                if (host is not null) return;
+                if (allowExistingHost)
+                {
+                    AutomationElement? host = window.FindFirstDescendant(
+                        cf => cf.ByAutomationId(HostAutomationId));
+                    if (host is not null) return;
+                }
                 AutomationElement? item = window.FindAllDescendants(cf => cf.ByControlType(ControlType.TreeItem))
                     .FirstOrDefault(element => string.Equals(
                         element.Properties.ItemStatus.ValueOrDefault,
@@ -3024,6 +3868,62 @@ internal static partial class ReadmeAuditProbe
         throw new TimeoutException(
             $"README host or tree item '{readmePath}' did not become available within {timeout.TotalSeconds:F0}s.",
             lastAutomationTimeout);
+    }
+
+    private static bool WaitForAlreadyRenderedReadme(
+        string renderCompletePath,
+        string renderFailurePath,
+        int processId,
+        string expectedRepositoryFullName,
+        string expectedRef,
+        string expectedPath,
+        string expectedReadmeGitBlobSha1,
+        string expectedRawSha256,
+        long expectedRawByteSize,
+        TimeSpan timeout,
+        out bool sawOtherRenderedSource)
+    {
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        sawOtherRenderedSource = false;
+        while (stopwatch.Elapsed < timeout)
+        {
+            if (File.Exists(renderFailurePath))
+                throw new InvalidOperationException(
+                    "Native Markdown rendering failed before the pinned README could be verified.");
+
+            if (File.Exists(renderCompletePath))
+            {
+                try
+                {
+                    NativeRenderCompleteSignal render =
+                        NativeFirstViewportImagesReadyContract.ReadRenderCompleteSignal(renderCompletePath);
+                    if (NativeFirstViewportImagesReadyContract.MatchesAlreadyRenderedReadme(
+                        render,
+                        processId,
+                        HostAutomationId,
+                        expectedRepositoryFullName,
+                        expectedRef,
+                        expectedPath,
+                        expectedReadmeGitBlobSha1,
+                        expectedRawSha256,
+                        expectedRawByteSize))
+                    {
+                        return true;
+                    }
+
+                    sawOtherRenderedSource = true;
+                }
+                catch (IOException)
+                {
+                    // The producer atomically replaces this file. A transient
+                    // sharing violation must not cause a false source match.
+                }
+            }
+
+            Thread.Sleep(20);
+        }
+
+        return false;
     }
 
     private static AutomationElement? WaitForSourceEditorOrRenderedHost(
@@ -3315,8 +4215,7 @@ internal static partial class ReadmeAuditProbe
     }
 
     private static bool IsLoadingImage(AutomationElement element) =>
-        (element.ControlType == ControlType.Image ||
-         string.Equals(element.ClassName, "MarkdownLinkedImage", StringComparison.Ordinal)) &&
+        IsImagePeer(element) &&
         !string.IsNullOrWhiteSpace(element.Properties.ItemStatus.ValueOrDefault);
 
     private static ScrollWaitResult WaitForScrollChange(
@@ -3379,26 +4278,194 @@ internal static partial class ReadmeAuditProbe
     private static NativeFirstViewportImagesReadySignal WaitForNativeFirstViewportImagesReadySignal(
         string path,
         int processId,
+        Process appProcess,
+        string progressPath,
         string expectedHost,
         NativeRenderCompleteSignal renderComplete,
         string? expectedReadmeGitBlobSha1,
         TimeSpan timeout)
     {
         Stopwatch stopwatch = Stopwatch.StartNew();
-        while (stopwatch.Elapsed < timeout)
+        IOException? lastReadFailure = null;
+        IntPtr appExitHandle = NativeMethods.OpenProcessExitHandle(processId);
+        try
         {
-            if (File.Exists(path))
+            while (stopwatch.Elapsed < timeout)
             {
-                return NativeFirstViewportImagesReadyContract.ReadImagesReadySignal(path);
+                EnsureAuditAppRunning(
+                    appProcess,
+                    appExitHandle,
+                    processId,
+                    progressPath,
+                    "first-viewport readiness signal");
+                if (File.Exists(path))
+                {
+                    try
+                    {
+                        NativeFirstViewportImagesReadySignal ready =
+                            NativeFirstViewportImagesReadyContract.ReadImagesReadySignal(path);
+                        if (ready.ProcessId == processId &&
+                            string.Equals(ready.Host, expectedHost, StringComparison.Ordinal) &&
+                            ready.Generation < renderComplete.Generation)
+                        {
+                            // A prior renderer generation may have published a
+                            // signal before the requested README assignment. Keep
+                            // waiting for the matching final generation rather
+                            // than accepting it as this case's readiness boundary.
+                            Thread.Sleep(20);
+                            continue;
+                        }
+
+                        return ready;
+                    }
+                    catch (IOException exception) when (stopwatch.Elapsed < timeout)
+                    {
+                        // The app publishes by replacing the signal file. A
+                        // concurrent Windows reader can briefly see a sharing
+                        // violation; retry that transient race, never waive the
+                        // required signal or its later identity validation.
+                        lastReadFailure = exception;
+                    }
+                }
+
+                Thread.Sleep(20);
             }
 
-            Thread.Sleep(10);
+            throw new TimeoutException(
+                $"The native renderer did not publish first-viewport readiness evidence within {timeout.TotalSeconds:0.###} seconds " +
+                $"for process {processId}, host '{expectedHost}', generation {renderComplete.Generation}, " +
+                $"README git blob SHA '{expectedReadmeGitBlobSha1 ?? "not-applicable"}'. " +
+                NativeReadinessProgressDiagnostic.ReadLastSummary(progressPath),
+                lastReadFailure);
         }
+        finally
+        {
+            NativeMethods.CloseProcessExitHandle(appExitHandle);
+        }
+    }
 
-        throw new TimeoutException(
-            $"The native renderer did not publish first-viewport readiness evidence within {timeout.TotalSeconds:0.###} seconds " +
-            $"for process {processId}, host '{expectedHost}', generation {renderComplete.Generation}, " +
-            $"README git blob SHA '{expectedReadmeGitBlobSha1 ?? "not-applicable"}'.");
+    private static (NativeRenderCompleteSignal RenderComplete, NativeFirstViewportImagesReadySignal Ready)
+        WaitForSameByteSourceReadyPair(
+            string renderCompletePath,
+            string readyPath,
+            string renderFailurePath,
+            int processId,
+            Process appProcess,
+            string progressPath,
+            string expectedHost,
+            string expectedRepositoryFullName,
+            string expectedRef,
+            string expectedPath,
+            NativeSameByteReadmeSourceIdentity expectedSourceIdentity,
+            TimeSpan timeout)
+    {
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        IOException? lastReadFailure = null;
+        string? lastSourceAdmissionFailureStatus = null;
+        IntPtr appExitHandle = NativeMethods.OpenProcessExitHandle(processId);
+        try
+        {
+            while (stopwatch.Elapsed < timeout)
+            {
+                EnsureAuditAppRunning(
+                    appProcess,
+                    appExitHandle,
+                    processId,
+                    progressPath,
+                    "source-admitted first-viewport readiness");
+                if (File.Exists(renderFailurePath))
+                {
+                    string details;
+                    try { details = File.ReadAllText(renderFailurePath); }
+                    catch (IOException) { details = "The renderer reported a failure."; }
+                    throw new InvalidOperationException(
+                        $"Native Markdown rendering failed before source-admitted readiness.{Environment.NewLine}{details}");
+                }
+
+                if (File.Exists(renderCompletePath) && File.Exists(readyPath))
+                {
+                    try
+                    {
+                        NativeRenderCompleteSignal renderComplete =
+                            NativeFirstViewportImagesReadyContract.ReadRenderCompleteSignal(renderCompletePath);
+                        NativeFirstViewportImagesReadySignal ready =
+                            NativeFirstViewportImagesReadyContract.ReadImagesReadySignal(readyPath);
+                        if (renderComplete.SameByteReadmeSourceAdmissionFailure is { } failure &&
+                            failure.Generation == renderComplete.Generation &&
+                            string.Equals(failure.Host, expectedHost, StringComparison.Ordinal))
+                        {
+                            lastSourceAdmissionFailureStatus = failure.Status;
+                        }
+                        NativeSameByteReadmeSourceAdmissionSignal? admission = renderComplete.SameByteReadmeSourceAdmission;
+                        if (admission is not null &&
+                            NativeFirstViewportImagesReadyContract.MatchesAlreadyRenderedReadme(
+                                renderComplete,
+                                processId,
+                                expectedHost,
+                                expectedRepositoryFullName,
+                                expectedRef,
+                                expectedPath,
+                                expectedSourceIdentity.ReadmeGitBlobSha1,
+                                expectedSourceIdentity.RawSha256,
+                                expectedSourceIdentity.RawByteSize) &&
+                            admission.ProcessId == processId &&
+                            string.Equals(admission.Host, expectedHost, StringComparison.Ordinal) &&
+                            admission.Generation == renderComplete.Generation &&
+                            admission.RawByteSize == expectedSourceIdentity.RawByteSize &&
+                            string.Equals(admission.RawSha256, expectedSourceIdentity.RawSha256, StringComparison.OrdinalIgnoreCase) &&
+                            admission.DecodedTextUtf8ByteSize == expectedSourceIdentity.DecodedTextUtf8ByteSize &&
+                            string.Equals(admission.DecodedTextSha256, expectedSourceIdentity.DecodedTextSha256, StringComparison.OrdinalIgnoreCase) &&
+                            string.Equals(admission.ReadmeGitBlobSha1, expectedSourceIdentity.ReadmeGitBlobSha1, StringComparison.OrdinalIgnoreCase) &&
+                            ready.ProcessId == processId &&
+                            string.Equals(ready.Host, expectedHost, StringComparison.Ordinal) &&
+                            ready.Generation == renderComplete.Generation &&
+                            ready.ViewportPaintGeneration == renderComplete.Generation)
+                        {
+                            return (renderComplete, ready);
+                        }
+                    }
+                    catch (IOException exception) when (stopwatch.Elapsed < timeout)
+                    {
+                        // The two signals are independently atomically replaced.
+                        // Retry only a transient Windows sharing violation; a
+                        // structurally invalid or mismatched pair is never accepted.
+                        lastReadFailure = exception;
+                    }
+                }
+
+                Thread.Sleep(20);
+            }
+
+            string failureDiagnostic = lastSourceAdmissionFailureStatus is null
+                ? string.Empty
+                : $" Bounded source-admission status: '{lastSourceAdmissionFailureStatus}'.";
+            throw new TimeoutException(
+                $"The native renderer did not publish matching source-admitted render and viewport-ready signals within {timeout.TotalSeconds:0.###} seconds " +
+                $"for process {processId}, host '{expectedHost}', README git blob SHA '{expectedSourceIdentity.ReadmeGitBlobSha1}'." +
+                failureDiagnostic + " " + NativeReadinessProgressDiagnostic.ReadLastSummary(progressPath),
+                lastReadFailure);
+        }
+        finally
+        {
+            NativeMethods.CloseProcessExitHandle(appExitHandle);
+        }
+    }
+
+    private static void EnsureAuditAppRunning(
+        Process appProcess,
+        IntPtr appExitHandle,
+        int processId,
+        string readinessProgressPath,
+        string waitDescription)
+    {
+        appProcess.Refresh();
+        if (!appProcess.HasExited)
+            return;
+
+        uint exitCode = NativeMethods.GetProcessExitCode(appExitHandle);
+        throw new InvalidOperationException(
+            $"The native app process {processId} exited with code 0x{exitCode:X8} while waiting for {waitDescription}. " +
+            NativeReadinessProgressDiagnostic.ReadLastSummary(readinessProgressPath));
     }
 
     private static ReadmeAuditPerformanceSnapshot ReadPerformanceSnapshot(string path)
@@ -3524,8 +4591,16 @@ internal static partial class ReadmeAuditProbe
         string responsePath,
         string? outputPath,
         bool save,
-        double? scrollViewportFraction = null)
+        double? scrollViewportFraction = null,
+        TimeSpan? responseTimeout = null,
+        Stopwatch? absoluteDeadlineClock = null,
+        TimeSpan? absoluteDeadline = null)
     {
+        if ((absoluteDeadlineClock is null) != (absoluteDeadline is null))
+            throw new ArgumentException("An absolute deadline requires both a clock and deadline value.");
+        if (responseTimeout is { } boundedResponseTimeout && boundedResponseTimeout <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(responseTimeout));
+
         if (scrollViewportFraction is double requestedFraction &&
             (!double.IsFinite(requestedFraction) || requestedFraction == 0 ||
              Math.Abs(requestedFraction) > MaximumNativeScrollViewportFraction))
@@ -3538,6 +4613,7 @@ internal static partial class ReadmeAuditProbe
         Exception? lastFailure = null;
         for (int attempt = 0; attempt < 5; attempt++)
         {
+            ThrowIfRendererRequestDeadlineExpired(absoluteDeadlineClock, absoluteDeadline);
             string requestId = Guid.NewGuid().ToString("N");
             string temporaryPath = requestPath + $".{requestId}.tmp";
             bool sendAttempted = false;
@@ -3551,6 +4627,7 @@ internal static partial class ReadmeAuditProbe
                     save,
                     scrollViewportFraction);
                 File.WriteAllText(temporaryPath, JsonSerializer.Serialize(request, JsonOptions));
+                ThrowIfRendererRequestDeadlineExpired(absoluteDeadlineClock, absoluteDeadline);
                 sendAttempted = true;
                 File.Move(temporaryPath, requestPath, overwrite: true);
             }
@@ -3565,7 +4642,10 @@ internal static partial class ReadmeAuditProbe
 
                 lastFailure = exception;
                 TryDeleteAuditFile(temporaryPath);
-                Thread.Sleep(50 * (attempt + 1));
+                SleepWithinRendererRequestDeadline(
+                    50 * (attempt + 1),
+                    absoluteDeadlineClock,
+                    absoluteDeadline);
                 continue;
             }
             catch (UnauthorizedAccessException exception)
@@ -3579,12 +4659,17 @@ internal static partial class ReadmeAuditProbe
 
                 lastFailure = exception;
                 TryDeleteAuditFile(temporaryPath);
-                Thread.Sleep(50 * (attempt + 1));
+                SleepWithinRendererRequestDeadline(
+                    50 * (attempt + 1),
+                    absoluteDeadlineClock,
+                    absoluteDeadline);
                 continue;
             }
 
             Stopwatch stopwatch = Stopwatch.StartNew();
-            while (stopwatch.Elapsed < TimeSpan.FromSeconds(30))
+            TimeSpan requestTimeout = responseTimeout ?? RendererRequestResponseTimeout;
+            while (stopwatch.Elapsed < requestTimeout &&
+                   !IsRendererRequestDeadlineExpired(absoluteDeadlineClock, absoluteDeadline))
             {
                 try
                 {
@@ -3623,9 +4708,13 @@ internal static partial class ReadmeAuditProbe
                 {
                     lastFailure = exception;
                 }
-                Thread.Sleep(25);
+                SleepWithinRendererRequestDeadline(
+                    25,
+                    absoluteDeadlineClock,
+                    absoluteDeadline);
             }
 
+            ThrowIfRendererRequestDeadlineExpired(absoluteDeadlineClock, absoluteDeadline);
             if (scrollViewportFraction is not null)
             {
                 throw new TimeoutException(
@@ -3644,14 +4733,29 @@ internal static partial class ReadmeAuditProbe
     private static RendererCaptureResponse RequestRendererScroll(
         string requestPath,
         string responsePath,
-        double viewportFraction)
+        double viewportFraction,
+        Stopwatch? traversalWall = null)
     {
+        TimeSpan? responseTimeout = null;
+        if (traversalWall is not null)
+        {
+            TimeSpan remainingTraversalTime = GetRemainingNativeTraversalTime(
+                traversalWall,
+                "image revisit scroll request");
+            responseTimeout = remainingTraversalTime < RendererRequestResponseTimeout
+                ? remainingTraversalTime
+                : RendererRequestResponseTimeout;
+        }
+
         RendererCaptureResponse response = RequestRendererCapture(
             requestPath,
             responsePath,
             outputPath: null,
             save: false,
-            scrollViewportFraction: viewportFraction);
+            scrollViewportFraction: viewportFraction,
+            responseTimeout: responseTimeout,
+            absoluteDeadlineClock: traversalWall,
+            absoluteDeadline: traversalWall is null ? null : NativeTraversalTimeout);
         if (!double.IsFinite(response.DocumentTop) || response.DocumentTop < 0 ||
             !double.IsFinite(response.ScrollOperationMilliseconds) ||
             response.ScrollOperationMilliseconds <= 0)
@@ -3661,6 +4765,45 @@ internal static partial class ReadmeAuditProbe
         }
 
         return response;
+    }
+
+    private static bool IsRendererRequestDeadlineExpired(
+        Stopwatch? deadlineClock,
+        TimeSpan? deadline) =>
+        deadlineClock is not null && deadline is TimeSpan absoluteDeadlineValue &&
+        deadlineClock.Elapsed >= absoluteDeadlineValue;
+
+    private static void ThrowIfRendererRequestDeadlineExpired(
+        Stopwatch? deadlineClock,
+        TimeSpan? deadline)
+    {
+        if (IsRendererRequestDeadlineExpired(deadlineClock, deadline))
+        {
+            throw new TimeoutException(
+                $"README image revisit exceeded the original {NativeTraversalTimeout.TotalSeconds:F0}-second native traversal deadline while waiting for its in-app scroll request.");
+        }
+    }
+
+    private static void SleepWithinRendererRequestDeadline(
+        int requestedMilliseconds,
+        Stopwatch? deadlineClock,
+        TimeSpan? deadline)
+    {
+        if (deadlineClock is null || deadline is null)
+        {
+            Thread.Sleep(requestedMilliseconds);
+            return;
+        }
+
+        TimeSpan remaining = deadline.Value - deadlineClock.Elapsed;
+        if (remaining <= TimeSpan.Zero)
+            return;
+
+        int boundedMilliseconds = Math.Min(
+            requestedMilliseconds,
+            Math.Max(0, (int)Math.Floor(remaining.TotalMilliseconds)));
+        if (boundedMilliseconds > 0)
+            Thread.Sleep(boundedMilliseconds);
     }
 
     private static void TryDeleteAuditFile(string path)
@@ -4012,6 +5155,137 @@ internal static partial class ReadmeAuditProbe
     private static double RatioFidelity(double ratio) =>
         !double.IsFinite(ratio) || ratio <= 0 ? 0 : Math.Min(ratio, 1 / ratio);
 
+    private static Bitmap? TryCreateComparisonViewport(
+        IReadOnlyList<AuditTile> sourceTiles,
+        string sourceDirectory,
+        AuditTileBitmapCache bitmapCache,
+        double pixelsPerMetadataUnit,
+        int viewportTopPixel,
+        int viewportWidthPixels,
+        int viewportHeightPixels)
+    {
+        ReadmeAuditVisualTile[] geometry = sourceTiles
+            .Select(tile => new ReadmeAuditVisualTile(
+                tile.Index,
+                tile.RelativeY,
+                checked((int)Math.Round(tile.Width)),
+                checked((int)Math.Round(tile.Height)),
+                tile.File))
+            .ToArray();
+        if (!ReadmeAuditVisualComparisonPolicy.TryCreateTileSegments(
+                geometry,
+                viewportTopPixel,
+                viewportWidthPixels,
+                viewportHeightPixels,
+                pixelsPerMetadataUnit,
+                out IReadOnlyList<ReadmeAuditVisualTileSegment> segments))
+        {
+            return null;
+        }
+
+        Dictionary<int, AuditTile> sourceTilesByIndex = sourceTiles.ToDictionary(tile => tile.Index);
+        var viewport = new Bitmap(viewportWidthPixels, viewportHeightPixels, PixelFormat.Format32bppArgb);
+        try
+        {
+            using Graphics graphics = Graphics.FromImage(viewport);
+            graphics.Clear(Color.Transparent);
+            foreach (ReadmeAuditVisualTileSegment segment in segments)
+            {
+                Bitmap source = bitmapCache.Get(Path.Combine(sourceDirectory, segment.File));
+                AuditTile sourceTile = sourceTilesByIndex[segment.TileIndex];
+                int expectedSourceWidth = checked((int)Math.Round(sourceTile.Width * pixelsPerMetadataUnit));
+                int expectedSourceHeight = checked((int)Math.Round(sourceTile.Height * pixelsPerMetadataUnit));
+                if (source.Width != expectedSourceWidth || source.Height != expectedSourceHeight ||
+                    segment.SourceY < 0 || segment.SourceY + segment.Height > source.Height)
+                {
+                    throw new InvalidDataException("README screenshot tile geometry did not match its image bytes.");
+                }
+
+                graphics.DrawImage(
+                    source,
+                    new Rectangle(0, segment.DestinationY, viewportWidthPixels, segment.Height),
+                    new Rectangle(0, segment.SourceY, viewportWidthPixels, segment.Height),
+                    GraphicsUnit.Pixel);
+            }
+
+            return viewport;
+        }
+        catch
+        {
+            viewport.Dispose();
+            throw;
+        }
+    }
+
+    private static bool TryGetTileImageScale(
+        IReadOnlyList<AuditTile> sourceTiles,
+        string sourceDirectory,
+        AuditTileBitmapCache bitmapCache,
+        out double pixelsPerMetadataUnit)
+    {
+        pixelsPerMetadataUnit = 0;
+        if (sourceTiles.Count == 0)
+            return false;
+
+        AuditTile firstTile = sourceTiles[0];
+        if (!double.IsFinite(firstTile.Width) || firstTile.Width <= 0 ||
+            !double.IsFinite(firstTile.Height) || firstTile.Height <= 0)
+        {
+            return false;
+        }
+
+        Bitmap firstImage = bitmapCache.Get(Path.Combine(sourceDirectory, firstTile.File));
+        double horizontalScale = firstImage.Width / firstTile.Width;
+        double verticalScale = firstImage.Height / firstTile.Height;
+        if (!double.IsFinite(horizontalScale) || horizontalScale is < 0.5 or > 4 ||
+            !double.IsFinite(verticalScale) || Math.Abs(horizontalScale - verticalScale) > 0.000001)
+        {
+            return false;
+        }
+
+        pixelsPerMetadataUnit = horizontalScale;
+        return true;
+    }
+
+    private sealed class AuditTileBitmapCache(int capacity) : IDisposable
+    {
+        private readonly Dictionary<string, Bitmap> _bitmaps = new(StringComparer.OrdinalIgnoreCase);
+        private readonly LinkedList<string> _mostRecentlyUsed = new();
+
+        public Bitmap Get(string path)
+        {
+            if (_bitmaps.TryGetValue(path, out Bitmap? cached))
+            {
+                _mostRecentlyUsed.Remove(path);
+                _mostRecentlyUsed.AddFirst(path);
+                return cached;
+            }
+
+            if (capacity < 1)
+                throw new InvalidOperationException("README screenshot tile cache capacity must be positive.");
+
+            if (_bitmaps.Count >= capacity && _mostRecentlyUsed.Last is { } leastRecent)
+            {
+                _mostRecentlyUsed.RemoveLast();
+                _bitmaps.Remove(leastRecent.Value, out Bitmap? evicted);
+                evicted?.Dispose();
+            }
+
+            var bitmap = new Bitmap(path);
+            _bitmaps.Add(path, bitmap);
+            _mostRecentlyUsed.AddFirst(path);
+            return bitmap;
+        }
+
+        public void Dispose()
+        {
+            foreach (Bitmap bitmap in _bitmaps.Values)
+                bitmap.Dispose();
+            _bitmaps.Clear();
+            _mostRecentlyUsed.Clear();
+        }
+    }
+
     private static double CalculateSsim(Bitmap left, Bitmap right)
     {
         const int size = 128;
@@ -4083,10 +5357,7 @@ internal static partial class ReadmeAuditProbe
 
     private static void PreserveEvidenceFile(string source, string destination)
     {
-        if (File.Exists(source))
-        {
-            File.Copy(source, destination, overwrite: true);
-        }
+        EvidenceFileSnapshot.PreserveIfPresent(source, destination, TimeSpan.FromSeconds(2));
     }
 
     private static void PreserveSanitizedEvidenceFile(string source, string destination)
@@ -4193,12 +5464,17 @@ internal static partial class ReadmeAuditProbe
             return CountNonEmptyLines(path);
         }
 
-        string[] visibleSources = renderedBrowserImages
-            .Where(IsVisibleRenderedBrowserImage)
+        BrowserImage[] visibleImages = renderedBrowserImages.Where(IsVisibleRenderedBrowserImage).ToArray();
+        string[] visibleSources = visibleImages
             .SelectMany(image => new[] { image.Source, image.CurrentSource })
             .Where(source => !string.IsNullOrWhiteSpace(source))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
+        var visibleSourceMatchHashes = new HashSet<string>(StringComparer.Ordinal);
+        foreach (string source in visibleSources)
+        {
+            AddImageSourceMatchHashes(visibleSourceMatchHashes, source);
+        }
         int count = 0;
         foreach (string line in File.ReadLines(path))
         {
@@ -4210,14 +5486,39 @@ internal static partial class ReadmeAuditProbe
             try
             {
                 using JsonDocument document = JsonDocument.Parse(line);
-                if (!document.RootElement.TryGetProperty("Source", out JsonElement sourceProperty))
+                JsonElement root = document.RootElement;
+                var sourceMatchHashes = new HashSet<string>(StringComparer.Ordinal);
+                if (root.TryGetProperty("SourceSha256", out JsonElement sourceSha256) &&
+                    sourceSha256.ValueKind == JsonValueKind.String)
                 {
-                    count++;
+                    sourceMatchHashes.Add(sourceSha256.GetString() ?? string.Empty);
+                }
+                if (root.TryGetProperty("SourceMatchSha256", out JsonElement matchHashes) &&
+                    matchHashes.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (JsonElement matchHash in matchHashes.EnumerateArray())
+                    {
+                        if (matchHash.ValueKind == JsonValueKind.String)
+                            sourceMatchHashes.Add(matchHash.GetString() ?? string.Empty);
+                    }
+                }
+
+                bool hasSourceIdentity = sourceMatchHashes.Count > 0;
+                if (!hasSourceIdentity && root.TryGetProperty("Source", out JsonElement legacySource) &&
+                    legacySource.ValueKind == JsonValueKind.String)
+                {
+                    // Compatibility with audit artifacts captured before source
+                    // identities were redacted.
+                    string source = legacySource.GetString() ?? string.Empty;
+                    if (visibleSources.Any(candidate =>
+                        ImageSourcesReferToSameAsset(source, candidate)))
+                    {
+                        count++;
+                    }
                     continue;
                 }
 
-                string source = sourceProperty.GetString() ?? string.Empty;
-                if (visibleSources.Any(candidate => ImageSourcesReferToSameAsset(source, candidate)))
+                if (!hasSourceIdentity || sourceMatchHashes.Overlaps(visibleSourceMatchHashes))
                 {
                     count++;
                 }
@@ -4231,6 +5532,75 @@ internal static partial class ReadmeAuditProbe
         }
 
         return count;
+    }
+
+    private static IEnumerable<string> GetImageSourceMatchHashes(string source)
+    {
+        if (string.IsNullOrWhiteSpace(source) || source.Length > MaximumImageSourceMatchLength)
+            yield break;
+
+        string normalized = NormalizeImageSourceForComparison(source);
+        yield return HashSha256(Encoding.UTF8.GetBytes(source));
+        yield return HashImageSourceMatch("normalized", normalized.ToLowerInvariant());
+
+        if (Uri.TryCreate(normalized, UriKind.Absolute, out Uri? uri))
+        {
+            string? requestUri = null;
+            try
+            {
+                requestUri = uri.GetComponents(UriComponents.HttpRequestUrl, UriFormat.Unescaped);
+            }
+            catch (UriFormatException)
+            {
+            }
+
+            if (requestUri is not null)
+                yield return HashImageSourceMatch("request-uri", requestUri.ToLowerInvariant());
+        }
+
+        string candidatePath = Uri.TryCreate(normalized, UriKind.Absolute, out Uri? absoluteCandidate)
+            ? NormalizeImageSourceForComparison(absoluteCandidate.AbsolutePath).TrimStart('/')
+            : normalized.TrimStart('.', '/');
+        if (candidatePath.Length == 0)
+            yield break;
+
+        yield return HashImageSourceMatch("relative-suffix", candidatePath.ToLowerInvariant());
+        int separator = candidatePath.IndexOf('/');
+        int suffixCount = 1;
+        while (separator >= 0 && suffixCount < 64)
+        {
+            int suffixStart = separator + 1;
+            if (suffixStart < candidatePath.Length)
+            {
+                yield return HashImageSourceMatch(
+                    "relative-suffix",
+                    candidatePath[suffixStart..].ToLowerInvariant());
+                suffixCount++;
+            }
+            separator = candidatePath.IndexOf('/', suffixStart);
+        }
+    }
+
+    private static void AddImageSourceMatchHashes(HashSet<string> hashes, string source)
+    {
+        foreach (string hash in GetImageSourceMatchHashes(source))
+            hashes.Add(hash);
+    }
+
+    private static string HashImageSourceMatch(string kind, string value) =>
+        HashSha256(Encoding.UTF8.GetBytes(string.Concat("image-source-match\0", kind, "\0", value)));
+
+    private static string NormalizeImageSourceForComparison(string source)
+    {
+        string trimmed = source.Trim().Replace('\\', '/');
+        try
+        {
+            return Uri.UnescapeDataString(trimmed).Replace('\\', '/');
+        }
+        catch (UriFormatException)
+        {
+            return trimmed;
+        }
     }
 
     private static bool IsVisibleRenderedBrowserImage(BrowserImage image) =>
@@ -4302,9 +5672,16 @@ internal static partial class ReadmeAuditProbe
             JsonElement root = document.RootElement;
             bool hasAsset = root.TryGetProperty("HasAsset", out JsonElement hasAssetProperty) &&
                 hasAssetProperty.ValueKind == JsonValueKind.True;
-            if (hasAsset && root.TryGetProperty("Source", out JsonElement source))
+            if (hasAsset && root.TryGetProperty("SourceSha256", out JsonElement sourceSha256) &&
+                sourceSha256.ValueKind == JsonValueKind.String)
             {
-                sources.Add(source.GetString() ?? string.Empty);
+                sources.Add(sourceSha256.GetString() ?? string.Empty);
+            }
+            else if (hasAsset && root.TryGetProperty("Source", out JsonElement legacySource))
+            {
+                // Read older artifacts while the app and audit harness roll
+                // forward together; new writers never emit this field.
+                sources.Add(legacySource.GetString() ?? string.Empty);
             }
         }
         return sources.Count;
@@ -4366,7 +5743,7 @@ internal static partial class ReadmeAuditProbe
         int EstimatedContentHeight,
         IReadOnlyList<AuditTile> Tiles,
         int Headings,
-        int Links,
+        ReadmeLinkDestinationSummary LinkDestinations,
         int Images,
         int Tables,
         int CodeBlocks,
@@ -4484,12 +5861,24 @@ internal sealed class BrowserSameByteReplayEvidence
     public string? Reason { get; init; }
     public BrowserSameByteReplaySource Source { get; init; } = new();
     public BrowserSameByteReplayParser Parser { get; init; } = new();
+    public BrowserSameByteReplayStyleProfile StyleProfile { get; init; } = new();
     public BrowserSameByteSourceViewport Viewport { get; init; } = new();
     public BrowserSameByteRenderedExtent RenderedExtent { get; init; } = new();
     public BrowserSameByteSourceAssets Assets { get; init; } = new();
     public BrowserSameByteReplayTiming Timing { get; init; } = new();
     public List<AuditTile> Tiles { get; init; } = [];
     public BrowserSameByteReplaySemanticEvidence Semantic { get; init; } = new();
+}
+
+internal sealed class BrowserSameByteReplayStyleProfile
+{
+    public string Id { get; init; } = string.Empty;
+    public int Version { get; init; }
+    public string Sha256 { get; init; } = string.Empty;
+    public string ColorScheme { get; init; } = string.Empty;
+    public bool EdgeStylesheetLoaded { get; init; }
+    public bool EdgeIntegrityAttributeMatched { get; init; }
+    public int LoopbackResponseCount { get; init; }
 }
 
 internal sealed class BrowserSameByteReplaySemanticEvidence
@@ -4535,6 +5924,7 @@ internal sealed class BrowserSameByteReplaySource
     public string ReadmeGitBlobSha1 { get; init; } = string.Empty;
     public string ReadmeSha256 { get; init; } = string.Empty;
     public long ByteSize { get; init; }
+    public string DecodedTextSha256 { get; init; } = string.Empty;
 }
 
 internal sealed class BrowserSameByteReplayParser
@@ -4543,6 +5933,14 @@ internal sealed class BrowserSameByteReplayParser
     public string Version { get; init; } = string.Empty;
     public string License { get; init; } = string.Empty;
     public string Sha256 { get; init; } = string.Empty;
+    public string EmojiShortcodeSource { get; init; } = string.Empty;
+    public string EmojiShortcodeSourceCommit { get; init; } = string.Empty;
+    public string EmojiShortcodeSourceSha256 { get; init; } = string.Empty;
+    public string EmojiShortcodeLicense { get; init; } = string.Empty;
+    public string EmojiShortcodeLicenseSha256 { get; init; } = string.Empty;
+    public string EmojiShortcodeMapSha256 { get; init; } = string.Empty;
+    public string EmojiShortcodeExtensionSha256 { get; init; } = string.Empty;
+    public int EmojiShortcodeAliasCount { get; init; }
 }
 
 internal sealed class BrowserSameByteSourceViewport
@@ -4550,6 +5948,9 @@ internal sealed class BrowserSameByteSourceViewport
     public int Width { get; init; }
     public int Height { get; init; }
     public double DeviceScaleFactor { get; init; }
+    public int DocumentClientWidth { get; init; }
+    public int BodyClientWidth { get; init; }
+    public double ArticleWidth { get; init; }
     public string ColorScheme { get; init; } = string.Empty;
     public int EdgeInnerWidth { get; init; }
     public int EdgeInnerHeight { get; init; }
@@ -4599,6 +6000,7 @@ internal sealed class BrowserSameByteReplayTiming
     public int SourceTailMovementCount { get; init; }
     public string ViewportProfileSha256 { get; init; } = string.Empty;
     public IReadOnlyList<double> CaptureOffsetsViewportUnits { get; init; } = [];
+    public IReadOnlyList<SourceReplayTerminalClampObservation>? TerminalClampObservations { get; init; }
     public IReadOnlyList<double>? SourceTailCaptureOffsetsViewportUnits { get; init; }
     public string FirstViewportBoundary { get; init; } = string.Empty;
     public string FirstViewportImagesReadyBoundary { get; init; } = string.Empty;
@@ -4692,12 +6094,15 @@ internal sealed class BrowserMedia
     public string AccessibleName { get; init; } = string.Empty;
 }
 
+internal sealed record PendingImagePeerIdentity(string Identity);
+
 internal sealed class AuditTile
 {
     public int Index { get; init; }
     public double RelativeY { get; init; }
     public double ScrollPercent { get; init; }
     public double ScrollTopViewportUnits { get; init; }
+    public double? RendererDocumentTopDip { get; init; }
     public double VerticalViewSize { get; init; }
     public IReadOnlyList<double> NativeViewportMovementOffsets { get; init; } = [];
     public double Width { get; init; }
@@ -4742,8 +6147,10 @@ internal sealed class ReadmeAuditVisibleImageLoadingStateTransition
 
 internal sealed class NativeAuditResult
 {
+    public bool ImageTransportDiagnosticsEnabled { get; init; }
     public double FirstRenderMs { get; init; }
     public double FirstViewportImagesReadyMs { get; init; }
+    public double? SourceAvailableToFirstViewportImagesReadyMs { get; init; }
     public ReadmeAuditFirstViewportImageWait? FirstViewportImageWait { get; init; }
     public double ExperienceFirstRenderMs { get; init; }
     public double ColdStartToFirstRenderMs { get; init; }
@@ -4761,12 +6168,18 @@ internal sealed class NativeAuditResult
     public int Width { get; init; }
     public int ContentViewportWidth { get; init; }
     public int ContentViewportHeight { get; init; }
+    public int PhysicalContentViewportWidthPixels { get; init; }
+    public int PhysicalContentViewportHeightPixels { get; init; }
     public double RasterizationScale { get; init; }
+    public string ColorScheme { get; init; } = string.Empty;
     public int EstimatedContentHeight { get; init; }
     public IReadOnlyList<AuditTile> Tiles { get; init; } = [];
     public IReadOnlyList<ReadmeAuditVisibleImageWait> VisibleImageWaits { get; init; } = [];
     public int HeadingObservations { get; init; }
     public int LinkObservations { get; init; }
+    public int LinkElementObservations { get; init; }
+    public int RawLinkDestinationObservations { get; init; }
+    public int InvalidLinkDestinationObservations { get; init; }
     public int ImageObservations { get; init; }
     public int TableObservations { get; init; }
     public int CodeBlockObservations { get; init; }
@@ -4780,7 +6193,16 @@ internal sealed class NativeAuditResult
     public bool CleanExit { get; init; }
     public string? CloseFailure { get; init; }
     public string? ReadmeSourceSha256 { get; init; }
+    public string? ReadmeSourceDecodedTextSha256 { get; init; }
+    public NativeVisualProfileSignal? VisualProfile { get; init; }
 }
+
+internal sealed record NativeSameByteReadmeSourceIdentity(
+    int RawByteSize,
+    string RawSha256,
+    int DecodedTextUtf8ByteSize,
+    string DecodedTextSha256,
+    string ReadmeGitBlobSha1);
 
 internal readonly record struct ReadmeAuditCloseResult(bool CleanExit, string? Failure);
 
@@ -4788,11 +6210,20 @@ internal sealed class ReadmeAuditComparison
 {
     public string FidelityReference { get; init; } = string.Empty;
     public string TileSsimReference { get; init; } = string.Empty;
+    public string SameByteTileSsimReference { get; init; } = string.Empty;
+    public string SameByteTileSsimUnavailableReason { get; init; } = string.Empty;
     public double TextTokenCoverage { get; init; }
     public double TextTokenPrecision { get; init; }
     public double TextTokenFidelity { get; init; }
     public double MeanTileSsim { get; init; }
     public double MinimumTileSsim { get; init; }
+    public double LiveGitHubTileCoverage { get; init; }
+    public int LiveGitHubMatchedViewportCount { get; init; }
+    public double? SameByteMeanTileSsim { get; init; }
+    public double? SameByteMinimumTileSsim { get; init; }
+    public double? SameByteTileCoverage { get; init; }
+    public int SameByteMatchedViewportCount { get; init; }
+    public int SameByteTotalViewportCount { get; init; }
     public double VisualStructureScore { get; init; }
     public double LayoutExtentRatio { get; init; }
     public double? SourceBoundLayoutExtentRatio { get; init; }
@@ -4817,6 +6248,9 @@ internal sealed class ReadmeAuditComparison
     public int NativeHeadingObservations { get; init; }
     public int BrowserLinkCount { get; init; }
     public int NativeLinkObservations { get; init; }
+    public int NativeLinkElementObservations { get; init; }
+    public int NativeRawLinkDestinationObservations { get; init; }
+    public int NativeInvalidLinkDestinationObservations { get; init; }
     public int BrowserTableCount { get; init; }
     public int NativeTableObservations { get; init; }
     public int BrowserCodeBlockCount { get; init; }
@@ -4840,6 +6274,8 @@ internal sealed class ReadmeAuditCaseResult
     public string Status { get; init; } = string.Empty;
     public IReadOnlyList<string> Failures { get; init; } = [];
     public bool InfrastructureFailure { get; init; }
+    [System.Text.Json.Serialization.JsonIgnore]
+    internal ReadmeAuditNativeFailureDiagnostic? NativeFailureDiagnostic { get; init; }
     public BrowserAuditResult? Browser { get; init; }
     public NativeAuditResult? Native { get; init; }
     public ReadmeAuditComparison? Comparison { get; init; }

@@ -98,6 +98,8 @@ public readonly struct MarkdownStyleRole : IEquatable<MarkdownStyleRole>
     public static MarkdownStyleRole Strikethrough { get; } = new("Strikethrough");
     /// <summary>List marker text.</summary>
     public static MarkdownStyleRole ListMarker { get; } = new("ListMarker");
+    /// <summary>Unordered or ordered list container.</summary>
+    public static MarkdownStyleRole List { get; } = new("List");
     /// <summary>Thematic break separator.</summary>
     public static MarkdownStyleRole ThematicBreak { get; } = new("ThematicBreak");
     /// <summary>Image caption or alternative text.</summary>

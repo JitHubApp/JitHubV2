@@ -78,6 +78,23 @@ public sealed class ResvgProviderTests
     }
 
     [Fact]
+    public async Task ShutdownDuringWarmupIsCancellationInsteadOfWorkerFailure()
+    {
+        for (int cycle = 0; cycle < 4; cycle++)
+        {
+            await using var renderer = new ResvgMarkdownSvgRenderer();
+            Task warmup = renderer.WarmUpAsync();
+            Task shutdown = renderer.DisposeAsync().AsTask();
+            try { await warmup.WaitAsync(TimeSpan.FromSeconds(10)); }
+            catch (MarkdownSvgException exception)
+            {
+                Assert.Equal(MarkdownSvgFailureReason.Canceled, exception.Reason);
+            }
+            await shutdown.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+    }
+
+    [Fact]
     public async Task FirstTextOpen_DoesNotChargeColdTextPipelineToContentDeadline()
     {
         var options = new ResvgMarkdownSvgRendererOptions(
@@ -304,6 +321,86 @@ public sealed class ResvgProviderTests
         Assert.InRange(raster.Pixels.Span[2], (byte)216, (byte)224);
     }
 
+    [Theory]
+    [InlineData("<!-- literal <!DOCTYPE <!ENTITY <?xml-stylesheet text -->")]
+    [InlineData("<title><![CDATA[<!DOCTYPE <!ENTITY <?xml-stylesheet]]></title>")]
+    public async Task HarmlessSecurityMarkerTextInCommentsAndCdata_IsPreservedByWorker(string content)
+    {
+        string source =
+            $"<svg xmlns='http://www.w3.org/2000/svg' width='1' height='1'>{content}" +
+            "<rect width='1' height='1' fill='green'/></svg>";
+        await using var renderer = new ResvgMarkdownSvgRenderer();
+
+        using IMarkdownSvgDocument document = await renderer.OpenAsync(
+            new MarkdownSvgOpenRequest(Svg(source)));
+        using MarkdownSvgRaster raster = await document.RenderAsync(new MarkdownSvgRenderRequest(1, 1));
+
+        Assert.Equal(128, raster.Pixels.Span[1]);
+        Assert.Equal(255, raster.Pixels.Span[3]);
+    }
+
+    [Fact]
+    public async Task HarmlessSecurityMarkerTextInsideNestedSvg_IsPreservedByWorker()
+    {
+        const string literalMarkers = "<!DOCTYPE <!ENTITY <?xml-stylesheet";
+        string nested =
+            "<svg xmlns='http://www.w3.org/2000/svg' width='1' height='1'>" +
+            $"<!-- {literalMarkers} -->" +
+            $"<title><![CDATA[{literalMarkers}]]></title>" +
+            "<rect width='1' height='1' fill='green'/></svg>";
+        string source =
+            "<svg xmlns='http://www.w3.org/2000/svg' width='1' height='1'>" +
+            $"<image width='1' height='1' href='data:image/svg+xml;base64,{Convert.ToBase64String(Svg(nested))}'/>" +
+            "</svg>";
+        await using var renderer = new ResvgMarkdownSvgRenderer();
+
+        using IMarkdownSvgDocument document = await renderer.OpenAsync(
+            new MarkdownSvgOpenRequest(Svg(source)));
+        using MarkdownSvgRaster raster = await document.RenderAsync(new MarkdownSvgRenderRequest(1, 1));
+
+        Assert.Equal(128, raster.Pixels.Span[1]);
+        Assert.Equal(255, raster.Pixels.Span[3]);
+    }
+
+    [Fact]
+    public async Task Worker_RejectsActualXmlStylesheetProcessingInstruction()
+    {
+        const string source =
+            "<?xml-stylesheet href='https://example.test/style.css' type='text/css'?>" +
+            "<svg xmlns='http://www.w3.org/2000/svg' width='1' height='1'>" +
+            "<rect width='1' height='1' fill='green'/></svg>";
+        await using var renderer = new ResvgMarkdownSvgRenderer();
+
+        MarkdownSvgException failure = await Assert.ThrowsAsync<MarkdownSvgException>(async () =>
+            await renderer.OpenAsync(new MarkdownSvgOpenRequest(Svg(source))));
+
+        Assert.Equal(MarkdownSvgFailureReason.UnsupportedContent, failure.Reason);
+    }
+
+    [Fact]
+    public async Task MislabeledRasterInsideNestedSvg_IsSniffedAndRendered()
+    {
+        byte[] png = CreatePng(24, 120, 220, byte.MaxValue);
+        string nested =
+            "<svg xmlns='http://www.w3.org/2000/svg' width='1' height='1'>" +
+            $"<image width='1' height='1' href='data:image/gif;base64,{Convert.ToBase64String(png)}'/>" +
+            "</svg>";
+        string source =
+            "<svg xmlns='http://www.w3.org/2000/svg' width='1' height='1'>" +
+            $"<image width='1' height='1' href='data:image/svg+xml;base64,{Convert.ToBase64String(Svg(nested))}'/>" +
+            "</svg>";
+        await using var renderer = new ResvgMarkdownSvgRenderer();
+
+        using IMarkdownSvgDocument document = await renderer.OpenAsync(
+            new MarkdownSvgOpenRequest(Svg(source)));
+        using MarkdownSvgRaster raster = await document.RenderAsync(new MarkdownSvgRenderRequest(1, 1));
+
+        Assert.InRange(raster.Pixels.Span[0], (byte)20, (byte)28);
+        Assert.InRange(raster.Pixels.Span[1], (byte)116, (byte)124);
+        Assert.InRange(raster.Pixels.Span[2], (byte)216, (byte)224);
+        Assert.InRange(raster.Pixels.Span[3], (byte)250, byte.MaxValue);
+    }
+
     [Fact]
     public async Task NaturalLanguageMetadataWithApostrophe_IsNotParsedAsCss()
     {
@@ -485,14 +582,14 @@ public sealed class ResvgProviderTests
     }
 
     [Fact]
-    public void RenderProtocol_UsesDocumentTokenAndOutputOnlyMapping()
+    public void RenderProtocol_UsesDocumentTokenAndOutputOnlyMappingHandle()
     {
         var request = new WorkerRequest(
             WorkerOperation.Render,
             7,
             11,
             13,
-            "Local\\output",
+            0x1020_3040ul,
             new byte[32],
             SourceLength: 0,
             OutputLength: 64,
@@ -511,7 +608,55 @@ public sealed class ResvgProviderTests
         byte[] frame = WorkerProtocol.Encode(request);
         Assert.Equal(0u, BinaryPrimitives.ReadUInt32LittleEndian(frame.AsSpan(36)));
         Assert.Equal(64u, BinaryPrimitives.ReadUInt32LittleEndian(frame.AsSpan(40)));
+        Assert.Equal(0x1020_3040ul, BinaryPrimitives.ReadUInt64LittleEndian(frame.AsSpan(240)));
+        Assert.Equal(-1, frame.AsSpan(170, 6).IndexOfAnyExcept((byte)0));
+        Assert.Equal(-1, frame.AsSpan(248, 120).IndexOfAnyExcept((byte)0));
         Assert.Equal(0x1020_3040_5060_7080ul, BinaryPrimitives.ReadUInt64LittleEndian(frame.AsSpan(368)));
+    }
+
+    [Fact]
+    public void ProtocolV9RequiresAHandleOnlyForDataAndFontCatalogRequests()
+    {
+        WorkerRequest CreateRequest(WorkerOperation operation, ulong mappingHandle) => new(
+            operation,
+            7,
+            11,
+            13,
+            mappingHandle,
+            new byte[32],
+            SourceLength: operation == WorkerOperation.Open ? 4 : operation == WorkerOperation.FontCatalog ? 32 : 0,
+            OutputLength: operation == WorkerOperation.Render ? 64 : 0,
+            TargetWidth: operation == WorkerOperation.Render ? 4 : 0,
+            TargetHeight: operation == WorkerOperation.Render ? 4 : 0,
+            Tile: null,
+            Locale: operation == WorkerOperation.FontCatalog ? string.Empty : "en",
+            ColorScheme: MarkdownSvgColorScheme.Light,
+            SemanticColor: null,
+            PixelFormat: MarkdownSvgPixelFormat.Rgba8Premultiplied,
+            FontGeneration: 0,
+            ParsedResourceCacheBytes: 1024,
+            DocumentId: operation is WorkerOperation.Open or WorkerOperation.Render ? 9ul : 0ul,
+            Options: new ResvgMarkdownSvgRendererOptions());
+
+        Assert.Equal((ushort)9, WorkerProtocol.Version);
+        Assert.Throws<InvalidOperationException>(() => WorkerProtocol.Encode(CreateRequest(WorkerOperation.Open, 0)));
+        Assert.Throws<InvalidOperationException>(() => WorkerProtocol.Encode(CreateRequest(WorkerOperation.Render, 0)));
+        Assert.Throws<InvalidOperationException>(() => WorkerProtocol.Encode(CreateRequest(WorkerOperation.FontCatalog, 0)));
+        Assert.Throws<InvalidOperationException>(() => WorkerProtocol.Encode(CreateRequest(WorkerOperation.Hello, 1)));
+        Assert.Throws<InvalidOperationException>(() => WorkerProtocol.Encode(CreateRequest(WorkerOperation.TrimCache, 1)));
+        Assert.Throws<InvalidOperationException>(() => WorkerProtocol.Encode(CreateRequest(WorkerOperation.CloseDocument, 1)));
+        Assert.Throws<InvalidOperationException>(() => WorkerProtocol.Encode(CreateRequest(WorkerOperation.Render, ulong.MaxValue)));
+
+        byte[] hello = WorkerProtocol.Encode(CreateRequest(WorkerOperation.Hello, 0));
+        Assert.Equal(0ul, BinaryPrimitives.ReadUInt64LittleEndian(hello.AsSpan(240)));
+        Assert.Equal(-1, hello.AsSpan(170, 6).IndexOfAnyExcept((byte)0));
+        Assert.Equal(-1, hello.AsSpan(248, 120).IndexOfAnyExcept((byte)0));
+
+        byte[] catalog = WorkerProtocol.Encode(CreateRequest(WorkerOperation.FontCatalog, 0x100));
+        Assert.Equal(32u, BinaryPrimitives.ReadUInt32LittleEndian(catalog.AsSpan(36)));
+        Assert.Equal(0x100ul, BinaryPrimitives.ReadUInt64LittleEndian(catalog.AsSpan(240)));
+        Assert.Equal(-1, catalog.AsSpan(40, 80).IndexOfAnyExcept((byte)0));
+        Assert.Equal(-1, catalog.AsSpan(124, 116).IndexOfAnyExcept((byte)0));
     }
 
     [Fact]
@@ -583,7 +728,9 @@ public sealed class ResvgProviderTests
         cancellation.CancelAfter(TimeSpan.FromMilliseconds(1));
 
         MarkdownSvgException failure = await Assert.ThrowsAsync<MarkdownSvgException>(async () => await pending);
-        Assert.Equal(MarkdownSvgFailureReason.Canceled, failure.Reason);
+        Assert.True(
+            failure.Reason == MarkdownSvgFailureReason.Canceled,
+            $"Expected {MarkdownSvgFailureReason.Canceled}; actual exception: {failure}");
     }
 
     [Fact]
@@ -626,6 +773,41 @@ public sealed class ResvgProviderTests
     }
 
     [Fact]
+    public async Task FontGenerationRotationReattachesTextTreeButKeepsGeometryTreeAttached()
+    {
+        await using var renderer = new ResvgMarkdownSvgRenderer();
+        using IMarkdownSvgDocument textDocument = await renderer.OpenAsync(new MarkdownSvgOpenRequest(Svg(
+            "<svg xmlns='http://www.w3.org/2000/svg' width='96' height='24'><text x='2' y='18' font-size='16'>Font generation</text></svg>")));
+        using IMarkdownSvgDocument geometryDocument = await renderer.OpenAsync(new MarkdownSvgOpenRequest(Svg(
+            "<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24'><circle cx='12' cy='12' r='10' fill='#5288e8'/></svg>")));
+        long attachmentsBeforeRotation = renderer.SourceAttachmentCount;
+        Assert.Equal(2, attachmentsBeforeRotation);
+        Assert.Equal(renderer.CacheGeneration, PrimaryPublishedFontGeneration(renderer));
+
+        renderer.NotifyFontsChanged();
+        Assert.True(PrimaryPublishedFontGeneration(renderer) < renderer.CacheGeneration);
+
+        using MarkdownSvgRaster textRaster = await textDocument.RenderAsync(new MarkdownSvgRenderRequest(96, 24));
+        Assert.True(HasVisiblePixel(textRaster.Pixels.Span));
+        Assert.Equal(attachmentsBeforeRotation + 1, renderer.SourceAttachmentCount);
+        Assert.Equal(renderer.CacheGeneration, PrimaryPublishedFontGeneration(renderer));
+
+        using MarkdownSvgRaster geometryRaster = await geometryDocument.RenderAsync(new MarkdownSvgRenderRequest(24, 24));
+        Assert.True(HasVisiblePixel(geometryRaster.Pixels.Span));
+        Assert.Equal(attachmentsBeforeRotation + 1, renderer.SourceAttachmentCount);
+
+        static long PrimaryPublishedFontGeneration(ResvgMarkdownSvgRenderer renderer)
+        {
+            const System.Reflection.BindingFlags fields = System.Reflection.BindingFlags.Instance |
+                System.Reflection.BindingFlags.NonPublic;
+            var pool = (WorkerPool)typeof(ResvgMarkdownSvgRenderer).GetField("_workers", fields)!.GetValue(renderer)!;
+            object primary = typeof(WorkerPool).GetField("_primary", fields)!.GetValue(pool)!;
+            var worker = (WindowsWorkerProcess)primary.GetType().GetProperty("Worker")!.GetValue(primary)!;
+            return worker.ReadyFontGeneration;
+        }
+    }
+
+    [Fact]
     public async Task TiledFilterUsesParameterDerivedGutterAndRejectsUnboundedFilter()
     {
         const string bounded = "<svg xmlns='http://www.w3.org/2000/svg' width='128' height='64'><defs><filter id='f' filterUnits='userSpaceOnUse' x='0' y='0' width='128' height='64'><feGaussianBlur stdDeviation='6'/></filter></defs><rect x='42' y='12' width='40' height='40' fill='#2864dc' filter='url(#f)'/></svg>";
@@ -649,7 +831,7 @@ public sealed class ResvgProviderTests
     }
 
     [Fact]
-    public async Task OpenDocumentPinsOneSourceMappingAcrossSequentialTiles()
+    public async Task SequentialTilesReuseAttachedDocumentWithoutRepeatedSourceCopies()
     {
         await using var renderer = new ResvgMarkdownSvgRenderer();
         using IMarkdownSvgDocument document = await renderer.OpenAsync(new MarkdownSvgOpenRequest(Svg(
@@ -667,6 +849,50 @@ public sealed class ResvgProviderTests
         }
 
         Assert.Equal(attachmentsAfterOpen, renderer.SourceAttachmentCount);
+    }
+
+    [Fact]
+    public async Task TrimForcesDocumentReattachAndConcurrentTrimsCannotBreakRenderTransactions()
+    {
+        await using var renderer = new ResvgMarkdownSvgRenderer();
+        string shapes = string.Concat(Enumerable.Range(0, 128).Select(index =>
+            $"<rect x='{index % 16}' y='{index / 16}' width='1' height='1' fill='rgb({index % 255},80,180)'/>"));
+        using IMarkdownSvgDocument document = await renderer.OpenAsync(new MarkdownSvgOpenRequest(Svg(
+            $"<svg xmlns='http://www.w3.org/2000/svg' width='16' height='8'>{shapes}</svg>")));
+        long attachmentsAfterOpen = renderer.SourceAttachmentCount;
+
+        // Trim removes worker-side document bindings; the next render must
+        // take the real DocumentMissing -> OPEN -> retry path.
+        await renderer.TrimCachesAsync();
+        using (MarkdownSvgRaster reattached = await document.RenderAsync(new MarkdownSvgRenderRequest(16, 8)))
+            Assert.True(HasVisiblePixel(reattached.Pixels.Span));
+        Assert.Equal(attachmentsAfterOpen + 1, renderer.SourceAttachmentCount);
+
+        // Start render transactions and trims together. The worker-local gate
+        // must keep TrimCache from landing between a missing-document probe,
+        // source reattachment, and its retry render.
+        await renderer.TrimCachesAsync();
+        Task<MarkdownSvgRaster>[] renders = Enumerable.Range(0, 6)
+            .Select(_ => document.RenderAsync(new MarkdownSvgRenderRequest(16, 8)).AsTask())
+            .ToArray();
+        Task[] trims = Enumerable.Range(0, 4)
+            .Select(_ => renderer.TrimCachesAsync())
+            .ToArray();
+
+        try
+        {
+            await Task.WhenAll(renders.Cast<Task>().Concat(trims));
+            foreach (Task<MarkdownSvgRaster> render in renders)
+                Assert.True(HasVisiblePixel((await render).Pixels.Span));
+        }
+        finally
+        {
+            foreach (Task<MarkdownSvgRaster> render in renders)
+                if (render.Status == TaskStatus.RanToCompletion)
+                    (await render).Dispose();
+        }
+
+        Assert.True(renderer.SourceAttachmentCount >= attachmentsAfterOpen + 2);
     }
 
     [Fact]
@@ -797,26 +1023,28 @@ public sealed class ResvgProviderTests
         Task<IMarkdownSvgDocument>[] opens = Enumerable.Range(0, 12).Select(async index =>
             await renderer.OpenAsync(new MarkdownSvgOpenRequest(Svg(
                 $"<svg xmlns='http://www.w3.org/2000/svg' width='64' height='64'><rect width='64' height='64' fill='rgb({index * 17},40,180)'/></svg>")))).ToArray();
-        IMarkdownSvgDocument[] documents = await Task.WhenAll(opens);
         try
         {
+            IMarkdownSvgDocument[] documents = await Task.WhenAll(opens);
             Task<MarkdownSvgRaster>[] renders = documents.Select(async document =>
                 await document.RenderAsync(new MarkdownSvgRenderRequest(64, 64))).ToArray();
-            MarkdownSvgRaster[] rasters = await Task.WhenAll(renders);
             try
             {
+                MarkdownSvgRaster[] rasters = await Task.WhenAll(renders);
                 Assert.All(rasters, raster => Assert.True(HasVisiblePixel(raster.Pixels.Span)));
             }
             finally
             {
-                foreach (MarkdownSvgRaster raster in rasters)
-                    raster.Dispose();
+                foreach (Task<MarkdownSvgRaster> render in renders)
+                    if (render.IsCompletedSuccessfully)
+                        (await render).Dispose();
             }
         }
         finally
         {
-            foreach (IMarkdownSvgDocument document in documents)
-                document.Dispose();
+            foreach (Task<IMarkdownSvgDocument> open in opens)
+                if (open.IsCompletedSuccessfully)
+                    (await open).Dispose();
         }
 
         await renderer.TrimCachesAsync();

@@ -25,6 +25,14 @@ param(
 
     [switch]$NativeAotArtifact,
 
+    # CI supplies the sidecar from the one canonical NativeAOT publish. Local
+    # invocations may omit it and still run diagnostics, but their evidence is
+    # explicitly unqualified and cannot satisfy the strict merger.
+    [string]$NativeAotProvenancePath = "",
+
+    # Skip only rebuilding the selected app. The independent audit runner is
+    # always rebuilt for this source revision; a stale RID-specific runner can
+    # otherwise silently enforce an older evidence contract.
     [switch]$SkipBuild
 )
 
@@ -73,18 +81,22 @@ if (-not $SkipBuild) {
     }
     & dotnet @appBuildArguments
     if ($LASTEXITCODE -ne 0) { throw "JitHub build failed." }
-    $automationBuildArguments = @(
-        "build", $automationProject,
-        "-c", $Configuration,
-        "-p:Platform=x64",
-        "--disable-build-servers",
-        "-m:1")
-    if ($Configuration -eq "Release") {
-        $automationBuildArguments += @("-r", "win-x64")
-    }
-    & dotnet @automationBuildArguments
-    if ($LASTEXITCODE -ne 0) { throw "README audit harness build failed." }
 }
+
+# Build the contract-enforcing harness even when the shipping NativeAOT app is
+# supplied prebuilt. Its RID-specific output must never be inherited from an
+# older local or CI run just because -SkipBuild selected the app artifact.
+$automationBuildArguments = @(
+    "build", $automationProject,
+    "-c", $Configuration,
+    "-p:Platform=x64",
+    "--disable-build-servers",
+    "-m:1")
+if ($Configuration -eq "Release") {
+    $automationBuildArguments += @("-r", "win-x64")
+}
+& dotnet @automationBuildArguments
+if ($LASTEXITCODE -ne 0) { throw "README audit harness build failed." }
 
 $appPath = if ([string]::IsNullOrWhiteSpace($AppExecutablePath)) {
     Join-Path $repoRoot "JitHub.WinUI\bin\x64\$Configuration\net10.0-windows10.0.26100.0\win-x64\JitHub.WinUI.exe"
@@ -99,19 +111,22 @@ foreach ($requiredPath in @($appPath, $runnerPath, $browserScript)) {
         throw "Required audit artifact was not found: '$requiredPath'."
     }
 }
-$sourceCommitSha = [string]$env:GITHUB_SHA
-if ($sourceCommitSha -notmatch '^[0-9a-fA-F]{40}$') {
-    $sourceCommitSha = [string]((& git -C $repoRoot rev-parse HEAD) | Out-String).Trim()
-}
-if ($sourceCommitSha -notmatch '^[0-9a-fA-F]{40}$') {
-    throw "Could not identify the source commit used for the README audit build."
-}
 $dependencyAssemblySha256 = [ordered]@{}
 $appDirectory = Split-Path -Parent $appPath
-foreach ($assembly in @(Get-ChildItem -LiteralPath $appDirectory -File -Filter '*.dll' | Sort-Object Name)) {
-    $dependencyAssemblySha256[$assembly.Name] =
-        (Get-FileHash -LiteralPath $assembly.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-}
+$nativeAotProvenance = $null
+$nativeAotProvenanceSha256 = $null
+$provenanceVerified = $false
+$provenanceStatus = if ($NativeAotArtifact) { 'unverified-no-sidecar' } else { 'not-applicable' }
+$provenanceWorkingTreeClean = $false
+$provenanceWorkflowRunId = $null
+$provenanceWorkflowRepository = $null
+$provenanceWorkflowRef = $null
+$canonicalWorkflowIdentityAvailable =
+    $env:GITHUB_ACTIONS -eq 'true' -and
+    [string]$env:GITHUB_SHA -match '^[0-9a-fA-F]{40}$' -and
+    [string]$env:GITHUB_RUN_ID -match '^[1-9][0-9]{0,18}$' -and
+    [string]$env:GITHUB_REPOSITORY -match '^[^/\s]+/[^/\s]+$' -and
+    [string]$env:GITHUB_REF -match '^refs/[^\r\n\t ]+$'
 if ($NativeAotArtifact) {
     if ([System.IO.Path]::GetFileName($appPath) -ne 'JitHub.WinUI.exe') {
         throw "The explicit NativeAOT executable has an unexpected name: '$appPath'."
@@ -119,8 +134,71 @@ if ($NativeAotArtifact) {
     & (Join-Path $repoRoot 'eng\Verify-NativeAotArtifact.ps1') `
         -InputPath $appDirectory -Architecture x64
     if (-not $?) { throw "NativeAOT artifact verification failed: '$appDirectory'." }
+
+    $provenanceSidecarPath = if ([string]::IsNullOrWhiteSpace($NativeAotProvenancePath)) {
+        Join-Path $appDirectory 'native-aot-provenance.json'
+    } else {
+        [IO.Path]::GetFullPath($NativeAotProvenancePath)
+    }
+    if (Test-Path -LiteralPath $provenanceSidecarPath -PathType Leaf) {
+        Import-Module (Join-Path $repoRoot 'eng\readme-audit\NativeAotProvenance.psm1') -Force
+        $expectedProvenance = @{
+            InputPath = $appDirectory
+            ProvenancePath = $provenanceSidecarPath
+        }
+        if ($canonicalWorkflowIdentityAvailable) {
+            $expectedProvenance.ExpectedSourceCommitSha = [string]$env:GITHUB_SHA
+            $expectedProvenance.ExpectedWorkflowRunId = [string]$env:GITHUB_RUN_ID
+            $expectedProvenance.ExpectedWorkflowRepository = [string]$env:GITHUB_REPOSITORY
+            $expectedProvenance.ExpectedWorkflowRef = [string]$env:GITHUB_REF
+        }
+        $verifiedProvenance = Test-NativeAotProvenance @expectedProvenance
+        $nativeAotProvenance = $verifiedProvenance.Provenance
+        $nativeAotProvenanceSha256 = $verifiedProvenance.Sha256
+        $provenanceWorkingTreeClean = $nativeAotProvenance.workingTreeClean -eq $true
+        $provenanceWorkflowRunId = [string]$nativeAotProvenance.workflowRunId
+        $provenanceWorkflowRepository = [string]$nativeAotProvenance.workflowRepository
+        $provenanceWorkflowRef = [string]$nativeAotProvenance.workflowRef
+        if ($canonicalWorkflowIdentityAvailable) {
+            $provenanceVerified = $true
+            $provenanceStatus = 'verified-canonical-workflow-artifact'
+        } else {
+            $provenanceStatus = 'verified-artifact-local-diagnostic-only'
+            Write-Warning 'NativeAOT provenance is internally valid but no complete canonical GitHub Actions identity is available; this run remains diagnostic only.'
+        }
+    } elseif (-not [string]::IsNullOrWhiteSpace($NativeAotProvenancePath)) {
+        throw "The explicitly required NativeAOT provenance sidecar was not found: '$provenanceSidecarPath'."
+    } else {
+        $gitStatus = @(& git -C $repoRoot status --porcelain=v1 --untracked-files=all)
+        if ($LASTEXITCODE -eq 0) {
+            $provenanceWorkingTreeClean = $gitStatus.Count -eq 0
+        }
+        Write-Warning "NativeAOT app has no provenance sidecar; this run is diagnostic only (workingTreeClean=$provenanceWorkingTreeClean)."
+    }
 }
-else {
+
+$sourceCommitSha = if ($null -ne $nativeAotProvenance) {
+    [string]$nativeAotProvenance.sourceCommitSha
+} else {
+    [string]$env:GITHUB_SHA
+}
+if ($sourceCommitSha -notmatch '^[0-9a-fA-F]{40}$') {
+    $sourceCommitSha = [string]((& git -C $repoRoot rev-parse HEAD) | Out-String).Trim()
+}
+if ($sourceCommitSha -notmatch '^[0-9a-fA-F]{40}$') {
+    throw "Could not identify the source checkout used for this README audit diagnostic."
+}
+$artifactFileSha256 = [ordered]@{}
+foreach ($artifactFile in @(Get-ChildItem -LiteralPath $appDirectory -Recurse -File -Force | Sort-Object FullName)) {
+    $relativePath = $artifactFile.FullName.Substring($appDirectory.Length).TrimStart('\', '/') -replace '\\', '/'
+    $artifactFileSha256[$relativePath] =
+        (Get-FileHash -LiteralPath $artifactFile.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+}
+foreach ($assembly in @(Get-ChildItem -LiteralPath $appDirectory -File -Filter '*.dll' | Sort-Object Name)) {
+    $dependencyAssemblySha256[$assembly.Name] =
+        (Get-FileHash -LiteralPath $assembly.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+}
+if (-not $NativeAotArtifact) {
     foreach ($assemblyName in @('JitHub.WinUI.dll', 'MarkdownRenderer.dll')) {
         if (-not $dependencyAssemblySha256.Contains($assemblyName)) {
             throw "Required Release app assembly was not found beside '$appPath': '$assemblyName'."
@@ -129,15 +207,27 @@ else {
 }
 $lastRank = $StartRank + $Count - 1
 $appBinaryEvidence = [ordered]@{
-    schemaVersion = 1
+    schemaVersion = 2
     startRank = $StartRank
     endRank = $lastRank
     sourceCommitSha = $sourceCommitSha.ToLowerInvariant()
     configuration = $Configuration
     runtimeFlavor = if ($NativeAotArtifact) { 'native-aot' } else { 'managed' }
+    provenanceVerified = $provenanceVerified
+    provenanceStatus = $provenanceStatus
+    provenanceSha256 = $nativeAotProvenanceSha256
+    provenanceWorkingTreeClean = $provenanceWorkingTreeClean
+    workflowRunId = $provenanceWorkflowRunId
+    workflowRepository = $provenanceWorkflowRepository
+    workflowRef = $provenanceWorkflowRef
     executableName = [System.IO.Path]::GetFileName($appPath)
     executableSha256 = (Get-FileHash -LiteralPath $appPath -Algorithm SHA256).Hash.ToLowerInvariant()
     dependencyAssemblySha256 = $dependencyAssemblySha256
+    artifactFileSha256 = $artifactFileSha256
+}
+if ($null -ne $nativeAotProvenance) {
+    $sidecarEvidencePath = Join-Path $OutputRoot ("native-aot-provenance-ranks-{0}-{1}.json" -f $StartRank, $lastRank)
+    [IO.File]::Copy($provenanceSidecarPath, $sidecarEvidencePath, $true)
 }
 [System.IO.File]::WriteAllText(
     (Join-Path $OutputRoot ("app-binary-ranks-{0}-{1}.json" -f $StartRank, $lastRank)),
@@ -305,6 +395,13 @@ try {
     if ($Resume) { $arguments += "--resume" }
     if ($ReuseBrowserEvidence) { $arguments += "--reuse-browser-evidence" }
     if ($CaptureSameByteCorpus) { $arguments += "--capture-same-byte-corpus" }
+    if ($provenanceVerified) {
+        # The managed harness revalidates this complete, content-addressed
+        # manifest before ignoring checkout-local mtimes. Local/diagnostic
+        # binaries never receive the qualification arguments.
+        $arguments += "--verified-native-aot-provenance=$provenanceSidecarPath"
+        $arguments += "--verified-native-aot-provenance-sha256=$nativeAotProvenanceSha256"
+    }
 
     $dotnetPath = (Get-Command dotnet -ErrorAction Stop).Source
     $startInfo = [System.Diagnostics.ProcessStartInfo]::new($dotnetPath)

@@ -33,12 +33,16 @@ internal static class Program
             LogStartupPhase("main.com-wrappers-ready");
             AppActivationArguments activationArguments = AppInstance.GetCurrent().GetActivatedEventArgs();
             CurrentLaunchOptions = LaunchOptions.Parse(args, GetLaunchArgumentText(activationArguments));
+            OfflineSameByteReadmeAuditPin? offlineReadmePin =
+                CurrentLaunchOptions.ValidateOfflineSameByteReadmeAuditPin();
             JitHub.Services.RepositoryActionAutomationScenario.ConfigureWebsiteShowcase(
                 CurrentLaunchOptions.WebsiteShowcase);
             MarkdownLifecycleAutomationBridge.ConfigureLaunchOptions(
                 CurrentLaunchOptions.MarkdownLifecycleFixture,
                 CurrentLaunchOptions.MarkdownLifecycleHost,
-                CurrentLaunchOptions.ReadmeProductionAudit);
+                CurrentLaunchOptions.ReadmeProductionAudit,
+                CurrentLaunchOptions.OfflineSameByteReadmeAudit,
+                offlineReadmePin);
             ConfigureAutomationLanguageOverride();
             LogStartupPhase("main.launch-options-ready");
 

@@ -61,6 +61,29 @@ public sealed class OwnedResourceRetirementTests
     }
 
     [Fact]
+    public async Task PropagatingRetirementDisposesAfterWorkAndSurfacesBothFailures()
+    {
+        var workFailure = new InvalidOperationException("work failed");
+        var disposeFailure = new NotSupportedException("dispose failed");
+        var lifetime = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var resource = new ThrowingDisposable(disposeFailure);
+
+        Task retirement = OwnedResourceRetirement.DisposeAfterPropagating(resource, lifetime.Task);
+
+        Assert.False(resource.IsDisposed);
+        Assert.False(retirement.IsCompleted);
+        lifetime.TrySetException(workFailure);
+
+        AggregateException observed = await Assert.ThrowsAsync<AggregateException>(
+            () => retirement.WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.True(resource.IsDisposed);
+        Assert.Collection(
+            observed.InnerExceptions,
+            exception => Assert.Same(workFailure, exception),
+            exception => Assert.Same(disposeFailure, exception));
+    }
+
+    [Fact]
     public async Task OwnerWaitsForBlockingCancellationCallbackAfterWorkReturns()
     {
         var source = new CancellationTokenSource();
@@ -127,6 +150,19 @@ public sealed class OwnedResourceRetirementTests
         {
             if (IsDisposed)
                 throw new ObjectDisposedException(nameof(TrackingDisposable));
+        }
+    }
+
+    private sealed class ThrowingDisposable(Exception failure) : IDisposable
+    {
+        private int _disposeCount;
+
+        internal bool IsDisposed => Volatile.Read(ref _disposeCount) != 0;
+
+        public void Dispose()
+        {
+            Interlocked.Increment(ref _disposeCount);
+            throw failure;
         }
     }
 }

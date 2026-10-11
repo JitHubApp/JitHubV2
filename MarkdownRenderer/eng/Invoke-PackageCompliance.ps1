@@ -12,6 +12,9 @@ param(
     [Parameter(Mandatory = $false)]
     [string] $LicensePolicyPath = (Join-Path $PSScriptRoot 'license-compatibility-policy.json'),
 
+    [ValidateSet('FullRelease', 'Math', 'SvgResvg', 'TextMate')]
+    [string] $PackageScope = 'FullRelease',
+
     [switch] $FailOnUnknownLicense,
 
     [switch] $SkipSizeGates
@@ -19,6 +22,13 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'PackageCompliance.Common.ps1')
+
+if ($PackageScope -ne 'FullRelease' -and -not $SkipSizeGates) {
+    throw "The '$PackageScope' component scope requires -SkipSizeGates; the full 14-package size gate is release-only."
+}
+
+Assert-ExpectedReleasePackageSet -PackageDirectory $PackageDirectory -Scope $PackageScope
 
 [IO.Directory]::CreateDirectory($OutputDirectory) | Out-Null
 if (-not $SkipSizeGates) {
@@ -41,6 +51,10 @@ if ($FailOnUnknownLicense) {
 & (Join-Path $PSScriptRoot 'Test-NativePackageCompliance.ps1') `
     -PackageDirectory $PackageDirectory `
     -OutputPath (Join-Path $OutputDirectory 'native-package-compliance.json')
+
+& (Join-Path $PSScriptRoot 'Test-ManagedPackageArchitecture.ps1') `
+    -PackageDirectory $PackageDirectory `
+    -OutputPath (Join-Path $OutputDirectory 'managed-package-architecture.json')
 
 $manifestArguments = @{
     PackageDirectory = $PackageDirectory

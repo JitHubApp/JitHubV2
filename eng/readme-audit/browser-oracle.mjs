@@ -1,12 +1,13 @@
 import { spawn } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { DocumentReadinessTimeout, metricDelta, metricMap, navigateReadme } from "./browser-navigation.mjs";
 import { waitForDevToolsPort } from "./browser-launch.mjs";
 import { connectCdp } from "./cdp-client.mjs";
-import { stopBrowserProfileProcesses } from "./browser-process-lifetime.mjs";
+import { cleanupBrowserProfile } from "./browser-profile-cleanup.mjs";
+import { createCredentialFreeBrowserEnvironment } from "./browser-environment.mjs";
 import {
   captureSameByteCorpus,
   createResponseRecorder,
@@ -15,6 +16,7 @@ import {
   sha256,
 } from "./same-byte-corpus.mjs";
 import { replaySameByteInEdge } from "./same-byte-edge-replay.mjs";
+import { createUnavailableVisibleImageEvidence } from "./same-byte-visible-image-diagnostics.mjs";
 
 const options = parseArguments(process.argv.slice(2));
 const outputDirectory = path.resolve(required("out"));
@@ -24,21 +26,29 @@ const edgePath = options.edge || findDefaultEdge();
 const viewportWidth = readPositiveInteger("width", 1000);
 const viewportHeight = readPositiveInteger("height", 700);
 const maximumTiles = readPositiveInteger("max-tiles", 512);
-const profileDirectory = await mkdtemp(path.join(os.tmpdir(), "jithub-readme-edge-"));
 await mkdir(outputDirectory, { recursive: true });
+const browserReportPath = path.join(outputDirectory, "browser.json");
+const browserFailurePath = path.join(outputDirectory, "browser-failure.json");
+const browserPreCleanupPath = path.join(outputDirectory, "browser-pre-cleanup.json");
+if (existsSync(browserReportPath) || existsSync(browserFailurePath) || existsSync(browserPreCleanupPath)) {
+  throw new Error("Browser audit output already contains a terminal report; use a fresh output directory to preserve prior evidence.");
+}
+const profileDirectory = await mkdtemp(path.join(os.tmpdir(), "jithub-readme-edge-"));
 
 let edge;
 let cdp;
 let sameByteRecorder;
 let edgeError = "";
+let pendingBrowserReport;
+let pendingBrowserFailure;
+let pendingBrowserSuccessLine;
+let profileCleanupFailure;
 const wall = performance.now();
 class ReadmeNotRendered extends Error {}
 try {
   // Node may need the read-only token to resolve a pinned README symlink.
   // The untrusted web page in Edge has no reason to inherit that credential.
-  const edgeEnvironment = { ...process.env };
-  delete edgeEnvironment.JITHUB_README_AUDIT_GITHUB_TOKEN;
-  delete edgeEnvironment.JITHUB_README_AUDIT_GITHUB_ACCOUNT_ID;
+  const edgeEnvironment = createCredentialFreeBrowserEnvironment(process.env);
   edge = spawn(edgePath, [
     "--headless=new",
     "--no-first-run",
@@ -102,7 +112,6 @@ try {
     30_000);
   if (!readmeRendered) {
     const elapsed = performance.now() - navigationStarted;
-    const reportPath = path.join(outputDirectory, "browser.json");
     const report = {
       schemaVersion: 5,
       repositoryUrl,
@@ -115,8 +124,8 @@ try {
       tiles: [],
     };
     await captureCorpusForReport(report, [], undefined);
-    await writeBrowserReport(report);
-    process.stdout.write(JSON.stringify({ ok: true, readmeRendered: false, report: reportPath }) + "\n");
+    pendingBrowserReport = report;
+    pendingBrowserSuccessLine = JSON.stringify({ ok: true, readmeRendered: false, report: browserReportPath }) + "\n";
     throw new ReadmeNotRendered();
   }
   const firstReadmeMs = performance.now() - navigationStarted;
@@ -260,6 +269,31 @@ try {
       // layout boxes but no image resource, so they are neither a rendered image
       // nor an unavailable resource JitHub could be expected to reproduce.
       .filter(image => image.source || image.currentSource);
+    const nonRenderedDecorativeImageCandidates = [...imageNodes]
+      .map((image, replayIndex) => {
+        const bounds = image.getBoundingClientRect();
+        const source = image.getAttribute("src") || "";
+        const currentSource = image.currentSrc || "";
+        const canonicalSource = image.getAttribute("data-canonical-src") || "";
+        const explicitEmptyAlt = image.hasAttribute("alt") && image.getAttribute("alt") === "";
+        const failedDecode = image.complete && image.naturalWidth === 0 && image.naturalHeight === 0;
+        const zeroBounds = bounds.width === 0 && bounds.height === 0;
+        return {
+          image,
+          replayIndex,
+          source,
+          currentSource,
+          canonicalSource,
+          explicitEmptyAlt,
+          failedDecode,
+          zeroBounds,
+          hasHttpSource: [canonicalSource, source, currentSource]
+            .some(value => /^https?:/iu.test(value)),
+        };
+      })
+      .filter(item => !isRendered(item.image) && item.explicitEmptyAlt && item.failedDecode &&
+        item.zeroBounds && item.hasHttpSource)
+      .map(({ image, hasHttpSource, ...candidate }) => candidate);
     const media = [...article.querySelectorAll("video,audio")]
       .filter(isRendered)
       .map(node => {
@@ -345,6 +379,7 @@ try {
         text: clean(node.innerText), href: node.href,
       })),
       images,
+      nonRenderedDecorativeImageCandidates,
       media,
       visibleMermaidSources,
       unavailableImages: images.filter(image => !image.complete || image.naturalWidth <= 0).length,
@@ -403,7 +438,10 @@ try {
   // This snapshot is private capture input. It is transformed into static
   // computed presentation and replayed only from loopback with remote requests
   // denied, keeping GitHub/CDN navigation outside the Edge denominator.
-  const renderedHtml = sameByteRecorder ? await captureRenderedHtmlSnapshot(cdp) : undefined;
+  const renderedHtml = sameByteRecorder ? await captureRenderedHtmlSnapshot(
+    cdp,
+    semantic.nonRenderedDecorativeImageCandidates.map(image => image.replayIndex),
+  ) : undefined;
 
   const navigationTiming = await evaluate(cdp, `(() => {
     const entry = performance.getEntriesByType("navigation")[0];
@@ -450,27 +488,28 @@ try {
     report,
     semantic.images.filter(image => image.complete && image.naturalWidth > 0 && image.naturalHeight > 0),
     renderedHtml);
-  await writeBrowserReport(report);
-  process.stdout.write(JSON.stringify({ ok: true, report: path.join(outputDirectory, "browser.json") }) + "\n");
+  pendingBrowserReport = report;
+  pendingBrowserSuccessLine = JSON.stringify({ ok: true, report: browserReportPath }) + "\n";
 } catch (error) {
   if (error instanceof ReadmeNotRendered) {
     // A repository can have a README file that GitHub intentionally presents
     // as source (for example, an extensionless README). The source-view parity
     // path in the native audit handles this valid outcome.
   } else {
-  const rawError = error?.stack || String(error);
-  const snapshotFailureEvidence = readSameByteSnapshotFailureEvidence(error);
-  const failure = options["capture-same-byte-corpus"]
-    ? {
-      ok: false,
-      repositoryUrl: `sha256:${sha256(Buffer.from(repositoryUrl, "utf8"))}`,
-      error: redactUrls(rawError),
-      ...(snapshotFailureEvidence || {}),
-    }
-    : { ok: false, repositoryUrl, error: rawError, ...(snapshotFailureEvidence || {}) };
-  await writeFile(path.join(outputDirectory, "browser-failure.json"), JSON.stringify(failure, null, 2));
-  process.stderr.write(failure.error + "\n");
-  process.exitCode = 1;
+    const rawError = error?.stack || String(error);
+    const snapshotFailureEvidence = readSameByteSnapshotFailureEvidence(error);
+    const unavailableVisibleImageEvidence = error?.unavailableVisibleImageEvidence;
+    pendingBrowserFailure = options["capture-same-byte-corpus"]
+      ? {
+        ok: false,
+        repositoryUrl: `sha256:${sha256(Buffer.from(repositoryUrl, "utf8"))}`,
+        error: redactUrls(rawError),
+        ...(snapshotFailureEvidence || {}),
+        ...(unavailableVisibleImageEvidence ? { unavailableVisibleImageEvidence } : {}),
+      }
+      : { ok: false, repositoryUrl, error: rawError, ...(snapshotFailureEvidence || {}),
+        ...(unavailableVisibleImageEvidence ? { unavailableVisibleImageEvidence } : {}) };
+    process.exitCode = 1;
   }
 } finally {
   try { sameByteRecorder?.dispose(); } catch {}
@@ -493,26 +532,61 @@ try {
     ]);
   }
   if (edge && edge.exitCode === null) {
-    edge.kill();
+    try { edge.kill(); } catch {}
     await Promise.race([
       new Promise(resolve => edge.once("exit", resolve)),
       delay(1500),
     ]);
   }
   try {
-    await stopBrowserProfileProcesses(profileDirectory);
+    await cleanupBrowserProfile(profileDirectory);
   } catch (error) {
-    process.stderr.write(`warning: could not stop Edge profile processes: ${error.message}\n`);
+    profileCleanupFailure = error;
   }
-  for (let attempt = 0; attempt < 5; attempt++) {
-    try {
-      await rm(profileDirectory, { recursive: true, force: true });
-      break;
-    } catch (error) {
-      if (attempt === 4) process.stderr.write(`warning: could not remove Edge profile: ${error.message}\n`);
-      await delay(200 * (attempt + 1));
-    }
+}
+
+if (profileCleanupFailure) {
+  process.exitCode = 1;
+  if (pendingBrowserReport) {
+    const renderOnlyReport = sameByteRecorder ? sanitizeReport(pendingBrowserReport) : pendingBrowserReport;
+    await writeFile(browserPreCleanupPath, JSON.stringify({
+      schemaVersion: 1,
+      status: "rendered-before-cleanup",
+      qualifiesAsCompletedBrowserOracle: false,
+      report: renderOnlyReport,
+    }, null, 2), { flag: "wx" });
   }
+  const failure = {
+    schemaVersion: 1,
+    status: "failed",
+    failureCategory: "browser-profile-cleanup",
+    failureStage: profileCleanupFailure.failureStage,
+    errorType: "BrowserProfileCleanupError",
+    error: profileCleanupFailure.message,
+    cleanup: {
+      profileState: profileCleanupFailure.profileState,
+      profilePreserved: profileCleanupFailure.profilePreserved,
+      serverCloseFailed: profileCleanupFailure.serverCloseFailed,
+    },
+    ...(pendingBrowserFailure ? { browserRunFailure: sanitizeReport(pendingBrowserFailure) } : {}),
+  };
+  await writeFile(browserFailurePath, JSON.stringify(failure, null, 2), { flag: "wx" });
+  process.stderr.write(`${failure.error}\n`);
+} else if (pendingBrowserFailure) {
+  await writeFile(browserFailurePath, JSON.stringify(pendingBrowserFailure, null, 2), { flag: "wx" });
+  process.stderr.write(`${pendingBrowserFailure.error}\n`);
+} else if (pendingBrowserReport) {
+  await writeBrowserReport(pendingBrowserReport);
+  process.stdout.write(pendingBrowserSuccessLine);
+} else {
+  process.exitCode = 1;
+  await writeFile(browserFailurePath, JSON.stringify({
+    schemaVersion: 1,
+    status: "failed",
+    failureCategory: "browser-oracle",
+    error: "Browser oracle completed without a result.",
+  }, null, 2), { flag: "wx" });
+  process.stderr.write("Browser oracle completed without a result.\n");
 }
 
 function parseArguments(args) {
@@ -528,7 +602,10 @@ async function captureCorpusForReport(report, images, renderedHtml) {
   if (!sameByteRecorder) return;
   const readmeRendered = report.readmeRendered === true;
   if (readmeRendered && images.length !== report.semantic.images.length) {
-    throw new Error("Same-byte replay cannot qualify while any GitHub-visible image is unavailable.");
+    const error = new Error("Same-byte replay cannot qualify while any GitHub-visible image is unavailable.");
+    error.unavailableVisibleImageEvidence =
+      createUnavailableVisibleImageEvidence(report.semantic.images);
+    throw error;
   }
   const capture = await captureSameByteCorpus({
     directory: options["capture-same-byte-corpus"],
@@ -541,6 +618,7 @@ async function captureCorpusForReport(report, images, renderedHtml) {
     readmeGitBlobSha1: readmeSha,
     readmeByteSize: readNonNegativeInteger("readme-byte-size"),
     images,
+    nonRenderedDecorativeImages: report.semantic.nonRenderedDecorativeImageCandidates || [],
     renderedHtml,
     readmeRendered,
     responseRecorder: sameByteRecorder,
@@ -580,8 +658,14 @@ async function captureCorpusForReport(report, images, renderedHtml) {
   }
 }
 
-async function captureRenderedHtmlSnapshot(cdpClient) {
-  const html = await evaluate(cdpClient, `(() => {
+async function captureRenderedHtmlSnapshot(cdpClient, excludedDecorativeImageReplayIndexes = []) {
+  if (!Array.isArray(excludedDecorativeImageReplayIndexes) ||
+      excludedDecorativeImageReplayIndexes.length > 128 ||
+      excludedDecorativeImageReplayIndexes.some(index => !Number.isSafeInteger(index) || index < 0) ||
+      new Set(excludedDecorativeImageReplayIndexes).size !== excludedDecorativeImageReplayIndexes.length) {
+    throw new Error("GitHub returned invalid non-rendered decorative-image indexes.");
+  }
+  const html = await evaluate(cdpClient, `((excludedDecorativeImageReplayIndexes) => {
     const article = document.querySelector("#readme article.markdown-body, article.markdown-body");
     if (!article) throw new Error("GitHub README article disappeared before same-byte capture.");
     const imageNodes = [...article.querySelectorAll("img")];
@@ -592,6 +676,8 @@ async function captureRenderedHtmlSnapshot(cdpClient) {
     const copies = [clone, ...clone.querySelectorAll("*")];
     if (copies.length !== originals.length) throw new Error("GitHub article clone changed its element structure.");
     const imageIndexByNode = new Map(imageNodes.map((image, index) => [image, index]));
+    const excludedDecorativeImageIndexes = new Set(excludedDecorativeImageReplayIndexes);
+    const observedExcludedDecorativeImageIndexes = new Set();
     const styleProperties = [
       "display", "visibility", "opacity", "position", "top", "right", "bottom", "left", "z-index",
       "box-sizing", "width", "height", "min-width", "min-height", "max-width", "max-height",
@@ -647,7 +733,19 @@ async function captureRenderedHtmlSnapshot(cdpClient) {
         }
       }
       if (source.tagName === "IMG") {
-        target.setAttribute("data-jithub-image-index", String(imageIndexByNode.get(source)));
+        const imageIndex = imageIndexByNode.get(source);
+        if (excludedDecorativeImageIndexes.has(imageIndex)) {
+          const bounds = source.getBoundingClientRect();
+          if (!source.hasAttribute("alt") || source.getAttribute("alt") !== "" ||
+              !source.complete || source.naturalWidth !== 0 || source.naturalHeight !== 0 ||
+              bounds.width !== 0 || bounds.height !== 0) {
+            throw new Error("GitHub non-rendered decorative-image evidence changed during same-byte capture.");
+          }
+          observedExcludedDecorativeImageIndexes.add(imageIndex);
+          target.remove();
+          continue;
+        }
+        target.setAttribute("data-jithub-image-index", String(imageIndex));
         const selectedSource = source.currentSrc || source.getAttribute("src") || "";
         if (/^data:image\\//iu.test(selectedSource)) {
           target.setAttribute("data-jithub-image-data", selectedSource);
@@ -664,6 +762,9 @@ async function captureRenderedHtmlSnapshot(cdpClient) {
         }
       }
     }
+    if (observedExcludedDecorativeImageIndexes.size !== excludedDecorativeImageIndexes.size) {
+      throw new Error("GitHub article changed its non-rendered decorative-image inventory during same-byte capture.");
+    }
     clone.querySelectorAll("script,iframe,object,embed,base,link[rel~='stylesheet'],style").forEach(node => node.remove());
     for (const node of clone.querySelectorAll("[href]")) {
       if (node.tagName === "A") continue;
@@ -673,7 +774,7 @@ async function captureRenderedHtmlSnapshot(cdpClient) {
       node.removeAttributeNS("http://www.w3.org/1999/xlink", "href");
     }
     return clone.outerHTML;
-  })()`);
+  })(${JSON.stringify(excludedDecorativeImageReplayIndexes)})`);
   if (typeof html !== "string" || !/^<article\b/iu.test(html)) {
     throw new Error("GitHub article did not produce a bounded static HTML snapshot.");
   }
@@ -690,11 +791,11 @@ async function writeBrowserReport(report) {
       if (!relativeToOutput.startsWith(`..${path.sep}`) && relativeToOutput !== ".." && !path.isAbsolute(relativeToOutput)) {
         throw new Error("Raw same-byte comparison evidence must be written outside the audit artifact directory.");
       }
-      await writeFile(resolvedComparisonPath, JSON.stringify(report));
+      await writeFile(resolvedComparisonPath, JSON.stringify(report), { flag: "wx" });
     }
-    await writeFile(reportPath, JSON.stringify(sanitizeReport(report), null, 2));
+    await writeFile(reportPath, JSON.stringify(sanitizeReport(report), null, 2), { flag: "wx" });
   } else {
-    await writeFile(reportPath, JSON.stringify(report, null, 2));
+    await writeFile(reportPath, JSON.stringify(report, null, 2), { flag: "wx" });
   }
   return reportPath;
 }

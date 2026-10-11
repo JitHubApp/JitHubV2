@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using static MarkdownRenderer.TaskFaultObservation;
 
 namespace MarkdownRenderer.Images;
 
@@ -14,7 +15,9 @@ internal static class ImageResolverDeadline
     internal static async ValueTask<T> RunAsync<T>(
         Func<CancellationToken, ValueTask<T>> operation,
         TimeSpan timeout,
-        CancellationToken documentCancellationToken)
+        CancellationToken documentCancellationToken,
+        Action<T>? abandonedResultDisposer = null,
+        Action<Task>? abandonedCompletionObserver = null)
     {
         ArgumentNullException.ThrowIfNull(operation);
         if (timeout <= TimeSpan.Zero)
@@ -25,37 +28,112 @@ internal static class ImageResolverDeadline
             CancellationTokenSource.CreateLinkedTokenSource(documentCancellationToken);
         resolverCancellation.CancelAfter(timeout);
 
+        Task<T>? operationTask = null;
         try
         {
-            Task<T> operationTask = operation(resolverCancellation.Token).AsTask();
+            operationTask = operation(resolverCancellation.Token).AsTask();
             ObserveFault(operationTask);
-            return await operationTask
+            T result = await operationTask
                 .WaitAsync(resolverCancellation.Token)
                 .ConfigureAwait(false);
+            // A resolver may complete in an earlier cancellation callback,
+            // before the linked token/waiter observes document cancellation.
+            // Do not publish that now-abandoned result; the catch path still
+            // owns exactly-once disposal of the successful operation task.
+            documentCancellationToken.ThrowIfCancellationRequested();
+            resolverCancellation.Token.ThrowIfCancellationRequested();
+            return result;
         }
-        catch (OperationCanceledException exception) when (
-            !documentCancellationToken.IsCancellationRequested &&
-            resolverCancellation.IsCancellationRequested)
+        catch (OperationCanceledException exception)
         {
-            throw new TimeoutException("The image resolver exceeded its deadline.", exception);
+            if (operationTask is not null)
+            {
+                Task abandonedCompletion = DisposeSuccessfulAbandonedResult(
+                    operationTask,
+                    abandonedResultDisposer);
+                ObserveFault(abandonedCompletion);
+                ObserveAbandonedCompletion(abandonedCompletion, abandonedCompletionObserver);
+            }
+
+            if (!documentCancellationToken.IsCancellationRequested &&
+                resolverCancellation.IsCancellationRequested)
+            {
+                throw new TimeoutException("The image resolver exceeded its deadline.", exception);
+            }
+
+            throw;
         }
     }
 
-    private static void ObserveFault(Task task)
+    private static Task DisposeSuccessfulAbandonedResult<T>(
+        Task<T> operationTask,
+        Action<T>? disposer)
     {
-        if (task.IsFaulted)
+        if (disposer is null)
+            return operationTask.IsCompleted ? Task.CompletedTask : operationTask;
+
+        if (operationTask.IsCompleted)
         {
-            _ = task.Exception;
-            return;
+            try
+            {
+                DisposeSuccessfulResult(operationTask, disposer);
+                return Task.CompletedTask;
+            }
+            catch (Exception exception)
+            {
+                // Surface cleanup failure to an owner that tracks detached work,
+                // while RunAsync still preserves its original cancellation/timeout.
+                return Task.FromException(exception);
+            }
         }
 
-        if (task.IsCompleted)
-            return;
-
-        _ = task.ContinueWith(
-            static completed => _ = completed.Exception,
+        // Keep the actual resolver task alive until it settles. A late successful
+        // result is abandoned by this call and must release any source-byte lease
+        // it owns; faulted results remain observed without exposing source data.
+        return operationTask.ContinueWith(
+            static (completed, state) =>
+            {
+                var resultDisposer = (Action<T>)state!;
+                DisposeSuccessfulResult(completed, resultDisposer);
+            },
+            disposer,
             CancellationToken.None,
-            TaskContinuationOptions.ExecuteSynchronously | TaskContinuationOptions.OnlyOnFaulted,
+            TaskContinuationOptions.ExecuteSynchronously,
             TaskScheduler.Default);
     }
+
+    private static void ObserveAbandonedCompletion(
+        Task completion,
+        Action<Task>? observer)
+    {
+        if (observer is null)
+            return;
+
+        try
+        {
+            observer(completion);
+        }
+        catch (Exception)
+        {
+            // The observation hook must not replace the resolver's cancellation
+            // or timeout, and it must not expose source or result data.
+            ObserveFault(completion);
+        }
+    }
+
+    private static void DisposeSuccessfulResult<T>(Task<T> operationTask, Action<T> disposer)
+    {
+        if (operationTask.Status == TaskStatus.RanToCompletion)
+        {
+            // Let the cleanup-completion task fault so its owner can retire the
+            // detached operation with the correct failure status. The exception
+            // stays source-free: it is never formatted or logged here.
+            disposer(operationTask.Result);
+        }
+        else if (operationTask.IsFaulted)
+        {
+            _ = operationTask.Exception;
+        }
+    }
+
 }

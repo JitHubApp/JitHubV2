@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.InteropServices;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Geometry;
@@ -27,32 +28,261 @@ internal sealed class VectorSceneDrawing : IDisposable
     // that the text has an infinite layout surface.
     private const float MaximumTextLayoutDimension = 1_000_000f;
 
-    private readonly MarkdownVectorScene _scene;
-    private readonly CanvasGeometry?[] _geometries;
-    private readonly CanvasTextLayout?[] _textLayouts;
-    private readonly CanvasStrokeStyle?[] _strokeStyles;
-    private readonly bool[] _linkedSemantics;
-    private readonly Matrix3x2[] _transformStack;
-    private readonly CanvasActiveLayer?[] _clipStack;
-    private bool _disposed;
+    private ICanvasResourceCreator? _resourceCreator;
+    private NativeResourceRetirementRecord? _nativeRetirement;
+    private readonly NativeResourceRetirement? _nativeRetirementOwner;
+    private readonly VectorNativeResourceAdmission? _nativeAdmission;
+    private VectorNativeResourceCredit? _nativeCredit;
+    private volatile VectorNativePreparationStatus _nativePreparationStatus;
+    private long _nativeResourceWeightUnits;
+    private VectorNativePreparationOutcome _preparationOutcome;
+    private Action<IDisposable>? _nativeDisposer;
+    private Func<CanvasDrawingSession, CanvasGeometry, CanvasActiveLayer>? _testClipFactory;
+    private MarkdownVectorScene? _scene;
+    private readonly string? _hostFontFamily;
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+    private readonly MarkdownLayoutDiagnostics? _layoutDiagnostics;
+#endif
+    private CanvasGeometry?[]? _geometries;
+    private CanvasTextLayout?[]? _textLayouts;
+    private CanvasStrokeStyle?[]? _strokeStyles;
+    private CanvasTextFormat? _pendingTextFormat;
+    private CanvasPathBuilder? _pendingPathBuilder;
+    private bool[]? _linkedSemantics;
+    private Matrix3x2[]? _transformStack;
+    private CanvasActiveLayer?[]? _clipStack;
+    private NativeResourceShape? _nativeResourceShape;
+    private volatile bool _resourcesPrepared;
+    private volatile bool _resourceCleanupPending;
+    private volatile bool _clipCleanupFailed;
+    private volatile bool _disposed;
 
     internal VectorSceneDrawing(
         ICanvasResourceCreator resourceCreator,
         MarkdownVectorScene scene,
         CancellationToken cancellationToken,
-        string? hostFontFamily = null)
+        string? hostFontFamily = null
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+        ,
+        MarkdownLayoutDiagnostics? layoutDiagnostics = null
+#endif
+        ,
+        bool deferNativeResources = false,
+        NativeResourceRetirement? nativeRetirement = null,
+        Action<IDisposable>? nativeDisposer = null,
+        VectorNativeResourceAdmission? nativeAdmission = null)
     {
-        ArgumentNullException.ThrowIfNull(resourceCreator);
+        _resourceCreator = resourceCreator ?? throw new ArgumentNullException(nameof(resourceCreator));
         _scene = scene ?? throw new ArgumentNullException(nameof(scene));
-        _geometries = new CanvasGeometry?[scene.Commands.Count];
-        _textLayouts = new CanvasTextLayout?[scene.Commands.Count];
-        _strokeStyles = new CanvasStrokeStyle?[scene.Commands.Count];
-        _linkedSemantics = new bool[scene.Semantics.Count];
-        _transformStack = new Matrix3x2[scene.Commands.Count];
-        _clipStack = new CanvasActiveLayer?[scene.Commands.Count];
+        _hostFontFamily = hostFontFamily;
+        if (nativeDisposer is not null && nativeRetirement?.AllowsTestDisposer != true)
+            throw new ArgumentException("Native disposal fault plans require an isolated retirement owner.", nameof(nativeDisposer));
+        _nativeRetirementOwner = nativeRetirement;
+        _nativeAdmission = nativeAdmission;
+        _nativeDisposer = nativeDisposer;
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+        _layoutDiagnostics = layoutDiagnostics;
+#endif
+
+        if (nativeAdmission is not null && !deferNativeResources)
+        {
+            throw new ArgumentException(
+                "Aggregate admission requires deferred construction so capacity denial can be handled explicitly.",
+                nameof(deferNativeResources));
+        }
+
+        if (!deferNativeResources)
+        {
+            try
+            {
+                PrepareNativeResources(cancellationToken);
+            }
+            catch (Exception preparationFailure)
+            {
+                // A constructor that throws has no caller-owned drawing. Its
+                // terminal transfer must happen here, not depend on a scope
+                // receiving the never-returned object.
+                try { Dispose(); }
+                catch (Exception retirementFailure)
+                {
+                    throw new AggregateException(
+                        "Vector construction failed and retirement was incomplete.",
+                        preparationFailure, retirementFailure);
+                }
+                throw;
+            }
+        }
+    }
+
+    internal MarkdownVectorScene Scene => GetScene();
+
+    internal bool HasScene => _scene is not null;
+
+    internal bool IsPrepared => _resourcesPrepared;
+
+    internal VectorNativePreparationStatus NativePreparationStatus => _nativePreparationStatus;
+
+    internal VectorNativePreparationStatus PreparationStatus => _nativePreparationStatus;
+
+    internal long NativeResourceWeightUnits => _nativeResourceWeightUnits;
+
+    internal VectorNativeResourceAdmission? NativeResourceAdmission => _nativeAdmission;
+
+    internal VectorNativeResourceAdmission? NativeAdmission => _nativeAdmission;
+
+    internal VectorNativePreparationOutcome PreparationOutcome => _preparationOutcome;
+
+    internal void SetClipFactoryForTest(Func<CanvasDrawingSession, CanvasGeometry, CanvasActiveLayer> factory)
+    {
+        ArgumentNullException.ThrowIfNull(factory);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_nativeRetirementOwner?.AllowsTestDisposer != true)
+            throw new InvalidOperationException("Native clip factory fault plans require an isolated retirement owner.");
+        _testClipFactory = factory;
+    }
+
+    /// <summary>
+    /// Drops the immutable command graph after reversible native resources have
+    /// been released. A failed native cleanup leaves the graph attached so its
+    /// owner remains valid and can retry or retire it terminally.
+    /// </summary>
+    internal void DetachSceneGraph()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_clipCleanupFailed)
+            throw new InvalidOperationException("A vector drawing with a failed active-layer close cannot be prepared again.");
+        if (_scene is null)
+            return;
+
+        ReleaseNativeResources();
+        _scene = null;
+    }
+
+    internal void PrepareNativeResources(CancellationToken cancellationToken)
+        => _ = TryPrepareNativeResources(cancellationToken, out _);
+
+    internal bool TryPrepareNativeResources(
+        CancellationToken cancellationToken,
+        out VectorNativePreparationOutcome outcome)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_clipCleanupFailed)
+            throw new InvalidOperationException("A vector drawing with a failed active-layer close cannot be prepared again.");
+        if (_resourceCleanupPending)
+            ReleaseNativeResources();
+        if (_resourcesPrepared)
+        {
+            _nativePreparationStatus = VectorNativePreparationStatus.Prepared;
+            outcome = new(_nativePreparationStatus, _nativeResourceWeightUnits, _nativeAdmission?.CapacityGeneration ?? 0);
+            _preparationOutcome = outcome;
+            return true;
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        MarkdownVectorScene scene = GetScene();
+        if (_nativeResourceShape is not { } shape)
+        {
+            shape = CountNativeResourceShape(scene, cancellationToken, calculateWeight: _nativeAdmission is not null);
+            // Immutable command graphs are not rescanned during ordinary
+            // viewport-band exchanges while their drawing owner remains live.
+            _nativeResourceShape = shape;
+        }
+        _nativeResourceWeightUnits = shape.WeightUnits;
+
+        if (_nativeAdmission is not null)
+        {
+            VectorNativeAdmissionResult admission = _nativeAdmission.TryReserve(
+                shape.WeightUnits,
+                out VectorNativeResourceCredit? credit,
+                out long observedGeneration);
+            if (admission != VectorNativeAdmissionResult.Granted)
+            {
+                _nativePreparationStatus = admission == VectorNativeAdmissionResult.DeferredCapacity
+                    ? VectorNativePreparationStatus.DeferredCapacity
+                    : VectorNativePreparationStatus.TooLarge;
+                outcome = new(_nativePreparationStatus, shape.WeightUnits, observedGeneration);
+                _preparationOutcome = outcome;
+                return false;
+            }
+            _nativeCredit = credit;
+        }
+
+        try
+        {
+            PrepareNativeResourcesCore(scene, shape, cancellationToken);
+            _nativePreparationStatus = VectorNativePreparationStatus.Prepared;
+            outcome = new(_nativePreparationStatus, shape.WeightUnits, _nativeAdmission?.CapacityGeneration ?? 0);
+            _preparationOutcome = outcome;
+            return true;
+        }
+        catch
+        {
+            outcome = new(VectorNativePreparationStatus.NotPrepared, shape.WeightUnits, _nativeAdmission?.CapacityGeneration ?? 0);
+            _preparationOutcome = outcome;
+            throw;
+        }
+    }
+
+    private void PrepareNativeResourcesCore(
+        MarkdownVectorScene scene,
+        NativeResourceShape shape,
+        CancellationToken cancellationToken)
+    {
+        bool retirementRecordCreated = false;
+        try
+        {
+            // Cancellation can race the successful aggregate reservation. Do
+            // not allocate cleanup custody or reach a native factory when the
+            // owner has already canceled; the catch below returns the credit.
+            cancellationToken.ThrowIfCancellationRequested();
+
+            // The retirement record and every managed slot array are reserved
+            // before the first native factory. If managed setup fails here,
+            // no uncertain native owner exists and the ledger credit refunds.
+            if (_nativeRetirement is null)
+            {
+                _nativeRetirement = (_nativeRetirementOwner ?? NativeResourceRetirement.Shared)
+                    .Reserve(disposer: _nativeDisposer);
+                retirementRecordCreated = true;
+            }
+
+            PrepareNativeResourcesWithReservedCustody(scene, shape, cancellationToken);
+        }
+        catch
+        {
+            if (!_resourceCleanupPending && !_resourcesPrepared)
+            {
+                if (retirementRecordCreated)
+                    _nativeRetirement = null;
+                RefundNativeCredit();
+            }
+            throw;
+        }
+    }
+
+    private void PrepareNativeResourcesWithReservedCustody(
+        MarkdownVectorScene scene,
+        NativeResourceShape shape,
+        CancellationToken cancellationToken)
+    {
+        // A rectangle/line command needs none of these native slots. Path and
+        // text commands need just one kind. Do not retain five command-sized
+        // scratch arrays per drawing, especially for large sparse diagrams.
+        CanvasGeometry?[] geometries = CreateSlots<CanvasGeometry>(shape.Geometries);
+        CanvasTextLayout?[] textLayouts = CreateSlots<CanvasTextLayout>(shape.TextLayouts);
+        CanvasStrokeStyle?[] strokeStyles = CreateSlots<CanvasStrokeStyle>(shape.StrokeStyles);
+        var linkedSemantics = new bool[scene.Semantics.Count];
+        Matrix3x2[] transformStack = shape.TransformDepth == 0
+            ? Array.Empty<Matrix3x2>()
+            : new Matrix3x2[shape.TransformDepth];
+        CanvasActiveLayer?[] clipStack = CreateSlots<CanvasActiveLayer>(shape.ClipDepth);
+        int geometryIndex = 0;
+        int textIndex = 0;
+        int strokeIndex = 0;
 
         for (int i = 0; i < scene.Links.Count; i++)
-            _linkedSemantics[scene.Links[i].SemanticIndex] = true;
+            linkedSemantics[scene.Links[i].SemanticIndex] = true;
 
         try
         {
@@ -60,47 +290,56 @@ internal sealed class VectorSceneDrawing : IDisposable
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 MarkdownVectorCommand command = scene.Commands[i];
-                if (command.Kind is MarkdownVectorCommandKind.FillPath or
-                    MarkdownVectorCommandKind.StrokePath or
-                    MarkdownVectorCommandKind.DrawPath or
-                    MarkdownVectorCommandKind.BeginClip)
+                if (RequiresGeometry(command.Kind))
                 {
-                    _geometries[i] = CreateGeometry(
-                        resourceCreator,
+                    CreateGeometry(
+                        ref geometries[geometryIndex++],
+                        _resourceCreator!,
                         command.Path,
                         command.Style?.FillRule ?? MarkdownVectorFillRule.Nonzero,
                         cancellationToken);
                 }
 
-                if (command.Kind == MarkdownVectorCommandKind.DrawText &&
-                    command.Text is { } text &&
-                    command.TextStyle is { } textStyle)
+                if (RequiresTextLayout(command))
                 {
-                    var format = new CanvasTextFormat
-                    {
-                        FontFamily = ResolveFontFamily(textStyle, hostFontFamily),
-                        FontSize = textStyle.FontSize,
-                        FontWeight = new FontWeight { Weight = textStyle.FontWeight },
-                        FontStyle = textStyle.Italic ? FontStyle.Italic : FontStyle.Normal,
-                        Direction = textStyle.RightToLeft
-                            ? CanvasTextDirection.RightToLeftThenTopToBottom
-                            : CanvasTextDirection.LeftToRightThenTopToBottom,
-                        WordWrapping = CanvasWordWrapping.NoWrap,
-                    };
+                    string text = command.Text!;
+                    MarkdownVectorTextStyle textStyle = command.TextStyle!;
+                    int textSlot = textIndex++;
+                    CanvasTextFormat format = _pendingTextFormat = new CanvasTextFormat();
+                    Exception? textFailure = null;
                     try
                     {
+                        format.FontFamily = ResolveFontFamily(textStyle, _hostFontFamily);
+                        format.FontSize = textStyle.FontSize;
+                        format.FontWeight = new FontWeight { Weight = textStyle.FontWeight };
+                        format.FontStyle = textStyle.Italic ? FontStyle.Italic : FontStyle.Normal;
+                        format.Direction = textStyle.RightToLeft
+                            ? CanvasTextDirection.RightToLeftThenTopToBottom
+                            : CanvasTextDirection.LeftToRightThenTopToBottom;
+                        format.WordWrapping = CanvasWordWrapping.NoWrap;
+
                         (float layoutWidth, float layoutHeight) = ResolveTextLayoutSize(
                             scene,
                             text,
                             textStyle);
                         try
                         {
-                            _textLayouts[i] = new CanvasTextLayout(
-                                resourceCreator,
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+                            textLayouts[textSlot] = CanvasTextLayoutFactory.Create(
+                                _resourceCreator!,
+                                text,
+                                format,
+                                layoutWidth,
+                                layoutHeight,
+                                _layoutDiagnostics);
+#else
+                            textLayouts[textSlot] = new CanvasTextLayout(
+                                _resourceCreator!,
                                 text,
                                 format,
                                 layoutWidth,
                                 layoutHeight);
+#endif
                         }
                         catch (Exception exception) when (
                             exception is ArgumentException or COMException)
@@ -113,26 +352,130 @@ internal sealed class VectorSceneDrawing : IDisposable
                                 exception);
                         }
                     }
-                    finally
+                    catch (Exception exception)
                     {
-                        format.Dispose();
+                        textFailure = exception;
                     }
+
+                    Exception? formatCleanupFailure = null;
+                    try
+                    {
+                        BlockBoxCleanupScope cleanup = default;
+                        cleanup.TryDisposeAndClear(ref _pendingTextFormat, NativeDisposer);
+                        cleanup.ThrowIfAny("disposing vector text format");
+                    }
+                    catch (Exception exception)
+                    {
+                        formatCleanupFailure = exception;
+                    }
+
+                    if (textFailure is not null)
+                    {
+                        if (formatCleanupFailure is not null)
+                        {
+                            throw new AggregateException(
+                                "Vector text preparation and temporary format cleanup both failed.",
+                                textFailure,
+                                formatCleanupFailure);
+                        }
+
+                        ExceptionDispatchInfo.Capture(textFailure).Throw();
+                    }
+
+                    if (formatCleanupFailure is not null)
+                        ExceptionDispatchInfo.Capture(formatCleanupFailure).Throw();
                 }
 
                 if (command.Style is { } style && RequiresStrokeStyle(style))
                 {
-                    _strokeStyles[i] = CreateStrokeStyle(style);
+                    // Publish the native owner before property setters or a
+                    // custom dash-array copy can fail.
+                    int strokeSlot = strokeIndex++;
+                    strokeStyles[strokeSlot] = new CanvasStrokeStyle();
+                    ConfigureStrokeStyle(strokeStyles[strokeSlot]!, style);
                 }
             }
         }
+        catch (Exception preparationException)
+        {
+            // Publish ownership before attempting cleanup. If a native Dispose
+            // fails, ReleaseNativeResources retains only the failed slots so
+            // this drawing remains the retry owner instead of losing local
+            // arrays as the stack unwinds.
+            _geometries = geometries;
+            _textLayouts = textLayouts;
+            _strokeStyles = strokeStyles;
+            _clipStack = clipStack;
+            _linkedSemantics = null;
+            _transformStack = null;
+            _resourcesPrepared = false;
+            _resourceCleanupPending = true;
+
+            try
+            {
+                ReleaseNativeResources();
+            }
+            catch (Exception cleanupException)
+            {
+                // The primary preparation failure and the bounded cleanup
+                // summary both matter. BlockBoxCleanupScope bounds the latter's
+                // retained exception details before it reaches this aggregate.
+                throw new AggregateException(
+                    "Vector native preparation failed and cleanup was incomplete.",
+                    preparationException,
+                    cleanupException);
+            }
+
+            throw;
+        }
+
+        _geometries = geometries;
+        _textLayouts = textLayouts;
+        _strokeStyles = strokeStyles;
+        _linkedSemantics = linkedSemantics;
+        _transformStack = transformStack;
+        _clipStack = clipStack;
+        _resourcesPrepared = true;
+        _resourceCleanupPending = false;
+    }
+
+    internal void ReleaseNativeResources()
+    {
+        if (!_resourcesPrepared && !_resourceCleanupPending)
+            return;
+
+        // Prevent Paint from treating a partially released graph as ready.
+        // Keep resource arrays attached while cleanup runs: successful slots
+        // are cleared individually and throwing slots remain available for a
+        // later retry.
+        _resourcesPrepared = false;
+        _resourceCleanupPending = true;
+        _linkedSemantics = null;
+        _transformStack = null;
+        try
+        {
+            DisposeDeviceResources(
+                ref _geometries,
+                ref _textLayouts,
+                ref _strokeStyles,
+                ref _clipStack,
+                ref _pendingTextFormat,
+                ref _pendingPathBuilder,
+                NativeDisposer,
+                preserveGeometryForUncertainClips: _clipCleanupFailed);
+            _resourceCleanupPending = false;
+            _nativePreparationStatus = VectorNativePreparationStatus.NotPrepared;
+            _preparationOutcome = new(_nativePreparationStatus, _nativeResourceWeightUnits, _nativeAdmission?.CapacityGeneration ?? 0);
+            RefundNativeCredit();
+        }
         catch
         {
-            DisposeDeviceResources();
+            // Failed slots remain on this object; successful slots and fully
+            // drained arrays have already been cleared by the helper.
+            _resourceCleanupPending = true;
             throw;
         }
     }
-
-    internal MarkdownVectorScene Scene => _scene;
 
     internal void Paint(
         CanvasDrawingSession drawingSession,
@@ -142,56 +485,138 @@ internal sealed class VectorSceneDrawing : IDisposable
         Color? foregroundOverride = null)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        MarkdownVectorScene scene = GetScene();
+        if (!_resourcesPrepared ||
+            _geometries is not { } geometries ||
+            _textLayouts is not { } textLayouts ||
+            _strokeStyles is not { } strokeStyles ||
+            _transformStack is not { } transformStack ||
+            _clipStack is not { } clipStack)
+        {
+            // Lazy layout may retire an offscreen scene's native resources.
+            // The owning LayoutSnapshot keeps drawing and retirement mutually
+            // exclusive; an unprepared scene is a readiness miss, not a paint
+            // callback's invitation to create geometry or text layouts.
+            return;
+        }
+
         if (destination.Width <= 0 || destination.Height <= 0 ||
-            _scene.Viewport.Width <= 0 || _scene.Viewport.Height <= 0)
+            scene.Viewport.Width <= 0 || scene.Viewport.Height <= 0)
         {
             return;
         }
 
+        Matrix3x2 callerTransform = drawingSession.Transform;
+        bool hasPlacement = LayoutPlacementTransformContext.TryGetPlacementFreeCanvasTransform(
+            callerTransform,
+            out Matrix3x2 placementFreeCallerTransform);
+        if (hasPlacement)
+        {
+            LayoutPlacementTransformContext.GetCurrentTranslation(
+                out float placementX,
+                out float placementY);
+            destination = new Rect(
+                destination.X + placementX,
+                destination.Y + placementY,
+                destination.Width,
+                destination.Height);
+        }
+
         VectorViewportTransform viewportTransform = VectorViewportTransform.Create(
-            _scene.Viewport,
+            scene.Viewport,
             destination);
         if (!float.IsFinite(viewportTransform.Scale) || viewportTransform.Scale <= 0)
             return;
-        Matrix3x2 originalTransform = drawingSession.Transform;
-        drawingSession.Transform = viewportTransform.Matrix * originalTransform;
+        Matrix3x2 originalTransform = callerTransform;
+        Matrix3x2 sceneBaseTransform = hasPlacement
+            ? placementFreeCallerTransform
+            : callerTransform;
 
         int transformDepth = 0;
         int clipDepth = 0;
+        int geometryIndex = 0;
+        int textIndex = 0;
+        int strokeIndex = 0;
+        Exception? paintFailure = null;
+        bool clipPopFailed = false;
         try
         {
-            for (int i = 0; i < _scene.Commands.Count; i++)
+            drawingSession.Transform = viewportTransform.Matrix * sceneBaseTransform;
+            for (int i = 0; i < scene.Commands.Count; i++)
             {
-                MarkdownVectorCommand command = _scene.Commands[i];
+                MarkdownVectorCommand command = scene.Commands[i];
                 MarkdownVectorPaintStyle? style = command.Style;
+                // Consume slots independently of draw visibility, opacity,
+                // semantic overrides or the current switch branch. This is the
+                // same immutable command order used by preparation, requiring
+                // neither command-sized lookup maps nor paint allocations.
+                CanvasGeometry? geometry = RequiresGeometry(command.Kind)
+                    ? geometries[geometryIndex++] : null;
+                CanvasTextLayout? textLayout = RequiresTextLayout(command)
+                    ? textLayouts[textIndex++] : null;
+                CanvasStrokeStyle? strokeStyle = style is not null && RequiresStrokeStyle(style)
+                    ? strokeStyles[strokeIndex++] : null;
                 switch (command.Kind)
                 {
                     case MarkdownVectorCommandKind.BeginGroup:
-                        _transformStack[transformDepth++] = drawingSession.Transform;
+                        transformStack[transformDepth++] = drawingSession.Transform;
                         drawingSession.Transform = ToMatrix(command.Transform) * drawingSession.Transform;
                         break;
                     case MarkdownVectorCommandKind.EndGroup:
                         if (transformDepth > 0)
-                            drawingSession.Transform = _transformStack[--transformDepth];
+                            drawingSession.Transform = transformStack[--transformDepth];
                         break;
                     case MarkdownVectorCommandKind.BeginClip:
-                        if (_geometries[i] is { } clip)
-                            _clipStack[clipDepth++] = drawingSession.CreateLayer(1f, clip);
+                        if (geometry is { } clip)
+                        {
+                            CanvasActiveLayer layer;
+                            try
+                            {
+                                layer = _testClipFactory is { } factory
+                                    ? factory(drawingSession, clip)
+                                    : drawingSession.CreateLayer(1f, clip);
+                            }
+                            catch
+                            {
+                                // A native factory can fail after an uncertain
+                                // push. No returned wrapper can describe that
+                                // depth, so never close known ancestors beneath
+                                // it. Publish depth only after factory success.
+                                clipPopFailed = true;
+                                throw;
+                            }
+                            clipStack[clipDepth] = layer;
+                            clipDepth++;
+                        }
                         break;
                     case MarkdownVectorCommandKind.EndClip:
                         if (clipDepth > 0)
                         {
-                            clipDepth--;
-                            _clipStack[clipDepth]?.Dispose();
-                            _clipStack[clipDepth] = null;
+                            int activeClipIndex = clipDepth - 1;
+                            CanvasActiveLayer? activeLayer = clipStack[activeClipIndex];
+                            try
+                            {
+                                if (activeLayer is not null)
+                                    NativeDisposer(activeLayer);
+                            }
+                            catch
+                            {
+                                // A failed pop leaves the native stack's exact
+                                // depth unknown. Do not retry it, or pop an
+                                // ancestor underneath it, during unwind.
+                                clipPopFailed = true;
+                                throw;
+                            }
+                            clipStack[activeClipIndex] = null;
+                            clipDepth = activeClipIndex;
                         }
                         break;
                     case MarkdownVectorCommandKind.FillPath:
-                        if (_geometries[i] is { } fillGeometry)
+                        if (geometry is { } fillGeometry)
                             drawingSession.FillGeometry(fillGeometry, ResolveLegacyColor(command.ColorArgb, palette, highContrast, foregroundOverride));
                         break;
                     case MarkdownVectorCommandKind.StrokePath:
-                        if (_geometries[i] is { } strokeGeometry)
+                        if (geometry is { } strokeGeometry)
                             drawingSession.DrawGeometry(strokeGeometry, ResolveLegacyColor(command.ColorArgb, palette, highContrast, foregroundOverride), command.StrokeWidth);
                         break;
                     case MarkdownVectorCommandKind.FillRectangle:
@@ -205,10 +630,10 @@ internal sealed class VectorSceneDrawing : IDisposable
                             ResolveLegacyColor(command.ColorArgb, palette, highContrast, foregroundOverride), command.StrokeWidth);
                         break;
                     case MarkdownVectorCommandKind.DrawRectangle when style is not null:
-                        DrawRectangle(drawingSession, command, style, _strokeStyles[i], palette, highContrast, foregroundOverride);
+                        DrawRectangle(scene, drawingSession, command, style, strokeStyle, palette, highContrast, foregroundOverride);
                         break;
                     case MarkdownVectorCommandKind.DrawPath when style is not null:
-                        DrawPath(drawingSession, command, _geometries[i], style, _strokeStyles[i], palette, highContrast, foregroundOverride);
+                        DrawPath(scene, drawingSession, command, geometry, style, strokeStyle, palette, highContrast, foregroundOverride);
                         break;
                     case MarkdownVectorCommandKind.DrawLine when style is not null:
                         if (style.StrokeWidth > 0 && TryResolveColor(style.StrokeArgb, style.Opacity,
@@ -221,52 +646,369 @@ internal sealed class VectorSceneDrawing : IDisposable
                                 highContrast, foregroundOverride, out Color lineColor))
                         {
                             drawingSession.DrawLine(command.Start.X, command.Start.Y, command.End.X, command.End.Y,
-                                lineColor, style.StrokeWidth, _strokeStyles[i]);
+                                lineColor, style.StrokeWidth, strokeStyle);
                         }
                         break;
                     case MarkdownVectorCommandKind.DrawEllipse when style is not null:
-                        DrawEllipse(drawingSession, command, style, _strokeStyles[i], palette, highContrast, foregroundOverride);
+                        DrawEllipse(scene, drawingSession, command, style, strokeStyle, palette, highContrast, foregroundOverride);
                         break;
                     case MarkdownVectorCommandKind.DrawText when style is not null:
-                        DrawText(drawingSession, command, style, _textLayouts[i], palette, highContrast, foregroundOverride);
+                        DrawText(drawingSession, command, style, textLayout, palette, highContrast, foregroundOverride);
                         break;
                 }
             }
         }
-        finally
+        catch (Exception exception)
         {
-            while (clipDepth > 0)
+            paintFailure = exception;
+        }
+
+        Exception? clipCleanupFailure = null;
+        if (clipPopFailed)
+        {
+            MarkClipCleanupFailed(drawingSession);
+        }
+        else
+        {
+            try
             {
-                clipDepth--;
-                _clipStack[clipDepth]?.Dispose();
-                _clipStack[clipDepth] = null;
+                while (clipDepth > 0)
+                {
+                    int activeClipIndex = clipDepth - 1;
+                    if (clipStack[activeClipIndex] is { } layer)
+                        NativeDisposer(layer);
+                    clipStack[activeClipIndex] = null;
+                    clipDepth = activeClipIndex;
+                }
             }
+            catch (Exception exception)
+            {
+                // Unwind must obey the same LIFO rule as EndClip. The first
+                // failed pop retains the remaining stack for quarantine.
+                MarkClipCleanupFailed(drawingSession);
+                clipCleanupFailure = exception;
+            }
+        }
+
+        Exception? transformRestoreFailure = null;
+        try
+        {
             drawingSession.Transform = originalTransform;
         }
+        catch (Exception exception)
+        {
+            transformRestoreFailure = exception;
+        }
+
+        if (paintFailure is not null)
+        {
+            if (clipCleanupFailure is not null && transformRestoreFailure is not null)
+            {
+                throw new AggregateException(
+                    "Vector painting and cleanup both failed.",
+                    paintFailure,
+                    clipCleanupFailure,
+                    transformRestoreFailure);
+            }
+            if (clipCleanupFailure is not null)
+                throw new AggregateException("Vector painting and clip cleanup both failed.", paintFailure, clipCleanupFailure);
+            if (transformRestoreFailure is not null)
+                throw new AggregateException("Vector painting and transform restoration both failed.", paintFailure, transformRestoreFailure);
+
+            ExceptionDispatchInfo.Capture(paintFailure).Throw();
+        }
+
+        if (clipCleanupFailure is not null)
+        {
+            if (transformRestoreFailure is not null)
+            {
+                throw new AggregateException(
+                    "Vector clip cleanup and transform restoration both failed.",
+                    clipCleanupFailure,
+                    transformRestoreFailure);
+            }
+
+            ExceptionDispatchInfo.Capture(clipCleanupFailure).Throw();
+        }
+
+        if (transformRestoreFailure is not null)
+            ExceptionDispatchInfo.Capture(transformRestoreFailure).Throw();
+    }
+
+    private void MarkClipCleanupFailed(CanvasDrawingSession drawingSession)
+    {
+        _resourcesPrepared = false;
+        _resourceCleanupPending = true;
+        _clipCleanupFailed = true;
+        _linkedSemantics = null;
+        _transformStack = null;
+        // An uncertain inner native stack also forbids the outer boxes from
+        // popping their session layers. This lookup neither creates state nor
+        // allocates retirement owners on the already-failing path.
+        NativePaintSessionResources.PoisonSession(drawingSession);
     }
 
     public void Dispose()
     {
         if (_disposed)
             return;
-        _disposed = true;
-        DisposeDeviceResources();
-    }
-
-    private void DisposeDeviceResources()
-    {
-        for (int i = 0; i < _geometries.Length; i++)
+        try
         {
-            _geometries[i]?.Dispose();
-            _textLayouts[i]?.Dispose();
-            _strokeStyles[i]?.Dispose();
-            _geometries[i] = null;
-            _textLayouts[i] = null;
-            _strokeStyles[i] = null;
+            ReleaseNativeResources();
+        }
+        finally
+        {
+            _scene = null;
+            _resourceCreator = null;
+            _nativeDisposer = null;
+            _testClipFactory = null;
+            _disposed = true;
+            // Reversible release retains slots on the drawing. Terminal
+            // retirement cannot rely on that drawing's survival: its outer
+            // construction/snapshot/refill owner may drop it after this throws.
+            // The source-free record/link was reserved before native creation.
+            NativeResourceRetirementRecord? retirement = _nativeRetirement;
+            _nativeRetirement = null;
+            if (_resourceCleanupPending && retirement is not null)
+            {
+                retirement.SetGroup(0, _geometries, retryable: !_clipCleanupFailed);
+                retirement.SetGroup(1, _textLayouts);
+                retirement.SetGroup(2, _strokeStyles);
+                retirement.SetGroup(3, _clipStack, retryable: false);
+                retirement.SetTemporary(0, _pendingTextFormat);
+                retirement.SetTemporary(1, _pendingPathBuilder);
+                retirement.SetAdmissionCredit(_nativeCredit);
+                _nativeCredit = null;
+                _geometries = null;
+                _textLayouts = null;
+                _strokeStyles = null;
+                _clipStack = null;
+                _pendingTextFormat = null;
+                _pendingPathBuilder = null;
+                _resourceCleanupPending = false;
+                retirement.Publish();
+            }
+            else
+            {
+                RefundNativeCredit();
+            }
         }
     }
 
+    private void RefundNativeCredit()
+    {
+        VectorNativeResourceCredit? credit = _nativeCredit;
+        _nativeCredit = null;
+        credit?.Dispose();
+    }
+
+    private Action<IDisposable> NativeDisposer => _nativeRetirement!.Disposer;
+
+    private static void DisposeDeviceResources(
+        ref CanvasGeometry?[]? geometries,
+        ref CanvasTextLayout?[]? textLayouts,
+        ref CanvasStrokeStyle?[]? strokeStyles,
+        ref CanvasActiveLayer?[]? clipStack,
+        ref CanvasTextFormat? pendingTextFormat,
+        ref CanvasPathBuilder? pendingPathBuilder,
+        Action<IDisposable> disposer,
+        bool preserveGeometryForUncertainClips)
+    {
+        int count = Math.Max(geometries?.Length ?? 0,
+            Math.Max(textLayouts?.Length ?? 0, strokeStyles?.Length ?? 0));
+        BlockBoxCleanupScope cleanup = default;
+        for (int i = 0; i < count; i++)
+        {
+            if (!preserveGeometryForUncertainClips && geometries is not null && i < geometries.Length)
+                cleanup.TryDisposeAndClear(ref geometries[i], disposer);
+            if (textLayouts is not null && i < textLayouts.Length)
+                cleanup.TryDisposeAndClear(ref textLayouts[i], disposer);
+            if (strokeStyles is not null && i < strokeStyles.Length)
+                cleanup.TryDisposeAndClear(ref strokeStyles[i], disposer);
+        }
+
+        if (preserveGeometryForUncertainClips || !AreAllResourcesCleared(clipStack))
+            cleanup.RecordFailure(new InvalidOperationException(
+                "An uncertain vector active layer and its clip geometry require terminal quarantine, not post-session disposal."));
+        cleanup.TryDisposeAndClear(ref pendingTextFormat, disposer);
+        cleanup.TryDisposeAndClear(ref pendingPathBuilder, disposer);
+
+        if (AreAllResourcesCleared(geometries))
+            geometries = null;
+        if (AreAllResourcesCleared(textLayouts))
+            textLayouts = null;
+        if (AreAllResourcesCleared(strokeStyles))
+            strokeStyles = null;
+        if (AreAllResourcesCleared(clipStack))
+            clipStack = null;
+
+        cleanup.ThrowIfAny("disposing vector drawing resources");
+    }
+
+    private static bool AreAllResourcesCleared<T>(T?[]? resources)
+        where T : class, IDisposable
+    {
+        if (resources is null)
+            return true;
+
+        for (int i = 0; i < resources.Length; i++)
+        {
+            if (resources[i] is not null)
+                return false;
+        }
+
+        return true;
+    }
+
+    private static T?[] CreateSlots<T>(int count) where T : class
+        => count == 0 ? Array.Empty<T?>() : new T?[count];
+
+    private static bool RequiresGeometry(MarkdownVectorCommandKind kind)
+        => kind is MarkdownVectorCommandKind.FillPath or
+            MarkdownVectorCommandKind.StrokePath or
+            MarkdownVectorCommandKind.DrawPath or
+            MarkdownVectorCommandKind.BeginClip;
+
+    private static bool RequiresTextLayout(MarkdownVectorCommand command)
+        => command.Kind == MarkdownVectorCommandKind.DrawText &&
+            command.Text is not null && command.TextStyle is not null;
+
+    internal static long EstimateNativeResourceWeightUnits(
+        MarkdownVectorScene scene,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(scene);
+        return CountNativeResourceShape(scene, cancellationToken, calculateWeight: true).WeightUnits;
+    }
+
+    private static NativeResourceShape CountNativeResourceShape(
+        MarkdownVectorScene scene,
+        CancellationToken cancellationToken,
+        bool calculateWeight)
+    {
+        int geometries = 0;
+        int textLayouts = 0;
+        int strokeStyles = 0;
+        int transformDepth = 0;
+        int clipDepth = 0;
+        int maximumTransformDepth = 0;
+        int maximumClipDepth = 0;
+        long weightUnits = calculateWeight ? 1024 : 0; // Per-scene fixed custody and paint overhead.
+        if (calculateWeight)
+        {
+            weightUnits = SaturatingAdd(weightUnits, SaturatingMultiply(scene.Commands.Count, 128));
+            weightUnits = SaturatingAdd(weightUnits, SaturatingMultiply(scene.Semantics.Count, 256));
+            weightUnits = SaturatingAdd(weightUnits, SaturatingMultiply(scene.Links.Count, 256));
+        }
+
+        if (calculateWeight)
+        {
+            foreach (MarkdownVectorSemanticItem semantic in scene.Semantics)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                weightUnits = SaturatingAdd(weightUnits, SaturatingMultiply(semantic.Name?.Length ?? 0, 16));
+                weightUnits = SaturatingAdd(weightUnits, SaturatingMultiply(semantic.Description?.Length ?? 0, 16));
+            }
+            foreach (MarkdownVectorLinkAction link in scene.Links)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                weightUnits = SaturatingAdd(weightUnits, SaturatingMultiply(link.Target?.Length ?? 0, 16));
+                weightUnits = SaturatingAdd(weightUnits, SaturatingMultiply(link.Action?.Length ?? 0, 16));
+            }
+        }
+
+        foreach (MarkdownVectorCommand command in scene.Commands)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (RequiresGeometry(command.Kind))
+            {
+                geometries++;
+                if (calculateWeight)
+                {
+                    weightUnits = SaturatingAdd(weightUnits, 2048);
+                    weightUnits = SaturatingAdd(weightUnits, SaturatingMultiply(command.Path.Count, 192));
+                    // Cubics and quadratics carry more control-point work than a
+                    // straight segment; weight them without inspecting coordinates.
+                    for (int operationIndex = 0; operationIndex < command.Path.Count; operationIndex++)
+                    {
+                        if ((operationIndex & 0xFF) == 0)
+                            cancellationToken.ThrowIfCancellationRequested();
+                        MarkdownVectorPathOperationKind kind = command.Path[operationIndex].Kind;
+                        if (kind is MarkdownVectorPathOperationKind.QuadraticBezier)
+                            weightUnits = SaturatingAdd(weightUnits, 128);
+                        else if (kind is MarkdownVectorPathOperationKind.CubicBezier)
+                            weightUnits = SaturatingAdd(weightUnits, 256);
+                    }
+                }
+            }
+            if (RequiresTextLayout(command))
+            {
+                textLayouts++;
+                if (calculateWeight)
+                {
+                    weightUnits = SaturatingAdd(weightUnits, 4096);
+                    weightUnits = SaturatingAdd(weightUnits, SaturatingMultiply(command.Text!.Length, 64));
+                    weightUnits = SaturatingAdd(weightUnits, SaturatingMultiply(command.TextStyle!.FontFamily.Length, 16));
+                }
+            }
+            if (command.Style is { } style && RequiresStrokeStyle(style))
+            {
+                strokeStyles++;
+                if (calculateWeight)
+                {
+                    weightUnits = SaturatingAdd(weightUnits, 2048);
+                    weightUnits = SaturatingAdd(weightUnits, SaturatingMultiply(style.DashArray.Count, 128));
+                }
+            }
+            // MarkdownVectorScene validates complete, properly nested groups
+            // and clips before publication. Group and clip depths are separate
+            // because each uses a different paint stack, even when interleaved.
+            switch (command.Kind)
+            {
+                case MarkdownVectorCommandKind.BeginGroup:
+                    maximumTransformDepth = Math.Max(maximumTransformDepth, ++transformDepth);
+                    break;
+                case MarkdownVectorCommandKind.EndGroup:
+                    transformDepth--;
+                    break;
+                case MarkdownVectorCommandKind.BeginClip:
+                    maximumClipDepth = Math.Max(maximumClipDepth, ++clipDepth);
+                    break;
+                case MarkdownVectorCommandKind.EndClip:
+                    clipDepth--;
+                    break;
+            }
+        }
+        if (calculateWeight)
+        {
+            weightUnits = SaturatingAdd(weightUnits, SaturatingMultiply(maximumTransformDepth, 512));
+            if (textLayouts > 0)
+                weightUnits = SaturatingAdd(weightUnits, SaturatingMultiply(maximumTransformDepth, 24));
+            weightUnits = SaturatingAdd(weightUnits, SaturatingMultiply(maximumClipDepth, 4096));
+        }
+        return new NativeResourceShape(geometries, textLayouts, strokeStyles,
+            maximumTransformDepth, maximumClipDepth, weightUnits);
+    }
+
+    private static long SaturatingMultiply(int count, int weight)
+        => count <= 0 ? 0 : (long)count * weight;
+
+    private static long SaturatingAdd(long left, long right)
+        => right > long.MaxValue - left ? long.MaxValue : left + right;
+
+    private readonly struct NativeResourceShape(
+        int geometries, int textLayouts, int strokeStyles, int transformDepth, int clipDepth, long weightUnits)
+    {
+        internal int Geometries { get; } = geometries;
+        internal int TextLayouts { get; } = textLayouts;
+        internal int StrokeStyles { get; } = strokeStyles;
+        internal int TransformDepth { get; } = transformDepth;
+        internal int ClipDepth { get; } = clipDepth;
+        internal long WeightUnits { get; } = weightUnits;
+    }
+
     private void DrawRectangle(
+        MarkdownVectorScene scene,
         CanvasDrawingSession ds,
         MarkdownVectorCommand command,
         MarkdownVectorPaintStyle style,
@@ -280,7 +1022,7 @@ internal sealed class VectorSceneDrawing : IDisposable
             command,
             style.FillRole,
             style.FillArgb,
-            style.HighContrastFillRole ?? InferFillRole(command, style, GetSemanticRole(command)),
+            style.HighContrastFillRole ?? InferFillRole(command, style, GetSemanticRole(scene, command)),
             highContrast);
         if (TryResolveColor(style.FillArgb, style.Opacity, palette, fillRole,
                 highContrast, foregroundOverride, out Color fill))
@@ -297,6 +1039,7 @@ internal sealed class VectorSceneDrawing : IDisposable
     }
 
     private void DrawPath(
+        MarkdownVectorScene scene,
         CanvasDrawingSession ds,
         MarkdownVectorCommand command,
         CanvasGeometry? geometry,
@@ -312,7 +1055,7 @@ internal sealed class VectorSceneDrawing : IDisposable
             command,
             style.FillRole,
             style.FillArgb,
-            style.HighContrastFillRole ?? InferFillRole(command, style, GetSemanticRole(command)),
+            style.HighContrastFillRole ?? InferFillRole(command, style, GetSemanticRole(scene, command)),
             highContrast);
         if (TryResolveColor(style.FillArgb, style.Opacity, palette, fillRole,
                 highContrast, foregroundOverride, out Color fill))
@@ -329,6 +1072,7 @@ internal sealed class VectorSceneDrawing : IDisposable
     }
 
     private void DrawEllipse(
+        MarkdownVectorScene scene,
         CanvasDrawingSession ds,
         MarkdownVectorCommand command,
         MarkdownVectorPaintStyle style,
@@ -346,7 +1090,7 @@ internal sealed class VectorSceneDrawing : IDisposable
             command,
             style.FillRole,
             style.FillArgb,
-            style.HighContrastFillRole ?? InferFillRole(command, style, GetSemanticRole(command)),
+            style.HighContrastFillRole ?? InferFillRole(command, style, GetSemanticRole(scene, command)),
             highContrast);
         if (TryResolveColor(style.FillArgb, style.Opacity, palette, fillRole,
                 highContrast, foregroundOverride, out Color fill))
@@ -390,7 +1134,17 @@ internal sealed class VectorSceneDrawing : IDisposable
             return;
         }
 
-        float baseline = layout.LineMetrics.Length > 0 ? layout.LineMetrics[0].Baseline : command.TextStyle!.FontSize * 0.8f;
+        Vector2 origin = ResolveTextOrigin(command, layout);
+        ds.DrawTextLayout(layout, origin.X, origin.Y, color);
+    }
+
+    private static Vector2 ResolveTextOrigin(
+        MarkdownVectorCommand command,
+        CanvasTextLayout layout)
+    {
+        float baseline = layout.LineMetrics.Length > 0
+            ? layout.LineMetrics[0].Baseline
+            : command.TextStyle!.FontSize * 0.8f;
         float width = (float)Math.Max(0, layout.DrawBounds.Width);
         float x = command.TextStyle!.Alignment switch
         {
@@ -398,37 +1152,52 @@ internal sealed class VectorSceneDrawing : IDisposable
             MarkdownVectorTextAlignment.End => command.Start.X - width,
             _ => command.Start.X,
         };
-        ds.DrawTextLayout(layout, x, command.Start.Y - baseline, color);
+        return new Vector2(x, command.Start.Y - baseline);
     }
 
     internal static CanvasStrokeStyle CreateStrokeStyle(MarkdownVectorPaintStyle style)
     {
-        var result = new CanvasStrokeStyle
-        {
-            StartCap = ToCap(style.LineCap),
-            EndCap = ToCap(style.LineCap),
-            DashCap = ToCap(style.LineCap),
-            LineJoin = ToJoin(style.LineJoin),
-            DashOffset = style.DashOffset,
-            TransformBehavior = style.NonScalingStroke
-                ? CanvasStrokeTransformBehavior.Fixed
-                : CanvasStrokeTransformBehavior.Normal,
-        };
+        NativeResourceRetirementRecord retirement = NativeResourceRetirement.Shared.Reserve(
+            resourceGroupCount: 0, temporarySlotCount: 1);
+        CanvasStrokeStyle? result = new CanvasStrokeStyle();
         try
         {
-            if (style.DashArray.Count > 0)
-            {
-                var dashes = new float[style.DashArray.Count];
-                for (int i = 0; i < dashes.Length; i++)
-                    dashes[i] = style.DashArray[i];
-                result.CustomDashStyle = dashes;
-            }
+            ConfigureStrokeStyle(result, style);
             return result;
         }
-        catch
+        catch (Exception preparationFailure)
         {
-            result.Dispose();
+            BlockBoxCleanupScope cleanup = default;
+            cleanup.TryDisposeAndClear(ref result, retirement.Disposer);
+            retirement.SetTemporary(0, result);
+            retirement.Publish();
+            try { cleanup.ThrowIfAny("disposing unpublished vector stroke style"); }
+            catch (Exception cleanupFailure)
+            {
+                throw new AggregateException(
+                    "Vector stroke style preparation and cleanup both failed.",
+                    preparationFailure, cleanupFailure);
+            }
             throw;
+        }
+    }
+
+    private static void ConfigureStrokeStyle(CanvasStrokeStyle result, MarkdownVectorPaintStyle style)
+    {
+        result.StartCap = ToCap(style.LineCap);
+        result.EndCap = ToCap(style.LineCap);
+        result.DashCap = ToCap(style.LineCap);
+        result.LineJoin = ToJoin(style.LineJoin);
+        result.DashOffset = style.DashOffset;
+        result.TransformBehavior = style.NonScalingStroke
+            ? CanvasStrokeTransformBehavior.Fixed
+            : CanvasStrokeTransformBehavior.Normal;
+        if (style.DashArray.Count > 0)
+        {
+            var dashes = new float[style.DashArray.Count];
+            for (int i = 0; i < dashes.Length; i++)
+                dashes[i] = style.DashArray[i];
+            result.CustomDashStyle = dashes;
         }
     }
 
@@ -453,13 +1222,14 @@ internal sealed class VectorSceneDrawing : IDisposable
         _ => CanvasLineJoin.Miter,
     };
 
-    private static CanvasGeometry CreateGeometry(
+    private void CreateGeometry(
+        ref CanvasGeometry? geometry,
         ICanvasResourceCreator resourceCreator,
         IReadOnlyList<MarkdownVectorPathOperation> operations,
         MarkdownVectorFillRule fillRule,
         CancellationToken cancellationToken)
     {
-        using var builder = new CanvasPathBuilder(resourceCreator);
+        CanvasPathBuilder builder = _pendingPathBuilder = new CanvasPathBuilder(resourceCreator);
         builder.SetFilledRegionDetermination(fillRule == MarkdownVectorFillRule.EvenOdd
             ? CanvasFilledRegionDetermination.Alternate
             : CanvasFilledRegionDetermination.Winding);
@@ -494,7 +1264,13 @@ internal sealed class VectorSceneDrawing : IDisposable
         }
         if (figureOpen)
             builder.EndFigure(CanvasFigureLoop.Open);
-        return CanvasGeometry.CreatePath(builder);
+        // A throwing builder cleanup must not prevent the returned geometry
+        // from reaching an owned slot. The outer preparation cleanup attempts
+        // both slots and retains any persistent failures.
+        geometry = CanvasGeometry.CreatePath(builder);
+        BlockBoxCleanupScope cleanup = default;
+        cleanup.TryDisposeAndClear(ref _pendingPathBuilder, NativeDisposer);
+        cleanup.ThrowIfAny("disposing vector path builder");
     }
 
     private static Matrix3x2 ToMatrix(MarkdownVectorTransform value) =>
@@ -521,14 +1297,6 @@ internal sealed class VectorSceneDrawing : IDisposable
             out Color color);
         return color;
     }
-
-    internal static Color ResolveColorForTesting(
-        uint? argb,
-        float opacity,
-        VectorScenePaintPalette palette,
-        MarkdownVectorPaintRole role,
-        bool highContrast)
-        => ResolveColor(argb, opacity, palette, role, highContrast);
 
     internal static Color ResolveColor(
         uint? argb,
@@ -648,16 +1416,20 @@ internal sealed class VectorSceneDrawing : IDisposable
         MarkdownVectorPaintRole declaredRole,
         uint? argb,
         MarkdownVectorPaintRole highContrastFallback,
-        bool highContrast) =>
-        ResolvePaintRole(
+        bool highContrast)
+    {
+        bool[]? linkedSemantics = _linkedSemantics;
+        return ResolvePaintRole(
             command,
             declaredRole,
             argb,
             highContrastFallback,
             highContrast,
+            linkedSemantics is not null &&
             command.SemanticIndex >= 0 &&
-            command.SemanticIndex < _linkedSemantics.Length &&
-            _linkedSemantics[command.SemanticIndex]);
+            command.SemanticIndex < linkedSemantics.Length &&
+            linkedSemantics[command.SemanticIndex]);
+    }
 
     internal static MarkdownVectorPaintRole ResolvePaintRole(
         MarkdownVectorCommand command,
@@ -706,14 +1478,33 @@ internal sealed class VectorSceneDrawing : IDisposable
             : MarkdownVectorPaintRole.Foreground;
     }
 
-    private MarkdownVectorSemanticRole? GetSemanticRole(MarkdownVectorCommand command) =>
-        command.SemanticIndex >= 0 && command.SemanticIndex < _scene.Semantics.Count
-            ? _scene.Semantics[command.SemanticIndex].Role
+    private static MarkdownVectorSemanticRole? GetSemanticRole(
+        MarkdownVectorScene scene,
+        MarkdownVectorCommand command) =>
+        command.SemanticIndex >= 0 && command.SemanticIndex < scene.Semantics.Count
+            ? scene.Semantics[command.SemanticIndex].Role
             : null;
+
+    private MarkdownVectorScene GetScene()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return _scene ?? throw new ObjectDisposedException(nameof(VectorSceneDrawing));
+    }
 }
 
-internal readonly record struct VectorScenePaintPalette(Color Foreground, Color Surface, Color Link)
+internal readonly struct VectorScenePaintPalette
 {
+    internal VectorScenePaintPalette(Color Foreground, Color Surface, Color Link)
+    {
+        this.Foreground = Foreground;
+        this.Surface = Surface;
+        this.Link = Link;
+    }
+
+    public Color Foreground { get; init; }
+    public Color Surface { get; init; }
+    public Color Link { get; init; }
+
     public Color Resolve(MarkdownVectorPaintRole role) => role switch
     {
         MarkdownVectorPaintRole.Surface => Surface,

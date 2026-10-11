@@ -6,6 +6,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.IO.Compression.FileSystem
+. (Join-Path $PSScriptRoot 'PackageSizeGates.Common.ps1')
 
 function Get-LatestPackage([string] $packageId) {
     $matches = Get-ChildItem -LiteralPath $PackageDirectory -Filter "$packageId.*.nupkg" -File |
@@ -82,9 +83,19 @@ foreach ($entry in $optionalCaps.GetEnumerator()) {
         if ($nativeAssets.Count -ne 3) {
             throw "$displayName must contain exactly one native asset for x86, x64, and ARM64."
         }
+        $providerAssemblyPath = 'lib/net10.0-windows10.0.26100/MarkdownRenderer.Svg.Resvg.dll'
         foreach ($asset in $nativeAssets) {
             if ($isResvg) {
-                Assert-Max $asset.Length (3.5MB) "$displayName selected deployment asset '$($asset.Name)'"
+                Assert-Max $asset.Length (3.5MB) "$displayName selected-RID worker '$($asset.Name)'"
+                $ridMatch = [regex]::Match($asset.Name, '^runtimes/(?<rid>win-(x86|x64|arm64))/native/')
+                if (-not $ridMatch.Success) {
+                    throw "The resvg native asset '$($asset.Name)' has no supported selected RID."
+                }
+                $deployment = Get-ResvgSelectedDeploymentPayload `
+                    -Entries $entries `
+                    -Rid $ridMatch.Groups['rid'].Value `
+                    -ProviderAssemblyPath $providerAssemblyPath
+                Assert-ResvgSelectedDeploymentWithinCap -Deployment $deployment -MaximumBytes (3.5MB)
             }
             else {
                 Assert-Max $asset.CompressedLength $entry.Value "$displayName selected-RID asset '$($asset.Name)'"

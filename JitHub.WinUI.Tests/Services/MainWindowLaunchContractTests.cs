@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Threading.Tasks;
 using System.Xml.Linq;
 using JitHub.Services.Markdown;
 using Xunit;
@@ -135,12 +136,139 @@ public sealed class MainWindowLaunchContractTests
         Assert.Contains("renderer.Dispose()", markdownViewer, StringComparison.Ordinal);
         Assert.Contains("renderer.DisposalCompleted += OnRendererDisposalCompleted", markdownViewer, StringComparison.Ordinal);
         Assert.Contains("_currentRendererDisposalCompleted", markdownViewer, StringComparison.Ordinal);
+        Assert.Contains("retirementBegan: () => _renderer = null", markdownViewer, StringComparison.Ordinal);
+        Assert.Contains("drainRetiredResources: renderer.DrainRetiredSnapshotsAsync", markdownViewer, StringComparison.Ordinal);
+        Assert.Contains("Microsoft.UI.Dispatching.DispatcherQueue? retirementDispatcher = DispatcherQueue", markdownViewer, StringComparison.Ordinal);
+        Assert.Contains("ReleaseRendererTrackingOnDispatcherAsync(renderer, retirementDispatcher)", markdownViewer, StringComparison.Ordinal);
+        Assert.Contains("UiTaskGuard.Observe(", markdownViewer, StringComparison.Ordinal);
+        Assert.Contains("ObserveRendererRetirementAsync(renderer, retirementCompletion, retirementDispatcher)", markdownViewer, StringComparison.Ordinal);
+        Assert.Contains("if (_rendererRetirementPending is not null)", markdownViewer, StringComparison.Ordinal);
+        Assert.Contains("_rendererRetirementPending = null;", markdownViewer, StringComparison.Ordinal);
         Assert.True(
             disposalCommit.IndexOf("detachAndDispose();", StringComparison.Ordinal)
                 < disposalCommit.IndexOf("disposalCompletedSuccessfully()", StringComparison.Ordinal));
         Assert.True(
             disposalCommit.IndexOf("disposalCompletedSuccessfully()", StringComparison.Ordinal)
                 < disposalCommit.IndexOf("releaseTracking();", StringComparison.Ordinal));
+        Assert.True(
+            disposalCommit.IndexOf("await drain.ConfigureAwait(false)", StringComparison.Ordinal)
+                < disposalCommit.IndexOf("await release.ConfigureAwait(false)", StringComparison.Ordinal));
+        Assert.Contains("dispatcher.TryEnqueue", markdownViewer, StringComparison.Ordinal);
+        Assert.Contains("markdown-shutdown-skipped-undisposed-renderers", closeFlow, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task RendererTrackingRemainsActiveUntilSnapshotRetirementDrains()
+    {
+        var retirement = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        int activeRenderers = 1;
+        int providerShutdowns = 0;
+        bool rendererTracked = true;
+
+        Task completion = MarkdownRendererDisposalCommit.Execute(
+            detachAndDispose: static () => { },
+            disposalCompletedSuccessfully: static () => true,
+            retirementBegan: static () => { },
+            drainRetiredResources: () => retirement.Task,
+            releaseTracking: () =>
+            {
+                rendererTracked = false;
+                activeRenderers--;
+                if (activeRenderers == 0)
+                    providerShutdowns++;
+                return Task.CompletedTask;
+            });
+
+        Assert.True(rendererTracked);
+        Assert.Equal(1, activeRenderers);
+        Assert.Equal(0, providerShutdowns);
+        Assert.False(completion.IsCompleted);
+
+        retirement.SetResult(true);
+        await completion;
+
+        Assert.False(rendererTracked);
+        Assert.Equal(0, activeRenderers);
+        Assert.Equal(1, providerShutdowns);
+    }
+
+    [Fact]
+    public void RendererWithoutDisposeCompletionDoesNotStartRetirementOrReleaseTracking()
+    {
+        int activeRenderers = 1;
+        bool retirementStarted = false;
+        Assert.Throws<InvalidOperationException>(() =>
+        {
+            _ = MarkdownRendererDisposalCommit.Execute(
+                detachAndDispose: static () => { },
+                disposalCompletedSuccessfully: static () => false,
+                retirementBegan: () => retirementStarted = true,
+                drainRetiredResources: () =>
+                {
+                    retirementStarted = true;
+                    return Task.CompletedTask;
+                },
+                releaseTracking: () =>
+                {
+                    activeRenderers--;
+                    return Task.CompletedTask;
+                });
+        });
+
+        Assert.False(retirementStarted);
+        Assert.Equal(1, activeRenderers);
+    }
+
+    [Fact]
+    public async Task FaultedSnapshotRetirementKeepsRendererTrackingUnresolved()
+    {
+        var retirement = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var failure = new InvalidOperationException("Simulated snapshot retirement failure.");
+        int activeRenderers = 1;
+        bool rendererTracked = true;
+        Task completion = MarkdownRendererDisposalCommit.Execute(
+            detachAndDispose: static () => { },
+            disposalCompletedSuccessfully: static () => true,
+            retirementBegan: static () => { },
+            drainRetiredResources: () => retirement.Task,
+            releaseTracking: () =>
+            {
+                rendererTracked = false;
+                activeRenderers--;
+                return Task.CompletedTask;
+            });
+
+        retirement.SetException(failure);
+        InvalidOperationException observed = await Assert.ThrowsAsync<InvalidOperationException>(
+            async () => await completion);
+
+        Assert.Same(failure, observed);
+        Assert.True(rendererTracked);
+        Assert.Equal(1, activeRenderers);
+    }
+
+    [Fact]
+    public void IncompleteSnapshotRetirementKeepsRendererTrackingUnresolved()
+    {
+        var retirement = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        int activeRenderers = 1;
+        bool rendererTracked = true;
+        Task completion = MarkdownRendererDisposalCommit.Execute(
+            detachAndDispose: static () => { },
+            disposalCompletedSuccessfully: static () => true,
+            retirementBegan: static () => { },
+            drainRetiredResources: () => retirement.Task,
+            releaseTracking: () =>
+            {
+                rendererTracked = false;
+                activeRenderers--;
+                return Task.CompletedTask;
+            });
+
+        Assert.False(retirement.Task.IsCompleted);
+        Assert.False(completion.IsCompleted);
+        Assert.True(rendererTracked);
+        Assert.Equal(1, activeRenderers);
     }
 
     [Fact]

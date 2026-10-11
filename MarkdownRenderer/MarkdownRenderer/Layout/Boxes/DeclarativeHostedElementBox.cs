@@ -56,24 +56,24 @@ internal sealed class DeclarativeHostedElementBox : BlockBox
         _desiredHeight = ResolveDesiredHeight(content.Attributes, defaultHeight);
     }
 
-    internal string FactoryKey { get; }
+    internal readonly string FactoryKey;
 
-    internal SourceSpan SourceRange { get; }
+    internal readonly SourceSpan SourceRange;
 
-    internal IReadOnlyDictionary<string, string> Attributes { get; }
+    internal readonly IReadOnlyDictionary<string, string> Attributes;
 
-    internal MarkdownAccessibilityRole AccessibilityRole { get; }
+    internal readonly MarkdownAccessibilityRole AccessibilityRole;
 
-    internal string? AccessibilityName { get; }
+    internal readonly string? AccessibilityName;
 
-    internal string? AccessibilityDescription { get; }
+    internal readonly string? AccessibilityDescription;
 
-    internal string? SemanticText { get; }
+    internal readonly string? SemanticText;
 
     internal string AutomationId =>
         HostedElementAutomationIdentity.Create(FactoryKey, SourceRange, BlockIndex);
 
-    internal HostedElementFallbackKey FallbackKey { get; }
+    internal readonly HostedElementFallbackKey FallbackKey;
 
     internal Microsoft.UI.Xaml.FrameworkElement? RealizedElement { get; set; }
 

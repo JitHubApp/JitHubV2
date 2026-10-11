@@ -4,15 +4,401 @@
   "generatedFrom": "native/Cargo.lock",
   "packageCount": 76,
   "resvgCommit": "68b14c4c3bccdb60344c777406486b54c36ec1a4",
+  "vendoredSources": [
+    {
+      "name": "resvg",
+      "version": "0.48.1",
+      "repository": "https://github.com/linebender/resvg.git",
+      "revision": "68b14c4c3bccdb60344c777406486b54c36ec1a4",
+      "packagePath": "crates/resvg",
+      "sourceTree": "973a9a5c57b063ad942b22d44dee962bd2638b60",
+      "archiveSha256": "",
+      "license": "Apache-2.0 OR MIT",
+      "upstreamLicense": "Apache-2.0 OR MIT",
+      "sourceInventorySha256": "222759c0ff6177b5bf847b4d984f5d4e5819897edb204b96ecb459687643b3e0",
+      "patchSetSha256": "5c5013c19ac3e4cd50c97f15dfd68271493b35fd5f13f418eff37e4531e5902b",
+      "patches": [
+        {
+          "path": "Cargo.toml",
+          "upstreamSha256": "a57ff43f304e9dd7284ac36b7c058675e510f7268321c52d2b5238da31e5d496",
+          "patchedSha256": "3478619a8ad54f5eb78322e111363ee8929bbdeccfdccb384bb4b6ec8df193d7"
+        },
+        {
+          "path": "src/clip.rs",
+          "upstreamSha256": "bbfece2b312ea419c8c8844d01051946b66797aeab2675c71574414ecb95a067",
+          "patchedSha256": "e4ac7d51a52a57bd24a16f774f3a6f7394bac37cb4d8c306f5ca39c665ec7d48"
+        },
+        {
+          "path": "src/filter/box_blur.rs",
+          "upstreamSha256": "a25c600532f7a7b3df9022f10c17243a24ba718d64958c566f26feade3d9c5a2",
+          "patchedSha256": "e821fa1133a3e515b1c93c8113c4a2f019a615914416e5eb4d56e4bbf2521127"
+        },
+        {
+          "path": "src/filter/convolve_matrix.rs",
+          "upstreamSha256": "d4e8b2e7604b93866a8d02ac1524e16c914e5803f0a05285f40cef6785631a09",
+          "patchedSha256": "4b7561fd68071d7652ca0e983758ab3585f853753fcc19e63862d6eab8ca75d8"
+        },
+        {
+          "path": "src/filter/iir_blur.rs",
+          "upstreamSha256": "b489b4d6c905ca246b72a9d9cddb2ffd40cbef7ca2b51c15d63d13902e9cc5a4",
+          "patchedSha256": "303a19baa307c31897aa9ea985776df8d7f0d331938c494a797c4b1b7418c1f4"
+        },
+        {
+          "path": "src/filter/mod.rs",
+          "upstreamSha256": "b24535fa0686ebcde56bbefa42924bc90f36e0302ccba561355b6ae56dd442d2",
+          "patchedSha256": "42e7481318e6dc24651a59317cc7c4ea0318733b06fcca55c9f6eff502502c69"
+        },
+        {
+          "path": "src/filter/morphology.rs",
+          "upstreamSha256": "f31ad2ea03659309f544c003aeec4e0c09f0c71630e0fe9218994418e174057e",
+          "patchedSha256": "8ce06663c4add2478eb7a7b8b0ad0affc21bf97680080df3efad9fb8ae8dc5b4"
+        },
+        {
+          "path": "src/filter/turbulence.rs",
+          "upstreamSha256": "2b4c288e174664836d17f829831809bee0fc55f02e6eab8425447f2ab778d974",
+          "patchedSha256": "902f88005202da9c70dd9c18e639484ffe561c48a53c1d2acce200e188daa670"
+        },
+        {
+          "path": "src/image.rs",
+          "upstreamSha256": "41b548fc8627822cda2357c653eb86092f91eabd45ff8ed5d3f9b16fee89734e",
+          "patchedSha256": "c7f7867ba7b92126b62c7aa26703567aa5c73b729c05a9432423a67a25ebc6bb"
+        },
+        {
+          "path": "src/lib.rs",
+          "upstreamSha256": "d90f2f77488c28ff6e79ce334dcffdb05eefc5fcfd718ba1d0316c023c8f19f3",
+          "patchedSha256": "943f48694c343f591f966915f8dc67dc33fa3b61678dea41e013d6952718ce4e"
+        },
+        {
+          "path": "src/mask.rs",
+          "upstreamSha256": "dc9e0d6dd22d2dd9981ff68e27f2ac45d303f574c4ca293877dfdd5af2a3c37d",
+          "patchedSha256": "be86800f45acce93ac9459e63f77c797dbffa2f141babe928e735261ea37fa3f"
+        },
+        {
+          "path": "src/path.rs",
+          "upstreamSha256": "cf49f94eba8a16cc3f730f544b49fbf1928b053dc4620c485677d1500dd897c7",
+          "patchedSha256": "34002a997584db2c42b006517e9a82a89fdaa3d00d9511ee04b0d269edbe2a06"
+        },
+        {
+          "path": "src/render.rs",
+          "upstreamSha256": "9a91c2d4272b500dd4e0aeab32d00e7b465d00aeb3b575f571a6e23845dfac18",
+          "patchedSha256": "cb84850009e37ba9b80e20f8f6d08498b2e37dc3c972d90a107fe00a9ebf8b10"
+        }
+      ],
+      "addedFilesSha256": null,
+      "addedFiles": [],
+      "supplementalTestFixtureManifestSha256": "b0c515eaeb9f82ca7dda441d66f756c6215b5056fe887e3b9eeeeeb317008765",
+      "supplementalTestFixtures": [
+        {
+          "path": "tests/fonts/Amiri-LICENSE-OFL.txt",
+          "upstreamPath": "crates/resvg/tests/fonts/Amiri-LICENSE-OFL.txt",
+          "sha256": "1f91c5ef4a18a747526f9c527d8e39337d31d3f37a8472c89fbdfe874c2d0d69",
+          "license": "OFL-1.1",
+          "licenseTextPath": "tests/fonts/Amiri-LICENSE-OFL.txt",
+          "licenseTextSha256": "1f91c5ef4a18a747526f9c527d8e39337d31d3f37a8472c89fbdfe874c2d0d69"
+        },
+        {
+          "path": "tests/fonts/Amiri-Regular.ttf",
+          "upstreamPath": "crates/resvg/tests/fonts/Amiri-Regular.ttf",
+          "sha256": "f3615b08cc3d78409474c28ed7c9e0fb5cc42435e12080a385e1a4163ab46708",
+          "license": "OFL-1.1",
+          "licenseTextPath": "tests/fonts/Amiri-LICENSE-OFL.txt",
+          "licenseTextSha256": "1f91c5ef4a18a747526f9c527d8e39337d31d3f37a8472c89fbdfe874c2d0d69"
+        },
+        {
+          "path": "tests/fonts/NotoSans-Regular.ttf",
+          "upstreamPath": "crates/resvg/tests/fonts/NotoSans-Regular.ttf",
+          "sha256": "6b04c8dd65af6b73eb4279472ed1580b29102d6496a377340e80a40cdb3b22c9",
+          "license": "OFL-1.1",
+          "licenseTextPath": "tests/fonts/Noto-LICENSE-OFL.txt",
+          "licenseTextSha256": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2"
+        },
+        {
+          "path": "tests/fonts/Noto-LICENSE-OFL.txt",
+          "upstreamPath": "crates/resvg/tests/fonts/Noto-LICENSE-OFL.txt",
+          "sha256": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2",
+          "license": "OFL-1.1",
+          "licenseTextPath": "tests/fonts/Noto-LICENSE-OFL.txt",
+          "licenseTextSha256": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2"
+        },
+        {
+          "path": "tests/fonts/NotoSerif-Regular.ttf",
+          "upstreamPath": "crates/resvg/tests/fonts/NotoSerif-Regular.ttf",
+          "sha256": "0fa6d56e4d826f72c1bc6c287b43fa1ae85b4369339f989cfa5bdf1595f22673",
+          "license": "OFL-1.1",
+          "licenseTextPath": "tests/fonts/Noto-LICENSE-OFL.txt",
+          "licenseTextSha256": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2"
+        }
+      ]
+    },
+    {
+      "name": "usvg",
+      "version": "0.48.1",
+      "repository": "https://github.com/linebender/resvg.git",
+      "revision": "68b14c4c3bccdb60344c777406486b54c36ec1a4",
+      "packagePath": "crates/usvg",
+      "sourceTree": "bfeeb1c4e58b9789206e356144ece6e16c591c3a",
+      "archiveSha256": "",
+      "license": "Apache-2.0 OR MIT",
+      "upstreamLicense": "Apache-2.0 OR MIT",
+      "sourceInventorySha256": "3bf99827dc292da604926c26e24d8fac1f1f17591c101cccec443b8f2b66d9c9",
+      "patchSetSha256": "12c76fe8831b81fd75e9d5a7b45163fa48c3a95139e612fc1d75465f34a53323",
+      "patches": [
+        {
+          "path": "Cargo.toml",
+          "upstreamSha256": "6b1d809d43e770be2e56f3940a8834a285979f3f636d6de2105d8802277ca32c",
+          "patchedSha256": "88fe348e6406ae839c79ee888246ef8f5fc5ea0d0555974e9a2c3e0903eff418"
+        },
+        {
+          "path": "src/parser/text.rs",
+          "upstreamSha256": "3d307c0a221629cfe28ad162cc024ab1c8d23c5c59e4b59d5c1b835d50fc315c",
+          "patchedSha256": "ba4ca2467fa53a2b5ffedb584dd887541f2dc4aea00c10a30cf1fcfcf39534c6"
+        },
+        {
+          "path": "src/text/layout.rs",
+          "upstreamSha256": "b49bb51ce0266e6bc5db0ae15fe55c5aadcb0d39c45d1ee05f0c8cee06bbaad5",
+          "patchedSha256": "f84d1b460bba9783727fea6cb8badd0f33afddaf2b6111f5086825b9d1b1d29c"
+        },
+        {
+          "path": "src/tree/text.rs",
+          "upstreamSha256": "0bca06ea94d0a4a78809c32d75c448317ad3c7d413253f99cad5a55d820802f5",
+          "patchedSha256": "d9490af95f24c966acb3daabaf15c18fe8017230989172645305ea79caf81f81"
+        }
+      ],
+      "addedFilesSha256": null,
+      "addedFiles": [],
+      "supplementalTestFixtureManifestSha256": null,
+      "supplementalTestFixtures": []
+    },
+    {
+      "name": "tiny-skia",
+      "version": "0.12.0",
+      "repository": "https://github.com/linebender/tiny-skia.git",
+      "revision": "e48b9027762d33731e60e40eb17eaa4f583b0185",
+      "packagePath": ".",
+      "sourceTree": "c65bf6145b324fe1d00174aabe6349a736072591",
+      "archiveSha256": "47ffee5eaaf5527f630fb0e356b90ebdec84d5d18d937c5e440350f88c5a91ea",
+      "license": "BSD-3-Clause AND MIT",
+      "upstreamLicense": "BSD-3-Clause",
+      "sourceInventorySha256": "5454cbf22bc4f175b21e750839c30b99bc164991c5134f66a5cc1e7fe01bced8",
+      "patchSetSha256": "917fd385f07281bf59bd969a0160f143bc6711bf8d11b1ee8837afc0b3c4e6e4",
+      "patches": [
+        {
+          "path": "Cargo.toml",
+          "upstreamSha256": "07ef83606b1448bcbd70fd6065cd0b71a51f61ad377a642b7796e4ea0dab0b52",
+          "patchedSha256": "5c75ed5e3d679d4397db712baa2111be217e07e224b635f2890663a28427700b"
+        },
+        {
+          "path": "Cargo.toml.orig",
+          "upstreamSha256": "cb3bc15796f54dcc213cb220334b336c0d300bb20a0cfe9aa7d57c85f5302cc9",
+          "patchedSha256": "1deda772b4964c6b38af16566cf682fbd6c1154564a38a1b43731a66dc88427d"
+        },
+        {
+          "path": "src/blitter.rs",
+          "upstreamSha256": "3262acaac9f2a78736295e937eee9542667b1de07b5a23db554830b192eb929e",
+          "patchedSha256": "7268867c0539a43e895c06856ec9edec6b4207184fb2c8baa3ead0e58f1f0987"
+        },
+        {
+          "path": "src/edge_builder.rs",
+          "upstreamSha256": "f775a70fb5ab52372393277e4068d30f2db57a10546e0910c1234a95e505a8b2",
+          "patchedSha256": "f529151bf30cff67806528413a8be8404769b16307f41858f7157cb62bf68412"
+        },
+        {
+          "path": "src/lib.rs",
+          "upstreamSha256": "6c306bab841bd9874d95286fb48c970ace62c4dca41e42f8f1c7fd9a23c4809e",
+          "patchedSha256": "f5f75c6103859035c3c976022ab445d6c59449f2e27f6c5d8f69fb67921dda47"
+        },
+        {
+          "path": "src/mask.rs",
+          "upstreamSha256": "5c6b8d615f219f78ceebc714a56e9916745eeb93fc9213b87c96b3f00f55792b",
+          "patchedSha256": "ff4806f5498318afc0dca6e4c70744086e627cdcbaba0feab2ff16da53b237b7"
+        },
+        {
+          "path": "src/painter.rs",
+          "upstreamSha256": "40f1d9523ab9875d83496cb7a1b4570aee2d958204dc91424fb6a5bd00c97105",
+          "patchedSha256": "1d2713833d74041cba2f27f4587dc5f26f4829dd3ed8c73bf7e4b94d2cb211a6"
+        },
+        {
+          "path": "src/pipeline/blitter.rs",
+          "upstreamSha256": "a3189191d6ad4e1e03e738d21f5a26f310b7c00c33bae0021f0961054ad08f06",
+          "patchedSha256": "8c458e3a050da5943f8fdbbc7d6be9e9f23a543b22f39862b9d3fdd5decd3dff"
+        },
+        {
+          "path": "src/pipeline/mod.rs",
+          "upstreamSha256": "fbbe3f276b7e95fdf501fe0420f60d18ca313395cdf79aa1a943e9ef996243a4",
+          "patchedSha256": "84fcf1e0db13b8e81a2f25df4f33fc40755533267d0a3e573a5db375b9f07f06"
+        },
+        {
+          "path": "src/pixmap.rs",
+          "upstreamSha256": "484d49d1f4c3c3c8fb3fab3e1b1535292de828c0f258c3cab9bda02c7d9626fc",
+          "patchedSha256": "8d0d0f4eee8f2f51c9432ef8451c0fd84d5ca27d33657d2af90d2d8d4584bd70"
+        },
+        {
+          "path": "src/scan/hairline_aa.rs",
+          "upstreamSha256": "847dac2368c3d21157e5cdca682e1af77be54ff27a2f8314f56ebeb60a74cbee",
+          "patchedSha256": "623a62f38635511edb2a6f6971039502f6f05f4d0061fc9092840ada6930dafb"
+        },
+        {
+          "path": "src/scan/mod.rs",
+          "upstreamSha256": "db9ca53fad681f35b4c13dc228e1bab54cb08a0c3efb4d1e4b13d937c5ec1a65",
+          "patchedSha256": "f2ea32a48f4f026f8a3a0535f53599d683f02f21af0b949de0cf20ec4a825dbb"
+        },
+        {
+          "path": "src/scan/path.rs",
+          "upstreamSha256": "3ef0bf59edb4e4a07634774cafe4e0a4745a80358ec6cda850481cde701b62be",
+          "patchedSha256": "dc87bc06630b30305662390431b9ccf628ad4876382d75f1af0d4b267b7b72c3"
+        },
+        {
+          "path": "src/scan/path_aa.rs",
+          "upstreamSha256": "d6fee0876986a9225be67d47c9f3e60dc6cf863d1b0ef2949ec499e72f7e893c",
+          "patchedSha256": "5ddb601f07e7100cc705786d547cf55dbd8ca107ea67aac68008594e1b742a38"
+        },
+        {
+          "path": "src/shaders/gradient.rs",
+          "upstreamSha256": "c8a87c87acb85764d5e13c95fd5f66531d24e2c145513e84adfa372d9a878847",
+          "patchedSha256": "2ce9fc2d6d9c00fb5be4c281945d6c34906ebac4b994a6184e138506cdbbc150"
+        },
+        {
+          "path": "src/shaders/mod.rs",
+          "upstreamSha256": "4f80ecb40d5a82985d97324748779cffd98252fca798c01c3f26969a1c27cbd3",
+          "patchedSha256": "25547561dbf9be7a7ee266350b6df40cea35115fd88b3f90c7c76e4545cf06fc"
+        },
+        {
+          "path": "tests/integration/fill.rs",
+          "upstreamSha256": "99aacc82a81fc7d8f4732b36e9cc67eee7373449781a2fd3251d3d601aba9e3c",
+          "patchedSha256": "3f4bfb8aed117f9490bf929c46d20b045665743ac84f06e5c2eafb4ebb077243"
+        },
+        {
+          "path": "tests/integration/pattern.rs",
+          "upstreamSha256": "ff8d2c3344f7f5a4d93e55ceccaf5cbb1d72360146f87a34097489c246e8e8c8",
+          "patchedSha256": "f0d0d660e33433b9e0a8055cd8b1ad05280020c138c9140d2605d2d5272b5beb"
+        },
+        {
+          "path": "tests/integration/stroke.rs",
+          "upstreamSha256": "a4ba0c5e27faa8a76795f5f75be72a9dfd4c43f19a66a4bfc01eeefef80477dd",
+          "patchedSha256": "b8243e0bb39a75b7fa19b05e2b439a88e8403e13a8e8b1c0595d57c5880bd222"
+        }
+      ],
+      "addedFilesSha256": "e0041bf0aaeb34445dc0c5336f307ff3bf0dc4234e56833bb2df14baebcf05d5",
+      "addedFiles": [
+        {
+          "path": "LICENSE-JITHUB-MIT",
+          "sha256": "50a0a014b7017b4cdc90c9097efa8e109a8d84f3ad92c3bfcecb45178fc65b40",
+          "license": "MIT",
+          "licenseTextPath": "LICENSE-JITHUB-MIT",
+          "licenseTextSha256": "50a0a014b7017b4cdc90c9097efa8e109a8d84f3ad92c3bfcecb45178fc65b40"
+        },
+        {
+          "path": "src/bounded_fill.rs",
+          "sha256": "ce31a24aebc55e35709991ce1415adb18c04d6408bf95432a2f030c03d2ffe26",
+          "license": "MIT",
+          "licenseTextPath": "LICENSE-JITHUB-MIT",
+          "licenseTextSha256": "50a0a014b7017b4cdc90c9097efa8e109a8d84f3ad92c3bfcecb45178fc65b40"
+        },
+        {
+          "path": "src/bounded_mask.rs",
+          "sha256": "d287f5030e7dbbf92ee7a64b551a83453ea931a8a71eabfd3b9c4b8c4b90fa8c",
+          "license": "MIT",
+          "licenseTextPath": "LICENSE-JITHUB-MIT",
+          "licenseTextSha256": "50a0a014b7017b4cdc90c9097efa8e109a8d84f3ad92c3bfcecb45178fc65b40"
+        },
+        {
+          "path": "src/bounded_stroke.rs",
+          "sha256": "718ab0e7e895a7e6a0e43c3a630bd39eca8bb3b8e4a0830cbf14ecc33aabf2c1",
+          "license": "MIT",
+          "licenseTextPath": "LICENSE-JITHUB-MIT",
+          "licenseTextSha256": "50a0a014b7017b4cdc90c9097efa8e109a8d84f3ad92c3bfcecb45178fc65b40"
+        },
+        {
+          "path": "src/scan/path_analytic.rs",
+          "sha256": "b988164f53a0012cd0b5c6496d19f7a517a0917696bcf8d92ed75458522019bb",
+          "license": "MIT",
+          "licenseTextPath": "LICENSE-JITHUB-MIT",
+          "licenseTextSha256": "50a0a014b7017b4cdc90c9097efa8e109a8d84f3ad92c3bfcecb45178fc65b40"
+        }
+      ],
+      "supplementalTestFixtureManifestSha256": null,
+      "supplementalTestFixtures": []
+    },
+    {
+      "name": "tiny-skia-path",
+      "version": "0.12.0",
+      "repository": "https://github.com/linebender/tiny-skia.git",
+      "revision": "e48b9027762d33731e60e40eb17eaa4f583b0185",
+      "packagePath": "path",
+      "sourceTree": "a4edaf846d0091e0dfa321c0d47d8114415022c7",
+      "archiveSha256": "edca365c3faccca67d06593c5980fa6c57687de727a03131735bb85f01fdeeb9",
+      "license": "BSD-3-Clause AND MIT",
+      "upstreamLicense": "BSD-3-Clause",
+      "sourceInventorySha256": "2e76a06a5225f7bba82c24c0b5ef4520ecf9d2a824f88cca1830e80e90d213c7",
+      "patchSetSha256": "728ba904050f56cbd864368dbb03f2a936b99e45afe588852b44e4b5046d8657",
+      "patches": [
+        {
+          "path": "Cargo.toml",
+          "upstreamSha256": "57385d5a00ab54c415cd63a08ef1365e87b661019c74cccd4b50d6d9e6d659ad",
+          "patchedSha256": "e99247769cc72962ac68157a871343641dd5e8c1efc2de81ec0f71faa82370b1"
+        },
+        {
+          "path": "Cargo.toml.orig",
+          "upstreamSha256": "e42a3ad132f048814b333123c687fc12b312de3d27ac495b3b7e62ad1a1546b5",
+          "patchedSha256": "10db6ead8fe2b8f23c62cc36c572fe6a8c9e7027a9fa44867cf835c836fd1e72"
+        },
+        {
+          "path": "src/dash.rs",
+          "upstreamSha256": "754ef74246efa014a2ffa92f8f99fef17e968847ea8886db840913867957ca29",
+          "patchedSha256": "f8b902e3422b9fc87fe6643e21e3e6a6e553f7a99153f7459178e26757239ceb"
+        },
+        {
+          "path": "src/lib.rs",
+          "upstreamSha256": "c5ccaf6aa5b793609bb10f3980a99f92b27a1e745617b9dc2498ae826e146de8",
+          "patchedSha256": "f461148421722117cb689e6c2e4aef7aecfe3160d0c27bf8d766452816b2c222"
+        },
+        {
+          "path": "src/path.rs",
+          "upstreamSha256": "063d12c9412c8be5f1ba95ac94ec91e98502e44089ad2069314d51e2beeef973",
+          "patchedSha256": "0e3885e300358a6a05105f0f05ced89488052c136067d45d7728e5e1a73252a3"
+        },
+        {
+          "path": "src/path_builder.rs",
+          "upstreamSha256": "28c18ba8da6cdb85a08bc423175248c9a4d8d6736a2a1e4e389dce5fab2435c5",
+          "patchedSha256": "78dc44fc9a3db8567dc347a47b89190f7f853be1f2cf59ea055843efa342ef32"
+        },
+        {
+          "path": "src/stroker.rs",
+          "upstreamSha256": "6640206b58bfb73b9be756ca78518fb7d98862849d5b11286fe5e11ef0c92ff1",
+          "patchedSha256": "35ad00cb60594a914e0605f23df97639bb47483d801868d4234a0cabd7d186a1"
+        }
+      ],
+      "addedFilesSha256": "610cdc2e036b1c6cb27145628068f418f9ce0a9a535c67ae72055eff7173285f",
+      "addedFiles": [
+        {
+          "path": "LICENSE-JITHUB-MIT",
+          "sha256": "41445984ed7c0ecf79e35bbf7c4afb6dea9eff5b76207ec9531b4be23a5e1683",
+          "license": "MIT",
+          "licenseTextPath": "LICENSE-JITHUB-MIT",
+          "licenseTextSha256": "41445984ed7c0ecf79e35bbf7c4afb6dea9eff5b76207ec9531b4be23a5e1683"
+        },
+        {
+          "path": "src/bounded.rs",
+          "sha256": "94b60bfda536ebce1390340aca4dded9bb876e1c9874afaa2ac1553cc5258c8b",
+          "license": "MIT",
+          "licenseTextPath": "LICENSE-JITHUB-MIT",
+          "licenseTextSha256": "41445984ed7c0ecf79e35bbf7c4afb6dea9eff5b76207ec9531b4be23a5e1683"
+        }
+      ],
+      "supplementalTestFixtureManifestSha256": null,
+      "supplementalTestFixtures": []
+    }
+  ],
   "licensePolicy": {
     "dualLicenseSelection": "MIT when offered",
     "defaultLicenseSelection": "MIT",
     "selectionOverrides": {
       "arrayref@0.3.9": "BSD-2-Clause",
       "slotmap@1.1.1": "Zlib",
-      "tiny-skia@0.12.0": "BSD-3-Clause",
-      "tiny-skia-path@0.12.0": "BSD-3-Clause",
+      "tiny-skia@0.12.0": "BSD-3-Clause AND MIT",
+      "tiny-skia-path@0.12.0": "BSD-3-Clause AND MIT",
       "unicode-ident@1.0.24": "MIT AND Unicode-3.0",
+      "usvg@0.48.1": "MIT",
       "zlib-rs@0.6.7": "Zlib"
     },
     "requiredAdditionalIdentifiers": [
@@ -670,7 +1056,7 @@
       "version": "0.48.1",
       "license": "Apache-2.0 OR MIT",
       "selectedLicense": "MIT",
-      "source": "git+https://github.com/linebender/resvg.git?rev=68b14c4c3bccdb60344c777406486b54c36ec1a4#68b14c4c3bccdb60344c777406486b54c36ec1a4",
+      "source": null,
       "checksum": null,
       "licenseEvidenceSha256": [
         "a6cba85bc92e0cff7a450b1d873c0eaa2e9fc96bf472df0247a26bec77bf3ff9",
@@ -831,22 +1217,24 @@
     {
       "name": "tiny-skia",
       "version": "0.12.0",
-      "license": "BSD-3-Clause",
-      "selectedLicense": "BSD-3-Clause",
-      "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "checksum": "47ffee5eaaf5527f630fb0e356b90ebdec84d5d18d937c5e440350f88c5a91ea",
+      "license": "BSD-3-Clause AND MIT",
+      "selectedLicense": "BSD-3-Clause AND MIT",
+      "source": null,
+      "checksum": null,
       "licenseEvidenceSha256": [
+        "50a0a014b7017b4cdc90c9097efa8e109a8d84f3ad92c3bfcecb45178fc65b40",
         "6d41e05f1d54fe726997cb0334ec539f1dff50600b1d5d90462ec2b392770ced"
       ]
     },
     {
       "name": "tiny-skia-path",
       "version": "0.12.0",
-      "license": "BSD-3-Clause",
-      "selectedLicense": "BSD-3-Clause",
-      "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "checksum": "edca365c3faccca67d06593c5980fa6c57687de727a03131735bb85f01fdeeb9",
+      "license": "BSD-3-Clause AND MIT",
+      "selectedLicense": "BSD-3-Clause AND MIT",
+      "source": null,
+      "checksum": null,
       "licenseEvidenceSha256": [
+        "41445984ed7c0ecf79e35bbf7c4afb6dea9eff5b76207ec9531b4be23a5e1683",
         "6d41e05f1d54fe726997cb0334ec539f1dff50600b1d5d90462ec2b392770ced"
       ]
     },
@@ -931,7 +1319,7 @@
       "version": "0.48.1",
       "license": "Apache-2.0 OR MIT",
       "selectedLicense": "MIT",
-      "source": "git+https://github.com/linebender/resvg.git?rev=68b14c4c3bccdb60344c777406486b54c36ec1a4#68b14c4c3bccdb60344c777406486b54c36ec1a4",
+      "source": null,
       "checksum": null,
       "licenseEvidenceSha256": [
         "a6cba85bc92e0cff7a450b1d873c0eaa2e9fc96bf472df0247a26bec77bf3ff9",

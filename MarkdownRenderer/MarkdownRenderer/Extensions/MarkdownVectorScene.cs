@@ -849,6 +849,7 @@ public sealed class MarkdownVectorCommand
 public sealed class MarkdownVectorScene
 {
     private readonly MarkdownVectorLinkAction?[] _linkBySemanticIndex;
+    internal readonly IReadOnlyList<MarkdownVectorLinkAction?> SemanticLinks;
     private readonly int[] _semanticDepths;
 
     /// <summary>Creates an immutable vector scene.</summary>
@@ -968,6 +969,7 @@ public sealed class MarkdownVectorScene
         Semantics = new ReadOnlyCollection<MarkdownVectorSemanticItem>(semanticCopy);
         Links = new ReadOnlyCollection<MarkdownVectorLinkAction>(linkCopy);
         _linkBySemanticIndex = linkBySemanticIndex;
+        SemanticLinks = new ReadOnlyCollection<MarkdownVectorLinkAction?>(linkBySemanticIndex);
         _semanticDepths = semanticDepths;
     }
 
@@ -991,10 +993,18 @@ public sealed class MarkdownVectorScene
     /// <summary>Gets declarative link/action records associated with semantic children.</summary>
     public IReadOnlyList<MarkdownVectorLinkAction> Links { get; }
 
+    // Scene-independent immutable lookup retained by semantic projections;
+    // it contains no command-tree or scene back-reference.
+
     internal MarkdownVectorLinkAction? GetLinkAction(int semanticIndex) =>
         (uint)semanticIndex < (uint)_linkBySemanticIndex.Length
             ? _linkBySemanticIndex[semanticIndex]
             : null;
+
+    // Boxes may retain semantic projection data after releasing the command
+    // graph. ReadOnlyMemory borrows only this immutable scalar array, not the
+    // scene or its commands.
+    internal ReadOnlyMemory<int> SemanticDepths => _semanticDepths;
 
     internal int GetSemanticDepth(int semanticIndex) =>
         (uint)semanticIndex < (uint)_semanticDepths.Length

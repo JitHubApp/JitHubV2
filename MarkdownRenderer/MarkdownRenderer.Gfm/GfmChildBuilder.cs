@@ -26,16 +26,30 @@ internal static class GfmChildBuilder
     private const int MaxMonolithicTextLayoutLength = 32_768;
 
     /// <summary>Builds child blocks from <paramref name="container"/> and adds them to <paramref name="stack"/>.</summary>
-    internal static void PopulateChildren(StackBox stack, ContainerBlock container, MarkdownLayoutContext context)
+    internal static void PopulateChildren(
+        StackBox stack,
+        ContainerBlock container,
+        MarkdownLayoutContext context,
+        SafeHtmlAlignment inheritedAlignment = SafeHtmlAlignment.Inherit)
     {
+        // The renderer that owns this stack may throw after child construction
+        // begins but before it returns the stack to its caller. Keep that
+        // partial owner in the build ledger so already-attached children are
+        // still retired on that failure path.
+        context.RegisterConstructionBlock(stack);
         SafeHtmlBlockScopeTracker? htmlScopes = context.Registry.SafeHtmlPolicy is null
             ? null
-            : new SafeHtmlBlockScopeTracker(context.Registry.SafeHtmlPolicy.Limits);
-        bool htmlBudgetNoticeAdded = false;
+            : context.SafeHtmlNestedScopes?.CloneForNestedContent() ??
+              new SafeHtmlBlockScopeTracker(context.Registry.SafeHtmlPolicy.Limits);
+        bool htmlBudgetNoticeAdded = htmlScopes?.BudgetExceeded == true;
         foreach (Block child in container)
         {
             context.CancellationToken.ThrowIfCancellationRequested();
             bool suppressedBeforeBlock = htmlScopes?.IsContentSuppressed == true;
+            SafeHtmlAlignment alignmentAtBlockEntry = htmlScopes?.CurrentAlignment ?? SafeHtmlAlignment.Inherit;
+            if (alignmentAtBlockEntry == SafeHtmlAlignment.Inherit)
+                alignmentAtBlockEntry = inheritedAlignment;
+            int? inlineFlowScopeIdAtBlockEntry = htmlScopes?.CurrentInlineFlowScopeId;
             bool scopeOnly = child is HtmlBlock htmlBlock && htmlScopes?.Process(
                     htmlBlock.Lines.ToString(),
                     htmlBlock.Span.Start,
@@ -57,6 +71,7 @@ internal static class GfmChildBuilder
                     {
                         BlockIndex = context.NextBlockIndex(),
                     };
+                    context.RegisterConstructionBlock(notice);
                     notice.Add(new TextRun(context.ResolveString(
                         MarkdownStringKeys.HtmlBudgetExceeded,
                         MarkdownLocalizedStrings.HtmlBudgetExceeded))
@@ -64,6 +79,7 @@ internal static class GfmChildBuilder
                         SourceSpan = MarkdownRenderer.SourceSpan.Empty,
                     });
                     stack.Add(notice);
+                    context.AdoptConstructionBlock(notice);
                     htmlBudgetNoticeAdded = true;
                 }
 
@@ -74,13 +90,22 @@ internal static class GfmChildBuilder
             if (scopeOnly || suppressedBeforeBlock)
                 continue;
 
-            BlockBox? box = TryBuildBlock(child, context);
+            SafeHtmlBlockScopeTracker? nestedScopes = child is ContainerBlock or HtmlBlock
+                ? htmlScopes?.CloneForNestedContent()
+                : null;
+            BlockBox? box;
+            using (context.PushSafeHtmlBlockContext(
+                       alignmentAtBlockEntry,
+                       nestedScopes,
+                       inlineFlowScopeIdAtBlockEntry))
+                box = TryBuildBlock(child, context);
             if (box is null)
                 continue;
 
-            if (htmlScopes is not null)
-                ApplyHtmlAlignment(box, htmlScopes.CurrentAlignment);
+            if (child is not HtmlBlock)
+                ApplyHtmlAlignment(box, alignmentAtBlockEntry);
             stack.Add(box);
+            context.AdoptConstructionBlock(box);
 
             if (!suppressedBeforeBlock && child is not HtmlBlock)
             {
@@ -94,6 +119,7 @@ internal static class GfmChildBuilder
                     {
                         BlockIndex = context.NextBlockIndex(),
                     };
+                    context.RegisterConstructionBlock(notice);
                     notice.Add(new TextRun(context.ResolveString(
                         MarkdownStringKeys.HtmlBudgetExceeded,
                         MarkdownLocalizedStrings.HtmlBudgetExceeded))
@@ -101,6 +127,7 @@ internal static class GfmChildBuilder
                         SourceSpan = MarkdownRenderer.SourceSpan.Empty,
                     });
                     stack.Add(notice);
+                    context.AdoptConstructionBlock(notice);
                     htmlBudgetNoticeAdded = true;
                 }
             }
@@ -109,6 +136,9 @@ internal static class GfmChildBuilder
 
     private static void ApplyHtmlAlignment(BlockBox box, SafeHtmlAlignment alignment)
     {
+        if (box is StackBox { HasResolvedSafeHtmlAlignment: true })
+            return;
+
         if (alignment == SafeHtmlAlignment.Inherit)
             return;
 
@@ -144,7 +174,10 @@ internal static class GfmChildBuilder
         {
             var custom = renderer.BuildBlock(block, context);
             if (custom is not null)
+            {
+                context.RegisterConstructionBlock(custom);
                 box = custom;
+            }
         }
 
         box ??= block switch
@@ -167,6 +200,7 @@ internal static class GfmChildBuilder
 
         if (box is not null)
         {
+            context.RegisterConstructionBlock(box);
             if (box.BlockIndex == 0)
                 box.BlockIndex = context.NextBlockIndex();
             context.RegisterMarkdownAttributes(block, box.BlockIndex);
@@ -178,6 +212,7 @@ internal static class GfmChildBuilder
     private static InlineContainerBox BuildLeaf(LeafBlock leaf, MarkdownLayoutContext context, string elementKey)
     {
         var box = new InlineContainerBox(context, elementKey);
+        context.RegisterConstructionBlock(box);
         box.BlockIndex = context.NextBlockIndex();
         if (leaf.Inline is not null)
             AddInlines(box, leaf.Inline);
@@ -190,6 +225,7 @@ internal static class GfmChildBuilder
         {
             FlowDirection = context.FlowDirection,
         };
+        context.RegisterConstructionBlock(stack);
         stack.BlockIndex = context.NextBlockIndex();
         PopulateChildren(stack, cb, context);
         return stack;
@@ -215,10 +251,13 @@ internal static class GfmChildBuilder
         {
             BlockIndex = context.NextBlockIndex(),
         };
+        context.RegisterConstructionBlock(codeBox);
 
         if (text.Length <= MaxMonolithicTextLayoutLength)
         {
-            codeBox.AddChunk(BuildCodeBlockChunk(block, metadata, text, 0, text.Length, context));
+            InlineContainerBox chunk = BuildCodeBlockChunk(block, metadata, text, 0, text.Length, context);
+            codeBox.AddChunk(chunk);
+            context.AdoptConstructionBlock(chunk);
             return codeBox;
         }
 
@@ -233,7 +272,9 @@ internal static class GfmChildBuilder
                     length = newline - offset + 1;
             }
 
-            codeBox.AddChunk(BuildCodeBlockChunk(block, metadata, text.Substring(offset, length), offset, text.Length, context));
+            InlineContainerBox chunk = BuildCodeBlockChunk(block, metadata, text.Substring(offset, length), offset, text.Length, context);
+            codeBox.AddChunk(chunk);
+            context.AdoptConstructionBlock(chunk);
             offset += length;
         }
 
@@ -254,6 +295,7 @@ internal static class GfmChildBuilder
             CodeBlockTextOffset = textOffset,
             CodeBlockTextLength = text.Length,
         };
+        context.RegisterConstructionBlock(box);
         box.BlockIndex = context.NextBlockIndex();
         box.Add(new TextRun(text)
         {
@@ -297,7 +339,14 @@ internal static class GfmChildBuilder
         ContainerInline inlines,
         System.Func<Inline, bool>? skipFirstIf = null,
         int inheritedAliasStart = -1)
-        => AddInlines(
+    {
+        // A custom built-in renderer can fail while visiting later inline
+        // nodes, after earlier image/native runs have already been attached.
+        // Register the partially populated owner before entering that walk.
+        box.Context.RegisterConstructionBlock(box);
+        if (box.Context.TryAppendChildInlines(box, inlines, skipFirstIf, inheritedAliasStart))
+            return;
+        AddInlines(
             box,
             inlines,
             new SafeHtmlInlineState(box.Context.Registry.SafeHtmlPolicy),
@@ -306,6 +355,7 @@ internal static class GfmChildBuilder
             System.Array.Empty<string>(),
             containingLinkUrl: null,
             containingLinkTitle: null);
+    }
 
     private static void AddInlines(
         InlineContainerBox box,
@@ -400,6 +450,8 @@ internal static class GfmChildBuilder
             }
             if (run is not null)
             {
+                if (run is InlineImageRun image)
+                    box.Context.RegisterConstructionBlock(image.Image);
                 run.StyleModifierKeys = CombineAliases(
                     run.StyleModifierKeys,
                     inheritedStyleModifiers);
@@ -409,6 +461,8 @@ internal static class GfmChildBuilder
                     box.Context.CreateStyleAliasSnapshotFrom(effectiveAliasStart)));
                 box.Context.RegisterMarkdownAttributes(i, box.BlockIndex);
                 box.Add(run);
+                if (run is InlineImageRun addedImage)
+                    box.Context.AdoptConstructionBlock(addedImage.Image);
             }
             else if (i is ContainerInline nested)
             {
@@ -629,7 +683,7 @@ internal static class GfmChildBuilder
             requestedHeight = sizedImage.RequestedHeight;
         }
 
-        return new InlineImageRun(
+        var run = new InlineImageRun(
             context,
             alt.Length > 0 ? alt.ToString() : "image",
             imageLink.Url ?? string.Empty,
@@ -641,6 +695,8 @@ internal static class GfmChildBuilder
         {
             SourceSpan = new MarkdownRenderer.SourceSpan(sourceStart, sourceLength)
         };
+        context.RegisterConstructionBlock(run.Image);
+        return run;
     }
 
     private static bool TryGetOnlyImageChild(ContainerInline container, out LinkInline imageLink)

@@ -17,10 +17,20 @@ internal enum MarkdownRebuildDispatchPriority
 /// A higher-priority callback supersedes the previous ticket only after enqueue
 /// succeeds, so a failed promotion leaves the existing callback authoritative.
 /// </summary>
-internal readonly record struct MarkdownRebuildDispatchState(
-    long Ticket,
-    MarkdownRebuildDispatchPriority Priority)
+internal readonly struct MarkdownRebuildDispatchState
 {
+    internal MarkdownRebuildDispatchState(
+        long ticket,
+        MarkdownRebuildDispatchPriority priority)
+    {
+        Ticket = ticket;
+        Priority = priority;
+    }
+
+    internal readonly long Ticket;
+
+    internal readonly MarkdownRebuildDispatchPriority Priority;
+
     internal bool IsQueued => Ticket != 0;
 
     internal bool ShouldSchedule(MarkdownRebuildDispatchPriority requestedPriority) =>

@@ -168,14 +168,25 @@ public sealed class MarkdownStyleRule
 /// </remarks>
 public sealed class MarkdownStyleSheet
 {
+    private const byte CollapseMarginsFlag = 1;
+    private const byte ResetTrailingMarginFlag = 2;
+    private const byte ResetLeadingMarginFlag = 4;
     private readonly MarkdownStyleRule[] _rules;
     private readonly IReadOnlyList<MarkdownStyleRule> _rulesView;
+    private readonly byte _layoutPolicy;
 
     /// <summary>Gets an empty style sheet.</summary>
     public static MarkdownStyleSheet Empty { get; } = new(Array.Empty<MarkdownStyleRule>());
 
     /// <summary>Initializes an immutable style sheet from an ordered rule sequence.</summary>
     public MarkdownStyleSheet(IEnumerable<MarkdownStyleRule> rules)
+        : this(rules, layoutPolicy: 0)
+    {
+    }
+
+    private MarkdownStyleSheet(
+        IEnumerable<MarkdownStyleRule> rules,
+        byte layoutPolicy)
     {
         ArgumentNullException.ThrowIfNull(rules);
 
@@ -185,10 +196,30 @@ public sealed class MarkdownStyleSheet
 
         _rules = copy.ToArray();
         _rulesView = new ReadOnlyCollection<MarkdownStyleRule>(_rules);
+        _layoutPolicy = layoutPolicy;
     }
 
     /// <summary>Gets the rules in deterministic application order.</summary>
     public IReadOnlyList<MarkdownStyleRule> Rules => _rulesView;
+
+    /// <summary>
+    /// Returns a new style sheet that collapses adjacent positive margins on
+    /// top-level normal-flow blocks to their maximum.
+    /// </summary>
+    public MarkdownStyleSheet WithPositiveAdjacentMarginCollapse()
+        => new(_rules, (byte)(_layoutPolicy | CollapseMarginsFlag));
+
+    /// <summary>Returns a new style sheet that removes the first top-level block's top margin.</summary>
+    internal MarkdownStyleSheet WithZeroLeadingTopLevelBlockTopMargin()
+        => new(_rules, (byte)(_layoutPolicy | ResetLeadingMarginFlag));
+
+    /// <summary>
+    /// Returns a new style sheet that removes the bottom margin after its last
+    /// top-level block, matching CSS containers that reset their final child.
+    /// This policy is independent of adjacent-margin collapse.
+    /// </summary>
+    public MarkdownStyleSheet WithZeroTrailingTopLevelBlockMargin()
+        => new(_rules, (byte)(_layoutPolicy | ResetTrailingMarginFlag));
 
     /// <summary>Returns a new style sheet with a rule appended at highest precedence.</summary>
     public MarkdownStyleSheet WithRule(MarkdownStyleRule rule)
@@ -198,7 +229,7 @@ public sealed class MarkdownStyleSheet
         var result = new MarkdownStyleRule[_rules.Length + 1];
         Array.Copy(_rules, result, _rules.Length);
         result[^1] = rule;
-        return new MarkdownStyleSheet(result);
+        return new MarkdownStyleSheet(result, _layoutPolicy);
     }
 
     /// <summary>
@@ -220,7 +251,7 @@ public sealed class MarkdownStyleSheet
     }
 
     internal CompiledMarkdownStyleSheet Compile()
-        => new(_rules);
+        => new(_rules, _layoutPolicy);
 }
 
 /// <summary>
@@ -231,9 +262,13 @@ public sealed class MarkdownStyleSheet
 internal sealed class CompiledMarkdownStyleSheet
 {
     private readonly FrozenDictionary<string, CompiledRule[]> _rulesByRole;
+    internal readonly byte LayoutPolicy;
 
-    internal CompiledMarkdownStyleSheet(IReadOnlyList<MarkdownStyleRule> rules)
+    internal CompiledMarkdownStyleSheet(
+        IReadOnlyList<MarkdownStyleRule> rules,
+        byte layoutPolicy)
     {
+        LayoutPolicy = layoutPolicy;
         if (rules.Count == 0)
         {
             _rulesByRole = FrozenDictionary<string, CompiledRule[]>.Empty;
@@ -262,6 +297,7 @@ internal sealed class CompiledMarkdownStyleSheet
     }
 
     internal bool HasRules => _rulesByRole.Count != 0;
+
 
     internal IEnumerable<string> RoleNames => _rulesByRole.Keys;
 
@@ -312,7 +348,7 @@ internal sealed class CompiledMarkdownStyleSheet
             Style = style;
         }
 
-        internal ElementStyleOverride Style { get; }
+        internal readonly ElementStyleOverride Style;
 
         internal bool Matches(
             int nestingDepth,

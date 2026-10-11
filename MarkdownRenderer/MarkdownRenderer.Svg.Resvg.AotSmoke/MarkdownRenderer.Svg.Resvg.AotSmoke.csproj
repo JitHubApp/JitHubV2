@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Platforms>x86;x64;ARM64</Platforms>
     <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
     <Platform Condition="'$(Platform)' == '' or '$(Platform)' == 'AnyCPU' or '$(Platform)' == 'Any CPU'">x64</Platform>
@@ -17,10 +18,7 @@
     <TrimMode>full</TrimMode>
     <InvariantGlobalization>true</InvariantGlobalization>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <!-- Windows SDK projection assemblies currently emit linker summary
-         warnings outside this project's control. Keep compiler warnings fatal
-         while allowing the trim/AOT smoke to validate our own annotations. -->
-    <ILLinkTreatWarningsAsErrors>false</ILLinkTreatWarningsAsErrors>
+    <ILLinkTreatWarningsAsErrors>true</ILLinkTreatWarningsAsErrors>
     <UseWinUI>false</UseWinUI>
     <WindowsAppSdkSelfContained>true</WindowsAppSdkSelfContained>
     <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>

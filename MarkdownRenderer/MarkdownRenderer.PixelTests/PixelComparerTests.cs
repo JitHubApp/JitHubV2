@@ -15,13 +15,16 @@ public sealed class PixelComparerTests
         string root = Path.Combine(Path.GetTempPath(), $"mdr-job-test-{Guid.NewGuid():N}");
         Directory.CreateDirectory(root);
         string childPidPath = Path.Combine(root, "child.pid");
+        string temporaryChildPidPath = Path.Combine(root, "child.pid.tmp");
         string scriptPath = Path.Combine(root, "spawn-child.ps1");
         string escapedChildPidPath = childPidPath.Replace("'", "''", StringComparison.Ordinal);
+        string escapedTemporaryChildPidPath = temporaryChildPidPath.Replace("'", "''", StringComparison.Ordinal);
         File.WriteAllText(
             scriptPath,
             "$child = Start-Process -FilePath \"$env:SystemRoot\\System32\\ping.exe\" " +
             "-ArgumentList @(\"127.0.0.1\", \"-n\", \"30\") -PassThru -WindowStyle Hidden\n" +
-            $"[System.IO.File]::WriteAllText('{escapedChildPidPath}', $child.Id.ToString())\n" +
+            $"[System.IO.File]::WriteAllText('{escapedTemporaryChildPidPath}', $child.Id.ToString())\n" +
+            $"[System.IO.File]::Move('{escapedTemporaryChildPidPath}', '{escapedChildPidPath}')\n" +
             "$child.WaitForExit()\n");
         string powerShell = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
@@ -129,7 +132,7 @@ public sealed class PixelComparerTests
     }
 
     [Fact]
-    public void Compare_ToleratesFractionalAlphaRedistributionAlongSameBoundary()
+    public void Compare_MeasuresFractionalAlphaRedistributionAtExactPixels()
     {
         PixelComparer.DiffReport report = PixelComparer.Compare(
             [255, 255, 255, 48, 255, 255, 255, 207],
@@ -138,9 +141,9 @@ public sealed class PixelComparerTests
             1,
             channelTolerance: 0);
 
-        Assert.Equal(1, report.AlphaIntersectionOverUnion);
+        Assert.Equal(96d / 414, report.AlphaIntersectionOverUnion, precision: 12);
         Assert.True(report.MeanChannelDelta > 0);
-        Assert.Equal(1, report.StructuralSimilarity);
+        Assert.True(report.StructuralSimilarity < 0);
     }
 
     [Fact]
@@ -177,7 +180,7 @@ public sealed class PixelComparerTests
     }
 
     [Fact]
-    public void Compare_AlphaIouDoesNotHideGeometryBeyondBoundaryTolerance()
+    public void Compare_AlphaIouDoesNotHideTranslatedGeometry()
     {
         byte[] ours = new byte[3 * 4];
         byte[] browser = new byte[3 * 4];
@@ -195,7 +198,7 @@ public sealed class PixelComparerTests
     }
 
     [Fact]
-    public void Compare_BoundaryToleranceDoesNotHideOnePixelTranslationFromExactDelta()
+    public void Compare_OnePixelTranslationFailsExactAlphaAndSimilarity()
     {
         byte[] ours = new byte[2 * 4];
         byte[] browser = new byte[2 * 4];
@@ -215,8 +218,35 @@ public sealed class PixelComparerTests
             1,
             channelTolerance: 0);
 
-        Assert.Equal(1, report.AlphaIntersectionOverUnion);
+        Assert.Equal(0, report.AlphaIntersectionOverUnion);
         Assert.True(report.MeanChannelDelta > 2);
+        Assert.True(report.StructuralSimilarity < 0);
+    }
+
+    [Fact]
+    public void Compare_ChannelToleranceCannotChangeSsimOrAlphaScore()
+    {
+        byte[] reference = [64, 64, 64, 255, 128, 128, 128, 255];
+        byte[] candidate = [66, 66, 66, 255, 130, 130, 130, 255];
+        var exact = PixelComparer.Compare(reference, candidate, 2, 1, channelTolerance: 0);
+        var tolerantCount = PixelComparer.Compare(reference, candidate, 2, 1, channelTolerance: 255);
+        Assert.True(exact.StructuralSimilarity < 1);
+        Assert.Equal(exact.StructuralSimilarity, tolerantCount.StructuralSimilarity);
+        Assert.Equal(exact.AlphaIntersectionOverUnion, tolerantCount.AlphaIntersectionOverUnion);
+        Assert.Equal(0, tolerantCount.DifferingPixelFraction);
+    }
+
+    [Fact]
+    public void Compare_SsimIncludesPartialEdgeWindowsAndIsSymmetric()
+    {
+        byte[] reference = Enumerable.Repeat((byte)255, 9 * 9 * 4).ToArray();
+        byte[] candidate = reference.ToArray();
+        candidate[^4] = candidate[^3] = candidate[^2] = 0;
+        var forward = PixelComparer.Compare(reference, candidate, 9, 9);
+        var reverse = PixelComparer.Compare(candidate, reference, 9, 9);
+        Assert.True(forward.StructuralSimilarity < 0.99);
+        Assert.Equal(forward.StructuralSimilarity, reverse.StructuralSimilarity, precision: 12);
+        Assert.Equal(1, PixelComparer.Compare(reference, reference, 9, 9).StructuralSimilarity, precision: 12);
     }
 
     [Fact]

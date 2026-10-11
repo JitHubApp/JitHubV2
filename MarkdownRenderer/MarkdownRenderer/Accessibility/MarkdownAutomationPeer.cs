@@ -10,6 +10,7 @@ using MarkdownRenderer.Document;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Performance;
 
 namespace MarkdownRenderer.Accessibility;
 
@@ -24,7 +25,8 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
     private const double NoScroll = -1;
     private readonly MarkdownRendererControl _owner;
     private readonly System.Runtime.CompilerServices.ConditionalWeakTable<InlineContainerBox, MarkdownBlockPeer> _peerCache = new();
-    private readonly Dictionary<MarkdownSemanticNode, MarkdownNodePeer> _nodePeerCache = new();
+    private Dictionary<MarkdownSemanticNode, MarkdownNodePeer> _nodePeerCache = new();
+    private readonly Dictionary<VectorSceneBox, List<MarkdownNodePeer>> _vectorPeerCache = new();
     private readonly MarkdownTextFormatCacheStore _textFormatCacheStore = new();
     private LayoutSnapshot? _semanticSnapshot;
     private MarkdownSemanticDocument? _semanticDocument;
@@ -98,16 +100,33 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
 
     protected override string GetItemStatusCore()
     {
-        if (!_owner.HasVisibleLoadingImagesForAutomation())
-            return base.GetItemStatusCore();
+        MarkdownVisibleSceneReadiness sceneStatus = _owner.GetVisibleDeferredSceneStatusForAutomation();
+        if (sceneStatus == MarkdownVisibleSceneReadiness.Failed)
+            return _owner.ResolveLocalizedString(MarkdownStringKeys.EmbeddedContentUnavailable,
+                MarkdownLocalizedStrings.EmbeddedContentUnavailable);
+        if (_owner.HasVisibleLoadingImagesForAutomation())
+        {
+            string imageName = _owner.ResolveLocalizedString(
+                MarkdownStringKeys.ImageName,
+                MarkdownLocalizedStrings.ImageName);
+            return _owner.ResolveFormattedLocalizedString(
+                MarkdownStringKeys.ImageLoading,
+                MarkdownLocalizedStrings.ImageLoadingFormat,
+                imageName);
+        }
 
-        string imageName = _owner.ResolveLocalizedString(
-            MarkdownStringKeys.ImageName,
-            MarkdownLocalizedStrings.ImageName);
-        return _owner.ResolveFormattedLocalizedString(
-            MarkdownStringKeys.ImageLoading,
-            MarkdownLocalizedStrings.ImageLoadingFormat,
-            imageName);
+        if (sceneStatus != MarkdownVisibleSceneReadiness.Ready)
+        {
+            string sceneName = _owner.ResolveLocalizedString(
+                MarkdownStringKeys.EmbeddedContentName,
+                MarkdownLocalizedStrings.EmbeddedContentName);
+            return _owner.ResolveFormattedLocalizedString(
+                MarkdownStringKeys.ImageLoading,
+                MarkdownLocalizedStrings.ImageLoadingFormat,
+                sceneName);
+        }
+
+        return base.GetItemStatusCore();
     }
 
     protected override IList<AutomationPeer> GetChildrenCore()
@@ -206,29 +225,54 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
 
     public ITextRangeProvider[] GetVisibleRanges()
     {
-        var doc = GetSemanticDocument();
+        var doc = GetCurrentTextRangeDocument(out long generation);
         if (!_owner.TryGetVisibleDocumentRect(out var viewport))
-            return new ITextRangeProvider[] { new MarkdownTextRangeProvider(this, 0, doc.Text.Length) };
-
-        int? start = null;
-        int? end = null;
-        foreach (var span in doc.TextSpans)
         {
-            var bounds = span.InlineBox?.Bounds ??
-                         span.ImageBox?.Bounds ??
-                         span.EmbedBox?.Bounds ??
-                         span.HostedElementBox?.Bounds ??
-                         (span.VectorSceneBox is { } vector
-                             ? span.VectorSemanticIndex >= 0
-                                  ? vector.GetVisibleSemanticBounds(span.VectorSemanticIndex)
-                                  : vector.VisibleContentBounds
-                             : default);
-            if (bounds.Height <= 0 || bounds.Bottom < viewport.Top || bounds.Top > viewport.Bottom) continue;
-            start = start is null ? span.TextStart : System.Math.Min(start.Value, span.TextStart);
-            end = end is null ? span.TextEnd : System.Math.Max(end.Value, span.TextEnd);
+            return new ITextRangeProvider[]
+            {
+                new MarkdownTextRangeProvider(this, 0, doc.Text.Length, null, generation, doc.Text.Length),
+            };
         }
 
-        return new ITextRangeProvider[] { new MarkdownTextRangeProvider(this, start ?? 0, end ?? 0) };
+        if (!TryReadLayoutGeometry(
+                doc,
+                generation,
+                (Document: doc, Viewport: viewport),
+                static (snapshot, state) =>
+            {
+                int? visibleStart = null;
+                int? visibleEnd = null;
+                for (int index = 0; index < state.Document.TextSpans.Count; index++)
+                {
+                    MarkdownTextSpan span = state.Document.TextSpans[index];
+                    Windows.Foundation.Rect bounds = GetVisibleSpanBounds(span, snapshot);
+                    if (bounds.Height <= 0 ||
+                        bounds.Bottom < state.Viewport.Top ||
+                        bounds.Top > state.Viewport.Bottom)
+                        continue;
+
+                    visibleStart = visibleStart is null
+                        ? span.TextStart
+                        : System.Math.Min(visibleStart.Value, span.TextStart);
+                    visibleEnd = visibleEnd is null
+                        ? span.TextEnd
+                        : System.Math.Max(visibleEnd.Value, span.TextEnd);
+                }
+
+                return (Start: visibleStart ?? 0, End: visibleEnd ?? 0);
+            },
+                out var visibleRange))
+        {
+            return new ITextRangeProvider[]
+            {
+                new MarkdownTextRangeProvider(this, 0, 0, null, generation, doc.Text.Length),
+            };
+        }
+
+        return new ITextRangeProvider[]
+        {
+            new MarkdownTextRangeProvider(this, visibleRange.Start, visibleRange.End, null, generation, doc.Text.Length),
+        };
     }
 
     public ITextRangeProvider RangeFromChild(IRawElementProviderSimple childElement)
@@ -257,17 +301,31 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
 
     public ITextRangeProvider RangeFromPoint(Windows.Foundation.Point screenLocation)
     {
-        var doc = GetSemanticDocument();
-        if (_owner.CurrentSnapshot is { } snapshot &&
-            TryScreenPointToDocumentPoint(screenLocation, out var docPoint) &&
-            (snapshot.TryHitTestVectorText(docPoint, out var position) ||
-             snapshot.HitTest(docPoint, out position)))
+        var doc = GetCurrentTextRangeDocument(out long generation);
+        if (TryScreenPointToDocumentPoint(screenLocation, out var rawDocumentPoint) &&
+            TryReadLayoutGeometry(
+                doc,
+                generation,
+                (Document: doc, DocumentPoint: rawDocumentPoint),
+                static (snapshot, state) =>
+            {
+                Windows.Foundation.Point hitTestPoint = state.Document.TryCoercePointToNearestTextRect(
+                    state.DocumentPoint,
+                    snapshot.ToLogicalRectForBlockIndexUnderPaint,
+                    snapshot.EnterPlacementTransformScopeForBlockIndexUnderPaint,
+                    out Windows.Foundation.Point coercedPoint)
+                    ? coercedPoint
+                    : state.DocumentPoint;
+                bool hit = snapshot.TryHitTestVectorText(hitTestPoint, out DocumentPosition position) ||
+                           snapshot.HitTest(hitTestPoint, out position);
+                return (Hit: hit, Offset: hit ? state.Document.TextOffsetFromDocumentPosition(position) : 0);
+            },
+                out var hitTest) && hitTest.Hit)
         {
-            int offset = doc.TextOffsetFromDocumentPosition(position);
-            return new MarkdownTextRangeProvider(this, offset, offset);
+            return new MarkdownTextRangeProvider(this, hitTest.Offset, hitTest.Offset, null, generation, doc.Text.Length);
         }
 
-        return new MarkdownTextRangeProvider(this, 0, 0);
+        return new MarkdownTextRangeProvider(this, 0, 0, null, generation, doc.Text.Length);
     }
 
     public ITextRangeProvider RangeFromAnnotation(IRawElementProviderSimple annotationElement) =>
@@ -300,6 +358,23 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
     {
         var doc = GetSemanticDocumentOrNull();
         return doc ?? MarkdownSemanticDocument.Empty;
+    }
+
+    internal MarkdownSemanticDocument GetCurrentTextRangeDocument(out long generation)
+    {
+        LayoutSnapshot? snapshot = _owner.CurrentSnapshot;
+        generation = snapshot?.AutomationDocumentGeneration ?? _owner.CurrentAutomationDocumentGeneration;
+        return GetSemanticDocumentOrNull(snapshot) ?? MarkdownSemanticDocument.Empty;
+    }
+
+    internal MarkdownSemanticDocument GetTextRangeDocument(long expectedGeneration)
+    {
+        LayoutSnapshot? snapshot = _owner.CurrentSnapshot;
+        MarkdownSemanticDocument? document = GetSemanticDocumentOrNull(snapshot);
+        MarkdownAutomationDocumentGeneration.EnsureCurrent(
+            expectedGeneration,
+            snapshot?.AutomationDocumentGeneration ?? _owner.CurrentAutomationDocumentGeneration);
+        return document ?? MarkdownSemanticDocument.Empty;
     }
 
     internal MarkdownTextFormatCache GetTextFormatCache()
@@ -439,6 +514,20 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
         imagePeer.RaiseAutomationFocusChanged();
     }
 
+    internal void RaiseFocusForInlineVectorScene(InlineVectorSceneRun scene)
+    {
+        MarkdownSemanticDocument document = GetSemanticDocument();
+        foreach (MarkdownSemanticNode node in EnumerateSemanticNodes(document.Root))
+        {
+            if (node.Role == MarkdownSemanticRole.Math &&
+                ReferenceEquals(node.InlineRun, scene))
+            {
+                GetOrCreateNodePeer(node).RaiseAutomationFocusChanged();
+                return;
+            }
+        }
+    }
+
     internal void RaiseFocusForVectorSemantic(VectorSceneBox box, int semanticIndex)
     {
         MarkdownSemanticDocument document = GetSemanticDocument();
@@ -489,6 +578,8 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
 
     internal void NotifyImageStatusChanged(ImageBox image)
     {
+        NotifyLoadingStatusMayHaveChanged();
+
         foreach (KeyValuePair<MarkdownSemanticNode, MarkdownNodePeer> entry in _nodePeerCache)
         {
             if (ReferenceEquals(entry.Key.ImageBox, image))
@@ -510,12 +601,44 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
         }
     }
 
+    internal void NotifyLoadingStatusMayHaveChanged()
+    {
+        if (!AutomationPeer.ListenerExists(AutomationEvents.PropertyChanged))
+            return;
+
+        // InvalidatePeer recomputes the root's main UIA properties and raises
+        // property-changed events only when their values changed. This refreshes
+        // the aggregate ItemStatus without emitting text/structure events.
+        InvalidatePeer();
+    }
+
+    internal void NotifyVectorSceneStatusChanged(VectorSceneBox box)
+    {
+        if (!AutomationPeer.ListenerExists(AutomationEvents.PropertyChanged) ||
+            !_vectorPeerCache.TryGetValue(box, out List<MarkdownNodePeer>? peers))
+            return;
+        // Only existing peers for this changed scene are refreshed. Neither
+        // document traversal nor deferred semantic realization is necessary.
+        for (int index = 0; index < peers.Count; index++)
+            peers[index].NotifyVectorSceneStatusMayHaveChanged();
+    }
+
     internal void NotifyDocumentChanged()
     {
+        NotifySnapshotChanged();
         _textFormatCacheStore.Invalidate();
         InvalidatePeer();
         RaiseAutomationEvent(AutomationEvents.TextPatternOnTextChanged);
         RaiseAutomationEvent(AutomationEvents.StructureChanged);
+    }
+
+    internal void NotifySnapshotChanged()
+    {
+        // Keep only the currently published projection even when its logical
+        // text generation is stable (for example, during a width-only reflow).
+        // This also releases externally unreachable old semantic trees without
+        // requiring a client to make another UIA query.
+        _ = GetSemanticDocumentOrNull();
     }
 
     internal void NotifySelectionChanged()
@@ -538,6 +661,127 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
             docRect.Height * scale);
     }
 
+    /// <summary>
+    /// Reads mutable box geometry only while holding the committed snapshot's
+    /// nonblocking interaction lease. The callback must return detached values
+    /// (including fully materialized enumerations) and must not invoke UIA or
+    /// other external callbacks. Screen transforms and provider publication
+    /// happen after the lease has been released.
+    /// </summary>
+    internal bool TryReadLayoutGeometry<TState, T>(
+        MarkdownSemanticDocument expectedDocument,
+        long? expectedDocumentGeneration,
+        TState state,
+        Func<LayoutSnapshot, TState, T> read,
+        out T value)
+    {
+        ArgumentNullException.ThrowIfNull(expectedDocument);
+        ArgumentNullException.ThrowIfNull(read);
+
+        LayoutSnapshot? snapshot = _semanticSnapshot;
+        if (snapshot is null || !IsCurrentLayoutDocument(snapshot, expectedDocument, expectedDocumentGeneration))
+        {
+            value = default!;
+            return false;
+        }
+
+        if (!snapshot.TryBeginInteraction())
+        {
+            value = default!;
+            return false;
+        }
+
+        T candidate = default!;
+        bool candidateIsCurrent = false;
+        try
+        {
+            if (!IsCurrentLayoutDocument(snapshot, expectedDocument, expectedDocumentGeneration))
+            {
+                value = default!;
+                return false;
+            }
+
+            candidate = read(snapshot, state);
+            candidateIsCurrent = IsCurrentLayoutDocument(
+                snapshot,
+                expectedDocument,
+                expectedDocumentGeneration);
+        }
+        finally
+        {
+            snapshot.EndInteraction();
+        }
+
+        // Snapshot publication does not need the old layout lock. Recheck once
+        // after releasing it so a concurrently committed replacement cannot
+        // turn a safe copied rectangle into a stale UIA result.
+        if (!candidateIsCurrent ||
+            !IsCurrentLayoutDocument(snapshot, expectedDocument, expectedDocumentGeneration))
+        {
+            value = default!;
+            return false;
+        }
+
+        value = candidate;
+        return true;
+    }
+
+    internal bool TryReadNodeBounds(
+        MarkdownSemanticNode node,
+        MarkdownSemanticDocument expectedDocument,
+        long expectedDocumentGeneration,
+        out Windows.Foundation.Rect bounds) =>
+        TryReadLayoutGeometry(
+            expectedDocument,
+            expectedDocumentGeneration,
+            node,
+            static (snapshot, currentNode) =>
+            {
+                using LayoutPlacementTransformContext.Scope placementScope =
+                    snapshot.EnterPlacementTransformScopeForBlockIndexUnderPaint(currentNode.LayoutBlockIndex);
+                Windows.Foundation.Rect currentBounds = currentNode.VectorSceneBox is { } vector
+                    ? currentNode.VectorSemanticIndex >= 0
+                        ? vector.GetVisibleSemanticBounds(currentNode.VectorSemanticIndex)
+                        : vector.Bounds
+                    : currentNode.Bounds;
+                return snapshot.ToLogicalRectForBlockIndexUnderPaint(
+                    currentNode.LayoutBlockIndex, currentBounds);
+            },
+            out bounds);
+
+    private bool IsCurrentLayoutDocument(
+        LayoutSnapshot snapshot,
+        MarkdownSemanticDocument expectedDocument,
+        long? expectedDocumentGeneration)
+    {
+        LayoutSnapshot? currentSnapshot = _owner.CurrentSnapshot;
+        long currentGeneration = currentSnapshot?.AutomationDocumentGeneration ??
+            _owner.CurrentAutomationDocumentGeneration;
+        if (expectedDocumentGeneration is { } expectedGeneration)
+            MarkdownAutomationDocumentGeneration.EnsureCurrent(expectedGeneration, currentGeneration);
+
+        return ReferenceEquals(currentSnapshot, snapshot) &&
+               ReferenceEquals(_semanticSnapshot, snapshot) &&
+               ReferenceEquals(_semanticDocument, expectedDocument) &&
+               ReferenceEquals(snapshot.SemanticDocument, expectedDocument);
+    }
+
+    private static Windows.Foundation.Rect GetVisibleSpanBounds(
+        MarkdownTextSpan span,
+        LayoutSnapshot snapshot)
+    {
+        Windows.Foundation.Rect bounds = span.InlineBox?.Bounds ??
+        span.ImageBox?.Bounds ??
+        span.EmbedBox?.Bounds ??
+        span.HostedElementBox?.Bounds ??
+        (span.VectorSceneBox is { } vector
+            ? span.VectorSemanticIndex >= 0
+                ? vector.GetVisibleSemanticBounds(span.VectorSemanticIndex)
+                : vector.VisibleContentBounds
+            : default);
+        return snapshot.ToLogicalRectForBlockIndexUnderPaint(span.LayoutBlockIndex, bounds);
+    }
+
     private bool TryScreenPointToDocumentPoint(
         Windows.Foundation.Point screenLocation,
         out Windows.Foundation.Point documentPoint)
@@ -551,12 +795,9 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
 
         double scale = _owner.XamlRoot?.RasterizationScale ?? 1.0;
         if (scale <= 0) scale = 1.0;
-        var rawPoint = new Windows.Foundation.Point(
+        documentPoint = new Windows.Foundation.Point(
             (screenLocation.X - ownerScreen.X) / scale,
             (screenLocation.Y - ownerScreen.Y) / scale - _owner.CurrentContentOffsetY + _owner.CurrentScrollOffsetY);
-        documentPoint = GetSemanticDocument().TryCoercePointToNearestTextRect(rawPoint, out var coercedPoint)
-            ? coercedPoint
-            : rawPoint;
         return true;
     }
 
@@ -649,16 +890,35 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
         return false;
     }
 
-    private MarkdownSemanticDocument? GetSemanticDocumentOrNull()
+    private MarkdownSemanticDocument? GetSemanticDocumentOrNull() =>
+        GetSemanticDocumentOrNull(_owner.CurrentSnapshot);
+
+    private MarkdownSemanticDocument? GetSemanticDocumentOrNull(LayoutSnapshot? snap)
     {
-        var snap = _owner.CurrentSnapshot;
-        if (snap is null) return null;
+        if (snap is null)
+        {
+            if (_semanticSnapshot is not null || _semanticDocument is not null)
+            {
+                _semanticSnapshot = null;
+                _semanticDocument = null;
+                _peerCache.Clear();
+                _nodePeerCache = new Dictionary<MarkdownSemanticNode, MarkdownNodePeer>();
+                _vectorPeerCache.Clear();
+                _owner.InvalidateAutomationChildPeerCaches();
+                _textFormatCacheStore.Invalidate();
+            }
+
+            return null;
+        }
 
         if (!ReferenceEquals(snap, _semanticSnapshot) || _semanticDocument is null)
         {
             _semanticSnapshot = snap;
             _semanticDocument = snap.SemanticDocument;
-            _nodePeerCache.Clear();
+            _peerCache.Clear();
+            _nodePeerCache = new Dictionary<MarkdownSemanticNode, MarkdownNodePeer>();
+            _vectorPeerCache.Clear();
+            _owner.InvalidateAutomationChildPeerCaches();
             _textFormatCacheStore.Invalidate();
         }
 
@@ -706,6 +966,12 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
         {
             peer = new MarkdownNodePeer(_owner, this, node);
             _nodePeerCache[node] = peer;
+            if (node.VectorSceneBox is { } vector)
+            {
+                if (!_vectorPeerCache.TryGetValue(vector, out List<MarkdownNodePeer>? peers))
+                    _vectorPeerCache.Add(vector, peers = []);
+                peers.Add(peer);
+            }
         }
 
         return peer;

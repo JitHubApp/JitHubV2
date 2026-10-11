@@ -49,14 +49,10 @@
                 AutomationInstanceId="RepoCodeReadme"
                 OwnsScrollViewport="True"
                 x:Name="RichPanel"
-                BaseUrl="{x:Bind CurrentBaseUrl, Mode=OneWay}"
                 ContentHorizontalAlignment="Center"
                 ContentMaxWidth="860"
                 ContentPadding="16"
-                DocumentSource="{x:Bind CurrentDocumentSource, Mode=OneWay}"
-                DocumentPath="{x:Bind CurrentDocumentPath, Mode=OneWay}"
                 HorizontalAlignment="Stretch"
-                Text="{x:Bind ViewModel.RenderedText, Mode=OneWay}"
                 VerticalAlignment="Stretch"
                 Visibility="Visible" />
 

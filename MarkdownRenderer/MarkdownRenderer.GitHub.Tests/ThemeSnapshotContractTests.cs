@@ -6,6 +6,7 @@ using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;
 
+[Collection(AllocationSensitiveContractCollection.Name)]
 public sealed class ThemeSnapshotContractTests
 {
     [Fact]
@@ -384,13 +385,16 @@ public sealed class ThemeSnapshotContractTests
             MarkdownElementKeys.CodeBlock,
             "Extension.Role",
             " Extension.Role",
+            MarkdownElementKeys.Class("align-center"),
         ];
 
         HashSet<string> demandedRoles = ThemeResolver.GetScopedResourceStyleRoles(
             elementKeys,
             1UL << 6); // Body in ThemeResolver's fixed built-in role order.
 
-        Assert.Equal(new[] { "Body", "Extension.Role" }, demandedRoles.Order(StringComparer.Ordinal));
+        Assert.Equal(
+            new[] { ".align-center", "Body", "Extension.Role" },
+            demandedRoles.Order(StringComparer.Ordinal));
         Assert.True(ThemeResolver.IsScopedResourceRequiredForSnapshot(
             MarkdownResourceKeys.ForRole(MarkdownStyleRole.Body, MarkdownStyleProperty.ForegroundBrush),
             demandedRoles));
@@ -403,9 +407,32 @@ public sealed class ThemeSnapshotContractTests
         Assert.True(ThemeResolver.IsScopedResourceRequiredForSnapshot(
             "TextControlForeground",
             demandedRoles));
+        Assert.True(ThemeResolver.IsScopedResourceRequiredForSnapshot(
+            MarkdownResourceKeys.ForRole(
+                MarkdownStyleRole.FromElementKey(MarkdownElementKeys.Class("align-center")),
+                MarkdownStyleProperty.ForegroundBrush),
+            demandedRoles));
         Assert.False(ThemeResolver.IsScopedResourceRequiredForSnapshot(
             "ControlCornerRadius",
             demandedRoles));
+
+        // The demand mask is only a scoped role-value optimization. Global
+        // selection, focus, sizing, and surface inputs remain captured for
+        // every document and theme, including High Contrast.
+        foreach (string globalKey in new[]
+        {
+            MarkdownResourceKeys.DocumentSurfaceBrush,
+            MarkdownResourceKeys.SelectionBackgroundBrush,
+            MarkdownResourceKeys.SelectionForegroundBrush,
+            MarkdownResourceKeys.FocusVisualBrush,
+            MarkdownResourceKeys.DocumentPadding,
+            MarkdownResourceKeys.BlockSpacing,
+            MarkdownResourceKeys.MinimumInteractiveSize,
+            MarkdownResourceKeys.OverflowIndicatorBrush,
+        })
+        {
+            Assert.True(ThemeResolver.IsScopedResourceRequiredForSnapshot(globalKey, demandedRoles));
+        }
 
         HashSet<string> fullResolutionRoles = ThemeResolver.GetScopedResourceStyleRoles(
             elementKeys,

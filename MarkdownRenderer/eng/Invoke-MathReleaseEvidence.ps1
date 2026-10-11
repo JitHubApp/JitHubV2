@@ -297,6 +297,7 @@ $complianceDirectory = Join-Path $runDirectory 'package-compliance'
 & (Join-Path $PSScriptRoot 'Invoke-PackageCompliance.ps1') `
     -PackageDirectory $packageDirectory `
     -OutputDirectory $complianceDirectory `
+    -PackageScope Math `
     -FailOnUnknownLicense `
     -SkipSizeGates
 if ($LASTEXITCODE -ne 0) { throw 'Math package compliance failed.' }
@@ -441,6 +442,7 @@ $report = [pscustomobject][ordered]@{
         spdx = (Join-Path $complianceDirectory ("MarkdownRenderer.Math.$packageVersion.spdx.json"))
         notices = (Join-Path $complianceDirectory ("MarkdownRenderer.Math.$packageVersion.THIRD-PARTY-NOTICES.md"))
         nativeReport = (Join-Path $complianceDirectory 'native-package-compliance.json')
+        managedPackageArchitecture = (Join-Path $complianceDirectory 'managed-package-architecture.json')
         reproducibilityManifest = (Join-Path $complianceDirectory 'package-reproducibility.json')
     }
     deployments = @($deployments)

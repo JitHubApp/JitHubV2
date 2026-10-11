@@ -77,7 +77,14 @@ internal sealed class PerformanceReport
             }
 
             foreach (JsonPropertyInfo property in typeInfo.Properties)
-                property.IsRequired = true;
+            {
+                // Diagnostic-only additions are intentionally optional so a
+                // current reader can still consume frozen reports produced by
+                // the same schema before the diagnostics existed.
+                property.IsRequired = property.AttributeProvider?.IsDefined(
+                    typeof(PerformanceDiagnosticOnlyAttribute),
+                    inherit: true) != true;
+            }
         });
 
         return new JsonSerializerOptions
@@ -133,6 +140,11 @@ internal sealed class PerformanceReport
             result.Trials.All(static trial =>
                 trial.PublicationSamplesMilliseconds is not null));
     }
+}
+
+[AttributeUsage(AttributeTargets.Property)]
+internal sealed class PerformanceDiagnosticOnlyAttribute : Attribute
+{
 }
 
 internal readonly record struct PerformanceReportEvidence(
@@ -441,6 +453,24 @@ internal sealed class SourceLookupTrialResult
     public List<double> SamplesNanosecondsPerLookup { get; init; } = [];
     public double P95Nanoseconds { get; init; }
     public long AllocatedBytes { get; init; }
+    // Optional diagnostic telemetry only; none of these fields participates in
+    // the source-lookup acceptance verdict or dispersion calculation.
+    [PerformanceDiagnosticOnly]
+    public DateTimeOffset StartedUtc { get; init; }
+    [PerformanceDiagnosticOnly]
+    public DateTimeOffset CompletedUtc { get; init; }
+    [PerformanceDiagnosticOnly]
+    public long ElapsedStopwatchTicks { get; init; }
+    [PerformanceDiagnosticOnly]
+    public long ThreadCpuTime100NsTicks { get; init; } = -1;
+    [PerformanceDiagnosticOnly]
+    public ulong? ThreadCycleDelta { get; init; }
+    [PerformanceDiagnosticOnly]
+    public int Gen0Collections { get; init; }
+    [PerformanceDiagnosticOnly]
+    public int Gen1Collections { get; init; }
+    [PerformanceDiagnosticOnly]
+    public int Gen2Collections { get; init; }
     public bool Complete { get; init; }
 }
 

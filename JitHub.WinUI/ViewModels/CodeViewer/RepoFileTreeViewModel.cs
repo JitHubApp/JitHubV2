@@ -54,6 +54,13 @@ public sealed partial class RepoFileTreeViewModel : ObservableObject
     public bool IsRootAuthoritative { get; private set; }
 
     /// <summary>
+    /// SHA of the current Git tree object (not a commit SHA). It scopes
+    /// repository-relative Markdown assets to the tree snapshot that supplied
+    /// the preview.
+    /// </summary>
+    public string? RootTreeSha { get; private set; }
+
+    /// <summary>
     /// Filtered view of RootNodes by FilterText (case-insensitive substring match on Path).
     /// Updated asynchronously (debounced + off-thread) whenever FilterText changes.
     /// </summary>
@@ -264,6 +271,12 @@ public sealed partial class RepoFileTreeViewModel : ObservableObject
             sourceGeneration < currentRootSource)
         {
             return false;
+        }
+
+        if (!string.Equals(RootTreeSha, tree.Sha, StringComparison.Ordinal))
+        {
+            RootTreeSha = tree.Sha;
+            OnPropertyChanged(nameof(RootTreeSha));
         }
 
         string? selectedPath = SelectedNode?.Path;

@@ -17,7 +17,63 @@ namespace MarkdownRenderer.GitHub.Tests;
 
 public sealed class DisplaySizedRasterDecodeTests
 {
+    [Fact]
+    public async Task RetiringBoxCancelsQueuedRasterPreparationAndDrainsItsLifetime()
+    {
+        using var session = new MarkdownPerformanceSession(
+            MarkdownPerformanceOptions.Progressive with { MaxConcurrentCpuPreparations = 1 });
+        using IDisposable held = await session.EnterCpuPreparationAsync(
+            new object(), CancellationToken.None);
+        var resolver = new ByteResolver(CreatePng(1024, 512), $"retired-raster-{Guid.NewGuid():N}");
+        var image = new ImageBox(CreateContext(resolver, session, scale: 1),
+            "https://images.example/retired.png", string.Empty);
+        int publications = 0;
+        image.LoadCompleted += (_, _) => Interlocked.Increment(ref publications);
+        try
+        {
+            image.Measure(200);
+            image.EnsureLoading();
+            // Resolver and decode phases both hold the image lifetime now.
+            // Observe the actual admission waiter, not a transient work count.
+            await WaitUntilAsync(() => session.PendingCpuPreparations == 1);
+            Assert.True(image.ActiveImageWorkCountForTests > 0);
+            Assert.Null(image.Bitmap);
+            Assert.Equal(1, session.GetSnapshot().CpuPreparations);
+
+            image.Dispose();
+            await WaitUntilAsync(() => image.ImageLifetimeDisposedForTests);
+            Assert.Equal(0, image.ActiveImageWorkCountForTests);
+            Assert.Equal(0, session.PendingCpuPreparations);
+            Assert.Equal(0, Volatile.Read(ref publications));
+            Assert.Equal(1, session.GetSnapshot().CpuPreparations);
+
+            held.Dispose();
+            using IDisposable next = await session.EnterCpuPreparationAsync(
+                new object(), CancellationToken.None).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        finally { image.Dispose(); }
+    }
+
+    [Fact]
+    public async Task EagerWin2DLoadAcceptsTheBorrowedSourceStream()
+    {
+        byte[] source = CreatePng(width: 1024, height: 512);
+        var resolver = new ByteResolver(source, $"eager-raster-{Guid.NewGuid():N}");
+        var image = new ImageBox(CreateContext(resolver, session: null, scale: 1),
+            "https://images.example/large.png", string.Empty);
+        try
+        {
+            image.Measure(200);
+            await WaitForLoadAsync(image);
+            Assert.NotNull(image.Bitmap);
+            Assert.Equal(1024u, image.Bitmap.SizeInPixels.Width);
+            Assert.Equal(512u, image.Bitmap.SizeInPixels.Height);
+        }
+        finally { image.Dispose(); }
+    }
+
     [Theory]
+    [InlineData(0.75, 150, 75)]
     [InlineData(1.0, 200, 100)]
     [InlineData(1.25, 250, 125)]
     [InlineData(1.5, 300, 150)]
@@ -80,6 +136,121 @@ public sealed class DisplaySizedRasterDecodeTests
             first.Dispose();
             second.Dispose();
         }
+    }
+
+    [Theory]
+    [InlineData(800f, 400f, 100)]
+    [InlineData(800f, 0f, 100)]
+    [InlineData(0f, 800f, 100)]
+    [InlineData(0f, 0f, 100)]
+    [InlineData(800f, 800f, 200)]
+    public async Task AuthoredRasterDimensionsDecodeAtTheConstrainedDisplayRectangle(
+        float authoredWidth, float authoredHeight, int displayHeight)
+    {
+        var resolver = new ByteResolver(CreatePng(1024, 512), $"authored-raster-{Guid.NewGuid():N}");
+        using var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
+        var image = new ImageBox(CreateContext(resolver, session, scale: 2),
+            "https://images.example/authored.png", string.Empty,
+            new SafeHtmlLength(authoredWidth, false), new SafeHtmlLength(authoredHeight, false));
+        try
+        {
+            image.Measure(200);
+            await WaitForLoadAsync(image);
+            Assert.NotNull(image.Bitmap);
+            Assert.Equal(400u, image.Bitmap.SizeInPixels.Width);
+            Assert.Equal((uint)(displayHeight * 2), image.Bitmap.SizeInPixels.Height);
+            image.Measure(200);
+            Assert.Equal(200f, image.MeasuredImageWidth, precision: 2);
+            Assert.Equal((float)displayHeight, image.MeasuredImageHeight, precision: 2);
+        }
+        finally { image.Dispose(); }
+    }
+
+    [Theory]
+    [InlineData(true, 1.0, 4_194_304L, 200, 100)]
+    [InlineData(true, 2.0, 4_194_304L, 400, 200)]
+    [InlineData(true, 4.0, 4_194_304L, 800, 400)]
+    [InlineData(false, 1.0, 10_000L, 141, 70)]
+    public async Task EagerSourceCacheDoesNotBypassTheConsumersRasterPolicy(
+        bool displaySized, double scale, long pixelLimit, int width, int height)
+    {
+        var resolver = new ByteResolver(CreatePng(1024, 512), $"policy-raster-{Guid.NewGuid():N}");
+        using var session = new MarkdownPerformanceSession(
+            MarkdownPerformanceOptions.Progressive with
+            {
+                UseDisplaySizedRasterDecode = displaySized,
+                MaxRasterOutputPixels = pixelLimit,
+            });
+        var eager = new ImageBox(CreateContext(resolver, null, 1),
+            "https://images.example/shared.png", string.Empty);
+        var bounded = new ImageBox(CreateContext(resolver, session, scale),
+            "https://images.example/shared.png", string.Empty);
+        var reused = new ImageBox(CreateContext(resolver, session, scale),
+            "https://images.example/shared.png", string.Empty);
+        try
+        {
+            eager.Measure(200);
+            await WaitForLoadAsync(eager);
+            Assert.Equal(1024u, eager.Bitmap!.SizeInPixels.Width);
+            bounded.Measure(200);
+            await WaitForLoadAsync(bounded);
+            Assert.Equal((uint)width, bounded.Bitmap!.SizeInPixels.Width);
+            Assert.Equal((uint)height, bounded.Bitmap.SizeInPixels.Height);
+            Assert.NotSame(eager.Bitmap, bounded.Bitmap);
+
+            long preparations = session.GetSnapshot().CpuPreparations;
+            reused.Measure(200);
+            await WaitForLoadAsync(reused);
+            Assert.Same(bounded.Bitmap, reused.Bitmap);
+            Assert.Equal(preparations, session.GetSnapshot().CpuPreparations);
+        }
+        finally { eager.Dispose(); bounded.Dispose(); reused.Dispose(); }
+    }
+
+    [Fact]
+    public async Task BuiltInSourceConstructorDoesNotBypassDisplaySizedDecode()
+    {
+        string source = "data:image/png;base64," + Convert.ToBase64String(CreatePng(1024, 512));
+        var eager = new ImageBox(CreateContext(null!, null, 1), source, string.Empty);
+        using var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
+        ImageBox? bounded = null;
+        try
+        {
+            eager.Measure(200);
+            await WaitForLoadAsync(eager);
+            Assert.Equal(1024u, eager.Bitmap!.SizeInPixels.Width);
+            bounded = new ImageBox(CreateContext(null!, session, 1), source, string.Empty);
+            Assert.Null(bounded.Bitmap);
+            bounded.Measure(200);
+            await WaitForLoadAsync(bounded);
+            Assert.Equal(200u, bounded.Bitmap!.SizeInPixels.Width);
+            Assert.Equal(100u, bounded.Bitmap.SizeInPixels.Height);
+        }
+        finally { eager.Dispose(); bounded?.Dispose(); }
+    }
+
+    [Fact]
+    public async Task SourceSizedCacheStillReusesAnEntryWithinTheConsumersPixelCeiling()
+    {
+        var resolver = new ByteResolver(CreatePng(64, 32), $"small-policy-raster-{Guid.NewGuid():N}");
+        var eager = new ImageBox(CreateContext(resolver, null, 1),
+            "https://images.example/small.png", string.Empty);
+        using var session = new MarkdownPerformanceSession(
+            MarkdownPerformanceOptions.Progressive with
+            {
+                UseDisplaySizedRasterDecode = false,
+                MaxRasterOutputPixels = 10_000,
+            });
+        var reused = new ImageBox(CreateContext(resolver, session, 1),
+            "https://images.example/small.png", string.Empty);
+        try
+        {
+            await WaitForLoadAsync(eager);
+            await WaitForLoadAsync(reused);
+            Assert.Same(eager.Bitmap, reused.Bitmap);
+            Assert.Equal(0, session.GetSnapshot().CpuPreparations);
+        }
+        finally { eager.Dispose(); reused.Dispose(); }
     }
 
     [Fact]
@@ -268,18 +439,30 @@ public sealed class DisplaySizedRasterDecodeTests
         }
     }
 
-    private static async Task WaitForLoadAsync(ImageBox image)
+    internal static async Task WaitForLoadAsync(ImageBox image)
     {
         var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        image.LoadCompleted += (_, _) => completed.TrySetResult();
+        image.LoadCompleted += (_, args) =>
+        {
+            if (!args.IsBitmapOutputRecoverySignal)
+                completed.TrySetResult();
+        };
         image.EnsureLoading();
         await completed.Task.WaitAsync(TimeSpan.FromSeconds(10));
     }
 
-    private static MarkdownLayoutContext CreateContext(
+    internal static async Task WaitUntilAsync(Func<bool> condition)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        while (!condition())
+            await Task.Delay(10, timeout.Token);
+    }
+
+    internal static MarkdownLayoutContext CreateContext(
         IMarkdownImageResolver resolver,
-        MarkdownPerformanceSession session,
-        double scale)
+        MarkdownPerformanceSession? session,
+        double scale,
+        bool hasDocumentOwner = true)
     {
         var style = new ElementStyle();
         var styles = new Dictionary<string, ElementStyle>(StringComparer.Ordinal)
@@ -298,12 +481,13 @@ public sealed class DisplaySizedRasterDecodeTests
         {
             ImageResolver = resolver,
             PerformanceSession = session,
+            PerformanceDocumentOwner = hasDocumentOwner ? new object() : null,
             RasterizationScale = scale,
             ImageCancellationToken = CancellationToken.None,
         };
     }
 
-    private static byte[] CreatePng(int width, int height)
+    internal static byte[] CreatePng(int width, int height)
     {
         using var compressed = new MemoryStream();
         using (var zlib = new ZLibStream(compressed, CompressionLevel.Fastest, leaveOpen: true))

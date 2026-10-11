@@ -719,6 +719,7 @@
   <data name="MarkdownRenderer/Table/Name" xml:space="preserve"><value>Táblázat</value></data>
   <data name="MarkdownRenderer/List/Name" xml:space="preserve"><value>Lista</value></data>
   <data name="MarkdownRenderer/EmbeddedContent/Name" xml:space="preserve"><value>Beágyazott tartalom</value></data>
+  <data name="MarkdownRenderer/EmbeddedContent/Unavailable" xml:space="preserve"><value>A beágyazott tartalom nem érhető el.</value></data>
   <data name="MarkdownRenderer/Diagram/Name" xml:space="preserve"><value>Diagram</value></data>
   <data name="MarkdownRenderer/Code/LanguageHelp" xml:space="preserve"><value>Nyelv: {0}</value></data>
   <data name="MarkdownRenderer/Html/Details" xml:space="preserve"><value>Részletek</value></data>

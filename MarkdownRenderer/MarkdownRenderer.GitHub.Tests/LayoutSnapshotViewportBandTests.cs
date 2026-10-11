@@ -26,16 +26,24 @@ public sealed class LayoutSnapshotViewportBandTests
             width: 100,
             height: 230);
 
-        Assert.True(snapshot.TryGetMeasuredTopLevelBlocksInBand(55, 125, out var selected));
-        Assert.Equal(
-            new BlockBox[] { blocks[1], blocks[2] },
-            selected);
-        Assert.True(snapshot.TryGetMeasuredTopLevelBlocksInBand(52, 58, out var empty));
-        Assert.Empty(empty);
+        Assert.True(snapshot.TryBeginInteraction());
+        try
+        {
+            Assert.True(snapshot.TryGetMeasuredTopLevelBlocksInBandForSceneProbe(55, 125, out var selected));
+            Assert.Equal(
+                new BlockBox[] { blocks[1], blocks[2] },
+                selected);
+            Assert.True(snapshot.TryGetMeasuredTopLevelBlocksInBandForSceneProbe(52, 58, out var empty));
+            Assert.Empty(empty);
+        }
+        finally
+        {
+            snapshot.EndInteraction();
+        }
     }
 
     [Fact]
-    public async Task BusyBandQuery_DoesNotBlockTheUiThreadBehindMeasurement()
+    public async Task BusySnapshotCannotBeInspectedWithoutBlockingBehindMeasurement()
     {
         var block = new BlockingBox { BlockIndex = 0 };
         using var snapshot = new LayoutSnapshot(
@@ -55,8 +63,7 @@ public sealed class LayoutSnapshotViewportBandTests
         Assert.True(block.MeasureEntered.Wait(TimeSpan.FromSeconds(2)));
         try
         {
-            Assert.False(snapshot.TryGetMeasuredTopLevelBlocksInBand(0, 100, out var busy));
-            Assert.Empty(busy);
+            Assert.False(snapshot.TryBeginInteraction());
         }
         finally
         {
