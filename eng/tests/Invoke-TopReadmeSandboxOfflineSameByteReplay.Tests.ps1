@@ -7,6 +7,23 @@ if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) {
     throw "Offline Sandbox replay script is missing: '$scriptPath'."
 }
 
+function Remove-OwnedTestTempRoot([string] $Path, [string] $NamePrefix) {
+    $tempParent = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd([char[]]@('\', '/'))
+    $resolvedPath = [IO.Path]::GetFullPath($Path)
+    $resolvedParent = [IO.Path]::GetDirectoryName($resolvedPath)
+    $leaf = [IO.Path]::GetFileName($resolvedPath)
+    if (-not [string]::Equals($resolvedParent, $tempParent, [StringComparison]::OrdinalIgnoreCase) -or
+        $leaf -notmatch ('^' + [regex]::Escape($NamePrefix) + '-[0-9a-f]{32}$')) {
+        throw "Refusing to recursively remove a test path that is not an expected GUID child of the temp directory: '$resolvedPath'."
+    }
+    if (-not (Test-Path -LiteralPath $resolvedPath -PathType Container)) { return }
+    $item = Get-Item -LiteralPath $resolvedPath -Force
+    if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw "Refusing to recursively remove a reparse-point test directory: '$resolvedPath'."
+    }
+    Remove-Item -LiteralPath $resolvedPath -Recurse -Force
+}
+
 $tokens = $null
 $parseErrors = $null
 $ast = [System.Management.Automation.Language.Parser]::ParseFile($scriptPath, [ref]$tokens, [ref]$parseErrors)
@@ -70,7 +87,7 @@ foreach ($functionName in $identityFunctionNames) {
     if ($null -eq $function) { throw "Required README identity validator '$functionName' is missing." }
     Invoke-Expression $function.Extent.Text
 }
-$captureFunctionNames = @('Add-BoundedByteCount', 'Get-OrdinaryTreeFiles', 'Get-CaseId', 'Get-ValidatedCaptureCase', 'Add-SourceTreeToSnapshot')
+$captureFunctionNames = @('Add-BoundedByteCount', 'Get-OrdinaryTreeFiles', 'Get-CaseId', 'Get-ValidatedCaptureCase', 'Add-SourceTreeToSnapshot', 'Get-Percentile', 'Get-OfflineAggregate')
 foreach ($functionName in $captureFunctionNames) {
     $function = $ast.Find({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $functionName }, $true)
     if ($null -eq $function) { throw "Required capture validation function '$functionName' is missing." }
@@ -252,6 +269,80 @@ finally {
     Remove-Item -LiteralPath $captureRootForTest -Recurse -Force
 }
 
+$script:resolvedStartRank = 1
+$script:resolvedCount = 1
+$aggregateTestRoot = Join-Path ([IO.Path]::GetTempPath()) ('offline-empty-failures-' + [Guid]::NewGuid().ToString('N'))
+[IO.Directory]::CreateDirectory($aggregateTestRoot) | Out-Null
+try {
+    $aggregateRepository = [pscustomobject]@{
+        rank = 1
+        fullName = 'Example/Empty'
+        commitSha = 'a' * 40
+        readme = [pscustomobject]@{ available = $false; sha = ''; byteSize = 0L; path = '' }
+    }
+    $aggregatePlan = [pscustomobject]@{
+        Repositories = @($aggregateRepository)
+        Captures = @{ 1 = [pscustomobject]@{ ReadmeRendered = $false } }
+    }
+    $aggregateShard = [pscustomobject]@{ Repositories = @($aggregateRepository) }
+    $emptyFailures = [Collections.Generic.List[string]]::new()
+    $aggregate = Get-OfflineAggregate -Pinned ([pscustomobject]@{ Sha256 = 'b' * 64 }) `
+        -Plan $aggregatePlan -Shards @($aggregateShard) -EvidenceRoot $aggregateTestRoot `
+        -CompletedShardCount 0 -Failures $emptyFailures
+    if ($aggregate.executionStatus -cne 'failed' -or $emptyFailures.Count -ne 1 -or
+        -not $emptyFailures[0].Contains('Rank 1 has 0 offline case result records.', [StringComparison]::Ordinal)) {
+        throw 'Offline aggregate did not preserve the expected failed result when the initial failure list was empty.'
+    }
+}
+finally { Remove-OwnedTestTempRoot -Path $aggregateTestRoot -NamePrefix 'offline-empty-failures' }
+
+$guestBatchFunction = $ast.Find({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'New-GuestBatchScript' }, $true)
+if ($null -eq $guestBatchFunction) { throw 'Offline guest batch generator is missing.' }
+Invoke-Expression $guestBatchFunction.Extent.Text
+$EdgeExecutablePath = ''
+$generatedGuestBatch = New-GuestBatchScript -GuestRepo 'fixture\repo' -GuestWorkRoot 'C:\Sandbox\work' `
+    -Start 1 -Amount 1 -OutputRelativePath 'artifacts\output'
+$waitForExitIndex = $generatedGuestBatch.IndexOf('$process.WaitForExit()', [StringComparison]::Ordinal)
+$refreshAfterWaitIndex = $generatedGuestBatch.IndexOf('$process.Refresh()', $waitForExitIndex, [StringComparison]::Ordinal)
+$readExitCodeIndex = $generatedGuestBatch.IndexOf('$rawExitCode = $process.ExitCode', [StringComparison]::Ordinal)
+$nullExitCodeGuardIndex = $generatedGuestBatch.IndexOf('if ($null -eq $rawExitCode)', [StringComparison]::Ordinal)
+if ($waitForExitIndex -lt 0 -or $refreshAfterWaitIndex -le $waitForExitIndex -or
+    $readExitCodeIndex -le $refreshAfterWaitIndex -or $nullExitCodeGuardIndex -le $readExitCodeIndex) {
+    throw 'Generated guest runner must refresh the process snapshot after WaitForExit and reject a missing exit code.'
+}
+$guestTokens = $null
+$guestParseErrors = $null
+[void][System.Management.Automation.Language.Parser]::ParseInput($generatedGuestBatch, [ref]$guestTokens, [ref]$guestParseErrors)
+if ($guestParseErrors.Count -gt 0) {
+    throw "Generated offline guest script did not parse: $($guestParseErrors[0].Message) at line $($guestParseErrors[0].Extent.StartLineNumber)."
+}
+
+$windowsPowerShell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+if (-not (Test-Path -LiteralPath $windowsPowerShell -PathType Leaf)) { throw 'Windows PowerShell 5.1 is required for the fast-child exit-code regression.' }
+$fastChildRoot = Join-Path ([IO.Path]::GetTempPath()) ('offline-fast-child-' + [Guid]::NewGuid().ToString('N'))
+[IO.Directory]::CreateDirectory($fastChildRoot) | Out-Null
+try {
+    $fastChildScript = Join-Path $fastChildRoot 'fast-child-exit-code.ps1'
+    [IO.File]::WriteAllText($fastChildScript, @'
+$ErrorActionPreference = 'Stop'
+$child = Start-Process -FilePath $env:ComSpec -ArgumentList '/d /c exit 7' -PassThru -WindowStyle Hidden
+$child.WaitForExit()
+$child.Refresh()
+$rawExitCode = $child.ExitCode
+if ($null -eq $rawExitCode) { exit 91 }
+if ([int]$rawExitCode -ne 7) { exit 92 }
+exit 0
+'@, [Text.UTF8Encoding]::new($false))
+    & $windowsPowerShell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $fastChildScript
+    $fastChildProbeExitCode = $LASTEXITCODE
+    if ($fastChildProbeExitCode -ne 0) {
+        throw "Windows PowerShell 5.1 failed to observe a quickly exited child after Refresh (probe exit $fastChildProbeExitCode)."
+    }
+}
+finally { Remove-OwnedTestTempRoot -Path $fastChildRoot -NamePrefix 'offline-fast-child' }
+
 Write-Host 'PASS: offline replay initializes only the expected attached-Sandbox work root before using it as --cwd.'
 Write-Host 'PASS: offline replay binds the 64-digit README SHA-256 to actual bytes and the separate pinned Git blob SHA-1.'
 Write-Host 'PASS: full offline capture-case validation accepts valid bytes and rejects bad Git blob, SHA-256, commit binding, and same-length byte tampering.'
+Write-Host 'PASS: offline aggregation accepts a genuinely empty initial failure list and records missing case evidence as a failure.'
+Write-Host 'PASS: offline guest exit capture refreshes the Windows PowerShell process snapshot and handles a fast child without a blank exit status.'

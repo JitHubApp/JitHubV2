@@ -18,8 +18,8 @@ clean candidate containing the current local optimizations. This is the exact
 proposal recorded below, not the separate PR base `e6b43d9f...` (14:50 PDT),
 which lacks the measurement contract. The initial approval entry incorrectly
 substituted that PR base; no benchmark or repository setting used it. The
-approved reference is current HEAD and becomes a strict ancestor only when the
-local candidate is committed as its descendant. The user also explicitly approved
+approved reference is a strict ancestor of local candidate
+`67874e80b0403b4f1972394385805406f01c20bf`, committed without pushing. The user also explicitly approved
 Windows Sandbox for the remaining JitHub/Edge UI and rendering tests. The user
 subsequently approved a local commit of reviewed MarkdownRenderer changes,
 excluding unrelated changes and **without pushing**, and the physical-desktop
@@ -27,13 +27,56 @@ excluding unrelated changes and **without pushing**, and the physical-desktop
 remain Sandbox-scoped. Neither approval relaxes clean-source, same-byte,
 signing, or device qualification requirements.
 
-The immediate local priority is a committed, reviewed checkpoint and the full
-physical counterbalanced measurement against the approved reference. The
+The reviewed checkpoint and full physical measurement have now been attempted;
+the immediate priorities are the clean-checkout AOT build blocker, real offline
+README replay, and the measured publication/frame-pacing failures below. The
 unfinished request-local SVG coverage cache was preserved separately and is
 excluded from this checkpoint; the tested disjoint-column worker remains the
 candidate. Its prototype is not sufficient evidence to delay the full-system
 measurement or to claim a production speedup. Source-bound local results must
 not be presented as the joined GitHub Actions release qualification.
+
+The candidate's isolated clean checkout builds the Release x64 performance
+harness with zero warnings or errors. The full, unchanged R1/C1/C2/R2 physical
+attempt stopped after **R1 failed**, as required; no quick population or retry
+was used. R1 completed in 8m12s, with valid cache/schedule/pinned-thread evidence
+but failed first-viewport stationarity, some latency/publication limits, scroll
+frame pacing, and cancellation repeatability. Cancellation itself completed
+200/200 requests with zero stale commits. Evidence is retained under
+`MarkdownRenderer/artifacts/goal-release-20261011/physical-counterbalanced-67874e80/`.
+
+A separate **full-population candidate diagnostic**, not a replacement R1 or
+counterbalanced comparison, completed in 7m22s and also **failed**. It passes
+cancellation (200/200, zero stale commits), all retained-memory bounds, the
+100-cycle lifetime plateau, and both 100 KiB first-viewport conditions. Remaining
+failures include larger-document stationarity, a 10 MiB cache-hit publication
+maximum of 5.0821 ms against the unchanged 2 ms limit, and scroll frame pacing
+(p95 8.8389 ms against 8.3333 ms). Renderer scroll work is 0.1996 ms p95 with zero
+Gen2 collections; observed 222.64 Hz also misses the configured 240 Hz display's
+unchanged 95% refresh qualification. The 1 MiB retained-managed result is
+18,267,176 bytes versus R1's 30,052,968; uncached/cache-hit first-page p95s are
+170.4837/98.5453 ms versus 259.4744/175.7427 ms. These are individual diagnostic
+observations, **not a qualified speedup claim**; the 10 MiB fixture is slower in
+this pair and all original gates remain open. Current-build evidence:
+`MarkdownRenderer/artifacts/goal-release-20261011/physical-candidate-full-67874e80/`.
+
+The real four-README offline replay failed before app launch because the AOT
+binary predated the final source checkpoint. Its failure also exposed two
+wrapper bugs now covered by headless regressions: Windows PowerShell 5.1 needs
+the process snapshot refreshed before reading a fast child's exit code, and
+aggregation must accept an initially empty failure collection. Neither fix
+turns the failed replay into rendering evidence. A clean-checkpoint AOT rebuild
+is required before the next replay. That build caught a reproducibility defect:
+the source fingerprint included an ignored standalone `native/vendor/tiny-skia/Cargo.lock`
+created by library tests, absent from a clean checkout and unused by the worker
+build. The narrow fix excludes nested vendor lockfiles while continuing to bind
+the root worker lockfile, every vendor manifest, and every native source file;
+all three official worker rebuilds reproduce the existing binaries exactly,
+and refreshed source-bound identity verification passes with fingerprint
+`d8c8674167801ad150cd302a2ae1846612e839763e4aa39988815e6f623a8a48`.
+The identity regression suite passes 28 fixtures; the offline wrapper's focused
+regressions also pass. The next clean-checkout publish must verify that same
+identity without copying in the ignored test lockfile.
 
 The restored scanner and official worker identity were verified again before
 the checkpoint: the scanner still hashes to `B988164F...019BB` and all three

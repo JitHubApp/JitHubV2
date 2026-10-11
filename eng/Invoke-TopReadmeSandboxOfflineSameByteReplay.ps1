@@ -907,7 +907,10 @@ while (-not `$process.HasExited) {
     }
 }
 `$process.WaitForExit()
-`$exitCode = `$process.ExitCode
+`$process.Refresh()
+`$rawExitCode = `$process.ExitCode
+if (`$null -eq `$rawExitCode) { throw 'Offline same-byte runner exit code was unavailable after the process exited.' }
+`$exitCode = [int]`$rawExitCode
 if (Test-Path -LiteralPath `$stdout) { Get-Content -LiteralPath `$stdout }
 if (Test-Path -LiteralPath `$stderr) { Get-Content -LiteralPath `$stderr | ForEach-Object { Write-Error -Message `$_ -ErrorAction Continue } }
 Write-Output "offlineSameByteGuestRunnerExitCode=`$exitCode; edgeVersion=`$version; requestedRanks=$Start..$($Start + $Amount - 1); reportRoot=`$outputRoot"
@@ -926,7 +929,7 @@ function Get-Percentile {
 }
 
 function Get-OfflineAggregate {
-    param([Parameter(Mandatory = $true)]$Pinned, [Parameter(Mandatory = $true)]$Plan, [Parameter(Mandatory = $true)]$Shards, [Parameter(Mandatory = $true)][string]$EvidenceRoot, [Parameter(Mandatory = $true)][int]$CompletedShardCount, [Parameter(Mandatory = $true)][Collections.Generic.List[string]]$Failures)
+    param([Parameter(Mandatory = $true)]$Pinned, [Parameter(Mandatory = $true)]$Plan, [Parameter(Mandatory = $true)]$Shards, [Parameter(Mandatory = $true)][string]$EvidenceRoot, [Parameter(Mandatory = $true)][int]$CompletedShardCount, [Parameter(Mandatory = $true)][AllowEmptyCollection()][Collections.Generic.List[string]]$Failures)
 
     $expectedCases = @($Plan.Repositories)
     $caseResults = [Collections.Generic.List[object]]::new()

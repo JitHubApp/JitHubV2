@@ -176,6 +176,9 @@ try {
     )) {
         Write-SourceFixtureText $sourceFixture $relative "pinned:$relative`n"
     }
+    Write-SourceFixtureText $sourceFixture 'native/Cargo.lock' "pinned root worker lock`n"
+    Write-SourceFixtureText $sourceFixture 'native/vendor/tiny-skia/Cargo.toml' "pinned vendor manifest`n"
+    Write-SourceFixtureText $sourceFixture 'native/vendor/tiny-skia/src/lib.rs' "pinned vendor source`n"
     $sourceInitial = Get-ResvgWorkerSourceFingerprint $sourceFixture
 
     foreach ($relative in @(
@@ -201,6 +204,46 @@ try {
         throw 'A lone CR byte in a text input was incorrectly normalized as a Git CRLF conversion.'
     }
     Write-SourceFixtureText $sourceFixture 'native/src/input.rs' "pinned:native/src/input.rs`n"
+    $checks++
+
+    $vendorCargoLock = 'native/vendor/tiny-skia/Cargo.lock'
+    Write-SourceFixtureText $sourceFixture $vendorCargoLock "generated standalone vendor lock`n"
+    if ((Get-ResvgWorkerSourceFingerprint $sourceFixture) -cne $sourceInitial) {
+        throw 'Adding an ignored standalone Cargo.lock under native/vendor changed the worker source fingerprint.'
+    }
+    Write-SourceFixtureText $sourceFixture $vendorCargoLock "different generated vendor lock contents`n"
+    if ((Get-ResvgWorkerSourceFingerprint $sourceFixture) -cne $sourceInitial) {
+        throw 'Changing an ignored standalone Cargo.lock under native/vendor changed the worker source fingerprint.'
+    }
+    Remove-Item -LiteralPath (Join-Path $sourceFixture $vendorCargoLock.Replace('/', '\')) -Force
+    if ((Get-ResvgWorkerSourceFingerprint $sourceFixture) -cne $sourceInitial) {
+        throw 'Removing an ignored standalone Cargo.lock under native/vendor changed the worker source fingerprint.'
+    }
+    $checks++
+
+    Write-SourceFixtureText $sourceFixture 'native/vendor/tiny-skia/Cargo.toml' "changed vendor manifest`n"
+    if ((Get-ResvgWorkerSourceFingerprint $sourceFixture) -ceq $sourceInitial) {
+        throw 'Changing a vendored Cargo.toml did not invalidate the worker source fingerprint.'
+    }
+    Write-SourceFixtureText $sourceFixture 'native/vendor/tiny-skia/Cargo.toml' "pinned vendor manifest`n"
+    Write-SourceFixtureText $sourceFixture 'native/vendor/tiny-skia/src/lib.rs' "changed vendor source`n"
+    if ((Get-ResvgWorkerSourceFingerprint $sourceFixture) -ceq $sourceInitial) {
+        throw 'Changing vendored source did not invalidate the worker source fingerprint.'
+    }
+    Write-SourceFixtureText $sourceFixture 'native/vendor/tiny-skia/src/lib.rs' "pinned vendor source`n"
+    if ((Get-ResvgWorkerSourceFingerprint $sourceFixture) -cne $sourceInitial) {
+        throw 'Restoring vendored manifest/source did not restore the worker source fingerprint.'
+    }
+    $checks++
+
+    Write-SourceFixtureText $sourceFixture 'native/Cargo.lock' "changed root worker lock`n"
+    if ((Get-ResvgWorkerSourceFingerprint $sourceFixture) -ceq $sourceInitial) {
+        throw 'Changing the root native/Cargo.lock did not invalidate the worker source fingerprint.'
+    }
+    Write-SourceFixtureText $sourceFixture 'native/Cargo.lock' "pinned root worker lock`n"
+    if ((Get-ResvgWorkerSourceFingerprint $sourceFixture) -cne $sourceInitial) {
+        throw 'Restoring the root native/Cargo.lock did not restore the worker source fingerprint.'
+    }
     $checks++
 
     $binaryRelative = 'native/assets/fixture.png'

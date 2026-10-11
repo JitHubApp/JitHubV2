@@ -133,6 +133,19 @@ function Get-ResvgWorkerSourceFingerprint([string] $ProviderRoot) {
             if ($relative.Split('/').Where({ $_ -in @('', '.', '..') }).Count -gt 0) {
                 throw "Native source path is not a normalized relative path: '$relative'."
             }
+            $relativeComponents = $relative.Split('/')
+            if ($relativeComponents.Length -ge 3 -and
+                $relativeComponents[0] -ceq 'vendor' -and
+                $relativeComponents[-1] -ceq 'Cargo.lock') {
+                # Cargo builds this executable from native/Cargo.toml, whose
+                # native/Cargo.lock is the one lockfile controlling resolution.
+                # Vendored libraries can carry ignored standalone Cargo.lock
+                # files from their upstream repositories; Cargo does not read
+                # those nested locks when they are dependencies/workspace members.
+                # Exclude only those generated nested lockfiles, not vendor
+                # manifests/source or the root native/Cargo.lock.
+                continue
+            }
             $paths.Add("native/$relative")
         }
     }
