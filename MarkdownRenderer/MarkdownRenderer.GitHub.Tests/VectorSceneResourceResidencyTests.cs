@@ -166,6 +166,107 @@ public sealed class VectorSceneResourceResidencyTests
     }
 
     [Fact]
+    public void InitialLazyMeasurementCoversRectRoundedViewportBoundary()
+    {
+        const double scheduledTop = 549.9;
+        const double nextRootTop = 1152;
+        double viewportHeight = nextRootTop - scheduledTop - 0.00001;
+        var scheduledBand = LazyLayoutBand.FromViewport(scheduledTop, viewportHeight, overscan: 0);
+        var visibleViewport = new Rect(0, scheduledTop, 320, viewportHeight);
+        var queriedBand = LazyLayoutBand.FromVisibleViewport(scheduledTop, viewportHeight);
+
+        // Windows.Foundation.Rect retains the WinUI viewport's float-rounded
+        // coordinates even though its managed properties are doubles. Keep
+        // this assertion explicit so a future projection change updates the
+        // regression's premise instead of silently hiding it.
+        double projectedBottom = System.Math.Max(
+            visibleViewport.Bottom,
+            visibleViewport.Top + visibleViewport.Height);
+        Assert.True(scheduledBand.Bottom < projectedBottom);
+        Assert.True(queriedBand.Bottom >= projectedBottom);
+        Assert.True(queriedBand.Bottom >= visibleViewport.Bottom);
+
+        var blocks = new BlockBox[37];
+        for (int index = 0; index < blocks.Length; index++)
+            blocks[index] = new FixedThirtyTwoHeightBox { BlockIndex = index + 1 };
+
+        using var snapshot = new LayoutSnapshot(
+            blocks,
+            new MarkdownSourceMap(new string(' ', 100)),
+            width: 320,
+            height: 0,
+            blockSpacing: 0);
+        snapshot.EnableLazyLayout(
+            availableWidth: 320,
+            viewportTop: scheduledTop,
+            viewportHeight,
+            overscan: 0,
+            CancellationToken.None,
+            initialVisibleVectorBand: queriedBand);
+
+        Assert.Equal(nextRootTop, blocks[^1].Bounds.Top);
+        Assert.True(snapshot.IsRealizationBandMeasured(scheduledBand));
+        Assert.True(snapshot.IsRealizationBandMeasured(queriedBand));
+    }
+
+    [Fact]
+    public void FractionalViewportEnvelopeReadiesAlreadyMeasuredTextOnlyBand()
+    {
+        const double scheduledTop = 549.9;
+        const double viewportHeight = 611;
+        LazyLayoutBand scheduledBand = LazyLayoutBand.FromViewport(
+            scheduledTop, viewportHeight, overscan: 0);
+        var visibleViewport = new Rect(0, scheduledTop, 320, viewportHeight);
+        LazyLayoutBand queriedBand = LazyLayoutBand.FromViewport(
+            visibleViewport.Top, visibleViewport.Height, overscan: 0);
+        Assert.True(queriedBand.Bottom > scheduledBand.Bottom);
+
+        using var performanceSession = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
+        MarkdownLayoutContext context = CreateContext(performanceSession);
+        var blocks = new BlockBox[38];
+        for (int index = 0; index < blocks.Length; index++)
+            blocks[index] = index < 37
+                ? new FixedThirtyTwoHeightBox { BlockIndex = index + 1 }
+                : CreateVectorBox(context, blockIndex: index + 1);
+
+        IMarkdownVectorSceneResidencyPolicy policy =
+            ((IMarkdownPerformanceSessionInternal)performanceSession)
+                .CreateVectorSceneResidencyPolicy(blocks)!;
+
+        using var snapshot = new LayoutSnapshot(
+            blocks,
+            context.SourceMap,
+            width: 320,
+            height: 0,
+            blockSpacing: 0,
+            vectorSceneResidencyPolicy: policy);
+        snapshot.EnableLazyLayout(
+            availableWidth: 320,
+            viewportTop: scheduledTop,
+            viewportHeight,
+            overscan: 0,
+            CancellationToken.None,
+            initialVisibleVectorBand: scheduledBand);
+
+        // The tiny Rect expansion is inside a root that the ordinary viewport
+        // already measured, matching the observed README case: geometry is
+        // ready, but exact native-resource readiness still rejects the wider
+        // visible rectangle because the active vector lease is too narrow.
+        Assert.True(snapshot.IsRealizationBandMeasured(queriedBand));
+        Assert.True(snapshot.IsRealizationBandMeasured(scheduledBand));
+        Assert.True(snapshot.IsBandMeasured(scheduledBand));
+        Assert.False(snapshot.IsBandMeasured(queriedBand));
+
+        LazyLayoutBand visibleEnvelope = LazyLayoutBand.FromVisibleViewport(scheduledTop, viewportHeight);
+        _ = snapshot.EnsureMeasuredBand(visibleEnvelope, visibleEnvelope, CancellationToken.None);
+
+        Assert.True(snapshot.IsBandMeasured(queriedBand));
+        var strictlyOutside = new LazyLayoutBand(visibleEnvelope.Bottom + 0.001, visibleEnvelope.Bottom + 1);
+        Assert.True(snapshot.IsRealizationBandMeasured(strictlyOutside));
+        Assert.False(snapshot.IsBandMeasured(strictlyOutside));
+    }
+
+    [Fact]
     public void HeightReductionMeasuresNewOrdinalThatMovesIntoFinalBand()
     {
         using var performanceSession = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
@@ -1109,6 +1210,17 @@ public sealed class VectorSceneResourceResidencyTests
         {
             Bounds = new Rect(Bounds.X, Bounds.Y, availableWidth, 50);
             return 50;
+        }
+
+        public override void Paint(CanvasDrawingSession ds, Rect viewport) { }
+    }
+
+    private sealed class FixedThirtyTwoHeightBox : BlockBox
+    {
+        public override float Measure(float availableWidth)
+        {
+            Bounds = new Rect(Bounds.X, Bounds.Y, availableWidth, 32);
+            return 32;
         }
 
         public override void Paint(CanvasDrawingSession ds, Rect viewport) { }

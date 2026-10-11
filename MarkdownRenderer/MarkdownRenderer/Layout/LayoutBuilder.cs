@@ -236,7 +236,7 @@ internal sealed class LayoutBuilder
             viewportTop,
             viewportHeight,
             overscan,
-            LazyLayoutBand.FromViewport(viewportTop, viewportHeight, overscan: 0),
+            LazyLayoutBand.FromVisibleViewport(viewportTop, viewportHeight),
             cancellationToken);
 
     private LayoutSnapshot BuildLazyWithVisibleVectorBand(

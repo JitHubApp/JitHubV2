@@ -964,6 +964,12 @@ internal sealed partial class LayoutSnapshot : System.IDisposable
         LazyLayoutBand realizationBand = LazyLayoutBand.FromViewport(
             viewportTop, viewportHeight, overscan);
         LazyLayoutBand visibleVectorBand = initialVisibleVectorBand ?? realizationBand;
+        // Rect projection can extend a fractional visible edge even when the
+        // caller requests zero overscan. Every admitted scene still requires
+        // measured geometry, including that projected edge.
+        realizationBand = new LazyLayoutBand(
+            Math.Min(realizationBand.Top, visibleVectorBand.Top),
+            Math.Max(realizationBand.Bottom, visibleVectorBand.Bottom));
         EnsureMeasuredBand(realizationBand, visibleVectorBand, cancellationToken);
     }
 

@@ -6426,8 +6426,8 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             return;
 
         TryGetViewport(out double viewportTop, out double viewportHeight, out _);
-        LazyLayoutBand visibleVectorBand = LazyLayoutBand.FromViewport(
-            viewportTop, viewportHeight, overscan: 0);
+        LazyLayoutBand visibleVectorBand = LazyLayoutBand.FromVisibleViewport(
+            viewportTop, viewportHeight);
         LazyLayoutBand band;
         if (PerformanceSession is { } performanceSession)
         {
@@ -6497,8 +6497,8 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             return;
 
         TryGetViewport(out double viewportTop, out double viewportHeight, out _);
-        LazyLayoutBand visibleVectorBand = LazyLayoutBand.FromViewport(
-            viewportTop, viewportHeight, overscan: 0);
+        LazyLayoutBand visibleVectorBand = LazyLayoutBand.FromVisibleViewport(
+            viewportTop, viewportHeight);
 
         var band = PerformanceSession is { } performanceSession
             ? LazyLayoutBand.FromDirectionalViewport(

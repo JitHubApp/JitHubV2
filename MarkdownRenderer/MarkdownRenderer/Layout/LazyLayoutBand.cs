@@ -1,4 +1,5 @@
 using System;
+using Windows.Foundation;
 
 namespace MarkdownRenderer.Layout;
 
@@ -22,6 +23,33 @@ internal readonly struct LazyLayoutBand(double Top, double Bottom)
         double top = Math.Max(0, viewportTop - overscan);
         double bottom = Math.Max(top, viewportTop + viewportHeight + overscan);
         return new LazyLayoutBand(top, bottom);
+    }
+
+    /// <summary>
+    /// Covers both the scroll owner's double-valued viewport and the WinRT
+    /// rectangle used by painting/accessibility. Rect stores float components,
+    /// so projecting a fractional viewport can expand either edge. Prepare the
+    /// union instead of weakening the exact resource-readiness checks.
+    /// </summary>
+    public static LazyLayoutBand FromVisibleViewport(double viewportTop, double viewportHeight)
+    {
+        LazyLayoutBand raw = FromViewport(viewportTop, viewportHeight, overscan: 0);
+        if (!double.IsFinite(viewportTop) || !double.IsFinite(viewportHeight) || viewportHeight <= 0)
+            return raw;
+
+        var projectedViewport = new Rect(0, viewportTop, 1, viewportHeight);
+        if (!double.IsFinite(projectedViewport.Top) ||
+            !double.IsFinite(projectedViewport.Height) || projectedViewport.Height <= 0 ||
+            !double.IsFinite(projectedViewport.Bottom))
+            return raw;
+
+        LazyLayoutBand projected = FromViewport(
+            projectedViewport.Top, projectedViewport.Height, overscan: 0);
+        return new LazyLayoutBand(
+            Math.Min(raw.Top, projected.Top),
+            // Rect.Bottom adds float fields; Top + Height adds their projected
+            // doubles. Readiness has consumers of both forms, so cover both.
+            Math.Max(raw.Bottom, Math.Max(projected.Bottom, projectedViewport.Bottom)));
     }
 
     /// <summary>Bounds preparation ahead of reading direction while retaining one trailing viewport.</summary>

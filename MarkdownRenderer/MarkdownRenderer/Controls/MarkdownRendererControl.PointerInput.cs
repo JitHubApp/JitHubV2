@@ -631,7 +631,7 @@ public partial class MarkdownRendererControl
             double.IsFinite(viewportTop) && double.IsFinite(viewportHeight) &&
             viewportHeight > 0 && viewportHeight <= 6000)
         {
-            viewportBand = LazyLayoutBand.FromViewport(viewportTop, viewportHeight, overscan: 0);
+            viewportBand = LazyLayoutBand.FromVisibleViewport(viewportTop, viewportHeight);
         }
         var requestedBand = new LazyLayoutBand(
             Math.Min(hitBand.Top, viewportBand.Top),

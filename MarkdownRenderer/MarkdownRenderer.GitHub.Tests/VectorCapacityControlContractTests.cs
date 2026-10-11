@@ -67,7 +67,7 @@ public sealed class VectorCapacityControlContractTests
         string viewportEntry = Section(builder,
             "internal LayoutSnapshot BuildLazyForViewport(",
             "private LayoutSnapshot BuildLazyWithVisibleVectorBand(");
-        Assert.Contains("LazyLayoutBand.FromViewport(viewportTop, viewportHeight, overscan: 0)",
+        Assert.Contains("LazyLayoutBand.FromVisibleViewport(viewportTop, viewportHeight)",
             viewportEntry, StringComparison.Ordinal);
 
         string control = Read("Controls", "MarkdownRendererControl.cs");
@@ -138,7 +138,7 @@ public sealed class VectorCapacityControlContractTests
             "private void QueueLazyLayoutForBand(",
             "private void ProcessQueuedLazyLayoutRealization(");
 
-        Assert.Contains("overscan: 0", viewport, StringComparison.Ordinal);
+        Assert.Contains("LazyLayoutBand.FromVisibleViewport(", viewport, StringComparison.Ordinal);
         Assert.Contains("QueueLazyLayoutForBand(\n            snapshot,\n            band,\n            visibleVectorBand,", viewport, StringComparison.Ordinal);
         Assert.Contains("QueueLazyLayoutForBand(\n            snapshot,\n            band,\n            visibleVectorBand,", paint, StringComparison.Ordinal);
         Assert.Contains("_pendingLazyLayoutBand = new LazyLayoutBand(", coalescing, StringComparison.Ordinal);
@@ -146,6 +146,47 @@ public sealed class VectorCapacityControlContractTests
         Assert.Contains("visibleVectorBand.Top == _activeLazyLayoutVisibleVectorBand.Top", coalescing,
             StringComparison.Ordinal);
         Assert.Contains("visibleVectorBand.Bottom == _activeLazyLayoutVisibleVectorBand.Bottom", coalescing,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ProjectedVisibleViewportEnvelopeIsUsedForInitialPaintPointerAndCapacityReadiness()
+    {
+        string builder = Read("Layout", "LayoutBuilder.cs");
+        string viewportEntry = Section(builder,
+            "internal LayoutSnapshot BuildLazyForViewport(",
+            "private LayoutSnapshot BuildLazyWithVisibleVectorBand(");
+        Assert.Contains("LazyLayoutBand.FromVisibleViewport(viewportTop, viewportHeight)",
+            viewportEntry, StringComparison.Ordinal);
+
+        string snapshot = Read("Layout", "LayoutSnapshot.cs");
+        string initialLayout = Section(snapshot,
+            "internal void EnableLazyLayout(",
+            "internal LazyLayoutCommit EnsureMeasuredViewport(");
+        Assert.Contains("initialVisibleVectorBand ?? realizationBand", initialLayout, StringComparison.Ordinal);
+        Assert.Contains("Math.Min(realizationBand.Top, visibleVectorBand.Top)", initialLayout,
+            StringComparison.Ordinal);
+        Assert.Contains("Math.Max(realizationBand.Bottom, visibleVectorBand.Bottom)", initialLayout,
+            StringComparison.Ordinal);
+
+        string control = Read("Controls", "MarkdownRendererControl.cs");
+        string viewport = Section(control,
+            "private void QueueLazyLayoutForViewport(",
+            "private void QueueLazyLayoutForPaintRegion(");
+        string paint = Section(control,
+            "private void QueueLazyLayoutForPaintRegion(",
+            "private void QueueLazyLayoutForBand(");
+        Assert.Contains("LazyLayoutBand.FromVisibleViewport(\n            viewportTop, viewportHeight)", viewport,
+            StringComparison.Ordinal);
+        Assert.Contains("LazyLayoutBand.FromVisibleViewport(\n            viewportTop, viewportHeight)", paint,
+            StringComparison.Ordinal);
+
+        string pointerInput = Read("Controls", "MarkdownRendererControl.PointerInput.cs");
+        Assert.Contains("viewportBand = LazyLayoutBand.FromVisibleViewport(viewportTop, viewportHeight);",
+            pointerInput, StringComparison.Ordinal);
+
+        string capacity = Read("Controls", "MarkdownRendererControl.VectorCapacity.cs");
+        Assert.Contains("return LazyLayoutBand.FromVisibleViewport(top, height);", capacity,
             StringComparison.Ordinal);
     }
 
