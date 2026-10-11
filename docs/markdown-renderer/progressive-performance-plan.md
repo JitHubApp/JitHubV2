@@ -39,6 +39,170 @@ candidate. Its prototype is not sufficient evidence to delay the full-system
 measurement or to claim a production speedup. Source-bound local results must
 not be presented as the joined GitHub Actions release qualification.
 
+The next diagnostic replay of **ranks 1–2** with the clean `63135f0e` app
+and `3339c6b6` runner still fails the unchanged 20-second UIA readiness gate:
+rank 1 reports `Loading Image...` at viewport 0; rank 2 reports
+`Loading Embedded content...` at viewport 1. Both timeout walks find one
+visible image and zero loading image peers. The app's first-viewport signal
+reports ready, so the aggregate-status contradiction is unresolved. Evidence:
+`goal-release-20261011/offline-status-diagnostic-3339c6b6/`. No Edge comparison
+was reached. WinUI's actual `GetItemStatus` implementation calls the managed
+override for current-property queries; the proposed poll-only peer-cache
+invalidation fix was therefore reverted as unsupported. A temporary,
+failure-only renderer diagnostic is being built to distinguish stale image
+publication, snapshot/viewport readiness, and current-peer identity without
+altering the wait predicate, painting, or extending its deadline.
+
+The lazy realization-plan path is also being changed to enumerate candidate
+ranges belonging to measured roots instead of scanning every document
+candidate on each publication. Its normal traversal is
+`O(M log C + C_M)` (measured candidate roots, total candidates, and candidates
+in those roots); out-of-order admission adds a sort of the measured-root list.
+Eager/custom placements keep the conservative path. Tests cover 10,000 roots,
+out-of-order realization, rollback, and raster-layout cloning. This does not
+explain the isolated 10 MiB publication outlier: that fixture has only two
+rendered roots and no realization candidates. The focused renderer suite now
+passes **64/64, zero skipped**, including the text-only active-band readiness
+transition; the transport suite passes **4/4**. The first attempts exposed two
+test-fixture assumptions (legitimate neighboring root measurement and an
+unenabled evidence route), fixed without production gate changes. Logs are
+`measured-plan-readiness-tests{,-rerun}.log` and
+`readiness-diagnostic-tests{,-rerun}.log` under `goal-release-20261011/`.
+Reviewed renderer changes are committed locally as `4eaa8741`, without pushing;
+temporary diagnostics remain separate. No release performance result is claimed.
+
+The failure-only diagnostic build now passes locked restore, Release/x64
+NativeAOT publish, and native-payload verification, with no warning/error
+matches in the publish log. Its app SHA-256 is
+`29704E19BC79FAECF8779FB6CD112C6D6AE1EE56ABCC71AF43C2558727958586`;
+this is an explicitly dirty diagnostic build, not clean release evidence.
+The full JitHub headless suite passes **3,589/3,589, zero skipped** after fixing
+two whitespace-sensitive source assertions without changing the gate they
+protect. The ranks 1–2 replay completed and still failed the unchanged readiness
+gate after the first scroll, but both first viewports now rendered and were
+captured. Rank 1 exposes snapshot revision 5 against image-publication revision 4;
+rank 2 exposes an unprepared native-scene resource band despite current revision
+4. Neither has pending lazy work, an active task, or a queued commit. Both captured
+first-viewport screenshots were inspected; no Edge comparison was reached.
+Evidence: `goal-release-20261011/offline-readiness-predicate-diagnostic-4eaa8741/`.
+This exposed a definite completion bug: lazy-work cleanup cancels its CTS before
+the acceptance fence reads that token, retroactively discarding successful work.
+The fix captures cancellation before retirement while preserving generation,
+snapshot, unload, and disposal fences. It is reviewed and committed locally as
+`24154269`, without pushing. Focused Release/x64 regressions pass **12/12**, covering
+retirement-only cancellation, already-canceled tokens, worker-reported
+cancellation, and the control's capture/retire/acceptance ordering. The fresh
+locked-restore Release/x64 NativeAOT publish and artifact verification pass,
+with no warning/error matches in the publish log. App SHA-256:
+`14AC2E5296A138AA3DA4193E64B6C69EB770336E07DD16022CC058A672256C7C`.
+The same ranks 1–2 replay completed under
+`goal-release-20261011/offline-lazy-completion-fixed-24154269-readyretry/` and
+**failed both cases at viewport 1**, before any Edge comparison. Rank 1's image
+publication is now current at revision 6 (the prior stale-revision failure is
+gone), but both cases still report unprepared scene resources with measured
+geometry, no loading images, and no pending lazy work. Rank 2 is current at
+revision 3. Both first-viewport captures were inspected; neither is full-page
+or fidelity qualification. This remains a dirty, non-release diagnostic build.
+The first setup-only attempt at `offline-lazy-completion-fixed-24154269/` failed
+its Sandbox readiness preflight before launching the app, with zero cases run.
+A later read-only snapshot confirmed the same guest epoch was ready; the single
+unchanged-candidate setup retry above reused the verified Windows App Runtime
+1.8. No guest reset or host fallback was used. The UI-testing skill's two
+fix-and-rerun cycles are exhausted for this batch; remaining readiness work
+continues through source analysis/headless tests, not another UI replay loop.
+The diagnostic field `hasCompletedVectorBand` represents the capacity-retry
+observer, which resets without capacity-deferred scenes. Its false value does
+not establish that no resource-band exchange completed.
+The diagnostic's peer-status query was removed after review found it could arm
+a later readiness notification; identity reporting remains, and the focused
+diagnostic suite still passes **4/4**.
+The final reviewed diagnostic route is committed locally as `be6471a5`, without
+pushing. Its focused app automation/diagnostic contracts pass **54/54, zero
+skipped**, including the final raw/projected-coordinate and finite-versus-measured
+viewport labels. Evidence:
+`goal-release-20261011/readiness-diagnostic-review/readiness-automation-final.trx`.
+The bound/interaction-lease assertions are source contracts, not a dynamic
+concurrency stress test. No diagnostic request paints, scrolls, or changes the
+original wait result.
+The optional performance stage-profile extension also passes **18/18** focused
+headless tests; it keeps the normal benchmark event shape unchanged and adds
+CPU/GC observations only to the explicitly opted-in, quick, non-gating sidecar.
+The reviewed profile changes are committed locally as `5aebe61e`, without
+pushing. The current Release/x64 performance harness also builds with zero
+warnings/errors. The sidecar explicitly counts its own diagnostic allocations;
+those totals are not release measurements or per-stage allocation attribution.
+No diagnostic result substitutes for the full counterbalanced release run.
+
+A separate inline-scene readiness defect is now reproduced and fixed: native
+scene preparation enters each root's published placement transform, but its
+readiness and cancellation-cleanup collectors did not. Fractional translations
+therefore changed the pixel-snapped local interval used to query the prepared
+inline index. All **8/8** new scale cases failed before the fix despite already
+prepared resources and no capacity deferral; all **8/8** pass after the matching
+placement scopes, with invalid ordinals still returning not-ready and no index
+rebuild during the query. The related residency, capacity, and mixed-image-reflow
+suites pass **52/52, zero skipped**. Evidence is under
+`goal-release-20261011/inline-residency-placement-scope/`; the green TRX files are
+under `MarkdownRenderer.GitHub.Tests/TestResults/`. The reviewed fix is committed
+locally as `e6d32a92`, without pushing. This is not yet evidence that
+the text-only README stall is resolved, and no additional UI replay was run.
+
+A second exact-readiness defect is reproduced headlessly at fractional scroll
+offsets: the scroll owner schedules double-valued edges, whereas
+`Windows.Foundation.Rect` retains float components. At top `549.9`, height
+`611`, the published rectangle extends the queried bottom by about
+`0.000024414` DIPs, outside the exact prepared resource band. `Rect.Bottom`
+can also differ from adding its projected `Top` and `Height` in double precision.
+The fix prepares the exact union of all three representations for initial
+layout, viewport/paint scheduling, deferred pointer demand, and capacity retry;
+initial geometry realization includes the same envelope. No epsilon, extra
+pixel overscan, relaxed readiness predicate, or capacity-budget change is used.
+The standalone band suite passes **23/23, zero skipped**, including fractional
+and large coordinates, invalid/overflow normalization, exact bounds, and zero
+allocated bytes across 1,000 warmed envelope calculations. Evidence:
+`goal-release-20261011/viewport-projection/viewport-projection-pure.trx`.
+The two live-layout boundary regressions and their routing contracts pass
+**4/4**, followed by the full rebuilt Release/x64 renderer integration suite at
+**2,713/2,713, zero skipped**. The test for already-measured geometry first
+reproduces the false not-ready state, then proves readiness after preparing the
+envelope while a genuinely outside band is still rejected. The reviewed fix is
+committed locally as `468dad7c`, without pushing; focused and full TRX files are
+in the same evidence directory.
+The prior app diagnostic did not record the original double viewport, so this
+definite boundary defect is not yet proof of the exact latest README stall's
+cause or resolution. The failure-only diagnostic now records both coordinate
+forms and names capacity-attempt state accurately. A fresh full-page replay and
+same-byte Edge comparison remain required; no additional UI replay was run.
+
+The isolated, clean candidate checkout is now fast-forwarded to
+`be6471a595f4b1ede5770d972f6d7ed10714b13c`. Locked restore, Release/x64 NativeAOT
+publish, and native-payload verification **pass** with the completion, inline
+placement, viewport-envelope, and diagnostic fixes together. The matching
+self-contained x64 automation runner also publishes successfully; neither
+publish log contains warning/error-code matches. App SHA-256:
+`FB6614BB8BA3DD98B131613E12C218BF8A0B8694CF4FFE28CC35918A90B50684`.
+Runner DLL SHA-256:
+`9BDD33E2C7D6024BA259B75E530F65E5F7C454DD658F58B7957FCC8DDE6652DD`.
+Artifacts and logs are under `goal-release-20261011/viewport-projection/`, in
+`jithub-aot-clean-be6471a5/`, `automation-runner-clean-be6471a5/`, and the
+`clean-{aot,runner}-*.log` files. The clean checkout remains unmodified. This is
+build verification, **not release qualification**: the diagnostic publish uses
+the existing `SkipReleaseSecurityGate=true` switch, no signing/device gate is
+waived, and the app's Debug-only WinUI analyzer did not run in this Release build.
+No UI app was launched from this new build and no new physical timing was taken.
+The separately started unfiltered standalone `MarkdownRenderer.Tests` run is
+still in progress as of 14:55 PDT; its final TRX target is
+`goal-release-20261011/viewport-projection/standalone-full.trx`. It is not counted
+as a pass. This suite includes the slow external-gate orchestration fixtures;
+the completed **2,713/2,713** integration suite above is a different test assembly.
+
+A separate mixed-architecture diagnostic pairs the unchanged x64 AOT smoke host
+with the pinned x86 worker, in a new artifact copy only. Startup still fails with
+worker status `0xC0000022` under the production restricted token and mitigations,
+and leaves no owned descendant. This rules out x86 host marshalling as the sole
+cause; it does not identify the denied object or justify relaxing isolation.
+Evidence: `goal-release-20261011/mixed-arch-x64-host-x86-worker-startup-diagnostic-20261011/`.
+
 The candidate's isolated clean checkout builds the Release x64 performance
 harness with zero warnings or errors. The full, unchanged R1/C1/C2/R2 physical
 attempt stopped after **R1 failed**, as required; no quick population or retry
@@ -47,6 +211,19 @@ but failed first-viewport stationarity, some latency/publication limits, scroll
 frame pacing, and cancellation repeatability. Cancellation itself completed
 200/200 requests with zero stale commits. Evidence is retained under
 `MarkdownRenderer/artifacts/goal-release-20261011/physical-counterbalanced-67874e80/`.
+
+A read-only gate audit confirms that every counterbalanced leg currently must
+meet both measurement-validity requirements and absolute product budgets; the
+`Baseline` gate mode omits cross-report comparisons, not the absolute limits.
+R1's failure is not merely an older implementation missing the new budgets:
+all six first-viewport stationarity checks fail, cancellation robust dispersion
+is 34.62% against 25%, and observed 224.10 Hz misses the configured-240-Hz
+qualification of 228 Hz. The completion environment's zero observed-refresh
+field is an expected unset value: the validator checks that snapshot only for
+environment consistency, and checks the measured cadence on `Machine`. It is
+not an additional failure or an independent panel-present measurement. No gate,
+approved reference, or threshold was changed; this run cannot be relabeled as a
+qualified before/after comparison.
 
 A separate **full-population candidate diagnostic**, not a replacement R1 or
 counterbalanced comparison, completed in 7m22s and also **failed**. It passes
@@ -62,6 +239,22 @@ unchanged 95% refresh qualification. The 1 MiB retained-managed result is
 observations, **not a qualified speedup claim**; the 10 MiB fixture is slower in
 this pair and all original gates remain open. Current-build evidence:
 `MarkdownRenderer/artifacts/goal-release-20261011/physical-candidate-full-67874e80/`.
+
+Frame-accounting inspection finds all 12,000 scroll intervals paired with work
+records and confirms the main Win2D paint is timed. The over-budget intervals
+average only about 0.064 ms inside measured renderer callbacks, leaving the
+delay's scheduler/compositor/GPU cause unproven. A separate selection-adornment
+render callback was not covered by those work counters; that interactive
+measurement gap is fixed in local commit `cc617661`, without pushing. Active,
+correlated retry work now contributes elapsed time and allocation to the
+existing `PaintWork` totals; idle, device-recovery, and uncorrelated callbacks
+keep the normal path without probes. Tests cover same-interval aggregation and
+the harness's open-interval convention on both sides of its timestamp sample.
+The full Release/x64 renderer integration test assembly passes **2,702/2,702,
+zero skipped**, with the production renderer rebuilt. No new physical benchmark
+was run with this instrumentation, and it is not an evidenced explanation for
+the earlier no-selection run. No frame samples or costs were removed to improve
+the result.
 
 The real four-README offline replay failed before app launch because the AOT
 binary predated the final source checkpoint. Its failure also exposed two
