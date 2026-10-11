@@ -3251,7 +3251,8 @@ internal static partial class ReadmeAuditProbe
                 out double liveImagePixelsPerMetadataUnit);
             foreach (AuditTile tile in native.Tiles)
             {
-                using var nativeBitmap = new Bitmap(Path.Combine(nativeDirectory, tile.File));
+                using var nativeFile = AuditBitmapFile.Open(Path.Combine(nativeDirectory, tile.File));
+                Bitmap nativeBitmap = nativeFile.Bitmap;
                 if (!haveLiveImageScale || native.ContentViewportWidth <= 0 || native.ContentViewportHeight <= 0)
                     continue;
 
@@ -3328,7 +3329,8 @@ internal static partial class ReadmeAuditProbe
                     out double sourceImagePixelsPerMetadataUnit);
                 foreach (AuditTile tile in native.Tiles)
                 {
-                    using var nativeBitmap = new Bitmap(Path.Combine(nativeDirectory, tile.File));
+                    using var nativeFile = AuditBitmapFile.Open(Path.Combine(nativeDirectory, tile.File));
+                    Bitmap nativeBitmap = nativeFile.Bitmap;
                     if (!haveSourceImageScale ||
                         !ReadmeAuditVisualComparisonPolicy.IsCaptureWithinMeasuredHostViewport(
                             nativeBitmap.Width,
@@ -5443,16 +5445,16 @@ internal static partial class ReadmeAuditProbe
 
     private sealed class AuditTileBitmapCache(int capacity) : IDisposable
     {
-        private readonly Dictionary<string, Bitmap> _bitmaps = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, AuditBitmapFile> _bitmaps = new(StringComparer.OrdinalIgnoreCase);
         private readonly LinkedList<string> _mostRecentlyUsed = new();
 
         public Bitmap Get(string path)
         {
-            if (_bitmaps.TryGetValue(path, out Bitmap? cached))
+            if (_bitmaps.TryGetValue(path, out AuditBitmapFile? cached))
             {
                 _mostRecentlyUsed.Remove(path);
                 _mostRecentlyUsed.AddFirst(path);
-                return cached;
+                return cached.Bitmap;
             }
 
             if (capacity < 1)
@@ -5461,19 +5463,19 @@ internal static partial class ReadmeAuditProbe
             if (_bitmaps.Count >= capacity && _mostRecentlyUsed.Last is { } leastRecent)
             {
                 _mostRecentlyUsed.RemoveLast();
-                _bitmaps.Remove(leastRecent.Value, out Bitmap? evicted);
+                _bitmaps.Remove(leastRecent.Value, out AuditBitmapFile? evicted);
                 evicted?.Dispose();
             }
 
-            var bitmap = new Bitmap(path);
+            var bitmap = AuditBitmapFile.Open(path);
             _bitmaps.Add(path, bitmap);
             _mostRecentlyUsed.AddFirst(path);
-            return bitmap;
+            return bitmap.Bitmap;
         }
 
         public void Dispose()
         {
-            foreach (Bitmap bitmap in _bitmaps.Values)
+            foreach (AuditBitmapFile bitmap in _bitmaps.Values)
                 bitmap.Dispose();
             _bitmaps.Clear();
             _mostRecentlyUsed.Clear();
