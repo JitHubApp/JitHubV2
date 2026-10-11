@@ -532,7 +532,7 @@ function Add-SourceTreeToSnapshot {
         $relative = [IO.Path]::GetRelativePath($source, $file.FullName)
         $destination = Join-Path (Join-Path $SnapshotRoot $RootName) $relative
         $record = Copy-VerifiedFile -Source $file.FullName -Destination $destination -MaximumBytes $script:MaximumSourceFileBytes -Description 'Source snapshot file'
-        $record.relativePath = ($RootName + '/' + $relative.Replace('\', '/'))
+        $record.relativePath = ($RootName.Replace('\', '/') + '/' + $relative.Replace('\', '/'))
         $FileManifest.Add($record)
         $TotalBytes.Value = Add-BoundedByteCount -Current ([long]$TotalBytes.Value) `
             -Additional ([long]$record.byteSize) -Maximum $script:MaximumSourceSnapshotBytes `
@@ -687,6 +687,7 @@ function Initialize-SandboxWorkRoot {
     $workRootLiteral = ([string]$Snapshot.workRoot).Replace("'", "''")
     $guestScript = @"
 `$ErrorActionPreference = 'Stop'
+`$ProgressPreference = 'SilentlyContinue'
 Set-StrictMode -Version Latest
 `$managedRoot = '$managedRootLiteral'
 `$workRoot = '$workRootLiteral'
@@ -706,6 +707,246 @@ foreach (`$path in @(`$managedRoot, `$workRoot)) {
     # Initialize only that expected root from winapp's default guest directory; use
     # --cwd only after this command verifies both roots are ordinary directories.
     Invoke-WinApp -Arguments @('target', 'exec', 'sandbox', '--', 'powershell.exe', '-NoProfile', '-NonInteractive', '-EncodedCommand', $encoded) -Description 'initialize expected Sandbox work root'
+}
+
+function New-GuestWindowsAppRuntimePreflightScript {
+    param(
+        [Parameter(Mandatory = $true)][string]$GuestRepoAbsolute,
+        [Parameter(Mandatory = $true)][string]$ExpectedHelperSha256
+    )
+
+    if ($ExpectedHelperSha256 -notmatch '^[0-9a-fA-F]{64}$') {
+        throw 'The staged Windows App Runtime helper must have a SHA-256 source-snapshot identity.'
+    }
+    $repoLiteral = $GuestRepoAbsolute.Replace("'", "''")
+    $helperShaLiteral = $ExpectedHelperSha256.ToLowerInvariant()
+    return @"
+`$ErrorActionPreference = 'Stop'
+`$ProgressPreference = 'SilentlyContinue'
+Set-StrictMode -Version Latest
+`$repo = '$repoLiteral'
+`$helperPath = Join-Path `$repo 'eng\readme-audit\Install-PinnedWindowsAppRuntime.ps1'
+`$setupRoot = Join-Path `$repo 'artifacts\offline-same-byte-runtime-setup'
+`$installerCache = Join-Path `$setupRoot 'installer-cache'
+`$resultPath = Join-Path `$setupRoot 'windows-app-runtime.json'
+`$expectedHelperSha256 = '$helperShaLiteral'
+`$expectedInstallerSha256 = 'B8CDA840267AB72797F654F801F9A064AB6D9E508CEDEE3DF79F772F104DB6D6'
+`$minimumVersion = [version]'8000.921.1539.0'
+`$requiredFamilies = @(
+    'Microsoft.WindowsAppRuntime.1.8_8wekyb3d8bbwe',
+    'MicrosoftCorporationII.WinAppRuntime.Main.1.8_8wekyb3d8bbwe',
+    'MicrosoftCorporationII.WinAppRuntime.Singleton_8wekyb3d8bbwe',
+    'Microsoft.WinAppRuntime.DDLM.8000.921.1539.0-x6_8wekyb3d8bbwe')
+`$result = [ordered]@{
+    schemaVersion = 1
+    scope = 'offline-same-byte-winui-runtime-prerequisite'
+    requestedArchitecture = 'x64'
+    minimumVersion = `$minimumVersion.ToString()
+    requiredPackageFamilies = `$requiredFamilies
+    helperSha256 = `$expectedHelperSha256
+    installerSha256 = `$null
+    action = 'not-started'
+    status = 'failed'
+    inventoryBefore = `$null
+    inventoryAfter = `$null
+    failure = `$null
+    completedAtUtc = `$null
+}
+
+function Assert-PlainGuestPath {
+    param([string]`$Root, [string]`$Path)
+    `$rootFull = [IO.Path]::GetFullPath(`$Root).TrimEnd('\', '/')
+    `$pathFull = [IO.Path]::GetFullPath(`$Path).TrimEnd('\', '/')
+    if (-not `$pathFull.StartsWith(`$rootFull + '\', [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Windows App Runtime setup path escaped the unique staged repository.'
+    }
+    `$current = `$rootFull
+    `$rootAttributes = [IO.File]::GetAttributes(`$current)
+    if ((`$rootAttributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'The staged repository is a redirected path.' }
+    foreach (`$segment in `$pathFull.Substring(`$rootFull.Length + 1).Split([char[]]@('\', '/'), [StringSplitOptions]::RemoveEmptyEntries)) {
+        `$current = Join-Path `$current `$segment
+        if (-not (Test-Path -LiteralPath `$current)) { break }
+        if (([IO.File]::GetAttributes(`$current) -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "Windows App Runtime setup contains a redirected path: `$current"
+        }
+    }
+    return `$pathFull
+}
+
+function Get-CurrentUserWindowsAppRuntimeInventory {
+    `$packages = @(Get-AppxPackage)
+    `$relevant = @(`$packages | Where-Object {
+        `$_.Name -ceq 'Microsoft.WindowsAppRuntime.1.8' -or `$_.PackageFamilyName -in `$requiredFamilies
+    } | ForEach-Object {
+        [ordered]@{
+            name = [string]`$_.Name
+            version = [string]`$_.Version
+            architecture = [string]`$_.Architecture
+            packageFamilyName = [string]`$_.PackageFamilyName
+            packageFullName = [string]`$_.PackageFullName
+            status = [string]`$_.Status
+        }
+    })
+    `$frameworks = @(`$packages | Where-Object {
+        if (`$_.Name -cne 'Microsoft.WindowsAppRuntime.1.8' -or [string]`$_.Architecture -cne 'X64' -or [string]`$_.Status -cne 'Ok') { return `$false }
+        try { return ([version]`$_.Version -ge `$minimumVersion) } catch { return `$false }
+    })
+    `$missingFamilies = @(`$requiredFamilies | Where-Object {
+        `$family = `$_
+        -not @(`$packages | Where-Object { `$_.PackageFamilyName -ceq `$family -and [string]`$_.Status -ceq 'Ok' }).Count
+    })
+    return [ordered]@{
+        satisfied = (`$frameworks.Count -gt 0 -and `$missingFamilies.Count -eq 0)
+        frameworkMatches = @(`$frameworks | ForEach-Object { [string]`$_.PackageFullName })
+        missingPackageFamilies = `$missingFamilies
+        packages = `$relevant
+    }
+}
+
+try {
+    if (-not [Environment]::Is64BitOperatingSystem -or -not [Environment]::Is64BitProcess) {
+        throw 'The pinned x64 Windows App Runtime requires the existing x64 Sandbox process and operating system.'
+    }
+    `$setupRoot = Assert-PlainGuestPath -Root `$repo -Path `$setupRoot
+    if (Test-Path -LiteralPath `$resultPath) { throw 'Runtime prerequisite evidence already exists in this unique run directory.' }
+    [IO.Directory]::CreateDirectory(`$setupRoot) | Out-Null
+    `$null = Assert-PlainGuestPath -Root `$repo -Path `$resultPath
+    if (-not (Test-Path -LiteralPath `$helperPath -PathType Leaf)) { throw 'Pinned Windows App Runtime installer helper is missing from the staged source snapshot.' }
+    `$actualHelperSha256 = (Get-FileHash -LiteralPath `$helperPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    if (`$actualHelperSha256 -cne `$expectedHelperSha256) { throw 'Pinned Windows App Runtime helper differs from its source-snapshot SHA-256.' }
+
+    `$before = Get-CurrentUserWindowsAppRuntimeInventory
+    `$result.inventoryBefore = `$before
+    if (`$before.satisfied) {
+        `$result.action = 'reused-current-user-runtime'
+        `$result.inventoryAfter = `$before
+    }
+    else {
+        [IO.Directory]::CreateDirectory(`$installerCache) | Out-Null
+        `$null = Assert-PlainGuestPath -Root `$repo -Path `$installerCache
+        `$env:RUNNER_TEMP = `$installerCache
+        & `$helperPath
+        `$installerPath = Join-Path `$installerCache 'WindowsAppRuntimeInstall-1.8.260710003-x64.exe'
+        if (-not (Test-Path -LiteralPath `$installerPath -PathType Leaf)) { throw 'Pinned Windows App Runtime helper did not leave its verified installer for evidence.' }
+        `$installerSha256 = (Get-FileHash -LiteralPath `$installerPath -Algorithm SHA256).Hash.ToUpperInvariant()
+        if (`$installerSha256 -cne `$expectedInstallerSha256) { throw 'Pinned Windows App Runtime installer hash differs after guest setup.' }
+        `$result.installerSha256 = `$installerSha256.ToLowerInvariant()
+        `$result.action = 'installed-pinned-current-user-runtime'
+        `$after = Get-CurrentUserWindowsAppRuntimeInventory
+        `$result.inventoryAfter = `$after
+        if (-not `$after.satisfied) { throw 'Pinned Windows App Runtime installer completed without all required current-user x64 runtime packages.' }
+    }
+    `$result.status = 'ready'
+}
+catch {
+    `$result.failure = `$_.Exception.Message
+}
+finally {
+    `$result.completedAtUtc = [DateTimeOffset]::UtcNow
+    [IO.Directory]::CreateDirectory(`$setupRoot) | Out-Null
+    `$null = Assert-PlainGuestPath -Root `$repo -Path `$resultPath
+    [IO.File]::WriteAllText(`$resultPath, ((`$result | ConvertTo-Json -Depth 12) + [Environment]::NewLine), [Text.UTF8Encoding]::new(`$false))
+}
+if (`$result.status -cne 'ready') {
+    Write-Error -Message "Windows App Runtime preflight failed: `$(`$result.failure)" -ErrorAction Continue
+    exit 1
+}
+"@
+}
+
+function Invoke-SandboxWindowsAppRuntimePreflight {
+    param(
+        [Parameter(Mandatory = $true)]$Snapshot,
+        [Parameter(Mandatory = $true)][string]$GuestRepoAbsolute,
+        [Parameter(Mandatory = $true)][string]$GuestRepoRelative,
+        [Parameter(Mandatory = $true)]$SnapshotData,
+        [Parameter(Mandatory = $true)][string]$HostEvidenceRoot,
+        [Parameter(Mandatory = $true)][string]$GuestEpoch
+    )
+
+    try {
+        $currentSnapshot = Get-AndAssertSandboxSnapshot
+        if ([string]$currentSnapshot.executionTarget.epoch -cne $GuestEpoch -or
+            [string]$currentSnapshot.workRoot -cne [string]$Snapshot.workRoot) {
+            throw 'Sandbox epoch or work root changed before Windows App Runtime setup.'
+        }
+    }
+    catch {
+        return [pscustomobject]@{ Success = $false; Failure = $_.Exception.Message; EvidencePath = $null; EvidenceSha256 = $null; Report = $null }
+    }
+
+    $helperEntries = @($SnapshotData.Manifest.files | Where-Object {
+        [string]$_.relativePath -ceq 'eng/readme-audit/Install-PinnedWindowsAppRuntime.ps1'
+    })
+    if ($helperEntries.Count -ne 1 -or [string]$helperEntries[0].sha256 -notmatch '^[0-9a-fA-F]{64}$') {
+        return [pscustomobject]@{ Success = $false; Failure = 'The pinned Windows App Runtime helper is not uniquely bound by the source snapshot.'; EvidencePath = $null; EvidenceSha256 = $null; Report = $null }
+    }
+    $guestResultRelative = $GuestRepoRelative + '/artifacts/offline-same-byte-runtime-setup/windows-app-runtime.json'
+    $hostResultPath = Join-Path $HostEvidenceRoot 'windows-app-runtime-preflight.json'
+    $execFailure = $null
+    $pullFailure = $null
+    try {
+        $guestScript = New-GuestWindowsAppRuntimePreflightScript -GuestRepoAbsolute $GuestRepoAbsolute -ExpectedHelperSha256 ([string]$helperEntries[0].sha256)
+        $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($guestScript))
+        Invoke-WinApp -Arguments @('target', 'exec', 'sandbox', '--cwd', $GuestRepoAbsolute, '--', 'powershell.exe', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', $encoded) -Description 'verify/install pinned x64 Windows App Runtime in Sandbox'
+    }
+    catch { $execFailure = $_.Exception.Message }
+    try {
+        if (Test-Path -LiteralPath $hostResultPath) { throw 'Refusing to overwrite runtime prerequisite evidence.' }
+        Invoke-WinApp -Arguments @('target', 'pull', 'sandbox', $guestResultRelative, $hostResultPath) -Description 'pull Windows App Runtime setup inventory'
+    }
+    catch { $pullFailure = $_.Exception.Message }
+
+    $report = $null
+    $reportSha256 = $null
+    if (Test-Path -LiteralPath $hostResultPath -PathType Leaf) {
+        try {
+            $report = Get-Content -LiteralPath $hostResultPath -Raw | ConvertFrom-Json -Depth 16
+            $reportSha256 = (Get-FileHash -LiteralPath $hostResultPath -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ([string]$report.helperSha256 -ine [string]$helperEntries[0].sha256 -or
+                [string]$report.requestedArchitecture -cne 'x64' -or
+                [string]$report.minimumVersion -cne '8000.921.1539.0' -or
+                [string]$report.status -cne 'ready') {
+                $execFailure = 'Guest runtime prerequisite report did not verify the pinned helper, x64 architecture, minimum version, and ready state.'
+            }
+            else {
+                $expectedFamilies = @(
+                    'Microsoft.WindowsAppRuntime.1.8_8wekyb3d8bbwe',
+                    'MicrosoftCorporationII.WinAppRuntime.Main.1.8_8wekyb3d8bbwe',
+                    'MicrosoftCorporationII.WinAppRuntime.Singleton_8wekyb3d8bbwe',
+                    'Microsoft.WinAppRuntime.DDLM.8000.921.1539.0-x6_8wekyb3d8bbwe')
+                $reportedFamilies = @($report.requiredPackageFamilies | ForEach-Object { [string]$_ })
+                $inventory = $report.inventoryAfter
+                $runtimePackages = @($inventory.packages)
+                $healthyFamilies = @($runtimePackages | Where-Object { [string]$_.status -ceq 'Ok' } |
+                    ForEach-Object { [string]$_.packageFamilyName })
+                $healthyFrameworks = @($runtimePackages | Where-Object {
+                    [string]$_.name -ceq 'Microsoft.WindowsAppRuntime.1.8' -and
+                    [string]$_.architecture -ceq 'X64' -and [string]$_.status -ceq 'Ok' -and
+                    ([version]$_.version -ge [version]'8000.921.1539.0')
+                })
+                $requiredSetMatches = $reportedFamilies.Count -eq $expectedFamilies.Count
+                if ($requiredSetMatches) {
+                    foreach ($family in $expectedFamilies) {
+                        if ($reportedFamilies -cnotcontains $family) { $requiredSetMatches = $false; break }
+                    }
+                }
+                $missingHealthyFamilies = @($expectedFamilies | Where-Object { $healthyFamilies -cnotcontains $_ })
+                if (-not $requiredSetMatches -or $null -eq $inventory -or
+                    $inventory.satisfied -ne $true -or $healthyFrameworks.Count -eq 0 -or
+                    $missingHealthyFamilies.Count -ne 0 -or @($inventory.missingPackageFamilies).Count -ne 0) {
+                    $execFailure = 'Guest runtime prerequisite report did not prove the complete healthy current-user x64 framework and package-family set.'
+                }
+            }
+        }
+        catch { $execFailure = $_.Exception.Message }
+    }
+    if ($null -ne $execFailure -or $null -ne $pullFailure -or $null -eq $report) {
+        $failureParts = @($execFailure, $pullFailure) | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }
+        if ($null -eq $report) { $failureParts += 'Runtime prerequisite report was not delivered from the Sandbox.' }
+        return [pscustomobject]@{ Success = $false; Failure = ($failureParts -join ' '); EvidencePath = $hostResultPath; EvidenceSha256 = $reportSha256; Report = $report }
+    }
+    return [pscustomobject]@{ Success = $true; Failure = $null; EvidencePath = $hostResultPath; EvidenceSha256 = $reportSha256; Report = $report }
 }
 
 function Get-AndAssertSandboxSnapshot {
@@ -797,6 +1038,14 @@ function New-GuestBatchScript {
     $manifest = Join-Path $input 'pinned-top500.json'
     $node = Join-Path $repo 'tools\node.exe'
     $browserScript = Join-Path $repo 'eng\readme-audit\same-byte-edge-source.mjs'
+    $repoLiteral = $repo.Replace("'", "''")
+    $inputLiteral = $input.Replace("'", "''")
+    $outputLiteral = $output.Replace("'", "''")
+    $runnerLiteral = $runner.Replace("'", "''")
+    $appLiteral = $app.Replace("'", "''")
+    $manifestLiteral = $manifest.Replace("'", "''")
+    $nodeLiteral = $node.Replace("'", "''")
+    $browserScriptLiteral = $browserScript.Replace("'", "''")
     $args = @(
         '--probe=readme-offline-same-byte',
         "--app=$app",
@@ -808,19 +1057,164 @@ function New-GuestBatchScript {
         "--start-rank=$Start",
         "--count=$Amount")
     if (-not [string]::IsNullOrWhiteSpace($EdgeExecutablePath)) {
-        $args += ('--edge="' + $EdgeExecutablePath + '"')
+        $args += ('--edge=' + $EdgeExecutablePath)
     }
     $argumentLiteral = ($args | ForEach-Object { "'" + $_.Replace("'", "''") + "'" }) -join ', '
     return @"
 `$ErrorActionPreference = 'Stop'
-`$repo = '$repo'
-`$inputRoot = '$input'
-`$outputRoot = '$output'
-`$runner = '$runner'
+`$repo = '$repoLiteral'
+`$inputRoot = '$inputLiteral'
+`$outputRoot = '$outputLiteral'
+`$runner = '$runnerLiteral'
 `$arguments = @($argumentLiteral)
-`$required = @(`$runner, '$app', '$manifest', '$node', '$browserScript')
+`$required = @(`$runner, '$appLiteral', '$manifestLiteral', '$nodeLiteral', '$browserScriptLiteral')
 foreach (`$path in `$required) { if (-not (Test-Path -LiteralPath `$path -PathType Leaf)) { throw "Required staged file is missing: `$path" } }
 if (-not (Test-Path -LiteralPath `$inputRoot -PathType Container)) { throw 'Staged corpus input directory is missing.' }
+function Read-CompletedLogLines {
+    param(
+        [Parameter(Mandatory = `$true)][string]`$Path,
+        [Parameter(Mandatory = `$true)][ref]`$CommittedByteOffset,
+        [Parameter(Mandatory = `$true)][ref]`$PendingBytes,
+        [switch]`$FlushIncompleteLine
+    )
+
+    `$pending = [byte[]]`$PendingBytes.Value
+    `$maximumBytesPerPoll = 1048576
+    `$maximumLineBytes = 1048576
+    if (-not (Test-Path -LiteralPath `$Path -PathType Leaf)) {
+        if ([long]`$CommittedByteOffset.Value -ne 0 -or `$pending.Length -ne 0) {
+            throw 'Offline same-byte runner stdout disappeared while being monitored.'
+        }
+        return
+    }
+    `$stream = [IO.File]::Open(`$Path, [IO.FileMode]::Open, [IO.FileAccess]::Read,
+        ([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete))
+    try {
+        `$expectedPosition = [long]`$CommittedByteOffset.Value + [long]`$pending.Length
+        `$snapshotLength = [long]`$stream.Length
+        if (`$snapshotLength -lt `$expectedPosition) {
+            throw 'Offline same-byte runner stdout was truncated while being monitored.'
+        }
+        `$stream.Position = `$expectedPosition
+        `$remainingAtSnapshot = [long][Math]::Min([long]`$maximumBytesPerPoll, `$snapshotLength - `$expectedPosition)
+        `$lineBytes = [Collections.Generic.List[byte]]::new()
+        foreach (`$value in `$pending) { `$lineBytes.Add(`$value) }
+        `$completed = [Collections.Generic.List[string]]::new()
+        `$buffer = [byte[]]::new(65536)
+        while (`$remainingAtSnapshot -gt 0) {
+            `$request = [int][Math]::Min([long]`$buffer.Length, `$remainingAtSnapshot)
+            `$read = `$stream.Read(`$buffer, 0, `$request)
+            if (`$read -le 0) { throw 'Offline same-byte runner stdout changed or truncated during a bounded read.' }
+            `$remainingAtSnapshot -= `$read
+            for (`$index = 0; `$index -lt `$read; `$index++) {
+                `$value = `$buffer[`$index]
+                if (`$value -eq 10) {
+                    `$line = `$lineBytes.ToArray()
+                    `$lineLength = `$line.Length
+                    if (`$lineLength -gt 0 -and `$line[`$lineLength - 1] -eq 13) { `$lineLength-- }
+                    `$completed.Add([Text.Encoding]::UTF8.GetString(`$line, 0, `$lineLength))
+                    `$CommittedByteOffset.Value = [long]`$CommittedByteOffset.Value + `$lineBytes.Count + 1
+                    `$lineBytes.Clear()
+                }
+                else {
+                    if (`$lineBytes.Count -ge `$maximumLineBytes) {
+                        throw 'Offline same-byte runner stdout contained a line larger than its 1 MiB progress bound.'
+                    }
+                    `$lineBytes.Add(`$value)
+                }
+            }
+        }
+
+        if (`$FlushIncompleteLine -and `$lineBytes.Count -gt 0) {
+            `$line = `$lineBytes.ToArray()
+            `$completed.Add([Text.Encoding]::UTF8.GetString(`$line))
+            `$CommittedByteOffset.Value = [long]`$CommittedByteOffset.Value + `$lineBytes.Count
+            `$lineBytes.Clear()
+        }
+        `$PendingBytes.Value = `$lineBytes.ToArray()
+        return `$completed.ToArray()
+    }
+    finally { `$stream.Dispose() }
+}
+
+function Update-RunnerProgress {
+    param([Parameter(Mandatory = `$true)][AllowEmptyString()][string]`$Line)
+    if (`$Line -match '^Offline same-byte README (\d+)/500: (.+) \(') {
+        `$script:currentCase = "rank `$(`$Matches[1]): `$(`$Matches[2])"
+        `$script:caseStarted = [DateTimeOffset]::UtcNow
+        `$script:nativeActive = `$false
+        `$script:lastStage = ''
+    }
+    if (`$Line -match '^README native audit stage: (.+)\.$' -or `$Line -match '^README native traversal (?:starting|viewport|revisit|movement|complete)') {
+        `$script:nativeActive = `$true
+        `$script:lastNativeProgress = [DateTimeOffset]::UtcNow
+        `$script:lastStage = `$Line
+    }
+    elseif (`$Line -match '^README native audit complete\.$' -or `$Line -match '^Offline same-byte README \d+/500: .+ \((?:passed|failed|not-applicable-[^)]+)\)\.$') {
+        `$script:nativeActive = `$false
+        `$script:lastStage = ''
+    }
+}
+function ConvertTo-WindowsCommandLineArgument {
+    param([Parameter(Mandatory = `$true)][AllowEmptyString()][string]`$Argument)
+
+    # Start-Process joins ArgumentList elements with spaces; it does not quote
+    # embedded whitespace. Build the Windows argv string explicitly so paths
+    # with spaces, quotes, or trailing backslashes remain one argument.
+    `$builder = [Text.StringBuilder]::new()
+    [void]`$builder.Append([char]'"')
+    `$backslashCount = 0
+    foreach (`$character in `$Argument.ToCharArray()) {
+        if (`$character -eq [char]'\') { `$backslashCount++; continue }
+        if (`$character -eq [char]'"') {
+            if (`$backslashCount -gt 0) { [void]`$builder.Append([char]'\', 2 * `$backslashCount) }
+            [void]`$builder.Append([char]'\')
+            [void]`$builder.Append([char]'"')
+            `$backslashCount = 0
+            continue
+        }
+        if (`$backslashCount -gt 0) { [void]`$builder.Append([char]'\', `$backslashCount) }
+        [void]`$builder.Append(`$character)
+        `$backslashCount = 0
+    }
+    if (`$backslashCount -gt 0) { [void]`$builder.Append([char]'\', 2 * `$backslashCount) }
+    [void]`$builder.Append([char]'"')
+    return `$builder.ToString()
+}
+function Get-BoundedLogTail {
+    param([Parameter(Mandatory = `$true)][string]`$Path)
+
+    `$maximumBytes = 32768
+    if (-not (Test-Path -LiteralPath `$Path -PathType Leaf)) {
+        return [pscustomobject]@{ TotalBytes = 0L; BytesRead = 0; Text = '' }
+    }
+    `$stream = [IO.File]::Open(`$Path, [IO.FileMode]::Open, [IO.FileAccess]::Read,
+        ([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete))
+    try {
+        `$totalBytes = [long]`$stream.Length
+        `$start = [Math]::Max(0L, `$totalBytes - `$maximumBytes)
+        `$stream.Position = `$start
+        `$bytesToRead = [int](`$totalBytes - `$start)
+        `$buffer = [byte[]]::new(`$bytesToRead)
+        `$readTotal = 0
+        while (`$readTotal -lt `$bytesToRead) {
+            `$read = `$stream.Read(`$buffer, `$readTotal, `$bytesToRead - `$readTotal)
+            if (`$read -le 0) { throw 'Runner log changed while reading its bounded diagnostic tail.' }
+            `$readTotal += `$read
+        }
+        `$offset = 0
+        `$partialLine = `$false
+        if (`$start -gt 0) {
+            `$newline = [Array]::IndexOf(`$buffer, [byte]10)
+            if (`$newline -ge 0) { `$offset = `$newline + 1 }
+            else { `$partialLine = `$true }
+        }
+        `$text = [Text.Encoding]::UTF8.GetString(`$buffer, `$offset, `$buffer.Length - `$offset)
+        if (`$partialLine) { `$text = '[partial line tail] ' + `$text }
+        return [pscustomobject]@{ TotalBytes = `$totalBytes; BytesRead = `$readTotal; Text = `$text }
+    }
+    finally { `$stream.Dispose() }
+}
 `$credentialNames = @('JITHUB_README_AUDIT_GITHUB_TOKEN','JITHUB_README_AUDIT_GITHUB_ACCOUNT_ID','JITHUB_README_AUDIT_SEMANTIC_HMAC_KEY','GITHUB_TOKEN','GH_TOKEN','GH_ENTERPRISE_TOKEN','GITHUB_ENTERPRISE_TOKEN','ACTIONS_ID_TOKEN_REQUEST_TOKEN','ACTIONS_ID_TOKEN_REQUEST_URL','GITHUB_APP_TOKEN','GITHUB_ACCESS_TOKEN','GITHUB_CLIENT_SECRET','GITHUB_APP_PRIVATE_KEY','GH_ACCESS_TOKEN','GH_CONFIG_DIR')
 foreach (`$name in `$credentialNames) { Remove-Item -LiteralPath ('Env:' + `$name) -ErrorAction SilentlyContinue }
 foreach (`$name in `$credentialNames) { if (-not [string]::IsNullOrEmpty([Environment]::GetEnvironmentVariable(`$name, 'Process'))) { throw 'Audit credential environment could not be cleared.' } }
@@ -858,64 +1252,122 @@ if (-not [string]::IsNullOrWhiteSpace(`$edge) -and -not (Test-Path -LiteralPath 
 New-Item -ItemType Directory -Force -Path `$outputRoot | Out-Null
 `$stdout = Join-Path `$outputRoot 'runner.stdout.log'
 `$stderr = Join-Path `$outputRoot 'runner.stderr.log'
-`$process = Start-Process -FilePath `$runner -ArgumentList `$arguments -WorkingDirectory `$repo -NoNewWindow -PassThru -RedirectStandardOutput `$stdout -RedirectStandardError `$stderr
+`$runnerArgumentLine = (`$arguments | ForEach-Object { ConvertTo-WindowsCommandLineArgument -Argument `$_ }) -join ' '
+`$runnerCommandLineLength = 1 + `$runner.Length + 3 + `$runnerArgumentLine.Length
+if (`$runnerCommandLineLength -ge 32767) { throw "Offline same-byte runner command line exceeds the Windows 32767-character limit (`$runnerCommandLineLength characters)." }
+`$process = Start-Process -FilePath `$runner -ArgumentList `$runnerArgumentLine -WorkingDirectory `$repo -NoNewWindow -PassThru -RedirectStandardOutput `$stdout -RedirectStandardError `$stderr
+function Stop-OwnedRunnerTree {
+    param([Parameter(Mandatory = `$true)][Diagnostics.Process]`$OwnedProcess)
+    try {
+        `$OwnedProcess.Refresh()
+        if (-not `$OwnedProcess.HasExited) {
+            & taskkill.exe /PID `$OwnedProcess.Id /T /F | Out-Null
+            `$null = `$OwnedProcess.WaitForExit(5000)
+            `$OwnedProcess.Refresh()
+        }
+        return `$OwnedProcess.HasExited
+    }
+    catch { return `$false }
+}
 `$currentCase = 'starting'
 `$caseStarted = [DateTimeOffset]::UtcNow
 `$nativeActive = `$false
 `$lastNativeProgress = [DateTimeOffset]::UtcNow
 `$lastStage = ''
 `$processedOutputLength = 0L
-`$processedOutputLines = 0
-while (-not `$process.HasExited) {
-    Start-Sleep -Milliseconds 500
-    `$process.Refresh()
-    if (Test-Path -LiteralPath `$stdout -PathType Leaf) {
-        `$info = [IO.FileInfo]::new(`$stdout)
-        `$info.Refresh()
-        if (`$info.Length -gt `$processedOutputLength) {
-            `$lines = [IO.File]::ReadAllLines(`$stdout)
-            `$processedOutputLength = `$info.Length
-            for (`$lineIndex = `$processedOutputLines; `$lineIndex -lt `$lines.Length; `$lineIndex++) {
-                `$line = `$lines[`$lineIndex]
-                if (`$line -match '^Offline same-byte README (\d+)/500: (.+) \(') {
-                    `$currentCase = "rank `$(`$Matches[1]): `$(`$Matches[2])"
-                    `$caseStarted = [DateTimeOffset]::UtcNow
-                    `$nativeActive = `$false
-                    `$lastStage = ''
-                }
-                if (`$line -match '^README native audit stage: (.+)\.$' -or `$line -match '^README native traversal (?:starting|viewport|revisit|movement|complete)') {
-                    `$nativeActive = `$true
-                    `$lastNativeProgress = [DateTimeOffset]::UtcNow
-                    `$lastStage = `$line
-                }
-                elseif (`$line -match '^README native audit complete\.$' -or `$line -match '^Offline same-byte README \d+/500: .+ \((?:passed|failed|not-applicable-[^)]+)\)\.$') {
-                    `$nativeActive = `$false
-                    `$lastStage = ''
-                }
+`$pendingOutputBytes = [byte[]]::new(0)
+try {
+    # Windows PowerShell 5.1 can lose ExitCode/ExitTime from a redirected
+    # Start-Process result unless its native process handle is materialized
+    # while the process is still running.
+    `$runnerProcessHandle = `$process.SafeHandle
+    if (`$null -eq `$runnerProcessHandle -or `$runnerProcessHandle.IsInvalid) {
+        throw 'Could not retain the owned offline same-byte runner process handle.'
+    }
+    while (-not `$process.HasExited) {
+        Start-Sleep -Milliseconds 500
+        `$process.Refresh()
+        if (Test-Path -LiteralPath `$stdout -PathType Leaf) {
+            `$info = [IO.FileInfo]::new(`$stdout)
+            `$info.Refresh()
+            if (`$info.Length -lt (`$processedOutputLength + `$pendingOutputBytes.Length)) {
+                throw 'Offline same-byte runner stdout length moved backwards.'
             }
-            `$processedOutputLines = `$lines.Length
+            `$lines = @(Read-CompletedLogLines -Path `$stdout -CommittedByteOffset ([ref]`$processedOutputLength) -PendingBytes ([ref]`$pendingOutputBytes))
+            foreach (`$line in `$lines) { Update-RunnerProgress -Line `$line }
+        }
+        `$now = [DateTimeOffset]::UtcNow
+        if ((`$now - `$script:caseStarted).TotalMinutes -ge 30) {
+            throw "Offline same-byte case exceeded its 30-minute deadline at `$script:currentCase."
+        }
+        if (`$script:nativeActive -and (`$now - `$script:lastNativeProgress).TotalSeconds -ge 90) {
+            throw "Offline same-byte native traversal made no progress for 90 seconds at `$script:currentCase; last stage `$script:lastStage."
         }
     }
-    `$now = [DateTimeOffset]::UtcNow
-    if ((`$now - `$caseStarted).TotalMinutes -ge 30) {
-        & taskkill.exe /PID `$process.Id /T /F | Out-Null
-        throw "Offline same-byte case exceeded its 30-minute deadline at `$currentCase."
+    `$process.WaitForExit()
+    `$process.Refresh()
+    while (`$true) {
+        `$consumedBeforeRead = [long]`$processedOutputLength + [long]`$pendingOutputBytes.Length
+        foreach (`$line in @(Read-CompletedLogLines -Path `$stdout -CommittedByteOffset ([ref]`$processedOutputLength) -PendingBytes ([ref]`$pendingOutputBytes))) { Update-RunnerProgress -Line `$line }
+        `$finalInfo = [IO.FileInfo]::new(`$stdout)
+        `$finalInfo.Refresh()
+        `$consumedAfterRead = [long]`$processedOutputLength + [long]`$pendingOutputBytes.Length
+        if (-not `$finalInfo.Exists -or `$consumedAfterRead -eq `$finalInfo.Length) { break }
+        if (`$consumedAfterRead -le `$consumedBeforeRead -or `$consumedAfterRead -gt `$finalInfo.Length) {
+            throw 'Offline same-byte runner stdout changed during final bounded drain.'
+        }
     }
-    if (`$nativeActive -and (`$now - `$lastNativeProgress).TotalSeconds -ge 90) {
-        & taskkill.exe /PID `$process.Id /T /F | Out-Null
-        throw "Offline same-byte native traversal made no progress for 90 seconds at `$currentCase; last stage `$lastStage."
+    foreach (`$line in @(Read-CompletedLogLines -Path `$stdout -CommittedByteOffset ([ref]`$processedOutputLength) -PendingBytes ([ref]`$pendingOutputBytes) -FlushIncompleteLine)) { Update-RunnerProgress -Line `$line }
+    `$rawExitCode = `$process.ExitCode
+    if (`$null -eq `$rawExitCode) { throw 'Offline same-byte runner exit code was unavailable after the process exited.' }
+    `$exitCode = [int]`$rawExitCode
+}
+catch {
+    `$runnerFailure = `$_
+    if (-not (Stop-OwnedRunnerTree -OwnedProcess `$process)) {
+        throw "Offline same-byte monitoring failed and owned runner PID `$(`$process.Id) could not be confirmed stopped. Original error: `$(`$runnerFailure.Exception.Message)"
+    }
+    throw
+}
+finally {
+    if (`$null -ne `$process) { `$process.Dispose() }
+}
+foreach (`$log in @(@{ Name = 'stdout'; Path = `$stdout }, @{ Name = 'stderr'; Path = `$stderr })) {
+    `$tail = Get-BoundedLogTail -Path `$log.Path
+    if (`$tail.TotalBytes -gt 0) {
+        `$truncated = if (`$tail.TotalBytes -gt `$tail.BytesRead) { ' (tail only)' } else { '' }
+        Write-Output ("runner `$(`$log.Name) log`$truncated; `$(`$tail.TotalBytes) bytes retained:")
+        if (-not [string]::IsNullOrEmpty([string]`$tail.Text)) { Write-Output `$tail.Text }
     }
 }
-`$process.WaitForExit()
-`$process.Refresh()
-`$rawExitCode = `$process.ExitCode
-if (`$null -eq `$rawExitCode) { throw 'Offline same-byte runner exit code was unavailable after the process exited.' }
-`$exitCode = [int]`$rawExitCode
-if (Test-Path -LiteralPath `$stdout) { Get-Content -LiteralPath `$stdout }
-if (Test-Path -LiteralPath `$stderr) { Get-Content -LiteralPath `$stderr | ForEach-Object { Write-Error -Message `$_ -ErrorAction Continue } }
 Write-Output "offlineSameByteGuestRunnerExitCode=`$exitCode; edgeVersion=`$version; requestedRanks=$Start..$($Start + $Amount - 1); reportRoot=`$outputRoot"
 exit `$exitCode
 "@
+}
+
+function New-GuestBatchExecArguments {
+    param(
+        [Parameter(Mandatory = $true)][string]$GuestCwd,
+        [Parameter(Mandatory = $true)][string]$GuestScriptPath
+    )
+
+    if ([string]::IsNullOrWhiteSpace($GuestCwd) -or [string]::IsNullOrWhiteSpace($GuestScriptPath)) {
+        throw 'The offline guest runner requires a working directory and a staged script path.'
+    }
+    $guestProcessArguments = @('powershell.exe', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $GuestScriptPath)
+    $quotedGuestArguments = @($guestProcessArguments | ForEach-Object {
+        if ($_ -match '[\s"]') { '"' + $_.Replace('"', '\"') + '"' } else { $_ }
+    })
+    $guestCommandLineLength = (($quotedGuestArguments -join ' ').Length + 1)
+    if ($guestCommandLineLength -ge 32767) {
+        throw "The offline guest PowerShell command line exceeds the Windows 32767-character process limit ($guestCommandLineLength characters)."
+    }
+    return @('target', 'exec', 'sandbox', '--cwd', $GuestCwd, '--') + $guestProcessArguments
+}
+
+function ConvertTo-GuestPowerShellSingleQuotedLiteral {
+    param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Value)
+    return "'" + $Value.Replace("'", "''") + "'"
 }
 
 function Get-Percentile {
@@ -1096,6 +1548,7 @@ foreach ($existingReport in @(
 Invoke-NativeAotArtifactVerifier -VerifierPath (Join-Path $repoRoot 'eng\Verify-NativeAotArtifact.ps1') -InputPath $AppDirectory
 foreach ($requiredAuditFile in @(
     'eng\readme-audit\same-byte-edge-source.mjs',
+    'eng\readme-audit\Install-PinnedWindowsAppRuntime.ps1',
     'eng\readme-audit\vendor\marked-18.0.5.umd.js',
     'eng\readme-audit\vendor\github-emoji-shortcodes.json',
     'eng\readme-audit\vendor\github-emoji-shortcodes.js',
@@ -1117,6 +1570,8 @@ $hostEvidenceRoot = Join-Path $OutputRoot ('evidence-' + $runId)
 [IO.Directory]::CreateDirectory($hostEvidenceRoot) | Out-Null
 $runFailures = [Collections.Generic.List[string]]::new()
 $completedShardCount = 0
+$runtimePrerequisite = $null
+$guestControlScripts = [Collections.Generic.List[object]]::new()
 
 try {
     $snapshotNow = Get-AndAssertSandboxSnapshot
@@ -1125,12 +1580,19 @@ try {
         throw 'The existing Sandbox changed after planning; refusing to continue in a different guest.'
     }
     Initialize-SandboxWorkRoot -Snapshot $snapshotNow
+    $guestRepoAbsoluteLiteral = ConvertTo-GuestPowerShellSingleQuotedLiteral -Value $guestRepoAbsolute
     $relativeProbe = @(
         'target', 'exec', 'sandbox', '--cwd', [string]$snapshot.workRoot,
         '--', 'powershell.exe', '-NoProfile', '-NonInteractive', '-Command',
-        "if (Test-Path -LiteralPath '$guestRepoAbsolute') { exit 17 }; exit 0")
+        "if (Test-Path -LiteralPath $guestRepoAbsoluteLiteral) { exit 17 }; exit 0")
     Invoke-WinApp -Arguments $relativeProbe -Description 'unique guest staging-path preflight'
     Invoke-WinApp -Arguments @('target', 'push', 'sandbox', $snapshotData.Root, $guestRepoRelative) -Description 'source, x64 AOT app, self-contained runner, and Node staging'
+    $runtimePrerequisite = Invoke-SandboxWindowsAppRuntimePreflight -Snapshot $snapshotNow `
+        -GuestRepoAbsolute $guestRepoAbsolute -GuestRepoRelative $guestRepoRelative `
+        -SnapshotData $snapshotData -HostEvidenceRoot $hostEvidenceRoot -GuestEpoch $guestEpoch
+    if (-not $runtimePrerequisite.Success) {
+        throw "Windows App Runtime prerequisite did not pass: $($runtimePrerequisite.Failure)"
+    }
 
     for ($shardIndex = 0; $shardIndex -lt $shards.Count; $shardIndex++) {
         $shard = $shards[$shardIndex]
@@ -1141,14 +1603,29 @@ try {
         Invoke-WinApp -Arguments @('target', 'push', 'sandbox', $batch.Root, $batchDestination) -Description "pinned corpus stage ranks $first..$last"
         $outputRelative = 'artifacts/offline-same-byte-output/ranks-{0:D3}-{1:D3}' -f $first, $last
         $guestScript = New-GuestBatchScript -GuestRepo $guestRepoRelative -GuestWorkRoot ([string]$snapshot.workRoot) -Start $first -Amount ($last - $first + 1) -OutputRelativePath $outputRelative
-        $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($guestScript))
+        $guestScriptFileName = 'offline-same-byte-ranks-{0:D3}-{1:D3}-{2}.ps1' -f $first, $last, $runId
+        $hostControlRoot = Join-Path $hostEvidenceRoot 'guest-control'
+        [IO.Directory]::CreateDirectory($hostControlRoot) | Out-Null
+        $hostGuestScriptPath = Join-Path $hostControlRoot $guestScriptFileName
+        [IO.File]::WriteAllText($hostGuestScriptPath, $guestScript, [Text.UTF8Encoding]::new($false))
+        $guestControlRelativePath = $guestRepoRelative + '/' + $guestScriptFileName
+        Invoke-WinApp -Arguments @('target', 'push', 'sandbox', $hostGuestScriptPath, $guestControlRelativePath) -Description "bounded guest script stage ranks $first..$last"
+        $guestControlScripts.Add([ordered]@{
+            firstRank = $first
+            lastRank = $last
+            guestPath = $guestControlRelativePath
+            hostPath = $hostGuestScriptPath
+            sha256 = (Get-FileHash -LiteralPath $hostGuestScriptPath -Algorithm SHA256).Hash.ToLowerInvariant()
+            byteSize = (Get-Item -LiteralPath $hostGuestScriptPath).Length
+        })
         $snapshotBeforeBatch = Get-AndAssertSandboxSnapshot
         if ([string]$snapshotBeforeBatch.executionTarget.epoch -cne $guestEpoch -or
             [string]$snapshotBeforeBatch.workRoot -cne [string]$snapshot.workRoot) {
             throw 'Sandbox epoch or work root changed before a shard; refusing host fallback.'
         }
         $guestCwd = Join-Path ([string]$snapshot.workRoot) ($guestRepoRelative -replace '/', [IO.Path]::DirectorySeparatorChar)
-        $execArgs = @('target', 'exec', 'sandbox', '--cwd', $guestCwd, '--', 'powershell.exe', '-NoProfile', '-NonInteractive', '-EncodedCommand', $encoded)
+        $guestScriptAbsolute = Join-Path $guestCwd $guestScriptFileName
+        $execArgs = New-GuestBatchExecArguments -GuestCwd $guestCwd -GuestScriptPath $guestScriptAbsolute
         $exitCode = 0
         try { Invoke-WinApp -Arguments $execArgs -Description "offline same-byte app/Edge replay ranks $first..$last" }
         catch {
@@ -1191,6 +1668,21 @@ $executionManifest = [ordered]@{
     automationRunnerDirectory = $AutomationRunnerDirectory
     nodeExecutablePath = $NodeExecutablePath
     edgeGuestPath = $EdgeExecutablePath
+    windowsAppRuntimePreflight = if ($null -eq $runtimePrerequisite) {
+        [ordered]@{ status = 'not-completed'; reason = 'Sandbox setup did not reach the runtime prerequisite.' }
+    }
+    else {
+        [ordered]@{
+            status = if ($runtimePrerequisite.Success) { 'ready' } else { 'failed' }
+            action = if ($runtimePrerequisite.Report) { [string]$runtimePrerequisite.Report.action } else { $null }
+            requestedArchitecture = if ($runtimePrerequisite.Report) { [string]$runtimePrerequisite.Report.requestedArchitecture } else { 'x64' }
+            minimumVersion = if ($runtimePrerequisite.Report) { [string]$runtimePrerequisite.Report.minimumVersion } else { '8000.921.1539.0' }
+            evidencePath = $runtimePrerequisite.EvidencePath
+            evidenceSha256 = $runtimePrerequisite.EvidenceSha256
+            failure = $runtimePrerequisite.Failure
+        }
+    }
+    guestControlScripts = @($guestControlScripts)
     failures = @($runFailures)
     completedAtUtc = [DateTimeOffset]::UtcNow
 }

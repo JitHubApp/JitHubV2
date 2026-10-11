@@ -26,6 +26,7 @@
     <Compile Include="..\Shared\OAuthHandoffProtocol.cs" Link="Security\OAuthHandoffProtocol.cs" />
     <Compile Include="..\JitHub.WinUI.Automation\NativeFirstViewportImagesReadyContract.cs" Link="Automation\NativeFirstViewportImagesReadyContract.cs" />
     <Compile Include="..\JitHub.WinUI.Automation\NativeReadinessProgressDiagnostic.cs" Link="Automation\NativeReadinessProgressDiagnostic.cs" />
+    <Compile Include="..\JitHub.WinUI.Automation\ReadmeAuditVisibleImageWaitDiagnostics.cs" Link="Automation\ReadmeAuditVisibleImageWaitDiagnostics.cs" />
     <Compile Include="..\JitHub.WinUI.Automation\ReadmeAuditTerminalDiagnostic.cs" Link="Automation\ReadmeAuditTerminalDiagnostic.cs" />
     <Compile Include="..\JitHub.WinUI.Automation\EvidenceFileSnapshot.cs" Link="Automation\EvidenceFileSnapshot.cs" />
     <Compile Include="..\JitHub.WinUI.Automation\AppArtifactFreshness.cs" Link="Automation\AppArtifactFreshness.cs" />

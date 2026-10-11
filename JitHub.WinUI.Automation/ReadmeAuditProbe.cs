@@ -1918,10 +1918,16 @@ internal static partial class ReadmeAuditProbe
             VisibleImageWaitResult firstImageWait = WaitForVisibleImages(
                 host,
                 TimeSpan.FromSeconds(20),
+                phase: "first-viewport",
+                viewportIndex: 0,
                 captureLoadingStateTransitions: true);
             WriteNativeAuditStage("first-viewport UIA image wait complete");
             if (firstImageWait.TimedOut)
-                throw new TimeoutException("The first native README viewport did not finish loading images.");
+            {
+                throw CreateVisibleImageWaitTimeout(
+                    "The first native README viewport did not finish loading images.",
+                    firstImageWait);
+            }
             WriteNativeAuditStage("first-viewport app readiness signal waiting");
             string? expectedReadmeGitBlobSha1 = sameByteCorpusPath is null
                 ? null
@@ -2335,13 +2341,18 @@ internal static partial class ReadmeAuditProbe
                 automationProbe.Stop();
                 auditOverheadMs += automationProbe.Elapsed.TotalMilliseconds;
 
-                VisibleImageWaitResult imageWait = WaitForVisibleImages(host, TimeSpan.FromSeconds(20));
+                VisibleImageWaitResult imageWait = WaitForVisibleImages(
+                    host,
+                    TimeSpan.FromSeconds(20),
+                    phase: "traversal-viewport",
+                    viewportIndex: index);
                 auditOverheadMs += imageWait.ProbeOverheadMs;
                 visibleImageWaitElapsedMs += imageWait.ElapsedMilliseconds;
                 if (imageWait.TimedOut)
                 {
-                    throw new TimeoutException(
-                        $"README viewport {index} did not finish loading its visible images.");
+                    throw CreateVisibleImageWaitTimeout(
+                        $"README viewport {index} did not finish loading its visible images.",
+                        imageWait);
                 }
 
                 scroll = host.Patterns.Scroll.Pattern;
@@ -2968,11 +2979,15 @@ internal static partial class ReadmeAuditProbe
                 GetBoundedNativeTraversalWait(
                     traversalWall,
                     TimeSpan.FromSeconds(20),
-                    "image revisit visible-image wait"));
+                    "image revisit visible-image wait"),
+                phase: "image-revisit-viewport",
+                viewportIndex: index);
             auditOverheadMs += imageWait.ProbeOverheadMs;
             if (imageWait.TimedOut)
             {
-                throw new TimeoutException("README image revisit did not finish its visible images.");
+                throw CreateVisibleImageWaitTimeout(
+                    "README image revisit did not finish its visible images.",
+                    imageWait);
             }
 
             scroll = host.Patterns.Scroll.Pattern;
@@ -4133,6 +4148,8 @@ internal static partial class ReadmeAuditProbe
     private static VisibleImageWaitResult WaitForVisibleImages(
         AutomationElement host,
         TimeSpan timeout,
+        string phase = "unspecified",
+        int? viewportIndex = null,
         bool captureLoadingStateTransitions = false)
     {
         Stopwatch stopwatch = Stopwatch.StartNew();
@@ -4140,6 +4157,7 @@ internal static partial class ReadmeAuditProbe
         int pollCount = 0;
         bool? initialHasLoadingVisibleImages = null;
         bool? previousHasLoadingVisibleImages = null;
+        string? lastHostItemStatus = null;
         var loadingStateTransitions = captureLoadingStateTransitions
             ? new List<ReadmeAuditVisibleImageLoadingStateTransition>(capacity: 1)
             : null;
@@ -4153,8 +4171,8 @@ internal static partial class ReadmeAuditProbe
             // documents and also retained thousands of transient COM wrappers.
             if (captureLoadingStateTransitions && pollCount == 0)
                 WriteNativeAuditStage("UIA ItemStatus read starting");
-            bool isLoading = !string.IsNullOrWhiteSpace(
-                host.Properties.ItemStatus.ValueOrDefault);
+            lastHostItemStatus = host.Properties.ItemStatus.ValueOrDefault;
+            bool isLoading = !string.IsNullOrWhiteSpace(lastHostItemStatus);
             if (captureLoadingStateTransitions && pollCount == 0)
                 WriteNativeAuditStage("UIA ItemStatus read complete");
             probe.Stop();
@@ -4192,27 +4210,118 @@ internal static partial class ReadmeAuditProbe
         // genuinely pending image from a stale aggregate ItemStatus. This
         // diagnostic walk is harness overhead, not document render time.
         Stopwatch diagnosticProbe = Stopwatch.StartNew();
-        int loadingImageCount;
-        try
-        {
-            loadingImageCount = host.FindAllDescendants().Count(IsLoadingImage);
-        }
-        catch (Exception exception) when (
-            exception is InvalidOperationException or TimeoutException or
-                System.Runtime.InteropServices.COMException)
-        {
-            loadingImageCount = -1;
-        }
+        ReadmeAuditVisibleImageTimeoutSnapshot timeoutSnapshot = CaptureVisibleImageTimeoutSnapshot(
+            host,
+            lastHostItemStatus);
         diagnosticProbe.Stop();
         return new VisibleImageWaitResult(
             probeOverheadMs + diagnosticProbe.Elapsed.TotalMilliseconds,
             true,
-            loadingImageCount,
+            timeoutSnapshot.LoadingVisibleImageCount,
             stopwatch.Elapsed.TotalMilliseconds - diagnosticProbe.Elapsed.TotalMilliseconds,
             pollCount,
             initialHasLoadingVisibleImages,
-            loadingStateTransitions ?? []);
+            loadingStateTransitions ?? [],
+            ReadmeAuditVisibleImageWaitDiagnostics.FormatFailure(
+                phase,
+                viewportIndex,
+                timeoutSnapshot));
     }
+
+    private static ReadmeAuditVisibleImageTimeoutSnapshot CaptureVisibleImageTimeoutSnapshot(
+        AutomationElement host,
+        string? lastHostItemStatus)
+    {
+        string? hostItemStatus = lastHostItemStatus;
+        bool hostItemStatusRead = true;
+        try
+        {
+            // Read once more at the deadline so the failure records the actual
+            // terminal aggregate, not merely the previous poll's value.
+            hostItemStatus = host.Properties.ItemStatus.ValueOrDefault;
+        }
+        catch (Exception exception) when (IsVisibleImageWaitDiagnosticException(exception))
+        {
+            hostItemStatusRead = false;
+        }
+
+        int visibleImageCount = -1;
+        int loadingVisibleImageCount = -1;
+        string viewport = "unavailable";
+        string scroll = "unavailable";
+        bool imageScanComplete = false;
+        try
+        {
+            Rectangle hostBounds = host.BoundingRectangle;
+            viewport = FormatVisibleImageWaitBounds(hostBounds);
+            if (host.Patterns.Scroll.IsSupported)
+            {
+                IScrollPattern scrollPattern = host.Patterns.Scroll.Pattern;
+                double percent = scrollPattern.VerticalScrollPercent.ValueOrDefault;
+                double viewSize = scrollPattern.VerticalViewSize.ValueOrDefault;
+                scroll = double.IsFinite(percent) && double.IsFinite(viewSize)
+                    ? string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"percent={percent:F3},viewSize={viewSize:F3}")
+                    : "invalid";
+            }
+
+            int visible = 0;
+            int loading = 0;
+            foreach (AutomationElement element in host.FindAllDescendants())
+            {
+                if (!IsImagePeer(element))
+                    continue;
+
+                Rectangle imageBounds = element.BoundingRectangle;
+                Rectangle intersection = Rectangle.Intersect(hostBounds, imageBounds);
+                if (element.Properties.IsOffscreen.ValueOrDefault ||
+                    imageBounds.Width <= 0 || imageBounds.Height <= 0 ||
+                    intersection.Width <= 0 || intersection.Height <= 0)
+                {
+                    continue;
+                }
+
+                visible++;
+                if (!string.IsNullOrWhiteSpace(element.Properties.ItemStatus.ValueOrDefault))
+                    loading++;
+            }
+
+            visibleImageCount = visible;
+            loadingVisibleImageCount = loading;
+            imageScanComplete = true;
+        }
+        catch (Exception exception) when (IsVisibleImageWaitDiagnosticException(exception))
+        {
+            // A timeout diagnostic must not replace the readiness failure with
+            // a secondary UIA error or report partial counts as complete.
+        }
+
+        return new ReadmeAuditVisibleImageTimeoutSnapshot(
+            hostItemStatus,
+            hostItemStatusRead,
+            visibleImageCount,
+            loadingVisibleImageCount,
+            imageScanComplete,
+            viewport,
+            scroll);
+    }
+
+    private static bool IsVisibleImageWaitDiagnosticException(Exception exception) =>
+        exception is InvalidOperationException or TimeoutException or
+            System.Runtime.InteropServices.COMException;
+
+    private static string FormatVisibleImageWaitBounds(Rectangle bounds) =>
+        bounds.Width > 0 && bounds.Height > 0
+            ? string.Create(
+                CultureInfo.InvariantCulture,
+                $"x={bounds.X},y={bounds.Y},width={bounds.Width},height={bounds.Height}")
+            : "invalid";
+
+    private static TimeoutException CreateVisibleImageWaitTimeout(
+        string message,
+        VisibleImageWaitResult result) =>
+        new(message + " " + result.FailureDiagnostic);
 
     private static bool IsLoadingImage(AutomationElement element) =>
         IsImagePeer(element) &&
@@ -5762,7 +5871,8 @@ internal static partial class ReadmeAuditProbe
         double ElapsedMilliseconds,
         int PollCount,
         bool? InitialHasLoadingVisibleImages,
-        IReadOnlyList<ReadmeAuditVisibleImageLoadingStateTransition> LoadingStateTransitions);
+        IReadOnlyList<ReadmeAuditVisibleImageLoadingStateTransition> LoadingStateTransitions,
+        string? FailureDiagnostic = null);
 
     private readonly record struct ScrollWaitResult(
         bool Succeeded,

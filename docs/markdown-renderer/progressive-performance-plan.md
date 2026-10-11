@@ -28,8 +28,11 @@ remain Sandbox-scoped. Neither approval relaxes clean-source, same-byte,
 signing, or device qualification requirements.
 
 The reviewed checkpoint and full physical measurement have now been attempted;
-the immediate priorities are the clean-checkout AOT build blocker, real offline
-README replay, and the measured publication/frame-pacing failures below. The
+the clean-checkout AOT build blocker is fixed in local commit
+`63135f0e7aab30a2dfb91292e903a31e4d510895`, without pushing. The immediate
+priorities are the real offline README replay's aggregate-readiness failure,
+the Sandbox's nonfunctional WebP codec, and the measured publication/frame-pacing
+failures below. The app-startup failure has been resolved. The
 unfinished request-local SVG coverage cache was preserved separately and is
 excluded from this checkpoint; the tested disjoint-column worker remains the
 candidate. Its prototype is not sufficient evidence to delay the full-system
@@ -75,8 +78,134 @@ all three official worker rebuilds reproduce the existing binaries exactly,
 and refreshed source-bound identity verification passes with fingerprint
 `d8c8674167801ad150cd302a2ae1846612e839763e4aa39988815e6f623a8a48`.
 The identity regression suite passes 28 fixtures; the offline wrapper's focused
-regressions also pass. The next clean-checkout publish must verify that same
-identity without copying in the ignored test lockfile.
+regressions also pass. The subsequent locked-restore, clean-checkout Release/x64
+NativeAOT publish and native-artifact verification **pass** at `63135f0e`, without
+the ignored test lockfile. Publish logs contain no warning/error matches. The
+app SHA-256 is
+`76B2088C0FF427074F72184AA448AEBE2E0C0929C628604546F26619B90E4E61`, and the deployed
+worker remains `3367203B...F8171E`. Evidence:
+`goal-release-20261011/jithub-aot-clean-63135f0e-{restore,publish,verify}.log`.
+
+The first real replay of that clean AOT build attempted **ranks 1–4** and
+**failed all four before rendering**: each app process remained responsive with
+a top-level window, but no app-ready signal arrived within the unchanged
+30-second deadline. Native image/fidelity and browser comparisons were not
+reached; this is not four successful README renders or top-500 qualification.
+The failed cases and startup-process observations are preserved under
+`goal-release-20261011/offline-same-byte-ranks001-004-clean63135f0e/`.
+A separate outer progress-reader error also exposed a file-sharing conflict
+when reading the runner's actively written log. Its fix must preserve partial
+lines, exit-code handling, and both watchdog deadlines; it cannot convert the
+app-startup failures into passes. A later guest inventory finds none of the
+four app PIDs or unique-run descendants remaining; no stale PID was killed.
+
+Guest inspection subsequently identifies the startup blocker: the Sandbox has
+only older inbox Windows App Runtime packages, **not the x64 1.8 framework**
+required by this framework-dependent app. The guest executable's hash matches
+the clean AOT artifact above. The top-level window appears before the first
+`Program.Main` phase marker, consistent with the bootstrapper's configured
+missing-runtime prompt. The offline replay wrapper must install/verify the
+existing hash-pinned runtime in the **guest**, once before replay, and retain
+the current-user package inventory as setup evidence. This does not require an
+app-binary change or authorize host-runtime changes. The rendering retest after
+that setup correction is recorded below.
+
+The standalone guest prerequisite check now **passes**: the hash-pinned official
+installer installs runtime `8000.921.1539.0`, and the resulting current-user
+inventory contains the healthy x64 framework, Main, Singleton, and DDLM package
+families. Both setup and evidence delivery exit 0. The before inventory lacks
+all four families. Evidence:
+`goal-release-20261011/sandbox-runtime-setup-c330635556534612ba144fdf9683a9af/evidence/windows-app-runtime.json`.
+The offline wrapper also needs its generated shard script transferred as a
+file: the expanded UTF-16/Base64 command already exceeds the Windows process
+command-line limit when launch arguments are included. Process-scoped script
+execution is explicit; no persistent guest or host policy is changed.
+
+The next runtime-fixed replay stopped **before any app case** because nested
+source-root paths were recorded with mixed slash separators. The runtime helper
+was present, but its identity lookup could not match the snapshot entry. The
+writer now canonicalizes the complete relative path, without bypassing hash
+checks. A regression creates an actual nested source snapshot and checks its
+helper path, content hash, and staged file. The complete offline-wrapper focused
+suite passes with this regression, Windows PowerShell 5.1 runtime inventory
+fixtures, bounded concurrent log reading, and file-based script transport.
+Failed setup evidence remains at
+`goal-release-20261011/offline-same-byte-ranks001-004-runtimefixed63135f0e/`;
+zero completed cases there must not count as rendering evidence. The final bounded
+four-case replay has completed at
+`goal-release-20261011/offline-same-byte-ranks001-004-canonical63135f0e/`.
+
+That replay now launches the clean AOT app and reaches app-ready/render-complete
+for **all four cases**, confirming the runtime/setup correction. It nevertheless
+**fails all four** at the unchanged 20-second native readiness deadline: rank 1
+at the first viewport, and ranks 2–4 at viewport 1. The app's recorded first-image
+readiness signals report `HasVisibleLoadingImages=false`, but the UIA aggregate
+readiness wait does not settle. Its old failure message does not retain the
+actual aggregate status, so image-plan staleness or deferred-scene readiness are
+still hypotheses, not established root causes. No Edge comparisons are reached.
+The three captured native PNGs were inspected; rank 4 visibly shows an
+unavailable freeCodeCamp social banner. The transport also exposes a separate
+Windows PowerShell 5.1 redirected-child exit-code loss after polling; the runner
+must retain its process handle and preserve failed case results independently.
+
+A headless, same-byte WebP probe narrows the banner failure to the guest codec
+environment. Its 148,596-byte source has SHA-256
+`499B8931ABFB4C1A902BCE3F686C5408D71553EBA5B53D6D6D347C8D94EAB7CC`.
+Both automatic and explicit Windows WebP decoder creation fail in Sandbox with
+`0x88982F8B` (component initialization), despite WebP appearing in the decoder
+inventory. The exact probe and bytes decode successfully on the host as
+1500×500, with identical transformed pixel hashes between automatic/explicit
+selection. The guest has no WebP extension package; the host has
+`Microsoft.WebpImageExtension` 1.2.31.0. This is not evidence of a corrupt download,
+nor proof that every production decode/upload path passes. A guest with a working
+official WebP codec, or a separately designed portable decode solution, is still
+needed to complete this case. No codec DLL was copied from the host, no rendering
+gate was relaxed, and the failed replay remains failed. Probe source and logs:
+`goal-release-20261011/webp-decode-probe/`.
+
+The WinUI UI-testing skill's two fix-and-rerun limit has been reached for the
+README replay and fresh SVG oracle in this active turn. Further UI launches are
+paused; source review and headless regressions continue. These partial four-case
+results are not the top-500 audit and cannot close the release gate.
+
+The final offline wrapper headless suite passes all seven reported groups,
+including Windows PowerShell 5.1 redirected-child handle/exit-code ownership,
+bounded concurrent log reads, failed runtime setup, command-line limits, and
+path quoting. It now returns a nonzero guest exit as well as failed evidence when
+runtime setup fails, and disposes its retained child-process handle. The README
+timeout diagnostic now retains the bounded actual host status, viewport and
+scroll location, and visible/loading peer counts from the existing timeout-only
+UIA walk; neither the polling predicate nor its deadlines changed. It explicitly
+labels per-image error counts as unavailable through the current UIA contract,
+instead of treating a missing count as zero. The Automation Release build passes
+with zero warnings/errors, and the focused diagnostic/source-contract tests pass
+**5/5 with no skips**. The first focused run found a test locator that assumed
+the wrong helper order; that assertion was corrected without changing the
+readiness behavior. Both runs are retained under
+`goal-release-20261011/automation-visible-image-diagnostics{,-rerun}-20261011/`.
+The final wrapper test log is `goal-release-20261011/offline-wrapper-final-tests.log`.
+These are test-infrastructure fixes, not successful renderer or top-500 results.
+
+The full physical trace additionally contains 12,000 composition intervals,
+2,100 above 8.333 ms and none above 16.7 ms. Existing callback timing does not
+include lazy-layout publication. That path scans the full focus/layout candidate
+plans; it is a real document-scale path worth measuring, but it is not yet proven
+to cause the measured frame misses. The 10 MiB publication maximum is isolated to
+one of 600 samples; the other 599 are below 1 ms. No production scheduling change
+or display-setting change is justified solely by that isolated sample.
+
+An isolated semantic-text allocation prototype was measured through the actual
+`MarkdownSemanticDocument.Build` path, not only its accumulator. On the same
+prepared 1 MiB / 128-paragraph cold-projection fixture, five-build diagnostics
+allocate **4,262,476.8 bytes/build** before and **2,153,084.8 bytes/build** with the
+prototype. Those runs check output length and within-run fingerprint stability;
+the stronger shared expected-text/fingerprint assertions were added afterwards
+and have not completed their paired run. The roughly 49.5% allocation
+reduction is promising but is **not integrated**: an adversarial 32 KiB fragmented
+input still allocates 166,896 versus 147,000 bytes (+13.5%), failing its guard.
+The 3.31/2.71 ms diagnostic timings are too small a sample for performance
+qualification. The prototype remains in the separate `semantic-text-alloc`
+checkout; neither its code nor its results are part of the release candidate.
 
 The restored scanner and official worker identity were verified again before
 the checkpoint: the scanner still hashes to `B988164F...019BB` and all three
@@ -181,13 +310,13 @@ not a completed README rendering or top-500 gate.
   in that folder is explicitly stale; it does not qualify current shipping
   artifacts, package sizes, or signatures.
 - Both the approved `1c00c83...` reference in its clean, separate managed
-  worktree and the current candidate performance harness build in Release/x64
-  without warnings or errors. Evidence: `approved-reference-1c00c83/` and
-  `candidate-harness-fresh-build.log`. No release performance result is implied:
-  the candidate source is still uncommitted, the newly authorized physical 120 Hz
-  foreground run has not executed, and GitHub reports zero configured self-hosted
-  runners. The frozen reference must not be silently
-  changed to bypass these requirements.
+  worktree and the candidate performance harness build in Release/x64 without
+  warnings or errors. Evidence: `approved-reference-1c00c83/` and
+  `candidate-harness-fresh-build.log`. The candidate was subsequently committed
+  and the full physical runs executed with the failures recorded above. No
+  qualified release comparison is implied; the last GitHub runner inventory
+  reports zero configured self-hosted runners. The frozen reference must not
+  be silently changed to bypass these requirements.
 - Selected Resvg deployment accounting now includes **both the selected-RID
   worker and provider runtime DLL**, retaining the original 3.5 MiB ceiling and
   5 MiB all-RID compressed-package ceiling. Exact-cap, one-byte-over, missing,
@@ -198,6 +327,12 @@ not a completed README rendering or top-500 gate.
   independently pinned archive hash. No pin or license policy was relaxed.
   Evidence: `package-compliance-selected-deployment.log`. This does not mean
   the actual shipping package meets either size ceiling or is signed.
+  The current unsigned x64 worker (3,332,096 bytes) plus provider runtime DLL
+  (348,160 bytes) totals **3,680,256 bytes**, exceeding the unchanged
+  **3,670,016-byte** selected-deployment ceiling by **10,240 bytes**, before
+  signing overhead. The corresponding x86/ARM64 totals are 3,495,424/3,189,248
+  bytes. These local file-length observations do not replace a fresh signed
+  all-RID package check.
 - Bounded dense-row accumulation and direct order-tree searches/deletion reduce
   the 576-entry diagnostic from the affine checkpoint's **4.140/4.166 seconds**
   to **3.332/3.124 seconds**. This is a substantial additional improvement, but

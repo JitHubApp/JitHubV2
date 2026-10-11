@@ -2176,6 +2176,59 @@ public sealed class AutomationHarnessSourceContractTests
     }
 
     [Fact]
+    public void VisibleImageWaitFailureDetailsAreBoundedAndCollectedOnlyAfterTheDeadline()
+    {
+        string source = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "JitHub.WinUI.Automation",
+            "ReadmeAuditProbe.cs"));
+        string formatter = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "JitHub.WinUI.Automation",
+            "ReadmeAuditVisibleImageWaitDiagnostics.cs"));
+
+        int waitStart = source.IndexOf("private static VisibleImageWaitResult WaitForVisibleImages(", StringComparison.Ordinal);
+        int snapshotStart = waitStart >= 0
+            ? source.IndexOf("private static ReadmeAuditVisibleImageTimeoutSnapshot CaptureVisibleImageTimeoutSnapshot(", waitStart, StringComparison.Ordinal)
+            : -1;
+        int timeoutFactoryStart = snapshotStart >= 0
+            ? source.IndexOf("private static TimeoutException CreateVisibleImageWaitTimeout(", snapshotStart, StringComparison.Ordinal)
+            : -1;
+        int loadingPeerStart = timeoutFactoryStart >= 0
+            ? source.IndexOf("private static bool IsLoadingImage", timeoutFactoryStart, StringComparison.Ordinal)
+            : -1;
+        Assert.True(waitStart >= 0 && snapshotStart > waitStart && timeoutFactoryStart > snapshotStart &&
+                    loadingPeerStart > timeoutFactoryStart);
+
+        string wait = source[waitStart..snapshotStart];
+        string snapshot = source[snapshotStart..timeoutFactoryStart];
+        Assert.Contains("lastHostItemStatus = host.Properties.ItemStatus.ValueOrDefault", wait, StringComparison.Ordinal);
+        Assert.Contains("bool isLoading = !string.IsNullOrWhiteSpace(lastHostItemStatus)", wait, StringComparison.Ordinal);
+        Assert.Contains("// Only on a deadline", wait, StringComparison.Ordinal);
+        int waitLoopEnd = wait.IndexOf("// Only on a deadline", StringComparison.Ordinal);
+        Assert.True(waitLoopEnd > 0);
+        Assert.DoesNotContain("FindAllDescendants", wait[..waitLoopEnd], StringComparison.Ordinal);
+        Assert.Contains("CaptureVisibleImageTimeoutSnapshot", wait, StringComparison.Ordinal);
+        Assert.Contains("host.FindAllDescendants()", snapshot, StringComparison.Ordinal);
+        Assert.Contains("intersection.Width <= 0 || intersection.Height <= 0", snapshot, StringComparison.Ordinal);
+        Assert.Contains("element.Properties.IsOffscreen.ValueOrDefault", snapshot, StringComparison.Ordinal);
+        Assert.Contains("element.Properties.ItemStatus.ValueOrDefault", snapshot, StringComparison.Ordinal);
+        Assert.Contains("ReadmeAuditVisibleImageWaitDiagnostics.FormatFailure(", wait, StringComparison.Ordinal);
+        Assert.Contains("hostItemStatus=", formatter, StringComparison.Ordinal);
+        Assert.Contains("visibleImages=", formatter, StringComparison.Ordinal);
+        Assert.Contains("loadingVisibleImages=", formatter, StringComparison.Ordinal);
+        Assert.Contains("unavailableVisibleImages=not-exposed-by-UIA", formatter, StringComparison.Ordinal);
+        Assert.Contains("hostBounds=", formatter, StringComparison.Ordinal);
+        Assert.Contains("scroll=", formatter, StringComparison.Ordinal);
+        Assert.Contains("MaximumHostItemStatusCharacters = 256", formatter, StringComparison.Ordinal);
+        Assert.Contains("if (status.Length > length)", formatter, StringComparison.Ordinal);
+        Assert.Contains("CreateVisibleImageWaitTimeout(", source, StringComparison.Ordinal);
+        Assert.Contains("phase: \"first-viewport\"", source, StringComparison.Ordinal);
+        Assert.Contains("phase: \"traversal-viewport\"", source, StringComparison.Ordinal);
+        Assert.Contains("phase: \"image-revisit-viewport\"", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ReadmeAuditSvgStageTraceIsExplicitlyOptInAndPreservedAsASeparateArtifact()
     {
         string probe = File.ReadAllText(Path.Combine(
