@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Threading;
 using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Document;
@@ -8,6 +9,7 @@ using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Performance;
 using MarkdownRenderer.Parsing;
 using MarkdownRenderer.Theming;
 using Markdig.Syntax;
@@ -153,6 +155,17 @@ public sealed class LayoutSnapshotIndexConstructionTests
                 Assert.Equal(expected[index].TopLevelOrdinal, actual[index].TopLevelOrdinal);
             }
 
+            var measuredCandidates = snapshot.GetMeasuredLayoutPlanCandidatesUnderPaint();
+            var measured = new List<LayoutPlanCandidate>();
+            while (measuredCandidates.MoveNext())
+                measured.Add(measuredCandidates.Current);
+            Assert.Equal(expected.Count, measured.Count);
+            for (int index = 0; index < measured.Count; index++)
+            {
+                Assert.Same(expected[index].Box, measured[index].Box);
+                Assert.Equal(expected[index].TopLevelOrdinal, measured[index].TopLevelOrdinal);
+            }
+
             // Drawing chunks remain atomic beneath CodeBlockBox: the old
             // realization pass did not descend into them, even when a chunk
             // contains inline images or embeds.
@@ -163,6 +176,147 @@ public sealed class LayoutSnapshotIndexConstructionTests
         {
             snapshot.EndInteraction();
         }
+    }
+
+    [Fact]
+    public void LazyCandidateEnumerationVisitsOnlyMeasuredRootsAfterOutOfOrderReflow()
+    {
+        const int blockCount = 10_000;
+        const int firstMeasuredOrdinal = 8_000;
+        const int secondMeasuredOrdinal = 5_000;
+        const float width = 360;
+        Block sourceBlock = Markdig.Markdown.Parse("embedded")[0];
+        var roots = new BlockBox[blockCount];
+        for (int ordinal = 0; ordinal < roots.Length; ordinal++)
+        {
+            roots[ordinal] = new EmbedBox(sourceBlock, TestEmbedFactory.Instance)
+            {
+                BlockIndex = ordinal,
+            };
+        }
+
+        using var snapshot = new LayoutSnapshot(
+            roots,
+            new MarkdownSourceMap(string.Empty),
+            width,
+            height: 0,
+            blockSpacing: 0);
+
+        // EmbedBox estimates are exactly 64px; the test factory measures them
+        // to 20px. Starting at a distant root proves ordinal stability across
+        // suffix reflow, then measuring an earlier root makes arrival order
+        // differ from the document-order plan contract.
+        snapshot.EnableLazyLayout(
+            width,
+            viewportTop: firstMeasuredOrdinal * 64d,
+            viewportHeight: 0.5d,
+            overscan: 0,
+            cancellationToken: CancellationToken.None);
+        Assert.InRange(snapshot.MeasuredTopLevelBlockCount, 1, 99);
+
+        BlockBox secondRoot = roots[secondMeasuredOrdinal];
+        snapshot.EnsureMeasuredBand(
+            new LazyLayoutBand(secondRoot.Bounds.Top + 0.125d, secondRoot.Bounds.Top + 0.5d),
+            CancellationToken.None);
+        Assert.InRange(snapshot.MeasuredTopLevelBlockCount, 2, 99);
+
+        Assert.True(snapshot.TryBeginInteraction());
+        try
+        {
+            Assert.Equal(blockCount, snapshot.GetLayoutPlanCandidatesUnderPaint().Length);
+
+            bool[] measuredMask = ReadField<bool[]>(snapshot, "_measuredTopLevelBlocks");
+            var expectedOrdinals = new List<int>();
+            for (int ordinal = 0; ordinal < measuredMask.Length; ordinal++)
+            {
+                if (measuredMask[ordinal])
+                    expectedOrdinals.Add(ordinal);
+            }
+            Assert.InRange(expectedOrdinals.Count, 2, 99);
+            Assert.Contains(firstMeasuredOrdinal, expectedOrdinals);
+            Assert.Contains(secondMeasuredOrdinal, expectedOrdinals);
+
+            List<int> arrivalOrder = ReadField<List<int>>(
+                snapshot,
+                "_measuredLayoutPlanRootOrdinals");
+            Assert.Equal(secondMeasuredOrdinal, arrivalOrder[^1]);
+            Assert.False(ReadField<bool>(
+                snapshot,
+                "_measuredLayoutPlanRootOrdinalsAreSorted"));
+
+            var candidates = snapshot.GetMeasuredLayoutPlanCandidatesUnderPaint();
+            var actual = new List<LayoutPlanCandidate>();
+            while (candidates.MoveNext())
+                actual.Add(candidates.Current);
+
+            Assert.Equal(expectedOrdinals.Count, actual.Count);
+            for (int index = 0; index < actual.Count; index++)
+            {
+                Assert.Equal(expectedOrdinals[index], actual[index].TopLevelOrdinal);
+                Assert.Same(roots[expectedOrdinals[index]], actual[index].Box);
+            }
+            Assert.Equal(
+                expectedOrdinals,
+                ReadField<List<int>>(snapshot, "_measuredLayoutPlanRootOrdinals"));
+            Assert.True(ReadField<bool>(
+                snapshot,
+                "_measuredLayoutPlanRootOrdinalsAreSorted"));
+            Assert.True(snapshot.TryGetMeasuredBlockByOrdinalUnderPaint(
+                secondMeasuredOrdinal,
+                out BlockBox secondMeasuredRoot));
+            Assert.Same(roots[secondMeasuredOrdinal], secondMeasuredRoot);
+            Assert.True(snapshot.TryGetMeasuredBlockByOrdinalUnderPaint(
+                firstMeasuredOrdinal,
+                out BlockBox firstMeasuredRoot));
+            Assert.Same(roots[firstMeasuredOrdinal], firstMeasuredRoot);
+        }
+        finally
+        {
+            snapshot.EndInteraction();
+        }
+    }
+
+    [Fact]
+    public void FailedLazyResidencyCommitRollsBackMeasuredCandidateRootIndex()
+    {
+        Block sourceBlock = Markdig.Markdown.Parse("embedded")[0];
+        BlockBox[] roots =
+        [
+            new EmbedBox(sourceBlock, TestEmbedFactory.Instance) { BlockIndex = 0 },
+            new EmbedBox(sourceBlock, TestEmbedFactory.Instance) { BlockIndex = 1 },
+        ];
+        var residencyPolicy = new ThrowingVectorResidencyPolicy(throwOnCall: 2);
+        using var snapshot = new LayoutSnapshot(
+            roots,
+            new MarkdownSourceMap(string.Empty),
+            width: 360,
+            height: 0,
+            blockSpacing: 0,
+            vectorSceneResidencyPolicy: residencyPolicy);
+
+        snapshot.EnableLazyLayout(
+            availableWidth: 360,
+            viewportTop: 0,
+            viewportHeight: 0.5d,
+            overscan: 0,
+            cancellationToken: CancellationToken.None);
+        Assert.Equal(1, ReadField<int>(snapshot, "_measuredTopLevelBlockCount"));
+        Assert.Equal(new[] { 0 }, ReadField<List<int>>(
+            snapshot,
+            "_measuredLayoutPlanRootOrdinals"));
+
+        InvalidOperationException failure = Assert.Throws<InvalidOperationException>(() =>
+            snapshot.EnsureMeasuredBand(
+                new LazyLayoutBand(roots[1].Bounds.Top + 0.125d, roots[1].Bounds.Top + 0.5d),
+                CancellationToken.None));
+        Assert.Equal(ThrowingVectorResidencyPolicy.FailureMessage, failure.Message);
+        Assert.Equal(1, ReadField<int>(snapshot, "_measuredTopLevelBlockCount"));
+        bool[] measuredMask = ReadField<bool[]>(snapshot, "_measuredTopLevelBlocks");
+        Assert.True(measuredMask[0]);
+        Assert.False(measuredMask[1]);
+        Assert.Equal(new[] { 0 }, ReadField<List<int>>(
+            snapshot,
+            "_measuredLayoutPlanRootOrdinals"));
     }
 
     [Theory]
@@ -927,5 +1081,62 @@ public sealed class LayoutSnapshotIndexConstructionTests
         public bool CanCreate(Block block) => true;
         public float MeasureHeight(Block block, float availableWidth) => 20;
         public FrameworkElement CreateBlock(Block block) => null!;
+    }
+
+    private sealed class ThrowingVectorResidencyPolicy : IMarkdownVectorSceneResidencyPolicy
+    {
+        internal const string FailureMessage = "test residency preparation failure";
+        private readonly int _throwOnCall;
+        private int _replaceCallCount;
+
+        internal ThrowingVectorResidencyPolicy(int throwOnCall)
+            => _throwOnCall = throwOnCall;
+
+        public int ActiveSceneCount => 0;
+        public long ActiveEstimatedBytes => 0;
+        public int InlineGeometryIndexBuildCount => 0;
+        public int CommandGraphEstimateCount => 0;
+        public int ActiveInlineSceneGeometryIndexCount => 0;
+        public List<string> VisibleDeferredSceneMarkerScratch { get; } = new();
+
+        public bool AreNativeResourcesPrepared(
+            IReadOnlyList<int> topLevelOrdinals,
+            LazyLayoutBand band,
+            LayoutPlacementGeneration placements,
+            IReadOnlyDictionary<int, int> topLevelOrdinalByBlockIndex)
+            => false;
+
+        public bool ReplaceActiveBand(
+            IReadOnlyList<int> topLevelOrdinals,
+            LazyLayoutBand band,
+            LayoutPlacementGeneration placements,
+            IReadOnlyDictionary<int, int> topLevelOrdinalByBlockIndex,
+            CancellationToken cancellationToken)
+        {
+            if (++_replaceCallCount == _throwOnCall)
+                throw new InvalidOperationException(FailureMessage);
+            return false;
+        }
+
+        public bool TryAppendVisibleInlineSceneMarkers(
+            InlineContainerBox inline,
+            double viewportTop,
+            double viewportBottom,
+            Windows.Foundation.Rect? viewport,
+            List<string> markerKeys,
+            ref bool visibleSceneResourcesReady)
+            => false;
+
+        public void ReleaseUnpinnedResources(
+            IReadOnlyList<int> topLevelOrdinals,
+            LazyLayoutBand band,
+            LayoutPlacementGeneration placements,
+            IReadOnlyDictionary<int, int> topLevelOrdinalByBlockIndex)
+        {
+        }
+
+        public void Dispose()
+        {
+        }
     }
 }

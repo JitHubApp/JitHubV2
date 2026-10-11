@@ -37,7 +37,9 @@ public sealed class RealizationPlanReadLeaseWiringTests
         Assert.DoesNotContain("snapshot.CollectFocusableItems()", body, StringComparison.Ordinal);
         Assert.Contains("return false;", body[admission..clear], StringComparison.Ordinal);
         Assert.DoesNotContain("snapshot.GetMeasuredTopLevelBlocks()", body, StringComparison.Ordinal);
-        Assert.Contains("snapshot.GetLayoutPlanCandidatesUnderPaint()", body, StringComparison.Ordinal);
+        Assert.Contains("snapshot.GetMeasuredLayoutPlanCandidatesUnderPaint()", body, StringComparison.Ordinal);
+        Assert.Contains("while (planCandidates.MoveNext())", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("GetLayoutPlanCandidatesUnderPaint()", body, StringComparison.Ordinal);
     }
 
     [Fact]

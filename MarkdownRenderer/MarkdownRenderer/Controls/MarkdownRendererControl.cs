@@ -6945,13 +6945,17 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
 
         if (result.Commit.LayoutRevision <= _appliedLazyLayoutRevision)
         {
+            // Moving the active band can finish visible readiness without a
+            // geometry revision or resource change (for example, two already
+            // measured text-only viewports). Publish that status transition
+            // even when there is no new drawing lease to repaint.
+            NotifyVisibleDeferredSceneItemStatusMayHaveChanged();
             if (result.Commit.NativeSceneResourcesChanged)
             {
                 // A prepared/retired drawing lease changes only the raster
                 // surface. Repaint without rebuilding layout or disturbing
                 // selection, focus, source mapping, or scroll position.
                 InvalidateAutomationLayout();
-                NotifyVisibleDeferredSceneItemStatusMayHaveChanged();
                 InvalidateCanvas();
             }
 
@@ -7209,14 +7213,14 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                     _codeBlockActionPlanIndex = null;
                     _activeCodeBlockActionOrdinals.Clear();
 
-                    ReadOnlySpan<LayoutPlanCandidate> planCandidates =
-                        snapshot.GetLayoutPlanCandidatesUnderPaint();
+                    LayoutSnapshot.LayoutPlanCandidateEnumerator planCandidates =
+                        snapshot.GetMeasuredLayoutPlanCandidatesUnderPaint();
                     int candidateRootOrdinal = -1;
                     BlockBox? candidateRoot = null;
                     bool candidateRootIsMeasured = false;
-                    for (int candidateIndex = 0; candidateIndex < planCandidates.Length; candidateIndex++)
+                    while (planCandidates.MoveNext())
                     {
-                        LayoutPlanCandidate candidate = planCandidates[candidateIndex];
+                        LayoutPlanCandidate candidate = planCandidates.Current;
                         if (candidate.TopLevelOrdinal != candidateRootOrdinal)
                         {
                             candidateRootOrdinal = candidate.TopLevelOrdinal;

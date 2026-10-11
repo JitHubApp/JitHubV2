@@ -61,7 +61,16 @@ internal sealed class LayoutSnapshotIndexBuilder
             throw new InvalidOperationException("A top-level ordinal must be set before indexing a block.");
 
         if (addLayoutPlanCandidate && IsLayoutPlanCandidate(box))
+        {
+            if (_layoutPlanCandidates.Count > 0 &&
+                _layoutPlanCandidates[^1].TopLevelOrdinal > _topLevelOrdinal)
+            {
+                throw new InvalidOperationException(
+                    "Layout-plan candidates must be indexed in top-level document order.");
+            }
+
             _layoutPlanCandidates.Add(new LayoutPlanCandidate(box, _topLevelOrdinal));
+        }
 
         int focusableStart = _focusablePlan.Count;
         IHorizontalOverflowBox? previousAncestor = _ancestor;

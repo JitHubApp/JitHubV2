@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using System.Buffers;
 using System.Reflection;
 using System.Threading;
@@ -123,6 +124,61 @@ public sealed class CompletedSvgPlacementCloneTests
             privateRoot.Paint(drawing, new Rect(0, 0, target.Size.Width, target.Size.Height));
         }
         Assert.Same(bitmap, privateImage.Bitmap);
+    }
+
+    [Fact]
+    public async Task LazyRasterPlacementCloneRebuildsMeasuredCandidateRootIndex()
+    {
+        await using var fixture = await SvgPlacementFixture.CreateReadyAsync(hasText: true);
+        LayoutSnapshot sourceSnapshot = Assert.IsType<LayoutSnapshot>(fixture.Snapshot);
+        sourceSnapshot.EnableLazyLayout(
+            LayoutWidth,
+            viewportTop: 0,
+            viewportHeight: sourceSnapshot.Size.Height,
+            overscan: 0,
+            cancellationToken: CancellationToken.None);
+        Assert.Equal(1, sourceSnapshot.MeasuredTopLevelBlockCount);
+
+        SingleRasterLayoutCandidate candidate = Assert.IsType<SingleRasterLayoutCandidate>(
+            sourceSnapshot.CreateSingleRasterCandidate(
+                [fixture.Root.BlockIndex],
+                LayoutWidth,
+                CancellationToken.None,
+                CancellationToken.None,
+                fixture.ImagePreparationOwner,
+                retirementSink: null,
+                imageUnavailable: null,
+                out MarkdownLayoutContext? candidateContext));
+        fixture.SetCandidate(candidate, Assert.IsType<MarkdownLayoutContext>(candidateContext));
+
+        LayoutSnapshot clonedSnapshot = candidate.Snapshot;
+        Assert.Equal(1, clonedSnapshot.MeasuredTopLevelBlockCount);
+        Assert.True(clonedSnapshot.TryBeginInteraction());
+        try
+        {
+            ReadOnlySpan<LayoutPlanCandidate> allCandidates =
+                clonedSnapshot.GetLayoutPlanCandidatesUnderPaint();
+            Assert.NotEmpty(allCandidates.ToArray());
+
+            var measuredCandidates = clonedSnapshot.GetMeasuredLayoutPlanCandidatesUnderPaint();
+            int measuredCount = 0;
+            while (measuredCandidates.MoveNext())
+            {
+                Assert.Equal(0, measuredCandidates.Current.TopLevelOrdinal);
+                if (measuredCount < allCandidates.Length)
+                    Assert.Same(allCandidates[measuredCount].Box, measuredCandidates.Current.Box);
+                measuredCount++;
+            }
+
+            Assert.Equal(allCandidates.Length, measuredCount);
+            Assert.Equal(new[] { 0 }, GetField<List<int>>(
+                clonedSnapshot,
+                "_measuredLayoutPlanRootOrdinals"));
+        }
+        finally
+        {
+            clonedSnapshot.EndInteraction();
+        }
     }
 
     [Fact]

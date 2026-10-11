@@ -126,6 +126,46 @@ public sealed class VectorSceneResourceResidencyTests
     }
 
     [Fact]
+    public void MovingBetweenMeasuredTextOnlyBandsChangesCoverageWithoutRevisionOrResourceSignal()
+    {
+        using var performanceSession = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
+        using LayoutSnapshot snapshot = CreateLazySnapshot(performanceSession, out _, out _);
+
+        StackBox textOnlyBlock = Assert.IsType<StackBox>(snapshot.Blocks[1]);
+        var firstTextBand = new LazyLayoutBand(
+            textOnlyBlock.Bounds.Top + 100,
+            textOnlyBlock.Bounds.Top + 150);
+        var secondTextBand = new LazyLayoutBand(
+            textOnlyBlock.Bounds.Top + 250,
+            textOnlyBlock.Bounds.Top + 300);
+
+        // Leaving the initially pinned vector scene releases that lease and
+        // realizes the containing text-only root. This also gives the snapshot
+        // a real residency policy whose active visible band can move even when
+        // neither target viewport contains scene resources.
+        LazyLayoutCommit firstCommit = snapshot.EnsureMeasuredBand(firstTextBand, CancellationToken.None);
+        Assert.True(firstCommit.NativeSceneResourcesChanged);
+        Assert.Equal(0, snapshot.ActivePreparedVectorSceneCount);
+        Assert.True(snapshot.IsBandMeasured(firstTextBand));
+        Assert.False(snapshot.IsBandMeasured(secondTextBand));
+        long measuredRevision = snapshot.LayoutRevision;
+
+        // The second viewport is already measured by the same StackBox root,
+        // so this exchange changes only active-band coverage. Neither geometry
+        // revision nor native-resource ownership changes, but readiness for the
+        // old band becomes false while readiness for the new band becomes true.
+        LazyLayoutCommit secondCommit = snapshot.EnsureMeasuredBand(secondTextBand, CancellationToken.None);
+
+        Assert.False(secondCommit.Changed);
+        Assert.False(secondCommit.NativeSceneResourcesChanged);
+        Assert.Equal(measuredRevision, secondCommit.LayoutRevision);
+        Assert.Equal(measuredRevision, snapshot.LayoutRevision);
+        Assert.Equal(0, snapshot.ActivePreparedVectorSceneCount);
+        Assert.False(snapshot.IsBandMeasured(firstTextBand));
+        Assert.True(snapshot.IsBandMeasured(secondTextBand));
+    }
+
+    [Fact]
     public void HeightReductionMeasuresNewOrdinalThatMovesIntoFinalBand()
     {
         using var performanceSession = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);

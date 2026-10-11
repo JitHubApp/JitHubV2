@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Graphics.Canvas;
@@ -73,6 +74,12 @@ internal sealed partial class LayoutSnapshot : System.IDisposable
     private readonly FocusablePlanEntry[] _focusablePlan;
     private readonly LayoutPlanCandidate[] _layoutPlanCandidates;
     private readonly FocusableItem[]? _fixedFocusableItems;
+    // Only measured roots that contain at least one realization candidate are
+    // retained here. This keeps lazy plan publication proportional to the
+    // measured candidate subset instead of rescanning every root or candidate.
+    // The list is nullable so eager snapshots pay no additional allocation.
+    private List<int>? _measuredLayoutPlanRootOrdinals;
+    private bool _measuredLayoutPlanRootOrdinalsAreSorted = true;
     // Mutable block trees are refreshed under _layoutLock, but interactive
     // readers consume only the immutable placement/index pair owned by the
     // currently published metadata object.
@@ -625,6 +632,7 @@ internal sealed partial class LayoutSnapshot : System.IDisposable
                 snapshot._lazyLayoutEnabled = true;
                 snapshot._measuredTopLevelBlocks = measuredRootMask;
                 snapshot._measuredTopLevelBlockCount = capturedMeasuredRootCount;
+                snapshot.RebuildMeasuredLayoutPlanRootOrdinalsNoLock();
                 snapshot.RefreshViewportIndexNoLock();
             }
             snapshot._layoutRevision = revision + 1;
@@ -947,6 +955,8 @@ internal sealed partial class LayoutSnapshot : System.IDisposable
             _lazyLayoutEnabled = true;
             _availableWidth = Math.Max(1f, availableWidth);
             _measuredTopLevelBlocks = new bool[Blocks.Count];
+            _measuredLayoutPlanRootOrdinals = null;
+            _measuredLayoutPlanRootOrdinalsAreSorted = true;
             _measuredTopLevelBlockCount = 0;
             ReflowNoLock();
         }
@@ -1230,6 +1240,7 @@ internal sealed partial class LayoutSnapshot : System.IDisposable
                             (measuredOrdinals ??= []).Add(ordinal);
                             _measuredTopLevelBlocks[ordinal] = true;
                             _measuredTopLevelBlockCount++;
+                            AddMeasuredLayoutPlanRootOrdinalNoLock(ordinal);
                         }
 
                         // Recompute all candidate ordinals after changed heights
@@ -1326,6 +1337,7 @@ internal sealed partial class LayoutSnapshot : System.IDisposable
                     foreach (int ordinal in measuredOrdinals)
                         _measuredTopLevelBlocks![ordinal] = false;
                     _measuredTopLevelBlockCount = oldMeasuredTopLevelBlockCount;
+                    RemoveUnmeasuredLayoutPlanRootOrdinalsNoLock();
                 }
                 _layoutRevision = oldRevision;
                 // Include the predecessor: an unsuccessful Measure may also
@@ -3399,6 +3411,220 @@ internal sealed partial class LayoutSnapshot : System.IDisposable
         return GeometryRecoveryRequired
             ? ReadOnlySpan<LayoutPlanCandidate>.Empty
             : _layoutPlanCandidates;
+    }
+
+    /// <summary>
+    /// Enumerates every currently measured realization candidate in document
+    /// order. For a lazy document-order placement this visits only candidate
+    /// ranges belonging to measured roots; eager and custom-placement layouts
+    /// retain the conservative full-candidate traversal. The caller must hold
+    /// the snapshot interaction lease for the entire enumeration.
+    /// </summary>
+    internal LayoutPlanCandidateEnumerator GetMeasuredLayoutPlanCandidatesUnderPaint()
+    {
+        if (!Monitor.IsEntered(_layoutLock))
+            throw new InvalidOperationException("A snapshot read lease is required.");
+
+        if (GeometryRecoveryRequired)
+            return new LayoutPlanCandidateEnumerator(ReadOnlySpan<LayoutPlanCandidate>.Empty);
+
+        if (!_lazyLayoutEnabled ||
+            _measuredTopLevelBlocks is null ||
+            !CurrentPlacementGenerationNoLock().IsDocumentOrder)
+        {
+            return new LayoutPlanCandidateEnumerator(_layoutPlanCandidates);
+        }
+
+        List<int>? measuredRoots = _measuredLayoutPlanRootOrdinals;
+        if (measuredRoots is null || measuredRoots.Count == 0)
+            return new LayoutPlanCandidateEnumerator(
+                _layoutPlanCandidates,
+                ReadOnlySpan<int>.Empty);
+
+        if (!_measuredLayoutPlanRootOrdinalsAreSorted)
+        {
+            measuredRoots.Sort();
+            _measuredLayoutPlanRootOrdinalsAreSorted = true;
+        }
+
+        return new LayoutPlanCandidateEnumerator(
+            _layoutPlanCandidates,
+            CollectionsMarshal.AsSpan(measuredRoots));
+    }
+
+    private void AddMeasuredLayoutPlanRootOrdinalNoLock(int ordinal)
+    {
+        if (!TryFindLayoutPlanCandidateRange(_layoutPlanCandidates, ordinal, out _, out _))
+            return;
+
+        List<int>? measuredRoots = _measuredLayoutPlanRootOrdinals;
+        if (measuredRoots is null)
+        {
+            measuredRoots = new List<int>();
+            _measuredLayoutPlanRootOrdinals = measuredRoots;
+            _measuredLayoutPlanRootOrdinalsAreSorted = true;
+        }
+
+        // A root transitions from unmeasured to measured only once. The mask
+        // check in EnsureMeasuredBand is the duplicate fence, so do not pay a
+        // linear list membership scan while admitting a large measured band.
+        if (measuredRoots.Count > 0 && ordinal < measuredRoots[^1])
+            _measuredLayoutPlanRootOrdinalsAreSorted = false;
+        measuredRoots.Add(ordinal);
+    }
+
+    private void RebuildMeasuredLayoutPlanRootOrdinalsNoLock()
+    {
+        bool[]? measuredMask = _measuredTopLevelBlocks;
+        if (measuredMask is null || _layoutPlanCandidates.Length == 0)
+        {
+            _measuredLayoutPlanRootOrdinals = null;
+            _measuredLayoutPlanRootOrdinalsAreSorted = true;
+            return;
+        }
+
+        List<int>? measuredRoots = null;
+        int previousOrdinal = -1;
+        foreach (LayoutPlanCandidate candidate in _layoutPlanCandidates)
+        {
+            int ordinal = candidate.TopLevelOrdinal;
+            if (ordinal == previousOrdinal)
+                continue;
+            previousOrdinal = ordinal;
+            if (ordinal >= 0 && ordinal < measuredMask.Length && measuredMask[ordinal])
+                (measuredRoots ??= new List<int>()).Add(ordinal);
+        }
+
+        _measuredLayoutPlanRootOrdinals = measuredRoots;
+        _measuredLayoutPlanRootOrdinalsAreSorted = true;
+    }
+
+    private void RemoveUnmeasuredLayoutPlanRootOrdinalsNoLock()
+    {
+        if (_measuredLayoutPlanRootOrdinals is not { } measuredRoots ||
+            _measuredTopLevelBlocks is not { } measuredMask)
+        {
+            return;
+        }
+
+        // Rollback is exceptional and may follow allocation/native failure.
+        // Compact once after restoring the authoritative mask instead of
+        // repeatedly removing individual roots from the middle of the list.
+        int destination = 0;
+        for (int source = 0; source < measuredRoots.Count; source++)
+        {
+            int ordinal = measuredRoots[source];
+            if (ordinal >= 0 && ordinal < measuredMask.Length && measuredMask[ordinal])
+                measuredRoots[destination++] = ordinal;
+        }
+        if (destination < measuredRoots.Count)
+            measuredRoots.RemoveRange(destination, measuredRoots.Count - destination);
+        if (measuredRoots.Count == 0)
+        {
+            _measuredLayoutPlanRootOrdinals = null;
+            _measuredLayoutPlanRootOrdinalsAreSorted = true;
+        }
+
+        // Removing entries preserves relative order whether or not the list
+        // had been sorted before the failed transaction.
+    }
+
+    private static bool TryFindLayoutPlanCandidateRange(
+        ReadOnlySpan<LayoutPlanCandidate> candidates,
+        int ordinal,
+        out int start,
+        out int end)
+    {
+        int low = 0;
+        int high = candidates.Length;
+        while (low < high)
+        {
+            int middle = low + ((high - low) >> 1);
+            if (candidates[middle].TopLevelOrdinal < ordinal)
+                low = middle + 1;
+            else
+                high = middle;
+        }
+
+        start = low;
+        high = candidates.Length;
+        while (low < high)
+        {
+            int middle = low + ((high - low) >> 1);
+            if (candidates[middle].TopLevelOrdinal <= ordinal)
+                low = middle + 1;
+            else
+                high = middle;
+        }
+
+        end = low;
+        return start < end;
+    }
+
+    internal ref struct LayoutPlanCandidateEnumerator
+    {
+        private readonly ReadOnlySpan<LayoutPlanCandidate> _candidates;
+        private readonly ReadOnlySpan<int> _measuredRootOrdinals;
+        private readonly bool _filterByMeasuredRoot;
+        private int _nextCandidateIndex;
+        private int _candidateRangeEnd;
+        private int _nextMeasuredRootIndex;
+
+        internal LayoutPlanCandidateEnumerator(ReadOnlySpan<LayoutPlanCandidate> candidates)
+        {
+            _candidates = candidates;
+            _measuredRootOrdinals = default;
+            _filterByMeasuredRoot = false;
+            _nextCandidateIndex = 0;
+            _candidateRangeEnd = 0;
+            _nextMeasuredRootIndex = 0;
+            Current = default;
+        }
+
+        internal LayoutPlanCandidateEnumerator(
+            ReadOnlySpan<LayoutPlanCandidate> candidates,
+            ReadOnlySpan<int> measuredRootOrdinals)
+        {
+            _candidates = candidates;
+            _measuredRootOrdinals = measuredRootOrdinals;
+            _filterByMeasuredRoot = true;
+            _nextCandidateIndex = 0;
+            _candidateRangeEnd = 0;
+            _nextMeasuredRootIndex = 0;
+            Current = default;
+        }
+
+        internal LayoutPlanCandidate Current { get; private set; }
+
+        internal bool MoveNext()
+        {
+            if (!_filterByMeasuredRoot)
+            {
+                if (_nextCandidateIndex >= _candidates.Length)
+                    return false;
+
+                Current = _candidates[_nextCandidateIndex++];
+                return true;
+            }
+
+            while (true)
+            {
+                if (_nextCandidateIndex < _candidateRangeEnd)
+                {
+                    Current = _candidates[_nextCandidateIndex++];
+                    return true;
+                }
+
+                if (_nextMeasuredRootIndex >= _measuredRootOrdinals.Length)
+                    return false;
+
+                LayoutSnapshot.TryFindLayoutPlanCandidateRange(
+                    _candidates,
+                    _measuredRootOrdinals[_nextMeasuredRootIndex++],
+                    out _nextCandidateIndex,
+                    out _candidateRangeEnd);
+            }
+        }
     }
 
     internal static bool IsInlineEmbedKeyboardFocusable(InlineEmbedRun embed)

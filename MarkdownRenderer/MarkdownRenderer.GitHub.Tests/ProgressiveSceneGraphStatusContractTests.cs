@@ -7,6 +7,20 @@ namespace MarkdownRenderer.GitHub.Tests;
 public sealed class ProgressiveSceneGraphStatusContractTests
 {
     [Fact]
+    public void AlreadyMeasuredBandCompletionPublishesReadinessWithoutResourceChanges()
+    {
+        string source = Read("Controls", "MarkdownRendererControl.cs");
+        string completion = Section(source,
+            "if (result.Commit.LayoutRevision <= _appliedLazyLayoutRevision)",
+            "// A user can jump to an already-measured band");
+        string unconditional = completion[..completion.IndexOf(
+            "if (result.Commit.NativeSceneResourcesChanged)", StringComparison.Ordinal)];
+        Assert.Contains("NotifyVisibleDeferredSceneItemStatusMayHaveChanged();", unconditional);
+        Assert.DoesNotContain("InvalidateCanvas();", unconditional);
+        Assert.DoesNotContain("RebuildRealizationPlans", completion);
+    }
+
+    [Fact]
     public void NewAndAlreadyAppliedLazyRevisionsAndFailureDrainStatusChanges()
     {
         string source = Read("Controls", "MarkdownRendererControl.cs");
