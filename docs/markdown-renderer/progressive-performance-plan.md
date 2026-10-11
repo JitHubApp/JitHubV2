@@ -30,14 +30,235 @@ signing, or device qualification requirements.
 The reviewed checkpoint and full physical measurement have now been attempted;
 the clean-checkout AOT build blocker is fixed in local commit
 `63135f0e7aab30a2dfb91292e903a31e4d510895`, without pushing. The immediate
-priorities are the real offline README replay's aggregate-readiness failure,
+priorities are the real offline README replay's visual/semantic comparison,
 the Sandbox's nonfunctional WebP codec, and the measured publication/frame-pacing
-failures below. The app-startup failure has been resolved. The
+failures below. The app-startup and ranks 1–2 aggregate-readiness failures have
+been resolved in the latest replay described next. The
 unfinished request-local SVG coverage cache was preserved separately and is
 excluded from this checkpoint; the tested disjoint-column worker remains the
 candidate. Its prototype is not sufficient evidence to delay the full-system
 measurement or to claim a production speedup. Source-bound local results must
 not be presented as the joined GitHub Actions release qualification.
+
+**Latest completed replay (supersedes the earlier readiness failures below):**
+the clean `be6471a5` Release/x64 NativeAOT app and matching runner traverse all
+**26 viewports** of `codecrafters-io/build-your-own-x` and all **50 viewports**
+of `sindresorhus/awesome`, with zero unavailable images, no render failure, and
+clean exits. Both same-byte Edge replays also complete. The unchanged 20-second
+readiness gate now succeeds; there is no readiness waiver or longer timeout.
+Evidence is `goal-release-20261011/offline-readiness-fixed-clean-be6471a5/`,
+guest run `9fa7954d19bc4b0aac82f6d69a063c81`. The app SHA-256 remains
+`FB6614BB8BA3DD98B131613E12C218BF8A0B8694CF4FFE28CC35918A90B50684`.
+The first/last native viewport of each case was visually inspected, not all
+76 viewports; full fidelity is not qualified by that inspection.
+
+The replay then exposed an independent audit-tool failure: GDI+ filename loading
+rejects the 274/286-character Sandbox screenshot paths with `Parameter is not
+valid`, so no comparison verdict or performance aggregate was produced.
+The exact screenshots decode correctly from an open stream. Local commit
+`ead8aa10` retains a stream for each bitmap's entire lifetime, including its
+bounded two-entry tile-cache lease, without re-encoding, copying complete image
+buffers, or changing comparison mathematics/thresholds. **84/84** focused image,
+visual-policy, and automation contracts pass, including long paths, lazy drawing,
+pixel/alpha preservation, invalid inputs, and file-handle release. The fresh
+self-contained runner publishes successfully from the clean committed checkout.
+Evidence: `goal-release-20261011/readme-bitmap-long-path/bitmap-long-path.trx`.
+The first fix-and-rerun under
+`goal-release-20261011/offline-bitmap-stream-clean-ead8aa10/` completes rank 1's
+26 native viewports and same-byte Edge replay, and gets past bitmap comparison.
+It then fails strict JSON serialization: the offline case intentionally has no
+live GitHub timing, but the comparison used positive infinity for that missing
+denominator. Rank 2 never runs and no case-result verdict is written. This is
+not a pass; all partial evidence and the serialization stack are retained.
+Local commit `d3a0aa93` represents missing/invalid timing ratios as nullable
+values. It does not change valid measured divisions, same-byte completeness
+requirements, thresholds, or substitute live timings for missing same-byte data.
+The focused timing/bitmap/automation/offline contracts pass **68/68, zero
+skipped**, and the automation Release/x64 build passes with zero warnings/errors.
+Evidence: `goal-release-20261011/readme-timing-ratio/timing-ratio-fixed.trx`.
+The second and final fix-and-rerun of this UI batch under
+`goal-release-20261011/offline-timing-ratio-clean-d3a0aa93/`, using the unchanged
+`be6471a5` app and a clean, self-contained `d3a0aa93` runner to isolate the harness
+fix, is rejected before app launch by the stale-binary guard. The clean source
+now includes production scroll fix `215c1168`, while the supplied app predates
+it; keeping that old app was a staging mistake, not a valid controlled replay.
+There are zero completed cases and three aggregate failures. No timestamp or
+freshness bypass is allowed, and this UI batch is not being retried a third time.
+The timing fix has not yet received a successful live comparison verdict.
+The full app suite passes **3,603/3,603, zero skipped** after these changes:
+`goal-release-20261011/readme-timing-ratio/full-app-tests/jithub-full-d3a0aa93.trx`.
+A fresh clean-source `e9ec97d8` Release/x64 NativeAOT publish passes with the
+normal dependency-security gate enabled, rather than the earlier diagnostic
+security-gate skip. Locked dependency/feed/vulnerability checks and **131/131**
+release-security tests pass. Native x64 payload verification also passes; the
+app SHA-256 is `791D5F7DD131FBAD943B3AE747978E422A423C4A3820189CD7C4A298CC33E06D`.
+Evidence: `goal-release-20261011/current-clean-e9ec97d8-publish.log` and
+`current-clean-e9ec97d8/jithub-aot/`. The full standalone renderer test invocation
+also finishes **1,859/1,859, zero skipped**, in 56m39s, under
+`viewport-projection/standalone-full.trx`. Its no-build binary predates the later
+scroll-adorner change; that change has the separate focused verification below.
+
+A read-only reanalysis of the first completed replay's saved PNGs now gets past
+the path/serialization failures, without running either UI again or modifying
+source evidence. It compares all **26/26** and **50/50** captured native viewports
+against the saved same-byte Edge tiles. Mean SSIM is **0.2041 / 0.1264**, with
+native document extents **4.22% / 3.45%** taller; this is a fidelity failure, not a
+qualified rendering result. Text/link semantics cannot be reconstructed because
+the saved reports intentionally omit native text and the private digest key.
+Evidence: `goal-release-20261011/saved-readme-pixel-analysis/saved-pixel-diagnostic.json`.
+Visual inspection of rank 1's first viewport identifies an extra 16-DIP interval
+before the native heading rule and following content. Local commit `78cd2ca8`
+fixes the cause: inline-block measurement used authored margins even though
+placement and painting used collapsed/suppressed margins. Measurement now
+resolves the current style through the same allocation-free margin calculation,
+without publishing new state before measurement succeeds. The new regression
+passes at 100%, 150%, and 200%, including equal local heading/rule pixels and
+downstream geometry for equivalent margins. Related collapse, cancellation,
+rollback, and placement-retirement tests pass **48/48**. Evidence is
+`goal-release-20261011/heading-margin-measurement/`. This fixes the isolated
+geometry defect; it is not a fresh full-page fidelity pass. Comparison thresholds
+and canonical CSS remain unchanged. Rank 2 also exposes fixed 11-DIP superscript
+text inside a 24-DIP heading; its captured Edge style is 18 pixels. Relative
+script typography is being addressed separately through an opt-in, ordered
+stylesheet rule: it must override lower-precedence fixed resource values while
+allowing later explicit stylesheet font sizes to win. Existing versioned visual
+profiles must retain their prior behavior.
+
+Local commit `bbb9db6e` removes another isolated source of extra vertical space:
+anonymous inline fragments inside safe-HTML containers inherited the Body
+paragraph's 16-DIP margin. Generic HTML flow now has no synthetic paragraph
+margin, while explicit `<p>` and GitHub's text-only Markdown-reparsed containers
+keep their real paragraph spacing. Source spans, semantic newlines, and selection
+rectangles remain covered. The focused spacing and existing safe-HTML suites
+pass **92/92, zero skipped** in Release/x64; the final persisted no-build receipt
+is `goal-release-20261011/anonymous-html-spacing/anonymous-html-spacing.trx`.
+No full-page UI replay or fidelity qualification is claimed for this fix.
+
+A new full counterbalanced attempt targeting clean candidate `e9ec97d8` stops
+after the approved reference's **R1 fails**, after 10m12s. No C1, C2, or R2
+measurements were taken, so this is not a before/after comparison. Evidence is
+`goal-release-20261011/physical-counterbalanced-e9ec97d8/counterbalanced/run-20261011-225512434-d57c4cabc7f7/`.
+The reference scroll p95 is **9.3978 ms**; active UI work p95/p99 is
+**0.2503/0.3651 ms**, with zero Gen2 collections. Display configuration reports
+240 Hz, but observed callbacks are **119.647 Hz**, failing the unchanged display
+qualification. Visibility sampling also leaves one **1,138.3095 ms** uncovered
+interval, despite no sampled foreground loss or desktop switch. Five of six
+viewport conditions fail stationarity; 1 MiB uncached p95 is **253.933 ms**
+against 250 ms, and the 100 KiB publication maxima are **4.992/6.7387 ms** against
+2 ms. Cancellation passes all 200 iterations with zero stale commits. Builds,
+tests, and browser captures were held during this attempt; none of these
+failures is waived or replaced with a quick-run result. Both the source-binding
+receipt and incomplete verdict remain explicitly unqualified.
+The user subsequently approved a temporary 120 Hz run followed by restoration
+to 240 Hz. A read-only mode enumeration finds only **60/240 Hz at 5120×1440**,
+and no 119–121 Hz mode at any enumerated resolution. The non-mutating driver
+test for 120 Hz returns **DISP_CHANGE_BADMODE (-2)**. No refresh, resolution,
+registry, or display arrangement was changed. The proposed 120 Hz setup cannot
+be used on this driver/display combination; a supported qualified display mode
+or runner is still needed. Local diagnostic helper:
+`goal-release-20261011/Invoke-Authorized120HzCheckpoint.ps1` (not shipping code).
+
+Local commit `215c1168` also removes idle scroll-triggered selection-adorner
+refresh scheduling and a duplicate interactive invalidation. Its value-only,
+constant-time predicate preserves active/offscreen selection, link hover/focus,
+visible or retained stale overlay state, touch handles, and pending/reentrant
+refreshes. Layout/device-recovery callers are unchanged. **5/5** new regressions
+and **31/31** existing admission/recovery contracts pass; the full renderer
+Release/x64 build passes with zero warnings/errors. Evidence:
+`goal-release-20261011/selection-adorner-scroll-refresh/`. This is a reviewed code
+optimization, not yet a measured frame-pacing improvement. Neither local commit
+has been pushed, and no scheduled run has been recreated.
+
+The isolated x64 Rust size experiment under
+`goal-release-20261011/resvg-opt-s-x64-diagnostic-20261011/` changes only the
+release optimization setting from `3` to `s`, retaining pinned Rust 1.96.0,
+locked dependencies, fat LTO, one codegen unit, static CRT and reproducible-build
+settings. The resulting worker is **2,945,024 bytes** (387,072 bytes smaller),
+SHA-256 `741d113d509ff69939f8a615dab6022609336a8e7b69aa7f790338e8860841b6`.
+With the current 348,160-byte provider, its pre-sign deployment total would be
+3,293,184 bytes, below the unchanged 3.5 MiB ceiling. It is an isolated artifact,
+not a shipping replacement: source fingerprint remains
+`d8c8674167801ad150cd302a2ae1846612e839763e4aa39988815e6f623a8a48`, no provider
+shipping identity was refreshed. A second official build in an artifact-only
+provider clone passes the existing normalized PE reproducibility comparison
+and all-RID identity/76-package supply-chain checks; raw PE hashes differ and
+are not claimed byte-identical. The unchanged isolated provider/fault suite
+then passes **643/644, zero skipped**. Its 576-image sponsor fixture takes
+3.507 seconds and fails the unchanged three-second deadline. Evidence is
+`goal-release-20261011/resvg-opt-s-validation-20261011/`; no Edge pixel test has
+yet run for that artifact. This optimization is therefore **not approved for
+promotion**, despite its smaller size; the shipping worker remains unchanged.
+With other builds/tests stopped, a subsequent isolated opt3/opt-s/opt-s/opt3
+sponsor diagnostic passes all four unchanged tests. However, opt-s is slower in
+both pairs: median whole-test duration 3.448s versus 3.095s, about 11.4% higher.
+Those durations include fixture setup, not just the three-second worker interval;
+two samples per profile do not qualify performance or erase the earlier failure.
+Evidence: `resvg-opt-s-validation-20261011/paired-sponsor-20261011/`. Opt-s remains
+unpromoted. The isolated opt-level=2 build produces a 3,312,640-byte x64 worker
+(19,456 bytes smaller than opt3), with provider+worker 9,216 bytes below the
+**unsigned** deployment cap. Its opt3/opt2/opt2/opt3 sponsor check passes all four
+unchanged tests; median whole-test duration is 3.047s versus 2.982s (+2.18%, two
+samples each). This is a possible size/performance tradeoff, not a qualified
+shipping replacement. Its subsequent unfiltered provider/fault suite passes
+**643/644, zero skipped**, with the 576-image sponsor fixture exceeding the
+unchanged three-second worker deadline. The test assembly and opt2 worker hashes
+remain unchanged in an artifact-only copy; the shipping output is untouched.
+This run overlaps browser capture and does not qualify comparative performance,
+but its failure cannot be waived. No opt2 repeat-build, full fidelity, signed
+package, or other-architecture result exists. The full fault evidence is
+`opt-level-2-diagnostic-20261011/provider-fault-validation-20261011-231643-3932f858bd7c477b9fb635a74ec98dbe/`.
+Build and paired diagnostic evidence is in
+`resvg-opt-s-validation-20261011/opt-level-2-diagnostic-20261011/` and
+`paired-sponsor-opt2-20261011/`. No shipping profile, worker, threshold, or source
+identity has been changed.
+
+The earlier public same-byte capture contains **12 complete cases** under its
+then-current validator, not 500: ranks 1–4, 6, 11–15, 17 and 21. Its ranks 5, 16
+and 22 are partial because GitHub's rendered page itself has unavailable images. Existing evidence
+does not yet distinguish HTTP failure from browser/network/decode failure;
+do not classify these as upstream 404s or waive them. No complete top-500 corpus
+or joined release qualification exists yet.
+Local commit `e9ec97d8` adds bounded hash-only HTTP/network classifications from
+already-recorded browser events to those existing hard failures. **35/35**
+relevant Node tests pass; no extra request, payload, raw URL, credential, or
+exception waiver is introduced. A new one-case rank-5 public browser capture
+under `goal-release-20261011/public-rank005-network-e9ec97d8/` completes with guest
+runner exit zero and a valid captured rank-5 receipt (936,484 corpus bytes).
+The previously missing browser image succeeds this time, so the old failure
+cannot be assigned a permanent HTTP/decode cause. Host admission then rejects
+the reported Windows-relative corpus path. Local commit `aca9f060` accepts the
+producer's GUID directory with either platform separator, while continuing to
+reject traversal, aliases, rooted paths, and redirected path components. It also
+bounds guest JSON/file reads before allocation, counts directory-only fanout,
+and rejects contradictory success summaries or missing rendered-HTML evidence.
+The focused PowerShell suite passes, including the actual junction regression.
+The retained rank-5 bytes pass a fresh headless validation with the current
+wrapper; the original failed report is unchanged. Evidence:
+`goal-release-20261011/capture-wrapper-validation-20261011-230900-7e286e780a1345d2bd597c6017409432/`.
+This adds rank-5 capture evidence, not a native rendering comparison or top-500
+completion claim. A distinct ranks 6–25 capture completes under
+`goal-release-20261011/public-ranks006-025-aca9f060-direct-node/`. Its initial
+staging attempt correctly rejected the `C:\Program Files\nodejs` symlink;
+the new run uses the verified ordinary Node executable at that link's resolved
+target, without relaxing the no-reparse rule or overwriting prior evidence.
+Ranks **6–15** all pass host capture validation. The second shard is rejected:
+the guest reports nine captures and one failure, but rank **18, torvalds/linux**
+has no rendered README (`github-source-view`, which is not proof of why the
+article was absent), and rank **24, vuejs/vue** has one unavailable image among
+18 visible images. Its retained bounded browser failure record identifies
+`net::ERR_BLOCKED_BY_ORB`, with no HTTP status; this is not an inferred 404 or a
+native rendering failure. The complete failed shard remains in `staging/pulled/`;
+none of its cases is counted as a host-admitted successful shard. The wrapper
+returns failure with **one of two batches completed**, preserving all evidence.
+A distinct browser-only capture of ranks **26–100** is now running under
+`goal-release-20261011/public-ranks026-100-bbb9db6e/`. It stages its own immutable
+source/runner/Node snapshot and records no credentials; it is not a retry or a
+replacement for the failed ranks 18/24 evidence. Its eventual batch receipts,
+not this in-progress entry, determine how many cases completed.
+The current pure-headless README Node suite passes **83/83, zero skipped**:
+`goal-release-20261011/readme-node-headless-aca9f060.log`. Browser-launching
+integration/replay tests are excluded from this count; no host browser was
+started by the suite.
 
 The next diagnostic replay of **ranks 1–2** with the clean `63135f0e` app
 and `3339c6b6` runner still fails the unchanged 20-second UIA readiness gate:
@@ -757,6 +978,13 @@ not a completed README rendering or top-500 gate.
   no production mitigation was changed, and all diagnostic processes exited.
   Production `WindowsWorkerProcess.cs` was restored exactly; evidence is in
   `goal-release-20261011/x86-debug-event-ab-diagnostic-20261011/`.
+  A subsequent read-only review finds no loader debug strings or failed-object
+  trace identifying the denial; the retained File I/O directory is empty. The
+  next useful diagnostic requires a user-mode debugger cooperating with the
+  existing suspended restricted-child launch, without changing its token, job,
+  or mitigations. This machine has WinDbgX but no CDB/GFlags command-line tools.
+  No guessed PEB write, persistent IFEO setting, ACL relaxation, or ordinary
+  unrestricted launch is an acceptable substitute for that evidence.
 
 - The current source also publishes the strict ARM64 NativeAOT smoke successfully
   with locked restore, full trimming and warnings-as-errors. The produced PE is
