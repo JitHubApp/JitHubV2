@@ -48,9 +48,12 @@ $script:MaximumSourceFileBytes = 64MB
 $script:MaximumSourceSnapshotBytes = 256MB
 $script:MaximumRunnerPayloadBytes = 2GB
 $script:MaximumCaptureReportBytes = 4MB
+$script:MaximumCorpusManifestBytes = 4MB
 $script:MaximumCorpusFileBytes = 64MB
 $script:MaximumCorpusFiles = 15016
 $script:MaximumCorpusBytes = 308MB
+# Keep corpus traversal bounded like ordinary staging traversal; this includes directories.
+$script:MaximumCorpusEntries = 100000
 $script:SensitiveExtensions = @('.pfx', '.p12', '.pem', '.key', '.env', '.netrc')
 $script:CredentialFileNames = @('.npmrc', '.git-credentials', 'secrets.json', 'credentials.json', 'id_rsa', 'id_ed25519', 'known_hosts')
 $script:GitHubCredentialEnvironmentNames = @(
@@ -73,6 +76,165 @@ function Assert-OrdinaryPath {
         }
     }
     return $full
+}
+
+function Read-BoundedFileBytes {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][long]$MaximumBytes,
+        [Parameter(Mandatory = $true)][string]$Description)
+
+    if ($MaximumBytes -lt 0 -or $MaximumBytes -gt [int]::MaxValue) {
+        throw "$Description has an invalid read bound."
+    }
+    $fullPath = Assert-OrdinaryPath -Path $Path -Description $Description
+    if (-not (Test-Path -LiteralPath $fullPath -PathType Leaf)) { throw "$Description is missing: '$fullPath'." }
+
+    $stream = [IO.FileStream]::new($fullPath, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+    try {
+        # Recheck before consuming bytes, after the handle has been opened with sharing that
+        # prevents concurrent writers/deleters from changing the file during this bounded read.
+        [void](Assert-OrdinaryPath -Path $fullPath -Description $Description)
+        $length = $stream.Length
+        if ($length -gt $MaximumBytes -or $length -gt [int]::MaxValue) {
+            throw "$Description exceeds its $MaximumBytes-byte read cap."
+        }
+
+        $bytes = [byte[]]::new([int]$length)
+        $offset = 0
+        while ($offset -lt $bytes.Length) {
+            $read = $stream.Read($bytes, $offset, $bytes.Length - $offset)
+            if ($read -le 0) { throw "$Description changed while it was being read." }
+            $offset += $read
+        }
+        if ($stream.ReadByte() -ne -1 -or $stream.Length -ne $length) {
+            throw "$Description changed or exceeded its read cap while it was being read."
+        }
+        return ,$bytes
+    }
+    finally { $stream.Dispose() }
+}
+
+function Get-BoundedFileHash {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][long]$MaximumBytes,
+        [Parameter(Mandatory = $true)][string]$Description)
+
+    if ($MaximumBytes -lt 0) { throw "$Description has an invalid read bound." }
+    $fullPath = Assert-OrdinaryPath -Path $Path -Description $Description
+    if (-not (Test-Path -LiteralPath $fullPath -PathType Leaf)) { throw "$Description is missing: '$fullPath'." }
+
+    $stream = [IO.FileStream]::new($fullPath, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+    try {
+        [void](Assert-OrdinaryPath -Path $fullPath -Description $Description)
+        $length = $stream.Length
+        if ($length -gt $MaximumBytes) { throw "$Description exceeds its $MaximumBytes-byte read cap." }
+
+        $hash = [Security.Cryptography.IncrementalHash]::CreateHash([Security.Cryptography.HashAlgorithmName]::SHA256)
+        try {
+            $buffer = [byte[]]::new(64KB)
+            $total = 0L
+            while (($read = $stream.Read($buffer, 0, $buffer.Length)) -gt 0) {
+                if ($total -gt $MaximumBytes - $read) { throw "$Description exceeded its read cap while it was being read." }
+                $hash.AppendData($buffer, 0, $read)
+                $total += $read
+            }
+            if ($total -ne $length -or $stream.Length -ne $length) { throw "$Description changed while it was being read." }
+            return [pscustomobject]@{
+                Length = $total
+                Sha256 = [Convert]::ToHexString($hash.GetHashAndReset()).ToLowerInvariant()
+            }
+        }
+        finally { $hash.Dispose() }
+    }
+    finally { $stream.Dispose() }
+}
+
+function Read-BoundedJsonFile {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][long]$MaximumBytes,
+        [Parameter(Mandatory = $true)][string]$Description,
+        [Parameter(Mandatory = $true)][int]$Depth)
+
+    $bytes = Read-BoundedFileBytes -Path $Path -MaximumBytes $MaximumBytes -Description $Description
+    $sha256 = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes)).ToLowerInvariant()
+    $encoding = [Text.UTF8Encoding]::new($false, $true)
+    $json = $encoding.GetString($bytes)
+    if ($json.Length -gt 0 -and $json[0] -eq [char]0xFEFF) { $json = $json.Substring(1) }
+    return [pscustomobject]@{
+        Value = ConvertFrom-Json -InputObject $json -Depth $Depth
+        Sha256 = $sha256
+    }
+}
+
+function Assert-CapturedCorpusTree {
+    param([Parameter(Mandatory = $true)][string]$CorpusDirectory, [Parameter(Mandatory = $true)][int]$Rank)
+
+    $root = Assert-OrdinaryPath -Path $CorpusDirectory -Description "Captured corpus at rank $Rank"
+    if (-not (Test-Path -LiteralPath $root -PathType Container)) { throw "Captured corpus is missing at rank $Rank." }
+
+    $pending = [Collections.Generic.Stack[string]]::new()
+    $pending.Push($root)
+    $entryCount = 0
+    $fileCount = 0
+    $totalBytes = 0L
+    while ($pending.Count -gt 0) {
+        $directory = $pending.Pop()
+        if (([IO.File]::GetAttributes($directory) -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "Captured corpus contains a redirected directory at rank $Rank."
+        }
+        foreach ($entry in [IO.Directory]::EnumerateFileSystemEntries($directory)) {
+            if (++$entryCount -gt $script:MaximumCorpusEntries) {
+                throw "Captured corpus entry count exceeds cap at rank $Rank."
+            }
+            $attributes = [IO.File]::GetAttributes($entry)
+            if (($attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw "Captured corpus contains a redirected entry at rank $Rank."
+            }
+            if (($attributes -band [IO.FileAttributes]::Directory) -ne 0) {
+                $pending.Push($entry)
+                continue
+            }
+            if (++$fileCount -gt $script:MaximumCorpusFiles) { throw "Captured corpus file count exceeds cap at rank $Rank." }
+            $info = [IO.FileInfo]::new($entry); $info.Refresh()
+            if ($info.Length -gt $script:MaximumCorpusFileBytes -or $info.Length -gt $script:MaximumCorpusBytes - $totalBytes) {
+                throw "Captured corpus bytes exceed cap at rank $Rank."
+            }
+            $totalBytes += $info.Length
+        }
+    }
+}
+
+function Assert-AvailableReadmeRendered {
+    param([Parameter(Mandatory = $true)]$Repository, [Parameter(Mandatory = $true)]$Browser, [Parameter(Mandatory = $true)][int]$Rank)
+
+    if ($Browser.readmeRendered -isnot [bool]) {
+        throw "Edge browser report has no Boolean README-rendered status at rank $Rank."
+    }
+    if ($Repository.readme.available -eq $true -and -not $Browser.readmeRendered) {
+        throw "Available pinned README was not rendered at rank $Rank; this capture requires verified rendered-page evidence."
+    }
+}
+
+function Assert-CapturedRenderedHtml {
+    param([Parameter(Mandatory = $true)]$Browser, [Parameter(Mandatory = $true)]$CorpusManifest, [Parameter(Mandatory = $true)][int]$Rank)
+
+    $renderProperty = $CorpusManifest.PSObject.Properties['browserRender']
+    $render = if ($null -ne $renderProperty) { $renderProperty.Value } else { $null }
+    $statusProperty = if ($null -ne $render) { $render.PSObject.Properties['status'] } else { $null }
+    $fileProperty = if ($null -ne $render) { $render.PSObject.Properties['file'] } else { $null }
+    $sizeProperty = if ($null -ne $render) { $render.PSObject.Properties['byteSize'] } else { $null }
+    $hashProperty = if ($null -ne $render) { $render.PSObject.Properties['sha256'] } else { $null }
+    $size = if ($null -ne $sizeProperty) { $sizeProperty.Value } else { $null }
+    if ($Browser.readmeRendered -isnot [bool] -or -not $Browser.readmeRendered -or
+        $null -eq $statusProperty -or $statusProperty.Value -isnot [string] -or $statusProperty.Value -cne 'passed' -or
+        $null -eq $fileProperty -or $fileProperty.Value -isnot [string] -or $fileProperty.Value -cne 'rendered.html' -or
+        $null -eq $sizeProperty -or ($size -isnot [int] -and $size -isnot [long]) -or $size -le 0 -or $size -gt 32MB -or
+        $null -eq $hashProperty -or $hashProperty.Value -isnot [string] -or $hashProperty.Value -notmatch '^[0-9a-fA-F]{64}$') {
+        throw "Available README lacks verified rendered-HTML evidence at rank $Rank."
+    }
 }
 
 function Get-OrdinaryFiles {
@@ -112,8 +274,8 @@ function Get-PinnedManifest {
         $info = [IO.FileInfo]::new($path); $info.Refresh()
         if (-not $info.Exists -or $info.Length -le 0 -or $info.Length -gt 4MB) { throw "Pinned manifest is missing or oversized: '$path'." }
     }
-    $bytes = [IO.File]::ReadAllBytes($manifestPath)
-    $canonicalBytes = [IO.File]::ReadAllBytes($canonicalPath)
+    $bytes = Read-BoundedFileBytes -Path $manifestPath -MaximumBytes 4MB -Description 'Pinned manifest bytes'
+    $canonicalBytes = Read-BoundedFileBytes -Path $canonicalPath -MaximumBytes 4MB -Description 'Canonical pinned manifest bytes'
     $sha = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes)).ToLowerInvariant()
     $canonicalSha = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($canonicalBytes)).ToLowerInvariant()
     if ($sha -cne $canonicalSha) { throw 'Public capture requires the exact canonical pinned-top500.json bytes.' }
@@ -431,8 +593,7 @@ exit `$runnerExitCode
 function Test-CapturedShard {
     param([Parameter(Mandatory = $true)][string]$ShardRoot, [Parameter(Mandatory = $true)]$Shard, [Parameter(Mandatory = $true)][string]$ExpectedManifestSha256)
     $batchPath = Join-Path $ShardRoot ('capture-batches\ranks-{0:D3}-{1:D3}.json' -f $Shard.Start, $Shard.End)
-    if (-not (Test-Path -LiteralPath $batchPath -PathType Leaf)) { throw "Guest did not produce the capture batch report for ranks $($Shard.Start)..$($Shard.End)." }
-    $batch = Get-Content -LiteralPath $batchPath -Raw | ConvertFrom-Json -Depth 32
+    $batch = (Read-BoundedJsonFile -Path $batchPath -MaximumBytes $script:MaximumCaptureReportBytes -Description 'Guest capture batch report' -Depth 32).Value
     if ($batch.schemaVersion -ne 1 -or $batch.scope -cne 'public-pinned-same-byte-browser-capture-in-existing-windows-sandbox' -or
         $batch.overallReleaseQualification -cne 'not-qualified' -or $batch.authenticatedLiveAuditEquivalent -ne $false -or
         $batch.nativeJitHubRenderComparison -cne 'not-run' -or $batch.sameByteEdgeFullPageReplay -cne 'not-run' -or
@@ -445,35 +606,36 @@ function Test-CapturedShard {
         $caseId = '{0:D3}-{1}' -f [int]$repository.rank, [regex]::Replace([string]$repository.fullName, '[^A-Za-z0-9]', '-')
         $caseRoot = Join-Path $ShardRoot ('cases\' + $caseId)
         $caseReportPath = Join-Path $caseRoot 'capture.json'
-        if (-not (Test-Path -LiteralPath $caseReportPath -PathType Leaf)) { throw "Capture result is missing for pinned rank $($repository.rank)." }
-        $case = Get-Content -LiteralPath $caseReportPath -Raw | ConvertFrom-Json -Depth 32
+        $case = (Read-BoundedJsonFile -Path $caseReportPath -MaximumBytes $script:MaximumCaptureReportBytes -Description "Capture report at rank $($repository.rank)" -Depth 32).Value
         if ([int]$case.rank -ne [int]$repository.rank -or [string]$case.fullName -ine [string]$repository.fullName -or
             [string]$case.commitSha -ine [string]$repository.commitSha -or
             [string]$case.readmeSha -ine $(if ($repository.readme.available -eq $true) { [string]$repository.readme.sha } else { 'absent' })) {
             throw "Capture identity differs from the pinned manifest at rank $($repository.rank)."
         }
-        if ([string]$case.status -ne 'captured') { continue }
+        if ([string]$case.status -ne 'captured') {
+            throw "Capture result is not successful for pinned rank $($repository.rank)."
+        }
         $browserPath = Join-Path $caseRoot 'browser\browser.json'
-        if (-not (Test-Path -LiteralPath $browserPath -PathType Leaf) -or (Get-Item -LiteralPath $browserPath).Length -gt $script:MaximumCaptureReportBytes -or
-            (Get-FileHash -LiteralPath $browserPath -Algorithm SHA256).Hash -ine [string]$case.browserReportSha256) {
+        $browserRead = Read-BoundedJsonFile -Path $browserPath -MaximumBytes $script:MaximumCaptureReportBytes -Description "Sanitized Edge browser report at rank $($repository.rank)" -Depth 64
+        if ($browserRead.Sha256 -ine [string]$case.browserReportSha256) {
             throw "Sanitized Edge browser report failed its recorded hash at rank $($repository.rank)."
         }
-        $browser = Get-Content -LiteralPath $browserPath -Raw | ConvertFrom-Json -Depth 64
-        if ($browser.schemaVersion -ne 5 -or [string]$browser.readmeSha -ine [string]$case.readmeSha -or $null -eq $browser.readmeRendered) {
+        $browser = $browserRead.Value
+        if ($browser.schemaVersion -ne 5 -or [string]$browser.readmeSha -ine [string]$case.readmeSha) {
             throw "Edge browser report does not bind the pinned README at rank $($repository.rank)."
         }
+        Assert-AvailableReadmeRendered -Repository $repository -Browser $browser -Rank ([int]$repository.rank)
         if ($repository.readme.available -eq $true) {
             $relative = [string]$browser.sameByteCorpus.manifest
-            if ([string]::IsNullOrWhiteSpace($relative) -or [IO.Path]::IsPathRooted($relative) -or $relative.Contains('\') -or $relative.Contains(':') -or
-                @($relative.Split('/') | Where-Object { $_ -in @('', '.', '..') }).Count -gt 0 -or [IO.Path]::GetFileName($relative) -cne 'manifest.json') {
-                throw "Same-byte corpus path is unsafe at rank $($repository.rank)."
-            }
-            $corpusRoot = [IO.Path]::GetFullPath((Join-Path (Join-Path $caseRoot 'browser') ($relative -replace '/', [IO.Path]::DirectorySeparatorChar)))
-            $browserPrefix = [IO.Path]::GetFullPath((Join-Path $caseRoot 'browser')).TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
-            if (-not $corpusRoot.StartsWith($browserPrefix, [StringComparison]::OrdinalIgnoreCase)) { throw "Same-byte corpus escaped browser evidence at rank $($repository.rank)." }
-            $manifestBytes = [IO.File]::ReadAllBytes($corpusRoot)
-            $corpusManifest = [Text.Encoding]::UTF8.GetString($manifestBytes) | ConvertFrom-Json -Depth 64
-            $manifestSha = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($manifestBytes)).ToLowerInvariant()
+            $corpusRoot = Resolve-SafeBrowserCorpusManifestPath -BrowserRoot (Join-Path $caseRoot 'browser') -RelativePath $relative -Rank ([int]$repository.rank)
+            $corpusRoot = Assert-OrdinaryPath -Path $corpusRoot -Description "Same-byte corpus manifest at rank $($repository.rank)"
+            $corpusDirectory = Split-Path -Parent $corpusRoot
+            # Scan all entries before opening the guest manifest or any file it names.
+            # This rejects reparse points and bounds both files and directory-only fanout.
+            Assert-CapturedCorpusTree -CorpusDirectory $corpusDirectory -Rank ([int]$repository.rank)
+            $manifestRead = Read-BoundedJsonFile -Path $corpusRoot -MaximumBytes $script:MaximumCorpusManifestBytes -Description "Same-byte corpus manifest at rank $($repository.rank)" -Depth 64
+            $corpusManifest = $manifestRead.Value
+            $manifestSha = $manifestRead.Sha256
             if ($manifestSha -ine [string]$case.corpusManifestSha256 -or $manifestSha -ine [string]$browser.sameByteCorpus.manifestSha256 -or
                 $corpusManifest.schemaVersion -ne 2 -or $corpusManifest.complete -ne $true -or
                 [string]$corpusManifest.repository.fullName -ine [string]$repository.fullName -or
@@ -484,13 +646,13 @@ function Test-CapturedShard {
                 [long]$corpusManifest.readme.byteSize -ne [long]$repository.readme.byteSize) {
                 throw "Same-byte corpus manifest identity failed at rank $($repository.rank)."
             }
+            Assert-CapturedRenderedHtml -Browser $browser -CorpusManifest $corpusManifest -Rank ([int]$repository.rank)
             $readmePath = Join-Path (Split-Path -Parent $corpusRoot) 'readme.md'
-            $readmeInfo = [IO.FileInfo]::new($readmePath); $readmeInfo.Refresh()
-            if (-not $readmeInfo.Exists -or $readmeInfo.Length -ne [long]$repository.readme.byteSize -or
-                (Get-FileHash -LiteralPath $readmePath -Algorithm SHA256).Hash -ine [string]$corpusManifest.readme.sha256) {
+            $readmeBytes = Read-BoundedFileBytes -Path $readmePath -MaximumBytes ([long]$repository.readme.byteSize) -Description "Captured README at rank $($repository.rank)"
+            $readmeSha256 = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($readmeBytes)).ToLowerInvariant()
+            if ($readmeBytes.LongLength -ne [long]$repository.readme.byteSize -or $readmeSha256 -ine [string]$corpusManifest.readme.sha256) {
                 throw "Captured README bytes do not match the corpus manifest at rank $($repository.rank)."
             }
-            $readmeBytes = [IO.File]::ReadAllBytes($readmePath)
             if ((Get-GitBlobSha1 -Bytes $readmeBytes) -ine [string]$repository.readme.sha) {
                 throw "Captured README bytes do not match the pinned Git blob at rank $($repository.rank)."
             }
@@ -503,41 +665,51 @@ function Test-CapturedShard {
                     throw "Captured asset metadata is invalid at rank $($repository.rank)."
                 }
                 $assetPath = Join-Path (Join-Path (Split-Path -Parent $corpusRoot) 'assets') $assetSha.ToLowerInvariant()
-                $assetInfo = [IO.FileInfo]::new($assetPath); $assetInfo.Refresh()
-                if (-not $assetInfo.Exists -or $assetInfo.Length -ne [long]$asset.byteSize -or
-                    (Get-FileHash -LiteralPath $assetPath -Algorithm SHA256).Hash -ine $assetSha) {
+                $assetIdentity = Get-BoundedFileHash -Path $assetPath -MaximumBytes ([long]$asset.byteSize) -Description "Captured image asset at rank $($repository.rank)"
+                if ($assetIdentity.Length -ne [long]$asset.byteSize -or $assetIdentity.Sha256 -ine $assetSha) {
                     throw "Captured image asset bytes do not match the corpus manifest at rank $($repository.rank)."
                 }
             }
-            if ([string]$corpusManifest.browserRender.status -eq 'passed') {
-                $renderedPath = Join-Path (Split-Path -Parent $corpusRoot) 'rendered.html'
-                $renderedInfo = [IO.FileInfo]::new($renderedPath); $renderedInfo.Refresh()
-                if (-not $renderedInfo.Exists -or $renderedInfo.Length -ne [long]$corpusManifest.browserRender.byteSize -or
-                    $renderedInfo.Length -gt 32MB -or (Get-FileHash -LiteralPath $renderedPath -Algorithm SHA256).Hash -ine [string]$corpusManifest.browserRender.sha256) {
-                    throw "Captured rendered HTML bytes failed the manifest hash at rank $($repository.rank)."
-                }
-            }
-            $corpusDirectory = [IO.Path]::GetDirectoryName($corpusRoot)
-            $pending = [Collections.Generic.Stack[string]]::new(); $pending.Push($corpusDirectory)
-            $totalBytes = 0L; $fileCount = 0
-            while ($pending.Count -gt 0) {
-                $directory = $pending.Pop()
-                if (([IO.File]::GetAttributes($directory) -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'Captured corpus contains a redirected directory.' }
-                foreach ($entry in [IO.Directory]::EnumerateFileSystemEntries($directory)) {
-                    $attributes = [IO.File]::GetAttributes($entry)
-                    if (($attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'Captured corpus contains a redirected entry.' }
-                    if (($attributes -band [IO.FileAttributes]::Directory) -ne 0) { $pending.Push($entry); continue }
-                    if (++$fileCount -gt $script:MaximumCorpusFiles) { throw "Captured corpus file count exceeds cap at rank $($repository.rank)." }
-                    $info = [IO.FileInfo]::new($entry); $info.Refresh()
-                    if ($info.Length -gt $script:MaximumCorpusFileBytes -or $info.Length -gt $script:MaximumCorpusBytes - $totalBytes) { throw "Captured corpus bytes exceed cap at rank $($repository.rank)." }
-                    $totalBytes += $info.Length
-                }
+            $renderedPath = Join-Path (Split-Path -Parent $corpusRoot) 'rendered.html'
+            $renderedIdentity = Get-BoundedFileHash -Path $renderedPath -MaximumBytes 32MB -Description "Captured rendered HTML at rank $($repository.rank)"
+            if ($renderedIdentity.Length -ne [long]$corpusManifest.browserRender.byteSize -or
+                $renderedIdentity.Sha256 -ine [string]$corpusManifest.browserRender.sha256) {
+                throw "Captured rendered HTML bytes failed the manifest hash at rank $($repository.rank)."
             }
         }
         elseif ($browser.readmeRendered -ne $false -or [string]$browser.readmeSha -cne 'absent') {
             throw "Edge capture did not preserve the pinned absent-README state at rank $($repository.rank)."
         }
     }
+}
+
+function Resolve-SafeBrowserCorpusManifestPath {
+    param(
+        [Parameter(Mandatory = $true)][string]$BrowserRoot,
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$RelativePath,
+        [Parameter(Mandatory = $true)][int]$Rank)
+
+    if ([string]::IsNullOrWhiteSpace($RelativePath) -or $RelativePath.IndexOf([char]0) -ge 0 -or
+        [IO.Path]::IsPathRooted($RelativePath) -or $RelativePath.Contains(':')) {
+        throw "Same-byte corpus path is unsafe at rank $Rank."
+    }
+
+    # Node's path.relative uses the guest platform separator. Accept either separator, but
+    # constrain the result to the producer's GUID-named corpus directory and manifest leaf.
+    # This rejects traversal, Windows aliases (trailing dots/spaces), device names, and controls.
+    $portableRelative = $RelativePath.Replace('\', '/')
+    if ($portableRelative -cnotmatch '\Asame-byte-corpus-[0-9a-fA-F]{32}/manifest\.json\z') {
+        throw "Same-byte corpus path is unsafe at rank $Rank."
+    }
+
+    $browserRootFull = [IO.Path]::GetFullPath($BrowserRoot)
+    $relativePath = $portableRelative.Replace('/', [IO.Path]::DirectorySeparatorChar)
+    $manifestPath = [IO.Path]::GetFullPath((Join-Path $browserRootFull $relativePath))
+    $browserPrefix = $browserRootFull.TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
+    if (-not $manifestPath.StartsWith($browserPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Same-byte corpus escaped browser evidence at rank $Rank."
+    }
+    return $manifestPath
 }
 
 $pinned = Get-PinnedManifest
@@ -627,7 +799,20 @@ try {
                 $sourceCase = Join-Path $pullRoot ('cases\' + $caseId)
                 $destCase = Join-Path $hostCaptureRoot ('cases\' + $caseId)
                 if (Test-Path -LiteralPath $destCase) { throw "Refusing to overwrite prior host capture case '$destCase'." }
-                if (Test-Path -LiteralPath $sourceCase) { Copy-Item -LiteralPath $sourceCase -Destination $destCase -Recurse }
+                if (Test-Path -LiteralPath $sourceCase -PathType Container) {
+                    $sourceCaseFull = Assert-OrdinaryPath -Path $sourceCase -Description 'Validated capture case'
+                    $sourcePrefix = $sourceCaseFull.TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
+                    $sourceFiles = Get-OrdinaryFiles -Root $sourceCase
+                    foreach ($sourceFile in $sourceFiles) {
+                        $sourceFileFull = Assert-OrdinaryPath -Path $sourceFile.FullName -Description 'Validated capture file'
+                        if (-not $sourceFileFull.StartsWith($sourcePrefix, [StringComparison]::OrdinalIgnoreCase)) {
+                            throw "Capture file escaped its case directory: '$sourceFileFull'."
+                        }
+                        $relativeFile = $sourceFileFull.Substring($sourcePrefix.Length)
+                        $destinationFile = Join-Path $destCase $relativeFile
+                        Copy-VerifiedFile -Source $sourceFileFull -Destination $destinationFile -MaximumBytes $script:MaximumCorpusFileBytes | Out-Null
+                    }
+                }
             }
             $sourceBatch = Join-Path $pullRoot ('capture-batches\ranks-{0:D3}-{1:D3}.json' -f $shard.Start, $shard.End)
             Copy-VerifiedFile -Source $sourceBatch -Destination (Join-Path $hostCaptureRoot ('capture-batches\' + $batchName + '.json')) -MaximumBytes $script:MaximumCaptureReportBytes | Out-Null
