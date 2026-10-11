@@ -359,6 +359,7 @@ function New-CaptureSnapshot {
         $totalBytes += $record.byteSize
     }
     foreach ($required in @('eng\readme-audit\pinned-top500.json', 'eng\readme-audit\browser-oracle.mjs',
+        'eng\readme-audit\closed-details-snapshot.mjs',
         'eng\readme-audit\browser-environment.mjs', 'eng\readme-audit\same-byte-corpus.mjs',
         'eng\readme-audit\same-byte-edge-replay.mjs', 'eng\readme-audit\same-byte-edge-source.mjs',
         'eng\readme-audit\vendor\marked-18.0.5.umd.js', 'eng\readme-audit\vendor\github-emoji-shortcodes.mjs',

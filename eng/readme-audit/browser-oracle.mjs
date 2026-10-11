@@ -8,6 +8,7 @@ import { waitForDevToolsPort } from "./browser-launch.mjs";
 import { connectCdp } from "./cdp-client.mjs";
 import { cleanupBrowserProfile } from "./browser-profile-cleanup.mjs";
 import { createCredentialFreeBrowserEnvironment } from "./browser-environment.mjs";
+import { pruneClosedDetailsReplayContent } from "./closed-details-snapshot.mjs";
 import {
   captureSameByteCorpus,
   createResponseRecorder,
@@ -686,6 +687,7 @@ async function captureRenderedHtmlSnapshot(cdpClient, excludedDecorativeImageRep
     const originals = [article, ...article.querySelectorAll("*")];
     if (originals.length > 200_000) throw new Error("README exceeds the bounded static HTML element count.");
     const clone = article.cloneNode(true);
+    const pruneClosedDetailsReplayContent = ${pruneClosedDetailsReplayContent.toString()};
     const copies = [clone, ...clone.querySelectorAll("*")];
     if (copies.length !== originals.length) throw new Error("GitHub article clone changed its element structure.");
     const imageIndexByNode = new Map(imageNodes.map((image, index) => [image, index]));
@@ -778,6 +780,7 @@ async function captureRenderedHtmlSnapshot(cdpClient, excludedDecorativeImageRep
     if (observedExcludedDecorativeImageIndexes.size !== excludedDecorativeImageIndexes.size) {
       throw new Error("GitHub article changed its non-rendered decorative-image inventory during same-byte capture.");
     }
+    pruneClosedDetailsReplayContent(clone);
     clone.querySelectorAll("script,iframe,object,embed,base,link[rel~='stylesheet'],style").forEach(node => node.remove());
     for (const node of clone.querySelectorAll("[href]")) {
       if (node.tagName === "A") continue;

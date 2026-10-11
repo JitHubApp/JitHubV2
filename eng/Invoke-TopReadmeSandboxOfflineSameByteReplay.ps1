@@ -1547,6 +1547,7 @@ foreach ($existingReport in @(
 }
 Invoke-NativeAotArtifactVerifier -VerifierPath (Join-Path $repoRoot 'eng\Verify-NativeAotArtifact.ps1') -InputPath $AppDirectory
 foreach ($requiredAuditFile in @(
+    'eng\readme-audit\closed-details-snapshot.mjs',
     'eng\readme-audit\same-byte-edge-source.mjs',
     'eng\readme-audit\Install-PinnedWindowsAppRuntime.ps1',
     'eng\readme-audit\vendor\marked-18.0.5.umd.js',
