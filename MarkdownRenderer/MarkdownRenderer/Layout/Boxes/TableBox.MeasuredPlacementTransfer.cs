@@ -132,8 +132,8 @@ internal sealed partial class TableBox
         {
             TableBox source = _source;
             TableBox prepared = _prepared;
-            if (!IsCurrentSourceStructure(source) ||
-                !IsCurrentPreparedStructure(prepared) ||
+            if (!IsCurrentStructure(source, isSource: true) ||
+                !IsCurrentStructure(prepared, isSource: false) ||
                 !IsCurrentSourceGeometry(source) ||
                 !HasCompatiblePlacementContext(source._context, prepared._context) ||
                 !ReferenceEquals(source._context, _sourceContext) ||
@@ -202,14 +202,17 @@ internal sealed partial class TableBox
             (source.Bounds, prepared.Bounds) = (prepared.Bounds, source.Bounds);
         }
 
-        private bool IsCurrentSourceStructure(TableBox source)
+        private bool IsCurrentStructure(TableBox table, bool isSource)
         {
-            if (!ReferenceEquals(source._headerCells, _sourceHeaderOuter) ||
-                !ReferenceEquals(source._bodyCells, _sourceBodyOuter) ||
-                source._colCount != _sourceColumnCount ||
-                source._headerCells.Length != _sourceHeaderRowCount ||
-                source._bodyCells.Length != _sourceBodyRowCount ||
-                !MatchesCapturedAlignment(source._columnAlignments, _sourceAlignments, _alignmentValues))
+            InlineContainerBox[][] expectedHeaderOuter = isSource ? _sourceHeaderOuter : _preparedHeaderOuter;
+            InlineContainerBox[][] expectedBodyOuter = isSource ? _sourceBodyOuter : _preparedBodyOuter;
+            CellAlignment[] expectedAlignments = isSource ? _sourceAlignments : _preparedAlignments;
+            if (!ReferenceEquals(table._headerCells, expectedHeaderOuter) ||
+                !ReferenceEquals(table._bodyCells, expectedBodyOuter) ||
+                table._colCount != _sourceColumnCount ||
+                table._headerCells.Length != _sourceHeaderRowCount ||
+                table._bodyCells.Length != _sourceBodyRowCount ||
+                !MatchesCapturedAlignment(table._columnAlignments, expectedAlignments, _alignmentValues))
             {
                 return false;
             }
@@ -217,9 +220,9 @@ internal sealed partial class TableBox
             for (int index = 0; index < _rows.Length; index++)
             {
                 RowFence row = _rows[index];
-                InlineContainerBox[][] currentRows = row.IsHeader ? source._headerCells : source._bodyCells;
+                InlineContainerBox[][] currentRows = row.IsHeader ? table._headerCells : table._bodyCells;
                 if (row.RowIndex < 0 || row.RowIndex >= currentRows.Length ||
-                    !ReferenceEquals(currentRows[row.RowIndex], row.SourceRow))
+                    !ReferenceEquals(currentRows[row.RowIndex], isSource ? row.SourceRow : row.PreparedRow))
                 {
                     return false;
                 }
@@ -228,48 +231,12 @@ internal sealed partial class TableBox
             for (int index = 0; index < _cells.Length; index++)
             {
                 CellFence cell = _cells[index];
-                InlineContainerBox[][] currentRows = cell.IsHeader ? source._headerCells : source._bodyCells;
+                InlineContainerBox[][] currentRows = cell.IsHeader ? table._headerCells : table._bodyCells;
                 if (cell.RowIndex < 0 || cell.RowIndex >= currentRows.Length ||
                     cell.ColumnIndex < 0 || cell.ColumnIndex >= currentRows[cell.RowIndex].Length ||
-                    !ReferenceEquals(currentRows[cell.RowIndex][cell.ColumnIndex], cell.Source))
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-        private bool IsCurrentPreparedStructure(TableBox prepared)
-        {
-            if (!ReferenceEquals(prepared._headerCells, _preparedHeaderOuter) ||
-                !ReferenceEquals(prepared._bodyCells, _preparedBodyOuter) ||
-                prepared._colCount != _sourceColumnCount ||
-                prepared._headerCells.Length != _sourceHeaderRowCount ||
-                prepared._bodyCells.Length != _sourceBodyRowCount ||
-                !MatchesCapturedAlignment(prepared._columnAlignments, _preparedAlignments, _alignmentValues))
-            {
-                return false;
-            }
-
-            for (int index = 0; index < _rows.Length; index++)
-            {
-                RowFence row = _rows[index];
-                InlineContainerBox[][] currentRows = row.IsHeader ? prepared._headerCells : prepared._bodyCells;
-                if (row.RowIndex < 0 || row.RowIndex >= currentRows.Length ||
-                    !ReferenceEquals(currentRows[row.RowIndex], row.PreparedRow))
-                {
-                    return false;
-                }
-            }
-
-            for (int index = 0; index < _cells.Length; index++)
-            {
-                CellFence cell = _cells[index];
-                InlineContainerBox[][] currentRows = cell.IsHeader ? prepared._headerCells : prepared._bodyCells;
-                if (cell.RowIndex < 0 || cell.RowIndex >= currentRows.Length ||
-                    cell.ColumnIndex < 0 || cell.ColumnIndex >= currentRows[cell.RowIndex].Length ||
-                    !ReferenceEquals(currentRows[cell.RowIndex][cell.ColumnIndex], cell.Prepared))
+                    !ReferenceEquals(
+                        currentRows[cell.RowIndex][cell.ColumnIndex],
+                        isSource ? cell.Source : cell.Prepared))
                 {
                     return false;
                 }

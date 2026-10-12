@@ -1170,6 +1170,8 @@ internal sealed partial class LayoutSnapshot : System.IDisposable
             double oldHeight = _size.Height;
             long oldRevision = _layoutRevision;
             int oldMeasuredTopLevelBlockCount = _measuredTopLevelBlockCount;
+            bool oldMeasuredLayoutPlanRootOrdinalsAreSorted =
+                _measuredLayoutPlanRootOrdinalsAreSorted;
             int firstMeasureAttempted = Blocks.Count;
             List<int>? measuredOrdinals = null;
             List<int>? requestedSceneBandOrdinals = null;
@@ -1288,6 +1290,12 @@ internal sealed partial class LayoutSnapshot : System.IDisposable
                         effectiveCancellationToken);
                 }
 
+                // The measured-root index is consumed by the UI-thread
+                // realization-plan publisher. Finalize any out-of-order band
+                // arrivals while this mutation still owns the layout gate,
+                // before the new geometry/metadata can be observed.
+                SortMeasuredLayoutPlanRootOrdinalsNoLock();
+
                 // ReflowNoLock already published the candidate geometry and
                 // viewport index under this lock. Commit shared estimates and
                 // advance the revision only after all visible native resources
@@ -1344,6 +1352,8 @@ internal sealed partial class LayoutSnapshot : System.IDisposable
                         _measuredTopLevelBlocks![ordinal] = false;
                     _measuredTopLevelBlockCount = oldMeasuredTopLevelBlockCount;
                     RemoveUnmeasuredLayoutPlanRootOrdinalsNoLock();
+                    _measuredLayoutPlanRootOrdinalsAreSorted =
+                        oldMeasuredLayoutPlanRootOrdinalsAreSorted;
                 }
                 _layoutRevision = oldRevision;
                 // Include the predecessor: an unsuccessful Measure may also
@@ -3448,10 +3458,8 @@ internal sealed partial class LayoutSnapshot : System.IDisposable
                 ReadOnlySpan<int>.Empty);
 
         if (!_measuredLayoutPlanRootOrdinalsAreSorted)
-        {
-            measuredRoots.Sort();
-            _measuredLayoutPlanRootOrdinalsAreSorted = true;
-        }
+            throw new InvalidOperationException(
+                "Measured layout-plan roots must be ordered before they are published.");
 
         return new LayoutPlanCandidateEnumerator(
             _layoutPlanCandidates,
@@ -3502,6 +3510,19 @@ internal sealed partial class LayoutSnapshot : System.IDisposable
         }
 
         _measuredLayoutPlanRootOrdinals = measuredRoots;
+        _measuredLayoutPlanRootOrdinalsAreSorted = true;
+    }
+
+    private void SortMeasuredLayoutPlanRootOrdinalsNoLock()
+    {
+        if (_measuredLayoutPlanRootOrdinals is not { Count: > 1 } measuredRoots ||
+            _measuredLayoutPlanRootOrdinalsAreSorted)
+        {
+            _measuredLayoutPlanRootOrdinalsAreSorted = true;
+            return;
+        }
+
+        measuredRoots.Sort();
         _measuredLayoutPlanRootOrdinalsAreSorted = true;
     }
 

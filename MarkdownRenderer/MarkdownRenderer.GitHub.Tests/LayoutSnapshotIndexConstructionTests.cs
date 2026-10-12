@@ -15,6 +15,7 @@ using MarkdownRenderer.Theming;
 using Markdig.Syntax;
 using Microsoft.Graphics.Canvas;
 using Microsoft.UI.Xaml;
+using Windows.Foundation;
 using Windows.UI;
 using Xunit;
 
@@ -179,11 +180,12 @@ public sealed class LayoutSnapshotIndexConstructionTests
     }
 
     [Fact]
-    public void LazyCandidateEnumerationVisitsOnlyMeasuredRootsAfterOutOfOrderReflow()
+    public void LazyCandidateEnumerationIsFinalizedInDocumentOrderAcrossOutOfOrderBands()
     {
         const int blockCount = 10_000;
         const int firstMeasuredOrdinal = 8_000;
         const int secondMeasuredOrdinal = 5_000;
+        const int thirdMeasuredOrdinal = 7_000;
         const float width = 360;
         Block sourceBlock = Markdig.Markdown.Parse("embedded")[0];
         var roots = new BlockBox[blockCount];
@@ -220,6 +222,15 @@ public sealed class LayoutSnapshotIndexConstructionTests
             CancellationToken.None);
         Assert.InRange(snapshot.MeasuredTopLevelBlockCount, 2, 99);
 
+        // A third, intermediate band proves the list remains in document
+        // order after multiple out-of-order arrivals, rather than merely
+        // sorting one pair as part of candidate enumeration.
+        BlockBox thirdRoot = roots[thirdMeasuredOrdinal];
+        snapshot.EnsureMeasuredBand(
+            new LazyLayoutBand(thirdRoot.Bounds.Top + 0.125d, thirdRoot.Bounds.Top + 0.5d),
+            CancellationToken.None);
+        Assert.InRange(snapshot.MeasuredTopLevelBlockCount, 3, 99);
+
         Assert.True(snapshot.TryBeginInteraction());
         try
         {
@@ -232,17 +243,19 @@ public sealed class LayoutSnapshotIndexConstructionTests
                 if (measuredMask[ordinal])
                     expectedOrdinals.Add(ordinal);
             }
-            Assert.InRange(expectedOrdinals.Count, 2, 99);
+            Assert.InRange(expectedOrdinals.Count, 3, 99);
             Assert.Contains(firstMeasuredOrdinal, expectedOrdinals);
             Assert.Contains(secondMeasuredOrdinal, expectedOrdinals);
+            Assert.Contains(thirdMeasuredOrdinal, expectedOrdinals);
 
-            List<int> arrivalOrder = ReadField<List<int>>(
+            List<int> finalizedOrdinals = ReadField<List<int>>(
                 snapshot,
                 "_measuredLayoutPlanRootOrdinals");
-            Assert.Equal(secondMeasuredOrdinal, arrivalOrder[^1]);
-            Assert.False(ReadField<bool>(
+            Assert.Equal(expectedOrdinals, finalizedOrdinals);
+            Assert.True(ReadField<bool>(
                 snapshot,
                 "_measuredLayoutPlanRootOrdinalsAreSorted"));
+            int[] ordinalsBeforeEnumeration = finalizedOrdinals.ToArray();
 
             var candidates = snapshot.GetMeasuredLayoutPlanCandidatesUnderPaint();
             var actual = new List<LayoutPlanCandidate>();
@@ -255,9 +268,9 @@ public sealed class LayoutSnapshotIndexConstructionTests
                 Assert.Equal(expectedOrdinals[index], actual[index].TopLevelOrdinal);
                 Assert.Same(roots[expectedOrdinals[index]], actual[index].Box);
             }
-            Assert.Equal(
-                expectedOrdinals,
-                ReadField<List<int>>(snapshot, "_measuredLayoutPlanRootOrdinals"));
+            Assert.Same(finalizedOrdinals, ReadField<List<int>>(
+                snapshot, "_measuredLayoutPlanRootOrdinals"));
+            Assert.Equal(ordinalsBeforeEnumeration, finalizedOrdinals);
             Assert.True(ReadField<bool>(
                 snapshot,
                 "_measuredLayoutPlanRootOrdinalsAreSorted"));
@@ -274,6 +287,70 @@ public sealed class LayoutSnapshotIndexConstructionTests
         {
             snapshot.EndInteraction();
         }
+    }
+
+    [Fact]
+    public void CanceledOutOfOrderBandRestoresPriorMeasuredOrdinalOrderAndPublication()
+    {
+        const int blockCount = 10;
+        const int initiallyMeasuredOrdinal = 8;
+        const int canceledOrdinal = 5;
+        Block sourceBlock = Markdig.Markdown.Parse("embedded")[0];
+        using var cancellation = new CancellationTokenSource();
+        var factory = new CancelAfterMeasureEmbedFactory();
+        var roots = new BlockBox[blockCount];
+        for (int ordinal = 0; ordinal < roots.Length; ordinal++)
+        {
+            roots[ordinal] = new EmbedBox(sourceBlock, factory)
+            {
+                BlockIndex = ordinal,
+            };
+        }
+
+        using var snapshot = new LayoutSnapshot(
+            roots,
+            new MarkdownSourceMap(string.Empty),
+            width: 360,
+            height: 0);
+        snapshot.EnableLazyLayout(
+            availableWidth: 360,
+            viewportTop: initiallyMeasuredOrdinal * 64d,
+            viewportHeight: 0.5d,
+            overscan: 0,
+            cancellationToken: CancellationToken.None);
+
+        List<int> priorOrdinals = ReadField<List<int>>(
+            snapshot, "_measuredLayoutPlanRootOrdinals");
+        int[] priorOrdinalValues = priorOrdinals.ToArray();
+        Assert.Contains(initiallyMeasuredOrdinal, priorOrdinalValues);
+        Assert.Equal(priorOrdinalValues.Order(), priorOrdinalValues);
+        Assert.True(ReadField<bool>(snapshot, "_measuredLayoutPlanRootOrdinalsAreSorted"));
+        bool[] priorMeasuredMask = ReadField<bool[]>(snapshot, "_measuredTopLevelBlocks");
+        bool[] priorMask = priorMeasuredMask.ToArray();
+        int priorMeasuredCount = snapshot.MeasuredTopLevelBlockCount;
+        Size priorSize = snapshot.Size;
+        long priorRevision = snapshot.LayoutRevision;
+        LayoutPlacementGeneration priorPlacements = snapshot.PublishedPlacementGeneration;
+
+        factory.AfterMeasure = cancellation.Cancel;
+        BlockBox canceledRoot = roots[canceledOrdinal];
+        Assert.ThrowsAny<OperationCanceledException>(() => snapshot.EnsureMeasuredBand(
+            new LazyLayoutBand(canceledRoot.Bounds.Top + 0.125d, canceledRoot.Bounds.Top + 0.5d),
+            cancellation.Token));
+
+        Assert.True(cancellation.IsCancellationRequested);
+        Assert.True(snapshot.GeometryRecoveryRequired);
+        Assert.Equal(priorMeasuredCount, snapshot.MeasuredTopLevelBlockCount);
+        Assert.Equal(priorSize, snapshot.Size);
+        Assert.Equal(priorRevision, snapshot.LayoutRevision);
+        Assert.Same(priorPlacements, snapshot.PublishedPlacementGeneration);
+        Assert.Same(priorMeasuredMask, ReadField<bool[]>(snapshot, "_measuredTopLevelBlocks"));
+        Assert.Equal(priorMask, priorMeasuredMask);
+        Assert.Same(priorOrdinals, ReadField<List<int>>(
+            snapshot, "_measuredLayoutPlanRootOrdinals"));
+        Assert.Equal(priorOrdinalValues, priorOrdinals);
+        Assert.True(ReadField<bool>(snapshot, "_measuredLayoutPlanRootOrdinalsAreSorted"));
+        Assert.False(priorMeasuredMask[canceledOrdinal]);
     }
 
     [Fact]
@@ -1080,6 +1157,21 @@ public sealed class LayoutSnapshotIndexConstructionTests
         internal static readonly TestEmbedFactory Instance = new();
         public bool CanCreate(Block block) => true;
         public float MeasureHeight(Block block, float availableWidth) => 20;
+        public FrameworkElement CreateBlock(Block block) => null!;
+    }
+
+    private sealed class CancelAfterMeasureEmbedFactory : IMarkdownEmbedFactory
+    {
+        internal Action? AfterMeasure { get; set; }
+
+        public bool CanCreate(Block block) => true;
+
+        public float MeasureHeight(Block block, float availableWidth)
+        {
+            AfterMeasure?.Invoke();
+            return 20;
+        }
+
         public FrameworkElement CreateBlock(Block block) => null!;
     }
 
