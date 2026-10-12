@@ -197,11 +197,19 @@ function ConvertTo-AuditUtcStartTime([object]$Value) {
         if ($Value.Kind -eq [DateTimeKind]::Unspecified) { return $null }
         return $Value.ToUniversalTime()
     }
-    if ($Value -is [string] -and $Value -cmatch '^\d{14}\.\d{6}[+-]\d{3}$') {
+    if ($Value -is [string] -and $Value -cmatch '^[0-9]{14}\.[0-9]{6}[+-][0-9]{3}$') {
         try {
-            $parsed = [System.Management.ManagementDateTimeConverter]::ToDateTime($Value)
-            if ($parsed.Kind -eq [DateTimeKind]::Unspecified) { return $null }
-            return $parsed.ToUniversalTime()
+            # Preserve the authored offset, not an ambiguous local wall clock.
+            # ManagementDateTimeConverter returns Unspecified on .NET Framework
+            # and converts through the local zone; repeated DST hours can then
+            # alias different process start instants. DMTF offsets are minutes.
+            $parsed = [DateTime]::ParseExact($Value.Substring(0, 21),
+                'yyyyMMddHHmmss.ffffff', [Globalization.CultureInfo]::InvariantCulture,
+                [Globalization.DateTimeStyles]::None)
+            $offsetMinutes = [int]::Parse($Value.Substring(21),
+                [Globalization.NumberStyles]::AllowLeadingSign,
+                [Globalization.CultureInfo]::InvariantCulture)
+            return [DateTime]::SpecifyKind($parsed.AddMinutes(-$offsetMinutes), [DateTimeKind]::Utc)
         }
         catch { return $null }
     }

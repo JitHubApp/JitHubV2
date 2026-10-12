@@ -51,14 +51,14 @@ foreach ($case in $cases) {
     $actual = Test-ExactAuditProfileArgument $case.commandLine $case.profile
     if ($actual -ne [bool]$case.expected) { throw "Matcher case failed: $($case.name)" }
 }
-$simpleProfile = 'C:\Users\Nero\AppData\Local\Temp\jithub-readme-edge-AbC123'
+$simpleProfile = Join-Path ([IO.Path]::GetTempPath()) 'jithub-readme-edge-AbC123'
 $ownershipCases = @(
     @{ name = 'canonical single exact profile'; commandLine = "msedge.exe --user-data-dir=$simpleProfile"; expected = 'Owner' },
     @{ name = 'slash alias exact profile'; commandLine = "msedge.exe /user-data-dir=$simpleProfile"; expected = 'Unknown' },
     @{ name = 'single-dash alias exact profile'; commandLine = "msedge.exe -user-data-dir=$simpleProfile"; expected = 'Unknown' },
     @{ name = 'uppercase key exact profile'; commandLine = "msedge.exe --USER-DATA-DIR=$simpleProfile"; expected = 'Unknown' },
     @{ name = 'case-only path variant'; commandLine = "msedge.exe --user-data-dir=$($simpleProfile.ToUpperInvariant())"; expected = 'Unknown' },
-    @{ name = 'alternate separator path'; commandLine = "msedge.exe --user-data-dir=$($simpleProfile.Replace('\', '/'))"; expected = 'Unknown' },
+    @{ name = 'alternate separator path'; commandLine = "msedge.exe --user-data-dir=$($simpleProfile.Replace([string][char]92, '/'))"; expected = 'Unknown' },
     @{ name = 'duplicate canonical exact profile'; commandLine = "msedge.exe --user-data-dir=$simpleProfile --user-data-dir=$simpleProfile"; expected = 'Unknown' },
     @{ name = 'canonical plus slash alias duplicate exact profile'; commandLine = "msedge.exe --user-data-dir=$simpleProfile /user-data-dir=$simpleProfile"; expected = 'Unknown' },
     @{ name = 'malformed command line'; commandLine = 'msedge.exe --user-data-dir="' + $simpleProfile; expected = 'Unknown' },
@@ -95,6 +95,7 @@ test("integration: Windows process identity predicate fails closed and binds UTC
 $utc = [DateTime]::SpecifyKind([DateTime]::new(2026, 10, 2, 12, 0, 0), [DateTimeKind]::Utc)
 $local = $utc.ToLocalTime()
 $dmtf = [System.Management.ManagementDateTimeConverter]::ToDmtfDateTime($utc.ToLocalTime())
+$dmtfOneMicrosecondNewer = [System.Management.ManagementDateTimeConverter]::ToDmtfDateTime($utc.AddTicks(10).ToLocalTime())
 $cases = @(
     @{ name = 'UTC DateTime'; pid = 17; candidate = 17; processName = 'msedge'; creation = $utc; start = $utc; handle = $true; expected = $true },
     @{ name = 'Local DateTime'; pid = 17; candidate = 17; processName = 'msedge'; creation = $local; start = $utc; handle = $true; expected = $true },
@@ -103,6 +104,15 @@ $cases = @(
     @{ name = 'one microsecond newer'; pid = 17; candidate = 17; processName = 'msedge'; creation = $utc.AddTicks(10); start = $utc; handle = $true; expected = $false },
     @{ name = 'one microsecond older'; pid = 17; candidate = 17; processName = 'msedge'; creation = $utc.AddTicks(-10); start = $utc; handle = $true; expected = $false },
     @{ name = 'DMTF date'; pid = 17; candidate = 17; processName = 'msedge'; creation = $dmtf; start = $utc; handle = $true; expected = $true },
+    @{ name = 'DMTF one microsecond newer'; pid = 17; candidate = 17; processName = 'msedge'; creation = $dmtfOneMicrosecondNewer; start = $utc; handle = $true; expected = $false },
+    @{ name = 'DMTF explicit UTC'; pid = 17; candidate = 17; processName = 'msedge'; creation = '20261002120000.000000+000'; start = $utc; handle = $true; expected = $true },
+    @{ name = 'DMTF positive minute offset'; pid = 17; candidate = 17; processName = 'msedge'; creation = '20261002174500.000000+345'; start = $utc; handle = $true; expected = $true },
+    @{ name = 'DMTF negative minute offset'; pid = 17; candidate = 17; processName = 'msedge'; creation = '20261002083000.000000-210'; start = $utc; handle = $true; expected = $true },
+    @{ name = 'DMTF wrong offset'; pid = 17; candidate = 17; processName = 'msedge'; creation = '20261002120000.000000+060'; start = $utc; handle = $true; expected = $false },
+    @{ name = 'DMTF invalid date'; pid = 17; candidate = 17; processName = 'msedge'; creation = '20260230120000.000000+000'; start = $utc; handle = $true; expected = $false },
+    @{ name = 'DMTF wildcard time'; pid = 17; candidate = 17; processName = 'msedge'; creation = '20261002120000.******+000'; start = $utc; handle = $true; expected = $false },
+    @{ name = 'DMTF repeated DST first hour'; pid = 17; candidate = 17; processName = 'msedge'; creation = '20261101013000.000000-420'; start = [DateTime]::SpecifyKind([DateTime]::new(2026, 11, 1, 8, 30, 0), [DateTimeKind]::Utc); handle = $true; expected = $true },
+    @{ name = 'DMTF repeated DST second hour does not alias first'; pid = 17; candidate = 17; processName = 'msedge'; creation = '20261101013000.000000-480'; start = [DateTime]::SpecifyKind([DateTime]::new(2026, 11, 1, 8, 30, 0), [DateTimeKind]::Utc); handle = $true; expected = $false },
     @{ name = 'unspecified CIM time'; pid = 17; candidate = 17; processName = 'msedge'; creation = [DateTime]::SpecifyKind($utc, [DateTimeKind]::Unspecified); start = $utc; handle = $true; expected = $false },
     @{ name = 'unspecified process time'; pid = 17; candidate = 17; processName = 'msedge'; creation = $utc; start = [DateTime]::SpecifyKind($utc, [DateTimeKind]::Unspecified); handle = $true; expected = $false },
     @{ name = 'missing creation date'; pid = 17; candidate = 17; processName = 'msedge'; creation = $null; start = $utc; handle = $true; expected = $false },
@@ -116,7 +126,7 @@ foreach ($case in $cases) {
     $actual = Test-ExactAuditProcessIdentity $case.pid $case.candidate $case.processName $case.creation $case.start $case.handle
     if ($actual -ne [bool]$case.expected) { throw "Identity case failed: $($case.name)" }
 }
-$snapshotProfile = 'C:\Temp\jithub-readme-edge-Snp123'
+$snapshotProfile = Join-Path ([IO.Path]::GetTempPath()) 'jithub-readme-edge-Snp123'
 $processRows = @(
     [pscustomobject]@{ CommandLine = "msedge.exe --user-data-dir=$snapshotProfile"; ProcessId = 17 },
     [pscustomobject]@{ CommandLine = 'msedge.exe --type=renderer'; ProcessId = 18 }
@@ -189,7 +199,7 @@ Write-Output ("Passed {0} synthetic process identity and {1} snapshot inventory 
   });
   assert.ifError(result.error);
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
-  assert.match(result.stdout, /Passed 15 synthetic process identity and 13 snapshot inventory cases\./u);
+  assert.match(result.stdout, /Passed 24 synthetic process identity and 13 snapshot inventory cases\./u);
 });
 
 test("integration: generated-profile cleanup launches the scoped Windows process command", {

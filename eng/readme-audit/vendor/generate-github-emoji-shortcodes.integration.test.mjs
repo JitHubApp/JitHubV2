@@ -77,7 +77,8 @@ test("integration: CLI rejects altered upstream bytes and source-path aliases", 
     }
     if (uppercaseResolvesToSameGenerator) {
       const caseVariantOutputPath = path.join(temporaryDirectory, "case-variant-script-output.json");
-      const caseVariantScriptPath = generatorPath.toUpperCase();
+      const extension = path.extname(generatorPath);
+      const caseVariantScriptPath = `${generatorPath.slice(0, -extension.length).toUpperCase()}${extension}`;
       const caseVariantScriptAttempt = spawnSync(process.execPath, [caseVariantScriptPath, inputPath, caseVariantOutputPath], {
         encoding: "utf8",
         windowsHide: true,
