@@ -225,6 +225,27 @@ including locked dependency/feed/vulnerability checks and **151/151** release-se
 tests (`app-compile.log`, `app-compile.binlog` in the same evidence directory).
 This compile is not an AOT publication or a replacement for the Sandbox pixel check;
 the clean committed app and matching runner must be published next.
+The reviewed implementation is now saved locally as
+`4e961abe296519e62658c91581549321be0bb22c` (not pushed). Its clean detached
+Release/x64 NativeAOT app and matching self-contained runner both publish,
+with the normal locked dependency/security checks, **151/151** security tests,
+and independent native-payload verification. App SHA-256:
+`22BA4201A5065BAED442A6A6C065243F19D5811D2E224CEE4DDAD798CB9F9F43`;
+runner DLL SHA-256:
+`9A5655F48560AA83E4F2A62B62A24B5F27E911950E737DB8385F4DD3717C24E7`.
+Logs/binlogs and payloads are under the same directory's `clean-build/`.
+The first rerun attempt (`offline-fix1-4e961abe-ranks001-010-20261012/`) stops
+before launching the app: successful CLI transfer progress pollutes the runtime
+preflight function's return stream, causing a missing `Success` property error.
+The delivered prerequisite report is valid and byte-identical to a separately
+retrieved copy. This is a harness defect, not a native rendering result; no case
+or fidelity pass is claimed. The failed attempt and source snapshot are retained.
+The preflight now sends native CLI progress to the log without including it in
+the structured return value. CLI execution, evidence-transfer, and report-validation
+failures remain independently fatal and retain their diagnostics. The isolated
+PowerShell replay regression suite passes twice (agent and independent root),
+including noisy successful output and a failing CLI plus invalid structured report.
+This harness-only fix does not change the published app/runner binaries or gates.
 
 A separate x64 global `opt-level=z` diagnostic, retaining tiny-skia at level 3,
 reduces the worker to **3,025,408 bytes**. With the current **361,984-byte**

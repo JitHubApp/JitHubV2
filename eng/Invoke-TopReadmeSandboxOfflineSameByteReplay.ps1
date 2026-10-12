@@ -891,17 +891,18 @@ function Invoke-SandboxWindowsAppRuntimePreflight {
     try {
         $guestScript = New-GuestWindowsAppRuntimePreflightScript -GuestRepoAbsolute $GuestRepoAbsolute -ExpectedHelperSha256 ([string]$helperEntries[0].sha256)
         $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($guestScript))
-        Invoke-WinApp -Arguments @('target', 'exec', 'sandbox', '--cwd', $GuestRepoAbsolute, '--', 'powershell.exe', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', $encoded) -Description 'verify/install pinned x64 Windows App Runtime in Sandbox'
+        Invoke-WinApp -Arguments @('target', 'exec', 'sandbox', '--cwd', $GuestRepoAbsolute, '--', 'powershell.exe', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', $encoded) -Description 'verify/install pinned x64 Windows App Runtime in Sandbox' | Out-Host
     }
     catch { $execFailure = $_.Exception.Message }
     try {
         if (Test-Path -LiteralPath $hostResultPath) { throw 'Refusing to overwrite runtime prerequisite evidence.' }
-        Invoke-WinApp -Arguments @('target', 'pull', 'sandbox', $guestResultRelative, $hostResultPath) -Description 'pull Windows App Runtime setup inventory'
+        Invoke-WinApp -Arguments @('target', 'pull', 'sandbox', $guestResultRelative, $hostResultPath) -Description 'pull Windows App Runtime setup inventory' | Out-Host
     }
     catch { $pullFailure = $_.Exception.Message }
 
     $report = $null
     $reportSha256 = $null
+    $reportFailure = $null
     if (Test-Path -LiteralPath $hostResultPath -PathType Leaf) {
         try {
             $report = Get-Content -LiteralPath $hostResultPath -Raw | ConvertFrom-Json -Depth 16
@@ -910,7 +911,7 @@ function Invoke-SandboxWindowsAppRuntimePreflight {
                 [string]$report.requestedArchitecture -cne 'x64' -or
                 [string]$report.minimumVersion -cne '8000.921.1539.0' -or
                 [string]$report.status -cne 'ready') {
-                $execFailure = 'Guest runtime prerequisite report did not verify the pinned helper, x64 architecture, minimum version, and ready state.'
+                $reportFailure = 'Guest runtime prerequisite report did not verify the pinned helper, x64 architecture, minimum version, and ready state.'
             }
             else {
                 $expectedFamilies = @(
@@ -938,14 +939,14 @@ function Invoke-SandboxWindowsAppRuntimePreflight {
                 if (-not $requiredSetMatches -or $null -eq $inventory -or
                     $inventory.satisfied -ne $true -or $healthyFrameworks.Count -eq 0 -or
                     $missingHealthyFamilies.Count -ne 0 -or @($inventory.missingPackageFamilies).Count -ne 0) {
-                    $execFailure = 'Guest runtime prerequisite report did not prove the complete healthy current-user x64 framework and package-family set.'
+                    $reportFailure = 'Guest runtime prerequisite report did not prove the complete healthy current-user x64 framework and package-family set.'
                 }
             }
         }
-        catch { $execFailure = $_.Exception.Message }
+        catch { $reportFailure = $_.Exception.Message }
     }
-    if ($null -ne $execFailure -or $null -ne $pullFailure -or $null -eq $report) {
-        $failureParts = @($execFailure, $pullFailure) | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }
+    if ($null -ne $execFailure -or $null -ne $pullFailure -or $null -ne $reportFailure -or $null -eq $report) {
+        $failureParts = @($execFailure, $pullFailure, $reportFailure) | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }
         if ($null -eq $report) { $failureParts += 'Runtime prerequisite report was not delivered from the Sandbox.' }
         return [pscustomobject]@{ Success = $false; Failure = ($failureParts -join ' '); EvidencePath = $hostResultPath; EvidenceSha256 = $reportSha256; Report = $report }
     }

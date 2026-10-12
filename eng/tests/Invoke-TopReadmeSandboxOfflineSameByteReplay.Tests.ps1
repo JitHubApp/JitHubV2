@@ -322,6 +322,7 @@ finally { Remove-OwnedTestTempRoot -Path $aggregateTestRoot -NamePrefix 'offline
 $guestBatchFunction = $ast.Find({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'New-GuestBatchScript' }, $true)
 if ($null -eq $guestBatchFunction) { throw 'Offline guest batch generator is missing.' }
 Invoke-Expression $guestBatchFunction.Extent.Text
+$SourceAdmissionTrace = $false
 $guestInvocationFunction = $ast.Find({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'New-GuestBatchExecArguments' }, $true)
 if ($null -eq $guestInvocationFunction) { throw 'Offline guest batch file invocation helper is missing.' }
 Invoke-Expression $guestInvocationFunction.Extent.Text
@@ -554,6 +555,7 @@ if ($null -eq $runtimeInvoker -or
     -not $runtimeInvoker.Extent.Text.Contains("'-ExecutionPolicy', 'Bypass', '-EncodedCommand'", [StringComparison]::Ordinal)) {
     throw 'Runtime preflight must invoke the staged installer in process-scoped Bypass PowerShell because guest policy is restrictive.'
 }
+Invoke-Expression $runtimeInvoker.Extent.Text
 $runtimeRoot = Join-Path ([IO.Path]::GetTempPath()) ('offline-runtime-preflight-' + [Guid]::NewGuid().ToString('N'))
 $incompleteRoot = $null
 [IO.Directory]::CreateDirectory($runtimeRoot) | Out-Null
@@ -628,6 +630,103 @@ try {
     }
     if (-not $runtimeGuestScript.Contains("`$ProgressPreference = 'SilentlyContinue'", [StringComparison]::Ordinal)) {
         throw 'Guest runtime preflight must suppress only native download progress chatter on its own process.'
+    }
+
+    $runtimeExpectedFamilies = @(
+        'Microsoft.WindowsAppRuntime.1.8_8wekyb3d8bbwe',
+        'MicrosoftCorporationII.WinAppRuntime.Main.1.8_8wekyb3d8bbwe',
+        'MicrosoftCorporationII.WinAppRuntime.Singleton_8wekyb3d8bbwe',
+        'Microsoft.WinAppRuntime.DDLM.8000.921.1539.0-x6_8wekyb3d8bbwe')
+    foreach ($package in $runtimePackages) { $package.Status = 'Ok' }
+    $runtimeSuccessReport = [ordered]@{
+        schemaVersion = 1
+        status = 'ready'
+        action = 'reused-current-user-runtime'
+        helperSha256 = $helperSha
+        requestedArchitecture = 'x64'
+        minimumVersion = '8000.921.1539.0'
+        requiredPackageFamilies = $runtimeExpectedFamilies
+        inventoryAfter = [ordered]@{
+            satisfied = $true
+            packages = $runtimePackages
+            missingPackageFamilies = @()
+        }
+    }
+    $script:RuntimePreflightSnapshot = [pscustomobject]@{
+        executionTarget = [pscustomobject]@{ epoch = 'runtime-preflight-test-epoch' }
+        workRoot = 'C:\Sandbox\work'
+    }
+    $script:RuntimePreflightMockReport = $runtimeSuccessReport
+    $script:RuntimePreflightMockExecFailure = $null
+    function Get-AndAssertSandboxSnapshot { return $script:RuntimePreflightSnapshot }
+    function Invoke-WinApp {
+        param([string[]]$Arguments, [string]$Description)
+        if ($Description -ceq 'verify/install pinned x64 Windows App Runtime in Sandbox' -and
+            $null -ne $script:RuntimePreflightMockExecFailure) {
+            Write-Output 'native CLI stdout before failure'
+            throw $script:RuntimePreflightMockExecFailure
+        }
+        if ($Description -ceq 'pull Windows App Runtime setup inventory') {
+            $destination = [string]$Arguments[-1]
+            [IO.File]::WriteAllText($destination, (($script:RuntimePreflightMockReport | ConvertTo-Json -Depth 12) + [Environment]::NewLine), [Text.UTF8Encoding]::new($false))
+        }
+        # Native winapp emits success-stream text. The preflight function must not
+        # mix these strings into its single structured return value.
+        Write-Output "native CLI stdout: $Description"
+    }
+
+    $runtimeSnapshotData = [pscustomobject]@{
+        Manifest = [pscustomobject]@{
+            files = @([pscustomobject]@{
+                relativePath = 'eng/readme-audit/Install-PinnedWindowsAppRuntime.ps1'
+                sha256 = $helperSha
+            })
+        }
+    }
+    $successEvidenceRoot = Join-Path $runtimeRoot 'host-success'
+    $failureEvidenceRoot = Join-Path $runtimeRoot 'host-failure'
+    [IO.Directory]::CreateDirectory($successEvidenceRoot) | Out-Null
+    [IO.Directory]::CreateDirectory($failureEvidenceRoot) | Out-Null
+    $runtimeResult = @(Invoke-SandboxWindowsAppRuntimePreflight `
+        -Snapshot $script:RuntimePreflightSnapshot `
+        -GuestRepoAbsolute 'C:\Sandbox\work\offline-same-byte\run\repo' `
+        -GuestRepoRelative 'offline-same-byte/run/repo' `
+        -SnapshotData $runtimeSnapshotData `
+        -HostEvidenceRoot $successEvidenceRoot `
+        -GuestEpoch 'runtime-preflight-test-epoch')
+    if ($runtimeResult.Count -ne 1 -or $runtimeResult[0] -isnot [pscustomobject] -or
+        $runtimeResult[0].Success -ne $true -or $runtimeResult[0].Report.status -cne 'ready' -or
+        $runtimeResult[0].Report.requiredPackageFamilies.Count -ne 4 -or
+        $runtimeResult[0].EvidenceSha256 -notmatch '^[0-9a-f]{64}$') {
+        $runtimeResultDiagnostic = @($runtimeResult | ForEach-Object {
+            if ($null -eq $_) { '<null>' }
+            elseif ($_ -is [pscustomobject]) { $_ | ConvertTo-Json -Depth 5 -Compress }
+            else { "$($_.GetType().FullName):$_" }
+        }) -join ' | '
+        throw "Runtime preflight must return exactly one structured success object despite native CLI stdout, preserving the verified manifest and evidence digest. Count=$($runtimeResult.Count); Items=$runtimeResultDiagnostic"
+    }
+
+    $failedGuestReport = [ordered]@{}
+    foreach ($property in $runtimeSuccessReport.Keys) { $failedGuestReport[$property] = $runtimeSuccessReport[$property] }
+    $failedGuestReport.status = 'failed'
+    $failedGuestReport.failure = 'The pinned runtime helper exited unsuccessfully.'
+    $script:RuntimePreflightMockReport = $failedGuestReport
+    $script:RuntimePreflightMockExecFailure = 'winapp verify/install failed with exit code 7.'
+    $failedRuntimeResult = @(Invoke-SandboxWindowsAppRuntimePreflight `
+        -Snapshot $script:RuntimePreflightSnapshot `
+        -GuestRepoAbsolute 'C:\Sandbox\work\offline-same-byte\run\repo' `
+        -GuestRepoRelative 'offline-same-byte/run/repo' `
+        -SnapshotData $runtimeSnapshotData `
+        -HostEvidenceRoot $failureEvidenceRoot `
+        -GuestEpoch 'runtime-preflight-test-epoch')
+    if ($failedRuntimeResult.Count -ne 1 -or $failedRuntimeResult[0] -isnot [pscustomobject] -or
+        $failedRuntimeResult[0].Success -ne $false -or
+        -not $failedRuntimeResult[0].Failure.Contains('winapp verify/install failed with exit code 7.', [StringComparison]::Ordinal) -or
+        -not $failedRuntimeResult[0].Failure.Contains('Guest runtime prerequisite report did not verify', [StringComparison]::Ordinal) -or
+        $failedRuntimeResult[0].Report.status -cne 'failed' -or
+        $failedRuntimeResult[0].Report.failure -cne 'The pinned runtime helper exited unsuccessfully.' -or
+        $failedRuntimeResult[0].EvidenceSha256 -notmatch '^[0-9a-f]{64}$') {
+        throw 'Runtime preflight must preserve the original CLI failure alongside validation failure and the structured guest report.'
     }
 }
 finally {
