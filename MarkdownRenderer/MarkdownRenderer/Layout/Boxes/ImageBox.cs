@@ -682,6 +682,7 @@ internal sealed partial class ImageBox : BlockBox
     private CanvasTextLayout? _caption;
     private volatile bool _loadStarted;
     private bool _loadFailed;
+    private int _unavailableReported;
     private bool _isInlineLayout;
     private volatile bool _disposed;
     private float _availableWidth;
@@ -713,8 +714,23 @@ internal sealed partial class ImageBox : BlockBox
     /// changed) or merely repaint. Always raised on the UI thread.</summary>
     public event EventHandler<LoadCompletedEventArgs>? LoadCompleted;
 
-    private void RaiseLoadCompleted(bool layoutInvalidated) =>
+    private void RaiseLoadCompleted(bool layoutInvalidated)
+    {
+        ReportUnreportedFailure();
         LoadCompleted?.Invoke(this, LoadCompletedEventArgs.For(layoutInvalidated));
+    }
+
+    private void ReportUnreportedFailure()
+    {
+        // Every published error placeholder must reach the host, including a
+        // decoder failure after successful resolution and a cached failure.
+        // Keep an earlier policy/SVG-specific reason; do not report it twice.
+        if (_loadFailed && !_disposed && !_resourcesSuspended &&
+            Interlocked.CompareExchange(ref _unavailableReported, 1, 0) == 0)
+        {
+            Context.ImageUnavailable?.Invoke(Url, MarkdownImageUnavailableReason.Unavailable, _svgFailureReason);
+        }
+    }
 
     public CanvasHorizontalAlignment ContentAlignment { get; set; } = CanvasHorizontalAlignment.Left;
 
@@ -2278,6 +2294,12 @@ internal sealed partial class ImageBox : BlockBox
 
     internal void EnsureLoading(bool isVisible)
     {
+        if (_loadFailed)
+        {
+            ReportUnreportedFailure();
+            return;
+        }
+
         // A pressure-parked tiled image retains its good pixels. Only the
         // geometry-aware paint path can decide that a visible tile is missing
         // (or that the target changed) and re-enter authorized loading.
@@ -3567,6 +3589,7 @@ internal sealed partial class ImageBox : BlockBox
                 demand = demandOverride;
             }
             _loadStarted = true;
+            Volatile.Write(ref _unavailableReported, 0);
         }
         previousDeferredWaiter?.Dispose();
         if (string.IsNullOrEmpty(Url)) { _loadFailed = true; return; }
@@ -4041,7 +4064,10 @@ internal sealed partial class ImageBox : BlockBox
         MarkdownSvgFailureReason? svgFailureReason = null)
     {
         if (!_disposed && !_resourcesSuspended && reason != MarkdownImageUnavailableReason.None)
+        {
+            Volatile.Write(ref _unavailableReported, 1);
             Context.ImageUnavailable?.Invoke(Url, reason, svgFailureReason);
+        }
     }
 
     private bool TryPublishCachedRasterBitmap(

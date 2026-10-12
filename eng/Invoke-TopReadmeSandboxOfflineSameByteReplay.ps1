@@ -32,6 +32,9 @@ param(
 
     [string]$WinAppPath = 'winapp',
 
+    # Diagnostic attribution only; never usable as quiet-machine timing evidence.
+    [switch]$SourceAdmissionTrace,
+
     [switch]$Run
 )
 
@@ -1224,6 +1227,7 @@ if (-not [string]::IsNullOrWhiteSpace(`$edge) -and -not (Test-Path -LiteralPath 
 `$env:JITHUB_README_AUDIT_RASTER_DIAGNOSTICS = `$null
 `$env:JITHUB_README_AUDIT_IMAGE_TRANSPORT_DIAGNOSTICS = `$null
 `$env:JITHUB_README_AUDIT_SVG_STAGE_DIAGNOSTICS = `$null
+`$env:JITHUB_MARKDOWN_SOURCE_ADMISSION_TRACE = $(if ($SourceAdmissionTrace) { "'1'" } else { '$null' })
 `$env:JITHUB_AUTOMATION_MARKDOWN_TARGET = `$null
 `$env:JITHUB_AUTOMATION_MARKDOWN_RESUME = `$null
 `$env:JITHUB_AUTOMATION_MARKDOWN_SUPPLEMENTAL = `$null
@@ -1510,6 +1514,7 @@ $planSummary = [ordered]@{
     sourceRoot = $repoRoot
     appDirectory = $AppDirectory
     automationRunnerDirectory = $AutomationRunnerDirectory
+    sourceAdmissionTraceEnabled = [bool]$SourceAdmissionTrace
     nodeExecutablePath = $NodeExecutablePath
     startRank = $resolvedStartRank
     count = $resolvedCount

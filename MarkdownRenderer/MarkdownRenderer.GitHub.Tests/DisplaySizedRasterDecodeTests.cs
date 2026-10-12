@@ -462,7 +462,8 @@ public sealed class DisplaySizedRasterDecodeTests
         IMarkdownImageResolver resolver,
         MarkdownPerformanceSession? session,
         double scale,
-        bool hasDocumentOwner = true)
+        bool hasDocumentOwner = true,
+        Action<string, MarkdownImageUnavailableReason, MarkdownSvgFailureReason?>? imageUnavailable = null)
     {
         var style = new ElementStyle();
         var styles = new Dictionary<string, ElementStyle>(StringComparer.Ordinal)
@@ -484,6 +485,7 @@ public sealed class DisplaySizedRasterDecodeTests
             PerformanceDocumentOwner = hasDocumentOwner ? new object() : null,
             RasterizationScale = scale,
             ImageCancellationToken = CancellationToken.None,
+            ImageUnavailable = imageUnavailable,
         };
     }
 

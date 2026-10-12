@@ -1265,6 +1265,8 @@ public sealed partial class MarkdownViewer : UserControl
             _renderer = new MarkdownDocumentView().UseGitHubReadme(SharedGitHubEngine);
         }
         RecordRendererCreated();
+        if (MarkdownLifecycleAutomationBridge.IsSameByteAdmissionTraceEnabled)
+            _renderer.AutomationRebuildRequestObserver = MarkdownLifecycleAutomationBridge.TraceSameByteAdmission;
         _currentRendererDisposalCompleted = false;
         _renderer.DisposalCompleted += OnRendererDisposalCompleted;
         _renderer.Theme = _sameByteVisualTheme ?? _theme;

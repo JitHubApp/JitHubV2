@@ -2929,6 +2929,10 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
 
     internal long AutomationPipelineGeneration => _pipelineGeneration;
 
+    // Explicit diagnostic replay only. The normal path has no observer and
+    // performs no formatting, stack walk, or file I/O for rebuild attribution.
+    internal Action<string>? AutomationRebuildRequestObserver { get; set; }
+
     internal CancellationToken GetAutomationPipelineCancellationToken(long generation)
     {
         CancellationTokenSource? cancellation = _pipelineCts;
@@ -4249,7 +4253,10 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         RequestRebuild(RebuildReason.Restyle);
     }
 
-    private void RequestRebuild(RebuildReason reason)
+    private void RequestRebuild(
+        RebuildReason reason,
+        [CallerMemberName] string requestOrigin = "",
+        [CallerLineNumber] int requestLine = 0)
     {
         if (_isDisposed)
             return;
@@ -4260,7 +4267,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             bool enqueued;
             try
             {
-                enqueued = dispatcher.TryEnqueue(() => RequestRebuild(reason));
+                enqueued = dispatcher.TryEnqueue(() => RequestRebuild(reason, requestOrigin, requestLine));
             }
             catch (Exception exception)
             {
@@ -4286,6 +4293,18 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         DrainRejectedCrossThreadRebuildRequest();
 
         MarkdownRebuildRequestDisposition disposition = _rebuildCoordinator.Request(reason);
+
+        if (AutomationRebuildRequestObserver is { } observer)
+        {
+            try
+            {
+                observer($"rebuild-request:generation={_pipelineGeneration}:reason={reason}:disposition={disposition}:origin={requestOrigin}:{requestLine}:width={ActualWidth:R}:layoutWidth={_lastWidth:R}");
+            }
+            catch (Exception)
+            {
+                // A diagnostic sink must never alter the rebuild lifecycle.
+            }
+        }
 
         var performance = MarkdownPerformanceEventSource.Log;
         if (_pendingRebuildRequestTimestamp == 0 && performance.IsMeasurementEnabled())

@@ -7,6 +7,18 @@ namespace JitHub.WinUI.Tests.Services;
 public sealed class OfflineSameByteSandboxReplayContractTests
 {
     [Fact]
+    public void SourceAdmissionTraceIsOptInForwardedToGuestAndRecorded()
+    {
+        string wrapper = File.ReadAllText(Path.Combine(FindRepositoryRoot(), "eng",
+            "Invoke-TopReadmeSandboxOfflineSameByteReplay.ps1"));
+        Assert.Contains("[switch]$SourceAdmissionTrace", wrapper, StringComparison.Ordinal);
+        Assert.Contains("`$env:JITHUB_MARKDOWN_SOURCE_ADMISSION_TRACE = $(if ($SourceAdmissionTrace) { \"'1'\" } else { '$null' })",
+            wrapper, StringComparison.Ordinal);
+        Assert.Contains("sourceAdmissionTraceEnabled = [bool]$SourceAdmissionTrace", wrapper, StringComparison.Ordinal);
+        Assert.Contains("overallReleaseQualification = 'not-qualified'", wrapper, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void OfflineSameByteReplayIsExplicitSandboxOnlyAndNeverClaimsReleaseQualification()
     {
         string root = FindRepositoryRoot();

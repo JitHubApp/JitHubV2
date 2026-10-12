@@ -13,7 +13,7 @@ public sealed class MarkdownRendererControlRebuildWiringSourceContractTests
     public void SceneDeferralReturnsBeforeAnyPipelineInvalidation()
     {
         string control = File.ReadAllText(FindControlSource());
-        int request = control.IndexOf("private void RequestRebuild(RebuildReason reason)", StringComparison.Ordinal);
+        int request = control.IndexOf("private void RequestRebuild(", StringComparison.Ordinal);
         int defer = control.IndexOf(
             "if (disposition == MarkdownRebuildRequestDisposition.Deferred)",
             request,
@@ -87,6 +87,22 @@ public sealed class MarkdownRendererControlRebuildWiringSourceContractTests
         Assert.Contains("Interlocked.CompareExchange(", control, StringComparison.Ordinal);
         Assert.Contains("DrainRejectedCrossThreadRebuildRequest();", control, StringComparison.Ordinal);
         Assert.Contains("Interlocked.Exchange(ref _rejectedCrossThreadRebuildReason, -1)", control, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RebuildAttributionIsOptInAndRetainsTheOriginalCrossThreadCallSite()
+    {
+        string control = File.ReadAllText(FindControlSource());
+        int request = control.IndexOf("private void RequestRebuild(", StringComparison.Ordinal);
+        int observer = control.IndexOf("if (AutomationRebuildRequestObserver is { } observer)", request, StringComparison.Ordinal);
+        int format = control.IndexOf("observer($\"rebuild-request:", request, StringComparison.Ordinal);
+        int defer = control.IndexOf("if (disposition == MarkdownRebuildRequestDisposition.Deferred)", request, StringComparison.Ordinal);
+        Assert.True(request >= 0 && observer > request && format > observer && defer > format);
+        Assert.Contains("[CallerMemberName] string requestOrigin", control[request..observer], StringComparison.Ordinal);
+        Assert.Contains("[CallerLineNumber] int requestLine", control[request..observer], StringComparison.Ordinal);
+        Assert.Contains("RequestRebuild(reason, requestOrigin, requestLine)", control[request..observer], StringComparison.Ordinal);
+        Assert.Contains("catch (Exception)", control[observer..defer], StringComparison.Ordinal);
+        Assert.DoesNotContain("StackTrace", control[request..defer], StringComparison.Ordinal);
     }
 
     [Fact]

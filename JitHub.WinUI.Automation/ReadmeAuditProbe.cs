@@ -2665,7 +2665,19 @@ internal static partial class ReadmeAuditProbe
             throw new InvalidOperationException(
                 $"README traversal exceeded the {MaximumTraversalViewports}-view safety ceiling before reaching the document end.");
         }
-        EnsureNativeViewportCoverage(tiles);
+        try
+        {
+            EnsureNativeViewportCoverage(tiles);
+        }
+        catch (InvalidOperationException)
+        {
+            // Preserve the actual capture positions before the failed case
+            // discards its incomplete result. Normalized UIA positions may
+            // precede a lazy-layout correction made during capture itself.
+            // Never normalize, repair, or waive that coverage failure here.
+            WriteNativeViewportCoverageFailure(output, tiles);
+            throw;
+        }
 
         Stopwatch semanticProbe = Stopwatch.StartNew();
         AutomationElement[] descendants = host.FindAllDescendants();
@@ -3145,6 +3157,30 @@ internal static partial class ReadmeAuditProbe
         }
 
         return verticalPercent / 100 * ((100 - verticalViewSize) / verticalViewSize);
+    }
+
+    private static void WriteNativeViewportCoverageFailure(string output, IReadOnlyList<AuditTile> tiles)
+    {
+        try
+        {
+            WriteJson(Path.Combine(output, "native-viewport-coverage-failure.json"), new
+            {
+                schemaVersion = 1,
+                capturedViewportCount = tiles.Count,
+                viewports = tiles.Take(MaximumTraversalViewports).Select(tile => new
+                {
+                    tile.Index,
+                    documentTopDip = tile.RendererDocumentTopDip is double top && double.IsFinite(top) ? (double?)top : null,
+                    normalizedTop = double.IsFinite(tile.ScrollTopViewportUnits) ? (double?)tile.ScrollTopViewportUnits : null,
+                    tile.Width,
+                    tile.Height,
+                }).ToArray(),
+            });
+        }
+        catch (Exception)
+        {
+            // Optional diagnostics must not replace the original hard failure.
+        }
     }
 
     private static void EnsureNativeViewportCoverage(IReadOnlyList<AuditTile> tiles)

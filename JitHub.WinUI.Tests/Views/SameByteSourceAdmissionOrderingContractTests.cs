@@ -8,6 +8,16 @@ namespace JitHub.WinUI.Tests.Views;
 public sealed class SameByteSourceAdmissionOrderingContractTests
 {
     [Fact]
+    public void RebuildOriginTracingIsExplicitlyOptInAndDoesNotCaptureTheViewer()
+    {
+        string viewer = File.ReadAllText(Path.Combine(FindRepositoryRoot(),
+            "JitHub.WinUI", "Views", "Controls", "Common", "MarkdownViewer.xaml.cs"));
+        Assert.Matches(new Regex(
+            @"if \(MarkdownLifecycleAutomationBridge\.IsSameByteAdmissionTraceEnabled\)\s+_renderer\.AutomationRebuildRequestObserver = MarkdownLifecycleAutomationBridge\.TraceSameByteAdmission;",
+            RegexOptions.CultureInvariant), viewer);
+    }
+
+    [Fact]
     public void MarkdownAssignmentWaitsForTheRendererLoadPipelineForEveryHost()
     {
         string root = FindRepositoryRoot();
