@@ -95,7 +95,7 @@ function Get-ResvgVendoredSourcesProvenance {
             vendoredLicense = 'BSD-3-Clause AND MIT'
             sourceInventorySha256 = '5454cbf22bc4f175b21e750839c30b99bc164991c5134f66a5cc1e7fe01bced8'
             patchSetSha256 = '917fd385f07281bf59bd969a0160f143bc6711bf8d11b1ee8837afc0b3c4e6e4'
-            addedFilesSha256 = 'e0041bf0aaeb34445dc0c5336f307ff3bf0dc4234e56833bb2df14baebcf05d5'
+            addedFilesSha256 = '36412a6e06cc5fb70e85a2611f292d560fd58a828aa992e514132b53f3742df9'
             addedFiles = @(
                 @{
                     path = 'LICENSE-JITHUB-MIT'
@@ -127,7 +127,7 @@ function Get-ResvgVendoredSourcesProvenance {
                 },
                 @{
                     path = 'src/scan/path_analytic.rs'
-                    sha256 = 'b988164f53a0012cd0b5c6496d19f7a517a0917696bcf8d92ed75458522019bb'
+                    sha256 = '4afa501640ab21bd21913e07b2ec46af63a7fadc56c42f9fbd7539a17ecdf48a'
                     license = 'MIT'
                     licenseTextPath = 'LICENSE-JITHUB-MIT'
                     licenseTextSha256 = '50a0a014b7017b4cdc90c9097efa8e109a8d84f3ad92c3bfcecb45178fc65b40'

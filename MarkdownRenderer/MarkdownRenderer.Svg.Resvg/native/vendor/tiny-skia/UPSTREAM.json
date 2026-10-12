@@ -813,7 +813,7 @@
       "sha256": "a4ba0c5e27faa8a76795f5f75be72a9dfd4c43f19a66a4bfc01eeefef80477dd"
     }
   ],
-  "addedFilesSha256": "e0041bf0aaeb34445dc0c5336f307ff3bf0dc4234e56833bb2df14baebcf05d5",
+  "addedFilesSha256": "36412a6e06cc5fb70e85a2611f292d560fd58a828aa992e514132b53f3742df9",
   "addedFiles": [
     {
       "path": "LICENSE-JITHUB-MIT",
@@ -845,7 +845,7 @@
     },
     {
       "path": "src/scan/path_analytic.rs",
-      "sha256": "b988164f53a0012cd0b5c6496d19f7a517a0917696bcf8d92ed75458522019bb",
+      "sha256": "4afa501640ab21bd21913e07b2ec46af63a7fadc56c42f9fbd7539a17ecdf48a",
       "license": "MIT",
       "licenseTextPath": "LICENSE-JITHUB-MIT",
       "licenseTextSha256": "50a0a014b7017b4cdc90c9097efa8e109a8d84f3ad92c3bfcecb45178fc65b40"

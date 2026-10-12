@@ -109,6 +109,12 @@ pub struct CoverageSpan {
     pub alpha: u8,
 }
 
+// Within this coordinate bound, the product used by `Edge::x_at` is safely
+// representable for every sample inside a clipped edge: both coordinate
+// deltas are at most 2e150, so their product is at most 4e300. Larger caller
+// limits retain the per-band finiteness check for fail-closed behavior.
+const MAX_COORDINATE_WITH_PROVEN_FINITE_INTERPOLATION: f64 = 1.0e150;
+
 #[derive(Clone, Copy, Debug, Default)]
 struct RasterUsage {
     edges: usize,
@@ -1236,7 +1242,13 @@ macro_rules! reserve_scratch {
 macro_rules! push_scratch {
     ($scratch:ident, $field:ident, $value:expr, $shared_bytes:expr, $limits:expr) => {{
         let required = $scratch.$field.len().saturating_add(1);
-        reserve_scratch!($scratch, $field, required, $shared_bytes, $limits)?;
+        // Scratch capacity was admitted when it grew. With fixed limits for
+        // this sweep, reusing an already-admitted slot cannot increase live
+        // bytes; every other growable owner independently includes the full
+        // scratch capacity in its admission calculation.
+        if required > $scratch.$field.capacity() {
+            reserve_scratch!($scratch, $field, required, $shared_bytes, $limits)?;
+        }
         $scratch.$field.push($value);
     }};
 }
@@ -1425,6 +1437,40 @@ impl OrderTree {
         rank
     }
 
+    /// Return the active predecessor/successor directly from the treap's
+    /// parent/child links. This is the same in-order neighborhood that
+    /// `edge_at(rank +/- 1)` returns, without first computing a rank and then
+    /// traversing from the root again for each neighbor.
+    fn neighbors(&self, node: usize) -> (Option<usize>, Option<usize>) {
+        let mut predecessor = self.nodes[node].left.map(|mut child| {
+            while let Some(right) = self.nodes[child].right {
+                child = right;
+            }
+            self.nodes[child].edge
+        });
+        let mut successor = self.nodes[node].right.map(|mut child| {
+            while let Some(left) = self.nodes[child].left {
+                child = left;
+            }
+            self.nodes[child].edge
+        });
+
+        let mut child = node;
+        while predecessor.is_none() || successor.is_none() {
+            let Some(parent) = self.nodes[child].parent else {
+                break;
+            };
+            if predecessor.is_none() && self.nodes[parent].right == Some(child) {
+                predecessor = Some(self.nodes[parent].edge);
+            }
+            if successor.is_none() && self.nodes[parent].left == Some(child) {
+                successor = Some(self.nodes[parent].edge);
+            }
+            child = parent;
+        }
+        (predecessor, successor)
+    }
+
     fn insert_at(&mut self, edge: usize, rank: usize) {
         let node = if let Some(node) = self.free.pop() {
             self.nodes[node] = Node {
@@ -1455,9 +1501,26 @@ impl OrderTree {
         self.by_edge[edge] = Some(node);
     }
 
+    #[cfg(test)]
     fn remove(&mut self, edge: usize) -> Option<usize> {
         let node = self.by_edge[edge].take()?;
         let rank = self.rank_node(node);
+        self.unlink_node(node);
+        Some(rank)
+    }
+
+    /// Remove an edge when the caller does not need its in-order rank.
+    /// Keeping this path avoids a redundant parent-chain rank walk in the
+    /// analytic sweep, which already has the node from `by_edge`.
+    fn remove_unranked(&mut self, edge: usize) -> bool {
+        let Some(node) = self.by_edge[edge].take() else {
+            return false;
+        };
+        self.unlink_node(node);
+        true
+    }
+
+    fn unlink_node(&mut self, node: usize) {
         // The edge map already identifies the node. Unlink it in place,
         // preserving the unique ordered treap of its two children, instead
         // of searching/splitting the complete tree twice by rank.
@@ -1488,7 +1551,6 @@ impl OrderTree {
         self.nodes[node].parent = None;
         self.nodes[node].size = 1;
         self.free.push(node);
-        Some(rank)
     }
 
     fn edge_at(&self, mut rank: usize) -> Option<usize> {
@@ -3126,16 +3188,15 @@ fn rasterize_with_base_usage(
         for remove_index in 0..scratch.remove.len() {
             let id = scratch.remove[remove_index];
             if let Some(node) = tree.by_edge[id] {
-                let rank = tree.rank_node(node);
-                if rank > 0 {
-                    let neighbor = tree.edge_at(rank - 1).unwrap();
+                let (before, after) = tree.neighbors(node);
+                if let Some(neighbor) = before {
                     push_scratch!(scratch, changed, neighbor, shared_bytes, limits);
                 }
-                if rank + 1 < tree.len() {
-                    let neighbor = tree.edge_at(rank + 1).unwrap();
+                if let Some(neighbor) = after {
                     push_scratch!(scratch, changed, neighbor, shared_bytes, limits);
                 }
-                tree.remove(id);
+                let removed = tree.remove_unranked(id);
+                debug_assert!(removed);
             }
         }
         // Reinsert each crossing block at its canonical event x. Members are
@@ -3194,13 +3255,11 @@ fn rasterize_with_base_usage(
             let Some(node) = tree.by_edge[id] else {
                 continue;
             };
-            let rank = tree.rank_node(node);
-            if rank > 0 {
-                let before = tree.edge_at(rank - 1).unwrap();
+            let (before, after) = tree.neighbors(node);
+            if let Some(before) = before {
                 push_scratch!(scratch, candidates, (before, id), shared_bytes, limits);
             }
-            if rank + 1 < tree.len() {
-                let after = tree.edge_at(rank + 1).unwrap();
+            if let Some(after) = after {
                 push_scratch!(scratch, candidates, (id, after), shared_bytes, limits);
             }
         }
@@ -3351,6 +3410,14 @@ mod order_tree_tests {
                 let node = &tree.nodes[node_id];
                 assert_eq!(tree.edge_at(rank), Some(edge));
                 assert_eq!(tree.rank_node(node_id), rank);
+                assert_eq!(
+                    tree.neighbors(node_id),
+                    (
+                        rank.checked_sub(1).map(|previous| sequence[previous]),
+                        sequence.get(rank + 1).copied(),
+                    ),
+                    "neighbor lookup at iteration {iteration}, rank {rank}"
+                );
                 assert_eq!(node.size, 1 + tree.size(node.left) + tree.size(node.right));
                 for child in [node.left, node.right].into_iter().flatten() {
                     assert_eq!(tree.nodes[child].parent, Some(node_id));
@@ -3401,6 +3468,37 @@ mod order_tree_tests {
             for (rank, &id) in sequence.iter().enumerate() {
                 assert_eq!(insertion_rank(&tree, &edges, id, 0.0, above), rank + 1);
             }
+        }
+    }
+
+    #[test]
+    fn unranked_removal_matches_ranked_in_order_removal() {
+        let mut unranked = OrderTree::try_new(256).unwrap();
+        let mut ranked = OrderTree::try_new(256).unwrap();
+        let mut sequence = Vec::new();
+        let mut state = 0xD1B5_4A32_D192_ED03u64;
+
+        for edge in 0..256 {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            let rank = (state as usize) % (sequence.len() + 1);
+            sequence.insert(rank, edge);
+            unranked.insert_at(edge, rank);
+            ranked.insert_at(edge, rank);
+        }
+
+        while !sequence.is_empty() {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            let rank = (state as usize) % sequence.len();
+            let edge = sequence.remove(rank);
+            assert_eq!(ranked.remove(edge), Some(rank));
+            assert!(unranked.remove_unranked(edge));
+            assert_eq!(ranked.in_order(), sequence);
+            assert_eq!(unranked.in_order(), sequence);
+            assert!(!unranked.remove_unranked(edge));
         }
     }
 }
@@ -3691,6 +3789,8 @@ fn accumulate_band(
         return Ok(());
     }
     let sample_y = y0 * 0.5 + y1 * 0.5;
+    let validate_sample_interpolation =
+        limits.max_coordinate_abs > MAX_COORDINATE_WITH_PROVEN_FINITE_INTERPOLATION;
     let mut winding = 0i32;
     let mut parity = false;
     let mut left = None;
@@ -3736,7 +3836,7 @@ fn accumulate_band(
         // Intersections are sweep events, so the order and fill transitions
         // are constant throughout this open band. The sample value is used
         // only to reject numerically unstable ordering, not to choose spans.
-        if !edge.x_at(sample_y).is_finite() {
+        if validate_sample_interpolation && !edge.x_at(sample_y).is_finite() {
             return Err(CoverageError::NumericRange);
         }
     }
@@ -3777,6 +3877,60 @@ fn accumulate_band(
         }
     }
     Ok(())
+}
+
+// Exposes the interpolation validation to the artifact's boundary tests. The
+// coincident opposite-winding edges produce no pixels, so extreme coordinate
+// cases exercise the production band walk without a large raster allocation.
+#[cfg(test)]
+pub(crate) fn probe_sample_interpolation_for_test(
+    a: Point,
+    b: Point,
+    y0: f64,
+    y1: f64,
+    clip: ClipRect,
+    rule: FillRule,
+    max_coordinate_abs: f64,
+) -> Result<(), CoverageError> {
+    let band_y0 = y0.max(clip.top);
+    let band_y1 = y1.min(clip.bottom);
+    if band_y1 > band_y0 {
+        // The production sweep only passes edges whose start event is at or
+        // below this band and whose end event is at or above its next event.
+        debug_assert!(a.y <= band_y0 && band_y1 <= b.y);
+    }
+    let edges = [
+        Edge {
+            a,
+            b,
+            winding: 1,
+            id: 0,
+        },
+        Edge {
+            a,
+            b,
+            winding: -1,
+            id: 1,
+        },
+    ];
+    let mut limits = Limits::default();
+    limits.max_coordinate_abs = max_coordinate_abs;
+    let mut coverage = CoverageAccumulator::default();
+    let mut partial = 0;
+    let mut fill_pairs = Vec::new();
+    accumulate_band(
+        &edges,
+        &[0, 1],
+        rule,
+        y0,
+        y1,
+        clip,
+        &mut coverage,
+        &mut partial,
+        &mut fill_pairs,
+        limits,
+        0,
+    )
 }
 
 fn accumulate_trapezoid_rows(
@@ -6046,6 +6200,173 @@ mod tests {
 }
 
 #[cfg(test)]
+mod interpolation_guard_tests {
+    use super::*;
+
+    #[test]
+    fn bounded_interpolation_guard_matches_boundary_expectations() {
+        let cutoff = MAX_COORDINATE_WITH_PROVEN_FINITE_INTERPOLATION;
+        let just_above_cutoff = f64::from_bits(cutoff.to_bits() + 1);
+        let min_subnormal = f64::from_bits(1);
+        let cases = [
+            (
+                "exact cutoff with opposite coordinate extremes",
+                Point { x: -cutoff, y: -cutoff },
+                Point { x: cutoff, y: cutoff },
+                -1.0,
+                1.0,
+                ClipRect {
+                    left: -1.0,
+                    top: -1.0,
+                    right: 1.0,
+                    bottom: 1.0,
+                },
+                cutoff,
+                Ok(()),
+            ),
+            (
+                "next representable limit above cutoff retains runtime guard",
+                Point { x: -cutoff, y: -1.0 },
+                Point { x: cutoff, y: 1.0 },
+                -0.5,
+                0.5,
+                ClipRect {
+                    left: -1.0,
+                    top: -1.0,
+                    right: 1.0,
+                    bottom: 1.0,
+                },
+                just_above_cutoff,
+                Ok(()),
+            ),
+            (
+                "adjacent near-horizontal ordinates",
+                Point { x: -cutoff, y: 1.0 },
+                Point {
+                    x: cutoff,
+                    y: f64::from_bits(1.0_f64.to_bits() + 1),
+                },
+                1.0,
+                f64::from_bits(1.0_f64.to_bits() + 1),
+                ClipRect {
+                    left: -1.0,
+                    top: 1.0,
+                    right: 1.0,
+                    bottom: f64::from_bits(1.0_f64.to_bits() + 1),
+                },
+                cutoff,
+                Ok(()),
+            ),
+            (
+                "subnormal delta and signed-zero start",
+                Point { x: -32.0, y: -0.0 },
+                Point { x: -16.0, y: min_subnormal },
+                -0.0,
+                min_subnormal,
+                ClipRect {
+                    left: -64.0,
+                    top: -0.0,
+                    right: 64.0,
+                    bottom: min_subnormal,
+                },
+                64.0,
+                Ok(()),
+            ),
+            (
+                "clip-top rounding with sample at boundary",
+                Point {
+                    x: 0.0,
+                    y: -2.0 * min_subnormal,
+                },
+                Point {
+                    x: 1.0,
+                    y: 2.0 * min_subnormal,
+                },
+                -min_subnormal,
+                min_subnormal,
+                ClipRect {
+                    left: -1.0,
+                    top: 0.0,
+                    right: 2.0,
+                    bottom: min_subnormal,
+                },
+                4.0,
+                Ok(()),
+            ),
+            (
+                "signed-zero clip boundary",
+                Point { x: 0.0, y: -0.0 },
+                Point { x: 0.5, y: 1.0 },
+                -0.0,
+                1.0,
+                ClipRect {
+                    left: -1.0,
+                    top: 0.0,
+                    right: 1.0,
+                    bottom: 1.0,
+                },
+                2.0,
+                Ok(()),
+            ),
+            (
+                "finite clipped sample despite a large remote endpoint",
+                Point { x: -1.0e200, y: 0.0 },
+                Point { x: 1.0e200, y: 1.0e120 },
+                0.0,
+                1.0,
+                ClipRect {
+                    left: -1.0e200,
+                    top: 0.0,
+                    right: 1.0e200,
+                    bottom: 1.0e120,
+                },
+                1.0e200,
+                Ok(()),
+            ),
+            (
+                "unsafe high-limit interpolation retains numeric failure",
+                Point {
+                    x: -1.0e200,
+                    y: -1.0e120,
+                },
+                Point {
+                    x: 1.0e200,
+                    y: 1.0e120,
+                },
+                -1.0e120,
+                1.0e120,
+                ClipRect {
+                    left: -1.0e200,
+                    top: -1.0e120,
+                    right: 1.0e200,
+                    bottom: 1.0e120,
+                },
+                1.0e200,
+                Err(CoverageError::NumericRange),
+            ),
+        ];
+
+        for rule in [FillRule::EvenOdd, FillRule::NonZero] {
+            for &(name, a, b, y0, y1, clip, max_coordinate_abs, expected) in &cases {
+                assert_eq!(
+                    probe_sample_interpolation_for_test(
+                        a,
+                        b,
+                        y0,
+                        y1,
+                        clip,
+                        rule,
+                        max_coordinate_abs,
+                    ),
+                    expected,
+                    "{name} with {rule:?}"
+                );
+            }
+        }
+    }
+}
+
+#[cfg(test)]
 mod x_cluster_tests {
     use super::*;
     use alloc::vec;
@@ -6451,6 +6772,196 @@ mod x_cluster_tests {
             heap_sort_by(&mut actual, Ord::cmp);
             expected.sort_unstable();
             assert_eq!(actual, expected, "length {len}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod scratch_fast_path_admission_tests {
+    use super::*;
+
+    fn limits_at(bytes: usize) -> Limits {
+        let mut limits = Limits::default();
+        limits.max_intermediate_bytes = bytes;
+        limits.max_total_bytes = bytes;
+        limits.max_output_bytes = bytes;
+        limits
+    }
+
+    fn event(index: usize) -> Event {
+        Event {
+            y: index as f64,
+            x: 0.0,
+            kind: EventKind::Clip,
+        }
+    }
+
+    fn push_group(
+        scratch: &mut SweepScratch,
+        value: Event,
+        shared_bytes: usize,
+        limits: Limits,
+    ) -> Result<(), CoverageError> {
+        push_scratch!(scratch, group, value, shared_bytes, limits);
+        Ok(())
+    }
+
+    #[test]
+    fn admitted_scratch_capacity_can_be_reused_at_exact_live_limit() {
+        let shared_bytes: usize = 37;
+        let mut scratch = SweepScratch::default();
+        let initial_limits = limits_at(1024 * 1024);
+        reserve_scratch!(scratch, group, 1, shared_bytes, initial_limits).unwrap();
+        let admitted_capacity = scratch.group.capacity();
+        let admitted_bytes = shared_bytes + scratch.capacity_bytes();
+        let exact_limits = limits_at(admitted_bytes);
+
+        for index in 0..admitted_capacity {
+            push_group(&mut scratch, event(index), shared_bytes, exact_limits).unwrap();
+        }
+        assert_eq!(scratch.group.len(), admitted_capacity);
+        scratch.group.clear();
+        push_group(&mut scratch, event(0), shared_bytes, exact_limits).unwrap();
+        assert_eq!(scratch.group.len(), 1);
+        assert_eq!(scratch.group.capacity(), admitted_capacity);
+        assert_eq!(shared_bytes + scratch.capacity_bytes(), admitted_bytes);
+    }
+
+    #[test]
+    fn scratch_capacity_growth_still_requires_the_full_replacement_peak() {
+        let shared_bytes: usize = 53;
+        let mut scratch = SweepScratch::default();
+        let generous = limits_at(1024 * 1024);
+        reserve_scratch!(scratch, group, 1, shared_bytes, generous).unwrap();
+        for index in 0..scratch.group.capacity() {
+            push_group(&mut scratch, event(index), shared_bytes, generous).unwrap();
+        }
+
+        let old_capacity = scratch.group.capacity();
+        let element_size = core::mem::size_of::<Event>();
+        let required_peak = shared_bytes + (old_capacity * 2 + 1) * element_size;
+        let too_small = limits_at(required_peak - 1);
+        assert_eq!(
+            push_group(&mut scratch, event(old_capacity), shared_bytes, too_small),
+            Err(CoverageError::ActiveWorkLimit)
+        );
+        assert_eq!(scratch.group.len(), old_capacity);
+        assert_eq!(scratch.group.capacity(), old_capacity);
+
+        let enough = limits_at(required_peak.saturating_add(old_capacity * element_size * 2));
+        push_group(&mut scratch, event(old_capacity), shared_bytes, enough).unwrap();
+        assert_eq!(scratch.group.len(), old_capacity + 1);
+    }
+
+    #[test]
+    fn heap_scheduled_coverage_and_output_growth_still_charge_live_scratch() {
+        let fixed_bytes: usize = 71;
+        let mut scratch = SweepScratch::default();
+        let generous = limits_at(1024 * 1024);
+        reserve_scratch!(scratch, changed, 1, fixed_bytes, generous).unwrap();
+        let other_live = fixed_bytes + scratch.capacity_bytes();
+
+        let mut heap = BinaryHeap::new();
+        heap.try_reserve_exact(4).unwrap();
+        for index in 0..heap.capacity() {
+            heap.push(event(index));
+        }
+        let heap_capacity = heap.capacity();
+        let heap_size = core::mem::size_of::<Event>();
+        let heap_growth_peak = other_live + (heap_capacity * 2 + 1) * heap_size;
+        let heap_limits = limits_at(heap_growth_peak - 1);
+        let mut event_count = heap.len();
+        assert_eq!(
+            push_event(
+                &mut heap,
+                event(9),
+                &mut event_count,
+                heap_limits,
+                other_live
+            ),
+            Err(CoverageError::ActiveWorkLimit)
+        );
+        assert_eq!(heap.capacity(), heap_capacity);
+
+        let mut scheduled = ScheduledPairs::default();
+        let slot_bytes = core::mem::size_of::<PairSlot>();
+        let scheduled_limits = limits_at(other_live + 16 * slot_bytes - 1);
+        assert_eq!(
+            scheduled.insert((2, 7), scheduled_limits, other_live),
+            Err(CoverageError::ActiveWorkLimit)
+        );
+        assert_eq!(scheduled.capacity_bytes(), 0);
+
+        let mut coverage = CoverageAccumulator::default();
+        let event_bytes = core::mem::size_of::<CoverageEvent>();
+        let coverage_limits = limits_at(other_live + 2 * event_bytes - 1);
+        assert_eq!(
+            coverage.add_event_pair(
+                [
+                    CoverageEvent {
+                        y: 1,
+                        x: 1,
+                        range_delta: 1.0,
+                        partial_delta: 0.0,
+                    },
+                    CoverageEvent {
+                        y: 1,
+                        x: 4,
+                        range_delta: -1.0,
+                        partial_delta: 0.0,
+                    },
+                ],
+                coverage_limits,
+                other_live,
+            ),
+            Err(CoverageError::ActiveWorkLimit)
+        );
+        assert_eq!(coverage.events.capacity(), 0);
+
+        let mut spans = Vec::new();
+        let span_bytes = core::mem::size_of::<CoverageSpan>();
+        let output_limits = limits_at(other_live + span_bytes - 1);
+        assert_eq!(
+            push_span(
+                &mut spans,
+                CoverageSpan {
+                    x: 1,
+                    y: 1,
+                    width: 1,
+                    alpha: 255,
+                },
+                output_limits,
+                other_live,
+            ),
+            Err(CoverageError::ActiveWorkLimit)
+        );
+        assert_eq!(spans.capacity(), 0);
+    }
+
+    #[test]
+    fn fixed_order_tree_capacity_is_bounded_by_the_pre_admitted_edge_count() {
+        let edge_count = 48;
+        let mut tree = OrderTree::try_new(edge_count).unwrap();
+        let fixed_bytes = tree.capacity_bytes();
+        assert!(
+            fixed_bytes
+                <= edge_count
+                    * (core::mem::size_of::<Node>()
+                        + core::mem::size_of::<usize>()
+                        + core::mem::size_of::<Option<usize>>())
+        );
+
+        for edge in 0..edge_count {
+            tree.insert_at(edge, tree.len());
+            assert_eq!(tree.capacity_bytes(), fixed_bytes);
+        }
+        for edge in (0..edge_count).step_by(2) {
+            tree.remove(edge);
+            assert_eq!(tree.capacity_bytes(), fixed_bytes);
+        }
+        for edge in (0..edge_count).step_by(2) {
+            tree.insert_at(edge, tree.len());
+            assert_eq!(tree.capacity_bytes(), fixed_bytes);
         }
     }
 }

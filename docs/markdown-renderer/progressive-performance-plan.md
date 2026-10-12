@@ -431,6 +431,90 @@ test-only probes. Evidence: `goal-release-20261011/analytic-band-prototype/bound
 and the neighboring `analytic-edge-neighbor-prototype/` artifacts. No timing or
 production promotion is claimed for these prototypes.
 
+The three scanner changes are now combined in a separate artifact-only candidate,
+SHA-256 `0E0A73ECC97D30C7160B05DF16B86BD7DEB29FC963DBADDF66F17332608C68FA`.
+Its library and binary harnesses each pass **156/156, zero ignored** (the binary
+harness repeats the module tests; this is not 312 distinct tests). A subsequent
+release-mode comparison includes the visited path ordinal in every span key,
+so equal coverage from different colored paths cannot cancel out: both sides
+produce exactly equal **1,152 paths / 121,566 path-bound spans** for the complete
+576-label sponsor composition. The path-bound comparison passes after a
+harness-only change; the scanner hash is unchanged.
+
+One preceding balanced diagnostic records scanner-only medians of
+**1,913.859 / 2,447.7705 ms** for candidate/baseline, about **21.8% lower**.
+Whole-harness elapsed medians are separately **1,919.994 / 2,454.106 ms**.
+The run had no owned concurrent build/test, but the host was at 23–26% CPU,
+61–108 paging operations/sec, and approximately 5.8 GiB available memory. It is
+noisy screening evidence, not a qualified release or Edge-relative benchmark;
+no timing rerun or threshold change was made. Raw alternating samples, exact
+source/harness hashes, and the later stronger output proof are preserved in
+`goal-release-20261011/analytic-neighbor-band-scratch-combined/COMBINED-CANDIDATE.md`.
+An independent repository-shaped clone under `artifacts/resvg-scan-mix-20261011/`
+is being built through the normal source-pin, all-RID identity, provider/fault,
+and NativeAOT checks. Earlier worker results are not transferred to this new
+combined source; the production native files remain unchanged.
+The first official combined-worker build reveals that the old ranked-removal
+helper is now test-only. Marking that helper `#[cfg(test)]` removes the new
+dead-code warning without changing raster arithmetic or suppressing warnings.
+The original timed source is preserved byte-for-byte. The final source hash is
+`4AFA501640AB21BD21913E07B2EC46AF63A7FADC56C42F9FBD7539A17ECDF48A`;
+both 156-test harnesses and the release-mode path-bound comparison pass again.
+The current worker build is bound to this final source, not the earlier timing
+hash. Evidence: `verify-test-helper-20261012.log` beside the combined receipt.
+
+The final combined-source clone now passes independent normalized reproducibility
+and the normal source-bound identity check for **x86, x64, and ARM64**, all using
+source fingerprint `9ca2f5de543b3eecf7f56faec1dcdea1ea7f073ebd15242d003e3ae86d59d0fd`
+and host/native protocol 9. The selected workers are respectively **3,131,392 /
+3,304,448 / 2,734,080 bytes**. This is build/identity evidence, not successful
+x86 or ARM64 runtime validation. The matched x64 provider fault suite passes
+**644/644, zero skipped**, in 10 seconds. Provider SHA-256 is
+`7B22DC6CADD691B23785B0BC03013808223565E1CADD8D7F86F63EDFC0165424`;
+its test output contains the exact verified x64 worker
+`DD4D90A79E2CF8BC3D85A546D5E6BF2C44992A1CBF6C49BDFCC83D5DDC8A1C3F`.
+The evidence is under `artifacts/resvg-scan-mix-20261011/repo/artifacts/`:
+`official-workers/all-rid-identity-verification.log`, the six independent
+build logs/receipts, `matched-provider-fault-suite.log`, and
+`provider-fault-results/combined-scan-provider-faults.trx`.
+The matching published x64 NativeAOT smoke also passes **100 lifecycle cycles**
+covering RTL, embedded rasters, and 182 unique images. Aggregate retained private
+bytes grow **4,673,536 bytes**, below the unchanged 8 MiB ceiling; aggregate
+handle growth is **zero**. The exact worker exits before disposal returns, all
+eight startup/shutdown races leave no worker children, and immutable-source
+reattachment preserves all 182 images after caller-buffer mutation. The live
+restricted token, low integrity, job, and queryable mitigations are verified;
+the log explicitly does not claim verification of the nonqueryable heap
+corruption mitigation. Published smoke SHA-256 is
+`89C601332BE2C021E653F6486565878BD8552FA09248830AEE163FC4198D7B1A`;
+logs are `resvg-aot-combined-publish.log` and `resvg-aot-combined-run.log` in the
+same clone artifact directory. This is the SVG provider's AOT/resource smoke,
+not a newly published JitHub application or full release performance result.
+The exact offscreen regression differential now passes **89 fixtures × eight
+scales = 712 cases per build**, zero errors, comparing the clean pre-optimization
+`4f5b1f9f` production worker with the combined candidate. Every raw premultiplied
+provider buffer, canonical RGBA buffer, final Markdown/ImageBox/Win2D WARP buffer,
+and real second-document device-cache assertion matches exactly. Both normal
+source-bound self-contained publishes complete without warnings/errors. The
+shared input inventory is
+`7c13173e768f322dc8dfc4e448f6c24312909659f8a084d4127e4bbf6eacf153`.
+The completed guest comparison is under
+`C:\WinApp\work\svg-diff-20261012-0249\results\comparison\comparison.json`,
+with all 2,857 evidence files successfully pulled into
+`goal-release-20261011/svg-full-corpus-differential/sandbox-results/`.
+This is an exact old/new regression proof, **not** an Edge oracle or performance
+qualification. No release limit or UI retry boundary has changed.
+Independent source review finds no correctness, admission-budget, licensing or
+pinning blocker. The exact six source/provenance files and three verified worker
+binaries are now promoted into the production tree, with no compatibility shim
+or unrelated changes. All-RID identity verification, all 76 package/license
+checks, the vendored-source tamper suite, and **28/28** worker-identity fixtures
+pass after promotion. A matching production rebuild/test remains required before
+calling the promoted managed provider verified; earlier clone evidence remains
+explicitly source-bound above. The final candidate still needs qualified
+performance evidence: neither the earlier mixed-profile timing nor the noisy
+scanner-only diagnostic is a release benchmark of this exact shipped build.
+
 The earlier public same-byte capture contains **12 complete cases** under its
 then-current validator, not 500: ranks 1–4, 6, 11–15, 17 and 21. Its ranks 5, 16
 and 22 are partial because GitHub's rendered page itself has unavailable images. Existing evidence
