@@ -9,9 +9,12 @@ export async function waitForDevToolsPort(
   recentError,
   timeoutMs = 20_000,
   pollMs = 50,
+  getSpawnError = () => null,
 ) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
+    const spawnError = getSpawnError();
+    if (spawnError) throw spawnError;
     try {
       const content = await readFile(file, "utf8");
       const portLine = /^([1-9][0-9]{0,4})\r?\n/u.exec(content);

@@ -7,6 +7,82 @@ bookkeeping. The 1.0 performance and release goals are not yet met.
 
 ## Current priority and evidence — October 11, 2026
 
+**Fresh rerun candidate:** reviewed local commit
+`e799b59207e978117dfbf79e266731be696aa4cd` combines the nested link/list fixes
+and bounded capture diagnostics described below. Its clean Release/x64
+NativeAOT publish passes the normal dependency policy and **131/131**
+release-security tests; native-payload verification passes independently.
+The first publish stalled; only its verified owned process tree was stopped.
+The successful serial retry preserves all security/AOT gates and its diagnostic
+binlog. App SHA-256:
+`B29ED194CDAE270537C21A1CFA6B8D564B3A3CC9D71C69DA831ED4A01F079C4C`
+(59,131,392 bytes). Matching self-contained runner DLL SHA-256:
+`C3C529F0DA7465E6055A5F1637683639D6AEBE47343861F5E1C3D152D6547CB4`.
+Build evidence: `goal-release-20261011/clean-e799b592-aot-serial/` and
+`clean-e799b592-runner/`. The first approved fix-and-rerun cycle completed
+ranks **1–10**, in two five-repository shards, in the existing ready Sandbox;
+source-admission tracing was enabled. Evidence was collected under
+`goal-release-20261011/offline-fix1-clean-e799b592-ranks001-010-20261012/`.
+This is diagnostic correctness/fidelity evidence, not quiet-machine performance
+qualification. The wrapper reports **4 failed cases / 10 completed** and remains
+`not-qualified`; its other six case-completion verdicts are not fidelity passes.
+
+The first shard has completed: rank 3 now finishes **250 native viewports**
+with a matched admission/paint generation and zero reported unavailable images;
+this single run does not prove the prior intermittent generation failure fixed.
+Rank 4 now correctly reports its one unavailable WebP banner, confirming the
+failure-notification fix but not codec portability. Edge startup timed out for
+both cases (rank 3 also failed scoped browser cleanup), so neither has a valid
+current pixel comparison. Rank 1/2/5 comparisons complete, with mean SSIM
+**0.722092 / 0.151709 / 0.563118**, still failing fidelity. Rank 1 is one 24-DIP
+line shorter than the prior candidate; review finds retained content, not a
+proven cause for the changed wrapping. Rank 6/8/10 complete with mean SSIM
+**0.374975 / 0.532150 / 0.183579**, still failing fidelity. Rank 9 now completes
+**111 native viewports**, height **60,624 DIPs** versus the prior **66,780**,
+removing **6,156 DIPs** of unintended task-list spacing. It still needs a current
+Edge comparison: that browser launch also timed out. The prior browser height
+is not substituted into this run's qualification.
+
+Rank 7's failed coverage receipt identifies a concrete cause: after native tile
+111, the viewport shrinks from **611 to 561 DIPs**, and the capture correction
+backtracks from document top **61,038.898 to 56,548.801**. The known broken
+empty-alt image (source hash
+`88690ebe4fb27e47cea395167dc57a147c38207dc241d6590622572057ae3f57`) is already
+proved failed/zero-size in the pinned browser fixture, but the native fixture
+resolver reports `Offline` and opens the app's policy banner. The resolver fix
+preserves this as an `Unavailable` failure rather than inventing an offline
+policy rejection. It validates the existing bounded exclusion contract, prefers
+actual captured assets, and leaves unknown misses offline with no network
+fallback. The raw failure remains observable; no image or coverage gate is
+waived. The full current release-security suite, including the new null
+browser-render regression and resolver cases, passes **151/151, zero skipped**
+(`goal-release-20261011/decorative-source-classification-release-security/`).
+
+Visual review covers all current native and available Edge PNGs for ranks
+1–10, using full-image/contact-sheet inspection and original-scale follow-up.
+Rank 3 has narrow table cells wrapping `apiKey`; rank 6's default table headers
+are left-aligned instead of centered. Rank 9 reveals a separate capture gap:
+the offscreen canvas paint omits the real native task-checkbox overlay despite
+the semantic count of **463**. The current screenshots therefore do not prove
+complete native-control composition. A bounded real-overlay capture fix is in
+progress; synthetic checkbox drawings are not an acceptable oracle. No missing
+content section or unavailable placeholder was found in ranks 6/8/10, but this
+does not supersede the failing pixel metrics.
+
+The runner's partial-startup ownership gap was independently
+fixed: an exception before successful launch now closes the owned connection
+and spawned process, while strict profile-scoped cleanup remains mandatory.
+Startup stages are recorded without raw URLs or exception text; no deadline or
+retry limit changed. Native spawn errors are categorized by their bounded
+startup stage rather than raw path-bearing exception text. All **121/121, zero
+skipped** current non-browser Node unit tests pass
+(`edge-launch-cleanup-unit-final.log`). A separate headless integration run
+passes **125/125**, but is not Sandbox or release-performance evidence
+(`edge-launch-cleanup-all-final.log`). These fixes are newer than
+the frozen `e799b592` batch and require the next controlled replay. One of the
+two permitted fix-and-rerun cycles remains; do not consume it until the batch
+of reviewed fixes and matching app/runner builds are ready.
+
 **Latest reviewed local optimization:** `5513f682d5bda380f51b250c48faf88880e4aeed`
 finalizes measured-root document ordering inside the background layout
 transaction, before UI publication. The UI candidate enumerator no longer sorts
@@ -22,7 +98,7 @@ This removes work from UI publication; it is not a measured release speedup or
 a managed-package-size pass. This commit is local only and is newer than the
 clean NativeAOT build used for the Sandbox evidence below.
 
-**Latest clean build checkpoint:** local commit
+**Prior clean build checkpoint:** local commit
 `2611d43f79ea11bbad4952600377c63521bf117f` includes the reviewed inert-HTML-spacer
 geometry and semantic-selection fixes. The full GitHub integration suite passes
 **2,805/2,805, zero skipped** (`inert-spacer-semantic-final-full/` below).

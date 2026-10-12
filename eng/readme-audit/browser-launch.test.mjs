@@ -45,3 +45,10 @@ test("a successful handoff without a child port still fails closed", async () =>
     waitForDevToolsPort(file, { exitCode: 0 }, () => "no port", 35, 5),
     /Edge exited before DevTools became ready \(0\)\. no port/u);
 });
+
+test("an asynchronous spawn error fails without waiting for a nonexistent port", async () => {
+  const error = new Error("Edge could not start.");
+  const file = path.join(os.tmpdir(), `jithub-missing-port-${process.pid}`);
+  await assert.rejects(waitForDevToolsPort(file, { exitCode: null }, () => "", 500, 5, () => error),
+    actual => actual === error);
+});

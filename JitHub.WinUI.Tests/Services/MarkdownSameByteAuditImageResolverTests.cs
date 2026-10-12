@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json.Nodes;
 using JitHub.Models.CodeViewer;
 using JitHub.Services;
 using JitHub.Services.CodeViewer;
@@ -412,6 +413,141 @@ public sealed class MarkdownSameByteAuditImageResolverTests
         Assert.Equal(0, admission.DisposeCount);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CapturedFailedDecorativeSourceRemainsUnavailableWithoutOfflinePolicy(bool leased)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        const string failedSource = "https://images.example.invalid/captured-broken.png";
+        await fixture.SetDecorativeExclusionsAsync("[" + FailedDecorativeEvidence(SourceHash(failedSource)) + "]");
+        var admission = new RecordingSourceAdmission();
+        var resolver = fixture.Resolver();
+
+        MarkdownImageResolution result;
+        if (leased)
+        {
+            using MarkdownImageResolutionLease lease = await resolver.ResolveWithSourceLeaseAsync(
+                failedSource, fixture.Context, admission, CancellationToken.None);
+            result = lease.Resolution;
+        }
+        else
+        {
+            result = await resolver.ResolveAsync(failedSource, fixture.Context, CancellationToken.None);
+        }
+
+        Assert.True(result.IsHandled);
+        Assert.Null(result.Asset);
+        Assert.Equal(MarkdownImageUnavailableReason.Unavailable, result.UnavailableReason);
+        Assert.Empty(admission.RequestedBytes);
+        Assert.Equal(0, admission.DisposeCount);
+        MarkdownImageResolution uncaptured = await resolver.ResolveAsync(
+            "https://images.example.invalid/different-broken.png", fixture.Context, CancellationToken.None);
+        Assert.Equal(MarkdownImageUnavailableReason.Offline, uncaptured.UnavailableReason);
+    }
+
+    [Fact]
+    public async Task CapturedAssetWinsOverDecorativeFailureEvidenceForTheSameSource()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        string rawSource = $"https://raw.githubusercontent.com/example/repo/{fixture.CommitSha}/docs/image.png";
+        await fixture.SetDecorativeExclusionsAsync("[" + FailedDecorativeEvidence(SourceHash(rawSource)) + "]");
+
+        MarkdownImageResolution result = await fixture.Resolver().ResolveAsync(
+            "docs/image.png", fixture.Context, CancellationToken.None);
+
+        Assert.True(result.IsHandled);
+        Assert.NotNull(result.Asset);
+        Assert.Equal(fixture.AssetBytes, result.Asset.Bytes);
+    }
+
+    [Fact]
+    public async Task CapturedDecorativeFailuresAcceptBoundedAliasesAndNormalizeHashCase()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        const string failedSource = "https://images.example.invalid/captured-broken.png";
+        string[] aliases = Enumerable.Range(0, 15).Select(index => SourceHash($"alias-{index}")).ToArray();
+        string entry = FailedDecorativeEvidence([.. aliases, SourceHash(failedSource).ToUpperInvariant()]);
+        await fixture.SetDecorativeExclusionsAsync("[" + string.Join(",", Enumerable.Repeat(entry, 128)) + "]");
+
+        MarkdownImageResolution result = await fixture.Resolver().ResolveAsync(
+            failedSource, fixture.Context, CancellationToken.None);
+
+        Assert.Equal(MarkdownImageUnavailableReason.Unavailable, result.UnavailableReason);
+        // The valid image must still resolve: the failure verdict above alone
+        // would not distinguish a valid index from a rejected malformed fixture.
+        Assert.NotNull((await fixture.Resolver().ResolveAsync(
+            "docs/image.png", fixture.Context, CancellationToken.None)).Asset);
+    }
+
+    [Theory]
+    [InlineData("null-list")]
+    [InlineData("null-entry")]
+    [InlineData("null-hashes")]
+    [InlineData("empty-hashes")]
+    [InlineData("null-hash")]
+    [InlineData("invalid-hash")]
+    [InlineData("duplicate-hash")]
+    [InlineData("duplicate-case-hash")]
+    [InlineData("too-many-hashes")]
+    [InlineData("too-many-entries")]
+    [InlineData("not-empty-alt")]
+    [InlineData("not-failed")]
+    [InlineData("not-zero")]
+    [InlineData("missing-proof")]
+    [InlineData("source-view")]
+    [InlineData("null-browser-render")]
+    public async Task RejectsUnprovenOrUnboundedDecorativeFailureEvidence(string invalidCase)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        string hash = SourceHash("https://images.example.invalid/captured-broken.png");
+        string entry = FailedDecorativeEvidence(hash);
+        string entries = invalidCase switch
+        {
+            "null-list" => "null",
+            "null-entry" => "[null]",
+            "null-hashes" => "[" + entry.Replace($"[\"{hash}\"]", "null") + "]",
+            "empty-hashes" => "[" + entry.Replace($"[\"{hash}\"]", "[]") + "]",
+            "null-hash" => "[" + entry.Replace($"\"{hash}\"", "null") + "]",
+            "invalid-hash" => "[" + FailedDecorativeEvidence("not-a-hash") + "]",
+            "duplicate-hash" => "[" + FailedDecorativeEvidence(hash, hash) + "]",
+            "duplicate-case-hash" => "[" + FailedDecorativeEvidence(hash, hash.ToUpperInvariant()) + "]",
+            "too-many-hashes" => "[" + FailedDecorativeEvidence(
+                Enumerable.Range(0, 17).Select(index => SourceHash($"alias-{index}")).ToArray()) + "]",
+            "too-many-entries" => "[" + string.Join(",", Enumerable.Repeat(entry, 129)) + "]",
+            "not-empty-alt" => "[" + entry.Replace("\"explicitEmptyAlt\":true", "\"explicitEmptyAlt\":false") + "]",
+            "not-failed" => "[" + entry.Replace("\"failedDecode\":true", "\"failedDecode\":false") + "]",
+            "not-zero" => "[" + entry.Replace("\"zeroBounds\":true", "\"zeroBounds\":false") + "]",
+            "missing-proof" => "[" + entry.Replace(",\"zeroBounds\":true", string.Empty) + "]",
+            "source-view" or "null-browser-render" => "[" + entry + "]",
+            _ => throw new InvalidOperationException(invalidCase),
+        };
+        await fixture.SetDecorativeExclusionsAsync(entries, sourceView: invalidCase == "source-view");
+        if (invalidCase == "null-browser-render")
+        {
+            string path = Path.Combine(fixture.DirectoryPath, "manifest.json");
+            JsonObject manifest = JsonNode.Parse(await File.ReadAllTextAsync(path))!.AsObject();
+            manifest["browserRender"] = null;
+            await File.WriteAllTextAsync(path, manifest.ToJsonString());
+        }
+        var resolver = fixture.Resolver();
+
+        await Assert.ThrowsAsync<InvalidDataException>(async () =>
+            await resolver.GetPinnedReadmePathAsync(CancellationToken.None));
+        MarkdownImageResolution result = await resolver.ResolveAsync(
+            "docs/image.png", fixture.Context, CancellationToken.None);
+        Assert.True(result.IsHandled);
+        Assert.Null(result.Asset);
+        Assert.Equal(MarkdownImageUnavailableReason.Unavailable, result.UnavailableReason);
+    }
+
+    private static string SourceHash(string source) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(source))).ToLowerInvariant();
+
+    private static string FailedDecorativeEvidence(params string[] hashes) =>
+        "{\"urlSha256s\":[" + string.Join(",", hashes.Select(hash => $"\"{hash}\"")) +
+        "],\"explicitEmptyAlt\":true,\"failedDecode\":true,\"zeroBounds\":true}";
+
     [Fact]
     public async Task ResolvesSniffedPngWhenCapturedMimeIsOctetStreamAlongsideDeclaredSvg()
     {
@@ -813,6 +949,17 @@ public sealed class MarkdownSameByteAuditImageResolverTests
             Repository,
             CommitSha,
             ReadmeGitBlobSha1);
+
+        public async Task SetDecorativeExclusionsAsync(string entries, bool sourceView = false)
+        {
+            string path = Path.Combine(DirectoryPath, "manifest.json");
+            JsonObject manifest = JsonNode.Parse(await File.ReadAllTextAsync(path))!.AsObject();
+            manifest["nonRenderedDecorativeImageExclusions"] = JsonNode.Parse(entries);
+            if (sourceView)
+                manifest["browserRender"] = JsonNode.Parse(
+                    "{\"status\":\"not-applicable\",\"reason\":\"github-source-view\"}");
+            await File.WriteAllTextAsync(path, manifest.ToJsonString());
+        }
 
         public async ValueTask DisposeAsync()
         {

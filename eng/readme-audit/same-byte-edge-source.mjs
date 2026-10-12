@@ -35,8 +35,16 @@ const SOURCE_IMAGE_MIMES = new Set([
   "image/webp",
   "image/x-icon",
 ]);
+const SOURCE_REPLAY_STARTUP_STAGES = new Set([
+  "launch-edge",
+  "wait-devtools-port",
+  "read-devtools-targets",
+  "connect-devtools",
+  "enable-devtools",
+]);
 const SOURCE_REPLAY_STAGES = new Set([
   "initialization",
+  ...SOURCE_REPLAY_STARTUP_STAGES,
   "reset-document",
   "configure-edge",
   "load-replay-page",
@@ -1077,6 +1085,8 @@ export function createSourceReplayFailureDiagnostic(error) {
     category = "image";
   } else if (error?.name === "TimeoutError" || /timed out|timeout|deadline/iu.test(message)) {
     category = "timeout";
+  } else if (SOURCE_REPLAY_STARTUP_STAGES.has(error?.sourceReplayStage)) {
+    category = "browser-startup";
   } else if (/external resource|request isolation|blocked external/iu.test(message)) {
     category = "external-resource";
   } else if (/safety limit|over-budget|exceed(?:ed|s)? .*limit|tile ceiling|step count/iu.test(message)) {
@@ -2839,39 +2849,67 @@ async function waitForExpression(cdp, expression, timeoutMs) {
   throw new Error("Timed out waiting for the source-bound loopback page.");
 }
 
-async function launchSourceReplay({ edgePath, profileDirectory, cdp }) {
-  const edge = spawn(edgePath, [
-    "--headless=new",
-    "--no-first-run",
-    "--no-default-browser-check",
-    "--disable-background-networking",
-    "--disable-component-update",
-    "--disable-sync",
-    "--metrics-recording-only",
-    "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1",
-    "--remote-debugging-port=0",
-    `--user-data-dir=${profileDirectory}`,
-    "about:blank",
-  ], { stdio: ["ignore", "ignore", "pipe"], windowsHide: true });
-  let edgeError = "";
-  edge.stderr.setEncoding("utf8");
-  edge.stderr.on("data", chunk => { edgeError = (edgeError + chunk).slice(-8192); });
-  const portFile = path.join(profileDirectory, "DevToolsActivePort");
-  const portContent = await waitForDevToolsPort(portFile, edge, () => edgeError, 20_000);
-  const port = Number(portContent.split(/\r?\n/u, 1)[0]);
-  const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`, {
-    signal: AbortSignal.timeout(10_000),
-  })).json();
-  if (!Array.isArray(targets)) throw new Error("Edge returned an invalid DevTools target list.");
-  const target = targets.find(item => item.type === "page");
-  if (!target?.webSocketDebuggerUrl) throw new Error("Edge did not expose a source-bound page WebSocket.");
-  const connection = await connectCdp(target.webSocketDebuggerUrl);
-  await Promise.all([
-    connection.send("Page.enable"),
-    connection.send("Runtime.enable"),
-    connection.send("Network.enable"),
-  ]);
-  return { edge, cdp: connection };
+export async function launchSourceReplay({ edgePath, profileDirectory }, {
+  spawnProcess = spawn,
+  waitForPort = waitForDevToolsPort,
+  fetchTargets = fetch,
+  connect = connectCdp,
+} = {}) {
+  let edge;
+  let connection;
+  let stage = "launch-edge";
+  try {
+    edge = spawnProcess(edgePath, [
+      "--headless=new",
+      "--no-first-run",
+      "--no-default-browser-check",
+      "--disable-background-networking",
+      "--disable-component-update",
+      "--disable-sync",
+      "--metrics-recording-only",
+      "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1",
+      "--remote-debugging-port=0",
+      `--user-data-dir=${profileDirectory}`,
+      "about:blank",
+    ], { stdio: ["ignore", "ignore", "pipe"], windowsHide: true });
+    let edgeError = "";
+    let spawnError;
+    // A failed spawn is asynchronous in Node. Keep it within the same bounded
+    // startup path rather than letting an unhandled error abort case cleanup.
+    edge.on("error", error => { spawnError = error; });
+    edge.stderr.setEncoding("utf8");
+    edge.stderr.on("data", chunk => { edgeError = (edgeError + chunk).slice(-8192); });
+    const portFile = path.join(profileDirectory, "DevToolsActivePort");
+    stage = "wait-devtools-port";
+    const portContent = await waitForPort(portFile, edge, () => edgeError, 20_000, 50,
+      () => spawnError);
+    const port = Number(portContent.split(/\r?\n/u, 1)[0]);
+    stage = "read-devtools-targets";
+    const targets = await (await fetchTargets(`http://127.0.0.1:${port}/json/list`, {
+      signal: AbortSignal.timeout(10_000),
+    })).json();
+    if (!Array.isArray(targets)) throw new Error("Edge returned an invalid DevTools target list.");
+    const target = targets.find(item => item.type === "page");
+    if (!target?.webSocketDebuggerUrl) throw new Error("Edge did not expose a source-bound page WebSocket.");
+    stage = "connect-devtools";
+    connection = await connect(target.webSocketDebuggerUrl);
+    stage = "enable-devtools";
+    await Promise.all([
+      connection.send("Page.enable"),
+      connection.send("Runtime.enable"),
+      connection.send("Network.enable"),
+    ]);
+    return { edge, cdp: connection };
+  } catch (error) {
+    // Ownership transfers to runCli only after all startup steps succeed.
+    // Dispose partial startup here; the caller still verifies profile-scoped
+    // process shutdown before deleting its generated profile directory.
+    try { connection?.close(); } catch {}
+    try { edge?.kill(); } catch {}
+    const failure = error instanceof Error ? error : new Error("Edge startup failed.");
+    failure.sourceReplayStage = stage;
+    throw failure;
+  }
 }
 
 function parseArguments(args) {

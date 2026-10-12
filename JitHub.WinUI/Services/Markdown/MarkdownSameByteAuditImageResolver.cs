@@ -30,6 +30,8 @@ internal sealed partial class MarkdownSameByteAuditImageResolver :
     private const int MaximumAssetBytes = 64 * 1024 * 1024;
     private const int MaximumSynchronousAssetReadBytes = 8 * 1024 * 1024;
     private const long MaximumAggregateAssetBytes = 256 * 1024 * 1024;
+    private const int MaximumNonRenderedDecorativeImages = 128;
+    private const int MaximumDecorativeImageUrlHashes = 16;
     private readonly string _root;
     private readonly string _expectedRepository;
     private readonly string _expectedCommit;
@@ -238,8 +240,18 @@ internal sealed partial class MarkdownSameByteAuditImageResolver :
             diagnostics.SetSourceHashIndexLookupMilliseconds(Stopwatch.GetElapsedTime(sourceIndexLookupStarted).TotalMilliseconds);
 
         if (matchedAsset is null)
+        {
+            // A source that the captured browser also failed to decode is not an
+            // offline-policy rejection. Preserve the failure (and its diagnostic)
+            // without opening the app's offline banner and changing the viewport.
+            // This does not hide an image: ImageBox independently decides whether
+            // an empty-alt, unsized failed image has any visible fallback.
+            bool capturedFailure = sourceHashes.Any(index.FailedDecorativeSourceHashes.Contains);
             return new CoreResolution(
-                MarkdownImageResolution.Blocked(MarkdownImageUnavailableReason.Offline), null);
+                MarkdownImageResolution.Blocked(capturedFailure
+                    ? MarkdownImageUnavailableReason.Unavailable
+                    : MarkdownImageUnavailableReason.Offline), null);
+        }
 
         try
         {
@@ -399,11 +411,40 @@ internal sealed partial class MarkdownSameByteAuditImageResolver :
             }
         }
 
+        HashSet<string> failedDecorativeSourceHashes = ReadFailedDecorativeSourceHashes(manifest);
         return new FixtureIndex(
             manifest.Repository.ReadmePath,
             manifest.Readme.ByteSize,
             manifest.Readme.Sha256,
-            assetsByUrlHash);
+            assetsByUrlHash,
+            failedDecorativeSourceHashes);
+    }
+
+    private static HashSet<string> ReadFailedDecorativeSourceHashes(SameByteManifest manifest)
+    {
+        // Match the bounded evidence contract in same-byte-corpus.mjs. Never
+        // treat a missing, unproven or source-view omission as a captured failure.
+        List<SameByteNonRenderedDecorativeImage>? entries = manifest.NonRenderedDecorativeImageExclusions;
+        if (entries is null || entries.Count > MaximumNonRenderedDecorativeImages ||
+            (entries.Count != 0 && manifest.BrowserRender.Status != "passed"))
+            throw new InvalidDataException("Same-byte fixture has invalid decorative-image failure evidence.");
+
+        var hashes = new HashSet<string>(StringComparer.Ordinal);
+        foreach (SameByteNonRenderedDecorativeImage entry in entries)
+        {
+            if (entry is null || !entry.ExplicitEmptyAlt || !entry.FailedDecode || !entry.ZeroBounds ||
+                entry.UrlSha256s is not { Count: > 0 and <= MaximumDecorativeImageUrlHashes })
+                throw new InvalidDataException("Same-byte fixture has unproven decorative-image failure evidence.");
+
+            var entryHashes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string hash in entry.UrlSha256s)
+            {
+                if (!IsSha256(hash) || !entryHashes.Add(hash))
+                    throw new InvalidDataException("Same-byte fixture has invalid decorative-image source identities.");
+                hashes.Add(hash.ToLowerInvariant());
+            }
+        }
+        return hashes;
     }
 
     private static async Task<byte[]> ReadBoundedFileAsync(
@@ -822,7 +863,8 @@ internal sealed partial class MarkdownSameByteAuditImageResolver :
         string ReadmePath,
         long ReadmeByteSize,
         string ReadmeSha256,
-        IReadOnlyDictionary<string, FixtureAsset> AssetsByUrlHash);
+        IReadOnlyDictionary<string, FixtureAsset> AssetsByUrlHash,
+        IReadOnlySet<string> FailedDecorativeSourceHashes);
 
     private sealed record FixtureAsset(string Sha256, int ByteSize, string MimeType);
 
@@ -842,6 +884,17 @@ internal sealed partial class MarkdownSameByteAuditImageResolver :
         public SameByteReadme Readme { get; init; } = new();
         public SameByteBrowserRender BrowserRender { get; init; } = new();
         public List<SameByteAssetEntry> Assets { get; init; } = [];
+        // A setter preserves the absent-property default with source-generated
+        // deserialization; an explicit JSON null must still fail validation.
+        public List<SameByteNonRenderedDecorativeImage> NonRenderedDecorativeImageExclusions { get; set; } = [];
+    }
+
+    private sealed class SameByteNonRenderedDecorativeImage
+    {
+        public List<string> UrlSha256s { get; init; } = [];
+        public bool ExplicitEmptyAlt { get; init; }
+        public bool FailedDecode { get; init; }
+        public bool ZeroBounds { get; init; }
     }
 
     private sealed class SameByteRepository
