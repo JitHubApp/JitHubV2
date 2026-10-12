@@ -776,23 +776,26 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
                 context,
                 sourceOffset,
                 HtmlInlineContext.Empty);
-            InlineImageRun[] summaryImages = summaryContent.DetachInlineImagesForTransfer();
-            foreach (InlineImageRun image in summaryImages)
-                context.RegisterConstructionBlock(image.Image);
-            if (summaryImages.Length > 0)
+            InlineRun[] summaryVisualRuns = summaryContent.DetachInlineImagesAndSpacersForTransfer();
+            foreach (InlineRun visualRun in summaryVisualRuns)
+            {
+                if (visualRun is InlineImageRun image)
+                    context.RegisterConstructionBlock(image.Image);
+            }
+            if (summaryVisualRuns.Length > 0)
             {
                 InlineContainerBox summaryMedia = CreateInlineBox(
                     context,
                     MarkdownElementKeys.Body,
                     alignment);
-                foreach (InlineImageRun image in summaryImages)
-                    AddRun(summaryMedia, image);
+                foreach (InlineRun visualRun in summaryVisualRuns)
+                    AddRun(summaryMedia, visualRun);
                 AddChild(stack, summaryMedia, context);
             }
 
-            // The summary box was only a staging owner for atomic media. Image
-            // runs have been detached above; dispose the remaining temporary
-            // text/vector runs instead of forgetting their native resources.
+            // The summary box was only a staging owner for atomic visual runs.
+            // Detached image resources now belong to the summary media box;
+            // dispose remaining temporary text/vector runs.
             context.DiscardConstructionBlock(summaryContent);
         }
 
@@ -1374,6 +1377,15 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             };
         }
 
+        if (element.Name.Equals("a", StringComparison.OrdinalIgnoreCase))
+        {
+            // Link policy controls interactivity, not whether content occurred
+            // inside an authored anchor. Keep that context so a source-less
+            // decorative image is not reclassified as layout-only when links
+            // are disabled or the href is unsafe.
+            childContext = childContext with { InsideLink = true };
+        }
+
         string? styleKey = SafeHtmlInlineState.GetStyleKey(element.Name);
         if (!string.IsNullOrEmpty(styleKey))
         {
@@ -1436,6 +1448,23 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         SafeHtmlElement? image = element.Name == "img" ? element : FindDescendant(element, "img");
         if (image is null)
         {
+            return;
+        }
+
+        if (element.Name.Equals("img", StringComparison.OrdinalIgnoreCase) &&
+            SafeHtmlParser.TryGetInertImageSpacerDimensions(
+                image,
+                imagesEnabled: _options.EnableImages,
+                insidePicture: false,
+                insideLink: inlineContext.InsideLink || !string.IsNullOrWhiteSpace(inlineContext.LinkUrl),
+                out float spacerWidth,
+                out float spacerHeight))
+        {
+            AddRun(box, new InlineSpacerRun(spacerWidth, spacerHeight)
+            {
+                SourceSpan = new SourceSpan(sourceOffset + image.SourceStart, image.SourceLength),
+                SemanticHeadingKey = inlineContext.HeadingKey ?? string.Empty,
+            });
             return;
         }
 
@@ -1960,7 +1989,8 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         string? LinkTitle,
         string? StyleKey,
         string? HeadingKey,
-        IReadOnlyList<string> StyleAliases)
+        IReadOnlyList<string> StyleAliases,
+        bool InsideLink = false)
     {
         public static HtmlInlineContext Empty => new(null, null, null, null, Array.Empty<string>());
     }

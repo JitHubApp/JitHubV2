@@ -9,7 +9,7 @@ internal static class PrivateTextRunPlacement
     internal static bool IsSupported(InlineRun run) => run is
         SourceSliceTextRun or CodeInlineRun or StrongRun or EmphasisRun or StrikethroughRun or
         SubscriptRun or SuperscriptRun or InsertedRun or MarkedRun or
-        AbbreviationRun or LineBreakRun ||
+        AbbreviationRun or LineBreakRun or InlineSpacerRun ||
         run is TextRun text && text.GetType() == typeof(TextRun);
 
     internal static InlineRun? Clone(InlineRun run) => run switch
@@ -26,6 +26,7 @@ internal static class PrivateTextRunPlacement
         MarkedRun marked => marked.CloneForPrivateRasterPlacement(),
         AbbreviationRun abbreviation => abbreviation.CloneForPrivateRasterPlacement(),
         LineBreakRun lineBreak => lineBreak.CloneForPrivateRasterPlacement(),
+        InlineSpacerRun spacer => spacer.CloneForPrivateRasterPlacement(),
         _ => null,
     };
 }

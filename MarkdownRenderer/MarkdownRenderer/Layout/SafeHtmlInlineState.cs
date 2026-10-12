@@ -266,6 +266,17 @@ internal sealed class SafeHtmlInlineState
             return null;
         }
 
+        if (SafeHtmlParser.TryGetInertImageSpacerDimensions(
+                tag,
+                _policy.EnableImages,
+                IsInsidePicture(),
+                !string.IsNullOrWhiteSpace(containingLinkUrl) || IsInsideLinkElement(),
+                out float spacerWidth,
+                out float spacerHeight))
+        {
+            return new InlineSpacerRun(spacerWidth, spacerHeight) { SourceSpan = span };
+        }
+
         bool hasExplicitAlt = tag.TryGetAttribute("alt", out string altValue);
         string alt = hasExplicitAlt
             ? altValue
@@ -314,7 +325,7 @@ internal sealed class SafeHtmlInlineState
         if (run is null ||
             !_policy!.EnableLinks ||
             string.IsNullOrWhiteSpace(containingLinkUrl) ||
-            run is LinkRun)
+            run is LinkRun or InlineSpacerRun)
         {
             return run;
         }
@@ -346,7 +357,7 @@ internal sealed class SafeHtmlInlineState
             return ApplyAliases(existingLink);
         }
 
-        if (link?.LinkUrl is { Length: > 0 } href && run is not InlineImageRun)
+        if (link?.LinkUrl is { Length: > 0 } href && run is not InlineImageRun and not InlineSpacerRun)
         {
             return ApplyAliases(new LinkRun(run.Text, href, link?.LinkTitle)
             {
@@ -405,6 +416,28 @@ internal sealed class SafeHtmlInlineState
         }
 
         return null;
+    }
+
+    private bool IsInsideLinkElement()
+    {
+        foreach (Scope scope in _scopes)
+        {
+            if (scope.Name.Equals("a", StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
+    }
+
+    private bool IsInsidePicture()
+    {
+        foreach (Scope scope in _scopes)
+        {
+            if (scope.Name.Equals("picture", StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
     }
 
     private string? FindStyleKey()

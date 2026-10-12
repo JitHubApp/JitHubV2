@@ -521,9 +521,19 @@ file matches upstream SHA-256
 `415818c6a9aed27b324ae52212c068e0b7d90b857a0a91f7ba765f0caa106204`
 exactly; tracking those unchanged bytes repairs the clean source inventory.
 No upstream ignore rule, provenance digest, worker identity, or validation gate
-is changed. The initial package output is not a passing pack result; fresh
-clean-checkout verification remains required after this source-completeness fix.
-Evidence: `goal-release-20261011/promoted-4c53dcc2-pack.log`.
+is changed. The fix is committed locally as `62da88f2`, without pushing. Its
+clean checkout now passes the unchanged 76-package supply-chain and all-RID
+worker-identity checks. A fresh no-build pack reuses the unchanged, already
+rebuilt/tested production assemblies and passes those checks: **5,054,681 bytes**
+compressed (SHA-256
+`cf9c23d6da7c152f8cbde726d54ec6fb079f62a26f51b3edae8f6179c1892dbd`).
+Selected worker-plus-provider deployment is **3,479,552 / 3,652,608 / 3,082,240
+bytes** for x86/x64/ARM64, all below 3.5 MiB, and no fixture Content is packaged.
+The 5 MiB all-RID ceiling also passes. This is explicitly an **unsigned** local
+package; the normal signing warning is retained and release signing is not
+qualified. The earlier emitted package was not a passing pack result.
+Evidence: `goal-release-20261011/promoted-4c53dcc2-pack.log`,
+`promoted-62da88f2-pack.log`, and `promoted-62da88f2-package/`.
 The final candidate still needs qualified
 performance evidence: neither the earlier mixed-profile timing nor the noisy
 scanner-only diagnostic is a release benchmark of this exact shipped build.
@@ -593,8 +603,31 @@ Rank 100 (`browser-use/browser-use`) contains an authored source-less
 `<img width="16" height="1" alt="">` spacer. The capture omits its nonexistent
 resource correctly but the offline snapshot erroneously asks it to decode;
 that separate classification bug is being fixed without exempting missing
-resource-backed images. Native safe HTML also drops this spacer's geometry,
-which remains a distinct fidelity issue, not a passing case.
+resource-backed images. Native safe HTML also dropped this spacer's geometry;
+the reviewed local fix now represents it as a bounded, geometry-only inline
+object, with no image resolver, download, asynchronous resource, or UIA image.
+Both HTML parsing routes share admission rules: an explicit empty alt and
+positive finite absolute dimensions are required, the existing 8,192-unit
+ceiling remains, and sourced/lazy/picture/anchor content is not reclassified.
+The authored dimensions stay immutable and shrink proportionally to table-cell
+width; font/text scaling does not resize the spacer. Details-summary transfer
+preserves its ordering without inventing image-resource ownership. Private
+raster placement is supported. Leading, interior, trailing and spacer-only
+paragraph endpoints project to the adjacent semantic text boundary rather
+than exposing U+FFFC or jumping to document end.
+The final focused ownership/HTML build passes **134/134, zero skipped** under
+`goal-release-20261011/inert-spacer-ownership-focused-final/`; the earlier
+semantic-focused build passes **125/125**. The first full suite reports
+2,804 passed / one failed: its source-contract test still expected the old
+image-only transfer method. Both summary and details transfer assertions now
+name the generalized method and retain stronger detach/register/adopt/discard
+ordering checks. The full exact-output rerun now passes **2,805/2,805, zero
+skipped**, exit zero, in 2 minutes 26 seconds. Its TRX is
+`goal-release-20261011/inert-spacer-semantic-final-full/inert-spacer-semantic-final-full.trx`
+(SHA-256 `4c1778248b32cda6bcfd9b66476b25071815951b68af06c40b131e2dcbd3e10f`).
+The interrupted earlier build did not reach testhost and is not counted as a
+test pass. This is not yet a fresh rank-100 native/Edge rendering result, and
+its original capture failure remains unchanged.
 
 The browser-launching replay test is being separated into an explicit
 `.integration.test.mjs` file, retained in the CI invocation. After that split,

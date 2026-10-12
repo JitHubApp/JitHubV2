@@ -352,9 +352,17 @@ public sealed class MarkdownLayoutConstructionScopeTests
 
         int summaryMediaAttach = htmlRenderer.IndexOf("AddChild(stack, summaryMedia, context)", StringComparison.Ordinal);
         int summaryAliasForget = htmlRenderer.IndexOf("ForgetConstructionBlock(summaryContent)", StringComparison.Ordinal);
-        int summaryDetach = htmlRenderer.IndexOf("summaryContent.DetachInlineImagesForTransfer()", StringComparison.Ordinal);
+        int summaryDetach = htmlRenderer.IndexOf(
+            "summaryContent.DetachInlineImagesAndSpacersForTransfer()",
+            StringComparison.Ordinal);
+        int summaryImageRegistration = htmlRenderer.IndexOf(
+            "context.RegisterConstructionBlock(image.Image)",
+            StringComparison.Ordinal);
+        int summaryRunTransfer = htmlRenderer.IndexOf("AddRun(summaryMedia, visualRun)", StringComparison.Ordinal);
         int summaryDiscard = htmlRenderer.IndexOf("DiscardConstructionBlock(summaryContent)", StringComparison.Ordinal);
-        Assert.True(summaryMediaAttach >= 0 && summaryDetach >= 0 && summaryDiscard > summaryMediaAttach);
+        Assert.True(summaryDetach >= 0 && summaryImageRegistration > summaryDetach);
+        Assert.True(summaryRunTransfer > summaryImageRegistration && summaryMediaAttach > summaryRunTransfer);
+        Assert.True(summaryDiscard > summaryMediaAttach);
         Assert.True(summaryAliasForget < 0);
 
         Assert.Contains("context.RegisterConstructionBlock(codeBox);", gfmBuilder, StringComparison.Ordinal);
@@ -367,11 +375,18 @@ public sealed class MarkdownLayoutConstructionScopeTests
         int detailsMediaAttach = detailsRenderer.IndexOf("destination.Add(media);", StringComparison.Ordinal);
         int detailsMediaAdopt = detailsRenderer.IndexOf("AdoptConstructionBlock(media)", StringComparison.Ordinal);
         int detailsChildDetach = detailsRenderer.IndexOf("rendered.DetachChildrenForTransfer()", StringComparison.Ordinal);
-        int detailsInlineDetach = detailsRenderer.IndexOf("leading.DetachInlineImagesForTransfer()", StringComparison.Ordinal);
+        int detailsInlineDetach = detailsRenderer.IndexOf(
+            "leading.DetachInlineImagesAndSpacersForTransfer()",
+            StringComparison.Ordinal);
+        int detailsImageRegistration = detailsRenderer.IndexOf(
+            "context.RegisterConstructionBlock(image.Image)",
+            StringComparison.Ordinal);
+        int detailsRunTransfer = detailsRenderer.IndexOf("media.Add(visualRun)", StringComparison.Ordinal);
         int detailsLeadingDiscard = detailsRenderer.IndexOf("DiscardConstructionBlock(leading)", StringComparison.Ordinal);
         Assert.True(detailsMediaAttach >= 0 && detailsMediaAdopt > detailsMediaAttach);
         Assert.True(detailsChildDetach >= 0 && detailsInlineDetach > detailsChildDetach);
-        Assert.True(detailsLeadingDiscard > detailsInlineDetach);
+        Assert.True(detailsImageRegistration > detailsInlineDetach && detailsRunTransfer > detailsImageRegistration);
+        Assert.True(detailsMediaAttach > detailsRunTransfer && detailsLeadingDiscard > detailsMediaAttach);
         int detailsRenderedDiscard = detailsRenderer.IndexOf(
             "DiscardConstructionBlock(rendered)", detailsLeadingDiscard, StringComparison.Ordinal);
         Assert.True(detailsRenderedDiscard > detailsLeadingDiscard);

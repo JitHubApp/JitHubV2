@@ -144,11 +144,14 @@ internal sealed class GitHubDetailsBlockRenderer : MarkdownNodeRenderer<GitHubDe
             if (first && child is InlineContainerBox leading)
             {
                 first = false;
-                InlineImageRun[] images = leading.DetachInlineImagesForTransfer();
-                foreach (InlineImageRun image in images)
-                    context.RegisterConstructionBlock(image.Image);
+                InlineRun[] visualRuns = leading.DetachInlineImagesAndSpacersForTransfer();
+                foreach (InlineRun visualRun in visualRuns)
+                {
+                    if (visualRun is InlineImageRun image)
+                        context.RegisterConstructionBlock(image.Image);
+                }
 
-                if (images.Length > 0)
+                if (visualRuns.Length > 0)
                 {
                     var media = new InlineContainerBox(context, MarkdownElementKeys.Body)
                     {
@@ -156,18 +159,20 @@ internal sealed class GitHubDetailsBlockRenderer : MarkdownNodeRenderer<GitHubDe
                         TextAlignment = leading.TextAlignment,
                     };
                     context.RegisterConstructionBlock(media);
-                    foreach (InlineImageRun image in images)
+                    foreach (InlineRun visualRun in visualRuns)
                     {
-                        media.Add(image);
-                        context.AdoptConstructionBlock(image.Image);
+                        media.Add(visualRun);
+                        if (visualRun is InlineImageRun image)
+                            context.AdoptConstructionBlock(image.Image);
                     }
                     destination.Add(media);
                     context.AdoptConstructionBlock(media);
                 }
 
                 // The source container is only a staging owner. Transferred
-                // images now belong to `media`; all other inline runs (notably
-                // vector scenes) must be retired with the discarded container.
+                // image resources now belong to `media`; all other inline runs
+                // (notably vector scenes) must be retired with the discarded
+                // container.
                 context.DiscardConstructionBlock(leading);
                 continue;
             }

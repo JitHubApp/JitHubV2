@@ -1071,7 +1071,7 @@ internal sealed partial class InlineContainerBox : BlockBox
         run.InlineIndex = _runs.Count;
         int runOffset = _runTextLength;
         _runTextLength += run.TextLength;
-        if (run is InlineImageRun or InlineEmbedRun or InlineVectorSceneRun)
+        if (run is InlineImageRun or InlineEmbedRun or InlineVectorSceneRun or InlineSpacerRun)
             _hasAtomicInlineObject = true;
         if (run is InlineImageRun imageRun)
         {
@@ -1140,6 +1140,51 @@ internal sealed partial class InlineContainerBox : BlockBox
                 _runs.RemoveAt(index);
         }
 
+        RebuildAfterInlineRunTransfer();
+        return detached;
+    }
+
+    /// <summary>
+    /// Detaches resource-backed image runs and resource-free decorative
+    /// spacers from an unmeasured staging container, preserving their visual
+    /// order. Only images require construction-block ownership transfer.
+    /// </summary>
+    internal InlineRun[] DetachInlineImagesAndSpacersForTransfer()
+    {
+        if (_layout is not null || _selectionLayout is not null)
+        {
+            throw new InvalidOperationException(
+                "Inline image and spacer runs can only be transferred before their container is measured.");
+        }
+
+        int detachedCount = 0;
+        foreach (InlineRun run in _runs)
+        {
+            if (run is InlineImageRun or InlineSpacerRun)
+                detachedCount++;
+        }
+
+        if (detachedCount == 0)
+            return Array.Empty<InlineRun>();
+
+        var detached = new InlineRun[detachedCount];
+        int writeIndex = detached.Length;
+        for (int index = _runs.Count - 1; index >= 0; index--)
+        {
+            InlineRun run = _runs[index];
+            if (run is InlineImageRun or InlineSpacerRun)
+            {
+                detached[--writeIndex] = run;
+                _runs.RemoveAt(index);
+            }
+        }
+
+        RebuildAfterInlineRunTransfer();
+        return detached;
+    }
+
+    private void RebuildAfterInlineRunTransfer()
+    {
         _inlineImageRuns = null;
         _inlineEmbedRuns = null;
         _hasAtomicInlineObject = false;
@@ -1169,6 +1214,10 @@ internal sealed partial class InlineContainerBox : BlockBox
                 _vectorSceneRunCount++;
                 _hasDeferredSceneMarker |= vectorScene.DeferredSceneMarker is not null;
             }
+            else if (run is InlineSpacerRun)
+            {
+                _hasAtomicInlineObject = true;
+            }
 
             AppendRebuiltEffectiveRunAliasOverride(
                 index,
@@ -1180,7 +1229,6 @@ internal sealed partial class InlineContainerBox : BlockBox
         _sceneGeometryGeneration = 0;
         _pendingSceneGeometryGeneration = 0;
         _pendingSceneGeometry = Array.Empty<InlineSceneGeometry>();
-        return detached;
     }
 
     internal void SetForegroundSpans(IReadOnlyList<CodeBlockHighlightSpan>? spans)
@@ -1379,8 +1427,11 @@ internal sealed partial class InlineContainerBox : BlockBox
                 candidateLayout.Options = CanvasDrawTextOptions.EnableColorFont;
                 ApplyRunStyles(candidateLayout, applyColors: true);
                 ApplyForegroundSpans(candidateLayout);
-                float inlineMetricScale = ApplyContentAwareLineSpacing(candidateLayout, style);
-                ApplyEmbedSpacing(candidateLayout, inverseMetricScale: inlineMetricScale);
+                float inlineMetricScale = ApplyContentAwareLineSpacing(candidateLayout, style, layoutWidth);
+                ApplyEmbedSpacing(
+                    candidateLayout,
+                    inverseMetricScale: inlineMetricScale,
+                    maxInlineWidth: layoutWidth);
                 replacementSceneGeometry = UpdateVectorScenePlacements(candidateLayout);
                 _lastWidth = availableWidth;
             }
@@ -1590,7 +1641,7 @@ internal sealed partial class InlineContainerBox : BlockBox
             layoutRetirementRecord.SetTemporary(0, layout);
             layout.Options = CanvasDrawTextOptions.EnableColorFont;
             ApplyRunStyles(layout, applyColors: false);
-            ApplyEmbedSpacing(layout);
+            ApplyEmbedSpacing(layout, maxInlineWidth: measurementWidth);
 
             var layoutBounds = layout.LayoutBounds;
             var drawBounds = layout.DrawBounds;
@@ -1681,8 +1732,8 @@ internal sealed partial class InlineContainerBox : BlockBox
                 index >= runStart && index < runEnd
                     ? _runs[runIndex]
                     : null;
-            bool responsiveImage = currentRun is InlineImageRun;
-            bool boundary = index == _buffer.Length || responsiveImage || IsIntrinsicBreakOpportunity(_buffer[index]);
+            bool atomicInlineObject = currentRun is InlineImageRun or InlineSpacerRun;
+            bool boundary = index == _buffer.Length || atomicInlineObject || IsIntrinsicBreakOpportunity(_buffer[index]);
             if (!boundary)
             {
                 if (tokenStart < 0)
@@ -1717,6 +1768,16 @@ internal sealed partial class InlineContainerBox : BlockBox
                     widest = Math.Max(
                         widest,
                         Math.Min(image.DesiredWidth, Math.Max(1f, fallbackFontSize * 2f)));
+                }
+                else if (currentRun is InlineSpacerRun spacer)
+                {
+                    // Match inline images: a replaced object follows the
+                    // max-width:100% rule and may shrink to fit a cell. Its
+                    // full authored width must not pin a table column at an
+                    // enormous min-content size.
+                    widest = Math.Max(
+                        widest,
+                        Math.Min(spacer.Width, Math.Max(1f, fallbackFontSize * 2f)));
                 }
                 else
                 {
@@ -1758,6 +1819,12 @@ internal sealed partial class InlineContainerBox : BlockBox
 
     private ElementStyle GetRunStyle(InlineRun run)
     {
+        // A decorative spacer has no text styling, baseline, or foreground.
+        // Its authored dimensions are applied independently as an inline
+        // object and must not inherit a script/font-size modifier.
+        if (run is InlineSpacerRun)
+            return GetContainerStyle();
+
         ElementStyle? resolved = GetCachedRunStyle(run.InlineIndex);
         if (resolved is not null)
             return resolved;
@@ -3224,6 +3291,14 @@ internal sealed partial class InlineContainerBox : BlockBox
                 Context.CancellationToken.ThrowIfCancellationRequested();
             int len = run.TextLength;
             if (len == 0) continue;
+            if (run is InlineSpacerRun)
+            {
+                // The placeholder is replaced by a geometry-only inline
+                // object. Do not apply inherited text styles or OpenType
+                // baseline features to it.
+                cumulative += len;
+                continue;
+            }
             if (ShouldApplyRunTextStyle(run))
             {
                 var rs = GetRunStyle(run);
@@ -3261,7 +3336,7 @@ internal sealed partial class InlineContainerBox : BlockBox
 
     private void ApplyBaselineStyle(CanvasTextLayout layout, int start, int length, InlineRun run)
     {
-        if (length <= 0)
+        if (length <= 0 || run is InlineSpacerRun)
             return;
 
         CanvasTypographyFeatureName? feature;
@@ -3357,11 +3432,16 @@ internal sealed partial class InlineContainerBox : BlockBox
             // an already-committed snapshot. A newer layout may have cancelled the
             // snapshot's build token, but cancellation must never escape Draw.
             ApplyRunStyles(candidateLayout, applyColors: false, observeCancellation: false);
-            float inlineMetricScale = ApplyContentAwareLineSpacing(candidateLayout, style);
+            float selectionLayoutWidth = Math.Max(1f, _lastWidth - horizontalPadding);
+            float inlineMetricScale = ApplyContentAwareLineSpacing(
+                candidateLayout,
+                style,
+                selectionLayoutWidth);
             ApplyEmbedSpacing(
                 candidateLayout,
                 observeCancellation: false,
-                inverseMetricScale: inlineMetricScale);
+                inverseMetricScale: inlineMetricScale,
+                maxInlineWidth: selectionLayoutWidth);
         }
         catch (Exception exception)
         {
@@ -3440,7 +3520,10 @@ internal sealed partial class InlineContainerBox : BlockBox
     /// objects receive inverse-scaled dimensions below. Text-only layouts keep
     /// their existing absolute CSS line-spacing format.
     /// </summary>
-    private float ApplyContentAwareLineSpacing(CanvasTextLayout layout, ElementStyle style)
+    private float ApplyContentAwareLineSpacing(
+        CanvasTextLayout layout,
+        ElementStyle style,
+        float maxInlineWidth)
     {
         if (!_hasAtomicInlineObject)
             return 1f;
@@ -3466,6 +3549,7 @@ internal sealed partial class InlineContainerBox : BlockBox
                 InlineEmbedRun embed => embed.DesiredHeight,
                 InlineImageRun image => image.DesiredHeight,
                 InlineVectorSceneRun vector => vector.DesiredHeight,
+                InlineSpacerRun spacer => GetFittedSpacerHeight(spacer, maxInlineWidth),
                 _ => 0f,
             };
             if (height > requestedHeight)
@@ -3506,7 +3590,7 @@ internal sealed partial class InlineContainerBox : BlockBox
         if (!float.IsFinite(scale) ||
             scale < MinimumContentAwareLineScale ||
             scale > MaximumContentAwareLineScale ||
-            !CanInverseScaleInlineMetrics(scale))
+            !CanInverseScaleInlineMetrics(scale, maxInlineWidth))
         {
             return 1f;
         }
@@ -3517,7 +3601,7 @@ internal sealed partial class InlineContainerBox : BlockBox
         return scale;
     }
 
-    private bool CanInverseScaleInlineMetrics(float scale)
+    private bool CanInverseScaleInlineMetrics(float scale, float maxInlineWidth)
     {
         foreach (InlineRun run in _runs)
         {
@@ -3526,6 +3610,7 @@ internal sealed partial class InlineContainerBox : BlockBox
                 InlineEmbedRun embed => embed.DesiredHeight,
                 InlineImageRun image => image.DesiredHeight,
                 InlineVectorSceneRun vector => vector.DesiredHeight,
+                InlineSpacerRun spacer => GetFittedSpacerHeight(spacer, maxInlineWidth),
                 _ => 0f,
             };
 
@@ -3544,10 +3629,42 @@ internal sealed partial class InlineContainerBox : BlockBox
         return true;
     }
 
+    /// <summary>
+    /// Resolves a decorative spacer's authored size against the current
+    /// inline formatting width. This mirrors the renderer's inline-image
+    /// max-width:100% behavior while preserving the authored ratio and keeps
+    /// the immutable run dimensions independent from text scaling.
+    /// </summary>
+    private static void GetFittedSpacerDimensions(
+        InlineSpacerRun spacer,
+        float maxInlineWidth,
+        out float width,
+        out float height)
+    {
+        width = spacer.Width;
+        height = spacer.Height;
+        if (float.IsPositiveInfinity(maxInlineWidth))
+            return;
+
+        float available = float.IsFinite(maxInlineWidth) && maxInlineWidth > 0f
+            ? maxInlineWidth
+            : 1f;
+        width = Math.Min(width, available);
+        float scale = width / spacer.Width;
+        height = Math.Max(float.Epsilon, spacer.Height * scale);
+    }
+
+    private static float GetFittedSpacerHeight(InlineSpacerRun spacer, float maxInlineWidth)
+    {
+        GetFittedSpacerDimensions(spacer, maxInlineWidth, out _, out float height);
+        return height;
+    }
+
     private void ApplyEmbedSpacing(
         CanvasTextLayout layout,
         bool observeCancellation = true,
-        float inverseMetricScale = 1f)
+        float inverseMetricScale = 1f,
+        float maxInlineWidth = float.PositiveInfinity)
     {
         int cumulative = 0;
         foreach (var run in _runs)
@@ -3600,6 +3717,25 @@ internal sealed partial class InlineContainerBox : BlockBox
                     MarkdownDiagnostics.WriteLine($"[InlineContainerBox] vector scene layout failed: {ex.Message}");
                 }
             }
+            else if (run is InlineSpacerRun spacer && len > 0)
+            {
+                GetFittedSpacerDimensions(
+                    spacer,
+                    maxInlineWidth,
+                    out float effectiveWidth,
+                    out float effectiveHeight);
+                // Keep this native call inside the enclosing measurement
+                // transaction. Swallowing failure would leave the private
+                // U+FFFC fallback glyph visible instead of an invisible spacer.
+                layout.SetInlineObject(
+                    cumulative,
+                    len,
+                    new LayoutInlineObject(
+                        effectiveWidth,
+                        effectiveHeight,
+                        inverseMetricScale,
+                        preserveSubUnitDimensions: true));
+            }
             cumulative += len;
         }
     }
@@ -3613,13 +3749,18 @@ internal sealed partial class InlineContainerBox : BlockBox
     /// </summary>
     private sealed partial class LayoutInlineObject : ICanvasTextInlineObject
     {
-        public LayoutInlineObject(float width, float height, float inverseMetricScale = 1f)
+        public LayoutInlineObject(
+            float width,
+            float height,
+            float inverseMetricScale = 1f,
+            bool preserveSubUnitDimensions = false)
         {
-            float safeWidth = Math.Max(1f, width);
+            float minimumDimension = preserveSubUnitDimensions ? float.Epsilon : 1f;
+            float safeWidth = Math.Max(minimumDimension, width);
             float scale = float.IsFinite(inverseMetricScale) && inverseMetricScale > 0f
                 ? inverseMetricScale
                 : 1f;
-            float safeHeight = Math.Max(1f, height / scale);
+            float safeHeight = Math.Max(minimumDimension, height / scale);
             Size = new Size(safeWidth, safeHeight);
             DrawBounds = new Rect(0, 0, safeWidth, safeHeight);
             Baseline = safeHeight;
@@ -3934,7 +4075,7 @@ internal sealed partial class InlineContainerBox : BlockBox
         {
             int len = run.TextLength;
             if (len == 0) { continue; }
-            if (run is InlineEmbedRun or InlineImageRun or InlineVectorSceneRun) { cumulative += len; continue; }
+            if (run is InlineEmbedRun or InlineImageRun or InlineVectorSceneRun or InlineSpacerRun) { cumulative += len; continue; }
             // Superscript link runs (footnote citation markers ¹²³…) should not
             // have an underline drawn at the normal line baseline — the small
             // Unicode glyphs snt high in the line and the baseline underline ends
@@ -3985,7 +4126,7 @@ internal sealed partial class InlineContainerBox : BlockBox
 
             if (runEnd <= selectedStart || runStart >= selectedEnd)
                 continue;
-            if (run is InlineEmbedRun or InlineImageRun or InlineVectorSceneRun)
+            if (run is InlineEmbedRun or InlineImageRun or InlineVectorSceneRun or InlineSpacerRun)
                 continue;
             if (run is LinkRun { IsSuperscript: true })
                 continue;
@@ -4069,7 +4210,7 @@ internal sealed partial class InlineContainerBox : BlockBox
         {
             int len = run.TextLength;
             if (len == 0) { continue; }
-            if (run is InlineEmbedRun or InlineImageRun or InlineVectorSceneRun) { cumulative += len; continue; }
+            if (run is InlineEmbedRun or InlineImageRun or InlineVectorSceneRun or InlineSpacerRun) { cumulative += len; continue; }
 
             var rs = GetRunStyle(run);
             bool hasRunSpecificStyle = HasRunSpecificStyle(run);

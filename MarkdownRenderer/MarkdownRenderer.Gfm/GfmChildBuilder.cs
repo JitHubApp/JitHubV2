@@ -507,7 +507,7 @@ internal static class GfmChildBuilder
         string? containingLinkTitle)
     {
         if (run is null ||
-            run is LinkRun or InlineImageRun ||
+            run is LinkRun or InlineImageRun or InlineSpacerRun ||
             string.IsNullOrWhiteSpace(containingLinkUrl))
         {
             return run;

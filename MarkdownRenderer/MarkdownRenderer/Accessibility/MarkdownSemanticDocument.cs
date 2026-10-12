@@ -1349,6 +1349,7 @@ internal sealed class MarkdownSemanticDocument
         // Non-run positions (images/embeds) and deliberately unbounded
         // selection sentinels are uncommon. Preserve the compatibility
         // fallback without putting normal copy/UIA lookups on a linear path.
+        int trailingInlineTextEnd = -1;
         foreach (var span in TextSpans)
         {
             if (span.InlineBox is { } icb && icb.BlockIndex == position.BlockIndex)
@@ -1358,7 +1359,10 @@ internal sealed class MarkdownSemanticDocument
                     if (position.InlineIndex < run.InlineIndex)
                         return span.TextStart;
                     if (position.InlineIndex > run.InlineIndex)
+                    {
+                        trailingInlineTextEnd = span.TextEnd;
                         continue;
+                    }
 
                     return Math.Clamp(
                         span.TextStart + ProjectRenderedOffsetToText(run, position.CharacterOffset, span.TextEnd - span.TextStart),
@@ -1369,6 +1373,12 @@ internal sealed class MarkdownSemanticDocument
                 return Math.Clamp(span.TextStart + icb.GetBufferCharOffset(position), span.TextStart, span.TextEnd);
             }
         }
+
+        // A decorative image/spacer has no semantic text span of its own. If
+        // it follows the final semantic run in this box, map it to the end of
+        // that preceding text rather than falling through to the first span.
+        if (trailingInlineTextEnd >= 0)
+            return trailingInlineTextEnd;
 
         foreach (var span in TextSpans)
         {
@@ -1382,6 +1392,12 @@ internal sealed class MarkdownSemanticDocument
                 return span.TextStart;
             }
         }
+
+        // A box containing only omitted decorative objects still has its
+        // zero-length semantic block node. Use that boundary so a spacer-only
+        // paragraph between other paragraphs does not map to document end.
+        if (_nodeByInlineBlockIndex.TryGetValue(position.BlockIndex, out MarkdownSemanticNode? inlineNode))
+            return inlineNode.TextStart;
 
         return position.BlockIndex <= 0 ? 0 : Text.Length;
     }
@@ -1873,7 +1889,7 @@ internal sealed class MarkdownSemanticDocument
             return 0;
 
         renderedOffset = Math.Clamp(renderedOffset, 0, run.RenderedLength);
-        if (run is InlineImageRun or InlineEmbedRun or InlineVectorSceneRun)
+        if (run is InlineImageRun or InlineEmbedRun or InlineVectorSceneRun or InlineSpacerRun)
             return renderedOffset <= 0 ? 0 : textLength;
 
         if (run.RenderedLength == textLength)
@@ -1888,7 +1904,7 @@ internal sealed class MarkdownSemanticDocument
             return 0;
 
         textOffset = Math.Clamp(textOffset, 0, Math.Max(0, textLength));
-        if (run is InlineImageRun or InlineEmbedRun or InlineVectorSceneRun)
+        if (run is InlineImageRun or InlineEmbedRun or InlineVectorSceneRun or InlineSpacerRun)
             return textOffset <= 0 ? 0 : run.RenderedLength;
 
         if (run.RenderedLength == textLength)
@@ -2067,6 +2083,11 @@ internal sealed class MarkdownSemanticDocument
                 // The layout image index includes decorative images even when
                 // semantic/UIA construction intentionally omits their runs.
                 _layoutIndexes?.ObserveInlineRun(inline, run);
+                // Inert spacers keep a one-character private source/layout
+                // mapping, but are neither selectable text nor UIA content.
+                if (run is InlineSpacerRun)
+                    continue;
+
                 // A plain literal that is still an exact view over this
                 // document's immutable source contributes the same semantic
                 // text without first allocating a per-run substring.
@@ -2257,7 +2278,7 @@ internal sealed class MarkdownSemanticDocument
                 : run.AccessibleText;
 
         private static bool IsAtomicInline(InlineRun run) =>
-            run is InlineImageRun or InlineEmbedRun or InlineVectorSceneRun;
+            run is InlineImageRun or InlineEmbedRun or InlineVectorSceneRun or InlineSpacerRun;
 
         private static bool NeedsSemanticBoundary(char left, char right) =>
             char.IsLetterOrDigit(left) && char.IsLetterOrDigit(right);
