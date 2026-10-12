@@ -128,9 +128,37 @@ paragraphs, linked mixed-image content, tables, and task lists. The GFM link
 wrapper preserves ordered script ancestry and its run-role marker, while empty
 style-key clones reuse the shared empty array. Evidence:
 `goal-release-20261011/nested-script-wrapper-focused-20261011/relative-script-focused.trx`.
-The full suite is running on that same compiled source. This does not prove
+The full suite passes **2,761/2,761, zero skipped**, on that same compiled source
+(`nested-script-recursion-full-20261011/github-full.trx`, 2m39s). This does not prove
 CSS baseline parity or a fresh full-page visual pass; the existing OpenType
 glyph/baseline behavior is explicitly retained.
+
+The reviewed typography and same-byte replay checkpoint is committed locally as
+`4f5b1f9f404a0b60f61d9e4365a1adac1b3cdd5c`, without pushing. A fresh
+Release/x64 NativeAOT publish from the clean candidate checkout passes locked
+restore, dependency/feed/vulnerability policy, and **131/131** release-security
+tests. The standalone native-payload verifier also passes in a process with exit
+code zero. App SHA-256:
+`CBDFB0C8CDD8F01560F9AAB0486A2B63E073A920BEE96373C949438DF2028DF2`.
+Evidence: `goal-release-20261011/clean-4f5b1f9f-aot-publish.log`,
+`clean-4f5b1f9f-aot-verify-process.log`, and `clean-4f5b1f9f-aot/jithub-aot/`.
+The first in-process verifier invocation also passed, but its calling shell
+incorrectly interpreted an unset native-command exit variable as a failure;
+the separate-process recheck removes that wrapper ambiguity. The normal
+Release/x64 app build also passes with zero warnings/errors and 131/131
+release-security tests under `nested-script-recursion-app-build-20261011/`.
+Neither build launched the published app or establishes NativeAOT runtime,
+full-page fidelity, top-500 completeness, or qualified performance. A subsequent
+review identified a new eagerly allocated script-ancestry list per paragraph;
+the follow-up allocates it only for an actual script scope and reuses it across
+sibling scopes. The final focused suite passes **37/37, zero skipped**, including
+non-script HTML and standalone typed/linked script runs. Evidence:
+`goal-release-20261011/lazy-script-ancestry-focused-final-20261011/focused-final.trx`.
+The production dependency build preceded the final test-only assertion repair;
+that final invocation reused those unchanged dependencies. Earlier compile and
+incorrect-expected-type failures remain in the adjacent logs. This follow-up is
+separate from the clean NativeAOT checkpoint above and is not a measured
+whole-document speedup or a fresh full-suite/runtime qualification.
 
 Local commit `bbb9db6e` removes another isolated source of extra vertical space:
 anonymous inline fragments inside safe-HTML containers inherited the Body
@@ -320,6 +348,40 @@ Evidence is `mixed-profile-variant/mixed-profile-build-receipt.json` and
 `mixed-profile-sponsor-abba/mixed-profile-sponsor-abba-receipt.json` beneath
 `analytic-scratch-fastpath-worker-20261011/`. The production Cargo profile,
 scanner, workers and shipping identities are still unchanged.
+
+The mixed-profile candidate subsequently passes the official normalized
+reproducibility checks for all three worker architectures. The final source
+fingerprint is
+`b2f5ddf76316e11b103c055cf3f19ed619912ac54446990aa1a9259eeccddddd`;
+all-RID worker identity and all **76** locked source/license records verify.
+Unsigned worker sizes are **3,131,392 bytes (x86)**, **3,303,936 bytes (x64)**,
+and **2,734,080 bytes (ARM64)**. The final x64 worker SHA-256 is
+`92058e35b04ce37d6ede8b4a67d83e37ae5d32dfade43ae95f004b7f6cdc0eef`.
+Evidence is `mixed-profile-variant/final-worker-identity-verification.log` and
+`final-supply-chain-verification.log` beneath the same artifact root. These
+checks do not qualify architecture runtime behavior or signing. The matching
+managed provider must be rebuilt with this identity before its final fault
+tests and package receipts can count; the earlier experimental provider results
+are not silently transferred to it. The first complete clean-`4f5b1f9f` clone
+compiles the managed projects but fails PRI generation at a 262-character
+destination path. Its evidence is retained; a fresh 180-character destination
+under `artifacts/resvg-mixed-4f5-20261011/` keeps the normal build targets and
+exact verified worker bytes. No production native source or binary is replaced.
+
+Two further scanner prototypes remain artifact-only. The first finds neighboring
+edges directly through the existing ordered tree instead of computing a rank
+and searching from its root again. The second skips a redundant per-band
+interpolation-finiteness check only within a proved bounded coordinate range;
+larger custom limits retain the original check and error categories. The final
+isolated harness passes **152/152, zero skipped**, including both fill rules,
+the exact cutoff and its next representable value, subnormal/signed-zero
+ordinates, clipped-boundary rounding, and finite/overflowing large-coordinate
+samples. Test probes explicitly assert the same closed-interval bracketing
+required by the event sweep. The preceding full sponsor differential produces
+exactly equal **1,152 paths / 121,566 spans** on both sides; later edits only add
+test-only probes. Evidence: `goal-release-20261011/analytic-band-prototype/boundary-final-tests.log`
+and the neighboring `analytic-edge-neighbor-prototype/` artifacts. No timing or
+production promotion is claimed for these prototypes.
 
 The earlier public same-byte capture contains **12 complete cases** under its
 then-current validator, not 500: ranks 1–4, 6, 11–15, 17 and 21. Its ranks 5, 16

@@ -10,7 +10,7 @@ namespace MarkdownRenderer.Layout;
 internal sealed class SafeHtmlInlineState
 {
     private readonly List<Scope> _scopes = [];
-    private readonly List<ScriptStyleAncestryToken> _scriptStyleAncestry = [];
+    private List<ScriptStyleAncestryToken>? _scriptStyleAncestry;
     private readonly SafeHtmlRenderPolicy? _policy;
     private int? _sourceStart;
     private int _nodeCount;
@@ -65,7 +65,7 @@ internal sealed class SafeHtmlInlineState
             return default;
 
         var token = new ScriptStyleAncestryToken(styleKey!);
-        _scriptStyleAncestry.Add(token);
+        (_scriptStyleAncestry ??= []).Add(token);
         return new ScriptStyleScope(this, token);
     }
 
@@ -185,7 +185,7 @@ internal sealed class SafeHtmlInlineState
             if (IsScriptStyleKey(styleKey))
             {
                 scriptToken = new ScriptStyleAncestryToken(styleKey!);
-                _scriptStyleAncestry.Add(scriptToken);
+                (_scriptStyleAncestry ??= []).Add(scriptToken);
             }
 
             _scopes.Add(new Scope(
@@ -446,15 +446,17 @@ internal sealed class SafeHtmlInlineState
             : run is LinkRun { IsSuperscript: true }
                 ? Theming.MarkdownElementKeys.Superscript
                 : null;
+        List<ScriptStyleAncestryToken>? scriptAncestry = _scriptStyleAncestry;
         bool runRoleAlreadyCaptured = run.SafeHtmlScriptRoleIsRunElement &&
             runScriptRole is not null &&
-            _scriptStyleAncestry.Count > 0 &&
+            scriptAncestry is { Count: > 0 } &&
             string.Equals(
-                _scriptStyleAncestry[^1].StyleKey,
+                scriptAncestry[^1].StyleKey,
                 runScriptRole,
                 StringComparison.Ordinal);
         bool appendRunScriptRole = runScriptRole is not null && !runRoleAlreadyCaptured;
-        int scriptAncestryCount = _scriptStyleAncestry.Count + (appendRunScriptRole ? 1 : 0);
+        int inheritedScriptAncestryCount = scriptAncestry?.Count ?? 0;
+        int scriptAncestryCount = inheritedScriptAncestryCount + (appendRunScriptRole ? 1 : 0);
 
         if (aliasCount == 0 && scriptAncestryCount == 0)
             return run;
@@ -476,8 +478,11 @@ internal sealed class SafeHtmlInlineState
         if (scriptAncestryCount > 0)
         {
             var scriptStyleKeys = new string[scriptAncestryCount];
-            for (int index = 0; index < _scriptStyleAncestry.Count; index++)
-                scriptStyleKeys[index] = _scriptStyleAncestry[index].StyleKey;
+            if (scriptAncestry is { } inheritedAncestry)
+            {
+                for (int index = 0; index < inheritedScriptAncestryCount; index++)
+                    scriptStyleKeys[index] = inheritedAncestry[index].StyleKey;
+            }
             if (appendRunScriptRole)
                 scriptStyleKeys[^1] = runScriptRole!;
             run.ScriptStyleAncestryKeys = scriptStyleKeys;
@@ -518,12 +523,13 @@ internal sealed class SafeHtmlInlineState
 
     private void RemoveScriptToken(ScriptStyleAncestryToken? token)
     {
-        if (token is null)
+        List<ScriptStyleAncestryToken>? ancestry = _scriptStyleAncestry;
+        if (token is null || ancestry is null)
             return;
 
-        int index = _scriptStyleAncestry.LastIndexOf(token);
+        int index = ancestry.LastIndexOf(token);
         if (index >= 0)
-            _scriptStyleAncestry.RemoveAt(index);
+            ancestry.RemoveAt(index);
     }
 
     internal readonly struct ScriptStyleScope : IDisposable

@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Collections.Generic;
 using Markdig;
 using Markdig.Extensions.EmphasisExtras;
 using Markdig.Extensions.Tables;
@@ -32,6 +33,9 @@ public sealed class RelativeScriptFontSizeTests
     private static readonly MethodInfo GetInnermostScriptStyleKeyMethod = typeof(InlineContainerBox).GetMethod(
         "GetInnermostScriptStyleKey",
         BindingFlags.Static | BindingFlags.NonPublic)!;
+    private static readonly FieldInfo ScriptStyleAncestryField = typeof(SafeHtmlInlineState).GetField(
+        "_scriptStyleAncestry",
+        BindingFlags.Instance | BindingFlags.NonPublic)!;
 
     public RelativeScriptFontSizeTests(ITestOutputHelper output)
         => _output = output;
@@ -153,7 +157,65 @@ public sealed class RelativeScriptFontSizeTests
         LinkRun followingSibling = Assert.IsType<LinkRun>(
             state.Apply(new LinkRun("sibling", "https://example.test/")));
         Assert.Empty(followingSibling.ScriptStyleAncestryKeys);
+        Assert.Empty(GetScriptAncestry(state));
     }
+
+    [Fact]
+    public void PlainAndNonScriptHtmlDoNotAllocateAncestryAndSiblingScopesReuseIt()
+    {
+        MarkdownLayoutContext context = CreateContext(
+            CreateTheme(RelativeSheet()),
+            FlowDirection.LeftToRight);
+        var state = new SafeHtmlInlineState(new SafeHtmlRenderPolicy(
+            enableLinks: true,
+            enableImages: false,
+            renderUnknownElementsLiterally: false,
+            allowedStyleClasses: null));
+
+        Assert.Null(ScriptStyleAncestryField.GetValue(state));
+        Assert.Null(state.Process(new HtmlInline("<strong>"), context));
+        Assert.IsType<StrongRun>(state.Apply(new TextRun("ordinary text")));
+        Assert.Null(state.Process(new HtmlInline("</strong>"), context));
+        Assert.Null(ScriptStyleAncestryField.GetValue(state));
+
+        SafeHtmlInlineState.ScriptStyleScope first =
+            state.PushMarkdownScript(MarkdownElementKeys.Superscript);
+        List<SafeHtmlInlineState.ScriptStyleAncestryToken> ancestry = GetScriptAncestry(state);
+        Assert.Single(ancestry);
+        first.Dispose();
+        Assert.Same(ancestry, ScriptStyleAncestryField.GetValue(state));
+        Assert.Empty(ancestry);
+
+        SafeHtmlInlineState.ScriptStyleScope sibling =
+            state.PushMarkdownScript(MarkdownElementKeys.Subscript);
+        Assert.Same(ancestry, ScriptStyleAncestryField.GetValue(state));
+        Assert.Equal([MarkdownElementKeys.Subscript],
+            Assert.IsType<TextRun>(state.Apply(new TextRun("script sibling")))
+                .ScriptStyleAncestryKeys);
+        sibling.Dispose();
+        Assert.Same(ancestry, ScriptStyleAncestryField.GetValue(state));
+        Assert.Empty(ancestry);
+    }
+
+    [Fact]
+    public void StandaloneTypedScriptRunsDoNotRequireAncestryList()
+    {
+        var state = new SafeHtmlInlineState(policy: null);
+
+        SuperscriptRun superscript = Assert.IsType<SuperscriptRun>(
+            state.Apply(new SuperscriptRun("1")));
+        LinkRun linkedSuperscript = Assert.IsType<LinkRun>(
+            state.Apply(new LinkRun("2", "https://example.test/") { IsSuperscript = true }));
+
+        Assert.Equal([MarkdownElementKeys.Superscript], superscript.ScriptStyleAncestryKeys);
+        Assert.Equal([MarkdownElementKeys.Superscript], linkedSuperscript.ScriptStyleAncestryKeys);
+        Assert.Null(ScriptStyleAncestryField.GetValue(state));
+    }
+
+    private static List<SafeHtmlInlineState.ScriptStyleAncestryToken> GetScriptAncestry(
+        SafeHtmlInlineState state)
+        => Assert.IsType<List<SafeHtmlInlineState.ScriptStyleAncestryToken>>(
+            ScriptStyleAncestryField.GetValue(state));
 
     [Fact]
     public void MarkdownScriptOutsideSafeHtmlScriptUsesSourceOrderForLinkedRun()
