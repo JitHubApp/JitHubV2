@@ -2110,21 +2110,27 @@ internal sealed class LayoutBuilder
                 continue;
             }
 
-            if (n is EmphasisInline emphasis && ContainsLink(emphasis))
+            if (n is EmphasisInline emphasis)
             {
-                _context.RegisterMarkdownAttributes(n, box.BlockIndex);
-                int effectiveAliasStart = inheritedAliasStart >= 0 ? inheritedAliasStart : aliasStart;
-                AddInlines(
-                    box,
-                    emphasis,
-                    htmlState,
-                    effectiveAliasStart,
-                    AppendStyleModifier(
-                        inheritedStyleModifiers,
-                        GetEmphasisElementKey(emphasis)),
-                    containingLinkUrl,
-                    containingLinkTitle);
-                continue;
+                string emphasisKey = GetEmphasisElementKey(emphasis);
+                if (_context.ThemeSnapshot.HasRelativeScriptFontSizeRules || ContainsMarkdownLink(emphasis))
+                {
+                    _context.RegisterMarkdownAttributes(n, box.BlockIndex);
+                    int effectiveAliasStart = inheritedAliasStart >= 0 ? inheritedAliasStart : aliasStart;
+                    using SafeHtmlInlineState.ScriptStyleScope scriptScope =
+                        htmlState.PushMarkdownScript(emphasisKey);
+                    AddInlines(
+                        box,
+                        emphasis,
+                        htmlState,
+                        effectiveAliasStart,
+                        AppendStyleModifier(
+                            inheritedStyleModifiers,
+                            emphasisKey),
+                        containingLinkUrl,
+                        containingLinkTitle);
+                    continue;
+                }
             }
 
             InlineRun? run;
@@ -2273,6 +2279,8 @@ internal sealed class LayoutBuilder
         {
             SourceSpan = run.SourceSpan,
             StyleAliases = run.StyleAliases,
+            ScriptStyleAncestryKeys = run.ScriptStyleAncestryKeys,
+            SafeHtmlScriptRoleIsRunElement = run.SafeHtmlScriptRoleIsRunElement,
         };
         linked.StyleModifierKeys = string.IsNullOrEmpty(run.ElementKey)
             ? run.StyleModifierKeys
@@ -2280,13 +2288,14 @@ internal sealed class LayoutBuilder
         return linked;
     }
 
-    private static bool ContainsLink(ContainerInline container)
+    private static bool ContainsMarkdownLink(ContainerInline container)
     {
         foreach (Inline child in container)
         {
             if (child is LinkInline)
                 return true;
-            if (child is ContainerInline nested && ContainsLink(nested))
+
+            if (child is ContainerInline nested && ContainsMarkdownLink(nested))
                 return true;
         }
 

@@ -10,6 +10,7 @@ namespace MarkdownRenderer.Layout;
 internal sealed class SafeHtmlInlineState
 {
     private readonly List<Scope> _scopes = [];
+    private readonly List<ScriptStyleAncestryToken> _scriptStyleAncestry = [];
     private readonly SafeHtmlRenderPolicy? _policy;
     private int? _sourceStart;
     private int _nodeCount;
@@ -56,6 +57,16 @@ internal sealed class SafeHtmlInlineState
     internal SafeHtmlInlineState(SafeHtmlRenderPolicy? policy)
     {
         _policy = policy;
+    }
+
+    internal ScriptStyleScope PushMarkdownScript(string styleKey)
+    {
+        if (!IsScriptStyleKey(styleKey))
+            return default;
+
+        var token = new ScriptStyleAncestryToken(styleKey!);
+        _scriptStyleAncestry.Add(token);
+        return new ScriptStyleScope(this, token);
     }
 
     internal bool IsStandaloneImage(HtmlInline html, MarkdownLayoutContext context)
@@ -170,13 +181,21 @@ internal sealed class SafeHtmlInlineState
 
         if (tag.Kind == SafeHtmlTagKind.Opening)
         {
+            ScriptStyleAncestryToken? scriptToken = null;
+            if (IsScriptStyleKey(styleKey))
+            {
+                scriptToken = new ScriptStyleAncestryToken(styleKey!);
+                _scriptStyleAncestry.Add(scriptToken);
+            }
+
             _scopes.Add(new Scope(
                 tag.Name,
                 styleKey,
                 linkUrl,
                 linkTitle,
                 suppressed,
-                GetClassAliases(tag)));
+                GetClassAliases(tag),
+                scriptToken));
         }
 
         if (suppressed)
@@ -319,7 +338,9 @@ internal sealed class SafeHtmlInlineState
         {
             if (styleKey == Theming.MarkdownElementKeys.Superscript)
             {
+                bool wasSuperscript = existingLink.IsSuperscript;
                 existingLink.IsSuperscript = true;
+                existingLink.SafeHtmlScriptRoleIsRunElement |= !wasSuperscript;
             }
 
             return ApplyAliases(existingLink);
@@ -331,6 +352,7 @@ internal sealed class SafeHtmlInlineState
             {
                 SourceSpan = run.SourceSpan,
                 IsSuperscript = styleKey == Theming.MarkdownElementKeys.Superscript,
+                SafeHtmlScriptRoleIsRunElement = styleKey == Theming.MarkdownElementKeys.Superscript,
             });
         }
 
@@ -352,6 +374,7 @@ internal sealed class SafeHtmlInlineState
             _ => run,
         };
         styled.SourceSpan = run.SourceSpan;
+        styled.SafeHtmlScriptRoleIsRunElement = IsScriptStyleKey(styleKey);
         return ApplyAliases(styled);
     }
 
@@ -417,21 +440,55 @@ internal sealed class SafeHtmlInlineState
         int aliasCount = run.StyleAliases.Count;
         foreach (Scope scope in _scopes)
             aliasCount += scope.StyleAliases.Count;
-        if (aliasCount == 0)
+
+        string? runScriptRole = IsScriptStyleKey(run.ElementKey)
+            ? run.ElementKey
+            : run is LinkRun { IsSuperscript: true }
+                ? Theming.MarkdownElementKeys.Superscript
+                : null;
+        bool runRoleAlreadyCaptured = run.SafeHtmlScriptRoleIsRunElement &&
+            runScriptRole is not null &&
+            _scriptStyleAncestry.Count > 0 &&
+            string.Equals(
+                _scriptStyleAncestry[^1].StyleKey,
+                runScriptRole,
+                StringComparison.Ordinal);
+        bool appendRunScriptRole = runScriptRole is not null && !runRoleAlreadyCaptured;
+        int scriptAncestryCount = _scriptStyleAncestry.Count + (appendRunScriptRole ? 1 : 0);
+
+        if (aliasCount == 0 && scriptAncestryCount == 0)
             return run;
 
-        var aliases = new string[aliasCount];
-        int written = 0;
-        foreach (Scope scope in _scopes)
+        if (aliasCount > 0)
         {
-            foreach (string alias in scope.StyleAliases)
+            var aliases = new string[aliasCount];
+            int written = 0;
+            foreach (Scope scope in _scopes)
+            {
+                foreach (string alias in scope.StyleAliases)
+                    aliases[written++] = alias;
+            }
+            foreach (string alias in run.StyleAliases)
                 aliases[written++] = alias;
+            run.SetStyleAliases(aliases);
         }
-        foreach (string alias in run.StyleAliases)
-            aliases[written++] = alias;
-        run.SetStyleAliases(aliases);
+
+        if (scriptAncestryCount > 0)
+        {
+            var scriptStyleKeys = new string[scriptAncestryCount];
+            for (int index = 0; index < _scriptStyleAncestry.Count; index++)
+                scriptStyleKeys[index] = _scriptStyleAncestry[index].StyleKey;
+            if (appendRunScriptRole)
+                scriptStyleKeys[^1] = runScriptRole!;
+            run.ScriptStyleAncestryKeys = scriptStyleKeys;
+        }
+
         return run;
     }
+
+    private static bool IsScriptStyleKey(string? styleKey)
+        => styleKey is Theming.MarkdownElementKeys.Subscript or
+            Theming.MarkdownElementKeys.Superscript;
 
     internal static bool IsSupportedElement(string name) => name is
         "a" or "address" or "article" or "aside" or "b" or "blockquote" or "br" or
@@ -452,9 +509,41 @@ internal sealed class SafeHtmlInlineState
                 continue;
             }
 
+            for (int removedIndex = _scopes.Count - 1; removedIndex >= index; removedIndex--)
+                RemoveScriptToken(_scopes[removedIndex].ScriptToken);
             _scopes.RemoveRange(index, _scopes.Count - index);
             return;
         }
+    }
+
+    private void RemoveScriptToken(ScriptStyleAncestryToken? token)
+    {
+        if (token is null)
+            return;
+
+        int index = _scriptStyleAncestry.LastIndexOf(token);
+        if (index >= 0)
+            _scriptStyleAncestry.RemoveAt(index);
+    }
+
+    internal readonly struct ScriptStyleScope : IDisposable
+    {
+        private readonly SafeHtmlInlineState? _owner;
+        private readonly ScriptStyleAncestryToken? _token;
+
+        internal ScriptStyleScope(SafeHtmlInlineState owner, ScriptStyleAncestryToken token)
+        {
+            _owner = owner;
+            _token = token;
+        }
+
+        public void Dispose()
+            => _owner?.RemoveScriptToken(_token);
+    }
+
+    internal sealed class ScriptStyleAncestryToken(string styleKey)
+    {
+        internal string StyleKey { get; } = styleKey;
     }
 
     internal static string? GetStyleKey(string name) => name switch
@@ -470,7 +559,7 @@ internal sealed class SafeHtmlInlineState
         _ => null,
     };
 
-    private readonly struct Scope
+    internal readonly struct Scope
     {
         internal Scope(
             string name,
@@ -478,7 +567,8 @@ internal sealed class SafeHtmlInlineState
             string? linkUrl,
             string? linkTitle,
             bool suppressed,
-            IReadOnlyList<string> styleAliases)
+            IReadOnlyList<string> styleAliases,
+            ScriptStyleAncestryToken? scriptToken = null)
         {
             Name = name;
             StyleKey = styleKey;
@@ -486,6 +576,7 @@ internal sealed class SafeHtmlInlineState
             LinkTitle = linkTitle;
             Suppressed = suppressed;
             StyleAliases = styleAliases;
+            ScriptToken = scriptToken;
         }
 
         internal readonly string Name;
@@ -494,5 +585,6 @@ internal sealed class SafeHtmlInlineState
         internal readonly string? LinkTitle;
         internal readonly bool Suppressed;
         internal readonly IReadOnlyList<string> StyleAliases;
+        internal readonly ScriptStyleAncestryToken? ScriptToken;
     }
 }

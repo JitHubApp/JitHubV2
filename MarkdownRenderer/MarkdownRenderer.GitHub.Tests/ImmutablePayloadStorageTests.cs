@@ -760,14 +760,16 @@ public sealed class ImmutablePayloadStorageTests
         Assert.Null(Field(context, "Dispatcher"));
 
         string[] aliases = ["safe-class", "compact"];
+        var scriptToken = new SafeHtmlInlineState.ScriptStyleAncestryToken("subscript");
         object inlineScope = Construct(Nested(typeof(SafeHtmlInlineState), "Scope"),
-            ["a", "Link", "https://example.test", "safe link", true, aliases]);
+            ["a", "Link", "https://example.test", "safe link", true, aliases, scriptToken]);
         Assert.Equal("a", Field(inlineScope, "Name"));
         Assert.Equal("Link", Field(inlineScope, "StyleKey"));
         Assert.Equal("https://example.test", Field(inlineScope, "LinkUrl"));
         Assert.Equal("safe link", Field(inlineScope, "LinkTitle"));
         Assert.Equal(true, Field(inlineScope, "Suppressed"));
         Assert.Same(aliases, Field(inlineScope, "StyleAliases"));
+        Assert.Same(scriptToken, Field(inlineScope, "ScriptToken"));
 
         object blockScope = Construct(Nested(typeof(SafeHtmlBlockScopeTracker), "Scope"),
             ["details", SafeHtmlAlignment.Center, true, 19]);

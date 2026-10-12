@@ -33,3 +33,4 @@ public static class MarkdownRenderer.GitHub.GitHubReadmeVisualStyleProfiles
   public static MarkdownRenderer.GitHub.GitHubReadmeVisualStyleProfile PrimerLightV2 { get; }
   public static MarkdownRenderer.GitHub.GitHubReadmeVisualStyleProfile PrimerLightV3 { get; }
   public static MarkdownRenderer.GitHub.GitHubReadmeVisualStyleProfile PrimerLightV4 { get; }
+  public static MarkdownRenderer.GitHub.GitHubReadmeVisualStyleProfile PrimerLightV5 { get; }

@@ -15,6 +15,11 @@ namespace MarkdownRenderer.Theming;
 /// </summary>
 internal sealed class ThemeSnapshot
 {
+    // Win2D/DirectWrite font sizes must remain positive. Nested relative script
+    // scopes can otherwise underflow when a caller intentionally chooses a
+    // very small factor; this floor applies only to policy-derived sizes.
+    internal const float MinimumRelativeScriptFontSize = 0.1f;
+
     private const int MaximumContextualStyleCacheEntries = 4_096;
     private const double MaximumDocumentPadding = 4_096;
     private const double MaximumBlockSpacing = 1_024;
@@ -86,7 +91,8 @@ internal sealed class ThemeSnapshot
             _minimumInteractiveSize,
             DocumentPadding,
             _blockSpacing,
-            _compiledStyleSheet.LayoutPolicy);
+            _compiledStyleSheet.LayoutPolicy,
+            _compiledStyleSheet.HasRelativeScriptFontSizeRules);
     }
 
     /// <summary>Resolved document surface color.</summary>
@@ -120,6 +126,38 @@ internal sealed class ThemeSnapshot
     public double BlockSpacing => _blockSpacing;
 
     internal byte LayoutPolicy => _compiledStyleSheet.LayoutPolicy;
+    internal bool HasRelativeScriptFontSizeRules => _compiledStyleSheet.HasRelativeScriptFontSizeRules;
+
+    internal static ElementStyle WithFontSize(ElementStyle style, float fontSize)
+    {
+        ArgumentNullException.ThrowIfNull(style);
+        return new ElementStyle
+        {
+            FontFamily = style.FontFamily,
+            FontSize = fontSize,
+            RelativeFontSizeScale = null,
+            FontWeight = style.FontWeight,
+            FontStyle = style.FontStyle,
+            Foreground = style.Foreground,
+            HoverForeground = style.HoverForeground,
+            FocusForeground = style.FocusForeground,
+            Background = style.Background,
+            AccentBar = style.AccentBar,
+            AccentBarThickness = style.AccentBarThickness,
+            AccentBarAffectsContentLayout = style.AccentBarAffectsContentLayout,
+            BorderBrush = style.BorderBrush,
+            HeadingBorderBottomOnly = style.HeadingBorderBottomOnly,
+            BorderThickness = style.BorderThickness,
+            CornerRadius = style.CornerRadius,
+            ListIndent = style.ListIndent,
+            NestedListIndent = style.NestedListIndent,
+            Underline = style.Underline,
+            Strikethrough = style.Strikethrough,
+            Margin = style.Margin,
+            Padding = style.Padding,
+            LineHeightMultiplier = style.LineHeightMultiplier,
+        };
+    }
 
     /// <summary>
     /// Resolves the shared local-overflow colors without consulting WinUI resources on
@@ -226,7 +264,8 @@ internal sealed class ThemeSnapshot
         float minimumInteractiveSize,
         Thickness documentPadding,
         float blockSpacing,
-        byte layoutPolicy)
+        byte layoutPolicy,
+        bool hasRelativeScriptFontSizeRules)
     {
         const ulong offset = 14695981039346656037UL;
         var keys = new List<string>(styles.Keys);
@@ -235,6 +274,12 @@ internal sealed class ThemeSnapshot
         // Salt the seed so the effective layout policy participates in the
         // fingerprint without feeding an extra four-byte word through Mix.
         ulong hash = offset ^ layoutPolicy;
+        // Even if later absolute declarations mask a relative rule's simple
+        // style marker, the policy flag still selects different script
+        // shaping and per-run resolution paths. Preserve historical hashes
+        // for all snapshots without this opt-in policy.
+        if (hasRelativeScriptFontSizeRules)
+            hash = Mix(hash, 0x52534350u); // "RSCP"
         hash = Mix(hash, BitConverter.SingleToUInt32Bits(minimumInteractiveSize));
         hash = Mix(hash, documentPadding);
         hash = Mix(hash, BitConverter.SingleToUInt32Bits(blockSpacing));
@@ -244,6 +289,11 @@ internal sealed class ThemeSnapshot
             ElementStyle style = styles[key];
             hash = Mix(hash, style.FontFamily);
             hash = Mix(hash, BitConverter.SingleToUInt32Bits(style.FontSize));
+            if (style.RelativeFontSizeScale is float relativeScale)
+            {
+                hash = Mix(hash, 0x52534331u); // "RSC1"
+                hash = Mix(hash, BitConverter.SingleToUInt32Bits(relativeScale));
+            }
             hash = Mix(hash, style.FontWeight.Weight);
             hash = Mix(hash, (uint)style.FontStyle);
             hash = Mix(hash, BitConverter.SingleToUInt32Bits(style.AccentBarThickness));
@@ -390,6 +440,7 @@ internal sealed class ThemeSnapshot
         {
             FontFamily = style.FontFamily,
             FontSize = style.FontSize * _textScaleFactor,
+            RelativeFontSizeScale = style.RelativeFontSizeScale,
             FontWeight = style.FontWeight,
             FontStyle = style.FontStyle,
             Foreground = style.Foreground,
@@ -618,6 +669,8 @@ internal sealed class ThemeSnapshot
         {
             FontFamily = ov.FontFamily ?? defaults.FontFamily,
             FontSize = ov.FontSize ?? defaults.FontSize,
+            RelativeFontSizeScale = ov.RelativeFontSizeScale ??
+                (ov.FontSize.HasValue ? null : defaults.RelativeFontSizeScale),
             FontWeight = ov.FontWeight ?? defaults.FontWeight,
             FontStyle = ov.FontStyle ?? defaults.FontStyle,
             Foreground = ov.Foreground ?? defaults.Foreground,
@@ -652,6 +705,7 @@ internal sealed class ThemeSnapshot
         {
             FontFamily = customized.FontFamily,
             FontSize = customized.FontSize,
+            RelativeFontSizeScale = customized.RelativeFontSizeScale,
             FontWeight = customized.FontWeight,
             FontStyle = customized.FontStyle,
             Foreground = mandatory.Foreground,

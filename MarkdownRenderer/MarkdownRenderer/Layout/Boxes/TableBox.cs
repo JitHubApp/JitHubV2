@@ -291,7 +291,9 @@ internal sealed partial class TableBox : BlockBox, IHorizontalOverflowBox
                 !string.Equals(originalRun.ElementKey, clonedRun.ElementKey, StringComparison.Ordinal) ||
                 !string.Equals(originalRun.SemanticHeadingKey, clonedRun.SemanticHeadingKey, StringComparison.Ordinal) ||
                 !SameStrings(originalRun.StyleAliases, clonedRun.StyleAliases) ||
-                !SameStrings(originalRun.StyleModifierKeys, clonedRun.StyleModifierKeys))
+                !SameStrings(originalRun.StyleModifierKeys, clonedRun.StyleModifierKeys) ||
+                !SameStrings(originalRun.ScriptStyleAncestryKeys, clonedRun.ScriptStyleAncestryKeys) ||
+                originalRun.SafeHtmlScriptRoleIsRunElement != clonedRun.SafeHtmlScriptRoleIsRunElement)
                 return false;
 
             if (originalRun is InlineImageRun originalImage && clonedRun is InlineImageRun clonedImage &&

@@ -150,6 +150,15 @@ public sealed class MarkdownStyleRule
     {
         Selector = selector ?? throw new ArgumentNullException(nameof(selector));
         Style = style ?? throw new ArgumentNullException(nameof(style));
+        if (style.RelativeFontSizeScale is float relativeScale)
+        {
+            if (!float.IsFinite(relativeScale) || relativeScale <= 0f || relativeScale > 1f)
+                throw new ArgumentOutOfRangeException(nameof(style), "A relative font-size scale must be finite and in (0, 1].");
+            if (style.FontSize.HasValue)
+                throw new ArgumentException("A style rule cannot declare both absolute and relative font size.", nameof(style));
+            if (selector.Role.Name is not (MarkdownElementKeys.Subscript or MarkdownElementKeys.Superscript))
+                throw new ArgumentException("Relative font size is supported only for subscript and superscript roles.", nameof(selector));
+        }
     }
 
     /// <summary>Gets the selector.</summary>
@@ -201,6 +210,48 @@ public sealed class MarkdownStyleSheet
 
     /// <summary>Gets the rules in deterministic application order.</summary>
     public IReadOnlyList<MarkdownStyleRule> Rules => _rulesView;
+
+    /// <summary>
+    /// Returns a new style sheet that sizes default subscript and superscript
+    /// runs relative to the containing run's font size. Nested scripts compound
+    /// the factor, down to a 0.1-DIP floor for policy-derived sizes. The rules
+    /// are appended after existing rules, overriding lower-precedence theme or
+    /// resource script sizes. A later absolute stylesheet rule remains absolute.
+    /// </summary>
+    /// <param name="scale">The relative size factor, greater than zero and at most one.</param>
+    /// <remarks>
+    /// A new sheet, including <see cref="Empty"/>, has no relative script
+    /// sizing rules. Calling this method appends subscript and superscript
+    /// declarations after existing rules. These stylesheet declarations take
+    /// precedence over fixed script sizes supplied by lower-precedence theme or
+    /// resource styles. Calling it again appends replacement declarations; the
+    /// last relative declaration wins. A later absolute stylesheet rule wins
+    /// over this relative declaration. Start from a new sheet to disable the
+    /// behavior. Renderer layout applies these declarations where the containing run's size is available;
+    /// <see cref="Resolve(ElementStyle, MarkdownStyleContext)"/> retains the
+    /// nominal <see cref="ElementStyle.FontSize"/>. Script glyph selection and
+    /// baseline placement continue to use the font's existing OpenType
+    /// subscript/superscript behavior. Those substitutions are font-dependent;
+    /// this API does not implement CSS <c>font-size: smaller</c> or
+    /// <c>vertical-align: sub|super</c> metrics or promise browser baseline parity.
+    /// </remarks>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="scale"/> is non-finite, not positive, or greater than one.
+    /// </exception>
+    public MarkdownStyleSheet WithRelativeScriptFontSize(float scale)
+    {
+        if (!float.IsFinite(scale) || scale <= 0f || scale > 1f)
+            throw new ArgumentOutOfRangeException(nameof(scale), "The script size scale must be finite and in (0, 1].");
+
+        var relativeOverride = new ElementStyleOverride { RelativeFontSizeScale = scale };
+        var subscriptRule = new MarkdownStyleRule(
+            new MarkdownStyleSelector(MarkdownStyleRole.FromElementKey(MarkdownElementKeys.Subscript)),
+            relativeOverride);
+        var superscriptRule = new MarkdownStyleRule(
+            new MarkdownStyleSelector(MarkdownStyleRole.FromElementKey(MarkdownElementKeys.Superscript)),
+            relativeOverride);
+        return WithRule(subscriptRule).WithRule(superscriptRule);
+    }
 
     /// <summary>
     /// Returns a new style sheet that collapses adjacent positive margins on
@@ -263,6 +314,7 @@ internal sealed class CompiledMarkdownStyleSheet
 {
     private readonly FrozenDictionary<string, CompiledRule[]> _rulesByRole;
     internal readonly byte LayoutPolicy;
+    internal readonly bool HasRelativeScriptFontSizeRules;
 
     internal CompiledMarkdownStyleSheet(
         IReadOnlyList<MarkdownStyleRule> rules,
@@ -276,9 +328,11 @@ internal sealed class CompiledMarkdownStyleSheet
         }
 
         var groupedRules = new Dictionary<string, List<CompiledRule>>(StringComparer.Ordinal);
+        bool hasRelativeScriptFontSizeRules = false;
         for (int i = 0; i < rules.Count; i++)
         {
             MarkdownStyleRule rule = rules[i];
+            hasRelativeScriptFontSizeRules |= rule.Style.RelativeFontSizeScale.HasValue;
             string roleName = rule.Selector.Role.Name;
             if (!groupedRules.TryGetValue(roleName, out List<CompiledRule>? roleRules))
             {
@@ -294,6 +348,7 @@ internal sealed class CompiledMarkdownStyleSheet
             compiled.Add(roleName, roleRules.ToArray());
 
         _rulesByRole = compiled.ToFrozenDictionary(StringComparer.Ordinal);
+        HasRelativeScriptFontSizeRules = hasRelativeScriptFontSizeRules;
     }
 
     internal bool HasRules => _rulesByRole.Count != 0;

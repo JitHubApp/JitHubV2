@@ -363,7 +363,7 @@ function New-CaptureSnapshot {
         'eng\readme-audit\browser-environment.mjs', 'eng\readme-audit\same-byte-corpus.mjs',
         'eng\readme-audit\same-byte-edge-replay.mjs', 'eng\readme-audit\same-byte-edge-source.mjs',
         'eng\readme-audit\vendor\marked-18.0.5.umd.js', 'eng\readme-audit\vendor\github-emoji-shortcodes.mjs',
-        'eng\readme-audit\profiles\github-primer-light-v4.css')) {
+        'eng\readme-audit\profiles\github-primer-light-v5.css')) {
         if (-not (Test-Path -LiteralPath (Join-Path $snapshotRoot $required) -PathType Leaf)) { throw "Capture runtime dependency was not staged: '$required'." }
     }
     $runnerRoot = Join-Path $snapshotRoot 'tools\automation'

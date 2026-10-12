@@ -801,6 +801,7 @@ public sealed class MarkdownRenderer.Theming.MarkdownStyleSelector
 public sealed class MarkdownRenderer.Theming.MarkdownStyleSheet
   public MarkdownRenderer.Theming.ElementStyle Resolve(MarkdownRenderer.Theming.ElementStyle baseStyle, MarkdownRenderer.Theming.MarkdownStyleContext context);
   public MarkdownRenderer.Theming.MarkdownStyleSheet WithPositiveAdjacentMarginCollapse();
+  public MarkdownRenderer.Theming.MarkdownStyleSheet WithRelativeScriptFontSize(float scale);
   public MarkdownRenderer.Theming.MarkdownStyleSheet WithRule(MarkdownRenderer.Theming.MarkdownStyleRule rule);
   public MarkdownRenderer.Theming.MarkdownStyleSheet WithZeroTrailingTopLevelBlockMargin();
   public MarkdownStyleSheet(System.Collections.Generic.IEnumerable<MarkdownRenderer.Theming.MarkdownStyleRule> rules);

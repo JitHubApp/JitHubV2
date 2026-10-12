@@ -603,9 +603,11 @@ try {
     $incompleteRuntimePrelude = "function Get-AppxPackage { `$items = ConvertFrom-Json -InputObject ([IO.File]::ReadAllText('$packagesJsonPathLiteral')); foreach (`$item in @(`$items)) { Write-Output `$item } }`n"
     $installAttemptScriptPath = Join-Path $incompleteRoot 'runtime-install-attempt.ps1'
     [IO.File]::WriteAllText($installAttemptScriptPath, $incompleteRuntimePrelude + $incompleteGuestScript, [Text.UTF8Encoding]::new($false))
-    $LASTEXITCODE = 0
+    # Native invocations update the global automatic variable. A script-local
+    # assignment shadows that update when this test is invoked by another script.
+    $global:LASTEXITCODE = 0
     & $windowsPowerShell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $installAttemptScriptPath 2>$null
-    $installAttemptExitCode = $LASTEXITCODE
+    $installAttemptExitCode = $global:LASTEXITCODE
     $incompleteReportPath = Join-Path $incompleteRoot 'artifacts\offline-same-byte-runtime-setup\windows-app-runtime.json'
     $installFailureReport = Get-Content -LiteralPath $incompleteReportPath -Raw | ConvertFrom-Json
     if ($installAttemptExitCode -eq 0 -or

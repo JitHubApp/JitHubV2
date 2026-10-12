@@ -18,6 +18,76 @@ public sealed class GitHubReadmeVisualStyleProfileTests
         "MarkdownRenderer.GitHub.Profiles.github-primer-light-v3.css";
     private const string CssGeometryFixtureResourceName =
         "MarkdownRenderer.GitHub.Profiles.github-primer-light-v4.css";
+    private const string RelativeScriptFixtureResourceName =
+        "MarkdownRenderer.GitHub.Profiles.github-primer-light-v5.css";
+
+    [Fact]
+    public void PrimerLightV5_BindsOnlyRelativeScriptSizingToANewCanonicalProfile()
+    {
+        GitHubReadmeVisualStyleProfile previous = GitHubReadmeVisualStyleProfiles.PrimerLightV4;
+        GitHubReadmeVisualStyleProfile profile = GitHubReadmeVisualStyleProfiles.PrimerLightV5;
+        using Stream stream = typeof(GitHubReadmeVisualStyleProfiles).Assembly
+            .GetManifestResourceStream(RelativeScriptFixtureResourceName)!;
+        using Stream previousStream = typeof(GitHubReadmeVisualStyleProfiles).Assembly
+            .GetManifestResourceStream(CssGeometryFixtureResourceName)!;
+        Assert.NotNull(stream);
+        Assert.NotNull(previousStream);
+        byte[] cssBytes = ReadAllBytes(stream);
+        string css = System.Text.Encoding.UTF8.GetString(cssBytes);
+        string previousCss = System.Text.Encoding.UTF8.GetString(ReadAllBytes(previousStream));
+        const string scriptDeclaration =
+            "\n/* Explicit proportional script sizes, independent of the UA's smaller keyword. */\n" +
+            ".markdown-body sup,\n.markdown-body sub { font-size: 75%; }\n";
+
+        Assert.Equal(previous.Id, profile.Id);
+        Assert.Equal(5, profile.Version);
+        Assert.Equal("15b6b573ceb5fa8f0e103a14d04d6c8b6ed7a5a0b456a71674a249d183374d81", profile.Fingerprint);
+        Assert.Equal(Convert.ToHexString(SHA256.HashData(cssBytes)).ToLowerInvariant(), profile.Fingerprint);
+        Assert.Equal(previousCss.Replace("PrimerLightV4", "PrimerLightV5", StringComparison.Ordinal)
+            .Replace("Profile version: 4", "Profile version: 5", StringComparison.Ordinal) + scriptDeclaration, css);
+        Assert.Equal(previous.SurfaceColor, profile.SurfaceColor);
+        Assert.Equal(previous.AccentColor, profile.AccentColor);
+        Assert.Equal(previous.CodeBlockChromeMode, profile.CodeBlockChromeMode);
+        Assert.Equal(previous.CodeBlockLineNumberMode, profile.CodeBlockLineNumberMode);
+        Assert.Equal(previous.IsCodeBlockCopyEnabled, profile.IsCodeBlockCopyEnabled);
+        Assert.Equal(previous.StyleSheet.Compile().LayoutPolicy, profile.StyleSheet.Compile().LayoutPolicy);
+        Assert.Equal(previous.StyleSheet.Rules.Count + 2, profile.StyleSheet.Rules.Count);
+        for (int index = 0; index < previous.StyleSheet.Rules.Count; index++)
+            Assert.Same(previous.StyleSheet.Rules[index], profile.StyleSheet.Rules[index]);
+
+        Assert.False(previous.StyleSheet.Compile().HasRelativeScriptFontSizeRules);
+        Assert.True(profile.StyleSheet.Compile().HasRelativeScriptFontSizeRules);
+        Assert.Equal(0.75f, Resolve(profile.StyleSheet,
+            MarkdownStyleRole.FromElementKey(MarkdownElementKeys.Subscript)).RelativeFontSizeScale);
+        Assert.Equal(0.75f, Resolve(profile.StyleSheet,
+            MarkdownStyleRole.FromElementKey(MarkdownElementKeys.Superscript)).RelativeFontSizeScale);
+    }
+
+    [Fact]
+    public void PrimerLightV5_OverridesInheritedScriptSizeButPreservesLaterAbsoluteRulesAndHighContrast()
+    {
+        MarkdownStyleSheet sheet = GitHubReadmeVisualStyleProfiles.PrimerLightV5.StyleSheet;
+        Color inheritedForeground = Color.FromArgb(0xFF, 0, 0, 0xFF);
+        Color systemForeground = Color.FromArgb(0xFF, 0xFF, 0xFF, 0);
+        Color systemBackground = Color.FromArgb(0xFF, 0, 0, 0);
+        var inherited = new ElementStyle { FontSize = 12, Foreground = inheritedForeground };
+        var context = new MarkdownStyleContext(MarkdownStyleRole.FromElementKey(MarkdownElementKeys.Superscript));
+        ElementStyle relative = sheet.Resolve(inherited, context);
+        Assert.Equal(0.75f, relative.RelativeFontSizeScale);
+        // Standalone resolution retains the nominal size; layout supplies the parent size.
+        Assert.Equal(12, relative.FontSize);
+        ElementStyle explicitSize = sheet.WithRule(new MarkdownStyleRule(
+            new MarkdownStyleSelector(MarkdownStyleRole.FromElementKey(MarkdownElementKeys.Superscript)),
+            new ElementStyleOverride { FontSize = 13 })).Resolve(inherited, context);
+        Assert.Null(explicitSize.RelativeFontSizeScale);
+        Assert.Equal(13, explicitSize.FontSize);
+
+        ElementStyle highContrast = ThemeSnapshot.EnforceHighContrast(relative,
+            new ElementStyle { Foreground = systemForeground, Background = systemBackground });
+        Assert.Equal(systemForeground, highContrast.Foreground);
+        Assert.Equal(systemBackground, highContrast.Background);
+        Assert.Equal(0.75f, highContrast.RelativeFontSizeScale);
+    }
 
     [Fact]
     public void PrimerLightV3_BindsPlainCodePresentationToItsOwnCanonicalCss()

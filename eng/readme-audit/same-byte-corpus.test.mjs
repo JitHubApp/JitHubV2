@@ -745,6 +745,9 @@ test("source-bound Edge page serves exact README and SRI-pinned Marked bytes", a
   assert.equal(styleResponse.headers.get("x-content-sha256"), PINNED_GITHUB_README_STYLE_PROFILE.sha256);
   assert.equal(sha256(styleBytes), PINNED_GITHUB_README_STYLE_PROFILE.sha256,
     "Edge profile CSS bytes must match the same pinned fingerprint exposed to the native profile");
+  assert.equal(PINNED_GITHUB_README_STYLE_PROFILE.version, 5);
+  assert.match(styleText, /\.markdown-body sup,\s*\.markdown-body sub\s*\{\s*font-size:\s*75%;\s*\}/u,
+    "script sizes must be explicit and proportional to their containing text");
   assert.match(styleText, /font-size:\s*16px;\s*line-height:\s*1\.5;\s*overflow-wrap:\s*break-word/u);
   assert.match(styleText, /html\s*\{\s*scrollbar-width:\s*none;\s*\}/u,
     "the source replay must use the full CSS content width like WinUI's overlay scrollbar");
@@ -909,7 +912,7 @@ test("rendered snapshot rejects each active-content predicate with privacy-safe 
   });
   await assert.rejects(captureSameByteCorpus({
     ...common,
-    renderedHtml: '<article><img data-jithub-image-index="1"></article>',
+    renderedHtml: "<article><p>the captured image is absent</p></article>",
   }), error => {
     assert.deepEqual(readSameByteSnapshotFailureEvidence(error), {
       failureStage: "rendered-snapshot-validation",
@@ -927,7 +930,7 @@ test("rendered snapshot rejects each active-content predicate with privacy-safe 
     ["external-resource-attribute", '<article><img src="https://private.example.invalid/image.png"></article>', []],
     ["style-element", "<article><style>body{color:red}</style></article>", []],
     ["external-css-resource", '<article><div style="background-image:url(https://private.example.invalid/image.png)"></div></article>', []],
-    ["duplicate-image-index", '<article><img data-jithub-image-index="0"><img data-jithub-image-index="0"></article>', []],
+    ["duplicate-image-index", '<article><img data-jithub-image-index="0"><img data-jithub-image-index="0"></article>', [{ index: 0, dataUri: false }]],
     ["missing-image-index", "<article><p>missing image route</p></article>", [{ index: 0, dataUri: false }]],
     ["missing-data-image", '<article><img data-jithub-image-index="0"></article>', [{ index: 0, dataUri: true }]],
     ["network-image-data-payload", '<article><img data-jithub-image-index="0" data-jithub-image-data="data:image/png;base64,AA=="></article>', [{ index: 0, dataUri: false }]],
@@ -977,6 +980,148 @@ test("rendered snapshot rejects each active-content predicate with privacy-safe 
     "escaped code/text mentioning a resource attribute is not treated as a live element attribute");
 });
 
+test("source-less decorative spacers are manifest-bound and do not admit missing image routes", async t => {
+  const outputRoot = await mkdtemp(path.join(os.tmpdir(), "jithub-source-less-spacer-"));
+  t.after(() => rm(outputRoot, { recursive: true, force: true }));
+  const bytes = Buffer.from("# Pinned spacer fixture\n", "utf8");
+  const spacer = { index: 0, width: 16, height: 1, renderedWidth: 16, renderedHeight: 1 };
+  const common = {
+    repository: repositoryFixture(),
+    readmeUrl,
+    readmePath: "README.md",
+    readmeGitBlobSha1: gitBlobSha1(bytes),
+    readmeByteSize: bytes.length,
+    images: [],
+    readmeRendered: true,
+    responseRecorder: { captureVisibleImages: async () => ({ assets: [], imageRoutes: [] }) },
+    fetchImpl: async () => new Response(bytes, { status: 200 }),
+  };
+
+  const directory = path.join(outputRoot, "valid");
+  await captureSameByteCorpus({
+    ...common,
+    directory,
+    renderedHtml: '<article><img alt="" style="width:16px;height:1px" data-jithub-layout-spacer-index="0"></article>',
+    sourceLessDecorativeImageSpacers: [spacer],
+  });
+  const manifest = JSON.parse(await readFile(path.join(directory, "manifest.json"), "utf8"));
+  assert.deepEqual(manifest.sourceLessDecorativeImageSpacers, [spacer]);
+  assert.deepEqual(manifest.imageRoutes, [], "a spacer has layout identity but no network/image route");
+  const replay = await createSameByteReplayServer(directory);
+  t.after(replay.close);
+  assert.deepEqual(replay.sourceLessDecorativeImageSpacers, [spacer]);
+  assert.equal(replay.expectedVisibleImageCount, 0);
+
+  const rejects = async (name, options, expected) => {
+    await assert.rejects(captureSameByteCorpus({
+      ...common,
+      directory: path.join(outputRoot, name),
+      renderedHtml: options.renderedHtml ||
+        '<article><img alt="" style="width:16px;height:1px" data-jithub-layout-spacer-index="0"></article>',
+      sourceLessDecorativeImageSpacers: options.spacers ?? [spacer],
+      responseRecorder: options.responseRecorder ?? common.responseRecorder,
+    }), expected, name);
+  };
+  await rejects("unbound-marker", { spacers: [] }, /unbound layout-image spacer/u);
+  await rejects("geometry-mismatch", {
+    renderedHtml: '<article><img alt="" style="width:17px;height:1px" data-jithub-layout-spacer-index="0"></article>',
+  }, /does not preserve its captured CSS dimensions/u);
+  await rejects("ambiguous-width", {
+    renderedHtml: '<article><img alt="" style="width:16px;width:900px;height:1px" data-jithub-layout-spacer-index="0"></article>',
+  }, /does not preserve its captured CSS dimensions/u);
+  await rejects("escaped-ambiguous-width", {
+    renderedHtml: '<article><img alt="" style="width:16px;w\\69dth:900px;height:1px" data-jithub-layout-spacer-index="0"></article>',
+  }, /does not preserve its captured CSS dimensions/u);
+  await rejects("ambiguous-height", {
+    renderedHtml: '<article><img alt="" style="width:16px;height:1px;height:900px" data-jithub-layout-spacer-index="0"></article>',
+  }, /does not preserve its captured CSS dimensions/u);
+  await rejects("oversized", {
+    spacers: [{ ...spacer, width: 65 }],
+  }, /malformed or exceeds its safety limit/u);
+  await rejects("duplicate-index", {
+    spacers: [spacer, { ...spacer, width: 8 }],
+  }, /malformed or exceeds its safety limit/u);
+  await rejects("missing-real-image-route", {
+    spacers: [],
+    renderedHtml: '<article><img alt="" style="width:16px;height:1px" data-jithub-image-index="0"></article>',
+  }, /image with no captured route/u);
+});
+
+test("CSS-hidden image omissions are separately manifest-bound and preserve fail-closed routing", async t => {
+  const outputRoot = await mkdtemp(path.join(os.tmpdir(), "jithub-css-hidden-image-"));
+  t.after(() => rm(outputRoot, { recursive: true, force: true }));
+  const bytes = Buffer.from("# Pinned hidden-image fixture\n", "utf8");
+  const hidden = {
+    index: 0,
+    cssDisplayNone: true,
+    zeroBounds: true,
+    renderedWidth: 0,
+    renderedHeight: 0,
+  };
+  const common = {
+    repository: repositoryFixture(),
+    readmeUrl,
+    readmePath: "README.md",
+    readmeGitBlobSha1: gitBlobSha1(bytes),
+    readmeByteSize: bytes.length,
+    images: [],
+    readmeRendered: true,
+    responseRecorder: { captureVisibleImages: async () => ({ assets: [], imageRoutes: [] }) },
+    fetchImpl: async () => new Response(bytes, { status: 200 }),
+  };
+  const directory = path.join(outputRoot, "valid");
+  await captureSameByteCorpus({
+    ...common,
+    directory,
+    renderedHtml: '<article><img alt="theme-hidden" style="font-family:Example\\ Family;display:none;width:0px;height:0px" data-jithub-hidden-image-index="0"></article>',
+    cssHiddenImageOmissions: [hidden],
+  });
+  const manifest = JSON.parse(await readFile(path.join(directory, "manifest.json"), "utf8"));
+  assert.deepEqual(manifest.cssHiddenImageOmissions, [hidden]);
+  assert.deepEqual(manifest.imageRoutes, [], "a CSS-hidden image omission has no route but keeps explicit visibility evidence");
+  const replay = await createSameByteReplayServer(directory);
+  t.after(replay.close);
+  assert.deepEqual(replay.cssHiddenImageOmissions, [hidden]);
+  assert.equal(replay.expectedVisibleImageCount, 0);
+
+  const rejects = async (name, options, expected) => {
+    await assert.rejects(captureSameByteCorpus({
+      ...common,
+      directory: path.join(outputRoot, name),
+      renderedHtml: options.renderedHtml ??
+        '<article><img alt="theme-hidden" style="display:none;width:0px;height:0px" data-jithub-hidden-image-index="0"></article>',
+      cssHiddenImageOmissions: options.omissions ?? [hidden],
+      responseRecorder: options.responseRecorder ?? common.responseRecorder,
+    }), expected, name);
+  };
+  await rejects("unbound-marker", { omissions: [] }, /unbound CSS-hidden image omission/u);
+  await rejects("visibility-mismatch", {
+    renderedHtml: '<article><img alt="theme-hidden" style="visibility:hidden;width:0px;height:0px" data-jithub-hidden-image-index="0"></article>',
+  }, /must preserve display:none/u);
+  await rejects("ambiguous-display-becomes-visible", {
+    renderedHtml: '<article><img alt="theme-hidden" style="display:none;display:block;width:0px;height:0px" data-jithub-hidden-image-index="0"></article>',
+  }, /must preserve display:none/u);
+  await rejects("ambiguous-display-last-none", {
+    renderedHtml: '<article><img alt="theme-hidden" style="display:block;display:none;width:0px;height:0px" data-jithub-hidden-image-index="0"></article>',
+  }, /must preserve display:none/u);
+  await rejects("escaped-ambiguous-display", {
+    renderedHtml: '<article><img alt="theme-hidden" style="display:none;d\\69splay:block;width:0px;height:0px" data-jithub-hidden-image-index="0"></article>',
+  }, /must preserve display:none/u);
+  await rejects("missing-marker", {
+    renderedHtml: "<article><p>no image marker</p></article>",
+  }, /missing a manifest-bound CSS-hidden image omission/u);
+  await rejects("route-collision", {
+    responseRecorder: { captureVisibleImages: async () => ({
+      assets: [],
+      imageRoutes: [{ index: 0, dataUri: true }],
+    }) },
+  }, /cannot also have an image route/u);
+  await rejects("ordinary-missing-route", {
+    omissions: [],
+    renderedHtml: '<article><img alt="missing" data-jithub-image-index="1"></article>',
+  }, /image with no captured route/u);
+});
+
 test("same-byte replay rejects a missing or mutated asset before serving", async t => {
   const directory = await createFixture(t);
   const manifest = JSON.parse(await readFile(path.join(directory, "manifest.json"), "utf8"));
@@ -1017,12 +1162,18 @@ test("same-byte capture rejects a README whose bytes disagree with the immutable
     renderedHtml,
     responseRecorder: recorder,
     githubToken: "",
-    fetchImpl: async () => new Response(readmeBytes, { status: 200 }),
+    fetchImpl: async url => new URL(url).hostname === "raw.githubusercontent.com"
+      ? new Response(readmeBytes, { status: 200 })
+      : Response.json({
+        path: "README.md", sha: "f".repeat(40), size: readmeBytes.length,
+        type: "file", encoding: "base64", content: readmeBytes.toString("base64"),
+      }),
   }), /do not match the pinned GitHub blob identity/u);
   recorder.dispose();
 });
 
-test("pinned README symlink blobs resolve through the authenticated Contents API without weakening blob checks", async t => {
+for (const githubToken of ["", "read-only-audit-test-token"]) {
+test(`pinned README symlinks resolve through the ${githubToken ? "authenticated" : "credential-free"} Contents API without weakening blob checks`, async t => {
   const directory = path.join(await mkdtemp(path.join(os.tmpdir(), "jithub-same-byte-output-")), "case");
   t.after(() => rm(path.dirname(directory), { recursive: true, force: true }));
   const symlinkBytes = Buffer.from("packages/next/README.md", "utf8");
@@ -1042,7 +1193,7 @@ test("pinned README symlink blobs resolve through the authenticated Contents API
     images: [],
     readmeRendered: false,
     responseRecorder: recorder,
-    githubToken: "read-only-audit-test-token",
+    githubToken,
     fetchImpl: async (url, options) => {
       observed.push({ url: new URL(url), options });
       if (new URL(url).href === readmeUrl) {
@@ -1065,7 +1216,9 @@ test("pinned README symlink blobs resolve through the authenticated Contents API
   recorder.dispose();
 
   assert.equal(observed.length, 2);
-  assert.equal(observed[1].options.headers.authorization, "Bearer read-only-audit-test-token");
+  assert.equal(Object.hasOwn(observed[0].options.headers, "authorization"), false);
+  assert.equal(Object.hasOwn(observed[1].options.headers, "authorization"), Boolean(githubToken));
+  if (githubToken) assert.equal(observed[1].options.headers.authorization, `Bearer ${githubToken}`);
   assert.equal(observed[1].options.headers.accept, "application/vnd.github+json");
   assert.equal(observed[1].options.redirect, "error");
   assert.ok(observed[0].options.signal instanceof AbortSignal);
@@ -1078,6 +1231,69 @@ test("pinned README symlink blobs resolve through the authenticated Contents API
   assert.equal(manifest.readme.sha256, sha256(resolvedBytes));
   assert.equal(manifest.repository.readmeGitBlobSha1, resolvedSha);
   assert.equal(manifestText.includes("read-only-audit-test-token"), false);
+});
+}
+
+test("credential-free README fallback rejects throttling, redirects, and invalid metadata without retry", async t => {
+  const outputRoot = await mkdtemp(path.join(os.tmpdir(), "jithub-public-readme-fallback-"));
+  t.after(() => rm(outputRoot, { recursive: true, force: true }));
+  const bytes = Buffer.from("# Pinned README\n", "utf8");
+  const document = {
+    path: "README.md", sha: gitBlobSha1(bytes), size: bytes.length,
+    type: "file", encoding: "base64", content: bytes.toString("base64"),
+  };
+  const cases = [
+    ["throttled", () => new Response(null, { status: 429 }), /HTTP 429/u],
+    ["redirect", () => {
+      const response = Response.json(document);
+      Object.defineProperty(response, "url", { value: "https://example.invalid/readme" });
+      return response;
+    }, /unexpected endpoint/u],
+    ["wrong-ref", () => {
+      const response = Response.json(document);
+      Object.defineProperty(response, "url", { value: "https://api.github.com/repos/example/repo/readme?ref=main" });
+      return response;
+    }, /unexpected endpoint/u],
+    ["wrong-sha", () => Response.json({ ...document, sha: "f".repeat(40) }), /metadata does not match/u],
+    ["wrong-size", () => Response.json({ ...document, size: bytes.length + 1 }), /metadata does not match/u],
+    ["unsafe-path", () => Response.json({ ...document, path: "../README.md" }), /metadata does not match/u],
+    ["bad-base64", () => Response.json({ ...document, content: "!!!" }), /bounded canonical base64/u],
+    ["oversized", () => new Response("{}", { headers: { "content-length": String(25 * 1024 * 1024) } }), /safety limit/u],
+  ];
+  for (const [name, responseFactory, expectedError] of cases) {
+    let requests = 0;
+    await assert.rejects(captureSameByteCorpus({
+      directory: path.join(outputRoot, name), repository: repositoryFixture(),
+      readmeUrl, readmePath: "README.md", readmeGitBlobSha1: document.sha,
+      readmeByteSize: bytes.length, images: [], readmeRendered: false,
+      responseRecorder: { captureVisibleImages: async () => { throw new Error("must reject before image capture"); } },
+      githubToken: "",
+      fetchImpl: async (url, options) => {
+        requests++;
+        assert.equal(Object.hasOwn(options.headers, "authorization"), false);
+        if (new URL(url).hostname === "raw.githubusercontent.com")
+          return new Response("docs/README.md");
+        assert.equal(options.redirect, "error");
+        return responseFactory();
+      },
+    }), expectedError, name);
+    assert.equal(requests, 2, `${name}: one bounded fallback only, with no retry`);
+  }
+});
+
+test("README fallback rejects malformed optional tokens before contacting the API", async t => {
+  const outputRoot = await mkdtemp(path.join(os.tmpdir(), "jithub-readme-token-validation-"));
+  t.after(() => rm(outputRoot, { recursive: true, force: true }));
+  for (const githubToken of [123, "x".repeat(4097), "header\rinjection", "header\ninjection"]) {
+    let requests = 0;
+    await assert.rejects(captureSameByteCorpus({
+      directory: outputRoot, repository: repositoryFixture(), readmeUrl, readmePath: "README.md",
+      readmeGitBlobSha1: gitBlobSha1(readmeBytes), readmeByteSize: readmeBytes.length,
+      images: [], readmeRendered: false, responseRecorder: {}, githubToken,
+      fetchImpl: async () => { requests++; return new Response("docs/README.md"); },
+    }), /invalid optional audit token/u);
+    assert.equal(requests, 1);
+  }
 });
 
 test("a throttled raw README uses one authenticated, blob-verified Contents fallback", async t => {

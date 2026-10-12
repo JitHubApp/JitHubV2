@@ -674,6 +674,8 @@ internal sealed partial class InlineContainerBox
         private readonly string? _accessibleText;
         private readonly IReadOnlyList<string> _styleAliases;
         private readonly IReadOnlyList<string> _styleModifiers;
+        private readonly IReadOnlyList<string> _scriptStyleAncestryKeys;
+        private readonly bool _safeHtmlScriptRoleIsRunElement;
         private readonly string? _linkUrl;
         private readonly string? _linkTitle;
         private readonly string? _linkAccessibilityName;
@@ -753,6 +755,8 @@ internal sealed partial class InlineContainerBox
             // contain the independent copies needed by publication.
             _styleAliases = preparedRun.StyleAliases;
             _styleModifiers = preparedRun.StyleModifierKeys;
+            _scriptStyleAncestryKeys = preparedRun.ScriptStyleAncestryKeys;
+            _safeHtmlScriptRoleIsRunElement = preparedRun.SafeHtmlScriptRoleIsRunElement;
             _offset = offset;
 
             if (sourceRun is LinkRun link)
@@ -998,7 +1002,9 @@ internal sealed partial class InlineContainerBox
                 !string.Equals(run.SemanticHeadingKey, _semanticHeadingKey, StringComparison.Ordinal) ||
                 !MatchesTextFence(run) ||
                 !MatchesKeys(run.StyleAliases, _styleAliases) ||
-                !MatchesKeys(run.StyleModifierKeys, _styleModifiers))
+                !MatchesKeys(run.StyleModifierKeys, _styleModifiers) ||
+                !MatchesKeys(run.ScriptStyleAncestryKeys, _scriptStyleAncestryKeys) ||
+                run.SafeHtmlScriptRoleIsRunElement != _safeHtmlScriptRoleIsRunElement)
             {
                 return false;
             }
@@ -1078,7 +1084,9 @@ internal sealed partial class InlineContainerBox
                 !string.Equals(source.SemanticHeadingKey, prepared.SemanticHeadingKey, StringComparison.Ordinal) ||
                 !RunTextContractsMatch(source, prepared) ||
                 !SameKeys(source.StyleAliases, prepared.StyleAliases) ||
-                !SameKeys(source.StyleModifierKeys, prepared.StyleModifierKeys))
+                !SameKeys(source.StyleModifierKeys, prepared.StyleModifierKeys) ||
+                !SameKeys(source.ScriptStyleAncestryKeys, prepared.ScriptStyleAncestryKeys) ||
+                source.SafeHtmlScriptRoleIsRunElement != prepared.SafeHtmlScriptRoleIsRunElement)
             {
                 return false;
             }

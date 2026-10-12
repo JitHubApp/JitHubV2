@@ -552,6 +552,7 @@ internal sealed partial class InlineContainerBox : BlockBox
             if (run is null ||
                 !TryAccumulateStyleKeyCopyEntries(ref entries, run.StyleAliases) ||
                 !TryAccumulateStyleKeyCopyEntries(ref entries, run.StyleModifierKeys) ||
+                !TryAccumulateStyleKeyCopyEntries(ref entries, run.ScriptStyleAncestryKeys) ||
                 aliasOverride is not null &&
                     !TryAccumulateStyleKeyCopyEntries(ref entries, aliasOverride))
                 return false;
@@ -822,6 +823,7 @@ internal sealed partial class InlineContainerBox : BlockBox
             string[]? aliasOverride = GetEffectiveRunAliasOverride(runIndex);
             if (!TryAccumulateStyleKeyCopyEntries(ref styleKeyCopyEntries, run.StyleAliases) ||
                 !TryAccumulateStyleKeyCopyEntries(ref styleKeyCopyEntries, run.StyleModifierKeys) ||
+                !TryAccumulateStyleKeyCopyEntries(ref styleKeyCopyEntries, run.ScriptStyleAncestryKeys) ||
                 aliasOverride is not null &&
                     !TryAccumulateStyleKeyCopyEntries(ref styleKeyCopyEntries, aliasOverride))
                 return false;
@@ -1801,9 +1803,13 @@ internal sealed partial class InlineContainerBox : BlockBox
             modifierStart = 1;
         }
 
+        float? scriptModifierContainingFontSize = null;
         for (int index = modifierStart; index < run.StyleModifierKeys.Count; index++)
         {
             string modifierKey = run.StyleModifierKeys[index];
+            if (scriptModifierContainingFontSize is null && IsScriptStyleKey(modifierKey))
+                scriptModifierContainingFontSize = resolved.FontSize;
+
             ElementStyle modifier = Context.ThemeSnapshot.GetStyle(
                 modifierKey,
                 _styleContextKeys,
@@ -1812,6 +1818,15 @@ internal sealed partial class InlineContainerBox : BlockBox
                 StyleState);
             resolved = ApplyNestedStyleModifier(resolved, modifier, modifierKey);
         }
+        if (TryResolveRelativeScriptFontSize(
+                run,
+                headingKey,
+                inheritsHeading,
+                resolved,
+                scriptModifierContainingFontSize,
+                out float scriptFontSize))
+            resolved = ThemeSnapshot.WithFontSize(resolved, scriptFontSize);
+
         if (_resolvedRunStyles is null)
         {
             var styles = new List<ElementStyle?>(_runs.Count);
@@ -1822,6 +1837,92 @@ internal sealed partial class InlineContainerBox : BlockBox
         _resolvedRunStyles[run.InlineIndex] = resolved;
         return resolved;
     }
+
+    private bool TryResolveRelativeScriptFontSize(
+        InlineRun run,
+        string headingKey,
+        bool inheritsHeading,
+        ElementStyle resolved,
+        float? scriptModifierContainingFontSize,
+        out float fontSize)
+    {
+        fontSize = scriptModifierContainingFontSize ?? resolved.FontSize;
+        ThemeSnapshot theme = Context.ThemeSnapshot;
+        if (!theme.HasRelativeScriptFontSizeRules)
+            return false;
+
+        IReadOnlyList<string> scriptAncestry = run.ScriptStyleAncestryKeys;
+        bool runElementIsScript = IsScriptStyleKey(run.ElementKey);
+        bool hasScriptScope = scriptAncestry.Count > 0 || runElementIsScript ||
+            run is LinkRun { IsSuperscript: true };
+        for (int index = 0; !hasScriptScope && index < run.StyleModifierKeys.Count; index++)
+            hasScriptScope = IsScriptStyleKey(run.StyleModifierKeys[index]);
+        if (!hasScriptScope)
+            return false;
+
+        string[] aliases = GetEffectiveRunAliases(run.InlineIndex);
+        if (runElementIsScript ||
+            (!inheritsHeading && string.IsNullOrEmpty(run.ElementKey) &&
+             run.StyleModifierKeys.Count > 0 && IsScriptStyleKey(run.StyleModifierKeys[0])))
+        {
+            // Script-role defaults are nominal absolute sizes. Start from the
+            // actual containing text style so relative rules compound through
+            // headings, quotes, tables, and nested safe-HTML/Markdown scopes.
+            string containingKey = inheritsHeading ? headingKey : ElementKey;
+            fontSize = theme.GetStyle(
+                containingKey,
+                _styleContextKeys,
+                _styleAliasKeys,
+                CodeLanguage,
+                StyleState).FontSize;
+        }
+
+        if (scriptAncestry.Count > 0)
+        {
+            for (int index = 0; index < scriptAncestry.Count; index++)
+                ApplyScriptFontSize(theme, scriptAncestry[index], aliases, ref fontSize);
+        }
+        else
+        {
+            // Preserve compatibility for internally-created runs that did not
+            // pass through the parser's ordered ancestry capture.
+            if (runElementIsScript)
+                ApplyScriptFontSize(theme, run.ElementKey, aliases, ref fontSize);
+
+            for (int index = 0; index < run.StyleModifierKeys.Count; index++)
+            {
+                string modifierKey = run.StyleModifierKeys[index];
+                if (!IsScriptStyleKey(modifierKey))
+                    continue;
+                ApplyScriptFontSize(theme, modifierKey, aliases, ref fontSize);
+            }
+
+            if (run is LinkRun { IsSuperscript: true })
+                ApplyScriptFontSize(theme, MarkdownElementKeys.Superscript, aliases, ref fontSize);
+        }
+
+        return true;
+    }
+
+    private void ApplyScriptFontSize(
+        ThemeSnapshot theme,
+        string scriptRole,
+        IReadOnlyList<string> aliases,
+        ref float fontSize)
+    {
+        ElementStyle scriptStyle = theme.GetStyle(
+            scriptRole,
+            _styleContextKeys,
+            aliases,
+            CodeLanguage,
+            StyleState);
+        fontSize = scriptStyle.RelativeFontSizeScale is float scale
+            ? Math.Max(ThemeSnapshot.MinimumRelativeScriptFontSize, fontSize * scale)
+            : scriptStyle.FontSize;
+    }
+
+    private static bool IsScriptStyleKey(string key)
+        => key is MarkdownElementKeys.Subscript or MarkdownElementKeys.Superscript;
 
     private static ElementStyle ApplyNestedStyleModifier(
         ElementStyle basis,
@@ -3158,20 +3259,35 @@ internal sealed partial class InlineContainerBox : BlockBox
         }
     }
 
-    private static void ApplyBaselineStyle(CanvasTextLayout layout, int start, int length, InlineRun run)
+    private void ApplyBaselineStyle(CanvasTextLayout layout, int start, int length, InlineRun run)
     {
         if (length <= 0)
             return;
 
-        CanvasTypographyFeatureName? feature = run switch
+        CanvasTypographyFeatureName? feature;
+        if (!Context.ThemeSnapshot.HasRelativeScriptFontSizeRules)
         {
-            SubscriptRun => CanvasTypographyFeatureName.Subscript,
-            SuperscriptRun => CanvasTypographyFeatureName.Superscript,
-            LinkRun { IsSuperscript: true } => CanvasTypographyFeatureName.Superscript,
-            _ when run.HasStyleModifier(MarkdownElementKeys.Subscript) => CanvasTypographyFeatureName.Subscript,
-            _ when run.HasStyleModifier(MarkdownElementKeys.Superscript) => CanvasTypographyFeatureName.Superscript,
-            _ => null,
-        };
+            // Keep legacy profiles byte-for-byte on their existing baseline path.
+            feature = run switch
+            {
+                SubscriptRun => CanvasTypographyFeatureName.Subscript,
+                SuperscriptRun => CanvasTypographyFeatureName.Superscript,
+                LinkRun { IsSuperscript: true } => CanvasTypographyFeatureName.Superscript,
+                _ when run.HasStyleModifier(MarkdownElementKeys.Subscript) => CanvasTypographyFeatureName.Subscript,
+                _ when run.HasStyleModifier(MarkdownElementKeys.Superscript) => CanvasTypographyFeatureName.Superscript,
+                _ => null,
+            };
+        }
+        else
+        {
+            string? scriptRole = GetInnermostScriptStyleKey(run);
+            feature = scriptRole switch
+            {
+                MarkdownElementKeys.Subscript => CanvasTypographyFeatureName.Subscript,
+                MarkdownElementKeys.Superscript => CanvasTypographyFeatureName.Superscript,
+                _ => null,
+            };
+        }
 
         if (feature is null)
             return;
@@ -4041,7 +4157,28 @@ internal sealed partial class InlineContainerBox : BlockBox
     {
         return (!string.IsNullOrEmpty(run.ElementKey) && run.ElementKey != ElementKey) ||
             run.StyleAliases.Count > 0 ||
-            run.StyleModifierKeys.Count > 0;
+            run.StyleModifierKeys.Count > 0 ||
+            Context.ThemeSnapshot.HasRelativeScriptFontSizeRules &&
+                (run.ScriptStyleAncestryKeys.Count > 0 || run is LinkRun { IsSuperscript: true });
+    }
+
+    private static string? GetInnermostScriptStyleKey(InlineRun run)
+    {
+        if (run.ScriptStyleAncestryKeys.Count > 0)
+            return run.ScriptStyleAncestryKeys[run.ScriptStyleAncestryKeys.Count - 1];
+
+        if (IsScriptStyleKey(run.ElementKey))
+            return run.ElementKey;
+
+        for (int index = run.StyleModifierKeys.Count - 1; index >= 0; index--)
+        {
+            if (IsScriptStyleKey(run.StyleModifierKeys[index]))
+                return run.StyleModifierKeys[index];
+        }
+
+        return run is LinkRun { IsSuperscript: true }
+            ? MarkdownElementKeys.Superscript
+            : null;
     }
 
     private static bool IsHeadingElement(string elementKey)

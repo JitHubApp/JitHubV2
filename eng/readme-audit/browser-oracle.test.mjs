@@ -4,6 +4,11 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { pruneClosedDetailsReplayContent } from "./closed-details-snapshot.mjs";
+import { readRenderedSnapshotExpression } from "./snapshot-expression.test-support.mjs";
+import {
+  hasUncapturedExternalInlineSvgResource,
+  isSourceLessDecorativeImageSpacerCandidate,
+} from "./same-byte-corpus.mjs";
 
 const readmeAuditDirectory = path.dirname(fileURLToPath(import.meta.url));
 
@@ -157,8 +162,128 @@ test("closed details without a summary remove hidden text and images but keep wh
   assert.deepEqual(descendants(article, "img"), [svgImage]);
 });
 
+test("only small, explicitly decorative, resource-free images qualify as layout spacers", () => {
+  const spacer = {
+    hasExplicitAlt: true,
+    alt: "",
+    hasSrcAttribute: false,
+    source: "",
+    currentSource: "",
+    hasSrcsetAttribute: false,
+    srcset: "",
+    hasCanonicalSourceAttribute: false,
+    canonicalSource: "",
+    hasDataSourceAttribute: false,
+    dataSource: "",
+    hasDataSrcsetAttribute: false,
+    dataSrcset: "",
+    hasDataLazySourceAttribute: false,
+    dataLazySource: "",
+    pictureHasSourceResource: false,
+    width: 16,
+    height: 1,
+    renderedWidth: 16,
+    renderedHeight: 1,
+  };
+
+  assert.equal(isSourceLessDecorativeImageSpacerCandidate(spacer), true);
+  for (const mutation of [
+    { hasExplicitAlt: false },
+    { alt: "meaningful" },
+    { hasSrcAttribute: true },
+    { hasSrcsetAttribute: true },
+    { currentSource: "https://example.invalid/image.png" },
+    { hasCanonicalSourceAttribute: true },
+    { hasDataSourceAttribute: true },
+    { hasDataSrcsetAttribute: true },
+    { hasDataLazySourceAttribute: true },
+    { pictureHasSourceResource: true },
+    { width: 65 },
+    { renderedHeight: 0 },
+    { renderedWidth: 65 },
+    { width: Number.NaN },
+  ]) {
+    assert.equal(isSourceLessDecorativeImageSpacerCandidate({ ...spacer, ...mutation }), false,
+      `candidate mutation ${JSON.stringify(mutation)} must not qualify`);
+  }
+});
+
+test("external inline SVG references are rejected before snapshot sanitization", () => {
+  const svg = "http://www.w3.org/2000/svg";
+  for (const localName of ["image", "IMAGE", "Use", "feImage"]) {
+    assert.equal(hasUncapturedExternalInlineSvgResource({
+      namespaceURI: svg,
+      localName,
+      href: "https://cdn.example.invalid/resource.svg#item",
+    }), true, `${localName} external href must not be silently removed from replay`);
+  }
+  assert.equal(hasUncapturedExternalInlineSvgResource({
+    namespaceURI: svg,
+    localName: "use",
+    xlinkHref: "https://cdn.example.invalid/symbols.svg#icon",
+  }), true, "legacy xlink:href external resources must also be rejected");
+  assert.equal(hasUncapturedExternalInlineSvgResource({
+    namespaceURI: svg,
+    localName: "use",
+    href: "#local-symbol",
+  }), false, "same-document SVG references remain supported");
+  assert.equal(hasUncapturedExternalInlineSvgResource({
+    namespaceURI: svg,
+    localName: "image",
+    href: "data:image/png;base64,AAAA",
+  }), false, "already-embedded image data remains supported");
+  assert.equal(hasUncapturedExternalInlineSvgResource({
+    namespaceURI: svg,
+    localName: "a",
+    href: "https://example.invalid/read-more",
+  }), false, "ordinary SVG links remain links rather than resource fetches");
+  assert.equal(hasUncapturedExternalInlineSvgResource({
+    namespaceURI: "http://www.w3.org/1999/xhtml",
+    localName: "image",
+    href: "https://example.invalid/not-svg",
+  }), false, "a same-named non-SVG element is outside this SVG-specific rule");
+});
+
+test("isolated snapshot expression validates SVG resources without host-module globals", async () => {
+  const expression = await readRenderedSnapshotExpression();
+  const capture = new Function("document", "Node", "getComputedStyle", `return (${expression});`);
+  function captureFixture(resource = null) {
+    const makeNode = (localName, namespaceURI, href = null, xlinkHref = null) => ({
+      nodeType: 1,
+      tagName: namespaceURI === "http://www.w3.org/2000/svg" ? localName : localName.toUpperCase(),
+      localName,
+      namespaceURI,
+      attributes: [],
+      style: { setProperty() {} },
+      getAttribute(name) { return name === "href" ? href : null; },
+      getAttributeNS(namespace, name) {
+        assert.equal(namespace, "http://www.w3.org/1999/xlink");
+        assert.equal(name, "href");
+        return xlinkHref;
+      },
+      querySelectorAll() { return []; },
+    });
+    const article = makeNode("article", "http://www.w3.org/1999/xhtml");
+    const clone = makeNode("article", "http://www.w3.org/1999/xhtml");
+    const children = resource ? [makeNode("use", "http://www.w3.org/2000/svg", resource.href, resource.xlinkHref)] : [];
+    article.querySelectorAll = selector => selector === "*" ? children : [];
+    clone.querySelectorAll = selector => selector === "*" ? children.map(() => makeNode("use", "http://www.w3.org/2000/svg")) : [];
+    clone.outerHTML = "<article></article>";
+    article.cloneNode = () => clone;
+    return capture({ querySelector: () => article }, { ELEMENT_NODE: 1 }, () => ({ getPropertyValue: () => "" }));
+  }
+
+  assert.equal(captureFixture().html, "<article></article>", "ordinary capture must not depend on a host-only namespace constant");
+  assert.doesNotThrow(() => captureFixture({ href: "#local-symbol" }));
+  assert.throws(() => captureFixture({ href: "https://example.invalid/symbols.svg#icon" }),
+    /uncaptured external inline-SVG resource/u);
+  assert.throws(() => captureFixture({ xlinkHref: "https://example.invalid/symbols.svg#icon" }),
+    /uncaptured external inline-SVG resource/u);
+});
+
 test("capture validates original resource-bearing nodes before pruning and stages the helper", async () => {
   const browserOracle = await readFile(path.join(readmeAuditDirectory, "browser-oracle.mjs"), "utf8");
+  const sameByteCorpus = await readFile(path.join(readmeAuditDirectory, "same-byte-corpus.mjs"), "utf8");
   const edgeReplay = await readFile(path.join(readmeAuditDirectory, "same-byte-edge-replay.mjs"), "utf8");
   const publicCapture = await readFile(
     path.resolve(readmeAuditDirectory, "../Invoke-TopReadmeSandboxPublicSameByteCapture.ps1"), "utf8");
@@ -166,6 +291,22 @@ test("capture validates original resource-bearing nodes before pruning and stage
     path.resolve(readmeAuditDirectory, "../Invoke-TopReadmeSandboxOfflineSameByteReplay.ps1"), "utf8");
 
   assert.match(browserOracle, /const pruneClosedDetailsReplayContent = \$\{pruneClosedDetailsReplayContent\.toString\(\)\};/u);
+  assert.match(browserOracle,
+    /const isSourceLessDecorativeImageSpacerCandidate = \$\{isSourceLessDecorativeImageSpacerCandidate\.toString\(\)\};/u);
+  assert.match(browserOracle,
+    /const hasUncapturedExternalInlineSvgResource = \$\{hasUncapturedExternalInlineSvgResource\.toString\(\)\};/u,
+    "the pure SVG resource predicate is available inside the isolated capture expression");
+  assert.match(browserOracle, /data-jithub-\(\?:image\|layout-spacer\|hidden-image\)/u,
+    "page-provided capture markers must be removed before the harness generates its own identities");
+  assert.match(sameByteCorpus,
+    /sourceLessDecorativeImageSpacers: layoutImageSpacers/u,
+    "the spacer identity is bound into the captured corpus manifest");
+  assert.match(browserOracle,
+    /cssHiddenImageOmissions: renderedHtml\?\.cssHiddenImageOmissions \|\| \[\]/u,
+    "the CSS-hidden inventory is carried into its separate corpus manifest field");
+  assert.match(sameByteCorpus,
+    /cssHiddenImageOmissions: hiddenImageOmissions/u,
+    "CSS-hidden omissions are not folded into ordinary route exclusions");
   const validateExternalCss = browserOracle.indexOf("if (hasExternalCssResource(computed.getPropertyValue(property)))");
   const validateExternalSvg = browserOracle.indexOf("GitHub article contains an uncaptured external inline-SVG resource.");
   const validateExcludedInventory = browserOracle.indexOf(

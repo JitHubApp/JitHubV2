@@ -120,7 +120,7 @@ public sealed class AutomationHarnessSourceContractTests
             "MarkdownViewer.xaml.cs"));
 
         Assert.Contains("if (sameByteCorpusPath is not null)", viewer, StringComparison.Ordinal);
-        Assert.Contains("_sameByteVisualProfile = GitHubReadmeVisualStyleProfiles.PrimerLightV4;", viewer, StringComparison.Ordinal);
+        Assert.Contains("_sameByteVisualProfile = GitHubReadmeVisualStyleProfiles.PrimerLightV5;", viewer, StringComparison.Ordinal);
         Assert.Contains("_renderer.Theme = _sameByteVisualTheme ?? _theme;", viewer, StringComparison.Ordinal);
         Assert.Contains("_renderer.StyleSheet = _sameByteVisualProfile?.StyleSheet ?? new MarkdownStyleSheet(", viewer, StringComparison.Ordinal);
         Assert.Contains("_renderer.CodeBlockChromeMode = _sameByteVisualProfile?.CodeBlockChromeMode ?? CodeBlockChromeMode.Enhanced;", viewer, StringComparison.Ordinal);

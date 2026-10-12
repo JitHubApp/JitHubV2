@@ -100,6 +100,111 @@ public sealed class PrivateRasterPlacementStyleKeyCopyTests
     }
 
     [Fact]
+    public async Task SafeHtmlScriptAncestryIsBudgetedDeepCopiedAndFencedAfterPreparation()
+    {
+        await using var fixture = new MultiRasterPlacementCloneTests.MultiRasterFixture(imageCount: 0);
+        MarkdownLayoutContext target = fixture.CreateCandidateContext();
+        InlineContainerBox? source = null;
+        InlineContainerBox? clone = null;
+        string[] sourceScriptKeys = [MarkdownElementKeys.Subscript, MarkdownElementKeys.Superscript];
+        try
+        {
+            source = new InlineContainerBox(fixture.SourceContext, MarkdownElementKeys.Body)
+            {
+                BlockIndex = fixture.SourceContext.NextBlockIndex(),
+            };
+            var sourceRun = new SuperscriptRun("1")
+            {
+                ScriptStyleAncestryKeys = sourceScriptKeys,
+                SafeHtmlScriptRoleIsRunElement = true,
+            };
+            source.Add(sourceRun);
+
+            Assert.True(source.TryGetPrivateRasterPlacementCounts(
+                target,
+                Width,
+                out int runCount,
+                out int imageCount,
+                out long styleKeyCopyEntries,
+                allowUnmeasuredTextOnly: true));
+            Assert.Equal(1, runCount);
+            Assert.Equal(0, imageCount);
+            Assert.Equal(sourceScriptKeys.Length, styleKeyCopyEntries);
+
+            // The private candidate must snapshot the source's measured width/style
+            // generation before it is cloned. A clone created while the source is
+            // still unmeasured is not an eligible measured-placement transfer.
+            _ = source.Measure(Width);
+            source.Arrange(0f, 0f, Width);
+
+            Assert.True(source.TryCreatePrivateInlinePlacementClone(
+                target,
+                Width,
+                out clone,
+                out _,
+                allowUnmeasuredTextOnly: true));
+            SuperscriptRun copiedRun = Assert.IsType<SuperscriptRun>(Assert.Single(clone!.Runs));
+            string[] copiedScriptKeys = Assert.IsType<string[]>(copiedRun.ScriptStyleAncestryKeys);
+            Assert.NotSame(sourceScriptKeys, copiedScriptKeys);
+            Assert.Equal(sourceScriptKeys, copiedScriptKeys);
+            Assert.True(clone.TryGetPrivateRasterPlacementStyleKeyCopyEntries(out long copiedEntries));
+            Assert.Equal(styleKeyCopyEntries, copiedEntries);
+
+            sourceScriptKeys[0] = "source-mutated-script";
+            Assert.Equal(MarkdownElementKeys.Subscript, copiedScriptKeys[0]);
+            sourceScriptKeys[0] = MarkdownElementKeys.Subscript;
+            copiedScriptKeys[1] = "candidate-mutated-script";
+            Assert.Equal(MarkdownElementKeys.Superscript, sourceScriptKeys[1]);
+            copiedScriptKeys[1] = MarkdownElementKeys.Superscript;
+
+            Assert.True(source.TryCaptureContainerLeafMeasuredPlacementTransfer(
+                clone,
+                Width,
+                out InlineContainerBox.MeasuredPlacementTransfer? transfer));
+            Assert.NotNull(transfer);
+
+            // Capture fences the unmeasured private clone; the candidate is
+            // measured only after ownership of the transfer is established.
+            _ = clone.Measure(Width);
+            clone.Arrange(0f, 0f, Width);
+            Assert.True(transfer!.IsCurrentAndPrepared());
+
+            sourceScriptKeys[1] = MarkdownElementKeys.Subscript;
+            Assert.False(transfer.IsCurrentAndPrepared());
+            sourceScriptKeys[1] = MarkdownElementKeys.Superscript;
+            Assert.True(transfer.IsCurrentAndPrepared());
+
+            sourceRun.SafeHtmlScriptRoleIsRunElement = false;
+            Assert.False(transfer.IsCurrentAndPrepared());
+            sourceRun.SafeHtmlScriptRoleIsRunElement = true;
+            Assert.True(transfer.IsCurrentAndPrepared());
+        }
+        finally
+        {
+            try
+            {
+                if (clone is not null)
+                    target.DiscardConstructionBlock(clone);
+            }
+            finally
+            {
+                try
+                {
+                    if (source is not null)
+                        fixture.SourceContext.DiscardConstructionBlock(source);
+                }
+                finally
+                {
+                    await Task.WhenAll(
+                        target.DrainOwnedRetirementsAsync(),
+                        fixture.SourceContext.DrainOwnedRetirementsAsync())
+                        .WaitAsync(TimeSpan.FromSeconds(30));
+                }
+            }
+        }
+    }
+
+    [Fact]
     public async Task AggregatePreflightAndCloneEntryRejectOverBudgetWithoutTrimmingAliases()
     {
         await using var fixture = new MultiRasterPlacementCloneTests.MultiRasterFixture(imageCount: 0);

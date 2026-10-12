@@ -122,6 +122,28 @@ public static class GitHubReadmeVisualStyleProfiles
     /// </summary>
     public static GitHubReadmeVisualStyleProfile PrimerLightV4 { get; } = CreatePrimerLightV4();
 
+    /// <summary>
+    /// Gets the source-replay profile with browser-relative 75% subscript and
+    /// superscript sizing. Earlier profile identities and the generic renderer
+    /// defaults remain unchanged.
+    /// </summary>
+    public static GitHubReadmeVisualStyleProfile PrimerLightV5 { get; } = CreatePrimerLightV5();
+
+    private static GitHubReadmeVisualStyleProfile CreatePrimerLightV5()
+    {
+        GitHubReadmeVisualStyleProfile previous = PrimerLightV4;
+        return new GitHubReadmeVisualStyleProfile(
+            id: previous.Id,
+            version: 5,
+            fingerprint: "15b6b573ceb5fa8f0e103a14d04d6c8b6ed7a5a0b456a71674a249d183374d81",
+            surfaceColor: previous.SurfaceColor,
+            accentColor: previous.AccentColor,
+            styleSheet: previous.StyleSheet.WithRelativeScriptFontSize(0.75f),
+            codeBlockChromeMode: previous.CodeBlockChromeMode,
+            codeBlockLineNumberMode: previous.CodeBlockLineNumberMode,
+            isCodeBlockCopyEnabled: previous.IsCodeBlockCopyEnabled);
+    }
+
     private static GitHubReadmeVisualStyleProfile CreatePrimerLightV4()
     {
         GitHubReadmeVisualStyleProfile previous = PrimerLightV3;

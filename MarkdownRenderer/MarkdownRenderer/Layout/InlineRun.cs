@@ -28,11 +28,16 @@ internal abstract class InlineRun
         ElementKey = source.ElementKey;
         StyleAliases = CopyStrings(source.StyleAliases);
         StyleModifierKeys = CopyStrings(source.StyleModifierKeys);
+        ScriptStyleAncestryKeys = CopyStrings(source.ScriptStyleAncestryKeys);
+        SafeHtmlScriptRoleIsRunElement = source.SafeHtmlScriptRoleIsRunElement;
         SemanticHeadingKey = source.SemanticHeadingKey;
     }
 
     private static string[] CopyStrings(IReadOnlyList<string> source)
     {
+        if (source.Count == 0)
+            return Array.Empty<string>();
+
         var copy = new string[source.Count];
         for (int index = 0; index < copy.Length; index++)
             copy[index] = source[index];
@@ -61,6 +66,20 @@ internal abstract class InlineRun
     /// retaining the surrounding emphasis.
     /// </summary>
     internal IReadOnlyList<string> StyleModifierKeys { get; set; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Source-ordered safe-HTML and Markdown script ancestry. This is kept
+    /// separately from the style modifiers because HTML and Markdown scopes
+    /// can interleave around a single interactive run.
+    /// </summary>
+    internal IReadOnlyList<string> ScriptStyleAncestryKeys { get; set; } = Array.Empty<string>();
+
+    /// <summary>
+    /// True when a typed script run or superscript link is the run emitted by
+    /// the innermost safe-HTML script element, rather than a second nested
+    /// Markdown/footnote script inside that element.
+    /// </summary>
+    internal bool SafeHtmlScriptRoleIsRunElement { get; set; }
 
     /// <summary>
     /// Heading style/semantics inherited from safe HTML that is flattened into

@@ -24,7 +24,9 @@ export async function replaySameByteInEdge({
   maximumTiles,
 }) {
   if (!cdp || !replayServer?.baseUrl || !replayServer.renderedHtmlBytes ||
-      !Array.isArray(replayServer.imageRoutes) || !outputDirectory ||
+      !Array.isArray(replayServer.imageRoutes) ||
+      !Array.isArray(replayServer.sourceLessDecorativeImageSpacers) || !outputDirectory ||
+      !Array.isArray(replayServer.cssHiddenImageOmissions) ||
       !Number.isSafeInteger(viewport?.width) || !Number.isSafeInteger(viewport?.height) ||
       !Number.isSafeInteger(maximumTiles) || maximumTiles <= 0) {
     throw new Error("Offline Edge replay requires a validated rendered corpus, viewport, and bounded output target.");
@@ -78,6 +80,8 @@ export async function replaySameByteInEdge({
       arguments: [
         { value: replayServer.renderedHtmlBytes.toString("utf8") },
         { value: replayServer.imageRoutes },
+        { value: replayServer.sourceLessDecorativeImageSpacers },
+        { value: replayServer.cssHiddenImageOmissions },
         { value: replayServer.baseUrl },
         { value: MAX_IMAGE_WAIT_MS },
         { value: MAX_REPLAY_STEPS },
@@ -159,6 +163,8 @@ export async function replaySameByteInEdge({
       viewport: { ...viewport, deviceScaleFactor: 1 },
       assets: {
         expectedVisibleImageCount: replayServer.expectedVisibleImageCount,
+        sourceLessDecorativeImageSpacerCount: replayServer.sourceLessDecorativeImageSpacers.length,
+        cssHiddenImageOmissionCount: replayServer.cssHiddenImageOmissions.length,
         firstViewportRealizedImageCount: replay.firstViewportRealizedImageCount,
         distinctExpectedUrlHashes: expectedUrlHashes.length,
         distinctServedUrlHashes: servedUrlHashes.length,
@@ -186,7 +192,8 @@ export async function replaySameByteInEdge({
 }
 
 export function replayFunctionDeclaration() {
-  return `async function(html, imageRoutes, baseUrl, imageWaitMs, maximumSteps, viewportStepRatio) {
+  return `async function(html, imageRoutes, sourceLessDecorativeImageSpacers, cssHiddenImageOmissions, baseUrl, imageWaitMs, maximumSteps, viewportStepRatio) {
+    const replayImageOmissionGeometryMatches = ${replayImageOmissionGeometryMatches.toString()};
     const blockedExternalUris = new Set();
     const isExternalResource = value => /^(?:https?:|file:|ftp:|ws:|wss:|blob:)/iu.test(value || "");
     const onPolicyViolation = event => {
@@ -216,20 +223,49 @@ export function replayFunctionDeclaration() {
         throw new Error("Captured GitHub HTML does not contain exactly one article root.");
       }
       const routeByIndex = new Map(imageRoutes.map(route => [route.index, route]));
+      const layoutSpacerByIndex = new Map(sourceLessDecorativeImageSpacers.map(spacer => [spacer.index, spacer]));
+      const hiddenImageByIndex = new Map(cssHiddenImageOmissions.map(item => [item.index, item]));
       const allImages = [...article.querySelectorAll("img")];
       const pendingImageSources = new Map();
+      const observedLayoutSpacers = new Set();
+      const observedHiddenImages = new Set();
       let loadedImageCount = 0;
       for (const image of allImages) {
         image.removeAttribute("srcset");
         image.removeAttribute("sizes");
         image.removeAttribute("src");
         image.loading = "lazy";
-        const index = Number(image.getAttribute("data-jithub-image-index"));
+        const hiddenIndexText = image.getAttribute("data-jithub-hidden-image-index");
+        if (hiddenIndexText !== null) {
+          const hiddenIndex = /^\\d{1,7}$/u.test(hiddenIndexText) ? Number(hiddenIndexText) : NaN;
+          const hidden = Number.isSafeInteger(hiddenIndex) ? hiddenImageByIndex.get(hiddenIndex) : undefined;
+          if (!hidden || hidden.cssDisplayNone !== true || hidden.zeroBounds !== true ||
+              hidden.renderedWidth !== 0 || hidden.renderedHeight !== 0 ||
+              image.hasAttribute("data-jithub-image-index") ||
+              image.hasAttribute("data-jithub-layout-spacer-index") ||
+              image.hasAttribute("data-jithub-image-data") || image.style.display !== "none") {
+            throw new Error("Offline replay contains an unbound or malformed CSS-hidden image omission.");
+          }
+          observedHiddenImages.add(hiddenIndex);
+          continue;
+        }
+        const spacerIndexText = image.getAttribute("data-jithub-layout-spacer-index");
+        if (spacerIndexText !== null) {
+          const spacerIndex = /^\\d{1,7}$/u.test(spacerIndexText) ? Number(spacerIndexText) : NaN;
+          const spacer = Number.isSafeInteger(spacerIndex) ? layoutSpacerByIndex.get(spacerIndex) : undefined;
+          if (!spacer || image.hasAttribute("data-jithub-image-index") ||
+              !image.hasAttribute("alt") || image.getAttribute("alt") !== "" ||
+              image.hasAttribute("data-jithub-image-data")) {
+            throw new Error("Offline replay contains an unbound or malformed source-less decorative spacer.");
+          }
+          observedLayoutSpacers.add(spacerIndex);
+          continue;
+        }
+        const indexText = image.getAttribute("data-jithub-image-index");
+        const index = indexText !== null && /^\\d{1,7}$/u.test(indexText) ? Number(indexText) : NaN;
         const route = routeByIndex.get(index);
         if (!route) {
-          image.removeAttribute("src");
-          image.removeAttribute("data-jithub-image-data");
-          continue;
+          throw new Error("Offline replay contains a rendered image without a captured route.");
         }
         if (route.dataUri === true) {
           const dataUri = image.getAttribute("data-jithub-image-data") || "";
@@ -247,10 +283,35 @@ export function replayFunctionDeclaration() {
         }
         image.removeAttribute("data-jithub-image-data");
       }
+      if (observedLayoutSpacers.size !== layoutSpacerByIndex.size) {
+        throw new Error("Offline replay did not find every manifest-bound source-less decorative spacer.");
+      }
+      if (observedHiddenImages.size !== hiddenImageByIndex.size) {
+        throw new Error("Offline replay did not find every manifest-bound CSS-hidden image omission.");
+      }
       const allImageCount = allImages.length;
       document.documentElement.lang = article.getAttribute("lang") || "en";
       document.body.replaceChildren(article);
       document.body.style.margin = "0";
+      for (const image of allImages) {
+        const hiddenIndexText = image.getAttribute("data-jithub-hidden-image-index");
+        if (hiddenIndexText !== null) {
+          const hiddenIndex = /^\\d{1,7}$/u.test(hiddenIndexText) ? Number(hiddenIndexText) : NaN;
+          const hidden = Number.isSafeInteger(hiddenIndex) ? hiddenImageByIndex.get(hiddenIndex) : undefined;
+          if (!replayImageOmissionGeometryMatches("css-hidden", hidden, getComputedStyle(image), image.getBoundingClientRect())) {
+            throw new Error("Offline replay changed CSS-hidden image visibility or geometry after attachment.");
+          }
+          continue;
+        }
+        const spacerIndexText = image.getAttribute("data-jithub-layout-spacer-index");
+        if (spacerIndexText !== null) {
+          const spacerIndex = /^\\d{1,7}$/u.test(spacerIndexText) ? Number(spacerIndexText) : NaN;
+          const spacer = Number.isSafeInteger(spacerIndex) ? layoutSpacerByIndex.get(spacerIndex) : undefined;
+          if (!replayImageOmissionGeometryMatches("layout-spacer", spacer, getComputedStyle(image), image.getBoundingClientRect())) {
+            throw new Error("Offline replay changed layout-spacer CSS or rendered geometry after attachment.");
+          }
+        }
+      }
       const nextFrame = () => new Promise(resolve => requestAnimationFrame(() => resolve()));
       const imageRealizationOverscanPx = 800;
       const realizeImagesNearViewport = () => {
@@ -294,6 +355,8 @@ export function replayFunctionDeclaration() {
         }
       };
       const visibleImages = () => [...document.images].filter(image => {
+        if (image.hasAttribute("data-jithub-layout-spacer-index") ||
+            image.hasAttribute("data-jithub-hidden-image-index")) return false;
         const rect = image.getBoundingClientRect();
         return rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.top < innerHeight &&
           rect.right > 0 && rect.left < innerWidth;
@@ -322,8 +385,10 @@ export function replayFunctionDeclaration() {
         }
         return visible.length;
       };
-      const capturedImages = [...document.images].filter(image =>
-        routeByIndex.has(Number(image.getAttribute("data-jithub-image-index"))));
+      // Keep the exact elements bound to validated routes above. Re-reading a
+      // missing index with Number(null) would incorrectly admit route-free
+      // hidden images and spacers whenever the manifest contains route zero.
+      const capturedImages = [...pendingImageSources.keys()];
       realizeImagesNearViewport();
       await nextFrame();
       await nextFrame();
@@ -420,6 +485,25 @@ export function replayFunctionDeclaration() {
       removeEventListener("securitypolicyviolation", onPolicyViolation);
     }
   }`;
+}
+
+export function replayImageOmissionGeometryMatches(kind, expected, computedStyle, bounds) {
+  if (!expected || !computedStyle || !bounds) return false;
+  if (kind === "css-hidden") {
+    return expected.cssDisplayNone === true && expected.zeroBounds === true &&
+      expected.renderedWidth === 0 && expected.renderedHeight === 0 &&
+      computedStyle.display === "none" && bounds.width === 0 && bounds.height === 0;
+  }
+  if (kind !== "layout-spacer") return false;
+  const cssPixels = value => {
+    const match = /^(\d+(?:\.\d+)?)px$/iu.exec((value || "").trim());
+    return match ? Number(match[1]) : NaN;
+  };
+  const close = (actual, captured) => Number.isFinite(actual) && Number.isFinite(captured) &&
+    Math.abs(actual - captured) <= 0.01;
+  return close(cssPixels(computedStyle.width), expected.width) &&
+    close(cssPixels(computedStyle.height), expected.height) &&
+    close(bounds.width, expected.renderedWidth) && close(bounds.height, expected.renderedHeight);
 }
 
 async function waitForExpression(cdp, expression, timeoutMs) {

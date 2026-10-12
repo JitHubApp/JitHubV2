@@ -51,6 +51,9 @@
     <EmbeddedResource Include="..\..\eng\readme-audit\profiles\github-primer-light-v4.css"
                       Link="Profiles\github-primer-light-v4.css"
                       LogicalName="MarkdownRenderer.GitHub.Profiles.github-primer-light-v4.css" />
+    <EmbeddedResource Include="..\..\eng\readme-audit\profiles\github-primer-light-v5.css"
+                      Link="Profiles\github-primer-light-v5.css"
+                      LogicalName="MarkdownRenderer.GitHub.Profiles.github-primer-light-v5.css" />
     <None Include="README.md" Pack="true" PackagePath="" />
     <None Include="..\..\LICENSE" Pack="true" PackagePath="" Visible="false" />
     <None Include="..\..\JitHub.Web\wwwroot\icon-192.png" Pack="true" PackagePath="icon-192.png" Visible="false" />

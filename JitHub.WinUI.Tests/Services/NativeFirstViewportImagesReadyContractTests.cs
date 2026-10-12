@@ -101,13 +101,13 @@ public sealed class NativeFirstViewportImagesReadyContractTests
             "eng",
             "readme-audit",
             "profiles",
-            "github-primer-light-v4.css");
+            "github-primer-light-v5.css");
 
         string actualFingerprint = Convert.ToHexString(
             SHA256.HashData(File.ReadAllBytes(cssPath))).ToLowerInvariant();
 
         Assert.Equal("github-primer-light", NativeFirstViewportImagesReadyContract.ExpectedVisualProfileId);
-        Assert.Equal(4, NativeFirstViewportImagesReadyContract.ExpectedVisualProfileVersion);
+        Assert.Equal(5, NativeFirstViewportImagesReadyContract.ExpectedVisualProfileVersion);
         Assert.Equal(
             NativeFirstViewportImagesReadyContract.ExpectedVisualProfileCssSha256,
             actualFingerprint);

@@ -119,10 +119,18 @@ rollback, and placement-retirement tests pass **48/48**. Evidence is
 geometry defect; it is not a fresh full-page fidelity pass. Comparison thresholds
 and canonical CSS remain unchanged. Rank 2 also exposes fixed 11-DIP superscript
 text inside a 24-DIP heading; its captured Edge style is 18 pixels. Relative
-script typography is being addressed separately through an opt-in, ordered
-stylesheet rule: it must override lower-precedence fixed resource values while
-allowing later explicit stylesheet font sizes to win. Existing versioned visual
-profiles must retain their prior behavior.
+script typography is now implemented through an opt-in, ordered stylesheet
+rule. It overrides lower-precedence fixed resource values while allowing later
+explicit stylesheet font sizes to win; existing versioned visual profiles
+retain their prior behavior. The final parser/wrapper-focused suite passes
+**35/35, zero skipped**, including nested Markdown/HTML scripts in ordinary
+paragraphs, linked mixed-image content, tables, and task lists. The GFM link
+wrapper preserves ordered script ancestry and its run-role marker, while empty
+style-key clones reuse the shared empty array. Evidence:
+`goal-release-20261011/nested-script-wrapper-focused-20261011/relative-script-focused.trx`.
+The full suite is running on that same compiled source. This does not prove
+CSS baseline parity or a fresh full-page visual pass; the existing OpenType
+glyph/baseline behavior is explicitly retained.
 
 Local commit `bbb9db6e` removes another isolated source of extra vertical space:
 anonymous inline fragments inside safe-HTML containers inherited the Body
@@ -157,6 +165,56 @@ registry, or display arrangement was changed. The proposed 120 Hz setup cannot
 be used on this driver/display combination; a supported qualified display mode
 or runner is still needed. Local diagnostic helper:
 `goal-release-20261011/Invoke-Authorized120HzCheckpoint.ps1` (not shipping code).
+A separate read-only `DwmGetCompositionTimingInfo` probe reports approximately
+**239.762 Hz** for both refresh and desktop composition across five samples.
+This was outside the benchmark and does not establish why the app delivered
+approximately 120 rendering callbacks per second. It does not qualify the
+failed run or justify changing the cadence gate. Evidence:
+`goal-release-20261011/dwm-readonly-timing-20261011.json`; display remains 240 Hz.
+
+The Sandbox wrapper regression suites pass after correcting a test-only exit
+capture error. A script-local `$LASTEXITCODE = 0` hid the global automatic value
+updated by Windows PowerShell's failed prerequisite process when the suite was
+invoked from another script. The guest correctly reported failure and exited
+nonzero; the test now reads that actual global value. No production prerequisite
+or admission requirement changed. Evidence: `goal-release-20261011/v5-public-wrapper-tests.log`
+and `v5-offline-wrapper-tests-fixed.log` (the earlier failing log is retained).
+
+The complete headless README corpus/replay suite, including the vendored emoji
+contracts, now passes **118/118, zero skipped**
+(`goal-release-20261011/readme-pure-isolated-expression-final.log`). This includes
+strict proof for bounded source-less decorative spacers and computed-CSS-hidden
+images; it does not excuse missing visible assets. The separate Sandbox Edge
+integration batch remains **failed**, not qualified. Its initial stage omitted
+the pinned emoji license; the first fix-and-rerun found an outdated four-image
+fixture assertion after adding a fifth hidden image. The second and final
+fix-and-rerun passed the new CSS-override rejection cases, then found that
+`Number(null)` admitted route-free images to final readiness whenever captured
+route zero existed. Final readiness now retains the exact image elements from
+the validated route-binding map. A headless test executes the generated replay
+function with route zero, a hidden image, and a spacer, proving only the routed
+image is downloaded/decoded and malformed real indices still fail. The live
+batch has reached the `winui-ui-testing` skill's two fix-and-rerun limit and was
+not rerun again. Its final evidence is
+`goal-release-20261011/sandbox-edge-contract-28ba5a616cb64efbafcbecb03094e3ad/`;
+the generated-function regression is also recorded separately in
+`edge-null-index-regression.log`. No new full-page or top-500 pass is claimed.
+The subsequent source review also found case-sensitive SVG tag checks could let
+lowercase `image`/`use` resource references reach the generic href sanitizer,
+which silently removed them. Namespace-aware checks now reject uncaptured
+external SVG `href` and `xlink:href` before sanitization, including `feImage` and
+other SVG resource-bearing elements. Local fragments, embedded data images and
+ordinary SVG links retain their prior treatment. The new pure predicate and
+generated-expression regression pass; this is not a live SVG fidelity result.
+The headless and live tests now share their snapshot-expression builder, so
+dependency-injection errors in the fixture are exercised without starting Edge.
+Executing that expression against a bounded fake DOM exposed a host-only
+`XLINK_NAMESPACE` constant that was unavailable in the browser context. The
+regression first fails with `ReferenceError`, then passes with the constant
+declared inside the injected function. The same test verifies ordinary article
+capture, accepted local SVG fragments, and rejection of external modern and
+legacy SVG references. Red evidence is `snapshot-global-regression-red.log`;
+this additional headless correction does not change the failed live-batch status.
 
 Local commit `215c1168` also removes idle scroll-triggered selection-adorner
 refresh scheduling and a duplicate interactive invalidation. Its value-only,
@@ -212,6 +270,57 @@ Build and paired diagnostic evidence is in
 `paired-sponsor-opt2-20261011/`. No shipping profile, worker, threshold, or source
 identity has been changed.
 
+A narrower SVG scanner optimization now avoids repeating scratch-memory
+accounting when an admitted vector already has capacity. Growth still follows
+the existing full-budget admission; output, heap, coverage, and scheduled work
+retain their existing accounting. The artifact-only opt3 worker passes all
+**644/644 provider and fault tests, zero skipped**, including the unchanged
+576-image sponsor hard-deadline case. Exact scanner regressions pass 153/153,
+four additional scratch-admission tests pass, and the sponsor's composed alpha
+and span output are unchanged. A quiet diagnostic worker ABBA measures test
+durations of **3.0744 / 2.9507 / 2.8840 / 3.2856 seconds** for old/new/new/old,
+approximately **8.3% lower mean** for this case, with the same test/provider
+binaries. These durations include test setup and are not an Edge-relative or
+release performance qualification. Evidence is
+`goal-release-20261011/analytic-scratch-fastpath-worker-20261011/`, including
+`sponsor-abba/sponsor-abba-receipt.json` and
+`candidate-full-provider/fastpath-provider-full-summary.json`.
+
+The same fastpath with an isolated opt-level-2 build is independently rebuilt
+twice and passes normalized binary comparison. Its x64 worker is **3,312,128
+bytes** (SHA-256 `7f52b5e5dd4be712c3f928a46bef7a5e77619b118ab82adbf2c4014a018b9618`);
+with the measured **348,672-byte** provider DLL, selected deployment is
+**3,660,800 bytes**, leaving only **9,216 bytes** below the unchanged unsigned
+3.5 MiB limit. Its unchanged sponsor ABBA passes all four runs, with test
+durations **3.1624 / 3.1435 / 3.1159 / 2.9670 seconds** (old/new/new/old),
+approximately **2.1% higher mean** for the smaller variant. This does **not**
+retain the opt3 fastpath's observed speed gain. The full smaller-worker suite
+passes **644/644, zero skipped**; receipts are
+`opt2-fastpath-sponsor-abba/opt2-fastpath-sponsor-abba-receipt.json` and
+`opt2-fastpath-full-provider/opt2-fastpath-provider-full-summary.json` beneath
+the same worker artifact directory. Signed size, all-RID compressed size,
+other architectures, and the mandatory
+Edge corpus remain unqualified. Neither worker variant has replaced the
+shipping workers, profile, or source identity. The smaller build receipt is
+`analytic-scratch-fastpath-worker-20261011/opt2-fastpath-variant/opt2-fastpath-build-receipt.json`.
+
+A third artifact-only build uses global opt-level 2 while retaining opt-level 3
+for the rasterizer package. Two normalized reproducibility builds pass; worker
+SHA-256 is `5624c7156d77e208efc22e950553c8072b1c310663dd16823f67aac47c2ad8a5`
+and size is **3,303,936 bytes**. With the same measured provider, unsigned total
+is **3,652,608 bytes**, leaving **17,408 bytes** under the selected-deployment
+limit before signing. Its full unchanged provider/fault suite passes **644/644,
+zero skipped**. The quiet old/new/new/old diagnostic then passes all four
+unchanged sponsor tests, taking **3.0651 / 3.0617 / 2.9537 / 3.0727 seconds**,
+approximately **2.0% lower mean** for the mixed variant. This is two samples per
+worker including setup, not a release latency claim. Signed size,
+all-architecture builds and Edge fidelity remain unqualified.
+Evidence is `mixed-profile-variant/mixed-profile-build-receipt.json` and
+`mixed-profile-full-provider/mixed-profile-provider-full-summary.json` and
+`mixed-profile-sponsor-abba/mixed-profile-sponsor-abba-receipt.json` beneath
+`analytic-scratch-fastpath-worker-20261011/`. The production Cargo profile,
+scanner, workers and shipping identities are still unchanged.
+
 The earlier public same-byte capture contains **12 complete cases** under its
 then-current validator, not 500: ranks 1–4, 6, 11–15, 17 and 21. Its ranks 5, 16
 and 22 are partial because GitHub's rendered page itself has unavailable images. Existing evidence
@@ -250,11 +359,48 @@ article was absent), and rank **24, vuejs/vue** has one unavailable image among
 native rendering failure. The complete failed shard remains in `staging/pulled/`;
 none of its cases is counted as a host-admitted successful shard. The wrapper
 returns failure with **one of two batches completed**, preserving all evidence.
-A distinct browser-only capture of ranks **26–100** is now running under
+A distinct browser-only capture of ranks **26–100** has completed under
 `goal-release-20261011/public-ranks026-100-bbb9db6e/`. It stages its own immutable
 source/runner/Node snapshot and records no credentials; it is not a retry or a
-replacement for the failed ranks 18/24 evidence. Its eventual batch receipts,
-not this in-progress entry, determine how many cases completed.
+replacement for the failed ranks 18/24 evidence. The guest reports **60 captured
+cases and 15 failed cases**; all eight shards contain a failure, so **zero whole
+shards are host-admitted** and the overall command exits 1. These are browser
+captures, not 60 native fidelity passes. Ten failures are unavailable images on
+the live browser page; each case's bounded request examples report
+`net::ERR_BLOCKED_BY_ORB` without an HTTP status. TensorFlow has nine unavailable
+images but only eight retained examples, so the record does not prove the ninth
+request's cause. These are not inferred 404s or native failures and are not waived.
+Three failures (ranks 50/64/71) expose a snapshot bug: closed `<details>` children
+become visible when their computed inline styles are replayed outside the live
+disclosure state. Reviewed local commit `e06ccb07` removes only those hidden
+children from the snapshot clone, retaining its first direct summary, open
+disclosures, and the unchanged source page. Five focused tests and both Sandbox
+wrapper contract suites pass; a fresh live replay has not yet verified the fix.
+Rank 66 (`vercel/next.js`) exposes a public README symlink: its pinned raw URL
+returns a 23-byte target path, while the credential-free pinned README API
+returns the expected 3,213 bytes and matching locally recomputed Git blob SHA.
+The bounded fallback is being updated to permit that verified public response
+without requiring a token; redirects, metadata, canonical base64, byte ceilings,
+and local hash checks remain mandatory. Its focused corpus suite passes 37/37.
+Rank 100 (`browser-use/browser-use`) contains an authored source-less
+`<img width="16" height="1" alt="">` spacer. The capture omits its nonexistent
+resource correctly but the offline snapshot erroneously asks it to decode;
+that separate classification bug is being fixed without exempting missing
+resource-backed images. Native safe HTML also drops this spacer's geometry,
+which remains a distinct fidelity issue, not a passing case.
+
+The browser-launching replay test is being separated into an explicit
+`.integration.test.mjs` file, retained in the CI invocation. After that split,
+the current root-directory pure Node tests pass **103/103, zero skipped** under
+`goal-release-20261011/readme-pure-v5-split-final.log`. Synthetic process ownership
+and generator tests pass **4/4**, including exact DMTF UTC-offset handling across
+repeated daylight-saving hours. The first new Sandbox integration checkpoint
+fails before browser launch because its staging helper omitted the pinned emoji
+license file; the original failed receipt is retained under
+`sandbox-edge-contract-f14721004def481980fae6473db0e713/`. This setup failure is not
+a rendering result. An earlier broad command accidentally ran the Edge contract
+on the host; it cleaned up, but its passing result is explicitly excluded from
+Sandbox and release evidence.
 The current pure-headless README Node suite passes **83/83, zero skipped**:
 `goal-release-20261011/readme-node-headless-aca9f060.log`. Browser-launching
 integration/replay tests are excluded from this count; no host browser was
@@ -985,6 +1131,14 @@ not a completed README rendering or top-500 gate.
   or mitigations. This machine has WinDbgX but no CDB/GFlags command-line tools.
   No guessed PEB write, persistent IFEO setting, ACL relaxation, or ordinary
   unrestricted launch is an acceptable substitute for that evidence.
+  A later read-only loader-object DACL probe finds explicit Restricted Code
+  grants on both `\KnownDlls` and `\KnownDlls32`, their `ntdll.dll` sections,
+  and the `wow64.dll`, `wow64win.dll`, and `wow64cpu.dll` sections. This rules out
+  the simple missing-RC-ACE hypothesis for those inspected objects; it does not
+  identify the denied loader operation or qualify x86. The probe only requests
+  READ_CONTROL and closes its handles; no ACL, token, mitigation, or process
+  launch changed. Evidence: `goal-release-20261011/known-dll-read-access.log` and
+  `Inspect-KnownDllReadAccess.ps1` (diagnostic-only, excluded from shipping code).
 
 - The current source also publishes the strict ARM64 NativeAOT smoke successfully
   with locked restore, full trimming and warnings-as-errors. The produced PE is

@@ -30,6 +30,10 @@ const MAX_HTML_TAG_BYTES = 64 * 1024;
 const MAX_SRCSET_CANDIDATES_PER_TAG = 32;
 const MAX_NON_RENDERED_DECORATIVE_IMAGE_EXCLUSIONS = 128;
 const MAX_DECORATIVE_IMAGE_URL_HASHES = 16;
+const MAX_SOURCELESS_DECORATIVE_IMAGE_SPACERS = 128;
+const MAX_SOURCELESS_SPACER_DIMENSION_PX = 64;
+const MAX_SOURCELESS_SPACER_AREA_PX = 4096;
+const MAX_CSS_HIDDEN_IMAGE_OMISSIONS = 128;
 export const PINNED_GFM_PARSER = Object.freeze({
   name: "marked",
   version: "18.0.5",
@@ -61,25 +65,68 @@ export const PINNED_SOURCE_REPLAY_PARSER = Object.freeze({
   emojiShortcodeExtensionSha256: PINNED_GITHUB_EMOJI_PARSER.extensionSha256,
   emojiShortcodeAliasCount: PINNED_GITHUB_EMOJI_PARSER.aliasCount,
 });
+
+// Source-less decorative spacers are a deliberately narrow browser-oracle
+// exception. Keep this predicate data-only so the same rules can be injected
+// into the capture page and exercised by the headless Node tests.
+export function isSourceLessDecorativeImageSpacerCandidate(candidate) {
+  if (!candidate || candidate.hasExplicitAlt !== true || candidate.alt !== "" ||
+      candidate.hasSrcAttribute !== false || candidate.source !== "" || candidate.currentSource !== "" ||
+      candidate.hasSrcsetAttribute !== false || candidate.srcset !== "" ||
+      candidate.hasCanonicalSourceAttribute !== false || candidate.canonicalSource !== "" ||
+      candidate.hasDataSourceAttribute !== false || candidate.dataSource !== "" ||
+      candidate.hasDataSrcsetAttribute !== false || candidate.dataSrcset !== "" ||
+      candidate.hasDataLazySourceAttribute !== false || candidate.dataLazySource !== "" ||
+      candidate.pictureHasSourceResource !== false) {
+    return false;
+  }
+  const dimensions = [candidate.width, candidate.height, candidate.renderedWidth, candidate.renderedHeight];
+  return dimensions.every(value => Number.isFinite(value) && value > 0 && value <= 64) &&
+    candidate.width * candidate.height <= 4096 &&
+    candidate.renderedWidth * candidate.renderedHeight <= 4096;
+}
+
+// Static snapshot capture cannot preserve external SVG resource bytes as part
+// of the image-route manifest. Reject such references before the clone's
+// general link sanitizer removes non-anchor hrefs. Keep this data-only so the
+// predicate is exercised without a browser in the headless contract tests.
+export function hasUncapturedExternalInlineSvgResource({
+  namespaceURI,
+  localName,
+  href,
+  xlinkHref,
+} = {}) {
+  if (namespaceURI !== "http://www.w3.org/2000/svg" || typeof localName !== "string" ||
+      localName.toLowerCase() === "a") {
+    return false;
+  }
+  return [href, xlinkHref].some(value => {
+    if (typeof value !== "string") return false;
+    const reference = value.trim();
+    return reference.length > 0 && !reference.startsWith("#") &&
+      !/^data:image\//iu.test(reference);
+  });
+}
+
 const MARKED_PARSER_PATH = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
   "vendor",
   `marked-${PINNED_GFM_PARSER.version}.umd.js`,
 );
-const GITHUB_PRIMER_LIGHT_V4_CSS_PATH = path.join(
+const GITHUB_PRIMER_LIGHT_V5_CSS_PATH = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
   "profiles",
-  "github-primer-light-v4.css",
+  "github-primer-light-v5.css",
 );
 const require = createRequire(import.meta.url);
 const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
 const GIT_SHA1_PATTERN = /^[0-9a-f]{40}$/u;
 export const PINNED_GITHUB_README_STYLE_PROFILE = Object.freeze({
   id: "github-primer-light",
-  version: 4,
+  version: 5,
   colorScheme: "light",
-  cssPath: "/github-primer-light-v4.css",
-  sha256: "d1f276efd42d802835c33480c90cd54544afab7a20eae1be00d8b0a7f881f8f1",
+  cssPath: "/github-primer-light-v5.css",
+  sha256: "15b6b573ceb5fa8f0e103a14d04d6c8b6ed7a5a0b456a71674a249d183374d81",
 });
 const RENDERED_SNAPSHOT_FAILURE_PREDICATES = new Set([
   "active-element-tag",
@@ -88,8 +135,17 @@ const RENDERED_SNAPSHOT_FAILURE_PREDICATES = new Set([
   "external-css-resource",
   "external-resource-attribute",
   "invalid-root",
+  "invalid-css-hidden-image-omission",
+  "css-hidden-image-route-collision",
+  "css-hidden-image-visibility-mismatch",
+  "missing-css-hidden-image-omission",
   "missing-data-image",
   "missing-image-index",
+  "missing-image-route",
+  "invalid-layout-image-spacer",
+  "image-spacer-route-collision",
+  "layout-image-spacer-geometry-mismatch",
+  "missing-layout-image-spacer",
   "network-image-data-payload",
   "stylesheet-link",
   "style-element",
@@ -102,6 +158,8 @@ const SNAPSHOT_DIAGNOSTIC_TAGS = new Set([
 ]);
 const SNAPSHOT_DIAGNOSTIC_ATTRIBUTES = new Set([
   ...SNAPSHOT_RESOURCE_ATTRIBUTES,
+  "data-jithub-layout-spacer-index",
+  "data-jithub-hidden-image-index",
   "data-jithub-image-index",
   "rel",
   "style",
@@ -143,6 +201,8 @@ export async function captureSameByteCorpus({
   readmeByteSize,
   images,
   nonRenderedDecorativeImages = [],
+  sourceLessDecorativeImageSpacers = [],
+  cssHiddenImageOmissions = [],
   renderedHtml,
   readmeRendered = true,
   responseRecorder,
@@ -212,8 +272,16 @@ export async function captureSameByteCorpus({
     nonRenderedDecorativeImages,
     readmeUrl,
   );
+  const layoutImageSpacers = normalizeSourceLessDecorativeImageSpacers(sourceLessDecorativeImageSpacers);
+  const hiddenImageOmissions = normalizeCssHiddenImageOmissions(cssHiddenImageOmissions);
   if (!readmeRendered && decorativeImageExclusions.length > 0) {
     throw new Error("A GitHub source-view corpus cannot contain rendered decorative-image exclusions.");
+  }
+  if (!readmeRendered && layoutImageSpacers.length > 0) {
+    throw new Error("A GitHub source-view corpus cannot contain rendered layout-image spacers.");
+  }
+  if (!readmeRendered && hiddenImageOmissions.length > 0) {
+    throw new Error("A GitHub source-view corpus cannot contain rendered CSS-hidden image omissions.");
   }
   const renderedHtmlBytes = readmeRendered ? Buffer.from(renderedHtml, "utf8") : null;
   if (renderedHtmlBytes && (renderedHtmlBytes.length === 0 || renderedHtmlBytes.length > MAX_RENDERED_HTML_BYTES)) {
@@ -247,7 +315,9 @@ export async function captureSameByteCorpus({
   if (totalAssetBytes > MAX_CORPUS_ASSET_BYTES) {
     throw new Error(`Captured assets exceed the ${MAX_CORPUS_ASSET_BYTES}-byte corpus safety limit.`);
   }
-  if (renderedHtmlBytes) validateRenderedSnapshot(renderedHtml, imageRoutes);
+  if (renderedHtmlBytes) {
+    validateRenderedSnapshot(renderedHtml, imageRoutes, layoutImageSpacers, hiddenImageOmissions);
+  }
 
   const output = path.resolve(directory);
   await mkdir(path.join(output, "assets"), { recursive: true });
@@ -285,6 +355,8 @@ export async function captureSameByteCorpus({
     },
     assets: assetEntries,
     imageRoutes,
+    sourceLessDecorativeImageSpacers: layoutImageSpacers,
+    cssHiddenImageOmissions: hiddenImageOmissions,
     nonRenderedDecorativeImageExclusions: decorativeImageExclusions,
     browserRender: renderedHtmlBytes
       ? {
@@ -924,7 +996,14 @@ export async function loadSameByteCorpus(directory) {
        sha256(renderedHtmlBytes) !== manifest.browserRender.sha256)) {
     throw new Error("Same-byte corpus rendered HTML is missing or does not match its recorded SHA-256.");
   }
-  if (renderedHtmlBytes) validateRenderedSnapshot(renderedHtmlBytes.toString("utf8"), manifest.imageRoutes);
+  if (renderedHtmlBytes) {
+    validateRenderedSnapshot(
+      renderedHtmlBytes.toString("utf8"),
+      manifest.imageRoutes,
+      manifest.sourceLessDecorativeImageSpacers || [],
+      manifest.cssHiddenImageOmissions || [],
+    );
+  }
 
   const assets = new Map();
   const entriesByUrlHash = new Map();
@@ -985,6 +1064,8 @@ export async function loadSameByteCorpus(directory) {
     assets,
     entriesByUrlHash,
     imageRoutesByIndex,
+    sourceLessDecorativeImageSpacers: manifest.sourceLessDecorativeImageSpacers || [],
+    cssHiddenImageOmissions: manifest.cssHiddenImageOmissions || [],
     assetUrlMapSha256,
   };
 }
@@ -995,7 +1076,7 @@ export async function createSameByteReplayServer(corpusDirectory) {
   if (sha256(markedParserBytes) !== PINNED_GFM_PARSER.sha256) {
     throw new Error("Vendored Marked parser does not match the pinned SHA-256.");
   }
-  const styleProfileBytes = await readBoundedFile(GITHUB_PRIMER_LIGHT_V4_CSS_PATH, 64 * 1024);
+  const styleProfileBytes = await readBoundedFile(GITHUB_PRIMER_LIGHT_V5_CSS_PATH, 64 * 1024);
   if (sha256(styleProfileBytes) !== PINNED_GITHUB_README_STYLE_PROFILE.sha256) {
     throw new Error("Canonical GitHub README style profile does not match its pinned SHA-256.");
   }
@@ -1203,6 +1284,8 @@ export async function createSameByteReplayServer(corpusDirectory) {
     renderedHtmlSha256: corpus.manifest.browserRender.sha256 || "",
     assetUrlMapSha256: corpus.assetUrlMapSha256,
     imageRoutes: corpus.manifest.imageRoutes,
+    sourceLessDecorativeImageSpacers: corpus.sourceLessDecorativeImageSpacers,
+    cssHiddenImageOmissions: corpus.cssHiddenImageOmissions,
     expectedVisibleImageCount: corpus.imageRoutesByIndex.size,
     expectedUrlHashes: [...new Set(corpus.manifest.imageRoutes.filter(route => route.dataUri !== true).map(route => route.urlSha256))].sort(),
     parser: { ...PINNED_SOURCE_REPLAY_PARSER },
@@ -1240,10 +1323,14 @@ async function fetchResolvedPinnedReadme({
       typeof commitSha !== "string" || !/^[0-9a-f]{40}$/iu.test(commitSha)) {
     throw new Error("Cannot resolve a mismatched README without a valid pinned GitHub repository and commit.");
   }
-  if (typeof githubToken !== "string" || githubToken.trim().length === 0 ||
-      githubToken.length > 4096 || /[\r\n]/u.test(githubToken)) {
-    throw new Error("Fetched README bytes do not match the pinned GitHub blob identity; authenticated fallback is unavailable.");
+  if (githubToken != null && (typeof githubToken !== "string" ||
+      githubToken.length > 4096 || /[\r\n]/u.test(githubToken))) {
+    throw new Error("Pinned GitHub README fallback received an invalid optional audit token.");
   }
+  // Public symlink READMEs can be resolved without credentials. A token, when
+  // explicitly supplied by the caller, is sent only to this fixed API endpoint;
+  // it is never required to verify the immutable blob and byte-size identity.
+  const token = githubToken?.trim() || "";
 
   const [owner, repo] = fullName.split("/");
   const apiUrl = new URL(
@@ -1254,7 +1341,7 @@ async function fetchResolvedPinnedReadme({
   const response = await fetchImpl(apiUrl, {
     headers: {
       accept: "application/vnd.github+json",
-      authorization: `Bearer ${githubToken.trim()}`,
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
       "user-agent": "JitHub-Readme-Same-Byte-Capture",
       "x-github-api-version": "2022-11-28",
     },
@@ -1345,6 +1432,10 @@ function validateManifestShape(manifest) {
       manifest.assets.length > MAX_ASSET_LOOKUP_ENTRIES ||
       !Array.isArray(manifest.imageRoutes) ||
       manifest.imageRoutes.length > MAX_ASSET_LOOKUP_ENTRIES ||
+      (manifest.sourceLessDecorativeImageSpacers !== undefined &&
+       !isValidSourceLessDecorativeImageSpacerList(manifest.sourceLessDecorativeImageSpacers)) ||
+      (manifest.cssHiddenImageOmissions !== undefined &&
+       !isValidCssHiddenImageOmissionList(manifest.cssHiddenImageOmissions)) ||
       (manifest.nonRenderedDecorativeImageExclusions !== undefined &&
        !isValidNonRenderedDecorativeImageExclusionList(manifest.nonRenderedDecorativeImageExclusions)) ||
       manifest.limits?.maxReadmeBytes !== MAX_README_BYTES ||
@@ -1362,6 +1453,79 @@ function validateManifestShape(manifest) {
       (manifest.nonRenderedDecorativeImageExclusions?.length || 0) > 0) {
     throw new Error("A GitHub source-view corpus cannot contain rendered decorative-image exclusions.");
   }
+  if (manifest.browserRender.status === "not-applicable" &&
+      (manifest.sourceLessDecorativeImageSpacers?.length || 0) > 0) {
+    throw new Error("A GitHub source-view corpus cannot contain rendered layout-image spacers.");
+  }
+  if (manifest.browserRender.status === "not-applicable" &&
+      (manifest.cssHiddenImageOmissions?.length || 0) > 0) {
+    throw new Error("A GitHub source-view corpus cannot contain rendered CSS-hidden image omissions.");
+  }
+}
+
+function isValidSourceLessDecorativeImageSpacerList(value) {
+  if (!Array.isArray(value) || value.length > MAX_SOURCELESS_DECORATIVE_IMAGE_SPACERS) return false;
+  const indices = new Set();
+  return value.every(item => {
+    if (!item || !Number.isSafeInteger(item.index) || item.index < 0 ||
+        item.index >= MAX_ASSET_LOOKUP_ENTRIES || indices.has(item.index)) {
+      return false;
+    }
+    const dimensions = [item.width, item.height, item.renderedWidth, item.renderedHeight];
+    if (!dimensions.every(dimension => Number.isFinite(dimension) && dimension > 0 &&
+        dimension <= MAX_SOURCELESS_SPACER_DIMENSION_PX) ||
+        item.width * item.height > MAX_SOURCELESS_SPACER_AREA_PX ||
+        item.renderedWidth * item.renderedHeight > MAX_SOURCELESS_SPACER_AREA_PX) {
+      return false;
+    }
+    indices.add(item.index);
+    return true;
+  });
+}
+
+function normalizeSourceLessDecorativeImageSpacers(value) {
+  if (!isValidSourceLessDecorativeImageSpacerList(value)) {
+    throw new Error("Same-byte source-less decorative-image spacer evidence is malformed or exceeds its safety limit.");
+  }
+  return value
+    .map(({ index, width, height, renderedWidth, renderedHeight }) => ({
+      index,
+      width,
+      height,
+      renderedWidth,
+      renderedHeight,
+    }))
+    .sort((left, right) => left.index - right.index);
+}
+
+function isValidCssHiddenImageOmissionList(value) {
+  if (!Array.isArray(value) || value.length > MAX_CSS_HIDDEN_IMAGE_OMISSIONS) return false;
+  const indices = new Set();
+  return value.every(item => {
+    if (!item || !Number.isSafeInteger(item.index) || item.index < 0 ||
+        item.index >= MAX_ASSET_LOOKUP_ENTRIES || indices.has(item.index) ||
+        item.cssDisplayNone !== true || item.zeroBounds !== true ||
+        item.renderedWidth !== 0 || item.renderedHeight !== 0) {
+      return false;
+    }
+    indices.add(item.index);
+    return true;
+  });
+}
+
+function normalizeCssHiddenImageOmissions(value) {
+  if (!isValidCssHiddenImageOmissionList(value)) {
+    throw new Error("Same-byte CSS-hidden image omission evidence is malformed or exceeds its safety limit.");
+  }
+  return value
+    .map(({ index, cssDisplayNone, zeroBounds, renderedWidth, renderedHeight }) => ({
+      index,
+      cssDisplayNone,
+      zeroBounds,
+      renderedWidth,
+      renderedHeight,
+    }))
+    .sort((left, right) => left.index - right.index);
 }
 
 function isValidNonRenderedDecorativeImageExclusionList(value) {
@@ -1381,7 +1545,12 @@ function isValidNonRenderedDecorativeImageExclusionList(value) {
   });
 }
 
-function validateRenderedSnapshot(html, imageRoutes) {
+function validateRenderedSnapshot(
+  html,
+  imageRoutes,
+  sourceLessDecorativeImageSpacers = [],
+  cssHiddenImageOmissions = [],
+) {
   if (typeof html !== "string" || !/^<article\b/iu.test(html)) {
     rejectRenderedSnapshot("invalid-root", "Same-byte rendered HTML has an invalid root.");
   }
@@ -1433,11 +1602,84 @@ function validateRenderedSnapshot(html, imageRoutes) {
       });
     }
   }
+  const routesByIndex = new Map(imageRoutes.map(route => [route.index, route]));
+  const spacersByIndex = new Map(sourceLessDecorativeImageSpacers.map(spacer => [spacer.index, spacer]));
+  const hiddenImagesByIndex = new Map(cssHiddenImageOmissions.map(item => [item.index, item]));
+  for (const index of spacersByIndex.keys()) {
+    if (routesByIndex.has(index)) {
+      rejectRenderedSnapshot("image-spacer-route-collision", "A layout-image spacer cannot also have an image route.");
+    }
+    if (hiddenImagesByIndex.has(index)) {
+      rejectRenderedSnapshot("invalid-layout-image-spacer", "An image cannot be both a layout spacer and CSS-hidden omission.");
+    }
+  }
+  for (const index of hiddenImagesByIndex.keys()) {
+    if (routesByIndex.has(index)) {
+      rejectRenderedSnapshot("css-hidden-image-route-collision", "A CSS-hidden image omission cannot also have an image route.");
+    }
+  }
   const imagesByIndex = new Map();
+  const spacersInHtml = new Map();
+  const hiddenImagesInHtml = new Map();
   for (const element of elements) {
     if (element.tagName !== "img") continue;
+    const spacerIndexValue = element.attributes.get("data-jithub-layout-spacer-index");
+    const hiddenIndexValue = element.attributes.get("data-jithub-hidden-image-index");
     const indexValue = element.attributes.get("data-jithub-image-index");
-    if (!/^\d+$/u.test(indexValue || "")) continue;
+    if (hiddenIndexValue !== undefined) {
+      const hiddenIndex = /^\d+$/u.test(hiddenIndexValue) ? Number(hiddenIndexValue) : NaN;
+      const hidden = Number.isSafeInteger(hiddenIndex) ? hiddenImagesByIndex.get(hiddenIndex) : undefined;
+      if (!hidden || indexValue !== undefined || spacerIndexValue !== undefined || hiddenImagesInHtml.has(hiddenIndex)) {
+        rejectRenderedSnapshot("invalid-css-hidden-image-omission", "Same-byte rendered HTML contains an unbound CSS-hidden image omission.", {
+          elementTag: element.tagName,
+          attributeName: "data-jithub-hidden-image-index",
+        });
+      }
+      if (element.attributes.has("data-jithub-image-data") ||
+          !inlineStyleHasDisplayNone(element.attributes.get("style") || "")) {
+        rejectRenderedSnapshot("css-hidden-image-visibility-mismatch", "A CSS-hidden image omission must preserve display:none and contain no image payload.", {
+          elementTag: element.tagName,
+          attributeName: "style",
+        });
+      }
+      hiddenImagesInHtml.set(hiddenIndex, hidden);
+      continue;
+    }
+    if (spacerIndexValue !== undefined) {
+      const spacerIndex = /^\d+$/u.test(spacerIndexValue) ? Number(spacerIndexValue) : NaN;
+      const spacer = Number.isSafeInteger(spacerIndex) ? spacersByIndex.get(spacerIndex) : undefined;
+      if (indexValue !== undefined || !spacer || spacersInHtml.has(spacerIndex)) {
+        rejectRenderedSnapshot("invalid-layout-image-spacer", "Same-byte rendered HTML contains an unbound layout-image spacer.", {
+          elementTag: element.tagName,
+          attributeName: "data-jithub-layout-spacer-index",
+        });
+      }
+      if (!element.attributes.has("alt") || element.attributes.get("alt") !== "" ||
+          element.attributes.has("data-jithub-image-data")) {
+        rejectRenderedSnapshot("invalid-layout-image-spacer", "A layout-image spacer must have an explicit empty alt and no image payload.", {
+          elementTag: element.tagName,
+          attributeName: "alt",
+        });
+      }
+      const style = element.attributes.get("style") || "";
+      const width = readInlinePixelDimension(style, "width");
+      const height = readInlinePixelDimension(style, "height");
+      if (width === null || height === null || Math.abs(width - spacer.width) > 0.01 ||
+          Math.abs(height - spacer.height) > 0.01) {
+        rejectRenderedSnapshot("layout-image-spacer-geometry-mismatch", "A layout-image spacer does not preserve its captured CSS dimensions.", {
+          elementTag: element.tagName,
+          attributeName: "style",
+        });
+      }
+      spacersInHtml.set(spacerIndex, spacer);
+      continue;
+    }
+    if (!/^\d+$/u.test(indexValue || "")) {
+      rejectRenderedSnapshot("missing-image-route", "Same-byte rendered HTML contains an image without a captured image route.", {
+        elementTag: element.tagName,
+        attributeName: "data-jithub-image-index",
+      });
+    }
     const index = Number(indexValue);
     if (!Number.isSafeInteger(index) || imagesByIndex.has(index)) {
       rejectRenderedSnapshot("duplicate-image-index", "Same-byte rendered HTML contains a duplicate or invalid image index.", {
@@ -1445,7 +1687,19 @@ function validateRenderedSnapshot(html, imageRoutes) {
         attributeName: "data-jithub-image-index",
       });
     }
+    if (!routesByIndex.has(index)) {
+      rejectRenderedSnapshot("missing-image-route", "Same-byte rendered HTML contains an image with no captured route.", {
+        elementTag: element.tagName,
+        attributeName: "data-jithub-image-index",
+      });
+    }
     imagesByIndex.set(index, element.attributes.get("data-jithub-image-data") || "");
+  }
+  if (spacersInHtml.size !== spacersByIndex.size) {
+    rejectRenderedSnapshot("missing-layout-image-spacer", "Same-byte rendered HTML is missing a manifest-bound layout-image spacer.");
+  }
+  if (hiddenImagesInHtml.size !== hiddenImagesByIndex.size) {
+    rejectRenderedSnapshot("missing-css-hidden-image-omission", "Same-byte rendered HTML is missing a manifest-bound CSS-hidden image omission.");
   }
   for (const route of imageRoutes) {
     if (!imagesByIndex.has(route.index)) {
@@ -1460,6 +1714,136 @@ function validateRenderedSnapshot(html, imageRoutes) {
       rejectRenderedSnapshot("network-image-data-payload", "A network image route cannot also contain a data-image payload.");
     }
   }
+}
+
+function inlineStyleHasDisplayNone(style) {
+  return readUniqueInlineStyleValue(style, "display")?.toLowerCase() === "none";
+}
+
+function readInlinePixelDimension(style, propertyName) {
+  const value = readUniqueInlineStyleValue(style, propertyName);
+  const match = /^(\d+(?:\.\d+)?)px$/iu.exec(value || "");
+  if (!match) return null;
+  const pixels = Number(match[1]);
+  return Number.isFinite(pixels) ? pixels : null;
+}
+
+function readUniqueInlineStyleValue(style, propertyName) {
+  const declarations = splitInlineStyleDeclarations(style);
+  if (!declarations) return null;
+  const expectedName = propertyName.toLowerCase();
+  const values = [];
+  for (const declaration of declarations) {
+    const separator = findInlineStyleColon(declaration);
+    if (separator < 0) continue;
+    const name = declaration.slice(0, separator)
+      .replace(/\/\*[\s\S]*?\*\//gu, "")
+      .trim();
+    // CSS escapes can spell an otherwise duplicate property name (for
+    // example, `w\\69dth`). These captured omission styles are expected to
+    // use canonical property names; reject escaped names rather than trying
+    // to implement CSS identifier parsing in this static validator.
+    if (name.includes("\\")) return null;
+    const normalizedName = name.toLowerCase();
+    if (normalizedName !== expectedName) continue;
+    const value = declaration.slice(separator + 1)
+      .replace(/\/\*[\s\S]*?\*\//gu, "")
+      .trim()
+      .replace(/\s*!important\s*$/iu, "")
+      .trim();
+    values.push(value);
+  }
+  return values.length === 1 ? values[0] : null;
+}
+
+function findInlineStyleColon(declaration) {
+  let quote = "";
+  let comment = false;
+  let escaped = false;
+  let depth = 0;
+  for (let index = 0; index < declaration.length; index++) {
+    const character = declaration[index];
+    const next = declaration[index + 1];
+    if (comment) {
+      if (character === "*" && next === "/") {
+        comment = false;
+        index++;
+      }
+      continue;
+    }
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === "\\") {
+        escaped = true;
+      } else if (character === quote) {
+        quote = "";
+      }
+      continue;
+    }
+    if (character === "/" && next === "*") {
+      comment = true;
+      index++;
+    } else if (character === "'" || character === '"') {
+      quote = character;
+    } else if (character === "(") {
+      depth++;
+    } else if (character === ")") {
+      if (depth === 0) return -1;
+      depth--;
+    } else if (character === ":" && depth === 0) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+function splitInlineStyleDeclarations(style) {
+  if (typeof style !== "string") return null;
+  const declarations = [];
+  let start = 0;
+  let depth = 0;
+  let quote = "";
+  let comment = false;
+  let escaped = false;
+  for (let index = 0; index < style.length; index++) {
+    const character = style[index];
+    const next = style[index + 1];
+    if (comment) {
+      if (character === "*" && next === "/") {
+        comment = false;
+        index++;
+      }
+      continue;
+    }
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === "\\") {
+        escaped = true;
+      } else if (character === quote) {
+        quote = "";
+      }
+      continue;
+    }
+    if (character === "/" && next === "*") {
+      comment = true;
+      index++;
+    } else if (character === "'" || character === '"') {
+      quote = character;
+    } else if (character === "(") {
+      depth++;
+    } else if (character === ")") {
+      if (depth === 0) return null;
+      depth--;
+    } else if (character === ";" && depth === 0) {
+      declarations.push(style.slice(start, index));
+      start = index + 1;
+    }
+  }
+  if (comment || quote || depth !== 0) return null;
+  declarations.push(style.slice(start));
+  return declarations;
 }
 
 function scanSerializedHtmlElements(html) {

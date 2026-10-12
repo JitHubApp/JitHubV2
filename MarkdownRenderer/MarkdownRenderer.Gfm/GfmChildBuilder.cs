@@ -378,19 +378,21 @@ internal static class GfmChildBuilder
             }
             int aliasStart = box.Context.StyleAliasCount;
             using var inlineAttrs = box.Context.PushMarkdownAttributes(i);
-            if (i is EmphasisInline emphasis && ContainsLink(emphasis))
+            if (i is EmphasisInline emphasis &&
+                (box.Context.ThemeSnapshot.HasRelativeScriptFontSizeRules || ContainsLink(emphasis)))
             {
                 box.Context.RegisterMarkdownAttributes(i, box.BlockIndex);
                 int effectiveAliasStart = inheritedAliasStart >= 0 ? inheritedAliasStart : aliasStart;
+                string emphasisKey = GetEmphasisElementKey(emphasis);
+                using SafeHtmlInlineState.ScriptStyleScope scriptScope =
+                    htmlState.PushMarkdownScript(emphasisKey);
                 AddInlines(
                     box,
                     emphasis,
                     htmlState,
                     skipFirstIf: null,
                     inheritedAliasStart: effectiveAliasStart,
-                    inheritedStyleModifiers: AppendStyleModifier(
-                        inheritedStyleModifiers,
-                        GetEmphasisElementKey(emphasis)),
+                    inheritedStyleModifiers: AppendStyleModifier(inheritedStyleModifiers, emphasisKey),
                     containingLinkUrl,
                     containingLinkTitle);
                 continue;
@@ -514,6 +516,8 @@ internal static class GfmChildBuilder
         var linked = new LinkRun(run.Text, containingLinkUrl, containingLinkTitle)
         {
             SourceSpan = run.SourceSpan,
+            ScriptStyleAncestryKeys = run.ScriptStyleAncestryKeys,
+            SafeHtmlScriptRoleIsRunElement = run.SafeHtmlScriptRoleIsRunElement,
         };
         linked.SetStyleAliases(run.StyleAliases);
         linked.StyleModifierKeys = string.IsNullOrEmpty(run.ElementKey)

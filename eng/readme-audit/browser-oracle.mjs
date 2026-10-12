@@ -13,6 +13,8 @@ import {
   captureSameByteCorpus,
   createResponseRecorder,
   createSameByteReplayServer,
+  hasUncapturedExternalInlineSvgResource,
+  isSourceLessDecorativeImageSpacerCandidate,
   readSameByteSnapshotFailureEvidence,
   sha256,
 } from "./same-byte-corpus.mjs";
@@ -163,18 +165,32 @@ try {
   })`, true);
 
   const semantic = await evaluate(cdp, `(() => {
+    const isSourceLessDecorativeImageSpacerCandidate = ${isSourceLessDecorativeImageSpacerCandidate.toString()};
     const article = document.querySelector("#readme article.markdown-body, article.markdown-body");
     const rect = article.getBoundingClientRect();
     const clean = value => (value || "").replace(/\\s+/gu, " ").trim();
-    const isRendered = node => {
+    const isInsideClosedDetailsContent = node => {
       // Chromium can retain layout rectangles for descendants hidden by a
       // closed <details>. Match what a user can actually see, including links
       // inside the visible summary, rather than counting clipped descendants.
       for (let ancestor = node.parentElement; ancestor && ancestor !== article; ancestor = ancestor.parentElement) {
         if (ancestor.tagName !== "DETAILS" || ancestor.hasAttribute("open")) continue;
         const summary = ancestor.querySelector(":scope > summary");
-        if (!summary?.contains(node)) return false;
+        if (!summary?.contains(node)) return true;
       }
+      return false;
+    };
+    const isCssDisplayNoneZeroBox = image => {
+      if (image.namespaceURI !== "http://www.w3.org/1999/xhtml" || isInsideClosedDetailsContent(image)) return false;
+      const bounds = image.getBoundingClientRect();
+      if (bounds.width !== 0 || bounds.height !== 0) return false;
+      for (let ancestor = image; ancestor && ancestor !== article; ancestor = ancestor.parentElement) {
+        if (getComputedStyle(ancestor).display === "none") return true;
+      }
+      return false;
+    };
+    const isRendered = node => {
+      if (isInsideClosedDetailsContent(node)) return false;
       return [...node.getClientRects()]
         .some(bounds => bounds.width > 0 && bounds.height > 0);
     };
@@ -240,11 +256,43 @@ try {
     if (imageNodes.length > 15_000) {
       throw new Error("README exceeds the bounded browser image-element count.");
     }
-    const images = [...imageNodes]
+    const imageCandidates = [...imageNodes]
       .map((image, replayIndex) => ({ image, replayIndex }))
       .filter(item => isRendered(item.image))
       .map(({ image, replayIndex }) => {
         const bounds = image.getBoundingClientRect();
+        const computed = getComputedStyle(image);
+        const picture = image.closest("picture");
+        const pictureHasSourceResource = Boolean(picture &&
+          [...picture.querySelectorAll("source")].some(source =>
+            ["src", "srcset", "data-src", "data-srcset", "data-canonical-src", "data-lazy-src"]
+              .some(name => source.hasAttribute(name) && (source.getAttribute(name) || "").trim() !== "")));
+        const cssPixels = value => {
+          const match = /^([0-9]+(?:\\.[0-9]+)?)px$/u.exec((value || "").trim());
+          return match ? Number(match[1]) : NaN;
+        };
+        const spacerCandidate = {
+          hasExplicitAlt: image.hasAttribute("alt"),
+          alt: image.getAttribute("alt"),
+          hasSrcAttribute: image.hasAttribute("src"),
+          source: image.getAttribute("src") || "",
+          currentSource: image.currentSrc || "",
+          hasSrcsetAttribute: image.hasAttribute("srcset"),
+          srcset: image.getAttribute("srcset") || "",
+          hasCanonicalSourceAttribute: image.hasAttribute("data-canonical-src"),
+          canonicalSource: image.getAttribute("data-canonical-src") || "",
+          hasDataSourceAttribute: image.hasAttribute("data-src"),
+          dataSource: image.getAttribute("data-src") || "",
+          hasDataSrcsetAttribute: image.hasAttribute("data-srcset"),
+          dataSrcset: image.getAttribute("data-srcset") || "",
+          hasDataLazySourceAttribute: image.hasAttribute("data-lazy-src"),
+          dataLazySource: image.getAttribute("data-lazy-src") || "",
+          pictureHasSourceResource,
+          width: cssPixels(computed.width),
+          height: cssPixels(computed.height),
+          renderedWidth: bounds.width,
+          renderedHeight: bounds.height,
+        };
         return {
           alt: image.getAttribute("alt") || "",
           hasExplicitAlt: image.hasAttribute("alt"),
@@ -260,16 +308,44 @@ try {
           naturalHeight: image.naturalHeight,
           renderedWidth: bounds.width,
           renderedHeight: bounds.height,
+          spacerCandidate,
         };
       })
       // GitHub can retain failed or inactive <picture> candidates with no
       // layout box. They are not part of the rendered README and therefore
       // must not create a false "unavailable" result or image-count mismatch.
-      .filter(image => image.renderedWidth > 0 && image.renderedHeight > 0)
-      // GitHub uses empty-src spacer <img> elements in a few READMEs. They have
-      // layout boxes but no image resource, so they are neither a rendered image
-      // nor an unavailable resource JitHub could be expected to reproduce.
-      .filter(image => image.source || image.currentSource);
+      .filter(image => image.renderedWidth > 0 && image.renderedHeight > 0);
+    const sourceLessDecorativeImageSpacers = imageCandidates
+      .filter(image => isSourceLessDecorativeImageSpacerCandidate(image.spacerCandidate))
+      .map(image => ({
+        index: image.replayIndex,
+        width: image.spacerCandidate.width,
+        height: image.spacerCandidate.height,
+        renderedWidth: image.spacerCandidate.renderedWidth,
+        renderedHeight: image.spacerCandidate.renderedHeight,
+      }));
+    const cssHiddenImageOmissions = [...imageNodes]
+      .map((image, index) => ({ image, index, bounds: image.getBoundingClientRect() }))
+      .filter(({ image, bounds }) => bounds.width === 0 && bounds.height === 0 && isCssDisplayNoneZeroBox(image))
+      .map(({ index }) => ({
+        index,
+        cssDisplayNone: true,
+        zeroBounds: true,
+        renderedWidth: 0,
+        renderedHeight: 0,
+      }));
+    if (cssHiddenImageOmissions.length > 128) {
+      throw new Error("README exceeds the bounded CSS-hidden image omission count.");
+    }
+    const unrouteableImages = imageCandidates.filter(image =>
+      !image.source && !image.currentSource &&
+      !isSourceLessDecorativeImageSpacerCandidate(image.spacerCandidate));
+    if (unrouteableImages.length !== 0) {
+      throw new Error("A visible image has no captured source and is not a bounded source-less decorative spacer.");
+    }
+    const images = imageCandidates
+      .filter(image => image.source || image.currentSource)
+      .map(({ spacerCandidate, ...image }) => image);
     const nonRenderedDecorativeImageCandidates = [...imageNodes]
       .map((image, replayIndex) => {
         const bounds = image.getBoundingClientRect();
@@ -279,6 +355,7 @@ try {
         const explicitEmptyAlt = image.hasAttribute("alt") && image.getAttribute("alt") === "";
         const failedDecode = image.complete && image.naturalWidth === 0 && image.naturalHeight === 0;
         const zeroBounds = bounds.width === 0 && bounds.height === 0;
+        const cssDisplayNoneZeroBox = isCssDisplayNoneZeroBox(image);
         return {
           image,
           replayIndex,
@@ -288,13 +365,14 @@ try {
           explicitEmptyAlt,
           failedDecode,
           zeroBounds,
+          cssDisplayNoneZeroBox,
           hasHttpSource: [canonicalSource, source, currentSource]
             .some(value => /^https?:/iu.test(value)),
         };
       })
-      .filter(item => !isRendered(item.image) && item.explicitEmptyAlt && item.failedDecode &&
+      .filter(item => !item.cssDisplayNoneZeroBox && !isRendered(item.image) && item.explicitEmptyAlt && item.failedDecode &&
         item.zeroBounds && item.hasHttpSource)
-      .map(({ image, hasHttpSource, ...candidate }) => candidate);
+      .map(({ image, hasHttpSource, cssDisplayNoneZeroBox, ...candidate }) => candidate);
     const media = [...article.querySelectorAll("video,audio")]
       .filter(isRendered)
       .map(node => {
@@ -380,6 +458,8 @@ try {
         text: clean(node.innerText), href: node.href,
       })),
       images,
+      sourceLessDecorativeImageSpacers,
+      cssHiddenImageOmissions,
       nonRenderedDecorativeImageCandidates,
       media,
       visibleMermaidSources,
@@ -442,6 +522,8 @@ try {
   const renderedHtml = sameByteRecorder ? await captureRenderedHtmlSnapshot(
     cdp,
     semantic.nonRenderedDecorativeImageCandidates.map(image => image.replayIndex),
+    semantic.sourceLessDecorativeImageSpacers,
+    semantic.cssHiddenImageOmissions,
   ) : undefined;
 
   const navigationTiming = await evaluate(cdp, `(() => {
@@ -633,7 +715,9 @@ async function captureCorpusForReport(report, images, renderedHtml) {
     readmeByteSize: readNonNegativeInteger("readme-byte-size"),
     images,
     nonRenderedDecorativeImages: report.semantic.nonRenderedDecorativeImageCandidates || [],
-    renderedHtml,
+    sourceLessDecorativeImageSpacers: renderedHtml?.sourceLessDecorativeImageSpacers || [],
+    cssHiddenImageOmissions: renderedHtml?.cssHiddenImageOmissions || [],
+    renderedHtml: renderedHtml?.html,
     readmeRendered,
     responseRecorder: sameByteRecorder,
   });
@@ -672,14 +756,57 @@ async function captureCorpusForReport(report, images, renderedHtml) {
   }
 }
 
-async function captureRenderedHtmlSnapshot(cdpClient, excludedDecorativeImageReplayIndexes = []) {
+async function captureRenderedHtmlSnapshot(
+  cdpClient,
+  excludedDecorativeImageReplayIndexes = [],
+  sourceLessDecorativeImageSpacers = [],
+  cssHiddenImageOmissions = [],
+) {
   if (!Array.isArray(excludedDecorativeImageReplayIndexes) ||
       excludedDecorativeImageReplayIndexes.length > 128 ||
       excludedDecorativeImageReplayIndexes.some(index => !Number.isSafeInteger(index) || index < 0) ||
       new Set(excludedDecorativeImageReplayIndexes).size !== excludedDecorativeImageReplayIndexes.length) {
     throw new Error("GitHub returned invalid non-rendered decorative-image indexes.");
   }
-  const html = await evaluate(cdpClient, `((excludedDecorativeImageReplayIndexes) => {
+  if (!Array.isArray(sourceLessDecorativeImageSpacers) || sourceLessDecorativeImageSpacers.length > 128 ||
+      sourceLessDecorativeImageSpacers.some(spacer => !Number.isSafeInteger(spacer?.index) || spacer.index < 0 ||
+        !isSourceLessDecorativeImageSpacerCandidate({
+          hasExplicitAlt: true,
+          alt: "",
+          hasSrcAttribute: false,
+          source: "",
+          currentSource: "",
+          hasSrcsetAttribute: false,
+          srcset: "",
+          hasCanonicalSourceAttribute: false,
+          canonicalSource: "",
+          hasDataSourceAttribute: false,
+          dataSource: "",
+          hasDataSrcsetAttribute: false,
+          dataSrcset: "",
+          hasDataLazySourceAttribute: false,
+          dataLazySource: "",
+          pictureHasSourceResource: false,
+          width: spacer.width,
+          height: spacer.height,
+          renderedWidth: spacer.renderedWidth,
+          renderedHeight: spacer.renderedHeight,
+        })) ||
+      new Set(sourceLessDecorativeImageSpacers.map(spacer => spacer.index)).size !== sourceLessDecorativeImageSpacers.length ||
+      sourceLessDecorativeImageSpacers.some(spacer => excludedDecorativeImageReplayIndexes.includes(spacer.index))) {
+    throw new Error("GitHub returned invalid source-less decorative-image spacer evidence.");
+  }
+  if (!Array.isArray(cssHiddenImageOmissions) || cssHiddenImageOmissions.length > 128 ||
+      cssHiddenImageOmissions.some(item => !Number.isSafeInteger(item?.index) || item.index < 0 ||
+        item.cssDisplayNone !== true || item.zeroBounds !== true ||
+        item.renderedWidth !== 0 || item.renderedHeight !== 0) ||
+      new Set(cssHiddenImageOmissions.map(item => item.index)).size !== cssHiddenImageOmissions.length ||
+      cssHiddenImageOmissions.some(item => excludedDecorativeImageReplayIndexes.includes(item.index) ||
+        sourceLessDecorativeImageSpacers.some(spacer => spacer.index === item.index))) {
+    throw new Error("GitHub returned invalid CSS-hidden image omission evidence.");
+  }
+  const html = await evaluate(cdpClient, `((excludedDecorativeImageReplayIndexes, sourceLessDecorativeImageSpacers, cssHiddenImageOmissions) => {
+    const XLINK_NAMESPACE = "http://www.w3.org/1999/xlink";
     const article = document.querySelector("#readme article.markdown-body, article.markdown-body");
     if (!article) throw new Error("GitHub README article disappeared before same-byte capture.");
     const imageNodes = [...article.querySelectorAll("img")];
@@ -688,11 +815,42 @@ async function captureRenderedHtmlSnapshot(cdpClient, excludedDecorativeImageRep
     if (originals.length > 200_000) throw new Error("README exceeds the bounded static HTML element count.");
     const clone = article.cloneNode(true);
     const pruneClosedDetailsReplayContent = ${pruneClosedDetailsReplayContent.toString()};
+    const isSourceLessDecorativeImageSpacerCandidate = ${isSourceLessDecorativeImageSpacerCandidate.toString()};
+    const hasUncapturedExternalInlineSvgResource = ${hasUncapturedExternalInlineSvgResource.toString()};
     const copies = [clone, ...clone.querySelectorAll("*")];
     if (copies.length !== originals.length) throw new Error("GitHub article clone changed its element structure.");
     const imageIndexByNode = new Map(imageNodes.map((image, index) => [image, index]));
     const excludedDecorativeImageIndexes = new Set(excludedDecorativeImageReplayIndexes);
     const observedExcludedDecorativeImageIndexes = new Set();
+    const sourceLessDecorativeImageSpacersByIndex = new Map(
+      sourceLessDecorativeImageSpacers.map(spacer => [spacer.index, spacer]));
+    const observedSourceLessDecorativeImageSpacerIndexes = new Set();
+    const cssHiddenImageOmissionsByIndex = new Map(cssHiddenImageOmissions.map(item => [item.index, item]));
+    const observedCssHiddenImageOmissionIndexes = new Set();
+    const isInsideClosedDetailsContent = node => {
+      for (let ancestor = node.parentElement; ancestor && ancestor !== article; ancestor = ancestor.parentElement) {
+        if (ancestor.tagName !== "DETAILS" || ancestor.namespaceURI !== "http://www.w3.org/1999/xhtml" ||
+            ancestor.hasAttribute("open")) continue;
+        let summary = null;
+        for (const child of ancestor.children) {
+          if (child.tagName === "SUMMARY" && child.namespaceURI === "http://www.w3.org/1999/xhtml") {
+            summary = child;
+            break;
+          }
+        }
+        if (!summary?.contains(node)) return true;
+      }
+      return false;
+    };
+    const isCssDisplayNoneZeroBox = image => {
+      if (image.namespaceURI !== "http://www.w3.org/1999/xhtml" || isInsideClosedDetailsContent(image)) return false;
+      const bounds = image.getBoundingClientRect();
+      if (bounds.width !== 0 || bounds.height !== 0) return false;
+      for (let ancestor = image; ancestor && ancestor !== article; ancestor = ancestor.parentElement) {
+        if (getComputedStyle(ancestor).display === "none") return true;
+      }
+      return false;
+    };
     const styleProperties = [
       "display", "visibility", "opacity", "position", "top", "right", "bottom", "left", "z-index",
       "box-sizing", "width", "height", "min-width", "min-height", "max-width", "max-height",
@@ -743,7 +901,8 @@ async function captureRenderedHtmlSnapshot(cdpClient, excludedDecorativeImageRep
       }
       for (const attribute of [...target.attributes]) {
         const name = attribute.name.toLowerCase();
-        if (name.startsWith("on") || /^(?:src|srcset|sizes|poster|background|data-canonical-src|data-src|data-srcset|data-lazy-src)$/u.test(name)) {
+        if (name.startsWith("on") || /^data-jithub-(?:image|layout-spacer|hidden-image)(?:-|$)/u.test(name) ||
+            /^(?:src|srcset|sizes|poster|background|data-canonical-src|data-src|data-srcset|data-lazy-src)$/u.test(name)) {
           target.removeAttribute(attribute.name);
         }
       }
@@ -760,6 +919,68 @@ async function captureRenderedHtmlSnapshot(cdpClient, excludedDecorativeImageRep
           target.remove();
           continue;
         }
+        const hiddenOmission = cssHiddenImageOmissionsByIndex.get(imageIndex);
+        const isCssHidden = isCssDisplayNoneZeroBox(source);
+        if (hiddenOmission) {
+          if (!isCssHidden || hiddenOmission.renderedWidth !== 0 || hiddenOmission.renderedHeight !== 0) {
+            throw new Error("GitHub CSS-hidden image omission evidence changed during same-byte capture.");
+          }
+          observedCssHiddenImageOmissionIndexes.add(imageIndex);
+          target.style.setProperty("display", "none");
+          target.setAttribute("data-jithub-hidden-image-index", String(imageIndex));
+          continue;
+        }
+        if (isCssHidden) {
+          throw new Error("GitHub article changed its CSS-hidden image inventory during same-byte capture.");
+        }
+        const bounds = source.getBoundingClientRect();
+        const computedImageStyle = getComputedStyle(source);
+        const cssPixels = value => {
+          const match = /^([0-9]+(?:\\.[0-9]+)?)px$/u.exec((value || "").trim());
+          return match ? Number(match[1]) : NaN;
+        };
+        const picture = source.closest("picture");
+        const pictureHasSourceResource = Boolean(picture &&
+          [...picture.querySelectorAll("source")].some(pictureSource =>
+            ["src", "srcset", "data-src", "data-srcset", "data-canonical-src", "data-lazy-src"]
+              .some(name => pictureSource.hasAttribute(name) && (pictureSource.getAttribute(name) || "").trim() !== "")));
+        const spacerCandidate = {
+          hasExplicitAlt: source.hasAttribute("alt"),
+          alt: source.getAttribute("alt"),
+          hasSrcAttribute: source.hasAttribute("src"),
+          source: source.getAttribute("src") || "",
+          currentSource: source.currentSrc || "",
+          hasSrcsetAttribute: source.hasAttribute("srcset"),
+          srcset: source.getAttribute("srcset") || "",
+          hasCanonicalSourceAttribute: source.hasAttribute("data-canonical-src"),
+          canonicalSource: source.getAttribute("data-canonical-src") || "",
+          hasDataSourceAttribute: source.hasAttribute("data-src"),
+          dataSource: source.getAttribute("data-src") || "",
+          hasDataSrcsetAttribute: source.hasAttribute("data-srcset"),
+          dataSrcset: source.getAttribute("data-srcset") || "",
+          hasDataLazySourceAttribute: source.hasAttribute("data-lazy-src"),
+          dataLazySource: source.getAttribute("data-lazy-src") || "",
+          pictureHasSourceResource,
+          width: cssPixels(computedImageStyle.width),
+          height: cssPixels(computedImageStyle.height),
+          renderedWidth: bounds.width,
+          renderedHeight: bounds.height,
+        };
+        const spacer = sourceLessDecorativeImageSpacersByIndex.get(imageIndex);
+        if (isSourceLessDecorativeImageSpacerCandidate(spacerCandidate)) {
+          if (!spacer || Math.abs(spacer.width - spacerCandidate.width) > 0.001 ||
+              Math.abs(spacer.height - spacerCandidate.height) > 0.001 ||
+              Math.abs(spacer.renderedWidth - spacerCandidate.renderedWidth) > 0.001 ||
+              Math.abs(spacer.renderedHeight - spacerCandidate.renderedHeight) > 0.001) {
+            throw new Error("GitHub source-less decorative-image spacer evidence changed during same-byte capture.");
+          }
+          observedSourceLessDecorativeImageSpacerIndexes.add(imageIndex);
+          target.setAttribute("data-jithub-layout-spacer-index", String(imageIndex));
+          continue;
+        }
+        if (spacer) {
+          throw new Error("GitHub source-less decorative-image spacer no longer has bounded resource-free geometry.");
+        }
         target.setAttribute("data-jithub-image-index", String(imageIndex));
         const selectedSource = source.currentSrc || source.getAttribute("src") || "";
         if (/^data:image\\//iu.test(selectedSource)) {
@@ -770,15 +991,23 @@ async function captureRenderedHtmlSnapshot(cdpClient, excludedDecorativeImageRep
         const href = source.getAttribute("href") || "";
         if (/^(?:javascript|vbscript|data|blob):/iu.test(href.trim())) target.removeAttribute("href");
       }
-      if (["IMAGE", "USE"].includes(source.tagName) && source.namespaceURI === "http://www.w3.org/2000/svg") {
-        const reference = source.getAttribute("href") || source.getAttributeNS("http://www.w3.org/1999/xlink", "href") || "";
-        if (reference && !reference.startsWith("#") && !reference.startsWith("data:image/")) {
-          throw new Error("GitHub article contains an uncaptured external inline-SVG resource.");
-        }
+      if (hasUncapturedExternalInlineSvgResource({
+        namespaceURI: source.namespaceURI,
+        localName: source.localName,
+        href: source.getAttribute("href"),
+        xlinkHref: source.getAttributeNS(XLINK_NAMESPACE, "href"),
+      })) {
+        throw new Error("GitHub article contains an uncaptured external inline-SVG resource.");
       }
     }
     if (observedExcludedDecorativeImageIndexes.size !== excludedDecorativeImageIndexes.size) {
       throw new Error("GitHub article changed its non-rendered decorative-image inventory during same-byte capture.");
+    }
+    if (observedSourceLessDecorativeImageSpacerIndexes.size !== sourceLessDecorativeImageSpacersByIndex.size) {
+      throw new Error("GitHub article changed its source-less decorative-image spacer inventory during same-byte capture.");
+    }
+    if (observedCssHiddenImageOmissionIndexes.size !== cssHiddenImageOmissionsByIndex.size) {
+      throw new Error("GitHub article changed its CSS-hidden image omission inventory during same-byte capture.");
     }
     pruneClosedDetailsReplayContent(clone);
     clone.querySelectorAll("script,iframe,object,embed,base,link[rel~='stylesheet'],style").forEach(node => node.remove());
@@ -789,9 +1018,14 @@ async function captureRenderedHtmlSnapshot(cdpClient, excludedDecorativeImageRep
       node.removeAttribute("href");
       node.removeAttributeNS("http://www.w3.org/1999/xlink", "href");
     }
-    return clone.outerHTML;
-  })(${JSON.stringify(excludedDecorativeImageReplayIndexes)})`);
-  if (typeof html !== "string" || !/^<article\b/iu.test(html)) {
+    return {
+      html: clone.outerHTML,
+      sourceLessDecorativeImageSpacers,
+      cssHiddenImageOmissions,
+    };
+  })(${JSON.stringify(excludedDecorativeImageReplayIndexes)}, ${JSON.stringify(sourceLessDecorativeImageSpacers)}, ${JSON.stringify(cssHiddenImageOmissions)})`);
+  if (typeof html?.html !== "string" || !/^<article\b/iu.test(html.html) ||
+      !Array.isArray(html.sourceLessDecorativeImageSpacers) || !Array.isArray(html.cssHiddenImageOmissions)) {
     throw new Error("GitHub article did not produce a bounded static HTML snapshot.");
   }
   return html;

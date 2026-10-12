@@ -18,22 +18,36 @@ For a controlled Light-mode visual comparison, opt into the versioned Primer
 profile on the one control being compared:
 
 ```csharp
-var visualProfile = GitHubReadmeVisualStyleProfiles.PrimerLightV2;
+var visualProfile = GitHubReadmeVisualStyleProfiles.PrimerLightV5;
 var control = new MarkdownRendererControlBuilder()
     .UseGitHubReadme()
     .WithTheme(visualProfile.CreateTheme())
     .WithStyleSheet(visualProfile.StyleSheet)
+    .WithCodeBlockChromeMode(visualProfile.CodeBlockChromeMode)
+    .WithCodeBlockLineNumberMode(visualProfile.CodeBlockLineNumberMode)
+    .WithCodeBlockCopyEnabled(visualProfile.IsCodeBlockCopyEnabled)
     .WithMarkdown(source)
     .BuildScrollView();
 ```
 
-The profile ID is `github-primer-light`, version `2`; its fingerprint is the
-SHA-256 of the canonical `eng/readme-audit/profiles/github-primer-light-v2.css`
+The profile ID is `github-primer-light`, version `5`; its fingerprint is the
+SHA-256 of the canonical `eng/readme-audit/profiles/github-primer-light-v5.css`
 bytes. Record that fingerprint with visual evidence on both renderers. This
 profile does not alter renderer defaults or the caller's application theme, and
 High Contrast continues to use mandatory system colors. It is a stable audit
 fixture, not a promise that native layout reproduces every live GitHub website
 detail.
+
+Version 5 adds 75%-of-parent subscript/superscript sizing to version 4's geometry
+and plain code-block presentation. Versions 1–4 retain their original identities
+and behavior. For another theme, `styleSheet.WithRelativeScriptFontSize(0.75f)`
+opts into the same proportional sizing without adopting this Light profile.
+Its appended rules override inherited resource sizes; later explicit stylesheet
+font-size rules can still override them. Nested scripts compound the factor,
+with a 0.1-DIP floor for derived sizes. This sets the nominal font size; glyph
+substitution and baseline positioning retain the existing font-dependent
+OpenType subscript/superscript behavior. It does not establish CSS
+`vertical-align` parity or full-page visual equivalence.
 
 Safe HTML never executes script, applies CSS layout, exposes a browser DOM, or
 performs direct filesystem/network access. External links and images continue to
