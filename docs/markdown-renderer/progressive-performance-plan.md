@@ -509,9 +509,22 @@ pinning blocker. The exact six source/provenance files and three verified worker
 binaries are now promoted into the production tree, with no compatibility shim
 or unrelated changes. All-RID identity verification, all 76 package/license
 checks, the vendored-source tamper suite, and **28/28** worker-identity fixtures
-pass after promotion. A matching production rebuild/test remains required before
-calling the promoted managed provider verified; earlier clone evidence remains
-explicitly source-bound above. The final candidate still needs qualified
+pass after promotion. The production checkpoint is local commit
+`4c53dcc28267c2849d6fa46342987bb85cf79c5d`, with no push. Its clean-checkout
+Release/x64 provider and fault suite now passes **644/644, zero skipped**, in
+nine seconds (`goal-release-20261011/promoted-4c53dcc2-provider/promoted-provider.trx`).
+The subsequent fresh package invocation fails the unchanged supply-chain gate:
+the vendored tiny-skia inventory expects 200 files but the clean checkout has
+199. Its upstream `.gitignore` excluded `Cargo.lock` from Git despite that file
+being independently pinned in `UPSTREAM.json`. The existing local 3,649-byte
+file matches upstream SHA-256
+`415818c6a9aed27b324ae52212c068e0b7d90b857a0a91f7ba765f0caa106204`
+exactly; tracking those unchanged bytes repairs the clean source inventory.
+No upstream ignore rule, provenance digest, worker identity, or validation gate
+is changed. The initial package output is not a passing pack result; fresh
+clean-checkout verification remains required after this source-completeness fix.
+Evidence: `goal-release-20261011/promoted-4c53dcc2-pack.log`.
+The final candidate still needs qualified
 performance evidence: neither the earlier mixed-profile timing nor the noisy
 scanner-only diagnostic is a release benchmark of this exact shipped build.
 
