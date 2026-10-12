@@ -86,6 +86,24 @@ internal static class JitHubMarkdownRuntime
         }
     }
 
+    /// <summary>
+    /// Gets the shared static-raster capability of the same explicitly
+    /// registered Resvg worker service. This is a separate host registration,
+    /// not capability discovery from a control's SVG renderer property.
+    /// </summary>
+    internal static IMarkdownRasterDecoder RasterDecoder
+    {
+        get
+        {
+            lock (Gate)
+            {
+                ObjectDisposedException.ThrowIf(_isShuttingDown, typeof(JitHubMarkdownRuntime));
+                EnsureRendererAuditListenerLocked();
+                return _svgRenderer ??= new ResvgMarkdownSvgRenderer();
+            }
+        }
+    }
+
     /// <summary>Gets one shared opt-in preparation session for the active account.</summary>
     internal static MarkdownPerformanceSession GetPerformanceSession(long accountId)
     {

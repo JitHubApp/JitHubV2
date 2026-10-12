@@ -6,12 +6,15 @@ namespace MarkdownRenderer.Svg.Resvg.Tests;
 
 public sealed class WorkerFontProtocolTests
 {
-    [Fact]
-    public void VersionNineRejectsOldFontReadinessFrames()
+    [Theory]
+    [InlineData(7)]
+    [InlineData(8)]
+    [InlineData(9)]
+    public void VersionTenRejectsOldFontReadinessFrames(ushort oldVersion)
     {
-        Assert.Equal(9, WorkerProtocol.Version);
+        Assert.Equal(10, WorkerProtocol.Version);
         byte[] frame = ValidResponse();
-        BinaryPrimitives.WriteUInt16LittleEndian(frame.AsSpan(4), 7);
+        BinaryPrimitives.WriteUInt16LittleEndian(frame.AsSpan(4), oldVersion);
         Assert.Throws<WorkerProtocolException>(() => WorkerProtocol.DecodeResponse(frame, 31, 41, 51));
     }
 

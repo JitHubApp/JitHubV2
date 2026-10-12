@@ -124,12 +124,12 @@ public sealed partial class WorkerMappingLeaseTests
     }
 
     [Fact]
-    public void ProtocolV9CarriesOnlyTheFixedRawHandleAndZeroReservedNameRegion()
+    public void ProtocolV10CarriesOnlyTheFixedRawHandleAndZeroReservedNameRegion()
     {
         const ulong mappingHandle = 0x1234_5678_9ABC_DEF0;
         byte[] frame = WorkerProtocol.Encode(CreateRequest(WorkerOperation.Open, mappingHandle));
 
-        Assert.Equal((ushort)9, BinaryPrimitives.ReadUInt16LittleEndian(frame.AsSpan(4)));
+        Assert.Equal((ushort)10, BinaryPrimitives.ReadUInt16LittleEndian(frame.AsSpan(4)));
         Assert.Equal(mappingHandle, BinaryPrimitives.ReadUInt64LittleEndian(frame.AsSpan(240)));
         Assert.Equal(-1, frame.AsSpan(248, 120).IndexOfAnyExcept((byte)0));
         Assert.Equal(-1, frame.AsSpan(170, 6).IndexOfAnyExcept((byte)0));

@@ -1552,7 +1552,7 @@ foreach ($existingReport in @(
 }
 Invoke-NativeAotArtifactVerifier -VerifierPath (Join-Path $repoRoot 'eng\Verify-NativeAotArtifact.ps1') -InputPath $AppDirectory
 foreach ($requiredAuditFile in @(
-    'eng\readme-audit\profiles\github-primer-light-v5.css',
+    'eng\readme-audit\profiles\github-primer-light-v6.css',
     'eng\readme-audit\closed-details-snapshot.mjs',
     'eng\readme-audit\same-byte-edge-source.mjs',
     'eng\readme-audit\Install-PinnedWindowsAppRuntime.ps1',

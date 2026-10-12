@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.IO.Compression;
+using System.Security.Cryptography;
 using System.Text;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Svg.Resvg;
@@ -21,12 +22,20 @@ byte[] complexSvg = Encoding.UTF8.GetBytes(
     "<text x='120' y='52' text-anchor='start' direction='rtl' unicode-bidi='bidi-override' " +
     "font-family='sans-serif' font-size='22' fill='#101010'>שלום</text></svg>");
 byte[] manyImagesSvg = CreateManyImagesSvg();
+byte[] staticWebP = SmokeRasterDecodeFixture.Create();
+byte[] colorManagedWebP = SmokeRasterDecodeFixture.WithMetadata(staticWebP, 2, 2,
+    SmokeRasterDecodeFixture.CreateLinearRgbProfile());
+byte[] streamedWebP = SmokeRasterDecodeFixture.WithMetadata(
+    SmokeRasterDecodeFixture.CreateLiteralWebP(1024, 1025, patterned: true), 1024, 1025,
+    SmokeRasterDecodeFixture.CreateLinearRgbProfile(version4: true), orientation: 6, hasAlpha: true);
+byte[]? streamedPixelHash = null;
 
 await using var renderer = new ResvgMarkdownSvgRenderer();
 SmokeRasterFailure rasterFailures = SmokeRasterFailure.None;
 SmokeRasterResult lastRasterFailure = default;
 int failedRichRenders = 0;
 int failedManyImageRenders = 0;
+int failedStaticRasterDecodes = 0;
 try
 {
     await renderer.WarmUpAsync();
@@ -54,6 +63,8 @@ try
         RecordRichRaster(raster);
     }
     await RenderManyImagesAsync();
+    await InitializeStreamedRasterReferenceAsync();
+    await DecodeStaticRasterAsync();
     await renderer.TrimCachesAsync();
 
     ResourceSnapshot before = WorkerIsolationProbe.ReadResourceSnapshot(workerProcessId);
@@ -68,6 +79,7 @@ try
             RecordRichRaster(raster);
         }
         await RenderManyImagesAsync();
+        await DecodeStaticRasterAsync();
 
         // Trim is the eviction boundary for each complete document/raster
         // lifecycle. Await its worker response before beginning the next cycle.
@@ -85,7 +97,7 @@ try
 
     Console.WriteLine(
         $"resvg {ResvgMarkdownSvgRenderer.ResvgVersion} isolated-worker AOT smoke measurements; " +
-        $"RTL+embedded-raster+182-unique-image lifecycle cycles={repeatedCycles}; " +
+        $"RTL+embedded-raster+182-unique-image+static-WebP+streamed-WebP+ICC lifecycle cycles={repeatedCycles}; " +
         $"host handles {before.CurrentProcessHandleCount}->{after.CurrentProcessHandleCount}; " +
         $"worker handles {before.WorkerHandleCount}->{after.WorkerHandleCount}; " +
         $"host private bytes {before.CurrentProcessPrivateBytes}->{after.CurrentProcessPrivateBytes}; " +
@@ -102,6 +114,8 @@ try
     // reaped the exact worker. A bad raster never turns a resource result green
     // and does not prevent the full 100-cycle measurement from running.
     var failures = new List<string>();
+    if (failedStaticRasterDecodes != 0)
+        failures.Add($"Static WebP output failed {failedStaticRasterDecodes} times.");
     if (rasterFailures != SmokeRasterFailure.None)
         failures.Add($"Rich raster failures={rasterFailures}; failed renders={failedRichRenders}; " +
             $"failed 182-image renders={failedManyImageRenders}; " +
@@ -156,6 +170,50 @@ async Task RenderManyImagesAsync()
         return;
     rasterFailures |= failure;
     failedManyImageRenders++;
+}
+
+async Task InitializeStreamedRasterReferenceAsync()
+{
+    // Establish the reference through the complete-frame path before measuring
+    // retained resources. Repeating a stable but incorrect row raster must not
+    // qualify the AOT path simply because every lifecycle returns the same bytes.
+    using MarkdownRaster reference = await renderer.DecodeAsync(new(streamedWebP,
+        MarkdownRasterFormat.WebP, 137, 101, 32 * 1024 * 1024));
+    streamedPixelHash = SHA256.HashData(reference.Pixels.Span);
+}
+
+async Task DecodeStaticRasterAsync()
+{
+    // Exercise the statically discoverable raster interface through the very
+    // same restricted worker and include its mapping/decoder/ICC ownership in the
+    // unchanged 100-cycle, 8-MiB and four-handle retained-resource gates.
+    IMarkdownRasterDecoder decoder = renderer;
+    for (int index = 0; index < 2; index++)
+    {
+        using MarkdownRaster raster = await decoder.DecodeAsync(new(index == 0 ? staticWebP : colorManagedWebP,
+            MarkdownRasterFormat.WebP, 2, 2, 8 * 1024 * 1024));
+        if (!SmokeRasterDecodeFixture.IsValid(raster))
+            failedStaticRasterDecodes++;
+    }
+
+    // The lowered 8-MiB request cannot admit the complete source, ICC copy and
+    // decoder frame together. Include the row path's history ring, CMS and
+    // orientation scatter in every measured lifecycle, not just tiny decodes.
+    using MarkdownRaster preview = await decoder.DecodeAsync(new(streamedWebP,
+        MarkdownRasterFormat.WebP, 137, 101, 8 * 1024 * 1024));
+    bool validPreview = preview.WidthPixels == 137 && preview.HeightPixels == 101 &&
+        preview.StrideBytes == 137 * 4 && preview.LengthBytes == 137 * 101 * 4;
+    for (int offset = 0; validPreview && offset < preview.LengthBytes; offset += 4)
+    {
+        validPreview = preview.Pixels.Span[offset + 3] == 127 &&
+            preview.Pixels.Span[offset] <= 127 && preview.Pixels.Span[offset + 1] <= 127 &&
+            preview.Pixels.Span[offset + 2] <= 127;
+    }
+    byte[] pixelHash = SHA256.HashData(preview.Pixels.Span);
+    validPreview &= streamedPixelHash is not null &&
+        pixelHash.AsSpan().SequenceEqual(streamedPixelHash);
+    if (!validPreview)
+        failedStaticRasterDecodes++;
 }
 
 static byte[] CreateManyImagesSvg()

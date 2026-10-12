@@ -615,7 +615,7 @@ public sealed class ResvgProviderTests
     }
 
     [Fact]
-    public void ProtocolV9RequiresAHandleOnlyForDataAndFontCatalogRequests()
+    public void ProtocolV10RequiresAHandleOnlyForDataAndFontCatalogRequests()
     {
         WorkerRequest CreateRequest(WorkerOperation operation, ulong mappingHandle) => new(
             operation,
@@ -638,7 +638,7 @@ public sealed class ResvgProviderTests
             DocumentId: operation is WorkerOperation.Open or WorkerOperation.Render ? 9ul : 0ul,
             Options: new ResvgMarkdownSvgRendererOptions());
 
-        Assert.Equal((ushort)9, WorkerProtocol.Version);
+        Assert.Equal((ushort)10, WorkerProtocol.Version);
         Assert.Throws<InvalidOperationException>(() => WorkerProtocol.Encode(CreateRequest(WorkerOperation.Open, 0)));
         Assert.Throws<InvalidOperationException>(() => WorkerProtocol.Encode(CreateRequest(WorkerOperation.Render, 0)));
         Assert.Throws<InvalidOperationException>(() => WorkerProtocol.Encode(CreateRequest(WorkerOperation.FontCatalog, 0)));

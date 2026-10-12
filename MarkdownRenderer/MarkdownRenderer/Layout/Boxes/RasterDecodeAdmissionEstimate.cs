@@ -49,6 +49,20 @@ internal static class RasterDecodeAdmissionEstimate
             outputPixels: plan.CanvasOutputPixels);
     }
 
+    /// <summary>
+    /// Estimates the portable provider's maximum in-flight weight. Provider
+    /// working credit already covers its source mapping, returned raster, and
+    /// decoder scratch; the separately-owned host upload copy is charged in
+    /// addition, as is the host's encoded source buffer.
+    /// </summary>
+    internal static long ForPortableProvider(long encodedBytes, long maximumWorkingBytes, long uploadBytes)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(encodedBytes);
+        ArgumentOutOfRangeException.ThrowIfNegative(maximumWorkingBytes);
+        ArgumentOutOfRangeException.ThrowIfNegative(uploadBytes);
+        return checked(encodedBytes + maximumWorkingBytes + uploadBytes);
+    }
+
     internal static long CalculateOwnedWicSchedulingWeight(
         long encodedBytes,
         long sourcePixels,

@@ -23,5 +23,22 @@ bounded-rendering additions are MIT-licensed. Both notices are included in
 the generated license collection, and the combined distribution is recorded
 as `BSD-3-Clause AND MIT` rather than replacing the upstream license.
 
+The worker also includes a bounded local fork of `image-webp` 0.2.4 from
+`image-rs/image-webp` revision
+`08b57d473c90148dd4b37a075df365afc3dfcc2b`. Its upstream archive SHA-256,
+source inventory, and local patch/addition hashes are recorded in
+`native/vendor/image-webp/UPSTREAM.json`. The fork is distributed under the
+upstream `MIT OR Apache-2.0` terms and consumed under MIT; both upstream
+license texts and the separately identified local additions are included in
+the generated Rust dependency license collection. No WebP encoder or native
+libwebp implementation is included in the worker.
+
+ICC color conversion uses `moxcms` 0.8.1 and its `pxfm` 0.1.30 dependency.
+Both packages declare `BSD-3-Clause OR Apache-2.0`; this repository selects
+BSD-3-Clause for each, as recorded in the generated native SBOM. The worker
+pins their registry package checksums in `native/Cargo.lock` and enables only
+the `moxcms` `lut` feature (default features are disabled). The generated
+Rust dependency license collection retains both upstream license texts.
+
 No resvg trademark rights are granted. This product is not endorsed by the
 resvg authors.

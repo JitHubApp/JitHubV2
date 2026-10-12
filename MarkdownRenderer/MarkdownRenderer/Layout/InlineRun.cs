@@ -763,8 +763,16 @@ internal sealed class InlineImageRun : InlineRun
         var size = checkpoint is { } transaction
             ? Image.MeasureInline(maxWidth, lineHeight, transaction)
             : Image.MeasureInline(maxWidth, lineHeight);
-        DesiredWidth = Math.Max(1f, (float)size.Width);
-        DesiredHeight = Math.Max(1f, (float)size.Height);
+        if (Image.IsFailedDecorativeImageCollapsed)
+        {
+            DesiredWidth = 0;
+            DesiredHeight = 0;
+        }
+        else
+        {
+            DesiredWidth = Math.Max(1f, (float)size.Width);
+            DesiredHeight = Math.Max(1f, (float)size.Height);
+        }
     }
 
     internal void RestoreMeasuredSize(float width, float height)

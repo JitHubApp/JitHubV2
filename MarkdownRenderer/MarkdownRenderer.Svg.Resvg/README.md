@@ -18,6 +18,33 @@ document handles. SVG bytes and raster pixels cross the worker boundary through
 private shared memory; a versioned fixed-size named-pipe protocol carries only
 control data. There is no in-process native fallback.
 
+The same shared service can also be registered explicitly as a static WebP
+decoder, independently of SVG registration:
+
+```csharp
+MarkdownScrollView view = new MarkdownRendererControlBuilder()
+    .WithResvgSvgRenderer(svg)
+    .WithRasterDecoder(svg)
+    .WithMarkdown(markdown)
+    .BuildScrollView();
+```
+
+`IMarkdownRasterDecoder` is engine-neutral. Controls check `SupportsFormat`
+before submitting a bounded, display-sized request. This provider advertises
+only static WebP; it does not take over animated images or formats it does not
+advertise. Image URL policy and source admission still belong to the host.
+Decoder selection is explicit: a selected provider's failure does not trigger
+an installed-codec or in-process fallback. Failures use `MarkdownRasterException`
+and its typed reason; controls keep their accessible unavailable-image behavior.
+
+For direct decoding, keep the request's encoded memory alive and unchanged
+until `DecodeAsync` completes, including cancellation/failure. Dispose the
+returned `MarkdownRaster` after GPU upload. It owns exact-size, oriented,
+premultiplied sRGB pixels and can outlive the service; never access its memory
+after or concurrently with disposal. `MaximumWorkingBytes` can lower the
+provider's immutable ceiling, not raise it, and is not a process-RSS guarantee.
+Controls borrow this service and never dispose the shared decoder.
+
 Dispose each document when its last render is no longer needed. Renderer
 shutdown also cancels retained document handles and in-flight opens: synchronous
 `Dispose` initiates cleanup and stops workers, while `DisposeAsync` waits for

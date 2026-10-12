@@ -43,17 +43,31 @@ internal sealed unsafe partial class SharedMemoryLease : MemoryManager<byte>
     {
     }
 
+    // Raster requests borrow caller-owned encoded memory only until the transaction drains.
+    // Copy it directly into the one admitted section, without an intermediate source snapshot.
+    internal SharedMemoryLease(
+        string name,
+        ReadOnlyMemory<byte> source,
+        int outputLength,
+        WorkerObjectSecurity.WorkerObjectSecurityContext securityContext)
+        : this(name, null, source.Length, outputLength,
+            securityContext ?? throw new ArgumentNullException(nameof(securityContext)), source)
+    {
+    }
+
     private SharedMemoryLease(
         string name,
         SvgSourceBuffer? source,
         int sourceLength,
         int outputLength,
-        WorkerObjectSecurity.WorkerObjectSecurityContext? securityContext)
+        WorkerObjectSecurity.WorkerObjectSecurityContext? securityContext,
+        ReadOnlyMemory<byte> borrowedSource = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         if (outputLength < 0)
             throw new ArgumentOutOfRangeException(nameof(outputLength));
-        if (sourceLength < 0 || source is null && sourceLength != 0)
+        if (sourceLength < 0 || source is null && sourceLength != borrowedSource.Length ||
+            source is not null && !borrowedSource.IsEmpty)
             throw new ArgumentOutOfRangeException(nameof(sourceLength));
         ObjectDisposedException.ThrowIf(source?.IsReleased == true, source!);
 
@@ -128,6 +142,8 @@ internal sealed unsafe partial class SharedMemoryLease : MemoryManager<byte>
         {
             if (source is not null)
                 source.CopyTo(new Span<byte>(_pointer, sourceLength));
+            else if (!borrowedSource.IsEmpty)
+                borrowedSource.Span.CopyTo(new Span<byte>(_pointer, sourceLength));
         }
         catch
         {

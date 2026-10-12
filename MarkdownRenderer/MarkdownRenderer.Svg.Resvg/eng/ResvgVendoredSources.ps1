@@ -94,7 +94,7 @@ function Get-ResvgVendoredSourcesProvenance {
             license = 'BSD-3-Clause'
             vendoredLicense = 'BSD-3-Clause AND MIT'
             sourceInventorySha256 = '5454cbf22bc4f175b21e750839c30b99bc164991c5134f66a5cc1e7fe01bced8'
-            patchSetSha256 = '917fd385f07281bf59bd969a0160f143bc6711bf8d11b1ee8837afc0b3c4e6e4'
+            patchSetSha256 = '50166575e05a7cdcffb0c8bfb3f1364c7d50810d10df7890c48dfe8797189f32'
             addedFilesSha256 = '36412a6e06cc5fb70e85a2611f292d560fd58a828aa992e514132b53f3742df9'
             addedFiles = @(
                 @{
@@ -160,6 +160,43 @@ function Get-ResvgVendoredSourcesProvenance {
                 @{
                     path = 'src/bounded.rs'
                     sha256 = '94b60bfda536ebce1390340aca4dded9bb876e1c9874afaa2ac1553cc5258c8b'
+                    license = 'MIT'
+                    licenseTextPath = 'LICENSE-JITHUB-MIT'
+                    licenseTextSha256 = '41445984ed7c0ecf79e35bbf7c4afb6dea9eff5b76207ec9531b4be23a5e1683'
+                }
+            )
+        },
+        @{
+            packageName = 'image-webp'
+            packageVersion = '0.2.4'
+            repository = 'https://github.com/image-rs/image-webp.git'
+            revision = '08b57d473c90148dd4b37a075df365afc3dfcc2b'
+            packagePath = ''
+            sourceTree = '705dad83a9ffaf469c492b5ec11defdc861eb93e'
+            archiveSha256 = '525e9ff3e1a4be2fbea1fdf0e98686a6d98b4d8f937e1bf7402245af1909e8c3'
+            license = 'MIT OR Apache-2.0'
+            sourceInventorySha256 = 'fb373b48b33155d4863b5629965a053dfef1cb2b5e5cee7dd9402148de96caa7'
+            patchSetSha256 = 'e009af2eab64189e3c910bdf72c227c666a6084f1d8b555e283a33f2c39b2f1a'
+            expectedPatchPaths = @('Cargo.lock', 'Cargo.toml', 'src/decoder.rs', 'src/extended.rs', 'src/huffman.rs', 'src/lib.rs', 'src/lossless_transform.rs', 'src/lossless.rs', 'src/vp8_arithmetic_decoder.rs', 'src/vp8.rs', 'src/yuv.rs')
+            addedFilesSha256 = '9e0e15c40af49aa1d9390e1f7b186201e9f0875c2b5af97912dcbed340c9eee0'
+            addedFiles = @(
+                @{
+                    path = 'LICENSE-JITHUB-MIT'
+                    sha256 = '41445984ed7c0ecf79e35bbf7c4afb6dea9eff5b76207ec9531b4be23a5e1683'
+                    license = 'MIT'
+                    licenseTextPath = 'LICENSE-JITHUB-MIT'
+                    licenseTextSha256 = '41445984ed7c0ecf79e35bbf7c4afb6dea9eff5b76207ec9531b4be23a5e1683'
+                },
+                @{
+                    path = 'src/budget.rs'
+                    sha256 = '957fae9b563eecc5064cb2b5e2e3ee9787c977ccb5dde99da9e0ef32f56c7901'
+                    license = 'MIT'
+                    licenseTextPath = 'LICENSE-JITHUB-MIT'
+                    licenseTextSha256 = '41445984ed7c0ecf79e35bbf7c4afb6dea9eff5b76207ec9531b4be23a5e1683'
+                },
+                @{
+                    path = 'examples/generate_opaque_vp8_fixture.rs'
+                    sha256 = '62ee144e8945f591aa21d87e49d85bb6067ee31c3ca27ff2315546cdfcc268a0'
                     license = 'MIT'
                     licenseTextPath = 'LICENSE-JITHUB-MIT'
                     licenseTextSha256 = '41445984ed7c0ecf79e35bbf7c4afb6dea9eff5b76207ec9531b4be23a5e1683'

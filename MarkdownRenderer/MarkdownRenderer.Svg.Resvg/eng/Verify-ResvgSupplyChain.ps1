@@ -140,7 +140,7 @@ foreach ($record in $packageRecords) {
         throw "Non-registry package $identity unexpectedly declares a registry checksum."
     }
     $evidenceHashes = @($record.licenseEvidenceSha256)
-    if ($identity -in @('resvg@0.48.1', 'usvg@0.48.1', 'tiny-skia@0.12.0', 'tiny-skia-path@0.12.0') -and $evidenceHashes.Count -eq 0) {
+    if ($identity -in @('resvg@0.48.1', 'usvg@0.48.1', 'tiny-skia@0.12.0', 'tiny-skia-path@0.12.0', 'image-webp@0.2.4') -and $evidenceHashes.Count -eq 0) {
         throw "Vendored package $identity has no license-file evidence."
     }
     if (-not [string]::IsNullOrEmpty([string]$record.source) -and $evidenceHashes.Count -eq 0) {

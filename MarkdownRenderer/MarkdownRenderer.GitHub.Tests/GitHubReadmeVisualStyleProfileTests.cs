@@ -20,6 +20,100 @@ public sealed class GitHubReadmeVisualStyleProfileTests
         "MarkdownRenderer.GitHub.Profiles.github-primer-light-v4.css";
     private const string RelativeScriptFixtureResourceName =
         "MarkdownRenderer.GitHub.Profiles.github-primer-light-v5.css";
+    private const string InheritedQuoteColorFixtureResourceName =
+        "MarkdownRenderer.GitHub.Profiles.github-primer-light-v6.css";
+
+    [Fact]
+    public void PrimerLightV6_BindsSelectiveQuoteForegroundInheritanceToCanonicalCss()
+    {
+        GitHubReadmeVisualStyleProfile previous = GitHubReadmeVisualStyleProfiles.PrimerLightV5;
+        GitHubReadmeVisualStyleProfile profile = GitHubReadmeVisualStyleProfiles.PrimerLightV6;
+        using Stream stream = typeof(GitHubReadmeVisualStyleProfiles).Assembly
+            .GetManifestResourceStream(InheritedQuoteColorFixtureResourceName)!;
+        using Stream previousStream = typeof(GitHubReadmeVisualStyleProfiles).Assembly
+            .GetManifestResourceStream(RelativeScriptFixtureResourceName)!;
+        Assert.NotNull(stream);
+        Assert.NotNull(previousStream);
+        byte[] cssBytes = ReadAllBytes(stream);
+        string css = System.Text.Encoding.UTF8.GetString(cssBytes);
+        string previousCss = System.Text.Encoding.UTF8.GetString(ReadAllBytes(previousStream));
+        const string inheritedForegroundDeclaration =
+            "\n/*\n" +
+            " * These descendants have no CSS foreground of their own: they inherit the\n" +
+            " * muted blockquote color. Headings and links deliberately remain outside this\n" +
+            " * group because their rules set their own colors.\n" +
+            " */\n" +
+            ".markdown-body blockquote p,\n" +
+            ".markdown-body blockquote strong,\n" +
+            ".markdown-body blockquote em,\n" +
+            ".markdown-body blockquote code,\n" +
+            ".markdown-body blockquote pre,\n" +
+            ".markdown-body blockquote li::marker,\n" +
+            ".markdown-body blockquote table,\n" +
+            ".markdown-body blockquote th,\n" +
+            ".markdown-body blockquote td {\n" +
+            "  color: inherit;\n" +
+            "}\n";
+
+        Assert.Equal(previous.Id, profile.Id);
+        Assert.Equal(6, profile.Version);
+        Assert.Equal("2efa4379622ab3d526084ee64ef006c4b5c76257f61a1d6122f64e73128afbc3", profile.Fingerprint);
+        Assert.Equal(Convert.ToHexString(SHA256.HashData(cssBytes)).ToLowerInvariant(), profile.Fingerprint);
+        Assert.Equal(previousCss.Replace("PrimerLightV5", "PrimerLightV6", StringComparison.Ordinal)
+            .Replace("Profile version: 5", "Profile version: 6", StringComparison.Ordinal) +
+            inheritedForegroundDeclaration, css);
+        Assert.Equal(previous.SurfaceColor, profile.SurfaceColor);
+        Assert.Equal(previous.AccentColor, profile.AccentColor);
+        Assert.Equal(previous.CodeBlockChromeMode, profile.CodeBlockChromeMode);
+        Assert.Equal(previous.CodeBlockLineNumberMode, profile.CodeBlockLineNumberMode);
+        Assert.Equal(previous.IsCodeBlockCopyEnabled, profile.IsCodeBlockCopyEnabled);
+
+        MarkdownStyleRole[] inheritedRoles =
+        [
+            MarkdownStyleRole.Body,
+            MarkdownStyleRole.Strong,
+            MarkdownStyleRole.Emphasis,
+            MarkdownStyleRole.InlineCode,
+            MarkdownStyleRole.CodeBlock,
+            MarkdownStyleRole.ListMarker,
+            MarkdownStyleRole.Table,
+            MarkdownStyleRole.TableHeader,
+            MarkdownStyleRole.TableCell,
+        ];
+        Assert.Equal(previous.StyleSheet.Rules.Count + inheritedRoles.Length, profile.StyleSheet.Rules.Count);
+        for (int index = 0; index < previous.StyleSheet.Rules.Count; index++)
+            Assert.Same(previous.StyleSheet.Rules[index], profile.StyleSheet.Rules[index]);
+
+        Color muted = Color.FromArgb(0xFF, 0x59, 0x63, 0x6E);
+        Color inheritedBase = Color.FromArgb(0xFF, 0x10, 0x20, 0x30);
+        foreach (MarkdownStyleRole role in inheritedRoles)
+        {
+            var baseStyle = new ElementStyle { Foreground = inheritedBase };
+            var quoteContext = new MarkdownStyleContext(role, [MarkdownStyleRole.Quote]);
+            var plainContext = new MarkdownStyleContext(role);
+
+            Assert.Equal(muted, profile.StyleSheet.Resolve(baseStyle, quoteContext).Foreground);
+            Assert.Equal(previous.StyleSheet.Resolve(baseStyle, plainContext).Foreground,
+                profile.StyleSheet.Resolve(baseStyle, plainContext).Foreground);
+        }
+
+        Assert.Equal(
+            Resolve(previous.StyleSheet, MarkdownStyleRole.Link).Foreground,
+            Resolve(profile.StyleSheet, MarkdownStyleRole.Link, ancestorRoles: [MarkdownStyleRole.Quote]).Foreground);
+        Assert.Equal(
+            Resolve(previous.StyleSheet, MarkdownStyleRole.Heading1).Foreground,
+            Resolve(profile.StyleSheet, MarkdownStyleRole.Heading1, ancestorRoles: [MarkdownStyleRole.Quote]).Foreground);
+        Assert.Equal(
+            Resolve(previous.StyleSheet, MarkdownStyleRole.Heading6).Foreground,
+            Resolve(profile.StyleSheet, MarkdownStyleRole.Heading6, ancestorRoles: [MarkdownStyleRole.Quote]).Foreground);
+
+        Color laterForeground = Color.FromArgb(0xFF, 0x77, 0x22, 0x99);
+        MarkdownStyleSheet laterOverride = profile.StyleSheet.WithRule(new MarkdownStyleRule(
+            new MarkdownStyleSelector(MarkdownStyleRole.Body),
+            new ElementStyleOverride { Foreground = laterForeground }));
+        Assert.Equal(laterForeground,
+            Resolve(laterOverride, MarkdownStyleRole.Body, ancestorRoles: [MarkdownStyleRole.Quote]).Foreground);
+    }
 
     [Fact]
     public void PrimerLightV5_BindsScriptHeaderAndNestedListPoliciesToCanonicalProfile()
@@ -383,6 +477,13 @@ public sealed class GitHubReadmeVisualStyleProfileTests
         MarkdownStyleRole role,
         int nestingDepth = 0)
         => sheet.Resolve(new ElementStyle(), new MarkdownStyleContext(role, nestingDepth));
+
+    private static ElementStyle Resolve(
+        MarkdownStyleSheet sheet,
+        MarkdownStyleRole role,
+        IEnumerable<MarkdownStyleRole> ancestorRoles,
+        int nestingDepth = 0)
+        => sheet.Resolve(new ElementStyle(), new MarkdownStyleContext(role, ancestorRoles, nestingDepth));
 
     private static bool HasLayoutPolicy(MarkdownStyleSheet sheet, byte flag)
         => (sheet.Compile().LayoutPolicy & flag) != 0;

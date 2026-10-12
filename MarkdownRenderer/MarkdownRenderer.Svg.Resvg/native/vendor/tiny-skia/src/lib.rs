@@ -64,7 +64,7 @@ pub use color::{Color, ColorSpace, ColorU8, PremultipliedColor, PremultipliedCol
 pub use color::{ALPHA_OPAQUE, ALPHA_TRANSPARENT, ALPHA_U8_OPAQUE, ALPHA_U8_TRANSPARENT};
 pub use mask::{Mask, MaskType};
 pub use painter::{FillRule, Paint};
-pub use pixmap::{Pixmap, PixmapMut, PixmapRef, BYTES_PER_PIXEL};
+pub use pixmap::{Pixmap, PixmapMut, PixmapRef, PixmapRowRing, BYTES_PER_PIXEL};
 pub use scan::path_analytic::CoverageError as AnalyticRasterError;
 pub use shaders::{FilterQuality, GradientStop, PixmapPaint, SpreadMode};
 pub use shaders::{LinearGradient, Pattern, RadialGradient, Shader, SweepGradient};

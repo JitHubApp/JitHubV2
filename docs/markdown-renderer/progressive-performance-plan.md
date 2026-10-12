@@ -7,6 +7,285 @@ bookkeeping. The 1.0 performance and release goals are not yet met.
 
 ### October 12 fresh Sandbox verification — candidate c9a90da7
 
+Active follow-up implementation (not yet qualified): the rank-2 hero-shaped
+layout regression reproduces an extra 24-DIP terminal line at each mixed-inline
+fragment flushed before an HTML block. A scoped layout-only normalization and
+source/selection/RTL regressions are implemented and managed-test validated; this is not a global margin
+adjustment. The rank-4 valid WebP failure is being addressed by an explicitly
+registered, engine-neutral `IMarkdownRasterDecoder` using the existing isolated
+worker pool, rather than an installed Windows WebP codec or an SVG wrapper.
+Protocol v10 adds a dedicated source-plus-output shared-memory transaction,
+strict geometry/working-budget validation, typed failures and no fallback after
+a provider failure. Static VP8/VP8L/VP8X, ICC and EXIF are the current integration
+scope; animated WebP first-frame composition remains open. The bounded decoder
+fork is being moved out of diagnostic artifacts into audited/pinned vendor
+source with normal license and worker-identity enforcement. Tests/builds below
+still describe the preceding candidate until new matching workers are rebuilt
+and the complete integration is tested. No new rendering/performance pass is
+claimed from this work in progress.
+
+The expanded focused managed-only host/HTML suite now passes **48/48, zero skipped**
+(`raster-provider-host-tests-managed-only-focused-final4-20261012/focused-final4.trx`).
+It covers provider routing, exact display-sized requests, invalid output,
+late-generation cancellation and disposal, admission estimates, and provider
+identity in shared layout metrics. Its oversized-image case uses a test decoder:
+it proves host sizing/ownership, **not** real WebP decoder coverage. The existing
+managed-only lane needed its optional-pack source exclusions brought into sync
+with its excluded project references; the default/full test graph remains intact.
+The first failed compile receipts are retained. A new HTML assertion also exposed
+existing out-of-range semantic spans after trailing-newline trimming before a
+textless rule. The fix now clamps only affected tail spans and normalizes node
+ranges during the existing fingerprint traversal, preserving run/source ownership
+without another full-tree pass. The combined HTML/semantic fix is saved locally as
+`5fe9f0c6` (not pushed). Its expanded semantic/source-position/automation batch
+passes **80/80**, followed by **2,520/2,520, zero skipped** in the managed-only suite
+(`semantic-range-normalization-full-20261012/semantic-range-normalization-full.trx`).
+This includes empty projections, repeated terminal breaks, RTL/emoji, textless
+trailing content, and following text that retains authored newlines.
+The preceding full managed-only run passed **2,515/2,515, zero skipped**
+(`raster-provider-host-tests-managed-only-full-final-20261012/raster-provider-managed-only-full-final.trx`).
+This lane intentionally excludes optional native packs; it does not establish
+that the real isolated decoder works.
+
+The native unit checkpoint passes **79 tests, zero failed, one existing ignored**.
+All three v10 workers were rebuilt twice and passed the normal source-bound
+identity check (`goal-release-20261011/webp-v10-baseline-20261012a/`). This is not
+runtime qualification: the first managed real-worker run has **25 passed / 15
+failed / zero skipped**. Every actual decode fails before worker connection with
+`0xC0000142`; protocol/ownership/fault checks pass. The new executables statically
+import `ole32`/`oleaut32`, and the system `ole32` imports `USER32`/`GDI32`, unlike
+the previous headless worker. The WIC color-conversion dependency must be removed
+without weakening Win32k lockdown or using an in-process/installed-codec fallback.
+The baseline's failed runtime receipt is retained as `raster-worker-baseline.trx`.
+An import-boundary regression test is being added; replacement color management,
+full native integration, and performance remain unqualified.
+The replacement dependency checkpoint removes `windows-rs` and pins `moxcms 0.8.1`
+with only its `lut` feature; its new transitive dependency is `pxfm 0.1.30`.
+Both use their BSD-3-Clause license option. The generated supply-chain inventory
+and verifier pass; this is dependency validation only, not worker startup, color
+fidelity, bounded allocation, or deployment-size qualification. Generated v2/v4
+matrix and LUT profiles now exercise analytic linear-RGB-to-sRGB expectations,
+alpha preservation, malformed tag bounds, and lowered memory budgets in the
+pending real-worker tests. The pure-Rust color-management and streaming decoder
+implementation must pass those tests before replacing the failed baseline.
+The next pure-Rust checkpoint now passes the actual restricted-worker batch:
+**51/51, zero skipped**, including the import boundary, exact EXIF/alpha,
+analytic v2/v4 matrix and LUT color conversions, invalid-profile recovery,
+lowered working budgets, mapping lifetime, cancellation and transport faults.
+All three workers were built twice, compared reproducibly, and verified by the
+normal all-RID source-identity gate. The native suite passes **84/84 executed,
+one existing ignored**. Evidence is
+`goal-release-20261011/webp-v10-pure-rust-20261012b/` (final receipt
+`raster-worker-pure-rust-v2.trx`). The first receipt's two failed brightening
+checks are retained: its nearly saturated-red fixture was not a midtone probe;
+the final run uses generated RGBA midtones with the same assertion, alongside
+the unchanged analytic per-channel checks. The worker now imports only the
+four audited headless system libraries. This establishes the x64 restricted
+startup/decode fix, not ARM64/x86 runtime qualification, real-page fidelity,
+large-image admission, AOT lifecycle, or browser-relative performance.
+
+The new checkpoint **still fails selected deployment size**: its x64 worker is
+**3,697,664 bytes**, and the rebuilt provider is **361,984 bytes**, totaling
+**4,059,648 bytes — 389,632 over** the unchanged 3.5-MiB limit. Worker sizes are
+3,522,048 bytes (x86) and 3,023,360 bytes (ARM64). Diagnostic size optimization
+of just `moxcms`/`pxfm` saves 23,040 bytes with `s`, or 46,592 bytes with `z`;
+even the smaller result plus the provider is **4,013,056 bytes, 343,040 over**.
+Neither diagnostic executable is staged or release-qualified. Receipts are
+`goal-release-20261011/worker-size-opt-s-20261012/` and
+`worker-size-opt-z-20261012/`; no worker or package-size waiver is taken.
+The host cache review also found that URL-global decode failures could suppress
+success after installing a different decoder. The fix partitions deterministic
+portable content failures by decoder identity and leaves request-dependent
+resource/time/fault failures retryable. Its expanded focused batch passes
+**66/66, zero skipped** (`raster-failure-cache-partition-20261012/raster-cache-focused-v3.trx`).
+The full managed-only run is **2,520 passed / 2 failed / zero skipped**, not green:
+one source-contract test still expected the old cache-helper signature, and the
+near-40-megapixel PNG qualification timed out in its overlapping-request probe.
+The latter passes unchanged in isolation with its original 90-second deadline;
+that does not establish the cause or waive its full-suite failure. After fixing
+the stale marker, the full rerun passes **2,522/2,522, zero skipped**
+(`raster-cache-managed-only-v2.trx`); the earlier timeout did not recur and its
+cause remains unproven. Source-read and security-policy failures keep their
+URL-level negative cache.
+
+A headless diagnostic consumed the exact compiled/verified pure-Rust checkpoint
+and decoded the captured rank-4 freeCodeCamp banner (source SHA-256
+`499b8931abfb4c1a902bce3f686c5408d71553eba5b53d6d6d347c8d94eab7cc`).
+The real restricted worker produced **660×220** output successfully three times,
+with identical pixel hashes; the PNG was visually inspected. Observed times were
+89.405 ms including first startup, then 14.007 and 13.187 ms. These three samples
+are **diagnostic, not qualified latency evidence**. Receipt/program/PNG:
+`goal-release-20261011/rank4-webp-checkpoint-20261012/`. This closes the reproduced
+decoder-availability failure for those exact bytes, not the app's full-page
+fidelity, AOT, large-image, or release gates; the app rerun remains required.
+
+The same baseline also fails the selected x64 deployment-size gate:
+**3,418,112-byte worker + 348,160-byte provider = 3,766,272 bytes**, which is
+**96,256 bytes over** the unchanged 3.5-MiB limit. The worker-only compressed
+delta is not a full NuGet package measurement. Replacement color-management
+dependencies and the final package must be measured again; no size waiver is taken.
+
+Review found that full-source RGBA scratch would reject previously admitted
+large WebP previews under the unchanged 64/32-MiB working ceiling. A bounded
+decode/downsample path is still required; neither a larger limit nor an
+installed-codec fallback is accepted as the fix. Scratch is now checked before
+allocation. The baseline's conservative WIC workspace reservations do not fix
+the startup incompatibility and are not evidence of an acceptable implementation.
+The host's conservative worst-case
+admission weight also serializes portable decodes today, so concurrent throughput
+is not claimed. Restricted-worker ICC/EXIF tests and the unchanged 100-cycle,
+8-MiB/four-handle AOT lifecycle gate are being expanded for the real decoder.
+
+The bounded-row follow-up now passes **16/16 focused native raster tests** and
+**1/1 tiny-skia row-sampler test**. The latter receipt is
+`MarkdownRenderer.Svg.Resvg/native/artifacts/streamed-row-tests-20261012/tiny-skia-sampler.log`;
+the first raster receipt is currently only in the task's command transcript and
+will be repeated in the saved combined suite. These test global-coordinate
+bicubic sampling, all eight orientation mappings, and ICC stage validation;
+they do **not** establish encoded large-image/provider completion. New managed
+real-worker tests cover 16-/40-megapixel display-sized previews and forced-row
+versus full-frame pixels. The generated literal VP8L fixtures were independently
+checked against the preceding verified worker for exact authored small-image
+pixels (`goal-release-20261011/literal-webp-fixture-check-20261012/`). The AOT
+lifecycle now includes a forced-row ICC/orientation preview in each cycle,
+compared to a full-frame reference established before resource measurement, but
+that revised AOT binary has not yet been built or run. The package-only release
+consumer now copies the shared raster fixture and keeps trim warnings fatal;
+its script syntax and four-file source inventory pass, but package consumption
+has not been requalified. The bounded VP8 follow-up vendor suite now passes
+**64 tests, zero failed, one existing ignored**, including a 2048×8193 opaque
+image under a 4-MiB decoder ledger and varied-input exact row/full-frame parity
+across two ring wraps under both chroma upsampling modes. The tests exposed and
+fixed a filter-ring underflow and a stale-chroma halo seam; earlier failed
+receipts are retained. Final vendor receipt:
+`goal-release-20261011/webp-vp8-rows-20261012/vendor-image-webp-test-final4.log`.
+The final vendor suite passes **65 tests, zero failed, one existing ignored**
+(`MarkdownRenderer.Svg.Resvg/artifacts/goal-release-20261011/webp-vp8-rows-final-20261012/vendor-full-suite.log`).
+The added varied-input regression proves the nonzero loop-filter branch actually
+ran; encoder quality settings alone were not sufficient evidence of that path.
+The final worker suite now passes **87 tests, zero failed, one existing manual
+benchmark ignored**; tiny-skia passes **170/170, no skips**. This includes a
+generated opaque VP8 fixture through the actual worker dispatch at a 200-KiB
+limit, with exact full-frame reference pixels. Receipts are in
+`MarkdownRenderer.Svg.Resvg/artifacts/goal-release-20261011/vp8-row-dispatch-20261012/`
+(`worker-unit-full-vp8-fixture-rerun.log` and
+`tiny-skia-row-ring-vp8-fixture.log`). Coherent worker rebuilds and the new
+managed provider integration tests remain pending. Lossy VP8X alpha still needs its charged full-frame plane;
+large alpha-bearing VP8 is not claimed as row-streaming qualified.
+The coherent streaming checkpoint is now rebuilt twice for all three RIDs and
+passes the normal source-bound identity gate (source fingerprint
+`1181514083f2c74be688f6ab58fba527a306dd859eb5505884224f5682f0e165`). Its complete
+x64 provider suite passes **704/704, zero skipped**, including the actual
+16-/40-megapixel worker previews, exact row/full-frame pixels, all eight
+orientations, ICC, faults, mapping ownership, and package-consumer source contract
+(`goal-release-20261011/webp-v10-streamed-20261012c/provider-full-final.trx`).
+The first receipt is retained with **701 passed / 1 failed**: one font-protocol
+test still expected v9. It now checks v10 and rejects all v7/v8/v9 responses.
+All **12 public API baselines** were regenerated and separately verified, and
+the three changed baselines were reviewed for the intended additive API surface.
+The new worker sizes are **3,751,936 / 3,574,272 / 3,069,440 bytes** for
+x64/x86/ARM64. This still fails the selected-deployment size goal; the x64 worker
+alone exceeds the unchanged 3.5-MiB worker-plus-provider limit. The actual x64
+NativeAOT executable now passes its expanded **100-cycle** raster/resource/shutdown
+gate: **5,685,248 bytes** aggregate retained-private growth, **zero handle growth**,
+exact streamed/full-frame reference pixels, all 182 embedded images, eight
+startup/shutdown races, and retained-source reattachment after worker restart.
+The normal isolation checks and awaited worker-exit checks pass
+(`webp-v10-streamed-20261012c/aot-publish.log`, `aot-smoke.log`). Package consumption,
+other-architecture runtime execution and rebuilt-app pixel comparison remain pending.
+
+The full all-pack renderer regression suite now passes **2,905/2,905, zero skipped**
+(`webp-v10-streamed-20261012c/github-all-packs-full-isolated.trx`). The first
+receipt remains **2,904 passed / 1 failed**: a new wrong-pixel-format ownership
+test compared its cleanup to a process-wide active count sampled while unrelated
+image tests could change it. Those provider ownership cases now join the existing
+non-parallel process-admission collection and require zero active requests, bytes,
+and queued requests before and after each case. They do not reset counters or
+extend deadlines; a leaked lease still fails. Independent lifecycle review found
+that the rejected raster owner and uncommitted output/process reservations retire
+on the production failure path.
+
+The subsequent all-pack checkpoint passes **2,910/2,910, zero skipped**, after
+fixing two review findings: list-depth metadata can no longer masquerade as a
+semantic ancestor role, and failed dimensionless decorative inline images retain
+literal zero-size metrics through DirectWrite instead of regrowing a one-pixel
+placeholder. The image keeps its source character; WARP pixel tests, adjacent
+selection/hit testing, and named-alt/explicit-size placeholder controls pass.
+Focused checks pass **33/33**; JitHub registration/replay-profile contracts pass
+**113/113**. Evidence is
+`goal-release-20261011/inline-collapse-and-app-registration-20261012/`
+(`renderer-followup-all-packs.trx`, `renderer-followup-focused-v2.trx`,
+`jithub-host-contracts.trx`). The first compile log is retained for a test-only
+`Math` namespace ambiguity, corrected to `System.Math`. Corpus tests pass
+**40/40**, preserving optional legacy occurrence metadata while validating
+new records' indexes. No unavailable-image audit counter is waived: rank 7
+still requires matched native/browser evidence from the rebuilt app.
+The integrated Release/x64 JitHub build also passes with **zero warnings/errors**,
+including locked dependency/feed/vulnerability checks and **151/151** release-security
+tests (`app-compile.log`, `app-compile.binlog` in the same evidence directory).
+This compile is not an AOT publication or a replacement for the Sandbox pixel check;
+the clean committed app and matching runner must be published next.
+
+A separate x64 global `opt-level=z` diagnostic, retaining tiny-skia at level 3,
+reduces the worker to **3,025,408 bytes**. With the current **361,984-byte**
+provider this would total **3,387,392 bytes**, 282,624 below the unchanged 3.5-MiB
+limit. This executable is **not staged or release-qualified**. The restricted-worker
+diagnostic now rejects this profile for adoption: eight workloads/384 ABBA blocks
+match exact output hashes, but complex SVG median latency increases **23–25%**,
+large streamed VP8L increases **26%**, and small VP8/ICC cases increase **81–87%**.
+Worker CPU also regresses. Both arms loaded the identical provider assembly; only
+the explicit worker path differed. This is not an Edge or release qualification.
+The smaller profile will not replace the faster worker merely to pass size.
+Timing, raw samples, source/output hashes and preserved build-attempt failures
+are under `goal-release-20261011/worker-size-perf-diagnostic-attempt-04/`
+(`measurement.json`); preceding failed build attempts are retained separately.
+Receipts are in `goal-release-20261011/worker-size-diagnostics-x64-20261012/`;
+the current shipping-input checkpoint above still fails the size gate.
+Three further artifact-only profiles preserve normal optimization for selected
+render/decode crates. The smallest is **3,365,376 worker bytes**
+(`worker-size-diagnostics-x64-20261012/mixed-s-coldz-fontz/`), still **57,344
+bytes over** the combined worker/provider ceiling. Preserving the root worker
+at level 2 with other crates at `z` is larger, **3,698,688 bytes**. These
+size-only candidates were not timed, adopted, or substituted for packaged
+workers. No profile currently satisfies both size and performance evidence.
+
+The rank-1 quote-color follow-up adds explicit semantic-ancestor selectors and
+a versioned `PrimerLightV6` source-replay profile; V1–V5 remain unchanged. The
+focused managed tests pass **18/18, zero skipped**, including formatted links
+and headings within quotes, immutable API inputs, cache separation, warmed-hit
+allocation, and High Contrast precedence
+(`goal-release-20261011/v6-style-ancestor-tests/markdown-style-ancestor-final-focused.trx`).
+The source-replay/profile Node batch passes **69/69**. Built-in ancestor context
+currently records quotes; heading/link/alias ancestry is not inferred. The first
+full managed regression run has **2,530 passed / 1 failed / zero skipped**
+(`v6-style-ancestor-tests/v6-managed-packs-only-full.trx`). Its failure is at the
+near-40-megapixel test's wait for a transient preparation-queue count, not at the
+second bitmap publication: the first exclusive request can retire before the
+second enters the queue. A deterministic test-owned start barrier now proves
+both actual queued demands without changing runtime code, timeouts, output
+checks, or retirement assertions. Both tests pass in five independent focused
+invocations (`nearmax-barrier-runs/nearmax-01.trx` through `nearmax-05.trx`), then
+the full managed-only suite passes **2,531/2,531, zero skipped**
+(`v6-style-ancestor-tests/v6-managed-packs-only-after-nearmax-barrier.trx`). The
+test-owned barrier is labeled separately and is not proof of native concurrency.
+Those runs did not enable the conditional native diagnostic counters. The
+subsequent instrumented run passes both near-maximum tests with serial=1 and
+two-way=2 native-start/pixel-lease-completion counters, and exactly two queued
+image demands. It also repairs a missing diagnostic assertion helper and
+confirms zero optimized suffix arranges versus one per fallback tail at 2k,
+10k and 100k roots. The same four-test batch is **3 passed / 1 failed**, not
+green: the separate commit-read-admission probe times out awaiting its arrange
+gate (`nearmax-barrier-runs/layout-and-nearmax-diagnostics.trx`). That probe
+incorrectly waited on a suffix arrange the optimized path now skips. It now
+pauses through a diagnostic-only hook inside the actual final commit lock,
+before mutation, asserts both read admissions reject, releases the gate, and
+verifies commit completion with zero suffix arranges. The complete diagnostic
+quartet passes **4/4, zero skipped**
+(`nearmax-barrier-runs/commit-gate-quartet/commit-gate-quartet.trx`). A forced
+diagnostics-off rebuild also succeeds, followed by **2/2** normal near-maximum
+tests (`nearmax-barrier-runs/commit-gate-normal/commit-gate-normal.trx`). Rebuilt-app
+pixel comparison is still pending; this does not close the full-page fidelity gate.
+
 The user approved a fresh Sandbox batch after the preceding rerun limit. A
 clean detached build of `c9a90da7f6e363e6d4bd8b7539169f8f4d8b560c` now publishes
 both the Release/x64 NativeAOT app and matching self-contained automation runner.

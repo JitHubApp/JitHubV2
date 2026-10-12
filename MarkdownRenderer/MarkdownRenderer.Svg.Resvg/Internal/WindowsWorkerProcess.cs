@@ -305,7 +305,8 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
                 timeoutEvidenceScope);
             using var operation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             operation.CancelAfter(deadline);
-            bool needsMapping = request.Operation is WorkerOperation.Open or WorkerOperation.Render or WorkerOperation.FontCatalog;
+            bool needsMapping = request.Operation is WorkerOperation.Open or WorkerOperation.Render or
+                WorkerOperation.FontCatalog or WorkerOperation.RasterDecode;
             if (needsMapping != (sharedMemory is not null) || request.MappingHandle != 0)
                 throw new WorkerProtocolException("The SVG exchange has an invalid shared-memory owner.");
             using WorkerMappingLease? mappingLease = sharedMemory?.DuplicateInto(_process,

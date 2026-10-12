@@ -38,6 +38,9 @@
   <ItemGroup>
     <ProjectReference Include="..\MarkdownRenderer.Svg.Resvg\MarkdownRenderer.Svg.Resvg.csproj" />
     <Compile Include="..\MarkdownRenderer.Svg.Resvg.AotSmoke\SmokeRasterValidation.cs" Link="SmokeRasterValidation.cs" />
+    <Compile Include="..\MarkdownRenderer.Svg.Resvg.AotSmoke\SmokeRasterDecodeFixture.cs" Link="SmokeRasterDecodeFixture.cs" />
+    <EmbeddedResource Include="..\MarkdownRenderer.Svg.Resvg\native\tests\fixtures\opaque-vp8-256.webp"
+                      LogicalName="OpaqueVp8StreamingFixture" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="$(ResvgWorkerDirectory)\runtimes\$(ResvgWorkerRid)\native\MarkdownRenderer.Svg.Resvg.Worker.exe">

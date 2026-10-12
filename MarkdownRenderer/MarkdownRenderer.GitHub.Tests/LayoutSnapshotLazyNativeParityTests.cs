@@ -636,6 +636,7 @@ public sealed class LayoutSnapshotLazyNativeParityTests
             hostedElementFactory: null,
             imageResolver: null,
             svgRenderer: null,
+            rasterDecoder: null,
             commandProvider: null,
             stringProvider: null);
     }

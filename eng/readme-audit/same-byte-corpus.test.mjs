@@ -745,7 +745,7 @@ test("source-bound Edge page serves exact README and SRI-pinned Marked bytes", a
   assert.equal(styleResponse.headers.get("x-content-sha256"), PINNED_GITHUB_README_STYLE_PROFILE.sha256);
   assert.equal(sha256(styleBytes), PINNED_GITHUB_README_STYLE_PROFILE.sha256,
     "Edge profile CSS bytes must match the same pinned fingerprint exposed to the native profile");
-  assert.equal(PINNED_GITHUB_README_STYLE_PROFILE.version, 5);
+  assert.equal(PINNED_GITHUB_README_STYLE_PROFILE.version, 6);
   assert.match(styleText, /\.markdown-body sup,\s*\.markdown-body sub\s*\{\s*font-size:\s*75%;\s*\}/u,
     "script sizes must be explicit and proportional to their containing text");
   assert.match(styleText, /font-size:\s*16px;\s*line-height:\s*1\.5;\s*overflow-wrap:\s*break-word/u);
@@ -1128,6 +1128,77 @@ test("same-byte replay rejects a missing or mutated asset before serving", async
   await writeFile(path.join(directory, "assets", manifest.assets[0].sha256), Buffer.from("tampered"));
 
   await assert.rejects(createSameByteReplayServer(directory), /does not match its SHA-256/u);
+});
+
+test("non-rendered decorative exclusions retain a unique replay occurrence identity", async t => {
+  const outputRoot = await mkdtemp(path.join(os.tmpdir(), "jithub-decorative-image-exclusion-"));
+  t.after(() => rm(outputRoot, { recursive: true, force: true }));
+  const bytes = Buffer.from(`![](${imageUrl})\n`, "utf8");
+  const candidate = {
+    replayIndex: 7,
+    canonicalSource: imageUrl,
+    source: imageUrl,
+    currentSource: imageUrl,
+    explicitEmptyAlt: true,
+    failedDecode: true,
+    zeroBounds: true,
+  };
+  const common = {
+    repository: repositoryFixture(),
+    readmeUrl,
+    readmePath: "README.md",
+    readmeGitBlobSha1: gitBlobSha1(bytes),
+    readmeByteSize: bytes.length,
+    images: [],
+    nonRenderedDecorativeImages: [candidate],
+    renderedHtml: "<article><p>no rendered image route</p></article>",
+    responseRecorder: { captureVisibleImages: async () => ({ assets: [], imageRoutes: [] }) },
+    fetchImpl: async () => new Response(bytes, { status: 200 }),
+  };
+
+  const directory = path.join(outputRoot, "valid");
+  await captureSameByteCorpus({ ...common, directory });
+  const manifestPath = path.join(directory, "manifest.json");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  assert.deepEqual(manifest.nonRenderedDecorativeImageExclusions, [{
+    replayIndex: 7,
+    urlSha256s: [resourceUrlSha256(imageUrl)],
+    explicitEmptyAlt: true,
+    failedDecode: true,
+    zeroBounds: true,
+  }]);
+  const replay = await createSameByteReplayServer(directory);
+  await replay.close();
+
+  const missingIndex = structuredClone(manifest);
+  delete missingIndex.nonRenderedDecorativeImageExclusions[0].replayIndex;
+  await writeFile(manifestPath, `${JSON.stringify(missingIndex, null, 2)}\n`);
+  const legacyReplay = await createSameByteReplayServer(directory);
+  assert.equal(
+    Object.hasOwn(legacyReplay.manifest.nonRenderedDecorativeImageExclusions[0], "replayIndex"),
+    false,
+    "legacy schema-v2 evidence remains index-free rather than being assigned a guessed occurrence",
+  );
+  await legacyReplay.close();
+
+  const invalidIndex = structuredClone(missingIndex);
+  invalidIndex.nonRenderedDecorativeImageExclusions[0].replayIndex = Number.MAX_SAFE_INTEGER;
+  await writeFile(manifestPath, `${JSON.stringify(invalidIndex, null, 2)}\n`);
+  await assert.rejects(createSameByteReplayServer(directory), /manifest is incomplete, unsupported, or malformed/u);
+
+  const duplicateIndex = structuredClone(manifest);
+  duplicateIndex.nonRenderedDecorativeImageExclusions.push({
+    ...duplicateIndex.nonRenderedDecorativeImageExclusions[0],
+    urlSha256s: [resourceUrlSha256("https://example.test/other.png")],
+  });
+  await writeFile(manifestPath, `${JSON.stringify(duplicateIndex, null, 2)}\n`);
+  await assert.rejects(createSameByteReplayServer(directory), /manifest is incomplete, unsupported, or malformed/u);
+
+  await assert.rejects(captureSameByteCorpus({
+    ...common,
+    directory: path.join(outputRoot, "duplicate-index"),
+    nonRenderedDecorativeImages: [candidate, { ...candidate }],
+  }), /unproven or ambiguous non-rendered decorative-image evidence/u);
 });
 
 test("same-byte replay rejects oversized files and path-like content addresses", async t => {

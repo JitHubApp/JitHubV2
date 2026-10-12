@@ -8,6 +8,7 @@ publish = false
 
 [workspace]
 members = ["vendor/resvg", "vendor/usvg", "vendor/tiny-skia", "vendor/tiny-skia-path"]
+exclude = ["vendor/image-webp"]
 resolver = "3"
 
 [[bin]]
@@ -18,6 +19,8 @@ path = "src/main.rs"
 base64 = "=0.22.1"
 data-url = "=0.3.2"
 imagesize = "=0.15.0"
+image-webp = { version = "=0.2.4", default-features = false }
+moxcms = { version = "=0.8.1", default-features = false, features = ["lut"] }
 resvg = { git = "https://github.com/linebender/resvg.git", rev = "68b14c4c3bccdb60344c777406486b54c36ec1a4", version = "=0.48.1", default-features = false, features = ["text", "system-fonts", "memmap-fonts", "raster-images"] }
 sha2 = "=0.10.9"
 
@@ -30,6 +33,7 @@ usvg = { path = "vendor/usvg" }
 [patch.crates-io]
 tiny-skia = { path = "vendor/tiny-skia" }
 tiny-skia-path = { path = "vendor/tiny-skia-path" }
+image-webp = { path = "vendor/image-webp" }
 
 [profile.release]
 opt-level = 2

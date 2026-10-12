@@ -419,6 +419,7 @@ internal sealed class ThemeSnapshot
                 GetListNestingDepth(contextKeys),
                 language,
                 state,
+                contextKeys,
                 aliasKeys);
         }
 
@@ -480,17 +481,10 @@ internal sealed class ThemeSnapshot
         if (contextKeys is null)
             return 0;
 
-        const string prefix = "ListDepth";
         int depth = 0;
         for (int i = 0; i < contextKeys.Count; i++)
         {
-            string key = contextKeys[i];
-            if (key.StartsWith(prefix, StringComparison.Ordinal) &&
-                int.TryParse(
-                    key.AsSpan(prefix.Length),
-                    System.Globalization.NumberStyles.None,
-                    System.Globalization.CultureInfo.InvariantCulture,
-                    out int parsed))
+            if (MarkdownStyleContextKeys.TryParseListNestingDepth(contextKeys[i], out int parsed))
             {
                 depth = Math.Max(depth, parsed);
             }

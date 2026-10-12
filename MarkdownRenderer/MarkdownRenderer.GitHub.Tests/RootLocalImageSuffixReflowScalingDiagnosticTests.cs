@@ -129,7 +129,7 @@ public sealed class RootLocalImageSuffixReflowScalingDiagnosticTests
         using var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
         byte[] png = DisplaySizedRasterDecodeTests.CreatePng(96, 192);
         var resolver = new RasterResolver(png, "lock-probe-" + Guid.NewGuid().ToString("N"));
-        using var gate = new ArrangeGate();
+        using var gate = new CommitGate();
         ReflowFixture? fixture = null;
         Task<PreparedImageRelayoutResult>? reflowTask = null;
         MarkdownLayoutContext? constructionContext = null;
@@ -138,15 +138,18 @@ public sealed class RootLocalImageSuffixReflowScalingDiagnosticTests
         double readAdmissionElapsedMs = 0;
         try
         {
-            fixture = CreateFixture(seed, session, resolver, rootCount, gate);
+            fixture = CreateFixture(seed, session, resolver, rootCount);
             ReflowFixture activeFixture = fixture;
             await LoadImageAsync(activeFixture.Image);
+            int[] tailArrangeCounts = activeFixture.TailRoots
+                .Select(static root => root.ArrangeCount).ToArray();
             gate.Arm();
 
             reflowTask = Task.Run(() => activeFixture.Snapshot.TryRelayoutCompletedImageRoot(
                 [activeFixture.Image.BlockIndex], LayoutWidth, CancellationToken.None,
                 out constructionContext,
-                expectedPointerInputEpoch: activeFixture.Snapshot.PointerInputEpoch));
+                expectedPointerInputEpoch: activeFixture.Snapshot.PointerInputEpoch,
+                whileCommitGateHeldForTests: gate.PauseIfArmed));
             await gate.Entered.WaitAsync(TimeSpan.FromSeconds(20));
 
             var readerTimer = Stopwatch.StartNew();
@@ -167,8 +170,7 @@ public sealed class RootLocalImageSuffixReflowScalingDiagnosticTests
             Assert.Equal(PreparedImageRelayoutResult.Committed, result);
             Assert.False(paintLeaseAdmitted);
             Assert.False(interactionLeaseAdmitted);
-            Assert.Equal(rootCount - 1L,
-                activeFixture.TailRoots.Sum(static root => (long)(root.ArrangeCount - 1)));
+            Assert.Equal(0L, AssertNoSuffixArrange(activeFixture.TailRoots, tailArrangeCounts));
             _output.WriteLine(
                 $"Suffix commit read probe: roots={rootCount}; " +
                 $"paintLeaseAdmittedWhileCommitHeld={paintLeaseAdmitted}; " +
@@ -198,8 +200,7 @@ public sealed class RootLocalImageSuffixReflowScalingDiagnosticTests
         CompletedRasterPlacementCloneTests.PlacementFixture seed,
         MarkdownPerformanceSession session,
         RasterResolver resolver,
-        int rootCount,
-        ArrangeGate? gate = null)
+        int rootCount)
     {
         var sourceMap = new MarkdownSourceMap(string.Empty);
         var context = new MarkdownLayoutContext(
@@ -229,8 +230,7 @@ public sealed class RootLocalImageSuffixReflowScalingDiagnosticTests
         float y = (float)image.Bounds.Bottom;
         for (int ordinal = 1; ordinal < rootCount; ordinal++)
         {
-            var tail = new CountedTailRoot(ordinal, TailHeight,
-                gate is not null && ordinal == rootCount / 2 ? gate : null);
+            var tail = new CountedTailRoot(ordinal, TailHeight);
             roots[ordinal] = tail;
             tails[ordinal - 1] = tail;
             float height = tail.Measure(LayoutWidth);
@@ -262,6 +262,21 @@ public sealed class RootLocalImageSuffixReflowScalingDiagnosticTests
         {
             int arrangeDelta = roots[index].ArrangeCount - before[index];
             Assert.Equal(0, arrangeDelta);
+            total += arrangeDelta;
+        }
+        return total;
+    }
+
+    private static long AssertOneSuffixArrangePerTail(
+        IReadOnlyList<CountedTailRoot> roots,
+        IReadOnlyList<int> before)
+    {
+        Assert.Equal(roots.Count, before.Count);
+        long total = 0;
+        for (int index = 0; index < roots.Count; index++)
+        {
+            int arrangeDelta = roots[index].ArrangeCount - before[index];
+            Assert.Equal(1, arrangeDelta);
             total += arrangeDelta;
         }
         return total;
@@ -347,14 +362,12 @@ public sealed class RootLocalImageSuffixReflowScalingDiagnosticTests
     private sealed class CountedTailRoot : BlockBox
     {
         private readonly float _height;
-        private readonly ArrangeGate? _gate;
         private int _arrangeCount;
 
-        internal CountedTailRoot(int blockIndex, float height, ArrangeGate? gate)
+        internal CountedTailRoot(int blockIndex, float height)
         {
             BlockIndex = blockIndex;
             _height = height;
-            _gate = gate;
         }
 
         internal int ArrangeCount => Volatile.Read(ref _arrangeCount);
@@ -367,7 +380,6 @@ public sealed class RootLocalImageSuffixReflowScalingDiagnosticTests
 
         public override void Arrange(float x, float y, float width)
         {
-            _gate?.PauseIfArmed();
             base.Arrange(x, y, width);
             Interlocked.Increment(ref _arrangeCount);
         }
@@ -375,7 +387,7 @@ public sealed class RootLocalImageSuffixReflowScalingDiagnosticTests
         public override void Paint(CanvasDrawingSession drawingSession, Rect viewport) { }
     }
 
-    private sealed class ArrangeGate : IDisposable
+    private sealed class CommitGate : IDisposable
     {
         private readonly TaskCompletionSource _entered =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -392,7 +404,7 @@ public sealed class RootLocalImageSuffixReflowScalingDiagnosticTests
                 return;
             _entered.TrySetResult();
             if (!_release.Wait(TimeSpan.FromSeconds(20)))
-                throw new TimeoutException("The diagnostic suffix-arrange gate was not released.");
+                throw new TimeoutException("The diagnostic commit gate was not released.");
         }
 
         public void Dispose() => _release.Dispose();

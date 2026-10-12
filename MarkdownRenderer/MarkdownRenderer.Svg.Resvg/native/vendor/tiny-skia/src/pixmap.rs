@@ -187,6 +187,7 @@ impl Pixmap {
         PixmapRef {
             data: &self.data,
             size: self.size,
+            row_ring_height: None,
         }
     }
 
@@ -307,6 +308,67 @@ impl core::fmt::Debug for Pixmap {
 pub struct PixmapRef<'a> {
     data: &'a [u8],
     size: IntSize,
+    pub(crate) row_ring_height: Option<u32>,
+}
+
+/// A bounded, modulo-indexed view of rows retained while streaming a pixmap.
+///
+/// Unlike [`PixmapRef`], this type deliberately exposes no pixel or byte-slice
+/// accessors: its backing bytes are only a subset of the logical image. It is
+/// accepted only by the row-drawing API, which keeps the temporary internal
+/// `PixmapRef` from escaping into APIs that assume a complete image.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PixmapRowRing<'a> {
+    data: &'a [u8],
+    size: IntSize,
+    ring_height: u32,
+}
+
+impl<'a> PixmapRowRing<'a> {
+    /// Creates a bounded view over exactly `width * ring_height` premultiplied
+    /// RGBA pixels representing rows from a logical image of `height` rows.
+    ///
+    /// Returns `None` for invalid dimensions, a ring larger than the logical
+    /// image, or a backing slice whose length is not exact.
+    pub fn from_bytes(
+        data: &'a [u8],
+        width: u32,
+        height: u32,
+        ring_height: u32,
+    ) -> Option<Self> {
+        let size = IntSize::from_wh(width, height)?;
+        // Preserve Pixmap's normal 31-bit row-byte limit. A short ring slice
+        // must not permit a logical width that a complete PixmapRef rejects.
+        min_row_bytes(size)?;
+        if ring_height == 0 || ring_height > height {
+            return None;
+        }
+
+        let expected = (width as usize)
+            .checked_mul(ring_height as usize)?
+            .checked_mul(BYTES_PER_PIXEL)?;
+        if data.len() != expected {
+            return None;
+        }
+
+        Some(Self {
+            data,
+            size,
+            ring_height,
+        })
+    }
+
+    /// Returns the logical image width.
+    #[inline]
+    pub fn width(&self) -> u32 {
+        self.size.width()
+    }
+
+    /// Returns the logical image height, not the retained ring height.
+    #[inline]
+    pub fn height(&self) -> u32 {
+        self.size.height()
+    }
 }
 
 impl<'a> PixmapRef<'a> {
@@ -323,7 +385,21 @@ impl<'a> PixmapRef<'a> {
             return None;
         }
 
-        Some(PixmapRef { data, size })
+        Some(PixmapRef {
+            data,
+            size,
+            row_ring_height: None,
+        })
+    }
+
+    /// Constructs the pipeline-only view consumed inside the bounded row draw.
+    /// Callers must never expose this `PixmapRef` to complete-image APIs.
+    pub(crate) fn from_row_ring(ring: PixmapRowRing<'a>) -> Self {
+        PixmapRef {
+            data: ring.data,
+            size: ring.size,
+            row_ring_height: Some(ring.ring_height),
+        }
     }
 
     /// Creates a new `Pixmap` from the current data.
@@ -521,6 +597,7 @@ impl<'a> PixmapMut<'a> {
         PixmapRef {
             data: self.data,
             size: self.size,
+            row_ring_height: None,
         }
     }
 
@@ -567,6 +644,7 @@ impl<'a> PixmapMut<'a> {
             size: self.size(),
             real_width: self.width() as usize,
             data: self.data,
+            row_origin: 0,
             root_clip: self.root_clip,
         }
     }
@@ -583,6 +661,7 @@ impl<'a> PixmapMut<'a> {
             size: rect.size(),
             real_width: self.width() as usize,
             data: &mut self.data[offset..],
+            row_origin: 0,
             root_clip: self.root_clip.map(|clip| {
                 [
                     clip[0] - rect.left() as f32,
@@ -619,6 +698,7 @@ pub struct SubPixmapMut<'a> {
     pub data: &'a mut [u8],
     pub size: IntSize,
     pub real_width: usize,
+    pub(crate) row_origin: u32,
     pub(crate) root_clip: Option<[f32; 4]>,
 }
 

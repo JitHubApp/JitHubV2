@@ -337,6 +337,7 @@ internal enum MarkdownRasterPreparationStage
     Win2DDirectLoad = 5,
     CachePublication = 6,
     PreparationAdmission = 7,
+    RasterProviderDecode = 8,
 }
 
 internal interface IMarkdownScenePreparationLease : IDisposable

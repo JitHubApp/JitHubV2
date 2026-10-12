@@ -113,20 +113,20 @@ const MARKED_PARSER_PATH = path.join(
   "vendor",
   `marked-${PINNED_GFM_PARSER.version}.umd.js`,
 );
-const GITHUB_PRIMER_LIGHT_V5_CSS_PATH = path.join(
+const GITHUB_PRIMER_LIGHT_V6_CSS_PATH = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
   "profiles",
-  "github-primer-light-v5.css",
+  "github-primer-light-v6.css",
 );
 const require = createRequire(import.meta.url);
 const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
 const GIT_SHA1_PATTERN = /^[0-9a-f]{40}$/u;
 export const PINNED_GITHUB_README_STYLE_PROFILE = Object.freeze({
   id: "github-primer-light",
-  version: 5,
+  version: 6,
   colorScheme: "light",
-  cssPath: "/github-primer-light-v5.css",
-  sha256: "3af666058cf4044b4e037801db6903f2104f6a6808f32c25ecda3159eecc2824",
+  cssPath: "/github-primer-light-v6.css",
+  sha256: "2efa4379622ab3d526084ee64ef006c4b5c76257f61a1d6122f64e73128afbc3",
 });
 const RENDERED_SNAPSHOT_FAILURE_PREDICATES = new Set([
   "active-element-tag",
@@ -656,6 +656,7 @@ export function createNonRenderedDecorativeImageExclusionEntries(images, readmeU
       throw new Error("Same-byte corpus contains a non-rendered image without a bounded HTTP source identity.");
     }
     return {
+      replayIndex: image.replayIndex,
       urlSha256s: [...urlSha256s].sort(),
       explicitEmptyAlt: true,
       failedDecode: true,
@@ -1076,7 +1077,7 @@ export async function createSameByteReplayServer(corpusDirectory) {
   if (sha256(markedParserBytes) !== PINNED_GFM_PARSER.sha256) {
     throw new Error("Vendored Marked parser does not match the pinned SHA-256.");
   }
-  const styleProfileBytes = await readBoundedFile(GITHUB_PRIMER_LIGHT_V5_CSS_PATH, 64 * 1024);
+  const styleProfileBytes = await readBoundedFile(GITHUB_PRIMER_LIGHT_V6_CSS_PATH, 64 * 1024);
   if (sha256(styleProfileBytes) !== PINNED_GITHUB_README_STYLE_PROFILE.sha256) {
     throw new Error("Canonical GitHub README style profile does not match its pinned SHA-256.");
   }
@@ -1530,11 +1531,22 @@ function normalizeCssHiddenImageOmissions(value) {
 
 function isValidNonRenderedDecorativeImageExclusionList(value) {
   if (!Array.isArray(value) || value.length > MAX_NON_RENDERED_DECORATIVE_IMAGE_EXCLUSIONS) return false;
+  const replayIndexes = new Set();
   return value.every(item => {
     if (!item || item.explicitEmptyAlt !== true || item.failedDecode !== true || item.zeroBounds !== true ||
         !Array.isArray(item.urlSha256s) || item.urlSha256s.length < 1 ||
         item.urlSha256s.length > MAX_DECORATIVE_IMAGE_URL_HASHES) {
       return false;
+    }
+    // Older schema-v2 captures did not persist the source occurrence index.
+    // Keep those records readable, but validate any index that is present so
+    // new evidence cannot introduce ambiguous or out-of-range identities.
+    if (Object.hasOwn(item, "replayIndex")) {
+      if (!Number.isSafeInteger(item.replayIndex) || item.replayIndex < 0 ||
+          item.replayIndex >= MAX_ASSET_LOOKUP_ENTRIES || replayIndexes.has(item.replayIndex)) {
+        return false;
+      }
+      replayIndexes.add(item.replayIndex);
     }
     const hashes = new Set();
     for (const hash of item.urlSha256s) {

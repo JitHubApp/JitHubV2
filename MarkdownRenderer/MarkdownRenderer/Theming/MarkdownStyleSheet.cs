@@ -8,9 +8,18 @@ namespace MarkdownRenderer.Theming;
 /// <summary>
 /// Describes the semantic context used to match a markdown style rule.
 /// </summary>
+/// <remarks>
+/// Ancestor roles are explicit context supplied by the caller; they are not
+/// inferred from arbitrary source nesting, element aliases, or class/id names.
+/// The built-in Markdown layout currently supplies block-quote ancestry while
+/// representing list nesting with its separate list-depth context key. It does
+/// not automatically add heading or link roles as ancestors.
+/// </remarks>
 public readonly struct MarkdownStyleContext
 {
     private static readonly IReadOnlyList<string> EmptyClasses = Array.Empty<string>();
+    private static readonly IReadOnlyList<MarkdownStyleRole> EmptyAncestorRoles = Array.Empty<MarkdownStyleRole>();
+    private readonly IReadOnlyList<MarkdownStyleRole>? _ancestorRoles;
 
     /// <summary>Initializes a style-matching context.</summary>
     public MarkdownStyleContext(
@@ -30,6 +39,26 @@ public readonly struct MarkdownStyleContext
         Language = NormalizeOptional(language);
         State = NormalizeOptional(state);
         ClassNames = CopyClasses(classNames);
+        _ancestorRoles = EmptyAncestorRoles;
+    }
+
+    /// <summary>Initializes a context with a defensive snapshot of semantic ancestor roles.</summary>
+    /// <param name="role">The role being matched.</param>
+    /// <param name="ancestorRoles">The containing semantic roles, from outermost to innermost.</param>
+    /// <param name="nestingDepth">The zero-based semantic nesting depth.</param>
+    /// <param name="language">The code or document language, when present.</param>
+    /// <param name="state">The interaction or semantic state, when present.</param>
+    /// <param name="classNames">Safe HTML or extension class names.</param>
+    public MarkdownStyleContext(
+        MarkdownStyleRole role,
+        IEnumerable<MarkdownStyleRole> ancestorRoles,
+        int nestingDepth = 0,
+        string? language = null,
+        string? state = null,
+        IEnumerable<string>? classNames = null)
+        : this(role, nestingDepth, language, state, classNames)
+    {
+        _ancestorRoles = CopyAncestorRoles(ancestorRoles);
     }
 
     /// <summary>Gets the semantic role.</summary>
@@ -42,6 +71,8 @@ public readonly struct MarkdownStyleContext
     public string? State { get; }
     /// <summary>Gets a defensive snapshot of safe HTML or extension class names.</summary>
     public IReadOnlyList<string> ClassNames { get; }
+    /// <summary>Gets a defensive snapshot of containing semantic roles, from outermost to innermost.</summary>
+    public IReadOnlyList<MarkdownStyleRole> AncestorRoles => _ancestorRoles ?? EmptyAncestorRoles;
 
     private static string? NormalizeOptional(string? value)
         => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
@@ -62,6 +93,45 @@ public readonly struct MarkdownStyleContext
         return result.Count == 0
             ? EmptyClasses
             : new ReadOnlyCollection<string>(result.ToArray());
+    }
+
+    private static IReadOnlyList<MarkdownStyleRole> CopyAncestorRoles(IEnumerable<MarkdownStyleRole> values)
+    {
+        ArgumentNullException.ThrowIfNull(values);
+
+        var result = new List<MarkdownStyleRole>();
+        foreach (MarkdownStyleRole role in values)
+        {
+            if (role.IsEmpty)
+                throw new ArgumentException("Ancestor roles cannot contain an empty role.", nameof(values));
+            result.Add(role);
+        }
+
+        return result.Count == 0
+            ? EmptyAncestorRoles
+            : new ReadOnlyCollection<MarkdownStyleRole>(result.ToArray());
+    }
+}
+
+/// <summary>Helpers for the renderer's non-role keys carried in style contexts.</summary>
+internal static class MarkdownStyleContextKeys
+{
+    private const string ListDepthPrefix = "ListDepth";
+
+    /// <summary>
+    /// Parses the same list-depth metadata syntax used by compiled theme resolution.
+    /// A false result means the key remains eligible to represent a custom semantic role.
+    /// </summary>
+    internal static bool TryParseListNestingDepth(string? key, out int depth)
+    {
+        depth = 0;
+        return key is not null &&
+            key.StartsWith(ListDepthPrefix, StringComparison.Ordinal) &&
+            int.TryParse(
+                key.AsSpan(ListDepthPrefix.Length),
+                System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out depth);
     }
 }
 
@@ -96,6 +166,31 @@ public sealed class MarkdownStyleSelector
         ClassName = normalizedClass is not null && normalizedClass[0] == '.'
             ? normalizedClass.Substring(1)
             : normalizedClass;
+        AncestorRole = null;
+    }
+
+    /// <summary>Initializes a selector qualified by a containing semantic role.</summary>
+    /// <param name="role">The semantic role selected by this rule.</param>
+    /// <param name="ancestorRole">A role that must occur in the containing style-context stack.</param>
+    /// <param name="minimumNestingDepth">The inclusive minimum nesting depth.</param>
+    /// <param name="maximumNestingDepth">The inclusive maximum nesting depth.</param>
+    /// <param name="language">The optional language qualifier.</param>
+    /// <param name="state">The optional semantic or interaction state qualifier.</param>
+    /// <param name="className">The optional safe HTML or extension class qualifier.</param>
+    public MarkdownStyleSelector(
+        MarkdownStyleRole role,
+        MarkdownStyleRole ancestorRole,
+        int minimumNestingDepth = 0,
+        int maximumNestingDepth = int.MaxValue,
+        string? language = null,
+        string? state = null,
+        string? className = null)
+        : this(role, minimumNestingDepth, maximumNestingDepth, language, state, className)
+    {
+        if (ancestorRole.IsEmpty)
+            throw new ArgumentException("An ancestor role is required.", nameof(ancestorRole));
+
+        AncestorRole = ancestorRole;
     }
 
     /// <summary>Gets the required semantic role.</summary>
@@ -110,6 +205,13 @@ public sealed class MarkdownStyleSelector
     public string? State { get; }
     /// <summary>Gets the optional safe HTML or extension class qualifier.</summary>
     public string? ClassName { get; }
+    /// <summary>Gets the optional semantic role that must occur in the ancestor context.</summary>
+    /// <remarks>
+    /// The selector only matches ancestors explicitly supplied by the caller.
+    /// Built-in Markdown layout does not implicitly add heading or link roles,
+    /// and aliases are not interpreted as ancestor roles.
+    /// </remarks>
+    public MarkdownStyleRole? AncestorRole { get; }
 
     /// <summary>Returns whether this selector matches a semantic style context.</summary>
     public bool Matches(MarkdownStyleContext context)
@@ -121,6 +223,23 @@ public sealed class MarkdownStyleSelector
             !MatchesOptional(State, context.State))
         {
             return false;
+        }
+
+        if (AncestorRole is MarkdownStyleRole ancestorRole)
+        {
+            bool found = false;
+            IReadOnlyList<MarkdownStyleRole> ancestorRoles = context.AncestorRoles;
+            for (int i = 0; i < ancestorRoles.Count; i++)
+            {
+                if (ancestorRoles[i] == ancestorRole)
+                {
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found)
+                return false;
         }
 
         if (ClassName is null)
@@ -369,6 +488,7 @@ internal sealed class CompiledMarkdownStyleSheet
         int nestingDepth,
         string? language,
         string? state,
+        IReadOnlyList<string>? contextKeys,
         IReadOnlyList<string>? aliases)
     {
         if (!_rulesByRole.TryGetValue(roleName, out CompiledRule[]? rules))
@@ -385,7 +505,7 @@ internal sealed class CompiledMarkdownStyleSheet
         for (int i = 0; i < rules.Length; i++)
         {
             ref readonly CompiledRule rule = ref rules[i];
-            if (rule.Matches(nestingDepth, language, state, aliases))
+            if (rule.Matches(nestingDepth, language, state, contextKeys, aliases))
                 result = ThemeSnapshot.ApplyOverride(result, rule.Style);
         }
 
@@ -399,6 +519,7 @@ internal sealed class CompiledMarkdownStyleSheet
         private readonly string? _language;
         private readonly string? _state;
         private readonly string? _className;
+        private readonly string? _ancestorRoleName;
 
         internal CompiledRule(MarkdownStyleSelector selector, ElementStyleOverride style)
         {
@@ -407,6 +528,7 @@ internal sealed class CompiledMarkdownStyleSheet
             _language = selector.Language;
             _state = selector.State;
             _className = selector.ClassName;
+            _ancestorRoleName = selector.AncestorRole?.Name;
             Style = style;
         }
 
@@ -416,6 +538,7 @@ internal sealed class CompiledMarkdownStyleSheet
             int nestingDepth,
             string? language,
             string? state,
+            IReadOnlyList<string>? contextKeys,
             IReadOnlyList<string>? aliases)
         {
             if (nestingDepth < _minimumNestingDepth ||
@@ -424,6 +547,26 @@ internal sealed class CompiledMarkdownStyleSheet
                 !MatchesOptional(_state, state))
             {
                 return false;
+            }
+
+            if (_ancestorRoleName is not null)
+            {
+                bool found = false;
+                if (contextKeys is not null)
+                {
+                    for (int i = 0; i < contextKeys.Count; i++)
+                    {
+                        if (!MarkdownStyleContextKeys.TryParseListNestingDepth(contextKeys[i], out _) &&
+                            string.Equals(_ancestorRoleName, contextKeys[i], StringComparison.Ordinal))
+                        {
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (!found)
+                    return false;
             }
 
             if (_className is null)

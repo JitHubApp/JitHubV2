@@ -118,6 +118,7 @@ internal sealed class SharedLayoutMetricsKey : IEquatable<SharedLayoutMetricsKey
         object? hostedElementFactory,
         object? imageResolver,
         object? svgRenderer,
+        object? rasterDecoder,
         object? commandProvider,
         object? stringProvider)
     {
@@ -144,6 +145,7 @@ internal sealed class SharedLayoutMetricsKey : IEquatable<SharedLayoutMetricsKey
         HostedElementFactory = hostedElementFactory;
         ImageResolver = imageResolver;
         SvgRenderer = svgRenderer;
+        RasterDecoder = rasterDecoder;
         CommandProvider = commandProvider;
         StringProvider = stringProvider;
 
@@ -167,6 +169,7 @@ internal sealed class SharedLayoutMetricsKey : IEquatable<SharedLayoutMetricsKey
         AddReferenceHash(ref hash, hostedElementFactory);
         AddReferenceHash(ref hash, imageResolver);
         AddReferenceHash(ref hash, svgRenderer);
+        AddReferenceHash(ref hash, rasterDecoder);
         AddReferenceHash(ref hash, commandProvider);
         AddReferenceHash(ref hash, stringProvider);
         _hashCode = hash.ToHashCode();
@@ -210,6 +213,8 @@ internal sealed class SharedLayoutMetricsKey : IEquatable<SharedLayoutMetricsKey
 
     internal readonly object? SvgRenderer;
 
+    internal readonly object? RasterDecoder;
+
     internal readonly object? CommandProvider;
 
     internal readonly object? StringProvider;
@@ -238,6 +243,7 @@ internal sealed class SharedLayoutMetricsKey : IEquatable<SharedLayoutMetricsKey
         ReferenceEquals(HostedElementFactory, other.HostedElementFactory) &&
         ReferenceEquals(ImageResolver, other.ImageResolver) &&
         ReferenceEquals(SvgRenderer, other.SvgRenderer) &&
+        ReferenceEquals(RasterDecoder, other.RasterDecoder) &&
         ReferenceEquals(CommandProvider, other.CommandProvider) &&
         ReferenceEquals(StringProvider, other.StringProvider);
 

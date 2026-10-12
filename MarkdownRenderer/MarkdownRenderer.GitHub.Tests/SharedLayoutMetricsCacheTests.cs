@@ -52,6 +52,24 @@ public sealed class SharedLayoutMetricsCacheTests
     }
 
     [Fact]
+    public void RasterDecoderIdentity_PartitionsImageLayoutMetrics()
+    {
+        var cache = new SharedLayoutMetricsCache(64 * 1024);
+        var styleSheet = new object();
+        var registry = new object();
+        var decoderA = new object();
+        var decoderB = new object();
+
+        SharedLayoutMetrics first = cache.GetOrCreate(
+            CreateKey("![image](asset)", styleSheet, registry, rasterDecoder: decoderA), 1);
+        SharedLayoutMetrics second = cache.GetOrCreate(
+            CreateKey("![image](asset)", styleSheet, registry, rasterDecoder: decoderB), 1);
+
+        Assert.NotSame(first, second);
+        Assert.Equal(2, cache.Statistics.Count);
+    }
+
+    [Fact]
     public void WeightedBudget_EvictsLeastRecentlyUsedMetricSet()
     {
         var cache = new SharedLayoutMetricsCache(900);
@@ -108,6 +126,7 @@ public sealed class SharedLayoutMetricsCacheTests
         object styleSheet,
         object registry,
         object? imageResolver = null,
+        object? rasterDecoder = null,
         object? documentIdentity = null) =>
         new(
             source,
@@ -130,6 +149,7 @@ public sealed class SharedLayoutMetricsCacheTests
             hostedElementFactory: null,
             imageResolver,
             svgRenderer: null,
+            rasterDecoder: rasterDecoder,
             commandProvider: null,
             stringProvider: null);
 }

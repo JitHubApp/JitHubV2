@@ -57,7 +57,11 @@ internal sealed partial class LayoutSnapshot
         out MarkdownLayoutContext? constructionContext,
         Action? beforeMeasureOutsideGateForTests = null,
         long? expectedPointerInputEpoch = null,
-        Action? beforeCommitOutsideGateForTests = null)
+        Action? beforeCommitOutsideGateForTests = null
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+        , Action? whileCommitGateHeldForTests = null
+#endif
+        )
     {
         ArgumentNullException.ThrowIfNull(changedBlockIndices);
         constructionContext = null;
@@ -65,7 +69,11 @@ internal sealed partial class LayoutSnapshot
             return PreparedImageRelayoutResult.Unavailable;
         return TryRelayoutCompletedImageRoots(changedBlockIndices, availableWidth,
             cancellationToken, out constructionContext, beforeMeasureOutsideGateForTests,
-            expectedPointerInputEpoch, beforeCommitOutsideGateForTests);
+            expectedPointerInputEpoch, beforeCommitOutsideGateForTests
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+            , whileCommitGateHeldForTests
+#endif
+            );
     }
 
     /// <summary>
@@ -83,7 +91,11 @@ internal sealed partial class LayoutSnapshot
         out MarkdownLayoutContext? constructionContext,
         Action? beforeMeasureOutsideGateForTests = null,
         long? expectedPointerInputEpoch = null,
-        Action? beforeCommitOutsideGateForTests = null)
+        Action? beforeCommitOutsideGateForTests = null
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+        , Action? whileCommitGateHeldForTests = null
+#endif
+        )
     {
         ArgumentNullException.ThrowIfNull(changedBlockIndices);
         constructionContext = null;
@@ -584,6 +596,12 @@ internal sealed partial class LayoutSnapshot
                 bool placementsAdopted = false;
                 try
                 {
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+                    // Diagnostic-only pause after final validation, with the
+                    // read/paint/input gate held but before any retained owner
+                    // or published metadata is changed.
+                    whileCommitGateHeldForTests?.Invoke();
+#endif
                     using var commitScope = LayoutPassCancellation.Push(CancellationToken.None);
                     if (!ImageBox.TryTransferMeasuredPlacementsFromCompletedClones(
                             transfers, currentProviderGeneration, contentWidth))

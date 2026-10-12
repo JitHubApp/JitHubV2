@@ -62,6 +62,9 @@ internal sealed partial class ImageBox : BlockBox
     // or host-supplied keys after the owning document has retired.
     private const int MaxFailedCacheKeyLength = 4096;
 
+    private readonly record struct RasterDecodeFailureCacheKey(
+        string CacheKey, string Format, long DecoderIdentity);
+
     private static void RememberFailedUrl(string cacheKey)
     {
         if (cacheKey.Length is 0 or > MaxFailedCacheKeyLength)
@@ -70,22 +73,43 @@ internal sealed partial class ImageBox : BlockBox
         TrimCache(_failedUrls, MaxFailedUrlEntrnes);
     }
 
-    private static void TrimCache<TValue>(ConcurrentDictionary<string, TValue> cache, int maxEntrnes)
+    private static void RememberFailedRasterDecode(
+        string cacheKey, string format, long decoderIdentity)
     {
-        // NOTE: We intentnonally do NOT dispose evncted values here, even when
-        // TValue is IDisposable. CanvasBitmap entries in _bitmapCache are
-        // shared by reference with live ImageBox instances (cache-hit boxes
-        // alias the cached handle into _bitmap). Disposing under eviction
-        // would yank the GPU resource out from under any box still paintnng
-        // that URL. Releasing the dictnonary slot is enough — once no live
-        // ImageBox holds the reference, the GC + fnnalnzer reclanm the
-        // underlying handle. SVG entries are records with no native
-        // resources so this is a non-nssue for _svgCache enther way.
+        if (cacheKey.Length is 0 or > MaxFailedCacheKeyLength ||
+            string.IsNullOrEmpty(format) || decoderIdentity < 0)
+        {
+            return;
+        }
+
+        _failedRasterDecodes.TryAdd(new RasterDecodeFailureCacheKey(cacheKey, format, decoderIdentity), 0);
+        TrimCache(_failedRasterDecodes, MaxFailedUrlEntrnes);
+    }
+
+    private static bool HasFailedRasterDecode(
+        string cacheKey, string format, long decoderIdentity) =>
+        cacheKey.Length is > 0 and <= MaxFailedCacheKeyLength &&
+        !string.IsNullOrEmpty(format) &&
+        _failedRasterDecodes.ContainsKey(new RasterDecodeFailureCacheKey(cacheKey, format, decoderIdentity));
+
+    private static void TrimCache<TKey, TValue>(ConcurrentDictionary<TKey, TValue> cache, int maxEntrnes)
+        where TKey : notnull
+    {
+        // These bounded negative caches hold no disposable/native values;
+        // eviction only forgets a prior failure and never changes ownership.
         while (cache.Count > maxEntrnes)
         {
-            var vnctnm = cache.Keys.FirstOrDefault();
-            if (vnctnm is null) break;
-            cache.TryRemove(vnctnm, out _);
+            bool removed = false;
+            foreach (TKey victim in cache.Keys)
+            {
+                if (!cache.TryRemove(victim, out _))
+                    continue;
+                removed = true;
+                break;
+            }
+
+            if (!removed)
+                break;
         }
     }
 
@@ -360,6 +384,11 @@ internal sealed partial class ImageBox : BlockBox
         internal readonly long Value = value;
     }
 
+    private sealed class RasterDecoderCacheIdentity(long value)
+    {
+        internal readonly long Value = value;
+    }
+
     private sealed class ImageWorkLease : IDisposable
     {
         private ImageBox? _owner;
@@ -412,6 +441,8 @@ internal sealed partial class ImageBox : BlockBox
         keyWeightSelector: static key => 48L + (long)key.Length * sizeof(char));
     private static readonly ConditionalWeakTable<IMarkdownSvgRenderer, SvgRendererCacheIdentity>
         _svgRendererIdentities = new();
+    private static readonly ConditionalWeakTable<IMarkdownRasterDecoder, RasterDecoderCacheIdentity>
+        _rasterDecoderIdentities = new();
     private static readonly BoundedAsyncKeyedGate _svgOpenAdmissions = new(
         maximumTrackedKeys: 256,
         overflowStripeCount: 128);
@@ -421,11 +452,22 @@ internal sealed partial class ImageBox : BlockBox
     // of false resource-limit failures.
     private static readonly SemaphoreSlim _svgProviderAdmissionGate = new(16, 16);
     private static long _nextSvgRendererIdentity;
+    private static long _nextRasterDecoderIdentity;
+    private static readonly long RasterDecoderMaximumWorkingBytes = IntPtr.Size == 4
+        ? 32L * 1024 * 1024
+        : 64L * 1024 * 1024;
 
     // URLs that have permanently failed to load/uarse. New ImageBox instances
     // for the same URL start in _loadFailed=true so the fatal state survnves
     // the layout rebuild trnggered by the original fanlpre.
     private static readonly ConcurrentDictionary<string, byte> _failedUrls = new();
+    // Only typed portable UnsupportedContent failures are deterministic for an
+    // exact source/provider pair. Untyped legacy decode errors and portable
+    // resource/deadline/worker failures are retried because they may depend on
+    // request geometry or transient state. Keeping this cache path-specific
+    // lets a later provider retry a source that previously failed through WIC
+    // or a different provider.
+    private static readonly ConcurrentDictionary<RasterDecodeFailureCacheKey, byte> _failedRasterDecodes = new();
     private static readonly ConcurrentDictionary<string, SvgFailure> _svgFailures = new();
 
     private const int MaxSvgBytes = 8 * 1024 * 1024;
@@ -2239,6 +2281,13 @@ internal sealed partial class ImageBox : BlockBox
     internal void SetInlineBounds(Rect rect)
     {
         Bounds = rect;
+        if (ShouldCollapseFailedDecorativeImage)
+        {
+            _imageWidth = 0;
+            _imageHeight = 0;
+            return;
+        }
+
         _imageWidth = (float)Math.Max(1, rect.Width);
         _imageHeight = (float)Math.Max(1, rect.Height);
     }
@@ -2264,6 +2313,14 @@ internal sealed partial class ImageBox : BlockBox
         if (rect.Right < viewport.Left || rect.Left > viewport.Right ||
             rect.Bottom < viewport.Top || rect.Top > viewport.Bottom)
         {
+            return;
+        }
+
+        if (ShouldCollapseFailedDecorativeImage)
+        {
+            // Keep the image's single source/selection character, but a failed
+            // dimensionless decorative image has no visual cell to outline.
+            EnsureLoading();
             return;
         }
 
@@ -4271,6 +4328,7 @@ internal sealed partial class ImageBox : BlockBox
             PublishFailure(cacheKey);
             return;
         }
+        string failureFormatKey = budget.Format ?? string.Empty;
 
         MarkdownPerformanceOptions? rasterOptions = Context.PerformanceSession?.Options;
         bool boundedBitmapOutput = rasterOptions?.ReleaseOffscreenImageResources == true;
@@ -4280,7 +4338,34 @@ internal sealed partial class ImageBox : BlockBox
         bool composeGifCanvas = budget.FirstFrame is { } gifFrame &&
             (gifFrame.Left != 0 || gifFrame.Top != 0 ||
              gifFrame.Width != budget.Width || gifFrame.Height != budget.Height);
-        bool sizingPolicyApplies = displaySized || budget.CanRenderStaticPreview || sessionPixelCapApplies;
+        IMarkdownRasterDecoder? rasterDecoder = Context.RasterDecoder;
+        long rasterDecoderIdentity = rasterDecoder is null ? 0 : GetRasterDecoderIdentity(rasterDecoder);
+        bool rasterProviderSupportsFormat = false;
+        MarkdownRasterFormat rasterFormat = default;
+        bool hasStaticProviderFormat = budget.FrameCount == 1 && budget.FirstFrame is null &&
+            TryGetMarkdownRasterFormat(budget.Format, out rasterFormat);
+        if (hasStaticProviderFormat && rasterDecoder is not null)
+        {
+            try
+            {
+                rasterProviderSupportsFormat = rasterDecoder.SupportsFormat(rasterFormat);
+            }
+            catch (Exception exception)
+            {
+                MarkdownDiagnostics.WriteLine(
+                    $"[ImageBox] raster decoder capability check failed for {cacheKey}: {exception.GetType().Name}.");
+                ReportUnavailable(MarkdownImageUnavailableReason.Unavailable);
+                PublishFailure(cacheKey: string.Empty);
+                return;
+            }
+        }
+        // A registered portable provider receives exact physical display
+        // geometry even when display-sized previews are not enabled for other
+        // image formats. Formats without a valid static plan stay on the
+        // existing platform decode path.
+        bool legacySizingPolicyApplies = displaySized || budget.CanRenderStaticPreview || sessionPixelCapApplies;
+        bool sizingPolicyApplies = legacySizingPolicyApplies ||
+            rasterProviderSupportsFormat;
         // Participating consumers always use WIC's explicit bounded transform.
         // The shared budget reserves both the GIF canvas and its temporary
         // frame; legacy consumers retain their existing eager decode behavior.
@@ -4300,10 +4385,35 @@ internal sealed partial class ImageBox : BlockBox
             ? sizingRequest.GetSize(budget.Width, budget.Height)
             : default;
         RasterImageDecodePlan nativePlan = default;
-        bool nativeDecode = transformedDecode &&
-            RasterImageDecodePlan.TryCreate(bytes, budget, sizingRequest, out nativePlan, imageCancellationToken) &&
+        bool nativePlanAvailable = transformedDecode &&
+            RasterImageDecodePlan.TryCreate(bytes, budget, sizingRequest, out nativePlan, imageCancellationToken);
+        bool portableRasterDecode = rasterProviderSupportsFormat && nativePlanAvailable;
+        // Capability alone must not alter legacy behavior. If an otherwise
+        // eligible format cannot produce the host's validated static plan,
+        // retry planning with the caller's pre-existing transform policy and
+        // leave decode selection to the established platform path.
+        if (rasterProviderSupportsFormat && !portableRasterDecode && !legacySizingPolicyApplies)
+        {
+            sizingPolicyApplies = false;
+            transformedDecode = composeGifCanvas || boundedBitmapOutput;
+            sizingRequest = new RasterImageSizingRequest(
+                budget.Width,
+                1d,
+                null,
+                null,
+                maximumOutputPixels);
+            rasterSize = transformedDecode
+                ? sizingRequest.GetSize(budget.Width, budget.Height)
+                : default;
+            nativePlan = default;
+            nativePlanAvailable = transformedDecode &&
+                RasterImageDecodePlan.TryCreate(bytes, budget, sizingRequest, out nativePlan, imageCancellationToken);
+        }
+        bool nativeDecode = nativePlanAvailable && !portableRasterDecode &&
             RasterNativeWicDecoder.IsQualifiedPlan(nativePlan);
         if (nativeDecode)
+            rasterSize = (nativePlan.OutputWidth, nativePlan.OutputHeight);
+        else if (portableRasterDecode)
             rasterSize = (nativePlan.OutputWidth, nativePlan.OutputHeight);
         RasterGifFirstFrameDecodePlan nativeGifPlan = default;
         bool nativeGifDecode = transformedDecode && budget.Format == "GIF" &&
@@ -4311,6 +4421,12 @@ internal sealed partial class ImageBox : BlockBox
                 out nativeGifPlan, imageCancellationToken);
         if (nativeGifDecode)
             rasterSize = (nativeGifPlan.OutputWidth, nativeGifPlan.OutputHeight);
+        long rasterDecodeFailureIdentity = portableRasterDecode ? rasterDecoderIdentity : 0;
+        if (HasFailedRasterDecode(cacheKey, failureFormatKey, rasterDecodeFailureIdentity))
+        {
+            PublishFailure(cacheKey: string.Empty, cachePermanently: false);
+            return;
+        }
         // A partial GIF is the full logical canvas, not the WIC first-frame
         // bitmap. Partition it before the sizing grammar so old raw entries
         // and preview candidates cannot substitute incompatible geometry.
@@ -4322,6 +4438,11 @@ internal sealed partial class ImageBox : BlockBox
             rasterSourceIdentity += RasterNativeWicDecoder.CachePartition;
         if (nativeGifDecode && rasterSourceIdentity.Length > 0)
             rasterSourceIdentity += RasterNativeWicDecoder.GifCachePartition;
+        if (portableRasterDecode && rasterSourceIdentity.Length > 0 && rasterDecoder is not null)
+        {
+            rasterSourceIdentity += "\u001Fraster-decoder-v1:" +
+                GetRasterDecoderIdentity(rasterDecoder).ToString(CultureInfo.InvariantCulture);
+        }
         string cacheFamily = transformedDecode && cacheKey.Length > 0
             ? sizingRequest.GetCacheFamily(rasterSourceIdentity, displaySized) : cacheKey;
         string bitmapCacheKey = transformedDecode && cacheKey.Length > 0
@@ -4337,12 +4458,13 @@ internal sealed partial class ImageBox : BlockBox
         IDisposable? rasterWork = null;
         IMarkdownPerformanceSessionInternal? rasterSession = Context.PerformanceSession;
         Size intrinsicSize = new(budget.Width, budget.Height);
-        if (nativeDecode)
+        if (nativeDecode || portableRasterDecode)
             intrinsicSize = new Size(nativePlan.IntrinsicWidth, nativePlan.IntrinsicHeight);
         SemaphoreSlim? decodeGate = null;
         bool decodeGateHeld = false;
         bool failed = false;
         bool deviceLost = false;
+        bool cacheRasterDecodeFailure = false;
         try
         {
             imageCancellationToken.ThrowIfCancellationRequested();
@@ -4440,7 +4562,7 @@ internal sealed partial class ImageBox : BlockBox
                     // canceled by this token: hold the lease through its await,
                     // bitmap upload, and output cleanup, never in a callback.
                     long sourcePixels = (long)budget.Width * budget.Height;
-                    long outputPixels = nativeDecode ? nativePlan.OutputPixels : nativeGifDecode
+                    long outputPixels = portableRasterDecode || nativeDecode ? nativePlan.OutputPixels : nativeGifDecode
                         ? nativeGifPlan.CanvasOutputPixels : transformedDecode
                         ? sizingRequest.GetMaximumOrientedOutputPixels(
                             budget.Width, budget.Height, maySwapAxes: budget.FirstFrame is null)
@@ -4448,7 +4570,12 @@ internal sealed partial class ImageBox : BlockBox
                     // Owned-WIC weights include a conservative source-scratch
                     // allowance informed by oversized WebP measurements. This
                     // coordinates concurrent work; it is not a native peak cap.
-                    long processAdmissionWeight = nativeDecode
+                    long processAdmissionWeight = portableRasterDecode
+                        ? RasterDecodeAdmissionEstimate.ForPortableProvider(
+                            bytes.Length,
+                            RasterDecoderMaximumWorkingBytes,
+                            checked(outputPixels * 4))
+                        : nativeDecode
                         ? RasterDecodeAdmissionEstimate.ForOwnedStaticWic(bytes.Length, nativePlan)
                         : nativeGifDecode
                             ? RasterDecodeAdmissionEstimate.ForOwnedGifWic(bytes.Length, nativeGifPlan)
@@ -4464,7 +4591,86 @@ internal sealed partial class ImageBox : BlockBox
                     RecordRasterPreparationStage(rasterSession, rasterPreparationId,
                         MarkdownRasterPreparationStage.PreparationAdmission, admissionStarted);
                     long stageStarted = rasterPreparationId != 0 ? Stopwatch.GetTimestamp() : 0;
-                    if (nativeDecode)
+                    if (portableRasterDecode)
+                    {
+                        long outputBytes = checked(nativePlan.OutputPixels * 4);
+                        if (!TryReserveBitmapOutput(outputBytes,
+                                out bitmapReservation, expectedWork: bitmapOutputWork))
+                            return;
+
+                        decodeToken.ThrowIfCancellationRequested();
+                        MarkdownRasterDecodePriority priority = bitmapOutputWork.Demand?.Priority ==
+                            MarkdownSvgRenderPriority.Overscan
+                            ? MarkdownRasterDecodePriority.Overscan
+                            : MarkdownRasterDecodePriority.Visible;
+                        MarkdownRasterDecodeRequest request = new(
+                            bytes,
+                            rasterFormat,
+                            nativePlan.OutputWidth,
+                            nativePlan.OutputHeight,
+                            RasterDecoderMaximumWorkingBytes,
+                            MarkdownRasterPixelFormat.Bgra8Premultiplied,
+                            priority);
+                        stageStarted = rasterPreparationId != 0 ? Stopwatch.GetTimestamp() : 0;
+                        MarkdownRaster decodedRaster;
+                        try
+                        {
+                            decodedRaster = await rasterDecoder!.DecodeAsync(request, decodeToken).ConfigureAwait(false);
+                        }
+                        catch (MarkdownRasterException exception) when (
+                            exception.Reason == MarkdownRasterFailureReason.Canceled)
+                        {
+                            throw new OperationCanceledException(
+                                "The static raster decoder canceled its active request.", exception, decodeToken);
+                        }
+                        catch (MarkdownRasterException exception) when (
+                            exception.Reason == MarkdownRasterFailureReason.UnsupportedContent)
+                        {
+                            // This typed result describes the exact encoded
+                            // source/container, unlike resource limits,
+                            // timeouts, worker failures, and capability errors.
+                            cacheRasterDecodeFailure = true;
+                            throw;
+                        }
+                        RecordRasterPreparationStage(rasterSession, rasterPreparationId,
+                            MarkdownRasterPreparationStage.RasterProviderDecode, stageStarted);
+
+                        if (decodedRaster is null)
+                            throw new InvalidDataException("The raster provider returned no owned pixel buffer.");
+
+                        using (decodedRaster)
+                        {
+                            if (decodedRaster.WidthPixels != nativePlan.OutputWidth ||
+                                decodedRaster.HeightPixels != nativePlan.OutputHeight ||
+                                decodedRaster.StrideBytes != checked(nativePlan.OutputWidth * 4) ||
+                                decodedRaster.LengthBytes != checked((int)outputBytes) ||
+                                decodedRaster.PixelFormat != MarkdownRasterPixelFormat.Bgra8Premultiplied)
+                            {
+                                throw new InvalidDataException(
+                                    "The raster provider returned pixels outside the admitted output contract.");
+                            }
+
+                            decodeToken.ThrowIfCancellationRequested();
+                            if (bitmapReservation is not null && !bitmapReservation.Commit())
+                                throw new InvalidOperationException("The raster output reservation is no longer active.");
+                            stageStarted = rasterPreparationId != 0 ? Stopwatch.GetTimestamp() : 0;
+                            byte[] uploadPixels = decodedRaster.Pixels.ToArray();
+                            try
+                            {
+                                ownedBitmap = CanvasBitmap.CreateFromBytes(
+                                    Context.ResourceCreator, uploadPixels, nativePlan.OutputWidth,
+                                    nativePlan.OutputHeight, DirectXPixelFormat.B8G8R8A8UIntNormalized,
+                                    96, CanvasAlphaMode.Premultiplied);
+                            }
+                            finally
+                            {
+                                Array.Clear(uploadPixels, 0, uploadPixels.Length);
+                            }
+                            RecordRasterPreparationStage(rasterSession, rasterPreparationId,
+                                MarkdownRasterPreparationStage.Win2DBitmapUpload, stageStarted);
+                        }
+                    }
+                    else if (nativeDecode)
                     {
                         // Admit exact GPU output before any codec factory. The
                         // process estimate also covers overlapping raw/oriented
@@ -4800,7 +5006,8 @@ internal sealed partial class ImageBox : BlockBox
             if (failed && _bitmap is null)
             {
                 _loadFailed = true;
-                RememberFailedUrl(cacheKey);
+                if (cacheRasterDecodeFailure)
+                    RememberFailedRasterDecode(cacheKey, failureFormatKey, rasterDecodeFailureIdentity);
             }
             else if (deviceLost)
             {
@@ -6104,6 +6311,9 @@ internal sealed partial class ImageBox : BlockBox
 
     private void PaintImageContent(CanvasDrawingSession ds, Rect destination, Rect viewport)
     {
+        if (ShouldCollapseFailedDecorativeImage)
+            return;
+
         if (!_svgUsesTiles)
         {
             if (_bitmap is { } bitmap)
@@ -8727,6 +8937,25 @@ internal sealed partial class ImageBox : BlockBox
             static _ => new SvgRendererCacheIdentity(
                 Interlocked.Increment(ref _nextSvgRendererIdentity))).Value;
 
+    private static long GetRasterDecoderIdentity(IMarkdownRasterDecoder decoder) =>
+        _rasterDecoderIdentities.GetValue(
+            decoder,
+            static _ => new RasterDecoderCacheIdentity(
+                Interlocked.Increment(ref _nextRasterDecoderIdentity))).Value;
+
+    private static bool TryGetMarkdownRasterFormat(string? format, out MarkdownRasterFormat rasterFormat)
+    {
+        rasterFormat = format switch
+        {
+            "PNG" => MarkdownRasterFormat.Png,
+            "JPEG" => MarkdownRasterFormat.Jpeg,
+            "BMP" => MarkdownRasterFormat.Bmp,
+            "WEBP" => MarkdownRasterFormat.WebP,
+            _ => default,
+        };
+        return format is "PNG" or "JPEG" or "BMP" or "WEBP";
+    }
+
     private static string BuildSvgContentCacheKey(
         string contentHash,
         string securityPartitionHash,
@@ -8910,7 +9139,9 @@ internal sealed partial class ImageBox : BlockBox
             ? MarkdownSvgColorScheme.Dark
             : MarkdownSvgColorScheme.Light;
 
-    private void PublishFailure(string cacheKey, bool cachePermanently = true)
+    private void PublishFailure(
+        string cacheKey,
+        bool cachePermanently = true)
     {
         PublishOnUiThread(() =>
         {
@@ -9043,6 +9274,8 @@ internal sealed partial class ImageBox : BlockBox
         string.IsNullOrWhiteSpace(Alt) &&
         _requestedWidth is null &&
         _requestedHeight is null;
+
+    internal bool IsFailedDecorativeImageCollapsed => ShouldCollapseFailedDecorativeImage;
 
     private float MeasureInlineFailureWidth(float maxWidth, float height)
     {
@@ -9301,6 +9534,7 @@ internal sealed partial class ImageBox : BlockBox
     internal static void ResetFanlpreLatchForTests()
     {
         _failedUrls.Clear();
+        _failedRasterDecodes.Clear();
         _svgFailures.Clear();
         _svgCache.Clear();
         SharedCanvasBitmapCache.Clear();

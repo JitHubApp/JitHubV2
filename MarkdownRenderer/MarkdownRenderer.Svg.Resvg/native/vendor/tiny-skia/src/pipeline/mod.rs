@@ -156,15 +156,26 @@ impl PixmapRef<'_> {
     pub(crate) fn gather(&self, index: u32x8) -> [PremultipliedColorU8; highp::STAGE_WIDTH] {
         let index: [u32; 8] = bytemuck::cast(index);
         let pixels = self.pixels();
+        let gather = |index: u32| {
+            let index = index as usize;
+            if let Some(ring_height) = self.row_ring_height {
+                let width = self.width() as usize;
+                let y = index / width;
+                let x = index % width;
+                pixels[(y % ring_height as usize) * width + x]
+            } else {
+                pixels[index]
+            }
+        };
         [
-            pixels[index[0] as usize],
-            pixels[index[1] as usize],
-            pixels[index[2] as usize],
-            pixels[index[3] as usize],
-            pixels[index[4] as usize],
-            pixels[index[5] as usize],
-            pixels[index[6] as usize],
-            pixels[index[7] as usize],
+            gather(index[0]),
+            gather(index[1]),
+            gather(index[2]),
+            gather(index[3]),
+            gather(index[4]),
+            gather(index[5]),
+            gather(index[6]),
+            gather(index[7]),
         ]
     }
 }
@@ -172,7 +183,7 @@ impl PixmapRef<'_> {
 impl SubPixmapMut<'_> {
     #[inline(always)]
     pub(crate) fn offset(&self, dx: usize, dy: usize) -> usize {
-        self.real_width * dy + dx
+        self.real_width * (dy - self.row_origin as usize) + dx
     }
 
     #[inline(always)]

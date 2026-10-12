@@ -6,6 +6,7 @@
 
 use crate::*;
 
+use crate::blitter::Blitter;
 use tiny_skia_path::{PathStroker, Scalar, SCALAR_MAX};
 
 use crate::geom::ScreenIntRect;
@@ -207,6 +208,56 @@ impl Pixmap {
 }
 
 impl PixmapMut<'_> {
+    /// Returns the inclusive source-row range touched by a bicubic sample for
+    /// one row of a scale-transformed draw.
+    ///
+    /// The calculation intentionally mirrors the pipeline's f32 inverse
+    /// transform, four successive `+ 1.0` tap positions, and Pad clamp. A row
+    /// streaming caller can use this to keep every required source row in its
+    /// ring before invoking `draw_pixmap_row_from_ring`.
+    pub fn required_bicubic_source_y_range(
+        source_height: u32,
+        row_y: u32,
+        target_height: u32,
+        transform: Transform,
+    ) -> Option<(u32, u32)> {
+        if source_height == 0
+            || target_height == 0
+            || row_y >= target_height
+            || transform.sx <= 0.0
+            || transform.sy <= 0.0
+            || transform.kx != 0.0
+            || transform.ky != 0.0
+            || transform.tx != 0.0
+            || transform.ty != 0.0
+            || !transform.is_finite()
+        {
+            return None;
+        }
+
+        let inverse = transform.invert()?;
+        let center_y = (row_y as f32 + 0.5) * inverse.sy;
+        if !center_y.is_finite() {
+            return None;
+        }
+
+        // This is the same exclusive-to-inclusive conversion used by
+        // highp::gather_ix. Source dimensions are bounded well below f32's
+        // integer precision limit by Pixmap construction.
+        let maximum_y = f32::from_bits((source_height as f32).to_bits().checked_sub(1)?);
+        let mut sample_y = center_y + -1.5;
+        let mut minimum = u32::MAX;
+        let mut maximum = 0;
+        for _ in 0..4 {
+            let clamped = sample_y.max(0.0).min(maximum_y);
+            let index = clamped.trunc() as u32;
+            minimum = minimum.min(index);
+            maximum = maximum.max(index);
+            sample_y += 1.0;
+        }
+        Some((minimum, maximum))
+    }
+
     // TODO: accept NonZeroRect?
     /// Draws a filled rectangle onto the pixmap.
     ///
@@ -692,6 +743,84 @@ impl PixmapMut<'_> {
         self.fill_rect(rect, &paint, transform, mask);
     }
 
+    /// Draws one destination row from a modulo-indexed row ring using the same
+    /// pixmap shader pipeline as [`draw_pixmap`](Self::draw_pixmap).
+    ///
+    /// `self` must be a one-row target buffer. `target_height` is the logical
+    /// height of the full destination, and `row_y` is its global row index.
+    /// The transform must be the exact scale that maps the source dimensions
+    /// to `(self.width(), target_height)`. The row-ring source is sampled using
+    /// its full logical dimensions while its backing storage remains bounded
+    /// to the retained rows. The temporary full-image pipeline view is created
+    /// and consumed here, so it cannot escape into APIs that assume complete
+    /// backing storage. Returns `false` when the dimensions/transform do not
+    /// satisfy these constraints or the sampler cannot be constructed.
+    pub fn draw_pixmap_row_from_ring(
+        &mut self,
+        row_y: u32,
+        target_height: u32,
+        ring: PixmapRowRing,
+        paint: &PixmapPaint,
+        transform: Transform,
+    ) -> bool {
+        let pixmap = PixmapRef::from_row_ring(ring);
+        let target_width = self.width();
+        if self.height() != 1 || target_width == 0 || target_height == 0 || row_y >= target_height {
+            return false;
+        }
+
+        let scale_x = target_width as f32 / pixmap.width() as f32;
+        let scale_y = target_height as f32 / pixmap.height() as f32;
+        if !scale_x.is_finite()
+            || !scale_y.is_finite()
+            || transform != Transform::from_scale(scale_x, scale_y)
+        {
+            return false;
+        }
+
+        // A regular draw_pixmap starts with a transparent destination. The
+        // streaming caller reuses this one-row allocation, so restore that
+        // initial condition before SourceOver compositing each row.
+        self.data_mut().fill(0);
+
+        let mut shader = Pattern::new(
+            pixmap,
+            SpreadMode::Pad,
+            paint.quality,
+            paint.opacity,
+            Transform::identity(),
+        );
+        shader.transform(transform);
+        let active_paint = Paint {
+            shader,
+            blend_mode: paint.blend_mode,
+            anti_alias: false,
+            force_hq_pipeline: false,
+            colorspace: ColorSpace::default(),
+        };
+
+        let size = match tiny_skia_path::IntSize::from_wh(target_width, target_height) {
+            Some(size) => size,
+            None => return false,
+        };
+        let mut destination = SubPixmapMut {
+            size,
+            real_width: target_width as usize,
+            data: self.data_mut(),
+            row_origin: row_y,
+            root_clip: None,
+        };
+        let mut blitter = match RasterPipelineBlitter::new(&active_paint, None, &mut destination) {
+            Some(blitter) => blitter,
+            None => return false,
+        };
+        let Some(width) = core::num::NonZeroU32::new(target_width) else {
+            return false;
+        };
+        blitter.blit_h(0, row_y, width);
+        true
+    }
+
     /// Applies a masks.
     ///
     /// When a `Mask` is passed to drawing methods, it will be used to mask-out
@@ -1085,7 +1214,132 @@ impl Iterator for DrawTiler {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::vec;
     const MAX_DIM: u32 = DrawTiler::MAX_DIMENSIONS;
+
+    fn streamed_bicubic_draw_matches_full_draw(source_width: u32, source_height: u32, target_width: u32, target_height: u32) {
+        let mut source = Pixmap::new(source_width, source_height).unwrap();
+        for y in 0..source_height {
+            for x in 0..source_width {
+                let offset = ((y * source_width + x) * 4) as usize;
+                let alpha = 96 + ((x * 13 + y * 7) % 160) as u8;
+                let color = ColorU8::from_rgba(
+                    ((x * 29 + y * 11) % 256) as u8,
+                    ((x * 3 + y * 37) % 256) as u8,
+                    ((x * 17 + y * 19) % 256) as u8,
+                    alpha,
+                )
+                .premultiply();
+                    source.data_mut()[offset..offset + 4].copy_from_slice(&[
+                        color.red(),
+                        color.green(),
+                        color.blue(),
+                        color.alpha(),
+                    ]);
+            }
+        }
+
+        let transform = Transform::from_scale(
+            target_width as f32 / source_width as f32,
+            target_height as f32 / source_height as f32,
+        );
+        let paint = PixmapPaint {
+            opacity: 1.0,
+            blend_mode: BlendMode::SourceOver,
+            quality: FilterQuality::Bicubic,
+        };
+        let mut expected = Pixmap::new(target_width, target_height).unwrap();
+        expected.draw_pixmap(0, 0, source.as_ref(), &paint, transform, None);
+
+        let ring_height = source_height.min(4);
+        let mut ring = vec![0; (source_width * ring_height * 4) as usize];
+        let mut streamed = Pixmap::new(target_width, target_height).unwrap();
+        let mut row = vec![0; (target_width * 4) as usize];
+        let mut next_output_row = 0;
+
+        for source_y in 0..source_height {
+            if source_y > 0 {
+                while next_output_row < target_height
+                    && PixmapMut::required_bicubic_source_y_range(
+                        source_height,
+                        next_output_row,
+                        target_height,
+                        transform,
+                    )
+                    .unwrap()
+                    .1
+                        <= source_y - 1
+                {
+                    let mut destination = PixmapMut::from_bytes(&mut row, target_width, 1).unwrap();
+                    let source_ring = PixmapRowRing::from_bytes(
+                        &ring,
+                        source_width,
+                        source_height,
+                        ring_height,
+                    )
+                    .unwrap();
+                    assert!(destination.draw_pixmap_row_from_ring(
+                        next_output_row,
+                        target_height,
+                        source_ring,
+                        &paint,
+                        transform,
+                    ));
+                    let offset = (next_output_row * target_width * 4) as usize;
+                    streamed.data_mut()[offset..offset + row.len()].copy_from_slice(&row);
+                    next_output_row += 1;
+                }
+            }
+
+            let slot = (source_y % ring_height) as usize * (source_width * 4) as usize;
+            let source_offset = (source_y * source_width * 4) as usize;
+            ring[slot..slot + (source_width * 4) as usize]
+                .copy_from_slice(&source.data()[source_offset..source_offset + (source_width * 4) as usize]);
+
+            while next_output_row < target_height
+                && PixmapMut::required_bicubic_source_y_range(
+                    source_height,
+                    next_output_row,
+                    target_height,
+                    transform,
+                )
+                .unwrap()
+                .1
+                    <= source_y
+            {
+                let (minimum, maximum) = PixmapMut::required_bicubic_source_y_range(
+                    source_height,
+                    next_output_row,
+                    target_height,
+                    transform,
+                )
+                .unwrap();
+                assert!(maximum - minimum < ring_height);
+                assert!(source_y - minimum < ring_height);
+                let mut destination = PixmapMut::from_bytes(&mut row, target_width, 1).unwrap();
+                let source_ring = PixmapRowRing::from_bytes(
+                    &ring,
+                    source_width,
+                    source_height,
+                    ring_height,
+                )
+                .unwrap();
+                assert!(destination.draw_pixmap_row_from_ring(
+                    next_output_row,
+                    target_height,
+                    source_ring,
+                    &paint,
+                    transform,
+                ));
+                let offset = (next_output_row * target_width * 4) as usize;
+                streamed.data_mut()[offset..offset + row.len()].copy_from_slice(&row);
+                next_output_row += 1;
+            }
+        }
+
+        assert_eq!(next_output_row, target_height);
+        assert_eq!(streamed.data(), expected.data());
+    }
 
     #[test]
     fn skip() {
@@ -1136,5 +1390,27 @@ mod tests {
             ScreenIntRect::from_xywh(MAX_DIM, MAX_DIM, 10000 - MAX_DIM, 10000 - MAX_DIM)
         );
         assert_eq!(iter.next(), None);
+    }
+
+    #[test]
+    fn streamed_bicubic_rows_match_full_draw_for_fractional_scales() {
+        for (target_width, target_height) in [(7, 8), (1, 3), (8, 1), (7, 11), (9, 4)] {
+            streamed_bicubic_draw_matches_full_draw(9, 11, target_width, target_height);
+        }
+    }
+
+    #[test]
+    fn pixmap_row_ring_rejects_invalid_backing_geometry() {
+        let exact = [0; 3 * 2 * 4];
+        let short = [0; 3 * 2 * 4 - 1];
+        let long = [0; 3 * 2 * 4 + 1];
+
+        assert!(PixmapRowRing::from_bytes(&exact, 3, 5, 2).is_some());
+        assert!(PixmapRowRing::from_bytes(&short, 3, 5, 2).is_none());
+        assert!(PixmapRowRing::from_bytes(&long, 3, 5, 2).is_none());
+        assert!(PixmapRowRing::from_bytes(&exact, 3, 5, 0).is_none());
+        assert!(PixmapRowRing::from_bytes(&exact, 3, 1, 2).is_none());
+        assert!(PixmapRowRing::from_bytes(&exact, 0, 5, 2).is_none());
+        assert!(PixmapRowRing::from_bytes(&[], u32::MAX, 5, 1).is_none());
     }
 }

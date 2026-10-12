@@ -10,7 +10,12 @@ namespace MarkdownRenderer.Svg.Resvg;
 /// <summary>
 /// Renders the bounded static SVG subset in a persistent, kill-on-close resvg worker.
 /// </summary>
-public sealed class ResvgMarkdownSvgRenderer : IMarkdownSvgRenderer, IMarkdownSvgHostPreparationAdmission, IDisposable, IAsyncDisposable
+/// <remarks>
+/// Also exposes explicitly registered static WebP decoding through
+/// <see cref="IMarkdownRasterDecoder"/> using the same isolated worker pool.
+/// Registering this object as an SVG renderer does not implicitly enable raster decoding.
+/// </remarks>
+public sealed partial class ResvgMarkdownSvgRenderer : IMarkdownSvgRenderer, IMarkdownRasterDecoder, IMarkdownSvgHostPreparationAdmission, IDisposable, IAsyncDisposable
 {
     /// <inheritdoc />
     public MarkdownSvgSourcePreparation PrepareSource(byte[] source, CancellationToken cancellationToken)

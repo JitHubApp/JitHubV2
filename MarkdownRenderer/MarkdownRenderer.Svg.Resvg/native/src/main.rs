@@ -17,8 +17,10 @@ use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 
+mod raster_decode;
+
 const MAGIC: u32 = 0x4756_534d;
-const VERSION: u16 = 9;
+const VERSION: u16 = 10;
 const REQUEST_SIZE: usize = 512;
 const RESPONSE_SIZE: usize = 256;
 const PROGRESS_AREA_BYTES: usize = 64;
@@ -28,6 +30,7 @@ const KIND_RENDER: u16 = 3;
 const KIND_TRIM_CACHE: u16 = 4;
 const KIND_CLOSE_DOCUMENT: u16 = 5;
 const KIND_FONT_CATALOG: u16 = 6;
+const KIND_RASTER_DECODE: u16 = 7;
 const STATUS_OK: u16 = 0;
 const STATUS_UNSUPPORTED: u16 = 1;
 const STATUS_RESOURCE: u16 = 2;
@@ -528,6 +531,10 @@ struct Request {
     locale: String,
     mapping_handle: u64,
     physical_viewport: Option<(f64, f64)>,
+    working_bytes: u64,
+    source_width: u32,
+    source_height: u32,
+    orientation: u32,
 }
 
 fn main() {
@@ -599,6 +606,7 @@ fn run() -> Result<(), String> {
                 })
             }
             KIND_OPEN | KIND_RENDER => process(&mut state, &request),
+            KIND_RASTER_DECODE => raster_decode::process_request(&request),
             KIND_TRIM_CACHE => {
                 validate_control_request(&request, false)?;
                 trim_parsed_cache(&mut state);
@@ -616,9 +624,12 @@ fn run() -> Result<(), String> {
             _ => return Err("unknown operation".to_owned()),
         };
 
-        let response = response
-            .unwrap_or_else(|reject| Response::rejected(&request, reject))
-            .with_ready_font_generation(state.font_database_generation.unwrap_or(0));
+        let response = response.unwrap_or_else(|reject| Response::rejected(&request, reject));
+        let response = if request.kind == KIND_RASTER_DECODE {
+            response
+        } else {
+            response.with_ready_font_generation(state.font_database_generation.unwrap_or(0))
+        };
         pipe.write_all(&response.encode())
             .and_then(|()| pipe.flush())
             .map_err(|error| format!("pipe write failed: {error}"))?;
@@ -643,6 +654,10 @@ fn validate_control_request(request: &Request, requires_document: bool) -> Resul
         || request.tile_height != 0
         || request.mapping_handle != 0
         || request.physical_viewport.is_some()
+        || request.working_bytes != 0
+        || request.source_width != 0
+        || request.source_height != 0
+        || request.orientation != 0
         || request.hash.iter().any(|byte| *byte != 0)
         || !request.locale.is_empty()
     {
@@ -679,6 +694,10 @@ fn validate_font_catalog_request(request: &Request) -> Result<(), Reject> {
         || !request.locale.is_empty()
         || request.mapping_handle == 0
         || request.physical_viewport.is_some()
+        || request.working_bytes != 0
+        || request.source_width != 0
+        || request.source_height != 0
+        || request.orientation != 0
     {
         return Err(Reject::FontCatalogFailed("malformed font catalog request"));
     }
@@ -940,6 +959,13 @@ fn open_document(state: &mut WorkerState, request: &Request) -> Result<Response,
 }
 
 fn validate_request(request: &Request) -> Result<(), Reject> {
+    if request.working_bytes != 0
+        || request.source_width != 0
+        || request.source_height != 0
+        || request.orientation != 0
+    {
+        return Err(Reject::Worker("nonzero raster-only fields on SVG request"));
+    }
     if request.max_xml_depth == 0
         || request.max_nested_svg_depth == 0
         || request.max_structural_cost == 0
@@ -3354,7 +3380,7 @@ impl Request {
             || frame[132..136].iter().any(|byte| *byte != 0)
             || frame[170..176].iter().any(|byte| *byte != 0)
             || frame[248..368].iter().any(|byte| *byte != 0)
-            || frame[392..].iter().any(|byte| *byte != 0)
+            || frame[412..].iter().any(|byte| *byte != 0)
         {
             return Err("nonzero reserved request bytes".to_owned());
         }
@@ -3426,6 +3452,10 @@ impl Request {
             locale,
             mapping_handle,
             physical_viewport,
+            working_bytes: read_u64(frame, 392),
+            source_width: read_u32(frame, 400),
+            source_height: read_u32(frame, 404),
+            orientation: read_u32(frame, 408),
         })
     }
 }
@@ -4597,6 +4627,10 @@ mod tests {
             locale: "en".to_owned(),
             mapping_handle: usize::MAX as u64,
             physical_viewport: None,
+            working_bytes: 0,
+            source_width: 0,
+            source_height: 0,
+            orientation: 0,
         }
     }
 
@@ -6017,7 +6051,33 @@ mod tests {
         let decoded = Request::decode(&frame).unwrap();
         assert_eq!(decoded.physical_viewport, Some((1112.5, 197.5)));
 
-        frame[392] = 1;
+        frame[412] = 1;
+        assert!(Request::decode(&frame).is_err());
+    }
+
+    #[test]
+    fn raster_decode_wire_fields_are_decoded_and_followed_by_zero_padding() {
+        let mut frame = [0_u8; REQUEST_SIZE];
+        write_u32(&mut frame, 0, MAGIC);
+        write_u16(&mut frame, 4, VERSION);
+        write_u16(&mut frame, 6, KIND_RASTER_DECODE);
+        write_u32(&mut frame, 36, 123);
+        write_u32(&mut frame, 40, 16);
+        write_u32(&mut frame, 44, 2);
+        write_u32(&mut frame, 48, 2);
+        write_u64(&mut frame, 240, 0x1234);
+        write_u64(&mut frame, 392, 1024);
+        write_u32(&mut frame, 400, 10);
+        write_u32(&mut frame, 404, 12);
+        write_u32(&mut frame, 408, 6);
+
+        let request = Request::decode(&frame).unwrap();
+        assert_eq!(request.kind, KIND_RASTER_DECODE);
+        assert_eq!(request.working_bytes, 1024);
+        assert_eq!((request.source_width, request.source_height), (10, 12));
+        assert_eq!(request.orientation, 6);
+
+        frame[412] = 1;
         assert!(Request::decode(&frame).is_err());
     }
 

@@ -63,6 +63,7 @@ public sealed class ResvgMarkdownSvgRendererOptions
     public int MaxStructuralCost { get; }
     public long MaxEmbeddedImageBytes { get; }
     public long MaxEmbeddedImagePixels { get; }
+    /// <summary>Maximum output bytes for both SVG rendering and static raster decoding.</summary>
     public long MaxOutputRasterBytes { get; }
     public long MaxFilterIntermediateBytes { get; }
     public TimeSpan RequestDeadline { get; }

@@ -8,7 +8,7 @@ using MarkdownRenderer.Diagnostics;
 
 namespace MarkdownRenderer.Svg.Resvg.Internal;
 
-internal sealed class WorkerPool : IAsyncDisposable, IDisposable
+internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
 {
     private readonly ResvgMarkdownSvgRendererOptions _options;
     private readonly WorkerSchedulingQueue<PendingWork> _queue = new();
@@ -1654,7 +1654,7 @@ internal sealed class WorkerPool : IAsyncDisposable, IDisposable
                         _queue.Enqueue(
                             pending,
                             pending.Priority,
-                            operation == WorkerOperation.Render,
+                            operation is WorkerOperation.Render or WorkerOperation.RasterDecode,
                             requiresFontCatalog,
                             isOpen: operation == WorkerOperation.Open,
                             preferredWorkerInstanceId: preferredWorkerInstanceId,
@@ -1744,7 +1744,7 @@ internal sealed class WorkerPool : IAsyncDisposable, IDisposable
                     MarkdownSvgFailureReason.ResourceLimitExceeded,
                     "The SVG worker font-wait admission limit is full.");
             }
-            bool visibleRender = activeLease.Pending.Operation == WorkerOperation.Render &&
+            bool visibleRender = (activeLease.Pending.Operation is WorkerOperation.Render or WorkerOperation.RasterDecode) &&
                 activeLease.Pending.Priority == MarkdownSvgRenderPriority.Visible;
             bool visibleTextRender = visibleRender && activeLease.Pending.RequiresFontCatalog;
             WorkerFontWaitReservation reservation = null!;
@@ -1753,7 +1753,7 @@ internal sealed class WorkerPool : IAsyncDisposable, IDisposable
                 visibleRender,
                 visibleTextRender,
                 activeLease.Pending.DemandTicket,
-                isRender: activeLease.Pending.Operation == WorkerOperation.Render,
+                isRender: activeLease.Pending.Operation is WorkerOperation.Render or WorkerOperation.RasterDecode,
                 requiresFontCatalog: activeLease.Pending.RequiresFontCatalog,
                 consumed: () => activeLease.Pending.HasDetachedFontWaitReservation = false);
             try

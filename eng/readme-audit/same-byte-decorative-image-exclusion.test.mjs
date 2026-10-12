@@ -73,6 +73,7 @@ test("decorative-image proof requires all live non-rendered facts and persists o
     readmeUrl,
   );
   assert.deepEqual(entries, [{
+    replayIndex: 3,
     urlSha256s: [resourceUrlSha256(hiddenImageUrl)],
     explicitEmptyAlt: true,
     failedDecode: true,
@@ -162,6 +163,7 @@ test("captured corpus binds a hidden decorative-image proof without changing vis
   assert.equal(manifest.imageRoutes.length, 1, "visible-image route coverage is unchanged");
   assert.equal(manifest.imageRoutes[0].index, 0);
   assert.deepEqual(manifest.nonRenderedDecorativeImageExclusions, [{
+    replayIndex: 3,
     urlSha256s: [resourceUrlSha256(hiddenImageUrl)],
     explicitEmptyAlt: true,
     failedDecode: true,

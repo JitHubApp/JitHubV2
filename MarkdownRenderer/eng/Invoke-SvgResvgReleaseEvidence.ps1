@@ -570,7 +570,7 @@ $consumerProject = @'
     <Platform Condition="'$(Platform)' == '' or '$(Platform)' == 'AnyCPU'">x64</Platform>
     <InvariantGlobalization>true</InvariantGlobalization>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <ILLinkTreatWarningsAsErrors>false</ILLinkTreatWarningsAsErrors>
+    <ILLinkTreatWarningsAsErrors>true</ILLinkTreatWarningsAsErrors>
     <UseWinUI>false</UseWinUI>
     <WindowsAppSdkSelfContained>true</WindowsAppSdkSelfContained>
     <EnableMsixTooling>true</EnableMsixTooling>
@@ -590,6 +590,7 @@ $consumerProject = @'
 [IO.File]::Copy((Join-Path $markdownRoot 'MarkdownRenderer.Svg.Resvg.AotSmoke\Program.cs'), (Join-Path $consumerDirectory 'Program.cs'))
 [IO.File]::Copy((Join-Path $markdownRoot 'MarkdownRenderer.Svg.Resvg.AotSmoke\WorkerIsolationProbe.cs'), (Join-Path $consumerDirectory 'WorkerIsolationProbe.cs'))
 [IO.File]::Copy((Join-Path $markdownRoot 'MarkdownRenderer.Svg.Resvg.AotSmoke\SmokeRasterValidation.cs'), (Join-Path $consumerDirectory 'SmokeRasterValidation.cs'))
+[IO.File]::Copy((Join-Path $markdownRoot 'MarkdownRenderer.Svg.Resvg.AotSmoke\SmokeRasterDecodeFixture.cs'), (Join-Path $consumerDirectory 'SmokeRasterDecodeFixture.cs'))
 $consumerProjectPath = Join-Path $consumerDirectory 'SvgResvgPackageConsumer.csproj'
 
 Push-Location $repositoryRoot

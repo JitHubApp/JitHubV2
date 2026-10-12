@@ -4463,7 +4463,11 @@ internal sealed partial class InlineContainerBox : BlockBox
                     layout.SetInlineObject(
                         cumulative,
                         len,
-                        new LayoutInlineObject(image.DesiredWidth, image.DesiredHeight, inverseMetricScale));
+                        new LayoutInlineObject(
+                            image.DesiredWidth,
+                            image.DesiredHeight,
+                            inverseMetricScale,
+                            allowZeroDimensions: image.Image.IsFailedDecorativeImageCollapsed));
                 }
                 catch (Exception ex)
                 {
@@ -4520,9 +4524,12 @@ internal sealed partial class InlineContainerBox : BlockBox
             float width,
             float height,
             float inverseMetricScale = 1f,
-            bool preserveSubUnitDimensions = false)
+            bool preserveSubUnitDimensions = false,
+            bool allowZeroDimensions = false)
         {
-            float minimumDimension = preserveSubUnitDimensions ? float.Epsilon : 1f;
+            float minimumDimension = allowZeroDimensions
+                ? 0f
+                : preserveSubUnitDimensions ? float.Epsilon : 1f;
             float safeWidth = Math.Max(minimumDimension, width);
             float scale = float.IsFinite(inverseMetricScale) && inverseMetricScale > 0f
                 ? inverseMetricScale

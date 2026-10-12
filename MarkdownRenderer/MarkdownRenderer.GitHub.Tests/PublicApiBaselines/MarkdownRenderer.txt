@@ -123,6 +123,7 @@ public sealed class MarkdownRenderer.Controls.MarkdownRenderFailedEventArgs : Sy
   public MarkdownRenderer.Hosting.IMarkdownHostedElementFactory? HostedElementFactory { get; set; }
   public MarkdownRenderer.Hosting.IMarkdownStringProvider? StringProvider { get; set; }
   public MarkdownRenderer.Images.IMarkdownImageResolver? ImageResolver { get; set; }
+  public MarkdownRenderer.Images.IMarkdownRasterDecoder? RasterDecoder { get; set; }
   public MarkdownRenderer.Images.IMarkdownSvgRenderer? SvgRenderer { get; set; }
   public MarkdownRenderer.Images.MarkdownDocumentSource? ImageDocumentSource { get; set; }
   public MarkdownRenderer.MarkdownEngine? Engine { get; set; }
@@ -174,6 +175,7 @@ public sealed class MarkdownRenderer.Controls.MarkdownRenderFailedEventArgs : Sy
   public static readonly Microsoft.UI.Xaml.DependencyProperty IsTaskListEditingEnabledProperty;
   public static readonly Microsoft.UI.Xaml.DependencyProperty MarkdownProperty;
   public static readonly Microsoft.UI.Xaml.DependencyProperty PerformanceSessionProperty;
+  public static readonly Microsoft.UI.Xaml.DependencyProperty RasterDecoderProperty;
   public static readonly Microsoft.UI.Xaml.DependencyProperty StringProviderProperty;
   public static readonly Microsoft.UI.Xaml.DependencyProperty StyleSheetProperty;
   public static readonly Microsoft.UI.Xaml.DependencyProperty SvgRendererProperty;
@@ -209,6 +211,7 @@ public sealed class MarkdownRenderer.Controls.MarkdownRendererControlBuilder
   public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithImageResolver(MarkdownRenderer.Images.IMarkdownImageResolver? imageResolver);
   public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithMarkdown(string? markdown);
   public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithPerformanceSession(MarkdownRenderer.Performance.IMarkdownPerformanceSession? session);
+  public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithRasterDecoder(MarkdownRenderer.Images.IMarkdownRasterDecoder? rasterDecoder);
   public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithSelectionEnabled(bool isEnabled);
   public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithStringProvider(MarkdownRenderer.Hosting.IMarkdownStringProvider? provider);
   public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithStyleSheet(MarkdownRenderer.Theming.MarkdownStyleSheet? styleSheet);
@@ -345,6 +348,10 @@ public interface MarkdownRenderer.Images.IMarkdownImageSourceByteAdmission
 public interface MarkdownRenderer.Images.IMarkdownImageSourceByteAdmittedResolver : MarkdownRenderer.Images.IMarkdownImageResolver
   public abstract System.Threading.Tasks.ValueTask<MarkdownRenderer.Images.MarkdownImageResolution> ResolveWithSourceByteAdmissionAsync(string source, MarkdownRenderer.Images.MarkdownImageResolveContext context, MarkdownRenderer.Images.IMarkdownImageSourceByteAdmission admission, System.Threading.CancellationToken cancellationToken);
 
+public interface MarkdownRenderer.Images.IMarkdownRasterDecoder
+  public abstract System.Threading.Tasks.ValueTask<MarkdownRenderer.Images.MarkdownRaster> DecodeAsync(MarkdownRenderer.Images.MarkdownRasterDecodeRequest request, System.Threading.CancellationToken cancellationToken = null);
+  public abstract bool SupportsFormat(MarkdownRenderer.Images.MarkdownRasterFormat format);
+
 public interface MarkdownRenderer.Images.IMarkdownSvgDocument : System.IDisposable
   public abstract MarkdownRenderer.Images.MarkdownSvgDocumentInfo Info { get; }
   public abstract System.Threading.Tasks.ValueTask<MarkdownRenderer.Images.MarkdownSvgRaster> RenderAsync(MarkdownRenderer.Images.MarkdownSvgRenderRequest request, System.Threading.CancellationToken cancellationToken = null);
@@ -437,6 +444,62 @@ public enum MarkdownRenderer.Images.MarkdownImageUnavailableReason
   Offline = 4,
   RemoteContentBlocked = 2,
   Unavailable = 1,
+
+public sealed class MarkdownRenderer.Images.MarkdownRaster : System.IDisposable
+  public MarkdownRaster(System.Buffers.IMemoryOwner<byte> owner, int widthPixels, int heightPixels, int strideBytes, MarkdownRenderer.Images.MarkdownRasterPixelFormat pixelFormat);
+  public MarkdownRenderer.Images.MarkdownRasterPixelFormat PixelFormat { get; }
+  public System.ReadOnlyMemory<byte> Pixels { get; }
+  public int HeightPixels { get; }
+  public int LengthBytes { get; }
+  public int StrideBytes { get; }
+  public int WidthPixels { get; }
+  public void Dispose();
+
+public enum MarkdownRenderer.Images.MarkdownRasterDecodePriority
+  Overscan = 0,
+  Visible = 1,
+
+public sealed class MarkdownRenderer.Images.MarkdownRasterDecodeRequest : System.IEquatable<MarkdownRenderer.Images.MarkdownRasterDecodeRequest>
+  public MarkdownRasterDecodeRequest(System.ReadOnlyMemory<byte> EncodedBytes, MarkdownRenderer.Images.MarkdownRasterFormat Format, int TargetWidthPixels, int TargetHeightPixels, long MaximumWorkingBytes, MarkdownRenderer.Images.MarkdownRasterPixelFormat PixelFormat = MarkdownRenderer.Images.MarkdownRasterPixelFormat.Bgra8Premultiplied, MarkdownRenderer.Images.MarkdownRasterDecodePriority Priority = MarkdownRenderer.Images.MarkdownRasterDecodePriority.Visible);
+  public MarkdownRenderer.Images.MarkdownRasterDecodePriority Priority { get; init; }
+  public MarkdownRenderer.Images.MarkdownRasterDecodeRequest <Clone>$();
+  public MarkdownRenderer.Images.MarkdownRasterFormat Format { get; init; }
+  public MarkdownRenderer.Images.MarkdownRasterPixelFormat PixelFormat { get; init; }
+  public System.ReadOnlyMemory<byte> EncodedBytes { get; init; }
+  public bool Equals(MarkdownRenderer.Images.MarkdownRasterDecodeRequest? other);
+  public int TargetHeightPixels { get; init; }
+  public int TargetWidthPixels { get; init; }
+  public long MaximumWorkingBytes { get; init; }
+  public override bool Equals(object? obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static bool op_Equality(MarkdownRenderer.Images.MarkdownRasterDecodeRequest? left, MarkdownRenderer.Images.MarkdownRasterDecodeRequest? right);
+  public static bool op_Inequality(MarkdownRenderer.Images.MarkdownRasterDecodeRequest? left, MarkdownRenderer.Images.MarkdownRasterDecodeRequest? right);
+  public void Deconstruct(out System.ReadOnlyMemory<byte> EncodedBytes, out MarkdownRenderer.Images.MarkdownRasterFormat Format, out int TargetWidthPixels, out int TargetHeightPixels, out long MaximumWorkingBytes, out MarkdownRenderer.Images.MarkdownRasterPixelFormat PixelFormat, out MarkdownRenderer.Images.MarkdownRasterDecodePriority Priority);
+
+public sealed class MarkdownRenderer.Images.MarkdownRasterException : System.Exception
+  public MarkdownRasterException(MarkdownRenderer.Images.MarkdownRasterFailureReason reason, string? message = null, System.Exception? innerException = null);
+  public MarkdownRenderer.Images.MarkdownRasterFailureReason Reason { get; }
+
+public enum MarkdownRenderer.Images.MarkdownRasterFailureReason
+  ArchitectureMismatch = 4,
+  Canceled = 5,
+  ResourceLimitExceeded = 1,
+  Timeout = 2,
+  UnsupportedContent = 0,
+  WorkerFailure = 3,
+
+public enum MarkdownRenderer.Images.MarkdownRasterFormat
+  Avif = 5,
+  Bmp = 2,
+  Gif = 4,
+  Jpeg = 1,
+  Png = 0,
+  WebP = 3,
+
+public enum MarkdownRenderer.Images.MarkdownRasterPixelFormat
+  Bgra8Premultiplied = 1,
+  Rgba8Premultiplied = 0,
 
 public readonly struct MarkdownRenderer.Images.MarkdownSvgColor : System.IEquatable<MarkdownRenderer.Images.MarkdownSvgColor> [layout: Sequential; pack: 0; size: 0; charset: Ansi]
   public MarkdownSvgColor(byte Red, byte Green, byte Blue, byte Alpha = 255);
@@ -757,7 +820,9 @@ public static class MarkdownRenderer.Theming.MarkdownResourceKeys
 
 public readonly struct MarkdownRenderer.Theming.MarkdownStyleContext [layout: Sequential; pack: 0; size: 0; charset: Ansi]
   public MarkdownRenderer.Theming.MarkdownStyleRole Role { get; }
+  public MarkdownStyleContext(MarkdownRenderer.Theming.MarkdownStyleRole role, System.Collections.Generic.IEnumerable<MarkdownRenderer.Theming.MarkdownStyleRole> ancestorRoles, int nestingDepth = 0, string? language = null, string? state = null, System.Collections.Generic.IEnumerable<string>? classNames = null);
   public MarkdownStyleContext(MarkdownRenderer.Theming.MarkdownStyleRole role, int nestingDepth = 0, string? language = null, string? state = null, System.Collections.Generic.IEnumerable<string>? classNames = null);
+  public System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Theming.MarkdownStyleRole> AncestorRoles { get; }
   public System.Collections.Generic.IReadOnlyList<string> ClassNames { get; }
   public int NestingDepth { get; }
   public string? Language { get; }
@@ -790,6 +855,8 @@ public sealed class MarkdownRenderer.Theming.MarkdownStyleRule
 
 public sealed class MarkdownRenderer.Theming.MarkdownStyleSelector
   public MarkdownRenderer.Theming.MarkdownStyleRole Role { get; }
+  public MarkdownRenderer.Theming.MarkdownStyleRole? AncestorRole { get; }
+  public MarkdownStyleSelector(MarkdownRenderer.Theming.MarkdownStyleRole role, MarkdownRenderer.Theming.MarkdownStyleRole ancestorRole, int minimumNestingDepth = 0, int maximumNestingDepth = 2147483647, string? language = null, string? state = null, string? className = null);
   public MarkdownStyleSelector(MarkdownRenderer.Theming.MarkdownStyleRole role, int minimumNestingDepth = 0, int maximumNestingDepth = 2147483647, string? language = null, string? state = null, string? className = null);
   public bool Matches(MarkdownRenderer.Theming.MarkdownStyleContext context);
   public int MaximumNestingDepth { get; }

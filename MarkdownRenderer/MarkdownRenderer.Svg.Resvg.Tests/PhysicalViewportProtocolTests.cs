@@ -8,13 +8,13 @@ namespace MarkdownRenderer.Svg.Resvg.Tests;
 public sealed class PhysicalViewportProtocolTests
 {
     [Fact]
-    public void ProtocolV9CarriesExactViewportWithoutChangingIntegerAllocation()
+    public void ProtocolV10CarriesExactViewportWithoutChangingIntegerAllocation()
     {
         WorkerRequest request = RenderRequest(new MarkdownSvgPhysicalViewport(1112.5, 197.5));
 
         byte[] frame = WorkerProtocol.Encode(request);
 
-        Assert.Equal((ushort)9, BinaryPrimitives.ReadUInt16LittleEndian(frame.AsSpan(4)));
+        Assert.Equal((ushort)10, BinaryPrimitives.ReadUInt16LittleEndian(frame.AsSpan(4)));
         Assert.Equal(4u, BinaryPrimitives.ReadUInt32LittleEndian(frame.AsSpan(32)) & 4u);
         Assert.Equal(1113u, BinaryPrimitives.ReadUInt32LittleEndian(frame.AsSpan(44)));
         Assert.Equal(198u, BinaryPrimitives.ReadUInt32LittleEndian(frame.AsSpan(48)));

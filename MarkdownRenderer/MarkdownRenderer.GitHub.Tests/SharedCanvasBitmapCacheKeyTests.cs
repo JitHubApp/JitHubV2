@@ -145,7 +145,7 @@ public sealed class SharedCanvasBitmapCacheKeyTests
         string failedUrlHelper = ExtractBetween(
             source,
             "private static void RememberFailedUrl(string cacheKey)",
-            "private static void TrimCache<TValue>");
+            "private static void TrimCache<TKey, TValue>");
         Assert.Contains("cacheKey.Length is 0 or > MaxFailedCacheKeyLength", failedUrlHelper, StringComparison.Ordinal);
         Assert.Contains("_failedUrls.TryAdd(cacheKey, 0);", failedUrlHelper, StringComparison.Ordinal);
 
@@ -154,7 +154,9 @@ public sealed class SharedCanvasBitmapCacheKeyTests
         Assert.Single(Regex.Matches(
             source,
             @"_failedUrls\s*(?:\.\s*(?:TryAdd|GetOrAdd|AddOrUpdate|TryUpdate)\s*\(|\[\s*)").Cast<Match>());
-        Assert.Equal(3, CountOccurrences(source, "RememberFailedUrl(cacheKey);"));
+        // Raster decode failures now use the provider/format-keyed bounded
+        // cache; only the remaining source/policy failure paths are URL-keyed.
+        Assert.Equal(2, CountOccurrences(source, "RememberFailedUrl(cacheKey);"));
     }
 
     private static CanvasDevice CreateIdentityOnlyDevice()

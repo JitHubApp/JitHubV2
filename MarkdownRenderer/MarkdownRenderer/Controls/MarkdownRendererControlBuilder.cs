@@ -24,6 +24,7 @@ public sealed class MarkdownRendererControlBuilder
     private IMarkdownHostedElementFactory? _hostedElementFactory;
     private IMarkdownImageResolver? _imageResolver;
     private IMarkdownSvgRenderer? _svgRenderer;
+    private IMarkdownRasterDecoder? _rasterDecoder;
     private IMarkdownPerformanceSession? _performanceSession;
     private Uri? _imageBaseUri;
     private string? _imageDocumentPath;
@@ -143,6 +144,17 @@ public sealed class MarkdownRendererControlBuilder
     public MarkdownRendererControlBuilder WithSvgRenderer(IMarkdownSvgRenderer? svgRenderer)
     {
         _svgRenderer = svgRenderer;
+        return this;
+    }
+
+    /// <summary>Sets the optional provider used to decode admitted static raster images.</summary>
+    /// <param name="rasterDecoder">
+    /// Shared decoder to borrow, or null to keep platform decoding. Controls
+    /// created by this builder never dispose the decoder.
+    /// </param>
+    public MarkdownRendererControlBuilder WithRasterDecoder(IMarkdownRasterDecoder? rasterDecoder)
+    {
+        _rasterDecoder = rasterDecoder;
         return this;
     }
 
@@ -376,6 +388,7 @@ public sealed class MarkdownRendererControlBuilder
             control.HostedElementFactory = _hostedElementFactory;
             control.ImageResolver = _imageResolver;
             control.SvgRenderer = _svgRenderer;
+            control.RasterDecoder = _rasterDecoder;
             control.PerformanceSession = _performanceSession;
             control.ImageBaseUri = _imageBaseUri;
             control.ImageDocumentPath = _imageDocumentPath;

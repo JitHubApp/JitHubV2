@@ -10,7 +10,7 @@
   "license": "BSD-3-Clause",
   "vendoredLicense": "BSD-3-Clause AND MIT",
   "sourceInventorySha256": "5454cbf22bc4f175b21e750839c30b99bc164991c5134f66a5cc1e7fe01bced8",
-  "patchSetSha256": "917fd385f07281bf59bd969a0160f143bc6711bf8d11b1ee8837afc0b3c4e6e4",
+  "patchSetSha256": "50166575e05a7cdcffb0c8bfb3f1364c7d50810d10df7890c48dfe8797189f32",
   "sourceFiles": [
     {
       "path": ".cargo_vcs_info.json",
@@ -875,17 +875,17 @@
     {
       "path": "src/lib.rs",
       "upstreamSha256": "6c306bab841bd9874d95286fb48c970ace62c4dca41e42f8f1c7fd9a23c4809e",
-      "patchedSha256": "f5f75c6103859035c3c976022ab445d6c59449f2e27f6c5d8f69fb67921dda47"
+      "patchedSha256": "6188d434c20c3fe6a3099e56a09ef16cc5efb886a7e97e677a65487745f1d04c"
     },
     {
       "path": "src/mask.rs",
       "upstreamSha256": "5c6b8d615f219f78ceebc714a56e9916745eeb93fc9213b87c96b3f00f55792b",
-      "patchedSha256": "ff4806f5498318afc0dca6e4c70744086e627cdcbaba0feab2ff16da53b237b7"
+      "patchedSha256": "e59ad06ececc1b97dfbed323e9ecf088571474011e013ce0f666217f65f75593"
     },
     {
       "path": "src/painter.rs",
       "upstreamSha256": "40f1d9523ab9875d83496cb7a1b4570aee2d958204dc91424fb6a5bd00c97105",
-      "patchedSha256": "1d2713833d74041cba2f27f4587dc5f26f4829dd3ed8c73bf7e4b94d2cb211a6"
+      "patchedSha256": "307863ba98ac4f9e5a438055201296468ecc4dcad09926d1dd65b785b411084b"
     },
     {
       "path": "src/pipeline/blitter.rs",
@@ -895,12 +895,12 @@
     {
       "path": "src/pipeline/mod.rs",
       "upstreamSha256": "fbbe3f276b7e95fdf501fe0420f60d18ca313395cdf79aa1a943e9ef996243a4",
-      "patchedSha256": "84fcf1e0db13b8e81a2f25df4f33fc40755533267d0a3e573a5db375b9f07f06"
+      "patchedSha256": "c4d32c10c69bf5daca0329dbdd9c1389aa0ad899c1a63a4076c916c722f79722"
     },
     {
       "path": "src/pixmap.rs",
       "upstreamSha256": "484d49d1f4c3c3c8fb3fab3e1b1535292de828c0f258c3cab9bda02c7d9626fc",
-      "patchedSha256": "8d0d0f4eee8f2f51c9432ef8451c0fd84d5ca27d33657d2af90d2d8d4584bd70"
+      "patchedSha256": "8d817bb3727ea950d31a7ef9535ba426437479fbde5092bb0bae2dd2a2ff3023"
     },
     {
       "path": "src/scan/hairline_aa.rs",

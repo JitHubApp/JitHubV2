@@ -106,7 +106,7 @@ public sealed class NearMaximumRasterWicDecodeQualificationTests(ITestOutputHelp
         RasterNativeWicDiagnosticSnapshot nativeBeforePair = RasterNativeWicDiagnostics.GetSnapshot();
 #endif
         (PairResult pair, MemoryReport pairMemory) = await MeasurePrivateBytesAsync(
-            $"two-way-overlapping-request/ImageBox-{budget.Format}-{budget.TotalPixels:N0}-pixels",
+            $"two-request-admission-barrier/ImageBox-{budget.Format}-{budget.TotalPixels:N0}-pixels",
             token => LoadTwoAsync(source, contentType, before.Preparation, token));
 #if MARKDOWN_LAYOUT_DIAGNOSTICS
         AssertAndReportNativeDecodeCount("two-way", nativeBeforePair, expected: 2);
@@ -120,15 +120,19 @@ public sealed class NearMaximumRasterWicDecodeQualificationTests(ITestOutputHelp
         }
 
         // Static-preview requests are admitted exclusively because a scaled
-        // WIC output does not prove bounded codec intermediates. The two-way
-        // probe therefore verifies overlapping demand and queueing while the
-        // process-wide admission keeps the actual large decodes serialized.
-        Assert.True(pair.PendingRequestsAtOverlap > before.Preparation.PendingRequests,
-            "The second large ImageBox request did not overlap the first request's admitted work.");
-        Assert.InRange(
-            pair.ActivePreparationCountAtOverlap,
-            before.Preparation.ActiveCount + 1,
-            before.Preparation.ActiveCount + 1);
+        // WIC output does not prove bounded codec intermediates. Both actual
+        // ImageBoxes are therefore queued behind a test-owned exclusive lease
+        // before it is released. This proves concurrent demand deterministically
+        // without treating the barrier lease as decoder work or native overlap.
+        output.WriteLine(
+            $"ImageBox queued-demand barrier: queuedImageDemands={pair.QueuedImageDemandsAtBarrier}; " +
+            $"pendingRequestsBeforeRelease={pair.PendingRequestsBeforeBarrierRelease}; " +
+            $"baselinePendingRequests={before.Preparation.PendingRequests}. " +
+            "The test-owned exclusive lease is admission-barrier evidence only, not a native decode or concurrency measurement.");
+        Assert.Equal(2, pair.QueuedImageDemandsAtBarrier);
+        Assert.Equal(
+            before.Preparation.PendingRequests + 2,
+            pair.PendingRequestsBeforeBarrierRelease);
         await AssertAdmissionsDrainedToAsync(before);
 
         output.WriteLine(
@@ -221,31 +225,44 @@ public sealed class NearMaximumRasterWicDecodeQualificationTests(ITestOutputHelp
         using var secondSession = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
         var first = CreateImage(source, contentType, firstSession, "pair-first");
         var second = CreateImage(source, contentType, secondSession, "pair-second");
+        IDisposable? startBarrier = null;
         try
         {
+            // The guard consumes the shared admission capacity, not a decoder
+            // slot owned by either ImageBox. It makes the two real requests
+            // observable in the wait queues before either can start.
+            startBarrier = await MarkdownImagePreparationAdmission.Shared.EnterAsync(
+                    new object(), estimatedBytes: 0, exclusive: true, cancellationToken: cancellationToken)
+                .AsTask().WaitAsync(cancellationToken).ConfigureAwait(false);
+
             first.Measure(DisplayWidth);
             Task firstLoad = StartLoadAsync(first, cancellationToken);
 
             MarkdownImagePreparationAdmission preparation = MarkdownImagePreparationAdmission.Shared;
             await WaitUntilAsync(
-                () => preparation.ActiveCount > baseline.ActiveCount,
+                () => preparation.PendingRequests >= baseline.PendingRequests + 1,
                 cancellationToken).ConfigureAwait(false);
 
             second.Measure(DisplayWidth);
             Task secondLoad = StartLoadAsync(second, cancellationToken);
             await WaitUntilAsync(
-                () => preparation.PendingRequests > baseline.PendingRequests,
+                () => preparation.PendingRequests >= baseline.PendingRequests + 2,
                 cancellationToken).ConfigureAwait(false);
-            PreparationSnapshot overlap = CapturePreparationSnapshot();
+            int pendingRequestsBeforeBarrierRelease = preparation.PendingRequests;
+            int queuedImageDemandsAtBarrier = pendingRequestsBeforeBarrierRelease - baseline.PendingRequests;
+
+            startBarrier.Dispose();
+            startBarrier = null;
 
             await Task.WhenAll(firstLoad, secondLoad).WaitAsync(cancellationToken).ConfigureAwait(false);
             return new PairResult(
                 [CaptureResult("two-way/first", first), CaptureResult("two-way/second", second)],
-                overlap.ActiveCount,
-                overlap.PendingRequests);
+                queuedImageDemandsAtBarrier,
+                pendingRequestsBeforeBarrierRelease);
         }
         finally
         {
+            startBarrier?.Dispose();
             first.Dispose();
             second.Dispose();
             await Task.WhenAll(WaitForImageDrainAsync(first), WaitForImageDrainAsync(second))
@@ -478,19 +495,30 @@ public sealed class NearMaximumRasterWicDecodeQualificationTests(ITestOutputHelp
         while (Interlocked.CompareExchange(ref target, value, observed) != observed);
     }
 
-    private void WriteMemoryReport(MemoryReport report) => output.WriteLine(
-        $"WIC memory {report.Label}: baselinePrivateBytes={report.BaselinePrivateBytes:N0}; " +
-        $"sampledPeakPrivateBytes={report.SampledPeakPrivateBytes:N0}; " +
-        $"sampledGrowthBytes={System.Math.Max(0, report.SampledPeakPrivateBytes - report.BaselinePrivateBytes):N0}; " +
-        $"privateBytesAfterLogicalRetirement={report.PrivateBytesAfterLogicalRetirement:N0}; " +
-        $"privateBytesAfterTestOnlyGc={report.PrivateBytesAfterTestOnlyGc:N0}; " +
-        $"sampleInterval={report.SampleIntervalMilliseconds} ms; " +
-        $"elapsedLoadAndLogicalRetirement={report.ElapsedLoadAndLogicalRetirement.TotalMilliseconds:F1} ms; " +
-        $"maxPreparationActive={report.MaximumPreparationActiveCount}; " +
-        $"maxPendingPreparation={report.MaximumPendingRequests}; " +
-        $"maxOutputActiveBytes={report.MaximumOutputActiveBytes:N0}; " +
-        $"maxOutputReservations={report.MaximumOutputReservations}; " +
-        $"maxLiveBitmapWeightBytes={report.MaximumLiveBitmapWeightBytes:N0}.");
+    private void WriteMemoryReport(MemoryReport report)
+    {
+        bool includesTestBarrier = report.Label.StartsWith(
+            "two-request-admission-barrier/", StringComparison.Ordinal);
+        string activeCountLabel = includesTestBarrier
+            ? "maxPreparationActiveIncludingTestBarrier"
+            : "maxPreparationActive";
+        string pendingCountLabel = includesTestBarrier
+            ? "maxPendingPreparationIncludingQueuedDemandBarrier"
+            : "maxPendingPreparation";
+        output.WriteLine(
+            $"WIC memory {report.Label}: baselinePrivateBytes={report.BaselinePrivateBytes:N0}; " +
+            $"sampledPeakPrivateBytes={report.SampledPeakPrivateBytes:N0}; " +
+            $"sampledGrowthBytes={System.Math.Max(0, report.SampledPeakPrivateBytes - report.BaselinePrivateBytes):N0}; " +
+            $"privateBytesAfterLogicalRetirement={report.PrivateBytesAfterLogicalRetirement:N0}; " +
+            $"privateBytesAfterTestOnlyGc={report.PrivateBytesAfterTestOnlyGc:N0}; " +
+            $"sampleInterval={report.SampleIntervalMilliseconds} ms; " +
+            $"elapsedLoadAndLogicalRetirement={report.ElapsedLoadAndLogicalRetirement.TotalMilliseconds:F1} ms; " +
+            $"{activeCountLabel}={report.MaximumPreparationActiveCount}; " +
+            $"{pendingCountLabel}={report.MaximumPendingRequests}; " +
+            $"maxOutputActiveBytes={report.MaximumOutputActiveBytes:N0}; " +
+            $"maxOutputReservations={report.MaximumOutputReservations}; " +
+            $"maxLiveBitmapWeightBytes={report.MaximumLiveBitmapWeightBytes:N0}.");
+    }
 
     private void WriteProbeReport(
         ProbeResult result,
@@ -514,8 +542,8 @@ public sealed class NearMaximumRasterWicDecodeQualificationTests(ITestOutputHelp
 
     private sealed record PairResult(
         ProbeResult[] Outputs,
-        int ActivePreparationCountAtOverlap,
-        int PendingRequestsAtOverlap);
+        int QueuedImageDemandsAtBarrier,
+        int PendingRequestsBeforeBarrierRelease);
 
     private sealed record MemoryReport(
         string Label,

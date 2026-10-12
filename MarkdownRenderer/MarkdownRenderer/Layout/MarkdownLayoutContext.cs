@@ -351,6 +351,7 @@ internal sealed class MarkdownLayoutContext
             PerformanceDocumentOwner = null,
             ImagePreparationOwner = imagePreparationOwner,
             SvgRenderer = SvgRenderer,
+            RasterDecoder = RasterDecoder,
             ImageBaseUri = ImageBaseUri,
             ImageDocumentPath = ImageDocumentPath,
             ImageDocumentSource = ImageDocumentSource,
@@ -505,6 +506,13 @@ internal sealed class MarkdownLayoutContext
     /// may own documents opened from it, but never the renderer itself.
     /// </summary>
     public IMarkdownSvgRenderer? SvgRenderer { get; init; }
+
+    /// <summary>
+    /// Shared static-raster decoder borrowed from the host control. Image boxes
+    /// use it only for an explicitly supported, admitted format and never own
+    /// or dispose the provider.
+    /// </summary>
+    public IMarkdownRasterDecoder? RasterDecoder { get; init; }
 
     /// <summary>Optional base URI used to resolve relative image sources.</summary>
     public Uri? ImageBaseUri { get; init; }

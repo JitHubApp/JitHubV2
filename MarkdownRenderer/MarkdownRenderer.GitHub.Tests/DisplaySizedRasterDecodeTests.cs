@@ -463,7 +463,8 @@ public sealed class DisplaySizedRasterDecodeTests
         MarkdownPerformanceSession? session,
         double scale,
         bool hasDocumentOwner = true,
-        Action<string, MarkdownImageUnavailableReason, MarkdownSvgFailureReason?>? imageUnavailable = null)
+        Action<string, MarkdownImageUnavailableReason, MarkdownSvgFailureReason?>? imageUnavailable = null,
+        IMarkdownRasterDecoder? rasterDecoder = null)
     {
         var style = new ElementStyle();
         var styles = new Dictionary<string, ElementStyle>(StringComparer.Ordinal)
@@ -481,6 +482,7 @@ public sealed class DisplaySizedRasterDecodeTests
             new MarkdownExtensionRegistry(), FlowDirection.LeftToRight, language: "en-US")
         {
             ImageResolver = resolver,
+            RasterDecoder = rasterDecoder,
             PerformanceSession = session,
             PerformanceDocumentOwner = hasDocumentOwner ? new object() : null,
             RasterizationScale = scale,

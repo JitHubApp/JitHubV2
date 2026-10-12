@@ -5,7 +5,7 @@
 
 assembly MarkdownRenderer.Svg.Resvg
 
-public sealed class MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRenderer : MarkdownRenderer.Images.IMarkdownSvgRenderer, System.IAsyncDisposable, System.IDisposable
+public sealed class MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRenderer : MarkdownRenderer.Images.IMarkdownRasterDecoder, MarkdownRenderer.Images.IMarkdownSvgRenderer, System.IAsyncDisposable, System.IDisposable
   public MarkdownRenderer.Images.MarkdownSvgSourcePreparation PrepareSource(byte[] source, System.Threading.CancellationToken cancellationToken);
   public ResvgMarkdownSvgRenderer();
   public ResvgMarkdownSvgRenderer(MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRendererOptions options);
@@ -13,6 +13,8 @@ public sealed class MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRenderer : Markdo
   public System.Threading.Tasks.Task WarmUpAsync(System.Threading.CancellationToken cancellationToken = null);
   public System.Threading.Tasks.ValueTask DisposeAsync();
   public System.Threading.Tasks.ValueTask<MarkdownRenderer.Images.IMarkdownSvgDocument> OpenAsync(MarkdownRenderer.Images.MarkdownSvgOpenRequest request, System.Threading.CancellationToken cancellationToken = null);
+  public System.Threading.Tasks.ValueTask<MarkdownRenderer.Images.MarkdownRaster> DecodeAsync(MarkdownRenderer.Images.MarkdownRasterDecodeRequest request, System.Threading.CancellationToken cancellationToken = null);
+  public bool SupportsFormat(MarkdownRenderer.Images.MarkdownRasterFormat format);
   public const string ResvgCommit = "68b14c4c3bccdb60344c777406486b54c36ec1a4";
   public const string ResvgVersion = "0.48.1";
   public event System.EventHandler? CacheInvalidated { add; remove; }

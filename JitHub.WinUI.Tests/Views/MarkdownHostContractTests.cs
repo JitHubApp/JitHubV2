@@ -430,6 +430,8 @@ public sealed class MarkdownHostContractTests
         Assert.Contains("ownsProvider: true", runtime, StringComparison.Ordinal);
         Assert.Contains("JitHubMarkdownRuntime.CodeHighlighter", viewer, StringComparison.Ordinal);
         Assert.Contains("JitHubMarkdownRuntime.SvgRenderer", viewer, StringComparison.Ordinal);
+        Assert.Contains("_renderer.RasterDecoder = JitHubMarkdownRuntime.RasterDecoder;", viewer, StringComparison.Ordinal);
+        Assert.Contains("internal static IMarkdownRasterDecoder RasterDecoder", runtime, StringComparison.Ordinal);
         Assert.Contains("_renderer.ImageResolver = _imageResolver", viewer, StringComparison.Ordinal);
         Assert.Contains("_renderer.AllowThirdPartyRemoteImages = ShouldAllowThirdPartyRemoteImages()", viewer, StringComparison.Ordinal);
         Assert.Contains("new ResvgMarkdownSvgRenderer()", runtime, StringComparison.Ordinal);

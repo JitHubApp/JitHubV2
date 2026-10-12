@@ -1,7 +1,7 @@
-# MarkdownRenderer resvg worker protocol v9
+# MarkdownRenderer resvg worker protocol v10
 
 The host and worker exchange fixed-size little-endian frames over one private
-duplex named pipe. SVG bytes and premultiplied pixels are never carried by the
+duplex named pipe. Encoded image bytes and premultiplied pixels are never carried by the
 pipe. Each data request borrows an anonymous Windows shared-memory section
 handle duplicated into that exact worker. `Open` attaches a document token from
 a source mapping; later renders receive output-only mappings.
@@ -15,12 +15,12 @@ protocol violations.
 
 Request bytes 240 through 247 contain the little-endian UInt64 worker-local
 handle. Bytes 170 through 175 and 248 through 367 are reserved and must be zero;
-v6 name fields are not accepted. `Open` and `Render` require a nonzero,
+v6 name fields are not accepted. `Open`, `Render`, and `RasterDecode` require a nonzero,
 addressable, non-pseudo handle. `FontCatalog` uses the same field for its
 read-only catalog-table section. Other control operations require zero. The
 host transfers only the access needed by the operation, without inheritance,
 after taking the transaction gate. The worker maps and unmaps its view but
-never closes a borrowed handle. For Open/Render, the host closes the remote
+never closes a borrowed handle. For Open/Render/RasterDecode, the host closes the remote
 handle before releasing the transaction gate; on cancellation, transport
 failure, or malformed response it first terminates the worker. This avoids
 opening the session named-object namespace under a restricted primary token
@@ -37,7 +37,58 @@ The output mapping still contains the exact integer-sized raster (or integer
 tile); the viewport changes SVG scale and filter extents, not allocation size.
 When bit 2 is absent, both `f64` fields must be all-zero and the integer target
 continues to define the viewport exactly. Open, FontCatalog, and control
-operations must not set bit 2. Bytes 392 through 511 remain reserved and zero.
+operations must not set bit 2. Bytes 392 through 511 remain reserved and zero
+except for the explicitly separate `RasterDecode` fields below.
+
+## Static raster decoding
+
+`RasterDecode` (operation 7) decodes an admitted static WebP source without
+using an installed WebP codec. It shares the existing worker pool, restricted
+process, deadline, cancellation/preemption and failure-quarantine rules. It
+does not create a document token, use font state or retain a parsed-tree cache
+entry. An error never causes an in-process or platform-codec retry.
+
+In addition to the common frame header, only these fields are populated:
+
+| Offset | Type | Meaning |
+| --- | --- | --- |
+| 36 | u32 | Exact encoded source length |
+| 40 | u32 | Exact output byte length |
+| 44, 48 | u32, u32 | Oriented output width and height |
+| 125 | u8 | Premultiplied sRGB byte order: 1 RGBA, 2 BGRA |
+| 136 | 32 bytes | SHA-256 of the exact encoded source |
+| 240 | u64 | Borrowed worker-local section handle |
+| 392 | u64 | Total admitted explicit working bytes |
+| 400, 404 | u32, u32 | Expected unrotated source width and height |
+| 408 | u32 | Expected EXIF orientation, 1 through 8 |
+
+All SVG policy, locale, theme, flags, document, viewport and font fields are
+zero, as are bytes 412 through 511. The worker independently validates the
+source hash, container, dimensions and orientation rather than trusting host
+hints. Upscaling is rejected. Input is capped at 32 MiB, each source dimension
+at 16,384 pixels, source area at 40,000,000 pixels and output at 64 MiB. A
+request's lower working limit remains authoritative, with a hard ceiling of
+64 MiB on x64/ARM64 and 32 MiB on x86.
+
+The section contains source bytes, zero padding to a 64-byte boundary, the
+exact output range and the usual 64-byte trailer. The working charge includes
+this whole section and explicitly owned decoder/intermediate allocations.
+The allocation ledger is not an RSS promise: native color-management internals,
+allocator overhead and process-wide state remain subject to the independent
+kill-on-close Job Object commit ceiling and active request deadline. An
+exhausted ledger returns a resource-limit failure; worker loss is typed and
+quarantines the content without replay.
+
+Successful output is fully initialized, premultiplied sRGB, color managed
+before resampling and EXIF orientation. Response dimensions and stride must
+exactly match the request. Intrinsic width/height and aspect ratio describe
+the oriented source. SVG dependency flags and font generation are zero.
+Failures carry no output or intrinsic metadata; only status and a bounded,
+content-free detail are permitted. The host retains the section through GPU
+upload, then releases source and pixel views together. Static VP8, VP8L and
+VP8X are distinct from animated WebP; animation is not admitted by this opcode.
+
+## SVG and font operations
 
 An `Open` mapping contains source bytes and has no output range. It returns a
 host-selected, nonce-scoped document token after hashing, security inspection,

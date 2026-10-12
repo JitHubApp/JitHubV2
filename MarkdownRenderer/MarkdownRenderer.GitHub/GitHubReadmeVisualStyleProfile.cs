@@ -130,6 +130,49 @@ public static class GitHubReadmeVisualStyleProfiles
     /// </summary>
     public static GitHubReadmeVisualStyleProfile PrimerLightV5 { get; } = CreatePrimerLightV5();
 
+    /// <summary>
+    /// Gets the source-replay profile with explicit semantic inheritance for
+    /// foregrounds inside block quotes. Heading and link colors remain explicit.
+    /// </summary>
+    public static GitHubReadmeVisualStyleProfile PrimerLightV6 { get; } = CreatePrimerLightV6();
+
+    private static GitHubReadmeVisualStyleProfile CreatePrimerLightV6()
+    {
+        GitHubReadmeVisualStyleProfile previous = PrimerLightV5;
+        Color inheritedForeground = Color.FromArgb(0xFF, 0x59, 0x63, 0x6E);
+        MarkdownStyleSheet styleSheet = previous.StyleSheet;
+        MarkdownStyleRole[] inheritedRoles =
+        [
+            MarkdownStyleRole.Body,
+            MarkdownStyleRole.Strong,
+            MarkdownStyleRole.Emphasis,
+            MarkdownStyleRole.InlineCode,
+            MarkdownStyleRole.CodeBlock,
+            MarkdownStyleRole.ListMarker,
+            MarkdownStyleRole.Table,
+            MarkdownStyleRole.TableHeader,
+            MarkdownStyleRole.TableCell,
+        ];
+
+        for (int i = 0; i < inheritedRoles.Length; i++)
+        {
+            styleSheet = styleSheet.WithRule(new MarkdownStyleRule(
+                new MarkdownStyleSelector(inheritedRoles[i], MarkdownStyleRole.Quote),
+                new ElementStyleOverride { Foreground = inheritedForeground }));
+        }
+
+        return new GitHubReadmeVisualStyleProfile(
+            id: previous.Id,
+            version: 6,
+            fingerprint: "2efa4379622ab3d526084ee64ef006c4b5c76257f61a1d6122f64e73128afbc3",
+            surfaceColor: previous.SurfaceColor,
+            accentColor: previous.AccentColor,
+            styleSheet: styleSheet,
+            codeBlockChromeMode: previous.CodeBlockChromeMode,
+            codeBlockLineNumberMode: previous.CodeBlockLineNumberMode,
+            isCodeBlockCopyEnabled: previous.IsCodeBlockCopyEnabled);
+    }
+
     private static GitHubReadmeVisualStyleProfile CreatePrimerLightV5()
     {
         GitHubReadmeVisualStyleProfile previous = PrimerLightV4;

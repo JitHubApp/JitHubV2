@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "bomFormat": "JitHub-Cargo-SBOM",
   "generatedFrom": "native/Cargo.lock",
-  "packageCount": 76,
+  "packageCount": 78,
   "resvgCommit": "68b14c4c3bccdb60344c777406486b54c36ec1a4",
   "vendoredSources": [
     {
@@ -180,7 +180,7 @@
       "license": "BSD-3-Clause AND MIT",
       "upstreamLicense": "BSD-3-Clause",
       "sourceInventorySha256": "5454cbf22bc4f175b21e750839c30b99bc164991c5134f66a5cc1e7fe01bced8",
-      "patchSetSha256": "917fd385f07281bf59bd969a0160f143bc6711bf8d11b1ee8837afc0b3c4e6e4",
+      "patchSetSha256": "50166575e05a7cdcffb0c8bfb3f1364c7d50810d10df7890c48dfe8797189f32",
       "patches": [
         {
           "path": "Cargo.toml",
@@ -205,17 +205,17 @@
         {
           "path": "src/lib.rs",
           "upstreamSha256": "6c306bab841bd9874d95286fb48c970ace62c4dca41e42f8f1c7fd9a23c4809e",
-          "patchedSha256": "f5f75c6103859035c3c976022ab445d6c59449f2e27f6c5d8f69fb67921dda47"
+          "patchedSha256": "6188d434c20c3fe6a3099e56a09ef16cc5efb886a7e97e677a65487745f1d04c"
         },
         {
           "path": "src/mask.rs",
           "upstreamSha256": "5c6b8d615f219f78ceebc714a56e9916745eeb93fc9213b87c96b3f00f55792b",
-          "patchedSha256": "ff4806f5498318afc0dca6e4c70744086e627cdcbaba0feab2ff16da53b237b7"
+          "patchedSha256": "e59ad06ececc1b97dfbed323e9ecf088571474011e013ce0f666217f65f75593"
         },
         {
           "path": "src/painter.rs",
           "upstreamSha256": "40f1d9523ab9875d83496cb7a1b4570aee2d958204dc91424fb6a5bd00c97105",
-          "patchedSha256": "1d2713833d74041cba2f27f4587dc5f26f4829dd3ed8c73bf7e4b94d2cb211a6"
+          "patchedSha256": "307863ba98ac4f9e5a438055201296468ecc4dcad09926d1dd65b785b411084b"
         },
         {
           "path": "src/pipeline/blitter.rs",
@@ -225,12 +225,12 @@
         {
           "path": "src/pipeline/mod.rs",
           "upstreamSha256": "fbbe3f276b7e95fdf501fe0420f60d18ca313395cdf79aa1a943e9ef996243a4",
-          "patchedSha256": "84fcf1e0db13b8e81a2f25df4f33fc40755533267d0a3e573a5db375b9f07f06"
+          "patchedSha256": "c4d32c10c69bf5daca0329dbdd9c1389aa0ad899c1a63a4076c916c722f79722"
         },
         {
           "path": "src/pixmap.rs",
           "upstreamSha256": "484d49d1f4c3c3c8fb3fab3e1b1535292de828c0f258c3cab9bda02c7d9626fc",
-          "patchedSha256": "8d0d0f4eee8f2f51c9432ef8451c0fd84d5ca27d33657d2af90d2d8d4584bd70"
+          "patchedSha256": "8d817bb3727ea950d31a7ef9535ba426437479fbde5092bb0bae2dd2a2ff3023"
         },
         {
           "path": "src/scan/hairline_aa.rs",
@@ -387,6 +387,102 @@
       ],
       "supplementalTestFixtureManifestSha256": null,
       "supplementalTestFixtures": []
+    },
+    {
+      "name": "image-webp",
+      "version": "0.2.4",
+      "repository": "https://github.com/image-rs/image-webp.git",
+      "revision": "08b57d473c90148dd4b37a075df365afc3dfcc2b",
+      "packagePath": "",
+      "sourceTree": "705dad83a9ffaf469c492b5ec11defdc861eb93e",
+      "archiveSha256": "525e9ff3e1a4be2fbea1fdf0e98686a6d98b4d8f937e1bf7402245af1909e8c3",
+      "license": "MIT OR Apache-2.0",
+      "upstreamLicense": "MIT OR Apache-2.0",
+      "sourceInventorySha256": "fb373b48b33155d4863b5629965a053dfef1cb2b5e5cee7dd9402148de96caa7",
+      "patchSetSha256": "e009af2eab64189e3c910bdf72c227c666a6084f1d8b555e283a33f2c39b2f1a",
+      "patches": [
+        {
+          "path": "Cargo.lock",
+          "upstreamSha256": "baf1f3ef3366a6dcea3b88a0e411d0533916d2c03268c1532b6d114d0781923a",
+          "patchedSha256": "bcb6644ba6edc4d3727c8b5ea70be0762cffb1e688f832833a5ad3b04a2d05fa"
+        },
+        {
+          "path": "Cargo.toml",
+          "upstreamSha256": "c05cc68c768c57e79c581b2ad6c112759556df9689b83313e35d5943f2951262",
+          "patchedSha256": "09464c7208a0f0ff6b3a6cf551923b321cf4ce441383a98822df19a68cf1dbed"
+        },
+        {
+          "path": "src/decoder.rs",
+          "upstreamSha256": "b2a424a9dee08909210f95497b5abcd48e3d85ebd831230b0c49f4237b0f7069",
+          "patchedSha256": "341bb0d3fb4fe3d412378d3c641796097ca12cbccbdb83f97bf9dfe6a826bec9"
+        },
+        {
+          "path": "src/extended.rs",
+          "upstreamSha256": "1838299aefafaffca029942d0d337fe26cabf5a887c9f76e5b8fcbf577469a8a",
+          "patchedSha256": "7a37a8f35c20bec82da5e5ce86ecb6d1edb8e0cb04e6740f61832142a943a20c"
+        },
+        {
+          "path": "src/huffman.rs",
+          "upstreamSha256": "5f1cf0c9a4a03f2ee84bb3756f6d0726c4724026b663fa25102d5d55850eb71f",
+          "patchedSha256": "4b3eb26d923408f6e9a7faba2dc37fe00c28f6639fe868336131a1b0124380dc"
+        },
+        {
+          "path": "src/lib.rs",
+          "upstreamSha256": "0bdc2014e7e01791abe8769119489d02b174b08f1f6950b1c3526d8fd060ece6",
+          "patchedSha256": "8886f0df9590208149a104aeb8dc55f144b7480b6465d327de3ad202062ec400"
+        },
+        {
+          "path": "src/lossless_transform.rs",
+          "upstreamSha256": "8396506ae0a0c621f3d81d4571019f46b60d361647a52b3314b6802fb904e036",
+          "patchedSha256": "c586b8d5509399f0834eb5ae65972492537629fc38467a69e3380f971873e281"
+        },
+        {
+          "path": "src/lossless.rs",
+          "upstreamSha256": "dd14e7d8dd72c8ec76ffc27b4847d58b9ff83818dc1b25e3f4cf6169be89ea1f",
+          "patchedSha256": "40d4aa5da87798d4cec10093b8066f4b9eecae196a8f6dbcf4939c083c7ce147"
+        },
+        {
+          "path": "src/vp8_arithmetic_decoder.rs",
+          "upstreamSha256": "baf4ac638decf5b302118f1dfa22d4b568acabc6e60f4b4847324b30a10433cb",
+          "patchedSha256": "5a51d1b858241acfd59bd65ac77b89a5e6570b6daab1f6685a7e0d0caa034717"
+        },
+        {
+          "path": "src/vp8.rs",
+          "upstreamSha256": "91c1562d24627ae3e313b582d00fff874b16c444e9be845306f9583079e2e3c0",
+          "patchedSha256": "26e066863ccea6b54eb045b0f72f9f4d4478e01b35036ac6dbaf79afd06cdf3b"
+        },
+        {
+          "path": "src/yuv.rs",
+          "upstreamSha256": "7f8f76dc0870fa08e3b9a7ab530c9933677c52f74b4230535cb541331d828128",
+          "patchedSha256": "a802ebcbb23c444411c386d4545aec26d3c52966fbd4a3961da88b89182e4db5"
+        }
+      ],
+      "addedFilesSha256": "9e0e15c40af49aa1d9390e1f7b186201e9f0875c2b5af97912dcbed340c9eee0",
+      "addedFiles": [
+        {
+          "path": "LICENSE-JITHUB-MIT",
+          "sha256": "41445984ed7c0ecf79e35bbf7c4afb6dea9eff5b76207ec9531b4be23a5e1683",
+          "license": "MIT",
+          "licenseTextPath": "LICENSE-JITHUB-MIT",
+          "licenseTextSha256": "41445984ed7c0ecf79e35bbf7c4afb6dea9eff5b76207ec9531b4be23a5e1683"
+        },
+        {
+          "path": "src/budget.rs",
+          "sha256": "957fae9b563eecc5064cb2b5e2e3ee9787c977ccb5dde99da9e0ef32f56c7901",
+          "license": "MIT",
+          "licenseTextPath": "LICENSE-JITHUB-MIT",
+          "licenseTextSha256": "41445984ed7c0ecf79e35bbf7c4afb6dea9eff5b76207ec9531b4be23a5e1683"
+        },
+        {
+          "path": "examples/generate_opaque_vp8_fixture.rs",
+          "sha256": "62ee144e8945f591aa21d87e49d85bb6067ee31c3ca27ff2315546cdfcc268a0",
+          "license": "MIT",
+          "licenseTextPath": "LICENSE-JITHUB-MIT",
+          "licenseTextSha256": "41445984ed7c0ecf79e35bbf7c4afb6dea9eff5b76207ec9531b4be23a5e1683"
+        }
+      ],
+      "supplementalTestFixtureManifestSha256": null,
+      "supplementalTestFixtures": []
     }
   ],
   "licensePolicy": {
@@ -394,6 +490,9 @@
     "defaultLicenseSelection": "MIT",
     "selectionOverrides": {
       "arrayref@0.3.9": "BSD-2-Clause",
+      "image-webp@0.2.4": "MIT",
+      "moxcms@0.8.1": "BSD-3-Clause",
+      "pxfm@0.1.30": "BSD-3-Clause",
       "slotmap@1.1.1": "Zlib",
       "tiny-skia@0.12.0": "BSD-3-Clause AND MIT",
       "tiny-skia-path@0.12.0": "BSD-3-Clause AND MIT",
@@ -450,12 +549,14 @@
     "memmap2@0.9.11",
     "miniz_oxide@0.8.9",
     "miniz_oxide@0.9.1",
+    "moxcms@0.8.1",
     "num-traits@0.2.19",
     "once_cell@1.21.4",
     "pico-args@0.5.0",
     "png@0.18.1",
     "polycool@0.4.0",
     "proc-macro2@1.0.107",
+    "pxfm@0.1.30",
     "quick-error@2.0.1",
     "quote@1.0.47",
     "read-fonts@0.41.0",
@@ -828,10 +929,11 @@
       "version": "0.2.4",
       "license": "MIT OR Apache-2.0",
       "selectedLicense": "MIT",
-      "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "checksum": "525e9ff3e1a4be2fbea1fdf0e98686a6d98b4d8f937e1bf7402245af1909e8c3",
+      "source": null,
+      "checksum": null,
       "licenseEvidenceSha256": [
         "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
+        "41445984ed7c0ecf79e35bbf7c4afb6dea9eff5b76207ec9531b4be23a5e1683",
         "c77a4cf9da729987d0fe7ccd811e3bd27393914ddf3d23467c18cc22954513b3"
       ]
     },
@@ -945,6 +1047,18 @@
       ]
     },
     {
+      "name": "moxcms",
+      "version": "0.8.1",
+      "license": "BSD-3-Clause OR Apache-2.0",
+      "selectedLicense": "BSD-3-Clause",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "bb85c154ba489f01b25c0d36ae69a87e4a1c73a72631fc6c0eb6dde34a73e44b",
+      "licenseEvidenceSha256": [
+        "2aa92cada6431e75615e3fe6cb1a9082c98f777d48ae1c087c0da0e37f7b8bff",
+        "90bf2d659c43045111b65c733ab2a6d4cbcb422a098368c8c58a9ba3db4ed0c5"
+      ]
+    },
+    {
       "name": "num-traits",
       "version": "0.2.19",
       "license": "MIT OR Apache-2.0",
@@ -1013,6 +1127,18 @@
       "licenseEvidenceSha256": [
         "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
         "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a"
+      ]
+    },
+    {
+      "name": "pxfm",
+      "version": "0.1.30",
+      "license": "BSD-3-Clause OR Apache-2.0",
+      "selectedLicense": "BSD-3-Clause",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "d55d956fa96f5ec02be2e13af0e20391a5aa83d6a074e3ad368959d0fab299ea",
+      "licenseEvidenceSha256": [
+        "2aa92cada6431e75615e3fe6cb1a9082c98f777d48ae1c087c0da0e37f7b8bff",
+        "90bf2d659c43045111b65c733ab2a6d4cbcb422a098368c8c58a9ba3db4ed0c5"
       ]
     },
     {

@@ -45,7 +45,7 @@ public sealed class FontCatalogTimingPayloadTests
     }
 
     [Fact]
-    public void ProtocolV9AcceptsTheBoundedSuccessfulHelloDetailAndPublishedGeneration()
+    public void ProtocolV10AcceptsTheBoundedSuccessfulHelloDetailAndPublishedGeneration()
     {
         string detail = BuildDetail(ValidRecords());
         byte[] detailBytes = Encoding.UTF8.GetBytes(detail);

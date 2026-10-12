@@ -45,8 +45,21 @@
                       Condition="'$(ManagedPacksOnly)' != 'true'" />
   </ItemGroup>
   <ItemGroup Condition="'$(ManagedPacksOnly)' == 'true'">
+    <!-- These focused tests compile directly against optional Math/Mermaid packs.
+         The default/full test build still compiles and runs them with all pack references. -->
     <Compile Remove="MermaidHighContrastAccessibilityTests.cs" />
     <Compile Remove="MermaidTypographyRegressionTests.cs" />
+    <Compile Remove="MarkdownPerformanceSessionTests.cs" />
+    <Compile Remove="MixedInlineVectorImageRelayoutTests.cs" />
+    <!-- This test reuses private Math-vector fixture helpers from the file above. -->
+    <Compile Remove="InlineVectorGeometryTransferValidationTests.cs" />
+    <Compile Remove="ProgressiveSceneDeferralTests.cs" />
+    <Compile Remove="ProgressiveSceneDiagnosticAggregationTests.cs" />
+    <Compile Remove="ProgressiveSceneGraphRefillTests.cs" />
+    <Compile Remove="RootLocalContainerVectorImageRelayoutTests.cs" />
+    <Compile Remove="RootLocalTableVectorImageRelayoutTests.cs" />
+    <Compile Remove="SafeHtmlRenderingTests.cs" />
+    <Compile Remove="VectorSceneResourceResidencyTests.cs" />
     <Compile Remove="PublicApiBaselineTests.cs" />
     <Compile Remove="StablePublicApiTests.cs" />
   </ItemGroup>

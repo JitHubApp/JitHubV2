@@ -162,6 +162,7 @@ impl Mask {
             size: self.size,
             real_width: self.size.width() as usize,
             data: &mut self.data,
+            row_origin: 0,
             root_clip: None,
         }
     }
@@ -175,6 +176,7 @@ impl Mask {
             size: rect.size(),
             real_width: self.size.width() as usize,
             data: &mut self.data[offset..],
+            row_origin: 0,
             root_clip: None,
         })
     }

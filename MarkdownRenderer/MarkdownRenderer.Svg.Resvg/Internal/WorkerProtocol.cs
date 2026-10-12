@@ -12,6 +12,7 @@ internal enum WorkerOperation : ushort
     TrimCache = 4,
     CloseDocument = 5,
     FontCatalog = 6,
+    RasterDecode = 7,
 }
 
 internal enum WorkerStatus : ushort
@@ -45,7 +46,11 @@ internal readonly record struct WorkerRequest(
     long ParsedResourceCacheBytes,
     ulong DocumentId,
     ResvgMarkdownSvgRendererOptions Options,
-    MarkdownSvgPhysicalViewport? PhysicalViewport = null);
+    MarkdownSvgPhysicalViewport? PhysicalViewport = null,
+    long RasterWorkingBytes = 0,
+    int RasterSourceWidth = 0,
+    int RasterSourceHeight = 0,
+    int RasterOrientation = 0);
 
 internal readonly record struct WorkerResponse(
     WorkerStatus Status,
@@ -73,7 +78,7 @@ internal static class WorkerProtocol
     public const int RequestSize = 512;
     public const int ResponseSize = 256;
     public const uint Magic = 0x4756534d;
-    public const ushort Version = 9;
+    public const ushort Version = 10;
     public const string WorkerFileName = "MarkdownRenderer.Svg.Resvg.Worker.exe";
 
     public static byte[] Encode(in WorkerRequest request)
@@ -98,7 +103,8 @@ internal static class WorkerProtocol
             throw new ArgumentException("A SHA-256 content hash is required.", nameof(request));
         if (request.Locale.Length > 63 || Encoding.UTF8.GetByteCount(request.Locale) > 63)
             throw new MarkdownSvgException(MarkdownSvgFailureReason.UnsupportedContent, "The SVG locale is too long.");
-        bool needsMapping = request.Operation is WorkerOperation.Open or WorkerOperation.Render or WorkerOperation.FontCatalog;
+        bool needsMapping = request.Operation is WorkerOperation.Open or WorkerOperation.Render or
+            WorkerOperation.FontCatalog or WorkerOperation.RasterDecode;
         if (needsMapping != (request.MappingHandle != 0) || request.MappingHandle == ulong.MaxValue)
             throw new InvalidOperationException("The SVG request has an invalid shared-memory handle.");
 
@@ -109,6 +115,25 @@ internal static class WorkerProtocol
         BinaryPrimitives.WriteUInt64LittleEndian(bytes[8..], request.RequestId);
         BinaryPrimitives.WriteUInt64LittleEndian(bytes[16..], request.NonceLow);
         BinaryPrimitives.WriteUInt64LittleEndian(bytes[24..], request.NonceHigh);
+        if (request.Operation == WorkerOperation.RasterDecode)
+        {
+            RasterDecodePolicy.ValidateWireRequest(request);
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes[36..], checked((uint)request.SourceLength));
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes[40..], checked((uint)request.OutputLength));
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes[44..], checked((uint)request.TargetWidth));
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes[48..], checked((uint)request.TargetHeight));
+            bytes[125] = request.PixelFormat == MarkdownSvgPixelFormat.Bgra8Premultiplied ? (byte)2 : (byte)1;
+            request.ContentHash.CopyTo(bytes[136..168]);
+            BinaryPrimitives.WriteUInt64LittleEndian(bytes[240..], request.MappingHandle);
+            BinaryPrimitives.WriteUInt64LittleEndian(bytes[392..], checked((ulong)request.RasterWorkingBytes));
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes[400..], checked((uint)request.RasterSourceWidth));
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes[404..], checked((uint)request.RasterSourceHeight));
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes[408..], checked((uint)request.RasterOrientation));
+            return;
+        }
+        if (request.RasterWorkingBytes != 0 || request.RasterSourceWidth != 0 ||
+            request.RasterSourceHeight != 0 || request.RasterOrientation != 0)
+            throw new WorkerProtocolException("Non-raster requests must not carry raster decode fields.");
         if (request.Operation == WorkerOperation.FontCatalog)
         {
             // This operation transfers only installed-font sections. No SVG

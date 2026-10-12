@@ -1448,6 +1448,23 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         set => SetValue(SvgRendererProperty, value);
     }
 
+    /// <summary>Dependency property backing <see cref="RasterDecoder"/>.</summary>
+    public static readonly DependencyProperty RasterDecoderProperty =
+        DependencyProperty.Register(nameof(RasterDecoder), typeof(IMarkdownRasterDecoder),
+            typeof(MarkdownRendererControl),
+            new PropertyMetadata(null, static (d, _) =>
+                ((MarkdownRendererControl)d).RequestRebuild(RebuildReason.Full)));
+
+    /// <summary>
+    /// Gets or sets the optional shared provider used to decode admitted static
+    /// raster formats. The control borrows this service and never disposes it.
+    /// </summary>
+    public IMarkdownRasterDecoder? RasterDecoder
+    {
+        get => (IMarkdownRasterDecoder?)GetValue(RasterDecoderProperty);
+        set => SetValue(RasterDecoderProperty, value);
+    }
+
     /// <summary>Dependency property backing <see cref="PerformanceSession"/>.</summary>
     public static readonly DependencyProperty PerformanceSessionProperty =
         DependencyProperty.Register(nameof(PerformanceSession), typeof(IMarkdownPerformanceSession),
@@ -5001,6 +5018,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         var hostedElementFactorySnapshot = HostedElementFactory;
         var imageResolverSnapshot = ImageResolver;
         var svgRendererSnapshot = SvgRenderer;
+        var rasterDecoderSnapshot = RasterDecoder;
         Uri? imageBaseUriSnapshot = ImageBaseUri;
         string? imageDocumentPathSnapshot = ImageDocumentPath;
         MarkdownDocumentSource? imageDocumentSourceSnapshot = ImageDocumentSource;
@@ -5128,6 +5146,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             PerformanceDocumentOwner = this,
             ImagePreparationOwner = _imagePreparationOwnerToken,
             SvgRenderer = svgRendererSnapshot,
+            RasterDecoder = rasterDecoderSnapshot,
             ImageBaseUri = imageBaseUriSnapshot,
             ImageDocumentPath = imageDocumentPathSnapshot,
             ImageDocumentSource = imageDocumentSourceSnapshot,
@@ -5171,6 +5190,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                 hostedElementFactorySnapshot,
                 imageResolverSnapshot,
                 svgRendererSnapshot,
+                rasterDecoderSnapshot,
                 commandProviderSnapshot,
                 stringProviderSnapshot);
         var builder = new LayoutBuilder(

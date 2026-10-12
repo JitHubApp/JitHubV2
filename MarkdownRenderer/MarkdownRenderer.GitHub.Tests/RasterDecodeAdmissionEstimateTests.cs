@@ -67,6 +67,25 @@ public sealed class RasterDecodeAdmissionEstimateTests
     }
 
     [Fact]
+    public void PortableWeightIncludesSourceProviderBoundAndSeparateUploadCopy()
+    {
+        long sourceBytes = 12_345;
+        long providerWorkingBytes = IntPtr.Size == 4 ? 32L * 1024 * 1024 : 64L * 1024 * 1024;
+        long uploadBytes = 800L * 400 * 4;
+
+        long weight = RasterDecodeAdmissionEstimate.ForPortableProvider(
+            sourceBytes, providerWorkingBytes, uploadBytes);
+
+        Assert.Equal(sourceBytes + providerWorkingBytes + uploadBytes, weight);
+        Assert.True(weight > MarkdownImagePreparationAdmission.Shared.CapacityBytes / 2,
+            "The full provider bound plus the host upload copy is conservative and may serialize portable decodes.");
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            RasterDecodeAdmissionEstimate.ForPortableProvider(-1, providerWorkingBytes, uploadBytes));
+        Assert.Throws<OverflowException>(() =>
+            RasterDecodeAdmissionEstimate.ForPortableProvider(long.MaxValue, providerWorkingBytes, uploadBytes));
+    }
+
+    [Fact]
     public async Task NativeWeightsPermitSmallConcurrencyAndSerializeOversizedGraphsWithoutRejection()
     {
         const long capacity = 1_000;
