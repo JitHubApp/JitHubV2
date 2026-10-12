@@ -7,9 +7,9 @@ using System.Text.Json;
 internal static class NativeFirstViewportImagesReadyContract
 {
     internal const string ExpectedVisualProfileId = "github-primer-light";
-    internal const int ExpectedVisualProfileVersion = 6;
+    internal const int ExpectedVisualProfileVersion = 7;
     internal const string ExpectedVisualProfileCssSha256 =
-        "2efa4379622ab3d526084ee64ef006c4b5c76257f61a1d6122f64e73128afbc3";
+        "882f63ac35c8f0854485ba797fda1bc8690cbc97bfd5d0fd9c0c961471cb17c4";
 
     private const double InitialViewportTopToleranceDip = 0.5;
 

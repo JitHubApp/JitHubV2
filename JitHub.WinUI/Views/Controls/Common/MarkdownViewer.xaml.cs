@@ -434,7 +434,7 @@ public sealed partial class MarkdownViewer : UserControl
             // The source-bound Edge fixture uses the same versioned Light
             // presentation profile. Keep it local to this explicit audit mode;
             // ordinary JitHub documents retain the app palette and typography.
-            _sameByteVisualProfile = GitHubReadmeVisualStyleProfiles.PrimerLightV6;
+            _sameByteVisualProfile = GitHubReadmeVisualStyleProfiles.PrimerLightV7;
             _sameByteVisualTheme = _sameByteVisualProfile.CreateTheme();
             _sameByteSurfaceBrush = new SolidColorBrush(_sameByteVisualProfile.SurfaceColor);
             _imageResolver = MarkdownLifecycleAutomationBridge.GetSameByteFixtureResolver(

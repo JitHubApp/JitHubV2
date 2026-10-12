@@ -2,6 +2,11 @@
 
 MarkdownRenderer is a preview, not a completed 1.0 release.
 
+For the October 12 implementation, current failing gates, audit history, local
+evidence, and proposed Rust direction, read the
+[implementation checkpoint](implementation-checkpoint-2026-10-12.md). Results
+below retain their historical scope and do not qualify later candidates.
+
 ## Implemented direction
 
 - immutable `MarkdownEngineBuilder` -> `MarkdownEngine` ->

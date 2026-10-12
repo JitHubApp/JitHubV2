@@ -745,7 +745,7 @@ test("source-bound Edge page serves exact README and SRI-pinned Marked bytes", a
   assert.equal(styleResponse.headers.get("x-content-sha256"), PINNED_GITHUB_README_STYLE_PROFILE.sha256);
   assert.equal(sha256(styleBytes), PINNED_GITHUB_README_STYLE_PROFILE.sha256,
     "Edge profile CSS bytes must match the same pinned fingerprint exposed to the native profile");
-  assert.equal(PINNED_GITHUB_README_STYLE_PROFILE.version, 6);
+  assert.equal(PINNED_GITHUB_README_STYLE_PROFILE.version, 7);
   assert.match(styleText, /\.markdown-body sup,\s*\.markdown-body sub\s*\{\s*font-size:\s*75%;\s*\}/u,
     "script sizes must be explicit and proportional to their containing text");
   assert.match(styleText, /font-size:\s*16px;\s*line-height:\s*1\.5;\s*overflow-wrap:\s*break-word/u);

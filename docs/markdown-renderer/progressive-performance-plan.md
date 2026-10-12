@@ -5,6 +5,93 @@ to the next heartbeat. The current priority is to remove document-scale memory
 growth and input-blocking native reflow before spending more time on evidence
 bookkeeping. The 1.0 performance and release goals are not yet met.
 
+The [October 12 implementation checkpoint and architecture assessment](implementation-checkpoint-2026-10-12.md)
+summarizes capabilities, current changes, completed and failed evidence, remaining
+priorities, and the proposed Rust direction. It also records the local commit
+verification and generated-file recovery locations. The original release gates
+and historical receipts below retain their scope.
+
+### October 12 local source and documentation checkpoint
+
+The uncommitted Primer Light V7 implementation and matching host/corpus contracts
+are now verified for this checkpoint: the fresh normal Release/x64 test build
+rebuilds all referenced renderer packages and verifies worker source identities
+for all three RIDs; the focused profile/typography/image/public-API suite passes
+120/120, followed by the complete renderer assembly at 2,945/2,945, zero skipped.
+WinUI readiness/source contracts pass 85/85, corpus tests pass 40/40, and both
+modified Sandbox scripts pass syntax checks. The missing exported V7 API baseline
+entry was added and validated against the compiled assembly. Fresh TRX receipts
+are in `MarkdownRenderer/artifacts/local-checkpoint-20261012/`.
+
+These checks do not certify a newly published V7 app, visual parity, performance,
+or the current-candidate top-500 gate. The freshly built Core/WinUI DLLs total
+1,865,216 bytes against the unchanged 1,258,291-byte cap, so the managed-size gate
+still fails. This checkpoint records the prior assessment and proposed Rust-core
+experiment without implementing or approving a rewrite. All source changes,
+documentation, and the 145 modified already tracked SVG result files are saved
+in the local checkpoint commit; no push is requested. Named build caches remain
+ignored and available locally. The two empty accidental root files are preserved
+in the checkpoint's `scratch-files/` directory rather than deleted.
+
+### October 12 completed Sandbox verification — candidate 4e961abe
+
+The newly published NativeAOT app and matching runner completed all ten pinned
+README cases in the approved disposable Sandbox, with process-scoped script
+permission only. All ten report no native rendering failure and clean shutdown.
+Nine report zero unavailable images; rank 7 reports one, so the batch correctly
+fails. No failed case, missing image, visual gate, or release gate is waived.
+The valid WebP hero in rank 4 now renders in the actual app; both native and Edge
+first-viewport screenshots were inspected. The harness-only return-stream fix
+at `5b653588` completed staging and retrieval without replacing the app or runner.
+The complete 1,750-file evidence set is preserved under
+`goal-release-20261011/offline-fix2-4e961abe-ranks001-010-20261012/`
+(`offline-same-byte-sandbox-summary.json`, run
+`61cd9b683fdf4b29a75c44209ea2840a`). Its source snapshot hash is
+`00330c1513579685c593638b82ac9d3f5543605ea4032371a614d167eb47b251`.
+
+Rank 7's unavailable event identifies the empty-alt Camo image at pinned README
+line 1639 (URL hash `88690ebe4fb27e47cea395167dc57a147c38207dc241d6590622572057ae3f57`).
+The captured browser records that occurrence as failed decode with zero bounds
+and deliberately has no asset route. The offline resolver therefore has no bytes
+to return. Its generic `fetch-or-resolver-miss` diagnostic is not evidence of a
+network attempt or a decoder failure. Native `tile-0114.png` and Edge's saved
+source-replay tile 7 show that section without an image-error placeholder.
+However, the raw event lacks source-occurrence identity and final layout bounds,
+so automated one-to-one occurrence verification is still required; the raw
+unavailable event remains a failure. Hash-only exclusion must not hide another
+named or explicitly-sized occurrence of a URL. Any future exception must bind
+the exact parser source span/ordinal and README hash on both sides, require a
+passed source replay and zero visible fallback, and fail closed on missing,
+legacy, stale, or ambiguous evidence. The screenshots alone do not waive it.
+
+Source-bound text-token coverage is 1.0 for all ten cases, but mean matched-viewport
+SSIM ranges from **0.0810 to 0.7213**, far below release fidelity requirements.
+These are completed diagnostic cases, not visual passes. The trace-enabled,
+ten-case selection does not qualify performance or the full top-500 gate.
+Current follow-up fixes address confirmed CSS/native differences in table-cell
+line height, containing-font-relative inline code and inline-image middle
+alignment. They use a new `PrimerLightV7` identity and preserve V1–V6; they are
+not included in this frozen V6 batch. The V7 corpus tests pass **40/40** and host
+registration/readiness contract tests pass **85/85**. The subsequent local source
+checkpoint above records the passing renderer/public-API suites; fresh app-level
+visual validation remains pending. The UI-testing workflow's two
+fix/rerun cycles for that approved batch are consumed. The user has explicitly
+approved a fresh Sandbox batch after the new fixes pass their tests. The next
+batch will use a freshly published, matching app and runner; no further UI batch
+has been launched yet. Safe source fixes and headless verification continue
+locally.
+
+The rank-2 screenshots also expose a separate script-text rendering defect:
+OpenType `sups`/`subs` substitutions affect only glyphs supported by the selected
+font, producing uneven sizes/baselines within an ordinary phrase. Relative font
+sizing alone does not fix this. A future correction must translate complete
+shaped runs with a shared paint/hit-test/selection/UIA geometry projection,
+preserve wrapping and color emoji, and retain the ordinary text fast path.
+Replacing a whole script phrase with one atomic inline object would regress
+wrapping and character selection; disabling substitutions without implementing
+baseline positioning would only trade one visual failure for another. This
+remains an open fidelity defect, not a waived fixture or a V7 completion claim.
+
 ### October 12 fresh Sandbox verification — candidate c9a90da7
 
 Active follow-up implementation (not yet qualified): the rank-2 hero-shaped

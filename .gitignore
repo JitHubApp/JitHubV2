@@ -28,6 +28,12 @@ x86/
 bld/
 [Bb]in/
 [Oo]bj/
+# Isolated build and measurement runs use named scratch output directories.
+**/obj-*/
+**/bin-*/
+# Preserve local benchmark evidence without adding generated caches to Git.
+# Already tracked fixtures and comparison results remain versioned.
+**/artifacts/
 [Ll]og/
 
 # Visual Studio 2015/2017 cache/options directory

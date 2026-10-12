@@ -18,7 +18,7 @@ For a controlled Light-mode visual comparison, opt into the versioned Primer
 profile on the one control being compared:
 
 ```csharp
-var visualProfile = GitHubReadmeVisualStyleProfiles.PrimerLightV6;
+var visualProfile = GitHubReadmeVisualStyleProfiles.PrimerLightV7;
 var control = new MarkdownRendererControlBuilder()
     .UseGitHubReadme()
     .WithTheme(visualProfile.CreateTheme())
@@ -30,18 +30,20 @@ var control = new MarkdownRendererControlBuilder()
     .BuildScrollView();
 ```
 
-The profile ID is `github-primer-light`, version `6`; its fingerprint is the
-SHA-256 of the canonical `eng/readme-audit/profiles/github-primer-light-v6.css`
-bytes. Version 6 makes quote descendants inherit the muted quote foreground
-while headings and links retain their explicit colors. Record that fingerprint
+The profile ID is `github-primer-light`, version `7`; its fingerprint is the
+SHA-256 of the canonical `eng/readme-audit/profiles/github-primer-light-v7.css`
+bytes. Version 7 matches table-cell line height, relative inline-code font size,
+and inline-image middle alignment to that CSS. Record that fingerprint
 with visual evidence on both renderers. This profile does not alter renderer
 defaults or the caller's application theme, and High Contrast continues to use
 mandatory system colors. It is a stable audit fixture, not a promise that native
 layout reproduces every live GitHub website detail.
 
-Version 6 retains version 5's geometry and plain code-block presentation while
-adding selective inherited foreground matching inside block quotes. Versions
-1–5 retain their original identities and behavior. For another theme,
+It retains version 6's selective inherited foreground matching inside block
+quotes and the plain code-block presentation. Versions 1–6 retain their
+original identities and behavior. Inline-code chip padding remains expressed
+in DIPs; relative font sizing alone does not promise CSS em-padding parity.
+For another theme,
 `styleSheet.WithRelativeScriptFontSize(0.75f)`
 opts into the same proportional sizing without adopting this Light profile.
 Its appended rules override inherited resource sizes; later explicit stylesheet

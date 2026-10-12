@@ -113,20 +113,20 @@ const MARKED_PARSER_PATH = path.join(
   "vendor",
   `marked-${PINNED_GFM_PARSER.version}.umd.js`,
 );
-const GITHUB_PRIMER_LIGHT_V6_CSS_PATH = path.join(
+const GITHUB_PRIMER_LIGHT_V7_CSS_PATH = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
   "profiles",
-  "github-primer-light-v6.css",
+  "github-primer-light-v7.css",
 );
 const require = createRequire(import.meta.url);
 const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
 const GIT_SHA1_PATTERN = /^[0-9a-f]{40}$/u;
 export const PINNED_GITHUB_README_STYLE_PROFILE = Object.freeze({
   id: "github-primer-light",
-  version: 6,
+  version: 7,
   colorScheme: "light",
-  cssPath: "/github-primer-light-v6.css",
-  sha256: "2efa4379622ab3d526084ee64ef006c4b5c76257f61a1d6122f64e73128afbc3",
+  cssPath: "/github-primer-light-v7.css",
+  sha256: "882f63ac35c8f0854485ba797fda1bc8690cbc97bfd5d0fd9c0c961471cb17c4",
 });
 const RENDERED_SNAPSHOT_FAILURE_PREDICATES = new Set([
   "active-element-tag",
@@ -1077,7 +1077,7 @@ export async function createSameByteReplayServer(corpusDirectory) {
   if (sha256(markedParserBytes) !== PINNED_GFM_PARSER.sha256) {
     throw new Error("Vendored Marked parser does not match the pinned SHA-256.");
   }
-  const styleProfileBytes = await readBoundedFile(GITHUB_PRIMER_LIGHT_V6_CSS_PATH, 64 * 1024);
+  const styleProfileBytes = await readBoundedFile(GITHUB_PRIMER_LIGHT_V7_CSS_PATH, 64 * 1024);
   if (sha256(styleProfileBytes) !== PINNED_GITHUB_README_STYLE_PROFILE.sha256) {
     throw new Error("Canonical GitHub README style profile does not match its pinned SHA-256.");
   }

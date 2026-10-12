@@ -23,6 +23,63 @@ public sealed class GitHubReadmeVisualStyleProfileTests
     private const string InheritedQuoteColorFixtureResourceName =
         "MarkdownRenderer.GitHub.Profiles.github-primer-light-v6.css";
 
+    [Theory]
+    [InlineData(0f)]
+    [InlineData(-0.5f)]
+    [InlineData(1.01f)]
+    [InlineData(float.NaN)]
+    [InlineData(float.PositiveInfinity)]
+    public void RelativeInlineCodeRuleRejectsInvalidScale(float scale)
+        => Assert.Throws<ArgumentOutOfRangeException>(
+            () => MarkdownStyleSheet.Empty.WithRelativeInlineCodeFontSize(scale));
+
+    [Fact]
+    public void PrimerLightV7_BindsInlineTypographyAndTableLineHeightWithoutChangingEarlierProfiles()
+    {
+        GitHubReadmeVisualStyleProfile previous = GitHubReadmeVisualStyleProfiles.PrimerLightV6;
+        GitHubReadmeVisualStyleProfile profile = GitHubReadmeVisualStyleProfiles.PrimerLightV7;
+        using Stream stream = typeof(GitHubReadmeVisualStyleProfiles).Assembly
+            .GetManifestResourceStream("MarkdownRenderer.GitHub.Profiles.github-primer-light-v7.css")!;
+        using Stream previousStream = typeof(GitHubReadmeVisualStyleProfiles).Assembly
+            .GetManifestResourceStream(InheritedQuoteColorFixtureResourceName)!;
+        Assert.NotNull(stream);
+        Assert.NotNull(previousStream);
+        byte[] cssBytes = ReadAllBytes(stream);
+        string css = System.Text.Encoding.UTF8.GetString(cssBytes);
+        string previousCss = System.Text.Encoding.UTF8.GetString(ReadAllBytes(previousStream));
+
+        Assert.Equal(7, profile.Version);
+        Assert.Equal(previous.Id, profile.Id);
+        Assert.Equal("882f63ac35c8f0854485ba797fda1bc8690cbc97bfd5d0fd9c0c961471cb17c4", profile.Fingerprint);
+        Assert.Equal(Convert.ToHexString(SHA256.HashData(cssBytes)).ToLowerInvariant(), profile.Fingerprint);
+        Assert.Equal(previousCss.Replace("PrimerLightV6", "PrimerLightV7", StringComparison.Ordinal)
+            .Replace("Profile version: 6", "Profile version: 7", StringComparison.Ordinal), css);
+        Assert.Equal(previous.SurfaceColor, profile.SurfaceColor);
+        Assert.Equal(previous.AccentColor, profile.AccentColor);
+        Assert.Equal(previous.CodeBlockChromeMode, profile.CodeBlockChromeMode);
+        Assert.Equal(previous.CodeBlockLineNumberMode, profile.CodeBlockLineNumberMode);
+        Assert.Equal(previous.IsCodeBlockCopyEnabled, profile.IsCodeBlockCopyEnabled);
+        for (int index = 0; index < previous.StyleSheet.Rules.Count; index++)
+            Assert.Same(previous.StyleSheet.Rules[index], profile.StyleSheet.Rules[index]);
+
+        Assert.False(previous.StyleSheet.Compile().MiddleAlignInlineImages);
+        Assert.False(previous.StyleSheet.Compile().HasRelativeInlineCodeFontSizeRules);
+        Assert.True(profile.StyleSheet.Compile().MiddleAlignInlineImages);
+        Assert.True(profile.StyleSheet.Compile().HasRelativeInlineCodeFontSizeRules);
+        Assert.Equal(0.85f, Resolve(profile.StyleSheet, MarkdownStyleRole.InlineCode).RelativeFontSizeScale);
+        Assert.Null(Resolve(previous.StyleSheet, MarkdownStyleRole.InlineCode).RelativeFontSizeScale);
+        foreach (MarkdownStyleRole role in new[] { MarkdownStyleRole.TableHeader, MarkdownStyleRole.TableCell })
+        {
+            ElementStyle oldStyle = Resolve(previous.StyleSheet, role);
+            ElementStyle newStyle = Resolve(profile.StyleSheet, role);
+            Assert.Equal(1.4f, oldStyle.LineHeightMultiplier);
+            Assert.Equal(1.5f, newStyle.LineHeightMultiplier);
+            Assert.Equal(oldStyle.Padding, newStyle.Padding);
+            Assert.Equal(oldStyle.Margin, newStyle.Margin);
+            Assert.Equal(oldStyle.FontSize, newStyle.FontSize);
+        }
+    }
+
     [Fact]
     public void PrimerLightV6_BindsSelectiveQuoteForegroundInheritanceToCanonicalCss()
     {
@@ -427,10 +484,18 @@ public sealed class GitHubReadmeVisualStyleProfileTests
         Assert.Equal(Color.FromArgb(0xFF, 0x09, 0x69, 0xDA), profile.AccentColor);
     }
 
-    [Fact]
-    public void PrimerLightV1_HighContrastStillUsesMandatorySystemColorRoles()
+    [Theory]
+    [InlineData(1)]
+    [InlineData(6)]
+    [InlineData(7)]
+    public void PrimerLight_HighContrastStillUsesMandatorySystemColorRoles(int version)
     {
-        GitHubReadmeVisualStyleProfile profile = GitHubReadmeVisualStyleProfiles.PrimerLightV1;
+        GitHubReadmeVisualStyleProfile profile = version switch
+        {
+            1 => GitHubReadmeVisualStyleProfiles.PrimerLightV1,
+            6 => GitHubReadmeVisualStyleProfiles.PrimerLightV6,
+            _ => GitHubReadmeVisualStyleProfiles.PrimerLightV7,
+        };
         Color systemForeground = Color.FromArgb(0xFF, 0xFF, 0xFF, 0x00);
         Color systemBackground = Color.FromArgb(0xFF, 0x00, 0x00, 0x00);
         var styles = new Dictionary<string, ElementStyle>(StringComparer.Ordinal)

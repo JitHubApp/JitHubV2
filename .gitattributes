@@ -15,6 +15,7 @@ eng/readme-audit/profiles/github-primer-light-v3.css text eol=lf
 eng/readme-audit/profiles/github-primer-light-v4.css text eol=lf
 eng/readme-audit/profiles/github-primer-light-v5.css text eol=lf
 eng/readme-audit/profiles/github-primer-light-v6.css text eol=lf
+eng/readme-audit/profiles/github-primer-light-v7.css text eol=lf
 
 # The vendored native packages are verified against exact upstream and patch
 # byte hashes. Do not let a Windows checkout rewrite pinned text files.

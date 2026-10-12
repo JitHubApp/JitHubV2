@@ -10,6 +10,7 @@ using Microsoft.Graphics.Canvas.Text;
 using Microsoft.UI.Xaml;
 using Windows.Foundation;
 using Windows.UI;
+using Windows.UI.Text;
 using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Controls;
 using MarkdownRenderer.Diagnostics;
@@ -123,6 +124,7 @@ internal readonly struct InlineSceneGeometry
 internal sealed partial class InlineContainerBox : BlockBox
 {
     private const int InlineCodeGraphemeCancellationCheckInterval = 64;
+    private const float MinimumRelativeInlineFontSize = ThemeSnapshot.MinimumRelativeScriptFontSize;
 
     private const float MinimumContentAwareLineScale = 0.1f;
     private const float MaximumContentAwareLineScale = 32f;
@@ -171,9 +173,30 @@ internal sealed partial class InlineContainerBox : BlockBox
     private NativeResourceRetirementRecord? _selectionLayoutRetirementRecord;
     private Color _selectionLayoutColor;
     private float _selectionLayoutWidth;
+    // Per-run scalar snapshot populated only while applying the measured
+    // layout. Paint, selection and geometry consumers only read this array;
+    // they never create DirectWrite analyzers or inspect cancellation state.
+    private float[]? _inlineImageXHeightByRunIndex;
+    // The corresponding final-layout alphabetic baseline for each image run.
+    // Geometry reads this directly instead of scanning every line metric for
+    // every image (or materializing metrics on the paint path).
+    private float[]? _inlineImageLineBaselineByRunIndex;
     private string _buffer = string.Empty;
     private bool _bufferDirty;
     private float _lastWidth;
+
+    private const int MaximumInlineImageFontMetricsPerMeasure = 32;
+    private readonly record struct InlineImageFontMetricKey(
+        string FontFamily,
+        float FontSize,
+        ushort FontWeight,
+        FontStyle FontStyle,
+        FlowDirection FlowDirection,
+        string Language,
+        bool IsDark,
+        bool IsHighContrast,
+        double TextScaleFactor);
+
     private sealed class VectorSceneState
     {
         internal InlineSceneGeometry[] PendingSceneGeometry = Array.Empty<InlineSceneGeometry>();
@@ -1110,6 +1133,8 @@ internal sealed partial class InlineContainerBox : BlockBox
             (_inlineEmbedRuns ??= new()).Add((embedRun, runOffset));
         }
         _runs.Add(run);
+        _inlineImageXHeightByRunIndex = null;
+        _inlineImageLineBaselineByRunIndex = null;
         if (run is InlineVectorSceneRun vectorScene)
         {
             VectorSceneState vectorState = vectorStateForAddedRun!;
@@ -1212,6 +1237,8 @@ internal sealed partial class InlineContainerBox : BlockBox
     {
         _inlineImageRuns = null;
         _inlineEmbedRuns = null;
+        _inlineImageXHeightByRunIndex = null;
+        _inlineImageLineBaselineByRunIndex = null;
         _hasAtomicInlineObject = false;
         _runTextLength = 0;
         _vectorSceneRunCount = 0;
@@ -1366,6 +1393,8 @@ internal sealed partial class InlineContainerBox : BlockBox
         CanvasTextLayout? replacementLayout = null;
         NativeResourceRetirementRecord? replacementLayoutRetirementRecord = null;
         InlineSceneGeometry[]? replacementSceneGeometry = null;
+        float[]? replacementInlineImageLineBaselines = null;
+        bool publishInlineImageLineBaselines = false;
         float measuredHeight;
         // Measure with the same effective margin that Arrange/paint will use.
         // Resolving from the current style keeps remeasurement correct when a
@@ -1458,8 +1487,27 @@ internal sealed partial class InlineContainerBox : BlockBox
                     candidateLayout,
                     inverseMetricScale: inlineMetricScale,
                     maxInlineWidth: layoutWidth);
+                if (Context.ThemeSnapshot.MiddleAlignInlineImages &&
+                    _inlineImageRuns is { Count: > 0 })
+                {
+                    replacementInlineImageLineBaselines =
+                        BuildInlineImageLineBaselines(TryGetLineMetrics());
+                    publishInlineImageLineBaselines = true;
+                }
                 replacementSceneGeometry = UpdateVectorScenePlacements(candidateLayout);
                 _lastWidth = availableWidth;
+            }
+
+            // Keep defensive recovery for an absent/stale baseline snapshot
+            // on the measurement path, never on paint.
+            else if (Context.ThemeSnapshot.MiddleAlignInlineImages &&
+                _inlineImageRuns is { Count: > 0 } &&
+                (_inlineImageLineBaselineByRunIndex is null ||
+                    _inlineImageLineBaselineByRunIndex.Length != _runs.Count))
+            {
+                replacementInlineImageLineBaselines =
+                    BuildInlineImageLineBaselines(TryGetLineMetrics());
+                publishInlineImageLineBaselines = true;
             }
 
             var bounds = _layout!.LayoutBounds;
@@ -1569,6 +1617,9 @@ internal sealed partial class InlineContainerBox : BlockBox
             foreach (InlineRollbackState state in changedInlineMeasures)
                 state.Commit();
         }
+
+        if (publishInlineImageLineBaselines)
+            _inlineImageLineBaselineByRunIndex = replacementInlineImageLineBaselines;
 
         if (UseContainerMargin)
             Margin = style.Margin;
@@ -1864,12 +1915,19 @@ internal sealed partial class InlineContainerBox : BlockBox
         var key = inheritsHeading
             ? headingKey
             : string.IsNullOrEmpty(run.ElementKey) ? ElementKey : run.ElementKey;
+        IReadOnlyList<string> baseAliases = inheritsHeading
+            ? _styleAliasKeys
+            : GetEffectiveRunAliases(run.InlineIndex);
         resolved = Context.ThemeSnapshot.GetStyle(
             key,
             _styleContextKeys,
-            GetEffectiveRunAliases(run.InlineIndex),
+            baseAliases,
             CodeLanguage,
             StyleState);
+        float? relativeInlineCodeScale = !inheritsHeading &&
+            run.ElementKey == MarkdownElementKeys.CodeInline
+                ? resolved.RelativeFontSizeScale
+                : null;
         int modifierStart = 0;
         if (inheritsHeading && !string.IsNullOrEmpty(run.ElementKey) &&
             !string.Equals(run.ElementKey, headingKey, StringComparison.Ordinal))
@@ -1880,11 +1938,16 @@ internal sealed partial class InlineContainerBox : BlockBox
                 GetEffectiveRunAliases(run.InlineIndex),
                 CodeLanguage,
                 StyleState);
+            if (run.ElementKey == MarkdownElementKeys.CodeInline)
+                relativeInlineCodeScale = ownStyle.RelativeFontSizeScale;
             resolved = ApplyNestedStyleModifier(
                 resolved,
                 ownStyle,
                 run.ElementKey,
-                preserveCodeFontSize: inheritsHeading && run.ElementKey == MarkdownElementKeys.CodeInline);
+                preserveCodeFontSize: inheritsHeading &&
+                    run.ElementKey == MarkdownElementKeys.CodeInline &&
+                    !Context.ThemeSnapshot.HasRelativeInlineCodeFontSizeRules,
+                deferRelativeInlineCodeFontSize: relativeInlineCodeScale.HasValue);
         }
         else if (!inheritsHeading && string.IsNullOrEmpty(run.ElementKey) &&
                  run.StyleModifierKeys.Count > 0)
@@ -1898,6 +1961,12 @@ internal sealed partial class InlineContainerBox : BlockBox
             modifierStart = 1;
         }
 
+        float? absoluteInlineCodeFontSize =
+            run.ElementKey == MarkdownElementKeys.CodeInline &&
+            Context.ThemeSnapshot.HasRelativeInlineCodeFontSizeRules &&
+            relativeInlineCodeScale is null
+                ? resolved.FontSize
+                : null;
         float? scriptModifierContainingFontSize = null;
         for (int index = modifierStart; index < run.StyleModifierKeys.Count; index++)
         {
@@ -1913,14 +1982,36 @@ internal sealed partial class InlineContainerBox : BlockBox
                 StyleState);
             resolved = ApplyNestedStyleModifier(resolved, modifier, modifierKey);
         }
-        if (TryResolveRelativeScriptFontSize(
+        float scriptFontSize = resolved.FontSize;
+        bool appliedScriptFontSize = absoluteInlineCodeFontSize is null &&
+            TryResolveRelativeScriptFontSize(
                 run,
                 headingKey,
                 inheritsHeading,
                 resolved,
                 scriptModifierContainingFontSize,
-                out float scriptFontSize))
+                relativeInlineCodeScale.HasValue ||
+                    run is LinkRun { InlineStyleMap: { } linkStyleMap } &&
+                    HasRelativeInlineCodeStylePath(run, linkStyleMap),
+                out scriptFontSize);
+        if (absoluteInlineCodeFontSize is float absoluteCodeSize)
+            resolved = ThemeSnapshot.WithFontSize(resolved, absoluteCodeSize);
+        if (appliedScriptFontSize)
             resolved = ThemeSnapshot.WithFontSize(resolved, scriptFontSize);
+        if (relativeInlineCodeScale is float inlineCodeScale)
+        {
+            // A CodeInline run is the leaf after its containing Markdown or
+            // safe-HTML script scopes. Resolve those scopes first, then apply
+            // the inline-code percentage exactly once against that computed
+            // containing size. Keeping the scale separately also prevents
+            // intermediate style modifiers from erasing its provenance.
+            float containingFontSize = appliedScriptFontSize
+                ? scriptFontSize
+                : GetContainingRunFontSize(headingKey, inheritsHeading);
+            resolved = ThemeSnapshot.WithFontSize(
+                resolved,
+                ResolveRelativeInlineCodeFontSize(containingFontSize, inlineCodeScale));
+        }
 
         if (_resolvedRunStyles is null)
         {
@@ -1931,6 +2022,59 @@ internal sealed partial class InlineContainerBox : BlockBox
         }
         _resolvedRunStyles[run.InlineIndex] = resolved;
         return resolved;
+    }
+
+    private float GetContainingRunFontSize(string headingKey, bool inheritsHeading)
+    {
+        if (!inheritsHeading)
+            return GetContainerStyle().FontSize;
+
+        // The run's class/ID aliases describe this inline descendant. A
+        // heading selector must use the containing block's aliases instead;
+        // otherwise a class on <code> can accidentally change the heading
+        // size used as its percentage basis.
+        return Context.ThemeSnapshot.GetStyle(
+            headingKey,
+            _styleContextKeys,
+            _styleAliasKeys,
+            CodeLanguage,
+            StyleState).FontSize;
+    }
+
+    private bool HasRelativeInlineCodeStylePath(InlineRun run, LinkInlineStyleMap map)
+    {
+        if (!Context.ThemeSnapshot.HasRelativeInlineCodeFontSizeRules)
+            return false;
+
+        bool hasScriptScope = run.ScriptStyleAncestryKeys.Count > 0 ||
+            IsScriptStyleKey(run.ElementKey) ||
+            run is LinkRun { IsSuperscript: true };
+        for (int index = 0; !hasScriptScope && index < run.StyleModifierKeys.Count; index++)
+            hasScriptScope = IsScriptStyleKey(run.StyleModifierKeys[index]);
+        if (!hasScriptScope)
+            return false;
+
+        for (int spanIndex = 0; spanIndex < map.Count; spanIndex++)
+        {
+            for (LinkInlineStylePath? current = map.GetSpan(spanIndex).Path;
+                 current is not null;
+                 current = current.Parent)
+            {
+                if (current.StyleKey != MarkdownElementKeys.CodeInline)
+                    continue;
+
+                ElementStyle codeStyle = Context.ThemeSnapshot.GetStyle(
+                    current.StyleKey,
+                    _styleContextKeys,
+                    current.StyleAliases,
+                    CodeLanguage,
+                    StyleState);
+                if (codeStyle.RelativeFontSizeScale.HasValue)
+                    return true;
+            }
+        }
+
+        return false;
     }
 
     private ElementStyle[] GetLinkInlineSpanStyles(LinkRun link)
@@ -2007,7 +2151,8 @@ internal sealed partial class InlineContainerBox : BlockBox
                 modifier,
                 current.StyleKey,
                 preserveCodeFontSize: preserveHeadingCodeFontSize &&
-                    current.StyleKey == MarkdownElementKeys.CodeInline);
+                    current.StyleKey == MarkdownElementKeys.CodeInline &&
+                    !Context.ThemeSnapshot.HasRelativeInlineCodeFontSizeRules);
             if (IsScriptStyleKey(current.StyleKey))
             {
                 float fontSize = modifier.RelativeFontSizeScale is float scale
@@ -2026,11 +2171,12 @@ internal sealed partial class InlineContainerBox : BlockBox
         bool inheritsHeading,
         ElementStyle resolved,
         float? scriptModifierContainingFontSize,
+        bool hasRelativeInlineCodeRule,
         out float fontSize)
     {
         fontSize = scriptModifierContainingFontSize ?? resolved.FontSize;
         ThemeSnapshot theme = Context.ThemeSnapshot;
-        if (!theme.HasRelativeScriptFontSizeRules)
+        if (!theme.HasRelativeScriptFontSizeRules && !hasRelativeInlineCodeRule)
             return false;
 
         IReadOnlyList<string> scriptAncestry = run.ScriptStyleAncestryKeys;
@@ -2043,7 +2189,18 @@ internal sealed partial class InlineContainerBox : BlockBox
             return false;
 
         string[] aliases = GetEffectiveRunAliases(run.InlineIndex);
-        if (runElementIsScript ||
+        if (hasRelativeInlineCodeRule)
+        {
+            // InlineCode is nested inside these run-level script ancestors;
+            // start at the computed linked/heading role before any script
+            // modifier has replaced its nominal size. A direct CodeInline run
+            // uses its actual container because its initial resolved style is
+            // already CodeInline.
+            fontSize = run.ElementKey == MarkdownElementKeys.CodeInline
+                ? GetContainingRunFontSize(headingKey, inheritsHeading)
+                : scriptModifierContainingFontSize ?? resolved.FontSize;
+        }
+        else if (runElementIsScript ||
             (!inheritsHeading && string.IsNullOrEmpty(run.ElementKey) &&
              run.StyleModifierKeys.Count > 0 && IsScriptStyleKey(run.StyleModifierKeys[0])))
         {
@@ -2115,7 +2272,8 @@ internal sealed partial class InlineContainerBox : BlockBox
         ElementStyle basis,
         ElementStyle modifier,
         string modifierKey,
-        bool preserveCodeFontSize = false)
+        bool preserveCodeFontSize = false,
+        bool deferRelativeInlineCodeFontSize = false)
     {
         Windows.UI.Text.FontWeight fontWeight = basis.FontWeight;
         Windows.UI.Text.FontStyle fontStyle = basis.FontStyle;
@@ -2174,12 +2332,15 @@ internal sealed partial class InlineContainerBox : BlockBox
                 // Inline code contributes its configured typeface, nominal
                 // size, and chip treatment while retaining surrounding text
                 // weight/style/color (notably bold links and link hover color).
-                // In a heading keep the historical containing size; the code
-                // role currently has no relative-size declaration for headings.
+                // Relative code rules use the current containing style, while
+                // legacy sheets keep the historical full heading size.
                 return new ElementStyle
                 {
                     FontFamily = modifier.FontFamily,
-                    FontSize = preserveCodeFontSize ? basis.FontSize : modifier.FontSize,
+                    FontSize = !deferRelativeInlineCodeFontSize &&
+                               modifier.RelativeFontSizeScale is float inlineCodeScale
+                        ? ResolveRelativeInlineCodeFontSize(basis.FontSize, inlineCodeScale)
+                        : preserveCodeFontSize ? basis.FontSize : modifier.FontSize,
                     FontWeight = basis.FontWeight,
                     FontStyle = basis.FontStyle,
                     Foreground = basis.Foreground,
@@ -2229,6 +2390,9 @@ internal sealed partial class InlineContainerBox : BlockBox
             LineHeightMultiplier = basis.LineHeightMultiplier,
         };
     }
+
+    private static float ResolveRelativeInlineCodeFontSize(float containingFontSize, float scale)
+        => Math.Max(MinimumRelativeInlineFontSize, containingFontSize * scale);
 
     private Thickness GetEffectivePadding(ElementStyle style)
         => UseContainerPadding ? style.Padding : default;
@@ -2979,6 +3143,239 @@ internal sealed partial class InlineContainerBox : BlockBox
         }
     }
 
+    private Rect GetInlineImageDocumentRect(
+        CanvasTextLayoutRegion region,
+        InlineImageRun image,
+        float baseX,
+        float baseY)
+    {
+        Rect lineBounds = region.LayoutBounds;
+        double top;
+        if (Context.ThemeSnapshot.MiddleAlignInlineImages &&
+            !image.Image.IsFailedDecorativeImageCollapsed &&
+            TryGetCachedInlineImageXHeightDip(image, out float xHeightDip) &&
+            TryGetCachedInlineImageLineBaseline(image, out float lineBaseline))
+        {
+            // CSS vertical-align: middle aligns the object's center with
+            // x-middle: halfway from the alphabetic baseline to the top of
+            // lowercase x. DirectWrite line metrics are relative to layout top.
+            top = baseY + lineBounds.Y + lineBaseline -
+                (image.DesiredHeight + xHeightDip) / 2d;
+        }
+        else
+        {
+            // Preserve the legacy baseline/centering behavior for default
+            // Markdown, missing font metrics, and zero-size failed decoration.
+            double cellY = lineBounds.Y + (lineBounds.Height - image.DesiredHeight) / 2d;
+            if (cellY < lineBounds.Y)
+                cellY = lineBounds.Y;
+            top = baseY + cellY;
+        }
+
+        return new Rect(
+            baseX + lineBounds.X,
+            top,
+            Math.Min(image.DesiredWidth, lineBounds.Width),
+            image.DesiredHeight);
+    }
+
+    private bool TryGetCachedInlineImageLineBaseline(InlineImageRun image, out float baseline)
+    {
+        baseline = 0f;
+        float[]? baselines = _inlineImageLineBaselineByRunIndex;
+        if (baselines is null)
+            return false;
+
+        int runIndex = image.InlineIndex;
+        if ((uint)runIndex >= (uint)baselines.Length)
+            return false;
+
+        float cached = baselines[runIndex];
+        if (!float.IsFinite(cached) || cached < 0f)
+            return false;
+
+        baseline = cached;
+        return true;
+    }
+
+    private float[] BuildInlineImageLineBaselines(CanvasLineMetrics[]? lineMetrics)
+    {
+        float[] baselinesByRun = new float[_runs.Count];
+        Array.Fill(baselinesByRun, -1f);
+        if (lineMetrics is not { Length: > 0 })
+            return baselinesByRun;
+
+        int lineIndex = 0;
+        int lineStart = 0;
+        int characterOffset = 0;
+        int runIndex = 0;
+        foreach (InlineRun run in _runs)
+        {
+            if ((runIndex & 63) == 0)
+                Context.CancellationToken.ThrowIfCancellationRequested();
+
+            if (run is InlineImageRun && run.TextLength > 0)
+            {
+                while (lineIndex + 1 < lineMetrics.Length)
+                {
+                    int lineEnd = lineStart + lineMetrics[lineIndex].CharacterCount;
+                    if (characterOffset < lineEnd)
+                        break;
+
+                    lineStart = lineEnd;
+                    lineIndex++;
+                }
+
+                CanvasLineMetrics line = lineMetrics[lineIndex];
+                if (line.CharacterCount > 0 &&
+                    float.IsFinite(line.Baseline) && line.Baseline >= 0f)
+                {
+                    baselinesByRun[runIndex] = line.Baseline;
+                }
+            }
+
+            characterOffset += run.TextLength;
+            runIndex++;
+        }
+
+        return baselinesByRun;
+    }
+
+    private bool TryGetCachedInlineImageXHeightDip(InlineImageRun image, out float xHeightDip)
+    {
+        xHeightDip = 0f;
+        float[]? metrics = _inlineImageXHeightByRunIndex;
+        if (!Context.ThemeSnapshot.MiddleAlignInlineImages ||
+            image.Image.IsFailedDecorativeImageCollapsed ||
+            metrics is null)
+        {
+            return false;
+        }
+
+        int runIndex = image.InlineIndex;
+        if ((uint)runIndex >= (uint)metrics.Length)
+            return false;
+
+        float cached = metrics[runIndex];
+        if (!float.IsFinite(cached) || cached <= 0f)
+            return false;
+
+        xHeightDip = cached;
+        return true;
+    }
+
+    private float ResolveInlineImageXHeightDipForMeasurement(
+        InlineImageRun image,
+        ref CanvasTextAnalyzer? analyzer,
+        ref Dictionary<InlineImageFontMetricKey, float>? styleMetrics)
+    {
+        if (!Context.ThemeSnapshot.MiddleAlignInlineImages ||
+            image.Image.IsFailedDecorativeImageCollapsed)
+        {
+            return 0f;
+        }
+
+        float[]? metrics = _inlineImageXHeightByRunIndex;
+        if (metrics is null || metrics.Length != _runs.Count)
+        {
+            metrics = new float[_runs.Count];
+            _inlineImageXHeightByRunIndex = metrics;
+        }
+
+        int runIndex = image.InlineIndex;
+        if ((uint)runIndex >= (uint)metrics.Length)
+            return 0f;
+
+        // Zero means not resolved; a negative value records a stable fallback.
+        // Positive values are the only metrics consumed by paint/selection.
+        float alreadyResolved = metrics[runIndex];
+        if (alreadyResolved != 0f)
+            return alreadyResolved > 0f ? alreadyResolved : 0f;
+
+        Context.CancellationToken.ThrowIfCancellationRequested();
+        ElementStyle style = GetRunStyle(image);
+        if (!float.IsFinite(style.FontSize) || style.FontSize <= 0f)
+        {
+            metrics[runIndex] = -1f;
+            return 0f;
+        }
+
+        var key = new InlineImageFontMetricKey(
+            style.FontFamily ?? string.Empty,
+            style.FontSize,
+            style.FontWeight.Weight,
+            style.FontStyle,
+            Context.FlowDirection,
+            Context.Language,
+            Context.ThemeSnapshot.IsDark,
+            Context.ThemeSnapshot.IsHighContrast,
+            Context.ThemeSnapshot.TextScaleFactor);
+        if (styleMetrics is { } existingStyleMetrics &&
+            existingStyleMetrics.TryGetValue(key, out float cached))
+        {
+            metrics[runIndex] = cached;
+            return cached > 0f ? cached : 0f;
+        }
+
+        float resolvedXHeightDip = 0f;
+        try
+        {
+            using SharedCanvasTextFormatCache.Lease formatLease = CreateTextFormatLease(
+                style,
+                CanvasWordWrapping.NoWrap,
+                CanvasHorizontalAlignment.Left);
+            if (analyzer is null)
+            {
+                CanvasTextDirection direction = Context.FlowDirection == FlowDirection.RightToLeft
+                    ? CanvasTextDirection.RightToLeftThenTopToBottom
+                    : CanvasTextDirection.LeftToRightThenTopToBottom;
+                analyzer = new CanvasTextAnalyzer("x", direction);
+            }
+
+            IReadOnlyList<KeyValuePair<CanvasCharacterRange, CanvasScaledFont>> fonts =
+                analyzer.GetFonts(formatLease.Format);
+            foreach (KeyValuePair<CanvasCharacterRange, CanvasScaledFont> fontSpan in fonts)
+            {
+                CanvasScaledFont scaledFont = fontSpan.Value;
+                CanvasFontFace face = scaledFont.FontFace;
+                try
+                {
+                    if (resolvedXHeightDip <= 0f &&
+                        float.IsFinite(scaledFont.ScaleFactor) && scaledFont.ScaleFactor > 0f)
+                    {
+                        double metric = (double)formatLease.Format.FontSize *
+                            scaledFont.ScaleFactor * face.LowercaseLetterHeight;
+                        if (double.IsFinite(metric) && metric > 0d && metric <= float.MaxValue)
+                            resolvedXHeightDip = (float)metric;
+                    }
+                }
+                finally
+                {
+                    face.Dispose();
+                }
+            }
+
+            Context.CancellationToken.ThrowIfCancellationRequested();
+        }
+        catch (Exception exception) when (
+            exception is not OutOfMemoryException &&
+            exception is not OperationCanceledException)
+        {
+            // Font metrics are an optional visual-profile enhancement. If a
+            // particular DirectWrite face cannot be inspected, retain the
+            // renderer's established inline-image placement.
+            MarkdownDiagnostics.WriteLine(
+                $"[InlineContainerBox] inline image x-height unavailable: {exception.GetType().Name}");
+        }
+
+        float storedMetric = resolvedXHeightDip > 0f ? resolvedXHeightDip : -1f;
+        metrics[runIndex] = storedMetric;
+        styleMetrics ??= new Dictionary<InlineImageFontMetricKey, float>(4);
+        if (styleMetrics.Count < MaximumInlineImageFontMetricsPerMeasure)
+            styleMetrics[key] = storedMetric;
+        return resolvedXHeightDip;
+    }
+
     /// <summary>
     /// For each <see cref="InlineImageRun"/>, returns the image rectangle in
     /// document coordinates and syncs the backnng <see cref="ImageBox"/> bounds
@@ -2999,14 +3396,7 @@ internal sealed partial class InlineContainerBox : BlockBox
                 if (regions is null) continue;
                 foreach (var r in regions)
                 {
-                    var lb = r.LayoutBounds;
-                    double cellY = lb.Y + (lb.Height - image.DesiredHeight) / 2.0;
-                    if (cellY < lb.Y) cellY = lb.Y;
-                    var rect = new Rect(
-                        baseX + lb.X,
-                        baseY + cellY,
-                        Math.Min(image.DesiredWidth, lb.Width),
-                        image.DesiredHeight);
+                    Rect rect = GetInlineImageDocumentRect(r, image, baseX, baseY);
                     image.Image.SetInlineBounds(rect);
                     yield return (image, rect);
                     break;
@@ -4208,7 +4598,8 @@ internal sealed partial class InlineContainerBox : BlockBox
                 candidateLayout,
                 observeCancellation: false,
                 inverseMetricScale: inlineMetricScale,
-                maxInlineWidth: selectionLayoutWidth);
+                maxInlineWidth: selectionLayoutWidth,
+                computeInlineImageMetrics: false);
         }
         catch (Exception exception)
         {
@@ -4431,8 +4822,14 @@ internal sealed partial class InlineContainerBox : BlockBox
         CanvasTextLayout layout,
         bool observeCancellation = true,
         float inverseMetricScale = 1f,
-        float maxInlineWidth = float.PositiveInfinity)
+        float maxInlineWidth = float.PositiveInfinity,
+        bool computeInlineImageMetrics = true)
     {
+        // CanvasTextAnalyzer is a short-lived WinRT projection and is not
+        // actually IClosable in the native Win2D implementation. Keep it
+        // local to this measured pass; never retain it on the box.
+        CanvasTextAnalyzer? inlineImageMetricAnalyzer = null;
+        Dictionary<InlineImageFontMetricKey, float>? inlineImageStyleMetrics = null;
         int cumulative = 0;
         foreach (var run in _runs)
         {
@@ -4458,6 +4855,29 @@ internal sealed partial class InlineContainerBox : BlockBox
             }
             else if (run is InlineImageRun image && len > 0)
             {
+                float baselineXHeightDip = -1f;
+                if (!image.Image.IsFailedDecorativeImageCollapsed &&
+                    Context.ThemeSnapshot.MiddleAlignInlineImages)
+                {
+                    float xHeightDip = 0f;
+                    bool hasXHeight;
+                    if (computeInlineImageMetrics)
+                    {
+                        xHeightDip = ResolveInlineImageXHeightDipForMeasurement(
+                            image,
+                            ref inlineImageMetricAnalyzer,
+                            ref inlineImageStyleMetrics);
+                        hasXHeight = xHeightDip > 0f;
+                    }
+                    else
+                    {
+                        hasXHeight = TryGetCachedInlineImageXHeightDip(image, out xHeightDip);
+                    }
+
+                    if (hasXHeight && xHeightDip > 0f)
+                        baselineXHeightDip = xHeightDip;
+                }
+
                 try
                 {
                     layout.SetInlineObject(
@@ -4467,7 +4887,8 @@ internal sealed partial class InlineContainerBox : BlockBox
                             image.DesiredWidth,
                             image.DesiredHeight,
                             inverseMetricScale,
-                            allowZeroDimensions: image.Image.IsFailedDecorativeImageCollapsed));
+                            allowZeroDimensions: image.Image.IsFailedDecorativeImageCollapsed,
+                            baselineXHeightDip: baselineXHeightDip));
                 }
                 catch (Exception ex)
                 {
@@ -4481,7 +4902,10 @@ internal sealed partial class InlineContainerBox : BlockBox
                     layout.SetInlineObject(
                         cumulative,
                         len,
-                        new LayoutInlineObject(vector.DesiredWidth, vector.DesiredHeight, inverseMetricScale));
+                        new LayoutInlineObject(
+                            vector.DesiredWidth,
+                            vector.DesiredHeight,
+                            inverseMetricScale));
                 }
                 catch (Exception ex)
                 {
@@ -4507,6 +4931,7 @@ internal sealed partial class InlineContainerBox : BlockBox
                         inverseMetricScale,
                         preserveSubUnitDimensions: true));
             }
+
             cumulative += len;
         }
     }
@@ -4525,7 +4950,8 @@ internal sealed partial class InlineContainerBox : BlockBox
             float height,
             float inverseMetricScale = 1f,
             bool preserveSubUnitDimensions = false,
-            bool allowZeroDimensions = false)
+            bool allowZeroDimensions = false,
+            float baselineXHeightDip = -1f)
         {
             float minimumDimension = allowZeroDimensions
                 ? 0f
@@ -4537,7 +4963,10 @@ internal sealed partial class InlineContainerBox : BlockBox
             float safeHeight = Math.Max(minimumDimension, height / scale);
             Size = new Size(safeWidth, safeHeight);
             DrawBounds = new Rect(0, 0, safeWidth, safeHeight);
-            Baseline = safeHeight;
+            Baseline = !allowZeroDimensions &&
+                float.IsFinite(baselineXHeightDip) && baselineXHeightDip >= 0f
+                    ? (safeHeight + baselineXHeightDip / scale) / 2f
+                    : safeHeight;
         }
 
         public Size Size { get; }
@@ -4706,14 +5135,7 @@ internal sealed partial class InlineContainerBox : BlockBox
                 if (regions is null) { cumulative += len; continue; }
                 foreach (var r in regions)
                 {
-                    var lb = r.LayoutBounds;
-                    double cellY = lb.Y + (lb.Height - image.DesiredHeight) / 2.0;
-                    if (cellY < lb.Y) cellY = lb.Y;
-                    var rect = new Rect(
-                        baseX + lb.X,
-                        baseY + cellY,
-                        Math.Min(image.DesiredWidth, lb.Width),
-                        image.DesiredHeight);
+                    Rect rect = GetInlineImageDocumentRect(r, image, baseX, baseY);
                     image.Image.SetInlineBounds(rect);
                     image.Image.PaintInline(ds, rect, viewport);
                     break;
@@ -4744,14 +5166,7 @@ internal sealed partial class InlineContainerBox : BlockBox
                 if (regions is null) { cumulative += len; continue; }
                 foreach (var r in regions)
                 {
-                    var lb = r.LayoutBounds;
-                    double cellY = lb.Y + (lb.Height - image.DesiredHeight) / 2.0;
-                    if (cellY < lb.Y) cellY = lb.Y;
-                    var rect = new Rect(
-                        baseX + lb.X,
-                        baseY + cellY,
-                        Math.Min(image.DesiredWidth, lb.Width),
-                        image.DesiredHeight);
+                    Rect rect = GetInlineImageDocumentRect(r, image, baseX, baseY);
                     image.Image.SetInlineBounds(rect);
                     image.Image.PaintInlineSelectionForeground(ds, rect, viewport, selectionForeground);
                     break;

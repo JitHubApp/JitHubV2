@@ -92,7 +92,8 @@ internal sealed class ThemeSnapshot
             DocumentPadding,
             _blockSpacing,
             _compiledStyleSheet.LayoutPolicy,
-            _compiledStyleSheet.HasRelativeScriptFontSizeRules);
+            _compiledStyleSheet.HasRelativeScriptFontSizeRules,
+            _compiledStyleSheet.HasRelativeInlineCodeFontSizeRules);
     }
 
     /// <summary>Resolved document surface color.</summary>
@@ -127,7 +128,9 @@ internal sealed class ThemeSnapshot
 
     internal byte LayoutPolicy => _compiledStyleSheet.LayoutPolicy;
     internal bool HasRelativeScriptFontSizeRules => _compiledStyleSheet.HasRelativeScriptFontSizeRules;
+    internal bool HasRelativeInlineCodeFontSizeRules => _compiledStyleSheet.HasRelativeInlineCodeFontSizeRules;
     internal bool CenterDefaultTableHeaders => _compiledStyleSheet.CenterDefaultTableHeaders;
+    internal bool MiddleAlignInlineImages => _compiledStyleSheet.MiddleAlignInlineImages;
 
     internal static ElementStyle WithFontSize(ElementStyle style, float fontSize)
     {
@@ -266,7 +269,8 @@ internal sealed class ThemeSnapshot
         Thickness documentPadding,
         float blockSpacing,
         byte layoutPolicy,
-        bool hasRelativeScriptFontSizeRules)
+        bool hasRelativeScriptFontSizeRules,
+        bool hasRelativeInlineCodeFontSizeRules)
     {
         const ulong offset = 14695981039346656037UL;
         var keys = new List<string>(styles.Keys);
@@ -281,6 +285,10 @@ internal sealed class ThemeSnapshot
         // for all snapshots without this opt-in policy.
         if (hasRelativeScriptFontSizeRules)
             hash = Mix(hash, 0x52534350u); // "RSCP"
+        // A later absolute declaration may mask the percentage but still opts
+        // heading code out of the legacy preserve-containing-size behavior.
+        if (hasRelativeInlineCodeFontSizeRules)
+            hash = Mix(hash, 0x52494350u); // "RICP"
         hash = Mix(hash, BitConverter.SingleToUInt32Bits(minimumInteractiveSize));
         hash = Mix(hash, documentPadding);
         hash = Mix(hash, BitConverter.SingleToUInt32Bits(blockSpacing));

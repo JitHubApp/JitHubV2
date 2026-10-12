@@ -18,6 +18,7 @@ certification and the remaining release gates are unfinished.
 | Customize Fluent styling | [Theming and customization](theming-and-customization.md) |
 | Understand normal Copy vs Copy Markdown | [Selection and clipboard](selection-and-clipboard.md) |
 | Track unfinished work | [Current gaps and roadmap](current-gaps-and-roadmap.md) |
+| Resume from the latest implementation and evidence | [October 12 checkpoint and architecture assessment](implementation-checkpoint-2026-10-12.md) |
 | Review the proposed opt-in performance work | [Progressive performance plan](progressive-performance-plan.md) |
 
 For the complete documentation table of contents, see [Summary](SUMMARY.md).

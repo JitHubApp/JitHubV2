@@ -275,8 +275,8 @@ public sealed class MarkdownStyleRule
                 throw new ArgumentOutOfRangeException(nameof(style), "A relative font-size scale must be finite and in (0, 1].");
             if (style.FontSize.HasValue)
                 throw new ArgumentException("A style rule cannot declare both absolute and relative font size.", nameof(style));
-            if (selector.Role.Name is not (MarkdownElementKeys.Subscript or MarkdownElementKeys.Superscript))
-                throw new ArgumentException("Relative font size is supported only for subscript and superscript roles.", nameof(selector));
+            if (selector.Role.Name is not (MarkdownElementKeys.Subscript or MarkdownElementKeys.Superscript or MarkdownElementKeys.CodeInline))
+                throw new ArgumentException("Relative font size is supported only for subscript, superscript, and inline code roles.", nameof(selector));
         }
     }
 
@@ -300,6 +300,7 @@ public sealed class MarkdownStyleSheet
     private const byte ResetTrailingMarginFlag = 2;
     private const byte ResetLeadingMarginFlag = 4;
     internal const byte CenterDefaultTableHeadersFlag = 8;
+    internal const byte MiddleAlignInlineImagesFlag = 16;
     private readonly MarkdownStyleRule[] _rules;
     private readonly IReadOnlyList<MarkdownStyleRule> _rulesView;
     private readonly byte _layoutPolicy;
@@ -374,6 +375,20 @@ public sealed class MarkdownStyleSheet
     }
 
     /// <summary>
+    /// Appends a profile-scoped inline-code percentage declaration. Layout resolves
+    /// it against containing typography; later absolute declarations still win.
+    /// </summary>
+    internal MarkdownStyleSheet WithRelativeInlineCodeFontSize(float scale)
+    {
+        if (!float.IsFinite(scale) || scale <= 0f || scale > 1f)
+            throw new ArgumentOutOfRangeException(nameof(scale), "The inline code size scale must be finite and in (0, 1].");
+
+        return WithRule(new MarkdownStyleRule(
+            new MarkdownStyleSelector(MarkdownStyleRole.InlineCode),
+            new ElementStyleOverride { RelativeFontSizeScale = scale }));
+    }
+
+    /// <summary>
     /// Returns a new style sheet that collapses adjacent positive margins on
     /// top-level normal-flow blocks to their maximum.
     /// </summary>
@@ -387,6 +402,10 @@ public sealed class MarkdownStyleSheet
     /// <summary>Centers unaligned table header cells to match the HTML user-agent default.</summary>
     internal MarkdownStyleSheet WithCenteredDefaultTableHeaders()
         => new(_rules, (byte)(_layoutPolicy | CenterDefaultTableHeadersFlag));
+
+    /// <summary>Uses CSS middle alignment for image objects in the opt-in source-replay profile.</summary>
+    internal MarkdownStyleSheet WithCssMiddleAlignedInlineImages()
+        => new(_rules, (byte)(_layoutPolicy | MiddleAlignInlineImagesFlag));
 
     /// <summary>
     /// Returns a new style sheet that removes the bottom margin after its last
@@ -439,7 +458,9 @@ internal sealed class CompiledMarkdownStyleSheet
     private readonly FrozenDictionary<string, CompiledRule[]> _rulesByRole;
     internal readonly byte LayoutPolicy;
     internal readonly bool HasRelativeScriptFontSizeRules;
+    internal readonly bool HasRelativeInlineCodeFontSizeRules;
     internal readonly bool CenterDefaultTableHeaders;
+    internal readonly bool MiddleAlignInlineImages;
 
     internal CompiledMarkdownStyleSheet(
         IReadOnlyList<MarkdownStyleRule> rules,
@@ -447,6 +468,7 @@ internal sealed class CompiledMarkdownStyleSheet
     {
         LayoutPolicy = layoutPolicy;
         CenterDefaultTableHeaders = (layoutPolicy & MarkdownStyleSheet.CenterDefaultTableHeadersFlag) != 0;
+        MiddleAlignInlineImages = (layoutPolicy & MarkdownStyleSheet.MiddleAlignInlineImagesFlag) != 0;
         if (rules.Count == 0)
         {
             _rulesByRole = FrozenDictionary<string, CompiledRule[]>.Empty;
@@ -455,11 +477,16 @@ internal sealed class CompiledMarkdownStyleSheet
 
         var groupedRules = new Dictionary<string, List<CompiledRule>>(StringComparer.Ordinal);
         bool hasRelativeScriptFontSizeRules = false;
+        bool hasRelativeInlineCodeFontSizeRules = false;
         for (int i = 0; i < rules.Count; i++)
         {
             MarkdownStyleRule rule = rules[i];
-            hasRelativeScriptFontSizeRules |= rule.Style.RelativeFontSizeScale.HasValue;
             string roleName = rule.Selector.Role.Name;
+            if (rule.Style.RelativeFontSizeScale.HasValue)
+            {
+                hasRelativeScriptFontSizeRules |= roleName is MarkdownElementKeys.Subscript or MarkdownElementKeys.Superscript;
+                hasRelativeInlineCodeFontSizeRules |= roleName == MarkdownElementKeys.CodeInline;
+            }
             if (!groupedRules.TryGetValue(roleName, out List<CompiledRule>? roleRules))
             {
                 roleRules = new List<CompiledRule>();
@@ -475,6 +502,7 @@ internal sealed class CompiledMarkdownStyleSheet
 
         _rulesByRole = compiled.ToFrozenDictionary(StringComparer.Ordinal);
         HasRelativeScriptFontSizeRules = hasRelativeScriptFontSizeRules;
+        HasRelativeInlineCodeFontSizeRules = hasRelativeInlineCodeFontSizeRules;
     }
 
     internal bool HasRules => _rulesByRole.Count != 0;

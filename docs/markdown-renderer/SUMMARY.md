@@ -34,6 +34,7 @@ Use this page as the canonical table of contents for a generated docs site.
 ## Operations
 
 - [Testing and diagnostics](testing-and-diagnostics.md)
+- [October 12 checkpoint and architecture assessment](implementation-checkpoint-2026-10-12.md)
 - [Troubleshooting](troubleshooting.md)
 - [Packaging and distribution](packaging-and-distribution.md)
 - [Release checklist](release-checklist.md)

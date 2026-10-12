@@ -136,6 +136,35 @@ public static class GitHubReadmeVisualStyleProfiles
     /// </summary>
     public static GitHubReadmeVisualStyleProfile PrimerLightV6 { get; } = CreatePrimerLightV6();
 
+    /// <summary>
+    /// Gets the source-replay profile with table-cell line height and relative
+    /// inline-code typography and middle-aligned images matching its canonical CSS.
+    /// </summary>
+    public static GitHubReadmeVisualStyleProfile PrimerLightV7 { get; } = CreatePrimerLightV7();
+
+    private static GitHubReadmeVisualStyleProfile CreatePrimerLightV7()
+    {
+        GitHubReadmeVisualStyleProfile previous = PrimerLightV6;
+        MarkdownStyleSheet styleSheet = previous.StyleSheet
+            .WithCssMiddleAlignedInlineImages()
+            .WithRelativeInlineCodeFontSize(0.85f)
+            .WithRule(Rule(MarkdownStyleRole.TableHeader,
+                new ElementStyleOverride { LineHeightMultiplier = 1.5f }))
+            .WithRule(Rule(MarkdownStyleRole.TableCell,
+                new ElementStyleOverride { LineHeightMultiplier = 1.5f }));
+
+        return new GitHubReadmeVisualStyleProfile(
+            id: previous.Id,
+            version: 7,
+            fingerprint: "882f63ac35c8f0854485ba797fda1bc8690cbc97bfd5d0fd9c0c961471cb17c4",
+            surfaceColor: previous.SurfaceColor,
+            accentColor: previous.AccentColor,
+            styleSheet: styleSheet,
+            codeBlockChromeMode: previous.CodeBlockChromeMode,
+            codeBlockLineNumberMode: previous.CodeBlockLineNumberMode,
+            isCodeBlockCopyEnabled: previous.IsCodeBlockCopyEnabled);
+    }
+
     private static GitHubReadmeVisualStyleProfile CreatePrimerLightV6()
     {
         GitHubReadmeVisualStyleProfile previous = PrimerLightV5;

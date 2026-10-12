@@ -145,7 +145,7 @@ public sealed class ElementStyle
     public string FontFamily { get; init; } = "Segoe UI Variable, Segoe UI Emoji, Segoe UI Symbol";
     /// <summary>Font size in device-independent pixels.</summary>
     public float FontSize { get; init; } = 14f;
-    /// <summary>Internal percentage declaration used by relative script rules.</summary>
+    /// <summary>Internal percentage declaration used by relative inline typography rules.</summary>
     internal float? RelativeFontSizeScale { get; init; }
     /// <summary>Font weight.</summary>
     public Windows.UI.Text.FontWeight FontWeight { get; init; } = new() { Weight = 400 };
@@ -206,7 +206,7 @@ public sealed class ElementStyleOverride
     public string? FontFamily { get; init; }
     /// <summary>Optional font size override.</summary>
     public float? FontSize { get; init; }
-    /// <summary>Internal relative size declaration used by opt-in script rules.</summary>
+    /// <summary>Internal relative size declaration used by opt-in inline typography rules.</summary>
     internal float? RelativeFontSizeScale { get; init; }
     /// <summary>Optional font weight override.</summary>
     public Windows.UI.Text.FontWeight? FontWeight { get; init; }
