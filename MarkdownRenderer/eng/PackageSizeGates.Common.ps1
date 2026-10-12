@@ -1,5 +1,23 @@
 Set-StrictMode -Version Latest
 
+function Assert-ResvgPackageContentBoundaries {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [object[]] $Entries
+    )
+
+    # This provider deploys only its managed library and selected RID worker.
+    # Build/test fixtures must not become NuGet consumer Content, including
+    # duplicated legacy content/ and modern contentFiles/ image globs.
+    foreach ($entry in $Entries) {
+        $name = ([string] $entry.Name).Replace('\', '/')
+        if ($name -match '^(?i:content|contentFiles)/') {
+            throw "The resvg package must not deploy consumer Content '$name'; native fixtures are build/test inputs, not runtime assets."
+        }
+    }
+}
+
 function Get-ResvgSelectedDeploymentPayload {
     [CmdletBinding()]
     param(

@@ -27,6 +27,34 @@ $capBytes = [long] (3.5MB)
 $providerPath = 'lib/net10.0-windows10.0.26100/MarkdownRenderer.Svg.Resvg.dll'
 $supportedRids = @('win-x86', 'win-x64', 'win-arm64')
 
+# Retain the distribution's license/provenance documents while rejecting
+# implicit SDK Content items independently of their size or file extension.
+$admittedPaths = @(
+    $providerPath,
+    'lib/net10.0-windows10.0.26100/MarkdownRenderer.Svg.Resvg.xml',
+    'runtimes/win-x64/native/MarkdownRenderer.Svg.Resvg.Worker.exe',
+    'LICENSE', 'licenses/RESVG-LICENSE-MIT.txt', 'licenses/RUST-DEPENDENCY-LICENSES.txt',
+    'THIRD-PARTY-NOTICES.md', 'README.md', 'icon-192.png',
+    'provenance/RESVG_PROVENANCE.json', 'provenance/RESVG_WORKER_IDENTITY.json',
+    'provenance/NATIVE_RUST_DEPENDENCIES.json', 'provenance/native/Cargo.lock',
+    'build/native/PROTOCOL.md', '[Content_Types].xml'
+)
+$admittedEntries = @($admittedPaths | ForEach-Object { [pscustomobject]@{ Name = $_; Length = 1L } })
+Assert-ResvgPackageContentBoundaries -Entries $admittedEntries
+foreach ($fixturePath in @(
+    'content/native/vendor/resvg/examples/ferris.png',
+    'contentFiles/any/net10.0-windows10.0.26100/native/vendor/tiny-skia/tests/images/gamma.png',
+    'CONTENT/NATIVE/fixture.jpg',
+    'ContentFiles\any\net10.0\native\fixture.dat'
+)) {
+    $rejected = $false
+    try {
+        Assert-ResvgPackageContentBoundaries -Entries @($admittedEntries + [pscustomobject]@{ Name = $fixturePath; Length = 1L })
+    }
+    catch { $rejected = $_.Exception.Message -like '*must not deploy consumer Content*' }
+    Assert-True $rejected "consumer content must be rejected even for a one-byte fixture: $fixturePath"
+}
+
 foreach ($selectedRid in $supportedRids) {
     $entries = [Collections.Generic.List[object]]::new()
     foreach ($rid in $supportedRids) {

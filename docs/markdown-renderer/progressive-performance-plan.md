@@ -199,6 +199,15 @@ This was outside the benchmark and does not establish why the app delivered
 approximately 120 rendering callbacks per second. It does not qualify the
 failed run or justify changing the cadence gate. Evidence:
 `goal-release-20261011/dwm-readonly-timing-20261011.json`; display remains 240 Hz.
+A read-only harness audit confirms that `observedRefreshRateHz` is derived from
+the median `CompositionTarget.Rendering` callback interval, not an independent
+panel/present measurement. Of the preserved R1's 12,000 intervals, 10,168 fall
+between 7 and 9 ms and only 9 are at most 5 ms: this is a steady approximately
+120-Hz callback cadence rather than evidence of a 240-Hz panel mode change.
+The renderer callback work alone does not establish the cause. No cadence gate
+is changed, and scroll p95 independently remains above 8.33 ms. A future admitted
+diagnostic can correlate WinUI rendering timestamps with DWM refresh/composition
+and present counters; no additional UI observer has been launched.
 
 The Sandbox wrapper regression suites pass after correcting a test-only exit
 capture error. A script-local `$LASTEXITCODE = 0` hid the global automatic value
@@ -367,6 +376,45 @@ compiles the managed projects but fails PRI generation at a 262-character
 destination path. Its evidence is retained; a fresh 180-character destination
 under `artifacts/resvg-mixed-4f5-20261011/` keeps the normal build targets and
 exact verified worker bytes. No production native source or binary is replaced.
+
+The final repository-shaped clone under
+`artifacts/resvg-mixed-4f5-20261011/repo/` passes normal locked restore and
+Release/x64 build with zero warnings/errors. Its first pack fails because the
+isolated copy omitted the shared license-policy helper; the complete repository
+verification helpers are then copied and hash-checked. The fresh official pack
+passes the 76-package source/license and all-RID identity checks, and the rebuilt,
+matching provider/fault suite passes **644/644, zero skipped** in 21 seconds
+(`artifacts/provider-test-results/provider-faults-mixed-profile.trx`). The failed
+pack and earlier incomplete copies remain preserved; their results are not used.
+
+Inspecting that valid package exposes duplicated build-only payload: Windows SDK
+Content globs pack **122 vendored PNG fixtures twice**, under `content/` and
+`contentFiles/`. The provider now excludes `native/**` from Content while keeping
+explicit runtime workers, licenses, notices, provenance, protocol, and public
+documentation. The size-gate helper also rejects those consumer-Content roots
+regardless of file size, extension, slash style, or case. Actual project item
+evaluation confirms zero native Content items; the complete package-compliance
+tooling self-tests pass (`goal-release-20261011/resvg-package-content-exclusion/compliance-tool-tests.log`).
+The new guard rejects the preserved pre-fix real package as expected.
+
+A normal provider rebuild regenerates its resource index before repacking. The
+fresh mixed-profile package is **5,053,031 bytes**, down **447,362 bytes**, and
+passes the unchanged **5 MiB** all-RID cap. Its SHA-256 is
+`fc3bed925bbb7c0f8e8abca17b4ac1fcab6843ce5fd8f819f3a30fc834670d28`.
+All selected unsigned deployments (worker plus provider DLL) also pass the
+unchanged 3.5 MiB cap: **3,480,064 / 3,652,608 / 3,082,752 bytes** for
+x86/x64/ARM64. The 21 retained package entries include every required runtime and
+compliance artifact; only the nuspec and regenerated PRI change among retained
+payloads. Managed/test DLLs and all three workers remain byte-identical to the
+644-test run. Evidence in the same clone is `artifacts/packages-no-fixtures/`,
+`artifacts/package-content-removal-comparison.json`, and
+`artifacts/post-content-fix-build-hashes-and-pri.json`; the root independently
+rechecks the package hash, content boundary, and all three deployment totals.
+This establishes unsigned candidate packaging only, not signing, runtime
+qualification on x86/ARM64, or Edge-relative performance/fidelity. The overall
+package gate still fails the separate Core+WinUI compressed size at
+**759,723 / 537,600 bytes**. The experimental native profile/workers are still
+not installed into the production source tree.
 
 Two further scanner prototypes remain artifact-only. The first finds neighboring
 edges directly through the existing ordered tree instead of computing a rank

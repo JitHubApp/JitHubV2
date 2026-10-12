@@ -102,6 +102,7 @@ foreach ($entry in $optionalCaps.GetEnumerator()) {
             }
         }
         if ($isResvg) {
+            Assert-ResvgPackageContentBoundaries -Entries $entries
             Assert-Max $package.Length $entry.Value 'resvg all-RID compressed package'
         }
     }

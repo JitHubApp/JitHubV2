@@ -55,6 +55,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The Windows SDK admits PNGs as Content even in a provider library.
+         Vendored examples/fixtures are native build inputs, not consumer assets;
+         otherwise NuGet ships them twice under content and contentFiles. Keep
+         the explicit licenses, provenance, protocol and RID payloads below. -->
+    <Content Remove="native\**" />
     <None Include="..\..\LICENSE" Pack="true" PackagePath="" Visible="false" />
     <None Include="..\..\JitHub.Web\wwwroot\icon-192.png" Pack="true" PackagePath="icon-192.png" Visible="false" />
     <None Update="README.md" Pack="true" PackagePath="README.md" />
