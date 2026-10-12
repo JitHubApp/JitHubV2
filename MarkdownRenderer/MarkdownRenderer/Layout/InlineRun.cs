@@ -816,9 +816,9 @@ internal sealed class LineBreakRun : InlineRun
     private readonly string _text;
 
     /// <summary>
-    /// Whether this is the only run in a safe-HTML block. Its semantic text
-    /// remains a newline, but its layout representation is a blank character
-    /// occupying exactly one line box.
+    /// Whether this hard break is represented by a same-length blank in layout.
+    /// The semantic text remains a newline; this avoids materializing an extra
+    /// empty terminal line for standalone breaks or a break before a block.
     /// </summary>
     internal bool UseSingleLineLayout { get; set; }
 

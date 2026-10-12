@@ -182,7 +182,8 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
                     context,
                     sourceOffset,
                     inheritedAlignment,
-                    inlineFragmentMarginPolicy);
+                    inlineFragmentMarginPolicy,
+                    followedByBlock: true);
                 BlockBox? block = BuildElementBlock(element, context, sourceOffset, inheritedAlignment);
                 if (block is not null)
                 {
@@ -201,7 +202,8 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             context,
             sourceOffset,
             inheritedAlignment,
-            inlineFragmentMarginPolicy);
+            inlineFragmentMarginPolicy,
+            followedByBlock: false);
     }
 
     private void FlushInlineNodes(
@@ -210,7 +212,8 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         MarkdownLayoutContext context,
         int sourceOffset,
         SafeHtmlAlignment alignment,
-        InlineFragmentMarginPolicy inlineFragmentMarginPolicy)
+        InlineFragmentMarginPolicy inlineFragmentMarginPolicy,
+        bool followedByBlock)
     {
         if (inlineNodes.Count == 0)
         {
@@ -221,9 +224,10 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         PopulateInline(box, inlineNodes, context, sourceOffset, HtmlInlineContext.Empty);
         if (box.Runs.Count > 0)
         {
-            ConfigureStandaloneBreakBox(
+            ConfigureBreakLayout(
                 box,
-                preserveParagraphMargin: inlineFragmentMarginPolicy == InlineFragmentMarginPolicy.Paragraph);
+                preserveParagraphMargin: inlineFragmentMarginPolicy == InlineFragmentMarginPolicy.Paragraph,
+                followedByBlock: followedByBlock);
             if (inlineFragmentMarginPolicy == InlineFragmentMarginPolicy.AnonymousContainerFlow)
             {
                 box.UseContainerMargin = false;
@@ -321,7 +325,7 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         {
             InlineContainerBox inline = CreateInlineBox(context, MarkdownElementKeys.Body, alignment);
             PopulateInline(inline, element.Children, context, sourceOffset, HtmlInlineContext.Empty);
-            ConfigureStandaloneBreakBox(
+            ConfigureBreakLayout(
                 inline,
                 preserveParagraphMargin: element.Name == "p");
             if (element.Name != "p")
@@ -348,22 +352,37 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         return ReturnIfNonEmpty(stack, context);
     }
 
-    private static void ConfigureStandaloneBreakBox(
+    private static void ConfigureBreakLayout(
         InlineContainerBox box,
-        bool preserveParagraphMargin)
+        bool preserveParagraphMargin,
+        bool followedByBlock = false)
     {
-        if (box.Runs.Count != 1 || box.Runs[0] is not LineBreakRun lineBreak)
-            return;
-
-        // A standalone <br> in an HTML block establishes one empty line box;
-        // its enclosing HTML <p>, when present, still owns the paragraph margin.
-        // Keep the run's semantic newline/source span intact for selection,
-        // copy, and UI Automation while the layout uses a same-length blank.
-        lineBreak.UseSingleLineLayout = true;
-        if (!preserveParagraphMargin)
+        if (box.Runs.Count == 1 && box.Runs[0] is LineBreakRun standaloneBreak)
         {
-            box.UseContainerMargin = false;
-            box.Margin = default;
+            // A standalone <br> in an HTML block establishes one empty line box;
+            // its enclosing HTML <p>, when present, still owns the paragraph margin.
+            // Keep semantic text/source mapping intact while laying out a same-length
+            // blank rather than letting DirectWrite append another empty terminal line.
+            standaloneBreak.UseSingleLineLayout = true;
+            if (!preserveParagraphMargin)
+            {
+                box.UseContainerMargin = false;
+                box.Margin = default;
+            }
+            return;
+        }
+
+        if (followedByBlock &&
+            box.Runs.Count > 0 &&
+            box.Runs[^1] is LineBreakRun terminalBreak &&
+            terminalBreak.Text == "\n")
+        {
+            // A block starts at the line created by the final hard break. If the
+            // inline layout also materializes that terminal line as a full empty
+            // row, the block is pushed down one extra line. Use the break's
+            // same-length layout blank only at this flush boundary; earlier breaks
+            // remain hard breaks and all semantic/source ranges remain unchanged.
+            terminalBreak.UseSingleLineLayout = true;
         }
     }
 

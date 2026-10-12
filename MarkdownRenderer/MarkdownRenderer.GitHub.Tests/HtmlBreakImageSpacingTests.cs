@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using Microsoft.Graphics.Canvas;
 using Microsoft.UI.Xaml;
 using Markdig;
+using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Images;
@@ -189,6 +190,269 @@ public sealed class HtmlBreakImageSpacingTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void MixedInlineFragmentsUseBlockBoundaryForTerminalBreakLayoutOnly()
+    {
+        const string source = "<div align=\"center\"><img src=\"https://example.test/wordmark.png\" width=\"500\" height=\"350\" alt=\"wordmark\"><br><br><br><br><div><sub>Check out my macOS app</sub><br><h2><a href=\"https://example.test/app\">Supercharge</a><br><sup>Elevate your Mac experience</sup></h2></div><br><br><br><br><hr></div>";
+
+        foreach (MarkdownStyleSheet? styleSheet in new MarkdownStyleSheet?[]
+        {
+            null,
+            GitHubReadmeVisualStyleProfiles.PrimerLightV5.StyleSheet,
+        })
+        {
+            using LayoutSnapshot snapshot = BuildGitHub(source, styleSheet: styleSheet);
+            using LayoutSnapshot imageBoundaryControl = BuildGitHub(
+                source.Replace("<br><br><br><br><div>", "<br><br><br>&nbsp;<div>", StringComparison.Ordinal),
+                styleSheet: styleSheet);
+            using LayoutSnapshot headingBoundaryControl = BuildGitHub(
+                source.Replace("</sub><br><h2>", "</sub>&nbsp;<h2>", StringComparison.Ordinal),
+                styleSheet: styleSheet);
+            using LayoutSnapshot ruleBoundaryControl = BuildGitHub(
+                source.Replace("</h2></div><br><br><br><br><hr>", "</h2></div><br><br><br>&nbsp;<hr>", StringComparison.Ordinal),
+                styleSheet: styleSheet);
+            InlineContainerBox[] inlineBoxes = EnumerateInlineBoxes(snapshot.Blocks).ToArray();
+            InlineContainerBox imageAndBreaks = Assert.Single(inlineBoxes, static box =>
+                box.Runs.OfType<InlineImageRun>().Any() &&
+                box.Runs.OfType<LineBreakRun>().Count() == 4);
+            InlineContainerBox tagline = Assert.Single(inlineBoxes, static box =>
+                box.Runs.Any(static run => run.Text.Contains("Check out my macOS app", StringComparison.Ordinal)));
+            InlineContainerBox heading = Assert.Single(inlineBoxes, static box =>
+                box.Runs.OfType<LinkRun>().Any());
+            InlineContainerBox breaksBeforeRule = Assert.Single(inlineBoxes, static box =>
+                !box.Runs.OfType<InlineImageRun>().Any() &&
+                box.Runs.OfType<LineBreakRun>().Count() == 4);
+            InlineContainerBox expectedImageFragment = Assert.Single(
+                EnumerateInlineBoxes(imageBoundaryControl.Blocks),
+                static box => box.Runs.OfType<InlineImageRun>().Any());
+            InlineContainerBox expectedTagline = Assert.Single(
+                EnumerateInlineBoxes(headingBoundaryControl.Blocks),
+                static box => box.Runs.Any(static run => run.Text.Contains("Check out my macOS app", StringComparison.Ordinal)));
+            InlineContainerBox expectedBeforeRule = Assert.Single(
+                EnumerateInlineBoxes(ruleBoundaryControl.Blocks),
+                static box => box.Runs.OfType<LineBreakRun>().Count() == 3);
+
+            LineBreakRun[] imageBreaks = imageAndBreaks.Runs.OfType<LineBreakRun>().ToArray();
+            LineBreakRun taglineBreak = Assert.Single(tagline.Runs.OfType<LineBreakRun>());
+            LineBreakRun headingLineBreak = Assert.Single(heading.Runs.OfType<LineBreakRun>());
+            LineBreakRun[] ruleBreaks = breaksBeforeRule.Runs.OfType<LineBreakRun>().ToArray();
+
+            output.WriteLine($"style sheet: {(styleSheet is null ? "default" : "PrimerLightV5")}");
+            output.WriteLine($"image fragment: {imageAndBreaks.Bounds}; image height {Assert.Single(imageAndBreaks.Runs.OfType<InlineImageRun>()).DesiredHeight}");
+            output.WriteLine($"tagline fragment: {tagline.Bounds}; heading: {heading.Bounds}; heading margin: {heading.Margin}");
+            output.WriteLine($"rule break fragment: {breaksBeforeRule.Bounds}");
+            output.WriteLine($"boundary controls: image {expectedImageFragment.Bounds}; tagline {expectedTagline.Bounds}; rule {expectedBeforeRule.Bounds}");
+
+            Assert.Equal(expectedImageFragment.Bounds.Height, imageAndBreaks.Bounds.Height, precision: 2);
+            Assert.Equal(expectedTagline.Bounds.Height, tagline.Bounds.Height, precision: 2);
+            Assert.Equal(expectedBeforeRule.Bounds.Height, breaksBeforeRule.Bounds.Height, precision: 2);
+
+            Assert.False(imageBreaks[0].UseSingleLineLayout);
+            Assert.False(imageBreaks[1].UseSingleLineLayout);
+            Assert.False(imageBreaks[2].UseSingleLineLayout);
+            Assert.True(imageBreaks[3].UseSingleLineLayout);
+            Assert.All(imageBreaks.Take(3), static lineBreak => Assert.Equal("\n", lineBreak.LayoutText));
+            Assert.Equal(" ", imageBreaks[3].LayoutText);
+            Assert.True(taglineBreak.UseSingleLineLayout);
+            Assert.Equal(" ", taglineBreak.LayoutText);
+            Assert.False(headingLineBreak.UseSingleLineLayout);
+            Assert.All(ruleBreaks.Take(3), static lineBreak => Assert.False(lineBreak.UseSingleLineLayout));
+            Assert.True(ruleBreaks[3].UseSingleLineLayout);
+            Assert.All(ruleBreaks.Take(3), static lineBreak => Assert.Equal("\n", lineBreak.LayoutText));
+            Assert.Equal(" ", ruleBreaks[3].LayoutText);
+
+            foreach (InlineContainerBox box in new[] { imageAndBreaks, tagline, heading, breaksBeforeRule })
+            {
+                foreach (LineBreakRun lineBreak in box.Runs.OfType<LineBreakRun>())
+                {
+                    var range = new DocumentRange(
+                        new DocumentPosition(box.BlockIndex, lineBreak.InlineIndex, 0),
+                        new DocumentPosition(box.BlockIndex, lineBreak.InlineIndex, lineBreak.Text.Length));
+                    Assert.Equal("\n", lineBreak.AccessibleText);
+                    Assert.Equal("<br>", snapshot.SourceMap.Slice(range));
+                    Assert.NotEmpty(box.GetSelectionRects(range));
+                }
+            }
+
+            // Keep the exact no-footer source above for geometry, but append a
+            // semantic paragraph here so the canonical document projection does
+            // not trim the last authored break before the textless <hr>. Every
+            // normalized break must still map to a newline in semantic text.
+            using LayoutSnapshot semanticProjectionControl = BuildGitHub(
+                source + "\n\nAfter the rule.",
+                styleSheet: styleSheet);
+            string semanticText = semanticProjectionControl.SemanticDocument.Text;
+            AssertSemanticRangesWithinText(semanticProjectionControl.SemanticDocument);
+            foreach (InlineContainerBox box in EnumerateInlineBoxes(semanticProjectionControl.Blocks))
+            {
+                foreach (LineBreakRun lineBreak in box.Runs.OfType<LineBreakRun>())
+                {
+                    var range = new DocumentRange(
+                        new DocumentPosition(box.BlockIndex, lineBreak.InlineIndex, 0),
+                        new DocumentPosition(box.BlockIndex, lineBreak.InlineIndex, lineBreak.Text.Length));
+                    MarkdownTextSpan span = Assert.Single(
+                        semanticProjectionControl.SemanticDocument.TextSpans,
+                        candidate => ReferenceEquals(candidate.InlineBox, box) &&
+                            ReferenceEquals(candidate.InlineRun, lineBreak));
+
+                    Assert.InRange(span.TextStart, 0, semanticText.Length);
+                    Assert.InRange(span.TextEnd, span.TextStart, semanticText.Length);
+                    Assert.Equal("\n", semanticText.Substring(span.TextStart, span.TextEnd - span.TextStart));
+                    Assert.Equal(span.TextStart,
+                        semanticProjectionControl.SemanticDocument.TextOffsetFromDocumentPosition(range.Start));
+                    Assert.Equal(span.TextEnd,
+                        semanticProjectionControl.SemanticDocument.TextOffsetFromDocumentPosition(range.End));
+                }
+            }
+        }
+    }
+
+    [Fact]
+    public void TrailingBreakBeforeTextlessRuleRetainsRunAndSourceWhenProjectionTrimsFinalNewline()
+    {
+        // Characterizes existing semantic-builder trailing-newline behavior;
+        // the run/source remain present while its semantic projection is empty.
+        const string source = "<div>Tail<br><hr></div>";
+        using LayoutSnapshot snapshot = BuildGitHub(source);
+        InlineContainerBox tail = Assert.Single(EnumerateInlineBoxes(snapshot.Blocks), static box =>
+            box.Runs.Any(static run => run.Text.Contains("Tail", StringComparison.Ordinal)));
+        LineBreakRun lineBreak = Assert.Single(tail.Runs.OfType<LineBreakRun>());
+        var range = new DocumentRange(
+            new DocumentPosition(tail.BlockIndex, lineBreak.InlineIndex, 0),
+            new DocumentPosition(tail.BlockIndex, lineBreak.InlineIndex, lineBreak.Text.Length));
+
+        Assert.Equal("\n", lineBreak.AccessibleText);
+        Assert.True(lineBreak.UseSingleLineLayout);
+        Assert.Equal(" ", lineBreak.LayoutText);
+        Assert.False(snapshot.SemanticDocument.Text.EndsWith('\n'));
+        Assert.Equal("<br>", snapshot.SourceMap.Slice(range));
+        Assert.NotEmpty(tail.GetSelectionRects(range));
+    }
+
+    [Theory]
+    [InlineData("<div>Tail<br><hr></div>")]
+    [InlineData("<div>Tail<br><br><hr></div>")]
+    [InlineData("<div dir=\"rtl\">שלום 😀<br><br><hr></div>")]
+    public void TrimmedTerminalBreaksKeepAllPublishedSemanticRangesWithinText(string source)
+    {
+        using LayoutSnapshot snapshot = BuildGitHub(source);
+        MarkdownSemanticDocument semantic = snapshot.SemanticDocument;
+        InlineContainerBox[] boxes = EnumerateInlineBoxes(snapshot.Blocks).ToArray();
+        LineBreakRun[] lineBreaks = boxes.SelectMany(static box => box.Runs.OfType<LineBreakRun>()).ToArray();
+
+        Assert.NotEmpty(lineBreaks);
+        AssertSemanticRangesWithinText(semantic);
+        Assert.False(semantic.Text.EndsWith('\n'));
+
+        foreach (InlineContainerBox box in boxes)
+        {
+            foreach (LineBreakRun lineBreak in box.Runs.OfType<LineBreakRun>())
+            {
+                MarkdownTextSpan span = Assert.Single(
+                    semantic.TextSpans,
+                    candidate => ReferenceEquals(candidate.InlineBox, box) &&
+                        ReferenceEquals(candidate.InlineRun, lineBreak));
+                var range = new DocumentRange(
+                    new DocumentPosition(box.BlockIndex, lineBreak.InlineIndex, 0),
+                    new DocumentPosition(box.BlockIndex, lineBreak.InlineIndex, lineBreak.Text.Length));
+
+                Assert.Equal(semantic.Text.Length, span.TextStart);
+                Assert.Equal(semantic.Text.Length, span.TextEnd);
+                Assert.Equal(semantic.Text.Length, semantic.TextOffsetFromDocumentPosition(range.Start));
+                Assert.Equal(semantic.Text.Length, semantic.TextOffsetFromDocumentPosition(range.End));
+                Assert.Equal("<br>", snapshot.SourceMap.Slice(range));
+                Assert.NotEmpty(box.GetSelectionRects(range));
+            }
+        }
+    }
+
+    [Fact]
+    public void EmptySemanticDocumentPublishesOnlyZeroLengthRanges()
+    {
+        using LayoutSnapshot snapshot = BuildGitHub(string.Empty);
+        MarkdownSemanticDocument semantic = snapshot.SemanticDocument;
+
+        Assert.Equal(string.Empty, semantic.Text);
+        AssertSemanticRangesWithinText(semantic);
+        Assert.Equal(0, semantic.Root.TextStart);
+        Assert.Equal(0, semantic.Root.TextEnd);
+    }
+
+    [Fact]
+    public void AppendedFooterPreservesRtlEmojiBreakTextAndNormalizedRanges()
+    {
+        const string source = "<div dir=\"rtl\">שלום 😀<br><br><hr></div>\n\nAfter the rule.";
+        using LayoutSnapshot snapshot = BuildGitHub(source);
+        MarkdownSemanticDocument semantic = snapshot.SemanticDocument;
+        AssertSemanticRangesWithinText(semantic);
+
+        foreach (InlineContainerBox box in EnumerateInlineBoxes(snapshot.Blocks))
+        {
+            foreach (LineBreakRun lineBreak in box.Runs.OfType<LineBreakRun>())
+            {
+                MarkdownTextSpan span = Assert.Single(
+                    semantic.TextSpans,
+                    candidate => ReferenceEquals(candidate.InlineBox, box) &&
+                        ReferenceEquals(candidate.InlineRun, lineBreak));
+
+                Assert.Equal("\n", semantic.Text.Substring(span.TextStart, span.TextEnd - span.TextStart));
+                Assert.Equal(span.TextStart,
+                    semantic.TextOffsetFromDocumentPosition(
+                        new DocumentPosition(box.BlockIndex, lineBreak.InlineIndex, 0)));
+                Assert.Equal(span.TextEnd,
+                    semantic.TextOffsetFromDocumentPosition(
+                        new DocumentPosition(box.BlockIndex, lineBreak.InlineIndex, lineBreak.Text.Length)));
+            }
+        }
+    }
+
+    [Fact]
+    public void MixedTerminalBreakAtContainerEndKeepsItsExplicitTrailingLine()
+    {
+        const string source = "<div>Tail<br><br></div>";
+        using LayoutSnapshot snapshot = BuildGitHub(source);
+
+        InlineContainerBox tail = Assert.Single(EnumerateInlineBoxes(snapshot.Blocks), static box =>
+            box.Runs.Any(static run => run.Text.Contains("Tail", StringComparison.Ordinal)));
+        LineBreakRun[] breaks = tail.Runs.OfType<LineBreakRun>().ToArray();
+
+        Assert.Equal(2, breaks.Length);
+        Assert.All(breaks, static lineBreak => Assert.False(lineBreak.UseSingleLineLayout));
+        Assert.Equal("Tail\n\n", tail.Runs.Select(static run => run.Text).Aggregate(string.Concat));
+        foreach (LineBreakRun lineBreak in breaks)
+        {
+            var range = new DocumentRange(
+                new DocumentPosition(tail.BlockIndex, lineBreak.InlineIndex, 0),
+                new DocumentPosition(tail.BlockIndex, lineBreak.InlineIndex, lineBreak.Text.Length));
+            Assert.Equal("<br>", snapshot.SourceMap.Slice(range));
+        }
+    }
+
+    [Fact]
+    public void RightToLeftMixedFragmentNormalizesOnlyItsTerminalBreakBeforeBlock()
+    {
+        const string source = "<div dir=\"rtl\">שלום<br><div>הבא</div></div>";
+        using LayoutSnapshot snapshot = BuildGitHub(
+            source,
+            flowDirection: FlowDirection.RightToLeft);
+
+        InlineContainerBox beforeBlock = Assert.Single(EnumerateInlineBoxes(snapshot.Blocks), static box =>
+            box.Runs.Any(static run => run.Text.Contains("שלום", StringComparison.Ordinal)));
+        LineBreakRun lineBreak = Assert.Single(beforeBlock.Runs.OfType<LineBreakRun>());
+
+        Assert.True(lineBreak.UseSingleLineLayout);
+        Assert.Equal("\n", lineBreak.Text);
+        Assert.Equal(" ", lineBreak.LayoutText);
+        var range = new DocumentRange(
+            new DocumentPosition(beforeBlock.BlockIndex, lineBreak.InlineIndex, 0),
+            new DocumentPosition(beforeBlock.BlockIndex, lineBreak.InlineIndex, lineBreak.Text.Length));
+        Assert.Equal("\n", snapshot.SemanticDocument.Text.Substring(
+            snapshot.SemanticDocument.TextOffsetFromDocumentPosition(range.Start),
+            snapshot.SemanticDocument.TextOffsetFromDocumentPosition(range.End) -
+                snapshot.SemanticDocument.TextOffsetFromDocumentPosition(range.Start)));
+        Assert.Equal("<br>", snapshot.SourceMap.Slice(range));
+    }
+
+    [Fact]
     public void MarkdownReparsedSafeHtmlContainerRetainsItsRealParagraphMargin()
     {
         const string source = """
@@ -326,7 +590,9 @@ public sealed class HtmlBreakImageSpacingTests(ITestOutputHelper output)
 
     private static LayoutSnapshot BuildGitHub(
         string source,
-        IMarkdownImageResolver? imageResolver = null)
+        IMarkdownImageResolver? imageResolver = null,
+        MarkdownStyleSheet? styleSheet = null,
+        FlowDirection flowDirection = FlowDirection.LeftToRight)
     {
         using MarkdownEngine engine = new MarkdownEngineBuilder()
             .UseGitHubReadme()
@@ -360,19 +626,52 @@ public sealed class HtmlBreakImageSpacingTests(ITestOutputHelper output)
             transparent,
             isDark: false,
             isHighContrast: false,
-            textScaleFactor: 1);
+            textScaleFactor: 1,
+            styleSheet: styleSheet);
         var context = new MarkdownLayoutContext(
             CanvasDevice.GetSharedDevice(),
             theme,
             new MarkdownSourceMap(source),
             registry,
-            FlowDirection.LeftToRight)
+            flowDirection)
         {
             ImageResolver = imageResolver,
             ImageCancellationToken = CancellationToken.None,
         };
 
         return new LayoutBuilder(context).Build(document, availableWidth: 660);
+    }
+
+    private static IEnumerable<InlineContainerBox> EnumerateInlineBoxes(IEnumerable<BlockBox> blocks)
+    {
+        foreach (BlockBox block in blocks)
+        {
+            if (block is InlineContainerBox inline)
+            {
+                yield return inline;
+            }
+            else if (block is StackBox stack)
+            {
+                foreach (InlineContainerBox nested in EnumerateInlineBoxes(stack.Children))
+                    yield return nested;
+            }
+        }
+    }
+
+    private static void AssertSemanticRangesWithinText(MarkdownSemanticDocument semantic)
+    {
+        int textLength = semantic.Text.Length;
+        foreach (MarkdownTextSpan span in semantic.TextSpans)
+        {
+            Assert.InRange(span.TextStart, 0, textLength);
+            Assert.InRange(span.TextEnd, span.TextStart, textLength);
+        }
+
+        foreach (MarkdownSemanticNode node in MarkdownSemanticDocument.EnumerateDepthFirst(semantic.Root))
+        {
+            Assert.InRange(node.TextStart, 0, textLength);
+            Assert.InRange(node.TextEnd, node.TextStart, textLength);
+        }
     }
 
     private static async Task WaitForImageLoadAsync(ImageBox image)

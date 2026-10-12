@@ -169,7 +169,10 @@ public sealed class SemanticRangeIndexTests
             Assert.True(rootChildren[index - 1].TextEnd <= rootChildren[index].TextStart);
             Assert.True(rootChildren[index - 1].TextEnd <= rootChildren[index].TextEnd);
         }
-        Assert.True(rootChildren[^1].TextEnd > document.Text.Length);
+        // The semantic builder retains the existing trailing-newline trim,
+        // but every published node range now matches the final projection.
+        Assert.Equal(document.Text.Length, rootChildren[^1].TextEnd);
+        Assert.InRange(rootChildren[^1].TextStart, 0, rootChildren[^1].TextEnd);
 
         MarkdownSemanticNode vectorRoot = Assert.Single(rootChildren, node => node.VectorSceneBox == vector);
         MarkdownSemanticNode parent = Assert.Single(vectorRoot.Children);

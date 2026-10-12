@@ -956,6 +956,26 @@ internal readonly struct MarkdownTextSpan
         }
     }
 
+    internal MarkdownTextSpan ClampTextRange(int textLength)
+    {
+        int start = Math.Clamp(TextStart, 0, textLength);
+        int end = Math.Clamp(TextEnd, start, textLength);
+        if (start == TextStart && end == TextEnd)
+            return this;
+
+        return new MarkdownTextSpan(
+            start,
+            end,
+            InlineBox,
+            InlineRun,
+            ImageBox,
+            EmbedBox,
+            HostedElementBox,
+            VectorSceneBox,
+            VectorSemanticIndex,
+            VectorTextStyle);
+    }
+
     private sealed class BoxOwners(
         InlineContainerBox? InlineBox,
         ImageBox? ImageBox,
@@ -1129,7 +1149,7 @@ internal sealed class MarkdownSemanticDocument
             _nodeByInlineBlockIndex = nodeByInlineBlockIndex;
             _nodeByHorizontalOverflow = nodeByHorizontalOverflow;
         }
-        SemanticRangeFingerprint = ComputeSemanticRangeFingerprint(root, spans, text.Length);
+        SemanticRangeFingerprint = NormalizeNodeRangesAndComputeSemanticRangeFingerprint(root, spans, text.Length);
     }
 
     public static MarkdownSemanticDocument Build(LayoutSnapshot snapshot)
@@ -1232,7 +1252,7 @@ internal sealed class MarkdownSemanticDocument
         }
     }
 
-    private static MarkdownAutomationTextFingerprint ComputeSemanticRangeFingerprint(
+    private static MarkdownAutomationTextFingerprint NormalizeNodeRangesAndComputeSemanticRangeFingerprint(
         MarkdownSemanticNode root,
         IReadOnlyList<MarkdownTextSpan> spans,
         int textLength)
@@ -1243,6 +1263,12 @@ internal sealed class MarkdownSemanticDocument
         int batchLength = 0;
         foreach (MarkdownSemanticNode node in EnumerateDepthFirst(root))
         {
+            // The builder trims terminal newlines after creating semantic
+            // nodes. Keep each published range inside the final projection;
+            // this is folded into the existing fingerprint traversal so it
+            // does not add a second document-tree walk.
+            node.TextStart = Math.Clamp(node.TextStart, 0, textLength);
+            node.TextEnd = Math.Clamp(node.TextEnd, node.TextStart, textLength);
             AppendNodeRangeProjection(node, record);
             AppendFingerprintRecord(hash, batch, ref batchLength, record);
         }
@@ -1962,8 +1988,10 @@ internal sealed class MarkdownSemanticDocument
                 }
             }
 
-            TrimTrailingNewline();
+            int trimmedTrailingNewlines = TrimTrailingNewline();
             root.TextEnd = _text.Length;
+            if (trimmedTrailingNewlines > 0)
+                ClampTrailingTextSpans(_text.Length);
             string text = _text.GetText();
             MarkdownSemanticTextProjectionReuse? matchedProjection =
                 textProjectionReuse is { } projection && ReferenceEquals(text, projection.Text)
@@ -2703,7 +2731,7 @@ internal sealed class MarkdownSemanticDocument
                 _text.Append('\n');
         }
 
-        private void TrimTrailingNewline()
+        private int TrimTrailingNewline()
         {
             CancellationToken cancellationToken = LayoutPassCancellation.GetEffectiveToken(CancellationToken.None);
             int trimmed = 0;
@@ -2712,6 +2740,28 @@ internal sealed class MarkdownSemanticDocument
                 if ((trimmed++ & 4095) == 0)
                     cancellationToken.ThrowIfCancellationRequested();
                 _text.Length--;
+            }
+
+            return trimmed;
+        }
+
+        private void ClampTrailingTextSpans(int textLength)
+        {
+            // Spans are appended in document/text order, and the semantic
+            // position index relies on nondecreasing TextEnd values. Only the
+            // suffix affected by trimming can be out of range.
+            CancellationToken cancellationToken = LayoutPassCancellation.GetEffectiveToken(CancellationToken.None);
+            int visited = 0;
+            for (int index = _spans.Count - 1; index >= 0; index--)
+            {
+                if ((visited++ & 4095) == 0)
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                MarkdownTextSpan span = _spans[index];
+                if (span.TextStart <= textLength && span.TextEnd <= textLength)
+                    break;
+
+                _spans[index] = span.ClampTextRange(textLength);
             }
         }
 
