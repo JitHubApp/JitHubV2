@@ -126,7 +126,7 @@ export const PINNED_GITHUB_README_STYLE_PROFILE = Object.freeze({
   version: 5,
   colorScheme: "light",
   cssPath: "/github-primer-light-v5.css",
-  sha256: "15b6b573ceb5fa8f0e103a14d04d6c8b6ed7a5a0b456a71674a249d183374d81",
+  sha256: "3af666058cf4044b4e037801db6903f2104f6a6808f32c25ecda3159eecc2824",
 });
 const RENDERED_SNAPSHOT_FAILURE_PREDICATES = new Set([
   "active-element-tag",

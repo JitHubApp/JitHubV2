@@ -5,6 +5,41 @@ to the next heartbeat. The current priority is to remove document-scale memory
 growth and input-blocking native reflow before spending more time on evidence
 bookkeeping. The 1.0 performance and release goals are not yet met.
 
+### October 12 local fix checkpoint
+
+Local-only commit `886aa90e` preserves captured broken-image classification and
+cleans up partial Edge startup; it has not been pushed. The next candidate is
+being prepared with measured inline-code padding, profile-scoped default table
+header alignment and nested-list margins, and capture of the actual realized
+XAML overlays. The combined Release/x64 GitHub regression run compiled and
+finished with **2,870 passed / 2 failed / 2,872 total**. Both failures were new
+inline-code assertions expecting an unchanged absolute glyph X coordinate;
+the recorded glyph bounds instead moved by the intended 3-DIP left padding,
+with unchanged Y, width, and height. The corrected focused suite passes
+**30/30, zero skipped**, retaining unchanged Y/ink-size/cluster-shaping checks
+and asserting the intended +3-DIP LTR / -9-DIP RTL glyph translation. This
+includes the later joined-emoji, combining-mark, Arabic, and mixed-direction
+wrapping cases. Evidence:
+`goal-release-20261011/inline-code-padding-tests-final2/inline-code-padding-final2.trx`.
+The final full-suite rerun passes **2,872/2,872, zero skipped**, using the
+recompiled corrected tests and unchanged production binaries
+(`overlay-capture-full-tests-final/overlay-capture-full-final.trx`). The earlier
+failed receipt is preserved at `overlay-capture-full-tests/overlay-capture-full.trx`.
+The nested-list/profile Node tests pass **121/121, zero skipped**, and the
+native-readiness contract tests pass **35/35, zero skipped**
+(`goal-release-20261011/native-readiness-contract-v5/`). The clean
+NativeAOT publish and Sandbox replay remain pending. No additional Sandbox
+rerun has been consumed by these headless build/test attempts; one permitted
+fix-and-rerun cycle remains.
+
+Pre-commit review found no new reflection/AOT or snapshot-generation fencing
+blocker. The audit overlay pixel ceilings bound each serialized capture but
+are not aggregate live-memory ceilings: RTB pixels, CPU readback, and GPU
+copies can coexist. Unload/disposal is checked after each WinRT capture await;
+it does not immediately cancel an in-flight RTB call. These are audit-only
+operations, not the normal rendering path, and live composition is still to
+be verified in Sandbox.
+
 ## Current priority and evidence — October 11, 2026
 
 **Fresh rerun candidate:** reviewed local commit

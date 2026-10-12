@@ -38,9 +38,11 @@ High Contrast continues to use mandatory system colors. It is a stable audit
 fixture, not a promise that native layout reproduces every live GitHub website
 detail.
 
-Version 5 adds 75%-of-parent subscript/superscript sizing to version 4's geometry
-and plain code-block presentation. Versions 1–4 retain their original identities
-and behavior. For another theme, `styleSheet.WithRelativeScriptFontSize(0.75f)`
+Version 5 retains version 4's geometry and plain code-block presentation while
+adding 75%-of-parent subscript/superscript sizing, centered defaults for table
+headers without explicit alignment, and zero margins on nested list containers.
+Versions 1–4 retain their original identities and behavior. For another theme,
+`styleSheet.WithRelativeScriptFontSize(0.75f)`
 opts into the same proportional sizing without adopting this Light profile.
 Its appended rules override inherited resource sizes; later explicit stylesheet
 font-size rules can still override them. Nested scripts compound the factor,

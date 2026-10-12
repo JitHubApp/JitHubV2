@@ -22,7 +22,7 @@ public sealed class GitHubReadmeVisualStyleProfileTests
         "MarkdownRenderer.GitHub.Profiles.github-primer-light-v5.css";
 
     [Fact]
-    public void PrimerLightV5_BindsOnlyRelativeScriptSizingToANewCanonicalProfile()
+    public void PrimerLightV5_BindsScriptHeaderAndNestedListPoliciesToCanonicalProfile()
     {
         GitHubReadmeVisualStyleProfile previous = GitHubReadmeVisualStyleProfiles.PrimerLightV4;
         GitHubReadmeVisualStyleProfile profile = GitHubReadmeVisualStyleProfiles.PrimerLightV5;
@@ -35,23 +35,36 @@ public sealed class GitHubReadmeVisualStyleProfileTests
         byte[] cssBytes = ReadAllBytes(stream);
         string css = System.Text.Encoding.UTF8.GetString(cssBytes);
         string previousCss = System.Text.Encoding.UTF8.GetString(ReadAllBytes(previousStream));
+        const string nestedListDeclaration =
+            "\n/* Only the outer list carries block spacing; nested lists stay inside their item. */\n" +
+            ".markdown-body ul ul,\n.markdown-body ul ol,\n.markdown-body ol ul,\n.markdown-body ol ol { margin: 0; }\n";
         const string scriptDeclaration =
             "\n/* Explicit proportional script sizes, independent of the UA's smaller keyword. */\n" +
             ".markdown-body sup,\n.markdown-body sub { font-size: 75%; }\n";
 
         Assert.Equal(previous.Id, profile.Id);
         Assert.Equal(5, profile.Version);
-        Assert.Equal("15b6b573ceb5fa8f0e103a14d04d6c8b6ed7a5a0b456a71674a249d183374d81", profile.Fingerprint);
+        Assert.Equal("3af666058cf4044b4e037801db6903f2104f6a6808f32c25ecda3159eecc2824", profile.Fingerprint);
         Assert.Equal(Convert.ToHexString(SHA256.HashData(cssBytes)).ToLowerInvariant(), profile.Fingerprint);
         Assert.Equal(previousCss.Replace("PrimerLightV4", "PrimerLightV5", StringComparison.Ordinal)
-            .Replace("Profile version: 4", "Profile version: 5", StringComparison.Ordinal) + scriptDeclaration, css);
+            .Replace("Profile version: 4", "Profile version: 5", StringComparison.Ordinal) +
+            nestedListDeclaration + scriptDeclaration, css);
         Assert.Equal(previous.SurfaceColor, profile.SurfaceColor);
         Assert.Equal(previous.AccentColor, profile.AccentColor);
         Assert.Equal(previous.CodeBlockChromeMode, profile.CodeBlockChromeMode);
         Assert.Equal(previous.CodeBlockLineNumberMode, profile.CodeBlockLineNumberMode);
         Assert.Equal(previous.IsCodeBlockCopyEnabled, profile.IsCodeBlockCopyEnabled);
-        Assert.Equal(previous.StyleSheet.Compile().LayoutPolicy, profile.StyleSheet.Compile().LayoutPolicy);
-        Assert.Equal(previous.StyleSheet.Rules.Count + 2, profile.StyleSheet.Rules.Count);
+        Assert.Equal(
+            (byte)(previous.StyleSheet.Compile().LayoutPolicy | MarkdownStyleSheet.CenterDefaultTableHeadersFlag),
+            profile.StyleSheet.Compile().LayoutPolicy);
+        Assert.False(previous.StyleSheet.Compile().CenterDefaultTableHeaders);
+        Assert.True(profile.StyleSheet.Compile().CenterDefaultTableHeaders);
+        MarkdownStyleSheet withRule = profile.StyleSheet.WithRule(new MarkdownStyleRule(
+            new MarkdownStyleSelector(MarkdownStyleRole.Body),
+            new ElementStyleOverride { FontSize = 16 }));
+        Assert.True(withRule.Compile().CenterDefaultTableHeaders);
+        Assert.True(profile.StyleSheet.WithRelativeScriptFontSize(0.5f).Compile().CenterDefaultTableHeaders);
+        Assert.Equal(previous.StyleSheet.Rules.Count + 3, profile.StyleSheet.Rules.Count);
         for (int index = 0; index < previous.StyleSheet.Rules.Count; index++)
             Assert.Same(previous.StyleSheet.Rules[index], profile.StyleSheet.Rules[index]);
 
@@ -61,6 +74,25 @@ public sealed class GitHubReadmeVisualStyleProfileTests
             MarkdownStyleRole.FromElementKey(MarkdownElementKeys.Subscript)).RelativeFontSizeScale);
         Assert.Equal(0.75f, Resolve(profile.StyleSheet,
             MarkdownStyleRole.FromElementKey(MarkdownElementKeys.Superscript)).RelativeFontSizeScale);
+
+        MarkdownStyleRole listRole = MarkdownStyleRole.FromElementKey(MarkdownElementKeys.List);
+        Assert.Equal(new Thickness(0, 0, 0, 16), Resolve(profile.StyleSheet, listRole, nestingDepth: 1).Margin);
+        Assert.Equal(new Thickness(0), Resolve(profile.StyleSheet, listRole, nestingDepth: 2).Margin);
+        Assert.Equal(new Thickness(0), Resolve(profile.StyleSheet, listRole, nestingDepth: 3).Margin);
+    }
+
+    [Fact]
+    public void PrimerLightV5_LaterNestedListRuleOverridesOnlyNestedMargin()
+    {
+        MarkdownStyleRole listRole = MarkdownStyleRole.FromElementKey(MarkdownElementKeys.List);
+        MarkdownStyleSheet customized = GitHubReadmeVisualStyleProfiles.PrimerLightV5.StyleSheet.WithRule(
+            new MarkdownStyleRule(
+                new MarkdownStyleSelector(listRole, minimumNestingDepth: 2),
+                new ElementStyleOverride { Margin = new Thickness(0, 0, 0, 24) }));
+
+        Assert.Equal(new Thickness(0, 0, 0, 16), Resolve(customized, listRole, nestingDepth: 1).Margin);
+        Assert.Equal(new Thickness(0, 0, 0, 24), Resolve(customized, listRole, nestingDepth: 2).Margin);
+        Assert.Equal(new Thickness(0, 0, 0, 24), Resolve(customized, listRole, nestingDepth: 3).Margin);
     }
 
     [Fact]
@@ -285,6 +317,7 @@ public sealed class GitHubReadmeVisualStyleProfileTests
         Assert.Equal("Consolas", inlineCode.FontFamily);
         Assert.Equal(13.6f, inlineCode.FontSize);
         Assert.Equal(codeSurface, inlineCode.Background);
+        Assert.Equal(new Thickness(5.44, 2.72, 5.44, 2.72), inlineCode.Padding);
         Assert.Equal("Consolas", codeBlock.FontFamily);
         Assert.Equal(codeSurface, codeBlock.Background);
         Assert.Equal(6, codeBlock.CornerRadius);
@@ -345,8 +378,11 @@ public sealed class GitHubReadmeVisualStyleProfileTests
         Assert.Equal(systemBackground, snapshot.SurfaceColor);
     }
 
-    private static ElementStyle Resolve(MarkdownStyleSheet sheet, MarkdownStyleRole role)
-        => sheet.Resolve(new ElementStyle(), new MarkdownStyleContext(role));
+    private static ElementStyle Resolve(
+        MarkdownStyleSheet sheet,
+        MarkdownStyleRole role,
+        int nestingDepth = 0)
+        => sheet.Resolve(new ElementStyle(), new MarkdownStyleContext(role, nestingDepth));
 
     private static bool HasLayoutPolicy(MarkdownStyleSheet sheet, byte flag)
         => (sheet.Compile().LayoutPolicy & flag) != 0;

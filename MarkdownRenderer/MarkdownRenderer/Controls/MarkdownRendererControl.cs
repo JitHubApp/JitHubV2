@@ -9550,53 +9550,110 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         if (snapshot is null)
             throw new InvalidOperationException("The Markdown layout remained busy while capturing audit evidence.");
 
+        CanvasRenderTarget? target = null;
+        AuditOverlayCapturePlan? overlayPlan = null;
+        int width = 0;
+        int height = 0;
+        double documentTop = 0;
         try
         {
             // Every operation after acquiring the snapshot paint lease must be
             // inside this try/finally. In particular, malformed or overflowing
             // viewport dimensions can throw while converting to target pixels.
             TryGetViewport(out double top, out double viewportHeight, out double viewportWidth);
-            if (!double.IsFinite(viewportWidth) || viewportWidth <= 0 ||
+            if (!double.IsFinite(top) || !double.IsFinite(top + viewportHeight) ||
+                !double.IsFinite(viewportWidth) || viewportWidth <= 0 ||
                 !double.IsFinite(viewportHeight) || viewportHeight <= 0)
             {
                 throw new InvalidOperationException("The Markdown audit viewport dimensions are invalid.");
             }
 
-            int width = Math.Max(1, checked((int)Math.Ceiling(viewportWidth)));
-            int height = Math.Max(1, checked((int)Math.Ceiling(viewportHeight)));
+            width = Math.Max(1, checked((int)Math.Ceiling(viewportWidth)));
+            height = Math.Max(1, checked((int)Math.Ceiling(viewportHeight)));
             var viewport = new Rect(0, Math.Max(0, top), viewportWidth, viewportHeight);
+            documentTop = viewport.Top;
             float targetWidthDip = checked((float)viewportWidth);
             float targetHeightDip = checked((float)viewportHeight);
             float targetDpi = GetAuditCaptureDpi(XamlRoot?.RasterizationScale ?? 1.0);
+            AuditCapturePixelDimensions targetPixelBudget = GetAuditCapturePixelDimensions(
+                targetWidthDip,
+                targetHeightDip,
+                targetDpi / 96d);
 
-            var target = new CanvasRenderTarget(
+            long pipelineGeneration = Volatile.Read(ref _pipelineGeneration);
+            long snapshotGeneration = Volatile.Read(ref _snapshotGeneration);
+            long layoutRevision = snapshot.LayoutRevision;
+
+            target = new CanvasRenderTarget(
                 _canvas?.Device ?? CanvasDevice.GetSharedDevice(),
                 targetWidthDip,
                 targetHeightDip,
                 targetDpi);
-            try
+            if (target.SizeInPixels.Width == 0 || target.SizeInPixels.Height == 0 ||
+                target.SizeInPixels.Width > (uint)targetPixelBudget.Width ||
+                target.SizeInPixels.Height > (uint)targetPixelBudget.Height ||
+                target.SizeInPixels.Width > MaximumAuditCaptureDimension ||
+                target.SizeInPixels.Height > MaximumAuditCaptureDimension ||
+                checked((long)target.SizeInPixels.Width * target.SizeInPixels.Height) > MaximumAuditViewportPixels)
             {
-                using (CanvasDrawingSession drawingSession = target.CreateDrawingSession())
-                {
-                    drawingSession.Clear(_canvasBackground);
-                    drawingSession.TextAntialiasing = Microsoft.Graphics.Canvas.Text.CanvasTextAntialiasing.Grayscale;
-                    drawingSession.Transform = Matrix3x2.CreateTranslation(0, (float)-viewport.Top);
-                    snapshot.Paint(drawingSession, viewport);
-                }
+                throw new InvalidOperationException("The Markdown audit target exceeded its bounded physical pixel dimensions.");
+            }
 
-                // The caller owns and disposes the render target. Keep PNG
-                // serialization and filesystem work in the host application.
-                return (target, width, height, viewport.Top);
-            }
-            catch
+            using (CanvasDrawingSession drawingSession = target.CreateDrawingSession())
             {
-                target.Dispose();
-                throw;
+                drawingSession.Clear(_canvasBackground);
+                drawingSession.TextAntialiasing = Microsoft.Graphics.Canvas.Text.CanvasTextAntialiasing.Grayscale;
+                drawingSession.Transform = Matrix3x2.CreateTranslation(0, (float)-viewport.Top);
+                snapshot.Paint(drawingSession, viewport);
             }
+
+            if (!ReferenceEquals(_snapshot, snapshot) ||
+                pipelineGeneration != Volatile.Read(ref _pipelineGeneration) ||
+                snapshotGeneration != Volatile.Read(ref _snapshotGeneration) ||
+                layoutRevision != snapshot.LayoutRevision)
+            {
+                throw new InvalidOperationException("The Markdown layout changed while painting audit evidence.");
+            }
+
+            overlayPlan = CaptureAuditOverlayPlan(
+                snapshot,
+                viewport,
+                targetDpi,
+                pipelineGeneration,
+                snapshotGeneration,
+                layoutRevision);
+            ValidateAuditOverlayCapturePlan(overlayPlan);
+        }
+        catch
+        {
+            target?.Dispose();
+            throw;
         }
         finally
         {
             snapshot.EndPaint();
+        }
+
+        // Do not hold the snapshot paint lease across any XAML RenderTargetBitmap
+        // await. A background lazy-layout commit may proceed; the capture plan
+        // fences the snapshot generations, viewport, placements, and sampled
+        // control state that this audit reads while capturing overlays.
+        try
+        {
+            CanvasRenderTarget captureTarget = target ??
+                throw new InvalidOperationException("The Markdown audit target was not created.");
+            AuditOverlayCapturePlan capturePlan = overlayPlan ??
+                throw new InvalidOperationException("The Markdown audit overlay plan was not created.");
+            await CaptureAuditOverlayPixelsAsync(captureTarget, capturePlan);
+
+            // The caller owns and disposes the render target. Keep PNG
+            // serialization and filesystem work in the host application.
+            return (captureTarget, width, height, documentTop);
+        }
+        catch
+        {
+            target?.Dispose();
+            throw;
         }
     }
 

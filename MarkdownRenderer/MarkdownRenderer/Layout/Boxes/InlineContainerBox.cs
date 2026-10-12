@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Numerics;
 using System.Runtime.ExceptionServices;
 using System.Threading;
@@ -121,6 +122,8 @@ internal readonly struct InlineSceneGeometry
 /// </summary>
 internal sealed partial class InlineContainerBox : BlockBox
 {
+    private const int InlineCodeGraphemeCancellationCheckInterval = 64;
+
     private const float MinimumContentAwareLineScale = 0.1f;
     private const float MaximumContentAwareLineScale = 32f;
     private const float MaximumContentAwareLineHeight = 1_000_000f;
@@ -2144,6 +2147,8 @@ internal sealed partial class InlineContainerBox : BlockBox
                     Underline = modifier.Underline,
                     Strikethrough = basis.Strikethrough,
                     Margin = basis.Margin,
+                    Padding = basis.Padding,
+                    LineHeightMultiplier = basis.LineHeightMultiplier,
                 };
             case MarkdownElementKeys.Strong:
                 fontWeight = modifier.FontWeight;
@@ -2192,7 +2197,7 @@ internal sealed partial class InlineContainerBox : BlockBox
                     Underline = basis.Underline || modifier.Underline,
                     Strikethrough = basis.Strikethrough || modifier.Strikethrough,
                     Margin = basis.Margin,
-                    Padding = basis.Padding,
+                    Padding = modifier.Padding,
                     LineHeightMultiplier = basis.LineHeightMultiplier,
                 };
             case MarkdownElementKeys.Abbreviation:
@@ -3472,6 +3477,7 @@ internal sealed partial class InlineContainerBox : BlockBox
         var containerStyle = GetContainerStyle();
         string containerFontFamily = SharedCanvasTextFormatCache.NormalizeFontFamilyForCanvas(
             containerStyle.FontFamily);
+        List<InlineCodePaddingRange>? inlineCodePaddingRanges = null;
         int cumulative = 0;
         foreach (var run in _runs)
         {
@@ -3501,6 +3507,13 @@ internal sealed partial class InlineContainerBox : BlockBox
                     containerFontFamily,
                     applyColors);
             }
+            if (run is CodeInlineRun)
+            {
+                ElementStyle codeStyle = appliedRunStyle ?? GetRunStyle(run);
+                QueueInlineCodePaddingRange(
+                    ref inlineCodePaddingRanges, cumulative, len, codeStyle.Padding,
+                    observeCancellation);
+            }
             ApplyBaselineStyle(layout, cumulative, len, run);
 
             if (run is LinkRun { InlineStyleMap: { } inlineStyleMap } styledLink)
@@ -3515,6 +3528,12 @@ internal sealed partial class InlineContainerBox : BlockBox
                 ElementStyle[] spanStyles = GetLinkInlineSpanStyles(styledLink);
                 for (int spanIndex = 0; spanIndex < inlineStyleMap.Count; spanIndex++)
                 {
+                    if (observeCancellation &&
+                        (spanIndex % InlineCodeGraphemeCancellationCheckInterval) == 0)
+                    {
+                        Context.CancellationToken.ThrowIfCancellationRequested();
+                    }
+
                     LinkInlineStyleSpan span = inlineStyleMap.GetSpan(spanIndex);
                     int spanStart = cumulative + span.Start;
                     ApplyTextStyle(
@@ -3527,10 +3546,19 @@ internal sealed partial class InlineContainerBox : BlockBox
                         applyColors);
                     ApplyLinkInlineBaselineStyle(layout, spanStart, span.Length, span.Path);
                 }
+
+                QueueLinkInlineCodePadding(
+                    ref inlineCodePaddingRanges,
+                    cumulative,
+                    inlineStyleMap,
+                    spanStyles,
+                    observeCancellation);
             }
 
             cumulative += len;
         }
+
+        ApplyInlineCodePaddingRanges(layout, inlineCodePaddingRanges, observeCancellation);
     }
 
     private static void ApplyTextStyle(
@@ -3553,6 +3581,472 @@ internal sealed partial class InlineContainerBox : BlockBox
             layout.SetFontSize(start, length, style.FontSize);
         if (applyColors && style.Foreground != containerStyle.Foreground)
             layout.SetColor(start, length, style.Foreground);
+    }
+
+    private void QueueLinkInlineCodePadding(
+        ref List<InlineCodePaddingRange>? ranges,
+        int linkStart,
+        LinkInlineStyleMap styleMap,
+        ElementStyle[] spanStyles,
+        bool observeCancellation)
+    {
+        int groupStart = -1;
+        int groupEnd = -1;
+        ElementStyle groupStyle = default!;
+        LinkInlineStylePath? groupCodePath = null;
+        for (int index = 0; index < styleMap.Count; index++)
+        {
+            if (observeCancellation &&
+                (index % InlineCodeGraphemeCancellationCheckInterval) == 0)
+            {
+                Context.CancellationToken.ThrowIfCancellationRequested();
+            }
+
+            LinkInlineStyleSpan span = styleMap.GetSpan(index);
+            LinkInlineStylePath? codePath = FindInlineCodeStylePath(span.Path);
+            bool hasCodeStyle = codePath is not null;
+            int spanStart = linkStart + span.Start;
+            int spanEnd = spanStart + span.Length;
+            if (!hasCodeStyle || (groupStart >= 0 &&
+                (spanStart != groupEnd || !ReferenceEquals(codePath, groupCodePath))))
+            {
+                if (groupStart >= 0)
+                    QueueInlineCodePaddingRange(
+                        ref ranges, groupStart, groupEnd - groupStart, groupStyle.Padding,
+                        observeCancellation);
+                groupStart = -1;
+                groupEnd = -1;
+                groupCodePath = null;
+            }
+
+            if (!hasCodeStyle)
+                continue;
+
+            if (groupStart < 0)
+            {
+                groupStart = spanStart;
+                groupStyle = spanStyles[index];
+                groupCodePath = codePath;
+            }
+            groupEnd = spanEnd;
+        }
+
+        if (groupStart >= 0)
+        {
+            if (observeCancellation)
+                Context.CancellationToken.ThrowIfCancellationRequested();
+            QueueInlineCodePaddingRange(
+                ref ranges, groupStart, groupEnd - groupStart, groupStyle.Padding,
+                observeCancellation);
+        }
+    }
+
+    private static bool HasInlineCodeStylePath(LinkInlineStylePath path)
+        => FindInlineCodeStylePath(path) is not null;
+
+    private static LinkInlineStylePath? FindInlineCodeStylePath(LinkInlineStylePath path)
+    {
+        for (LinkInlineStylePath? current = path; current is not null; current = current.Parent)
+        {
+            if (current.StyleKey == MarkdownElementKeys.CodeInline)
+                return current;
+        }
+
+        return null;
+    }
+
+    private void QueueInlineCodePaddingRange(
+        ref List<InlineCodePaddingRange>? ranges,
+        int start,
+        int length,
+        Thickness padding,
+        bool observeCancellation)
+    {
+        if (observeCancellation)
+            Context.CancellationToken.ThrowIfCancellationRequested();
+
+        if (length <= 0 || start < 0 || start > _buffer.Length - length)
+            return;
+
+        float leftPadding = ToInlineCodeAdvance(padding.Left);
+        float rightPadding = ToInlineCodeAdvance(padding.Right);
+        if (leftPadding == 0f && rightPadding == 0f)
+            return;
+
+        (ranges ??= new List<InlineCodePaddingRange>()).Add(
+            new InlineCodePaddingRange(start, length, leftPadding, rightPadding));
+    }
+
+    private void ApplyInlineCodePaddingRanges(
+        CanvasTextLayout layout,
+        List<InlineCodePaddingRange>? ranges,
+        bool observeCancellation)
+    {
+        if (ranges is null)
+            return;
+
+        if (observeCancellation)
+            Context.CancellationToken.ThrowIfCancellationRequested();
+
+        CancellationToken cancellationToken = observeCancellation
+            ? Context.CancellationToken
+            : CancellationToken.None;
+
+        // Resolve every endpoint while the layout still has its final text
+        // styles but no code-padding mutations. SetCharacterSpacing can
+        // invalidate DirectWrite's layout; do not interleave caret queries
+        // with those mutations for code-heavy documents.
+        for (int index = 0; index < ranges.Count; index++)
+        {
+            if (observeCancellation)
+                cancellationToken.ThrowIfCancellationRequested();
+
+            InlineCodePaddingRange range = ranges[index];
+            // DirectWrite spacing must cover the complete Unicode text element.
+            // A code-unit-only update can be reported by the getter while
+            // contributing no advance for a joined or surrogate grapheme.
+            range.FirstTextElementLength = FindFirstTextElementLength(
+                _buffer, range.Start, range.Length, cancellationToken);
+            range.LastTextElementStart = FindLastTextElementStart(
+                _buffer, range.Start, range.Length, cancellationToken);
+            range.LastTextElementLength = range.Start + range.Length - range.LastTextElementStart;
+            range.FirstLeadingIsLeft = IsLeadingCaretOnLeft(
+                layout, range.Start, observeCancellation);
+            range.LastLeadingIsLeft = range.LastTextElementStart == range.Start
+                ? range.FirstLeadingIsLeft
+                : IsLeadingCaretOnLeft(layout, range.LastTextElementStart, observeCancellation);
+
+            // Logical start/end characters are not necessarily the visual
+            // edges of a mixed-direction run. When the two endpoint caret
+            // orders disagree, use DirectWrite's visual text regions to find
+            // the physical outer edges and attach each padding advance there.
+            if (range.FirstLeadingIsLeft != range.LastLeadingIsLeft &&
+                TryCaptureSingleLineVisualPaddingAnchors(
+                    layout, range, cancellationToken, observeCancellation,
+                    out InlineCodePaddingAnchor leftAnchor,
+                    out InlineCodePaddingAnchor rightAnchor))
+            {
+                range.HasVisualPaddingAnchors = true;
+                range.VisualLeftAnchor = leftAnchor;
+                range.VisualRightAnchor = rightAnchor;
+            }
+            ranges[index] = range;
+        }
+
+        // Only after all reading directions have been captured do we mutate
+        // DirectWrite's advance metadata.
+        foreach (InlineCodePaddingRange range in ranges)
+        {
+            if (observeCancellation)
+                cancellationToken.ThrowIfCancellationRequested();
+
+            if (range.HasVisualPaddingAnchors)
+            {
+                ApplyVisualPaddingAnchors(layout, range, cancellationToken, observeCancellation);
+                continue;
+            }
+
+            float leading = range.FirstLeadingIsLeft ? range.LeftPadding : range.RightPadding;
+            float trailing = range.LastLeadingIsLeft ? range.RightPadding : range.LeftPadding;
+            if (range.LastTextElementStart == range.Start)
+            {
+                if (observeCancellation)
+                    cancellationToken.ThrowIfCancellationRequested();
+                layout.SetCharacterSpacing(
+                    range.Start, range.FirstTextElementLength, leading, trailing, 0f);
+                continue;
+            }
+
+            if (observeCancellation)
+                cancellationToken.ThrowIfCancellationRequested();
+            layout.SetCharacterSpacing(range.Start, range.FirstTextElementLength, leading, 0f, 0f);
+            if (observeCancellation)
+                cancellationToken.ThrowIfCancellationRequested();
+            layout.SetCharacterSpacing(
+                range.LastTextElementStart, range.LastTextElementLength, 0f, trailing, 0f);
+        }
+    }
+
+    private bool TryCaptureSingleLineVisualPaddingAnchors(
+        CanvasTextLayout layout,
+        InlineCodePaddingRange range,
+        CancellationToken cancellationToken,
+        bool observeCancellation,
+        out InlineCodePaddingAnchor leftAnchor,
+        out InlineCodePaddingAnchor rightAnchor)
+    {
+        leftAnchor = default;
+        rightAnchor = default;
+        if (observeCancellation)
+            cancellationToken.ThrowIfCancellationRequested();
+
+        CanvasTextLayoutRegion[] regions = layout.GetCharacterRegions(range.Start, range.Length);
+        if (observeCancellation)
+            cancellationToken.ThrowIfCancellationRequested();
+        if (regions is not { Length: > 1 })
+            return false;
+
+        Rect firstBounds = regions[0].LayoutBounds;
+        if (!double.IsFinite(firstBounds.Top) || !double.IsFinite(firstBounds.Height))
+            return false;
+
+        double lineTop = firstBounds.Top;
+        double lineBottom = firstBounds.Bottom;
+        float minX = float.PositiveInfinity;
+        float maxX = float.NegativeInfinity;
+        bool hasCandidate = false;
+        int rangeEnd = range.Start + range.Length;
+
+        foreach (CanvasTextLayoutRegion region in regions)
+        {
+            if (observeCancellation)
+                cancellationToken.ThrowIfCancellationRequested();
+
+            Rect bounds = region.LayoutBounds;
+            // A wrapped inline code span keeps the existing logical endpoint
+            // behavior. Visual-run edge selection is only valid on one line.
+            if (!double.IsFinite(bounds.Top) || !double.IsFinite(bounds.Bottom) ||
+                Math.Abs(bounds.Top - lineTop) > 0.01 || Math.Abs(bounds.Bottom - lineBottom) > 0.01)
+            {
+                return false;
+            }
+
+            int regionStart = Math.Max(range.Start, region.CharacterIndex);
+            int regionEnd = Math.Min(rangeEnd, region.CharacterIndex + region.CharacterCount);
+            if (regionStart >= regionEnd)
+                continue;
+
+            int regionFirstElementLength = FindFirstTextElementLength(
+                _buffer, regionStart, regionEnd - regionStart, cancellationToken);
+            int regionLastElement = FindLastTextElementStart(
+                _buffer, regionStart, regionEnd - regionStart, cancellationToken);
+            int regionLastElementLength = regionEnd - regionLastElement;
+
+            ConsiderVisualPaddingCaret(
+                layout, regionStart, regionFirstElementLength, isLeading: true, ref minX, ref maxX,
+                ref leftAnchor, ref rightAnchor, ref hasCandidate, observeCancellation);
+            ConsiderVisualPaddingCaret(
+                layout, regionStart, regionFirstElementLength, isLeading: false, ref minX, ref maxX,
+                ref leftAnchor, ref rightAnchor, ref hasCandidate, observeCancellation);
+            if (regionLastElement != regionStart)
+            {
+                ConsiderVisualPaddingCaret(
+                    layout, regionLastElement, regionLastElementLength, isLeading: true, ref minX, ref maxX,
+                    ref leftAnchor, ref rightAnchor, ref hasCandidate, observeCancellation);
+                ConsiderVisualPaddingCaret(
+                    layout, regionLastElement, regionLastElementLength, isLeading: false, ref minX, ref maxX,
+                    ref leftAnchor, ref rightAnchor, ref hasCandidate, observeCancellation);
+            }
+        }
+
+        return hasCandidate && float.IsFinite(minX) && float.IsFinite(maxX) && maxX - minX > 0.001f;
+    }
+
+    private void ConsiderVisualPaddingCaret(
+        CanvasTextLayout layout,
+        int characterIndex,
+        int characterCount,
+        bool isLeading,
+        ref float minX,
+        ref float maxX,
+        ref InlineCodePaddingAnchor leftAnchor,
+        ref InlineCodePaddingAnchor rightAnchor,
+        ref bool hasCandidate,
+        bool observeCancellation)
+    {
+        if (observeCancellation)
+            Context.CancellationToken.ThrowIfCancellationRequested();
+
+        Vector2 caret = layout.GetCaretPosition(characterIndex, trailingSideOfCharacter: !isLeading);
+        if (observeCancellation)
+            Context.CancellationToken.ThrowIfCancellationRequested();
+        if (!float.IsFinite(caret.X))
+            return;
+
+        hasCandidate = true;
+        if (caret.X < minX)
+        {
+            minX = caret.X;
+            leftAnchor = new InlineCodePaddingAnchor(characterIndex, characterCount, isLeading);
+        }
+        if (caret.X > maxX)
+        {
+            maxX = caret.X;
+            rightAnchor = new InlineCodePaddingAnchor(characterIndex, characterCount, isLeading);
+        }
+    }
+
+    private static void ApplyVisualPaddingAnchors(
+        CanvasTextLayout layout,
+        InlineCodePaddingRange range,
+        CancellationToken cancellationToken,
+        bool observeCancellation)
+    {
+        InlineCodePaddingAnchor left = range.VisualLeftAnchor;
+        InlineCodePaddingAnchor right = range.VisualRightAnchor;
+        if (left.CharacterIndex == right.CharacterIndex && left.CharacterCount == right.CharacterCount)
+        {
+            float leading = 0f;
+            float trailing = 0f;
+            AddVisualPadding(ref leading, ref trailing, left.IsLeading, range.LeftPadding);
+            AddVisualPadding(ref leading, ref trailing, right.IsLeading, range.RightPadding);
+            if (observeCancellation)
+                cancellationToken.ThrowIfCancellationRequested();
+            layout.SetCharacterSpacing(left.CharacterIndex, left.CharacterCount, leading, trailing, 0f);
+            return;
+        }
+
+        if (observeCancellation)
+            cancellationToken.ThrowIfCancellationRequested();
+        layout.SetCharacterSpacing(
+            left.CharacterIndex,
+            left.CharacterCount,
+            left.IsLeading ? range.LeftPadding : 0f,
+            left.IsLeading ? 0f : range.LeftPadding,
+            0f);
+        if (observeCancellation)
+            cancellationToken.ThrowIfCancellationRequested();
+        layout.SetCharacterSpacing(
+            right.CharacterIndex,
+            right.CharacterCount,
+            right.IsLeading ? range.RightPadding : 0f,
+            right.IsLeading ? 0f : range.RightPadding,
+            0f);
+    }
+
+    private static void AddVisualPadding(
+        ref float leading,
+        ref float trailing,
+        bool isLeading,
+        float value)
+    {
+        if (isLeading)
+            leading += value;
+        else
+            trailing += value;
+    }
+
+    private static int FindLastTextElementStart(
+        string text,
+        int start,
+        int length,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        int end = start + length;
+        int lastElementStart = start;
+        TextElementEnumerator elements = StringInfo.GetTextElementEnumerator(text, start);
+        int scannedElements = 0;
+        while (elements.MoveNext())
+        {
+            if ((scannedElements++ % InlineCodeGraphemeCancellationCheckInterval) == 0)
+                cancellationToken.ThrowIfCancellationRequested();
+
+            int elementStart = start + elements.ElementIndex;
+            if (elementStart >= end)
+                break;
+            lastElementStart = elementStart;
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        return lastElementStart;
+    }
+
+    private static int FindFirstTextElementLength(
+        string text,
+        int start,
+        int length,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (length <= 0)
+            return 0;
+
+        int end = start + length;
+        TextElementEnumerator elements = StringInfo.GetTextElementEnumerator(text, start);
+        if (!elements.MoveNext())
+            return 0;
+
+        int firstElementStart = start + elements.ElementIndex;
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!elements.MoveNext())
+            return Math.Max(0, end - firstElementStart);
+
+        int nextElementStart = start + elements.ElementIndex;
+        cancellationToken.ThrowIfCancellationRequested();
+        return Math.Max(0, Math.Min(end, nextElementStart) - firstElementStart);
+    }
+
+    private bool IsLeadingCaretOnLeft(
+        CanvasTextLayout layout,
+        int characterIndex,
+        bool observeCancellation)
+    {
+        if (observeCancellation)
+            Context.CancellationToken.ThrowIfCancellationRequested();
+        Vector2 leading = layout.GetCaretPosition(characterIndex, trailingSideOfCharacter: false);
+        if (observeCancellation)
+            Context.CancellationToken.ThrowIfCancellationRequested();
+        Vector2 trailing = layout.GetCaretPosition(characterIndex, trailingSideOfCharacter: true);
+        if (float.IsFinite(leading.X) && float.IsFinite(trailing.X) &&
+            Math.Abs(leading.X - trailing.X) > 0.001f)
+        {
+            return leading.X < trailing.X;
+        }
+
+        // A zero-advance endpoint (for example a combining mark) may have
+        // coincident carets. The paragraph direction is the deterministic
+        // fallback; ordinary strong-direction characters use the measured
+        // caret order above, including embedded RTL/LTR runs.
+        return Context.FlowDirection != FlowDirection.RightToLeft;
+    }
+
+    private struct InlineCodePaddingRange
+    {
+        public InlineCodePaddingRange(int start, int length, float leftPadding, float rightPadding)
+        {
+            Start = start;
+            Length = length;
+            LeftPadding = leftPadding;
+            RightPadding = rightPadding;
+        }
+
+        public int Start;
+        public int Length;
+        public float LeftPadding;
+        public float RightPadding;
+        public int FirstTextElementLength;
+        public int LastTextElementStart;
+        public int LastTextElementLength;
+        public bool FirstLeadingIsLeft;
+        public bool LastLeadingIsLeft;
+        public bool HasVisualPaddingAnchors;
+        public InlineCodePaddingAnchor VisualLeftAnchor;
+        public InlineCodePaddingAnchor VisualRightAnchor;
+    }
+
+    private readonly struct InlineCodePaddingAnchor
+    {
+        public InlineCodePaddingAnchor(int characterIndex, int characterCount, bool isLeading)
+        {
+            CharacterIndex = characterIndex;
+            CharacterCount = characterCount;
+            IsLeading = isLeading;
+        }
+
+        public int CharacterIndex { get; }
+        public int CharacterCount { get; }
+        public bool IsLeading { get; }
+    }
+
+    private static float ToInlineCodeAdvance(double value)
+    {
+        if (!double.IsFinite(value) || value <= 0)
+            return 0f;
+
+        // Keep a custom style from passing an unbounded value to DirectWrite.
+        return (float)Math.Min(value, 1_000_000d);
     }
 
     private void ApplyForegroundSpans(CanvasTextLayout layout)
@@ -4554,7 +5048,14 @@ internal sealed partial class InlineContainerBox : BlockBox
             bool drawRunBg = hasRunSpecificStyle && rs.Background is { };
             if (drawRunBg)
             {
-                DrawInlineStyleBackground(ds, baseX, baseY, cumulative, len, rs);
+                DrawInlineStyleBackground(
+                    ds,
+                    baseX,
+                    baseY,
+                    cumulative,
+                    len,
+                    rs,
+                    hasInlineCodePadding: run is CodeInlineRun);
             }
 
             if (run is LinkRun { InlineStyleMap: not null } styledLink)
@@ -4573,7 +5074,8 @@ internal sealed partial class InlineContainerBox : BlockBox
                         baseY,
                         cumulative + span.Start,
                         span.Length,
-                        spanStyle);
+                        spanStyle,
+                        hasInlineCodePadding: HasInlineCodeStylePath(span.Path));
                 }
             }
 
@@ -4587,7 +5089,8 @@ internal sealed partial class InlineContainerBox : BlockBox
         float baseY,
         int start,
         int length,
-        ElementStyle style)
+        ElementStyle style,
+        bool hasInlineCodePadding = false)
     {
         if (_layout is null || style.Background is not { } background)
             return;
@@ -4599,10 +5102,31 @@ internal sealed partial class InlineContainerBox : BlockBox
         foreach (var region in regions)
         {
             var bounds = region.LayoutBounds;
-            double backgroundTop = bounds.Y + bounds.Height * 0.05;
-            double backgroundHeight = bounds.Height * 0.90;
+            double backgroundTop;
+            double backgroundHeight;
+            if (hasInlineCodePadding)
+            {
+                // SetCharacterSpacing already reserves the two physical
+                // horizontal padding advances in these character regions.
+                // Vertical inline padding is paint-only: it expands the chip
+                // without changing DirectWrite's line height or text offsets.
+                double topPadding = ToInlineCodeAdvance(style.Padding.Top);
+                double bottomPadding = ToInlineCodeAdvance(style.Padding.Bottom);
+                backgroundTop = bounds.Y + bounds.Height * 0.05 - topPadding;
+                backgroundHeight = bounds.Height * 0.90 + topPadding + bottomPadding;
+            }
+            else
+            {
+                // Preserve the existing non-code inline background geometry.
+                backgroundTop = bounds.Y + bounds.Height * 0.05;
+                backgroundHeight = bounds.Height * 0.90;
+            }
             ds.FillRoundedRectangle(
-                new Rect(baseX + bounds.X - 2, baseY + backgroundTop, bounds.Width + 4, backgroundHeight),
+                new Rect(
+                    baseX + bounds.X - (hasInlineCodePadding ? 0 : 2),
+                    baseY + backgroundTop,
+                    bounds.Width + (hasInlineCodePadding ? 0 : 4),
+                    backgroundHeight),
                 style.CornerRadius,
                 style.CornerRadius,
                 background);

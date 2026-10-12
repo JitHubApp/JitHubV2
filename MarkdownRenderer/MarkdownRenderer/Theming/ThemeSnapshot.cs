@@ -127,6 +127,7 @@ internal sealed class ThemeSnapshot
 
     internal byte LayoutPolicy => _compiledStyleSheet.LayoutPolicy;
     internal bool HasRelativeScriptFontSizeRules => _compiledStyleSheet.HasRelativeScriptFontSizeRules;
+    internal bool CenterDefaultTableHeaders => _compiledStyleSheet.CenterDefaultTableHeaders;
 
     internal static ElementStyle WithFontSize(ElementStyle style, float fontSize)
     {

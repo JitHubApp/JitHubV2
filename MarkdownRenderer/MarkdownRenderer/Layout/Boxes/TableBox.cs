@@ -452,7 +452,7 @@ internal sealed partial class TableBox : BlockBox, IHorizontalOverflowBox
             for (int c = 0; c < _headerCells[r].Length; c++)
             {
                 _context.CancellationToken.ThrowIfCancellationRequested();
-                _headerCells[r][c].TextAlignment = ToCanvasAlignment(GetColumnAlignment(c), _context.FlowDirection == FlowDirection.RightToLeft);
+                _headerCells[r][c].TextAlignment = GetHeaderTextAlignment(c);
                 float headerCellMeasureWidth = Math.Max(
                     1f,
                     GetColumnWidth(c) - (float)(headerPadding.Left + headerPadding.Right));
@@ -519,7 +519,7 @@ internal sealed partial class TableBox : BlockBox, IHorizontalOverflowBox
             {
                 float colWidth = GetColumnWidth(c);
                 float colX = contentOrigin + GetColumnStart(c, rtl);
-                _headerCells[r][c].TextAlignment = ToCanvasAlignment(GetColumnAlignment(c), rtl);
+                _headerCells[r][c].TextAlignment = GetHeaderTextAlignment(c, rtl);
                 _headerCells[r][c].Arrange(
                     colX + (float)headerPadding.Left,
                     rowY + (float)headerPadding.Top,
@@ -871,6 +871,18 @@ internal sealed partial class TableBox : BlockBox, IHorizontalOverflowBox
         => column >= 0 && column < _columnAlignments.Length
             ? _columnAlignments[column]
             : CellAlignment.Default;
+
+    private Microsoft.Graphics.Canvas.Text.CanvasHorizontalAlignment GetHeaderTextAlignment(int column)
+        => GetHeaderTextAlignment(column, _context.FlowDirection == FlowDirection.RightToLeft);
+
+    private Microsoft.Graphics.Canvas.Text.CanvasHorizontalAlignment GetHeaderTextAlignment(int column, bool rightToLeft)
+    {
+        CellAlignment alignment = GetColumnAlignment(column);
+        if (alignment == CellAlignment.Default && _context.ThemeSnapshot.CenterDefaultTableHeaders)
+            return Microsoft.Graphics.Canvas.Text.CanvasHorizontalAlignment.Center;
+
+        return ToCanvasAlignment(alignment, rightToLeft);
+    }
 
     private static Microsoft.Graphics.Canvas.Text.CanvasHorizontalAlignment ToCanvasAlignment(CellAlignment alignment, bool rtl)
         => alignment switch

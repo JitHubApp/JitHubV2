@@ -145,6 +145,12 @@ html::-webkit-scrollbar {
   vertical-align: middle;
 }
 
+/* Only the outer list carries block spacing; nested lists stay inside their item. */
+.markdown-body ul ul,
+.markdown-body ul ol,
+.markdown-body ol ul,
+.markdown-body ol ol { margin: 0; }
+
 /* Explicit proportional script sizes, independent of the UA's smaller keyword. */
 .markdown-body sup,
 .markdown-body sub { font-size: 75%; }

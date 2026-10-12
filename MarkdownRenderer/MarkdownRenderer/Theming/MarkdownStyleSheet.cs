@@ -180,6 +180,7 @@ public sealed class MarkdownStyleSheet
     private const byte CollapseMarginsFlag = 1;
     private const byte ResetTrailingMarginFlag = 2;
     private const byte ResetLeadingMarginFlag = 4;
+    internal const byte CenterDefaultTableHeadersFlag = 8;
     private readonly MarkdownStyleRule[] _rules;
     private readonly IReadOnlyList<MarkdownStyleRule> _rulesView;
     private readonly byte _layoutPolicy;
@@ -264,6 +265,10 @@ public sealed class MarkdownStyleSheet
     internal MarkdownStyleSheet WithZeroLeadingTopLevelBlockTopMargin()
         => new(_rules, (byte)(_layoutPolicy | ResetLeadingMarginFlag));
 
+    /// <summary>Centers unaligned table header cells to match the HTML user-agent default.</summary>
+    internal MarkdownStyleSheet WithCenteredDefaultTableHeaders()
+        => new(_rules, (byte)(_layoutPolicy | CenterDefaultTableHeadersFlag));
+
     /// <summary>
     /// Returns a new style sheet that removes the bottom margin after its last
     /// top-level block, matching CSS containers that reset their final child.
@@ -315,12 +320,14 @@ internal sealed class CompiledMarkdownStyleSheet
     private readonly FrozenDictionary<string, CompiledRule[]> _rulesByRole;
     internal readonly byte LayoutPolicy;
     internal readonly bool HasRelativeScriptFontSizeRules;
+    internal readonly bool CenterDefaultTableHeaders;
 
     internal CompiledMarkdownStyleSheet(
         IReadOnlyList<MarkdownStyleRule> rules,
         byte layoutPolicy)
     {
         LayoutPolicy = layoutPolicy;
+        CenterDefaultTableHeaders = (layoutPolicy & MarkdownStyleSheet.CenterDefaultTableHeadersFlag) != 0;
         if (rules.Count == 0)
         {
             _rulesByRole = FrozenDictionary<string, CompiledRule[]>.Empty;

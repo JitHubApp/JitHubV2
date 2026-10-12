@@ -123,9 +123,10 @@ public static class GitHubReadmeVisualStyleProfiles
     public static GitHubReadmeVisualStyleProfile PrimerLightV4 { get; } = CreatePrimerLightV4();
 
     /// <summary>
-    /// Gets the source-replay profile with browser-relative 75% subscript and
-    /// superscript sizing. Earlier profile identities and the generic renderer
-    /// defaults remain unchanged.
+    /// Gets the source-replay profile with proportional subscript and
+    /// superscript sizing, centered default table headers, and marginless
+    /// nested lists. Earlier profile identities and generic renderer defaults
+    /// remain unchanged.
     /// </summary>
     public static GitHubReadmeVisualStyleProfile PrimerLightV5 { get; } = CreatePrimerLightV5();
 
@@ -135,10 +136,15 @@ public static class GitHubReadmeVisualStyleProfiles
         return new GitHubReadmeVisualStyleProfile(
             id: previous.Id,
             version: 5,
-            fingerprint: "15b6b573ceb5fa8f0e103a14d04d6c8b6ed7a5a0b456a71674a249d183374d81",
+            fingerprint: "3af666058cf4044b4e037801db6903f2104f6a6808f32c25ecda3159eecc2824",
             surfaceColor: previous.SurfaceColor,
             accentColor: previous.AccentColor,
-            styleSheet: previous.StyleSheet.WithRelativeScriptFontSize(0.75f),
+            styleSheet: previous.StyleSheet
+                .WithRelativeScriptFontSize(0.75f)
+                .WithCenteredDefaultTableHeaders()
+                .WithRule(new MarkdownStyleRule(
+                    new MarkdownStyleSelector(MarkdownStyleRole.List, minimumNestingDepth: 2),
+                    new ElementStyleOverride { Margin = new Thickness(0) })),
             codeBlockChromeMode: previous.CodeBlockChromeMode,
             codeBlockLineNumberMode: previous.CodeBlockLineNumberMode,
             isCodeBlockCopyEnabled: previous.IsCodeBlockCopyEnabled);
