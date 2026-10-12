@@ -1479,7 +1479,7 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.True(dispatcherCapture > missingRecoveryClock);
         string missingRecovery = queue[missingRecoveryClock..dispatcherCapture];
         Assert.Contains("_imageRelayoutQueued = false;", missingRecovery, StringComparison.Ordinal);
-        Assert.Contains("RequestRebuild();", missingRecovery, StringComparison.Ordinal);
+        Assert.Contains("RequestRebuild(RebuildReason.Full);", missingRecovery, StringComparison.Ordinal);
         Assert.DoesNotContain("_pendingImageRelayoutBlockIndices.Clear();", missingRecovery, StringComparison.Ordinal);
         int enqueueAfterRecovery = queue.IndexOf("dispatcher?.TryEnqueue(", dispatcherCapture, StringComparison.Ordinal);
         Assert.True(enqueueAfterRecovery > dispatcherCapture);
@@ -1560,7 +1560,7 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("ReferenceEquals(newPlan.Box, identity.Placement)", rasterPublication, StringComparison.Ordinal);
         Assert.Contains("_imagePlans.Count is > 0 and <= InlineContainerBox.MaximumPrivateRasterPlacementImages", process, StringComparison.Ordinal);
         Assert.Contains("new RasterPlacementInputs(receiver, _snapshotGeneration,", process, StringComparison.Ordinal);
-        Assert.Contains("RequestRebuild();", process, StringComparison.Ordinal);
+        Assert.Contains("RequestRebuild(RebuildReason.Full);", process, StringComparison.Ordinal);
 
         int runStart = controlSource.IndexOf("private static async Task RunImageRelayoutAsync(", StringComparison.Ordinal);
         int publicationStart = controlSource.IndexOf("private static WeakSnapshotPublication<LayoutSnapshot> CreateImageRelayoutPublication(", runStart, StringComparison.Ordinal);
@@ -1602,7 +1602,7 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("// A private whole-tree candidate has not committed and is excluded.", completion, StringComparison.Ordinal);
         Assert.Contains("generation == _snapshotGeneration && ReferenceEquals(snapshot, _snapshot)", completion, StringComparison.Ordinal);
         Assert.Contains("TryPublishRasterPlacement(snapshot, candidate, generation)", completion, StringComparison.Ordinal);
-        Assert.Contains("RequestRebuild();", completion, StringComparison.Ordinal);
+        Assert.Contains("RequestRebuild(RebuildReason.Full);", completion, StringComparison.Ordinal);
         Assert.Contains("else if (retryImageBlockIndex.HasValue || retryCurrentImages)", completion, StringComparison.Ordinal);
         Assert.Contains("if (retryImageBlockIndex is { } retryIndex)", completion, StringComparison.Ordinal);
         Assert.Contains("if (retryCurrentImages)\n                        foreach (var image in _subscribedImages)", completion, StringComparison.Ordinal);

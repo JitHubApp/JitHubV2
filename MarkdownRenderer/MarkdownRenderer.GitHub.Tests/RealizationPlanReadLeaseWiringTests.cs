@@ -158,7 +158,7 @@ public sealed class RealizationPlanReadLeaseWiringTests
         int startTimer = queue.IndexOf("StartImageRelayoutRecovery();", StringComparison.Ordinal);
         int unavailable = queue.IndexOf("if (!HasImageRelayoutRecoveryClock)", startTimer, StringComparison.Ordinal);
         int cancel = queue.IndexOf("CancelLazyLayoutRealization();", unavailable, StringComparison.Ordinal);
-        int rebuild = queue.IndexOf("RequestRebuild();", cancel, StringComparison.Ordinal);
+        int rebuild = queue.IndexOf("RequestRebuild(RebuildReason.Full);", cancel, StringComparison.Ordinal);
         Assert.True(startTimer >= 0 && unavailable > startTimer && cancel > unavailable && rebuild > cancel);
         Assert.Contains("return;", queue[rebuild..], StringComparison.Ordinal);
 

@@ -2,6 +2,7 @@ using System;
 using MarkdownRenderer.Layout;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
+using RebuildReason = MarkdownRenderer.Controls.MarkdownRebuildCoordinatorReason;
 
 namespace MarkdownRenderer.Controls;
 
@@ -69,11 +70,11 @@ public partial class MarkdownRendererControl
             // Keep the device-loss backoff even if a detached adorner refuses
             // its final native property update.
             if (!TryGeometryRecoveryCleanup(() => HandleCanvasDeviceLost(snapshot.GeometryRecoveryFailureHResult)))
-                RequestRebuild();
+                RequestRebuild(RebuildReason.Full);
         }
         else
         {
-            RequestRebuild();
+            RequestRebuild(RebuildReason.Full);
         }
 
         return true;
@@ -105,7 +106,7 @@ public partial class MarkdownRendererControl
         if (_isDisposed || _isUnloaded)
             return;
 
-        RequestRebuild();
+        RequestRebuild(RebuildReason.Full);
         InvalidateCanvas();
         InvalidateSelectionAdorner();
     }

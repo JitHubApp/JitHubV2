@@ -1360,7 +1360,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             nameof(CommandProvider),
             typeof(IMarkdownCommandProvider),
             typeof(MarkdownRendererControl),
-            new PropertyMetadata(null, (d, _) => ((MarkdownRendererControl)d).RequestRebuild()));
+            new PropertyMetadata(null, (d, _) => ((MarkdownRendererControl)d).RequestRebuild(RebuildReason.Full)));
 
     /// <summary>Gets or sets a host provider for target-aware markdown commands.</summary>
     public IMarkdownCommandProvider? CommandProvider
@@ -1410,7 +1410,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     internal static readonly DependencyProperty EmbedFactoryProperty =
         DependencyProperty.Register(nameof(EmbedFactory), typeof(IMarkdownEmbedFactory),
             typeof(MarkdownRendererControl),
-            new PropertyMetadata(null, (d, _) => ((MarkdownRendererControl)d).RequestRebuild()));
+            new PropertyMetadata(null, (d, _) => ((MarkdownRendererControl)d).RequestRebuild(RebuildReason.Full)));
 
     internal IMarkdownEmbedFactory? EmbedFactory
     {
@@ -1422,7 +1422,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     public static readonly DependencyProperty ImageResolverProperty =
         DependencyProperty.Register(nameof(ImageResolver), typeof(IMarkdownImageResolver),
             typeof(MarkdownRendererControl),
-            new PropertyMetadata(null, (d, _) => ((MarkdownRendererControl)d).RequestRebuild()));
+            new PropertyMetadata(null, (d, _) => ((MarkdownRendererControl)d).RequestRebuild(RebuildReason.Full)));
 
     /// <summary>Gets or sets the host-specific resolver consulted before public image loading.</summary>
     public IMarkdownImageResolver? ImageResolver
@@ -1481,7 +1481,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             oldSession.ReleaseDocumentScope(this);
         }
         AttachPerformanceSessionDisposalNotification();
-        RequestRebuild();
+        RequestRebuild(RebuildReason.Full);
         if (_selection.IsActive)
             UpdateSelectionOverlay();
         else if (HasInteractiveTextAdornerContent())
@@ -1526,7 +1526,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                 // RebuildInternalAsync detects the disposed borrowed session
                 // and uses the eager engine/legacy parser path, replacing any
                 // committed code fallback with its native scene.
-                RequestRebuild();
+                RequestRebuild(RebuildReason.Full);
             }
         });
     }
@@ -1542,7 +1542,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             Volatile.Write(ref _subscribedSvgRenderer, current);
             current.CacheInvalidated += OnSvgRendererCacheInvalidated;
         }
-        RequestRebuild();
+        RequestRebuild(RebuildReason.Full);
     }
 
     private void OnSvgRendererCacheInvalidated(object? sender, EventArgs args)
@@ -1558,7 +1558,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                 _isDisposed ||
                 _isUnloaded)
                 return;
-            RequestRebuild();
+            RequestRebuild(RebuildReason.Full);
             InvalidateCanvas();
         }
 
@@ -1572,7 +1572,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     public static readonly DependencyProperty ImageBaseUriProperty =
         DependencyProperty.Register(nameof(ImageBaseUri), typeof(Uri),
             typeof(MarkdownRendererControl),
-            new PropertyMetadata(null, (d, _) => ((MarkdownRendererControl)d).RequestRebuild()));
+            new PropertyMetadata(null, (d, _) => ((MarkdownRendererControl)d).RequestRebuild(RebuildReason.Full)));
 
     /// <summary>Gets or sets the base URI used to resolve relative image sources.</summary>
     public Uri? ImageBaseUri
@@ -1585,7 +1585,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     public static readonly DependencyProperty ImageDocumentPathProperty =
         DependencyProperty.Register(nameof(ImageDocumentPath), typeof(string),
             typeof(MarkdownRendererControl),
-            new PropertyMetadata(null, (d, _) => ((MarkdownRendererControl)d).RequestRebuild()));
+            new PropertyMetadata(null, (d, _) => ((MarkdownRendererControl)d).RequestRebuild(RebuildReason.Full)));
 
     /// <summary>Gets or sets the source document path used by host image resolvers.</summary>
     public string? ImageDocumentPath
@@ -1598,7 +1598,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     public static readonly DependencyProperty ImageDocumentSourceProperty =
         DependencyProperty.Register(nameof(ImageDocumentSource), typeof(MarkdownDocumentSource),
             typeof(MarkdownRendererControl),
-            new PropertyMetadata(null, (d, _) => ((MarkdownRendererControl)d).RequestRebuild()));
+            new PropertyMetadata(null, (d, _) => ((MarkdownRendererControl)d).RequestRebuild(RebuildReason.Full)));
 
     /// <summary>Gets or sets the stable identity and repository context of this document.</summary>
     public MarkdownDocumentSource? ImageDocumentSource
@@ -1613,7 +1613,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             nameof(AllowThirdPartyRemoteImages),
             typeof(bool),
             typeof(MarkdownRendererControl),
-            new PropertyMetadata(false, (d, _) => ((MarkdownRendererControl)d).RequestRebuild()));
+            new PropertyMetadata(false, (d, _) => ((MarkdownRendererControl)d).RequestRebuild(RebuildReason.Full)));
 
     /// <summary>
     /// Gets or sets whether the host's image policy permits third-party HTTPS images.
@@ -1646,7 +1646,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     /// <summary>Dependency property backing <see cref="IsCodeBlockCopyEnabled"/>.</summary>
     public static readonly DependencyProperty IsCodeBlockCopyEnabledProperty =
         DependencyProperty.Register(nameof(IsCodeBlockCopyEnabled), typeof(bool),
-            typeof(MarkdownRendererControl), new PropertyMetadata(true, (d, _) => ((MarkdownRendererControl)d).RequestRebuild()));
+            typeof(MarkdownRendererControl), new PropertyMetadata(true, (d, _) => ((MarkdownRendererControl)d).RequestRebuild(RebuildReason.Full)));
 
     /// <summary>Gets or sets whether code blocks include an always-visible copy button.</summary>
     public bool IsCodeBlockCopyEnabled
@@ -1703,7 +1703,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     /// <summary>Dependency property backing <see cref="IsCodeBlockSyntaxHighlightingEnabled"/>.</summary>
     public static readonly DependencyProperty IsCodeBlockSyntaxHighlightingEnabledProperty =
         DependencyProperty.Register(nameof(IsCodeBlockSyntaxHighlightingEnabled), typeof(bool),
-            typeof(MarkdownRendererControl), new PropertyMetadata(true, (d, _) => ((MarkdownRendererControl)d).RequestRebuild()));
+            typeof(MarkdownRendererControl), new PropertyMetadata(true, (d, _) => ((MarkdownRendererControl)d).RequestRebuild(RebuildReason.Full)));
 
     /// <summary>Gets or sets whether code blocks may request syntax highlighting from a configured provider.</summary>
     public bool IsCodeBlockSyntaxHighlightingEnabled
@@ -1736,7 +1736,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             nameof(IsTaskListEditingEnabled),
             typeof(bool),
             typeof(MarkdownRendererControl),
-            new PropertyMetadata(false, (d, _) => ((MarkdownRendererControl)d).RequestRebuild()));
+            new PropertyMetadata(false, (d, _) => ((MarkdownRendererControl)d).RequestRebuild(RebuildReason.Full)));
 
     /// <summary>
     /// Gets or sets whether task-list markers may invoke host-provided
@@ -1770,7 +1770,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     /// <summary>Dependency property backing <see cref="CodeBlockLineNumberMode"/>.</summary>
     public static readonly DependencyProperty CodeBlockLineNumberModeProperty =
         DependencyProperty.Register(nameof(CodeBlockLineNumberMode), typeof(CodeBlockLineNumberMode),
-            typeof(MarkdownRendererControl), new PropertyMetadata(CodeBlockLineNumberMode.AutoMultiline, (d, _) => ((MarkdownRendererControl)d).RequestRebuild()));
+            typeof(MarkdownRendererControl), new PropertyMetadata(CodeBlockLineNumberMode.AutoMultiline, (d, _) => ((MarkdownRendererControl)d).RequestRebuild(RebuildReason.Full)));
 
     /// <summary>Gets or sets when code blocks show line numbers.</summary>
     public CodeBlockLineNumberMode CodeBlockLineNumberMode
@@ -1787,7 +1787,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             typeof(MarkdownRendererControl),
             new PropertyMetadata(
                 CodeBlockChromeMode.Enhanced,
-                (d, _) => ((MarkdownRendererControl)d).RequestRebuild()));
+                (d, _) => ((MarkdownRendererControl)d).RequestRebuild(RebuildReason.Full)));
 
     /// <summary>Gets or sets whether code blocks use enhanced headers or plain Markdown chrome.</summary>
     public CodeBlockChromeMode CodeBlockChromeMode
@@ -1804,7 +1804,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             typeof(MarkdownRendererControl),
             new PropertyMetadata(
                 CodeBlockWrappingMode.NoWrap,
-                (d, _) => ((MarkdownRendererControl)d).RequestRebuild()));
+                (d, _) => ((MarkdownRendererControl)d).RequestRebuild(RebuildReason.Full)));
 
     /// <summary>
     /// Gets or sets whether long code lines remain unwrapped with a local
@@ -3033,7 +3033,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         // race against the Loaded handler's own RequestRebuild.
         RegisterPropertyChangedCallback(FlowDirectionProperty, (_, _) =>
         {
-            if (IsLoaded) RequestRebuild();
+            if (IsLoaded) RequestRebuild(RebuildReason.Full);
         });
         RegisterPropertyChangedCallback(LanguageProperty, (_, _) =>
         {
@@ -3295,7 +3295,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         _disclosureStates.Clear();
         _hostedElementFallbacks.Clear();
         ClearCodeBlockHighlightCache();
-        RequestRebuild();
+        RequestRebuild(RebuildReason.Full);
     }
 
     private void OnDocumentChanged(DependencyPropertyChangedEventArgs e)
@@ -3307,7 +3307,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         _disclosureStates.Clear();
         _hostedElementFallbacks.Clear();
         ClearCodeBlockHighlightCache();
-        RequestRebuild();
+        RequestRebuild(RebuildReason.Full);
     }
 
     private void OnEngineChanged(DependencyPropertyChangedEventArgs e)
@@ -3350,13 +3350,13 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         _disclosureStates.Clear();
         _hostedElementFallbacks.Clear();
         ClearCodeBlockHighlightCache();
-        RequestRebuild();
+        RequestRebuild(RebuildReason.Full);
     }
 
     private void OnHostedElementFactoryChanged()
     {
         _hostedElementFallbacks.Clear();
-        RequestRebuild();
+        RequestRebuild(RebuildReason.Full);
     }
 
     private void OnLegacyCodeHighlighterChanged(DependencyPropertyChangedEventArgs e)
@@ -3442,7 +3442,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         if (replacedOwner is not null)
             RetireOwnedCodeHighlighter(replacedOwner, retirement);
         ClearCodeBlockHighlightCache();
-        RequestRebuild();
+        RequestRebuild(RebuildReason.Full);
     }
 
     private bool IsElementWithinRenderer(DependencyObject element)
@@ -3777,7 +3777,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         // TextPattern remains available for document reading, but its
         // SupportedTextSelection value changes between Single and None.
         // Recreate the peer-facing semantic snapshot and refresh cursor state.
-        RequestRebuild();
+        RequestRebuild(RebuildReason.Full);
         InvalidateAutomationLayout();
         SetCursorShape(null);
     }
@@ -3827,7 +3827,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             svgRenderer.CacheInvalidated += OnSvgRendererCacheInvalidated;
         }
         AttachPerformanceSessionDisposalNotification();
-        RequestRebuild();
+        RequestRebuild(RebuildReason.Full);
     }
 
     private void OnUnloaded()
@@ -4237,6 +4237,9 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     /// <summary>Kicks off (or re-kicks) the parse + layout pipeline.</summary>
     public void RequestRebuild()
         => RequestRebuild(RebuildReason.Full);
+
+    // Internal requests call the reason-taking overload directly so the
+    // opt-in diagnostic observer retains their actual caller and line number.
 
     /// <summary>
     /// Clears cached WinUI resource-key discovery and rebuilds the current
@@ -6624,7 +6627,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             // lazy handoff. Drop this request epoch and rebuild instead of
             // advertising permanently pending work that cannot be recovered.
             CancelLazyLayoutRealization();
-            RequestRebuild();
+            RequestRebuild(RebuildReason.Full);
             return;
         }
 
@@ -6956,7 +6959,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             else
             {
                 MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] lazy layout realization failed: {failure}");
-                RequestRebuild();
+                RequestRebuild(RebuildReason.Full);
             }
             StopImageRelayoutRecoveryIfIdle();
             OnDeferredGestureLayoutCompletion(snapshot, succeeded: false);
@@ -7095,7 +7098,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         ++_lastLayoutCommitTicket;
         StartImageRelayoutRecovery();
         if (!HasImageRelayoutRecoveryClock)
-            RequestRebuild();
+            RequestRebuild(RebuildReason.Full);
     }
 
     private void PublishPendingLayoutCommit()
@@ -8401,7 +8404,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             if (completedImage is not null)
                 QueueImageRelayout(completedImage.BlockIndex);
             else
-                RequestRebuild();
+                RequestRebuild(RebuildReason.Full);
         }
         else
         {
@@ -8436,7 +8439,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         {
             // Do not start an asynchronous handoff without its recovery route.
             _imageRelayoutQueued = false;
-            RequestRebuild();
+            RequestRebuild(RebuildReason.Full);
             return;
         }
         Microsoft.UI.Dispatching.DispatcherQueue? dispatcher = DispatcherQueue;
@@ -8541,7 +8544,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                     ReportImageRelayoutFailure("relayout handoff", failed.Exception!);
                     control.CompleteImageRelayout(null, null, 0, cancellation, null);
                     if (!control.RequestGeometryRecoveryIfRequired(control._snapshot))
-                        control.RequestRebuild();
+                        control.RequestRebuild(RebuildReason.Full);
                 }
             }
         }
@@ -8552,7 +8555,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                 control._pendingLayoutCommit = null;
             ReportImageRelayoutFailure("layout publication", exception);
             if (!control.RequestGeometryRecoveryIfRequired(control._snapshot))
-                control.RequestRebuild();
+                control.RequestRebuild(RebuildReason.Full);
             else
                 control.ClearFocusableItemsRefreshForCurrentSnapshot();
             if (control._snapshot is { } failedLayoutSnapshot)
@@ -8700,7 +8703,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             _imageRelayoutActive = false;
             StopImageRelayoutRecovery();
             ReportImageRelayoutFailure("relayout setup", exception);
-            RequestRebuild();
+            RequestRebuild(RebuildReason.Full);
         }
         return;
     }
@@ -8869,7 +8872,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             else
             {
                 ClearFocusableItemsRefresh(request.RequestVersion);
-                RequestRebuild();
+                RequestRebuild(RebuildReason.Full);
             }
             return false;
         }
@@ -9442,7 +9445,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                 if (failure is not null)
                 {
                     ReportImageRelayoutFailure("relayout", failure);
-                    RequestRebuild();
+                    RequestRebuild(RebuildReason.Full);
                 }
                 else if (retryImageBlockIndex.HasValue || retryCurrentImages)
                 {
@@ -9457,7 +9460,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                             _pendingImageRelayoutBlockIndices.Add(image.BlockIndex);
                     if (snapshot.IsRetiringOrDisposed ||
                         (float)Math.Max(50, ActualWidth) != snapshot.Size.Width)
-                        RequestRebuild();
+                        RequestRebuild(RebuildReason.Full);
                 }
                 else if (candidate is not null)
                 {
@@ -9476,7 +9479,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                         // proof. Rebuild rather than mutate the old tree here.
                         foreach (var image in _subscribedImages)
                             _pendingImageRelayoutBlockIndices.Add(image.BlockIndex);
-                        RequestRebuild();
+                        RequestRebuild(RebuildReason.Full);
                     }
                 }
                 else
@@ -9487,7 +9490,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         catch (Exception exception)
         {
             ReportImageRelayoutFailure("relayout", exception);
-            RequestRebuild();
+            RequestRebuild(RebuildReason.Full);
         }
         finally
         {
@@ -9618,6 +9621,9 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             overlayPlan = CaptureAuditOverlayPlan(
                 snapshot,
                 viewport,
+                Math.Max(0, top),
+                viewportHeight,
+                viewportWidth,
                 targetDpi,
                 pipelineGeneration,
                 snapshotGeneration,
@@ -9720,7 +9726,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             StopCanvasDeviceRecovery();
             MarkdownDiagnostics.WriteLine(
                 $"[MarkdownRendererControl] device recovery timer failed: {schedulingFailure.Message}");
-            RequestRebuild();
+            RequestRebuild(RebuildReason.Full);
         }
     }
 
@@ -9737,7 +9743,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         // uses CanvasDevice.GetSharedDevice(), so initial creation needs no rebuild.
         // Later resource creation means device/DPI changed, so rebuild layouts.
         if (args.Reason != Microsoft.Graphics.Canvas.UI.CanvasCreateResourcesReason.FirstTime)
-            RequestRebuild();
+            RequestRebuild(RebuildReason.Full);
     }
 
     // ---- Input ----
@@ -10197,7 +10203,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         if (!HasImageRelayoutRecoveryClock)
         {
             _hasPendingHorizontalOverflowRefresh = false;
-            RequestRebuild();
+            RequestRebuild(RebuildReason.Full);
         }
     }
 
@@ -14211,7 +14217,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             _pendingFocusGeometryRefresh = false;
             _hasPendingFocusResumePoint = false;
             _focusResumeItemIndex = -1;
-            RequestRebuild();
+            RequestRebuild(RebuildReason.Full);
         }
     }
 

@@ -38,6 +38,9 @@ public partial class MarkdownRendererControl
         public required FrameworkElement Root { get; init; }
         public required XamlRoot? XamlRoot { get; init; }
         public required Rect Viewport { get; init; }
+        public required double ViewportTopDips { get; init; }
+        public required double ViewportHeightDips { get; init; }
+        public required double ViewportWidthDips { get; init; }
         public required float Dpi { get; init; }
         public required double RasterizationScale { get; init; }
         public required long PipelineGeneration { get; init; }
@@ -122,6 +125,9 @@ public partial class MarkdownRendererControl
     private AuditOverlayCapturePlan CaptureAuditOverlayPlan(
         Layout.LayoutSnapshot snapshot,
         Rect viewport,
+        double viewportTopDips,
+        double viewportHeightDips,
+        double viewportWidthDips,
         float dpi,
         long pipelineGeneration,
         long snapshotGeneration,
@@ -211,6 +217,9 @@ public partial class MarkdownRendererControl
             Root = root,
             XamlRoot = XamlRoot,
             Viewport = viewport,
+            ViewportTopDips = viewportTopDips,
+            ViewportHeightDips = viewportHeightDips,
+            ViewportWidthDips = viewportWidthDips,
             Dpi = dpi,
             RasterizationScale = rasterizationScale,
             PipelineGeneration = pipelineGeneration,
@@ -295,10 +304,13 @@ public partial class MarkdownRendererControl
         }
 
         if (!TryGetViewport(out double top, out double height, out double width) ||
-            !double.IsFinite(top) || !double.IsFinite(height) || !double.IsFinite(width) ||
-            !plan.Viewport.Top.Equals(Math.Max(0, top)) ||
-            !plan.Viewport.Height.Equals(height) ||
-            !plan.Viewport.Width.Equals(width))
+            !AuditViewportStateMatches(
+                plan.ViewportTopDips,
+                plan.ViewportHeightDips,
+                plan.ViewportWidthDips,
+                top,
+                height,
+                width))
         {
             throw new InvalidOperationException("The Markdown audit viewport changed during overlay capture.");
         }
@@ -588,6 +600,20 @@ public partial class MarkdownRendererControl
         => bounds.Width > 0 && bounds.Height > 0 &&
            bounds.Right > viewport.Left && bounds.Left < viewport.Right &&
            bounds.Bottom > viewport.Top && bounds.Top < viewport.Bottom;
+
+    internal static bool AuditViewportStateMatches(
+        double expectedTopDips,
+        double expectedHeightDips,
+        double expectedWidthDips,
+        double actualTopDips,
+        double actualHeightDips,
+        double actualWidthDips)
+        => double.IsFinite(actualTopDips) &&
+           double.IsFinite(actualHeightDips) &&
+           double.IsFinite(actualWidthDips) &&
+           expectedTopDips.Equals(Math.Max(0, actualTopDips)) &&
+           expectedHeightDips.Equals(actualHeightDips) &&
+           expectedWidthDips.Equals(actualWidthDips);
 
     private static bool IsFinite(Point point)
         => double.IsFinite(point.X) && double.IsFinite(point.Y);

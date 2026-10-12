@@ -75,6 +75,77 @@ public sealed class MarkdownRendererAuditCaptureDpiTests
     }
 
     [Theory]
+    [InlineData(549.9, 611, 660, false)]
+    [InlineData(549.9, 611.3, 660.2, true)]
+    public void AuditViewportFenceKeepsFractionalDipScalarsWithoutRectProjection(
+        double rawTop,
+        double height,
+        double width,
+        bool fractionalDimensionsProject)
+    {
+        var projectedViewport = new Windows.Foundation.Rect(0, rawTop, width, height);
+
+        // Windows.Foundation.Rect projects fractional coordinates, while
+        // TryGetViewport retains the exact ScrollViewer double. The fence
+        // compares those raw DIPs strictly rather than comparing Rect.Top.
+        Assert.NotEqual(rawTop, projectedViewport.Top);
+        if (fractionalDimensionsProject)
+        {
+            Assert.NotEqual(height, projectedViewport.Height);
+            Assert.NotEqual(width, projectedViewport.Width);
+        }
+        else
+        {
+            Assert.Equal(height, projectedViewport.Height);
+            Assert.Equal(width, projectedViewport.Width);
+        }
+
+#pragma warning disable MR1001 // Exercises the compatibility control's audit-capture contract.
+        Assert.True(MarkdownRendererControl.AuditViewportStateMatches(
+            rawTop,
+            height,
+            width,
+            rawTop,
+            height,
+            width));
+        Assert.False(MarkdownRendererControl.AuditViewportStateMatches(
+            rawTop,
+            height,
+            width,
+            rawTop + 0.001,
+            height,
+            width));
+        Assert.False(MarkdownRendererControl.AuditViewportStateMatches(
+            rawTop,
+            height,
+            width,
+            rawTop,
+            height + 0.001,
+            width));
+        Assert.False(MarkdownRendererControl.AuditViewportStateMatches(
+            rawTop,
+            height,
+            width,
+            rawTop,
+            height,
+            width + 0.001));
+#pragma warning restore MR1001
+    }
+
+    [Fact]
+    public void AuditViewportFenceRejectsNonFiniteObservedScalars()
+    {
+#pragma warning disable MR1001 // Exercises the compatibility control's audit-capture contract.
+        Assert.False(MarkdownRendererControl.AuditViewportStateMatches(
+            0, 600, 660, double.NaN, 600, 660));
+        Assert.False(MarkdownRendererControl.AuditViewportStateMatches(
+            0, 600, 660, 0, double.PositiveInfinity, 660));
+        Assert.False(MarkdownRendererControl.AuditViewportStateMatches(
+            0, 600, 660, 0, 600, double.NegativeInfinity));
+#pragma warning restore MR1001
+    }
+
+    [Theory]
     [InlineData(0)]
     [InlineData(-1)]
     [InlineData(double.NaN)]

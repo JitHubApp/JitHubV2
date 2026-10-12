@@ -1250,6 +1250,39 @@ public sealed class NativeFirstViewportImagesReadyContractTests
             Assert.DoesNotContain(RawReadmeSha256, exception.Message, StringComparison.Ordinal);
             Assert.DoesNotContain(DecodedReadmeSha256, exception.Message, StringComparison.Ordinal);
         }
+
+        NativeRenderCompleteSignal unadmittedReflowRender = renderComplete with
+        {
+            Generation = Generation + 1,
+            Timestamp = RenderCompleteAt.AddMilliseconds(1),
+            StopwatchTicks = RenderCompleteStopwatchTicks + 1,
+            SameByteReadmeSourceAdmission = null,
+        };
+        NativeFirstViewportImagesReadySignal reflowReady = ready with
+        {
+            Generation = Generation + 1,
+            ViewportPaintGeneration = Generation + 1,
+            Timestamp = ImagesReadyAt.AddMilliseconds(1),
+            StopwatchTicks = ImagesReadyStopwatchTicks + 1,
+        };
+
+        // A complete, painted reflow is still not the source-admitted render.
+        // This locks the rank-3 failure closed when a later generation has no
+        // admission, instead of borrowing the consumed generation's timing.
+        NativeFirstViewportImagesReadyContract.ValidateImagesReadySignal(
+            ProcessId, Host, ReadmeGitBlobSha1, ValidHostReady(), unadmittedReflowRender, reflowReady);
+        InvalidDataException reflowFailure = Assert.Throws<InvalidDataException>(() =>
+            NativeFirstViewportImagesReadyContract.ValidateSameByteSourceTiming(
+                ProcessId,
+                Host,
+                ReadmeGitBlobSha1,
+                expectedRawByteSize: 128,
+                RawReadmeSha256,
+                expectedDecodedTextUtf8ByteSize: 124,
+                DecodedReadmeSha256,
+                unadmittedReflowRender,
+                reflowReady));
+        Assert.Contains("SameByteReadmeSourceAdmission", reflowFailure.Message, StringComparison.Ordinal);
     }
 
     [Fact]

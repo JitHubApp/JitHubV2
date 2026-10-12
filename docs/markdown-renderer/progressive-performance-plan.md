@@ -7,11 +7,11 @@ bookkeeping. The 1.0 performance and release goals are not yet met.
 
 ### October 12 local fix checkpoint
 
-Local-only commit `886aa90e` preserves captured broken-image classification and
-cleans up partial Edge startup; it has not been pushed. The next candidate is
-being prepared with measured inline-code padding, profile-scoped default table
-header alignment and nested-list margins, and capture of the actual realized
-XAML overlays. The combined Release/x64 GitHub regression run compiled and
+Local-only candidate `15630c8080cb76fc7479d23481df40199bc87ba7` includes
+`886aa90e`'s captured broken-image classification and partial Edge startup cleanup,
+plus measured inline-code padding, profile-scoped default table header alignment
+and nested-list margins, and capture of the actual realized XAML overlays.
+Nothing has been pushed. The combined Release/x64 GitHub regression run compiled and
 finished with **2,870 passed / 2 failed / 2,872 total**. Both failures were new
 inline-code assertions expecting an unchanged absolute glyph X coordinate;
 the recorded glyph bounds instead moved by the intended 3-DIP left padding,
@@ -27,10 +27,72 @@ recompiled corrected tests and unchanged production binaries
 failed receipt is preserved at `overlay-capture-full-tests/overlay-capture-full.trx`.
 The nested-list/profile Node tests pass **121/121, zero skipped**, and the
 native-readiness contract tests pass **35/35, zero skipped**
-(`goal-release-20261011/native-readiness-contract-v5/`). The clean
-NativeAOT publish and Sandbox replay remain pending. No additional Sandbox
-rerun has been consumed by these headless build/test attempts; one permitted
-fix-and-rerun cycle remains.
+(`goal-release-20261011/native-readiness-contract-v5/`).
+
+The clean Release/x64 NativeAOT app and matching self-contained runner both
+publish successfully from detached candidate `15630c80`. The normal locked
+dependency/feed/vulnerability policy, **151/151 release-security tests**, and
+independent native-payload verification pass, with no release-security bypass.
+App SHA-256 is `76D8ADA400A1CDDCD96F52BAD81DD3BCE28DE2750F557813A2A417000263F438`
+(59,253,760 bytes); runner DLL SHA-256 is
+`696BE7274DB370EA90DDE807BEF1685DBF8855CF847ADC2532B679ADEED420C9`.
+Build receipts are under `goal-release-20261011/clean-15630c80-aot-20261012/`
+and `clean-15630c80-runner-20261012/`, with adjacent publish logs/binlogs.
+
+The second and final permitted fix-and-rerun cycle completed both Sandbox
+shards, ranks **1–10**, with **10 failed cases / 10 completed**. Evidence:
+`goal-release-20261011/offline-fix2-clean-15630c80-ranks001-010-20261012/`.
+Nine cases save the initial viewport then reject the next capture after the
+first scroll. Their retained capture-response files identify a new audit-only
+precision bug: WinRT `Rect` stores `549.9` as `549.9000244140625`, but the overlay
+fence compares this projected coordinate against the original double exactly.
+The local fix retains raw viewport identity and compares it without a tolerance;
+actual scroll, geometry, generation, and DPI changes are still rejected.
+The focused capture suite passes **16/16, zero skipped**, covering the observed
+549.9-DIP scroll, fractional width/height, strict small changes, and non-finite
+observations (`overlay-viewport-fence-focused-final/overlay-viewport-fence-focused-final.trx`).
+An earlier new-test assertion incorrectly expected integral dimensions to lose
+precision; that failed receipt is retained and the final test now distinguishes
+integral from fractional dimensions. The live fix has not been rerun in Sandbox.
+Rank 3 separately reaches a fully painted generation 5 but publishes a null
+same-byte source admission, so the strict source/readiness pair correctly fails.
+The retained trace proves generation 4 was admitted before a later full rebuild,
+but the public `RequestRebuild()` wrapper obscures the actual internal caller.
+Image-completion/reflow is a hypothesis, not yet a proved cause. The exact
+generation/source check remains unchanged. Internal requests now call the
+existing reason-taking overload, preserving `Full` behavior while retaining
+their actual caller/line in the opt-in diagnostic observer. The public API is
+unchanged. Focused readiness/harness/session-disposal tests pass **86/86, zero
+skipped**, including a ready-but-unadmitted later-generation rejection
+(`goal-release-20261011/source-admission-origin-20261012/source-admission-origin.trx`).
+No admission is copied into the later generation, and the extra rebuild's cause
+is not claimed fixed.
+
+The combined post-run repair now builds and passes the full GitHub integration
+suite: **2,875/2,875, zero skipped**
+(`goal-release-20261011/post-sandbox-fix2-full/post-sandbox-fix2-full.trx`).
+The first combined build caught a missing file-local `RebuildReason` alias in
+the geometry-recovery partial; that import was corrected before this successful
+rebuild and test run. These local repairs have not yet received a new clean
+app NativeAOT publish or live Sandbox verification; the successful `15630c80`
+publish above belongs to the failed live-test candidate, not this follow-up.
+
+All **nine available native PNGs** were visually inspected: only first viewports,
+no Edge PNGs, no full traversal, and no pixel-comparison verdicts. Rank 4 still
+shows its unavailable WebP banner despite resolving the exact captured bytes;
+the known codec gap remains open. The other visible tiles show no obvious
+new clipping, but do not establish deeper code/table/task-checkbox fidelity.
+Source-admission tracing was enabled, so this is diagnostic evidence, not a
+quiet-machine performance run. Qualification remains **not-qualified**. Both
+allowed fix-and-rerun cycles are now consumed; another live UI batch requires
+fresh user approval under the WinUI UI-testing skill. No host fallback was used.
+A read-only post-run guest process check found no surviving app process from
+this staged run and no Edge process with the audit's profile prefix. The shared
+Sandbox was left running; no broad process cleanup or desktop test was performed.
+
+PR #99 was rechecked after this run: it remains open at remote head
+`1c00c83ddfd2e8b65e05cb57e359a3f092b37271`, with the prior validation and top-500
+CI failures unchanged. The local fixes have not been tested by remote CI.
 
 Pre-commit review found no new reflection/AOT or snapshot-generation fencing
 blocker. The audit overlay pixel ceilings bound each serialized capture but

@@ -26,7 +26,7 @@ public sealed class MarkdownPerformanceSessionDisposalContractTests
         string queuedCallback = handler[enqueue..];
         Assert.Contains("ReferenceEquals(sender, Volatile.Read(ref _subscribedPerformanceSession))", queuedCallback, StringComparison.Ordinal);
         Assert.Contains("!_isDisposed && !_isUnloaded", queuedCallback, StringComparison.Ordinal);
-        Assert.Contains("RequestRebuild();", queuedCallback, StringComparison.Ordinal);
+        Assert.Contains("RequestRebuild(RebuildReason.Full);", queuedCallback, StringComparison.Ordinal);
     }
 
     private static string FindRepositoryRoot()

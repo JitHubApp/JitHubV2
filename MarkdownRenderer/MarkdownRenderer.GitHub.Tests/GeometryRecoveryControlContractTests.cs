@@ -38,7 +38,7 @@ public sealed class GeometryRecoveryControlContractTests
         string body = MethodBody(source, helper);
 
         int claim = body.IndexOf("snapshot.TryClaimGeometryRecoveryRequest()", StringComparison.Ordinal);
-        int replacement = body.IndexOf("RequestRebuild();", claim, StringComparison.Ordinal);
+        int replacement = body.IndexOf("RequestRebuild(RebuildReason.Full);", claim, StringComparison.Ordinal);
         Assert.True(claim >= 0 && replacement > claim);
 
         // Every action below must remain between the once-only claim and the
@@ -228,7 +228,7 @@ public sealed class GeometryRecoveryControlContractTests
         string tickBody = MethodBody(recovery, tick);
         int stale = tickBody.IndexOf("if (!ReferenceEquals(sender, _canvasDeviceRecoveryTimer))", StringComparison.Ordinal);
         int stopCurrent = tickBody.IndexOf("StopCanvasDeviceRecovery();", StringComparison.Ordinal);
-        int rebuild = tickBody.IndexOf("RequestRebuild();", StringComparison.Ordinal);
+        int rebuild = tickBody.IndexOf("RequestRebuild(RebuildReason.Full);", StringComparison.Ordinal);
         Assert.True(stale >= 0 && stopCurrent > stale && rebuild > stopCurrent);
         Assert.Contains("if (_isDisposed || _isUnloaded)", tickBody, StringComparison.Ordinal);
 
