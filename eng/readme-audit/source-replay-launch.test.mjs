@@ -9,6 +9,8 @@ import {
 function createLaunchFixture(failureStage) {
   const calls = [];
   const child = new EventEmitter();
+  child.exitCode = null;
+  child.signalCode = null;
   child.stderr = new EventEmitter();
   child.stderr.setEncoding = () => {};
   child.kill = () => { calls.push("kill-owned-child"); };
@@ -57,7 +59,9 @@ for (const stage of ["launch-edge", "wait-devtools-port", "read-devtools-targets
     const { calls, dependencies } = createLaunchFixture(stage);
     await assert.rejects(launchSourceReplay({ edgePath: "edge", profileDirectory: "generated-profile" }, dependencies), error => {
       assert.equal(error.sourceReplayStage, stage);
-      assert.equal(createSourceReplayFailureReport(error).failureStage, stage);
+      const report = createSourceReplayFailureReport(error);
+      assert.equal(report.failureStage, stage);
+      if (stage !== "wait-devtools-port") assert.equal("startupDiagnostics" in report, false);
       return true;
     });
     assert.equal(calls.filter(value => value === "kill-owned-child").length, stage === "launch-edge" ? 0 : 1);
@@ -70,6 +74,102 @@ test("an asynchronous process startup error is handled and retains cleanup owner
   const { calls, dependencies } = createLaunchFixture("async-spawn-error");
   await assert.rejects(launchSourceReplay({ edgePath: "edge", profileDirectory: "generated-profile" }, dependencies), /Edge could not start/u);
   assert.deepEqual(calls, ["kill-owned-child"]);
+});
+
+test("DevTools-port timeout preserves bounded redacted Edge startup evidence", async () => {
+  const { child, dependencies } = createLaunchFixture("wait-devtools-port");
+  child.exitCode = -1_073_741_819;
+  child.kill = () => { child.signalCode = "SIGTERM"; };
+  dependencies.waitForPort = async () => {
+    child.stderr.emit("data", `${"x".repeat(9000)}\nERROR edge startup failed at C:\\Users\\private\\Temp\\edge-profile; C:/Users/private/Edge/msedge.exe; \\\\server\\share\\private\\file; JSON C:\\\\Users\\\\private\\\\profile; https://secret.example/token\n`);
+    throw new Error("Timed out waiting for Edge DevTools.");
+  };
+
+  await assert.rejects(
+    launchSourceReplay({
+      edgePath: "C:\\Program Files\\Microsoft\\Edge\\msedge.exe",
+      profileDirectory: "C:\\Users\\private\\Temp\\edge-profile",
+    }, dependencies),
+    error => {
+      const report = createSourceReplayFailureReport(error);
+      assert.equal(report.failureCategory, "timeout");
+      assert.equal(report.failureStage, "wait-devtools-port");
+      assert.equal(report.error, "The source-bound Markdown replay exceeded its deadline.");
+      assert.deepEqual({
+        processExitCode: report.startupDiagnostics.processExitCode,
+        processSignalCode: report.startupDiagnostics.processSignalCode,
+        spawnErrorCode: report.startupDiagnostics.spawnErrorCode,
+        devToolsPortFilePresent: report.startupDiagnostics.devToolsPortFilePresent,
+      }, {
+        processExitCode: -1_073_741_819,
+        processSignalCode: null,
+        spawnErrorCode: null,
+        devToolsPortFilePresent: false,
+      });
+      assert.ok(report.startupDiagnostics.stderrTail.length <= 2048);
+      assert.match(report.startupDiagnostics.stderrTail, /ERROR edge startup failed at <path>/u);
+      assert.match(report.startupDiagnostics.stderrTail, /sha256:[0-9a-f]{64}/u);
+      assert.doesNotMatch(JSON.stringify(report), /private|secret\.example|msedge\.exe|generated-profile|C:[\\/]|\\\\server/u);
+      return true;
+    },
+  );
+  assert.equal(child.signalCode, "SIGTERM", "the diagnostic reports process state before owned-child cleanup mutates it");
+});
+
+test("startup diagnostics reject invalid fields and are omitted for non-startup failures", () => {
+  const error = Object.assign(new Error("startup timed out"), {
+    sourceReplayStage: "wait-devtools-port",
+    sourceReplayStartupDiagnostics: {
+      processExitCode: 4_294_967_296,
+      processSignalCode: "private signal",
+      spawnErrorCode: "C:\\private\\code",
+      devToolsPortFilePresent: "true",
+      stderrTail: "failure at C:/private/profile; \\\\server\\private\\item",
+    },
+  });
+  const report = createSourceReplayFailureReport(error);
+  assert.deepEqual(report.startupDiagnostics, {
+    processExitCode: null,
+    processSignalCode: null,
+    spawnErrorCode: null,
+    devToolsPortFilePresent: false,
+    stderrTail: "failure at <path>; <path>",
+  });
+});
+
+test("unsigned Windows NTSTATUS exit codes survive startup diagnostic sanitization", () => {
+  const report = createSourceReplayFailureReport(Object.assign(new Error("Edge startup failed"), {
+    sourceReplayStage: "wait-devtools-port",
+    sourceReplayStartupDiagnostics: {
+      processExitCode: 0xC0000005,
+      processSignalCode: null,
+      spawnErrorCode: null,
+      devToolsPortFilePresent: false,
+      stderrTail: "",
+    },
+  }));
+  assert.equal(report.startupDiagnostics.processExitCode, 0xC0000005);
+});
+
+test("frozen startup errors are normalized only after owned-child cleanup", async () => {
+  const { calls, child, dependencies } = createLaunchFixture("wait-devtools-port");
+  const original = Object.freeze(new Error("frozen startup error"));
+  dependencies.waitForPort = async () => { throw original; };
+
+  await assert.rejects(
+    launchSourceReplay({ edgePath: "edge", profileDirectory: "generated-profile" }, dependencies),
+    error => {
+      assert.notEqual(error, original, "metadata is attached to a wrapper when the original Error is frozen");
+      assert.equal(error.message, original.message);
+      assert.equal(error.name, original.name);
+      assert.equal(error.cause, original);
+      assert.equal(error.sourceReplayStage, "wait-devtools-port");
+      assert.equal(createSourceReplayFailureReport(error).failureStage, "wait-devtools-port");
+      return true;
+    },
+  );
+  assert.deepEqual(calls, ["kill-owned-child"]);
+  assert.equal(child.signalCode, null);
 });
 
 test("successful startup transfers both resources to the caller", async () => {

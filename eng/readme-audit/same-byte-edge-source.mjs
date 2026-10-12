@@ -1080,12 +1080,13 @@ function sanitizeSourceReplayExtentEvidence(value) {
 
 export function createSourceReplayFailureDiagnostic(error) {
   const message = String(error?.message || error || "");
+  const sourceReplayStage = error?.sourceReplayStage;
   let category = "replay";
-  if (error?.sourceReplayStage === "visible-image-decode") {
+  if (sourceReplayStage === "visible-image-decode") {
     category = "image";
   } else if (error?.name === "TimeoutError" || /timed out|timeout|deadline/iu.test(message)) {
     category = "timeout";
-  } else if (SOURCE_REPLAY_STARTUP_STAGES.has(error?.sourceReplayStage)) {
+  } else if (SOURCE_REPLAY_STARTUP_STAGES.has(sourceReplayStage)) {
     category = "browser-startup";
   } else if (/external resource|request isolation|blocked external/iu.test(message)) {
     category = "external-resource";
@@ -1098,7 +1099,10 @@ export function createSourceReplayFailureDiagnostic(error) {
   } else if (/devtools|websocket|edge did not expose|edge could not start/iu.test(message)) {
     category = "browser-startup";
   }
-  const stage = SOURCE_REPLAY_STAGES.has(error?.sourceReplayStage) ? error.sourceReplayStage : "initialization";
+  const stage = SOURCE_REPLAY_STAGES.has(sourceReplayStage) ? sourceReplayStage : "initialization";
+  const startupDiagnostics = stage === "wait-devtools-port"
+    ? sanitizeSourceReplayStartupDiagnostics(error?.sourceReplayStartupDiagnostics)
+    : null;
   const failurePredicate = SOURCE_REPLAY_FAILURE_PREDICATES.has(error?.sourceReplayFailurePredicate) &&
     ((stage === "sanitize-markdown" && ["invalid-image-dimension", "responsive-image-candidates", "sanitized-image-count"].includes(error.sourceReplayFailurePredicate)) ||
      (stage === "image-map" && ["captured-image-route-mismatch", "conflicting-image-aliases", "invalid-image-url", "invalid-inline-image-data", "inline-image-byte-mismatch", "missing-captured-image-alias", "unsupported-image-url-scheme"].includes(error.sourceReplayFailurePredicate)) ||
@@ -1128,6 +1132,7 @@ export function createSourceReplayFailureDiagnostic(error) {
     errorType: SOURCE_REPLAY_ERROR_TYPES.has(error?.sourceReplayErrorType)
       ? error.sourceReplayErrorType
       : SOURCE_REPLAY_ERROR_TYPES.has(error?.name) ? error.name : "Error",
+    startupDiagnostics,
     failurePredicate,
     imageDecodeEvidence,
     imageMapEvidence,
@@ -1146,12 +1151,46 @@ export function createSourceReplayFailureReport(error) {
     error: diagnostic.message,
     failureStage: diagnostic.stage,
     errorType: diagnostic.errorType,
+    ...(diagnostic.startupDiagnostics ? { startupDiagnostics: diagnostic.startupDiagnostics } : {}),
     ...(diagnostic.failurePredicate ? { failurePredicate: diagnostic.failurePredicate } : {}),
     ...(diagnostic.imageDecodeEvidence ? { imageDecodeEvidence: diagnostic.imageDecodeEvidence } : {}),
     ...(diagnostic.imageMapEvidence ? { imageMapEvidence: diagnostic.imageMapEvidence } : {}),
     ...(diagnostic.extentEvidence ? { extentEvidence: diagnostic.extentEvidence } : {}),
     ...(diagnostic.nativeMovementEvidence ? { nativeMovementEvidence: diagnostic.nativeMovementEvidence } : {}),
     ...(diagnostic.terminalClampObservations ? { terminalClampObservations: diagnostic.terminalClampObservations } : {}),
+  };
+}
+
+function sanitizeSourceReplayStartupDiagnostics(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const processExitCode = Number.isInteger(value.processExitCode) &&
+    value.processExitCode >= -2_147_483_648 && value.processExitCode <= 4_294_967_295
+    ? value.processExitCode
+    : null;
+  const processSignalCode = [
+    "SIGABRT", "SIGBREAK", "SIGFPE", "SIGHUP", "SIGILL", "SIGINT", "SIGKILL",
+    "SIGSEGV", "SIGTERM", "SIGTRAP",
+  ].includes(value.processSignalCode) ? value.processSignalCode : null;
+  const spawnErrorCode = ["EACCES", "EEXIST", "EINVAL", "EIO", "EMFILE", "ENOENT", "ENOMEM", "EPERM"].includes(value.spawnErrorCode)
+    ? value.spawnErrorCode
+    : null;
+  let stderrTail = typeof value.stderrTail === "string" ? value.stderrTail : "";
+  for (const privatePath of [value.profileDirectory, value.edgePath]) {
+    if (typeof privatePath === "string" && privatePath.length > 0) {
+      stderrTail = stderrTail.replaceAll(privatePath, "<path>");
+    }
+  }
+  stderrTail = redactUrls(stderrTail)
+    .replace(/\b[A-Za-z]:[\\/][^\r\n\t"'<>;]*/gu, "<path>")
+    .replace(/\\\\[^\\/\s]+[\\/][^\r\n\t"'<>;]*/gu, "<path>")
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/gu, " ")
+    .slice(-2048);
+  return {
+    processExitCode,
+    processSignalCode,
+    spawnErrorCode,
+    devToolsPortFilePresent: value.devToolsPortFilePresent === true,
+    stderrTail,
   };
 }
 
@@ -2858,7 +2897,11 @@ export async function launchSourceReplay({ edgePath, profileDirectory }, {
   let edge;
   let connection;
   let stage = "launch-edge";
+  let edgeError = "";
+  let spawnError;
+  let portFile;
   try {
+    portFile = path.join(profileDirectory, "DevToolsActivePort");
     edge = spawnProcess(edgePath, [
       "--headless=new",
       "--no-first-run",
@@ -2872,14 +2915,11 @@ export async function launchSourceReplay({ edgePath, profileDirectory }, {
       `--user-data-dir=${profileDirectory}`,
       "about:blank",
     ], { stdio: ["ignore", "ignore", "pipe"], windowsHide: true });
-    let edgeError = "";
-    let spawnError;
     // A failed spawn is asynchronous in Node. Keep it within the same bounded
     // startup path rather than letting an unhandled error abort case cleanup.
     edge.on("error", error => { spawnError = error; });
     edge.stderr.setEncoding("utf8");
     edge.stderr.on("data", chunk => { edgeError = (edgeError + chunk).slice(-8192); });
-    const portFile = path.join(profileDirectory, "DevToolsActivePort");
     stage = "wait-devtools-port";
     const portContent = await waitForPort(portFile, edge, () => edgeError, 20_000, 50,
       () => spawnError);
@@ -2904,11 +2944,62 @@ export async function launchSourceReplay({ edgePath, profileDirectory }, {
     // Ownership transfers to runCli only after all startup steps succeed.
     // Dispose partial startup here; the caller still verifies profile-scoped
     // process shutdown before deleting its generated profile directory.
-    try { connection?.close(); } catch {}
-    try { edge?.kill(); } catch {}
-    const failure = error instanceof Error ? error : new Error("Edge startup failed.");
-    failure.sourceReplayStage = stage;
+    let failure = error instanceof Error ? error : new Error("Edge startup failed.");
+    let startupDiagnostics = null;
+    try {
+      if (stage === "wait-devtools-port") {
+        try {
+          startupDiagnostics = {
+            processExitCode: Number.isInteger(edge?.exitCode) ? edge.exitCode : null,
+            processSignalCode: edge?.signalCode ?? null,
+            spawnErrorCode: typeof spawnError?.code === "string" ? spawnError.code : null,
+            devToolsPortFilePresent: existsSync(portFile),
+            stderrTail: edgeError,
+            profileDirectory,
+            edgePath,
+          };
+        } catch {
+          startupDiagnostics = null;
+        }
+      }
+    } finally {
+      try { connection?.close(); } catch {}
+      try { edge?.kill(); } catch {}
+    }
+    failure = attachSourceReplayFailureMetadata(failure, error, stage, startupDiagnostics);
     throw failure;
+  }
+}
+
+function attachSourceReplayFailureMetadata(failure, originalError, stage, startupDiagnostics) {
+  const defineMetadata = target => {
+    Object.defineProperty(target, "sourceReplayStage", {
+      configurable: true,
+      enumerable: true,
+      writable: true,
+      value: stage,
+    });
+    if (startupDiagnostics) {
+      Object.defineProperty(target, "sourceReplayStartupDiagnostics", {
+        configurable: true,
+        enumerable: true,
+        writable: true,
+        value: startupDiagnostics,
+      });
+    }
+  };
+  try {
+    defineMetadata(failure);
+    return failure;
+  } catch {
+    let message = "Edge startup failed.";
+    let name = "Error";
+    try { if (typeof failure?.message === "string") message = failure.message; } catch {}
+    try { if (typeof failure?.name === "string" && failure.name) name = failure.name; } catch {}
+    const normalized = new Error(message, { cause: originalError });
+    Object.defineProperty(normalized, "name", { configurable: true, value: name });
+    defineMetadata(normalized);
+    return normalized;
   }
 }
 

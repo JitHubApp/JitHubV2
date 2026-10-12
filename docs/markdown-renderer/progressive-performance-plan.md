@@ -5,7 +5,90 @@ to the next heartbeat. The current priority is to remove document-scale memory
 growth and input-blocking native reflow before spending more time on evidence
 bookkeeping. The 1.0 performance and release goals are not yet met.
 
-### October 12 local fix checkpoint
+### October 12 fresh Sandbox verification — candidate c9a90da7
+
+The user approved a fresh Sandbox batch after the preceding rerun limit. A
+clean detached build of `c9a90da7f6e363e6d4bd8b7539169f8f4d8b560c` now publishes
+both the Release/x64 NativeAOT app and matching self-contained automation runner.
+The normal dependency/feed/vulnerability checks, **151/151 release-security
+tests**, and independent native-payload verification pass. App SHA-256:
+`173C3A37239701476E6A379DA36BD036B0CF5842C98B6C20D09B9AE8B269D542`;
+runner DLL SHA-256:
+`6777C6731E3FA5394B46A76D7A4435E7135BE6104C2B5034849E5445931E5181`.
+Build logs/binlogs are outside the deployment payloads in
+`goal-release-20261011/clean-c9a90da7-aot-build-evidence-20261012/` and
+`clean-c9a90da7-runner-build-evidence-20261012/`. No security or AOT gate was bypassed.
+
+The fresh pinned offline ranks **1–10** batch completed both five-case shards
+in Windows Sandbox with Edge **155.0.4283.45**, Light, DPR 1, and a 660-by-611
+native viewport. All ten native traversals completed, produced **653 viewport
+captures**, and exited cleanly. The fractional-scroll capture fence no longer
+rejects the first scroll in these cases. Rank 3 captured all **250** viewports
+with matching generation-4 source admission; the earlier later-generation
+admission failure did not recur, which does not establish its cause or a fix.
+Rank 7 has **128** unique viewport positions and reaches the bottom without
+the previously observed repeated-viewports pattern. Rank 9 has **103** unique
+positions, and UIA observes all **463** task states; visual review confirms
+the native checkbox outlines are present and aligned in the captured viewports.
+
+The batch still has **7 failed cases / 10 completed** and is **not-qualified**.
+Ranks 3, 5, 7, 8, 9, and 10 fail while waiting for Edge's DevTools port before
+loading source content; rank 8 additionally reports an unconfirmed profile
+cleanup and preserves that profile. Rank 4 still fails to decode the valid
+148,596-byte WebP banner, which Edge renders from the same captured bytes.
+Rank 7 also reports one unavailable source: its URL hash exactly matches the
+corpus's explicit-empty-alt, failed-decode, zero-bounds decorative exclusion;
+the resolver has no asset for that authored broken Camo URL. This is distinct
+from the valid WebP decoder failure. Its reported failure is retained, not waived.
+
+All available native and browser PNGs were visually inspected through contact
+sheets and targeted originals. Case execution passes for ranks 1, 2, and 6 are
+not full-page fidelity qualification: their mean same-byte SSIM values are
+approximately **0.721, 0.118, and 0.379**. Six cases lack completed source-bound
+Edge reference captures. Source-admission tracing was enabled, and aggregate
+performance is explicitly not evaluated for this partial selection. The full
+counterbalanced benchmark, live top-500 audit, and architecture/device/theme
+release matrix remain open. No host-desktop fallback, push, or scheduled run
+was used. A read-only post-run check found no surviving app, runner, or
+audit-profile Edge process; the shared Sandbox was left running.
+
+Evidence: `goal-release-20261011/offline-fresh-c9a90da7-ranks001-010-20261012/`
+(`offline-same-byte-sandbox-summary.json`, run
+`0ce044f0ef034d4d9bd62ff9ee21e0c1`); review sheets:
+`c9a90da7-first5-review-20261012/` and
+`c9a90da7-ranks006-010-review-20261012/`.
+
+The subsequent isolated Edge-startup diagnostic completed **3/3** fresh-profile
+starts and **3/3** verified profile cleanups in the same Sandbox, without loading
+README content. This does **not** resolve the six intermittent source-oracle
+failures or qualify rendering/performance. Its separate receipts are in
+`goal-release-20261011/edge-startup-diagnostic-20261012/`. Source-oracle startup
+failures now retain bounded, URL/path-redacted stderr, pre-cleanup process exit
+state (including Windows NTSTATUS), and DevTools-port-file presence. Neither
+startup deadlines nor failure gates changed. The 14-file headless Node suite
+passes **128/128, zero skipped**; the real-Edge integration test is excluded from
+that count (`image-failure-notifications-20261012/headless-14-file-final-20261012.log`).
+
+A supplemental source-bound Edge-only replay of ranks 3, 5, 7, 8, 9, and 10
+was prepared against the saved native viewport profiles and captured corpus,
+but **did not launch**: the guest's effective PowerShell execution policy blocks
+saved scripts. The script hash was checked before invocation; no policy was
+changed or bypassed. The separate `source-rerun` output directory was not
+created, and a read-only check found zero audit-owned app/runner/Edge processes.
+Permission for a process-only guest execution-policy override has been requested.
+No supplemental rendering result or retry pass is claimed.
+
+Targeted rank-2 pixel review localizes early vertical drift to the authored HTML
+hero: its wordmark is within about 3 pixels, but the following tagline, heading
+border, and horizontal rule diverge by approximately 27, 49, and 76 pixels.
+Terminal `<br>` handling when mixed inline content is flushed before a block is
+a focused hypothesis, **not an established cause or implemented fix**. Do not
+adjust global list spacing to compensate. Rank 7's decorative-image event also
+remains counted: the existing hash-only exclusion proof is not sufficient until
+ambiguity checks include all occurrences, including same-URL visible images.
+The original unavailable-event log and case failures remain intact.
+
+### October 12 preceding local fix checkpoint
 
 Local-only candidate `15630c8080cb76fc7479d23481df40199bc87ba7` includes
 `886aa90e`'s captured broken-image classification and partial Edge startup cleanup,
