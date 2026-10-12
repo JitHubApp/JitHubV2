@@ -42,6 +42,46 @@ internal sealed class MarkdownLayoutContext
     private HashSet<Task>? _retirementTaskIdentities;
     private MarkdownLayoutConstructionScope? _constructionScope;
     private Action<InlineContainerBox, ContainerInline, Func<Inline, bool>?, int>? _childInlineBuilder;
+    private Func<Block, BlockBox?>? _childBlockBuilder;
+
+    // Reuse the owning builder for structural children of extension-owned
+    // containers. Like the inline callback, this must not survive construction
+    // and retain the builder or semantic document in a published layout context.
+    internal ChildBlockBuildScope PushChildBlockBuilder(Func<Block, BlockBox?> builder)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        var previous = _childBlockBuilder;
+        _childBlockBuilder = builder;
+        return new ChildBlockBuildScope(this, previous);
+    }
+
+    internal bool TryBuildChildBlock(Block block, out BlockBox? result)
+    {
+        result = null;
+        if (_childBlockBuilder is not { } builder)
+            return false;
+        ArgumentNullException.ThrowIfNull(block);
+        result = builder(block);
+        return true;
+    }
+
+    internal readonly struct ChildBlockBuildScope : IDisposable
+    {
+        private readonly MarkdownLayoutContext? _owner;
+        private readonly Func<Block, BlockBox?>? _previous;
+
+        internal ChildBlockBuildScope(MarkdownLayoutContext owner, Func<Block, BlockBox?>? previous)
+        {
+            _owner = owner;
+            _previous = previous;
+        }
+
+        public void Dispose()
+        {
+            if (_owner is not null)
+                _owner._childBlockBuilder = _previous;
+        }
+    }
 
     // Optional built-in container renderers must use the owning layout build's
     // semantic extension fragments, not a second reduced inline implementation.

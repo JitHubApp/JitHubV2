@@ -7,9 +7,233 @@ bookkeeping. The 1.0 performance and release goals are not yet met.
 
 ## Current priority and evidence — October 11, 2026
 
+**Latest reviewed local optimization:** `5513f682d5bda380f51b250c48faf88880e4aeed`
+finalizes measured-root document ordering inside the background layout
+transaction, before UI publication. The UI candidate enumerator no longer sorts
+the measured-root list. Cancellation restores the prior ordinal order, measured
+mask, revision, and placement publication; tests cover three out-of-order bands
+in a 10,000-root document and canceled reflow. Equivalent source/prepared table
+structure fences share one implementation without changing their identity or
+geometry checks. The fresh full integration receipt reports **2,806/2,806,
+zero skipped**, including **39/39** tests whose names match `PublicApi|ApiBaseline`.
+Evidence: `goal-release-20261011/layout-ordering-full-20261012/github-full.trx`.
+Focused layout and table-transfer suites also pass **12/12** and **36/36**.
+This removes work from UI publication; it is not a measured release speedup or
+a managed-package-size pass. This commit is local only and is newer than the
+clean NativeAOT build used for the Sandbox evidence below.
+
+**Latest clean build checkpoint:** local commit
+`2611d43f79ea11bbad4952600377c63521bf117f` includes the reviewed inert-HTML-spacer
+geometry and semantic-selection fixes. The full GitHub integration suite passes
+**2,805/2,805, zero skipped** (`inert-spacer-semantic-final-full/` below).
+This includes all **32** public-API baseline/surface checks; their passing
+verdicts were read from the full-suite TRX, not inferred from a successful build.
+The clean Release/x64 JitHub NativeAOT publish passes the normal locked
+dependency/feed/vulnerability policy, **131/131** release-security tests, and
+native-payload verification. The app SHA-256 is
+`52402D8A2203D995C485568F8F5A06105DE67E1C221679475E235574FD68FDF6`.
+The matching self-contained x64 automation runner also publishes successfully;
+its DLL SHA-256 is
+`087E1C9896217A6C54618AB02444E582AC878F6CDB3BF5E444F5AC4B7220A798`.
+Evidence is under `goal-release-20261011/clean-2611d43f-aot-separate/` and
+`clean-2611d43f-runner/`. No release-security bypass was used. These are build
+results; the matching runtime replay is described below. They do not establish
+Edge-fidelity or performance qualification;
+the project's Debug-only WinUI analyzer did not run in this Release publish.
+The unfiltered standalone core suite now passes **1,859/1,859, zero skipped**;
+the final TRX counters were checked (`clean-2611d43f-core/core.trx`). Its
+approximately 73-minute wall time includes the many external-process
+gate-contract cases; it is not a renderer-speed measurement.
+
+**Fresh approved Sandbox replay completed:** the clean `2611d43f` NativeAOT app
+and matching runner traverse **25** viewports of
+`codecrafters-io/build-your-own-x` and **49** of `sindresorhus/awesome`. Both cases
+have zero unavailable images, no render failure, and clean exits. Same-byte Edge
+replay and pixel comparison complete for both. Evidence is under
+`goal-release-20261011/offline-fresh-clean-2611d43f-20261012/`. The guest's
+read-only readiness report confirmed input/capture readiness in the existing
+Sandbox; no host-desktop fallback was used. This run is for correctness and
+fidelity diagnosis, not quiet-machine performance qualification: independent
+headless tests/builds were active on the host. The unchanged release thresholds
+are not met: same-byte mean tile SSIM is **0.882736** for rank 1 and **0.151763**
+for rank 2. Source-bound height ratios are **1.000000** and **1.016792**. Compared
+with the prior v4 replay, rank 1's page-height mismatch is eliminated, but pixel
+fidelity is not. The offline report's case `passed` status means its bounded
+execution/evidence checks passed, not release fidelity; overall qualification
+explicitly remains `not-qualified`. It is not a top-500 pass.
+
+All **25 native** and **two full-page Edge tile** PNGs for rank 1 were visually
+inspected. The fresh images expose lost bold/italic styling inside Markdown link
+labels and lost inline-code styling in headings. The link builder flattens those
+formatted labels; this is an implementation defect to fix, not a reason to relax
+pixel gates. Rank 2's **49 native** and **four full-page Edge tile** PNGs were
+also inspected: its sections and three images remain present, but cumulative
+vertical expansion adds approximately **441.56 DIPs** by the end. The exact
+contributing layout rules are still being diagnosed. A bounded pixel
+histogram confirms both renderers use the intended link base color `#0969DA`;
+their different edge colors do not establish a link-theme-color defect.
+
+The same approved initial pass completed ranks **3–10** with the
+same clean app/runner in Sandbox, using validated, pinned same-byte inputs.
+The first staging attempt rejected a missing rank-5 capture before any app
+launch; the validated input set includes that rank's separately captured
+matching corpus. Evidence belongs to
+`goal-release-20261011/offline-fresh-clean-2611d43f-ranks003-010-20261012-validated-input/`.
+No fix-and-rerun cycle has been consumed by this initial-pass extension.
+The final report fails: rank 3 loses the source-admission/generation match;
+rank 7's captured document positions fail the monotonic-coverage check; rank 9
+fails the source replay's terminal-profile check (native **66,780 DIPs** versus
+Edge **57,412 DIPs**, ratio **1.163171**). These are not timeout waivers or passes.
+Rank 4's nominal case pass is **invalidated by visual review**: its first
+native screenshot shows an unavailable freeCodeCamp banner despite the event
+counter reporting zero. Both resolutions admitted the pinned 148,596-byte WebP
+successfully; decode/upload and missing error notification are being tested.
+The error counter alone is therefore insufficient evidence for the other cases.
+All six native rank-4 PNGs and its Edge source tile were inspected, as were all
+10 rank-5 and 13 rank-6 native PNGs and their two Edge source tiles. Rank 6's
+large contributor grid is present without a visible unavailable placeholder.
+Rank 5/6 mean SSIM remains **0.563118 / 0.374979**, not a fidelity pass.
+Rank 8/10 report mean SSIM **0.532150 / 0.183579**. Their complete visual review
+now covers all **9/65 native** and **1/5 Edge** PNGs, respectively: no missing
+blocks or unavailable placeholders were found, including the rank-8 avatar grid
+and rank-10 lists through Resources/Contributing. Their spacing and pixel
+differences remain failures of the unchanged fidelity gate. The batch is
+diagnostic, not quiet-machine performance qualification.
+
+The missing-error-notification fix now passes **5/5** focused tests, including
+post-resolution decoder errors in both eager and progressive paths, cached
+failures, preserving policy-specific reasons, and disposal. The corrupt fixture
+uses an invalid PNG bit depth that the resource-budget check admits and the
+authoritative decoder rejects; WIC recovered the earlier IDAT-byte corruption,
+so that was not a valid error fixture. Receipt:
+`goal-release-20261011/image-failure-notifications-20261012/`.
+This fix and the bounded failed-capture/source-admission diagnostics are in
+reviewed local commit `095c50a2`; it has not been pushed or substituted for
+the older clean app in the evidence above.
+An exact-source headless check independently confirms that the rank-4 WebP
+decodes on this host through both shipping WIC and direct Win2D routes. This
+does not fix the already-recorded Sandbox codec failure below; portable decode
+support remains required. No host codec was installed/copied into the guest.
+
+The failed native-position-profile path now retains bounded raw positions before
+rethrowing the original gate failure. The optional source-admission trace also
+records rebuild caller/reason/generation and can be forwarded explicitly into
+the Sandbox replay; ordinary runs leave it disabled. The focused forwarding,
+source-ordering, and coverage contracts pass **10/10**. The final full JitHub
+test receipt is **3,606/3,606, zero skipped**, including the additional
+trace-forwarding test. Evidence:
+`goal-release-20261011/audit-contracts-20261012/final-full/jithub-full.trx`.
+These diagnostic changes do not waive missing generations or invalid viewport
+coverage and have not yet been exercised in a fresh clean app/runner replay.
+
+The rank-9 source contains **463 task checkboxes**. Source inspection found that
+the GFM task-item renderer retains direct paragraph margins in tight lists,
+unlike the ordinary-list path. A focused fix preserves horizontal styling and
+the real WinUI checkbox while removing those incorrect vertical paragraph
+margins only for tight items. Tight/loose, mixed-list, nested, font-size, and RTL
+regressions now pass in the combined **122/122, zero skipped** focused suite.
+Nested lists inside task items also reuse the owning block builder, restoring
+their real list markers, numbering, depth, and spacing instead of constructing
+generic containers. The construction-only callback is restored on every exit;
+eager/lazy cancellation and injected failure tests prove already-attached image
+leases are retired. The same focused receipt verifies immutable nested link
+formatting without splitting a link's semantic node or keyboard stop, plus
+actual DirectWrite font ranges, heading code, and private placement clones.
+Evidence: `goal-release-20261011/focused-inline-nested-list-final2-20261011/`.
+The final full integration receipt is **2,832/2,832, zero skipped**, including
+**39/39** `PublicApi|ApiBaseline` checks:
+`goal-release-20261011/full-github-after-link-list-20261011/`
+`github-full-after-link-list-20261011.trx`.
+No full-page improvement is claimed yet.
+
+The missing Sandbox WebP codec is not solved by the host's successful decode.
+An artifact-only bounded static VP8L prototype passes **8/8** focused budget and
+boundary tests and **34** library tests (**one pre-existing ignored**). It
+reproduces the rank-4 banner pixels byte-for-byte, charges **3,168,400 bytes**
+for its decoder allocations, and rejects a budget one byte below the required
+charge. Animated/EXIF/ICC inputs are rejected before the unsupported subchunk
+work, including an unflagged ICCP chunk; legal 16,384-pixel dimensions do not
+wrap to zero in the bounded path. These are allocation-accounting checks, not
+process-RSS, isolation, browser-fidelity, or performance qualification. The
+prototype has **not** been integrated into shipping code or worker binaries;
+protocol, explicit provider API, licensing, package-size, and worker-fault
+verification remain required. Evidence: `artifacts/native-codec-20261011/`
+`image-webp-bounded-prototype/bounded-vp8l-review-followup-*.log`.
+
+Visual inspection now also covers all **140 native rank-7** and **122 native
+rank-9** captures. No unavailable/error placeholders or obviously missing image
+blocks were found. Rank 7 visibly repeats approximately ten viewports of its
+Communication/RPC/REST content (tiles 112–121 repeat material near 102–111),
+then resumes Security. This corroborates the failed coverage check; it does
+not establish whether the capture path or application scrolling caused the
+backtrack. Rank 9 has generous gaps in its nested lists. It has no completed
+matching source-replay Edge capture, so native inspection alone cannot qualify
+fidelity or explain the full 16.3% height difference.
+
+The next runner adds a bounded failure-only trace of raw UIA scroll percentage
+and view size before/after warm paint and before/after the saved paint, alongside
+both renderer document-top values. Nonfinite values serialize as null; normal
+reports omit the trace. It does not normalize offsets, retry traversal, or alter
+the coverage gate. The focused contracts pass **3/3**, and the Release/x64
+automation runner builds with zero warnings/errors. Receipt:
+`artifacts/goal-release-20261011/native-viewport-capture-trace-tests/`
+`native-viewport-capture-trace.trx` (relative to the repository root).
+
+The bounded x86 loader coverage probe now builds successfully from a shorter
+artifact path and reproduces the worker's **0xC0000022** startup failure with
+the original worker bytes and security policy. The first debugger breakpoint
+is in native System32 `ntdll`; the three armed WOW64/x86 file/section entry
+points receive no hits. This narrows the diagnostic blind spot but does not
+identify the denied object or fix x86 startup. The diagnostic host exits cleanly
+and leaves no worker process. Evidence: `artifacts/x86dbg2/evidence/` (relative
+to `MarkdownRenderer`). A native64-only bounded loader trace is being prepared;
+no production token, mitigation, ACL, or registry relaxation is authorized by
+this diagnostic. The single reviewed native64 follow-up now captures the
+concrete denied operation: `NtOpenFile` on `\??\C:\WINDOWS` returns
+`0xC0000022`, followed by worker exit with that status. Native System32 `ntdll`
+and AMD64 context were validated before installing bounded debug-register
+instrumentation. The worker SHA-256 is unchanged, queried mitigations match,
+and no host/worker process remains. Evidence:
+`artifacts/x64ndbg2/evidence/native64-loader-diagnostic.log`. This identifies
+the operation/object, not yet the access rule or a safe fix. The wrapper's
+exit code zero represents successful diagnostic capture, not worker startup.
+
+A read-only PE metadata comparison of the retained clean Release/x64 binaries
+at the approved reference and `2611d43f` locates the managed-size regression in
+implementation code, not a generated-WinRT/configuration explosion. WinUI grows
+from **1,071,104 to 1,621,504 bytes**, while Core shrinks from **187,392 to
+178,176 bytes**. The current combined DLL size is **1,799,680 bytes**, not a
+fresh compressed-package measurement. WinUI IL grows by **268,194 bytes** and
+metadata by **281,008 bytes**; Layout and Controls account for approximately
+96% of the net IL growth. The largest type increases are ImageBox (+57,419 IL
+bytes), MarkdownRendererControl (+42,156), InlineContainerBox (+27,303), and
+LayoutSnapshot (+20,908). Generated WinRT helper IL instead shrinks by about
+16 KiB. Older retained package ZIPs/report logs do not match this checkpoint.
+The unchanged **1,258,291-byte** managed gate still fails; source-level
+consolidation would need a measured, lifecycle-safe design, not a compiler
+switch, dropped feature, reflection fallback, or an accounting-only package
+split. No unmeasured broad rewrite was made from this audit.
+The read-only comparison's commands, input hashes, and provenance caveats are
+saved in `goal-release-20261011/managed-footprint-static-comparison-20261012/README.md`.
+
 Work continues directly in this task; the recurring MarkdownRenderer automation
 has been removed and must not be recreated without an explicit user request.
 The full objective and all original release limits remain unchanged.
+
+A saved-byte, offscreen Win2D/WARP diagnostic now compares the proposed bounded
+libwebp output through the actual shipping `DrawImage(bitmap, destination)` call,
+using the exact 256×1024.125-DIP destination in a 256×1025-pixel allocation.
+Against the retained same-byte Edge image it scores mean channel delta
+**1.8459**, SSIM **0.97253**, and alpha IoU **0.999877**. Default and explicit
+Linear composition are byte-identical. This is closer than raw-buffer or
+CPU-projection comparisons, but still fails the unchanged **0.995 SSIM** gate.
+Drawing the existing full-resolution saved pixels instead is worse (default
+SSIM **0.63995**, HighQualityCubic **0.87622**); that experiment is not a proposal
+to restore full-source memory allocations. No browser or decoder was launched,
+and no production provider decision, memory bound, or performance pass follows
+from these pixel-only probes. Receipts and rendered/difference images are under
+`artifacts/native-codec-20261011/probe/win2d-offscreen/run-20261011-02/` and
+`run-full-resolution-20261011-01/` (paths relative to `MarkdownRenderer`).
 
 The user approved the previously proposed September 28 published PR checkpoint
 as the frozen performance reference:
@@ -40,7 +264,7 @@ candidate. Its prototype is not sufficient evidence to delay the full-system
 measurement or to claim a production speedup. Source-bound local results must
 not be presented as the joined GitHub Actions release qualification.
 
-**Latest completed replay (supersedes the earlier readiness failures below):**
+**Prior v4 replay (superseded by the fresh v5 replay above):**
 the clean `be6471a5` Release/x64 NativeAOT app and matching runner traverse all
 **26 viewports** of `codecrafters-io/build-your-own-x` and all **50 viewports**
 of `sindresorhus/awesome`, with zero unavailable images, no render failure, and
@@ -208,6 +432,16 @@ The renderer callback work alone does not establish the cause. No cadence gate
 is changed, and scroll p95 independently remains above 8.33 ms. A future admitted
 diagnostic can correlate WinUI rendering timestamps with DWM refresh/composition
 and present counters; no additional UI observer has been launched.
+A later read-only publication audit confirms the source binding is **R1's
+approved reference**, not the current candidate. The two 100 KiB publication
+maxima occur at samples 29 (uncached) and 45 (cache hit); the report contains no
+phase sidecar that attributes either spike. Current `RebuildRealizationPlans`
+still constructs realization descriptors inside the measured UI publication
+window, but no causal or current-candidate regression claim follows from R1.
+The existing opt-in `FirstViewportStageProfile` can distinguish plan
+construction, overlay reset, embed/highlight realization and finalization;
+it is an attribution diagnostic, never a replacement for the full release run.
+No further production change was made from this insufficient timing evidence.
 
 The Sandbox wrapper regression suites pass after correcting a test-only exit
 capture error. A script-local `$LASTEXITCODE = 0` hid the global automatic value
@@ -587,6 +821,16 @@ the live browser page; each case's bounded request examples report
 `net::ERR_BLOCKED_BY_ORB` without an HTTP status. TensorFlow has nine unavailable
 images but only eight retained examples, so the record does not prove the ninth
 request's cause. These are not inferred 404s or native failures and are not waived.
+The saved 60 successful case inputs now pass a reproducible read-only validation
+of the existing per-case checks, with all **319 staged source files** rehashed.
+The receipt preserves the original failed aggregate reports and the **15
+omissions**; it is explicitly partial, not host-admitted and not release-qualified.
+No browser was launched or corpus copied. Evidence:
+`goal-release-20261011/public-ranks026-100-partial-input-validation-62da88f2/partial-input-validation.json`
+(SHA-256 `cadd77e5aee53c44b6d3a57553b823ab982da22c90c6e6e4d5911338c7b21c9c`).
+The generator beside it adapts only the aggregate-success guard in memory so
+the unchanged per-case body can inspect retained successes from failed shards;
+it does not turn those shards into passes or qualify native rendering.
 Three failures (ranks 50/64/71) expose a snapshot bug: closed `<details>` children
 become visible when their computed inline styles are replayed outside the live
 disclosure state. Reviewed local commit `e06ccb07` removes only those hidden
@@ -809,6 +1053,19 @@ worker status `0xC0000022` under the production restricted token and mitigations
 and leaves no owned descendant. This rules out x86 host marshalling as the sole
 cause; it does not identify the denied object or justify relaxing isolation.
 Evidence: `goal-release-20261011/mixed-arch-x64-host-x86-worker-startup-diagnostic-20261011/`.
+The later artifact-only x64 NativeAOT loader probe uses the current pinned x86
+worker (`5640954c…de2484`) and the exact original x86 restricted-launch mask.
+The single bounded run observes SysWOW64 ntdll and the initial loader breakpoint,
+then the same **0xC0000022** exit; none of its three selected native object-open
+APIs is observed. The denied operation is therefore **still unidentified**, not
+proof that file/section access succeeded. Only the owned worker is debugged;
+no isolation setting, registry, file ACL, or shipping source is changed, and no
+descendant remains. Evidence is
+`goal-release-20261011/x86-loader-debug-probe-20261011/evidence/x86-loader-debug.log`
+(SHA-256 `1e8c6477f404fa0d2bc43b3318a38eb38ba3bae8ee2ef1e0ff7db0823aef7b2a`).
+The artifact's first compile failure and corrected serial NativeAOT publish are
+both preserved; neither this diagnostic nor an expected-failure host exit is
+counted as x86 runtime qualification.
 
 The candidate's isolated clean checkout builds the Release x64 performance
 harness with zero warnings or errors. The full, unchanged R1/C1/C2/R2 physical

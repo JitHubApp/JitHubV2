@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Markdig;
 using MarkdownRenderer.Document;
+using MarkdownRenderer.Gfm;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Parsing;
@@ -16,6 +17,84 @@ namespace MarkdownRenderer.GitHub.Tests;
 
 public sealed class TightListLayoutTests
 {
+    [Theory]
+    [InlineData(16f, FlowDirection.LeftToRight)]
+    [InlineData(24f, FlowDirection.RightToLeft)]
+    public void TightTaskListMatchesOrdinaryParagraphMarginsAndPreservesNativeMarker(
+        float fontSize, FlowDirection direction)
+    {
+        using LayoutSnapshot snapshot = Build(
+            "- [ ] first item\n- [x] completed item\n- ordinary item", fontSize, direction, useGfm: true);
+        StackBox list = Assert.IsType<StackBox>(Assert.Single(snapshot.Blocks));
+        ListItemBox[] items = list.Children.Cast<ListItemBox>().ToArray();
+        Assert.Equal(3, items.Length);
+        AssertClose(fontSize * 0.25, list.InterChildSpacing);
+        foreach (ListItemBox item in items)
+        {
+            InlineContainerBox paragraph = Assert.Single(item.Content.Children.OfType<InlineContainerBox>());
+            Assert.False(paragraph.UseContainerMargin);
+            Assert.Equal(new Thickness(3, 0, 5, 0), paragraph.Margin);
+        }
+        for (int index = 0; index < 2; index++)
+        {
+            InlineEmbedRun marker = Assert.IsType<InlineEmbedRun>(Assert.Single(items[index].Marker.Runs));
+            Assert.Equal(index == 1, marker.AutomationMetadata!.IsChecked);
+            Assert.False(marker.AutomationMetadata.CanToggle);
+            AssertClose(list.InterChildSpacing, items[index + 1].Bounds.Top - items[index].Bounds.Bottom);
+        }
+    }
+
+    [Fact]
+    public void LooseTaskParagraphMarginsRemainWhileNestedTightTasksLoseOnlyVerticalMargins()
+    {
+        const string source = "- [ ] outer first\n\n  - [x] nested first\n  - [ ] nested last\n\n- [x] outer last";
+        using LayoutSnapshot snapshot = Build(source, 16, useGfm: true);
+        StackBox outer = Assert.IsType<StackBox>(Assert.Single(snapshot.Blocks));
+        AssertClose(0, outer.InterChildSpacing);
+        ListItemBox[] outerItems = outer.Children.Cast<ListItemBox>().ToArray();
+        Assert.Equal(2, outerItems.Length);
+        foreach (ListItemBox item in outerItems)
+        {
+            InlineContainerBox paragraph = Assert.Single(item.Content.Children.OfType<InlineContainerBox>());
+            Assert.True(paragraph.UseContainerMargin);
+            Assert.Equal(new Thickness(3, 2, 5, 16), paragraph.Margin);
+        }
+        StackBox nested = Assert.Single(outerItems[0].Content.Children.OfType<StackBox>());
+        AssertClose(4, nested.InterChildSpacing);
+        foreach (ListItemBox item in nested.Children.Cast<ListItemBox>())
+        {
+            InlineContainerBox paragraph = Assert.Single(item.Content.Children.OfType<InlineContainerBox>());
+            Assert.False(paragraph.UseContainerMargin);
+            Assert.Equal(new Thickness(3, 0, 5, 0), paragraph.Margin);
+        }
+    }
+
+    [Theory]
+    [InlineData(FlowDirection.LeftToRight)]
+    [InlineData(FlowDirection.RightToLeft)]
+    public void ListsInsideTasksRetainOrdinaryMarkersOrderedStartsAndNestedIndentation(FlowDirection direction)
+    {
+        const string source = "- [ ] outer\n  - plain child\n  - [x] task child\n\n    7. numbered child\n    8. next child\n- [x] sibling";
+        using LayoutSnapshot snapshot = Build(source, 16, direction,
+            listIndent: 32, nestedListIndent: 8, useGfm: true);
+        ListItemBox[] items = EnumerateListItems(snapshot.Blocks).ToArray();
+        Assert.Equal(6, items.Length);
+        Assert.Equal("•", Assert.Single(items[1].Marker.Runs).Text);
+        Assert.Equal("7.", Assert.Single(items[3].Marker.Runs).Text);
+        Assert.Equal("8.", Assert.Single(items[4].Marker.Runs).Text);
+        Assert.IsType<InlineEmbedRun>(Assert.Single(items[0].Marker.Runs));
+        Assert.IsType<InlineEmbedRun>(Assert.Single(items[2].Marker.Runs));
+        Assert.IsType<InlineEmbedRun>(Assert.Single(items[5].Marker.Runs));
+        Assert.Equal([32f, 40f, 40f, 48f, 48f, 32f], items.Select(static item => item.MarkerWidth));
+        foreach (ListItemBox item in items)
+        {
+            if (direction == FlowDirection.RightToLeft)
+                AssertClose(item.Content.Bounds.Right, item.Marker.Bounds.Left);
+            else
+                AssertClose(item.Marker.Bounds.Right, item.Content.Bounds.Left);
+        }
+    }
+
     [Theory]
     [InlineData(16f, 4f)]
     [InlineData(24f, 6f)]
@@ -185,9 +264,12 @@ public sealed class TightListLayoutTests
         float bodyFontSize,
         FlowDirection flowDirection = FlowDirection.LeftToRight,
         float listIndent = 22,
-        float nestedListIndent = 0)
+        float nestedListIndent = 0,
+        bool useGfm = false)
     {
         var registry = new MarkdownExtensionRegistry();
+        if (useGfm)
+            registry.ConfigureGfmRegistry();
         Markdig.Syntax.MarkdownDocument parsed = Markdown.Parse(source, registry.BuildPipeline());
         MarkdownDocument document = MarkdownDocument.FromParsed(source, parsed);
         var body = new ElementStyle

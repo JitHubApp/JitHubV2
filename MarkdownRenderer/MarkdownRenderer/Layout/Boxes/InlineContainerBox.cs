@@ -148,6 +148,10 @@ internal sealed partial class InlineContainerBox : BlockBox
     // Offscreen lazy boxes have not resolved any run style yet. Preserve the
     // ordinal cache contract without allocating a List and null slots for them.
     private List<ElementStyle?>? _resolvedRunStyles;
+    // Nested link styles are resolved once per measured box. Plain links never
+    // allocate this cache, and immutable maps remain safely shareable by private
+    // placement clones while each clone resolves against its own context.
+    private List<ElementStyle[]?>? _resolvedLinkInlineSpanStyles;
     private int ResolvedRunStyleCount => _resolvedRunStyles?.Count ?? _runs.Count;
     private ElementStyle? GetCachedRunStyle(int index)
     {
@@ -541,6 +545,7 @@ internal sealed partial class InlineContainerBox : BlockBox
         entries = 0;
         if (_runs.Count > MaximumPrivateRasterPlacementRuns ||
             !HasWellFormedEffectiveRunAliases ||
+            !HasWellFormedResolvedLinkInlineStyleCache ||
             !TryAccumulateStyleKeyCopyEntries(ref entries, _styleContextKeys) ||
             !TryAccumulateStyleKeyCopyEntries(ref entries, _styleAliasKeys))
             return false;
@@ -553,6 +558,9 @@ internal sealed partial class InlineContainerBox : BlockBox
                 !TryAccumulateStyleKeyCopyEntries(ref entries, run.StyleAliases) ||
                 !TryAccumulateStyleKeyCopyEntries(ref entries, run.StyleModifierKeys) ||
                 !TryAccumulateStyleKeyCopyEntries(ref entries, run.ScriptStyleAncestryKeys) ||
+                run is LinkRun linkRun && linkRun.InlineStyleMap is { } inlineStyleMap &&
+                    (!inlineStyleMap.IsValidForTextLength(run.TextLength) ||
+                     !TryAccumulateStyleKeyCopyEntryCount(ref entries, inlineStyleMap.StyleKeyEntryCount)) ||
                 aliasOverride is not null &&
                     !TryAccumulateStyleKeyCopyEntries(ref entries, aliasOverride))
                 return false;
@@ -569,6 +577,13 @@ internal sealed partial class InlineContainerBox : BlockBox
             return false;
 
         int count = keys.Count;
+        if (count < 0)
+            return false;
+        return TryAccumulateStyleKeyCopyEntryCount(ref total, count);
+    }
+
+    private static bool TryAccumulateStyleKeyCopyEntryCount(ref long total, long count)
+    {
         if (count < 0)
             return false;
         total = total > long.MaxValue - count ? long.MaxValue : total + count;
@@ -784,7 +799,8 @@ internal sealed partial class InlineContainerBox : BlockBox
         if (_runs.Count > MaximumPrivateRasterPlacementRuns ||
             _runTextLength > MaximumPrivateRasterPlacementTextLength ||
             _inlineImageRuns is { Count: > MaximumPrivateRasterPlacementImages } ||
-            !HasWellFormedEffectiveRunAliases || ResolvedRunStyleCount != _runs.Count ||
+            !HasWellFormedEffectiveRunAliases || !HasWellFormedResolvedLinkInlineStyleCache ||
+            ResolvedRunStyleCount != _runs.Count ||
             (_inlineImageRuns?.Count ?? 0) > _runs.Count ||
             !CanCopyPrivateCodeForegroundSpans(allowCodeForegroundSpans) ||
             !TryAccumulateStyleKeyCopyEntries(ref styleKeyCopyEntries, _styleContextKeys) ||
@@ -824,13 +840,18 @@ internal sealed partial class InlineContainerBox : BlockBox
             if (!TryAccumulateStyleKeyCopyEntries(ref styleKeyCopyEntries, run.StyleAliases) ||
                 !TryAccumulateStyleKeyCopyEntries(ref styleKeyCopyEntries, run.StyleModifierKeys) ||
                 !TryAccumulateStyleKeyCopyEntries(ref styleKeyCopyEntries, run.ScriptStyleAncestryKeys) ||
+                run is LinkRun linkRun && linkRun.InlineStyleMap is { } inlineStyleMap &&
+                    (!inlineStyleMap.IsValidForTextLength(run.TextLength) ||
+                     !TryAccumulateStyleKeyCopyEntryCount(
+                         ref styleKeyCopyEntries,
+                         inlineStyleMap.StyleKeyEntryCount)) ||
                 aliasOverride is not null &&
                     !TryAccumulateStyleKeyCopyEntries(ref styleKeyCopyEntries, aliasOverride))
                 return false;
 
             if (PrivateTextRunPlacement.IsSupported(run) || run is LinkRun)
             {
-                if (run is LinkRun linkRun && (linkRun.IsDisclosure || linkRun.IsExpanded))
+                if (run is LinkRun disclosureLink && (disclosureLink.IsDisclosure || disclosureLink.IsExpanded))
                     return false;
             }
             else if (run is InlineImageRun imageRun)
@@ -1097,6 +1118,7 @@ internal sealed partial class InlineContainerBox : BlockBox
             run.InlineIndex,
             run.StyleAliases.Count == 0 ? null : CombineAliases(_styleAliasKeys, run.StyleAliases));
         _resolvedRunStyles?.Add(null);
+        _resolvedLinkInlineSpanStyles?.Add(null);
         if (run is SourceSliceTextRun sourceSlice &&
             ReferenceEquals(sourceSlice.SourceText, Context.SourceMap.SourceText) &&
             sourceSlice.SourceStart == run.SourceSpan.Start &&
@@ -1193,6 +1215,7 @@ internal sealed partial class InlineContainerBox : BlockBox
         _hasDeferredSceneMarker = false;
         _effectiveRunAliasOverrides = null;
         _resolvedRunStyles = null;
+        _resolvedLinkInlineSpanStyles = null;
 
         for (int index = 0; index < _runs.Count; index++)
         {
@@ -1833,9 +1856,7 @@ internal sealed partial class InlineContainerBox : BlockBox
         // typography. Its own role supplies only the nested decoration/color;
         // resolving Link as the base style would silently turn linked heading
         // text back into body-sized text.
-        string headingKey = !string.IsNullOrEmpty(run.SemanticHeadingKey)
-            ? run.SemanticHeadingKey
-            : IsHeadingElement(ElementKey) ? ElementKey : string.Empty;
+        string headingKey = GetHeadingStyleKey(run);
         bool inheritsHeading = headingKey.Length > 0;
         var key = inheritsHeading
             ? headingKey
@@ -1856,7 +1877,11 @@ internal sealed partial class InlineContainerBox : BlockBox
                 GetEffectiveRunAliases(run.InlineIndex),
                 CodeLanguage,
                 StyleState);
-            resolved = ApplyNestedStyleModifier(resolved, ownStyle, run.ElementKey);
+            resolved = ApplyNestedStyleModifier(
+                resolved,
+                ownStyle,
+                run.ElementKey,
+                preserveCodeFontSize: inheritsHeading && run.ElementKey == MarkdownElementKeys.CodeInline);
         }
         else if (!inheritsHeading && string.IsNullOrEmpty(run.ElementKey) &&
                  run.StyleModifierKeys.Count > 0)
@@ -1903,6 +1928,93 @@ internal sealed partial class InlineContainerBox : BlockBox
         }
         _resolvedRunStyles[run.InlineIndex] = resolved;
         return resolved;
+    }
+
+    private ElementStyle[] GetLinkInlineSpanStyles(LinkRun link)
+    {
+        LinkInlineStyleMap map = link.InlineStyleMap
+            ?? throw new ArgumentException("The link has no nested inline style map.", nameof(link));
+
+        List<ElementStyle[]?>? cache = _resolvedLinkInlineSpanStyles;
+        if (cache is null)
+        {
+            cache = new List<ElementStyle[]?>(_runs.Count);
+            for (int index = 0; index < _runs.Count; index++)
+                cache.Add(null);
+            _resolvedLinkInlineSpanStyles = cache;
+        }
+        if ((uint)link.InlineIndex >= (uint)cache.Count ||
+            !ReferenceEquals(_runs[link.InlineIndex], link))
+        {
+            throw new InvalidOperationException("A styled link's inline ordinal is inconsistent.");
+        }
+
+        if (cache[link.InlineIndex] is { } resolved)
+            return resolved;
+
+        // The map and link text are immutable after publication. Validate on
+        // first resolution, then let paint/hover/selection reuse the cached
+        // styles without walking every span and nested path on each draw.
+        if (!map.IsValidForTextLength(link.TextLength))
+            throw new InvalidOperationException("A link's nested inline style map is malformed.");
+
+        var spanStyles = new ElementStyle[map.Count];
+        ElementStyle linkStyle = GetRunStyle(link);
+        bool preserveHeadingCodeFontSize = GetHeadingStyleKey(link).Length > 0;
+        var pathScratch = new List<LinkInlineStylePath>();
+        for (int index = 0; index < spanStyles.Length; index++)
+        {
+            spanStyles[index] = ResolveLinkInlineStylePath(
+                linkStyle,
+                map.GetSpan(index).Path,
+                preserveHeadingCodeFontSize,
+                pathScratch);
+        }
+        cache[link.InlineIndex] = spanStyles;
+        return spanStyles;
+    }
+
+    private ElementStyle ResolveLinkInlineStylePath(
+        ElementStyle basis,
+        LinkInlineStylePath path,
+        bool preserveHeadingCodeFontSize,
+        List<LinkInlineStylePath> pathScratch)
+    {
+        // Paths are immutable parent-linked chains built from nested inline
+        // containers. Resolve them iteratively so adversarially deep Markdown
+        // nesting cannot add another recursive layout-time walk. The scratch
+        // list is reused for each span in this map and is discarded after the
+        // one-time style-cache fill.
+        pathScratch.Clear();
+        for (LinkInlineStylePath? current = path; current is not null; current = current.Parent)
+            pathScratch.Add(current);
+
+        for (int index = pathScratch.Count - 1; index >= 0; index--)
+        {
+            LinkInlineStylePath current = pathScratch[index];
+            ElementStyle modifier = Context.ThemeSnapshot.GetStyle(
+                current.StyleKey,
+                _styleContextKeys,
+                current.StyleAliases,
+                CodeLanguage,
+                StyleState);
+            ElementStyle containingStyle = basis;
+            ElementStyle resolved = ApplyNestedStyleModifier(
+                basis,
+                modifier,
+                current.StyleKey,
+                preserveCodeFontSize: preserveHeadingCodeFontSize &&
+                    current.StyleKey == MarkdownElementKeys.CodeInline);
+            if (IsScriptStyleKey(current.StyleKey))
+            {
+                float fontSize = modifier.RelativeFontSizeScale is float scale
+                    ? Math.Max(ThemeSnapshot.MinimumRelativeScriptFontSize, containingStyle.FontSize * scale)
+                    : modifier.FontSize;
+                resolved = ThemeSnapshot.WithFontSize(resolved, fontSize);
+            }
+            basis = resolved;
+        }
+        return basis;
     }
 
     private bool TryResolveRelativeScriptFontSize(
@@ -1991,10 +2103,16 @@ internal sealed partial class InlineContainerBox : BlockBox
     private static bool IsScriptStyleKey(string key)
         => key is MarkdownElementKeys.Subscript or MarkdownElementKeys.Superscript;
 
+    private string GetHeadingStyleKey(InlineRun run)
+        => !string.IsNullOrEmpty(run.SemanticHeadingKey)
+            ? run.SemanticHeadingKey
+            : IsHeadingElement(ElementKey) ? ElementKey : string.Empty;
+
     private static ElementStyle ApplyNestedStyleModifier(
         ElementStyle basis,
         ElementStyle modifier,
-        string modifierKey)
+        string modifierKey,
+        bool preserveCodeFontSize = false)
     {
         Windows.UI.Text.FontWeight fontWeight = basis.FontWeight;
         Windows.UI.Text.FontStyle fontStyle = basis.FontStyle;
@@ -2047,6 +2165,40 @@ internal sealed partial class InlineContainerBox : BlockBox
                 background = modifier.Background;
                 cornerRadius = modifier.CornerRadius;
                 break;
+            case MarkdownElementKeys.CodeInline:
+                // Inline code contributes its configured typeface, nominal
+                // size, and chip treatment while retaining surrounding text
+                // weight/style/color (notably bold links and link hover color).
+                // In a heading keep the historical containing size; the code
+                // role currently has no relative-size declaration for headings.
+                return new ElementStyle
+                {
+                    FontFamily = modifier.FontFamily,
+                    FontSize = preserveCodeFontSize ? basis.FontSize : modifier.FontSize,
+                    FontWeight = basis.FontWeight,
+                    FontStyle = basis.FontStyle,
+                    Foreground = basis.Foreground,
+                    HoverForeground = basis.HoverForeground,
+                    FocusForeground = basis.FocusForeground,
+                    Background = modifier.Background ?? basis.Background,
+                    AccentBar = basis.AccentBar,
+                    BorderBrush = basis.BorderBrush,
+                    BorderThickness = basis.BorderThickness,
+                    CornerRadius = modifier.Background is null
+                        ? basis.CornerRadius
+                        : modifier.CornerRadius,
+                    ListIndent = basis.ListIndent,
+                    NestedListIndent = basis.NestedListIndent,
+                    Underline = basis.Underline || modifier.Underline,
+                    Strikethrough = basis.Strikethrough || modifier.Strikethrough,
+                    Margin = basis.Margin,
+                    Padding = basis.Padding,
+                    LineHeightMultiplier = basis.LineHeightMultiplier,
+                };
+            case MarkdownElementKeys.Abbreviation:
+                underline |= modifier.Underline;
+                strikethrough |= modifier.Strikethrough;
+                break;
         }
 
         return new ElementStyle
@@ -2081,6 +2233,29 @@ internal sealed partial class InlineContainerBox : BlockBox
 
     private bool HasWellFormedEffectiveRunAliases =>
         _effectiveRunAliasOverrides is null || _effectiveRunAliasOverrides.Count == _runs.Count;
+
+    private bool HasWellFormedResolvedLinkInlineStyleCache
+    {
+        get
+        {
+            List<ElementStyle[]?>? cache = _resolvedLinkInlineSpanStyles;
+            if (cache is null)
+                return true;
+            if (cache.Count != _runs.Count)
+                return false;
+
+            for (int index = 0; index < cache.Count; index++)
+            {
+                if (cache[index] is not { } styles)
+                    continue;
+                if (_runs[index] is not LinkRun link ||
+                    link.InlineStyleMap is not { } map ||
+                    !map.IsValidForTextLength(link.TextLength) || styles.Length != map.Count)
+                    return false;
+            }
+            return true;
+        }
+    }
 
     private string[] GetEffectiveRunAliases(int index)
     {
@@ -2711,6 +2886,19 @@ internal sealed partial class InlineContainerBox : BlockBox
                 layer.Close();
             }
 
+            DrawLinkInlineSpanDecorations(
+                ds,
+                sx,
+                sy,
+                link,
+                cumulative,
+                runStyle,
+                color,
+                selectedStart: null,
+                selectedEnd: null,
+                viewport: viewport,
+                lineMetrics: lineMetrics);
+
             return;
         }
     }
@@ -3299,24 +3487,72 @@ internal sealed partial class InlineContainerBox : BlockBox
                 cumulative += len;
                 continue;
             }
+            ElementStyle? appliedRunStyle = null;
             if (ShouldApplyRunTextStyle(run))
             {
-                var rs = GetRunStyle(run);
-                string runFontFamily = SharedCanvasTextFormatCache.NormalizeFontFamilyForCanvas(rs.FontFamily);
-                if (!string.Equals(runFontFamily, containerFontFamily, StringComparison.Ordinal))
-                    layout.SetFontFamily(cumulative, len, runFontFamily);
-                if (rs.FontWeight.Weight != containerStyle.FontWeight.Weight)
-                    layout.SetFontWeight(cumulative, len, rs.FontWeight);
-                if (rs.FontStyle != containerStyle.FontStyle)
-                    layout.SetFontStyle(cumulative, len, rs.FontStyle);
-                if (rs.FontSize != containerStyle.FontSize)
-                    layout.SetFontSize(cumulative, len, rs.FontSize);
-                if (applyColors && rs.Foreground != containerStyle.Foreground)
-                    layout.SetColor(cumulative, len, rs.Foreground);
+                ElementStyle runStyle = GetRunStyle(run);
+                appliedRunStyle = runStyle;
+                ApplyTextStyle(
+                    layout,
+                    cumulative,
+                    len,
+                    runStyle,
+                    containerStyle,
+                    containerFontFamily,
+                    applyColors);
             }
             ApplyBaselineStyle(layout, cumulative, len, run);
+
+            if (run is LinkRun { InlineStyleMap: { } inlineStyleMap } styledLink)
+            {
+                // The full link run has already been styled above. Compare
+                // each nested range with that actual base, not the paragraph
+                // style, so a nested value equal to the paragraph but
+                // different from the link still replaces the link formatting.
+                ElementStyle linkStyle = appliedRunStyle ?? GetRunStyle(styledLink);
+                string linkFontFamily = SharedCanvasTextFormatCache.NormalizeFontFamilyForCanvas(
+                    linkStyle.FontFamily);
+                ElementStyle[] spanStyles = GetLinkInlineSpanStyles(styledLink);
+                for (int spanIndex = 0; spanIndex < inlineStyleMap.Count; spanIndex++)
+                {
+                    LinkInlineStyleSpan span = inlineStyleMap.GetSpan(spanIndex);
+                    int spanStart = cumulative + span.Start;
+                    ApplyTextStyle(
+                        layout,
+                        spanStart,
+                        span.Length,
+                        spanStyles[spanIndex],
+                        linkStyle,
+                        linkFontFamily,
+                        applyColors);
+                    ApplyLinkInlineBaselineStyle(layout, spanStart, span.Length, span.Path);
+                }
+            }
+
             cumulative += len;
         }
+    }
+
+    private static void ApplyTextStyle(
+        CanvasTextLayout layout,
+        int start,
+        int length,
+        ElementStyle style,
+        ElementStyle containerStyle,
+        string containerFontFamily,
+        bool applyColors)
+    {
+        string fontFamily = SharedCanvasTextFormatCache.NormalizeFontFamilyForCanvas(style.FontFamily);
+        if (!string.Equals(fontFamily, containerFontFamily, StringComparison.Ordinal))
+            layout.SetFontFamily(start, length, fontFamily);
+        if (style.FontWeight.Weight != containerStyle.FontWeight.Weight)
+            layout.SetFontWeight(start, length, style.FontWeight);
+        if (style.FontStyle != containerStyle.FontStyle)
+            layout.SetFontStyle(start, length, style.FontStyle);
+        if (style.FontSize != containerStyle.FontSize)
+            layout.SetFontSize(start, length, style.FontSize);
+        if (applyColors && style.Foreground != containerStyle.Foreground)
+            layout.SetColor(start, length, style.Foreground);
     }
 
     private void ApplyForegroundSpans(CanvasTextLayout layout)
@@ -3367,12 +3603,49 @@ internal sealed partial class InlineContainerBox : BlockBox
         if (feature is null)
             return;
 
+        ApplyBaselineTypographyFeature(layout, start, length, feature.Value);
+    }
+
+    private static void ApplyLinkInlineBaselineStyle(
+        CanvasTextLayout layout,
+        int start,
+        int length,
+        LinkInlineStylePath path)
+    {
+        string? scriptRole = GetInnermostScriptStyleKey(path);
+        CanvasTypographyFeatureName? feature = scriptRole switch
+        {
+            MarkdownElementKeys.Subscript => CanvasTypographyFeatureName.Subscript,
+            MarkdownElementKeys.Superscript => CanvasTypographyFeatureName.Superscript,
+            _ => null,
+        };
+        if (feature is { } value)
+            ApplyBaselineTypographyFeature(layout, start, length, value);
+    }
+
+    private static string? GetInnermostScriptStyleKey(LinkInlineStylePath path)
+    {
+        for (LinkInlineStylePath? current = path; current is not null; current = current.Parent)
+            if (IsScriptStyleKey(current.StyleKey))
+                return current.StyleKey;
+        return null;
+    }
+
+    private static void ApplyBaselineTypographyFeature(
+        CanvasTextLayout layout,
+        int start,
+        int length,
+        CanvasTypographyFeatureName feature)
+    {
+        if (length <= 0)
+            return;
+
         try
         {
-            var typography = new CanvasTypography();
+            using var typography = new CanvasTypography();
             typography.AddFeature(new CanvasTypographyFeature
             {
-                Name = feature.Value,
+                Name = feature,
                 Parameter = 1,
             });
             layout.SetTypography(start, length, typography);
@@ -4101,6 +4374,26 @@ internal sealed partial class InlineContainerBox : BlockBox
                     DrawRunDecorations(ds, baseX, baseY, lineMetrics, r, run, rs, decoratnonColor);
                 }
             }
+            if (run is LinkRun { InlineStyleMap: not null } styledLink)
+            {
+                if (!lineMetricsAttempted)
+                {
+                    lineMetrics = TryGetLineMetrics();
+                    lineMetricsAttempted = true;
+                }
+                DrawLinkInlineSpanDecorations(
+                    ds,
+                    baseX,
+                    baseY,
+                    styledLink,
+                    cumulative,
+                    rs,
+                    decoratnonColor,
+                    selectedStart: null,
+                    viewport: null,
+                    selectedEnd: null,
+                    lineMetrics: lineMetrics);
+            }
             cumulative += len;
         }
     }
@@ -4132,23 +4425,44 @@ internal sealed partial class InlineContainerBox : BlockBox
                 continue;
 
             var rs = GetRunStyle(run);
-            if (!rs.Underline && !rs.Strikethrough)
-                continue;
-
-            if (!lineMetricsAttempted)
+            if ((rs.Underline || rs.Strikethrough) && !lineMetricsAttempted)
             {
                 lineMetrics = TryGetLineMetrics();
                 lineMetricsAttempted = true;
             }
 
-            int segmentStart = Math.Max(runStart, selectedStart);
-            int segmentLength = Math.Min(runEnd, selectedEnd) - segmentStart;
-            var regions = _layout.GetCharacterRegions(segmentStart, segmentLength);
-            if (regions is null)
-                continue;
+            if (rs.Underline || rs.Strikethrough)
+            {
+                int segmentStart = Math.Max(runStart, selectedStart);
+                int segmentLength = Math.Min(runEnd, selectedEnd) - segmentStart;
+                var regions = _layout.GetCharacterRegions(segmentStart, segmentLength);
+                if (regions is not null)
+                {
+                    foreach (var r in regions)
+                        DrawRunDecorations(ds, baseX, baseY, lineMetrics, r, run, rs, color);
+                }
+            }
 
-            foreach (var r in regions)
-                DrawRunDecorations(ds, baseX, baseY, lineMetrics, r, run, rs, color);
+            if (run is LinkRun { InlineStyleMap: not null } styledLink)
+            {
+                if (!lineMetricsAttempted)
+                {
+                    lineMetrics = TryGetLineMetrics();
+                    lineMetricsAttempted = true;
+                }
+                DrawLinkInlineSpanDecorations(
+                    ds,
+                    baseX,
+                    baseY,
+                    styledLink,
+                    runStart,
+                    rs,
+                    color,
+                    selectedStart,
+                    Math.Min(runEnd, selectedEnd),
+                    viewport: null,
+                    lineMetrics: lineMetrics);
+            }
         }
     }
 
@@ -4161,8 +4475,31 @@ internal sealed partial class InlineContainerBox : BlockBox
         InlineRun run,
         ElementStyle style,
         Color color)
+        => DrawRunDecorations(
+            ds,
+            baseX,
+            baseY,
+            lineMetrics,
+            region,
+            run,
+            style,
+            color,
+            style.Underline,
+            style.Strikethrough);
+
+    private static void DrawRunDecorations(
+        CanvasDrawingSession ds,
+        float baseX,
+        float baseY,
+        CanvasLineMetrics[]? lineMetrics,
+        CanvasTextLayoutRegion region,
+        InlineRun run,
+        ElementStyle style,
+        Color color,
+        bool underline,
+        bool strikethrough)
     {
-        if (!style.Underline && !style.Strikethrough)
+        if (!underline && !strikethrough)
             return;
         if (run is LinkRun { IsSuperscript: true })
             return;
@@ -4174,7 +4511,7 @@ internal sealed partial class InlineContainerBox : BlockBox
         float strnkeY = (float)(baseY + lb.Y + (baselineFromTop - xHeight * 0.5f));
         float underlineY = (float)(baseY + lb.Y + baselineFromTop + 1.5f);
 
-        if (style.Underline)
+        if (underline)
         {
             if (run is AbbreviationRun)
                 DrawDottedUnderline(ds, (float)(baseX + lb.X), (float)(baseX + lb.X + lb.Width), underlineY, style.AccentBar ?? color);
@@ -4183,7 +4520,7 @@ internal sealed partial class InlineContainerBox : BlockBox
                     underlineY, color, 1.0f);
         }
 
-        if (style.Strikethrough)
+        if (strikethrough)
         {
             ds.DrawLine((float)(baseX + lb.X), strnkeY, (float)(baseX + lb.X + lb.Width),
                 strnkeY, color, 1.0f);
@@ -4215,24 +4552,126 @@ internal sealed partial class InlineContainerBox : BlockBox
             var rs = GetRunStyle(run);
             bool hasRunSpecificStyle = HasRunSpecificStyle(run);
             bool drawRunBg = hasRunSpecificStyle && rs.Background is { };
-            if (!drawRunBg) { cumulative += len; continue; }
-
-            var regions = _layout.GetCharacterRegions(cumulative, len);
-            if (regions is null) { cumulative += len; continue; }
-
-            foreach (var r in regions)
+            if (drawRunBg)
             {
-                var lb = r.LayoutBounds;
-                double bgTop = lb.Y + lb.Height * 0.05;
-                double bgH = lb.Height * 0.90;
-                ds.FillRoundedRectangle(
-                    new Rect(baseX + lb.X - 2, baseY + bgTop, lb.Width + 4, bgH),
-                    rs.CornerRadius,
-                    rs.CornerRadius,
-                    rs.Background!.Value);
+                DrawInlineStyleBackground(ds, baseX, baseY, cumulative, len, rs);
+            }
+
+            if (run is LinkRun { InlineStyleMap: not null } styledLink)
+            {
+                LinkInlineStyleMap map = styledLink.InlineStyleMap!;
+                ElementStyle[] spanStyles = GetLinkInlineSpanStyles(styledLink);
+                for (int index = 0; index < map.Count; index++)
+                {
+                    ElementStyle spanStyle = spanStyles[index];
+                    if (spanStyle.Background is not { } background || background == rs.Background)
+                        continue;
+                    LinkInlineStyleSpan span = map.GetSpan(index);
+                    DrawInlineStyleBackground(
+                        ds,
+                        baseX,
+                        baseY,
+                        cumulative + span.Start,
+                        span.Length,
+                        spanStyle);
+                }
             }
 
             cumulative += len;
+        }
+    }
+
+    private void DrawInlineStyleBackground(
+        CanvasDrawingSession ds,
+        float baseX,
+        float baseY,
+        int start,
+        int length,
+        ElementStyle style)
+    {
+        if (_layout is null || style.Background is not { } background)
+            return;
+
+        var regions = _layout.GetCharacterRegions(start, length);
+        if (regions is null)
+            return;
+
+        foreach (var region in regions)
+        {
+            var bounds = region.LayoutBounds;
+            double backgroundTop = bounds.Y + bounds.Height * 0.05;
+            double backgroundHeight = bounds.Height * 0.90;
+            ds.FillRoundedRectangle(
+                new Rect(baseX + bounds.X - 2, baseY + backgroundTop, bounds.Width + 4, backgroundHeight),
+                style.CornerRadius,
+                style.CornerRadius,
+                background);
+        }
+    }
+
+    private void DrawLinkInlineSpanDecorations(
+        CanvasDrawingSession ds,
+        float baseX,
+        float baseY,
+        LinkRun link,
+        int runStart,
+        ElementStyle linkStyle,
+        Color color,
+        int? selectedStart,
+        int? selectedEnd,
+        Rect? viewport,
+        CanvasLineMetrics[]? lineMetrics = null)
+    {
+        if (_layout is null || link.InlineStyleMap is not { } map || link.IsSuperscript)
+            return;
+
+        ElementStyle[] spanStyles = GetLinkInlineSpanStyles(link);
+        for (int index = 0; index < map.Count; index++)
+        {
+            LinkInlineStyleSpan span = map.GetSpan(index);
+            int spanStart = runStart + span.Start;
+            int spanLength = span.Length;
+            bool underline = spanStyles[index].Underline && !linkStyle.Underline;
+            bool strikethrough = spanStyles[index].Strikethrough && !linkStyle.Strikethrough;
+            if ((!underline && !strikethrough) || spanLength <= 0)
+                continue;
+
+            if (selectedStart is int selectionStart && selectedEnd is int selectionEnd)
+            {
+                int clippedStart = Math.Max(spanStart, selectionStart);
+                int clippedEnd = Math.Min(spanStart + spanLength, selectionEnd);
+                spanStart = clippedStart;
+                spanLength = clippedEnd - clippedStart;
+                if (spanLength <= 0)
+                    continue;
+            }
+
+            var regions = _layout.GetCharacterRegions(spanStart, spanLength);
+            if (regions is null)
+                continue;
+            lineMetrics ??= TryGetLineMetrics();
+            foreach (var region in regions)
+            {
+                var bounds = region.LayoutBounds;
+                if (viewport is { } clip)
+                {
+                    Rect placed = new(baseX + bounds.X, baseY + bounds.Y, bounds.Width, bounds.Height);
+                    if (!Intersects(placed, clip))
+                        continue;
+                }
+
+                DrawRunDecorations(
+                    ds,
+                    baseX,
+                    baseY,
+                    lineMetrics,
+                    region,
+                    link,
+                    spanStyles[index],
+                    color,
+                    underline,
+                    strikethrough);
+            }
         }
     }
 
@@ -4287,12 +4726,7 @@ internal sealed partial class InlineContainerBox : BlockBox
     }
 
     private bool ShouldApplyRunTextStyle(InlineRun run)
-    {
-        if (run.ElementKey == MarkdownElementKeys.CodeInline && IsHeadingElement(ElementKey))
-            return false;
-
-        return HasRunSpecificStyle(run);
-    }
+        => HasRunSpecificStyle(run);
 
     private bool HasRunSpecificStyle(InlineRun run)
     {

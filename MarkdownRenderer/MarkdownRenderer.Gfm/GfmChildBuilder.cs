@@ -166,6 +166,12 @@ internal static class GfmChildBuilder
     /// <summary>Attempts to build a <see cref="BlockBox"/> for a Markdig block node.</summary>
     internal static BlockBox? TryBuildBlock(Block block, MarkdownLayoutContext context)
     {
+        // A nested list is not a generic stack: it owns marker numbering,
+        // tight/loose spacing and list-depth indentation. Use the same builder
+        // as top-level lists when called inside a normal layout transaction.
+        if (block is ListBlock && context.TryBuildChildBlock(block, out BlockBox? nestedList))
+            return nestedList;
+
         using var attrScope = context.PushMarkdownAttributes(block);
         BlockBox? box = null;
 

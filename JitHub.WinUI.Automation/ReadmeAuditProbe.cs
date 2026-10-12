@@ -1726,6 +1726,7 @@ internal static partial class ReadmeAuditProbe
                     captureRequest,
                     captureResponse,
                     out _,
+                    out _,
                     useRendererCapture: false);
                 capture.Stop();
                 appProcess.Refresh();
@@ -1819,6 +1820,7 @@ internal static partial class ReadmeAuditProbe
                         Path.Combine(output, "source-view.png"),
                         captureRequest,
                         captureResponse,
+                        out _,
                         out _,
                         useRendererCapture: false);
                     capture.Stop();
@@ -2513,7 +2515,8 @@ internal static partial class ReadmeAuditProbe
                 path,
                 captureRequestPath,
                 captureResponsePath,
-                out double capturedDocumentTop);
+                out double capturedDocumentTop,
+                out NativeCaptureViewportTrace? captureViewportTrace);
             capture.Stop();
             auditOverheadMs += capture.Elapsed.TotalMilliseconds;
             if (index == 0)
@@ -2537,6 +2540,7 @@ internal static partial class ReadmeAuditProbe
                 ScrollTopViewportUnits = scrollTopViewportUnits,
                 RendererDocumentTopDip = capturedDocumentTop,
                 VerticalViewSize = currentViewSize,
+                CaptureViewportTrace = captureViewportTrace,
                 NativeViewportMovementOffsets = pendingViewportMovementOffsets.ToArray(),
                 Width = tileWidth,
                 Height = tileHeight,
@@ -3172,6 +3176,9 @@ internal static partial class ReadmeAuditProbe
                     tile.Index,
                     documentTopDip = tile.RendererDocumentTopDip is double top && double.IsFinite(top) ? (double?)top : null,
                     normalizedTop = double.IsFinite(tile.ScrollTopViewportUnits) ? (double?)tile.ScrollTopViewportUnits : null,
+                    scrollPercent = double.IsFinite(tile.ScrollPercent) ? (double?)tile.ScrollPercent : null,
+                    verticalViewSize = double.IsFinite(tile.VerticalViewSize) ? (double?)tile.VerticalViewSize : null,
+                    captureViewportTrace = tile.CaptureViewportTrace,
                     tile.Width,
                     tile.Height,
                 }).ToArray(),
@@ -4758,33 +4765,46 @@ internal static partial class ReadmeAuditProbe
         string captureRequestPath,
         string captureResponsePath,
         out double documentTop,
+        out NativeCaptureViewportTrace? captureViewportTrace,
         bool useRendererCapture = true)
     {
         documentTop = double.NaN;
+        captureViewportTrace = null;
         if (useRendererCapture)
         {
             // The warm paint triggers any viewport-tiled SVG work that a
             // compositor-owned CanvasVirtualControl would normally request.
             // Wait for those resources, then save the authoritative repaint.
-            _ = RequestRendererCapture(
+            NativeScrollPositionDiagnostic beforeWarmCapture = ReadNativeScrollPosition(host);
+            RendererCaptureResponse warmCapture = RequestRendererCapture(
                 captureRequestPath,
                 captureResponsePath,
                 outputPath: null,
                 save: false);
+            NativeScrollPositionDiagnostic afterWarmCapture = ReadNativeScrollPosition(host);
             _ = WaitForVisibleImages(
                 host,
                 TimeSpan.FromSeconds(20),
                 phase: "capture-host",
                 captureRequestPath: captureRequestPath,
                 captureResponsePath: captureResponsePath);
+            NativeScrollPositionDiagnostic beforeSavedCapture = ReadNativeScrollPosition(host);
             RendererCaptureResponse capture = RequestRendererCapture(
                 captureRequestPath,
                 captureResponsePath,
                 path,
                 save: true);
+            NativeScrollPositionDiagnostic afterSavedCapture = ReadNativeScrollPosition(host);
             if (!File.Exists(path))
                 throw new InvalidOperationException("The Markdown renderer did not publish its requested audit tile.");
             documentTop = capture.DocumentTop;
+            captureViewportTrace = new NativeCaptureViewportTrace(
+                beforeWarmCapture,
+                FiniteOrNull(warmCapture.DocumentTop),
+                afterWarmCapture,
+                beforeSavedCapture,
+                FiniteOrNull(capture.DocumentTop),
+                afterSavedCapture);
             return (capture.Width, capture.Height);
         }
 
@@ -4809,6 +4829,32 @@ internal static partial class ReadmeAuditProbe
         hostBitmap.Save(path, ImageFormat.Png);
         return (hostBitmap.Width, hostBitmap.Height);
     }
+
+    private static NativeScrollPositionDiagnostic ReadNativeScrollPosition(AutomationElement host)
+    {
+        try
+        {
+            var scroll = host.Patterns.Scroll.Pattern;
+            double verticalScrollPercent = scroll.VerticalScrollPercent.ValueOrDefault;
+            double verticalViewSize = scroll.VerticalViewSize.ValueOrDefault;
+            return new NativeScrollPositionDiagnostic(
+                double.IsFinite(verticalScrollPercent)
+                    ? verticalScrollPercent
+                    : null,
+                double.IsFinite(verticalViewSize)
+                    ? verticalViewSize
+                    : null,
+                ReadFailureType: null);
+        }
+        catch (Exception exception)
+        {
+            // This receipt is diagnostic-only. A transient UIA provider error
+            // must not change the capture or traversal result.
+            return new NativeScrollPositionDiagnostic(null, null, exception.GetType().Name);
+        }
+    }
+
+    private static double? FiniteOrNull(double value) => double.IsFinite(value) ? value : null;
 
     private static RendererCaptureResponse RequestRendererCapture(
         string requestPath,
@@ -6336,6 +6382,19 @@ internal sealed class BrowserMedia
 
 internal sealed record PendingImagePeerIdentity(string Identity);
 
+internal sealed record NativeScrollPositionDiagnostic(
+    double? VerticalScrollPercent,
+    double? VerticalViewSize,
+    string? ReadFailureType);
+
+internal sealed record NativeCaptureViewportTrace(
+    NativeScrollPositionDiagnostic BeforeWarmCapture,
+    double? WarmRendererDocumentTopDip,
+    NativeScrollPositionDiagnostic AfterWarmCapture,
+    NativeScrollPositionDiagnostic BeforeSavedCapture,
+    double? SavedRendererDocumentTopDip,
+    NativeScrollPositionDiagnostic AfterSavedCapture);
+
 internal sealed class AuditTile
 {
     public int Index { get; init; }
@@ -6344,6 +6403,8 @@ internal sealed class AuditTile
     public double ScrollTopViewportUnits { get; init; }
     public double? RendererDocumentTopDip { get; init; }
     public double VerticalViewSize { get; init; }
+    [System.Text.Json.Serialization.JsonIgnore]
+    public NativeCaptureViewportTrace? CaptureViewportTrace { get; init; }
     public IReadOnlyList<double> NativeViewportMovementOffsets { get; init; } = [];
     public double Width { get; init; }
     public double Height { get; init; }

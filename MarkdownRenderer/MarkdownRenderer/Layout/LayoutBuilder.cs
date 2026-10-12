@@ -383,6 +383,7 @@ internal sealed class LayoutBuilder
 
     private List<BlockBox> BuildBlocks(MarkdownDocument document, CancellationToken cancellationToken)
     {
+        using var childBlockScope = _context.PushChildBlockBuilder(BuildBlock);
         using var childInlineScope = _context.PushChildInlineBuilder(AddExtensionContainerInlines);
         var blocks = new List<BlockBox>();
         SafeHtmlBlockScopeTracker? htmlScopes = _context.Registry.SafeHtmlPolicy is null
@@ -2181,7 +2182,8 @@ internal sealed class LayoutBuilder
             }
             else
             {
-                run = htmlState.Apply(BuildInline(n, box.BlockIndex));
+                int linkStyleAliasStart = inheritedAliasStart >= 0 ? inheritedAliasStart : aliasStart;
+                run = htmlState.Apply(BuildInline(n, box.BlockIndex, linkStyleAliasStart));
                 run = ApplyContainingLink(run, containingLinkUrl, containingLinkTitle);
             }
             if (run is not null)
@@ -2347,7 +2349,10 @@ internal sealed class LayoutBuilder
         return combined;
     }
 
-    private InlineRun? BuildInline(Inline inline, int parentBlockIndex = -1)
+    private InlineRun? BuildInline(
+        Inline inline,
+        int parentBlockIndex = -1,
+        int inlineStyleAliasStart = -1)
     {
         switch (inline)
         {
@@ -2382,7 +2387,7 @@ internal sealed class LayoutBuilder
             case EmphasisInline emph:
                 return BuildEmphasis(emph);
             case LinkInline link:
-                return BuildLink(link);
+                return BuildLink(link, inlineStyleAliasStart);
             case LineBreakInline lineBreak:
                 return new LineBreakRun(lineBreak.IsHard) { SourceSpan = new SourceSpan(inline.Span.Start, inline.Span.Length) };
             case AutolinkInline al:
@@ -2445,7 +2450,7 @@ internal sealed class LayoutBuilder
             : new EmphasisRun(sb.ToString()) { SourceSpan = span };
     }
 
-    private InlineRun BuildLink(LinkInline link)
+    private InlineRun BuildLink(LinkInline link, int inlineStyleAliasStart)
     {
         if (link.IsImage)
         {
@@ -2458,8 +2463,18 @@ internal sealed class LayoutBuilder
         }
 
         var sb = new System.Text.StringBuilder();
-        FlattenContainer(link, sb);
-        return new LinkRun(sb.ToString(), link.Url ?? string.Empty, link.Title)
+        LinkInlineStyleMapBuilder? inlineStyles = null;
+        FlattenContainer(
+            link,
+            sb,
+            ref inlineStyles,
+            path: null,
+            inlineStyleAliasStart);
+        return new LinkRun(
+            sb.ToString(),
+            link.Url ?? string.Empty,
+            link.Title,
+            inlineStyles?.Build())
         {
             SourceSpan = new SourceSpan(link.Span.Start, link.Span.Length)
         };
@@ -2613,6 +2628,17 @@ internal sealed class LayoutBuilder
 
     private void FlattenContainer(ContainerInline container, System.Text.StringBuilder sb)
     {
+        LinkInlineStyleMapBuilder? inlineStyles = null;
+        FlattenContainer(container, sb, ref inlineStyles, path: null, inlineStyleAliasStart: -1);
+    }
+
+    private void FlattenContainer(
+        ContainerInline container,
+        System.Text.StringBuilder sb,
+        ref LinkInlineStyleMapBuilder? inlineStyles,
+        LinkInlineStylePath? path,
+        int inlineStyleAliasStart)
+    {
         foreach (var child in container)
         {
             switch (child)
@@ -2634,19 +2660,80 @@ internal sealed class LayoutBuilder
                         lit.Content.Start == span.Start &&
                         lit.Content.Length == span.Length)
                     {
+                        int start = sb.Length;
                         sb.Append(sourceText, span.Start, span.Length);
+                        inlineStyles?.AddRange(start, sb.Length - start, path);
                     }
                     else
                     {
+                        int start = sb.Length;
                         sb.Append(lit.Content.ToString());
+                        inlineStyles?.AddRange(start, sb.Length - start, path);
                     }
                     break;
                 }
-                case CodeInline cn: sb.Append(cn.Content); break;
-                case AbbreviationInline ab: sb.Append(ab.Abbreviation?.Label ?? string.Empty); break;
-                case LineBreakInline lineBreak: sb.Append(lineBreak.IsHard ? '\n' : ' '); break;
-                case LinkInline { IsImage: true } image: FlattenContainer(image, sb); break;
-                case ContainerInline c2: FlattenContainer(c2, sb); break;
+                case CodeInline code:
+                {
+                    int start = sb.Length;
+                    sb.Append(code.Content);
+                    if (inlineStyles is not null || inlineStyleAliasStart >= 0)
+                    {
+                        using var attributes = _context.PushMarkdownAttributes(code);
+                        LinkInlineStyleMapBuilder builder = inlineStyles ??= new LinkInlineStyleMapBuilder();
+                        LinkInlineStylePath codePath = builder.CreatePath(
+                            MarkdownElementKeys.CodeInline,
+                            _context.CreateStyleAliasSnapshotFrom(inlineStyleAliasStart),
+                            path);
+                        builder.AddRange(start, sb.Length - start, codePath);
+                    }
+                    break;
+                }
+                case AbbreviationInline abbreviation:
+                {
+                    int start = sb.Length;
+                    sb.Append(abbreviation.Abbreviation?.Label ?? string.Empty);
+                    if (inlineStyles is not null || inlineStyleAliasStart >= 0)
+                    {
+                        using var attributes = _context.PushMarkdownAttributes(abbreviation);
+                        LinkInlineStyleMapBuilder builder = inlineStyles ??= new LinkInlineStyleMapBuilder();
+                        LinkInlineStylePath abbreviationPath = builder.CreatePath(
+                            MarkdownElementKeys.Abbreviation,
+                            _context.CreateStyleAliasSnapshotFrom(inlineStyleAliasStart),
+                            path);
+                        builder.AddRange(start, sb.Length - start, abbreviationPath);
+                    }
+                    break;
+                }
+                case LineBreakInline lineBreak:
+                {
+                    int start = sb.Length;
+                    sb.Append(lineBreak.IsHard ? '\n' : ' ');
+                    inlineStyles?.AddRange(start, sb.Length - start, path);
+                    break;
+                }
+                case EmphasisInline emphasis:
+                {
+                    if (inlineStyleAliasStart < 0)
+                    {
+                        FlattenContainer(emphasis, sb, ref inlineStyles, path, inlineStyleAliasStart);
+                        break;
+                    }
+
+                    using var attributes = _context.PushMarkdownAttributes(emphasis);
+                    LinkInlineStyleMapBuilder builder = inlineStyles ??= new LinkInlineStyleMapBuilder();
+                    LinkInlineStylePath emphasisPath = builder.CreatePath(
+                        GetEmphasisElementKey(emphasis),
+                        _context.CreateStyleAliasSnapshotFrom(inlineStyleAliasStart),
+                        path);
+                    FlattenContainer(emphasis, sb, ref inlineStyles, emphasisPath, inlineStyleAliasStart);
+                    break;
+                }
+                case LinkInline { IsImage: true } image:
+                    FlattenContainer(image, sb, ref inlineStyles, path, inlineStyleAliasStart);
+                    break;
+                case ContainerInline nested:
+                    FlattenContainer(nested, sb, ref inlineStyles, path, inlineStyleAliasStart);
+                    break;
                 default: break;
             }
         }

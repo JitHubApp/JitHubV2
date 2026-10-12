@@ -359,6 +359,7 @@ internal sealed class AbbreviationRun : InlineRun
 internal sealed class LinkRun : InlineRun
 {
     private readonly string _text;
+    private readonly LinkInlineStyleMap? _inlineStyleMap;
     public readonly string Url;
     public readonly string? Title;
     public string? AccessibilityName { get; init; }
@@ -371,10 +372,20 @@ internal sealed class LinkRun : InlineRun
     /// </summary>
     public bool IsSuperscript { get; internal set; }
     public LinkRun(string text, string url, string? title = null)
+        : this(text, url, title, inlineStyleMap: null)
+    {
+    }
+
+    internal LinkRun(
+        string text,
+        string url,
+        string? title,
+        LinkInlineStyleMap? inlineStyleMap)
     {
         _text = text ?? string.Empty;
         Url = url ?? string.Empty;
         Title = title;
+        _inlineStyleMap = inlineStyleMap;
         RenderedLength = _text.Length;
         ElementKey = MarkdownElementKeys.Link;
     }
@@ -389,7 +400,10 @@ internal sealed class LinkRun : InlineRun
         DisclosureId = source.DisclosureId;
         IsExpanded = source.IsExpanded;
         IsSuperscript = source.IsSuperscript;
+        _inlineStyleMap = source._inlineStyleMap;
     }
+
+    internal LinkInlineStyleMap? InlineStyleMap => _inlineStyleMap;
 
     internal LinkRun CloneForPrivateRasterPlacement()
     {
@@ -402,6 +416,167 @@ internal sealed class LinkRun : InlineRun
     public override string AccessibleText => string.IsNullOrWhiteSpace(AccessibilityName)
         ? _text
         : AccessibilityName;
+}
+
+/// <summary>
+/// Immutable nested formatting for a flattened link label. Keeping these
+/// ranges on one LinkRun preserves the authored link's single semantic node,
+/// keyboard stop, accessible name, and source span.
+/// </summary>
+internal sealed class LinkInlineStyleMap
+{
+    private readonly LinkInlineStyleSpan[] _spans;
+
+    internal LinkInlineStyleMap(
+        List<LinkInlineStyleSpan> spans,
+        long styleKeyEntryCount)
+    {
+        ArgumentNullException.ThrowIfNull(spans);
+        // The builder's mutable list must not escape into a published run.
+        _spans = spans.ToArray();
+        StyleKeyEntryCount = styleKeyEntryCount;
+    }
+
+    internal int Count => _spans.Length;
+    internal long StyleKeyEntryCount { get; }
+    internal LinkInlineStyleSpan GetSpan(int index) => _spans[index];
+
+    internal bool IsValidForTextLength(int textLength)
+    {
+        if (textLength < 0 || StyleKeyEntryCount < _spans.Length)
+            return false;
+
+        int previousEnd = 0;
+        for (int index = 0; index < _spans.Length; index++)
+        {
+            LinkInlineStyleSpan span = _spans[index];
+            if (span.Start < previousEnd || span.Length <= 0 ||
+                span.Start > textLength - span.Length || !IsValidPath(span.Path))
+            {
+                return false;
+            }
+
+            previousEnd = span.Start + span.Length;
+        }
+
+        return true;
+    }
+
+    private static bool IsValidPath(LinkInlineStylePath? path)
+    {
+        if (path is null || path.Depth <= 0)
+            return false;
+
+        int expectedDepth = path.Depth;
+        for (LinkInlineStylePath? current = path; current is not null; current = current.Parent)
+        {
+            if (current.Depth != expectedDepth || string.IsNullOrWhiteSpace(current.StyleKey))
+                return false;
+            for (int index = 0; index < current.StyleAliases.Count; index++)
+                if (string.IsNullOrWhiteSpace(current.StyleAliases[index]))
+                    return false;
+            expectedDepth--;
+        }
+
+        return expectedDepth == 0;
+    }
+}
+
+internal readonly struct LinkInlineStyleSpan
+{
+    internal LinkInlineStyleSpan(int start, int length, LinkInlineStylePath path)
+    {
+        Start = start;
+        Length = length;
+        Path = path ?? throw new ArgumentNullException(nameof(path));
+    }
+
+    internal int Start { get; }
+    internal int Length { get; }
+    internal LinkInlineStylePath Path { get; }
+}
+
+/// <summary>
+/// A persistent, source-ordered style path. Nodes are shared by adjacent text
+/// ranges and immutable after the parser publishes the containing map.
+/// </summary>
+internal sealed class LinkInlineStylePath
+{
+    private readonly IReadOnlyList<string> _styleAliases;
+
+    internal LinkInlineStylePath(
+        string styleKey,
+        IReadOnlyList<string> styleAliases,
+        LinkInlineStylePath? parent)
+    {
+        StyleKey = string.IsNullOrWhiteSpace(styleKey)
+            ? throw new ArgumentException("A nested inline style key is required.", nameof(styleKey))
+            : styleKey;
+        ArgumentNullException.ThrowIfNull(styleAliases);
+        if (styleAliases.Count == 0)
+        {
+            _styleAliases = Array.Empty<string>();
+        }
+        else
+        {
+            var copy = new string[styleAliases.Count];
+            for (int index = 0; index < copy.Length; index++)
+                copy[index] = styleAliases[index];
+            _styleAliases = Array.AsReadOnly(copy);
+        }
+        Parent = parent;
+        Depth = parent is null ? 1 : checked(parent.Depth + 1);
+    }
+
+    internal string StyleKey { get; }
+    internal IReadOnlyList<string> StyleAliases => _styleAliases;
+    internal LinkInlineStylePath? Parent { get; }
+    internal int Depth { get; }
+}
+
+/// <summary>Temporary parser builder; the resulting map owns immutable arrays.</summary>
+internal sealed class LinkInlineStyleMapBuilder
+{
+    private List<LinkInlineStyleSpan>? _spans;
+    private long _styleKeyEntryCount;
+
+    internal LinkInlineStylePath CreatePath(
+        string styleKey,
+        IReadOnlyList<string> styleAliases,
+        LinkInlineStylePath? parent)
+    {
+        ArgumentNullException.ThrowIfNull(styleAliases);
+        _styleKeyEntryCount = SaturatingAdd(_styleKeyEntryCount, 1L + styleAliases.Count);
+        return new LinkInlineStylePath(styleKey, styleAliases, parent);
+    }
+
+    internal void AddRange(int start, int length, LinkInlineStylePath? path)
+    {
+        if (length <= 0 || path is null)
+            return;
+
+        List<LinkInlineStyleSpan> spans = _spans ??= new List<LinkInlineStyleSpan>();
+        if (spans.Count > 0)
+        {
+            LinkInlineStyleSpan previous = spans[^1];
+            if (ReferenceEquals(previous.Path, path) && previous.Start <= int.MaxValue - previous.Length &&
+                previous.Start + previous.Length == start && previous.Length <= int.MaxValue - length)
+            {
+                spans[^1] = new LinkInlineStyleSpan(previous.Start, previous.Length + length, path);
+                return;
+            }
+        }
+
+        spans.Add(new LinkInlineStyleSpan(start, length, path));
+    }
+
+    internal LinkInlineStyleMap? Build()
+        => _spans is { Count: > 0 }
+            ? new LinkInlineStyleMap(_spans, SaturatingAdd(_styleKeyEntryCount, _spans.Count))
+            : null;
+
+    private static long SaturatingAdd(long left, long right)
+        => left > long.MaxValue - right ? long.MaxValue : left + right;
 }
 
 internal sealed class InlineImageRun : InlineRun

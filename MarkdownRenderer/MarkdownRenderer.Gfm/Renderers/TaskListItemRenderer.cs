@@ -115,6 +115,7 @@ internal sealed partial class TaskListItemRenderer : MarkdownNodeRenderer<ListIt
         {
             StyleState = isChecked ? "checked" : "unchecked",
         };
+        context.RegisterConstructionBlock(marker);
         marker.BlockIndex = context.NextBlockIndex();
         marker.Add(markerRun);
 
@@ -122,22 +123,39 @@ internal sealed partial class TaskListItemRenderer : MarkdownNodeRenderer<ListIt
         {
             FlowDirection = context.FlowDirection,
         };
+        context.RegisterConstructionBlock(content);
         content.BlockIndex = context.NextBlockIndex();
 
+        bool isTightList = listItem.Parent is ListBlock { IsLoose: false };
         foreach (var child in listItem)
         {
             if (child is ParagraphBlock u && u.Inline is not null)
             {
                 var contentBox = new InlineContainerBox(context, MarkdownElementKeys.Body);
+                context.RegisterConstructionBlock(contentBox);
                 contentBox.BlockIndex = context.NextBlockIndex();
+                if (isTightList)
+                {
+                    // Tight list paragraphs have no separate paragraph box in
+                    // GFM. Keep their horizontal styling, but match ordinary
+                    // list items by removing only the vertical paragraph gap.
+                    Thickness margin = contentBox.Margin;
+                    contentBox.Margin = new Thickness(margin.Left, 0, margin.Right, 0);
+                    contentBox.UseContainerMargin = false;
+                }
                 // Skip the TaskList inline — it's the marker, not body content.
                 GfmChildBuilder.AddInlines(contentBox, u.Inline, skipFirstIf: n => n is TaskList);
                 content.Add(contentBox);
+                context.AdoptConstructionBlock(contentBox);
             }
             else
             {
                 var box = GfmChildBuilder.TryBuildBlock(child, context);
-                if (box is not null) content.Add(box);
+                if (box is not null)
+                {
+                    content.Add(box);
+                    context.AdoptConstructionBlock(box);
+                }
             }
         }
 
@@ -145,10 +163,14 @@ internal sealed partial class TaskListItemRenderer : MarkdownNodeRenderer<ListIt
             1f,
             listStyle.ListIndent + Math.Max(0, context.ListDepth - 1) * listStyle.NestedListIndent);
 
-        return new ListItemBox(marker, content, markerWidth)
+        var result = new ListItemBox(marker, content, markerWidth)
         {
             FlowDirection = context.FlowDirection,
         };
+        context.RegisterConstructionBlock(result);
+        context.AdoptConstructionBlock(marker);
+        context.AdoptConstructionBlock(content);
+        return result;
     }
 
     private static FrameworkElement CreateTaskMarker(

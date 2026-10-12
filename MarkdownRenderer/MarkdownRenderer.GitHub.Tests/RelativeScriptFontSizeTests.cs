@@ -32,7 +32,22 @@ public sealed class RelativeScriptFontSizeTests
         BindingFlags.Instance | BindingFlags.NonPublic)!;
     private static readonly MethodInfo GetInnermostScriptStyleKeyMethod = typeof(InlineContainerBox).GetMethod(
         "GetInnermostScriptStyleKey",
-        BindingFlags.Static | BindingFlags.NonPublic)!;
+        BindingFlags.Static | BindingFlags.NonPublic,
+        binder: null,
+        types: [typeof(InlineRun)],
+        modifiers: null)!;
+    private static readonly MethodInfo GetLinkInlineSpanStylesMethod = typeof(InlineContainerBox).GetMethod(
+        "GetLinkInlineSpanStyles",
+        BindingFlags.Instance | BindingFlags.NonPublic)!;
+    private static readonly MethodInfo ShouldApplyRunTextStyleMethod = typeof(InlineContainerBox).GetMethod(
+        "ShouldApplyRunTextStyle",
+        BindingFlags.Instance | BindingFlags.NonPublic)!;
+    private static readonly FieldInfo ResolvedLinkInlineSpanStylesField = typeof(InlineContainerBox).GetField(
+        "_resolvedLinkInlineSpanStyles",
+        BindingFlags.Instance | BindingFlags.NonPublic)!;
+    private static readonly FieldInfo TextLayoutField = typeof(InlineContainerBox).GetField(
+        "_layout",
+        BindingFlags.Instance | BindingFlags.NonPublic)!;
     private static readonly FieldInfo ScriptStyleAncestryField = typeof(SafeHtmlInlineState).GetField(
         "_scriptStyleAncestry",
         BindingFlags.Instance | BindingFlags.NonPublic)!;
@@ -263,6 +278,362 @@ public sealed class RelativeScriptFontSizeTests
         Assert.Equal(11f, resolved.FontSize);
         Assert.True(resolved.Underline);
         Assert.Equal(Color.FromArgb(255, 9, 105, 218), resolved.Foreground);
+    }
+
+    [Fact]
+    public void NestedLinkStylesResolveOncePerBoxAndPreserveLinkAndCodeTypography()
+    {
+        Color linkColor = Color.FromArgb(255, 20, 80, 160);
+        Color codeBackground = Color.FromArgb(255, 240, 240, 240);
+        MarkdownStyleSheet sheet = new MarkdownStyleSheet(
+        [
+            new MarkdownStyleRule(
+                new MarkdownStyleSelector(MarkdownStyleRole.Link),
+                new ElementStyleOverride
+                {
+                    FontFamily = "Arial",
+                    FontSize = 20f,
+                    Foreground = linkColor,
+                    Underline = true,
+                }),
+            new MarkdownStyleRule(
+                new MarkdownStyleSelector(MarkdownStyleRole.FromElementKey(MarkdownElementKeys.Strong)),
+                new ElementStyleOverride { FontWeight = new Windows.UI.Text.FontWeight { Weight = 700 } }),
+            new MarkdownStyleRule(
+                new MarkdownStyleSelector(MarkdownStyleRole.FromElementKey(MarkdownElementKeys.Emphasis)),
+                new ElementStyleOverride { FontStyle = Windows.UI.Text.FontStyle.Italic }),
+            new MarkdownStyleRule(
+                new MarkdownStyleSelector(MarkdownStyleRole.FromElementKey(MarkdownElementKeys.CodeInline)),
+                new ElementStyleOverride
+                {
+                    // Deliberately equals the body style while differing
+                    // from the overridden link base, to pin range-relative
+                    // SetFontFamily/SetFontSize behavior.
+                    FontFamily = "Segoe UI",
+                    FontSize = 16f,
+                    Background = codeBackground,
+                }),
+        ]);
+        using LayoutSnapshot snapshot = BuildParsedSnapshot(
+            "[**bold** and *italic* and `code`](https://example.test/link)",
+            sheet);
+        InlineContainerBox sourceBox = Assert.Single(snapshot.Blocks.OfType<InlineContainerBox>());
+        LinkRun sourceLink = Assert.Single(sourceBox.Runs.OfType<LinkRun>());
+        LinkInlineStyleMap map = Assert.IsType<LinkInlineStyleMap>(sourceLink.InlineStyleMap);
+
+        var context = CreateContext(CreateTheme(sheet), FlowDirection.LeftToRight);
+        LinkRun firstRun = sourceLink.CloneForPrivateRasterPlacement();
+        LinkRun secondRun = sourceLink.CloneForPrivateRasterPlacement();
+        var firstBox = new InlineContainerBox(context, MarkdownElementKeys.Body);
+        var secondBox = new InlineContainerBox(context, MarkdownElementKeys.Body);
+        try
+        {
+            firstBox.Add(firstRun);
+            secondBox.Add(secondRun);
+
+            ElementStyle[] firstResolution = Assert.IsType<ElementStyle[]>(
+                GetLinkInlineSpanStylesMethod.Invoke(firstBox, [firstRun]));
+            ElementStyle[] repeatedResolution = Assert.IsType<ElementStyle[]>(
+                GetLinkInlineSpanStylesMethod.Invoke(firstBox, [firstRun]));
+            ElementStyle[] otherBoxResolution = Assert.IsType<ElementStyle[]>(
+                GetLinkInlineSpanStylesMethod.Invoke(secondBox, [secondRun]));
+
+            Assert.Same(map, firstRun.InlineStyleMap);
+            Assert.Same(map, secondRun.InlineStyleMap);
+            Assert.Same(firstResolution, repeatedResolution);
+            Assert.NotSame(firstResolution, otherBoxResolution);
+            Assert.Equal(map.Count, firstResolution.Length);
+
+            ElementStyle strong = GetSpanStyle(map, firstResolution, MarkdownElementKeys.Strong);
+            Assert.Equal((ushort)700, strong.FontWeight.Weight);
+            Assert.Equal(linkColor, strong.Foreground);
+            Assert.True(strong.Underline);
+
+            ElementStyle emphasis = GetSpanStyle(map, firstResolution, MarkdownElementKeys.Emphasis);
+            Assert.Equal(Windows.UI.Text.FontStyle.Italic, emphasis.FontStyle);
+            Assert.Equal(linkColor, emphasis.Foreground);
+            Assert.True(emphasis.Underline);
+
+            ElementStyle code = GetSpanStyle(map, firstResolution, MarkdownElementKeys.CodeInline);
+            Assert.Equal("Segoe UI", code.FontFamily);
+            Assert.Equal(16f, code.FontSize);
+            Assert.Equal(codeBackground, code.Background);
+            Assert.Equal(linkColor, code.Foreground);
+            Assert.True(code.Underline);
+
+            LinkInlineStyleSpan codeSpan = GetSpan(map, MarkdownElementKeys.CodeInline);
+            CanvasTextLayout actualLayout = Assert.IsType<CanvasTextLayout>(TextLayoutField.GetValue(sourceBox));
+            Assert.Equal(16f, ReadUniformFontSize(actualLayout, codeSpan.Start, codeSpan.Length));
+            Assert.Equal("Segoe UI", ReadUniformFontFamily(actualLayout, codeSpan.Start, codeSpan.Length));
+            LinkInlineStyleSpan strongSpan = GetSpan(map, MarkdownElementKeys.Strong);
+            Assert.Equal(20f, ReadUniformFontSize(actualLayout, strongSpan.Start, strongSpan.Length));
+            Assert.Equal("Arial", ReadUniformFontFamily(actualLayout, strongSpan.Start, strongSpan.Length));
+        }
+        finally
+        {
+            try
+            {
+                firstBox.Dispose();
+            }
+            finally
+            {
+                secondBox.Dispose();
+            }
+        }
+    }
+
+    [Fact]
+    public void PlainLinkDoesNotAllocateNestedStyleCacheAndHeadingCodeKeepsHeadingSize()
+    {
+        Color headingForeground = Color.FromArgb(255, 30, 40, 50);
+        Color codeBackground = Color.FromArgb(255, 230, 230, 230);
+        MarkdownStyleSheet sheet = new MarkdownStyleSheet(
+        [
+            new MarkdownStyleRule(
+                new MarkdownStyleSelector(MarkdownStyleRole.FromElementKey(MarkdownElementKeys.Heading1)),
+                new ElementStyleOverride { Foreground = headingForeground }),
+            new MarkdownStyleRule(
+                new MarkdownStyleSelector(MarkdownStyleRole.FromElementKey(MarkdownElementKeys.CodeInline)),
+                new ElementStyleOverride
+                {
+                    FontFamily = "Cascadia Mono",
+                    FontSize = 13.6f,
+                    Background = codeBackground,
+                }),
+        ]);
+        var context = CreateContext(CreateTheme(sheet), FlowDirection.LeftToRight);
+        var plainBox = new InlineContainerBox(context, MarkdownElementKeys.Body);
+        var plainLink = new LinkRun("ordinary", "https://example.test/");
+        try
+        {
+            plainBox.Add(plainLink);
+            _ = GetRunStyleMethod.Invoke(plainBox, [plainLink]);
+
+            Assert.Null(plainLink.InlineStyleMap);
+            Assert.Null(ResolvedLinkInlineSpanStylesField.GetValue(plainBox));
+        }
+        finally
+        {
+            plainBox.Dispose();
+        }
+
+        using LayoutSnapshot headingSnapshot = BuildParsedSnapshot("# Heading `code`", sheet);
+        InlineContainerBox heading = Assert.Single(headingSnapshot.Blocks.OfType<InlineContainerBox>());
+        CodeInlineRun codeRun = Assert.Single(heading.Runs.OfType<CodeInlineRun>());
+        ElementStyle resolved = Assert.IsType<ElementStyle>(GetRunStyleMethod.Invoke(heading, [codeRun]));
+
+        Assert.Equal(32f, resolved.FontSize);
+        Assert.Equal("Cascadia Mono", resolved.FontFamily);
+        Assert.Equal((ushort)700, resolved.FontWeight.Weight);
+        Assert.Equal(headingForeground, resolved.Foreground);
+        Assert.Equal(codeBackground, resolved.Background);
+        Assert.True(Assert.IsType<bool>(ShouldApplyRunTextStyleMethod.Invoke(heading, [codeRun])));
+        CanvasTextLayout headingLayout = Assert.IsType<CanvasTextLayout>(TextLayoutField.GetValue(heading));
+        int codeStart = 0;
+        foreach (InlineRun run in heading.Runs)
+        {
+            if (ReferenceEquals(run, codeRun))
+                break;
+            codeStart += run.TextLength;
+        }
+        Assert.Equal(32f, ReadUniformFontSize(headingLayout, codeStart, codeRun.TextLength));
+        Assert.Equal("Cascadia Mono", ReadUniformFontFamily(headingLayout, codeStart, codeRun.TextLength));
+    }
+
+    [Fact]
+    public void NestedLinkLabelStylesKeepPlainOffsetsAndSourceOrderedScriptFormatting()
+    {
+        const string label = "before **bold ~~strike~~ ^~script~^** after";
+        using LayoutSnapshot snapshot = BuildParsedSnapshot(
+            $"[{label}](https://example.test/label)",
+            RelativeSheet());
+        InlineContainerBox box = Assert.Single(snapshot.Blocks.OfType<InlineContainerBox>());
+        LinkRun link = Assert.Single(box.Runs.OfType<LinkRun>());
+        LinkInlineStyleMap map = Assert.IsType<LinkInlineStyleMap>(link.InlineStyleMap);
+
+        Assert.Equal("before bold strike script after", link.Text);
+        Assert.True(map.IsValidForTextLength(link.TextLength));
+        LinkInlineStyleSpan strongSpan = GetSpan(map, MarkdownElementKeys.Strong);
+        LinkInlineStyleSpan strikeSpan = GetSpan(map, MarkdownElementKeys.Strikethrough);
+        LinkInlineStyleSpan superSpan = GetSpan(map, MarkdownElementKeys.Superscript);
+        LinkInlineStyleSpan subSpan = GetSpan(map, MarkdownElementKeys.Subscript);
+        AssertSpanText(link, strongSpan, "bold ");
+        AssertSpanText(link, strikeSpan, "strike");
+        AssertSpanText(link, superSpan, "script");
+        AssertSpanText(link, subSpan, "script");
+        Assert.Equal(
+            new[]
+            {
+                MarkdownElementKeys.Strong,
+                MarkdownElementKeys.Superscript,
+                MarkdownElementKeys.Subscript,
+            },
+            GetPathKeys(subSpan.Path));
+
+        ElementStyle[] resolved = Assert.IsType<ElementStyle[]>(
+            GetLinkInlineSpanStylesMethod.Invoke(box, [link]));
+        int subSpanIndex = FindSpanIndex(map, subSpan);
+        Assert.Equal(9f, resolved[subSpanIndex].FontSize);
+    }
+
+    [Theory]
+    [InlineData("table")]
+    [InlineData("task-list")]
+    public void GfmChildLinkFormattingPreservesNestedRangesAndPlainOffsets(string container)
+    {
+        const string linkedLabel = "left **bold** and ^~script~^ right";
+        string linkMarkdown = $"[{linkedLabel}](https://example.test/gfm)";
+        string source = container switch
+        {
+            "table" => $"| label |\n| --- |\n| {linkMarkdown} |",
+            "task-list" => $"- [x] {linkMarkdown}",
+            _ => throw new ArgumentOutOfRangeException(nameof(container)),
+        };
+        using LayoutSnapshot snapshot = BuildParsedSnapshot(
+            source,
+            RelativeSheet(),
+            useGfmContainerExtensions: true);
+
+        InlineContainerBox content = container switch
+        {
+            "table" => GetBodyCell(Assert.Single(snapshot.Blocks.OfType<TableBox>()), 0, 0),
+            "task-list" => Assert.Single(
+                EnumerateListItems(snapshot.Blocks)
+                    .SelectMany(static item => item.Content.Children.OfType<InlineContainerBox>())),
+            _ => throw new ArgumentOutOfRangeException(nameof(container)),
+        };
+        LinkRun link = Assert.Single(content.Runs.OfType<LinkRun>());
+        LinkInlineStyleMap map = Assert.IsType<LinkInlineStyleMap>(link.InlineStyleMap);
+        Assert.Equal("left bold and script right", link.Text);
+
+        LinkInlineStyleSpan strongSpan = GetSpan(map, MarkdownElementKeys.Strong);
+        LinkInlineStyleSpan subSpan = GetSpan(map, MarkdownElementKeys.Subscript);
+        AssertSpanText(link, strongSpan, "bold");
+        AssertSpanText(link, subSpan, "script");
+        Assert.Equal(
+            new[] { MarkdownElementKeys.Superscript, MarkdownElementKeys.Subscript },
+            GetPathKeys(subSpan.Path));
+        ElementStyle[] resolved = Assert.IsType<ElementStyle[]>(
+            GetLinkInlineSpanStylesMethod.Invoke(content, [link]));
+        Assert.Equal(9f, resolved[FindSpanIndex(map, subSpan)].FontSize);
+    }
+
+    [Fact]
+    public void DeepNestedLinkStylePathResolutionUsesAnIterativeWalk()
+    {
+        const int depth = 512;
+        LinkInlineStylePath? path = null;
+        for (int index = 0; index < depth; index++)
+        {
+            path = new LinkInlineStylePath(
+                MarkdownElementKeys.Emphasis,
+                Array.Empty<string>(),
+                path);
+        }
+
+        var map = new LinkInlineStyleMap(
+            [new LinkInlineStyleSpan(0, 1, Assert.IsType<LinkInlineStylePath>(path))],
+            depth + 1L);
+        var context = CreateContext(CreateTheme(MarkdownStyleSheet.Empty), FlowDirection.LeftToRight);
+        var box = new InlineContainerBox(context, MarkdownElementKeys.Body);
+        var link = new LinkRun(
+            "x",
+            "https://example.test/deep",
+            title: null,
+            inlineStyleMap: map);
+        try
+        {
+            box.Add(link);
+            ElementStyle[] resolved = Assert.IsType<ElementStyle[]>(
+                GetLinkInlineSpanStylesMethod.Invoke(box, [link]));
+            Assert.Single(resolved);
+            Assert.True(float.IsFinite(resolved[0].FontSize));
+            Assert.True(resolved[0].FontSize > 0f);
+        }
+        finally
+        {
+            box.Dispose();
+        }
+    }
+
+    private static ElementStyle GetSpanStyle(
+        LinkInlineStyleMap map,
+        ElementStyle[] styles,
+        string expectedStyleKey)
+    {
+        for (int index = 0; index < map.Count; index++)
+        {
+            LinkInlineStyleSpan span = map.GetSpan(index);
+            for (LinkInlineStylePath? path = span.Path; path is not null; path = path.Parent)
+            {
+                if (string.Equals(path.StyleKey, expectedStyleKey, StringComparison.Ordinal))
+                    return styles[index];
+            }
+        }
+
+        throw new Xunit.Sdk.XunitException($"No nested link span carried style key '{expectedStyleKey}'.");
+    }
+
+    private static LinkInlineStyleSpan GetSpan(LinkInlineStyleMap map, string expectedStyleKey)
+    {
+        for (int index = 0; index < map.Count; index++)
+        {
+            LinkInlineStyleSpan span = map.GetSpan(index);
+            for (LinkInlineStylePath? path = span.Path; path is not null; path = path.Parent)
+                if (string.Equals(path.StyleKey, expectedStyleKey, StringComparison.Ordinal))
+                    return span;
+        }
+
+        throw new Xunit.Sdk.XunitException($"No nested link span carried style key '{expectedStyleKey}'.");
+    }
+
+    private static void AssertSpanText(LinkRun link, LinkInlineStyleSpan span, string expected)
+    {
+        Assert.Equal(expected.Length, span.Length);
+        Assert.Equal(link.Text.IndexOf(expected, StringComparison.Ordinal), span.Start);
+        Assert.Equal(expected, link.Text.Substring(span.Start, span.Length));
+    }
+
+    private static string[] GetPathKeys(LinkInlineStylePath path)
+    {
+        var keys = new List<string>();
+        for (LinkInlineStylePath? current = path; current is not null; current = current.Parent)
+            keys.Add(current.StyleKey);
+        keys.Reverse();
+        return [.. keys];
+    }
+
+    private static int FindSpanIndex(LinkInlineStyleMap map, LinkInlineStyleSpan expected)
+    {
+        for (int index = 0; index < map.Count; index++)
+        {
+            LinkInlineStyleSpan actual = map.GetSpan(index);
+            if (actual.Start == expected.Start && actual.Length == expected.Length &&
+                ReferenceEquals(actual.Path, expected.Path))
+            {
+                return index;
+            }
+        }
+
+        throw new Xunit.Sdk.XunitException("The nested link style map did not contain the expected span.");
+    }
+
+    private static float ReadUniformFontSize(CanvasTextLayout layout, int start, int length)
+    {
+        Assert.True(start >= 0 && length > 0);
+        float fontSize = layout.GetFontSize(start);
+        for (int index = 1; index < length; index++)
+            Assert.Equal(fontSize, layout.GetFontSize(start + index));
+        return fontSize;
+    }
+
+    private static string ReadUniformFontFamily(CanvasTextLayout layout, int start, int length)
+    {
+        Assert.True(start >= 0 && length > 0);
+        string fontFamily = layout.GetFontFamily(start);
+        for (int index = 1; index < length; index++)
+            Assert.Equal(fontFamily, layout.GetFontFamily(start + index));
+        return fontFamily;
     }
 
     [Fact]
@@ -753,11 +1124,14 @@ public sealed class RelativeScriptFontSizeTests
     {
         MarkdownExtensionRegistry registry = new MarkdownExtensionRegistry()
             .ConfigureGitHubReadmeRegistry(safeHtmlOptions);
-        // Strict GitHub GFM intentionally enables only strikethrough from
-        // EmphasisExtras. These focused source-order cases opt into sub/sup
-        // parsing without changing the shipping GitHub profile.
+        // These focused cases opt into the GitHub-relevant emphasis extras
+        // needed to exercise source-ordered link-label style paths without
+        // changing the shipping GitHub profile.
         var pipelineBuilder = new MarkdownPipelineBuilder()
-            .UseEmphasisExtras(EmphasisExtraOptions.Subscript | EmphasisExtraOptions.Superscript);
+            .UseEmphasisExtras(
+                EmphasisExtraOptions.Strikethrough |
+                EmphasisExtraOptions.Subscript |
+                EmphasisExtraOptions.Superscript);
         if (useGfmContainerExtensions)
             pipelineBuilder.UsePipeTables().UseTaskLists();
         var pipeline = pipelineBuilder.Build();
