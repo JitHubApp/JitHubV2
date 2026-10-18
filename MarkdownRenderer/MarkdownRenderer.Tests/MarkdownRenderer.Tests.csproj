@@ -62,6 +62,7 @@
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\LoadCompletedEventArgs.cs" Link="Core\LoadCompletedEventArgs.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\LazyLayoutBand.cs" Link="Core\LazyLayoutBand.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\LayoutPassCancellation.cs" Link="Core\LayoutPassCancellation.cs" />
+    <Compile Include="..\MarkdownRenderer\Accessibility\SemanticTextProjectionAccumulator.cs" Link="Core\SemanticTextProjectionAccumulator.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\MarkdownLayoutDiagnostics.cs" Link="Core\MarkdownLayoutDiagnostics.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\DeclarativeBlockSelection.cs" Link="Core\DeclarativeBlockSelection.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\ViewportBandIndex.cs" Link="Core\ViewportBandIndex.cs" />
