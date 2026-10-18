@@ -12,7 +12,8 @@ and its known limitations so development can resume from a concrete state.
 
 The detailed chronology, immutable evidence locations, and original performance
 requirements are in the [progressive performance plan](progressive-performance-plan.md).
-This checkpoint is the concise current handoff; historical passing results do not
+This is a historical checkpoint. The [October 17 project handoff](project-handoff-2026-10-17.md)
+records the current correctness work and evidence; the results below do not
 certify subsequent source changes.
 
 ## Repository state

@@ -5,6 +5,14 @@ Active objective adopted October 12, 2026, from the user-approved
 supersedes the performance and browser-parity program as the active work goal;
 the old plans and failed results remain historical evidence.
 
+For the current concise handoff, architecture/repair summary, progress,
+challenges, methodology and continuation order, read the
+[October 17 project handoff](project-handoff-2026-10-17.md). Selected sanitized
+receipts and the byte-preserved frozen 500-repository manifest are versioned in
+the [portable evidence archive](evidence/2026-10-17/README.md). Original
+`artifacts/...` paths below preserve historical locations; most raw artifacts
+remain Git-ignored and need a separate backup before local storage is discarded.
+
 ## Goal
 
 Make the existing MarkdownRenderer reliably correct within its documented
@@ -124,7 +132,7 @@ geometry when testing placement.
 | T1-014 | Final-SVG drag targets broad layout bounds rather than independently known visible artwork. | Fresh r3's fixed 96×96 SVG exposes a 1,359×129 ImageBox peer that includes full available width and caption. Its target (2,528,418) is inside that peer but outside the artwork at the leading edge. | Corrected offline, live pending. The controlled standalone Markdown image inherits Body margin `(0,0,0,8)` and 19.6-DIP minimum line height through `BuildParagraphOrImage`; its artwork starts at the peer top. Final helper checks validate both contact and effective caret inside the independently derived 96×96 artwork at simulated scales, and guard effective promotion/theme/sample inputs. Review rejects an intermediate constructor-default 6-DIP offset before UI use. Both shells pass 61 target checks plus existing harness checks; these are not physical-DPI or live-input qualification. The completed r3 runner/evidence remain unchanged. |
 | V1-001 | Wrapped inline image geometric coverage. | Existing multiline case checks snapshot agreement, but not independently correct placement on later lines. | Closed: independent line-height/baseline oracle passes for narrow widths, LTR/RTL, text scales 1/1.5/2, and varied image heights. No production defect found. |
 | V1-002 | Current-source end-to-end validation. | Last live sample/README binary predates the current checkpoint. | Open; freshly build and run the frozen cases against the revised source. |
-| V1-003 | Complete current parsing and feature smoke receipts. | Historical passing tests do not prove newer worktree changes. | The r5 candidate passes **3,192/3,192 in both Debug and Release, zero failed/skipped**, plus the unchanged-filter logic correctness slice **1,541/1,541** and a zero-warning/error Release/x64 JIT sample build. Exact tuple-multiset comparison retains all 3,188 r4 cases and adds only P1-033's four cases in each configuration; the sample renderer matches tested Release bytes. No r5 UI launch or whole-app AOT publication occurs. Earlier r3 optional smoke receipts remain separate: conformance 1,322, Math 80, HTML 10, TextMate 61, harness 9; its terminal live batch remains **47 PASS / 7 FAIL / 8 UNVERIFIED**, with all 51 screenshots reviewed, not qualified. Earlier SVG 725/725, provider/AOT and 500-input parse-only evidence is not complete page/interaction or current whole-app AOT proof. Crash resolution, actual high DPI and remaining live lifecycle gates stay open. |
+| V1-003 | Complete current parsing and feature smoke receipts. | Historical passing tests do not prove newer worktree changes. | R6 passes **3,195/3,195 in both Debug and Release, zero failed/skipped**, retaining all 3,192 R5 identities and adding three lifetime source-order contracts. Its Release/x64 JIT sample builds cleanly with matching tested renderer bytes. The ordinary focused Sandbox replay is **2 PASS / 0 FAIL / 60 UNVERIFIED**, owned viewport and actual 100% DPI only, not complete feature/lifecycle or whole-app AOT qualification. R5's separate unchanged-filter logic slice passes 1,541/1,541. Earlier R3 optional receipts and its **47 PASS / 7 FAIL / 8 UNVERIFIED** broad live run remain historical and failed overall. Earlier provider/AOT and 500-input headless evidence does not certify full current pages/interactions. Crash resolution, actual high DPI and remaining live lifecycle gates stay open. See the portable R6 receipt and final managed-investigation section below. |
 | V1-004 | Live check for P1-004's near-origin link activation. | Policy characterization confirms suppression of a new nearby contact; live command timing still needs measurement. | Terminal r3 command 1250 records a bounded PASS: distinct routed contacts 76/77, 10-DIP separation, a 1,379.3346-ms release-to-tap interval, preserved selection after Escape, dismissed menu and successful exact independent-link activation. Both actual routed contacts match their independently computed root coordinates within 0.020 DIP and terminate without active-contact residue. This qualifies that sequence at actual 100% only; it does not pass the failed overall batch. Fresh r2 remains UNVERIFIED because its 2,669.3-ms interval was outside the 1.5-second reproduction envelope. |
 | V1-005 | Actual 150%/200% handle layout and hit-geometry qualification. | Physical 150% receipt `manual-20261013T012212Z-a3ac427b663f4d70bc0ccf9cec4e6e2d` reports 144 DPI and a 65×66-pixel UIA start-handle rectangle, i.e. 43⅓×44 DIPs. Production Width/Height/MinWidth/MinHeight are all 44 DIPs; 44×1.5 is exactly 66 pixels, so ordinary rounding is not a demonstrated cause. | Open. Pair the same handle's in-process ActualWidth, transforms, overlay/clip, and automation bounds at real 144/192 DPI before changing its size. The observer captures those values, but that rebuilt observer has not been qualified at 150%. Host scaling changes and physical input remain paused; guest viewer zoom is not DPI proof. |
 | V1-006 | Explicit live reset coverage during active touch. | The main batch covers navigation/replacement and opt-in selection disable, but does not induce and observe capture loss, renderer unload, or disposal during an active touch/handle interaction. | Open. An opt-in actual-input probe now builds and has eight passing source-wiring guards; its three lifecycle cases in both viewport modes remain unexecuted. The aggregate still records C14 UNVERIFIED, not live proof from offline retirement coverage. |
@@ -2855,7 +2863,7 @@ The approved fresh Sandbox batch is now terminal: **47 PASS / 7 FAIL / 8
 UNVERIFIED**, exit **1**, with **all 51 delivered screenshots inspected**.
 The compact result, per-capture hashes/reviews, exact raw-report hashes and
 crash evidence are preserved in
-[sandbox-fresh-batch-r3-results.json](../../artifacts/phase1-20261014/sandbox-fresh-batch-r3-results.json).
+[portable broad R3 receipt](evidence/2026-10-17/sandbox-broad-r3-results.json).
 This supersedes the explicitly labeled in-progress visual record. It is not a
 qualified batch, a phase completion, or a count of seven independent bugs.
 
@@ -3159,7 +3167,7 @@ obvious visual defect. These are old R3, actual-100%-DPI captures, not current R
 qualification. The original R3 host harness was untracked and only its hash was
 retained; the original generated guest probe is retained, but the current replay
 cannot claim byte-identical host harness behavior or identical heap conditioning.
-The sealed [terminal crash receipt](../../artifacts/phase1-20261014/p1-032-sandbox-original-options-crash-20261018.json)
+The [portable terminal crash receipt](evidence/2026-10-17/p1-032-original-options-crash.json)
 records the timeline, native symbol identity, restoration and evidence hashes.
 P1-032 remains open; no phase is complete. Renewed human approval had authorized a
 Sandbox-only debugger batch to record the earlier surface release. Its opt-in
@@ -3212,7 +3220,7 @@ layout qualification; current UIA rectangles and screenshots are separate
 evidence. This focused run does not exercise the full state history before the
 intermittent crash, source replacement, the ancestor viewport or actual high
 DPI. P1-032 therefore stays open. Exact source/build/test/UI hashes and limits
-are in the [R6 managed-investigation receipt](../../artifacts/phase1-20261014/p1-032-managed-lifetime-investigation-r6-20261018.json).
+are in the [portable R6 managed-investigation receipt](evidence/2026-10-17/p1-032-managed-lifetime-investigation-r6.json).
 
 Independent review retains two follow-ups rather than overstating this repair:
 an expected XAML-detach exception can abort one-shot unload cleanup or skip a

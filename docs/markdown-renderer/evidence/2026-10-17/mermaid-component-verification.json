@@ -1,0 +1,245 @@
+{
+  "archivalSchemaVersion": 1,
+  "archiveKind": "Sanitized historical receipt, not a new execution or qualification",
+  "originalRelativePath": "artifacts/phase2-20261014/merman-four-family-product-verification.json",
+  "originalByteLength": 10028,
+  "originalSha256": "BB2067B54316A3F05089FB549000D80F9EC7E075095095543A228F006DD28EE0",
+  "transformations": [
+    "JSON reserialized with LF line endings",
+    "Local user/workspace and computer-name prefixes replaced with explicit placeholders",
+    "Recorded outcomes, identities, checksums and limitations retained"
+  ],
+  "receipt": {
+    "schemaVersion": 1,
+    "status": "SOURCE_AND_X64_PUBLIC_PIPELINE_VERIFIED_NOT_RELEASE_QUALIFIED",
+    "scope": "Frozen Markdown correctness repairs; no browser-parity or performance claim.",
+    "source": {
+      "baseCommit": "ac53f21ba97e5bd8da7f849fbcdffe64695171e6",
+      "baseTree": "d15030d6fbc09b0e4b82409cec74a7ad3d994e24",
+      "patch5Sha256": "89431192103991613400a47b722e352a8f9e8faad30949469ae74641e3eb2ec5",
+      "manifestSha256": "be5cb0eef0bc11be1ae1be4c1f4db645f49a4db93cef28cde00743a8f4a0c639",
+      "patchSetSha256": "f32de3178414b1fcaf5f95b4d66a30bd020bb56631d0d1e59b1a11c4812613bb",
+      "manifestSchema": 2,
+      "modifiedFiles": 129,
+      "addedOrdinaryFiles": 3,
+      "patches1Through4Unchanged": true,
+      "cargoLockSha256": "5c3f2838ade17638d30f8a5e7e7c3b4cd5456682d3dafe7a41468b094e55ef62",
+      "exportRoot": "<USER_PROFILE>\\AppData\\Local\\Temp\\Merman-Four-Family-Source-Export-20261014-r5",
+      "exportLogSha256": "7aaf4652be8adf0bf57597ad7b5c5b82288933277864e165a554dc7874dab5e5",
+      "apiAbiMmirDependencyLicenseVersionsChanged": false
+    },
+    "repairs": [
+      "Preserve parser-owned source origins through Sequence, State, Mindmap and Class label classification, measurement, wrapping, SVG and final MMIR text.",
+      "Join State and Class relationship paths and captions by explicit canonical edge identity; do not use text matching, geometry or generated-ID guessing.",
+      "Sanitize protected authored State markup before layout; generated encoded markup remains literal text.",
+      "Propagate final-text ownership through the actual resvg-safe foreignObject fallback and generated root overlay.",
+      "Decode ordinary HTML entities exactly once for finalized labels; retain literal backslash-n and XML-escape the result. Unmarked legacy SVG retains its prior behavior.",
+      "Exclude display-none subtrees from paint, semantic and link emission; preserve root-only literal accessibility metadata."
+    ],
+    "sourcePreparation": {
+      "result": "PASS",
+      "checks": 49,
+      "log": "<USER_PROFILE>\\AppData\\Local\\Temp\\Test-Prepare-MermanSource-49-f32de317-20261014T203137Z.log",
+      "logSha256": "bd0bb9deeafb0ed06e2acb2a6302fdfacab4b765847fc3ac7b968399abd6da6b",
+      "sharedCargoCheckoutWritten": false,
+      "temporaryTestRootRemoved": true
+    },
+    "focusedSourceGate": {
+      "status": "PASS",
+      "requiredCases": 117,
+      "passed": 117,
+      "failed": 0,
+      "ignored": 0,
+      "discoveryTargets": 8,
+      "previous77PackageAndTestIdentitiesRetainedInOrder": true,
+      "historicalTargetArgumentEvidence": "The prior log records package and test name, not full historical target tuples; current target discovery is independently exact.",
+      "zeroSelectedOrIgnoredResultAccepted": false,
+      "log": "<USER_PROFILE>\\AppData\\Local\\Temp\\merman-final117-source-gate-20261014T134737.log",
+      "logSha256": "b25a2d3177da2225b99a39b07faf58017c030ffd2b4c72c8c6ebd98ce7a9d36c",
+      "resultJson": "<USER_PROFILE>\\AppData\\Local\\Temp\\merman-final117-source-gate-20261014T134737.json",
+      "resultJsonSha256": "31ed728f76464af14a306bcc1d8ec7f4f4ee703ad322bc1fc6493b81af74f09f",
+      "sharedCargoCheckoutWritten": false,
+      "cargoTargetOutsidePreparedSource": true,
+      "temporaryTestRootRemoved": true,
+      "temporaryTestRootAbsenceIndependentlyVerified": true
+    },
+    "native": {
+      "tests": {
+        "passed": 54,
+        "failed": 0,
+        "ignored": 0
+      },
+      "x64BuildLog": "<USER_PROFILE>\\AppData\\Local\\Temp\\mermaid-f32de3-native-x64-build-20261014.log",
+      "x64BuildLogSha256": "957322af64b0c51bd362e9595a6e2efe2ed7e543c18ccb7451ee23978f71b1ef",
+      "x86Arm64BuildLog": "<USER_PROFILE>\\AppData\\Local\\Temp\\mermaid-f32de3-native-x86-arm64-build-20261014.log",
+      "x86Arm64BuildLogSha256": "b1d64216fa70f17f3b292da2097388c8e1358d6b0fd182157586ed4c3cf61e04",
+      "staticCrt": true,
+      "buildJobs": 1,
+      "buildAndPreparedSourceLocation": "C:; no new large build outputs on E:",
+      "payloads": [
+        {
+          "rid": "win-x64",
+          "bytes": 16796160,
+          "peMachine": "0x8664",
+          "sha256": "384aa86f0e8bb8a2db74d054b03e547397670d21b760d199d775b041d2ad0c47",
+          "executed": true
+        },
+        {
+          "rid": "win-x86",
+          "bytes": 12222976,
+          "peMachine": "0x014c",
+          "sha256": "6fd53fcaaa361a242217e168db961041172dddd983a1607c257a34498b52ef52",
+          "executed": false
+        },
+        {
+          "rid": "win-arm64",
+          "bytes": 13598720,
+          "peMachine": "0xaa64",
+          "sha256": "f94894ff69ecc471c463fc94e082d0e2cee2407e4abf5ad7577210ed3d744284",
+          "executed": false
+        }
+      ]
+    },
+    "publicMermaidPipeline": {
+      "actualTestOutputNativeSha256": "384aa86f0e8bb8a2db74d054b03e547397670d21b760d199d775b041d2ad0c47",
+      "allPrevious254TestNamesRetained": true,
+      "newCases": 5,
+      "runs": [
+        {
+          "configuration": "Release",
+          "passed": 259,
+          "failed": 0,
+          "skipped": 0,
+          "trx": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Sequence-Visible-Routes-20261014\\mermaid-259-f32de3-public-release.trx",
+          "sha256": "ea7f977548a11f18a65ec03250046a7834c7426df4a9d61888ef5f39781764b7"
+        },
+        {
+          "configuration": "Debug",
+          "passed": 259,
+          "failed": 0,
+          "skipped": 0,
+          "trx": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Sequence-Visible-Routes-20261014\\mermaid-259-f32de3-public-debug.trx",
+          "sha256": "ea43a8e087246218191e86a839f6bcd0ad0b2ec8fe74769e08f407663d2a6d9a"
+        }
+      ]
+    },
+    "broaderManagedIntegration": {
+      "status": "PASS_DEBUG_AND_RELEASE",
+      "firstRun": {
+        "passed": 3069,
+        "failed": 1,
+        "skipped": 0,
+        "failure": "Source-contract test could not find .github/workflows/markdown-renderer-preview.yml above the C:-isolated test binary.",
+        "trxSha256": "629aadee17c07242666f327563c7138796b8b3b8e3bcb42483150642b241b24c"
+      },
+      "setupCorrection": "Added a .github directory junction to the actual repository next to the existing MarkdownRenderer source junction; no source/test assertion was changed.",
+      "release": {
+        "passed": 3070,
+        "failed": 0,
+        "skipped": 0,
+        "trx": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Sequence-Visible-Routes-20261014\\github-full-f32de3-release-source-context.trx",
+        "trxSha256": "2857e763b60ef3b5aefd856539055cd735ff83d9434fc031f36dcabce984ca47",
+        "actualNativeSha256": "384aa86f0e8bb8a2db74d054b03e547397670d21b760d199d775b041d2ad0c47"
+      },
+      "debug": {
+        "passed": 3070,
+        "failed": 0,
+        "skipped": 0,
+        "trx": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Sequence-Visible-Routes-20261014\\github-full-f32de3-debug-source-context.trx",
+        "trxSha256": "8ac9d1134ae3df11473453152a181873d2290eab8cbec745c7b76d3389b3565c"
+      }
+    },
+    "sampleBuild": {
+      "configuration": "Release/x64",
+      "exitCode": 0,
+      "warnings": 0,
+      "errors": 0,
+      "winuiAnalyzerEnabled": true,
+      "logSha256": "30bbacb398c081d472dff954d4d4813b74576e15cade01b6da192aba2eb7da89",
+      "actualNativeSha256": "384aa86f0e8bb8a2db74d054b03e547397670d21b760d199d775b041d2ad0c47",
+      "launched": false
+    },
+    "nativeAotSmoke": {
+      "verificationGapFixed": "The former smoke returned success whenever the engine loaded, regardless of render failure, and also accepted an unavailable engine. The shipping smoke now requires an available engine, Success status, no fallback, nonempty scene, and no error diagnostics.",
+      "sourceSha256": "0c6b97328de1f8722bbf673d2e787edbb2d4e9fbd1d5094c68b74a8914dff6a6",
+      "publishRoot": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Mermaid-Aot-f32de3-Publish-20261014",
+      "publishExitCode": 0,
+      "publishLogSha256": "af5231a93146d8d45ea1409697d1289f242c197514847d9de56c65ff5ed97c2e",
+      "ilTrimOrOtherWarnings": 0,
+      "executableBytes": 2084864,
+      "executableSha256": "0cd657ff95cc76a905f5a05fb667a009aa4c075f87402b75ee0412f314a1f7ec",
+      "managedMetadataOrClrHeaderPresent": false,
+      "actualNativeSha256": "384aa86f0e8bb8a2db74d054b03e547397670d21b760d199d775b041d2ad0c47",
+      "positive": {
+        "exitCode": 0,
+        "vectorCommands": 8,
+        "logSha256": "003d4c96b1c4816cfba14e4cf254d7ad0a8949d029faa15a8e2eb5f086cec35c"
+      },
+      "missingNativeControl": {
+        "root": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Mermaid-Aot-f32de3-MissingNative-20261014",
+        "containsOnlyIdenticalSmokeExe": true,
+        "exitCode": 1,
+        "logSha256": "c71e42d0884c099466df4da7e9a3c83f3394d50d2defb80b6fce515b6038b8f0",
+        "originalPublishModified": false
+      }
+    },
+    "headlessReadme500": {
+      "scope": "Parse and semantic invariants only; not the full visual/resource/selection/copy/navigation audit.",
+      "root": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Readme500-f32de3-Run-20261014",
+      "summarySha256": "257a7d4aa21b2eb9c89038d08f17fb3ff7ca7598750fb77fe2073370b0388eac",
+      "casesSha256": "457ef87916bc057c21fa80225c1eec955610936826d8b6747f0d2d9733c68003",
+      "manifestSha256": "615c56723fb16d17744af2549615a4de32b1fc299a1759727cc86b70edacac72",
+      "attempted": 500,
+      "parsed": 500,
+      "orderedIdentitiesIndependentlyVerified": 500,
+      "rawBytesIndependentlyRehashed": 18023117,
+      "rawSizeGitBlobSha1Sha256Mismatches": 0,
+      "sourceOrSemanticInvariantFailures": 0,
+      "exceptions": 0,
+      "disposalException": null,
+      "mermaidScenes": 19,
+      "mermaidFallbacksOrUnclassified": 0,
+      "diagnostics": [
+        {
+          "rank": 340,
+          "code": "MATH100",
+          "severity": "Error",
+          "sourceStart": 30367,
+          "sourceLength": 178,
+          "classification": "Existing unsupported-command math fallback; not waived."
+        },
+        {
+          "rank": 340,
+          "code": "MATH100",
+          "severity": "Error",
+          "sourceStart": 40305,
+          "sourceLength": 96,
+          "classification": "Existing unsupported-command math fallback; not waived."
+        }
+      ],
+      "runnerExitCode": 1,
+      "visualQualificationPerformed": false
+    },
+    "retainedFailedCandidates": [
+      {
+        "patchSetPrefix": "f61ee8b1",
+        "publicPassed": 244,
+        "publicFailed": 10,
+        "publicTotal": 254
+      },
+      {
+        "patchSetPrefix": "681006a1",
+        "publicPassed": 251,
+        "publicFailed": 5,
+        "publicTotal": 256,
+        "remainingFailures": "Mindmap final-text conversion; retained before correction."
+      }
+    ],
+    "liveValidationPerformed": false,
+    "dpiExperimentReceipt": "../phase1-20261014/sandbox-dpi-experiment.json",
+    "phase1Complete": false,
+    "phase2Complete": false,
+    "phase3Complete": false,
+    "committedOrPushed": false
+  }
+}

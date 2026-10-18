@@ -19,7 +19,9 @@ certification and the remaining release gates are unfinished.
 | Understand normal Copy vs Copy Markdown | [Selection and clipboard](selection-and-clipboard.md) |
 | Track unfinished work | [Current gaps and roadmap](current-gaps-and-roadmap.md) |
 | Follow the active phased correctness goal | [Correctness goal and phase plan](correctness-plan.md) |
-| Resume from the latest implementation and evidence | [October 12 checkpoint and architecture assessment](implementation-checkpoint-2026-10-12.md) |
+| Resume from the current goal, progress, challenges and methods | [October 17 project handoff](project-handoff-2026-10-17.md) |
+| Inspect portable receipts and the frozen audit manifest | [October 17 evidence index](evidence/2026-10-17/README.md) |
+| Review the earlier implementation and architecture assessment | [October 12 historical checkpoint](implementation-checkpoint-2026-10-12.md) |
 | Review historical opt-in performance work | [Progressive performance plan](progressive-performance-plan.md) |
 
 For the complete documentation table of contents, see [Summary](SUMMARY.md).
@@ -58,6 +60,7 @@ is available through the explicit Copy Markdown path.
 ## Preview boundary
 
 Safe HTML, native vector Math, Mermaid and declarative viewer adapters are
-implemented. This is not release certification: conformance, API, AOT,
-accessibility, architecture, packaging, and
-publishing gates must pass before 1.0.
+implemented. All three active correctness phases remain open. The separate
+distribution checklist covers API, AOT, architecture, packaging and publishing;
+historical browser-parity/performance targets are not correctness-phase gates.
+Implemented capabilities and passing component tests are not release certification.

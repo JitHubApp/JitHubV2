@@ -1,0 +1,169 @@
+{
+  "archivalSchemaVersion": 1,
+  "archiveKind": "Sanitized historical receipt, not a new execution or qualification",
+  "originalRelativePath": "artifacts/phase1-20261014/p1-032-managed-lifetime-investigation-r6-20261018.json",
+  "originalByteLength": 7591,
+  "originalSha256": "7FADFF9EB23906F181D77FEE33128902912E83750312B8D9C4157443057764EC",
+  "transformations": [
+    "JSON reserialized with LF line endings",
+    "Local user/workspace and computer-name prefixes replaced with explicit placeholders",
+    "Recorded outcomes, identities, checksums and limitations retained"
+  ],
+  "receipt": {
+    "schemaVersion": 1,
+    "defectId": "P1-032",
+    "status": "OPEN_NOT_ROOT_CAUSE_PROOF",
+    "method": "Managed source review, source-order regression contracts, full managed/native-component tests, normal Sandbox selection/resize actions",
+    "artifactRoot": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-R6-69832a42ceca41d98c97fac98c9408d4",
+    "noNewNativeDebugging": true,
+    "noNewDumpCapture": true,
+    "noHostInputOrDisplayChanges": true,
+    "noGuestDumpSettingChanges": true,
+    "noSchedulesCommitsOrPushes": true,
+    "changes": [
+      "Close the selection drawing session before committing geometry/viewport or updating XAML handles; revalidate source, request and snapshot revisions afterward.",
+      "Retain the prior CanvasImageSource through XAML replacement; publish replacement ownership only after attachment and lifecycle/version checks.",
+      "Retain the prior owner through XAML detachment; reject stale release publication.",
+      "Remove the unused debugger-barrier integration and its two newly added repository helpers. Recoverable temporary copies remain outside the repository. No prepared debugger batch was executed."
+    ],
+    "source": {
+      "control": {
+        "path": "MarkdownRenderer/MarkdownRenderer/Controls/MarkdownRendererControl.cs",
+        "length": 732382,
+        "sha256": "46A651EE0D33AC8F85230C133725A579F70BA2DE414F0BFE28FFA2683AD3D8D7"
+      },
+      "beforeControl": {
+        "relativeToArtifactRoot": "control-before-surface-fix.cs",
+        "length": 729472,
+        "sha256": "6C0C778C18CCA4A4AE3936FCBE178A500E81FF53E893B83A0EF052A7BC762B01"
+      },
+      "contracts": {
+        "path": "MarkdownRenderer/MarkdownRenderer.GitHub.Tests/SelectionAdornerSurfaceLifetimeContractTests.cs",
+        "length": 6274,
+        "sha256": "3DAFC5055D1CC0AE7CE542ECC314F19B051984C3C1D222B67FAD788363652BDC",
+        "limitation": "These are source-order contracts, not executable XAML setter failure/reentrancy injection or native heap-crash reproduction."
+      },
+      "ordinaryUiRunner": {
+        "path": "MarkdownRenderer/eng/Invoke-MarkdownCorrectnessUiTests.ps1",
+        "length": 322330,
+        "sha256": "7A0233FBE702C73BFDE8AED05CC43A8196ECB91D1A3B41D8A41B163BF8292B21",
+        "existingCaseBodiesUnchanged": true
+      }
+    },
+    "tests": {
+      "red": {
+        "relativeToArtifactRoot": "TestResults/surface-lifetime-before/surface-lifetime-before.trx",
+        "length": 12264,
+        "sha256": "43A4DDA44C15C26A1F6FA495BBD5FE3FFC338FB66F41B14A4632F6722C4974EA",
+        "passed": 0,
+        "failed": 3,
+        "skipped": 0
+      },
+      "focusedGreen": {
+        "relativeToArtifactRoot": "TestResults/surface-lifetime-after/surface-lifetime-after.trx",
+        "length": 34779,
+        "sha256": "D27E6BF010EC348142D9A11CF5259DBFEFEFF1AFD0844AEC87C04A87C1B1E8D9",
+        "passed": 20,
+        "failed": 0,
+        "skipped": 0
+      },
+      "release": {
+        "relativeToArtifactRoot": "TestResults/github-release/github-release.trx",
+        "length": 5345372,
+        "sha256": "D5516DFCDDB0C4AB4652156EF92E9FFF5D7E821C3F11856D5310F826726143D1",
+        "passed": 3195,
+        "failed": 0,
+        "skipped": 0
+      },
+      "debug": {
+        "relativeToArtifactRoot": "TestResults/github-debug/github-debug.trx",
+        "length": 5331733,
+        "sha256": "00CDF24DA578DFD4771D6D32EE36A6D9F468EF37CAA4EDDBD101A32BAFB8010B",
+        "passed": 3195,
+        "failed": 0,
+        "skipped": 0
+      },
+      "tupleComparison": {
+        "r5ReleaseBaselineReceipt": "artifacts/phase1-20261014/sandbox-r5-image-selection-code-verification.json",
+        "r5ReleaseTrxSha256": "E15A411899FE4E5CA8113616B787DCAE69E6FEE5EA577A6E0BFE7F9169221572",
+        "retainedR5Tuples": 3192,
+        "missingOrRenamedR5Tuples": 0,
+        "newTuples": 3,
+        "newTupleClass": "SelectionAdornerSurfaceLifetimeContractTests",
+        "r6DebugReleaseTupleOutcomeDifferences": 0,
+        "limitation": "Test identity/outcome comparison does not independently prove that every pre-existing assertion remains equally strong."
+      },
+      "offlineRunnerChecks": {
+        "powershell7": "PASS",
+        "windowsPowershell51": "PASS",
+        "harnessLogSha256BothShells": "9ED37DC1009B88B02C0946A34096931D6A62DCCE9898E097343A55A667952871",
+        "routingLogSha256BothShells": "227283707881C2A3B4401FEAD56E1DC3ADFFEB7017277FA9D4E05D6D6361F978",
+        "routingChecksPerShell": 12
+      }
+    },
+    "sampleBuild": {
+      "configuration": "Release/x64/JIT",
+      "warnings": 0,
+      "errors": 0,
+      "logRelativeToArtifactRoot": "logs/sample-release-build.log",
+      "logSha256": "CAD6875080146662AC24FB18F6BC8DA7A793F9140308AB7BD5270299332944EF",
+      "rendererLength": 1760256,
+      "rendererSha256": "8484B3B0DFF12BE1594B2070E47069757724176545307F8FE5ACFCCE861C531D",
+      "testedReleaseRendererMatchesSample": true,
+      "notWholeAppAotQualification": true
+    },
+    "sandbox": {
+      "relativeToArtifactRoot": "sandbox-resize/20261018T022033Z-6d9524596af848218ff56aa9d0ef1045",
+      "epoch": "f2d4b118-8e4c-4fa6-9d81-3ac19b9a0ae1:E159EA185D3F6F90832653FE3002FF90",
+      "processId": 544,
+      "windowHandle": 524626,
+      "deploymentId": "9359de6165632ccb",
+      "runJsonSha256": "EAC17BA33FF2183AC21175F23D4D283DD0D3546FBBEFF2FAD45B66600BC736F7",
+      "resultsJsonSha256": "B3210F5E56D76DE7E86798F6C1E1D6F42C8341C5194F5940F81C8301EBD07D52",
+      "payloadIdentity": "MATCH",
+      "viewport": "owned",
+      "actualRasterizationScale": 1,
+      "diagnosticOnly": true,
+      "exitCode": 2,
+      "passed": 2,
+      "failed": 0,
+      "unverified": 60,
+      "complete": false,
+      "selectedTextBeforeAndAfter": "hold",
+      "narrowWindowPhysicalPixels": [
+        760,
+        860
+      ],
+      "restoredWindowPhysicalPixels": [
+        3060,
+        776
+      ],
+      "uiaHandleSizeBothStatesDip": [
+        44,
+        44
+      ],
+      "currentTargetAndSelectionRectsMatchAfterRestore": true,
+      "noProcessLossDuringRecordedCases": true,
+      "screenshotsIndividuallyReviewed": 3,
+      "screenshotSha256": {
+        "initial.png": "3E5B89792157B936F11F58C0EA44192E02F0FA631517DBF5B6C773019BE8A23E",
+        "selection-resize-narrow.png": "A8CB024CAE45F20F04B869772B0C8FC9D6178A6BB4562323A58461FC1423A308",
+        "selection-resize-restored.png": "3F5CDF70C327EDFF7C59DBDF715610A7EC8203B8D0CEC7E70B12A58A29119FF5"
+      },
+      "visualConclusion": "Selected word and both endpoint dots remain visible in narrow/restored captures; no clear new clipping defect established by individual reviews.",
+      "observerLimitation": "Restored layout observation has null start/end entries; it is not used to claim in-process restored-handle layout qualification. Independent current UIA handle rectangles and screenshot remain available.",
+      "limitations": [
+        "A focused no-crash replay does not reproduce the full history preceding the intermittent native crash and cannot close P1-032.",
+        "Ancestor-owned viewport, actual 150%/200% DPI and full source-replacement/navigation sequence are not exercised by this focused run.",
+        "The 60 unverified cases remain unverified; the harness exit code 2 and complete=false are preserved."
+      ]
+    },
+    "reviewFollowUps": [
+      "A conditional Source-detachment failure can abort one-shot unload cleanup; source contracts do not execute that failure path.",
+      "Redundant direct release in adorner device-loss catches can throw before the already-guarded recovery handler is entered.",
+      "Catching device loss without RaiseDeviceLost on the failed device may prevent Win2D control device recreation; review against official Win2D handling-device-lost guidance. This is not established as P1-032's cause.",
+      "Source-order tests do not prove both possible reentrant XAML setter mutation orderings."
+    ],
+    "phaseComplete": false
+  }
+}
