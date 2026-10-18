@@ -54,7 +54,6 @@
 
 - `JitHub.WinUI`: the desktop app
 - `JitHub.Site`: the static public website
-- `JitHub.Web`: the temporary legacy sign-in host for Store builds released before device sign-in
 - `JitHub.WinUI.Automation`: screenshot and UI smoke-test harness for the app design lab
 - `MarkdownRenderer`: native WinUI markdown renderer library, documented in [`docs/markdown-renderer`](docs/markdown-renderer/README.md)
 - `eng`: local helper scripts for app launch, screenshot capture, packaging, and build checks
@@ -63,7 +62,7 @@
 
 - The desktop app shows a GitHub device code, opens GitHub's verification page, and exchanges the approval directly with GitHub.
 - Access and refresh tokens stay in Windows Credential Locker. The static website never handles sign-in.
-- Older Store builds still use the temporary legacy sign-in host during the release transition.
+- The legacy Azure sign-in host is retired. Older Store builds must update from the Microsoft Store to sign in with a GitHub device code.
 - The desktop UI is driven by semantic WinUI resource dictionaries and reusable app-owned controls.
 
 ## Build From Source
@@ -96,6 +95,16 @@ $env:JITHUB_OAUTH_CLIENT_ID = "<your GitHub OAuth client ID>"
 ```
 
 Device sign-in does not use a callback URL or client secret. Do not put credentials or tokens in this public repository.
+
+## Hosting
+
+The public website is published to GitHub Pages at `https://jithub.app` by `.github/workflows/jithub-pages.yml`. Sign-in communicates directly with GitHub and requires no hosted JitHub backend.
+
+The legacy `JitHub.Web` server, its provisioning script, and its build workflow have been removed. On October 11, 2026, the dedicated Azure resource group `rg-jithub-prod-centralus`, including its B1 App Service plan and supporting resources, was deleted. The legacy GitHub deployment secrets and hosting variable were removed, and the legacy workflow was disabled. Do not recreate the legacy host or restore its deployment credentials.
+
+A subsequent audit found additional legacy hosting in the `JitHubV2` resource group of Pay-As-You-Go subscription `03d6ee82-42b7-481c-b87f-4e3a6b81ad06`: `jithub-web-prod` on `ASP-JitHub-Web`, and `jithubauth` on `ASP-JitHub-b721`, with `jithubauthstorage`. On October 11, 2026, that entire resource group was deleted, including its legacy telemetry and `NeroCodeSign` account. Azure confirmed that the subscription contains no remaining resources.
+
+The old `jithub.zhuowencui.com` DNS alias still points to `jithub-web-prod.azurewebsites.net` and should be removed at its DNS provider. The current public address is `https://jithub.app`.
 
 ## Native Code Editor
 

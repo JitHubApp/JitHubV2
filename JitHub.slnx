@@ -9,8 +9,6 @@
     <Platform Name="x64" />
     <Platform Name="x86" />
   </Configurations>
-  <Project Path="JitHub.Web.Tests/JitHub.Web.Tests.csproj" />
-  <Project Path="JitHub.Web/JitHub.Web.csproj" />
   <Project Path="JitHub.WinUI.Automation/JitHub.WinUI.Automation.csproj" />
   <Project Path="JitHub.WinUI.PerformanceGate/JitHub.WinUI.PerformanceGate.csproj" />
   <Project Path="JitHub.WinUI.Tests/JitHub.WinUI.Tests.csproj">

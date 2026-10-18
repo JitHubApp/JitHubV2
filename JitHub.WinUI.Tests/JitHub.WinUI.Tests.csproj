@@ -18,8 +18,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="..\Shared\OAuthHandoffProtocol.cs" Link="Security\OAuthHandoffProtocol.cs" />
-    <Compile Include="..\JitHub.Web\Services\OAuthHandoffStore.cs" Link="Services\OAuthHandoffStore.cs" />
     <!-- Link pure C# service/model source files from JitHub.WinUI (no WinUI/XAML deps) -->
     <Compile Include="..\JitHub.WinUI\Models\CodeViewer\*.cs" Link="Models\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Models\ThemeConst.cs" Link="Models\%(Filename)%(Extension)" />

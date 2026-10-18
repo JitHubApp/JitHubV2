@@ -182,7 +182,7 @@ public sealed class GitHubRepoCodeQueryService : IGitHubRepoCodeQueryService
         Repository,Language,Open issues,Status,Notes
         JitHub,C#,18,Active,"Native AOT, WinUI 3"
         MarkdownRenderer,C#,4,Active,"Quoted fields, sorting, and copy"
-        JitHub.Web,C#,0,Active,"Website and authorization handoff"
+        JitHub.Site,TypeScript,0,Active,"Static website on GitHub Pages"
         JitHub.Automation,C#,2,Active,"Windows UI verification"
         "JitHub roadmap, 2026",Markdown,7,Planned,"Release notes, milestones, and owners"
         "Release notes",Text,1,Active,"First draft

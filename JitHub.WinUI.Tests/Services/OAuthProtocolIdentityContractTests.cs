@@ -37,30 +37,6 @@ public sealed class OAuthProtocolIdentityContractTests
     }
 
     [Fact]
-    public void HostedCallbackMapsDebugStateToDebugScheme()
-    {
-        string script = File.ReadAllText(Path.Combine(FindRepositoryRoot(), "JitHub.Web", "wwwroot", "js", "authorize.js"));
-
-        Assert.Contains("WINUI3V3DEBUG_", script, StringComparison.Ordinal);
-        Assert.DoesNotContain("token=", script, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("access_token", script, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("handoff=", script, StringComparison.Ordinal);
-        Assert.Contains("? \"jithub-dev\"", script, StringComparison.Ordinal);
-        Assert.Contains(": \"jithub\"", script, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void WebHostExposesOnlyServerSideHandoffCreationAndRedemption()
-    {
-        string source = File.ReadAllText(Path.Combine(FindRepositoryRoot(), "JitHub.Web", "Program.cs"));
-
-        Assert.Contains("api.MapPost(\"/GithubCodeToHandoff\"", source, StringComparison.Ordinal);
-        Assert.Contains("api.MapPost(\"/RedeemGithubHandoff\"", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("MapGet(\"/GithubCodeToToken\"", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("redirectUri + \"?token=\"", source, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
     public void DesktopConfigurationDoesNotIncludeCallbackAddresses()
     {
         string configuration = File.ReadAllText(Path.Combine(FindRepositoryRoot(), "JitHub.WinUI", "appsettings.json"));

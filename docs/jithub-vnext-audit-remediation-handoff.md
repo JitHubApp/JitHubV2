@@ -2,6 +2,13 @@
 
 Status date: August 25, 2026
 
+Hosting update (October 11, 2026): the legacy Azure sign-in host, `JitHub.Web`,
+`JitHub.Web.Tests`, and the shared OAuth handoff code are retired. The desktop
+app uses GitHub device authorization; the public website uses `JitHub.Site` on
+GitHub Pages. Web-host commands and handoff checks below are historical and no
+longer apply to the current solution. See `README.md` for the current hosting
+architecture.
+
 Branch: `codex/vnext-full-audit-remediation`
 
 Base: `1010c15cc8c41d7af143ffa1ba41e3464933c858` (`origin/main` when the branch was created)
