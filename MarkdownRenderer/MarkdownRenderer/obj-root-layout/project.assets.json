@@ -1,0 +1,3113 @@
+{
+  "version": 4,
+  "targets": {
+    "net10.0-windows10.0.26100.0": {
+      "Markdig/0.42.0": {
+        "type": "package",
+        "compile": {
+          "lib/net9.0/Markdig.dll": {
+            "related": ".xml"
+          }
+        },
+        "runtime": {
+          "lib/net9.0/Markdig.dll": {
+            "related": ".xml"
+          }
+        }
+      },
+      "Microsoft.Graphics.Win2D/1.4.0": {
+        "type": "package",
+        "dependencies": {
+          "Microsoft.WindowsAppSDK.WinUI": "1.8.260204000"
+        },
+        "compile": {
+          "lib/net6.0-windows10.0.19041.0/Microsoft.Graphics.Canvas.Interop.dll": {}
+        },
+        "runtime": {
+          "lib/net6.0-windows10.0.19041.0/Microsoft.Graphics.Canvas.Interop.dll": {}
+        },
+        "build": {
+          "buildTransitive/net6.0-windows10.0.19041.0/Microsoft.Graphics.Win2D.props": {},
+          "buildTransitive/net6.0-windows10.0.19041.0/Microsoft.Graphics.Win2D.targets": {}
+        },
+        "runtimeTargets": {
+          "runtimes/win-arm64/native/Microsoft.Graphics.Canvas.dll": {
+            "assetType": "native",
+            "rid": "win-arm64"
+          },
+          "runtimes/win-x64/native/Microsoft.Graphics.Canvas.dll": {
+            "assetType": "native",
+            "rid": "win-x64"
+          },
+          "runtimes/win-x86/native/Microsoft.Graphics.Canvas.dll": {
+            "assetType": "native",
+            "rid": "win-x86"
+          }
+        }
+      },
+      "Microsoft.NET.ILLink.Tasks/10.0.11": {
+        "type": "package",
+        "build": {
+          "build/Microsoft.NET.ILLink.Tasks.props": {}
+        }
+      },
+      "Microsoft.Web.WebView2/1.0.3179.45": {
+        "type": "package",
+        "build": {
+          "buildTransitive/Microsoft.Web.WebView2.targets": {}
+        },
+        "runtimeTargets": {
+          "runtimes/win-arm64/native/WebView2Loader.dll": {
+            "assetType": "native",
+            "rid": "win-arm64"
+          },
+          "runtimes/win-x64/native/WebView2Loader.dll": {
+            "assetType": "native",
+            "rid": "win-x64"
+          },
+          "runtimes/win-x86/native/WebView2Loader.dll": {
+            "assetType": "native",
+            "rid": "win-x86"
+          }
+        }
+      },
+      "Microsoft.Windows.SDK.BuildTools/10.0.28000.1721": {
+        "type": "package",
+        "build": {
+          "buildTransitive/Microsoft.Windows.SDK.BuildTools.props": {},
+          "buildTransitive/Microsoft.Windows.SDK.BuildTools.targets": {}
+        }
+      },
+      "Microsoft.Windows.SDK.BuildTools.MSIX/1.7.20250829.1": {
+        "type": "package",
+        "build": {
+          "buildTransitive/Microsoft.Windows.SDK.BuildTools.MSIX.props": {},
+          "buildTransitive/Microsoft.Windows.SDK.BuildTools.MSIX.targets": {}
+        }
+      },
+      "Microsoft.WindowsAppSDK.Base/1.8.251216001": {
+        "type": "package",
+        "dependencies": {
+          "Microsoft.Windows.SDK.BuildTools": "10.0.26100.4654",
+          "Microsoft.Windows.SDK.BuildTools.MSIX": "1.7.20250829.1"
+        },
+        "build": {
+          "buildTransitive/Microsoft.WindowsAppSDK.Base.props": {},
+          "buildTransitive/Microsoft.WindowsAppSDK.Base.targets": {}
+        }
+      },
+      "Microsoft.WindowsAppSDK.Foundation/1.8.260203002": {
+        "type": "package",
+        "dependencies": {
+          "Microsoft.WindowsAppSDK.Base": "1.8.251216001",
+          "Microsoft.WindowsAppSDK.InteractiveExperiences": "1.8.260125001"
+        },
+        "compile": {
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Security.Authentication.OAuth.Projection.dll": {},
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.AppLifecycle.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.AppNotifications.Builder.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.AppNotifications.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.ApplicationModel.Background.Projection.dll": {},
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.ApplicationModel.DynamicDependency.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.ApplicationModel.Resources.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.ApplicationModel.WindowsAppRuntime.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.BadgeNotifications.Projection.dll": {},
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Foundation.Projection.dll": {},
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Management.Deployment.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Media.Capture.Projection.dll": {},
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.PushNotifications.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Security.AccessControl.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Storage.Pickers.Projection.dll": {},
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Storage.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.System.Power.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.System.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.WindowsAppRuntime.Bootstrap.Net.dll": {}
+        },
+        "runtime": {
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Security.Authentication.OAuth.Projection.dll": {},
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.AppLifecycle.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.AppNotifications.Builder.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.AppNotifications.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.ApplicationModel.Background.Projection.dll": {},
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.ApplicationModel.DynamicDependency.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.ApplicationModel.Resources.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.ApplicationModel.WindowsAppRuntime.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.BadgeNotifications.Projection.dll": {},
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Foundation.Projection.dll": {},
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Management.Deployment.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Media.Capture.Projection.dll": {},
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.PushNotifications.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Security.AccessControl.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Storage.Pickers.Projection.dll": {},
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Storage.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.System.Power.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.System.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.WindowsAppRuntime.Bootstrap.Net.dll": {}
+        },
+        "build": {
+          "buildTransitive/Microsoft.WindowsAppSDK.Foundation.props": {},
+          "buildTransitive/Microsoft.WindowsAppSDK.Foundation.targets": {}
+        },
+        "runtimeTargets": {
+          "runtimes/win-arm64/native/Microsoft.Windows.ApplicationModel.Background.UniversalBGTask.dll": {
+            "assetType": "native",
+            "rid": "win-arm64"
+          },
+          "runtimes/win-arm64/native/Microsoft.WindowsAppRuntime.Bootstrap.dll": {
+            "assetType": "native",
+            "rid": "win-arm64"
+          },
+          "runtimes/win-arm64ec/native/Microsoft.Windows.ApplicationModel.Background.UniversalBGTask.dll": {
+            "assetType": "native",
+            "rid": "win-arm64ec"
+          },
+          "runtimes/win-arm64ec/native/Microsoft.WindowsAppRuntime.Bootstrap.dll": {
+            "assetType": "native",
+            "rid": "win-arm64ec"
+          },
+          "runtimes/win-x64/native/Microsoft.Windows.ApplicationModel.Background.UniversalBGTask.dll": {
+            "assetType": "native",
+            "rid": "win-x64"
+          },
+          "runtimes/win-x64/native/Microsoft.WindowsAppRuntime.Bootstrap.dll": {
+            "assetType": "native",
+            "rid": "win-x64"
+          },
+          "runtimes/win-x86/native/Microsoft.Windows.ApplicationModel.Background.UniversalBGTask.dll": {
+            "assetType": "native",
+            "rid": "win-x86"
+          },
+          "runtimes/win-x86/native/Microsoft.WindowsAppRuntime.Bootstrap.dll": {
+            "assetType": "native",
+            "rid": "win-x86"
+          }
+        }
+      },
+      "Microsoft.WindowsAppSDK.InteractiveExperiences/1.8.260125001": {
+        "type": "package",
+        "dependencies": {
+          "Microsoft.WindowsAppSDK.Base": "1.8.251216001"
+        },
+        "compile": {
+          "lib/net6.0-windows10.0.18362.0/Microsoft.InteractiveExperiences.Projection.dll": {
+            "related": ".xml"
+          }
+        },
+        "runtime": {
+          "lib/net6.0-windows10.0.18362.0/Microsoft.InteractiveExperiences.Projection.dll": {
+            "related": ".xml"
+          }
+        },
+        "build": {
+          "buildTransitive/Microsoft.WindowsAppSDK.InteractiveExperiences.props": {},
+          "buildTransitive/Microsoft.WindowsAppSDK.InteractiveExperiences.targets": {}
+        }
+      },
+      "Microsoft.WindowsAppSDK.WinUI/1.8.260204000": {
+        "type": "package",
+        "dependencies": {
+          "Microsoft.Web.WebView2": "1.0.3179.45",
+          "Microsoft.WindowsAppSDK.Base": "1.8.251216001",
+          "Microsoft.WindowsAppSDK.Foundation": "1.8.260203002",
+          "Microsoft.WindowsAppSDK.InteractiveExperiences": "1.8.260125001"
+        },
+        "compile": {
+          "lib/net6.0-windows10.0.17763.0/Microsoft.WinUI.dll": {
+            "related": ".xml"
+          }
+        },
+        "runtime": {
+          "lib/net6.0-windows10.0.17763.0/Microsoft.WinUI.dll": {
+            "related": ".xml"
+          }
+        },
+        "build": {
+          "buildTransitive/Microsoft.WindowsAppSDK.WinUI.props": {},
+          "buildTransitive/Microsoft.WindowsAppSDK.WinUI.targets": {}
+        }
+      },
+      "MarkdownRenderer.Core/1.0.0-preview.1": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v10.0",
+        "dependencies": {
+          "Markdig": "0.42.0"
+        },
+        "compile": {
+          "bin/placeholder/MarkdownRenderer.Core.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/MarkdownRenderer.Core.dll": {}
+        }
+      }
+    },
+    "net10.0-windows10.0.26100.0/win-arm64": {
+      "Markdig/0.42.0": {
+        "type": "package",
+        "compile": {
+          "lib/net9.0/Markdig.dll": {
+            "related": ".xml"
+          }
+        },
+        "runtime": {
+          "lib/net9.0/Markdig.dll": {
+            "related": ".xml"
+          }
+        }
+      },
+      "Microsoft.Graphics.Win2D/1.4.0": {
+        "type": "package",
+        "dependencies": {
+          "Microsoft.WindowsAppSDK.WinUI": "1.8.260204000"
+        },
+        "compile": {
+          "lib/net6.0-windows10.0.19041.0/Microsoft.Graphics.Canvas.Interop.dll": {}
+        },
+        "runtime": {
+          "lib/net6.0-windows10.0.19041.0/Microsoft.Graphics.Canvas.Interop.dll": {}
+        },
+        "native": {
+          "runtimes/win-arm64/native/Microsoft.Graphics.Canvas.dll": {}
+        },
+        "build": {
+          "buildTransitive/net6.0-windows10.0.19041.0/Microsoft.Graphics.Win2D.props": {},
+          "buildTransitive/net6.0-windows10.0.19041.0/Microsoft.Graphics.Win2D.targets": {}
+        }
+      },
+      "Microsoft.NET.ILLink.Tasks/10.0.11": {
+        "type": "package",
+        "build": {
+          "build/Microsoft.NET.ILLink.Tasks.props": {}
+        }
+      },
+      "Microsoft.Web.WebView2/1.0.3179.45": {
+        "type": "package",
+        "native": {
+          "runtimes/win-arm64/native/WebView2Loader.dll": {}
+        },
+        "build": {
+          "buildTransitive/Microsoft.Web.WebView2.targets": {}
+        }
+      },
+      "Microsoft.Windows.SDK.BuildTools/10.0.28000.1721": {
+        "type": "package",
+        "build": {
+          "buildTransitive/Microsoft.Windows.SDK.BuildTools.props": {},
+          "buildTransitive/Microsoft.Windows.SDK.BuildTools.targets": {}
+        }
+      },
+      "Microsoft.Windows.SDK.BuildTools.MSIX/1.7.20250829.1": {
+        "type": "package",
+        "build": {
+          "buildTransitive/Microsoft.Windows.SDK.BuildTools.MSIX.props": {},
+          "buildTransitive/Microsoft.Windows.SDK.BuildTools.MSIX.targets": {}
+        }
+      },
+      "Microsoft.WindowsAppSDK.Base/1.8.251216001": {
+        "type": "package",
+        "dependencies": {
+          "Microsoft.Windows.SDK.BuildTools": "10.0.26100.4654",
+          "Microsoft.Windows.SDK.BuildTools.MSIX": "1.7.20250829.1"
+        },
+        "build": {
+          "buildTransitive/Microsoft.WindowsAppSDK.Base.props": {},
+          "buildTransitive/Microsoft.WindowsAppSDK.Base.targets": {}
+        }
+      },
+      "Microsoft.WindowsAppSDK.Foundation/1.8.260203002": {
+        "type": "package",
+        "dependencies": {
+          "Microsoft.WindowsAppSDK.Base": "1.8.251216001",
+          "Microsoft.WindowsAppSDK.InteractiveExperiences": "1.8.260125001"
+        },
+        "compile": {
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Security.Authentication.OAuth.Projection.dll": {},
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.AppLifecycle.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.AppNotifications.Builder.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.AppNotifications.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.ApplicationModel.Background.Projection.dll": {},
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.ApplicationModel.DynamicDependency.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.ApplicationModel.Resources.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.ApplicationModel.WindowsAppRuntime.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.BadgeNotifications.Projection.dll": {},
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Foundation.Projection.dll": {},
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Management.Deployment.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Media.Capture.Projection.dll": {},
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.PushNotifications.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Security.AccessControl.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Storage.Pickers.Projection.dll": {},
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Storage.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.System.Power.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.System.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.WindowsAppRuntime.Bootstrap.Net.dll": {}
+        },
+        "runtime": {
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Security.Authentication.OAuth.Projection.dll": {},
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.AppLifecycle.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.AppNotifications.Builder.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.AppNotifications.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.ApplicationModel.Background.Projection.dll": {},
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.ApplicationModel.DynamicDependency.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.ApplicationModel.Resources.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.ApplicationModel.WindowsAppRuntime.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.BadgeNotifications.Projection.dll": {},
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Foundation.Projection.dll": {},
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Management.Deployment.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Media.Capture.Projection.dll": {},
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.PushNotifications.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Security.AccessControl.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Storage.Pickers.Projection.dll": {},
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Storage.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.System.Power.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.System.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.WindowsAppRuntime.Bootstrap.Net.dll": {}
+        },
+        "native": {
+          "runtimes/win-arm64/native/Microsoft.Windows.ApplicationModel.Background.UniversalBGTask.dll": {},
+          "runtimes/win-arm64/native/Microsoft.WindowsAppRuntime.Bootstrap.dll": {}
+        },
+        "build": {
+          "buildTransitive/Microsoft.WindowsAppSDK.Foundation.props": {},
+          "buildTransitive/Microsoft.WindowsAppSDK.Foundation.targets": {}
+        }
+      },
+      "Microsoft.WindowsAppSDK.InteractiveExperiences/1.8.260125001": {
+        "type": "package",
+        "dependencies": {
+          "Microsoft.WindowsAppSDK.Base": "1.8.251216001"
+        },
+        "compile": {
+          "lib/net6.0-windows10.0.18362.0/Microsoft.InteractiveExperiences.Projection.dll": {
+            "related": ".xml"
+          }
+        },
+        "runtime": {
+          "lib/net6.0-windows10.0.18362.0/Microsoft.InteractiveExperiences.Projection.dll": {
+            "related": ".xml"
+          }
+        },
+        "build": {
+          "buildTransitive/Microsoft.WindowsAppSDK.InteractiveExperiences.props": {},
+          "buildTransitive/Microsoft.WindowsAppSDK.InteractiveExperiences.targets": {}
+        }
+      },
+      "Microsoft.WindowsAppSDK.WinUI/1.8.260204000": {
+        "type": "package",
+        "dependencies": {
+          "Microsoft.Web.WebView2": "1.0.3179.45",
+          "Microsoft.WindowsAppSDK.Base": "1.8.251216001",
+          "Microsoft.WindowsAppSDK.Foundation": "1.8.260203002",
+          "Microsoft.WindowsAppSDK.InteractiveExperiences": "1.8.260125001"
+        },
+        "compile": {
+          "lib/net6.0-windows10.0.17763.0/Microsoft.WinUI.dll": {
+            "related": ".xml"
+          }
+        },
+        "runtime": {
+          "lib/net6.0-windows10.0.17763.0/Microsoft.WinUI.dll": {
+            "related": ".xml"
+          }
+        },
+        "build": {
+          "buildTransitive/Microsoft.WindowsAppSDK.WinUI.props": {},
+          "buildTransitive/Microsoft.WindowsAppSDK.WinUI.targets": {}
+        }
+      },
+      "MarkdownRenderer.Core/1.0.0-preview.1": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v10.0",
+        "dependencies": {
+          "Markdig": "0.42.0"
+        },
+        "compile": {
+          "bin/placeholder/MarkdownRenderer.Core.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/MarkdownRenderer.Core.dll": {}
+        }
+      }
+    },
+    "net10.0-windows10.0.26100.0/win-x64": {
+      "Markdig/0.42.0": {
+        "type": "package",
+        "compile": {
+          "lib/net9.0/Markdig.dll": {
+            "related": ".xml"
+          }
+        },
+        "runtime": {
+          "lib/net9.0/Markdig.dll": {
+            "related": ".xml"
+          }
+        }
+      },
+      "Microsoft.Graphics.Win2D/1.4.0": {
+        "type": "package",
+        "dependencies": {
+          "Microsoft.WindowsAppSDK.WinUI": "1.8.260204000"
+        },
+        "compile": {
+          "lib/net6.0-windows10.0.19041.0/Microsoft.Graphics.Canvas.Interop.dll": {}
+        },
+        "runtime": {
+          "lib/net6.0-windows10.0.19041.0/Microsoft.Graphics.Canvas.Interop.dll": {}
+        },
+        "native": {
+          "runtimes/win-x64/native/Microsoft.Graphics.Canvas.dll": {}
+        },
+        "build": {
+          "buildTransitive/net6.0-windows10.0.19041.0/Microsoft.Graphics.Win2D.props": {},
+          "buildTransitive/net6.0-windows10.0.19041.0/Microsoft.Graphics.Win2D.targets": {}
+        }
+      },
+      "Microsoft.NET.ILLink.Tasks/10.0.11": {
+        "type": "package",
+        "build": {
+          "build/Microsoft.NET.ILLink.Tasks.props": {}
+        }
+      },
+      "Microsoft.Web.WebView2/1.0.3179.45": {
+        "type": "package",
+        "native": {
+          "runtimes/win-x64/native/WebView2Loader.dll": {}
+        },
+        "build": {
+          "buildTransitive/Microsoft.Web.WebView2.targets": {}
+        }
+      },
+      "Microsoft.Windows.SDK.BuildTools/10.0.28000.1721": {
+        "type": "package",
+        "build": {
+          "buildTransitive/Microsoft.Windows.SDK.BuildTools.props": {},
+          "buildTransitive/Microsoft.Windows.SDK.BuildTools.targets": {}
+        }
+      },
+      "Microsoft.Windows.SDK.BuildTools.MSIX/1.7.20250829.1": {
+        "type": "package",
+        "build": {
+          "buildTransitive/Microsoft.Windows.SDK.BuildTools.MSIX.props": {},
+          "buildTransitive/Microsoft.Windows.SDK.BuildTools.MSIX.targets": {}
+        }
+      },
+      "Microsoft.WindowsAppSDK.Base/1.8.251216001": {
+        "type": "package",
+        "dependencies": {
+          "Microsoft.Windows.SDK.BuildTools": "10.0.26100.4654",
+          "Microsoft.Windows.SDK.BuildTools.MSIX": "1.7.20250829.1"
+        },
+        "build": {
+          "buildTransitive/Microsoft.WindowsAppSDK.Base.props": {},
+          "buildTransitive/Microsoft.WindowsAppSDK.Base.targets": {}
+        }
+      },
+      "Microsoft.WindowsAppSDK.Foundation/1.8.260203002": {
+        "type": "package",
+        "dependencies": {
+          "Microsoft.WindowsAppSDK.Base": "1.8.251216001",
+          "Microsoft.WindowsAppSDK.InteractiveExperiences": "1.8.260125001"
+        },
+        "compile": {
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Security.Authentication.OAuth.Projection.dll": {},
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.AppLifecycle.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.AppNotifications.Builder.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.AppNotifications.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.ApplicationModel.Background.Projection.dll": {},
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.ApplicationModel.DynamicDependency.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.ApplicationModel.Resources.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.ApplicationModel.WindowsAppRuntime.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.BadgeNotifications.Projection.dll": {},
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Foundation.Projection.dll": {},
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Management.Deployment.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Media.Capture.Projection.dll": {},
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.PushNotifications.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Security.AccessControl.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Storage.Pickers.Projection.dll": {},
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Storage.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.System.Power.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.System.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.WindowsAppRuntime.Bootstrap.Net.dll": {}
+        },
+        "runtime": {
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Security.Authentication.OAuth.Projection.dll": {},
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.AppLifecycle.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.AppNotifications.Builder.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.AppNotifications.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.ApplicationModel.Background.Projection.dll": {},
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.ApplicationModel.DynamicDependency.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.ApplicationModel.Resources.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.ApplicationModel.WindowsAppRuntime.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.BadgeNotifications.Projection.dll": {},
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Foundation.Projection.dll": {},
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Management.Deployment.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Media.Capture.Projection.dll": {},
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.PushNotifications.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Security.AccessControl.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Storage.Pickers.Projection.dll": {},
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Storage.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.System.Power.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.System.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.WindowsAppRuntime.Bootstrap.Net.dll": {}
+        },
+        "native": {
+          "runtimes/win-x64/native/Microsoft.Windows.ApplicationModel.Background.UniversalBGTask.dll": {},
+          "runtimes/win-x64/native/Microsoft.WindowsAppRuntime.Bootstrap.dll": {}
+        },
+        "build": {
+          "buildTransitive/Microsoft.WindowsAppSDK.Foundation.props": {},
+          "buildTransitive/Microsoft.WindowsAppSDK.Foundation.targets": {}
+        }
+      },
+      "Microsoft.WindowsAppSDK.InteractiveExperiences/1.8.260125001": {
+        "type": "package",
+        "dependencies": {
+          "Microsoft.WindowsAppSDK.Base": "1.8.251216001"
+        },
+        "compile": {
+          "lib/net6.0-windows10.0.18362.0/Microsoft.InteractiveExperiences.Projection.dll": {
+            "related": ".xml"
+          }
+        },
+        "runtime": {
+          "lib/net6.0-windows10.0.18362.0/Microsoft.InteractiveExperiences.Projection.dll": {
+            "related": ".xml"
+          }
+        },
+        "build": {
+          "buildTransitive/Microsoft.WindowsAppSDK.InteractiveExperiences.props": {},
+          "buildTransitive/Microsoft.WindowsAppSDK.InteractiveExperiences.targets": {}
+        }
+      },
+      "Microsoft.WindowsAppSDK.WinUI/1.8.260204000": {
+        "type": "package",
+        "dependencies": {
+          "Microsoft.Web.WebView2": "1.0.3179.45",
+          "Microsoft.WindowsAppSDK.Base": "1.8.251216001",
+          "Microsoft.WindowsAppSDK.Foundation": "1.8.260203002",
+          "Microsoft.WindowsAppSDK.InteractiveExperiences": "1.8.260125001"
+        },
+        "compile": {
+          "lib/net6.0-windows10.0.17763.0/Microsoft.WinUI.dll": {
+            "related": ".xml"
+          }
+        },
+        "runtime": {
+          "lib/net6.0-windows10.0.17763.0/Microsoft.WinUI.dll": {
+            "related": ".xml"
+          }
+        },
+        "build": {
+          "buildTransitive/Microsoft.WindowsAppSDK.WinUI.props": {},
+          "buildTransitive/Microsoft.WindowsAppSDK.WinUI.targets": {}
+        }
+      },
+      "MarkdownRenderer.Core/1.0.0-preview.1": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v10.0",
+        "dependencies": {
+          "Markdig": "0.42.0"
+        },
+        "compile": {
+          "bin/placeholder/MarkdownRenderer.Core.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/MarkdownRenderer.Core.dll": {}
+        }
+      }
+    },
+    "net10.0-windows10.0.26100.0/win-x86": {
+      "Markdig/0.42.0": {
+        "type": "package",
+        "compile": {
+          "lib/net9.0/Markdig.dll": {
+            "related": ".xml"
+          }
+        },
+        "runtime": {
+          "lib/net9.0/Markdig.dll": {
+            "related": ".xml"
+          }
+        }
+      },
+      "Microsoft.Graphics.Win2D/1.4.0": {
+        "type": "package",
+        "dependencies": {
+          "Microsoft.WindowsAppSDK.WinUI": "1.8.260204000"
+        },
+        "compile": {
+          "lib/net6.0-windows10.0.19041.0/Microsoft.Graphics.Canvas.Interop.dll": {}
+        },
+        "runtime": {
+          "lib/net6.0-windows10.0.19041.0/Microsoft.Graphics.Canvas.Interop.dll": {}
+        },
+        "native": {
+          "runtimes/win-x86/native/Microsoft.Graphics.Canvas.dll": {}
+        },
+        "build": {
+          "buildTransitive/net6.0-windows10.0.19041.0/Microsoft.Graphics.Win2D.props": {},
+          "buildTransitive/net6.0-windows10.0.19041.0/Microsoft.Graphics.Win2D.targets": {}
+        }
+      },
+      "Microsoft.NET.ILLink.Tasks/10.0.11": {
+        "type": "package",
+        "build": {
+          "build/Microsoft.NET.ILLink.Tasks.props": {}
+        }
+      },
+      "Microsoft.Web.WebView2/1.0.3179.45": {
+        "type": "package",
+        "native": {
+          "runtimes/win-x86/native/WebView2Loader.dll": {}
+        },
+        "build": {
+          "buildTransitive/Microsoft.Web.WebView2.targets": {}
+        }
+      },
+      "Microsoft.Windows.SDK.BuildTools/10.0.28000.1721": {
+        "type": "package",
+        "build": {
+          "buildTransitive/Microsoft.Windows.SDK.BuildTools.props": {},
+          "buildTransitive/Microsoft.Windows.SDK.BuildTools.targets": {}
+        }
+      },
+      "Microsoft.Windows.SDK.BuildTools.MSIX/1.7.20250829.1": {
+        "type": "package",
+        "build": {
+          "buildTransitive/Microsoft.Windows.SDK.BuildTools.MSIX.props": {},
+          "buildTransitive/Microsoft.Windows.SDK.BuildTools.MSIX.targets": {}
+        }
+      },
+      "Microsoft.WindowsAppSDK.Base/1.8.251216001": {
+        "type": "package",
+        "dependencies": {
+          "Microsoft.Windows.SDK.BuildTools": "10.0.26100.4654",
+          "Microsoft.Windows.SDK.BuildTools.MSIX": "1.7.20250829.1"
+        },
+        "build": {
+          "buildTransitive/Microsoft.WindowsAppSDK.Base.props": {},
+          "buildTransitive/Microsoft.WindowsAppSDK.Base.targets": {}
+        }
+      },
+      "Microsoft.WindowsAppSDK.Foundation/1.8.260203002": {
+        "type": "package",
+        "dependencies": {
+          "Microsoft.WindowsAppSDK.Base": "1.8.251216001",
+          "Microsoft.WindowsAppSDK.InteractiveExperiences": "1.8.260125001"
+        },
+        "compile": {
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Security.Authentication.OAuth.Projection.dll": {},
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.AppLifecycle.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.AppNotifications.Builder.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.AppNotifications.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.ApplicationModel.Background.Projection.dll": {},
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.ApplicationModel.DynamicDependency.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.ApplicationModel.Resources.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.ApplicationModel.WindowsAppRuntime.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.BadgeNotifications.Projection.dll": {},
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Foundation.Projection.dll": {},
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Management.Deployment.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Media.Capture.Projection.dll": {},
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.PushNotifications.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Security.AccessControl.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Storage.Pickers.Projection.dll": {},
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Storage.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.System.Power.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.System.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.WindowsAppRuntime.Bootstrap.Net.dll": {}
+        },
+        "runtime": {
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Security.Authentication.OAuth.Projection.dll": {},
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.AppLifecycle.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.AppNotifications.Builder.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.AppNotifications.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.ApplicationModel.Background.Projection.dll": {},
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.ApplicationModel.DynamicDependency.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.ApplicationModel.Resources.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.ApplicationModel.WindowsAppRuntime.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.BadgeNotifications.Projection.dll": {},
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Foundation.Projection.dll": {},
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Management.Deployment.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Media.Capture.Projection.dll": {},
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.PushNotifications.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Security.AccessControl.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Storage.Pickers.Projection.dll": {},
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Storage.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.System.Power.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.System.Projection.dll": {
+            "related": ".xml"
+          },
+          "lib/net6.0-windows10.0.17763.0/Microsoft.WindowsAppRuntime.Bootstrap.Net.dll": {}
+        },
+        "native": {
+          "runtimes/win-x86/native/Microsoft.Windows.ApplicationModel.Background.UniversalBGTask.dll": {},
+          "runtimes/win-x86/native/Microsoft.WindowsAppRuntime.Bootstrap.dll": {}
+        },
+        "build": {
+          "buildTransitive/Microsoft.WindowsAppSDK.Foundation.props": {},
+          "buildTransitive/Microsoft.WindowsAppSDK.Foundation.targets": {}
+        }
+      },
+      "Microsoft.WindowsAppSDK.InteractiveExperiences/1.8.260125001": {
+        "type": "package",
+        "dependencies": {
+          "Microsoft.WindowsAppSDK.Base": "1.8.251216001"
+        },
+        "compile": {
+          "lib/net6.0-windows10.0.18362.0/Microsoft.InteractiveExperiences.Projection.dll": {
+            "related": ".xml"
+          }
+        },
+        "runtime": {
+          "lib/net6.0-windows10.0.18362.0/Microsoft.InteractiveExperiences.Projection.dll": {
+            "related": ".xml"
+          }
+        },
+        "build": {
+          "buildTransitive/Microsoft.WindowsAppSDK.InteractiveExperiences.props": {},
+          "buildTransitive/Microsoft.WindowsAppSDK.InteractiveExperiences.targets": {}
+        }
+      },
+      "Microsoft.WindowsAppSDK.WinUI/1.8.260204000": {
+        "type": "package",
+        "dependencies": {
+          "Microsoft.Web.WebView2": "1.0.3179.45",
+          "Microsoft.WindowsAppSDK.Base": "1.8.251216001",
+          "Microsoft.WindowsAppSDK.Foundation": "1.8.260203002",
+          "Microsoft.WindowsAppSDK.InteractiveExperiences": "1.8.260125001"
+        },
+        "compile": {
+          "lib/net6.0-windows10.0.17763.0/Microsoft.WinUI.dll": {
+            "related": ".xml"
+          }
+        },
+        "runtime": {
+          "lib/net6.0-windows10.0.17763.0/Microsoft.WinUI.dll": {
+            "related": ".xml"
+          }
+        },
+        "build": {
+          "buildTransitive/Microsoft.WindowsAppSDK.WinUI.props": {},
+          "buildTransitive/Microsoft.WindowsAppSDK.WinUI.targets": {}
+        }
+      },
+      "MarkdownRenderer.Core/1.0.0-preview.1": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v10.0",
+        "dependencies": {
+          "Markdig": "0.42.0"
+        },
+        "compile": {
+          "bin/placeholder/MarkdownRenderer.Core.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/MarkdownRenderer.Core.dll": {}
+        }
+      }
+    }
+  },
+  "libraries": {
+    "Markdig/0.42.0": {
+      "sha512": "tINdftVfbTujqfPXrQOSl9/6XCS2Y4Zwz+i7UPBgxRNnDtI1CjyQ5UA/5sKoSOmfECyWkTztY/vbcc/u1DA8nA==",
+      "type": "package",
+      "path": "markdig/0.42.0",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "lib/net462/Markdig.dll",
+        "lib/net462/Markdig.xml",
+        "lib/net8.0/Markdig.dll",
+        "lib/net8.0/Markdig.xml",
+        "lib/net9.0/Markdig.dll",
+        "lib/net9.0/Markdig.xml",
+        "lib/netstandard2.0/Markdig.dll",
+        "lib/netstandard2.0/Markdig.xml",
+        "lib/netstandard2.1/Markdig.dll",
+        "lib/netstandard2.1/Markdig.xml",
+        "markdig.0.42.0.nupkg.sha512",
+        "markdig.nuspec",
+        "markdig.png",
+        "readme.md"
+      ]
+    },
+    "Microsoft.Graphics.Win2D/1.4.0": {
+      "sha512": "/04yyf3xEOxeBK+SXxGB6OYLjXBVuujcLQF04mREcRcBT59IMI+oDbXOZZG2c/mJL8kKFC8r3wqz6MyA6IP3oA==",
+      "type": "package",
+      "path": "microsoft.graphics.win2d/1.4.0",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "Win2d.githash.txt",
+        "build/Win2D.common.targets",
+        "build/native/Microsoft.Graphics.Win2D.targets",
+        "build/net45/Microsoft.Graphics.Win2D.targets",
+        "build/net6.0-windows10.0.19041.0/Microsoft.Graphics.Win2D.props",
+        "build/net6.0-windows10.0.19041.0/Microsoft.Graphics.Win2D.targets",
+        "build/win10/Microsoft.Graphics.Win2D.targets",
+        "buildTransitive/net6.0-windows10.0.19041.0/Microsoft.Graphics.Win2D.props",
+        "buildTransitive/net6.0-windows10.0.19041.0/Microsoft.Graphics.Win2D.targets",
+        "icon.png",
+        "include/Microsoft.Graphics.Canvas.native.h",
+        "include/arm64/Microsoft.Graphics.Canvas.h",
+        "include/x64/Microsoft.Graphics.Canvas.h",
+        "include/x86/Microsoft.Graphics.Canvas.h",
+        "lib/net45/Microsoft.Graphics.Canvas.winmd",
+        "lib/net6.0-windows10.0.19041.0/Microsoft.Graphics.Canvas.Interop.dll",
+        "lib/uap10.0/Microsoft.Graphics.Canvas.winmd",
+        "microsoft.graphics.win2d.1.4.0.nupkg.sha512",
+        "microsoft.graphics.win2d.nuspec",
+        "runtimes/win-arm64/native/Microsoft.Graphics.Canvas.dll",
+        "runtimes/win-x64/native/Microsoft.Graphics.Canvas.dll",
+        "runtimes/win-x86/native/Microsoft.Graphics.Canvas.dll"
+      ]
+    },
+    "Microsoft.NET.ILLink.Tasks/10.0.11": {
+      "sha512": "IBf7lbovvjGWVWXZX5cJ/cO0WXbId0Zq4BuSeT94mGZuOAP66oMeH9PTBZ9Jpp3Jb6jtK0qm/NyUbPRo1gC/wQ==",
+      "type": "package",
+      "path": "microsoft.net.illink.tasks/10.0.11",
+      "hasTools": true,
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "Icon.png",
+        "Sdk/Sdk.props",
+        "THIRD-PARTY-NOTICES.TXT",
+        "analyzers/dotnet/cs/ILLink.CodeFixProvider.dll",
+        "analyzers/dotnet/cs/ILLink.RoslynAnalyzer.dll",
+        "build/Microsoft.NET.ILLink.Analyzers.props",
+        "build/Microsoft.NET.ILLink.Tasks.props",
+        "build/Microsoft.NET.ILLink.targets",
+        "microsoft.net.illink.tasks.10.0.11.nupkg.sha512",
+        "microsoft.net.illink.tasks.nuspec",
+        "tools/net/ILLink.Tasks.deps.json",
+        "tools/net/ILLink.Tasks.dll",
+        "tools/net/Mono.Cecil.Mdb.dll",
+        "tools/net/Mono.Cecil.Pdb.dll",
+        "tools/net/Mono.Cecil.Rocks.dll",
+        "tools/net/Mono.Cecil.dll",
+        "tools/net/Sdk/Sdk.props",
+        "tools/net/build/Microsoft.NET.ILLink.Analyzers.props",
+        "tools/net/build/Microsoft.NET.ILLink.Tasks.props",
+        "tools/net/build/Microsoft.NET.ILLink.targets",
+        "tools/net/illink.deps.json",
+        "tools/net/illink.dll",
+        "tools/net/illink.runtimeconfig.json",
+        "tools/netframework/ILLink.Tasks.dll",
+        "tools/netframework/ILLink.Tasks.dll.config",
+        "tools/netframework/Mono.Cecil.Mdb.dll",
+        "tools/netframework/Mono.Cecil.Pdb.dll",
+        "tools/netframework/Mono.Cecil.Rocks.dll",
+        "tools/netframework/Mono.Cecil.dll",
+        "tools/netframework/Sdk/Sdk.props",
+        "tools/netframework/System.Buffers.dll",
+        "tools/netframework/System.Collections.Immutable.dll",
+        "tools/netframework/System.Memory.dll",
+        "tools/netframework/System.Numerics.Vectors.dll",
+        "tools/netframework/System.Reflection.Metadata.dll",
+        "tools/netframework/System.Runtime.CompilerServices.Unsafe.dll",
+        "tools/netframework/build/Microsoft.NET.ILLink.Analyzers.props",
+        "tools/netframework/build/Microsoft.NET.ILLink.Tasks.props",
+        "tools/netframework/build/Microsoft.NET.ILLink.targets",
+        "useSharedDesignerContext.txt"
+      ]
+    },
+    "Microsoft.Web.WebView2/1.0.3179.45": {
+      "sha512": "3pokSH5CnN0G6rGhGFo1y87inxYhNxBQ2Vdf0wlvBj99KHxQJormjDACmqRnFeUsmuNFIhWwfAL1ztq7wD5qRA==",
+      "type": "package",
+      "path": "microsoft.web.webview2/1.0.3179.45",
+      "hasTools": true,
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "LICENSE.txt",
+        "NOTICE.txt",
+        "WebView2.idl",
+        "WebView2.tlb",
+        "build/Common.targets",
+        "build/Microsoft.Web.WebView2.targets",
+        "build/WebView2Rules.Project.xml",
+        "build/native/Microsoft.Web.WebView2.targets",
+        "build/native/arm64/WebView2Loader.dll",
+        "build/native/arm64/WebView2Loader.dll.lib",
+        "build/native/arm64/WebView2LoaderStatic.lib",
+        "build/native/include-winrt/WebView2Interop.h",
+        "build/native/include-winrt/WebView2Interop.idl",
+        "build/native/include-winrt/WebView2Interop.tlb",
+        "build/native/include/WebView2.h",
+        "build/native/include/WebView2EnvironmentOptions.h",
+        "build/native/x64/WebView2Loader.dll",
+        "build/native/x64/WebView2Loader.dll.lib",
+        "build/native/x64/WebView2LoaderStatic.lib",
+        "build/native/x86/WebView2Loader.dll",
+        "build/native/x86/WebView2Loader.dll.lib",
+        "build/native/x86/WebView2LoaderStatic.lib",
+        "build/wv2winrt.targets",
+        "buildTransitive/Microsoft.Web.WebView2.targets",
+        "lib/Microsoft.Web.WebView2.Core.winmd",
+        "lib/net462/Microsoft.Web.WebView2.Core.dll",
+        "lib/net462/Microsoft.Web.WebView2.Core.xml",
+        "lib/net462/Microsoft.Web.WebView2.WinForms.dll",
+        "lib/net462/Microsoft.Web.WebView2.WinForms.xml",
+        "lib/net462/Microsoft.Web.WebView2.Wpf.dll",
+        "lib/net462/Microsoft.Web.WebView2.Wpf.xml",
+        "lib_manual/net5.0-windows10.0.17763.0/Microsoft.Web.WebView2.Wpf.dll",
+        "lib_manual/net5.0-windows10.0.17763.0/Microsoft.Web.WebView2.Wpf.xml",
+        "lib_manual/net6.0-windows10.0.17763.0/Microsoft.Web.WebView2.Core.Projection.dll",
+        "lib_manual/net8.0-windows10.0.17763.0/Microsoft.Web.WebView2.Core.Projection.dll",
+        "lib_manual/netcoreapp3.0/Microsoft.Web.WebView2.Core.dll",
+        "lib_manual/netcoreapp3.0/Microsoft.Web.WebView2.Core.xml",
+        "lib_manual/netcoreapp3.0/Microsoft.Web.WebView2.WinForms.dll",
+        "lib_manual/netcoreapp3.0/Microsoft.Web.WebView2.WinForms.xml",
+        "lib_manual/netcoreapp3.0/Microsoft.Web.WebView2.Wpf.dll",
+        "lib_manual/netcoreapp3.0/Microsoft.Web.WebView2.Wpf.xml",
+        "microsoft.web.webview2.1.0.3179.45.nupkg.sha512",
+        "microsoft.web.webview2.nuspec",
+        "runtimes/win-arm64/native/WebView2Loader.dll",
+        "runtimes/win-arm64/native_uap/Microsoft.Web.WebView2.Core.dll",
+        "runtimes/win-x64/native/WebView2Loader.dll",
+        "runtimes/win-x64/native_uap/Microsoft.Web.WebView2.Core.dll",
+        "runtimes/win-x86/native/WebView2Loader.dll",
+        "runtimes/win-x86/native_uap/Microsoft.Web.WebView2.Core.dll",
+        "tools/VisualStudioToolsManifest.xml",
+        "tools/wv2winrt/Antlr3.Runtime.dll",
+        "tools/wv2winrt/Antlr4.StringTemplate.dll",
+        "tools/wv2winrt/System.Buffers.dll",
+        "tools/wv2winrt/System.CommandLine.DragonFruit.dll",
+        "tools/wv2winrt/System.CommandLine.Rendering.dll",
+        "tools/wv2winrt/System.CommandLine.dll",
+        "tools/wv2winrt/System.Memory.dll",
+        "tools/wv2winrt/System.Numerics.Vectors.dll",
+        "tools/wv2winrt/System.Runtime.CompilerServices.Unsafe.dll",
+        "tools/wv2winrt/codegen_util.dll",
+        "tools/wv2winrt/concrt140_app.dll",
+        "tools/wv2winrt/cs/System.CommandLine.resources.dll",
+        "tools/wv2winrt/de/System.CommandLine.resources.dll",
+        "tools/wv2winrt/es/System.CommandLine.resources.dll",
+        "tools/wv2winrt/fr/System.CommandLine.resources.dll",
+        "tools/wv2winrt/it/System.CommandLine.resources.dll",
+        "tools/wv2winrt/ja/System.CommandLine.resources.dll",
+        "tools/wv2winrt/ko/System.CommandLine.resources.dll",
+        "tools/wv2winrt/msvcp140_1_app.dll",
+        "tools/wv2winrt/msvcp140_2_app.dll",
+        "tools/wv2winrt/msvcp140_app.dll",
+        "tools/wv2winrt/pl/System.CommandLine.resources.dll",
+        "tools/wv2winrt/pt-BR/System.CommandLine.resources.dll",
+        "tools/wv2winrt/ru/System.CommandLine.resources.dll",
+        "tools/wv2winrt/tr/System.CommandLine.resources.dll",
+        "tools/wv2winrt/type_hierarchy.dll",
+        "tools/wv2winrt/vcamp140_app.dll",
+        "tools/wv2winrt/vccorlib140_app.dll",
+        "tools/wv2winrt/vcomp140_app.dll",
+        "tools/wv2winrt/vcruntime140_app.dll",
+        "tools/wv2winrt/winrt_winmd.dll",
+        "tools/wv2winrt/winrt_winmd.winmd",
+        "tools/wv2winrt/wv2winrt.exe",
+        "tools/wv2winrt/wv2winrt.exe.config",
+        "tools/wv2winrt/wv2winrt.xml",
+        "tools/wv2winrt/zh-Hans/System.CommandLine.resources.dll",
+        "tools/wv2winrt/zh-Hant/System.CommandLine.resources.dll"
+      ]
+    },
+    "Microsoft.Windows.SDK.BuildTools/10.0.28000.1721": {
+      "sha512": "uZvcBnNFklWdlZXuXtb+opS5oi4TdMAsEDT9r2nbWeG1WhkWh2B6IFyHyYYLEhINkVz1HMPGKckJvNq0AaVW+w==",
+      "type": "package",
+      "path": "microsoft.windows.sdk.buildtools/10.0.28000.1721",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "bin/10.0.28000.0/arm64/AccChecker/Microsoft.Diagnostics.Tracing.EventSource.dll",
+        "bin/10.0.28000.0/arm64/ComparePackage.exe",
+        "bin/10.0.28000.0/arm64/DeployUtil.exe",
+        "bin/10.0.28000.0/arm64/MakeCert.exe",
+        "bin/10.0.28000.0/arm64/Microsoft.ComparePackage.Lib.dll",
+        "bin/10.0.28000.0/arm64/Microsoft.Diagnostics.Tracing.EventSource.dll",
+        "bin/10.0.28000.0/arm64/Microsoft.PackageEditor.Lib.dll",
+        "bin/10.0.28000.0/arm64/Microsoft.Tools.Connectivity.dll",
+        "bin/10.0.28000.0/arm64/Microsoft.Tools.Deploy.dll",
+        "bin/10.0.28000.0/arm64/Microsoft.Windows.Build.Appx.AppxPackaging.dll.manifest",
+        "bin/10.0.28000.0/arm64/Microsoft.Windows.Build.Appx.AppxSip.dll.manifest",
+        "bin/10.0.28000.0/arm64/Microsoft.Windows.Build.Appx.OpcServices.dll.manifest",
+        "bin/10.0.28000.0/arm64/Microsoft.Windows.Build.Signing.mssign32.dll.manifest",
+        "bin/10.0.28000.0/arm64/Microsoft.Windows.Build.Signing.wintrust.dll.manifest",
+        "bin/10.0.28000.0/arm64/PackageEditor.exe",
+        "bin/10.0.28000.0/arm64/ServicingCommon.dll",
+        "bin/10.0.28000.0/arm64/SirepClient.assembly.manifest",
+        "bin/10.0.28000.0/arm64/SirepClient.dll",
+        "bin/10.0.28000.0/arm64/SirepInterop.dll",
+        "bin/10.0.28000.0/arm64/SshClient.dll",
+        "bin/10.0.28000.0/arm64/WinAppDeployCmd.exe",
+        "bin/10.0.28000.0/arm64/WinAppDeployCommon.dll",
+        "bin/10.0.28000.0/arm64/appxpackaging.dll",
+        "bin/10.0.28000.0/arm64/appxsip.dll",
+        "bin/10.0.28000.0/arm64/en-US/AppxPackaging.dll.mui",
+        "bin/10.0.28000.0/arm64/en/Microsoft.Tools.Deploy.resources.dll",
+        "bin/10.0.28000.0/arm64/en/WinAppDeployCmd.resources.dll",
+        "bin/10.0.28000.0/arm64/ipoverusb.discoverpartners.dll",
+        "bin/10.0.28000.0/arm64/makeappx.exe",
+        "bin/10.0.28000.0/arm64/makecat.exe",
+        "bin/10.0.28000.0/arm64/makecat.exe.manifest",
+        "bin/10.0.28000.0/arm64/makepri.exe",
+        "bin/10.0.28000.0/arm64/mc.exe",
+        "bin/10.0.28000.0/arm64/mdmerge.exe",
+        "bin/10.0.28000.0/arm64/midl.exe",
+        "bin/10.0.28000.0/arm64/midlc.exe",
+        "bin/10.0.28000.0/arm64/midlrt.exe",
+        "bin/10.0.28000.0/arm64/midlrtmd.dll",
+        "bin/10.0.28000.0/arm64/mrmsupport.dll",
+        "bin/10.0.28000.0/arm64/msisip.dll",
+        "bin/10.0.28000.0/arm64/mssign32.dll",
+        "bin/10.0.28000.0/arm64/mt.exe",
+        "bin/10.0.28000.0/arm64/mt.exe.config",
+        "bin/10.0.28000.0/arm64/opcservices.dll",
+        "bin/10.0.28000.0/arm64/rc.exe",
+        "bin/10.0.28000.0/arm64/rcdll.dll",
+        "bin/10.0.28000.0/arm64/signtool.exe",
+        "bin/10.0.28000.0/arm64/signtool.exe.manifest",
+        "bin/10.0.28000.0/arm64/tracewpp.exe",
+        "bin/10.0.28000.0/arm64/uuidgen.exe",
+        "bin/10.0.28000.0/arm64/veiid.exe",
+        "bin/10.0.28000.0/arm64/winmdidl.exe",
+        "bin/10.0.28000.0/arm64/wintrust.dll",
+        "bin/10.0.28000.0/arm64/wintrust.dll.ini",
+        "bin/10.0.28000.0/x64/AccChecker/Microsoft.Diagnostics.Tracing.EventSource.dll",
+        "bin/10.0.28000.0/x64/ComparePackage.exe",
+        "bin/10.0.28000.0/x64/DeployUtil.exe",
+        "bin/10.0.28000.0/x64/MakeCert.exe",
+        "bin/10.0.28000.0/x64/Microsoft.ComparePackage.Lib.dll",
+        "bin/10.0.28000.0/x64/Microsoft.Diagnostics.Tracing.EventSource.dll",
+        "bin/10.0.28000.0/x64/Microsoft.PackageEditor.Lib.dll",
+        "bin/10.0.28000.0/x64/Microsoft.Tools.Connectivity.dll",
+        "bin/10.0.28000.0/x64/Microsoft.Tools.Deploy.dll",
+        "bin/10.0.28000.0/x64/Microsoft.Windows.Build.Appx.AppxPackaging.dll.manifest",
+        "bin/10.0.28000.0/x64/Microsoft.Windows.Build.Appx.AppxSip.dll.manifest",
+        "bin/10.0.28000.0/x64/Microsoft.Windows.Build.Appx.OpcServices.dll.manifest",
+        "bin/10.0.28000.0/x64/Microsoft.Windows.Build.Signing.mssign32.dll.manifest",
+        "bin/10.0.28000.0/x64/Microsoft.Windows.Build.Signing.wintrust.dll.manifest",
+        "bin/10.0.28000.0/x64/PackageEditor.exe",
+        "bin/10.0.28000.0/x64/ServicingCommon.dll",
+        "bin/10.0.28000.0/x64/SirepClient.assembly.manifest",
+        "bin/10.0.28000.0/x64/SirepClient.dll",
+        "bin/10.0.28000.0/x64/SirepInterop.dll",
+        "bin/10.0.28000.0/x64/SshClient.dll",
+        "bin/10.0.28000.0/x64/WinAppDeployCmd.exe",
+        "bin/10.0.28000.0/x64/WinAppDeployCommon.dll",
+        "bin/10.0.28000.0/x64/appxpackaging.dll",
+        "bin/10.0.28000.0/x64/appxsip.dll",
+        "bin/10.0.28000.0/x64/en-US/AppxPackaging.dll.mui",
+        "bin/10.0.28000.0/x64/en/Microsoft.Tools.Deploy.resources.dll",
+        "bin/10.0.28000.0/x64/en/WinAppDeployCmd.resources.dll",
+        "bin/10.0.28000.0/x64/ipoverusb.discoverpartners.dll",
+        "bin/10.0.28000.0/x64/makeappx.exe",
+        "bin/10.0.28000.0/x64/makecat.exe",
+        "bin/10.0.28000.0/x64/makecat.exe.manifest",
+        "bin/10.0.28000.0/x64/makepri.exe",
+        "bin/10.0.28000.0/x64/mc.exe",
+        "bin/10.0.28000.0/x64/mdmerge.exe",
+        "bin/10.0.28000.0/x64/midl.exe",
+        "bin/10.0.28000.0/x64/midlc.exe",
+        "bin/10.0.28000.0/x64/midlrt.exe",
+        "bin/10.0.28000.0/x64/midlrtmd.dll",
+        "bin/10.0.28000.0/x64/mrmsupport.dll",
+        "bin/10.0.28000.0/x64/msisip.dll",
+        "bin/10.0.28000.0/x64/mssign32.dll",
+        "bin/10.0.28000.0/x64/mt.exe",
+        "bin/10.0.28000.0/x64/mt.exe.config",
+        "bin/10.0.28000.0/x64/opcservices.dll",
+        "bin/10.0.28000.0/x64/rc.exe",
+        "bin/10.0.28000.0/x64/rcdll.dll",
+        "bin/10.0.28000.0/x64/signtool.exe",
+        "bin/10.0.28000.0/x64/signtool.exe.manifest",
+        "bin/10.0.28000.0/x64/tracewpp.exe",
+        "bin/10.0.28000.0/x64/uuidgen.exe",
+        "bin/10.0.28000.0/x64/veiid.exe",
+        "bin/10.0.28000.0/x64/winmdidl.exe",
+        "bin/10.0.28000.0/x64/wintrust.dll",
+        "bin/10.0.28000.0/x64/wintrust.dll.ini",
+        "bin/10.0.28000.0/x86/AccChecker/Microsoft.Diagnostics.Tracing.EventSource.dll",
+        "bin/10.0.28000.0/x86/ComparePackage.exe",
+        "bin/10.0.28000.0/x86/DeployUtil.exe",
+        "bin/10.0.28000.0/x86/MakeCert.exe",
+        "bin/10.0.28000.0/x86/Microsoft.ComparePackage.Lib.dll",
+        "bin/10.0.28000.0/x86/Microsoft.Diagnostics.Tracing.EventSource.dll",
+        "bin/10.0.28000.0/x86/Microsoft.PackageEditor.Lib.dll",
+        "bin/10.0.28000.0/x86/Microsoft.Tools.Connectivity.dll",
+        "bin/10.0.28000.0/x86/Microsoft.Tools.Deploy.dll",
+        "bin/10.0.28000.0/x86/Microsoft.Windows.Build.Appx.AppxPackaging.dll.manifest",
+        "bin/10.0.28000.0/x86/Microsoft.Windows.Build.Appx.AppxSip.dll.manifest",
+        "bin/10.0.28000.0/x86/Microsoft.Windows.Build.Appx.OpcServices.dll.manifest",
+        "bin/10.0.28000.0/x86/Microsoft.Windows.Build.Signing.mssign32.dll.manifest",
+        "bin/10.0.28000.0/x86/Microsoft.Windows.Build.Signing.wintrust.dll.manifest",
+        "bin/10.0.28000.0/x86/PackageEditor.exe",
+        "bin/10.0.28000.0/x86/ServicingCommon.dll",
+        "bin/10.0.28000.0/x86/SirepClient.assembly.manifest",
+        "bin/10.0.28000.0/x86/SirepClient.dll",
+        "bin/10.0.28000.0/x86/SirepInterop.dll",
+        "bin/10.0.28000.0/x86/SshClient.dll",
+        "bin/10.0.28000.0/x86/WinAppDeployCmd.exe",
+        "bin/10.0.28000.0/x86/WinAppDeployCommon.dll",
+        "bin/10.0.28000.0/x86/appxpackaging.dll",
+        "bin/10.0.28000.0/x86/appxsip.dll",
+        "bin/10.0.28000.0/x86/en-US/AppxPackaging.dll.mui",
+        "bin/10.0.28000.0/x86/en/Microsoft.Tools.Deploy.resources.dll",
+        "bin/10.0.28000.0/x86/en/WinAppDeployCmd.resources.dll",
+        "bin/10.0.28000.0/x86/ipoverusb.discoverpartners.dll",
+        "bin/10.0.28000.0/x86/makeappx.exe",
+        "bin/10.0.28000.0/x86/makecat.exe",
+        "bin/10.0.28000.0/x86/makecat.exe.manifest",
+        "bin/10.0.28000.0/x86/makepri.exe",
+        "bin/10.0.28000.0/x86/mc.exe",
+        "bin/10.0.28000.0/x86/mdmerge.exe",
+        "bin/10.0.28000.0/x86/midl.exe",
+        "bin/10.0.28000.0/x86/midlc.exe",
+        "bin/10.0.28000.0/x86/midlrt.exe",
+        "bin/10.0.28000.0/x86/midlrtmd.dll",
+        "bin/10.0.28000.0/x86/mrmsupport.dll",
+        "bin/10.0.28000.0/x86/msisip.dll",
+        "bin/10.0.28000.0/x86/mssign32.dll",
+        "bin/10.0.28000.0/x86/mt.exe",
+        "bin/10.0.28000.0/x86/mt.exe.config",
+        "bin/10.0.28000.0/x86/opcservices.dll",
+        "bin/10.0.28000.0/x86/rc.exe",
+        "bin/10.0.28000.0/x86/rcdll.dll",
+        "bin/10.0.28000.0/x86/signtool.exe",
+        "bin/10.0.28000.0/x86/signtool.exe.manifest",
+        "bin/10.0.28000.0/x86/tracewpp.exe",
+        "bin/10.0.28000.0/x86/uuidgen.exe",
+        "bin/10.0.28000.0/x86/winmdidl.exe",
+        "bin/10.0.28000.0/x86/wintrust.dll",
+        "bin/10.0.28000.0/x86/wintrust.dll.ini",
+        "build/Microsoft.Windows.SDK.BuildTools.props",
+        "build/Microsoft.Windows.SDK.BuildTools.targets",
+        "buildTransitive/Microsoft.Windows.SDK.BuildTools.props",
+        "buildTransitive/Microsoft.Windows.SDK.BuildTools.targets",
+        "microsoft.windows.sdk.buildtools.10.0.28000.1721.nupkg.sha512",
+        "microsoft.windows.sdk.buildtools.nuspec",
+        "schemas/10.0.28000.0/winrt/AppxManifestSchema.xsd",
+        "schemas/10.0.28000.0/winrt/AppxManifestSchema2010_v2.xsd",
+        "schemas/10.0.28000.0/winrt/AppxManifestSchema2013.xsd",
+        "schemas/10.0.28000.0/winrt/FoundationManifestSchema.xsd",
+        "schemas/10.0.28000.0/winrt/FoundationManifestSchema_v2.xsd",
+        "schemas/10.0.28000.0/winrt/UapManifestSchema.xsd",
+        "schemas/10.0.28000.0/winrt/UapManifestSchema_v10.xsd",
+        "schemas/10.0.28000.0/winrt/UapManifestSchema_v11.xsd",
+        "schemas/10.0.28000.0/winrt/UapManifestSchema_v12.xsd",
+        "schemas/10.0.28000.0/winrt/UapManifestSchema_v13.xsd",
+        "schemas/10.0.28000.0/winrt/UapManifestSchema_v15.xsd",
+        "schemas/10.0.28000.0/winrt/UapManifestSchema_v15a.xsd",
+        "schemas/10.0.28000.0/winrt/UapManifestSchema_v16.xsd",
+        "schemas/10.0.28000.0/winrt/UapManifestSchema_v17.xsd",
+        "schemas/10.0.28000.0/winrt/UapManifestSchema_v18.xsd",
+        "schemas/10.0.28000.0/winrt/UapManifestSchema_v2.xsd",
+        "schemas/10.0.28000.0/winrt/UapManifestSchema_v3.xsd",
+        "schemas/10.0.28000.0/winrt/UapManifestSchema_v4.xsd",
+        "schemas/10.0.28000.0/winrt/UapManifestSchema_v5.xsd",
+        "schemas/10.0.28000.0/winrt/UapManifestSchema_v6.xsd",
+        "schemas/10.0.28000.0/winrt/UapManifestSchema_v7.xsd",
+        "schemas/10.0.28000.0/winrt/UapManifestSchema_v8.xsd"
+      ]
+    },
+    "Microsoft.Windows.SDK.BuildTools.MSIX/1.7.20250829.1": {
+      "sha512": "IMdvRmCIZnBS5GkYnv0po1bcx6U1OF39pqA4TphQ9evDzpCRoSE19/PkDvlUNNrBavTsLIEJgd/TAIFner75ow==",
+      "type": "package",
+      "path": "microsoft.windows.sdk.buildtools.msix/1.7.20250829.1",
+      "hasTools": true,
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "CodeSignSummary-537b207f-b567-40b5-8f47-b95c567fae6c.md",
+        "CodeSignSummary-b140a053-633e-42ca-8749-f25e57218abb.md",
+        "NOTICE.txt",
+        "build/AppDevPackageScripts/Add-AppDevPackage.ps1",
+        "build/AppDevPackageScripts/Add-AppDevPackage.resources/Add-AppDevPackage.psd1",
+        "build/AppDevPackageScripts/Add-AppDevPackage.resources/cs-CZ/Add-AppDevPackage.psd1",
+        "build/AppDevPackageScripts/Add-AppDevPackage.resources/de-DE/Add-AppDevPackage.psd1",
+        "build/AppDevPackageScripts/Add-AppDevPackage.resources/en-US/Add-AppDevPackage.psd1",
+        "build/AppDevPackageScripts/Add-AppDevPackage.resources/es-ES/Add-AppDevPackage.psd1",
+        "build/AppDevPackageScripts/Add-AppDevPackage.resources/fr-FR/Add-AppDevPackage.psd1",
+        "build/AppDevPackageScripts/Add-AppDevPackage.resources/it-IT/Add-AppDevPackage.psd1",
+        "build/AppDevPackageScripts/Add-AppDevPackage.resources/ja-JP/Add-AppDevPackage.psd1",
+        "build/AppDevPackageScripts/Add-AppDevPackage.resources/ko-KR/Add-AppDevPackage.psd1",
+        "build/AppDevPackageScripts/Add-AppDevPackage.resources/pl-PL/Add-AppDevPackage.psd1",
+        "build/AppDevPackageScripts/Add-AppDevPackage.resources/pt-BR/Add-AppDevPackage.psd1",
+        "build/AppDevPackageScripts/Add-AppDevPackage.resources/ru-RU/Add-AppDevPackage.psd1",
+        "build/AppDevPackageScripts/Add-AppDevPackage.resources/tr-TR/Add-AppDevPackage.psd1",
+        "build/AppDevPackageScripts/Add-AppDevPackage.resources/zh-CN/Add-AppDevPackage.psd1",
+        "build/AppDevPackageScripts/Add-AppDevPackage.resources/zh-TW/Add-AppDevPackage.psd1",
+        "build/AppDevPackageScripts/Install.ps1",
+        "build/AppDevPackageScripts/LogSideloadingTelemetry.ps1",
+        "build/Landing/extras/br.png",
+        "build/Landing/extras/br_snippet.png",
+        "build/Landing/image.png",
+        "build/Landing/index.template.html",
+        "build/Landing/logo.png",
+        "build/Landing/style.css",
+        "build/Microsoft.Windows.SDK.BuildTools.MSIX.BeforeCommon.props",
+        "build/Microsoft.Windows.SDK.BuildTools.MSIX.Common.props",
+        "build/Microsoft.Windows.SDK.BuildTools.MSIX.Common.targets",
+        "build/Microsoft.Windows.SDK.BuildTools.MSIX.Cpp.props",
+        "build/Microsoft.Windows.SDK.BuildTools.MSIX.Cpp.targets",
+        "build/Microsoft.Windows.SDK.BuildTools.MSIX.Cs.targets",
+        "build/Microsoft.Windows.SDK.BuildTools.MSIX.DesignTime.targets",
+        "build/Microsoft.Windows.SDK.BuildTools.MSIX.MrtCore.PriExpansion.targets",
+        "build/Microsoft.Windows.SDK.BuildTools.MSIX.MrtCore.PriGen.targets",
+        "build/Microsoft.Windows.SDK.BuildTools.MSIX.MrtCore.Tasks.targets",
+        "build/Microsoft.Windows.SDK.BuildTools.MSIX.MrtCore.targets",
+        "build/Microsoft.Windows.SDK.BuildTools.MSIX.Packaging.targets",
+        "build/Microsoft.Windows.SDK.BuildTools.MSIX.Pri.targets",
+        "build/Microsoft.Windows.SDK.BuildTools.MSIX.props",
+        "build/Microsoft.Windows.SDK.BuildTools.MSIX.targets",
+        "build/ProjectItemsSchema.xaml",
+        "build/Rules/MsixPackageDebugPropertyPage.xaml",
+        "build/Rules/WindowsPackageTypePropertyPage.xaml",
+        "build/Templates/Package.appinstaller",
+        "buildTransitive/Microsoft.Windows.SDK.BuildTools.MSIX.props",
+        "buildTransitive/Microsoft.Windows.SDK.BuildTools.MSIX.targets",
+        "microsoft.windows.sdk.buildtools.msix.1.7.20250829.1.nupkg.sha512",
+        "microsoft.windows.sdk.buildtools.msix.nuspec",
+        "nuget_icon.png",
+        "sdk_license.txt",
+        "tools/net472/Microsoft.Cci.dll",
+        "tools/net472/Microsoft.VisualStudio.RemoteControl.dll",
+        "tools/net472/Microsoft.VisualStudio.Telemetry.dll",
+        "tools/net472/Microsoft.VisualStudio.Utilities.Internal.dll",
+        "tools/net472/Microsoft.Windows.SDK.BuildTools.MSIX.dll",
+        "tools/net472/Newtonsoft.Json.dll",
+        "tools/net6.0/Microsoft.Cci.dll",
+        "tools/net6.0/Microsoft.VisualStudio.RemoteControl.dll",
+        "tools/net6.0/Microsoft.VisualStudio.Telemetry.dll",
+        "tools/net6.0/Microsoft.VisualStudio.Utilities.Internal.dll",
+        "tools/net6.0/Microsoft.Windows.SDK.BuildTools.MSIX.dll",
+        "tools/net6.0/Newtonsoft.Json.dll"
+      ]
+    },
+    "Microsoft.WindowsAppSDK.Base/1.8.251216001": {
+      "sha512": "PS1wriuFknz3W2F2P/e6RvOTM35w89Lsj/f0QmUEPrJjKnc+jM0JLX1vfdytI14y1gNRUTm9uclwP0aH/SVU5w==",
+      "type": "package",
+      "path": "microsoft.windowsappsdk.base/1.8.251216001",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "Icon.png",
+        "NOTICE.txt",
+        "build/Microsoft.WindowsAppSDK.Base.props",
+        "build/Microsoft.WindowsAppSDK.Base.targets",
+        "build/Microsoft.WindowsAppSDK.SelfContained.targets",
+        "build/Microsoft.WindowsAppSDK.SingleFile.targets",
+        "build/Microsoft.WindowsAppSDK.SingleProject.targets",
+        "build/Microsoft.WindowsAppSDK.arm64ec.targets",
+        "build/native/Microsoft.WindowsAppSDK.Base.props",
+        "build/native/Microsoft.WindowsAppSDK.Base.targets",
+        "buildTransitive/Microsoft.WindowsAppSDK.Base.props",
+        "buildTransitive/Microsoft.WindowsAppSDK.Base.targets",
+        "buildTransitive/Microsoft.WindowsAppSDK.SelfContained.targets",
+        "buildTransitive/Microsoft.WindowsAppSDK.SingleFile.targets",
+        "buildTransitive/Microsoft.WindowsAppSDK.SingleProject.targets",
+        "buildTransitive/Microsoft.WindowsAppSDK.arm64ec.targets",
+        "buildTransitive/native/Microsoft.WindowsAppSDK.Base.props",
+        "buildTransitive/native/Microsoft.WindowsAppSDK.Base.targets",
+        "license.txt",
+        "microsoft.windowsappsdk.base.1.8.251216001.nupkg.sha512",
+        "microsoft.windowsappsdk.base.nuspec"
+      ]
+    },
+    "Microsoft.WindowsAppSDK.Foundation/1.8.260203002": {
+      "sha512": "eKQ/prWq98mW7+E+ffot47iZNbDnq/NVN9R9Gi8vmoU/3Ka6zNNivxdICXh6j7g6REFPCV9530/nQYQC0L3fwg==",
+      "type": "package",
+      "path": "microsoft.windowsappsdk.foundation/1.8.260203002",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "build/Microsoft.WindowsAppSDK.AutoInitializer.CS.targets",
+        "build/Microsoft.WindowsAppSDK.AutoInitializerCommon.targets",
+        "build/Microsoft.WindowsAppSDK.Bootstrap.CS.targets",
+        "build/Microsoft.WindowsAppSDK.BootstrapCommon.targets",
+        "build/Microsoft.WindowsAppSDK.CompatibilitySetter.CS.targets",
+        "build/Microsoft.WindowsAppSDK.DeploymentManager.CS.targets",
+        "build/Microsoft.WindowsAppSDK.DeploymentManagerCommon.targets",
+        "build/Microsoft.WindowsAppSDK.Foundation.props",
+        "build/Microsoft.WindowsAppSDK.Foundation.targets",
+        "build/Microsoft.WindowsAppSDK.UndockedRegFreeWinRT.CS.targets",
+        "build/Microsoft.WindowsAppSDK.UndockedRegFreeWinRTCommon.targets",
+        "build/README.md",
+        "build/native/Microsoft.WindowsAppSDK.Foundation.props",
+        "build/native/Microsoft.WindowsAppSDK.Foundation.targets",
+        "build/native/MrtCore.C.props",
+        "build/native/MrtCore.props",
+        "build/native/WindowsAppSDK-Nuget-Native.AutoInitializer.targets",
+        "build/native/WindowsAppSDK-Nuget-Native.Bootstrap.targets",
+        "build/native/WindowsAppSDK-Nuget-Native.C.props",
+        "build/native/WindowsAppSDK-Nuget-Native.CompatibilitySetter.targets",
+        "build/native/WindowsAppSDK-Nuget-Native.DeploymentManager.targets",
+        "build/native/WindowsAppSDK-Nuget-Native.UndockedRegFreeWinRT.targets",
+        "build/native/WindowsAppSDK-Nuget-Native.WinRt.props",
+        "buildTransitive/Microsoft.WindowsAppSDK.AutoInitializer.CS.targets",
+        "buildTransitive/Microsoft.WindowsAppSDK.AutoInitializerCommon.targets",
+        "buildTransitive/Microsoft.WindowsAppSDK.Bootstrap.CS.targets",
+        "buildTransitive/Microsoft.WindowsAppSDK.BootstrapCommon.targets",
+        "buildTransitive/Microsoft.WindowsAppSDK.CompatibilitySetter.CS.targets",
+        "buildTransitive/Microsoft.WindowsAppSDK.DeploymentManager.CS.targets",
+        "buildTransitive/Microsoft.WindowsAppSDK.DeploymentManagerCommon.targets",
+        "buildTransitive/Microsoft.WindowsAppSDK.Foundation.props",
+        "buildTransitive/Microsoft.WindowsAppSDK.Foundation.targets",
+        "buildTransitive/Microsoft.WindowsAppSDK.UndockedRegFreeWinRT.CS.targets",
+        "buildTransitive/Microsoft.WindowsAppSDK.UndockedRegFreeWinRTCommon.targets",
+        "buildTransitive/README.md",
+        "buildTransitive/native/Microsoft.WindowsAppSDK.Foundation.props",
+        "buildTransitive/native/Microsoft.WindowsAppSDK.Foundation.targets",
+        "buildTransitive/native/MrtCore.C.props",
+        "buildTransitive/native/MrtCore.props",
+        "buildTransitive/native/WindowsAppSDK-Nuget-Native.AutoInitializer.targets",
+        "buildTransitive/native/WindowsAppSDK-Nuget-Native.Bootstrap.targets",
+        "buildTransitive/native/WindowsAppSDK-Nuget-Native.C.props",
+        "buildTransitive/native/WindowsAppSDK-Nuget-Native.CompatibilitySetter.targets",
+        "buildTransitive/native/WindowsAppSDK-Nuget-Native.DeploymentManager.targets",
+        "buildTransitive/native/WindowsAppSDK-Nuget-Native.UndockedRegFreeWinRT.targets",
+        "buildTransitive/native/WindowsAppSDK-Nuget-Native.WinRt.props",
+        "include/DeploymentManagerAutoInitializer.cpp",
+        "include/DeploymentManagerAutoInitializer.cs",
+        "include/MRM.h",
+        "include/MddBootstrap.h",
+        "include/MddBootstrapAutoInitializer.cpp",
+        "include/MddBootstrapAutoInitializer.cs",
+        "include/Microsoft.Windows.ApplicationModel.Resources.idl",
+        "include/MsixDynamicDependency.h",
+        "include/Security.AccessControl.h",
+        "include/UndockedRegFreeWinRT-AutoInitializer.cpp",
+        "include/UndockedRegFreeWinRT-AutoInitializer.cs",
+        "include/WindowsAppRuntimeAutoInitializer.cpp",
+        "include/WindowsAppRuntimeAutoInitializer.cs",
+        "include/WindowsAppRuntimeInsights.h",
+        "include/decimal.h",
+        "include/decimalcppwinrt.h",
+        "include/wil_msixdynamicdependency.h",
+        "lib/native/arm64/MRM.lib",
+        "lib/native/arm64/Microsoft.WindowsAppRuntime.Bootstrap.lib",
+        "lib/native/arm64/Microsoft.WindowsAppRuntime.lib",
+        "lib/native/arm64ec/MRM.lib",
+        "lib/native/arm64ec/Microsoft.WindowsAppRuntime.Bootstrap.lib",
+        "lib/native/arm64ec/Microsoft.WindowsAppRuntime.lib",
+        "lib/native/x64/MRM.lib",
+        "lib/native/x64/Microsoft.WindowsAppRuntime.Bootstrap.lib",
+        "lib/native/x64/Microsoft.WindowsAppRuntime.lib",
+        "lib/native/x86/MRM.lib",
+        "lib/native/x86/Microsoft.WindowsAppRuntime.Bootstrap.lib",
+        "lib/native/x86/Microsoft.WindowsAppRuntime.lib",
+        "lib/net6.0-windows10.0.17763.0/Microsoft.Security.Authentication.OAuth.Projection.dll",
+        "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.AppLifecycle.Projection.dll",
+        "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.AppLifecycle.Projection.xml",
+        "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.AppNotifications.Builder.Projection.dll",
+        "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.AppNotifications.Builder.Projection.xml",
+        "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.AppNotifications.Projection.dll",
+        "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.AppNotifications.Projection.xml",
+        "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.ApplicationModel.Background.Projection.dll",
+        "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.ApplicationModel.DynamicDependency.Projection.dll",
+        "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.ApplicationModel.DynamicDependency.Projection.xml",
+        "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.ApplicationModel.Resources.Projection.dll",
+        "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.ApplicationModel.Resources.Projection.xml",
+        "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.ApplicationModel.WindowsAppRuntime.Projection.dll",
+        "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.ApplicationModel.WindowsAppRuntime.Projection.xml",
+        "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.BadgeNotifications.Projection.dll",
+        "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Foundation.Projection.dll",
+        "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Management.Deployment.Projection.dll",
+        "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Management.Deployment.Projection.xml",
+        "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Media.Capture.Projection.dll",
+        "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.PushNotifications.Projection.dll",
+        "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.PushNotifications.Projection.xml",
+        "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Security.AccessControl.Projection.dll",
+        "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Security.AccessControl.Projection.xml",
+        "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Storage.Pickers.Projection.dll",
+        "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Storage.Projection.dll",
+        "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.Storage.Projection.xml",
+        "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.System.Power.Projection.dll",
+        "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.System.Power.Projection.xml",
+        "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.System.Projection.dll",
+        "lib/net6.0-windows10.0.17763.0/Microsoft.Windows.System.Projection.xml",
+        "lib/net6.0-windows10.0.17763.0/Microsoft.WindowsAppRuntime.Bootstrap.Net.dll",
+        "license.txt",
+        "metadata/Microsoft.Security.Authentication.OAuth.winmd",
+        "metadata/Microsoft.Windows.AppLifecycle.winmd",
+        "metadata/Microsoft.Windows.AppLifecycle.xml",
+        "metadata/Microsoft.Windows.AppNotifications.Builder.winmd",
+        "metadata/Microsoft.Windows.AppNotifications.Builder.xml",
+        "metadata/Microsoft.Windows.AppNotifications.winmd",
+        "metadata/Microsoft.Windows.AppNotifications.xml",
+        "metadata/Microsoft.Windows.ApplicationModel.Background.UniversalBGTask.winmd",
+        "metadata/Microsoft.Windows.ApplicationModel.Background.winmd",
+        "metadata/Microsoft.Windows.ApplicationModel.DynamicDependency.winmd",
+        "metadata/Microsoft.Windows.ApplicationModel.DynamicDependency.xml",
+        "metadata/Microsoft.Windows.ApplicationModel.Resources.winmd",
+        "metadata/Microsoft.Windows.ApplicationModel.Resources.xml",
+        "metadata/Microsoft.Windows.ApplicationModel.WindowsAppRuntime.winmd",
+        "metadata/Microsoft.Windows.ApplicationModel.WindowsAppRuntime.xml",
+        "metadata/Microsoft.Windows.BadgeNotifications.winmd",
+        "metadata/Microsoft.Windows.Foundation.winmd",
+        "metadata/Microsoft.Windows.Globalization.winmd",
+        "metadata/Microsoft.Windows.Globalization.xml",
+        "metadata/Microsoft.Windows.Management.Deployment.winmd",
+        "metadata/Microsoft.Windows.Management.Deployment.xml",
+        "metadata/Microsoft.Windows.Media.Capture.winmd",
+        "metadata/Microsoft.Windows.PushNotifications.winmd",
+        "metadata/Microsoft.Windows.PushNotifications.xml",
+        "metadata/Microsoft.Windows.Security.AccessControl.winmd",
+        "metadata/Microsoft.Windows.Security.AccessControl.xml",
+        "metadata/Microsoft.Windows.Storage.Pickers.winmd",
+        "metadata/Microsoft.Windows.Storage.winmd",
+        "metadata/Microsoft.Windows.Storage.xml",
+        "metadata/Microsoft.Windows.System.Power.winmd",
+        "metadata/Microsoft.Windows.System.Power.xml",
+        "metadata/Microsoft.Windows.System.winmd",
+        "metadata/Microsoft.Windows.System.xml",
+        "microsoft.windowsappsdk.foundation.1.8.260203002.nupkg.sha512",
+        "microsoft.windowsappsdk.foundation.nuspec",
+        "runtimes-framework/package.appxfragment",
+        "runtimes-framework/win-arm64/native/DeploymentAgent.exe",
+        "runtimes-framework/win-arm64/native/MRM.dll",
+        "runtimes-framework/win-arm64/native/Microsoft.Windows.ApplicationModel.Resources.dll",
+        "runtimes-framework/win-arm64/native/Microsoft.WindowsAppRuntime.dll",
+        "runtimes-framework/win-arm64/native/Microsoft.WindowsAppRuntime.pri",
+        "runtimes-framework/win-arm64/native/PushNotificationsLongRunningTask.ProxyStub.dll",
+        "runtimes-framework/win-arm64/native/RestartAgent.exe",
+        "runtimes-framework/win-arm64ec/native/DeploymentAgent.exe",
+        "runtimes-framework/win-arm64ec/native/MRM.dll",
+        "runtimes-framework/win-arm64ec/native/Microsoft.Windows.ApplicationModel.Resources.dll",
+        "runtimes-framework/win-arm64ec/native/Microsoft.WindowsAppRuntime.dll",
+        "runtimes-framework/win-arm64ec/native/Microsoft.WindowsAppRuntime.pri",
+        "runtimes-framework/win-arm64ec/native/PushNotificationsLongRunningTask.ProxyStub.dll",
+        "runtimes-framework/win-arm64ec/native/RestartAgent.exe",
+        "runtimes-framework/win-x64/native/DeploymentAgent.exe",
+        "runtimes-framework/win-x64/native/MRM.dll",
+        "runtimes-framework/win-x64/native/Microsoft.Windows.ApplicationModel.Resources.dll",
+        "runtimes-framework/win-x64/native/Microsoft.WindowsAppRuntime.dll",
+        "runtimes-framework/win-x64/native/Microsoft.WindowsAppRuntime.pri",
+        "runtimes-framework/win-x64/native/PushNotificationsLongRunningTask.ProxyStub.dll",
+        "runtimes-framework/win-x64/native/RestartAgent.exe",
+        "runtimes-framework/win-x86/native/DeploymentAgent.exe",
+        "runtimes-framework/win-x86/native/MRM.dll",
+        "runtimes-framework/win-x86/native/Microsoft.Windows.ApplicationModel.Resources.dll",
+        "runtimes-framework/win-x86/native/Microsoft.WindowsAppRuntime.dll",
+        "runtimes-framework/win-x86/native/Microsoft.WindowsAppRuntime.pri",
+        "runtimes-framework/win-x86/native/PushNotificationsLongRunningTask.ProxyStub.dll",
+        "runtimes-framework/win-x86/native/RestartAgent.exe",
+        "runtimes/win-arm64/native/Microsoft.Windows.ApplicationModel.Background.UniversalBGTask.dll",
+        "runtimes/win-arm64/native/Microsoft.WindowsAppRuntime.Bootstrap.dll",
+        "runtimes/win-arm64ec/native/Microsoft.Windows.ApplicationModel.Background.UniversalBGTask.dll",
+        "runtimes/win-arm64ec/native/Microsoft.WindowsAppRuntime.Bootstrap.dll",
+        "runtimes/win-x64/native/Microsoft.Windows.ApplicationModel.Background.UniversalBGTask.dll",
+        "runtimes/win-x64/native/Microsoft.WindowsAppRuntime.Bootstrap.dll",
+        "runtimes/win-x86/native/Microsoft.Windows.ApplicationModel.Background.UniversalBGTask.dll",
+        "runtimes/win-x86/native/Microsoft.WindowsAppRuntime.Bootstrap.dll"
+      ]
+    },
+    "Microsoft.WindowsAppSDK.InteractiveExperiences/1.8.260125001": {
+      "sha512": "CTGFd1zhIDbnOltZ6piPvpNXFR1OaNyW3vHvhaILzpGziAgj5DPuVnU3PUp1p5iOBd382FLCBVM6nEPyu/LCOA==",
+      "type": "package",
+      "path": "microsoft.windowsappsdk.interactiveexperiences/1.8.260125001",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "build/Microsoft.InteractiveExperiences.Capabilities.props",
+        "build/Microsoft.InteractiveExperiences.Capabilities.targets",
+        "build/Microsoft.InteractiveExperiences.Common.props",
+        "build/Microsoft.InteractiveExperiences.Common.targets",
+        "build/Microsoft.InteractiveExperiences.EC.Capabilities.props",
+        "build/Microsoft.InteractiveExperiences.EC.Capabilities.targets",
+        "build/Microsoft.InteractiveExperiences.EC.Common.props",
+        "build/Microsoft.InteractiveExperiences.EC.Common.targets",
+        "build/Microsoft.InteractiveExperiences.EC.props",
+        "build/Microsoft.InteractiveExperiences.EC.targets",
+        "build/Microsoft.InteractiveExperiences.props",
+        "build/Microsoft.InteractiveExperiences.targets",
+        "build/Microsoft.WindowsAppSDK.InteractiveExperiences.props",
+        "build/Microsoft.WindowsAppSDK.InteractiveExperiences.targets",
+        "build/native/Microsoft.InteractiveExperiences.EC.props",
+        "build/native/Microsoft.InteractiveExperiences.EC.targets",
+        "build/native/Microsoft.InteractiveExperiences.props",
+        "build/native/Microsoft.InteractiveExperiences.targets",
+        "build/native/Microsoft.WindowsAppSDK.InteractiveExperiences.props",
+        "build/native/Microsoft.WindowsAppSDK.InteractiveExperiences.targets",
+        "buildTransitive/Microsoft.InteractiveExperiences.Capabilities.props",
+        "buildTransitive/Microsoft.InteractiveExperiences.Capabilities.targets",
+        "buildTransitive/Microsoft.InteractiveExperiences.Common.props",
+        "buildTransitive/Microsoft.InteractiveExperiences.Common.targets",
+        "buildTransitive/Microsoft.InteractiveExperiences.EC.Capabilities.props",
+        "buildTransitive/Microsoft.InteractiveExperiences.EC.Capabilities.targets",
+        "buildTransitive/Microsoft.InteractiveExperiences.EC.Common.props",
+        "buildTransitive/Microsoft.InteractiveExperiences.EC.Common.targets",
+        "buildTransitive/Microsoft.InteractiveExperiences.EC.props",
+        "buildTransitive/Microsoft.InteractiveExperiences.EC.targets",
+        "buildTransitive/Microsoft.InteractiveExperiences.props",
+        "buildTransitive/Microsoft.InteractiveExperiences.targets",
+        "buildTransitive/Microsoft.WindowsAppSDK.InteractiveExperiences.props",
+        "buildTransitive/Microsoft.WindowsAppSDK.InteractiveExperiences.targets",
+        "buildTransitive/native/Microsoft.InteractiveExperiences.EC.props",
+        "buildTransitive/native/Microsoft.InteractiveExperiences.EC.targets",
+        "buildTransitive/native/Microsoft.InteractiveExperiences.props",
+        "buildTransitive/native/Microsoft.InteractiveExperiences.targets",
+        "buildTransitive/native/Microsoft.WindowsAppSDK.InteractiveExperiences.props",
+        "buildTransitive/native/Microsoft.WindowsAppSDK.InteractiveExperiences.targets",
+        "include/Microsoft.UI.Composition.Interop.h",
+        "include/Microsoft.UI.Designer.Interop.h",
+        "include/Microsoft.UI.Dispatching.Interop.h",
+        "include/Microsoft.UI.Input.InputCursor.Interop.h",
+        "include/Microsoft.UI.Input.InputPreTranslateSource.Interop.h",
+        "include/Microsoft.UI.Interop.h",
+        "include/winrt/Microsoft.UI.Composition.Interop.h",
+        "include/winrt/Microsoft.UI.Designer.Interop.h",
+        "include/winrt/Microsoft.UI.Dispatching.Interop.h",
+        "include/winrt/Microsoft.UI.Input.InputCursor.Interop.h",
+        "include/winrt/Microsoft.UI.Input.InputPreTranslateSource.Interop.h",
+        "include/winrt/Microsoft.UI.Interop.h",
+        "lib/native/win10-arm64/Microsoft.UI.Dispatching.lib",
+        "lib/native/win10-arm64ec/Microsoft.UI.Dispatching.lib",
+        "lib/native/win10-x64/Microsoft.UI.Dispatching.lib",
+        "lib/native/win10-x86/Microsoft.UI.Dispatching.lib",
+        "lib/net6.0-windows10.0.17763.0/Microsoft.InteractiveExperiences.Projection.dll",
+        "lib/net6.0-windows10.0.17763.0/Microsoft.InteractiveExperiences.Projection.xml",
+        "lib/net6.0-windows10.0.18362.0/Microsoft.InteractiveExperiences.Projection.dll",
+        "lib/net6.0-windows10.0.18362.0/Microsoft.InteractiveExperiences.Projection.xml",
+        "license.txt",
+        "metadata/10.0.17763.0/Microsoft.Foundation.winmd",
+        "metadata/10.0.17763.0/Microsoft.Graphics.winmd",
+        "metadata/10.0.17763.0/Microsoft.Graphics.xml",
+        "metadata/10.0.17763.0/Microsoft.UI.winmd",
+        "metadata/10.0.17763.0/Microsoft.UI.xml",
+        "metadata/10.0.18362.0/Microsoft.Foundation.winmd",
+        "metadata/10.0.18362.0/Microsoft.Graphics.winmd",
+        "metadata/10.0.18362.0/Microsoft.Graphics.xml",
+        "metadata/10.0.18362.0/Microsoft.UI.winmd",
+        "metadata/10.0.18362.0/Microsoft.UI.xml",
+        "microsoft.windowsappsdk.interactiveexperiences.1.8.260125001.nupkg.sha512",
+        "microsoft.windowsappsdk.interactiveexperiences.nuspec",
+        "runtimes-framework/package.appxfragment",
+        "runtimes-framework/win-arm64/native/CoreMessagingXP.dll",
+        "runtimes-framework/win-arm64/native/DwmSceneI.dll",
+        "runtimes-framework/win-arm64/native/Microsoft.DirectManipulation.dll",
+        "runtimes-framework/win-arm64/native/Microsoft.Graphics.Display.dll",
+        "runtimes-framework/win-arm64/native/Microsoft.InputStateManager.dll",
+        "runtimes-framework/win-arm64/native/Microsoft.Internal.FrameworkUdk.dll",
+        "runtimes-framework/win-arm64/native/Microsoft.UI.Composition.OSSupport.dll",
+        "runtimes-framework/win-arm64/native/Microsoft.UI.Designer.dll",
+        "runtimes-framework/win-arm64/native/Microsoft.UI.Input.dll",
+        "runtimes-framework/win-arm64/native/Microsoft.UI.Windowing.Core.dll",
+        "runtimes-framework/win-arm64/native/Microsoft.UI.Windowing.dll",
+        "runtimes-framework/win-arm64/native/Microsoft.UI.dll",
+        "runtimes-framework/win-arm64/native/Microsoft.UI.pri",
+        "runtimes-framework/win-arm64/native/dcompi.dll",
+        "runtimes-framework/win-arm64/native/dwmcorei.dll",
+        "runtimes-framework/win-arm64/native/marshal.dll",
+        "runtimes-framework/win-arm64/native/wuceffectsi.dll",
+        "runtimes-framework/win-arm64ec/native/CoreMessagingXP.dll",
+        "runtimes-framework/win-arm64ec/native/DwmSceneI.dll",
+        "runtimes-framework/win-arm64ec/native/Microsoft.DirectManipulation.dll",
+        "runtimes-framework/win-arm64ec/native/Microsoft.Graphics.Display.dll",
+        "runtimes-framework/win-arm64ec/native/Microsoft.InputStateManager.dll",
+        "runtimes-framework/win-arm64ec/native/Microsoft.Internal.FrameworkUdk.dll",
+        "runtimes-framework/win-arm64ec/native/Microsoft.UI.Composition.OSSupport.dll",
+        "runtimes-framework/win-arm64ec/native/Microsoft.UI.Designer.dll",
+        "runtimes-framework/win-arm64ec/native/Microsoft.UI.Input.dll",
+        "runtimes-framework/win-arm64ec/native/Microsoft.UI.Windowing.Core.dll",
+        "runtimes-framework/win-arm64ec/native/Microsoft.UI.Windowing.dll",
+        "runtimes-framework/win-arm64ec/native/Microsoft.UI.dll",
+        "runtimes-framework/win-arm64ec/native/Microsoft.UI.pri",
+        "runtimes-framework/win-arm64ec/native/dcompi.dll",
+        "runtimes-framework/win-arm64ec/native/dwmcorei.dll",
+        "runtimes-framework/win-arm64ec/native/marshal.dll",
+        "runtimes-framework/win-arm64ec/native/wuceffectsi.dll",
+        "runtimes-framework/win-x64/native/CoreMessagingXP.dll",
+        "runtimes-framework/win-x64/native/DwmSceneI.dll",
+        "runtimes-framework/win-x64/native/Microsoft.DirectManipulation.dll",
+        "runtimes-framework/win-x64/native/Microsoft.Graphics.Display.dll",
+        "runtimes-framework/win-x64/native/Microsoft.InputStateManager.dll",
+        "runtimes-framework/win-x64/native/Microsoft.Internal.FrameworkUdk.dll",
+        "runtimes-framework/win-x64/native/Microsoft.UI.Composition.OSSupport.dll",
+        "runtimes-framework/win-x64/native/Microsoft.UI.Designer.dll",
+        "runtimes-framework/win-x64/native/Microsoft.UI.Input.dll",
+        "runtimes-framework/win-x64/native/Microsoft.UI.Windowing.Core.dll",
+        "runtimes-framework/win-x64/native/Microsoft.UI.Windowing.dll",
+        "runtimes-framework/win-x64/native/Microsoft.UI.dll",
+        "runtimes-framework/win-x64/native/Microsoft.UI.pri",
+        "runtimes-framework/win-x64/native/dcompi.dll",
+        "runtimes-framework/win-x64/native/dwmcorei.dll",
+        "runtimes-framework/win-x64/native/marshal.dll",
+        "runtimes-framework/win-x64/native/wuceffectsi.dll",
+        "runtimes-framework/win-x86/native/CoreMessagingXP.dll",
+        "runtimes-framework/win-x86/native/DwmSceneI.dll",
+        "runtimes-framework/win-x86/native/Microsoft.DirectManipulation.dll",
+        "runtimes-framework/win-x86/native/Microsoft.Graphics.Display.dll",
+        "runtimes-framework/win-x86/native/Microsoft.InputStateManager.dll",
+        "runtimes-framework/win-x86/native/Microsoft.Internal.FrameworkUdk.dll",
+        "runtimes-framework/win-x86/native/Microsoft.UI.Composition.OSSupport.dll",
+        "runtimes-framework/win-x86/native/Microsoft.UI.Designer.dll",
+        "runtimes-framework/win-x86/native/Microsoft.UI.Input.dll",
+        "runtimes-framework/win-x86/native/Microsoft.UI.Windowing.Core.dll",
+        "runtimes-framework/win-x86/native/Microsoft.UI.Windowing.dll",
+        "runtimes-framework/win-x86/native/Microsoft.UI.dll",
+        "runtimes-framework/win-x86/native/Microsoft.UI.pri",
+        "runtimes-framework/win-x86/native/dcompi.dll",
+        "runtimes-framework/win-x86/native/dwmcorei.dll",
+        "runtimes-framework/win-x86/native/marshal.dll",
+        "runtimes-framework/win-x86/native/wuceffectsi.dll"
+      ]
+    },
+    "Microsoft.WindowsAppSDK.WinUI/1.8.260204000": {
+      "sha512": "DSpA01+iPXwky4O1uZCrdClSi2aRIYTIhmsTeC1EsJmWBFpSirwNAg4EGHejijV6u4ZVkTdyv3px0Y2P3fp72Q==",
+      "type": "package",
+      "path": "microsoft.windowsappsdk.winui/1.8.260204000",
+      "hasTools": true,
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "NOTICE.txt",
+        "build/Microsoft.UI.Xaml.Markup.Compiler.BeforeCommon.targets",
+        "build/Microsoft.UI.Xaml.Markup.Compiler.interop.targets",
+        "build/Microsoft.UI.Xaml.Markup.Compiler.props",
+        "build/Microsoft.UI.Xaml.Markup.Compiler.targets",
+        "build/Microsoft.WinUI.AppX.targets",
+        "build/Microsoft.WinUI.NET.Markup.Compiler.targets",
+        "build/Microsoft.WinUI.ProjectCapabilities.props",
+        "build/Microsoft.WinUI.References.targets",
+        "build/Microsoft.WinUI.props",
+        "build/Microsoft.WinUI.targets",
+        "build/Microsoft.WindowsAppSDK.WinUI.props",
+        "build/Microsoft.WindowsAppSDK.WinUI.targets",
+        "build/native/LiftedWinRTClassRegistrations.xml",
+        "build/native/Microsoft.WinUI.References.targets",
+        "build/native/Microsoft.WinUI.props",
+        "build/native/Microsoft.WinUI.targets",
+        "build/native/Microsoft.WindowsAppSDK.WinUI.props",
+        "build/native/Microsoft.WindowsAppSDK.WinUI.targets",
+        "buildTransitive/Microsoft.UI.Xaml.Markup.Compiler.BeforeCommon.targets",
+        "buildTransitive/Microsoft.UI.Xaml.Markup.Compiler.interop.targets",
+        "buildTransitive/Microsoft.UI.Xaml.Markup.Compiler.props",
+        "buildTransitive/Microsoft.UI.Xaml.Markup.Compiler.targets",
+        "buildTransitive/Microsoft.WinUI.AppX.targets",
+        "buildTransitive/Microsoft.WinUI.NET.Markup.Compiler.targets",
+        "buildTransitive/Microsoft.WinUI.ProjectCapabilities.props",
+        "buildTransitive/Microsoft.WinUI.References.targets",
+        "buildTransitive/Microsoft.WinUI.props",
+        "buildTransitive/Microsoft.WinUI.targets",
+        "buildTransitive/Microsoft.WindowsAppSDK.WinUI.props",
+        "buildTransitive/Microsoft.WindowsAppSDK.WinUI.targets",
+        "buildTransitive/native/LiftedWinRTClassRegistrations.xml",
+        "buildTransitive/native/Microsoft.WinUI.References.targets",
+        "buildTransitive/native/Microsoft.WinUI.props",
+        "buildTransitive/native/Microsoft.WinUI.targets",
+        "buildTransitive/native/Microsoft.WindowsAppSDK.WinUI.props",
+        "buildTransitive/native/Microsoft.WindowsAppSDK.WinUI.targets",
+        "include/microsoft.ui.xaml.hosting.referencetracker.h",
+        "include/microsoft.ui.xaml.hosting.referencetracker.idl",
+        "include/microsoft.ui.xaml.media.dxinterop.h",
+        "include/microsoft.ui.xaml.media.dxinterop.idl",
+        "include/microsoft.ui.xaml.window.h",
+        "include/microsoft.ui.xaml.window.idl",
+        "include/winrtdirect3d11.h",
+        "include/winrtdirectxcommon.h",
+        "include/xamlom.winui.h",
+        "include/xamlom.winui.idl",
+        "lib/native/Microsoft.UI/Themes/generic.xaml",
+        "lib/net6.0-windows10.0.17763.0/Microsoft.WinUI.dll",
+        "lib/net6.0-windows10.0.17763.0/Microsoft.WinUI.xml",
+        "lib/net6.0-windows10.0.17763.0/Microsoft.WinUI/Themes/generic.xaml",
+        "license.txt",
+        "metadata/Microsoft.UI.Text.winmd",
+        "metadata/Microsoft.UI.Text.xml",
+        "metadata/Microsoft.UI.Xaml.winmd",
+        "metadata/Microsoft.UI.Xaml.xml",
+        "microsoft.windowsappsdk.winui.1.8.260204000.nupkg.sha512",
+        "microsoft.windowsappsdk.winui.nuspec",
+        "runtimes-framework/package.appxfragment",
+        "runtimes-framework/win-arm64/native/Microsoft.UI.Xaml.Controls.dll",
+        "runtimes-framework/win-arm64/native/Microsoft.UI.Xaml.Controls.pri",
+        "runtimes-framework/win-arm64/native/Microsoft.UI.Xaml.Internal.dll",
+        "runtimes-framework/win-arm64/native/Microsoft.UI.Xaml.Phone.dll",
+        "runtimes-framework/win-arm64/native/Microsoft.UI.Xaml/Assets/NoiseAsset_256x256_PNG.png",
+        "runtimes-framework/win-arm64/native/Microsoft.UI.Xaml/Assets/map.html",
+        "runtimes-framework/win-arm64/native/Microsoft.ui.xaml.dll",
+        "runtimes-framework/win-arm64/native/Microsoft.ui.xaml.resources.19h1.dll",
+        "runtimes-framework/win-arm64/native/Microsoft.ui.xaml.resources.common.dll",
+        "runtimes-framework/win-arm64/native/WinUIEdit.dll",
+        "runtimes-framework/win-arm64/native/af-ZA/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/af-ZA/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/am-ET/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/am-ET/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/ar-SA/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/ar-SA/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/as-IN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/as-IN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/az-Latn-AZ/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/az-Latn-AZ/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/bg-BG/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/bg-BG/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/bn-IN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/bn-IN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/bs-Latn-BA/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/bs-Latn-BA/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/ca-ES/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/ca-ES/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/ca-Es-VALENCIA/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/ca-Es-VALENCIA/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/cs-CZ/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/cs-CZ/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/cy-GB/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/cy-GB/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/da-DK/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/da-DK/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/de-DE/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/de-DE/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/el-GR/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/el-GR/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/en-GB/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/en-GB/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/en-us/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/en-us/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/es-ES/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/es-ES/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/es-MX/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/es-MX/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/et-EE/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/et-EE/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/eu-ES/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/eu-ES/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/fa-IR/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/fa-IR/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/fi-FI/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/fi-FI/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/fil-PH/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/fil-PH/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/fr-CA/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/fr-CA/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/fr-FR/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/fr-FR/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/ga-IE/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/ga-IE/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/gd-gb/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/gd-gb/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/gl-ES/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/gl-ES/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/gu-IN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/gu-IN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/he-IL/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/he-IL/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/hi-IN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/hi-IN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/hr-HR/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/hr-HR/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/hu-HU/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/hu-HU/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/hy-AM/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/hy-AM/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/id-ID/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/id-ID/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/is-IS/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/is-IS/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/it-IT/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/it-IT/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/ja-JP/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/ja-JP/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/ka-GE/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/ka-GE/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/kk-KZ/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/kk-KZ/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/km-KH/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/km-KH/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/kn-IN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/kn-IN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/ko-KR/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/ko-KR/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/kok-IN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/kok-IN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/lb-LU/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/lb-LU/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/lo-LA/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/lo-LA/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/lt-LT/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/lt-LT/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/lv-LV/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/lv-LV/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/mi-NZ/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/mi-NZ/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/mk-MK/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/mk-MK/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/ml-IN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/ml-IN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/mr-IN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/mr-IN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/ms-MY/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/ms-MY/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/mt-MT/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/mt-MT/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/nb-NO/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/nb-NO/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/ne-NP/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/ne-NP/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/nl-NL/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/nl-NL/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/nn-NO/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/nn-NO/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/or-IN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/or-IN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/pa-IN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/pa-IN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/pl-PL/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/pl-PL/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/pt-BR/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/pt-BR/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/pt-PT/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/pt-PT/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/quz-PE/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/quz-PE/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/ro-RO/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/ro-RO/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/ru-RU/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/ru-RU/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/sk-SK/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/sk-SK/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/sl-SI/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/sl-SI/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/sq-AL/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/sq-AL/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/sr-Cyrl-BA/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/sr-Cyrl-BA/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/sr-Cyrl-RS/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/sr-Cyrl-RS/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/sr-Latn-RS/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/sr-Latn-RS/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/sv-SE/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/sv-SE/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/ta-IN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/ta-IN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/te-IN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/te-IN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/th-TH/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/th-TH/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/tr-TR/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/tr-TR/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/tt-RU/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/tt-RU/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/ug-CN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/ug-CN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/uk-UA/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/uk-UA/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/ur-PK/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/ur-PK/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/uz-Latn-UZ/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/uz-Latn-UZ/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/vi-VN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/vi-VN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/zh-CN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/zh-CN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64/native/zh-TW/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64/native/zh-TW/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/Microsoft.UI.Xaml.Controls.dll",
+        "runtimes-framework/win-arm64ec/native/Microsoft.UI.Xaml.Controls.pri",
+        "runtimes-framework/win-arm64ec/native/Microsoft.UI.Xaml.Internal.dll",
+        "runtimes-framework/win-arm64ec/native/Microsoft.UI.Xaml.Phone.dll",
+        "runtimes-framework/win-arm64ec/native/Microsoft.UI.Xaml/Assets/NoiseAsset_256x256_PNG.png",
+        "runtimes-framework/win-arm64ec/native/Microsoft.UI.Xaml/Assets/map.html",
+        "runtimes-framework/win-arm64ec/native/Microsoft.ui.xaml.dll",
+        "runtimes-framework/win-arm64ec/native/Microsoft.ui.xaml.resources.19h1.dll",
+        "runtimes-framework/win-arm64ec/native/Microsoft.ui.xaml.resources.common.dll",
+        "runtimes-framework/win-arm64ec/native/WinUIEdit.dll",
+        "runtimes-framework/win-arm64ec/native/af-ZA/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/af-ZA/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/am-ET/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/am-ET/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/ar-SA/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/ar-SA/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/as-IN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/as-IN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/az-Latn-AZ/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/az-Latn-AZ/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/bg-BG/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/bg-BG/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/bn-IN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/bn-IN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/bs-Latn-BA/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/bs-Latn-BA/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/ca-ES/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/ca-ES/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/ca-Es-VALENCIA/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/ca-Es-VALENCIA/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/cs-CZ/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/cs-CZ/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/cy-GB/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/cy-GB/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/da-DK/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/da-DK/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/de-DE/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/de-DE/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/el-GR/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/el-GR/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/en-GB/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/en-GB/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/en-us/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/en-us/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/es-ES/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/es-ES/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/es-MX/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/es-MX/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/et-EE/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/et-EE/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/eu-ES/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/eu-ES/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/fa-IR/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/fa-IR/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/fi-FI/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/fi-FI/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/fil-PH/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/fil-PH/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/fr-CA/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/fr-CA/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/fr-FR/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/fr-FR/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/ga-IE/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/ga-IE/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/gd-gb/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/gd-gb/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/gl-ES/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/gl-ES/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/gu-IN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/gu-IN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/he-IL/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/he-IL/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/hi-IN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/hi-IN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/hr-HR/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/hr-HR/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/hu-HU/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/hu-HU/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/hy-AM/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/hy-AM/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/id-ID/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/id-ID/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/is-IS/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/is-IS/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/it-IT/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/it-IT/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/ja-JP/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/ja-JP/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/ka-GE/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/ka-GE/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/kk-KZ/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/kk-KZ/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/km-KH/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/km-KH/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/kn-IN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/kn-IN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/ko-KR/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/ko-KR/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/kok-IN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/kok-IN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/lb-LU/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/lb-LU/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/lo-LA/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/lo-LA/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/lt-LT/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/lt-LT/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/lv-LV/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/lv-LV/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/mi-NZ/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/mi-NZ/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/mk-MK/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/mk-MK/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/ml-IN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/ml-IN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/mr-IN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/mr-IN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/ms-MY/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/ms-MY/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/mt-MT/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/mt-MT/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/nb-NO/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/nb-NO/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/ne-NP/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/ne-NP/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/nl-NL/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/nl-NL/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/nn-NO/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/nn-NO/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/or-IN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/or-IN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/pa-IN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/pa-IN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/pl-PL/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/pl-PL/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/pt-BR/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/pt-BR/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/pt-PT/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/pt-PT/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/quz-PE/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/quz-PE/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/ro-RO/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/ro-RO/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/ru-RU/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/ru-RU/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/sk-SK/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/sk-SK/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/sl-SI/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/sl-SI/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/sq-AL/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/sq-AL/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/sr-Cyrl-BA/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/sr-Cyrl-BA/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/sr-Cyrl-RS/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/sr-Cyrl-RS/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/sr-Latn-RS/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/sr-Latn-RS/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/sv-SE/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/sv-SE/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/ta-IN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/ta-IN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/te-IN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/te-IN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/th-TH/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/th-TH/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/tr-TR/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/tr-TR/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/tt-RU/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/tt-RU/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/ug-CN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/ug-CN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/uk-UA/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/uk-UA/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/ur-PK/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/ur-PK/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/uz-Latn-UZ/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/uz-Latn-UZ/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/vi-VN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/vi-VN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/zh-CN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/zh-CN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-arm64ec/native/zh-TW/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-arm64ec/native/zh-TW/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/Microsoft.UI.Xaml.Controls.dll",
+        "runtimes-framework/win-x64/native/Microsoft.UI.Xaml.Controls.pri",
+        "runtimes-framework/win-x64/native/Microsoft.UI.Xaml.Internal.dll",
+        "runtimes-framework/win-x64/native/Microsoft.UI.Xaml.Phone.dll",
+        "runtimes-framework/win-x64/native/Microsoft.UI.Xaml/Assets/NoiseAsset_256x256_PNG.png",
+        "runtimes-framework/win-x64/native/Microsoft.UI.Xaml/Assets/map.html",
+        "runtimes-framework/win-x64/native/Microsoft.ui.xaml.dll",
+        "runtimes-framework/win-x64/native/Microsoft.ui.xaml.resources.19h1.dll",
+        "runtimes-framework/win-x64/native/Microsoft.ui.xaml.resources.common.dll",
+        "runtimes-framework/win-x64/native/WinUIEdit.dll",
+        "runtimes-framework/win-x64/native/af-ZA/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/af-ZA/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/am-ET/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/am-ET/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/ar-SA/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/ar-SA/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/as-IN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/as-IN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/az-Latn-AZ/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/az-Latn-AZ/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/bg-BG/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/bg-BG/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/bn-IN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/bn-IN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/bs-Latn-BA/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/bs-Latn-BA/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/ca-ES/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/ca-ES/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/ca-Es-VALENCIA/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/ca-Es-VALENCIA/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/cs-CZ/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/cs-CZ/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/cy-GB/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/cy-GB/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/da-DK/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/da-DK/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/de-DE/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/de-DE/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/el-GR/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/el-GR/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/en-GB/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/en-GB/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/en-us/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/en-us/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/es-ES/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/es-ES/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/es-MX/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/es-MX/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/et-EE/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/et-EE/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/eu-ES/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/eu-ES/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/fa-IR/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/fa-IR/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/fi-FI/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/fi-FI/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/fil-PH/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/fil-PH/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/fr-CA/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/fr-CA/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/fr-FR/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/fr-FR/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/ga-IE/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/ga-IE/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/gd-gb/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/gd-gb/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/gl-ES/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/gl-ES/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/gu-IN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/gu-IN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/he-IL/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/he-IL/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/hi-IN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/hi-IN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/hr-HR/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/hr-HR/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/hu-HU/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/hu-HU/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/hy-AM/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/hy-AM/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/id-ID/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/id-ID/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/is-IS/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/is-IS/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/it-IT/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/it-IT/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/ja-JP/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/ja-JP/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/ka-GE/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/ka-GE/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/kk-KZ/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/kk-KZ/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/km-KH/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/km-KH/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/kn-IN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/kn-IN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/ko-KR/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/ko-KR/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/kok-IN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/kok-IN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/lb-LU/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/lb-LU/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/lo-LA/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/lo-LA/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/lt-LT/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/lt-LT/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/lv-LV/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/lv-LV/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/mi-NZ/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/mi-NZ/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/mk-MK/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/mk-MK/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/ml-IN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/ml-IN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/mr-IN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/mr-IN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/ms-MY/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/ms-MY/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/mt-MT/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/mt-MT/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/nb-NO/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/nb-NO/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/ne-NP/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/ne-NP/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/nl-NL/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/nl-NL/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/nn-NO/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/nn-NO/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/or-IN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/or-IN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/pa-IN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/pa-IN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/pl-PL/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/pl-PL/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/pt-BR/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/pt-BR/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/pt-PT/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/pt-PT/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/quz-PE/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/quz-PE/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/ro-RO/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/ro-RO/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/ru-RU/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/ru-RU/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/sk-SK/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/sk-SK/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/sl-SI/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/sl-SI/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/sq-AL/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/sq-AL/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/sr-Cyrl-BA/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/sr-Cyrl-BA/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/sr-Cyrl-RS/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/sr-Cyrl-RS/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/sr-Latn-RS/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/sr-Latn-RS/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/sv-SE/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/sv-SE/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/ta-IN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/ta-IN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/te-IN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/te-IN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/th-TH/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/th-TH/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/tr-TR/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/tr-TR/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/tt-RU/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/tt-RU/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/ug-CN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/ug-CN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/uk-UA/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/uk-UA/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/ur-PK/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/ur-PK/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/uz-Latn-UZ/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/uz-Latn-UZ/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/vi-VN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/vi-VN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/zh-CN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/zh-CN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x64/native/zh-TW/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x64/native/zh-TW/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/Microsoft.UI.Xaml.Controls.dll",
+        "runtimes-framework/win-x86/native/Microsoft.UI.Xaml.Controls.pri",
+        "runtimes-framework/win-x86/native/Microsoft.UI.Xaml.Internal.dll",
+        "runtimes-framework/win-x86/native/Microsoft.UI.Xaml.Phone.dll",
+        "runtimes-framework/win-x86/native/Microsoft.UI.Xaml/Assets/NoiseAsset_256x256_PNG.png",
+        "runtimes-framework/win-x86/native/Microsoft.UI.Xaml/Assets/map.html",
+        "runtimes-framework/win-x86/native/Microsoft.ui.xaml.dll",
+        "runtimes-framework/win-x86/native/Microsoft.ui.xaml.resources.19h1.dll",
+        "runtimes-framework/win-x86/native/Microsoft.ui.xaml.resources.common.dll",
+        "runtimes-framework/win-x86/native/WinUIEdit.dll",
+        "runtimes-framework/win-x86/native/af-ZA/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/af-ZA/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/am-ET/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/am-ET/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/ar-SA/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/ar-SA/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/as-IN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/as-IN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/az-Latn-AZ/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/az-Latn-AZ/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/bg-BG/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/bg-BG/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/bn-IN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/bn-IN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/bs-Latn-BA/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/bs-Latn-BA/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/ca-ES/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/ca-ES/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/ca-Es-VALENCIA/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/ca-Es-VALENCIA/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/cs-CZ/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/cs-CZ/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/cy-GB/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/cy-GB/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/da-DK/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/da-DK/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/de-DE/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/de-DE/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/el-GR/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/el-GR/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/en-GB/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/en-GB/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/en-us/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/en-us/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/es-ES/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/es-ES/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/es-MX/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/es-MX/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/et-EE/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/et-EE/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/eu-ES/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/eu-ES/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/fa-IR/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/fa-IR/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/fi-FI/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/fi-FI/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/fil-PH/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/fil-PH/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/fr-CA/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/fr-CA/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/fr-FR/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/fr-FR/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/ga-IE/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/ga-IE/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/gd-gb/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/gd-gb/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/gl-ES/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/gl-ES/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/gu-IN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/gu-IN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/he-IL/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/he-IL/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/hi-IN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/hi-IN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/hr-HR/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/hr-HR/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/hu-HU/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/hu-HU/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/hy-AM/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/hy-AM/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/id-ID/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/id-ID/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/is-IS/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/is-IS/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/it-IT/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/it-IT/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/ja-JP/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/ja-JP/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/ka-GE/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/ka-GE/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/kk-KZ/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/kk-KZ/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/km-KH/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/km-KH/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/kn-IN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/kn-IN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/ko-KR/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/ko-KR/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/kok-IN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/kok-IN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/lb-LU/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/lb-LU/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/lo-LA/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/lo-LA/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/lt-LT/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/lt-LT/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/lv-LV/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/lv-LV/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/mi-NZ/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/mi-NZ/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/mk-MK/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/mk-MK/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/ml-IN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/ml-IN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/mr-IN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/mr-IN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/ms-MY/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/ms-MY/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/mt-MT/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/mt-MT/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/nb-NO/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/nb-NO/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/ne-NP/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/ne-NP/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/nl-NL/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/nl-NL/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/nn-NO/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/nn-NO/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/or-IN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/or-IN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/pa-IN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/pa-IN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/pl-PL/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/pl-PL/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/pt-BR/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/pt-BR/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/pt-PT/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/pt-PT/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/quz-PE/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/quz-PE/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/ro-RO/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/ro-RO/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/ru-RU/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/ru-RU/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/sk-SK/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/sk-SK/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/sl-SI/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/sl-SI/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/sq-AL/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/sq-AL/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/sr-Cyrl-BA/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/sr-Cyrl-BA/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/sr-Cyrl-RS/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/sr-Cyrl-RS/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/sr-Latn-RS/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/sr-Latn-RS/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/sv-SE/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/sv-SE/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/ta-IN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/ta-IN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/te-IN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/te-IN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/th-TH/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/th-TH/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/tr-TR/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/tr-TR/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/tt-RU/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/tt-RU/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/ug-CN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/ug-CN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/uk-UA/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/uk-UA/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/ur-PK/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/ur-PK/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/uz-Latn-UZ/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/uz-Latn-UZ/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/vi-VN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/vi-VN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/zh-CN/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/zh-CN/Microsoft.ui.xaml.dll.mui",
+        "runtimes-framework/win-x86/native/zh-TW/Microsoft.UI.Xaml.Phone.dll.mui",
+        "runtimes-framework/win-x86/native/zh-TW/Microsoft.ui.xaml.dll.mui",
+        "tools/NOTICE.txt",
+        "tools/arm64/GenXbf.dll",
+        "tools/arm64ec/GenXbf.dll",
+        "tools/net472/Microsoft.Bcl.AsyncInterfaces.dll",
+        "tools/net472/Microsoft.Build.Framework.dll",
+        "tools/net472/Microsoft.Build.Utilities.Core.dll",
+        "tools/net472/Microsoft.Build.dll",
+        "tools/net472/Microsoft.UI.Xaml.Markup.Compiler.IO.dll",
+        "tools/net472/Microsoft.UI.Xaml.Markup.Compiler.MSBuildInterop.dll",
+        "tools/net472/Microsoft.UI.Xaml.Markup.Compiler.dll",
+        "tools/net472/System.Buffers.dll",
+        "tools/net472/System.Collections.Immutable.dll",
+        "tools/net472/System.Memory.dll",
+        "tools/net472/System.Numerics.Vectors.dll",
+        "tools/net472/System.Reflection.Metadata.dll",
+        "tools/net472/System.Runtime.CompilerServices.Unsafe.dll",
+        "tools/net472/System.Text.Encodings.Web.dll",
+        "tools/net472/System.Text.Json.dll",
+        "tools/net472/System.Threading.Tasks.Dataflow.dll",
+        "tools/net472/System.Threading.Tasks.Extensions.dll",
+        "tools/net472/XamlCompiler.exe",
+        "tools/net472/XamlCompiler.exe.config",
+        "tools/net6.0/Microsoft.Bcl.AsyncInterfaces.dll",
+        "tools/net6.0/Microsoft.UI.Xaml.Markup.Compiler.IO.dll",
+        "tools/net6.0/Microsoft.UI.Xaml.Markup.Compiler.MSBuildInterop.dll",
+        "tools/net6.0/Microsoft.UI.Xaml.Markup.Compiler.dll",
+        "tools/net6.0/System.Runtime.CompilerServices.Unsafe.dll",
+        "tools/net6.0/System.Text.Encodings.Web.dll",
+        "tools/net6.0/System.Text.Json.dll",
+        "tools/x64/GenXbf.dll",
+        "tools/x86/GenXbf.dll"
+      ]
+    },
+    "MarkdownRenderer.Core/1.0.0-preview.1": {
+      "type": "project",
+      "path": "../MarkdownRenderer.Core/MarkdownRenderer.Core.csproj",
+      "msbuildProject": "../MarkdownRenderer.Core/MarkdownRenderer.Core.csproj"
+    }
+  },
+  "projectFileDependencyGroups": {
+    "net10.0-windows10.0.26100.0": [
+      "Markdig >= 0.42.0",
+      "MarkdownRenderer.Core >= 1.0.0-preview.1",
+      "Microsoft.Graphics.Win2D >= 1.4.0",
+      "Microsoft.NET.ILLink.Tasks >= 10.0.11",
+      "Microsoft.Windows.SDK.BuildTools >= 10.0.28000.1721"
+    ]
+  },
+  "packageFolders": {
+    "E:\\packages\\NuGet\\cache": {},
+    "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages": {}
+  },
+  "project": {
+    "version": "1.0.0-preview.1",
+    "restore": {
+      "projectUniqueName": "E:\\JitHubV2\\MarkdownRenderer\\MarkdownRenderer\\MarkdownRenderer.csproj",
+      "projectName": "MarkdownRenderer.WinUI",
+      "projectPath": "E:\\JitHubV2\\MarkdownRenderer\\MarkdownRenderer\\MarkdownRenderer.csproj",
+      "packagesPath": "E:\\packages\\NuGet\\cache",
+      "outputPath": "E:\\JitHubV2\\MarkdownRenderer\\MarkdownRenderer\\obj-root-layout\\",
+      "projectStyle": "PackageReference",
+      "fallbackFolders": [
+        "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
+      ],
+      "configFilePaths": [
+        "E:\\JitHubV2\\NuGet.Config",
+        "C:\\Users\\neroc\\AppData\\Roaming\\NuGet\\NuGet.Config",
+        "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
+        "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+      ],
+      "originalTargetFrameworks": [
+        "net10.0-windows10.0.26100.0"
+      ],
+      "sources": {
+        "C:\\Program Files\\dotnet\\library-packs": {},
+        "https://api.nuget.org/v3/index.json": {}
+      },
+      "frameworks": {
+        "net10.0-windows10.0.26100.0": {
+          "framework": "net10.0-windows10.0.26100",
+          "targetAlias": "net10.0-windows10.0.26100.0",
+          "projectReferences": {
+            "E:\\JitHubV2\\MarkdownRenderer\\MarkdownRenderer.Core\\MarkdownRenderer.Core.csproj": {
+              "projectPath": "E:\\JitHubV2\\MarkdownRenderer\\MarkdownRenderer.Core\\MarkdownRenderer.Core.csproj"
+            }
+          }
+        }
+      },
+      "warningProperties": {
+        "warnAsError": [
+          "NU1605"
+        ]
+      },
+      "restoreLockProperties": {
+        "nuGetLockFilePath": "obj-root-layout\\packages.lock.json"
+      },
+      "restoreAuditProperties": {
+        "enableAudit": "true",
+        "auditLevel": "low",
+        "auditMode": "all"
+      },
+      "SdkAnalysisLevel": "10.0.400"
+    },
+    "frameworks": {
+      "net10.0-windows10.0.26100.0": {
+        "framework": "net10.0-windows10.0.26100",
+        "targetAlias": "net10.0-windows10.0.26100.0",
+        "dependencies": {
+          "Markdig": {
+            "target": "Package",
+            "version": "[0.42.0, )"
+          },
+          "Microsoft.Graphics.Win2D": {
+            "target": "Package",
+            "version": "[1.4.0, )"
+          },
+          "Microsoft.NET.ILLink.Tasks": {
+            "suppressParent": "All",
+            "target": "Package",
+            "version": "[10.0.11, )",
+            "autoReferenced": true
+          },
+          "Microsoft.Windows.SDK.BuildTools": {
+            "suppressParent": "All",
+            "target": "Package",
+            "version": "[10.0.28000.1721, )"
+          }
+        },
+        "imports": [
+          "net461",
+          "net462",
+          "net47",
+          "net471",
+          "net472",
+          "net48",
+          "net481"
+        ],
+        "assetTargetFallback": true,
+        "warn": true,
+        "downloadDependencies": [
+          {
+            "name": "Microsoft.AspNetCore.App.Runtime.win-arm64",
+            "version": "[10.0.11, 10.0.11]"
+          },
+          {
+            "name": "Microsoft.AspNetCore.App.Runtime.win-x64",
+            "version": "[10.0.11, 10.0.11]"
+          },
+          {
+            "name": "Microsoft.AspNetCore.App.Runtime.win-x86",
+            "version": "[10.0.11, 10.0.11]"
+          },
+          {
+            "name": "Microsoft.NETCore.App.Runtime.win-arm64",
+            "version": "[10.0.11, 10.0.11]"
+          },
+          {
+            "name": "Microsoft.NETCore.App.Runtime.win-x64",
+            "version": "[10.0.11, 10.0.11]"
+          },
+          {
+            "name": "Microsoft.NETCore.App.Runtime.win-x86",
+            "version": "[10.0.11, 10.0.11]"
+          },
+          {
+            "name": "Microsoft.Windows.SDK.NET.Ref",
+            "version": "[10.0.26100.57, 10.0.26100.57]"
+          },
+          {
+            "name": "Microsoft.WindowsDesktop.App.Runtime.win-arm64",
+            "version": "[10.0.11, 10.0.11]"
+          },
+          {
+            "name": "Microsoft.WindowsDesktop.App.Runtime.win-x64",
+            "version": "[10.0.11, 10.0.11]"
+          },
+          {
+            "name": "Microsoft.WindowsDesktop.App.Runtime.win-x86",
+            "version": "[10.0.11, 10.0.11]"
+          }
+        ],
+        "frameworkReferences": {
+          "Microsoft.NETCore.App": {
+            "privateAssets": "all"
+          },
+          "Microsoft.Windows.SDK.NET.Ref.Windows": {
+            "privateAssets": "all"
+          }
+        },
+        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.400/PortableRuntimeIdentifierGraph.json",
+        "packagesToPrune": {
+          "Microsoft.CSharp": "(,4.7.32767]",
+          "Microsoft.VisualBasic": "(,10.4.32767]",
+          "Microsoft.Win32.Primitives": "(,4.3.32767]",
+          "Microsoft.Win32.Registry": "(,5.0.32767]",
+          "runtime.any.System.Collections": "(,4.3.32767]",
+          "runtime.any.System.Diagnostics.Tools": "(,4.3.32767]",
+          "runtime.any.System.Diagnostics.Tracing": "(,4.3.32767]",
+          "runtime.any.System.Globalization": "(,4.3.32767]",
+          "runtime.any.System.Globalization.Calendars": "(,4.3.32767]",
+          "runtime.any.System.IO": "(,4.3.32767]",
+          "runtime.any.System.Reflection": "(,4.3.32767]",
+          "runtime.any.System.Reflection.Extensions": "(,4.3.32767]",
+          "runtime.any.System.Reflection.Primitives": "(,4.3.32767]",
+          "runtime.any.System.Resources.ResourceManager": "(,4.3.32767]",
+          "runtime.any.System.Runtime": "(,4.3.32767]",
+          "runtime.any.System.Runtime.Handles": "(,4.3.32767]",
+          "runtime.any.System.Runtime.InteropServices": "(,4.3.32767]",
+          "runtime.any.System.Text.Encoding": "(,4.3.32767]",
+          "runtime.any.System.Text.Encoding.Extensions": "(,4.3.32767]",
+          "runtime.any.System.Threading.Tasks": "(,4.3.32767]",
+          "runtime.any.System.Threading.Timer": "(,4.3.32767]",
+          "runtime.aot.System.Collections": "(,4.3.32767]",
+          "runtime.aot.System.Diagnostics.Tools": "(,4.3.32767]",
+          "runtime.aot.System.Diagnostics.Tracing": "(,4.3.32767]",
+          "runtime.aot.System.Globalization": "(,4.3.32767]",
+          "runtime.aot.System.Globalization.Calendars": "(,4.3.32767]",
+          "runtime.aot.System.IO": "(,4.3.32767]",
+          "runtime.aot.System.Reflection": "(,4.3.32767]",
+          "runtime.aot.System.Reflection.Extensions": "(,4.3.32767]",
+          "runtime.aot.System.Reflection.Primitives": "(,4.3.32767]",
+          "runtime.aot.System.Resources.ResourceManager": "(,4.3.32767]",
+          "runtime.aot.System.Runtime": "(,4.3.32767]",
+          "runtime.aot.System.Runtime.Handles": "(,4.3.32767]",
+          "runtime.aot.System.Runtime.InteropServices": "(,4.3.32767]",
+          "runtime.aot.System.Text.Encoding": "(,4.3.32767]",
+          "runtime.aot.System.Text.Encoding.Extensions": "(,4.3.32767]",
+          "runtime.aot.System.Threading.Tasks": "(,4.3.32767]",
+          "runtime.aot.System.Threading.Timer": "(,4.3.32767]",
+          "runtime.debian.8-x64.runtime.native.System": "(,4.3.32767]",
+          "runtime.debian.8-x64.runtime.native.System.IO.Compression": "(,4.3.32767]",
+          "runtime.debian.8-x64.runtime.native.System.Net.Http": "(,4.3.32767]",
+          "runtime.debian.8-x64.runtime.native.System.Net.Security": "(,4.3.32767]",
+          "runtime.debian.8-x64.runtime.native.System.Security.Cryptography": "(,4.3.32767]",
+          "runtime.debian.8-x64.runtime.native.System.Security.Cryptography.OpenSsl": "(,4.3.32767]",
+          "runtime.debian.9-x64.runtime.native.System": "(,4.3.32767]",
+          "runtime.debian.9-x64.runtime.native.System.IO.Compression": "(,4.3.32767]",
+          "runtime.debian.9-x64.runtime.native.System.Net.Http": "(,4.3.32767]",
+          "runtime.debian.9-x64.runtime.native.System.Net.Security": "(,4.3.32767]",
+          "runtime.fedora.23-x64.runtime.native.System": "(,4.3.32767]",
+          "runtime.fedora.23-x64.runtime.native.System.IO.Compression": "(,4.3.32767]",
+          "runtime.fedora.23-x64.runtime.native.System.Net.Http": "(,4.3.32767]",
+          "runtime.fedora.23-x64.runtime.native.System.Net.Security": "(,4.3.32767]",
+          "runtime.fedora.23-x64.runtime.native.System.Security.Cryptography": "(,4.3.32767]",
+          "runtime.fedora.23-x64.runtime.native.System.Security.Cryptography.OpenSsl": "(,4.3.32767]",
+          "runtime.fedora.24-x64.runtime.native.System": "(,4.3.32767]",
+          "runtime.fedora.24-x64.runtime.native.System.IO.Compression": "(,4.3.32767]",
+          "runtime.fedora.24-x64.runtime.native.System.Net.Http": "(,4.3.32767]",
+          "runtime.fedora.24-x64.runtime.native.System.Net.Security": "(,4.3.32767]",
+          "runtime.fedora.24-x64.runtime.native.System.Security.Cryptography": "(,4.3.32767]",
+          "runtime.fedora.24-x64.runtime.native.System.Security.Cryptography.OpenSsl": "(,4.3.32767]",
+          "runtime.fedora.27-x64.runtime.native.System": "(,4.3.32767]",
+          "runtime.fedora.27-x64.runtime.native.System.IO.Compression": "(,4.3.32767]",
+          "runtime.fedora.27-x64.runtime.native.System.Net.Http": "(,4.3.32767]",
+          "runtime.fedora.27-x64.runtime.native.System.Net.Security": "(,4.3.32767]",
+          "runtime.fedora.28-x64.runtime.native.System": "(,4.3.32767]",
+          "runtime.fedora.28-x64.runtime.native.System.IO.Compression": "(,4.3.32767]",
+          "runtime.fedora.28-x64.runtime.native.System.Net.Http": "(,4.3.32767]",
+          "runtime.fedora.28-x64.runtime.native.System.Net.Security": "(,4.3.32767]",
+          "runtime.opensuse.13.2-x64.runtime.native.System": "(,4.3.32767]",
+          "runtime.opensuse.13.2-x64.runtime.native.System.IO.Compression": "(,4.3.32767]",
+          "runtime.opensuse.13.2-x64.runtime.native.System.Net.Http": "(,4.3.32767]",
+          "runtime.opensuse.13.2-x64.runtime.native.System.Net.Security": "(,4.3.32767]",
+          "runtime.opensuse.13.2-x64.runtime.native.System.Security.Cryptography": "(,4.3.32767]",
+          "runtime.opensuse.13.2-x64.runtime.native.System.Security.Cryptography.OpenSsl": "(,4.3.32767]",
+          "runtime.opensuse.42.1-x64.runtime.native.System": "(,4.3.32767]",
+          "runtime.opensuse.42.1-x64.runtime.native.System.IO.Compression": "(,4.3.32767]",
+          "runtime.opensuse.42.1-x64.runtime.native.System.Net.Http": "(,4.3.32767]",
+          "runtime.opensuse.42.1-x64.runtime.native.System.Net.Security": "(,4.3.32767]",
+          "runtime.opensuse.42.1-x64.runtime.native.System.Security.Cryptography": "(,4.3.32767]",
+          "runtime.opensuse.42.1-x64.runtime.native.System.Security.Cryptography.OpenSsl": "(,4.3.32767]",
+          "runtime.opensuse.42.3-x64.runtime.native.System": "(,4.3.32767]",
+          "runtime.opensuse.42.3-x64.runtime.native.System.IO.Compression": "(,4.3.32767]",
+          "runtime.opensuse.42.3-x64.runtime.native.System.Net.Http": "(,4.3.32767]",
+          "runtime.opensuse.42.3-x64.runtime.native.System.Net.Security": "(,4.3.32767]",
+          "runtime.osx.10.10-x64.runtime.native.System": "(,4.3.32767]",
+          "runtime.osx.10.10-x64.runtime.native.System.IO.Compression": "(,4.3.32767]",
+          "runtime.osx.10.10-x64.runtime.native.System.Net.Http": "(,4.3.32767]",
+          "runtime.osx.10.10-x64.runtime.native.System.Net.Security": "(,4.3.32767]",
+          "runtime.osx.10.10-x64.runtime.native.System.Security.Cryptography": "(,4.3.32767]",
+          "runtime.osx.10.10-x64.runtime.native.System.Security.Cryptography.Apple": "(,4.3.32767]",
+          "runtime.osx.10.10-x64.runtime.native.System.Security.Cryptography.OpenSsl": "(,4.3.32767]",
+          "runtime.rhel.7-x64.runtime.native.System": "(,4.3.32767]",
+          "runtime.rhel.7-x64.runtime.native.System.IO.Compression": "(,4.3.32767]",
+          "runtime.rhel.7-x64.runtime.native.System.Net.Http": "(,4.3.32767]",
+          "runtime.rhel.7-x64.runtime.native.System.Net.Security": "(,4.3.32767]",
+          "runtime.rhel.7-x64.runtime.native.System.Security.Cryptography": "(,4.3.32767]",
+          "runtime.rhel.7-x64.runtime.native.System.Security.Cryptography.OpenSsl": "(,4.3.32767]",
+          "runtime.ubuntu.14.04-x64.runtime.native.System": "(,4.3.32767]",
+          "runtime.ubuntu.14.04-x64.runtime.native.System.IO.Compression": "(,4.3.32767]",
+          "runtime.ubuntu.14.04-x64.runtime.native.System.Net.Http": "(,4.3.32767]",
+          "runtime.ubuntu.14.04-x64.runtime.native.System.Net.Security": "(,4.3.32767]",
+          "runtime.ubuntu.14.04-x64.runtime.native.System.Security.Cryptography": "(,4.3.32767]",
+          "runtime.ubuntu.14.04-x64.runtime.native.System.Security.Cryptography.OpenSsl": "(,4.3.32767]",
+          "runtime.ubuntu.16.04-x64.runtime.native.System": "(,4.3.32767]",
+          "runtime.ubuntu.16.04-x64.runtime.native.System.IO.Compression": "(,4.3.32767]",
+          "runtime.ubuntu.16.04-x64.runtime.native.System.Net.Http": "(,4.3.32767]",
+          "runtime.ubuntu.16.04-x64.runtime.native.System.Net.Security": "(,4.3.32767]",
+          "runtime.ubuntu.16.04-x64.runtime.native.System.Security.Cryptography": "(,4.3.32767]",
+          "runtime.ubuntu.16.04-x64.runtime.native.System.Security.Cryptography.OpenSsl": "(,4.3.32767]",
+          "runtime.ubuntu.16.10-x64.runtime.native.System": "(,4.3.32767]",
+          "runtime.ubuntu.16.10-x64.runtime.native.System.IO.Compression": "(,4.3.32767]",
+          "runtime.ubuntu.16.10-x64.runtime.native.System.Net.Http": "(,4.3.32767]",
+          "runtime.ubuntu.16.10-x64.runtime.native.System.Net.Security": "(,4.3.32767]",
+          "runtime.ubuntu.16.10-x64.runtime.native.System.Security.Cryptography": "(,4.3.32767]",
+          "runtime.ubuntu.16.10-x64.runtime.native.System.Security.Cryptography.OpenSsl": "(,4.3.32767]",
+          "runtime.ubuntu.18.04-x64.runtime.native.System": "(,4.3.32767]",
+          "runtime.ubuntu.18.04-x64.runtime.native.System.IO.Compression": "(,4.3.32767]",
+          "runtime.ubuntu.18.04-x64.runtime.native.System.Net.Http": "(,4.3.32767]",
+          "runtime.ubuntu.18.04-x64.runtime.native.System.Net.Security": "(,4.3.32767]",
+          "runtime.unix.Microsoft.Win32.Primitives": "(,4.3.32767]",
+          "runtime.unix.System.Console": "(,4.3.32767]",
+          "runtime.unix.System.Diagnostics.Debug": "(,4.3.32767]",
+          "runtime.unix.System.IO.FileSystem": "(,4.3.32767]",
+          "runtime.unix.System.Net.Primitives": "(,4.3.32767]",
+          "runtime.unix.System.Net.Sockets": "(,4.3.32767]",
+          "runtime.unix.System.Private.Uri": "(,4.3.32767]",
+          "runtime.unix.System.Runtime.Extensions": "(,4.3.32767]",
+          "runtime.win.Microsoft.Win32.Primitives": "(,4.3.32767]",
+          "runtime.win.System.Console": "(,4.3.32767]",
+          "runtime.win.System.Diagnostics.Debug": "(,4.3.32767]",
+          "runtime.win.System.IO.FileSystem": "(,4.3.32767]",
+          "runtime.win.System.Net.Primitives": "(,4.3.32767]",
+          "runtime.win.System.Net.Sockets": "(,4.3.32767]",
+          "runtime.win.System.Runtime.Extensions": "(,4.3.32767]",
+          "runtime.win10-arm-aot.runtime.native.System.IO.Compression": "(,4.0.32767]",
+          "runtime.win10-arm64.runtime.native.System.IO.Compression": "(,4.3.32767]",
+          "runtime.win10-x64-aot.runtime.native.System.IO.Compression": "(,4.0.32767]",
+          "runtime.win10-x86-aot.runtime.native.System.IO.Compression": "(,4.0.32767]",
+          "runtime.win7-x64.runtime.native.System.IO.Compression": "(,4.3.32767]",
+          "runtime.win7-x86.runtime.native.System.IO.Compression": "(,4.3.32767]",
+          "runtime.win7.System.Private.Uri": "(,4.3.32767]",
+          "runtime.win8-arm.runtime.native.System.IO.Compression": "(,4.3.32767]",
+          "System.AppContext": "(,4.3.32767]",
+          "System.Buffers": "(,5.0.32767]",
+          "System.Collections": "(,4.3.32767]",
+          "System.Collections.Concurrent": "(,4.3.32767]",
+          "System.Collections.Immutable": "(,10.0.32767]",
+          "System.Collections.NonGeneric": "(,4.3.32767]",
+          "System.Collections.Specialized": "(,4.3.32767]",
+          "System.ComponentModel": "(,4.3.32767]",
+          "System.ComponentModel.Annotations": "(,4.3.32767]",
+          "System.ComponentModel.EventBasedAsync": "(,4.3.32767]",
+          "System.ComponentModel.Primitives": "(,4.3.32767]",
+          "System.ComponentModel.TypeConverter": "(,4.3.32767]",
+          "System.Console": "(,4.3.32767]",
+          "System.Data.Common": "(,4.3.32767]",
+          "System.Data.DataSetExtensions": "(,4.4.32767]",
+          "System.Diagnostics.Contracts": "(,4.3.32767]",
+          "System.Diagnostics.Debug": "(,4.3.32767]",
+          "System.Diagnostics.DiagnosticSource": "(,10.0.32767]",
+          "System.Diagnostics.FileVersionInfo": "(,4.3.32767]",
+          "System.Diagnostics.Process": "(,4.3.32767]",
+          "System.Diagnostics.StackTrace": "(,4.3.32767]",
+          "System.Diagnostics.TextWriterTraceListener": "(,4.3.32767]",
+          "System.Diagnostics.Tools": "(,4.3.32767]",
+          "System.Diagnostics.TraceSource": "(,4.3.32767]",
+          "System.Diagnostics.Tracing": "(,4.3.32767]",
+          "System.Drawing.Primitives": "(,4.3.32767]",
+          "System.Dynamic.Runtime": "(,4.3.32767]",
+          "System.Formats.Asn1": "(,10.0.32767]",
+          "System.Formats.Tar": "(,10.0.32767]",
+          "System.Globalization": "(,4.3.32767]",
+          "System.Globalization.Calendars": "(,4.3.32767]",
+          "System.Globalization.Extensions": "(,4.3.32767]",
+          "System.IO": "(,4.3.32767]",
+          "System.IO.Compression": "(,4.3.32767]",
+          "System.IO.Compression.ZipFile": "(,4.3.32767]",
+          "System.IO.FileSystem": "(,4.3.32767]",
+          "System.IO.FileSystem.AccessControl": "(,4.4.32767]",
+          "System.IO.FileSystem.DriveInfo": "(,4.3.32767]",
+          "System.IO.FileSystem.Primitives": "(,4.3.32767]",
+          "System.IO.FileSystem.Watcher": "(,4.3.32767]",
+          "System.IO.IsolatedStorage": "(,4.3.32767]",
+          "System.IO.MemoryMappedFiles": "(,4.3.32767]",
+          "System.IO.Pipelines": "(,10.0.32767]",
+          "System.IO.Pipes": "(,4.3.32767]",
+          "System.IO.Pipes.AccessControl": "(,5.0.32767]",
+          "System.IO.UnmanagedMemoryStream": "(,4.3.32767]",
+          "System.Linq": "(,4.3.32767]",
+          "System.Linq.AsyncEnumerable": "(,10.0.32767]",
+          "System.Linq.Expressions": "(,4.3.32767]",
+          "System.Linq.Parallel": "(,4.3.32767]",
+          "System.Linq.Queryable": "(,4.3.32767]",
+          "System.Memory": "(,5.0.32767]",
+          "System.Net.Http": "(,4.3.32767]",
+          "System.Net.Http.Json": "(,10.0.32767]",
+          "System.Net.NameResolution": "(,4.3.32767]",
+          "System.Net.NetworkInformation": "(,4.3.32767]",
+          "System.Net.Ping": "(,4.3.32767]",
+          "System.Net.Primitives": "(,4.3.32767]",
+          "System.Net.Requests": "(,4.3.32767]",
+          "System.Net.Security": "(,4.3.32767]",
+          "System.Net.ServerSentEvents": "(,10.0.32767]",
+          "System.Net.Sockets": "(,4.3.32767]",
+          "System.Net.WebHeaderCollection": "(,4.3.32767]",
+          "System.Net.WebSockets": "(,4.3.32767]",
+          "System.Net.WebSockets.Client": "(,4.3.32767]",
+          "System.Numerics.Vectors": "(,5.0.32767]",
+          "System.ObjectModel": "(,4.3.32767]",
+          "System.Private.DataContractSerialization": "(,4.3.32767]",
+          "System.Private.Uri": "(,4.3.32767]",
+          "System.Reflection": "(,4.3.32767]",
+          "System.Reflection.DispatchProxy": "(,6.0.32767]",
+          "System.Reflection.Emit": "(,4.7.32767]",
+          "System.Reflection.Emit.ILGeneration": "(,4.7.32767]",
+          "System.Reflection.Emit.Lightweight": "(,4.7.32767]",
+          "System.Reflection.Extensions": "(,4.3.32767]",
+          "System.Reflection.Metadata": "(,10.0.32767]",
+          "System.Reflection.Primitives": "(,4.3.32767]",
+          "System.Reflection.TypeExtensions": "(,4.3.32767]",
+          "System.Resources.Reader": "(,4.3.32767]",
+          "System.Resources.ResourceManager": "(,4.3.32767]",
+          "System.Resources.Writer": "(,4.3.32767]",
+          "System.Runtime": "(,4.3.32767]",
+          "System.Runtime.CompilerServices.Unsafe": "(,7.0.32767]",
+          "System.Runtime.CompilerServices.VisualC": "(,4.3.32767]",
+          "System.Runtime.Extensions": "(,4.3.32767]",
+          "System.Runtime.Handles": "(,4.3.32767]",
+          "System.Runtime.InteropServices": "(,4.3.32767]",
+          "System.Runtime.InteropServices.RuntimeInformation": "(,4.3.32767]",
+          "System.Runtime.Loader": "(,4.3.32767]",
+          "System.Runtime.Numerics": "(,4.3.32767]",
+          "System.Runtime.Serialization.Formatters": "(,4.3.32767]",
+          "System.Runtime.Serialization.Json": "(,4.3.32767]",
+          "System.Runtime.Serialization.Primitives": "(,4.3.32767]",
+          "System.Runtime.Serialization.Xml": "(,4.3.32767]",
+          "System.Security.AccessControl": "(,6.0.32767]",
+          "System.Security.Claims": "(,4.3.32767]",
+          "System.Security.Cryptography.Algorithms": "(,4.3.32767]",
+          "System.Security.Cryptography.Cng": "(,5.0.32767]",
+          "System.Security.Cryptography.Csp": "(,4.3.32767]",
+          "System.Security.Cryptography.Encoding": "(,4.3.32767]",
+          "System.Security.Cryptography.OpenSsl": "(,5.0.32767]",
+          "System.Security.Cryptography.Primitives": "(,4.3.32767]",
+          "System.Security.Cryptography.X509Certificates": "(,4.3.32767]",
+          "System.Security.Principal": "(,4.3.32767]",
+          "System.Security.Principal.Windows": "(,5.0.32767]",
+          "System.Security.SecureString": "(,4.3.32767]",
+          "System.Text.Encoding": "(,4.3.32767]",
+          "System.Text.Encoding.CodePages": "(,10.0.32767]",
+          "System.Text.Encoding.Extensions": "(,4.3.32767]",
+          "System.Text.Encodings.Web": "(,10.0.32767]",
+          "System.Text.Json": "(,10.0.32767]",
+          "System.Text.RegularExpressions": "(,4.3.32767]",
+          "System.Threading": "(,4.3.32767]",
+          "System.Threading.AccessControl": "(,10.0.32767]",
+          "System.Threading.Channels": "(,10.0.32767]",
+          "System.Threading.Overlapped": "(,4.3.32767]",
+          "System.Threading.Tasks": "(,4.3.32767]",
+          "System.Threading.Tasks.Dataflow": "(,10.0.32767]",
+          "System.Threading.Tasks.Extensions": "(,5.0.32767]",
+          "System.Threading.Tasks.Parallel": "(,4.3.32767]",
+          "System.Threading.Thread": "(,4.3.32767]",
+          "System.Threading.ThreadPool": "(,4.3.32767]",
+          "System.Threading.Timer": "(,4.3.32767]",
+          "System.ValueTuple": "(,4.5.32767]",
+          "System.Xml.ReaderWriter": "(,4.3.32767]",
+          "System.Xml.XDocument": "(,4.3.32767]",
+          "System.Xml.XmlDocument": "(,4.3.32767]",
+          "System.Xml.XmlSerializer": "(,4.3.32767]",
+          "System.Xml.XPath": "(,4.3.32767]",
+          "System.Xml.XPath.XDocument": "(,5.0.32767]"
+        }
+      }
+    },
+    "runtimes": {
+      "win-arm64": {
+        "#import": []
+      },
+      "win-x64": {
+        "#import": []
+      },
+      "win-x86": {
+        "#import": []
+      }
+    }
+  }
+}

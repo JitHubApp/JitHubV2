@@ -1,0 +1,17 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Description>Rendering interface for CSharpMath using the Typography library.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Reference Fonts\*.otf" />
+    <ProjectReference Include="..\CSharpMath.Editor\CSharpMath.Editor.csproj" />
+    <PackageReference Include="Nullable" Version="1.2.1" PrivateAssets="all" />
+    <PackageReference Include="System.Numerics.Vectors" Version="4.5.0" />
+  </ItemGroup>
+  <Import Project="..\PixelFarm.Typography %28Excerpt%29\PixelFarm.Typography %28Excerpt%29.projitems" Label="Shared" Condition="Exists('..\PixelFarm.Typography %28Excerpt%29\PixelFarm.Typography %28Excerpt%29.projitems')" />
+  <Import Project="..\Typography\Typography.OpenFont\Typography.OpenFont.projitems" Label="Shared" />
+  <Import Project="..\Typography\Typography.GlyphLayout\Typography.GlyphLayout.projitems" Label="Shared" />
+  <Import Project="..\Typography\Typography.TextBreak\Typography.TextBreak\Typography.TextBreak.projitems" Label="Shared" Condition="Exists('..\Typography\Typography.TextBreak\Typography.TextBreak\Typography.TextBreak.projitems')" />
+</Project>
