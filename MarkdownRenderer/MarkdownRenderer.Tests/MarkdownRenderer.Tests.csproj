@@ -68,6 +68,7 @@
     <Compile Include="..\MarkdownRenderer\Layout\VerticalViewportIndex.cs" Link="Core\VerticalViewportIndex.cs" />
     <Compile Include="..\MarkdownRenderer\Controls\EmbedVisibility.cs" Link="Core\EmbedVisibility.cs" />
     <Compile Include="..\MarkdownRenderer\Controls\DeferredInputQueue.cs" Link="Core\DeferredInputQueue.cs" />
+    <Compile Include="..\MarkdownRenderer\Controls\DeferredTouchGestureOwnerResolver.cs" Link="Core\DeferredTouchGestureOwnerResolver.cs" />
     <Compile Include="..\MarkdownRenderer\Controls\MarkdownKeyboardInputPolicy.cs" Link="Core\MarkdownKeyboardInputPolicy.cs" />
     <Compile Include="..\MarkdownRenderer\Controls\MarkdownCanvasInvalidationPolicy.cs" Link="Core\MarkdownCanvasInvalidationPolicy.cs" />
     <Compile Include="..\MarkdownRenderer\Controls\MarkdownLazyLayoutPolicy.cs" Link="Core\MarkdownLazyLayoutPolicy.cs" />
@@ -81,8 +82,11 @@
     <Compile Include="..\MarkdownRenderer\Controls\WeakSnapshotPublication.cs" Link="Core\WeakSnapshotPublication.cs" />
     <Compile Include="..\MarkdownRenderer\Controls\ImageRelayoutWorkPayload.cs" Link="Core\ImageRelayoutWorkPayload.cs" />
     <Compile Include="..\MarkdownRenderer.Sample.Automation\ProcessExitValidation.cs" Link="Core\ProcessExitValidation.cs" />
+    <Compile Include="..\MarkdownRenderer.Sample\SampleLinkRouting.cs" Link="Sample\SampleLinkRouting.cs" />
+    <Compile Include="..\MarkdownRenderer.Sample\BackgroundInteractionLease.cs" Link="Sample\BackgroundInteractionLease.cs" />
     <Compile Include="..\MarkdownRenderer\Controls\SelectionAutoScroll.cs" Link="Core\SelectionAutoScroll.cs" />
     <Compile Include="..\MarkdownRenderer\Controls\MarkdownTouchSelectionSession.cs" Link="Core\MarkdownTouchSelectionSession.cs" />
+    <Compile Include="..\MarkdownRenderer\Controls\TouchTapSuppressionPolicy.cs" Link="Core\TouchTapSuppressionPolicy.cs" />
     <Compile Include="..\MarkdownRenderer\Controls\TouchSelectionEndpointPolicy.cs" Link="Core\TouchSelectionEndpointPolicy.cs" />
     <Compile Include="..\MarkdownRenderer\Selection\MarkdownCopyOptions.cs" Link="Core\MarkdownCopyOptions.cs" />
     <Compile Include="..\MarkdownRenderer\Selection\MarkdownClipboardWriter.cs" Link="Core\MarkdownClipboardWriter.cs" />

@@ -390,6 +390,24 @@ if (string.Equals(options.Probe, ReadmeAuditProbe.OfflineSameByteProbeName, Stri
     return;
 }
 
+if (string.Equals(options.Probe, ReadmeAuditProbe.CorrectnessCorpusProbeName, StringComparison.OrdinalIgnoreCase))
+{
+    ReadmeAuditProbe.RunCorrectnessCorpus(options);
+    return;
+}
+
+if (string.Equals(options.Probe, ReadmeAuditProbe.CorrectnessAccountingSelfTestProbeName, StringComparison.OrdinalIgnoreCase))
+{
+    ReadmeAuditProbe.RunCorrectnessAccountingSelfTests(options);
+    return;
+}
+
+if (string.Equals(options.Probe, ReadmeAuditProbe.CorrectnessInputPreflightProbeName, StringComparison.OrdinalIgnoreCase))
+{
+    ReadmeAuditProbe.RunCorrectnessInputPreflight(options);
+    return;
+}
+
 if (string.Equals(options.Probe, ReadmeAuditProbe.PublicSameByteCaptureProbeName, StringComparison.OrdinalIgnoreCase))
 {
     ReadmeAuditProbe.RunPublicSameByteCapture(options);
@@ -18168,6 +18186,7 @@ internal sealed class CaptureOptions
     public IReadOnlyList<string> ShowcaseIds { get; init; } = [];
     public string? AuditManifestPath { get; init; }
     public string? AuditOfflineSameByteCorpusRoot { get; init; }
+    public string? AuditSourceAcquisitionRoot { get; init; }
     public string? AuditBrowserScriptPath { get; init; }
     public string? AuditEdgePath { get; init; }
     public string AuditNodePath { get; init; } = "node";
@@ -18190,6 +18209,7 @@ internal sealed class CaptureOptions
         string[] showcaseIds = [];
         string? auditManifestPath = null;
         string? auditOfflineSameByteCorpusRoot = null;
+        string? auditSourceAcquisitionRoot = null;
         string? auditBrowserScriptPath = null;
         string? auditEdgePath = null;
         string auditNodePath = "node";
@@ -18249,6 +18269,10 @@ internal sealed class CaptureOptions
             {
                 auditOfflineSameByteCorpusRoot = Path.GetFullPath(
                     arg["--offline-same-byte-corpus-root=".Length..].Trim());
+            }
+            else if (arg.StartsWith("--source-acquisition-root=", StringComparison.OrdinalIgnoreCase))
+            {
+                auditSourceAcquisitionRoot = Path.GetFullPath(arg["--source-acquisition-root=".Length..].Trim());
             }
             else if (arg.StartsWith("--browser-script=", StringComparison.OrdinalIgnoreCase))
             {
@@ -18335,6 +18359,80 @@ internal sealed class CaptureOptions
             };
         }
 
+        if (string.Equals(probe, ReadmeAuditProbe.CorrectnessAccountingSelfTestProbeName, StringComparison.OrdinalIgnoreCase))
+        {
+            if (appPath is not null || attachProcess is not null || configuration is not null ||
+                auditManifestPath is not null || auditOfflineSameByteCorpusRoot is not null ||
+                auditSourceAcquisitionRoot is not null || auditBrowserScriptPath is not null || auditEdgePath is not null ||
+                auditCaptureSameByteCorpus || auditResume || auditReuseBrowserEvidence ||
+                !string.IsNullOrWhiteSpace(verifiedNativeAotProvenancePath) ||
+                !string.IsNullOrWhiteSpace(verifiedNativeAotProvenanceSha256))
+            {
+                throw new ArgumentException("Correctness accounting self-tests are headless and do not accept app, corpus, browser, or provenance inputs.");
+            }
+
+            return new CaptureOptions
+            {
+                AppPath = string.Empty,
+                OutputDirectory = outputDirectory,
+                Themes = [],
+                Targets = [],
+                RepositoryFullName = string.Empty,
+                Probe = probe,
+            };
+        }
+
+        if (string.Equals(probe, ReadmeAuditProbe.CorrectnessInputPreflightProbeName, StringComparison.OrdinalIgnoreCase))
+        {
+            if (appPath is not null || attachProcess is not null || configuration is not null ||
+                auditManifestPath is null || auditSourceAcquisitionRoot is null || auditOfflineSameByteCorpusRoot is null ||
+                auditBrowserScriptPath is not null || auditEdgePath is not null || auditCaptureSameByteCorpus ||
+                auditResume || auditReuseBrowserEvidence ||
+                !string.IsNullOrWhiteSpace(verifiedNativeAotProvenancePath) ||
+                !string.IsNullOrWhiteSpace(verifiedNativeAotProvenanceSha256))
+            {
+                throw new ArgumentException(
+                    "Correctness input preflight is offline and accepts only the pinned manifest, verified source acquisition, and existing schema-2 corpus root.");
+            }
+            if (auditStartRank <= 0 || auditCount <= 0 || auditStartRank > 500 || auditCount > 500 ||
+                checked(auditStartRank + auditCount - 1) > 500)
+            {
+                throw new ArgumentOutOfRangeException(nameof(args), "Correctness preflight rank range must stay within 1..500.");
+            }
+
+            return new CaptureOptions
+            {
+                AppPath = string.Empty,
+                OutputDirectory = outputDirectory,
+                Themes = [],
+                Targets = [],
+                RepositoryFullName = string.Empty,
+                Probe = probe,
+                AuditManifestPath = auditManifestPath,
+                AuditSourceAcquisitionRoot = auditSourceAcquisitionRoot,
+                AuditOfflineSameByteCorpusRoot = auditOfflineSameByteCorpusRoot,
+                AuditStartRank = auditStartRank,
+                AuditCount = auditCount,
+            };
+        }
+
+        if (string.Equals(probe, ReadmeAuditProbe.CorrectnessCorpusProbeName, StringComparison.OrdinalIgnoreCase))
+        {
+            if (auditManifestPath is null || auditSourceAcquisitionRoot is null || auditOfflineSameByteCorpusRoot is null || auditBrowserScriptPath is not null ||
+                auditEdgePath is not null || auditCaptureSameByteCorpus || auditResume || auditReuseBrowserEvidence ||
+                !string.IsNullOrWhiteSpace(verifiedNativeAotProvenancePath) ||
+                !string.IsNullOrWhiteSpace(verifiedNativeAotProvenanceSha256))
+            {
+                throw new ArgumentException(
+                    "Correctness corpus requires the pinned manifest, verified source-acquisition root, and existing schema-2 corpus root; browser, Edge, replay, and provenance inputs are not accepted.");
+            }
+            if (auditStartRank <= 0 || auditCount <= 0 || auditStartRank > 500 || auditCount > 500 ||
+                checked(auditStartRank + auditCount - 1) > 500)
+            {
+                throw new ArgumentOutOfRangeException(nameof(args), "Correctness corpus rank range must stay within 1..500.");
+            }
+        }
+
         appPath ??= GuessAppPath();
         if (!File.Exists(appPath))
         {
@@ -18408,6 +18506,7 @@ internal sealed class CaptureOptions
             ShowcaseIds = showcaseIds,
             AuditManifestPath = auditManifestPath,
             AuditOfflineSameByteCorpusRoot = auditOfflineSameByteCorpusRoot,
+            AuditSourceAcquisitionRoot = auditSourceAcquisitionRoot,
             AuditBrowserScriptPath = auditBrowserScriptPath,
             AuditEdgePath = auditEdgePath,
             AuditNodePath = auditNodePath,

@@ -213,6 +213,87 @@ public sealed class InlineImageCssMiddleAlignmentTests
         }
     }
 
+    [Theory]
+    [InlineData(72f, 1d, false)]
+    [InlineData(130f, 1.5d, false)]
+    [InlineData(72f, 2d, true)]
+    [InlineData(130f, 1d, true)]
+    public async Task WrappedImagesUseTheirOwnLineBaselineAndRemainInsideMeasuredContent(
+        float width,
+        double textScaleFactor,
+        bool rightToLeft)
+    {
+        SharedCanvasTextFormatCache.Clear();
+        using var device = new CanvasDevice(forceSoftwareRenderer: true);
+        MarkdownLayoutContext context = CreateContext(
+            device,
+            middleAligned: true,
+            textScaleFactor,
+            rightToLeft ? FlowDirection.RightToLeft : FlowDirection.LeftToRight);
+        var box = new InlineContainerBox(context, MarkdownElementKeys.Body)
+        {
+            BlockIndex = context.NextBlockIndex(),
+        };
+        var images = new List<(InlineImageRun Run, int CharacterIndex)>();
+        int characterIndex = 0;
+        try
+        {
+            foreach (float height in new[] { 4f, 48f, 12f })
+            {
+                // Different object heights give successive wrapped lines
+                // different ascents. Derive the expected absolute baseline
+                // independently from line metrics, rather than accepting
+                // agreement between the renderer's two placement snapshots.
+                string prefix = rightToLeft ? "שלום שלום שלום " : "alpha beta gamma ";
+                box.Add(new TextRun(prefix));
+                characterIndex += prefix.Length;
+                var image = new InlineImageRun(
+                    context,
+                    "avatar",
+                    string.Empty,
+                    requestedWidth: new SafeHtmlLength(24f, IsPercent: false),
+                    requestedHeight: new SafeHtmlLength(height, IsPercent: false));
+                box.Add(image);
+                images.Add((image, characterIndex));
+                characterIndex += image.TextLength;
+            }
+
+            box.Measure(width);
+            box.Arrange(11.25f, 17.5f, width);
+            CanvasLineMetrics[] lines = box.GetLineMetricsSnapshot()!;
+            Assert.True(lines.Length >= 3, "The fixture must place objects on later wrapped lines.");
+            float xHeight = GetResolvedXHeightDip(context);
+            var rectangles = box.EnumerateInlineImageRects().ToDictionary(item => item.Run, item => item.Rect);
+            var usedLines = new HashSet<int>();
+            foreach ((InlineImageRun image, int offset) in images)
+            {
+                int lineIndex = 0;
+                int lineEnd = lines[0].CharacterCount;
+                double lineTop = 0;
+                while (offset >= lineEnd && lineIndex + 1 < lines.Length)
+                {
+                    lineTop += lines[lineIndex].Height;
+                    lineIndex++;
+                    lineEnd += lines[lineIndex].CharacterCount;
+                }
+                usedLines.Add(lineIndex);
+                Rect rect = rectangles[image];
+                double expectedCenter = box.GetTextOriginY() + lineTop + lines[lineIndex].Baseline - xHeight / 2d;
+                Assert.InRange(System.Math.Abs(rect.Y + rect.Height / 2d - expectedCenter), 0d, 0.05d);
+                Assert.Equal(image.DesiredHeight, rect.Height, precision: 3);
+                Assert.InRange(rect.Top, box.Bounds.Top - 0.05d, box.Bounds.Bottom + 0.05d);
+                Assert.InRange(rect.Bottom, box.Bounds.Top - 0.05d, box.Bounds.Bottom + 0.05d);
+            }
+            Assert.Equal(images.Count, usedLines.Count);
+        }
+        finally
+        {
+            box.Dispose();
+            await Task.WhenAll(images.Select(image =>
+                image.Run.Image.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10))));
+        }
+    }
+
     private static float GetResolvedXHeightDip(MarkdownLayoutContext context)
     {
         ElementStyle style = context.ThemeSnapshot.GetStyle(MarkdownElementKeys.Body);

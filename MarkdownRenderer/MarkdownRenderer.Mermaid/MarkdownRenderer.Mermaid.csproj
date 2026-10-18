@@ -35,7 +35,7 @@
     <PackageProjectUrl>https://github.com/JitHubApp/JitHubV2/tree/main/docs/markdown-renderer</PackageProjectUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageIcon>icon-192.png</PackageIcon>
-    <DefaultItemExcludes>$(DefaultItemExcludes);obj\**;obj-*\**;bin\**;bin-*\**;artifacts\**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);obj\**;obj-*\**;bin\**;bin-*\**;artifacts\**;native\target\**</DefaultItemExcludes>
     <!-- RuntimeIdentifier is the consumer's deployment architecture and must
          win over the solution's default x64 Platform during `dotnet publish -r`. -->
     <MarkdownRendererMermaidNativeRid Condition="'$(RuntimeIdentifier)' == 'win-x86'">win-x86</MarkdownRendererMermaidNativeRid>
@@ -63,6 +63,12 @@
     <None Update="native\abi\mmir-v1.json" Pack="true" PackagePath="build\native\abi\mmir-v1.json" />
     <None Update="native\include\markdown_renderer_mermaid.h" Pack="true" PackagePath="build\native\include\markdown_renderer_mermaid.h" />
     <None Update="native\Cargo.lock" Pack="true" PackagePath="provenance\native\Cargo.lock" />
+    <None Update="native\patches\MERMAN_SOURCE_PATCHES.json" Pack="true" PackagePath="provenance\native\patches\MERMAN_SOURCE_PATCHES.json" />
+    <None Update="native\patches\0001-final-node-source-provenance.patch" Pack="true" PackagePath="provenance\native\patches\0001-final-node-source-provenance.patch" />
+    <None Update="native\patches\0002-flowchart-svg-text-entities.patch" Pack="true" PackagePath="provenance\native\patches\0002-flowchart-svg-text-entities.patch" />
+    <None Update="native\patches\0003-final-markdown-text-and-self-loop-labels.patch" Pack="true" PackagePath="provenance\native\patches\0003-final-markdown-text-and-self-loop-labels.patch" />
+    <None Update="native\patches\0004-final-markdown-entity-whitespace.patch" Pack="true" PackagePath="provenance\native\patches\0004-final-markdown-entity-whitespace.patch" />
+    <None Update="native\patches\0005-generated-entity-origin-projection.patch" Pack="true" PackagePath="provenance\native\patches\0005-generated-entity-origin-projection.patch" />
     <None Update="runtimes\win-x86\native\MarkdownRenderer.Mermaid.Native.dll" Pack="true" PackagePath="runtimes\win-x86\native\MarkdownRenderer.Mermaid.Native.dll" />
     <None Update="runtimes\win-x64\native\MarkdownRenderer.Mermaid.Native.dll" Pack="true" PackagePath="runtimes\win-x64\native\MarkdownRenderer.Mermaid.Native.dll" />
     <None Update="runtimes\win-arm64\native\MarkdownRenderer.Mermaid.Native.dll" Pack="true" PackagePath="runtimes\win-arm64\native\MarkdownRenderer.Mermaid.Native.dll" />

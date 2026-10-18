@@ -178,64 +178,72 @@ internal static partial class SampleDocuments
     internal const string LazyImagesSample = """
         # Lazy Image Loading
 
-        Images are only fetched when they are within **800 px** of the current
-        viewport (the "overscan band"). Images far off-screen are not loaded
-        until the user scrolls close to them.
+        These four deterministic data-URI SVG fixtures exercise viewport-demand
+        image work. Their bytes are part of this document: this sample makes no
+        HTTP requests. Image rendering and publication are deferred until each
+        resource approaches the renderer's **800 px** overscan band.
 
         **How to observe this:**
-        1. Open DevTools / Fiddler and watch HTTP traffic.
-        2. When you first load this page, only the top few images will fire
-           requests. Scroll down to trigger additional loads.
-        3. Images already in the cache (`BitmapCache`) always appear instantly —
-           they bypass the lazy-load gate entirely.
+        1. Start at the top and note the image placeholders farther down.
+        2. Scroll toward each fixture; its local SVG resource is decoded and
+           published as it enters the demand band.
+        3. Compare the square, portrait, and wide fixtures to see their intrinsic
+           aspect ratios after the image resource is ready.
+
+        For remote-image policy, use **Images and SVG**. Its HTTPS examples are
+        intentionally blocked because this standalone sample does not provide
+        an image resolver.
 
         ---
 
         ## Images below fold
 
-        Scroll down to see each image load as you approach it.
+        Scroll down to see each local fixture appear as you approach it.
 
-        ![GitHub Octocat](https://github.githubassets.com/images/icons/emoji/octocat.png)
+        ![Square blue concentric-circle SVG fixture](data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI5NiIgaGVpZ2h0PSI5NiIgdmlld0JveD0iMCAwIDk2IDk2Ij48cmVjdCB3aWR0aD0iOTYiIGhlaWdodD0iOTYiIHJ4PSIxMiIgZmlsbD0iI2RiZWFmZSIvPjxjaXJjbGUgY3g9IjQ4IiBjeT0iNDgiIHI9IjI4IiBmaWxsPSIjMjU2M2ViIi8+PGNpcmNsZSBjeD0iNDgiIGN5PSI0OCIgcj0iMTIiIGZpbGw9IiNiZmRiZmUiLz48L3N2Zz4=)
 
         Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod
         tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim
         veniam, quis nostrud exercitation ullamco laboris.
 
-        ![GitHub Logo](https://github.githubassets.com/assets/GitHub-Mark-ea2971cee799.png)
+        ![Portrait purple-and-gold SVG fixture](data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI3MiIgaGVpZ2h0PSIxMjAiIHZpZXdCb3g9IjAgMCA3MiAxMjAiPjxyZWN0IHdpZHRoPSI3MiIgaGVpZ2h0PSIxMjAiIHJ4PSIxMiIgZmlsbD0iI2VkZTlmZSIvPjxyZWN0IHg9IjEyIiB5PSIxMiIgd2lkdGg9IjQ4IiBoZWlnaHQ9Ijk2IiByeD0iOCIgZmlsbD0iIzdjM2FlZCIvPjxjaXJjbGUgY3g9IjM2IiBjeT0iNDIiIHI9IjEyIiBmaWxsPSIjZmVmM2M3Ii8+PHBhdGggZD0iTTIwIDg4IDM2IDY0bDE2IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiNjNGI1ZmQiIHN0cm9rZS13aWR0aD0iOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+PC9zdmc+)
 
         Duis aute irure dolor in reprehenderit in voluptate velit esse cillum
         dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non
         proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
 
-        ![Copilot Icon](https://github.githubassets.com/assets/copilot-5a9b7f3d5c64.png)
+        ![Wide blue landscape SVG fixture](data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxOTIiIGhlaWdodD0iOTYiIHZpZXdCb3g9IjAgMCAxOTIgOTYiPjxyZWN0IHdpZHRoPSIxOTIiIGhlaWdodD0iOTYiIHJ4PSIxMiIgZmlsbD0iI2UwZjJmZSIvPjxjaXJjbGUgY3g9IjE0OCIgY3k9IjI4IiByPSIxNCIgZmlsbD0iI2Y1OWUwYiIvPjxwYXRoIGQ9Ik0wIDc1IDQ4IDM2bDQyIDM4IDM0LTI4IDY4IDQ4SDBaIiBmaWxsPSIjMDI4NGM3Ii8+PHBhdGggZD0iTTAgODMgNDggNThsNDMgMjQgMzQtMTQgNjcgMjhIMFoiIGZpbGw9IiMwMzY5YTEiLz48L3N2Zz4=)
 
         Curabitur pretium tincidunt lacus. Nulla gravida orci a odio. Nullam
         varius, turpis molestie dictum semper, arcu felis fermentum metus.
 
-        ![Primer Octicons](https://github.githubassets.com/assets/primer-octicons.svg)
+        ![Wide teal icon-strip SVG fixture](data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNTYiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCAyNTYgNjQiPjxyZWN0IHdpZHRoPSIyNTYiIGhlaWdodD0iNjQiIHJ4PSIxMCIgZmlsbD0iI2YxZjVmOSIvPjxnIGZpbGw9IiMwZjc2NmUiPjxyZWN0IHg9IjE2IiB5PSIxNiIgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIiByeD0iNiIvPjxjaXJjbGUgY3g9IjgwIiBjeT0iMzIiIHI9IjE2IiBmaWxsPSIjMTRiOGE2Ii8+PHBhdGggZD0ibTExOCAxNiAxNiAxNi0xNiAxNi03LTcgOS05LTktOXoiLz48cmVjdCB4PSIxNTgiIHk9IjE4IiB3aWR0aD0iODIiIGhlaWdodD0iOCIgcng9IjQiIGZpbGw9IiM2NDc0OGIiLz48cmVjdCB4PSIxNTgiIHk9IjM2IiB3aWR0aD0iNTgiIGhlaWdodD0iOCIgcng9IjQiIGZpbGw9IiM5NGEzYjgiLz48L2c+PC9zdmc+)
 
         Aliquam erat volutpat. Nam dui ligula, fringilla a, euismod sodales,
         sollicitudin vel, wisi. Morbi auctor lorem non justo.
 
         > **Tip:** Use the **Scroll Anchor** sample to see how the layout
-        > re-stabilises after lazy images load and change the document height.
+        > re-stabilises when an image resource completes and its measured size
+        > causes the document layout to change.
 
         """;
 
     internal const string ScrollAnchorSample = """
         # Scroll Anchoring
 
-        When a lazy image finishes loading, the document height may change.
-        Without scroll anchoring, the reading position would jump. With it,
-        the renderer captures the first visible block before re-laying-out
-        and restores the scroll offset so the user's reading position is
-        preserved.
+        This guide explains the deterministic data-URI SVG fixtures in **Lazy
+        Images**. Open that page to try them; they do not make network requests.
+        When a fixture reaches the
+        viewport-demand band, image work can complete and its measured aspect
+        ratio can change the document layout. Scroll anchoring preserves the
+        reading position across that rebuild.
 
         **How to observe this:**
-        1. Switch to the **Lazy Images** sample and scroll part-way down.
-        2. The images above the fold finish loading and expand the document.
-        3. Your reading position stays stable — the text you were reading
-           doesn't move, even though the document height changed.
+        1. Use **Lazy Images** and scroll until a fixture is near the viewport.
+        2. Compare the image placeholder with the ready square, portrait, or
+           wide fixture and note any resulting layout change.
+        3. Return to a nearby paragraph; its viewport position should remain
+           stable when an image-size update triggers a rebuild.
 
         ---
 
@@ -269,7 +277,7 @@ internal static partial class SampleDocuments
 
         ---
 
-        This sample intentionally has no images. Use **Lazy Images** to see
-        anchoring in action.
+        Use the **Lazy Images** fixtures to exercise anchoring without depending
+        on remote access or external image availability.
         """;
 }

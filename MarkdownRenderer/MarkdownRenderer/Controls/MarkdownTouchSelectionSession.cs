@@ -1,3 +1,5 @@
+using MarkdownRenderer.Document;
+
 namespace MarkdownRenderer.Controls;
 
 /// <summary>
@@ -7,6 +9,8 @@ namespace MarkdownRenderer.Controls;
 /// </summary>
 internal sealed class MarkdownTouchSelectionSession
 {
+    private bool _selectionWasActiveBeforeContact;
+
     public TouchSelectionState State { get; private set; }
     public uint ContactPointerId { get; private set; }
     public TouchContactGeometry Contact { get; private set; }
@@ -17,7 +21,10 @@ internal sealed class MarkdownTouchSelectionSession
         TouchSelectionState.DraggingEndHandle or
         TouchSelectionState.ContextMenu;
 
-    public bool BeginContact(uint pointerId, TouchContactGeometry contact)
+    public bool BeginContact(
+        uint pointerId,
+        TouchContactGeometry contact,
+        bool selectionIsActive = false)
     {
         if (State == TouchSelectionState.Disposed || pointerId == 0)
             return false;
@@ -27,6 +34,9 @@ internal sealed class MarkdownTouchSelectionSession
         // replace the primary pointer or its contact geometry.
         if (ContactPointerId != 0 && ContactPointerId != pointerId)
             return false;
+
+        if (ContactPointerId == 0)
+            _selectionWasActiveBeforeContact = selectionIsActive;
 
         ContactPointerId = pointerId;
         Contact = contact;
@@ -75,6 +85,7 @@ internal sealed class MarkdownTouchSelectionSession
 
         ContactPointerId = 0;
         Contact = default;
+        _selectionWasActiveBeforeContact = false;
         State = TouchSelectionState.Selected;
     }
 
@@ -101,24 +112,41 @@ internal sealed class MarkdownTouchSelectionSession
 
         ContactPointerId = 0;
         Contact = default;
+        _selectionWasActiveBeforeContact = false;
         if (State == TouchSelectionState.Contact)
             State = TouchSelectionState.Idle;
     }
 
     public bool Cancel(uint pointerId)
+        => CancelContact(pointerId) != TouchSelectionCancelResult.NotOwner;
+
+    /// <summary>
+    /// Cancels the current contact and reports whether its selection range was
+    /// committed before that contact or was created by the canceled gesture.
+    /// The control uses this result to clear only a range that cancellation
+    /// invalidates.
+    /// </summary>
+    public TouchSelectionCancelResult CancelContact(uint pointerId)
     {
         if (State == TouchSelectionState.Disposed || pointerId == 0 ||
             ContactPointerId != pointerId)
         {
-            return false;
+            return TouchSelectionCancelResult.NotOwner;
         }
 
         ContactPointerId = 0;
         Contact = default;
-        State = State is TouchSelectionState.DraggingStartHandle or TouchSelectionState.DraggingEndHandle
+        bool selectionWasActiveBeforeContact = _selectionWasActiveBeforeContact;
+        _selectionWasActiveBeforeContact = false;
+        bool wasDraggingHandle = State is
+            TouchSelectionState.DraggingStartHandle or TouchSelectionState.DraggingEndHandle;
+        bool preserveSelection = selectionWasActiveBeforeContact || wasDraggingHandle;
+        State = preserveSelection
             ? TouchSelectionState.Selected
             : TouchSelectionState.Canceled;
-        return true;
+        return preserveSelection
+            ? TouchSelectionCancelResult.PreserveSelection
+            : TouchSelectionCancelResult.ClearSelection;
     }
 
     public void Reset()
@@ -128,15 +156,62 @@ internal sealed class MarkdownTouchSelectionSession
 
         ContactPointerId = 0;
         Contact = default;
+        _selectionWasActiveBeforeContact = false;
         State = TouchSelectionState.Idle;
+    }
+
+    /// <summary>
+    /// Restores only the selected-handle presentation after a successful
+    /// same-document relayout. A new or stale pointer owner must never be
+    /// carried across the snapshot boundary.
+    /// </summary>
+    public bool TryRestoreSelectedPresentation()
+    {
+        if (State != TouchSelectionState.Idle || ContactPointerId != 0)
+            return false;
+
+        State = TouchSelectionState.Selected;
+        return true;
     }
 
     public void Dispose()
     {
         ContactPointerId = 0;
         Contact = default;
+        _selectionWasActiveBeforeContact = false;
         State = TouchSelectionState.Disposed;
     }
+}
+
+internal enum TouchSelectionCancelResult
+{
+    NotOwner,
+    PreserveSelection,
+    ClearSelection,
+}
+
+/// <summary>
+/// Binds a pending touch-handle presentation restore to the exact committed
+/// snapshot and selection range that initiated the relayout.
+/// </summary>
+internal readonly record struct TouchSelectionPresentationRestoreIntent
+{
+    public TouchSelectionPresentationRestoreIntent(long snapshotGeneration, DocumentRange selectionRange)
+    {
+        SnapshotGeneration = snapshotGeneration;
+        SelectionRange = selectionRange.Normalized();
+    }
+
+    public long SnapshotGeneration { get; }
+    public DocumentRange SelectionRange { get; }
+
+    public bool MatchesRange(DocumentRange selectionRange) =>
+        !selectionRange.IsEmpty &&
+        SelectionRange == selectionRange.Normalized();
+
+    public bool Matches(long snapshotGeneration, DocumentRange selectionRange) =>
+        SnapshotGeneration == snapshotGeneration &&
+        MatchesRange(selectionRange);
 }
 
 internal enum TouchSelectionState

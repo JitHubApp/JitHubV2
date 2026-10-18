@@ -3,6 +3,13 @@
 # checkouts so compiler-emitted panic/source metadata stays reproducible.
 MarkdownRenderer/MarkdownRenderer.Svg.Resvg/native/**/*.rs text eol=lf
 
+# Mermaid's reviewed source patch is applied to a byte-verified upstream checkout.
+# Keep patch/manifests canonical; CRLF must not change Rust raw-string contents.
+MarkdownRenderer/MarkdownRenderer.Mermaid/native/**/*.rs text eol=lf
+MarkdownRenderer/MarkdownRenderer.Mermaid/native/patches/* text eol=lf
+MarkdownRenderer/MarkdownRenderer.Mermaid/MERMAN_PROVENANCE.json text eol=lf
+MarkdownRenderer/MarkdownRenderer.Mermaid/NATIVE_RUST_DEPENDENCIES.json text eol=lf
+
 # The source-bound Edge audit checks the vendored parser's exact SHA-256.
 # Windows checkout must not rewrite its bytes to CRLF.
 eng/readme-audit/vendor/* text eol=lf

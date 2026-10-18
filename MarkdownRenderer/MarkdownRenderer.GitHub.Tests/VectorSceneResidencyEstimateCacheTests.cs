@@ -82,12 +82,14 @@ public sealed class VectorSceneResidencyEstimateCacheTests
         using var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
         MarkdownLayoutContext context = CreateContext(session);
         MarkdownVectorScene scene = CreateScene();
+        // Logical block IDs are one-based; the active-band arrays below are
+        // zero-based placement ordinals, not source-map block identities.
         BlockBox first = inline
-            ? CreateInlineBox(context, scene, blockIndex: 0)
-            : CreateVectorBox(context, scene, blockIndex: 0);
-        BlockBox second = inline
             ? CreateInlineBox(context, scene, blockIndex: 1)
             : CreateVectorBox(context, scene, blockIndex: 1);
+        BlockBox second = inline
+            ? CreateInlineBox(context, scene, blockIndex: 2)
+            : CreateVectorBox(context, scene, blockIndex: 2);
 
         try
         {
@@ -160,7 +162,7 @@ public sealed class VectorSceneResidencyEstimateCacheTests
         out WeakReference<IReadOnlyList<MarkdownVectorCommand>> commandsReference)
     {
         MarkdownVectorScene scene = CreateScene();
-        var box = CreateVectorBox(CreateContext(performanceSession: null), scene, blockIndex: 0);
+        var box = CreateVectorBox(CreateContext(performanceSession: null), scene, blockIndex: 1);
         box.Measure(320);
         box.Arrange(0, 0, 320);
         sceneReference = new WeakReference<MarkdownVectorScene>(scene);

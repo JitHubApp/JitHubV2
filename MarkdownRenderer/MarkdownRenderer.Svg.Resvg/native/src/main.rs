@@ -18,6 +18,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 mod raster_decode;
+mod sandbox_startup;
 
 const MAGIC: u32 = 0x4756_534d;
 const VERSION: u16 = 10;
@@ -545,6 +546,7 @@ fn main() {
 }
 
 fn run() -> Result<(), String> {
+    sandbox_startup::enter_restricted_execution()?;
     apply_process_mitigations()?;
     let (pipe_name, expected_nonce_low, expected_nonce_high) = parse_arguments()?;
     let pipe_path = format!(r"\\.\pipe\{pipe_name}");

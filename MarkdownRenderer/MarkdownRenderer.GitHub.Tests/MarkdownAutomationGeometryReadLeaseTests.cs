@@ -12,6 +12,31 @@ namespace MarkdownRenderer.GitHub.Tests;
 public sealed class MarkdownAutomationGeometryReadLeaseTests
 {
     [Fact]
+    public void ProviderOriginUsesUnclippedXamlRootTransformWithoutApplyingExternalUiaScreenConversion()
+    {
+        string source = ReadRepositorySource(
+            "MarkdownRenderer", "MarkdownRenderer", "Accessibility", "MarkdownAutomationPeer.cs");
+        string ownerBounds = GetMethodBody(source, "private Windows.Foundation.Rect GetOwnerScreenBounds()");
+
+        Assert.Contains("Content: UIElement root", ownerBounds, StringComparison.Ordinal);
+        Assert.Contains("_owner.TransformToVisual(root)", ownerBounds, StringComparison.Ordinal);
+        Assert.DoesNotContain("CoordinateConverter", ownerBounds, StringComparison.Ordinal);
+        Assert.Equal(4, CountOccurrences(ownerBounds, "transform.TransformPoint("));
+        Assert.Contains("AccessibilityGeometry.NormalizeTransformedBounds", ownerBounds, StringComparison.Ordinal);
+        Assert.DoesNotContain("FrameworkElementAutomationPeer.FromElement", ownerBounds, StringComparison.Ordinal);
+        Assert.DoesNotContain("CreatePeerForElement", ownerBounds, StringComparison.Ordinal);
+        Assert.Equal(1, CountOccurrences(ownerBounds, "RasterizationScale"));
+        Assert.Contains("ownerBounds.X * scale, ownerBounds.Y * scale", ownerBounds, StringComparison.Ordinal);
+        Assert.Contains("ownerBounds.Width * scale, ownerBounds.Height * scale", ownerBounds, StringComparison.Ordinal);
+
+        // Only visible bounds are clipped. The document origin must remain
+        // unclipped when its ancestor-owned viewport is scrolled.
+        string visibleBounds = GetMethodBody(source, "GetVisibleScreenBounds()");
+        Assert.Contains("GetBoundingRectangleCore()", visibleBounds, StringComparison.Ordinal);
+        Assert.Contains("System.Math.Max(ownerBounds.Top, clippedBounds.Top)", visibleBounds, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void GeometryReaderUsesNonblockingLeaseAndFencesSnapshotAndGenerationAroundCopy()
     {
         string source = ReadRepositorySource(

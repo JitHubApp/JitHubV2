@@ -3,6 +3,7 @@
 
 mod abi_generated;
 mod directwrite;
+mod label_text;
 mod scene;
 
 use abi_generated::{EngineOptions, PACKED_ABI_VERSION, RenderOptions, Status};
@@ -691,6 +692,48 @@ mod tests {
     }
 
     #[test]
+    fn pinned_merman_preserves_winning_duplicate_label_source_ranges() {
+        let source = "flowchart LR\nfirst[\"same\"] --> second[\"same\"]\nfirst[\"same\"]";
+        let scene = render_scene(
+            &test_engine(),
+            source,
+            &test_render_options(),
+            OperationControl::new(),
+        )
+        .expect("full pinned Merman source provenance render");
+        let read = |bytes: &[u8], offset: usize| {
+            u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap()) as usize
+        };
+        let section = |kind| {
+            let entry = scene[32..32 + 9 * 20]
+                .chunks_exact(20)
+                .find(|entry| read(entry, 0) == kind)
+                .expect("required MMIR section");
+            let start = read(entry, 4);
+            &scene[start..start + read(entry, 8)]
+        };
+        let mappings = section(9);
+        let mut actual = section(6)
+            .chunks_exact(32)
+            .filter(|semantic| read(semantic, 4) == 3)
+            .map(|semantic| {
+                let mapping = &mappings[read(semantic, 20) * 20..];
+                (read(mapping, 4), read(mapping, 8))
+            })
+            .collect::<Vec<_>>();
+        actual.sort_unstable();
+        let expected = source
+            .match_indices("same")
+            .skip(1)
+            .map(|(start, label)| (start, label.len()))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            actual, expected,
+            "a superseded definition must not own either final node"
+        );
+    }
+
+    #[test]
     fn sample_linked_flowchart_produces_mmir() {
         render_scene(
             &test_engine(),
@@ -698,6 +741,134 @@ mod tests {
             &test_render_options(),
             OperationControl::new(),
         ).expect("sample flowchart");
+    }
+
+    #[test]
+    fn pinned_shape_data_svg_text_is_final_for_product_configuration() {
+        // The product forces SVG labels and strict sanitization. A default HTML-label
+        // facade test exercises another source projection and cannot certify this path.
+        let engine = test_engine();
+        let options = test_render_options();
+        for shape in [
+            "rect",
+            "stadium",
+            "manual-file",
+            "manual-input",
+            "curv-trap",
+            "notch-pent",
+            "doc",
+            "docs",
+            "tag-rect",
+        ] {
+            for (label, expected) in [
+                ("left#128512;right", "left😀right"),
+                ("#quot;", "\""),
+                ("#quot;middle#quot;", "\"middle\""),
+                ("#amp;nbsp;literal#amp;nbsp;", "&nbsp;literal&nbsp;"),
+                ("ﬂ°quot¶ß", "ﬂ°quot¶ß"),
+            ] {
+                let source = format!("flowchart LR\nA@{{ shape: {shape}, label: \"{label}\" }}");
+                let scene = render_scene(&engine, &source, &options, OperationControl::new())
+                    .unwrap_or_else(|status| panic!("{shape}/{label} render failed: {status:?}"));
+                let read = |bytes: &[u8], offset: usize| {
+                    u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap()) as usize
+                };
+                let section = |kind| {
+                    let directory = read(&scene, 16);
+                    let entry = scene[directory..directory + read(&scene, 20) * 20]
+                        .chunks_exact(20)
+                        .find(|entry| read(entry, 0) == kind)
+                        .expect("required MMIR section");
+                    let start = read(entry, 4);
+                    &scene[start..start + read(entry, 8)]
+                };
+                let data = section(2);
+                let mut strings = Vec::new();
+                let mut cursor = 0;
+                while cursor < data.len() {
+                    let length = read(data, cursor);
+                    cursor += 4;
+                    strings.push(std::str::from_utf8(&data[cursor..cursor + length]).unwrap());
+                    cursor = (cursor + length + 3) & !3;
+                }
+                let painted = section(5)
+                    .chunks_exact(32)
+                    .filter(|command| u16::from_le_bytes(command[..2].try_into().unwrap()) == 10)
+                    .map(|command| strings[read(command, 12)])
+                    .collect::<String>();
+                assert_eq!(painted, expected, "{shape}/{label} final paint");
+                let node_names = section(6)
+                    .chunks_exact(32)
+                    .filter(|semantic| read(semantic, 4) == 3)
+                    .map(|semantic| strings[read(semantic, 8)])
+                    .collect::<Vec<_>>();
+                assert_eq!(node_names, [expected], "{shape}/{label} final semantics");
+            }
+        }
+    }
+
+    #[test]
+    fn pinned_swimlane_svg_edge_text_is_final_for_product_configuration() {
+        let engine = test_engine();
+        let options = test_render_options();
+        for target in ["B", "A"] {
+            for (label, expected) in [
+                ("#quot;", "\""),
+                ("left#128512;right", "left😀right"),
+                ("ﬂ°quot¶ß", "ﬂ°quot¶ß"),
+                ("#amp;nbsp;literal#amp;nbsp;", "&nbsp;literal&nbsp;"),
+            ] {
+                for markdown in [false, true] {
+                    let source_label = if markdown {
+                        format!("\"`{label}`\"")
+                    } else {
+                        label.to_owned()
+                    };
+                    let source = format!("swimlane-beta LR\nA -->|{source_label}| {target}");
+                    let scene = render_scene(&engine, &source, &options, OperationControl::new())
+                        .unwrap_or_else(|status| panic!("{source} render failed: {status:?}"));
+                    let mut expected_text = vec!["A"];
+                    if target == "B" {
+                        expected_text.push("B");
+                    }
+                    expected_text.push(expected);
+                    assert_eq!(
+                        test_mmir_draw_texts(&scene),
+                        expected_text,
+                        "{source} final paint"
+                    );
+                }
+            }
+        }
+    }
+
+    fn test_mmir_draw_texts(scene: &[u8]) -> Vec<&str> {
+        let read = |bytes: &[u8], offset: usize| {
+            u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap()) as usize
+        };
+        let section = |kind| {
+            let directory = read(scene, 16);
+            let entry = scene[directory..directory + read(scene, 20) * 20]
+                .chunks_exact(20)
+                .find(|entry| read(entry, 0) == kind)
+                .expect("required MMIR section");
+            let start = read(entry, 4);
+            &scene[start..start + read(entry, 8)]
+        };
+        let data = section(2);
+        let mut strings = Vec::new();
+        let mut cursor = 0;
+        while cursor < data.len() {
+            let length = read(data, cursor);
+            cursor += 4;
+            strings.push(std::str::from_utf8(&data[cursor..cursor + length]).unwrap());
+            cursor = (cursor + length + 3) & !3;
+        }
+        section(5)
+            .chunks_exact(32)
+            .filter(|command| u16::from_le_bytes(command[..2].try_into().unwrap()) == 10)
+            .map(|command| strings[read(command, 12)])
+            .collect()
     }
 
     #[test]

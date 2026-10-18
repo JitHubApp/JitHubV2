@@ -40,7 +40,9 @@ public sealed class SessionlessImageRelayoutHandoffTests
             "foreach (int completedBlockIndex in changed)",
             "_pendingImageRelayoutBlockIndices.Remove(completedBlockIndex);");
         Assert.Contains("RetireCancellationTokenSource(cancellation, _imageRelayoutTask);", process, StringComparison.Ordinal);
-        Assert.Contains("RequestRebuild();", process, StringComparison.Ordinal);
+        // Recovery explicitly requests a full rebuild. Keep this assertion on
+        // the failure path rather than depending on an obsolete default overload.
+        Assert.Contains("RequestRebuild(RebuildReason.Full);", process, StringComparison.Ordinal);
     }
 
     [Fact]

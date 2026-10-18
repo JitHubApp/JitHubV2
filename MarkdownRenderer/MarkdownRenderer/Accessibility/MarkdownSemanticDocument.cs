@@ -1075,7 +1075,7 @@ internal sealed class MarkdownSemanticDocument
             }
             else if (span.VectorSceneBox is { } vector)
             {
-                key = (vector.BlockIndex, span.VectorSemanticIndex);
+                key = (vector.BlockIndex, GetVectorDocumentInlineIndex(span.VectorSemanticIndex));
             }
             else
             {
@@ -1103,7 +1103,7 @@ internal sealed class MarkdownSemanticDocument
             if (span.InlineBox is { } inline && span.InlineRun is { } run)
                 spanByPosition.TryAdd((inline.BlockIndex, run.InlineIndex), i);
             else if (span.VectorSceneBox is { } vector)
-                spanByPosition.TryAdd((vector.BlockIndex, span.VectorSemanticIndex), i);
+                spanByPosition.TryAdd((vector.BlockIndex, GetVectorDocumentInlineIndex(span.VectorSemanticIndex)), i);
         }
         _spanByPosition = spanByPosition;
 
@@ -1263,7 +1263,7 @@ internal sealed class MarkdownSemanticDocument
         int batchLength = 0;
         foreach (MarkdownSemanticNode node in EnumerateDepthFirst(root))
         {
-            // The builder trims terminal newlines after creating semantic
+            // The builder trims synthetic terminal separators after creating semantic
             // nodes. Keep each published range inside the final projection;
             // this is folded into the existing fingerprint traversal so it
             // does not add a second document-tree walk.
@@ -1408,12 +1408,21 @@ internal sealed class MarkdownSemanticDocument
 
         foreach (var span in TextSpans)
         {
+            bool matchesBlockImage = span.ImageBox?.BlockIndex == position.BlockIndex;
+            bool matchesBlockEmbed = span.EmbedBox?.BlockIndex == position.BlockIndex;
+            bool matchesHostedElement = span.HostedElementBox?.BlockIndex == position.BlockIndex;
+            if (matchesBlockImage || matchesBlockEmbed || matchesHostedElement)
+            {
+                // These block objects publish explicit before/after endpoints
+                // through PositionFromSpanEnd, but do not use the normal
+                // position index. Keep the compatibility scan endpoint-aware
+                // so a complete atomic selection includes its semantic text.
+                return position.CharacterOffset <= 0 ? span.TextStart : span.TextEnd;
+            }
+
             if (span.InlineBox?.BlockIndex == position.BlockIndex ||
-                span.ImageBox?.BlockIndex == position.BlockIndex ||
-                span.EmbedBox?.BlockIndex == position.BlockIndex ||
-                span.HostedElementBox?.BlockIndex == position.BlockIndex ||
                 (span.VectorSceneBox?.BlockIndex == position.BlockIndex &&
-                 (span.VectorSemanticIndex == position.InlineIndex || span.VectorSemanticIndex < 0)))
+                 GetVectorDocumentInlineIndex(span.VectorSemanticIndex) == position.InlineIndex))
             {
                 return span.TextStart;
             }
@@ -1485,7 +1494,7 @@ internal sealed class MarkdownSemanticDocument
         if (span.VectorSceneBox is { } vector)
             return new DocumentPosition(
                 vector.BlockIndex,
-                span.VectorSemanticIndex,
+                GetVectorDocumentInlineIndex(span.VectorSemanticIndex),
                 textOffset <= span.TextStart ? 0 : 1);
 
         return DocumentPosition.Zero;
@@ -1535,6 +1544,8 @@ internal sealed class MarkdownSemanticDocument
             else textStart = Math.Max(0, textStart - 1);
         }
 
+        bool isNondegenerateRange = textStart < textEnd;
+
         // Span ends are monotonic because the semantic builder appends text and
         // each span in the same pass. Start one code unit before the requested
         // offset so a span ending exactly at the inclusive UIA boundary (and
@@ -1547,6 +1558,17 @@ internal sealed class MarkdownSemanticDocument
             if (span.TextStart > textEnd)
                 break;
             if (span.TextEnd < textStart || span.TextStart > textEnd) continue;
+
+            // Inline text preserves its historical endpoint geometry, and a
+            // collapsed caret may still use an atomic object's bounds. For a
+            // nonempty [start,end) selection, however, a block object whose
+            // text starts exactly at the exclusive end is not selected.
+            if (isNondegenerateRange && span.TextStart == textEnd && span.InlineBox is null &&
+                (span.ImageBox is not null || span.EmbedBox is not null ||
+                 span.HostedElementBox is not null))
+            {
+                continue;
+            }
 
             int start = Math.Max(textStart, span.TextStart);
             int end = Math.Min(textEnd, span.TextEnd);
@@ -1905,9 +1927,15 @@ internal sealed class MarkdownSemanticDocument
         if (span.HostedElementBox is { } hosted)
             return new DocumentPosition(hosted.BlockIndex, 0, 1);
         if (span.VectorSceneBox is { } vector)
-            return new DocumentPosition(vector.BlockIndex, span.VectorSemanticIndex, 1);
+            return new DocumentPosition(vector.BlockIndex, GetVectorDocumentInlineIndex(span.VectorSemanticIndex), 1);
         return DocumentPosition.Zero;
     }
+
+    // The negative vector-semantic index is a metadata sentinel for a whole,
+    // unstructured scene, not a public document coordinate. Atomic source-map
+    // and selection positions for that scene use the zero-based document slot.
+    private static int GetVectorDocumentInlineIndex(int vectorSemanticIndex) =>
+        vectorSemanticIndex < 0 ? 0 : vectorSemanticIndex;
 
     private static int ProjectRenderedOffsetToText(InlineRun run, int renderedOffset, int textLength)
     {
@@ -2734,8 +2762,28 @@ internal sealed class MarkdownSemanticDocument
         private int TrimTrailingNewline()
         {
             CancellationToken cancellationToken = LayoutPassCancellation.GetEffectiveToken(CancellationToken.None);
+            int lastContentEnd = 0;
+            int visitedSpans = 0;
+
+            // Positive-length spans own authored content, including a final LF
+            // from a code block or explicit hard break. Any trailing LF beyond
+            // the last such span is a synthetic block separator. Zero-length
+            // spans at that boundary are metadata and do not move the trim bound.
+            for (int index = _spans.Count - 1; index >= 0; index--)
+            {
+                if ((visitedSpans++ & 4095) == 0)
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                MarkdownTextSpan span = _spans[index];
+                if (span.TextEnd > span.TextStart)
+                {
+                    lastContentEnd = span.TextEnd;
+                    break;
+                }
+            }
+
             int trimmed = 0;
-            while (_text.Length > 0 && _text[^1] == '\n')
+            while (_text.Length > lastContentEnd && _text.Length > 0 && _text[^1] == '\n')
             {
                 if ((trimmed++ & 4095) == 0)
                     cancellationToken.ThrowIfCancellationRequested();

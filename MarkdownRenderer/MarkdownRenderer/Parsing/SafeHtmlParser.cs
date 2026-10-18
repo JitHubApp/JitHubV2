@@ -780,9 +780,15 @@ internal static class SafeHtmlParser
 
     public static bool IsSuppressedElement(string name) => RawContentElements.Contains(name);
 
-    public static string CollapseWhitespace(string? text)
+    public static string CollapseWhitespace(string? text) =>
+        CollapseDecodedWhitespace(WebUtility.HtmlDecode(text ?? string.Empty));
+
+    // Attribute values and SafeHtmlText.DecodedText have already crossed the
+    // HTML decoding boundary. Whitespace normalization must not reinterpret
+    // literal entity-like content in those values.
+    public static string CollapseDecodedWhitespace(string? decodedText)
     {
-        string value = WebUtility.HtmlDecode(text ?? string.Empty) ?? string.Empty;
+        string value = decodedText ?? string.Empty;
         if (value.Length == 0)
         {
             return string.Empty;
@@ -1355,7 +1361,10 @@ internal static class SafeHtmlParser
 
     private static bool TryNormalizeUrl(string value, bool isImage, out string normalized)
     {
-        normalized = (WebUtility.HtmlDecode(value) ?? string.Empty).Trim();
+        // ParseAttributes has already decoded HTML references, including the
+        // poster/srcset values passed directly by media and picture handling.
+        // A second decode would change authored URL paths and query values.
+        normalized = (value ?? string.Empty).Trim();
         if (normalized.Length == 0 || normalized.Length > MaxAttributeValueLength)
         {
             normalized = string.Empty;

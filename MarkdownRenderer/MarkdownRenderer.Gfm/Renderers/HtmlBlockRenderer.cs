@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using Markdig;
+using Markdig.Helpers;
 using Markdig.Renderers.Html;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
@@ -73,6 +75,39 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
                 budgets.MaxAttributeValueLength,
                 budgets.MaxTagLength);
             string htmlSource = htmlBlock.Lines.ToString();
+            int sourceOffset = htmlBlock.Span.Start;
+            MarkdownSourceProjection? htmlSourceProjection = null;
+            if (context.SourceProjection is { } markdownProjection &&
+                markdownProjection.TryGetHtmlBlockProjection(
+                    htmlBlock,
+                    htmlSource,
+                    context.CancellationToken,
+                    out MarkdownSourceProjection mappedProjection))
+            {
+                htmlSourceProjection = mappedProjection;
+                sourceOffset = 0;
+            }
+            else if (context.SourceProjection is null &&
+                     TryCreateDirectHtmlBlockProjection(
+                         htmlBlock,
+                         htmlSource,
+                         context.SourceMap.SourceText,
+                         context.CancellationToken,
+                         out MarkdownSourceProjection directProjection))
+            {
+                // In ordinary Markdown, Markdig's HtmlBlock line slices still
+                // point at their exact authored ranges even when a container
+                // (for example, a block quote) removed a prefix from the text
+                // passed to SafeHtmlParser. Build that line-derived map rather
+                // than treating HtmlBlock.Span.Start as a contiguous offset.
+                htmlSourceProjection = directProjection;
+                sourceOffset = 0;
+            }
+            // Every HtmlBlock owns a separate coordinate space. Explicitly
+            // clear a parent's mapper for an ordinary/global-source block so
+            // nested parsing cannot accidentally apply the previous block's
+            // projection a second time.
+            using var sourceProjectionScope = context.PushSafeHtmlSourceProjection(htmlSourceProjection);
             // Markdig can retain Markdown after a whitespace-only blank line
             // inside a void-element HTML block (for example <hr> followed by
             // a heading). Split only a pure, closed tag prefix; reparse the
@@ -88,22 +123,32 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             var root = CreateStack(context, collapsePositiveAdjacentMargins: true);
             root.HasResolvedSafeHtmlAlignment = true;
             SafeHtmlAlignment inheritedAlignment = context.SafeHtmlBlockAlignment;
-            AppendBlocks(root, document.Root.Children, context, htmlBlock.Span.Start, inheritedAlignment);
+            AppendBlocks(root, document.Root.Children, context, sourceOffset, inheritedAlignment);
 
             if (markdownTailStart >= 0)
             {
                 s_nestedMarkdownDepth++;
                 try
                 {
-                    int absoluteTextStart = htmlBlock.Span.Start + markdownTailStart;
+                    int absoluteTextStart = sourceOffset + markdownTailStart;
                     string nestedSource = BuildNestedMarkdownSource(
                         htmlSource[markdownTailStart..],
                         absoluteTextStart,
                         context,
-                        out int bodyOffset);
+                        out int bodyOffset,
+                        out MarkdownSourceProjection? nestedProjection);
                     MarkdownDocument tail = Markdown.Parse(nestedSource, context.Registry.BuildPipeline());
-                    OffsetMarkdownSpans(tail, absoluteTextStart - bodyOffset);
-                    GfmChildBuilder.PopulateChildren(root, tail, context);
+                    if (nestedProjection is null)
+                    {
+                        OffsetMarkdownSpans(tail, absoluteTextStart - bodyOffset);
+                        GfmChildBuilder.PopulateChildren(root, tail, context);
+                    }
+                    else
+                    {
+                        nestedProjection.ApplyTo(tail, context.CancellationToken);
+                        using (context.PushSourceProjection(nestedProjection))
+                            GfmChildBuilder.PopulateChildren(root, tail, context);
+                    }
                 }
                 finally
                 {
@@ -146,6 +191,96 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         {
             s_rootDocument = previousRoot;
         }
+    }
+
+    private static bool TryCreateDirectHtmlBlockProjection(
+        HtmlBlock htmlBlock,
+        string htmlSource,
+        string sourceText,
+        CancellationToken cancellationToken,
+        out MarkdownSourceProjection projection)
+    {
+        projection = null!;
+        IReadOnlyList<StringLine> lines = htmlBlock.Lines.Lines;
+        int lineCount = htmlBlock.Lines.Count;
+        if (lineCount <= 0 || lineCount > lines.Count)
+            return false;
+
+        var builder = new MarkdownSourceProjectionBuilder();
+        int localOffset = 0;
+        for (int index = 0; index < lineCount; index++)
+        {
+            if ((index & 0x3f) == 0)
+                cancellationToken.ThrowIfCancellationRequested();
+
+            StringLine line = lines[index];
+            var slice = line.Slice;
+            string lineText = slice.ToString();
+            if (!ReferenceEquals(slice.Text, sourceText) ||
+                slice.Start < 0 || slice.Length < 0 ||
+                slice.Start > sourceText.Length || slice.Length > sourceText.Length - slice.Start ||
+                lineText.Length != slice.Length || lineText.Length > htmlSource.Length - localOffset ||
+                !lineText.AsSpan().SequenceEqual(htmlSource.AsSpan(localOffset, lineText.Length)) ||
+                !sourceText.AsSpan(slice.Start, slice.Length).SequenceEqual(lineText.AsSpan()))
+            {
+                return false;
+            }
+
+            if (lineText.Length > 0)
+                builder.AppendDirect(lineText, slice.Start);
+            localOffset += lineText.Length;
+
+            if (index + 1 >= lineCount)
+                continue;
+
+            StringLine nextLine = lines[index + 1];
+            if (nextLine.Slice.Length == 0 && localOffset == htmlSource.Length)
+                break;
+
+            int newlineLength = line.NewLine switch
+            {
+                NewLine.CarriageReturn or NewLine.LineFeed => 1,
+                NewLine.CarriageReturnLineFeed => 2,
+                _ => 0,
+            };
+            int sourceNewlineStart = checked(slice.Start + slice.Length);
+            if (newlineLength <= 0 || sourceNewlineStart > sourceText.Length ||
+                newlineLength > sourceText.Length - sourceNewlineStart ||
+                localOffset > htmlSource.Length || newlineLength > htmlSource.Length - localOffset ||
+                !IsExpectedSourceNewline(sourceText, sourceNewlineStart, line.NewLine))
+            {
+                return false;
+            }
+
+            ReadOnlySpan<char> htmlNewline = htmlSource.AsSpan(localOffset, newlineLength);
+            ReadOnlySpan<char> sourceNewline = sourceText.AsSpan(sourceNewlineStart, newlineLength);
+            if (!htmlNewline.SequenceEqual(sourceNewline))
+                return false;
+
+            // Ordinary HtmlBlock source preserves its exact line ending. Keep
+            // this parser-derived projection byte-for-character; preformatted
+            // rendering performs the CR/LF normalization later, where it can
+            // retain an atomic mapping back to the full authored newline.
+            builder.AppendDirect(htmlSource.Substring(localOffset, newlineLength), sourceNewlineStart);
+            localOffset += newlineLength;
+        }
+
+        if (localOffset != htmlSource.Length || builder.Length != htmlSource.Length)
+            return false;
+
+        projection = builder.Build();
+        return true;
+    }
+
+    private static bool IsExpectedSourceNewline(string source, int offset, NewLine newline)
+    {
+        return newline switch
+        {
+            NewLine.CarriageReturn => source[offset] == '\r',
+            NewLine.LineFeed => source[offset] == '\n',
+            NewLine.CarriageReturnLineFeed => source[offset] == '\r' && source[offset + 1] == '\n',
+            _ => false,
+        };
     }
 
     private static StackBox CreateStack(
@@ -262,7 +397,11 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             if (_options.UnknownElementBehavior == SafeHtmlUnknownElementBehavior.RenderLiteral)
             {
                 var unknown = CreateInlineBox(context, MarkdownElementKeys.Body, inheritedAlignment);
-                AddLiteralElement(unknown, element, sourceOffset, HtmlInlineContext.Empty);
+                AddLiteralElement(
+                    unknown,
+                    element,
+                    sourceOffset,
+                    HtmlInlineContext.Empty with { SourceProjection = context.SafeHtmlSourceProjection });
                 return ReturnIfNonEmpty(unknown, context);
             }
 
@@ -295,7 +434,7 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         return element.Name switch
         {
             "hr" => TrackBlock(context, new ThematicBreakBox(context) { BlockIndex = context.NextBlockIndex() }),
-            "table" => BuildTable(element, context, sourceOffset),
+            "table" => BuildTable(element, context, sourceOffset, alignment),
             "blockquote" => BuildQuote(element, context, sourceOffset, alignment),
             "pre" => BuildPreformatted(element, context, sourceOffset, alignment),
             "details" => BuildDetails(element, context, sourceOffset, alignment),
@@ -464,15 +603,30 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
                 text.RawText,
                 absoluteTextStart,
                 context,
-                out int nestedMarkdownBodyOffset);
+                out int nestedMarkdownBodyOffset,
+                out MarkdownSourceProjection? nestedProjection);
             MarkdownDocument fragment = Markdown.Parse(
                 nestedMarkdownSource,
                 context.Registry.BuildPipeline());
-            OffsetMarkdownSpans(
-                fragment,
-                absoluteTextStart - nestedMarkdownBodyOffset);
+            if (nestedProjection is null)
+            {
+                OffsetMarkdownSpans(fragment, absoluteTextStart - nestedMarkdownBodyOffset);
+            }
+            else
+            {
+                nestedProjection.ApplyTo(fragment, context.CancellationToken);
+            }
+
             var stack = CreateStack(context);
-            GfmChildBuilder.PopulateChildren(stack, fragment, context, alignment);
+            if (nestedProjection is null)
+            {
+                GfmChildBuilder.PopulateChildren(stack, fragment, context, alignment);
+            }
+            else
+            {
+                using (context.PushSourceProjection(nestedProjection))
+                    GfmChildBuilder.PopulateChildren(stack, fragment, context, alignment);
+            }
             return ReturnIfNonEmpty(stack, context);
         }
         finally
@@ -485,25 +639,62 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         string rawText,
         int absoluteTextStart,
         MarkdownLayoutContext context,
-        out int bodyOffset)
+        out int bodyOffset,
+        out MarkdownSourceProjection? nestedProjection)
     {
         bodyOffset = 0;
+        nestedProjection = null;
+        MarkdownSourceProjection? safeHtmlProjection = context.SafeHtmlSourceProjection;
+        MarkdownSourceProjectionBuilder? projectionBuilder = safeHtmlProjection is null
+            ? null
+            : new MarkdownSourceProjectionBuilder();
+
+        void AppendRawText(StringBuilder destination)
+        {
+            destination.Append(rawText);
+            projectionBuilder?.AppendProjection(
+                rawText,
+                safeHtmlProjection!,
+                absoluteTextStart,
+                context.CancellationToken);
+        }
+
         if (rawText.IndexOf('[') < 0)
-            return rawText;
+        {
+            if (projectionBuilder is null)
+                return rawText;
+
+            var rawOnly = new StringBuilder(rawText.Length);
+            AppendRawText(rawOnly);
+            nestedProjection = projectionBuilder.Build();
+            return rawOnly.ToString();
+        }
 
         string sourceText = context.SourceMap.SourceText;
         LinkReferenceDefinitionGroup? definitions = s_rootDocument is { } root
             ? LinkReferenceDefinitionExtensions.GetLinkReferenceDefinitions(root, false)
             : null;
+        SourceSpan sourceRange = safeHtmlProjection is null
+            ? new SourceSpan(absoluteTextStart, rawText.Length)
+            : safeHtmlProjection.MapRangeOrEmpty(absoluteTextStart, rawText.Length);
         if (definitions is null ||
-            absoluteTextStart < 0 ||
-            absoluteTextStart > sourceText.Length ||
-            rawText.Length > sourceText.Length - absoluteTextStart)
+            sourceRange.Start < 0 ||
+            sourceRange.Start > sourceText.Length ||
+            sourceRange.Length > sourceText.Length - sourceRange.Start)
         {
+            if (projectionBuilder is not null)
+            {
+                var rawOnly = new StringBuilder(rawText.Length);
+                AppendRawText(rawOnly);
+                nestedProjection = projectionBuilder.Build();
+                return rawOnly.ToString();
+            }
+
             return rawText;
         }
 
-        int absoluteTextEnd = absoluteTextStart + rawText.Length;
+        int absoluteTextStartInDocument = sourceRange.Start;
+        int absoluteTextEnd = sourceRange.End;
         bool literalReferenceMatchIsSafe = HasSimpleAsciiReferenceLabels(rawText);
         var precedingDefinitions = new List<(int Start, int Length)>();
         var followingDefinitions = new List<(int Start, int Length)>();
@@ -527,7 +718,7 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             }
 
             int end = start + length;
-            if (end <= absoluteTextStart)
+            if (end <= absoluteTextStartInDocument)
             {
                 precedingDefinitions.Add((start, length));
             }
@@ -539,26 +730,33 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             // rawText. Overlapping/synthetic spans are intentionally not replayed.
         }
 
-        if (precedingDefinitions.Count == 0 && followingDefinitions.Count == 0)
-        {
-            return rawText;
-        }
-
         var combined = new StringBuilder();
-        AppendDefinitionSources(combined, precedingDefinitions, sourceText);
         if (precedingDefinitions.Count > 0)
         {
-            combined.Append('\n');
+            AppendDefinitionSources(combined, precedingDefinitions, sourceText, projectionBuilder);
+            AppendSyntheticLineBreak(combined, projectionBuilder, new SourceSpan(sourceRange.Start, 0));
         }
 
         bodyOffset = combined.Length;
-        combined.Append(rawText);
+        AppendRawText(combined);
         foreach ((int start, int length) in followingDefinitions)
         {
             combined.Append("\n\n");
+            if (projectionBuilder is not null)
+            {
+                SourceSpan boundary = new(sourceRange.End, 0);
+                projectionBuilder.AppendMapped("\n", boundary);
+                projectionBuilder.AppendMapped("\n", boundary);
+            }
             combined.Append(sourceText, start, length);
-            combined.Append('\n');
+            projectionBuilder?.AppendMapped(
+                sourceText.Substring(start, length),
+                new SourceSpan(start, length));
+            AppendDefinitionLineBreak(combined, projectionBuilder, sourceText, start + length);
         }
+
+        if (projectionBuilder is not null)
+            nestedProjection = projectionBuilder.Build();
 
         return combined.ToString();
     }
@@ -591,13 +789,44 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
     private static void AppendDefinitionSources(
         StringBuilder destination,
         IReadOnlyList<(int Start, int Length)> definitions,
-        string sourceText)
+        string sourceText,
+        MarkdownSourceProjectionBuilder? projectionBuilder)
     {
         foreach ((int start, int length) in definitions)
         {
             destination.Append(sourceText, start, length);
-            destination.Append('\n');
+            projectionBuilder?.AppendMapped(
+                sourceText.Substring(start, length),
+                new SourceSpan(start, length));
+            AppendDefinitionLineBreak(destination, projectionBuilder, sourceText, start + length);
         }
+    }
+
+    private static void AppendDefinitionLineBreak(
+        StringBuilder destination,
+        MarkdownSourceProjectionBuilder? projectionBuilder,
+        string sourceText,
+        int afterDefinition)
+    {
+        destination.Append('\n');
+        if (projectionBuilder is null)
+            return;
+
+        SourceSpan lineBreak = afterDefinition < sourceText.Length && sourceText[afterDefinition] == '\r'
+            ? new SourceSpan(afterDefinition, afterDefinition + 1 < sourceText.Length && sourceText[afterDefinition + 1] == '\n' ? 2 : 1)
+            : afterDefinition < sourceText.Length && sourceText[afterDefinition] == '\n'
+                ? new SourceSpan(afterDefinition, 1)
+                : new SourceSpan(afterDefinition, 0);
+        projectionBuilder.AppendMapped("\n", lineBreak);
+    }
+
+    private static void AppendSyntheticLineBreak(
+        StringBuilder destination,
+        MarkdownSourceProjectionBuilder? projectionBuilder,
+        SourceSpan sourceBoundary)
+    {
+        destination.Append('\n');
+        projectionBuilder?.AppendMapped("\n", sourceBoundary);
     }
 
     private static bool TryGetDefinitionSourceRange(
@@ -723,7 +952,8 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             .OfType<SafeHtmlElement>()
             .FirstOrDefault(element => element.Name == "summary");
         int absoluteSourceStart = sourceOffset + details.SourceStart;
-        string disclosureId = absoluteSourceStart.ToString(CultureInfo.InvariantCulture);
+        string disclosureId = context.MapSafeHtmlSourceRange(absoluteSourceStart, 0).Start
+            .ToString(CultureInfo.InvariantCulture);
         bool defaultExpanded = details.TryGetAttribute("open", out _);
         bool expanded = context.IsDisclosureExpanded(disclosureId, defaultExpanded);
         string defaultSummary = context.ResolveString(
@@ -731,7 +961,7 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             MarkdownLocalizedStrings.HtmlDetails);
         string summaryText = summary is null
             ? defaultSummary
-            : SafeHtmlParser.CollapseWhitespace(string.Concat(
+            : SafeHtmlParser.CollapseDecodedWhitespace(string.Concat(
                 DescendantSummaryLabelText(summary).Select(node => node.DecodedText))).Trim();
         if (summaryText.Length == 0)
         {
@@ -751,7 +981,7 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             DisclosureId = disclosureId,
             ElementKey = summaryStyleKey,
             IsExpanded = expanded,
-            SourceSpan = new SourceSpan(
+            SourceSpan = context.MapSafeHtmlSourceRange(
                 sourceOffset + (summary?.SourceStart ?? details.SourceStart),
                 summary?.SourceLength ?? details.SourceLength),
         });
@@ -872,14 +1102,17 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         int sourceOffset,
         SafeHtmlAlignment alignment)
     {
-        string text = string.Concat(DescendantText(pre).Select(node => node.DecodedText));
-        if (text.Length == 0)
+        HtmlPreformattedTextProjection? textProjection = HtmlPreformattedTextProjection.Create(
+            pre,
+            context,
+            sourceOffset);
+        if (textProjection is null || textProjection.Text.Length == 0)
         {
             return null;
         }
 
-        text = CodeBlockMetadata.NormalizeCodeLineEndings(text);
-        var sourceSpan = new SourceSpan(sourceOffset + pre.SourceStart, pre.SourceLength);
+        string text = textProjection.Text;
+        SourceSpan sourceSpan = textProjection.SourceSpan;
         CodeBlockMetadata metadata = CodeBlockMetadata.FromDeclarative(
             sourceSpan,
             text,
@@ -902,7 +1135,7 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             CodeBlockTextOffset = 0,
             CodeBlockTextLength = text.Length,
         };
-        chunk.Add(new TextRun(text) { SourceSpan = sourceSpan });
+        chunk.Add(new TextRun(text) { SourceSpan = sourceSpan }, textProjection.SourceProjection!);
         context.RegisterConstructionBlock(chunk);
         codeBlock.AddChunk(chunk);
         context.AdoptConstructionBlock(chunk);
@@ -943,7 +1176,7 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             marker.Add(new TextRun(ordered ? $"{index}." : "\u2022")
             {
                 ElementKey = MarkdownElementKeys.ListMarker,
-                SourceSpan = new SourceSpan(sourceOffset + item.SourceStart, 0),
+                SourceSpan = context.MapSafeHtmlSourceRange(sourceOffset + item.SourceStart, 0),
             });
 
             StackBox content = CreateStack(context);
@@ -975,8 +1208,26 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
     private BlockBox? BuildTable(
         SafeHtmlElement table,
         MarkdownLayoutContext context,
-        int sourceOffset)
+        int sourceOffset,
+        SafeHtmlAlignment alignment)
     {
+        SafeHtmlElement[] captions = table.Children
+            .OfType<SafeHtmlElement>()
+            .Where(static child => child.Name == "caption")
+            .ToArray();
+        StackBox? captionStack = captions.Length == 0
+            ? null
+            : CreateStack(context, collapsePositiveAdjacentMargins: true);
+        if (captionStack is not null)
+        {
+            foreach (SafeHtmlElement caption in captions)
+            {
+                BlockBox? captionBlock = BuildElementBlock(caption, context, sourceOffset, alignment);
+                if (captionBlock is not null)
+                    AddChild(captionStack, captionBlock, context);
+            }
+        }
+
         List<HtmlTableRow> rows = [];
         CollectRows(table, inHeaderGroup: false, rows);
         int columnCount = Math.Min(
@@ -984,7 +1235,7 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             rows.Count == 0 ? 0 : rows.Max(row => row.Cells.Sum(cell => cell.ColumnSpan)));
         if (columnCount == 0)
         {
-            return null;
+            return captionStack is null ? null : ReturnIfNonEmpty(captionStack, context);
         }
 
         List<InlineContainerBox[]> headerRows = [];
@@ -1055,7 +1306,17 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             foreach (InlineContainerBox cell in row)
                 context.AdoptConstructionBlock(cell);
         }
-        return tableBox;
+
+        if (captionStack is null)
+            return tableBox;
+        if (captionStack.Children.Count == 0)
+        {
+            context.DiscardConstructionBlock(captionStack);
+            return tableBox;
+        }
+
+        AddChild(captionStack, tableBox, context);
+        return captionStack;
     }
 
     private static InlineContainerBox BuildPreformattedTableCell(
@@ -1064,9 +1325,12 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         int sourceOffset,
         SafeHtmlAlignment alignment)
     {
-        string text = CodeBlockMetadata.NormalizeCodeLineEndings(
-            string.Concat(DescendantText(pre).Select(static node => node.DecodedText)));
-        var sourceSpan = new SourceSpan(sourceOffset + pre.SourceStart, pre.SourceLength);
+        HtmlPreformattedTextProjection? textProjection = HtmlPreformattedTextProjection.Create(
+            pre,
+            context,
+            sourceOffset);
+        string text = textProjection?.Text ?? string.Empty;
+        SourceSpan sourceSpan = textProjection?.SourceSpan ?? SourceSpan.Empty;
         var box = new InlineContainerBox(context, MarkdownElementKeys.CodeBlock)
         {
             BlockIndex = context.NextBlockIndex(),
@@ -1081,7 +1345,7 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             {
                 ElementKey = MarkdownElementKeys.CodeBlock,
                 SourceSpan = sourceSpan,
-            });
+            }, textProjection!.SourceProjection!);
         }
 
         return box;
@@ -1121,6 +1385,11 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
 
     private static void CollectRows(SafeHtmlElement element, bool inHeaderGroup, List<HtmlTableRow> rows)
     {
+        // A caption is a sibling block rendered above its table. Its descendants
+        // are not rows in the containing table (and may include a nested table).
+        if (element.Name == "caption")
+            return;
+
         bool headerGroup = inHeaderGroup || element.Name == "thead";
         if (element.Name == "tr")
         {
@@ -1211,6 +1480,9 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         int sourceOffset,
         HtmlInlineContext inlineContext)
     {
+        if (inlineContext.SourceProjection is null && context.SafeHtmlSourceProjection is { } sourceProjection)
+            inlineContext = inlineContext with { SourceProjection = sourceProjection };
+
         foreach (SafeHtmlNode node in nodes)
         {
             context.CancellationToken.ThrowIfCancellationRequested();
@@ -1230,10 +1502,20 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         InlineContainerBox box,
         SafeHtmlText text,
         int sourceOffset,
+        HtmlInlineContext context) =>
+        AddDecodedTextRun(
+            box,
+            text.DecodedText,
+            context.MapSourceRange(sourceOffset + text.SourceStart, text.SourceLength),
+            context);
+
+    private static void AddDecodedTextRun(
+        InlineContainerBox box,
+        string decoded,
+        SourceSpan span,
         HtmlInlineContext context)
     {
-        string value = SafeHtmlParser.CollapseWhitespace(text.RawText);
-        string decoded = text.DecodedText;
+        string value = SafeHtmlParser.CollapseDecodedWhitespace(decoded);
         bool leadingWhitespace = decoded.Length > 0 && IsCollapsibleWhitespace(decoded[0]);
         bool trailingWhitespace = decoded.Length > 0 && IsCollapsibleWhitespace(decoded[^1]);
         bool atLineStart = box.Runs.Count == 0 || box.Runs[^1] is LineBreakRun;
@@ -1262,7 +1544,6 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             return;
         }
 
-        var span = new SourceSpan(sourceOffset + text.SourceStart, text.SourceLength);
         InlineRun run = context.LinkUrl is { Length: > 0 } href
             ? new LinkRun(value, href, context.LinkTitle)
             {
@@ -1287,6 +1568,22 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         int sourceOffset,
         HtmlInlineContext inlineContext)
     {
+        // The default literal policy exposes script markup as inert source
+        // for inspection. It is ordinary text: do not carry link or
+        // styling semantics from an enclosing element into the fallback.
+        // RawContentElements keeps the script body opaque to the parser, and
+        // AddLiteralElement emits only its original source; no script is run.
+        if (_options.UnknownElementBehavior == SafeHtmlUnknownElementBehavior.RenderLiteral &&
+            string.Equals(element.Name, "script", StringComparison.OrdinalIgnoreCase))
+        {
+            AddLiteralElement(
+                box,
+                element,
+                sourceOffset,
+                HtmlInlineContext.Empty with { SourceProjection = inlineContext.SourceProjection });
+            return;
+        }
+
         if (SafeHtmlParser.IsSuppressedElement(element.Name) || element.Name is "form" or "button")
         {
             return;
@@ -1307,7 +1604,7 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             return;
         }
 
-        var span = new SourceSpan(sourceOffset + element.SourceStart, element.SourceLength);
+        var span = context.MapSafeHtmlSourceRange(sourceOffset + element.SourceStart, element.SourceLength);
         if (element.Name == "br")
         {
             box.Add(new LineBreakRun(isHard: true) { SourceSpan = span });
@@ -1322,7 +1619,7 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
 
         if (element.Name == "pre")
         {
-            AddPreformattedInline(box, element, sourceOffset, inlineContext);
+            AddPreformattedInline(box, element, context, sourceOffset, inlineContext);
             return;
         }
 
@@ -1335,10 +1632,10 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
                     image.TryGetAttribute("alt", out string disabledAlt) &&
                     !string.IsNullOrWhiteSpace(disabledAlt))
                 {
-                    AddTextRun(
+                    AddDecodedTextRun(
                         box,
-                        new SafeHtmlText(disabledAlt, image.SourceStart, image.SourceLength),
-                        sourceOffset,
+                        disabledAlt,
+                        context.MapSafeHtmlSourceRange(sourceOffset + image.SourceStart, image.SourceLength),
                         inlineContext);
                 }
 
@@ -1432,15 +1729,19 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
     private static void AddPreformattedInline(
         InlineContainerBox box,
         SafeHtmlElement pre,
+        MarkdownLayoutContext context,
         int sourceOffset,
         HtmlInlineContext inlineContext)
     {
-        var span = new SourceSpan(sourceOffset + pre.SourceStart, pre.SourceLength);
+        HtmlPreformattedTextProjection? textProjection = HtmlPreformattedTextProjection.Create(
+            pre,
+            context,
+            sourceOffset);
+        SourceSpan span = textProjection?.SourceSpan ?? SourceSpan.Empty;
         if (box.Runs.Count > 0 && box.Runs[^1] is not LineBreakRun)
             box.Add(new LineBreakRun(isHard: true) { SourceSpan = span });
 
-        string text = CodeBlockMetadata.NormalizeCodeLineEndings(
-            string.Concat(DescendantText(pre).Select(static node => node.DecodedText)));
+        string text = textProjection?.Text ?? string.Empty;
         if (text.Length > 0)
         {
             var run = new TextRun(text)
@@ -1450,7 +1751,7 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
                 SemanticHeadingKey = inlineContext.HeadingKey ?? string.Empty,
             };
             run.SetStyleAliases(inlineContext.StyleAliases);
-            box.Add(run);
+            box.Add(run, textProjection!.SourceProjection!);
         }
 
         if (box.Runs.Count > 0 && box.Runs[^1] is not LineBreakRun)
@@ -1481,7 +1782,7 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         {
             AddRun(box, new InlineSpacerRun(spacerWidth, spacerHeight)
             {
-                SourceSpan = new SourceSpan(sourceOffset + image.SourceStart, image.SourceLength),
+                SourceSpan = context.MapSafeHtmlSourceRange(sourceOffset + image.SourceStart, image.SourceLength),
                 SemanticHeadingKey = inlineContext.HeadingKey ?? string.Empty,
             });
             return;
@@ -1498,8 +1799,11 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         {
             if (image.TryGetAttribute("alt", out string unavailableAlt) && !string.IsNullOrWhiteSpace(unavailableAlt))
             {
-                var fallback = new SafeHtmlText(unavailableAlt, image.SourceStart, image.SourceLength);
-                AddTextRun(box, fallback, sourceOffset, inlineContext);
+                AddDecodedTextRun(
+                    box,
+                    unavailableAlt,
+                    context.MapSafeHtmlSourceRange(sourceOffset + image.SourceStart, image.SourceLength),
+                    inlineContext);
             }
 
             return;
@@ -1523,7 +1827,7 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             width,
             height)
         {
-            SourceSpan = new SourceSpan(sourceOffset + image.SourceStart, image.SourceLength),
+            SourceSpan = context.MapSafeHtmlSourceRange(sourceOffset + image.SourceStart, image.SourceLength),
             SemanticHeadingKey = inlineContext.HeadingKey ?? string.Empty,
         };
         run.SetStyleAliases(inlineContext.StyleAliases);
@@ -1543,7 +1847,7 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         }
 
         bool isChecked = input.TryGetAttribute("checked", out _);
-        var sourceRange = new SourceSpan(sourceOffset + input.SourceStart, input.SourceLength);
+        var sourceRange = context.MapSafeHtmlSourceRange(sourceOffset + input.SourceStart, input.SourceLength);
         box.Add(TaskMarkerControlFactory.CreateReadOnlyRun(
             context,
             isChecked,
@@ -1590,7 +1894,7 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             posterSource,
             width,
             height,
-            new SourceSpan(sourceOffset + media.SourceStart, media.SourceLength),
+            context.MapSafeHtmlSourceRange(sourceOffset + media.SourceStart, media.SourceLength),
             inlineContext.LinkUrl,
             inlineContext.LinkTitle);
         run.SetStyleAliases(inlineContext.StyleAliases);
@@ -1637,7 +1941,7 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             width,
             height)
         {
-            SourceSpan = new SourceSpan(sourceOffset + svg.SourceStart, svg.SourceLength),
+            SourceSpan = context.MapSafeHtmlSourceRange(sourceOffset + svg.SourceStart, svg.SourceLength),
         };
         run.SetStyleAliases(inlineContext.StyleAliases);
         AddRun(box, run);
@@ -1934,7 +2238,11 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             {
                 if (child is SafeHtmlText text)
                 {
-                    AddLiteralText(box, text.RawText, sourceOffset + text.SourceStart, context);
+                    AddLiteralText(
+                        box,
+                        text.RawText,
+                        sourceOffset + text.SourceStart,
+                        context);
                 }
                 else if (child is SafeHtmlElement childElement)
                 {
@@ -1962,7 +2270,7 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         InlineRun run = context.LinkUrl is { Length: > 0 } href
             ? new LinkRun(text, href, context.LinkTitle)
             : new TextRun(text);
-        run.SourceSpan = new SourceSpan(sourceStart, text.Length);
+        run.SourceSpan = context.MapSourceRange(sourceStart, text.Length);
         run.SetStyleAliases(context.StyleAliases);
         AddRun(box, run);
     }
@@ -2009,9 +2317,14 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         string? StyleKey,
         string? HeadingKey,
         IReadOnlyList<string> StyleAliases,
-        bool InsideLink = false)
+        bool InsideLink = false,
+        MarkdownSourceProjection? SourceProjection = null)
     {
         public static HtmlInlineContext Empty => new(null, null, null, null, Array.Empty<string>());
+
+        public SourceSpan MapSourceRange(int sourceStart, int sourceLength)
+            => SourceProjection?.MapRangeOrEmpty(sourceStart, sourceLength)
+                ?? new SourceSpan(sourceStart, sourceLength);
     }
 
     private static string? FindDescendantHeadingKey(SafeHtmlElement parent)

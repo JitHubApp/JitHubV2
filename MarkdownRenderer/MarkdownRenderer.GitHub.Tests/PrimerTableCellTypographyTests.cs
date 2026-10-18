@@ -59,6 +59,7 @@ public sealed class PrimerTableCellTypographyTests
             new MarkdownExtensionRegistry(), rtl ? FlowDirection.RightToLeft : FlowDirection.LeftToRight);
         var cell = new InlineContainerBox(context, role)
         {
+            BlockIndex = context.NextBlockIndex(),
             UseContainerMargin = false,
             UseContainerPadding = false,
         };

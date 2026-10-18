@@ -3065,28 +3065,40 @@ internal sealed partial class ImageBox : BlockBox
         return Bounds.Contains(point);
     }
 
+    internal override bool HitTestSelectionEndpoint(Point point, out DocumentPosition position)
+    {
+        if (!Bounds.Contains(point))
+        {
+            position = DocumentPosition.Zero;
+            return false;
+        }
+
+        // A promoted Markdown image occupies one atomic source slot. While an
+        // existing selection is being extended, points on its visible artwork
+        // use the artwork's halves for the before/after boundary. Bounds also
+        // includes the wrapped alt caption and outer margins; using its center
+        // can put the after boundary below the entire painted image. Preserve
+        // the full-block fallback for caption and margin points, and keep
+        // ordinary HitTest start-only so touching an image does not change tap
+        // behavior.
+        Rect artwork = AutomationRenderDestination;
+        double midpointTop = artwork.Contains(point) ? artwork.Top : Bounds.Top;
+        double midpointHeight = artwork.Contains(point) ? artwork.Height : Bounds.Height;
+        bool afterMidpoint = point.Y >= midpointTop + midpointHeight / 2.0;
+        position = new DocumentPosition(BlockIndex, 0, afterMidpoint ? 1 : 0);
+        return true;
+    }
+
     public override System.Collections.Generic.IEnumerable<Rect> GetSelectionRects(DocumentRange range)
     {
-        var n = range.Normalized();
-        if (BlockIndex >= n.Start.BlockIndex && BlockIndex <= n.End.BlockIndex
-            && !(n.Start.BlockIndex == n.End.BlockIndex
-                 && n.Start.InlineIndex == n.End.InlineIndex
-                 && n.Start.CharacterOffset == n.End.CharacterOffset))
-        {
+        if (SelectionIntersectsAtomicSlot(range))
             yield return Bounds;
-        }
     }
 
     public override void PaintSelectionForeground(CanvasDrawingSession ds, DocumentRange range, Color color, Rect viewport)
     {
-        var n = range.Normalized();
-        if (BlockIndex < n.Start.BlockIndex || BlockIndex > n.End.BlockIndex ||
-            (n.Start.BlockIndex == n.End.BlockIndex
-             && n.Start.InlineIndex == n.End.InlineIndex
-             && n.Start.CharacterOffset == n.End.CharacterOffset))
-        {
+        if (!SelectionIntersectsAtomicSlot(range))
             return;
-        }
 
         if (Bounds.Right < viewport.Left || Bounds.Left > viewport.Right ||
             Bounds.Bottom < viewport.Top || Bounds.Top > viewport.Bottom)
@@ -3123,6 +3135,21 @@ internal sealed partial class ImageBox : BlockBox
                 Math.Max(_imageHeight, GetParagraphLineHeight()) + (float)cs.Margin.Top;
             PlacementAwareTextDrawing.DrawAtRootLocalOrigin(ds, _caption, x, cy, color);
         }
+    }
+
+    private bool SelectionIntersectsAtomicSlot(DocumentRange range)
+    {
+        DocumentRange normalized = range.Normalized();
+        if (normalized.IsEmpty ||
+            normalized.End.BlockIndex < BlockIndex ||
+            normalized.Start.BlockIndex > BlockIndex)
+        {
+            return false;
+        }
+
+        var before = new DocumentPosition(BlockIndex, 0, 0);
+        var after = new DocumentPosition(BlockIndex, 0, 1);
+        return normalized.Start < after && normalized.End > before;
     }
 
     public override void Dispose()

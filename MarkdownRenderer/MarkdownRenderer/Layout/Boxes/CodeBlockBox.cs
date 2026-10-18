@@ -31,6 +31,7 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
     private readonly List<InlineContainerBox> _chunks = new();
     private CodeBlockHighlightCacheKey? _appliedHighlightKey;
     private double[] _chunkBottomEdges = Array.Empty<double>();
+    private float[] _suppressedTrailingEmptyLineHeights = Array.Empty<float>();
     private CodeVisualLineInfo[] _visualLines = Array.Empty<CodeVisualLineInfo>();
     private double[] _visualLineBottomEdges = Array.Empty<double>();
     private VisualLineChunkCache[] _visualLineChunkCache = Array.Empty<VisualLineChunkCache>();
@@ -372,15 +373,43 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
         _bodyViewportWidth = (float)Math.Max(1, innerWidth - style.Padding.Left - style.Padding.Right - gutterWidth - codeTextPaddingLeft);
         double y = Margin.Top + HeaderHeight + style.Padding.Top;
         _contentWidth = 0;
+        if (_suppressedTrailingEmptyLineHeights.Length != _chunks.Count)
+            _suppressedTrailingEmptyLineHeights = new float[_chunks.Count];
+        else
+            Array.Clear(_suppressedTrailingEmptyLineHeights);
 
-        foreach (var chunk in _chunks)
+        for (int chunkIndex = 0; chunkIndex < _chunks.Count; chunkIndex++)
         {
+            InlineContainerBox chunk = _chunks[chunkIndex];
             chunk.ThrowIfCancellationRequested();
             float h = chunk.Measure(_bodyViewportWidth);
             chunk.Arrange(
                 (float)(Margin.Left + style.Padding.Left + gutterWidth + codeTextPaddingLeft),
                 (float)y,
                 _bodyViewportWidth);
+
+            // A nonfinal text chunk ending at an authored line break has a
+            // zero-character DirectWrite metric for the empty line after that
+            // break. The following chunk starts on that same logical row, so
+            // retain the raw native layout but do not allocate its duplicate
+            // row in the code block's vertical geometry.
+            if (TryGetInterChunkTrailingEmptyLineHeight(
+                    chunkIndex,
+                    chunk,
+                    chunk.GetLineMetricsSnapshot(),
+                    out float duplicateLineHeight) &&
+                duplicateLineHeight <= h &&
+                duplicateLineHeight <= chunk.Bounds.Height)
+            {
+                Rect chunkBounds = chunk.Bounds;
+                double effectiveHeight = Math.Max(0, chunkBounds.Height - duplicateLineHeight);
+                if (chunk.TrySetMeasuredCodeBlockChunkEffectiveHeight(effectiveHeight))
+                {
+                    _suppressedTrailingEmptyLineHeights[chunkIndex] = duplicateLineHeight;
+                    h = (float)effectiveHeight;
+                }
+            }
+
             _contentWidth = Math.Max(_contentWidth, chunk.ContentWidth);
             y += h;
         }
@@ -926,12 +955,13 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
             }
 
             VisualLineChunkCache previous = _visualLineChunkCache[index];
+            int lineCount = GetEffectiveNativeLineCount(index, chunk, metrics);
             bool inputMatches = previousTemplateValid &&
                                 ReferenceEquals(previous.Chunk, chunk) &&
                                 ReferenceEquals(previous.Metrics, metrics) &&
                                 previous.TextOffset == chunk.CodeBlockTextOffset &&
                                 previous.TextLength == chunk.CodeBlockTextLength &&
-                                previous.LineCount == metrics.Length;
+                                previous.LineCount == lineCount;
             bool originUnchanged = inputMatches && previous.OriginY == originY;
             inputsMatch &= inputMatches;
             allOriginsUnchanged &= originUnchanged;
@@ -944,7 +974,7 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
                 TextLength = chunk.CodeBlockTextLength,
                 OriginY = originY,
                 StartIndex = previous.StartIndex,
-                LineCount = metrics.Length,
+                LineCount = lineCount,
                 OriginUnchanged = originUnchanged,
             };
         }
@@ -985,14 +1015,15 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
         {
             VisualLineChunkCache chunk = _visualLineChunkCache[chunkIndex];
             CanvasLineMetrics[] metrics = chunk.Metrics!;
-            if (metrics.Length > int.MaxValue - totalLineCount)
+            if (chunk.LineCount > int.MaxValue - totalLineCount)
                 return false;
-            totalLineCount += metrics.Length;
+            totalLineCount += chunk.LineCount;
 
             double top = chunk.OriginY;
             long localOffset = 0;
-            foreach (CanvasLineMetrics metric in metrics)
+            for (int metricIndex = 0; metricIndex < chunk.LineCount; metricIndex++)
             {
+                CanvasLineMetrics metric = metrics[metricIndex];
                 if (!double.IsFinite(metric.Height))
                     return false;
 
@@ -1022,8 +1053,9 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
             double top = chunk.OriginY;
             long localOffset = 0;
             int startIndex = visualIndex;
-            foreach (CanvasLineMetrics metric in metrics)
+            for (int metricIndex = 0; metricIndex < chunk.LineCount; metricIndex++)
             {
+                CanvasLineMetrics metric = metrics[metricIndex];
                 int globalOffset = (int)((long)chunk.TextOffset + localOffset);
                 int logicalLine = FindFirstLineEndingAtOrAfter(globalOffset);
                 if (logicalLine >= _lines.Count)
@@ -1043,6 +1075,54 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
 
         _visualLines = visualLines;
         _visualLineBottomEdges = bottomEdges;
+        return true;
+    }
+
+    private int GetEffectiveNativeLineCount(
+        int chunkIndex,
+        InlineContainerBox chunk,
+        CanvasLineMetrics[] metrics)
+    {
+        if (!TryGetInterChunkTrailingEmptyLineHeight(chunkIndex, chunk, metrics, out float lineHeight) ||
+            chunkIndex >= _suppressedTrailingEmptyLineHeights.Length ||
+            _suppressedTrailingEmptyLineHeights[chunkIndex] != lineHeight)
+        {
+            return metrics.Length;
+        }
+
+        return metrics.Length - 1;
+    }
+
+    private bool TryGetInterChunkTrailingEmptyLineHeight(
+        int chunkIndex,
+        InlineContainerBox chunk,
+        CanvasLineMetrics[]? metrics,
+        out float height)
+    {
+        height = 0;
+        if (chunkIndex < 0 ||
+            chunkIndex >= _chunks.Count - 1 ||
+            chunk.CodeBlockTextOffset < 0 ||
+            chunk.CodeBlockTextLength <= 0 ||
+            chunk.CodeBlockTextLength > CodeText.Length - chunk.CodeBlockTextOffset ||
+            chunk.CodeBlockTextOffset + chunk.CodeBlockTextLength !=
+                _chunks[chunkIndex + 1].CodeBlockTextOffset ||
+            _chunks[chunkIndex + 1].CodeBlockTextLength <= 0 ||
+            metrics is not { Length: > 1 } ||
+            CodeText[chunk.CodeBlockTextOffset + chunk.CodeBlockTextLength - 1] != '\n')
+        {
+            return false;
+        }
+
+        CanvasLineMetrics trailing = metrics[^1];
+        if (trailing.CharacterCount != 0 ||
+            !float.IsFinite(trailing.Height) ||
+            trailing.Height < 1f)
+        {
+            return false;
+        }
+
+        height = trailing.Height;
         return true;
     }
 

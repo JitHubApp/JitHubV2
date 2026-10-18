@@ -2,6 +2,7 @@ use crate::abi_generated::Status;
 use crate::directwrite::DirectWriteMeasurer;
 use merman::{CancelReason, OperationControl, OperationPhase};
 use roxmltree::{Document, Node};
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::mem::size_of;
 use svgtypes::{SimplePathSegment, SimplifyingPathParser};
@@ -99,6 +100,15 @@ struct Semantic {
     parent: u32,
     mapping: u32,
     flags: u32,
+    // Internal provenance only; MMIR's semantic flags/schema are unchanged.
+    model_source: bool,
+}
+
+struct SemanticSource<'a> {
+    stable_key: &'a str,
+    // Some also includes an explicit whole-diagram fallback when an authored
+    // model node has no exact span. Neither case may be replaced by text search.
+    model_range: Option<(u32, u32)>,
 }
 
 struct Mapping {
@@ -366,6 +376,7 @@ struct SceneBuilder<'a, 'doc, 'input> {
     links: Vec<Link>,
     mappings: Vec<Mapping>,
     source_ids: HashSet<u32>,
+    canonical_edge_semantics: HashMap<String, u32>,
     node_count: usize,
     edge_count: usize,
     css_rules: Vec<CssRule>,
@@ -483,6 +494,7 @@ pub fn svg_to_mmir(
         links: Vec::new(),
         mappings: Vec::new(),
         source_ids: HashSet::new(),
+        canonical_edge_semantics: HashMap::new(),
         node_count: 0,
         edge_count: 0,
         css_rules,
@@ -492,23 +504,46 @@ pub fn svg_to_mmir(
         budget,
     };
 
+    let root_display_none = builder.display_none(root)?;
     let title = root
-        .descendants()
+        .children()
         .find(|n| n.has_tag_name("title"))
-        .and_then(|n| n.text())
-        .filter(|s| !s.trim().is_empty());
+        // The root's own SVG title is literal XML metadata, not a nested
+        // node/marker tooltip or a raw Mermaid
+        // presentation-label source. Do not strip angle-bracket text from
+        // its accessible name or decode any second layer of entities.
+        .and_then(|node| node.text())
+        .filter(|text| !root_display_none && !text.trim().is_empty());
     let name = match title {
+        Some(value) => builder.string(value)?,
+        None => NO_INDEX,
+    };
+    let description = root
+        .children()
+        .find(|node| node.has_tag_name("desc"))
+        // Like title, root description is already literal XML metadata.
+        .and_then(|node| node.text())
+        .filter(|text| !root_display_none && !text.trim().is_empty());
+    let description = match description {
         Some(value) => builder.string(value)?,
         None => NO_INDEX,
     };
     let root_semantic = builder.add_semantic(
         SemanticRole::Diagram,
         name,
-        NO_INDEX,
+        description,
         NO_INDEX,
         0,
-        "diagram",
+        SemanticSource {
+            stable_key: "diagram",
+            model_range: None,
+        },
     )?;
+    if root_display_none {
+        // MMIR retains its mandatory diagram root, but no hidden content,
+        // canvas background, child semantics, links, or paint commands.
+        return builder.finish(viewport);
+    }
     // SVG canvas backgrounds are presentation, not child shapes. Preserve the
     // authored palette's surface so labels outside nodes remain legible when
     // this immutable scene is hosted in a different application theme.
@@ -564,6 +599,12 @@ impl SceneBuilder<'_, '_, '_> {
         let attribute_bytes = node_attribute_bytes(node)?;
         self.budget
             .temporary(attribute_bytes.saturating_mul(4).saturating_add(1024), 0)?;
+        if self.display_none(node)? {
+            // display:none removes the complete subtree, including semantics
+            // and links. It is not opacity: invisible popup chrome must not
+            // enter document paint, hit geometry, or atomic copied text.
+            return Ok(());
+        }
         // Definitions are resources. Walking them as visible children paints
         // every unused arrowhead at the origin and pollutes semantic bounds.
         if matches!(
@@ -927,6 +968,7 @@ impl SceneBuilder<'_, '_, '_> {
 
     fn semantic_for(&mut self, node: Node<'_, '_>, parent: u32) -> Result<u32, Status> {
         let class = node.attribute("class").unwrap_or("");
+        let model_edge_id = node.attribute("data-mmir-edge-id");
         let has_class = |expected: &str| {
             class
                 .split_ascii_whitespace()
@@ -954,6 +996,7 @@ impl SceneBuilder<'_, '_, '_> {
             || node
                 .attribute("data-edge")
                 .is_some_and(|value| value != "false")
+            || model_edge_id.is_some()
         {
             Some(SemanticRole::Edge)
         } else if has_class("cluster") {
@@ -964,12 +1007,20 @@ impl SceneBuilder<'_, '_, '_> {
         let Some(role) = role else {
             return Ok(parent);
         };
-        let label_bytes = node
-            .descendants()
-            .filter(|candidate| candidate.is_text())
-            .filter_map(|candidate| candidate.text())
-            .try_fold(0usize, |total, text| total.checked_add(text.len()))
-            .ok_or(Status::BudgetExceeded)?;
+        if let Some(id) = model_edge_id {
+            if id.is_empty() || role != SemanticRole::Edge {
+                return Err(Status::InvalidScene);
+            }
+            self.budget.checkpoint(id.len() / 16 + 1)?;
+        }
+        let mut label_bytes = 0usize;
+        for candidate in node.descendants().filter(|candidate| candidate.is_text()) {
+            if self.svg_text_is_displayed(candidate)? {
+                label_bytes = label_bytes
+                    .checked_add(candidate.text().unwrap_or("").len())
+                    .ok_or(Status::BudgetExceeded)?;
+            }
+        }
         if label_bytes > self.limits.max_label_bytes {
             return Err(Status::BudgetExceeded);
         }
@@ -978,12 +1029,12 @@ impl SceneBuilder<'_, '_, '_> {
         label
             .try_reserve_exact(label_bytes)
             .map_err(|_| Status::BudgetExceeded)?;
-        for value in node
-            .descendants()
-            .filter(|candidate| candidate.is_text())
-            .filter_map(|candidate| candidate.text())
-        {
-            label.push_str(value);
+        for candidate in node.descendants().filter(|candidate| candidate.is_text()) {
+            if !self.svg_text_is_displayed(candidate)? {
+                continue;
+            }
+            let value = self.normalized_svg_text(candidate)?;
+            label.push_str(value.as_ref());
         }
         let label = label.trim();
         let name = if label.is_empty() {
@@ -991,14 +1042,151 @@ impl SceneBuilder<'_, '_, '_> {
         } else {
             self.string(label)?
         };
-        self.add_semantic(
+        let model_node_id = node.attribute("data-mmir-node-id");
+        if model_node_id.is_some() && model_edge_id.is_some() {
+            return Err(Status::InvalidScene);
+        }
+        let source_start = node.attribute("data-mmir-source-start");
+        let source_end = node.attribute("data-mmir-source-end");
+        if model_node_id.is_none() && (source_start.is_some() || source_end.is_some()) {
+            return Err(Status::InvalidScene);
+        }
+        let model_range = if let Some(id) = model_node_id {
+            if role != SemanticRole::Node || id.is_empty() {
+                return Err(Status::InvalidScene);
+            }
+            // Canonical IDs are hashed, not emitted as MMIR label strings.
+            // Charge their scan without imposing the visible-label byte limit.
+            self.budget.checkpoint(id.len() / 16 + 1)?;
+            Some(match (source_start, source_end) {
+                (None, None) => (0, self.source.len() as u32),
+                (Some(start), Some(end)) => {
+                    let parse_offset = |value: &str| {
+                        if value.is_empty() || !value.bytes().all(|byte| byte.is_ascii_digit()) {
+                            return Err(Status::InvalidScene);
+                        }
+                        value.parse::<u32>().map_err(|_| Status::InvalidScene)
+                    };
+                    let start = parse_offset(start)?;
+                    let end = parse_offset(end)?;
+                    if start >= end || self.source.get(start as usize..end as usize).is_none() {
+                        return Err(Status::InvalidScene);
+                    }
+                    (start, end - start)
+                }
+                _ => return Err(Status::InvalidScene),
+            })
+        } else if model_edge_id.is_some() {
+            // The model identity ties a relationship path and its separately
+            // emitted caption together. Without exact edge source offsets,
+            // retain the honest diagram-wide range rather than text-searching
+            // for a duplicate label or a renderer-generated DOM id.
+            Some((0, self.source.len() as u32))
+        } else {
+            None
+        };
+        if let Some(id) = model_edge_id
+            && let Some(&index) = self.canonical_edge_semantics.get(id)
+        {
+            let semantic = &mut self.semantics[index as usize];
+            // A repeated identity can be a sibling caption or a nested part
+            // of the same relationship, never an unrelated semantic parent.
+            if semantic.parent != parent && parent != index {
+                return Err(Status::InvalidScene);
+            }
+            if name != NO_INDEX {
+                if semantic.name != NO_INDEX
+                    && self.strings[semantic.name as usize] != self.strings[name as usize]
+                {
+                    return Err(Status::InvalidScene);
+                }
+                semantic.name = name;
+            }
+            return Ok(index);
+        }
+        let index = self.add_semantic(
             role,
             name,
             NO_INDEX,
             parent,
             0,
-            node.attribute("id").unwrap_or(class),
-        )
+            SemanticSource {
+                stable_key: model_node_id
+                    .or(model_edge_id)
+                    .unwrap_or_else(|| node.attribute("id").unwrap_or(class)),
+                model_range,
+            },
+        )?;
+        if let Some(id) = model_edge_id {
+            // Charge the owned key and conservative hash-table growth before
+            // allocating; repeated path/caption references cost no edge slot.
+            self.budget.retain(
+                id.len()
+                    .saturating_add(size_of::<(String, u32)>().saturating_mul(4))
+                    .saturating_add(32),
+                1,
+            )?;
+            self.canonical_edge_semantics
+                .try_reserve(1)
+                .map_err(|_| Status::BudgetExceeded)?;
+            self.canonical_edge_semantics.insert(id.to_owned(), index);
+        }
+        Ok(index)
+    }
+
+    fn display_none(&mut self, node: Node<'_, '_>) -> Result<bool, Status> {
+        self.budget.temporary(
+            node_attribute_bytes(node)?
+                .saturating_mul(4)
+                .saturating_add(1024),
+            1,
+        )?;
+        let mut hidden = false;
+        let mut rank = 0u64;
+        if let Some(value) = node.attribute("display") {
+            apply_display_value(&mut hidden, &mut rank, strip_important(value).0, 1);
+        }
+        for rule in &self.css_rules {
+            self.budget.checkpoint(1)?;
+            if !rule.selector.matches(node) {
+                continue;
+            }
+            for declaration in &rule.declarations {
+                self.budget.checkpoint(1)?;
+                if declaration.property != "display" {
+                    continue;
+                }
+                // Author !important rules outrank normal inline declarations;
+                // specificity and source order break ties within that origin.
+                let origin = if declaration.important { 4u64 } else { 2u64 };
+                let declaration_rank =
+                    (origin << 60) | ((u64::from(rule.specificity)) << 32) | u64::from(rule.order);
+                apply_display_value(&mut hidden, &mut rank, &declaration.value, declaration_rank);
+            }
+        }
+        if let Some(inline) = node.attribute("style") {
+            for declaration in inline.split(';') {
+                self.budget.checkpoint(1)?;
+                if let Some((property, value)) = declaration.split_once(':')
+                    && property.trim().eq_ignore_ascii_case("display")
+                {
+                    let (value, important) = strip_important(value);
+                    let origin = if important { 5u64 } else { 3u64 };
+                    apply_display_value(&mut hidden, &mut rank, value, origin << 60);
+                }
+            }
+        }
+        Ok(hidden)
+    }
+
+    fn svg_text_is_displayed(&mut self, node: Node<'_, '_>) -> Result<bool, Status> {
+        for ancestor in node.ancestors().filter(|candidate| candidate.is_element()) {
+            self.budget.checkpoint(1)?;
+            if self.display_none(ancestor)? {
+                return Ok(false);
+            }
+        }
+        Ok(true)
     }
 
     fn add_semantic(
@@ -1008,7 +1196,7 @@ impl SceneBuilder<'_, '_, '_> {
         description: u32,
         parent: u32,
         flags: u32,
-        stable_key: &str,
+        source: SemanticSource<'_>,
     ) -> Result<u32, Status> {
         match role {
             SemanticRole::Node => {
@@ -1026,7 +1214,7 @@ impl SceneBuilder<'_, '_, '_> {
             _ => {}
         }
         let index = u32::try_from(self.semantics.len()).map_err(|_| Status::BudgetExceeded)?;
-        let mut source_id = fnv1a(stable_key.as_bytes()) ^ ((role as u32) << 24);
+        let mut source_id = fnv1a(source.stable_key.as_bytes()) ^ ((role as u32) << 24);
         if source_id == 0 {
             source_id = 1;
         }
@@ -1038,7 +1226,10 @@ impl SceneBuilder<'_, '_, '_> {
             source_id = source_id.wrapping_add(1).max(1);
             self.budget.checkpoint(1)?;
         }
-        let (start, length) = self.semantic_source_range(parent, stable_key, name)?;
+        let (start, length) = match source.model_range {
+            Some(range) => range,
+            None => self.semantic_source_range(parent, source.stable_key, name)?,
+        };
         let mapping = u32::try_from(self.mappings.len()).map_err(|_| Status::BudgetExceeded)?;
         self.budget.scene(32 + 20)?;
         self.budget.reserve(&mut self.mappings, 1)?;
@@ -1057,6 +1248,7 @@ impl SceneBuilder<'_, '_, '_> {
             parent,
             mapping,
             flags,
+            model_source: source.model_range.is_some(),
         });
         Ok(index)
     }
@@ -1226,6 +1418,9 @@ impl SceneBuilder<'_, '_, '_> {
         if depth > self.limits.max_depth {
             return Err(Status::BudgetExceeded);
         }
+        if self.display_none(node)? {
+            return Ok(());
+        }
         // Tspans recurse through this routine instead of `walk`, so admit
         // their attribute parsing scratch here as well.
         self.budget.temporary(
@@ -1259,7 +1454,8 @@ impl SceneBuilder<'_, '_, '_> {
                 self.budget.retain(raw.len(), raw.len() / 16 + 1)?;
                 let mut value = String::with_capacity(raw.len());
                 let mut whitespace = false;
-                for ch in raw.chars() {
+                let normalized = self.normalized_svg_text(child)?;
+                for ch in normalized.chars() {
                     if matches!(ch, ' ' | '\t' | '\r' | '\n') {
                         if !whitespace {
                             value.push(' ');
@@ -1319,6 +1515,29 @@ impl SceneBuilder<'_, '_, '_> {
             }
         }
         Ok(())
+    }
+
+    /// SVG source classification is resolved before final MMIR text and its
+    /// DirectWrite advances are produced. The inert marker distinguishes newly
+    /// decoded literal angle brackets from legacy raw presentation wrappers.
+    fn normalized_svg_text<'a, 'input>(
+        &mut self,
+        node: Node<'a, 'input>,
+    ) -> Result<Cow<'a, str>, Status> {
+        let raw = node.text().unwrap_or("");
+        let mut final_text = false;
+        for ancestor in node.ancestors() {
+            self.budget.checkpoint(1)?;
+            if ancestor.attribute("data-mmir-final-text") == Some("true") {
+                final_text = true;
+                break;
+            }
+        }
+        if final_text {
+            return Ok(Cow::Borrowed(raw));
+        }
+        self.budget.temporary(raw.len(), raw.len() / 16 + 1)?;
+        Ok(crate::label_text::normalize_label_markup(raw))
     }
 
     fn resolve_text_style(&mut self, node: Node<'_, '_>) -> Result<ResolvedTextStyle, Status> {
@@ -1673,7 +1892,8 @@ impl SceneBuilder<'_, '_, '_> {
             else {
                 continue;
             };
-            if let Some(start) = self.source.find(name)
+            if !self.semantics[semantic].model_source
+                && let Some(start) = self.source.find(name)
                 && let Some(mapping) = usize::try_from(self.semantics[semantic].mapping)
                     .ok()
                     .and_then(|index| self.mappings.get_mut(index))
@@ -2223,6 +2443,7 @@ fn parse_css_declarations(input: &str) -> Vec<CssDeclaration> {
                     | "text-anchor"
                     | "dominant-baseline"
                     | "alignment-baseline"
+                    | "display"
                     | "marker-start"
                     | "marker-end"
             ) {
@@ -2420,6 +2641,49 @@ impl SimpleSelector {
 
 fn is_css_identifier_byte(value: u8) -> bool {
     value.is_ascii_alphanumeric() || matches!(value, b'-' | b'_')
+}
+
+fn apply_display_value(hidden: &mut bool, rank: &mut u64, value: &str, new_rank: u64) {
+    if new_rank < *rank {
+        return;
+    }
+    let value = value.trim();
+    let is_none = value.eq_ignore_ascii_case("none");
+    if !is_none
+        && ![
+            "inline",
+            "block",
+            "list-item",
+            "run-in",
+            "compact",
+            "marker",
+            "table",
+            "inline-table",
+            "table-row-group",
+            "table-header-group",
+            "table-footer-group",
+            "table-row",
+            "table-column-group",
+            "table-column",
+            "table-cell",
+            "table-caption",
+            "contents",
+            "flow-root",
+            "flex",
+            "inline-flex",
+            "grid",
+            "inline-grid",
+            "initial",
+            "unset",
+            "inherit",
+        ]
+        .iter()
+        .any(|known| value.eq_ignore_ascii_case(known))
+    {
+        return;
+    }
+    *hidden = is_none;
+    *rank = new_rank;
 }
 
 fn strip_important(value: &str) -> (&str, bool) {

@@ -344,6 +344,13 @@ public sealed class MarkdownLayoutConstructionScopeTests
         Assert.Contains("context.RegisterConstructionBlock(box);", htmlRenderer, StringComparison.Ordinal);
         Assert.Contains("context.RegisterConstructionBlock(stack);", gfmBuilder, StringComparison.Ordinal);
         Assert.Contains("box.Context.RegisterConstructionBlock(box);", gfmBuilder, StringComparison.Ordinal);
+        string gfmPopulateChildren = SliceBetween(
+            gfmBuilder,
+            "internal static void PopulateChildren(",
+            "private static void ApplyHtmlAlignment(");
+        int gfmChildAttach = gfmPopulateChildren.IndexOf("stack.Add(box);", StringComparison.Ordinal);
+        int gfmChildAdopt = gfmPopulateChildren.IndexOf("context.AdoptConstructionBlock(box);", StringComparison.Ordinal);
+        Assert.True(gfmChildAttach >= 0 && gfmChildAdopt > gfmChildAttach);
         string htmlAddRun = SliceBetween(htmlRenderer, "private static void AddRun(", "private static BlockBox? ReturnIfNonEmpty(");
         Assert.True(htmlAddRun.IndexOf("RegisterConstructionBlock", StringComparison.Ordinal) <
                     htmlAddRun.IndexOf("parent.Add(run)", StringComparison.Ordinal));
@@ -365,7 +372,29 @@ public sealed class MarkdownLayoutConstructionScopeTests
         Assert.True(summaryDiscard > summaryMediaAttach);
         Assert.True(summaryAliasForget < 0);
 
-        Assert.Contains("context.RegisterConstructionBlock(codeBox);", gfmBuilder, StringComparison.Ordinal);
+        Assert.Contains("PushChildBlockBuilder(BuildBlock)", layoutBuilder, StringComparison.Ordinal);
+        string gfmCodeDispatch = SliceBetween(
+            gfmBuilder,
+            "if (block is CodeBlock code)",
+            "using var attrScope = context.PushMarkdownAttributes(block);");
+        Assert.Contains("context.TryBuildChildBlock(block, out BlockBox? ownerBuiltCode)",
+            gfmCodeDispatch,
+            StringComparison.Ordinal);
+        Assert.Contains("return LayoutBuilder.BuildCodeBlockForExtension(code, context);",
+            gfmCodeDispatch,
+            StringComparison.Ordinal);
+        string layoutCodeFallback = SliceBetween(
+            layoutBuilder,
+            "internal static BlockBox? BuildCodeBlockForExtension(",
+            "public LayoutSnapshot Build(");
+        Assert.Contains("return new LayoutBuilder(context).BuildBlock(block);",
+            layoutCodeFallback,
+            StringComparison.Ordinal);
+        string layoutBuildBlock = SliceBetween(
+            layoutBuilder,
+            "private BlockBox? BuildBlock(Block block)",
+            "private InlineContainerBox BuildLiteralHtmlBlock(");
+        Assert.Contains("TrackBlock(box);", layoutBuildBlock, StringComparison.Ordinal);
         string gfmAddInline = SliceBetween(gfmBuilder, "if (run is not null)", "else if (i is ContainerInline nested)");
         Assert.True(gfmAddInline.IndexOf("RegisterConstructionBlock(image.Image)", StringComparison.Ordinal) <
                     gfmAddInline.IndexOf("box.Add(run)", StringComparison.Ordinal));

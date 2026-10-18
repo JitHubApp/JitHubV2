@@ -24,6 +24,7 @@ public sealed class VectorSceneCapacityFallbackTests
     private static readonly Color ClearColor = Color.FromArgb(255, 255, 255, 255);
     private static readonly Color SceneColor = Color.FromArgb(255, 18, 34, 50);
     private static readonly Color SelectionColor = Color.FromArgb(255, 12, 220, 28);
+    private static readonly Color SelectionBackgroundColor = Color.FromArgb(255, 0, 90, 190);
 
     [Fact]
     public void DeferredBlockScenePaintsBoundedFallbackAndKeepsSourceSelectionAndNativeFactoryUntouched()
@@ -85,8 +86,31 @@ public sealed class VectorSceneCapacityFallbackTests
             Assert.Contains(normalPixels, pixel => pixel != ClearColor);
 
             Color[] selectedPixels = PaintBlock(box, height, selection);
-            Assert.Contains(selectedPixels, pixel =>
+            Assert.Contains(SelectionBackgroundColor, selectedPixels);
+            Assert.DoesNotContain(selectedPixels, pixel =>
                 pixel.G > pixel.R + 40 && pixel.G > pixel.B + 40);
+
+            bool foundTranslucentBlueSelectionTint = false;
+            bool foundUnaffectedOpaqueFallbackGlyph = false;
+            for (int index = 0; index < selectedPixels.Length; index++)
+            {
+                Color normal = normalPixels[index];
+                Color selected = selectedPixels[index];
+                if (normal == ClearColor &&
+                    selected.B > selected.G + 12 &&
+                    selected.G > selected.R + 12)
+                {
+                    foundTranslucentBlueSelectionTint = true;
+                }
+
+                if (normal.R < 80 && normal.G < 90 && normal.B < 100 && selected == normal)
+                    foundUnaffectedOpaqueFallbackGlyph = true;
+            }
+
+            Assert.True(foundTranslucentBlueSelectionTint,
+                "Normal selection should tint visible fallback content with the theme's translucent blue background.");
+            Assert.True(foundUnaffectedOpaqueFallbackGlyph,
+                "The selected fallback should repaint at full opacity so opaque text remains legible.");
 
             var cacheBeforePaint = SharedCanvasTextFormatCache.Statistics;
             for (int index = 0; index < 4; index++)
@@ -101,6 +125,59 @@ public sealed class VectorSceneCapacityFallbackTests
         {
             if (!box.IsDisposed)
                 box.Dispose();
+        }
+    }
+
+    [Fact]
+    public void BlockCapacityFallbackUsesHighContrastSelectionPair()
+    {
+        using var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
+        var admission = new VectorNativeResourceAdmission(
+            capacityWeightUnits: 100_000,
+            maximumSceneWeightUnits: 100_000);
+        using VectorNativeResourceCredit blocker = ReserveEntireAdmission(admission);
+        MarkdownLayoutContext context = CreateContext(
+            new CountingResourceCreator(CanvasDevice.GetSharedDevice()),
+            session,
+            "high contrast fallback",
+            highContrast: true);
+        var content = new MarkdownContentBuilder();
+        content.AddVectorScene(
+            CreatePathScene(),
+            new SourceSpan(0, context.SourceMap.SourceText.Length),
+            MarkdownStyleRole.Diagram,
+            MarkdownAccessibilityRole.Diagram,
+            semanticText: "High contrast fallback text remains available.");
+        var box = new VectorSceneBox(
+            context,
+            Assert.Single(content.Build().Items),
+            MarkdownElementKeys.Diagram,
+            admission)
+        {
+            BlockIndex = 0,
+        };
+
+        try
+        {
+            float height = box.Measure(180);
+            box.Arrange(0, 0, 180);
+            Assert.False(box.TryPrepareNativeResources(CancellationToken.None, out VectorNativePreparationOutcome outcome));
+            Assert.Equal(VectorNativePreparationStatus.DeferredCapacity, outcome.Status);
+
+            var selection = new DocumentRange(
+                new DocumentPosition(0, 0, 0),
+                new DocumentPosition(0, 0, 1));
+            SelectionBackgroundGeometry background = Assert.Single(box.GetSelectionBackgroundGeometry(selection));
+            Assert.Equal(box.VisibleContentBounds, background.Bounds);
+            Assert.Equal(0.25f, background.Opacity);
+
+            Color[] selectedPixels = PaintBlock(box, height, selection);
+            Assert.Contains(SelectionBackgroundColor, selectedPixels);
+            Assert.Contains(SelectionColor, selectedPixels);
+        }
+        finally
+        {
+            box.Dispose();
         }
     }
 
@@ -507,7 +584,12 @@ public sealed class VectorSceneCapacityFallbackTests
             drawing.Clear(ClearColor);
             box.Paint(drawing, new Rect(0, 0, 200, 100));
             if (selection is { } range)
+            {
+                bool highContrast = box.LayoutContext.ThemeSnapshot.IsHighContrast;
+                foreach (SelectionBackgroundGeometry background in box.GetSelectionBackgroundGeometry(range))
+                    background.Paint(drawing, SelectionBackgroundColor, highContrast);
                 box.PaintSelectionForeground(drawing, range, SelectionColor, new Rect(0, 0, 200, 100));
+            }
         }
         return target.GetPixelColors();
     }

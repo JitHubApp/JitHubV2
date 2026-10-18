@@ -135,8 +135,16 @@ internal sealed class TextElementBoundaryIndex
         int idx = TextElementStartAtOrBefore(
             Math.Clamp(charIndex, 0, Math.Max(0, TextLength - 1)));
 
-        // Prefer an adjacent word when the requested position is whitespace or
-        // punctuation, matching the renderer's existing pointer behavior.
+        // A non-whitespace symbol is a complete selectable unit in its own
+        // right. This matters for emoji-only paragraphs and symbol graphemes
+        // between words: falling through to the nearest word either selects a
+        // neighbor or produces an empty range. Emoji keycaps can start with a
+        // digit or punctuation, so check the grapheme before word membership.
+        if (!IsWhitespaceTextElement(idx) && IsSymbolTextElement(idx))
+            return (idx, Math.Min(TextLength, NextStart(idx)));
+
+        // Preserve the established nearest-word behavior for whitespace and
+        // punctuation; only symbols/emoji are atomic selection targets here.
         if (!IsWordTextElement(idx))
         {
             int previous = PreviousStart(idx);
@@ -204,6 +212,10 @@ internal sealed class TextElementBoundaryIndex
     private bool IsWordTextElement(int start)
     {
         if (start < 0 || start >= TextLength) return false;
+        // Keycaps begin with a word-category digit, but the complete grapheme
+        // is an atomic symbol. The same classification must apply while
+        // expanding neighboring words and when navigating between words.
+        if (IsSymbolTextElement(start)) return false;
         return CharUnicodeInfo.GetUnicodeCategory(_buffer, start) switch
         {
             UnicodeCategory.UppercaseLetter or
@@ -219,6 +231,39 @@ internal sealed class TextElementBoundaryIndex
             UnicodeCategory.ConnectorPunctuation => true,
             _ => false,
         };
+    }
+
+    private bool IsWhitespaceTextElement(int start) =>
+        start >= 0 && start < TextLength && char.IsWhiteSpace(_buffer, start);
+
+    private bool IsSymbolTextElement(int start)
+    {
+        if (start < 0 || start >= TextLength)
+            return false;
+
+        UnicodeCategory category = CharUnicodeInfo.GetUnicodeCategory(_buffer, start);
+        if (category is UnicodeCategory.CurrencySymbol or
+            UnicodeCategory.MathSymbol or
+            UnicodeCategory.ModifierSymbol or
+            UnicodeCategory.OtherSymbol)
+        {
+            return true;
+        }
+
+        // Emoji keycap bases are only ASCII digits, # and *. U+20E3 can also
+        // enclose an ordinary letter or non-ASCII digit, which must stay in
+        // its word. Do not classify on VS16 alone because it may decorate an
+        // ordinary word grapheme without making it a standalone symbol.
+        if (_buffer[start] is not (>= '0' and <= '9' or '#' or '*'))
+            return false;
+        int end = Math.Min(TextLength, NextStart(start));
+        for (int index = start; index < end; index++)
+        {
+            if (_buffer[index] == '\u20E3')
+                return true;
+        }
+
+        return false;
     }
 
     private int TextElementStartAtOrBefore(int charIndex)
@@ -497,6 +542,8 @@ internal static class TextBoundaryHelper
     /// A "word" is a maximal sequence of Unicode word characters. Punctuation
     /// and whitespace are treated as boundaries, while combining marks stay
     /// attached to their base character through text-element segmentation.
+    /// Non-whitespace Unicode symbols and emoji are returned as their own
+    /// complete grapheme; whitespace and punctuation keep nearest-word behavior.
     /// </summary>
     public static (int Start, int End) FindWordBoundaries(string buffer, int charIndex)
     {

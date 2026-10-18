@@ -1,5 +1,10 @@
 # Release checklist
 
+The active work follows the [correctness goal and phase plan](correctness-plan.md).
+This distribution checklist retains historical release evidence and is not the
+completion checklist for those phases. Historical browser-performance and size
+targets do not block the correctness goal.
+
 MarkdownRenderer remains a preview. A package build is evidence for one gate,
 not proof that the full 1.0 bar has passed.
 

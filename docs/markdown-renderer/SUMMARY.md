@@ -33,6 +33,7 @@ Use this page as the canonical table of contents for a generated docs site.
 
 ## Operations
 
+- [Active correctness goal and phase plan](correctness-plan.md)
 - [Testing and diagnostics](testing-and-diagnostics.md)
 - [October 12 checkpoint and architecture assessment](implementation-checkpoint-2026-10-12.md)
 - [Troubleshooting](troubleshooting.md)

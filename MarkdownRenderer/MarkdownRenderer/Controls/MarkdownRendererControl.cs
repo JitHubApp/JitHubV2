@@ -179,6 +179,8 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     // a second Win2D XAML control (and its independent XamlRoot lifetime).
     private List<Rect> _selectionAdornerRects = new();
     private List<Rect> _selectionAdornerRectScratch = new();
+    private List<SelectionBackgroundGeometry> _selectionAdornerBackgrounds = new();
+    private List<SelectionBackgroundGeometry> _selectionAdornerBackgroundScratch = new();
     private readonly SelectionAdornerRetryState _selectionAdornerRetryState = new();
     private bool _selectionAdornerRetryFrameSubscribed;
     private EventHandler<object>? _selectionAdornerRetryFrameHandler;
@@ -198,6 +200,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     private bool _selectionEndHandleEndpointAvailable;
     private Microsoft.UI.Xaml.Controls.Image? _selectionAdorner;
     private CanvasImageSource? _selectionAdornerSource;
+    private long _selectionAdornerSurfaceVersion;
     private double _selectionAdornerSourceWidth;
     private double _selectionAdornerSourceHeight;
     private float _selectionAdornerSourceDpi;
@@ -210,14 +213,14 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     private Button? _selectionHandleCaptureTarget;
     private DocumentPosition _selectionHandleFixedPosition;
     private readonly MarkdownTouchSelectionSession _touchSelection = new();
+    private TouchSelectionPresentationRestoreIntent? _pendingTouchSelectionPresentationRestore;
     private bool _selectionHandleFrameSubscribed;
     private long _selectionHandleLastFrameTimestamp;
     private Point _selectionHandleLatestPoint;
     private double _selectionHandleLatestViewportY;
     private Point _selectionHandleCaretOffset;
     private bool _selectionHandleMovePending;
-    private long _suppressTouchTapUntilTickMs;
-    private Point _suppressedTouchTapPoint;
+    private readonly TouchTapSuppressionPolicy _touchTapSuppression = new();
 
     // Background color used to clear each canvas tile before painting. Published
     // atomically with the layout/theme snapshot so OnRegionsInvalidated (UI
@@ -3298,6 +3301,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
 
     private void OnMarkdownChanged()
     {
+        ResetInputForDocumentReplacement();
         // Document has documented precedence over Markdown. A source change
         // invalidates only the document that this control published itself;
         // it must never clear a host-supplied/bound document based on DP
@@ -3320,11 +3324,26 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         if (_isUpdatingDocumentProperty)
             return;
 
+        ResetInputForDocumentReplacement();
         _hasExplicitDocument = e.NewValue is MarkdownRenderer.Document.MarkdownDocument;
         _disclosureStates.Clear();
         _hostedElementFallbacks.Clear();
         ClearCodeBlockHighlightCache();
         RequestRebuild(RebuildReason.Full);
+    }
+
+    private void ResetInputForDocumentReplacement()
+    {
+        // Prevent a queued terminal from applying old-document cancellation
+        // semantics while its input queue is being discarded. The committed
+        // document selection remains governed by the normal rebuild commit;
+        // only touch ownership, handles, flyouts, and pending input are reset.
+        _pendingTouchSelectionPresentationRestore = null;
+        _touchTapSuppression.Reset();
+        ResetDeferredPointerInput();
+        ResetTransientInteractionState(clearSelection: false);
+        _touchTapSuppression.RequireAcceptedContactForRecognizedGesture();
+        UpdateSelectionHandles();
     }
 
     private void OnEngineChanged(DependencyPropertyChangedEventArgs e)
@@ -3476,6 +3495,12 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         return false;
     }
 
+    private bool IsElementWithinSelectionHandle(DependencyObject element)
+    {
+        return (_selectionStartHandle is not null && IsElementWithin(element, _selectionStartHandle)) ||
+               (_selectionEndHandle is not null && IsElementWithin(element, _selectionEndHandle));
+    }
+
     private static bool IsElementWithin(DependencyObject element, DependencyObject ancestor)
     {
         for (DependencyObject? current = element; current is not null;)
@@ -3539,6 +3564,8 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         {
             MarkdownSelectionCoordinator.ClearSelectionsExcept(this);
             if (IsElementWithinCodeBlockAction(source))
+                return;
+            if (IsElementWithinSelectionHandle(source))
                 return;
 
             bool overCanvas = IsPointerOverCanvasTextSurface(e, out var canvasPoint);
@@ -3707,10 +3734,15 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         ClearSelectionForExternalInteraction();
     }
 
-    private void ClearSelectionForExternalInteraction(bool resetClickTracking = true)
+    private void ClearSelectionForExternalInteraction(
+        bool resetClickTracking = true,
+        bool resetDeferredPointerInput = true)
     {
+        _pendingTouchSelectionPresentationRestore = null;
+        _touchTapSuppression.Reset();
         CloseSelectionContextMenu();
-        ResetDeferredPointerInput();
+        if (resetDeferredPointerInput)
+            ResetDeferredPointerInput();
         _pointerSession = default;
         ResetSelectionHandleDrag();
         _touchSelection.Reset();
@@ -3758,6 +3790,17 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
 
     private void OnSelectionChanged()
     {
+        // SelectionController may publish a change notification for a
+        // presentation-only update. Keep a pending restore when the exact
+        // range is unchanged; a real range change invalidates it. Generation
+        // is intentionally checked at commit, because snapshot publication can
+        // notify automation before the restore phase finishes.
+        if (_pendingTouchSelectionPresentationRestore is { } restoreIntent &&
+            !restoreIntent.MatchesRange(_selection.Range))
+        {
+            _pendingTouchSelectionPresentationRestore = null;
+        }
+
         if (_selection.IsActive)
             MarkdownSelectionCoordinator.ClearSelectionsExcept(this);
 
@@ -3789,7 +3832,10 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     private void OnSelectionEnabledChanged(bool isEnabled)
     {
         if (!isEnabled)
+        {
+            _touchTapSuppression.Reset();
             ClearSelectionForExternalInteraction();
+        }
 
         // TextPattern remains available for document reading, but its
         // SupportedTextSelection value changes between Single and None.
@@ -3856,10 +3902,16 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         // (e.g. from OnImageLoadCompleted) that are already in-flight know
         // not to call RequestRebuild after we've torn down.
         _isUnloaded = true;
+        _pendingTouchSelectionPresentationRestore = null;
+        // Keep the recognizer barrier while the owner epoch is still intact.
+        // A queued Cancel must apply its per-contact selection disposition
+        // before that identity is discarded; a queued Release keeps selection.
+        _touchTapSuppression.PrepareForReset();
         StopCanvasDeviceRecovery();
         StopImageRelayoutRecovery(force: true);
         DetachPerformanceSessionDisposalNotification();
         ResetDeferredPointerInput();
+        _touchTapSuppression.Reset();
         // An unloaded view is reusable and no longer belongs to this window.
         // Do not let a former host destroy it, or retain weak-event wrappers
         // for every virtualized view until the window eventually closes.
@@ -3972,6 +4024,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         _embedRects.Clear();
         _blockEmbedRects.Clear();
         ResetSelectionHandleDrag();
+        _touchTapSuppression.Reset();
         _touchSelection.Reset();
         SetSelectionDragShieldActive(false);
         // Release native resources & hosted embeds so re-attaching the
@@ -3990,6 +4043,8 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         _cursorIBeam = null;
         _selectionAdornerRects.Clear();
         _selectionAdornerRectScratch.Clear();
+        _selectionAdornerBackgrounds.Clear();
+        _selectionAdornerBackgroundScratch.Clear();
         if (_selectionAdorner is not null)
         {
             _selectionAdorner = null;
@@ -4025,6 +4080,8 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             return;
 
         _isDisposed = true;
+        _pendingTouchSelectionPresentationRestore = null;
+        _touchTapSuppression.Reset();
         StopCanvasDeviceRecovery();
         ResetSelectionHandleDrag();
         _touchSelection.Dispose();
@@ -4548,6 +4605,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         // Keep the committed selection attached to the still-published snapshot
         // while its replacement is prepared. The commit compares immutable
         // document identities and clears selection only if replacement succeeds.
+        CaptureTouchSelectionPresentationRestoreIntent();
         ResetTransientInteractionState(clearSelection: false);
 
         // A deferred scene may be the first request after the preceding
@@ -4678,6 +4736,37 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             // the moment the replacement pipeline can actually start.
             QueuePendingRebuild();
         }
+        else
+        {
+            // A failed/canceled current-generation rebuild did not publish the
+            // snapshot needed to restore handles. Do not carry this intent into
+            // an unrelated future rebuild.
+            _pendingTouchSelectionPresentationRestore = null;
+        }
+    }
+
+    private void CaptureTouchSelectionPresentationRestoreIntent()
+    {
+        if (_snapshot is null || !_selection.IsActive)
+        {
+            _pendingTouchSelectionPresentationRestore = null;
+            return;
+        }
+
+        long snapshotGeneration = Volatile.Read(ref _snapshotGeneration);
+        DocumentRange selectionRange = _selection.Range.Normalized();
+        if (_touchSelection.ShouldShowHandles)
+        {
+            _pendingTouchSelectionPresentationRestore =
+                new TouchSelectionPresentationRestoreIntent(snapshotGeneration, selectionRange);
+            return;
+        }
+
+        if (_pendingTouchSelectionPresentationRestore is not { } pending ||
+            !pending.Matches(snapshotGeneration, selectionRange))
+        {
+            _pendingTouchSelectionPresentationRestore = null;
+        }
     }
 
     private Task RetireCancellationTokenSource(
@@ -4764,6 +4853,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     {
         // Clear logical capture ownership before touching XAML. A disconnected
         // input site must not keep a replacement blocked by a stale gesture.
+        _touchTapSuppression.Reset();
         ResetSelectionHandleDrag();
         _touchSelection.Reset();
         _pointerSession = default;
@@ -5346,6 +5436,9 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         // CanvasTextLayout / placeholder handles are released without making
         // this UI-thread commit wait for an in-flight lazy measure.
         var old = _snapshot;
+        long touchSelectionRestoreSourceGeneration = _snapshotGeneration;
+        TouchSelectionPresentationRestoreIntent? touchSelectionRestoreIntent =
+            _pendingTouchSelectionPresentationRestore;
         var automationDocumentIdentity = new MarkdownAutomationDocumentIdentity(
             snapshot.SourceFingerprint,
             snapshot.SemanticDocument.TextProjectionFingerprint,
@@ -5518,15 +5611,58 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         _lastFiredRealizedCount = -1;
         _selectionAdornerRects.Clear();
         _selectionAdornerRectScratch.Clear();
+        _selectionAdornerBackgrounds.Clear();
+        _selectionAdornerBackgroundScratch.Clear();
         _selectionStartHandleEndpointAvailable = false;
         _selectionEndHandleEndpointAvailable = false;
         // Rebuild detaches selection chrome with the other overlay children.
         // Surviving selection reattaches what it needs below; inactive chrome
         // stays detached until the next interaction.
+        bool restoreTouchSelectionPresentation = false;
         if (preserveSelection)
+        {
+            // Snapshot publication and dependency-property callbacks above can
+            // reenter selection or request a newer rebuild. Revalidate the
+            // original token against live state at the point of use rather
+            // than relying on eligibility captured before those callbacks.
+            bool touchSelectionRestoreStillMatches =
+                _selection.IsActive &&
+                touchSelectionRestoreIntent is { } capturedRestoreIntent &&
+                _pendingTouchSelectionPresentationRestore is { } currentRestoreIntent &&
+                currentRestoreIntent == capturedRestoreIntent &&
+                capturedRestoreIntent.Matches(
+                    touchSelectionRestoreSourceGeneration,
+                    _selection.Range);
+            bool hasPendingRebuild = _rebuildCoordinator.HasPending;
+
+            if (touchSelectionRestoreStillMatches && !hasPendingRebuild)
+            {
+                restoreTouchSelectionPresentation =
+                    _touchSelection.TryRestoreSelectedPresentation();
+                _pendingTouchSelectionPresentationRestore = null;
+            }
+            else if (touchSelectionRestoreStillMatches && hasPendingRebuild)
+            {
+                // Rebase only across a successful same-document commit while a
+                // newer rebuild is already queued. The request stays bound to
+                // this exact range and the just-published snapshot.
+                _pendingTouchSelectionPresentationRestore =
+                    new TouchSelectionPresentationRestoreIntent(generation, _selection.Range);
+            }
+            else
+            {
+                _pendingTouchSelectionPresentationRestore = null;
+            }
+
             UpdateSelectionOverlay();
+            if (restoreTouchSelectionPresentation)
+                UpdateSelectionHandles();
+        }
         else
+        {
+            _pendingTouchSelectionPresentationRestore = null;
             _selection.Clear();
+        }
         long overlayResetEnded = Stopwatch.GetTimestamp();
         _focusResumeItemIndex = -1;
         _pendingLazyFocus = null;
@@ -9923,7 +10059,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                 return false;
             }
             _horizontalOverflowCaptured = true;
-            SuppressTouchTap(point);
+            SuppressTouchTap(point, e.TouchTapGestureEpoch);
         }
 
         double oldTouchOffset = target.HorizontalOffset;
@@ -9946,7 +10082,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
 
         bool captured = _horizontalOverflowCaptured;
         if (captured && _canvas is not null)
-            SuppressTouchTap(e.Point.Position);
+            SuppressTouchTap(e.Point.Position, e.TouchTapGestureEpoch);
         ClearHorizontalOverflowPointerState();
         e.ResumeRebuildAfterInteraction = true;
         if (captured && _canvas is not null)
@@ -10471,15 +10607,33 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     {
         if (_snapshot is not { } snapshot || _canvas is null)
             return;
+        _pendingTouchSelectionPresentationRestore = null;
         long snapshotGeneration = Volatile.Read(ref _snapshotGeneration);
         long layoutRevision = snapshot.LayoutRevision;
 
         if (e.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Touch)
         {
             Rect contact = e.Point.Properties.ContactRect;
-            _touchSelection.BeginContact(
+            bool contactAccepted = _touchSelection.BeginContact(
                 e.Pointer.PointerId,
-                new TouchContactGeometry(contact.X, contact.Y, contact.Width, contact.Height));
+                new TouchContactGeometry(contact.X, contact.Y, contact.Width, contact.Height),
+                selectionIsActive: _selection.IsActive);
+            if (contactAccepted &&
+                _touchTapSuppression.TryBeginContact(e.Pointer.PointerId, out long gestureEpoch))
+            {
+                e.TouchTapGestureEpoch = gestureEpoch;
+            }
+            else
+            {
+                // Holding/Tapped routed events do not expose a pointer ID. Keep
+                // a secondary contact's origin so a recognized event at that
+                // location cannot be mistaken for the primary contact's event.
+                _touchTapSuppression.TrackUnownedContact(
+                    e.Pointer.PointerId,
+                    e.Point.Position);
+                if (contactAccepted)
+                    _touchSelection.Cancel(e.Pointer.PointerId);
+            }
         }
 
         if (TryBeginHorizontalOverflowPointer(ref e))
@@ -10505,6 +10659,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         var pt = currentPoint.Position;
         if (_selectionHandleCaptureTarget is not null)
             ResetSelectionHandleDrag();
+        _touchTapSuppression.Reset();
         _touchSelection.Reset();
         UpdateSelectionHandles();
         TryGetViewport(out double pointerViewportTop, out _, out _);
@@ -10724,7 +10879,9 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         }
 
         Point point = e.GesturePosition;
-        if (IsSuppressedTouchGesture(point))
+        bool suppressTap = IsSuppressedTouchGesture(e.TouchTapGestureEpoch, point);
+        _touchTapSuppression.CompleteTap(e.TouchTapGestureEpoch);
+        if (suppressTap)
         {
             e.Handled = true;
             return;
@@ -10786,7 +10943,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                 layoutRevision,
                 e.HasGestureContact ? e.GestureContact : null))
         {
-            SuppressTouchTap(point);
+            SuppressTouchTap(point, e.TouchTapGestureEpoch);
             e.Handled = true;
         }
     }
@@ -10828,7 +10985,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                 layoutRevision,
                 e.HasGestureContact ? e.GestureContact : null))
         {
-            SuppressTouchTap(point);
+            SuppressTouchTap(point, e.TouchTapGestureEpoch);
             e.Handled = true;
         }
     }
@@ -10938,27 +11095,19 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             scale);
     }
 
-    private void SuppressTouchTap(Point point)
+    private void SuppressTouchTap(Point point, long gestureEpoch)
     {
-        _suppressTouchTapUntilTickMs = Environment.TickCount64 + 1_500;
-        _suppressedTouchTapPoint = point;
+        _touchTapSuppression.SuppressTouchTap(
+            gestureEpoch,
+            point,
+            Environment.TickCount64);
     }
 
-    private bool IsSuppressedTouchGesture(Point point)
-        => IsGestureSuppressed(
-            _suppressTouchTapUntilTickMs,
-            _suppressedTouchTapPoint,
+    private bool IsSuppressedTouchGesture(long gestureEpoch, Point point)
+        => _touchTapSuppression.ShouldSuppressTap(
+            gestureEpoch,
+            Environment.TickCount64,
             point);
-
-    private static bool IsGestureSuppressed(long deadlineTickMs, Point origin, Point point)
-    {
-        if (deadlineTickMs - Environment.TickCount64 < 0)
-            return false;
-
-        double dx = point.X - origin.X;
-        double dy = point.Y - origin.Y;
-        return dx * dx + dy * dy <= 48 * 48;
-    }
 
     private void FocusRendererForPointerInteraction()
     {
@@ -11671,6 +11820,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             scale = 1.0;
 
         long layoutRevision = snapshot.LayoutRevision;
+        long requestVersion = _selectionAdornerRequestVersion;
         bool viewportChanged = generation != _selectionAdornerSnapshotGeneration ||
             layoutRevision != _selectionAdornerLayoutRevision ||
             Math.Abs(top - _selectionAdornerViewportTop) > 0.01 ||
@@ -11683,13 +11833,23 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
 
         Rect viewport = new(0, top, width, height);
         List<Rect> paintRects = _selectionAdornerRects;
+        List<SelectionBackgroundGeometry> paintBackgrounds = _selectionAdornerBackgrounds;
         if (rebuildGeometry)
         {
             paintRects = _selectionAdornerRectScratch;
             paintRects.Clear();
+            paintBackgrounds = _selectionAdornerBackgroundScratch;
+            paintBackgrounds.Clear();
             if (_selection.IsActive)
-                _selection.AppendVisibleHighlightRects(snapshot, viewport, paintRects);
+            {
+                _selection.AppendVisibleHighlightRects(
+                    snapshot,
+                    viewport,
+                    paintRects,
+                    paintBackgrounds);
+            }
             SnapSelectionAdornerRectangles(paintRects, scale);
+            SnapSelectionAdornerBackgroundRectangles(paintBackgrounds, scale);
         }
 
         bool hasContent = paintRects.Count > 0 ||
@@ -11698,7 +11858,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         if (!hasContent)
         {
             if (rebuildGeometry)
-                CommitSelectionAdornerRectangles(paintRects);
+                CommitSelectionAdornerGeometry(paintRects, paintBackgrounds);
             if (_selectionAdorner is not null)
                 _selectionAdorner.Visibility = Visibility.Collapsed;
             CommitSelectionAdornerViewport(generation, layoutRevision, top, width, height, scale);
@@ -11718,25 +11878,41 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             return SelectionAdornerRefreshOperationResult.AwaitLifecycle;
         }
 
-        if (_selectionAdornerSource is null)
+        if (_selectionAdornerSource is not { } source)
         {
             UpdateSelectionHandlesUnderPaint(snapshot, viewport);
             return SelectionAdornerRefreshOperationResult.AwaitLifecycle;
         }
 
+        long surfaceVersion = _selectionAdornerSurfaceVersion;
         try
         {
-            using var drawingSession = _selectionAdornerSource.CreateDrawingSession(Color.FromArgb(0, 0, 0, 0));
-            drawingSession.TextAntialiasing = Microsoft.Graphics.Canvas.Text.CanvasTextAntialiasing.Grayscale;
-            drawingSession.Transform = Matrix3x2.CreateTranslation(0, -(float)_selectionAdornerOffsetY);
-            PaintInteractiveDocumentState(
-                snapshot,
-                drawingSession,
-                new Rect(0, top, _selectionAdornerSourceWidth, _selectionAdornerSourceHeight),
-                paintRects);
+            // EndDraw can fail. Do not publish clean geometry or mutate XAML
+            // handles until the explicitly owned drawing session has closed.
+            using (var drawingSession = source.CreateDrawingSession(Color.FromArgb(0, 0, 0, 0)))
+            {
+                drawingSession.TextAntialiasing = Microsoft.Graphics.Canvas.Text.CanvasTextAntialiasing.Grayscale;
+                drawingSession.Transform = Matrix3x2.CreateTranslation(0, -(float)_selectionAdornerOffsetY);
+                PaintInteractiveDocumentState(
+                    snapshot,
+                    drawingSession,
+                    new Rect(0, top, _selectionAdornerSourceWidth, _selectionAdornerSourceHeight),
+                    paintBackgrounds);
+            }
+
+            if (_isDisposed || _isUnloaded || !IsLoaded)
+                return SelectionAdornerRefreshOperationResult.AwaitLifecycle;
+            if (surfaceVersion != _selectionAdornerSurfaceVersion ||
+                !ReferenceEquals(source, _selectionAdornerSource) ||
+                requestVersion != _selectionAdornerRequestVersion ||
+                !ReferenceEquals(snapshot, _snapshot) || generation != _snapshotGeneration ||
+                snapshot.LayoutRevision != layoutRevision)
+            {
+                return SelectionAdornerRefreshOperationResult.Retry;
+            }
 
             if (rebuildGeometry)
-                CommitSelectionAdornerRectangles(paintRects);
+                CommitSelectionAdornerGeometry(paintRects, paintBackgrounds);
             CommitSelectionAdornerViewport(generation, layoutRevision, top, width, height, scale);
             UpdateSelectionHandlesUnderPaint(snapshot, new Rect(0, top, width, height));
 
@@ -11759,6 +11935,12 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             MarkdownDiagnostics.WriteLine(
                 $"[MarkdownRendererControl] ignored selection invalidate during shutdown: {ex.GetType().Name} {GraphicsDeviceErrors.FormatHResult(ex.HResult)}");
             return SelectionAdornerRefreshOperationResult.AwaitLifecycle;
+        }
+        finally
+        {
+            // A reentrant lifecycle callback may detach the field while the
+            // drawing session is unwinding. Its managed owner outlives EndDraw.
+            GC.KeepAlive(source);
         }
 
         return SelectionAdornerRefreshOperationResult.Completed;
@@ -11784,15 +11966,43 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         }
     }
 
-    private void CommitSelectionAdornerRectangles(List<Rect> staged)
+    private void CommitSelectionAdornerGeometry(
+        List<Rect> stagedRectangles,
+        List<SelectionBackgroundGeometry> stagedBackgrounds)
     {
-        if (ReferenceEquals(staged, _selectionAdornerRects))
+        if (ReferenceEquals(stagedRectangles, _selectionAdornerRects))
             return;
 
-        List<Rect> previous = _selectionAdornerRects;
-        _selectionAdornerRects = staged;
-        _selectionAdornerRectScratch = previous;
+        List<Rect> previousRectangles = _selectionAdornerRects;
+        _selectionAdornerRects = stagedRectangles;
+        _selectionAdornerRectScratch = previousRectangles;
+        previousRectangles.Clear();
+
+        List<SelectionBackgroundGeometry> previousBackgrounds = _selectionAdornerBackgrounds;
+        _selectionAdornerBackgrounds = stagedBackgrounds;
+        _selectionAdornerBackgroundScratch = previousBackgrounds;
+        previousBackgrounds.Clear();
+
         _selectionAdornerRectScratch.Clear();
+        _selectionAdornerBackgroundScratch.Clear();
+    }
+
+    private static void SnapSelectionAdornerBackgroundRectangles(
+        List<SelectionBackgroundGeometry> rectangles,
+        double scale)
+    {
+        for (int index = 0; index < rectangles.Count; index++)
+        {
+            SelectionBackgroundGeometry background = rectangles[index];
+            Rect snapped = SelectionController.SnapToRasterizationScale(background.Bounds, scale);
+            if (snapped.Width <= 0 || snapped.Height <= 0)
+            {
+                rectangles.RemoveAt(index--);
+                continue;
+            }
+
+            rectangles[index] = background with { Bounds = snapped };
+        }
     }
 
     private void CommitSelectionAdornerViewport(
@@ -12160,7 +12370,8 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
 
     private bool EnsureSelectionAdornerSurface(double width, double height)
     {
-        if (_selectionAdorner is null ||
+        Microsoft.UI.Xaml.Controls.Image? adorner = _selectionAdorner;
+        if (adorner is null || _isDisposed || _isUnloaded ||
             !double.IsFinite(width) ||
             !double.IsFinite(height) ||
             width <= 0 ||
@@ -12181,6 +12392,8 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         if (sourceMatches)
             return true;
 
+        CanvasImageSource? previousSource = _selectionAdornerSource;
+        long surfaceVersion = unchecked(++_selectionAdornerSurfaceVersion);
         CanvasImageSource? replacement = null;
         try
         {
@@ -12190,14 +12403,21 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                 (float)Math.Ceiling(height),
                 dpi);
 
+            if (!IsSelectionAdornerSurfaceCurrent(adorner, surfaceVersion))
+                return false;
+
+            // Keep the old managed owner through the dependency-property call.
+            // Creation/attachment can reenter unload or a newer replacement.
+            adorner.Source = replacement;
+            if (!IsSelectionAdornerSurfaceCurrent(adorner, surfaceVersion))
+                return false;
+
             _selectionAdornerSource = replacement;
             _selectionAdornerSourceWidth = width;
             _selectionAdornerSourceHeight = height;
             _selectionAdornerSourceDpi = dpi;
-            _selectionAdorner.Source = replacement;
             // CanvasImageSource is not IDisposable in the Win2D projection.
-            // Detaching the old ImageSource and dropping the final managed
-            // reference releases its compositor surface.
+            // Publish ownership only after XAML has accepted the replacement.
             return true;
         }
         catch (Exception ex) when (GraphicsDeviceErrors.IsDeviceLost(ex))
@@ -12212,10 +12432,27 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                 $"[MarkdownRendererControl] ignored selection surface creation during shutdown: {ex.GetType().Name} {GraphicsDeviceErrors.FormatHResult(ex.HResult)}");
             return false;
         }
+        finally
+        {
+            GC.KeepAlive(previousSource);
+            GC.KeepAlive(replacement);
+        }
+    }
+
+    private bool IsSelectionAdornerSurfaceCurrent(
+        Microsoft.UI.Xaml.Controls.Image adorner,
+        long surfaceVersion)
+    {
+        return !_isDisposed && !_isUnloaded &&
+            ReferenceEquals(adorner, _selectionAdorner) &&
+            surfaceVersion == _selectionAdornerSurfaceVersion;
     }
 
     private void ReleaseSelectionAdornerSurface()
     {
+        CanvasImageSource? previousSource = _selectionAdornerSource;
+        long surfaceVersion = unchecked(++_selectionAdornerSurfaceVersion);
+        Microsoft.UI.Xaml.Controls.Image? adorner = _selectionAdorner;
         CancelSelectionAdornerRetry();
         _selectionAdornerGeometryDirty = true;
         _selectionAdornerVisualDirty = true;
@@ -12225,13 +12462,27 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         _selectionAdornerViewportWidth = double.NaN;
         _selectionAdornerViewportHeight = double.NaN;
         _selectionAdornerRasterizationScale = double.NaN;
-        _selectionAdornerSource = null;
-        _selectionAdornerSourceWidth = 0;
-        _selectionAdornerSourceHeight = 0;
-        _selectionAdornerSourceDpi = 0;
+        try
+        {
+            if (adorner is not null)
+                adorner.Source = null;
 
-        if (_selectionAdorner is not null)
-            _selectionAdorner.Source = null;
+            // A nested detach/replacement owns the newer state. If XAML throws,
+            // retain the old owner and dimensions for the lifecycle retry.
+            if (surfaceVersion != _selectionAdornerSurfaceVersion ||
+                !ReferenceEquals(adorner, _selectionAdorner))
+            {
+                return;
+            }
+            _selectionAdornerSource = null;
+            _selectionAdornerSourceWidth = 0;
+            _selectionAdornerSourceHeight = 0;
+            _selectionAdornerSourceDpi = 0;
+        }
+        finally
+        {
+            GC.KeepAlive(previousSource);
+        }
     }
 
     private bool EnsureSelectionAdorner()
@@ -12603,6 +12854,8 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             return;
         }
 
+        _pendingTouchSelectionPresentationRestore = null;
+
         var point = e.Point;
         MarkdownPointerModality modality = GetPointerModality(e.Pointer.PointerDeviceType);
         bool primary = modality == MarkdownPointerModality.Touch
@@ -12643,9 +12896,19 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             ResetSelectionHandleDrag();
             return;
         }
-        if (!CapturePointerForInput(handle, e))
+        if (e.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Touch &&
+            !_touchTapSuppression.TryBeginContact(e.Pointer.PointerId, out e.TouchTapGestureEpoch))
         {
             ResetSelectionHandleDrag();
+            _touchSelection.Cancel(e.Pointer.PointerId);
+            return;
+        }
+        if (!CapturePointerForInput(handle, e))
+        {
+            if (e.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Touch)
+                _touchTapSuppression.CancelContact(e.Pointer.PointerId);
+            ResetSelectionHandleDrag();
+            _touchSelection.Cancel(e.Pointer.PointerId);
             return;
         }
 
@@ -12658,7 +12921,10 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             _touchSelection.State is not TouchSelectionState.DraggingStartHandle and
                 not TouchSelectionState.DraggingEndHandle)
         {
+            if (e.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Touch)
+                _touchTapSuppression.CancelContact(e.Pointer.PointerId);
             ResetSelectionHandleDrag();
+            _touchSelection.Cancel(e.Pointer.PointerId);
             return;
         }
         _selectionHandleCaptureTarget = handle;
@@ -12703,7 +12969,9 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         _selectionHandleMovePending = true;
         ApplyPendingSelectionHandleMove(sustained: false);
         if (_canvas is not null && e.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Touch)
-            SuppressTouchTap(e.Point.Position);
+            SuppressTouchTap(e.Point.Position, e.TouchTapGestureEpoch);
+        if (e.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Touch)
+            _touchTapSuppression.EndContact(e.Pointer.PointerId);
         _selectionHandleCaptureTarget = null;
         _touchSelection.CompleteHandleDrag(e.Pointer.PointerId);
         _activeSelectionHandle = SelectionHandleEndpoint.None;
@@ -12724,6 +12992,8 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         if (_selectionHandlePointerId != e.Pointer.PointerId)
             return;
 
+        if (e.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Touch)
+            _touchTapSuppression.CancelContact(e.Pointer.PointerId);
         ResetSelectionHandleDrag();
         _touchSelection.Cancel(e.Pointer.PointerId);
         e.ResumeRebuildAfterInteraction = true;
@@ -13182,25 +13452,27 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         LayoutSnapshot snapshot,
         CanvasDrawingSession drawingSession,
         Rect viewport,
-        IReadOnlyList<Rect> selectionRects)
+        IReadOnlyList<SelectionBackgroundGeometry> selectionBackgrounds)
     {
         PaintLinkStateOverlay(drawingSession, viewport);
-        if (!_selection.IsActive || selectionRects.Count == 0)
+        if (!_selection.IsActive || selectionBackgrounds.Count == 0)
             return;
 
         Color selectedBackground = _themeSnapshot?.SelectionHighlightColor
             ?? Color.FromArgb(0xFF, 0x66, 0xAA, 0xE8);
         Color selectedForeground = _themeSnapshot?.SelectionForegroundColor
             ?? Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
-        foreach (Rect rectangle in selectionRects)
+        bool highContrast = _themeSnapshot?.IsHighContrast ?? false;
+        foreach (SelectionBackgroundGeometry background in selectionBackgrounds)
         {
+            Rect rectangle = background.Bounds;
             if (rectangle.Right < viewport.Left || rectangle.Left > viewport.Right ||
                 rectangle.Bottom < viewport.Top || rectangle.Top > viewport.Bottom)
             {
                 continue;
             }
 
-            drawingSession.FillRectangle(rectangle, selectedBackground);
+            background.Paint(drawingSession, selectedBackground, highContrast);
         }
         snapshot.PaintSelectionForeground(
             drawingSession,
@@ -13222,10 +13494,17 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     {
         if (e.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Touch)
         {
-            bool hadTouchSelection = _touchSelection.ShouldShowHandles && _selection.IsActive;
-            bool canceledOwner = _touchSelection.Cancel(e.Pointer.PointerId);
-            if (canceledOwner && hadTouchSelection && _touchSelection.State == TouchSelectionState.Canceled)
-                ClearSelectionForExternalInteraction();
+            _touchTapSuppression.CancelContact(e.Pointer.PointerId);
+            TouchSelectionCancelResult cancelResult = _touchSelection.CancelContact(e.Pointer.PointerId);
+            if (cancelResult != TouchSelectionCancelResult.NotOwner)
+            {
+                // A canceled unrelated contact should not dismiss a committed
+                // selection, but it must not leave the selection flyout alive.
+                CloseSelectionContextMenu();
+                UpdateSelectionHandles();
+                if (cancelResult == TouchSelectionCancelResult.ClearSelection && _selection.IsActive)
+                    ClearSelectionForExternalInteraction();
+            }
         }
 
         if (HandleHorizontalOverflowPointerCanceled(ref e))
@@ -13324,7 +13603,10 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     private void ProcessPointerReleased(ref PointerInput e)
     {
         if (e.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Touch)
+        {
+            _touchTapSuppression.EndContact(e.Pointer.PointerId);
             _touchSelection.EndContact(e.Pointer.PointerId);
+        }
 
         if (_canvas is null) return;
         if (HandleHorizontalOverflowPointerReleased(ref e))
@@ -16222,6 +16504,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                 if (!IsSelectionEnabled) return;
                 if (_selectionHandleCaptureTarget is not null)
                     ResetSelectionHandleDrag();
+                _touchTapSuppression.Reset();
                 _touchSelection.Reset();
                 _selection.SetAnchor(DocumentPosition.Zero);
                 _selection.ExtendTo(new DocumentPosition(int.MaxValue, int.MaxValue, int.MaxValue));

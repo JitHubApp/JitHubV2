@@ -23,7 +23,8 @@ using MarkdownRenderer.Theming;
 
 namespace MarkdownRenderer.Sample;
 
-#pragma warning disable MR1001 // The touch sample intentionally switches between both concrete viewport owners at runtime.
+// This sample deliberately switches between both concrete viewport owners to exercise both touch viewport modes.
+#pragma warning disable MR1001
 public sealed partial class MainWindow : Window
 {
     private const int FirstDocumentBlockIndex = 1;
@@ -50,6 +51,9 @@ public sealed partial class MainWindow : Window
     private readonly TextBlock _currentSampleStatus;
     private readonly AppBarToggleButton _taskEditingToggle;
     private readonly AppBarToggleButton _viewportOwnershipToggle;
+    private readonly TextBlock _touchContactStatus;
+    private readonly TouchContactObservation _touchContactObservation;
+    private bool _touchContactObservationEnabled;
     private string _currentPageTitle = string.Empty;
     private string _currentSampleSource = string.Empty;
     private string _lastRenderedEditorText = string.Empty;
@@ -116,6 +120,10 @@ public sealed partial class MainWindow : Window
         {
             Icon = new FontIcon { Glyph = "\uE706" },
             Label = SampleStrings.Get("CommandTheme", "Dark theme"),
+            // The shell initially inherits the application's startup theme.
+            // Initialize before subscribing so the toggle represents that
+            // appearance without issuing a theme change during construction.
+            IsChecked = Application.Current.RequestedTheme == ApplicationTheme.Dark,
         };
         AutomationProperties.SetAutomationId(themeToggle, "ThemeToggle");
         AutomationProperties.SetName(
@@ -349,15 +357,6 @@ public sealed partial class MainWindow : Window
         _renderer = CreateRenderer(ownsViewport: true);
         _rendererHost = new Grid();
         AttachRendererToHost(_renderer, ownsViewport: true);
-        Closed += (_, _) =>
-        {
-            ThemeResolver.SystemThemeProviderOverride = null;
-            _renderer.Dispose();
-            _textMateHighlighter.Dispose();
-            _engine.Dispose();
-            _svgRenderer.Dispose();
-            _performanceSession?.Dispose();
-        };
 
         // Hidden status TextBlock that mirrors RealizedEmbedCount so UI
         // automation tests can verify virtualisation without polluting the
@@ -446,6 +445,31 @@ public sealed partial class MainWindow : Window
         AutomationProperties.SetName(_currentSampleStatus, "page:pending");
         AutomationProperties.SetAccessibilityView(_currentSampleStatus, AccessibilityView.Raw);
 
+        _touchContactStatus = new TextBlock
+        {
+            Text = "{\"version\":1,\"rendererGeneration\":0," +
+                   "\"observationErrors\":0,\"observationStatus\":\"ok\"," +
+                   "\"active\":[],\"contacts\":[]}",
+            Opacity = 0,
+            IsHitTestVisible = false,
+            Width = 1,
+            Height = 1,
+        };
+        AutomationProperties.SetAutomationId(_touchContactStatus, "TouchContactObservation");
+        AutomationProperties.SetName(_touchContactStatus, _touchContactStatus.Text);
+        AutomationProperties.SetAccessibilityView(_touchContactStatus, AccessibilityView.Raw);
+        _touchContactObservation = new TouchContactObservation(_touchContactStatus);
+        Closed += (_, _) =>
+        {
+            _touchContactObservation.Detach();
+            ThemeResolver.SystemThemeProviderOverride = null;
+            _renderer.Dispose();
+            _textMateHighlighter.Dispose();
+            _engine.Dispose();
+            _svgRenderer.Dispose();
+            _performanceSession?.Dispose();
+        };
+
         Grid.SetColumn(_editor, 0);
         Grid.SetColumn(splitter, 1);
         Grid.SetColumn(_rendererHost, 2);
@@ -465,6 +489,7 @@ public sealed partial class MainWindow : Window
         Grid.SetRow(_linkActivationStatus, 1);
         Grid.SetRow(_themeStatus, 1);
         Grid.SetRow(_currentSampleStatus, 1);
+        Grid.SetRow(_touchContactStatus, 1);
         workspace.Children.Add(_diagnosticsBar);
         workspace.Children.Add(contentGrid);
         workspace.Children.Add(_realizedCountStatus);
@@ -474,6 +499,7 @@ public sealed partial class MainWindow : Window
         workspace.Children.Add(_linkActivationStatus);
         workspace.Children.Add(_themeStatus);
         workspace.Children.Add(_currentSampleStatus);
+        workspace.Children.Add(_touchContactStatus);
         navigationView.Content = workspace;
 
         NavigationViewItem? initialItem = null;
@@ -660,6 +686,10 @@ public sealed partial class MainWindow : Window
         replacement.Theme = theme;
         replacement.IsTaskListEditingEnabled = taskEditing;
         _renderer = replacement;
+        if (_touchContactObservationEnabled)
+            _touchContactObservation.Attach(replacement);
+        else
+            _touchContactObservation.Detach();
         AttachRendererToHost(replacement, ownsViewport);
         previous.Dispose();
         _lastRenderedEditorText = source;
@@ -694,6 +724,12 @@ public sealed partial class MainWindow : Window
             _taskEditingToggle.IsChecked = false;
         if (!isTouchSelectionPage && _viewportOwnershipToggle.IsChecked == true)
             _viewportOwnershipToggle.IsChecked = false;
+
+        _touchContactObservationEnabled = isTouchSelectionPage;
+        if (_touchContactObservationEnabled)
+            _touchContactObservation.Attach(_renderer);
+        else
+            _touchContactObservation.Detach();
 
         _currentPageTitle = SampleStrings.Get(page.TitleResourceKey, page.FallbackTitle);
         UpdatePageTitle(modified: false);
@@ -784,8 +820,7 @@ public sealed partial class MainWindow : Window
             ":",
             e.Action ?? string.Empty);
 
-        if (string.Equals(e.Url, "https://example.invalid/mermaid-node", StringComparison.Ordinal) ||
-            string.Equals(e.Url, "https://example.invalid/touch-link", StringComparison.Ordinal))
+        if (SampleLinkRouting.IsInertFixtureUri(e.Uri))
         {
             e.Handled = true;
             UpdateLinkActivationStatus(activation + ":sample-handled");

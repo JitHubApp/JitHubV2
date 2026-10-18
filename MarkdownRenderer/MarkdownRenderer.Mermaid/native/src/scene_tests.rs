@@ -42,6 +42,99 @@ fn scene(svg: &str) -> Vec<u8> {
     .unwrap()
 }
 
+fn scene_with_source(svg: &str, source: &str) -> Result<Vec<u8>, Status> {
+    svg_to_mmir(
+        svg,
+        source,
+        &limits(),
+        false,
+        &DirectWriteMeasurer::from_catalog(&[]).unwrap(),
+        &OperationControl::new(),
+    )
+}
+
+#[test]
+fn final_model_provenance_distinguishes_identical_node_labels() {
+    let svg = r#"<svg viewBox="0 0 100 40">
+      <g class="node" id="generated-first" data-mmir-node-id="first" data-mmir-source-start="0" data-mmir-source-end="4"><text>same</text></g>
+      <g class="node" id="generated-second" data-mmir-node-id="second" data-mmir-source-start="8" data-mmir-source-end="12"><text>same</text></g>
+    </svg>"#;
+    let bytes = scene_with_source(svg, "same----same").unwrap();
+    let ranges = section(&bytes, 9)
+        .chunks_exact(20)
+        .skip(1)
+        .map(|mapping| (read_u32(mapping, 4), read_u32(mapping, 8)))
+        .collect::<Vec<_>>();
+    assert_eq!(ranges, vec![(0, 4), (8, 4)]);
+
+    let renamed =
+        scene_with_source(&svg.replace("generated-", "different-"), "same----same").unwrap();
+    let ids = |bytes: &[u8]| {
+        section(bytes, 6)
+            .chunks_exact(32)
+            .map(|semantic| read_u32(semantic, 0))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        ids(&bytes),
+        ids(&renamed),
+        "canonical identity, not generated SVG ids, owns source ids"
+    );
+}
+
+#[test]
+fn spatial_label_assignment_preserves_final_model_source_range() {
+    let bytes = scene_with_source(
+        r#"<svg viewBox="0 0 100 40"><g class="node" data-mmir-node-id="second" data-mmir-source-start="8" data-mmir-source-end="12"><rect width="90" height="30"/></g><text x="20" y="20">same</text></svg>"#,
+        "same----same",
+    ).unwrap();
+    let mapping = &section(&bytes, 9)[20..40];
+    assert_eq!((read_u32(mapping, 4), read_u32(mapping, 8)), (8, 4));
+}
+
+#[test]
+fn canonical_node_identity_is_not_limited_as_a_visible_label_string() {
+    let id = "n".repeat(limits().max_label_bytes + 1);
+    let svg = format!(
+        r#"<svg viewBox="0 0 100 40"><g class="node" data-mmir-node-id="{id}" data-mmir-source-start="0" data-mmir-source-end="4"><text>same</text></g></svg>"#
+    );
+    assert!(scene_with_source(&svg, "same").is_ok());
+}
+
+#[test]
+fn model_node_without_mappable_range_does_not_guess_another_labels_location() {
+    let bytes = scene_with_source(
+        r#"<svg viewBox="0 0 100 40"><g class="node" data-mmir-node-id="unmapped"><text>same</text></g></svg>"#,
+        "same----same",
+    ).unwrap();
+    let mapping = &section(&bytes, 9)[20..40];
+    assert_eq!((read_u32(mapping, 4), read_u32(mapping, 8)), (0, 12));
+}
+
+#[test]
+fn malformed_model_provenance_is_rejected_not_guessed() {
+    for attributes in [
+        r#"data-mmir-node-id="n" data-mmir-source-start="0""#,
+        r#"data-mmir-node-id="n" data-mmir-source-start="+0" data-mmir-source-end="4""#,
+        r#"data-mmir-node-id="n" data-mmir-source-start="4" data-mmir-source-end="0""#,
+        r#"data-mmir-node-id="n" data-mmir-source-start="0" data-mmir-source-end="0""#,
+        r#"data-mmir-node-id="n" data-mmir-source-start="8" data-mmir-source-end="8""#,
+        r#"data-mmir-node-id="n" data-mmir-source-start="1" data-mmir-source-end="4""#,
+        r#"data-mmir-node-id="n" data-mmir-source-start="0" data-mmir-source-end="999""#,
+        r#"data-mmir-node-id="n" data-mmir-source-start="0" data-mmir-source-end="4294967296""#,
+        r#"data-mmir-source-start="0" data-mmir-source-end="4""#,
+        r#"data-mmir-node-id="" data-mmir-source-start="0" data-mmir-source-end="4""#,
+    ] {
+        let svg = format!(
+            r#"<svg viewBox="0 0 100 40"><g class="node" {attributes}><text>same</text></g></svg>"#
+        );
+        assert!(
+            matches!(scene_with_source(&svg, "😀same"), Err(Status::InvalidScene)),
+            "accepted malformed provenance: {attributes}"
+        );
+    }
+}
+
 fn commands(svg: &str) -> Vec<(u16, Vec<f32>)> {
     let scene = scene(svg);
     let geometry = section(&scene, 4);
@@ -59,6 +152,319 @@ fn commands(svg: &str) -> Vec<(u16, Vec<f32>)> {
             )
         })
         .collect()
+}
+
+fn strings(bytes: &[u8]) -> Vec<&str> {
+    let data = section(bytes, 2);
+    let mut values = Vec::new();
+    let mut cursor = 0;
+    while cursor < data.len() {
+        let length = read_u32(data, cursor);
+        cursor += 4;
+        values.push(std::str::from_utf8(&data[cursor..cursor + length]).unwrap());
+        cursor = (cursor + length + 3) & !3;
+    }
+    values
+}
+
+#[test]
+fn canonical_edge_path_and_caption_share_one_budgeted_semantic_in_either_order() {
+    let path = r#"<path class="relation" data-mmir-edge-id="relation-1" d="M 0 0 L 80 20"/>"#;
+    let caption = r#"<g data-mmir-edge-id="relation-1"><text data-mmir-final-text="true" x="20" y="20"><tspan>uses</tspan><tspan> stable</tspan><tspan> text</tspan></text></g>"#;
+    for children in [format!("{path}{caption}"), format!("{caption}{path}")] {
+        let svg = format!(r#"<svg viewBox="0 0 300 100">{children}</svg>"#);
+        let mut scene_limits = limits();
+        scene_limits.max_nodes = 0;
+        scene_limits.max_edges = 1;
+        let bytes = svg_to_mmir(
+            &svg,
+            "classDiagram\nA --> B : uses stable text",
+            &scene_limits,
+            false,
+            &DirectWriteMeasurer::from_catalog(&[]).unwrap(),
+            &OperationControl::new(),
+        )
+        .unwrap();
+        let semantics = section(&bytes, 6);
+        assert_eq!(semantics.len(), 2 * 32, "one root and one relationship");
+        let relation = &semantics[32..64];
+        assert_eq!(read_u32(relation, 4), SemanticRole::Edge as usize);
+        assert_eq!(strings(&bytes)[read_u32(relation, 8)], "uses stable text");
+        assert_eq!(read_u32(relation, 16), 0);
+        for command in section(&bytes, 5).chunks_exact(32) {
+            assert_eq!(
+                read_u32(command, 8),
+                1,
+                "path and every caption run share ownership"
+            );
+        }
+        let mapping = &section(&bytes, 9)[20..40];
+        assert_eq!((read_u32(mapping, 4), read_u32(mapping, 8)), (0, 39));
+    }
+}
+
+#[test]
+fn canonical_edge_identity_keeps_identical_captions_on_distinct_relationships() {
+    let bytes = scene(
+        r#"<svg viewBox="0 0 300 100">
+          <path class="relation" data-mmir-edge-id="first" d="M 0 0 L 80 20"/>
+          <path class="relation" data-mmir-edge-id="second" d="M 0 40 L 80 60"/>
+          <g data-mmir-edge-id="first"><text x="20" y="20">same caption</text></g>
+          <g data-mmir-edge-id="second"><text x="20" y="60">same caption</text></g>
+        </svg>"#,
+    );
+    let semantics = section(&bytes, 6).chunks_exact(32).collect::<Vec<_>>();
+    assert_eq!(semantics.len(), 3);
+    let values = strings(&bytes);
+    assert_eq!(values[read_u32(semantics[1], 8)], "same caption");
+    assert_eq!(values[read_u32(semantics[2], 8)], "same caption");
+    assert_ne!(read_u32(semantics[1], 0), read_u32(semantics[2], 0));
+    let owners = section(&bytes, 5)
+        .chunks_exact(32)
+        .map(|command| read_u32(command, 8))
+        .collect::<Vec<_>>();
+    assert_eq!(owners, vec![1, 2, 1, 2]);
+}
+
+#[test]
+fn canonical_edge_metadata_rejects_empty_mixed_conflicting_or_cross_parent_owners() {
+    for children in [
+        r#"<path class="relation" data-mmir-edge-id="" d="M 0 0 L 10 10"/>"#,
+        r#"<g class="node" data-mmir-edge-id="edge"><text>bad</text></g>"#,
+        r#"<path class="relation" data-mmir-edge-id="edge" data-mmir-node-id="node" d="M 0 0 L 10 10"/>"#,
+        r#"<g data-mmir-edge-id="edge"><text>first</text></g><g data-mmir-edge-id="edge"><text>different</text></g>"#,
+        r#"<g class="cluster"><path class="relation" data-mmir-edge-id="edge" d="M 0 0 L 10 10"/></g><g data-mmir-edge-id="edge"><text>outside</text></g>"#,
+    ] {
+        let svg = format!(r#"<svg viewBox="0 0 100 100">{children}</svg>"#);
+        assert!(
+            matches!(
+                scene_with_source(&svg, "classDiagram\nA --> B"),
+                Err(Status::InvalidScene)
+            ),
+            "accepted malformed edge identity: {children}"
+        );
+    }
+}
+
+#[test]
+fn canonical_nested_edge_parts_reuse_the_same_semantic_without_a_self_parent() {
+    let bytes = scene(
+        r#"<svg viewBox="0 0 100 100"><g data-mmir-edge-id="edge"><path class="relation" data-mmir-edge-id="edge" d="M 0 0 L 10 10"/><text>caption</text></g></svg>"#,
+    );
+    assert_eq!(section(&bytes, 6).len(), 2 * 32);
+    let relation = &section(&bytes, 6)[32..64];
+    assert_eq!(read_u32(relation, 16), 0);
+    assert!(
+        section(&bytes, 5)
+            .chunks_exact(32)
+            .all(|command| read_u32(command, 8) == 1)
+    );
+}
+
+#[test]
+fn accessible_svg_title_remains_literal_metadata_not_label_markup() {
+    let svg = r#"<svg viewBox="0 0 100 40"><title>&lt;b&gt;literal&lt;/b&gt; &amp;quot;</title><text x="5" y="20">body</text></svg>"#;
+    let bytes = scene(svg);
+    let values = strings(&bytes);
+    let root = &section(&bytes, 6)[..32];
+    assert_eq!(values[read_u32(root, 8)], "<b>literal</b> &quot;");
+}
+
+#[test]
+fn root_svg_description_reaches_semantics_without_becoming_painted_body_or_markup() {
+    let svg = r#"<svg viewBox="0 0 100 40"><title>title</title><desc>&lt;b&gt;literal&lt;/b&gt; &amp;quot; ﬂ°quot¶ß</desc><text x="5" y="20">body</text></svg>"#;
+    let bytes = scene(svg);
+    let values = strings(&bytes);
+    let root = &section(&bytes, 6)[..32];
+    assert_eq!(values[read_u32(root, 12)], "<b>literal</b> &quot; ﬂ°quot¶ß");
+    let text_commands = section(&bytes, 5)
+        .chunks_exact(32)
+        .filter(|command| u16::from_le_bytes(command[..2].try_into().unwrap()) == 10)
+        .collect::<Vec<_>>();
+    assert_eq!(text_commands.len(), 1);
+    assert_eq!(values[read_u32(text_commands[0], 12)], "body");
+}
+
+#[test]
+fn nested_svg_metadata_does_not_impersonate_the_diagram_title_or_description() {
+    let bytes = scene(
+        r#"<svg viewBox="0 0 100 40"><g><title>node tooltip</title><desc>node description</desc><text x="5" y="20">body</text></g></svg>"#,
+    );
+    let root = &section(&bytes, 6)[..32];
+    assert_eq!(read_u32(root, 8), NO_INDEX as usize);
+    assert_eq!(read_u32(root, 12), NO_INDEX as usize);
+    assert!(!strings(&bytes).contains(&"node tooltip"));
+    assert!(!strings(&bytes).contains(&"node description"));
+}
+
+#[test]
+fn display_none_prunes_hidden_popup_paint_semantics_links_and_descendants() {
+    let bytes = scene(
+        r#"<svg viewBox="0 0 200 100">
+          <g class="actorPopupMenu" display="none"><g class="actor"><rect width="80" height="30"/><a href="https://example.test/"><text>hidden popup</text></a></g></g>
+          <g style="display: none"><text style="display: block">hidden descendant</text></g>
+          <g class="node"><text>visible message</text></g>
+        </svg>"#,
+    );
+    assert_eq!(section(&bytes, 6).len(), 2 * 32);
+    assert!(section(&bytes, 7).is_empty());
+    assert_eq!(section(&bytes, 5).len(), 32);
+    assert!(strings(&bytes).contains(&"visible message"));
+    assert!(!strings(&bytes).iter().any(|value| value.contains("hidden")));
+}
+
+#[test]
+fn root_display_none_prunes_background_metadata_and_interactive_children() {
+    let bytes = scene(
+        r#"<svg viewBox="0 0 200 100" style="display:none; background:#ffffff">
+          <title>hidden diagram title</title>
+          <desc>hidden diagram description</desc>
+          <g class="node"><rect width="80" height="30"/><a href="https://example.test/"><text>hidden linked node</text></a></g>
+        </svg>"#,
+    );
+
+    let semantics = section(&bytes, 6);
+    assert_eq!(semantics.len(), 32, "the mandatory Diagram root remains");
+    let root = &semantics[..32];
+    assert_eq!(read_u32(root, 4), SemanticRole::Diagram as usize);
+    assert_eq!(
+        read_u32(root, 8),
+        NO_INDEX as usize,
+        "hidden title is not exposed"
+    );
+    assert_eq!(
+        read_u32(root, 12),
+        NO_INDEX as usize,
+        "hidden description is not exposed"
+    );
+    assert!(
+        section(&bytes, 5).is_empty(),
+        "hidden background and children do not paint"
+    );
+    assert!(
+        section(&bytes, 7).is_empty(),
+        "hidden links are not interactive"
+    );
+    assert!(
+        !strings(&bytes)
+            .iter()
+            .any(|value| value.contains("hidden linked node"))
+    );
+}
+
+#[test]
+fn hidden_tspan_bytes_do_not_consume_the_visible_label_limit() {
+    let hidden = "h".repeat(limits().max_label_bytes + 1);
+    let svg = format!(
+        r#"<svg viewBox="0 0 200 100"><g class="node"><text x="20" y="30">visible<tspan display="none">{hidden}</tspan></text></g></svg>"#
+    );
+    let bytes = scene(&svg);
+
+    let values = strings(&bytes);
+    let semantics = section(&bytes, 6);
+    assert_eq!(semantics.len(), 2 * 32);
+    let owner = &semantics[32..64];
+    assert_eq!(read_u32(owner, 4), SemanticRole::Node as usize);
+    assert_eq!(values[read_u32(owner, 8)], "visible");
+    assert!(
+        !values
+            .iter()
+            .any(|value| value.len() > limits().max_label_bytes)
+    );
+
+    let text_commands = section(&bytes, 5)
+        .chunks_exact(32)
+        .filter(|command| u16::from_le_bytes(command[..2].try_into().unwrap()) == 10)
+        .collect::<Vec<_>>();
+    assert_eq!(text_commands.len(), 1);
+    assert_eq!(values[read_u32(text_commands[0], 12)], "visible");
+}
+
+#[test]
+fn display_cascade_honors_importance_specificity_inline_and_later_declarations() {
+    let bytes = scene(
+        r#"<svg viewBox="0 0 300 100"><style>
+          .hidden { display: none !important; }
+          #visible-inline { display: none; }
+          .normal { display: none; }
+          #visible-specificity { display: block; }
+          .later { display: none; display: block; }
+        </style>
+        <text class="hidden" style="display: block">hidden important</text>
+        <text class="hidden" style="display: block !important">visible important</text>
+        <text id="visible-inline" style="display: inline">visible inline</text>
+        <text id="visible-specificity" class="normal">visible specificity</text>
+        <text class="later">visible later</text>
+        <text display="none" style="display: block">visible attribute override</text>
+        <text style="display: none; display: invalid">hidden invalid override</text>
+        </svg>"#,
+    );
+    let values = strings(&bytes);
+    for expected in [
+        "visible important",
+        "visible inline",
+        "visible specificity",
+        "visible later",
+        "visible attribute override",
+    ] {
+        assert!(values.contains(&expected), "missing {expected}");
+    }
+    assert!(!values.iter().any(|value| value.contains("hidden")));
+    assert_eq!(section(&bytes, 5).len(), 5 * 32);
+}
+
+#[test]
+fn hidden_tspans_do_not_enter_visible_node_name_or_text_metrics() {
+    let bytes = scene(
+        r#"<svg viewBox="0 0 300 100"><g class="node"><text x="20" y="30"><tspan>shown</tspan><tspan display="none">hidden</tspan><tspan> tail</tspan></text></g></svg>"#,
+    );
+    let values = strings(&bytes);
+    let owner = &section(&bytes, 6)[32..64];
+    assert_eq!(values[read_u32(owner, 8)], "shown tail");
+    assert!(!values.contains(&"hidden"));
+    assert_eq!(section(&bytes, 5).len(), 2 * 32);
+}
+
+#[test]
+fn legacy_raw_label_markup_is_resolved_before_text_metrics_and_semantics() {
+    let svg = r#"<svg viewBox="0 0 300 100"><g class="node"><text x="150" y="40" text-anchor="middle">&lt;b&gt;Bold&lt;/b&gt;</text></g></svg>"#;
+    let bytes = scene(svg);
+    let values = strings(&bytes);
+    let node = &section(&bytes, 6)[32..64];
+    assert_eq!(values[read_u32(node, 8)], "Bold");
+    let text = section(&bytes, 5)
+        .chunks_exact(32)
+        .find(|command| u16::from_le_bytes(command[..2].try_into().unwrap()) == 10)
+        .unwrap();
+    assert_eq!(values[read_u32(text, 12)], "Bold");
+    let metrics = commands(svg);
+    let width = DirectWriteMeasurer::from_catalog(&[])
+        .unwrap()
+        .run_metrics("Bold", "Segoe UI", 16.0, 400, false)
+        .unwrap()
+        .0;
+    assert!((metrics[0].1[0] - (150.0 - width / 2.0)).abs() < 0.01);
+}
+
+#[test]
+fn classified_literal_label_is_not_reinterpreted_as_formatting_after_xml_decode() {
+    let svg = r#"<svg viewBox="0 0 300 100"><g class="node"><text data-mmir-final-text="true" x="150" y="40" text-anchor="middle"><tspan>&lt;b&gt;literal&lt;/b&gt;</tspan></text></g></svg>"#;
+    let bytes = scene(svg);
+    let values = strings(&bytes);
+    let node = &section(&bytes, 6)[32..64];
+    assert_eq!(values[read_u32(node, 8)], "<b>literal</b>");
+    let text = section(&bytes, 5)
+        .chunks_exact(32)
+        .find(|command| u16::from_le_bytes(command[..2].try_into().unwrap()) == 10)
+        .unwrap();
+    assert_eq!(values[read_u32(text, 12)], "<b>literal</b>");
+    let metrics = commands(svg);
+    let width = DirectWriteMeasurer::from_catalog(&[])
+        .unwrap()
+        .run_metrics("<b>literal</b>", "Segoe UI", 16.0, 400, false)
+        .unwrap()
+        .0;
+    assert!((metrics[0].1[0] - (150.0 - width / 2.0)).abs() < 0.01);
 }
 
 #[test]

@@ -1505,7 +1505,8 @@ internal static partial class ReadmeAuditProbe
         bool offlineSameBytePublicAudit = false,
         string? pinnedManifestPath = null,
         int? pinnedManifestRank = null,
-        string? pinnedManifestSha256 = null)
+        string? pinnedManifestSha256 = null,
+        Func<ReadmeCorrectnessLiveContext, ReadmeCorrectnessInteractionResult>? correctnessInteraction = null)
     {
         if (offlineSameBytePublicAudit &&
             (!removeGitHubCredentials || string.IsNullOrWhiteSpace(pinnedManifestPath) ||
@@ -2099,6 +2100,38 @@ internal static partial class ReadmeAuditProbe
             PreserveEvidenceFile(svgWorkerEvidence, Path.Combine(output, "svg-worker-timeouts.ndjson"));
             PreserveEvidenceFile(svgPreflightEvidence, Path.Combine(output, "svg-preflight-rejections.ndjson"));
 
+            ReadmeCorrectnessInteractionResult? correctnessInteractionResult = null;
+            if (correctnessInteraction is not null)
+            {
+                try
+                {
+                    correctnessInteractionResult = correctnessInteraction(new ReadmeCorrectnessLiveContext
+                    {
+                        Window = window!,
+                        Host = host,
+                        ExpectedText = WaitForStableCorrectnessText(host, TimeSpan.FromSeconds(30)),
+                        ReadmeSourceEvidencePath = readmeSourceEvidence,
+                        NativeOutputDirectory = output,
+                        ProcessId = processId,
+                    });
+                }
+                catch (Exception exception)
+                {
+                    // Keep callback failures visible without bypassing the normal
+                    // clean-close path. Correctness probes must not lose shutdown
+                    // evidence because a selection or navigation assertion failed.
+                    correctnessInteractionResult = new ReadmeCorrectnessInteractionResult
+                    {
+                        Checks =
+                        [
+                            CorrectnessCheck.Failed("selection", RedactUrls(exception.Message)),
+                            CorrectnessCheck.Failed("plainTextCopy", "Interaction callback terminated before clipboard verification."),
+                            CorrectnessCheck.Failed("routeAwayAndBack", "Interaction callback terminated before navigation verification."),
+                        ],
+                    };
+                }
+            }
+
             ReadmeAuditCloseResult close = CloseAndWait(appProcess, launcher);
             if (!close.CleanExit)
                 PreserveShutdownExceptionDiagnostics(dataRoot, output);
@@ -2171,6 +2204,7 @@ internal static partial class ReadmeAuditProbe
                 ReadmeSourceSha256 = nativeReadmeIdentity?.RawSha256,
                 ReadmeSourceDecodedTextSha256 = nativeReadmeIdentity?.DecodedTextSha256,
                 VisualProfile = readinessRenderCompleteSignal.VisualProfile,
+                CorrectnessInteractions = correctnessInteractionResult,
             };
         }
         catch
@@ -4146,7 +4180,7 @@ internal static partial class ReadmeAuditProbe
         throw new TimeoutException("README UIA text remained empty after rendering.");
     }
 
-    private static string ReadDocumentTextInBoundedChunks(ITextRange documentRange)
+    private static string ReadDocumentTextInBoundedChunks(ITextRange documentRange, bool requireComplete = false)
     {
         const int chunkCharacters = 32 * 1024;
         const int maximumDocumentCharacters = 16 * 1024 * 1024;
@@ -4177,7 +4211,10 @@ internal static partial class ReadmeAuditProbe
             string value = chunk.GetText(-1);
             if (value.Length == 0)
                 break;
-            result.Append(value);
+            if (requireComplete)
+                AppendExactDocumentTextChunk(result, value, maximumDocumentCharacters);
+            else
+                result.Append(value);
             if (firstChunk) WriteNativeAuditStage("TextPatternRange.MoveEndpointByRange to next chunk");
             cursor.MoveEndpointByRange(
                 TextPatternRangeEndpoint.Start,
@@ -4189,6 +4226,26 @@ internal static partial class ReadmeAuditProbe
                 TextPatternRangeEndpoint.End);
         }
 
+        if (requireComplete)
+        {
+            bool hasRemainingText = CompareTextRangeEndpoints(cursor, documentRange, null) < 0;
+            return CompleteExactDocumentText(result, maximumDocumentCharacters, hasRemainingText);
+        }
+
+        return result.ToString();
+    }
+
+    private static void AppendExactDocumentTextChunk(StringBuilder result, string chunk, int maximumCharacters)
+    {
+        if (maximumCharacters < 0 || result.Length > maximumCharacters || chunk.Length > maximumCharacters - result.Length)
+            throw new InvalidDataException("Complete UIA document text exceeds the configured character bound.");
+        result.Append(chunk);
+    }
+
+    private static string CompleteExactDocumentText(StringBuilder result, int maximumCharacters, bool hasRemainingText)
+    {
+        if (result.Length > maximumCharacters || hasRemainingText)
+            throw new InvalidDataException("UIA document text could not be read completely within the configured character bound.");
         return result.ToString();
     }
 
@@ -6496,6 +6553,8 @@ internal sealed class NativeAuditResult
     public string? ReadmeSourceSha256 { get; init; }
     public string? ReadmeSourceDecodedTextSha256 { get; init; }
     public NativeVisualProfileSignal? VisualProfile { get; init; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public ReadmeCorrectnessInteractionResult? CorrectnessInteractions { get; init; }
 }
 
 internal sealed record NativeSameByteReadmeSourceIdentity(

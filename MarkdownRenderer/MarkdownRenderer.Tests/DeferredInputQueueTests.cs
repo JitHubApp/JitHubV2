@@ -205,4 +205,127 @@ public sealed class DeferredInputQueueTests
         Assert.Equal("latest-deferred-move", coalesced);
         Assert.False(coalescedBlocks);
     }
+
+    [Fact]
+    public void SplitDrainHoldRehydratesItsPressEpochForLaterTap()
+    {
+        var queue = new DeferredInputQueue<DeferredTouchInput>(capacity: 4);
+        var policy = new TouchTapSuppressionPolicy();
+        var point = new Windows.Foundation.Point(24, 40);
+        const uint pointerId = 31;
+
+        // PointerPressed is queued before it can establish the primary epoch.
+        Assert.True(queue.TryEnqueue(
+            new DeferredTouchInput(DeferredTouchInputKind.Press, pointerId, point, IsInContact: true),
+            pointerId,
+            coalescible: false));
+        Assert.True(queue.TryGetAt(0, out DeferredTouchInput queuedPress));
+        var resolver = new DeferredTouchGestureOwnerResolver(point);
+        resolver.ObserveTouchPress(queuedPress.PointerId, queuedPress.Position, queuedPress.IsInContact);
+        Assert.True(resolver.TryGetOwnerPointerId(out uint deferredOwnerPointerId));
+        Assert.Equal(pointerId, deferredOwnerPointerId);
+
+        // Hold is recognized and dispatched before the retry timer drains the
+        // press. The queued gesture carries the contact identity, not epoch 0.
+        Assert.True(queue.TryEnqueue(
+            new DeferredTouchInput(
+                DeferredTouchInputKind.Hold,
+                deferredOwnerPointerId,
+                point,
+                DeferredOwnerPointerId: deferredOwnerPointerId),
+            pointerId,
+            coalescible: false,
+            blocksSnapshotInteraction: false));
+
+        Assert.True(queue.TryDequeue(out DeferredTouchInput press));
+        Assert.Equal(DeferredTouchInputKind.Press, press.Kind);
+        Assert.True(policy.TryBeginContact(press.PointerId, out long holdEpoch));
+        Assert.True(queue.TryDequeue(out DeferredTouchInput hold));
+        Assert.Equal(DeferredTouchInputKind.Hold, hold.Kind);
+        Assert.Equal(holdEpoch, policy.GetGestureEpochForPointerOrCompleted(hold.DeferredOwnerPointerId));
+        policy.SuppressTouchTap(holdEpoch, point, nowTickMs: 1_000);
+
+        // Release drains in a later batch. A later Tapped dispatch must recover
+        // the completed epoch rather than lose suppression because its initial
+        // event was observed after the hold's first batch completed.
+        Assert.True(queue.TryEnqueue(
+            new DeferredTouchInput(
+                DeferredTouchInputKind.Release,
+                pointerId,
+                point,
+                TouchTapGestureEpoch: holdEpoch),
+            pointerId,
+            coalescible: false));
+        Assert.True(queue.TryDequeue(out DeferredTouchInput release));
+        Assert.Equal(DeferredTouchInputKind.Release, release.Kind);
+        Assert.Equal(holdEpoch, release.TouchTapGestureEpoch);
+        Assert.True(policy.TryEndContact(release.PointerId, release.TouchTapGestureEpoch));
+        Assert.True(policy.TryGetGestureEpochForRecognizedGesture(
+            point,
+            out long tapEpoch,
+            out uint tapPointerId,
+            out bool ambiguous));
+        Assert.False(ambiguous);
+        Assert.Equal(pointerId, tapPointerId);
+        Assert.Equal(holdEpoch, tapEpoch);
+        Assert.True(policy.ShouldSuppressTap(tapEpoch, nowTickMs: 1_200, point));
+    }
+
+    [Fact]
+    public void NearbySecondaryRecognizedGestureCannotBorrowPrimaryOwner()
+    {
+        var policy = new TouchTapSuppressionPolicy();
+        var primaryPoint = new Windows.Foundation.Point(8, 40);
+        var secondaryPoint = new Windows.Foundation.Point(80, 40);
+        Assert.True(policy.TryBeginContact(17, out long primaryEpoch));
+        policy.SuppressTouchTap(primaryEpoch, primaryPoint, nowTickMs: 1_000);
+
+        // This is the production branch where the touch selection session
+        // rejects a second ID while retaining the first contact's selection.
+        policy.TrackUnownedContact(18, secondaryPoint);
+        Assert.False(policy.TryGetGestureEpochForRecognizedGesture(
+            secondaryPoint,
+            out long secondaryEpoch,
+            out _,
+            out bool secondaryAmbiguous));
+        Assert.True(secondaryAmbiguous);
+        Assert.Equal(0L, secondaryEpoch);
+
+        // The primary's own recognized event remains attributable when its
+        // location is outside the competing contact's spatial band.
+        Assert.True(policy.TryGetGestureEpochForRecognizedGesture(
+            primaryPoint,
+            out long recognizedPrimaryEpoch,
+            out uint recognizedPrimaryId,
+            out bool primaryAmbiguous));
+        Assert.False(primaryAmbiguous);
+        Assert.Equal(primaryEpoch, recognizedPrimaryEpoch);
+        Assert.Equal(17u, recognizedPrimaryId);
+
+        // PointerReleased leaves the secondary origin available for the
+        // ID-less trailing Tapped event, then the recognized gesture is ignored
+        // instead of being attributed to the still-completed primary owner.
+        policy.EndContact(18);
+        Assert.False(policy.TryGetGestureEpochForRecognizedGesture(
+            secondaryPoint,
+            out _,
+            out _,
+            out bool releasedSecondaryAmbiguous));
+        Assert.True(releasedSecondaryAmbiguous);
+    }
+
+    private enum DeferredTouchInputKind
+    {
+        Press,
+        Hold,
+        Release,
+    }
+
+    private readonly record struct DeferredTouchInput(
+        DeferredTouchInputKind Kind,
+        uint PointerId,
+        Windows.Foundation.Point Position,
+        bool IsInContact = false,
+        uint DeferredOwnerPointerId = 0,
+        long TouchTapGestureEpoch = 0);
 }

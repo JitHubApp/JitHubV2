@@ -176,19 +176,13 @@ public sealed class SvgPreflightSchedulingTests
     }
 
     [Theory]
-    [InlineData(false, false)]
-    [InlineData(false, true)]
-    [InlineData(true, false)]
-    [InlineData(true, true)]
-    public async Task Utf16SvgIsNormalizedToUtf8WithAndWithoutInertExternalDoctype(
-        bool bigEndian,
-        bool includeDoctype)
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Utf16SvgWithoutDoctypeIsNormalizedToUtf8(
+        bool bigEndian)
     {
-        string doctype = includeDoctype
-            ? "<!DOCTYPE svg PUBLIC '-//W3C//DTD SVG 1.1//EN' 'http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd'>"
-            : string.Empty;
         string sourceText =
-            "<?xml version='1.0' encoding='utf-16' standalone='yes'?>" + doctype +
+            "<?xml version='1.0' encoding='utf-16' standalone='yes'?>" +
             "<!--preserved comment--><?audit keep?><svg xmlns='http://www.w3.org/2000/svg' width='3' height='2'>" +
             "<desc>café</desc></svg>";
         Encoding encoding = new UnicodeEncoding(bigEndian, byteOrderMark: true);
@@ -212,6 +206,65 @@ public sealed class SvgPreflightSchedulingTests
         Assert.Equal("café", result.Info.Description);
         Assert.Equal(3, result.Info.IntrinsicWidthDips);
         Assert.Equal(2, result.Info.IntrinsicHeightDips);
+    }
+
+    [Theory]
+    [InlineData("utf8-no-bom")]
+    [InlineData("utf8-bom")]
+    [InlineData("utf16-le-bom")]
+    [InlineData("utf16-be-bom")]
+    [InlineData("utf16-le-no-bom")]
+    [InlineData("utf16-be-no-bom")]
+    public async Task InspectRejectsDocumentTypeAcrossXmlEncodingsAndPrologVariants(string encodingKind)
+    {
+        Encoding encoding;
+        string declaredEncoding;
+        switch (encodingKind)
+        {
+            case "utf8-no-bom":
+                encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+                declaredEncoding = "utf-8";
+                break;
+            case "utf8-bom":
+                encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: true);
+                declaredEncoding = "utf-8";
+                break;
+            case "utf16-le-bom":
+                encoding = new UnicodeEncoding(bigEndian: false, byteOrderMark: true);
+                declaredEncoding = "utf-16";
+                break;
+            case "utf16-be-bom":
+                encoding = new UnicodeEncoding(bigEndian: true, byteOrderMark: true);
+                declaredEncoding = "utf-16";
+                break;
+            case "utf16-le-no-bom":
+                encoding = new UnicodeEncoding(bigEndian: false, byteOrderMark: false);
+                declaredEncoding = "utf-16";
+                break;
+            case "utf16-be-no-bom":
+                encoding = new UnicodeEncoding(bigEndian: true, byteOrderMark: false);
+                declaredEncoding = "utf-16";
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(encodingKind));
+        }
+        string sourceText =
+            $"<?xml version='1.0' encoding='{declaredEncoding}' standalone='yes'?>\n" +
+            "<!-- literal <!DOCTYPE marker --><?audit keep?>\n" +
+            "<!DOCTYPE svg SYSTEM 'https://example.invalid/svg11.dtd'>" +
+            "<svg xmlns='http://www.w3.org/2000/svg'><desc>Rejected</desc></svg>";
+        byte[] source = EncodeWithPreamble(encoding, sourceText);
+        byte[] original = (byte[])source.Clone();
+
+        MarkdownSvgException exception = await Assert.ThrowsAsync<MarkdownSvgException>(async () =>
+            await SvgPreflight.InspectAsync(
+                new MarkdownSvgOpenRequest(source),
+                new ResvgMarkdownSvgRendererOptions(),
+                CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5)));
+
+        Assert.Equal(MarkdownSvgFailureReason.UnsupportedContent, exception.Reason);
+        Assert.Contains("DTD", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(original, source);
     }
 
     [Fact]
@@ -530,7 +583,7 @@ public sealed class SvgPreflightSchedulingTests
     }
 
     [Fact]
-    public async Task InertExternalDoctypeIsWhitespaceRemovedFromPrivateSnapshot()
+    public async Task ExternalDoctypeIsRejectedBeforePrivateSnapshotPublication()
     {
         const string sourceText =
             "<!DOCTYPE svg PUBLIC '-//W3C//DTD SVG 1.1//EN' " +
@@ -539,22 +592,21 @@ public sealed class SvgPreflightSchedulingTests
         byte[] source = Encoding.UTF8.GetBytes(sourceText);
         byte[] original = (byte[])source.Clone();
 
-        SvgPreflightResult result = await SvgPreflight.InspectAsync(
-            new MarkdownSvgOpenRequest(source),
-            new ResvgMarkdownSvgRendererOptions(),
-            CancellationToken.None);
+        MarkdownSvgException exception = await Assert.ThrowsAsync<MarkdownSvgException>(async () =>
+            await SvgPreflight.InspectAsync(
+                new MarkdownSvgOpenRequest(source),
+                new ResvgMarkdownSvgRendererOptions(),
+                CancellationToken.None));
 
+        Assert.Equal(MarkdownSvgFailureReason.UnsupportedContent, exception.Reason);
+        Assert.Contains("DTD", exception.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(original, source);
-        Assert.Equal(source.Length, result.Source.Length);
-        string sanitized = Encoding.UTF8.GetString(result.Source.CopyToArrayForTest());
-        Assert.DoesNotContain("<!DOCTYPE", sanitized, StringComparison.OrdinalIgnoreCase);
-        Assert.StartsWith(" ", sanitized);
-        Assert.Contains("<svg", sanitized);
     }
 
     [Theory]
     [InlineData("<svg xmlns='http://www.w3.org/2000/svg'><!-- literal <!DOCTYPE text> --></svg>")]
     [InlineData("<svg xmlns='http://www.w3.org/2000/svg'><![CDATA[<!DOCTYPE text>]]></svg>")]
+    [InlineData("<svg xmlns='http://www.w3.org/2000/svg'><text>&lt;!DOCTYPE text&gt;</text></svg>")]
     public async Task DoctypeMarkerTextOutsideThePrologDeclarationIsPreserved(string sourceText)
     {
         byte[] source = Encoding.UTF8.GetBytes(sourceText);
@@ -570,7 +622,24 @@ public sealed class SvgPreflightSchedulingTests
     }
 
     [Fact]
-    public async Task DoctypeMarkerInPrologCommentDoesNotHideTheActualUtf8BomDoctype()
+    public async Task LiteralDoctypeMarkerInPrologCommentIsPreservedWhenNoDeclarationExists()
+    {
+        const string markerComment = "<!-- literal <!DOCTYPE svg> marker -->";
+        byte[] source = Encoding.UTF8.GetBytes(
+            markerComment + "<?audit keep?><svg xmlns='http://www.w3.org/2000/svg' width='1' height='1'/>");
+        byte[] original = (byte[])source.Clone();
+
+        SvgPreflightResult result = await SvgPreflight.InspectAsync(
+            new MarkdownSvgOpenRequest(source),
+            new ResvgMarkdownSvgRendererOptions(),
+            CancellationToken.None);
+
+        Assert.Equal(original, source);
+        Assert.Contains(markerComment, Encoding.UTF8.GetString(result.Source.CopyToArrayForTest()));
+    }
+
+    [Fact]
+    public async Task DoctypeMarkerInPrologCommentDoesNotHideActualUtf8BomDoctype()
     {
         const string markerComment = "<!-- literal <!DOCTYPE comment text> -->";
         const string doctype =
@@ -584,17 +653,16 @@ public sealed class SvgPreflightSchedulingTests
         documentBytes.CopyTo(source, Encoding.UTF8.GetPreamble().Length);
         byte[] original = (byte[])source.Clone();
 
-        SvgPreflightResult result = await SvgPreflight.InspectAsync(
-            new MarkdownSvgOpenRequest(source),
-            new ResvgMarkdownSvgRendererOptions(),
-            CancellationToken.None);
+        MarkdownSvgException exception = await Assert.ThrowsAsync<MarkdownSvgException>(async () =>
+            await SvgPreflight.InspectAsync(
+                new MarkdownSvgOpenRequest(source),
+                new ResvgMarkdownSvgRendererOptions(),
+                CancellationToken.None));
 
-        string sanitized = Encoding.UTF8.GetString(result.Source.CopyToArrayForTest());
+        Assert.Equal(MarkdownSvgFailureReason.UnsupportedContent, exception.Reason);
+        Assert.Contains("DTD", exception.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(original, source);
-        Assert.Equal(source.Length, result.Source.Length);
-        Assert.Contains(markerComment, sanitized);
-        Assert.DoesNotContain(doctype, sanitized, StringComparison.Ordinal);
-        Assert.Contains("<svg", sanitized);
+        Assert.Contains(markerComment, Encoding.UTF8.GetString(source), StringComparison.Ordinal);
     }
 
     [Fact]

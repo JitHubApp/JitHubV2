@@ -22,10 +22,15 @@ public sealed class WorkerImportBoundaryTests
         var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "KERNEL32.dll", "ntdll.dll", "bcryptprimitives.dll", "api-ms-win-core-synch-l1-2-0.dll",
+            // Startup-token APIs use the audited core/security contracts,
+            // not ADVAPI32's broader regular/delayed dependency closure.
+            "api-ms-win-security-base-l1-1-0.dll", "api-ms-win-core-processthreads-l1-1-0.dll",
         };
         string[] imports = ReadImports(image, header.ImportTableDirectory, delayed: false)
             .Concat(ReadImports(image, header.DelayImportTableDirectory, delayed: true)).ToArray();
         Assert.NotEmpty(imports);
+        Assert.Contains(imports, name => name.Equals("api-ms-win-security-base-l1-1-0.dll", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(imports, name => name.Equals("api-ms-win-core-processthreads-l1-1-0.dll", StringComparison.OrdinalIgnoreCase));
         Assert.All(imports, name => Assert.True(allowed.Contains(name),
             $"The restricted worker imports an unaudited system library: {name}"));
     }

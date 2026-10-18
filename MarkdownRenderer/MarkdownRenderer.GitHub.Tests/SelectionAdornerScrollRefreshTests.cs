@@ -63,16 +63,27 @@ public sealed class SelectionAdornerScrollRefreshTests
         string refresh = MethodBody(source, "private SelectionAdornerRefreshOperationResult RefreshSelectionAdornerUnderPaintLease(");
         int hasContent = refresh.IndexOf("bool hasContent = paintRects.Count > 0 ||", StringComparison.Ordinal);
         int noContent = refresh.IndexOf("if (!hasContent)", hasContent, StringComparison.Ordinal);
-        int commitRects = refresh.IndexOf("CommitSelectionAdornerRectangles(paintRects);", noContent, StringComparison.Ordinal);
+        int commitGeometry = refresh.IndexOf(
+            "CommitSelectionAdornerGeometry(paintRects, paintBackgrounds);",
+            noContent,
+            StringComparison.Ordinal);
         int collapse = refresh.IndexOf("_selectionAdorner.Visibility = Visibility.Collapsed;", noContent, StringComparison.Ordinal);
         int commitViewport = refresh.IndexOf("CommitSelectionAdornerViewport(", noContent, StringComparison.Ordinal);
         int updateHandles = refresh.IndexOf("UpdateSelectionHandlesUnderPaint(snapshot, new Rect(0, top, width, height));", noContent, StringComparison.Ordinal);
         int complete = refresh.IndexOf("return SelectionAdornerRefreshOperationResult.Completed;", noContent, StringComparison.Ordinal);
 
         Assert.True(hasContent >= 0 && noContent > hasContent);
-        Assert.True(commitRects > noContent && collapse > noContent);
+        Assert.True(commitGeometry > noContent && collapse > commitGeometry);
         Assert.True(commitViewport > collapse && updateHandles > commitViewport && complete > updateHandles);
-        Assert.Contains("if (rebuildGeometry)", refresh[..noContent], StringComparison.Ordinal);
+        Assert.Contains("if (rebuildGeometry)", refresh[noContent..commitGeometry], StringComparison.Ordinal);
+
+        string commit = MethodBody(source, "private void CommitSelectionAdornerGeometry(");
+        Assert.Contains("_selectionAdornerRects = stagedRectangles;", commit, StringComparison.Ordinal);
+        Assert.Contains("_selectionAdornerBackgrounds = stagedBackgrounds;", commit, StringComparison.Ordinal);
+        Assert.Contains("previousRectangles.Clear();", commit, StringComparison.Ordinal);
+        Assert.Contains("previousBackgrounds.Clear();", commit, StringComparison.Ordinal);
+        Assert.Contains("_selectionAdornerRectScratch.Clear();", commit, StringComparison.Ordinal);
+        Assert.Contains("_selectionAdornerBackgroundScratch.Clear();", commit, StringComparison.Ordinal);
     }
 
     [Fact]

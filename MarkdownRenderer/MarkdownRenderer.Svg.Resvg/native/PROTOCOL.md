@@ -13,6 +13,30 @@ SHA-256 of the source, rendering inputs, locale, and mapping handle. Every
 versions, nonces, IDs, flags, reserved bytes, lengths, or mappings are fatal
 protocol violations.
 
+## Trusted startup boundary
+
+The process primary token is low-integrity, privilege-restricted and restricted
+to the Restricted Code SID throughout its lifetime. The host creates it
+suspended, assigns its constrained kill-on-close job and applies its process
+mitigations before resuming it. No handles are inherited.
+
+WOW64 initialization needs a read of the Windows directory before worker code
+can run. For x86 only, the host attaches a low-integrity RC+Users impersonation
+token to the suspended initial thread. Its token-object DACL gives OWNER_RIGHTS
+only READ_CONTROL (suppressing implicit owner WRITE_DAC), with no token-query,
+duplication, impersonation or ACL-write grants to reopen it. All broker startup
+handles are closed before ResumeThread. This does not change the process primary
+token or grant steady-state filesystem access to the renderer.
+
+The worker's first action drops any thread impersonation, verifies that no
+thread token remains, and checks that its primary token is still RC-only and
+low-integrity. Failure terminates startup. This precedes argument parsing,
+opening the pipe, accessing document/font mappings or starting background
+threads. Only trusted native loader/runtime initialization executes in the
+temporary context; no SVG/raster/font input is admitted there. The wire format
+is unchanged by this startup boundary; source-bound host and worker builds
+must ship together.
+
 Request bytes 240 through 247 contain the little-endian UInt64 worker-local
 handle. Bytes 170 through 175 and 248 through 367 are reserved and must be zero;
 v6 name fields are not accepted. `Open`, `Render`, and `RasterDecode` require a nonzero,

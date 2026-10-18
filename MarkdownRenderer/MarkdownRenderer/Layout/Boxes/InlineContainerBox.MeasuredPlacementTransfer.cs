@@ -56,6 +56,7 @@ internal sealed partial class InlineContainerBox
         private readonly Thickness _preparedRawMargin;
         private readonly CanvasTextLayout _sourceLayout;
         private readonly NativeResourceRetirementRecord _sourceLayoutRetirementRecord;
+        private readonly ScriptBaselineGeometry _sourceScriptBaselineGeometry;
         private readonly CanvasTextLayout? _sourceSelectionLayout;
         private readonly NativeResourceRetirementRecord? _sourceSelectionLayoutRetirementRecord;
         private readonly CanvasLineMetrics[]? _sourceLineMetrics;
@@ -115,6 +116,7 @@ internal sealed partial class InlineContainerBox
             _preparedRawMargin = prepared.RawPlacementMargin;
             _sourceLayout = source._layout!;
             _sourceLayoutRetirementRecord = source._layoutRetirementRecord!;
+            _sourceScriptBaselineGeometry = source._scriptBaselineGeometry;
             _sourceSelectionLayout = source._selectionLayout;
             _sourceSelectionLayoutRetirementRecord = source._selectionLayoutRetirementRecord;
             _sourceLineMetrics = source._cachedLineMetrics;
@@ -415,6 +417,8 @@ internal sealed partial class InlineContainerBox
                 prepared.Bounds.Width != prepared._lastWidth ||
                 source.IsDirty ||
                 !ReferenceEquals(source._layout, _sourceLayout) ||
+                !source._scriptBaselineGeometry.HasSameGeometry(_sourceScriptBaselineGeometry) ||
+                !prepared._scriptBaselineGeometry.HasSameGeometry(_sourceScriptBaselineGeometry) ||
                 ReferenceEquals(prepared._layout, _sourceLayout) ||
                 ReferenceEquals(prepared._layout, _sourceSelectionLayout) ||
                 ReferenceEquals(prepared._layout, prepared._selectionLayout) ||
@@ -573,6 +577,8 @@ internal sealed partial class InlineContainerBox
             (source._layout, prepared._layout) = (prepared._layout, source._layout);
             (source._layoutRetirementRecord, prepared._layoutRetirementRecord) =
                 (prepared._layoutRetirementRecord, source._layoutRetirementRecord);
+            (source._scriptBaselineGeometry, prepared._scriptBaselineGeometry) =
+                (prepared._scriptBaselineGeometry, source._scriptBaselineGeometry);
             (source._cachedLineMetrics, prepared._cachedLineMetrics) =
                 (prepared._cachedLineMetrics, source._cachedLineMetrics);
             (source._lineMetricsRead, prepared._lineMetricsRead) =

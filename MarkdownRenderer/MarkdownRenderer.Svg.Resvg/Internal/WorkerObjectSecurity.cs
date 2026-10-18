@@ -53,6 +53,13 @@ internal static partial class WorkerObjectSecurity
         return CreateDescriptor(sddl);
     }
 
+    // This is the token object's DACL, not TokenDefaultDacl. An OWNER_RIGHTS
+    // ACE suppresses the owner's implicit WRITE_DAC; the worker cannot reopen
+    // this object with query, duplication, impersonation or ACL-write rights.
+    // The broker uses only its already-granted, non-inheritable handle.
+    internal static SecurityDescriptorHandle CreateStartupTokenDescriptor() =>
+        CreateDescriptor("D:P(A;;RC;;;OW)");
+
     public static void SetLowIntegrityLabel(SafeHandle handle)
     {
         ArgumentNullException.ThrowIfNull(handle);

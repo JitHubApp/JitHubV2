@@ -114,6 +114,11 @@ internal sealed class LayoutPlacementGeneration
     internal Rect ToLogicalRect(int ordinal, Rect physicalRect)
     {
         LayoutRootPlacement placement = GetPlacement(ordinal);
+        // Clipped vector semantics use Rect.Empty (infinite origin and negative
+        // infinite dimensions). It has no position to translate, and rebuilding
+        // it through Rect's constructor throws before consumers can skip it.
+        if (physicalRect.IsEmpty)
+            return Rect.Empty;
         // Map through the authoritative source-owner origin. Adding a rounded
         // `Top - BaseTop` translation back to a large root-local coordinate can
         // introduce a one-ULP drift even when the rectangle is exactly at the
@@ -144,6 +149,8 @@ internal sealed class LayoutPlacementGeneration
     internal Rect ToPhysicalViewport(int ordinal, Rect logicalViewport)
     {
         LayoutRootPlacement placement = GetPlacement(ordinal);
+        if (logicalViewport.IsEmpty)
+            return Rect.Empty;
         return new Rect(
             (double)placement.BaseX + (logicalViewport.X - placement.X),
             (double)placement.BaseTop + (logicalViewport.Y - placement.Top),

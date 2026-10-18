@@ -99,7 +99,7 @@ internal sealed class GitHubDetailsBlockRenderer : MarkdownNodeRenderer<GitHubDe
             primaryMarkup,
             SafeHtmlParseLimits.Default,
             context.CancellationToken);
-        string text = SafeHtmlParser.CollapseWhitespace(string.Concat(
+        string text = SafeHtmlParser.CollapseDecodedWhitespace(string.Concat(
             document.Root.Children.SelectMany(DescendantText))).Trim();
         return text.Length == 0 ? fallback : text;
     }
@@ -115,10 +115,8 @@ internal sealed class GitHubDetailsBlockRenderer : MarkdownNodeRenderer<GitHubDe
         MarkdownDocument fragment = Markdown.Parse(
             details.SummaryMarkup,
             context.Registry.BuildPipeline());
-        int sourceOffset = details.SummarySourceStart >= 0
-            ? details.SummarySourceStart
-            : details.Span.Start;
-        OffsetMarkdownSpans(fragment, sourceOffset);
+        MarkdownSourceProjection sourceProjection = details.CreateSummarySourceProjection();
+        sourceProjection.ApplyTo(fragment, context.CancellationToken);
 
         var rendered = new StackBox
         {
@@ -126,7 +124,8 @@ internal sealed class GitHubDetailsBlockRenderer : MarkdownNodeRenderer<GitHubDe
             FlowDirection = context.FlowDirection,
         };
         context.RegisterConstructionBlock(rendered);
-        GfmChildBuilder.PopulateChildren(rendered, fragment, context);
+        using (context.PushSourceProjection(sourceProjection))
+            GfmChildBuilder.PopulateChildren(rendered, fragment, context);
 
         if (rendered.Children.Count == 0)
         {
@@ -185,46 +184,6 @@ internal sealed class GitHubDetailsBlockRenderer : MarkdownNodeRenderer<GitHubDe
         // Children have been detached and reparented, leaving the staging
         // stack empty. Retire it rather than forgetting a temporary owner.
         context.DiscardConstructionBlock(rendered);
-    }
-
-    private static void OffsetMarkdownSpans(ContainerBlock container, int offset)
-    {
-        OffsetMarkdownSpan(container, offset);
-        foreach (Block block in container)
-        {
-            if (block is ContainerBlock childContainer)
-            {
-                OffsetMarkdownSpans(childContainer, offset);
-            }
-            else
-            {
-                OffsetMarkdownSpan(block, offset);
-                if (block is LeafBlock { Inline: not null } leaf)
-                    OffsetInlineSpans(leaf.Inline, offset);
-            }
-        }
-    }
-
-    private static void OffsetInlineSpans(ContainerInline container, int offset)
-    {
-        OffsetMarkdownSpan(container, offset);
-        foreach (Inline inline in container)
-        {
-            if (inline is ContainerInline child)
-                OffsetInlineSpans(child, offset);
-            else
-                OffsetMarkdownSpan(inline, offset);
-        }
-    }
-
-    private static void OffsetMarkdownSpan(MarkdownObject node, int offset)
-    {
-        if (node.Span.Start < 0)
-            return;
-
-        node.Span = new Markdig.Syntax.SourceSpan(
-            checked(node.Span.Start + offset),
-            checked(node.Span.End + offset));
     }
 
     private static System.Collections.Generic.IEnumerable<string> DescendantText(SafeHtmlNode node)

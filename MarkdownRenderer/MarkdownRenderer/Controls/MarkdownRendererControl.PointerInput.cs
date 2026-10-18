@@ -44,6 +44,9 @@ public partial class MarkdownRendererControl
         internal PointerPoint Point;
         internal VirtualKeyModifiers Modifiers;
         internal long TickCount;
+        internal long TouchTapGestureEpoch;
+        internal uint DeferredTouchGesturePointerId;
+        internal bool IgnoreUnattributableTouchGesture;
         internal bool CapturedBeforeDeferral;
         internal bool Handled;
         internal Windows.Foundation.Point GesturePosition;
@@ -106,6 +109,24 @@ public partial class MarkdownRendererControl
     private void OnSelectionHandlePointerReleased(object sender, PointerRoutedEventArgs e) => DispatchPointerInput(PointerInputKind.HandleRelease, sender, e);
     private void OnSelectionHandlePointerCanceled(object sender, PointerRoutedEventArgs e) => DispatchPointerInput(PointerInputKind.HandleCancel, sender, e);
 
+    private static PointerInputKind NormalizeCanceledPointerInputKind(PointerInputKind kind, bool isCanceled)
+    {
+        if (!isCanceled)
+            return kind;
+
+        // Device cancellation can accompany a routed move or release packet.
+        // Classify it once before either live dispatch or deferred queuing so
+        // it cannot commit a tap, link activation, or final handle movement.
+        return kind switch
+        {
+            PointerInputKind.Press or PointerInputKind.Move or PointerInputKind.Release or
+                PointerInputKind.Exit or PointerInputKind.Wheel => PointerInputKind.Cancel,
+            PointerInputKind.HandlePress or PointerInputKind.HandleMove or
+                PointerInputKind.HandleRelease => PointerInputKind.HandleCancel,
+            _ => kind,
+        };
+    }
+
     private bool DispatchRecognizedGesture(PointerInputKind kind, Windows.Foundation.Point point, PointerDeviceType device)
     {
         if (_isDisposed || _isUnloaded || _canvas is null || _snapshot is not { } snapshot)
@@ -121,10 +142,49 @@ public partial class MarkdownRendererControl
             LinkModifiers = GetCurrentInputModifiers(),
             GestureSnapshotGeneration = Volatile.Read(ref _snapshotGeneration),
         };
-        if (_touchSelection.HasContact)
+
+        if (device == PointerDeviceType.Touch)
         {
-            input.GestureContact = _touchSelection.Contact;
-            input.HasGestureContact = true;
+            var deferredOwner = FindDeferredTouchGestureOwner(point);
+            if (deferredOwner.IsAmbiguous)
+            {
+                input.IgnoreUnattributableTouchGesture = true;
+            }
+            else if (deferredOwner.TryGetOwnerPointerId(out uint deferredPointerId))
+            {
+                // PointerPressed may still be queued ahead of this recognized
+                // gesture. Resolve its epoch only when FIFO replay reaches us.
+                // Never substitute today's active owner for an ID-less event.
+                input.DeferredTouchGesturePointerId = deferredPointerId;
+            }
+            else if (_touchTapSuppression.TryGetGestureEpochForRecognizedGesture(
+                         point,
+                         out long gestureEpoch,
+                         out uint ownerPointerId,
+                         out bool isAmbiguous))
+            {
+                input.TouchTapGestureEpoch = gestureEpoch;
+                if (_touchSelection.ContactPointerId == ownerPointerId)
+                {
+                    input.GestureContact = _touchSelection.Contact;
+                    input.HasGestureContact = true;
+                }
+            }
+            else if (isAmbiguous)
+            {
+                input.IgnoreUnattributableTouchGesture = true;
+            }
+
+            // Source/document replacement invalidates the provenance of any
+            // unmatched, ID-less XAML gesture. A queued press remains
+            // attributable through DeferredTouchGesturePointerId; otherwise
+            // require a newly accepted contact before dispatching it.
+            if (!_touchTapSuppression.CanDispatchRecognizedGesture(
+                    input.TouchTapGestureEpoch,
+                    hasDeferredOwner: input.DeferredTouchGesturePointerId != 0))
+            {
+                input.IgnoreUnattributableTouchGesture = true;
+            }
         }
         input.HasViewportGesturePosition = TryMapCanvasToViewport(point, out input.ViewportGesturePosition);
         if (input.HasGestureContact &&
@@ -228,6 +288,40 @@ public partial class MarkdownRendererControl
         return true;
     }
 
+    private DeferredTouchGestureOwnerResolver FindDeferredTouchGestureOwner(
+        Windows.Foundation.Point gesturePosition)
+    {
+        var resolver = new DeferredTouchGestureOwnerResolver(gesturePosition);
+        if (_deferredPointerInput is not { Count: > 0 } queue)
+            return resolver;
+
+        // This scan is bounded by the queue's fixed capacity. It is used only
+        // for ID-less touch recognizer events, never for pointer-move hot paths.
+        int count = queue.Count;
+        for (int index = 0; index < count; index++)
+        {
+            if (!queue.TryGetAt(index, out PointerInput queued))
+                continue;
+
+            if (queued.Pointer?.PointerDeviceType != PointerDeviceType.Touch)
+                continue;
+
+            if (queued.Kind == PointerInputKind.Press)
+            {
+                resolver.ObserveTouchPress(
+                    queued.Pointer.PointerId,
+                    queued.Point.Position,
+                    queued.Point.IsInContact);
+            }
+            else if (queued.Kind == PointerInputKind.Cancel)
+            {
+                resolver.ObserveTouchCancel(queued.Pointer.PointerId);
+            }
+        }
+
+        return resolver;
+    }
+
     internal static bool TryCreateGestureHitTestBand(
         Windows.Foundation.Point gestureCanvas,
         double rasterizationScale,
@@ -322,7 +416,8 @@ public partial class MarkdownRendererControl
         };
         if (!candidate)
             return false;
-        if (input.Kind == PointerInputKind.Tap && IsSuppressedTouchGesture(input.GesturePosition))
+        if (input.Kind == PointerInputKind.Tap &&
+            IsSuppressedTouchGesture(input.TouchTapGestureEpoch, input.GesturePosition))
             return false;
         return !IsPointOverEmbed(input.GesturePosition) &&
             !IsPointOverCodeBlockAction(input.GesturePosition);
@@ -725,6 +820,8 @@ public partial class MarkdownRendererControl
     {
         if (_isDisposed || _isUnloaded || _resettingPointerInput || _canvas is null || _snapshot is not { } snapshot)
             return;
+        PointerPoint point = args.GetCurrentPoint(_canvas);
+        kind = NormalizeCanceledPointerInputKind(kind, point.Properties.IsCanceled);
         if ((kind is PointerInputKind.Cancel or PointerInputKind.Exit) &&
             args.Pointer.PointerId == _contextCaptureReleaseInFlightId &&
             _contextCaptureReleaseInFlightId != 0)
@@ -746,7 +843,10 @@ public partial class MarkdownRendererControl
             Kind = kind,
             Sender = sender,
             Pointer = args.Pointer,
-            Point = args.GetCurrentPoint(_canvas),
+            Point = point,
+            TouchTapGestureEpoch = args.Pointer.PointerDeviceType is PointerDeviceType.Touch or PointerDeviceType.Pen
+                ? _touchTapSuppression.GetGestureEpochForPointer(args.Pointer.PointerId)
+                : 0,
             Modifiers = args.KeyModifiers,
             LinkModifiers = MapInputModifiers(args.KeyModifiers),
             InteractionCanvas = _canvas,
@@ -941,6 +1041,13 @@ public partial class MarkdownRendererControl
                         {
                             staleQueue = true;
                             break;
+                        }
+
+                        if (input.DeferredTouchGesturePointerId != 0 &&
+                            !ResolveDeferredTouchGesture(ref input))
+                        {
+                            _deferredPointerInput.TryDequeue(out _);
+                            continue;
                         }
 
                         if (input.WaitForMeasuredHitTest && !input.ContextCaptureEnded)
@@ -1299,6 +1406,28 @@ public partial class MarkdownRendererControl
 
     private void ProcessPointerInput(ref PointerInput input)
     {
+        if (input.IgnoreUnattributableTouchGesture)
+            return;
+
+        if (input.DeferredTouchGesturePointerId != 0 &&
+            !ResolveDeferredTouchGesture(ref input))
+        {
+            return;
+        }
+
+        if (input.TouchTapGestureEpoch == 0 &&
+            (input.Kind is PointerInputKind.Move or PointerInputKind.Release or PointerInputKind.Cancel or
+                PointerInputKind.Exit or PointerInputKind.HandleMove or PointerInputKind.HandleRelease or
+                PointerInputKind.HandleCancel) &&
+            input.Pointer.PointerDeviceType == PointerDeviceType.Touch)
+        {
+            // A press may have been deferred before it could establish the
+            // primary gesture epoch. Replay later pointer events against the
+            // owner created by that earlier queued press.
+            input.TouchTapGestureEpoch = _touchTapSuppression.GetGestureEpochForPointer(
+                input.Pointer.PointerId);
+        }
+
         switch (input.Kind)
         {
             case PointerInputKind.Press: ProcessPointerPressed(ref input); break;
@@ -1318,6 +1447,38 @@ public partial class MarkdownRendererControl
         }
     }
 
+    private bool ResolveDeferredTouchGesture(ref PointerInput input)
+    {
+        uint pointerId = input.DeferredTouchGesturePointerId;
+        if (pointerId == 0)
+            return !input.IgnoreUnattributableTouchGesture;
+
+        long gestureEpoch = _touchTapSuppression.GetGestureEpochForPointerOrCompleted(pointerId);
+        input.DeferredTouchGesturePointerId = 0;
+        if (gestureEpoch == 0)
+        {
+            // The queued press was rejected, canceled, or invalidated before
+            // replay. An ID-less recognized event must not fall back to a
+            // different active pointer or to the synthetic no-contact token.
+            input.IgnoreUnattributableTouchGesture = true;
+            return false;
+        }
+
+        input.TouchTapGestureEpoch = gestureEpoch;
+        if (_touchSelection.ContactPointerId == pointerId)
+        {
+            input.GestureContact = _touchSelection.Contact;
+            input.HasGestureContact = true;
+            if (TryMapCanvasContactToViewport(input.GestureContact, out TouchContactGeometry viewportContact))
+            {
+                input.ViewportGestureContact = viewportContact;
+                input.HasViewportGestureContact = true;
+            }
+        }
+
+        return true;
+    }
+
     private void CancelDeferredGesture()
     {
         ResetDeferredPointerInput();
@@ -1325,6 +1486,7 @@ public partial class MarkdownRendererControl
         _selectionAnchor = null;
         ClearHorizontalOverflowPointerState();
         ResetSelectionHandleDrag();
+        _touchTapSuppression.Reset();
         _touchSelection.Reset();
         SetSelectionDragShieldActive(false);
         MarkdownDiagnostics.WriteLine("[MarkdownRendererControl] Cancelled an over-budget deferred pointer gesture.");
@@ -1375,6 +1537,7 @@ public partial class MarkdownRendererControl
         _resettingPointerInput = true;
         try
         {
+            RetireTouchOwnerForDroppedTerminalInput();
             _deferredPointerInput?.Clear();
             _deferredPointerSnapshot = null;
             if (_pointerRetryTimer is { } timer)
@@ -1396,4 +1559,82 @@ public partial class MarkdownRendererControl
         }
         finally { _resettingPointerInput = false; }
     }
+
+    private void RetireTouchOwnerForDroppedTerminalInput()
+    {
+        if (_deferredPointerInput is not { Count: > 0 } queue)
+            return;
+
+        uint ownerPointerId = _touchSelection.ContactPointerId;
+        if (ownerPointerId == 0)
+            return;
+
+        long ownerGestureEpoch = _touchTapSuppression.GetGestureEpochForPointer(ownerPointerId);
+        if (ownerGestureEpoch == 0)
+            return;
+
+        // A geometry/snapshot failure can abandon the queue after its Press
+        // already established ownership but before its deferred terminal is
+        // replayed. Retire only a terminal from the exact active epoch: XAML
+        // pointer IDs can be reused, and an older queued terminal must not end
+        // a newer contact. A dropped Release ends the session while preserving
+        // a committed selection. A dropped Cancel follows normal cancellation
+        // semantics, clearing only a range created by the canceled contact.
+        int count = queue.Count;
+        for (int index = 0; index < count; index++)
+        {
+            if (!queue.TryGetAt(index, out PointerInput queued) ||
+                queued.Kind is not (PointerInputKind.Release or PointerInputKind.Cancel or
+                    PointerInputKind.HandleRelease or PointerInputKind.HandleCancel) ||
+                queued.Pointer is null ||
+                queued.Pointer.PointerDeviceType != PointerDeviceType.Touch ||
+                queued.Pointer.PointerId != ownerPointerId ||
+                queued.TouchTapGestureEpoch != ownerGestureEpoch)
+            {
+                continue;
+            }
+
+            bool isHandleTerminal = queued.Kind is PointerInputKind.HandleRelease or PointerInputKind.HandleCancel;
+            bool isCanceled = queued.Kind is PointerInputKind.Cancel or PointerInputKind.HandleCancel;
+            bool contactRetired = isCanceled
+                ? CancelTouchOwnerIfCurrent(ownerPointerId, ownerGestureEpoch)
+                : _touchTapSuppression.TryEndContact(ownerPointerId, ownerGestureEpoch);
+            if (contactRetired)
+            {
+                if (isHandleTerminal)
+                {
+                    if (isCanceled)
+                    {
+                        ResetSelectionHandleDrag();
+                        _touchSelection.CancelContact(ownerPointerId);
+                    }
+                    else
+                    {
+                        _touchSelection.CompleteHandleDrag(ownerPointerId);
+                        ResetSelectionHandleDrag();
+                    }
+                    UpdateSelectionHandles();
+                }
+                else if (isCanceled)
+                {
+                    TouchSelectionCancelResult cancelResult = _touchSelection.CancelContact(ownerPointerId);
+                    if (cancelResult != TouchSelectionCancelResult.NotOwner)
+                    {
+                        CloseSelectionContextMenu();
+                        UpdateSelectionHandles();
+                        if (cancelResult == TouchSelectionCancelResult.ClearSelection && _selection.IsActive)
+                            ClearSelectionForExternalInteraction(resetDeferredPointerInput: false);
+                    }
+                }
+                else
+                {
+                    _touchSelection.EndContact(ownerPointerId);
+                }
+            }
+            return;
+        }
+    }
+
+    private bool CancelTouchOwnerIfCurrent(uint pointerId, long gestureEpoch)
+        => _touchTapSuppression.TryCancelContact(pointerId, gestureEpoch);
 }

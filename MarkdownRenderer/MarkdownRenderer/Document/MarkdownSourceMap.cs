@@ -44,6 +44,25 @@ public sealed class MarkdownSourceMap
         AddCore(blockIndex, inlineIndex, renderedLength, span, projection);
     }
 
+    /// <summary>
+    /// Adds a mapping with an exact compact projection supplied by a parser-aware
+    /// producer. Unlike the general text aligner, this path never guesses how
+    /// rendered characters correspond to source characters.
+    /// </summary>
+    internal void Add(
+        int blockIndex,
+        int inlineIndex,
+        int renderedLength,
+        SourceSpan span,
+        SourceProjection projection)
+    {
+        ArgumentNullException.ThrowIfNull(projection);
+        if (projection.RenderedLength != renderedLength || projection.SourceLength != span.Length)
+            throw new ArgumentException("The exact source projection does not match its rendered or source span.", nameof(projection));
+
+        AddCore(blockIndex, inlineIndex, renderedLength, span, projection);
+    }
+
     private void AddCore(
         int blockIndex,
         int inlineIndex,
@@ -488,11 +507,18 @@ public sealed class MarkdownSourceMap
     }
 
     /// <summary>
-    /// Piecewise UTF-16 projection for a transformed inline run. Each rendered
-    /// code unit owns an exact half-open source interval. Atomic transformations
-    /// (for example <c>&amp;amp;</c> or an emoji shortcode) deliberately assign the
-    /// same source interval to every UTF-16 unit they produce.
+    /// Piecewise UTF-16 projection for a transformed inline run. The legacy
+    /// unit map assigns each rendered code unit an exact half-open source
+    /// interval; the compact segment map can also represent parser-owned linear
+    /// ranges and explicit atomic transformations without interpolation.
     /// </summary>
+    internal readonly record struct ProjectionSegment(
+        int RenderedStart,
+        int RenderedLength,
+        int SourceStart,
+        int SourceLength,
+        bool IsAtomic = false);
+
     internal sealed class SourceProjection
     {
         private const int MaxRenderedLength = 16 * 1024;
@@ -504,32 +530,200 @@ public sealed class MarkdownSourceMap
         // MaxSourceLength is intentionally <= UInt16.MaxValue so this is exact;
         // retain the explicit TryCreate guard below so a future ceiling increase
         // cannot silently truncate source offsets.
-        private readonly uint[] _unitSourceRanges;
+        private readonly uint[]? _unitSourceRanges;
+        private readonly ProjectionSegment[]? _segments;
+        private readonly int _renderedLength;
+        private readonly int _sourceLength;
+        private readonly bool _includeSourcePrefix;
+        private readonly bool _includeSourceSuffix;
 
         private SourceProjection(uint[] unitSourceRanges)
         {
             _unitSourceRanges = unitSourceRanges;
+            _renderedLength = unitSourceRanges.Length;
+            _sourceLength = unitSourceRanges.Length == 0
+                ? 0
+                : GetRangeEnd(unitSourceRanges[^1]);
+            _includeSourcePrefix = true;
+            _includeSourceSuffix = true;
+        }
+
+        private SourceProjection(
+            ProjectionSegment[] segments,
+            int renderedLength,
+            int sourceLength,
+            bool includeSourcePrefix,
+            bool includeSourceSuffix)
+        {
+            _segments = segments;
+            _renderedLength = renderedLength;
+            _sourceLength = sourceLength;
+            _includeSourcePrefix = includeSourcePrefix;
+            _includeSourceSuffix = includeSourceSuffix;
+        }
+
+        internal int RenderedLength => _renderedLength;
+
+        internal int SourceLength => _sourceLength;
+
+        /// <summary>
+        /// Creates a bounded exact mapping from contiguous rendered segments to
+        /// parser-provided source ranges. Source gaps are allowed between
+        /// segments (for example, omitted quote prefixes), but source and
+        /// rendered ranges must each remain ordered and fully covered.
+        /// </summary>
+        internal static SourceProjection? TryCreateExactSegments(
+            int renderedLength,
+            int sourceLength,
+            IReadOnlyList<ProjectionSegment> segments,
+            bool includeSourcePrefix,
+            bool includeSourceSuffix)
+        {
+            ArgumentNullException.ThrowIfNull(segments);
+            if (renderedLength <= 0 || sourceLength <= 0 || segments.Count == 0 ||
+                segments.Count > Math.Min(renderedLength, sourceLength))
+                return null;
+
+            var copy = new ProjectionSegment[segments.Count];
+            int renderedEnd = 0;
+            int sourceEnd = 0;
+            for (int index = 0; index < copy.Length; index++)
+            {
+                ProjectionSegment segment = segments[index];
+                long nextRenderedEnd = (long)segment.RenderedStart + segment.RenderedLength;
+                long nextSourceEnd = (long)segment.SourceStart + segment.SourceLength;
+                if (segment.RenderedStart != renderedEnd ||
+                    segment.RenderedLength <= 0 ||
+                    segment.SourceStart < sourceEnd ||
+                    segment.SourceStart < 0 ||
+                    segment.SourceLength <= 0 ||
+                    nextRenderedEnd > renderedLength ||
+                    nextSourceEnd > sourceLength ||
+                    (segment.SourceLength != segment.RenderedLength && !segment.IsAtomic))
+                {
+                    return null;
+                }
+
+                copy[index] = segment;
+                renderedEnd = (int)nextRenderedEnd;
+                sourceEnd = (int)nextSourceEnd;
+            }
+
+            if (renderedEnd != renderedLength)
+                return null;
+
+            return new SourceProjection(
+                copy,
+                renderedLength,
+                sourceLength,
+                includeSourcePrefix,
+                includeSourceSuffix);
         }
 
         internal int ProjectStart(int renderedOffset)
         {
-            if (_unitSourceRanges.Length == 0 || renderedOffset <= 0)
-                return 0;
-            if (renderedOffset >= _unitSourceRanges.Length)
-                return GetRangeEnd(_unitSourceRanges[^1]);
+            if (_unitSourceRanges is { } unitSourceRanges)
+            {
+                if (unitSourceRanges.Length == 0 || renderedOffset <= 0)
+                    return 0;
+                if (renderedOffset >= unitSourceRanges.Length)
+                    return GetRangeEnd(unitSourceRanges[^1]);
 
-            return GetRangeStart(_unitSourceRanges[renderedOffset]);
+                return GetRangeStart(unitSourceRanges[renderedOffset]);
+            }
+
+            ProjectionSegment[] segments = _segments!;
+            if (segments.Length == 0)
+                return 0;
+            if (renderedOffset <= 0)
+                return _includeSourcePrefix ? 0 : segments[0].SourceStart;
+            if (renderedOffset >= _renderedLength)
+                return _includeSourceSuffix ? _sourceLength : GetSegmentSourceEnd(segments[^1]);
+
+            int index = FindSegmentForStart(segments, renderedOffset);
+            ProjectionSegment segment = segments[index];
+            return MapSegmentStartBoundary(segment, renderedOffset - segment.RenderedStart);
         }
 
         internal int ProjectEnd(int renderedOffset)
         {
-            if (_unitSourceRanges.Length == 0 || renderedOffset <= 0)
-                return 0;
-            if (renderedOffset >= _unitSourceRanges.Length)
-                return GetRangeEnd(_unitSourceRanges[^1]);
+            if (_unitSourceRanges is { } unitSourceRanges)
+            {
+                if (unitSourceRanges.Length == 0 || renderedOffset <= 0)
+                    return 0;
+                if (renderedOffset >= unitSourceRanges.Length)
+                    return GetRangeEnd(unitSourceRanges[^1]);
 
-            return GetRangeEnd(_unitSourceRanges[renderedOffset - 1]);
+                return GetRangeEnd(unitSourceRanges[renderedOffset - 1]);
+            }
+
+            ProjectionSegment[] segments = _segments!;
+            if (segments.Length == 0)
+                return 0;
+            if (renderedOffset <= 0)
+                return _includeSourcePrefix ? 0 : segments[0].SourceStart;
+            if (renderedOffset >= _renderedLength)
+                return _includeSourceSuffix ? _sourceLength : GetSegmentSourceEnd(segments[^1]);
+
+            int index = FindSegmentForEnd(segments, renderedOffset);
+            ProjectionSegment segment = segments[index];
+            return MapSegmentEndBoundary(segment, renderedOffset - segment.RenderedStart);
         }
+
+        private static int FindSegmentForStart(ProjectionSegment[] segments, int renderedOffset)
+        {
+            int low = 0;
+            int high = segments.Length;
+            while (low < high)
+            {
+                int middle = low + ((high - low) / 2);
+                if (segments[middle].RenderedStart <= renderedOffset)
+                    low = middle + 1;
+                else
+                    high = middle;
+            }
+
+            return low - 1;
+        }
+
+        private static int FindSegmentForEnd(ProjectionSegment[] segments, int renderedOffset)
+        {
+            int low = 0;
+            int high = segments.Length;
+            while (low < high)
+            {
+                int middle = low + ((high - low) / 2);
+                if (segments[middle].RenderedStart < renderedOffset)
+                    low = middle + 1;
+                else
+                    high = middle;
+            }
+
+            return Math.Max(0, low - 1);
+        }
+
+        private static int MapSegmentStartBoundary(ProjectionSegment segment, int renderedDelta)
+        {
+            if (segment.IsAtomic)
+                return segment.SourceStart;
+
+            if (segment.SourceLength == segment.RenderedLength)
+                return segment.SourceStart + renderedDelta;
+            return segment.SourceStart;
+        }
+
+        private static int MapSegmentEndBoundary(ProjectionSegment segment, int renderedDelta)
+        {
+            if (segment.IsAtomic)
+                return GetSegmentSourceEnd(segment);
+
+            if (segment.SourceLength == segment.RenderedLength)
+                return segment.SourceStart + renderedDelta;
+            return GetSegmentSourceEnd(segment);
+        }
+
+        private static int GetSegmentSourceEnd(ProjectionSegment segment)
+            => segment.SourceStart + segment.SourceLength;
 
         internal static SourceProjection? TryCreate(string sourceText, SourceSpan span, string renderedText)
         {

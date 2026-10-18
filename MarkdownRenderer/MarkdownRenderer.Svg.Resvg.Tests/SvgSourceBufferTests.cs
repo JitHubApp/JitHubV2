@@ -29,42 +29,6 @@ public sealed class SvgSourceBufferTests
         Assert.Equal(SHA256.HashData(expected), source.ComputeSha256());
     }
 
-    [Theory]
-    [InlineData("comment-open")]
-    [InlineData("comment-close")]
-    [InlineData("pi-open")]
-    [InlineData("pi-close")]
-    [InlineData("doctype-open")]
-    [InlineData("quoted-greater-than")]
-    public void InertDoctypeScanningAndWhitespaceReplacementCrossSegmentBoundaries(string boundaryCase)
-    {
-        string authored = CreateBoundarySource(boundaryCase);
-        byte[] authoredBytes = Encoding.ASCII.GetBytes(authored);
-        int declarationStart = authored.IndexOf("<!DOCTYPE", StringComparison.Ordinal);
-        Assert.True(declarationStart >= 0);
-        int rootStart = authored.IndexOf("<svg/>", declarationStart, StringComparison.Ordinal);
-        Assert.True(rootStart > declarationStart);
-
-        string expectedText = authored[..declarationStart] +
-            new string(' ', rootStart - declarationStart) +
-            authored[rootStart..];
-        byte[] expected = Encoding.ASCII.GetBytes(expectedText);
-
-        using var output = new SvgPreflight.BoundedOutputStream(
-            maximumBytes: authoredBytes.Length + SvgSourceBuffer.SegmentSize,
-            CancellationToken.None);
-        output.Write(authoredBytes);
-        using SvgSourceBuffer source = output.DetachSourceBuffer();
-
-        SvgPreflight.StripInertDoctype(source, containsDoctype: true);
-        source.Seal();
-
-        Assert.Equal(authoredBytes.Length, source.Length);
-        Assert.Equal(authoredBytes.Length, source.AllocatedCapacity);
-        Assert.Equal(expected, source.CopyToArrayForTest());
-        Assert.Equal(SHA256.HashData(expected), source.ComputeSha256());
-    }
-
     [Fact]
     public void SealedSourceBufferRejectsFurtherPreflightMutation()
     {
@@ -520,51 +484,6 @@ public sealed class SvgSourceBufferTests
         return GC.GetAllocatedBytesForCurrentThread() - before;
     }
 
-    private static string CreateBoundarySource(string boundaryCase)
-    {
-        var text = new StringBuilder();
-        switch (boundaryCase)
-        {
-            case "comment-open":
-                PadForSplit(text, targetOffset: 0, bytesBeforeBoundary: 2);
-                text.Append("<!--body-->");
-                AppendAlignedDoctype(text, splitMarker: true);
-                break;
-            case "comment-close":
-                text.Append("<!--");
-                PadForSplit(text, targetOffset: 0, bytesBeforeBoundary: 1);
-                text.Append("-->");
-                AppendAlignedDoctype(text, splitMarker: false);
-                break;
-            case "pi-open":
-                text.Append("<!--ready-->");
-                PadForSplit(text, targetOffset: 0, bytesBeforeBoundary: 1);
-                text.Append("<?audit?>");
-                AppendAlignedDoctype(text, splitMarker: false);
-                break;
-            case "pi-close":
-                text.Append("<!--ready--><?audit");
-                PadForSplit(text, targetOffset: 0, bytesBeforeBoundary: 1);
-                text.Append("?>");
-                AppendAlignedDoctype(text, splitMarker: false);
-                break;
-            case "doctype-open":
-                text.Append("<!--ready--><?audit?>");
-                AppendAlignedDoctype(text, splitMarker: true);
-                break;
-            case "quoted-greater-than":
-                text.Append("<!--ready--><?audit?><!DOCTYPE svg PUBLIC 'x");
-                PadForSplit(text, targetOffset: 0, bytesBeforeBoundary: 1);
-                text.Append(">y' 'system identifier'>");
-                break;
-            default:
-                throw new ArgumentOutOfRangeException(nameof(boundaryCase));
-        }
-
-        text.Append("<svg/>");
-        return text.ToString();
-    }
-
     private sealed class ThrowingDisposable : IDisposable
     {
         internal bool WasDisposed { get; private set; }
@@ -576,18 +495,4 @@ public sealed class SvgSourceBufferTests
         }
     }
 
-    private static void AppendAlignedDoctype(StringBuilder text, bool splitMarker)
-    {
-        if (splitMarker)
-            PadForSplit(text, targetOffset: 0, bytesBeforeBoundary: 4);
-        text.Append("<!DOCTYPE svg PUBLIC 'public identifier' 'system identifier'>");
-    }
-
-    private static void PadForSplit(StringBuilder text, int targetOffset, int bytesBeforeBoundary)
-    {
-        int desiredOffset = (SvgSourceBuffer.SegmentSize - bytesBeforeBoundary) % SvgSourceBuffer.SegmentSize;
-        int currentOffset = (text.Length + targetOffset) % SvgSourceBuffer.SegmentSize;
-        int padding = (desiredOffset - currentOffset + SvgSourceBuffer.SegmentSize) % SvgSourceBuffer.SegmentSize;
-        text.Append(' ', padding);
-    }
 }

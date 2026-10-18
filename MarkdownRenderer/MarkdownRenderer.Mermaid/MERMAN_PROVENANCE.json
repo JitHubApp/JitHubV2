@@ -27,9 +27,17 @@
     "features": ["complete-svg"],
     "thirdPartyNoticeArtifactScope": "ratex-render (complete SVG without elk-render)",
     "lockFile": "native/Cargo.lock",
-    "lockFileSha256": "6b0eacfb2cad795631799a9ffb4b21ac9b762194bd93e1348969eaf5e6f94ab1",
+    "lockFileSha256": "5c3f2838ade17638d30f8a5e7e7c3b4cd5456682d3dafe7a41468b094e55ef62",
     "dependencyInventory": "NATIVE_RUST_DEPENDENCIES.json",
-    "dependencyInventorySha256": "614c72e5b522136f4edc02fb32ab534515d0e0bd65003e86fbe182173575ee07"
+    "dependencyInventorySha256": "4282f1b37437f5beb538723becbccd3a295230ff0273edacf06bd9d080eed64d"
+  },
+  "sourcePatches": {
+    "manifest": "native/patches/MERMAN_SOURCE_PATCHES.json",
+    "manifestSha256": "be5cb0eef0bc11be1ae1be4c1f4db645f49a4db93cef28cde00743a8f4a0c639",
+    "patchSetSha256": "f32de3178414b1fcaf5f95b4d66a30bd020bb56631d0d1e59b1a11c4812613bb",
+    "modifiedCrates": ["merman-bindings-core", "merman-core", "merman-render"],
+    "preparedPathCrates": ["dugong", "dugong-graphlib", "manatee", "merman-core", "merman-render", "roughr-merman"],
+    "preparationCommand": "pwsh -NoProfile -File native/Prepare-MermanSource.ps1"
   },
   "build": {
     "rustToolchain": "stable-x86_64-pc-windows-msvc",

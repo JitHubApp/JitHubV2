@@ -86,7 +86,7 @@ public sealed class ImmutablePayloadStorageTests
         AssertReadonly(Nested(typeof(WeightedLruCache<,>), "Entry"), "Key Value Weight");
         AssertReadonly(typeof(MarkdownLayoutRetirementFailureSummary),
             "ExceptionType HResultCode OmittedFailureCount");
-        AssertReadonly(Nested(typeof(Gfm029Compatibility), "PreparedSource"), "Text HasChanges");
+        AssertReadonly(Nested(typeof(Gfm029Compatibility), "PreparedSource"), "Text HasChanges _insertions _maskedSeparators");
         AssertReadonly(Nested(typeof(Gfm029Compatibility), "LineInfo"), "Start Length");
         AssertReadonly(typeof(MarkdownRebuildDispatchState), "Ticket Priority");
         AssertReadonly(typeof(MarkdownTargetCommand), "Kind SourceRange Target Language");
@@ -556,10 +556,21 @@ public sealed class ImmutablePayloadStorageTests
         Assert.Equal(3, Field(cursor, "NextIndex"));
         Assert.Equal(5, Field(cursor, "Depth"));
 
-        object preparedSource = Construct(Nested(typeof(Gfm029Compatibility), "PreparedSource"),
-            ["rewritten source", new[] { 5, 12 }, true]);
+        int[] insertions = [5, 12];
+        int[] maskedSeparators = [8];
+        Type preparedSourceType = Nested(typeof(Gfm029Compatibility), "PreparedSource");
+        object preparedSource = Construct(preparedSourceType,
+            ["rewritten source", insertions, maskedSeparators]);
         Assert.Equal("rewritten source", Field(preparedSource, "Text"));
         Assert.Equal(true, Field(preparedSource, "HasChanges"));
+        Assert.Same(insertions, Field(preparedSource, "_insertions"));
+        Assert.Same(maskedSeparators, Field(preparedSource, "_maskedSeparators"));
+        Assert.Equal(false, Field(Construct(preparedSourceType,
+            ["unchanged source", Array.Empty<int>(), Array.Empty<int>()]), "HasChanges"));
+        Assert.Equal(true, Field(Construct(preparedSourceType,
+            ["inserted source", insertions, Array.Empty<int>()]), "HasChanges"));
+        Assert.Equal(true, Field(Construct(preparedSourceType,
+            ["masked source", Array.Empty<int>(), maskedSeparators]), "HasChanges"));
 
         object lineInfo = Construct(Nested(typeof(Gfm029Compatibility), "LineInfo"), [27, 14]);
         Assert.Equal(27, Field(lineInfo, "Start"));

@@ -65,7 +65,7 @@ public sealed class SvgResourceBudgetTests
 
     [Theory]
     [InlineData("<svg><text font-size='999999'>large</text></svg>", "font-size")]
-    [InlineData("<!DOCTYPE svg [<!ENTITY x 'boom'>]><svg><text>&x;</text></svg>", "dtd-internal-subset")]
+    [InlineData("<!DOCTYPE svg [<!ENTITY x 'boom'>]><svg><text>&x;</text></svg>", "dtd-forbidden")]
     [InlineData("<html><body>not svg</body></html>", "missing-root")]
     [InlineData("<svg><filter><feImage href='https://example.test/image.png'/></filter></svg>", "external-image-reference")]
     public void Validate_RejectsHostileXml(string svg, string expectedReason)
@@ -87,7 +87,7 @@ public sealed class SvgResourceBudgetTests
     }
 
     [Fact]
-    public void Validate_AcceptsInertExternalSvgDoctypeWithoutResolvingIt()
+    public void Validate_RejectsExternalSvgDoctype()
     {
         byte[] bytes = Bytes(
             "<!DOCTYPE svg PUBLIC '-//W3C//DTD SVG 1.1//EN' " +
@@ -95,6 +95,31 @@ public sealed class SvgResourceBudgetTests
             "<svg xmlns='http://www.w3.org/2000/svg'><rect width='1' height='1'/></svg>");
 
         SvgResourceBudgetResult result = SvgResourceBudget.Validate(bytes, CancellationToken.None);
+
+        Assert.False(result.Accepted);
+        Assert.Equal("dtd-forbidden", result.Reason);
+    }
+
+    [Fact]
+    public void Validate_RejectsExternalDoctypeInTheAuthoredRootDocument()
+    {
+        byte[] bytes = Bytes(
+            "<!DOCTYPE svg SYSTEM 'https://example.invalid/unexpected.dtd'>" +
+            "<svg xmlns='http://www.w3.org/2000/svg'><rect width='1' height='1'/></svg>");
+
+        SvgResourceBudgetResult result = SvgResourceBudget.Validate(bytes, CancellationToken.None);
+
+        Assert.False(result.Accepted);
+        Assert.Equal("dtd-forbidden", result.Reason);
+    }
+
+    [Theory]
+    [InlineData("<svg xmlns='http://www.w3.org/2000/svg'><!-- <!DOCTYPE svg> --><rect width='1' height='1'/></svg>")]
+    [InlineData("<svg xmlns='http://www.w3.org/2000/svg'><text><![CDATA[<!DOCTYPE svg>]]></text></svg>")]
+    [InlineData("<svg xmlns='http://www.w3.org/2000/svg'><text>&lt;!DOCTYPE svg&gt;</text></svg>")]
+    public void Validate_AcceptsDoctypeMarkerTextOutsideADocumentType(string source)
+    {
+        SvgResourceBudgetResult result = SvgResourceBudget.Validate(Bytes(source), CancellationToken.None);
 
         Assert.True(result.Accepted, result.Reason);
     }
@@ -323,8 +348,10 @@ public sealed class SvgResourceBudgetTests
     }
 
     [Fact]
-    public void StaticSnapshot_RemovesSvgScriptAndAnimationBeforeProviderAdmission()
+    public void StaticSnapshotUtility_RemovesSvgScriptAndAnimationMarkupWhenInvokedInIsolation()
     {
+        // This characterizes the optional snapshot transform only. Provider
+        // admission validates the original source first and rejects these bytes.
         byte[] source = Bytes(
             "<svg><script>alert(1)</script><rect><animate attributeName='opacity' from='0'/></rect></svg>");
 
@@ -339,8 +366,10 @@ public sealed class SvgResourceBudgetTests
     }
 
     [Fact]
-    public void StaticSnapshot_RendersInertBrowserImageBadgeWithoutExecutingItsSizingScript()
+    public void StaticSnapshotUtility_RemovesSizingScriptAndPreservesAuthoredGeometry()
     {
+        // This does not assert that the transformed badge is admitted or
+        // rendered; ResvgMarkdownSvgRenderer.PrepareSource rejects the original.
         byte[] source = Bytes(
             "<svg xmlns='http://www.w3.org/2000/svg' width='119.46' height='20'>" +
             "<rect width='119.46' height='20' fill='#555'/>" +

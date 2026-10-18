@@ -28,15 +28,42 @@ public sealed partial class ResvgMarkdownSvgRenderer : IMarkdownSvgRenderer, IMa
         SvgSourceMetadata preparedMetadata = default;
         try
         {
+            // Static snapshotting is a normalization step, not an admission
+            // policy. Validate the authored source first so unsupported active
+            // content cannot disappear while its remaining artwork is admitted.
+            // This also applies the existing bounded recursive policy to nested
+            // SVG data before any rewrite can change that closure.
+            SvgResourceBudgetResult originalBudget = SvgResourceBudget.ValidateWithMetadata(
+                source,
+                cancellationToken,
+                out SvgSourceMetadata originalMetadata);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!originalBudget.Accepted)
+                return RejectPreparedSource(source, originalBudget.Reason ?? "invalid-content");
+
             // The lowered source policy applies to sanitized output, not raw
-            // branches that the existing inert-image preparation removes.
+            // bytes. The hard source ceiling and active-content policy have
+            // already been enforced against the original source above.
             prepared = SvgStaticSnapshot.Create(source, cancellationToken, _options.MaxSourceBytes);
-            budget = prepared.Length > _options.MaxSourceBytes
-                ? SvgResourceBudgetResult.Reject("input-bytes")
-                : SvgResourceBudget.ValidateWithMetadata(
+            if (prepared.Length > _options.MaxSourceBytes)
+            {
+                budget = SvgResourceBudgetResult.Reject("input-bytes");
+            }
+            else if (ReferenceEquals(prepared, source))
+            {
+                // The original validation is authoritative when normalization
+                // leaves the source unchanged; reuse its matching metadata and
+                // avoid a second complete resource walk on the common path.
+                budget = SvgResourceBudgetResult.Success;
+                preparedMetadata = originalMetadata;
+            }
+            else
+            {
+                budget = SvgResourceBudget.ValidateWithMetadata(
                     prepared,
                     cancellationToken,
                     out preparedMetadata);
+            }
         }
         catch (SvgStaticSnapshotResourceException exception)
         {

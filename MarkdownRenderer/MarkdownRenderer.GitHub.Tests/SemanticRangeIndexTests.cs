@@ -169,8 +169,8 @@ public sealed class SemanticRangeIndexTests
             Assert.True(rootChildren[index - 1].TextEnd <= rootChildren[index].TextStart);
             Assert.True(rootChildren[index - 1].TextEnd <= rootChildren[index].TextEnd);
         }
-        // The semantic builder retains the existing trailing-newline trim,
-        // but every published node range now matches the final projection.
+        // Generated block separators are trimmed, while authored terminal
+        // newlines survive. Every node range matches that final projection.
         Assert.Equal(document.Text.Length, rootChildren[^1].TextEnd);
         Assert.InRange(rootChildren[^1].TextStart, 0, rootChildren[^1].TextEnd);
 

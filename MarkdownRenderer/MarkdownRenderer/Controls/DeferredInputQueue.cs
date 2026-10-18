@@ -62,6 +62,19 @@ internal sealed class DeferredInputQueue<T>
         return true;
     }
 
+    /// <summary>Reads a queued entry by FIFO offset without changing ownership or order.</summary>
+    internal bool TryGetAt(int offset, out T value)
+    {
+        if ((uint)offset >= (uint)Count)
+        {
+            value = default!;
+            return false;
+        }
+
+        value = _entries[(_head + offset) % _entries.Length].Value;
+        return true;
+    }
+
     internal bool TryReplaceHead(T value, bool blocksSnapshotInteraction)
     {
         if (Count == 0)

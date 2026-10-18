@@ -112,20 +112,16 @@ public sealed class MermaidVectorSceneAdapterTests
     }
 
     [Theory]
-    [InlineData("<b>Bold</b>", "Bold")]
-    [InlineData("<STRONG class='label'>Strong</STRONG>", "Strong")]
-    [InlineData("<span title='a>b'>quoted</span>", "quoted")]
-    [InlineData("<i>one</i> and <em>two</em>", "one and two")]
-    [InlineData("x<sub>1</sub> + y<sup>2</sup>", "x1 + y2")]
-    [InlineData("<custom>literal</custom>", "<custom>literal</custom>")]
-    [InlineData("comparison: a < b > c", "comparison: a < b > c")]
-    public void NormalizeLabelTextRemovesOnlyKnownFormattingWrappers(string source, string expected)
-    {
-        Assert.Equal(expected, MermaidVectorSceneAdapter.NormalizeLabelText(source));
-    }
-
-    [Fact]
-    public void ConvertAndSemanticTextUseTheSameNormalizedLabel()
+    [InlineData("<b>Agent</b>")]
+    [InlineData("<STRONG class='label'>Strong</STRONG>")]
+    [InlineData("<span title='a>b'>quoted</span>")]
+    [InlineData("<i>one</i> and <em>two</em>")]
+    [InlineData("x<sub>1</sub> + y<sup>2</sup>")]
+    [InlineData("<custom>literal</custom>")]
+    [InlineData("comparison: a < b > c")]
+    [InlineData("&quot;")]
+    [InlineData("&amp;quot;")]
+    public void ConvertAndSemanticTextPreserveTheSameFinalLiteralLabel(string text)
     {
         var style = new MermaidSceneStyle(
             new MermaidRgba32(0, 0, 0, 0),
@@ -138,7 +134,7 @@ public sealed class MermaidVectorSceneAdapterTests
         MermaidScene scene = new(
             MermaidSceneVersion.Current,
             new MermaidViewport(0, 0, 100, 100),
-            ["<b>Agent</b>", "Segoe UI"],
+            [text, "Segoe UI"],
             [style],
             [10, 20, 30, 40],
             [new MermaidDrawCommand(
@@ -168,10 +164,246 @@ public sealed class MermaidVectorSceneAdapterTests
             new MarkdownSyntaxNode("fencedCodeBlock", new SourceSpan(0, 3)),
             "abc");
 
-        Assert.Equal("Agent", Assert.Single(converted.Commands).Text);
-        Assert.Equal("Agent", Assert.Single(converted.Semantics).Name);
-        Assert.Equal("Agent", MermaidVectorSceneAdapter.GetSemanticText(scene));
+        // MMIR carries final literal display text, not source markup. Raw
+        // formatting classification belongs before native text measurement;
+        // repeating it here destroys correctly decoded angle-bracket labels.
+        Assert.Equal(text, Assert.Single(converted.Commands).Text);
+        Assert.Equal(text, Assert.Single(converted.Semantics).Name);
+        Assert.Equal(text, MermaidVectorSceneAdapter.GetSemanticText(scene));
     }
+
+    [Fact]
+    public void SemanticTextSuppressesOwnedShapingRunsForAnExplicitSemanticName()
+    {
+        const string label = "مرحبا API 👩‍💻";
+        MermaidScene scene = CreateTextScene(
+            ["مرحبا", " API", " 👩‍💻", label],
+            [
+                CreateTextCommand(0, semanticIndex: 0),
+                CreateTextCommand(1, semanticIndex: 0),
+                CreateTextCommand(2, semanticIndex: 0),
+            ],
+            [new MermaidSemanticItem(
+                10,
+                MermaidSemanticRole.Node,
+                NameIndex: 3,
+                -1,
+                -1,
+                -1,
+                MermaidSemanticFlags.None)]);
+
+        Assert.Equal(label, MermaidVectorSceneAdapter.GetSemanticText(scene));
+    }
+
+    [Fact]
+    public void SemanticTextPreservesRepeatedOccurrencesBySemanticIdentity()
+    {
+        const string label = "Same label";
+        MermaidScene scene = CreateTextScene(
+            [label],
+            [
+                CreateTextCommand(0, semanticIndex: 0),
+                CreateTextCommand(0, semanticIndex: 1),
+            ],
+            [
+                new MermaidSemanticItem(
+                    10,
+                    MermaidSemanticRole.Node,
+                    NameIndex: 0,
+                    -1,
+                    -1,
+                    -1,
+                    MermaidSemanticFlags.None),
+                new MermaidSemanticItem(
+                    11,
+                    MermaidSemanticRole.Node,
+                    NameIndex: 0,
+                    -1,
+                    -1,
+                    -1,
+                    MermaidSemanticFlags.None),
+            ]);
+
+        Assert.Equal($"{label}{Environment.NewLine}{label}", MermaidVectorSceneAdapter.GetSemanticText(scene));
+    }
+
+    [Fact]
+    public void SemanticTextPreservesUnnamedOwnedRunsAndUnownedText()
+    {
+        MermaidScene scene = CreateTextScene(
+            ["repeat", "repeat", "outside"],
+            [
+                CreateTextCommand(0, semanticIndex: 0),
+                CreateTextCommand(1, semanticIndex: 0),
+                CreateTextCommand(2, semanticIndex: -1),
+            ],
+            [new MermaidSemanticItem(
+                10,
+                MermaidSemanticRole.Node,
+                NameIndex: -1,
+                -1,
+                -1,
+                -1,
+                MermaidSemanticFlags.None)]);
+
+        Assert.Equal(
+            $"repeat{Environment.NewLine}repeat{Environment.NewLine}outside",
+            MermaidVectorSceneAdapter.GetSemanticText(scene));
+    }
+
+    [Fact]
+    public void SemanticTextFollowsDrawCommandOrderWhenSemanticTableOrderDiffers()
+    {
+        MermaidScene scene = CreateTextScene(
+            ["visible title", "node label"],
+            [
+                CreateTextCommand(0, semanticIndex: 1),
+                CreateTextCommand(1, semanticIndex: 0),
+            ],
+            [
+                new MermaidSemanticItem(
+                    10,
+                    MermaidSemanticRole.Node,
+                    NameIndex: 1,
+                    -1,
+                    -1,
+                    -1,
+                    MermaidSemanticFlags.None),
+                new MermaidSemanticItem(
+                    1,
+                    MermaidSemanticRole.Diagram,
+                    NameIndex: 0,
+                    -1,
+                    -1,
+                    -1,
+                    MermaidSemanticFlags.None),
+            ]);
+
+        Assert.Equal(
+            $"visible title{Environment.NewLine}node label",
+            MermaidVectorSceneAdapter.GetSemanticText(scene));
+    }
+
+    [Fact]
+    public void SemanticTextKeepsAccessibleRootNameSeparateFromRenderedContent()
+    {
+        MermaidScene scene = CreateTextScene(
+            ["diagram", "root detail", "decoration", "outside"],
+            [
+                CreateTextCommand(1, semanticIndex: 0),
+                CreateTextCommand(2, semanticIndex: -1, MermaidDrawFlags.Decorative),
+                CreateTextCommand(3, semanticIndex: -1),
+                CreateTextCommand(3, semanticIndex: -1),
+            ],
+            [new MermaidSemanticItem(
+                1,
+                MermaidSemanticRole.Diagram,
+                NameIndex: 0,
+                -1,
+                -1,
+                -1,
+                MermaidSemanticFlags.None)]);
+
+        Assert.Equal(
+            $"root detail{Environment.NewLine}decoration" +
+                $"{Environment.NewLine}outside{Environment.NewLine}outside",
+            MermaidVectorSceneAdapter.GetSemanticText(scene));
+    }
+
+    [Fact]
+    public void SemanticTextPreservesRenderedRootTextThatMatchesAccessibleName()
+    {
+        MermaidScene scene = CreateTextScene(
+            ["diagram"],
+            [CreateTextCommand(0, semanticIndex: 0)],
+            [new MermaidSemanticItem(
+                1,
+                MermaidSemanticRole.Diagram,
+                NameIndex: 0,
+                -1,
+                -1,
+                -1,
+                MermaidSemanticFlags.None)]);
+
+        Assert.Equal("diagram", MermaidVectorSceneAdapter.GetSemanticText(scene));
+    }
+
+    [Fact]
+    public void SemanticTextUsesAccessibleNameWhenSceneHasNoRenderedSemanticContent()
+    {
+        MermaidScene scene = CreateTextScene(
+            ["diagram"],
+            [],
+            [new MermaidSemanticItem(
+                1,
+                MermaidSemanticRole.Diagram,
+                NameIndex: 0,
+                -1,
+                -1,
+                -1,
+                MermaidSemanticFlags.None)]);
+
+        Assert.Equal("diagram", MermaidVectorSceneAdapter.GetSemanticText(scene));
+    }
+
+    [Fact]
+    public void SemanticTextDoesNotCopyNameOnlyShapeMetadataAlongsideRenderedLabels()
+    {
+        MermaidScene scene = CreateTextScene(
+            ["diagram", "shape-only label", "visible title"],
+            [CreateTextCommand(2, semanticIndex: 0)],
+            [
+                new MermaidSemanticItem(
+                    1,
+                    MermaidSemanticRole.Diagram,
+                    NameIndex: 0,
+                    -1,
+                    -1,
+                    -1,
+                    MermaidSemanticFlags.None),
+                new MermaidSemanticItem(
+                    2,
+                    MermaidSemanticRole.Node,
+                    NameIndex: 1,
+                    -1,
+                    0,
+                    -1,
+                    MermaidSemanticFlags.None),
+            ]);
+
+        Assert.Equal("visible title", MermaidVectorSceneAdapter.GetSemanticText(scene));
+    }
+
+    private static MermaidScene CreateTextScene(
+        string[] strings,
+        MermaidDrawCommand[] commands,
+        MermaidSemanticItem[] semantics)
+        => new(
+            MermaidSceneVersion.Current,
+            new MermaidViewport(0, 0, 100, 100),
+            strings,
+            [],
+            [],
+            commands,
+            semantics,
+            [],
+            [],
+            []);
+
+    private static MermaidDrawCommand CreateTextCommand(
+        int textIndex,
+        int semanticIndex,
+        MermaidDrawFlags flags = MermaidDrawFlags.None)
+        => new(
+            MermaidDrawOpcode.Text,
+            flags,
+            -1,
+            semanticIndex,
+            textIndex,
+            0,
+            4,
+            -1,
+            MermaidTextFlags.None);
 
     private static MermaidScene CreateScene(
         MermaidSemanticItem[] semantics,

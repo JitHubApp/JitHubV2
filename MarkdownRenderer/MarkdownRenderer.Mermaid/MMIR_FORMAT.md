@@ -14,6 +14,21 @@ for the resolved font-family string, and command word 7 for italic, RTL, and sta
 anchor flags. Each native-resolved line is painted at that baseline and is never reflowed by
 the managed decoder.
 
+Text and semantic-name strings are final literal display content, not HTML or
+Mermaid source markup. The SVG compiler resolves raw presentation wrappers and
+character-entity provenance before measuring text and producing MMIR commands.
+The managed adapter must preserve these strings, including literal angle brackets
+or character-reference spellings, without another markup or entity pass. Inert
+SVG source-classification metadata is consumed inside the native compiler; it does
+not add a flag, sentinel string, or record to MMIR.
+
+Canonical SVG relationship metadata also joins separately emitted path and
+caption groups into one Edge semantic record. Caption shaping fragments share
+that record and its complete literal name; distinct model relationships remain
+distinct even when their captions match. The compiler charges one edge per
+canonical relationship, validates repeated metadata, and uses the whole source
+range when no exact model range is available instead of guessing from labels.
+
 The managed decoder treats every byte as untrusted: it checks exact total size, alignment,
 section overlap and uniqueness, strides/counts, finite numbers, enums/flags, reference graphs,
 semantic depth and node/edge budgets, UTF-8 scalar boundaries, and all configured limits before

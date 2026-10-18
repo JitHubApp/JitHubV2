@@ -1,6 +1,10 @@
 {
   "schemaVersion": 1,
   "generatedFrom": "native/Cargo.lock",
+  "pathSourceProvenance": {
+    "manifest": "native/patches/MERMAN_SOURCE_PATCHES.json",
+    "packages": ["dugong", "dugong-graphlib", "manatee", "merman-core", "merman-render", "roughr-merman"]
+  },
   "packageCount": 196,
   "packages": [
     {
@@ -180,13 +184,13 @@
     {
       "name": "dugong",
       "version": "0.8.0-alpha.6",
-      "source": "git+https://github.com/Latias94/merman.git?rev=ac53f21ba97e5bd8da7f849fbcdffe64695171e6#ac53f21ba97e5bd8da7f849fbcdffe64695171e6",
+      "source": null,
       "license": "MIT OR Apache-2.0"
     },
     {
       "name": "dugong-graphlib",
       "version": "0.8.0-alpha.6",
-      "source": "git+https://github.com/Latias94/merman.git?rev=ac53f21ba97e5bd8da7f849fbcdffe64695171e6#ac53f21ba97e5bd8da7f849fbcdffe64695171e6",
+      "source": null,
       "license": "MIT OR Apache-2.0"
     },
     {
@@ -408,7 +412,7 @@
     {
       "name": "manatee",
       "version": "0.8.0-alpha.6",
-      "source": "git+https://github.com/Latias94/merman.git?rev=ac53f21ba97e5bd8da7f849fbcdffe64695171e6#ac53f21ba97e5bd8da7f849fbcdffe64695171e6",
+      "source": null,
       "license": "MIT OR Apache-2.0"
     },
     {
@@ -438,13 +442,13 @@
     {
       "name": "merman-core",
       "version": "0.8.0-alpha.6",
-      "source": "git+https://github.com/Latias94/merman.git?rev=ac53f21ba97e5bd8da7f849fbcdffe64695171e6#ac53f21ba97e5bd8da7f849fbcdffe64695171e6",
+      "source": null,
       "license": "MIT OR Apache-2.0"
     },
     {
       "name": "merman-render",
       "version": "0.8.0-alpha.6",
-      "source": "git+https://github.com/Latias94/merman.git?rev=ac53f21ba97e5bd8da7f849fbcdffe64695171e6#ac53f21ba97e5bd8da7f849fbcdffe64695171e6",
+      "source": null,
       "license": "MIT OR Apache-2.0"
     },
     {
@@ -708,7 +712,7 @@
     {
       "name": "roughr-merman",
       "version": "0.12.3",
-      "source": "git+https://github.com/Latias94/merman.git?rev=ac53f21ba97e5bd8da7f849fbcdffe64695171e6#ac53f21ba97e5bd8da7f849fbcdffe64695171e6",
+      "source": null,
       "license": "MIT"
     },
     {

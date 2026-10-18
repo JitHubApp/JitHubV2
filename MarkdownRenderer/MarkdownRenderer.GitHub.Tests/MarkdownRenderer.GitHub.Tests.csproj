@@ -51,6 +51,8 @@
     <Compile Remove="MermaidTypographyRegressionTests.cs" />
     <Compile Remove="MarkdownPerformanceSessionTests.cs" />
     <Compile Remove="MixedInlineVectorImageRelayoutTests.cs" />
+    <Compile Remove="MarkdownRangeFromPointTouchSelectionRegressionTests.cs" />
+    <Compile Remove="MathSourceMapCopyContractTests.cs" />
     <!-- This test reuses private Math-vector fixture helpers from the file above. -->
     <Compile Remove="InlineVectorGeometryTransferValidationTests.cs" />
     <Compile Remove="ProgressiveSceneDeferralTests.cs" />

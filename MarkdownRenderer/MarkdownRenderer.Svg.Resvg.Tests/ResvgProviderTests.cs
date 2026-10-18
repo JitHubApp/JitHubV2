@@ -488,20 +488,24 @@ public sealed class ResvgProviderTests
     }
 
     [Fact]
-    public async Task OpenAsync_AcceptsLegacyExternalSvgDoctypeWithoutResolvingIt()
+    public async Task OpenAsync_RejectsLegacyExternalSvgDoctypeBeforeWorkerAdmission()
     {
         const string source =
             "<!DOCTYPE svg PUBLIC '-//W3C//DTD SVG 1.1//EN' " +
             "'http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd'>" +
             "<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8'>" +
             "<rect width='8' height='8' fill='green'/></svg>";
+        byte[] bytes = Svg(source);
+        byte[] original = (byte[])bytes.Clone();
         await using var renderer = new ResvgMarkdownSvgRenderer();
 
-        using IMarkdownSvgDocument document = await renderer.OpenAsync(
-            new MarkdownSvgOpenRequest(Svg(source)));
+        MarkdownSvgException exception = await Assert.ThrowsAsync<MarkdownSvgException>(async () =>
+            await renderer.OpenAsync(new MarkdownSvgOpenRequest(bytes)));
 
-        Assert.Equal(8, document.Info.IntrinsicWidthDips);
-        Assert.Equal(8, document.Info.IntrinsicHeightDips);
+        Assert.Equal(MarkdownSvgFailureReason.UnsupportedContent, exception.Reason);
+        Assert.Contains("DTD", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(original, bytes);
+        Assert.Equal(0, renderer.SourceAttachmentCount);
     }
 
     [Fact]

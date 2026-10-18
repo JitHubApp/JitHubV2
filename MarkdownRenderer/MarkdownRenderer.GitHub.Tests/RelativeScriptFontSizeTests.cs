@@ -324,8 +324,14 @@ public sealed class RelativeScriptFontSizeTests
         var context = CreateContext(CreateTheme(sheet), FlowDirection.LeftToRight);
         LinkRun firstRun = sourceLink.CloneForPrivateRasterPlacement();
         LinkRun secondRun = sourceLink.CloneForPrivateRasterPlacement();
-        var firstBox = new InlineContainerBox(context, MarkdownElementKeys.Body);
-        var secondBox = new InlineContainerBox(context, MarkdownElementKeys.Body);
+        var firstBox = new InlineContainerBox(context, MarkdownElementKeys.Body)
+        {
+            BlockIndex = context.NextBlockIndex(),
+        };
+        var secondBox = new InlineContainerBox(context, MarkdownElementKeys.Body)
+        {
+            BlockIndex = context.NextBlockIndex(),
+        };
         try
         {
             firstBox.Add(firstRun);
@@ -402,7 +408,10 @@ public sealed class RelativeScriptFontSizeTests
                 }),
         ]);
         var context = CreateContext(CreateTheme(sheet), FlowDirection.LeftToRight);
-        var plainBox = new InlineContainerBox(context, MarkdownElementKeys.Body);
+        var plainBox = new InlineContainerBox(context, MarkdownElementKeys.Body)
+        {
+            BlockIndex = context.NextBlockIndex(),
+        };
         var plainLink = new LinkRun("ordinary", "https://example.test/");
         try
         {
@@ -781,7 +790,10 @@ public sealed class RelativeScriptFontSizeTests
             [new LinkInlineStyleSpan(0, 1, Assert.IsType<LinkInlineStylePath>(path))],
             depth + 1L);
         var context = CreateContext(CreateTheme(MarkdownStyleSheet.Empty), FlowDirection.LeftToRight);
-        var box = new InlineContainerBox(context, MarkdownElementKeys.Body);
+        var box = new InlineContainerBox(context, MarkdownElementKeys.Body)
+        {
+            BlockIndex = context.NextBlockIndex(),
+        };
         var link = new LinkRun(
             "x",
             "https://example.test/deep",

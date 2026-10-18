@@ -52,9 +52,10 @@ public sealed class ResvgMarkdownSvgRendererOptions
 
     /// <summary>Maximum prepared SVG bytes admitted by <see cref="ResvgMarkdownSvgRenderer.OpenAsync"/>.</summary>
     /// <remarks>
-    /// Source preparation may remove inert branches from a larger original,
-    /// which remains subject to <see cref="HardMaxSourceBytes"/>. This ceiling
-    /// bounds prepared output, not DOM memory or aggregate source retention.
+    /// The original source remains subject to <see cref="HardMaxSourceBytes"/>.
+    /// This ceiling bounds prepared output, not DOM memory or aggregate source
+    /// retention. Unsupported active content is rejected before static
+    /// normalization rather than being removed to admit its remaining artwork.
     /// A direct OpenAsync call must already satisfy this prepared-byte ceiling.
     /// </remarks>
     public int MaxSourceBytes { get; }

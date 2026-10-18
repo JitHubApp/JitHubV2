@@ -267,14 +267,16 @@ public sealed class SvgProcessSnapshotAdmissionTests
     }
 
     [Fact]
-    public async Task ReservationShrinksToPostNormalizationAndDoctypeStrippedSnapshot()
+    public async Task ReservationShrinksToNormalizedDtdFreeSnapshotAndPreservesCallerSource()
     {
         var owner = new SvgProcessSnapshotAdmission(capacityBytes: 128 * 1024, visibleHeadroomBytes: 16 * 1024);
         var options = new ResvgMarkdownSvgRendererOptions(maxSourceBytes: 4096);
         string authored = "<?xml version='1.0' encoding='iso-8859-1'?>" +
-            "<!DOCTYPE svg PUBLIC '-//W3C//DTD SVG 1.1//EN' 'http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd'>" +
             "<svg xmlns='http://www.w3.org/2000/svg'><desc>" + new string('é', 32) + "</desc></svg>";
         byte[] callerBytes = Encoding.Latin1.GetBytes(authored);
+        byte[] originalCallerBytes = (byte[])callerBytes.Clone();
+        string expectedNormalized = "<?xml version=\"1.0\" encoding=\"utf-8\"?>" +
+            "<svg xmlns=\"http://www.w3.org/2000/svg\"><desc>" + new string('é', 32) + "</desc></svg>";
         Assert.True(owner.TryReserve(options.MaxSourceBytes, MarkdownSvgRenderPriority.Visible,
             out SvgProcessSnapshotAdmission.Lease? reservation, out _));
 
@@ -284,8 +286,12 @@ public sealed class SvgProcessSnapshotAdmissionTests
             CancellationToken.None,
             snapshotAdmission: reservation).WaitAsync(TimeSpan.FromSeconds(5));
 
+        byte[] normalizedSource = preflight.Source.CopyToArrayForTest();
         Assert.NotEqual(callerBytes.Length, preflight.Source.Length);
-        Assert.DoesNotContain("DOCTYPE", Encoding.UTF8.GetString(preflight.Source.CopyToArrayForTest()), StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(originalCallerBytes, callerBytes);
+        Assert.Equal(expectedNormalized, Encoding.UTF8.GetString(normalizedSource));
+        Assert.Equal(new string('é', 32), preflight.Info.Description);
+        Assert.True(preflight.Source.AllocatedCapacity < options.MaxSourceBytes);
         Assert.Equal(preflight.Source.AllocatedCapacity, preflight.SourceReservationBytes);
         Assert.Equal(preflight.Source.AllocatedCapacity, owner.ReservedBytes);
         preflight.ReleaseSource();

@@ -687,7 +687,6 @@ public sealed class RootLocalTableImageRelayoutTests
                     imagesAfter[imageIndex].MeasuredImageWidth);
                 Assert.Equal(fallbackImages[imageIndex].MeasuredImageHeight,
                     imagesAfter[imageIndex].MeasuredImageHeight);
-                Assert.Equal(leaseCountsBefore[imageIndex], GetLeaseReferenceCount(leasesBefore[imageIndex]));
                 imageDimensionsChanged |=
                     System.Math.Abs(imageWidthsBefore[imageIndex] - imagesAfter[imageIndex].MeasuredImageWidth) > 0.5f ||
                     System.Math.Abs(imageHeightsBefore[imageIndex] - imagesAfter[imageIndex].MeasuredImageHeight) > 0.5f;
@@ -712,6 +711,13 @@ public sealed class RootLocalTableImageRelayoutTests
             if (constructionContext is not null)
                 await constructionContext.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(10));
         }
+
+        // Prepared clones borrow bitmap leases until their asynchronous
+        // retirement completes. Assert the exact final ownership count after
+        // the same barrier the production pipeline awaits, not while cleanup
+        // may still be queued on the thread pool.
+        for (int imageIndex = 0; imageIndex < images.Length; imageIndex++)
+            Assert.Equal(leaseCountsBefore[imageIndex], GetLeaseReferenceCount(leasesBefore[imageIndex]));
     }
 
     [Fact]

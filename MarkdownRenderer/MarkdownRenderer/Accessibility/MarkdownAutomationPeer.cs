@@ -650,6 +650,11 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
 
     internal Windows.Foundation.Rect GetScreenRectForDocumentRect(Windows.Foundation.Rect docRect)
     {
+        // A clipped semantic span has no screen geometry. Rect.Empty uses
+        // negative-infinite dimensions, which cannot be passed to Rect's
+        // constructor when translating it to client coordinates.
+        if (docRect.IsEmpty) return Windows.Foundation.Rect.Empty;
+
         var ownerScreen = GetOwnerScreenBounds();
         if (ownerScreen.Width <= 0 || ownerScreen.Height <= 0) return default;
 
@@ -835,41 +840,30 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
 
     private Windows.Foundation.Rect GetOwnerScreenBounds()
     {
-        if (_owner.XamlRoot?.Content is FrameworkElement root)
+        if (_owner.XamlRoot is { Content: UIElement root })
         {
-            AutomationPeer? rootPeer = FrameworkElementAutomationPeer.FromElement(root)
-                ?? FrameworkElementAutomationPeer.CreatePeerForElement(root);
-            Windows.Foundation.Rect rootScreen = rootPeer?.GetBoundingRectangle() ?? default;
-            if (rootScreen.Width > 0 && rootScreen.Height > 0)
-            {
-                // A peer's own bounding rectangle is clipped by ancestor
-                // ScrollViewers. Use the element transform for the unclipped
-                // layout origin, anchored to the active XamlRoot's physical
-                // screen bounds. This remains correct for popup XAML islands
-                // while accounting for every outer scroll offset.
-                GeneralTransform transform = _owner.TransformToVisual(root);
-                Windows.Foundation.Point topLeft = transform.TransformPoint(
-                    new Windows.Foundation.Point());
-                Windows.Foundation.Point topRight = transform.TransformPoint(
-                    new Windows.Foundation.Point(_owner.ActualWidth, 0));
-                Windows.Foundation.Point bottomLeft = transform.TransformPoint(
-                    new Windows.Foundation.Point(0, _owner.ActualHeight));
-                Windows.Foundation.Point bottomRight = transform.TransformPoint(
-                    new Windows.Foundation.Point(_owner.ActualWidth, _owner.ActualHeight));
-                AccessibilityRect ownerBounds = AccessibilityGeometry.NormalizeTransformedBounds(
-                    new AccessibilityPoint(topLeft.X, topLeft.Y),
-                    new AccessibilityPoint(topRight.X, topRight.Y),
-                    new AccessibilityPoint(bottomLeft.X, bottomLeft.Y),
-                    new AccessibilityPoint(bottomRight.X, bottomRight.Y));
-                if (ownerBounds.Width <= 0 || ownerBounds.Height <= 0)
-                    return default;
-                double scale = _owner.XamlRoot.RasterizationScale;
-                return new Windows.Foundation.Rect(
-                    rootScreen.X + (ownerBounds.X * scale),
-                    rootScreen.Y + (ownerBounds.Y * scale),
-                    ownerBounds.Width * scale,
-                    ownerBounds.Height * scale);
-            }
+            // Peer bounds are clipped by ancestor ScrollViewers, and a plain
+            // XAML root need not have a peer at all. Keep the unclipped origin
+            // in the same client coordinate space as GetBoundingRectangleCore.
+            // WinUI's UIA wrappers translate provider rectangles to screen
+            // coordinates, and screen points to client coordinates, themselves.
+            // Converting to screen here would apply the window origin twice.
+            GeneralTransform transform = _owner.TransformToVisual(root);
+            Windows.Foundation.Point topLeft = transform.TransformPoint(new Windows.Foundation.Point());
+            Windows.Foundation.Point topRight = transform.TransformPoint(new Windows.Foundation.Point(_owner.ActualWidth, 0));
+            Windows.Foundation.Point bottomLeft = transform.TransformPoint(new Windows.Foundation.Point(0, _owner.ActualHeight));
+            Windows.Foundation.Point bottomRight = transform.TransformPoint(new Windows.Foundation.Point(_owner.ActualWidth, _owner.ActualHeight));
+            AccessibilityRect ownerBounds = AccessibilityGeometry.NormalizeTransformedBounds(
+                new AccessibilityPoint(topLeft.X, topLeft.Y),
+                new AccessibilityPoint(topRight.X, topRight.Y),
+                new AccessibilityPoint(bottomLeft.X, bottomLeft.Y),
+                new AccessibilityPoint(bottomRight.X, bottomRight.Y));
+            // TransformToVisual returns DIPs. Desktop WinUI providers use
+            // rasterized client pixels, so scale once without a screen offset.
+            double scale = _owner.XamlRoot.RasterizationScale;
+            return new Windows.Foundation.Rect(
+                ownerBounds.X * scale, ownerBounds.Y * scale,
+                ownerBounds.Width * scale, ownerBounds.Height * scale);
         }
 
         return GetBoundingRectangleCore();

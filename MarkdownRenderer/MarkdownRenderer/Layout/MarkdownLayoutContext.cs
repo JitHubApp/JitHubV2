@@ -43,6 +43,8 @@ internal sealed class MarkdownLayoutContext
     private MarkdownLayoutConstructionScope? _constructionScope;
     private Action<InlineContainerBox, ContainerInline, Func<Inline, bool>?, int>? _childInlineBuilder;
     private Func<Block, BlockBox?>? _childBlockBuilder;
+    private MarkdownSourceProjection? _sourceProjection;
+    private MarkdownSourceProjection? _safeHtmlSourceProjection;
 
     // Reuse the owning builder for structural children of extension-owned
     // containers. Like the inline callback, this must not survive construction
@@ -173,6 +175,10 @@ internal sealed class MarkdownLayoutContext
     public readonly MarkdownExtensionRegistry Registry;
 
     internal SafeHtmlAlignment SafeHtmlBlockAlignment => _safeHtmlBlockAlignment;
+
+    internal MarkdownSourceProjection? SourceProjection => _sourceProjection;
+
+    internal MarkdownSourceProjection? SafeHtmlSourceProjection => _safeHtmlSourceProjection;
 
     internal SafeHtmlBlockScopeTracker? SafeHtmlNestedScopes => _safeHtmlNestedScopes;
 
@@ -665,6 +671,60 @@ internal sealed class MarkdownLayoutContext
             previousNestedScopes,
             previousInlineFlowScopeId,
             previousInlineFlowContinuesPrevious);
+    }
+
+    /// <summary>
+    /// Scopes a transformed Markdown fragment's source mapping to the synchronous
+    /// construction pass that consumes its already-parsed nodes.
+    /// </summary>
+    internal MarkdownSourceProjectionScope PushSourceProjection(MarkdownSourceProjection projection)
+    {
+        ArgumentNullException.ThrowIfNull(projection);
+        MarkdownSourceProjection? previous = _sourceProjection;
+        _sourceProjection = projection;
+        return new MarkdownSourceProjectionScope(this, previous, safeHtml: false);
+    }
+
+    /// <summary>
+    /// Scopes a composed raw-HTML line projection. Its coordinates are local to
+    /// the exact string handed to SafeHtmlParser, not to the Markdig AST.
+    /// </summary>
+    internal MarkdownSourceProjectionScope PushSafeHtmlSourceProjection(MarkdownSourceProjection? projection)
+    {
+        MarkdownSourceProjection? previous = _safeHtmlSourceProjection;
+        _safeHtmlSourceProjection = projection;
+        return new MarkdownSourceProjectionScope(this, previous, safeHtml: true);
+    }
+
+    internal SourceSpan MapSafeHtmlSourceRange(int localStart, int localLength)
+        => _safeHtmlSourceProjection?.MapRangeOrEmpty(localStart, localLength)
+            ?? new SourceSpan(localStart, localLength);
+
+    private void RestoreSourceProjection(MarkdownSourceProjection? projection, bool safeHtml)
+    {
+        if (safeHtml)
+            _safeHtmlSourceProjection = projection;
+        else
+            _sourceProjection = projection;
+    }
+
+    internal readonly struct MarkdownSourceProjectionScope : IDisposable
+    {
+        private readonly MarkdownLayoutContext? _owner;
+        private readonly MarkdownSourceProjection? _previous;
+        private readonly bool _safeHtml;
+
+        internal MarkdownSourceProjectionScope(
+            MarkdownLayoutContext owner,
+            MarkdownSourceProjection? previous,
+            bool safeHtml)
+        {
+            _owner = owner;
+            _previous = previous;
+            _safeHtml = safeHtml;
+        }
+
+        public void Dispose() => _owner?.RestoreSourceProjection(_previous, _safeHtml);
     }
 
     private void RestoreSafeHtmlBlockContext(

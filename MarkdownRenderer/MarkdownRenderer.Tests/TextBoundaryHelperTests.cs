@@ -148,6 +148,10 @@ public class TextBoundaryHelperTests
         var (start, end) = TextBoundaryHelper.FindWordBoundaries("hello,world", 6);
         Assert.Equal(6, start);
         Assert.Equal(11, end);
+
+        // Punctuation keeps the established nearest-word behavior; only
+        // Unicode symbol/emoji graphemes are selected as independent units.
+        Assert.Equal((0, 5), TextBoundaryHelper.FindWordBoundaries("hello,world", 5));
     }
 
     [Fact]
@@ -159,10 +163,124 @@ public class TextBoundaryHelperTests
     }
 
     [Fact]
+    public void SymbolAndEmojiGraphemesAreSelectableWithoutSelectingNeighboringWords()
+    {
+        Assert.Equal((0, 2), TextBoundaryHelper.FindWordBoundaries("😀", 1));
+        Assert.Equal((2, 4), TextBoundaryHelper.FindWordBoundaries("a 😀 b", 3));
+        Assert.Equal((2, 9), TextBoundaryHelper.FindWordBoundaries("a 👩🏽‍💻 b", 5));
+        Assert.Equal((2, 5), TextBoundaryHelper.FindWordBoundaries("a 1️⃣ b", 3));
+        Assert.Equal((2, 3), TextBoundaryHelper.FindWordBoundaries("a ∑ b", 2));
+        Assert.Equal((2, 3), TextBoundaryHelper.FindWordBoundaries("a $ b", 2));
+        Assert.Equal((0, 3), TextBoundaryHelper.FindWordBoundaries("a\uFE0Fb", 1));
+        Assert.Equal((0, 3), TextBoundaryHelper.FindWordBoundaries("1\uFE0F2", 1));
+    }
+
+    [Fact]
     public void WordMovement_SkipsPunctuation()
     {
         Assert.Equal(7, TextBoundaryHelper.FindNextWordStart("hello, world", 0));
         Assert.Equal(0, TextBoundaryHelper.FindPreviousWordStart("hello, world", 7));
+    }
+
+    [Theory]
+    [InlineData("left1\uFE0F\u20E3right", 2, 0, 4)]
+    [InlineData("left1\uFE0F\u20E3right", 8, 7, 12)]
+    [InlineData("left1\uFE0F\u20E3right", 4, 4, 7)]
+    [InlineData("left1\uFE0F\u20E3right", 5, 4, 7)]
+    [InlineData("left1\uFE0F\u20E3right", 6, 4, 7)]
+    [InlineData("left1\u20E3right", 2, 0, 4)]
+    [InlineData("left1\u20E3right", 7, 6, 11)]
+    [InlineData("مرحبا1\uFE0F\u20E3عالم", 2, 0, 5)]
+    [InlineData("مرحبا1\uFE0F\u20E3عالم", 9, 8, 12)]
+    [InlineData("مرحبا1\uFE0F\u20E3عالم", 6, 5, 8)]
+    [InlineData("e\u03011\uFE0F\u20E3cafe\u0301", 1, 0, 2)]
+    [InlineData("e\u03011\uFE0F\u20E3cafe\u0301", 6, 5, 10)]
+    [InlineData("e\u03011\uFE0F\u20E3cafe\u0301", 3, 2, 5)]
+    [InlineData("121\uFE0F\u20E334", 0, 0, 2)]
+    [InlineData("121\uFE0F\u20E334", 6, 5, 7)]
+    [InlineData("121\uFE0F\u20E334", 3, 2, 5)]
+    public void AdjacentKeycapEmojiDoesNotJoinTheWordsOnEitherSide(
+        string text, int offset, int expectedStart, int expectedEnd)
+    {
+        // P1-016: fixed literal UTF-16 expectations are independent of the
+        // boundary-index representation and its mirrored segmentation oracle.
+        Assert.Equal((expectedStart, expectedEnd), TextBoundaryHelper.FindWordBoundaries(text, offset));
+    }
+
+    [Fact]
+    public void WordMovementDoesNotSkipTheWordAfterAnAdjacentKeycapEmoji()
+    {
+        const string text = "left1\uFE0F\u20E3right";
+        Assert.Equal(7, TextBoundaryHelper.FindNextWordStart(text, 0));
+        Assert.Equal(7, TextBoundaryHelper.FindPreviousWordStart(text, text.Length));
+        Assert.Equal(0, TextBoundaryHelper.FindPreviousWordStart(text, 7));
+    }
+
+    [Theory]
+    [InlineData("left\u20E3right", 2)]
+    [InlineData("left\u20E3right", 3)]
+    [InlineData("left\u20E3right", 4)]
+    [InlineData("left\u20E3right", 8)]
+    [InlineData("left\u0661\u20E3right", 2)]
+    [InlineData("left\u0661\u20E3right", 4)]
+    [InlineData("left\u0661\u20E3right", 5)]
+    [InlineData("left\u0661\u20E3right", 8)]
+    public void EnclosingKeycapMarkOnAnIneligibleBaseRemainsInTheOrdinaryWord(string text, int offset)
+    {
+        // U+20E3 is a combining enclosing mark. Only ASCII 0-9, # and *
+        // are emoji keycap bases; letters/non-ASCII digits remain ordinary
+        // word graphemes instead of becoming a spurious word separator.
+        Assert.Equal((0, text.Length), TextBoundaryHelper.FindWordBoundaries(text, offset));
+        Assert.Equal(text.Length, TextBoundaryHelper.FindNextWordStart(text, 0));
+        Assert.Equal(0, TextBoundaryHelper.FindPreviousWordStart(text, text.Length));
+    }
+
+    [Theory]
+    [InlineData('0')]
+    [InlineData('1')]
+    [InlineData('2')]
+    [InlineData('3')]
+    [InlineData('4')]
+    [InlineData('5')]
+    [InlineData('6')]
+    [InlineData('7')]
+    [InlineData('8')]
+    [InlineData('9')]
+    [InlineData('#')]
+    [InlineData('*')]
+    public void EveryKeycapBaseRemainsAtomicBetweenNeighboringWords(char keycapBase)
+    {
+        foreach (bool hasVariationSelector in new[] { false, true })
+        {
+            string text = "left" + keycapBase + (hasVariationSelector ? "\uFE0F" : string.Empty) + "\u20E3right";
+            int symbolEnd = hasVariationSelector ? 7 : 6;
+            Assert.Equal((0, 4), TextBoundaryHelper.FindWordBoundaries(text, 2));
+            Assert.Equal((4, symbolEnd), TextBoundaryHelper.FindWordBoundaries(text, 5));
+            Assert.Equal((symbolEnd, symbolEnd + 5), TextBoundaryHelper.FindWordBoundaries(text, symbolEnd + 1));
+            Assert.Equal(symbolEnd, TextBoundaryHelper.FindNextWordStart(text, 0));
+        }
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(4096)]
+    [InlineData(4097)]
+    public void AdjacentKeycapWordBoundariesRemainCorrectAcrossSparseAndDenseIndexes(int repetitions)
+    {
+        // One exceptional cluster per 13-code-unit phrase reaches both sides
+        // of the bounded sparse representation's 4096-cluster threshold.
+        const string phrase = "left1\uFE0F\u20E3right ";
+        var index = new TextElementBoundaryIndex(string.Concat(Enumerable.Repeat(phrase, repetitions)));
+        foreach (int occurrence in new[] { 0, repetitions / 2, repetitions - 1 }.Distinct())
+        {
+            int origin = occurrence * 13;
+            Assert.Equal((origin, origin + 4), index.FindWordBoundaries(origin + 2));
+            Assert.Equal((origin + 4, origin + 7), index.FindWordBoundaries(origin + 5));
+            Assert.Equal((origin + 7, origin + 12), index.FindWordBoundaries(origin + 8));
+            Assert.Equal(origin + 7, index.FindNextWordStart(origin));
+            Assert.Equal(origin + 7, index.FindPreviousWordStart(origin + 12));
+            Assert.Equal(origin, index.FindPreviousWordStart(origin + 7));
+        }
     }
 
     [Fact]
@@ -300,6 +418,7 @@ public class TextBoundaryHelperTests
             "before \uD800 invalid-high \uDC00 invalid-low after",
             "RTL \u05D0\u05B0\u05D1 and \u0644\u0627",
             "a\u0301\U0001F600\r\nb\uD800c\uDC00d",
+            "left1\uFE0F\u20E3right left\u20E3right",
         ];
 
         foreach (string text in sparseInputs)
@@ -484,6 +603,9 @@ public class TextBoundaryHelperTests
         {
             if (_text.Length == 0) return (0, 0);
             int index = StartAtOrBefore(Math.Clamp(charIndex, 0, Math.Max(0, _text.Length - 1)));
+            if (!IsWhitespaceTextElement(index) && IsSymbolTextElement(index))
+                return (index, Math.Min(_text.Length, NextStart(index)));
+
             if (!IsWordTextElement(index))
             {
                 int previous = PreviousStart(index);
@@ -567,6 +689,7 @@ public class TextBoundaryHelperTests
         private bool IsWordTextElement(int start)
         {
             if (start < 0 || start >= _text.Length) return false;
+            if (IsSymbolTextElement(start)) return false;
             return CharUnicodeInfo.GetUnicodeCategory(_text, start) switch
             {
                 UnicodeCategory.UppercaseLetter or
@@ -582,6 +705,35 @@ public class TextBoundaryHelperTests
                 UnicodeCategory.ConnectorPunctuation => true,
                 _ => false,
             };
+        }
+
+        private bool IsWhitespaceTextElement(int start) =>
+            start >= 0 && start < _text.Length && char.IsWhiteSpace(_text, start);
+
+        private bool IsSymbolTextElement(int start)
+        {
+            if (start < 0 || start >= _text.Length)
+                return false;
+
+            UnicodeCategory category = CharUnicodeInfo.GetUnicodeCategory(_text, start);
+            if (category is UnicodeCategory.CurrencySymbol or
+                UnicodeCategory.MathSymbol or
+                UnicodeCategory.ModifierSymbol or
+                UnicodeCategory.OtherSymbol)
+            {
+                return true;
+            }
+
+            int end = Math.Min(_text.Length, NextStart(start));
+            if (_text[start] is not (>= '0' and <= '9' or '#' or '*'))
+                return false;
+            for (int index = start; index < end; index++)
+            {
+                if (_text[index] == '\u20E3')
+                    return true;
+            }
+
+            return false;
         }
     }
 }

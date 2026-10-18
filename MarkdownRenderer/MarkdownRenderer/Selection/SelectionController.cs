@@ -85,6 +85,21 @@ internal sealed class SelectionController
         Rect viewport,
         List<Rect> destination)
     {
+        AppendVisibleHighlightRects(snapshot, viewport, destination, selectionBackgrounds: null);
+    }
+
+    /// <summary>
+    /// Appends both authoritative selection geometry and its paint-only
+    /// background geometry in one viewport traversal. Selection geometry is
+    /// unchanged; atomic visuals may provide narrower translucent paint
+    /// backgrounds without affecting handles or point-in-selection checks.
+    /// </summary>
+    internal void AppendVisibleHighlightRects(
+        LayoutSnapshot snapshot,
+        Rect viewport,
+        List<Rect> destination,
+        List<SelectionBackgroundGeometry>? selectionBackgrounds)
+    {
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(destination);
         if (Range.IsEmpty)
@@ -118,7 +133,8 @@ internal sealed class SelectionController
                         physicalViewport,
                         viewport,
                         clip: null,
-                        destination);
+                        destination,
+                        selectionBackgrounds);
                 }
             }
         }
@@ -463,14 +479,15 @@ internal sealed class SelectionController
         Rect physicalViewport,
         Rect logicalViewport,
         Rect? clip,
-        List<Rect> destination)
+        List<Rect> destination,
+        List<SelectionBackgroundGeometry>? selectionBackgrounds = null)
     {
         if (box is ListItemBox listItem)
         {
             AppendBlockRects(snapshot, topLevelRoot, listItem.Marker, range,
-                physicalViewport, logicalViewport, clip, destination);
+                physicalViewport, logicalViewport, clip, destination, selectionBackgrounds);
             AppendBlockRects(snapshot, topLevelRoot, listItem.Content, range,
-                physicalViewport, logicalViewport, clip, destination);
+                physicalViewport, logicalViewport, clip, destination, selectionBackgrounds);
             return;
         }
 
@@ -488,7 +505,7 @@ internal sealed class SelectionController
                          physicalViewport.Top, physicalViewport.Bottom))
             {
                 AppendBlockRects(snapshot, topLevelRoot, cell, range,
-                    physicalViewport, logicalViewport, tableClip, destination);
+                    physicalViewport, logicalViewport, tableClip, destination, selectionBackgrounds);
             }
             return;
         }
@@ -500,7 +517,7 @@ internal sealed class SelectionController
             for (int index = first; index < end; index++)
             {
                 AppendBlockRects(snapshot, topLevelRoot, stack.Children[index], range,
-                    physicalViewport, logicalViewport, clip, destination);
+                    physicalViewport, logicalViewport, clip, destination, selectionBackgrounds);
             }
             return;
         }
@@ -521,12 +538,15 @@ internal sealed class SelectionController
             for (int index = first; index < end; index++)
             {
                 AppendBlockRects(snapshot, topLevelRoot, chunks[index], range,
-                    physicalViewport, logicalViewport, codeClip, destination);
+                    physicalViewport, logicalViewport, codeClip, destination, selectionBackgrounds);
             }
             return;
         }
 
         bool inlineCoordinatesAreLogical = box is InlineContainerBox;
+        VectorSceneBox? vectorBackgroundOwner = selectionBackgrounds is null
+            ? null
+            : box as VectorSceneBox;
         IEnumerable<Rect> sourceRects = box is InlineContainerBox inline
             ? inline.GetLogicalRangeRects(range)
             : box.GetSelectionRects(range);
@@ -541,7 +561,29 @@ internal sealed class SelectionController
                 ? Intersect(logical, inheritedClip)
                 : logical;
             if (visible.Width > 0 && visible.Height > 0 && Intersects(visible, logicalViewport))
+            {
                 destination.Add(visible);
+                if (selectionBackgrounds is not null && vectorBackgroundOwner is null)
+                    selectionBackgrounds.Add(new SelectionBackgroundGeometry(visible, 1f));
+            }
+        }
+
+        if (vectorBackgroundOwner is not null)
+        {
+            foreach (SelectionBackgroundGeometry background in
+                     vectorBackgroundOwner.GetSelectionBackgroundGeometry(range))
+            {
+                Rect logical = snapshot.ToLogicalRectForTopLevelBlockUnderPaint(
+                    topLevelRoot,
+                    background.Bounds);
+                Rect visible = clip is { } inheritedClip
+                    ? Intersect(logical, inheritedClip)
+                    : logical;
+                if (visible.Width > 0 && visible.Height > 0 && Intersects(visible, logicalViewport))
+                {
+                    selectionBackgrounds!.Add(background with { Bounds = visible });
+                }
+            }
         }
     }
 

@@ -1,5 +1,10 @@
 # MarkdownRenderer implementation checkpoint and architecture assessment
 
+This checkpoint records the earlier performance program. The subsequently adopted
+[correctness goal and phase plan](correctness-plan.md) is the active objective;
+its finite phases replace browser-parity and performance qualification as the
+current completion criteria. The evidence below keeps its original scope.
+
 Updated October 12, 2026. MarkdownRenderer remains a preview. The implementation
 has advanced substantially, but the performance, full-page fidelity, and complete
 release qualification goals are still open. This checkpoint preserves the work

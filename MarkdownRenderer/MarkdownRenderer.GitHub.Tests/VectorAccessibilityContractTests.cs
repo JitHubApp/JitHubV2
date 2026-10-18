@@ -6,6 +6,7 @@ using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Selection;
 using MarkdownRenderer.Theming;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Geometry;
@@ -161,6 +162,134 @@ public sealed class VectorAccessibilityContractTests
                 Assert.Equal(context.ThemeSnapshot.SelectionForegroundColor, pixel);
             else
                 Assert.NotEqual(selectionBackground, pixel);
+        }
+        finally
+        {
+            vector.Dispose();
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void SelectedTransparentVectorUsesClippedPaintBackgroundWithoutChangingSelectionGeometry(
+        bool highContrast)
+    {
+        var scene = new MarkdownVectorScene(
+            width: 20,
+            height: 20,
+            baseline: 16,
+            commands:
+            [
+                MarkdownVectorCommand.FillRectangle(
+                    new MarkdownVectorRectangle(10, 10, 4, 4),
+                    0xFF000000),
+            ],
+            referenceFontSize: 16);
+        MarkdownLayoutContext context = CreateContext(isHighContrast: highContrast);
+        var vector = new VectorSceneBox(context, CreateContent(scene), MarkdownElementKeys.Diagram)
+        {
+            BlockIndex = 1,
+        };
+        vector.Measure(100);
+        vector.Arrange(0, 0, 100);
+
+        try
+        {
+            int targetHeight = System.Math.Max(1, (int)System.Math.Ceiling(vector.Bounds.Height));
+            using var target = new CanvasRenderTarget(
+                context.ResourceCreator,
+                100,
+                targetHeight,
+                96);
+            using var snapshot = new LayoutSnapshot(
+                new BlockBox[] { vector },
+                context.SourceMap,
+                width: 100,
+                height: targetHeight);
+            var selection = new SelectionController();
+            selection.SetAnchor(new DocumentPosition(1, 0, 0));
+            selection.ExtendTo(new DocumentPosition(1, 0, 1));
+            var selectionRects = new List<Rect>();
+            var selectionBackgrounds = new List<SelectionBackgroundGeometry>();
+            Assert.True(snapshot.TryBeginPaint());
+            try
+            {
+                selection.AppendVisibleHighlightRects(
+                    snapshot,
+                    new Rect(0, 0, 100, targetHeight),
+                    selectionRects,
+                    selectionBackgrounds);
+            }
+            finally
+            {
+                snapshot.EndPaint();
+            }
+
+            // Selection, caret, and hit geometry continue to cover the full
+            // atomic block. Only the adorner background follows scene content.
+            Assert.Equal(vector.Bounds, Assert.Single(selectionRects));
+            SelectionBackgroundGeometry background = Assert.Single(selectionBackgrounds);
+            Assert.Equal(vector.VisibleContentBounds, background.Bounds);
+            Assert.True(background.Bounds.Width < vector.Bounds.Width);
+            Assert.Equal(0.25f, background.Opacity);
+            Assert.True(vector.HitTestSelectionEndpoint(
+                new Point(vector.Bounds.Right - 1, vector.Bounds.Top + 1),
+                out _));
+
+            Color white = Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
+            Color selectedBackground = context.ThemeSnapshot.SelectionHighlightColor;
+            using (CanvasDrawingSession drawingSession = target.CreateDrawingSession())
+            {
+                drawingSession.Clear(white);
+                background.Paint(drawingSession, selectedBackground, highContrast);
+                vector.PaintSelectionForeground(
+                    drawingSession,
+                    selection.Range,
+                    context.ThemeSnapshot.SelectionForegroundColor,
+                    new Rect(0, 0, 100, targetHeight));
+            }
+
+            Color[] pixels = target.GetPixelColors();
+            Rect contentBounds = vector.VisibleContentBounds;
+            Color transparentScenePixel = ReadPixel(
+                pixels,
+                100,
+                contentBounds.Left + 5,
+                contentBounds.Top + 5);
+            Color blackScenePixel = ReadPixel(
+                pixels,
+                100,
+                contentBounds.Left + 11,
+                contentBounds.Top + 11);
+            Color outlinePixel = ReadPixel(
+                pixels,
+                100,
+                contentBounds.Left,
+                contentBounds.Top + contentBounds.Height / 2);
+            Color outsideScenePixel = ReadPixel(
+                pixels,
+                100,
+                vector.Bounds.Right - 10,
+                contentBounds.Top + 5);
+
+            Color expectedTransparentPixel = highContrast
+                ? selectedBackground
+                : BlendOverWhite(selectedBackground, 0.25f);
+            AssertColorClose(expectedTransparentPixel, transparentScenePixel, tolerance: 2);
+            Assert.Equal(white, outsideScenePixel);
+            AssertColorClose(
+                highContrast
+                    ? context.ThemeSnapshot.SelectionForegroundColor
+                    : Color.FromArgb(0xFF, 0, 0, 0),
+                blackScenePixel,
+                tolerance: 1);
+            AssertColorClose(
+                highContrast
+                    ? context.ThemeSnapshot.SelectionForegroundColor
+                    : selectedBackground,
+                outlinePixel,
+                tolerance: 8);
         }
         finally
         {
@@ -1313,6 +1442,40 @@ public sealed class VectorAccessibilityContractTests
             accessibilityName: "Flow diagram",
             semanticText: "Alpha\nBeta");
         return Assert.Single(builder.Build().Items);
+    }
+
+    private static Color ReadPixel(Color[] pixels, int width, double x, double y)
+    {
+        int pixelX = System.Math.Clamp((int)System.Math.Floor(x), 0, width - 1);
+        int pixelY = System.Math.Clamp((int)System.Math.Floor(y), 0, pixels.Length / width - 1);
+        return pixels[pixelY * width + pixelX];
+    }
+
+    private static Color BlendOverWhite(Color foreground, float opacity)
+    {
+        float alpha = System.Math.Clamp(
+            System.MathF.Round(foreground.A * opacity),
+            0f,
+            255f) / 255f;
+        return Color.FromArgb(
+            0xFF,
+            BlendChannel(foreground.R, alpha),
+            BlendChannel(foreground.G, alpha),
+            BlendChannel(foreground.B, alpha));
+    }
+
+    private static byte BlendChannel(byte foreground, float alpha) =>
+        (byte)System.Math.Clamp(
+            (int)System.MathF.Round(foreground * alpha + 255f * (1f - alpha)),
+            0,
+            255);
+
+    private static void AssertColorClose(Color expected, Color actual, int tolerance)
+    {
+        Assert.InRange(System.Math.Abs(expected.A - actual.A), 0, tolerance);
+        Assert.InRange(System.Math.Abs(expected.R - actual.R), 0, tolerance);
+        Assert.InRange(System.Math.Abs(expected.G - actual.G), 0, tolerance);
+        Assert.InRange(System.Math.Abs(expected.B - actual.B), 0, tolerance);
     }
 
     private static Size MeasureBlockScene(

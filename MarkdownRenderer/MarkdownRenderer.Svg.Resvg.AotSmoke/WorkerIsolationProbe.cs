@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 
@@ -30,6 +31,7 @@ internal static partial class WorkerIsolationProbe
     private const int MaximumAceCount = 128;
     private const uint TokenPrimary = 1;
     private const uint SeGroupIntegrity = 0x00000020;
+    private const uint SeGroupIntegrityEnabled = 0x00000040;
     private const uint SePrivilegeEnabled = 0x00000002;
     private const uint GenericAll = 0x10000000;
     private const byte AccessAllowedAceType = 0;
@@ -92,11 +94,30 @@ internal static partial class WorkerIsolationProbe
         VerifyPrimaryRestrictedToken(workerToken, userSid);
         uint workerPid = GetWorkerProcessId(worker);
         VerifyNoWorkerThreadImpersonation(workerPid);
+        VerifyNoGuiModules(workerPid);
         VerifyDefaultDacl(workerToken, userSid);
 
         Console.WriteLine(
             $"Verified live SVG worker isolation: pid={workerPid}, exact image path, primary RC-only restricted SID, low integrity, disabled dangerous privileges, no thread impersonation, job membership, required queryable process mitigations, and user+RC default DACL. Heap-termination-on-corruption was requested at process creation but is not exposed by the documented process-mitigation query API and is not claimed as verified.");
         return workerPid;
+    }
+
+    private static void VerifyNoGuiModules(uint processId)
+    {
+        // Audit the live import closure as well as the static PE allowlist.
+        // This runs for the matching-RID worker after warm-up and after the
+        // full text/image lifecycle, so a delayed GUI import cannot hide here.
+        using Process process = Process.GetProcessById(checked((int)processId));
+        foreach (ProcessModule module in process.Modules)
+        {
+            string name = module.ModuleName;
+            if (name.Equals("user32.dll", StringComparison.OrdinalIgnoreCase) ||
+                name.Equals("gdi32.dll", StringComparison.OrdinalIgnoreCase) ||
+                name.Equals("gdi32full.dll", StringComparison.OrdinalIgnoreCase) ||
+                name.Equals("mshtml.dll", StringComparison.OrdinalIgnoreCase) ||
+                name.Equals("WebView2Loader.dll", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException($"The restricted SVG worker loaded a GUI/browser module: {name}.");
+        }
     }
 
     internal static ResourceSnapshot ReadResourceSnapshot(uint workerProcessId)
@@ -389,7 +410,8 @@ internal static partial class WorkerIsolationProbe
             uint attributes = unchecked((uint)Marshal.ReadInt32(integrity.DangerousGetHandle(), IntPtr.Size));
             string actualSid = SidToString(label);
             if (!string.Equals(actualSid, LowIntegritySid, StringComparison.Ordinal) ||
-                (attributes & SeGroupIntegrity) == 0)
+                (attributes & (SeGroupIntegrity | SeGroupIntegrityEnabled)) !=
+                    (SeGroupIntegrity | SeGroupIntegrityEnabled))
             {
                 throw new InvalidOperationException($"The SVG worker integrity label is '{actualSid}' with attributes 0x{attributes:X8}; low integrity is required.");
             }

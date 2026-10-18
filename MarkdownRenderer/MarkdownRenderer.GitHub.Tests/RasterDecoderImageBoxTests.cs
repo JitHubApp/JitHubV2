@@ -3,6 +3,7 @@ using System.Buffers.Binary;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
@@ -337,6 +338,103 @@ public sealed class RasterDecoderImageBoxTests : IAsyncLifetime
         }
     }
 
+    [Fact]
+    public async Task LateRasterFromReplacedDocumentCannotChangeCurrentCachedLocalImage()
+    {
+        // Warm a valid local PNG before starting the blocked old-document decode.
+        // The replacement ImageBox can then acquire that admitted bitmap while
+        // the old request is still in flight, independent of decode concurrency.
+        byte[] replacementBytes = DisplaySizedRasterDecodeTests.CreatePng(71, 37);
+        string replacementSource = "data:image/png;base64," + Convert.ToBase64String(replacementBytes);
+        var warmImage = new ImageBox(
+            DisplaySizedRasterDecodeTests.CreateContext(resolver: null!, session: null, scale: 1),
+            replacementSource,
+            "Current document local image");
+        try
+        {
+            warmImage.Measure(71);
+            if (warmImage.Bitmap is null)
+                await DisplaySizedRasterDecodeTests.WaitForLoadAsync(warmImage);
+            Assert.NotNull(warmImage.Bitmap);
+            Assert.Equal(MarkdownImageAccessibilityState.Loaded, warmImage.AccessibilityState);
+        }
+        finally
+        {
+            warmImage.Dispose();
+        }
+
+        var oldDecoder = new FakeRasterDecoder(MarkdownRasterFormat.WebP)
+        {
+            PendingResult = new TaskCompletionSource<MarkdownRaster>(
+                TaskCreationOptions.RunContinuationsAsynchronously),
+        };
+        int unavailableNotifications = 0;
+        int oldPublications = 0;
+        ImageBox oldImage = CreateImage(
+            CreateWebP(64, 32),
+            oldDecoder,
+            scale: 1,
+            imageUnavailable: (_, _, _) => Interlocked.Increment(ref unavailableNotifications));
+        oldImage.LoadCompleted += (_, args) =>
+        {
+            if (!args.IsBitmapOutputRecoverySignal)
+                Interlocked.Increment(ref oldPublications);
+        };
+        ImageBox? currentImage = null;
+
+        try
+        {
+            oldImage.Measure(71);
+            oldImage.EnsureLoading();
+            await oldDecoder.Started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.True(MarkdownImagePreparationAdmission.Shared.ActiveCount > 0);
+            Assert.True(MarkdownImagePreparationAdmission.Shared.ActiveBytes > 0);
+
+            // Replacing the document retires the old image box before the
+            // uncooperative decoder completes. The replacement is an admitted
+            // local source (a warm device-cache lease), not a network fixture.
+            oldImage.Dispose();
+            currentImage = new ImageBox(
+                DisplaySizedRasterDecodeTests.CreateContext(resolver: null!, session: null, scale: 1),
+                replacementSource,
+                "Current document local image");
+            currentImage.Measure(71);
+            Assert.NotNull(currentImage.Bitmap);
+            var currentBitmap = currentImage.Bitmap!;
+            Assert.Equal(MarkdownImageAccessibilityState.Loaded, currentImage.AccessibilityState);
+            Assert.Equal(71u, currentBitmap.SizeInPixels.Width);
+            Assert.Equal(37u, currentBitmap.SizeInPixels.Height);
+
+            MarkdownRaster lateRaster = oldDecoder.CreateRaster(oldDecoder.LastRequest!);
+            TrackingMemoryOwner oldOwner = Assert.IsType<TrackingMemoryOwner>(oldDecoder.LastOwner);
+            Assert.True(oldDecoder.PendingResult!.TrySetResult(lateRaster));
+
+            await DisplaySizedRasterDecodeTests.WaitUntilAsync(() => oldOwner.IsDisposed);
+            await WaitForAdmissionIdleAsync();
+
+            Assert.Equal(1, oldOwner.DisposeCount);
+            Assert.Null(oldImage.Bitmap);
+            Assert.Same(currentBitmap, currentImage.Bitmap);
+            Assert.Equal(MarkdownImageAccessibilityState.Loaded, currentImage.AccessibilityState);
+            Assert.Equal(0, Volatile.Read(ref unavailableNotifications));
+            Assert.Equal(0, Volatile.Read(ref oldPublications));
+            Assert.Equal(0, MarkdownImagePreparationAdmission.Shared.PendingRequests);
+        }
+        finally
+        {
+            oldImage.Dispose();
+            currentImage?.Dispose();
+            if (oldDecoder.PendingResult is { } pending && !pending.Task.IsCompleted)
+            {
+                if (oldDecoder.LastRequest is { } request)
+                    pending.TrySetResult(oldDecoder.CreateRaster(request));
+                else
+                    pending.TrySetCanceled();
+            }
+            await WaitForAdmissionIdleAsync();
+        }
+    }
+
     private static ImageBox CreateImage(
         byte[] source,
         IMarkdownRasterDecoder? decoder,
@@ -455,12 +553,18 @@ public sealed class RasterDecoderImageBoxTests : IAsyncLifetime
     private sealed class TrackingMemoryOwner(int length) : IMemoryOwner<byte>
     {
         private byte[]? _buffer = new byte[length];
+        private int _disposeCount;
 
         internal bool IsDisposed => Volatile.Read(ref _buffer) is null;
+        internal int DisposeCount => Volatile.Read(ref _disposeCount);
         public Memory<byte> Memory => Volatile.Read(ref _buffer)
             ?? throw new ObjectDisposedException(nameof(TrackingMemoryOwner));
 
-        public void Dispose() => Interlocked.Exchange(ref _buffer, null);
+        public void Dispose()
+        {
+            Interlocked.Increment(ref _disposeCount);
+            Interlocked.Exchange(ref _buffer, null);
+        }
     }
 
     public enum InvalidProviderOutput

@@ -23,7 +23,7 @@ public sealed class SvgSourcePreparationBudgetTests
     }
 
     [Fact]
-    public void LoweredSourceCeilingDoesNotRejectRemovedRawScriptBytes()
+    public void UnsupportedRawScriptIsRejectedEvenWhenSnapshotWouldShrinkBelowLoweredLimit()
     {
         byte[] source = Svg("<svg xmlns='http://www.w3.org/2000/svg'><script><![CDATA[" +
             new string('x', 4096) + "]]></script><rect width='1' height='1'/></svg>");
@@ -32,15 +32,15 @@ public sealed class SvgSourcePreparationBudgetTests
 
         MarkdownSvgSourcePreparation result = renderer.PrepareSource(source, CancellationToken.None);
 
-        Assert.Null(result.FailureReason);
-        Assert.NotNull(result.SanitizedBytes);
-        Assert.InRange(result.SanitizedBytes.Length, 1, 256);
-        Assert.DoesNotContain("script", Encoding.UTF8.GetString(result.SanitizedBytes), StringComparison.OrdinalIgnoreCase);
+        Assert.Null(result.SanitizedBytes);
+        Assert.Equal(MarkdownSvgFailureReason.UnsupportedContent, result.FailureReason);
+        Assert.Contains("active-content", result.FailureDescription, StringComparison.Ordinal);
+        Assert.Equal(0, renderer.SourceAttachmentCount);
         Assert.Equal(original, source);
     }
 
     [Fact]
-    public void SerializationCeilingReturnsTypedRejectionAndContentFreeAuditMetadata()
+    public void OriginalActiveContentIsRejectedAndAuditedBeforeSnapshotSerialization()
     {
         byte[] source = Encoding.Latin1.GetBytes("<?xml version='1.0' encoding='iso-8859-1'?>" +
             "<svg xmlns='http://www.w3.org/2000/svg' data-value='" + new string('\u00ff', 512) +
@@ -53,10 +53,11 @@ public sealed class SvgSourcePreparationBudgetTests
 
         Assert.True(source.Length < 800);
         Assert.Null(result.SanitizedBytes);
-        Assert.Equal(MarkdownSvgFailureReason.ResourceLimitExceeded, result.FailureReason);
-        Assert.Contains("static-snapshot-output-bytes", result.FailureDescription, StringComparison.Ordinal);
+        Assert.Equal(MarkdownSvgFailureReason.UnsupportedContent, result.FailureReason);
+        Assert.Contains("active-content", result.FailureDescription, StringComparison.Ordinal);
         Assert.Contains(listener.Rejections, entry => entry == (
-            "static-snapshot-output-bytes", source.Length, Convert.ToHexString(SHA256.HashData(source))));
+            "active-content", source.Length, Convert.ToHexString(SHA256.HashData(source))));
+        Assert.Equal(0, renderer.SourceAttachmentCount);
         Assert.Equal(original, source);
     }
 

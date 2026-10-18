@@ -204,12 +204,18 @@ internal static partial class SampleDocuments
     internal const string ImagesSample = """
         # Images, captions, and SVG
 
-        Inline images load asynchronously via Win2D `CanvasBitmap.LoadAsync`.
-        Each is decoded on the GPU and re-laid-out once dimensions are known.
-        **Alt-text becomes a caption** rendered under the image so screen
+        Raster images decode asynchronously; SVGs use the configured SVG
+        renderer. Layout can update when an image's intrinsic dimensions become
+        known. **Alt-text becomes a caption** rendered under the image so screen
         readers and sighted readers see the same description.
 
-        ## GitHub avatar (PNG, with caption)
+        This standalone sample intentionally has no image resolver. Data-URI
+        images below use bytes embedded in the document. HTTPS examples are
+        policy demonstrations: they are blocked and show the unavailable-image
+        fallback without making a network request. A host app must provide an
+        `IMarkdownImageResolver` to load remote images.
+
+        ## Remote PNG policy example (blocked without a host resolver)
 
         ![The GitHub Octocat — square avatar PNG, 460×460](https://avatars.githubusercontent.com/u/583231?v=4)
 
@@ -225,11 +231,11 @@ internal static partial class SampleDocuments
 
         ![A blurred green diamond rendered with `<feGaussianBlur>`](data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4MCIgaGVpZ2h0PSI4MCIgdmlld0JveD0iMCAwIDgwIDgwIj48ZGVmcz48ZmlsdGVyIGlkPSJiIj48ZmVHYXVzc2lhbkJsdXIgc3RkRGV2aWF0aW9uPSIzIi8+PC9maWx0ZXI+PC9kZWZzPjxyZWN0IHg9IjE1IiB5PSIxNSIgd2lkdGg9IjUwIiBoZWlnaHQ9IjUwIiB0cmFuc2Zvcm09InJvdGF0ZSg0NSA0MCA0MCkiIGZpbGw9IiMxMDdDMTAiIGZpbHRlcj0idXJsKCNiKSIvPjwvc3ZnPg==)
 
-        ## Remote SVG (HTTP)
+        ## Remote SVG policy example (blocked without a host resolver)
 
         ![GitHub site hero glow — a wide SVG decoration from github.com](https://github.githubassets.com/images/modules/site/home/hero-glow.svg)
 
-        ## Broken image (graceful failure)
+        ## Remote URL fallback (not a network/404 test)
 
         ![A 1×1 placeholder showing a friendly error icon](https://example.invalid/does-not-exist.png)
 

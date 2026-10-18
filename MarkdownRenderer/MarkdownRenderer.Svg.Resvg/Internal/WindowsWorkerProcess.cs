@@ -846,6 +846,8 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
                             try
                             {
                                 job.Assign(process);
+                                if (RuntimeInformation.ProcessArchitecture == Architecture.X86)
+                                    AttachX86StartupToken(thread, sourceToken, objectSecurity);
                                 if (ResumeThread(thread) == uint.MaxValue)
                                     throw new Win32Exception(Marshal.GetLastPInvokeError(), "The resvg worker could not leave its suspended launch state.");
                                 return process;

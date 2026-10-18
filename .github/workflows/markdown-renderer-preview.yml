@@ -178,6 +178,76 @@ jobs:
             New-Item -ItemType Directory -Path (Join-Path $artifactRoot $directory) | Out-Null
           }
 
+      - name: Rebuild and verify patched Mermaid native sources
+        run: |
+          $previousRustupToolchain = $env:RUSTUP_TOOLCHAIN
+          $previousCargoTermColor = $env:CARGO_TERM_COLOR
+          try {
+            # The preceding Rust setup step installs 1.96.0 and all three MSVC
+            # targets. Select that exact toolchain for the native build and
+            # focused tests, regardless of the runner's default toolchain.
+            $env:RUSTUP_TOOLCHAIN = '1.96.0'
+            $env:CARGO_TERM_COLOR = 'never'
+
+            & .\MarkdownRenderer\MarkdownRenderer.Mermaid\native\Build-Native.ps1 `
+              -Platform @('x64', 'x86', 'ARM64')
+            if ($LASTEXITCODE -ne 0) { throw 'The pinned Mermaid native build or adapter tests failed.' }
+
+            $provenance = Get-Content '.\MarkdownRenderer\MarkdownRenderer.Mermaid\MERMAN_PROVENANCE.json' -Raw |
+              ConvertFrom-Json -ErrorAction Stop
+            $pinnedRevision = [string]$provenance.revision
+            $cargoHome = if ([string]::IsNullOrWhiteSpace($env:CARGO_HOME)) {
+              Join-Path $env:USERPROFILE '.cargo'
+            } else {
+              [IO.Path]::GetFullPath($env:CARGO_HOME)
+            }
+            $checkoutsRoot = Join-Path $cargoHome 'git\checkouts'
+            if (-not (Test-Path -LiteralPath $checkoutsRoot -PathType Container)) {
+              throw "Cargo did not create its Merman source checkout cache: $checkoutsRoot"
+            }
+
+            $git = (Get-Command git.exe -CommandType Application -ErrorAction Stop |
+              Select-Object -First 1).Source
+            $pinnedCheckouts = [Collections.Generic.List[string]]::new()
+            foreach ($checkoutGroup in Get-ChildItem -LiteralPath $checkoutsRoot -Directory -Filter 'merman-*') {
+              foreach ($candidate in Get-ChildItem -LiteralPath $checkoutGroup.FullName -Directory) {
+                if (-not (Test-Path -LiteralPath (Join-Path $candidate.FullName '.git'))) { continue }
+                $head = @(& $git -c core.autocrlf=false -C $candidate.FullName rev-parse HEAD 2>$null)
+                $headExitCode = $LASTEXITCODE
+                if ($headExitCode -eq 0 -and [string]$head[0] -ceq $pinnedRevision) {
+                  $pinnedCheckouts.Add($candidate.FullName)
+                }
+              }
+            }
+            if ($pinnedCheckouts.Count -ne 1) {
+              throw "Expected one Cargo Merman checkout at pinned revision $pinnedRevision; found $($pinnedCheckouts.Count)."
+            }
+            $pinnedRepositoryPath = $pinnedCheckouts[0]
+
+            $preparationResult = & .\MarkdownRenderer\MarkdownRenderer.Mermaid\native\Test-Prepare-MermanSource.ps1 `
+              -PinnedRepositoryPath $pinnedRepositoryPath
+            if ($preparationResult.Result -ne 'PASS' -or
+                $preparationResult.Checks -ne 49 -or
+                $preparationResult.SharedCargoCheckoutWritten -ne $false -or
+                $preparationResult.TemporaryTestRootRemoved -ne $true) {
+              throw 'The isolated Merman source-preparation contract did not pass all 49 checks safely.'
+            }
+
+            $sourcePatchResult = & .\MarkdownRenderer\MarkdownRenderer.Mermaid\native\Test-MermanPatchedSource.ps1 `
+              -PinnedRepositoryPath $pinnedRepositoryPath
+            if ($sourcePatchResult.Result -ne 'PASS' -or
+                $sourcePatchResult.TestCount -ne 117 -or
+                $sourcePatchResult.CargoTargetOutsidePreparedSource -ne $true -or
+                $sourcePatchResult.TemporaryTestRootRemoved -ne $true -or
+                $sourcePatchResult.SharedCargoCheckoutWritten -ne $false) {
+              throw 'The focused patched-Merman regression suite did not pass all 117 isolated tests.'
+            }
+          }
+          finally {
+            $env:RUSTUP_TOOLCHAIN = $previousRustupToolchain
+            $env:CARGO_TERM_COLOR = $previousCargoTermColor
+          }
+
       - name: Restore test projects in locked mode
         run: |
           $projects = @(
@@ -262,7 +332,7 @@ jobs:
           $results = Join-Path $env:RUNNER_TEMP 'markdownrenderer-preview\test-results'
           $deadlineSensitiveCoreTests = [ordered]@{
             hostedCancellation = 'MarkdownRenderer.Tests.HostedElementLifecycleContractTests.ThrowingCancellationCallbackCannotEscapeCleanup'
-            inertSvgDoctype = 'MarkdownRenderer.Tests.SvgResourceBudgetTests.Validate_AcceptsInertExternalSvgDoctypeWithoutResolvingIt'
+            authoredSvgDoctype = 'MarkdownRenderer.Tests.SvgResourceBudgetTests.Validate_RejectsExternalDoctypeInTheAuthoredRootDocument'
           }
           $coreExclusionTerms = [Collections.Generic.List[string]]::new()
           $coreExclusionTerms.Add('FullyQualifiedName!~PerformanceExternalGateFixtureTests')

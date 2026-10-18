@@ -274,9 +274,8 @@ public sealed class HtmlBreakImageSpacingTests(ITestOutputHelper output)
             }
 
             // Keep the exact no-footer source above for geometry, but append a
-            // semantic paragraph here so the canonical document projection does
-            // not trim the last authored break before the textless <hr>. Every
-            // normalized break must still map to a newline in semantic text.
+            // semantic paragraph here as a nonterminal control. The authored
+            // breaks must map to newlines both here and before a textless <hr>.
             using LayoutSnapshot semanticProjectionControl = BuildGitHub(
                 source + "\n\nAfter the rule.",
                 styleSheet: styleSheet);
@@ -309,8 +308,8 @@ public sealed class HtmlBreakImageSpacingTests(ITestOutputHelper output)
     [Fact]
     public void TrailingBreakBeforeTextlessRuleRetainsRunAndSourceWhenProjectionTrimsFinalNewline()
     {
-        // Characterizes existing semantic-builder trailing-newline behavior;
-        // the run/source remain present while its semantic projection is empty.
+        // Keep the historical regression ID, but require authored content to
+        // survive P1-021. Only generated block separators may be trimmed.
         const string source = "<div>Tail<br><hr></div>";
         using LayoutSnapshot snapshot = BuildGitHub(source);
         InlineContainerBox tail = Assert.Single(EnumerateInlineBoxes(snapshot.Blocks), static box =>
@@ -323,7 +322,7 @@ public sealed class HtmlBreakImageSpacingTests(ITestOutputHelper output)
         Assert.Equal("\n", lineBreak.AccessibleText);
         Assert.True(lineBreak.UseSingleLineLayout);
         Assert.Equal(" ", lineBreak.LayoutText);
-        Assert.False(snapshot.SemanticDocument.Text.EndsWith('\n'));
+        Assert.Equal("Tail\n", snapshot.SemanticDocument.Text);
         Assert.Equal("<br>", snapshot.SourceMap.Slice(range));
         Assert.NotEmpty(tail.GetSelectionRects(range));
     }
@@ -338,10 +337,18 @@ public sealed class HtmlBreakImageSpacingTests(ITestOutputHelper output)
         MarkdownSemanticDocument semantic = snapshot.SemanticDocument;
         InlineContainerBox[] boxes = EnumerateInlineBoxes(snapshot.Blocks).ToArray();
         LineBreakRun[] lineBreaks = boxes.SelectMany(static box => box.Runs.OfType<LineBreakRun>()).ToArray();
+        string expectedText = source switch
+        {
+            "<div>Tail<br><hr></div>" => "Tail\n",
+            "<div>Tail<br><br><hr></div>" => "Tail\n\n",
+            "<div dir=\"rtl\">שלום 😀<br><br><hr></div>" => "שלום 😀\n\n",
+            _ => throw new InvalidOperationException("The terminal-break fixture needs an independent text oracle."),
+        };
 
         Assert.NotEmpty(lineBreaks);
         AssertSemanticRangesWithinText(semantic);
-        Assert.False(semantic.Text.EndsWith('\n'));
+        Assert.Equal(expectedText, semantic.Text);
+        int expectedBreakOffset = expectedText.IndexOf('\n');
 
         foreach (InlineContainerBox box in boxes)
         {
@@ -355,14 +362,17 @@ public sealed class HtmlBreakImageSpacingTests(ITestOutputHelper output)
                     new DocumentPosition(box.BlockIndex, lineBreak.InlineIndex, 0),
                     new DocumentPosition(box.BlockIndex, lineBreak.InlineIndex, lineBreak.Text.Length));
 
-                Assert.Equal(semantic.Text.Length, span.TextStart);
-                Assert.Equal(semantic.Text.Length, span.TextEnd);
-                Assert.Equal(semantic.Text.Length, semantic.TextOffsetFromDocumentPosition(range.Start));
-                Assert.Equal(semantic.Text.Length, semantic.TextOffsetFromDocumentPosition(range.End));
+                Assert.Equal(expectedBreakOffset, span.TextStart);
+                Assert.Equal(expectedBreakOffset + 1, span.TextEnd);
+                Assert.Equal("\n", semantic.Text.Substring(span.TextStart, span.TextEnd - span.TextStart));
+                Assert.Equal(expectedBreakOffset, semantic.TextOffsetFromDocumentPosition(range.Start));
+                Assert.Equal(expectedBreakOffset + 1, semantic.TextOffsetFromDocumentPosition(range.End));
                 Assert.Equal("<br>", snapshot.SourceMap.Slice(range));
                 Assert.NotEmpty(box.GetSelectionRects(range));
+                expectedBreakOffset++;
             }
         }
+        Assert.Equal(expectedText.Length, expectedBreakOffset);
     }
 
     [Fact]

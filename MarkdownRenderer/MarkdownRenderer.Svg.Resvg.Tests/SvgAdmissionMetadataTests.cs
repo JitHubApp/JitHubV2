@@ -39,6 +39,28 @@ public sealed class SvgAdmissionMetadataTests
             cancellation.Token));
     }
 
+    [Fact]
+    public void PrepareSourceRejectsRootExternalDoctypeWithoutChangingCallerBytes()
+    {
+        byte[] source = Svg(
+            "<?xml version='1.0' encoding='utf-8'?>\n" +
+            "<!-- legal prolog comment -->\n" +
+            "<!DOCTYPE svg SYSTEM 'https://example.invalid/svg11.dtd'>" +
+            "<svg xmlns='http://www.w3.org/2000/svg'><title>Standalone</title></svg>");
+        byte[] original = (byte[])source.Clone();
+        using var renderer = new ResvgMarkdownSvgRenderer();
+
+        MarkdownSvgSourcePreparation preparation = renderer.PrepareSource(
+            source,
+            CancellationToken.None);
+
+        Assert.Null(preparation.SanitizedBytes);
+        Assert.Equal(MarkdownSvgFailureReason.UnsupportedContent, preparation.FailureReason);
+        Assert.Contains("dtd-forbidden", preparation.FailureDescription, StringComparison.Ordinal);
+        Assert.Equal(original, source);
+        Assert.Equal(0, renderer.SourceAttachmentCount);
+    }
+
     private static byte[] Svg(string source) => Encoding.UTF8.GetBytes(source);
 
 #if MARKDOWN_LAYOUT_DIAGNOSTICS
@@ -127,7 +149,7 @@ public sealed class SvgAdmissionMetadataTests
     }
 
     [Fact]
-    public void ExternalSvg11DoctypeIsInertButInternalSubsetFailsClosed()
+    public void RootExternalAndInternalSubsetDoctypesAreRejectedWithoutPublishingMetadata()
     {
         byte[] externalDoctype = Svg(
             "<!DOCTYPE svg PUBLIC '-//W3C//DTD SVG 1.1//EN' 'http://127.0.0.1:1/svg11.dtd'>" +
@@ -145,10 +167,11 @@ public sealed class SvgAdmissionMetadataTests
             CancellationToken.None,
             out SvgSourceMetadata internalMetadata);
 
-        Assert.True(externalResult.Accepted, externalResult.Reason);
-        Assert.Equal("Standalone", externalMetadata.Title);
+        Assert.False(externalResult.Accepted);
+        Assert.Equal("dtd-forbidden", externalResult.Reason);
+        Assert.Equal(default, externalMetadata);
         Assert.False(internalResult.Accepted);
-        Assert.Equal("dtd-internal-subset", internalResult.Reason);
+        Assert.Equal("dtd-forbidden", internalResult.Reason);
         Assert.Equal(default, internalMetadata);
     }
 

@@ -394,7 +394,7 @@ internal sealed partial class MarkdownTextRangeProvider : ITextRangeProvider
                     placementScope: snapshot.EnterPlacementTransformScopeForBlockIndexUnderPaint).ToArray(),
                 out Windows.Foundation.Rect[] documentRects))
         {
-            foreach (var rect in documentRects)
+            if (TryGetFirstNonEmptyScrollRect(documentRects, out var rect))
             {
                 _peer.OwnerControl.ScrollDocumentRectIntoView(rect, alignToTop);
                 return;
@@ -406,6 +406,26 @@ internal sealed partial class MarkdownTextRangeProvider : ITextRangeProvider
         // so the owning control can realize and reveal that viewport band.
         if (hasDocumentRange)
             _peer.OwnerControl.ScrollToBlock(documentRange.Normalized().Start.BlockIndex);
+    }
+
+    internal static bool TryGetFirstNonEmptyScrollRect(
+        IEnumerable<Windows.Foundation.Rect> documentRects,
+        out Windows.Foundation.Rect scrollRect)
+    {
+        foreach (var rect in documentRects)
+        {
+            // Clipped semantic content can have no glyph bounds. Preserve the
+            // block-position fallback instead of scrolling to an empty sentinel;
+            // finite zero-width caret rectangles remain valid scroll targets.
+            if (!rect.IsEmpty)
+            {
+                scrollRect = rect;
+                return true;
+            }
+        }
+
+        scrollRect = default;
+        return false;
     }
 
     public void Select()

@@ -65,6 +65,7 @@ public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper out
         Assert.True(actual.Box.IndexedVisualLineCount > 0);
         AssertNativeMetricsAvailable(actual.Box);
         AssertNativeMetricsAvailable(oracle.Box);
+        AssertLineBreakChunkSeamsUseEffectiveHeight(actual.Box);
         AssertMatchesIndependentLegacyOracle(actual.Box, oracle.Box, 13.375f, 131_071.375f, 420);
 
         Array firstVisualLines = GetArray(actual.Box, "_visualLines");
@@ -124,6 +125,7 @@ public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper out
 
         AssertNativeMetricsAvailable(source.Box);
         AssertNativeMetricsAvailable(initialOracle.Box);
+        AssertLineBreakChunkSeamsUseEffectiveHeight(source.Box);
         AssertMatchesIndependentLegacyOracle(source.Box, initialOracle.Box, 5.25f, 91_337.625f, 460);
 
         CanvasLineMetrics[][] sourceMetricsBeforeWidthChange = GetChunkMetrics(source.Box);
@@ -193,6 +195,7 @@ public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper out
 
             candidateBox.Measure(208);
             candidateBox.Arrange(5.25f, 91_337.625f, 208);
+            AssertLineBreakChunkSeamsUseEffectiveHeight(candidateBox);
             adopted = new Fixture(candidateBox, candidateContext, source.Theme, source.Style, ownsContext: true);
 
             Assert.NotSame(source.Box, adopted.Box);
@@ -845,6 +848,39 @@ public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper out
         }
     }
 
+    private static void AssertLineBreakChunkSeamsUseEffectiveHeight(CodeBlockBox box)
+    {
+        for (int chunkIndex = 0; chunkIndex + 1 < box.Chunks.Count; chunkIndex++)
+        {
+            InlineContainerBox preceding = box.Chunks[chunkIndex];
+            InlineContainerBox following = box.Chunks[chunkIndex + 1];
+            int precedingEnd = preceding.CodeBlockTextOffset + preceding.CodeBlockTextLength;
+            if (preceding.CodeBlockTextLength <= 0 ||
+                precedingEnd > box.CodeText.Length ||
+                box.CodeText[precedingEnd - 1] != '\n')
+            {
+                continue;
+            }
+
+            CanvasLineMetrics[] metrics = Assert.IsType<CanvasLineMetrics[]>(
+                preceding.GetLineMetricsSnapshot());
+            if (metrics.Length <= 1 || metrics[^1].CharacterCount != 0)
+                continue;
+
+            double expectedAdvance = 0;
+            for (int index = 0; index < metrics.Length - 1; index++)
+                expectedAdvance += global::System.Math.Max(1, metrics[index].Height);
+            double actualAdvance = following.GetTextOriginY() - preceding.GetTextOriginY();
+            Assert.True(
+                global::System.Math.Abs(expectedAdvance - actualAdvance) <= 1.0,
+                $"Chunk {chunkIndex} advanced {actualAdvance:R} DIPs across an LF seam; " +
+                $"its nonduplicate native rows occupy {expectedAdvance:R} DIPs.");
+            Assert.True(
+                global::System.Math.Abs(preceding.Bounds.Bottom - following.Bounds.Top) <= 0.01,
+                $"Chunk {chunkIndex} leaves a physical gap or overlap at its LF seam.");
+        }
+    }
+
     private static void AssertMatchesIndependentLegacyOracle(
         CodeBlockBox actual,
         CodeBlockBox independentNativeOracle,
@@ -881,15 +917,38 @@ public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper out
     {
         int[] logicalLineEnds = CreateLogicalLineEnds(nativeMetricsOwner.CodeText);
         var result = new List<LinePlacement>();
-        foreach (InlineContainerBox chunk in nativeMetricsOwner.Chunks)
+        for (int chunkIndex = 0; chunkIndex < nativeMetricsOwner.Chunks.Count; chunkIndex++)
         {
+            InlineContainerBox chunk = nativeMetricsOwner.Chunks[chunkIndex];
             CanvasLineMetrics[] metrics = Assert.IsType<CanvasLineMetrics[]>(chunk.GetLineMetricsSnapshot());
             Assert.NotEmpty(metrics);
             int localOffset = 0;
             double top = chunk.GetTextOriginY();
             Assert.True(double.IsFinite(top));
-            foreach (CanvasLineMetrics metric in metrics)
+
+            int visibleMetricCount = metrics.Length;
+            if (chunkIndex + 1 < nativeMetricsOwner.Chunks.Count &&
+                chunk.CodeBlockTextOffset >= 0 &&
+                chunk.CodeBlockTextLength > 0 &&
+                chunk.CodeBlockTextLength <= nativeMetricsOwner.CodeText.Length - chunk.CodeBlockTextOffset &&
+                chunk.CodeBlockTextOffset + chunk.CodeBlockTextLength ==
+                    nativeMetricsOwner.Chunks[chunkIndex + 1].CodeBlockTextOffset &&
+                nativeMetricsOwner.Chunks[chunkIndex + 1].CodeBlockTextLength > 0 &&
+                nativeMetricsOwner.CodeText[chunk.CodeBlockTextOffset + chunk.CodeBlockTextLength - 1] == '\n' &&
+                metrics.Length > 1 &&
+                metrics[^1].CharacterCount == 0)
             {
+                // A real source LF at an inter-chunk boundary produces a
+                // zero-character trailing DirectWrite metric in the previous
+                // chunk and the first metric in the next chunk for the same
+                // logical row. This independent oracle excludes only that
+                // exact duplicate row; all other empty metrics remain visible.
+                visibleMetricCount--;
+            }
+
+            for (int metricIndex = 0; metricIndex < visibleMetricCount; metricIndex++)
+            {
+                CanvasLineMetrics metric = metrics[metricIndex];
                 int textOffset = chunk.CodeBlockTextOffset + localOffset;
                 int logicalLineIndex = FindFirstLogicalLineEndingAfter(logicalLineEnds, textOffset);
                 if (logicalLineIndex >= logicalLineEnds.Length)

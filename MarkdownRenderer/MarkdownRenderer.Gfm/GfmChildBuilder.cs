@@ -4,7 +4,6 @@ using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
 using Markdig.Extensions.Abbreviations;
 using MarkdownRenderer.Accessibility;
-using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
@@ -23,8 +22,6 @@ namespace MarkdownRenderer.Gfm;
 /// </summary>
 internal static class GfmChildBuilder
 {
-    private const int MaxMonolithicTextLayoutLength = 32_768;
-
     /// <summary>Builds child blocks from <paramref name="container"/> and adds them to <paramref name="stack"/>.</summary>
     internal static void PopulateChildren(
         StackBox stack,
@@ -172,6 +169,19 @@ internal static class GfmChildBuilder
         if (block is ListBlock && context.TryBuildChildBlock(block, out BlockBox? nestedList))
             return nestedList;
 
+        // Code blocks need the owning layout's source projection and chunk
+        // planner. Details summaries and other extension-owned containers can
+        // contain Markdig code nodes too, so use the same builder as top-level
+        // code whenever that owner is available. Keep a shared-layout fallback
+        // for internal callers that construct a child outside BuildBlocks.
+        if (block is CodeBlock code)
+        {
+            if (context.TryBuildChildBlock(block, out BlockBox? ownerBuiltCode))
+                return ownerBuiltCode;
+
+            return LayoutBuilder.BuildCodeBlockForExtension(code, context);
+        }
+
         using var attrScope = context.PushMarkdownAttributes(block);
         BlockBox? box = null;
 
@@ -198,8 +208,6 @@ internal static class GfmChildBuilder
                 5 => MarkdownElementKeys.Heading5,
                 _ => MarkdownElementKeys.Heading6
             }),
-            FencedCodeBlock fenced => BuildCodeBlock(fenced, fenced.Lines.ToString(), context),
-            CodeBlock code => BuildCodeBlock(code, code.Lines.ToString(), context),
             ContainerBlock cb => BuildContainer(cb, context),
             _ => null
         };
@@ -235,109 +243,6 @@ internal static class GfmChildBuilder
         stack.BlockIndex = context.NextBlockIndex();
         PopulateChildren(stack, cb, context);
         return stack;
-    }
-
-    private static CodeBlockBox BuildCodeBlock(LeafBlock block, string text, MarkdownLayoutContext context)
-    {
-        text = CodeBlockMetadata.NormalizeCodeLineEndings(text);
-        var metadata = CodeBlockMetadata.FromBlock(block, text);
-        int lineCount = CountLogicalLines(text);
-        bool showLineNumbers = metadata.ShowLineNumbers ?? context.CodeBlockLineNumberMode switch
-        {
-            CodeBlockLineNumberMode.Always => true,
-            CodeBlockLineNumberMode.Never => false,
-            _ => lineCount > 1,
-        };
-        var codeBox = new CodeBlockBox(
-            context,
-            metadata,
-            text,
-            context.IsCodeBlockCopyEnabled,
-            showLineNumbers)
-        {
-            BlockIndex = context.NextBlockIndex(),
-        };
-        context.RegisterConstructionBlock(codeBox);
-
-        if (text.Length <= MaxMonolithicTextLayoutLength)
-        {
-            InlineContainerBox chunk = BuildCodeBlockChunk(block, metadata, text, 0, text.Length, context);
-            codeBox.AddChunk(chunk);
-            context.AdoptConstructionBlock(chunk);
-            return codeBox;
-        }
-
-        int offset = 0;
-        while (offset < text.Length)
-        {
-            int length = System.Math.Min(MaxMonolithicTextLayoutLength, text.Length - offset);
-            if (offset + length < text.Length)
-            {
-                int newline = text.LastIndexOf('\n', offset + length - 1, length);
-                if (newline > offset)
-                    length = newline - offset + 1;
-            }
-
-            InlineContainerBox chunk = BuildCodeBlockChunk(block, metadata, text.Substring(offset, length), offset, text.Length, context);
-            codeBox.AddChunk(chunk);
-            context.AdoptConstructionBlock(chunk);
-            offset += length;
-        }
-
-        return codeBox;
-    }
-
-    private static InlineContainerBox BuildCodeBlockChunk(
-        LeafBlock block,
-        CodeBlockMetadata metadata,
-        string text,
-        int textOffset,
-        int totalTextLength,
-        MarkdownLayoutContext context)
-    {
-        var box = new InlineContainerBox(context, MarkdownElementKeys.CodeBlock)
-        {
-            CodeLanguage = metadata.Language,
-            CodeBlockTextOffset = textOffset,
-            CodeBlockTextLength = text.Length,
-        };
-        context.RegisterConstructionBlock(box);
-        box.BlockIndex = context.NextBlockIndex();
-        box.Add(new TextRun(text)
-        {
-            SourceSpan = SliceSourceSpan(block, textOffset, text.Length, totalTextLength)
-        });
-        return box;
-    }
-
-    private static int CountLogicalLines(string text)
-    {
-        if (string.IsNullOrEmpty(text))
-            return 1;
-
-        int lines = 1;
-        foreach (char ch in text)
-        {
-            if (ch == '\n')
-                lines++;
-        }
-
-        return text.EndsWith("\n", System.StringComparison.Ordinal) && lines > 1 ? lines - 1 : lines;
-    }
-
-    private static MarkdownRenderer.SourceSpan SliceSourceSpan(
-        LeafBlock block,
-        int textOffset,
-        int textLength,
-        int totalTextLength)
-    {
-        if (block.Span.Start < 0 || block.Span.Length <= 0 || totalTextLength <= 0)
-            return MarkdownRenderer.SourceSpan.Empty;
-
-        double scale = block.Span.Length / (double)totalTextLength;
-        int start = block.Span.Start + (int)System.Math.Round(textOffset * scale);
-        int end = block.Span.Start + (int)System.Math.Round((textOffset + textLength) * scale);
-        return new MarkdownRenderer.SourceSpan(start, System.Math.Max(0, end - start));
     }
 
     internal static void AddInlines(

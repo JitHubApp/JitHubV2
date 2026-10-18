@@ -57,7 +57,7 @@ and `mailto` links; relative and custom-scheme links are rejected at the host bo
 | Markdown | Lists | `SampleNav_Lists` | Ordered, unordered, nested, and task-list rendering with depth-aware indents. |
 | Markdown | Tables | `SampleNav_Tables` | GFM pipe tables, header/cell styling, column alignment, local overflow, and UIA table roles. |
 | Markdown | Code and TextMate | `SampleNav_Code` | Fenced and indented code, metadata, line numbers, highlighted ranges, copy actions, TextMate highlighting, and local horizontal scrolling. |
-| Markdown | Images and SVG | `SampleNav_Images` | Standalone bitmap and data-URI/remote SVG loading, alt text, captions, failure fallback, and selection. |
+| Markdown | Images and SVG | `SampleNav_Images` | Embedded data-URI SVG loading, alt text, captions, selection, and explicit HTTPS-blocked fallback examples (the standalone sample has no image resolver and makes no remote requests). |
 | Profiles | GitHub alerts | `SampleNav_GitHubAlerts` | Native Note, Tip, Important, Warning, and Caution alerts from the GitHub README profile. |
 | Profiles | Footnotes | `SampleNav_Footnotes` | Footnote definitions, backlinks, fragments, keyboard navigation, and UIA ranges. |
 | Profiles | Markdown Extra | `SampleNav_MarkdownExtra` | Definition lists, abbreviations, and figures/captions enabled separately from strict GFM. |
@@ -69,8 +69,8 @@ and `mailto` links; relative and custom-scheme links are rejected at the host bo
 | Interaction | Selection and copy | `SampleNav_Selection` | Double-click, triple-click, drag, auto-scroll, source copy, rendered copy, and HTML clipboard payloads. |
 | Interaction | Keyboard navigation | `SampleNav_KeyboardNav` | Link and hosted-control focus traversal, activation, selection commands, and dismissal behavior. |
 | Interaction | Right-to-left | `SampleNav_Rtl` | Preview flow direction, mirrored block/list/table layout, and mixed-language shaping. |
-| Interaction | Lazy images | `SampleNav_LazyImages` | Viewport-relative image loading and load-completion rebuild behavior. |
-| Interaction | Scroll anchoring | `SampleNav_ScrollAnchor` | Reading-position preservation across rebuilds and image intrinsic-size changes. |
+| Interaction | Lazy images | `SampleNav_LazyImages` | Viewport-demand decoding/publication of deterministic square, portrait, and wide data-URI SVG fixtures; no network requests. |
+| Interaction | Scroll anchoring | `SampleNav_ScrollAnchor` | Reading-position preservation when viewport-demand image completion changes measured layout. |
 | Diagnostics and scale | Virtualization | `SampleNav_Virtualization` | Long document layout, bounded hosted-element realization, and scroll behavior. |
 | Diagnostics and scale | Stress document | `SampleNav_Stress` | Large mixed-syntax layout, hosted-element realization, scrolling, selection, theme changes, and rebuild-cancellation smoke. |
 | Diagnostics and scale | Accessibility lab | `SampleNav_AccessibilityLab` | TextPattern, RangeFromChild, semantic roles, attributes, high-contrast hooks, and hosted-element focus order. |

@@ -913,7 +913,9 @@ public sealed class MathContractsTests
         Assert.Equal("Unmatched inline-math delimiter.", delimiterDiagnostic.Message);
         Assert.Equal(MathFormulaResultKind.InvalidSource, result.Kind);
         Assert.Equal("MATH100", result.Diagnostic!.Code);
-        Assert.Equal("The formula is not valid TeX.", result.Diagnostic.Message);
+        Assert.Equal(
+            "The formula is invalid or uses TeX syntax this renderer does not support.",
+            result.Diagnostic.Message);
         Assert.Equal(invalid.OriginalSource, result.FallbackSource);
         Assert.Equal("Mathematical expression", result.Accessibility!.AutomationName);
         Assert.Equal(invalid.TexSource, result.Accessibility.CopyText);

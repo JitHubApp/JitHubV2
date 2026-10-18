@@ -42,6 +42,7 @@
          package dependency from MarkdownRenderer.Html to MarkdownRenderer.Gfm. -->
     <Compile Include="..\MarkdownRenderer.Gfm\GfmChildBuilder.cs" Link="Internal\GfmChildBuilder.cs" />
     <Compile Include="..\MarkdownRenderer.Gfm\Renderers\HtmlBlockRenderer.cs" Link="Renderers\HtmlBlockRenderer.cs" />
+    <Compile Include="..\MarkdownRenderer.Gfm\Renderers\HtmlPreformattedTextProjection.cs" Link="Renderers\HtmlPreformattedTextProjection.cs" />
     <None Include="README.md" Pack="true" PackagePath="" />
     <None Include="..\..\LICENSE" Pack="true" PackagePath="" Visible="false" />
     <None Include="..\..\JitHub.Web\wwwroot\icon-192.png" Pack="true" PackagePath="icon-192.png" Visible="false" />

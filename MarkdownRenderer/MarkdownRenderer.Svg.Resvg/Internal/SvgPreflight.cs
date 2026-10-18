@@ -396,7 +396,6 @@ internal static class SvgPreflight
             int embeddedSvgDepth = 0;
             int filterPrimitives = 0;
             bool sawRoot = false;
-            bool sawDoctype = false;
             bool hasText = false;
             bool usesCurrentColor = false;
             bool usesColorScheme = false;
@@ -457,10 +456,7 @@ internal static class SvgPreflight
 
                     if (reader.NodeType == XmlNodeType.DocumentType)
                     {
-                        sawDoctype = true;
-                        if (!string.IsNullOrWhiteSpace(reader.Value))
-                            throw Unsupported("SVG DTD internal subsets are forbidden.");
-                        continue;
+                        throw Unsupported("SVG DTDs and entities are forbidden.");
                     }
 
                     if (reader.NodeType == XmlNodeType.XmlDeclaration)
@@ -778,11 +774,6 @@ internal static class SvgPreflight
             SvgSourceBuffer finalSource = sourceBuffer ??
                 throw new InvalidOperationException("The SVG source snapshot was not produced.");
 
-            // The worker intentionally rejects every DTD token before handing data
-            // to the native parser. Remove the already-validated, inert external
-            // declaration here; internal subsets never reach this point. This
-            // mutates only the sealed-to-ownership private source buffer.
-            StripInertDoctype(finalSource, sawDoctype);
             finalSource.Seal();
             // Raster signatures are authoritative in both host validation and the
             // worker's data-image resolver. Do not reparse/serialize the whole XML
@@ -854,9 +845,8 @@ internal static class SvgPreflight
         bool asynchronous = true) => new()
     {
         Async = asynchronous,
-        // Legacy static SVGs commonly carry the SVG 1.1 external DOCTYPE.
-        // Keep it inert by disabling resolution and reject internal subsets
-        // explicitly while preserving those otherwise-valid documents.
+        // Parse the declaration only far enough to identify and reject it.
+        // No resolver is available, and entity expansion is tightly bounded.
         DtdProcessing = DtdProcessing.Parse,
         XmlResolver = null,
         IgnoreComments = ignoreComments,
@@ -1002,10 +992,9 @@ internal static class SvgPreflight
 
                     if (reader.Depth > options.MaxXmlDepth)
                         throw Resource("The SVG exceeds the XML-depth ceiling.");
-                    if (reader.NodeType == XmlNodeType.DocumentType &&
-                        !string.IsNullOrWhiteSpace(reader.Value))
+                    if (reader.NodeType == XmlNodeType.DocumentType)
                     {
-                        throw Unsupported("SVG DTD internal subsets are forbidden.");
+                        throw Unsupported("SVG DTDs and entities are forbidden.");
                     }
                     if (reader.NodeType == XmlNodeType.ProcessingInstruction &&
                         reader.Name.Equals("xml-stylesheet", StringComparison.OrdinalIgnoreCase))
@@ -1232,94 +1221,6 @@ internal static class SvgPreflight
                 value = value[copyLength..];
             }
         }
-    }
-
-    internal static void StripInertDoctype(SvgSourceBuffer source, bool containsDoctype)
-    {
-        if (!containsDoctype)
-            return;
-
-        ReadOnlySpan<byte> marker = "<!DOCTYPE"u8;
-        int start;
-        int end;
-        using (SvgSourceBuffer.ReadLease lease = source.AcquireReadLease())
-        {
-            int cursor = lease.Length >= 3 && lease.GetByte(0) == 0xef && lease.GetByte(1) == 0xbb && lease.GetByte(2) == 0xbf
-                ? 3
-                : 0;
-            start = -1;
-            while (cursor < lease.Length)
-            {
-                byte current = lease.GetByte(cursor);
-                if (current is (byte)' ' or (byte)'\t' or (byte)'\r' or (byte)'\n')
-                {
-                    cursor++;
-                    continue;
-                }
-
-                if (lease.StartsWithAt(cursor, "<!--"u8))
-                {
-                    int commentEnd = lease.IndexOfSequence(cursor + 4, "-->"u8);
-                    if (commentEnd < 0)
-                        throw Unsupported("The SVG prolog comment is malformed.");
-                    cursor = commentEnd + 3;
-                    continue;
-                }
-
-                if (lease.StartsWithAt(cursor, "<?"u8))
-                {
-                    int instructionEnd = lease.IndexOfSequence(cursor + 2, "?>"u8);
-                    if (instructionEnd < 0)
-                        throw Unsupported("The SVG prolog processing instruction is malformed.");
-                    cursor = instructionEnd + 2;
-                    continue;
-                }
-
-                if (lease.StartsWithAt(cursor, marker))
-                {
-                    start = cursor;
-                    break;
-                }
-
-                // A validated document type must occur in the prolog before its
-                // root element. Do not search the rest of the document, where the
-                // same bytes may be literal comment or CDATA content.
-                break;
-            }
-
-            if (start < 0)
-                throw Unsupported("The inert external SVG DOCTYPE could not be located in the UTF-8 prolog.");
-
-            byte quote = 0;
-            end = -1;
-            for (int index = start + marker.Length; index < lease.Length; index++)
-            {
-                byte current = lease.GetByte(index);
-                if (quote != 0)
-                {
-                    if (current == quote)
-                        quote = 0;
-                    continue;
-                }
-                if (current is (byte)'\'' or (byte)'"')
-                {
-                    quote = current;
-                    continue;
-                }
-                if (current == (byte)'>')
-                {
-                    end = index + 1;
-                    break;
-                }
-            }
-            if (end < 0)
-                throw Unsupported("The SVG DOCTYPE declaration is malformed.");
-        }
-
-        // A DOCTYPE is legal only before the root element. Replacing its
-        // already-validated external declaration with XML whitespace preserves
-        // the surrounding document while avoiding another source-sized array.
-        source.FillRange(start, end - start, (byte)' ');
     }
 
     private static void InspectReference(
@@ -1606,6 +1507,13 @@ internal static class SvgPreflight
                 sawRoot = true;
             }
 
+            // OpenAsync is a public provider boundary, so its recursive walk
+            // must enforce the same active-content policy as the outer SVG.
+            // ImageBox normally performs an earlier admission pass, but a
+            // caller may invoke the provider directly with nested SVG bytes.
+            if (ForbiddenElements.Contains(name, StringComparer.OrdinalIgnoreCase))
+                throw Unsupported($"The static SVG subset does not allow <{name}>.");
+
             if (isSvgElement && name.Equals("svg", StringComparison.OrdinalIgnoreCase))
             {
                 svgNesting++;
@@ -1625,6 +1533,12 @@ internal static class SvgPreflight
                     string attributeName = reader.LocalName;
                     ReadOnlySpan<char> value = ReadAttributeValue(
                         reader, ref attributeScratch, options.MaxSourceBytes, cancellationToken).Trim();
+                    if (attributeName.Length > 2 &&
+                        attributeName.StartsWith("on", StringComparison.OrdinalIgnoreCase))
+                    {
+                        throw Unsupported("SVG event handlers are forbidden.");
+                    }
+
                     if (isSvgElement && attributeName.Equals("media", StringComparison.OrdinalIgnoreCase))
                     {
                         usesColorScheme |= UsesPrefersColorSchemeMediaCondition(DecodeCssEscapes(value.ToString()));

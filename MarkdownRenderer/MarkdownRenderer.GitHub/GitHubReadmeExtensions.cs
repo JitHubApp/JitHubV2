@@ -96,10 +96,7 @@ public static class GitHubReadmeExtensions
         registry.ConfigureGfmRegistry();
         registry.ConfigurePipeline(static pipeline =>
         {
-            if (!pipeline.BlockParsers.Contains<GitHubDetailsBlockParser>())
-            {
-                pipeline.BlockParsers.InsertBefore<HtmlBlockParser>(new GitHubDetailsBlockParser());
-            }
+            ConfigureGitHubDetailsParser(pipeline);
             pipeline.UseFootnotes();
             pipeline.UseEmojiAndSmiley();
             ConfigureGitHubImageEmojiParser(pipeline);
@@ -159,7 +156,7 @@ public static class GitHubReadmeExtensions
         return builder.AddProfileWithPresentation(
             MarkdownProfiles.GitHubReadme,
             registry => registry.ConfigureGitHubReadmeRegistry(safeHtmlOptions),
-            ConfigureGitHubImageEmojiParser);
+            ConfigureGitHubReadmeParser);
     }
 
     private static MarkdownEngineBuilder ConfigureGitHubReadme(
@@ -167,10 +164,28 @@ public static class GitHubReadmeExtensions
         SafeHtmlOptions? safeHtmlOptions)
         => builder
             .AddProfile(MarkdownProfiles.GitHubReadme)
-            .ConfigureParser(ConfigureGitHubImageEmojiParser)
+            .ConfigureParser(ConfigureGitHubReadmeParser)
             .ConfigurePresentation(
                 static () => new MarkdownExtensionRegistry(),
                 registry => registry.ConfigureGitHubReadmeRegistry(safeHtmlOptions));
+
+    private static void ConfigureGitHubReadmeParser(MarkdownPipelineBuilder pipeline)
+    {
+        ConfigureGitHubDetailsParser(pipeline);
+        ConfigureGitHubImageEmojiParser(pipeline);
+    }
+
+    private static void ConfigureGitHubDetailsParser(MarkdownPipelineBuilder pipeline)
+    {
+        // The engine and legacy presentation pipeline must parse the same
+        // Markdown-bearing containers. A later literal-HTML profile removes
+        // HtmlBlockParser; do not re-enable HTML through this contribution.
+        if (pipeline.BlockParsers.Contains<HtmlBlockParser>() &&
+            !pipeline.BlockParsers.Contains<GitHubDetailsBlockParser>())
+        {
+            pipeline.BlockParsers.InsertBefore<HtmlBlockParser>(new GitHubDetailsBlockParser());
+        }
+    }
 
     private static void ConfigureGitHubImageEmojiParser(MarkdownPipelineBuilder pipeline)
     {

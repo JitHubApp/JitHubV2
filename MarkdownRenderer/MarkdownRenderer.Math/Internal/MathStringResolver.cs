@@ -237,7 +237,7 @@ internal static class MathStringResolver
         MathStringKeys.EqualsOperator => "equals",
         MathStringKeys.Times => "times",
         MathStringKeys.DividedBy => "divided by",
-        MathStringKeys.InvalidFormula => "The formula is not valid TeX.",
+        MathStringKeys.InvalidFormula => "The formula is invalid or uses TeX syntax this renderer does not support.",
         MathStringKeys.UnmatchedInlineDelimiter => "Unmatched inline-math delimiter.",
         MathStringKeys.UnmatchedDisplayDelimiter => "Unmatched display-math delimiter.",
         MathStringKeys.SourceTooLong => "The formula exceeds the configured source-length limit.",

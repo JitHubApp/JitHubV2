@@ -10,6 +10,26 @@ namespace MarkdownRenderer.GitHub.Tests;
 public sealed class LayoutPlacementGenerationTests
 {
     [Fact]
+    public void PlacementTranslationPreservesEmptySentinelsWithoutInventingVisibleGeometry()
+    {
+        LayoutPlacementGeneration generation = LayoutPlacementGeneration.Create(
+            [new LayoutPlacementInput(8, 12, 24, 80, 100, true, false)],
+            initialTop: 32, blockSpacing: 0, bottomPadding: 0,
+            documentWidth: 160, revision: 1);
+
+        Assert.Equal(Rect.Empty, generation.ToLogicalRect(0, Rect.Empty));
+        Assert.Equal(Rect.Empty, generation.ToPhysicalViewport(0, Rect.Empty));
+        // A zero-area caret/viewport has a meaningful location; it is not the
+        // empty sentinel and must still follow placement in either direction.
+        Assert.Equal(new Rect(24, 32, 0, 0),
+            generation.ToLogicalRect(0, new Rect(8, 12, 0, 0)));
+        Assert.Equal(new Rect(8, 12, 0, 0),
+            generation.ToPhysicalViewport(0, new Rect(24, 32, 0, 0)));
+        Assert.Throws<ArgumentOutOfRangeException>(() => generation.ToLogicalRect(-1, Rect.Empty));
+        Assert.Throws<ArgumentOutOfRangeException>(() => generation.ToPhysicalViewport(1, Rect.Empty));
+    }
+
+    [Fact]
     public void PlacementTransformScopeSnapsAtFinalLogicalOriginAndRestoresNestedState()
     {
         const float scale = 1.5f;

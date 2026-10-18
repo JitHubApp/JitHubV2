@@ -1715,6 +1715,100 @@ public sealed class SafeHtmlRenderingTests
         Assert.DoesNotContain("Hidden body", snapshot.SemanticDocument.Text, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("\n", false)]
+    [InlineData("\r\n", false)]
+    [InlineData("\n", true)]
+    [InlineData("\r\n", true)]
+    public void GitHubSummaryImageMapsToItsExactAuthoredTag(string newline, bool multiline)
+    {
+        const string imageTag = "<img src=\"diagram.png\" alt=\"Architecture\" width=\"32\" height=\"16\">";
+        string source = "# Prefix 👩‍💻" + newline + newline +
+            (multiline
+                ? "<details>" + newline + "<summary>Inspect this diagram" + newline +
+                  "  " + imageTag + newline + "</summary>"
+                : "<details><summary>Inspect this diagram " + imageTag + "</summary>") +
+            newline + newline + "Hidden body." + newline + newline + "</details>";
+
+        using LayoutSnapshot snapshot = BuildGitHub(source);
+        InlineImageRun image = Assert.Single(FlattenRuns(snapshot).OfType<InlineImageRun>());
+
+        Assert.Equal("diagram.png", image.Url);
+        Assert.Equal("Architecture", image.AltText);
+        Assert.Equal(new SourceSpan(source.IndexOf(imageTag, StringComparison.Ordinal), imageTag.Length),
+            image.SourceSpan);
+        Assert.Equal(imageTag, source.Substring(image.SourceSpan.Start, image.SourceSpan.Length));
+        AssertSummaryImageSourceCopy(snapshot, image, imageTag);
+    }
+
+    [Theory]
+    [InlineData("\n", false)]
+    [InlineData("\r\n", false)]
+    [InlineData("\n", true)]
+    [InlineData("\r\n", true)]
+    public void GitHubSummaryRepeatedImagesKeepTheirOwnSourcesInsideMultilineHtml(
+        string newline, bool quoted)
+    {
+        const string imageTag = "<img src='diagram.png' alt='Repeated' width='32' height='16'>";
+        string details = string.Join(newline,
+            "<details>", "<summary>Images", "<div>", "  " + imageTag,
+            "    " + imageTag, "</div>", "</summary>", "", "Hidden body.", "", "</details>");
+        if (quoted)
+            details = string.Join(newline, details.Split(newline).Select(static line => "> " + line));
+        string source = "# Prefix 👩‍💻" + newline + newline + details;
+
+        using LayoutSnapshot snapshot = BuildGitHub(source);
+        InlineImageRun[] images = FlattenRuns(snapshot).OfType<InlineImageRun>().ToArray();
+        Assert.Equal(2, images.Length);
+        int first = source.IndexOf(imageTag, StringComparison.Ordinal);
+        int second = source.LastIndexOf(imageTag, StringComparison.Ordinal);
+        Assert.True(second > first);
+        Assert.Equal(new[] { new SourceSpan(first, imageTag.Length), new SourceSpan(second, imageTag.Length) },
+            images.Select(static image => image.SourceSpan).ToArray());
+        foreach (InlineImageRun image in images)
+            AssertSummaryImageSourceCopy(snapshot, image, imageTag);
+    }
+
+    [Theory]
+    [InlineData("\n", false)]
+    [InlineData("\r\n", false)]
+    [InlineData("\n", true)]
+    [InlineData("\r\n", true)]
+    public void GitHubSummaryMultilineImageTagCopiesItsExactAuthoredSource(
+        string newline, bool quoted)
+    {
+        string details = string.Join(newline,
+            "<details>", "<summary>Images", "<div>", "  <img",
+            "    src='diagram.png'", "    alt='Multiline'", "    width='32' height='16'>",
+            "</div>", "</summary>", "", "Hidden body.", "", "</details>");
+        if (quoted)
+            details = string.Join(newline, details.Split(newline).Select(static line => "> " + line));
+        string source = "# Prefix 👩‍💻" + newline + newline + details;
+        int imageStart = source.IndexOf("<img", StringComparison.Ordinal);
+        const string imageEnding = "width='32' height='16'>";
+        int imageEnd = source.IndexOf(imageEnding, imageStart, StringComparison.Ordinal) + imageEnding.Length;
+        string expectedSource = source[imageStart..imageEnd];
+
+        using LayoutSnapshot snapshot = BuildGitHub(source);
+        InlineImageRun image = Assert.Single(FlattenRuns(snapshot).OfType<InlineImageRun>());
+
+        Assert.Equal("diagram.png", image.Url);
+        Assert.Equal("Multiline", image.AltText);
+        Assert.Equal(new SourceSpan(imageStart, imageEnd - imageStart), image.SourceSpan);
+        AssertSummaryImageSourceCopy(snapshot, image, expectedSource);
+    }
+
+    private static void AssertSummaryImageSourceCopy(
+        LayoutSnapshot snapshot, InlineImageRun image, string expectedSource)
+    {
+        InlineContainerBox owner = Assert.Single(FlattenBoxes(snapshot).OfType<InlineContainerBox>(),
+            candidate => candidate.Runs.Contains(image));
+        var range = new DocumentRange(
+            new DocumentPosition(owner.BlockIndex, image.InlineIndex, 0),
+            new DocumentPosition(owner.BlockIndex, image.InlineIndex, 1));
+        Assert.Equal(expectedSource, snapshot.SourceMap.Slice(range));
+    }
+
     [Fact]
     public void CollapsedDetailsInsideListItemsDoNotLayoutOrLoadTheirBodies()
     {
@@ -1924,6 +2018,55 @@ public sealed class SafeHtmlRenderingTests
         using LayoutSnapshot snapshot = Build(source, SafeHtmlOptions.Default);
 
         Assert.Equal(source, string.Concat(FlattenRuns(snapshot).Select(static run => run.Text)));
+    }
+
+    [Fact]
+    public void StandaloneScriptIsVisibleAsExactSelectableInertSource()
+    {
+        const string source = "<script data-note='literal'>unsafe-script-sentinel()</script>";
+
+        using LayoutSnapshot snapshot = Build(source, SafeHtmlOptions.Default);
+        InlineRun[] runs = FlattenRuns(snapshot).ToArray();
+
+        Assert.Equal(source, string.Concat(runs.Select(static run => run.Text)));
+        Assert.All(runs, static run => Assert.IsType<TextRun>(run));
+        Assert.Equal(source, string.Concat(runs.Select(run =>
+            source.Substring(run.SourceSpan.Start, run.SourceSpan.Length))));
+    }
+
+    [Fact]
+    public void ScriptLiteralStaysInOrderWithSurroundingLinkedHtmlWithoutBecomingALink()
+    {
+        const string rawScript = "<script>unsafe-script-sentinel()</script>";
+        const string source = "<p><a href='https://example.test'>before" + rawScript + "after</a></p>";
+
+        using LayoutSnapshot snapshot = Build(source, SafeHtmlOptions.Default);
+        InlineRun[] runs = FlattenRuns(snapshot).ToArray();
+        string rendered = string.Concat(runs.Select(static run => run.Text));
+
+        Assert.Equal("before" + rawScript + "after", rendered);
+        Assert.Contains(runs, static run => run is LinkRun { Text: "before" });
+        Assert.Contains(runs, static run => run is LinkRun { Text: "after" });
+
+        InlineRun[] scriptRuns = runs.Where(run =>
+                run.SourceSpan.Start >= source.IndexOf(rawScript, StringComparison.Ordinal) &&
+                run.SourceSpan.Start < source.IndexOf(rawScript, StringComparison.Ordinal) + rawScript.Length)
+            .ToArray();
+        Assert.NotEmpty(scriptRuns);
+        Assert.All(scriptRuns, static run => Assert.IsType<TextRun>(run));
+        Assert.Equal(rawScript, string.Concat(scriptRuns.Select(static run => run.Text)));
+    }
+
+    [Fact]
+    public void ScriptLiteralBetweenHtmlBlocksDoesNotDropOrReorderSiblingText()
+    {
+        const string rawScript = "<script>unsafe-script-sentinel()</script>";
+        const string source = "<p>before block</p>" + rawScript + "<p>after block</p>";
+
+        using LayoutSnapshot snapshot = Build(source, SafeHtmlOptions.Default);
+        string rendered = string.Concat(FlattenRuns(snapshot).Select(static run => run.Text));
+
+        Assert.Equal("before block" + rawScript + "after block", rendered);
     }
 
     [Fact]

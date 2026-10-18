@@ -22,6 +22,7 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox
     private const int AmbiguousBackgroundCommandIndex = -2;
     private const float HorizontalScrollbarHeight = 12f;
     private const float MinimumScrollbarThumbWidth = 24f;
+    private const float NormalSelectionBackgroundOpacity = 0.25f;
 
     internal readonly MarkdownLayoutContext LayoutContext;
     private VectorSceneDrawing _drawing;
@@ -463,7 +464,11 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox
     {
         if (SemanticItems.Count == 0)
         {
-            position = new DocumentPosition(BlockIndex, -1, point.X <= _contentBounds.Left ? 0 : 1);
+            // An unstructured scene has no semantic child index, but remains
+            // one atomic document slot. -1 is reserved for semantic metadata;
+            // pointer/document positions use the same zero-based slot as the
+            // source map and selection-endpoint path.
+            position = new DocumentPosition(BlockIndex, 0, point.X <= _contentBounds.Left ? 0 : 1);
             return Bounds.Contains(point);
         }
 
@@ -540,6 +545,29 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox
             yield return Bounds;
     }
 
+    /// <summary>
+    /// Returns paint-only selection geometry. The full block bounds remain
+    /// authoritative for selection endpoints and point-in-selection tests;
+    /// the adorner background follows only visible scene content.
+    /// </summary>
+    internal IEnumerable<SelectionBackgroundGeometry> GetSelectionBackgroundGeometry(
+        DocumentRange range)
+    {
+        if ((!_drawing.IsPrepared && !IsGraphDetached && !IsCapacityFallbackPaintable) ||
+            !SelectionIntersectsAtomicSlot(range))
+        {
+            yield break;
+        }
+
+        Rect visibleContent = VisibleContentBounds;
+        if (visibleContent.Width > 0 && visibleContent.Height > 0)
+        {
+            yield return new SelectionBackgroundGeometry(
+                visibleContent,
+                NormalSelectionBackgroundOpacity);
+        }
+    }
+
     public override void PaintSelectionForeground(
         CanvasDrawingSession ds,
         DocumentRange range,
@@ -560,12 +588,13 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox
         if (sceneViewport.Width <= 0 || sceneViewport.Height <= 0)
             return;
 
-        // Match block images: the opaque selection fill remains visible as a
-        // tint, then the native scene is repainted above it so equations, graph
-        // edges, labels, and authored colors remain legible. High Contrast uses
-        // the system Highlight/HighlightText pair at full opacity; retaining
-        // normal scene colors or translucency can make selected content vanish.
+        // The normal selection adorner supplies a translucent fill clipped to
+        // VisibleContentBounds. Repaint the native scene at full opacity so
+        // opaque glyphs and authored colors remain crisp while transparent
+        // equation areas retain the underlying document. High Contrast keeps
+        // the system Highlight/HighlightText pair at full opacity.
         bool highContrast = LayoutContext.ThemeSnapshot.IsHighContrast;
+        Color fallbackForeground = highContrast ? color : Style.Foreground;
         VectorScenePaintPalette? selectedPalette = highContrast
             ? new VectorScenePaintPalette(
                 color,
@@ -573,15 +602,15 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox
                 color)
             : null;
         NativePaintSessionResources.LayerLease sceneLayer =
-            NativePaintSessionResources.CreateLayer(ds, highContrast ? 1f : 0.82f, sceneViewport);
+            NativePaintSessionResources.CreateLayer(ds, 1f, sceneViewport);
         try
         {
             if (_drawing.IsPrepared)
                 PaintScene(ds, selectedPalette);
             else if (capacityFallback)
-                PaintCapacityFallback(ds, color, clipAlreadyApplied: true);
+                PaintCapacityFallback(ds, fallbackForeground, clipAlreadyApplied: true);
             else if (HasDetachedFallback)
-                PaintDetachedFallback(ds, color);
+                PaintDetachedFallback(ds, fallbackForeground);
         }
         catch (Exception primary)
         {
@@ -610,7 +639,10 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox
         if (outline.Width > 0 && outline.Height > 0)
         {
             float radius = Math.Max(0, Style.CornerRadius);
-            ds.DrawRoundedRectangle(outline, radius, radius, color, 2f);
+            Color outlineColor = highContrast
+                ? color
+                : LayoutContext.ThemeSnapshot.SelectionHighlightColor;
+            ds.DrawRoundedRectangle(outline, radius, radius, outlineColor, 2f);
         }
     }
 

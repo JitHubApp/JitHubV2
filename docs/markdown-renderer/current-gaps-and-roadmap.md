@@ -2,10 +2,36 @@
 
 MarkdownRenderer is a preview, not a completed 1.0 release.
 
+The active work follows the [correctness goal and phase plan](correctness-plan.md),
+adopted October 12, 2026. Browser-parity, comparative performance, and package-size
+targets below are historical; they no longer block that goal. Distribution work
+and future optimization remain separate from the correctness phases.
+
 For the October 12 implementation, current failing gates, audit history, local
 evidence, and proposed Rust direction, read the
 [implementation checkpoint](implementation-checkpoint-2026-10-12.md). Results
 below retain their historical scope and do not qualify later candidates.
+
+## October 14 correctness checkpoint
+
+- All 500 frozen September 28 README bodies are acquired and integrity-verified.
+  After the disclosure-parser repair, all 500 pass the headless parse/source-map
+  checks without exceptions. One document retains two correctly classified
+  unsupported-math fallbacks. This is not a full-page image/layout/selection or
+  navigation audit; those evaluations remain required.
+- The current pinned official CommonMark/GFM run and its offline rerun each pass
+  1,322/1,322 examples with zero exceptions or waivers. The Release/x64 native
+  renderer suite passes 3,041/3,041 before the final additional container-exit
+  regression; the detailed plan retains each receipt and its exact scope.
+- Mermaid's entity text, decoded literal tags, Markdown wrapping and self-loop
+  labels have reviewed fixes and rebuilt x64/x86/ARM64 payloads. Its full feature
+  suite is still red: 174 pass and eight strict regressions fail for authored
+  Unicode/YAML collisions with internal entity placeholders. No complete-feature
+  certification is claimed.
+- Phase 1 still needs live interaction qualification and genuine 150%/200% DPI
+  checks. The recorded Sandbox guest reports 96 DPI/1.0 despite the host's 150%;
+  viewer zoom is not DPI evidence. Physical testing remains paused. All three
+  correctness phases remain open; see the [active plan](correctness-plan.md).
 
 ## Implemented direction
 

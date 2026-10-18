@@ -6,6 +6,7 @@ using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Graphics.Canvas;
+using Microsoft.Graphics.Canvas.Brushes;
 using Microsoft.Graphics.Canvas.Text;
 using Microsoft.UI.Xaml;
 using Windows.Foundation;
@@ -167,6 +168,7 @@ internal sealed partial class InlineContainerBox : BlockBox
     public readonly string ElementKey;
     private CanvasTextLayout? _layout;
     private NativeResourceRetirementRecord? _layoutRetirementRecord;
+    private ScriptBaselineGeometry _scriptBaselineGeometry = ScriptBaselineGeometry.Empty;
     private CanvasLineMetrics[]? _cachedLineMetrics;
     private bool _lineMetricsRead;
     private CanvasTextLayout? _selectionLayout;
@@ -372,6 +374,25 @@ internal sealed partial class InlineContainerBox : BlockBox
     internal bool DrawContainerChrome { get; set; } = true;
     internal bool UseContainerPadding { get; set; } = true;
     internal bool UseContainerMargin { get; set; } = true;
+
+    internal bool TrySetMeasuredCodeBlockChunkEffectiveHeight(double effectiveHeight)
+    {
+        if (ElementKey != MarkdownElementKeys.CodeBlock ||
+            _layout is null ||
+            CodeBlockTextOffset < 0 ||
+            CodeBlockTextLength <= 0 ||
+            !double.IsFinite(Bounds.Height) ||
+            Bounds.Height < 0 ||
+            !double.IsFinite(effectiveHeight) ||
+            effectiveHeight < 0 ||
+            effectiveHeight > Bounds.Height)
+        {
+            return false;
+        }
+
+        Bounds = new Rect(Bounds.X, Bounds.Y, Bounds.Width, effectiveHeight);
+        return true;
+    }
 
     public InlineContainerBox(MarkdownLayoutContext context, string elementKey)
         : this(context, elementKey, null, null)
@@ -1108,7 +1129,9 @@ internal sealed partial class InlineContainerBox : BlockBox
         return copy;
     }
 
-    public void Add(InlineRun run)
+    public void Add(InlineRun run) => Add(run, sourceProjection: null);
+
+    internal void Add(InlineRun run, MarkdownSourceMap.SourceProjection? sourceProjection)
     {
         System.Diagnostics.Debug.Assert(BlockIndex != 0,
             "BlockIndex must be assigned before calling Add(); source-map entries wnll be registered under block 0 otherwise.");
@@ -1147,7 +1170,11 @@ internal sealed partial class InlineContainerBox : BlockBox
             run.StyleAliases.Count == 0 ? null : CombineAliases(_styleAliasKeys, run.StyleAliases));
         _resolvedRunStyles?.Add(null);
         _resolvedLinkInlineSpanStyles?.Add(null);
-        if (run is SourceSliceTextRun sourceSlice &&
+        if (sourceProjection is not null)
+        {
+            Context.SourceMap.Add(BlockIndex, run.InlineIndex, run.RenderedLength, run.SourceSpan, sourceProjection);
+        }
+        else if (run is SourceSliceTextRun sourceSlice &&
             ReferenceEquals(sourceSlice.SourceText, Context.SourceMap.SourceText) &&
             sourceSlice.SourceStart == run.SourceSpan.Start &&
             sourceSlice.SliceLength == run.SourceSpan.Length)
@@ -1339,8 +1366,9 @@ internal sealed partial class InlineContainerBox : BlockBox
 
     /// <summary>
     /// Returns the start and end positions that span the word containing
-    /// <paramref name="pos"/>.  A "word" is a maximal sequence of non-whitespace
-    /// characters in the buffer.
+    /// <paramref name="pos"/>. Unicode word characters span formatted runs,
+    /// while symbols and emoji are selected as complete graphemes. Whitespace
+    /// and punctuation keep the established nearest-word behavior.
     /// </summary>
     public (DocumentPosition Start, DocumentPosition End) GetWordBoundaries(DocumentPosition pos)
     {
@@ -1392,6 +1420,7 @@ internal sealed partial class InlineContainerBox : BlockBox
         InlineScenePlacementRollbackState[]? previousScenePlacements = null;
         CanvasTextLayout? replacementLayout = null;
         NativeResourceRetirementRecord? replacementLayoutRetirementRecord = null;
+        ScriptBaselineGeometry? replacementScriptBaselineGeometry = null;
         InlineSceneGeometry[]? replacementSceneGeometry = null;
         float[]? replacementInlineImageLineBaselines = null;
         bool publishInlineImageLineBaselines = false;
@@ -1487,6 +1516,7 @@ internal sealed partial class InlineContainerBox : BlockBox
                     candidateLayout,
                     inverseMetricScale: inlineMetricScale,
                     maxInlineWidth: layoutWidth);
+                replacementScriptBaselineGeometry = BuildScriptBaselineGeometry(style.FontSize);
                 if (Context.ThemeSnapshot.MiddleAlignInlineImages &&
                     _inlineImageRuns is { Count: > 0 })
                 {
@@ -1513,7 +1543,10 @@ internal sealed partial class InlineContainerBox : BlockBox
             var bounds = _layout!.LayoutBounds;
             float top = (float)(margin.Top + padding.Top);
             float bottom = (float)(margin.Bottom + padding.Bottom);
-            measuredHeight = (float)bounds.Height + top + bottom;
+            ScriptBaselineGeometry scriptGeometry =
+                replacementScriptBaselineGeometry ?? _scriptBaselineGeometry;
+            measuredHeight = (float)bounds.Height + top + bottom +
+                scriptGeometry.TopInset + scriptGeometry.BottomInset;
             // Do not retire the previously published native layout if the
             // candidate was superseded while placement metrics were computed.
             ThrowIfCancellationRequested();
@@ -1620,6 +1653,9 @@ internal sealed partial class InlineContainerBox : BlockBox
 
         if (publishInlineImageLineBaselines)
             _inlineImageLineBaselineByRunIndex = replacementInlineImageLineBaselines;
+
+        if (replacementScriptBaselineGeometry is not null)
+            _scriptBaselineGeometry = replacementScriptBaselineGeometry;
 
         if (UseContainerMargin)
             Margin = style.Margin;
@@ -2561,7 +2597,7 @@ internal sealed partial class InlineContainerBox : BlockBox
         var margin = Margin;
         var padding = GetEffectivePadding(style);
         float xDnu = (float)(Bounds.X + margin.Left + padding.Left);
-        float yDnu = (float)(Bounds.Y + margin.Top + padding.Top);
+        float yDnu = (float)(Bounds.Y + margin.Top + padding.Top + _scriptBaselineGeometry.TopInset);
         LayoutPlacementTransformContext.SnapOriginToDevicePixels(
             xDnu,
             yDnu,
@@ -2577,13 +2613,28 @@ internal sealed partial class InlineContainerBox : BlockBox
         return (x, y);
     }
 
-    private static void DrawTextLayoutAtFinalOrigin(
+    private void DrawTextLayoutAtFinalOrigin(
         CanvasDrawingSession drawingSession,
         CanvasTextLayout layout,
         float finalOriginX,
         float finalOriginY,
-        Color color)
+        Color color,
+        int foregroundOverrideStart = -1,
+        int foregroundOverrideLength = 0)
     {
+        if (_scriptBaselineGeometry.Count != 0)
+        {
+            DrawTextLayoutWithScriptBaselines(
+                drawingSession,
+                layout,
+                finalOriginX,
+                finalOriginY,
+                color,
+                foregroundOverrideStart,
+                foregroundOverrideLength);
+            return;
+        }
+
         Matrix3x2 originalTransform = drawingSession.Transform;
         if (!LayoutPlacementTransformContext.TryGetPlacementFreeCanvasTransform(
                 originalTransform,
@@ -2605,6 +2656,81 @@ internal sealed partial class InlineContainerBox : BlockBox
             color,
             originalTransform,
             placementFreeTransform);
+    }
+
+    private void DrawTextLayoutWithScriptBaselines(
+        CanvasDrawingSession drawingSession,
+        CanvasTextLayout layout,
+        float finalOriginX,
+        float finalOriginY,
+        Color color,
+        int foregroundOverrideStart,
+        int foregroundOverrideLength)
+    {
+        ElementStyle containerStyle = GetContainerStyle();
+        // CanvasTextLayout.DrawTextLayout's brush overload supplies a fallback
+        // for glyph runs whose callback brush is null. Recreate that behavior
+        // here: primary text inherits the paragraph foreground, while the
+        // selection clone inherits the selection foreground. A link-state
+        // overlay may additionally override only its own source range.
+        Color defaultForegroundColor = ReferenceEquals(layout, _layout)
+            ? containerStyle.Foreground
+            : color;
+        using var defaultForeground = new CanvasSolidColorBrush(
+            Context.ResourceCreator,
+            defaultForegroundColor);
+        bool useForegroundOverride = ReferenceEquals(layout, _layout) && foregroundOverrideLength > 0;
+        using CanvasSolidColorBrush? foregroundOverride = useForegroundOverride
+            ? new CanvasSolidColorBrush(Context.ResourceCreator, color)
+            : null;
+        using var renderer = new ScriptBaselineTextRenderer(
+            drawingSession,
+            _scriptBaselineGeometry,
+            defaultForeground,
+            foregroundOverride,
+            foregroundOverrideStart,
+            foregroundOverrideLength);
+
+        Matrix3x2 originalTransform = drawingSession.Transform;
+        if (!LayoutPlacementTransformContext.TryGetPlacementFreeCanvasTransform(
+                originalTransform,
+                out Matrix3x2 placementFreeTransform) ||
+            originalTransform == placementFreeTransform)
+        {
+            layout.DrawToTextRenderer(renderer, finalOriginX, finalOriginY);
+            return;
+        }
+
+        Exception? drawFailure = null;
+        try
+        {
+            drawingSession.Transform = placementFreeTransform;
+            layout.DrawToTextRenderer(renderer, finalOriginX, finalOriginY);
+        }
+        catch (Exception exception)
+        {
+            drawFailure = exception;
+        }
+
+        Exception? restoreFailure = null;
+        try
+        {
+            drawingSession.Transform = originalTransform;
+        }
+        catch (Exception exception)
+        {
+            restoreFailure = exception;
+        }
+
+        if (drawFailure is not null)
+        {
+            if (restoreFailure is not null)
+                throw new AggregateException("Script text drawing and canvas-transform restoration both failed.", drawFailure, restoreFailure);
+            ExceptionDispatchInfo.Capture(drawFailure).Throw();
+        }
+
+        if (restoreFailure is not null)
+            ExceptionDispatchInfo.Capture(restoreFailure).Throw();
     }
 
     private void DrawHeadingBottomBorder(
@@ -2746,7 +2872,12 @@ internal sealed partial class InlineContainerBox : BlockBox
 
         var style = GetContainerStyle();
         var (x, y) = GetSnappedOrigin(style);
-        _layout.HitTest((float)point.X - x, (float)point.Y - y, out var hit, out bool trailingSide);
+        float layoutX = (float)point.X - x;
+        float layoutY = (float)point.Y - y;
+        CanvasTextLayoutRegion hit;
+        bool trailingSide;
+        if (!TryHitTestScriptGeometry(layoutX, layoutY, out hit, out trailingSide))
+            _layout.HitTest(layoutX, layoutY, out hit, out trailingSide);
         int charIndex = (int)hit.CharacterIndex;
         // When the pointer is on the trailing (right for LTR) half of a glyph,
         // DirectWrite returns the glyph's character index + trailingSide=true.
@@ -2782,6 +2913,45 @@ internal sealed partial class InlineContainerBox : BlockBox
             position = new DocumentPosition(BlockIndex, 0, 0);
         }
         return true;
+    }
+
+    private bool TryHitTestScriptGeometry(
+        float x,
+        float y,
+        out CanvasTextLayoutRegion hit,
+        out bool trailingSide)
+    {
+        hit = default;
+        trailingSide = false;
+        if (_layout is null || _scriptBaselineGeometry.Count == 0)
+            return false;
+
+        for (int spanIndex = 0; spanIndex < _scriptBaselineGeometry.Count; spanIndex++)
+        {
+            ScriptBaselineGeometry.Span span = _scriptBaselineGeometry.GetSpan(spanIndex);
+            CanvasTextLayoutRegion[]? regions = _layout.GetCharacterRegions(span.Start, span.Length);
+            if (regions is null)
+                continue;
+
+            foreach (CanvasTextLayoutRegion region in regions)
+            {
+                Rect bounds = region.LayoutBounds;
+                bounds.Y += span.OffsetY;
+                if (!bounds.Contains(new Point(x, y)))
+                    continue;
+
+                _layout.HitTest(x, y - span.OffsetY, out CanvasTextLayoutRegion candidate, out bool candidateTrailing);
+                int candidateIndex = candidate.CharacterIndex;
+                if (candidateIndex < span.Start || candidateIndex >= span.End)
+                    continue;
+
+                hit = candidate;
+                trailingSide = candidateTrailing;
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public IEnumerable<Rect> GetRangeRects(DocumentRange range)
@@ -2853,7 +3023,8 @@ internal sealed partial class InlineContainerBox : BlockBox
             _layout.RequestedSize.Width,
             Context.FlowDirection == FlowDirection.RightToLeft);
         double x = baseX + visualX;
-        double y = baseY + region.LayoutBounds.Bottom;
+        double y = baseY + region.LayoutBounds.Bottom +
+            _scriptBaselineGeometry.GetOffsetAtCharacter(region.CharacterIndex);
         if (!double.IsFinite(x) || !double.IsFinite(y))
             return false;
 
@@ -2908,7 +3079,7 @@ internal sealed partial class InlineContainerBox : BlockBox
         var lineMetrics = fullLineRects ? TryGetLineMetrics() : null;
         if (!fullLineRects || lineMetrics is null)
         {
-            var regions = _layout.GetCharacterRegions(from, length);
+            var regions = GetAdjustedCharacterRegions(_layout, from, length);
             if (regions is null)
                 yield break;
 
@@ -2943,6 +3114,61 @@ internal sealed partial class InlineContainerBox : BlockBox
 
             y += metric.Height;
             lineStart = lineEnd;
+        }
+    }
+
+    private CanvasTextLayoutRegion[]? GetAdjustedCharacterRegions(
+        CanvasTextLayout layout,
+        int start,
+        int length)
+    {
+        if (start < 0 || length <= 0 || start > int.MaxValue - length)
+            return Array.Empty<CanvasTextLayoutRegion>();
+
+        int end = start + length;
+        if (_scriptBaselineGeometry.Count == 0)
+            return layout.GetCharacterRegions(start, length);
+
+        int firstSegmentEnd = _scriptBaselineGeometry.GetSegmentEnd(start, end, out float firstOffset);
+        if (firstSegmentEnd == end)
+        {
+            CanvasTextLayoutRegion[]? single = layout.GetCharacterRegions(start, length);
+            if (single is not null && firstOffset != 0f)
+                OffsetRegions(single, firstOffset);
+            return single;
+        }
+
+        List<CanvasTextLayoutRegion>? combined = null;
+        int cursor = start;
+        while (cursor < end)
+        {
+            int segmentEnd = _scriptBaselineGeometry.GetSegmentEnd(cursor, end, out float offsetY);
+            if (segmentEnd <= cursor)
+                return null;
+
+            CanvasTextLayoutRegion[]? segment = layout.GetCharacterRegions(cursor, segmentEnd - cursor);
+            if (segment is null)
+                return null;
+
+            combined ??= new List<CanvasTextLayoutRegion>(segment.Length + 2);
+            if (offsetY != 0f)
+                OffsetRegions(segment, offsetY);
+            combined.AddRange(segment);
+            cursor = segmentEnd;
+        }
+
+        return combined?.ToArray() ?? Array.Empty<CanvasTextLayoutRegion>();
+    }
+
+    private static void OffsetRegions(CanvasTextLayoutRegion[] regions, float offsetY)
+    {
+        for (int index = 0; index < regions.Length; index++)
+        {
+            CanvasTextLayoutRegion region = regions[index];
+            Rect bounds = region.LayoutBounds;
+            bounds.Y += offsetY;
+            region.LayoutBounds = bounds;
+            regions[index] = region;
         }
     }
 
@@ -3023,7 +3249,7 @@ internal sealed partial class InlineContainerBox : BlockBox
             var color = focused
                 ? runStyle.FocusForeground ?? runStyle.HoverForeground ?? runStyle.Foreground
                 : runStyle.HoverForeground ?? runStyle.Foreground;
-            var regions = _layout.GetCharacterRegions(cumulative, len);
+            var regions = GetAdjustedCharacterRegions(_layout, cumulative, len);
             if (regions is null)
                 return;
 
@@ -3044,7 +3270,14 @@ internal sealed partial class InlineContainerBox : BlockBox
                 NativePaintSessionResources.LayerLease layer = NativePaintSessionResources.CreateLayer(ds, 1.0f, rect);
                 try
                 {
-                    DrawTextLayoutAtFinalOrigin(ds, _layout, textOriginX, textOriginY, color);
+                    DrawTextLayoutAtFinalOrigin(
+                        ds,
+                        _layout,
+                        textOriginX,
+                        textOriginY,
+                        color,
+                        foregroundOverrideStart: cumulative,
+                        foregroundOverrideLength: len);
                     DrawRunDecorations(ds, sx, sy, lineMetrics, r, run, runStyle, color);
                 }
                 catch (Exception primary)
@@ -3088,7 +3321,7 @@ internal sealed partial class InlineContainerBox : BlockBox
             int len = run.TextLength;
             if (run.InlineIndex == inlineIndex && len > 0)
             {
-                var regions = _layout.GetCharacterRegions(cumulative, len);
+                var regions = GetAdjustedCharacterRegions(_layout, cumulative, len);
                 if (regions is not null && regions.Length > 0)
                 {
                     // Unnon all regions for multn-line runs.
@@ -3415,7 +3648,12 @@ internal sealed partial class InlineContainerBox : BlockBox
         if (!Bounds.Contains(point)) return null;
         var style = GetContainerStyle();
         var (x, y) = GetSnappedOrigin(style);
-        _layout.HitTest((float)point.X - x, (float)point.Y - y, out var hitRegion, out bool trailingSide);
+        float layoutX = (float)point.X - x;
+        float layoutY = (float)point.Y - y;
+        CanvasTextLayoutRegion hitRegion;
+        bool trailingSide;
+        if (!TryHitTestScriptGeometry(layoutX, layoutY, out hitRegion, out trailingSide))
+            _layout.HitTest(layoutX, layoutY, out hitRegion, out trailingSide);
         int charIndex = (int)hitRegion.CharacterIndex;
         if (trailingSide) charIndex++;
         int cumulative = 0;
@@ -3448,11 +3686,11 @@ internal sealed partial class InlineContainerBox : BlockBox
 
         var style = GetContainerStyle();
         var (baseX, baseY) = GetSnappedOrigin(style);
-        _layout.HitTest(
-            (float)point.X - baseX,
-            (float)point.Y - baseY,
-            out CanvasTextLayoutRegion hitRegion,
-            out _);
+        float layoutX = (float)point.X - baseX;
+        float layoutY = (float)point.Y - baseY;
+        CanvasTextLayoutRegion hitRegion;
+        if (!TryHitTestScriptGeometry(layoutX, layoutY, out hitRegion, out _))
+            _layout.HitTest(layoutX, layoutY, out hitRegion, out _);
 
         // CharacterIndex identifies the glyph under the pointer. Deliberately
         // ignore trailingSide here: applying it converts this geometric hit to
@@ -3502,7 +3740,7 @@ internal sealed partial class InlineContainerBox : BlockBox
             if (len <= 0)
                 return false;
 
-            var regions = _layout.GetCharacterRegions(cumulative, len);
+            var regions = GetAdjustedCharacterRegions(_layout, cumulative, len);
             if (regions is null || regions.Length == 0)
                 return false;
 
@@ -3680,7 +3918,7 @@ internal sealed partial class InlineContainerBox : BlockBox
         if (_layout is null || length <= 0)
             return false;
 
-        var regions = _layout.GetCharacterRegions(start, length);
+        var regions = GetAdjustedCharacterRegions(_layout, start, length);
         if (regions is null || regions.Length == 0)
             return false;
 
@@ -3904,8 +4142,6 @@ internal sealed partial class InlineContainerBox : BlockBox
                     ref inlineCodePaddingRanges, cumulative, len, codeStyle.Padding,
                     observeCancellation);
             }
-            ApplyBaselineStyle(layout, cumulative, len, run);
-
             if (run is LinkRun { InlineStyleMap: { } inlineStyleMap } styledLink)
             {
                 // The full link run has already been styled above. Compare
@@ -3934,7 +4170,6 @@ internal sealed partial class InlineContainerBox : BlockBox
                         linkStyle,
                         linkFontFamily,
                         applyColors);
-                    ApplyLinkInlineBaselineStyle(layout, spanStart, span.Length, span.Path);
                 }
 
                 QueueLinkInlineCodePadding(
@@ -4454,91 +4689,92 @@ internal sealed partial class InlineContainerBox : BlockBox
         }
     }
 
-    private void ApplyBaselineStyle(CanvasTextLayout layout, int start, int length, InlineRun run)
+    private ScriptBaselineGeometry BuildScriptBaselineGeometry(float containerFontSize)
     {
-        if (length <= 0 || run is InlineSpacerRun)
-            return;
-
-        CanvasTypographyFeatureName? feature;
-        if (!Context.ThemeSnapshot.HasRelativeScriptFontSizeRules)
+        float safeFontSize = float.IsFinite(containerFontSize) && containerFontSize > 0f
+            ? containerFontSize
+            : 16f;
+        var builder = new ScriptBaselineGeometry.Builder();
+        int cumulative = 0;
+        foreach (InlineRun run in _runs)
         {
-            // Keep legacy profiles byte-for-byte on their existing baseline path.
-            feature = run switch
+            int length = run.TextLength;
+            if (length <= 0)
+                continue;
+
+            if (run is not (InlineEmbedRun or InlineImageRun or InlineVectorSceneRun or InlineSpacerRun))
             {
-                SubscriptRun => CanvasTypographyFeatureName.Subscript,
-                SuperscriptRun => CanvasTypographyFeatureName.Superscript,
-                LinkRun { IsSuperscript: true } => CanvasTypographyFeatureName.Superscript,
-                _ when run.HasStyleModifier(MarkdownElementKeys.Subscript) => CanvasTypographyFeatureName.Subscript,
-                _ when run.HasStyleModifier(MarkdownElementKeys.Superscript) => CanvasTypographyFeatureName.Superscript,
-                _ => null,
-            };
+                float runOffset = GetScriptRoleOffset(run, safeFontSize);
+                if (run is LinkRun { InlineStyleMap: { } styleMap } && styleMap.Count > 0)
+                {
+                    int cursor = 0;
+                    for (int index = 0; index < styleMap.Count; index++)
+                    {
+                        LinkInlineStyleSpan span = styleMap.GetSpan(index);
+                        int gapLength = span.Start - cursor;
+                        builder.Add(cumulative + cursor, gapLength, runOffset);
+                        float nestedOffset = GetScriptPathOffset(span.Path, safeFontSize);
+                        builder.Add(
+                            cumulative + span.Start,
+                            span.Length,
+                            ClampScriptOffset(runOffset + nestedOffset, safeFontSize));
+                        cursor = span.Start + span.Length;
+                    }
+
+                    builder.Add(cumulative + cursor, length - cursor, runOffset);
+                }
+                else
+                {
+                    builder.Add(cumulative, length, runOffset);
+                }
+            }
+
+            cumulative = checked(cumulative + length);
+        }
+
+        return builder.Build();
+    }
+
+    private static float GetScriptRoleOffset(InlineRun run, float containerFontSize)
+    {
+        float offset = 0f;
+        IReadOnlyList<string> ancestry = run.ScriptStyleAncestryKeys;
+        if (ancestry.Count > 0)
+        {
+            for (int index = 0; index < ancestry.Count; index++)
+                offset += GetScriptRoleOffset(ancestry[index], containerFontSize);
         }
         else
         {
-            string? scriptRole = GetInnermostScriptStyleKey(run);
-            feature = scriptRole switch
-            {
-                MarkdownElementKeys.Subscript => CanvasTypographyFeatureName.Subscript,
-                MarkdownElementKeys.Superscript => CanvasTypographyFeatureName.Superscript,
-                _ => null,
-            };
+            if (IsScriptStyleKey(run.ElementKey))
+                offset += GetScriptRoleOffset(run.ElementKey, containerFontSize);
+            for (int index = 0; index < run.StyleModifierKeys.Count; index++)
+                offset += GetScriptRoleOffset(run.StyleModifierKeys[index], containerFontSize);
+            if (offset == 0f && run is LinkRun { IsSuperscript: true })
+                offset = GetScriptRoleOffset(MarkdownElementKeys.Superscript, containerFontSize);
         }
 
-        if (feature is null)
-            return;
-
-        ApplyBaselineTypographyFeature(layout, start, length, feature.Value);
+        return ClampScriptOffset(offset, containerFontSize);
     }
 
-    private static void ApplyLinkInlineBaselineStyle(
-        CanvasTextLayout layout,
-        int start,
-        int length,
-        LinkInlineStylePath path)
+    private static float GetScriptPathOffset(LinkInlineStylePath path, float containerFontSize)
     {
-        string? scriptRole = GetInnermostScriptStyleKey(path);
-        CanvasTypographyFeatureName? feature = scriptRole switch
-        {
-            MarkdownElementKeys.Subscript => CanvasTypographyFeatureName.Subscript,
-            MarkdownElementKeys.Superscript => CanvasTypographyFeatureName.Superscript,
-            _ => null,
-        };
-        if (feature is { } value)
-            ApplyBaselineTypographyFeature(layout, start, length, value);
-    }
-
-    private static string? GetInnermostScriptStyleKey(LinkInlineStylePath path)
-    {
+        float offset = 0f;
         for (LinkInlineStylePath? current = path; current is not null; current = current.Parent)
-            if (IsScriptStyleKey(current.StyleKey))
-                return current.StyleKey;
-        return null;
+            offset += GetScriptRoleOffset(current.StyleKey, containerFontSize);
+        return ClampScriptOffset(offset, containerFontSize);
     }
 
-    private static void ApplyBaselineTypographyFeature(
-        CanvasTextLayout layout,
-        int start,
-        int length,
-        CanvasTypographyFeatureName feature)
-    {
-        if (length <= 0)
-            return;
+    private static float GetScriptRoleOffset(string role, float containerFontSize)
+        => role switch
+        {
+            MarkdownElementKeys.Superscript => -containerFontSize * 0.30f,
+            MarkdownElementKeys.Subscript => containerFontSize * 0.20f,
+            _ => 0f,
+        };
 
-        try
-        {
-            using var typography = new CanvasTypography();
-            typography.AddFeature(new CanvasTypographyFeature
-            {
-                Name = feature,
-                Parameter = 1,
-            });
-            layout.SetTypography(start, length, typography);
-        }
-        catch (Exception ex)
-        {
-            MarkdownDiagnostics.WriteLine($"[InlineContainerBox] baseline typography failed: {ex.Message}");
-        }
-    }
+    private static float ClampScriptOffset(float offset, float containerFontSize)
+        => Math.Clamp(offset, -containerFontSize * 0.85f, containerFontSize * 0.60f);
 
     private CanvasTextLayout EnsureSelectionLayout(Color color, ElementStyle style)
     {
@@ -5131,7 +5367,7 @@ internal sealed partial class InlineContainerBox : BlockBox
             int len = run.TextLength;
             if (run is InlineImageRun image && len > 0)
             {
-                var regions = _layout.GetCharacterRegions(cumulative, len);
+            var regions = GetAdjustedCharacterRegions(_layout, cumulative, len);
                 if (regions is null) { cumulative += len; continue; }
                 foreach (var r in regions)
                 {
@@ -5162,7 +5398,7 @@ internal sealed partial class InlineContainerBox : BlockBox
             int len = run.TextLength;
             if (run is InlineImageRun image && len > 0 && SelectionIntersectsRun(range, run, len))
             {
-                var regions = _layout.GetCharacterRegions(cumulative, len);
+                var regions = GetAdjustedCharacterRegions(_layout, cumulative, len);
                 if (regions is null) { cumulative += len; continue; }
                 foreach (var r in regions)
                 {
@@ -5283,7 +5519,7 @@ internal sealed partial class InlineContainerBox : BlockBox
                     lineMetrics = TryGetLineMetrics();
                     lineMetricsAttempted = true;
                 }
-                var regions = _layout.GetCharacterRegions(cumulative, len);
+                var regions = GetAdjustedCharacterRegions(_layout, cumulative, len);
                 if (regions is null) { cumulative += len; continue; } // Win2D can return null on DirectWrite errors
                 foreach (var r in regions)
                 {
@@ -5351,7 +5587,7 @@ internal sealed partial class InlineContainerBox : BlockBox
             {
                 int segmentStart = Math.Max(runStart, selectedStart);
                 int segmentLength = Math.Min(runEnd, selectedEnd) - segmentStart;
-                var regions = _layout.GetCharacterRegions(segmentStart, segmentLength);
+                var regions = GetAdjustedCharacterRegions(_layout, segmentStart, segmentLength);
                 if (regions is not null)
                 {
                     foreach (var r in regions)
@@ -5517,7 +5753,7 @@ internal sealed partial class InlineContainerBox : BlockBox
         if (_layout is null || style.Background is not { } background)
             return;
 
-        var regions = _layout.GetCharacterRegions(start, length);
+        var regions = GetAdjustedCharacterRegions(_layout, start, length);
         if (regions is null)
             return;
 
@@ -5592,7 +5828,7 @@ internal sealed partial class InlineContainerBox : BlockBox
                     continue;
             }
 
-            var regions = _layout.GetCharacterRegions(spanStart, spanLength);
+            var regions = GetAdjustedCharacterRegions(_layout, spanStart, spanLength);
             if (regions is null)
                 continue;
             lineMetrics ??= TryGetLineMetrics();

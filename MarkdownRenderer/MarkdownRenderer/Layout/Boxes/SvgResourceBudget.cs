@@ -116,11 +116,9 @@ internal static class SvgResourceBudget
             using XmlReader reader = XmlReader.Create(stream, new XmlReaderSettings
             {
                 Async = false,
-                // A large amount of otherwise-static legacy artwork carries the
-                // standard SVG 1.1 external DOCTYPE declaration. Parse the
-                // declaration without a resolver so it is inert, then reject any
-                // internal subset below. This preserves browser compatibility
-                // without permitting external retrieval or entity expansion.
+                // Parse only so a DocumentType node can be classified precisely.
+                // The resolver is disabled and entity expansion is bounded; the
+                // document is rejected as soon as the declaration is observed.
                 DtdProcessing = DtdProcessing.Parse,
                 XmlResolver = null,
                 IgnoreComments = true,
@@ -137,9 +135,7 @@ internal static class SvgResourceBudget
 
                 if (reader.NodeType == XmlNodeType.DocumentType)
                 {
-                    if (!string.IsNullOrWhiteSpace(reader.Value))
-                        return SvgResourceBudgetResult.Reject("dtd-internal-subset");
-                    continue;
+                    return SvgResourceBudgetResult.Reject("dtd-forbidden");
                 }
 
                 if (reader.NodeType == XmlNodeType.Element)

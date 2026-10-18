@@ -1,4 +1,5 @@
 using MarkdownRenderer.Controls;
+using MarkdownRenderer.Document;
 using Xunit;
 
 namespace MarkdownRenderer.Tests;
@@ -102,6 +103,39 @@ public sealed class MarkdownTouchSelectionSessionTests
     }
 
     [Fact]
+    public void CancelingLaterOrdinaryContactPreservesCommittedSelectionAndReleasesContact()
+    {
+        var session = new MarkdownTouchSelectionSession();
+        session.Select();
+
+        var transientContact = new TouchContactGeometry(30, 40, 20, 24);
+        Assert.True(session.BeginContact(12, transientContact, selectionIsActive: true));
+        Assert.Equal(TouchSelectionState.Selected, session.State);
+        Assert.True(session.HasContact);
+
+        Assert.True(session.Cancel(12));
+
+        Assert.Equal(TouchSelectionState.Selected, session.State);
+        Assert.True(session.ShouldShowHandles);
+        Assert.False(session.HasContact);
+        Assert.Equal(default, session.Contact);
+    }
+
+    [Fact]
+    public void CancelingFirstContactThatCreatedSelectionDoesNotKeepCanceledGesture()
+    {
+        var session = new MarkdownTouchSelectionSession();
+        Assert.True(session.BeginContact(12, new TouchContactGeometry(30, 40, 20, 24)));
+        session.Select();
+
+        Assert.True(session.Cancel(12));
+
+        Assert.Equal(TouchSelectionState.Canceled, session.State);
+        Assert.False(session.ShouldShowHandles);
+        Assert.False(session.HasContact);
+    }
+
+    [Fact]
     public void ResetAndDisposeClearAllTransientState()
     {
         var session = new MarkdownTouchSelectionSession();
@@ -116,5 +150,60 @@ public sealed class MarkdownTouchSelectionSessionTests
         session.BeginContact(9, new TouchContactGeometry(4, 5, 6, 7));
         Assert.Equal(TouchSelectionState.Disposed, session.State);
         Assert.False(session.HasContact);
+    }
+
+    [Fact]
+    public void RelayoutRestoreReestablishesOnlyHandlePresentationForBoundSnapshotAndRange()
+    {
+        var session = new MarkdownTouchSelectionSession();
+        Assert.True(session.BeginContact(5, new TouchContactGeometry(1, 2, 3, 4)));
+        session.Select();
+        session.EndContact(5);
+
+        var range = new DocumentRange(
+            new DocumentPosition(2, 1, 3),
+            new DocumentPosition(2, 1, 8));
+        var intent = new TouchSelectionPresentationRestoreIntent(17, range);
+
+        // A relayout retires the old touch/contact owner while retaining its
+        // committed document selection in the control.
+        session.Reset();
+        Assert.Equal(TouchSelectionState.Idle, session.State);
+        Assert.False(session.HasContact);
+
+        Assert.True(intent.Matches(17, range));
+        Assert.False(intent.Matches(18, range));
+        Assert.True(intent.MatchesRange(range));
+        Assert.False(intent.MatchesRange(default));
+        Assert.False(intent.Matches(
+            17,
+            new DocumentRange(
+                range.Start,
+                new DocumentPosition(2, 1, 9))));
+
+        var rebasedIntent = new TouchSelectionPresentationRestoreIntent(18, range);
+        Assert.True(rebasedIntent.Matches(18, range));
+        Assert.False(rebasedIntent.Matches(17, range));
+        Assert.True(session.TryRestoreSelectedPresentation());
+
+        Assert.Equal(TouchSelectionState.Selected, session.State);
+        Assert.True(session.ShouldShowHandles);
+        Assert.False(session.HasContact);
+        Assert.Equal(default, session.Contact);
+    }
+
+    [Fact]
+    public void RelayoutRestoreDoesNotReplaceAContactAcceptedDuringRebuild()
+    {
+        var session = new MarkdownTouchSelectionSession();
+        session.Reset();
+
+        var freshContact = new TouchContactGeometry(11, 13, 17, 19);
+        Assert.True(session.BeginContact(23, freshContact));
+
+        Assert.False(session.TryRestoreSelectedPresentation());
+        Assert.Equal(TouchSelectionState.Contact, session.State);
+        Assert.Equal((uint)23, session.ContactPointerId);
+        Assert.Equal(freshContact, session.Contact);
     }
 }

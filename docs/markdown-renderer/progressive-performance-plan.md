@@ -1,9 +1,10 @@
 # Opt-in progressive performance pipeline for MarkdownRenderer
 
-Status: in progress. Work is being performed in the active local run, not deferred
-to the next heartbeat. The current priority is to remove document-scale memory
-growth and input-blocking native reflow before spending more time on evidence
-bookkeeping. The 1.0 performance and release goals are not yet met.
+Status: historical program, superseded October 12, 2026 by the user-approved
+[correctness goal and phase plan](correctness-plan.md). Browser-parity,
+comparative performance, and package-size targets in this document are retained
+for historical evidence and possible future work. They no longer determine
+completion of the active correctness goal. Scheduled continuation remains canceled.
 
 The [October 12 implementation checkpoint and architecture assessment](implementation-checkpoint-2026-10-12.md)
 summarizes capabilities, current changes, completed and failed evidence, remaining
