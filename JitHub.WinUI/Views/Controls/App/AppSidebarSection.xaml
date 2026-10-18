@@ -1,0 +1,32 @@
+<UserControl
+    x:Class="JitHub.WinUI.Views.Controls.App.AppSidebarSection"
+    x:Name="Root"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+    <Border
+        Background="{ThemeResource AppCanvasRaisedBrush}"
+        BorderBrush="{ThemeResource AppOutlineBrush}"
+        BorderThickness="1"
+        CornerRadius="{ThemeResource AppRadiusLarge}"
+        Padding="16">
+        <StackPanel Spacing="12">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock
+                    Style="{StaticResource SectionTitleTextBlockStyle}"
+                    Text="{Binding Title, ElementName=Root}" />
+                <ContentPresenter
+                    Grid.Column="1"
+                    VerticalAlignment="Center"
+                    Content="{Binding ActionContent, ElementName=Root}" />
+            </Grid>
+            <ContentPresenter Content="{Binding BodyContent, ElementName=Root}" />
+        </StackPanel>
+    </Border>
+</UserControl>

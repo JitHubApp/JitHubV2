@@ -7,12 +7,13 @@ using CommunityToolkit.Mvvm.DependencyInjection;
 using JitHub.Models;
 using JitHub.Services;
 using JitHub.WinUI.ViewModels.Pages;
-using LegacyLoginPage = JitHub.WinUI.Views.LoginPage;
 using JitHub.WinUI.Views.Pages;
+using JitHub.WinUI.Views.Pages.Design;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.Windows.AppLifecycle;
 using Windows.ApplicationModel.Activation;
 using Windows.Storage;
@@ -21,7 +22,18 @@ namespace JitHub.WinUI;
 
 public partial class App : Application
 {
-    private readonly record struct ActivationRequest(ExtendedActivationKind Kind, Uri? ProtocolUri);
+    private readonly struct ActivationRequest
+    {
+        public ActivationRequest(ExtendedActivationKind kind, Uri? protocolUri)
+        {
+            Kind = kind;
+            ProtocolUri = protocolUri;
+        }
+
+        public ExtendedActivationKind Kind { get; }
+
+        public Uri? ProtocolUri { get; }
+    }
 
     private readonly DispatcherQueue _dispatcherQueue;
     private readonly string? _storedTheme;
@@ -32,6 +44,9 @@ public partial class App : Application
 
     public App()
     {
+        UnhandledException += App_UnhandledException;
+        AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
+        TaskScheduler.UnobservedTaskException += TaskScheduler_UnobservedTaskException;
         InitializeComponent();
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
         _storedTheme = new ThemeService(new SettingService()).GetTheme();
@@ -78,6 +93,11 @@ public partial class App : Application
         mainWindow.ProcessActivation();
         IAuthService authService = GetService<IAuthService>();
         IAccountService accountService = GetService<IAccountService>();
+
+        if (activationRequest.Kind != ExtendedActivationKind.Protocol && TryHandleLaunchPageOverride())
+        {
+            return;
+        }
 
         if (activationRequest.Kind == ExtendedActivationKind.Protocol &&
             activationRequest.ProtocolUri is Uri protocolUri)
@@ -166,11 +186,16 @@ public partial class App : Application
         NavigationService navigationService = GetService<NavigationService>();
         navigationService.RootHomePage ??= typeof(ShellPage);
         navigationService.ShellHomePage ??= typeof(DashboardPage);
-        navigationService.UnauthorizedPage ??= typeof(LegacyLoginPage);
+        navigationService.UnauthorizedPage ??= typeof(LoginPage);
     }
 
     private void NavigateStartupPage()
     {
+        if (TryHandleLaunchPageOverride())
+        {
+            return;
+        }
+
         if (_mainWindow?.ContentFrameHost.Content is not null)
         {
             return;
@@ -262,6 +287,17 @@ public partial class App : Application
 
     private void ApplyStoredTheme()
     {
+        string? themeOverride = Program.CurrentLaunchOptions.Theme;
+        if (!string.IsNullOrWhiteSpace(themeOverride))
+        {
+            RequestedTheme = themeOverride.Equals("dark", StringComparison.OrdinalIgnoreCase)
+                ? ApplicationTheme.Dark
+                : themeOverride.Equals("light", StringComparison.OrdinalIgnoreCase)
+                    ? ApplicationTheme.Light
+                    : RequestedTheme;
+            return;
+        }
+
         if (!string.IsNullOrWhiteSpace(_storedTheme) &&
             !string.Equals(_storedTheme, ThemeConst.System, StringComparison.Ordinal))
         {
@@ -362,7 +398,7 @@ public partial class App : Application
         string remainder = schemeSeparatorIndex >= 0
             ? original[(schemeSeparatorIndex + 3)..]
             : original;
-        int queryIndex = remainder.IndexOfAny(['?', '#']);
+        int queryIndex = remainder.IndexOfAny(new[] { '?', '#' });
         string endpoint = (queryIndex >= 0 ? remainder[..queryIndex] : remainder).Trim('/');
 
         return endpoint.StartsWith("auth", StringComparison.OrdinalIgnoreCase);
@@ -429,12 +465,27 @@ public partial class App : Application
         {
             _mainWindow = new MainWindow();
             EnsureRuntimeMergedDictionariesLoaded();
-            _mainWindow.ConfigureTheme(
-                string.IsNullOrWhiteSpace(_storedTheme) ||
-                string.Equals(_storedTheme, ThemeConst.System, StringComparison.Ordinal));
+            _mainWindow.ConfigureTheme(ShouldFollowSystemTheme());
         }
 
         return _mainWindow;
+    }
+
+    private bool ShouldFollowSystemTheme()
+    {
+        string? themeOverride = Program.CurrentLaunchOptions.Theme;
+        if (string.Equals(themeOverride, "system", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(themeOverride))
+        {
+            return false;
+        }
+
+        return string.IsNullOrWhiteSpace(_storedTheme) ||
+               string.Equals(_storedTheme, ThemeConst.System, StringComparison.Ordinal);
     }
 
     private void EnsureRuntimeMergedDictionariesLoaded()
@@ -485,7 +536,7 @@ public partial class App : Application
     {
         try
         {
-            string logPath = Path.Combine(ApplicationData.Current.LocalFolder.Path, "activation-error.log");
+            string logPath = Path.Combine(GetLogDirectoryPath(), "activation-error.log");
             string entry =
                 $"[{DateTimeOffset.Now:O}]{Environment.NewLine}{ex}{Environment.NewLine}{new string('-', 80)}{Environment.NewLine}";
             File.AppendAllText(logPath, entry);
@@ -493,6 +544,82 @@ public partial class App : Application
         catch
         {
         }
+    }
+
+    private bool TryHandleLaunchPageOverride()
+    {
+        if (!Program.CurrentLaunchOptions.HasPageOverride)
+        {
+            return false;
+        }
+
+        Type? targetPage = Program.CurrentLaunchOptions.Page?.ToLowerInvariant() switch
+        {
+            "login" => typeof(LoginPage),
+            "settings" => typeof(SettingsPage),
+            "design-lab" => typeof(DesignLabPage),
+            _ => null
+        };
+
+        if (targetPage is null)
+        {
+            return false;
+        }
+
+        object? parameter = targetPage == typeof(DesignLabPage)
+            ? Program.CurrentLaunchOptions.Scenario
+            : null;
+
+        GetOrCreateMainWindow().ContentFrameHost.Navigate(targetPage, parameter, new SuppressNavigationTransitionInfo());
+        return true;
+    }
+
+    private void App_UnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
+    {
+        LogUnhandledException(e.Exception, "xaml-unhandled");
+    }
+
+    private void CurrentDomain_UnhandledException(object sender, System.UnhandledExceptionEventArgs e)
+    {
+        LogUnhandledException(e.ExceptionObject as Exception, "appdomain-unhandled");
+    }
+
+    private void TaskScheduler_UnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
+    {
+        LogUnhandledException(e.Exception, "task-unobserved");
+    }
+
+    private static void LogUnhandledException(Exception? exception, string category)
+    {
+        try
+        {
+            string logPath = Path.Combine(GetLogDirectoryPath(), $"{category}.log");
+            string entry =
+                $"[{DateTimeOffset.Now:O}]{Environment.NewLine}{exception}{Environment.NewLine}{new string('-', 80)}{Environment.NewLine}";
+            File.AppendAllText(logPath, entry);
+        }
+        catch
+        {
+        }
+    }
+
+    private static string GetLogDirectoryPath()
+    {
+        string baseDirectory;
+        try
+        {
+            baseDirectory = ApplicationData.Current.LocalFolder.Path;
+        }
+        catch
+        {
+            baseDirectory = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "JitHub");
+        }
+
+        string logDirectory = Path.Combine(baseDirectory, "logs");
+        Directory.CreateDirectory(logDirectory);
+        return logDirectory;
     }
 
 }

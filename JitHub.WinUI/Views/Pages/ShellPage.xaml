@@ -1,10 +1,12 @@
 <Page
     x:Class="JitHub.WinUI.Views.Pages.ShellPage"
+    x:Name="Root"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:JitHub.WinUI.Views.Pages"
     xmlns:models="using:JitHub.Models.GitHub"
     xmlns:viewmodels="using:JitHub.WinUI.ViewModels"
+    xmlns:appcontrols="using:JitHub.WinUI.Views.Controls.App"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
@@ -14,7 +16,7 @@
     xmlns:user="using:JitHub.WinUI.Views.Controls.Profile"
     SizeChanged="Page_SizeChanged"
     Background="Transparent">
-    <Grid>
+    <Grid Background="{ThemeResource AppCanvasBrush}">
         <Grid.RowDefinitions>
             <RowDefinition Height="auto"/>
             <RowDefinition Height="*"/>
@@ -39,7 +41,8 @@
         </VisualStateManager.VisualStateGroups>
         <Grid
             x:Name="TitleBarHost"
-            MinHeight="48">
+            MinHeight="60"
+            Background="{ThemeResource AppCanvasRaisedBrush}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="auto"/>
                 <ColumnDefinition Width="*"/>
@@ -48,7 +51,7 @@
             </Grid.ColumnDefinitions>
             <StackPanel
                 Spacing="12"
-                Margin="12"
+                Margin="20,14"
                 Grid.Column="0"
                 Orientation="Horizontal"
                 HorizontalAlignment="Left"
@@ -64,16 +67,18 @@
                     VerticalAlignment="Center">
                     <TextBlock
                         VerticalAlignment="Center"
+                        Style="{StaticResource ListItemTitleTextBlockStyle}"
                         Text="JitHub"/>
                     <Border
-                        Background="{ThemeResource AccentFillColorDefaultBrush}"
-                        Padding="4 0"
-                        Margin="4 0 0 0"
+                        Background="{ThemeResource AppWarmAccentBrush}"
+                        Padding="8 2"
+                        Margin="6 0 0 0"
                         Visibility="{x:Bind ViewModel.FeatureService.ProLicense, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"
-                        CornerRadius="4">
+                        CornerRadius="{ThemeResource AppRadiusPill}">
                         <TextBlock
                             VerticalAlignment="Center"
-                            Foreground="{ThemeResource RegionBrush}"
+                            Style="{StaticResource ListItemSecondaryTextBlockStyle}"
+                            Foreground="{ThemeResource AppWarmAccentForegroundBrush}"
                             Text="Pro">
                             <animations:Implicit.ShowAnimations>
                                 <animations:ScaleAnimation Duration="0:0:0.5" From="0" To="1"/>
@@ -87,52 +92,59 @@
                 Grid.Column="1"
                 VerticalAlignment="Center"
                 HorizontalAlignment="Stretch">
-                <Grid
-                    x:Name="SearchBoxContainer">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="20"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <muxc:ProgressRing
-                        Grid.Column="0"
-                        Width="12"
-                        Height="12"
-                        Margin="0 0 4 0"
-                        VerticalAlignment="Center"
-                        IsActive="{x:Bind ViewModel.Searching, Mode=OneWay}"
-                        Visibility="{x:Bind ViewModel.Searching, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"/>
-                    <AutoSuggestBox
-                        Grid.Column="1"
-                        x:Name="SearchBox"
-                        VerticalAlignment="Center"
-                        ItemsSource="{x:Bind ViewModel.SearchResults, Mode=OneWay}"
-                        QuerySubmitted="{x:Bind ViewModel.OpenRepo, Mode=OneWay}"
-                        UpdateTextOnSelect="False"
-                        PlaceholderText="Type to search for repository...">
-                        <animations:Implicit.ShowAnimations>
-                            <animations:TranslationAnimation EasingType="Cubic" Duration="0:0:1" From="0, -200, 0" To="0"/>
-                        </animations:Implicit.ShowAnimations>
-                        <AutoSuggestBox.ItemTemplate>
-                            <DataTemplate x:DataType="models:GitHubRepository">
-                                <TextBlock Text="{x:Bind FullName, Mode=OneWay}"/>
-                            </DataTemplate>
-                        </AutoSuggestBox.ItemTemplate>
-                        <AutoSuggestBox.QueryIcon>
-                            <muxc:AnimatedIcon x:Name="FindAnimatedIcon">
-                                <muxc:AnimatedIcon.Source>
-                                    <animatedvisuals:AnimatedFindVisualSource/>
-                                </muxc:AnimatedIcon.Source>
-                                <muxc:AnimatedIcon.FallbackIconSource>
-                                    <muxc:SymbolIconSource Symbol="Find"/>
-                                </muxc:AnimatedIcon.FallbackIconSource>
-                            </muxc:AnimatedIcon>
-                        </AutoSuggestBox.QueryIcon>
-                    </AutoSuggestBox>
-                </Grid>
+                <Border
+                    x:Name="SearchBoxContainer"
+                    Padding="14,6"
+                    Background="{ThemeResource AppSurfaceBrush}"
+                    BorderBrush="{ThemeResource AppOutlineBrush}"
+                    BorderThickness="1"
+                    CornerRadius="{ThemeResource AppRadiusPill}"
+                    AutomationProperties.AutomationId="ShellSearchBoxContainer">
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="20"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <muxc:ProgressRing
+                            Grid.Column="0"
+                            Width="12"
+                            Height="12"
+                            VerticalAlignment="Center"
+                            IsActive="{x:Bind ViewModel.Searching, Mode=OneWay}"
+                            Visibility="{x:Bind ViewModel.Searching, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"/>
+                        <AutoSuggestBox
+                            Grid.Column="1"
+                            x:Name="SearchBox"
+                            AutomationProperties.AutomationId="ShellSearchBox"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            VerticalAlignment="Center"
+                            ItemsSource="{x:Bind ViewModel.SearchResults, Mode=OneWay}"
+                            QuerySubmitted="{x:Bind ViewModel.OpenRepo, Mode=OneWay}"
+                            UpdateTextOnSelect="False"
+                            PlaceholderText="Search repositories by owner/name or keyword">
+                            <AutoSuggestBox.ItemTemplate>
+                                <DataTemplate x:DataType="models:GitHubRepository">
+                                    <TextBlock Text="{x:Bind FullName, Mode=OneWay}"/>
+                                </DataTemplate>
+                            </AutoSuggestBox.ItemTemplate>
+                            <AutoSuggestBox.QueryIcon>
+                                <muxc:AnimatedIcon x:Name="FindAnimatedIcon">
+                                    <muxc:AnimatedIcon.Source>
+                                        <animatedvisuals:AnimatedFindVisualSource/>
+                                    </muxc:AnimatedIcon.Source>
+                                    <muxc:AnimatedIcon.FallbackIconSource>
+                                        <muxc:SymbolIconSource Symbol="Find"/>
+                                    </muxc:AnimatedIcon.FallbackIconSource>
+                                </muxc:AnimatedIcon>
+                            </AutoSuggestBox.QueryIcon>
+                        </AutoSuggestBox>
+                    </Grid>
+                </Border>
             </Grid>
             <StackPanel
                 Spacing="12"
-                Margin="0 4"
+                Margin="0 4 20 4"
                 Grid.Column="2"
                 Orientation="Horizontal"
                 HorizontalAlignment="Right"
@@ -140,8 +152,8 @@
                 <!--<user:ProfileButton OnClickCommand="{x:Bind ViewModel.GoToProfilePageCommand}"/>-->
                 <Button
                     x:Name="ShellMenuButton"
-                    Background="Transparent"
-                    BorderThickness="0">
+                    AutomationProperties.AutomationId="ShellMenuButton"
+                    Style="{StaticResource AppToolbarButtonStyle}">
                     <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" Glyph="&#xE712;"/>
                     <Button.Flyout>
                         <MenuFlyout Placement="BottomEdgeAlignedLeft">
@@ -176,10 +188,18 @@
                             </MenuFlyoutItem>
                             <MenuFlyoutItem
                                 Text="Dev Console"
-                                Visibility="{x:Bind ViewModel.GlobalViewModel.DevMode, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"
+                                Visibility="{Binding ViewModel.DevMode, ElementName=Root, Converter={StaticResource BoolToVisibilityConverter}}"
                                 Click="{x:Bind ViewModel.OnOpenDevConsole, Mode=OneWay}">
                                 <MenuFlyoutItem.Icon>
                                     <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" Glyph="&#xEC7A;"/>
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem
+                                Text="Design Lab"
+                                Visibility="{Binding ViewModel.DevMode, ElementName=Root, Converter={StaticResource BoolToVisibilityConverter}}"
+                                Click="{x:Bind ViewModel.GoToDesignLabPage, Mode=OneWay}">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" Glyph="&#xF158;"/>
                                 </MenuFlyoutItem.Icon>
                             </MenuFlyoutItem>
                         </MenuFlyout>
@@ -190,6 +210,7 @@
         <muxc:TabView
             Grid.Row="1"
             Style="{StaticResource JitTabViewStyle}"
+            Background="{ThemeResource AppCanvasRaisedBrush}"
             TabItemsSource="{x:Bind ViewModel.Pages, Mode=OneWay}"
             SelectedItem="{x:Bind ViewModel.SelectedTab, Mode=TwoWay}"
             AddTabButtonClick="TabView_AddTabButtonClick"
@@ -200,9 +221,8 @@
             <muxc:TabView.TabStripHeader>
                 <Button
                     Command="{x:Bind ViewModel.GoHomeCommand}"
-                    Background="Transparent"
                     Margin="8 0 0 0"
-                    BorderThickness="0"
+                    Style="{StaticResource AppToolbarButtonStyle}"
                     HorizontalContentAlignment="Left"
                     VerticalAlignment="Bottom">
                     <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" Glyph="&#xE80F;"/>
@@ -221,10 +241,10 @@
                 x:Name="ModalContent"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
-                BorderBrush="{ThemeResource LayerOnAcrylicFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource AppOutlineBrush}"
                 BorderThickness="1"
-                Background="{ThemeResource ModalBrush}"
-                CornerRadius="8">
+                Background="{ThemeResource AppOverlayBrush}"
+                CornerRadius="{ThemeResource AppRadiusLarge}">
                 <animations:Implicit.ShowAnimations>
                     <animations:OpacityAnimation Duration="0:0:0.5" From="0" To="1.0"/>
                     <animations:TranslationAnimation EasingType="Cubic" Duration="0:0:0.5" From="0, 200, 0" To="0"/>
@@ -243,20 +263,18 @@
                             HorizontalAlignment="Left"
                             VerticalAlignment="Center"
                             Margin="16 0 0 0"
-                            FontWeight="SemiBold"
-                            FontSize="20"
+                            Style="{StaticResource SectionTitleTextBlockStyle}"
                             Text="{x:Bind ViewModel.Title, Mode=OneWay}"/>
                         <Button
                             Padding="0"
                             Margin="16"
                             FontFamily="Segoe MDL2 Assets"
                             Content="&#xE711;"
-                            CornerRadius="8"
+                            CornerRadius="{ThemeResource AppRadiusSmall}"
                             Width="32"
                             Height="32"
                             BorderThickness="0"
-                            FontWeight="SemiBold"
-                            Background="Transparent"
+                            Style="{StaticResource AppToolbarButtonStyle}"
                             Command="{x:Bind ViewModel.InLineModalClodeCommand, Mode=OneWay}"
                             HorizontalContentAlignment="Center"
                             VerticalAlignment="Center"
@@ -280,5 +298,6 @@
             Margin="16"/>
     </Grid>
 </Page>
+
 
 

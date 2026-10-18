@@ -10,25 +10,31 @@
     d:DesignHeight="300"
     d:DesignWidth="400">
 
-    <Grid
+    <Border
         Style="{StaticResource Container}"
         Padding="0">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="auto"/>
-            <RowDefinition Height="*"/>
-        </Grid.RowDefinitions>
         <Grid
-            Padding="8 4"
-            Background="{ThemeResource ExpanderHeaderBackground}"
-            Grid.Row="0">
-            <ContentPresenter
-                Content="{x:Bind HeaderContent, Mode=OneWay}"/>
+            Padding="0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            <Border
+                Grid.Row="0"
+                Padding="12 10"
+                Background="{ThemeResource AppCanvasRaisedBrush}"
+                BorderBrush="{ThemeResource AppOutlineBrush}"
+                BorderThickness="0,0,0,1"
+                CornerRadius="{ThemeResource AppRadiusMedium}">
+                <ContentPresenter
+                    Content="{x:Bind HeaderContent, Mode=OneWay}"/>
+            </Border>
+            <Grid
+                Grid.Row="1">
+                <ContentPresenter
+                    Content="{x:Bind BodyContent, Mode=OneWay}"/>
+            </Grid>
         </Grid>
-        <Grid
-            Grid.Row="1">
-            <ContentPresenter
-                Content="{x:Bind BodyContent, Mode=OneWay}"/>
-        </Grid>
-    </Grid>
+    </Border>
 </UserControl>
 

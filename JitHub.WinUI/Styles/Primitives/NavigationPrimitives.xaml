@@ -1,0 +1,26 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:muxc="using:Microsoft.UI.Xaml.Controls">
+    <Style TargetType="FlyoutPresenter">
+        <Setter Property="Background" Value="{ThemeResource AppSurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource AppOutlineBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusMedium}" />
+        <Setter Property="Padding" Value="8" />
+    </Style>
+    <Style TargetType="MenuFlyoutItem">
+        <Setter Property="FontFamily" Value="{ThemeResource AppUiFontFamily}" />
+        <Setter Property="Foreground" Value="{ThemeResource AppInkBrush}" />
+    </Style>
+    <Style TargetType="MenuFlyoutSeparator">
+        <Setter Property="Margin" Value="0,4" />
+    </Style>
+    <Style TargetType="muxc:InfoBar">
+        <Setter Property="Background" Value="{ThemeResource AppSurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource AppOutlineBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusMedium}" />
+        <Setter Property="Foreground" Value="{ThemeResource AppInkBrush}" />
+    </Style>
+</ResourceDictionary>

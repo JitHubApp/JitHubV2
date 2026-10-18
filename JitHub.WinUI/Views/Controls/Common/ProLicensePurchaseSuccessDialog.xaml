@@ -44,7 +44,7 @@
             Background="{ThemeResource AppSolidSecondaryRush}">
             <Button
                 HorizontalAlignment="Right"
-                Style="{ThemeResource AccentButtonStyle}"
+                Style="{ThemeResource AppAccentButtonStyle}"
                 Command="{x:Bind ConfirmCommand, Mode=OneWay}"
                 Content="Yeah!"/>
         </Grid>

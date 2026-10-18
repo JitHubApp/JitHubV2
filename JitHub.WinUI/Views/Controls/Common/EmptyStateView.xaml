@@ -7,19 +7,28 @@
     xmlns:local="using:JitHub.WinUI.Views.Controls.Common"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
-    <StackPanel
-        HorizontalAlignment="Center"
-        VerticalAlignment="Center"
-        Spacing="8">
-        <TextBlock
-            HorizontalAlignment="Center"
-            Style="{StaticResource SectionTitleTextBlockStyle}"
-            Text="{Binding Title, ElementName=Root}" />
-        <TextBlock
-            HorizontalAlignment="Center"
-            Style="{StaticResource SectionSecondaryTextBlockStyle}"
-            Text="{Binding Description, ElementName=Root}" />
-    </StackPanel>
+    <Border
+        MaxWidth="520"
+        HorizontalAlignment="Left"
+        Padding="0"
+        Background="Transparent"
+        BorderThickness="0"
+        CornerRadius="0">
+        <StackPanel
+            HorizontalAlignment="Left"
+            VerticalAlignment="Top"
+            Spacing="6">
+            <TextBlock
+                HorizontalAlignment="Left"
+                Style="{StaticResource SectionTitleTextBlockStyle}"
+                Text="{Binding Title, ElementName=Root}" />
+            <TextBlock
+                HorizontalAlignment="Left"
+                TextAlignment="Left"
+                Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                Text="{Binding Description, ElementName=Root}" />
+        </StackPanel>
+    </Border>
 </UserControl>
 
 

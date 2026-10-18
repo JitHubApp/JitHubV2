@@ -12,10 +12,12 @@
         <MicaBackdrop />
     </Window.SystemBackdrop>
 
-    <Grid x:Name="RootLayout">
+    <Grid
+        x:Name="RootLayout"
+        Background="{ThemeResource AppCanvasBrush}">
         <Border
             x:Name="AppTitleBar"
-            Height="32"
+            Height="40"
             VerticalAlignment="Top"
             Background="Transparent" />
         <Frame x:Name="ContentFrame" />
@@ -24,12 +26,15 @@
             Margin="12"
             HorizontalAlignment="Left"
             VerticalAlignment="Bottom"
-            Background="#AA000000"
-            Padding="8"
+            Background="{ThemeResource AppSurfaceBrush}"
+            BorderBrush="{ThemeResource AppOutlineBrush}"
+            BorderThickness="1"
+            CornerRadius="{ThemeResource AppRadiusMedium}"
+            Padding="10"
             Visibility="Collapsed">
             <TextBlock
                 x:Name="ActivationStatusText"
-                Foreground="White"
+                Foreground="{ThemeResource AppInkBrush}"
                 Text="Waiting for activation."
                 TextWrapping="WrapWholeWords" />
         </Border>

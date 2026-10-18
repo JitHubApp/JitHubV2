@@ -13,17 +13,23 @@
         Padding="{x:Bind GetPadding(ShowReactionCount), Mode=OneWay}"
         Command="{x:Bind ReactionCommand, Mode=OneWay}"
         Background="{x:Bind GetBackgroundBrush(Voted), Mode=OneWay}"
+        BorderBrush="{ThemeResource AppOutlineBrush}"
+        BorderThickness="1"
+        CornerRadius="{ThemeResource AppRadiusSmall}"
         CommandParameter="{x:Bind Reaction, Mode=OneWay}">
         <StackPanel
-            Orientation="Horizontal">
+            Orientation="Horizontal"
+            Spacing="6">
             <TextBlock
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
+                Style="{StaticResource ListItemSecondaryTextBlockStyle}"
                 Text="{x:Bind Reaction, Converter={StaticResource ReactionTypeToEmojiConverter}, Mode=OneWay}"/>
             <TextBlock
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
                 Visibility="{x:Bind ShowReactionCount, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"
+                Style="{StaticResource ListItemSecondaryTextBlockStyle}"
                 Text="{x:Bind ReactionCount, Mode=OneWay}"/>
         </StackPanel>
     </Button>

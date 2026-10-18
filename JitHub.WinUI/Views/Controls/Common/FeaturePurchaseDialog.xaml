@@ -75,7 +75,7 @@
             Padding="0 24 16 24">
             <Button
                 HorizontalAlignment="Right"
-                Style="{ThemeResource AccentButtonStyle}"
+                Style="{ThemeResource AppAccentButtonStyle}"
                 Command="{x:Bind BuyCommand, Mode=OneWay}"
                 Content="Buy JitHub Pro"/>
         </Grid>
