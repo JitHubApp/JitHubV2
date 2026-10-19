@@ -439,7 +439,7 @@ public sealed class AutomationHarnessSourceContractTests
             root,
             ".github",
             "workflows",
-            "markdown-readme-top500.yml"));
+            "markdown-readme-top500.yml")).Replace("\r\n", "\n", StringComparison.Ordinal);
         string provenanceScript = File.ReadAllText(Path.Combine(
             root,
             "MarkdownRenderer",
@@ -2266,7 +2266,7 @@ public sealed class AutomationHarnessSourceContractTests
             "Views",
             "Controls",
             "Common",
-            "MarkdownViewer.xaml.cs"));
+            "MarkdownViewer.xaml.cs")).Replace("\r\n", "\n", StringComparison.Ordinal);
         string bridge = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
             "JitHub.WinUI",
