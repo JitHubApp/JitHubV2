@@ -199,11 +199,14 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     private bool _selectionStartHandleEndpointAvailable;
     private bool _selectionEndHandleEndpointAvailable;
     private Microsoft.UI.Xaml.Controls.Image? _selectionAdorner;
-    private CanvasImageSource? _selectionAdornerSource;
-    private long _selectionAdornerSurfaceVersion;
-    private double _selectionAdornerSourceWidth;
-    private double _selectionAdornerSourceHeight;
-    private float _selectionAdornerSourceDpi;
+    private SelectionAdornerImageHost? _selectionAdornerHost;
+    // P1-032: one long-lived, grow-only surface per adorner. Relayout, source
+    // replacement and resize reuse it instead of retiring a CanvasImageSource
+    // into XAML image-peer cleanup on every snapshot commit.
+    private readonly SelectionAdornerSurfaceLifetime<CanvasImageSource, CanvasDevice> _selectionAdornerSurfaces =
+        new(CreateSelectionAdornerSurface, ReportSelectionAdornerSurfaceReleaseFailure);
+    // The Win2D device that created the committed snapshot's bitmaps.
+    private CanvasDevice? _snapshotLayoutDevice;
     private double _selectionAdornerOffsetY;
     private Border? _selectionDragShield;
     private Button? _selectionStartHandle;
@@ -4029,8 +4032,9 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         SetSelectionDragShieldActive(false);
         // Release native resources & hosted embeds so re-attaching the
         // control to a new visual parent doesn't leak DirectWrite layouts
-        // or keep stale FrameworkElements alive.
-        ReleaseSelectionAdornerSurface();
+        // or keep stale FrameworkElements alive. A failed XAML detach must not
+        // abort the remaining one-shot cleanup or snapshot retirement below.
+        TryReleaseSelectionAdornerSurface();
         _overlay?.Children.Clear();
         // Release ProtectedCursor before disposing the native cursor objects so the
         // XAML compositor doesn't access a dangling handle during the same render frame.
@@ -4048,6 +4052,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         if (_selectionAdorner is not null)
         {
             _selectionAdorner = null;
+            _selectionAdornerHost = null;
         }
         DetachSelectionHandleHandlers();
         _selectionStartHandle = null;
@@ -4088,6 +4093,11 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         StopSelectionHandleFrameClock();
         DetachWindowLifecycle();
         OnUnloaded();
+        // Unload has already detached the surface from XAML; final disposal
+        // only stops rooting the retired managed owners.
+        TryReleaseSelectionAdornerSurface();
+        _selectionAdornerSurfaces.DropRetired();
+        _snapshotLayoutDevice = null;
         EffectiveViewportChanged -= OnEffectiveViewportChanged;
         DetachCanvasHandlers();
         DetachSelectionDragShieldHandlers();
@@ -5498,6 +5508,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             _pendingLazyFocus = null;
         }
         _snapshot = snapshot;
+        _snapshotLayoutDevice = device;
         // Publish presentation state with the new snapshot before any
         // dependency-property notification can re-enter UIA or menu queries.
         // These immutable objects therefore always describe the same commit.
@@ -5588,10 +5599,13 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         // as the user scrolls.
         DerealizeAllEmbeds();
         SetSelectionDragShieldActive(false);
-        ReleaseSelectionAdornerSurface();
+        // P1-032: keep the attached adorner surface and its Image across
+        // commits. Repaint against the new snapshot instead of retiring a
+        // CanvasImageSource into XAML image-peer cleanup on every relayout.
+        InvalidateSelectionAdornerPresentation();
         if (_selectionAdorner is not null)
             _selectionAdorner.Visibility = Visibility.Collapsed;
-        _overlay.Children.Clear();
+        RemoveOverlayChildrenExceptSelectionAdorner();
         _embedRects.Clear();
         _blockEmbedRects.Clear();
         _codeBlockActionRects.Clear();
@@ -9839,22 +9853,26 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
 
     private void HandleCanvasDeviceLost(int failureHResult)
     {
-        try { ReleaseSelectionAdornerSurface(); }
-        catch (Exception releaseException)
+        // Capture every device in use before release clears the surface owner.
+        CanvasDevice? layoutDevice = _snapshotLayoutDevice;
+        CanvasDevice? surfaceDevice = _selectionAdornerSurfaces.Device;
+        CanvasDevice? canvasDevice = null;
+        try { canvasDevice = _canvas?.Device; }
+        catch (Exception deviceException)
         {
             MarkdownDiagnostics.WriteLine(
-                $"[MarkdownRendererControl] selection device-resource release failed: {releaseException.Message}");
+                $"[MarkdownRendererControl] canvas device query failed: {deviceException.Message}");
         }
-        try
-        {
-            if (_canvas?.Device is { } device)
-                Layout.Boxes.ImageBox.ReleaseDeviceResources(device);
-        }
-        catch (Exception releaseException)
-        {
-            MarkdownDiagnostics.WriteLine(
-                $"[MarkdownRendererControl] image device-resource release failed: {releaseException.Message}");
-        }
+
+        TryReleaseSelectionAdornerSurface();
+        // Snapshot bitmaps are cached under the layout (shared) device, which
+        // need not be the CanvasVirtualControl device.
+        ReleaseImageDeviceResources(layoutDevice);
+        if (!ReferenceEquals(canvasDevice, layoutDevice))
+            ReleaseImageDeviceResources(canvasDevice);
+        // Exceptions were caught instead of reaching Win2D, so notify each
+        // genuinely lost device as the manual device-loss contract requires.
+        NotifyLostCanvasDevices(failureHResult, layoutDevice, surfaceDevice, canvasDevice);
 
         if (_canvasDeviceRecoveryQueued || _isDisposed || _isUnloaded)
             return;
@@ -9883,6 +9901,43 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             MarkdownDiagnostics.WriteLine(
                 $"[MarkdownRendererControl] device recovery timer failed: {schedulingFailure.Message}");
             RequestRebuild(RebuildReason.Full);
+        }
+    }
+
+    private static void ReleaseImageDeviceResources(CanvasDevice? device)
+    {
+        if (device is null)
+            return;
+
+        try
+        {
+            Layout.Boxes.ImageBox.ReleaseDeviceResources(device);
+        }
+        catch (Exception releaseException)
+        {
+            MarkdownDiagnostics.WriteLine(
+                $"[MarkdownRendererControl] image device-resource release failed: {releaseException.Message}");
+        }
+    }
+
+    private static void NotifyLostCanvasDevices(int failureHResult, params CanvasDevice?[] devices)
+    {
+        for (int index = 0; index < devices.Length; index++)
+        {
+            CanvasDevice? device = devices[index];
+            if (device is null || Array.IndexOf(devices, device) != index)
+                continue;
+
+            try
+            {
+                if (device.IsDeviceLost(failureHResult))
+                    device.RaiseDeviceLost();
+            }
+            catch (Exception notifyException)
+            {
+                MarkdownDiagnostics.WriteLine(
+                    $"[MarkdownRendererControl] device-lost notification failed: {notifyException.Message}");
+            }
         }
     }
 
@@ -11872,21 +11927,29 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             return SelectionAdornerRefreshOperationResult.AwaitLifecycle;
         }
 
-        if (!ApplySelectionAdornerViewportUnderPaint(width, height, top))
-        {
-            UpdateSelectionHandlesUnderPaint(snapshot, viewport);
-            return SelectionAdornerRefreshOperationResult.AwaitLifecycle;
-        }
-
-        if (_selectionAdornerSource is not { } source)
-        {
-            UpdateSelectionHandlesUnderPaint(snapshot, viewport);
-            return SelectionAdornerRefreshOperationResult.AwaitLifecycle;
-        }
-
-        long surfaceVersion = _selectionAdornerSurfaceVersion;
+        _selectionAdornerSurfaces.AdvanceFrame();
+        CanvasImageSource? source = null;
         try
         {
+            // Snapshot bitmaps belong to the device that built the snapshot.
+            // After device loss the shared device is replaced; never draw the
+            // old snapshot into a surface created on the new device.
+            if (!ReferenceEquals(_snapshotLayoutDevice, CanvasDevice.GetSharedDevice()))
+            {
+                RequestSelectionAdornerDeviceRebuild();
+                UpdateSelectionHandlesUnderPaint(snapshot, viewport);
+                return SelectionAdornerRefreshOperationResult.AwaitLifecycle;
+            }
+
+            // Surface creation and XAML attachment can report device loss too,
+            // so they share the guarded region with drawing.
+            if (!ApplySelectionAdornerViewportUnderPaint(width, height, top, out source))
+            {
+                UpdateSelectionHandlesUnderPaint(snapshot, viewport);
+                return SelectionAdornerRefreshOperationResult.AwaitLifecycle;
+            }
+
+            long surfaceVersion = _selectionAdornerSurfaces.Generation;
             // EndDraw can fail. Do not publish clean geometry or mutate XAML
             // handles until the explicitly owned drawing session has closed.
             using (var drawingSession = source.CreateDrawingSession(Color.FromArgb(0, 0, 0, 0)))
@@ -11896,14 +11959,14 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                 PaintInteractiveDocumentState(
                     snapshot,
                     drawingSession,
-                    new Rect(0, top, _selectionAdornerSourceWidth, _selectionAdornerSourceHeight),
+                    viewport,
                     paintBackgrounds);
             }
 
             if (_isDisposed || _isUnloaded || !IsLoaded)
                 return SelectionAdornerRefreshOperationResult.AwaitLifecycle;
-            if (surfaceVersion != _selectionAdornerSurfaceVersion ||
-                !ReferenceEquals(source, _selectionAdornerSource) ||
+            if (surfaceVersion != _selectionAdornerSurfaces.Generation ||
+                !ReferenceEquals(source, _selectionAdornerSurfaces.Surface) ||
                 requestVersion != _selectionAdornerRequestVersion ||
                 !ReferenceEquals(snapshot, _snapshot) || generation != _snapshotGeneration ||
                 snapshot.LayoutRevision != layoutRevision)
@@ -11918,15 +11981,17 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
 
             if (ShakeLogger.IsEnabled)
             {
+                SelectionAdornerSurfaceAllocation allocation = _selectionAdornerSurfaces.Allocation;
                 ShakeLogger.Log(
                     "sel-adorner-draw",
                     $"rects={_selectionAdornerRects.Count} top={_selectionAdornerOffsetY:F2} " +
-                    $"width={_selectionAdornerSourceWidth:F2} height={_selectionAdornerSourceHeight:F2}");
+                    $"width={width:F2} height={height:F2} surface={allocation.Width}x{allocation.Height}");
             }
         }
         catch (Exception ex) when (GraphicsDeviceErrors.IsDeviceLost(ex))
         {
-            ReleaseSelectionAdornerSurface();
+            // HandleCanvasDeviceLost releases the surface under its own guard
+            // and always schedules recovery.
             HandleCanvasDeviceLost(ex);
             return SelectionAdornerRefreshOperationResult.AwaitLifecycle;
         }
@@ -12023,21 +12088,41 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         _selectionAdornerVisualDirty = false;
     }
 
-    private bool ApplySelectionAdornerViewportUnderPaint(double width, double height, double top)
+    private bool ApplySelectionAdornerViewportUnderPaint(
+        double width,
+        double height,
+        double top,
+        [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out CanvasImageSource? source)
     {
+        source = null;
         if (_selectionAdorner is null)
             return false;
 
-        if (double.IsNaN(_selectionAdorner.Width) || Math.Abs(_selectionAdorner.Width - width) > 0.5)
-            _selectionAdorner.Width = width;
-        if (double.IsNaN(_selectionAdorner.Height) || Math.Abs(_selectionAdorner.Height - height) > 0.5)
-            _selectionAdorner.Height = height;
-
-        if (!EnsureSelectionAdornerSurface(width, height))
+        source = EnsureSelectionAdornerSurface(width, height);
+        if (source is null || _selectionAdorner is null)
         {
-            _selectionAdorner.Visibility = Visibility.Collapsed;
+            source = null;
+            if (_selectionAdorner is not null)
+                _selectionAdorner.Visibility = Visibility.Collapsed;
             return false;
         }
+
+        // The Image spans the whole bucketed surface at 1:1 so a reused,
+        // larger surface is never stretched; the clip bounds it to the viewport.
+        SelectionAdornerSurfaceAllocation allocation = _selectionAdornerSurfaces.Allocation;
+        if (double.IsNaN(_selectionAdorner.Width) || Math.Abs(_selectionAdorner.Width - allocation.Width) > 0.01)
+            _selectionAdorner.Width = allocation.Width;
+        if (double.IsNaN(_selectionAdorner.Height) || Math.Abs(_selectionAdorner.Height - allocation.Height) > 0.01)
+            _selectionAdorner.Height = allocation.Height;
+
+        Rect visible = new(0, 0, width, height);
+        if (_selectionAdorner.Clip is not RectangleGeometry clip)
+        {
+            clip = new RectangleGeometry();
+            _selectionAdorner.Clip = clip;
+        }
+        if (clip.Rect != visible)
+            clip.Rect = visible;
 
         double currentLeft = Canvas.GetLeft(_selectionAdorner);
         if (double.IsNaN(currentLeft) || Math.Abs(currentLeft) > 0.1)
@@ -12365,19 +12450,22 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         };
         Canvas.SetZIndex(adorner, 0);
         _selectionAdorner = adorner;
+        _selectionAdornerHost = new SelectionAdornerImageHost(adorner);
         return adorner;
     }
 
-    private bool EnsureSelectionAdornerSurface(double width, double height)
+    /// <summary>
+    /// Returns the long-lived adorner surface, attached to the current adorner
+    /// Image. Device-loss and shutdown failures propagate to the guarded
+    /// refresh, which owns recovery.
+    /// </summary>
+    private CanvasImageSource? EnsureSelectionAdornerSurface(double width, double height)
     {
-        Microsoft.UI.Xaml.Controls.Image? adorner = _selectionAdorner;
-        if (adorner is null || _isDisposed || _isUnloaded ||
-            !double.IsFinite(width) ||
-            !double.IsFinite(height) ||
-            width <= 0 ||
-            height <= 0)
+        SelectionAdornerImageHost? host = _selectionAdornerHost;
+        if (host is null || _selectionAdorner is null || _isDisposed || _isUnloaded ||
+            !ReferenceEquals(host.Image, _selectionAdorner))
         {
-            return false;
+            return null;
         }
 
         double rasterizationScale = XamlRoot?.RasterizationScale ?? 1.0;
@@ -12385,74 +12473,33 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             rasterizationScale = 1.0;
         float dpi = (float)(96.0 * rasterizationScale);
 
-        bool sourceMatches = _selectionAdornerSource is not null &&
-            Math.Abs(_selectionAdornerSourceWidth - width) <= 0.5 &&
-            Math.Abs(_selectionAdornerSourceHeight - height) <= 0.5 &&
-            Math.Abs(_selectionAdornerSourceDpi - dpi) <= 0.1f;
-        if (sourceMatches)
-            return true;
+        CanvasImageSource? surface = _selectionAdornerSurfaces.Ensure(
+            host,
+            width,
+            height,
+            dpi,
+            CanvasDevice.GetSharedDevice());
+        // Attachment can reenter unload or replace the adorner Image.
+        if (surface is null || _isDisposed || _isUnloaded || !ReferenceEquals(host, _selectionAdornerHost))
+            return null;
 
-        CanvasImageSource? previousSource = _selectionAdornerSource;
-        long surfaceVersion = unchecked(++_selectionAdornerSurfaceVersion);
-        CanvasImageSource? replacement = null;
-        try
-        {
-            replacement = new CanvasImageSource(
-                CanvasDevice.GetSharedDevice(),
-                (float)Math.Ceiling(width),
-                (float)Math.Ceiling(height),
-                dpi);
-
-            if (!IsSelectionAdornerSurfaceCurrent(adorner, surfaceVersion))
-                return false;
-
-            // Keep the old managed owner through the dependency-property call.
-            // Creation/attachment can reenter unload or a newer replacement.
-            adorner.Source = replacement;
-            if (!IsSelectionAdornerSurfaceCurrent(adorner, surfaceVersion))
-                return false;
-
-            _selectionAdornerSource = replacement;
-            _selectionAdornerSourceWidth = width;
-            _selectionAdornerSourceHeight = height;
-            _selectionAdornerSourceDpi = dpi;
-            // CanvasImageSource is not IDisposable in the Win2D projection.
-            // Publish ownership only after XAML has accepted the replacement.
-            return true;
-        }
-        catch (Exception ex) when (GraphicsDeviceErrors.IsDeviceLost(ex))
-        {
-            ReleaseSelectionAdornerSurface();
-            HandleCanvasDeviceLost(ex);
-            return false;
-        }
-        catch (Exception ex) when (ShouldIgnoreShutdownException(ex))
-        {
-            MarkdownDiagnostics.WriteLine(
-                $"[MarkdownRendererControl] ignored selection surface creation during shutdown: {ex.GetType().Name} {GraphicsDeviceErrors.FormatHResult(ex.HResult)}");
-            return false;
-        }
-        finally
-        {
-            GC.KeepAlive(previousSource);
-            GC.KeepAlive(replacement);
-        }
+        return surface;
     }
 
-    private bool IsSelectionAdornerSurfaceCurrent(
-        Microsoft.UI.Xaml.Controls.Image adorner,
-        long surfaceVersion)
-    {
-        return !_isDisposed && !_isUnloaded &&
-            ReferenceEquals(adorner, _selectionAdorner) &&
-            surfaceVersion == _selectionAdornerSurfaceVersion;
-    }
+    private static CanvasImageSource CreateSelectionAdornerSurface(
+        CanvasDevice device,
+        SelectionAdornerSurfaceAllocation allocation)
+        => new(device, allocation.Width, allocation.Height, allocation.Dpi);
 
-    private void ReleaseSelectionAdornerSurface()
+    private static void ReportSelectionAdornerSurfaceReleaseFailure(Exception failure)
+        => MarkdownDiagnostics.WriteLine(
+            $"[MarkdownRendererControl] selection surface detach failed: {failure.GetType().Name} {GraphicsDeviceErrors.FormatHResult(failure.HResult)}");
+
+    /// <summary>
+    /// Marks the adorner for a full repaint without touching its surface.
+    /// </summary>
+    private void InvalidateSelectionAdornerPresentation()
     {
-        CanvasImageSource? previousSource = _selectionAdornerSource;
-        long surfaceVersion = unchecked(++_selectionAdornerSurfaceVersion);
-        Microsoft.UI.Xaml.Controls.Image? adorner = _selectionAdorner;
         CancelSelectionAdornerRetry();
         _selectionAdornerGeometryDirty = true;
         _selectionAdornerVisualDirty = true;
@@ -12462,26 +12509,68 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         _selectionAdornerViewportWidth = double.NaN;
         _selectionAdornerViewportHeight = double.NaN;
         _selectionAdornerRasterizationScale = double.NaN;
+    }
+
+    /// <summary>
+    /// Detaches and retires the adorner surface. Reserved for unload, device
+    /// loss and geometry recovery; ordinary snapshot commits only invalidate.
+    /// Never throws: a failed XAML detach is reported and the next refresh
+    /// rebinds explicitly.
+    /// </summary>
+    private void ReleaseSelectionAdornerSurface()
+    {
+        InvalidateSelectionAdornerPresentation();
+        _selectionAdornerSurfaces.Release(_selectionAdornerHost);
+    }
+
+    private bool TryReleaseSelectionAdornerSurface()
+    {
         try
         {
-            if (adorner is not null)
-                adorner.Source = null;
-
-            // A nested detach/replacement owns the newer state. If XAML throws,
-            // retain the old owner and dimensions for the lifecycle retry.
-            if (surfaceVersion != _selectionAdornerSurfaceVersion ||
-                !ReferenceEquals(adorner, _selectionAdorner))
-            {
-                return;
-            }
-            _selectionAdornerSource = null;
-            _selectionAdornerSourceWidth = 0;
-            _selectionAdornerSourceHeight = 0;
-            _selectionAdornerSourceDpi = 0;
+            ReleaseSelectionAdornerSurface();
+            return true;
         }
-        finally
+        catch (Exception failure)
         {
-            GC.KeepAlive(previousSource);
+            MarkdownDiagnostics.WriteLine(
+                $"[MarkdownRendererControl] selection surface release failed: {failure.GetType().Name} {GraphicsDeviceErrors.FormatHResult(failure.HResult)}");
+            return false;
+        }
+    }
+
+    private void RemoveOverlayChildrenExceptSelectionAdorner()
+    {
+        if (_overlay is null)
+            return;
+
+        var children = _overlay.Children;
+        for (int index = children.Count - 1; index >= 0; index--)
+        {
+            if (!ReferenceEquals(children[index], _selectionAdorner))
+                children.RemoveAt(index);
+        }
+    }
+
+    private void RequestSelectionAdornerDeviceRebuild()
+    {
+        // Device recovery already rebuilds against the replacement device.
+        if (_canvasDeviceRecoveryQueued || _isDisposed || _isUnloaded)
+            return;
+
+        MarkdownDiagnostics.WriteLine(
+            "[MarkdownRendererControl] snapshot layout device differs from the shared device; rebuilding.");
+        RequestRebuild(RebuildReason.Full);
+    }
+
+    private sealed class SelectionAdornerImageHost(Microsoft.UI.Xaml.Controls.Image image)
+        : ISelectionAdornerSurfaceHost<CanvasImageSource>
+    {
+        internal Microsoft.UI.Xaml.Controls.Image Image { get; } = image;
+
+        public CanvasImageSource? Source
+        {
+            get => Image.Source as CanvasImageSource;
+            set => Image.Source = value;
         }
     }
 
