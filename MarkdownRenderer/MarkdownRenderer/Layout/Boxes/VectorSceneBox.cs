@@ -17,7 +17,7 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// A block-level painter-neutral scene with an intrinsic viewport. It owns only
 /// local horizontal overflow; the document remains the sole vertical scroller.
 /// </summary>
-internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox
+internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox, ISelectionBackgroundGeometrySource
 {
     private const int AmbiguousBackgroundCommandIndex = -2;
     private const float HorizontalScrollbarHeight = 12f;
@@ -550,7 +550,7 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox
     /// authoritative for selection endpoints and point-in-selection tests;
     /// the adorner background follows only visible scene content.
     /// </summary>
-    internal IEnumerable<SelectionBackgroundGeometry> GetSelectionBackgroundGeometry(
+    public IEnumerable<SelectionBackgroundGeometry> GetSelectionBackgroundGeometry(
         DocumentRange range)
     {
         if ((!_drawing.IsPrepared && !IsGraphDetached && !IsCapacityFallbackPaintable) ||

@@ -210,6 +210,15 @@ function Invoke-Ui {
     return Invoke-NativeChecked -Arguments $argv -Json:$Json
 }
 
+function Close-HoldSelectionFlyout {
+    # T1-019: releasing a long-press opens the selection flyout (C10). Its
+    # light-dismiss layer consumes the next touch outside it, so dismiss it
+    # exactly as C10 does before driving selection handles.
+    $null = Invoke-Ui @('wait-for','MarkdownContextCopy','-t','3000')
+    $null = Invoke-Ui @('send-keys','esc','--via','send-input')
+    $null = Invoke-Ui @('wait-for','MarkdownContextCopy','--gone','-t','1500')
+}
+
 function Invoke-UiValue {
     param([Parameter(Mandatory)][string]$AutomationId)
     $r = Invoke-Ui @('get-value',$AutomationId) -Json
@@ -304,6 +313,38 @@ function Get-RangeCenter {
     $rect = $r.rect
     if ($null -eq $rect -or $rect.width -le 0 -or $rect.height -le 0) { throw "UIA returned empty geometry for '$Text'." }
     return [pscustomobject]@{x=[int][Math]::Floor($rect.x+$rect.width/2);y=[int][Math]::Floor($rect.y+$rect.height/2);rect=$rect}
+}
+
+function Get-SettledRangeCenter {
+    # T1-019: the touch page can still be publishing content above the target
+    # after navigation, and scroll anchoring then moves the target line onto
+    # the viewport edge, inside the handle-drag autoscroll zone. Choose touch
+    # targets only from a layout that is scrolled to the top and unchanged
+    # across consecutive reads.
+    param([Parameter(Mandatory)][string]$Text,[Parameter(Mandatory)][ValidateSet('owned','ancestor')][string]$Viewport)
+    # Each guest read takes several seconds, so bound reads rather than time;
+    # two identical consecutive reads suffice.
+    $previous=''
+    $stableReads=0
+    for($read=0;$read -lt 5;$read++){
+        $null=Invoke-GuestProbe -Mode 'ScrollToTop' -Viewport $Viewport
+        $point=Get-RangeCenter $Text
+        $state=Get-CurrentState -Viewport $Viewport
+        $key='{0},{1},{2},{3}' -f $point.rect.x,$point.rect.y,$point.rect.width,[double]$state.verticalPercent
+        if([double]$state.verticalPercent -eq 0 -and $key -ceq $previous){$stableReads++}else{$stableReads=0}
+        if($stableReads -ge 1){return $point}
+        $previous=$key
+        Start-Sleep -Milliseconds 250
+    }
+    throw "The '$Text' target never settled at the top of the $Viewport viewport."
+}
+
+function Assert-HoldDidNotMoveTarget {
+    param([Parameter(Mandatory)]$Point,[Parameter(Mandatory)]$State,[Parameter(Mandatory)][string]$Viewport)
+    $rects=@($State.selectionRects)
+    if([double]$State.verticalPercent -ne 0 -or $rects.Count -ne 1 -or [double]$rects[0].y -ne [double]$Point.rect.y){
+        throw "The $Viewport viewport scrolled or relaid out during the hold (scroll=$($State.verticalPercent), target y=$($Point.rect.y))."
+    }
 }
 
 function Invoke-PointRangeCase {
@@ -419,10 +460,14 @@ function Invoke-HandleCrossingCase {
 
     # Move the logical Start endpoint beyond the selected word's End. The
     # expected range is calculated independently from UIA TextPattern endpoints.
-    $thenPoint=Get-RangeCenter 'then'
+    $thenPoint=Get-SettledRangeCenter -Text 'then' -Viewport $Viewport
     $null=Invoke-Ui @('touch','MarkdownRenderer','--gesture','long-press','--hold-ms','700','--at',"$($thenPoint.x),$($thenPoint.y)")
     $selected=Get-CurrentState -Viewport $Viewport
     if($selected.selection -cne 'then' -or $selected.rangeCount -ne 1){throw "Long press selected '$($selected.selection)' in $Viewport mode; expected 'then'."}
+    Close-HoldSelectionFlyout
+    $selected=Get-CurrentState -Viewport $Viewport
+    if($selected.selection -cne 'then' -or $selected.rangeCount -ne 1){throw "Dismissing the hold flyout changed the selection to '$($selected.selection)' in $Viewport mode."}
+    Assert-HoldDidNotMoveTarget -Point $thenPoint -State $selected -Viewport $Viewport
     $expectedForward=Invoke-GuestProbe -Mode 'ExpectedRange' -StartNeedle 'then' -StartEndpoint 'End' -EndNeedle 'drag' -EndEndpoint 'End'
     $forwardCaret=Get-RangeBoundaryPoint 'drag' 'End'
     $forwardTarget=Get-HandleDragDestination -InitialState $selected -HandleAutomationId 'MarkdownSelectionStartHandle' -SourceEndpoint 'Start' -TargetCaret $forwardCaret
@@ -432,10 +477,14 @@ function Invoke-HandleCrossingCase {
     # Start a separate selection then move its logical End before its Start.
     # This is the opposite crossing direction; compare exact text, not length.
     $null=Invoke-GuestProbe -Mode 'ScrollToTop' -Viewport $Viewport
-    $usePoint=Get-RangeCenter 'Use'
+    $usePoint=Get-SettledRangeCenter -Text 'Use' -Viewport $Viewport
     $null=Invoke-Ui @('touch','MarkdownRenderer','--gesture','long-press','--hold-ms','700','--at',"$($usePoint.x),$($usePoint.y)")
     $selectedUse=Get-CurrentState -Viewport $Viewport
     if($selectedUse.selection -cne 'Use' -or $selectedUse.rangeCount -ne 1){throw "Long press selected '$($selectedUse.selection)' in $Viewport mode; expected 'Use'."}
+    Close-HoldSelectionFlyout
+    $selectedUse=Get-CurrentState -Viewport $Viewport
+    if($selectedUse.selection -cne 'Use' -or $selectedUse.rangeCount -ne 1){throw "Dismissing the hold flyout changed the selection to '$($selectedUse.selection)' in $Viewport mode."}
+    Assert-HoldDidNotMoveTarget -Point $usePoint -State $selectedUse -Viewport $Viewport
     $expectedBackward=Invoke-GuestProbe -Mode 'ExpectedRange' -StartNeedle 'Use' -StartEndpoint 'Start' -EndNeedle 'Press' -EndEndpoint 'Start'
     $pressCaret=Get-RangeBoundaryPoint 'Press' 'Start'
     $pressStart=Get-HandleDragDestination -InitialState $selectedUse -HandleAutomationId 'MarkdownSelectionEndHandle' -SourceEndpoint 'End' -TargetCaret $pressCaret
@@ -522,10 +571,12 @@ function Invoke-StationaryEdgeCase {
     Set-ToggleState -AutomationId 'TouchViewportOwnershipToggle' -Enabled ($Viewport -eq 'ancestor')
     Start-Sleep -Milliseconds 180
     $null=Invoke-GuestProbe -Mode 'ScrollToTop' -Viewport $Viewport
-    $target=Get-RangeCenter 'Use'
+    $target=Get-SettledRangeCenter -Text 'Use' -Viewport $Viewport
     $null=Invoke-Ui @('touch','MarkdownRenderer','--gesture','long-press','--hold-ms','700','--at',"$($target.x),$($target.y)")
+    Close-HoldSelectionFlyout
     $initial=Get-CurrentState -Viewport $Viewport
     if($initial.selection -cne 'Use' -or $initial.rangeCount -ne 1){throw "Hold selected '$($initial.selection)' in $Viewport mode, expected exactly 'Use'."}
+    Assert-HoldDidNotMoveTarget -Point $target -State $initial -Viewport $Viewport
     if(@($initial.handles).Count -ne 2){throw "Hold did not expose exactly two handles in $Viewport mode."}
     $minimum=44.0*([double]$initial.dpi/96.0)
     foreach($handle in $initial.handles){if($handle.offscreen -or $handle.width -lt $minimum -or $handle.height -lt $minimum){throw "Handle $($handle.automationId) fails 44 epx at $($initial.dpi) DPI."}}

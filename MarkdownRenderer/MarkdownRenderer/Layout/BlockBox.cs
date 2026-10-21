@@ -201,6 +201,16 @@ internal abstract class BlockBox
 }
 
 /// <summary>
+/// An atomic box whose painted selection background is narrower than its
+/// interaction geometry. <see cref="BlockBox.GetSelectionRects"/> keeps the
+/// full block for endpoints and hit tests; the adorner paints only these.
+/// </summary>
+internal interface ISelectionBackgroundGeometrySource
+{
+    IEnumerable<SelectionBackgroundGeometry> GetSelectionBackgroundGeometry(Document.DocumentRange range);
+}
+
+/// <summary>
 /// Paint-only background geometry for the selection adorner. This is kept
 /// separate from <see cref="BlockBox.GetSelectionRects"/>, whose rectangles
 /// also define interaction and endpoint geometry.

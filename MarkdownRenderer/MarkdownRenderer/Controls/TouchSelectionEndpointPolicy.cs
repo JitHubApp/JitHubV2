@@ -15,20 +15,28 @@ internal static class TouchSelectionEndpointPolicy
         bool candidateIsBoundary = false)
     {
         (int clusterStart, int clusterEnd) = boundaries.FindBoundaries(rawCandidateOffset);
+        // P1-036: a hit-tested candidate is a caret position. On a grapheme
+        // boundary it is the endpoint for either role; FindBoundaries returns
+        // the following grapheme there, so taking its end would overshoot by
+        // one grapheme. Only a mid-grapheme caret snaps to the side its role owns.
+        bool onGraphemeBoundary = rawCandidateOffset == clusterStart;
         int offset = candidateIsBoundary
             ? Math.Clamp(rawCandidateOffset, 0, boundaries.TextLength)
+            : onGraphemeBoundary ? clusterStart
             : startEndpoint ? clusterStart : clusterEnd;
         bool effectiveStart = startEndpoint;
 
         if (allowCrossing && startEndpoint && offset > fixedOffset)
         {
             effectiveStart = false;
-            offset = clusterEnd;
+            if (!candidateIsBoundary && !onGraphemeBoundary)
+                offset = clusterEnd;
         }
         else if (allowCrossing && !startEndpoint && offset < fixedOffset)
         {
             effectiveStart = true;
-            offset = clusterStart;
+            if (!candidateIsBoundary && !onGraphemeBoundary)
+                offset = clusterStart;
         }
         else if (!allowCrossing)
         {

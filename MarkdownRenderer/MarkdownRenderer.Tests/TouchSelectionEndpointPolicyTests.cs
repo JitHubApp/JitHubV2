@@ -18,8 +18,49 @@ public sealed class TouchSelectionEndpointPolicyTests
             startEndpoint: true,
             allowCrossing: true);
 
+        // Offset 8 is the caret between "be" and "ta" (P1-036: not the end of
+        // the grapheme that follows it).
+        Assert.False(result.IsStartEndpoint);
+        Assert.Equal(8, result.Offset);
+    }
+
+    // P1-036: handle drags pass the caret boundary returned by
+    // HitTestSelectionEndpoint. A caret already on a grapheme boundary is the
+    // endpoint for either role; only a mid-grapheme caret snaps outward.
+    [Fact]
+    public void EndHandleDraggedToACaretBoundaryEndsExactlyThere()
+    {
+        var boundaries = new TextElementBoundaryIndex("alpha beta");
+
+        var result = TouchSelectionEndpointPolicy.Resolve(
+            boundaries,
+            fixedOffset: 0,
+            rawCandidateOffset: 5,
+            startEndpoint: false,
+            allowCrossing: true);
+
+        Assert.False(result.IsStartEndpoint);
+        Assert.Equal(5, result.Offset);
+    }
+
+    [Fact]
+    public void StartHandleCrossingToACaretBoundaryEndsExactlyThere()
+    {
+        // Live follow-up: dragging the start of "then" past the end of the
+        // next word "drag" must select " drag", not " drag ".
+        const string text = "then drag either";
+        var boundaries = new TextElementBoundaryIndex(text);
+
+        var result = TouchSelectionEndpointPolicy.Resolve(
+            boundaries,
+            fixedOffset: 4,
+            rawCandidateOffset: 9,
+            startEndpoint: true,
+            allowCrossing: true);
+
         Assert.False(result.IsStartEndpoint);
         Assert.Equal(9, result.Offset);
+        Assert.Equal(" drag", text[4..result.Offset]);
     }
 
     [Fact]

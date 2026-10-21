@@ -49,8 +49,12 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// device-scoped bitmap leases. SVG text remains inside the provider render so
 /// transforms, clipping, bidi, and text paths are preserved.
 /// </summary>
-internal sealed partial class ImageBox : BlockBox
+internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometrySource
 {
+    // P1-035: selected artwork keeps the same translucent tint as Math and
+    // Mermaid scenes (P1-028) instead of an opaque block-wide band.
+    private const float SelectionArtworkBackgroundOpacity = 0.25f;
+
     // Renderer-owned resource caches are bounded by retained bytes rather than
     // entry count so a handful of very large images cannot bypass the budget.
     private static readonly long MaxSvgCacheBytes = Environment.Is64BitProcess
@@ -3134,6 +3138,49 @@ internal sealed partial class ImageBox : BlockBox
             float cy = (float)(Bounds.Y + Margin.Top) +
                 Math.Max(_imageHeight, GetParagraphLineHeight()) + (float)cs.Margin.Top;
             PlacementAwareTextDrawing.DrawAtRootLocalOrigin(ds, _caption, x, cy, color);
+        }
+    }
+
+    /// <summary>
+    /// Returns paint-only selection geometry: a translucent tint over the
+    /// painted artwork and an opaque band behind the caption text, which the
+    /// selection foreground repaints in the selection text color. The full
+    /// block bounds remain authoritative for endpoints and hit tests.
+    /// </summary>
+    public System.Collections.Generic.IEnumerable<SelectionBackgroundGeometry> GetSelectionBackgroundGeometry(
+        DocumentRange range)
+    {
+        if (!SelectionIntersectsAtomicSlot(range))
+            yield break;
+
+        // An inline image's arranged bounds are its painted content.
+        if (_isInlineLayout)
+        {
+            yield return new SelectionBackgroundGeometry(Bounds, 1f);
+            yield break;
+        }
+
+        float x = GetContentX();
+        float y = GetContentY();
+        if (_imageWidth > 0 && _imageHeight > 0)
+        {
+            yield return new SelectionBackgroundGeometry(
+                new Rect(x, y, _imageWidth, _imageHeight),
+                SelectionArtworkBackgroundOpacity);
+        }
+
+        if (_caption is { } caption)
+        {
+            Rect layout = caption.LayoutBounds;
+            if (layout.Width > 0 && layout.Height > 0)
+            {
+                var cs = Context.ThemeSnapshot.GetStyle(MarkdownElementKeys.ImageCaption);
+                float cy = (float)(Bounds.Y + Margin.Top) +
+                    Math.Max(_imageHeight, GetParagraphLineHeight()) + (float)cs.Margin.Top;
+                yield return new SelectionBackgroundGeometry(
+                    new Rect(x + layout.X, cy + layout.Y, layout.Width, layout.Height),
+                    1f);
+            }
         }
     }
 

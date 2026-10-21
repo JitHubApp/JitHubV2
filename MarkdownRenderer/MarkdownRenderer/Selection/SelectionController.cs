@@ -544,9 +544,11 @@ internal sealed class SelectionController
         }
 
         bool inlineCoordinatesAreLogical = box is InlineContainerBox;
-        VectorSceneBox? vectorBackgroundOwner = selectionBackgrounds is null
+        // Atomic Math/Mermaid/SVG scenes and block images keep full-block
+        // interaction geometry but paint a content-bounded background.
+        ISelectionBackgroundGeometrySource? backgroundOwner = selectionBackgrounds is null
             ? null
-            : box as VectorSceneBox;
+            : box as ISelectionBackgroundGeometrySource;
         IEnumerable<Rect> sourceRects = box is InlineContainerBox inline
             ? inline.GetLogicalRangeRects(range)
             : box.GetSelectionRects(range);
@@ -563,15 +565,15 @@ internal sealed class SelectionController
             if (visible.Width > 0 && visible.Height > 0 && Intersects(visible, logicalViewport))
             {
                 destination.Add(visible);
-                if (selectionBackgrounds is not null && vectorBackgroundOwner is null)
+                if (selectionBackgrounds is not null && backgroundOwner is null)
                     selectionBackgrounds.Add(new SelectionBackgroundGeometry(visible, 1f));
             }
         }
 
-        if (vectorBackgroundOwner is not null)
+        if (backgroundOwner is not null)
         {
             foreach (SelectionBackgroundGeometry background in
-                     vectorBackgroundOwner.GetSelectionBackgroundGeometry(range))
+                     backgroundOwner.GetSelectionBackgroundGeometry(range))
             {
                 Rect logical = snapshot.ToLogicalRectForTopLevelBlockUnderPaint(
                     topLevelRoot,

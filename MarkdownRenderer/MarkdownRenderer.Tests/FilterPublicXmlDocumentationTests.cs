@@ -142,6 +142,9 @@ public sealed class FilterPublicXmlDocumentationTests
             RedirectStandardOutput = true,
             RedirectStandardError = true,
         };
+        // A host terminal can make pwsh render redirected errors with ANSI
+        // color escapes, which break the plain-text message assertions.
+        startInfo.Environment["NO_COLOR"] = "1";
         startInfo.ArgumentList.Add("-NoLogo");
         startInfo.ArgumentList.Add("-NoProfile");
         startInfo.ArgumentList.Add("-NonInteractive");

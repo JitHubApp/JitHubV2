@@ -309,9 +309,15 @@ function Get-Range {
     $context=Get-TextPattern
     $range=$context.pattern.DocumentRange.FindText($Text,$false,$false)
     if($null -eq $range){throw "UIA TextPattern cannot find '$Text'."}
-    $range.ScrollIntoView($true)
-    Start-Sleep -Milliseconds 100
+    # T1-019: scroll only a target that is not already visible. Aligning a
+    # visible target to the top edge moved it into the handle-drag autoscroll
+    # zone, so later handle gestures scrolled instead of crossing endpoints.
     $rects=@(ConvertTo-RangeRectangles $range)
+    if($rects.Count -ne 1){
+        $range.ScrollIntoView($true)
+        Start-Sleep -Milliseconds 100
+        $rects=@(ConvertTo-RangeRectangles $range)
+    }
     if($rects.Count -ne 1){throw "Text '$Text' should have one visible rectangle, got $($rects.Count)."}
     $rect=[System.Windows.Rect]$rects[0]
     if($rect.IsEmpty -or $rect.Width -le 0 -or $rect.Height -le 0){throw "Text '$Text' has empty UIA geometry."}
@@ -472,7 +478,7 @@ function Find-NewTouchContact {
     return $record
 }
 function Assert-ActiveTouchHandleContact {
-    param([Parameter(Mandatory)]$Observation,[Parameter(Mandatory)][uint32]$PointerId,[Parameter(Mandatory)][long]$ContactSerial,[Parameter(Mandatory)][string]$ExpectedHandle,[Parameter(Mandatory)]$ExpectedPoint,[Parameter(Mandatory)]$Before)
+    param([Parameter(Mandatory)]$Observation,[Parameter(Mandatory)][uint32]$PointerId,[Parameter(Mandatory)][long]$ContactSerial,[Parameter(Mandatory)][string]$ExpectedHandle,[Parameter(Mandatory)]$ExpectedPoint,[Parameter(Mandatory)]$Before,[string]$Phase='')
     $record=Get-TouchContactRecord -Observation $Observation -PointerId $PointerId
     $active=@($Observation.active|Where-Object{[uint32]$_.pointerId -eq $PointerId -and [long]$_.contactSerial -eq $ContactSerial})
     $expectedRootPoint=ConvertTo-ExpectedRootClientPoint -ExpectedScreenPoint $ExpectedPoint -ObservedContact $record
@@ -487,7 +493,8 @@ function Assert-ActiveTouchHandleContact {
         [int]$record.releaseCount -ne [int]$baseline.releaseCount -or
         [int]$record.cancelCount -ne [int]$baseline.cancelCount -or
         [int]$record.captureLostCount -ne [int]$baseline.captureLostCount -or $errorDip -gt 12.0){
-        throw "Routed pointer $PointerId/$ContactSerial is not a live contact on $ExpectedHandle at the expected position according to actual routed events."
+        $diagnostics=[ordered]@{phase=$Phase;activeMatches=$active.Count;errorDip=$errorDip;expectedRootPoint=$expectedRootPoint;baseline=$baseline;record=$record}
+        throw ("Routed pointer $PointerId/$ContactSerial is not a live contact on $ExpectedHandle at the expected position according to actual routed events. Diagnostics: " + (ConvertTo-Json -InputObject $diagnostics -Depth 6 -Compress))
     }
     return $record
 }
@@ -652,15 +659,15 @@ switch($Mode){
             $contactEdge=Get-TouchContactObservation
             $edgeRecord=Find-NewTouchContact -Before $observerBefore -After $contactEdge -ExpectedPoint $edgeExpectedPoint
             $routedPointerId=[uint32]$edgeRecord.pointerId;$routedContactSerial=[long]$edgeRecord.contactSerial
-            $edgeRecord=Assert-ActiveTouchHandleContact -Observation $contactEdge -PointerId $routedPointerId -ContactSerial $routedContactSerial -ExpectedHandle 'MarkdownSelectionEndHandle' -ExpectedPoint $edgeExpectedPoint -Before $observerBefore
+            $edgeRecord=Assert-ActiveTouchHandleContact -Phase 'edge' -Observation $contactEdge -PointerId $routedPointerId -ContactSerial $routedContactSerial -ExpectedHandle 'MarkdownSelectionEndHandle' -ExpectedPoint $edgeExpectedPoint -Before $observerBefore
             $atEdge=Get-State $ViewportMode
             Start-Sleep -Milliseconds 550
             $contactMid=Get-TouchContactObservation
-            $midRecord=Assert-ActiveTouchHandleContact -Observation $contactMid -PointerId $routedPointerId -ContactSerial $routedContactSerial -ExpectedHandle 'MarkdownSelectionEndHandle' -ExpectedPoint $edgeExpectedPoint -Before $observerBefore
+            $midRecord=Assert-ActiveTouchHandleContact -Phase 'mid-hold' -Observation $contactMid -PointerId $routedPointerId -ContactSerial $routedContactSerial -ExpectedHandle 'MarkdownSelectionEndHandle' -ExpectedPoint $edgeExpectedPoint -Before $observerBefore
             $mid=Get-State $ViewportMode
             Start-Sleep -Milliseconds 650
             $contactEnd=Get-TouchContactObservation
-            $endRecord=Assert-ActiveTouchHandleContact -Observation $contactEnd -PointerId $routedPointerId -ContactSerial $routedContactSerial -ExpectedHandle 'MarkdownSelectionEndHandle' -ExpectedPoint $edgeExpectedPoint -Before $observerBefore
+            $endRecord=Assert-ActiveTouchHandleContact -Phase 'end-hold' -Observation $contactEnd -PointerId $routedPointerId -ContactSerial $routedContactSerial -ExpectedHandle 'MarkdownSelectionEndHandle' -ExpectedPoint $edgeExpectedPoint -Before $observerBefore
             $endState=Get-State $ViewportMode
             if([long]$contactEdge.rendererGeneration -ne [long]$contactMid.rendererGeneration -or
                 [long]$contactEdge.rendererGeneration -ne [long]$contactEnd.rendererGeneration -or
