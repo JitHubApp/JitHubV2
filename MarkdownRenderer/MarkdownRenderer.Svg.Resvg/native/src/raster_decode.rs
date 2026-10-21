@@ -74,7 +74,7 @@ pub(super) fn process_request(request: &Request) -> Result<Response, Reject> {
     output.fill(0);
 
     let source = &source_region[..request.source_length as usize];
-    let result = decode_and_render(request, &plan, source, output, &progress);
+    let result = decode_and_render(request, &plan, source, output, progress);
     if result.is_err() {
         // A failure response must never expose a partially initialized raster.
         output.fill(0);
@@ -346,7 +346,7 @@ fn decode_and_render(
         .map_err(map_decode_error)?;
 
     let icc_transform = match (icc, icc_plan.as_ref()) {
-        (Some(profile), Some(plan)) => Some(create_icc_transform(profile, &plan)?),
+        (Some(profile), Some(plan)) => Some(create_icc_transform(profile, plan)?),
         (None, None) => None,
         _ => return Err(Reject::Worker("ICC preflight state mismatch")),
     };
@@ -509,7 +509,7 @@ fn reopen_verified_decoder<'a>(
     Ok(decoder)
 }
 
-fn decode_streamed_rows(
+#[allow(clippy::too_many_arguments)] fn decode_streamed_rows(
     request: &Request,
     plan: &DecodePlan,
     output: &mut [u8],
@@ -725,7 +725,7 @@ fn decode_streamed_rows(
     Ok(response)
 }
 
-fn render_ready_streamed_rows(
+#[allow(clippy::too_many_arguments)] fn render_ready_streamed_rows(
     plan: &DecodePlan,
     intermediate_width: u32,
     intermediate_height: u32,
@@ -810,7 +810,7 @@ fn scatter_unscaled_oriented_row(
     Ok(())
 }
 
-fn render_streamed_output_row(
+#[allow(clippy::too_many_arguments)] fn render_streamed_output_row(
     plan: &DecodePlan,
     intermediate_width: u32,
     intermediate_height: u32,
