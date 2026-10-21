@@ -11,3 +11,5 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("MarkdownRenderer.Html")]
 [assembly: InternalsVisibleTo("MarkdownRenderer.Math")]
 [assembly: InternalsVisibleTo("MarkdownRenderer.Mermaid")]
+// The README correctness audit inventories the parsed tree the native view lays out.
+[assembly: InternalsVisibleTo("MarkdownRenderer.ReadmeCorrectnessAudit")]

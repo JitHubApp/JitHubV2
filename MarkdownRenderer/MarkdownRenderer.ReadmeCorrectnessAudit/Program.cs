@@ -84,7 +84,7 @@ internal static class Program
 
         var run = new AuditRunResult
         {
-            SchemaVersion = 3,
+            SchemaVersion = 4,
             Scope = ReportScope,
             StartedAtUtc = DateTimeOffset.UtcNow,
             ManifestPath = manifestPath,
@@ -348,6 +348,7 @@ internal static class Program
             result.LinkProjections = document.GetLinks()
                 .Select(CreateLinkProjection)
                 .ToList();
+            result.Inventory = DocumentInventoryBuilder.Create(document);
             result.ImageProjections = document.GetImages()
                 .Select(CreateImageProjection)
                 .ToList();
@@ -377,7 +378,7 @@ internal static class Program
         return result;
     }
 
-    private static string HashUtf8(string value)
+    internal static string HashUtf8(string value)
         => ToLowerHex(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
 
     private static string NormalizeCodeDisplayText(string value)
@@ -717,6 +718,7 @@ internal static class Program
         public List<CodeBlockProjection> CodeBlockProjections { get; set; } = [];
         public List<LinkProjection> LinkProjections { get; set; } = [];
         public List<ImageProjection> ImageProjections { get; set; } = [];
+        public DocumentInventory? Inventory { get; set; }
         public bool? HasErrors { get; set; }
         public int MermaidDiagramCount { get; set; }
         public int MermaidSceneCount { get; set; }
@@ -838,6 +840,7 @@ internal static class Program
 [JsonSerializable(typeof(List<Program.CodeBlockProjection>))]
 [JsonSerializable(typeof(List<Program.LinkProjection>))]
 [JsonSerializable(typeof(List<Program.ImageProjection>))]
+[JsonSerializable(typeof(DocumentInventory))]
 internal partial class ReadmeAuditJsonContext : JsonSerializerContext
 {
 }

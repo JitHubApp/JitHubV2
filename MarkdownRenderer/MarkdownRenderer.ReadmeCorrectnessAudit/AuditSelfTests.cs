@@ -152,6 +152,64 @@ internal static class AuditSelfTests
         Require(imageProjection.SourceStart == expectedImageStart && imageProjection.IsInline &&
             imageProjection.AltTextUtf16Length == image.AltText.Length,
             "Structured image projection preserves inline/alt metadata.");
+
+        await VerifyInventoryFixtureAsync(engine).ConfigureAwait(false);
+    }
+
+    private static async Task VerifyInventoryFixtureAsync(MarkdownEngine engine)
+    {
+        const string source =
+            "# Title\n\n" +
+            "Para with *emph*, `code` &amp; entity.\n\n" +
+            "| A | B |\n|---|---|\n| 1 | 2 |\n\n" +
+            "- [x] done\n- [ ] todo\n\n" +
+            "<details><summary>More</summary>\n\nHidden text\n\n</details>\n\n" +
+            "<img src=\"a&amp;b.png\" alt=\"x\">\n\n" +
+            "![md](m.png)\n\n" +
+            "Inline $x^2$ math and a note[^1].\n\n" +
+            "[^1]: Footnote body.\n";
+        MarkdownDocument document = await engine.ParseAsync(source).ConfigureAwait(false);
+        DocumentInventory inventory = DocumentInventoryBuilder.Create(document);
+
+        Require(inventory.Available, "The inventory reads the parsed tree the view lays out.");
+        Require(inventory.UnrecognizedInlineTypes.Count == 0,
+            "The fixture uses only recognized inline types: " + string.Join(", ", inventory.UnrecognizedInlineTypes));
+
+        InventoryTable table = inventory.Tables.Single();
+        Require(table.RowCount == 2 && table.HeaderRowCount == 1 && table.ColumnCount == 2,
+            "Table rows, header rows and columns.");
+        Require(source.Substring(table.SourceStart, table.SourceLength).StartsWith("| A | B |", StringComparison.Ordinal),
+            "Table span uses original-source UTF-16 offsets.");
+
+        Require(inventory.TaskItems.Count == 2 && inventory.TaskItems.Count(static item => item.Checked) == 1,
+            "Task items and checked state.");
+        Require(inventory.Disclosures.Count == 1, "One GitHub disclosure.");
+
+        InventoryHtmlImage htmlImage = inventory.HtmlImages.Single();
+        Require(htmlImage.Origin == "html-block" &&
+            htmlImage.SrcSha256 == Program.HashUtf8("a&b.png") &&
+            source.Substring(htmlImage.SourceStart, htmlImage.SourceLength) == "<img src=\"a&amp;b.png\" alt=\"x\">",
+            "HTML image source is entity-decoded once and its span is the exact tag.");
+
+        string[] texts = inventory.TextBlocks.Select(static block => block.Text).ToArray();
+        Require(texts.Contains("Title") && texts.Contains("Para with emph, code & entity."),
+            "Visible heading and paragraph text, with markup removed and entities decoded.");
+        Require(new[] { "A", "B", "1", "2" }.All(texts.Contains) &&
+            inventory.TextBlocks.Count(static block => block.Kind == "table-cell") == 4,
+            "Table cell text is inventoried per cell.");
+        Require(texts.Contains("done") && texts.Contains("todo") && texts.Contains("Hidden text"),
+            "Task item and disclosure body text.");
+        Require(inventory.InlineMath.Count == 1 &&
+            source.Substring(inventory.InlineMath[0].SourceStart, inventory.InlineMath[0].SourceLength) == "$x^2$",
+            "Inline math is counted with its exact source span.");
+        Require(texts.Contains("Inline math and a note.") && texts.Contains("Footnote body."),
+            "Inline math and footnote labels are excluded from body text; the definition body is kept.");
+        Require(!texts.Any(static text => text.Contains("md", StringComparison.Ordinal) && text.Length <= 2),
+            "Image alt text is not counted as visible body text.");
+        Require(inventory.TextBlocks.All(block =>
+            block.SourceStart >= 0 && block.SourceStart + block.SourceLength <= source.Length &&
+            block.TextSha256 == Program.HashUtf8(block.Text)),
+            "Every text block has an in-bounds span and a matching hash.");
     }
 
     private static async Task RequireInvalidReadAsync(string path, int maximum, int? expected)
