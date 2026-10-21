@@ -18,7 +18,11 @@ param(
     [ValidateRange(0,8192)][int]$WindowWidthPixels = 0,
     [ValidateRange(0,8192)][int]$WindowHeightPixels = 0,
     [uint32]$HighContrastFlags = 0,
-    [AllowEmptyString()][string]$HighContrastScheme = ''
+    [AllowEmptyString()][string]$HighContrastScheme = '',
+    # StationaryEdge only: 0 sends no frames during the hold; otherwise the
+    # identical edge frame is repeated at this interval, as a digitizer does
+    # for a motionless finger.
+    [ValidateRange(0,200)][int]$KeepAliveMilliseconds = 0
 )
 
 $ErrorActionPreference='Stop'
@@ -151,6 +155,28 @@ public static class MarkdownCorrectnessSandboxNative {
             System.Threading.Thread.Sleep(1);
         }
     }
+}
+
+/// Repeats one identical in-contact frame on a background thread so the OS
+/// does not end an idle injected contact. The position never changes.
+public sealed class McStationaryKeepAlive : IDisposable {
+    private readonly IntPtr _device; private readonly uint _pointerId; private readonly int _x; private readonly int _y; private readonly int _interval;
+    private readonly System.Threading.Thread _thread; private volatile bool _stop; private int _frames; private volatile string _error;
+    public McStationaryKeepAlive(IntPtr device,uint pointerId,int x,int y,int intervalMilliseconds) {
+        _device=device;_pointerId=pointerId;_x=x;_y=y;_interval=Math.Max(1,intervalMilliseconds);
+        _thread=new System.Threading.Thread(Run){IsBackground=true,Name="McStationaryKeepAlive"};
+        _thread.Start();
+    }
+    public int Frames { get { return System.Threading.Volatile.Read(ref _frames); } }
+    public string Error { get { return _error; } }
+    private void Run() {
+        while(!_stop) {
+            try { MarkdownCorrectnessSandboxNative.Send(_device,_pointerId,_x,_y,McPointerFlags.InRange|McPointerFlags.InContact|McPointerFlags.Update); System.Threading.Interlocked.Increment(ref _frames); }
+            catch(Exception exception) { _error=exception.Message; return; }
+            System.Threading.Thread.Sleep(_interval);
+        }
+    }
+    public void Dispose() { _stop=true; _thread.Join(2000); }
 }
 '@
 }
@@ -365,12 +391,14 @@ function Get-Handles {
     return @($handles.ToArray())
 }
 function Get-ScrollElement {
-    param([ValidateSet('owned','ancestor')][string]$Mode)
+    # -AllowNone returns $null for a document too short to scroll; callers
+    # that need scrolling keep the default strict lookup.
+    param([ValidateSet('owned','ancestor')][string]$Mode,[switch]$AllowNone)
     $root=Get-Root
     if($Mode -eq 'ancestor'){
         $element=Find-Unique $root 'TouchSelectionAncestorViewport'
         $pattern=Get-Pattern $element ([System.Windows.Automation.ScrollPattern]::Pattern)
-        if($null -eq $pattern -or -not $pattern.Current.VerticallyScrollable){throw 'Ancestor viewport has no vertical ScrollPattern.'}
+        if($null -eq $pattern -or -not $pattern.Current.VerticallyScrollable){if($AllowNone){return $null};throw 'Ancestor viewport has no vertical ScrollPattern.'}
         return [pscustomobject]@{element=$element;pattern=$pattern}
     }
     $renderer=Find-Unique $root 'MarkdownRenderer';$walker=[System.Windows.Automation.TreeWalker]::ControlViewWalker
@@ -385,6 +413,7 @@ function Get-ScrollElement {
         }
         $child=$walker.GetFirstChild($element);while($null -ne $child){$pending.Push($child);$child=$walker.GetNextSibling($child)}
     }
+    if($candidates.Count -eq 0 -and $AllowNone){return $null}
     if($candidates.Count -ne 1){throw "Owned MarkdownScrollView must expose exactly one vertically scrollable owner below MarkdownRenderer; found $($candidates.Count)."}
     return $candidates[0]
 }
@@ -398,12 +427,15 @@ function Get-State {
             $selectionRects.Add(@{x=$rect.X;y=$rect.Y;width=$rect.Width;height=$rect.Height})
         }
     }
-    $scroll=Get-ScrollElement $Viewport;$scrollPattern=$scroll.pattern
+    $scroll=Get-ScrollElement $Viewport -AllowNone
     $rendererRect=$context.renderer.Current.BoundingRectangle
     return [pscustomobject]@{
-        selection=$selection;rangeCount=$ranges.Count;verticalPercent=$scrollPattern.Current.VerticalScrollPercent
-        verticallyScrollable=$scrollPattern.Current.VerticallyScrollable;viewportAutomationId=$scroll.element.Current.AutomationId
-        viewportName=$scroll.element.Current.Name;viewportClass=$scroll.element.Current.ClassName
+        selection=$selection;rangeCount=$ranges.Count
+        verticalPercent=$(if($null -ne $scroll){$scroll.pattern.Current.VerticalScrollPercent}else{$null})
+        verticallyScrollable=($null -ne $scroll -and [bool]$scroll.pattern.Current.VerticallyScrollable)
+        viewportAutomationId=$(if($null -ne $scroll){$scroll.element.Current.AutomationId}else{$null})
+        viewportName=$(if($null -ne $scroll){$scroll.element.Current.Name}else{$null})
+        viewportClass=$(if($null -ne $scroll){$scroll.element.Current.ClassName}else{$null})
         rendererRect=@{x=$rendererRect.X;y=$rendererRect.Y;width=$rendererRect.Width;height=$rendererRect.Height}
         selectionRects=@($selectionRects.ToArray())
         handles=@(Get-Handles);dpi=[MarkdownCorrectnessSandboxNative]::Dpi([IntPtr]$WindowHandle)
@@ -635,13 +667,27 @@ switch($Mode){
         $dpi=[uint32]$before.dpi;$scale=$dpi/96.0
         $rect=$before.rendererRect
         $startX=[int][Math]::Round($end[0].x+$end[0].width/2);$startY=[int][Math]::Round($end[0].y+$end[0].height/2)
-        $edgeX=[int][Math]::Round($rect.x+$rect.width-8*$scale);$edgeY=[int][Math]::Round($rect.y+$rect.height-8*$scale)
+        # T1-021: place the selection caret (not the finger) at the slow
+        # inner edge of the 48-DIP autoscroll band. Deeper in the band the
+        # touch page reaches its end before the slow UIA samples can observe
+        # continued scrolling. The finger keeps its handle-to-caret offset.
+        $selectionBottoms=@($before.selectionRects|ForEach-Object{[double]$_.y+[double]$_.height})
+        if($selectionBottoms.Count -eq 0){throw 'Stationary edge test requires visible selection rectangles to locate the end caret.'}
+        $caretToFingerY=($end[0].y+$end[0].height/2)-($selectionBottoms|Measure-Object -Maximum).Maximum
+        # The band belongs to the active scroll owner: the renderer's own
+        # viewport, or the page ScrollViewer in ancestor mode.
+        $scrollBounds=(Get-ScrollElement $ViewportMode).element.Current.BoundingRectangle
+        $viewportBottom=[Math]::Min([double]$rect.y+[double]$rect.height,[double]$scrollBounds.Y+[double]$scrollBounds.Height)
+        $edgeX=[int][Math]::Round($rect.x+$rect.width-8*$scale)
+        $edgeY=[int][Math]::Round($viewportBottom-44*$scale+$caretToFingerY)
+        if($edgeY -gt [int][Math]::Floor($viewportBottom-1)){$edgeY=[int][Math]::Floor($viewportBottom-1)}
         if($startX -lt $rect.x -or $startX -gt ($rect.x+$rect.width) -or $startY -lt $rect.y -or $startY -gt ($rect.y+$rect.height)){throw 'Selection handle is outside the renderer bounds.'}
         $edgeExpectedPoint=Get-ExpectedScreenTouchPoint -ScreenX $edgeX -ScreenY $edgeY
         $observerBefore=Get-TouchContactObservation
         $touchDevice=[IntPtr]::Zero
         $downSent=$false;$upSent=$false;$releaseError=$null;$lastSentX=$startX;$lastSentY=$startY
         $stationaryWatch=$null
+        $keepAlive=$null;$keepAliveFrames=0;$keepAliveError=$null
         try{
             $touchDevice=[MarkdownCorrectnessSandboxNative]::CreateTouchDevice()
             [MarkdownCorrectnessSandboxNative]::Send($touchDevice,$PointerId,$startX,$startY,[McPointerFlags]::InRange -bor [McPointerFlags]::InContact -bor [McPointerFlags]::Down)
@@ -653,12 +699,22 @@ switch($Mode){
                 Start-Sleep -Milliseconds 30
             }
             # No further pointer frames are sent during the hold: the finger is
-            # stationary at the edge while UIA snapshots are taken.
+            # stationary at the edge while UIA snapshots are taken. The
+            # repeated-position variant re-sends only the identical edge frame
+            # from the native keep-alive thread.
+            if($KeepAliveMilliseconds -gt 0){$keepAlive=[McStationaryKeepAlive]::new($touchDevice,$PointerId,$lastSentX,$lastSentY,$KeepAliveMilliseconds)}
             $stationaryWatch=[Diagnostics.Stopwatch]::StartNew()
             Start-Sleep -Milliseconds 100
             $contactEdge=Get-TouchContactObservation
             $edgeRecord=Find-NewTouchContact -Before $observerBefore -After $contactEdge -ExpectedPoint $edgeExpectedPoint
             $routedPointerId=[uint32]$edgeRecord.pointerId;$routedContactSerial=[long]$edgeRecord.contactSerial
+            # The OS can end an idle injected contact: one ordinary release that
+            # this helper never sent, with no cancel, at the exact edge point.
+            if($KeepAliveMilliseconds -eq 0 -and -not [bool]$edgeRecord.inContact -and [string]$edgeRecord.lastEvent -ceq 'Released' -and
+                [int]$edgeRecord.releaseCount -eq 1 -and [int]$edgeRecord.cancelCount -eq 0 -and [int]$edgeRecord.captureLostCount -eq 0 -and
+                [int]$edgeRecord.nativeCanceledPacketCount -eq 0 -and [string]$edgeRecord.handle -ceq 'MarkdownSelectionEndHandle'){
+                throw ('INJECTED-CONTACT-ENDED-BY-OS: the motionless injected contact was released before any up frame was sent. Record: ' + (ConvertTo-Json -InputObject $edgeRecord -Depth 4 -Compress))
+            }
             $edgeRecord=Assert-ActiveTouchHandleContact -Phase 'edge' -Observation $contactEdge -PointerId $routedPointerId -ContactSerial $routedContactSerial -ExpectedHandle 'MarkdownSelectionEndHandle' -ExpectedPoint $edgeExpectedPoint -Before $observerBefore
             $atEdge=Get-State $ViewportMode
             Start-Sleep -Milliseconds 550
@@ -673,8 +729,16 @@ switch($Mode){
                 [long]$contactEdge.rendererGeneration -ne [long]$contactEnd.rendererGeneration -or
                 [long]$edgeRecord.contactSerial -ne [long]$midRecord.contactSerial -or
                 [long]$edgeRecord.contactSerial -ne [long]$endRecord.contactSerial -or
-                [int]$edgeRecord.moveCount -ne [int]$midRecord.moveCount -or
-                [int]$edgeRecord.moveCount -ne [int]$endRecord.moveCount -or
+                ($KeepAliveMilliseconds -eq 0 -and (
+                    [int]$edgeRecord.moveCount -ne [int]$midRecord.moveCount -or
+                    [int]$edgeRecord.moveCount -ne [int]$endRecord.moveCount)) -or
+                ($KeepAliveMilliseconds -gt 0 -and (
+                    [int]$midRecord.moveCount -lt [int]$edgeRecord.moveCount -or
+                    [int]$endRecord.moveCount -lt [int]$midRecord.moveCount -or
+                    [Math]::Abs([double]$midRecord.lastPositionRootDipX-[double]$edgeRecord.lastPositionRootDipX) -gt 0.5 -or
+                    [Math]::Abs([double]$midRecord.lastPositionRootDipY-[double]$edgeRecord.lastPositionRootDipY) -gt 0.5 -or
+                    [Math]::Abs([double]$endRecord.lastPositionRootDipX-[double]$edgeRecord.lastPositionRootDipX) -gt 0.5 -or
+                    [Math]::Abs([double]$endRecord.lastPositionRootDipY-[double]$edgeRecord.lastPositionRootDipY) -gt 0.5)) -or
                 [int]$edgeRecord.pressCount -ne [int]$midRecord.pressCount -or
                 [int]$edgeRecord.pressCount -ne [int]$endRecord.pressCount -or
                 [int]$edgeRecord.releaseCount -ne [int]$midRecord.releaseCount -or
@@ -687,6 +751,7 @@ switch($Mode){
             }
         } finally {
             if($null -ne $stationaryWatch){$stationaryWatch.Stop()}
+            if($null -ne $keepAlive){$keepAlive.Dispose();$keepAliveFrames=$keepAlive.Frames;$keepAliveError=$keepAlive.Error}
             if($downSent -and -not $upSent){
                 try{[MarkdownCorrectnessSandboxNative]::Send($touchDevice,$PointerId,$lastSentX,$lastSentY,[McPointerFlags]::Up);$upSent=$true}
                 catch{$releaseError=$_.Exception.Message}
@@ -694,6 +759,8 @@ switch($Mode){
             [MarkdownCorrectnessSandboxNative]::DestroyTouchDevice($touchDevice)
         }
         if($null -ne $releaseError){throw "Touch contact could not be released: $releaseError"}
+        if($null -ne $keepAliveError){throw "The stationary keep-alive frame could not be injected: $keepAliveError"}
+        if($KeepAliveMilliseconds -gt 0 -and $keepAliveFrames -le 0){throw 'The repeated-position hold did not inject any keep-alive frame.'}
         $releaseDeadline=[DateTime]::UtcNow.AddSeconds(2);$releaseObservation=$null;$releasedRecord=$null
         do{
             $releaseObservation=Get-TouchContactObservation
@@ -715,7 +782,7 @@ switch($Mode){
             throw 'The sample observer did not confirm one ordinary released-up transition for the same contact (allowing its one normal capture-loss cleanup event).'
         }
         $afterRelease=Get-State $ViewportMode
-        $result=@{mode=$Mode;viewport=$ViewportMode;before=$before;atEdge=$atEdge;midHold=$mid;endHold=$endState;afterRelease=$afterRelease;contactBefore=$observerBefore;contactAtEdge=$contactEdge;contactMidHold=$contactMid;contactEndHold=$contactEnd;contactAfterRelease=$releaseObservation;start=@{x=$startX;y=$startY};edge=@{x=$edgeX;y=$edgeY};injectedPointerId=$PointerId;routedPointerId=$routedPointerId;holdMilliseconds=$stationaryWatch.Elapsed.TotalMilliseconds;holdDurationMeaning='measured stationary interval including observation roundtrips';stationaryFrameCountDuringHold=0;contactReleased=$upSent;observerVerified=$true;observationStatus='ok';observationErrors=0;handleAutomationId='MarkdownSelectionEndHandle';handleAttribution='contact originated on the handle; capture-loss counters remained unchanged';contactSerial=$routedContactSerial;moveCount=[int]$edgeRecord.moveCount;releaseCaptureLostDelta=$releaseCaptureLostDelta;releasedLastEvent=[string]$releasedRecord.lastEvent}
+        $result=@{mode=$Mode;viewport=$ViewportMode;before=$before;atEdge=$atEdge;midHold=$mid;endHold=$endState;afterRelease=$afterRelease;contactBefore=$observerBefore;contactAtEdge=$contactEdge;contactMidHold=$contactMid;contactEndHold=$contactEnd;contactAfterRelease=$releaseObservation;start=@{x=$startX;y=$startY};edge=@{x=$edgeX;y=$edgeY};injectedPointerId=$PointerId;routedPointerId=$routedPointerId;holdMilliseconds=$stationaryWatch.Elapsed.TotalMilliseconds;holdDurationMeaning='measured stationary interval including observation roundtrips';stationaryFrameCountDuringHold=$keepAliveFrames;keepAliveMilliseconds=$KeepAliveMilliseconds;contactReleased=$upSent;observerVerified=$true;observationStatus='ok';observationErrors=0;handleAutomationId='MarkdownSelectionEndHandle';handleAttribution='contact originated on the handle; capture-loss counters remained unchanged';contactSerial=$routedContactSerial;moveCount=[int]$edgeRecord.moveCount;releaseCaptureLostDelta=$releaseCaptureLostDelta;releasedLastEvent=[string]$releasedRecord.lastEvent}
     }
 }
 

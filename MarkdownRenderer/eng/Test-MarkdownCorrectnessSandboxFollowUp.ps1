@@ -135,7 +135,7 @@ $probeTail = $probe.Substring($holdStart,$holdEnd-$holdStart)
 if ($probeTail -match 'MarkdownCorrectnessSandboxNative\]::Send\([^\r\n]*::(?:Update|Down)') { throw 'Stationary hold injects a movement/down pointer frame after reaching the edge.' }
 if ([regex]::Matches($probeTail,'Get-State \$ViewportMode').Count -lt 3) { throw 'Stationary hold does not sample UIA state at edge, mid-hold, and end-hold.' }
 if ([regex]::Matches($probeTail,'Get-TouchContactObservation').Count -lt 4) { throw 'Stationary hold does not sample the routed-event observer at edge, mid-hold, end-hold, and after release.' }
-foreach($field in @('contactAtEdge=','$contactEdge','contactMidHold=','$contactMid','contactEndHold=','$contactEnd','contactAfterRelease=','$releaseObservation','observationStatus=''ok''','observationErrors=0','contactSerial=','moveCount=','stationaryFrameCountDuringHold=0')) {
+foreach($field in @('contactAtEdge=','$contactEdge','contactMidHold=','$contactMid','contactEndHold=','$contactEnd','contactAfterRelease=','$releaseObservation','observationStatus=''ok''','observationErrors=0','contactSerial=','moveCount=','stationaryFrameCountDuringHold=$keepAliveFrames')) {
     if ($probeTail.IndexOf($field,[StringComparison]::Ordinal) -lt 0) { throw "Stationary-edge receipt omits '$field'." }
 }
 if ($probe -match 'GetPointerInfo|TryGetPointer|Get-ContactState') { throw 'Stationary contact proof still relies on GetPointerInfo outside the injected-pointer delivery thread.' }
@@ -149,6 +149,31 @@ if ($probe -notmatch 'Find-UniqueProcessElement \$ProcessId ''TouchContactObserv
 $checks.Add([pscustomobject]@{name='stationary interval has no injected movement frames and same routed-event contact is sampled through release';status='PASS'})
 
 $followUp = Get-Content -LiteralPath $FollowUpPath -Raw
+# T1-021: an idle injected contact is ended by the OS. The no-frame hold
+# reports only that exact pattern as a delivery limit; the repeated-position
+# variant re-sends one fixed point and must keep position and counters.
+$keepAliveClass = $probe.Substring($probe.IndexOf('public sealed class McStationaryKeepAlive',[StringComparison]::Ordinal))
+$keepAliveClass = $keepAliveClass.Substring(0,$keepAliveClass.IndexOf("'@",[StringComparison]::Ordinal))
+if ($keepAliveClass -notmatch 'Send\(_device,_pointerId,_x,_y,McPointerFlags\.InRange\|McPointerFlags\.InContact\|McPointerFlags\.Update\)' -or
+    [regex]::Matches($keepAliveClass,'_x\s*=').Count -ne 1 -or [regex]::Matches($keepAliveClass,'_y\s*=').Count -ne 1) {
+    throw 'The keep-alive must re-send only the fixed in-contact edge frame.'
+}
+if ($probe.IndexOf('if($null -ne $keepAlive){$keepAlive.Dispose();',[StringComparison]::Ordinal) -lt 0 -or
+    $probe.IndexOf('if($null -ne $keepAlive){$keepAlive.Dispose();',[StringComparison]::Ordinal) -gt $probe.IndexOf('McPointerFlags]::Up);$upSent=$true',[StringComparison]::Ordinal)) {
+    throw 'The keep-alive must stop before the up frame is sent.'
+}
+if ($probe.IndexOf("(`$KeepAliveMilliseconds -eq 0 -and (",[StringComparison]::Ordinal) -lt 0 -or
+    $probe.IndexOf('[int]$edgeRecord.moveCount -ne [int]$midRecord.moveCount',[StringComparison]::Ordinal) -lt 0) {
+    throw 'The no-frame hold must keep its exact move-count equality.'
+}
+if ($probe.IndexOf("throw ('INJECTED-CONTACT-ENDED-BY-OS: ",[StringComparison]::Ordinal) -lt 0 -or
+    $followUp.IndexOf("Contains('INJECTED-CONTACT-ENDED-BY-OS: ')",[StringComparison]::Ordinal) -lt 0 -or
+    $followUp.IndexOf("throw 'UNVERIFIED: Tooling limit: Windows ended the motionless injected contact",[StringComparison]::Ordinal) -lt 0) {
+    throw 'Only the guest OS-ended-contact marker may become UNVERIFIED.'
+}
+if ([regex]::Matches($followUp,"Invoke-StationaryEdgeCase -Viewport '(owned|ancestor)' -KeepAliveMilliseconds 33").Count -ne 2) {
+    throw 'Both viewports must run the repeated-position stationary variant.'
+}
 $guestProbeFunction=$followUpAst.Find({param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Invoke-GuestProbe'},$true)
 if($null -eq $guestProbeFunction){throw 'Follow-up runner lacks its host-side guest-probe argument builder.'}
 $viewportForwarding=@(& {

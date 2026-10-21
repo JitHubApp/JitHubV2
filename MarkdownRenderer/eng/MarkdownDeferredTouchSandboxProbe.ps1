@@ -147,14 +147,22 @@ public static class MarkdownDeferredTouchForegroundNative
     private static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll", EntryPoint="GetWindowThreadProcessId", SetLastError=true)]
     private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
+    [DllImport("user32.dll", EntryPoint="GetAncestor", SetLastError=true)]
+    private static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
 
     public static object Read()
     {
-        IntPtr hwnd = GetForegroundWindow();
+        IntPtr raw = GetForegroundWindow();
+        // T1-023: after UIA focus Windows can report WinUI's InputSite child
+        // window as foreground. Its root (GA_ROOT) is the active top-level
+        // window; the raw handle is kept as evidence.
+        IntPtr hwnd = raw == IntPtr.Zero ? IntPtr.Zero : GetAncestor(raw, 2);
+        if (hwnd == IntPtr.Zero)
+            hwnd = raw;
         uint processId;
         if (hwnd == IntPtr.Zero || GetWindowThreadProcessId(hwnd, out processId) == 0)
             throw new InvalidOperationException("Could not observe the current foreground window and process.");
-        return new { hwnd = hwnd.ToInt64(), processId = processId };
+        return new { hwnd = hwnd.ToInt64(), processId = processId, rawHwnd = raw.ToInt64() };
     }
 }
 '@
@@ -1099,9 +1107,32 @@ function Wait-DeferredTerminalObservation {
     throw "The sample's actual routed event observer did not confirm the requested $(if($Canceled){'canceled'}else{'ordinary released'}) terminal for the same OS pointer/contact serial."
 }
 
+function Request-DeferredProbeActivation {
+    # T1-023: a probe started with Win32_Process.Create (T1-017) is not
+    # granted foreground. Activate only the exact identity-verified window
+    # through UIA SetFocus, once, before any interaction. Every later
+    # foreground check is unchanged and never re-activates mid-contact.
+    $foreground = [MarkdownDeferredTouchForegroundNative]::Read()
+    if ([long]$foreground.hwnd -eq $WindowHandle -and [uint32]$foreground.processId -eq [uint32]$ProcessId) { return }
+    # The window root is not focusable. Focus the viewport checkbox: focusing
+    # it neither toggles it nor touches the renderer or its selection state.
+    $target = Find-UniqueProcessElement $ProcessId 'DeferredTouchAncestorViewport'
+    if ($null -eq $target -or ([int]$target.Current.ProcessId -ne $ProcessId -and [int]$target.Current.ProcessId -ne 0) -or
+        [string]$target.Current.AutomationId -cne 'DeferredTouchAncestorViewport') {
+        throw 'The exact deferred-touch window could not be resolved for activation.'
+    }
+    $target.SetFocus()
+    $deadline = [DateTime]::UtcNow.AddSeconds(3)
+    do {
+        Start-Sleep -Milliseconds 100
+        $foreground = [MarkdownDeferredTouchForegroundNative]::Read()
+    } while (([long]$foreground.hwnd -ne $WindowHandle -or [uint32]$foreground.processId -ne [uint32]$ProcessId) -and [DateTime]::UtcNow -lt $deadline)
+}
+
 function Invoke-DeferredTouchScenario {
     if (-not (Test-Path -LiteralPath $script:DeferredProbePath -PathType Leaf)) { throw "The shared guest probe is not present beside this driver: $script:DeferredProbePath" }
     $script:Identity = Assert-DeferredProbeIdentity
+    Request-DeferredProbeActivation
     $null = Assert-DeferredProbeForeground
     $root = Get-Root
     if ([int]$root.Current.ProcessId -ne $ProcessId -or [long]$root.Current.NativeWindowHandle -ne $WindowHandle -or

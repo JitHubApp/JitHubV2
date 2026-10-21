@@ -2,7 +2,9 @@
 param(
     [Parameter(Mandatory)][ValidateScript({ Test-Path -LiteralPath $_ -PathType Leaf })][string]$PriorRunJson,
     [string]$OutputRoot = (Join-Path $PSScriptRoot '..\artifacts\correctness'),
-    [string]$ProbePath = (Join-Path $PSScriptRoot 'MarkdownCorrectnessSandboxProbe.ps1')
+    [string]$ProbePath = (Join-Path $PSScriptRoot 'MarkdownCorrectnessSandboxProbe.ps1'),
+    # Opt-in P1-032 acceptance stress; when set, only the stress cases run.
+    [ValidateRange(0,500)][int]$StressIterations = 0
 )
 
 $ErrorActionPreference = 'Stop'
@@ -244,7 +246,7 @@ function Invoke-GuestProbe {
         [string]$Viewport = 'owned', [string]$Needle = '', [string]$AutomationId = '',
         [string]$StartNeedle = '', [string]$StartEndpoint = 'Start', [string]$EndNeedle = '', [string]$EndEndpoint = 'End',
         [uint32]$PointerId = 73, [uint32]$HighContrastFlags = 0, [AllowNull()][string]$HighContrastScheme = $null,
-        [int]$WindowWidthPixels = 0, [int]$WindowHeightPixels = 0
+        [int]$WindowWidthPixels = 0, [int]$WindowHeightPixels = 0, [int]$KeepAliveMilliseconds = 0
     )
     $null = Assert-SandboxEpoch "before guest probe $Mode"
     $args = @('target','exec','sandbox','--json','--','powershell.exe','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-STA','-File',$script:GuestProbePath,
@@ -258,7 +260,7 @@ function Invoke-GuestProbe {
     if ($StartEndpoint -ne 'Start') { $args += @('-StartEndpoint',$StartEndpoint) }
     if (-not [string]::IsNullOrEmpty($EndNeedle)) { $args += @('-EndNeedle',$EndNeedle) }
     if ($EndEndpoint -ne 'End') { $args += @('-EndEndpoint',$EndEndpoint) }
-    if ($Mode -eq 'StationaryEdge') { $args += @('-PointerId',[string]$PointerId) }
+    if ($Mode -eq 'StationaryEdge') { $args += @('-PointerId',[string]$PointerId); if ($KeepAliveMilliseconds -gt 0) { $args += @('-KeepAliveMilliseconds',[string]$KeepAliveMilliseconds) } }
     if ($Mode -eq 'ResizeWindow') { $args += @('-WindowWidthPixels',[string]$WindowWidthPixels,'-WindowHeightPixels',[string]$WindowHeightPixels) }
     if ($Mode -eq 'HighContrastSet') {
         $args += @('-HighContrastFlags',[string]$HighContrastFlags)
@@ -519,6 +521,75 @@ function Add-Unverified {
     $script:Results.Add([pscustomobject]@{id=$Id;name=$Name;requirement='Not proven by this bounded Sandbox follow-up';status='UNVERIFIED';actual=$null;detail=$Reason;startedUtc=[DateTime]::UtcNow.ToString('o');finishedUtc=[DateTime]::UtcNow.ToString('o')})
 }
 
+function Wait-RendererContains {
+    param([Parameter(Mandatory)][string]$Token)
+    $deadline = [DateTime]::UtcNow.AddSeconds(15)
+    do {
+        if ((Invoke-UiValue 'MarkdownRenderer').Contains($Token)) { return }
+        Start-Sleep -Milliseconds 150
+    } while ([DateTime]::UtcNow -lt $deadline)
+    throw "The renderer did not publish replacement token '$Token'."
+}
+
+function Navigate-SelectionPage {
+    $null = Invoke-Ui @('invoke','SampleNav_Selection','--action','select')
+    $deadline = [DateTime]::UtcNow.AddSeconds(10)
+    do {
+        $page = Invoke-GuestProbe -Mode 'RawName' -AutomationId 'CurrentSamplePage'
+        if ($page.name -eq 'page:Selection') { return }
+        Start-Sleep -Milliseconds 120
+    } while ([DateTime]::UtcNow -lt $deadline)
+    throw 'Selection did not become the active sample page.'
+}
+
+function Select-AllInRenderer {
+    $null = Invoke-Ui @('focus','MarkdownRenderer')
+    $null = Invoke-Ui @('send-keys','ctrl+a','--via','send-input')
+}
+
+function Invoke-SelectionStressCase {
+    # P1-032 acceptance stress: repeatedly replace the source, resize narrow
+    # and wide, and switch scroll ownership while a selection is active - the
+    # sequences that originally preceded the native heap corruption. The
+    # oracle is that the exact approved app process survives every step.
+    param([Parameter(Mandatory)][ValidateSet('owned','ancestor')][string]$Viewport,[Parameter(Mandatory)][ValidateRange(1,500)][int]$Iterations)
+    $identity = Invoke-GuestProbe -Mode 'Identity'
+    $narrow = [int][Math]::Ceiling(760 * [double]$identity.dpi / 96.0)
+    $wide = [int]$script:OriginalAppState.windowBounds.width
+    $height = [int]$script:OriginalAppState.windowBounds.height
+    $completed = 0
+    try {
+        for ($iteration = 1; $iteration -le $Iterations; $iteration++) {
+            Navigate-SelectionPage
+            Select-AllInRenderer
+            $first = "StressToken$($Viewport)$($iteration)a"
+            $null = Invoke-Ui @('set-value','MarkdownEditor',"# Stress $iteration`n`n$first replaces a selected document.`n`n- list $iteration`n")
+            Wait-RendererContains $first
+            Select-AllInRenderer
+            $null = Invoke-GuestProbe -Mode 'ResizeWindow' -WindowWidthPixels $narrow -WindowHeightPixels $height
+            $null = Invoke-GuestProbe -Mode 'ResizeWindow' -WindowWidthPixels $wide -WindowHeightPixels $height
+            $second = "StressToken$($Viewport)$($iteration)b"
+            $null = Invoke-Ui @('set-value','MarkdownEditor',"# Stress $iteration`n`n$second replaces it again while selected.`n")
+            Wait-RendererContains $second
+
+            $null = Navigate-TouchPage
+            Set-ToggleState -AutomationId 'TouchViewportOwnershipToggle' -Enabled ($Viewport -eq 'ancestor')
+            Select-AllInRenderer
+            $null = Invoke-GuestProbe -Mode 'ResizeWindow' -WindowWidthPixels $narrow -WindowHeightPixels $height
+            Set-ToggleState -AutomationId 'TouchViewportOwnershipToggle' -Enabled ($Viewport -ne 'ancestor')
+            $null = Invoke-GuestProbe -Mode 'ResizeWindow' -WindowWidthPixels $wide -WindowHeightPixels $height
+            Set-ToggleState -AutomationId 'TouchViewportOwnershipToggle' -Enabled ($Viewport -eq 'ancestor')
+            $null = Assert-AppIdentity
+            $completed++
+        }
+    }
+    finally {
+        try { $null = Invoke-GuestProbe -Mode 'ResizeWindow' -WindowWidthPixels $wide -WindowHeightPixels $height } catch { }
+    }
+    $shot = Save-Screenshot -Name "screenshots\p1-032-stress-$Viewport.png"
+    return [pscustomobject]@{viewport=$Viewport;iterations=$completed;narrowWidthPixels=$narrow;wideWidthPixels=$wide;screenshot=$shot}
+}
+
 function Save-Screenshot {
     param([Parameter(Mandatory)][string]$Name)
     $path=Join-Path $script:RunDirectory $Name
@@ -566,7 +637,10 @@ function Assert-StationaryEdgeContactRelease {
 }
 
 function Invoke-StationaryEdgeCase {
-    param([Parameter(Mandatory)][ValidateSet('owned','ancestor')][string]$Viewport)
+    # KeepAliveMilliseconds 0 sends no frames while the finger is motionless.
+    # A positive value repeats only the identical edge frame, as a digitizer
+    # reports a motionless finger, because the OS ends an idle injected contact.
+    param([Parameter(Mandatory)][ValidateSet('owned','ancestor')][string]$Viewport,[ValidateRange(0,200)][int]$KeepAliveMilliseconds = 0)
     $null = Navigate-TouchPage
     Set-ToggleState -AutomationId 'TouchViewportOwnershipToggle' -Enabled ($Viewport -eq 'ancestor')
     Start-Sleep -Milliseconds 180
@@ -582,11 +656,20 @@ function Invoke-StationaryEdgeCase {
     foreach($handle in $initial.handles){if($handle.offscreen -or $handle.width -lt $minimum -or $handle.height -lt $minimum){throw "Handle $($handle.automationId) fails 44 epx at $($initial.dpi) DPI."}}
     # Synthetic device-local ID zero is not assumed to equal WinUI's routed ID.
     $injectedPointerId=[uint32]0
-    $probe=Invoke-GuestProbe -Mode 'StationaryEdge' -Viewport $Viewport -PointerId $injectedPointerId
-    if(-not [bool]$probe.contactReleased -or [int]$probe.stationaryFrameCountDuringHold -ne 0){throw 'The guest helper did not report one released contact with no pointer updates during the stationary hold.'}
+    try { $probe=Invoke-GuestProbe -Mode 'StationaryEdge' -Viewport $Viewport -PointerId $injectedPointerId -KeepAliveMilliseconds $KeepAliveMilliseconds }
+    catch {
+        # Only the guest's exact OS-ended idle-contact pattern is a delivery limit.
+        if (($_.Exception.Message -replace '\r?\n','').Contains('INJECTED-CONTACT-ENDED-BY-OS: ')) {
+            throw 'UNVERIFIED: Tooling limit: Windows ended the motionless injected contact (one ordinary release with no up frame and no cancel) before the first stationary sample, so a no-frame hold cannot be injected. See the repeated-position variant.'
+        }
+        throw
+    }
+    if(-not [bool]$probe.contactReleased){throw 'The guest helper did not report one released contact.'}
+    if($KeepAliveMilliseconds -eq 0 -and [int]$probe.stationaryFrameCountDuringHold -ne 0){throw 'The guest helper sent pointer updates during the no-frame stationary hold.'}
+    if($KeepAliveMilliseconds -gt 0 -and [int]$probe.stationaryFrameCountDuringHold -le 0){throw 'The repeated-position hold reported no identical keep-alive frames.'}
     if(-not [bool]$probe.observerVerified -or [string]$probe.observationStatus -cne 'ok' -or [int]$probe.observationErrors -ne 0){throw 'UNVERIFIED: The sample Pointer-event observer did not provide a healthy contact trace; stationary scrolling cannot be qualified.'}
-    $pointerId=[uint32](Get-RequiredJsonPropertyValue -Object $probe -Name 'routedPointerId' -Context 'Stationary touch receipt')
-    $contactSerial=[long](Get-RequiredJsonPropertyValue -Object $probe -Name 'contactSerial' -Context 'Stationary touch receipt')
+    $pointerId=[uint32](Get-Required -Object $probe -Name 'routedPointerId' -Context 'Stationary touch receipt')
+    $contactSerial=[long](Get-Required -Object $probe -Name 'contactSerial' -Context 'Stationary touch receipt')
     if($contactSerial -le 0){throw 'The stationary receipt did not identify an actual routed contact serial.'}
     $contactSnapshots=@($probe.contactAtEdge,$probe.contactMidHold,$probe.contactEndHold)
     $contactRecords=[Collections.Generic.List[object]]::new()
@@ -603,7 +686,9 @@ function Invoke-StationaryEdgeCase {
     }
     $edgeContact=$contactRecords[0];$midContact=$contactRecords[1];$endContact=$contactRecords[2]
     if([long]$edgeContact.contactSerial -ne [long]$midContact.contactSerial -or [long]$edgeContact.contactSerial -ne [long]$endContact.contactSerial -or
-       [int]$edgeContact.moveCount -ne [int]$midContact.moveCount -or [int]$edgeContact.moveCount -ne [int]$endContact.moveCount -or
+       ($KeepAliveMilliseconds -eq 0 -and ([int]$edgeContact.moveCount -ne [int]$midContact.moveCount -or [int]$edgeContact.moveCount -ne [int]$endContact.moveCount)) -or
+       ($KeepAliveMilliseconds -gt 0 -and ([Math]::Abs([double]$midContact.lastPositionRootDipX-[double]$edgeContact.lastPositionRootDipX) -gt 0.5 -or [Math]::Abs([double]$midContact.lastPositionRootDipY-[double]$edgeContact.lastPositionRootDipY) -gt 0.5 -or
+                                       [Math]::Abs([double]$endContact.lastPositionRootDipX-[double]$edgeContact.lastPositionRootDipX) -gt 0.5 -or [Math]::Abs([double]$endContact.lastPositionRootDipY-[double]$edgeContact.lastPositionRootDipY) -gt 0.5)) -or
        [int]$edgeContact.pressCount -ne [int]$midContact.pressCount -or [int]$edgeContact.pressCount -ne [int]$endContact.pressCount -or
        [int]$edgeContact.releaseCount -ne [int]$midContact.releaseCount -or [int]$edgeContact.releaseCount -ne [int]$endContact.releaseCount -or
        [int]$edgeContact.cancelCount -ne [int]$midContact.cancelCount -or [int]$edgeContact.cancelCount -ne [int]$endContact.cancelCount -or
@@ -656,11 +741,19 @@ try {
     $script:OriginalAppState=[pscustomobject]@{page=[string]$page.name;themeDark=($themeToggle -eq 'On');forcedHighContrast=($forcedToggle -eq 'On');ancestorViewport=($viewportToggle -eq 'On');windowBounds=$firstIdentity.windowBounds}
     Set-ToggleState -AutomationId 'ForcedHighContrastToggle' -Enabled $false
 
+    if ($StressIterations -gt 0) {
+        foreach ($stressViewport in @('owned','ancestor')) {
+            Test-Case -Id "P1-032-stress-$stressViewport" -Name "selection-replace-resize-viewport-stress-$stressViewport" -Requirement "Repeated source replacement, narrow/wide resize and scroll-ownership changes with an active selection never lose the exact app process ($StressIterations iterations)." -Body { Invoke-SelectionStressCase -Viewport $stressViewport -Iterations $StressIterations }
+        }
+    }
+    else {
     Test-Case -Id 'C11-uia-point-range-owned' -Name 'visible-point-query-preserves-absent-diagram-bounds-owned' -Requirement 'Real COM TextPattern.RangeFromPoint resolves the painted word with offscreen diagram spans present, and those spans expose no visible geometry.' -Body { Invoke-PointRangeCase -Viewport 'owned' }
     Test-Case -Id 'C11-uia-point-range-ancestor' -Name 'visible-point-query-preserves-absent-diagram-bounds-ancestor' -Requirement 'The same COM point query and absent-bounds contract hold in the ancestor-owned viewport.' -Body { Invoke-PointRangeCase -Viewport 'ancestor' }
 
     Test-Case -Id 'C10-stationary-edge-owned' -Name 'stationary-bottom-edge-autoscroll-owned-viewport' -Requirement 'Once the handle reaches the edge and the injected contact remains motionless, UIA ScrollPercent and the selected TextPattern range continue advancing.' -Body { Invoke-StationaryEdgeCase -Viewport 'owned' }
     Test-Case -Id 'C10-stationary-edge-ancestor' -Name 'stationary-bottom-edge-autoscroll-ancestor-viewport' -Requirement 'The same stationary contact causes continued scrolling and endpoint extension with an ancestor-owned ScrollViewer.' -Body { Invoke-StationaryEdgeCase -Viewport 'ancestor' }
+    Test-Case -Id 'C10-stationary-edge-repeated-owned' -Name 'stationary-bottom-edge-autoscroll-repeated-position-owned-viewport' -Requirement 'While a contact repeats the identical edge position (a motionless finger), UIA ScrollPercent keeps increasing and the selection keeps extending in the owned viewport, with no press, release, cancel or capture-loss change.' -Body { Invoke-StationaryEdgeCase -Viewport 'owned' -KeepAliveMilliseconds 33 }
+    Test-Case -Id 'C10-stationary-edge-repeated-ancestor' -Name 'stationary-bottom-edge-autoscroll-repeated-position-ancestor-viewport' -Requirement 'The same repeated-position stationary contact keeps scrolling and extending the selection in an ancestor-owned viewport.' -Body { Invoke-StationaryEdgeCase -Viewport 'ancestor' -KeepAliveMilliseconds 33 }
     Test-Case -Id 'C10-handle-crossing-owned' -Name 'logical-endpoint-roles-cross-in-owned-viewport' -Requirement 'Dragging the Start handle beyond End and the End handle before Start preserves the independently computed UIA ranges in the owned viewport.' -Body { Invoke-HandleCrossingCase -Viewport 'owned' }
     Test-Case -Id 'C10-handle-crossing-ancestor' -Name 'logical-endpoint-roles-cross-in-ancestor-viewport' -Requirement 'Both directions of logical endpoint crossing preserve independently computed UIA ranges in an ancestor-owned viewport.' -Body { Invoke-HandleCrossingCase -Viewport 'ancestor' }
 
@@ -696,6 +789,7 @@ try {
     }
 
     Add-Unverified -Id 'C13-high-contrast-visual-review' -Name 'actual-system-high-contrast-screenshot-review' -Reason 'The guest screenshot and actual Windows theme status are captured; visual contrast/content review remains a separate human inspection.'
+    }
 }
 catch {
     $script:Results.Add([pscustomobject]@{id='HARNESS';name='follow-up-setup-or-fatal-error';requirement='Only use the exact app and Sandbox epoch in the approved prior run receipt.';status='FAIL';actual=$null;detail=($_.Exception.ToString() + [Environment]::NewLine + $_.ScriptStackTrace);startedUtc=[DateTime]::UtcNow.ToString('o');finishedUtc=[DateTime]::UtcNow.ToString('o')})

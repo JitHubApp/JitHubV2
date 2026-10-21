@@ -798,16 +798,26 @@ function Invoke-TouchLifecycleUi {
     return $result
 }
 
+function Get-TouchLifecycleUiText {
+    # T1-022: winapp get-value reports text at the top level ('text'); older
+    # shapes nest it under 'value'. Accept either, never an empty string.
+    param([AllowNull()]$Result)
+    $outer = Get-TouchLifecycleProperty $Result 'value'
+    foreach ($source in @($outer, (Get-TouchLifecycleProperty $outer 'value'))) {
+        if ($source -is [string]) { if (-not [string]::IsNullOrWhiteSpace($source)) { return $source }; continue }
+        if ($null -eq $source) { continue }
+        foreach ($name in @('text','value','name')) {
+            $candidate = Get-TouchLifecycleProperty $source $name
+            if ($candidate -is [string] -and -not [string]::IsNullOrWhiteSpace($candidate)) { return $candidate }
+        }
+    }
+    return $null
+}
+
 function Get-TouchLifecycleReceipt {
     param([Parameter(Mandatory)][string]$EvidenceDirectory)
     $result = Invoke-TouchLifecycleUi -Arguments @('get-value','TouchLifecycleReceipt') -EvidenceDirectory $EvidenceDirectory -Json
-    $value = Get-TouchLifecycleProperty $result.value 'value'
-    $text = $null
-    foreach ($name in @('text','value','name')) {
-        $candidate = Get-TouchLifecycleProperty $value $name
-        if ($candidate -is [string] -and -not [string]::IsNullOrWhiteSpace($candidate)) { $text = $candidate; break }
-    }
-    if ($null -eq $text -and $value -is [string]) { $text = $value }
+    $text = Get-TouchLifecycleUiText $result
     if ([string]::IsNullOrWhiteSpace([string]$text)) { throw 'UIA get-value returned no TouchLifecycleReceipt text.' }
     $report = ConvertFrom-Json -InputObject $text -ErrorAction Stop
     $script:ReceiptIndex++
@@ -1119,12 +1129,20 @@ function Set-TouchLifecycleViewport {
 
 function Set-TouchLifecycleCase {
     param([Parameter(Mandatory)]$Case, [Parameter(Mandatory)][string]$EvidenceDirectory)
-    $null = Invoke-TouchLifecycleUi -Arguments @('set-value','TouchLifecycleCase',[string]$Case.label) -EvidenceDirectory $EvidenceDirectory
+    # T1-022: a non-editable WinUI ComboBox exposes no settable ValuePattern.
+    # Select through UIA as a user would: expand it, then select the item.
+    $null = Invoke-TouchLifecycleUi -Arguments @('invoke','TouchLifecycleCase','--action','expand') -EvidenceDirectory $EvidenceDirectory
+    # The label also appears as the item's text child; select the one exact ListItem.
+    $search = Invoke-TouchLifecycleUi -Arguments @('search',[string]$Case.label,'--type','ListItem') -EvidenceDirectory $EvidenceDirectory -Json
+    # The open popup can be reached from both its own window and the owner's
+    # tree, so one element may be reported twice under the same selector.
+    $items = @(@(Get-TouchLifecycleProperty $search.value 'matches') |
+        Where-Object { $null -ne $_ -and [string]$_.name -ceq [string]$Case.label -and [string]$_.type -ceq 'ListItem' } |
+        Sort-Object -Property selector -Unique)
+    if ($items.Count -ne 1) { throw "The expanded case picker exposed $($items.Count) exact '$($Case.label)' list items." }
+    $null = Invoke-TouchLifecycleUi -Arguments @('invoke',[string]$items[0].selector,'--action','select') -EvidenceDirectory $EvidenceDirectory
     $result = Invoke-TouchLifecycleUi -Arguments @('get-value','TouchLifecycleCase') -EvidenceDirectory $EvidenceDirectory -Json
-    $value = Get-TouchLifecycleProperty $result.value 'value'
-    $selected = $null
-    foreach ($name in @('text','value','name')) { $candidate = Get-TouchLifecycleProperty $value $name; if ($candidate -is [string]) { $selected = $candidate; break } }
-    if ($null -eq $selected -and $value -is [string]) { $selected = $value }
+    $selected = Get-TouchLifecycleUiText $result
     if ([string]$selected -cne [string]$Case.label) { throw "Case picker did not select exactly '$($Case.label)'." }
 }
 

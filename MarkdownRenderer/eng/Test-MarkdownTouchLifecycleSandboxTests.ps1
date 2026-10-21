@@ -37,7 +37,7 @@ foreach ($name in @(
     'Get-TouchLifecycleCasePlan', 'Get-TouchLifecycleWindows', 'ConvertTo-TouchLifecycleRangeKey', 'Assert-TouchLifecycleCleanControl',
     'Assert-TouchLifecycleSnapshotHasNoNativeCaptures', 'Get-TouchLifecycleEventMatches', 'Assert-TouchLifecycleReport',
     'Test-TouchLifecycleSafeTerminal', 'Test-TouchLifecycleSafeIdle', 'Get-TouchLifecycleNormalCloseSafety', 'Get-TouchLifecycleCounts',
-    'Wait-TouchLifecycleReport', 'Assert-TouchLifecycleFreshMenuReadyForDismissal'
+    'Wait-TouchLifecycleReport', 'Assert-TouchLifecycleFreshMenuReadyForDismissal', 'Get-TouchLifecycleUiText'
 )) {
     . ([scriptblock]::Create((Get-RunnerFunctionAst $name).Extent.Text))
 }
@@ -191,6 +191,14 @@ function New-TestValidReport {
         freshContextMenuOpen=$extra.freshContextMenuOpen; afterFreshTerminal=$extra.afterFreshTerminal
         events=@($events.ToArray()); failure=$null
     }
+}
+
+Invoke-Test 'get-value text is read from the top-level and nested shapes, never from an empty value' {
+    $top=Get-TouchLifecycleUiText ([pscustomobject]@{value=[pscustomobject]@{elementId='cmb-1';text='Capture loss'}})
+    $nested=Get-TouchLifecycleUiText ([pscustomobject]@{value=[pscustomobject]@{value=[pscustomobject]@{text='Unload and reuse'}}})
+    $plain=Get-TouchLifecycleUiText ([pscustomobject]@{value='{"version":1}'})
+    $empty=Get-TouchLifecycleUiText ([pscustomobject]@{value=[pscustomobject]@{elementId='x';text=''}})
+    Assert-Condition ($top -ceq 'Capture loss' -and $nested -ceq 'Unload and reuse' -and $plain -ceq '{"version":1}' -and $null -eq $empty) 'UI text extraction lost a supported get-value shape or accepted empty text.'
 }
 
 Invoke-Test 'case plan covers each lifecycle and viewport exactly once' {
