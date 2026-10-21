@@ -707,6 +707,9 @@ function ConvertFrom-TouchLifecycleGuestObject {
         }
     }
     if ($null -ne (Get-TouchLifecycleProperty $value 'mode') -or $null -ne (Get-TouchLifecycleProperty $value 'status')) { return $value }
+    # WinApp CLI 0.7 `target exec --json` forwards the guest command's own JSON
+    # object directly (T1-006); with no envelope field it is that object.
+    if ($value -is [System.Management.Automation.PSCustomObject]) { return $value }
     throw 'Sandbox target exec result does not expose one unambiguous guest JSON object.'
 }
 
@@ -734,6 +737,11 @@ function Invoke-TouchLifecycleGuestProbe {
         if ([string]::IsNullOrWhiteSpace($reportedPath)) { throw 'Guest identity omitted its executable path.' }
         if ($null -eq (Get-TouchLifecycleProperty $value 'executablePath')) {
             $value | Add-Member -NotePropertyName executablePath -NotePropertyValue $reportedPath
+        }
+        # The raw Identity mode reports exePath only (T1-006); the process
+        # name is the image name of that exact, verified path.
+        if ($null -eq (Get-TouchLifecycleProperty $value 'processName')) {
+            $value | Add-Member -NotePropertyName processName -NotePropertyValue ([IO.Path]::GetFileNameWithoutExtension($reportedPath))
         }
     }
     return $value
@@ -919,21 +927,31 @@ function New-TouchLifecycleGuestLauncherCode {
     $expectedHash = ConvertTo-TouchLifecyclePsLiteral ([string]$OriginalIdentity.exeSha256)
     return @"
 `$ErrorActionPreference='Stop'
-`$exe=$exe; `$guest=$guest; `$host=$hostLiteral; `$expectedPid=$expectedPid; `$expectedStart=$expectedStart; `$expectedHash=$expectedHash
+`$exe=$exe; `$guest=$guest; `$expectedHostName=$hostLiteral; `$expectedPid=$expectedPid; `$expectedStart=$expectedStart; `$expectedHash=$expectedHash
 function Get-ProcessReceipt([int]`$Id) {
     `$p=Get-Process -Id `$Id -ErrorAction Stop; `$p.Refresh(); `$path=[IO.Path]::GetFullPath([string]`$p.Path)
     `$started=`$p.StartTime.ToUniversalTime(); `$hash=(Get-FileHash -LiteralPath `$path -Algorithm SHA256).Hash.ToLowerInvariant()
     return [pscustomobject]@{processId=`$p.Id;processName=`$p.ProcessName;executablePath=`$path;startTicks=`$started.Ticks;startTimeUtc=`$started.ToString('o');exeSha256=`$hash}
 }
-if ([Environment]::MachineName -cne `$guest -or [string]::IsNullOrWhiteSpace(`$host) -or [string]::Equals(`$guest,`$host,[StringComparison]::OrdinalIgnoreCase)) { throw 'Launcher did not run in the exact distinct Sandbox guest.' }
+if ([Environment]::MachineName -cne `$guest -or [string]::IsNullOrWhiteSpace(`$expectedHostName) -or [string]::Equals(`$guest,`$expectedHostName,[StringComparison]::OrdinalIgnoreCase)) { throw 'Launcher did not run in the exact distinct Sandbox guest.' }
 `$sourceBefore=Get-ProcessReceipt `$expectedPid
 if (`$sourceBefore.processName -cne 'MarkdownRenderer.Sample' -or -not [string]::Equals([IO.Path]::GetFullPath(`$sourceBefore.executablePath),[IO.Path]::GetFullPath(`$exe),[StringComparison]::OrdinalIgnoreCase) -or `$sourceBefore.startTicks -ne `$expectedStart -or `$sourceBefore.exeSha256 -cne `$expectedHash) { throw 'Original sample identity changed before isolated launch.' }
-`$child=Start-Process -FilePath `$exe -WorkingDirectory (Split-Path -Parent `$exe) -ArgumentList @('--renderer-touch-lifecycle-probe') -PassThru -WindowStyle Normal
-`$childReceipt=Get-ProcessReceipt `$child.Id
+`$fxr=@((Get-Process -Id `$expectedPid -ErrorAction Stop).Modules | Where-Object { `$_.ModuleName -ieq 'hostfxr.dll' } | ForEach-Object { [string]`$_.FileName })
+if (`$fxr.Count -ne 1) { throw 'The original sample must load exactly one hostfxr.dll; its runtime cannot be reused for the probe.' }
+`$runtimeRoot=[IO.Path]::GetFullPath((Join-Path (Split-Path -Parent `$fxr[0]) '..\..\..'))
+# T1-012: the framework-dependent sample runs on winapp's private runtime, which a direct launch does not inherit.
+`$env:DOTNET_ROOT=`$runtimeRoot; `$env:DOTNET_ROOT_X64=`$runtimeRoot
+# T1-017: winapp target exec closes its job when this launcher returns, terminating Start-Process descendants.
+# Win32_Process.Create starts the probe outside that job; its environment block replaces the inherited one, so pass the full current block.
+`$envBlock=[string[]]@(Get-ChildItem Env: | ForEach-Object { '{0}={1}' -f `$_.Name, `$_.Value })
+`$startup=New-CimInstance -ClassName Win32_ProcessStartup -ClientOnly -Property @{ ShowWindow=[uint16]1; EnvironmentVariables=`$envBlock }
+`$created=Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine=('"' + `$exe + '" --renderer-touch-lifecycle-probe'); CurrentDirectory=(Split-Path -Parent `$exe); ProcessStartupInformation=`$startup }
+if ([int]`$created.ReturnValue -ne 0 -or [int]`$created.ProcessId -le 0) { throw "Win32_Process.Create failed with return value `$(`$created.ReturnValue)." }
+`$childReceipt=Get-ProcessReceipt ([int]`$created.ProcessId)
 if (`$childReceipt.processName -cne 'MarkdownRenderer.Sample' -or -not [string]::Equals([IO.Path]::GetFullPath(`$childReceipt.executablePath),[IO.Path]::GetFullPath(`$exe),[StringComparison]::OrdinalIgnoreCase) -or `$childReceipt.exeSha256 -cne `$expectedHash -or `$childReceipt.processId -eq `$expectedPid) { throw 'Child did not use the exact approved executable as a distinct process.' }
 `$sourceAfter=Get-ProcessReceipt `$expectedPid
 if (`$sourceAfter.processId -ne `$sourceBefore.processId -or `$sourceAfter.startTicks -ne `$sourceBefore.startTicks -or -not [string]::Equals([IO.Path]::GetFullPath(`$sourceAfter.executablePath),[IO.Path]::GetFullPath(`$sourceBefore.executablePath),[StringComparison]::OrdinalIgnoreCase) -or `$sourceAfter.exeSha256 -cne `$sourceBefore.exeSha256) { throw 'Original sample identity changed during isolated launch.' }
-`$receipt=[pscustomobject]@{schemaVersion=1;status='LAUNCHED';launchMethod='guest-Start-Process';argument='--renderer-touch-lifecycle-probe';guestComputerName=`$guest;hostComputerName=`$host;sourceBefore=`$sourceBefore;sourceAfter=`$sourceAfter;process=`$childReceipt}
+`$receipt=[pscustomobject]@{schemaVersion=1;status='LAUNCHED';launchMethod='guest-Win32_Process-Create';argument='--renderer-touch-lifecycle-probe';guestComputerName=`$guest;hostComputerName=`$expectedHostName;sourceBefore=`$sourceBefore;sourceAfter=`$sourceAfter;process=`$childReceipt}
 [Console]::Out.WriteLine((ConvertTo-Json -InputObject `$receipt -Depth 8 -Compress))
 "@
 }
@@ -942,7 +960,7 @@ function Assert-TouchLifecycleLaunchReceipt {
     param([Parameter(Mandatory)]$Receipt, [Parameter(Mandatory)]$OriginalIdentity)
     if ([int](Get-TouchLifecycleProperty $Receipt 'schemaVersion') -ne 1 -or
         [string](Get-TouchLifecycleProperty $Receipt 'status') -cne 'LAUNCHED' -or
-        [string](Get-TouchLifecycleProperty $Receipt 'launchMethod') -cne 'guest-Start-Process' -or
+        [string](Get-TouchLifecycleProperty $Receipt 'launchMethod') -cne 'guest-Win32_Process-Create' -or
         [string](Get-TouchLifecycleProperty $Receipt 'argument') -cne '--renderer-touch-lifecycle-probe' -or
         [string](Get-TouchLifecycleProperty $Receipt 'guestComputerName') -cne $script:GuestComputerName -or
         [string](Get-TouchLifecycleProperty $Receipt 'hostComputerName') -cne $script:HostComputerName) {
@@ -1367,6 +1385,9 @@ try {
     if ($main.Count -ne 1) { throw 'The exact original Sandbox window captured by PriorRunJson is not uniquely present.' }
     if (@($windows | Where-Object { [string](Get-TouchLifecycleProperty $_ 'title') -ceq 'MarkdownRenderer touch lifecycle probe' }).Count -ne 0) { throw 'A touch lifecycle probe window already exists; refusing to adopt it.' }
     $script:GuestComputerName = Get-TouchLifecycleGuestComputerName -EvidenceDirectory $setupDirectory
+    # The identity and payload probes below run the staged guest probe, so it
+    # must be staged first; otherwise its guest path is still empty.
+    $script:StagedProbe = Stage-TouchLifecycleGuestProbe -Snapshot $snapshot -EvidenceDirectory $setupDirectory
     $script:OriginalStartTicks = 0L
     $originalIdentity = [pscustomobject]@{
         processId = [int]$script:Prior.appProcessId; processName = [string]$script:Prior.appProcessName
@@ -1380,7 +1401,6 @@ try {
         startTicks = $script:OriginalStartTicks; exeSha256 = [string]$script:Prior.exeSha256; hwnd = [long]$script:Prior.appHwnd; title = [string]$script:Prior.appTitle
     })
     $originalPayload = Get-TouchLifecyclePayloadHashes -Identity $script:OriginalIdentity -EvidenceDirectory $setupDirectory
-    $script:StagedProbe = Stage-TouchLifecycleGuestProbe -Snapshot $snapshot -EvidenceDirectory $setupDirectory
     foreach ($index in 0..($plan.Count - 1)) {
         if ($script:StopAfterCase) { break }
         $directory = Join-Path $script:RunDirectory ('cases\{0:D2}-{1}' -f ($index + 1), $plan[$index].id)
@@ -1390,7 +1410,7 @@ try {
     }
 }
 catch {
-    $script:SetupFailure = [pscustomobject]@{ status='UNVERIFIED'; requirement='Preserve the original app, exact Sandbox epoch, and exact deployed payload before any input.'; failure=$_.Exception.ToString(); recordedUtc=[DateTime]::UtcNow.ToString('o') }
+    $script:SetupFailure = [pscustomobject]@{ status='UNVERIFIED'; requirement='Preserve the original app, exact Sandbox epoch, and exact deployed payload before any input.'; failure=($_.Exception.ToString() + [Environment]::NewLine + $_.ScriptStackTrace); recordedUtc=[DateTime]::UtcNow.ToString('o') }
 }
 finally {
     if ($script:UiWorkflowStarted) {

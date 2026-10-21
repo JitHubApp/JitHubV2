@@ -24,12 +24,17 @@ internal sealed partial class MarkdownSameByteAuditImageResolver :
     IMarkdownLeasedImageResolver,
     IMarkdownImagePrefetcher
 {
+    internal const int CorrectnessInputSchemaVersion = 3;
+    internal const string CorrectnessInputKind = "correctness-input-v1";
     private const long MaximumManifestBytes = 4 * 1024 * 1024;
     private const long MaximumReadmeBytes = 16 * 1024 * 1024;
     private const long MaximumBrowserRenderBytes = 32 * 1024 * 1024;
     private const int MaximumAssetBytes = 64 * 1024 * 1024;
     private const int MaximumSynchronousAssetReadBytes = 8 * 1024 * 1024;
     private const long MaximumAggregateAssetBytes = 256 * 1024 * 1024;
+    // Browser-free inputs are local, hash-verified files; image-heavy READMEs
+    // legitimately exceed the capture-era budget. App admission still applies.
+    private const long MaximumCorrectnessInputAggregateAssetBytes = 1024L * 1024 * 1024;
     private const int MaximumNonRenderedDecorativeImages = 128;
     private const int MaximumDecorativeImageUrlHashes = 16;
     private readonly string _root;
@@ -356,8 +361,13 @@ internal sealed partial class MarkdownSameByteAuditImageResolver :
             SameByteFixtureJsonContext.Default.SameByteManifest)
             ?? throw new InvalidDataException("Same-byte fixture manifest is empty.");
 
+        // Schema 3 (correctness-input-v1) carries the same README, asset and
+        // limit guarantees without browser capture; it must not claim any.
+        bool correctnessInput = manifest.SchemaVersion == CorrectnessInputSchemaVersion &&
+            string.Equals(manifest.Kind, CorrectnessInputKind, StringComparison.Ordinal);
         if (manifest.Repository is null || manifest.Readme is null || manifest.Assets is null ||
-            manifest.BrowserRender is null || manifest.SchemaVersion != 2 || !manifest.Complete ||
+            (!correctnessInput && manifest.BrowserRender is null) ||
+            !(manifest.SchemaVersion == 2 || correctnessInput) || !manifest.Complete ||
             !string.Equals(manifest.Repository.FullName, _expectedRepository, StringComparison.OrdinalIgnoreCase) ||
             !string.Equals(manifest.Repository.CommitSha, _expectedCommit, StringComparison.OrdinalIgnoreCase) ||
             manifest.Readme.ByteSize < 0 ||
@@ -369,7 +379,9 @@ internal sealed partial class MarkdownSameByteAuditImageResolver :
             string.IsNullOrWhiteSpace(manifest.Repository.ReadmePath) ||
             !string.Equals(manifest.Readme.File, "readme.md", StringComparison.Ordinal) ||
             !IsSha256(manifest.Readme.Sha256) ||
-            !IsValidBrowserRender(manifest.BrowserRender) ||
+            (correctnessInput
+                ? manifest.BrowserRender is not null
+                : !IsValidBrowserRender(manifest.BrowserRender!)) ||
             manifest.Assets.Count > 100_000)
         {
             throw new InvalidDataException("Same-byte fixture does not match this repository audit request.");
@@ -399,7 +411,7 @@ internal sealed partial class MarkdownSameByteAuditImageResolver :
             {
                 assetSizes.Add(entry.Sha256, entry.ByteSize);
                 aggregateBytes = checked(aggregateBytes + entry.ByteSize);
-                if (aggregateBytes > MaximumAggregateAssetBytes)
+                if (aggregateBytes > (correctnessInput ? MaximumCorrectnessInputAggregateAssetBytes : MaximumAggregateAssetBytes))
                     throw new InvalidDataException("Same-byte fixture exceeds the aggregate asset budget.");
             }
 
@@ -411,13 +423,25 @@ internal sealed partial class MarkdownSameByteAuditImageResolver :
             }
         }
 
-        HashSet<string> failedDecorativeSourceHashes = ReadFailedDecorativeSourceHashes(manifest);
+        HashSet<string> failedDecorativeSourceHashes = correctnessInput
+            ? ReadCorrectnessInputDecorativeSourceHashes(manifest)
+            : ReadFailedDecorativeSourceHashes(manifest);
         return new FixtureIndex(
             manifest.Repository.ReadmePath,
             manifest.Readme.ByteSize,
             manifest.Readme.Sha256,
             assetsByUrlHash,
             failedDecorativeSourceHashes);
+    }
+
+    private static HashSet<string> ReadCorrectnessInputDecorativeSourceHashes(SameByteManifest manifest)
+    {
+        // Decorative-failure exclusions are browser evidence. A browser-free
+        // input cannot prove one, so any claim is rejected and a failed image
+        // remains an ordinary miss classified by the input's imageDemand.
+        if (manifest.NonRenderedDecorativeImageExclusions is not { Count: 0 })
+            throw new InvalidDataException("A correctness input cannot carry decorative-image browser evidence.");
+        return new HashSet<string>(StringComparer.Ordinal);
     }
 
     private static HashSet<string> ReadFailedDecorativeSourceHashes(SameByteManifest manifest)
@@ -723,80 +747,14 @@ internal sealed partial class MarkdownSameByteAuditImageResolver :
 
     private IReadOnlyList<string> GetSourceUrlHashes(
         string source,
-        MarkdownImageResolveContext context)
-    {
-        var hashes = new HashSet<string>(StringComparer.Ordinal);
-        AddUrlHash(source, hashes);
-        if (Uri.TryCreate(source, UriKind.RelativeOrAbsolute, out Uri? parsed) &&
-            !parsed.IsAbsoluteUri && context.BaseUri is not null &&
-            Uri.TryCreate(context.BaseUri, parsed, out Uri? based))
-        {
-            AddUrlHash(based.AbsoluteUri, hashes);
-        }
-
-        GitHubMarkdownImageReference reference;
-        bool resolved = context.DocumentSource is not null
-            ? GitHubMarkdownImageUrlResolver.TryResolve(source, context.DocumentSource, out reference)
-            : GitHubMarkdownImageUrlResolver.TryResolve(
-                source,
-                context.BaseUri,
-                context.DocumentPath,
-                out reference);
-        if (resolved)
-        {
-            AddUrlHash(reference.SourceUri.AbsoluteUri, hashes);
-            AddUrlHash(GitHubMarkdownImageUrlResolver.CreateRawUri(reference).AbsoluteUri, hashes);
-
-            // A same-byte corpus is pinned to the README commit, while the
-            // live document context may still name a branch such as "main".
-            // Relative assets in that same repository are therefore also
-            // looked up at the corpus commit. Do not rewrite absolute URLs or
-            // GitHub's deliberate ../assets-branch convention: those identify
-            // an explicitly different resource ref.
-            if (Uri.TryCreate(source, UriKind.Relative, out _) &&
-                context.DocumentSource is { HasRepositoryContext: true } documentSource &&
-                string.Equals(reference.Ref, documentSource.Ref, StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(
-                    $"{reference.Owner}/{reference.Repository}",
-                    _expectedRepository,
-                    StringComparison.OrdinalIgnoreCase) &&
-                IsCommitSha(_expectedCommit) &&
-                !string.Equals(reference.Ref, _expectedCommit, StringComparison.OrdinalIgnoreCase))
-            {
-                AddUrlHash(
-                    GitHubMarkdownImageUrlResolver.CreateRawUri(reference with { Ref = _expectedCommit.ToLowerInvariant() }).AbsoluteUri,
-                    hashes);
-            }
-        }
-        return hashes.ToArray();
-    }
-
-    private static bool IsCommitSha(string? value) =>
-        value is { Length: 40 } && value.All(char.IsAsciiHexDigit);
-
-    private static void AddUrlHash(string? source, HashSet<string> hashes)
-    {
-        if (!Uri.TryCreate(source, UriKind.Absolute, out Uri? uri) ||
-            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps) ||
-            uri.UserInfo.Length > 0)
-        {
-            return;
-        }
-
-        var builder = new UriBuilder(uri) { Fragment = string.Empty };
-        string[] segments = builder.Path.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        if (builder.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase) &&
-            segments.Length >= 5 &&
-            (segments[2].Equals("blob", StringComparison.OrdinalIgnoreCase) ||
-             segments[2].Equals("raw", StringComparison.OrdinalIgnoreCase)) &&
-            builder.Query.TrimStart('?').Equals("raw=true", StringComparison.Ordinal))
-        {
-            builder.Query = string.Empty;
-        }
-
-        hashes.Add(Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(builder.Uri.AbsoluteUri)))
-            .ToLowerInvariant());
-    }
+        MarkdownImageResolveContext context) =>
+        MarkdownAuditImageUrlCandidates.GetSourceUrlHashes(
+            source,
+            context.BaseUri,
+            context.DocumentPath,
+            context.DocumentSource,
+            _expectedRepository,
+            _expectedCommit);
 
     private static bool IsSha256(string? value) =>
         value is { Length: 64 } && value.All(character => char.IsAsciiHexDigit(character));
@@ -879,6 +837,7 @@ internal sealed partial class MarkdownSameByteAuditImageResolver :
     private sealed class SameByteManifest
     {
         public int SchemaVersion { get; init; }
+        public string? Kind { get; init; }
         public bool Complete { get; init; }
         public SameByteRepository Repository { get; init; } = new();
         public SameByteReadme Readme { get; init; } = new();

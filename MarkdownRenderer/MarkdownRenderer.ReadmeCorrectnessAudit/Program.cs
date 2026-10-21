@@ -16,7 +16,7 @@ internal static class Program
         "615c56723fb16d17744af2549615a4de32b1fc299a1759727cc86b70edacac72";
     private const int ExpectedRepositoryCount = 500;
     private const int MaximumManifestBytes = 4 * 1024 * 1024;
-    private const long MaximumReadmeBytes = 8L * 1024 * 1024;
+    internal const long MaximumReadmeBytes = 8L * 1024 * 1024;
     private const string ReportScope = "headless-markdown-parse-and-semantic-snapshot-only";
     private const string Utf8Policy =
         "System.Text.Encoding.UTF8.GetString(bytes); mirrors RepoTreeService.DecodeText and RepoFileCacheService.TryDecodeText; BOM is not explicitly stripped; invalid UTF-8 uses .NET replacement fallback.";
@@ -44,8 +44,16 @@ internal static class Program
 
     private static async Task<int> RunAsync(string[] args)
     {
+        bool acquireInputs = args.Length == 4 && args[0] == "--acquire-inputs";
+        bool attachInventory = args.Length == 4 && args[0] == "--attach-inventory";
+        if (acquireInputs || attachInventory)
+            args = args[1..];
         if (args.Length != 3 || args[0] is "--help" or "-h")
         {
+            Console.Error.WriteLine(
+                "       MarkdownRenderer.ReadmeCorrectnessAudit --acquire-inputs <frozen-manifest.json> <source-object-root> <fresh-correctness-input-root>");
+            Console.Error.WriteLine(
+                "       MarkdownRenderer.ReadmeCorrectnessAudit --attach-inventory <frozen-manifest.json> <source-object-root> <correctness-input-root>");
             Console.Error.WriteLine(
                 "Usage: MarkdownRenderer.ReadmeCorrectnessAudit <frozen-manifest.json> <source-object-root> <fresh-output-directory>");
             Console.Error.WriteLine(
@@ -58,7 +66,12 @@ internal static class Program
         string outputDirectory = Path.GetFullPath(args[2]);
         if (!File.Exists(manifestPath))
             throw new FileNotFoundException("The required frozen README manifest does not exist.", manifestPath);
-        if (Directory.Exists(outputDirectory) || File.Exists(outputDirectory))
+        if (attachInventory)
+        {
+            if (!Directory.Exists(outputDirectory))
+                throw new DirectoryNotFoundException("The correctness input root to attach inventories to does not exist.");
+        }
+        else if (!acquireInputs && (Directory.Exists(outputDirectory) || File.Exists(outputDirectory)))
             throw new IOException("The output directory must be a fresh path that does not already exist.");
 
         string objectStoreRoot = ResolveObjectStoreRoot(sourceObjectRootArgument);
@@ -80,6 +93,30 @@ internal static class Program
         ValidateManifest(manifest);
 
         string[] objectPaths = await PreflightAllSourceObjectsAsync(manifest, objectStoreRoot).ConfigureAwait(false);
+        if (attachInventory)
+        {
+            using MarkdownEngine inventoryEngine = new MarkdownEngineBuilder()
+                .UseGitHubReadme()
+                .UseMathematics()
+                .UseMermaid()
+                .Build();
+            ValidateEngineComposition(inventoryEngine);
+            return await InputAcquisition.AttachInventoryAsync(manifest, objectPaths, outputDirectory, inventoryEngine)
+                .ConfigureAwait(false);
+        }
+        if (acquireInputs)
+        {
+            // Network acquisition of each demanded image into schema-3
+            // correctness-input folders, parsed with the same engine profile.
+            using MarkdownEngine acquisitionEngine = new MarkdownEngineBuilder()
+                .UseGitHubReadme()
+                .UseMathematics()
+                .UseMermaid()
+                .Build();
+            ValidateEngineComposition(acquisitionEngine);
+            return await InputAcquisition.RunAsync(
+                manifest, manifestSha256, objectStoreRoot, objectPaths, outputDirectory, acquisitionEngine).ConfigureAwait(false);
+        }
         Directory.CreateDirectory(outputDirectory);
 
         var run = new AuditRunResult

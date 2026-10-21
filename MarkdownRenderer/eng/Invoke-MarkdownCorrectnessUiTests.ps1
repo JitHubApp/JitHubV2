@@ -2128,7 +2128,7 @@ function Get-SelectionDisableLaunchIdentityFromHandle {
     $Process.Refresh()
     $processId = [int]$Process.Id
     if ($processId -le 0 -or $processId -eq $OriginalProcessId) {
-        throw 'The retained Start-Process handle does not identify a distinct positive child PID.'
+        throw 'The retained launch process handle does not identify a distinct positive child PID.'
     }
     try { $startTimeUtc = $Process.StartTime.ToUniversalTime().ToString('o') }
     catch { throw "Could not read the launched child start time from its retained process handle: $($_.Exception.Message)" }
@@ -2138,6 +2138,70 @@ function Get-SelectionDisableLaunchIdentityFromHandle {
         executablePath = [IO.Path]::GetFullPath([string]$SourceIdentity.executablePath)
         startTimeUtc = $startTimeUtc
     }
+}
+
+function Get-SelectionDisableChildRuntimeRoot {
+    param([Parameter(Mandatory)][int]$OriginalProcessId)
+    $hostfxr = @((Get-Process -Id $OriginalProcessId -ErrorAction Stop).Modules |
+        Where-Object { [string]::Equals($_.ModuleName, 'hostfxr.dll', [StringComparison]::OrdinalIgnoreCase) } |
+        ForEach-Object { [string]$_.FileName })
+    if ($hostfxr.Count -ne 1) {
+        throw "The original sample process must load exactly one hostfxr.dll; found $($hostfxr.Count)."
+    }
+    # <root>\host\fxr\<version>\hostfxr.dll
+    $root = [IO.Path]::GetFullPath((Join-Path (Split-Path -Parent $hostfxr[0]) '..\..\..'))
+    if (-not (Test-Path -LiteralPath (Join-Path $root 'shared') -PathType Container)) {
+        throw "The original sample's runtime root '$root' has no shared frameworks."
+    }
+    return $root
+}
+
+function Start-DetachedGuestProcess {
+    param(
+        [Parameter(Mandatory)][string]$CommandLine,
+        [Parameter(Mandatory)][string]$WorkingDirectory,
+        [ValidateSet(0,1)][int]$ShowWindow = 1
+    )
+    # T1-017: `winapp target exec` closes its job object when this guest script
+    # returns, terminating every Start-Process descendant. Win32_Process.Create
+    # starts the process outside that job and does not inherit this script's
+    # stdout/stderr pipes (T1-016). Its environment block replaces the inherited
+    # one, so pass this process's full block, including DOTNET_ROOT.
+    $environmentBlock = [string[]]@(Get-ChildItem Env: | ForEach-Object { '{0}={1}' -f $_.Name, $_.Value })
+    $startup = New-CimInstance -ClassName Win32_ProcessStartup -ClientOnly -Property @{ ShowWindow = [uint16]$ShowWindow; EnvironmentVariables = $environmentBlock }
+    $created = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
+        CommandLine = $CommandLine; CurrentDirectory = $WorkingDirectory; ProcessStartupInformation = $startup
+    }
+    if ($null -eq $created -or [int]$created.ReturnValue -ne 0 -or [int]$created.ProcessId -le 0) {
+        $returnValue = if ($null -ne $created) { [string]$created.ReturnValue } else { 'none' }
+        throw "Win32_Process.Create failed with return value $returnValue."
+    }
+    return [int]$created.ProcessId
+}
+
+function Wait-DetachedGuestChildProcess {
+    param(
+        [Parameter(Mandatory)][int]$ParentProcessId,
+        [Parameter(Mandatory)][string]$ImageName,
+        [Parameter(Mandatory)][DateTime]$NotBeforeUtc,
+        [ValidateRange(1,30000)][int]$TimeoutMilliseconds = 10000
+    )
+    $deadline = [DateTime]::UtcNow.AddMilliseconds($TimeoutMilliseconds)
+    do {
+        $children = @(Get-CimInstance -ClassName Win32_Process -Filter "ParentProcessId = $ParentProcessId" |
+            Where-Object { [string]::Equals([string]$_.Name, $ImageName, [StringComparison]::OrdinalIgnoreCase) -and
+                $null -ne $_.CreationDate -and ([DateTime]$_.CreationDate).ToUniversalTime() -ge $NotBeforeUtc })
+        if ($children.Count -gt 1) { throw "Detached launcher $ParentProcessId started more than one $ImageName." }
+        if ($children.Count -eq 1) {
+            # Read HasExited immediately so this Process object opens and keeps
+            # the child handle, preserving its exit code for later observation.
+            $child = Get-Process -Id ([int]$children[0].ProcessId) -ErrorAction Stop
+            [void]$child.HasExited
+            return $child
+        }
+        Start-Sleep -Milliseconds 50
+    } while ([DateTime]::UtcNow -lt $deadline)
+    throw "Detached launcher $ParentProcessId did not start $ImageName within $TimeoutMilliseconds ms."
 }
 
 function Start-SelectionDisableProbeProcess {
@@ -2160,16 +2224,28 @@ function Start-SelectionDisableProbeProcess {
         # Kept solely for the existing offline function-contract tests, which
         # invoke this embedded helper directly. The actual guest dispatcher
         # rejects a missing RunId before this function can be called.
-        $started = Start-Process -FilePath $sourceBefore.executablePath -WorkingDirectory $executableDirectory `
-            -ArgumentList @('--renderer-selection-disable-probe') -PassThru -WindowStyle Normal -ErrorAction Stop
+        $launcherProcessId = Start-DetachedGuestProcess -CommandLine ('"' + $sourceBefore.executablePath + '" --renderer-selection-disable-probe') -WorkingDirectory $executableDirectory
+        $started = Get-Process -Id $launcherProcessId -ErrorAction Stop
     }
     else {
-        $started = Start-Process -FilePath $sourceBefore.executablePath -WorkingDirectory $executableDirectory `
-            -ArgumentList @('--renderer-selection-disable-probe') -PassThru -WindowStyle Normal `
-            -RedirectStandardOutput $diagnostics.guestStdoutPath -RedirectStandardError $diagnostics.guestStderrPath -ErrorAction Stop
+        # T1-012: the framework-dependent sample runs on winapp's private .NET
+        # runtime, which a direct launch does not inherit; without it the host
+        # shows a "You must install .NET Desktop Runtime" dialog instead of the
+        # app. Use the exact runtime root the original process loaded.
+        $runtimeRoot = Get-SelectionDisableChildRuntimeRoot -OriginalProcessId $OriginalProcessId
+        $env:DOTNET_ROOT = $runtimeRoot
+        $env:DOTNET_ROOT_X64 = $runtimeRoot
+        # T1-016/T1-017: a detached cmd.exe owns the run-scoped redirects, so the
+        # probe survives this script's return and never holds the exec pipes.
+        $launchNotBeforeUtc = [DateTime]::UtcNow.AddSeconds(-1)
+        $commandLine = 'cmd.exe /d /s /c ""' + $sourceBefore.executablePath + '" --renderer-selection-disable-probe 1>"' +
+            $diagnostics.guestStdoutPath + '" 2>"' + $diagnostics.guestStderrPath + '""'
+        # SW_HIDE applies to the wrapper's console only; the sample window opens normally.
+        $launcherProcessId = Start-DetachedGuestProcess -CommandLine $commandLine -WorkingDirectory $executableDirectory -ShowWindow 0
+        $started = Wait-DetachedGuestChildProcess -ParentProcessId $launcherProcessId -ImageName 'MarkdownRenderer.Sample.exe' -NotBeforeUtc $launchNotBeforeUtc
     }
     if ($null -eq $started -or [int]$started.Id -le 0 -or [int]$started.Id -eq $OriginalProcessId) {
-        throw 'Start-Process did not return a distinct positive guest PID for the selection-disable probe.'
+        throw 'The launcher did not return a distinct positive guest PID for the selection-disable probe.'
     }
 
     $probe = $null
@@ -2198,13 +2274,13 @@ function Start-SelectionDisableProbeProcess {
                         $startupObservation = Get-SelectionDisableLaunchObservation -Process $started
                         break
                     }
-                    # The Process handle came directly from Start-Process with
+                    # The Process handle was bound to the launched child with
                     # the exact captured executable path. It remains bound to
                     # that process object even if a separate PID lookup races
                     # startup; do not turn a transient Get-Process miss into a
                     # second launch or an unscoped retry.
                     $probe = Get-SelectionDisableLaunchIdentityFromHandle -Process $started -SourceIdentity $sourceBefore -OriginalProcessId $OriginalProcessId
-                    $probeIdentitySource = 'retained-start-process-handle'
+                    $probeIdentitySource = 'retained-launch-process-handle'
                 }
             }
             if ($null -ne $probe -and $startupObservation.status -ceq 'window-candidate-observed') { break }
@@ -2217,14 +2293,14 @@ function Start-SelectionDisableProbeProcess {
         }
     }
     if ($null -eq $probe) {
-        # The retained handle came directly from Start-Process with the exact
+        # The retained handle was bound to the launched child with the exact
         # captured source path. It preserves this launch identity even when
         # PID-based Get-Process/path lookup loses a short-lived startup race.
         try { $probe = Get-SelectionDisableLaunchIdentityFromHandle -Process $started -SourceIdentity $sourceBefore -OriginalProcessId $OriginalProcessId }
         catch {
             throw "Could not capture the launched process identity from its retained process handle; run-scoped guest stdout/stderr paths are '$($diagnostics.guestStdoutRelativePath)' and '$($diagnostics.guestStderrRelativePath)': $($_.Exception.Message)"
         }
-        $probeIdentitySource = 'retained-start-process-handle'
+        $probeIdentitySource = 'retained-launch-process-handle'
     }
     if (-not [string]::Equals($probe.executablePath,$sourceBefore.executablePath,[StringComparison]::OrdinalIgnoreCase)) {
         throw 'The newly launched probe PID does not use the exact executable path captured from the original sample process.'
@@ -2240,7 +2316,7 @@ function Start-SelectionDisableProbeProcess {
         [string]::Equals($sourceAfter.executablePath,$sourceBefore.executablePath,[StringComparison]::OrdinalIgnoreCase) -and
         [string]::Equals($sourceAfter.startTimeUtc,$sourceBefore.startTimeUtc,[StringComparison]::Ordinal)
     return [pscustomobject]@{
-        mode='launch-selection-disable-probe';launchMethod='guest-Start-Process'
+        mode='launch-selection-disable-probe';launchMethod='guest-Win32_Process-Create'
         sourceBefore=$sourceBefore;sourceAfter=$sourceAfter;sourceRetained=[bool]$sourceRetained
         processId=[int]$probe.processId;processName=$probe.processName;executablePath=$probe.executablePath;startTimeUtc=$probe.startTimeUtc
         processIdentitySource=$probeIdentitySource
@@ -3078,7 +3154,7 @@ function Assert-SelectionDisableLaunchReceipt {
         [Parameter(Mandatory)]$OriginalBefore,
         [Parameter(Mandatory)]$OriginalAfter
     )
-    if ([string]$Receipt.mode -cne 'launch-selection-disable-probe' -or [string]$Receipt.launchMethod -cne 'guest-Start-Process') {
+    if ([string]$Receipt.mode -cne 'launch-selection-disable-probe' -or [string]$Receipt.launchMethod -cne 'guest-Win32_Process-Create') {
         throw 'The opt-in probe launch did not return the expected direct guest-process launch receipt.'
     }
     if (-not [bool]$Receipt.sourceRetained) { throw 'The original sample PID/path/start-time was not retained across the second-app launch.' }

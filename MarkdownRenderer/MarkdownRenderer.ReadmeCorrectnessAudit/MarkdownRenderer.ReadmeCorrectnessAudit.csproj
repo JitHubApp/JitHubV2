@@ -33,4 +33,13 @@
     <ProjectReference Include="..\MarkdownRenderer.Math\MarkdownRenderer.Math.csproj" />
     <ProjectReference Include="..\MarkdownRenderer.Mermaid\MarkdownRenderer.Mermaid.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <!-- Correctness-input acquisition shares the app's exact image URL rules
+         and the offline audit resolver's URL keys instead of copying them. -->
+    <Compile Include="..\..\JitHub.WinUI\Services\CodeViewer\GitHubCodeUrlBuilder.cs" Link="App\GitHubCodeUrlBuilder.cs" />
+    <Compile Include="..\..\JitHub.WinUI\Services\Markdown\GitHubMarkdownImageReference.cs" Link="App\GitHubMarkdownImageReference.cs" />
+    <Compile Include="..\..\JitHub.WinUI\Services\Markdown\GitHubMarkdownImageUrlResolver.cs" Link="App\GitHubMarkdownImageUrlResolver.cs" />
+    <Compile Include="..\..\JitHub.WinUI\Services\Markdown\MarkdownAuditImageUrlCandidates.cs" Link="App\MarkdownAuditImageUrlCandidates.cs" />
+  </ItemGroup>
 </Project>

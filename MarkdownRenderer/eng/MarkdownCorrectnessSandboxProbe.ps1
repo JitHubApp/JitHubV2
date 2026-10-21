@@ -605,10 +605,16 @@ switch($Mode){
     'HighContrastSet' {
         $scheme=if([string]::IsNullOrEmpty($HighContrastScheme)){$null}else{$HighContrastScheme}
         [MarkdownCorrectnessSandboxNative]::SetHighContrast($HighContrastFlags,$scheme)
-        Start-Sleep -Milliseconds 400
-        $hc=[MarkdownCorrectnessSandboxNative]::ReadHighContrast()
-        $actualScheme=[MarkdownCorrectnessSandboxNative]::HighContrastScheme($hc)
-        if($hc.Flags -ne $HighContrastFlags -or -not [String]::Equals([string]$actualScheme,[string]$scheme,[StringComparison]::Ordinal)){throw 'Sandbox SystemParametersInfo did not commit the requested High Contrast flags/scheme.'}
+        # The system High Contrast theme switch completes asynchronously; poll
+        # for the committed state instead of reading once after a fixed delay.
+        $hcDeadline=[DateTime]::UtcNow.AddSeconds(15)
+        do{
+            Start-Sleep -Milliseconds 250
+            $hc=[MarkdownCorrectnessSandboxNative]::ReadHighContrast()
+            $actualScheme=[MarkdownCorrectnessSandboxNative]::HighContrastScheme($hc)
+            $committed=($hc.Flags -eq $HighContrastFlags -and [String]::Equals([string]$actualScheme,[string]$scheme,[StringComparison]::Ordinal))
+        }while(-not $committed -and [DateTime]::UtcNow -lt $hcDeadline)
+        if(-not $committed){throw "Sandbox SystemParametersInfo did not commit the requested High Contrast flags/scheme within 15 seconds: requested flags=$HighContrastFlags scheme='$scheme'; actual flags=$($hc.Flags) scheme='$actualScheme'."}
         $result=@{mode=$Mode;computerName=$currentComputerName;flags=$hc.Flags;enabled=(($hc.Flags -band 1)-ne 0);scheme=$actualScheme}
     }
     'StationaryEdge' {

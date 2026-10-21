@@ -207,6 +207,84 @@ public sealed class MarkdownSameByteAuditImageResolverTests
     }
 
     [Fact]
+    public async Task BrowserFreeCorrectnessInputResolvesTheSameVerifiedBytes()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.ConvertToCorrectnessInputAsync();
+        MarkdownSameByteAuditImageResolver resolver = fixture.Resolver();
+
+        Assert.Equal(fixture.ReadmeBytes, await resolver.LoadPinnedReadmeBytesAsync("README.md", CancellationToken.None));
+        MarkdownImageResolution result = await resolver.ResolveAsync("docs/image.png", fixture.Context, CancellationToken.None);
+
+        Assert.True(result.IsHandled);
+        Assert.NotNull(result.Asset);
+        Assert.Equal(fixture.AssetBytes, result.Asset.Bytes);
+        Assert.Equal($"same-byte:{fixture.AssetSha256}", result.Asset.CacheKey);
+    }
+
+    [Fact]
+    public async Task BrowserFreeCorrectnessInputKeepsUnmatchedSourcesOffline()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.ConvertToCorrectnessInputAsync();
+
+        MarkdownImageResolution result = await fixture.Resolver().ResolveAsync(
+            "https://example.test/not-captured.png",
+            fixture.Context,
+            CancellationToken.None);
+
+        Assert.True(result.IsHandled);
+        Assert.Null(result.Asset);
+    }
+
+    [Theory]
+    [InlineData("browser-render")]
+    [InlineData("decorative-evidence")]
+    [InlineData("missing-kind")]
+    [InlineData("wrong-kind")]
+    [InlineData("tampered-readme")]
+    public async Task BrowserFreeCorrectnessInputFailsClosedOnUnprovenOrAlteredEvidence(string invalidCase)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.ConvertToCorrectnessInputAsync(manifest =>
+        {
+            switch (invalidCase)
+            {
+                case "browser-render":
+                    manifest["browserRender"] = JsonNode.Parse("{\"status\":\"passed\",\"file\":\"rendered.html\",\"byteSize\":1,\"sha256\":\"" + new string('0', 64) + "\"}");
+                    break;
+                case "decorative-evidence":
+                    manifest["nonRenderedDecorativeImageExclusions"] = JsonNode.Parse("[" + FailedDecorativeEvidence(SourceHash("docs/image.png")) + "]");
+                    break;
+                case "missing-kind":
+                    manifest.Remove("kind");
+                    break;
+                case "wrong-kind":
+                    manifest["kind"] = "same-byte-v2";
+                    break;
+            }
+        });
+        if (invalidCase == "tampered-readme")
+            await File.WriteAllBytesAsync(Path.Combine(fixture.DirectoryPath, "readme.md"), "![changed](docs/image.png)\n"u8.ToArray());
+
+        await Assert.ThrowsAsync<InvalidDataException>(async () =>
+            await fixture.Resolver().LoadPinnedReadmeBytesAsync("README.md", CancellationToken.None));
+    }
+
+    [Fact]
+    public void AcquisitionAndResolverShareOneUrlKeyImplementation()
+    {
+        // The corpus acquisition tool stores assets under these keys; the
+        // resolver must look them up through the same implementation.
+        var documentSource = new MarkdownDocumentSource("audit-readme", "example", "repo", Fixture.Commit, "README.md");
+        IReadOnlyList<string> keys = MarkdownAuditImageUrlCandidates.GetSourceUrlHashes(
+            "docs/image.png", null, "README.md", documentSource, "example/repo", Fixture.Commit);
+        Assert.True(GitHubMarkdownImageUrlResolver.TryResolve("docs/image.png", documentSource, out var reference));
+        Assert.Contains(MarkdownAuditImageUrlCandidates.HashUrl(GitHubMarkdownImageUrlResolver.CreateRawUri(reference).AbsoluteUri), keys);
+        Assert.Null(MarkdownAuditImageUrlCandidates.HashUrl("data:image/png;base64,AA=="));
+    }
+
+    [Fact]
     public async Task StageDiagnosticsReportWarmIndexAndVerifiedAssetSubstagesWithoutChangingBytes()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -877,6 +955,7 @@ public sealed class MarkdownSameByteAuditImageResolverTests
         public byte[] AssetBytes => _assets[0].Bytes;
 
         public static byte[] PngImageBytes => ValidPngBytes;
+        public static string Commit => PinnedCommitSha;
 
         public static Task<Fixture> CreateAsync() => CreateAsync(
             new FixtureAsset("docs/image.png", PngImageBytes, "image/png"));
@@ -959,6 +1038,23 @@ public sealed class MarkdownSameByteAuditImageResolverTests
                 manifest["browserRender"] = JsonNode.Parse(
                     "{\"status\":\"not-applicable\",\"reason\":\"github-source-view\"}");
             await File.WriteAllTextAsync(path, manifest.ToJsonString());
+        }
+
+        /// <summary>
+        /// Rewrites this schema-2 fixture as a browser-free schema-3
+        /// correctness input: same README and assets, no browser capture.
+        /// </summary>
+        public async Task ConvertToCorrectnessInputAsync(Action<JsonObject>? mutate = null)
+        {
+            string path = Path.Combine(DirectoryPath, "manifest.json");
+            JsonObject manifest = JsonNode.Parse(await File.ReadAllTextAsync(path))!.AsObject();
+            manifest["schemaVersion"] = MarkdownSameByteAuditImageResolver.CorrectnessInputSchemaVersion;
+            manifest["kind"] = MarkdownSameByteAuditImageResolver.CorrectnessInputKind;
+            manifest.Remove("browserRender");
+            manifest["imageDemand"] = JsonNode.Parse("[]");
+            mutate?.Invoke(manifest);
+            await File.WriteAllTextAsync(path, manifest.ToJsonString());
+            File.Delete(Path.Combine(DirectoryPath, "rendered.html"));
         }
 
         public async ValueTask DisposeAsync()

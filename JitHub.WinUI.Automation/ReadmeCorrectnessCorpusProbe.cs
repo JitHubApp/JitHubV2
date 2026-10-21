@@ -303,15 +303,38 @@ internal static partial class ReadmeAuditProbe
                                 "visibleTextReadable",
                                 $"The actual app exposed {native.Text.Length} normalized UIA text characters.");
 
-                        checks["contentCompleteness"] = CorrectnessCheck.NotEvaluated(
-                            "contentCompleteness",
-                            "This probe has no independent Markdown-to-visible-content oracle; UIA readability alone does not prove every source feature/content item rendered.");
-                        checks["resourceCoverage"] = EvaluateObservedResourceCoverage(
-                            native.UnavailableImages,
-                            native.LoadingImagesAfterTraversal);
-                        checks["unsupportedSyntaxClassification"] = CorrectnessCheck.NotEvaluated(
-                            "unsupportedSyntaxClassification",
-                            "The app audit does not yet expose a complete per-document unsupported-syntax diagnostic inventory.");
+                        if (corpusInput.CorrectnessInput && corpusInput.ExpectedContentPath is { } expectedPath)
+                        {
+                            // Schema-3 inputs carry a verified expected-content
+                            // inventory and image demand, so all three oracles run.
+                            ReadmeCorrectnessOracles.ExpectedContent expected = ReadmeCorrectnessOracles.LoadExpectedContent(expectedPath);
+                            var observed = new ReadmeCorrectnessOracles.ObservedContent(
+                                native.Text,
+                                native.HeadingObservations,
+                                native.TableObservations,
+                                native.TaskCheckboxObservations,
+                                native.DisclosureObservations,
+                                native.UnavailableImages,
+                                native.LoadingImagesAfterTraversal);
+                            checks["contentCompleteness"] = ReadmeCorrectnessOracles.EvaluateContentCompleteness(expected, observed);
+                            checks["unsupportedSyntaxClassification"] = ReadmeCorrectnessOracles.EvaluateUnsupportedSyntax(expected);
+                            checks["resourceCoverage"] = ReadmeCorrectnessOracles.EvaluateResourceCoverage(
+                                ReadmeCorrectnessOracles.LoadImageDemand(Path.Combine(corpusInput.DirectoryPath!, "manifest.json")),
+                                native.UnavailableImages,
+                                native.LoadingImagesAfterTraversal);
+                        }
+                        else
+                        {
+                            checks["contentCompleteness"] = CorrectnessCheck.NotEvaluated(
+                                "contentCompleteness",
+                                "This probe has no independent Markdown-to-visible-content oracle; UIA readability alone does not prove every source feature/content item rendered.");
+                            checks["resourceCoverage"] = EvaluateObservedResourceCoverage(
+                                native.UnavailableImages,
+                                native.LoadingImagesAfterTraversal);
+                            checks["unsupportedSyntaxClassification"] = CorrectnessCheck.NotEvaluated(
+                                "unsupportedSyntaxClassification",
+                                "The app audit does not yet expose a complete per-document unsupported-syntax diagnostic inventory.");
+                        }
 
                         if (interactions is not null)
                         {
@@ -323,7 +346,7 @@ internal static partial class ReadmeAuditProbe
                     {
                         appFailure = corpusInput.Detail;
                         checks["renderLifecycle"] = CorrectnessCheck.NotEvaluated(
-                            "renderLifecycle", "JitHub was not launched because no matching complete local schema-2 corpus passed preflight.");
+                            "renderLifecycle", "JitHub was not launched because no matching complete local corpus input passed preflight.");
                         checks["layoutTraversal"] = CorrectnessCheck.NotEvaluated(
                             "layoutTraversal", "JitHub was not launched because the required local corpus input was missing or invalid.");
                         checks["visibleTextReadable"] = CorrectnessCheck.NotEvaluated(
@@ -374,14 +397,19 @@ internal static partial class ReadmeAuditProbe
 
         bool fullTop500 = options.AuditStartRank == 1 && options.AuditCount == 500;
         int passed = cases.Count(result => result.Status == "passed");
+        int classified = cases.Count(result => result.Status == "classified");
         int failed = cases.Count(result => result.Status == "failed");
-        int incomplete = cases.Count(result => result.Status == "incomplete");
+        int incomplete = cases.Count(result => result.Status is not ("passed" or "classified" or "failed"));
         var report = new CorrectnessCorpusReport
         {
             SchemaVersion = 1,
             Scope = "frozen-top500-source-bound-app-correctness-only",
             ExecutionStatus = cases.Count == selected.Length ? "completed-within-requested-scope" : "incomplete",
-            PhaseStatus = fullTop500 && passed == 500 ? "complete" : "incomplete",
+            // Phase 3 completes when all 500 are evaluated with no failure:
+            // classified outcomes are reported separately, never as passes.
+            PhaseStatus = fullTop500 && passed + classified == 500 && failed == 0 && incomplete == 0
+                ? "complete"
+                : "incomplete",
             ReleaseQualification = "not-qualified",
             BrowserPixelComparison = "not-run-and-not-an-acceptance-gate",
             ComparativePerformance = "not-run-and-not-an-acceptance-gate",
@@ -391,6 +419,7 @@ internal static partial class ReadmeAuditProbe
             RequestedCount = options.AuditCount,
             CompletedCaseCount = cases.Count,
             PassedCaseCount = passed,
+            ClassifiedCaseCount = classified,
             FailedCaseCount = failed,
             IncompleteCaseCount = incomplete,
             AccountingSelfTests = accounting,
@@ -401,7 +430,7 @@ internal static partial class ReadmeAuditProbe
         WriteJson(reportPath, report);
         Console.WriteLine($"Correctness-only report: {reportPath}");
         Console.WriteLine($"Release qualification: not-qualified; phase status: {report.PhaseStatus}; " +
-            $"passed={passed}, failed={failed}, incomplete={incomplete}.");
+            $"passed={passed}, classified={classified}, failed={failed}, incomplete={incomplete}.");
 
         if (failed != 0 || incomplete != 0 || !fullTop500)
         {
@@ -870,10 +899,34 @@ internal static partial class ReadmeAuditProbe
     private static string GetCaseFolderFromCorpusManifestPath(string manifestPath)
     {
         DirectoryInfo? corpusDirectory = new(Path.GetDirectoryName(manifestPath)!);
+        // A schema-3 correctness input is the rank folder itself; schema-2
+        // captures nest the corpus two levels below their case folder.
+        if (IsRankFolderName(corpusDirectory.Name))
+            return corpusDirectory.Name;
         DirectoryInfo? browserDirectory = corpusDirectory.Parent;
         DirectoryInfo? caseDirectory = browserDirectory?.Parent;
         return caseDirectory?.Name ?? string.Empty;
     }
+
+    private const int CorrectnessInputSchemaVersion = 3;
+    private const long MaximumExpectedContentBytes = 64L * 1024 * 1024;
+    private const string CorrectnessInputKind = "correctness-input-v1";
+
+    /// <summary>
+    /// A schema-3 input must name this frozen rank and corpus manifest, must
+    /// not carry browser evidence, and must record its image demand.
+    /// </summary>
+    private static bool IsCorrectnessInputBinding(JsonElement root, JsonElement pinned, ReadmeAuditRepository repository) =>
+        !root.TryGetProperty("browserRender", out _) &&
+        !root.TryGetProperty("nonRenderedDecorativeImageExclusions", out _) &&
+        root.TryGetProperty("imageDemand", out JsonElement demand) && demand.ValueKind == JsonValueKind.Array &&
+        pinned.TryGetProperty("rank", out JsonElement rank) && rank.TryGetInt32(out int rankValue) && rankValue == repository.Rank &&
+        pinned.TryGetProperty("corpusManifestSha256", out JsonElement corpus) &&
+        string.Equals(corpus.GetString(), FrozenCorrectnessManifestSha256, StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsRankFolderName(string name) =>
+        name.Length > 4 && char.IsAsciiDigit(name[0]) && char.IsAsciiDigit(name[1]) &&
+        char.IsAsciiDigit(name[2]) && name[3] == '-';
 
     private static string GetOptionalOrdinaryDirectory(string path, string description, out bool exists)
     {
@@ -917,7 +970,7 @@ internal static partial class ReadmeAuditProbe
             .OrderBy(candidate => candidate.ManifestPath, StringComparer.OrdinalIgnoreCase)
             .ToArray();
         if (matching.Length == 0)
-            return CorpusInputVerification.Missing($"No captured schema-2 corpus exists for frozen rank {repository.Rank} ({repository.FullName}).");
+            return CorpusInputVerification.Missing($"No schema-2 capture or schema-3 correctness input exists for frozen rank {repository.Rank} ({repository.FullName}).");
 
         CorpusManifestCandidate[] identityMatches = matching.Where(candidate => candidate.ParseFailure is null &&
             string.Equals(candidate.FullName, repository.FullName, StringComparison.Ordinal) &&
@@ -968,9 +1021,14 @@ internal static partial class ReadmeAuditProbe
         JsonElement root = document.RootElement;
         JsonElement pinned = root.GetProperty("repository");
         JsonElement readme = root.GetProperty("readme");
-        JsonElement browserRender = root.GetProperty("browserRender");
         JsonElement assets = root.GetProperty("assets");
-        if (root.GetProperty("schemaVersion").GetInt32() != 2 || !root.GetProperty("complete").GetBoolean() ||
+        int schemaVersion = root.GetProperty("schemaVersion").GetInt32();
+        bool correctnessInput = schemaVersion == CorrectnessInputSchemaVersion &&
+            root.TryGetProperty("kind", out JsonElement kind) &&
+            string.Equals(kind.GetString(), CorrectnessInputKind, StringComparison.Ordinal);
+        if (correctnessInput && !IsCorrectnessInputBinding(root, pinned, repository))
+            throw new InvalidDataException("Correctness input is not bound to this frozen rank and manifest, carries browser evidence, or lacks its image demand record.");
+        if (!(schemaVersion == 2 || correctnessInput) || !root.GetProperty("complete").GetBoolean() ||
             !string.Equals(pinned.GetProperty("fullName").GetString(), repository.FullName, StringComparison.Ordinal) ||
             !string.Equals(pinned.GetProperty("commitSha").GetString(), repository.CommitSha, StringComparison.OrdinalIgnoreCase) ||
             !string.Equals(pinned.GetProperty("readmePath").GetString(), repository.Readme.Path, StringComparison.Ordinal) ||
@@ -980,7 +1038,7 @@ internal static partial class ReadmeAuditProbe
             !string.Equals(readme.GetProperty("sha256").GetString(), readmeSha256, StringComparison.OrdinalIgnoreCase) ||
             assets.ValueKind != JsonValueKind.Array || assets.GetArrayLength() > 100_000)
         {
-            throw new InvalidDataException("Captured schema-2 corpus does not match the pinned README bytes and repository identity.");
+            throw new InvalidDataException("Corpus input does not match the pinned README bytes and repository identity.");
         }
 
         string readmeFile = Path.Combine(manifestDirectory, "readme.md");
@@ -988,9 +1046,29 @@ internal static partial class ReadmeAuditProbe
         if (!corpusReadme.AsSpan().SequenceEqual(rawReadme))
             throw new InvalidDataException("Captured corpus README is not byte-identical to the pinned Git blob.");
 
-        string? renderStatus = browserRender.GetProperty("status").GetString();
-        if (renderStatus == "passed")
+        string? renderStatus = correctnessInput
+            ? null
+            : root.GetProperty("browserRender").GetProperty("status").GetString();
+        string? expectedContentPath = null;
+        if (correctnessInput)
         {
+            // Browser-free input: README and asset integrity are verified below;
+            // the expected-content inventory is bound by size and SHA-256.
+            JsonElement inventory = root.GetProperty("inventory");
+            string inventoryFile = inventory.GetProperty("file").GetString() ?? string.Empty;
+            long inventoryBytes = inventory.GetProperty("byteSize").GetInt64();
+            string inventorySha256 = inventory.GetProperty("sha256").GetString() ?? string.Empty;
+            if (!string.Equals(inventoryFile, "inventory.json", StringComparison.Ordinal) ||
+                inventoryBytes is <= 0 or > MaximumExpectedContentBytes || !IsSha256(inventorySha256))
+                throw new InvalidDataException("Correctness input expected-content metadata is malformed.");
+            expectedContentPath = Path.Combine(manifestDirectory, inventoryFile);
+            string actualInventorySha = HashBoundedFile(expectedContentPath, corpusRoot, MaximumExpectedContentBytes, inventoryBytes);
+            if (!string.Equals(actualInventorySha, inventorySha256, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("Correctness input expected-content inventory failed its recorded size or SHA-256.");
+        }
+        else if (renderStatus == "passed")
+        {
+            JsonElement browserRender = root.GetProperty("browserRender");
             string renderedFile = browserRender.GetProperty("file").GetString() ?? string.Empty;
             long renderedBytes = browserRender.GetProperty("byteSize").GetInt64();
             string renderedSha256 = browserRender.GetProperty("sha256").GetString() ?? string.Empty;
@@ -1039,7 +1117,7 @@ internal static partial class ReadmeAuditProbe
                 throw new InvalidDataException($"Captured resource {assetSha256} failed its recorded SHA-256.");
             assetsByHash.Add(assetSha256, byteSize);
             verifiedAssetBytes = checked(verifiedAssetBytes + byteSize);
-            if (verifiedAssetBytes > 256L * 1024 * 1024)
+            if (verifiedAssetBytes > (correctnessInput ? 1024L : 256L) * 1024 * 1024)
                 throw new InvalidDataException("Captured corpus exceeds the aggregate unique-asset byte limit.");
         }
 
@@ -1048,7 +1126,11 @@ internal static partial class ReadmeAuditProbe
             manifestSha256,
             assetsByHash.Count,
             verifiedAssetBytes,
-            $"Schema-2 content integrity (not capture authenticity): README, rendered-source payload, and {assetsByHash.Count} unique assets passed identity, size, and SHA-256 verification.");
+            correctnessInput,
+            expectedContentPath,
+            correctnessInput
+                ? $"Schema-3 correctness-input integrity: README and {assetsByHash.Count} unique assets passed identity, size, and SHA-256 verification; no browser capture is claimed."
+                : $"Schema-2 content integrity (not capture authenticity): README, rendered-source payload, and {assetsByHash.Count} unique assets passed identity, size, and SHA-256 verification.");
     }
 
     private static byte[] ReadBoundedFile(string path, string root, long maximumBytes, long? expectedLength = null)
@@ -1186,8 +1268,16 @@ internal static partial class ReadmeAuditProbe
             .Select(check => check.Name == "contentCompleteness"
                 ? CorrectnessCheck.Unsupported(check.Name, "self-test")
                 : check)) == "incomplete";
-        bool upstreamIncomplete = EvaluateCorrectnessCase(allPassed
+        bool upstreamResourceClassified = EvaluateCorrectnessCase(allPassed
             .Select(check => check.Name == "resourceCoverage"
+                ? CorrectnessCheck.UpstreamUnavailable(check.Name, "self-test")
+                : check)) == "classified";
+        bool unsupportedSyntaxClassified = EvaluateCorrectnessCase(allPassed
+            .Select(check => check.Name == "unsupportedSyntaxClassification"
+                ? CorrectnessCheck.Unsupported(check.Name, "self-test")
+                : check)) == "classified";
+        bool upstreamOnContentIncomplete = EvaluateCorrectnessCase(allPassed
+            .Select(check => check.Name == "contentCompleteness"
                 ? CorrectnessCheck.UpstreamUnavailable(check.Name, "self-test")
                 : check)) == "incomplete";
         bool auditInputMissingIncomplete = EvaluateCorrectnessCase(allPassed
@@ -1230,12 +1320,54 @@ internal static partial class ReadmeAuditProbe
         bool observedUnavailableImageFailsCoverage = EvaluateObservedResourceCoverage(1, 0).State == CorrectnessCheckState.Failed;
         bool observedLoadingImageFailsCoverage = EvaluateObservedResourceCoverage(0, 1).State == CorrectnessCheckState.Failed;
         bool cleanResourcesWithoutDemandOracleRemainNotEvaluated = EvaluateObservedResourceCoverage(0, 0).State == CorrectnessCheckState.NotEvaluated;
+
+        // Schema-3 oracles.
+        var span = new ReadmeCorrectnessOracles.Span(0, 10);
+        var hidden = new ReadmeCorrectnessOracles.Span(100, 50);
+        var expectedContent = new ReadmeCorrectnessOracles.ExpectedContent(
+            [new("heading", span, "Title"), new("paragraph", new(20, 10), "Hello, world"), new("paragraph", new(110, 5), "secret body")],
+            TableCount: 1,
+            TaskItems: [new(40, 5)],
+            Disclosures: [hidden],
+            UnrecognizedInlineTypes: [],
+            Diagnostics: []);
+        ReadmeCorrectnessOracles.ObservedContent Observed(string text, int tables = 1, int tasks = 1, int disclosures = 1) =>
+            new(text, 1, tables, tasks, disclosures, 0, 0);
+        bool orderedTextPasses = ReadmeCorrectnessOracles.EvaluateContentCompleteness(
+            expectedContent, Observed("Title extra Hello, world Summary")).State == CorrectnessCheckState.Passed;
+        bool missingTextFails = ReadmeCorrectnessOracles.EvaluateContentCompleteness(
+            expectedContent, Observed("Title Hello,")).State == CorrectnessCheckState.Failed;
+        bool reorderedTextFails = ReadmeCorrectnessOracles.EvaluateContentCompleteness(
+            expectedContent, Observed("Hello, world Title")).State == CorrectnessCheckState.Failed;
+        bool missingTableFails = ReadmeCorrectnessOracles.EvaluateContentCompleteness(
+            expectedContent, Observed("Title Hello, world", tables: 0)).State == CorrectnessCheckState.Failed;
+        bool unrecognizedInlineIsNotEvaluated = ReadmeCorrectnessOracles.EvaluateContentCompleteness(
+            expectedContent with { UnrecognizedInlineTypes = ["Unknown.Inline"] },
+            Observed("Title Hello, world")).State == CorrectnessCheckState.NotEvaluated;
+        bool diagnosticsClassifyUnsupported = ReadmeCorrectnessOracles.EvaluateUnsupportedSyntax(
+            expectedContent with { Diagnostics = [("MATH100", "Error")] }).State == CorrectnessCheckState.Unsupported &&
+            ReadmeCorrectnessOracles.EvaluateUnsupportedSyntax(expectedContent).State == CorrectnessCheckState.Passed;
+        var states = new Dictionary<string, int>(StringComparer.Ordinal);
+        var cleanDemand = new ReadmeCorrectnessOracles.ImageDemandSummary(3, 1, 0, 0, states);
+        var upstreamDemand = new ReadmeCorrectnessOracles.ImageDemandSummary(3, 0, 2, 0, states);
+        bool demandOracleClassifiesResources =
+            ReadmeCorrectnessOracles.EvaluateResourceCoverage(cleanDemand, 0, 0).State == CorrectnessCheckState.Passed &&
+            ReadmeCorrectnessOracles.EvaluateResourceCoverage(cleanDemand, 1, 0).State == CorrectnessCheckState.Failed &&
+            ReadmeCorrectnessOracles.EvaluateResourceCoverage(cleanDemand, 0, 1).State == CorrectnessCheckState.Failed &&
+            ReadmeCorrectnessOracles.EvaluateResourceCoverage(upstreamDemand, 2, 0).State == CorrectnessCheckState.UpstreamUnavailable &&
+            ReadmeCorrectnessOracles.EvaluateResourceCoverage(upstreamDemand, 3, 0).State == CorrectnessCheckState.Failed &&
+            ReadmeCorrectnessOracles.EvaluateResourceCoverage(
+                new ReadmeCorrectnessOracles.ImageDemandSummary(3, 0, 0, 1, new Dictionary<string, int>(StringComparer.Ordinal) { ["resource-limit"] = 1 }),
+                0,
+                0).State == CorrectnessCheckState.NotEvaluated;
         bool[] tests =
         [
             allPassedCase,
             notAttemptedIncomplete,
             unsupportedIncomplete,
-            upstreamIncomplete,
+            upstreamResourceClassified,
+            unsupportedSyntaxClassified,
+            upstreamOnContentIncomplete,
             auditInputMissingIncomplete,
             auditInputMissingIsNotUpstream,
             rendererUnavailableRequiresActualAttempt,
@@ -1248,6 +1380,13 @@ internal static partial class ReadmeAuditProbe
             observedUnavailableImageFailsCoverage,
             observedLoadingImageFailsCoverage,
             cleanResourcesWithoutDemandOracleRemainNotEvaluated,
+            orderedTextPasses,
+            missingTextFails,
+            reorderedTextFails,
+            missingTableFails,
+            unrecognizedInlineIsNotEvaluated,
+            diagnosticsClassifyUnsupported,
+            demandOracleClassifiesResources,
         ];
         return new CorrectnessAccountingSelfTestResult
         {
@@ -1259,7 +1398,9 @@ internal static partial class ReadmeAuditProbe
                 ["all-required-evaluated-passed"] = allPassedCase,
                 ["not-evaluated-is-incomplete"] = notAttemptedIncomplete,
                 ["unsupported-is-incomplete"] = unsupportedIncomplete,
-                ["upstream-unavailable-is-incomplete"] = upstreamIncomplete,
+                ["upstream-unavailable-resource-is-classified-not-passed"] = upstreamResourceClassified,
+                ["unsupported-syntax-is-classified-only-on-its-own-dimension"] = unsupportedSyntaxClassified,
+                ["upstream-unavailable-elsewhere-is-incomplete"] = upstreamOnContentIncomplete,
                 ["audit-input-missing-is-incomplete"] = auditInputMissingIncomplete,
                 ["audit-input-missing-is-not-upstream-unavailable"] = auditInputMissingIsNotUpstream,
                 ["renderer-unavailable-is-not-inferred-from-missing-audit-input"] = rendererUnavailableRequiresActualAttempt,
@@ -1272,6 +1413,13 @@ internal static partial class ReadmeAuditProbe
                 ["observed-unavailable-image-fails-resource-coverage"] = observedUnavailableImageFailsCoverage,
                 ["observed-loading-image-fails-resource-coverage"] = observedLoadingImageFailsCoverage,
                 ["clean-resource-count-without-demand-oracle-remains-not-evaluated"] = cleanResourcesWithoutDemandOracleRemainNotEvaluated,
+                ["content-oracle-accepts-ordered-visible-text-and-excludes-collapsed-disclosures"] = orderedTextPasses,
+                ["content-oracle-fails-missing-text"] = missingTextFails,
+                ["content-oracle-fails-reordered-text"] = reorderedTextFails,
+                ["content-oracle-fails-missing-structure"] = missingTableFails,
+                ["content-oracle-unrecognized-inline-is-not-evaluated"] = unrecognizedInlineIsNotEvaluated,
+                ["syntax-oracle-classifies-diagnostics-as-unsupported"] = diagnosticsClassifyUnsupported,
+                ["resource-oracle-classifies-demand-terminal-states"] = demandOracleClassifiesResources,
             },
         };
     }
@@ -1312,10 +1460,21 @@ internal static partial class ReadmeAuditProbe
         }
         if (required.Any(check => check.State == CorrectnessCheckState.Failed))
             return "failed";
-        return required.All(check => check.State == CorrectnessCheckState.Passed && check.Attempted && check.Evaluated)
-            ? "passed"
-            : "incomplete";
+        if (!required.All(check => check.Attempted && check.Evaluated))
+            return "incomplete";
+        if (required.All(check => check.State == CorrectnessCheckState.Passed))
+            return "passed";
+        // Every dimension was evaluated and none failed, but a dimension whose
+        // job is classification recorded one: unsupported syntax, or a
+        // genuinely unavailable upstream resource. Such a case is evaluated,
+        // never a pass. Elsewhere those states still leave the case incomplete.
+        return required.All(IsPassedOrOwnClassification) ? "classified" : "incomplete";
     }
+
+    private static bool IsPassedOrOwnClassification(CorrectnessCheck check) =>
+        check.State == CorrectnessCheckState.Passed ||
+        (check.State == CorrectnessCheckState.Unsupported && check.Name == "unsupportedSyntaxClassification") ||
+        (check.State == CorrectnessCheckState.UpstreamUnavailable && check.Name == "resourceCoverage");
 
     private sealed record SourceAcquisitionRecord(
         int Rank,
@@ -1430,6 +1589,7 @@ internal sealed class CorrectnessCorpusReport
     public int RequestedCount { get; init; }
     public int CompletedCaseCount { get; init; }
     public int PassedCaseCount { get; init; }
+    public int ClassifiedCaseCount { get; init; }
     public int FailedCaseCount { get; init; }
     public int IncompleteCaseCount { get; init; }
     public CorrectnessAccountingSelfTestResult AccountingSelfTests { get; init; } = new();
@@ -1483,10 +1643,22 @@ internal sealed record CorpusInputVerification(
     string? DirectoryPath = null,
     string? ManifestSha256 = null,
     int AssetCount = 0,
-    long AssetBytes = 0)
+    long AssetBytes = 0,
+    bool CorrectnessInput = false,
+    string? ExpectedContentPath = null)
 {
     public static CorpusInputVerification Passed(string directory, string manifestSha256, int assetCount, long assetBytes, string detail) =>
         new(CorpusInputState.Passed, detail, directory, manifestSha256, assetCount, assetBytes);
+
+    public static CorpusInputVerification Passed(
+        string directory,
+        string manifestSha256,
+        int assetCount,
+        long assetBytes,
+        bool correctnessInput,
+        string? expectedContentPath,
+        string detail) =>
+        new(CorpusInputState.Passed, detail, directory, manifestSha256, assetCount, assetBytes, correctnessInput, expectedContentPath);
 
     public static CorpusInputVerification Failed(string detail) =>
         new(CorpusInputState.Failed, detail);

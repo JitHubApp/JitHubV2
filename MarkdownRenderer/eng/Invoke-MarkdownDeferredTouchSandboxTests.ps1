@@ -188,7 +188,7 @@ function Assert-DeferredTouchLaunchReceipt {
     param([Parameter(Mandatory)]$Receipt, [Parameter(Mandatory)]$OriginalBefore, [Parameter(Mandatory)]$OriginalAfter, [Parameter(Mandatory)][string]$GuestName, [Parameter(Mandatory)][string]$HostName)
     if ([int](Get-DeferredTouchProperty $Receipt 'schemaVersion') -ne 1 -or
         [string](Get-DeferredTouchProperty $Receipt 'status') -cne 'LAUNCHED' -or
-        [string](Get-DeferredTouchProperty $Receipt 'launchMethod') -cne 'guest-Start-Process' -or
+        [string](Get-DeferredTouchProperty $Receipt 'launchMethod') -cne 'guest-Win32_Process-Create' -or
         [string](Get-DeferredTouchProperty $Receipt 'argument') -cne '--renderer-deferred-touch-probe' -or
         [string](Get-DeferredTouchProperty $Receipt 'guestComputerName') -cne $GuestName -or
         [string](Get-DeferredTouchProperty $Receipt 'hostComputerName') -cne $HostName -or
@@ -777,12 +777,23 @@ function Get-ProcessReceipt([int]`$Id) {
 if ([Environment]::MachineName -cne `$guest -or [string]::IsNullOrWhiteSpace(`$expectedHostName) -or [string]::Equals(`$guest,`$expectedHostName,[StringComparison]::OrdinalIgnoreCase)) { throw 'Launcher is not executing in the exact Sandbox guest.' }
 `$sourceBefore = Get-ProcessReceipt `$expectedPid
 if (`$sourceBefore.processName -cne 'MarkdownRenderer.Sample' -or `$sourceBefore.executablePath -cne `$exe -or `$sourceBefore.startTicks -ne `$expectedStart -or `$sourceBefore.exeSha256 -cne `$expectedHash) { throw 'Original app identity changed before launching the probe.' }
-`$child = Start-Process -FilePath `$exe -WorkingDirectory (Split-Path -Parent `$exe) -ArgumentList @('--renderer-deferred-touch-probe') -PassThru -WindowStyle Normal
-`$childReceipt = Get-ProcessReceipt `$child.Id
+`$fxr = @((Get-Process -Id `$expectedPid -ErrorAction Stop).Modules | Where-Object { `$_.ModuleName -ieq 'hostfxr.dll' } | ForEach-Object { [string]`$_.FileName })
+if (`$fxr.Count -ne 1) { throw 'The original app must load exactly one hostfxr.dll; its runtime cannot be reused for the probe.' }
+`$runtimeRoot = [IO.Path]::GetFullPath((Join-Path (Split-Path -Parent `$fxr[0]) '..\..\..'))
+# T1-012: the framework-dependent sample runs on winapp's private runtime, which a direct launch does not inherit.
+`$env:DOTNET_ROOT = `$runtimeRoot
+`$env:DOTNET_ROOT_X64 = `$runtimeRoot
+# T1-017: winapp target exec closes its job when this launcher returns, terminating Start-Process descendants.
+# Win32_Process.Create starts the probe outside that job; its environment block replaces the inherited one, so pass the full current block.
+`$envBlock = [string[]]@(Get-ChildItem Env: | ForEach-Object { '{0}={1}' -f `$_.Name, `$_.Value })
+`$startup = New-CimInstance -ClassName Win32_ProcessStartup -ClientOnly -Property @{ ShowWindow = [uint16]1; EnvironmentVariables = `$envBlock }
+`$created = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = ('"' + `$exe + '" --renderer-deferred-touch-probe'); CurrentDirectory = (Split-Path -Parent `$exe); ProcessStartupInformation = `$startup }
+if ([int]`$created.ReturnValue -ne 0 -or [int]`$created.ProcessId -le 0) { throw "Win32_Process.Create failed with return value `$(`$created.ReturnValue)." }
+`$childReceipt = Get-ProcessReceipt ([int]`$created.ProcessId)
 if (`$childReceipt.processName -cne 'MarkdownRenderer.Sample' -or `$childReceipt.executablePath -cne `$exe -or `$childReceipt.exeSha256 -cne `$expectedHash -or `$childReceipt.processId -eq `$expectedPid) { throw 'Directly launched child did not retain the exact approved binary identity.' }
 `$sourceAfter = Get-ProcessReceipt `$expectedPid
 if (`$sourceAfter.processId -ne `$sourceBefore.processId -or `$sourceAfter.startTicks -ne `$sourceBefore.startTicks -or `$sourceAfter.executablePath -cne `$sourceBefore.executablePath -or `$sourceAfter.exeSha256 -cne `$sourceBefore.exeSha256) { throw 'Original app process was replaced or changed by direct launch.' }
-`$result = [pscustomobject]@{schemaVersion=1;status='LAUNCHED';launchMethod='guest-Start-Process';argument='--renderer-deferred-touch-probe';guestComputerName=`$guest;hostComputerName=`$expectedHostName;sourceRetained=`$true;sourceBefore=`$sourceBefore;sourceAfter=`$sourceAfter;process=`$childReceipt}
+`$result = [pscustomobject]@{schemaVersion=1;status='LAUNCHED';launchMethod='guest-Win32_Process-Create';argument='--renderer-deferred-touch-probe';guestComputerName=`$guest;hostComputerName=`$expectedHostName;sourceRetained=`$true;sourceBefore=`$sourceBefore;sourceAfter=`$sourceAfter;process=`$childReceipt}
 [Console]::Out.WriteLine((ConvertTo-Json -InputObject `$result -Depth 8 -Compress))
 "@
 }
@@ -1067,8 +1078,8 @@ try {
     if (-not (Test-Path -LiteralPath $SharedProbePath -PathType Leaf)) { throw "Shared Sandbox identity helper is missing: $SharedProbePath" }
     $script:ProbePath = [IO.Path]::GetFullPath($ProbePath)
     $script:SharedProbePath = [IO.Path]::GetFullPath($SharedProbePath)
-    $runDirectory = Assert-DeferredTouchPriorRun -Receipt $script:PriorReceipt
-    $script:Prior = $runDirectory
+    $revalidatedPrior = Assert-DeferredTouchPriorRun -Receipt $script:PriorReceipt
+    $script:Prior = $revalidatedPrior
     foreach ($file in $script:Prior.hostPayloads) {
         $path = [string](Get-DeferredTouchProperty $file 'path')
         $name = [string](Get-DeferredTouchProperty $file 'name')
@@ -1105,6 +1116,9 @@ try {
     if ($preexistingProbe.Count -ne 0) { throw 'A deferred-touch probe window exists before this batch; refusing to adopt or close an unowned process.' }
 
     $script:GuestComputerName = Get-DeferredTouchGuestComputerName -CaseDirectory $initialDirectory
+    # The identity and payload probes below run the staged shared probe, so it
+    # must be staged first; otherwise its guest path is still empty.
+    $script:StagedScripts = Stage-DeferredTouchGuestScripts -Snapshot $snapshot -RunId $script:RunId -CaseDirectory $initialDirectory
     $firstIdentity = Invoke-DeferredTouchGuestIdentity -Mode Identity -ProcessId $script:Prior.appProcessId -Hwnd $script:Prior.appHwnd -CaseDirectory $initialDirectory
     if ([string]$firstIdentity.computerName -cne $script:GuestComputerName -or
         [string]$firstIdentity.exeSha256 -cne [string]$script:Prior.buildBinary.sha256 -or
@@ -1127,7 +1141,6 @@ try {
     }
     $originalPayload = Get-DeferredTouchPayload -ProcessId $script:Prior.appProcessId -Hwnd $script:Prior.appHwnd -StartTicks $script:OriginalStartTicks -CaseDirectory $initialDirectory
     $script:InitialPayloadStatus = $originalPayload
-    $script:StagedScripts = Stage-DeferredTouchGuestScripts -Snapshot $snapshot -RunId $script:RunId -CaseDirectory $initialDirectory
 
     for ($index = 0; $index -lt $plan.Count; $index++) {
         if ($script:StopAfterCase) { break }
@@ -1140,7 +1153,7 @@ try {
     }
 }
 catch {
-    $setupError = $_.Exception.ToString()
+    $setupError = $_.Exception.ToString() + [Environment]::NewLine + $_.ScriptStackTrace
     $script:SetupFailure = [pscustomobject]@{ status = 'UNVERIFIED'; requirement = 'Preserve the original app, exact Sandbox epoch, and deployed binary identity before any probe.'; failure = $setupError; recordedUtc = [DateTime]::UtcNow.ToString('o') }
 }
 finally {
@@ -1159,7 +1172,8 @@ finally {
 }
 
 if (-not (Test-Path -LiteralPath $script:RunDirectory -PathType Container)) {
-    throw 'No output directory was created; no run report can be written.'
+    $setupDetail = Get-Variable -Name SetupFailure -Scope Script -ValueOnly -ErrorAction SilentlyContinue
+    throw "No output directory was created; no run report can be written. Setup failure: $(if ($null -ne $setupDetail) { $setupDetail.failure } else { 'none recorded' })"
 }
 $counts = Write-DeferredTouchRunReport -RunDirectory $script:RunDirectory -Results @($script:Results.ToArray())
 $counts | Format-List

@@ -11032,6 +11032,22 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         ClearHorizontalOverflowPointerState();
         e.ResumeRebuildAfterInteraction = true;
         EndCapturedSelectionForContextGesture(ref e);
+
+        // P1-034: a hold inside a committed selection is a context gesture for
+        // that selection, as a tap or context request inside it already is.
+        // Keep the selection and its handles; the release opens its commands.
+        if (_selection.IsActive && IsPointInsideSelection(snapshot, point))
+        {
+            if (IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))
+            {
+                _touchSelection.Select();
+                UpdateSelectionOverlay();
+                SuppressTouchTap(point, e.TouchTapGestureEpoch);
+                e.Handled = true;
+            }
+            return;
+        }
+
         if (IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision) &&
             TrySelectWordForTouchContext(
                 point,

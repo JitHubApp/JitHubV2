@@ -141,12 +141,12 @@ function Assert-SandboxEpoch {
 function Assert-AppIdentity {
     $null = Assert-SandboxEpoch 'while validating the app window'
     $windows = @((Invoke-NativeChecked @('ui','list-windows','--on','sandbox') -Json).value)
-    $matches = @($windows | Where-Object {
+    $windowMatches = @($windows | Where-Object {
         [int]$_.processId -eq $script:AppProcessId -and [long]$_.hwnd -eq $script:AppWindowHandle -and
         [string]$_.processName -eq [string]$script:RunInfo.app.processName -and [string]$_.title -eq [string]$script:RunInfo.app.title
     })
-    if ($matches.Count -ne 1) { throw "The exact captured guest PID/HWND/process/title is no longer present; found $($matches.Count)." }
-    return $matches[0]
+    if ($windowMatches.Count -ne 1) { throw "The exact captured guest PID/HWND/process/title is no longer present; found $($windowMatches.Count)." }
+    return $windowMatches[0]
 }
 
 function Assert-GuestPayloadIdentity {
@@ -159,7 +159,7 @@ function Assert-GuestPayloadIdentity {
         throw 'Fresh guest payload identity is not scoped to the captured MarkdownRenderer.Sample process.'
     }
     $guestFiles = @($receipt.files)
-    $matches = [Collections.Generic.List[object]]::new()
+    $payloadMatches = [Collections.Generic.List[object]]::new()
     foreach ($expected in $script:ExpectedBuildPayloads) {
         $name = [string]$expected.name
         if ([string]::IsNullOrWhiteSpace($name) -or [string]$expected.sha256 -notmatch '^[0-9a-fA-F]{64}$' -or [int64]$expected.length -le 0) {
@@ -171,9 +171,9 @@ function Assert-GuestPayloadIdentity {
         if ([int64]$actual.length -ne [int64]$expected.length -or [string]$actual.sha256 -cne [string]$expected.sha256) {
             throw "Fresh guest payload '$name' differs from the main run's host build receipt: expected $($expected.sha256)/$($expected.length), found $($actual.sha256)/$($actual.length)."
         }
-        $matches.Add([pscustomobject]@{name=$name;sha256=[string]$actual.sha256;length=[int64]$actual.length;guestPath=[string]$actual.path;status='MATCH'})
+        $payloadMatches.Add([pscustomobject]@{name=$name;sha256=[string]$actual.sha256;length=[int64]$actual.length;guestPath=[string]$actual.path;status='MATCH'})
     }
-    return [pscustomobject]@{status='MATCH';processId=[int]$receipt.processId;executablePath=[string]$receipt.executablePath;files=@($matches.ToArray())}
+    return [pscustomobject]@{status='MATCH';processId=[int]$receipt.processId;executablePath=[string]$receipt.executablePath;files=@($payloadMatches.ToArray())}
 }
 
 function Stage-GuestProbe {
@@ -186,7 +186,7 @@ function Stage-GuestProbe {
 }
 
 function Get-GuestComputerName {
-    $r=Invoke-NativeChecked @('target','exec','sandbox','--json','--','powershell.exe','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-Command','[Environment]::MachineName') -Json
+    $r=Invoke-NativeChecked @('target','exec','sandbox','--json','--','powershell.exe','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-Command','[Console]::Out.WriteLine((ConvertTo-Json -InputObject ([pscustomobject]@{result=[Environment]::MachineName}) -Compress))') -Json
     $name=$null
     foreach($field in @('stdout','output','result')){
         $value=Get-Property $r.value $field
@@ -263,6 +263,9 @@ function Invoke-GuestProbe {
     }
     if ($null -eq $payload -and $r.value -is [string]) { $payload = [string]$r.value }
     if ($null -eq $payload -and $null -ne (Get-Property $r.value 'mode')) { return $r.value }
+    # WinApp CLI 0.7 `target exec --json` forwards the guest probe's own JSON
+    # object directly (T1-006); with no envelope field it is that object.
+    if ($null -eq $payload -and $r.value -is [System.Management.Automation.PSCustomObject]) { return $r.value }
     if ([string]::IsNullOrWhiteSpace($payload)) { throw "Sandbox guest probe returned no payload: $($r.output)" }
     $jsonMatch = [regex]::Match($payload.Trim(), '(?s)(\{.*\})\s*$')
     if (-not $jsonMatch.Success) { throw "Sandbox guest probe output was not JSON: $payload" }
@@ -471,7 +474,8 @@ function Save-Screenshot {
     param([Parameter(Mandatory)][string]$Name)
     $path=Join-Path $script:RunDirectory $Name
     if(Test-Path -LiteralPath $path){throw "Refusing to overwrite screenshot $path."}
-    $null=Invoke-Ui @('screenshot','--output',$path,'--capture-screen')
+    # -w pins the exact app window; --app can match a flyout or second window.
+    $null=Invoke-Ui @('screenshot','--output',$path,'--capture-screen','-w',[string]$script:AppWindowHandle)
     if(-not(Test-Path -LiteralPath $path -PathType Leaf) -or (Get-Item -LiteralPath $path).Length -le 0){throw "Screenshot wasn't delivered: $path"}
     return $path
 }
@@ -643,7 +647,7 @@ try {
     Add-Unverified -Id 'C13-high-contrast-visual-review' -Name 'actual-system-high-contrast-screenshot-review' -Reason 'The guest screenshot and actual Windows theme status are captured; visual contrast/content review remains a separate human inspection.'
 }
 catch {
-    $script:Results.Add([pscustomobject]@{id='HARNESS';name='follow-up-setup-or-fatal-error';requirement='Only use the exact app and Sandbox epoch in the approved prior run receipt.';status='FAIL';actual=$null;detail=$_.Exception.ToString();startedUtc=[DateTime]::UtcNow.ToString('o');finishedUtc=[DateTime]::UtcNow.ToString('o')})
+    $script:Results.Add([pscustomobject]@{id='HARNESS';name='follow-up-setup-or-fatal-error';requirement='Only use the exact app and Sandbox epoch in the approved prior run receipt.';status='FAIL';actual=$null;detail=($_.Exception.ToString() + [Environment]::NewLine + $_.ScriptStackTrace);startedUtc=[DateTime]::UtcNow.ToString('o');finishedUtc=[DateTime]::UtcNow.ToString('o')})
 }
 finally {
     if($null -ne $script:OriginalHighContrast){

@@ -330,26 +330,23 @@ if($null -eq $guestProcessIdentityFunction -or $null -eq $guestDirectLaunchFunct
         if($script:MockLaunchProcesses.ContainsKey($Id)){return $script:MockLaunchProcesses[$Id]}
         return $null
     }
-    function Start-Process {
+    function Start-DetachedGuestProcess {
         [CmdletBinding()]
-        param([Parameter(Mandatory)][string]$FilePath,[Parameter(Mandatory)][string]$WorkingDirectory,
-            [Parameter(Mandatory)][string[]]$ArgumentList,[switch]$PassThru,[ValidateSet('Normal','Hidden')][string]$WindowStyle)
-        $script:MockLaunchCalls.Add([pscustomobject]@{filePath=$FilePath;workingDirectory=$WorkingDirectory;arguments=@($ArgumentList);passThru=[bool]$PassThru;windowStyle=$WindowStyle})
+        param([Parameter(Mandatory)][string]$CommandLine,[Parameter(Mandatory)][string]$WorkingDirectory,[int]$ShowWindow = 1)
+        $script:MockLaunchCalls.Add([pscustomobject]@{commandLine=$CommandLine;workingDirectory=$WorkingDirectory;showWindow=$ShowWindow})
         $script:MockLaunchProcesses[202]=[pscustomobject]@{Id=202;HasExited=$false;ProcessName='MarkdownRenderer.Sample';Path='C:\fixture\MarkdownRenderer.Sample.exe';StartTime=[DateTime]::SpecifyKind([DateTime]::Parse('2026-10-12T23:01:00.0000000'),[DateTimeKind]::Utc)}
         if($script:MockLaunchScenario -ceq 'original-replaced-after-launch'){
             $script:MockLaunchProcesses[101]=[pscustomobject]@{Id=101;HasExited=$false;ProcessName='MarkdownRenderer.Sample';Path='C:\fixture\MarkdownRenderer.Sample.exe';StartTime=[DateTime]::SpecifyKind([DateTime]::Parse('2026-10-12T23:00:01.0000000'),[DateTimeKind]::Utc)}
         }
-        return [pscustomobject]@{Id=202}
+        return 202
     }
     Invoke-Expression $guestProcessIdentityFunction.Extent.Text
     Invoke-Expression $guestDirectLaunchFunction.Extent.Text
     $script:MockLaunchProcesses[101]=[pscustomobject]@{Id=101;HasExited=$false;ProcessName='MarkdownRenderer.Sample';Path='C:\fixture\MarkdownRenderer.Sample.exe';StartTime=[DateTime]::SpecifyKind([DateTime]::Parse('2026-10-12T23:00:00.0000000'),[DateTimeKind]::Utc)}
     $goodLaunch=Start-SelectionDisableProbeProcess -OriginalProcessId 101
     if($goodLaunch.mode -cne 'launch-selection-disable-probe' -or $goodLaunch.processId -ne 202 -or -not $goodLaunch.sourceRetained -or
-        $script:MockLaunchCalls.Count -ne 1 -or $script:MockLaunchCalls[0].filePath -cne 'C:\fixture\MarkdownRenderer.Sample.exe' -or
-        $script:MockLaunchCalls[0].workingDirectory -cne 'C:\fixture' -or $script:MockLaunchCalls[0].arguments.Count -ne 1 -or
-        $script:MockLaunchCalls[0].arguments[0] -cne '--renderer-selection-disable-probe' -or -not $script:MockLaunchCalls[0].passThru -or
-        $script:MockLaunchCalls[0].windowStyle -cne 'Normal'){
+        $script:MockLaunchCalls.Count -ne 1 -or $script:MockLaunchCalls[0].commandLine -cne '"C:\fixture\MarkdownRenderer.Sample.exe" --renderer-selection-disable-probe' -or
+        $script:MockLaunchCalls[0].workingDirectory -cne 'C:\fixture'){
         throw 'The embedded guest launcher did not start a distinct visible child from the exact original process path with the one fixed probe argument.'
     }
     $script:MockLaunchCalls.Clear()
@@ -365,7 +362,7 @@ if($null -eq $guestProcessIdentityFunction -or $null -eq $guestDirectLaunchFunct
     $script:MockLaunchScenario='original-replaced-after-launch'
     $changedSourceLaunch=Start-SelectionDisableProbeProcess -OriginalProcessId 101
     if($changedSourceLaunch.processId -ne 202 -or $changedSourceLaunch.sourceRetained){throw 'The guest launcher lost the new PID recovery receipt or reported a changed original process as retained.'}
-    Remove-Item Function:\Get-Process,Function:\Start-Process -ErrorAction SilentlyContinue
+    Remove-Item Function:\Get-Process,Function:\Start-DetachedGuestProcess -ErrorAction SilentlyContinue
 }
 $checks.Add([pscustomobject]@{name='embedded guest launch helper functionally starts the exact original sample executable with one fixed argument, visible app/hidden helper policy, and rejects untrusted source PID/path while retaining a cleanup PID if original identity changes';status='PASS'})
 & {
@@ -1583,7 +1580,7 @@ function New-TestSelectionDisableLaunchReceipt {
     param([string]$Scenario='valid')
     $sourceBefore=[pscustomobject]@{processId=7893;processName='MarkdownRenderer.Sample';executablePath=$launchSourcePath;startTimeUtc='2026-10-12T23:00:00.0000000Z'}
     $sourceAfter=[pscustomobject]@{processId=7893;processName='MarkdownRenderer.Sample';executablePath=$launchSourcePath;startTimeUtc='2026-10-12T23:00:00.0000000Z'}
-    $receipt=[pscustomobject]@{mode='launch-selection-disable-probe';launchMethod='guest-Start-Process';sourceBefore=$sourceBefore;sourceAfter=$sourceAfter;sourceRetained=$true;processId=7894;processName='MarkdownRenderer.Sample';executablePath=$launchSourcePath;startTimeUtc='2026-10-12T23:02:00.0000000Z';arguments=@('--renderer-selection-disable-probe')}
+    $receipt=[pscustomobject]@{mode='launch-selection-disable-probe';launchMethod='guest-Win32_Process-Create';sourceBefore=$sourceBefore;sourceAfter=$sourceAfter;sourceRetained=$true;processId=7894;processName='MarkdownRenderer.Sample';executablePath=$launchSourcePath;startTimeUtc='2026-10-12T23:02:00.0000000Z';arguments=@('--renderer-selection-disable-probe')}
     switch($Scenario){
         'source-start-time-changed' { $receipt.sourceAfter.startTimeUtc='2026-10-12T23:00:00.0000001Z' }
         'new-executable-path-changed' { $receipt.executablePath='C:\other\MarkdownRenderer.Sample.exe' }
@@ -1687,9 +1684,9 @@ $hostGuestProbeText=$guestProbeFunction.Extent.Text
 if($probeRunnerText -match '@\(''run''\s*,\s*\$script:ProjectPath' -or
     $probeRunnerText -match '(?i)ProcessScope|launchEpoch|project-mode selection-disable' -or
     $guestLaunchFunctionText.IndexOf('Get-GuestSampleProcessIdentity -ExpectedProcessId $OriginalProcessId',[StringComparison]::Ordinal) -lt 0 -or
-    $guestLaunchFunctionText.IndexOf('Start-Process -FilePath $sourceBefore.executablePath',[StringComparison]::Ordinal) -lt 0 -or
-    $guestLaunchFunctionText.IndexOf('-ArgumentList @(''--renderer-selection-disable-probe'')',[StringComparison]::Ordinal) -lt 0 -or
-    $guestLaunchFunctionText.IndexOf('-PassThru -WindowStyle Normal',[StringComparison]::Ordinal) -lt 0 -or
+    $guestLaunchFunctionText.IndexOf('Start-DetachedGuestProcess -CommandLine (''"'' + $sourceBefore.executablePath + ''" --renderer-selection-disable-probe'')',[StringComparison]::Ordinal) -lt 0 -or
+    $guestLaunchFunctionText.IndexOf('''cmd.exe /d /s /c ""'' + $sourceBefore.executablePath + ''" --renderer-selection-disable-probe 1>"''',[StringComparison]::Ordinal) -lt 0 -or
+    $guestLaunchFunctionText -match 'Start-Process\s+-FilePath' -or
     $guestLaunchFunctionText.IndexOf('$sourceAfter = Get-GuestSampleProcessIdentity -ExpectedProcessId $OriginalProcessId',[StringComparison]::Ordinal) -lt 0 -or
     $guestIdentityFunctionText.IndexOf('$processName -cne ''MarkdownRenderer.Sample''',[StringComparison]::Ordinal) -lt 0 -or
     $guestIdentityFunctionText.IndexOf('[IO.Path]::IsPathRooted($rawPath)',[StringComparison]::Ordinal) -lt 0 -or

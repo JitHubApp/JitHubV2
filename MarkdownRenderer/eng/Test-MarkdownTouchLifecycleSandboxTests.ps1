@@ -237,6 +237,9 @@ Invoke-Test 'guest launcher code parses and compares Windows executable paths or
     $null=[System.Management.Automation.Language.Parser]::ParseInput($code,[ref]$tokens,[ref]$errors)
     Assert-Condition ($errors.Count -eq 0) 'Generated guest launcher PowerShell is syntactically invalid.'
     Assert-Condition ([regex]::Matches($code,'StringComparison]::OrdinalIgnoreCase').Count -eq 4) 'Guest/host distinction plus source-before, child, and source-after identity comparisons must use ordinal-ignore-case on Windows.'
+    Assert-Condition ($code.Contains('Invoke-CimMethod -ClassName Win32_Process -MethodName Create') -and $code.Contains("CommandLine=('`"' + `$exe + '`" --renderer-touch-lifecycle-probe')") -and $code.Contains('ShowWindow=[uint16]1')) 'Generated guest launcher does not launch the exact visible sample process with the fixed argument.'
+    Assert-Condition ($code -notmatch 'Start-Process\s+-FilePath') 'Generated guest launcher starts the probe inside the target exec job, which terminates it when the launcher returns (T1-017).'
+    Assert-Condition ($code.Contains('EnvironmentVariables=$envBlock') -and $code.Contains('Get-ChildItem Env:')) 'Generated guest launcher does not pass the full environment block, so the probe loses DOTNET_ROOT and system variables.'
 }
 
 Invoke-Test 'native JSON keeps empty arrays distinct from null and accepts window arrays of any size' {

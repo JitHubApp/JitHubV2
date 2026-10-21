@@ -101,24 +101,16 @@ try {
         Id=101;HasExited=$false;ProcessName='MarkdownRenderer.Sample';Path='C:\fixture\MarkdownRenderer.Sample.exe'
         StartTime=[DateTime]::Parse('2026-10-14T12:00:00.0000000Z').ToUniversalTime()
     }
-    function Start-Process {
+    function Start-DetachedGuestProcess {
         [CmdletBinding()]
-        param(
-            [Parameter(Mandatory)][string]$FilePath,
-            [Parameter(Mandatory)][string]$WorkingDirectory,
-            [Parameter(Mandatory)][string[]]$ArgumentList,
-            [switch]$PassThru,
-            [ValidateSet('Normal','Hidden')][string]$WindowStyle,
-            [string]$RedirectStandardOutput,
-            [string]$RedirectStandardError
-        )
-        $script:MockLaunchCalls.Add([pscustomobject]@{
-            filePath=$FilePath;workingDirectory=$WorkingDirectory;arguments=@($ArgumentList);passThru=[bool]$PassThru
-            windowStyle=$WindowStyle;stdout=$RedirectStandardOutput;stderr=$RedirectStandardError
-        })
-        if (-not $RedirectStandardOutput -or -not $RedirectStandardError) { throw 'Live test launch did not provide both redirected diagnostic paths.' }
-        [IO.File]::WriteAllText($RedirectStandardOutput,'mock stdout')
-        [IO.File]::WriteAllText($RedirectStandardError,'mock stderr')
+        param([Parameter(Mandatory)][string]$CommandLine,[Parameter(Mandatory)][string]$WorkingDirectory,[int]$ShowWindow = 1)
+        $script:MockLaunchCalls.Add([pscustomobject]@{commandLine=$CommandLine;workingDirectory=$WorkingDirectory;showWindow=$ShowWindow})
+        return 9001
+    }
+    function Wait-DetachedGuestChildProcess {
+        [CmdletBinding()]
+        param([Parameter(Mandatory)][int]$ParentProcessId,[Parameter(Mandatory)][string]$ImageName,[Parameter(Mandatory)][DateTime]$NotBeforeUtc,[int]$TimeoutMilliseconds = 10000)
+        if ($ParentProcessId -ne 9001 -or $ImageName -cne 'MarkdownRenderer.Sample.exe') { throw 'The launcher waited for the wrong detached child.' }
         return $script:MockLaunchProcess
     }
     function Get-Process {
@@ -140,6 +132,97 @@ try {
     }
     Invoke-Expression $launchFunction.Extent.Text
 
+    # T1-012 / T1-016: the real runtime-root derivation runs against a fixture
+    # module list; the launcher itself must derive it and clear inheritance.
+    $runtimeRootFunction = Get-FunctionAst -Ast $guestAst -Name 'Get-SelectionDisableChildRuntimeRoot'
+    Invoke-Expression $runtimeRootFunction.Extent.Text
+    $fixtureRuntime = Join-Path $tempRoot 'dotnet-fixture\x64'
+    [void][IO.Directory]::CreateDirectory((Join-Path $fixtureRuntime 'host\fxr\10.0.13'))
+    [void][IO.Directory]::CreateDirectory((Join-Path $fixtureRuntime 'shared'))
+    $script:MockOriginalProcess | Add-Member -Force -MemberType NoteProperty -Name Modules -Value @(
+        [pscustomobject]@{ ModuleName = 'ntdll.dll'; FileName = 'C:\Windows\System32\ntdll.dll' },
+        [pscustomobject]@{ ModuleName = 'hostfxr.dll'; FileName = (Join-Path $fixtureRuntime 'host\fxr\10.0.13\hostfxr.dll') })
+    $derivedRoot = Get-SelectionDisableChildRuntimeRoot -OriginalProcessId 101
+    Assert-True ($derivedRoot -ceq [IO.Path]::GetFullPath($fixtureRuntime)) 'The child runtime root is not the exact root of the original process hostfxr.dll.'
+    $script:MockOriginalProcess.Modules = @([pscustomobject]@{ ModuleName = 'hostfxr.dll'; FileName = (Join-Path $tempRoot 'no-shared\host\fxr\1\hostfxr.dll') })
+    $rejectedRootWithoutFrameworks = $false
+    try { [void](Get-SelectionDisableChildRuntimeRoot -OriginalProcessId 101) } catch { $rejectedRootWithoutFrameworks = $true }
+    Assert-True $rejectedRootWithoutFrameworks 'A runtime root without shared frameworks was accepted.'
+
+    # T1-017: the detached launch helper itself, against CIM fixtures.
+    $detachedStartFunction = Get-FunctionAst -Ast $guestAst -Name 'Start-DetachedGuestProcess'
+    $detachedWaitFunction = Get-FunctionAst -Ast $guestAst -Name 'Wait-DetachedGuestChildProcess'
+    Assert-True ($detachedStartFunction.Extent.Text -notmatch 'Start-Process\s+-') 'The detached launch helper must not start the probe inside the target exec job.'
+    Invoke-Expression $detachedStartFunction.Extent.Text
+    Invoke-Expression $detachedWaitFunction.Extent.Text
+    $script:CimCreateCalls = [System.Collections.Generic.List[object]]::new()
+    $script:CimCreateResult = [pscustomobject]@{ ReturnValue = 0; ProcessId = 9001 }
+    function New-CimInstance {
+        param([string]$ClassName,[switch]$ClientOnly,[hashtable]$Property)
+        return [pscustomobject]@{ className = $ClassName; clientOnly = [bool]$ClientOnly; property = $Property }
+    }
+    function Invoke-CimMethod {
+        param([string]$ClassName,[string]$MethodName,[hashtable]$Arguments)
+        $script:CimCreateCalls.Add([pscustomobject]@{ className = $ClassName; methodName = $MethodName; arguments = $Arguments })
+        return $script:CimCreateResult
+    }
+    $env:SELECTION_DISABLE_LAUNCH_FIXTURE = 'kept'
+    $detachedPid = Start-DetachedGuestProcess -CommandLine '"C:\fixture\MarkdownRenderer.Sample.exe" --renderer-selection-disable-probe' -WorkingDirectory 'C:\fixture'
+    $createCall = $script:CimCreateCalls[0]
+    $startup = $createCall.arguments.ProcessStartupInformation
+    Assert-True ($detachedPid -eq 9001 -and $createCall.className -ceq 'Win32_Process' -and $createCall.methodName -ceq 'Create' -and $createCall.arguments.CurrentDirectory -ceq 'C:\fixture') 'The detached launcher did not call Win32_Process.Create in the exact working directory.'
+    Assert-True ($startup.className -ceq 'Win32_ProcessStartup' -and $startup.clientOnly -and [int]$startup.property.ShowWindow -eq 1) 'The detached launcher did not request a normally shown window.'
+    Assert-True (@($startup.property.EnvironmentVariables) -contains 'SELECTION_DISABLE_LAUNCH_FIXTURE=kept' -and @($startup.property.EnvironmentVariables | Where-Object { $_ -like 'SystemRoot=*' }).Count -eq 1) 'The detached launcher did not pass the full current environment block.'
+    Remove-Item Env:\SELECTION_DISABLE_LAUNCH_FIXTURE
+    $script:CimCreateResult = [pscustomobject]@{ ReturnValue = 9; ProcessId = 0 }
+    $createFailureRejected = $false
+    try { [void](Start-DetachedGuestProcess -CommandLine 'x' -WorkingDirectory 'C:\fixture') } catch { $createFailureRejected = $true }
+    Assert-True $createFailureRejected 'A failed Win32_Process.Create was treated as a launch.'
+
+    $notBefore = [DateTime]::Parse('2026-10-14T12:00:00Z').ToUniversalTime()
+    $script:CimChildren = @()
+    function Get-CimInstance {
+        param([string]$ClassName,[string]$Filter)
+        if ($ClassName -cne 'Win32_Process' -or $Filter -cne 'ParentProcessId = 9001') { throw "Unexpected CIM query $ClassName/$Filter." }
+        return $script:CimChildren
+    }
+    $script:CimChildren = @(
+        [pscustomobject]@{ Name = 'conhost.exe'; ProcessId = 301; CreationDate = $notBefore.AddSeconds(1) },
+        [pscustomobject]@{ Name = 'MarkdownRenderer.Sample.exe'; ProcessId = 302; CreationDate = $notBefore.AddSeconds(-5) },
+        [pscustomobject]@{ Name = 'MarkdownRenderer.Sample.exe'; ProcessId = 202; CreationDate = $notBefore.AddSeconds(1) })
+    $script:MockLaunchProcess = [pscustomobject]@{ Id=202;HasExited=$false }
+    $waited = Wait-DetachedGuestChildProcess -ParentProcessId 9001 -ImageName 'MarkdownRenderer.Sample.exe' -NotBeforeUtc $notBefore -TimeoutMilliseconds 100
+    Assert-True ($waited.Id -eq 202) 'The detached child wait did not bind the one sample child created after the launch.'
+    $script:CimChildren += [pscustomobject]@{ Name = 'MarkdownRenderer.Sample.exe'; ProcessId = 203; CreationDate = $notBefore.AddSeconds(2) }
+    $ambiguousRejected = $false
+    try { [void](Wait-DetachedGuestChildProcess -ParentProcessId 9001 -ImageName 'MarkdownRenderer.Sample.exe' -NotBeforeUtc $notBefore -TimeoutMilliseconds 100) } catch { $ambiguousRejected = $true }
+    Assert-True $ambiguousRejected 'The detached child wait accepted two sample children.'
+    $script:CimChildren = @()
+    $missingRejected = $false
+    try { [void](Wait-DetachedGuestChildProcess -ParentProcessId 9001 -ImageName 'MarkdownRenderer.Sample.exe' -NotBeforeUtc $notBefore -TimeoutMilliseconds 100) } catch { $missingRejected = $true }
+    Assert-True $missingRejected 'The detached child wait invented a child that never started.'
+    Remove-Item Function:\New-CimInstance,Function:\Invoke-CimMethod,Function:\Get-CimInstance
+    function Start-DetachedGuestProcess {
+        [CmdletBinding()]
+        param([Parameter(Mandatory)][string]$CommandLine,[Parameter(Mandatory)][string]$WorkingDirectory,[int]$ShowWindow = 1)
+        $script:MockLaunchCalls.Add([pscustomobject]@{commandLine=$CommandLine;workingDirectory=$WorkingDirectory;showWindow=$ShowWindow})
+        return 9001
+    }
+    function Wait-DetachedGuestChildProcess {
+        [CmdletBinding()]
+        param([Parameter(Mandatory)][int]$ParentProcessId,[Parameter(Mandatory)][string]$ImageName,[Parameter(Mandatory)][DateTime]$NotBeforeUtc,[int]$TimeoutMilliseconds = 10000)
+        if ($ParentProcessId -ne 9001 -or $ImageName -cne 'MarkdownRenderer.Sample.exe') { throw 'The launcher waited for the wrong detached child.' }
+        return $script:MockLaunchProcess
+    }
+
+    $script:RuntimeRootCalls = 0
+    function Get-SelectionDisableChildRuntimeRoot {
+        param([Parameter(Mandatory)][int]$OriginalProcessId)
+        $script:RuntimeRootCalls++
+        return 'C:\fixture-runtime\x64'
+    }
+    $previousDotnetRoot = $env:DOTNET_ROOT
+
     $launchRunId = '20261014T120004Z-' + [guid]::NewGuid().ToString('N')
     [void][IO.Directory]::CreateDirectory((Join-Path (Join-Path $tempRoot 'correctness') $launchRunId))
     $script:MockLaunchProcess = [pscustomobject]@{
@@ -149,9 +232,13 @@ try {
     $script:MockLaunchProcess | Add-Member -MemberType ScriptMethod -Name Refresh -Value { }
     $launch = Start-SelectionDisableProbeProcess -OriginalProcessId 101 -RunId $launchRunId -GuestWorkRoot $tempRoot -StartupObservationMilliseconds 1
     Assert-True ($launch.processId -eq 202 -and $launch.sourceRetained -and $launch.startupObservation.status -ceq 'process-live-no-window-observed') 'A live child without an observed window was reported as an exit or identity failure.'
-    Assert-True ($script:MockLaunchCalls.Count -eq 1 -and $script:MockLaunchCalls[0].arguments.Count -eq 1 -and $script:MockLaunchCalls[0].arguments[0] -ceq '--renderer-selection-disable-probe' -and $script:MockLaunchCalls[0].passThru) 'The offline launcher did not make exactly one fixed-argument child launch while retaining its process handle.'
+    Assert-True ($script:RuntimeRootCalls -eq 1 -and $env:DOTNET_ROOT -ceq 'C:\fixture-runtime\x64') 'The live launch did not run on the original runtime root.'
+    $env:DOTNET_ROOT = $previousDotnetRoot
+    $env:DOTNET_ROOT_X64 = $null
     $expectedLaunchDirectory = Join-Path (Join-Path (Join-Path $tempRoot 'correctness') $launchRunId) 'selection-disable-launch'
-    Assert-True ($script:MockLaunchCalls[0].stdout -ceq (Join-Path $expectedLaunchDirectory 'stdout.txt') -and $script:MockLaunchCalls[0].stderr -ceq (Join-Path $expectedLaunchDirectory 'stderr.txt') -and $launch.diagnostics.guestRelativeDirectory -ceq "correctness\$launchRunId\selection-disable-launch") 'The child stdout/stderr redirects do not point at the fresh run-scoped files.'
+    $expectedCommandLine = 'cmd.exe /d /s /c ""C:\fixture\MarkdownRenderer.Sample.exe" --renderer-selection-disable-probe 1>"' + (Join-Path $expectedLaunchDirectory 'stdout.txt') + '" 2>"' + (Join-Path $expectedLaunchDirectory 'stderr.txt') + '""'
+    Assert-True ($script:MockLaunchCalls.Count -eq 1 -and $script:MockLaunchCalls[0].commandLine -ceq $expectedCommandLine -and $script:MockLaunchCalls[0].workingDirectory -ceq 'C:\fixture' -and $script:MockLaunchCalls[0].showWindow -eq 0) 'The live launcher did not make exactly one detached fixed-argument launch with the fresh run-scoped stdout/stderr redirects and a hidden wrapper console.'
+    Assert-True ($launch.launchMethod -ceq 'guest-Win32_Process-Create' -and $launch.diagnostics.guestRelativeDirectory -ceq "correctness\$launchRunId\selection-disable-launch") 'The launch receipt did not record the detached launch method and run-scoped diagnostics.'
 
     $fallbackRunId = '20261014T120005Z-' + [guid]::NewGuid().ToString('N')
     [void][IO.Directory]::CreateDirectory((Join-Path (Join-Path $tempRoot 'correctness') $fallbackRunId))
@@ -165,7 +252,7 @@ try {
     }
     $script:MockIdentityFailureForPid = 204
     $handleFallback = Start-SelectionDisableProbeProcess -OriginalProcessId 101 -RunId $fallbackRunId -GuestWorkRoot $tempRoot -StartupObservationMilliseconds 1
-    Assert-True ($handleFallback.processId -eq 204 -and $handleFallback.sourceRetained -and $handleFallback.processIdentitySource -ceq 'retained-start-process-handle') 'The Start-Process handle did not preserve the exact launch identity when the guest PID/path lookup failed.'
+    Assert-True ($handleFallback.processId -eq 204 -and $handleFallback.sourceRetained -and $handleFallback.processIdentitySource -ceq 'retained-launch-process-handle') 'The retained launch process handle did not preserve the exact launch identity when the guest PID/path lookup failed.'
     $script:MockIdentityFailureForPid = 0
 
     $secondRunId = '20261014T120001Z-' + [guid]::NewGuid().ToString('N')

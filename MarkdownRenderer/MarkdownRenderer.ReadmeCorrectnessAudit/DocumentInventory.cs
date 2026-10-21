@@ -64,6 +64,10 @@ internal sealed class InventoryHtmlImage
     public string Origin { get; set; } = "";
     public string? SrcSha256 { get; set; }
     public int? SrcUtf16Length { get; set; }
+    // The decoded source is needed in memory for input acquisition only; the
+    // case report keeps its hash and length, like the other projections.
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? Src { get; set; }
 }
 
 internal static partial class DocumentInventoryBuilder
@@ -249,6 +253,7 @@ internal static partial class DocumentInventoryBuilder
                 Origin = origin,
                 SrcSha256 = value is null ? null : Program.HashUtf8(value),
                 SrcUtf16Length = value?.Length,
+                Src = value,
             });
         }
     }

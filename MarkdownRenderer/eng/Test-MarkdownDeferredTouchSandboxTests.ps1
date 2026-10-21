@@ -179,7 +179,7 @@ Invoke-Test 'process identity rejects a changed executable path' {
 $sourceProcess = New-TestIdentity -ProcessId 501 -StartTicks 639219000000000000 -Path 'C:\WinApp\deployments\fixture\MarkdownRenderer.Sample.exe'
 $childProcess = New-TestIdentity -ProcessId 612 -StartTicks 639220000000000000
 $launchReceipt = [pscustomobject]@{
-    schemaVersion = 1; status = 'LAUNCHED'; launchMethod = 'guest-Start-Process'; argument = '--renderer-deferred-touch-probe'
+    schemaVersion = 1; status = 'LAUNCHED'; launchMethod = 'guest-Win32_Process-Create'; argument = '--renderer-deferred-touch-probe'
     guestComputerName = 'SANDBOX-GUEST'; hostComputerName = 'HOST'; sourceRetained = $true
     sourceBefore = $sourceProcess; sourceAfter = $sourceProcess; process = $childProcess
 }
@@ -212,7 +212,9 @@ Invoke-Test 'generated guest launcher is valid PowerShell, directly starts only 
     $generatedTokens = $null; $generatedErrors = $null
     [System.Management.Automation.Language.Parser]::ParseInput($code, [ref]$generatedTokens, [ref]$generatedErrors) | Out-Null
     Assert-Condition ($generatedErrors.Count -eq 0) 'Generated guest launch command is not valid Windows PowerShell.'
-    Assert-Condition ($code -match 'Start-Process -FilePath \$exe .*--renderer-deferred-touch-probe.*-WindowStyle Normal') 'Generated guest launcher does not launch the exact visible sample process with the fixed argument.'
+    Assert-Condition ($code.Contains('Invoke-CimMethod -ClassName Win32_Process -MethodName Create') -and $code.Contains("CommandLine = ('`"' + `$exe + '`" --renderer-deferred-touch-probe')") -and $code.Contains('ShowWindow = [uint16]1')) 'Generated guest launcher does not launch the exact visible sample process with the fixed argument.'
+    Assert-Condition ($code -notmatch 'Start-Process\s+-FilePath') 'Generated guest launcher starts the probe inside the target exec job, which terminates it when the launcher returns (T1-017).'
+    Assert-Condition ($code -match 'EnvironmentVariables = \$envBlock' -and $code -match 'Get-ChildItem Env:') 'Generated guest launcher does not pass the full environment block, so the probe loses DOTNET_ROOT and system variables.'
     Assert-Condition ($code -notmatch '\$host\s*=|MarkdownRenderer\.Sample\.exe\s+--') 'Generated guest launch command uses an unsafe host variable or a hard-coded executable.'
 }
 

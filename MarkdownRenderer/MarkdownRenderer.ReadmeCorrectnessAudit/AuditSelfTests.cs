@@ -154,6 +154,33 @@ internal static class AuditSelfTests
             "Structured image projection preserves inline/alt metadata.");
 
         await VerifyInventoryFixtureAsync(engine).ConfigureAwait(false);
+        VerifyAcquisitionRules();
+    }
+
+    private static void VerifyAcquisitionRules()
+    {
+        const string commit = "0123456789abcdef0123456789abcdef01234567";
+        var baseUri = new Uri($"https://github.com/owner/repo/blob/{commit}/docs/README.md");
+        var documentSource = new MarkdownRenderer.Images.MarkdownDocumentSource(
+            "repository-file:owner/repo", "owner", "repo", commit, "docs/README.md");
+
+        Uri? relative = InputAcquisition.SelectFetchUri("img/a.png", baseUri, "docs/README.md", documentSource, out string? state);
+        Require(state is null && relative?.AbsoluteUri == $"https://raw.githubusercontent.com/owner/repo/{commit}/docs/img/a.png",
+            "A relative repository image is fetched from its raw URL at the pinned commit.");
+        IReadOnlyList<string> keys = JitHub.Services.Markdown.MarkdownAuditImageUrlCandidates.GetSourceUrlHashes(
+            "img/a.png", baseUri, "docs/README.md", documentSource, "owner/repo", commit);
+        Require(keys.Contains(JitHub.Services.Markdown.MarkdownAuditImageUrlCandidates.HashUrl(relative!.AbsoluteUri)!),
+            "The fetched URL is one of the keys the offline resolver looks up.");
+
+        Uri? insecure = InputAcquisition.SelectFetchUri("http://example.test/b.png", baseUri, "docs/README.md", documentSource, out state);
+        Require(state is null && insecure?.AbsoluteUri == "https://example.test/b.png",
+            "A third-party http image is fetched over https, matching the app's upgrade policy.");
+        Require(InputAcquisition.SelectFetchUri("data:image/png;base64,AA==", baseUri, "docs/README.md", documentSource, out state) is null &&
+            state == "data-uri", "Data URIs are rendered without a resolver and are not fetched.");
+        Require(InputAcquisition.SelectFetchUri("ftp://example.test/c.png", baseUri, "docs/README.md", documentSource, out state) is null &&
+            state == "unsupported-scheme", "Non-http(s) sources are a terminal state.");
+        Require(InputAcquisition.Sanitize("owner/repo.name") == "owner-repo-name",
+            "Rank folders use the probe's exact sanitization.");
     }
 
     private static async Task VerifyInventoryFixtureAsync(MarkdownEngine engine)
