@@ -110,12 +110,11 @@ internal interface ISelectionAdornerSurfaceHost<TSurface>
 }
 
 /// <summary>
-/// Owns the selection-adornment surface and its single XAML attachment.
-/// Win2D's CanvasImageSource is not disposable, so its final native release
-/// belongs to XAML or the projection. This owner therefore keeps one surface
-/// for the adorner's lifetime, never nests a Source mutation inside another,
-/// and roots every replaced surface for a bounded number of frames after XAML
-/// has detached it.
+/// Owns the selection-adornment surface and its single host attachment. It
+/// keeps one surface for the adorner's lifetime, never nests a Source mutation
+/// inside another, roots every replaced surface for a bounded number of frames
+/// after the host has detached it, and then disposes it deterministically
+/// instead of leaving its native release to a finalizer.
 /// </summary>
 internal sealed class SelectionAdornerSurfaceLifetime<TSurface, TDevice>
     where TSurface : class
@@ -125,6 +124,7 @@ internal sealed class SelectionAdornerSurfaceLifetime<TSurface, TDevice>
 
     private readonly Func<TDevice, SelectionAdornerSurfaceAllocation, TSurface> _create;
     private readonly Action<Exception>? _reportReleaseFailure;
+    private readonly Action<TSurface>? _dispose;
     private readonly List<(TSurface Surface, long RetiredFrame)> _retired = new();
     private TSurface? _surface;
     private TDevice? _device;
@@ -137,11 +137,13 @@ internal sealed class SelectionAdornerSurfaceLifetime<TSurface, TDevice>
 
     internal SelectionAdornerSurfaceLifetime(
         Func<TDevice, SelectionAdornerSurfaceAllocation, TSurface> create,
-        Action<Exception>? reportReleaseFailure = null)
+        Action<Exception>? reportReleaseFailure = null,
+        Action<TSurface>? dispose = null)
     {
         ArgumentNullException.ThrowIfNull(create);
         _create = create;
         _reportReleaseFailure = reportReleaseFailure;
+        _dispose = dispose;
     }
 
     internal TSurface? Surface => _surface;
@@ -271,17 +273,53 @@ internal sealed class SelectionAdornerSurfaceLifetime<TSurface, TDevice>
     }
 
     /// <summary>
-    /// Advances the retirement clock and drops surfaces that XAML detached at
-    /// least <see cref="RetirementFrames"/> frames ago.
+    /// Advances the retirement clock and disposes surfaces that the host
+    /// detached at least <see cref="RetirementFrames"/> frames ago.
     /// </summary>
     internal void AdvanceFrame()
     {
         unchecked { _frame++; }
-        _retired.RemoveAll(entry => unchecked(_frame - entry.RetiredFrame) >= RetirementFrames);
+        for (int index = 0; index < _retired.Count;)
+        {
+            (TSurface surface, long retiredFrame) = _retired[index];
+            if (unchecked(_frame - retiredFrame) < RetirementFrames)
+            {
+                index++;
+                continue;
+            }
+
+            _retired.RemoveAt(index);
+            DisposeRetired(surface);
+        }
     }
 
-    /// <summary>Drops every retired surface, for final control disposal.</summary>
-    internal void DropRetired() => _retired.Clear();
+    /// <summary>
+    /// Disposes every retired surface, for unload and final control disposal.
+    /// The live surface is never touched.
+    /// </summary>
+    internal void DropRetired()
+    {
+        // Detach the list first so a reentrant callback cannot dispose twice.
+        (TSurface Surface, long RetiredFrame)[] retired = _retired.ToArray();
+        _retired.Clear();
+        foreach ((TSurface surface, _) in retired)
+            DisposeRetired(surface);
+    }
+
+    private void DisposeRetired(TSurface surface)
+    {
+        if (_dispose is null || ReferenceEquals(surface, _surface))
+            return;
+
+        try
+        {
+            _dispose(surface);
+        }
+        catch (Exception failure)
+        {
+            _reportReleaseFailure?.Invoke(failure);
+        }
+    }
 
     private bool CompleteDeferredRelease(ISelectionAdornerSurfaceHost<TSurface> host)
     {

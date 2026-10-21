@@ -259,6 +259,61 @@ public sealed class SelectionAdornerSurfaceLifetimeTests
     }
 
     [Fact]
+    public void RetiredSurfacesAreDisposedExactlyOnceWhenTheirFramesElapse()
+    {
+        var harness = new Harness();
+        var host = new FakeHost();
+
+        FakeSurface first = harness.Lifetime.Ensure(host, 200, 200, Dpi100, harness.Device)!;
+        FakeSurface second = harness.Lifetime.Ensure(host, 900, 300, Dpi100, harness.Device)!;
+        harness.Lifetime.AdvanceFrame();
+        Assert.Empty(harness.Disposed);
+        harness.Lifetime.AdvanceFrame();
+        harness.Lifetime.AdvanceFrame();
+
+        Assert.Equal(new[] { first }, harness.Disposed);
+        Assert.Same(second, host.Source);
+        Assert.DoesNotContain(second, harness.Disposed);
+    }
+
+    [Fact]
+    public void DropRetiredDisposesReleasedSurfacesButNeverTheLiveOne()
+    {
+        var harness = new Harness();
+        var host = new FakeHost();
+
+        FakeSurface live = harness.Lifetime.Ensure(host, 200, 200, Dpi100, harness.Device)!;
+        harness.Lifetime.DropRetired();
+        Assert.Empty(harness.Disposed);
+
+        Assert.True(harness.Lifetime.Release(host));
+        Assert.Null(host.Source);
+        harness.Lifetime.DropRetired();
+        harness.Lifetime.DropRetired();
+
+        Assert.Equal(new[] { live }, harness.Disposed);
+        Assert.Equal(0, harness.Lifetime.RetiredCount);
+    }
+
+    [Fact]
+    public void AThrowingDisposeIsReportedAndDoesNotStrandOtherRetiredSurfaces()
+    {
+        var harness = new Harness();
+        var host = new FakeHost();
+
+        FakeSurface first = harness.Lifetime.Ensure(host, 200, 200, Dpi100, harness.Device)!;
+        FakeSurface second = harness.Lifetime.Ensure(host, 900, 300, Dpi100, harness.Device)!;
+        Assert.True(harness.Lifetime.Release(host));
+        harness.ThrowOnDispose = first;
+
+        harness.Lifetime.DropRetired();
+
+        Assert.Equal(new[] { first, second }, harness.DisposeAttempts);
+        Assert.Single(harness.ReportedFailures);
+        Assert.Equal(0, harness.Lifetime.RetiredCount);
+    }
+
+    [Fact]
     public void SharedDeviceProjectionIsIdentityStableSoTheLayoutDeviceGateCannotLoop()
     {
         // The control compares the snapshot's layout device with the shared
@@ -282,13 +337,23 @@ public sealed class SelectionAdornerSurfaceLifetimeTests
                     Created.Add(surface);
                     return surface;
                 },
-                ReportedFailures.Add);
+                ReportedFailures.Add,
+                surface =>
+                {
+                    DisposeAttempts.Add(surface);
+                    if (ReferenceEquals(surface, ThrowOnDispose))
+                        throw new InvalidOperationException("dispose failed");
+                    Disposed.Add(surface);
+                });
         }
 
         internal FakeDevice Device { get; } = new();
         internal List<FakeSurface> Created { get; } = new();
         internal List<Exception> ReportedFailures { get; } = new();
         internal Exception? ThrowOnCreate { get; set; }
+        internal FakeSurface? ThrowOnDispose { get; set; }
+        internal List<FakeSurface> Disposed { get; } = new();
+        internal List<FakeSurface> DisposeAttempts { get; } = new();
         internal SelectionAdornerSurfaceLifetime<FakeSurface, FakeDevice> Lifetime { get; }
     }
 

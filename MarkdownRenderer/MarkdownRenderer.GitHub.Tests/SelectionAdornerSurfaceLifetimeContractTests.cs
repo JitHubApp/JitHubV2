@@ -12,7 +12,7 @@ public sealed class SelectionAdornerSurfaceLifetimeContractTests
     public void DrawingSessionIsClosedBeforePublishingGeometryOrMutatingHandles()
     {
         string body = MethodBody(ReadControl(), "private SelectionAdornerRefreshOperationResult RefreshSelectionAdornerUnderPaintLease(");
-        const string scopedSession = "using (var drawingSession = source.CreateDrawingSession(";
+        const string scopedSession = "using (var drawingSession = CanvasComposition.CreateDrawingSession(source.Surface,";
         int session = body.IndexOf(scopedSession, StringComparison.Ordinal);
         Assert.True(session >= 0, "The surface draw must use an explicit, bounded using block.");
         int close = BlockEnd(body, body.IndexOf('{', session));
@@ -47,7 +47,7 @@ public sealed class SelectionAdornerSurfaceLifetimeContractTests
         Assert.Contains("Retire(replacement);", body[attach..publish], StringComparison.Ordinal);
         Assert.Contains("CompleteDeferredRelease(host)", body[retire..], StringComparison.Ordinal);
 
-        string control = MethodBody(ReadControl(), "private CanvasImageSource? EnsureSelectionAdornerSurface(");
+        string control = MethodBody(ReadControl(), "private SelectionAdornerCompositionSurface? EnsureSelectionAdornerSurface(");
         int ensure = control.IndexOf("_selectionAdornerSurfaces.Ensure(", StringComparison.Ordinal);
         Assert.True(ensure >= 0);
         Assert.Contains("!ReferenceEquals(host, _selectionAdornerHost)", control[ensure..], StringComparison.Ordinal);
@@ -116,7 +116,7 @@ public sealed class SelectionAdornerSurfaceLifetimeContractTests
         foreach (string signature in new[]
         {
             "private SelectionAdornerRefreshOperationResult RefreshSelectionAdornerUnderPaintLease(",
-            "private CanvasImageSource? EnsureSelectionAdornerSurface(",
+            "private SelectionAdornerCompositionSurface? EnsureSelectionAdornerSurface(",
         })
         {
             string body = MethodBody(source, signature);

@@ -2004,6 +2004,19 @@ function Assert-SyntheticTouchDelivery {
                     activePointerCount=$sameActive.Count;inContact=[bool]$record.inContact;lastEvent=[string]$record.lastEvent;lastEventSequence=[long]$record.lastEventSequence
                     positionErrorDip=$positionError;expectedRootPoint=$expectedRootPoint;observerBefore=$Before;observerAfter=$After
                 }
+                # P1-031: the injected POINTER_FLAG_CANCELED|UP reached WinUI as
+                # one ordinary routed release with no native IsCanceled packet.
+                # The stimulus never reached the product as a cancellation, so
+                # this is a delivery limit, distinct from a mishandled cancel.
+                if ($null -ne $record.PSObject.Properties['nativeCanceledPacketCount'] -and
+                    $null -ne $record.PSObject.Properties['lastNativeCanceled'] -and
+                    $null -ne $record.PSObject.Properties['lastRoutedEvent'] -and
+                    $sameActive.Count -eq 0 -and -not [bool]$record.inContact -and $moveDelta -ge 1 -and
+                    $cancelDelta -eq 0 -and $releaseDelta -eq 1 -and $rawReleaseDelta -eq 1 -and $captureLostDelta -eq 0 -and
+                    $nativeCanceledPacketDelta -eq 0 -and -not [bool]$record.lastNativeCanceled -and
+                    [string]$record.lastRoutedEvent -ceq 'Released' -and [string]$record.lastEvent -ceq 'Released') {
+                    throw ("INJECTED-CANCEL-NOT-NATIVE: New routed contact $($record.pointerId)/$($record.contactSerial) arrived as one ordinary release with no native IsCanceled packet. Diagnostics: " + (ConvertTo-AsciiJson -Value $diagnostics))
+                }
                 throw ("New routed contact $($record.pointerId)/$($record.contactSerial) did not cancel without an ordinary release. Diagnostics: " + (ConvertTo-AsciiJson -Value $diagnostics))
             }
         }
@@ -3004,6 +3017,9 @@ function Invoke-SelectionDisableViewportAssertions {
         throw "Enabled touch selection in $Viewport mode did not select exactly the target word; UIA returned '$($touchSelection.text)' ($($touchSelection.rangeCount) ranges)."
     }
     $touchHandlesBeforeDisable = Assert-SelectionHandles
+    # T1-018: a touch double-tap selects with handles; as in C10, a tap inside
+    # the committed selection is what opens the selection flyout.
+    $null = Invoke-Ui @('touch','MarkdownRenderer','--gesture','tap','--at',"$($target.x),$($target.y)")
     $null = Invoke-Ui @('wait-for','MarkdownContextCopyMarkdown','-t','3000')
     $menuBeforeDisable = @(Get-AppUiElements | Where-Object { (Get-UiAutomationId $_) -in @('MarkdownContextCopy','MarkdownContextCopyMarkdown','MarkdownContextSelectAll') })
     if ($menuBeforeDisable.Count -ne 3) { throw "Enabled touch selection in $Viewport mode did not expose all three selection flyout commands." }
@@ -3059,6 +3075,7 @@ function Invoke-SelectionDisableViewportAssertions {
         throw "Re-enabled touch input in $Viewport mode did not select exactly the target word."
     }
     $touchHandlesAfterReenable = Assert-SelectionHandles
+    $null = Invoke-Ui @('touch','MarkdownRenderer','--gesture','tap','--at',"$($target.x),$($target.y)")
     $null = Invoke-Ui @('wait-for','MarkdownContextCopyMarkdown','-t','3000')
     $touchMenuAfterReenable = @(Get-AppUiElements | Where-Object { (Get-UiAutomationId $_) -in @('MarkdownContextCopy','MarkdownContextCopyMarkdown','MarkdownContextSelectAll') })
     if ($touchMenuAfterReenable.Count -ne 3) { throw "Re-enabled touch selection in $Viewport mode did not restore the selection flyout." }
@@ -4233,7 +4250,16 @@ public sealed class MarkdownRendererControl : UserControl
         $handlesBeforeCancel = Assert-SelectionHandles
         $cancelPoint = Get-RangeCenter 'Unrelated'
         $cancelGeometry = Assert-PointOutsideSelectionHandles -X $cancelPoint.x -Y $cancelPoint.y -Handles $handlesBeforeCancel -InjectedContactRadiusPixels 2.0
-        $injection = Invoke-GuestProbe -Mode 'cancel-contact' -X $cancelPoint.x -Y $cancelPoint.y -PointerId 0
+        try { $injection = Invoke-GuestProbe -Mode 'cancel-contact' -X $cancelPoint.x -Y $cancelPoint.y -PointerId 0 }
+        catch {
+            # P1-031: only the guest's exact no-native-cancel delivery pattern
+            # is a tooling limit; every other delivery mismatch stays a FAIL.
+            # Guest stderr is console-wrapped; compare without line breaks.
+            if (($_.Exception.Message -replace '\r?\n', '').Contains('INJECTED-CANCEL-NOT-NATIVE: ')) {
+                throw 'UNVERIFIED: Tooling limit (P1-031): the synthetic POINTER_FLAG_CANCELED|UP packet reached WinUI as one ordinary routed Release with PointerPoint.Properties.IsCanceled=false and no native-canceled packet, so this injection path cannot exercise native cancellation. Offline cancellation-classifier coverage applies; the guest receipt is retained under this run''s commands.'
+            }
+            throw
+        }
         if (-not [bool]$injection.cancelDelivered -or $injection.delivery.status -cne 'PASS' -or
             [int]$injection.delivery.cancelDelta -ne 1 -or [int]$injection.delivery.releaseDelta -ne 0 -or
             [int]$injection.delivery.pressDelta -ne 1 -or [int]$injection.delivery.moveDelta -lt 1 -or

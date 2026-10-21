@@ -167,6 +167,11 @@ public partial class MarkdownRendererControl
                 isCaptureRoot: false);
             directChildren.Add(directStamp);
 
+            // RenderTargetBitmap cannot read back the adorner's composition
+            // child visual; its state is painted with the snapshot instead.
+            if (ReferenceEquals(child, _selectionAdorner))
+                continue;
+
             if (element.Visibility != Visibility.Visible || element.Opacity <= 0 ||
                 element.ActualWidth <= 0 || element.ActualHeight <= 0 ||
                 !Intersects(viewport, directStamp.Bounds))
@@ -228,6 +233,23 @@ public partial class MarkdownRendererControl
             DirectChildren = directChildren,
             Captures = captures,
         };
+    }
+
+    /// <summary>
+    /// Paints the visible selection-adorner state (selection, hovered and
+    /// focused link) from its committed geometry. RenderTargetBitmap cannot
+    /// capture the adorner's composition child visual. Must run under the
+    /// audit's snapshot paint lease.
+    /// </summary>
+    private void PaintAuditSelectionAdornerState(
+        Layout.LayoutSnapshot snapshot,
+        CanvasDrawingSession drawingSession,
+        Rect viewport)
+    {
+        if (_selectionAdorner is not { Visibility: Visibility.Visible })
+            return;
+
+        PaintInteractiveDocumentState(snapshot, drawingSession, viewport, _selectionAdornerBackgrounds);
     }
 
     private async Task CaptureAuditOverlayPixelsAsync(

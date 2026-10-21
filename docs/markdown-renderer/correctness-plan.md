@@ -114,7 +114,7 @@ geometry when testing placement.
 | P1-029 | Same-document width relayout preserves selected text but loses touch selection handles. | Fresh Sandbox C14 retains exact `hold` selection and current UIA geometry after restoring width, but command 1358 returns `handles:[]`. A restyle resets transient input to Idle; the later same-document commit preserved the range without restoring handle presentation. | Component repair passes 50 focused state/provenance/control-wiring cases, the 1,541-case logic slice and complete native suites. r3's narrow state preserves exact selection and two 44-DIP handles; actual control and snapshot widths both equal 345 DIPs. The later wide restore suffers P1-032's native crash, so complete resize survival/handle restoration remains unqualified. The narrow capture does not independently establish a clipping defect. Restoration is exact-generation/range/same-document bound and preserves no contact/capture/gesture provenance. |
 | P1-030 | Final-object selection/copy and a short-document handle drag do not satisfy their exact live oracles. | Fresh r2 selects only preceding text/newline for final SVG; Math omits source on copy. r3 fixes Math/Mermaid copy but still omits image alt and loses selection on a delivered handle press/drag. | Post-r3 component repairs now pass both complete 3,188-case suites: block image/embed/hosted after-endpoints round-trip to semantic end, preceding-text-only ranges exclude the next atomic rectangle, and the app-root outside-click hook exempts only its own two handle subtrees after clearing other renderers. Three semantic regressions and one root-order source contract reproduce the old failures first. Existing inline/vector boundary contracts remain unchanged. Exact final Math/Mermaid source copy is live-qualified at 100%; rebuilt image/handle live proof is still pending. T1-014 separately records the SVG gesture-target defect. |
 | P1-031 | Native device cancellation flags are ignored when the packet is routed as a move or release. | The input dispatcher classified packets solely by routed event. The referenced Windows App SDK exposes `PointerPoint.Properties.IsCanceled`; r2's injected canceled-up packet was observed as a routed Release, so its native flag was not recorded and cancellation was not qualified. | Source repair classifies a flagged packet as Cancel/HandleCancel before both live processing and deferred enqueue; all 14 classifier cases and complete native suites pass. Terminal r3 command 1236 fails cancellation-delivery qualification: contact 75/1 has one press, one move, one raw/ordinary release, zero native-canceled packets, `lastNativeCanceled=false`, zero cancels and no active contact. This sequence does not prove mishandling of a genuinely flagged packet. Preserve the passive observer and the distinction; ordinary Release must not be relabeled Cancel. Live cancellation remains open. |
-| P1-032 | Critical: the sample suffers native heap corruption around selected-content relayout/replacement. | Original r3 C14 exits during width restoration (`0xc0000374`). The later original-option R3 replay also crashes after command 1310 source replacement, before C14; its retained full dump detects double-free during Win2D `CanvasImageSource` destruction in XAML image-peer cleanup. | Open, highest priority. The detection stack is known; the first invalid release and root cause are not. At the user's request, investigation switches to ordinary managed source review, regression tests and Sandbox public-action replays, with no new debugger attachment, dumps or low-level process instrumentation. The R6 candidate closes drawing sessions before committing selection state, retains source owners across XAML attachment/detachment, and rejects stale publication. Its three new source-order checks fail before the change and pass afterward; these are not a native-crash reproduction or behavioral fault-injection proof. Current live qualification remains separate below. The October 19 structural candidate (`3d4343d`) removes the churn that feeds the detection path: one grow-only adorner surface per Image, no surface release or adorner detach on snapshot commits, deferred (never nested) Source mutation, exception-safe unload release, device-lost notification and a layout-device paint gate. Five new contracts fail 5/5 before the change; behavioral reentrancy/failure tests and both complete 3,217-case suites pass. P1-032 stays open until the original-option Sandbox replays pass; see the October 19–20 continuation below. |
+| P1-032 | Critical: the sample suffers native heap corruption around selected-content relayout/replacement. | Original r3 C14 exits during width restoration (`0xc0000374`). The later original-option R3 replay also crashes after command 1310 source replacement, before C14; its retained full dump detects double-free during Win2D `CanvasImageSource` destruction in XAML image-peer cleanup. | Open, highest priority. The detection stack is known; the first invalid release and root cause are not. At the user's request, investigation switches to ordinary managed source review, regression tests and Sandbox public-action replays, with no new debugger attachment, dumps or low-level process instrumentation. The R6 candidate closes drawing sessions before committing selection state, retains source owners across XAML attachment/detachment, and rejects stale publication. Its three new source-order checks fail before the change and pass afterward; these are not a native-crash reproduction or behavioral fault-injection proof. Current live qualification remains separate below. The October 19 structural candidate (`3d4343d`) removes the churn that feeds the detection path: one grow-only adorner surface per Image, no surface release or adorner detach on snapshot commits, deferred (never nested) Source mutation, exception-safe unload release, device-lost notification and a layout-device paint gate. Five new contracts fail 5/5 before the change; behavioral reentrancy/failure tests and both complete 3,217-case suites pass. P1-032 stays open until the original-option Sandbox replays pass; see the October 19–20 continuation below. **October 21 root cause:** the structural candidate still crashed (`0xc0000374`) in batch 2. With the user's approval, a guest-only page-heap batch captured a full dump. The fault is a read of freed memory that page heap attributes to a Win2D `CanvasImageSource`; its free stack is the .NET `ComWrappers` finalizer. The faulting access is XAML's `UIAffinityReleaseQueue` releasing a finalized element whose child reference still reaches that object's aggregated inner `SurfaceImageSource`. XAML's reference to the inner peer does not keep Win2D's outer object alive, so a XAML image source aggregated around a Win2D outer depends on GC order. The fix removes that presentation: the adorner draws into a `CompositionDrawingSurface` (via `CanvasComposition`) on a `SpriteVisual` hosted under an inert `Border`, and retired surfaces are disposed deterministically. Four new contracts fail 4/4 before the change and three new disposal tests fail to compile; both complete suites pass 3,226/3,226. Live qualification is in progress. |
 | P1-033 | A wrapped image caption can make the after-image selection boundary unreachable from visible artwork. | Frozen `ImageBoxVisibleArtworkSelectionEndpointTests` fails **4/4 before production edits** for LTR/RTL and 1×/2× text scale: an independent 96×96 artwork rectangle sits in a block taller than 192 DIPs, and its lower half incorrectly maps to offset 0 rather than 1. | Component repair verified: split the actual painted `AutomationRenderDestination` when the point is in artwork; retain the old full-block fallback elsewhere and leave ordinary hit testing start-only. Focused green passes 4/4; final source passes both complete **3,192/3,192** Debug/Release suites, with no old cases removed. Post-artwork and top/bottom margin fallback checks pass; the post-artwork point is not claimed to be a caption glyph. Exact red/green/final source and receipt hashes are in `sandbox-r5-image-selection-code-verification.json`. Live selection and actual-DPI proof remain pending; this does not resolve P1-032. |
 | P1-034 | A touch long-press inside a committed selection replaces it with the word under the finger. | Original-option batch 1 (`20261021T052930Z-0310…`, candidate `3d4343d`) fails `touch-double-tap-handle-drag-context-copy-and-cancel`: long-pressing inside the drag-extended range collapses it to its first word. `ProcessHolding` went straight to word selection, unlike tap and `ContextRequested`, which already keep a selection that contains the point. | Component repair: a hold inside the active selection re-selects the touch selection, suppresses the tap and returns before word selection, using the same `IsPointInsideSelection` query as tap/context. `TouchHoldInsideSelectionContractTests` fails 2/2 before the edit and passes after; the touch/selection filter passes 202/202. Live C10 proof is pending on the next batch. |
 | T1-001 | Stale image-relayout recovery source assertion. | Fresh core baseline fails because it expects removed `RequestRebuild()` syntax; the real catch path already requests `RequestRebuild(RebuildReason.Full)`. | Corrected and focused rerun passes. No production behavior changed. |
@@ -3311,6 +3311,79 @@ current-candidate headless audit parses 500/500 with zero case failures and 19
 Mermaid scenes; its only diagnostics are rank 340's two MATH100 fallbacks
 (U3-001). The runner's nonzero exit for recorded diagnostics is retained. This
 is still engine-only evidence, not a page or interaction audit.
+
+### Sandbox batches, launcher root causes and the P1-032 root cause (October 21)
+
+**Batch 1** (`20261021T052930Z-0310…`, candidate `3d4343d`) ran the full
+original-option sequence without losing the sample: 42 PASS, 11 FAIL and
+10 UNVERIFIED.
+- Eight of the failures are winapp input commands rejected while the guest
+  Search flyout held the foreground.
+- One is P1-034, now fixed at component level.
+- One is the selection-disable child that "exits before its window": the
+  launcher's own process tree was being terminated (T1-017).
+
+**Launchers.** `winapp target exec` closes its job when the guest script
+returns, which kills every `Start-Process` descendant. That explains T1-012
+and the deferred-touch child with a LAUNCHED receipt but no window. All three
+runners now start probes with `Win32_Process.Create` and the launcher's full
+environment block (T1-016/T1-017).
+
+**Batch 2** (`20261021T071738Z-8026…`, candidate `5b80fd1`) lost the sample at
+07:39:38Z with `0xc0000374` in ntdll, during the touch keycap case. The
+structural candidate therefore does not resolve P1-032.
+
+**Batch 3 (page heap).** With the user's approval for this diagnosis, normal
+page heap and a full per-executable LocalDumps policy were enabled for
+`MarkdownRenderer.Sample.exe`, inside the Sandbox guest only. The guest's prior
+absence of both keys is recorded so they can be removed afterwards. Batch 3
+(`20261021T074145Z-f553…`) crashed during the final-SVG case and left a 2.1 GB
+full dump. That dump is local, uncommitted process memory.
+
+`cdbX64` analysis:
+- An access violation in `Microsoft.UI.Xaml` `AddRef` on freed memory, reached
+  from `UIAffinityReleaseQueue::DoCleanup`. A finalized XAML element is being
+  released, and its child-reference reset calls
+  `CMultiParentShareableDependencyObject::RemoveParent`, then
+  `DXamlCore::TryGetPeer`.
+- The peer at that address has a `DirectUI::SurfaceImageSource` vtable, so
+  XAML still held the aggregated inner object.
+- Page heap attributes the freed allocation to Win2D's
+  `CanvasImageSource::scalar deleting destructor`, freed from
+  `System.Runtime.InteropServices.ComWrappers+NativeObjectWrapper.Finalize`.
+
+The finalizer destroyed Win2D's outer object while XAML still referenced the
+inner one.
+
+The managed heap holds seven surface owners:
+- Six have released cleanly, with no surface, host or pending deferred release.
+- The live renderer holds the one remaining surface.
+
+The exact element is therefore not attributed to a missed `Source = null`. The
+hazard is the type itself. Any XAML image source aggregated around a Win2D
+outer depends on .NET finalization order relative to XAML's UI-thread
+teardown.
+
+**The fix.**
+- The adorner is now an inert `Border` placeholder hosting a `SpriteVisual`
+  through `ElementCompositionPreview.SetElementChildVisual`.
+- It draws into a grow-only `CompositionDrawingSurface` created by a
+  per-control `CompositionGraphicsDevice` from `CanvasComposition`.
+- Composition objects have no XAML peer, and every retired, released or
+  unloaded surface, visual and graphics device is disposed deterministically.
+- A replaced Win2D device is switched in place, and `RenderingDeviceReplaced`
+  forces a repaint.
+- Audit capture skips reading back the placeholder, because
+  `RenderTargetBitmap` cannot see child visuals. It paints the committed
+  adorner state under the same snapshot paint lease instead.
+
+**Evidence and next steps.**
+- Red/green: four presentation contracts fail 4/4 before the change, and the
+  three new behavioral disposal tests fail to compile. The receipts are kept
+  under `artifacts/correctness/m1-p1-032-composition/`.
+- Both complete GitHub.Tests suites pass 3,226/3,226.
+- P1-032 closes only after five consecutive original-option batches and the
+  stress sequence run without process loss on this candidate.
 
 The [October 12 checkpoint](implementation-checkpoint-2026-10-12.md) preserves
 the old architecture/evidence. The [progressive performance plan](progressive-performance-plan.md)

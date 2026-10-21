@@ -599,6 +599,51 @@ if ($cancellationClassification -lt 0 -or
     throw 'Native canceled input must be classified before input capture, live dispatch and deferred enqueue.'
 }
 $checks.Add([pscustomobject]@{name='native IsCanceled release retains raw-event evidence and cannot masquerade as ordinary release; real dispatcher normalizes before live and deferred paths';status='PASS'})
+# P1-031: an injected cancel that arrives as one ordinary release with no
+# native packet is a delivery limit; anything else stays a cancellation failure.
+$ordinaryRelease = $nativeCanceledRelease | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+$ordinaryRelease.contacts[0].cancelCount = 0
+$ordinaryRelease.contacts[0].releaseCount = 4
+$ordinaryRelease.contacts[0].rawReleaseCount = 4
+$ordinaryRelease.contacts[0].nativeCanceledPacketCount = 0
+$ordinaryRelease.contacts[0].lastNativeCanceled = $false
+$ordinaryRelease.contacts[0].lastEvent = 'Released'
+$ordinaryRelease.contacts[0].captureLostCount = 0
+$deliveryLimitMessage = ''
+try { Assert-SyntheticTouchDelivery -Before $cancelBefore -After $ordinaryRelease -ExpectedPoint $expectedTouchPoint -ExpectedState 'Canceled' | Out-Null } catch { $deliveryLimitMessage = $_.Exception.Message }
+if (-not $deliveryLimitMessage.StartsWith('INJECTED-CANCEL-NOT-NATIVE: ', [StringComparison]::Ordinal) -or $deliveryLimitMessage -notmatch 'Diagnostics: \{') {
+    throw 'An injected cancel delivered as one ordinary release without a native packet must be classified as a delivery limit with diagnostics.'
+}
+foreach ($notALimit in @(
+    @{ Name = 'native packet observed'; Field = 'nativeCanceledPacketCount'; Value = 1 },
+    @{ Name = 'second release'; Field = 'releaseCount'; Value = 5 },
+    @{ Name = 'capture lost'; Field = 'captureLostCount'; Value = 1 })) {
+    $variant = $ordinaryRelease | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+    $variant.contacts[0].($notALimit.Field) = $notALimit.Value
+    $variantMessage = ''
+    try { Assert-SyntheticTouchDelivery -Before $cancelBefore -After $variant -ExpectedPoint $expectedTouchPoint -ExpectedState 'Canceled' | Out-Null } catch { $variantMessage = $_.Exception.Message }
+    if ($variantMessage.Contains('INJECTED-CANCEL-NOT-NATIVE')) { throw "A $($notALimit.Name) delivery was misclassified as an injection limit." }
+}
+$cancelCaseText = $harnessAst.Extent.Text
+if ($cancelCaseText.IndexOf("if ((`$_.Exception.Message -replace '\r?\n', '').Contains('INJECTED-CANCEL-NOT-NATIVE: ')) {", [StringComparison]::Ordinal) -lt 0 -or
+    $cancelCaseText.IndexOf("throw 'UNVERIFIED: Tooling limit (P1-031):", [StringComparison]::Ordinal) -lt 0) {
+    throw 'The P1-003 host case must turn only the guest delivery-limit marker into UNVERIFIED.'
+}
+$checks.Add([pscustomobject]@{name='an injected cancel delivered as one ordinary release with no native packet is UNVERIFIED as a tooling limit, never PASS; other cancellation mismatches stay FAIL';status='PASS'})
+# T1-018: as in C10, double-tap selects with handles and a tap inside the
+# committed selection opens the flyout; the probe must not expect otherwise.
+$probeAssertions = $harnessAst.Find({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq 'Invoke-SelectionDisableViewportAssertions' }, $true)
+if ($null -eq $probeAssertions) { throw 'The selection-disable viewport assertions were not found.' }
+$probeText = $probeAssertions.Extent.Text
+$menuWaits = [regex]::Matches($probeText, "Invoke-Ui @\('wait-for','MarkdownContextCopyMarkdown','-t','3000'\)")
+if ($menuWaits.Count -ne 2) { throw 'The selection-disable probe must open the touch flyout exactly twice.' }
+foreach ($menuWait in $menuWaits) {
+    $before = $probeText.Substring(0, $menuWait.Index)
+    $tap = $before.LastIndexOf("Invoke-Ui @('touch','MarkdownRenderer','--gesture','tap','--at',", [StringComparison]::Ordinal)
+    $doubleTap = $before.LastIndexOf("Invoke-Ui @('touch','MarkdownRenderer','--gesture','double-tap','--at',", [StringComparison]::Ordinal)
+    if ($tap -lt 0 -or $tap -lt $doubleTap) { throw 'Each selection-disable flyout wait must follow a tap inside the double-tap selection.' }
+}
+$checks.Add([pscustomobject]@{name='selection-disable probe opens the touch flyout with a tap inside the committed selection, matching C10';status='PASS'})
 $noCancelSnapshot = $null
 foreach($invalidCancellation in @(
     [pscustomobject]@{Name='no cancel event';Snapshot=[pscustomobject]@{version=1;rendererGeneration=12;observationStatus='ok';observationErrors=0;active=@();contacts=@([pscustomobject]@{pointerId=3701;contactSerial=7;pressCount=5;moveCount=9;cancelCount=0;releaseCount=4;captureLostCount=0;lastEventSequence=54;inContact=$false;lastEvent='Released';handle=$null;lastPositionRootDipX=12.5;lastPositionRootDipY=14.0;eventRasterizationScale=2.0})}},
