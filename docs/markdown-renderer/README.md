@@ -19,6 +19,7 @@ certification and the remaining release gates are unfinished.
 | Understand normal Copy vs Copy Markdown | [Selection and clipboard](selection-and-clipboard.md) |
 | Track unfinished work | [Current gaps and roadmap](current-gaps-and-roadmap.md) |
 | Follow the active phased correctness goal | [Correctness goal and phase plan](correctness-plan.md) |
+| Review the proposed browser-free Phase 3 audit input | [Phase 3 correctness input design](phase3-correctness-input-design.md) |
 | Resume from the current goal, progress, challenges and methods | [October 17 project handoff](project-handoff-2026-10-17.md) |
 | Inspect portable receipts and the frozen audit manifest | [October 17 evidence index](evidence/2026-10-17/README.md) |
 | Review the earlier implementation and architecture assessment | [October 12 historical checkpoint](implementation-checkpoint-2026-10-12.md) |
