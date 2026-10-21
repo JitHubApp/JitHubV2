@@ -114,7 +114,7 @@ geometry when testing placement.
 | P1-029 | Same-document width relayout preserves selected text but loses touch selection handles. | Fresh Sandbox C14 retains exact `hold` selection and current UIA geometry after restoring width, but command 1358 returns `handles:[]`. A restyle resets transient input to Idle; the later same-document commit preserved the range without restoring handle presentation. | Component repair passes 50 focused state/provenance/control-wiring cases, the 1,541-case logic slice and complete native suites. r3's narrow state preserves exact selection and two 44-DIP handles; actual control and snapshot widths both equal 345 DIPs. The later wide restore suffers P1-032's native crash, so complete resize survival/handle restoration remains unqualified. The narrow capture does not independently establish a clipping defect. Restoration is exact-generation/range/same-document bound and preserves no contact/capture/gesture provenance. |
 | P1-030 | Final-object selection/copy and a short-document handle drag do not satisfy their exact live oracles. | Fresh r2 selects only preceding text/newline for final SVG; Math omits source on copy. r3 fixes Math/Mermaid copy but still omits image alt and loses selection on a delivered handle press/drag. | Post-r3 component repairs now pass both complete 3,188-case suites: block image/embed/hosted after-endpoints round-trip to semantic end, preceding-text-only ranges exclude the next atomic rectangle, and the app-root outside-click hook exempts only its own two handle subtrees after clearing other renderers. Three semantic regressions and one root-order source contract reproduce the old failures first. Existing inline/vector boundary contracts remain unchanged. Exact final Math/Mermaid source copy is live-qualified at 100%; rebuilt image/handle live proof is still pending. T1-014 separately records the SVG gesture-target defect. |
 | P1-031 | Native device cancellation flags are ignored when the packet is routed as a move or release. | The input dispatcher classified packets solely by routed event. The referenced Windows App SDK exposes `PointerPoint.Properties.IsCanceled`; r2's injected canceled-up packet was observed as a routed Release, so its native flag was not recorded and cancellation was not qualified. | Source repair classifies a flagged packet as Cancel/HandleCancel before both live processing and deferred enqueue; all 14 classifier cases and complete native suites pass. Terminal r3 command 1236 fails cancellation-delivery qualification: contact 75/1 has one press, one move, one raw/ordinary release, zero native-canceled packets, `lastNativeCanceled=false`, zero cancels and no active contact. This sequence does not prove mishandling of a genuinely flagged packet. Preserve the passive observer and the distinction; ordinary Release must not be relabeled Cancel. Live cancellation remains open. |
-| P1-032 | Critical: the sample suffers native heap corruption around selected-content relayout/replacement. | Original r3 C14 exits during width restoration (`0xc0000374`). The later original-option R3 replay also crashes after command 1310 source replacement, before C14; its retained full dump detects double-free during Win2D `CanvasImageSource` destruction in XAML image-peer cleanup. | Open, highest priority. The detection stack is known; the first invalid release and root cause are not. At the user's request, investigation switches to ordinary managed source review, regression tests and Sandbox public-action replays, with no new debugger attachment, dumps or low-level process instrumentation. The R6 candidate closes drawing sessions before committing selection state, retains source owners across XAML attachment/detachment, and rejects stale publication. Its three new source-order checks fail before the change and pass afterward; these are not a native-crash reproduction or behavioral fault-injection proof. Current live qualification remains separate below. |
+| P1-032 | Critical: the sample suffers native heap corruption around selected-content relayout/replacement. | Original r3 C14 exits during width restoration (`0xc0000374`). The later original-option R3 replay also crashes after command 1310 source replacement, before C14; its retained full dump detects double-free during Win2D `CanvasImageSource` destruction in XAML image-peer cleanup. | Open, highest priority. The detection stack is known; the first invalid release and root cause are not. At the user's request, investigation switches to ordinary managed source review, regression tests and Sandbox public-action replays, with no new debugger attachment, dumps or low-level process instrumentation. The R6 candidate closes drawing sessions before committing selection state, retains source owners across XAML attachment/detachment, and rejects stale publication. Its three new source-order checks fail before the change and pass afterward; these are not a native-crash reproduction or behavioral fault-injection proof. Current live qualification remains separate below. The October 19 structural candidate (`3d4343d`) removes the churn that feeds the detection path: one grow-only adorner surface per Image, no surface release or adorner detach on snapshot commits, deferred (never nested) Source mutation, exception-safe unload release, device-lost notification and a layout-device paint gate. Five new contracts fail 5/5 before the change; behavioral reentrancy/failure tests and both complete 3,217-case suites pass. P1-032 stays open until the original-option Sandbox replays pass; see the October 19–20 continuation below. |
 | P1-033 | A wrapped image caption can make the after-image selection boundary unreachable from visible artwork. | Frozen `ImageBoxVisibleArtworkSelectionEndpointTests` fails **4/4 before production edits** for LTR/RTL and 1×/2× text scale: an independent 96×96 artwork rectangle sits in a block taller than 192 DIPs, and its lower half incorrectly maps to offset 0 rather than 1. | Component repair verified: split the actual painted `AutomationRenderDestination` when the point is in artwork; retain the old full-block fallback elsewhere and leave ordinary hit testing start-only. Focused green passes 4/4; final source passes both complete **3,192/3,192** Debug/Release suites, with no old cases removed. Post-artwork and top/bottom margin fallback checks pass; the post-artwork point is not claimed to be a caption glyph. Exact red/green/final source and receipt hashes are in `sandbox-r5-image-selection-code-verification.json`. Live selection and actual-DPI proof remain pending; this does not resolve P1-032. |
 | T1-001 | Stale image-relayout recovery source assertion. | Fresh core baseline fails because it expects removed `RequestRebuild()` syntax; the real catch path already requests `RequestRebuild(RebuildReason.Full)`. | Corrected and focused rerun passes. No production behavior changed. |
 | T1-002 | Reserved sample test URLs invoke the external shell and contaminate touch testing. | Final Sandbox command 0779 activates a dynamic `https://example.invalid/suppression/...` link; the next inventory shows a foreground OpenWith dialog. Eleven subsequent touch commands are refused because the app is not foreground. The sample previously intercepted only two exact fixture paths. | Corrected sample-only HTTP(S) routing for the exact reserved host; 11 URI-policy tests pass and Release/x64 builds cleanly. Ordinary links and renderer behavior are unchanged. Fresh live qualification remains required. |
@@ -130,6 +130,7 @@ geometry when testing placement.
 | T1-012 | Selection-disable probe child exits before an exact window identity is discovered. | r2 launches guest PID 4740 from the original executable, then no exact probe title is found. A later read-only inventory finds only the original PID 1916. No unidentified child receives cleanup input. | Open setup investigation; not a selection-disable pass and not yet a proven renderer crash. r3 never reaches this launcher because the original sample first suffers P1-032. Preserve direct-launch/runtime-environment evidence before another attempt; do not attribute the earlier child exit to the newly identified crash without proof. |
 | T1-013 | Ancestor point-range follow-up silently uses owned-mode scroll setup. | The host accepts `ScrollSemantic -Viewport ancestor` but omits `-ViewportMode` for that guest mode; the guest then uses its default `owned` when selecting the scroll owner before/after `ScrollIntoView`. | Corrected before its first live run. A functional mock executes the actual host forwarding function for both modes, and all 66 follow-up offline cases pass in PS7/PS5.1. This does not qualify either live point-query case; native input and guest settings are unchanged by the fix/checks. |
 | T1-014 | Final-SVG drag targets broad layout bounds rather than independently known visible artwork. | Fresh r3's fixed 96×96 SVG exposes a 1,359×129 ImageBox peer that includes full available width and caption. Its target (2,528,418) is inside that peer but outside the artwork at the leading edge. | Corrected offline, live pending. The controlled standalone Markdown image inherits Body margin `(0,0,0,8)` and 19.6-DIP minimum line height through `BuildParagraphOrImage`; its artwork starts at the peer top. Final helper checks validate both contact and effective caret inside the independently derived 96×96 artwork at simulated scales, and guard effective promotion/theme/sample inputs. Review rejects an intermediate constructor-default 6-DIP offset before UI use. Both shells pass 61 target checks plus existing harness checks; these are not physical-DPI or live-input qualification. The completed r3 runner/evidence remain unchanged. |
+| T1-015 | Three timing-bounded tests time out on a cold, freshly provisioned machine. | The first M0 Release run after the October 17 machine wipe fails `RetiringSession_CancelsAByteWaitEvenWhenResolverPassesNoToken`, `UiaTextStyleReportsTheEffectiveNodeForegroundAndBackdrop(highContrast: False, …)` and `MermaidCatalogFontControlsMeasurementAndPaintAndLabelFitsNode(Consolas, Segoe UI)`, each at 9 s, together near the 22-second mark (3,192/3,195). All three pass in isolation and the immediate warm full rerun passes 3,195/3,195; Debug also passes. | Open test-reliability item, not a renderer defect. The likely trigger is first-use Mermaid native/font-catalog initialization contending with parallel tests; this is not yet proven. Diagnose before changing any timeout, and keep the failed `github-tests-release.trx` receipt. |
 | V1-001 | Wrapped inline image geometric coverage. | Existing multiline case checks snapshot agreement, but not independently correct placement on later lines. | Closed: independent line-height/baseline oracle passes for narrow widths, LTR/RTL, text scales 1/1.5/2, and varied image heights. No production defect found. |
 | V1-002 | Current-source end-to-end validation. | Last live sample/README binary predates the current checkpoint. | Open; freshly build and run the frozen cases against the revised source. |
 | V1-003 | Complete current parsing and feature smoke receipts. | Historical passing tests do not prove newer worktree changes. | R6 passes **3,195/3,195 in both Debug and Release, zero failed/skipped**, retaining all 3,192 R5 identities and adding three lifetime source-order contracts. Its Release/x64 JIT sample builds cleanly with matching tested renderer bytes. The ordinary focused Sandbox replay is **2 PASS / 0 FAIL / 60 UNVERIFIED**, owned viewport and actual 100% DPI only, not complete feature/lifecycle or whole-app AOT qualification. R5's separate unchanged-filter logic slice passes 1,541/1,541. Earlier R3 optional receipts and its **47 PASS / 7 FAIL / 8 UNVERIFIED** broad live run remain historical and failed overall. Earlier provider/AOT and 500-input headless evidence does not certify full current pages/interactions. Crash resolution, actual high DPI and remaining live lifecycle gates stay open. See the portable R6 receipt and final managed-investigation section below. |
@@ -3230,6 +3231,83 @@ documented [manual device-loss recovery contract](https://learn.microsoft.com/en
 Neither is proved to have occurred in P1-032. Reentrant dependency-property mutation ordering also
 remains unproven by the source-order tests. Actual 150%/200% DPI, active-touch
 lifecycle coverage and current-source end-to-end qualification remain open.
+
+### Fresh-machine continuation and structural P1-032 candidate (October 19–20)
+
+Work resumes on a freshly provisioned machine in a dedicated worktree of this
+branch. The October 17 raw artifacts, R3 payload and crash dump are not on this
+machine; only the portable evidence archive survives, and all seven archived
+files plus the frozen manifest hash verify unchanged. Installed prerequisites:
+.NET SDK 10.0.402 (runtime 10.0.13), Windows SDK 10.0.26100, Visual Studio
+2022 Build Tools with MSVC 14.44.35207 x86/x64/ARM64, and Rust 1.96.0.
+
+**Baseline before any edit (`4a9f292`).** GitHub.Tests passes 3,195/3,195 in
+Debug and, on a warm rerun, Release; the first cold Release run is recorded as
+T1-015. Conformance 9/9, Math 80/80, Mermaid 259/259, provider 725/725, TextMate
+61/61 and Html 10/10 pass; the Release/x64 sample builds with zero warnings and
+both offline harness self-tests pass. PixelTests records 540/739: all 199
+failures are `Rasterize_Fixture_MatchesBrowser` exact-alpha IoU differences
+against this machine's Edge, mostly text, path and icon antialiasing. That is
+browser pixel parity, not a correctness gate; it is carried into the P2-SVG-01
+classification rather than counted as renderer defects.
+
+**CI repairs.** PR #99's red checks had three causes, none a product defect:
+NU1004 lock drift to the SDK's ILCompiler/ILLink 10.0.13 (re-locked through
+`Restore-NativeAot.ps1 -UpdateLocks`, with the NativeAOT dependency ledger
+regenerated: five version-only changes, 58 dependencies verified); two
+source-contract tests matching LF-joined text in files Windows CI checks out
+with CRLF (2/2 fail before, 2/2 pass after; no assertion weakened); and five
+Clippy errors in `raster_decode.rs`. The Clippy fix is codegen-neutral:
+unpatched and patched sources yield identical normalized PE payloads for x86,
+x64 and ARM64, and repeat builds are identical. Neither source reproduces the
+previously shipped workers here because the statically linked MSVC CRT and
+Windows SDK libraries differ from the original build machine, so all three
+workers are rebuilt locally and `RESVG_WORKER_IDENTITY.json` is refreshed
+through `Build-ResvgWorker.ps1 -RefreshIdentity`. Requalification: identity for
+all three RIDs, provider 725/725, GitHub.Tests 3,217/3,217, and win-x64/win-x86
+NativeAOT smokes with zero IL/AOT warnings that pass their isolation, raster,
+resource and shutdown gates. ARM64 remains build-verified only. JitHub.WinUI.Tests
+passes 3,628/3,628 locally.
+
+**Structural P1-032 candidate (`3d4343d`).** The R6 analysis left the final
+release of each replaced `CanvasImageSource` to XAML image-peer cleanup or the
+projection finalizer, in no fixed order. Every snapshot commit released the
+adorner surface and removed its Image from the overlay, and every viewport size
+change created another surface. The candidate removes that churn:
+
+- `SelectionAdornerSurfaceLifetime` owns one grow-only surface per adorner
+  Image (256-DIP buckets, recreated only for DPI/device change or a >4x
+  oversized allocation). The Image is sized to the allocation at 1:1 and
+  clipped to the viewport, so a reused surface is never stretched.
+- A release or ensure requested during a Source assignment is deferred, never
+  nested; replaced surfaces stay rooted for two rendered frames; release never
+  throws, and a new adorner Image is always rebound explicitly.
+- Snapshot commits only invalidate the adorner and keep it in the overlay.
+  Unload release is exception-safe so one-shot cleanup and snapshot retirement
+  always run. The unguarded release before `HandleCanvasDeviceLost` is removed
+  and surface creation/attachment runs inside the device-loss guard.
+- Device loss purges the bitmap cache of the device that owns the snapshot
+  bitmaps and notifies each genuinely lost Win2D device through
+  `IsDeviceLost`/`RaiseDeviceLost`. Paint is refused when the snapshot's layout
+  device differs from the live shared device, which a new test confirms is a
+  stable projected identity.
+
+Five new source contracts fail **5/5 before production edits**; 17 behavioral
+lifetime tests execute actual reentrant, throwing and device-change Source
+assignments through fake hosts. Both complete GitHub.Tests suites pass
+**3,217/3,217**, retaining all 3,195 prior identities. This is component
+evidence only. P1-032 closes only after the original-option Sandbox batches
+(`-IncludeSuppressionInvestigation -IncludeSelectionDisableInvestigation`) run
+five consecutive times without process loss, together with a select/replace/
+resize/viewport-toggle stress sequence in both viewport modes. Those runs are
+waiting on a pending Windows restart that currently blocks Sandbox startup.
+
+**Phase 3 inputs.** All 500 frozen README bodies are re-acquired and verified
+against the manifest (`615c5672…`) with no upstream or integrity failure. The
+current-candidate headless audit parses 500/500 with zero case failures and 19
+Mermaid scenes; its only diagnostics are rank 340's two MATH100 fallbacks
+(U3-001). The runner's nonzero exit for recorded diagnostics is retained. This
+is still engine-only evidence, not a page or interaction audit.
 
 The [October 12 checkpoint](implementation-checkpoint-2026-10-12.md) preserves
 the old architecture/evidence. The [progressive performance plan](progressive-performance-plan.md)
