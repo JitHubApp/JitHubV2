@@ -129,9 +129,69 @@ internal static partial class DocumentInventoryBuilder
             }
         }
 
+        foreach (ContainerBlock container in parsed.Descendants<ContainerBlock>().Prepend(parsed))
+            AddHtmlDetailsRegions(inventory, container, source);
+
         inventory.UnrecognizedInlineTypes = unrecognized.ToList();
         return inventory;
     }
+
+    /// <summary>
+    /// Ranks 91 and 262: <c>&lt;div&gt;&lt;details&gt;</c> opens in one HTML block and
+    /// closes in a later one, with Markdown blocks between. The view keeps that
+    /// content collapsed, as GitHub does, so the region from the block that
+    /// opens the disclosure to the block that closes it is a disclosure.
+    /// </summary>
+    private static void AddHtmlDetailsRegions(DocumentInventory inventory, ContainerBlock container, string source)
+    {
+        int depth = 0;
+        int regionStart = -1;
+        Block? last = null;
+        foreach (Block block in container)
+        {
+            last = block;
+            if (block is not HtmlBlock html ||
+                html.Span.Start < 0 || html.Span.End >= source.Length || html.Span.End < html.Span.Start)
+            {
+                continue;
+            }
+
+            string text = source.Substring(html.Span.Start, html.Span.Length);
+            int opens = DetailsOpenTag().Count(text);
+            int closes = DetailsCloseTag().Count(text);
+            int before = depth;
+            depth = Math.Max(0, depth + opens - closes);
+            if (before == 0 && depth > 0)
+            {
+                regionStart = html.Span.Start;
+            }
+            else if (before > 0 && depth == 0 && regionStart >= 0)
+            {
+                inventory.Disclosures.Add(new InventorySpan
+                {
+                    SourceStart = regionStart,
+                    SourceLength = html.Span.End - regionStart + 1,
+                });
+                regionStart = -1;
+            }
+        }
+
+        // An unclosed <details> collapses the rest of its container.
+        if (depth > 0 && regionStart >= 0 && last is not null && last.Span.End >= regionStart)
+        {
+            inventory.Disclosures.Add(new InventorySpan
+            {
+                SourceStart = regionStart,
+                SourceLength = last.Span.End - regionStart + 1,
+            });
+        }
+    }
+
+    [GeneratedRegex(@"<details\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex DetailsOpenTag();
+
+    [GeneratedRegex(@"</details\s*>", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex DetailsCloseTag();
 
     private static bool IsFirstQuoteParagraph(ParagraphBlock paragraph)
     {

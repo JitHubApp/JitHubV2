@@ -18,7 +18,7 @@ using MarkdownRenderer.Images;
 /// Upstream failures are recorded as terminal states, never stored as passes.
 /// See docs/markdown-renderer/phase3-correctness-input-design.md.
 /// </summary>
-internal static class InputAcquisition
+internal static partial class InputAcquisition
 {
     internal const int SchemaVersion = 3;
     internal const string Kind = "correctness-input-v1";
@@ -63,8 +63,21 @@ internal static class InputAcquisition
             Program.FrozenRepository repository = manifest.Repositories[index];
             string existingFolder = Path.Combine(outputRoot, $"{repository.Rank:D3}-{Sanitize(repository.FullName)}");
             // Resume: a completed rank folder is summarized, never refetched or
-            // overwritten. Delete a folder to recapture that rank.
-            AcquisitionCaseSummary result = File.Exists(Path.Combine(existingFolder, "manifest.json"))
+            // overwritten, unless the current demand rules name a source it
+            // lacks; a stale folder moves aside intact and the rank is
+            // recaptured. Delete a folder to recapture that rank.
+            bool exists = File.Exists(Path.Combine(existingFolder, "manifest.json"));
+            if (exists && await IsExistingInputStaleAsync(engine, repository, objectPaths[index], existingFolder).ConfigureAwait(false))
+            {
+                string staleRoot = outputRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + "-stale";
+                Directory.CreateDirectory(staleRoot);
+                string staleFolder = Path.Combine(staleRoot,
+                    $"{Path.GetFileName(existingFolder)}-{DateTime.UtcNow:yyyyMMddTHHmmssZ}");
+                Directory.Move(existingFolder, staleFolder);
+                Console.WriteLine($"Rank {repository.Rank}: input lacks current image demand; moved to {staleFolder} and recapturing.");
+                exists = false;
+            }
+            AcquisitionCaseSummary result = exists
                 ? SummarizeExisting(repository, existingFolder)
                 : await AcquireOneAsync(
                     engine, client, gate, fetchCache, repository, objectPaths[index], outputRoot, manifestSha256).ConfigureAwait(false);
@@ -116,12 +129,9 @@ internal static class InputAcquisition
             commit,
             readmePath);
 
-        var occurrences = new List<(string Origin, int Start, int Length, string? Source)>();
-        foreach (MarkdownImage image in document.GetImages())
-            occurrences.Add(("markdown", image.SourceSpan.Start, image.SourceSpan.Length, image.Source));
         DocumentInventory inventory = DocumentInventoryBuilder.Create(document);
-        foreach (InventoryHtmlImage image in inventory.HtmlImages)
-            occurrences.Add((image.Origin, image.SourceStart, image.SourceLength, image.Src));
+        List<(string Origin, int Start, int Length, string? Source)> occurrences =
+            await CollectImageOccurrencesAsync(engine, document, inventory, source).ConfigureAwait(false);
 
         var demand = new List<ImageDemand>(occurrences.Count);
         foreach ((string origin, int start, int length, string? authored) in occurrences)
@@ -188,6 +198,108 @@ internal static class InputAcquisition
             OtherTerminalCount = existing.ImageDemand.Count(static item => item.State is not ("stored" or "upstream-unavailable")),
         };
     }
+
+    /// <summary>Every image source the view may request, in source order of each rule.</summary>
+    private static async Task<List<(string Origin, int Start, int Length, string? Source)>> CollectImageOccurrencesAsync(
+        MarkdownEngine engine,
+        MarkdownRenderer.Document.MarkdownDocument document,
+        DocumentInventory inventory,
+        string source)
+    {
+        var occurrences = new List<(string Origin, int Start, int Length, string? Source)>();
+        foreach (MarkdownImage image in document.GetImages())
+            occurrences.Add(("markdown", image.SourceSpan.Start, image.SourceSpan.Length, image.Source));
+        foreach (InventoryHtmlImage image in inventory.HtmlImages)
+            occurrences.Add((image.Origin, image.SourceStart, image.SourceLength, image.Src));
+        foreach ((int start, int length, string? src) in await GetMarkdownImagesInsideHtmlBlocksAsync(engine, document, source)
+            .ConfigureAwait(false))
+        {
+            occurrences.Add(("html-block-markdown", start, length, src));
+        }
+
+        return occurrences;
+    }
+
+    /// <summary>
+    /// A completed input is stale when the current demand rules name an image
+    /// source its demand does not contain (rules added after it was captured).
+    /// </summary>
+    private static async Task<bool> IsExistingInputStaleAsync(
+        MarkdownEngine engine,
+        Program.FrozenRepository repository,
+        string objectPath,
+        string folder)
+    {
+        CorrectnessInputManifest existing = JsonSerializer.Deserialize(
+            File.ReadAllBytes(Path.Combine(folder, "manifest.json")),
+            AcquisitionJsonContext.Default.CorrectnessInputManifest)
+            ?? throw new InvalidDataException($"Existing correctness input for rank {repository.Rank} is empty.");
+        var demanded = new HashSet<string>(
+            existing.ImageDemand.Select(static item => item.SourceSha256).OfType<string>(),
+            StringComparer.Ordinal);
+        byte[] bytes = await Program.ReadBoundedBytesAsync(objectPath, Program.MaximumReadmeBytes, repository.Readme.ByteSize)
+            .ConfigureAwait(false);
+        string source = Encoding.UTF8.GetString(bytes);
+        MarkdownRenderer.Document.MarkdownDocument document = await engine.ParseAsync(source).ConfigureAwait(false);
+        DocumentInventory inventory = DocumentInventoryBuilder.Create(document);
+        foreach ((_, _, _, string? authored) in await CollectImageOccurrencesAsync(engine, document, inventory, source)
+            .ConfigureAwait(false))
+        {
+            if (!string.IsNullOrWhiteSpace(authored) && !demanded.Contains(Program.HashUtf8(authored)))
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Ranks 34 and 176: GitHub, and the view, render Markdown inside inert
+    /// HTML containers (<c>&lt;div align="center"&gt;</c> badge and sponsor
+    /// groups), which CommonMark keeps as raw HTML-block text. Reparse each
+    /// HTML block's text with its tags removed, plus the document's link
+    /// reference definitions so <c>[![1.1]][1]</c> resolves, and demand the
+    /// images it contains. A demanded image the view does not request is
+    /// harmless; a missing one makes a correct image look like a failure.
+    /// </summary>
+    internal static async Task<List<(int Start, int Length, string? Source)>> GetMarkdownImagesInsideHtmlBlocksAsync(
+        MarkdownEngine engine,
+        MarkdownRenderer.Document.MarkdownDocument document,
+        string source)
+    {
+        var result = new List<(int, int, string?)>();
+        Markdig.Syntax.MarkdownDocument? parsed = document.ParsedDocument;
+        if (parsed is null)
+            return result;
+
+        var definitions = new StringBuilder();
+        foreach (Markdig.Syntax.LinkReferenceDefinition definition in
+                 Markdig.Syntax.MarkdownObjectExtensions.Descendants<Markdig.Syntax.LinkReferenceDefinition>(parsed))
+        {
+            if (definition.Span.Start >= 0 && definition.Span.End < source.Length && definition.Span.Length > 0)
+                definitions.Append('\n').Append(source, definition.Span.Start, definition.Span.Length).Append('\n');
+        }
+
+        foreach (Markdig.Syntax.HtmlBlock html in
+                 Markdig.Syntax.MarkdownObjectExtensions.Descendants<Markdig.Syntax.HtmlBlock>(parsed))
+        {
+            if (html.Span.Start < 0 || html.Span.End >= source.Length || html.Span.Length <= 0)
+                continue;
+            string text = source.Substring(html.Span.Start, html.Span.Length);
+            if (!text.Contains("](", StringComparison.Ordinal) && !text.Contains("][", StringComparison.Ordinal))
+                continue;
+            // Tags become line breaks so each container's text reparses as
+            // its own Markdown blocks.
+            string markdown = HtmlTag().Replace(text, "\n\n") + "\n\n" + definitions;
+            MarkdownRenderer.Document.MarkdownDocument fragment = await engine.ParseAsync(markdown).ConfigureAwait(false);
+            foreach (MarkdownImage image in fragment.GetImages())
+                result.Add((html.Span.Start, html.Span.Length, image.Source));
+        }
+
+        return result;
+    }
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"<[^>\n]*>", System.Text.RegularExpressions.RegexOptions.CultureInvariant)]
+    private static partial System.Text.RegularExpressions.Regex HtmlTag();
 
     /// <summary>
     /// Chooses the one URL the app would fetch: a GitHub repository image at

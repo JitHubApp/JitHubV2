@@ -155,6 +155,8 @@ internal static class AuditSelfTests
 
         await VerifyInventoryFixtureAsync(engine).ConfigureAwait(false);
         await VerifyPictureSourceDemandAsync(engine).ConfigureAwait(false);
+        await VerifyHtmlDetailsRegionAsync(engine).ConfigureAwait(false);
+        await VerifyMarkdownImagesInsideHtmlBlocksAsync(engine).ConfigureAwait(false);
         VerifyAcquisitionRules();
     }
 
@@ -182,6 +184,47 @@ internal static class AuditSelfTests
             state == "unsupported-scheme", "Non-http(s) sources are a terminal state.");
         Require(InputAcquisition.Sanitize("owner/repo.name") == "owner-repo-name",
             "Rank folders use the probe's exact sanitization.");
+    }
+
+    // Phase 3 ranks 34 and 176: Markdown inside an inert HTML container is
+    // rendered, so its images (reference-style included) are demanded.
+    private static async Task VerifyMarkdownImagesInsideHtmlBlocksAsync(MarkdownEngine engine)
+    {
+        const string source =
+            "<div align=\"center\">\n\t\n### Homepage\n  \n[![1.1]][1]\n[![1.2]][2]\n\n" +
+            "[1.1]: https://example.test/discord.png (Chat)\n[1.2]: https://example.test/reddit.png\n" +
+            "[1]: https://example.test/one\n[2]: https://example.test/two\n\n</div>\n\n" +
+            "<p align=\"center\">plain html, ![md](inside.png) <img src=\"tag.png\"></p>\n\n" +
+            "![outside](outside.png)\n";
+        MarkdownDocument document = await engine.ParseAsync(source).ConfigureAwait(false);
+        var images = await InputAcquisition.GetMarkdownImagesInsideHtmlBlocksAsync(engine, document, source).ConfigureAwait(false);
+        string[] sources = images.Select(static image => image.Source ?? string.Empty).ToArray();
+        Require(sources.Contains("https://example.test/discord.png") &&
+            sources.Contains("https://example.test/reddit.png") &&
+            sources.Contains("inside.png") &&
+            !sources.Contains("outside.png") && !sources.Contains("tag.png"),
+            "Markdown images inside HTML blocks are demanded with reference definitions resolved; " +
+            "top-level Markdown and <img> tags are left to their own inventory. Got: " + string.Join(", ", sources));
+    }
+
+    // Phase 3 ranks 91 and 262: <div><details> opens in one HTML block and
+    // closes in a later one; the Markdown between is collapsed in the view.
+    private static async Task VerifyHtmlDetailsRegionAsync(MarkdownEngine engine)
+    {
+        const string source =
+            "<div align=\"center\">\n<details><summary><b>Languages</b></summary>\n\n" +
+            "Hidden list item text\n\n</details>\n</div>\n\n" +
+            "Visible after.\n\n" +
+            "<div>\n<details><summary>Open</summary>\n\nUnclosed body\n";
+        MarkdownDocument document = await engine.ParseAsync(source).ConfigureAwait(false);
+        DocumentInventory inventory = DocumentInventoryBuilder.Create(document);
+        int hidden = source.IndexOf("Hidden list item text", StringComparison.Ordinal);
+        int visible = source.IndexOf("Visible after.", StringComparison.Ordinal);
+        int unclosed = source.IndexOf("Unclosed body", StringComparison.Ordinal);
+        bool Inside(int offset) => inventory.Disclosures.Any(d => d.SourceStart <= offset && offset < d.SourceStart + d.SourceLength);
+        Require(inventory.Disclosures.Count == 2 && Inside(hidden) && !Inside(visible) && Inside(unclosed),
+            "An HTML <details> region spanning blocks is a disclosure up to its </details>, or to the end of its container when unclosed; " +
+            $"got {inventory.Disclosures.Count} disclosure(s).");
     }
 
     // Phase 3 rank 16: a light-theme <picture><source srcset> is what the app

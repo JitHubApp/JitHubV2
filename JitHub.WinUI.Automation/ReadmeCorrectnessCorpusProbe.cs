@@ -1479,6 +1479,16 @@ internal static partial class ReadmeAuditProbe
             inlineObjectContent, Observed("Search the list at https://example.test/ https://example.test/.", 0, 0, 0)).State == CorrectnessCheckState.Passed &&
             ReadmeCorrectnessOracles.EvaluateContentCompleteness(
                 inlineObjectContent, Observed("Search the at https://example.test/ https://example.test/.", 0, 0, 0)).State == CorrectnessCheckState.Failed;
+        // A footnote reference renders as a superscript digit ("thanks¹");
+        // the expected text omits it, and "thanks" must still match exactly.
+        var footnoteContent = inlineObjectContent with
+        {
+            TextBlocks = [new("paragraph", new(0, 30), "special thanks go to:")],
+        };
+        bool footnoteMarkerBesideWordPasses = ReadmeCorrectnessOracles.EvaluateContentCompleteness(
+            footnoteContent, Observed("special thanks¹ go to:", 0, 0, 0)).State == CorrectnessCheckState.Passed &&
+            ReadmeCorrectnessOracles.EvaluateContentCompleteness(
+                footnoteContent, Observed("special thank¹ go to:", 0, 0, 0)).State == CorrectnessCheckState.Failed;
         bool atomicSelectionObjectsAreRecognized =
             ReadmeCorrectnessOracles.IsAtomicSelectionObject("MarkdownImage") &&
             ReadmeCorrectnessOracles.IsAtomicSelectionObject("MarkdownLinkedImage-00000001-00000000-00000001-00000061-FFFFFFFF-FFFFFFFF") &&
@@ -1495,19 +1505,22 @@ internal static partial class ReadmeAuditProbe
             OccurrencesBySource = new Dictionary<string, int>(StringComparer.Ordinal) { ["anim"] = 2, ["ok"] = 1, ["gone"] = 1 },
             SourcesWithoutBytes = new HashSet<string>(StringComparer.Ordinal) { "gone" },
         };
-        ReadmeCorrectnessOracles.ObservedImageFailures Failures(string[] unsupported, string[] other) =>
-            new(new HashSet<string>(unsupported, StringComparer.Ordinal), new HashSet<string>(other, StringComparer.Ordinal));
+        ReadmeCorrectnessOracles.ObservedImageFailures Failures(string[] unsupported, string[] other, int attributedEvents) =>
+            new(new HashSet<string>(unsupported, StringComparer.Ordinal), new HashSet<string>(other, StringComparer.Ordinal), attributedEvents);
         bool resourceOracleClassifiesDocumentedUnsupportedContent =
-            ReadmeCorrectnessOracles.EvaluateResourceCoverage(sourceDemand, 3, 0, Failures(["anim"], ["gone"])).State == CorrectnessCheckState.Unsupported &&
-            ReadmeCorrectnessOracles.EvaluateResourceCoverage(sourceDemand, 1, 0, Failures([], ["gone"])).State == CorrectnessCheckState.UpstreamUnavailable &&
-            ReadmeCorrectnessOracles.EvaluateResourceCoverage(sourceDemand, 1, 0, Failures([], ["ok"])).State == CorrectnessCheckState.Failed &&
-            ReadmeCorrectnessOracles.EvaluateResourceCoverage(sourceDemand, 4, 0, Failures(["anim"], ["gone"])).State == CorrectnessCheckState.Failed &&
+            ReadmeCorrectnessOracles.EvaluateResourceCoverage(sourceDemand, 3, 0, Failures(["anim"], ["gone"], 3)).State == CorrectnessCheckState.Unsupported &&
+            ReadmeCorrectnessOracles.EvaluateResourceCoverage(sourceDemand, 1, 0, Failures([], ["gone"], 1)).State == CorrectnessCheckState.UpstreamUnavailable &&
+            ReadmeCorrectnessOracles.EvaluateResourceCoverage(sourceDemand, 1, 0, Failures([], ["ok"], 1)).State == CorrectnessCheckState.Failed &&
+            // An unavailable event that names no source cannot be explained.
+            ReadmeCorrectnessOracles.EvaluateResourceCoverage(sourceDemand, 4, 0, Failures(["anim"], ["gone"], 3)).State == CorrectnessCheckState.Failed &&
+            // Rank 379: an explained image reported again after re-layout.
+            ReadmeCorrectnessOracles.EvaluateResourceCoverage(sourceDemand, 2, 0, Failures([], ["gone"], 2)).State == CorrectnessCheckState.UpstreamUnavailable &&
             ReadmeCorrectnessOracles.EvaluateResourceCoverage(
                 new ReadmeCorrectnessOracles.ImageDemandSummary(1, 0, 0, 0, states)
                 {
                     OccurrencesBySource = new Dictionary<string, int>(StringComparer.Ordinal) { ["ok"] = 1 },
                 },
-                1, 0, Failures([], [])).State == CorrectnessCheckState.Failed &&
+                1, 0, Failures([], [], 0)).State == CorrectnessCheckState.Failed &&
             EvaluateCorrectnessCase(allPassed
                 .Select(check => check.Name == "resourceCoverage"
                     ? CorrectnessCheck.Unsupported(check.Name, "self-test")
@@ -1533,6 +1546,7 @@ internal static partial class ReadmeAuditProbe
             tablesInsideDisclosuresAreNotRequired,
             resourceOracleClassifiesDocumentedUnsupportedContent,
             punctuationBesideOmittedInlinePasses,
+            footnoteMarkerBesideWordPasses,
             atomicSelectionObjectsAreRecognized,
             allPassedCase,
             notAttemptedIncomplete,
@@ -1593,6 +1607,7 @@ internal static partial class ReadmeAuditProbe
                 ["syntax-oracle-classifies-diagnostics-as-unsupported"] = diagnosticsClassifyUnsupported,
                 ["resource-oracle-classifies-demand-terminal-states"] = demandOracleClassifiesResources,
                 ["content-oracle-accepts-punctuation-beside-an-omitted-inline-object"] = punctuationBesideOmittedInlinePasses,
+                ["content-oracle-separates-superscript-footnote-markers"] = footnoteMarkerBesideWordPasses,
                 ["selection-phrase-skips-atomic-selection-objects"] = atomicSelectionObjectsAreRecognized,
                 ["resource-oracle-classifies-documented-unsupported-svg-by-source"] = resourceOracleClassifiesDocumentedUnsupportedContent,
                 ["content-oracle-excludes-tables-inside-collapsed-disclosures"] = tablesInsideDisclosuresAreNotRequired,
