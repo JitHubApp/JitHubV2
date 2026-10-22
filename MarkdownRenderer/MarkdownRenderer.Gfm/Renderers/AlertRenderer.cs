@@ -123,11 +123,20 @@ internal sealed class AlertRenderer : MarkdownNodeRenderer<QuoteBlock>
 
                         var contentBox = new InlineContainerBox(context, MarkdownElementKeys.Body);
                         contentBox.BlockIndex = context.NextBlockIndex();
-                        contentBox.Add(new TextRun(remaining)
+                        if (fp.Inline is not null && bodyLen > 0)
                         {
-                            ElementKey = MarkdownElementKeys.Body,
-                            SourceSpan = new MarkdownRenderer.SourceSpan(bodyStart, bodyLen)
-                        });
+                            // Keep the body's links, emphasis, code and
+                            // entities; only the [!TAG] marker is dropped.
+                            GfmChildBuilder.AddInlinesFromSource(contentBox, fp.Inline, bodyStart);
+                        }
+                        else
+                        {
+                            contentBox.Add(new TextRun(remaining)
+                            {
+                                ElementKey = MarkdownElementKeys.Body,
+                                SourceSpan = new MarkdownRenderer.SourceSpan(bodyStart, bodyLen)
+                            });
+                        }
                         stack.Add(contentBox);
                     }
                 }

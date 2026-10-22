@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -469,7 +469,7 @@ public sealed class MarkdownEngine : IDisposable
                     (Profile.FeatureFlags & MarkdownProfileFeatures.PipeTables) != 0)
             : Gfm029Compatibility.PreparedSource.Unchanged(source);
         var parsedDocument = Markdown.Parse(prepared.Text, _pipeline);
-        FalseTaskListMarkers.Normalize(parsedDocument, prepared.Text);
+        FalseTaskListMarkers.Normalize(parsedDocument, prepared.Text, _pipeline);
         if (isGfm029)
         {
             Gfm029Compatibility.NormalizeSyntaxTree(
@@ -514,7 +514,7 @@ public sealed class MarkdownEngine : IDisposable
                     (Profile.FeatureFlags & MarkdownProfileFeatures.PipeTables) != 0)
             : Gfm029Compatibility.PreparedSource.Unchanged(source);
         var parsedDocument = Markdown.Parse(prepared.Text, pipeline);
-        FalseTaskListMarkers.Normalize(parsedDocument, prepared.Text);
+        FalseTaskListMarkers.Normalize(parsedDocument, prepared.Text, pipeline);
         if (isGfm029)
         {
             Gfm029Compatibility.NormalizeSyntaxTree(

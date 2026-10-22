@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -36,7 +36,7 @@ internal sealed class MarkdigParser
                 return null;
             var fixedSource = ForgivingDataUriFixer.Fix(source ?? string.Empty);
             var document = Markdown.Parse(fixedSource, _pipeline);
-            FalseTaskListMarkers.Normalize(document, fixedSource);
+            FalseTaskListMarkers.Normalize(document, fixedSource, _pipeline);
             return (ParsedMarkdown?)new ParsedMarkdown(fixedSource, document);
         }, CancellationToken.None);
     }
@@ -45,7 +45,7 @@ internal sealed class MarkdigParser
     {
         var fixedSource = ForgivingDataUriFixer.Fix(source ?? string.Empty);
         var document = Markdown.Parse(fixedSource, _pipeline);
-        FalseTaskListMarkers.Normalize(document, fixedSource);
+        FalseTaskListMarkers.Normalize(document, fixedSource, _pipeline);
         return new ParsedMarkdown(fixedSource, document);
     }
 }

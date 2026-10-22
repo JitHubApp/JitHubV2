@@ -2708,7 +2708,9 @@ internal sealed class LayoutBuilder
     {
         foreach (Inline child in container)
         {
-            if (child is LinkInline)
+            // An autolink inside emphasis is a link too; flattening the
+            // emphasis would drop it (P3-009).
+            if (child is LinkInline or AutolinkInline)
                 return true;
 
             if (child is ContainerInline nested && ContainsMarkdownLink(nested))
@@ -3140,6 +3142,23 @@ internal sealed class LayoutBuilder
                         _context.CreateStyleAliasSnapshotFrom(inlineStyleAliasStart),
                         path);
                     FlattenContainer(emphasis, sb, ref inlineStyles, emphasisPath, inlineStyleAliasStart);
+                    break;
+                }
+                case HtmlEntityInline entity:
+                {
+                    // "Q &amp; A" in link text or alt text keeps its "&".
+                    int start = sb.Length;
+                    sb.Append(entity.Transcoded.ToString());
+                    inlineStyles?.AddRange(start, sb.Length - start, path);
+                    break;
+                }
+                case AutolinkInline autolink:
+                {
+                    // A flattened run (alt text, a nested label) shows the URL
+                    // text; a clickable autolink takes the AddInlines path.
+                    int start = sb.Length;
+                    sb.Append(autolink.Url);
+                    inlineStyles?.AddRange(start, sb.Length - start, path);
                     break;
                 }
                 case LinkInline { IsImage: true } image:

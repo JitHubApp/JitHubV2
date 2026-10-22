@@ -165,6 +165,15 @@ public sealed class FlattenContainerParityTests
                 case LineBreakInline lineBreak:
                     builder.Append(lineBreak.IsHard ? '\n' : ' ');
                     break;
+                // P3-008/P3-009: the original implementation dropped these,
+                // which lost "&" from "Q &amp; A" and autolink text. The
+                // oracle keeps the recursive shape with the corrected rule.
+                case HtmlEntityInline entity:
+                    builder.Append(entity.Transcoded.ToString());
+                    break;
+                case AutolinkInline autolink:
+                    builder.Append(autolink.Url);
+                    break;
                 case LinkInline { IsImage: true } image:
                     LegacyFlatten(image, builder);
                     break;

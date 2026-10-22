@@ -951,6 +951,88 @@ public sealed class SafeHtmlRenderingTests
         Assert.Equal(expected, semantics.TextOffsetFromDocumentPosition(roundTrip.Value));
     }
 
+    // P3-008 (Phase 3 ranks 183, 213, 263, 430, 486): an HTML entity inside
+    // link text, image alt text or emphasis was dropped ("Q &amp; A" showed
+    // as "Q  A", "std::hash&lt;T&gt;" as "std::hashT").
+    [Theory]
+    [InlineData("[DevOps Q &amp; A](https://example.test/a)", "DevOps Q & A")]
+    [InlineData("**[Account &amp; usage](https://example.test/a)** more", "Account & usage more")]
+    [InlineData("[std::hash&lt;basic_json&gt;](https://example.test/a), x", "std::hash<basic_json>, x")]
+    [InlineData("[LINUX&nbsp;DO](https://linux.do)", "LINUX DO")]
+    [InlineData("~~old &amp; new~~", "old & new")]
+    [InlineData("![Q &amp; A](https://example.test/a.png)", "Q & A")]
+    public void HtmlEntityInsideFlattenedInlineKeepsItsCharacter(string source, string expected)
+    {
+        using LayoutSnapshot snapshot = BuildGitHub(source);
+
+        Assert.Equal(expected, snapshot.SemanticDocument.Text);
+    }
+
+    // P3-009 (Phase 3 ranks 58, 326): an autolink inside emphasis or inside
+    // the first paragraph of a GitHub alert rendered as nothing ("repo ()").
+    [Theory]
+    [InlineData("**bold (<https://a.test/b>) x**", "bold (https://a.test/b) x")]
+    [InlineData("*em <https://a.test/b>* y", "em https://a.test/b y")]
+    public void AutolinkInsideEmphasisIsALink(string source, string expected)
+    {
+        using LayoutSnapshot snapshot = BuildGitHub(source);
+
+        Assert.Equal(expected, snapshot.SemanticDocument.Text);
+        LinkRun link = Assert.Single(FlattenRuns(snapshot).OfType<LinkRun>());
+        Assert.Equal("https://a.test/b", link.Url);
+    }
+
+    // P3-009: the first paragraph of an alert was flattened into one plain
+    // text run, so its links, autolinks, bold, code and entities were lost.
+    [Fact]
+    public void AlertFirstParagraphKeepsItsInlineStructure()
+    {
+        const string source =
+            "> [!WARNING]\n" +
+            "> **This repo (<https://github.com/a/b>) is official.** See [docs](https://a.test/d), `code` &amp; more.\n" +
+            ">\n" +
+            "> second [two](https://b.test)";
+
+        using LayoutSnapshot snapshot = BuildGitHub(source);
+        InlineRun[] runs = FlattenRuns(snapshot).ToArray();
+
+        Assert.Equal(
+            "⚠ Warning\nThis repo (https://github.com/a/b) is official. See docs, code & more.\nsecond two",
+            snapshot.SemanticDocument.Text);
+        Assert.Equal(
+            new[] { "https://github.com/a/b", "https://a.test/d", "https://b.test" },
+            runs.OfType<LinkRun>().Select(static link => link.Url).ToArray());
+        Assert.Contains(runs, static run => run is CodeInlineRun { Text: "code" });
+        Assert.DoesNotContain(runs, static run => run.Text.Contains("[!WARNING]", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AlertTagOnTheSameLineIsNotRendered()
+    {
+        using LayoutSnapshot snapshot = BuildGitHub("> [!NOTE] Read [this](https://a.test).");
+
+        Assert.Equal("ℹ Note\nRead this.", snapshot.SemanticDocument.Text);
+        Assert.Equal("https://a.test", Assert.Single(FlattenRuns(snapshot).OfType<LinkRun>()).Url);
+    }
+
+    // P3-005 follow-up (Phase 3 ranks 242, 343, 365, 368, 470, 496): Markdig
+    // also accepts "[X](" as a task marker in the middle of a list item, so
+    // "Follow us on [X](url)" lost its link and reported a false task item.
+    [Theory]
+    [InlineData("- Follow us on [X](https://x.com/a) now", "Follow us on X now")]
+    [InlineData("* [Bluesky](https://b.test) and [X](https://x.com/a) for news", "Bluesky and X for news")]
+    public async Task MidParagraphTaskMarkerFollowedByLinkIsALink(string source, string expected)
+    {
+        using MarkdownEngine engine = new MarkdownEngineBuilder().UseGitHubReadme().Build();
+        MarkdownRenderer.Document.MarkdownDocument document = await engine.ParseAsync(source);
+        Assert.Empty(Markdig.Syntax.MarkdownObjectExtensions.Descendants<Markdig.Extensions.TaskLists.TaskList>(document.ParsedDocument!));
+        var registry = Assert.IsType<MarkdownExtensionRegistry>(engine.PresentationConfiguration);
+        using LayoutSnapshot snapshot = Build(source, registry, parsedDocument: document.ParsedDocument);
+
+        Assert.EndsWith(expected, snapshot.SemanticDocument.Text, StringComparison.Ordinal);
+        Assert.Contains(FlattenRuns(snapshot).OfType<LinkRun>(), static link => link.Url == "https://x.com/a");
+    }
+
     // P3-007 (Phase 3 ranks 173, 243, 299, 361): a README that starts with a
     // block that has no accessible text (an alt="" logo, a <a name> anchor)
     // left a separator at offset 0 that no block owns, so UIA "select the

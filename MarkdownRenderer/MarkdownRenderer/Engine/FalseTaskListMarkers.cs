@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using Markdig;
 using Markdig.Extensions.TaskLists;
@@ -16,51 +16,94 @@ namespace MarkdownRenderer;
 /// </summary>
 internal static class FalseTaskListMarkers
 {
-    internal static void Normalize(MarkdownDocument document, string source)
+    internal static void Normalize(MarkdownDocument document, string source, MarkdownPipeline? pipeline = null)
     {
-        foreach (ParagraphBlock paragraph in document.Descendants<ParagraphBlock>())
+        foreach (ParagraphBlock paragraph in document.Descendants<ParagraphBlock>().ToArray())
         {
-            if (paragraph.Inline?.FirstChild is not TaskList ||
+            if (paragraph.Inline is null ||
                 paragraph.Span.Start < 0 ||
                 paragraph.Span.End < paragraph.Span.Start ||
-                paragraph.Span.End >= source.Length)
+                paragraph.Span.End >= source.Length ||
+                !HasFalseMarker(paragraph, source, out TaskList? realMarker))
             {
                 continue;
             }
 
-            int searchLength = Math.Min(16, paragraph.Span.End - paragraph.Span.Start + 1);
-            int markerStart = source.IndexOf('[', paragraph.Span.Start, searchLength);
-            if (markerStart < 0 ||
-                markerStart + 2 >= source.Length ||
-                source[markerStart + 2] != ']' ||
-                source[markerStart + 1] is not (' ' or 'x' or 'X'))
+            // Reparse only the affected text as a standalone paragraph, where
+            // no task marker can form (Markdig only creates one inside a list
+            // item), and retain absolute source spans for selection, commands
+            // and diagnostics. A real leading marker is kept as it is.
+            int reparseStart = realMarker is null ? paragraph.Span.Start : realMarker.Span.End + 1;
+            int reparseLength = paragraph.Span.End - reparseStart + 1;
+            if (reparseLength <= 0)
+                continue;
+
+            string paragraphSource = source.Substring(reparseStart, reparseLength);
+            MarkdownDocument reparsed = pipeline is null
+                ? Markdown.Parse(paragraphSource)
+                : Markdown.Parse(paragraphSource, pipeline);
+            // Accept only a single paragraph: a container prefix on a later
+            // line (a quote's "> ") would otherwise split the text and lose it.
+            if (reparsed.Count != 1 || reparsed[0] is not ParagraphBlock { Inline: { } repairedInline } repaired)
             {
                 continue;
             }
 
-            int afterMarker = markerStart + 3;
-            if (afterMarker >= source.Length || char.IsWhiteSpace(source[afterMarker]))
-            {
-                continue;
-            }
-
-            // Reparse only the affected paragraph without the task extension
-            // and retain absolute source spans for selection, commands, and
-            // diagnostics.
-            int paragraphLength = paragraph.Span.End - paragraph.Span.Start + 1;
-            string paragraphSource = source.Substring(paragraph.Span.Start, paragraphLength);
-            MarkdownDocument reparsed = Markdown.Parse(paragraphSource);
-            ParagraphBlock? repaired = reparsed.OfType<ParagraphBlock>().FirstOrDefault();
-            if (repaired?.Inline is null)
-            {
-                continue;
-            }
-
-            ContainerInline repairedInline = repaired.Inline;
-            OffsetInlineSpans(repairedInline, paragraph.Span.Start);
+            OffsetInlineSpans(repairedInline, reparseStart);
             repaired.Inline = null;
+            if (realMarker is not null)
+            {
+                realMarker.Remove();
+                if (repairedInline.FirstChild is { } firstRepaired)
+                    firstRepaired.InsertBefore(realMarker);
+                else
+                    repairedInline.AppendChild(realMarker);
+            }
+
             paragraph.Inline = repairedInline;
         }
+    }
+
+    /// <summary>
+    /// A GFM task marker is only the paragraph's first inline and must be
+    /// followed by whitespace. Markdig also creates one mid-paragraph
+    /// ("Follow us on [X](url)"), which is always false.
+    /// </summary>
+    private static bool HasFalseMarker(ParagraphBlock paragraph, string source, out TaskList? realMarker)
+    {
+        realMarker = null;
+        bool leadingIsFalse = paragraph.Inline!.FirstChild is TaskList && IsLeadingMarkerFalse(paragraph, source);
+        bool laterMarker = false;
+        bool first = true;
+        foreach (Inline inline in paragraph.Inline!)
+        {
+            if (inline is TaskList && !first)
+            {
+                laterMarker = true;
+                break;
+            }
+            first = false;
+        }
+
+        if (laterMarker && paragraph.Inline!.FirstChild is TaskList leading && !leadingIsFalse)
+            realMarker = leading;
+        return leadingIsFalse || laterMarker;
+    }
+
+    private static bool IsLeadingMarkerFalse(ParagraphBlock paragraph, string source)
+    {
+        int searchLength = Math.Min(16, paragraph.Span.End - paragraph.Span.Start + 1);
+        int markerStart = source.IndexOf('[', paragraph.Span.Start, searchLength);
+        if (markerStart < 0 ||
+            markerStart + 2 >= source.Length ||
+            source[markerStart + 2] != ']' ||
+            source[markerStart + 1] is not (' ' or 'x' or 'X'))
+        {
+            return false;
+        }
+
+        int afterMarker = markerStart + 3;
+        return afterMarker < source.Length && !char.IsWhiteSpace(source[afterMarker]);
     }
 
     private static void OffsetInlineSpans(ContainerInline container, int offset)

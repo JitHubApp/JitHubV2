@@ -268,6 +268,30 @@ internal static class GfmChildBuilder
             containingLinkTitle: null);
     }
 
+    /// <summary>
+    /// Adds a paragraph's inlines from <paramref name="bodySourceStart"/> on,
+    /// keeping links, emphasis, code and entities. A GitHub alert uses this
+    /// for the text after its <c>[!TAG]</c> marker (P3-009): inlines that end
+    /// before the body are the marker; a literal that straddles it is trimmed.
+    /// </summary>
+    internal static void AddInlinesFromSource(
+        InlineContainerBox box,
+        ContainerInline inlines,
+        int bodySourceStart)
+    {
+        box.Context.RegisterConstructionBlock(box);
+        AddInlines(
+            box,
+            inlines,
+            new SafeHtmlInlineState(box.Context.Registry.SafeHtmlPolicy),
+            skipFirstIf: null,
+            inheritedAliasStart: -1,
+            System.Array.Empty<string>(),
+            containingLinkUrl: null,
+            containingLinkTitle: null,
+            bodySourceStart);
+    }
+
     private static void AddInlines(
         InlineContainerBox box,
         ContainerInline inlines,
@@ -276,7 +300,8 @@ internal static class GfmChildBuilder
         int inheritedAliasStart,
         IReadOnlyList<string> inheritedStyleModifiers,
         string? containingLinkUrl,
-        string? containingLinkTitle)
+        string? containingLinkTitle,
+        int bodySourceStart = -1)
     {
         bool skippedFirst = skipFirstIf is null;
         foreach (var i in inlines)
@@ -286,6 +311,28 @@ internal static class GfmChildBuilder
             {
                 skippedFirst = true;
                 if (skipFirstIf!(i)) continue;
+            }
+            if (bodySourceStart >= 0)
+            {
+                if (i.Span.End < bodySourceStart)
+                    continue;
+
+                int bodyStart = bodySourceStart;
+                bodySourceStart = -1;
+                if (i is LiteralInline straddling && straddling.Span.Start < bodyStart)
+                {
+                    string text = straddling.Content.ToString();
+                    int skip = System.Math.Clamp(bodyStart - straddling.Span.Start, 0, text.Length);
+                    if (skip < text.Length)
+                    {
+                        box.Context.RegisterMarkdownAttributes(i, box.BlockIndex);
+                        box.Add(new TextRun(text.Substring(skip))
+                        {
+                            SourceSpan = new MarkdownRenderer.SourceSpan(bodyStart, straddling.Span.End - bodyStart + 1),
+                        });
+                    }
+                    continue;
+                }
             }
             int aliasStart = box.Context.StyleAliasCount;
             using var inlineAttrs = box.Context.PushMarkdownAttributes(i);
@@ -441,7 +488,7 @@ internal static class GfmChildBuilder
     {
         foreach (Inline child in container)
         {
-            if (child is LinkInline)
+            if (child is LinkInline or AutolinkInline)
                 return true;
             if (child is ContainerInline nested && ContainsLink(nested))
                 return true;
@@ -738,6 +785,8 @@ internal static class GfmChildBuilder
                 case CodeInline ci: sb.Append(ci.Content); break;
                 case AbbreviationInline ab: sb.Append(ab.Abbreviation?.Label ?? string.Empty); break;
                 case LineBreakInline lineBreak: sb.Append(lineBreak.IsHard ? '\n' : ' '); break;
+                case HtmlEntityInline entity: sb.Append(entity.Transcoded.ToString()); break;
+                case AutolinkInline autolink: sb.Append(autolink.Url); break;
                 case LinkInline { IsImage: true } image: FlattenInlines(image, sb); break;
                 case ContainerInline c2: FlattenInlines(c2, sb); break;
             }
