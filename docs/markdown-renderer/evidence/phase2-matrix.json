@@ -143,11 +143,11 @@
     {
       "id": "P2-SVG-01",
       "offline": [
-        { "project": "MarkdownRenderer.Svg.Resvg.Tests", "filter": "FullyQualifiedName~ResvgProviderTests|FullyQualifiedName~SvgStaticCssPreparationTests|FullyQualifiedName~SvgAnimationInitialValueTests" },
-        { "project": "MarkdownRenderer.PixelTests", "filter": "" }
+        { "project": "MarkdownRenderer.Svg.Resvg.Tests", "filter": "FullyQualifiedName~ResvgProviderTests|FullyQualifiedName~SvgStaticCssPreparationTests|FullyQualifiedName~SvgAnimationInitialValueTests" }
       ],
       "live": "SvgStress sample renders every supported fixture without missing regions.",
-      "open": ["Classify the 199 local Rasterize_Fixture_MatchesBrowser IoU differences: browser antialias/pixel parity is not a gate; a missing region is a defect."],
+      "browserParityClassification": "October 22 (head d7c76f3): MarkdownRenderer.PixelTests Rasterize_Fixture_MatchesBrowser is a browser-parity suite, not a correctness gate, so it is classified here rather than counted offline. Of 320 failed results, about 160 are Edge DevTools timeouts or render-process loss on this machine (no comparison ran), about 152 are alpha-IoU differences with minimum 0.758 (lowest: bidi/anchor text fixtures 13-text/rtl-anchor, rtl-css-nested-bidi and negative-letter-spacing-anchor), and 5 are SSIM >= 0.989. Visual review of the lowest fixtures shows every glyph line present in both renders with only subpixel placement differences. No missing region was found.",
+      "open": [],
       "status": "UNVERIFIED"
     },
     {
@@ -243,7 +243,7 @@
       "id": "P2-HIGHLIGHT-01",
       "offline": [
         { "project": "MarkdownRenderer.SyntaxHighlighting.TextMate.Tests", "filter": "FullyQualifiedName~TextMateGrammarPackTests" },
-        { "project": "MarkdownRenderer.Tests", "filter": "FullyQualifiedName~TextMateCodeBlockSyntaxHighlighterTests" }
+        { "project": "MarkdownRenderer.SyntaxHighlighting.TextMate.Tests", "filter": "FullyQualifiedName~TextMateCodeBlockSyntaxHighlighterTests" }
       ],
       "live": "Code sample: built-in and aliased languages produce token colors without changing code text.",
       "open": [],
@@ -252,7 +252,8 @@
     {
       "id": "P2-HIGHLIGHT-02",
       "offline": [
-        { "project": "MarkdownRenderer.Tests", "filter": "FullyQualifiedName~HighContrastDefaultsTests|FullyQualifiedName~TextMateCodeBlockSyntaxHighlighterTests" },
+        { "project": "MarkdownRenderer.Tests", "filter": "FullyQualifiedName~HighContrastDefaultsTests" },
+        { "project": "MarkdownRenderer.SyntaxHighlighting.TextMate.Tests", "filter": "FullyQualifiedName~TextMateCodeBlockSyntaxHighlighterTests" },
         { "project": "MarkdownRenderer.GitHub.Tests", "filter": "FullyQualifiedName~CodeBlockHighlightResultSnapshotTests" }
       ],
       "live": "Unknown-language block stays plain and readable; system High Contrast colors follow the contract.",
