@@ -68,6 +68,7 @@
     <Compile Remove="Diagnostics\MarkdownRasterPreparationEventSource.cs" />
     <Compile Remove="Layout\Boxes\SvgResourceBudget.cs" />
     <Compile Remove="Layout\Boxes\SvgStaticSnapshot.cs" />
+    <Compile Remove="Layout\Boxes\SvgInertDoctype.cs" />
     <Compile Remove="Layout\Boxes\SvgThemeInjector.cs" />
     <Compile Remove="Layout\Boxes\RasterImageTilePlanner.cs" />
   </ItemGroup>

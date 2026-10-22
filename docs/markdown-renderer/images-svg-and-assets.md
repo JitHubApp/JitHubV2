@@ -29,7 +29,14 @@ there is no in-process fallback.
 
 The admitted subset is static and self-contained. Scripts, event handlers,
 animation, `foreignObject`, DTD/entities, external CSS/fonts, and nested
-network/file references fail as typed, accessible placeholders. Bounded data-URI
+network/file references fail as typed, accessible placeholders. The one DTD
+exception is the inert W3C SVG public DOCTYPE that exporters write: host source
+preparation (`PrepareSource`) admits a UTF-8 root document whose declaration
+names `svg`, uses a published W3C SVG 1.0, 1.1, 1.1 Basic or 1.1 Tiny public and
+system identifier pair, and has no internal subset. That declaration is replaced
+by whitespace before admission and the DTD is never resolved; every other DTD,
+any internal subset or entity, other identifiers, other encodings and DOCTYPEs
+inside nested SVG are still rejected. Bounded data-URI
 PNG, JPEG, GIF, WebP, and nested SVG images are allowed and deduplicated by
 content. Remote top-level markdown images still obey the host's ordinary image
 policy before any SVG bytes reach the provider.

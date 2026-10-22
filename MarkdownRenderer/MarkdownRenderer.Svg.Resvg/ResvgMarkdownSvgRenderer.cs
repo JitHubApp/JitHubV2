@@ -28,13 +28,19 @@ public sealed partial class ResvgMarkdownSvgRenderer : IMarkdownSvgRenderer, IMa
         SvgSourceMetadata preparedMetadata = default;
         try
         {
+            // P3-002: an inert W3C SVG DOCTYPE (published public/system pair,
+            // no internal subset, UTF-8) is replaced by equal-length
+            // whitespace in a copy. Every later stage, including the direct
+            // preflight and the worker, still rejects every DTD it sees.
+            byte[] authored = SvgInertDoctype.Neutralize(source, cancellationToken);
+
             // Static snapshotting is a normalization step, not an admission
             // policy. Validate the authored source first so unsupported active
             // content cannot disappear while its remaining artwork is admitted.
             // This also applies the existing bounded recursive policy to nested
             // SVG data before any rewrite can change that closure.
             SvgResourceBudgetResult originalBudget = SvgResourceBudget.ValidateWithMetadata(
-                source,
+                authored,
                 cancellationToken,
                 out SvgSourceMetadata originalMetadata);
             cancellationToken.ThrowIfCancellationRequested();
@@ -44,12 +50,12 @@ public sealed partial class ResvgMarkdownSvgRenderer : IMarkdownSvgRenderer, IMa
             // The lowered source policy applies to sanitized output, not raw
             // bytes. The hard source ceiling and active-content policy have
             // already been enforced against the original source above.
-            prepared = SvgStaticSnapshot.Create(source, cancellationToken, _options.MaxSourceBytes);
+            prepared = SvgStaticSnapshot.Create(authored, cancellationToken, _options.MaxSourceBytes);
             if (prepared.Length > _options.MaxSourceBytes)
             {
                 budget = SvgResourceBudgetResult.Reject("input-bytes");
             }
-            else if (ReferenceEquals(prepared, source))
+            else if (ReferenceEquals(prepared, authored))
             {
                 // The original validation is authoritative when normalization
                 // leaves the source unchanged; reuse its matching metadata and
