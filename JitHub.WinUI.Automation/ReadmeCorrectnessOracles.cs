@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 /// <summary>
 /// Phase 3 oracles for schema-3 correctness inputs. Each compares what the
@@ -199,8 +200,33 @@ internal static class ReadmeCorrectnessOracles
             $"All {demand.Stored + demand.DataUri} demanded image(s) had verified bytes and none were unavailable or loading ({states}).");
     }
 
+    /// <summary>
+    /// Word runs and single punctuation marks. The inventory omits atomic
+    /// inline objects (an image contributes no paragraph text) while the app
+    /// exposes their alt text, so whitespace tokens could glue a stray mark
+    /// onto a neighbouring word (`search/ .` versus `search/.`). Words must
+    /// still appear exactly and in order.
+    /// </summary>
     internal static string[] Tokenize(string text) =>
-        text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        TokenPattern.Matches(text).Select(match => match.Value).ToArray();
+
+    private static readonly Regex TokenPattern = new(
+        @"[\p{L}\p{M}\p{N}]+|[^\s\p{L}\p{M}\p{N}]",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
+    /// <summary>
+    /// UIA elements the renderer selects as one unit: a text range inside an
+    /// image's alt text, a formula, a diagram or a hosted element selects the
+    /// whole object, so a bounded selection round trip must use ordinary text.
+    /// </summary>
+    internal static bool IsAtomicSelectionObject(string? automationId) =>
+        automationId is not null &&
+        (automationId.StartsWith("MarkdownImage", StringComparison.Ordinal) ||
+         automationId.StartsWith("MarkdownLinkedImage", StringComparison.Ordinal) ||
+         automationId.StartsWith("MarkdownMath", StringComparison.Ordinal) ||
+         automationId.StartsWith("MarkdownDiagram", StringComparison.Ordinal) ||
+         automationId.StartsWith("MarkdownHosted", StringComparison.Ordinal) ||
+         string.Equals(automationId, "MarkdownEmbed", StringComparison.Ordinal));
 
     private static Span ReadSpan(JsonElement element) =>
         new(element.GetProperty("sourceStart").GetInt32(), element.GetProperty("sourceLength").GetInt32());

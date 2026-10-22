@@ -145,6 +145,8 @@ function Get-InputPlan {
 
 function New-Shards {
     param([Parameter(Mandatory = $true)]$Plan)
+    # A one-rank plan arrives unrolled as a single object; index an array.
+    $Plan = @($Plan)
     $shards = [Collections.Generic.List[object]]::new()
     for ($index = 0; $index -lt $Plan.Count; $index += $ShardSize) {
         $items = @($Plan[$index..([Math]::Min($index + $ShardSize, $Plan.Count) - 1)])

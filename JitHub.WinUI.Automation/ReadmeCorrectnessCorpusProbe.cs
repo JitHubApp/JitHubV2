@@ -467,14 +467,40 @@ internal static partial class ReadmeAuditProbe
             }
             fullDocumentSelectionSha256 = HashSha256(Encoding.UTF8.GetBytes(selectedDocument));
 
-            string phrase = ChooseBoundedSelectionPhrase(context.ExpectedText);
-            ITextRange range = textPattern.DocumentRange.FindText(phrase, backward: false, ignoreCase: false)
-                ?? throw new InvalidOperationException("A deterministic visible-text selection phrase could not be located.");
+            // An atomic object (an image's alt text, a formula, a diagram)
+            // selects as a whole, so the bounded round trip uses the first
+            // candidate phrase whose first occurrence is ordinary text.
+            string? phrase = null;
+            ITextRange? range = null;
+            string? enclosingAutomationId = null;
+            int atomicCandidatesSkipped = 0;
+            foreach (string candidate in EnumerateBoundedSelectionPhrases(context.ExpectedText).Take(64))
+            {
+                ITextRange? found = textPattern.DocumentRange.FindText(candidate, backward: false, ignoreCase: false);
+                if (found is null)
+                    continue;
+                string? enclosing = found.GetEnclosingElement()?.Properties.AutomationId.ValueOrDefault;
+                if (ReadmeCorrectnessOracles.IsAtomicSelectionObject(enclosing))
+                {
+                    atomicCandidatesSkipped++;
+                    continue;
+                }
+                phrase = candidate;
+                range = found;
+                enclosingAutomationId = enclosing;
+                break;
+            }
+            if (phrase is null || range is null)
+                throw new InvalidOperationException(
+                    $"No deterministic ordinary-text selection phrase could be located ({atomicCandidatesSkipped} atomic-object candidates skipped).");
             range.Select();
             string selected = ReadSelectionText(host);
             if (!string.Equals(selected, phrase, StringComparison.Ordinal))
             {
-                throw new InvalidOperationException("TextPattern.GetSelection did not return the explicitly selected UIA range.");
+                throw new InvalidOperationException(
+                    "TextPattern.GetSelection did not return the explicitly selected UIA range " +
+                    $"(phrase {phrase.Length} chars '{Truncate(phrase, 64)}', selected {selected.Length} chars '{Truncate(selected, 96)}', " +
+                    $"enclosing '{enclosingAutomationId ?? "<none>"}', {atomicCandidatesSkipped} atomic candidates skipped).");
             }
 
             selectedPhrase = phrase;
@@ -602,15 +628,18 @@ internal static partial class ReadmeAuditProbe
         };
     }
 
-    private static string ChooseBoundedSelectionPhrase(string text)
+    private static string Truncate(string value, int length) =>
+        value.Length <= length ? value : value[..length] + "…";
+
+    private static IEnumerable<string> EnumerateBoundedSelectionPhrases(string text)
     {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (Match match in Regex.Matches(text, @"[\p{L}\p{N}][\p{L}\p{N}_-]{2,63}", RegexOptions.CultureInvariant))
         {
             string candidate = match.Value;
-            if (!string.IsNullOrWhiteSpace(candidate))
-                return candidate;
+            if (!string.IsNullOrWhiteSpace(candidate) && seen.Add(candidate))
+                yield return candidate;
         }
-        throw new InvalidDataException("The visible README text did not contain a bounded selectable token.");
     }
 
     private static string WaitForStableCorrectnessText(AutomationElement host, TimeSpan timeout)
@@ -1360,8 +1389,32 @@ internal static partial class ReadmeAuditProbe
                 new ReadmeCorrectnessOracles.ImageDemandSummary(3, 0, 0, 1, new Dictionary<string, int>(StringComparer.Ordinal) { ["resource-limit"] = 1 }),
                 0,
                 0).State == CorrectnessCheckState.NotEvaluated;
+        var inlineObjectContent = expectedContent with
+        {
+            TextBlocks = [new("paragraph", new(0, 40), "Search the list at https://example.test/ .")],
+            TableCount = 0,
+            TaskItems = [],
+            Disclosures = [],
+        };
+        bool punctuationBesideOmittedInlinePasses = ReadmeCorrectnessOracles.EvaluateContentCompleteness(
+            inlineObjectContent, Observed("Search the list at https://example.test/ https://example.test/.", 0, 0, 0)).State == CorrectnessCheckState.Passed &&
+            ReadmeCorrectnessOracles.EvaluateContentCompleteness(
+                inlineObjectContent, Observed("Search the at https://example.test/ https://example.test/.", 0, 0, 0)).State == CorrectnessCheckState.Failed;
+        bool atomicSelectionObjectsAreRecognized =
+            ReadmeCorrectnessOracles.IsAtomicSelectionObject("MarkdownImage") &&
+            ReadmeCorrectnessOracles.IsAtomicSelectionObject("MarkdownLinkedImage-00000001-00000000-00000001-00000061-FFFFFFFF-FFFFFFFF") &&
+            ReadmeCorrectnessOracles.IsAtomicSelectionObject("MarkdownMath") &&
+            ReadmeCorrectnessOracles.IsAtomicSelectionObject("MarkdownDiagramNode") &&
+            ReadmeCorrectnessOracles.IsAtomicSelectionObject("MarkdownHostedElement") &&
+            ReadmeCorrectnessOracles.IsAtomicSelectionObject("MarkdownEmbed") &&
+            !ReadmeCorrectnessOracles.IsAtomicSelectionObject("MarkdownHeading") &&
+            !ReadmeCorrectnessOracles.IsAtomicSelectionObject("MarkdownGroup") &&
+            !ReadmeCorrectnessOracles.IsAtomicSelectionObject("MarkdownRenderer") &&
+            !ReadmeCorrectnessOracles.IsAtomicSelectionObject(null);
         bool[] tests =
         [
+            punctuationBesideOmittedInlinePasses,
+            atomicSelectionObjectsAreRecognized,
             allPassedCase,
             notAttemptedIncomplete,
             unsupportedIncomplete,
@@ -1420,6 +1473,8 @@ internal static partial class ReadmeAuditProbe
                 ["content-oracle-unrecognized-inline-is-not-evaluated"] = unrecognizedInlineIsNotEvaluated,
                 ["syntax-oracle-classifies-diagnostics-as-unsupported"] = diagnosticsClassifyUnsupported,
                 ["resource-oracle-classifies-demand-terminal-states"] = demandOracleClassifiesResources,
+                ["content-oracle-accepts-punctuation-beside-an-omitted-inline-object"] = punctuationBesideOmittedInlinePasses,
+                ["selection-phrase-skips-atomic-selection-objects"] = atomicSelectionObjectsAreRecognized,
             },
         };
     }
