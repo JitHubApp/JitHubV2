@@ -20,6 +20,9 @@ internal static partial class ReadmeAuditProbe
         "615c56723fb16d17744af2549615a4de32b1fc299a1759727cc86b70edacac72";
     private const string CorrectnessSandboxMarker = "JITHUB_README_CORRECTNESS_SANDBOX";
     private const string CorrectnessClipboardIsolationMarker = "JITHUB_README_CORRECTNESS_CLIPBOARD_ISOLATED";
+    // The operator accepted a clipboard shared with the host: the copy check
+    // runs, and its evidence says the clipboard was shared, never isolated.
+    private const string CorrectnessSharedClipboardMarker = "JITHUB_README_CORRECTNESS_CLIPBOARD_SHARED_ACCEPTED";
     private const int SourceAcquisitionMaximumBytes = 4 * 1024 * 1024;
     private const long MaximumCorrectnessReadmeBytes = 16L * 1024 * 1024;
     private const long MaximumScannedCorrectnessManifestBytes = 64L * 1024 * 1024;
@@ -518,11 +521,15 @@ internal static partial class ReadmeAuditProbe
             Environment.GetEnvironmentVariable(CorrectnessClipboardIsolationMarker),
             "1",
             StringComparison.Ordinal);
-        if (!clipboardIsolated)
+        bool sharedClipboardAccepted = !clipboardIsolated && string.Equals(
+            Environment.GetEnvironmentVariable(CorrectnessSharedClipboardMarker),
+            "1",
+            StringComparison.Ordinal);
+        if (!clipboardIsolated && !sharedClipboardAccepted)
         {
             checks.Add(CorrectnessCheck.NotEvaluated(
                 "plainTextCopy",
-                "Clipboard test was not attempted because the selected-target runner did not attest disabled host clipboard redirection."));
+                "Clipboard test was not attempted because the selected-target runner neither attested disabled host clipboard redirection nor accepted a shared clipboard."));
         }
         else if (selectedPhrase is null)
         {
@@ -546,7 +553,10 @@ internal static partial class ReadmeAuditProbe
                 copiedSha256 = HashSha256(Encoding.UTF8.GetBytes(copied));
                 checks.Add(CorrectnessCheck.Passed(
                     "plainTextCopy",
-                    $"Ctrl+C copied the selected {copied.Length}-character text range (SHA-256 {copiedSha256}) in an attested isolated clipboard."));
+                    $"Ctrl+C copied the selected {copied.Length}-character text range (SHA-256 {copiedSha256}) " +
+                    (clipboardIsolated
+                        ? "in an attested isolated clipboard."
+                        : "in the operator-accepted clipboard shared with the host (not isolated).")));
             }
             catch (Exception exception)
             {

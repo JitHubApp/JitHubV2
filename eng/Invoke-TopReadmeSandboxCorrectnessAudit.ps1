@@ -35,6 +35,11 @@ param(
     # redirection disabled. Without it, plainTextCopy stays NotEvaluated.
     [switch]$ClipboardRedirectionDisabled,
 
+    # The operator accepts that this Sandbox shares the host clipboard and that
+    # the copy check overwrites it. Evidence then records a shared clipboard,
+    # never isolation. Mutually exclusive with ClipboardRedirectionDisabled.
+    [switch]$SharedClipboardAccepted,
+
     [switch]$Run
 )
 
@@ -43,6 +48,9 @@ Set-StrictMode -Version Latest
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $FrozenManifestSha256 = '615c56723fb16d17744af2549615a4de32b1fc299a1759727cc86b70edacac72'
 if ($StartRank + $Count - 1 -gt 500) { throw 'The correctness audit rank range must stay within 1..500.' }
+if ($ClipboardRedirectionDisabled -and $SharedClipboardAccepted) {
+    throw 'Choose either an attested isolated clipboard or an accepted shared clipboard, not both.'
+}
 if ([string]::IsNullOrWhiteSpace($ManifestPath)) {
     $ManifestPath = Join-Path $repoRoot 'docs\markdown-renderer\evidence\2026-10-17\top-repositories.json'
 }
@@ -279,6 +287,7 @@ function New-GuestCorrectnessScript {
         "--count=$Amount")
     $argumentLiteral = ($arguments | ForEach-Object { ConvertTo-GuestPowerShellSingleQuotedLiteral -Value $_ }) -join ', '
     $clipboard = if ($ClipboardRedirectionDisabled) { '1' } else { '' }
+    $sharedClipboard = if ($SharedClipboardAccepted) { '1' } else { '' }
     return @"
 `$ErrorActionPreference = 'Stop'
 `$runner = $(ConvertTo-GuestPowerShellSingleQuotedLiteral -Value $runner)
@@ -287,6 +296,7 @@ foreach (`$path in @(`$runner, $(ConvertTo-GuestPowerShellSingleQuotedLiteral -V
 }
 `$env:JITHUB_README_CORRECTNESS_SANDBOX = '1'
 `$env:JITHUB_README_CORRECTNESS_CLIPBOARD_ISOLATED = '$clipboard'
+`$env:JITHUB_README_CORRECTNESS_CLIPBOARD_SHARED_ACCEPTED = '$sharedClipboard'
 [IO.Directory]::CreateDirectory($(ConvertTo-GuestPowerShellSingleQuotedLiteral -Value $output)) | Out-Null
 & `$runner @($argumentLiteral) *> $(ConvertTo-GuestPowerShellSingleQuotedLiteral -Value (Join-Path $output 'runner.log'))
 exit `$LASTEXITCODE
@@ -305,6 +315,7 @@ $planSummary = [ordered]@{
     appDirectory = $AppDirectory
     automationRunnerDirectory = $AutomationRunnerDirectory
     clipboardRedirectionDisabledAttested = [bool]$ClipboardRedirectionDisabled
+    sharedClipboardAccepted = [bool]$SharedClipboardAccepted
     startRank = $StartRank
     count = $Count
     shardCount = $shards.Count
@@ -393,6 +404,7 @@ $report = [ordered]@{
     stagingManifest = $staging.ManifestPath
     frozenManifestSha256 = $frozen.Sha256
     clipboardRedirectionDisabledAttested = [bool]$ClipboardRedirectionDisabled
+    sharedClipboardAccepted = [bool]$SharedClipboardAccepted
     requestedStartRank = $StartRank
     requestedCount = $Count
     totals = $totals
