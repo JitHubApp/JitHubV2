@@ -225,6 +225,42 @@ public sealed class GifRasterCanvasTests
         }
     }
 
+    // P3-013 (Phase 3 rank 312): frame 116 of a 151-frame GIF is 640x386 at
+    // (2, 0) on a 640x384 canvas. Browsers clip a frame to the canvas; the
+    // budget rejected the whole file as malformed, although only the first
+    // frame is drawn.
+    [Fact]
+    public async Task LaterFrameBeyondTheCanvasIsClippedAndTheFirstFrameStillRenders()
+    {
+        byte[] single = CreateGif(4, 4, left: 1, top: 1, frameWidth: 2, frameHeight: 3);
+        byte[] frame = single[13..^1];
+        byte[] overhanging = (byte[])frame.Clone();
+        // Descriptor fields sit 9 bytes into the segment (after the GCE).
+        BinaryPrimitives.WriteUInt16LittleEndian(overhanging.AsSpan(9, 2), 3);
+        BinaryPrimitives.WriteUInt16LittleEndian(overhanging.AsSpan(11, 2), 2);
+        byte[] bytes = [.. single[..13], .. frame, .. overhanging, 0x3B];
+
+        RasterImageBudgetResult budget = RasterImageResourceBudget.Validate(bytes);
+        Assert.Equal("GIF", budget.Format);
+        Assert.Equal(2, budget.FrameCount);
+        Assert.True(budget.Accepted || budget.CanRenderStaticPreview, budget.Reason);
+
+        var image = new ImageBox(
+            DisplaySizedRasterDecodeTests.CreateContext(
+                new GifResolver(bytes, $"gif-overhang-{Guid.NewGuid():N}"), session: null, scale: 1),
+            "https://images.example/overhang.gif",
+            string.Empty);
+        try
+        {
+            await LoadAsync(image, availableWidth: 4);
+            Assert.NotNull(image.Bitmap);
+        }
+        finally
+        {
+            image.Dispose();
+        }
+    }
+
     [Theory]
     [InlineData(true)]
     [InlineData(false)]

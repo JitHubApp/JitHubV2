@@ -91,17 +91,31 @@ public sealed class GifRasterResourceBudgetTests
     }
 
     [Fact]
-    public void Validate_RejectsMalformedLaterFrameEvenWhenFirstFrameWasValid()
+    public void Validate_ClipsLaterFrameBeyondTheCanvasButRejectsAnEmptyLaterFrame()
     {
-        byte[] malformedSecondFrame = CreateGif(
+        // P3-013: browsers clip a later frame to the logical canvas, and only
+        // the first frame is drawn, so an overhanging later frame no longer
+        // rejects the image; its accounting counts only the visible area.
+        byte[] overhangingSecondFrame = CreateGif(
             4, 4, left: 1, top: 1, frameWidth: 2, frameHeight: 3,
             frameCount: 2,
             secondFrameLeft: 3);
 
-        RasterImageBudgetResult result = RasterImageResourceBudget.Validate(malformedSecondFrame);
+        RasterImageBudgetResult clipped = RasterImageResourceBudget.Validate(overhangingSecondFrame);
 
-        Assert.False(result.Accepted);
-        Assert.False(result.CanRenderStaticPreview);
+        Assert.Equal("GIF", clipped.Format);
+        Assert.Equal(2, clipped.FrameCount);
+        Assert.True(clipped.Accepted || clipped.CanRenderStaticPreview, clipped.Reason);
+
+        // A zero-sized later descriptor is still malformed.
+        byte[] emptySecondFrame = (byte[])overhangingSecondFrame.Clone();
+        const int secondDescriptor = 48 + 9;
+        BinaryPrimitives.WriteUInt16LittleEndian(emptySecondFrame.AsSpan(secondDescriptor + 4, 2), 0);
+
+        RasterImageBudgetResult rejected = RasterImageResourceBudget.Validate(emptySecondFrame);
+
+        Assert.False(rejected.Accepted);
+        Assert.False(rejected.CanRenderStaticPreview);
     }
 
     [Fact]

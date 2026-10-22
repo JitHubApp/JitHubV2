@@ -71,4 +71,34 @@ public class MarkdownClipboardWriterTests
 
         Assert.Equal("**bold**", text);
     }
+
+    // P3-015 (Phase 3 ranks 58, 111, 271, 279, 287, 315, 356, 492): a
+    // selection inside a GitHub alert title ("Note", "Warning", "Important")
+    // has rendered text but no source text, and Ctrl+C copied nothing.
+    [Fact]
+    public void ResolvePlainTextPayload_RenderedTextWithoutSourceIsCopied()
+    {
+        Assert.Equal("Note", MarkdownClipboardWriter.ResolvePlainTextPayload(
+            string.Empty, "Note", MarkdownCopyOptions.Default));
+        Assert.Equal("Note", MarkdownClipboardWriter.ResolvePlainTextPayload(
+            null, "Note", MarkdownCopyOptions.Default));
+    }
+
+    [Fact]
+    public void ResolvePlainTextPayload_NothingToCopyReturnsNull()
+    {
+        Assert.Null(MarkdownClipboardWriter.ResolvePlainTextPayload(string.Empty, string.Empty, MarkdownCopyOptions.Default));
+        Assert.Null(MarkdownClipboardWriter.ResolvePlainTextPayload(null, null, MarkdownCopyOptions.Default));
+        // Source mode copies source only; a source-less title has none.
+        var source = new MarkdownCopyOptions { PlainTextMode = MarkdownPlainTextCopyMode.SourceMarkdown };
+        Assert.Null(MarkdownClipboardWriter.ResolvePlainTextPayload(string.Empty, "Note", source));
+        Assert.Equal("**bold**", MarkdownClipboardWriter.ResolvePlainTextPayload("**bold**", "bold", source));
+    }
+
+    [Fact]
+    public void ResolvePlainTextPayload_RenderedModeKeepsExistingChoices()
+    {
+        Assert.Equal("bold", MarkdownClipboardWriter.ResolvePlainTextPayload("**bold**", "bold", MarkdownCopyOptions.Default));
+        Assert.Equal("**bold**", MarkdownClipboardWriter.ResolvePlainTextPayload("**bold**", null, MarkdownCopyOptions.Default));
+    }
 }

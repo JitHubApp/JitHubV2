@@ -441,6 +441,7 @@ internal static partial class RasterNativeWicDecoder
         private int _sourceWidth;
         private int _sourceHeight;
         private int _frameColorContextCount;
+        private bool _colorTransformActive;
         private int _sourceColorContextCount;
         private int _ownedSourceColorContextCount;
         private int _outstandingNativePointerReferences;
@@ -610,17 +611,24 @@ internal static partial class RasterNativeWicDecoder
                 if (type is not (RasterNativeWicInterop.ColorContextTypeProfile or RasterNativeWicInterop.ColorContextTypeExifColorSpace))
                     continue;
                 if (TryInitializeColorTransformFor(candidate, out Exception? unusableContext))
+                {
+                    _colorTransformActive = true;
                     return;
+                }
                 firstUnusableContext ??= unusableContext;
             }
-            throw new InvalidDataException(
-                "Admitted source color metadata could not initialize a bounded WIC color transform.",
-                firstUnusableContext);
+
+            // P3-012: no embedded profile is usable (for example a v2.1
+            // header with v4-only tag types, which the color system rejects
+            // as ERROR_INVALID_PROFILE). Browsers ignore such a profile and
+            // show the pixels as sRGB, so decode untagged instead of failing.
+            _ = firstUnusableContext;
+            _colorTransformActive = false;
         }
 
         internal void CreatePreScalePremultipliedConverterIfNeeded()
         {
-            if (_frameColorContextCount != 0)
+            if (_colorTransformActive)
                 return;
             RasterNativeWicInterop.IWICImagingFactory factory = Require(_factory, "factory");
             nint native = 0;
@@ -768,9 +776,9 @@ internal static partial class RasterNativeWicDecoder
                 _scaler = Adopt<RasterNativeWicInterop.IWICBitmapScaler>(ref native, ref _scalerObject);
             ThrowForHResult(hr, "IWICImagingFactory.CreateBitmapScaler");
             RasterNativeWicInterop.IWICBitmapScaler scaler = Require(_scaler, "scaler");
-            ComObject sourceOwner = _frameColorContextCount == 0
-                ? Require(_preScaleConverterObject, "pre-scale converter owner")
-                : Require(_colorTransformObject, "color transform owner");
+            ComObject sourceOwner = _colorTransformActive
+                ? Require(_colorTransformObject, "color transform owner")
+                : Require(_preScaleConverterObject, "pre-scale converter owner");
             nint sourcePointer = QueryOwnedInterface(sourceOwner, IidWicBitmapSource);
             try
             {

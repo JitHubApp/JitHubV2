@@ -19,9 +19,8 @@ internal static class MarkdownClipboardWriter
     {
         options ??= MarkdownCopyOptions.Default;
         var sourceSlice = sourceMap.Slice(range);
-        if (string.IsNullOrEmpty(sourceSlice)) return false;
-
-        string plainText = ChoosePlainTextPayload(sourceSlice, renderedText, options);
+        string? plainText = ResolvePlainTextPayload(sourceSlice, renderedText, options);
+        if (plainText is null) return false;
 
         var package = new DataPackage { RequestedOperation = DataPackageOperation.Copy };
         package.SetText(plainText);
@@ -45,6 +44,27 @@ internal static class MarkdownClipboardWriter
         }
         catch (Exception) { return false; }
         return true;
+    }
+
+    /// <summary>
+    /// The plain-text payload, or null when there is nothing to copy. A
+    /// rendered selection with no source text (a GitHub alert title) still
+    /// copies its rendered text (P3-015); source mode copies source only.
+    /// </summary>
+    internal static string? ResolvePlainTextPayload(
+        string? sourceMarkdown,
+        string? renderedText,
+        MarkdownCopyOptions options)
+    {
+        if (string.IsNullOrEmpty(sourceMarkdown))
+        {
+            return options.PlainTextMode == MarkdownPlainTextCopyMode.RenderedText &&
+                !string.IsNullOrEmpty(renderedText)
+                ? renderedText
+                : null;
+        }
+
+        return ChoosePlainTextPayload(sourceMarkdown, renderedText, options);
     }
 
     internal static string ChoosePlainTextPayload(

@@ -416,14 +416,27 @@ internal static class RasterImageResourceBudget
             int frameHeight = BinaryPrimitives.ReadUInt16LittleEndian(bytes[(offset + 6)..]);
             // Validate every descriptor, not only the one we will draw.
             // Subtraction avoids overflow in right/bottom comparisons.
-            if (frameWidth <= 0 || frameHeight <= 0 ||
-                left > width || top > height ||
-                frameWidth > width - left || frameHeight > height - top)
-            {
+            if (frameWidth <= 0 || frameHeight <= 0)
                 return null;
+            bool insideCanvas = left <= width && top <= height &&
+                frameWidth <= width - left && frameHeight <= height - top;
+            if (firstFrame is null)
+            {
+                // The first frame is the one drawn; it must lie on the canvas.
+                if (!insideCanvas)
+                    return null;
+                firstFrame = (left, top, frameWidth, frameHeight);
+                framePixels = checked(framePixels + (long)frameWidth * frameHeight);
             }
-            firstFrame ??= (left, top, frameWidth, frameHeight);
-            framePixels = checked(framePixels + (long)frameWidth * frameHeight);
+            else
+            {
+                // P3-013: browsers clip a later frame to the logical canvas
+                // (a 640x386 frame on a 640x384 canvas). Count only the
+                // visible area instead of rejecting the whole image.
+                long visibleWidth = Math.Max(0, Math.Min(frameWidth, (long)width - left));
+                long visibleHeight = Math.Max(0, Math.Min(frameHeight, (long)height - top));
+                framePixels = checked(framePixels + visibleWidth * visibleHeight);
+            }
             frames++;
             byte packed = bytes[offset + 8];
             offset += 9;
