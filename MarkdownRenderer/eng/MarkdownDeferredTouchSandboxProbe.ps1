@@ -149,6 +149,16 @@ public static class MarkdownDeferredTouchForegroundNative
     private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
     [DllImport("user32.dll", EntryPoint="GetAncestor", SetLastError=true)]
     private static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
+    [DllImport("user32.dll", EntryPoint="SetWindowPos", SetLastError=true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetWindowPos(IntPtr hwnd, IntPtr insertAfter, int x, int y, int cx, int cy, uint flags);
+
+    // HWND_TOPMOST without moving, resizing or activating the window.
+    public static void PinTopmost(IntPtr hwnd)
+    {
+        if (!SetWindowPos(hwnd, new IntPtr(-1), 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010))
+            throw new InvalidOperationException("SetWindowPos(HWND_TOPMOST) failed with Win32 error " + Marshal.GetLastWin32Error() + ".");
+    }
 
     public static object Read()
     {
@@ -261,8 +271,9 @@ function Wait-DeferredTouchPhase {
         }
         Start-Sleep -Milliseconds 50
     } while ([DateTime]::UtcNow -lt $deadline)
-    $phase = if ($null -eq $last) { '<no receipt>' } else { [string]$last.phase }
-    throw "Timed out waiting for deferred-touch phase [$($Phase -join ',')] at sequence $Sequence; last phase was '$phase'."
+    # PowerShell names are case-insensitive: never reuse $Phase for the last phase.
+    $lastPhase = if ($null -eq $last) { '<no receipt>' } else { [string]$last.phase }
+    throw "Timed out waiting for deferred-touch phase [$($Phase -join ',')] at sequence $Sequence; last phase was '$lastPhase'."
 }
 
 function Get-DeferredTouchUiState {
@@ -958,7 +969,7 @@ function Start-DeferredTouchAtText {
         [string]$immediateReceipt.phase -cne $expectedInitialPhase -or [bool]$immediateReceipt.workerOwnsSnapshot) {
         throw "The deferred-touch phase changed while resolving '$Text'; refusing stale-coordinate input."
     }
-    Send-DeferredTouchFrame -X $screenX -Y $screenY -Flags ([McPointerFlags]::InRange -bor [McPointerFlags]::InContact -bor [McPointerFlags]::Down)
+    $null = Send-DeferredTouchFrame -X $screenX -Y $screenY -Flags ([McPointerFlags]::InRange -bor [McPointerFlags]::InContact -bor [McPointerFlags]::Down)
     $deadline = [DateTime]::UtcNow.AddSeconds(9)
     $routed = $null
     $lastObserver = $null
@@ -1016,7 +1027,9 @@ function Start-DeferredTouchSelectionSeed {
         throw 'The actual UIA TextPattern range for the seed word is not exact and visibly hittable.'
     }
     $state = Get-DeferredTouchUiState -RequestedViewport $Viewport
-    if ([int]$state.rangeCount -ne 0 -or -not [string]::IsNullOrEmpty([string]$state.selection) -or @($state.handles).Count -ne 0) {
+    # T1-024: TextPattern may report one collapsed, rectangle-free caret range
+    # when nothing is selected (T1-003); use the same cleared-selection proof.
+    if (-not (Test-DeferredTouchClearedSelection -State $state)) {
         throw 'The seed gesture requires a genuinely empty initial UIA selection; refusing to replace an existing range.'
     }
     $screenX = [int][Math]::Round($range.rect.X + $range.rect.Width / 2.0)
@@ -1029,7 +1042,7 @@ function Start-DeferredTouchSelectionSeed {
     $baseline = Get-TouchContactObservation
     Assert-DeferredProbeIdentity | Out-Null
     Assert-DeferredProbeForeground | Out-Null
-    Send-DeferredTouchFrame -X $screenX -Y $screenY -Flags ([McPointerFlags]::InRange -bor [McPointerFlags]::InContact -bor [McPointerFlags]::Down)
+    $null = Send-DeferredTouchFrame -X $screenX -Y $screenY -Flags ([McPointerFlags]::InRange -bor [McPointerFlags]::InContact -bor [McPointerFlags]::Down)
     $deadline = [DateTime]::UtcNow.AddSeconds(12)
     $routed = $null
     $lastObserver = $null
@@ -1102,6 +1115,14 @@ function Wait-DeferredTerminalObservation {
                 [string]$record.lastEvent -in @('Released','CaptureLost')
         }
         if ($complete) { return $last }
+        # P1-031: an injected POINTER_FLAG_CANCELED|UP that reaches WinUI as one
+        # ordinary release without a native canceled packet is a delivery limit.
+        if ($Canceled -and -not [bool]$record.inContact -and [string]$record.lastEvent -ceq 'Released' -and
+            [int]$record.releaseCount -eq ([int]$recordBefore.releaseCount+1) -and [int]$record.cancelCount -eq [int]$recordBefore.cancelCount -and
+            $null -ne $record.PSObject.Properties['nativeCanceledPacketCount'] -and $null -ne $recordBefore.PSObject.Properties['nativeCanceledPacketCount'] -and
+            [int]$record.nativeCanceledPacketCount -eq [int]$recordBefore.nativeCanceledPacketCount -and -not [bool]$record.lastNativeCanceled) {
+            throw ('INJECTED-CANCEL-NOT-NATIVE: the injected canceled up arrived as one ordinary routed release with no native canceled packet. Record: ' + (ConvertTo-Json -InputObject $record -Depth 4 -Compress))
+        }
         Start-Sleep -Milliseconds 40
     } while ([DateTime]::UtcNow -lt $deadline)
     throw "The sample's actual routed event observer did not confirm the requested $(if($Canceled){'canceled'}else{'ordinary released'}) terminal for the same OS pointer/contact serial."
@@ -1112,6 +1133,10 @@ function Request-DeferredProbeActivation {
     # granted foreground. Activate only the exact identity-verified window
     # through UIA SetFocus, once, before any interaction. Every later
     # foreground check is unchanged and never re-activates mid-contact.
+    # The probe overlaps the main sample window. Keep the exact test-only
+    # probe above it so every injected contact lands on the probe and cannot
+    # activate the main window mid-contact. The probe closes after each case.
+    [MarkdownDeferredTouchForegroundNative]::PinTopmost([IntPtr]$WindowHandle)
     $foreground = [MarkdownDeferredTouchForegroundNative]::Read()
     if ([long]$foreground.hwnd -eq $WindowHandle -and [uint32]$foreground.processId -eq [uint32]$ProcessId) { return }
     # The window root is not focusable. Focus the viewport checkbox: focusing
@@ -1256,7 +1281,8 @@ try {
     $script:Evidence.status = 'PASS'
 }
 catch {
-    $script:Evidence.status = 'FAIL'
+    # Only the exact P1-031 delivery-limit marker is UNVERIFIED; all else fails.
+    $script:Evidence.status = if ($_.Exception.Message.StartsWith('INJECTED-CANCEL-NOT-NATIVE: ', [StringComparison]::Ordinal)) { 'UNVERIFIED' } else { 'FAIL' }
     $script:Evidence.failure = $_.Exception.ToString()
 }
 finally {
