@@ -26,8 +26,8 @@ function Get-ResvgVendoredSourcesProvenance {
             sourceTree = '973a9a5c57b063ad942b22d44dee962bd2638b60'
             license = 'Apache-2.0 OR MIT'
             sourceInventorySha256 = '222759c0ff6177b5bf847b4d984f5d4e5819897edb204b96ecb459687643b3e0'
-            patchSetSha256 = '5c5013c19ac3e4cd50c97f15dfd68271493b35fd5f13f418eff37e4531e5902b'
-            expectedPatchPaths = @('Cargo.toml', 'src/clip.rs', 'src/filter/box_blur.rs', 'src/filter/convolve_matrix.rs', 'src/filter/iir_blur.rs', 'src/filter/mod.rs', 'src/filter/morphology.rs', 'src/filter/turbulence.rs', 'src/image.rs', 'src/lib.rs', 'src/mask.rs', 'src/path.rs', 'src/render.rs')
+            patchSetSha256 = '2550dde470ab00f5fa983fe83b0a21d858ab22b2206607e7758029584643cf04'
+            expectedPatchPaths = @('Cargo.toml', 'src/clip.rs', 'src/filter/box_blur.rs', 'src/filter/composite.rs', 'src/filter/convolve_matrix.rs', 'src/filter/iir_blur.rs', 'src/filter/mod.rs', 'src/filter/morphology.rs', 'src/filter/turbulence.rs', 'src/image.rs', 'src/lib.rs', 'src/mask.rs', 'src/path.rs', 'src/render.rs')
             supplementalTestFixtures = @(
                 @{
                     path = 'tests/fonts/Amiri-LICENSE-OFL.txt'

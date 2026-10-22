@@ -8,7 +8,7 @@
   "packageVersion": "0.48.1",
   "license": "Apache-2.0 OR MIT",
   "sourceInventorySha256": "222759c0ff6177b5bf847b4d984f5d4e5819897edb204b96ecb459687643b3e0",
-  "patchSetSha256": "5c5013c19ac3e4cd50c97f15dfd68271493b35fd5f13f418eff37e4531e5902b",
+  "patchSetSha256": "2550dde470ab00f5fa983fe83b0a21d858ab22b2206607e7758029584643cf04",
   "sourceFiles": [
     {
       "path": "Cargo.toml",
@@ -142,6 +142,11 @@
       "path": "src/filter/box_blur.rs",
       "upstreamSha256": "a25c600532f7a7b3df9022f10c17243a24ba718d64958c566f26feade3d9c5a2",
       "patchedSha256": "e821fa1133a3e515b1c93c8113c4a2f019a615914416e5eb4d56e4bbf2521127"
+    },
+    {
+      "path": "src/filter/composite.rs",
+      "upstreamSha256": "391394fceb347771bb6c930882635f99e022a7b6108df66cf7616aa83d13a1af",
+      "patchedSha256": "b2883a725c8f7ce1214672986badedd9153cdadcb96125f0d9b2f0293b650fa0"
     },
     {
       "path": "src/filter/convolve_matrix.rs",
