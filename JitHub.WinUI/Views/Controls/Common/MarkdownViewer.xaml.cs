@@ -159,6 +159,7 @@ public sealed partial class MarkdownViewer : UserControl
     private readonly ITelemetryService? _telemetryService;
     private readonly MarkdownRemoteContentConsent _remoteContentConsent = new();
     private readonly HashSet<MarkdownImageUnavailableReason> _reportedImageUnavailableReasons = [];
+    private bool _remoteImageNoticeDismissed;
     private MarkdownViewerDocumentPayload? _documentPayload;
     private PendingSameByteReadmeSourceAdmission? _pendingSameByteSourceAdmission;
 #pragma warning disable MR1001 // Common storage for the two explicit viewport control types; never constructed directly.
@@ -1153,6 +1154,7 @@ public sealed partial class MarkdownViewer : UserControl
 
         _remoteContentConsent.Activate(newSource);
         _reportedImageUnavailableReasons.Clear();
+        _remoteImageNoticeDismissed = false;
         _renderFailureReportedForDocument = false;
         _retryRenderPending = false;
         if (RemoteImageInfoBar is not null)
@@ -1183,6 +1185,7 @@ public sealed partial class MarkdownViewer : UserControl
     {
         _remoteContentConsent.ResetForHostReuse();
         _reportedImageUnavailableReasons.Clear();
+        _remoteImageNoticeDismissed = false;
         _renderFailureReportedForDocument = false;
         _retryRenderPending = false;
         if (RemoteImageInfoBar is not null)
@@ -2138,7 +2141,20 @@ public sealed partial class MarkdownViewer : UserControl
             MarkdownImageUnavailableReason.MeteredConnection
             ? Visibility.Visible
             : Visibility.Collapsed;
-        RemoteImageInfoBar.IsOpen = true;
+        // The notice overlays the top of the reading region; once the reader
+        // closes it, later images in the same document do not reopen it.
+        if (!_remoteImageNoticeDismissed)
+        {
+            RemoteImageInfoBar.IsOpen = true;
+        }
+    }
+
+    private void RemoteImageInfoBar_Closed(InfoBar sender, InfoBarClosedEventArgs args)
+    {
+        if (args.Reason == InfoBarCloseReason.CloseButton)
+        {
+            _remoteImageNoticeDismissed = true;
+        }
     }
 
     private void OnRendererRenderCompleted(object? sender, EventArgs e)

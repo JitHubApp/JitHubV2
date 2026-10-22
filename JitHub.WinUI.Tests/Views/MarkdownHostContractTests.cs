@@ -259,6 +259,50 @@ public sealed class MarkdownHostContractTests
     }
 
     [Fact]
+    public void MarkdownViewer_NoticesNeverResizeTheReadingRegion()
+    {
+        // Phase 3: an image failing below the fold opened the remote-image
+        // notice in an Auto row, shrinking the README viewport by ~50 DIP
+        // mid-read and shifting the document. Notices overlay the region.
+        string root = FindRepositoryRoot();
+        string viewerRoot = Path.Combine(root, "JitHub.WinUI", "Views", "Controls", "Common");
+        XDocument xaml = XDocument.Load(Path.Combine(viewerRoot, "MarkdownViewer.xaml"));
+        string source = File.ReadAllText(Path.Combine(viewerRoot, "MarkdownViewer.xaml.cs"));
+        XElement rootGrid = xaml.Root!.Elements().Single(element => element.Name.LocalName == "Grid");
+
+        Assert.DoesNotContain(rootGrid.Elements(), element => element.Name.LocalName.EndsWith("RowDefinitions", StringComparison.Ordinal));
+        Assert.DoesNotContain(xaml.Descendants(), element => element.Attributes().Any(attribute => attribute.Name.LocalName == "Grid.Row"));
+        XElement[] layers = rootGrid.Elements().Where(element => !element.Name.LocalName.Contains('.', StringComparison.Ordinal)).ToArray();
+        Assert.Equal(2, layers.Length);
+        // Declared first (keyboard and UI Automation reach the notice before
+        // the document) and drawn on top by ZIndex.
+        Assert.Equal("NoticeLayer", (string?)layers[0].Attributes().Single(attribute => attribute.Name.LocalName == "Name"));
+        Assert.Equal("1", (string?)layers[0].Attributes().Single(attribute => attribute.Name.LocalName == "Canvas.ZIndex"));
+        Assert.Equal("Top", (string?)layers[0].Attribute("VerticalAlignment"));
+        Assert.Equal("ReadingRegion", (string?)layers[1].Attributes().Single(attribute => attribute.Name.LocalName == "Name"));
+        Assert.Contains(layers[1].Descendants(), element => (string?)element.Attributes().FirstOrDefault(attribute => attribute.Name.LocalName == "Name") == "RendererHost");
+
+        // InfoBar severity fills are translucent: each notice sits on an opaque
+        // surface so the document never shows through it.
+        XElement[] surfaces = layers[0].Elements().ToArray();
+        Assert.Equal(2, surfaces.Length);
+        Assert.All(surfaces, surface =>
+        {
+            Assert.Equal("Border", surface.Name.LocalName);
+            Assert.Equal("{ThemeResource AppSurfaceBrush}", (string?)surface.Attribute("Background"));
+            Assert.Single(surface.Elements(), element => element.Name.LocalName == "InfoBar");
+        });
+
+        XElement remoteNotice = layers[0].Descendants().Single(element =>
+            (string?)element.Attributes().FirstOrDefault(attribute => attribute.Name.LocalName == "Name") == "RemoteImageInfoBar");
+        Assert.Equal("True", (string?)remoteNotice.Attribute("IsClosable"));
+        Assert.Equal("RemoteImageInfoBar_Closed", (string?)remoteNotice.Attribute("Closed"));
+        Assert.Contains("args.Reason == InfoBarCloseReason.CloseButton", source, StringComparison.Ordinal);
+        Assert.Contains("if (!_remoteImageNoticeDismissed)", source, StringComparison.Ordinal);
+        Assert.Equal(3, source.Split("_remoteImageNoticeDismissed = false;").Length);
+    }
+
+    [Fact]
     public void SafeHtmlDetailsUseStatefulAccessibleDisclosuresAndTelemetry()
     {
         string root = FindRepositoryRoot();
