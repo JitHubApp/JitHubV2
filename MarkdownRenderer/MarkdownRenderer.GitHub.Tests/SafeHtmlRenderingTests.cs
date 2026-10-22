@@ -1,4 +1,4 @@
-using Markdig;
+﻿using Markdig;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.GitHub;
 using MarkdownRenderer.Html;
@@ -949,6 +949,26 @@ public sealed class SafeHtmlRenderingTests
         DocumentPosition? roundTrip = semantics.PositionFromTextOffset(expected);
         Assert.NotNull(roundTrip);
         Assert.Equal(expected, semantics.TextOffsetFromDocumentPosition(roundTrip.Value));
+    }
+
+    // P3-007 (Phase 3 ranks 173, 243, 299, 361): a README that starts with a
+    // block that has no accessible text (an alt="" logo, a <a name> anchor)
+    // left a separator at offset 0 that no block owns, so UIA "select the
+    // whole document" started at offset 1 and missed the first character.
+    [Theory]
+    [InlineData("<div align=\"center\"><img src=\"https://example.test/logo.svg\" alt=\"\" height=\"150\"></div>\n\n# Flask\n\nFlask is a framework.", "Flask")]
+    [InlineData("<a name=\"readme-top\"></a>\n\n<p align=\"center\"><img src=\"https://example.test/w.png\" alt=\"Logo\"></p>\n\nBody text.", "Logo")]
+    [InlineData("<div><img width='16' height='1' alt=''></div>\n\nFirst words.", "First")]
+    public void LeadingTextlessBlockDoesNotLeaveAnUnownedSeparator(string source, string firstText)
+    {
+        using LayoutSnapshot snapshot = BuildGitHub(source);
+        MarkdownRenderer.Accessibility.MarkdownSemanticDocument semantics = snapshot.SemanticDocument;
+
+        Assert.StartsWith(firstText, semantics.Text, StringComparison.Ordinal);
+        Assert.True(semantics.TryGetDocumentRange(0, semantics.Text.Length, out DocumentRange range));
+        DocumentRange normalized = range.Normalized();
+        Assert.Equal(0, semantics.TextOffsetFromDocumentPosition(normalized.Start));
+        Assert.Equal(semantics.Text.Length, semantics.TextOffsetFromDocumentPosition(normalized.End));
     }
 
     [Fact]

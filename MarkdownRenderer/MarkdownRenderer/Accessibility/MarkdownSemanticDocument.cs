@@ -2755,7 +2755,10 @@ internal sealed class MarkdownSemanticDocument
 
         private void AppendBlockSeparator()
         {
-            if (_text.Length == 0 || _text[^1] != '\n')
+            // A separator divides two blocks' text. Before any text there is
+            // nothing to divide: a leading block with no accessible text (an
+            // alt="" logo, an anchor) must not leave an unowned offset 0.
+            if (_text.Length > 0 && _text[^1] != '\n')
                 _text.Append('\n');
         }
 
