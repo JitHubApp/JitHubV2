@@ -31,9 +31,21 @@ public sealed class WorkerFontWaitPoolTests
                 active.Dispose();
             }
             Assert.Equal(33, GetField(pool, "_detachedFontWaitCount"));
-            MarkdownSvgException rejection = await Assert.ThrowsAsync<MarkdownSvgException>(
-                async () => await Acquire(pool, CancellationToken.None));
-            Assert.Equal(MarkdownSvgFailureReason.ResourceLimitExceeded, rejection.Reason);
+            // P3-010: new work is not admitted while parked continuations hold
+            // every credit, but it waits for capacity instead of failing.
+            Task waitingNew = Acquire(pool, CancellationToken.None);
+            await Task.Delay(100);
+            Assert.False(waitingNew.IsCompleted);
+            Task waitingNewReleased = waitingNew.ContinueWith(
+                static task =>
+                {
+                    if (task.IsCompletedSuccessfully &&
+                        task.GetType().GetProperty("Result")?.GetValue(task) is IDisposable lease)
+                    {
+                        lease.Dispose();
+                    }
+                },
+                TaskScheduler.Default);
 
             // At q=0, d=33 every continuation already owns admission credit.
             // It must not wait for unrelated new work to release capacity.
@@ -45,6 +57,8 @@ public sealed class WorkerFontWaitPoolTests
                 resumed.Dispose();
             }
             Assert.Equal(0, GetField(pool, "_detachedFontWaitCount"));
+            await waitingNewReleased.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.True(waitingNew.IsCompletedSuccessfully);
             using IDisposable fresh = await GetLeaseAsync(Acquire(pool, CancellationToken.None));
             Assert.Null(GetField(pool, "_secondary"));
         }

@@ -1639,13 +1639,11 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
                             _options.QueueCapacity);
                     if (!canEnter)
                     {
-                        if (!consumesReservation)
-                        {
-                            throw new MarkdownSvgException(
-                                MarkdownSvgFailureReason.ResourceLimitExceeded,
-                                "The SVG worker priority queue is full.");
-                        }
-
+                        // A full queue is backpressure, not a property of the
+                        // SVG: a README with more images than the queue holds
+                        // (flags, sponsor avatars) must render them all
+                        // (P3-010). Wait for a dispatch, cancellation or
+                        // retirement to free a slot; the queue stays bounded.
                         capacityWait = _queueCapacityChanged.Task;
                     }
                     else
