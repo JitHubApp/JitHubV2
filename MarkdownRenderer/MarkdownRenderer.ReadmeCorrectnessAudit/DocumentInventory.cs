@@ -150,6 +150,10 @@ internal static partial class DocumentInventoryBuilder
     /// start of the first paragraph's text and is replaced by the alert's
     /// title, so only the remaining body text is visible paragraph text.
     /// </summary>
+    private static bool IsLineBreakTag(string? tag) =>
+        tag is not null && System.Text.RegularExpressions.Regex.IsMatch(
+            tag, @"^<br\s*/?>$", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
     internal static string StripGitHubAlertTag(string text)
     {
         string trimmed = text.TrimStart();
@@ -240,6 +244,11 @@ internal static partial class DocumentInventoryBuilder
                 builder.Append(autolink.Url);
                 return;
             case LineBreakInline:
+                builder.Append(' ');
+                return;
+            // A <br> renders as a line break, so the words on either side are
+            // separate visible words; other raw tags contribute no text.
+            case HtmlInline html when IsLineBreakTag(html.Tag):
                 builder.Append(' ');
                 return;
             case HtmlInline:

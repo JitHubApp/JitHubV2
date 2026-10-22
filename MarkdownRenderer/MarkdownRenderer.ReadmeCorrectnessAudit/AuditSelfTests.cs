@@ -197,6 +197,7 @@ internal static class AuditSelfTests
             "> [!TIP]\n> Remove old versions first.\n\n" +
             "> [!note] lower-case tag body\n\n" +
             "> Plain quote [!TIP] stays.\n\n" +
+            "[version 1](a)<br>[version 2](b)<BR/>tail\n\n" +
             "[^1]: Footnote body.\n";
         MarkdownDocument document = await engine.ParseAsync(source).ConfigureAwait(false);
         DocumentInventory inventory = DocumentInventoryBuilder.Create(document);
@@ -235,6 +236,8 @@ internal static class AuditSelfTests
         Require(texts.Contains("Remove old versions first.") && texts.Contains("lower-case tag body") &&
             !texts.Any(static text => text.Contains("[!TIP] Remove", StringComparison.Ordinal)),
             "A GitHub alert's tag is replaced by its title, so it is not visible paragraph text.");
+        Require(texts.Contains("version 1 version 2 tail"),
+            "An inline <br> separates the words on either side.");
         Require(texts.Contains("Plain quote [!TIP] stays."),
             "A tag that does not start a blockquote's first paragraph is ordinary text.");
         Require(texts.Contains("Inline math and a note.") && texts.Contains("Footnote body."),

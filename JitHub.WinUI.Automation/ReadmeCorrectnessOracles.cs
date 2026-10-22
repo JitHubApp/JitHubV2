@@ -111,6 +111,12 @@ internal static class ReadmeCorrectnessOracles
         if (!inventory.GetProperty("available").GetBoolean())
             throw new InvalidDataException("The expected-content inventory reports that no parsed tree was available.");
 
+        Span[] disclosures = inventory.GetProperty("disclosures").EnumerateArray().Select(ReadSpan).ToArray();
+        // A table inside a collapsed disclosure is not shown, like its text
+        // and task items; only visible tables are required.
+        int visibleTables = inventory.GetProperty("tables").EnumerateArray()
+            .Select(ReadSpan)
+            .Count(table => !disclosures.Any(disclosure => disclosure.Contains(table)));
         var blocks = inventory.GetProperty("textBlocks").EnumerateArray()
             .Select(block => new TextBlock(
                 block.GetProperty("kind").GetString() ?? string.Empty,
@@ -119,9 +125,9 @@ internal static class ReadmeCorrectnessOracles
             .ToArray();
         return new ExpectedContent(
             blocks,
-            inventory.GetProperty("tables").GetArrayLength(),
+            visibleTables,
             inventory.GetProperty("taskItems").EnumerateArray().Select(ReadSpan).ToArray(),
-            inventory.GetProperty("disclosures").EnumerateArray().Select(ReadSpan).ToArray(),
+            disclosures,
             inventory.GetProperty("unrecognizedInlineTypes").EnumerateArray().Select(item => item.GetString() ?? string.Empty).ToArray(),
             root.GetProperty("diagnostics").EnumerateArray()
                 .Select(item => (item.GetProperty("code").GetString() ?? string.Empty, item.GetProperty("severity").GetString() ?? string.Empty))

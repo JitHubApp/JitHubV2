@@ -320,6 +320,11 @@ internal static partial class ReadmeAuditProbe
                                 native.UnavailableImages,
                                 native.LoadingImagesAfterTraversal);
                             checks["contentCompleteness"] = ReadmeCorrectnessOracles.EvaluateContentCompleteness(expected, observed);
+                            if (checks["contentCompleteness"].State == CorrectnessCheckState.Failed)
+                            {
+                                // Keep the exact text compared so a failure can be triaged.
+                                File.WriteAllText(Path.Combine(caseDirectory, "app-document-text.txt"), native.Text);
+                            }
                             checks["unsupportedSyntaxClassification"] = ReadmeCorrectnessOracles.EvaluateUnsupportedSyntax(expected);
                             checks["resourceCoverage"] = ReadmeCorrectnessOracles.EvaluateResourceCoverage(
                                 ReadmeCorrectnessOracles.LoadImageDemand(Path.Combine(corpusInput.DirectoryPath!, "manifest.json")),
@@ -1444,8 +1449,25 @@ internal static partial class ReadmeAuditProbe
                 .Select(check => check.Name == "resourceCoverage"
                     ? CorrectnessCheck.Unsupported(check.Name, "self-test")
                     : check)) == "classified";
+        string inventoryProbePath = Path.Combine(Path.GetTempPath(), $"readme-correctness-selftest-{Guid.NewGuid():N}.json");
+        bool tablesInsideDisclosuresAreNotRequired;
+        try
+        {
+            File.WriteAllText(inventoryProbePath,
+                "{\"inventory\":{\"available\":true,\"textBlocks\":[],\"tables\":[" +
+                "{\"sourceStart\":0,\"sourceLength\":10},{\"sourceStart\":120,\"sourceLength\":10}]," +
+                "\"taskItems\":[],\"disclosures\":[{\"sourceStart\":100,\"sourceLength\":50}]," +
+                "\"unrecognizedInlineTypes\":[]},\"diagnostics\":[]}");
+            tablesInsideDisclosuresAreNotRequired =
+                ReadmeCorrectnessOracles.LoadExpectedContent(inventoryProbePath).TableCount == 1;
+        }
+        finally
+        {
+            File.Delete(inventoryProbePath);
+        }
         bool[] tests =
         [
+            tablesInsideDisclosuresAreNotRequired,
             resourceOracleClassifiesDocumentedUnsupportedContent,
             punctuationBesideOmittedInlinePasses,
             atomicSelectionObjectsAreRecognized,
@@ -1510,6 +1532,7 @@ internal static partial class ReadmeAuditProbe
                 ["content-oracle-accepts-punctuation-beside-an-omitted-inline-object"] = punctuationBesideOmittedInlinePasses,
                 ["selection-phrase-skips-atomic-selection-objects"] = atomicSelectionObjectsAreRecognized,
                 ["resource-oracle-classifies-documented-unsupported-svg-by-source"] = resourceOracleClassifiesDocumentedUnsupportedContent,
+                ["content-oracle-excludes-tables-inside-collapsed-disclosures"] = tablesInsideDisclosuresAreNotRequired,
             },
         };
     }
