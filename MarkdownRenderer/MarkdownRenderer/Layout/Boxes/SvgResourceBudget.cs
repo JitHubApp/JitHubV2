@@ -365,6 +365,20 @@ internal static class SvgResourceBudget
 
     private static SvgResourceBudgetResult ValidateCss(string css)
     {
+        // P3-004: charts such as star-history embed their lettering font as a
+        // data: @font-face. The renderer never loads web fonts; the static
+        // snapshot removes the block and text uses a system fallback font.
+        // Only a self-contained block may be set aside here; any other
+        // @font-face source is an external resource.
+        if (css.IndexOf("@font-face", StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            if (TryRemoveSelfContainedFontFaces(css, out string withoutFontFaces, out bool externalSource))
+                css = withoutFontFaces;
+            else if (externalSource)
+                return SvgResourceBudgetResult.Reject("external-resource");
+            // A malformed block is left in place and rejected as active content below.
+        }
+
         if (css.IndexOf("@import", StringComparison.OrdinalIgnoreCase) >= 0 ||
             css.IndexOf("@font-face", StringComparison.OrdinalIgnoreCase) >= 0 ||
             css.IndexOf("@keyframes", StringComparison.OrdinalIgnoreCase) >= 0 ||
@@ -572,6 +586,69 @@ internal static class SvgResourceBudget
 
         inspectable = sanitized is null ? css : new string(sanitized);
         return true;
+    }
+
+    /// <summary>
+    /// Removes every <c>@font-face { … }</c> block whose <c>url()</c> sources
+    /// are all <c>data:</c> URLs (or that has none). Returns false when a block
+    /// is unterminated (<paramref name="externalSource"/> false) or references
+    /// anything other than <c>data:</c> (<paramref name="externalSource"/> true).
+    /// </summary>
+    internal static bool TryRemoveSelfContainedFontFaces(string css, out string remaining, out bool externalSource)
+    {
+        externalSource = false;
+        var builder = new System.Text.StringBuilder(css.Length);
+        int cursor = 0;
+        while (true)
+        {
+            int start = css.IndexOf("@font-face", cursor, StringComparison.OrdinalIgnoreCase);
+            if (start < 0)
+            {
+                builder.Append(css, cursor, css.Length - cursor);
+                remaining = builder.ToString();
+                return true;
+            }
+
+            int open = css.IndexOf('{', start);
+            int close = open < 0 ? -1 : css.IndexOf('}', open + 1);
+            if (open < 0 || close < 0 || css.IndexOf('{', open + 1, close - open - 1) >= 0)
+            {
+                remaining = css;
+                return false;
+            }
+
+            string body = css.Substring(open + 1, close - open - 1);
+            int searchFrom = 0;
+            while (true)
+            {
+                int url = body.IndexOf("url(", searchFrom, StringComparison.OrdinalIgnoreCase);
+                if (url < 0)
+                    break;
+                int argumentStart = url + 4;
+                int argumentEnd = body.IndexOf(')', argumentStart);
+                if (argumentEnd < 0)
+                {
+                    remaining = css;
+                    return false;
+                }
+                ReadOnlySpan<char> argument = body.AsSpan(argumentStart, argumentEnd - argumentStart).Trim();
+                if (argument.Length >= 2 &&
+                    ((argument[0] == '\'' && argument[^1] == '\'') || (argument[0] == '"' && argument[^1] == '"')))
+                {
+                    argument = argument[1..^1].Trim();
+                }
+                if (!argument.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+                {
+                    remaining = css;
+                    externalSource = true;
+                    return false;
+                }
+                searchFrom = argumentEnd + 1;
+            }
+
+            builder.Append(css, cursor, start - cursor);
+            cursor = close + 1;
+        }
     }
 
     private static SvgResourceBudgetResult ValidateCssUrls(string value)

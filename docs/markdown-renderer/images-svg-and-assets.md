@@ -36,7 +36,10 @@ names `svg`, uses a published W3C SVG 1.0, 1.1, 1.1 Basic or 1.1 Tiny public and
 system identifier pair, and has no internal subset. That declaration is replaced
 by whitespace before admission and the DTD is never resolved; every other DTD,
 any internal subset or entity, other identifiers, other encodings and DOCTYPEs
-inside nested SVG are still rejected. Bounded data-URI
+inside nested SVG are still rejected. Web fonts are never loaded: an
+`@font-face` whose sources are all `data:` URLs (or `local()`) is set aside and
+its text uses a system fallback font, while any other font source is an
+external resource. Bounded data-URI
 PNG, JPEG, GIF, WebP, and nested SVG images are allowed and deduplicated by
 content. Remote top-level markdown images still obey the host's ordinary image
 policy before any SVG bytes reach the provider.

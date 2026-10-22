@@ -61,7 +61,9 @@ external references/fonts/styles, and over-budget content fail atomically with
 a typed `MarkdownSvgException`. `PrepareSource` admits one DTD form: the inert
 W3C SVG public DOCTYPE (published SVG 1.0/1.1/1.1 Basic/1.1 Tiny identifier
 pair, root `svg`, no internal subset, UTF-8), which it replaces by whitespace
-without resolving it. `OpenAsync` expects prepared bytes and rejects every DTD.
+without resolving it. It also sets aside a self-contained `@font-face`
+(`data:` or `local()` sources only) so the text renders in a fallback font.
+`OpenAsync` expects prepared bytes and rejects every DTD and `@font-face`.
 
 Worker binaries are RID assets for `win-x86`, `win-x64`, and `win-arm64`.
 Production packaging must Authenticode-sign all three executables before NuGet
