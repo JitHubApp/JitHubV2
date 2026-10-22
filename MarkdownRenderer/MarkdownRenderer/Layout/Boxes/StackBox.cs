@@ -62,7 +62,7 @@ internal partial class StackBox : BlockBox
     /// <summary>
     /// Flow direction for this stack. When RightToLeft, the accent bar (used
     /// for blockquotes / GFM alerts) is drawn on the right edge instead of
-    /// the left, matching RTL readnng order.
+    /// the left, matching RTL reading order.
     /// </summary>
     public FlowDirection FlowDirection { get; set; } = FlowDirection.LeftToRight;
 

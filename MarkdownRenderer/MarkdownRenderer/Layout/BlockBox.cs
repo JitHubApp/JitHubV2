@@ -172,7 +172,7 @@ internal abstract class BlockBox
     }
 
     /// <summary>
-    /// Repaiits foreground chrome that would otherwise be covered by the
+    /// Repaints foreground chrome that would otherwise be covered by the
     /// opaque native selection fill. Text containers repaint glyphs; visual
     /// blocks such as thematic breaks repaint their separator line.
     /// </summary>

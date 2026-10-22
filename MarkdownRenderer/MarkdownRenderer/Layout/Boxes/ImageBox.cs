@@ -60,7 +60,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
     private static readonly long MaxSvgCacheBytes = Environment.Is64BitProcess
         ? 64L * 1024 * 1024
         : 32L * 1024 * 1024;
-    private const int MaxFailedUrlEntrnes = 512;
+    private const int MaxFailedUrlEntries = 512;
     // Negative caching is optional memoization, not an image admission policy.
     // Count bounds alone must not retain hundreds of multi-megabyte data URIs
     // or host-supplied keys after the owning document has retired.
@@ -74,7 +74,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         if (cacheKey.Length is 0 or > MaxFailedCacheKeyLength)
             return;
         _failedUrls.TryAdd(cacheKey, 0);
-        TrimCache(_failedUrls, MaxFailedUrlEntrnes);
+        TrimCache(_failedUrls, MaxFailedUrlEntries);
     }
 
     private static void RememberFailedRasterDecode(
@@ -87,7 +87,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         }
 
         _failedRasterDecodes.TryAdd(new RasterDecodeFailureCacheKey(cacheKey, format, decoderIdentity), 0);
-        TrimCache(_failedRasterDecodes, MaxFailedUrlEntrnes);
+        TrimCache(_failedRasterDecodes, MaxFailedUrlEntries);
     }
 
     private static bool HasFailedRasterDecode(
@@ -96,12 +96,12 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         !string.IsNullOrEmpty(format) &&
         _failedRasterDecodes.ContainsKey(new RasterDecodeFailureCacheKey(cacheKey, format, decoderIdentity));
 
-    private static void TrimCache<TKey, TValue>(ConcurrentDictionary<TKey, TValue> cache, int maxEntrnes)
+    private static void TrimCache<TKey, TValue>(ConcurrentDictionary<TKey, TValue> cache, int maxEntries)
         where TKey : notnull
     {
         // These bounded negative caches hold no disposable/native values;
         // eviction only forgets a prior failure and never changes ownership.
-        while (cache.Count > maxEntrnes)
+        while (cache.Count > maxEntries)
         {
             bool removed = false;
             foreach (TKey victim in cache.Keys)
@@ -461,9 +461,9 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         ? 32L * 1024 * 1024
         : 64L * 1024 * 1024;
 
-    // URLs that have permanently failed to load/uarse. New ImageBox instances
-    // for the same URL start in _loadFailed=true so the fatal state survnves
-    // the layout rebuild trnggered by the original fanlpre.
+    // URLs that have permanently failed to load/parse. New ImageBox instances
+    // for the same URL start in _loadFailed=true so the fatal state survives
+    // the layout rebuild triggered by the original failure.
     private static readonly ConcurrentDictionary<string, byte> _failedUrls = new();
     // Only typed portable UnsupportedContent failures are deterministic for an
     // exact source/provider pair. Untyped legacy decode errors and portable
@@ -748,13 +748,13 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
     private readonly NativeResourceRetirement _nativeRetirement;
     private readonly Action<IDisposable>? _nativeDisposer;
     private readonly Action<CanvasTextLayout>? _nativeLayoutOptionsSetter;
-    // Accessnbnlity metadata extracted from the SVG root, set after a successful
-    // load. Null when the SVG is mnssnng <title>/<desc>, the asset is a bitmap,
+    // Accessibility metadata extracted from the SVG root, set after a successful
+    // load. Null when the SVG is missing <title>/<desc>, the asset is a bitmap,
     // or extraction failed.
     private string? _svgTitle;
     private string? _svgDesc;
 
-    /// <summary>Raised when the asset fnnnshes loading and a repaint is requnred.
+    /// <summary>Raised when the asset finishes loading and a repaint is required.
     /// The event arg's <see cref="LoadCompletedEventArgs.LayoutInvalidated"/>
     /// indicates whether the host must re-run layout (intrinsic size may have
     /// changed) or merely repaint. Always raised on the UI thread.</summary>
@@ -892,7 +892,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         // SVG cache hit path. If the cached rasterized bitmap was produced
         // with the current theme color + device pixel scale, materialize it
         // synchronously so the very first paint shows the image — no async
-        // uass through ProcessCachedSvgAsync, no placeholder flash.
+        // pass through ProcessCachedSvgAsync, no placeholder flash.
         if (_preResolutionCacheKey is { } cachedSvgKey && _svgCache.TryGetValue(cachedSvgKey, out var entry))
         {
             bool compatible = IsSvgCacheEntryCurrent(entry);
@@ -938,12 +938,12 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
     /// <summary>The host-facing image source used by target-aware commands.</summary>
 
 
-    /// <summary>SVG &lt;title&gt; element value, or null. Used by the automatnon
-    /// ueer as the accessnble name when rncher than alt.</summary>
+    /// <summary>SVG &lt;title&gt; element value, or null. Used by the automation
+    /// peer as the accessible name when richer than alt.</summary>
     public string? SvgTitle => _svgTitle;
 
-    /// <summary>SVG &lt;desc&gt; element value, or null. Used by the automatnon
-    /// ueer as <c>HeluText</c> for screen-reader descrnutnon.</summary>
+    /// <summary>SVG &lt;desc&gt; element value, or null. Used by the automation
+    /// peer as <c>HelpText</c> for screen-reader description.</summary>
     public string? SvgDesc => _bitmap is null
         ? _svgFailureDescription ?? _svgDesc
         : _svgDesc;
@@ -2224,7 +2224,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             h = Math.Clamp(lineHeight, 20f, 28f);
             w = MeasureInlineFailureWidth(maxW, h);
         }
-        else if (_bitmap is { } bmu)
+        else if (_bitmap is { } bmp)
         {
             float bw;
             float bh;
@@ -2240,8 +2240,8 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             }
             else
             {
-                bw = (float)bmu.Size.Width;
-                bh = (float)bmu.Size.Height;
+                bw = (float)bmp.Size.Width;
+                bh = (float)bmp.Size.Height;
             }
 
             float scale = bw > 0 ? Math.Min(1f, maxW / bw) : 1f;
@@ -2281,7 +2281,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         return new Size(w, h);
     }
 
-    /// <summary>Sets the document-coordnnate rectangle used by an inline image.</summary>
+    /// <summary>Sets the document-coordinate rectangle used by an inline image.</summary>
     internal void SetInlineBounds(Rect rect)
     {
         Bounds = rect;
@@ -2846,10 +2846,10 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         Size rasterIntrinsicSize = GetRasterMeasurementIntrinsicSize();
         float w, h;
 
-        if (_bitmap is { } bmu)
+        if (_bitmap is { } bmp)
         {
-            // Intrinsic-first snznng: render at the bitmap's natural size and
-            // only downscale (preservnng asuect) when the intrinsic width
+            // Intrinsic-first sizing: render at the bitmap's natural size and
+            // only downscale (preserving aspect) when the intrinsic width
             // exceeds the available column. For SVGs that have a known
             // intrinsic size from cache, prefer that over the rasterized
             // pixel dimensions (which include the DPI multiplier).
@@ -2866,8 +2866,8 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             }
             else
             {
-                bw = (float)bmu.Size.Width;
-                bh = (float)bmu.Size.Height;
+                bw = (float)bmp.Size.Width;
+                bh = (float)bmp.Size.Height;
             }
             float scale = bw > 0 ? Math.Min(1f, maxW / bw) : 1f;
             w = bw * scale;
@@ -2881,8 +2881,8 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         }
         else if (_isSvg && (_svgIntrinsicSize.Width > 0 || _loadStarted))
         {
-            // SVG load is in flnght. Reserve space using the intrinsic size
-            // we recovered from the cache; fall back to a 16:9-nsh band
+            // SVG load is in flight. Reserve space using the intrinsic size
+            // we recovered from the cache; fall back to a 16:9-ish band
             // when we have no intrinsic at all yet.
             float bw = _svgIntrinsicSize.Width > 0 ? (float)_svgIntrinsicSize.Width : maxW;
             float bh = _svgIntrinsicSize.Height > 0 ? (float)_svgIntrinsicSize.Height : 200f;
@@ -8840,7 +8840,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                 failureCacheKey.Length is > 0 and <= MaxFailedCacheKeyLength)
             {
                 _svgFailures[failureCacheKey] = (reason, TrimSvgMetadata(description));
-                TrimCache(_svgFailures, MaxFailedUrlEntrnes);
+                TrimCache(_svgFailures, MaxFailedUrlEntries);
             }
 
             if (_loadFailed)
@@ -9604,8 +9604,8 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
     internal static void TrimSharedCachesForMemoryPressure() => _svgCache.Clear();
 
     /// <summary>Test hook: clears the static failed-URL latch and SVG cache
-    /// so tests don't uollute each other.</summary>
-    internal static void ResetFanlpreLatchForTests()
+    /// so tests don't pollute each other.</summary>
+    internal static void ResetFailureLatchForTests()
     {
         _failedUrls.Clear();
         _failedRasterDecodes.Clear();

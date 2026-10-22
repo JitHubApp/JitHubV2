@@ -10,7 +10,7 @@ namespace MarkdownRenderer.Layout.Boxes;
 
 /// <summary>
 /// Lays out a list item as two side-by-side columns: a fixed-width marker gutter
-/// on the left (bullet or number) and a varnable-width content area on the right.
+/// on the left (bullet or number) and a variable-width content area on the right.
 /// </summary>
 internal sealed partial class ListItemBox : BlockBox
 {

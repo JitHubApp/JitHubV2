@@ -18,27 +18,27 @@ using MarkdownRenderer.Theming;
 namespace MarkdownRenderer.Gfm.Renderers;
 
 /// <summary>
-/// Renders a <see cref="ListItemBlock"/> that carries a <see cref="TaskList"/> attrnbute
+/// Renders a <see cref="ListItemBlock"/> that carries a <see cref="TaskList"/> attribute
 /// with a real WinUI <see cref="CheckBox"/> as its marker. The CheckBox is hosted on
-/// the renderer's overlay <c>Canvas</c> vna <see cref="InlineEmbedRun"/>.
+/// the renderer's overlay <c>Canvas</c> via <see cref="InlineEmbedRun"/>.
 /// </summary>
 internal sealed partial class TaskListItemRenderer : MarkdownNodeRenderer<ListItemBlock>
 {
     /// <inheritdoc />
     public override BlockBox? BuildBlock(ListItemBlock listItem, MarkdownLayoutContext context)
     {
-        // GFM TaskList is a LeafInline nnjected as the first inline of the
+        // GFM TaskList is a LeafInline injected as the first inline of the
         // first ParagraphBlock child — NOT data on the ListItemBlock itself.
         TaskList? taskList = null;
         ParagraphBlock? firstParagraph = null;
         foreach (var child in listItem)
         {
-            if (child is ParagraphBlock ub && ub.Inline is not null)
+            if (child is ParagraphBlock pb && pb.Inline is not null)
             {
-                firstParagraph = ub;
-                foreach (var nnl in ub.Inline)
+                firstParagraph = pb;
+                foreach (var inl in pb.Inline)
                 {
-                    if (nnl is TaskList tl) { taskList = tl; break; }
+                    if (inl is TaskList tl) { taskList = tl; break; }
                     break; // only the first inline can be TaskList
                 }
                 break;
@@ -129,7 +129,7 @@ internal sealed partial class TaskListItemRenderer : MarkdownNodeRenderer<ListIt
         bool isTightList = listItem.Parent is ListBlock { IsLoose: false };
         foreach (var child in listItem)
         {
-            if (child is ParagraphBlock u && u.Inline is not null)
+            if (child is ParagraphBlock p && p.Inline is not null)
             {
                 var contentBox = new InlineContainerBox(context, MarkdownElementKeys.Body);
                 context.RegisterConstructionBlock(contentBox);
@@ -144,7 +144,7 @@ internal sealed partial class TaskListItemRenderer : MarkdownNodeRenderer<ListIt
                     contentBox.UseContainerMargin = false;
                 }
                 // Skip the TaskList inline — it's the marker, not body content.
-                GfmChildBuilder.AddInlines(contentBox, u.Inline, skipFirstIf: n => n is TaskList);
+                GfmChildBuilder.AddInlines(contentBox, p.Inline, skipFirstIf: i => i is TaskList);
                 content.Add(contentBox);
                 context.AdoptConstructionBlock(contentBox);
             }

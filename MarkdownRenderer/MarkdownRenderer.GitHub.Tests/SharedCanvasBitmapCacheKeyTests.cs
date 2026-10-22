@@ -134,7 +134,7 @@ public sealed class SharedCanvasBitmapCacheKeyTests
             "private void PublishSvgFailure(",
             "private static string TrimSvgMetadata(");
 
-        Assert.Contains("private const int MaxFailedUrlEntrnes = 512;", source, StringComparison.Ordinal);
+        Assert.Contains("private const int MaxFailedUrlEntries = 512;", source, StringComparison.Ordinal);
         Assert.Contains("private const int MaxFailedCacheKeyLength = 4096;", source, StringComparison.Ordinal);
         Assert.Contains("failureCacheKey.Length is > 0 and <= MaxFailedCacheKeyLength", failurePublisher, StringComparison.Ordinal);
         Assert.Contains(

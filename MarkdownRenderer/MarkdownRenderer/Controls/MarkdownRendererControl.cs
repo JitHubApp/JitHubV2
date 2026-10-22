@@ -2349,7 +2349,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     /// <summary>
     /// Number of currently-realised hosted embed elements (block + inline).
     /// Exposed for UI-automation tests that want to validate virtualisation
-    /// without relying on heuristic descendant couits.
+    /// without relying on heuristic descendant counts.
     /// </summary>
     public int RealizedEmbedCount
     {
@@ -11362,7 +11362,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                 // foreground color); plain TextRun hover changes nothing.
                 // Issuing a _canvas.Invalidate for a TextRun→null transition
                 // causes a partial tile repaint, and CanvasVirtualControl
-                // partial-tile repaiits reveal DirectWrite glyph-position
+                // partial-tile repaints reveal DirectWrite glyph-position
                 // variance at tile boundaries → visible text shake.
                 bool wasLink = _lastHoveredRun is LinkRun;
                 var boxToInvalidate = _lastHoveredBox;
@@ -13912,7 +13912,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         // here issues a partial _canvas.Invalidate(), which triggers a tile repaint
         // that calls InlineContainerBox.Paint() → ApplyHoverColor() → CanvasTextLayout
         // .SetColor() → DirectWrite invalidates cached glyph-run metrics → character
-        // region coordinates shift by sub-pixel amouits → visible text shake on every
+        // region coordinates shift by sub-pixel amounts → visible text shake on every
         // drag frame. The canvas was already fully invalidated at drag-start
         // (OnPointerPressed) so no intermediate repaint is needed during the drag.
         // OnPointerCanceledOrCaptureLost clears _selectionAnchor *before* calling us,
@@ -13937,7 +13937,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             // hover state is purely cursor/IBeam tracking and has no painted
             // representation. Calling _canvas.Invalidate for a TextRun→null
             // transition causes a partial-tile repaint, and CanvasVirtualControl
-            // partial repaiits expose DirectWrite sub-pixel glyph-position
+            // partial repaints expose DirectWrite sub-pixel glyph-position
             // variance at tile boundaries — i.e. the text-shake the user sees
             // on click-to-dismiss (capture-loss routes through here with
             // _selectionAnchor already nulled by OnPointerCanceledOrCaptureLost).

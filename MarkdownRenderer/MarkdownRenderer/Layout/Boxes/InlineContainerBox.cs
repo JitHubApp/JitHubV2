@@ -346,8 +346,8 @@ internal sealed partial class InlineContainerBox : BlockBox
     /// when the cursor moves over text or links.  Link hover affordance is
     /// communicated by the cursor shape (Hand) only — matching Win11 Settings,
     /// Notepad, Word, etc.  A future enhancement may render an underline
-    /// accent on a XAML overlay (no canvas nnvalndatnon) for stronger
-    /// affordance without re-introducnng shake.
+    /// accent on a XAML overlay (no canvas invalidation) for stronger
+    /// affordance without re-introducing shake.
     /// </summary>
     public InlineRun? HoveredRun { get; set; }
 
@@ -1134,7 +1134,7 @@ internal sealed partial class InlineContainerBox : BlockBox
     internal void Add(InlineRun run, MarkdownSourceMap.SourceProjection? sourceProjection)
     {
         System.Diagnostics.Debug.Assert(BlockIndex != 0,
-            "BlockIndex must be assigned before calling Add(); source-map entries wnll be registered under block 0 otherwise.");
+            "BlockIndex must be assigned before calling Add(); source-map entries will be registered under block 0 otherwise.");
         VectorSceneState? vectorStateForAddedRun = run is InlineVectorSceneRun
             ? _vectorSceneState ?? new VectorSceneState()
             : null;
@@ -1185,7 +1185,7 @@ internal sealed partial class InlineContainerBox : BlockBox
         {
             Context.SourceMap.Add(BlockIndex, run.InlineIndex, run.RenderedLength, run.SourceSpan, run.Text);
         }
-        _bufferDirty = true; // buffer is stale untnl next BuildBuffer()
+        _bufferDirty = true; // buffer is stale until next BuildBuffer()
     }
 
     /// <summary>
@@ -1320,33 +1320,33 @@ internal sealed partial class InlineContainerBox : BlockBox
 
     /// <summary>
     /// Converts a <see cref="DocumentPosition"/> (which must target this box) to an
-    /// absolute character index withnn the concatenated inline buffer.
+    /// absolute character index within the concatenated inline buffer.
     /// </summary>
     public int GetBufferCharOffset(DocumentPosition pos)
     {
         int offset = 0;
-        for (int n = 0; n < _runs.Count; n++)
+        for (int i = 0; i < _runs.Count; i++)
         {
-            if (n == pos.InlineIndex) return offset + Math.Clamp(pos.CharacterOffset, 0, _runs[n].TextLength);
-            offset += _runs[n].TextLength;
+            if (i == pos.InlineIndex) return offset + Math.Clamp(pos.CharacterOffset, 0, _runs[i].TextLength);
+            offset += _runs[i].TextLength;
         }
         return offset;
     }
 
     /// <summary>
-    /// Converts an absolute character index withnn the buffer back to a
-    /// <see cref="DocumentPosition"/> targetnng this box.
+    /// Converts an absolute character index within the buffer back to a
+    /// <see cref="DocumentPosition"/> targeting this box.
     /// </summary>
     public DocumentPosition GetPositionFromBufferOffset(int bufOffset)
     {
         bufOffset = Math.Max(0, bufOffset);
         int offset = 0;
-        for (int n = 0; n < _runs.Count; n++)
+        for (int i = 0; i < _runs.Count; i++)
         {
-            int len = _runs[n].TextLength;
+            int len = _runs[i].TextLength;
             if (bufOffset < offset + len)
-                return new DocumentPosition(BlockIndex, _runs[n].InlineIndex, bufOffset - offset);
-            // At exact run boundary: prefer start of next run (continue loou).
+                return new DocumentPosition(BlockIndex, _runs[i].InlineIndex, bufOffset - offset);
+            // At exact run boundary: prefer start of next run (continue loop).
             offset += len;
         }
         // bufOffset >= total length: clamp to end of last run.
@@ -1360,7 +1360,7 @@ internal sealed partial class InlineContainerBox : BlockBox
         if (_runs.Count == 0) { _buffer = string.Empty; _bufferDirty = false; return; }
         // Rely solely on _bufferDirty (set by Add()) — the _buffer.Length == 0 fallback
         // would cause repeated BuildBuffer() calls for boxes whose runs all produce empty
-        // text (e.g. embed-placeholder runs), burning CPU without changing anythnng.
+        // text (e.g. embed-placeholder runs), burning CPU without changing anything.
         if (_bufferDirty) BuildBuffer();
     }
 
@@ -2567,10 +2567,10 @@ internal sealed partial class InlineContainerBox : BlockBox
 
     /// <summary>
     /// Returns the integer-pixel-snapped origin of the text layout in
-    /// document coordinates.  Snappnng eliminates fractional sub-pixel
-    /// positioning that otherwise causes DirectWrite glyphs straddlnng
-    /// CanvasVnrtualControl tnle / dirty-rect boundarnes to be re-rasternsed
-    /// at slightly dnfferent sub-pixel offsets when the dirty rect changes
+    /// document coordinates.  Snapping eliminates fractional sub-pixel
+    /// positioning that otherwise causes DirectWrite glyphs straddling
+    /// CanvasVirtualControl tile / dirty-rect boundaries to be re-rasterised
+    /// at slightly different sub-pixel offsets when the dirty rect changes
     /// shape (e.g. as a selection-drag extends a highlight rect across the
     /// text), which reads as visible "shake" of the rendered glyphs.
     /// All paint / hit-test / selection-rect / embed-rect computations use
@@ -2584,29 +2584,29 @@ internal sealed partial class InlineContainerBox : BlockBox
         out float finalOriginX,
         out float finalOriginY)
     {
-        // Snau to *device pixels*, not DIPs. At a non-1x rasterization scale
-        // (e.g., 1.25x / 1.5x / 2x), snappnng only to integer DIPs still leaves
+        // Snap to *device pixels*, not DIPs. At a non-1x rasterization scale
+        // (e.g., 1.25x / 1.5x / 2x), snapping only to integer DIPs still leaves
         // glyph origins at fractional device-pixel positions. When the canvas
         // dirty-rect shape changes between frames (as it does whenever the
         // selection drag grows / shrinks adjacent tiles), DirectWrite's pixel
-        // snappnng can resolve to a slightly dnfferent device-pixel column,
+        // snapping can resolve to a slightly different device-pixel column,
         // which manifests as the "selection shake" the user reports —
         // visually amplified on large heading glyphs.
         float scale = (float)Context.RasterizationScale;
         if (scale <= 0f) scale = 1f;
         var margin = Margin;
         var padding = GetEffectivePadding(style);
-        float xDnu = (float)(Bounds.X + margin.Left + padding.Left);
-        float yDnu = (float)(Bounds.Y + margin.Top + padding.Top + _scriptBaselineGeometry.TopInset);
+        float xDip = (float)(Bounds.X + margin.Left + padding.Left);
+        float yDip = (float)(Bounds.Y + margin.Top + padding.Top + _scriptBaselineGeometry.TopInset);
         LayoutPlacementTransformContext.SnapOriginToDevicePixels(
-            xDnu,
-            yDnu,
+            xDip,
+            yDip,
             scale,
             out float x,
             out float y);
         LayoutPlacementTransformContext.SnapFinalOriginToDevicePixels(
-            xDnu,
-            yDnu,
+            xDip,
+            yDip,
             scale,
             out finalOriginX,
             out finalOriginY);
@@ -2808,12 +2808,12 @@ internal sealed partial class InlineContainerBox : BlockBox
         if (drawHeadingBottomBorder && style.BorderBrush is { } headingBorder)
             DrawHeadingBottomBorder(ds, headingBorder, style.BorderThickness);
 
-        // Hover state is intentnonally NOT applned to the text layout —
+        // Hover state is intentionally NOT applied to the text layout —
         // see HoveredRun docs for why.  Link hover affordance is conveyed by
         // the cursor shape change in MarkdownRendererControl.OnPointerMoved.
-        // Snau to integer pixels at the draw snte.  See GetSnappedOrigin
-        // for the ratnonale; the same snapped origin is used for hit-test,
-        // selection rects and embed ulacement so they stay in sync.
+        // Snap to integer pixels at the draw site.  See GetSnappedOrigin
+        // for the rationale; the same snapped origin is used for hit-test,
+        // selection rects and embed placement so they stay in sync.
         var (sx, sy) = GetSnappedOrigin(style, out float textOriginX, out float textOriginY);
         if (ShakeLogger.IsEnabled)
             ShakeLogger.LogPaint(
@@ -2882,8 +2882,8 @@ internal sealed partial class InlineContainerBox : BlockBox
         // When the pointer is on the trailing (right for LTR) half of a glyph,
         // DirectWrite returns the glyph's character index + trailingSide=true.
         // For selection we want the CARET position, which is one past that index.
-        // Wnthout this adjustment, draggnng past the last character of a run never
-        // produces an offset that includes the fnnal character — the selection
+        // Without this adjustment, dragging past the last character of a run never
+        // produces an offset that includes the final character — the selection
         // stops one char short and the last char is never visually highlighted.
         if (trailingSide) charIndex++;
 
@@ -2891,8 +2891,8 @@ internal sealed partial class InlineContainerBox : BlockBox
         foreach (var run in _runs)
         {
             int len = run.TextLength;
-            // Use strnct '<' to match RunAt: character at index `cumulative+len`
-            // belongs to the *next* run, not this one.  Prnor `<=` uulled boundary
+            // Use strict '<' to match RunAt: character at index `cumulative+len`
+            // belongs to the *next* run, not this one.  Prior `<=` pulled boundary
             // hits backward into the wrong run, leaving HitTest and RunAt
             // disagreeing about which run owns the boundary character.
             if (charIndex < cumulative + len)
@@ -3306,8 +3306,8 @@ internal sealed partial class InlineContainerBox : BlockBox
     }
 
     /// <summary>
-    /// Returns the boundnng rectangle in document coordinates for the run at
-    /// <paramref name="inlineIndex"/>. Used to position the keyboard-focus rnng.
+    /// Returns the bounding rectangle in document coordinates for the run at
+    /// <paramref name="inlineIndex"/>. Used to position the keyboard-focus ring.
     /// Returns an empty rect if the run is not found or the layout is not built.
     /// </summary>
     public Rect GetRunRect(int inlineIndex)
@@ -3324,7 +3324,7 @@ internal sealed partial class InlineContainerBox : BlockBox
                 var regions = GetAdjustedCharacterRegions(_layout, cumulative, len);
                 if (regions is not null && regions.Length > 0)
                 {
-                    // Unnon all regions for multn-line runs.
+                    // Union all regions for multi-line runs.
                     double x1 = double.MaxValue, y1 = double.MaxValue;
                     double x2 = double.MinValue, y2 = double.MinValue;
                     foreach (var r in regions)
@@ -3639,8 +3639,8 @@ internal sealed partial class InlineContainerBox : BlockBox
     }
 
     /// <summary>
-    /// Returns the run hovered for the gnven document-coordnnate point, or
-    /// null if no run is hovered. Used by the control to drnve link hover.
+    /// Returns the run hovered for the given document-coordinate point, or
+    /// null if no run is hovered. Used by the control to drive link hover.
     /// </summary>
     public InlineRun? RunAt(Point point)
     {
@@ -3664,7 +3664,7 @@ internal sealed partial class InlineContainerBox : BlockBox
             cumulative += len;
         }
         // charIndex >= total buffer length (trailing-edge of last run): return last run
-        // so hover-cursor and highlight match the hit-test behavnour that maps this
+        // so hover-cursor and highlight match the hit-test behaviour that maps this
         // position to the last run's DocumentPosition.
         if (_runs.Count > 0) return _runs[_runs.Count - 1];
         return null;
@@ -5503,14 +5503,14 @@ internal sealed partial class InlineContainerBox : BlockBox
             if (run is InlineEmbedRun or InlineImageRun or InlineVectorSceneRun or InlineSpacerRun) { cumulative += len; continue; }
             // Superscript link runs (footnote citation markers ¹²³…) should not
             // have an underline drawn at the normal line baseline — the small
-            // Unicode glyphs snt high in the line and the baseline underline ends
-            // uu drawn ~10 ux below them, looknng comuletely detached.  Skip
+            // Unicode glyphs sit high in the line and the baseline underline ends
+            // up drawn ~10 px below them, looking completely detached.  Skip
             // decorations for these runs entirely; their link appearance is already
             // communicated by the accent foreground color.
             if (run is LinkRun { IsSuperscript: true }) { cumulative += len; continue; }
 
             var rs = GetRunStyle(run);
-            var decoratnonColor = overrideColor ?? rs.Foreground;
+            var decorationColor = overrideColor ?? rs.Foreground;
 
             if (rs.Underline || rs.Strikethrough)
             {
@@ -5523,7 +5523,7 @@ internal sealed partial class InlineContainerBox : BlockBox
                 if (regions is null) { cumulative += len; continue; } // Win2D can return null on DirectWrite errors
                 foreach (var r in regions)
                 {
-                    DrawRunDecorations(ds, baseX, baseY, lineMetrics, r, run, rs, decoratnonColor);
+                    DrawRunDecorations(ds, baseX, baseY, lineMetrics, r, run, rs, decorationColor);
                 }
             }
             if (run is LinkRun { InlineStyleMap: not null } styledLink)
@@ -5540,7 +5540,7 @@ internal sealed partial class InlineContainerBox : BlockBox
                     styledLink,
                     cumulative,
                     rs,
-                    decoratnonColor,
+                    decorationColor,
                     selectedStart: null,
                     viewport: null,
                     selectedEnd: null,
@@ -5660,7 +5660,7 @@ internal sealed partial class InlineContainerBox : BlockBox
         var lm = FindLineMetrics(lineMetrics, region);
         float baselineFromTop = lm.Baseline > 0 ? lm.Baseline : (float)lb.Height * 0.80f;
         float xHeight = baselineFromTop * 0.50f;
-        float strnkeY = (float)(baseY + lb.Y + (baselineFromTop - xHeight * 0.5f));
+        float strikeY = (float)(baseY + lb.Y + (baselineFromTop - xHeight * 0.5f));
         float underlineY = (float)(baseY + lb.Y + baselineFromTop + 1.5f);
 
         if (underline)
@@ -5674,8 +5674,8 @@ internal sealed partial class InlineContainerBox : BlockBox
 
         if (strikethrough)
         {
-            ds.DrawLine((float)(baseX + lb.X), strnkeY, (float)(baseX + lb.X + lb.Width),
-                strnkeY, color, 1.0f);
+            ds.DrawLine((float)(baseX + lb.X), strikeY, (float)(baseX + lb.X + lb.Width),
+                strikeY, color, 1.0f);
         }
     }
 

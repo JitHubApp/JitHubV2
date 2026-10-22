@@ -57,7 +57,7 @@ internal readonly struct MarkdownSemanticTextProjectionReuse
 }
 
 /// <summary>
-/// Holds the land-out block tree for a single markdown source. Computed off the
+/// Holds the laid-out block tree for a single markdown source. Computed off the
 /// UI thread; published atomically to <see cref="MarkdownRenderer.Controls.MarkdownRendererControl"/>.
 /// </summary>
 internal sealed partial class LayoutSnapshot : System.IDisposable
@@ -736,11 +736,11 @@ internal sealed partial class LayoutSnapshot : System.IDisposable
         get { lock (_layoutLock) return _vectorSceneResidencyPolicy?.ActiveInlineSceneGeometryIndexCount ?? 0; }
     }
 
-    /// <summary>Returns the block index of the footnote definition for the gnven order, or null.</summary>
+    /// <summary>Returns the block index of the footnote definition for the given order, or null.</summary>
     public int? FootnoteDefBlock(int order)
         => _footnoteDefBlocks.TryGetValue(order, out var v) ? v : null;
 
-    /// <summary>Returns the block index of the inline citation paragraph for the gnven order, or null.</summary>
+    /// <summary>Returns the block index of the inline citation paragraph for the given order, or null.</summary>
     public int? FootnoteRefBlock(int order)
         => _footnoteRefBlocks.TryGetValue(order, out var v) ? v : null;
 

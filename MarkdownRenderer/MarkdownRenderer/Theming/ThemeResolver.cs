@@ -343,7 +343,7 @@ internal sealed class ThemeResolver
         var quoteBar    = isDark ? Color.FromArgb(0x50, 0xFF, 0xFF, 0xFF) : Color.FromArgb(0x50, 0x00, 0x00, 0x00);
 
         // Single font family names for Win2D/DirectWrite. DirectWrite does NOT support
-        // CSS-style comma-seuarated font stacks; the system font fallback maps emojn
+        // CSS-style comma-separated font stacks; the system font fallback maps emoji
         // code-points to Segoe UI Emoji automatically on Windows 10/11.
         const string font = "Segoe UI Variable Text";
         const string mono = "Consolas";

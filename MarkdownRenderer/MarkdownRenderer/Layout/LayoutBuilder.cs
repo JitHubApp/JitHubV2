@@ -619,7 +619,7 @@ internal sealed class LayoutBuilder
         box ??= block switch
         {
             HeadingBlock h => BuildHeading(h),
-            ParagraphBlock u => BuildParagraphOrImage(u),
+            ParagraphBlock p => BuildParagraphOrImage(p),
             FencedCodeBlock fc => BuildCodeBlock(fc, fc.Lines.ToString()),
             CodeBlock cb => BuildCodeBlock(cb, cb.Lines.ToString()),
             QuoteBlock qb => BuildQuote(qb),
@@ -1293,11 +1293,11 @@ internal sealed class LayoutBuilder
         return true;
     }
 
-    private BlockBox BuildParagraphOrImage(ParagraphBlock u)
+    private BlockBox BuildParagraphOrImage(ParagraphBlock p)
     {
         // If the paragraph contains only a single image link (optionally wrapped
         // in a single ContainerInline), promote to an ImageBox.
-        var inline = u.Inline;
+        var inline = p.Inline;
         if (inline is not null)
         {
             LinkInline? onlyImage = null;
@@ -1306,7 +1306,7 @@ internal sealed class LayoutBuilder
             {
                 count++;
                 if (count > 1) { onlyImage = null; break; }
-                if (node is LinkInline ln && ln.IsImage) onlyImage = ln;
+                if (node is LinkInline li && li.IsImage) onlyImage = li;
                 else { onlyImage = null; break; }
             }
             if (onlyImage is not null)
@@ -1330,12 +1330,12 @@ internal sealed class LayoutBuilder
                 TrackBlock(img);
                 img.BlockIndex = _context.NextBlockIndex();
                 // Register the source span so Ctrl+C copies the original ![alt](url).
-                var span = new MarkdownRenderer.SourceSpan(u.Span.Start, u.Span.Length);
+                var span = new MarkdownRenderer.SourceSpan(p.Span.Start, p.Span.Length);
                 _context.SourceMap.Add(img.BlockIndex, 0, 1, span);
                 return img;
             }
         }
-        return BuildParagraph(u);
+        return BuildParagraph(p);
     }
 
     private BlockBox MakeThematicBreak()
@@ -1366,15 +1366,15 @@ internal sealed class LayoutBuilder
         return box;
     }
 
-    private InlineContainerBox BuildParagraph(ParagraphBlock u)
+    private InlineContainerBox BuildParagraph(ParagraphBlock p)
     {
         var box = new InlineContainerBox(_context, MarkdownElementKeys.Body);
         TrackBlock(box);
         box.BlockIndex = _context.NextBlockIndex();
         Inline? leadingFlowBreak = _context.SafeHtmlInlineFlowContinuesPrevious
-            ? FindLeadingHtmlBreak(u.Inline)
+            ? FindLeadingHtmlBreak(p.Inline)
             : null;
-        AddInlines(box, u.Inline, skipInline: leadingFlowBreak);
+        AddInlines(box, p.Inline, skipInline: leadingFlowBreak);
         return box;
     }
 
@@ -2117,15 +2117,15 @@ internal sealed class LayoutBuilder
         foreach (var item in list)
         {
             _context.CancellationToken.ThrowIfCancellationRequested();
-            if (item is not ListItemBlock ln) continue;
+            if (item is not ListItemBlock li) continue;
 
             BlockBox? itemBox = null;
-            using (var itemAttrs = _context.PushMarkdownAttributes(ln))
+            using (var itemAttrs = _context.PushMarkdownAttributes(li))
             {
                 if (_semanticDocument is { } document &&
                     DeclarativeBlockSelection.TryGetContent(
                         document,
-                        ln,
+                        li,
                         _hostedElementFallbacks,
                         out var extensionFragment))
                 {
@@ -2135,13 +2135,13 @@ internal sealed class LayoutBuilder
                 if (itemBox is null &&
                     _context.Registry.TryGetRenderer(typeof(ListItemBlock), out var itemRenderer) &&
                     itemRenderer is not null)
-                    itemBox = itemRenderer.BuildBlock(ln, _context);
+                    itemBox = itemRenderer.BuildBlock(li, _context);
 
-                itemBox ??= BuildDefaultListItem(ln, list.IsOrdered, index, isTightList: !list.IsLoose);
+                itemBox ??= BuildDefaultListItem(li, list.IsOrdered, index, isTightList: !list.IsLoose);
 
                 TrackBlock(itemBox);
                 if (itemBox.BlockIndex == 0) itemBox.BlockIndex = _context.NextBlockIndex();
-                _context.RegisterMarkdownAttributes(ln, itemBox.BlockIndex);
+                _context.RegisterMarkdownAttributes(li, itemBox.BlockIndex);
                 AddStackChild(stack, itemBox);
             }
             index++;
@@ -2150,7 +2150,7 @@ internal sealed class LayoutBuilder
     }
 
     private ListItemBox BuildDefaultListItem(
-        ListItemBlock ln,
+        ListItemBlock li,
         bool isOrdered,
         int index,
         bool isTightList)
@@ -2173,7 +2173,7 @@ internal sealed class LayoutBuilder
         marker.Add(new TextRun(markerText)
         {
             ElementKey = MarkdownElementKeys.ListMarker,
-            SourceSpan = new SourceSpan(ln.Span.Start, 0)
+            SourceSpan = new SourceSpan(li.Span.Start, 0)
         });
 
         // Content area — all child blocks of the list item.
@@ -2183,7 +2183,7 @@ internal sealed class LayoutBuilder
         };
         TrackBlock(content);
         content.BlockIndex = _context.NextBlockIndex();
-        PopulateBlockChildren(content, ln, suppressDirectParagraphMargins: isTightList);
+        PopulateBlockChildren(content, li, suppressDirectParagraphMargins: isTightList);
 
         var itemBox = new ListItemBox(marker, content, markerWidth)
         {
@@ -2494,25 +2494,25 @@ internal sealed class LayoutBuilder
         string? containingLinkTitle,
         Inline? skipInline = null)
     {
-        foreach (var n in inline)
+        foreach (var i in inline)
         {
-            if (ReferenceEquals(n, skipInline))
+            if (ReferenceEquals(i, skipInline))
                 continue;
 
             _context.CancellationToken.ThrowIfCancellationRequested();
-            if (!htmlState.TryAcceptNode(n))
+            if (!htmlState.TryAcceptNode(i))
                 break;
             int aliasStart = _context.StyleAliasCount;
-            using var inlineAttrs = _context.PushMarkdownAttributes(n);
+            using var inlineAttrs = _context.PushMarkdownAttributes(i);
 
             if (_semanticDocument is { } semanticDocument &&
-                semanticDocument.TryGetInlineExtensionContent(n, out var declarativeFragment) &&
+                semanticDocument.TryGetInlineExtensionContent(i, out var declarativeFragment) &&
                 declarativeFragment is not null &&
                 TryCreateDeclarativeInlineRuns(declarativeFragment, out var declarativeRuns))
             {
                 int declarativeAliasStart = inheritedAliasStart >= 0 ? inheritedAliasStart : aliasStart;
                 IReadOnlyList<string> aliases = _context.CreateStyleAliasSnapshotFrom(declarativeAliasStart);
-                _context.RegisterMarkdownAttributes(n, box.BlockIndex);
+                _context.RegisterMarkdownAttributes(i, box.BlockIndex);
                 foreach (InlineRun sourceRun in declarativeRuns)
                 {
                     InlineRun declarativeRun = ApplyContainingLink(
@@ -2525,12 +2525,12 @@ internal sealed class LayoutBuilder
                 continue;
             }
 
-            if (n is EmphasisInline emphasis)
+            if (i is EmphasisInline emphasis)
             {
                 string emphasisKey = GetEmphasisElementKey(emphasis);
                 if (_context.ThemeSnapshot.HasRelativeScriptFontSizeRules || ContainsMarkdownLink(emphasis))
                 {
-                    _context.RegisterMarkdownAttributes(n, box.BlockIndex);
+                    _context.RegisterMarkdownAttributes(i, box.BlockIndex);
                     int effectiveAliasStart = inheritedAliasStart >= 0 ? inheritedAliasStart : aliasStart;
                     using SafeHtmlInlineState.ScriptStyleScope scriptScope =
                         htmlState.PushMarkdownScript(emphasisKey);
@@ -2549,7 +2549,7 @@ internal sealed class LayoutBuilder
             }
 
             InlineRun? run;
-            if (n is HtmlInline html)
+            if (i is HtmlInline html)
             {
                 run = TrackInlineImageRun(htmlState.Process(
                     html,
@@ -2557,7 +2557,7 @@ internal sealed class LayoutBuilder
                     containingLinkUrl,
                     containingLinkTitle));
             }
-            else if (n is LinkInline link &&
+            else if (i is LinkInline link &&
                      TryGetOnlyHtmlImageChild(link, out HtmlInline? linkedHtmlImage) &&
                      htmlState.IsStandaloneImage(linkedHtmlImage, _context))
             {
@@ -2568,11 +2568,11 @@ internal sealed class LayoutBuilder
                     link.Title,
                     GetLinkedHtmlImageSourceSpan(link, linkedHtmlImage, _context)));
             }
-            else if (n is LinkInline mixedLink &&
+            else if (i is LinkInline mixedLink &&
                      !mixedLink.IsImage &&
                      ContainsRenderableLinkedInlineObject(mixedLink, htmlState, _context))
             {
-                _context.RegisterMarkdownAttributes(n, box.BlockIndex);
+                _context.RegisterMarkdownAttributes(i, box.BlockIndex);
                 int effectiveAliasStart = inheritedAliasStart >= 0 ? inheritedAliasStart : aliasStart;
                 AddInlines(
                     box,
@@ -2585,7 +2585,7 @@ internal sealed class LayoutBuilder
                 continue;
             }
             else if (!string.IsNullOrWhiteSpace(containingLinkUrl) &&
-                     n is LinkInline { IsImage: true } containedImage)
+                     i is LinkInline { IsImage: true } containedImage)
             {
                 run = BuildImageRun(
                     containedImage,
@@ -2597,7 +2597,7 @@ internal sealed class LayoutBuilder
             else
             {
                 int linkStyleAliasStart = inheritedAliasStart >= 0 ? inheritedAliasStart : aliasStart;
-                run = htmlState.Apply(BuildInline(n, box.BlockIndex, linkStyleAliasStart));
+                run = htmlState.Apply(BuildInline(i, box.BlockIndex, linkStyleAliasStart));
                 run = ApplyContainingLink(run, containingLinkUrl, containingLinkTitle);
             }
             if (run is not null)
@@ -2609,12 +2609,12 @@ internal sealed class LayoutBuilder
                 run.StyleAliases = CombineStyleAliases(
                     run.StyleAliases,
                     _context.CreateStyleAliasSnapshotFrom(effectiveAliasStart));
-                _context.RegisterMarkdownAttributes(n, box.BlockIndex);
+                _context.RegisterMarkdownAttributes(i, box.BlockIndex);
                 AddInlineRun(box, run);
             }
-            else if (n is ContainerInline nested)
+            else if (i is ContainerInline nested)
             {
-                _context.RegisterMarkdownAttributes(n, box.BlockIndex);
+                _context.RegisterMarkdownAttributes(i, box.BlockIndex);
                 int effectiveAliasStart = inheritedAliasStart >= 0 ? inheritedAliasStart : aliasStart;
                 AddInlines(
                     box,
@@ -2793,10 +2793,10 @@ internal sealed class LayoutBuilder
                     SourceSpan = span,
                 };
             }
-            case CodeInline cn:
-                return new CodeInlineRun(cn.Content)
+            case CodeInline ci:
+                return new CodeInlineRun(ci.Content)
                 {
-                    SourceSpan = new SourceSpan(cn.Span.Start, cn.Span.Length)
+                    SourceSpan = new SourceSpan(ci.Span.Start, ci.Span.Length)
                 };
             case EmphasisInline emph:
                 return BuildEmphasis(emph);
