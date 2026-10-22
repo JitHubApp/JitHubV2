@@ -401,15 +401,7 @@ function Assert-TouchLifecycleReport {
     }
     Assert-TouchLifecycleCleanControl -Control $terminalControl
     Assert-TouchLifecycleSnapshotHasNoNativeCaptures -Snapshot $afterTerminal
-    $terminalEvents = @($events | Where-Object {
-        [long](Get-TouchLifecycleProperty $_ 'sequence') -gt $actionSequence -and
-        [long](Get-TouchLifecycleProperty $_ 'pointerId') -eq $handleId -and
-        [string](Get-TouchLifecycleProperty $_ 'kind') -in @('PointerReleased','PointerCanceled') -and
-        [string](Get-TouchLifecycleProperty $_ 'device') -ceq 'Touch' -and
-        (Get-TouchLifecycleProperty $_ 'isInContact') -is [bool] -and
-        -not [bool](Get-TouchLifecycleProperty $_ 'isInContact') -and
-        [long](Get-TouchLifecycleProperty $_ 'correlatedGestureEpoch') -eq $handleEpoch
-    })
+    $terminalEvents = @(Get-TouchLifecycleActionTerminalEvents -Events $events -ActionSequence $actionSequence -HandleId $handleId -HandleEpoch $handleEpoch -ExpectedCase $ExpectedCase)
     if ($terminalEvents.Count -ne 1) { throw 'Lifecycle action lacks one actual same-pointer/same-epoch no-contact terminal event.' }
 
     switch ($ExpectedCase) {
@@ -436,14 +428,14 @@ function Assert-TouchLifecycleReport {
             $freshSelection = Get-TouchLifecycleProperty $Report 'freshSelection'
             $afterFreshTerminal = Get-TouchLifecycleProperty $Report 'afterFreshTerminal'
             foreach ($entry in @($afterUnloaded,$afterReattach,$freshSelection,$afterFreshTerminal)) { if ($null -eq $entry) { throw 'Unload/reuse report omitted a required unload, reattach, or fresh-selection snapshot.' } }
-            $unloadEvent = @(Get-TouchLifecycleEventMatches -Events $events -Kind 'Unloaded' -AfterSequence $actionSequence | Where-Object { [string](Get-TouchLifecycleProperty $_ 'device') -ceq 'None' -and [bool](Get-TouchLifecycleProperty $_ 'internalStateAvailable') -and [string](Get-TouchLifecycleProperty $_ 'observer') -ceq 'Renderer' -and [string](Get-TouchLifecycleProperty $_ 'sourceAutomationId') -ceq 'MarkdownRenderer' })
+            $unloadEvent = @(Get-TouchLifecycleEventMatches -Events $events -Kind 'Unloaded' -AfterSequence $actionSequence | Where-Object { [string](Get-TouchLifecycleProperty $_ 'device') -ceq 'None' -and [bool](Get-TouchLifecycleProperty $_ 'internalStateAvailable') -and [string](Get-TouchLifecycleProperty $_ 'observer') -ceq 'Renderer' -and [string](Get-TouchLifecycleProperty $_ 'rendererId') -ceq 'MarkdownRenderer' })
             if ($unloadEvent.Count -ne 1) { throw 'Unload/reuse report lacks one Unloaded lifecycle event after the action.' }
             $unloadedControl = Get-TouchLifecycleProperty $afterUnloaded 'control'
             Assert-TouchLifecycleCleanControl -Control $unloadedControl -RequireUnloaded -RequireHiddenHandles
             Assert-TouchLifecycleSnapshotHasNoNativeCaptures -Snapshot $afterUnloaded
             Assert-TouchLifecycleSnapshotHasNoNativeCaptures -Snapshot $afterTerminal
             $loadedSequence = [long](Get-TouchLifecycleProperty $unloadEvent[0] 'sequence')
-            $loadedEvents = @(Get-TouchLifecycleEventMatches -Events $events -Kind 'Loaded' -AfterSequence $loadedSequence | Where-Object { [string](Get-TouchLifecycleProperty $_ 'device') -ceq 'None' -and [bool](Get-TouchLifecycleProperty $_ 'internalStateAvailable') -and [string](Get-TouchLifecycleProperty $_ 'observer') -ceq 'Renderer' -and [string](Get-TouchLifecycleProperty $_ 'sourceAutomationId') -ceq 'MarkdownRenderer' })
+            $loadedEvents = @(Get-TouchLifecycleEventMatches -Events $events -Kind 'Loaded' -AfterSequence $loadedSequence | Where-Object { [string](Get-TouchLifecycleProperty $_ 'device') -ceq 'None' -and [bool](Get-TouchLifecycleProperty $_ 'internalStateAvailable') -and [string](Get-TouchLifecycleProperty $_ 'observer') -ceq 'Renderer' -and [string](Get-TouchLifecycleProperty $_ 'rendererId') -ceq 'MarkdownRenderer' })
             if ($loadedEvents.Count -ne 1) { throw 'Unload/reuse report lacks one later Loaded event after reattachment.' }
             $reattachControl = Get-TouchLifecycleProperty $afterReattach 'control'
             Assert-TouchLifecycleCleanControl -Control $reattachControl -RequireLoaded
@@ -492,7 +484,9 @@ function Assert-TouchLifecycleReport {
         'dispose' {
             $afterAction = Get-TouchLifecycleProperty $Report 'afterAction'
             if ($null -eq $afterAction) { throw 'Dispose report omitted the post-disposal snapshot.' }
-            $disposedEvents = @(Get-TouchLifecycleEventMatches -Events $events -Kind 'DisposalCompleted' -AfterSequence $actionSequence | Where-Object { [string](Get-TouchLifecycleProperty $_ 'device') -ceq 'None' -and [bool](Get-TouchLifecycleProperty $_ 'internalStateAvailable') -and [string](Get-TouchLifecycleProperty $_ 'observer') -ceq 'Renderer' -and [string](Get-TouchLifecycleProperty $_ 'sourceAutomationId') -ceq 'MarkdownRenderer' -and [long](Get-TouchLifecycleProperty $_ 'observedGestureEpoch') -eq $handleEpoch -and [long](Get-TouchLifecycleProperty $_ 'correlatedGestureEpoch') -eq $handleEpoch })
+            $disposedEvents = @(Get-TouchLifecycleEventMatches -Events $events -Kind 'DisposalCompleted' -AfterSequence $actionSequence | Where-Object { [string](Get-TouchLifecycleProperty $_ 'device') -ceq 'None' -and [bool](Get-TouchLifecycleProperty $_ 'internalStateAvailable') -and [string](Get-TouchLifecycleProperty $_ 'observer') -ceq 'Renderer' -and [string](Get-TouchLifecycleProperty $_ 'rendererId') -ceq 'MarkdownRenderer' -and [long](Get-TouchLifecycleProperty $_ 'observedGestureEpoch') -eq 0 -and [long](Get-TouchLifecycleProperty $_ 'correlatedGestureEpoch') -eq 0 })
+            # T1-028: disposal retires the handle contact's gesture epoch before
+            # DisposalCompleted is raised, so the event must observe no epoch.
             if ($disposedEvents.Count -ne 1) { throw 'Dispose report lacks one DisposalCompleted event after the action.' }
             Assert-TouchLifecycleCleanControl -Control (Get-TouchLifecycleProperty $afterAction 'control') -RequireDisposed -RequireHiddenHandles
             Assert-TouchLifecycleCleanControl -Control $terminalControl -RequireDisposed -RequireHiddenHandles
@@ -511,10 +505,58 @@ function Assert-TouchLifecycleReport {
     return [pscustomobject]@{ status = 'PASS'; lifecycleCase = $ExpectedCase; viewport = $ExpectedViewport; run = [int](Get-TouchLifecycleProperty $Report 'run'); eventCount = $events.Count; handlePointerId = $handleId; handleGestureEpoch = $handleEpoch }
 }
 
+function Get-TouchLifecycleActionTerminalEvents {
+    # The handle contact's terminal after the lifecycle action: an ordinary
+    # same-epoch no-contact release or cancel. Only for unload and dispose, and
+    # only when no ordinary terminal exists, WinUI's in-contact root-observed
+    # PointerCaptureLost with no handle source also ends the contact for this
+    # window (T1-026): it reports WM_POINTERCAPTURECHANGED or a suspended
+    # pointer, after which Windows delivers no further messages for it.
+    param(
+        [AllowEmptyCollection()][object[]]$Events = @(),
+        [Parameter(Mandatory)][long]$ActionSequence,
+        [Parameter(Mandatory)][long]$HandleId,
+        [Parameter(Mandatory)][long]$HandleEpoch,
+        [Parameter(Mandatory)][string]$ExpectedCase
+    )
+    $after = @($Events | Where-Object {
+        [long](Get-TouchLifecycleProperty $_ 'sequence') -gt $ActionSequence -and
+        [long](Get-TouchLifecycleProperty $_ 'pointerId') -eq $HandleId -and
+        [string](Get-TouchLifecycleProperty $_ 'device') -ceq 'Touch' -and
+        (Get-TouchLifecycleProperty $_ 'isInContact') -is [bool] -and
+        [long](Get-TouchLifecycleProperty $_ 'correlatedGestureEpoch') -eq $HandleEpoch
+    })
+    $ordinary = @($after | Where-Object {
+        [string](Get-TouchLifecycleProperty $_ 'kind') -in @('PointerReleased','PointerCanceled') -and
+        -not [bool](Get-TouchLifecycleProperty $_ 'isInContact')
+    })
+    if ($ordinary.Count -ne 0 -or $ExpectedCase -notin @('unload','dispose')) { return $ordinary }
+    return @($after | Where-Object {
+        [string](Get-TouchLifecycleProperty $_ 'kind') -ceq 'PointerCaptureLost' -and
+        [bool](Get-TouchLifecycleProperty $_ 'isInContact') -and
+        [string](Get-TouchLifecycleProperty $_ 'observer') -ceq 'Root' -and
+        [string](Get-TouchLifecycleProperty $_ 'sourceAutomationId') -notin @('MarkdownSelectionStartHandle','MarkdownSelectionEndHandle')
+    })
+}
+
+function Test-TouchLifecycleCaptureLossDeliveryLimit {
+    # T1-022: WinUI raises no PointerCaptureLost for an app-initiated release of
+    # a touch capture (it keeps a replay pointer point only for mouse). The probe
+    # reports that exact limit, after verifying the renderer's terminal cleanup,
+    # as a failed phase with this prefix. Only the capture-loss case may use it.
+    param([AllowNull()]$Report, [Parameter(Mandatory)][string]$ExpectedCase)
+    if ($null -eq $Report -or $ExpectedCase -cne 'captureLoss' -or
+        [string](Get-TouchLifecycleProperty $Report 'lifecycleCase') -cne 'captureLoss' -or
+        [string](Get-TouchLifecycleProperty $Report 'phase') -cne 'failed') { return $false }
+    return [string](Get-TouchLifecycleProperty $Report 'failure') -cmatch '(^|: )TOUCH-CAPTURE-LOST-NOT-ROUTED: '
+}
+
 function Test-TouchLifecycleSafeTerminal {
     param([AllowNull()]$Report, [Parameter(Mandatory)][string]$ExpectedCase, [Parameter(Mandatory)][string]$ExpectedViewport)
     try {
-        if ($null -eq $Report -or [string](Get-TouchLifecycleProperty $Report 'phase') -cne 'complete' -or
+        $phaseAccepted = $null -ne $Report -and ([string](Get-TouchLifecycleProperty $Report 'phase') -ceq 'complete' -or
+            (Test-TouchLifecycleCaptureLossDeliveryLimit -Report $Report -ExpectedCase $ExpectedCase))
+        if (-not $phaseAccepted -or
             [string](Get-TouchLifecycleProperty $Report 'lifecycleCase') -cne $ExpectedCase -or
             [string](Get-TouchLifecycleProperty $Report 'viewport') -cne $ExpectedViewport -or
             [bool](Get-TouchLifecycleProperty $Report 'eventTraceTruncated')) { return $false }
@@ -540,7 +582,7 @@ function Test-TouchLifecycleSafeTerminal {
         $action = @(Get-TouchLifecycleEventMatches -Events @(Get-TouchLifecycleProperty $Report 'events') -Kind ('Action:' + $ExpectedCase) -PointerId $handleId)
         if ($action.Count -ne 1) { return $false }
         $actionSequence = [long](Get-TouchLifecycleProperty $action[0] 'sequence')
-        $terminalEvents = @((Get-TouchLifecycleProperty $Report 'events') | Where-Object { [long](Get-TouchLifecycleProperty $_ 'sequence') -gt $actionSequence -and [long](Get-TouchLifecycleProperty $_ 'pointerId') -eq $handleId -and [string](Get-TouchLifecycleProperty $_ 'kind') -in @('PointerReleased','PointerCanceled') -and [string](Get-TouchLifecycleProperty $_ 'device') -ceq 'Touch' -and (Get-TouchLifecycleProperty $_ 'isInContact') -is [bool] -and -not [bool](Get-TouchLifecycleProperty $_ 'isInContact') -and [long](Get-TouchLifecycleProperty $_ 'correlatedGestureEpoch') -eq $handleEpoch })
+        $terminalEvents = @(Get-TouchLifecycleActionTerminalEvents -Events @(Get-TouchLifecycleProperty $Report 'events') -ActionSequence $actionSequence -HandleId $handleId -HandleEpoch $handleEpoch -ExpectedCase $ExpectedCase)
         return $terminalEvents.Count -eq 1
     }
     catch { return $false }
@@ -1286,7 +1328,8 @@ function Invoke-TouchLifecycleCase {
     catch {
         $result.failure = $_.Exception.ToString()
         if ($null -ne $script:LastReceipt) { $result.finalReport = $script:LastReceipt; $result.receipts = @($script:LastReceiptPath) }
-        if ($null -ne $script:LastReceipt -and [string](Get-TouchLifecycleProperty $script:LastReceipt 'phase') -ceq 'failed') { $result.status = 'FAIL' }
+        if (Test-TouchLifecycleCaptureLossDeliveryLimit -Report $script:LastReceipt -ExpectedCase ([string]$Case.lifecycleCase)) { $result.status = 'UNVERIFIED' }
+        elseif ($null -ne $script:LastReceipt -and [string](Get-TouchLifecycleProperty $script:LastReceipt 'phase') -ceq 'failed') { $result.status = 'FAIL' }
         elseif ($null -ne $result.finalReport -and [string](Get-TouchLifecycleProperty $result.finalReport 'phase') -ceq 'complete') { $result.status = 'FAIL' }
     }
     finally {

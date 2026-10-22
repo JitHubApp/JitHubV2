@@ -272,7 +272,12 @@ function Assert-DeferredTouchDriverReport {
         throw 'Guest driver report does not describe the exact requested scenario and viewport.'
     }
     $reportedStatus = [string](Get-DeferredTouchProperty $Report 'status')
-    if ($reportedStatus -cnotin @('PASS', 'FAIL')) { throw 'Guest driver report has no recognized final status.' }
+    # The only UNVERIFIED final status is the P1-031 injection delivery limit
+    # on a cancel scenario: the injected canceled up arrives as an ordinary
+    # release, so the cancel path cannot be exercised by this harness.
+    $deliveryLimit = $reportedStatus -ceq 'UNVERIFIED' -and $Scenario -in @('CancelNew', 'CancelExisting') -and
+        [string](Get-DeferredTouchProperty $Report 'failure') -cmatch '(^|: )INJECTED-CANCEL-NOT-NATIVE: '
+    if ($reportedStatus -cnotin @('PASS', 'FAIL') -and -not $deliveryLimit) { throw 'Guest driver report has no recognized final status.' }
     if ($reportedStatus -ceq 'FAIL' -and [string]::IsNullOrWhiteSpace([string](Get-DeferredTouchProperty $Report 'failure'))) {
         throw 'Guest driver failure report omitted the concrete assertion or cleanup failure.'
     }
@@ -969,7 +974,13 @@ function Invoke-DeferredTouchCase {
                 $driverReportValidated = $true
                 $result.driverReportValidated = $true
                 $result.status = Get-DeferredTouchDriverStatus -ExitCode ([int]$driver.exitCode) -Report $result.driverReport
-                if ($result.status -eq 'UNVERIFIED') { $result.failure = 'Guest driver exit/report status was absent, malformed, or inconsistent.' }
+                if ($result.status -eq 'UNVERIFIED') {
+                    # A validated report can be UNVERIFIED only for the P1-031
+                    # cancel delivery limit; keep its exact evidence text.
+                    $result.failure = if ([string](Get-DeferredTouchProperty $result.driverReport 'status') -ceq 'UNVERIFIED') {
+                        [string](Get-DeferredTouchProperty $result.driverReport 'failure')
+                    } else { 'Guest driver exit/report status was absent, malformed, or inconsistent.' }
+                }
                 elseif ($result.status -eq 'FAIL') { $result.failure = [string](Get-DeferredTouchProperty $result.driverReport 'failure') }
             }
             catch {

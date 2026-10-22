@@ -450,6 +450,28 @@ Invoke-Test 'a bound guest assertion failure remains FAIL when guest cleanup is 
     $null = Assert-DeferredTouchDriverReport -Report $report -Scenario 'Release' -Viewport 'owned' -ExpectedIdentity $expected -ExpectedPayloads $expectedPayloads -ExpectedGuestName 'SANDBOX-GUEST' -ExpectedDirectory 'C:\WinApp\deployments\fixture'
     Assert-Condition ((Get-DeferredTouchDriverStatus -ExitCode 1 -Report $report) -ceq 'FAIL') 'Real guest assertion failure was masked by its distinct cleanup failure.'
 }
+Invoke-Test 'only a cancel-scenario injection delivery limit is a recognized UNVERIFIED final status' {
+    $identity = [pscustomobject]@{ mode = 'Identity'; computerName = 'SANDBOX-GUEST'; processId = 612; hwnd = 9901; title = 'MarkdownRenderer deferred-touch probe'; exePath = $expectedIdentity.executablePath; startTicks = $expectedIdentity.startTicks; exeSha256 = $expectedIdentity.exeSha256 }
+    $payload = [pscustomobject]@{ mode = 'PayloadHashes'; processId = 612; executablePath = $expectedIdentity.executablePath; files = $actualPayloads }
+    $expected = [pscustomobject]@{ processId = 612; processName = 'MarkdownRenderer.Sample'; executablePath = $expectedIdentity.executablePath; startTicks = $expectedIdentity.startTicks; exeSha256 = $expectedIdentity.exeSha256; hwnd = 9901; title = 'MarkdownRenderer deferred-touch probe' }
+    $limit = 'System.Management.Automation.RuntimeException: INJECTED-CANCEL-NOT-NATIVE: the injected canceled up arrived as one ordinary routed release.'
+    $newReport = {
+        param([string]$Scenario, [string]$Failure)
+        [pscustomobject]@{
+            status = 'UNVERIFIED'; scenario = $Scenario; viewport = 'owned'; failure = $Failure; identityChecks = 6; foregroundChecks = 3
+            cleanup = [pscustomobject]@{ pumpStopped = $true; deviceDestroyed = $true; deviceRetained = $false; error = $null }
+            identity = $identity; payloadHashes = $payload
+        }
+    }
+    $report = & $newReport 'CancelNew' $limit
+    $matched = Assert-DeferredTouchDriverReport -Report $report -Scenario 'CancelNew' -Viewport 'owned' -ExpectedIdentity $expected -ExpectedPayloads $expectedPayloads -ExpectedGuestName 'SANDBOX-GUEST' -ExpectedDirectory 'C:\WinApp\deployments\fixture'
+    Assert-Condition ($matched.status -ceq 'MATCH') 'The delivery-limit report was not bound to the exact payload.'
+    Assert-Condition ((Get-DeferredTouchDriverStatus -ExitCode 1 -Report $report) -ceq 'UNVERIFIED') 'The delivery limit was not classified UNVERIFIED.'
+    $release = & $newReport 'Release' $limit
+    Assert-Throws { Assert-DeferredTouchDriverReport -Report $release -Scenario 'Release' -Viewport 'owned' -ExpectedIdentity $expected -ExpectedPayloads $expectedPayloads -ExpectedGuestName 'SANDBOX-GUEST' -ExpectedDirectory 'C:\WinApp\deployments\fixture' } 'a delivery limit claimed by a release scenario'
+    $other = & $newReport 'CancelExisting' 'Timed out waiting for holding.'
+    Assert-Throws { Assert-DeferredTouchDriverReport -Report $other -Scenario 'CancelExisting' -Viewport 'owned' -ExpectedIdentity $expected -ExpectedPayloads $expectedPayloads -ExpectedGuestName 'SANDBOX-GUEST' -ExpectedDirectory 'C:\WinApp\deployments\fixture' } 'an UNVERIFIED status without the delivery-limit marker'
+}
 Invoke-Test 'normal close is allowed without invoking the touch driver' {
     $safety = Get-DeferredTouchNormalCloseSafety -DriverInvoked $false -ReportValidated $false -Report $null
     Assert-Condition ($safety.safe -and $safety.reason -match 'No touch driver') 'Pre-driver app launch could not be closed safely.'
@@ -527,6 +549,37 @@ Invoke-Test 'host entrypoint is opt-in and never deploys, resets, retries, or fo
     Assert-Condition ($source -match '\[Text\.UTF8Encoding\]::new\(\$false,\s*\$true\)') 'WinApp stdout/stderr decoding is not strict UTF-8.'
     Assert-Condition ($source -match 'ConvertFrom-DeferredTouchNativeGuestResult\s+-NativeResult\s+\$native') 'Guest stdout parsing is not centralized across guest script and identity calls.'
     Assert-Condition ($source -match 'ConvertFrom-DeferredTouchNativeGuestResult\s+-NativeResult\s+\$driver') 'Touch-driver output bypasses the common strict JSON-object parser.'
+}
+
+$driverScriptPath = Join-Path $PSScriptRoot 'MarkdownDeferredTouchSandboxProbe.ps1'
+$driverTokens = $null
+$driverParseErrors = $null
+$driverAst = [System.Management.Automation.Language.Parser]::ParseFile($driverScriptPath, [ref]$driverTokens, [ref]$driverParseErrors)
+if ($driverParseErrors.Count -ne 0) { throw 'The guest deferred-touch driver does not parse.' }
+$pointFunction = $driverAst.Find({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq 'Select-DeferredTouchTextPoint' }, $true)
+if ($null -eq $pointFunction) { throw 'The guest driver is missing Select-DeferredTouchTextPoint.' }
+. ([scriptblock]::Create($pointFunction.Extent.Text))
+
+Invoke-Test 'text contacts avoid visible selection handles (P1-005)' {
+    $word = [pscustomobject]@{ X = 100; Y = 200; Width = 100; Height = 20 }
+    $renderer = [pscustomobject]@{ x = 0; y = 0; width = 1000; height = 1000 }
+    $center = Select-DeferredTouchTextPoint -WordRect $word -RendererRect $renderer -Handles @()
+    Assert-Condition ($center.x -eq 150 -and $center.y -eq 210) 'Without handles the word center was not chosen.'
+
+    # A start handle hanging from the line above covers the left half and center.
+    $handle = [pscustomobject]@{ automationId = 'MarkdownSelectionStartHandle'; x = 90; y = 190; width = 70; height = 44; offscreen = $false }
+    $point = Select-DeferredTouchTextPoint -WordRect $word -RendererRect $renderer -Handles @($handle)
+    Assert-Condition ($point.x -gt 164 -and $point.x -le 200 -and $point.y -ge 200 -and $point.y -le 220) 'The chosen point is on the handle or off the word.'
+
+    $covering = [pscustomobject]@{ automationId = 'MarkdownSelectionEndHandle'; x = 80; y = 180; width = 140; height = 60; offscreen = $false }
+    Assert-Throws { Select-DeferredTouchTextPoint -WordRect $word -RendererRect $renderer -Handles @($covering) } 'a fully covered word'
+
+    $offscreen = [pscustomobject]@{ automationId = 'MarkdownSelectionEndHandle'; x = 80; y = 180; width = 140; height = 60; offscreen = $true }
+    $ignored = Select-DeferredTouchTextPoint -WordRect $word -RendererRect $renderer -Handles @($offscreen)
+    Assert-Condition ($ignored.x -eq 150) 'An offscreen handle blocked the word center.'
+
+    $outside = [pscustomobject]@{ x = 0; y = 0; width = 120; height = 1000 }
+    Assert-Throws { Select-DeferredTouchTextPoint -WordRect $word -RendererRect $outside -Handles @($handle) } 'a word outside the renderer once handles are avoided'
 }
 
 $failures = @($tests | Where-Object { $_.status -ne 'PASS' })

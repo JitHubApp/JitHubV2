@@ -13298,6 +13298,65 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         e.Handled = true;
     }
 
+    /// <summary>
+    /// P1-037: decides whether an active handle drag lost its pointer capture
+    /// without a routed terminal. WinUI raises no PointerCaptureLost when a
+    /// touch capture is released by code or by tree changes (it keeps a replay
+    /// pointer point only for mouse), and the contact's later release is then
+    /// routed away from the handle. An unknown capture view, a deferred capture
+    /// record or queued input for the pointer never counts as lost: queued
+    /// terminals must still replay and commit their final position.
+    /// </summary>
+    internal static bool IsSelectionHandleCaptureSilentlyLost(
+        uint dragPointerId,
+        bool hasCaptureTarget,
+        bool captureViewAvailable,
+        bool captureTargetHoldsPointer,
+        bool hasDeferredCaptureOrQueuedInput)
+        => dragPointerId != 0 && hasCaptureTarget && captureViewAvailable &&
+           !captureTargetHoldsPointer && !hasDeferredCaptureOrQueuedInput;
+
+    /// <summary>
+    /// Retires a handle drag whose capture was silently lost (P1-037) exactly
+    /// as a routed handle cancel does: the committed selection is kept and the
+    /// touch owner, gesture epoch, capture target and frame clock are cleared.
+    /// </summary>
+    private bool RetireSilentlyLostSelectionHandleCapture()
+    {
+        uint pointerId = _selectionHandlePointerId;
+        UIElement? target = _selectionHandleCaptureTarget;
+        IReadOnlyList<Pointer>? captures = target?.XamlRoot is null ? null : target.PointerCaptures;
+        if (!IsSelectionHandleCaptureSilentlyLost(
+                pointerId,
+                target is not null,
+                captures is not null,
+                ContainsPointerCapture(captures, pointerId),
+                _deferredPointerCaptures.ContainsKey(pointerId) || HasQueuedPointerInput(pointerId)))
+        {
+            return false;
+        }
+
+        _touchTapSuppression.CancelContact(pointerId);
+        ResetSelectionHandleDrag();
+        _touchSelection.Cancel(pointerId);
+        ResumePendingRebuildAfterPointerInteraction();
+        UpdateSelectionHandles();
+        MarkdownDiagnostics.WriteLine("[MarkdownRendererControl] Retired a selection-handle drag whose pointer capture was lost without a routed terminal.");
+        return true;
+    }
+
+    private bool HasQueuedPointerInput(uint pointerId)
+    {
+        if (_deferredPointerInput is not { Count: > 0 } queue)
+            return false;
+        for (int index = 0; index < queue.Count; index++)
+        {
+            if (queue.TryGetAt(index, out PointerInput queued) && queued.Pointer?.PointerId == pointerId)
+                return true;
+        }
+        return false;
+    }
+
     private void StartSelectionHandleFrameClock()
     {
         if (_selectionHandleFrameSubscribed)
@@ -13323,6 +13382,11 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
 
         try
         {
+            // P1-037: the clock runs for the whole drag, so a capture that
+            // moved without a routed terminal is retired within a frame.
+            if (RetireSilentlyLostSelectionHandleCapture())
+                return;
+
             long timestamp = Stopwatch.GetTimestamp();
             double elapsedSeconds = Math.Max(
                 0,
@@ -13333,11 +13397,12 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             // overlay update is performed per compositor frame. The latest
             // contact remains active without PointerMoved so edge scrolling
             // continues while the finger is stationary.
-            bool keepRunning = ApplyPendingSelectionHandleMove(
+            // The return value only reports whether movement or edge scrolling
+            // continues; the clock itself stays subscribed until the drag ends
+            // (ResetSelectionHandleDrag or a routed release stops it).
+            _ = ApplyPendingSelectionHandleMove(
                 sustained: true,
                 elapsedSeconds);
-            if (!keepRunning)
-                StopSelectionHandleFrameClock();
         }
         finally
         {

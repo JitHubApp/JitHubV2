@@ -858,6 +858,17 @@ public partial class MarkdownRendererControl
             (input.Modifiers & VirtualKeyModifiers.Shift) == 0)
             return;
 
+        // P1-037: a new contact must never be rejected by a handle drag whose
+        // capture was silently lost; retire it before the press is processed.
+        // Retirement refreshes handles from layout, so it needs the snapshot
+        // lease; when the worker holds it the per-frame check retries.
+        if (kind is PointerInputKind.Press or PointerInputKind.HandlePress &&
+            _selectionHandlePointerId != 0 && snapshot.TryBeginInteraction())
+        {
+            try { RetireSilentlyLostSelectionHandleCapture(); }
+            finally { snapshot.EndInteraction(); }
+        }
+
         bool startsNewCapturedOwnership = kind == PointerInputKind.HandlePress ||
             (kind == PointerInputKind.Press && input.Point.IsInContact &&
              (input.Pointer.PointerDeviceType is PointerDeviceType.Touch or PointerDeviceType.Pen ||

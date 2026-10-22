@@ -36,7 +36,7 @@ foreach ($name in @(
     'Assert-TouchLifecycleProcessIdentity', 'Assert-TouchLifecycleProcessCoreIdentity', 'Find-TouchLifecycleProbeWindow',
     'Get-TouchLifecycleCasePlan', 'Get-TouchLifecycleWindows', 'ConvertTo-TouchLifecycleRangeKey', 'Assert-TouchLifecycleCleanControl',
     'Assert-TouchLifecycleSnapshotHasNoNativeCaptures', 'Get-TouchLifecycleEventMatches', 'Assert-TouchLifecycleReport',
-    'Test-TouchLifecycleSafeTerminal', 'Test-TouchLifecycleSafeIdle', 'Get-TouchLifecycleNormalCloseSafety', 'Get-TouchLifecycleCounts',
+    'Get-TouchLifecycleActionTerminalEvents', 'Test-TouchLifecycleCaptureLossDeliveryLimit', 'Test-TouchLifecycleSafeTerminal', 'Test-TouchLifecycleSafeIdle', 'Get-TouchLifecycleNormalCloseSafety', 'Get-TouchLifecycleCounts',
     'Wait-TouchLifecycleReport', 'Assert-TouchLifecycleFreshMenuReadyForDismissal', 'Get-TouchLifecycleUiText'
 )) {
     . ([scriptblock]::Create((Get-RunnerFunctionAst $name).Extent.Text))
@@ -155,9 +155,9 @@ function New-TestValidReport {
             $extra.afterAction=$afterAction
         }
         unload {
-            $events.Add((New-TestEvent 7 'Unloaded' 0 'None' $null -Internal $true -Source 'MarkdownRenderer' -ObservedEpoch $handleEpoch -CorrelatedEpoch $handleEpoch -Observer 'Renderer'))
+            $events.Add((New-TestEvent 7 'Unloaded' 0 'None' $null -Internal $true -Source $null -ObservedEpoch $handleEpoch -CorrelatedEpoch $handleEpoch -Observer 'Renderer'))
             $events.Add((New-TestEvent 8 'PointerReleased' $handleId 'Touch' $false -Source 'MarkdownSelectionStartHandle' -ObservedEpoch $handleEpoch -CorrelatedEpoch $handleEpoch -Observer 'CapturedButton'))
-            $events.Add((New-TestEvent 9 'Loaded' 0 'None' $null -Internal $true -Source 'MarkdownRenderer' -ObservedEpoch 0 -CorrelatedEpoch 0 -Observer 'Renderer'))
+            $events.Add((New-TestEvent 9 'Loaded' 0 'None' $null -Internal $true -Source $null -ObservedEpoch 0 -CorrelatedEpoch 0 -Observer 'Renderer'))
             $freshId=[uint32]33; $freshEpoch=303L
             $events.Add((New-TestEvent 10 'PointerPressed' $freshId 'Touch' $true -Source 'MarkdownRenderer' -ObservedEpoch $freshEpoch -CorrelatedEpoch $freshEpoch))
             $events.Add((New-TestEvent 11 'HoldingStarted' $freshId 'Touch' $true -Source 'MarkdownRenderer' -ObservedEpoch $freshEpoch -CorrelatedEpoch $freshEpoch))
@@ -175,7 +175,7 @@ function New-TestValidReport {
             $extra.freshPointerId=$freshId; $extra.freshGestureEpoch=$freshEpoch
         }
         dispose {
-            $events.Add((New-TestEvent 7 'DisposalCompleted' 0 'None' $null -Internal $true -Source 'MarkdownRenderer' -ObservedEpoch $handleEpoch -CorrelatedEpoch $handleEpoch -Observer 'Renderer'))
+            $events.Add((New-TestEvent 7 'DisposalCompleted' 0 'None' $null -Internal $true -Source $null -ObservedEpoch 0 -CorrelatedEpoch 0 -Observer 'Renderer'))
             $events.Add((New-TestEvent 8 'PointerReleased' $handleId 'Touch' $false -Source 'MarkdownSelectionStartHandle' -ObservedEpoch $handleEpoch -CorrelatedEpoch $handleEpoch -Observer 'CapturedButton'))
             $extra.afterAction=New-TestSnapshot (New-TestControl -Selected $true -Range '1:10' -Loaded $false -Disposed $true)
         }
@@ -349,6 +349,14 @@ Invoke-Test 'report validator rejects truncation, action after contact terminal,
     Assert-Throws { Assert-TouchLifecycleReport $report captureLoss owned } 'missing explicit failure field'
 }
 Invoke-Test 'unload/reuse report rejects same epoch and no fresh same-epoch release' {
+    $report=New-TestValidReport unload ancestor
+    $null=Assert-TouchLifecycleReport $report unload ancestor
+    ($report.events | Where-Object { $_.kind -eq 'Unloaded' }) | ForEach-Object { $_.rendererId='OtherRenderer' }
+    Assert-Throws { Assert-TouchLifecycleReport $report unload ancestor } 'lifecycle event from another renderer (T1-028)'
+    $report=New-TestValidReport dispose owned
+    $null=Assert-TouchLifecycleReport $report dispose owned
+    ($report.events | Where-Object { $_.kind -eq 'DisposalCompleted' }) | ForEach-Object { $_.observedGestureEpoch=$report.handleGestureEpoch }
+    Assert-Throws { Assert-TouchLifecycleReport $report dispose owned } 'disposal that still observes the live gesture epoch (T1-028)'
     $report=New-TestValidReport unload ancestor; $report.freshGestureEpoch=$report.handleGestureEpoch
     Assert-Throws { Assert-TouchLifecycleReport $report unload ancestor } 'reused gesture epoch'
     $report=New-TestValidReport unload ancestor; $report.events=@($report.events | Where-Object { -not ($_.pointerId -eq 33 -and $_.kind -eq 'PointerReleased') })
@@ -364,6 +372,41 @@ Invoke-Test 'close safety permits only clean terminal or clean no-touch baseline
     Assert-Condition ((Get-TouchLifecycleNormalCloseSafety -TouchCommandIssued $true -Report $complete -ExpectedCase captureLoss -ExpectedViewport owned).safe) 'Complete terminal-clean report should permit normal close.'
     $complete.afterTerminal.startHandle.pointerIds=@(22)
     Assert-Condition (-not (Get-TouchLifecycleNormalCloseSafety -TouchCommandIssued $true -Report $complete -ExpectedCase captureLoss -ExpectedViewport owned).safe) 'Retained native capture must withhold close input.'
+}
+
+Invoke-Test 'capture-loss delivery limit is UNVERIFIED-only and still needs a clean terminal (T1-022)' {
+    $limit='System.InvalidOperationException: TOUCH-CAPTURE-LOST-NOT-ROUTED: the handle capture moved and WinUI routed no in-contact PointerCaptureLost.'
+    $report=New-TestValidReport captureLoss owned; $report.phase='failed'; $report.failure=$limit
+    Assert-Condition (Test-TouchLifecycleCaptureLossDeliveryLimit -Report $report -ExpectedCase captureLoss) 'The exact capture-loss delivery limit was not recognized.'
+    Assert-Condition ((Get-TouchLifecycleNormalCloseSafety -TouchCommandIssued $true -Report $report -ExpectedCase captureLoss -ExpectedViewport owned).safe) 'A limit report with a clean terminal should permit normal close.'
+    $report.afterTerminal.startHandle.pointerIds=@(22)
+    Assert-Condition (-not (Get-TouchLifecycleNormalCloseSafety -TouchCommandIssued $true -Report $report -ExpectedCase captureLoss -ExpectedViewport owned).safe) 'A limit report with retained capture must withhold close input.'
+    $other=New-TestValidReport captureLoss owned; $other.phase='failed'; $other.failure='System.TimeoutException: Phase awaitCaptureLost timed out.'
+    Assert-Condition (-not (Test-TouchLifecycleCaptureLossDeliveryLimit -Report $other -ExpectedCase captureLoss)) 'An ordinary probe failure was classified as the delivery limit.'
+    Assert-Condition (-not (Get-TouchLifecycleNormalCloseSafety -TouchCommandIssued $true -Report $other -ExpectedCase captureLoss -ExpectedViewport owned).safe) 'An ordinary failed probe must withhold close input.'
+    $unload=New-TestValidReport unload owned; $unload.phase='failed'; $unload.failure=$limit
+    Assert-Condition (-not (Test-TouchLifecycleCaptureLossDeliveryLimit -Report $unload -ExpectedCase unload)) 'The delivery limit was accepted for a non-capture-loss case.'
+}
+
+Invoke-Test 'a contact routed away after unload or dispose is its window terminal; never for capture loss (T1-026)' {
+    $ev = { param($seq,$kind,$contact,$source,$observer='Root',$epoch=2) [pscustomobject]@{ sequence=$seq; kind=$kind; pointerId=24; device='Touch'; isInContact=$contact; sourceAutomationId=$source; observer=$observer; correlatedGestureEpoch=$epoch } }
+    $routedAway = @((& $ev 9 'PointerMoved' $true $null), (& $ev 10 'PointerCaptureLost' $true $null))
+    foreach ($case in @('unload','dispose')) {
+        $found = @(Get-TouchLifecycleActionTerminalEvents -Events $routedAway -ActionSequence 7 -HandleId 24 -HandleEpoch 2 -ExpectedCase $case)
+        Assert-Condition ($found.Count -eq 1 -and $found[0].kind -ceq 'PointerCaptureLost') "A routed-away contact was not the $case terminal."
+    }
+    Assert-Condition (@(Get-TouchLifecycleActionTerminalEvents -Events $routedAway -ActionSequence 7 -HandleId 24 -HandleEpoch 2 -ExpectedCase captureLoss).Count -eq 0) 'Capture loss accepted a routed-away terminal.'
+    $handleLoss = @((& $ev 10 'PointerCaptureLost' $true 'MarkdownSelectionStartHandle'))
+    Assert-Condition (@(Get-TouchLifecycleActionTerminalEvents -Events $handleLoss -ActionSequence 7 -HandleId 24 -HandleEpoch 2 -ExpectedCase unload).Count -eq 0) "The handle's own capture loss was accepted as the window terminal."
+    $wrongEpoch = @((& $ev 10 'PointerCaptureLost' $true $null 'Root' 3))
+    Assert-Condition (@(Get-TouchLifecycleActionTerminalEvents -Events $wrongEpoch -ActionSequence 7 -HandleId 24 -HandleEpoch 2 -ExpectedCase unload).Count -eq 0) 'A different gesture epoch was accepted.'
+    $buttonObserver = @((& $ev 10 'PointerCaptureLost' $true $null 'CapturedButton'))
+    Assert-Condition (@(Get-TouchLifecycleActionTerminalEvents -Events $buttonObserver -ActionSequence 7 -HandleId 24 -HandleEpoch 2 -ExpectedCase unload).Count -eq 0) 'A non-root observation was accepted.'
+    $withUp = @($routedAway + (& $ev 11 'PointerReleased' $false $null))
+    $ordinary = @(Get-TouchLifecycleActionTerminalEvents -Events $withUp -ActionSequence 7 -HandleId 24 -HandleEpoch 2 -ExpectedCase unload)
+    Assert-Condition ($ordinary.Count -eq 1 -and $ordinary[0].kind -ceq 'PointerReleased') 'An ordinary up did not take precedence over the routed-away report.'
+    $twice = @($routedAway + (& $ev 12 'PointerCaptureLost' $true $null))
+    Assert-Condition (@(Get-TouchLifecycleActionTerminalEvents -Events $twice -ActionSequence 7 -HandleId 24 -HandleEpoch 2 -ExpectedCase unload).Count -eq 2) 'Duplicate routed-away reports must not collapse into one terminal.'
 }
 
 Invoke-Test 'process and window guards require exact PID, start, path, hash, HWND, and title' {

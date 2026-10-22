@@ -1,0 +1,148 @@
+{
+  "schemaVersion": 1,
+  "scope": "phase1-live-touch-runners",
+  "recordedUtc": "2026-10-22",
+  "deployRun": "20261022T042501Z-cdeb3696fb004730993616077d658950",
+  "touchLifecycle": {
+    "runId": "touch-lifecycle-20261022T045729Z-8f9f23dca52f4407bc9dc8a5662f87c3",
+    "targetEpoch": "aeb7581d-4baa-450b-aa17-5927339731df:63FAB63BF360B1015B580B69A490B4EE",
+    "hostPayloads": [
+      {
+        "name": "MarkdownRenderer.Sample.exe",
+        "length": 162816,
+        "sha256": "785f58b62315f1b8e1c2a02fde566bc8bb039a44d3df03aa615cc1f8667e3912"
+      },
+      {
+        "name": "MarkdownRenderer.Sample.dll",
+        "length": 508416,
+        "sha256": "cfc73e3a43a9b85bf349cb3c2d46ba4b087c642c10158dc295546a9048d1a572"
+      },
+      {
+        "name": "MarkdownRenderer.dll",
+        "length": 1774080,
+        "sha256": "cce954bae27014adacddf5db2b6191dcbbbe3c0b470c2b22a874f61bfda5a455"
+      },
+      {
+        "name": "MarkdownRenderer.Sample.deps.json",
+        "length": 22232,
+        "sha256": "131f8187d5e6092a9f9baf05a9f3936a44086e9046464fbfcaabbe3f4a24eab1"
+      }
+    ],
+    "resultCounts": {
+      "pass": 4,
+      "fail": 0,
+      "unverified": 2
+    },
+    "cases": [
+      {
+        "id": "P1-TouchLifecycle-CaptureLoss-owned",
+        "viewport": "owned",
+        "status": "UNVERIFIED",
+        "deliveryLimit": "TOUCH-CAPTURE-LOST-NOT-ROUTED:"
+      },
+      {
+        "id": "P1-TouchLifecycle-CaptureLoss-ancestor",
+        "viewport": "ancestor",
+        "status": "UNVERIFIED",
+        "deliveryLimit": "TOUCH-CAPTURE-LOST-NOT-ROUTED:"
+      },
+      {
+        "id": "P1-TouchLifecycle-UnloadReuse-owned",
+        "viewport": "owned",
+        "status": "PASS",
+        "deliveryLimit": null
+      },
+      {
+        "id": "P1-TouchLifecycle-UnloadReuse-ancestor",
+        "viewport": "ancestor",
+        "status": "PASS",
+        "deliveryLimit": null
+      },
+      {
+        "id": "P1-TouchLifecycle-Dispose-owned",
+        "viewport": "owned",
+        "status": "PASS",
+        "deliveryLimit": null
+      },
+      {
+        "id": "P1-TouchLifecycle-Dispose-ancestor",
+        "viewport": "ancestor",
+        "status": "PASS",
+        "deliveryLimit": null
+      }
+    ]
+  },
+  "deferredTouch": {
+    "runId": "deferred-touch-20261022T045156Z-ea7bb04c080a4e289dccd3c9fec84e70",
+    "targetEpoch": "aeb7581d-4baa-450b-aa17-5927339731df:63FAB63BF360B1015B580B69A490B4EE",
+    "hostPayloads": [
+      {
+        "name": "MarkdownRenderer.Sample.exe",
+        "length": 162816,
+        "sha256": "785f58b62315f1b8e1c2a02fde566bc8bb039a44d3df03aa615cc1f8667e3912"
+      },
+      {
+        "name": "MarkdownRenderer.Sample.dll",
+        "length": 508416,
+        "sha256": "cfc73e3a43a9b85bf349cb3c2d46ba4b087c642c10158dc295546a9048d1a572"
+      },
+      {
+        "name": "MarkdownRenderer.dll",
+        "length": 1774080,
+        "sha256": "cce954bae27014adacddf5db2b6191dcbbbe3c0b470c2b22a874f61bfda5a455"
+      },
+      {
+        "name": "MarkdownRenderer.Sample.deps.json",
+        "length": 22232,
+        "sha256": "131f8187d5e6092a9f9baf05a9f3936a44086e9046464fbfcaabbe3f4a24eab1"
+      }
+    ],
+    "resultCounts": {
+      "pass": 2,
+      "fail": 0,
+      "unverified": 4
+    },
+    "cases": [
+      {
+        "id": "P1-005-006-Release-owned",
+        "viewport": "owned",
+        "status": "PASS",
+        "deliveryLimit": null
+      },
+      {
+        "id": "P1-005-006-CancelNew-owned",
+        "viewport": "owned",
+        "status": "UNVERIFIED",
+        "deliveryLimit": "INJECTED-CANCEL-NOT-NATIVE:"
+      },
+      {
+        "id": "P1-005-006-CancelExisting-owned",
+        "viewport": "owned",
+        "status": "UNVERIFIED",
+        "deliveryLimit": "INJECTED-CANCEL-NOT-NATIVE:"
+      },
+      {
+        "id": "P1-005-006-Release-ancestor",
+        "viewport": "ancestor",
+        "status": "PASS",
+        "deliveryLimit": null
+      },
+      {
+        "id": "P1-005-006-CancelNew-ancestor",
+        "viewport": "ancestor",
+        "status": "UNVERIFIED",
+        "deliveryLimit": "INJECTED-CANCEL-NOT-NATIVE:"
+      },
+      {
+        "id": "P1-005-006-CancelExisting-ancestor",
+        "viewport": "ancestor",
+        "status": "UNVERIFIED",
+        "deliveryLimit": "INJECTED-CANCEL-NOT-NATIVE:"
+      }
+    ]
+  },
+  "notes": [
+    "UNVERIFIED cases carry an exact delivery-limit marker: WinUI routes no in-contact touch PointerCaptureLost for a code-released capture (T1-022), and injected canceled ups arrive as ordinary releases (P1-031).",
+    "Raw artifacts stay local under MarkdownRenderer/artifacts/correctness/."
+  ]
+}

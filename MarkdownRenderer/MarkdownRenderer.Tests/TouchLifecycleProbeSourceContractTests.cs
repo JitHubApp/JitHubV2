@@ -19,7 +19,40 @@ public sealed class TouchLifecycleProbeSourceContractTests
         Assert.Contains("--renderer-touch-lifecycle-probe", app, StringComparison.Ordinal);
         Assert.Contains("new TouchLifecycleProbeWindow()", app, StringComparison.Ordinal);
         Assert.Contains("renderer.Dispose();", sample, StringComparison.Ordinal);
-        Assert.Contains("_capturedHandle!.ReleasePointerCaptures();", sample, StringComparison.Ordinal);
+        // Capture loss is a real capture move performed inside the routed,
+        // in-contact handle PointerMoved: WinUI raises PointerCaptureLost only
+        // for a release made with a current pointer point (T1-022).
+        Assert.Contains("_stealCaptureOnNextMove = true;", sample, StringComparison.Ordinal);
+        Assert.Contains("_stealCaptureOnNextMove && kind == \"PointerMoved\" && pointerId == _handlePointerId &&", sample, StringComparison.Ordinal);
+        Assert.Contains("args.Pointer.IsInContact", sample, StringComparison.Ordinal);
+        Assert.Contains("handle.ReleasePointerCapture(args.Pointer);", sample, StringComparison.Ordinal);
+        Assert.Contains("if (!_captureTarget.CapturePointer(args.Pointer))", sample, StringComparison.Ordinal);
+        Assert.True(
+            sample.IndexOf("handle.ReleasePointerCapture(args.Pointer);", StringComparison.Ordinal) <
+            sample.IndexOf("if (!_captureTarget.CapturePointer(args.Pointer))", StringComparison.Ordinal),
+            "The handle must release before the capture target can capture.");
+        Assert.DoesNotContain("ReleasePointerCaptures();", sample, StringComparison.Ordinal);
+        // T1-027: every phase change is published before the phase's own wait
+        // can return, because the host coordinates input on the published phase.
+        string tick = MethodBody(sample, "private void OnTick(DispatcherQueueTimer sender, object args)", "private void PerformLifecycleAction(");
+        int phasePublish = tick.IndexOf("if (!string.Equals(_phase, _publishedPhase, StringComparison.Ordinal))", StringComparison.Ordinal);
+        Assert.True(phasePublish >= 0 && phasePublish < tick.IndexOf("switch (_phase)", StringComparison.Ordinal),
+            "A changed phase must be published before the phase switch can return early.");
+        Assert.Contains("_publishedPhase = _phase;", MethodBody(sample, "private void Publish()", "private "), StringComparison.Ordinal);
+        // WinUI routes no PointerCaptureLost for an app-initiated touch release;
+        // the probe reports that limit only after the capture really moved and
+        // the renderer's terminal cleanup was verified.
+        Assert.Contains("private const string CaptureLossDeliveryLimit = \"TOUCH-CAPTURE-LOST-NOT-ROUTED:\";", sample, StringComparison.Ordinal);
+        string captureLost = MethodBody(sample, "case \"awaitCaptureLost\":", "case \"awaitUnloaded\":");
+        Assert.Contains("if (!_captureMoved)", captureLost, StringComparison.Ordinal);
+        // The kept selection is the one at the capture move: earlier pending
+        // handle moves may legitimately apply after the action tick.
+        Assert.Contains("expectedSelection: _captureMoveState!", captureLost, StringComparison.Ordinal);
+        Assert.Contains("_captureMoveState = Renderer.CaptureTouchLifecycleProbeState();", sample, StringComparison.Ordinal);
+        Assert.True(
+            captureLost.IndexOf("RequireCleanAfterContactAction(snapshot, preserveSelection: true", StringComparison.Ordinal) <
+            captureLost.IndexOf("throw new InvalidOperationException(CaptureLossDeliveryLimit", StringComparison.Ordinal),
+            "The delivery limit must be reported only after terminal cleanup is verified.");
         Assert.Contains("DetachRendererFromHost();", sample, StringComparison.Ordinal);
         Assert.Contains("HasLifecycleEvent(\"Unloaded\"", sample, StringComparison.Ordinal);
         Assert.Contains("HasLifecycleEvent(\"DisposalCompleted\"", sample, StringComparison.Ordinal);
@@ -38,6 +71,22 @@ public sealed class TouchLifecycleProbeSourceContractTests
             "private void DetachRendererFromHost()");
         Assert.Contains("item.Kind is \"PointerReleased\" or \"PointerCanceled\"", terminal, StringComparison.Ordinal);
         Assert.DoesNotContain("PointerCaptureLost", terminal, StringComparison.Ordinal);
+
+        // T1-026: a contact routed away from the window is a separate, narrower
+        // terminal, used only for unload/dispose after an ordinary up had time
+        // to arrive, and never the handle's own capture loss.
+        string routedAway = MethodBody(sample,
+            "private TouchLifecycleProbeEvent? FindRoutedAwayTerminalAfter(",
+            "private TouchLifecycleProbeEvent? FindPointerTerminalAfter(");
+        Assert.Contains("item.IsInContact == true && item.Kind == \"PointerCaptureLost\"", routedAway, StringComparison.Ordinal);
+        Assert.Contains("item.Observer == \"Root\" && item.SourceAutomationId is not (StartHandleId or EndHandleId)", routedAway, StringComparison.Ordinal);
+        string actionTerminal = MethodBody(sample, "case \"awaitActionTerminal\":", "case \"awaitReattached\":");
+        Assert.Contains("_case is not (\"unload\" or \"dispose\")", actionTerminal, StringComparison.Ordinal);
+        Assert.Contains("RoutedAwaySettleMilliseconds", actionTerminal, StringComparison.Ordinal);
+        Assert.True(
+            actionTerminal.IndexOf("FindPointerTerminalAfter(_handlePointerId, _actionSequence)", StringComparison.Ordinal) <
+            actionTerminal.IndexOf("FindRoutedAwayTerminalAfter(_handlePointerId, _actionSequence)", StringComparison.Ordinal),
+            "An ordinary terminal must be preferred over a routed-away report.");
     }
 
     [Fact]

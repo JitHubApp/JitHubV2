@@ -41,6 +41,10 @@ internal sealed class DeferredTouchProbeWindow : Window
     private DeferredTouchProbeState? _queued;
     private DeferredTouchProbeState? _after;
     private DeferredTouchProbeState? _fresh;
+    private DeferredTouchProbeState? _live;
+    private long _settleDeadline;
+    // Bound for work resumed by the dropped terminal to drain after the fresh contact.
+    private const long FreshContactSettleMilliseconds = 2_000;
     private string _phase = "idle";
     private string? _failure;
     private bool _usesAncestor;
@@ -175,7 +179,8 @@ internal sealed class DeferredTouchProbeWindow : Window
             _sequence++;
             _failure = null;
             _preContact = current;
-            _before = _queued = _after = _fresh = null;
+            _before = _queued = _after = _fresh = _live = null;
+            _settleDeadline = 0;
             _heldSnapshot = null;
             _lease = null;
             _pointerId = 0;
@@ -231,7 +236,18 @@ internal sealed class DeferredTouchProbeWindow : Window
                     if (_lease is not { IsHeld: true })
                         throw new InvalidOperationException("The terminal arrived after the worker released its snapshot.");
                     if (current.MatchingTerminalCount == 0)
+                    {
+                        // Republish only when the deferred input changes, so a stalled
+                        // terminal match is diagnosable from the receipt.
+                        if (_live is null || _live.QueuedCount != current.QueuedCount ||
+                            _live.ActivePointerId != current.ActivePointerId || _live.GestureEpoch != current.GestureEpoch)
+                        {
+                            _live = current;
+                            Publish();
+                        }
                         return;
+                    }
+                    _live = null;
                     _queued = current;
                     _workerHeldAtDrop = _lease.IsHeld;
                     _after = Renderer.FailDeferredTouchTerminalForProbe(_heldSnapshot!, _pointerId, _gestureEpoch, _canceled);
@@ -266,7 +282,19 @@ internal sealed class DeferredTouchProbeWindow : Window
                     if (current.ActivePointerId != 0)
                         return;
                     if (current.QueuedCount != 0 || current.CaptureCount != 0 || current.RetryTimerExists || !current.SelectionIsActive)
-                        throw new InvalidOperationException("The fresh contact did not finish with a clean committed selection.");
+                    {
+                        // Work the drop resumed (a rebuild, an exit queued behind
+                        // it) may still drain after the contact ends. Clean state
+                        // is required within a bound, and the residue is kept.
+                        if (_settleDeadline == 0)
+                            _settleDeadline = Environment.TickCount64 + FreshContactSettleMilliseconds;
+                        _live = current;
+                        if (Environment.TickCount64 < _settleDeadline)
+                            return;
+                        throw new InvalidOperationException(
+                            "The fresh contact did not finish with a clean committed selection. State: " +
+                            JsonSerializer.Serialize(current, DeferredTouchProbeJsonContext.Default.DeferredTouchProbeState));
+                    }
                     _phase = "complete";
                     _timer.Stop();
                     SetCommandsEnabled(true);
@@ -297,7 +325,7 @@ internal sealed class DeferredTouchProbeWindow : Window
             1, _sequence, _phase, _usesAncestor ? "ancestor" : "owned", _canceled,
             _hadSelectionBeforeContact, _pointerId, _gestureEpoch, _lease?.IsHeld == true,
             _workerHeldAtDrop,
-            _preContact, _before, _queued, _after, _fresh, _failure), DeferredTouchProbeJsonContext.Default.DeferredTouchProbeReport);
+            _preContact, _before, _queued, _after, _fresh, _failure, _live), DeferredTouchProbeJsonContext.Default.DeferredTouchProbeReport);
 
     private void OnClosed(object sender, WindowEventArgs args)
     {
@@ -320,7 +348,9 @@ internal sealed record DeferredTouchProbeReport(
     int Version, int Sequence, string Phase, string Viewport, bool Canceled,
     bool HadSelectionBeforeContact, uint PointerId, long GestureEpoch, bool WorkerOwnsSnapshot, bool WorkerHeldAtDrop,
     DeferredTouchProbeState? PreContact, DeferredTouchProbeState? BeforeTerminal, DeferredTouchProbeState? QueuedTerminal,
-    DeferredTouchProbeState? AfterDrop, DeferredTouchProbeState? FreshContact, string? Failure);
+    DeferredTouchProbeState? AfterDrop, DeferredTouchProbeState? FreshContact, string? Failure,
+    // P1-005 diagnostics: the live renderer state while a terminal is awaited.
+    DeferredTouchProbeState? Live);
 
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
 [JsonSerializable(typeof(DeferredTouchProbeReport))]

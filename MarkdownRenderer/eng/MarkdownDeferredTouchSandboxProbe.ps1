@@ -273,7 +273,9 @@ function Wait-DeferredTouchPhase {
     } while ([DateTime]::UtcNow -lt $deadline)
     # PowerShell names are case-insensitive: never reuse $Phase for the last phase.
     $lastPhase = if ($null -eq $last) { '<no receipt>' } else { [string]$last.phase }
-    throw "Timed out waiting for deferred-touch phase [$($Phase -join ',')] at sequence $Sequence; last phase was '$lastPhase'."
+    # P1-005 diagnostics: the probe republishes live deferred-input state while holding.
+    $live = if ($null -ne $last -and $null -ne $last.PSObject.Properties['live'] -and $null -ne $last.live) { ' Live: ' + (ConvertTo-Json -InputObject $last.live -Depth 6 -Compress) } else { '' }
+    throw "Timed out waiting for deferred-touch phase [$($Phase -join ',')] at sequence $Sequence; last phase was '$lastPhase'.$live"
 }
 
 function Get-DeferredTouchUiState {
@@ -935,6 +937,38 @@ function Send-DeferredTouchFrame {
     throw 'Only real Down, ordinary Up alone, or Up|Canceled are accepted; the pump owns all stationary updates.'
 }
 
+function Select-DeferredTouchTextPoint {
+    # A text contact must land on the word and not on a visible selection
+    # handle: handle touch targets extend beyond the selected line, and a
+    # press there starts a handle drag (HandleRelease), not a text contact.
+    # Returns the first candidate inside the word and renderer that is outside
+    # every visible handle (plus a margin), or throws when none exists.
+    param(
+        [Parameter(Mandatory)]$WordRect,
+        [Parameter(Mandatory)]$RendererRect,
+        [AllowEmptyCollection()][object[]]$Handles = @(),
+        [double]$HandleMargin = 4
+    )
+    $wordX = [double]$WordRect.X; $wordY = [double]$WordRect.Y
+    $wordWidth = [double]$WordRect.Width; $wordHeight = [double]$WordRect.Height
+    if ($wordWidth -le 0 -or $wordHeight -le 0) { throw 'The text target has no visible geometry.' }
+    $visibleHandles = @($Handles | Where-Object { -not [bool]$_.offscreen -and [double]$_.width -gt 0 -and [double]$_.height -gt 0 })
+    foreach ($fy in @(0.5, 0.35, 0.65)) {
+        foreach ($fx in @(0.5, 0.65, 0.35, 0.8, 0.2, 0.9, 0.1)) {
+            $x = [int][Math]::Round($wordX + $wordWidth * $fx)
+            $y = [int][Math]::Round($wordY + $wordHeight * $fy)
+            if ($x -lt [double]$RendererRect.x -or $x -gt ([double]$RendererRect.x + [double]$RendererRect.width) -or
+                $y -lt [double]$RendererRect.y -or $y -gt ([double]$RendererRect.y + [double]$RendererRect.height)) { continue }
+            $onHandle = @($visibleHandles | Where-Object {
+                $x -ge ([double]$_.x - $HandleMargin) -and $x -le ([double]$_.x + [double]$_.width + $HandleMargin) -and
+                $y -ge ([double]$_.y - $HandleMargin) -and $y -le ([double]$_.y + [double]$_.height + $HandleMargin)
+            }).Count -ne 0
+            if (-not $onHandle) { return [pscustomobject]@{ x = $x; y = $y; fractionX = $fx; fractionY = $fy } }
+        }
+    }
+    throw 'Every candidate point on the text target is covered by a visible selection handle or lies outside the renderer viewport.'
+}
+
 function Start-DeferredTouchAtText {
     param(
         [Parameter(Mandatory)][ValidateSet('deferredword','freshword')][string]$Text,
@@ -946,12 +980,11 @@ function Start-DeferredTouchAtText {
         throw "The actual UIA TextPattern range for '$Text' was not exact and visibly hittable."
     }
     $state = Get-DeferredTouchUiState -RequestedViewport $Viewport
-    $screenX = [int][Math]::Round($range.rect.X + $range.rect.Width / 2.0)
-    $screenY = [int][Math]::Round($range.rect.Y + $range.rect.Height / 2.0)
-    if ($screenX -lt [double]$state.rendererRect.x -or $screenX -gt ([double]$state.rendererRect.x+[double]$state.rendererRect.width) -or
-        $screenY -lt [double]$state.rendererRect.y -or $screenY -gt ([double]$state.rendererRect.y+[double]$state.rendererRect.height)) {
-        throw "The actual UIA text center for '$Text' is outside the selected renderer viewport."
-    }
+    # P1-005: a committed selection's start handle can cover the next line's
+    # word center; touch the word where no visible handle is.
+    $textPoint = Select-DeferredTouchTextPoint -WordRect $range.rect -RendererRect $state.rendererRect -Handles @($state.handles)
+    $screenX = [int]$textPoint.x
+    $screenY = [int]$textPoint.y
     $expectedPoint = Get-ExpectedScreenTouchPoint -ScreenX $screenX -ScreenY $screenY
     $expectedInitialPhase = if ($RequiredPhase -eq 'holding') { 'armed' } else { 'awaitingFreshContact' }
     $preContactReceipt = Get-DeferredTouchReceipt

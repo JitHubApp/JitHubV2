@@ -30,6 +30,10 @@ internal sealed class TouchLifecycleProbeWindow : Window
     private static readonly TimeSpan HostCoordinatorTimeout = TimeSpan.FromSeconds(150);
     private const string StartHandleId = "MarkdownSelectionStartHandle";
     private const string EndHandleId = "MarkdownSelectionEndHandle";
+    // The host runner classifies this exact prefix as UNVERIFIED for capture loss only.
+    private const string CaptureLossDeliveryLimit = "TOUCH-CAPTURE-LOST-NOT-ROUTED:";
+    // How long an ordinary up may still follow a routed-away contact report.
+    private const long RoutedAwaySettleMilliseconds = 1_000;
 
     private readonly MarkdownScrollView _owned = new();
     private readonly MarkdownDocumentView _document = new();
@@ -56,6 +60,8 @@ internal sealed class TouchLifecycleProbeWindow : Window
         TextWrapping = TextWrapping.Wrap,
     };
     private readonly Button _close = new() { Content = "Close probe" };
+    // Zero-size, hit-testable element that takes the contact in the capture-loss case.
+    private readonly Border _captureTarget = new();
     private readonly DispatcherQueueTimer _timer;
     private readonly List<TouchLifecycleProbeEvent> _events = new(MaximumEvents);
 
@@ -76,9 +82,15 @@ internal sealed class TouchLifecycleProbeWindow : Window
     private bool _coordinatorWaitDeadlineActive;
     private long _deadline;
     private long _lastPublishTick;
+    private string? _publishedPhase;
     private uint _longPressPointerId;
     private long _longPressGestureEpoch;
     private uint _handlePointerId;
+    // Set by the capture-loss action; the next routed handle move steals capture.
+    private bool _stealCaptureOnNextMove;
+    private bool _captureMoved;
+    private TouchLifecycleProbeState? _captureMoveState;
+    private long _routedAwayObservedTick;
     private long _handleGestureEpoch;
     private uint _freshPointerId;
     private long _freshGestureEpoch;
@@ -181,6 +193,10 @@ internal sealed class TouchLifecycleProbeWindow : Window
         _close.Margin = _receipt.Margin;
         Grid.SetRow(_close, 4);
         _root.Children.Add(_close);
+        AutomationProperties.SetAutomationId(_captureTarget, "TouchLifecycleCaptureTarget");
+        _captureTarget.HorizontalAlignment = HorizontalAlignment.Left;
+        Grid.SetRow(_captureTarget, 4);
+        _root.Children.Add(_captureTarget);
         Content = _root;
         _root.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler(OnPointerPressed), true);
         _root.AddHandler(UIElement.PointerMovedEvent, new PointerEventHandler(OnPointerMoved), true);
@@ -260,6 +276,9 @@ internal sealed class TouchLifecycleProbeWindow : Window
             _eventSequence = 0;
             _actionSequence = _handlePressSequence = _handleStartSequence = _freshStartSequence = 0;
             _longPressPointerId = _handlePointerId = _freshPointerId = 0;
+            _stealCaptureOnNextMove = _captureMoved = false;
+            _captureMoveState = null;
+            _routedAwayObservedTick = 0;
             _longPressGestureEpoch = _handleGestureEpoch = _freshGestureEpoch = 0;
             _capturedHandle = null;
             _baseline = baseline;
@@ -305,6 +324,11 @@ internal sealed class TouchLifecycleProbeWindow : Window
             }
             if (_failure is not null)
                 throw new InvalidOperationException(_failure);
+            // T1-027: the host coordinates on the published phase. A waiting
+            // phase returns before the throttled publish below, so a phase
+            // entered within 250 ms of the last publish must be published here.
+            if (!string.Equals(_phase, _publishedPhase, StringComparison.Ordinal))
+                Publish();
 
             MarkdownRendererControl renderer = Renderer;
             TouchLifecycleProbeSnapshot snapshot = CaptureSnapshot(renderer);
@@ -358,7 +382,25 @@ internal sealed class TouchLifecycleProbeWindow : Window
                     if (FindPointerEvent(_handlePointerId, "PointerCaptureLost") is not { } captureLost ||
                         captureLost.Sequence <= _actionSequence ||
                         captureLost.SourceAutomationId != _beforeAction!.Control.HandleCaptureTargetAutomationId)
-                        return;
+                    {
+                        if (FindPointerTerminalAfter(_handlePointerId, _actionSequence) is not { } silentTerminal)
+                            return;
+                        // T1-022 delivery limit: WinUI keeps a replay pointer point
+                        // only for mouse, so an app-initiated release of a touch
+                        // capture raises no PointerCaptureLost. Verify that the
+                        // capture really moved and the renderer still cleaned up,
+                        // then report the limit instead of a pass.
+                        if (!_captureMoved)
+                            throw new InvalidOperationException("The capture-loss contact ended before a routed move could transfer its capture.");
+                        if (silentTerminal.CorrelatedGestureEpoch != _handleGestureEpoch)
+                            throw new InvalidOperationException("The handle contact ended under a different or unknown gesture epoch.");
+                        _afterTerminal = snapshot;
+                        RequireCleanAfterContactAction(snapshot, preserveSelection: true,
+                            expectedSelection: _captureMoveState!);
+                        throw new InvalidOperationException(CaptureLossDeliveryLimit +
+                            " the handle's touch capture moved to the probe capture target during a routed in-contact move, " +
+                            "WinUI routed no in-contact PointerCaptureLost for it, and the renderer kept the selection and released all contact state at the terminal.");
+                    }
                     _afterAction = snapshot;
                     RequireCleanAfterContactAction(snapshot, preserveSelection: true);
                     _phase = "awaitActionTerminal";
@@ -383,7 +425,19 @@ internal sealed class TouchLifecycleProbeWindow : Window
                     break;
                 case "awaitActionTerminal":
                     if (FindPointerTerminalAfter(_handlePointerId, _actionSequence) is not { } terminal)
-                        return;
+                    {
+                        // T1-026: once the renderer has left the tree, Windows may
+                        // route the contact away from this window. An ordinary up
+                        // still wins if it arrives within the settle period.
+                        if (_case is not ("unload" or "dispose") ||
+                            FindRoutedAwayTerminalAfter(_handlePointerId, _actionSequence) is not { } routedAway)
+                            return;
+                        if (_routedAwayObservedTick == 0)
+                            _routedAwayObservedTick = Environment.TickCount64;
+                        if (Environment.TickCount64 - _routedAwayObservedTick < RoutedAwaySettleMilliseconds)
+                            return;
+                        terminal = routedAway;
+                    }
                     if (terminal.CorrelatedGestureEpoch != _handleGestureEpoch)
                         throw new InvalidOperationException("The handle contact ended under a different or unknown gesture epoch.");
                     _afterTerminal = snapshot;
@@ -504,9 +558,10 @@ internal sealed class TouchLifecycleProbeWindow : Window
         switch (_case)
         {
             case "captureLoss":
-                // This is the native Button captured by WinUI for the current
-                // touch pointer, not a synthesized event or production reset.
-                _capturedHandle!.ReleasePointerCaptures();
+                // Move the real touch capture from the handle Button to another
+                // element, as another control taking the pointer would. The next
+                // routed handle PointerMoved performs it (T1-022).
+                _stealCaptureOnNextMove = true;
                 _phase = "awaitCaptureLost";
                 break;
             case "unload":
@@ -593,7 +648,8 @@ internal sealed class TouchLifecycleProbeWindow : Window
     private void RequireCleanAfterContactAction(
         TouchLifecycleProbeSnapshot snapshot,
         bool preserveSelection,
-        bool expectHandlesHidden = false)
+        bool expectHandlesHidden = false,
+        TouchLifecycleProbeState? expectedSelection = null)
     {
         TouchLifecycleProbeState state = snapshot.Control;
         if (state.ContactPointerId != 0 || state.HandlePointerId != 0 || state.IsHandleDragging ||
@@ -604,7 +660,8 @@ internal sealed class TouchLifecycleProbeWindow : Window
             throw new InvalidOperationException("A native selection Button still reports capture of the retired pointer.");
         if (expectHandlesHidden && (state.IsStartHandleVisible || state.IsEndHandleVisible))
             throw new InvalidOperationException("The detached or disposed renderer retained visible selection handles.");
-        if (preserveSelection && (!state.SelectionIsActive || state.SelectionRange != _beforeAction!.Control.SelectionRange))
+        TouchLifecycleProbeState reference = expectedSelection ?? _beforeAction!.Control;
+        if (preserveSelection && (!state.SelectionIsActive || !reference.SelectionIsActive || state.SelectionRange != reference.SelectionRange))
             throw new InvalidOperationException("Capture loss did not preserve the committed selection range.");
     }
 
@@ -713,6 +770,26 @@ internal sealed class TouchLifecycleProbeWindow : Window
         try
         {
             uint pointerId = args.Pointer.PointerId;
+            if (_stealCaptureOnNextMove && kind == "PointerMoved" && pointerId == _handlePointerId &&
+                args.Pointer.IsInContact)
+            {
+                _stealCaptureOnNextMove = false;
+                // WinUI refuses CapturePointer while another element holds the
+                // pointer, so the handle releases first. Inside this routed event
+                // WinUI has a current pointer point and raises PointerCaptureLost
+                // synchronously; from a timer the release is silent. The capture
+                // target then owns the rest of the contact, so its terminal is
+                // routed once, through the root.
+                Button handle = _capturedHandle ?? throw new InvalidOperationException("The captured selection Button is unknown at the capture-loss move.");
+                handle.ReleasePointerCapture(args.Pointer);
+                if (!_captureTarget.CapturePointer(args.Pointer))
+                    throw new InvalidOperationException("The probe capture target could not take the released touch contact during a routed PointerMoved.");
+                _captureMoved = true;
+                // Pending handle moves from before this event may already have
+                // been applied after the action tick; the selection at the
+                // capture move is what the retired drag must keep.
+                _captureMoveState = Renderer.CaptureTouchLifecycleProbeState();
+            }
             string? sourceAutomationId = FindAutomationId(args.OriginalSource);
             MarkdownRendererControl renderer = Renderer;
             bool withinRenderer = IsDescendantOf(args.OriginalSource, renderer);
@@ -924,6 +1001,16 @@ internal sealed class TouchLifecycleProbeWindow : Window
 
     // Capture loss is lifecycle evidence, not proof that the user's finger
     // lifted. Only the actual routed, no-longer-in-contact terminal can retire it.
+    // T1-026: an in-contact PointerCaptureLost with no selection-handle source,
+    // observed at the window root after the renderer left the tree, is WinUI
+    // reporting WM_POINTERCAPTURECHANGED or a suspended pointer: Windows sends
+    // this window no further messages for that pointer. It is never the
+    // handle's own capture loss, which carries the handle as its source.
+    private TouchLifecycleProbeEvent? FindRoutedAwayTerminalAfter(uint pointerId, int sequence)
+        => _events.LastOrDefault(item => item.Sequence > sequence && item.PointerId == pointerId &&
+            item.Device == "Touch" && item.IsInContact == true && item.Kind == "PointerCaptureLost" &&
+            item.Observer == "Root" && item.SourceAutomationId is not (StartHandleId or EndHandleId));
+
     private TouchLifecycleProbeEvent? FindPointerTerminalAfter(uint pointerId, int sequence)
         => _events.LastOrDefault(item => item.Sequence > sequence && item.PointerId == pointerId &&
             item.Device == "Touch" && item.IsInContact == false &&
@@ -1063,6 +1150,7 @@ internal sealed class TouchLifecycleProbeWindow : Window
     private void Publish()
     {
         _lastPublishTick = Environment.TickCount64;
+        _publishedPhase = _phase;
         var report = new TouchLifecycleProbeReport(
             2, _run, _phase, _case, _usesAncestor ? "ancestor" : "owned",
             _longPressPointerId, _longPressGestureEpoch, _handlePointerId, _handleGestureEpoch,
