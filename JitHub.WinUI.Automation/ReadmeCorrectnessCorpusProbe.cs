@@ -324,7 +324,8 @@ internal static partial class ReadmeAuditProbe
                             checks["resourceCoverage"] = ReadmeCorrectnessOracles.EvaluateResourceCoverage(
                                 ReadmeCorrectnessOracles.LoadImageDemand(Path.Combine(corpusInput.DirectoryPath!, "manifest.json")),
                                 native.UnavailableImages,
-                                native.LoadingImagesAfterTraversal);
+                                native.LoadingImagesAfterTraversal,
+                                ReadmeCorrectnessOracles.LoadObservedImageFailures(Path.Combine(caseDirectory, ".runtime")));
                         }
                         else
                         {
@@ -1421,8 +1422,31 @@ internal static partial class ReadmeAuditProbe
             !ReadmeCorrectnessOracles.IsAtomicSelectionObject("MarkdownGroup") &&
             !ReadmeCorrectnessOracles.IsAtomicSelectionObject("MarkdownRenderer") &&
             !ReadmeCorrectnessOracles.IsAtomicSelectionObject(null);
+        var sourceDemand = new ReadmeCorrectnessOracles.ImageDemandSummary(2, 0, 1, 0, states)
+        {
+            OccurrencesBySource = new Dictionary<string, int>(StringComparer.Ordinal) { ["anim"] = 2, ["ok"] = 1, ["gone"] = 1 },
+            SourcesWithoutBytes = new HashSet<string>(StringComparer.Ordinal) { "gone" },
+        };
+        ReadmeCorrectnessOracles.ObservedImageFailures Failures(string[] unsupported, string[] other) =>
+            new(new HashSet<string>(unsupported, StringComparer.Ordinal), new HashSet<string>(other, StringComparer.Ordinal));
+        bool resourceOracleClassifiesDocumentedUnsupportedContent =
+            ReadmeCorrectnessOracles.EvaluateResourceCoverage(sourceDemand, 3, 0, Failures(["anim"], ["gone"])).State == CorrectnessCheckState.Unsupported &&
+            ReadmeCorrectnessOracles.EvaluateResourceCoverage(sourceDemand, 1, 0, Failures([], ["gone"])).State == CorrectnessCheckState.UpstreamUnavailable &&
+            ReadmeCorrectnessOracles.EvaluateResourceCoverage(sourceDemand, 1, 0, Failures([], ["ok"])).State == CorrectnessCheckState.Failed &&
+            ReadmeCorrectnessOracles.EvaluateResourceCoverage(sourceDemand, 4, 0, Failures(["anim"], ["gone"])).State == CorrectnessCheckState.Failed &&
+            ReadmeCorrectnessOracles.EvaluateResourceCoverage(
+                new ReadmeCorrectnessOracles.ImageDemandSummary(1, 0, 0, 0, states)
+                {
+                    OccurrencesBySource = new Dictionary<string, int>(StringComparer.Ordinal) { ["ok"] = 1 },
+                },
+                1, 0, Failures([], [])).State == CorrectnessCheckState.Failed &&
+            EvaluateCorrectnessCase(allPassed
+                .Select(check => check.Name == "resourceCoverage"
+                    ? CorrectnessCheck.Unsupported(check.Name, "self-test")
+                    : check)) == "classified";
         bool[] tests =
         [
+            resourceOracleClassifiesDocumentedUnsupportedContent,
             punctuationBesideOmittedInlinePasses,
             atomicSelectionObjectsAreRecognized,
             allPassedCase,
@@ -1485,6 +1509,7 @@ internal static partial class ReadmeAuditProbe
                 ["resource-oracle-classifies-demand-terminal-states"] = demandOracleClassifiesResources,
                 ["content-oracle-accepts-punctuation-beside-an-omitted-inline-object"] = punctuationBesideOmittedInlinePasses,
                 ["selection-phrase-skips-atomic-selection-objects"] = atomicSelectionObjectsAreRecognized,
+                ["resource-oracle-classifies-documented-unsupported-svg-by-source"] = resourceOracleClassifiesDocumentedUnsupportedContent,
             },
         };
     }
@@ -1539,7 +1564,9 @@ internal static partial class ReadmeAuditProbe
     private static bool IsPassedOrOwnClassification(CorrectnessCheck check) =>
         check.State == CorrectnessCheckState.Passed ||
         (check.State == CorrectnessCheckState.Unsupported && check.Name == "unsupportedSyntaxClassification") ||
-        (check.State == CorrectnessCheckState.UpstreamUnavailable && check.Name == "resourceCoverage");
+        (check.State == CorrectnessCheckState.UpstreamUnavailable && check.Name == "resourceCoverage") ||
+        // Documented-unsupported image content is resourceCoverage's own classification.
+        (check.State == CorrectnessCheckState.Unsupported && check.Name == "resourceCoverage");
 
     private sealed record SourceAcquisitionRecord(
         int Rank,

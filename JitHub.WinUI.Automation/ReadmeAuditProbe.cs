@@ -2055,8 +2055,14 @@ internal static partial class ReadmeAuditProbe
                     out contentViewportWidth,
                     out contentViewportHeight))
             {
+                string tileSizes = string.Join(", ", traversal.Tiles
+                    .Select(tile => $"{tile.Width}x{tile.Height}")
+                    .Distinct(StringComparer.Ordinal)
+                    .Take(6));
                 throw new InvalidDataException(
-                    "README renderer captures changed viewport size or did not match the measured physical host bounds.");
+                    "README renderer captures changed viewport size or did not match the measured physical host bounds " +
+                    $"(host {visibleHostPixels.Width}x{visibleHostPixels.Height} px at {rasterizationScale} px/DIP; " +
+                    $"{traversal.Tiles.Count} tiles; distinct tile DIP sizes: {tileSizes}).");
             }
             ReadmeAuditPerformanceSnapshot fullPerformance = ReadPerformanceSnapshot(captureResponse);
             // Keep repository navigation, API loading, UIA stability checks, and
