@@ -2055,6 +2055,17 @@ internal static partial class ReadmeAuditProbe
                     out contentViewportWidth,
                     out contentViewportHeight))
             {
+                try
+                {
+                    // Show which page element changed the README host's size.
+                    using System.Drawing.Bitmap windowImage = NativeMethods.CaptureWindowSurface(
+                        new IntPtr(window.Properties.NativeWindowHandle.ValueOrDefault));
+                    windowImage.Save(Path.Combine(output, "viewport-size-change-window.png"), System.Drawing.Imaging.ImageFormat.Png);
+                }
+                catch (Exception)
+                {
+                    // Optional diagnostics must not replace the original failure.
+                }
                 string tileSizes = string.Join(", ", traversal.Tiles
                     .Select(tile => $"{tile.Width}x{tile.Height}")
                     .Distinct(StringComparer.Ordinal)
