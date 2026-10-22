@@ -194,6 +194,9 @@ internal static class AuditSelfTests
             "<img src=\"a&amp;b.png\" alt=\"x\">\n\n" +
             "![md](m.png)\n\n" +
             "Inline $x^2$ math and a note[^1].\n\n" +
+            "> [!TIP]\n> Remove old versions first.\n\n" +
+            "> [!note] lower-case tag body\n\n" +
+            "> Plain quote [!TIP] stays.\n\n" +
             "[^1]: Footnote body.\n";
         MarkdownDocument document = await engine.ParseAsync(source).ConfigureAwait(false);
         DocumentInventory inventory = DocumentInventoryBuilder.Create(document);
@@ -229,6 +232,11 @@ internal static class AuditSelfTests
         Require(inventory.InlineMath.Count == 1 &&
             source.Substring(inventory.InlineMath[0].SourceStart, inventory.InlineMath[0].SourceLength) == "$x^2$",
             "Inline math is counted with its exact source span.");
+        Require(texts.Contains("Remove old versions first.") && texts.Contains("lower-case tag body") &&
+            !texts.Any(static text => text.Contains("[!TIP] Remove", StringComparison.Ordinal)),
+            "A GitHub alert's tag is replaced by its title, so it is not visible paragraph text.");
+        Require(texts.Contains("Plain quote [!TIP] stays."),
+            "A tag that does not start a blockquote's first paragraph is ordinary text.");
         Require(texts.Contains("Inline math and a note.") && texts.Contains("Footnote body."),
             "Inline math and footnote labels are excluded from body text; the definition body is kept.");
         Require(!texts.Any(static text => text.Contains("md", StringComparison.Ordinal) && text.Length <= 2),

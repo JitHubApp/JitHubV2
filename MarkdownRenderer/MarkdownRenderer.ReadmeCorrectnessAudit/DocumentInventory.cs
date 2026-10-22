@@ -76,6 +76,11 @@ internal static partial class DocumentInventoryBuilder
     // identified by name so this audit does not widen that pack's surface.
     private const string GitHubDisclosureBlockTypeName = "GitHubDetailsBlock";
 
+    // GitHub alerts (AlertRenderer): a blockquote whose first paragraph starts
+    // with one of these tags shows a title instead of the tag, so the tag is
+    // not visible paragraph text.
+    private static readonly string[] GitHubAlertTags = ["[!NOTE]", "[!TIP]", "[!IMPORTANT]", "[!WARNING]", "[!CAUTION]"];
+
     internal static DocumentInventory Create(MarkdownRenderer.Document.MarkdownDocument document)
     {
         var inventory = new DocumentInventory();
@@ -98,7 +103,7 @@ internal static partial class DocumentInventoryBuilder
                     break;
                 case ParagraphBlock paragraph:
                     AddTextBlock(inventory, paragraph.Parent is TableCell ? "table-cell" : "paragraph",
-                        paragraph, paragraph.Inline, unrecognized);
+                        paragraph, paragraph.Inline, unrecognized, stripAlertTag: IsFirstQuoteParagraph(paragraph));
                     break;
                 case HtmlBlock html:
                     inventory.HtmlBlocks.Add(Span(html));
@@ -126,6 +131,34 @@ internal static partial class DocumentInventoryBuilder
 
         inventory.UnrecognizedInlineTypes = unrecognized.ToList();
         return inventory;
+    }
+
+    private static bool IsFirstQuoteParagraph(ParagraphBlock paragraph)
+    {
+        if (paragraph.Parent is not QuoteBlock quote)
+            return false;
+        foreach (Block child in quote)
+        {
+            if (child is ParagraphBlock first)
+                return ReferenceEquals(first, paragraph);
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Mirrors AlertRenderer: the tag is matched case-insensitively at the
+    /// start of the first paragraph's text and is replaced by the alert's
+    /// title, so only the remaining body text is visible paragraph text.
+    /// </summary>
+    internal static string StripGitHubAlertTag(string text)
+    {
+        string trimmed = text.TrimStart();
+        foreach (string tag in GitHubAlertTags)
+        {
+            if (trimmed.StartsWith(tag, StringComparison.OrdinalIgnoreCase))
+                return trimmed[tag.Length..].TrimStart();
+        }
+        return text;
     }
 
     private static InventorySpan Span(MarkdownObject node)
@@ -159,7 +192,8 @@ internal static partial class DocumentInventoryBuilder
         string kind,
         LeafBlock block,
         ContainerInline? inline,
-        SortedSet<string> unrecognized)
+        SortedSet<string> unrecognized,
+        bool stripAlertTag = false)
     {
         if (inline is null)
             return;
@@ -167,6 +201,8 @@ internal static partial class DocumentInventoryBuilder
         var builder = new StringBuilder();
         AppendVisibleText(inline, builder, unrecognized);
         string text = NormalizeWhitespace(builder.ToString());
+        if (stripAlertTag)
+            text = StripGitHubAlertTag(text);
         if (text.Length == 0)
             return;
 
