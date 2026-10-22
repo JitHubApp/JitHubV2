@@ -78,9 +78,11 @@ $sharedFunctionNames = @(
     'Invoke-NativeAotArtifactVerifier', 'Add-BoundedByteCount', 'Assert-OrdinaryPath',
     'Get-OrdinaryTreeFiles', 'Test-SafeCredentialFilename', 'Copy-VerifiedFile',
     'Get-PeMachine', 'Get-SourceCommitSha', 'Invoke-WinApp', 'Initialize-SandboxWorkRoot',
-    'New-GuestWindowsAppRuntimePreflightScript', 'Assert-PlainGuestPath',
-    'Get-CurrentUserWindowsAppRuntimeInventory', 'Invoke-SandboxWindowsAppRuntimePreflight',
+    # Assert-PlainGuestPath and Get-CurrentUserWindowsAppRuntimeInventory are
+    # guest script text inside the preflight script, not host functions.
+    'New-GuestWindowsAppRuntimePreflightScript', 'Invoke-SandboxWindowsAppRuntimePreflight',
     'Get-AndAssertSandboxSnapshot', 'New-GuestBatchExecArguments',
+    'Test-SourceFileIncluded', 'Add-SourceTreeToSnapshot',
     'ConvertTo-GuestPowerShellSingleQuotedLiteral')
 $templatePath = Join-Path $PSScriptRoot 'Invoke-TopReadmeSandboxOfflineSameByteReplay.ps1'
 $tokens = $null
@@ -182,10 +184,23 @@ function New-StagingSnapshot {
     $root = Join-Path $OutputRoot ('staging\' + $RunId + '\repo')
     [IO.Directory]::CreateDirectory($root) | Out-Null
     $files = [Collections.Generic.List[object]]::new()
-    foreach ($relative in @('JitHub.slnx', 'eng\readme-audit\Install-PinnedWindowsAppRuntime.ps1')) {
-        $record = Copy-VerifiedFile -Source (Join-Path $repoRoot $relative) -Destination (Join-Path $root $relative) -MaximumBytes 16MB -Description 'Staged repository file'
-        $record.relativePath = $relative.Replace('\', '/')
-        $files.Add($record)
+    # The guest Automation runner proves the app is fresh against its
+    # repository: app content and the committed resvg worker are compared
+    # with the source tree. Stage the same filtered source snapshot as the
+    # proven offline replay (eng\readme-audit includes the runtime installer).
+    $repoSourceBytes = 0L
+    foreach ($rootName in @('JitHub.WinUI', 'MarkdownRenderer', 'JitHub.WinUI.Automation', 'eng\readme-audit')) {
+        $sourceRoot = Join-Path $repoRoot $rootName
+        if (-not (Test-Path -LiteralPath $sourceRoot -PathType Container)) { throw "Required source root is missing: '$sourceRoot'." }
+        Add-SourceTreeToSnapshot -RootName $rootName -SourceRoot $sourceRoot -SnapshotRoot $root -FileManifest $files -TotalBytes ([ref]$repoSourceBytes)
+    }
+    foreach ($rootFile in @('JitHub.slnx', 'Directory.Build.props', 'Directory.Build.targets', 'Directory.Packages.props', 'global.json')) {
+        $path = Join-Path $repoRoot $rootFile
+        if (Test-Path -LiteralPath $path -PathType Leaf) {
+            $record = Copy-VerifiedFile -Source $path -Destination (Join-Path $root $rootFile) -MaximumBytes 16MB -Description 'Repository build identity file'
+            $record.relativePath = $rootFile
+            $files.Add($record)
+        }
     }
     $manifestDestination = Join-Path $root 'input\top-repositories.json'
     [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($manifestDestination)) | Out-Null
@@ -216,6 +231,7 @@ function New-StagingSnapshot {
         appBytes = $appBytes
         runnerBytes = $runnerBytes
         sourceStoreBytes = $sourceBytes
+        repositorySourceBytes = $repoSourceBytes
         files = @($files | Sort-Object relativePath)
     }
     $manifestPath = Join-Path $OutputRoot ('staging-' + $RunId + '.json')
@@ -346,7 +362,8 @@ foreach ($shard in $shards) {
     $summaryFile = @(Get-ChildItem -LiteralPath $hostOutput -Recurse -Filter 'correctness-only-summary.json' -ErrorAction SilentlyContinue | Select-Object -First 1)
     $summary = if ($summaryFile.Count -eq 1) { Get-Content -LiteralPath $summaryFile[0].FullName -Raw | ConvertFrom-Json -Depth 32 } else { $null }
     if ($null -eq $summary) { $failures.Add("Ranks $range delivered no correctness summary. exec=$execFailure pull=$pullFailure") }
-    $shardResults.Add([ordered]@{
+    # Measure-Object cannot read [ordered] dictionary keys as properties.
+    $shardResults.Add([pscustomobject][ordered]@{
         first = $shard.First
         last = $shard.Last
         execFailure = $execFailure
