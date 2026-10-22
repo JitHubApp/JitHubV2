@@ -154,6 +154,7 @@ internal static class AuditSelfTests
             "Structured image projection preserves inline/alt metadata.");
 
         await VerifyInventoryFixtureAsync(engine).ConfigureAwait(false);
+        await VerifyPictureSourceDemandAsync(engine).ConfigureAwait(false);
         VerifyAcquisitionRules();
     }
 
@@ -181,6 +182,29 @@ internal static class AuditSelfTests
             state == "unsupported-scheme", "Non-http(s) sources are a terminal state.");
         Require(InputAcquisition.Sanitize("owner/repo.name") == "owner-repo-name",
             "Rank folders use the probe's exact sanitization.");
+    }
+
+    // Phase 3 rank 16: a light-theme <picture><source srcset> is what the app
+    // renders, so its URL must be demanded alongside the <img> fallback.
+    private static async Task VerifyPictureSourceDemandAsync(MarkdownEngine engine)
+    {
+        const string source =
+            "<p><picture><source media=\"(prefers-color-scheme: light)\" srcset=\"logo-light.png\" />" +
+            "<source media=\"(prefers-color-scheme: dark)\" srcset=\"a&amp;dark.png\" />" +
+            "<source srcset=\"w1.png 1x, w2.png 2x\" />" +
+            "<img src=\"logo.png\" alt=\"Logo\" /></picture></p>\n\n" +
+            "<video><source src=\"clip.mp4\" type=\"video/mp4\"></video>\n";
+        MarkdownDocument document = await engine.ParseAsync(source).ConfigureAwait(false);
+        DocumentInventory inventory = DocumentInventoryBuilder.Create(document);
+        string?[] sources = inventory.HtmlImages.Select(static image => image.Src).ToArray();
+        Require(sources.SequenceEqual(new string?[] { "logo.png", "logo-light.png", "a&dark.png" }),
+            "Picture sources with one srcset URL are demanded for both themes, entity-decoded, after the <img> fallback; " +
+            "multi-candidate srcsets and media <source src> are not. Got: " + string.Join(", ", sources));
+        Require(inventory.HtmlImages.Skip(1).All(static image => image.Origin == "html-block-picture-source" &&
+                image.SrcSha256 == Program.HashUtf8(image.Src!)) &&
+            source.Substring(inventory.HtmlImages[1].SourceStart, inventory.HtmlImages[1].SourceLength)
+                .StartsWith("<source media=\"(prefers-color-scheme: light)\"", StringComparison.Ordinal),
+            "Picture source demand keeps the exact <source> tag span and a matching hash.");
     }
 
     private static async Task VerifyInventoryFixtureAsync(MarkdownEngine engine)

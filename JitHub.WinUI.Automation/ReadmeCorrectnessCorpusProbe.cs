@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
@@ -551,11 +551,27 @@ internal static partial class ReadmeAuditProbe
                 NativeMethods.SetClipboardText(sentinel);
                 context.Host.FocusNative();
                 Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_C);
-                string copied = WaitForCorrectnessValue(
-                    "selected Markdown clipboard text",
-                    () => NativeMethods.GetClipboardText(),
-                    value => string.Equals(value, selectedPhrase, StringComparison.Ordinal),
-                    TimeSpan.FromSeconds(4));
+                string copied;
+                try
+                {
+                    copied = WaitForCorrectnessValue(
+                        "selected Markdown clipboard text",
+                        () => NativeMethods.GetClipboardText(),
+                        value => string.Equals(value, selectedPhrase, StringComparison.Ordinal),
+                        TimeSpan.FromSeconds(4));
+                }
+                catch (TimeoutException timeout)
+                {
+                    // Say whether Ctrl+C never reached the renderer (the
+                    // sentinel is still there) or copied different text.
+                    string last = NativeMethods.GetClipboardText() ?? string.Empty;
+                    string focused = TryDescribeFocusedElement(context.Host);
+                    throw new TimeoutException(
+                        string.Equals(last, sentinel, StringComparison.Ordinal)
+                            ? $"{timeout.Message} The clipboard still held the pending sentinel, so no copy reached it (focused element: {focused})."
+                            : $"{timeout.Message} The clipboard held {last.Length} chars '{Truncate(last, 96)}' instead of the selected {selectedPhrase.Length} chars '{Truncate(selectedPhrase, 64)}' (focused element: {focused}).",
+                        timeout);
+                }
                 copiedSha256 = HashSha256(Encoding.UTF8.GetBytes(copied));
                 checks.Add(CorrectnessCheck.Passed(
                     "plainTextCopy",
@@ -595,11 +611,23 @@ internal static partial class ReadmeAuditProbe
                 "navigation back to repository Code",
                 () => IsNavigationItemSelected(code),
                 TimeSpan.FromSeconds(15));
-            TryOpenReadme(
-                context.Window,
-                repository.Readme.Path,
-                TimeSpan.FromSeconds(30),
-                allowExistingHost: false);
+            // The Code page shows the repository README by itself, as it did on
+            // first open. A README below the root (docs/README.md) has no
+            // realized tree row while its folder is collapsed, so accept the
+            // app's own reopen when this process publishes fresh source
+            // evidence; otherwise open the exact tree path. Either way the
+            // exact text and pinned source identity are verified below.
+            if (!WaitForCorrectnessConditionOrFalse(
+                    () => File.GetLastWriteTimeUtc(context.ReadmeSourceEvidencePath) > sourceEvidenceBeforeNavigationUtc &&
+                        context.Window.FindFirstDescendant(cf => cf.ByAutomationId(HostAutomationId)) is not null,
+                    TimeSpan.FromSeconds(15)))
+            {
+                TryOpenReadme(
+                    context.Window,
+                    repository.Readme.Path,
+                    TimeSpan.FromSeconds(30),
+                    allowExistingHost: false);
+            }
             AutomationElement reopenedHost = WaitForHost(
                 context.Window,
                 TimeSpan.FromSeconds(30),
@@ -721,6 +749,41 @@ internal static partial class ReadmeAuditProbe
             Thread.Sleep(100);
         }
         throw new TimeoutException($"Timed out waiting for {description} after {timeout.TotalSeconds:F0}s.");
+    }
+
+    private static string TryDescribeFocusedElement(AutomationElement host)
+    {
+        try
+        {
+            AutomationElement focused = host.Automation.FocusedElement();
+            string id = focused.Properties.AutomationId.ValueOrDefault ?? string.Empty;
+            string type = focused.Properties.ControlType.ValueOrDefault.ToString();
+            return $"{type} '{id}'";
+        }
+        catch (Exception exception) when (exception is System.Runtime.InteropServices.COMException or InvalidOperationException)
+        {
+            return "unavailable";
+        }
+    }
+
+    private static bool WaitForCorrectnessConditionOrFalse(Func<bool> condition, TimeSpan timeout)
+    {
+        Stopwatch timer = Stopwatch.StartNew();
+        while (timer.Elapsed < timeout)
+        {
+            try
+            {
+                if (condition())
+                    return true;
+            }
+            catch (System.Runtime.InteropServices.COMException)
+            {
+                // A cross-process UIA query can time out while the page loads;
+                // keep polling within the same deadline.
+            }
+            Thread.Sleep(100);
+        }
+        return false;
     }
 
     private static T WaitForCorrectnessValue<T>(

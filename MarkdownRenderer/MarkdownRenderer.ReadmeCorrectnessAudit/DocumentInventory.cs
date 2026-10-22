@@ -301,6 +301,35 @@ internal static partial class DocumentInventoryBuilder
                 Src = value,
             });
         }
+
+        // A <picture> renders one of its <source srcset> URLs instead of the
+        // <img> fallback when the source matches the theme (light or dark
+        // prefers-color-scheme) or names a supported image type. Demand every
+        // single-URL candidate so the input holds the bytes for either theme;
+        // only <picture> sources carry srcset (media elements use src).
+        foreach (Match tag in PictureSourceTag().Matches(html))
+        {
+            Match srcset = SrcsetAttribute().Match(tag.Value);
+            if (!srcset.Success)
+                continue;
+            string raw = srcset.Groups["dq"].Success ? srcset.Groups["dq"].Value
+                : srcset.Groups["sq"].Success ? srcset.Groups["sq"].Value
+                : srcset.Groups["bare"].Value;
+            string decoded = WebUtility.HtmlDecode(raw);
+            string[] parts = decoded.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+            if (decoded.Contains(',') || parts.Length != 1)
+                continue;
+
+            inventory.HtmlImages.Add(new InventoryHtmlImage
+            {
+                SourceStart = span.Start + tag.Index,
+                SourceLength = tag.Length,
+                Origin = origin + "-picture-source",
+                SrcSha256 = Program.HashUtf8(parts[0]),
+                SrcUtf16Length = parts[0].Length,
+                Src = parts[0],
+            });
+        }
     }
 
     [GeneratedRegex(@"\s+")]
@@ -308,6 +337,12 @@ internal static partial class DocumentInventoryBuilder
 
     [GeneratedRegex(@"<img\b[^>]*>", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex ImageTag();
+
+    [GeneratedRegex(@"<source\b[^>]*>", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex PictureSourceTag();
+
+    [GeneratedRegex(@"\bsrcset\s*=\s*(?:""(?<dq>[^""]*)""|'(?<sq>[^']*)'|(?<bare>[^\s>]+))", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex SrcsetAttribute();
 
     [GeneratedRegex(@"\bsrc\s*=\s*(?:""(?<dq>[^""]*)""|'(?<sq>[^']*)'|(?<bare>[^\s>]+))", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex SrcAttribute();
