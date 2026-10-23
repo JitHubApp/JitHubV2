@@ -448,11 +448,14 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
             return default;
         }
 
-        if (IsVectorSemanticNode && (rect.Width <= 0 || rect.Height <= 0))
+        // A node without layout geometry (for example an image whose block
+        // was rebuilt offscreen and is not measured yet) has no screen rect.
+        // Never report the whole renderer's rectangle for it: that claimed the
+        // node was on screen while it was far above the viewport (P3-021).
+        // An empty rect makes IsOffscreen true, as UIA expects.
+        if (rect.Width <= 0 || rect.Height <= 0)
             return default;
-        return rect.Width <= 0 || rect.Height <= 0
-            ? base.GetBoundingRectangleCore()
-            : _root.GetScreenRectForDocumentRect(rect);
+        return _root.GetScreenRectForDocumentRect(rect);
     }
 
     protected override bool IsOffscreenCore()
