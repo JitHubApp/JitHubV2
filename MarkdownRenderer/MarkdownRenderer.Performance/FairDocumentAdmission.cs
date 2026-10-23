@@ -24,6 +24,16 @@ internal sealed class FairDocumentAdmission
         _capacity = capacity;
     }
 
+    /// <summary>Slots currently held, sampled under the admission lock.</summary>
+    internal int ActiveSlots
+    {
+        get
+        {
+            lock (_gate)
+                return _active;
+        }
+    }
+
     /// <summary>Current queued work, sampled under the admission lock.</summary>
     internal int PendingRequests
     {

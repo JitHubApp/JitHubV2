@@ -1150,6 +1150,20 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
         return StartScenePlanRetirement(reservation, static current => current.Retire());
     }
 
+    /// <summary>
+    /// Audit readiness diagnostics for one document's deferred scenes and the
+    /// shared scene-preparation admission. Counts only.
+    /// </summary>
+    string IMarkdownPerformanceSessionInternal.DescribeDeferredScenesForAudit(object documentOwner)
+    {
+        MarkdownProgressiveScenePlan? plan;
+        lock (_scenePlansGate)
+            _scenePlans.TryGetValue(documentOwner, out plan);
+        string admission = string.Create(System.Globalization.CultureInfo.InvariantCulture,
+            $"sceneAdmission(active={_scenePreparationAdmission.ActiveSlots},pending={_scenePreparationAdmission.PendingRequests})");
+        return plan is null ? $"plan(none);{admission}" : $"{plan.DescribeForAudit()};{admission}";
+    }
+
     bool IMarkdownPerformanceSessionInternal.ScheduleDeferredScenes(object documentOwner)
     {
         MarkdownProgressiveScenePlan? plan;

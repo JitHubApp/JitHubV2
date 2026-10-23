@@ -279,8 +279,11 @@ public partial class MarkdownRendererControl
             !realizationMeasured ? "not-measured" :
             !sceneResourcesMeasured ? "resources-not-prepared-or-measurement-incomplete" :
             registeredWork ? "deferred-work-registered" : "ready";
+        string sceneWork = (session?.DescribeDeferredScenesForAudit(this) ?? "no-session") +
+            string.Create(CultureInfo.InvariantCulture,
+                $";probeRetryPending={DeferredSceneProbeRetryPendingForAudit}");
         return string.Create(CultureInfo.InvariantCulture,
-            $"{status}(realizationMeasured={realizationMeasured},sceneResourcesMeasured={sceneResourcesMeasured},registeredWork={registeredWork},failed={terminalFailure})");
+            $"{status}(realizationMeasured={realizationMeasured},sceneResourcesMeasured={sceneResourcesMeasured},registeredWork={registeredWork},failed={terminalFailure},{sceneWork})");
     }
 
     private static void AppendAuditReadiness(StringBuilder builder, string key, string? value)

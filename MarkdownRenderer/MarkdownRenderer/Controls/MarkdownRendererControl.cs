@@ -103,6 +103,11 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     private long _snapshotSourceUtf16Bytes;
     private Func<LayoutSnapshot, long, Windows.Foundation.Rect, bool>? _automationFirstViewportImagesReadyPaintCallback;
     private int _deferredSceneStatusRefreshAfterPaint;
+    // Set when the visible deferred-scene probe could not verify its band
+    // (busy or not yet measured). The next successful paint, which follows
+    // band measurement or scene preparation, re-runs the probe once.
+    private int _deferredSceneProbeAfterPaint;
+    internal bool DeferredSceneProbeRetryPendingForAudit => Volatile.Read(ref _deferredSceneProbeAfterPaint) != 0;
     private MarkdownPipelineTimingSnapshot _lastPipelineTiming;
     private CancellationTokenSource? _lazyLayoutCts;
     private Task? _lazyLayoutTask;
@@ -3951,6 +3956,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         ClearPendingFocusGeometryWork();
         CancelAutomationFirstViewportImagesReadyProbe();
         Interlocked.Exchange(ref _deferredSceneStatusRefreshAfterPaint, 0);
+        Interlocked.Exchange(ref _deferredSceneProbeAfterPaint, 0);
         CloseSelectionContextMenu();
         ClearHorizontalOverflowPointerState();
         HideAbbreviationTooltip();
@@ -6244,6 +6250,10 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     internal void RequestRebuildAfterDeferredScene()
         => RequestRebuild(RebuildReason.SceneMaterialized);
 
+    /// <summary>Re-runs the visible deferred-scene probe after the next successful paint.</summary>
+    internal void RequestDeferredSceneProbeAfterPaint()
+        => Interlocked.Exchange(ref _deferredSceneProbeAfterPaint, 1);
+
     private void TrackCodeBlockHighlightTask(Task task)
     {
         lock (_codeBlockHighlightTasksGate)
@@ -7163,6 +7173,12 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             // measured text-only viewports). Publish that status transition
             // even when there is no new drawing lease to repaint.
             NotifyVisibleDeferredSceneItemStatusMayHaveChanged();
+            // P3-017: this band is now measured and its native resources are
+            // settled, but no layout commit follows to re-run the deferred
+            // scene probe. A Mermaid or Math fallback that scrolled into this
+            // band while it was being prepared would otherwise never be
+            // scheduled and keep showing its source as "Loading".
+            ScheduleVisibleDeferredScenes();
             if (result.Commit.NativeSceneResourcesChanged)
             {
                 // A prepared/retired drawing lease changes only the raster
@@ -9339,6 +9355,15 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         {
             if (paintedRegion)
                 RefreshDeferredSceneStatusAfterSuccessfulPaintIfNeeded();
+        }
+        if (paintedRegion &&
+            Interlocked.Exchange(ref _deferredSceneProbeAfterPaint, 0) != 0 &&
+            !_isDisposed && !_isUnloaded)
+        {
+            // P3-017: a Mermaid or Math scene that scrolled into a band that was
+            // still being measured was never scheduled; its source fallback
+            // stayed "Loading" forever. Re-probe once the band has painted.
+            DispatcherQueue?.TryEnqueue(ScheduleVisibleDeferredScenes);
         }
         if (paintedRegion)
         {

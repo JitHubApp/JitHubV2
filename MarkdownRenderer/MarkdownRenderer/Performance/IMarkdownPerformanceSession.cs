@@ -153,6 +153,9 @@ internal interface IMarkdownPerformanceSessionInternal : IMarkdownPerformanceSes
         object documentOwner, string marker,
         out MarkdownContentFragment? result, out object? projectionIdentity);
     bool HasRegisteredDeferredSceneWork(object documentOwner);
+
+    /// <summary>Audit readiness diagnostics: deferred-scene counts and stages only.</summary>
+    string DescribeDeferredScenesForAudit(object documentOwner);
     bool IsRegisteredDeferredSceneMarker(object documentOwner, string marker);
 #pragma warning disable MR1001 // The optional scene policy integrates with the compatibility control surface.
     MarkdownVisibleSceneReadiness GetVisibleDeferredSceneReadiness(

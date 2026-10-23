@@ -59,6 +59,9 @@ internal sealed partial class MarkdownProgressiveScenePlan : IDisposable
     private readonly Dictionary<string, ActiveSceneWork> _active = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _diagnosticPublicationGate = new(1, 1);
     private HashSet<string> _visibleMarkers = new(StringComparer.Ordinal);
+    // Audit diagnostics only.
+    private long _visibleProbeCount;
+    private string _lastVisibleProbe = "none";
 #pragma warning disable MR1001 // Internal bridge to the compatibility control implementation.
     private MarkdownRendererControl? _callbackOwner;
 #pragma warning restore MR1001
@@ -593,9 +596,12 @@ internal sealed partial class MarkdownProgressiveScenePlan : IDisposable
         EnsureControlCallbacks(control);
 
         LayoutSnapshot? snapshot = control.CurrentSnapshot;
+        Interlocked.Increment(ref _visibleProbeCount);
         if (snapshot is null || !control.TryGetViewport(out double top, out double height, out _) ||
             !double.IsFinite(top) || !double.IsFinite(height) || height <= 0)
         {
+            _lastVisibleProbe = "no-viewport";
+            control.RequestDeferredSceneProbeAfterPaint();
             NotifyVisiblePlaceholderStatusIfChanged(control, pending: true);
             return true;
         }
@@ -603,18 +609,24 @@ internal sealed partial class MarkdownProgressiveScenePlan : IDisposable
         int visibleMarkerCount = -1;
         if (!snapshot.TryBeginPaint())
         {
+            _lastVisibleProbe = "busy";
+            control.RequestDeferredSceneProbeAfterPaint();
             NotifyVisiblePlaceholderStatusIfChanged(control, pending: true);
             return true;
         }
         try
         {
-            if (snapshot.TryGetMeasuredTopLevelBlocksInBandForSceneProbe(
+            bool bandMeasured = snapshot.TryGetMeasuredTopLevelBlocksInBandForSceneProbe(
                     top,
                     bottom,
                     out IReadOnlyList<BlockBox> visibleBlocks,
                     out IReadOnlyList<int> visibleOrdinals,
                     out LayoutPlacementGeneration placements,
-                    out IReadOnlyDictionary<int, int> topLevelOrdinalByBlockIndex) &&
+                    out IReadOnlyDictionary<int, int> topLevelOrdinalByBlockIndex);
+            _lastVisibleProbe = bandMeasured
+                ? string.Create(System.Globalization.CultureInfo.InvariantCulture, $"collect-failed@{top:F0}+{height:F0}:{visibleBlocks.Count}")
+                : string.Create(System.Globalization.CultureInfo.InvariantCulture, $"band-unprepared@{top:F0}+{height:F0}");
+            if (bandMeasured &&
                 TryCollectVisibleDeferredSceneMarkers(
                     visibleBlocks,
                     visibleOrdinals,
@@ -629,7 +641,10 @@ internal sealed partial class MarkdownProgressiveScenePlan : IDisposable
             {
                 // Consume the policy-owned marker scratch before releasing the
                 // snapshot lease, which serializes subsequent viewport probes.
+                int collected = measuredVisibleMarkers.Count;
                 visibleMarkerCount = UpdateVisibleMarkers(measuredVisibleMarkers);
+                _lastVisibleProbe = string.Create(System.Globalization.CultureInfo.InvariantCulture,
+                    $"ok@{top:F0}+{height:F0}:collected={collected},registered={visibleMarkerCount}");
             }
         }
         finally
@@ -640,7 +655,10 @@ internal sealed partial class MarkdownProgressiveScenePlan : IDisposable
         if (visibleMarkerCount < 0)
         {
             // The snapshot is being measured or has a stale inline geometry
-            // index. Its completion path retries against the committed band.
+            // index. A lazy band can finish measuring, or its scenes finish
+            // preparing, without another layout commit, so ask the control to
+            // re-probe after the next successful paint (P3-017).
+            control.RequestDeferredSceneProbeAfterPaint();
             NotifyVisiblePlaceholderStatusIfChanged(control, pending: true);
             return true;
         }
@@ -709,6 +727,30 @@ internal sealed partial class MarkdownProgressiveScenePlan : IDisposable
     /// band, so a rapid jump cannot leave old scenes ahead of newly visible
     /// Math or Mermaid work in the shared scheduler.
     /// </summary>
+    /// <summary>
+    /// Audit readiness diagnostics: counts and the stage each active scene
+    /// reached (q=queued, a=admission, r=rendering, p=publication queued,
+    /// d=published). No markers, source text or content.
+    /// </summary>
+    internal string DescribeForAudit()
+    {
+        lock (_gate)
+        {
+            var stages = new System.Text.StringBuilder();
+            foreach (ActiveSceneWork work in _active.Values)
+                stages.Append(work.Stage switch
+                {
+                    ActiveSceneWork.StageAdmission => 'a',
+                    ActiveSceneWork.StageRendering => 'r',
+                    ActiveSceneWork.StagePublicationQueued => 'p',
+                    ActiveSceneWork.StagePublished => 'd',
+                    _ => 'q',
+                });
+            return string.Create(System.Globalization.CultureInfo.InvariantCulture,
+                $"plan(probes={Volatile.Read(ref _visibleProbeCount)},lastProbe={Volatile.Read(ref _lastVisibleProbe)},works={_works.Count},visibleBand={_hasVisibleBand},visible={_visibleMarkers.Count},active={_active.Count}[{stages}],completed={_completed.Count},pending={_pendingResults.Count},generation={_generation},disposed={_disposed})");
+        }
+    }
+
     internal int UpdateVisibleMarkers(IEnumerable<string> markers)
     {
         ArgumentNullException.ThrowIfNull(markers);
@@ -819,9 +861,11 @@ internal sealed partial class MarkdownProgressiveScenePlan : IDisposable
                 activeWork.Token.ThrowIfCancellationRequested();
                 if (!IsVisible(marker, activeWork))
                     throw new OperationCanceledException(activeWork.Token);
+                activeWork.Stage = ActiveSceneWork.StageAdmission;
                 sceneLease = await _session
                     .EnterScenePreparationAsync(_documentOwner, activeWork.Token)
                     .ConfigureAwait(false);
+                activeWork.Stage = ActiveSceneWork.StageRendering;
                 CancellationToken workToken = sceneLease.CancellationToken;
                 activeWork.Token.ThrowIfCancellationRequested();
                 workToken.ThrowIfCancellationRequested();
@@ -965,6 +1009,7 @@ internal sealed partial class MarkdownProgressiveScenePlan : IDisposable
                     // This bound delegate captures only the clearable envelope.
                     // A canceled dispatcher item cannot pin its result,
                     // descriptor, plan, control, or callback roots.
+                    activeWork.Stage = ActiveSceneWork.StagePublicationQueued;
                     queued = enqueuePublication(publicationEnvelope.Dispatch);
                 }
                 catch
@@ -982,6 +1027,7 @@ internal sealed partial class MarkdownProgressiveScenePlan : IDisposable
             }
 
             await publicationEnvelope.Completion.ConfigureAwait(false);
+            activeWork.Stage = ActiveSceneWork.StagePublished;
             publicationToken.ThrowIfCancellationRequested();
             generationToken.ThrowIfCancellationRequested();
             activeWork.Token.ThrowIfCancellationRequested();
@@ -1521,6 +1567,20 @@ internal sealed partial class MarkdownProgressiveScenePlan : IDisposable
         internal long Generation { get; } = generation;
         internal CancellationToken Token { get; } = cancellation.Token;
         internal Task Task { get; set; } = Task.CompletedTask;
+
+        // Audit diagnostics only: the last pipeline stage this work reached.
+        internal const int StageQueued = 0;
+        internal const int StageAdmission = 1;
+        internal const int StageRendering = 2;
+        internal const int StagePublicationQueued = 3;
+        internal const int StagePublished = 4;
+        private int _stage;
+
+        internal int Stage
+        {
+            get => Volatile.Read(ref _stage);
+            set => Volatile.Write(ref _stage, value);
+        }
 
         internal void Cancel()
         {
