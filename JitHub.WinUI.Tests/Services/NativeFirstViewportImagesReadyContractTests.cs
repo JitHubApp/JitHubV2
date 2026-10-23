@@ -1427,6 +1427,13 @@ public sealed class NativeFirstViewportImagesReadyContractTests
             Assert.Equal(
                 VisualProfileFingerprint,
                 matched.VisualProfile?.CssSha256);
+            // T3-010: the admitted render survives in its own file, and every
+            // render names the latest admission event's generation.
+            Assert.Equal(Generation, matched.SameByteAdmissionEventGeneration);
+            string admittedPath = renderPath + NativeFirstViewportImagesReadyContract.AdmittedRenderCompleteSuffix;
+            NativeRenderCompleteSignal admitted = NativeFirstViewportImagesReadyContract.ReadRenderCompleteSignal(admittedPath);
+            Assert.Equal(Generation, admitted.Generation);
+            Assert.NotNull(admitted.SameByteReadmeSourceAdmission);
 
             MarkdownLifecycleAutomationBridge.RecordRenderComplete(
                 Host,
@@ -1438,6 +1445,35 @@ public sealed class NativeFirstViewportImagesReadyContractTests
             NativeRenderCompleteSignal unmatched = NativeFirstViewportImagesReadyContract.ReadRenderCompleteSignal(renderPath);
             Assert.Null(unmatched.SameByteReadmeSourceAdmission);
             Assert.Null(unmatched.VisualProfile);
+            Assert.Equal(Generation, unmatched.SameByteAdmissionEventGeneration);
+            // A rebuild without the pinned visual profile is never accepted.
+            Assert.False(NativeFirstViewportImagesReadyContract.IsUnassignedRebuildOfAdmittedRender(admitted, unmatched));
+            Assert.Equal(Generation, NativeFirstViewportImagesReadyContract.ReadRenderCompleteSignal(admittedPath).Generation);
+
+            MarkdownLifecycleAutomationBridge.RecordRenderComplete(
+                Host,
+                Generation + 1,
+                RenderCompleteAt.AddMilliseconds(1),
+                RenderCompleteStopwatchTicks + 1,
+                StopwatchFrequency,
+                performance: null,
+                visualProfileId: "github-primer-light",
+                visualProfileVersion: 1,
+                visualProfileCssSha256: VisualProfileFingerprint);
+            NativeRenderCompleteSignal rebuilt = NativeFirstViewportImagesReadyContract.ReadRenderCompleteSignal(renderPath);
+            Assert.Null(rebuilt.SameByteReadmeSourceAdmission);
+            Assert.True(NativeFirstViewportImagesReadyContract.IsUnassignedRebuildOfAdmittedRender(admitted, rebuilt));
+            Assert.False(NativeFirstViewportImagesReadyContract.IsUnassignedRebuildOfAdmittedRender(admitted, admitted));
+            Assert.False(NativeFirstViewportImagesReadyContract.IsUnassignedRebuildOfAdmittedRender(
+                admitted, rebuilt with { ProcessId = rebuilt.ProcessId + 1 }));
+            Assert.False(NativeFirstViewportImagesReadyContract.IsUnassignedRebuildOfAdmittedRender(
+                admitted, rebuilt with { Host = "MarkdownHost_Unrelated" }));
+            Assert.False(NativeFirstViewportImagesReadyContract.IsUnassignedRebuildOfAdmittedRender(
+                admitted, rebuilt with { StopwatchTicks = admitted.StopwatchTicks - 1 }));
+            Assert.False(NativeFirstViewportImagesReadyContract.IsUnassignedRebuildOfAdmittedRender(
+                admitted, rebuilt with { SameByteAdmissionEventGeneration = null }));
+            Assert.False(NativeFirstViewportImagesReadyContract.IsUnassignedRebuildOfAdmittedRender(
+                admitted with { SameByteAdmissionEventGeneration = null }, rebuilt));
 
             MarkdownLifecycleAutomationBridge.RecordSameByteReadmeSourceAdmission(
                 Host,
@@ -1457,6 +1493,25 @@ public sealed class NativeFirstViewportImagesReadyContractTests
             Assert.Null(rejected.SameByteReadmeSourceAdmission);
             Assert.Equal("document-identity-missing", rejected.SameByteReadmeSourceAdmissionFailure?.Status);
             Assert.Equal(Generation + 2, rejected.SameByteReadmeSourceAdmissionFailure?.Generation);
+            Assert.Equal(Generation + 2, rejected.SameByteAdmissionEventGeneration);
+
+            // A later rebuild after any new assignment event never borrows the
+            // earlier admission, even though the admitted file still exists.
+            MarkdownLifecycleAutomationBridge.RecordRenderComplete(
+                Host,
+                Generation + 5,
+                RenderCompleteAt.AddMilliseconds(2),
+                RenderCompleteStopwatchTicks + 2,
+                StopwatchFrequency,
+                performance: null,
+                visualProfileId: "github-primer-light",
+                visualProfileVersion: 1,
+                visualProfileCssSha256: VisualProfileFingerprint);
+            NativeRenderCompleteSignal rebuiltAfterAssignment = NativeFirstViewportImagesReadyContract.ReadRenderCompleteSignal(renderPath);
+            Assert.Null(rebuiltAfterAssignment.SameByteReadmeSourceAdmissionFailure);
+            Assert.Equal(Generation + 2, rebuiltAfterAssignment.SameByteAdmissionEventGeneration);
+            Assert.Equal(Generation, NativeFirstViewportImagesReadyContract.ReadRenderCompleteSignal(admittedPath).Generation);
+            Assert.False(NativeFirstViewportImagesReadyContract.IsUnassignedRebuildOfAdmittedRender(admitted, rebuiltAfterAssignment));
 
             MarkdownLifecycleAutomationBridge.RecordSameByteReadmeSourceAdmission(
                 Host,

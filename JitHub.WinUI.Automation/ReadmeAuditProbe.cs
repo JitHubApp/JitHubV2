@@ -1558,7 +1558,9 @@ internal static partial class ReadmeAuditProbe
         string captureResponse = Path.Combine(runtime, "capture-response.json");
         foreach (string stale in new[]
         {
-            appReady, hostReady, renderComplete, firstViewportImagesReady, firstViewportImagesReadyProgress,
+            appReady, hostReady, renderComplete,
+            renderComplete + NativeFirstViewportImagesReadyContract.AdmittedRenderCompleteSuffix,
+            firstViewportImagesReady, firstViewportImagesReadyProgress,
             readinessPublicationOutcomes, preservedReadinessPublicationOutcomes,
             preservedFirstViewportImagesReadyProgress, renderFailure, imageEvidence,
             imageResolutionEvidence, imageTransportEvidence, rasterPreparationEvidence,
@@ -1946,10 +1948,11 @@ internal static partial class ReadmeAuditProbe
                     expectedReadmeSha256,
                     expectedReadmeBytes);
             NativeRenderCompleteSignal readinessRenderCompleteSignal = renderCompleteSignal;
+            NativeRenderCompleteSignal? admittedRebuildSource = null;
             NativeFirstViewportImagesReadySignal firstImagesReadySignal;
             if (sameByteCorpusPath is not null)
             {
-                (readinessRenderCompleteSignal, firstImagesReadySignal) =
+                (readinessRenderCompleteSignal, firstImagesReadySignal, admittedRebuildSource) =
                     WaitForSameByteSourceReadyPair(
                         renderComplete,
                         firstViewportImagesReady,
@@ -1997,7 +2000,20 @@ internal static partial class ReadmeAuditProbe
                 readinessRenderCompleteSignal,
                 firstImagesReadySignal);
             double? sourceAvailableToFirstViewportImagesReadyMs = null;
-            if (sameByteCorpusPath is not null)
+            if (admittedRebuildSource is not null)
+            {
+                // The source tick belongs to the admitted generation, not to
+                // this rebuild, so no source-to-ready latency is measured.
+                WriteJson(
+                    Path.Combine(output, "readiness-admitted-rebuild.json"),
+                    new
+                    {
+                        AdmittedGeneration = admittedRebuildSource.Generation,
+                        ReadyGeneration = readinessRenderCompleteSignal.Generation,
+                        SourceToReadyLatencyMeasured = false,
+                    });
+            }
+            else if (sameByteCorpusPath is not null)
             {
                 NativeSameByteReadmeSourceIdentity sourceIdentity = nativeReadmeIdentity!;
                 sourceAvailableToFirstViewportImagesReadyMs =
@@ -2752,7 +2768,8 @@ internal static partial class ReadmeAuditProbe
         AutomationElement[] pendingImagePeers = descendants.Where(IsLoadingImage).ToArray();
         PendingImagePeerIdentity[] pendingImagePeerIdentities = CapturePendingImagePeerIdentities(
             pendingImagePeers,
-            host);
+            host,
+            output);
         loadingAfterTraversal = pendingImagePeers.Length;
         semanticProbe.Stop();
         auditOverheadMs += semanticProbe.Elapsed.TotalMilliseconds;
@@ -2908,7 +2925,8 @@ internal static partial class ReadmeAuditProbe
 
     private static PendingImagePeerIdentity[] CapturePendingImagePeerIdentities(
         IReadOnlyList<AutomationElement> pendingImagePeers,
-        AutomationElement host)
+        AutomationElement host,
+        string output)
     {
         if (pendingImagePeers.Count > MaximumPendingImagePeersForRevisit)
         {
@@ -2931,6 +2949,21 @@ internal static partial class ReadmeAuditProbe
             Rectangle bounds = peer.BoundingRectangle;
             if (bounds.Width <= 0 || bounds.Height <= 0)
             {
+                // Diagnostics only: record every pending peer so the failure
+                // names the unrealized peer instead of only its index.
+                WriteJson(
+                    Path.Combine(output, "pending-image-peers.json"),
+                    pendingImagePeers.Select((pending, pendingIndex) => new
+                    {
+                        Index = pendingIndex,
+                        ControlType = ReadAutomationString(() => pending.ControlType.ToString()),
+                        ClassName = ReadAutomationString(() => pending.ClassName),
+                        AutomationId = ReadAutomationString(() => pending.Properties.AutomationId.ValueOrDefault),
+                        Name = ReadAutomationString(() => pending.Name),
+                        ItemStatus = ReadAutomationString(() => pending.Properties.ItemStatus.ValueOrDefault),
+                        Bounds = ReadAutomationString(() => pending.BoundingRectangle.ToString()),
+                        IsOffscreen = ReadAutomationString(() => pending.Properties.IsOffscreen.ValueOrDefault.ToString()),
+                    }).ToArray());
                 throw new InvalidOperationException(
                     $"README traversal found pending image peer {index} without realized UIA bounds; it cannot be safely revisited.");
             }
@@ -4657,7 +4690,7 @@ internal static partial class ReadmeAuditProbe
         }
     }
 
-    private static (NativeRenderCompleteSignal RenderComplete, NativeFirstViewportImagesReadySignal Ready)
+    private static (NativeRenderCompleteSignal RenderComplete, NativeFirstViewportImagesReadySignal Ready, NativeRenderCompleteSignal? AdmittedRebuildSource)
         WaitForSameByteSourceReadyPair(
             string renderCompletePath,
             string readyPath,
@@ -4676,6 +4709,27 @@ internal static partial class ReadmeAuditProbe
         IOException? lastReadFailure = null;
         string? lastSourceAdmissionFailureStatus = null;
         IntPtr appExitHandle = NativeMethods.OpenProcessExitHandle(processId);
+
+        bool IsAdmittedSourceRender(NativeRenderCompleteSignal render) =>
+            render.SameByteReadmeSourceAdmission is { } admission &&
+            NativeFirstViewportImagesReadyContract.MatchesAlreadyRenderedReadme(
+                render,
+                processId,
+                expectedHost,
+                expectedRepositoryFullName,
+                expectedRef,
+                expectedPath,
+                expectedSourceIdentity.ReadmeGitBlobSha1,
+                expectedSourceIdentity.RawSha256,
+                expectedSourceIdentity.RawByteSize) &&
+            admission.ProcessId == processId &&
+            string.Equals(admission.Host, expectedHost, StringComparison.Ordinal) &&
+            admission.Generation == render.Generation &&
+            admission.RawByteSize == expectedSourceIdentity.RawByteSize &&
+            string.Equals(admission.RawSha256, expectedSourceIdentity.RawSha256, StringComparison.OrdinalIgnoreCase) &&
+            admission.DecodedTextUtf8ByteSize == expectedSourceIdentity.DecodedTextUtf8ByteSize &&
+            string.Equals(admission.DecodedTextSha256, expectedSourceIdentity.DecodedTextSha256, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(admission.ReadmeGitBlobSha1, expectedSourceIdentity.ReadmeGitBlobSha1, StringComparison.OrdinalIgnoreCase);
         try
         {
             while (stopwatch.Elapsed < timeout)
@@ -4709,32 +4763,37 @@ internal static partial class ReadmeAuditProbe
                         {
                             lastSourceAdmissionFailureStatus = failure.Status;
                         }
-                        NativeSameByteReadmeSourceAdmissionSignal? admission = renderComplete.SameByteReadmeSourceAdmission;
-                        if (admission is not null &&
-                            NativeFirstViewportImagesReadyContract.MatchesAlreadyRenderedReadme(
-                                renderComplete,
-                                processId,
-                                expectedHost,
-                                expectedRepositoryFullName,
-                                expectedRef,
-                                expectedPath,
-                                expectedSourceIdentity.ReadmeGitBlobSha1,
-                                expectedSourceIdentity.RawSha256,
-                                expectedSourceIdentity.RawByteSize) &&
-                            admission.ProcessId == processId &&
-                            string.Equals(admission.Host, expectedHost, StringComparison.Ordinal) &&
-                            admission.Generation == renderComplete.Generation &&
-                            admission.RawByteSize == expectedSourceIdentity.RawByteSize &&
-                            string.Equals(admission.RawSha256, expectedSourceIdentity.RawSha256, StringComparison.OrdinalIgnoreCase) &&
-                            admission.DecodedTextUtf8ByteSize == expectedSourceIdentity.DecodedTextUtf8ByteSize &&
-                            string.Equals(admission.DecodedTextSha256, expectedSourceIdentity.DecodedTextSha256, StringComparison.OrdinalIgnoreCase) &&
-                            string.Equals(admission.ReadmeGitBlobSha1, expectedSourceIdentity.ReadmeGitBlobSha1, StringComparison.OrdinalIgnoreCase) &&
+                        if (IsAdmittedSourceRender(renderComplete) &&
                             ready.ProcessId == processId &&
                             string.Equals(ready.Host, expectedHost, StringComparison.Ordinal) &&
                             ready.Generation == renderComplete.Generation &&
                             ready.ViewportPaintGeneration == renderComplete.Generation)
                         {
-                            return (renderComplete, ready);
+                            return (renderComplete, ready, null);
+                        }
+
+                        // T3-010: the same README may be rebuilt without a new
+                        // Markdown assignment after the admitted generation
+                        // rendered. Accept that later generation only with the
+                        // preserved admitted render and proof that no
+                        // assignment happened in between.
+                        string admittedPath = renderCompletePath + NativeFirstViewportImagesReadyContract.AdmittedRenderCompleteSuffix;
+                        if (renderComplete.SameByteReadmeSourceAdmission is null &&
+                            File.Exists(admittedPath))
+                        {
+                            NativeRenderCompleteSignal admittedRender =
+                                NativeFirstViewportImagesReadyContract.ReadRenderCompleteSignal(admittedPath);
+                            if (IsAdmittedSourceRender(admittedRender) &&
+                                NativeFirstViewportImagesReadyContract.IsUnassignedRebuildOfAdmittedRender(
+                                    admittedRender,
+                                    renderComplete) &&
+                                ready.ProcessId == processId &&
+                                string.Equals(ready.Host, expectedHost, StringComparison.Ordinal) &&
+                                ready.Generation == renderComplete.Generation &&
+                                ready.ViewportPaintGeneration == renderComplete.Generation)
+                            {
+                                return (renderComplete, ready, admittedRender);
+                            }
                         }
                     }
                     catch (IOException exception) when (stopwatch.Elapsed < timeout)

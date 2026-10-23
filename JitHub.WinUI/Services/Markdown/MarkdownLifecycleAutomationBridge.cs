@@ -38,6 +38,7 @@ internal static partial class MarkdownLifecycleAutomationBridge
     private const string SvgPreflightEvidencePathVariable = "JITHUB_MARKDOWN_SVG_PREFLIGHT_EVIDENCE_PATH";
     private const string RenderFailureEvidencePathVariable = "JITHUB_MARKDOWN_RENDER_FAILURE_EVIDENCE_PATH";
     private const string RenderCompleteEvidencePathVariable = "JITHUB_MARKDOWN_RENDER_COMPLETE_EVIDENCE_PATH";
+    internal const string AdmittedRenderCompleteSuffix = ".admitted.json";
     private const string FirstViewportImagesReadyEvidencePathVariable = "JITHUB_MARKDOWN_FIRST_VIEWPORT_IMAGES_READY_EVIDENCE_PATH";
     private const string FirstViewportImagesReadyProgressPathVariable = "JITHUB_MARKDOWN_FIRST_VIEWPORT_IMAGES_READY_PROGRESS_PATH";
     private const string CaptureRequestPathVariable = "JITHUB_MARKDOWN_CAPTURE_REQUEST_PATH";
@@ -84,6 +85,12 @@ internal static partial class MarkdownLifecycleAutomationBridge
     private static SameByteReadmeSourceIdentity? _sameByteReadmeSourceIdentity;
     private static SameByteReadmeSourceAdmission? _sameByteReadmeSourceAdmission;
     private static SameByteReadmeSourceAdmissionFailure? _sameByteReadmeSourceAdmissionFailure;
+    // Generation and host of the latest source-admission event, success or
+    // failure. The viewer records one at the first completion after every
+    // Markdown assignment, so a later render-complete that still reports this
+    // generation proves no assignment happened in between (T3-010).
+    private static long _sameByteAdmissionEventGeneration;
+    private static string? _sameByteAdmissionEventHost;
     private static string? _signaledHost;
     private static long _markdownViewerLoadCount;
     private static long _markdownViewerUnloadCount;
@@ -375,10 +382,15 @@ internal static partial class MarkdownLifecycleAutomationBridge
         {
             _sameByteReadmeSourceAdmission = null;
             _sameByteReadmeSourceAdmissionFailure = null;
+            _sameByteAdmissionEventGeneration = 0;
+            _sameByteAdmissionEventHost = null;
             if (string.IsNullOrWhiteSpace(host) || generation <= 0)
             {
                 return;
             }
+
+            _sameByteAdmissionEventGeneration = generation;
+            _sameByteAdmissionEventHost = host;
 
             string? failure = null;
             if (identity is null)
@@ -1686,6 +1698,7 @@ internal static partial class MarkdownLifecycleAutomationBridge
 
         SameByteReadmeSourceAdmission? sourceAdmission = null;
         SameByteReadmeSourceAdmissionFailure? sourceAdmissionFailure = null;
+        long? admissionEventGeneration = null;
         lock (SameByteReadmeSourceGate)
         {
             if (_sameByteReadmeSourceAdmission is { } admitted &&
@@ -1693,6 +1706,13 @@ internal static partial class MarkdownLifecycleAutomationBridge
                 string.Equals(admitted.Host, automationId, StringComparison.Ordinal))
             {
                 sourceAdmission = admitted;
+            }
+
+            if (_sameByteAdmissionEventGeneration > 0 &&
+                _sameByteAdmissionEventGeneration <= generation &&
+                string.Equals(_sameByteAdmissionEventHost, automationId, StringComparison.Ordinal))
+            {
+                admissionEventGeneration = _sameByteAdmissionEventGeneration;
             }
 
             if (_sameByteReadmeSourceAdmissionFailure is { } failure &&
@@ -1706,27 +1726,38 @@ internal static partial class MarkdownLifecycleAutomationBridge
         if (IsSameByteAdmissionTraceEnabled)
             TraceSameByteAdmission($"render-complete:{automationId}:{generation}:admitted={(sourceAdmission is not null)}:failure={(sourceAdmissionFailure?.Status ?? "none")}");
 
-        WriteSignal(
-            Environment.GetEnvironmentVariable(RenderCompleteEvidencePathVariable),
-            new RenderCompleteSignal(
-                Environment.ProcessId,
-                automationId,
-                generation,
-                completedAt,
-                stopwatchTicks,
-                stopwatchFrequency,
-                sourceAdmission,
-                sourceAdmissionFailure,
-                visualProfileId is not null &&
-                visualProfileVersion is > 0 &&
-                visualProfileCssSha256 is not null
-                    ? new VisualProfileSignal(
-                        visualProfileId,
-                        visualProfileVersion.Value,
-                        visualProfileCssSha256)
-                    : null,
-                performance),
-            MarkdownLifecycleJsonContext.Default.RenderCompleteSignal);
+        string? renderCompletePath = Environment.GetEnvironmentVariable(RenderCompleteEvidencePathVariable);
+        var signal = new RenderCompleteSignal(
+            Environment.ProcessId,
+            automationId,
+            generation,
+            completedAt,
+            stopwatchTicks,
+            stopwatchFrequency,
+            sourceAdmission,
+            sourceAdmissionFailure,
+            visualProfileId is not null &&
+            visualProfileVersion is > 0 &&
+            visualProfileCssSha256 is not null
+                ? new VisualProfileSignal(
+                    visualProfileId,
+                    visualProfileVersion.Value,
+                    visualProfileCssSha256)
+                : null,
+            performance,
+            admissionEventGeneration);
+        WriteSignal(renderCompletePath, signal, MarkdownLifecycleJsonContext.Default.RenderCompleteSignal);
+        if (sourceAdmission is not null && !string.IsNullOrWhiteSpace(renderCompletePath))
+        {
+            // A later rebuild of the same document overwrites the render-complete
+            // signal without an admission. Keep the admitted render where it
+            // survives so the audit can prove the later generation still shows
+            // the admitted bytes (T3-010).
+            WriteSignal(
+                renderCompletePath + AdmittedRenderCompleteSuffix,
+                signal,
+                MarkdownLifecycleJsonContext.Default.RenderCompleteSignal);
+        }
     }
 
     public static Task<bool>? RecordFirstViewportImagesReady(
@@ -2127,7 +2158,8 @@ internal static partial class MarkdownLifecycleAutomationBridge
         SameByteReadmeSourceAdmission? SameByteReadmeSourceAdmission,
         SameByteReadmeSourceAdmissionFailure? SameByteReadmeSourceAdmissionFailure,
         VisualProfileSignal? VisualProfile,
-        MarkdownAuditPerformanceSnapshot? Performance);
+        MarkdownAuditPerformanceSnapshot? Performance,
+        long? SameByteAdmissionEventGeneration = null);
 
     private sealed record VisualProfileSignal(
         string Id,

@@ -23,6 +23,9 @@ internal static class NativeFirstViewportImagesReadyContract
             ReadRequiredTimestamp(root, "Timestamp", path));
     }
 
+    // Matches MarkdownLifecycleAutomationBridge.AdmittedRenderCompleteSuffix.
+    internal const string AdmittedRenderCompleteSuffix = ".admitted.json";
+
     internal static NativeRenderCompleteSignal ReadRenderCompleteSignal(string path)
     {
         using JsonDocument document = JsonDocument.Parse(File.ReadAllText(path));
@@ -36,7 +39,44 @@ internal static class NativeFirstViewportImagesReadyContract
             ReadRequiredInt64(root, "StopwatchFrequency", path),
             ReadOptionalSameByteReadmeSourceAdmission(root, path),
             ReadOptionalSameByteReadmeSourceAdmissionFailure(root, path),
-            ReadOptionalVisualProfile(root, path));
+            ReadOptionalVisualProfile(root, path),
+            ReadOptionalPositiveInt64(root, "SameByteAdmissionEventGeneration", path));
+    }
+
+    /// <summary>
+    /// T3-010: a renderer can rebuild the same, unchanged README (for example
+    /// after a display-math scene or an image size arrives) moments after the
+    /// admitted generation published readiness. The rebuild overwrites the
+    /// render-complete signal without a source admission, because no Markdown
+    /// assignment happened. Accept the later generation only when the app's
+    /// latest admission event is still the admitted generation itself, which
+    /// proves that no Markdown assignment happened in between, and when both
+    /// renders name the same process, host, clock and visual profile.
+    /// </summary>
+    internal static bool IsUnassignedRebuildOfAdmittedRender(
+        NativeRenderCompleteSignal admitted,
+        NativeRenderCompleteSignal current)
+    {
+        NativeVisualProfileSignal? admittedProfile = admitted.VisualProfile;
+        NativeVisualProfileSignal? currentProfile = current.VisualProfile;
+        return admitted.SameByteReadmeSourceAdmission is { } admission &&
+            admission.Generation == admitted.Generation &&
+            admitted.SameByteReadmeSourceAdmissionFailure is null &&
+            admitted.SameByteAdmissionEventGeneration == admitted.Generation &&
+            current.ProcessId == admitted.ProcessId &&
+            string.Equals(current.Host, admitted.Host, StringComparison.Ordinal) &&
+            current.Generation > admitted.Generation &&
+            current.SameByteReadmeSourceAdmission is null &&
+            current.SameByteReadmeSourceAdmissionFailure is null &&
+            current.SameByteAdmissionEventGeneration == admitted.Generation &&
+            current.StopwatchFrequency == admitted.StopwatchFrequency &&
+            current.StopwatchTicks >= admitted.StopwatchTicks &&
+            current.Timestamp >= admitted.Timestamp &&
+            admittedProfile is not null &&
+            currentProfile is not null &&
+            string.Equals(currentProfile.Id, admittedProfile.Id, StringComparison.Ordinal) &&
+            currentProfile.Version == admittedProfile.Version &&
+            string.Equals(currentProfile.CssSha256, admittedProfile.CssSha256, StringComparison.OrdinalIgnoreCase);
     }
 
     // The audit route normally opens its README while the shell starts. A
@@ -469,6 +509,15 @@ internal static class NativeFirstViewportImagesReadyContract
         return value.GetString()!;
     }
 
+    private static long? ReadOptionalPositiveInt64(JsonElement root, string name, string path)
+    {
+        if (!root.TryGetProperty(name, out JsonElement value) || value.ValueKind == JsonValueKind.Null)
+            return null;
+        if (value.ValueKind != JsonValueKind.Number || !value.TryGetInt64(out long result) || result <= 0)
+            throw new InvalidDataException($"Native lifecycle signal '{path}' has an invalid '{name}' value.");
+        return result;
+    }
+
     private static string? ReadOptionalString(JsonElement root, string name, string path)
     {
         if (!root.TryGetProperty(name, out JsonElement value) || value.ValueKind == JsonValueKind.Null)
@@ -507,7 +556,8 @@ internal sealed record NativeRenderCompleteSignal(
     long StopwatchFrequency,
     NativeSameByteReadmeSourceAdmissionSignal? SameByteReadmeSourceAdmission = null,
     NativeSameByteReadmeSourceAdmissionFailureSignal? SameByteReadmeSourceAdmissionFailure = null,
-    NativeVisualProfileSignal? VisualProfile = null);
+    NativeVisualProfileSignal? VisualProfile = null,
+    long? SameByteAdmissionEventGeneration = null);
 
 internal sealed record NativeVisualProfileSignal(
     string Id,

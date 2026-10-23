@@ -2493,7 +2493,7 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Single(Regex.Matches(probe, Regex.Escape("EvidenceFileSnapshot.PreserveIfPresent(source, destination, TimeSpan.FromSeconds(2));")));
 
         int waitStart = probe.IndexOf("private static NativeFirstViewportImagesReadySignal WaitForNativeFirstViewportImagesReadySignal(", StringComparison.Ordinal);
-        int sameByteWaitStart = probe.IndexOf("private static (NativeRenderCompleteSignal RenderComplete, NativeFirstViewportImagesReadySignal Ready)", waitStart, StringComparison.Ordinal);
+        int sameByteWaitStart = probe.IndexOf("private static (NativeRenderCompleteSignal RenderComplete, NativeFirstViewportImagesReadySignal Ready, NativeRenderCompleteSignal? AdmittedRebuildSource)", waitStart, StringComparison.Ordinal);
         Assert.True(waitStart >= 0 && sameByteWaitStart > waitStart);
         string readinessWait = probe[waitStart..sameByteWaitStart];
         int timeoutRead = readinessWait.IndexOf("ReadLastSummary(progressPath)", StringComparison.Ordinal);

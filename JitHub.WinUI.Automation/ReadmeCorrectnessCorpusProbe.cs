@@ -637,6 +637,14 @@ internal static partial class ReadmeAuditProbe
                 context.Window,
                 TimeSpan.FromSeconds(30),
                 Path.Combine(context.NativeOutputDirectory, "correctness-navigation-timeout.png"));
+            // A reopened README draws its visible Mermaid and Math scenes
+            // progressively, showing the source until each scene is ready.
+            // Wait for the host's own visible-content readiness (empty UIA
+            // ItemStatus) before reading, as the first open did (T3-011).
+            // A timeout here is not waived: the exact comparison below decides.
+            WaitForCorrectnessConditionOrFalse(
+                () => string.IsNullOrEmpty(ReadHostItemStatus(reopenedHost)),
+                TimeSpan.FromSeconds(30));
             string reopenedText = WaitForStableCorrectnessText(reopenedHost, TimeSpan.FromSeconds(20));
             if (!string.Equals(reopenedText, departureText, StringComparison.Ordinal))
             {
@@ -692,6 +700,21 @@ internal static partial class ReadmeAuditProbe
             string candidate = match.Value;
             if (!string.IsNullOrWhiteSpace(candidate) && seen.Add(candidate))
                 yield return candidate;
+        }
+    }
+
+    private static string ReadHostItemStatus(AutomationElement host)
+    {
+        try
+        {
+            return host.Properties.ItemStatus.ValueOrDefault ?? string.Empty;
+        }
+        catch (Exception exception) when (
+            exception is System.Runtime.InteropServices.COMException or
+                FlaUI.Core.Exceptions.ElementNotAvailableException or
+                InvalidOperationException)
+        {
+            return "unavailable";
         }
     }
 
