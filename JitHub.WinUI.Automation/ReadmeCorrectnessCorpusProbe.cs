@@ -162,6 +162,7 @@ internal static partial class ReadmeAuditProbe
         ClearOfflineGitHubCredentialEnvironment();
         // This process runs only the correctness corpus (T3-012).
         NativeTraversalTimeout = CorrectnessNativeTraversalTimeout;
+        TraversalViewportCeiling = CorrectnessMaximumTraversalViewports;
         CorrectnessAccountingSelfTestResult accounting = EvaluateCorrectnessAccountingSelfTests();
         if (!accounting.Passed)
             throw new InvalidOperationException("Correctness result-accounting self-tests failed before corpus execution.");
@@ -644,14 +645,22 @@ internal static partial class ReadmeAuditProbe
             // Wait for the host's own visible-content readiness (empty UIA
             // ItemStatus) before reading, as the first open did (T3-011).
             // A timeout here is not waived: the exact comparison below decides.
-            WaitForCorrectnessConditionOrFalse(
+            bool reopenedVisibleContentReady = WaitForCorrectnessConditionOrFalse(
                 () => string.IsNullOrEmpty(ReadHostItemStatus(reopenedHost)),
                 TimeSpan.FromSeconds(30));
             string reopenedText = WaitForStableCorrectnessText(reopenedHost, TimeSpan.FromSeconds(20));
-            if (!string.Equals(reopenedText, departureText, StringComparison.Ordinal))
+            // The reopened README is at the top, where it draws its visible
+            // scenes and keeps offscreen ones as source, exactly like the first
+            // open. If the app kept the scenes the reader visited drawn, it
+            // equals the departure text instead. Either must match exactly.
+            bool restoresFirstOpen = reopenedVisibleContentReady &&
+                context.FirstOpenText is { } firstOpenText &&
+                string.Equals(reopenedText, firstOpenText, StringComparison.Ordinal);
+            if (!restoresFirstOpen && !string.Equals(reopenedText, departureText, StringComparison.Ordinal))
             {
                 // Keep the three texts compared so a mismatch can be triaged.
                 File.WriteAllText(Path.Combine(context.NativeOutputDirectory, "route-initial-text.txt"), context.ExpectedText);
+                File.WriteAllText(Path.Combine(context.NativeOutputDirectory, "route-first-open-text.txt"), context.FirstOpenText ?? string.Empty);
                 File.WriteAllText(Path.Combine(context.NativeOutputDirectory, "route-departure-text.txt"), departureText);
                 File.WriteAllText(Path.Combine(context.NativeOutputDirectory, "route-reopened-text.txt"), reopenedText);
                 throw new InvalidDataException("Returning to the pinned README did not restore the same visible document text.");
@@ -1761,6 +1770,7 @@ internal sealed record ReadmeCorrectnessLiveContext
     public required Window Window { get; init; }
     public required AutomationElement Host { get; init; }
     public required string ExpectedText { get; init; }
+    public string? FirstOpenText { get; init; }
     public required string ReadmeSourceEvidencePath { get; init; }
     public required string NativeOutputDirectory { get; init; }
     public int ProcessId { get; init; }

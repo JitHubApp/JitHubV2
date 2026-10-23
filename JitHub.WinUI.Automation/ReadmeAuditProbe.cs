@@ -34,6 +34,13 @@ internal static partial class ReadmeAuditProbe
     private const int MaximumNativeScrollAttempts = 3;
     private const int MaximumNativeViewportPositions =
         MaximumTraversalViewports * (MaximumViewportPositionCorrections + 2);
+    // T3-012: the correctness-only corpus raises the live traversal ceiling
+    // for the largest READMEs (rank 141 needs about 530 viewports).
+    // Performance audits and replay receipt validation keep 512.
+    internal const int CorrectnessMaximumTraversalViewports = 1024;
+    private static int TraversalViewportCeiling = MaximumTraversalViewports;
+    private static int TraversalViewportPositionCeiling =>
+        TraversalViewportCeiling * (MaximumViewportPositionCorrections + 2);
     private const int UiaOperationTimeoutHResult = unchecked((int)0x80131505);
     private const double MinimumScrollPercentChange = 0.000001;
     private static readonly TimeSpan UiaProviderConnectionTimeout = TimeSpan.FromSeconds(2);
@@ -42,9 +49,9 @@ internal static partial class ReadmeAuditProbe
     private static readonly TimeSpan PerformanceNativeTraversalTimeout = TimeSpan.FromMinutes(3);
     // T3-012: the correctness-only corpus audit judges content, layout,
     // selection and navigation, not traversal speed, so the largest READMEs
-    // (ranks 141 and 351 need about 230 s and 205 s) get a longer wall-clock
+    // (rank 141 needs about 530 viewports, more than 10 minutes) get a longer wall-clock
     // bound. The 512-viewport safety ceiling still applies to every audit.
-    internal static readonly TimeSpan CorrectnessNativeTraversalTimeout = TimeSpan.FromMinutes(10);
+    internal static readonly TimeSpan CorrectnessNativeTraversalTimeout = TimeSpan.FromMinutes(20);
     private static TimeSpan NativeTraversalTimeout = PerformanceNativeTraversalTimeout;
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -2056,6 +2063,13 @@ internal static partial class ReadmeAuditProbe
             string text = WaitForStableText(host, TimeSpan.FromSeconds(30));
             WriteNativeAuditStage("stable README text probe complete");
             textProbe.Stop();
+            // The exact raw text of the first-opened README at its first
+            // ready viewport: visible Mermaid and Math scenes are drawn and
+            // offscreen ones show their source. Route-back reopens at the top
+            // and must restore this state or the state the reader left.
+            string? firstOpenCorrectnessText = correctnessInteraction is null
+                ? null
+                : WaitForStableCorrectnessText(host, TimeSpan.FromSeconds(30));
 
             NativeTraversalResult traversal = CaptureNativeTiles(
                 window,
@@ -2149,6 +2163,7 @@ internal static partial class ReadmeAuditProbe
                         Window = window!,
                         Host = host,
                         ExpectedText = WaitForStableCorrectnessText(host, TimeSpan.FromSeconds(30)),
+                        FirstOpenText = firstOpenCorrectnessText,
                         ReadmeSourceEvidencePath = readmeSourceEvidence,
                         NativeOutputDirectory = output,
                         ProcessId = processId,
@@ -2376,13 +2391,13 @@ internal static partial class ReadmeAuditProbe
         int traversalPositionCount = 0;
         Stopwatch traversalWall = Stopwatch.StartNew();
         WriteNativeTraversalProgress("starting");
-        while (tiles.Count < MaximumTraversalViewports)
+        while (tiles.Count < TraversalViewportCeiling)
         {
             int index = tiles.Count;
-            if (++traversalPositionCount > MaximumNativeViewportPositions)
+            if (++traversalPositionCount > TraversalViewportPositionCeiling)
             {
                 throw new InvalidOperationException(
-                    $"README traversal exceeded the {MaximumNativeViewportPositions}-position safety ceiling before reaching the document end.");
+                    $"README traversal exceeded the {TraversalViewportPositionCeiling}-position safety ceiling before reaching the document end.");
             }
             if (traversalWall.Elapsed >= NativeTraversalTimeout)
             {
@@ -2640,7 +2655,7 @@ internal static partial class ReadmeAuditProbe
             lastPositionCorrectionOperationMilliseconds = double.NaN;
 
             WriteNativeTraversalProgress(
-                $"viewport {index:D4}/{MaximumTraversalViewports}; captured at {actual:F2}% (top {scrollTopViewportUnits:F4} viewports)");
+                $"viewport {index:D4}/{TraversalViewportCeiling}; captured at {actual:F2}% (top {scrollTopViewportUnits:F4} viewports)");
             pendingViewportMovementOffsets.Clear();
             scroll = host.Patterns.Scroll.Pattern;
             automationProbe.Restart();
@@ -2753,7 +2768,7 @@ internal static partial class ReadmeAuditProbe
         if (!reachedBottom)
         {
             throw new InvalidOperationException(
-                $"README traversal exceeded the {MaximumTraversalViewports}-view safety ceiling before reaching the document end.");
+                $"README traversal exceeded the {TraversalViewportCeiling}-view safety ceiling before reaching the document end.");
         }
         try
         {
@@ -2953,7 +2968,12 @@ internal static partial class ReadmeAuditProbe
         {
             AutomationElement peer = pendingImagePeers[index];
             Rectangle bounds = peer.BoundingRectangle;
-            if (bounds.Width <= 0 || bounds.Height <= 0)
+            // T3-013: an offscreen peer may have no screen rect (UIA allows
+            // it, as virtualized lists do). The revisit is a full reverse sweep
+            // reconciled by AutomationId and never uses bounds; only a peer
+            // that claims to be on screen must have them.
+            bool offscreen = peer.Properties.IsOffscreen.ValueOrDefault;
+            if ((bounds.Width <= 0 || bounds.Height <= 0) && !offscreen)
             {
                 // Diagnostics only: record every pending peer so the failure
                 // names the unrealized peer instead of only its index.
@@ -3082,7 +3102,7 @@ internal static partial class ReadmeAuditProbe
 
         double auditOverheadMs = 0;
         int visited = 0;
-        for (int index = 0; index < MaximumTraversalViewports; index++)
+        for (int index = 0; index < TraversalViewportCeiling; index++)
         {
             _ = GetRemainingNativeTraversalTime(traversalWall, "image completion");
             if (appProcess.HasExited)
@@ -3195,7 +3215,7 @@ internal static partial class ReadmeAuditProbe
         }
 
         throw new InvalidOperationException(
-            $"README image revisit exceeded its {MaximumTraversalViewports}-viewport safety ceiling.");
+            $"README image revisit exceeded its {TraversalViewportCeiling}-viewport safety ceiling.");
     }
 
     private static void WriteNativeTraversalProgress(string progress)
@@ -3304,7 +3324,7 @@ internal static partial class ReadmeAuditProbe
                 "README renderer captures did not preserve a finite, monotonic, complete document-position profile.");
         }
 
-        if (tiles.Count is < 1 or > MaximumTraversalViewports ||
+        if (tiles.Count < 1 || tiles.Count > TraversalViewportCeiling ||
             !double.IsFinite(tiles[0].ScrollTopViewportUnits) ||
             Math.Abs(tiles[0].ScrollTopViewportUnits) > 1.0 / Math.Max(1, tiles[0].Height) ||
             tiles[0].NativeViewportMovementOffsets.Count != 0)
