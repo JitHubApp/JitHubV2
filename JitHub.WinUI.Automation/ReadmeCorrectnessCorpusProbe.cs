@@ -640,6 +640,10 @@ internal static partial class ReadmeAuditProbe
             string reopenedText = WaitForStableCorrectnessText(reopenedHost, TimeSpan.FromSeconds(20));
             if (!string.Equals(reopenedText, departureText, StringComparison.Ordinal))
             {
+                // Keep the three texts compared so a mismatch can be triaged.
+                File.WriteAllText(Path.Combine(context.NativeOutputDirectory, "route-initial-text.txt"), context.ExpectedText);
+                File.WriteAllText(Path.Combine(context.NativeOutputDirectory, "route-departure-text.txt"), departureText);
+                File.WriteAllText(Path.Combine(context.NativeOutputDirectory, "route-reopened-text.txt"), reopenedText);
                 throw new InvalidDataException("Returning to the pinned README did not restore the same visible document text.");
             }
 
