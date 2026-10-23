@@ -593,6 +593,11 @@ internal static partial class ReadmeAuditProbe
                 sourceEvidenceBeforeNavigationUtc <= context.SourceEvidenceStartedAtUtc.UtcDateTime)
                 throw new InvalidDataException("The current app process/source identity evidence was unavailable before navigation.");
 
+            // The text the reader leaves is the reference for route-back: a
+            // deferred Mermaid or Math scene visited during traversal is now
+            // drawn (its accessible text replaces the source fallback) and is
+            // restored drawn, unlike the text captured before traversal.
+            string departureText = WaitForStableCorrectnessText(context.Host, TimeSpan.FromSeconds(20));
             AutomationElement issues = context.Window.FindFirstDescendant(
                     cf => cf.ByAutomationId("RepoNavigation_Issues"))
                 ?? throw new InvalidOperationException("The repository Issues navigation item was not present.");
@@ -633,7 +638,7 @@ internal static partial class ReadmeAuditProbe
                 TimeSpan.FromSeconds(30),
                 Path.Combine(context.NativeOutputDirectory, "correctness-navigation-timeout.png"));
             string reopenedText = WaitForStableCorrectnessText(reopenedHost, TimeSpan.FromSeconds(20));
-            if (!string.Equals(reopenedText, context.ExpectedText, StringComparison.Ordinal))
+            if (!string.Equals(reopenedText, departureText, StringComparison.Ordinal))
             {
                 throw new InvalidDataException("Returning to the pinned README did not restore the same visible document text.");
             }
