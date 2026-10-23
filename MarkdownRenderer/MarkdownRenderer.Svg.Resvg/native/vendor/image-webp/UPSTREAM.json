@@ -9,7 +9,7 @@
   "packageVersion": "0.2.4",
   "license": "MIT OR Apache-2.0",
   "sourceInventorySha256": "fb373b48b33155d4863b5629965a053dfef1cb2b5e5cee7dd9402148de96caa7",
-  "patchSetSha256": "e009af2eab64189e3c910bdf72c227c666a6084f1d8b555e283a33f2c39b2f1a",
+  "patchSetSha256": "44964054a8bc35583442cb246bd60d2564a15d921ec2ebf67878c0496a499e2d",
   "addedFilesSha256": "9e0e15c40af49aa1d9390e1f7b186201e9f0875c2b5af97912dcbed340c9eee0",
   "sourceFiles": [
     { "path": ".cargo_vcs_info.json", "sha256": "0b5acdc5e994925d76cb7285f79bc3c5c958a564baa7c84e9c943cefcb1c998d" },
@@ -37,8 +37,8 @@
   "patches": [
     { "path": "Cargo.lock", "upstreamSha256": "baf1f3ef3366a6dcea3b88a0e411d0533916d2c03268c1532b6d114d0781923a", "patchedSha256": "bcb6644ba6edc4d3727c8b5ea70be0762cffb1e688f832833a5ad3b04a2d05fa" },
     { "path": "Cargo.toml", "upstreamSha256": "c05cc68c768c57e79c581b2ad6c112759556df9689b83313e35d5943f2951262", "patchedSha256": "09464c7208a0f0ff6b3a6cf551923b321cf4ce441383a98822df19a68cf1dbed" },
-    { "path": "src/decoder.rs", "upstreamSha256": "b2a424a9dee08909210f95497b5abcd48e3d85ebd831230b0c49f4237b0f7069", "patchedSha256": "341bb0d3fb4fe3d412378d3c641796097ca12cbccbdb83f97bf9dfe6a826bec9" },
-    { "path": "src/extended.rs", "upstreamSha256": "1838299aefafaffca029942d0d337fe26cabf5a887c9f76e5b8fcbf577469a8a", "patchedSha256": "7a37a8f35c20bec82da5e5ce86ecb6d1edb8e0cb04e6740f61832142a943a20c" },
+    { "path": "src/decoder.rs", "upstreamSha256": "b2a424a9dee08909210f95497b5abcd48e3d85ebd831230b0c49f4237b0f7069", "patchedSha256": "96dcd3b1f9c8b03e0327aa78830796f2994de2b18902e7828a6d712743a7cc16" },
+    { "path": "src/extended.rs", "upstreamSha256": "1838299aefafaffca029942d0d337fe26cabf5a887c9f76e5b8fcbf577469a8a", "patchedSha256": "6a9bf4648d151ea3635c007134930a9d21abeeef33582bad680a37acadb6cf0e" },
     { "path": "src/huffman.rs", "upstreamSha256": "5f1cf0c9a4a03f2ee84bb3756f6d0726c4724026b663fa25102d5d55850eb71f", "patchedSha256": "4b3eb26d923408f6e9a7faba2dc37fe00c28f6639fe868336131a1b0124380dc" },
     { "path": "src/lib.rs", "upstreamSha256": "0bdc2014e7e01791abe8769119489d02b174b08f1f6950b1c3526d8fd060ece6", "patchedSha256": "8886f0df9590208149a104aeb8dc55f144b7480b6465d327de3ad202062ec400" },
     { "path": "src/lossless_transform.rs", "upstreamSha256": "8396506ae0a0c621f3d81d4571019f46b60d361647a52b3314b6802fb904e036", "patchedSha256": "c586b8d5509399f0834eb5ae65972492537629fc38467a69e3380f971873e281" },

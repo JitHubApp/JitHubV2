@@ -8,7 +8,8 @@ use std::ops::Range;
 
 use crate::budget::DecodeBudget;
 use crate::extended::{
-    self, get_alpha_predictor, read_alpha_chunk, read_alpha_chunk_bounded, WebPExtendedInfo,
+    self, get_alpha_predictor, read_alpha_chunk, read_alpha_chunk_bounded,
+    read_alpha_plane_bounded, WebPExtendedInfo,
 };
 use tiny_skia::{BlendMode, ColorU8, FilterQuality, PixmapMut, PixmapPaint, PixmapRef, Transform};
 
@@ -1352,8 +1353,8 @@ impl<R: BufRead + Seek> WebPDecoder<R> {
     /// decoder becomes unusable. VP8L uses a bounded history window and row-local inverse
     /// transforms. Opaque VP8 uses three charged macroblock bands, a one-band wrap halo, and a
     /// charged RGBA row so bilinear chroma upsampling can read both neighboring bands at their
-    /// boundaries. VP8X alpha remains on the charged full-frame path until its predictor plane is
-    /// streamed.
+    /// boundaries. Lossy VP8X alpha charges one reconstructed alpha byte per pixel (its VP8L
+    /// payload is itself decoded row by row) plus one RGBA row, never a full RGBA frame.
     pub fn read_static_rgba_rows_bounded_with_metadata<E>(
         &mut self,
         mut consume: impl FnMut(u32, &[u8]) -> Result<(), E>,
@@ -1391,7 +1392,6 @@ impl<R: BufRead + Seek> WebPDecoder<R> {
         consume: &mut impl FnMut(u32, &[u8]) -> Result<(), E>,
     ) -> Result<(), RowDecodeError<E>> {
         let width = usize::try_from(self.width).map_err(|_| DecodingError::ImageTooLarge)?;
-        let height = usize::try_from(self.height).map_err(|_| DecodingError::ImageTooLarge)?;
         let row_len = width.checked_mul(4).ok_or(DecodingError::ImageTooLarge)?;
         let budget = self.allocation_budget.as_ref().unwrap();
 
@@ -1424,21 +1424,53 @@ impl<R: BufRead + Seek> WebPDecoder<R> {
             );
         }
 
-        // VP8X alpha reconstruction still retains the bounded full-frame plane and RGBA result.
-        // Keep every such allocation charged until ALPH predictors are streamed as well.
-        let frame_len = row_len
-            .checked_mul(height)
-            .ok_or(DecodingError::ImageTooLarge)?;
-        let mut frame = budget.vec_with_len(frame_len, 0u8)?;
-        self.decode_static_rgba_bounded_inner(&mut frame)?;
-        for (y, row) in frame.chunks_exact(row_len).enumerate() {
-            consume(
-                u32::try_from(y).map_err(|_| DecodingError::ImageTooLarge)?,
-                row,
-            )
-            .map_err(RowDecodeError::Consumer)?;
-        }
-        Ok(())
+        // Lossy VP8X alpha: reconstruct the one-byte alpha plane first, so a malformed or
+        // over-budget ALPH chunk fails before any row is published, then stream the VP8
+        // macroblock bands and attach each row's alpha in one charged RGBA row.
+        let alpha_range = self
+            .chunks
+            .get(&WebPRiffChunk::ALPH)
+            .cloned()
+            .ok_or(DecodingError::ChunkMissing)?;
+        let alpha_plane = {
+            let mut reader = range_reader(&mut self.r, alpha_range)?;
+            read_alpha_plane_bounded(
+                &mut reader,
+                u16::try_from(self.width).map_err(|_| DecodingError::ImageTooLarge)?,
+                u16::try_from(self.height).map_err(|_| DecodingError::ImageTooLarge)?,
+                budget,
+            )?
+        };
+        let range = self
+            .chunks
+            .get(&WebPRiffChunk::VP8)
+            .cloned()
+            .ok_or(DecodingError::ChunkMissing)?;
+        let source_len = usize::try_from(
+            range
+                .end
+                .checked_sub(range.start)
+                .ok_or(DecodingError::InvalidChunkSize)?,
+        )
+        .map_err(|_| DecodingError::ImageTooLarge)?;
+        let mut alpha_row = budget.vec_with_len(row_len, 0u8)?;
+        Vp8Decoder::decode_frame_rows_bounded(
+            range_reader(&mut self.r, range)?,
+            budget,
+            source_len,
+            (self.width, self.height),
+            self.webp_decode_options.lossy_upsampling,
+            &mut |y, row: &[u8]| -> Result<(), E> {
+                // The VP8 row decoder publishes each row 0..height exactly once.
+                let start = y as usize * width;
+                let alpha = &alpha_plane[start..start + width];
+                alpha_row.copy_from_slice(&row[..row_len]);
+                for (pixel, value) in alpha_row.chunks_exact_mut(4).zip(alpha) {
+                    pixel[3] = *value;
+                }
+                consume(y, &alpha_row)
+            },
+        )
     }
 
     fn read_static_rgba_bounded_inner(
@@ -3543,5 +3575,158 @@ mod tests {
             Err(DecodingError::ImageTooLarge)
         ));
         assert_eq!(bounded.bounded_allocation_bytes(), Some(initial_charge));
+    }
+
+    fn wrap_vp8x_alpha_sized(
+        vp8_payload: &[u8],
+        alpha_info: u8,
+        alpha_payload: &[u8],
+        width: u32,
+        height: u32,
+    ) -> Vec<u8> {
+        let alpha_len = 1 + alpha_payload.len();
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(b"RIFF");
+        bytes.extend_from_slice(&0u32.to_le_bytes());
+        bytes.extend_from_slice(b"WEBP");
+        bytes.extend_from_slice(b"VP8X");
+        bytes.extend_from_slice(&10u32.to_le_bytes());
+        bytes.push(0x10); // alpha
+        bytes.extend_from_slice(&[0; 3]);
+        bytes.extend_from_slice(&(width - 1).to_le_bytes()[..3]);
+        bytes.extend_from_slice(&(height - 1).to_le_bytes()[..3]);
+        bytes.extend_from_slice(b"ALPH");
+        bytes.extend_from_slice(&(alpha_len as u32).to_le_bytes());
+        bytes.push(alpha_info);
+        bytes.extend_from_slice(alpha_payload);
+        if alpha_len & 1 != 0 {
+            bytes.push(0);
+        }
+        bytes.extend_from_slice(b"VP8 ");
+        bytes.extend_from_slice(&(vp8_payload.len() as u32).to_le_bytes());
+        bytes.extend_from_slice(vp8_payload);
+        if vp8_payload.len() & 1 != 0 {
+            bytes.push(0);
+        }
+        let riff_len = (bytes.len() - 8) as u32;
+        bytes[4..8].copy_from_slice(&riff_len.to_le_bytes());
+        bytes
+    }
+
+    fn opaque_vp8_256_payload() -> &'static [u8] {
+        const ENCODED: &[u8] = include_bytes!("../../../tests/fixtures/opaque-vp8-256.webp");
+        assert_eq!(&ENCODED[12..16], b"VP8 ");
+        let len = u32::from_le_bytes(ENCODED[16..20].try_into().unwrap()) as usize;
+        &ENCODED[20..20 + len]
+    }
+
+    fn synthetic_alpha_256() -> Vec<u8> {
+        (0..256u32 * 256)
+            .map(|index| {
+                let (x, y) = (index % 256, index / 256);
+                ((x * 7 + y * 13) ^ (x * y)) as u8
+            })
+            .collect()
+    }
+
+    fn vp8l_alpha_payload_256(alpha: &[u8]) -> Vec<u8> {
+        let mut rgba = Vec::with_capacity(alpha.len() * 4);
+        for value in alpha {
+            rgba.extend_from_slice(&[0, *value, 0, 255]);
+        }
+        let mut encoded = Vec::new();
+        WebPEncoder::new(&mut encoded)
+            .encode(&rgba, 256, 256, crate::ColorType::Rgba8)
+            .unwrap();
+        assert_eq!(&encoded[12..16], b"VP8L");
+        let payload_len = u32::from_le_bytes(encoded[16..20].try_into().unwrap()) as usize;
+        // ALPH carries an implicit-dimension VP8L stream without the signature and header.
+        encoded[25..20 + payload_len].to_vec()
+    }
+
+    fn lossy_alpha_256_cases() -> Vec<(String, Vec<u8>)> {
+        let vp8 = opaque_vp8_256_payload();
+        let alpha = synthetic_alpha_256();
+        let compressed = vp8l_alpha_payload_256(&alpha);
+        let mut cases = Vec::new();
+        for filter in 0u8..4 {
+            cases.push((
+                format!("raw alpha, filter {filter}"),
+                wrap_vp8x_alpha_sized(vp8, filter << 2, &alpha, 256, 256),
+            ));
+            cases.push((
+                format!("VP8L alpha, filter {filter}"),
+                wrap_vp8x_alpha_sized(vp8, (filter << 2) | 1, &compressed, 256, 256),
+            ));
+        }
+        cases
+    }
+
+    fn bounded_metadata_decoder(bytes: &[u8], limit: usize) -> WebPDecoder<Cursor<&[u8]>> {
+        WebPDecoder::new_static_bounded_with_metadata(Cursor::new(bytes), limit).unwrap()
+    }
+
+    // P3-014 (Phase 3 rank 374): a large lossy WebP with alpha could only decode as a full
+    // RGBA frame, so it exceeded the worker's working budget. Rows now stream with the
+    // reconstructed alpha plane and must equal the legacy full-frame decode exactly.
+    #[test]
+    fn lossy_alpha_rows_match_the_legacy_full_frame_for_every_filter_and_compression() {
+        for (name, bytes) in lossy_alpha_256_cases() {
+            let (width, height, expected) = legacy_static_rgba(&bytes);
+            assert_eq!((width, height), (256, 256), "{name}");
+            let (row_width, row_height, rows, row_lengths) =
+                decode_bounded_rows(&bytes, 64 * 1024 * 1024);
+            assert_eq!((row_width, row_height), (256, 256), "{name}");
+            assert!(row_lengths.iter().all(|length| *length == 256 * 4), "{name}");
+            assert_eq!(rows, expected, "{name}");
+        }
+    }
+
+    #[test]
+    fn lossy_alpha_rows_fit_a_budget_the_full_frame_decode_exceeds() {
+        for (name, bytes) in lossy_alpha_256_cases() {
+            let mut full = bounded_metadata_decoder(&bytes, 64 * 1024 * 1024);
+            let mut frame = vec![0u8; 256 * 256 * 4];
+            full.read_static_rgba_bounded_with_metadata(&mut frame).unwrap();
+            let full_charge = full.bounded_allocation_bytes().unwrap();
+
+            let mut rows = bounded_metadata_decoder(&bytes, 64 * 1024 * 1024);
+            rows.read_static_rgba_rows_bounded_with_metadata(|_, _| Ok::<(), ()>(()))
+                .unwrap();
+            let row_charge = rows.bounded_allocation_bytes().unwrap();
+            assert!(
+                row_charge < full_charge,
+                "{name}: rows charged {row_charge} bytes, full frame {full_charge}"
+            );
+
+            let mut exact = bounded_metadata_decoder(&bytes, row_charge);
+            exact
+                .read_static_rgba_rows_bounded_with_metadata(|_, _| Ok::<(), ()>(()))
+                .unwrap();
+            let mut too_small = bounded_metadata_decoder(&bytes, row_charge);
+            let mut protected = vec![0u8; 256 * 256 * 4];
+            assert!(
+                matches!(
+                    too_small.read_static_rgba_bounded_with_metadata(&mut protected),
+                    Err(DecodingError::MemoryLimitExceeded)
+                ),
+                "{name}: the full-frame decode must not fit the row budget"
+            );
+        }
+    }
+
+    #[test]
+    fn lossy_alpha_row_decode_rejects_a_truncated_alpha_plane_before_any_row() {
+        let vp8 = opaque_vp8_256_payload();
+        let alpha = synthetic_alpha_256();
+        let bytes = wrap_vp8x_alpha_sized(vp8, 0, &alpha[..alpha.len() - 1], 256, 256);
+        let mut decoder = bounded_metadata_decoder(&bytes, 64 * 1024 * 1024);
+        let mut rows = 0;
+        let result = decoder.read_static_rgba_rows_bounded_with_metadata(|_, _| {
+            rows += 1;
+            Ok::<(), ()>(())
+        });
+        assert!(result.is_err());
+        assert_eq!(rows, 0);
     }
 }

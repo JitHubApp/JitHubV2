@@ -245,10 +245,10 @@ fn decode_and_render(
             "WebP orientation does not match admitted source",
         ));
     }
-    // The row API streams VP8L (with or without alpha) and opaque VP8. VP8X
-    // alpha reconstruction still materializes a full frame, so it must not
-    // be selected as a lower-memory fallback.
-    let can_stream_rows = !decoder.is_lossy() || !decoder.has_alpha();
+    // The row API streams every supported static image: VP8L, opaque VP8,
+    // and lossy VP8X alpha, which charges one reconstructed alpha byte per
+    // pixel instead of a full RGBA frame (P3-014).
+    let can_stream_rows = true;
     let icc_plan = icc.map(preflight_icc_profile).transpose()?;
     progress.store(PROGRESS_HEADER_VALIDATED, Ordering::Release);
 
@@ -519,12 +519,6 @@ fn reopen_verified_decoder<'a>(
     icc_plan: Option<&IccProfilePlan>,
     mapping_bytes: usize,
 ) -> Result<Response, Reject> {
-    if decoder.is_lossy() && decoder.has_alpha() {
-        return Err(Reject::Resource(
-            "lossy WebP alpha frame exceeds bounded full-frame working memory",
-        ));
-    }
-
     let transposed = plan.orientation >= 5;
     let (intermediate_width, intermediate_height) = if transposed {
         (plan.target_height, plan.target_width)

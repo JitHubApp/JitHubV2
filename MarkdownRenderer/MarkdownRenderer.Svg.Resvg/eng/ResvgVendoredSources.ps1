@@ -176,7 +176,7 @@ function Get-ResvgVendoredSourcesProvenance {
             archiveSha256 = '525e9ff3e1a4be2fbea1fdf0e98686a6d98b4d8f937e1bf7402245af1909e8c3'
             license = 'MIT OR Apache-2.0'
             sourceInventorySha256 = 'fb373b48b33155d4863b5629965a053dfef1cb2b5e5cee7dd9402148de96caa7'
-            patchSetSha256 = 'e009af2eab64189e3c910bdf72c227c666a6084f1d8b555e283a33f2c39b2f1a'
+            patchSetSha256 = '44964054a8bc35583442cb246bd60d2564a15d921ec2ebf67878c0496a499e2d'
             expectedPatchPaths = @('Cargo.lock', 'Cargo.toml', 'src/decoder.rs', 'src/extended.rs', 'src/huffman.rs', 'src/lib.rs', 'src/lossless_transform.rs', 'src/lossless.rs', 'src/vp8_arithmetic_decoder.rs', 'src/vp8.rs', 'src/yuv.rs')
             addedFilesSha256 = '9e0e15c40af49aa1d9390e1f7b186201e9f0875c2b5af97912dcbed340c9eee0'
             addedFiles = @(

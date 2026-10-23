@@ -39,7 +39,7 @@ public sealed class RasterDecodeStreamingIntegrationTests
     }
 
     [Fact]
-    public async Task LossyVp8AlphaUsesChargedFullFrameAndRejectsOnlyBelowWorkingBudget()
+    public async Task LossyVp8AlphaStreamsRowsAndRejectsOnlyBelowWorkingBudget()
     {
         using Stream fixture = typeof(RasterDecodeStreamingIntegrationTests).Assembly
             .GetManifestResourceStream("OpaqueVp8StreamingFixture")
@@ -74,8 +74,15 @@ public sealed class RasterDecodeStreamingIntegrationTests
         }
         Assert.True(hasColor, "The static lossy VP8 color frame must remain visible under its alpha plane.");
 
-        // A 256x256 RGBA source frame alone needs 256 KiB, before the charged
-        // decoder alpha plane and mapped 64x64 output. This lower request budget
+        // P3-014 (Phase 3 rank 374): lossy WebP with alpha used to decode only as
+        // a full RGBA frame (about 593 KiB of working memory here), so a large
+        // image exceeded the worker budget. Rows now stream with a one-byte
+        // reconstructed alpha plane: 400 KiB suffices, with identical pixels.
+        using MarkdownRaster streamed = await renderer.DecodeAsync(
+            request with { MaximumWorkingBytes = 400 * 1024 });
+        Assert.Equal(admitted.Pixels.ToArray(), streamed.Pixels.ToArray());
+
+        // Below the alpha plane, VP8 bands and mapped 64x64 output the request
         // is intentionally insufficient, so a typed resource fallback is correct.
         MarkdownRasterException failure = await Assert.ThrowsAsync<MarkdownRasterException>(() =>
             renderer.DecodeAsync(request with { MaximumWorkingBytes = 200 * 1024 }).AsTask());

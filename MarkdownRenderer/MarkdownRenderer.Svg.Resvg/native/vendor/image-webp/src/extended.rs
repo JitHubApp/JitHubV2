@@ -388,3 +388,103 @@ pub(crate) fn read_alpha_chunk_bounded<R: BufRead>(
         data,
     })
 }
+
+/// Reads a static-image alpha chunk into one reconstructed byte per pixel.
+///
+/// Unlike [`read_alpha_chunk_bounded`], a VP8L-compressed plane is decoded row by row, so only
+/// the one-byte plane and the lossless decoder's bounded row scratch are charged, never a
+/// full RGBA frame. The filter is then undone in place in raster order, which reads only
+/// already-reconstructed left, top and top-left samples, matching [`get_alpha_predictor`].
+pub(crate) fn read_alpha_plane_bounded<R: BufRead>(
+    reader: &mut R,
+    width: u16,
+    height: u16,
+    budget: &DecodeBudget,
+) -> Result<Vec<u8>, DecodingError> {
+    let info_byte = reader.read_u8()?;
+    if info_byte & 0b1100_0000 != 0 {
+        return Err(DecodingError::InvalidAlphaPreprocessing);
+    }
+    if (info_byte & 0b0011_0000) >> 4 > 1 {
+        return Err(DecodingError::InvalidAlphaPreprocessing);
+    }
+    let filtering_method = match (info_byte & 0b0000_1100) >> 2 {
+        0 => FilteringMethod::None,
+        1 => FilteringMethod::Horizontal,
+        2 => FilteringMethod::Vertical,
+        _ => FilteringMethod::Gradient,
+    };
+    let lossless_compression = match info_byte & 0b0000_0011 {
+        0 => false,
+        1 => true,
+        _ => return Err(DecodingError::InvalidCompressionMethod),
+    };
+
+    let width_usize = usize::from(width);
+    let pixel_count = width_usize
+        .checked_mul(usize::from(height))
+        .ok_or(DecodingError::ImageTooLarge)?;
+    let mut plane = budget.vec_with_len(pixel_count, 0u8)?;
+    if lossless_compression {
+        let mut decoder = LosslessDecoder::new_bounded(reader, budget);
+        decoder
+            .decode_frame_rows_bounded(
+                u32::from(width),
+                u32::from(height),
+                true,
+                &mut |y, row: &[u8]| -> Result<(), DecodingError> {
+                    let start = usize::try_from(y)
+                        .ok()
+                        .and_then(|y| y.checked_mul(width_usize))
+                        .filter(|start| start + width_usize <= pixel_count)
+                        .ok_or(DecodingError::ImageTooLarge)?;
+                    if row.len() < width_usize * 4 {
+                        return Err(DecodingError::ImageTooLarge);
+                    }
+                    for (alpha, pixel) in plane[start..start + width_usize]
+                        .iter_mut()
+                        .zip(row.chunks_exact(4))
+                    {
+                        *alpha = pixel[1];
+                    }
+                    Ok(())
+                },
+            )
+            .map_err(|error| match error {
+                crate::decoder::RowDecodeError::Decoder(error)
+                | crate::decoder::RowDecodeError::Consumer(error) => error,
+            })?;
+    } else {
+        reader.read_exact(&mut plane)?;
+    }
+
+    unfilter_alpha_plane(&mut plane, width_usize, filtering_method);
+    Ok(plane)
+}
+
+/// Undoes the ALPH spatial filter on a one-byte-per-pixel plane in raster order.
+pub(crate) fn unfilter_alpha_plane(plane: &mut [u8], width: usize, filtering_method: FilteringMethod) {
+    if width == 0 || matches!(filtering_method, FilteringMethod::None) {
+        return;
+    }
+    for index in 0..plane.len() {
+        let x = index % width;
+        let y = index / width;
+        let predictor = match (x, y) {
+            (0, 0) => 0,
+            (0, _) => plane[index - width],
+            (_, 0) => plane[index - 1],
+            _ => match filtering_method {
+                FilteringMethod::None => 0,
+                FilteringMethod::Horizontal => plane[index - 1],
+                FilteringMethod::Vertical => plane[index - width],
+                FilteringMethod::Gradient => {
+                    let combination = i16::from(plane[index - 1]) + i16::from(plane[index - width])
+                        - i16::from(plane[index - width - 1]);
+                    combination.clamp(0, 255) as u8
+                }
+            },
+        };
+        plane[index] = predictor.wrapping_add(plane[index]);
+    }
+}
