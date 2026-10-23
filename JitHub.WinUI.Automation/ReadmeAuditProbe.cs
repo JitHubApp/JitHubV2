@@ -39,7 +39,13 @@ internal static partial class ReadmeAuditProbe
     private static readonly TimeSpan UiaProviderConnectionTimeout = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan UiaProviderTransactionTimeout = TimeSpan.FromSeconds(8);
     private static readonly TimeSpan RendererRequestResponseTimeout = TimeSpan.FromSeconds(30);
-    private static readonly TimeSpan NativeTraversalTimeout = TimeSpan.FromMinutes(3);
+    private static readonly TimeSpan PerformanceNativeTraversalTimeout = TimeSpan.FromMinutes(3);
+    // T3-012: the correctness-only corpus audit judges content, layout,
+    // selection and navigation, not traversal speed, so the largest READMEs
+    // (ranks 141 and 351 need about 230 s and 205 s) get a longer wall-clock
+    // bound. The 512-viewport safety ceiling still applies to every audit.
+    internal static readonly TimeSpan CorrectnessNativeTraversalTimeout = TimeSpan.FromMinutes(10);
+    private static TimeSpan NativeTraversalTimeout = PerformanceNativeTraversalTimeout;
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,

@@ -160,6 +160,8 @@ internal static partial class ReadmeAuditProbe
         }
 
         ClearOfflineGitHubCredentialEnvironment();
+        // This process runs only the correctness corpus (T3-012).
+        NativeTraversalTimeout = CorrectnessNativeTraversalTimeout;
         CorrectnessAccountingSelfTestResult accounting = EvaluateCorrectnessAccountingSelfTests();
         if (!accounting.Passed)
             throw new InvalidOperationException("Correctness result-accounting self-tests failed before corpus execution.");

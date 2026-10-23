@@ -1045,7 +1045,8 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("peer.BoundingRectangle", source, StringComparison.Ordinal);
         Assert.Contains("peer.Properties.AutomationId.ValueOrDefault", source, StringComparison.Ordinal);
         Assert.Contains("if (matches != 1)", source, StringComparison.Ordinal);
-        Assert.Contains("TimeSpan.FromMinutes(3)", source, StringComparison.Ordinal);
+        Assert.Contains("PerformanceNativeTraversalTimeout = TimeSpan.FromMinutes(3)", source, StringComparison.Ordinal);
+        Assert.Contains("NativeTraversalTimeout = PerformanceNativeTraversalTimeout;", source, StringComparison.Ordinal);
         Assert.Contains("GetRemainingNativeTraversalTime(traversalWall", revisit, StringComparison.Ordinal);
         Assert.Contains("GetBoundedNativeTraversalWait(", revisit, StringComparison.Ordinal);
         Assert.Contains("RequestRendererScroll(", revisit, StringComparison.Ordinal);
