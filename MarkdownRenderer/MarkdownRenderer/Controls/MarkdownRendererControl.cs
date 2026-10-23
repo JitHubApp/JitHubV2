@@ -6605,7 +6605,12 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     {
         if (_canvas is null || _root is null || _overlay is null) return;
         _canvas.Width = Math.Max(1, committedSize.Width);
-        _canvas.Height = Math.Max(1, committedSize.Height);
+        // Round the height up to whole device pixels so layout rounding never
+        // clips the document's last partial pixel row (P3-018). Width stays
+        // as committed: rounding it up could add a horizontal scroll range.
+        _canvas.Height = Math.Max(1, SelectionController.SnapExtentUpToPixelGrid(
+            committedSize.Height,
+            XamlRoot?.RasterizationScale ?? 1.0));
         _root.Width = _canvas.Width;
         _root.Height = _canvas.Height;
         _overlay.Width = _canvas.Width;

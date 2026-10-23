@@ -197,6 +197,26 @@ internal sealed class SelectionController
         }
     }
 
+    /// <summary>
+    /// Rounds a canvas extent up to the next whole device pixel. XAML layout
+    /// rounding otherwise rounds a fractional document height to the nearest
+    /// pixel, which clips the document's last partial pixel row whenever the
+    /// fraction is under half a pixel (P3-018).
+    /// </summary>
+    internal static double SnapExtentUpToPixelGrid(double extent, double scale)
+    {
+        if (!double.IsFinite(extent) || extent <= 0)
+            return extent;
+        if (!double.IsFinite(scale) || scale <= 0)
+            scale = 1;
+
+        // Tolerate floating error so an extent already on the pixel grid
+        // (for example 659.0000000001 physical pixels) does not gain a pixel.
+        const double PixelEpsilon = 1e-6;
+        double pixels = System.Math.Ceiling(extent * scale - PixelEpsilon);
+        return System.Math.Max(pixels, 1) / scale;
+    }
+
     internal static Rect SnapToRasterizationScale(Rect rect, double scale)
     {
         if (!double.IsFinite(scale) || scale <= 0)

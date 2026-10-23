@@ -484,7 +484,12 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
             var element = node.InlineRun is InlineEmbedRun inlineEmbed
                 ? inlineEmbed.RealizedElement
                 : node.EmbedBox?.RealizedElement ?? node.HostedElementBox?.RealizedElement;
-            if (element is not null)
+            // A realized element in the Raw view (the read-only task marker)
+            // is decorative. Exposing its peer would drop the task state from
+            // the Control and Content views whenever the marker scrolls into
+            // view, so the semantic node peer keeps representing it (P3-020).
+            if (element is not null &&
+                AutomationProperties.GetAccessibilityView(element) != AccessibilityView.Raw)
             {
                 var elementPeer = FrameworkElementAutomationPeer.FromElement(element)
                                   ?? FrameworkElementAutomationPeer.CreatePeerForElement(element);
