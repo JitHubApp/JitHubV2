@@ -16,7 +16,7 @@
       "license": "Apache-2.0 OR MIT",
       "upstreamLicense": "Apache-2.0 OR MIT",
       "sourceInventorySha256": "222759c0ff6177b5bf847b4d984f5d4e5819897edb204b96ecb459687643b3e0",
-      "patchSetSha256": "2550dde470ab00f5fa983fe83b0a21d858ab22b2206607e7758029584643cf04",
+      "patchSetSha256": "f12ff6c01f8d34ea25fe2cb58ea20d8675fe0b6424f0b8af597fe88e55b33b67",
       "patches": [
         {
           "path": "Cargo.toml",
@@ -71,7 +71,7 @@
         {
           "path": "src/lib.rs",
           "upstreamSha256": "d90f2f77488c28ff6e79ce334dcffdb05eefc5fcfd718ba1d0316c023c8f19f3",
-          "patchedSha256": "943f48694c343f591f966915f8dc67dc33fa3b61678dea41e013d6952718ce4e"
+          "patchedSha256": "02de53b37f35a00696cac974d025a038b93b64ba633d07a30309fd8d418f8fb8"
         },
         {
           "path": "src/mask.rs",
@@ -185,7 +185,7 @@
       "license": "BSD-3-Clause AND MIT",
       "upstreamLicense": "BSD-3-Clause",
       "sourceInventorySha256": "5454cbf22bc4f175b21e750839c30b99bc164991c5134f66a5cc1e7fe01bced8",
-      "patchSetSha256": "50166575e05a7cdcffb0c8bfb3f1364c7d50810d10df7890c48dfe8797189f32",
+      "patchSetSha256": "57c5370e1ab17b6d89c82fcadb22c6669e9319cb718a33f22f25a341fe389f46",
       "patches": [
         {
           "path": "Cargo.toml",
@@ -250,7 +250,7 @@
         {
           "path": "src/scan/path.rs",
           "upstreamSha256": "3ef0bf59edb4e4a07634774cafe4e0a4745a80358ec6cda850481cde701b62be",
-          "patchedSha256": "dc87bc06630b30305662390431b9ccf628ad4876382d75f1af0d4b267b7b72c3"
+          "patchedSha256": "8b5cab75e1728c66b4f6a7cdbc2c7320ea63eda8e4e3b7c8691fd2ec688d2b12"
         },
         {
           "path": "src/scan/path_aa.rs",

@@ -660,6 +660,35 @@ mod tests {
         assert!(output.pixels().iter().all(|pixel| pixel.alpha() == 0));
     }
 
+    // Phase 3 rank 114 (P3-016): pixel-art made of crisp-edged 16-unit rects
+    // on a 480-unit viewBox, displayed at 18 px, makes each rect 0.6 px wide.
+    // A sub-pixel crisp rect covers zero or one pixel; it must not fail the
+    // whole render as invalid geometry.
+    #[test]
+    fn crisp_edged_sub_pixel_rects_render_at_small_display_sizes() {
+        let mut rects = String::new();
+        for row in 0..30 {
+            for column in 0..30 {
+                rects.push_str(&format!(
+                    r##"<rect x="{}" y="{}" width="16" height="16" fill="#2c2a26"/>"##,
+                    column * 16,
+                    row * 16
+                ));
+            }
+        }
+        let svg = format!(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 480" width="480" height="480" shape-rendering="crispEdges">{rects}</svg>"##
+        );
+        for target in [18_u32, 23, 27] {
+            let (result, output) = bounded_scaled(&svg, target, target as f32 / 480.0);
+            assert_eq!(result, Ok(()), "{target} px");
+            assert!(
+                output.pixels().iter().any(|pixel| pixel.alpha() != 0),
+                "{target} px renders visible pixels"
+            );
+        }
+    }
+
     #[test]
     fn filter_region_outside_integer_coordinates_reports_invalid_geometry() {
         let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><defs><filter id="f" filterUnits="userSpaceOnUse" x="0" y="0" width="1e12" height="10"><feFlood flood-color="red"/></filter></defs><rect width="10" height="10" filter="url(#f)"/></svg>"##;

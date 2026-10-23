@@ -10,7 +10,7 @@
   "license": "BSD-3-Clause",
   "vendoredLicense": "BSD-3-Clause AND MIT",
   "sourceInventorySha256": "5454cbf22bc4f175b21e750839c30b99bc164991c5134f66a5cc1e7fe01bced8",
-  "patchSetSha256": "50166575e05a7cdcffb0c8bfb3f1364c7d50810d10df7890c48dfe8797189f32",
+  "patchSetSha256": "57c5370e1ab17b6d89c82fcadb22c6669e9319cb718a33f22f25a341fe389f46",
   "sourceFiles": [
     {
       "path": ".cargo_vcs_info.json",
@@ -915,7 +915,7 @@
     {
       "path": "src/scan/path.rs",
       "upstreamSha256": "3ef0bf59edb4e4a07634774cafe4e0a4745a80358ec6cda850481cde701b62be",
-      "patchedSha256": "dc87bc06630b30305662390431b9ccf628ad4876382d75f1af0d4b267b7b72c3"
+      "patchedSha256": "8b5cab75e1728c66b4f6a7cdbc2c7320ea63eda8e4e3b7c8691fd2ec688d2b12"
     },
     {
       "path": "src/scan/path_aa.rs",

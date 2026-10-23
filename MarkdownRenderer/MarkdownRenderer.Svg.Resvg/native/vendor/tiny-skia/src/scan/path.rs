@@ -62,8 +62,12 @@ pub(crate) fn fill_path_bounded(
     blitter: &mut dyn Blitter,
     max_bytes: usize,
 ) -> Result<(), crate::AnalyticRasterError> {
-    let ir = conservative_round_to_int(&path.bounds())
-        .ok_or(crate::AnalyticRasterError::NumericRange)?;
+    // Like `fill_path`: bounds that round to an empty integer rect (a
+    // sub-pixel crisp-edged rect at a small display size) draw nothing.
+    // Coordinates too large for the scan math were rejected by the caller.
+    let Some(ir) = conservative_round_to_int(&path.bounds()) else {
+        return Ok(());
+    };
     let contained = ir
         .to_screen_int_rect()
         .is_some_and(|bounds| clip.contains(&bounds));

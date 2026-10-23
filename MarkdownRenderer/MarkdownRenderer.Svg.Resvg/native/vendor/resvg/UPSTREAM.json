@@ -8,7 +8,7 @@
   "packageVersion": "0.48.1",
   "license": "Apache-2.0 OR MIT",
   "sourceInventorySha256": "222759c0ff6177b5bf847b4d984f5d4e5819897edb204b96ecb459687643b3e0",
-  "patchSetSha256": "2550dde470ab00f5fa983fe83b0a21d858ab22b2206607e7758029584643cf04",
+  "patchSetSha256": "f12ff6c01f8d34ea25fe2cb58ea20d8675fe0b6424f0b8af597fe88e55b33b67",
   "sourceFiles": [
     {
       "path": "Cargo.toml",
@@ -181,7 +181,7 @@
     {
       "path": "src/lib.rs",
       "upstreamSha256": "d90f2f77488c28ff6e79ce334dcffdb05eefc5fcfd718ba1d0316c023c8f19f3",
-      "patchedSha256": "943f48694c343f591f966915f8dc67dc33fa3b61678dea41e013d6952718ce4e"
+      "patchedSha256": "02de53b37f35a00696cac974d025a038b93b64ba633d07a30309fd8d418f8fb8"
     },
     {
       "path": "src/mask.rs",

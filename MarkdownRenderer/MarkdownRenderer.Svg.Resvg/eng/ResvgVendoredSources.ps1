@@ -26,7 +26,7 @@ function Get-ResvgVendoredSourcesProvenance {
             sourceTree = '973a9a5c57b063ad942b22d44dee962bd2638b60'
             license = 'Apache-2.0 OR MIT'
             sourceInventorySha256 = '222759c0ff6177b5bf847b4d984f5d4e5819897edb204b96ecb459687643b3e0'
-            patchSetSha256 = '2550dde470ab00f5fa983fe83b0a21d858ab22b2206607e7758029584643cf04'
+            patchSetSha256 = 'f12ff6c01f8d34ea25fe2cb58ea20d8675fe0b6424f0b8af597fe88e55b33b67'
             expectedPatchPaths = @('Cargo.toml', 'src/clip.rs', 'src/filter/box_blur.rs', 'src/filter/composite.rs', 'src/filter/convolve_matrix.rs', 'src/filter/iir_blur.rs', 'src/filter/mod.rs', 'src/filter/morphology.rs', 'src/filter/turbulence.rs', 'src/image.rs', 'src/lib.rs', 'src/mask.rs', 'src/path.rs', 'src/render.rs')
             supplementalTestFixtures = @(
                 @{
@@ -94,7 +94,7 @@ function Get-ResvgVendoredSourcesProvenance {
             license = 'BSD-3-Clause'
             vendoredLicense = 'BSD-3-Clause AND MIT'
             sourceInventorySha256 = '5454cbf22bc4f175b21e750839c30b99bc164991c5134f66a5cc1e7fe01bced8'
-            patchSetSha256 = '50166575e05a7cdcffb0c8bfb3f1364c7d50810d10df7890c48dfe8797189f32'
+            patchSetSha256 = '57c5370e1ab17b6d89c82fcadb22c6669e9319cb718a33f22f25a341fe389f46'
             addedFilesSha256 = '36412a6e06cc5fb70e85a2611f292d560fd58a828aa992e514132b53f3742df9'
             addedFiles = @(
                 @{
