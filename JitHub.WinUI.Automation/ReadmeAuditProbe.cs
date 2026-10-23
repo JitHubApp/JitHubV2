@@ -2409,6 +2409,19 @@ internal static partial class ReadmeAuditProbe
                 visibleImageWaitElapsedMs += imageWait.ElapsedMilliseconds;
                 if (imageWait.TimedOut)
                 {
+                    try
+                    {
+                        // Show what the reader sees while the host still
+                        // reports loading (a deferred diagram or image).
+                        using System.Drawing.Bitmap windowImage = NativeMethods.CaptureWindowSurface(
+                            new IntPtr(window.Properties.NativeWindowHandle.ValueOrDefault));
+                        windowImage.Save(Path.Combine(output, $"visible-wait-timeout-viewport-{index}.png"),
+                            System.Drawing.Imaging.ImageFormat.Png);
+                    }
+                    catch (Exception)
+                    {
+                        // Optional diagnostics must not replace the original failure.
+                    }
                     throw CreateVisibleImageWaitTimeout(
                         $"README viewport {index} did not finish loading its visible images.",
                         imageWait);
