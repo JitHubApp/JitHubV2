@@ -2792,6 +2792,8 @@ internal static partial class ReadmeAuditProbe
             host,
             output);
         loadingAfterTraversal = pendingImagePeers.Length;
+        if (pendingImagePeers.Length > 0)
+            WritePendingImagePeers(output, pendingImagePeers);
         semanticProbe.Stop();
         auditOverheadMs += semanticProbe.Elapsed.TotalMilliseconds;
         if (pendingImagePeers.Length > 0)
@@ -2975,21 +2977,7 @@ internal static partial class ReadmeAuditProbe
             bool offscreen = peer.Properties.IsOffscreen.ValueOrDefault;
             if ((bounds.Width <= 0 || bounds.Height <= 0) && !offscreen)
             {
-                // Diagnostics only: record every pending peer so the failure
-                // names the unrealized peer instead of only its index.
-                WriteJson(
-                    Path.Combine(output, "pending-image-peers.json"),
-                    pendingImagePeers.Select((pending, pendingIndex) => new
-                    {
-                        Index = pendingIndex,
-                        ControlType = ReadAutomationString(() => pending.ControlType.ToString()),
-                        ClassName = ReadAutomationString(() => pending.ClassName),
-                        AutomationId = ReadAutomationString(() => pending.Properties.AutomationId.ValueOrDefault),
-                        Name = ReadAutomationString(() => pending.Name),
-                        ItemStatus = ReadAutomationString(() => pending.Properties.ItemStatus.ValueOrDefault),
-                        Bounds = ReadAutomationString(() => pending.BoundingRectangle.ToString()),
-                        IsOffscreen = ReadAutomationString(() => pending.Properties.IsOffscreen.ValueOrDefault.ToString()),
-                    }).ToArray());
+                WritePendingImagePeers(output, pendingImagePeers);
                 throw new InvalidOperationException(
                     $"README traversal found pending image peer {index} without realized UIA bounds; it cannot be safely revisited.");
             }
@@ -3014,6 +3002,22 @@ internal static partial class ReadmeAuditProbe
 
         return snapshots;
     }
+
+    // Diagnostics only: names every image still pending after traversal.
+    private static void WritePendingImagePeers(string output, IReadOnlyList<AutomationElement> pendingImagePeers) =>
+        WriteJson(
+            Path.Combine(output, "pending-image-peers.json"),
+            pendingImagePeers.Select((pending, pendingIndex) => new
+            {
+                Index = pendingIndex,
+                ControlType = ReadAutomationString(() => pending.ControlType.ToString()),
+                ClassName = ReadAutomationString(() => pending.ClassName),
+                AutomationId = ReadAutomationString(() => pending.Properties.AutomationId.ValueOrDefault),
+                Name = ReadAutomationString(() => pending.Name),
+                ItemStatus = ReadAutomationString(() => pending.Properties.ItemStatus.ValueOrDefault),
+                Bounds = ReadAutomationString(() => pending.BoundingRectangle.ToString()),
+                IsOffscreen = ReadAutomationString(() => pending.Properties.IsOffscreen.ValueOrDefault.ToString()),
+            }).ToArray());
 
     private static void EnsurePendingImagePeersRemainDocumented(
         IReadOnlyList<PendingImagePeerIdentity> originalPendingPeers,
