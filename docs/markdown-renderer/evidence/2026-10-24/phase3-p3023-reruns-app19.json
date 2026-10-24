@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "kind": "phase3-readme-correctness-rerun-receipt",
+  "scope": "P3-023 reruns of the ranks with images still pending after the app18 full audit",
+  "baseline": "docs/markdown-renderer/evidence/2026-10-24/phase3-top500-run-app18.json",
+  "sourceCommitSha": "9ff81fe053356715917384a02991172a20cafa09",
+  "appSha256": "538461d89307369f72c76458e00ce4e115a9260e753ab953fc0ad02442c9cebb",
+  "automationRunnerSha256": "37949a0a08643b4a1719b85d92b1ff2d30a24a1a746a22fcfb59c24861a02703",
+  "note": "Ranks 207-218 ran in the same 206-219 group: 11 of 14 passed, 3 classified, 0 failed.",
+  "cases": [
+    {
+      "rank": 206,
+      "repository": "netdata/netdata",
+      "runId": "run-20261024-170907-22277c0861384368bcb8bf1a0f39c2e2",
+      "status": "classified",
+      "pendingAfterTraversalBefore": 4,
+      "pendingAfterTraversalAfter": 0,
+      "nonPassChecks": [
+        {
+          "name": "resourceCoverage",
+          "detail": "4 captured SVG source(s) use documented-unsupported content (animation, foreignObject or scripts) and show the typed placeholder; 4 unavailable image(s) observed (stored=20)."
+        }
+      ]
+    },
+    {
+      "rank": 219,
+      "repository": "shareAI-lab/learn-claude-code",
+      "runId": "run-20261024-170907-22277c0861384368bcb8bf1a0f39c2e2",
+      "status": "classified",
+      "pendingAfterTraversalBefore": 1,
+      "pendingAfterTraversalAfter": 0,
+      "nonPassChecks": [
+        {
+          "name": "resourceCoverage",
+          "detail": "1 captured SVG source(s) use documented-unsupported content (animation, foreignObject or scripts) and show the typed placeholder; 1 unavailable image(s) observed (stored=1)."
+        }
+      ]
+    },
+    {
+      "rank": 273,
+      "repository": "binary-husky/gpt_academic",
+      "runId": "run-20261024-174532-5dbf6f5a2d7a45ac92cf76a2822c719a",
+      "status": "classified",
+      "pendingAfterTraversalBefore": 2,
+      "pendingAfterTraversalAfter": 0,
+      "nonPassChecks": [
+        {
+          "name": "resourceCoverage",
+          "detail": "2 demanded image(s) have no capturable bytes upstream (stored=36, upstream-unavailable=2); 2 unavailable image(s) observed."
+        }
+      ]
+    },
+    {
+      "rank": 340,
+      "repository": "jingyaogong/minimind",
+      "runId": "run-20261024-182133-ddc7790788fb4b81961613557257d7fa",
+      "status": "classified",
+      "pendingAfterTraversalBefore": 1,
+      "pendingAfterTraversalAfter": 0,
+      "nonPassChecks": [
+        {
+          "name": "resourceCoverage",
+          "detail": "1 captured SVG source(s) use documented-unsupported content (animation, foreignObject or scripts) and show the typed placeholder; 2 unavailable image(s) observed (stored=36)."
+        },
+        {
+          "name": "unsupportedSyntaxClassification",
+          "detail": "Classified unsupported syntax with documented fallback: MATH100/Error×2."
+        }
+      ]
+    }
+  ]
+}
