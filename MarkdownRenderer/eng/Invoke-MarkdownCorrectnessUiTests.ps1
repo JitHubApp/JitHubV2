@@ -6,6 +6,8 @@ param(
     [switch]$ResizeCrashDiagnosticOnly,
     [switch]$IncludeSuppressionInvestigation,
     [switch]$IncludeSelectionDisableInvestigation,
+    # Phase 2: run only C00 and the P2-* live feature-matrix cases.
+    [switch]$Phase2Only,
     [string]$OutputRoot = (Join-Path $PSScriptRoot '..\artifacts\correctness'),
     [string]$BuildArtifactsPath = ''
 )
@@ -24,6 +26,7 @@ if (-not [string]::IsNullOrWhiteSpace($script:BuildArtifactsPath)) {
     }
     $script:BuildArtifactsPath = [System.IO.Path]::GetFullPath($script:BuildArtifactsPath)
 }
+$script:Phase2Only = [bool]$Phase2Only
 $script:RunId = '{0}-{1}' -f [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ'), [guid]::NewGuid().ToString('N')
 $script:RunDirectory = Join-Path $script:OutputRoot $script:RunId
 $script:WorkflowId = "markdown-correctness-$([guid]::NewGuid().ToString('N'))"
@@ -716,6 +719,9 @@ function Should-RunCorrectnessCase {
         [Parameter(Mandatory)][string]$Name
     )
 
+    if ($script:Phase2Only) {
+        return (($Id -ceq 'C00' -and $Name -ceq 'sandbox-and-app-identity') -or $Id.StartsWith('P2-', [System.StringComparison]::Ordinal))
+    }
     if (-not $script:ResizeCrashDiagnosticOnly) { return $true }
     return (($Id -ceq 'C00' -and $Name -ceq 'sandbox-and-app-identity') -or
         ($Id -ceq 'C14' -and $Name -ceq 'layout-resize-and-selection-state-survive-relayout'))
@@ -725,8 +731,13 @@ function Assert-CorrectnessRunOptions {
     param(
         [switch]$ResizeCrashDiagnosticOnly,
         [switch]$IncludeSuppressionInvestigation,
-        [switch]$IncludeSelectionDisableInvestigation
+        [switch]$IncludeSelectionDisableInvestigation,
+        [switch]$Phase2Only
     )
+
+    if ($Phase2Only -and ($ResizeCrashDiagnosticOnly -or $IncludeSuppressionInvestigation -or $IncludeSelectionDisableInvestigation)) {
+        throw 'Phase2Only runs only C00 and the P2-* cases; it cannot be combined with a Phase 1 diagnostic or investigation switch.'
+    }
 
     if ($ResizeCrashDiagnosticOnly -and $IncludeSuppressionInvestigation) {
         throw 'ResizeCrashDiagnosticOnly cannot be combined with IncludeSuppressionInvestigation; the diagnostic run is limited to the existing C00 and C14 cases.'
@@ -741,6 +752,8 @@ function Test-Case {
     $started = [DateTime]::UtcNow
     $initialScreenshotCount = $script:Screenshots.Count
     if (-not (Should-RunCorrectnessCase -Id $Id -Name $Name)) {
+        # Phase 2 mode deliberately does not record the Phase 1 batch.
+        if ($script:Phase2Only) { return }
         Add-Unverified -Id $Id -Name $Name -Reason 'Not run: resize crash diagnostic mode executes only C00 sandbox-and-app-identity and the exact C14 layout-resize-and-selection-state-survive-relayout case.'
         return
     }
@@ -4693,6 +4706,7 @@ public sealed class MarkdownRendererControl : UserControl
 
     # These are deliberately non-pass entries: they require external display
     # configurations, a fresh offline conformance/test receipt, or human review.
+    if ($script:Phase2Only) { return }
     Add-Unverified -Id 'C01' -Name 'commonmark-gfm-conformance-receipt' -Reason 'This UI batch does not run the pinned offline conformance corpus or ConformanceHarnessTests; attach the separate current-source test receipt.'
     Add-Unverified -Id 'C07' -Name 'valid-image-network-policy-and-invalid-failure-lifecycle' -Reason 'Only deterministic data-URI SVG is exercised here; remote image admission, cancellation races, and fallback classification require the separate current-source image test receipt.'
     Add-Unverified -Id 'C10' -Name 'stationary-edge-autoscroll-and-endpoint-crossing' -Reason 'The UI batch verifies swipe, handle extension and cancellation, but does not prove stationary frame-paced edge scrolling or handle-role crossing.'
@@ -4712,12 +4726,17 @@ public sealed class MarkdownRendererControl : UserControl
 Assert-CorrectnessRunOptions `
     -ResizeCrashDiagnosticOnly:$ResizeCrashDiagnosticOnly `
     -IncludeSuppressionInvestigation:$IncludeSuppressionInvestigation `
-    -IncludeSelectionDisableInvestigation:$IncludeSelectionDisableInvestigation
+    -IncludeSelectionDisableInvestigation:$IncludeSelectionDisableInvestigation `
+    -Phase2Only:$Phase2Only
 
 try {
     $runInfo = Initialize-Run
     $script:UiStarted = $true
     Run-CorrectnessCases
+    if ($script:Phase2Only) {
+        . (Join-Path $PSScriptRoot 'MarkdownCorrectnessPhase2Cases.ps1')
+        Run-Phase2Cases
+    }
     if ($IncludeSelectionDisableInvestigation) { Run-SelectionDisableInvestigation }
 }
 catch {
@@ -4746,7 +4765,7 @@ function New-RunResultsReport {
         'A focused run with no crash is inconclusive about heap conditioning and is not full Phase 1 qualification.'
     } else { $null }
     return [ordered]@{
-        schemaVersion = 1; objective = 'MarkdownRenderer Phase 1 correctness-only'; runId = $script:RunId
+        schemaVersion = 1; objective = $(if ($script:Phase2Only) { 'MarkdownRenderer Phase 2 feature matrix (live)' } else { 'MarkdownRenderer Phase 1 correctness-only' }); runId = $script:RunId
         target = 'sandbox'; targetEpoch = $script:TargetEpoch; appProcessId = $script:AppProcessId; appWindowHandle = $script:AppWindowHandle
         diagnosticOnly = $diagnosticOnly; diagnosticOnlyNote = $diagnosticNote
         resultCounts = $counts; screenshots = @($script:Screenshots.ToArray()); results = @($script:Results.ToArray())

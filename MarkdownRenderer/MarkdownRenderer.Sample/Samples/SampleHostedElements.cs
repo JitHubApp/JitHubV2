@@ -70,6 +70,23 @@ internal sealed class SampleHostedElementExtension : IMarkdownExtension
             semanticText = label;
             desiredHeight = 72;
         }
+        else if (info.StartsWith("throw:", StringComparison.OrdinalIgnoreCase))
+        {
+            // Phase 2 P2-HOSTED-02 probe: the factory throws.
+            factoryKey = SampleHostedElementFactory.ThrowingKey;
+            label = NormalizeLabel(info["throw:".Length..], "Throwing factory probe");
+            semanticText = label;
+            desiredHeight = 48;
+        }
+        else if (info.StartsWith("attach-failed:", StringComparison.OrdinalIgnoreCase))
+        {
+            // Phase 2 P2-HOSTED-02 probe: the factory returns an element that
+            // already has a parent, so attaching it fails.
+            factoryKey = SampleHostedElementFactory.AttachFailedKey;
+            label = NormalizeLabel(info["attach-failed:".Length..], "Attach-failed factory probe");
+            semanticText = label;
+            desiredHeight = 48;
+        }
         else
         {
             return;
@@ -102,6 +119,10 @@ internal sealed class SampleHostedElementFactory : IMarkdownHostedElementFactory
     internal const string ButtonKey = "MarkdownRenderer.Sample.Button";
     internal const string PanelKey = "MarkdownRenderer.Sample.Panel";
     internal const string UnsupportedKey = "MarkdownRenderer.Sample.Unsupported";
+    internal const string ThrowingKey = "MarkdownRenderer.Sample.Throwing";
+    internal const string AttachFailedKey = "MarkdownRenderer.Sample.AttachFailed";
+    // Keeps the attach-failed probe's element parented elsewhere.
+    private readonly Grid _foreignParent = new();
     internal static SampleHostedElementFactory Instance { get; } = new();
 
     public ValueTask<FrameworkElement?> CreateAsync(
@@ -112,10 +133,14 @@ internal sealed class SampleHostedElementFactory : IMarkdownHostedElementFactory
         request.Attributes.TryGetValue("label", out string? label);
         label = string.IsNullOrWhiteSpace(label) ? "Native action" : label;
 
+        if (request.FactoryKey == ThrowingKey)
+            throw new InvalidOperationException("The sample's throwing factory probe failed by design.");
+
         FrameworkElement? element = request.FactoryKey switch
         {
             ButtonKey => CreateButton(request, label),
             PanelKey => CreatePanel(request, label),
+            AttachFailedKey => CreateAlreadyParentedButton(request, label),
             _ => null,
         };
         return ValueTask.FromResult(element);
@@ -147,6 +172,13 @@ internal sealed class SampleHostedElementFactory : IMarkdownHostedElementFactory
             invoked.Content = activatedLabel;
             AutomationProperties.SetName(invoked, activatedLabel);
         };
+        return button;
+    }
+
+    private Button CreateAlreadyParentedButton(MarkdownHostedElementRequest request, string label)
+    {
+        Button button = CreateButton(request, label);
+        _foreignParent.Children.Add(button);
         return button;
     }
 

@@ -584,6 +584,9 @@ public sealed partial class MainWindow : Window
             value => _editor.Text = value);
         renderer.Engine = _engine;
         renderer.SvgRenderer = _svgRenderer;
+        // The resvg provider also decodes WebP in its isolated worker, as JitHub
+        // configures it, so the sample does not depend on an OS WebP codec.
+        renderer.RasterDecoder = _svgRenderer;
         renderer.HostedElementFactory = SampleHostedElementFactory.Instance;
         renderer.Markdown = string.Empty;
         renderer.Theme = new MarkdownTheme();

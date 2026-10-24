@@ -373,10 +373,10 @@ internal static partial class SampleDocuments
         extension-shaped fences below. They are realized as native WinUI
         elements only near the effective viewport and are recycled off-screen.
 
-        ```button:Click me
+        ```button:Click_me
         ```
 
-        ```button:Another action
+        ```button:Another_action
         ```
 
         ## Task lists use read-only document semantics by default
