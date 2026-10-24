@@ -423,14 +423,20 @@ x64, hash-matched payload) passed 27, failed 0 and left 5 cases unverified. All
 0 failures). **24 rows are PASS**, with both viewport modes where the row requires
 them. **8 rows stay UNVERIFIED:**
 
-- MERMAID-01: x86/ARM64 runtime execution not yet performed.
+- MERMAID-01: ARM64 runtime execution is hardware-gated. x86 and x64 executed
+  through the NativeAOT smokes
+  (`evidence/2026-10-24/phase2-aot-smokes-x86-x64.json`). The x64 Sandbox
+  cannot host the x86 Sample UI: it cannot register the x86 Windows App Runtime
+  Main/Singleton packages beside the x64 ones.
 - MERMAID-03 and HIGHLIGHT-02: actual Windows system High Contrast belongs to
   the follow-up runner.
 - SVG-04, RASTER-04 and HIGHLIGHT-03: tied to Phase 1 records P1-020, P1-021,
   P1-030, P1-033 and T1-014. Their live x64 checks passed.
 - RASTER-02: animated WebP needs the Windows WebP codec, which Sandbox lacks.
   The animated GIF passed.
-- SVG-05: x86/ARM64 worker execution; ARM64 is hardware-gated.
+- SVG-05: ARM64 worker execution is hardware-gated. In the same smokes, the
+  x86 and x64 exact-RID workers passed start, render, isolation, restart and
+  cleanup.
 
 The Sample's Provider configuration page supplies the engine, grammar,
 hosted-factory, minimal-provider and second-view hooks for the CONFIG, -04

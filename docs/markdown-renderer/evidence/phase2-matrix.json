@@ -249,7 +249,7 @@
       ],
       "live": "Mermaid sample: every documented diagram renders natively with labels and links.",
       "open": [
-        "x86/ARM64 Mermaid runtime execution is build/PE-verified only (live x64 run passed)."
+        "ARM64 Mermaid runtime execution needs ARM64 hardware (hardware-gated). x64 live Sample and x86/x64 NativeAOT execution passed (evidence/2026-10-24/phase2-aot-smokes-x86-x64.json); the x86 live Sample UI cannot run in the x64 Sandbox."
       ],
       "status": "UNVERIFIED",
       "evidence": {
@@ -257,7 +257,8 @@
         "offline": "PASS",
         "offlineReceipt": "docs/markdown-renderer/evidence/2026-10-24/phase2-offline-evidence-c482610e.json",
         "live": "PASS",
-        "liveReceipt": "docs/markdown-renderer/evidence/2026-10-24/phase2-live-run6-c482610e.json"
+        "liveReceipt": "docs/markdown-renderer/evidence/2026-10-24/phase2-live-run6-c482610e.json",
+        "runtimeSmokes": "docs/markdown-renderer/evidence/2026-10-24/phase2-aot-smokes-x86-x64.json"
       }
     },
     {
@@ -428,8 +429,7 @@
       ],
       "live": "Exact-RID worker start/render/fault/cleanup on x86, x64 and ARM64 hardware.",
       "open": [
-        "ARM64 execution needs ARM64 hardware; until then it is an explicit hardware-gated open item, not a pass.",
-        "x86/x64 worker execution evidence is the AOT smoke publication, not run by the offline filter runner or the live batch."
+        "ARM64 worker execution needs ARM64 hardware; hardware-gated open item, not a pass. x86 and x64 exact-RID worker start/render/isolation/fault/cleanup passed in the NativeAOT smokes (evidence/2026-10-24/phase2-aot-smokes-x86-x64.json)."
       ],
       "status": "UNVERIFIED",
       "evidence": {
@@ -437,7 +437,8 @@
         "offline": "PASS",
         "offlineReceipt": "docs/markdown-renderer/evidence/2026-10-24/phase2-offline-evidence-c482610e.json",
         "live": "NOT-RUN",
-        "liveReceipt": "docs/markdown-renderer/evidence/2026-10-24/phase2-live-run6-c482610e.json"
+        "liveReceipt": "docs/markdown-renderer/evidence/2026-10-24/phase2-live-run6-c482610e.json",
+        "runtimeSmokes": "docs/markdown-renderer/evidence/2026-10-24/phase2-aot-smokes-x86-x64.json"
       }
     },
     {
