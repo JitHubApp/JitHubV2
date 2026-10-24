@@ -416,6 +416,37 @@ be reused where they prove exactly the same requirement; an offline/source
 contract is never promoted to a live pass. Failed or unknown cases remain open;
 there are no fixture waivers or feature downgrades to obtain a green matrix.
 
+**October 24 status, candidate `c482610e`.** The live Phase 2 batch
+(`Invoke-MarkdownCorrectnessUiTests.ps1 -Phase2Only`, Windows Sandbox, Release
+x64, hash-matched payload) passed 27, failed 0 and left 5 cases unverified. All
+32 rows' offline filters passed on the same clean commit (2,017 test executions,
+0 failures). **24 rows are PASS**, with both viewport modes where the row requires
+them. **8 rows stay UNVERIFIED:**
+
+- MERMAID-01: x86/ARM64 runtime execution not yet performed.
+- MERMAID-03 and HIGHLIGHT-02: actual Windows system High Contrast belongs to
+  the follow-up runner.
+- SVG-04, RASTER-04 and HIGHLIGHT-03: tied to Phase 1 records P1-020, P1-021,
+  P1-030, P1-033 and T1-014. Their live x64 checks passed.
+- RASTER-02: animated WebP needs the Windows WebP codec, which Sandbox lacks.
+  The animated GIF passed.
+- SVG-05: x86/ARM64 worker execution; ARM64 is hardware-gated.
+
+The Sample's Provider configuration page supplies the engine, grammar,
+hosted-factory, minimal-provider and second-view hooks for the CONFIG, -04
+replacement and fallback rows. Receipts:
+`evidence/2026-10-24/phase2-live-run6-c482610e.json` and
+`evidence/2026-10-24/phase2-offline-evidence-c482610e.json`.
+
+Earlier runs 3–5 failed only on harness or oracle errors, which were corrected
+against documented contracts:
+
+- CommonMark backslash escapes render `(x+y)`.
+- A null, throwing or attach-failed hosted factory rebuilds its block natively.
+- Highlighting is measured by token-colored pixels.
+
+No product defect was found in this batch.
+
 ### Phase 2 defect and investigation register
 
 | ID | Evidence / scope | State |
