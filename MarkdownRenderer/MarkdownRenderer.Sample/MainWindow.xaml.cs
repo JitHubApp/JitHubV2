@@ -30,13 +30,7 @@ public sealed partial class MainWindow : Window
     private const int FirstDocumentBlockIndex = 1;
     private const int MaximumDisplayedDiagnostics = 50;
     private const string DiagnosticsNotificationActivityId = "RendererDiagnostics";
-    private readonly MarkdownEngine _engine = new MarkdownEngineBuilder()
-        .UseGitHubReadme(SafeHtmlOptions.Default)
-        .UseMarkdownExtra()
-        .UseMathematics()
-        .UseMermaid()
-        .UseExtension(SampleHostedElementExtension.Instance)
-        .Build();
+    private readonly MarkdownEngine _engine = CreateFullEngine();
     private readonly ResvgMarkdownSvgRenderer _svgRenderer = new();
     private MarkdownPerformanceSession? _performanceSession;
 
@@ -44,7 +38,7 @@ public sealed partial class MainWindow : Window
     private MarkdownRendererControl _renderer;
     private readonly Grid _rendererHost;
     private readonly TextBox _editor;
-    private readonly TextMateCodeBlockSyntaxHighlighter _textMateHighlighter;
+    private TextMateCodeBlockSyntaxHighlighter _textMateHighlighter;
     private readonly TextBlock _pageTitle;
     private readonly InfoBar _diagnosticsBar;
     private readonly TextBlock _diagnosticsMessage;
@@ -237,8 +231,14 @@ public sealed partial class MainWindow : Window
         _viewportOwnershipToggle.Unchecked += (_, _) => ReplaceRenderer(ownsViewport: true);
         displayControls.PrimaryCommands.Add(_viewportOwnershipToggle);
 
+        pageHeader.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        pageHeader.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        CommandBar providerControls = CreateProviderControls();
+        Grid.SetRow(providerControls, 1);
+        Grid.SetColumnSpan(providerControls, 2);
         pageHeader.Children.Add(_pageTitle);
         pageHeader.Children.Add(displayControls);
+        pageHeader.Children.Add(providerControls);
         navigationView.Header = pageHeader;
 
         _diagnosticsMessage = new TextBlock
@@ -335,6 +335,8 @@ public sealed partial class MainWindow : Window
             {
                 _lastRenderedEditorText = editorText;
                 _renderer.Markdown = editorText;
+                if (_secondRenderer is not null)
+                    _secondRenderer.Markdown = editorText;
             }
 
             if (!_isLoadingSample && _currentPageTitle.Length > 0)
@@ -464,6 +466,7 @@ public sealed partial class MainWindow : Window
             _touchContactObservation.Detach();
             ThemeResolver.SystemThemeProviderOverride = null;
             _renderer.Dispose();
+            DisposeProviderResources();
             _textMateHighlighter.Dispose();
             _engine.Dispose();
             _svgRenderer.Dispose();
@@ -472,10 +475,11 @@ public sealed partial class MainWindow : Window
 
         Grid.SetColumn(_editor, 0);
         Grid.SetColumn(splitter, 1);
-        Grid.SetColumn(_rendererHost, 2);
+        Grid previewColumn = CreatePreviewColumn();
+        Grid.SetColumn(previewColumn, 2);
         contentGrid.Children.Add(_editor);
         contentGrid.Children.Add(splitter);
-        contentGrid.Children.Add(_rendererHost);
+        contentGrid.Children.Add(previewColumn);
 
         var workspace = new Grid();
         workspace.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -500,6 +504,11 @@ public sealed partial class MainWindow : Window
         workspace.Children.Add(_themeStatus);
         workspace.Children.Add(_currentSampleStatus);
         workspace.Children.Add(_touchContactStatus);
+        if (_providerStatus is not null)
+        {
+            Grid.SetRow(_providerStatus, 1);
+            workspace.Children.Add(_providerStatus);
+        }
         navigationView.Content = workspace;
 
         NavigationViewItem? initialItem = null;
@@ -582,32 +591,11 @@ public sealed partial class MainWindow : Window
         renderer.CommandProvider = new SampleTaskCommandProvider(
             () => _editor.Text ?? string.Empty,
             value => _editor.Text = value);
-        renderer.Engine = _engine;
-        renderer.SvgRenderer = _svgRenderer;
-        // The resvg provider also decodes WebP in its isolated worker, as JitHub
-        // configures it, so the sample does not depend on an OS WebP codec.
-        renderer.RasterDecoder = _svgRenderer;
-        renderer.HostedElementFactory = SampleHostedElementFactory.Instance;
         renderer.Markdown = string.Empty;
         renderer.Theme = new MarkdownTheme();
         renderer.Margin = new Thickness(0);
         renderer.Padding = (Thickness)Application.Current.Resources["SampleRendererPadding"];
-        if (renderer is MarkdownScrollView scrollingView)
-        {
-            scrollingView
-                .UseGitHubFlavoredMarkdown(_engine)
-                .UseMarkdownExtra(_engine)
-                .UseSafeHtml(SafeHtmlOptions.Default);
-            scrollingView.UseTextMateSyntaxHighlighting(_textMateHighlighter);
-        }
-        else if (renderer is MarkdownDocumentView documentView)
-        {
-            documentView
-                .UseGitHubFlavoredMarkdown(_engine)
-                .UseMarkdownExtra(_engine)
-                .UseSafeHtml(SafeHtmlOptions.Default);
-            documentView.UseTextMateSyntaxHighlighting(_textMateHighlighter);
-        }
+        ConfigureRendererProviders(renderer);
         RendererDisposalEvidence.Attach(renderer);
         MathRegressionEvidence.Attach(renderer);
         AutomationProperties.SetAutomationId(renderer, "MarkdownRenderer");
@@ -720,13 +708,16 @@ public sealed partial class MainWindow : Window
         bool isListsPage = string.Equals(page.Key, "Lists", StringComparison.Ordinal);
         bool isTouchSelectionPage = string.Equals(page.Key, "TouchSelection", StringComparison.Ordinal);
         bool isProgressiveScenesPage = string.Equals(page.Key, "ProgressiveScenes", StringComparison.Ordinal);
+        bool isProvidersPage = string.Equals(page.Key, ProvidersPageKey, StringComparison.Ordinal);
         bool supportsTaskEditing = isListsPage || isTouchSelectionPage;
+        bool supportsViewportOwnership = isTouchSelectionPage || isProvidersPage;
         _taskEditingToggle.Visibility = supportsTaskEditing ? Visibility.Visible : Visibility.Collapsed;
-        _viewportOwnershipToggle.Visibility = isTouchSelectionPage ? Visibility.Visible : Visibility.Collapsed;
+        _viewportOwnershipToggle.Visibility = supportsViewportOwnership ? Visibility.Visible : Visibility.Collapsed;
         if (!supportsTaskEditing)
             _taskEditingToggle.IsChecked = false;
-        if (!isTouchSelectionPage && _viewportOwnershipToggle.IsChecked == true)
+        if (!supportsViewportOwnership && _viewportOwnershipToggle.IsChecked == true)
             _viewportOwnershipToggle.IsChecked = false;
+        UpdateProviderPage(isProvidersPage);
 
         _touchContactObservationEnabled = isTouchSelectionPage;
         if (_touchContactObservationEnabled)

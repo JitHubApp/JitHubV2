@@ -4735,7 +4735,9 @@ try {
     Run-CorrectnessCases
     if ($script:Phase2Only) {
         . (Join-Path $PSScriptRoot 'MarkdownCorrectnessPhase2Cases.ps1')
+        . (Join-Path $PSScriptRoot 'MarkdownCorrectnessPhase2ProviderCases.ps1')
         Run-Phase2Cases
+        Run-Phase2ProviderCases
     }
     if ($IncludeSelectionDisableInvestigation) { Run-SelectionDisableInvestigation }
 }

@@ -52,6 +52,7 @@
   <data name="PageProgressiveScenes" xml:space="preserve"><value>Progressive scenes</value></data>
   <data name="PageAccessibilityLab" xml:space="preserve"><value>Accessibility lab</value></data>
   <data name="PageAuditMatrix" xml:space="preserve"><value>Audit matrix</value></data>
+  <data name="PageProviders" xml:space="preserve"><value>Provider configuration</value></data>
   <data name="DisplayControlsAutomationName" xml:space="preserve"><value>Preview display controls</value></data>
   <data name="CommandTheme" xml:space="preserve"><value>Dark theme</value></data>
   <data name="CommandThemeAutomationName" xml:space="preserve"><value>Use dark theme</value></data>
@@ -65,6 +66,17 @@
   <data name="CommandTaskEditingAutomationName" xml:space="preserve"><value>Enable task-list editing</value></data>
   <data name="CommandAncestorViewport" xml:space="preserve"><value>Ancestor viewport</value></data>
   <data name="CommandAncestorViewportAutomationName" xml:space="preserve"><value>Use a page-owned ScrollViewer for the touch sample</value></data>
+  <data name="ProviderControlsAutomationName" xml:space="preserve"><value>Provider configuration controls</value></data>
+  <data name="CommandReplaceEngine" xml:space="preserve"><value>Replace engine</value></data>
+  <data name="CommandWithoutCSharpGrammar" xml:space="preserve"><value>No C# grammar</value></data>
+  <data name="CommandWithoutCSharpGrammarAutomationName" xml:space="preserve"><value>Replace the grammar provider with one that has no C# grammar</value></data>
+  <data name="CommandAlternateFactory" xml:space="preserve"><value>Alternate controls</value></data>
+  <data name="CommandAlternateFactoryAutomationName" xml:space="preserve"><value>Replace the hosted control factory</value></data>
+  <data name="CommandMinimalProviders" xml:space="preserve"><value>Minimal providers</value></data>
+  <data name="CommandMinimalProvidersAutomationName" xml:space="preserve"><value>Use strict GFM without optional providers</value></data>
+  <data name="CommandSecondView" xml:space="preserve"><value>Second view</value></data>
+  <data name="CommandSecondViewAutomationName" xml:space="preserve"><value>Show a second view that shares the providers</value></data>
+  <data name="SecondRendererAutomationName" xml:space="preserve"><value>Second rendered markdown preview</value></data>
   <data name="AncestorViewportAutomationName" xml:space="preserve"><value>Page-owned markdown viewport</value></data>
   <data name="ModifiedSuffix" xml:space="preserve"><value> — modified</value></data>
 </root>

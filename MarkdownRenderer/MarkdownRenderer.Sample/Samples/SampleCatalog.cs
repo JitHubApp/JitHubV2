@@ -64,6 +64,7 @@ internal static class SampleCatalog
             new("ProgressiveScenes", "PageProgressiveScenes", "Progressive scenes", "\uE950", static () => SampleDocuments.ProgressiveScenesSample),
             new("AccessibilityLab", "PageAccessibilityLab", "Accessibility lab", "\uE776", static () => SampleDocuments.AccessibilityLabSample),
             new("AuditMatrix", "PageAuditMatrix", "Audit matrix", "\uE9D9", static () => SampleDocuments.AuditMatrixSample),
+            new("Providers", "PageProviders", "Provider configuration", "\uE912", static () => SampleDocuments.ProvidersSample),
         ]),
     ];
 }

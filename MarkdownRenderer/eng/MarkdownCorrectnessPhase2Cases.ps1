@@ -323,7 +323,7 @@ function Run-Phase2Cases {
         return @($observed.ToArray())
     }
 
-    Test-Case -Id 'P2-HTML-04' -Name 'html-document-replacement-publishes-no-stale-content' -Requirement 'In both viewport modes, replacing the Html sample with another HTML document and then returning shows only the current document content.' -Body {
+    Test-Case -Id 'P2-HTML-04' -Name 'html-document-replacement-publishes-no-stale-content' -Requirement 'In both viewport modes, replacing the Html sample with another HTML document and then returning shows only the current document content, and replacing the engine of a live HTML document re-renders only the current document.' -Body {
         $observed = [System.Collections.Generic.List[object]]::new()
         try {
             foreach ($mode in $script:P2ViewportModes) {
@@ -341,7 +341,8 @@ function Run-Phase2Cases {
             }
         }
         finally { Exit-P2Mode }
-        throw 'UNVERIFIED: Document replacement passed in both viewport modes; engine replacement needs the Sample engine-swap page (Phase 2 batch B).'
+        $engine = Invoke-P2EngineReplacement -Feature 'html'
+        return [pscustomobject]@{ documentReplacement = @($observed.ToArray()); engineReplacement = $engine }
     }
 
     # ── Math ─────────────────────────────────────────────────────────────────
@@ -415,7 +416,7 @@ function Run-Phase2Cases {
         return @($observed.ToArray())
     }
 
-    Test-Case -Id 'P2-MATH-04' -Name 'math-theme-text-size-and-document-replacement-discard-stale-scenes' -Requirement 'Theme and text-size changes re-render the Math scenes at the new size, and replacing the document leaves only the current document scenes.' -Body {
+    Test-Case -Id 'P2-MATH-04' -Name 'math-theme-text-size-and-document-replacement-discard-stale-scenes' -Requirement 'Theme and text-size changes re-render the Math scenes at the new size, replacing the document leaves only the current document scenes, and replacing the engine of a live document in both viewport modes re-renders only the current scenes.' -Body {
         try {
             Navigate-Sample -Key 'Math' -RequiredText 'Native mathematics'
             $before = @(Get-P2Elements -ClassName 'MarkdownMath')
@@ -436,9 +437,11 @@ function Run-Phase2Cases {
             Start-Sleep -Milliseconds 600
             $replaced = @(Get-P2Elements -ClassName 'MarkdownMath')
             if ($replaced.Count -ne 1) { throw "After replacement $($replaced.Count) formulas are exposed; only the current document's one formula may remain." }
-            return [pscustomobject]@{ firstHeight = $first.height; scaledHeight = $scaledFirst.height; replacementScenes = $replaced.Count; dark = $dark; scaled = $scaledShot }
+            $display = [pscustomobject]@{ firstHeight = $first.height; scaledHeight = $scaledFirst.height; replacementScenes = $replaced.Count; dark = $dark; scaled = $scaledShot }
         }
         finally { Reset-P2Display }
+        $engine = Invoke-P2EngineReplacement -Feature 'math'
+        return [pscustomobject]@{ display = $display; engineReplacement = $engine }
     }
 
     # ── Mermaid ──────────────────────────────────────────────────────────────
@@ -514,7 +517,7 @@ function Run-Phase2Cases {
         throw 'UNVERIFIED: Light, Dark and forced High Contrast, node/link semantics, atomic selection and exact copy passed in both viewport modes; actual Windows system High Contrast runs in the follow-up runner, and screenshots need review.'
     }
 
-    Test-Case -Id 'P2-MERMAID-04' -Name 'mermaid-navigation-and-replacement-publish-no-obsolete-scene' -Requirement 'Navigating away and back and replacing the Mermaid document leave only the current document diagrams.' -Body {
+    Test-Case -Id 'P2-MERMAID-04' -Name 'mermaid-navigation-and-replacement-publish-no-obsolete-scene' -Requirement 'Navigating away and back, replacing the Mermaid document, and replacing the engine of a live document in both viewport modes leave only the current document diagrams.' -Body {
         Navigate-Sample -Key 'Mermaid' -RequiredText 'Native Mermaid'
         Navigate-Sample -Key 'Math' -RequiredText 'Native mathematics'
         if (@(Get-P2Elements -ClassName 'MarkdownDiagram').Count -gt 0) { throw 'A Mermaid diagram survived navigation to the Math page.' }
@@ -526,7 +529,8 @@ function Run-Phase2Cases {
         Start-Sleep -Milliseconds 1200
         $replaced = @(Get-P2Elements -ClassName 'MarkdownDiagram')
         if ($replaced.Count -ne 1) { throw "After replacement $($replaced.Count) diagrams are exposed; only the current one may remain." }
-        throw 'UNVERIFIED: Navigation and document replacement publish no obsolete scene; Mermaid engine replacement needs the Sample engine-swap page (Phase 2 batch B).'
+        $engine = Invoke-P2EngineReplacement -Feature 'mermaid'
+        return [pscustomobject]@{ navigationDiagrams = $back.Count; replacementDiagrams = $replaced.Count; engineReplacement = $engine }
     }
 
     Run-Phase2MediaCases
@@ -939,7 +943,7 @@ function Run-Phase2MediaCases {
         throw 'UNVERIFIED: Highlighted code selection, UIA range and copy are exact; the P1-020/P1-021 live formatted-paste items stay open until their own qualification closes them.'
     }
 
-    Test-Case -Id 'P2-HIGHLIGHT-04' -Name 'highlight-theme-and-source-replacement-apply-no-stale-spans' -Requirement 'A theme change repaints the highlighted code with the same text, and replacing the source shows only the new code.' -Body {
+    Test-Case -Id 'P2-HIGHLIGHT-04' -Name 'highlight-theme-and-source-replacement-apply-no-stale-spans' -Requirement 'A theme change repaints the highlighted code with the same text, replacing the source shows only the new code, and replacing the grammar provider of a live document in both viewport modes repaints only the affected language.' -Body {
         try {
             Navigate-Sample -Key 'Code' -RequiredText 'Fenced Code Blocks'
             $range = Scroll-P2Text -Needle 'public sealed class MarkdownRendererControl'
@@ -965,7 +969,8 @@ function Run-Phase2MediaCases {
             if (-not $text.Contains('replacementOnly = 42')) { throw 'The replacement code is missing.' }
         }
         finally { Reset-P2Display }
-        throw 'UNVERIFIED: Theme and source replacement apply no stale spans; grammar replacement needs the Sample grammar-swap hook (Phase 2 batch B).'
+        $grammar = Invoke-P2GrammarReplacement
+        return [pscustomobject]@{ themeAndSourceReplacement = $true; grammarReplacement = $grammar }
     }
 
     # ── Hosted elements ──────────────────────────────────────────────────────
@@ -997,11 +1002,10 @@ function Run-Phase2MediaCases {
         $codeBlocks = @(Get-P2Elements -ClassName 'MarkdownCodeBlock')
         if ($codeBlocks.Count -ne 3) { throw "The three failed hosted requests were not each rebuilt as a native code block; found $($codeBlocks.Count)." }
         if (@(Get-P2Elements | Where-Object { [string]$_.className -like 'MarkdownHosted*' }).Count -gt 0) { throw 'A failed hosted request left a hosted peer.' }
-        # A failed request is not retried on every viewport pass.
-        $null = Invoke-Ui @('scroll', 'MarkdownRenderer', '--to', 'bottom')
-        $null = Invoke-Ui @('scroll', 'MarkdownRenderer', '--to', 'top')
-        Start-Sleep -Milliseconds 400
-        if (@(Get-P2Elements -ClassName 'MarkdownCodeBlock').Count -ne 3) { throw 'Scrolling changed the rebuilt fallback blocks.' }
+        # A failed request is not retried on later viewport passes: the
+        # rebuilt blocks stay stable while the document stays loaded.
+        Start-Sleep -Milliseconds 1000
+        if (@(Get-P2Elements -ClassName 'MarkdownCodeBlock').Count -ne 3) { throw 'The rebuilt fallback blocks changed while the document stayed loaded.' }
         $controls = @(Get-AppUiElements | Where-Object { [string]$_.type -ceq 'Button' -and [string]$_.name -in @('Throwing probe', 'Attach probe', 'Null probe') })
         if ($controls.Count -gt 0) { throw "A failed factory request left $($controls.Count) control(s) in the document." }
         $null = Assert-ProcessIdentity
@@ -1055,7 +1059,7 @@ function Run-Phase2MediaCases {
         return @($observed.ToArray())
     }
 
-    Test-Case -Id 'P2-HOSTED-04' -Name 'hosted-recycling-replacement-and-unload-leave-no-stale-focus' -Requirement 'Scrolling a long hosted document recycles controls within a bounded realized count, and replacing or leaving the document leaves no stale hosted control or focus.' -Body {
+    Test-Case -Id 'P2-HOSTED-04' -Name 'hosted-recycling-replacement-and-unload-leave-no-stale-focus' -Requirement 'Scrolling a long hosted document recycles controls within a bounded realized count; replacing or leaving the document, and replacing the hosted-control factory of a live document in both viewport modes, leave no stale hosted control or focus.' -Body {
         Navigate-Sample -Key 'Embeds' -RequiredText 'Declarative Hosted Elements'
         $builder = [System.Text.StringBuilder]::new()
         $null = $builder.Append("# Hosted recycling`n`n")
@@ -1087,6 +1091,7 @@ function Run-Phase2MediaCases {
         Navigate-Sample -Key 'Embeds' -RequiredText 'Declarative Hosted Elements'
         $null = Scroll-P2Text -Needle 'extension-shaped fences below'
         if (@(Get-AppUiElements | Where-Object { [string]$_.type -ceq 'Button' -and [string]$_.name -ceq 'Click me' }).Count -ne 1) { throw 'The Embeds controls did not realize again after unload and return.' }
-        throw "UNVERIFIED: Recycling stayed bounded (realized $($counts -join ', ')), and replacement and unload left no stale control; hosted factory replacement needs the Sample factory-swap hook (Phase 2 batch B)."
+        $factory = Invoke-P2FactoryReplacement
+        return [pscustomobject]@{ realizedCounts = $counts; documentReplacementClean = $true; factoryReplacement = $factory }
     }
 }

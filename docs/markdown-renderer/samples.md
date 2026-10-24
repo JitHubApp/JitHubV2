@@ -75,6 +75,7 @@ and `mailto` links; relative and custom-scheme links are rejected at the host bo
 | Diagnostics and scale | Stress document | `SampleNav_Stress` | Large mixed-syntax layout, hosted-element realization, scrolling, selection, theme changes, and rebuild-cancellation smoke. |
 | Diagnostics and scale | Accessibility lab | `SampleNav_AccessibilityLab` | TextPattern, RangeFromChild, semantic roles, attributes, high-contrast hooks, and hosted-element focus order. |
 | Diagnostics and scale | Audit matrix | `SampleNav_AuditMatrix` | Deterministic hostile/malformed input, recoverable Math and unsupported-Mermaid fallback diagnostics, overflow, selection, clipboard, and viewport-containment checks. |
+| Diagnostics and scale | Provider configuration | `SampleNav_Providers` | One section per optional provider. Its commands replace the engine (`ProviderReplaceEngine`), the grammar provider (`ProviderWithoutCSharpGrammar`) and the hosted-control factory (`ProviderAlternateFactory`) on the live document, switch to strict GFM with no optional providers (`ProviderMinimal`), and add a second view that shares the providers (`ProviderSecondView`, `SecondMarkdownRenderer`). The viewport-ownership toggle is also shown here. `ProviderStatus` reports the current configuration. Leaving the page restores the standard configuration. |
 
 ## Automation relationship
 

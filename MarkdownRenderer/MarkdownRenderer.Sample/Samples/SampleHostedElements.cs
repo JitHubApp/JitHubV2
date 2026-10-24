@@ -123,7 +123,13 @@ internal sealed class SampleHostedElementFactory : IMarkdownHostedElementFactory
     internal const string AttachFailedKey = "MarkdownRenderer.Sample.AttachFailed";
     // Keeps the attach-failed probe's element parented elsewhere.
     private readonly Grid _foreignParent = new();
-    internal static SampleHostedElementFactory Instance { get; } = new();
+    // The alternate factory marks every control it creates, so replacing the
+    // factory on a live document is observable in each control's name.
+    private readonly string _labelSuffix;
+    internal static SampleHostedElementFactory Instance { get; } = new(string.Empty);
+    internal static SampleHostedElementFactory Alternate { get; } = new(" (alternate)");
+
+    private SampleHostedElementFactory(string labelSuffix) => _labelSuffix = labelSuffix;
 
     public ValueTask<FrameworkElement?> CreateAsync(
         MarkdownHostedElementRequest request,
@@ -131,7 +137,7 @@ internal sealed class SampleHostedElementFactory : IMarkdownHostedElementFactory
     {
         cancellationToken.ThrowIfCancellationRequested();
         request.Attributes.TryGetValue("label", out string? label);
-        label = string.IsNullOrWhiteSpace(label) ? "Native action" : label;
+        label = (string.IsNullOrWhiteSpace(label) ? "Native action" : label) + _labelSuffix;
 
         if (request.FactoryKey == ThrowingKey)
             throw new InvalidOperationException("The sample's throwing factory probe failed by design.");
@@ -143,6 +149,8 @@ internal sealed class SampleHostedElementFactory : IMarkdownHostedElementFactory
             AttachFailedKey => CreateAlreadyParentedButton(request, label),
             _ => null,
         };
+        if (element is not null && _labelSuffix.Length > 0)
+            AutomationProperties.SetName(element, AutomationProperties.GetName(element) + _labelSuffix);
         return ValueTask.FromResult(element);
     }
 
