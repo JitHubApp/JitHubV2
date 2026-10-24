@@ -870,6 +870,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             // provider failures use a separate renderer-and-generation-scoped
             // cache after the bytes have been securely preflighted.
             _loadFailed = true;
+            _failureCarryable = true;
             _loadStarted = true;
             return;
         }
@@ -878,10 +879,27 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         // result, so it neither reports Loading nor reserves a placeholder size
         // while its pixels are reacquired. Bitmaps are never carried.
         if (Context.CompletedImageCarry is { } completedImages &&
-            completedImages.TryGetValue(Url, out CompletedImageCarry? carried) &&
-            carried.HasUsableIntrinsicSize)
+            completedImages.TryGetValue(Url, out CompletedImageCarry? carried))
         {
-            _carriedCompletion = carried;
+            if (carried.Failed)
+            {
+                // P3-023: show the same permanent failure as the earlier
+                // layout instead of reporting Loading until it fails again.
+                _isSvg = carried.IsSvg;
+                if (carried.IsSvg)
+                    _svgIntrinsicSize = carried.IntrinsicSize;
+                else
+                    _rasterIntrinsicSize = carried.IntrinsicSize;
+                _svgFailureReason = carried.SvgFailureReason;
+                _svgFailureDescription = carried.SvgFailureDescription;
+                _loadFailed = true;
+                _loadStarted = true;
+                _failureCarryable = true;
+                return;
+            }
+
+            if (carried.HasUsableIntrinsicSize)
+                _carriedCompletion = carried;
         }
 
         if (_preResolutionCacheKey is { } bitmapCacheKey && !_isSvg &&
@@ -1634,8 +1652,20 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
     internal bool TryCaptureCompletedCarry(out CompletedImageCarry? carry)
     {
         carry = null;
-        if (_disposed || _loadFailed || string.IsNullOrEmpty(Url))
+        if (_disposed || string.IsNullOrEmpty(Url))
             return false;
+        if (_loadFailed)
+        {
+            if (!_failureCarryable)
+                return false;
+            carry = CompletedImageCarry.ForFailure(
+                Url,
+                _isSvg,
+                _isSvg ? _svgIntrinsicSize : _rasterIntrinsicSize,
+                _svgFailureReason,
+                _svgFailureDescription);
+            return true;
+        }
 
         bool presented = _hasPresentedImage || _bitmap is not null || _svgHasRenderedTile;
         Size intrinsic = default;
@@ -5186,6 +5216,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             if (failed && _bitmap is null)
             {
                 _loadFailed = true;
+                _failureCarryable = cacheRasterDecodeFailure;
                 if (cacheRasterDecodeFailure)
                     RememberFailedRasterDecode(cacheKey, failureFormatKey, rasterDecodeFailureIdentity);
             }
@@ -5430,6 +5461,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             {
                 if (_disposed) return;
                 _loadFailed = true;
+                _failureCarryable = true;
                 string cacheKey = _activeCacheKey ?? Url;
                 RememberFailedUrl(cacheKey);
                 RaiseLoadCompleted(layoutInvalidated: true);
@@ -7510,6 +7542,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                             _svgFailureReason = exception.Reason;
                             _svgFailureDescription = hasPreviousGoodBitmap ? null : exception.Message;
                             _loadFailed = !hasPreviousGoodBitmap;
+                            _failureCarryable = false; // a tile render failure is not proven permanent
                             loadFailed = _loadFailed;
                         }
                     }
@@ -8942,6 +8975,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             _svgFailureReason = reason;
             _svgFailureDescription = hasPreviousGoodBitmap ? null : description;
             _loadFailed = !hasPreviousGoodBitmap;
+            _failureCarryable = _loadFailed && cachePermanently;
             if (_loadFailed && cachePermanently &&
                 failureCacheKey.Length is > 0 and <= MaxFailedCacheKeyLength)
             {
@@ -9327,6 +9361,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         {
             if (_disposed) return;
             _loadFailed = true;
+            _failureCarryable = cachePermanently;
             if (cachePermanently && !string.IsNullOrEmpty(cacheKey))
             {
                 RememberFailedUrl(cacheKey);

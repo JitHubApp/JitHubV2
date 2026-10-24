@@ -1270,6 +1270,8 @@ public sealed partial class MarkdownViewer : UserControl
         RecordRendererCreated();
         if (MarkdownLifecycleAutomationBridge.IsSameByteAdmissionTraceEnabled)
             _renderer.AutomationRebuildRequestObserver = MarkdownLifecycleAutomationBridge.TraceSameByteAdmission;
+        if (MarkdownLifecycleAutomationBridge.IsEvidenceEnabled)
+            _renderer.AutomationImageCarryObserver = MarkdownLifecycleAutomationBridge.TraceImageCarry;
         _currentRendererDisposalCompleted = false;
         _renderer.DisposalCompleted += OnRendererDisposalCompleted;
         _renderer.Theme = _sameByteVisualTheme ?? _theme;

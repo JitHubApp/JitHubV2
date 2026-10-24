@@ -95,6 +95,53 @@ public sealed class CompletedImageCarryTests
         Assert.Equal(MarkdownImageAccessibilityState.Loading, emptySizeImage.AccessibilityState);
     }
 
+    // P3-023 (Phase 3 ranks 206, 219, 273, 340): documented-unsupported SVG
+    // badges and upstream-unavailable images failed before a scene rebuild,
+    // were not carried, and reported Loading until scrolled back and retried.
+    [Fact]
+    public void CarriedPermanentFailureShowsTheSameFailureInsteadOfLoading()
+    {
+        CompletedImageCarry failed = CompletedImageCarry.ForFailure(
+            BadgeUrl,
+            isSvg: true,
+            new Size(119.46, 20),
+            MarkdownSvgFailureReason.UnsupportedContent,
+            "Animated SVG content is not supported.");
+        var image = new ImageBox(CreateContext(Carry(failed)), BadgeUrl, "User base");
+
+        Assert.Equal(MarkdownImageAccessibilityState.Error, image.AccessibilityState);
+        Assert.False(image.IsAwaitingVisiblePixelsForAutomation, "A failed image never waits for pixels.");
+        Assert.Equal(MarkdownSvgFailureReason.UnsupportedContent, image.SvgFailureReason);
+        Assert.Equal("Animated SVG content is not supported.", image.SvgDesc);
+        Assert.True(image.IsSvg);
+
+        // The failure is forwarded to the next scene rebuild unchanged.
+        Assert.True(image.TryCaptureCompletedCarry(out CompletedImageCarry? forwarded));
+        Assert.NotNull(forwarded);
+        Assert.True(forwarded.Failed);
+        Assert.Equal(MarkdownSvgFailureReason.UnsupportedContent, forwarded.SvgFailureReason);
+        Assert.Equal(new Size(119.46, 20), forwarded.IntrinsicSize);
+    }
+
+    [Fact]
+    public void FailuresAreCarriedOnlyAcrossSceneRebuildsAndOnlyWhenPermanent()
+    {
+        string control = ReadSource("Controls", "MarkdownRendererControl.cs");
+        string rebuild = Body(control, "private async Task RebuildInternalAsync(");
+        Assert.Contains("carryFailures: reason == RebuildReason.SceneMaterialized", rebuild, StringComparison.Ordinal);
+        string captureBody = Body(control, "private IReadOnlyDictionary<string, Layout.Boxes.CompletedImageCarry>? CaptureCompletedImageCarry(");
+        Assert.Contains("if (carryFailures || !carry.Failed)", captureBody, StringComparison.Ordinal);
+
+        string image = ReadSource(Path.Combine("Layout", "Boxes"), "ImageBox.cs");
+        string capture = Body(image, "internal bool TryCaptureCompletedCarry(out CompletedImageCarry? carry)");
+        Assert.Contains("if (!_failureCarryable)", capture, StringComparison.Ordinal);
+        // Every failure records whether it is permanent; a tile render failure is not.
+        Assert.Contains("_failureCarryable = cachePermanently;", image, StringComparison.Ordinal);
+        Assert.Contains("_failureCarryable = _loadFailed && cachePermanently;", image, StringComparison.Ordinal);
+        Assert.Contains("_failureCarryable = cacheRasterDecodeFailure;", image, StringComparison.Ordinal);
+        Assert.Contains("_failureCarryable = false; // a tile render failure is not proven permanent", image, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void RasterPlacementContextKeepsTheCarriedResults()
     {
@@ -139,7 +186,8 @@ public sealed class CompletedImageCarryTests
     {
         string control = ReadSource("Controls", "MarkdownRendererControl.cs");
         string rebuild = Body(control, "private async Task RebuildInternalAsync(");
-        int capture = rebuild.IndexOf("CaptureCompletedImageCarry(imageCarryIdentity)", StringComparison.Ordinal);
+        int capture = rebuild.IndexOf("CaptureCompletedImageCarry(", StringComparison.Ordinal);
+        Assert.Contains("imageCarryIdentity,", rebuild[capture..], StringComparison.Ordinal);
         int context = rebuild.IndexOf("var ctx = new MarkdownLayoutContext(", StringComparison.Ordinal);
         Assert.True(capture >= 0 && context > capture, "The ledger must be captured before the rebuild's context.");
         Assert.Contains("CompletedImageCarry = completedImageCarrySnapshot,", rebuild, StringComparison.Ordinal);

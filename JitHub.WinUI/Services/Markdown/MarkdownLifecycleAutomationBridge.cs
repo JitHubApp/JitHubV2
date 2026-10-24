@@ -150,6 +150,41 @@ internal static partial class MarkdownLifecycleAutomationBridge
         IsSameByteReplayEnabled &&
         string.Equals(Environment.GetEnvironmentVariable("JITHUB_MARKDOWN_SOURCE_ADMISSION_TRACE"), "1", StringComparison.Ordinal);
 
+    private static readonly object ImageCarryTraceGate = new();
+    private static int _imageCarryTraceRecords;
+
+    /// <summary>
+    /// Audit-only: appends one completed-image carry capture per rebuild next
+    /// to the render-complete evidence (P3-022/P3-023). Bounded to 512 lines.
+    /// </summary>
+    internal static void TraceImageCarry(string message)
+    {
+        if (!IsEvidenceEnabled)
+            return;
+        string? renderCompletePath = Environment.GetEnvironmentVariable(RenderCompleteEvidencePathVariable);
+        if (string.IsNullOrWhiteSpace(renderCompletePath))
+            return;
+
+        try
+        {
+            lock (ImageCarryTraceGate)
+            {
+                if (_imageCarryTraceRecords >= 512)
+                    return;
+                _imageCarryTraceRecords++;
+                File.AppendAllText(
+                    Path.GetFullPath(renderCompletePath) + ".image-carry.log",
+                    $"{DateTimeOffset.UtcNow:O}\t{Environment.ProcessId}\t{message}{Environment.NewLine}");
+            }
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+    }
+
     internal static void TraceSameByteAdmission(string message)
     {
         if (!IsSameByteAdmissionTraceEnabled)

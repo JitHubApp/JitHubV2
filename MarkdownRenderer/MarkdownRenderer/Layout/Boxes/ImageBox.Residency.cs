@@ -18,6 +18,9 @@ internal sealed partial class ImageBox : IMarkdownImageResidencyTarget
     // P3-022: completed result carried from an earlier layout of the same
     // document. Immutable; never owns pixels or native resources.
     private CompletedImageCarry? _carriedCompletion;
+    // P3-023: true while the current failure is permanent (remembered or
+    // deterministic), so a scene rebuild may carry it.
+    private bool _failureCarryable;
 
     // Only a wake-up signal. The control reconciles on its dispatcher under
     // the snapshot read lease; this callback must never detach paint resources.

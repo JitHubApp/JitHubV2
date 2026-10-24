@@ -2977,6 +2977,9 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     // performs no formatting, stack walk, or file I/O for rebuild attribution.
     internal Action<string>? AutomationRebuildRequestObserver { get; set; }
 
+    /// <summary>Audit-only sink for completed-image carry captures (P3-022/P3-023).</summary>
+    internal Action<string>? AutomationImageCarryObserver { get; set; }
+
     internal CancellationToken GetAutomationPipelineCancellationToken(long generation)
     {
         CancellationTokenSource? cancellation = _pipelineCts;
@@ -5251,7 +5254,12 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             rasterDecoderSnapshot,
             allowThirdPartyRemoteImagesSnapshot);
         IReadOnlyDictionary<string, Layout.Boxes.CompletedImageCarry>? completedImageCarrySnapshot =
-            CaptureCompletedImageCarry(imageCarryIdentity);
+            CaptureCompletedImageCarry(
+                imageCarryIdentity,
+                // P3-023: a permanent failure is carried only across an automatic
+                // scene rebuild; any other rebuild (for example the host's Retry)
+                // still retries it.
+                carryFailures: reason == RebuildReason.SceneMaterialized);
         var ctx = new MarkdownLayoutContext(
             device,
             themeSnapshot,
@@ -8472,18 +8480,30 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     /// publication; the context receives an immutable copy.
     /// </summary>
     private IReadOnlyDictionary<string, Layout.Boxes.CompletedImageCarry>? CaptureCompletedImageCarry(
-        Layout.Boxes.MarkdownImageCarryIdentity identity)
+        Layout.Boxes.MarkdownImageCarryIdentity identity,
+        bool carryFailures)
     {
-        if (_completedImageCarryIdentity is not { } previous || !previous.Matches(identity))
+        bool identityReset = _completedImageCarryIdentity is not { } previous || !previous.Matches(identity);
+        if (identityReset)
             _completedImageCarry.Clear();
         _completedImageCarryIdentity = identity;
 
+        int otherIdentity = 0;
+        int notCaptured = 0;
+        int captured = 0;
         foreach (Layout.Boxes.ImageBox image in _imagePlans)
         {
             if (image.Context.ImageCarryIdentity is not { } builtWith || !builtWith.Matches(identity))
+            {
+                otherIdentity++;
                 continue;
+            }
             if (!image.TryCaptureCompletedCarry(out Layout.Boxes.CompletedImageCarry? carry) || carry is null)
+            {
+                notCaptured++;
                 continue;
+            }
+            captured++;
             if (_completedImageCarry.Count >= MaximumCompletedImageCarryEntries &&
                 !_completedImageCarry.ContainsKey(carry.Url))
             {
@@ -8492,9 +8512,32 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             _completedImageCarry[carry.Url] = carry;
         }
 
-        return _completedImageCarry.Count == 0
-            ? null
-            : new Dictionary<string, Layout.Boxes.CompletedImageCarry>(_completedImageCarry, StringComparer.Ordinal);
+        var snapshot = new Dictionary<string, Layout.Boxes.CompletedImageCarry>(StringComparer.Ordinal);
+        foreach ((string url, Layout.Boxes.CompletedImageCarry carry) in _completedImageCarry)
+        {
+            if (carryFailures || !carry.Failed)
+                snapshot[url] = carry;
+        }
+
+        if (AutomationImageCarryObserver is { } observer)
+        {
+            int failed = 0;
+            foreach (Layout.Boxes.CompletedImageCarry carry in snapshot.Values)
+            {
+                if (carry.Failed)
+                    failed++;
+            }
+            try
+            {
+                observer($"image-carry:generation={_pipelineGeneration}:identityReset={identityReset}:carryFailures={carryFailures}:plans={_imagePlans.Count}:otherIdentity={otherIdentity}:notCaptured={notCaptured}:captured={captured}:ledger={_completedImageCarry.Count}:carried={snapshot.Count}:carriedFailures={failed}");
+            }
+            catch (Exception)
+            {
+                // A diagnostic sink must never alter the rebuild lifecycle.
+            }
+        }
+
+        return snapshot.Count == 0 ? null : snapshot;
     }
 
     private void AddImagePlan(Layout.Boxes.ImageBox image)

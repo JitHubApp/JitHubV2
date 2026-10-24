@@ -19,8 +19,26 @@ internal sealed record CompletedImageCarry(
     bool IsSvg,
     Size IntrinsicSize,
     string? SvgTitle,
-    string? SvgDescription)
+    string? SvgDescription,
+    bool Failed = false,
+    MarkdownSvgFailureReason? SvgFailureReason = null,
+    string? SvgFailureDescription = null)
 {
+    /// <summary>
+    /// A permanent failure (P3-023): the image already failed in an earlier
+    /// layout and would fail again the same way. The rebuilt box shows the
+    /// same failure placeholder instead of reporting Loading until retried.
+    /// The control carries failures only across automatic scene rebuilds, so
+    /// a user-requested rebuild still retries them.
+    /// </summary>
+    internal static CompletedImageCarry ForFailure(
+        string url,
+        bool isSvg,
+        Size intrinsicSize,
+        MarkdownSvgFailureReason? svgFailureReason,
+        string? svgFailureDescription) =>
+        new(url, isSvg, intrinsicSize, null, null, Failed: true, svgFailureReason, svgFailureDescription);
+
     internal bool HasUsableIntrinsicSize =>
         double.IsFinite(IntrinsicSize.Width) && double.IsFinite(IntrinsicSize.Height) &&
         IntrinsicSize.Width > 0 && IntrinsicSize.Height > 0;
