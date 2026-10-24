@@ -1,5 +1,4 @@
 using System;
-using Markdig;
 using Windows.ApplicationModel.DataTransfer;
 using MarkdownRenderer.Document;
 
@@ -11,26 +10,29 @@ namespace MarkdownRenderer.Selection;
 /// </summary>
 internal static class MarkdownClipboardWriter
 {
-    private static readonly Lazy<MarkdownPipeline> _clipboardPipeline = new(() =>
-        new MarkdownPipelineBuilder().UseAdvancedExtensions().Build());
-
     public static bool Copy(
         MarkdownSourceMap sourceMap,
         DocumentRange range,
         MarkdownCopyOptions? options = null,
-        string? renderedText = null)
+        string? renderedText = null,
+        string? renderedHtml = null)
     {
         options ??= MarkdownCopyOptions.Default;
         var sourceSlice = sourceMap.Slice(range);
-        if (string.IsNullOrEmpty(sourceSlice)) return false;
-
-        string plainText = ChoosePlainTextPayload(sourceSlice, renderedText, options);
+        string? plainText = ResolvePlainTextPayload(sourceSlice, renderedText, options);
+        if (plainText is null) return false;
 
         var package = new DataPackage { RequestedOperation = DataPackageOperation.Copy };
         package.SetText(plainText);
         if (options.IncludeHtml)
         {
-            var html = BuildHtmlFragment(sourceSlice);
+            // HTML is derived from the renderer's committed semantic display
+            // plan. Never reparse source with an unrelated Markdown profile:
+            // doing so can turn strict-profile literal HTML into executable
+            // clipboard markup and bypass host policies.
+            var html = string.IsNullOrEmpty(renderedHtml)
+                ? BuildHtmlFragment(plainText)
+                : renderedHtml;
             if (!string.IsNullOrWhiteSpace(html))
                 package.SetHtmlFormat(HtmlFormatHelper.CreateHtmlFormat(html));
         }
@@ -44,6 +46,27 @@ internal static class MarkdownClipboardWriter
         return true;
     }
 
+    /// <summary>
+    /// The plain-text payload, or null when there is nothing to copy. A
+    /// rendered selection with no source text (a GitHub alert title) still
+    /// copies its rendered text (P3-015); source mode copies source only.
+    /// </summary>
+    internal static string? ResolvePlainTextPayload(
+        string? sourceMarkdown,
+        string? renderedText,
+        MarkdownCopyOptions options)
+    {
+        if (string.IsNullOrEmpty(sourceMarkdown))
+        {
+            return options.PlainTextMode == MarkdownPlainTextCopyMode.RenderedText &&
+                !string.IsNullOrEmpty(renderedText)
+                ? renderedText
+                : null;
+        }
+
+        return ChoosePlainTextPayload(sourceMarkdown, renderedText, options);
+    }
+
     internal static string ChoosePlainTextPayload(
         string sourceMarkdown,
         string? renderedText,
@@ -52,18 +75,14 @@ internal static class MarkdownClipboardWriter
             ? renderedText ?? sourceMarkdown
             : sourceMarkdown;
 
-    internal static string BuildHtmlFragment(string markdown)
+    internal static string BuildHtmlFragment(string renderedText)
     {
-        if (string.IsNullOrEmpty(markdown))
+        if (string.IsNullOrEmpty(renderedText))
             return string.Empty;
 
-        try
-        {
-            return Markdown.ToHtml(markdown, _clipboardPipeline.Value);
-        }
-        catch
-        {
-            return System.Net.WebUtility.HtmlEncode(markdown).Replace("\n", "<br />", StringComparison.Ordinal);
-        }
+        return System.Net.WebUtility.HtmlEncode(renderedText)
+            .Replace("\r\n", "<br />", StringComparison.Ordinal)
+            .Replace("\r", "<br />", StringComparison.Ordinal)
+            .Replace("\n", "<br />", StringComparison.Ordinal);
     }
 }

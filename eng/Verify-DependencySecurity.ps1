@@ -13,8 +13,38 @@ function Invoke-CheckedDotNet {
     return $output
 }
 
-$projectFiles = Get-ChildItem -LiteralPath $repositoryRoot -Recurse -Filter *.csproj -File |
-    Where-Object { $_.FullName -notmatch '[\\/](?:bin|obj|artifacts|\.codex-artifacts)[\\/]' }
+function Get-ProjectFilesPruned {
+    param([Parameter(Mandatory = $true)][string] $Root)
+
+    $excludedDirectoryNames = [System.Collections.Generic.HashSet[string]]::new(
+        [StringComparer]::OrdinalIgnoreCase)
+    foreach ($name in @('bin', 'obj', 'artifacts', '_scratch', '.codex-artifacts', '.git')) {
+        [void] $excludedDirectoryNames.Add($name)
+    }
+
+    $pendingDirectories = [System.Collections.Generic.Stack[System.IO.DirectoryInfo]]::new()
+    $pendingDirectories.Push([System.IO.DirectoryInfo]::new($Root))
+
+    while ($pendingDirectories.Count -gt 0) {
+        $directory = $pendingDirectories.Pop()
+        foreach ($projectFile in $directory.EnumerateFiles('*.csproj', [System.IO.SearchOption]::TopDirectoryOnly)) {
+            $projectFile
+        }
+
+        foreach ($childDirectory in $directory.EnumerateDirectories('*', [System.IO.SearchOption]::TopDirectoryOnly)) {
+            $isGeneratedDirectory =
+                $excludedDirectoryNames.Contains($childDirectory.Name) -or
+                $childDirectory.Name.StartsWith('bin-', [StringComparison]::OrdinalIgnoreCase) -or
+                $childDirectory.Name.StartsWith('obj-', [StringComparison]::OrdinalIgnoreCase)
+            $isReparsePoint = ($childDirectory.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0
+            if (-not $isGeneratedDirectory -and -not $isReparsePoint) {
+                $pendingDirectories.Push($childDirectory)
+            }
+        }
+    }
+}
+
+$projectFiles = Get-ProjectFilesPruned -Root $repositoryRoot
 
 $allowedPrereleasePackages = @{
     "CommunityToolkit.Labs.WinUI.TransitionHelper" = "0.1.251217-build.2433"
@@ -55,14 +85,17 @@ foreach ($source in @($nugetConfig.configuration.packageSources.add)) {
     }
 }
 
+# RuntimeIdentifier and PublishAot are intentionally not passed as global MSBuild
+# properties. Shipping projects declare the complete supported RuntimeIdentifiers
+# set in their canonical locks; this RID-less restore audits all architectures in
+# one pass while managed outputs remain AnyCPU. Architecture-specific AOT execution
+# remains in Restore-NativeAot.ps1 and the native-aot workflow.
 $restoreOutput = Invoke-CheckedDotNet @(
     "restore",
     $appProjectPath,
     "--locked-mode",
     "-p:Configuration=Release",
     "-p:Platform=x64",
-    "-p:RuntimeIdentifier=win-x64",
-    "-p:PublishAot=true",
     "-p:NuGetAudit=true",
     "-p:NuGetAuditMode=all",
     "-warnaserror:NU1901;NU1902;NU1903;NU1904",

@@ -24,6 +24,7 @@
                 <ResourceDictionary Source="ms-appx:///Styles/Foundation/Tokens.Corners.xaml" />
                 <ResourceDictionary Source="ms-appx:///Styles/Foundation/Tokens.Motion.xaml" />
                 <ResourceDictionary Source="ms-appx:///Styles/Foundation/WinUIResourceBridge.xaml" />
+                <ResourceDictionary Source="ms-appx:///Styles/MarkdownRenderer.xaml" />
 
                 <!--  Primitives  -->
                 <ResourceDictionary Source="ms-appx:///Styles/Primitives/NavigationPrimitives.xaml" />

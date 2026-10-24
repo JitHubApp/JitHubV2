@@ -20,17 +20,31 @@ public static class PixelComparer
         int HeightPx,
         long MaxChannelDelta,
         double MeanChannelDelta,
-        double DifferingPixelFraction);
+        double DifferingPixelFraction,
+        double StructuralSimilarity,
+        double AlphaIntersectionOverUnion);
 
     /// <summary>Loads a PNG from disk into a top-down RGBA8888 byte buffer.</summary>
     public static (byte[] Rgba, int Width, int Height) LoadPngAsRgba(string path)
+        => LoadPngAsRgba(File.ReadAllBytes(path));
+
+    /// <summary>Decodes a completed browser protocol PNG without a staging file.</summary>
+    public static (byte[] Rgba, int Width, int Height) LoadPngAsRgba(byte[] png)
     {
         // Bitmap(string) still delegates path handling to GDI+, which rejects
         // otherwise valid long worktree/CI paths. System.IO reads those paths
         // correctly; keep the stream alive for the lifetime of the bitmap.
-        using var stream = new MemoryStream(File.ReadAllBytes(path), writable: false);
+        using var stream = new MemoryStream(png, writable: false);
         using var bmp = new Bitmap(stream);
         return BitmapToRgba(bmp);
+    }
+
+    internal static byte[] EncodeRgbaAsPng(byte[] rgba, int width, int height)
+    {
+        using var bitmap = RgbaToBitmap(rgba, width, height);
+        using var stream = new MemoryStream();
+        bitmap.Save(stream, ImageFormat.Png);
+        return stream.ToArray();
     }
 
     /// <summary>Saves an RGBA8888 byte buffer as a PNG.</summary>
@@ -79,6 +93,27 @@ public static class PixelComparer
             rgba[i * 4 + 1] = g;
             rgba[i * 4 + 2] = b;
             rgba[i * 4 + 3] = a;
+        }
+        return rgba;
+    }
+
+    /// <summary>Converts an RGBA premultiplied buffer to RGBA8888 unpremultiplied.</summary>
+    public static byte[] RgbaPremulToRgba(ReadOnlySpan<byte> premultiplied, int width, int height)
+    {
+        if (premultiplied.Length != checked(width * height * 4))
+            throw new ArgumentException("dimensions mismatch buffer length", nameof(premultiplied));
+
+        byte[] rgba = premultiplied.ToArray();
+        for (int index = 0; index < width * height; index++)
+        {
+            int offset = index * 4;
+            byte alpha = rgba[offset + 3];
+            if (alpha is > 0 and < 255)
+            {
+                rgba[offset] = (byte)Math.Min(255, (rgba[offset] * 255) / alpha);
+                rgba[offset + 1] = (byte)Math.Min(255, (rgba[offset + 1] * 255) / alpha);
+                rgba[offset + 2] = (byte)Math.Min(255, (rgba[offset + 2] * 255) / alpha);
+            }
         }
         return rgba;
     }
@@ -158,8 +193,75 @@ public static class PixelComparer
         }
         double mean = (double)sumDelta / totalChannels;
         double frac = (double)differing / (width * height);
-        return new DiffReport(width, height, maxDelta, mean, frac);
+        double alphaIou = CalculateAlphaIou(a, b);
+        double ssim = CalculateSsim(a, b, width, height);
+        return new DiffReport(width, height, maxDelta, mean, frac, ssim, alphaIou);
     }
+
+    private static double CalculateAlphaIou(byte[] a, byte[] b)
+    {
+        long intersection = 0;
+        long union = 0;
+        for (int offset = 3; offset < a.Length; offset += 4)
+        {
+            intersection += Math.Min(a[offset], b[offset]);
+            union += Math.Max(a[offset], b[offset]);
+        }
+        // Exact coverage intersection/union at corresponding pixels: no
+        // dilation, nearest-neighbor matches, opacity threshold or alignment.
+        return union == 0 ? 1 : (double)intersection / union;
+    }
+
+    private static double CalculateSsim(byte[] a, byte[] b, int width, int height)
+    {
+        const double c1 = 6.5025;  // (0.01 * 255)^2
+        const double c2 = 58.5225; // (0.03 * 255)^2
+        const int windowSize = 8;
+        double weightedScore = 0;
+        long totalPixels = 0;
+        // Local, uniformly weighted SSIM windows cover every output pixel,
+        // including partial edge windows. Transparent RGB is premultiplied,
+        // not ignored; no candidate color is snapped to the reference.
+        for (int top = 0; top < height; top += windowSize)
+        {
+            for (int left = 0; left < width; left += windowSize)
+            {
+                int right = Math.Min(width, left + windowSize);
+                int bottom = Math.Min(height, top + windowSize);
+                int count = (right - left) * (bottom - top);
+                double sumA = 0, sumB = 0, squaresA = 0, squaresB = 0, products = 0;
+                for (int y = top; y < bottom; y++)
+                {
+                    for (int x = left; x < right; x++)
+                    {
+                        int offset = (y * width + x) * 4;
+                        double valueA = PremultipliedLuminance(a, offset);
+                        double valueB = PremultipliedLuminance(b, offset);
+                        sumA += valueA;
+                        sumB += valueB;
+                        squaresA += valueA * valueA;
+                        squaresB += valueB * valueB;
+                        products += valueA * valueB;
+                    }
+                }
+                double meanA = sumA / count;
+                double meanB = sumB / count;
+                double varianceA = Math.Max(0, squaresA / count - meanA * meanA);
+                double varianceB = Math.Max(0, squaresB / count - meanB * meanB);
+                double covariance = products / count - meanA * meanB;
+                double score = ((2 * meanA * meanB + c1) * (2 * covariance + c2)) /
+                    ((meanA * meanA + meanB * meanB + c1) * (varianceA + varianceB + c2));
+                weightedScore += score * count;
+                totalPixels += count;
+            }
+        }
+        return totalPixels == 0 ? 1 : Math.Clamp(weightedScore / totalPixels, -1, 1);
+    }
+
+    private static double PremultipliedLuminance(byte[] rgba, int offset) =>
+        (0.2126 * Premultiply(rgba[offset], rgba[offset + 3])) +
+        (0.7152 * Premultiply(rgba[offset + 1], rgba[offset + 3])) +
+        (0.0722 * Premultiply(rgba[offset + 2], rgba[offset + 3]));
 
     private static int Premultiply(byte color, byte alpha) =>
         (color * alpha + 127) / 255;

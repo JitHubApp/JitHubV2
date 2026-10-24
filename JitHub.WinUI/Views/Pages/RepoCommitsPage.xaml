@@ -727,7 +727,10 @@
                                         <SymbolIcon Symbol="Message" />
                                         <Button.Flyout>
                                             <Flyout Placement="BottomEdgeAlignedRight">
-                                                <Border Width="{ThemeResource AppDimension440}" Padding="{ThemeResource AppPadding16}">
+                                                <Border
+                                                    Width="{ThemeResource AppDimension440}"
+                                                    MaxHeight="{ThemeResource AppDimension520}"
+                                                    Padding="{ThemeResource AppPadding16}">
                                                     <StackPanel Spacing="{ThemeResource AppGap12}">
                                                         <TextBlock
                                                             x:Uid="PagesRepoCommitsPageTextBlockCommitMessage"
@@ -737,6 +740,8 @@
                                                             Text="Commit message" />
                                                         <common:MarkdownViewer
                                                             HostKind="Conversation"
+                                                            MaxHeight="{ThemeResource AppDimension440}"
+                                                            OwnsScrollViewport="True"
                                                             AutomationInstanceId="RepoCommitsMessage"
                                                             BaseUrl="https://github.com/"
                                                             DocumentSource="{x:Bind ViewModel.CommitBodyMarkdownSource, Mode=OneWay}"

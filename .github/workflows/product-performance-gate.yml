@@ -1,7 +1,11 @@
 name: Product performance gate
 
 on:
+  # Feature-branch pushes are already covered by pull_request below. Limiting
+  # push runs to main avoids dispatching the interactive benchmark twice for
+  # the same PR head SHA while retaining post-merge/default-branch coverage.
   push:
+    branches: [main]
   pull_request:
     branches: [main]
   schedule:

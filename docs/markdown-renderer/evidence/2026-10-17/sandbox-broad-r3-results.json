@@ -1,0 +1,1200 @@
+{
+  "archivalSchemaVersion": 1,
+  "archiveKind": "Sanitized historical receipt, not a new execution or qualification",
+  "originalRelativePath": "artifacts/phase1-20261014/sandbox-fresh-batch-r3-results.json",
+  "originalByteLength": 62676,
+  "originalSha256": "DCA7C7A5DD07E9A75608CA3FF4C88B472BB60C4B86AA903E3959E4F3467EFA43",
+  "transformations": [
+    "JSON reserialized with LF line endings",
+    "Local user/workspace and computer-name prefixes replaced with explicit placeholders",
+    "Recorded outcomes, identities, checksums and limitations retained"
+  ],
+  "receipt": {
+    "schemaVersion": 1,
+    "status": "FAILED_TERMINAL_NOT_PHASE_COMPLETE",
+    "recordedReportSummary": {
+      "schemaVersion": 1,
+      "complete": false,
+      "results": [
+        {
+          "finishedUtc": "2026-10-15T01:50:20.468629Z",
+          "startedUtc": "2026-10-15T01:49:59.4651741Z",
+          "name": "sandbox-and-app-identity",
+          "id": "C00",
+          "status": "PASS",
+          "detailExcerpt": "",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T01:50:38.6554565Z",
+          "startedUtc": "2026-10-15T01:50:20.4783923Z",
+          "name": "sample-Typography-content-and-navigation",
+          "id": "C02",
+          "status": "PASS",
+          "detailExcerpt": "",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T01:50:58.9960014Z",
+          "startedUtc": "2026-10-15T01:50:38.6565551Z",
+          "name": "sample-Lists-content-and-navigation",
+          "id": "C03",
+          "status": "PASS",
+          "detailExcerpt": "",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T01:51:17.4961502Z",
+          "startedUtc": "2026-10-15T01:50:58.9962966Z",
+          "name": "sample-Tables-content-and-navigation",
+          "id": "C02",
+          "status": "PASS",
+          "detailExcerpt": "",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T01:51:36.4522046Z",
+          "startedUtc": "2026-10-15T01:51:17.4963562Z",
+          "name": "sample-Code-content-and-navigation",
+          "id": "C04",
+          "status": "PASS",
+          "detailExcerpt": "",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T01:51:54.077004Z",
+          "startedUtc": "2026-10-15T01:51:36.4523723Z",
+          "name": "sample-Images-content-and-navigation",
+          "id": "C06",
+          "status": "PASS",
+          "detailExcerpt": "",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T01:52:10.614475Z",
+          "startedUtc": "2026-10-15T01:51:54.0771708Z",
+          "name": "sample-GitHubAlerts-content-and-navigation",
+          "id": "C15",
+          "status": "PASS",
+          "detailExcerpt": "",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T01:52:27.3767991Z",
+          "startedUtc": "2026-10-15T01:52:10.6147226Z",
+          "name": "sample-Footnotes-content-and-navigation",
+          "id": "C15",
+          "status": "PASS",
+          "detailExcerpt": "",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T01:52:45.2031553Z",
+          "startedUtc": "2026-10-15T01:52:27.376975Z",
+          "name": "sample-MarkdownExtra-content-and-navigation",
+          "id": "C15",
+          "status": "PASS",
+          "detailExcerpt": "",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T01:53:03.629583Z",
+          "startedUtc": "2026-10-15T01:52:45.2033067Z",
+          "name": "sample-Html-content-and-navigation",
+          "id": "C05",
+          "status": "PASS",
+          "detailExcerpt": "",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T01:53:26.4435778Z",
+          "startedUtc": "2026-10-15T01:53:03.6297316Z",
+          "name": "sample-Math-content-and-navigation",
+          "id": "C15",
+          "status": "PASS",
+          "detailExcerpt": "",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T01:53:51.3558348Z",
+          "startedUtc": "2026-10-15T01:53:26.4437404Z",
+          "name": "sample-Mermaid-content-and-navigation",
+          "id": "C15",
+          "status": "PASS",
+          "detailExcerpt": "",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T01:54:13.8182865Z",
+          "startedUtc": "2026-10-15T01:53:51.3560065Z",
+          "name": "sample-SvgStress-content-and-navigation",
+          "id": "C15",
+          "status": "PASS",
+          "detailExcerpt": "",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T01:54:31.5735291Z",
+          "startedUtc": "2026-10-15T01:54:13.8185008Z",
+          "name": "sample-Diagrams-content-and-navigation",
+          "id": "C15",
+          "status": "PASS",
+          "detailExcerpt": "",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T01:54:52.1238523Z",
+          "startedUtc": "2026-10-15T01:54:31.5736752Z",
+          "name": "sample-Embeds-content-and-navigation",
+          "id": "C15",
+          "status": "PASS",
+          "detailExcerpt": "",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T01:55:16.3987507Z",
+          "startedUtc": "2026-10-15T01:54:52.1240739Z",
+          "name": "sample-Selection-content-and-navigation",
+          "id": "C08",
+          "status": "PASS",
+          "detailExcerpt": "",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T01:55:40.1871953Z",
+          "startedUtc": "2026-10-15T01:55:16.3989767Z",
+          "name": "sample-TouchSelection-content-and-navigation",
+          "id": "C10",
+          "status": "PASS",
+          "detailExcerpt": "",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T01:56:01.2035746Z",
+          "startedUtc": "2026-10-15T01:55:40.1873653Z",
+          "name": "sample-KeyboardNav-content-and-navigation",
+          "id": "C09",
+          "status": "PASS",
+          "detailExcerpt": "",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T01:56:23.0648715Z",
+          "startedUtc": "2026-10-15T01:56:01.2037153Z",
+          "name": "sample-Rtl-content-and-navigation",
+          "id": "C11",
+          "status": "PASS",
+          "detailExcerpt": "",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T01:56:43.9364435Z",
+          "startedUtc": "2026-10-15T01:56:23.0650013Z",
+          "name": "sample-LazyImages-content-and-navigation",
+          "id": "C07",
+          "status": "PASS",
+          "detailExcerpt": "",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T01:57:05.0772219Z",
+          "startedUtc": "2026-10-15T01:56:43.9365826Z",
+          "name": "sample-ScrollAnchor-content-and-navigation",
+          "id": "C13",
+          "status": "PASS",
+          "detailExcerpt": "",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T01:57:23.2137069Z",
+          "startedUtc": "2026-10-15T01:57:05.0773734Z",
+          "name": "sample-ProgressiveScenes-content-and-navigation",
+          "id": "C15",
+          "status": "PASS",
+          "detailExcerpt": "",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T01:58:10.281954Z",
+          "startedUtc": "2026-10-15T01:57:23.2138384Z",
+          "name": "four-local-data-svg-image-fixtures-render-with-exact-alt-and-bounds",
+          "id": "C07",
+          "status": "PASS",
+          "detailExcerpt": "",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T01:58:32.923869Z",
+          "startedUtc": "2026-10-15T01:58:10.2820115Z",
+          "name": "math-native-scenes-have-geometry",
+          "id": "C15",
+          "status": "PASS",
+          "detailExcerpt": "",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T01:59:00.6799038Z",
+          "startedUtc": "2026-10-15T01:58:32.9239453Z",
+          "name": "svg-script-and-animation-use-accessible-failure-placeholders",
+          "id": "C15",
+          "status": "PASS",
+          "detailExcerpt": "",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T01:59:35.2535449Z",
+          "startedUtc": "2026-10-15T01:59:00.6799688Z",
+          "name": "mermaid-native-scenes-and-final-diagram-have-geometry",
+          "id": "C15",
+          "status": "PASS",
+          "detailExcerpt": "",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T02:00:46.2997735Z",
+          "startedUtc": "2026-10-15T01:59:35.2536051Z",
+          "name": "local-data-svg-and-wide-table-image-are-contained",
+          "id": "C06",
+          "status": "PASS",
+          "detailExcerpt": "",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T02:01:06.5224283Z",
+          "startedUtc": "2026-10-15T02:00:46.2998353Z",
+          "name": "html-inert-script-and-formatting-content",
+          "id": "C05",
+          "status": "PASS",
+          "detailExcerpt": "",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T02:01:58.6037499Z",
+          "startedUtc": "2026-10-15T02:01:06.5224941Z",
+          "name": "superscript-and-subscript-have-correct-independent-baselines",
+          "id": "P1-001",
+          "status": "PASS",
+          "detailExcerpt": "",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T02:03:20.8028211Z",
+          "startedUtc": "2026-10-15T02:01:58.6038996Z",
+          "name": "owned-and-ancestor-viewports-scroll-without-selecting",
+          "id": "C13",
+          "status": "PASS",
+          "detailExcerpt": "",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T02:06:15.2408044Z",
+          "startedUtc": "2026-10-15T02:03:20.8028847Z",
+          "name": "mouse-selection-crosses-lines-formatting-lists-and-table-and-keyboard-adjusts-handle-endpoint",
+          "id": "C09",
+          "status": "PASS",
+          "detailExcerpt": "",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T02:07:30.0587078Z",
+          "startedUtc": "2026-10-15T02:06:15.2408816Z",
+          "name": "copy-as-markdown-preserves-source-for-entire-document",
+          "id": "C08",
+          "status": "PASS",
+          "detailExcerpt": "",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T02:08:37.0878488Z",
+          "startedUtc": "2026-10-15T02:07:30.0587784Z",
+          "name": "copy-as-markdown-preserves-only-partially-selected-source-syntax",
+          "id": "C08",
+          "status": "PASS",
+          "detailExcerpt": "",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T02:09:24.0779521Z",
+          "startedUtc": "2026-10-15T02:08:37.0879273Z",
+          "name": "code-copy-button-copies-only-the-fenced-source",
+          "id": "C04",
+          "status": "PASS",
+          "detailExcerpt": "",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T02:11:41.119169Z",
+          "startedUtc": "2026-10-15T02:09:24.0780097Z",
+          "name": "touch-long-press-selects-whole-emoji-and-symbol-graphemes",
+          "id": "P1-002",
+          "status": "PASS",
+          "detailExcerpt": "",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T02:26:33.6105678Z",
+          "startedUtc": "2026-10-15T02:11:41.1192206Z",
+          "name": "touch-word-selection-does-not-merge-adjacent-keycap-emoji",
+          "id": "P1-016",
+          "status": "PASS",
+          "detailExcerpt": "",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T02:29:20.4009689Z",
+          "startedUtc": "2026-10-15T02:26:33.6106203Z",
+          "name": "touch-selection-preserves-rtl-logical-text-and-combining-graphemes",
+          "id": "C11",
+          "status": "PASS",
+          "detailExcerpt": "",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T02:29:52.4318205Z",
+          "startedUtc": "2026-10-15T02:29:20.4010225Z",
+          "name": "canceled-unrelated-contact-preserves-committed-selection",
+          "id": "P1-003",
+          "status": "FAIL",
+          "detailExcerpt": "winapp command failed with exit 1 (evidence: <USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\commands\\1236-target-exec-sandbox---json----powershell.exe--NoProfile--NonInteractive--Executi.txt): \r\n[stderr]\r\nNew routed contact 75/1 did not cancel without an ordinary release. Diagnostics: {\"pointerId\":75,\"contactSerial\":1,\"pre\r\nssDelta\":1,\"moveDelta\":1,\"cancelD",
+          "detailExcerptIsTruncated": true
+        },
+        {
+          "finishedUtc": "2026-10-15T02:30:19.7623474Z",
+          "startedUtc": "2026-10-15T02:29:52.431904Z",
+          "name": "investigate-near-origin-independent-touch-tap",
+          "id": "V1-004",
+          "status": "PASS",
+          "detailExcerpt": "",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T02:31:16.4966612Z",
+          "startedUtc": "2026-10-15T02:30:19.7624003Z",
+          "name": "touch-double-tap-handle-drag-context-copy-and-cancel",
+          "id": "C10",
+          "status": "FAIL",
+          "detailExcerpt": "Touch handle drag failed: Touch handle drag did not extend the UIA selected range. Diagnostics: {\"selectionBefore\":\"touchtarget\",\"selectionAfter\":\"\",\"expectedHandle\":\"MarkdownSelectionEndHandle\",\"expectedScreenPoint\":{\"screenX\":2349.0,\"screenY\":508.0,\"windowDpi\":96.0,\"clientOriginScreenPx\":{\"x\":164.0,\"y\":187.0}},\"rendererBounds\":[1849.0,288.0,1359.0,636.0],\"observerBefore\":{\"version\":1,\"rendererGeneration\":8,\"observationErrors\":0,\"observationStat",
+          "detailExcerptIsTruncated": true
+        },
+        {
+          "finishedUtc": "2026-10-15T02:32:27.066587Z",
+          "startedUtc": "2026-10-15T02:31:16.4967274Z",
+          "name": "touch-selected-link-exposes-exact-copy-link-command",
+          "id": "C10",
+          "status": "PASS",
+          "detailExcerpt": "",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T02:33:30.3891954Z",
+          "startedUtc": "2026-10-15T02:32:27.0666525Z",
+          "name": "final-svg-atomic-selection-owned-viewport",
+          "id": "C12",
+          "status": "FAIL",
+          "detailExcerpt": "Extending the existing selection into final Svg selected 'FinalSvgBoundaryUnique\n'; expected exact semantic text 'FinalSvgBoundaryUnique\nFinalSvgAtomicAltUnique'.",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T02:34:37.8113118Z",
+          "startedUtc": "2026-10-15T02:33:30.3892594Z",
+          "name": "final-svg-atomic-selection-ancestor-viewport",
+          "id": "C12",
+          "status": "FAIL",
+          "detailExcerpt": "Extending the existing selection into final Svg selected 'FinalSvgBoundaryUnique\n'; expected exact semantic text 'FinalSvgBoundaryUnique\nFinalSvgAtomicAltUnique'.",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T02:36:04.3839958Z",
+          "startedUtc": "2026-10-15T02:34:37.8113773Z",
+          "name": "final-math-object-selection-owned-viewport",
+          "id": "C12",
+          "status": "PASS",
+          "detailExcerpt": "",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T02:37:56.3538647Z",
+          "startedUtc": "2026-10-15T02:36:04.3840478Z",
+          "name": "final-math-object-selection-ancestor-viewport",
+          "id": "C12",
+          "status": "PASS",
+          "detailExcerpt": "",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T02:39:20.8954724Z",
+          "startedUtc": "2026-10-15T02:37:56.3539165Z",
+          "name": "final-mermaid-object-selection-owned-viewport",
+          "id": "C12",
+          "status": "PASS",
+          "detailExcerpt": "",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T02:40:53.2480466Z",
+          "startedUtc": "2026-10-15T02:39:20.8955241Z",
+          "name": "final-mermaid-object-selection-ancestor-viewport",
+          "id": "C12",
+          "status": "PASS",
+          "detailExcerpt": "",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T02:42:07.2750043Z",
+          "startedUtc": "2026-10-15T02:40:53.2481007Z",
+          "name": "navigation-replacement-clears-selection-and-reloads-clean-source",
+          "id": "C14",
+          "status": "PASS",
+          "detailExcerpt": "",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T02:43:51.3333616Z",
+          "startedUtc": "2026-10-15T02:42:07.2750576Z",
+          "name": "light-dark-forced-contrast-and-text-scale-are-committed",
+          "id": "C13",
+          "status": "PASS",
+          "detailExcerpt": "",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T02:45:09.2362602Z",
+          "startedUtc": "2026-10-15T02:43:51.3334133Z",
+          "name": "editable-task-control-toggles-native-state",
+          "id": "C03",
+          "status": "PASS",
+          "detailExcerpt": "",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T02:46:23.0803291Z",
+          "startedUtc": "2026-10-15T02:45:09.23632Z",
+          "name": "touch-link-and-hosted-control-remain-direct-interaction-targets",
+          "id": "C04",
+          "status": "PASS",
+          "detailExcerpt": "",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T02:48:09.4020041Z",
+          "startedUtc": "2026-10-15T02:46:23.0803805Z",
+          "name": "layout-resize-and-selection-state-survive-relayout",
+          "id": "C14",
+          "status": "FAIL",
+          "detailExcerpt": "winapp command failed with exit 1 (evidence: <USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\commands\\1822-target-exec-sandbox---json----powershell.exe--NoProfile--NonInteractive--Executi.txt): \r\n[stderr]\r\nUIA renderer AutomationId MarkdownRenderer was not found.\r\nAt C:\\WinApp\\work\\correctness\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\GuestUiProbe.ps",
+          "detailExcerptIsTruncated": true
+        },
+        {
+          "finishedUtc": "2026-10-15T02:48:11.9350384Z",
+          "startedUtc": "2026-10-15T02:48:09.4020725Z",
+          "name": "current-source-replacement-cancels-stale-document",
+          "id": "C14",
+          "status": "FAIL",
+          "detailExcerpt": "The captured app PID/HWND is no longer present in the selected Sandbox.",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T02:48:11.9358257Z",
+          "startedUtc": "2026-10-15T02:48:11.9358145Z",
+          "name": "commonmark-gfm-conformance-receipt",
+          "id": "C01",
+          "status": "UNVERIFIED",
+          "detailExcerpt": "This UI batch does not run the pinned offline conformance corpus or ConformanceHarnessTests; attach the separate current-source test receipt.",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T02:48:11.9358876Z",
+          "startedUtc": "2026-10-15T02:48:11.9358852Z",
+          "name": "valid-image-network-policy-and-invalid-failure-lifecycle",
+          "id": "C07",
+          "status": "UNVERIFIED",
+          "detailExcerpt": "Only deterministic data-URI SVG is exercised here; remote image admission, cancellation races, and fallback classification require the separate current-source image test receipt.",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T02:48:11.9359154Z",
+          "startedUtc": "2026-10-15T02:48:11.9359134Z",
+          "name": "stationary-edge-autoscroll-and-endpoint-crossing",
+          "id": "C10",
+          "status": "UNVERIFIED",
+          "detailExcerpt": "The UI batch verifies swipe, handle extension and cancellation, but does not prove stationary frame-paced edge scrolling or handle-role crossing.",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T02:48:11.9359388Z",
+          "startedUtc": "2026-10-15T02:48:11.9359369Z",
+          "name": "actual-dpi-100-150-200",
+          "id": "C13",
+          "status": "UNVERIFIED",
+          "detailExcerpt": "The active Sandbox reports one effective window DPI. UI text-scale preview is not a substitute for 100%, 150%, or 200% Windows display scaling; record each physical setting in separate qualified runs.",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T02:48:11.9359622Z",
+          "startedUtc": "2026-10-15T02:48:11.9359602Z",
+          "name": "actual-windows-system-high-contrast",
+          "id": "C13",
+          "status": "UNVERIFIED",
+          "detailExcerpt": "The script exercises the sample forced High Contrast semantic provider. It records but does not change the Windows system High Contrast setting.",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T02:48:11.9359882Z",
+          "startedUtc": "2026-10-15T02:48:11.9359863Z",
+          "name": "screenshot-review",
+          "id": "C13",
+          "status": "UNVERIFIED",
+          "detailExcerpt": "Screenshots are captured; root must inspect each listed PNG for clipping, overlap, missing visual content, and theme correctness before this criterion can pass.",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T02:48:11.9360108Z",
+          "startedUtc": "2026-10-15T02:48:11.936009Z",
+          "name": "live-capture-loss-unload-and-disposal-during-touch",
+          "id": "C14",
+          "status": "UNVERIFIED",
+          "detailExcerpt": "This UI batch does not induce and observe capture loss, renderer unload, or disposal while a touch/selection-handle contact is active. Existing offline retirement coverage is not live app qualification.",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T02:48:11.9360337Z",
+          "startedUtc": "2026-10-15T02:48:11.9360318Z",
+          "name": "current-source-feature-test-receipts",
+          "id": "C15",
+          "status": "UNVERIFIED",
+          "detailExcerpt": "The UI batch runs sample smoke assertions, not every current-source focused HTML/math/Mermaid/SVG/highlighting/hosted-control test project.",
+          "detailExcerptIsTruncated": false
+        },
+        {
+          "finishedUtc": "2026-10-15T02:48:11.9428489Z",
+          "startedUtc": "2026-10-15T02:48:11.942842Z",
+          "name": "harness-setup-or-fatal-error",
+          "id": "HARNESS",
+          "status": "FAIL",
+          "detailExcerpt": "System.Management.Automation.RuntimeException: The captured Sandbox target was invalidated earlier: The captured app PID/HWND is no longer present in the selected Sandbox.",
+          "detailExcerptIsTruncated": false
+        }
+      ],
+      "appWindowHandle": 393318,
+      "resultCounts": {
+        "pass": 47,
+        "fail": 7,
+        "unverified": 8
+      },
+      "target": "sandbox",
+      "targetEpoch": "218a2f04-395a-43f3-88b9-40ebad4967fe:3363A2EAC7303DD9FEA523D207994236",
+      "generatedUtc": "2026-10-15T02:48:12.5707794Z",
+      "appProcessId": 6676
+    },
+    "rawReportsAndScreenshotHashes": {
+      "runnerSha256": "896f06090b10e8e2494b62946e90d13365adf18d3dbb59e3908290415b44744b",
+      "files": [
+        {
+          "length": 180358,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\results.json",
+          "name": "results.json",
+          "sha256": "5fa0f575bcf094a8caae94bd98d791e31b1b8e7470cb6051a2a26782cdf803d9"
+        },
+        {
+          "length": 46898,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\run.json",
+          "name": "run.json",
+          "sha256": "63f78f00bbb69a1fcbf963964504195068a9969b5709bc97e633575dd3901c2c"
+        }
+      ],
+      "werSha256": "f21cd6a25e38697525c211a719b3d7bca0e3d698565690395623414be4e1383b",
+      "screenshots": [
+        {
+          "length": 75552,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\c11-combining-selection.png",
+          "name": "c11-combining-selection.png",
+          "sha256": "1b159cc5bbf2b8e6315970a215a26ed7c6dcf0ccddcd68c9c61246323e085780"
+        },
+        {
+          "length": 74021,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\c11-rtl-selection.png",
+          "name": "c11-rtl-selection.png",
+          "sha256": "c8ca371e30f050a146cdeb7ee228db5c69dac0c6f2d613b1133c929f47f56ccc"
+        },
+        {
+          "length": 181727,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\Code.png",
+          "name": "Code.png",
+          "sha256": "d23dc416d1b333eebc281ba285148e8adb6d0cb221c9e885f4e7c56d03196461"
+        },
+        {
+          "length": 65271,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\copy-markdown-partial.png",
+          "name": "copy-markdown-partial.png",
+          "sha256": "79cc9a8c91544fdacd41e1000882f046e0fdf2331e5bf05012ca5e5569bd2557"
+        },
+        {
+          "length": 223779,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\html-inert-script-and-formatting.png",
+          "name": "html-inert-script-and-formatting.png",
+          "sha256": "cdfd406f80e5477b35b9d68155e4def7345f45c766c2acc96d8e562871f01fac"
+        },
+        {
+          "length": 64987,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\html-script-geometry.png",
+          "name": "html-script-geometry.png",
+          "sha256": "8ef859c94d5154cf2197438796ffc4c55c723a9e2a23299c6ab43afdb6b21a27"
+        },
+        {
+          "length": 223760,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\Html.png",
+          "name": "Html.png",
+          "sha256": "105aae12ede97b381605759acb666fd0cc631666b86eb56edb6332757c0adbf0"
+        },
+        {
+          "length": 236963,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\Images.png",
+          "name": "Images.png",
+          "sha256": "ba1358721771fc7ca86935b8402d1f22b0728e5bbb7337fbb4141acbefc8667c"
+        },
+        {
+          "length": 241527,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\initial.png",
+          "name": "initial.png",
+          "sha256": "3e5b89792157b936f11f58c0ea44192e02f0fa631517dbf5b6c773019be8a23e"
+        },
+        {
+          "length": 216667,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\lazy-svg-portrait-purple-gold.png",
+          "name": "lazy-svg-portrait-purple-gold.png",
+          "sha256": "08f5a85be109c06bdce494be60500cf287b87251b16fcf89afa983e79efae748"
+        },
+        {
+          "length": 211244,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\lazy-svg-square-blue.png",
+          "name": "lazy-svg-square-blue.png",
+          "sha256": "a427bcb5c39aa9fdb182028083601c9880ae9d3b8123b63a330998ebf176736f"
+        },
+        {
+          "length": 216667,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\lazy-svg-wide-blue-landscape.png",
+          "name": "lazy-svg-wide-blue-landscape.png",
+          "sha256": "08f5a85be109c06bdce494be60500cf287b87251b16fcf89afa983e79efae748"
+        },
+        {
+          "length": 216667,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\lazy-svg-wide-teal-strip.png",
+          "name": "lazy-svg-wide-teal-strip.png",
+          "sha256": "08f5a85be109c06bdce494be60500cf287b87251b16fcf89afa983e79efae748"
+        },
+        {
+          "length": 141308,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\Lists.png",
+          "name": "Lists.png",
+          "sha256": "37e23bb4dd9b614658869efededf1caf682a656c61f8131b3fb6d1b6c7a73b07"
+        },
+        {
+          "length": 60055,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\math-last-object-selected-ancestor.png",
+          "name": "math-last-object-selected-ancestor.png",
+          "sha256": "5f9a3f275eb0b96bf4f7dcb8a73757c9815980e25dea44c89604beeafe356796"
+        },
+        {
+          "length": 59672,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\math-last-object-selected-owned.png",
+          "name": "math-last-object-selected-owned.png",
+          "sha256": "3c2303248db5193b627ccee641e862cc2b5c97988d5e0588bdb5291415cd3f8a"
+        },
+        {
+          "length": 173417,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\math-native.png",
+          "name": "math-native.png",
+          "sha256": "745e5517b2fb60f705b3db64ee00bd76f76741490a8fc123e0537053c79d31cc"
+        },
+        {
+          "length": 173417,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\Math.png",
+          "name": "Math.png",
+          "sha256": "745e5517b2fb60f705b3db64ee00bd76f76741490a8fc123e0537053c79d31cc"
+        },
+        {
+          "length": 152352,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\mermaid-bottom.png",
+          "name": "mermaid-bottom.png",
+          "sha256": "66041499d1fd0d3de703f72f4918065b76ec7d28c3ad87980f41877d0ace6ed7"
+        },
+        {
+          "length": 61407,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\mermaid-last-object-selected-ancestor.png",
+          "name": "mermaid-last-object-selected-ancestor.png",
+          "sha256": "c7fd9eb83090b69cdb105ef24981e939e91ada64302da40cfdf3e4484bf710ac"
+        },
+        {
+          "length": 61004,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\mermaid-last-object-selected-owned.png",
+          "name": "mermaid-last-object-selected-owned.png",
+          "sha256": "a77bc32af1ec74876c523cb2e0957bbb2f17b86a1d3f284a2273a36df633f0be"
+        },
+        {
+          "length": 188347,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\Mermaid.png",
+          "name": "Mermaid.png",
+          "sha256": "a74d2fd332f1d1d91cf11fbdc5bfd5fecc43e57501cfe8b8be0d91ab282bef9b"
+        },
+        {
+          "length": 61731,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\p1-016-ancestor-keycap-double-tap.png",
+          "name": "p1-016-ancestor-keycap-double-tap.png",
+          "sha256": "a92f8f69994e9df4cb76f1306b2ed318ac2b8da858c38c75aed737a91fa6ceb8"
+        },
+        {
+          "length": 72841,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\p1-016-ancestor-keycap-long-press.png",
+          "name": "p1-016-ancestor-keycap-long-press.png",
+          "sha256": "ef63f2d903618e520863601f143596f32efe434e287b41e4e2b6082d85a7ceed"
+        },
+        {
+          "length": 62361,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\p1-016-ancestor-left-word-double-tap.png",
+          "name": "p1-016-ancestor-left-word-double-tap.png",
+          "sha256": "867d105887b35d827e1cd3bea6202bf0a8b1285b981b5982ff44263b6e5f3bcb"
+        },
+        {
+          "length": 74803,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\p1-016-ancestor-left-word-long-press.png",
+          "name": "p1-016-ancestor-left-word-long-press.png",
+          "sha256": "57b925b7758d76d241bb81434bcde2474b2e7c0e77a488aeee7bd953a268f3a6"
+        },
+        {
+          "length": 62461,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\p1-016-ancestor-right-word-double-tap.png",
+          "name": "p1-016-ancestor-right-word-double-tap.png",
+          "sha256": "b891d326f07edde9cba28f1322408e57b153a5ed426e17bbc0cb135bbf859cb9"
+        },
+        {
+          "length": 74591,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\p1-016-ancestor-right-word-long-press.png",
+          "name": "p1-016-ancestor-right-word-long-press.png",
+          "sha256": "c033d89076cff9cf81d57523c0ddbfb8c0faa867088641ab65da6e8eb2a54dd8"
+        },
+        {
+          "length": 61315,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\p1-016-owned-keycap-double-tap.png",
+          "name": "p1-016-owned-keycap-double-tap.png",
+          "sha256": "7090a63c92e84abdf155b5898d0d5857d1cc835feda2d39f269d6393e2320e58"
+        },
+        {
+          "length": 72400,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\p1-016-owned-keycap-long-press.png",
+          "name": "p1-016-owned-keycap-long-press.png",
+          "sha256": "33b105234be574fd3c3b74eaac78c34a4498e8af9a20715f79701f7cdc620087"
+        },
+        {
+          "length": 61978,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\p1-016-owned-left-word-double-tap.png",
+          "name": "p1-016-owned-left-word-double-tap.png",
+          "sha256": "afcd5baa4650db36d14bc4495565ab17cf976ba179638831fec8f4e48b973d1c"
+        },
+        {
+          "length": 74371,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\p1-016-owned-left-word-long-press.png",
+          "name": "p1-016-owned-left-word-long-press.png",
+          "sha256": "26805094babdcb8df74b7f4aaf3306ac6d8ccfd1ac9632cff707e619d833199f"
+        },
+        {
+          "length": 62071,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\p1-016-owned-right-word-double-tap.png",
+          "name": "p1-016-owned-right-word-double-tap.png",
+          "sha256": "8ea93228fbcfe2c27fd5b9b731a4ed43489987ff513409852b7034640ed56371"
+        },
+        {
+          "length": 74295,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\p1-016-owned-right-word-long-press.png",
+          "name": "p1-016-owned-right-word-long-press.png",
+          "sha256": "17a5c3bfc59779716f5ea7eb77f8e6b9e20b1468847bc52eb5204a1f38c9c7d4"
+        },
+        {
+          "length": 139991,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\Rtl.png",
+          "name": "Rtl.png",
+          "sha256": "ac7141bb9f1debb7c48b91d3075d42e6bafae332bae4d6c7a997b7f90282ee8e"
+        },
+        {
+          "length": 73968,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\selection-keyboard-endpoint-adjustment.png",
+          "name": "selection-keyboard-endpoint-adjustment.png",
+          "sha256": "c63dbfba3c559d1d29bbbfd3b6e4d23fb1093b770c030a3baf6d00e3815ee9e6"
+        },
+        {
+          "length": 76154,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\selection-list-table-crossing.png",
+          "name": "selection-list-table-crossing.png",
+          "sha256": "bc3fd7a8ec7a125e6d70b62c44e42aac500a58e9764bb254da1e4adfdb6f1da2"
+        },
+        {
+          "length": 151654,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\selection-resize-narrow.png",
+          "name": "selection-resize-narrow.png",
+          "sha256": "10525e38b2c8a320e8d4de3d98c69c837bea66effd99844ae6b6bbf381ed8865"
+        },
+        {
+          "length": 172208,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\Selection.png",
+          "name": "Selection.png",
+          "sha256": "8c36029c41e79602a7f715713d885a976f104894340b11707761c49ab7e7439d"
+        },
+        {
+          "length": 145586,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\svg-table-narrow.png",
+          "name": "svg-table-narrow.png",
+          "sha256": "3490ebedb8da975277f1b2424aadc57f77df757c9b8f03b5d1dd092d84d10f62"
+        },
+        {
+          "length": 245159,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\svg-unsupported-content-failure-states.png",
+          "name": "svg-unsupported-content-failure-states.png",
+          "sha256": "0c35e4e817cd759441c6bb14ce22d1196bc12607ceaaf160a412daf1f53922d2"
+        },
+        {
+          "length": 274143,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\SvgStress.png",
+          "name": "SvgStress.png",
+          "sha256": "9ac844ee52d4e479bc77f2d9f18b47e54dada7ddc447b43ececae9e7646ffab1"
+        },
+        {
+          "length": 178475,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\Tables.png",
+          "name": "Tables.png",
+          "sha256": "62ae1f28756371d7ce55045b9359134de4ce2b605ab6383ea0373f49c2918d7d"
+        },
+        {
+          "length": 208798,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\touch-dark.png",
+          "name": "touch-dark.png",
+          "sha256": "7c9b21852d76e488cbbf4fdfad4f9b83f4bf4934d1927fe3ba3b19aaab27dea2"
+        },
+        {
+          "length": 229002,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\touch-forced-high-contrast-text-200.png",
+          "name": "touch-forced-high-contrast-text-200.png",
+          "sha256": "3c29a0febd1dcf7b385c5d876e202fc508952bff7114cf5a2bf85586bbd52c75"
+        },
+        {
+          "length": 206861,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\touch-light.png",
+          "name": "touch-light.png",
+          "sha256": "a9ee421f55ed733e2d464113ce40800b7dcc56647aa08d4668e650896f6e78ed"
+        },
+        {
+          "length": 203033,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\touch-pan-ancestor.png",
+          "name": "touch-pan-ancestor.png",
+          "sha256": "b12852ab7622fbc57d47ebf4a071d1f1a58b6e619b2879fc35cfa69b3efce709"
+        },
+        {
+          "length": 202598,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\touch-pan-owned.png",
+          "name": "touch-pan-owned.png",
+          "sha256": "e1683506ad21b66959070e60b0fb5c642a1cffd1a8893b859b6ec5e8ec433fb9"
+        },
+        {
+          "length": 79368,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\touch-selected-link-copy-link-menu.png",
+          "name": "touch-selected-link-copy-link-menu.png",
+          "sha256": "23d6b627ef9e46539a91fdbb6f992549881a323b9ee0e7c63b757df0d01cc694"
+        },
+        {
+          "length": 202952,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\TouchSelection.png",
+          "name": "TouchSelection.png",
+          "sha256": "135370a1f225656dfafb5e59b9155b0bbd73567e3642f80731c733027924db77"
+        },
+        {
+          "length": 158523,
+          "path": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownRenderer-Correctness-FreshSandbox-R3-20261015\\20261015T014645Z-0857a107c7b847409c21e8f5ff3ee66e\\screenshots\\Typography.png",
+          "name": "Typography.png",
+          "sha256": "b537eb50deb7637217cc9f97a9881edbdbc14466c073e0884bffdf6b739b6651"
+        }
+      ]
+    },
+    "visualReview": {
+      "reviewedCount": 51,
+      "allListedCapturesInspected": true,
+      "reviews": [
+        {
+          "name": "initial.png",
+          "status": "PASS_VISIBLE_STATE",
+          "notes": "Full demo headings, paragraphs, formatted text, lists, rule, link and blockquote are ordered and legible. Source/editor and fixed navigation share stable split panes; document continues beyond viewport normally."
+        },
+        {
+          "name": "Typography.png",
+          "status": "PASS_VISIBLE_STATE",
+          "notes": "Six heading levels, emphasis, code, underline links, blockquote and rules match authored content. No overlap or unintended right-edge clipping in visible preview."
+        },
+        {
+          "name": "Lists.png",
+          "status": "PASS_VISIBLE_STATE",
+          "notes": "Nested unordered and ordered structure is preserved; real blue native task checkboxes align with labels. The mixed-list section legitimately continues below viewport; no missing visible rows."
+        },
+        {
+          "name": "Tables.png",
+          "status": "PASS_VISIBLE_STATE",
+          "notes": "Visible three-column GFM rows retain headers, alternating rows, checkmark labels and all three cells within the preview. Additional rows continue vertically below viewport."
+        },
+        {
+          "name": "Code.png",
+          "status": "PASS_VISIBLE_STATE",
+          "notes": "Code filename, line numbers, source indentation, syntax colors, selected authored line highlights and native copy buttons are visible without overlap. Following TypeScript block continues below viewport normally."
+        },
+        {
+          "name": "Images.png",
+          "status": "PASS_VISIBLE_STATE",
+          "notes": "Authored no-resolver policy text explains the blocked remote-image placeholder; local data-URI blue circle and percent-encoded red square render with their correct aspect ratios and captions. Filter example begins below viewport; this capture alone does not qualify it."
+        },
+        {
+          "name": "Html.png",
+          "status": "PASS_VISIBLE_STATE_P1_027_CAPTION_FIXED",
+          "notes": "The previously omitted Native HTML table caption is visibly present immediately above the two-column table. Strong/emphasis/mark/code/kbd, blockquote, lists/link, expanded disclosure and local blue SVG figure remain ordered, contained and legible. Script/iframe safety assertions are separate structured checks."
+        },
+        {
+          "name": "Math.png",
+          "status": "PASS_VISIBLE_STATE",
+          "notes": "Inline algebra, fractions, Greek, radicals, scripts, accents, limits, sets and delimiters render as legible math with surrounding text aligned. Display sum and binomial scene are present; no literal fallback or overlap in the visible region."
+        },
+        {
+          "name": "Mermaid.png",
+          "status": "PASS_VISIBLE_STATE",
+          "notes": "Flowchart node shapes, directed/labeled edges, group, invokable label and authored green node render legibly. Sequence actor/participants/messages begin below and continue beyond viewport normally."
+        },
+        {
+          "name": "SvgStress.png",
+          "status": "PASS_VISIBLE_STATE",
+          "notes": "Gradient, pattern, marker, mask and multilingual/RTL/text-path SVGs are visibly rendered. The authored rotated clipped block is intentional artwork, not accidental viewport clipping. No unsupported placeholders in these admitted visible fixtures."
+        },
+        {
+          "name": "Selection.png",
+          "status": "PASS_VISIBLE_STATE",
+          "notes": "Selection/copy instructions, inline formatting, lists, blockquote and ordered steps are visible and legible. No active selection in this navigation state, so this image does not qualify gestures or clipboard."
+        },
+        {
+          "name": "TouchSelection.png",
+          "status": "PASS_VISIBLE_STATE",
+          "notes": "Touch instructions, mixed Unicode/RTL, formatting and five-row behavior table are legible and contained. Native checkbox and hosted action are distinct controls; active touch is not proven by this navigation capture."
+        },
+        {
+          "name": "Rtl.png",
+          "status": "PASS_VISIBLE_STATE_ONLY",
+          "notes": "Arabic and mixed-bidi text, lists and table content render legibly. Preview remains in LTR flow in this navigation capture; full RTL-toggle behavior requires its separate interaction assertions."
+        },
+        {
+          "name": "lazy-svg-square-blue.png",
+          "status": "PASS_VISIBLE_STATE",
+          "notes": "All four deterministic local SVG fixtures are visible with distinct square/portrait/landscape/strip aspect ratios, captions and adjoining text; no unavailable placeholder."
+        },
+        {
+          "name": "lazy-svg-portrait-purple-gold.png",
+          "status": "PASS_VISIBLE_STATE",
+          "notes": "Byte-identical to the inspected portrait capture, verified by SHA256. All four distinct SVG fixtures and the bottom tip are visible without overlap."
+        },
+        {
+          "name": "lazy-svg-wide-blue-landscape.png",
+          "status": "PASS_VISIBLE_STATE",
+          "notes": "Byte-identical to the inspected portrait capture, verified by SHA256. All four distinct SVG fixtures and the bottom tip are visible without overlap."
+        },
+        {
+          "name": "lazy-svg-wide-teal-strip.png",
+          "status": "PASS_VISIBLE_STATE",
+          "notes": "Byte-identical to the inspected portrait capture, verified by SHA256. All four distinct SVG fixtures and the bottom tip are visible without overlap."
+        },
+        {
+          "name": "math-native.png",
+          "status": "PASS_VISIBLE_STATE",
+          "notes": "Same visible Math fixture content as the reviewed Math page: inline and display native scenes are present and legible; no missing visible formula or literal fallback."
+        },
+        {
+          "name": "mermaid-bottom.png",
+          "status": "PASS_VISIBLE_STATE_FINAL_DIAGRAM_PRESENT",
+          "notes": "Final Kanban scene is fully visible at the document end, with Backlog/Rendering/Done columns and all three cards. Packet diagram and preceding chart section are contained. This corrects the earlier batch's unqualified bottom-visibility assertion; selection remains a separate test."
+        },
+        {
+          "name": "svg-unsupported-content-failure-states.png",
+          "status": "PASS_VISIBLE_STATE",
+          "notes": "Three intentionally disallowed SVG inputs show the expected labeled atomic placeholders, not partial artwork. Decorative and last-document checkmark SVGs remain visible. No active selection is present in this capture."
+        },
+        {
+          "name": "svg-table-narrow.png",
+          "status": "PASS_VISIBLE_STATE",
+          "notes": "At native 746px window width, the 1600px intrinsic SVG shrinks into its table cell and neighboring text wraps without losing the second column. Four-by-three checkmark grid, wrapped headings/body, compact navigation and toolbar remain accessible; only normal bottom-viewport continuation is clipped."
+        },
+        {
+          "name": "html-inert-script-and-formatting.png",
+          "status": "PASS_VISIBLE_STATE_P1_027_CAPTION_FIXED",
+          "notes": "Native HTML table caption remains visible on the dedicated HTML check, alongside supported inline formatting, disclosure, cells and local figure. Safety assertions are separate structured results; the rendered visible content is complete."
+        },
+        {
+          "name": "html-script-geometry.png",
+          "status": "PASS_VISIBLE_STATE",
+          "notes": "The raisedMarker superscript and loweredMarker subscript sit above/below surrounding baselines respectively with smaller type and no overlap. Both authored markers remain legible."
+        },
+        {
+          "name": "touch-pan-owned.png",
+          "status": "PASS_VISIBLE_STATE",
+          "notes": "Owned viewport is scrolled to lower code, diagram and edge exercise. No selection highlight or handles are visible; native checkbox, hosted action and code-copy control remain separate."
+        },
+        {
+          "name": "touch-pan-ancestor.png",
+          "status": "PASS_VISIBLE_STATE",
+          "notes": "Ancestor viewport toggle is active; the same lower document region is visible after swipe without selection highlight or handles. Code, diagram, table tail and native controls remain contained."
+        },
+        {
+          "name": "selection-list-table-crossing.png",
+          "status": "PASS_VISIBLE_STATE",
+          "notes": "Selection visibly spans both list items and all four table cells while preserving readable selected formatting. Heading is unselected; table geometry and neighboring cells remain intact."
+        },
+        {
+          "name": "selection-keyboard-endpoint-adjustment.png",
+          "status": "PASS_VISIBLE_STATE",
+          "notes": "Only keyboardTarget is visibly highlighted, with both circular selection handles shown. Comma and neighboring text are unselected after keyboard contraction. Native handle tooltip is not document content."
+        },
+        {
+          "name": "copy-markdown-partial.png",
+          "status": "PASS_VISIBLE_STATE",
+          "notes": "Only boldTarget gap codeTarget is highlighted; Prefix and suffix remain unselected and visible. The batch asserts exact copied Markdown independently; the screenshot confirms correct painted range and readable inline styling."
+        },
+        {
+          "name": "p1-016-owned-left-word-double-tap.png",
+          "status": "PASS_VISIBLE_STATE",
+          "notes": "Only wordleft is highlighted, excluding adjacent keycap and wordright; both handle glyphs visible. Narrow selected word remains legible."
+        },
+        {
+          "name": "p1-016-owned-left-word-long-press.png",
+          "status": "PASS_VISIBLE_STATE",
+          "notes": "Only wordleft is highlighted with two handles; native Copy, Copy as Markdown, Select All menu is visible. Adjacent keycap and wordright are not selected."
+        },
+        {
+          "name": "p1-016-owned-keycap-double-tap.png",
+          "status": "PASS_VISIBLE_STATE",
+          "notes": "Only adjacent keycap grapheme is highlighted, excluding wordleft and wordright; two close handle glyphs are visible. Exact Unicode clipboard assertion remains separate."
+        },
+        {
+          "name": "p1-016-owned-keycap-long-press.png",
+          "status": "PASS_VISIBLE_STATE",
+          "notes": "Only keycap grapheme is visibly highlighted with two handle glyphs and native selection menu. Neighboring text is not highlighted; exact grapheme integrity is checked in structured results."
+        },
+        {
+          "name": "p1-016-owned-right-word-double-tap.png",
+          "status": "PASS_VISIBLE_STATE",
+          "notes": "Only wordright is highlighted, excluding the preceding keycap grapheme and wordleft. Two handle glyphs remain visible; the long-press capture also shows the native selection menu. Exact clipboard results remain independently asserted."
+        },
+        {
+          "name": "p1-016-owned-right-word-long-press.png",
+          "status": "PASS_VISIBLE_STATE",
+          "notes": "Only wordright is highlighted, excluding the preceding keycap grapheme and wordleft. Two handle glyphs remain visible; the long-press capture also shows the native selection menu. Exact clipboard results remain independently asserted."
+        },
+        {
+          "name": "p1-016-ancestor-left-word-double-tap.png",
+          "status": "PASS_VISIBLE_STATE",
+          "notes": "Ancestor viewport toggle is active. Only wordleft is highlighted, excluding the adjacent keycap and wordright, with both handle glyphs visible. Long-press capture includes the native Copy/Copy as Markdown/Select All menu."
+        },
+        {
+          "name": "p1-016-ancestor-left-word-long-press.png",
+          "status": "PASS_VISIBLE_STATE",
+          "notes": "Ancestor viewport toggle is active. Only wordleft is highlighted, excluding the adjacent keycap and wordright, with both handle glyphs visible. Long-press capture includes the native Copy/Copy as Markdown/Select All menu."
+        },
+        {
+          "name": "p1-016-ancestor-keycap-double-tap.png",
+          "status": "PASS_VISIBLE_STATE",
+          "notes": "Ancestor viewport toggle is active. Only the keycap grapheme is highlighted between unselected neighboring words, with two handle glyphs visible. Exact copied Unicode remains a separate structured assertion."
+        },
+        {
+          "name": "p1-016-ancestor-keycap-long-press.png",
+          "status": "PASS_VISIBLE_STATE",
+          "notes": "Ancestor viewport toggle is active. Only the keycap grapheme is highlighted with two handles and the native selection menu; both neighboring words remain unselected."
+        },
+        {
+          "name": "p1-016-ancestor-right-word-double-tap.png",
+          "status": "PASS_VISIBLE_STATE",
+          "notes": "Ancestor viewport toggle is active. Only wordright is highlighted, excluding the preceding keycap and wordleft; both handles remain visible."
+        },
+        {
+          "name": "p1-016-ancestor-right-word-long-press.png",
+          "status": "PASS_VISIBLE_STATE",
+          "notes": "Ancestor viewport toggle is active. Only wordright is highlighted, excluding preceding keycap and wordleft, with both handles and native Copy/Copy as Markdown/Select All menu visible."
+        },
+        {
+          "name": "c11-rtl-selection.png",
+          "status": "PASS_VISIBLE_STATE",
+          "notes": "Mixed English/Arabic/Hebrew sentence remains legible; only Arabic target word is selected with two handles. Native selection menu is present. Logical Unicode order is asserted independently by TextPattern, not inferred from screenshot."
+        },
+        {
+          "name": "c11-combining-selection.png",
+          "status": "PASS_VISIBLE_STATE",
+          "notes": "Only the decomposed accented target word is visibly highlighted with two handles and native selection menu. Prefix/suffix remain unselected; the composed appearance is legible. Exact UTF-16 preservation is checked independently by TextPattern."
+        },
+        {
+          "name": "touch-selected-link-copy-link-menu.png",
+          "status": "PASS_VISIBLE_STATE",
+          "notes": "Only linkedlabel is highlighted with both handles. Native context menu includes Copy Link alongside Copy, Copy as Markdown, and Select All; surrounding text remains unselected. Exact URL, enabled state and nonactivation require the separate structured checks."
+        },
+        {
+          "name": "math-last-object-selected-owned.png",
+          "status": "PASS_VISIBLE_STATE_P1_028_MATH",
+          "notes": "Selected final nested-fraction Math remains legible with authored dark glyphs and a translucent, blue-outlined box bounded to the formula, not an opaque viewport-wide band. Preceding text is selected; two handles are visible. Exact UIA range and full dollar-delimited Markdown are retained in commands1445/1458; overall batch remains in progress."
+        },
+        {
+          "name": "math-last-object-selected-ancestor.png",
+          "status": "PASS_VISIBLE_STATE_P1_028_MATH",
+          "notes": "Ancestor viewport toggle is active. Selected nested-fraction Math stays legible within a content-bounded translucent blue outline, not an opaque viewport-wide band. Preceding boundary text and both selection handles remain visible."
+        },
+        {
+          "name": "mermaid-last-object-selected-owned.png",
+          "status": "PASS_VISIBLE_STATE_P1_028_MERMAID",
+          "notes": "Selected final Mermaid node and its full label remain legible inside a content-bounded translucent blue selection outline, without an opaque viewport-wide band. The preceding boundary word is separately highlighted and both handles remain visible."
+        },
+        {
+          "name": "mermaid-last-object-selected-ancestor.png",
+          "status": "PASS_VISIBLE_STATE_P1_028_MERMAID",
+          "notes": "Ancestor viewport toggle is active. Selected final Mermaid node stays readable with content-bounded translucent/outlined selection; its label is not obscured and the full-width diagram container is not filled opaque blue. Both handles remain visible."
+        },
+        {
+          "name": "touch-light.png",
+          "status": "PASS_VISIBLE_STATE",
+          "notes": "Light theme displays the fixed touch document, formatting, mixed Unicode and behavior table legibly and contained. The hosted action continues at the viewport bottom normally. No selection is active; this does not qualify selected contrast colors."
+        },
+        {
+          "name": "touch-dark.png",
+          "status": "PASS_VISIBLE_STATE",
+          "notes": "Dark theme switches both shell/editor and renderer coherently. Body text, links, Arabic/Hebrew, table headers/rows and native checkbox remain legible. No overlap or unexpected horizontal scrollbar is visible."
+        },
+        {
+          "name": "touch-forced-high-contrast-text-200.png",
+          "status": "PASS_VISIBLE_STATE_FORCED_PREVIEW_ONLY",
+          "notes": "Original-resolution inspection confirms high-contrast preview uses white body text/cyan links on black, doubles document typography and wraps the mixed-bidi paragraph within the viewport. The next heading continues below the viewport normally. This is sample-forced contrast plus text scaling, not Windows system High Contrast or actual200% DPI; no selected-state qualification is inferred."
+        },
+        {
+          "name": "selection-resize-narrow.png",
+          "status": "PASS_NARROW_SELECTION_ONLY_RESTORE_CRASHED",
+          "notes": "Original-resolution capture shows selected hold with two handles and compact navigation at the narrow window. Passive receipt1817 independently reports renderer/snapshot345DIP, freshgeneration26 and44x44DIP handles. Independent visual review found normal wrapping rather than a demonstrated stale-width defect. The subsequent wide restore crashed; this capture cannot qualify relayout survival or overall reading correctness."
+        }
+      ],
+      "qualifiesActual150Or200Dpi": false,
+      "qualifiesActualWindowsHighContrast": false
+    },
+    "crash": {
+      "confirmed": true,
+      "exceptionCode": "0xc0000374",
+      "classification": "native heap corruption; corrupting module/call site unproven",
+      "processId": 6676,
+      "processStartUtc": "2026-10-15T01:46:54.3867730Z",
+      "executablePath": "C:\\WinApp\\deployments\\4b22de3bc5ed7fe4\\MarkdownRenderer.Sample.exe",
+      "reportId": "3f305a69-7ac7-4a9a-8231-d3d67c9de9b9",
+      "originalWerHostPath": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownCorrectness-r3-crash-20261015-55ced6a7caa94ae6a9748d49ca46944e",
+      "originalWerSha256": "f21cd6a25e38697525c211a719b3d7bca0e3d698565690395623414be4e1383b",
+      "temporaryMinidumpRetained": false,
+      "diagnosticsHostLog": "<USER_PROFILE>\\AppData\\Local\\Temp\\MarkdownCorrectness-r3-post-exit-diagnostics-20261015.log",
+      "normalDesktopChanged": false
+    },
+    "notExecuted": [
+      "selection-disable child investigation (original target invalid after crash)",
+      "follow-up COM point/edge/crossing/actual-Windows-HC suite",
+      "deferred terminal six-case suite",
+      "active-touch lifecycle six-case suite"
+    ],
+    "qualification": "Raw47PASS/7FAIL/8UNVERIFIED preserved. Detail excerpts are explicitly shortened; exact original full reports are referenced by path/length/hash. Seven failed assertions are not seven distinct renderer defects: source replacement and harness failures follow the same confirmed crash; cancellation delivery was ordinary release with native IsCanceled false. No phase or full top500 audit is complete. R3 was the second/final repair cycle; no further UI launch without fresh direction."
+  }
+}

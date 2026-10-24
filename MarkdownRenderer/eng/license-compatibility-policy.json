@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "repositoryLicense": "MIT",
+  "allowedSpdxIdentifiers": [
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "ISC",
+    "MIT",
+    "MPL-2.0",
+    "OFL-1.1",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib"
+  ],
+  "allowedLegacyIdentifiers": [
+    "Apache2",
+    "BSD",
+    "GitHub License",
+    "GUST-FONT-LICENSE",
+    "TextMate Bundle License"
+  ],
+  "reviewedLicenseReferences": [
+    {
+      "identifier": "LicenseRef-Microsoft-Windows-SDK",
+      "package": "Microsoft.Windows.SDK.BuildTools",
+      "scope": "build-only"
+    },
+    {
+      "identifier": "LicenseRef-Microsoft-Windows-SDK-MSIX",
+      "package": "Microsoft.Windows.SDK.BuildTools.MSIX",
+      "scope": "build-only"
+    },
+    {
+      "identifier": "LicenseRef-Microsoft-Windows-App-SDK",
+      "package": "Microsoft.WindowsAppSDK.Base",
+      "scope": "runtime-framework-redistributable"
+    },
+    {
+      "identifier": "LicenseRef-Microsoft-Windows-App-SDK",
+      "package": "Microsoft.WindowsAppSDK.Foundation",
+      "scope": "runtime-framework-redistributable"
+    },
+    {
+      "identifier": "LicenseRef-Microsoft-Windows-App-SDK",
+      "package": "Microsoft.WindowsAppSDK.InteractiveExperiences",
+      "scope": "runtime-framework-redistributable"
+    },
+    {
+      "identifier": "LicenseRef-Microsoft-Windows-App-SDK",
+      "package": "Microsoft.WindowsAppSDK.WinUI",
+      "scope": "runtime-framework-redistributable"
+    }
+  ],
+  "restrictedRuntimeDependencies": [
+    {
+      "identifier": "MPL-2.0",
+      "packages": [
+        "cssparser@0.36.0",
+        "cssparser-macros@0.6.1",
+        "dtoa-short@0.3.5",
+        "selectors@0.37.0"
+      ],
+      "notice": "MarkdownRenderer/MarkdownRenderer.Mermaid/licenses/MPL2-SOURCE.md"
+    }
+  ]
+}

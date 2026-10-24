@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <RootNamespace>MarkdownRenderer.ReadmeCorrectnessAudit</RootNamespace>
+    <AssemblyName>MarkdownRenderer.ReadmeCorrectnessAudit</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <UseWinUI>false</UseWinUI>
+    <EnableDefaultApplicationDefinition>false</EnableDefaultApplicationDefinition>
+    <EnableDefaultPageItems>false</EnableDefaultPageItems>
+    <IsAotCompatible>true</IsAotCompatible>
+    <EnableAotAnalyzer>true</EnableAotAnalyzer>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The self-contained Windows App SDK host merges activation manifests.
+         Declare the pinned SDK tools directly instead of relying on a VS shell's PATH. -->
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools"
+                      Version="$(JitHubWindowsSdkBuildToolsVersion)" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MarkdownRenderer.Core\MarkdownRenderer.Core.csproj" />
+    <ProjectReference Include="..\MarkdownRenderer.GitHub\MarkdownRenderer.GitHub.csproj" />
+    <ProjectReference Include="..\MarkdownRenderer.Math\MarkdownRenderer.Math.csproj" />
+    <ProjectReference Include="..\MarkdownRenderer.Mermaid\MarkdownRenderer.Mermaid.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Correctness-input acquisition shares the app's exact image URL rules
+         and the offline audit resolver's URL keys instead of copying them. -->
+    <Compile Include="..\..\JitHub.WinUI\Services\CodeViewer\GitHubCodeUrlBuilder.cs" Link="App\GitHubCodeUrlBuilder.cs" />
+    <Compile Include="..\..\JitHub.WinUI\Services\Markdown\GitHubMarkdownImageReference.cs" Link="App\GitHubMarkdownImageReference.cs" />
+    <Compile Include="..\..\JitHub.WinUI\Services\Markdown\GitHubMarkdownImageUrlResolver.cs" Link="App\GitHubMarkdownImageUrlResolver.cs" />
+    <Compile Include="..\..\JitHub.WinUI\Services\Markdown\MarkdownAuditImageUrlCandidates.cs" Link="App\MarkdownAuditImageUrlCandidates.cs" />
+  </ItemGroup>
+</Project>

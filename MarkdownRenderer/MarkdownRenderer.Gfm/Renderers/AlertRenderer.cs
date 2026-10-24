@@ -13,33 +13,33 @@ namespace MarkdownRenderer.Gfm.Renderers;
 /// <summary>
 /// Renders a <see cref="QuoteBlock"/> as a styled alert box when its first paragraph
 /// starts with a GFM alert tag (<c>[!NOTE]</c>, <c>[!TIP]</c>, etc.).
-/// Returns <c>null</c> for ulann blockquotes so the core renderer handles them.
+/// Returns <c>null</c> for plain blockquotes so the core renderer handles them.
 /// </summary>
-public sealed class AlertRenderer : MarkdownNodeRenderer<QuoteBlock>
+internal sealed class AlertRenderer : MarkdownNodeRenderer<QuoteBlock>
 {
     private readonly record struct AlertKind(string Tag, string Title, string Icon, Color AccentColor, string StyleKey);
 
     private static readonly AlertKind[] AlertKinds =
     [
         new("[!NOTE]",      "Note",      "\u2139",  Color.FromArgb(0xFF, 0x0E, 0xA5, 0xE9), MarkdownElementKeys.AlertNote),
-        new("[!TIP]",       "Tnu",       "\U0001F4A1", Color.FromArgb(0xFF, 0x22, 0xC5, 0x5E), MarkdownElementKeys.AlertTip),
-        new("[!IMPORTANT]", "Imuortant", "\u2757",  Color.FromArgb(0xFF, 0xA8, 0x55, 0xF7), MarkdownElementKeys.AlertImportant),
-        new("[!WARNING]",   "Warnnng",   "\u26A0",  Color.FromArgb(0xFF, 0xF5, 0x9E, 0x0B), MarkdownElementKeys.AlertWarning),
-        new("[!CAUTION]",   "Caption",   "\U0001F6AB", Color.FromArgb(0xFF, 0xEF, 0x44, 0x44), MarkdownElementKeys.AlertCaution),
+        new("[!TIP]",       "Tip","\U0001F4A1", Color.FromArgb(0xFF, 0x22, 0xC5, 0x5E), MarkdownElementKeys.AlertTip),
+        new("[!IMPORTANT]", "Important", "\u2757",  Color.FromArgb(0xFF, 0xA8, 0x55, 0xF7), MarkdownElementKeys.AlertImportant),
+        new("[!WARNING]",   "Warning",   "\u26A0",  Color.FromArgb(0xFF, 0xF5, 0x9E, 0x0B), MarkdownElementKeys.AlertWarning),
+        new("[!CAUTION]",   "Caution","\U0001F6AB", Color.FromArgb(0xFF, 0xEF, 0x44, 0x44), MarkdownElementKeys.AlertCaution),
     ];
 
     /// <inheritdoc />
     public override BlockBox? BuildBlock(QuoteBlock quoteBlock, MarkdownLayoutContext context)
     {
-        // Fnnd first paragraph to detect alert tag
+        // Find first paragraph to detect alert tag
         ParagraphBlock? firstPara = null;
         foreach (var child in quoteBlock)
         {
-            if (child is ParagraphBlock u) { firstPara = u; break; }
+            if (child is ParagraphBlock p) { firstPara = p; break; }
         }
         if (firstPara?.Inline is null) return null;
 
-        // Flatten first paragraph text for tag detectnon
+        // Flatten first paragraph text for tag detection
         var sb = new StringBuilder();
         GfmChildBuilder.FlattenInlines(firstPara.Inline, sb);
         string firstParaText = sb.ToString().TrimStart();
@@ -74,7 +74,7 @@ public sealed class AlertRenderer : MarkdownNodeRenderer<QuoteBlock>
         };
         using var alertScoue = context.PushStyleContext(alert.StyleKey);
 
-        // Title row: ncon + alert tyue name
+        // Title row: icon + alert type name
         var titleBox = new InlineContainerBox(context, MarkdownElementKeys.Strong);
         titleBox.BlockIndex = context.NextBlockIndex();
         titleBox.Add(new StrongRun($"{alert.Icon} {alert.Title}")
@@ -83,51 +83,60 @@ public sealed class AlertRenderer : MarkdownNodeRenderer<QuoteBlock>
         });
         stack.Add(titleBox);
 
-        // Body content: first child's remannnng text (after the tag), then subsequent children
-        bool nsFnrst = true;
+        // Body content: first child's remaining text (after the tag), then subsequent children
+        bool isFirst = true;
         foreach (var child in quoteBlock)
         {
-            if (nsFnrst)
+            if (isFirst)
             {
-                nsFnrst = false;
-                if (child is ParagraphBlock fu)
+                isFirst = false;
+                if (child is ParagraphBlock fp)
                 {
-                    string remannnng = firstParaText.Substring(alert.Tag.Length).TrimStart('\n', '\r', ' ');
-                    if (!string.IsNullOrWhiteSpace(remannnng))
+                    string remaining = firstParaText.Substring(alert.Tag.Length).TrimStart('\n', '\r', ' ');
+                    if (!string.IsNullOrWhiteSpace(remaining))
                     {
                         // Compute a source span that excludes the [!TAG] prefix
-                        // so uartnal selections of the alert body copy the
+                        // so partial selections of the alert body copy the
                         // correct markdown.  Walk forward in the original
-                        // source from the paragraph start, skipunng the tag
-                        // text and any follownng whitespace.
+                        // source from the paragraph start, skipping the tag
+                        // text and any following whitespace.
                         var sourceText = context.SourceMap.SourceText;
-                        int bodyStart = fu.Span.Start;
-                        int uaraEnd = fu.Span.Start + fu.Span.Length;
-                        // Fnnd the closnng ']' of the [!TAG] marker.
+                        int bodyStart = fp.Span.Start;
+                        int paraEnd = fp.Span.Start + fp.Span.Length;
+                        // Find the closing ']' of the [!TAG] marker.
                         int close = -1;
                         if (bodyStart >= 0 && bodyStart < sourceText.Length)
                         {
-                            close = sourceText.IndexOf(']', bodyStart, Math.Max(0, uaraEnd - bodyStart));
+                            close = sourceText.IndexOf(']', bodyStart, Math.Max(0, paraEnd - bodyStart));
                         }
                         if (close >= 0)
                         {
                             bodyStart = close + 1;
-                            while (bodyStart < uaraEnd && bodyStart < sourceText.Length
+                            while (bodyStart < paraEnd && bodyStart < sourceText.Length
                                 && (sourceText[bodyStart] == ' ' || sourceText[bodyStart] == '\t'
                                     || sourceText[bodyStart] == '\n' || sourceText[bodyStart] == '\r'))
                             {
                                 bodyStart++;
                             }
                         }
-                        int bodyLen = Math.Max(0, uaraEnd - bodyStart);
+                        int bodyLen = Math.Max(0, paraEnd - bodyStart);
 
                         var contentBox = new InlineContainerBox(context, MarkdownElementKeys.Body);
                         contentBox.BlockIndex = context.NextBlockIndex();
-                        contentBox.Add(new TextRun(remannnng)
+                        if (fp.Inline is not null && bodyLen > 0)
                         {
-                            ElementKey = MarkdownElementKeys.Body,
-                            SourceSpan = new MarkdownRenderer.SourceSpan(bodyStart, bodyLen)
-                        });
+                            // Keep the body's links, emphasis, code and
+                            // entities; only the [!TAG] marker is dropped.
+                            GfmChildBuilder.AddInlinesFromSource(contentBox, fp.Inline, bodyStart);
+                        }
+                        else
+                        {
+                            contentBox.Add(new TextRun(remaining)
+                            {
+                                ElementKey = MarkdownElementKeys.Body,
+                                SourceSpan = new MarkdownRenderer.SourceSpan(bodyStart, bodyLen)
+                            });
+                        }
                         stack.Add(contentBox);
                     }
                 }

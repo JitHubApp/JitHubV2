@@ -15,14 +15,15 @@ internal readonly record struct RepositorySvgValidationResult(bool Accepted, str
 }
 
 /// <summary>
-/// Applies bounded, self-contained SVG rules before repository content reaches Svg.Skia.
+/// Performs JitHub's bounded host preflight before repository content reaches
+/// the isolated SVG worker. The worker repeats the authoritative checks.
 /// </summary>
 internal static class RepositorySvgSecurityPolicy
 {
-    public const int MaxInputBytes = 2 * 1024 * 1024;
-    public const int MaxElements = 4096;
-    public const int MaxDepth = 64;
-    public const int MaxAttributes = 32768;
+    public const int MaxInputBytes = 8 * 1024 * 1024;
+    public const int MaxElements = 100000;
+    public const int MaxDepth = 128;
+    public const int MaxAttributes = 800000;
     public const int MaxTextNodes = 512;
     public const int MaxTextCharacters = 64 * 1024;
     public const int MaxPathCharacters = 512 * 1024;
@@ -95,7 +96,12 @@ internal static class RepositorySvgSecurityPolicy
                     }
 
                     if (elementName.Equals("script", StringComparison.OrdinalIgnoreCase) ||
-                        elementName.Equals("foreignObject", StringComparison.OrdinalIgnoreCase))
+                        elementName.Equals("foreignObject", StringComparison.OrdinalIgnoreCase) ||
+                        elementName.Equals("animate", StringComparison.OrdinalIgnoreCase) ||
+                        elementName.Equals("animateMotion", StringComparison.OrdinalIgnoreCase) ||
+                        elementName.Equals("animateTransform", StringComparison.OrdinalIgnoreCase) ||
+                        elementName.Equals("discard", StringComparison.OrdinalIgnoreCase) ||
+                        elementName.Equals("set", StringComparison.OrdinalIgnoreCase))
                     {
                         return RepositorySvgValidationResult.Reject("active-content");
                     }
@@ -131,7 +137,7 @@ internal static class RepositorySvgSecurityPolicy
                             if (name.Equals("href", StringComparison.OrdinalIgnoreCase) ||
                                 name.Equals("src", StringComparison.OrdinalIgnoreCase))
                             {
-                                if (!IsSafeLocalReference(value))
+                                if (!IsSafeResourceReference(elementName, value))
                                 {
                                     return RepositorySvgValidationResult.Reject("external-resource");
                                 }
@@ -239,10 +245,38 @@ internal static class RepositorySvgSecurityPolicy
             width * height <= MaxDeclaredArea;
     }
 
-    private static bool IsSafeLocalReference(string value)
+    private static bool IsSafeResourceReference(string elementName, string value)
     {
         ReadOnlySpan<char> reference = value.AsSpan().Trim();
-        return reference.IsEmpty || reference[0] == '#';
+        if (reference.IsEmpty || reference[0] == '#')
+        {
+            return true;
+        }
+
+        return elementName.Equals("image", StringComparison.OrdinalIgnoreCase) &&
+            IsSupportedImageDataUri(reference);
+    }
+
+    private static bool IsSupportedImageDataUri(ReadOnlySpan<char> value)
+    {
+        if (!value.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        int separator = value.IndexOf(',');
+        if (separator <= 0)
+        {
+            return false;
+        }
+
+        ReadOnlySpan<char> metadata = value[..separator];
+        return metadata.EndsWith(";base64", StringComparison.OrdinalIgnoreCase) &&
+            (metadata.StartsWith("data:image/png;", StringComparison.OrdinalIgnoreCase) ||
+             metadata.StartsWith("data:image/jpeg;", StringComparison.OrdinalIgnoreCase) ||
+             metadata.StartsWith("data:image/gif;", StringComparison.OrdinalIgnoreCase) ||
+             metadata.StartsWith("data:image/webp;", StringComparison.OrdinalIgnoreCase) ||
+             metadata.StartsWith("data:image/svg+xml;", StringComparison.OrdinalIgnoreCase));
     }
 
     private static bool HasUnsafeCssReference(string value)
@@ -269,7 +303,7 @@ internal static class RepositorySvgSecurityPolicy
             }
 
             string reference = value[valueStart..valueEnd].Trim().Trim('\'', '"');
-            if (!IsSafeLocalReference(reference))
+            if (!reference.AsSpan().Trim().StartsWith("#", StringComparison.Ordinal))
             {
                 return true;
             }

@@ -57,6 +57,16 @@ public sealed class GitHubRepoCodeQueryServiceTests : IDisposable
         Assert.Contains(directory.Value, item => item is { Name: "data.csv", Sha: "preview-csv" });
         Assert.Contains(directory.Value, item => item is { Name: "architecture.svg", Sha: "preview-svg" });
 
+        CachedResult<GitHubRepositoryContent> readme = await service.GetReadmeAsync(
+            GitHubAuthenticationConstants.PublicAccessToken,
+            "public",
+            "JitHubApp",
+            "JitHubV2",
+            "main");
+        Assert.Equal("preview-readme", readme.Value!.Sha);
+        Assert.Equal(PreviewText(await ReadPublicPreviewBlobAsync(service, "preview-readme")),
+            PreviewText(Encoding.UTF8.GetString(Convert.FromBase64String(readme.Value.Content!))));
+
         string csv = await ReadPublicPreviewBlobAsync(service, "preview-csv");
         CsvParseResult csvResult = CsvDocumentParser.Parse(csv, ',');
         Assert.True(csvResult.Succeeded);
@@ -76,14 +86,6 @@ public sealed class GitHubRepoCodeQueryServiceTests : IDisposable
             svgBytes,
             CancellationToken.None);
         Assert.True(validation.Accepted, validation.Reason);
-        RepositorySvgRasterizer rasterizer = new();
-        using RepositorySvgDocument? svgDocument = rasterizer.Load(svgBytes, CancellationToken.None);
-        Assert.NotNull(svgDocument);
-        RepositorySvgTile svgTile = rasterizer.RasterizeTile(
-            svgDocument,
-            new RepositorySvgTileRequest(0, 0, 960, 540, 1),
-            CancellationToken.None);
-        Assert.Contains(svgTile.BgraPixels.Where((_, index) => index % 4 == 3), alpha => alpha != 0);
     }
 
     private static async Task<string> ReadPublicPreviewBlobAsync(
@@ -222,6 +224,22 @@ public sealed class GitHubRepoCodeQueryServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Readme_UsesDedicatedEndpointAndRefSensitiveCacheIdentity()
+    {
+        (GitHubRepoCodeQueryService service, _, RecordingTransport transport) = CreateService();
+
+        CachedResult<GitHubRepositoryContent> first = await service.GetReadmeAsync(
+            "token", "42", "octo", "repo", "feature/readme");
+        CachedResult<GitHubRepositoryContent> cached = await service.GetReadmeAsync(
+            "token", "42", "octo", "repo", "feature/readme", QueryFetchPolicy.CacheFirst);
+
+        Assert.Equal("repos/octo/repo/readme?ref=feature%2Freadme", transport.Requests[0].RelativePath);
+        Assert.Equal("abc123", first.Value!.Sha);
+        Assert.Equal(CacheState.Fresh, cached.CacheState);
+        Assert.Single(transport.Requests);
+    }
+
+    [Fact]
     public async Task Blob_PreservesRequestedPrefetchPriorityAtQueryBoundary()
     {
         CapturingQueryService queryService = new();
@@ -286,6 +304,8 @@ public sealed class GitHubRepoCodeQueryServiceTests : IDisposable
         return (new GitHubRepoCodeQueryService(queryService), store, transport);
     }
 
+    private static string PreviewText(string value) => value.Replace("\r\n", "\n", StringComparison.Ordinal);
+
     private sealed class RecordingTransport : IGitHubRestTransport
     {
         public List<GitHubRestRequest> Requests { get; } = [];
@@ -305,6 +325,16 @@ public sealed class GitHubRepoCodeQueryServiceTests : IDisposable
                 }
                 : typeof(T) == typeof(GitHubRepositoryContent[])
                     ? new[] { new GitHubRepositoryContent { Name = "file.cs", Path = "src/file.cs", Type = "file", Sha = "abc123" } }
+                    : typeof(T) == typeof(GitHubRepositoryContent)
+                        ? new GitHubRepositoryContent
+                        {
+                            Name = "README.md",
+                            Path = "README.md",
+                            Type = "file",
+                            Sha = "abc123",
+                            Encoding = "base64",
+                            Content = Convert.ToBase64String(Encoding.UTF8.GetBytes("content"))
+                        }
                     : typeof(T) == typeof(GitHubBlob)
                         ? new GitHubBlob
                         {

@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "checkpointDate": "2026-10-17",
+  "checkpointTimeZone": "America/Los_Angeles",
+  "sourceCheckpoint": "c013b9488ef5180fd87729cc512ffd15f3e665f9",
+  "purpose": "Portable historical evidence for the correctness handoff; no new run or release qualification",
+  "files": [
+    {
+      "name": "mermaid-component-verification.json",
+      "bytes": 11658,
+      "sha256": "cf9514d9821f8fab51012c14f43010010724d725ba6bed07d9aebb820674b8d0",
+      "kind": "sanitized historical receipt",
+      "originalRelativePath": "artifacts/phase2-20261014/merman-four-family-product-verification.json",
+      "originalBytes": 10028,
+      "originalSha256": "bb2067b54316a3f05089fb549000d80f9ec7e075095095543a228f006dd28ee0"
+    },
+    {
+      "name": "p1-032-managed-lifetime-investigation-r6.json",
+      "bytes": 8554,
+      "sha256": "8978383dd785465decbec4579970fdff84548a8fe2633e46aeaa20bb00528988",
+      "kind": "sanitized historical receipt",
+      "originalRelativePath": "artifacts/phase1-20261014/p1-032-managed-lifetime-investigation-r6-20261018.json",
+      "originalBytes": 7591,
+      "originalSha256": "7fadff9eb23906f181d77fee33128902912e83750312b8d9c4157443057764ec"
+    },
+    {
+      "name": "p1-032-original-options-crash.json",
+      "bytes": 42178,
+      "sha256": "6e6d3b07a0cf5dd821249e638b75476ba3bbb11aee54492e2fd964b6173ae49a",
+      "kind": "sanitized historical receipt",
+      "originalRelativePath": "artifacts/phase1-20261014/p1-032-sandbox-original-options-crash-20261018.json",
+      "originalBytes": 39584,
+      "originalSha256": "cfa4f6e72771cebdaed2e83c7b03185d938a55c371ee78dfbd81503710daeb89"
+    },
+    {
+      "name": "readme-correctness-input-preflight.json",
+      "bytes": 284316,
+      "sha256": "33293c3f605f9177c0b07b184f0ee47cd0fa7639c559ef609cb02df0afde0d60",
+      "kind": "sanitized historical receipt",
+      "originalRelativePath": "artifacts/correctness-preflight-20261014-r3/readme-correctness-input-preflight-20261014-133623-b7bc3b3115944a268375e735c604ac85.json",
+      "originalBytes": 277646,
+      "originalSha256": "71ee5c993c163c14da851a4966615c52949fe79f4f3326212ef5a6af70384247"
+    },
+    {
+      "name": "sandbox-broad-r3-results.json",
+      "bytes": 65517,
+      "sha256": "7573a1130cbc07ce68d5c8369b6a00cdf769255184dcfed1894f8edc1fcf8e8b",
+      "kind": "sanitized historical receipt",
+      "originalRelativePath": "artifacts/phase1-20261014/sandbox-fresh-batch-r3-results.json",
+      "originalBytes": 62676,
+      "originalSha256": "dca7c7a5dd07e9a75608ca3ff4c88b472bb60c4b86aa903e3959e4f3467efa43"
+    },
+    {
+      "name": "top-repositories.json",
+      "bytes": 378528,
+      "sha256": "615c56723fb16d17744af2549615a4de32b1fc299a1759727cc86b70edacac72",
+      "kind": "byte-preserved frozen manifest",
+      "originalRelativePath": "artifacts/readme-top500/corpus-36360809497/top-repositories.json",
+      "originalBytes": 378528,
+      "originalSha256": "615c56723fb16d17744af2549615a4de32b1fc299a1759727cc86b70edacac72"
+    },
+    {
+      "name": "top500-source-integrity.json",
+      "bytes": 3491,
+      "sha256": "88f067fdd565ea988ac5b496f864b9f35997b5c889303da04527c6d7a224a8b1",
+      "kind": "sanitized historical receipt",
+      "originalRelativePath": "artifacts/readme-top500/source-acquisition-615c56723fb1/independent-integrity-check.json",
+      "originalBytes": 2762,
+      "originalSha256": "248b802ca834cdee4851b1b932b80ebba76788816d0cbe9164b4d10012281c74"
+    }
+  ],
+  "rawArtifactsIncluded": false,
+  "crashDumpIncluded": false,
+  "phasesComplete": {
+    "phase1": false,
+    "phase2": false,
+    "phase3": false
+  }
+}

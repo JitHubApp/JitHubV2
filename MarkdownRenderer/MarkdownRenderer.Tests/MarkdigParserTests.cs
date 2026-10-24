@@ -262,6 +262,21 @@ public class MarkdigParserTests
     }
 
     [Fact]
+    public void TaskListExtension_DoesNotStealAdjacentMarkdownLinkLabel()
+    {
+        var parser = new MarkdigParser(
+            new MarkdownPipelineBuilder().UseTaskLists().Build());
+
+        ParsedMarkdown parsed = parser.Parse("- [X](https://x.com/dify_ai): Updates");
+        LinkInline link = Assert.Single(parsed.Document.Descendants<LinkInline>());
+
+        Assert.Equal("https://x.com/dify_ai", link.Url);
+        Assert.Equal("X", Assert.IsType<LiteralInline>(link.FirstChild).Content.ToString());
+        Assert.Empty(parsed.Document.Descendants<TaskList>());
+        Assert.Equal(2, link.Span.Start);
+    }
+
+    [Fact]
     public void GfmParser_StrikethroughEmphasis_Parsed()
     {
         var md = "~~strike~~";

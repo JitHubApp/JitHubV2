@@ -1,0 +1,322 @@
+{
+  "schemaVersion": 1,
+  "description": "Working Phase 2 feature-and-case matrix. Rows are the 32 cases frozen on October 14, 2026 in correctness-plan.md. Every row stays UNVERIFIED until its offline filters pass on one hashed candidate AND its required live checks are executed against that candidate. Offline evidence is never promoted to a live pass.",
+  "frozenIn": "docs/markdown-renderer/correctness-plan.md#frozen-phase-2-feature-and-case-matrix",
+  "candidate": null,
+  "rows": [
+    {
+      "id": "P2-CONFIG-01",
+      "offline": [
+        { "project": "MarkdownRenderer.Tests", "filter": "FullyQualifiedName~MarkdownEngineTests" },
+        { "project": "MarkdownRenderer.GitHub.Tests", "filter": "FullyQualifiedName~GitHubReadmeProfileTests|FullyQualifiedName~EnginePresentationConfigurationTests|FullyQualifiedName~GitHubDetailsPublicEngineParserTests" },
+        { "project": "MarkdownRenderer.Conformance.Tests", "filter": "" }
+      ],
+      "live": "Each feature sample page renders its documented syntax; a missing-provider page shows the documented fallback.",
+      "open": [],
+      "status": "UNVERIFIED"
+    },
+    {
+      "id": "P2-CONFIG-02",
+      "offline": [
+        { "project": "MarkdownRenderer.Tests", "filter": "FullyQualifiedName~MarkdownEngineTests|FullyQualifiedName~OwnedCodeHighlighterAssignmentTests" },
+        { "project": "MarkdownRenderer.GitHub.Tests", "filter": "FullyQualifiedName~RendererResourceContractTests|FullyQualifiedName~MarkdownPerformanceSessionTests|FullyQualifiedName~LayoutBuilderOwnershipTests" }
+      ],
+      "live": "Two views sharing one engine/provider; replace and dispose one without affecting the other (both viewport modes).",
+      "open": [],
+      "status": "UNVERIFIED"
+    },
+    {
+      "id": "P2-HTML-01",
+      "offline": [
+        { "project": "MarkdownRenderer.Tests", "filter": "FullyQualifiedName~SafeHtmlParserTests|FullyQualifiedName~SafeHtmlDecodedWhitespaceTests" },
+        { "project": "MarkdownRenderer.Html.Tests", "filter": "FullyQualifiedName~SafeHtmlContractsTests" },
+        { "project": "MarkdownRenderer.GitHub.Tests", "filter": "FullyQualifiedName~SafeHtmlRenderingTests|FullyQualifiedName~SafeHtmlTableCaptionTests|FullyQualifiedName~RelativeScriptFontSizeTests|FullyQualifiedName~ScriptBaselineGeometryTests" }
+      ],
+      "live": "Html sample: ordered visible text, styles and UTF-16 source positions in the native view.",
+      "open": [],
+      "status": "UNVERIFIED"
+    },
+    {
+      "id": "P2-HTML-02",
+      "offline": [
+        { "project": "MarkdownRenderer.Html.Tests", "filter": "FullyQualifiedName~SafeHtmlFuzzTests" },
+        { "project": "MarkdownRenderer.Tests", "filter": "FullyQualifiedName~SafeHtmlUrlEntityDecodingTests|FullyQualifiedName~MarkdownBuiltInImageSourcePolicyTests" },
+        { "project": "MarkdownRenderer.GitHub.Tests", "filter": "FullyQualifiedName~SafeHtmlNestedScriptPolicyTests|FullyQualifiedName~SafeHtmlUrlEntityRenderingTests" }
+      ],
+      "live": "Standalone script sentinel appears once as inert literal text; frame/form sentinels are absent.",
+      "open": [],
+      "status": "UNVERIFIED"
+    },
+    {
+      "id": "P2-HTML-03",
+      "offline": [
+        { "project": "MarkdownRenderer.Tests", "filter": "FullyQualifiedName~MarkdownClipboardWriterTests|FullyQualifiedName~MarkdownAccessibilityGeometryTests" },
+        { "project": "MarkdownRenderer.GitHub.Tests", "filter": "FullyQualifiedName~MarkdownRenderedHtmlTableCopyTests|FullyQualifiedName~LongHtmlPreSourceMappingTests" }
+      ],
+      "live": "Focus, UIA roles, selection and plain/CF_HTML/Markdown copy around the fixed Html sample, both viewport modes.",
+      "open": [],
+      "status": "UNVERIFIED"
+    },
+    {
+      "id": "P2-HTML-04",
+      "offline": [
+        { "project": "MarkdownRenderer.GitHub.Tests", "filter": "FullyQualifiedName~LayoutSnapshotRetirementCleanupTests|FullyQualifiedName~WeakSnapshotPublicationOwnershipTests|FullyQualifiedName~LayoutSnapshotRelayoutCancellationCommitTests" }
+      ],
+      "live": "Html sample replacement and engine replacement in both viewport modes publish no stale content.",
+      "open": [],
+      "status": "UNVERIFIED"
+    },
+    {
+      "id": "P2-MATH-01",
+      "offline": [
+        { "project": "MarkdownRenderer.Math.Tests", "filter": "FullyQualifiedName~MathContractsTests|FullyQualifiedName~MathEngineIntegrationTests|FullyQualifiedName~MathDelimiterScannerCallbackTests|FullyQualifiedName~PopularReadmeSyntaxTests" }
+      ],
+      "live": "Math sample: every valid inline/block formula renders as a native scene; backslash delimiters stay literal.",
+      "open": [],
+      "status": "UNVERIFIED"
+    },
+    {
+      "id": "P2-MATH-02",
+      "offline": [
+        { "project": "MarkdownRenderer.Math.Tests", "filter": "FullyQualifiedName~MathFormulaFuzzTests|FullyQualifiedName~NativeParserRecursionSafetyTests" }
+      ],
+      "live": "Invalid/unsupported formula on the Math page shows exact authored source with the mapped diagnostic.",
+      "open": ["U3-001 (rank 340 \\underbrace/\\texttt) is classified unsupported, not rendered."],
+      "status": "UNVERIFIED"
+    },
+    {
+      "id": "P2-MATH-03",
+      "offline": [
+        { "project": "MarkdownRenderer.Math.Tests", "filter": "FullyQualifiedName~MathAccessibilitySafetyTests" },
+        { "project": "MarkdownRenderer.GitHub.Tests", "filter": "FullyQualifiedName~MathSourceMapCopyContractTests|FullyQualifiedName~LinkedInlineMathAutomationSourceContractTests|FullyQualifiedName~VectorAccessibilityContractTests" }
+      ],
+      "live": "Inline, block and final-document formula selection stays readable and copies exact source, both viewport modes.",
+      "open": [],
+      "status": "UNVERIFIED"
+    },
+    {
+      "id": "P2-MATH-04",
+      "offline": [
+        { "project": "MarkdownRenderer.GitHub.Tests", "filter": "FullyQualifiedName~ProgressiveCompletedSceneCacheTests|FullyQualifiedName~ProgressiveScenePublicationHandoffTests|FullyQualifiedName~VectorSceneTerminalRetirementTests" }
+      ],
+      "live": "Theme and text-size change plus document replacement on the Math page discard stale scenes.",
+      "open": [],
+      "status": "UNVERIFIED"
+    },
+    {
+      "id": "P2-MERMAID-01",
+      "offline": [
+        { "project": "MarkdownRenderer.Mermaid.Tests", "filter": "FullyQualifiedName~MermaidNativeIntegrationTests|FullyQualifiedName~MermaidEngineIntegrationTests|FullyQualifiedName~MermaidSceneDecoderTests|FullyQualifiedName~MermaidVectorSceneAdapterTests|FullyQualifiedName~PopularReadmeSyntaxTests|FullyQualifiedName~MermaidPlaceholderFamilyIntegrationTests|FullyQualifiedName~MermaidUnicodeIntegrationTests" }
+      ],
+      "live": "Mermaid sample: every documented diagram renders natively with labels and links.",
+      "open": ["x86/ARM64 Mermaid runtime execution is build/PE-verified only."],
+      "status": "UNVERIFIED"
+    },
+    {
+      "id": "P2-MERMAID-02",
+      "offline": [
+        { "project": "MarkdownRenderer.Mermaid.Tests", "filter": "FullyQualifiedName~MermaidContractsTests|FullyQualifiedName~MermaidDiagnosticMappingTests|FullyQualifiedName~MermaidProvenanceTests" }
+      ],
+      "live": "Invalid Mermaid on the sample page keeps exact code plus the mapped diagnostic.",
+      "open": [],
+      "status": "UNVERIFIED"
+    },
+    {
+      "id": "P2-MERMAID-03",
+      "offline": [
+        { "project": "MarkdownRenderer.Mermaid.Tests", "filter": "FullyQualifiedName~MermaidSemanticPaintRoleTests|FullyQualifiedName~MermaidSemanticTextIntegrationTests" },
+        { "project": "MarkdownRenderer.GitHub.Tests", "filter": "FullyQualifiedName~MermaidHighContrastAccessibilityTests|FullyQualifiedName~MermaidTypographyRegressionTests" }
+      ],
+      "live": "Mermaid page in Light, Dark and system High Contrast; node/link UIA, atomic selection and copy, final diagram, both viewport modes.",
+      "open": ["P2-010/P2-011/P2-015 live clipboard qualification."],
+      "status": "UNVERIFIED"
+    },
+    {
+      "id": "P2-MERMAID-04",
+      "offline": [
+        { "project": "MarkdownRenderer.Mermaid.Tests", "filter": "FullyQualifiedName~MermaidSceneCacheTests" }
+      ],
+      "live": "Navigation and replacement on the Mermaid page publish no obsolete scene.",
+      "open": [],
+      "status": "UNVERIFIED"
+    },
+    {
+      "id": "P2-SVG-01",
+      "offline": [
+        { "project": "MarkdownRenderer.Svg.Resvg.Tests", "filter": "FullyQualifiedName~ResvgProviderTests|FullyQualifiedName~SvgStaticCssPreparationTests|FullyQualifiedName~SvgAnimationInitialValueTests" }
+      ],
+      "live": "SvgStress sample renders every supported fixture without missing regions.",
+      "browserParityClassification": "October 22 (head d7c76f3): MarkdownRenderer.PixelTests Rasterize_Fixture_MatchesBrowser is a browser-parity suite, not a correctness gate, so it is classified here rather than counted offline. Of 320 failed results, about 160 are Edge DevTools timeouts or render-process loss on this machine (no comparison ran), about 152 are alpha-IoU differences with minimum 0.758 (lowest: bidi/anchor text fixtures 13-text/rtl-anchor, rtl-css-nested-bidi and negative-letter-spacing-anchor), and 5 are SSIM >= 0.989. Visual review of the lowest fixtures shows every glyph line present in both renders with only subpixel placement differences. No missing region was found.",
+      "open": [],
+      "status": "UNVERIFIED"
+    },
+    {
+      "id": "P2-SVG-02",
+      "offline": [
+        { "project": "MarkdownRenderer.Svg.Resvg.Tests", "filter": "FullyQualifiedName~SvgUnsupportedContentAdmissionTests|FullyQualifiedName~SvgPreflightNestedMetadataTests|FullyQualifiedName~SvgAdmissionMetadataTests|FullyQualifiedName~WorkerContentAdmissionGuardTests|FullyQualifiedName~SvgSourcePreparationBudgetTests" },
+        { "project": "MarkdownRenderer.Tests", "filter": "FullyQualifiedName~SvgResourceBudgetTests|FullyQualifiedName~MarkdownSvgHostAdmissionTests" }
+      ],
+      "live": "Script-bearing and animated fixtures show typed accessible placeholders; no external I/O.",
+      "open": [],
+      "status": "UNVERIFIED"
+    },
+    {
+      "id": "P2-SVG-03",
+      "offline": [
+        { "project": "MarkdownRenderer.Tests", "filter": "FullyQualifiedName~SvgThemeInjectorTests|FullyQualifiedName~SvgIntrinsicsTests" },
+        { "project": "MarkdownRenderer.GitHub.Tests", "filter": "FullyQualifiedName~SharedCanvasBitmapCacheSvgTests|FullyQualifiedName~ImageBoxSvgPublicationCommitTests|FullyQualifiedName~SvgTilePublicationOwnershipTests" }
+      ],
+      "live": "Theme change on SvgStress repaints only currentColor/color-scheme-dependent artwork; correct generation after resize.",
+      "open": [],
+      "status": "UNVERIFIED"
+    },
+    {
+      "id": "P2-SVG-04",
+      "offline": [
+        { "project": "MarkdownRenderer.Tests", "filter": "FullyQualifiedName~SvgTitleExtractorTests" },
+        { "project": "MarkdownRenderer.GitHub.Tests", "filter": "FullyQualifiedName~ImageBoxVisibleArtworkSelectionEndpointTests|FullyQualifiedName~ImageBoxAtomicSelectionEndpointTests|FullyQualifiedName~VectorAccessibilityContractTests" }
+      ],
+      "live": "Final-document SVG: exact alt text, one semantic range, exact Copy Markdown, visible artwork, both viewport modes.",
+      "open": ["P1-030/P1-033/T1-014 live final-SVG selection."],
+      "status": "UNVERIFIED"
+    },
+    {
+      "id": "P2-SVG-05",
+      "offline": [
+        { "project": "MarkdownRenderer.Svg.Resvg.Tests", "filter": "FullyQualifiedName~WindowsWorkerTokenIsolationContractTests|FullyQualifiedName~WorkerStartupTokenPolicyTests|FullyQualifiedName~WorkerTransportFaultTests|FullyQualifiedName~WorkerLifetimeRegistryTests" },
+        { "project": "MarkdownRenderer.Svg.Resvg.AotSmoke", "filter": "publish+run win-x64 and win-x86" }
+      ],
+      "live": "Exact-RID worker start/render/fault/cleanup on x86, x64 and ARM64 hardware.",
+      "open": ["ARM64 execution needs ARM64 hardware; until then it is an explicit hardware-gated open item, not a pass."],
+      "status": "UNVERIFIED"
+    },
+    {
+      "id": "P2-RASTER-01",
+      "offline": [
+        { "project": "MarkdownRenderer.GitHub.Tests", "filter": "FullyQualifiedName~RasterDecoderImageBoxTests|FullyQualifiedName~OwnedNativeWicGeneralFidelityQualificationTests|FullyQualifiedName~WicWebpOperationLifetimeQualificationTests|FullyQualifiedName~ExifRasterCachePolicyTests|FullyQualifiedName~DisplaySizedRasterDecodeTests" },
+        { "project": "MarkdownRenderer.Svg.Resvg.Tests", "filter": "FullyQualifiedName~RasterDecodeIntegrationTests|FullyQualifiedName~RasterDecodeStreamingIntegrationTests" }
+      ],
+      "live": "Images sample: PNG/JPEG/GIF/static WebP render with correct size, orientation and alpha.",
+      "open": [],
+      "status": "UNVERIFIED"
+    },
+    {
+      "id": "P2-RASTER-02",
+      "offline": [
+        { "project": "MarkdownRenderer.GitHub.Tests", "filter": "FullyQualifiedName~AnimatedWebpFirstCanvasImageBoxTests|FullyQualifiedName~GifRasterCanvasTests|FullyQualifiedName~RasterGifFirstFrameDecodePlanTests|FullyQualifiedName~OwnedNativeWicGifFirstFrameQualificationTests" }
+      ],
+      "live": "Animated GIF/WebP fixtures show the composed first canvas without playback.",
+      "open": [],
+      "status": "UNVERIFIED"
+    },
+    {
+      "id": "P2-RASTER-03",
+      "offline": [
+        { "project": "MarkdownRenderer.Tests", "filter": "FullyQualifiedName~MarkdownRemoteImageContractTests|FullyQualifiedName~ImageResolverDeadlineTests|FullyQualifiedName~RasterImageSizingRequestTests|FullyQualifiedName~LazyImageLoadingTests" },
+        { "project": "MarkdownRenderer.GitHub.Tests", "filter": "FullyQualifiedName~ImageBaseUriIntegrationTests|FullyQualifiedName~TableIntrinsicWidthTests|FullyQualifiedName~RootLocalTableImageRelayoutTests" }
+      ],
+      "live": "Images and LazyImages pages at narrow width: aspect ratio preserved and images shrink inside tables.",
+      "open": [],
+      "status": "UNVERIFIED"
+    },
+    {
+      "id": "P2-RASTER-04",
+      "offline": [
+        { "project": "MarkdownRenderer.Tests", "filter": "FullyQualifiedName~MarkdownImageSemanticPolicyTests" },
+        { "project": "MarkdownRenderer.GitHub.Tests", "filter": "FullyQualifiedName~MarkdownImageSourceMapCopyContractTests|FullyQualifiedName~ImageBoxAtomicSelectionEndpointTests|FullyQualifiedName~InlineDecorativeImageFailureCollapseTests" }
+      ],
+      "live": "Linked and final-document images: atomic visible selection, exact alt/source copy, UIA semantics.",
+      "open": ["P1-030 image alt copy, live."],
+      "status": "UNVERIFIED"
+    },
+    {
+      "id": "P2-RASTER-05",
+      "offline": [
+        { "project": "MarkdownRenderer.GitHub.Tests", "filter": "FullyQualifiedName~ImageBoxSourceLeaseTests|FullyQualifiedName~ImageBoxActivationResetTests|FullyQualifiedName~ImageRetirementBarrierTests|FullyQualifiedName~ImageNativeDurableRetirementTests|FullyQualifiedName~ImageBoxResidencyTests" },
+        { "project": "MarkdownRenderer.Tests", "filter": "FullyQualifiedName~ImageRelayoutPublicationRecoveryTests|FullyQualifiedName~MarkdownImageResolutionLeaseTests" }
+      ],
+      "live": "LazyImages navigation away/back and replacement: no stale pixels; decode failure shows fallback.",
+      "open": [],
+      "status": "UNVERIFIED"
+    },
+    {
+      "id": "P2-HIGHLIGHT-01",
+      "offline": [
+        { "project": "MarkdownRenderer.SyntaxHighlighting.TextMate.Tests", "filter": "FullyQualifiedName~TextMateGrammarPackTests" },
+        { "project": "MarkdownRenderer.SyntaxHighlighting.TextMate.Tests", "filter": "FullyQualifiedName~TextMateCodeBlockSyntaxHighlighterTests" }
+      ],
+      "live": "Code sample: built-in and aliased languages produce token colors without changing code text.",
+      "open": [],
+      "status": "UNVERIFIED"
+    },
+    {
+      "id": "P2-HIGHLIGHT-02",
+      "offline": [
+        { "project": "MarkdownRenderer.Tests", "filter": "FullyQualifiedName~HighContrastDefaultsTests" },
+        { "project": "MarkdownRenderer.SyntaxHighlighting.TextMate.Tests", "filter": "FullyQualifiedName~TextMateCodeBlockSyntaxHighlighterTests" },
+        { "project": "MarkdownRenderer.GitHub.Tests", "filter": "FullyQualifiedName~CodeBlockHighlightResultSnapshotTests" }
+      ],
+      "live": "Unknown-language block stays plain and readable; system High Contrast colors follow the contract.",
+      "open": [],
+      "status": "UNVERIFIED"
+    },
+    {
+      "id": "P2-HIGHLIGHT-03",
+      "offline": [
+        { "project": "MarkdownRenderer.GitHub.Tests", "filter": "FullyQualifiedName~CodeBlockGeometryTests|FullyQualifiedName~MarkdownRenderedHtmlCodeCopyTests|FullyQualifiedName~LargeCodeBlockSourceMappingTests|FullyQualifiedName~MarkdownTerminalCodeSemanticTextTests" }
+      ],
+      "live": "Highlighted code: selection, UIA range and code-copy button yield exact code text.",
+      "open": ["P1-020/P1-021 live formatted paste."],
+      "status": "UNVERIFIED"
+    },
+    {
+      "id": "P2-HIGHLIGHT-04",
+      "offline": [
+        { "project": "MarkdownRenderer.Tests", "filter": "FullyQualifiedName~CodeBlockHighlightCacheTests|FullyQualifiedName~CodeBlockHighlightPublicationFenceTests" },
+        { "project": "MarkdownRenderer.GitHub.Tests", "filter": "FullyQualifiedName~CodeBlockHighlightOperationLifetimeTests|FullyQualifiedName~CodeBlockHighlightSnapshotRetentionTests" }
+      ],
+      "live": "Theme, grammar and source replacement on the Code page apply no stale spans.",
+      "open": [],
+      "status": "UNVERIFIED"
+    },
+    {
+      "id": "P2-HOSTED-01",
+      "offline": [
+        { "project": "MarkdownRenderer.Tests", "filter": "FullyQualifiedName~HostedElementLifecycleContractTests|FullyQualifiedName~EmbedVisibilityTests" },
+        { "project": "MarkdownRenderer.GitHub.Tests", "filter": "FullyQualifiedName~DeclarativeLayoutAdapterTests" }
+      ],
+      "live": "Embeds sample: block factory produces native controls; unsupported inline hosting falls back.",
+      "open": [],
+      "status": "UNVERIFIED"
+    },
+    {
+      "id": "P2-HOSTED-02",
+      "offline": [
+        { "project": "MarkdownRenderer.Tests", "filter": "FullyQualifiedName~HostedElementLifecycleContractTests" }
+      ],
+      "live": "Null, throwing and attach-failed factory cases on the Embeds page show the documented fallback without corrupting flow.",
+      "open": [],
+      "status": "UNVERIFIED"
+    },
+    {
+      "id": "P2-HOSTED-03",
+      "offline": [
+        { "project": "MarkdownRenderer.Tests", "filter": "FullyQualifiedName~HostedFocusableBufferSourceContractTests" },
+        { "project": "MarkdownRenderer.GitHub.Tests", "filter": "FullyQualifiedName~HostedFocusableBufferTests|FullyQualifiedName~FocusablePlanAdmissionTests" }
+      ],
+      "live": "Hosted control focus, touch and surrounding selection/copy without duplicate text, both viewport modes.",
+      "open": [],
+      "status": "UNVERIFIED"
+    },
+    {
+      "id": "P2-HOSTED-04",
+      "offline": [
+        { "project": "MarkdownRenderer.Tests", "filter": "FullyQualifiedName~HostedElementLifecycleContractTests" },
+        { "project": "MarkdownRenderer.GitHub.Tests", "filter": "FullyQualifiedName~ExceptionSafeContainerRetirementTests" }
+      ],
+      "live": "Scroll-recycling, factory/document replacement, unload and dispose leave no stale capture or focus.",
+      "open": [],
+      "status": "UNVERIFIED"
+    }
+  ]
+}

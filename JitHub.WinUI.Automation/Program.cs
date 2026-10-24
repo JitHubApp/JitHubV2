@@ -378,6 +378,42 @@ if (string.Equals(options.Probe, "markdown-host-lifecycle", StringComparison.Ord
     return;
 }
 
+if (string.Equals(options.Probe, ReadmeAuditProbe.ProbeName, StringComparison.OrdinalIgnoreCase))
+{
+    ReadmeAuditProbe.Run(options);
+    return;
+}
+
+if (string.Equals(options.Probe, ReadmeAuditProbe.OfflineSameByteProbeName, StringComparison.OrdinalIgnoreCase))
+{
+    ReadmeAuditProbe.RunOfflineSameByte(options);
+    return;
+}
+
+if (string.Equals(options.Probe, ReadmeAuditProbe.CorrectnessCorpusProbeName, StringComparison.OrdinalIgnoreCase))
+{
+    ReadmeAuditProbe.RunCorrectnessCorpus(options);
+    return;
+}
+
+if (string.Equals(options.Probe, ReadmeAuditProbe.CorrectnessAccountingSelfTestProbeName, StringComparison.OrdinalIgnoreCase))
+{
+    ReadmeAuditProbe.RunCorrectnessAccountingSelfTests(options);
+    return;
+}
+
+if (string.Equals(options.Probe, ReadmeAuditProbe.CorrectnessInputPreflightProbeName, StringComparison.OrdinalIgnoreCase))
+{
+    ReadmeAuditProbe.RunCorrectnessInputPreflight(options);
+    return;
+}
+
+if (string.Equals(options.Probe, ReadmeAuditProbe.PublicSameByteCaptureProbeName, StringComparison.OrdinalIgnoreCase))
+{
+    ReadmeAuditProbe.RunPublicSameByteCapture(options);
+    return;
+}
+
 if (string.Equals(options.Probe, "diagnostics-launch-close", StringComparison.OrdinalIgnoreCase))
 {
     RunDiagnosticsLaunchCloseProbe(options);
@@ -18148,6 +18184,17 @@ internal sealed class CaptureOptions
     public string? AttachProcess { get; init; }
     public string? Configuration { get; init; }
     public IReadOnlyList<string> ShowcaseIds { get; init; } = [];
+    public string? AuditManifestPath { get; init; }
+    public string? AuditOfflineSameByteCorpusRoot { get; init; }
+    public string? AuditSourceAcquisitionRoot { get; init; }
+    public string? AuditBrowserScriptPath { get; init; }
+    public string? AuditEdgePath { get; init; }
+    public string AuditNodePath { get; init; } = "node";
+    public int AuditStartRank { get; init; } = 1;
+    public int AuditCount { get; init; } = 500;
+    public bool AuditResume { get; init; }
+    public bool AuditReuseBrowserEvidence { get; init; }
+    public bool AuditCaptureSameByteCorpus { get; init; }
 
     public static CaptureOptions Parse(string[] args)
     {
@@ -18160,6 +18207,21 @@ internal sealed class CaptureOptions
         string[] themes = ["light", "dark"];
         string[] targetNames = ["buttons", "inputs", "segments", "navigation", "settings", "repo", "conversation", "pr-timeline", "empty", "login", "settings-page"];
         string[] showcaseIds = [];
+        string? auditManifestPath = null;
+        string? auditOfflineSameByteCorpusRoot = null;
+        string? auditSourceAcquisitionRoot = null;
+        string? auditBrowserScriptPath = null;
+        string? auditEdgePath = null;
+        string auditNodePath = "node";
+        int auditStartRank = 1;
+        int auditCount = 500;
+        bool auditResume = false;
+        bool auditReuseBrowserEvidence = false;
+        bool auditCaptureSameByteCorpus = false;
+        string? verifiedNativeAotProvenancePath = null;
+        string? verifiedNativeAotProvenanceSha256 = null;
+        const string verifiedNativeAotProvenancePrefix = "--verified-native-aot-provenance=";
+        const string verifiedNativeAotProvenanceSha256Prefix = "--verified-native-aot-provenance-sha256=";
 
         foreach (string arg in args)
         {
@@ -18199,6 +18261,176 @@ internal sealed class CaptureOptions
             {
                 configuration = arg[16..].Trim();
             }
+            else if (arg.StartsWith("--manifest=", StringComparison.OrdinalIgnoreCase))
+            {
+                auditManifestPath = Path.GetFullPath(arg[11..].Trim());
+            }
+            else if (arg.StartsWith("--offline-same-byte-corpus-root=", StringComparison.OrdinalIgnoreCase))
+            {
+                auditOfflineSameByteCorpusRoot = Path.GetFullPath(
+                    arg["--offline-same-byte-corpus-root=".Length..].Trim());
+            }
+            else if (arg.StartsWith("--source-acquisition-root=", StringComparison.OrdinalIgnoreCase))
+            {
+                auditSourceAcquisitionRoot = Path.GetFullPath(arg["--source-acquisition-root=".Length..].Trim());
+            }
+            else if (arg.StartsWith("--browser-script=", StringComparison.OrdinalIgnoreCase))
+            {
+                auditBrowserScriptPath = Path.GetFullPath(arg[17..].Trim());
+            }
+            else if (arg.StartsWith("--edge=", StringComparison.OrdinalIgnoreCase))
+            {
+                auditEdgePath = Path.GetFullPath(arg[7..].Trim());
+            }
+            else if (arg.StartsWith("--node=", StringComparison.OrdinalIgnoreCase))
+            {
+                auditNodePath = arg[7..].Trim();
+            }
+            else if (arg.StartsWith("--start-rank=", StringComparison.OrdinalIgnoreCase))
+            {
+                auditStartRank = int.Parse(arg[13..], System.Globalization.CultureInfo.InvariantCulture);
+            }
+            else if (arg.StartsWith("--count=", StringComparison.OrdinalIgnoreCase))
+            {
+                auditCount = int.Parse(arg[8..], System.Globalization.CultureInfo.InvariantCulture);
+            }
+            else if (string.Equals(arg, "--resume", StringComparison.OrdinalIgnoreCase))
+            {
+                auditResume = true;
+            }
+            else if (string.Equals(arg, "--reuse-browser-evidence", StringComparison.OrdinalIgnoreCase))
+            {
+                auditReuseBrowserEvidence = true;
+            }
+            else if (string.Equals(arg, "--capture-same-byte-corpus", StringComparison.OrdinalIgnoreCase))
+            {
+                auditCaptureSameByteCorpus = true;
+            }
+            else if (arg.StartsWith(verifiedNativeAotProvenancePrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                verifiedNativeAotProvenancePath = Path.GetFullPath(
+                    arg[verifiedNativeAotProvenancePrefix.Length..].Trim());
+            }
+            else if (arg.StartsWith(verifiedNativeAotProvenanceSha256Prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                verifiedNativeAotProvenanceSha256 =
+                    arg[verifiedNativeAotProvenanceSha256Prefix.Length..].Trim();
+            }
+        }
+
+        if (string.Equals(probe, ReadmeAuditProbe.PublicSameByteCaptureProbeName, StringComparison.OrdinalIgnoreCase))
+        {
+            if (appPath is not null || attachProcess is not null || configuration is not null ||
+                !string.IsNullOrWhiteSpace(verifiedNativeAotProvenancePath) ||
+                !string.IsNullOrWhiteSpace(verifiedNativeAotProvenanceSha256))
+            {
+                throw new ArgumentException(
+                    "Public same-byte capture is browser-only and does not accept an app, process, configuration, or NativeAOT provenance input.");
+            }
+            if (auditManifestPath is null || auditBrowserScriptPath is null ||
+                !auditCaptureSameByteCorpus || auditResume || auditReuseBrowserEvidence ||
+                auditOfflineSameByteCorpusRoot is not null)
+            {
+                throw new ArgumentException(
+                    "Public same-byte capture requires --manifest, --browser-script, and --capture-same-byte-corpus; resume, evidence reuse, and replay inputs are not accepted.");
+            }
+            if (auditStartRank <= 0 || auditCount <= 0 || auditStartRank > 500 || auditCount > 500 ||
+                checked(auditStartRank + auditCount - 1) > 500)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(args), "Public same-byte capture rank range must stay within 1..500.");
+            }
+
+            return new CaptureOptions
+            {
+                AppPath = string.Empty,
+                OutputDirectory = outputDirectory,
+                Themes = [],
+                Targets = [],
+                RepositoryFullName = string.Empty,
+                Probe = probe,
+                AuditManifestPath = auditManifestPath,
+                AuditBrowserScriptPath = auditBrowserScriptPath,
+                AuditEdgePath = auditEdgePath,
+                AuditNodePath = auditNodePath,
+                AuditStartRank = auditStartRank,
+                AuditCount = auditCount,
+                AuditCaptureSameByteCorpus = true,
+            };
+        }
+
+        if (string.Equals(probe, ReadmeAuditProbe.CorrectnessAccountingSelfTestProbeName, StringComparison.OrdinalIgnoreCase))
+        {
+            if (appPath is not null || attachProcess is not null || configuration is not null ||
+                auditManifestPath is not null || auditOfflineSameByteCorpusRoot is not null ||
+                auditSourceAcquisitionRoot is not null || auditBrowserScriptPath is not null || auditEdgePath is not null ||
+                auditCaptureSameByteCorpus || auditResume || auditReuseBrowserEvidence ||
+                !string.IsNullOrWhiteSpace(verifiedNativeAotProvenancePath) ||
+                !string.IsNullOrWhiteSpace(verifiedNativeAotProvenanceSha256))
+            {
+                throw new ArgumentException("Correctness accounting self-tests are headless and do not accept app, corpus, browser, or provenance inputs.");
+            }
+
+            return new CaptureOptions
+            {
+                AppPath = string.Empty,
+                OutputDirectory = outputDirectory,
+                Themes = [],
+                Targets = [],
+                RepositoryFullName = string.Empty,
+                Probe = probe,
+            };
+        }
+
+        if (string.Equals(probe, ReadmeAuditProbe.CorrectnessInputPreflightProbeName, StringComparison.OrdinalIgnoreCase))
+        {
+            if (appPath is not null || attachProcess is not null || configuration is not null ||
+                auditManifestPath is null || auditSourceAcquisitionRoot is null || auditOfflineSameByteCorpusRoot is null ||
+                auditBrowserScriptPath is not null || auditEdgePath is not null || auditCaptureSameByteCorpus ||
+                auditResume || auditReuseBrowserEvidence ||
+                !string.IsNullOrWhiteSpace(verifiedNativeAotProvenancePath) ||
+                !string.IsNullOrWhiteSpace(verifiedNativeAotProvenanceSha256))
+            {
+                throw new ArgumentException(
+                    "Correctness input preflight is offline and accepts only the pinned manifest, verified source acquisition, and existing schema-2 corpus root.");
+            }
+            if (auditStartRank <= 0 || auditCount <= 0 || auditStartRank > 500 || auditCount > 500 ||
+                checked(auditStartRank + auditCount - 1) > 500)
+            {
+                throw new ArgumentOutOfRangeException(nameof(args), "Correctness preflight rank range must stay within 1..500.");
+            }
+
+            return new CaptureOptions
+            {
+                AppPath = string.Empty,
+                OutputDirectory = outputDirectory,
+                Themes = [],
+                Targets = [],
+                RepositoryFullName = string.Empty,
+                Probe = probe,
+                AuditManifestPath = auditManifestPath,
+                AuditSourceAcquisitionRoot = auditSourceAcquisitionRoot,
+                AuditOfflineSameByteCorpusRoot = auditOfflineSameByteCorpusRoot,
+                AuditStartRank = auditStartRank,
+                AuditCount = auditCount,
+            };
+        }
+
+        if (string.Equals(probe, ReadmeAuditProbe.CorrectnessCorpusProbeName, StringComparison.OrdinalIgnoreCase))
+        {
+            if (auditManifestPath is null || auditSourceAcquisitionRoot is null || auditOfflineSameByteCorpusRoot is null || auditBrowserScriptPath is not null ||
+                auditEdgePath is not null || auditCaptureSameByteCorpus || auditResume || auditReuseBrowserEvidence ||
+                !string.IsNullOrWhiteSpace(verifiedNativeAotProvenancePath) ||
+                !string.IsNullOrWhiteSpace(verifiedNativeAotProvenanceSha256))
+            {
+                throw new ArgumentException(
+                    "Correctness corpus requires the pinned manifest, verified source-acquisition root, and existing schema-2 corpus root; browser, Edge, replay, and provenance inputs are not accepted.");
+            }
+            if (auditStartRank <= 0 || auditCount <= 0 || auditStartRank > 500 || auditCount > 500 ||
+                checked(auditStartRank + auditCount - 1) > 500)
+            {
+                throw new ArgumentOutOfRangeException(nameof(args), "Correctness corpus rank range must stay within 1..500.");
+            }
         }
 
         appPath ??= GuessAppPath();
@@ -18207,7 +18439,30 @@ internal sealed class CaptureOptions
             throw new FileNotFoundException($"Could not find JitHub.WinUI app executable at '{appPath}'. Pass --app=<path>.");
         }
 
-        EnsureAppBinaryIsFresh(appPath);
+        bool hasProvenancePath = !string.IsNullOrWhiteSpace(verifiedNativeAotProvenancePath);
+        bool hasProvenanceSha256 = !string.IsNullOrWhiteSpace(verifiedNativeAotProvenanceSha256);
+        if (hasProvenancePath != hasProvenanceSha256)
+        {
+            throw new InvalidOperationException(
+                "A verified NativeAOT provenance path and SHA-256 must be supplied together.");
+        }
+
+        bool hasVerifiedCanonicalProvenance = false;
+        if (hasProvenancePath)
+        {
+            if (!IsNativeAotExecutable(appPath))
+                throw new InvalidOperationException("Verified NativeAOT provenance cannot qualify a managed app binary.");
+
+            NativeAotWorkflowIdentity workflowIdentity = GetCanonicalWorkflowIdentity();
+            AppArtifactFreshness.VerifyCanonicalNativeAotProvenance(
+                appPath,
+                verifiedNativeAotProvenancePath!,
+                verifiedNativeAotProvenanceSha256!,
+                workflowIdentity);
+            hasVerifiedCanonicalProvenance = true;
+        }
+
+        EnsureAppBinaryIsFresh(appPath, hasVerifiedCanonicalProvenance);
 
         Dictionary<string, CaptureTarget> allTargets = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -18248,7 +18503,18 @@ internal sealed class CaptureOptions
             Probe = probe,
             AttachProcess = attachProcess,
             Configuration = configuration,
-            ShowcaseIds = showcaseIds
+            ShowcaseIds = showcaseIds,
+            AuditManifestPath = auditManifestPath,
+            AuditOfflineSameByteCorpusRoot = auditOfflineSameByteCorpusRoot,
+            AuditSourceAcquisitionRoot = auditSourceAcquisitionRoot,
+            AuditBrowserScriptPath = auditBrowserScriptPath,
+            AuditEdgePath = auditEdgePath,
+            AuditNodePath = auditNodePath,
+            AuditStartRank = auditStartRank,
+            AuditCount = auditCount,
+            AuditResume = auditResume,
+            AuditReuseBrowserEvidence = auditReuseBrowserEvidence,
+            AuditCaptureSameByteCorpus = auditCaptureSameByteCorpus
         };
     }
 
@@ -18264,7 +18530,6 @@ internal sealed class CaptureOptions
             Path.Combine(baseDirectory, "JitHub.WinUI", "bin", "x64", "Release", "net10.0-windows10.0.26100.0", "win-x64", "publish", "JitHub.WinUI.exe")
         ];
 
-        DateTime newestSourceWrite = GetNewestSourceWriteTimeUtc(baseDirectory);
         string? freshCandidate = candidates.FirstOrDefault(candidate =>
         {
             if (!File.Exists(candidate))
@@ -18272,9 +18537,7 @@ internal sealed class CaptureOptions
                 return false;
             }
 
-            string? freshnessArtifact = GetFreshnessArtifact(candidate);
-            return freshnessArtifact is not null &&
-                File.GetLastWriteTimeUtc(freshnessArtifact) >= newestSourceWrite;
+            return IsAppBuildFresh(candidate, baseDirectory);
         });
 
         if (freshCandidate is not null)
@@ -18289,7 +18552,35 @@ internal sealed class CaptureOptions
             "or pass an intentional executable with --app=<path>.");
     }
 
-    private static void EnsureAppBinaryIsFresh(string appPath)
+    private static NativeAotWorkflowIdentity GetCanonicalWorkflowIdentity()
+    {
+        string sourceCommitSha = Environment.GetEnvironmentVariable("GITHUB_SHA") ?? string.Empty;
+        string workflowRunId = Environment.GetEnvironmentVariable("GITHUB_RUN_ID") ?? string.Empty;
+        string workflowRepository = Environment.GetEnvironmentVariable("GITHUB_REPOSITORY") ?? string.Empty;
+        string workflowRef = Environment.GetEnvironmentVariable("GITHUB_REF") ?? string.Empty;
+        if (!string.Equals(
+                Environment.GetEnvironmentVariable("GITHUB_ACTIONS"),
+                "true",
+                StringComparison.OrdinalIgnoreCase) ||
+            string.IsNullOrWhiteSpace(sourceCommitSha) ||
+            string.IsNullOrWhiteSpace(workflowRunId) ||
+            string.IsNullOrWhiteSpace(workflowRepository) ||
+            string.IsNullOrWhiteSpace(workflowRef))
+        {
+            throw new InvalidOperationException(
+                "Verified NativeAOT provenance is accepted only from a canonical GitHub Actions run identity.");
+        }
+
+        return new NativeAotWorkflowIdentity(
+            sourceCommitSha,
+            workflowRunId,
+            workflowRepository,
+            workflowRef);
+    }
+
+    private static void EnsureAppBinaryIsFresh(
+        string appPath,
+        bool hasVerifiedCanonicalProvenance = false)
     {
         string? freshnessArtifact = GetFreshnessArtifact(appPath);
         if (freshnessArtifact is null)
@@ -18300,16 +18591,106 @@ internal sealed class CaptureOptions
         }
 
         string repositoryRoot = FindRepositoryRoot();
-        DateTime newestSourceWrite = GetNewestSourceWriteTimeUtc(repositoryRoot);
-        DateTime artifactWrite = File.GetLastWriteTimeUtc(freshnessArtifact);
-        if (artifactWrite < newestSourceWrite)
+        string? staleArtifact = GetStaleAppArtifact(
+            appPath,
+            repositoryRoot,
+            hasVerifiedCanonicalProvenance);
+        if (staleArtifact is not null)
         {
             throw new InvalidOperationException(
                 $"Refusing stale JitHub automation binary '{appPath}'. " +
-                $"Artifact timestamp {artifactWrite:O} predates source timestamp {newestSourceWrite:O}. " +
+                $"Missing or stale output: '{staleArtifact}'. " +
                 "Rebuild the app and pass the rebuilt executable.");
         }
     }
+
+    private static bool IsAppBuildFresh(string appPath, string repositoryRoot)
+    {
+        return GetFreshnessArtifact(appPath) is not null &&
+            GetStaleAppArtifact(appPath, repositoryRoot) is null;
+    }
+
+    private static string? GetStaleAppArtifact(
+        string appPath,
+        string repositoryRoot,
+        bool hasVerifiedCanonicalProvenance = false)
+    {
+        string directory = Path.GetDirectoryName(appPath)!;
+        string appAssembly = Path.Combine(directory, "JitHub.WinUI.dll");
+        if (!File.Exists(appAssembly))
+        {
+            // A NativeAOT image contains the managed dependency graph. Its PE
+            // timestamp must be newer than every relevant source file. Its
+            // worker content file is checked independently below because it
+            // is not represented by the executable's PE timestamp.
+            if (!IsNativeAotExecutable(appPath) ||
+                !AppArtifactFreshness.IsNativeAotTimestampFresh(
+                    File.GetLastWriteTimeUtc(appPath),
+                    GetNewestSourceWriteTimeUtc(repositoryRoot, includeDependencies: true),
+                    hasVerifiedCanonicalProvenance))
+            {
+                return appPath;
+            }
+
+            // A canonical provenance manifest content-addresses the complete
+            // payload and exact workflow source commit, so checkout-local file
+            // mtimes are irrelevant. Ordinary local binaries still use the
+            // source/output timestamp guard for app content.
+            if (!hasVerifiedCanonicalProvenance)
+            {
+                string? staleAppContent = AppArtifactFreshness.GetStaleJitHubAppContentArtifact(
+                    repositoryRoot,
+                    directory);
+                if (staleAppContent is not null)
+                    return staleAppContent;
+            }
+
+            return AppArtifactFreshness.GetStaleResvgWorkerArtifact(appPath, repositoryRoot);
+        }
+
+        if (File.GetLastWriteTimeUtc(appAssembly) < GetNewestSourceWriteTimeUtc(
+                repositoryRoot, includeDependencies: false))
+        {
+            return appAssembly;
+        }
+
+        // Comparing the newest source with the newest output can accept a
+        // stale renderer DLL merely because an unrelated DLL was rebuilt.
+        // Check each app-local project reference against its own source root.
+        foreach (string name in AuditedMarkdownAssemblyNames)
+        {
+            string assembly = Path.Combine(directory, name + ".dll");
+            if (!File.Exists(assembly) ||
+                File.GetLastWriteTimeUtc(assembly) <
+                    AppArtifactFreshness.GetNewestMarkdownAssemblySourceWriteTimeUtc(repositoryRoot, name))
+            {
+                return assembly;
+            }
+        }
+
+        string? staleManagedAppContent = AppArtifactFreshness.GetStaleJitHubAppContentArtifact(
+            repositoryRoot,
+            directory);
+        if (staleManagedAppContent is not null)
+            return staleManagedAppContent;
+
+        string? staleResvgWorker = AppArtifactFreshness.GetStaleResvgWorkerArtifact(
+            appPath,
+            repositoryRoot);
+        if (staleResvgWorker is not null)
+            return staleResvgWorker;
+
+        return null;
+    }
+
+    private static readonly string[] AuditedMarkdownAssemblyNames =
+    [
+        "MarkdownRenderer.Core", "MarkdownRenderer", "MarkdownRenderer.Gfm",
+        "MarkdownRenderer.Html", "MarkdownRenderer.Math", "MarkdownRenderer.Mermaid",
+        "MarkdownRenderer.Performance", "MarkdownRenderer.GitHub",
+        "MarkdownRenderer.Svg.Resvg", "MarkdownRenderer.SyntaxHighlighting.TextMate",
+        "MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common"
+    ];
 
     private static string? GetFreshnessArtifact(string appPath)
     {
@@ -18357,44 +18738,56 @@ internal sealed class CaptureOptions
             ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
     }
 
-    private static DateTime GetNewestSourceWriteTimeUtc(string baseDirectory)
+    private static DateTime GetNewestSourceWriteTimeUtc(
+        string baseDirectory,
+        bool includeDependencies)
     {
-        string[] sourceRoots =
-        [
-            Path.Combine(baseDirectory, "JitHub.WinUI"),
-            Path.Combine(baseDirectory, "MarkdownRenderer", "MarkdownRenderer"),
-            Path.Combine(baseDirectory, "MarkdownRenderer", "MarkdownRenderer.Gfm")
-        ];
-        string[] sourceExtensions = [".cs", ".xaml", ".csproj", ".props", ".targets"];
-        DateTime newest = DateTime.MinValue;
+        string appSourceRoot = Path.Combine(baseDirectory, "JitHub.WinUI");
+        DateTime newest = Directory.Exists(appSourceRoot)
+            ? GetNewestProjectSourceWriteTimeUtc(appSourceRoot)
+            : DateTime.MinValue;
 
-        foreach (string sourceRoot in sourceRoots.Where(Directory.Exists))
+        if (includeDependencies)
         {
-            foreach (string sourcePath in Directory.EnumerateFiles(sourceRoot, "*", SearchOption.AllDirectories))
+            foreach (string assemblyName in AuditedMarkdownAssemblyNames)
             {
-                string relativePath = Path.GetRelativePath(sourceRoot, sourcePath);
-                string firstSegment = relativePath.Split(
-                    [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
-                    2,
-                    StringSplitOptions.RemoveEmptyEntries)[0];
-                if (firstSegment.StartsWith("bin", StringComparison.OrdinalIgnoreCase) ||
-                    firstSegment.StartsWith("obj", StringComparison.OrdinalIgnoreCase) ||
-                    firstSegment.Equals("artifacts", StringComparison.OrdinalIgnoreCase))
+                DateTime sourceWrite = AppArtifactFreshness.GetNewestMarkdownAssemblySourceWriteTimeUtc(
+                    baseDirectory,
+                    assemblyName);
+                if (sourceWrite > newest)
                 {
-                    continue;
-                }
-
-                if (!sourceExtensions.Contains(Path.GetExtension(sourcePath), StringComparer.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                DateTime writeTime = File.GetLastWriteTimeUtc(sourcePath);
-                if (writeTime > newest)
-                {
-                    newest = writeTime;
+                    newest = sourceWrite;
                 }
             }
+        }
+
+        return newest;
+    }
+
+    private static DateTime GetNewestProjectSourceWriteTimeUtc(string sourceRoot)
+    {
+        string[] sourceExtensions = [".cs", ".xaml", ".csproj", ".props", ".targets", ".rs", ".toml"];
+        DateTime newest = DateTime.MinValue;
+        foreach (string sourcePath in Directory.EnumerateFiles(sourceRoot, "*", SearchOption.AllDirectories))
+        {
+            string relativePath = Path.GetRelativePath(sourceRoot, sourcePath);
+            string firstSegment = relativePath.Split(
+                [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
+                2,
+                StringSplitOptions.RemoveEmptyEntries)[0];
+            if (firstSegment.StartsWith("bin", StringComparison.OrdinalIgnoreCase) ||
+                firstSegment.StartsWith("obj", StringComparison.OrdinalIgnoreCase) ||
+                firstSegment.Equals("artifacts", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (!sourceExtensions.Contains(Path.GetExtension(sourcePath), StringComparer.OrdinalIgnoreCase))
+                continue;
+
+            DateTime writeTime = File.GetLastWriteTimeUtc(sourcePath);
+            if (writeTime > newest)
+                newest = writeTime;
         }
 
         return newest;

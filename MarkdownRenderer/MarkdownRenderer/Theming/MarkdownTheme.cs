@@ -20,7 +20,7 @@ public sealed partial class MarkdownTheme : DependencyObject
     /// <summary>Dependency property backing <see cref="AccentColor"/>.</summary>
     public static readonly DependencyProperty AccentColorProperty =
         DependencyProperty.Register(nameof(AccentColor), typeof(Color?), typeof(MarkdownTheme),
-            new PropertyMetadata(null, (d, _) => ((MarkdownTheme)d).Invalidate()));
+            new PropertyMetadata(null, (d, _) => ((MarkdownTheme)d).NotifyChanged()));
 
     /// <summary>Optional accent color used by links and related highlights.</summary>
     public Color? AccentColor
@@ -32,7 +32,7 @@ public sealed partial class MarkdownTheme : DependencyObject
     /// <summary>Dependency property backing <see cref="SurfaceColor"/>.</summary>
     public static readonly DependencyProperty SurfaceColorProperty =
         DependencyProperty.Register(nameof(SurfaceColor), typeof(Color?), typeof(MarkdownTheme),
-            new PropertyMetadata(null, (d, _) => ((MarkdownTheme)d).Invalidate()));
+            new PropertyMetadata(null, (d, _) => ((MarkdownTheme)d).NotifyChanged()));
 
     /// <summary>
     /// Optional document surface color used to clear the markdown canvas.
@@ -45,7 +45,10 @@ public sealed partial class MarkdownTheme : DependencyObject
     }
 
     /// <summary>
-    /// Per-element overrides keyed by <see cref="MarkdownElementKeys"/>.
+    /// Per-element overrides keyed by <see cref="MarkdownElementKeys"/>, including
+    /// extension-defined element, context, class, and identifier aliases. These
+    /// legacy lookup keys are not constrained to the <see cref="MarkdownStyleRole"/>
+    /// resource-role namespace.
     /// Each override may set any subset of style fields; unset fields fall
     /// through to the resolver's Win11 defaults.
     /// </summary>
@@ -54,7 +57,7 @@ public sealed partial class MarkdownTheme : DependencyObject
     /// <summary>Initializes a new markdown theme.</summary>
     public MarkdownTheme()
     {
-        Overrides = new OverrideCollection(this);
+        Overrides = new OverrideCollection(NotifyChanged);
     }
 
     /// <summary>
@@ -66,8 +69,20 @@ public sealed partial class MarkdownTheme : DependencyObject
     /// <summary>Raised when a theme property or override changes.</summary>
     public event EventHandler? Changed;
 
-    /// <summary>Forces consumers to rebuild style snapshots after advanced external mutations.</summary>
+    /// <summary>
+    /// Forces consumers to rebuild style snapshots after advanced mutations to
+    /// this theme. Use <see cref="Controls.MarkdownRendererControl.InvalidateThemeResources"/>
+    /// after changing the keys in a WinUI resource dictionary.
+    /// </summary>
     public void Invalidate()
+        => NotifyChanged();
+
+    /// <summary>
+    /// Advances the theme revision for a renderer-observed environment change
+    /// without invalidating resource-key discovery; the dictionary key set did
+    /// not change merely because the active Light/Dark/HighContrast selection did.
+    /// </summary>
+    internal void NotifyEnvironmentChanged()
         => NotifyChanged();
 
     /// <summary>
@@ -127,15 +142,15 @@ public sealed partial class MarkdownTheme : DependencyObject
         }
     }
 
-    private sealed class OverrideCollection : IDictionary<string, ElementStyleOverride>
+    internal sealed class OverrideCollection : IDictionary<string, ElementStyleOverride>
     {
-        private readonly MarkdownTheme _owner;
+        private readonly Action _notifyChanged;
         private readonly Dictionary<string, ElementStyleOverride> _items = new(StringComparer.Ordinal);
         private readonly object _gate = new();
 
-        public OverrideCollection(MarkdownTheme owner)
+        internal OverrideCollection(Action notifyChanged)
         {
-            _owner = owner;
+            _notifyChanged = notifyChanged ?? throw new ArgumentNullException(nameof(notifyChanged));
         }
 
         public ElementStyleOverride this[string key]
@@ -147,9 +162,10 @@ public sealed partial class MarkdownTheme : DependencyObject
             }
             set
             {
+                ArgumentNullException.ThrowIfNull(value);
                 lock (_gate)
-                    _items[key] = value ?? throw new ArgumentNullException(nameof(value));
-                _owner.NotifyChanged();
+                    _items[key] = value;
+                _notifyChanged();
             }
         }
 
@@ -184,9 +200,10 @@ public sealed partial class MarkdownTheme : DependencyObject
 
         public void Add(string key, ElementStyleOverride value)
         {
+            ArgumentNullException.ThrowIfNull(value);
             lock (_gate)
-                _items.Add(key, value ?? throw new ArgumentNullException(nameof(value)));
-            _owner.NotifyChanged();
+                _items.Add(key, value);
+            _notifyChanged();
         }
 
         public bool ContainsKey(string key)
@@ -201,7 +218,7 @@ public sealed partial class MarkdownTheme : DependencyObject
             lock (_gate)
                 removed = _items.Remove(key);
             if (removed)
-                _owner.NotifyChanged();
+                _notifyChanged();
             return removed;
         }
 
@@ -223,7 +240,7 @@ public sealed partial class MarkdownTheme : DependencyObject
                 _items.Clear();
             }
             if (changed)
-                _owner.NotifyChanged();
+                _notifyChanged();
         }
 
         public bool Contains(KeyValuePair<string, ElementStyleOverride> item)
@@ -250,7 +267,7 @@ public sealed partial class MarkdownTheme : DependencyObject
             lock (_gate)
                 removed = ((ICollection<KeyValuePair<string, ElementStyleOverride>>)_items).Remove(item);
             if (removed)
-                _owner.NotifyChanged();
+                _notifyChanged();
             return removed;
         }
 

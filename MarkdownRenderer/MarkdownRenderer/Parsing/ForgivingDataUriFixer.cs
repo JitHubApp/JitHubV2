@@ -24,7 +24,7 @@ namespace MarkdownRenderer.Parsing;
 /// rasterization. The transformation is a no-op on already-well-formed
 /// markdown, including base64 data URIs and angle-bracket-wrapped ones.
 /// </summary>
-public static class ForgivingDataUriFixer
+internal static class ForgivingDataUriFixer
 {
     /// <summary>
     /// Returns a markdown string with malformed inline data-URI image

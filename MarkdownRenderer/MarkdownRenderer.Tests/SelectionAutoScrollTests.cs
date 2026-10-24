@@ -6,25 +6,69 @@ namespace MarkdownRenderer.Tests;
 public class SelectionAutoScrollTests
 {
     [Fact]
-    public void ComputeDelta_InsideSafeBand_ReturnsZero()
+    public void ComputeVelocity_InsideSafeBand_ReturnsZero()
     {
-        Assert.Equal(0, SelectionAutoScroll.ComputeDelta(300, viewportTop: 100, viewportHeight: 500));
+        Assert.Equal(0, SelectionAutoScroll.ComputeVelocity(300, viewportTop: 100, viewportHeight: 500));
     }
 
     [Fact]
-    public void ComputeDelta_NearTop_ReturnsNegativeStep()
+    public void ComputeFrameDelta_NearTop_ReturnsTimeScaledNegativeStep()
     {
-        double delta = SelectionAutoScroll.ComputeDelta(110, viewportTop: 100, viewportHeight: 500);
+        double delta = SelectionAutoScroll.ComputeFrameDelta(
+            110, viewportTop: 100, viewportHeight: 500, elapsedSeconds: 1.0 / 60.0);
         Assert.True(delta < 0);
-        Assert.True(delta >= -SelectionAutoScroll.MaxStepPx);
+        Assert.True(delta >= -SelectionAutoScroll.MaximumVelocityDipPerSecond / 60.0);
     }
 
     [Fact]
-    public void ComputeDelta_NearBottom_ReturnsPositiveStep()
+    public void ComputeFrameDelta_NearBottom_ReturnsTimeScaledPositiveStep()
     {
-        double delta = SelectionAutoScroll.ComputeDelta(590, viewportTop: 100, viewportHeight: 500);
+        double delta = SelectionAutoScroll.ComputeFrameDelta(
+            590, viewportTop: 100, viewportHeight: 500, elapsedSeconds: 1.0 / 60.0);
         Assert.True(delta > 0);
-        Assert.True(delta <= SelectionAutoScroll.MaxStepPx);
+        Assert.True(delta <= SelectionAutoScroll.MaximumVelocityDipPerSecond / 60.0);
+    }
+
+    [Fact]
+    public void ComputeFrameDelta_IsRefreshRateIndependent()
+    {
+        double at60Hz = 60 * SelectionAutoScroll.ComputeFrameDelta(
+            590, viewportTop: 100, viewportHeight: 500, elapsedSeconds: 1.0 / 60.0);
+        double at144Hz = 144 * SelectionAutoScroll.ComputeFrameDelta(
+            590, viewportTop: 100, viewportHeight: 500, elapsedSeconds: 1.0 / 144.0);
+
+        Assert.Equal(at60Hz, at144Hz, precision: 8);
+    }
+
+    [Fact]
+    public void ComputeFrameDelta_ClampsLongUiThreadStall()
+    {
+        double stalled = SelectionAutoScroll.ComputeFrameDelta(
+            590, viewportTop: 100, viewportHeight: 500, elapsedSeconds: 2);
+        double bounded = SelectionAutoScroll.ComputeFrameDelta(
+            590,
+            viewportTop: 100,
+            viewportHeight: 500,
+            elapsedSeconds: SelectionAutoScroll.MaximumFrameDurationSeconds);
+
+        Assert.Equal(bounded, stalled);
+    }
+
+    [Fact]
+    public void ComputeVelocity_OverlappingBandsUsesNearestEdgeAndStopsAtCenter()
+    {
+        Assert.True(SelectionAutoScroll.ComputeVelocity(105, viewportTop: 100, viewportHeight: 60) < 0);
+        Assert.Equal(0, SelectionAutoScroll.ComputeVelocity(130, viewportTop: 100, viewportHeight: 60));
+        Assert.True(SelectionAutoScroll.ComputeVelocity(155, viewportTop: 100, viewportHeight: 60) > 0);
+    }
+
+    [Theory]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    [InlineData(double.NegativeInfinity)]
+    public void ComputeVelocity_InvalidPointerCoordinateIsInert(double pointerY)
+    {
+        Assert.Equal(0, SelectionAutoScroll.ComputeVelocity(pointerY, 100, 500));
     }
 
     [Fact]

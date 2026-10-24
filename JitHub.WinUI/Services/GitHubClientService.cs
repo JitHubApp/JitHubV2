@@ -1,23 +1,48 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Models.GitHub;
 using System.Linq;
+using MarkdownRenderer.Images;
 
 namespace JitHub.Services;
 
-public sealed class GitHubClientService : IGitHubClientService
+public sealed class GitHubClientService : IGitHubClientService, IGitHubRepositoryImageClient
 {
     public const string PublicAccessToken = GitHubAuthenticationConstants.PublicAccessToken;
     private const string CommentApiVersion = "2026-03-10";
+    private const int MaximumGitHubErrorBodyBytes = 64 * 1024;
+    private const int MaximumPublicReadmeBytes = 8 * 1024 * 1024;
+    private static readonly string[] PublicReadmeLocations = [".github/", "", "docs/"];
+    private static readonly string[] PublicReadmeCandidates =
+    [
+        "README.md",
+        "README",
+        "README.rst",
+        "README.txt",
+        "README.adoc",
+        "README.markdown",
+        "README.asciidoc",
+        "readme.md",
+        "readme",
+        "readme.rst",
+        "readme.txt",
+        "readme.adoc",
+        "readme.markdown",
+        "readme.asciidoc"
+    ];
 
     private readonly HttpClient _httpClient;
 
@@ -1734,6 +1759,263 @@ public sealed class GitHubClientService : IGitHubClientService
             cancellationToken);
     }
 
+    private async Task<GitHubImageDownload?> GetRepositoryImageContentAsync(
+        string token,
+        string owner,
+        string name,
+        string path,
+        string? gitRef,
+        IMarkdownImageSourceByteAdmission admission,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(admission);
+        string requestPath = BuildRepositoryContentsPath(owner, name, path, gitRef);
+        using HttpRequestMessage request = CreateAuthenticatedRequest(HttpMethod.Get, requestPath, token);
+        request.Headers.Accept.Clear();
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github.raw+json"));
+
+        using HttpResponseMessage response = await _httpClient.SendAsync(
+            request,
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken).ConfigureAwait(false);
+        await EnsureSuccessAsync(response, cancellationToken).ConfigureAwait(false);
+
+        (byte[] bytes, IDisposable? sourceByteLease) = await AdmittedImageContentReader.ReadAsync(
+            response.Content,
+            GitHubImageService.MaxImageBytes,
+            admission,
+            cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (bytes.Length == 0)
+                return null;
+
+            GitHubImageDownload download = new(
+                bytes,
+                response.Content.Headers.ContentType?.MediaType,
+                response.Headers.ETag?.ToString(),
+                response.Content.Headers.LastModified,
+                SourceByteLease: sourceByteLease);
+            sourceByteLease = null;
+            return download;
+        }
+        finally
+        {
+            // Completed faulted tasks must not retain bytes after admission is
+            // released; successful downloads independently own the same array.
+            bytes = Array.Empty<byte>();
+            sourceByteLease?.Dispose();
+        }
+    }
+
+    public async Task<GitHubRepositoryContent> GetReadmeAsync(
+        string token,
+        string owner,
+        string name,
+        string? gitRef = null,
+        CancellationToken cancellationToken = default)
+    {
+        string path = BuildReadmePath(owner, name, gitRef);
+        using HttpRequestMessage request = CreateAuthenticatedRequest(HttpMethod.Get, path, token);
+        using HttpResponseMessage response =
+            await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+
+        return await ReadResponseAsync(
+            response,
+            GitHubJsonSerializerContext.Default.GitHubRepositoryContent,
+            "repository README",
+            cancellationToken);
+    }
+
+    public async Task<GitHubRepositoryContent?> GetPublicReadmeSourceAsync(
+        string owner,
+        string name,
+        string gitRef,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(owner);
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        ArgumentException.ThrowIfNullOrWhiteSpace(gitRef);
+
+        string root =
+            $"https://raw.githubusercontent.com/{Uri.EscapeDataString(owner)}/{Uri.EscapeDataString(name)}/{Uri.EscapeDataString(gitRef)}/";
+        foreach (string location in PublicReadmeLocations)
+        {
+            foreach (string candidate in PublicReadmeCandidates)
+            {
+                string path = location + candidate;
+                using HttpRequestMessage request = new(HttpMethod.Get, new Uri(root + path, UriKind.Absolute));
+                request.Headers.Accept.Clear();
+                request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/plain"));
+                using HttpResponseMessage response = await _httpClient.SendAsync(
+                    request,
+                    HttpCompletionOption.ResponseHeadersRead,
+                    cancellationToken).ConfigureAwait(false);
+                if (response.StatusCode == HttpStatusCode.NotFound)
+                {
+                    continue;
+                }
+
+                await EnsureSuccessAsync(response, cancellationToken).ConfigureAwait(false);
+                ArraySegment<byte> bytes = await ReadBoundedBufferAsync(
+                    response,
+                    MaximumPublicReadmeBytes,
+                    "Public README",
+                    cancellationToken).ConfigureAwait(false);
+                return new GitHubRepositoryContent
+                {
+                    Type = "file",
+                    Encoding = "base64",
+                    Size = bytes.Count,
+                    Name = candidate,
+                    Path = path,
+                    Content = Convert.ToBase64String(bytes.Array!, bytes.Offset, bytes.Count),
+                    Sha = ComputeGitBlobSha(bytes.AsSpan()),
+                    DownloadUrl = root + path
+                };
+            }
+        }
+
+        return null;
+    }
+
+    public async Task<string> GetRenderedReadmeHtmlAsync(
+        string token,
+        string owner,
+        string name,
+        string? gitRef = null,
+        CancellationToken cancellationToken = default)
+    {
+        string path = BuildReadmePath(owner, name, gitRef);
+
+        using HttpRequestMessage request = CreateAuthenticatedRequest(HttpMethod.Get, path, token);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github.html+json"));
+        using HttpResponseMessage response = await _httpClient.SendAsync(
+            request,
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken).ConfigureAwait(false);
+
+        // A GitHub App or fine-grained token can be denied access to a public
+        // organization by an IP allow-list even though the same public README
+        // is available without authentication. The rendered endpoint is also
+        // how GitHub supplies its Camo substitutions, so treating that policy
+        // denial as final leaves otherwise valid README images unavailable.
+        // Retry only this read-only public representation, never an exhausted
+        // or explicitly throttled request, and preserve the authenticated
+        // error when the anonymous request cannot satisfy it.
+        if (ShouldRetryRenderedReadmeAnonymously(response, token))
+        {
+            using HttpRequestMessage publicRequest = CreateAuthenticatedRequest(
+                HttpMethod.Get,
+                path,
+                PublicAccessToken);
+            publicRequest.Headers.Accept.Add(
+                new MediaTypeWithQualityHeaderValue("application/vnd.github.html+json"));
+            using HttpResponseMessage publicResponse = await _httpClient.SendAsync(
+                publicRequest,
+                HttpCompletionOption.ResponseHeadersRead,
+                cancellationToken).ConfigureAwait(false);
+            if (publicResponse.IsSuccessStatusCode)
+            {
+                return await ReadRenderedReadmeHtmlAsync(publicResponse, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+        }
+
+        await EnsureSuccessAsync(response, cancellationToken).ConfigureAwait(false);
+        return await ReadRenderedReadmeHtmlAsync(response, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static bool ShouldRetryRenderedReadmeAnonymously(
+        HttpResponseMessage response,
+        string token) =>
+        !IsPublicAccessToken(token) &&
+        response.StatusCode == HttpStatusCode.Forbidden &&
+        response.Headers.RetryAfter is null &&
+        (!TryGetInt64Header(response, "X-RateLimit-Remaining", out long remaining) || remaining > 0);
+
+    private static string BuildReadmePath(string owner, string name, string? gitRef)
+    {
+        string path = $"repos/{Uri.EscapeDataString(owner)}/{Uri.EscapeDataString(name)}/readme";
+        if (!string.IsNullOrWhiteSpace(gitRef))
+        {
+            path += $"?ref={Uri.EscapeDataString(gitRef)}";
+        }
+
+        return path;
+    }
+
+    private static async Task<string> ReadRenderedReadmeHtmlAsync(
+        HttpResponseMessage response,
+        CancellationToken cancellationToken)
+    {
+        const int maximumRenderedReadmeBytes = 8 * 1024 * 1024;
+        ArraySegment<byte> bytes = await ReadBoundedBufferAsync(
+            response,
+            maximumRenderedReadmeBytes,
+            "Rendered README",
+            cancellationToken).ConfigureAwait(false);
+        return Encoding.UTF8.GetString(bytes.AsSpan());
+    }
+
+    private static async Task<ArraySegment<byte>> ReadBoundedBufferAsync(
+        HttpResponseMessage response,
+        int maximumBytes,
+        string resourceName,
+        CancellationToken cancellationToken)
+    {
+        if (response.Content.Headers.ContentLength is long contentLength &&
+            contentLength > maximumBytes)
+        {
+            throw new InvalidDataException($"{resourceName} exceeds the safe response budget.");
+        }
+
+        await using Stream stream = await response.Content
+            .ReadAsStreamAsync(cancellationToken)
+            .ConfigureAwait(false);
+        using var buffer = new MemoryStream(
+            response.Content.Headers.ContentLength is long knownLength
+                ? checked((int)Math.Min(knownLength, maximumBytes))
+                : 16 * 1024);
+        byte[] rented = ArrayPool<byte>.Shared.Rent(64 * 1024);
+        try
+        {
+            while (true)
+            {
+                int read = await stream.ReadAsync(rented, cancellationToken).ConfigureAwait(false);
+                if (read == 0)
+                    break;
+                if (buffer.Length + read > maximumBytes)
+                {
+                    throw new InvalidDataException($"{resourceName} exceeds the safe response budget.");
+                }
+
+                buffer.Write(rented, 0, read);
+            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(rented, clearArray: true);
+        }
+
+        if (!buffer.TryGetBuffer(out ArraySegment<byte> bytes))
+        {
+            throw new InvalidOperationException("The bounded response buffer is not accessible.");
+        }
+
+        return bytes;
+    }
+
+    private static string ComputeGitBlobSha(ReadOnlySpan<byte> bytes)
+    {
+        byte[] header = Encoding.ASCII.GetBytes($"blob {bytes.Length}\0");
+        using IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA1);
+        hash.AppendData(header);
+        hash.AppendData(bytes);
+        return Convert.ToHexStringLower(hash.GetHashAndReset());
+    }
+
     public async Task<IReadOnlyList<GitHubRepositoryContent>> GetRepositoryContentsAsync(
         string token,
         string owner,
@@ -2049,20 +2331,59 @@ public sealed class GitHubClientService : IGitHubClientService
             return;
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
+
         GitHubApiError? error = null;
-        try
+        byte[]? body = await ReadBoundedErrorBodyAsync(response.Content, cancellationToken).ConfigureAwait(false);
+        if (body is not null)
         {
-            error = await response.Content.ReadFromJsonAsync(
-                GitHubJsonSerializerContext.Default.GitHubApiError,
-                cancellationToken);
-        }
-        catch (JsonException)
-        {
-        }
-        catch (NotSupportedException)
-        {
+            try
+            {
+                error = JsonSerializer.Deserialize(
+                    body,
+                    GitHubJsonSerializerContext.Default.GitHubApiError);
+            }
+            catch (JsonException)
+            {
+            }
+            catch (NotSupportedException)
+            {
+            }
         }
 
+        ThrowForFailureResponse(response, error);
+    }
+
+    private static async Task<byte[]?> ReadBoundedErrorBodyAsync(
+        HttpContent content,
+        CancellationToken cancellationToken)
+    {
+        if (content.Headers.ContentLength is long contentLength &&
+            contentLength > MaximumGitHubErrorBodyBytes)
+        {
+            return null;
+        }
+
+        await using Stream input = await content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        using MemoryStream output = new();
+        byte[] buffer = new byte[8192];
+        while (true)
+        {
+            int remainingWithProbe = MaximumGitHubErrorBodyBytes + 1 - checked((int)output.Length);
+            int read = await input.ReadAsync(
+                buffer.AsMemory(0, Math.Min(buffer.Length, remainingWithProbe)),
+                cancellationToken).ConfigureAwait(false);
+            if (read == 0)
+                return output.ToArray();
+            if (read > MaximumGitHubErrorBodyBytes - output.Length)
+                return null;
+
+            output.Write(buffer, 0, read);
+        }
+    }
+
+    private static void ThrowForFailureResponse(HttpResponseMessage response, GitHubApiError? error)
+    {
         string message = string.IsNullOrWhiteSpace(error?.Message)
             ? $"GitHub request failed with status code {(int)response.StatusCode}."
             : error.Message;
@@ -2142,4 +2463,15 @@ public sealed class GitHubClientService : IGitHubClientService
     private static bool IsRateLimitMessage(string message) =>
         message.Contains("rate limit", StringComparison.OrdinalIgnoreCase) ||
         message.Contains("abuse detection", StringComparison.OrdinalIgnoreCase);
+
+    Task<GitHubImageDownload?> IGitHubRepositoryImageClient.GetRepositoryImageContentAsync(
+        string token,
+        string owner,
+        string name,
+        string path,
+        string? gitRef,
+        IMarkdownImageSourceByteAdmission admission,
+        CancellationToken cancellationToken) =>
+        GetRepositoryImageContentAsync(
+            token, owner, name, path, gitRef, admission, cancellationToken);
 }

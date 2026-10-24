@@ -73,6 +73,30 @@ public sealed class GitHubRepoCodeQueryService : IGitHubRepoCodeQueryService
         return ExecuteAsync(query, fetchPolicy, cancellationToken);
     }
 
+    public Task<CachedResult<GitHubRepositoryContent>> GetReadmeAsync(
+        string accessToken,
+        string userId,
+        string owner,
+        string repositoryName,
+        string gitRef,
+        QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst,
+        CancellationToken cancellationToken = default)
+    {
+        if (GitHubAuthenticationConstants.IsPublicAccessToken(accessToken))
+        {
+            return Task.FromResult(CreateCached(CreatePreviewReadmeContent()));
+        }
+
+        GitHubQuery<GitHubRepositoryContent> query = CreateQuery(
+            accessToken,
+            userId,
+            $"repos/{Escape(owner)}/{Escape(repositoryName)}/readme?ref={Escape(gitRef)}",
+            GitReferencePolicy.CacheResourceFor(gitRef),
+            Phase0GitHubJsonSerializerContext.Default.GitHubRepositoryContent,
+            ["repo-code", "repo-code-readme", CreateRepositoryTag(owner, repositoryName)]);
+        return ExecuteAsync(query, fetchPolicy, cancellationToken);
+    }
+
     public Task<CachedResult<GitHubBlob>> GetBlobAsync(
         string accessToken,
         string userId,
@@ -278,6 +302,17 @@ public sealed class GitHubRepoCodeQueryService : IGitHubRepoCodeQueryService
                 new GitHubRepositoryContent { Name = "data.csv", Path = "data.csv", Type = "file", Sha = "preview-csv", Size = Encoding.UTF8.GetByteCount(PreviewCsv) },
                 new GitHubRepositoryContent { Name = "architecture.svg", Path = "architecture.svg", Type = "file", Sha = "preview-svg", Size = Encoding.UTF8.GetByteCount(PreviewSvg) }
             ];
+
+    private static GitHubRepositoryContent CreatePreviewReadmeContent() => new()
+    {
+        Name = "README.md",
+        Path = "README.md",
+        Type = "file",
+        Sha = "preview-readme",
+        Size = Encoding.UTF8.GetByteCount(PreviewReadme),
+        Encoding = "base64",
+        Content = Convert.ToBase64String(Encoding.UTF8.GetBytes(PreviewReadme))
+    };
 
     private static GitHubBlob CreatePreviewBlob(string sha)
     {

@@ -20,8 +20,8 @@ internal sealed class EmbedBox : BlockBox
 {
     private readonly MarkdownLayoutContext? _context;
 
-    public Block SourceBlock { get; }
-    public IMarkdownEmbedFactory Factory { get; }
+    public readonly Block SourceBlock;
+    public readonly IMarkdownEmbedFactory Factory;
 
     /// <summary>Set by the control once the FrameworkElement is realized.</summary>
     public FrameworkElement? RealizedElement { get; set; }

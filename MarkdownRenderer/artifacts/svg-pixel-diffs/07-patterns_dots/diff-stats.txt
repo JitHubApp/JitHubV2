@@ -1,5 +1,7 @@
 100x100
-maxChannelDelta=255
-meanChannelDelta=17.520
-differingPixelFraction=0.1500
-knownGap=true (pixel comparison skipped)
+maxChannelDelta=48
+meanChannelDelta=0.944
+differingPixelFraction=0.0650
+ssim=0.999979
+alphaBoundaryTolerancePx=1
+alphaIoU=1.000000

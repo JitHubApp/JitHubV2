@@ -17,6 +17,8 @@ jobs:
     name: Verify Windows App CLI integration
     runs-on: windows-latest
     timeout-minutes: 60
+    env:
+      WINAPP_CLI_TELEMETRY_OPTOUT: '1'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -28,15 +30,44 @@ jobs:
 
       - name: Set up Windows App CLI
         uses: microsoft/setup-WinAppCli@v0.1
+        with:
+          version: v0.7.0
 
       - name: Verify Windows App CLI command surface
         shell: pwsh
         run: |
-          winapp --help
+          $versionOutput = (& winapp --version | Out-String).Trim()
+          $version = [regex]::Match($versionOutput, '(?<!\d)(\d+)\.(\d+)\.(\d+)(?!\d)')
+          if (-not $version.Success) {
+            throw "Could not parse WinApp CLI version from '$versionOutput'."
+          }
+          if ([version]::new([int]$version.Groups[1].Value, [int]$version.Groups[2].Value, [int]$version.Groups[3].Value) -lt [version]'0.7.0') {
+            throw "Expected WinApp CLI 0.7 or newer, got '$versionOutput'."
+          }
+          winapp run --help
+          winapp package --help
+          winapp target --help
+          winapp find-api --help
           winapp create-debug-identity --help
-          winapp ui --help
+          winapp ui search --help
+          winapp ui invoke --help
 
       - name: Build WinUI debug app
         if: ${{ inputs.verify_debug_build }}
         shell: pwsh
         run: dotnet build .\JitHub.WinUI\JitHub.WinUI.csproj -c Debug -p:Platform=x64
+
+      - name: Check project-resolved WinUI API surface
+        if: ${{ inputs.verify_debug_build }}
+        shell: pwsh
+        run: winapp find-api check-property NavigationView IsBackButtonVisible --project-dir .\JitHub.WinUI --json
+
+      - name: Exercise project-mode development packaging
+        if: ${{ inputs.verify_debug_build }}
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path .\artifacts\winapp-cli -Force | Out-Null
+          winapp package .\JitHub.WinUI\JitHub.WinUI.csproj -c Debug --arch x64 --no-sign --output .\artifacts\winapp-cli\JitHub.Debug.x64.msix
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath .\artifacts\winapp-cli\JitHub.Debug.x64.msix -PathType Leaf)) {
+            throw 'WinApp CLI did not produce the unsigned Debug MSIX.'
+          }

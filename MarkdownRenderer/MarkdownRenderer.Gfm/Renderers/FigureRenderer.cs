@@ -10,7 +10,7 @@ namespace MarkdownRenderer.Gfm.Renderers;
 /// <summary>
 /// Renders Markdig figure containers and captions using native layout boxes.
 /// </summary>
-public sealed class FigureRenderer : MarkdownNodeRenderer<Figure>
+internal sealed class FigureRenderer : MarkdownNodeRenderer<Figure>
 {
     /// <inheritdoc />
     public override BlockBox? BuildBlock(Figure figure, MarkdownLayoutContext context)

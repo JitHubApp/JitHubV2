@@ -20,16 +20,17 @@ public sealed class RepositoryRoutePrefetchCoordinatorTests
         TaskCompletionSource releaseLatest = new(TaskCreationOptions.RunContinuationsAsynchronously);
         Dictionary<string, CancellationToken> tokens = new(StringComparer.Ordinal);
         IRepoTreeService trees = Substitute.For<IRepoTreeService>();
-        trees.LoadTreeAsync(
+        trees.LoadDirectoryAsync(
                 "octo",
                 Arg.Any<string>(),
+                string.Empty,
                 "main",
                 Arg.Any<CancellationToken>(),
                 QueryFetchPolicy.StaleFirst)
             .Returns(async call =>
             {
                 string repository = call.ArgAt<string>(1);
-                CancellationToken token = call.ArgAt<CancellationToken>(3);
+                CancellationToken token = call.ArgAt<CancellationToken>(4);
                 tokens[repository] = token;
                 if (repository == "second")
                 {
@@ -101,15 +102,16 @@ public sealed class RepositoryRoutePrefetchCoordinatorTests
         CancellationToken workToken = default;
         TaskCompletionSource started = new(TaskCreationOptions.RunContinuationsAsynchronously);
         IRepoTreeService trees = Substitute.For<IRepoTreeService>();
-        trees.LoadTreeAsync(
+        trees.LoadDirectoryAsync(
                 "octo",
                 "app",
+                string.Empty,
                 "main",
                 Arg.Any<CancellationToken>(),
                 QueryFetchPolicy.StaleFirst)
             .Returns(async call =>
             {
-                workToken = call.ArgAt<CancellationToken>(3);
+                workToken = call.ArgAt<CancellationToken>(4);
                 started.TrySetResult();
                 await Task.Delay(Timeout.InfiniteTimeSpan, workToken);
                 return CreateResult("app");
@@ -144,17 +146,15 @@ public sealed class RepositoryRoutePrefetchCoordinatorTests
         return new RepoCodeNavigationPreparationCache(trees, new LanguageIdResolver(), account);
     }
 
-    private static RepoCodeLoadResult<RepoTree> CreateResult(string sha) =>
+    private static RepoCodeLoadResult<IReadOnlyList<RepoTreeNode>> CreateResult(string sha) =>
         new(
-            new RepoTree
+            new RepoTreeNode[]
             {
-                Sha = sha,
-                Root = new RepoTreeNode
+                new()
                 {
-                    Name = string.Empty,
-                    Path = string.Empty,
-                    IsDirectory = true,
-                    Children = []
+                    Name = "README.md",
+                    Path = "README.md",
+                    Sha = sha
                 }
             },
             CacheState.Fresh,

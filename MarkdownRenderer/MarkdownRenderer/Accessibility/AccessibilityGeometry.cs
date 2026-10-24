@@ -3,10 +3,32 @@ using System.Collections.Generic;
 
 namespace MarkdownRenderer.Accessibility;
 
-internal readonly record struct AccessibilityPoint(double X, double Y);
-
-internal readonly record struct AccessibilityRect(double X, double Y, double Width, double Height)
+internal readonly struct AccessibilityPoint
 {
+    public AccessibilityPoint(double X, double Y)
+    {
+        this.X = X;
+        this.Y = Y;
+    }
+
+    public double X { get; init; }
+    public double Y { get; init; }
+}
+
+internal readonly struct AccessibilityRect
+{
+    public AccessibilityRect(double X, double Y, double Width, double Height)
+    {
+        this.X = X;
+        this.Y = Y;
+        this.Width = Width;
+        this.Height = Height;
+    }
+
+    public double X { get; init; }
+    public double Y { get; init; }
+    public double Width { get; init; }
+    public double Height { get; init; }
     public double Left => X;
     public double Top => Y;
     public double Right => X + Width;
@@ -15,6 +37,32 @@ internal readonly record struct AccessibilityRect(double X, double Y, double Wid
 
 internal static class AccessibilityGeometry
 {
+    public static AccessibilityRect NormalizeTransformedBounds(
+        AccessibilityPoint topLeft,
+        AccessibilityPoint topRight,
+        AccessibilityPoint bottomLeft,
+        AccessibilityPoint bottomRight)
+    {
+        if (!IsFinite(topLeft) || !IsFinite(topRight) ||
+            !IsFinite(bottomLeft) || !IsFinite(bottomRight))
+        {
+            return default;
+        }
+
+        double left = Math.Min(Math.Min(topLeft.X, topRight.X), Math.Min(bottomLeft.X, bottomRight.X));
+        double top = Math.Min(Math.Min(topLeft.Y, topRight.Y), Math.Min(bottomLeft.Y, bottomRight.Y));
+        double right = Math.Max(Math.Max(topLeft.X, topRight.X), Math.Max(bottomLeft.X, bottomRight.X));
+        double bottom = Math.Max(Math.Max(topLeft.Y, topRight.Y), Math.Max(bottomLeft.Y, bottomRight.Y));
+        return new AccessibilityRect(
+            left,
+            top,
+            right - left,
+            bottom - top);
+    }
+
+    private static bool IsFinite(AccessibilityPoint point) =>
+        double.IsFinite(point.X) && double.IsFinite(point.Y);
+
     public static bool TryCoercePointToNearestRect(
         AccessibilityPoint point,
         IEnumerable<AccessibilityRect> rects,

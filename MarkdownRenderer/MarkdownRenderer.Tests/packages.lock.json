@@ -18,15 +18,6 @@
           "Microsoft.TestPlatform.TestHost": "17.13.0"
         }
       },
-      "TextMateSharp.Grammars": {
-        "type": "Direct",
-        "requested": "[2.0.3, )",
-        "resolved": "2.0.3",
-        "contentHash": "qkI1ogusuyGCGTgeyhljDM+GEfATOexoUTqLIgSb5P0ojmfhRXWfSTRXXJRpZkLDErShJ7RWOb+p10lHfhhO+Q==",
-        "dependencies": {
-          "TextMateSharp": "2.0.3"
-        }
-      },
       "xunit": {
         "type": "Direct",
         "requested": "[2.9.3, )",
@@ -67,19 +58,6 @@
         "type": "Transitive",
         "resolved": "13.0.1",
         "contentHash": "ppPFpBcvxdsfUonNcvITKqLl3bqxWbDCZIzDWHzjpdAHRFfZe0Dw9HmA0+za13IdyrgJwpkDTDA9fHaxOrt20A=="
-      },
-      "Onigwrap": {
-        "type": "Transitive",
-        "resolved": "1.0.10",
-        "contentHash": "eujNEpEhCl4UiqHTG0CeG/sWS8v/iYXGqUpaVkgBmYRZp3Utmz/aw38fuFL2rcnhj1FNfHwHaxGDeLY34a3nEA=="
-      },
-      "TextMateSharp": {
-        "type": "Transitive",
-        "resolved": "2.0.3",
-        "contentHash": "w0wGeqlBi9SYrzxpS1DBcEfiVCs5NY18Yl5YBIsHzXTXQd0OLOh3mP4LRuFvcktR/1MG8nSBHSMJj0rFvrPk+A==",
-        "dependencies": {
-          "Onigwrap": "1.0.10"
-        }
       },
       "xunit.abstractions": {
         "type": "Transitive",

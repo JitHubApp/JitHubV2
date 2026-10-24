@@ -62,4 +62,42 @@ public class EmbedVisibilityTests
                 Assert.True(EmbedVisibility.IsInDerealizeBand(pTop, pBottom, VTop, VBottom, Derealize));
         }
     }
+
+    [Fact]
+    public void ScrollingCodeActions_NeverAccumulateBeyondDerealizeBand()
+    {
+        const int actionCount = 10_000;
+        const double actionSpacing = 80;
+        const double actionHeight = 32;
+        var realized = new HashSet<int>();
+
+        for (double viewportTop = 0; viewportTop < actionCount * actionSpacing; viewportTop += 240)
+        {
+            double viewportBottom = viewportTop + (VBottom - VTop);
+            for (int action = 0; action < actionCount; action++)
+            {
+                double top = action * actionSpacing;
+                double bottom = top + actionHeight;
+                if (EmbedVisibility.IsInRealizeBand(top, bottom, viewportTop, viewportBottom, Realize))
+                    realized.Add(action);
+                else if (!EmbedVisibility.IsInDerealizeBand(top, bottom, viewportTop, viewportBottom, Derealize))
+                    realized.Remove(action);
+            }
+
+            Assert.All(realized, action =>
+            {
+                double top = action * actionSpacing;
+                Assert.True(EmbedVisibility.IsInDerealizeBand(
+                    top,
+                    top + actionHeight,
+                    viewportTop,
+                    viewportBottom,
+                    Derealize));
+            });
+
+            // At this spacing, the wider retention band can contain no more
+            // than 44 controls, independent of total document length.
+            Assert.True(realized.Count <= 44, $"Retained {realized.Count} code actions.");
+        }
+    }
 }

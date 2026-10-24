@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "workerFileName": "MarkdownRenderer.Svg.Resvg.Worker.exe",
+  "workers": [
+    {
+      "rid": "win-x86",
+      "target": "i686-pc-windows-msvc",
+      "machine": "x86",
+      "bytes": 3586048,
+      "sha256": "43ec5bf4ae422f55f9c81e5133d7568f957f2557dbc43236e2cdcf32640a7743",
+      "normalizedSha256": "8c42d1ed3d085453e6ae09f0a5c6642d0224001a9e6b532445f11aee44e54086",
+      "sourceFingerprint": "1d61e2d7de2113d96db75f351e67cc4cf1c84ea058d14975ca40abb60266a1e9",
+      "buildFingerprint": "ff6b848fb70598f9c86a1ab602453104b92d8591097ed25a4b9c96888fffa790",
+      "rustcCommit": "ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96",
+      "hostProtocolVersion": 10,
+      "nativeProtocolVersion": 10,
+      "buildOutputBytes": 3586048,
+      "buildOutputSha256": "43ec5bf4ae422f55f9c81e5133d7568f957f2557dbc43236e2cdcf32640a7743",
+      "buildOutputNormalizedSha256": "8c42d1ed3d085453e6ae09f0a5c6642d0224001a9e6b532445f11aee44e54086"
+    },
+    {
+      "rid": "win-x64",
+      "target": "x86_64-pc-windows-msvc",
+      "machine": "x64",
+      "bytes": 3766272,
+      "sha256": "041e19741fa1faf59bafe529e6707c4104106a56a2d7b822367e4e62c43af085",
+      "normalizedSha256": "a3a67f20e65afb71f47a7300423556e75a81052e7d35fe12312ca728906e39b2",
+      "sourceFingerprint": "1d61e2d7de2113d96db75f351e67cc4cf1c84ea058d14975ca40abb60266a1e9",
+      "buildFingerprint": "188532cc8f1b6a7093e87230dc06430b5df18aaafaf0af2a6313667d2dce0953",
+      "rustcCommit": "ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96",
+      "hostProtocolVersion": 10,
+      "nativeProtocolVersion": 10,
+      "buildOutputBytes": 3766272,
+      "buildOutputSha256": "041e19741fa1faf59bafe529e6707c4104106a56a2d7b822367e4e62c43af085",
+      "buildOutputNormalizedSha256": "a3a67f20e65afb71f47a7300423556e75a81052e7d35fe12312ca728906e39b2"
+    },
+    {
+      "rid": "win-arm64",
+      "target": "aarch64-pc-windows-msvc",
+      "machine": "arm64",
+      "bytes": 3080192,
+      "sha256": "64c7094ccb64b04ef7e249076eb29111534a273a9ba972b1535837c08d752ee1",
+      "normalizedSha256": "223eb800fcd715d1627c3f37e31b5a99a45c00324169e26901c98b1525313b2b",
+      "sourceFingerprint": "1d61e2d7de2113d96db75f351e67cc4cf1c84ea058d14975ca40abb60266a1e9",
+      "buildFingerprint": "be6bd9b81728581e22c2859babfba0be4a8f3016b935e43b33ddf35a4ce5d820",
+      "rustcCommit": "ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96",
+      "hostProtocolVersion": 10,
+      "nativeProtocolVersion": 10,
+      "buildOutputBytes": 3080192,
+      "buildOutputSha256": "64c7094ccb64b04ef7e249076eb29111534a273a9ba972b1535837c08d752ee1",
+      "buildOutputNormalizedSha256": "223eb800fcd715d1627c3f37e31b5a99a45c00324169e26901c98b1525313b2b"
+    }
+  ]
+}

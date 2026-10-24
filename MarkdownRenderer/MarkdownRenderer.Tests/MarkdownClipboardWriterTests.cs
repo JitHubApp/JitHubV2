@@ -6,12 +6,13 @@ namespace MarkdownRenderer.Tests;
 public class MarkdownClipboardWriterTests
 {
     [Fact]
-    public void BuildHtmlFragment_RendersMarkdownFormatting()
+    public void BuildHtmlFragment_EncodesRenderedTextWithoutReparsingMarkup()
     {
-        string html = MarkdownClipboardWriter.BuildHtmlFragment("**bold** and [link](https://example.com)");
+        string html = MarkdownClipboardWriter.BuildHtmlFragment("<script>alert(1)</script>\nnext");
 
-        Assert.Contains("<strong>bold</strong>", html);
-        Assert.Contains("href=\"https://example.com\"", html);
+        Assert.Contains("&lt;script&gt;alert(1)&lt;/script&gt;", html);
+        Assert.DoesNotContain("<script>", html);
+        Assert.Contains("<br />next", html);
     }
 
     [Fact]
@@ -21,7 +22,7 @@ public class MarkdownClipboardWriterTests
     }
 
     [Fact]
-    public void ChoosePlainTextPayload_DefaultsToSourceMarkdown()
+    public void ChoosePlainTextPayload_CanUseSourceMarkdownExplicitly()
     {
         var options = new MarkdownCopyOptions
         {
@@ -31,6 +32,18 @@ public class MarkdownClipboardWriterTests
         string text = MarkdownClipboardWriter.ChoosePlainTextPayload("**bold**", "bold", options);
 
         Assert.Equal("**bold**", text);
+    }
+
+    [Fact]
+    public void ChoosePlainTextPayload_DefaultsToRenderedText()
+    {
+        string text = MarkdownClipboardWriter.ChoosePlainTextPayload(
+            "**bold**",
+            "bold",
+            MarkdownCopyOptions.Default);
+
+        Assert.Equal("bold", text);
+        Assert.True(MarkdownCopyOptions.Default.IncludeHtml);
     }
 
     [Fact]
@@ -57,5 +70,35 @@ public class MarkdownClipboardWriterTests
         string text = MarkdownClipboardWriter.ChoosePlainTextPayload("**bold**", null, options);
 
         Assert.Equal("**bold**", text);
+    }
+
+    // P3-015 (Phase 3 ranks 58, 111, 271, 279, 287, 315, 356, 492): a
+    // selection inside a GitHub alert title ("Note", "Warning", "Important")
+    // has rendered text but no source text, and Ctrl+C copied nothing.
+    [Fact]
+    public void ResolvePlainTextPayload_RenderedTextWithoutSourceIsCopied()
+    {
+        Assert.Equal("Note", MarkdownClipboardWriter.ResolvePlainTextPayload(
+            string.Empty, "Note", MarkdownCopyOptions.Default));
+        Assert.Equal("Note", MarkdownClipboardWriter.ResolvePlainTextPayload(
+            null, "Note", MarkdownCopyOptions.Default));
+    }
+
+    [Fact]
+    public void ResolvePlainTextPayload_NothingToCopyReturnsNull()
+    {
+        Assert.Null(MarkdownClipboardWriter.ResolvePlainTextPayload(string.Empty, string.Empty, MarkdownCopyOptions.Default));
+        Assert.Null(MarkdownClipboardWriter.ResolvePlainTextPayload(null, null, MarkdownCopyOptions.Default));
+        // Source mode copies source only; a source-less title has none.
+        var source = new MarkdownCopyOptions { PlainTextMode = MarkdownPlainTextCopyMode.SourceMarkdown };
+        Assert.Null(MarkdownClipboardWriter.ResolvePlainTextPayload(string.Empty, "Note", source));
+        Assert.Equal("**bold**", MarkdownClipboardWriter.ResolvePlainTextPayload("**bold**", "bold", source));
+    }
+
+    [Fact]
+    public void ResolvePlainTextPayload_RenderedModeKeepsExistingChoices()
+    {
+        Assert.Equal("bold", MarkdownClipboardWriter.ResolvePlainTextPayload("**bold**", "bold", MarkdownCopyOptions.Default));
+        Assert.Equal("**bold**", MarkdownClipboardWriter.ResolvePlainTextPayload("**bold**", null, MarkdownCopyOptions.Default));
     }
 }

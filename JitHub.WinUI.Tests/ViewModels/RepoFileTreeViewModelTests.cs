@@ -331,10 +331,19 @@ public sealed class RepoFileTreeViewModelTests
             .ToArray());
 
         Task<RepoFileTreeViewModel.PreparedTree> pending = viewModel.PrepareLoadAsync(tree, default);
-        await resolver.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        resolver.InvocationReturned.Set();
+        try
+        {
+            await resolver.Started.Task.WaitAsync(TimeSpan.FromSeconds(30));
 
-        Assert.False(pending.IsCompleted);
-        resolver.Release.Set();
+            Assert.True(resolver.InvocationReturnedBeforeProjection);
+            Assert.False(pending.IsCompleted);
+        }
+        finally
+        {
+            resolver.Release.Set();
+        }
+
         RepoFileTreeViewModel.PreparedTree prepared = await pending;
 
         Assert.Equal(500, prepared.NodesByPath.Count);
@@ -764,14 +773,30 @@ public sealed class RepoFileTreeViewModelTests
 
     private sealed class BlockingLanguageResolver : ILanguageIdResolver
     {
+        private int _firstResolveEntered;
+
         public TaskCompletionSource Started { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public ManualResetEventSlim InvocationReturned { get; } = new(initialState: false);
         public ManualResetEventSlim Release { get; } = new(initialState: false);
+        public bool InvocationReturnedBeforeProjection { get; private set; }
 
         public string Resolve(string fileName, ReadOnlySpan<byte> contentSniff = default)
         {
-            Started.TrySetResult();
-            Release.Wait(TimeSpan.FromSeconds(2));
+            if (Interlocked.Exchange(ref _firstResolveEntered, 1) == 0)
+            {
+                // A synchronous implementation cannot set InvocationReturned because
+                // it is blocked inside this call. Correct background dispatch observes
+                // it immediately, independent of hosted-runner scheduling latency.
+                InvocationReturnedBeforeProjection =
+                    InvocationReturned.Wait(TimeSpan.FromSeconds(2));
+                Started.TrySetResult();
+                if (InvocationReturnedBeforeProjection)
+                {
+                    Release.Wait(TimeSpan.FromSeconds(30));
+                }
+            }
+
             return "text";
         }
 

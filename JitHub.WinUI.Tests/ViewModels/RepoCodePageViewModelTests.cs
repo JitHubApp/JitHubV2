@@ -2,19 +2,357 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Net;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Models.CodeViewer;
 using JitHub.Services;
 using JitHub.Services.CodeViewer;
+using JitHub.Services.Markdown;
 using JitHub.WinUI.Tests.TestDoubles;
 using JitHub.WinUI.ViewModels.CodeViewer;
+using MarkdownRenderer.Images;
+using NSubstitute;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.ViewModels;
 
 public sealed class RepoCodePageViewModelTests
 {
+    [Fact]
+    public void MutableMarkdownReloadsOnlyWhenTreeSnapshotChangedOrUnavailable()
+    {
+        const string firstTree = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        const string nextTree = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
+        Assert.False(RepoCodePageViewModel.ShouldReloadMarkdownForRepositoryTreeRevision(
+            "README.md", hadCommittedState: true, "main", firstTree, firstTree));
+        Assert.True(RepoCodePageViewModel.ShouldReloadMarkdownForRepositoryTreeRevision(
+            "README.md", hadCommittedState: true, "main", firstTree, nextTree));
+        Assert.True(RepoCodePageViewModel.ShouldReloadMarkdownForRepositoryTreeRevision(
+            "README.md", hadCommittedState: true, "main", previousRootTreeSha: null, currentRootTreeSha: null));
+        Assert.True(RepoCodePageViewModel.ShouldReloadMarkdownForRepositoryTreeRevision(
+            "README.md", hadCommittedState: true, "main", previousRootTreeSha: null, currentRootTreeSha: firstTree));
+        Assert.False(RepoCodePageViewModel.ShouldReloadMarkdownForRepositoryTreeRevision(
+            "README.md", hadCommittedState: true, firstTree, previousRootTreeSha: null, currentRootTreeSha: null));
+        Assert.False(RepoCodePageViewModel.ShouldReloadMarkdownForRepositoryTreeRevision(
+            "src/app.cs", hadCommittedState: true, "main", firstTree, nextTree));
+    }
+
+    [Fact]
+    public async Task Initialize_RendersRootReadmeWithoutLoadingRecursiveTree()
+    {
+        RepoTreeNode readme = File("README.md", "readme-sha");
+        RootFirstTreeService service = new(readme, Blob("readme-sha", "root-first readme"));
+        RepoCodePageViewModel viewModel = CreateViewModel(service);
+
+        await viewModel.InitializeAsync("owner", "repo", "main", default);
+        await viewModel.DefaultPreviewTask;
+
+        Assert.Equal("README.md", viewModel.Tree.SelectedNode?.Path);
+        Assert.True(viewModel.IsFileSelectionCoherent("README.md"));
+        Assert.Equal("root-first readme", viewModel.Preview.Text);
+        Assert.Equal(0, service.RecursiveTreeRequestCount);
+        Assert.Equal(0, service.BlobRequestCount);
+    }
+
+    [Fact]
+    public async Task Initialize_KeepsFreshPublicReadmeWhenRootListingIsDenied()
+    {
+        IRepoTreeService service = Substitute.For<IRepoTreeService>();
+        service.LoadDirectoryAsync(
+                "owner", "repo", string.Empty, "main", Arg.Any<CancellationToken>(), QueryFetchPolicy.StaleFirst)
+            .Returns(Task.FromException<RepoCodeLoadResult<IReadOnlyList<RepoTreeNode>>>(
+                new GitHubRateLimitException(
+                    HttpStatusCode.Forbidden,
+                    "The organization has an IP allow list enabled.",
+                    TimeSpan.Zero)));
+        service.LoadReadmeAsync(
+                "owner", "repo", "main", Arg.Any<CancellationToken>(), QueryFetchPolicy.StaleFirst)
+            .Returns(Task.FromResult<RepoCodeLoadResult<RepoReadmeFile>?>(
+                new RepoCodeLoadResult<RepoReadmeFile>(
+                    new RepoReadmeFile(
+                        "README.md",
+                        "README.md",
+                        Blob("readme-sha", "# Available README")),
+                    CacheState.Fresh)));
+        RepoCodePageViewModel viewModel = CreateViewModel(service);
+
+        await viewModel.InitializeAsync("owner", "repo", "main", default);
+        await viewModel.DefaultPreviewTask;
+
+        Assert.Equal("# Available README", viewModel.Preview.Text);
+        Assert.Equal("README.md", Assert.Single(viewModel.Tree.RootNodes).Path);
+        Assert.True(viewModel.Tree.IsTruncated);
+        Assert.False(viewModel.Tree.IsRootAuthoritative);
+        Assert.False(string.IsNullOrWhiteSpace(viewModel.LoadError));
+        Assert.True(viewModel.ReconciliationTask.IsCompleted);
+    }
+
+    [Fact]
+    public async Task Initialize_NonMarkdownReadmeUsesGitHubRenderedSafeHtml()
+    {
+        RepoTreeNode readme = File("README.rst", "readme-sha");
+        RootFirstTreeService service = new(
+            readme,
+            Blob("readme-sha", "Raw reStructuredText"),
+            "<h1>Rendered heading</h1><p>Rendered body</p>");
+        RepoCodePageViewModel viewModel = CreateViewModel(service);
+
+        await viewModel.InitializeAsync("owner", "repo", "main", default);
+        await viewModel.DefaultPreviewTask;
+
+        Assert.Equal(RepoFilePreviewKind.Markdown, viewModel.Preview.Kind);
+        Assert.Equal("github-readme-html", viewModel.Preview.LanguageId);
+        Assert.Equal("Raw reStructuredText", viewModel.Preview.Text);
+        Assert.Equal("<h1>Rendered heading</h1><p>Rendered body</p>", viewModel.Preview.RenderedText);
+        Assert.Equal("<h1>Rendered heading</h1><p>Rendered body</p>", viewModel.Preview.RichPreviewDocument?.Markdown);
+        Assert.Equal("README.rst", viewModel.Preview.RichPreviewDocument?.DocumentPath);
+        Assert.Equal(0, service.BlobRequestCount);
+    }
+
+    [Fact]
+    public async Task Initialize_MarkdownReadmePrefersGitHubRenderedSafeHtml()
+    {
+        RepoTreeNode readme = File("README.md", "readme-sha");
+        RootFirstTreeService service = new(
+            readme,
+            Blob("readme-sha", "# Raw heading"),
+            "<h1>GitHub-rendered heading</h1>");
+        RepoCodePageViewModel viewModel = CreateViewModel(service);
+
+        await viewModel.InitializeAsync("owner", "repo", "main", default);
+        await viewModel.DefaultPreviewTask;
+
+        Assert.Equal(RepoFilePreviewKind.Markdown, viewModel.Preview.Kind);
+        Assert.Equal("markdown", viewModel.Preview.LanguageId);
+        Assert.Equal("# Raw heading", viewModel.Preview.Text);
+        Assert.Equal("<h1>GitHub-rendered heading</h1>", viewModel.Preview.RenderedText);
+        Assert.Equal("<h1>GitHub-rendered heading</h1>", viewModel.Preview.RichPreviewDocument?.Markdown);
+        Assert.EndsWith(":readme-sha", viewModel.Preview.RichPreviewDocument?.DocumentSource?.DocumentId);
+        Assert.Equal(0, service.BlobRequestCount);
+    }
+
+    [Fact]
+    public async Task Initialize_SameByteReadmeAuditUsesRawDecodedMarkdownSource()
+    {
+        RepoTreeNode readme = File("README.md", "readme-sha");
+        RootFirstTreeService service = new(
+            readme,
+            Blob("readme-sha", "# Raw decoded heading"),
+            "<h1>GitHub-rendered heading</h1>");
+        RepoCodePageViewModel viewModel = CreateViewModel(service);
+        viewModel.UseRawReadmeSourceForSameByteAudit = true;
+
+        await viewModel.InitializeAsync("owner", "repo", "main", default);
+        await viewModel.DefaultPreviewTask;
+
+        Assert.Equal("# Raw decoded heading", viewModel.Preview.Text);
+        Assert.Equal("# Raw decoded heading", viewModel.Preview.RenderedText);
+        Assert.Equal("# Raw decoded heading", viewModel.Preview.RichPreviewDocument?.Markdown);
+        Assert.EndsWith(":readme-sha", viewModel.Preview.RichPreviewDocument?.DocumentSource?.DocumentId);
+    }
+
+    [Theory]
+    [InlineData("docs/README.md")]
+    [InlineData("README")]
+    public async Task Initialize_SameByteReadmeAbsentFromSyntheticTreeKeepsPinnedCorpusSource(string readmePath)
+    {
+        const string pinnedCommit = "0123456789abcdef0123456789abcdef01234567";
+        const string pinnedSha = "89abcdef0123456789abcdef0123456789abcdef";
+        const string pinnedMarkdown = "# Exact corpus README\n\nPinned source must win.";
+        EarlyReadmeTreeService service = new();
+        RepoCodePageViewModel viewModel = CreateViewModel(service);
+        viewModel.UseRawReadmeSourceForSameByteAudit = true;
+
+        Task initialize = viewModel.InitializeAsync("owner", "repo", pinnedCommit, default);
+        service.CompleteReadme(pinnedMarkdown, path: readmePath, sha: pinnedSha);
+        await WaitUntilAsync(() => viewModel.Preview.Text == pinnedMarkdown);
+
+        // The test tree deliberately represents the signed-out app's generic sample
+        // rather than the README identified by the pinned same-byte source.
+        service.CompleteRoot(File("README.md", "preview-readme"));
+        await initialize;
+        await viewModel.ReconciliationTask;
+        await viewModel.DefaultPreviewTask;
+
+        Assert.Equal(readmePath, viewModel.Preview.CurrentFile?.Path);
+        Assert.Equal(pinnedSha, viewModel.Preview.CurrentFile?.Sha);
+        Assert.Equal(Encoding.UTF8.GetBytes(pinnedMarkdown), viewModel.Preview.Bytes);
+        Assert.Equal(Encoding.UTF8.GetByteCount(pinnedMarkdown), viewModel.Preview.ByteSize);
+        Assert.Equal(RepoFilePreviewKind.Markdown, viewModel.Preview.Kind);
+        Assert.Equal(pinnedMarkdown, viewModel.Preview.Text);
+        Assert.Equal(pinnedMarkdown, viewModel.Preview.RenderedText);
+        Assert.Equal(pinnedMarkdown, viewModel.Preview.RichPreviewDocument?.Markdown);
+        Assert.Equal(readmePath, viewModel.Preview.RichPreviewDocument?.DocumentPath);
+        Assert.EndsWith($":{pinnedSha}", viewModel.Preview.RichPreviewDocument?.DocumentSource?.DocumentId);
+        Assert.Equal("preview-readme", Assert.Single(viewModel.Tree.RootNodes).Sha);
+        Assert.Equal(0, service.BlobRequestCount);
+    }
+
+    [Fact]
+    public async Task Initialize_ChangedRefWithSameReadmeBlobDoesNotReuseOldSourceAdmission()
+    {
+        RootFirstTreeService service = new(
+            File("README.md", "readme-sha"),
+            Blob("readme-sha", "# Same README bytes"));
+        RepoCodePageViewModel viewModel = CreateViewModel(service);
+
+        await viewModel.InitializeAsync("owner", "repo", "main", default);
+        await viewModel.DefaultPreviewTask;
+        MarkdownViewerDocumentPayload firstDocument = viewModel.Preview.RichPreviewDocument!;
+        MarkdownDocumentSource firstSource = firstDocument.DocumentSource!;
+        PendingSameByteReadmeSourceAdmission pendingAdmission = new(
+            firstDocument.Markdown,
+            firstDocument.DocumentPath,
+            firstSource,
+            Identity: null,
+            FailureReason: "matched",
+            StopwatchTicks: 1,
+            StopwatchFrequency: 1);
+
+        await viewModel.InitializeAsync("owner", "repo", "release", default);
+        await viewModel.DefaultPreviewTask;
+
+        MarkdownViewerDocumentPayload nextDocument = viewModel.Preview.RichPreviewDocument!;
+        MarkdownDocumentSource nextSource = nextDocument.DocumentSource!;
+        Assert.Equal("readme-sha", viewModel.Preview.CurrentFile?.Sha);
+        Assert.Equal(firstDocument.Markdown, nextDocument.Markdown);
+        Assert.Equal("release", nextSource.Ref);
+        Assert.NotEqual(firstSource.DocumentId, nextSource.DocumentId);
+        Assert.False(pendingAdmission.Matches(
+            nextDocument.Markdown,
+            nextDocument.DocumentPath,
+            nextSource));
+    }
+
+    [Fact]
+    public async Task Initialize_ImmutableSymlinkReadmeUsesDereferencedEndpointBlob()
+    {
+        const string commitSha = "0123456789abcdef0123456789abcdef01234567";
+        RepoTreeNode symlink = File("readme.md", "symlink-blob-sha");
+        RootFirstTreeService service = new(
+            symlink,
+            Blob("dereferenced-target-sha", "resolved target readme"));
+        RepoCodePageViewModel viewModel = CreateViewModel(service);
+
+        await viewModel.InitializeAsync("owner", "repo", commitSha, default);
+        await viewModel.ReconciliationTask;
+        await viewModel.DefaultPreviewTask;
+
+        Assert.Equal("readme.md", viewModel.Tree.SelectedNode?.Path);
+        Assert.Equal("dereferenced-target-sha", viewModel.Preview.CurrentFile?.Sha);
+        Assert.Equal("resolved target readme", viewModel.Preview.Text);
+        Assert.Equal(0, service.BlobRequestCount);
+    }
+
+    [Fact]
+    public async Task Initialize_PublishesReadmeBeforeRootRailCompletes()
+    {
+        EarlyReadmeTreeService service = new();
+        RepoCodePageViewModel viewModel = CreateViewModel(service);
+        viewModel.UseRawReadmeSourceForSameByteAudit = true;
+
+        Task initialize = viewModel.InitializeAsync("owner", "repo", "main", default);
+        service.CompleteReadme("early readme", "<h1>Rendered early README</h1>");
+        for (int attempt = 0; attempt < 100 && viewModel.Preview.Text != "early readme"; attempt++)
+        {
+            await Task.Delay(10);
+        }
+
+        Assert.Equal("early readme", viewModel.Preview.Text);
+        Assert.Equal("early readme", viewModel.Preview.RenderedText);
+        Assert.Equal("early readme", viewModel.Preview.RichPreviewDocument?.Markdown);
+        Assert.Equal("README.md", viewModel.Preview.RichPreviewDocument?.DocumentPath);
+        Assert.False(initialize.IsCompleted);
+        Assert.Empty(viewModel.Tree.RootNodes);
+
+        service.CompleteRoot();
+        await initialize;
+        Assert.True(viewModel.IsFileSelectionCoherent("README.md"));
+        Assert.Equal(0, service.BlobRequestCount);
+    }
+
+    [Fact]
+    public async Task Initialize_ExactReadmePathWinsWhenTreeHasCaseCollision()
+    {
+        const string pinnedCommit = "0123456789abcdef0123456789abcdef01234567";
+        EarlyReadmeTreeService service = new();
+        RepoCodePageViewModel viewModel = CreateViewModel(service);
+        viewModel.UseRawReadmeSourceForSameByteAudit = true;
+
+        Task initialize = viewModel.InitializeAsync("owner", "repo", pinnedCommit, default);
+        service.CompleteReadme("# Exact README", path: "readme.md", sha: "pinned-readme-sha");
+        await WaitUntilAsync(() => viewModel.Preview.Text == "# Exact README");
+        service.CompleteRoot(
+            File("README.md", "case-collision-decoy"),
+            File("readme.md", "pinned-readme-sha"));
+
+        await initialize;
+        await viewModel.ReconciliationTask;
+        await viewModel.DefaultPreviewTask;
+
+        Assert.Equal("readme.md", viewModel.Tree.SelectedNode?.Path);
+        Assert.Equal("pinned-readme-sha", viewModel.Preview.CurrentFile?.Sha);
+        Assert.Equal("# Exact README", viewModel.Preview.RichPreviewDocument?.Markdown);
+        Assert.EndsWith(":pinned-readme-sha", viewModel.Preview.RichPreviewDocument?.DocumentSource?.DocumentId);
+        Assert.Equal(0, service.BlobRequestCount);
+    }
+
+    [Fact]
+    public async Task Initialize_UniqueCaseInsensitiveReadmeMatchRetainsPinnedRawSourceAndExactPath()
+    {
+        const string pinnedCommit = "0123456789abcdef0123456789abcdef01234567";
+        EarlyReadmeTreeService service = new();
+        RepoCodePageViewModel viewModel = CreateViewModel(service);
+        viewModel.UseRawReadmeSourceForSameByteAudit = true;
+
+        Task initialize = viewModel.InitializeAsync("owner", "repo", pinnedCommit, default);
+        service.CompleteReadme("# Pinned raw README", path: "readme.md", sha: "pinned-readme-sha");
+        await WaitUntilAsync(() => viewModel.Preview.Text == "# Pinned raw README");
+        service.CompleteRoot(File("README.md", "preview-readme"));
+
+        await initialize;
+        await viewModel.ReconciliationTask;
+        await viewModel.DefaultPreviewTask;
+
+        Assert.Null(viewModel.Tree.SelectedNode);
+        Assert.Equal("readme.md", viewModel.Preview.CurrentFile?.Path);
+        Assert.Equal("pinned-readme-sha", viewModel.Preview.CurrentFile?.Sha);
+        Assert.Equal("# Pinned raw README", viewModel.Preview.RichPreviewDocument?.Markdown);
+        Assert.Equal("readme.md", viewModel.Preview.RichPreviewDocument?.DocumentSource?.Path);
+        Assert.EndsWith(":pinned-readme-sha", viewModel.Preview.RichPreviewDocument?.DocumentSource?.DocumentId);
+        Assert.Equal(0, service.BlobRequestCount);
+    }
+
+    [Fact]
+    public async Task Initialize_AmbiguousReadmeCaseMatchKeepsPinnedSourceWithoutSelectingTreeEntry()
+    {
+        const string pinnedCommit = "0123456789abcdef0123456789abcdef01234567";
+        EarlyReadmeTreeService service = new();
+        RepoCodePageViewModel viewModel = CreateViewModel(service);
+        viewModel.UseRawReadmeSourceForSameByteAudit = true;
+
+        Task initialize = viewModel.InitializeAsync("owner", "repo", pinnedCommit, default);
+        service.CompleteReadme("# Canonical README", path: "ReadMe.md", sha: "pinned-readme-sha");
+        await WaitUntilAsync(() => viewModel.Preview.Text == "# Canonical README");
+        service.CompleteRoot(
+            File("README.md", "case-collision-one"),
+            File("readme.md", "case-collision-two"));
+
+        await initialize;
+        await viewModel.ReconciliationTask;
+        await viewModel.DefaultPreviewTask;
+
+        Assert.Null(viewModel.Tree.SelectedNode);
+        Assert.Equal("ReadMe.md", viewModel.Preview.CurrentFile?.Path);
+        Assert.Equal("pinned-readme-sha", viewModel.Preview.CurrentFile?.Sha);
+        Assert.Equal("# Canonical README", viewModel.Preview.RichPreviewDocument?.Markdown);
+        Assert.EndsWith(":pinned-readme-sha", viewModel.Preview.RichPreviewDocument?.DocumentSource?.DocumentId);
+        Assert.Equal(0, service.BlobRequestCount);
+    }
+
     [Fact]
     public async Task Initialize_OlderCompletionCannotOverwriteNewerRef()
     {
@@ -318,18 +656,61 @@ public sealed class RepoCodePageViewModelTests
     {
         RepoTree cached = CreateTree(File("README.md", "readme-old"));
         RepoTree refreshed = CreateTree(File("README.md", "readme-new"));
-        StaleThenRefreshTreeService service = new(cached, refreshed);
+        StaleThenRefreshTreeService service = new(cached, refreshed) { DeferOldReadmeBlob = true };
         service.Blobs["readme-old"] = Blob("readme-old", "cached readme");
         service.Blobs["readme-new"] = Blob("readme-new", "fresh readme");
         RepoCodePageViewModel viewModel = CreateViewModel(service);
+        TaskCompletionSource<bool> cachedReadmeApplied = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        viewModel.Preview.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(viewModel.Preview.CurrentFile) &&
+                viewModel.Preview.CurrentFile?.Sha == "readme-old")
+            {
+                cachedReadmeApplied.TrySetResult(true);
+            }
+        };
+        viewModel.BeforeRefreshedTreeApplyAsyncForTest = async token =>
+        {
+            service.ReleaseOldReadmeBlob();
+            await cachedReadmeApplied.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
+        };
 
         await viewModel.InitializeAsync("owner", "repo", "main", default);
         await viewModel.TreeRefreshTask;
+        await viewModel.AwaitReconciliationSettledAsync(default);
         await viewModel.DefaultPreviewTask;
 
         Assert.Equal("readme-new", viewModel.Preview.CurrentFile?.Sha);
         Assert.Equal("fresh readme", viewModel.Preview.Text);
         Assert.Equal(2, service.TreeRequestCount);
+    }
+
+    [Fact]
+    public async Task Initialize_CachedTreeRefreshReappliesMutableReadmeWhenTreeIdentityIsUnavailable()
+    {
+        RepoTree cached = CreateTree(File("README.md", "readme-same"));
+        RepoTree refreshed = CreateTree(File("README.md", "readme-same"));
+        StaleThenRefreshTreeService service = new(cached, refreshed) { DeferRefresh = true };
+        service.Blobs["readme-same"] = Blob("readme-same", "# Stable README bytes");
+        RepoCodePageViewModel viewModel = CreateViewModel(service);
+
+        await viewModel.InitializeAsync("owner", "repo", "main", default);
+        await service.RefreshRequested.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        MarkdownViewerDocumentPayload? initialDocument = viewModel.Preview.RichPreviewDocument;
+        Assert.NotNull(initialDocument?.DocumentSource);
+        string firstDocumentId = initialDocument!.DocumentSource!.DocumentId;
+        service.ReleaseRefresh();
+        await viewModel.TreeRefreshTask;
+        await viewModel.AwaitReconciliationSettledAsync(default);
+        await viewModel.DefaultPreviewTask;
+
+        MarkdownViewerDocumentPayload document = viewModel.Preview.RichPreviewDocument!;
+        Assert.Null(viewModel.Tree.RootTreeSha);
+        Assert.Equal("readme-same", viewModel.Preview.CurrentFile?.Sha);
+        Assert.Equal("# Stable README bytes", document.Markdown);
+        Assert.NotNull(document.DocumentSource);
+        Assert.Contains(":reload-refresh-", document.DocumentSource!.DocumentId, StringComparison.Ordinal);
+        Assert.NotEqual(firstDocumentId, document.DocumentSource.DocumentId);
     }
 
     [Fact]
@@ -422,11 +803,12 @@ public sealed class RepoCodePageViewModelTests
         RepoCodePageViewModel viewModel = CreateViewModel(service);
         await viewModel.InitializeAsync("owner", "repo", "main", default);
         await viewModel.SelectFileAsync(File("removed.cs", "removed"), default);
+        Assert.False(viewModel.TreeRefreshTask.IsCompleted);
 
         service.RootResult.SetResult(Fresh<IReadOnlyList<RepoTreeNode>>([
             File("README.md", "readme")]
         ));
-        await WaitUntilAsync(() => viewModel.Preview.CurrentFile?.Path == "README.md");
+        await viewModel.TreeRefreshTask;
 
         Assert.Equal("readme", viewModel.Preview.CurrentFile!.Sha);
         Assert.Equal("current readme", viewModel.Preview.Text);
@@ -444,11 +826,14 @@ public sealed class RepoCodePageViewModelTests
         RepoCodePageViewModel viewModel = CreateViewModel(service);
         await viewModel.InitializeAsync("owner", "repo", "main", default);
         Task selection = viewModel.SelectFileAsync(File("removed.cs", "removed"), default);
+        Assert.False(viewModel.TreeRefreshTask.IsCompleted);
 
         service.RootResult.SetResult(Fresh<IReadOnlyList<RepoTreeNode>>([]));
-        await viewModel.Tree.RootReconciliationTask;
+        await viewModel.TreeRefreshTask;
         blob.SetResult(Fresh(Blob("removed", "obsolete")));
         await selection;
+        await viewModel.Tree.AwaitPendingReconciliationSettledAsync(default);
+        await viewModel.AwaitReconciliationSettledAsync(default);
 
         Assert.Empty(viewModel.Tree.RootNodes);
         Assert.Null(viewModel.Preview.CurrentFile);
@@ -511,6 +896,7 @@ public sealed class RepoCodePageViewModelTests
         TruncatedRefChangeTreeService service = new(includeRequestedFile: true);
         RepoCodePageViewModel viewModel = CreateViewModel(service);
         await viewModel.InitializeAsync("owner", "repo", "main", default);
+        await viewModel.Tree.LoadDirectoryAsync(Assert.Single(viewModel.Tree.RootNodes), default);
         await viewModel.SelectFileAsync(File("src/App.cs", "app-old"), default);
 
         await viewModel.InitializeAsync("owner", "repo", "next", default);
@@ -531,6 +917,7 @@ public sealed class RepoCodePageViewModelTests
         TruncatedRefChangeTreeService service = new(includeRequestedFile: false);
         RepoCodePageViewModel viewModel = CreateViewModel(service);
         await viewModel.InitializeAsync("owner", "repo", "main", default);
+        await viewModel.Tree.LoadDirectoryAsync(Assert.Single(viewModel.Tree.RootNodes), default);
         await viewModel.SelectFileAsync(File("src/App.cs", "app-old"), default);
 
         await viewModel.InitializeAsync("owner", "repo", "next", default);
@@ -744,6 +1131,16 @@ public sealed class RepoCodePageViewModelTests
     private static RepoCodeLoadResult<T> Fresh<T>(T value) where T : class =>
         new(value, CacheState.Fresh);
 
+    private static RepoCodeLoadResult<IReadOnlyList<RepoTreeNode>> ProjectRoot(
+        RepoCodeLoadResult<RepoTree> result) =>
+        new(
+            result.Value.Root.Children.ToArray(),
+            result.CacheState,
+            result.IsRefreshInProgress,
+            result.RefreshError,
+            result.FetchedAt,
+            result.StaleAfter);
+
     private static RepoTree CreateTree(params RepoTreeNode[] nodes) => CreateTree(false, nodes);
 
     private static RepoTree CreateTree(bool truncated, params RepoTreeNode[] nodes) => new()
@@ -806,10 +1203,10 @@ public sealed class RepoCodePageViewModelTests
             QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst) =>
             DeferTree(refOrSha).Task;
 
-        public Task<RepoCodeLoadResult<IReadOnlyList<RepoTreeNode>>> LoadDirectoryAsync(
+        public async Task<RepoCodeLoadResult<IReadOnlyList<RepoTreeNode>>> LoadDirectoryAsync(
             string owner, string name, string path, string refOrSha, CancellationToken ct,
             QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst) =>
-            Task.FromResult(Fresh<IReadOnlyList<RepoTreeNode>>([]));
+            ProjectRoot(await DeferTree(refOrSha).Task.WaitAsync(ct));
 
         public Task<RepoCodeLoadResult<RepoFileBlob>> LoadBlobAsync(
             string owner, string name, string sha, CancellationToken ct,
@@ -818,6 +1215,126 @@ public sealed class RepoCodePageViewModelTests
 
         private static TaskCompletionSource<RepoCodeLoadResult<T>> NewSource<T>() where T : class =>
             new(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+
+    private sealed class RootFirstTreeService : IRepoTreeService
+    {
+        private readonly RepoTreeNode _readme;
+        private readonly RepoFileBlob _blob;
+        private readonly string? _renderedHtml;
+        public RootFirstTreeService(RepoTreeNode readme, RepoFileBlob blob, string? renderedHtml = null)
+        {
+            _readme = readme;
+            _blob = blob;
+            _renderedHtml = renderedHtml;
+        }
+
+        public int RecursiveTreeRequestCount { get; private set; }
+        public int BlobRequestCount { get; private set; }
+
+        public Task<RepoCodeLoadResult<RepoTree>> LoadTreeAsync(
+            string owner,
+            string name,
+            string refOrSha,
+            CancellationToken ct,
+            QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst)
+        {
+            RecursiveTreeRequestCount++;
+            return Task.FromException<RepoCodeLoadResult<RepoTree>>(
+                new InvalidOperationException("The recursive tree is not part of initial navigation."));
+        }
+
+        public Task<RepoCodeLoadResult<IReadOnlyList<RepoTreeNode>>> LoadDirectoryAsync(
+            string owner,
+            string name,
+            string path,
+            string refOrSha,
+            CancellationToken ct,
+            QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst) =>
+            Task.FromResult(Fresh<IReadOnlyList<RepoTreeNode>>([_readme]));
+
+        public Task<RepoCodeLoadResult<RepoFileBlob>> LoadBlobAsync(
+            string owner,
+            string name,
+            string sha,
+            CancellationToken ct,
+            QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst)
+        {
+            BlobRequestCount++;
+            return Task.FromResult(Fresh(_blob));
+        }
+
+        public Task<RepoCodeLoadResult<RepoReadmeFile>?> LoadReadmeAsync(
+            string owner,
+            string name,
+            string refOrSha,
+            CancellationToken ct,
+            QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst) =>
+            Task.FromResult<RepoCodeLoadResult<RepoReadmeFile>?>(new RepoCodeLoadResult<RepoReadmeFile>(
+                new RepoReadmeFile(_readme.Name, _readme.Path, _blob, _renderedHtml),
+                CacheState.Fresh));
+    }
+
+    private sealed class EarlyReadmeTreeService : IRepoTreeService
+    {
+        private readonly TaskCompletionSource<RepoCodeLoadResult<IReadOnlyList<RepoTreeNode>>> _root =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource<RepoCodeLoadResult<RepoReadmeFile>?> _readme =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public int BlobRequestCount { get; private set; }
+
+        public void CompleteReadme(
+            string text,
+            string? renderedHtml = null,
+            string path = "README.md",
+            string sha = "readme-sha") => _readme.SetResult(
+            new RepoCodeLoadResult<RepoReadmeFile>(
+                new RepoReadmeFile(
+                    path[(path.LastIndexOf('/') + 1)..],
+                    path,
+                    Blob(sha, text),
+                    renderedHtml),
+                CacheState.Fresh));
+
+        public void CompleteRoot(params RepoTreeNode[] nodes) => _root.SetResult(
+            Fresh<IReadOnlyList<RepoTreeNode>>(nodes.Length == 0
+                ? [File("README.md", "readme-sha")]
+                : nodes));
+
+        public Task<RepoCodeLoadResult<RepoTree>> LoadTreeAsync(
+            string owner,
+            string name,
+            string refOrSha,
+            CancellationToken ct,
+            QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst) =>
+            Task.FromException<RepoCodeLoadResult<RepoTree>>(new NotSupportedException());
+
+        public Task<RepoCodeLoadResult<IReadOnlyList<RepoTreeNode>>> LoadDirectoryAsync(
+            string owner,
+            string name,
+            string path,
+            string refOrSha,
+            CancellationToken ct,
+            QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst) => _root.Task;
+
+        public Task<RepoCodeLoadResult<RepoReadmeFile>?> LoadReadmeAsync(
+            string owner,
+            string name,
+            string refOrSha,
+            CancellationToken ct,
+            QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst) => _readme.Task;
+
+        public Task<RepoCodeLoadResult<RepoFileBlob>> LoadBlobAsync(
+            string owner,
+            string name,
+            string sha,
+            CancellationToken ct,
+            QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst)
+        {
+            BlobRequestCount++;
+            return Task.FromException<RepoCodeLoadResult<RepoFileBlob>>(new InvalidOperationException());
+        }
     }
 
     private sealed class MutableTreeService : IRepoTreeService
@@ -856,8 +1373,27 @@ public sealed class RepoCodePageViewModelTests
 
         public Task<RepoCodeLoadResult<IReadOnlyList<RepoTreeNode>>> LoadDirectoryAsync(
             string owner, string name, string path, string refOrSha, CancellationToken ct,
-            QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst) =>
-            Task.FromResult(Fresh<IReadOnlyList<RepoTreeNode>>([]));
+            QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (TreeError is not null)
+            {
+                return Task.FromException<RepoCodeLoadResult<IReadOnlyList<RepoTreeNode>>>(TreeError);
+            }
+
+            if (fetchPolicy == QueryFetchPolicy.NetworkOnly)
+            {
+                _isRefreshInProgress = false;
+                return Task.FromResult(Fresh<IReadOnlyList<RepoTreeNode>>(Tree.Root.Children.ToArray()));
+            }
+
+            return Task.FromResult(_isRefreshInProgress
+                ? new RepoCodeLoadResult<IReadOnlyList<RepoTreeNode>>(
+                    Tree.Root.Children.ToArray(),
+                    CacheState.Stale,
+                    IsRefreshInProgress: true)
+                : Fresh<IReadOnlyList<RepoTreeNode>>(Tree.Root.Children.ToArray()));
+        }
 
         public Task<RepoCodeLoadResult<RepoFileBlob>> LoadBlobAsync(
             string owner, string name, string sha, CancellationToken ct,
@@ -875,6 +1411,8 @@ public sealed class RepoCodePageViewModelTests
     {
         private readonly RepoTree _cached;
         private readonly RepoTree _refreshed;
+        private readonly TaskCompletionSource<bool> _refreshRelease =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public StaleThenRefreshTreeService(RepoTree cached, RepoTree refreshed)
         {
@@ -885,6 +1423,15 @@ public sealed class RepoCodePageViewModelTests
         public Dictionary<string, RepoFileBlob> Blobs { get; } = new(StringComparer.Ordinal);
         public int TreeRequestCount { get; private set; }
         public Exception? RefreshError { get; init; }
+        public bool DeferRefresh { get; init; }
+        public bool DeferOldReadmeBlob { get; init; }
+        public TaskCompletionSource<bool> RefreshRequested { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource<bool> _oldReadmeBlobRelease =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public void ReleaseRefresh() => _refreshRelease.TrySetResult(true);
+        public void ReleaseOldReadmeBlob() => _oldReadmeBlobRelease.TrySetResult(true);
 
         public Task<RepoCodeLoadResult<RepoTree>> LoadTreeAsync(
             string owner, string name, string refOrSha, CancellationToken ct,
@@ -902,15 +1449,43 @@ public sealed class RepoCodePageViewModelTests
                 : new RepoCodeLoadResult<RepoTree>(_cached, CacheState.Stale, IsRefreshInProgress: true));
         }
 
-        public Task<RepoCodeLoadResult<IReadOnlyList<RepoTreeNode>>> LoadDirectoryAsync(
+        public async Task<RepoCodeLoadResult<IReadOnlyList<RepoTreeNode>>> LoadDirectoryAsync(
             string owner, string name, string path, string refOrSha, CancellationToken ct,
-            QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst) =>
-            Task.FromResult(Fresh<IReadOnlyList<RepoTreeNode>>([]));
+            QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst)
+        {
+            ct.ThrowIfCancellationRequested();
+            TreeRequestCount++;
+            if (fetchPolicy == QueryFetchPolicy.NetworkOnly && RefreshError is not null)
+            {
+                throw RefreshError;
+            }
 
-        public Task<RepoCodeLoadResult<RepoFileBlob>> LoadBlobAsync(
+            if (fetchPolicy == QueryFetchPolicy.NetworkOnly && DeferRefresh)
+            {
+                RefreshRequested.TrySetResult(true);
+                await _refreshRelease.Task.WaitAsync(ct).ConfigureAwait(false);
+            }
+
+            RepoTree tree = fetchPolicy == QueryFetchPolicy.NetworkOnly ? _refreshed : _cached;
+            return fetchPolicy == QueryFetchPolicy.NetworkOnly
+                ? Fresh<IReadOnlyList<RepoTreeNode>>(tree.Root.Children.ToArray())
+                : new RepoCodeLoadResult<IReadOnlyList<RepoTreeNode>>(
+                    tree.Root.Children.ToArray(),
+                    CacheState.Stale,
+                    IsRefreshInProgress: true);
+        }
+
+        public async Task<RepoCodeLoadResult<RepoFileBlob>> LoadBlobAsync(
             string owner, string name, string sha, CancellationToken ct,
-            QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst) =>
-            Task.FromResult(Fresh(Blobs[sha]));
+            QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst)
+        {
+            if (DeferOldReadmeBlob && sha == "readme-old")
+            {
+                await _oldReadmeBlobRelease.Task.WaitAsync(ct).ConfigureAwait(false);
+            }
+
+            return Fresh(Blobs[sha]);
+        }
     }
 
     private sealed class TruncatedRootTreeService : IRepoTreeService
@@ -940,7 +1515,13 @@ public sealed class RepoCodePageViewModelTests
 
         public Task<RepoCodeLoadResult<IReadOnlyList<RepoTreeNode>>> LoadDirectoryAsync(
             string owner, string name, string path, string refOrSha, CancellationToken ct,
-            QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst) => RootResult.Task;
+            QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst) =>
+            fetchPolicy == QueryFetchPolicy.NetworkOnly
+                ? RootResult.Task.WaitAsync(ct)
+                : Task.FromResult(new RepoCodeLoadResult<IReadOnlyList<RepoTreeNode>>(
+                    _tree.Root.Children.ToArray(),
+                    CacheState.Stale,
+                    IsRefreshInProgress: true));
 
         public Task<RepoCodeLoadResult<RepoFileBlob>> LoadBlobAsync(
             string owner, string name, string sha, CancellationToken ct,
@@ -983,7 +1564,12 @@ public sealed class RepoCodePageViewModelTests
         {
             RequestedDirectories.Add(path);
             return path.Length == 0
-                ? RootResult.Task
+                ? fetchPolicy == QueryFetchPolicy.NetworkOnly
+                    ? RootResult.Task.WaitAsync(ct)
+                    : Task.FromResult(new RepoCodeLoadResult<IReadOnlyList<RepoTreeNode>>(
+                        _tree.Root.Children.ToArray(),
+                        CacheState.Stale,
+                        IsRefreshInProgress: true))
                 : Task.FromResult(Fresh<IReadOnlyList<RepoTreeNode>>([
                     File("src/App.cs", "app-new")]
                 ));
@@ -1034,14 +1620,20 @@ public sealed class RepoCodePageViewModelTests
             RequestedDirectories.Add((refOrSha, path));
             if (path.Length == 0)
             {
-                IReadOnlyList<RepoTreeNode> root = _includeRequestedFile
-                    ? [Directory("src", "src-new"), File("README.md", "readme-next")]
-                    : [File("README.md", "readme-next")];
+                IReadOnlyList<RepoTreeNode> root = refOrSha == "main"
+                    ? [Directory("src", "src-old")]
+                    : _includeRequestedFile
+                        ? [Directory("src", "src-new"), File("README.md", "readme-next")]
+                        : [File("README.md", "readme-next")];
                 return Task.FromResult(Fresh(root));
             }
 
             return Task.FromResult(Fresh<IReadOnlyList<RepoTreeNode>>(
-                _includeRequestedFile ? [File("src/App.cs", "app-new")] : []));
+                refOrSha == "main"
+                    ? [File("src/App.cs", "app-old")]
+                    : _includeRequestedFile
+                        ? [File("src/App.cs", "app-new")]
+                        : []));
         }
 
         public Task<RepoCodeLoadResult<RepoFileBlob>> LoadBlobAsync(
@@ -1070,10 +1662,18 @@ public sealed class RepoCodePageViewModelTests
             throw new InvalidOperationException("Unreachable.");
         }
 
-        public Task<RepoCodeLoadResult<IReadOnlyList<RepoTreeNode>>> LoadDirectoryAsync(
+        public async Task<RepoCodeLoadResult<IReadOnlyList<RepoTreeNode>>> LoadDirectoryAsync(
             string owner, string name, string path, string refOrSha, CancellationToken ct,
-            QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst) =>
-            Task.FromResult(Fresh<IReadOnlyList<RepoTreeNode>>([]));
+            QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst)
+        {
+            RepoCodeLoadResult<RepoTree> tree = await LoadTreeAsync(
+                owner,
+                name,
+                refOrSha,
+                ct,
+                fetchPolicy);
+            return ProjectRoot(tree);
+        }
 
         public async Task<RepoCodeLoadResult<RepoFileBlob>> LoadBlobAsync(
             string owner, string name, string sha, CancellationToken ct,

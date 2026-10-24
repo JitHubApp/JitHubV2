@@ -10,10 +10,10 @@ namespace MarkdownRenderer.Gfm.Renderers;
 
 /// <summary>
 /// Renders a Markdig <see cref="Table"/> as a <see cref="TableBox"/> where each
-/// cell is an <see cref="InlineContainerBox"/> — enablnng hit-testnng, text
+/// cell is an <see cref="InlineContainerBox"/> — enabling hit-testing, text
 /// selection, and source-accurate copy for table content.
 /// </summary>
-public sealed class TableRenderer : MarkdownNodeRenderer<Table>
+internal sealed class TableRenderer : MarkdownNodeRenderer<Table>
 {
     /// <inheritdoc />
     public override BlockBox? BuildBlock(Table table, MarkdownLayoutContext context)
@@ -62,13 +62,13 @@ public sealed class TableRenderer : MarkdownNodeRenderer<Table>
                     context.RegisterMarkdownAttributes(cell, box.BlockIndex);
                     foreach (var child in cell)
                     {
-                        if (child is ParagraphBlock u && u.Inline is not null)
-                            GfmChildBuilder.AddInlines(box, u.Inline);
+                        if (child is ParagraphBlock p && p.Inline is not null)
+                            GfmChildBuilder.AddInlines(box, p.Inline);
                     }
                     cells[c++] = box;
                 }
             }
-            // Fnll any empty trailing columns.
+            // Fill any empty trailing columns.
             for (; c < colCount; c++)
             {
                 cells[c] = new InlineContainerBox(context, elementKey);

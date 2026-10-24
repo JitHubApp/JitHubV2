@@ -13,7 +13,7 @@ This folder contains repository documentation.
 | [JitHub vNext shell and Home baseline](jithub-vnext-shell-home-baseline.md) | Current shell, Home widget board, modal, responsive, data, and automation contracts for remaining vNext UI work. |
 | [JitHub vNext quiet UI updates](jithub-vnext-quiet-ui-updates.md) | Foundation plan for keyed diffing, refresh stability, and no-flash UI updates across vNext pages. |
 | [JitHub vNext route ownership](jithub-vnext-route-ownership.md) | Canonical production routes and the single vNext page/view-model owner for each workspace. |
-| [MarkdownRenderer](markdown-renderer/README.md) | Native WinUI markdown renderer architecture, APIs, theming, accessibility, performance, packaging, and roadmap. |
+| [MarkdownRenderer](markdown-renderer/README.md) | Preview native WinUI renderer: immutable documents, explicit viewports, lean package plus optional feature packs, and open 1.0 gates. |
 | [Native AOT release contract](native-aot.md) | Locked restore, dependency review, native artifact verification, packaging, and Store release requirements. |
 | [Windows CLI workflow](windows-cli-workflow.md) | Windows App CLI, Microsoft Store Developer CLI, and Store client CLI workflow notes. |
 

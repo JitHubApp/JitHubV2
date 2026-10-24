@@ -9,22 +9,16 @@ $ErrorActionPreference = 'Stop'
 
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $appProject = Join-Path $repositoryRoot 'JitHub.WinUI\JitHub.WinUI.csproj'
-$rendererProject = Join-Path $repositoryRoot 'MarkdownRenderer\MarkdownRenderer\MarkdownRenderer.csproj'
-$gfmProject = Join-Path $repositoryRoot 'MarkdownRenderer\MarkdownRenderer.Gfm\MarkdownRenderer.Gfm.csproj'
 
 $platform = switch ($Architecture) {
     'x86' { 'x86' }
     'x64' { 'x64' }
     'arm64' { 'ARM64' }
 }
-$runtimeIdentifier = "win-$Architecture"
-
 function Invoke-DotNetRestore {
     param(
         [Parameter(Mandatory = $true)]
         [string]$Project,
-
-        [string]$ExplicitRuntimeIdentifier,
 
         [switch]$ForceEvaluate
     )
@@ -34,13 +28,8 @@ function Invoke-DotNetRestore {
         $Project
         "-p:Platform=$platform"
         '-p:Configuration=Release'
-        '-p:PublishAot=true'
         '-p:SkipReleaseSecurityGate=true'
     )
-
-    if (-not [string]::IsNullOrWhiteSpace($ExplicitRuntimeIdentifier)) {
-        $arguments += "-p:RuntimeIdentifier=$ExplicitRuntimeIdentifier"
-    }
 
     if ($ForceEvaluate) {
         $arguments += '-p:RestoreLockedMode=false'
@@ -59,11 +48,10 @@ function Invoke-DotNetRestore {
 }
 
 if ($UpdateLocks) {
-    # Restore the app graph first, then close the two class-library graphs explicitly so
-    # their lock files include the architecture-specific ILC packages for every RID.
+    # NativeAot.props enables AOT at the app root. Do not pass PublishAot as a
+    # command-line global property: NuGet would inject ILCompiler into every
+    # project-reference lock and make ordinary Release restores invalid.
     Invoke-DotNetRestore -Project $appProject -ForceEvaluate
-    Invoke-DotNetRestore -Project $rendererProject -ExplicitRuntimeIdentifier $runtimeIdentifier -ForceEvaluate
-    Invoke-DotNetRestore -Project $gfmProject -ExplicitRuntimeIdentifier $runtimeIdentifier -ForceEvaluate
 }
 
 Invoke-DotNetRestore -Project $appProject

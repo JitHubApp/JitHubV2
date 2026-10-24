@@ -1,8 +1,11 @@
-using System;
+﻿using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Markdig;
+using Markdig.Extensions.TaskLists;
 using Markdig.Syntax;
+using Markdig.Syntax.Inlines;
 
 namespace MarkdownRenderer.Parsing;
 
@@ -33,6 +36,7 @@ internal sealed class MarkdigParser
                 return null;
             var fixedSource = ForgivingDataUriFixer.Fix(source ?? string.Empty);
             var document = Markdown.Parse(fixedSource, _pipeline);
+            FalseTaskListMarkers.Normalize(document, fixedSource, _pipeline);
             return (ParsedMarkdown?)new ParsedMarkdown(fixedSource, document);
         }, CancellationToken.None);
     }
@@ -41,8 +45,15 @@ internal sealed class MarkdigParser
     {
         var fixedSource = ForgivingDataUriFixer.Fix(source ?? string.Empty);
         var document = Markdown.Parse(fixedSource, _pipeline);
+        FalseTaskListMarkers.Normalize(document, fixedSource, _pipeline);
         return new ParsedMarkdown(fixedSource, document);
     }
 }
 
-internal sealed record ParsedMarkdown(string SourceText, MarkdownDocument Document);
+// This is a parse-result owner, not a value/equality key. Source and syntax tree
+// retain the same reference identity without generated record cloning helpers.
+internal sealed class ParsedMarkdown(string sourceText, MarkdownDocument document)
+{
+    internal readonly string SourceText = sourceText;
+    internal readonly MarkdownDocument Document = document;
+}

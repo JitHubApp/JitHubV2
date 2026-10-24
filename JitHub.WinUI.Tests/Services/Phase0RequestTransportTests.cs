@@ -186,14 +186,14 @@ public sealed class Phase0RequestTransportTests
     {
         GitHubRequestQueue queue = new(foregroundReadConcurrency: 1, backgroundReadConcurrency: 1, mutationConcurrency: 1);
         TaskCompletionSource workStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        TaskCompletionSource transportCancelled = new(TaskCreationOptions.RunContinuationsAsynchronously);
         using CancellationTokenSource callerCancellation = new();
+        CancellationToken transportToken = default;
         Task<int> prefetch = queue.EnqueueAsync(
             "cancel-active-prefetch",
             GitHubRequestPriority.Prefetch,
             async token =>
             {
-                using CancellationTokenRegistration registration = token.Register(transportCancelled.SetResult);
+                transportToken = token;
                 workStarted.SetResult();
                 await Task.Delay(Timeout.InfiniteTimeSpan, token);
                 return 1;
@@ -204,7 +204,10 @@ public sealed class Phase0RequestTransportTests
         callerCancellation.Cancel();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => prefetch);
-        await transportCancelled.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        // The transport task can dispose its own cancellation registration while
+        // Cancel is visiting callbacks; the token state is the durable evidence.
+        Assert.True(transportToken.IsCancellationRequested,
+            "The final prefetch subscriber must cancel the active transport token.");
         await WaitUntilAsync(() => queue.InFlightCount == 0);
     }
 

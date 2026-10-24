@@ -34,6 +34,8 @@
             <PersonPicture
                 Grid.Column="0"
                 AutomationProperties.Name="{x:Bind Person.PersonaleName, Mode=OneWay}"
+                Background="{ThemeResource AppSurfaceSubtleBrush}"
+                Foreground="{ThemeResource AppInkBrush}"
                 ProfilePicture="{x:Bind Person.ImageSource, Mode=OneWay}"
                 Width="{ThemeResource AppDimension86}"
                 HorizontalAlignment="Center"

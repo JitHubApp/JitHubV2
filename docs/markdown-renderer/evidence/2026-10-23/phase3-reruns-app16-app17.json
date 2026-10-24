@@ -1,0 +1,271 @@
+{
+  "schemaVersion": 1,
+  "kind": "phase3-top500-readme-correctness-rerun-receipt",
+  "scope": "ranks that failed the 93c7697 (app14) full audit, rerun in the existing Windows Sandbox",
+  "baseline": "docs/markdown-renderer/evidence/2026-10-23/phase3-top500-run-app14.json",
+  "candidates": [
+    {
+      "name": "app16",
+      "sourceCommitSha": "e42a3391b1341be9337f1220cd57be573c6f355b",
+      "appSha256": "b36420fd8c123c8ac604e82508b3ea46600b825d1da0fff5449e13fc3d582b66",
+      "automationRunnerSha256": "4c0dba4621c9af1c0c399746786366755b7e80c4c5976241a68333c28a746be0"
+    },
+    {
+      "name": "app17",
+      "sourceCommitSha": "4e99a7d15d4a6f705a1a0691ea0da3077590dbf9",
+      "appSha256": "7550044450eaafecdb120ad4cc547a96f748ebd33f457d72181452231cf0166a",
+      "automationRunnerSha256": "0b1b1e988aab59c2db67e5653061d7c8d817768ea6149f5e64391a4e0b5fda67"
+    }
+  ],
+  "explainedWithoutRerun": [
+    {
+      "rank": 176,
+      "classification": "T3-008: 10325x4320 PNG (44.6 MP) exceeds the documented 40-megapixel source budget"
+    },
+    {
+      "rank": 347,
+      "classification": "T3-008: AVIF needs the AV1 Image Extension, absent in Windows Sandbox"
+    },
+    {
+      "rank": 444,
+      "classification": "T3-008: animated WebP first frame needs the WebP Image Extension, absent in Windows Sandbox"
+    }
+  ],
+  "caveat": "Final ranks come from two candidates; a full 500-rank run on one candidate is still required for the Phase 3 verdict.",
+  "cases": [
+    {
+      "rank": 53,
+      "repository": "Snailclimb/JavaGuide",
+      "candidate": "app16",
+      "runId": "run-20261023-165110-d8a0fe940bb44cafb31be50188d73321",
+      "status": "classified",
+      "failure": null,
+      "nonPassChecks": [
+        {
+          "name": "resourceCoverage",
+          "state": 4,
+          "detail": "1 captured SVG source(s) use documented-unsupported content (animation, foreignObject or scripts) and show the typed placeholder; 3 unavailable image(s) observed (stored=3, upstream-unavailable=2)."
+        }
+      ],
+      "resolvedBy": "T3-010",
+      "completedAtUtc": "2026-10-23T10:08:32.7543345-07:00"
+    },
+    {
+      "rank": 141,
+      "repository": "punkpeye/awesome-mcp-servers",
+      "candidate": "app17",
+      "runId": "run-20261023-215217-9f8aaa4e08d84450b09065ea64519e25",
+      "status": "classified",
+      "failure": null,
+      "nonPassChecks": [
+        {
+          "name": "resourceCoverage",
+          "state": 5,
+          "detail": "9 demanded image(s) have no capturable bytes upstream (stored=2810, upstream-unavailable=9); 10 unavailable image(s) observed."
+        }
+      ],
+      "resolvedBy": "T3-012",
+      "completedAtUtc": "2026-10-23T15:20:53.6578127-07:00"
+    },
+    {
+      "rank": 164,
+      "repository": "mermaid-js/mermaid",
+      "candidate": "app17",
+      "runId": "run-20261023-222613-5c772233e58e409ba6bd51858f721588",
+      "status": "passed",
+      "failure": null,
+      "nonPassChecks": [],
+      "resolvedBy": "T3-013/P3-021 (root cause P3-022 open)",
+      "completedAtUtc": "2026-10-23T15:47:40.5283603-07:00"
+    },
+    {
+      "rank": 206,
+      "repository": "netdata/netdata",
+      "candidate": "app17",
+      "runId": "run-20261023-225253-e6494b2cd3764bcfa6772c631e718eff",
+      "status": "classified",
+      "failure": null,
+      "nonPassChecks": [
+        {
+          "name": "resourceCoverage",
+          "state": 4,
+          "detail": "4 captured SVG source(s) use documented-unsupported content (animation, foreignObject or scripts) and show the typed placeholder; 8 unavailable image(s) observed (stored=20)."
+        }
+      ],
+      "resolvedBy": "T3-013 (root cause P3-022 open)",
+      "completedAtUtc": "2026-10-23T16:14:42.9569386-07:00"
+    },
+    {
+      "rank": 208,
+      "repository": "anuraghazra/github-readme-stats",
+      "candidate": "app16",
+      "runId": "run-20261023-173433-3899fccc2ba34dfc9e3d88c47d9ec1b9",
+      "status": "passed",
+      "failure": null,
+      "nonPassChecks": [],
+      "resolvedBy": "P3-018",
+      "completedAtUtc": "2026-10-23T10:52:54.2323571-07:00"
+    },
+    {
+      "rank": 219,
+      "repository": "shareAI-lab/learn-claude-code",
+      "candidate": "app17",
+      "runId": "run-20261023-232000-02763010ec1944ad878ffcba12315683",
+      "status": "classified",
+      "failure": null,
+      "nonPassChecks": [
+        {
+          "name": "resourceCoverage",
+          "state": 4,
+          "detail": "1 captured SVG source(s) use documented-unsupported content (animation, foreignObject or scripts) and show the typed placeholder; 2 unavailable image(s) observed (stored=1)."
+        }
+      ],
+      "resolvedBy": "T3-011",
+      "completedAtUtc": "2026-10-23T16:42:09.5577048-07:00"
+    },
+    {
+      "rank": 234,
+      "repository": "openai/openai-cookbook",
+      "candidate": "app16",
+      "runId": "run-20261023-173433-3899fccc2ba34dfc9e3d88c47d9ec1b9",
+      "status": "passed",
+      "failure": null,
+      "nonPassChecks": [],
+      "resolvedBy": "P3-018",
+      "completedAtUtc": "2026-10-23T11:12:17.6336611-07:00"
+    },
+    {
+      "rank": 273,
+      "repository": "binary-husky/gpt_academic",
+      "candidate": "app17",
+      "runId": "run-20261023-234732-665aabb4c54848eaba30904d8b8ebf57",
+      "status": "classified",
+      "failure": null,
+      "nonPassChecks": [
+        {
+          "name": "resourceCoverage",
+          "state": 5,
+          "detail": "2 demanded image(s) have no capturable bytes upstream (stored=36, upstream-unavailable=2); 4 unavailable image(s) observed."
+        }
+      ],
+      "resolvedBy": "T3-013 (root cause P3-022 open)",
+      "completedAtUtc": "2026-10-23T17:10:13.4354855-07:00"
+    },
+    {
+      "rank": 337,
+      "repository": "resume/resume.github.com",
+      "candidate": "app16",
+      "runId": "run-20261023-183921-512bc016ca3940c1a7b7f2c61f200b23",
+      "status": "passed",
+      "failure": null,
+      "nonPassChecks": [],
+      "resolvedBy": "P3-018",
+      "completedAtUtc": "2026-10-23T11:57:47.6854697-07:00"
+    },
+    {
+      "rank": 340,
+      "repository": "jingyaogong/minimind",
+      "candidate": "app17",
+      "runId": "run-20261024-001535-9beae2340c364ed1b79e9f23c5317605",
+      "status": "classified",
+      "failure": null,
+      "nonPassChecks": [
+        {
+          "name": "resourceCoverage",
+          "state": 4,
+          "detail": "1 captured SVG source(s) use documented-unsupported content (animation, foreignObject or scripts) and show the typed placeholder; 3 unavailable image(s) observed (stored=36)."
+        },
+        {
+          "name": "unsupportedSyntaxClassification",
+          "state": 4,
+          "detail": "Classified unsupported syntax with documented fallback: MATH100/Error×2."
+        }
+      ],
+      "resolvedBy": "T3-010, T3-013 (root cause P3-022 open)",
+      "completedAtUtc": "2026-10-23T17:40:35.2756147-07:00"
+    },
+    {
+      "rank": 351,
+      "repository": "1c7/chinese-independent-developer",
+      "candidate": "app16",
+      "runId": "run-20261023-211430-787468b81ca042138b37e38fcdbe4d66",
+      "status": "passed",
+      "failure": null,
+      "nonPassChecks": [],
+      "resolvedBy": "T3-012",
+      "completedAtUtc": "2026-10-23T14:39:04.8207503-07:00"
+    },
+    {
+      "rank": 374,
+      "repository": "makeplane/plane",
+      "candidate": "app16",
+      "runId": "run-20261023-190343-45615041a80f4ef7a747920ca1af6977",
+      "status": "passed",
+      "failure": null,
+      "nonPassChecks": [],
+      "resolvedBy": "P3-014",
+      "completedAtUtc": "2026-10-23T12:22:26.3229593-07:00"
+    },
+    {
+      "rank": 384,
+      "repository": "rohitg00/ai-engineering-from-scratch",
+      "candidate": "app17",
+      "runId": "run-20261024-004612-c610b63eefb547d0887eddea16755117",
+      "status": "passed",
+      "failure": null,
+      "nonPassChecks": [],
+      "resolvedBy": "T3-013 (root cause P3-022 open)",
+      "completedAtUtc": "2026-10-23T18:07:37.8081287-07:00"
+    },
+    {
+      "rank": 402,
+      "repository": "appwrite/appwrite",
+      "candidate": "app17",
+      "runId": "run-20261024-011251-f532e0d519a74733984052ec682e408e",
+      "status": "passed",
+      "failure": null,
+      "nonPassChecks": [],
+      "resolvedBy": "T3-011",
+      "completedAtUtc": "2026-10-23T18:34:54.2777475-07:00"
+    },
+    {
+      "rank": 406,
+      "repository": "Zie619/n8n-workflows",
+      "candidate": "app17",
+      "runId": "run-20261024-011251-f532e0d519a74733984052ec682e408e",
+      "status": "passed",
+      "failure": null,
+      "nonPassChecks": [],
+      "resolvedBy": "T3-011",
+      "completedAtUtc": "2026-10-23T18:35:47.5669636-07:00"
+    },
+    {
+      "rank": 411,
+      "repository": "laurent22/joplin",
+      "candidate": "app16",
+      "runId": "run-20261023-195105-104b9ff523eb4436814ea7c54c891687",
+      "status": "passed",
+      "failure": null,
+      "nonPassChecks": [],
+      "resolvedBy": "transient UIA 0x802B001F, not reproduced",
+      "completedAtUtc": "2026-10-23T13:12:34.2417099-07:00"
+    },
+    {
+      "rank": 484,
+      "repository": "HKUDS/CLI-Anything",
+      "candidate": "app16",
+      "runId": "run-20261023-201742-fc7e3be47e1141afa2df6bfeb32d947c",
+      "status": "classified",
+      "failure": null,
+      "nonPassChecks": [
+        {
+          "name": "resourceCoverage",
+          "state": 4,
+          "detail": "1 captured SVG source(s) use documented-unsupported content (animation, foreignObject or scripts) and show the typed placeholder; 1 unavailable image(s) observed (stored=37)."
+        }
+      ],
+      "resolvedBy": "P3-020",
+      "completedAtUtc": "2026-10-23T13:38:42.7426335-07:00"
+    }
+  ]
+}

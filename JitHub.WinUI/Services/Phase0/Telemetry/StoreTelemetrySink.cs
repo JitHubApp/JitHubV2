@@ -25,15 +25,20 @@ public sealed class StoreTelemetrySink : IStoreTelemetrySink
     private static readonly TimeSpan DefaultDispatchInterval = TimeSpan.FromSeconds(1);
 
 #if STORE_ENGAGEMENT_AVAILABLE
-    private readonly StoreServicesCustomEventLogger? _logger;
+    private StoreServicesCustomEventLogger? _logger;
 #endif
     private readonly object _queueGate = new();
     private readonly HashSet<string> _pendingNames = new(StringComparer.Ordinal);
-    private readonly Action<string>? _testLogger;
+    private Action<string>? _testLogger;
+    private readonly Func<Action<string>?>? _testLoggerFactory;
     private readonly Channel<string>? _queue;
     private readonly Task _dispatchTask;
     private readonly TimeSpan _dispatchInterval;
-    private readonly string _availabilityStatus;
+    private string _availabilityStatus;
+    // 0 = initialization pending, 1 = available, 2 = unavailable. The Store
+    // API can perform receipt/network work in GetDefault(), so initialization
+    // must remain on the bounded dispatch worker and never a UI/DI caller.
+    private int _loggerInitializationState;
     private bool _acceptingEvents;
     private long _coalescedEventCount;
     private long _droppedEventCount;
@@ -42,32 +47,15 @@ public sealed class StoreTelemetrySink : IStoreTelemetrySink
     {
         _dispatchInterval = DefaultDispatchInterval;
 #if STORE_ENGAGEMENT_AVAILABLE
-        try
-        {
-            _logger = StoreServicesCustomEventLogger.GetDefault();
-            _availabilityStatus = _logger is null
-                ? "store_engagement_logger_unavailable"
-                : "available";
-        }
-        catch (Exception exception)
-        {
-            _logger = null;
-            _availabilityStatus = exception.GetType().Name;
-        }
+        _availabilityStatus = "initializing";
+        _queue = CreateQueue(DefaultQueueCapacity);
+        _acceptingEvents = true;
+        _dispatchTask = Task.Run(DispatchLoopAsync);
 #else
         _availabilityStatus = "store_engagement_architecture_unavailable";
+        _loggerInitializationState = 2;
+        _dispatchTask = Task.CompletedTask;
 #endif
-
-        if (HasLogger)
-        {
-            _queue = CreateQueue(DefaultQueueCapacity);
-            _acceptingEvents = true;
-            _dispatchTask = Task.Run(DispatchLoopAsync);
-        }
-        else
-        {
-            _dispatchTask = Task.CompletedTask;
-        }
     }
 
     internal StoreTelemetrySink(
@@ -84,6 +72,7 @@ public sealed class StoreTelemetrySink : IStoreTelemetrySink
         _testLogger = logger;
         _dispatchInterval = dispatchInterval;
         _availabilityStatus = logger is null ? "store_engagement_logger_unavailable" : "available";
+        _loggerInitializationState = logger is null ? 2 : 1;
         if (logger is not null)
         {
             _queue = CreateQueue(queueCapacity);
@@ -96,9 +85,29 @@ public sealed class StoreTelemetrySink : IStoreTelemetrySink
         }
     }
 
-    public bool IsAvailable => HasLogger;
+    internal StoreTelemetrySink(
+        Func<Action<string>?> loggerFactory,
+        TimeSpan dispatchInterval,
+        int queueCapacity = DefaultQueueCapacity)
+    {
+        ArgumentNullException.ThrowIfNull(loggerFactory);
+        ArgumentOutOfRangeException.ThrowIfLessThan(queueCapacity, 1);
+        if (dispatchInterval < TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(dispatchInterval));
+        }
 
-    public string AvailabilityStatus => _availabilityStatus;
+        _testLoggerFactory = loggerFactory;
+        _dispatchInterval = dispatchInterval;
+        _availabilityStatus = "initializing";
+        _queue = CreateQueue(queueCapacity);
+        _acceptingEvents = true;
+        _dispatchTask = Task.Run(DispatchLoopAsync);
+    }
+
+    public bool IsAvailable => Volatile.Read(ref _loggerInitializationState) != 2;
+
+    public string AvailabilityStatus => Volatile.Read(ref _availabilityStatus);
 
     internal long CoalescedEventCount => Interlocked.Read(ref _coalescedEventCount);
 
@@ -169,18 +178,6 @@ public sealed class StoreTelemetrySink : IStoreTelemetrySink
         return true;
     }
 
-    private bool HasLogger
-    {
-        get
-        {
-#if STORE_ENGAGEMENT_AVAILABLE
-            return _logger is not null || _testLogger is not null;
-#else
-            return _testLogger is not null;
-#endif
-        }
-    }
-
     private static Channel<string> CreateQueue(int capacity) =>
         Channel.CreateBounded<string>(new BoundedChannelOptions(capacity)
         {
@@ -238,6 +235,8 @@ public sealed class StoreTelemetrySink : IStoreTelemetrySink
 
     private void DispatchEvent(string name)
     {
+        EnsureLoggerInitialized();
+
         if (_testLogger is not null)
         {
             _testLogger(name);
@@ -247,5 +246,49 @@ public sealed class StoreTelemetrySink : IStoreTelemetrySink
 #if STORE_ENGAGEMENT_AVAILABLE
         _logger?.Log(name);
 #endif
+    }
+
+    private void EnsureLoggerInitialized()
+    {
+        if (Volatile.Read(ref _loggerInitializationState) != 0)
+        {
+            return;
+        }
+
+        try
+        {
+            if (_testLoggerFactory is not null)
+            {
+                _testLogger = _testLoggerFactory();
+                PublishInitializationResult(
+                    _testLogger is not null,
+                    "store_engagement_logger_unavailable");
+                return;
+            }
+
+#if STORE_ENGAGEMENT_AVAILABLE
+            _logger = StoreServicesCustomEventLogger.GetDefault();
+            PublishInitializationResult(
+                _logger is not null,
+                "store_engagement_logger_unavailable");
+#else
+            PublishInitializationResult(
+                available: false,
+                "store_engagement_architecture_unavailable");
+#endif
+        }
+        catch (Exception exception)
+        {
+            Volatile.Write(ref _availabilityStatus, exception.GetType().Name);
+            Volatile.Write(ref _loggerInitializationState, 2);
+        }
+    }
+
+    private void PublishInitializationResult(bool available, string unavailableStatus)
+    {
+        Volatile.Write(
+            ref _availabilityStatus,
+            available ? "available" : unavailableStatus);
+        Volatile.Write(ref _loggerInitializationState, available ? 1 : 2);
     }
 }
