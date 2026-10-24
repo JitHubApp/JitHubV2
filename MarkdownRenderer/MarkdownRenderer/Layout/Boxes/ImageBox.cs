@@ -874,6 +874,16 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             return;
         }
 
+        // P3-022: a rebuild of the same document keeps this image's completed
+        // result, so it neither reports Loading nor reserves a placeholder size
+        // while its pixels are reacquired. Bitmaps are never carried.
+        if (Context.CompletedImageCarry is { } completedImages &&
+            completedImages.TryGetValue(Url, out CompletedImageCarry? carried) &&
+            carried.HasUsableIntrinsicSize)
+        {
+            _carriedCompletion = carried;
+        }
+
         if (_preResolutionCacheKey is { } bitmapCacheKey && !_isSvg &&
             TryAcquireSourceSizedRasterBitmap(bitmapCacheKey, out var cachedLease) &&
             cachedLease is not null)
@@ -940,12 +950,12 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
 
     /// <summary>SVG &lt;title&gt; element value, or null. Used by the automation
     /// peer as the accessible name when richer than alt.</summary>
-    public string? SvgTitle => _svgTitle;
+    public string? SvgTitle => _svgTitle ?? _carriedCompletion?.SvgTitle;
 
     /// <summary>SVG &lt;desc&gt; element value, or null. Used by the automation
     /// peer as <c>HelpText</c> for screen-reader description.</summary>
     public string? SvgDesc => _bitmap is null
-        ? _svgFailureDescription ?? _svgDesc
+        ? _svgFailureDescription ?? _svgDesc ?? _carriedCompletion?.SvgDescription
         : _svgDesc;
 
     /// <summary>Typed provider failure for diagnostics and focused tests.</summary>
@@ -1474,6 +1484,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             _preResolutionCacheKey = source._preResolutionCacheKey;
             _activeCacheKey = source._preResolutionCacheKey;
             _isSvg = source._isSvg; // a URI hint only; accepted SVG state is not copied
+            _carriedCompletion = source._carriedCompletion; // immutable scalars (P3-022)
             _isInlineLayout = source._isInlineLayout;
             _loadStarted = false;
             _loadFailed = false;
@@ -1542,6 +1553,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             // legacy lease whose optional IntrinsicSize metadata is absent.
             _rasterIntrinsicSize = source._rasterIntrinsicSize;
             _hasPresentedImage = source._hasPresentedImage;
+            _carriedCompletion = source._carriedCompletion;
             _bitmap = bitmapLease.Bitmap;
             _bitmapLease = bitmapLease;
 
@@ -1598,9 +1610,91 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
     /// <summary>Current state projected into the image's UIA accessible name.</summary>
     internal MarkdownImageAccessibilityState AccessibilityState => _loadFailed
         ? MarkdownImageAccessibilityState.Error
-        : _hasPresentedImage || _bitmap is not null || _svgHasRenderedTile
+        : _hasPresentedImage || _bitmap is not null || _svgHasRenderedTile || _carriedCompletion is not null
             ? MarkdownImageAccessibilityState.Loaded
             : MarkdownImageAccessibilityState.Loading;
+
+    /// <summary>
+    /// True while a visible image cannot show its pixels yet: it is still
+    /// loading, or it carries an earlier layout's completed result (P3-022)
+    /// and has not presented in this layout. Readiness checks of visible
+    /// content use this, never the carried Loaded state alone.
+    /// </summary>
+    internal bool IsAwaitingVisiblePixelsForAutomation =>
+        AccessibilityState == MarkdownImageAccessibilityState.Loading ||
+        (_carriedCompletion is not null && !_loadFailed && !_hasPresentedImage &&
+         _bitmap is null && !_svgHasRenderedTile);
+
+    /// <summary>
+    /// Captures this image's completed result for the next rebuild of the same
+    /// document (P3-022). An image that has not presented in this layout
+    /// forwards the result it carried in, so consecutive rebuilds keep it.
+    /// Call on the UI thread, which owns image publication.
+    /// </summary>
+    internal bool TryCaptureCompletedCarry(out CompletedImageCarry? carry)
+    {
+        carry = null;
+        if (_disposed || _loadFailed || string.IsNullOrEmpty(Url))
+            return false;
+
+        bool presented = _hasPresentedImage || _bitmap is not null || _svgHasRenderedTile;
+        Size intrinsic = default;
+        if (presented)
+        {
+            if (_isSvg)
+            {
+                intrinsic = _svgIntrinsicSize;
+            }
+            else if (_rasterIntrinsicSize.Width > 0 && _rasterIntrinsicSize.Height > 0)
+            {
+                intrinsic = _rasterIntrinsicSize;
+            }
+            else if (_bitmap is { } bitmap)
+            {
+                try
+                {
+                    intrinsic = bitmap.Size;
+                }
+                catch (ObjectDisposedException)
+                {
+                    intrinsic = default;
+                }
+            }
+        }
+
+        var candidate = new CompletedImageCarry(
+            Url,
+            _isSvg,
+            intrinsic,
+            _svgTitle ?? _carriedCompletion?.SvgTitle,
+            _svgDesc ?? _carriedCompletion?.SvgDescription);
+        if (presented && candidate.HasUsableIntrinsicSize)
+        {
+            carry = candidate;
+            return true;
+        }
+
+        carry = _carriedCompletion;
+        return carry is not null;
+    }
+
+    /// <summary>
+    /// The intrinsic size this box measures with while it reacquires a
+    /// carried completed image (P3-022), so the rebuilt layout matches the
+    /// layout the image already had. Its own known size always wins.
+    /// </summary>
+    private bool TryGetCarriedMeasurementIntrinsicSize(out Size size)
+    {
+        size = default;
+        if (_carriedCompletion is not { } carried || _bitmap is not null || _loadFailed)
+            return false;
+        if (_isSvg && _svgIntrinsicSize.Width > 0 && _svgIntrinsicSize.Height > 0)
+            return false;
+        if (!_isSvg && _rasterIntrinsicSize.Width > 0 && _rasterIntrinsicSize.Height > 0)
+            return false;
+        size = carried.IntrinsicSize;
+        return carried.HasUsableIntrinsicSize;
+    }
 
     internal Rect AutomationRenderDestination => _isInlineLayout
         ? Bounds
@@ -2254,6 +2348,12 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             w = Math.Max(1f, (float)rasterIntrinsicSize.Width * scale);
             h = Math.Max(1f, (float)rasterIntrinsicSize.Height * scale);
         }
+        else if (TryGetCarriedMeasurementIntrinsicSize(out Size carriedSize))
+        {
+            float scale = Math.Min(1f, maxW / (float)carriedSize.Width);
+            w = Math.Max(1f, (float)carriedSize.Width * scale);
+            h = Math.Max(1f, (float)carriedSize.Height * scale);
+        }
         else if (_isSvg && (_svgIntrinsicSize.Width > 0 || _loadStarted))
         {
             float bw = _svgIntrinsicSize.Width > 0 ? (float)_svgIntrinsicSize.Width : Math.Max(16f, lineHeight);
@@ -2878,6 +2978,12 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             float scale = Math.Min(1f, maxW / (float)rasterIntrinsicSize.Width);
             w = (float)rasterIntrinsicSize.Width * scale;
             h = (float)rasterIntrinsicSize.Height * scale;
+        }
+        else if (TryGetCarriedMeasurementIntrinsicSize(out Size carriedSize))
+        {
+            float scale = Math.Min(1f, maxW / (float)carriedSize.Width);
+            w = (float)carriedSize.Width * scale;
+            h = (float)carriedSize.Height * scale;
         }
         else if (_isSvg && (_svgIntrinsicSize.Width > 0 || _loadStarted))
         {

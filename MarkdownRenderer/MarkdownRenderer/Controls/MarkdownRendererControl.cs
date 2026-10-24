@@ -896,6 +896,10 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     // viewport + LazyImageOverscanPx band.  Images already in the
     // in-memory cache start loading (no-op) immediately after build.
     private List<Layout.Boxes.ImageBox> _imagePlans = new();
+    private const int MaximumCompletedImageCarryEntries = 4096;
+    private readonly Dictionary<string, Layout.Boxes.CompletedImageCarry> _completedImageCarry =
+        new(StringComparer.Ordinal);
+    private Layout.Boxes.MarkdownImageCarryIdentity? _completedImageCarryIdentity;
     private ViewportBandIndex? _imagePlanIndex;
     private HashSet<Layout.Boxes.ImageBox> _subscribedImages = new();
     private string? _prefetchedMarkdownSource;
@@ -2757,7 +2761,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                     }
 
                     Layout.Boxes.ImageBox image = images[ordinal];
-                    if (image.AccessibilityState != MarkdownImageAccessibilityState.Loading)
+                    if (!image.IsAwaitingVisiblePixelsForAutomation)
                         continue;
                     Rect bounds = imageBounds[ordinal];
 
@@ -5141,6 +5145,9 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         var embedFactorySnapshot = EmbedFactory;
         var hostedElementFactorySnapshot = HostedElementFactory;
         var imageResolverSnapshot = ImageResolver;
+        // The host resolver may be wrapped in a per-document scope below; the
+        // carry identity uses the host's own resolver (P3-022).
+        var imageResolverIdentity = imageResolverSnapshot;
         var svgRendererSnapshot = SvgRenderer;
         var rasterDecoderSnapshot = RasterDecoder;
         Uri? imageBaseUriSnapshot = ImageBaseUri;
@@ -5234,6 +5241,17 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                 ? new MarkdownLayoutDiagnostics()
                 : null;
 #endif
+        var imageCarryIdentity = new Layout.Boxes.MarkdownImageCarryIdentity(
+            parsed.SourceText,
+            imageBaseUriSnapshot,
+            imageDocumentPathSnapshot,
+            imageDocumentSourceSnapshot,
+            imageResolverIdentity,
+            svgRendererSnapshot,
+            rasterDecoderSnapshot,
+            allowThirdPartyRemoteImagesSnapshot);
+        IReadOnlyDictionary<string, Layout.Boxes.CompletedImageCarry>? completedImageCarrySnapshot =
+            CaptureCompletedImageCarry(imageCarryIdentity);
         var ctx = new MarkdownLayoutContext(
             device,
             themeSnapshot,
@@ -5277,6 +5295,8 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             AllowThirdPartyRemoteImages = allowThirdPartyRemoteImagesSnapshot,
             ImageUnavailable = RaiseImageUnavailable,
             DisclosureStates = disclosureStatesSnapshot,
+            ImageCarryIdentity = imageCarryIdentity,
+            CompletedImageCarry = completedImageCarrySnapshot,
         };
         Exception? primaryFailure = null;
         try
@@ -8441,6 +8461,40 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                 foreach (var c in sb.Children) CollectEmbedPlans(snapshot, topLevelRoot, c);
                 break;
         }
+    }
+
+    /// <summary>
+    /// P3-022: records the completed images of the current layout so the next
+    /// rebuild of the same document keeps their result. The ledger accumulates
+    /// across consecutive rebuilds (a lazily rebuilt document lists only its
+    /// measured images) and is discarded whenever the source text or image
+    /// configuration changes. Runs on the UI thread, which owns image
+    /// publication; the context receives an immutable copy.
+    /// </summary>
+    private IReadOnlyDictionary<string, Layout.Boxes.CompletedImageCarry>? CaptureCompletedImageCarry(
+        Layout.Boxes.MarkdownImageCarryIdentity identity)
+    {
+        if (_completedImageCarryIdentity is not { } previous || !previous.Matches(identity))
+            _completedImageCarry.Clear();
+        _completedImageCarryIdentity = identity;
+
+        foreach (Layout.Boxes.ImageBox image in _imagePlans)
+        {
+            if (image.Context.ImageCarryIdentity is not { } builtWith || !builtWith.Matches(identity))
+                continue;
+            if (!image.TryCaptureCompletedCarry(out Layout.Boxes.CompletedImageCarry? carry) || carry is null)
+                continue;
+            if (_completedImageCarry.Count >= MaximumCompletedImageCarryEntries &&
+                !_completedImageCarry.ContainsKey(carry.Url))
+            {
+                break;
+            }
+            _completedImageCarry[carry.Url] = carry;
+        }
+
+        return _completedImageCarry.Count == 0
+            ? null
+            : new Dictionary<string, Layout.Boxes.CompletedImageCarry>(_completedImageCarry, StringComparer.Ordinal);
     }
 
     private void AddImagePlan(Layout.Boxes.ImageBox image)

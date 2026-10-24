@@ -363,6 +363,8 @@ internal sealed class MarkdownLayoutContext
             ImageDocumentSource = ImageDocumentSource,
             AllowThirdPartyRemoteImages = AllowThirdPartyRemoteImages,
             DisclosureStates = DisclosureStates,
+            ImageCarryIdentity = ImageCarryIdentity,
+            CompletedImageCarry = CompletedImageCarry,
         };
     }
 
@@ -538,6 +540,19 @@ internal sealed class MarkdownLayoutContext
     /// <summary>Snapshot of user-expanded HTML disclosure state for this layout pass.</summary>
     public IReadOnlyDictionary<string, bool> DisclosureStates { get; init; } =
         new Dictionary<string, bool>(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Identity of the document and image configuration this pass lays out.
+    /// Image boxes keep it so a later rebuild can tell whether their completed
+    /// result still applies (P3-022).
+    /// </summary>
+    internal Boxes.MarkdownImageCarryIdentity? ImageCarryIdentity { get; init; }
+
+    /// <summary>
+    /// Completed image results from earlier layouts of the same document, by
+    /// source URL. Already filtered to <see cref="ImageCarryIdentity"/>.
+    /// </summary>
+    internal System.Collections.Generic.IReadOnlyDictionary<string, Boxes.CompletedImageCarry>? CompletedImageCarry { get; init; }
 
     /// <summary>Returns the effective state of a safe HTML disclosure.</summary>
     public bool IsDisclosureExpanded(string id, bool defaultExpanded) =>

@@ -15,6 +15,9 @@ internal sealed partial class ImageBox : IMarkdownImageResidencyTarget
     private volatile bool _resourcesSuspended;
     private bool _residencyReleased;
     private bool _hasPresentedImage;
+    // P3-022: completed result carried from an earlier layout of the same
+    // document. Immutable; never owns pixels or native resources.
+    private CompletedImageCarry? _carriedCompletion;
 
     // Only a wake-up signal. The control reconciles on its dispatcher under
     // the snapshot read lease; this callback must never detach paint resources.

@@ -310,7 +310,7 @@ internal sealed class FirstViewportImagesReadyRendererProbe
                 imageIndex is not null ? imageIndex.GetBlockOrdinal(index) : index];
             if (!hasViewport)
             {
-                if (image.AccessibilityState == MarkdownImageAccessibilityState.Loading)
+                if (image.IsAwaitingVisiblePixelsForAutomation)
                 {
                     visibleLoadingImageCount++;
                     return true;

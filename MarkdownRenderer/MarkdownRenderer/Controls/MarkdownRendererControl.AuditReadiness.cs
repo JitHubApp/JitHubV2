@@ -229,7 +229,7 @@ public partial class MarkdownRendererControl
                 continue;
             }
             Layout.Boxes.ImageBox image = images[ordinal];
-            if (image.AccessibilityState != MarkdownImageAccessibilityState.Loading)
+            if (!image.IsAwaitingVisiblePixelsForAutomation)
                 continue;
 
             Rect imageBounds = bounds[ordinal];
