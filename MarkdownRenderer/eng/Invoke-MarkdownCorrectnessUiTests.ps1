@@ -8,6 +8,9 @@ param(
     [switch]$IncludeSelectionDisableInvestigation,
     # Phase 2: run only C00 and the P2-* live feature-matrix cases.
     [switch]$Phase2Only,
+    # With -Phase2Only: run only the cases that turn on the Sandbox guest's
+    # actual Windows High Contrast setting (restored in finally).
+    [switch]$Phase2SystemHighContrast,
     [string]$OutputRoot = (Join-Path $PSScriptRoot '..\artifacts\correctness'),
     [string]$BuildArtifactsPath = ''
 )
@@ -27,6 +30,8 @@ if (-not [string]::IsNullOrWhiteSpace($script:BuildArtifactsPath)) {
     $script:BuildArtifactsPath = [System.IO.Path]::GetFullPath($script:BuildArtifactsPath)
 }
 $script:Phase2Only = [bool]$Phase2Only
+$script:Phase2SystemHighContrast = [bool]$Phase2SystemHighContrast
+if ($script:Phase2SystemHighContrast -and -not $script:Phase2Only) { throw '-Phase2SystemHighContrast requires -Phase2Only.' }
 $script:RunId = '{0}-{1}' -f [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ'), [guid]::NewGuid().ToString('N')
 $script:RunDirectory = Join-Path $script:OutputRoot $script:RunId
 $script:WorkflowId = "markdown-correctness-$([guid]::NewGuid().ToString('N'))"
@@ -720,7 +725,11 @@ function Should-RunCorrectnessCase {
     )
 
     if ($script:Phase2Only) {
-        return (($Id -ceq 'C00' -and $Name -ceq 'sandbox-and-app-identity') -or $Id.StartsWith('P2-', [System.StringComparison]::Ordinal))
+        if ($Id -ceq 'C00' -and $Name -ceq 'sandbox-and-app-identity') { return $true }
+        if (-not $Id.StartsWith('P2-', [System.StringComparison]::Ordinal)) { return $false }
+        # System High Contrast cases change a guest system setting and run
+        # only when explicitly requested.
+        return ($Id.EndsWith('-SYSHC', [System.StringComparison]::Ordinal) -eq $script:Phase2SystemHighContrast)
     }
     if (-not $script:ResizeCrashDiagnosticOnly) { return $true }
     return (($Id -ceq 'C00' -and $Name -ceq 'sandbox-and-app-identity') -or
@@ -4736,8 +4745,14 @@ try {
     if ($script:Phase2Only) {
         . (Join-Path $PSScriptRoot 'MarkdownCorrectnessPhase2Cases.ps1')
         . (Join-Path $PSScriptRoot 'MarkdownCorrectnessPhase2ProviderCases.ps1')
-        Run-Phase2Cases
-        Run-Phase2ProviderCases
+        if ($script:Phase2SystemHighContrast) {
+            . (Join-Path $PSScriptRoot 'MarkdownCorrectnessPhase2SystemContrastCases.ps1')
+            Run-Phase2SystemContrastCases
+        }
+        else {
+            Run-Phase2Cases
+            Run-Phase2ProviderCases
+        }
     }
     if ($IncludeSelectionDisableInvestigation) { Run-SelectionDisableInvestigation }
 }
