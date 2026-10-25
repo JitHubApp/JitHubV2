@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using Microsoft.Graphics.Canvas;
 using Windows.Foundation;
@@ -215,6 +215,80 @@ internal sealed class SelectionController
         const double PixelEpsilon = 1e-6;
         double pixels = System.Math.Ceiling(extent * scale - PixelEpsilon);
         return System.Math.Max(pixels, 1) / scale;
+    }
+
+    /// <summary>
+    /// Computes a selection handle's top-left in its overlay canvas from the
+    /// selection endpoint: centered horizontally on the endpoint and kept
+    /// inside the viewport, with the target's upper fifth above the endpoint.
+    /// The result places both edges a sixteenth of a physical pixel past a
+    /// whole pixel relative to the window root. At fractional scales the
+    /// DIP-to-pixel transform carries float32 noise (858.99994 instead of
+    /// 859), and UI Automation truncates each edge, so an edge on or near a
+    /// whole pixel can lose one: the 44-DIP target then measured 65 px at
+    /// 150% (V1-005). Edges clearly inside a pixel truncate and round the
+    /// same way, so the reported size is exactly the target size.
+    /// </summary>
+    internal static (double Left, double Top) ComputeSelectionHandleOrigin(
+        Point endpoint,
+        double targetSize,
+        Rect viewport,
+        Point overlayOriginInRoot,
+        double scale)
+    {
+        if (!double.IsFinite(scale) || scale <= 0)
+            scale = 1;
+
+        double maxLeft = System.Math.Max(0, viewport.Width - targetSize);
+        double left = System.Math.Clamp(endpoint.X - targetSize / 2.0, 0, maxLeft);
+        double top = System.Math.Max(0, endpoint.Y - targetSize * 0.22);
+        left = SnapLocalToRootPixelGrid(left, overlayOriginInRoot.X, scale, 0, maxLeft);
+        top = SnapLocalToRootPixelGrid(top, overlayOriginInRoot.Y, scale, 0, double.PositiveInfinity);
+        // Return doubles: Windows.Foundation.Point stores single precision,
+        // which would move a snapped edge off the grid by a few millionths.
+        return (left, top);
+    }
+
+    /// <summary>
+    /// The selection handle's touch-target extent in DIPs for a minimum target
+    /// size at a rasterization scale: the target's whole physical pixels plus
+    /// one. UI Automation truncates each edge of the handle's screen bounds,
+    /// and the overlay can shift by a fraction of a pixel after placement, so
+    /// a handle exactly the target size can report one pixel short (V1-005).
+    /// One pixel of slack keeps the reported size at or above the target at
+    /// any alignment.
+    /// </summary>
+    internal static double ComputeSelectionHandleExtent(double targetSize, double scale)
+    {
+        if (!double.IsFinite(targetSize) || targetSize <= 0)
+            return targetSize;
+        if (!double.IsFinite(scale) || scale <= 0)
+            scale = 1;
+        const double PixelEpsilon = 1e-6;
+        double pixels = System.Math.Ceiling(targetSize * scale - PixelEpsilon) + 1;
+        return pixels / scale;
+    }
+
+    // A small fixed offset into the pixel, far larger than float32 transform
+    // noise (about 1e-4 px at window coordinates) and invisible on screen.
+    internal const double SelectionHandlePixelBias = 1.0 / 16.0;
+
+    // Moves a local coordinate to the nearest position whose root coordinate
+    // is a whole physical pixel plus SelectionHandlePixelBias, preferring a
+    // grid point inside [min, max].
+    private static double SnapLocalToRootPixelGrid(double local, double originInRoot, double scale, double min, double max)
+    {
+        if (!double.IsFinite(originInRoot))
+            return local;
+
+        double pixels = System.Math.Round((originInRoot + local) * scale - SelectionHandlePixelBias, System.MidpointRounding.AwayFromZero)
+            + SelectionHandlePixelBias;
+        double snapped = pixels / scale - originInRoot;
+        if (snapped < min - 1e-9)
+            snapped = (pixels + 1) / scale - originInRoot;
+        else if (snapped > max + 1e-9)
+            snapped = (pixels - 1) / scale - originInRoot;
+        return snapped;
     }
 
     internal static Rect SnapToRasterizationScale(Rect rect, double scale)

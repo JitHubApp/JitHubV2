@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Numerics;
@@ -13086,6 +13086,11 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             44,
             128);
         double dotSize = Math.Clamp(targetSize * 0.36, 12, 20);
+        // The hit target keeps one physical pixel of slack over the minimum so
+        // its reported size meets the minimum at any sub-pixel alignment.
+        double handleExtent = SelectionController.ComputeSelectionHandleExtent(
+            targetSize,
+            XamlRoot?.RasterizationScale ?? 1.0);
         Color handleColor = _themeSnapshot?.SelectionHighlightColor
             ?? Color.FromArgb(0xFF, 0x00, 0x78, 0xD4);
         bool startCaptured = IsSelectionHandleCaptured(SelectionHandleEndpoint.Start);
@@ -13097,9 +13102,9 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                 : SelectionHandleEndpoint.Start
             : SelectionHandleEndpoint.None;
         if (!startCaptured)
-            UpdateSelectionHandleAppearance(_selectionStartHandle!, targetSize, dotSize, handleColor);
+            UpdateSelectionHandleAppearance(_selectionStartHandle!, handleExtent, dotSize, handleColor);
         if (!endCaptured)
-            UpdateSelectionHandleAppearance(_selectionEndHandle!, targetSize, dotSize, handleColor);
+            UpdateSelectionHandleAppearance(_selectionEndHandle!, handleExtent, dotSize, handleColor);
 
         Point startPoint = _selectionStartHandleEndpoint;
         Point endPoint = _selectionEndHandleEndpoint;
@@ -13127,7 +13132,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         {
             _selectionStartHandleEndpoint = startPoint;
             _selectionStartHandleEndpointAvailable = PlaceSelectionHandle(
-                _selectionStartHandle!, startPoint, targetSize, viewport);
+                _selectionStartHandle!, startPoint, handleExtent, viewport);
         }
         else
         {
@@ -13143,7 +13148,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         {
             _selectionEndHandleEndpoint = endPoint;
             _selectionEndHandleEndpointAvailable = PlaceSelectionHandle(
-                _selectionEndHandle!, endPoint, targetSize, viewport);
+                _selectionEndHandle!, endPoint, handleExtent, viewport);
         }
         else
         {
@@ -13213,7 +13218,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             dot.Fill = new SolidColorBrush(color);
     }
 
-    private static bool PlaceSelectionHandle(Button handle, Point endpoint, double targetSize, Rect viewport)
+    private bool PlaceSelectionHandle(Button handle, Point endpoint, double targetSize, Rect viewport)
     {
         double halfTarget = targetSize / 2.0;
         bool visible = endpoint.X + halfTarget >= viewport.Left &&
@@ -13226,11 +13231,34 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             return false;
         }
 
-        double maxLeft = Math.Max(0, viewport.Width - targetSize);
-        Canvas.SetLeft(handle, Math.Clamp(endpoint.X - targetSize / 2.0, 0, maxLeft));
-        Canvas.SetTop(handle, Math.Max(0, endpoint.Y - targetSize * 0.22));
+        // Snap to the physical pixel grid of the window root so a 44-DIP target
+        // measures exactly 44 DIP when the renderer starts on a fractional
+        // physical pixel (V1-005).
+        (double left, double top) = SelectionController.ComputeSelectionHandleOrigin(
+            endpoint,
+            targetSize,
+            viewport,
+            GetSelectionOverlayOriginInRoot(),
+            XamlRoot?.RasterizationScale ?? 1.0);
+        Canvas.SetLeft(handle, left);
+        Canvas.SetTop(handle, top);
         handle.Visibility = Visibility.Visible;
         return true;
+    }
+
+    private Point GetSelectionOverlayOriginInRoot()
+    {
+        if (_overlay is null || XamlRoot is null)
+            return new Point(double.NaN, double.NaN);
+        try
+        {
+            return _overlay.TransformToVisual(null).TransformPoint(new Point(0, 0));
+        }
+        catch (ArgumentException)
+        {
+            // Not yet in the live tree: keep the unsnapped placement.
+            return new Point(double.NaN, double.NaN);
+        }
     }
 
     private void SetSelectionHandleVisibility(Visibility visibility)

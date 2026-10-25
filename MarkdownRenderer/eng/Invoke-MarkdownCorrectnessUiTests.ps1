@@ -16,6 +16,8 @@ param(
     # Phase 1 live clipboard/selection closure: C00, the C10 handle-drag case,
     # the C12 final-SVG cases and MarkdownCorrectnessPhase1ClipboardCases.ps1.
     [switch]$Phase1ClipboardOnly,
+    # Run only C00 and the Phase 1 cases whose "<Id> <Name>" matches this regex.
+    [string]$Phase1CasePattern = '',
     [string]$OutputRoot = (Join-Path $PSScriptRoot '..\artifacts\correctness'),
     [string]$BuildArtifactsPath = ''
 )
@@ -39,6 +41,8 @@ $script:Phase2SystemHighContrast = [bool]$Phase2SystemHighContrast
 if ($script:Phase2SystemHighContrast -and -not $script:Phase2Only) { throw '-Phase2SystemHighContrast requires -Phase2Only.' }
 $script:Phase2CasePattern = $Phase2CasePattern
 $script:Phase1ClipboardOnly = [bool]$Phase1ClipboardOnly
+$script:Phase1CasePattern = $Phase1CasePattern
+if ($script:Phase1CasePattern -and ($script:Phase2Only -or $script:Phase1ClipboardOnly)) { throw '-Phase1CasePattern cannot be combined with -Phase2Only or -Phase1ClipboardOnly.' }
 if ($script:Phase1ClipboardOnly -and $script:Phase2Only) { throw '-Phase1ClipboardOnly cannot be combined with -Phase2Only.' }
 if ($script:Phase2CasePattern -and -not $script:Phase2Only) { throw '-Phase2CasePattern requires -Phase2Only.' }
 $script:RunId = '{0}-{1}' -f [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ'), [guid]::NewGuid().ToString('N')
@@ -733,6 +737,9 @@ function Should-RunCorrectnessCase {
         [Parameter(Mandatory)][string]$Name
     )
 
+    if ($script:Phase1CasePattern) {
+        return (($Id -ceq 'C00' -and $Name -ceq 'sandbox-and-app-identity') -or ("$Id $Name" -cmatch $script:Phase1CasePattern))
+    }
     if ($script:Phase1ClipboardOnly) {
         return (($Id -ceq 'C00' -and $Name -ceq 'sandbox-and-app-identity') -or
             ($Id -ceq 'C10' -and $Name -ceq 'touch-double-tap-handle-drag-context-copy-and-cancel') -or
@@ -778,7 +785,7 @@ function Test-Case {
     $initialScreenshotCount = $script:Screenshots.Count
     if (-not (Should-RunCorrectnessCase -Id $Id -Name $Name)) {
         # Phase 2 and Phase 1 clipboard modes do not record the skipped batch.
-        if ($script:Phase2Only -or $script:Phase1ClipboardOnly) { return }
+        if ($script:Phase2Only -or $script:Phase1ClipboardOnly -or $script:Phase1CasePattern) { return }
         Add-Unverified -Id $Id -Name $Name -Reason 'Not run: resize crash diagnostic mode executes only C00 sandbox-and-app-identity and the exact C14 layout-resize-and-selection-state-survive-relayout case.'
         return
     }
@@ -917,7 +924,16 @@ function Assert-SelectionHandles {
     $minimumPx = $ExpectedMinimumDip * [double]$handles.dpiScale
     foreach ($handle in @($start[0], $end[0])) {
         if ($handle.offscreen -or $handle.width -lt $minimumPx -or $handle.height -lt $minimumPx) {
-            throw "Selection handle $($handle.automationId) is hidden or below $ExpectedMinimumDip epx at scale $($handles.dpiScale)."
+            # Attach the in-process handle layout when the sample observer has
+            # one, so a size failure can be paired with ActualWidth, placement
+            # and peer bounds at the same scale (V1-005).
+            $layout = ''
+            try {
+                $raw = Invoke-GuestProbe -Mode 'raw-name' -AutomationId 'TouchContactObservation'
+                $observation = ConvertFrom-Json -InputObject ([string]$raw.name)
+                if ($null -ne $observation.layoutCapture) { $layout = ' In-process layout: ' + ($observation.layoutCapture | ConvertTo-Json -Compress -Depth 6) }
+            } catch { $layout = " In-process layout unavailable: $($_.Exception.Message)" }
+            throw "Selection handle $($handle.automationId) is hidden or below $ExpectedMinimumDip epx at scale $($handles.dpiScale) (UIA $($handle.width)x$($handle.height) at $($handle.x),$($handle.y)).$layout"
         }
     }
     return $handles.handles
@@ -3776,6 +3792,7 @@ function Run-CorrectnessCases {
         $wide = Find-UiElement -Text 'Wide graph constrained to its table cell' -Type 'Image'
         $neighbor = Find-UiElement -Text 'intrinsic 1600-pixel width must not become an unshrinkable column minimum' -Type 'Text'
         $cellEvidence = Invoke-GuestProbe -Mode 'table-cell' -Needle 'Wide graph constrained to its table cell' -StartNeedle 'intrinsic 1600-pixel width must not become an unshrinkable column minimum'
+        $null = Save-Screenshot 'screenshots\c06-narrow-wide-table.png'
         $renderer = Get-UiBounds 'MarkdownRenderer'
         if ($wide.width -le 0 -or $wide.width -gt $renderer[2]) { throw "Wide table image width $($wide.width) is not contained by renderer width $($renderer[2])." }
         if ($neighbor.isOffscreen -or $neighbor.width -le 0 -or $neighbor.x -lt $renderer[0] -or ($neighbor.x+$neighbor.width) -gt ($renderer[0]+$renderer[2]+2)) {
@@ -4734,7 +4751,7 @@ public sealed class MarkdownRendererControl : UserControl
 
     # These are deliberately non-pass entries: they require external display
     # configurations, a fresh offline conformance/test receipt, or human review.
-    if ($script:Phase2Only -or $script:Phase1ClipboardOnly) { return }
+    if ($script:Phase2Only -or $script:Phase1ClipboardOnly -or $script:Phase1CasePattern) { return }
     Add-Unverified -Id 'C01' -Name 'commonmark-gfm-conformance-receipt' -Reason 'This UI batch does not run the pinned offline conformance corpus or ConformanceHarnessTests; attach the separate current-source test receipt.'
     Add-Unverified -Id 'C07' -Name 'valid-image-network-policy-and-invalid-failure-lifecycle' -Reason 'Only deterministic data-URI SVG is exercised here; remote image admission, cancellation races, and fallback classification require the separate current-source image test receipt.'
     Add-Unverified -Id 'C10' -Name 'stationary-edge-autoscroll-and-endpoint-crossing' -Reason 'The UI batch verifies swipe, handle extension and cancellation, but does not prove stationary frame-paced edge scrolling or handle-role crossing.'

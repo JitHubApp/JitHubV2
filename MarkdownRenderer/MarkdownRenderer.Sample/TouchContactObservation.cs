@@ -538,7 +538,15 @@ internal sealed class TouchContactObservation
         AppendPoint(json, transform.TransformPoint(new Point(width, height)));
         json.Append(',');
         AppendPoint(json, transform.TransformPoint(new Point(0, height)));
-        json.Append("],\"peerBoundsRaw\":");
+        // Window-root position and canvas placement (V1-005): the renderer
+        // snaps handles against the root, which UI Automation maps to screen.
+        json.Append("],\"rootOriginDip\":");
+        AppendPoint(json, handle.TransformToVisual(null).TransformPoint(new Point(0, 0)));
+        json.Append(",\"canvasLeftDip\":");
+        AppendJsonNumber(json, Canvas.GetLeft(handle));
+        json.Append(",\"canvasTopDip\":");
+        AppendJsonNumber(json, Canvas.GetTop(handle));
+        json.Append(",\"peerBoundsRaw\":");
 
         // Do not create a peer for diagnostics; observe only one the platform
         // has already materialized.

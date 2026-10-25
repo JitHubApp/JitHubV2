@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Numerics;
@@ -3083,13 +3083,54 @@ internal sealed partial class InlineContainerBox : BlockBox
             if (regions is null)
                 yield break;
 
+            // DirectWrite lets the whitespace at a wrap hang past the layout
+            // width and reports it inside the line's character regions. Clip
+            // each region to the content width, or to its line's
+            // non-whitespace glyphs where a long word genuinely overflows, so
+            // range and selection rectangles stay inside the text's box.
+            CanvasLineMetrics[]? clipLines = TryGetLineMetrics();
+            double contentWidth = _layout.RequestedSize.Width;
+            // The text origin is snapped to device pixels, so the content box
+            // starts up to a pixel away from layout x = 0. Clip against the
+            // box itself, not the snapped origin.
+            Thickness clipMargin = Margin;
+            Thickness clipPadding = GetEffectivePadding(style);
+            double contentLeft = Bounds.X + clipMargin.Left + clipPadding.Left - rootLocalX;
+            Dictionary<int, (double Left, double Right)>? lineInk = null;
             foreach (var region in regions)
             {
                 var bounds = region.LayoutBounds;
+                double left = bounds.X;
+                double right = bounds.X + bounds.Width;
+                if (clipLines is not null && double.IsFinite(contentWidth) && contentWidth > 0 &&
+                    TryGetLineIndex(clipLines, region.CharacterIndex, out int lineIndex, out int clipLineStart))
+                {
+                    lineInk ??= new Dictionary<int, (double Left, double Right)>();
+                    if (!lineInk.TryGetValue(lineIndex, out (double Left, double Right) ink))
+                    {
+                        ink = MeasureLineInk(_layout, clipLines[lineIndex], clipLineStart);
+                        lineInk[lineIndex] = ink;
+                    }
+
+                    double allowedLeft = Math.Min(contentLeft, ink.Left);
+                    double allowedRight = Math.Max(contentLeft + contentWidth, ink.Right);
+                    if (double.IsFinite(contentLeft) && bounds.Width > 0)
+                    {
+                        // Only whitespace hanging outside the box is removed;
+                        // a region made of nothing else has no rectangle,
+                        // like any other zero-area selection fragment.
+                        // Zero-width regions such as line breaks are kept.
+                        if (left >= allowedRight || right <= allowedLeft)
+                            continue;
+                        left = Math.Max(left, allowedLeft);
+                        right = Math.Min(right, allowedRight);
+                    }
+                }
+
                 yield return new Rect(
-                    baseX + bounds.X,
+                    baseX + left,
                     baseY + bounds.Y,
-                    bounds.Width,
+                    right - left,
                     bounds.Height);
             }
             yield break;
@@ -3115,6 +3156,55 @@ internal sealed partial class InlineContainerBox : BlockBox
             y += metric.Height;
             lineStart = lineEnd;
         }
+    }
+
+    private static bool TryGetLineIndex(
+        CanvasLineMetrics[] lines,
+        int characterIndex,
+        out int lineIndex,
+        out int lineStart)
+    {
+        int start = 0;
+        for (int i = 0; i < lines.Length; i++)
+        {
+            int count = Math.Max(0, lines[i].CharacterCount);
+            if (characterIndex < start + count)
+            {
+                lineIndex = i;
+                lineStart = start;
+                return true;
+            }
+            start += count;
+        }
+
+        lineIndex = -1;
+        lineStart = 0;
+        return false;
+    }
+
+    // Horizontal extent of a line's characters excluding its trailing
+    // whitespace, in layout coordinates. An all-whitespace line has no ink;
+    // the empty extent then leaves only the content width as the limit.
+    private static (double Left, double Right) MeasureLineInk(
+        CanvasTextLayout layout,
+        CanvasLineMetrics line,
+        int lineStart)
+    {
+        int inkLength = Math.Max(0, line.CharacterCount - Math.Max(0, line.TrailingWhitespaceCount));
+        if (inkLength == 0)
+            return (double.PositiveInfinity, double.NegativeInfinity);
+
+        double left = double.PositiveInfinity;
+        double right = double.NegativeInfinity;
+        CanvasTextLayoutRegion[]? regions = layout.GetCharacterRegions(lineStart, inkLength);
+        if (regions is null)
+            return (left, right);
+        foreach (CanvasTextLayoutRegion region in regions)
+        {
+            left = Math.Min(left, region.LayoutBounds.X);
+            right = Math.Max(right, region.LayoutBounds.X + region.LayoutBounds.Width);
+        }
+        return (left, right);
     }
 
     private CanvasTextLayoutRegion[]? GetAdjustedCharacterRegions(
