@@ -420,16 +420,16 @@ there are no fixture waivers or feature downgrades to obtain a green matrix.
 (`Invoke-MarkdownCorrectnessUiTests.ps1 -Phase2Only`, Windows Sandbox, Release
 x64, hash-matched payload) passed 27, failed 0 and left 5 cases unverified. All
 32 rows' offline filters passed on the same clean commit (2,017 test executions,
-0 failures). **24 rows are PASS**, with both viewport modes where the row requires
-them. **8 rows stay UNVERIFIED:**
+0 failures). With the system High Contrast follow-up below, **25 rows are PASS**,
+with both viewport modes where the row requires them. **7 rows stay UNVERIFIED:**
 
 - MERMAID-01: ARM64 runtime execution is hardware-gated. x86 and x64 executed
   through the NativeAOT smokes
   (`evidence/2026-10-24/phase2-aot-smokes-x86-x64.json`). The x64 Sandbox
   cannot host the x86 Sample UI: it cannot register the x86 Windows App Runtime
   Main/Singleton packages beside the x64 ones.
-- MERMAID-03 and HIGHLIGHT-02: actual Windows system High Contrast belongs to
-  the follow-up runner.
+- MERMAID-03: live plain-text copy of Mermaid diagrams (P2-010, P2-011, P2-015)
+  is not yet qualified. Its system High Contrast check passed.
 - SVG-04, RASTER-04 and HIGHLIGHT-03: tied to Phase 1 records P1-020, P1-021,
   P1-030, P1-033 and T1-014. Their live x64 checks passed.
 - RASTER-02: animated WebP needs the Windows WebP codec, which Sandbox lacks.
@@ -443,6 +443,19 @@ hosted-factory, minimal-provider and second-view hooks for the CONFIG, -04
 replacement and fallback rows. Receipts:
 `evidence/2026-10-24/phase2-live-run6-c482610e.json` and
 `evidence/2026-10-24/phase2-offline-evidence-c482610e.json`.
+
+**System High Contrast** (`-Phase2Only -Phase2SystemHighContrast`, commit
+`af14395a`, same product sources) turns the Sandbox guest's real Windows contrast
+theme on and restores it afterward. HIGHLIGHT-02 and the contrast part of
+MERMAID-03 pass:
+
+- All 17 diagrams stay native, with node labels and their link.
+- In both viewport modes, the final diagram selects and copies its exact source.
+- Every measured diagram and code-block pixel is one of the guest's
+  `GetSysColor` roles or a blend of two roles. The measurement found 0
+  off-palette pixels, and 1.5–5% of pixels were edge blends.
+
+Receipt: `evidence/2026-10-24/phase2-system-high-contrast-af14395a.json`.
 
 Earlier runs 3–5 failed only on harness or oracle errors, which were corrected
 against documented contracts:

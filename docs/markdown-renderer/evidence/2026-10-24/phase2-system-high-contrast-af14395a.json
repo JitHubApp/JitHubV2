@@ -1,0 +1,330 @@
+{
+  "schemaVersion": 1,
+  "objective": "P2-MERMAID-03 and P2-HIGHLIGHT-02 under the Sandbox guest's actual Windows High Contrast setting",
+  "sourceRevision": "af14395a7919d5011ffb22922a540aac80ccf61a",
+  "productSourceNote": "Product and Sample sources are identical to matrix candidate c482610e; later commits change only the harness and docs.",
+  "command": "Invoke-MarkdownCorrectnessUiTests.ps1 -Configuration Release -Phase2Only -Phase2SystemHighContrast",
+  "runId": "20261025T012400Z-1e90a5bece2c43a3a29516fd4e92ecd9",
+  "targetEpoch": "aeb7581d-4baa-450b-aa17-5927339731df:63FAB63BF360B1015B580B69A490B4EE",
+  "sampleBinary": {
+    "length": 162816,
+    "lastWriteUtc": "2026-10-25T01:25:14.3265596Z",
+    "path": "E:\\JitHubV2-markdown\\MarkdownRenderer\\MarkdownRenderer.Sample\\bin\\x64\\Release\\net10.0-windows10.0.26100.0\\win-x64\\MarkdownRenderer.Sample.exe",
+    "sha256": "f8a16fa3c32465eae4467e031648cd58815869edf3808d67fbcbcd96ce0c1c96"
+  },
+  "payloadIdentity": "MATCH",
+  "oracle": "The guest GetSysColor values for WindowText, Window, Hotlight, Highlight and HighlightText (the documented contrast roles). Every measured pixel must be a role or a blend of two roles (tolerance 20); non-pure pixels at most 25% (edge anti-aliasing only), and both Window and WindowText present.",
+  "guestSettingRestore": "Each case restored the original guest flags in finally; the guest read flags=126 (High Contrast off) afterwards. The original scheme name was unset, which Windows cannot write back, so only flags are compared in that case.",
+  "resultCounts": {
+    "pass": 3,
+    "fail": 0,
+    "unverified": 0
+  },
+  "cases": [
+    {
+      "id": "C00",
+      "status": "PASS",
+      "actual": {
+        "identity": {
+          "target": "sandbox",
+          "epoch": "aeb7581d-4baa-450b-aa17-5927339731df:63FAB63BF360B1015B580B69A490B4EE",
+          "processId": 9412,
+          "hwnd": 3866704,
+          "processName": "MarkdownRenderer.Sample",
+          "title": "MarkdownRenderer — Feature Showcase"
+        },
+        "payloadIdentity": {
+          "status": "MATCH",
+          "host": [
+            {
+              "name": "MarkdownRenderer.Sample.exe",
+              "path": "E:\\JitHubV2-markdown\\MarkdownRenderer\\MarkdownRenderer.Sample\\bin\\x64\\Release\\net10.0-windows10.0.26100.0\\win-x64\\MarkdownRenderer.Sample.exe",
+              "length": 162816,
+              "sha256": "f8a16fa3c32465eae4467e031648cd58815869edf3808d67fbcbcd96ce0c1c96",
+              "required": true
+            },
+            {
+              "name": "MarkdownRenderer.Sample.dll",
+              "path": "E:\\JitHubV2-markdown\\MarkdownRenderer\\MarkdownRenderer.Sample\\bin\\x64\\Release\\net10.0-windows10.0.26100.0\\win-x64\\MarkdownRenderer.Sample.dll",
+              "length": 544256,
+              "sha256": "718022d79e50a8c361a688aec6d05f7c975960a8a1df9eb7b0f581f8236da5a4",
+              "required": true
+            },
+            {
+              "name": "MarkdownRenderer.dll",
+              "path": "E:\\JitHubV2-markdown\\MarkdownRenderer\\MarkdownRenderer.Sample\\bin\\x64\\Release\\net10.0-windows10.0.26100.0\\win-x64\\MarkdownRenderer.dll",
+              "length": 1783296,
+              "sha256": "04779e5b34b72c7dc548d51c793f1bbb04d210dbcec8b609dff46c353e191f80",
+              "required": true
+            },
+            {
+              "name": "MarkdownRenderer.Sample.deps.json",
+              "path": "E:\\JitHubV2-markdown\\MarkdownRenderer\\MarkdownRenderer.Sample\\bin\\x64\\Release\\net10.0-windows10.0.26100.0\\win-x64\\MarkdownRenderer.Sample.deps.json",
+              "length": 22232,
+              "sha256": "131f8187d5e6092a9f9baf05a9f3936a44086e9046464fbfcaabbe3f4a24eab1",
+              "required": false
+            }
+          ],
+          "guest": [
+            {
+              "path": "C:\\WinApp\\deployments\\a55fc7c62d903a60\\MarkdownRenderer.Sample.exe",
+              "sha256": "f8a16fa3c32465eae4467e031648cd58815869edf3808d67fbcbcd96ce0c1c96",
+              "name": "MarkdownRenderer.Sample.exe",
+              "length": 162816
+            },
+            {
+              "path": "C:\\WinApp\\deployments\\a55fc7c62d903a60\\MarkdownRenderer.Sample.dll",
+              "sha256": "718022d79e50a8c361a688aec6d05f7c975960a8a1df9eb7b0f581f8236da5a4",
+              "name": "MarkdownRenderer.Sample.dll",
+              "length": 544256
+            },
+            {
+              "path": "C:\\WinApp\\deployments\\a55fc7c62d903a60\\MarkdownRenderer.dll",
+              "sha256": "04779e5b34b72c7dc548d51c793f1bbb04d210dbcec8b609dff46c353e191f80",
+              "name": "MarkdownRenderer.dll",
+              "length": 1783296
+            },
+            {
+              "path": "C:\\WinApp\\deployments\\a55fc7c62d903a60\\MarkdownRenderer.Sample.deps.json",
+              "sha256": "131f8187d5e6092a9f9baf05a9f3936a44086e9046464fbfcaabbe3f4a24eab1",
+              "name": "MarkdownRenderer.Sample.deps.json",
+              "length": 22232
+            }
+          ],
+          "comparisons": [
+            {
+              "name": "MarkdownRenderer.Sample.exe",
+              "length": 162816,
+              "sha256": "f8a16fa3c32465eae4467e031648cd58815869edf3808d67fbcbcd96ce0c1c96",
+              "guestPath": "C:\\WinApp\\deployments\\a55fc7c62d903a60\\MarkdownRenderer.Sample.exe",
+              "status": "MATCH"
+            },
+            {
+              "name": "MarkdownRenderer.Sample.dll",
+              "length": 544256,
+              "sha256": "718022d79e50a8c361a688aec6d05f7c975960a8a1df9eb7b0f581f8236da5a4",
+              "guestPath": "C:\\WinApp\\deployments\\a55fc7c62d903a60\\MarkdownRenderer.Sample.dll",
+              "status": "MATCH"
+            },
+            {
+              "name": "MarkdownRenderer.dll",
+              "length": 1783296,
+              "sha256": "04779e5b34b72c7dc548d51c793f1bbb04d210dbcec8b609dff46c353e191f80",
+              "guestPath": "C:\\WinApp\\deployments\\a55fc7c62d903a60\\MarkdownRenderer.dll",
+              "status": "MATCH"
+            },
+            {
+              "name": "MarkdownRenderer.Sample.deps.json",
+              "length": 22232,
+              "sha256": "131f8187d5e6092a9f9baf05a9f3936a44086e9046464fbfcaabbe3f4a24eab1",
+              "guestPath": "C:\\WinApp\\deployments\\a55fc7c62d903a60\\MarkdownRenderer.Sample.deps.json",
+              "status": "MATCH"
+            }
+          ],
+          "guestExecutablePath": "C:\\WinApp\\deployments\\a55fc7c62d903a60\\MarkdownRenderer.Sample.exe",
+          "guestProcessId": 9412
+        },
+        "rendererTreeCount": 141,
+        "shellRawNames": {
+          "MarkdownEditor": "Markdown source editor",
+          "SamplePageTitle": "Full demo",
+          "SampleNav_TouchSelection": "Touch selection"
+        },
+        "screenshot": {
+          "path": "E:\\JitHubV2-markdown\\MarkdownRenderer\\artifacts\\correctness\\20261025T012400Z-1e90a5bece2c43a3a29516fd4e92ecd9\\screenshots\\initial.png",
+          "width": 3046,
+          "height": 769
+        }
+      }
+    },
+    {
+      "id": "P2-MERMAID-03-SYSHC",
+      "status": "PASS",
+      "actual": {
+        "contrast": {
+          "flags": 127,
+          "scheme": "High Contrast Black",
+          "palette": [
+            {
+              "role": "windowText",
+              "r": 255,
+              "g": 255,
+              "b": 255
+            },
+            {
+              "role": "window",
+              "r": 32,
+              "g": 32,
+              "b": 32
+            },
+            {
+              "role": "hotlight",
+              "r": 117,
+              "g": 233,
+              "b": 252
+            },
+            {
+              "role": "highlight",
+              "r": 142,
+              "g": 227,
+              "b": 240
+            },
+            {
+              "role": "highlightText",
+              "r": 38,
+              "g": 59,
+              "b": 80
+            }
+          ]
+        },
+        "diagrams": 17,
+        "labelledNodes": 59,
+        "pageDiagramPalette": {
+          "pixels": 232389,
+          "offPalette": 0,
+          "offPaletteFraction": 0.0,
+          "blended": 7269,
+          "blendedFraction": 0.031279449543653096,
+          "nearRole": {
+            "windowText": 746,
+            "window": 224256,
+            "hotlight": 307,
+            "highlight": 0,
+            "highlightText": 69
+          }
+        },
+        "viewports": [
+          {
+            "viewport": "owned",
+            "finalDiagramPalette": {
+              "pixels": 114156,
+              "offPalette": 0,
+              "offPaletteFraction": 0.0,
+              "blended": 1721,
+              "blendedFraction": 0.015075861102351169,
+              "nearRole": {
+                "windowText": 255,
+                "window": 112182,
+                "hotlight": 0,
+                "highlight": 0,
+                "highlightText": 0
+              }
+            },
+            "finalDiagramSelected": true,
+            "exactCopy": true,
+            "screenshot": {
+              "path": "E:\\JitHubV2-markdown\\MarkdownRenderer\\artifacts\\correctness\\20261025T012400Z-1e90a5bece2c43a3a29516fd4e92ecd9\\screenshots\\p2-mermaid-03-system-high-contrast-owned.png",
+              "width": 3060,
+              "height": 776
+            }
+          },
+          {
+            "viewport": "ancestor",
+            "finalDiagramPalette": {
+              "pixels": 114156,
+              "offPalette": 0,
+              "offPaletteFraction": 0.0,
+              "blended": 1721,
+              "blendedFraction": 0.015075861102351169,
+              "nearRole": {
+                "windowText": 255,
+                "window": 112182,
+                "hotlight": 0,
+                "highlight": 0,
+                "highlightText": 0
+              }
+            },
+            "finalDiagramSelected": true,
+            "exactCopy": true,
+            "screenshot": {
+              "path": "E:\\JitHubV2-markdown\\MarkdownRenderer\\artifacts\\correctness\\20261025T012400Z-1e90a5bece2c43a3a29516fd4e92ecd9\\screenshots\\p2-mermaid-03-system-high-contrast-ancestor.png",
+              "width": 3060,
+              "height": 776
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "P2-HIGHLIGHT-02-SYSHC",
+      "status": "PASS",
+      "actual": {
+        "contrast": {
+          "flags": 127,
+          "scheme": "High Contrast Black",
+          "palette": [
+            {
+              "role": "windowText",
+              "r": 255,
+              "g": 255,
+              "b": 255
+            },
+            {
+              "role": "window",
+              "r": 32,
+              "g": 32,
+              "b": 32
+            },
+            {
+              "role": "hotlight",
+              "r": 117,
+              "g": 233,
+              "b": 252
+            },
+            {
+              "role": "highlight",
+              "r": 142,
+              "g": 227,
+              "b": 240
+            },
+            {
+              "role": "highlightText",
+              "r": 38,
+              "g": 59,
+              "b": 80
+            }
+          ]
+        },
+        "unknownLanguage": {
+          "pixels": 119592,
+          "offPalette": 0,
+          "offPaletteFraction": 0.0,
+          "blended": 6499,
+          "blendedFraction": 0.054343099872901195,
+          "nearRole": {
+            "windowText": 2045,
+            "window": 111070,
+            "hotlight": 0,
+            "highlight": 0,
+            "highlightText": 0
+          }
+        },
+        "highlighted": {
+          "pixels": 119592,
+          "offPalette": 0,
+          "offPaletteFraction": 0.0,
+          "blended": 6425,
+          "blendedFraction": 0.05372432938658104,
+          "nearRole": {
+            "windowText": 2027,
+            "window": 111148,
+            "hotlight": 0,
+            "highlight": 0,
+            "highlightText": 0
+          }
+        },
+        "screenshot": {
+          "path": "E:\\JitHubV2-markdown\\MarkdownRenderer\\artifacts\\correctness\\20261025T012400Z-1e90a5bece2c43a3a29516fd4e92ecd9\\screenshots\\p2-highlight-02-system-high-contrast.png",
+          "width": 3060,
+          "height": 776
+        }
+      }
+    }
+  ],
+  "history": [
+    "20261025T004813Z: build failed on a corrupted MarkdownRenderer.Math reference assembly before any case ran (no guest setting changed).",
+    "20261025T005008Z: the scheme comparison rejected Windows filling in its default scheme name; MERMAID-03 reported only the restore error. HIGHLIGHT-02 passed.",
+    "20261025T010542Z: 3/3 pass on the uncommitted harness; one reporting field (labelledNodes) was overwritten by a loop variable, fixed in af14395a.",
+    "20261025T012400Z: 3/3 pass on clean commit af14395a7919d5011ffb22922a540aac80ccf61a."
+  ]
+}

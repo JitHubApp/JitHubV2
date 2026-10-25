@@ -294,7 +294,7 @@
       ],
       "live": "Mermaid page in Light, Dark and system High Contrast; node/link UIA, atomic selection and copy, final diagram, both viewport modes.",
       "open": [
-        "Light, Dark and forced High Contrast, node/link semantics, atomic selection and exact copy passed in both viewport modes; actual Windows system High Contrast runs in the follow-up runner, and screenshots need review."
+        "P2-010/P2-011/P2-015 live clipboard qualification: rendered plain-text copy of Mermaid diagrams is not yet qualified live. Light, Dark, forced and actual system High Contrast, node/link UIA, atomic selection, exact Copy as Markdown and the final diagram passed in both viewport modes."
       ],
       "status": "UNVERIFIED",
       "evidence": {
@@ -302,7 +302,8 @@
         "offline": "PASS",
         "offlineReceipt": "docs/markdown-renderer/evidence/2026-10-24/phase2-offline-evidence-c482610e.json",
         "live": "UNVERIFIED",
-        "liveReceipt": "docs/markdown-renderer/evidence/2026-10-24/phase2-live-run6-c482610e.json"
+        "liveReceipt": "docs/markdown-renderer/evidence/2026-10-24/phase2-live-run6-c482610e.json",
+        "systemHighContrast": "docs/markdown-renderer/evidence/2026-10-24/phase2-system-high-contrast-af14395a.json"
       }
     },
     {
@@ -596,16 +597,15 @@
         }
       ],
       "live": "Unknown-language block stays plain and readable; system High Contrast colors follow the contract.",
-      "open": [
-        "The unknown-language block stays plain and exact (0 vs 626 token-colored pixels); actual Windows system High Contrast colors are qualified by the follow-up runner."
-      ],
-      "status": "UNVERIFIED",
+      "open": [],
+      "status": "PASS",
       "evidence": {
         "candidate": "c482610e7304192a8c7c5f021586e853bee5a627",
         "offline": "PASS",
         "offlineReceipt": "docs/markdown-renderer/evidence/2026-10-24/phase2-offline-evidence-c482610e.json",
-        "live": "UNVERIFIED",
-        "liveReceipt": "docs/markdown-renderer/evidence/2026-10-24/phase2-live-run6-c482610e.json"
+        "live": "PASS",
+        "liveReceipt": "docs/markdown-renderer/evidence/2026-10-24/phase2-live-run6-c482610e.json",
+        "systemHighContrast": "docs/markdown-renderer/evidence/2026-10-24/phase2-system-high-contrast-af14395a.json"
       }
     },
     {
