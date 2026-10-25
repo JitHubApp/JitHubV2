@@ -403,16 +403,15 @@
         }
       ],
       "live": "Final-document SVG: exact alt text, one semantic range, exact Copy Markdown, visible artwork, both viewport modes.",
-      "open": [
-        "P1-030/P1-033/T1-014 Phase 1 records stay open until their own qualification closes them; the live x64 final-SVG alt, single range, exact copy and artwork checks passed in both viewport modes."
-      ],
-      "status": "UNVERIFIED",
+      "open": [],
+      "status": "PASS",
       "evidence": {
         "candidate": "c482610e7304192a8c7c5f021586e853bee5a627",
         "offline": "PASS",
         "offlineReceipt": "docs/markdown-renderer/evidence/2026-10-24/phase2-offline-evidence-c482610e.json",
         "live": "PASS",
-        "liveReceipt": "docs/markdown-renderer/evidence/2026-10-24/phase2-live-run6-c482610e.json"
+        "liveReceipt": "docs/markdown-renderer/evidence/2026-10-24/phase2-live-run6-c482610e.json",
+        "phase1Closure": "docs/markdown-renderer/evidence/2026-10-24/phase1-clipboard-selection-cc7fda21.json"
       }
     },
     {
@@ -521,16 +520,15 @@
         }
       ],
       "live": "Linked and final-document images: atomic visible selection, exact alt/source copy, UIA semantics.",
-      "open": [
-        "Linked and final-image semantics, atomic selection and exact copy passed in both viewport modes; the P1-030 live image alt copy item stays open until its own qualification closes it."
-      ],
-      "status": "UNVERIFIED",
+      "open": [],
+      "status": "PASS",
       "evidence": {
         "candidate": "c482610e7304192a8c7c5f021586e853bee5a627",
         "offline": "PASS",
         "offlineReceipt": "docs/markdown-renderer/evidence/2026-10-24/phase2-offline-evidence-c482610e.json",
-        "live": "UNVERIFIED",
-        "liveReceipt": "docs/markdown-renderer/evidence/2026-10-24/phase2-live-run6-c482610e.json"
+        "live": "PASS",
+        "liveReceipt": "docs/markdown-renderer/evidence/2026-10-24/phase2-live-run6-c482610e.json",
+        "phase1Closure": "docs/markdown-renderer/evidence/2026-10-24/phase1-clipboard-selection-cc7fda21.json"
       }
     },
     {
@@ -616,16 +614,15 @@
         }
       ],
       "live": "Highlighted code: selection, UIA range and code-copy button yield exact code text.",
-      "open": [
-        "Highlighted code selection, UIA range and copy are exact; the P1-020/P1-021 live formatted-paste items stay open until their own qualification closes them."
-      ],
-      "status": "UNVERIFIED",
+      "open": [],
+      "status": "PASS",
       "evidence": {
         "candidate": "c482610e7304192a8c7c5f021586e853bee5a627",
         "offline": "PASS",
         "offlineReceipt": "docs/markdown-renderer/evidence/2026-10-24/phase2-offline-evidence-c482610e.json",
-        "live": "UNVERIFIED",
-        "liveReceipt": "docs/markdown-renderer/evidence/2026-10-24/phase2-live-run6-c482610e.json"
+        "live": "PASS",
+        "liveReceipt": "docs/markdown-renderer/evidence/2026-10-24/phase2-live-run6-c482610e.json",
+        "phase1Closure": "docs/markdown-renderer/evidence/2026-10-24/phase1-clipboard-selection-cc7fda21.json"
       }
     },
     {
