@@ -13411,7 +13411,13 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     private void ProcessSelectionHandlePointerReleased(ref PointerInput e)
     {
         if (_selectionHandlePointerId != e.Pointer.PointerId)
+        {
+            // P1-041: a handle can appear under a finger that is still down,
+            // such as the second tap of a word-selecting double-tap. That
+            // contact belongs to the canvas, which must see it end.
+            ProcessPointerReleased(ref e);
             return;
+        }
 
         // Commit the release coordinate even when the dispatcher coalesced the
         // final PointerMoved event. This mirrors the main text-drag path and
@@ -13443,7 +13449,11 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     private void ProcessSelectionHandlePointerCanceled(ref PointerInput e)
     {
         if (_selectionHandlePointerId != e.Pointer.PointerId)
+        {
+            // P1-041: see ProcessSelectionHandlePointerReleased.
+            ProcessPointerCanceledOrCaptureLost(ref e);
             return;
+        }
 
         if (e.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Touch)
             _touchTapSuppression.CancelContact(e.Pointer.PointerId);

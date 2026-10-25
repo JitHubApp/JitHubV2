@@ -1,0 +1,1 @@
+Passed!  - Failed:     0, Passed:     2, Skipped:     0, Total:     2, Duration: 14 ms - MarkdownRenderer.GitHub.Tests.dll (net10.0)
