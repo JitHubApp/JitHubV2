@@ -420,16 +420,15 @@ there are no fixture waivers or feature downgrades to obtain a green matrix.
 (`Invoke-MarkdownCorrectnessUiTests.ps1 -Phase2Only`, Windows Sandbox, Release
 x64, hash-matched payload) passed 27, failed 0 and left 5 cases unverified. All
 32 rows' offline filters passed on the same clean commit (2,017 test executions,
-0 failures). With the system High Contrast follow-up below, **25 rows are PASS**,
-with both viewport modes where the row requires them. **7 rows stay UNVERIFIED:**
+0 failures). With the system High Contrast and Mermaid copy follow-ups below,
+**26 rows are PASS**, with both viewport modes where the row requires them.
+**6 rows stay UNVERIFIED:**
 
 - MERMAID-01: ARM64 runtime execution is hardware-gated. x86 and x64 executed
   through the NativeAOT smokes
   (`evidence/2026-10-24/phase2-aot-smokes-x86-x64.json`). The x64 Sandbox
   cannot host the x86 Sample UI: it cannot register the x86 Windows App Runtime
   Main/Singleton packages beside the x64 ones.
-- MERMAID-03: live plain-text copy of Mermaid diagrams (P2-010, P2-011, P2-015)
-  is not yet qualified. Its system High Contrast check passed.
 - SVG-04, RASTER-04 and HIGHLIGHT-03: tied to Phase 1 records P1-020, P1-021,
   P1-030, P1-033 and T1-014. Their live x64 checks passed.
 - RASTER-02: animated WebP needs the Windows WebP codec, which Sandbox lacks.
@@ -456,6 +455,19 @@ MERMAID-03 pass:
   off-palette pixels, and 1.5–5% of pixels were edge blends.
 
 Receipt: `evidence/2026-10-24/phase2-system-high-contrast-af14395a.json`.
+
+**Mermaid plain-text copy** (`P2-MERMAID-03-COPY`, commit `8141e49c`, same
+product sources) closes MERMAID-03's P2-010, P2-011 and P2-015 item. In both
+viewport modes, Ctrl+C across three diagrams copies:
+
+- equal labels on distinct nodes as separate whole lines (ASCII and
+  Arabic/emoji);
+- a class relationship caption once, with no fragments;
+- placeholder-shaped text and Mermaid entities as their final literal text.
+
+The copied text equals the selected UIA text. In Dark mode the Mermaid canvas
+stays light, which is the documented pinned `MermaidRenderOptions.Theme`
+behavior. Receipt: `evidence/2026-10-24/phase2-mermaid-plain-copy-8141e49c.json`.
 
 Earlier runs 3–5 failed only on harness or oracle errors, which were corrected
 against documented contracts:
