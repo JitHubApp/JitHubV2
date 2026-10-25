@@ -13,6 +13,9 @@ param(
     [switch]$Phase2SystemHighContrast,
     # With -Phase2Only: run only the P2 cases whose ID matches this regex.
     [string]$Phase2CasePattern = '',
+    # Phase 1 live clipboard/selection closure: C00, the C10 handle-drag case,
+    # the C12 final-SVG cases and MarkdownCorrectnessPhase1ClipboardCases.ps1.
+    [switch]$Phase1ClipboardOnly,
     [string]$OutputRoot = (Join-Path $PSScriptRoot '..\artifacts\correctness'),
     [string]$BuildArtifactsPath = ''
 )
@@ -35,6 +38,8 @@ $script:Phase2Only = [bool]$Phase2Only
 $script:Phase2SystemHighContrast = [bool]$Phase2SystemHighContrast
 if ($script:Phase2SystemHighContrast -and -not $script:Phase2Only) { throw '-Phase2SystemHighContrast requires -Phase2Only.' }
 $script:Phase2CasePattern = $Phase2CasePattern
+$script:Phase1ClipboardOnly = [bool]$Phase1ClipboardOnly
+if ($script:Phase1ClipboardOnly -and $script:Phase2Only) { throw '-Phase1ClipboardOnly cannot be combined with -Phase2Only.' }
 if ($script:Phase2CasePattern -and -not $script:Phase2Only) { throw '-Phase2CasePattern requires -Phase2Only.' }
 $script:RunId = '{0}-{1}' -f [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ'), [guid]::NewGuid().ToString('N')
 $script:RunDirectory = Join-Path $script:OutputRoot $script:RunId
@@ -728,6 +733,12 @@ function Should-RunCorrectnessCase {
         [Parameter(Mandatory)][string]$Name
     )
 
+    if ($script:Phase1ClipboardOnly) {
+        return (($Id -ceq 'C00' -and $Name -ceq 'sandbox-and-app-identity') -or
+            ($Id -ceq 'C10' -and $Name -ceq 'touch-double-tap-handle-drag-context-copy-and-cancel') -or
+            ($Id -ceq 'C12' -and $Name -in @('final-svg-atomic-selection-owned-viewport', 'final-svg-atomic-selection-ancestor-viewport')) -or
+            $Id -in @('P1-020', 'P1-021', 'P1-030', 'P1-033'))
+    }
     if ($script:Phase2Only) {
         if ($Id -ceq 'C00' -and $Name -ceq 'sandbox-and-app-identity') { return $true }
         if (-not $Id.StartsWith('P2-', [System.StringComparison]::Ordinal)) { return $false }
@@ -766,8 +777,8 @@ function Test-Case {
     $started = [DateTime]::UtcNow
     $initialScreenshotCount = $script:Screenshots.Count
     if (-not (Should-RunCorrectnessCase -Id $Id -Name $Name)) {
-        # Phase 2 mode deliberately does not record the Phase 1 batch.
-        if ($script:Phase2Only) { return }
+        # Phase 2 and Phase 1 clipboard modes do not record the skipped batch.
+        if ($script:Phase2Only -or $script:Phase1ClipboardOnly) { return }
         Add-Unverified -Id $Id -Name $Name -Reason 'Not run: resize crash diagnostic mode executes only C00 sandbox-and-app-identity and the exact C14 layout-resize-and-selection-state-survive-relayout case.'
         return
     }
@@ -4326,6 +4337,9 @@ public sealed class MarkdownRendererControl : UserControl
     }
 
     Test-Case -Id 'C10' -Name 'touch-double-tap-handle-drag-context-copy-and-cancel' -Requirement 'Touch double-tap exposes a selectable word and handles, dragging changes the UIA range, and releasing a long-press opens native Copy commands.' -Body {
+        # The full batch reaches this case on the TouchSelection page; the
+        # focused clipboard batch opens it here.
+        if ($script:Phase1ClipboardOnly) { Navigate-Sample -Key 'TouchSelection' -RequiredText 'Touch selection' }
         Set-ToggleState -AutomationId 'TouchViewportOwnershipToggle' -Enabled $false
         $source = "# Touch interaction regression`n`nHold or double-tap touchtarget here.`nA second line continues the selection across formatting.`n"
         Set-TemporaryMarkdown -Markdown $source -RequiredText 'touchtarget'
@@ -4720,7 +4734,7 @@ public sealed class MarkdownRendererControl : UserControl
 
     # These are deliberately non-pass entries: they require external display
     # configurations, a fresh offline conformance/test receipt, or human review.
-    if ($script:Phase2Only) { return }
+    if ($script:Phase2Only -or $script:Phase1ClipboardOnly) { return }
     Add-Unverified -Id 'C01' -Name 'commonmark-gfm-conformance-receipt' -Reason 'This UI batch does not run the pinned offline conformance corpus or ConformanceHarnessTests; attach the separate current-source test receipt.'
     Add-Unverified -Id 'C07' -Name 'valid-image-network-policy-and-invalid-failure-lifecycle' -Reason 'Only deterministic data-URI SVG is exercised here; remote image admission, cancellation races, and fallback classification require the separate current-source image test receipt.'
     Add-Unverified -Id 'C10' -Name 'stationary-edge-autoscroll-and-endpoint-crossing' -Reason 'The UI batch verifies swipe, handle extension and cancellation, but does not prove stationary frame-paced edge scrolling or handle-role crossing.'
@@ -4747,6 +4761,11 @@ try {
     $runInfo = Initialize-Run
     $script:UiStarted = $true
     Run-CorrectnessCases
+    if ($script:Phase1ClipboardOnly) {
+        . (Join-Path $PSScriptRoot 'MarkdownCorrectnessPhase2Cases.ps1')
+        . (Join-Path $PSScriptRoot 'MarkdownCorrectnessPhase1ClipboardCases.ps1')
+        Run-Phase1ClipboardCases
+    }
     if ($script:Phase2Only) {
         . (Join-Path $PSScriptRoot 'MarkdownCorrectnessPhase2Cases.ps1')
         . (Join-Path $PSScriptRoot 'MarkdownCorrectnessPhase2ProviderCases.ps1')
