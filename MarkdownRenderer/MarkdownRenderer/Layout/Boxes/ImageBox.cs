@@ -9475,6 +9475,15 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             layoutWidth,
             layoutHeight,
             out NativeResourceRetirementRecord replacementRecord);
+        if (compactInlineFailure)
+        {
+            // The one-line pill is clamped to the available width. Trim the
+            // label with an ellipsis instead of letting the centered text
+            // spill past both edges into the pill's clip. The accessible
+            // name keeps the full text.
+            replacement.TrimmingGranularity = CanvasTextTrimmingGranularity.Character;
+            replacement.TrimmingSign = CanvasTrimmingSign.Ellipsis;
+        }
         ReplacePlaceholder(replacement, replacementRecord);
     }
 
