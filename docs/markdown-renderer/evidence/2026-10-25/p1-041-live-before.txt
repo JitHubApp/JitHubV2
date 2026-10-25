@@ -1,0 +1,14 @@
+P1-041 live reproduction before the fix (commit 50d14a39 build, Windows Sandbox guest at 192 DPI, PID 1412).
+Fixture: "# Emoji word-boundary regression\n\nwordleft1️⃣wordright\n" on the TouchSelection page, owned viewport.
+UIA range of "wordleft": x=2060 y=545 w=102 h=39 (physical px). Start handle after a double-tap: x=2060 y=563 89x89.
+Each step uses `winapp ui touch` (long-press 650 ms / double-tap); clear = focus renderer + Esc.
+
+Touch point 2111,550 (above the handle's top edge):
+  long-press -> "wordleft"; clear -> ""; double-tap -> "wordleft"; clear -> ""; long-press -> "wordleft"   (OK)
+Touch point 2111,566 (3 px inside the handle's top edge):
+  long-press -> "wordleft"; clear -> ""; double-tap -> "wordleft"; clear -> ""; long-press -> ""           (FAIL)
+After the failure, long-presses anywhere on the document (wordright at 2255,564) selected nothing.
+A mouse left press on the renderer, or navigating to another page, restored touch selection:
+  mouse press at 2600,800, then long-press 2111,564 -> "wordleft".
+Harness receipts: runs 20261025T182746Z-23b3ebd291c64dd78c9fe7b6c19ef8fa and 20261025T192618Z-4192c5f7666e4ab7acd93aa210236f24,
+P1-016 "owned/left-word/long-press selected '', expected only 'wordleft'".
