@@ -2552,7 +2552,14 @@ switch ($Mode) {
         if ($null -eq $range) { throw "TextPattern.FindText did not expose semantic scroll text '$Needle'." }
         $range.ScrollIntoView($true)
         $rectangles=@(Get-Rectangles $range)
-        if ($rectangles.Count -eq 0) { throw "Semantic scroll text '$Needle' has no UIA geometry after ScrollIntoView." }
+        # The renderer defers a scroll requested during relayout (for example
+        # right after a resize) until layout commits; allow that commit.
+        $scrollDeadline=[DateTime]::UtcNow.AddSeconds(3)
+        while ($rectangles.Count -eq 0 -and [DateTime]::UtcNow -lt $scrollDeadline) {
+            Start-Sleep -Milliseconds 150
+            $rectangles=@(Get-Rectangles $range)
+        }
+        if ($rectangles.Count -eq 0) { throw "Semantic scroll text '$Needle' has no UIA geometry within 3 seconds of ScrollIntoView." }
         $result=@{mode=$Mode;needle=$Needle;text=$range.GetText(-1);rectangles=$rectangles}
     }
     'selection' {

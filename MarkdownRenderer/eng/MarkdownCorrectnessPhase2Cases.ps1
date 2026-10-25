@@ -231,6 +231,43 @@ public static class P2PixelCounter
     return [P2PixelCounter]::CountChromatic($Sampler.bitmap, [System.Drawing.Rectangle]::new($left, $top, $width, $height), $MinimumSpread)
 }
 
+# A short window (432 DIP tall at 200% in the Sandbox) can leave a realized
+# element below the visible area. Wheel down over the renderer, which reaches
+# the owned or ancestor scroller, until the element's center is in the window.
+function Show-P2Element {
+    param([Parameter(Mandatory)][scriptblock]$Find, [Parameter(Mandatory)][string]$Description, [int]$MaxWheelSteps = 12)
+    $meta = Invoke-GuestProbe -Mode 'metadata'
+    for ($step = 0; $step -le $MaxWheelSteps; $step++) {
+        $element = & $Find
+        if ($null -ne $element -and -not [bool]$element.isOffscreen -and [double]$element.width -gt 0 -and [double]$element.height -gt 0) {
+            $centerY = [double]$element.y + [double]$element.height / 2.0
+            if ($centerY -gt [double]$meta.window.top -and $centerY -lt [double]$meta.window.bottom) { return $element }
+        }
+        if ($step -lt $MaxWheelSteps) {
+            $null = Invoke-Ui @('scroll', 'MarkdownRenderer', '--wheel', '-1')
+            Start-Sleep -Milliseconds 250
+        }
+    }
+    throw "$Description never became visible inside the window."
+}
+
+# Clip a screen rectangle to the renderer's visible area so pixel sampling
+# never reads outside the captured window.
+function Get-P2VisibleRect {
+    param([Parameter(Mandatory)]$Rect, [Parameter(Mandatory)]$Sampler, [double]$MinimumHeight = 40)
+    $renderer = Get-UiBounds 'MarkdownRenderer'
+    $windowRight = $Sampler.left + $Sampler.bitmap.Width / $Sampler.scaleX
+    $windowBottom = $Sampler.top + $Sampler.bitmap.Height / $Sampler.scaleY
+    $left = [Math]::Max([Math]::Max([double]$Rect.x, $renderer[0]), $Sampler.left)
+    $top = [Math]::Max([Math]::Max([double]$Rect.y, $renderer[1]), $Sampler.top)
+    $right = [Math]::Min([Math]::Min([double]$Rect.x + [double]$Rect.width, $renderer[0] + $renderer[2]), $windowRight - 1)
+    $bottom = [Math]::Min([Math]::Min([double]$Rect.y + [double]$Rect.height, $renderer[1] + $renderer[3]), $windowBottom - 1)
+    if ($right - $left -le 0 -or $bottom - $top -lt $MinimumHeight) {
+        throw "Only $([Math]::Max(0, $bottom - $top)) px of the rectangle is visible; at least $MinimumHeight px are needed to sample it."
+    }
+    return [pscustomobject]@{ x = $left; y = $top; width = $right - $left; height = $bottom - $top }
+}
+
 function Get-P2ImagePeer {
     param([Parameter(Mandatory)][string]$AltText)
     $null = Scroll-P2Text -Needle $AltText
@@ -950,7 +987,7 @@ function Run-Phase2MediaCases {
             $block = Get-P2Elements -ClassName 'MarkdownCodeBlock' | Where-Object { -not [bool]$_.isOffscreen } | Sort-Object { [Math]::Abs([double]$_.y - [double]$range.rectangles[0].y) } | Select-Object -First 1
             $shot = Save-Screenshot ('screenshots\p2-highlight-01-{0}.png' -f ($observed.Count + 1))
             $sampler = Get-P2PixelSampler -Shot $shot
-            try { $colors = Get-P2DistinctColorCount -Sampler $sampler -Rect $block -Columns 80 -Rows 20 }
+            try { $colors = Get-P2DistinctColorCount -Sampler $sampler -Rect (Get-P2VisibleRect -Rect $block -Sampler $sampler) -Columns 80 -Rows 20 }
             finally { $sampler.bitmap.Dispose() }
             if ($colors -lt 5) { throw "The '$needle' block shows only $colors distinct colors; its tokens are not highlighted." }
             $observed.Add([pscustomobject]@{ block = $needle; colors = $colors; screenshot = $shot })
@@ -1091,8 +1128,11 @@ function Run-Phase2MediaCases {
                 if (-not $focused) { throw "[$mode] Keyboard Tab never focused the hosted 'Click me' button." }
                 $null = Invoke-Ui @('send-keys', 'space', '--via', 'send-input')
                 Wait-ForRawName -AutomationId $clickId -Expected 'Click me activated'
-                $another = @(Get-AppUiElements | Where-Object { [string]$_.type -ceq 'Button' -and [string]$_.name -ceq 'Another action' })
-                if ($another.Count -ne 1) { throw "[$mode] The 'Another action' hosted button is not realized." }
+                $another = @(Show-P2Element -Description "[$mode] The 'Another action' hosted button" -Find {
+                    $found = @(Get-AppUiElements | Where-Object { [string]$_.type -ceq 'Button' -and [string]$_.name -ceq 'Another action' })
+                    if ($found.Count -gt 1) { throw "[$mode] Found $($found.Count) 'Another action' hosted buttons." }
+                    if ($found.Count -eq 1) { $found[0] } else { $null }
+                })
                 $anotherId = Get-UiAutomationId $another[0]
                 $center = '{0},{1}' -f [int]([double]$another[0].x + [double]$another[0].width / 2.0), [int]([double]$another[0].y + [double]$another[0].height / 2.0)
                 $null = Invoke-Ui @('touch', 'MarkdownRenderer', '--gesture', 'tap', '--at', $center)

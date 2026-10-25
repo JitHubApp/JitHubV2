@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "objective": "M5 actual-DPI gate at 200% (Phase 1 batch and Phase 2 live rows in Windows Sandbox)",
+  "scaleSource": "User-set Windows display scale on the host (200%). The Sandbox guest is a remote session whose scale follows the host display; the guest reported 192 DPI before the runs and every DPI-bearing probe in the qualifying Phase 1 run reads dpi 192 (112 probes). No display setting was changed by any runner.",
+  "environment": "Guest desktop 2117x639 DIP (working area 591 DIP tall); the Sample window was 1588x432 DIP, much shorter than the 150% session. C06/P2-SVG-03 narrow resizes request 760x860 DIP and are clamped by the desktop height.",
+  "firstRun": {
+    "runId": "20261025T165111Z-9753da489d5e4dc6a0068847ef48eb95",
+    "resultCounts": {
+      "pass": 53,
+      "fail": 3,
+      "unverified": 9
+    },
+    "note": "C15 Mermaid bottom scroll stuck at 1.35% (did not recur: P1-042); P1-016 opened no selection menu on a right-click over a selection handle (P1-040); V1-004 tap 1503.5 ms after release, a timing-envelope miss misreported as FAIL (harness)."
+  },
+  "secondRun": {
+    "runId": "20261025T182746Z-23b3ebd291c64dd78c9fe7b6c19ef8fa",
+    "resultCounts": {
+      "pass": 55,
+      "fail": 1,
+      "unverified": 9
+    },
+    "note": "On the P1-040 fix: P1-016 then failed later, a long-press selected nothing after a double-tap (P1-041; live reproduction in p1-041-live-before.txt)."
+  },
+  "fixes": {
+    "P1-040": "Commit 50d14a39: selection handles forward mouse right-taps to the canvas right-tap path (touch and pen excluded). Red/green: p1-040-red.txt, p1-040-green.txt.",
+    "P1-041": "Commit 7be71973: handles hand releases and cancels for contacts they do not own to the canvas pointer path, so a double-tap whose second release lands on a newly shown handle still ends its contact. Red/green: p1-041-red.txt, p1-041-green.txt; live before: p1-041-live-before.txt.",
+    "harness": [
+      "Commit 50d14a39: V1-004 reports a post-tap envelope miss as UNVERIFIED, like its pre-tap checks.",
+      "Phase 2 visibility: HOSTED-03 wheels the hosted button into the window before tapping it, HIGHLIGHT-01 samples only the visible part of a code block taller than the window, and the guest scroll-range probe waits up to 3 s for geometry after ScrollIntoView (a scroll requested during relayout is deferred until layout commits). No oracle changed."
+    ]
+  },
+  "qualifyingRuns": [
+    {
+      "runId": "20261025T194830Z-8459e7f3d6be459e9517dccabc4c0d52",
+      "sourceRevision": "3b9d7a2bd3fd26365b2f5058dc4a6be29c2ffcd7",
+      "resultCounts": {
+        "pass": 55,
+        "fail": 0,
+        "unverified": 10
+      },
+      "payloadIdentity": "MATCH",
+      "note": "Full Phase 1 batch with both investigation switches on the P1-040/P1-041 fixes (head adds only an evidence file after 7be71973; only restore-generated lock files differ). The 10 UNVERIFIED are the 9 standing receipt/tooling items and V1-004, whose guest setup took 1565.9 ms before the tap (outside its 1.5-second envelope)."
+    },
+    {
+      "runId": "20261025T180501Z-56c6366176bd45c2b05f3b44a4e8862d",
+      "resultCounts": {
+        "V1-004": "PASS"
+      },
+      "note": "Focused 200% run in which the V1-004 near-origin investigation completed inside its envelope and the nearby link activated."
+    },
+    {
+      "runId": "20261025T211032Z-db71ef3544f74abe8ee76d526eeb86f2",
+      "sourceRevision": "3b9d7a2bd3fd26365b2f5058dc4a6be29c2ffcd7",
+      "resultCounts": {
+        "pass": 25,
+        "fail": 3,
+        "unverified": 5
+      },
+      "payloadIdentity": "MATCH",
+      "note": "Phase 2 live rows at 200%: 25 pass; the 5 UNVERIFIED are the standing notes (system High Contrast follow-up rows, WebP codec, and rows whose remaining items are qualified by separate receipts). P2-SVG-03, P2-HIGHLIGHT-01 and P2-HOSTED-03 failed on content outside the 432-DIP window."
+    },
+    {
+      "runId": "20261025T221441Z-291c770b57c2498daaeb601be4982259",
+      "resultCounts": {
+        "pass": 4,
+        "fail": 0,
+        "unverified": 0
+      },
+      "note": "P2-SVG-03, P2-HIGHLIGHT-01 and P2-HOSTED-03 pass at 200% with the visibility harness changes (HIGHLIGHT-01: 16 and 14 distinct colors; SVG-03: 68 of 81 sampled pixels changed Light to Dark; HOSTED-03 activated by keyboard and touch in both viewport modes)."
+    }
+  ],
+  "screenshotReview": "Reviewed the first run (65 screenshots), the P1-016 screenshots of the qualifying run and the Phase 2 run. No clipping, overlap, missing content or theme defect. Handles hang over the following line by design; montage screenshots show menus beside the window, not at their screen position.",
+  "openObservations": {
+    "P1-042": "C15 Mermaid bottom scroll stuck at 1.35% once (first run). Not reproduced in 4 later C15 runs at 200% or 36 in-guest probe iterations (immediate and delayed scrolls); cold-start probing was blocked because the Sample needs the harness launch path. Open, suspected only."
+  }
+}
