@@ -12995,6 +12995,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             UIElement.PointerCaptureLostEvent,
             new PointerEventHandler(OnSelectionHandlePointerCanceled),
             handledEventsToo: true);
+        handle.RightTapped += OnSelectionHandleRightTapped;
         handle.KeyDown += OnSelectionHandleKeyDown;
         Canvas.SetZIndex(handle, 5);
         return handle;
@@ -13882,6 +13883,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         handle.RemoveHandler(
             UIElement.PointerCaptureLostEvent,
             new PointerEventHandler(OnSelectionHandlePointerCanceled));
+        handle.RightTapped -= OnSelectionHandleRightTapped;
         handle.KeyDown -= OnSelectionHandleKeyDown;
     }
 
@@ -16871,6 +16873,19 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     {
         if (_canvas is not null)
             e.Handled |= DispatchRecognizedGesture(PointerInputKind.RightTap, e.GetPosition(_canvas), e.PointerDeviceType);
+    }
+
+    private void OnSelectionHandleRightTapped(object sender, RightTappedRoutedEventArgs e)
+    {
+        // Handles live in the overlay, a sibling of the canvas, so their
+        // right-taps never reach OnRightTapped.
+        if (_canvas is null ||
+            !MarkdownPointerGesturePolicy.ForwardsSelectionHandleRightTap(GetPointerModality(e.PointerDeviceType)))
+        {
+            return;
+        }
+
+        e.Handled |= DispatchRecognizedGesture(PointerInputKind.RightTap, e.GetPosition(_canvas), e.PointerDeviceType);
     }
 
     private void ProcessRightTapped(ref PointerInput e)

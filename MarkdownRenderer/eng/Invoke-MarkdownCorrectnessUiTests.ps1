@@ -2757,7 +2757,9 @@ switch ($Mode) {
         $touchDevice.SendFrame($tapPointerId,[int][Math]::Round($Width),[int][Math]::Round($Height),$false,$false)
         $tapCompleteTicks=[System.Diagnostics.Stopwatch]::GetTimestamp()
         $elapsedMilliseconds=($tapCompleteTicks-$releaseTicks)*1000.0/[System.Diagnostics.Stopwatch]::Frequency
-        if($elapsedMilliseconds -ge 1500.0){throw ("UNVERIFIED: the independent tap completed {0:F1} ms after long-press release, outside the 1.5-second envelope." -f $elapsedMilliseconds)}
+        # A tap that lands outside the envelope does not test the suspected
+        # suppression, so report it like the pre-tap envelope checks above.
+        if($elapsedMilliseconds -ge 1500.0){$result=@{mode=$Mode;status='UNVERIFIED';reason=("The independent tap completed {0:F1} ms after long-press release, outside the 1.5-second envelope." -f $elapsedMilliseconds);distanceDips=$distanceDips;releaseToTapMilliseconds=$elapsedMilliseconds};break}
         $observerAfterTap=Get-TouchContactObservation
         $tapDelivery=Assert-SyntheticTouchDelivery -Before $observerBeforeTap -After $observerAfterTap -ExpectedPoint $tapExpectedPoint -ExpectedState 'Released'
 

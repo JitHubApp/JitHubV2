@@ -24,6 +24,15 @@ internal static class MarkdownPointerGesturePolicy
             _ => false,
         };
 
+    /// <summary>
+    /// Selection handles overlap the text they mark. A mouse right-click there
+    /// opens the same menu as the text below. A touch hold on a handle is a
+    /// drag, and pen right-tap re-selects the word under its point, which for
+    /// a handle hanging below the line could be another word.
+    /// </summary>
+    internal static bool ForwardsSelectionHandleRightTap(MarkdownPointerModality modality)
+        => modality == MarkdownPointerModality.Mouse;
+
     internal static MarkdownPanGestureDecision ClassifyHorizontalPan(double deltaX, double deltaY)
     {
         if (System.Math.Abs(deltaX) < PanThreshold &&
