@@ -11,6 +11,8 @@ param(
     # With -Phase2Only: run only the cases that turn on the Sandbox guest's
     # actual Windows High Contrast setting (restored in finally).
     [switch]$Phase2SystemHighContrast,
+    # With -Phase2Only: run only the P2 cases whose ID matches this regex.
+    [string]$Phase2CasePattern = '',
     [string]$OutputRoot = (Join-Path $PSScriptRoot '..\artifacts\correctness'),
     [string]$BuildArtifactsPath = ''
 )
@@ -32,6 +34,8 @@ if (-not [string]::IsNullOrWhiteSpace($script:BuildArtifactsPath)) {
 $script:Phase2Only = [bool]$Phase2Only
 $script:Phase2SystemHighContrast = [bool]$Phase2SystemHighContrast
 if ($script:Phase2SystemHighContrast -and -not $script:Phase2Only) { throw '-Phase2SystemHighContrast requires -Phase2Only.' }
+$script:Phase2CasePattern = $Phase2CasePattern
+if ($script:Phase2CasePattern -and -not $script:Phase2Only) { throw '-Phase2CasePattern requires -Phase2Only.' }
 $script:RunId = '{0}-{1}' -f [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ'), [guid]::NewGuid().ToString('N')
 $script:RunDirectory = Join-Path $script:OutputRoot $script:RunId
 $script:WorkflowId = "markdown-correctness-$([guid]::NewGuid().ToString('N'))"
@@ -727,6 +731,7 @@ function Should-RunCorrectnessCase {
     if ($script:Phase2Only) {
         if ($Id -ceq 'C00' -and $Name -ceq 'sandbox-and-app-identity') { return $true }
         if (-not $Id.StartsWith('P2-', [System.StringComparison]::Ordinal)) { return $false }
+        if ($script:Phase2CasePattern -and $Id -cnotmatch $script:Phase2CasePattern) { return $false }
         # System High Contrast cases change a guest system setting and run
         # only when explicitly requested.
         return ($Id.EndsWith('-SYSHC', [System.StringComparison]::Ordinal) -eq $script:Phase2SystemHighContrast)

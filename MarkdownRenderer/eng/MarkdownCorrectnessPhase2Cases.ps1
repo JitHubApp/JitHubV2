@@ -517,6 +517,65 @@ function Run-Phase2Cases {
         throw 'UNVERIFIED: Light, Dark and forced High Contrast, node/link semantics, atomic selection and exact copy passed in both viewport modes; actual Windows system High Contrast runs in the follow-up runner, and screenshots need review.'
     }
 
+    # Rendered plain-text copy of Mermaid diagrams (P2-010, P2-011, P2-015).
+    # A selected diagram copies one line per exposed semantic item name; the
+    # oracle is each record's stated contract, not the copy implementation.
+    $mermaidCopyArabic = 'مرحبا API 👩‍💻'
+    $mermaidCopyCaption = 'uses stable text'
+    $mermaidCopyPlaceholder = 'ﬂ°quot¶ß'
+    $mermaidCopySource = "# Mermaid copy`n`nBefore equal labels.`n`n``````mermaid`nflowchart LR`n  a1[Same label] --> a2[Same label]`n  b1[""$mermaidCopyArabic""] --> b2[""$mermaidCopyArabic""]`n```````n`nBetween diagrams one.`n`n``````mermaid`nclassDiagram`n  class A`n  class B`n  A --> B : $mermaidCopyCaption`n```````n`nBetween diagrams two.`n`n``````mermaid`nmindmap`n  root[$mermaidCopyPlaceholder #quot; literal #amp;quot;]`n    child`n```````n`nAfter diagrams.`n"
+    Test-Case -Id 'P2-MERMAID-03-COPY' -Name 'mermaid-rendered-plain-copy-keeps-logical-labels' -Requirement 'In both viewport modes, Ctrl+C of a selection across Mermaid diagrams copies each distinct node''s equal label as its own whole line (P2-011), a class relationship caption once as one logical line (P2-015), and authored placeholder-shaped text and entities as their final literal text (P2-010); the copy matches the selected UIA text.' -Body {
+        $observed = [System.Collections.Generic.List[object]]::new()
+        try {
+            foreach ($mode in $script:P2ViewportModes) {
+                Enter-P2Mode -Mode $mode -Key 'Mermaid' -RequiredText 'Native Mermaid' -Markdown $mermaidCopySource -MarkdownRequiredText 'Mermaid copy'
+                Start-Sleep -Milliseconds 1500
+                $diagrams = @(Get-P2Elements -ClassName 'MarkdownDiagram')
+                if ($diagrams.Count -ne 3) { throw "[$mode] The copy fixture exposed $($diagrams.Count) native diagrams; it has 3." }
+                Clear-P2Selection
+                $range = Select-P2Range -StartNeedle 'Before equal labels.' -EndNeedle 'After diagrams.'
+                $selected = Get-SelectedText
+                $copied = Copy-P2PlainSelection
+                $plain = [string]$copied.plain
+                if (($plain -replace "`r`n|`r", "`n") -cne ($selected -replace "`r`n|`r", "`n")) { throw "[$mode] Ctrl+C plain text differs from the selected UIA text." }
+                $lines = @(($plain -split "`r`n|`r|`n") | Where-Object { $_ -ne '' })
+                $section = {
+                    param([string]$from, [string]$to)
+                    $a = [Array]::IndexOf($lines, $from)
+                    $b = [Array]::IndexOf($lines, $to)
+                    if ($a -lt 0 -or $b -le $a) { throw "[$mode] The copied text does not keep '$from' before '$to': $($lines -join ' | ')" }
+                    return @($lines[($a + 1)..($b - 1)])
+                }
+
+                # P2-011: four distinct nodes, two equal labels each.
+                $flow = & $section 'Before equal labels.' 'Between diagrams one.'
+                $expectedFlow = @('Same label', 'Same label', $mermaidCopyArabic, $mermaidCopyArabic) | Sort-Object
+                if ((@($flow | Sort-Object) -join "`n") -cne ($expectedFlow -join "`n")) { throw "[$mode] The flowchart copied '$($flow -join ' | ')'; each of the four nodes must copy its whole label once." }
+
+                # P2-015: the relationship caption is one logical line.
+                $class = & $section 'Between diagrams one.' 'Between diagrams two.'
+                if (@($class | Where-Object { $_ -ceq $mermaidCopyCaption }).Count -ne 1) { throw "[$mode] The class diagram copied '$($class -join ' | ')'; the caption must appear once as a whole line." }
+                $fragments = @($class | Where-Object { $_ -cne $mermaidCopyCaption -and $mermaidCopyCaption.Contains($_) })
+                if ($fragments.Count -gt 0) { throw "[$mode] The class diagram copied caption fragments: '$($fragments -join ' | ')'." }
+                foreach ($name in @('A', 'B')) {
+                    if (@($class | Where-Object { $_ -ceq $name }).Count -ne 1) { throw "[$mode] The class diagram did not copy class '$name' once: '$($class -join ' | ')'." }
+                }
+
+                # P2-010: placeholder-shaped authored text stays literal; Mermaid
+                # entities decode once (#quot; -> ", #amp;quot; -> &quot;).
+                $mind = & $section 'Between diagrams two.' 'After diagrams.'
+                $expectedRoot = "$mermaidCopyPlaceholder `" literal &quot;"
+                if (@($mind | Where-Object { $_ -ceq $expectedRoot }).Count -ne 1 -or @($mind | Where-Object { $_ -ceq 'child' }).Count -ne 1) { throw "[$mode] The mindmap copied '$($mind -join ' | ')'; expected '$expectedRoot' and 'child' once each." }
+
+                if (-not [bool]$copied.hasHtml) { throw "[$mode] Ctrl+C did not place a CF_HTML fragment." }
+                Clear-P2Selection
+                $observed.Add([pscustomobject]@{ viewport = $mode; flowchartLines = $flow; classLines = $class; mindmapLines = $mind; screenshot = (Save-Screenshot "screenshots\p2-mermaid-03-copy-$mode.png") })
+            }
+        }
+        finally { Exit-P2Mode }
+        return @($observed.ToArray())
+    }
+
     Test-Case -Id 'P2-MERMAID-04' -Name 'mermaid-navigation-and-replacement-publish-no-obsolete-scene' -Requirement 'Navigating away and back, replacing the Mermaid document, and replacing the engine of a live document in both viewport modes leave only the current document diagrams.' -Body {
         Navigate-Sample -Key 'Mermaid' -RequiredText 'Native Mermaid'
         Navigate-Sample -Key 'Math' -RequiredText 'Native mathematics'
