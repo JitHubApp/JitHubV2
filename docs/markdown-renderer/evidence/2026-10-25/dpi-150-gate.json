@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "objective": "M5 actual-DPI gate at 150% (Phase 1 batch in Windows Sandbox)",
+  "scaleSource": "User-set Windows display scale on the host (150%). The Sandbox guest is a remote session whose scale follows the host display, so the guest reported 144 DPI; every handles/metadata probe in the qualifying runs reads dpi 144, dpiScale 1.5. No display setting was changed by any runner.",
+  "firstRun": {
+    "runId": "20261025T054539Z-6c16e6caff754074a4f15079c72ffba6",
+    "note": "45 pass / 6 fail / 11 unverified: V1-005 handle 65x66 px (P1-002, C11, C12 x2), C06 range rect 4 DIP past its cell, C04 link tap (environmental: a leftover popup and remote-session touch delivery; passes in later runs)."
+  },
+  "fixes": {
+    "V1-005": "Commit 73bfe432: handles placed 1/16 px past the root pixel grid, and the touch target carries one physical pixel of slack (67 px at 150%) so the UIA-truncated size meets 44 DIP at any alignment.",
+    "P1-038": "Commit 73bfe432: range/selection rectangles clip whitespace hanging past a wrap to the unsnapped content box (C06).",
+    "P1-039": "Commit a40b8655: compact inline image-failure labels trim with an ellipsis instead of being clipped on both sides (screenshot review)."
+  },
+  "qualifyingRuns": [
+    {
+      "runId": "20261025T085026Z-93b2199dbfc1477a898fb2edf2285f2e",
+      "sourceRevision": "73bfe432275c4b3c25cb5973c69cb9f6ccb0b576",
+      "resultCounts": {
+        "pass": 51,
+        "fail": 0,
+        "unverified": 11
+      },
+      "payloadIdentity": "MATCH",
+      "note": "Full Phase 1 batch on clean product sources (only restore-generated lock files differ). The 11 UNVERIFIED are the standing receipt/investigation items and the P1-031 cancellation delivery limit."
+    },
+    {
+      "runId": "20261025T081533Z-35c18f41be604a8287cc8e4b4a02c13d",
+      "sourceRevision": "b11ad322474c1425470c0a7e87a020a85293d288+uncommitted extent fix",
+      "resultCounts": {
+        "pass": 13,
+        "fail": 0,
+        "unverified": 1
+      },
+      "note": "13 touch/selection cases; all 47 handle measurements are 66 or 67 px."
+    },
+    {
+      "runId": "20261025T095526Z-9330379b74ab43fd906c92f4b8575602",
+      "sourceRevision": "a40b865544d762f5cbb774132fe6e02d4576bdfc",
+      "resultCounts": {
+        "pass": 3,
+        "fail": 0,
+        "unverified": 0
+      },
+      "payloadIdentity": "MATCH",
+      "note": "C06 and C15 on commit a40b8655; the narrow-cell placeholder label now reads \"Image unavailable: Scri...\""
+    }
+  ],
+  "screenshotReview": "55 screenshots of the full run reviewed. Only defect: the clipped narrow-cell placeholder label (fixed, P1-039). Other observations are intended behavior: handles clamp to stay fully inside the viewport (start handle up to 22 DIP right of a left-edge selection), the end handle after a final atomic object sits at that full-width block's after-endpoint, math highlight hugs its glyphs.",
+  "stillOpen": [
+    "200% scale pass",
+    "Phase 2 live rows spot-check at 200%"
+  ]
+}
