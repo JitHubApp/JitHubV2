@@ -50,6 +50,29 @@ public sealed class FocusRevealViewportIntentTests
         }
     }
 
+    /// <summary>
+    /// The P1-042 root cause: a UIA client sets focus on the document before
+    /// scrolling it. FocusDocumentFromAutomation suppresses first-item
+    /// promotion for that focus, but cleared the flag on the dispatcher, and
+    /// WinUI raises GotFocus asynchronously after it. Promotion then revealed
+    /// the first item and scrolled back over the client's scroll. The
+    /// suppression must be captured by the synchronous GettingFocus event.
+    /// </summary>
+    [Fact]
+    public void FocusEntrySuppressionIsCapturedSynchronouslyBeforeGotFocus()
+    {
+        string control = ReadControlSource();
+
+        string getting = Slice(control, "private void OnGettingFocus(UIElement sender, GettingFocusEventArgs e)", "\n    }\n");
+        Assert.Contains("_focusEntrySuppressed = _suppressNextFocusPromotion;", getting);
+
+        string got = Slice(control, "private void OnGotFocus(object sender, RoutedEventArgs e)", "\n    }\n");
+        int suppression = got.IndexOf("if (_focusEntrySuppressed || _suppressNextFocusPromotion)", System.StringComparison.Ordinal);
+        int promotion = got.IndexOf("MoveFocus(", System.StringComparison.Ordinal);
+        Assert.True(suppression >= 0, "OnGotFocus does not consult the synchronously captured suppression.");
+        Assert.True(promotion > suppression, "Suppression must be checked before first-item promotion.");
+    }
+
     [Fact]
     public void RevealIsCurrentOnlyWhileTheViewportIsWhereFocusOrTheRevealLeftIt()
     {

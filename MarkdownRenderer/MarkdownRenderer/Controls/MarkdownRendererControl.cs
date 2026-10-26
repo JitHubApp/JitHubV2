@@ -282,6 +282,9 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     private Layout.FocusableItem _pendingSpatialFocusOrigin;
     private long _pendingSpatialFocusGeneration;
     private bool _pendingFocusGeometryRefresh;
+    // P1-042: GotFocus is raised asynchronously, after the dispatcher may have
+    // cleared _suppressNextFocusPromotion. GettingFocus captures it in time.
+    private bool _focusEntrySuppressed;
     // P1-042: counts explicit scroll requests so a delayed focus reveal
     // never overrides a newer one, even before its view change applies.
     private long _viewportRequestSerial;
@@ -3259,6 +3262,8 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         if (!ReferenceEquals(e.NewFocusedElement, this))
             return;
 
+        _focusEntrySuppressed = _suppressNextFocusPromotion;
+
         var direction = e.Direction;
         _lastFocusEntryWasKeyboardInput = e.InputDevice == FocusInputDeviceKind.Keyboard;
         _lastFocusEntryWasKeyboardTraversal =
@@ -3275,8 +3280,9 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         if (!ReferenceEquals(e.OriginalSource, this) || FocusState == FocusState.Pointer)
             return;
 
-        if (_suppressNextFocusPromotion)
+        if (_focusEntrySuppressed || _suppressNextFocusPromotion)
         {
+            _focusEntrySuppressed = false;
             _suppressNextFocusPromotion = false;
             _lastFocusEntryWasKeyboardTraversal = false;
             _lastFocusEntryWasKeyboardInput = false;
