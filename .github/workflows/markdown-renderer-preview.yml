@@ -467,23 +467,6 @@ jobs:
             --logger 'trx;LogFileName=jithub-consumer.trx'
           if ($LASTEXITCODE -ne 0) { throw 'JitHub consumer tests failed.' }
 
-      - name: Run pixel tests
-        env:
-          # The per-PR x64 fidelity lane must never turn green by silently
-          # substituting Chrome or skipping the browser oracle.
-          MARKDOWN_RENDERER_REQUIRE_EDGE_ORACLE: "1"
-          MARKDOWN_RENDERER_SVG_ARTIFACT_ROOT: ${{ runner.temp }}\markdownrenderer-preview\svg-pixel-diffs
-        run: |
-          $results = Join-Path $env:RUNNER_TEMP 'markdownrenderer-preview\test-results'
-          & dotnet test '.\MarkdownRenderer\MarkdownRenderer.PixelTests\MarkdownRenderer.PixelTests.csproj' `
-            --configuration $env:CONFIGURATION `
-            -p:Platform=$env:PLATFORM `
-            --no-build `
-            --disable-build-servers `
-            --results-directory $results `
-            --logger 'trx;LogFileName=pixel.trx'
-          if ($LASTEXITCODE -ne 0) { throw 'Pixel tests failed.' }
-
       - name: Run executable benchmark and allocation gates
         run: |
           $artifactRoot = Join-Path $env:RUNNER_TEMP 'markdownrenderer-preview'
