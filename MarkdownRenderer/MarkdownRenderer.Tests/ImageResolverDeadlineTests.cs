@@ -6,6 +6,11 @@ namespace MarkdownRenderer.Tests;
 
 public sealed class ImageResolverDeadlineTests
 {
+    // Upper bound for waits on events the test expects to happen. Callbacks run
+    // on the thread pool, which a loaded CI runner can delay by seconds. These
+    // bounds only stop a hung test; no assertion depends on them.
+    private static readonly TimeSpan LivenessTimeout = TimeSpan.FromSeconds(30);
+
     [Fact]
     public async Task TimeoutCancelsResolverTokenAndStopsWaitingForIgnoringResolver()
     {
@@ -75,7 +80,7 @@ public sealed class ImageResolverDeadlineTests
 
         Assert.Equal(0, result.DisposeCount);
         Assert.True(pending.TrySetResult(result));
-        await disposed.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await disposed.Task.WaitAsync(LivenessTimeout);
         Assert.Equal(1, result.DisposeCount);
     }
 
@@ -102,7 +107,7 @@ public sealed class ImageResolverDeadlineTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await work);
 
         Assert.True(pending.TrySetResult(result));
-        await disposed.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await disposed.Task.WaitAsync(LivenessTimeout);
         Assert.Equal(1, result.DisposeCount);
     }
 
@@ -164,10 +169,10 @@ public sealed class ImageResolverDeadlineTests
                 completion => observedCompletion.TrySetResult(completion)));
 
         Assert.True(pending.TrySetResult(new TrackedResult()));
-        await cleanupObserved.Task.WaitAsync(TimeSpan.FromSeconds(2));
-        Task completionTask = await observedCompletion.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await cleanupObserved.Task.WaitAsync(LivenessTimeout);
+        Task completionTask = await observedCompletion.Task.WaitAsync(LivenessTimeout);
         await Assert.ThrowsAsync<InvalidOperationException>(async () =>
-            await completionTask.WaitAsync(TimeSpan.FromSeconds(2)));
+            await completionTask.WaitAsync(LivenessTimeout));
         Assert.Equal(1, disposeAttempts);
     }
 
@@ -208,9 +213,9 @@ public sealed class ImageResolverDeadlineTests
         cancellation.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await workTask);
 
-        Task cleanupTask = await observedCompletion.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Task cleanupTask = await observedCompletion.Task.WaitAsync(LivenessTimeout);
         await Assert.ThrowsAsync<InvalidOperationException>(async () =>
-            await cleanupTask.WaitAsync(TimeSpan.FromSeconds(2)));
+            await cleanupTask.WaitAsync(LivenessTimeout));
         Assert.Equal(1, disposeAttempts);
         Assert.Equal(1, result.DisposeCount);
     }
@@ -280,7 +285,7 @@ public sealed class ImageResolverDeadlineTests
             TaskContinuationOptions.ExecuteSynchronously,
             TaskScheduler.Default);
         Assert.True(pending.TrySetException(new InvalidOperationException("private resolver details")));
-        await resolverSettled.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await resolverSettled.Task.WaitAsync(LivenessTimeout);
 
         Assert.Equal(0, disposeAttempts);
     }
@@ -304,7 +309,7 @@ public sealed class ImageResolverDeadlineTests
             abandoned =>
             {
                 disposerEntered.TrySetResult();
-                if (!releaseDisposer.Wait(TimeSpan.FromSeconds(5)))
+                if (!releaseDisposer.Wait(LivenessTimeout))
                     throw new TimeoutException("The test did not release the disposer.");
                 abandoned.Dispose();
             },
@@ -312,17 +317,17 @@ public sealed class ImageResolverDeadlineTests
 
         cancellation.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await work);
-        Task completionTask = await observedCompletion.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Task completionTask = await observedCompletion.Task.WaitAsync(LivenessTimeout);
         Assert.False(completionTask.IsCompleted);
 
         try
         {
             Task completeResult = Task.Run(() => pending.TrySetResult(result));
-            await disposerEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            await disposerEntered.Task.WaitAsync(LivenessTimeout);
             Assert.False(completionTask.IsCompleted);
             releaseDisposer.Set();
-            await completeResult.WaitAsync(TimeSpan.FromSeconds(2));
-            await completionTask.WaitAsync(TimeSpan.FromSeconds(2));
+            await completeResult.WaitAsync(LivenessTimeout);
+            await completionTask.WaitAsync(LivenessTimeout);
         }
         finally
         {
@@ -371,20 +376,20 @@ public sealed class ImageResolverDeadlineTests
             abandoned =>
             {
                 disposerEntered.TrySetResult();
-                if (!releaseDisposer.Wait(TimeSpan.FromSeconds(5)))
+                if (!releaseDisposer.Wait(LivenessTimeout))
                     throw new TimeoutException("The test did not release the disposer.");
                 abandoned.Dispose();
             },
             completion => observedCompletion.TrySetResult(completion));
         Task<TrackedResult> workTask = work.AsTask();
         allowLateRegistration.TrySetResult();
-        await registrationReady.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await registrationReady.Task.WaitAsync(LivenessTimeout);
 
         Task cancelTask = Task.Run(cancellation.Cancel);
         Task firstCompletion = await Task.WhenAny(
                 disposerEntered.Task,
                 workTask,
-                Task.Delay(TimeSpan.FromSeconds(2)));
+                Task.Delay(LivenessTimeout));
 
         try
         {
@@ -393,7 +398,7 @@ public sealed class ImageResolverDeadlineTests
                 Assert.False(observedCompletion.Task.IsCompleted);
                 releaseDisposer.Set();
                 await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await workTask);
-                Task completionTask = await observedCompletion.Task.WaitAsync(TimeSpan.FromSeconds(2));
+                Task completionTask = await observedCompletion.Task.WaitAsync(LivenessTimeout);
                 Assert.Same(Task.CompletedTask, completionTask);
                 Assert.Equal(1, result.DisposeCount);
             }
@@ -406,7 +411,7 @@ public sealed class ImageResolverDeadlineTests
                 Assert.Equal(0, result.DisposeCount);
             }
 
-            await cancelTask.WaitAsync(TimeSpan.FromSeconds(2));
+            await cancelTask.WaitAsync(LivenessTimeout);
         }
         finally
         {
@@ -438,7 +443,7 @@ public sealed class ImageResolverDeadlineTests
         cancellation.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await work);
         Assert.True(pending.TrySetResult(result));
-        await disposed.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await disposed.Task.WaitAsync(LivenessTimeout);
 
         Assert.Equal(1, result.DisposeCount);
     }
@@ -477,18 +482,18 @@ public sealed class ImageResolverDeadlineTests
                 cancellation.Cancel();
             });
             releaseStarted.TrySetResult();
-            await Task.WhenAll(complete, cancel).WaitAsync(TimeSpan.FromSeconds(2));
+            await Task.WhenAll(complete, cancel).WaitAsync(LivenessTimeout);
 
             bool returnedToCaller = false;
             try
             {
-                TrackedResult returned = await work.AsTask().WaitAsync(TimeSpan.FromSeconds(2));
+                TrackedResult returned = await work.AsTask().WaitAsync(LivenessTimeout);
                 Assert.Same(result, returned);
                 returnedToCaller = true;
             }
             catch (OperationCanceledException)
             {
-                await disposed.Task.WaitAsync(TimeSpan.FromSeconds(2));
+                await disposed.Task.WaitAsync(LivenessTimeout);
             }
 
             Assert.Equal(returnedToCaller ? 0 : 1, result.DisposeCount);
