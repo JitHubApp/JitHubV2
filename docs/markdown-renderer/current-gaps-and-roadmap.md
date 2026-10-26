@@ -19,7 +19,7 @@ The correctness goal is closed except for environment-gated items; read the
 
 - **Phase 1 is closed.** The full live batch passes at actual 100%, 150% and
   200% display scaling, in Light, Dark and High Contrast, in both viewport modes.
-  Every known defect, P1-001 to P1-041, is fixed with a regression test.
+  Every known defect, P1-001 to P1-042, is fixed with a regression test.
 - **Phase 2:** 30 of 32 feature rows pass. Two rows wait on ARM64 hardware
   (Mermaid and resvg workers).
 - **Phase 3 is complete:** all 500 frozen READMEs were evaluated, and every
@@ -29,7 +29,6 @@ The correctness goal is closed except for environment-gated items; read the
 
 Still open within correctness:
 
-- P1-042, a one-off Mermaid scroll that did not recur;
 - live tooling limits for native touch cancellation, touch capture loss and
   clipboard isolation, which are covered offline instead;
 - the browser-parity SVG pixel suite, which could not run because its Edge

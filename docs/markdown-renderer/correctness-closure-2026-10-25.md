@@ -14,7 +14,7 @@ out of scope and remain open; see [Current gaps and roadmap](current-gaps-and-ro
 
 | Phase | Result | Open items |
 | --- | --- | --- |
-| 1 Core document correctness | **Closed.** Every frozen case group passes live or through an attached current-source receipt. Every known Phase 1 defect (P1-001 to P1-041) is fixed and regression-covered. The full batch passes at actual 100%, 150% and 200% display scaling. | P1-042, a one-off scroll observation that never recurred (suspected only). Four live tooling limits, listed below. |
+| 1 Core document correctness | **Closed.** Every frozen case group passes live or through an attached current-source receipt. Every known Phase 1 defect (P1-001 to P1-042) is fixed and regression-covered. The full batch passes at actual 100%, 150% and 200% display scaling. | Four live tooling limits, listed below. |
 | 2 Existing feature correctness | **30 of 32 matrix rows pass**; the other 2 are hardware-gated. Live rows also pass at 200% on the final candidate. | P2-MERMAID-01 and P2-SVG-05 need ARM64 hardware. |
 | 3 Real-world audit | **Complete.** All 500 frozen READMEs were evaluated, and every renderer defect found (P3-001 to P3-023) is fixed. | None in scope. The audit candidate predates four narrow fixes (see Candidates). |
 
@@ -27,12 +27,13 @@ only the harness, Sample or docs are not product changes.
 | --- | --- | --- |
 | `9ff81fe0` | P3-023 carried image failures | Phase 3 P3-023 reruns (app19). Phase 2 matrix run 6 (`c482610e`, same product code). Phase 1 clipboard closure (`cc7fda21`, 100%). Phase 2 system High Contrast (`af14395a`). |
 | `73bfe432`, `a40b8655` | P1-038 range clipping, V1-005 handle grid, P1-039 label trimming | 150% DPI gate (full Phase 1 batch, 51/0/11) |
-| `50d14a39`, `7be71973` | P1-040 handle right-click, P1-041 unowned handle release | 200% DPI gate (full Phase 1 batch, 55/0/10); Phase 2 live rows at 200%; closure suites on `385a552d` |
+| `50d14a39`, `7be71973` | P1-040 handle right-click, P1-041 unowned handle release | 200% DPI gate (full Phase 1 batch, 55/0/10); Phase 2 live rows at 200%; closure suites on `385a552d`; P2-RASTER-02 desktop WebP check |
+| `0159d16b`, `31342c1e` | P1-042 focus reveal and focus-entry suppression | Final full Phase 1 batch at 192 DPI (56/0/9, `final-phase1-batch-31342c1e.json`); cold-start probes 5/5; GitHub.Tests 3,324/3,324 |
 
-The final product revision is `7be71973`; later commits are evidence and docs.
-After the Phase 3 audit candidate, the product changed only in those four
+The final product revision is `31342c1e`; later commits are CI and docs.
+After the Phase 3 audit candidate, the product changed only in those six
 commits. They cover selection-handle placement and routing, range rectangles
-across wraps, and the inline failure label. The 500 READMEs were not re-audited
+across wraps, the inline failure label, and keyboard focus entry and reveal. The 500 READMEs were not re-audited
 after them; the 150% and 200% batches and the full suites cover them.
 
 The last full Phase 1 batch at 100% ran on the October 21–22 qualifying
@@ -45,6 +46,7 @@ qualified the clipboard and selection closure cases (8/8).
   - 100%: Q2–Q5, October 21–22. Q3–Q5 have no FAIL. The P1-032 stress run was clean.
   - 150%: `dpi-150-gate.json`. Every probe ran at 144 DPI.
   - 200%: `dpi-200-gate.json`. Every probe ran at 192 DPI, and all 112 probes of the qualifying run report it.
+  - Final candidate (`31342c1e`) at 192 DPI: 56 pass, 0 fail, 9 standing UNVERIFIED (`final-phase1-batch-31342c1e.json`).
   - The user set display scaling on the host; no runner changed a display setting.
 - **Themes.**
   - Light, Dark, forced High Contrast and 200% text scale run in every batch.
@@ -92,19 +94,30 @@ the failure needs a touch point 3 px inside the handle, and passes 13 px above i
 - **Clipboard isolation.** The Sandbox shares its clipboard with the host. Copy assertions read the shared clipboard, so isolation cannot be attested.
 - **V1-004.** This investigation only counts inside its 1.5-second envelope. It passed at 100% (r3) and at 200% (focused run). In the 200% qualifying batch, guest setup took 1,566 ms, so it was recorded as UNVERIFIED.
 
-### P1-042 (open, suspected)
+### P1-042 (fixed October 26)
 
-Once, in the first 200% batch, a UIA scroll to the bottom of the Mermaid page
-stopped at 1.35%. It did not recur in four later C15 runs or in 36 in-guest
-probe iterations. A layout commit restoring its scroll anchor over a scroll
-request that has not applied yet is one possible cause, but no evidence
-confirms it. Reopen it with a reproduction before changing code.
+In the first 200% batch, a UIA scroll to the bottom of the Mermaid page stopped
+at 1.35%. Warm reruns passed, but a cold-start probe reproduced it 5 of 5
+times: each scroll ended at 1.35%, or reached 100% and snapped back to 4.42%.
+
+Temporary logging found the cause:
+1. A UIA client sets focus on the document before scrolling it.
+2. `FocusDocumentFromAutomation` suppresses first-item promotion for that focus, but cleared the flag on the dispatcher.
+3. WinUI raises `GotFocus` after that, so the first focusable item was promoted and its reveal scrolled back over the client's scroll.
+
+The fixes:
+- `31342c1e` captures the suppression in the synchronous `GettingFocus` event.
+- `0159d16b` keeps a delayed focus-reveal retry from overriding a newer scroll request.
+
+Each fix has red/green regression tests. Afterwards C15 passes on fresh launches and 5 of 5 cold-start scrolls reach 100% and stay
+(`p1-042-live-before.txt`, `p1-042-live-after.txt`).
 
 ## Phase 2 evidence
 
 - **Matrix.** `phase2-matrix.json` has 30 PASS and 2 UNVERIFIED rows. Run 6 qualified candidate `c482610e`; the 2 open rows are gated by ARM64 hardware.
 - **P2-RASTER-02 (October 26).** The animated WebP needs the WebP Image Extension. Windows Sandbox cannot install it: registering the Store-signed package fails with 0x80073CFF, because Store packages cannot be sideloaded. With the user's approval, the check ran on their desktop, which has the extension, on product revision `7be71973`. The center showed the first canvas's blue and the corner stayed transparent at 0 and 1,500 ms (`evidence/2026-10-26/p2-raster-02-desktop-webp.json`).
 - **x86 and x64.** NativeAOT smokes cover the worker on both (`phase2-aot-smokes-x86-x64.json`).
+- **CI and the WebP codec.** GitHub's Windows Server runners have no WebP Image Extension. The 11 GitHub.Tests cases that decode WebP through WIC are tagged `Requires=WicWebpDecoder`; CI lists them in a warning as not run, never as passed. They pass where the codec is installed, including the closure suites.
 - **Plain-text copy.** Mermaid plain-text copy is qualified live (`phase2-mermaid-plain-copy-8141e49c.json`).
 - **System High Contrast.** P2-MERMAID-03 and P2-HIGHLIGHT-02 pass under actual Windows High Contrast.
 - **200%.** The live rows pass at 200% on the final candidate.
@@ -155,6 +168,13 @@ receipt names its run IDs.
 | `evidence/2026-10-25/p1-041-green.txt` | `eed8ed8fcc63c784ed005c1d50423e4ee68b14f545930298633459c07af1318c` |
 | `evidence/2026-10-25/p1-041-live-before.txt` | `88e3715da78a10a2c39b140b03f60c40aac37a7b4e4f11dbce6f4820b0bffa82` |
 | `evidence/2026-10-25/p1-041-red.txt` | `fef3b650e3ba7b01c593450e90a3d21f46bc3e7fc4e00044dcdedad65ac0123e` |
+| `evidence/2026-10-26/final-phase1-batch-31342c1e.json` | `4af5a547e09ef8e4a2d2ed9ccf6d3f4abb368c20e917f357ea68e0802cc70100` |
+| `evidence/2026-10-26/p1-042-focus-entry-green.txt` | `b420c947e3fc4cd27baf238d4c455978637ba7323b06c9f09f9a5f1cd4b68474` |
+| `evidence/2026-10-26/p1-042-focus-entry-red.txt` | `353efbf6866fedeb89a43c87696f8531cc8639c32a7a9e74dad144f7693e0160` |
+| `evidence/2026-10-26/p1-042-green.txt` | `6c025a4dd819c88effe5ff5b7f68d510cb7b2604881235bee577dc7ec2c301a2` |
+| `evidence/2026-10-26/p1-042-live-after.txt` | `b690de6d6efe173372e6854c6aa6687ff5f0a54c1d86fdaf94b8f1f1193af214` |
+| `evidence/2026-10-26/p1-042-live-before.txt` | `a81b6c444ddf084390ba9bf154f67b7e81d5523a3b8b4b2b9e74cdc894dd1672` |
+| `evidence/2026-10-26/p1-042-red.txt` | `7d75646ef2d30b131dc3c206f22ee60ac618101a444cfaf2f1a2391eefde5b01` |
 | `evidence/2026-10-26/p2-raster-02-desktop-webp.json` | `4de120c610f6e85105899d16e16b32f65c9b22a8cb42880017a6dfdbaf246f0f` |
 | `evidence/2026-10-17/top-repositories.json` | `615c56723fb16d17744af2549615a4de32b1fc299a1759727cc86b70edacac72` |
 | `evidence/2026-10-17/top500-source-integrity.json` | `88f067fdd565ea988ac5b496f864b9f35997b5c889303da04527c6d7a224a8b1` |

@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "objective": "Full Phase 1 batch on the final product revision (P1-042 fixed)",
+  "runId": "20261026T070246Z-ed213cac9d224e7299aa2cfe53d79960",
+  "sourceRevision": "5980d96883d5dbfa55938936fd6b1c0204ad3543",
+  "productSourceRevision": "31342c1e",
+  "sourceNote": "Only restore-generated lock files differed (local SDK 10.0.402 re-resolved ILCompiler/ILLink 10.0.13); they were reverted afterwards.",
+  "payloadIdentity": "MATCH",
+  "resultCounts": {
+    "pass": 56,
+    "fail": 0,
+    "unverified": 9
+  },
+  "scale": "Windows Sandbox guest at 192 DPI (the viewer kept its 200% connection scale); all 112 DPI-bearing probes read 192.",
+  "unverified": [
+    "P1-003 canceled-unrelated-contact-preserves-committed-selection",
+    "C01 commonmark-gfm-conformance-receipt",
+    "C07 valid-image-network-policy-and-invalid-failure-lifecycle",
+    "C10 stationary-edge-autoscroll-and-endpoint-crossing",
+    "C13 actual-dpi-100-150-200",
+    "C13 actual-windows-system-high-contrast",
+    "C13 screenshot-review",
+    "C14 live-capture-loss-unload-and-disposal-during-touch",
+    "C15 current-source-feature-test-receipts"
+  ],
+  "p1042": {
+    "harnessBefore": "20261026T045251Z-cb0c339a8e324d9886dbb983b39db074 C15 FAIL (1.348%), and C15 FAIL in 20261026T051223Z-9345fc1bccb34293aa7c691da157fe4a on 0159d16b",
+    "harnessAfter": "20261026T064404Z-16ebb9b4ee054ea691ae150ca79b08d8 C15 PASS; this run C15 PASS",
+    "coldProbeBefore": "5/5 and 3/3 fail",
+    "coldProbeAfter": "5/5 reach 100% and stay",
+    "details": "evidence/2026-10-26/p1-042-live-before.txt, p1-042-live-after.txt"
+  }
+}
