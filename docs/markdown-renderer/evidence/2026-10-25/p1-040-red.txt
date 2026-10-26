@@ -1,5 +1,5 @@
-  MarkdownRenderer.GitHub.Tests -> E:\JitHubV2-markdown\MarkdownRenderer\MarkdownRenderer.GitHub.Tests\bin\x64\Debug\net10.0-windows10.0.26100.0\MarkdownRenderer.GitHub.Tests.dll
-Test run for E:\JitHubV2-markdown\MarkdownRenderer\MarkdownRenderer.GitHub.Tests\bin\x64\Debug\net10.0-windows10.0.26100.0\MarkdownRenderer.GitHub.Tests.dll (.NETCoreApp,Version=v10.0)
+  MarkdownRenderer.GitHub.Tests -> MarkdownRenderer\MarkdownRenderer.GitHub.Tests\bin\x64\Debug\net10.0-windows10.0.26100.0\MarkdownRenderer.GitHub.Tests.dll
+Test run for MarkdownRenderer\MarkdownRenderer.GitHub.Tests\bin\x64\Debug\net10.0-windows10.0.26100.0\MarkdownRenderer.GitHub.Tests.dll (.NETCoreApp,Version=v10.0)
 A total of 1 test files matched the specified pattern.
 [xUnit.net 00:00:21.34]     MarkdownRenderer.GitHub.Tests.SelectionHandleContextMenuTests.SelectionHandlesForwardRightTapToTheSelectionMenu [FAIL]
   Failed MarkdownRenderer.GitHub.Tests.SelectionHandleContextMenuTests.SelectionHandlesForwardRightTapToTheSelectionMenu [46 ms]
@@ -8,7 +8,7 @@ A total of 1 test files matched the specified pattern.
 String:    "private Button CreateSelectionHandle(Sele"···
 Not found: "handle.RightTapped += OnSelectionHandleRi"···
   Stack Trace:
-     at MarkdownRenderer.GitHub.Tests.SelectionHandleContextMenuTests.SelectionHandlesForwardRightTapToTheSelectionMenu() in E:\JitHubV2-markdown\MarkdownRenderer\MarkdownRenderer.GitHub.Tests\SelectionHandleContextMenuTests.cs:line 21
+     at MarkdownRenderer.GitHub.Tests.SelectionHandleContextMenuTests.SelectionHandlesForwardRightTapToTheSelectionMenu() in MarkdownRenderer\MarkdownRenderer.GitHub.Tests\SelectionHandleContextMenuTests.cs:line 21
    at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
    at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
 

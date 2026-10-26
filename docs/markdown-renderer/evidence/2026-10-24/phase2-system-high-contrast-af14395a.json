@@ -9,7 +9,7 @@
   "sampleBinary": {
     "length": 162816,
     "lastWriteUtc": "2026-10-25T01:25:14.3265596Z",
-    "path": "E:\\JitHubV2-markdown\\MarkdownRenderer\\MarkdownRenderer.Sample\\bin\\x64\\Release\\net10.0-windows10.0.26100.0\\win-x64\\MarkdownRenderer.Sample.exe",
+    "path": "MarkdownRenderer\\MarkdownRenderer.Sample\\bin\\x64\\Release\\net10.0-windows10.0.26100.0\\win-x64\\MarkdownRenderer.Sample.exe",
     "sha256": "f8a16fa3c32465eae4467e031648cd58815869edf3808d67fbcbcd96ce0c1c96"
   },
   "payloadIdentity": "MATCH",
@@ -38,28 +38,28 @@
           "host": [
             {
               "name": "MarkdownRenderer.Sample.exe",
-              "path": "E:\\JitHubV2-markdown\\MarkdownRenderer\\MarkdownRenderer.Sample\\bin\\x64\\Release\\net10.0-windows10.0.26100.0\\win-x64\\MarkdownRenderer.Sample.exe",
+              "path": "MarkdownRenderer\\MarkdownRenderer.Sample\\bin\\x64\\Release\\net10.0-windows10.0.26100.0\\win-x64\\MarkdownRenderer.Sample.exe",
               "length": 162816,
               "sha256": "f8a16fa3c32465eae4467e031648cd58815869edf3808d67fbcbcd96ce0c1c96",
               "required": true
             },
             {
               "name": "MarkdownRenderer.Sample.dll",
-              "path": "E:\\JitHubV2-markdown\\MarkdownRenderer\\MarkdownRenderer.Sample\\bin\\x64\\Release\\net10.0-windows10.0.26100.0\\win-x64\\MarkdownRenderer.Sample.dll",
+              "path": "MarkdownRenderer\\MarkdownRenderer.Sample\\bin\\x64\\Release\\net10.0-windows10.0.26100.0\\win-x64\\MarkdownRenderer.Sample.dll",
               "length": 544256,
               "sha256": "718022d79e50a8c361a688aec6d05f7c975960a8a1df9eb7b0f581f8236da5a4",
               "required": true
             },
             {
               "name": "MarkdownRenderer.dll",
-              "path": "E:\\JitHubV2-markdown\\MarkdownRenderer\\MarkdownRenderer.Sample\\bin\\x64\\Release\\net10.0-windows10.0.26100.0\\win-x64\\MarkdownRenderer.dll",
+              "path": "MarkdownRenderer\\MarkdownRenderer.Sample\\bin\\x64\\Release\\net10.0-windows10.0.26100.0\\win-x64\\MarkdownRenderer.dll",
               "length": 1783296,
               "sha256": "04779e5b34b72c7dc548d51c793f1bbb04d210dbcec8b609dff46c353e191f80",
               "required": true
             },
             {
               "name": "MarkdownRenderer.Sample.deps.json",
-              "path": "E:\\JitHubV2-markdown\\MarkdownRenderer\\MarkdownRenderer.Sample\\bin\\x64\\Release\\net10.0-windows10.0.26100.0\\win-x64\\MarkdownRenderer.Sample.deps.json",
+              "path": "MarkdownRenderer\\MarkdownRenderer.Sample\\bin\\x64\\Release\\net10.0-windows10.0.26100.0\\win-x64\\MarkdownRenderer.Sample.deps.json",
               "length": 22232,
               "sha256": "131f8187d5e6092a9f9baf05a9f3936a44086e9046464fbfcaabbe3f4a24eab1",
               "required": false
@@ -131,7 +131,7 @@
           "SampleNav_TouchSelection": "Touch selection"
         },
         "screenshot": {
-          "path": "E:\\JitHubV2-markdown\\MarkdownRenderer\\artifacts\\correctness\\20261025T012400Z-1e90a5bece2c43a3a29516fd4e92ecd9\\screenshots\\initial.png",
+          "path": "MarkdownRenderer\\artifacts\\correctness\\20261025T012400Z-1e90a5bece2c43a3a29516fd4e92ecd9\\screenshots\\initial.png",
           "width": 3046,
           "height": 769
         }
@@ -213,7 +213,7 @@
             "finalDiagramSelected": true,
             "exactCopy": true,
             "screenshot": {
-              "path": "E:\\JitHubV2-markdown\\MarkdownRenderer\\artifacts\\correctness\\20261025T012400Z-1e90a5bece2c43a3a29516fd4e92ecd9\\screenshots\\p2-mermaid-03-system-high-contrast-owned.png",
+              "path": "MarkdownRenderer\\artifacts\\correctness\\20261025T012400Z-1e90a5bece2c43a3a29516fd4e92ecd9\\screenshots\\p2-mermaid-03-system-high-contrast-owned.png",
               "width": 3060,
               "height": 776
             }
@@ -237,7 +237,7 @@
             "finalDiagramSelected": true,
             "exactCopy": true,
             "screenshot": {
-              "path": "E:\\JitHubV2-markdown\\MarkdownRenderer\\artifacts\\correctness\\20261025T012400Z-1e90a5bece2c43a3a29516fd4e92ecd9\\screenshots\\p2-mermaid-03-system-high-contrast-ancestor.png",
+              "path": "MarkdownRenderer\\artifacts\\correctness\\20261025T012400Z-1e90a5bece2c43a3a29516fd4e92ecd9\\screenshots\\p2-mermaid-03-system-high-contrast-ancestor.png",
               "width": 3060,
               "height": 776
             }
@@ -314,7 +314,7 @@
           }
         },
         "screenshot": {
-          "path": "E:\\JitHubV2-markdown\\MarkdownRenderer\\artifacts\\correctness\\20261025T012400Z-1e90a5bece2c43a3a29516fd4e92ecd9\\screenshots\\p2-highlight-02-system-high-contrast.png",
+          "path": "MarkdownRenderer\\artifacts\\correctness\\20261025T012400Z-1e90a5bece2c43a3a29516fd4e92ecd9\\screenshots\\p2-highlight-02-system-high-contrast.png",
           "width": 3060,
           "height": 776
         }

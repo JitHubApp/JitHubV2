@@ -47,7 +47,7 @@ if (-not [string]::Equals($defaultBuildOutput, $expectedDefaultBuildOutput, [Str
     throw 'The default payload path must remain the existing x64 Release output directory.'
 }
 
-$testArtifactsPath = 'C:\Users\neroc\AppData\Local\Temp\MarkdownRenderer Correctness Artifacts'
+$testArtifactsPath = 'C:\Users\tester\AppData\Local\Temp\MarkdownRenderer Correctness Artifacts'
 $customRunArguments = @(Get-SampleProjectRunArguments -ProjectPath $testProjectPath -Configuration Release -NoBuild -BuildArtifactsPath $testArtifactsPath)
 $expectedCustomRunArguments = @('run', $testProjectPath, '--on', 'sandbox', '--detach', '--json', '-c', 'Release', '--arch', 'x64', '--no-build', '-p', "ArtifactsPath=$testArtifactsPath")
 if ($customRunArguments.Count -ne $expectedCustomRunArguments.Count -or

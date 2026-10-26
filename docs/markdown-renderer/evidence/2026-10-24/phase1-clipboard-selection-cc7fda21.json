@@ -10,7 +10,7 @@
     "sha256": "fa489a26414b1d322ca840ff634005b8ddc1e729d537f2a8f54a6e93791a97a3",
     "length": 162816,
     "lastWriteUtc": "2026-10-25T04:47:13.5379353Z",
-    "path": "E:\\JitHubV2-markdown\\MarkdownRenderer\\MarkdownRenderer.Sample\\bin\\x64\\Release\\net10.0-windows10.0.26100.0\\win-x64\\MarkdownRenderer.Sample.exe"
+    "path": "MarkdownRenderer\\MarkdownRenderer.Sample\\bin\\x64\\Release\\net10.0-windows10.0.26100.0\\win-x64\\MarkdownRenderer.Sample.exe"
   },
   "payloadIdentity": "MATCH",
   "records": {

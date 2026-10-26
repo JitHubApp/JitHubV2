@@ -8,7 +8,7 @@
   "targetEpoch": "aeb7581d-4baa-450b-aa17-5927339731df:63FAB63BF360B1015B580B69A490B4EE",
   "sampleBinary": {
     "sha256": "c1aead7d2ce0fe4102dd95106318e2f3ad68996416b9024829e48e43b3e4ba45",
-    "path": "E:\\JitHubV2-markdown\\MarkdownRenderer\\MarkdownRenderer.Sample\\bin\\x64\\Release\\net10.0-windows10.0.26100.0\\win-x64\\MarkdownRenderer.Sample.exe",
+    "path": "MarkdownRenderer\\MarkdownRenderer.Sample\\bin\\x64\\Release\\net10.0-windows10.0.26100.0\\win-x64\\MarkdownRenderer.Sample.exe",
     "length": 162816,
     "lastWriteUtc": "2026-10-25T02:03:50.0246223Z"
   },
@@ -43,7 +43,7 @@
           "child"
         ],
         "screenshot": {
-          "path": "E:\\JitHubV2-markdown\\MarkdownRenderer\\artifacts\\correctness\\20261025T020257Z-ecf4136288fc456ea43ddeeb71d1253b\\screenshots\\p2-mermaid-03-copy-owned.png",
+          "path": "MarkdownRenderer\\artifacts\\correctness\\20261025T020257Z-ecf4136288fc456ea43ddeeb71d1253b\\screenshots\\p2-mermaid-03-copy-owned.png",
           "width": 3046,
           "height": 769
         }
@@ -66,7 +66,7 @@
           "child"
         ],
         "screenshot": {
-          "path": "E:\\JitHubV2-markdown\\MarkdownRenderer\\artifacts\\correctness\\20261025T020257Z-ecf4136288fc456ea43ddeeb71d1253b\\screenshots\\p2-mermaid-03-copy-ancestor.png",
+          "path": "MarkdownRenderer\\artifacts\\correctness\\20261025T020257Z-ecf4136288fc456ea43ddeeb71d1253b\\screenshots\\p2-mermaid-03-copy-ancestor.png",
           "width": 3046,
           "height": 769
         }
@@ -89,8 +89,8 @@
       "title": "MarkdownRenderer — Feature Showcase"
     },
     "evidence": [
-      "E:\\JitHubV2-markdown\\MarkdownRenderer\\artifacts\\correctness\\20261025T020257Z-ecf4136288fc456ea43ddeeb71d1253b\\screenshots\\p2-mermaid-03-copy-owned.png",
-      "E:\\JitHubV2-markdown\\MarkdownRenderer\\artifacts\\correctness\\20261025T020257Z-ecf4136288fc456ea43ddeeb71d1253b\\screenshots\\p2-mermaid-03-copy-ancestor.png"
+      "MarkdownRenderer\\artifacts\\correctness\\20261025T020257Z-ecf4136288fc456ea43ddeeb71d1253b\\screenshots\\p2-mermaid-03-copy-owned.png",
+      "MarkdownRenderer\\artifacts\\correctness\\20261025T020257Z-ecf4136288fc456ea43ddeeb71d1253b\\screenshots\\p2-mermaid-03-copy-ancestor.png"
     ],
     "startedUtc": "2026-10-25T02:10:47.9951293Z",
     "finishedUtc": "2026-10-25T02:12:05.4805514Z"

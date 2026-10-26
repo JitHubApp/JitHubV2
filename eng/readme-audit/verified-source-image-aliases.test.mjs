@@ -139,7 +139,7 @@ test("does not follow a GitHub redirect outside the GitHub host set", async () =
 
 test("follows only GitHub's signed user-asset redirect and aliases only the authored URL", async () => {
   const sourceUrl = "https://github.com/example/repo/assets/23818/6b0ae86c-1b0f-4598-a578-c7b62205b3e2";
-  const assetUrl = "https://github-production-user-asset-6210df.s3.amazonaws.com/23818/539284821-6b0ae86c-1b0f-4598-a578-c7b62205b3e2.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAVCODYLSA53PQK4ZA%2F20260929%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20260929T021617Z&X-Amz-Expires=300&X-Amz-Signature=366a9e74a9dcf7ba59381067a8b62062c56ca6184495d52b172cae2a469c1c79&X-Amz-SignedHeaders=host&response-content-type=image%2Fjpeg";
+  const assetUrl = "https://github-production-user-asset-6210df.s3.amazonaws.com/23818/539284821-6b0ae86c-1b0f-4598-a578-c7b62205b3e2.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAEXAMPLEEXAMPLE00%2F20260929%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20260929T021617Z&X-Amz-Expires=300&X-Amz-Signature=0000000000000000000000000000000000000000000000000000000000000000&X-Amz-SignedHeaders=host&response-content-type=image%2Fjpeg";
   const sourceSha = sha256(sourceUrl);
   const browserUrl = `https://raw.githubusercontent.com/example/repo/${commitSha}/docs/browser.jpg`;
   const capturedAsset = {

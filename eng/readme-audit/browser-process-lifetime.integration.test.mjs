@@ -12,7 +12,7 @@ import {
 test("integration: Windows argv matcher accepts only one exact audit profile switch", {
   skip: process.platform !== "win32" ? "Windows CommandLineToArgvW matcher coverage." : false,
 }, () => {
-  const simpleProfile = String.raw`C:\Users\Nero\AppData\Local\Temp\jithub-readme-edge-AbC123`;
+  const simpleProfile = String.raw`C:\Users\auditor\AppData\Local\Temp\jithub-readme-edge-AbC123`;
   const spacedUnicodeProfile = String.raw`C:\Users\Zoë\AppData\Local\Temp\JitHub (Audit)+[A]\jithub-readme-edge-AbC123`;
   const newlineProfile = `C:\\Temp\\line\nbreak\\jithub-readme-edge-AbC123`;
   const cases = [

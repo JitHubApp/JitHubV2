@@ -672,3 +672,19 @@ payload/TRX/log hashes and retained failed candidates are recorded in
 `artifacts/phase2-20261014/merman-four-family-product-verification.json`.
 No C ABI, MMIR version, public API, package version, dependency version, or
 license-boundary change is introduced.
+
+## Path-remapped rebuild (October 26, 2026)
+
+The source and patch set are unchanged. `native/Build-Native.ps1` now passes
+`--remap-path-prefix` for the native checkout, the prepared Merman source, the
+Cargo home and the local rust-src. Without it, panic-location metadata embedded
+the build machine's user-profile and temporary paths in the shipped DLLs. The
+three DLLs were rebuilt with Rust 1.96.0, and the native unit tests pass. The
+DLLs now contain no machine-specific paths. Mermaid.Tests pass 259/259, and
+GitHub.Tests pass 3,324/3,324.
+
+| RID | Bytes | SHA-256 | PE machine |
+| --- | ---: | --- | --- |
+| win-x64 | 16,772,608 | `1c49398444f12f6920a12f5b05297832ce3d83bc514a21d8d76b49fd22942045` | `0x8664` |
+| win-x86 | 12,197,376 | `a90dd9e531882c180e43bf6d6f7242eddc1287bd85e462f41f35189961f15f1d` | `0x014c` |
+| win-arm64 | 13,550,592 | `9f3d77ce0f16ab7bfab14a8996d8e841d9f37a4c78f263debb7c0236a4a38eb8` | `0xaa64` |

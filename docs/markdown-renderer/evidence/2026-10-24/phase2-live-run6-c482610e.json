@@ -5,7 +5,7 @@
     "sourceRevision": "c482610e7304192a8c7c5f021586e853bee5a627",
     "note": "The live run executed on dc60408e plus the uncommitted batch B tree; that tracked diff (sha256 54a5344ea324bd91f5ade40e71517d8ec16dae81bcb6b5a48fe6cc7b6f64d0f0) and the three untracked files hash-match commit c482610e7304192a8c7c5f021586e853bee5a627. Product library sources are identical between the two.",
     "sampleBinary": {
-      "path": "E:\\JitHubV2-markdown\\MarkdownRenderer\\MarkdownRenderer.Sample\\bin\\x64\\Release\\net10.0-windows10.0.26100.0\\win-x64\\MarkdownRenderer.Sample.exe",
+      "path": "MarkdownRenderer\\MarkdownRenderer.Sample\\bin\\x64\\Release\\net10.0-windows10.0.26100.0\\win-x64\\MarkdownRenderer.Sample.exe",
       "sha256": "53e2e85af01850edd3a98458c15452984570bce2bfcc1593a364642c4052f0c3",
       "lastWriteUtc": "2026-10-24T21:22:17.6921432Z",
       "length": 162816

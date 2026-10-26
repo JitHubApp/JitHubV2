@@ -38,14 +38,37 @@ if (-not $SkipTests) {
     if ($LASTEXITCODE -ne 0) { throw 'Native unit tests failed.' }
 }
 
+$verboseVersion = @(& rustc -vV)
+$sysroot = (& rustc --print sysroot).Trim()
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($sysroot)) { throw 'The Rust sysroot could not be resolved.' }
+$rustCommitHash = @($verboseVersion | Where-Object { $_ -like 'commit-hash: *' } |
+    ForEach-Object { $_.Substring('commit-hash: '.Length).Trim() })
+if ($rustCommitHash.Count -ne 1 -or $rustCommitHash[0] -notmatch '^[0-9a-f]{40}$') { throw 'The Rust commit hash could not be resolved.' }
+$cargoHome = if ([string]::IsNullOrWhiteSpace($env:CARGO_HOME)) { Join-Path $env:USERPROFILE '.cargo' } else { $env:CARGO_HOME }
+$cargoHome = [System.IO.Path]::GetFullPath($cargoHome)
+$preparedSourceRoot = [System.IO.Path]::GetFullPath([string]$preparedSource.SourceRoot)
+$nativeRoot = [System.IO.Path]::GetFullPath($PSScriptRoot)
+
 $previousRustFlags = $env:RUSTFLAGS
 $previousEncodedRustFlags = $env:CARGO_ENCODED_RUSTFLAGS
 try {
-    # Windows Sandbox and clean Store installations need not have the VC++
-    # redistributable. Keep the Rust native engine self-contained instead of
-    # relying on a machine-global VCRUNTIME140.dll.
-    $env:RUSTFLAGS = '-C target-feature=+crt-static'
-    $env:CARGO_ENCODED_RUSTFLAGS = $null
+    $flags = @(
+        # Windows Sandbox and clean Store installations need not have the VC++
+        # redistributable. Keep the Rust native engine self-contained instead of
+        # relying on a machine-global VCRUNTIME140.dll.
+        '-C'
+        'target-feature=+crt-static'
+        # Panic locations keep source paths in release builds. Map every
+        # machine-specific root (checkout, prepared Merman source, Cargo cache,
+        # local rust-src) to a fixed name so no build machine's paths ship.
+        "--remap-path-prefix=$nativeRoot=/jithub/mermaid-native"
+        "--remap-path-prefix=$preparedSourceRoot=/merman"
+        "--remap-path-prefix=$cargoHome=/cargo"
+        "--remap-path-prefix=$sysroot\lib/rustlib/src/rust\library=/rustc/$($rustCommitHash[0])/library"
+    )
+    # Cargo's encoded form preserves paths that contain spaces.
+    $env:RUSTFLAGS = $null
+    $env:CARGO_ENCODED_RUSTFLAGS = $flags -join [char]0x1F
     foreach ($name in $Platform) {
         $target = $targets[$name]
         & cargo @cargoSourceArguments build --manifest-path (Join-Path $PSScriptRoot 'Cargo.toml') --locked --release --target $target
