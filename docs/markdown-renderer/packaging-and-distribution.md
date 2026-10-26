@@ -32,6 +32,30 @@ validated for each architecture only when that pack is selected. Provider
 registration is explicit; trimming and NativeAOT never probe assemblies or load
 an engine dynamically.
 
+## Package size budgets
+
+`eng/Test-PackageSizeGates.ps1` fails a build whose packages exceed these
+budgets. The resvg release and worker-signing scripts enforce the same resvg
+limits.
+
+| Gate | Budget | Measured 2026-10-26 |
+| --- | --- | --- |
+| Core + WinUI, compressed | 900 KiB | 820,589 bytes |
+| Core + WinUI, managed DLLs | 2,150 KiB | 1,974,784 bytes |
+| resvg selected deployment (worker + provider DLL), per RID | 4,500 KiB | 4,136,448 bytes (x64) |
+| resvg package, all RIDs, compressed | 5,950 KiB | 5,524,179 bytes |
+| Performance, compressed | 128 KiB | 117,324 bytes |
+| Math, compressed | 2.3 MiB | 701,640 bytes |
+| Grammars.Common, compressed | 6 MiB | 654,534 bytes |
+| Mermaid native DLL, compressed, per RID | 12 MiB | 5,969,501 bytes (x64) |
+
+The first four budgets were raised on 2026-10-26 to the measured size plus about
+10%. The earlier budgets (525 KiB, 1.2 MiB, 3.5 MiB, 5 MiB) were set in
+September. Later work grew past them: the progressive renderer, the correctness
+fixes, and the resvg WebP row decoder. Earlier failing CI steps hid the overrun.
+The budgets catch regressions; they are not size targets. Raise one only with a
+new measurement and a note here.
+
 ## AOT and trimming
 
 Immutable profiles, exact syntax-kind dispatch, and declarative extension output

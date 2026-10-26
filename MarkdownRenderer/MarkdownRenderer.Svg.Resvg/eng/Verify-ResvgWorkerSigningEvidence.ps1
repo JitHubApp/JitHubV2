@@ -51,7 +51,7 @@ if (-not (Test-Path -LiteralPath $UnsignedWorkerRoot -PathType Container)) {
 $rootPath = [IO.Path]::GetFullPath((Resolve-Path -LiteralPath $WorkerRoot).Path)
 $unsignedRootPath = [IO.Path]::GetFullPath((Resolve-Path -LiteralPath $UnsignedWorkerRoot).Path)
 $expectedThumbprint = $ExpectedSignerThumbprint.Replace(' ', '').ToUpperInvariant()
-$maximumWorkerBytes = [long](3.5 * 1MB)
+$maximumWorkerBytes = [long](4500KB)
 $evidencePath = Join-Path $rootPath 'worker-signing-evidence.json'
 if (-not (Test-Path -LiteralPath $evidencePath -PathType Leaf)) {
     throw "Signed worker evidence is missing from '$rootPath'."
@@ -99,7 +99,7 @@ foreach ($record in $records) {
     $worker = Get-Item -LiteralPath $workerPath
     $unsignedWorker = Get-Item -LiteralPath $unsignedPath
     if ($worker.Length -gt $maximumWorkerBytes -or $unsignedWorker.Length -gt $maximumWorkerBytes) {
-        throw "Signed or unsigned worker '$relativePath' exceeds the existing 3.5 MiB selected-deployment limit."
+        throw "Signed or unsigned worker '$relativePath' exceeds the 4,500 KiB selected-deployment limit."
     }
     $hash = Get-Sha256 $workerPath
     $sourceHash = Get-Sha256 $unsignedPath

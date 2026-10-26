@@ -23,7 +23,7 @@ if (-not $extraAssertionArgumentRejected) {
     throw 'Selected deployment size self-test failed: Assert-True must reject surplus positional arguments.'
 }
 
-$capBytes = [long] (3.5MB)
+$capBytes = [long] (4500KB)
 $providerPath = 'lib/net10.0-windows10.0.26100/MarkdownRenderer.Svg.Resvg.dll'
 $supportedRids = @('win-x86', 'win-x64', 'win-arm64')
 
@@ -107,9 +107,9 @@ $oneByteOver = Get-ResvgSelectedDeploymentPayload `
     -ProviderAssemblyPath $providerPath
 $oneByteOverRejected = $false
 try { Assert-ResvgSelectedDeploymentWithinCap -Deployment $oneByteOver -MaximumBytes $capBytes }
-catch { $oneByteOverRejected = $_.Exception.Message -like '*3670017 bytes*3670016 bytes*' }
+catch { $oneByteOverRejected = $_.Exception.Message -like "*$($capBytes + 1) bytes*$capBytes bytes*" }
 Assert-True ($oneByteOver.totalBytes -eq ($capBytes + 1) -and $oneByteOverRejected) `
-    'the selected deployment aggregate must reject exactly one byte over 3.5 MiB'
+    'the selected deployment aggregate must reject exactly one byte over the cap'
 
 $validEntries = @(
     [pscustomobject]@{

@@ -445,8 +445,8 @@ $package = Get-ChildItem -LiteralPath $candidatePackages -Filter 'MarkdownRender
     Where-Object { $_.Name -notlike '*.symbols.nupkg' } |
     Select-Object -First 1
 if ($null -eq $package) { throw 'The MarkdownRenderer.Svg.Resvg package was not produced.' }
-$packageCapBytes = [long] (5MB)
-$selectedDeploymentCapBytes = [long] (3.5MB)
+$packageCapBytes = [long] (5950KB)
+$selectedDeploymentCapBytes = [long] (4500KB)
 if ($package.Length -gt $packageCapBytes) {
     throw "The all-RID resvg package is $($package.Length) bytes; the compressed cap is $packageCapBytes bytes."
 }

@@ -65,7 +65,7 @@ $inputRoot = [IO.Path]::GetFullPath((Resolve-Path -LiteralPath $InputDirectory).
 $outputPath = [IO.Path]::GetFullPath($OutputDirectory)
 $certificateFullPath = $null
 $expectedThumbprint = $ExpectedSignerThumbprint.Replace(' ', '').ToUpperInvariant()
-$maximumWorkerBytes = [long](3.5 * 1MB)
+$maximumWorkerBytes = [long](4500KB)
 
 if (Test-Path -LiteralPath $outputPath) {
     throw "Output directory already exists; refusing to overwrite it: '$outputPath'."
@@ -97,7 +97,7 @@ foreach ($rid in $expected.Keys) {
     }
     $sourceItem = Get-Item -LiteralPath $sourcePath
     if ($sourceItem.Length -gt $maximumWorkerBytes) {
-        throw "Worker '$relativePath' exceeds the existing 3.5 MiB selected-deployment limit."
+        throw "Worker '$relativePath' exceeds the 4,500 KiB selected-deployment limit."
     }
     $machine = Get-PeMachine $sourcePath
     if ($machine -cne $expected[$rid]) {
@@ -218,7 +218,7 @@ try {
 
             $signedItem = Get-Item -LiteralPath $destinationPath
             if ($signedItem.Length -gt $maximumWorkerBytes) {
-                throw "Signed worker '$($source.RelativePath)' exceeds the existing 3.5 MiB selected-deployment limit."
+                throw "Signed worker '$($source.RelativePath)' exceeds the 4,500 KiB selected-deployment limit."
             }
             $workerEvidence.Add([ordered]@{
                 rid = $source.Rid

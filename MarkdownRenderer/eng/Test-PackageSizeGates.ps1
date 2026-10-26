@@ -55,18 +55,18 @@ $leanNativeEntries = @($coreEntries + $winuiEntries |
         ($_.Name -notmatch '^lib/' -and $_.Name -match '\.(dll|exe|so|dylib)$')
     })
 
-# The 1.0 surface includes unified selection, touch, accessibility, and lazy
-# layout infrastructure. Keep measured headroom without allowing native code
-# to leak into the lean pair (checked separately immediately below).
-Assert-Max $leanCompressedBytes (525KB) 'Core + WinUI compressed size'
-Assert-Max $leanManagedBytes (1.2MB) 'Core + WinUI renderer-owned managed code'
+# Budgets are the 2026-10-26 measured sizes plus about 10% headroom; see
+# docs/markdown-renderer/packaging-and-distribution.md. Native code must not
+# leak into the lean pair (checked separately immediately below).
+Assert-Max $leanCompressedBytes (900KB) 'Core + WinUI compressed size'
+Assert-Max $leanManagedBytes (2150KB) 'Core + WinUI renderer-owned managed code'
 if ($leanNativeEntries.Count -ne 0) {
     throw "Core + WinUI contain native payload: $($leanNativeEntries.Name -join ', ')."
 }
 
 $optionalCaps = [ordered]@{
     'MarkdownRenderer.Performance' = 128KB
-    'MarkdownRenderer.Svg.Resvg' = 5MB
+    'MarkdownRenderer.Svg.Resvg' = 5950KB
     'MarkdownRenderer.Math' = 2.3MB
     'MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common' = 6MB
     'MarkdownRenderer.Mermaid' = 12MB
@@ -86,7 +86,7 @@ foreach ($entry in $optionalCaps.GetEnumerator()) {
         $providerAssemblyPath = 'lib/net10.0-windows10.0.26100/MarkdownRenderer.Svg.Resvg.dll'
         foreach ($asset in $nativeAssets) {
             if ($isResvg) {
-                Assert-Max $asset.Length (3.5MB) "$displayName selected-RID worker '$($asset.Name)'"
+                Assert-Max $asset.Length (4500KB) "$displayName selected-RID worker '$($asset.Name)'"
                 $ridMatch = [regex]::Match($asset.Name, '^runtimes/(?<rid>win-(x86|x64|arm64))/native/')
                 if (-not $ridMatch.Success) {
                     throw "The resvg native asset '$($asset.Name)' has no supported selected RID."
@@ -95,7 +95,7 @@ foreach ($entry in $optionalCaps.GetEnumerator()) {
                     -Entries $entries `
                     -Rid $ridMatch.Groups['rid'].Value `
                     -ProviderAssemblyPath $providerAssemblyPath
-                Assert-ResvgSelectedDeploymentWithinCap -Deployment $deployment -MaximumBytes (3.5MB)
+                Assert-ResvgSelectedDeploymentWithinCap -Deployment $deployment -MaximumBytes (4500KB)
             }
             else {
                 Assert-Max $asset.CompressedLength $entry.Value "$displayName selected-RID asset '$($asset.Name)'"
