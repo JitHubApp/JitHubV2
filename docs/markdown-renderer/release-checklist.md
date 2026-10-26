@@ -53,7 +53,7 @@ below.
 ## Correctness and conformance
 
 - [x] Run the offline official CommonMark 0.31.2 and GFM 0.29 suites. The retained
-  [report](../../MarkdownRenderer/artifacts/conformance/report-fix-all-official-20260910-postreview.json)
+  report (local run artifact `report-fix-all-official-20260910-postreview.json`)
   records 1,322/1,322 passing examples, zero failures, and zero exceptions at its
   stated verification level.
 - [x] Reject stale or unexplained conformance exceptions; the recorded official
@@ -67,7 +67,7 @@ below.
 
 - [x] Build the canonical x64 Release configuration and run the x64 live sample
   automation. The recorded run passed 32/32 scenarios, and the retained
-  [disposal evidence](../../MarkdownRenderer/artifacts/live-final/disposal-app-release-matrix-postreview-20260910.json)
+  disposal evidence (local run artifact `disposal-app-release-matrix-postreview-20260910.json`)
   confirms renderer disposal on close rather than only process disappearance.
 - [ ] Physically execute and install the supported x86 and ARM64 combinations;
   cross-builds and PE-machine inspection are not execution evidence.
@@ -76,7 +76,7 @@ below.
 - [ ] Run trim and Native AOT analysis for every promised package combination;
   package-specific console evidence is not the complete installed-app matrix.
 - [x] Retain the prior passing x64
-  [absolute performance baseline](../../MarkdownRenderer/artifacts/live-final/performance-baseline-fixed-20260910.json)
+  absolute performance baseline (local run artifact `performance-baseline-fixed-20260910.json`)
   as historical absolute-budget evidence for first view, scrolling, allocation,
   cancellation, lifecycle, and memory behavior.
 - [x] Implement the schema-10 measurement and external-gate contract: six-trial
@@ -89,20 +89,20 @@ below.
   source-lookup warmups, independent refresh qualification, and a canonical digest
   over the complete private runtime output with five critical artifacts also named
   explicitly. Every absolute gate remains mandatory. The retained
-  [deployment-bound quick smoke](../../MarkdownRenderer/artifacts/performance/performance-quick-schema10-deployment-bound-r3-20260910.json)
+  deployment-bound quick smoke (local run artifact `performance-quick-schema10-deployment-bound-r3-20260910.json`)
   passes the Williams schedule, cache-proof, pinned-thread, and frozen-runtime
   structural validation but is explicitly non-gating.
 - [x] Preserve the identical-binary schema-8
-  [baseline](../../MarkdownRenderer/artifacts/performance/performance-baseline-optimized-r7-schema8-20260910.json),
-  [candidate A](../../MarkdownRenderer/artifacts/performance/performance-candidate-a-optimized-r7-schema8-20260910.json),
-  and [candidate B](../../MarkdownRenderer/artifacts/performance/performance-candidate-b-optimized-r7-schema8-20260910.json)
+  baseline (local run artifact `performance-baseline-optimized-r7-schema8-20260910.json`),
+  candidate A (local run artifact `performance-candidate-a-optimized-r7-schema8-20260910.json`),
+  and candidate B (local run artifact `performance-candidate-b-optimized-r7-schema8-20260910.json`)
   as methodology evidence. The failed candidates motivated later contracts and are not
   passing regression or release evidence.
 - [x] Preserve the schema-9 r8 baseline/candidate-A/candidate-B reports. Their
   ordered trial vectors exposed settling that order-invariant MAD did not reject;
   they are diagnostic inputs to schema 10, not release evidence.
 - [x] Retain the first full schema-10
-  [absolute baseline attempt](../../MarkdownRenderer/artifacts/performance/performance-baseline-schema10-deployment-bound-r1-20260910.json).
+  absolute baseline attempt (local run artifact `performance-baseline-schema10-deployment-bound-r1-20260910.json`).
   Its deployment/runtime evidence is valid, but it failed all six viewport
   stationarity checks, the 1 MiB cache-disabled absolute budget, warm-scroll
   cadence/stall, and refresh qualification (240 Hz configured, 117.72 Hz

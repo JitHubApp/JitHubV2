@@ -126,6 +126,34 @@ previous destination's region immediately. Clearing an open region emits an
 `ActionCompleted` notification before it closes so assistive technology can announce
 that the diagnostic no longer applies.
 
+## Correctness and evidence scripts
+
+These are developer-run tools, not CI jobs. The Windows Sandbox runners use WinApp
+CLI and write their run directories under the Git-ignored
+`MarkdownRenderer/artifacts/correctness/`. The
+[correctness plan](correctness-plan.md) records the cases they implement.
+
+| Script (`MarkdownRenderer/eng/` unless noted) | Purpose |
+| --- | --- |
+| `Invoke-MarkdownCorrectnessUiTests.ps1` | Phase 1 batch and Phase 2 live rows in Windows Sandbox (`-Phase2Only`, `-Phase1ClipboardOnly`, `-Phase1CasePattern`, `-Phase2CasePattern`). |
+| `Invoke-MarkdownCorrectnessSandboxFollowUp.ps1` | C10 handle crossing and edge autoscroll, C11 point-range queries, C13 actual Windows High Contrast. |
+| `Invoke-MarkdownTouchLifecycleSandboxTests.ps1` | C14 capture loss, unload/reuse and dispose during an active touch contact. |
+| `Invoke-MarkdownDeferredTouchSandboxTests.ps1` | Deferred touch release and cancellation (P1-005, P1-006). |
+| `Invoke-MarkdownCorrectnessManualDpiTests.ps1` | Focused checks at an actual display scale that you set by hand. |
+| `Invoke-MarkdownPhase2OfflineEvidence.ps1` | Runs each Phase 2 matrix row's offline test filters and records the outcome. |
+| `Invoke-MarkdownRendererTop500SourceAcquisition.ps1` | Downloads and verifies the 500 frozen README bodies for the Phase 3 audit. |
+| `eng/Invoke-TopReadmeSandboxCorrectnessAudit.ps1` (repository root) | Phase 3 audit of the frozen README corpus in Windows Sandbox. |
+| `eng/Invoke-TopReadmeAudit.ps1` (repository root) | Optional comparison of live READMEs against GitHub in Edge; see `eng/readme-audit/README.md`. |
+| `Invoke-MathReleaseEvidence.ps1`, `Invoke-MermaidReleaseEvidence.ps1`, `Invoke-SvgResvgReleaseEvidence.ps1`, `Invoke-TextMateReleaseEvidence.ps1` | Per-pack release evidence, including NativeAOT consumer smokes. |
+| `New-MarkdownManagedArchitectureEvidence.ps1` | Static cross-architecture build and PE-header evidence for the managed packs. |
+
+`Test-MarkdownEngineeringScripts.ps1` runs the offline self-tests of these scripts.
+None of them launches an app or touches the desktop:
+
+```powershell
+pwsh .\MarkdownRenderer\eng\Test-MarkdownEngineeringScripts.ps1
+```
+
 ## ShakeLogger
 
 `MarkdownRenderer.Diagnostics.ShakeLogger` is off by default. Enable it only

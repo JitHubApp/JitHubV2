@@ -750,7 +750,7 @@ try {
         '--edge=C:\Program Files (x86)\Microsoft\Edge\msedge.exe',
         '--tail=C:\Program Files\Tail\',
         'quote="value"')
-    $windowsPowerShellArguments = @('-NoProfile', '-NonInteractive', '-File', $argumentEchoScript) + $expectedChildArguments
+    $windowsPowerShellArguments = @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $argumentEchoScript) + $expectedChildArguments
     $windowsPowerShellArgumentLine = ($windowsPowerShellArguments | ForEach-Object {
         ConvertTo-WindowsCommandLineArgument -Argument $_
     }) -join ' '

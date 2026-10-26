@@ -116,8 +116,8 @@ This currently shares bounded image-source retention, reserves fetch capacity
 for visible images, decodes ordinary rasters to display size, and enables
 directional viewport preparation and off-thread image reflow. A null session
 keeps the established behavior. `GetSnapshot()` reports aggregate counters
-without URLs or image bytes, and `Trim()` drops retained source bytes. See the
-[performance plan](progressive-performance-plan.md) for the remaining 1.0 gates.
+without URLs or image bytes, and `Trim()` drops retained source bytes. See
+[Current gaps and roadmap](current-gaps-and-roadmap.md) for the remaining 1.0 gates.
 
 Lease-aware image resolvers that start detached fallback or hedge work can
 probe their source admission for `IMarkdownImageSourceWorkTracker` and register

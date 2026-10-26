@@ -2,8 +2,7 @@
 
 This document closes the correctness goal adopted October 12, 2026 (see
 [the correctness plan](correctness-plan.md)). It records what each phase
-proved, on which candidate, and what is still open. It supersedes the
-[October 17 handoff](project-handoff-2026-10-17.md) as the current status.
+proved, on which candidate, and what is still open.
 
 The goal is correctness within the documented feature set. Performance,
 browser parity, the Rust rewrite and the distribution checklist (API
@@ -31,6 +30,10 @@ only the harness, Sample or docs are not product changes.
 | `0159d16b`, `31342c1e` | P1-042 focus reveal and focus-entry suppression | Final full Phase 1 batch at 192 DPI (56/0/9, `final-phase1-batch-31342c1e.json`); cold-start probes 5/5; GitHub.Tests 3,324/3,324 |
 
 The final product revision is `31342c1e`; later commits are CI and docs.
+On October 26 the three Mermaid native DLLs were rebuilt from the same source
+with path remapping, so they no longer embed the build machine's paths. The
+Mermaid and GitHub test suites pass on the rebuilt DLLs; the live runs above
+used the earlier build.
 After the Phase 3 audit candidate, the product changed only in those six
 commits. They cover selection-handle placement and routing, range rectangles
 across wraps, the inline failure label, and keyboard focus entry and reveal. The 500 READMEs were not re-audited
@@ -152,19 +155,19 @@ receipt names its run IDs.
 | `evidence/2026-10-22/touch-runners.json` | `b0698f8a91a5b521c367cac63c9163236907426e09d973646b38a9ab0b8acb54` |
 | `evidence/2026-10-23/phase3-reruns-app16-app17.json` | `155cdf3a87384368e09633d9518d672cffb7bec396160cf856237c87c80c9181` |
 | `evidence/2026-10-23/phase3-top500-run-app14.json` | `e54d641697aad7a6932c9a5bd9df912b1314ec117904d10cd9ac9d1439601dbd` |
-| `evidence/2026-10-24/phase1-clipboard-selection-cc7fda21.json` | `53231c3fab5308a9b5aca3bc97d91f41b02c6863411c2beef0cc4ef6b6d3bc90` |
+| `evidence/2026-10-24/phase1-clipboard-selection-cc7fda21.json` | `8cdbfa9fe9dbdc2f9fbbaf4c7edce9a0a622076167cadc19dcd058d783c0e322` |
 | `evidence/2026-10-24/phase2-aot-smokes-x86-x64.json` | `3f307ef46db7dfb6c36d0a679afc979e18046a06b9b75523fe71414dc7b2f1b8` |
-| `evidence/2026-10-24/phase2-live-run6-c482610e.json` | `6ea0832ed1825d2e12454a37eeb875c2e2325cb969c5796e9224a9fa2af8ea5c` |
-| `evidence/2026-10-24/phase2-mermaid-plain-copy-8141e49c.json` | `1f8fffeac382e03bda31e5b248738d365da66945281dd006cbf08b37e4c19512` |
+| `evidence/2026-10-24/phase2-live-run6-c482610e.json` | `dec39ef72457fea940d7193a3204f27709011b030e3a65b5a5d2ce91618f1dd6` |
+| `evidence/2026-10-24/phase2-mermaid-plain-copy-8141e49c.json` | `70573b83e0e1bfe0daab7b45bf76465ddebe305ede1d663d683922efe9922f6c` |
 | `evidence/2026-10-24/phase2-offline-evidence-c482610e.json` | `fb3516283498bd2e4b634eeba0a9893c6d18303c670c49a4753802d3d6e38232` |
-| `evidence/2026-10-24/phase2-system-high-contrast-af14395a.json` | `fdfee5c650e0d112e9915b67d02780d398551be716e335592faeac7c65dc2c76` |
+| `evidence/2026-10-24/phase2-system-high-contrast-af14395a.json` | `92fb56cd594512f930db7690e2e21b10ff017a94bea4c0bc1d60d66069aa4057` |
 | `evidence/2026-10-24/phase3-p3023-reruns-app19.json` | `3ef553797e68e5a686d16c5aa1cbdb932b2c3d8666169665b09d265e33aa6776` |
 | `evidence/2026-10-24/phase3-top500-run-app18.json` | `d711247b94b8cf505238dd637fa4ca5877034d73bdf949b1737992370c9a864b` |
 | `evidence/2026-10-25/closure-suites-385a552d.json` | `e1125910e1403a21bfe0de0d57c27285980758c1bfe39e4e2dde9df95ffd3995` |
 | `evidence/2026-10-25/dpi-150-gate.json` | `b110ede49aa63bca4eed7c0baa963d88fd69e15d0e916dfbef92ce217ee1b651` |
 | `evidence/2026-10-25/dpi-200-gate.json` | `cc4c35e8e4041026d456de9b8eeb6ecedb7ec2c025f7f3a85f5df0ab7ac3cc43` |
-| `evidence/2026-10-25/p1-040-green.txt` | `6f529d95bbce8befb2262db5fc1360843af57fa9087ed4f6dcad41df826e2b56` |
-| `evidence/2026-10-25/p1-040-red.txt` | `af50745d7c1ea973eb217226ce7c94cb3e1a40d32876f3e4db0c3c0432456b68` |
+| `evidence/2026-10-25/p1-040-green.txt` | `8a5e1e74769fda88631f1911ec895dc6193aa344168759ae81c7fbcf06cc407c` |
+| `evidence/2026-10-25/p1-040-red.txt` | `ce99a6d9352970c88cced67e203422069f6740d98c6147118b9483b3b562e542` |
 | `evidence/2026-10-25/p1-041-green.txt` | `eed8ed8fcc63c784ed005c1d50423e4ee68b14f545930298633459c07af1318c` |
 | `evidence/2026-10-25/p1-041-live-before.txt` | `88e3715da78a10a2c39b140b03f60c40aac37a7b4e4f11dbce6f4820b0bffa82` |
 | `evidence/2026-10-25/p1-041-red.txt` | `fef3b650e3ba7b01c593450e90a3d21f46bc3e7fc4e00044dcdedad65ac0123e` |

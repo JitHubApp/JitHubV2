@@ -2,15 +2,11 @@
 
 MarkdownRenderer is a preview, not a completed 1.0 release.
 
-The active work follows the [correctness goal and phase plan](correctness-plan.md),
-adopted October 12, 2026. Browser-parity, comparative performance, and package-size
-targets below are historical; they no longer block that goal. Distribution work
-and future optimization remain separate from the correctness phases.
-
-For the October 12 implementation, current failing gates, audit history, local
-evidence, and proposed Rust direction, read the
-[implementation checkpoint](implementation-checkpoint-2026-10-12.md). Results
-below retain their historical scope and do not qualify later candidates.
+The [correctness goal](correctness-plan.md), adopted October 12, 2026, is closed
+(see below). Browser-parity, comparative performance, and package-size targets
+are not correctness gates. Distribution work and future optimization remain
+separate. Results below keep their historical scope and do not qualify later
+candidates.
 
 ## October 25 correctness closure
 
@@ -35,27 +31,6 @@ Still open within correctness:
   oracle fails on the qualification machine. It was never a correctness gate.
 
 The 1.0 gates below are distribution and release work and remain open.
-
-## October 14 correctness checkpoint (historical)
-
-- All 500 frozen September 28 README bodies are acquired and integrity-verified.
-  After the disclosure-parser repair, all 500 pass the headless parse/source-map
-  checks without exceptions. One document retains two correctly classified
-  unsupported-math fallbacks. This is not a full-page image/layout/selection or
-  navigation audit; those evaluations remain required.
-- The current pinned official CommonMark/GFM run and its offline rerun each pass
-  1,322/1,322 examples with zero exceptions or waivers. The Release/x64 native
-  renderer suite passes 3,041/3,041 before the final additional container-exit
-  regression; the detailed plan retains each receipt and its exact scope.
-- Mermaid's entity text, decoded literal tags, Markdown wrapping and self-loop
-  labels have reviewed fixes and rebuilt x64/x86/ARM64 payloads. Its full feature
-  suite is still red: 174 pass and eight strict regressions fail for authored
-  Unicode/YAML collisions with internal entity placeholders. No complete-feature
-  certification is claimed.
-- Phase 1 still needs live interaction qualification and genuine 150%/200% DPI
-  checks. The recorded Sandbox guest reports 96 DPI/1.0 despite the host's 150%;
-  viewer zoom is not DPI evidence. Physical testing remains paused. All three
-  correctness phases remain open; see the [active plan](correctness-plan.md).
 
 ## Implemented direction
 
@@ -87,13 +62,13 @@ The 1.0 gates below are distribution and release work and remain open.
 
 - The offline official CommonMark 0.31.2 and GFM 0.29 suites pass 1,322/1,322
   examples with zero exceptions. See the retained
-  [conformance report](../../MarkdownRenderer/artifacts/conformance/report-fix-all-official-20260910-postreview.json).
+  conformance report (local run artifact `report-fix-all-official-20260910-postreview.json`).
 - Stable public-API baseline tests pass and guard the intended exported surface.
   They do not replace the final human API-approval decision.
 - The canonical x64 Release build and the x64 live sample automation pass. The
   live run completed 32/32 scenarios and recorded renderer disposal on close;
   retain the
-  [post-review disposal evidence](../../MarkdownRenderer/artifacts/live-final/disposal-app-release-matrix-postreview-20260910.json).
+  post-review disposal evidence (local run artifact `disposal-app-release-matrix-postreview-20260910.json`).
 - A prior x64 absolute performance baseline passed the documented first-view,
   scroll, allocation, cancellation, lifecycle, and memory budgets. Schema 10
   implements six-trial first-viewport Hodges-Lehmann estimates, a balanced
@@ -104,16 +79,16 @@ The 1.0 gates below are distribution and release work and remain open.
   complete private runtime output, metric-specific noise floors, raw scroll
   evidence, five 40-sample cancellation trials with distinct warmups, eight
   source-lookup warmups, and independent observed-refresh qualification. Its
-  [deployment-bound quick smoke](../../MarkdownRenderer/artifacts/performance/performance-quick-schema10-deployment-bound-r3-20260910.json)
+  deployment-bound quick smoke (local run artifact `performance-quick-schema10-deployment-bound-r3-20260910.json`)
   passes structural validation but is non-gating. The retained first full
-  schema-10 [absolute baseline](../../MarkdownRenderer/artifacts/performance/performance-baseline-schema10-deployment-bound-r1-20260910.json)
+  schema-10 absolute baseline (local run artifact `performance-baseline-schema10-deployment-bound-r1-20260910.json`)
   has sound deployment/runtime evidence but failed all six first-viewport
   stationarity checks, the 1 MiB cache-disabled absolute budget, warm-scroll
   cadence/stall, and refresh qualification (240 Hz configured, 117.72 Hz
   observed). It is failed diagnostic evidence, not release evidence. The failed
   identical-binary schema-8
-  [candidate A](../../MarkdownRenderer/artifacts/performance/performance-candidate-a-optimized-r7-schema8-20260910.json)
-  and [candidate B](../../MarkdownRenderer/artifacts/performance/performance-candidate-b-optimized-r7-schema8-20260910.json)
+  candidate A (local run artifact `performance-candidate-a-optimized-r7-schema8-20260910.json`)
+  and candidate B (local run artifact `performance-candidate-b-optimized-r7-schema8-20260910.json`)
   are retained as evidence for the methodology change, not as passing release
   reports. Retained schema-9 r8 reports additionally expose the nonstationarity
   holes that schema 10 closes. Schema 11 adds generation/source-matched raw

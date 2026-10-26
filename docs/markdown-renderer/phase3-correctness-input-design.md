@@ -1,10 +1,11 @@
 # Phase 3 browser-free correctness input: design
 
-Status: proposed, October 20, 2026. Nothing here is implemented yet. This
-design unblocks the [Phase 3 real-world audit](correctness-plan.md#phase-3-real-world-correctness-audit)
-without weakening any existing integrity check.
+Status: implemented. Proposed October 20, 2026, and used for the completed
+[Phase 3 real-world audit](correctness-plan.md#phase-3-real-world-correctness-audit)
+(see the [correctness closure](correctness-closure-2026-10-25.md)). It added the
+browser-free input without weakening any existing integrity check.
 
-## Why the current path cannot close Phase 3
+## Why the earlier path could not close Phase 3
 
 The in-app probe (`JitHub.WinUI.Automation/ReadmeCorrectnessCorpusProbe.cs`)
 passes a case only when all 11 required checks are `Passed`. Three can never
@@ -87,29 +88,3 @@ store (`Invoke-MarkdownRendererTop500SourceAcquisition.ps1` output):
   `image-resolution.ndjson` (`SourceSha256`, `HasAsset`, `Reason`): every
   demanded image must reach a final state; a stored asset that does not render
   is `Failed`; a recorded upstream failure is `UpstreamUnavailable`.
-
-## Code changes
-
-- `ReadmeCorrectnessCorpusProbe.cs`: schema-3 branch in
-  `VerifyCorrectnessCorpusCandidate`, direct rank-folder lookup, the three
-  oracle evaluators, and new accounting self-tests (the existing
-  `clean-resource-count-without-demand-oracle-remains-not-evaluated` case
-  changes meaning once the oracle exists).
-- `MarkdownSameByteAuditImageResolver.cs`: accept schema 3 without
-  `browserRender`, skip decorative exclusions for it, keep `GetSourceUrlHashes`
-  unchanged. Add v3 tests beside `MarkdownSameByteAuditImageResolverTests`.
-- `MarkdownRenderer.ReadmeCorrectnessAudit`: inventory extension and self-tests.
-- A Sandbox guest runner modeled on `Invoke-MarkdownCorrectnessUiTests.ps1`
-  that sets `JITHUB_README_CORRECTNESS_SANDBOX=1` and the clipboard-isolation
-  marker, runs shards of 25 and keeps PASS/FAIL/UNVERIFIED accounting.
-- Unchanged: `LaunchOptions` (it validates the frozen manifest, not the
-  corpus) and the `JITHUB_README_AUDIT_SAME_BYTE_CORPUS` environment path, on
-  which source-identity evidence and `routeAwayAndBack` depend.
-
-## Order of work
-
-1. Headless inventory extension and its self-tests.
-2. Host-side acquisition producing schema 3 for all 500 ranks.
-3. Resolver and probe schema-3 support with tests.
-4. The three oracles and accounting self-tests.
-5. Guest runner, then the full audit in shards and per-rank triage.

@@ -1,7 +1,7 @@
 # MarkdownRenderer checkpoint evidence
 
-This archive preserves selected historical receipts for the
-[October 17 project handoff](../../project-handoff-2026-10-17.md). The receipts
+This archive preserves selected historical receipts from the October 17
+checkpoint of the [correctness plan](../../correctness-plan.md). The receipts
 record passing and failing work; **none declares a completed correctness phase**.
 They are not newly executed tests of the documentation commit.
 

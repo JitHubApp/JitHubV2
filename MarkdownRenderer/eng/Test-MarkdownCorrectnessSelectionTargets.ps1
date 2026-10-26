@@ -309,7 +309,8 @@ $c14 = $runCases.Find({
 if ($null -eq $c14) { throw 'The existing C14 resize case is missing.' }
 Assert-Check -Name 'existing C14 resize case identity and exact required word remain present' -Condition `
     ($c14.Extent.Text.Contains("-Id 'C14'") -and $c14.Extent.Text.Contains('Get-SelectedText') -and $c14.Extent.Text.Contains("'hold'"))
-$c14Body = [string]$c14.CommandElements[-1].Extent.Text
+# Hash LF text so the pin does not depend on the checkout's line endings.
+$c14Body = ([string]$c14.CommandElements[-1].Extent.Text).Replace("`r`n", "`n")
 $sha256 = [System.Security.Cryptography.SHA256]::Create()
 try {
     $c14BodyHash = ([BitConverter]::ToString($sha256.ComputeHash(

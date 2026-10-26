@@ -1,7 +1,4 @@
 100x100
-maxChannelDelta=38
-meanChannelDelta=0.103
-differingPixelFraction=0.0198
-ssim=0.999961
-alphaBoundaryTolerancePx=1
-alphaIoU=1.000000
+maxChannelDelta=31
+meanChannelDelta=0.079
+differingPixelFraction=0.0052

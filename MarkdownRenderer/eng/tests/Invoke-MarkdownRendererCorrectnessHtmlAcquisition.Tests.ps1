@@ -90,7 +90,7 @@ else {
 
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../..'))
 $scriptPath = Join-Path $repoRoot 'MarkdownRenderer/eng/Invoke-MarkdownRendererCorrectnessHtmlAcquisition.ps1'
-$corpusPath = Join-Path $repoRoot 'artifacts/readme-top500/corpus-36360809497/top-repositories.json'
+$corpusPath = Join-Path $repoRoot 'docs/markdown-renderer/evidence/2026-10-17/top-repositories.json'
 $sourceRoot = Join-Path $repoRoot 'artifacts/readme-top500/source-acquisition-615c56723fb1'
 $testRoot = Join-Path ([IO.Path]::GetTempPath()) ('markdownrenderer-html-response-tests-' + [guid]::NewGuid().ToString('N'))
 [IO.Directory]::CreateDirectory($testRoot) | Out-Null

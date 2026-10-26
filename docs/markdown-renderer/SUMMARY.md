@@ -17,7 +17,6 @@ Use this page as the canonical table of contents for a generated docs site.
 - [Images, SVG, and assets](images-svg-and-assets.md)
 - [Native integration and hosted controls](native-integration-and-hosted-controls.md)
 - [Performance and memory](performance-and-memory.md)
-- [Historical progressive performance plan](progressive-performance-plan.md)
 
 ## Customization
 
@@ -34,12 +33,10 @@ Use this page as the canonical table of contents for a generated docs site.
 ## Operations
 
 - [October 25 correctness closure](correctness-closure-2026-10-25.md)
-- [October 17 project handoff (historical)](project-handoff-2026-10-17.md)
-- [Active correctness goal and phase plan](correctness-plan.md)
+- [Correctness goal, cases and defect history](correctness-plan.md)
 - [Phase 3 browser-free correctness input design](phase3-correctness-input-design.md)
 - [Portable evidence and frozen audit manifest](evidence/2026-10-17/README.md)
 - [Testing and diagnostics](testing-and-diagnostics.md)
-- [Historical October 12 checkpoint and architecture assessment](implementation-checkpoint-2026-10-12.md)
 - [Troubleshooting](troubleshooting.md)
 - [Packaging and distribution](packaging-and-distribution.md)
 - [Release checklist](release-checklist.md)

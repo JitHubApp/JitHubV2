@@ -14,7 +14,7 @@ Legend: 🔴 blocks release · 🟠 must fix before 1.0 · 🟡 v1.1 candidate
 
 - ✅ The offline official CommonMark 0.31.2 and GFM 0.29 run passed all
   1,322 examples with no exceptions. Retain the
-  [conformance report](artifacts/conformance/report-fix-all-official-20260910-postreview.json)
+  conformance report (local run artifact `report-fix-all-official-20260910-postreview.json`)
   with the release evidence.
 - ✅ Stable public-API baseline tests pass and guard the intended exported
   surface. Formal API approval is still a release decision, not an automated
@@ -22,15 +22,15 @@ Legend: 🔴 blocks release · 🟠 must fix before 1.0 · 🟡 v1.1 candidate
 - ✅ The canonical x64 Release build and x64 live sample automation pass;
   the 32/32 live scenarios include observed renderer disposal rather than only
   process exit. Retain the
-  [disposal evidence](artifacts/live-final/disposal-app-release-matrix-postreview-20260910.json).
+  disposal evidence (local run artifact `disposal-app-release-matrix-postreview-20260910.json`).
   This is not physical x86 or ARM64 evidence.
 - ✅ A prior x64 absolute performance baseline met the documented latency,
   allocation, scrolling, cancellation, lifecycle, and memory budgets. The
-  schema-10 [quick smoke](artifacts/performance/performance-quick-schema10-deployment-bound-r3-20260910.json)
+  schema-10 quick smoke (local run artifact `performance-quick-schema10-deployment-bound-r3-20260910.json`)
   passes its Williams schedule, pinned-thread, cache-proof, monotonic chronology,
   residual-envelope, GC-hierarchy, active-topology, full-runtime-output identity,
   and frozen-runtime structural validation. The first full schema-10
-  [absolute baseline](artifacts/performance/performance-baseline-schema10-deployment-bound-r1-20260910.json)
+  absolute baseline (local run artifact `performance-baseline-schema10-deployment-bound-r1-20260910.json`)
   is retained but failed viewport stationarity, the 1 MiB cache-disabled absolute
   budget, warm-scroll cadence/stall, and refresh qualification (240 Hz configured,
   117.72 Hz observed). It is failed diagnostic evidence, not release evidence. A

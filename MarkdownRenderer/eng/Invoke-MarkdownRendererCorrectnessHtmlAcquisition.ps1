@@ -14,7 +14,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $script:MarkdownRendererCorrectnessHtmlCorpusSha256 = '615c56723fb16d17744af2549615a4de32b1fc299a1759727cc86b70edacac72'
-$script:MarkdownRendererCorrectnessHtmlCorpusPath = 'artifacts/readme-top500/corpus-36360809497/top-repositories.json'
+$script:MarkdownRendererCorrectnessHtmlCorpusPath = 'docs/markdown-renderer/evidence/2026-10-17/top-repositories.json'
 $script:MarkdownRendererCorrectnessHtmlSourceManifestName = 'source-acquisition.json'
 $script:MarkdownRendererCorrectnessHtmlContract = 'github-commit-page-response-only-v1'
 $script:MarkdownRendererCorrectnessHtmlMaxManifestBytes = 8388608

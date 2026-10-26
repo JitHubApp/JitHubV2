@@ -1,17 +1,13 @@
 # MarkdownRenderer correctness goal and phase plan
 
-Active objective adopted October 12, 2026, from the user-approved
-`goal-objective.md` attachment. The existing feature set is frozen. This plan
-supersedes the performance and browser-parity program as the active work goal;
-the old plans and failed results remain historical evidence.
+Objective adopted October 12, 2026, and closed October 25, 2026 (see the
+[correctness closure](correctness-closure-2026-10-25.md)). The existing feature
+set was frozen; performance and browser parity were out of scope.
 
-For the current concise handoff, architecture/repair summary, progress,
-challenges, methodology and continuation order, read the
-[October 17 project handoff](project-handoff-2026-10-17.md). Selected sanitized
-receipts and the byte-preserved frozen 500-repository manifest are versioned in
-the [portable evidence archive](evidence/2026-10-17/README.md). Original
-`artifacts/...` paths below preserve historical locations; most raw artifacts
-remain Git-ignored and need a separate backup before local storage is discarded.
+Selected sanitized receipts and the byte-preserved frozen 500-repository
+manifest are versioned in the [portable evidence archive](evidence/2026-10-17/README.md)
+and the later `evidence/` folders. `artifacts/...` paths below name local run
+directories, which are Git-ignored and not part of the repository.
 
 ## Closure status (October 25, 2026)
 
@@ -192,7 +188,7 @@ block content and an explicit whitespace-preserving inline-code declaration;
 receivers may support different CSS subsets, so the inline declaration also
 needs a structural/exact-text contract, not an assumption that this renderer
 supports arbitrary clipboard CSS. The current fragment and failed TRX remain
-retained under `C:/Users/neroc/AppData/Local/Temp/MarkdownRenderer-CodeCopy-Correctness-20261014/`.
+retained under a local temporary directory (`MarkdownRenderer-CodeCopy-Correctness-20261014`).
 The repair serializes each committed logical code block as escaped
 `<pre><code>`, including virtualized chunks, and emits the static inline-code
 `white-space: pre-wrap` declaration. Linked code labels retain their validated
@@ -245,7 +241,7 @@ cell text, then fail because the generated rich-copy fragment contains no
 one flat sequence. This loses the table relationships promised by the existing
 selection/clipboard contract; this is not a request to match browser styling.
 The failed receipt is retained at
-`C:/Users/neroc/AppData/Local/Temp/MarkdownRenderer-TableCopy-Correctness-20261014/table-copy-beforefix.trx`.
+`table-copy-beforefix.trx` (a local temporary directory).
 The repair must use committed semantic rows/cells, not reparse authored Markdown
 or HTML; encode cell text and reuse safe inline formatting, retain column
 positions for partial selections without including unselected authored text,
@@ -1167,7 +1163,7 @@ Local evidence directory: `MarkdownRenderer/artifacts/correctness/phase1-2026101
   still require the newly built payload.
 - The complete native renderer suite after the `ScrollIntoView` correction
   passes 2,980/2,980, zero skips, in 2m14s. Its original TRX is
-  `MarkdownRenderer.GitHub.Tests/TestResults/neroc_ALIENWARE_2026-10-12_19_31_39_net10.0.trx`,
+  `MarkdownRenderer.GitHub.Tests/TestResults/<machine>_2026-10-12_19_31_39_net10.0.trx`,
   preserved with an identical copy at
   `phase1-20261013/renderer-scroll-geometry-final.trx`. The outer shell command
   exits 1 because its unquoted logger semicolon starts a subsequent nonexistent
@@ -2829,7 +2825,7 @@ Local evidence directory: `MarkdownRenderer/artifacts/correctness/phase1-2026101
   The sample is **not launched**. Independent final source review finds no
   concrete correctness/security defect; this does not substitute for live proof.
 - Exact source, DLL, TRX, log hashes and retained failing-oracle explanations are
-  in [code-copy-correctness.json](../../artifacts/phase1-20261014/code-copy-correctness.json).
+  in `code-copy-correctness.json`.
   This supersedes the earlier 3,070-case count for current managed C08 source,
   not the historical receipts or the unchanged native-provider verification.
   Fresh Sandbox reading/selection/clipboard and actual 150%/200% handle/lifecycle
@@ -2850,7 +2846,7 @@ Local evidence directory: `MarkdownRenderer/artifacts/correctness/phase1-2026101
   evidence is retained as **CANCELED_NOT_QUALIFIED**. No assertion is changed or
   waived and no full pure-logic or historical performance-gate pass is claimed.
   Evidence and execution boundaries are in
-  [parsing-and-provider-smoke.json](../../artifacts/phase1-20261014/parsing-and-provider-smoke.json).
+  `parsing-and-provider-smoke.json`.
 
 ### October 14 continuation: diagnostic classification before repair
 
@@ -2865,7 +2861,7 @@ exact authored fallback are unchanged. The throwing-provider assertion is
 retained with the corrected wording. The full current-source Release Math suite
 passes **80/80, zero failed or skipped**. Exact source/TRX hashes and the two
 frozen authored formulas are recorded in
-[math-diagnostic-wording.json](../../artifacts/phase2-20261014/math-diagnostic-wording.json).
+`math-diagnostic-wording.json`.
 This does not add new TeX support, waive either corpus diagnostic, or qualify live
 Math composition or a complete README audit.
 
@@ -2924,16 +2920,16 @@ Math composition or a complete README audit.
   it is not recorded as a timeout. The first bounded repair adds a regression
   executing actual top-level parameter initialization, rather than trusting the
   earlier extracted-helper checks. Cancellation and retained evidence are in
-  [sandbox-fresh-batch-routing-canceled.json](../../artifacts/phase1-20261014/sandbox-fresh-batch-routing-canceled.json).
+  `sandbox-fresh-batch-routing-canceled.json`.
 - The script-scope regression reproduces the old failure as an actual `.ps1`
   file; corrected initialization then passes in PS7 and PS5.1. The replacement
   run records the intended C: root and the exact Release-tested renderer hash.
   A separate guest-side check also matches all eight renderer/feature-pack
   assemblies against the C: sample payload. This is **candidate identity only**;
   the UI assertions and visual review are still in progress, not a pass. See
-  [sandbox-fresh-batch-candidate-identity.json](../../artifacts/phase1-20261014/sandbox-fresh-batch-candidate-identity.json).
+  `sandbox-fresh-batch-candidate-identity.json`.
 - Exact source, DLL, TRX, log, test-retention and 500-input receipt hashes are in
-  [table-code-source-correctness.json](../../artifacts/phase1-20261014/table-code-source-correctness.json).
+  `table-code-source-correctness.json`.
   Original failures and draft diagnostics are preserved, including the explicitly
   mixed-binary structural probe that is not counted as a correctness pass.
   Actual 150%/200%, live lifecycle/clipboard and complete feature/corpus gates
@@ -2970,7 +2966,7 @@ R3 live findings while the final bounded repair run is still active:
 The previously in-progress r2 batch is terminal: **39 pass, 14 fail, 10
 unverified**, with all 36 delivered PNGs inspected. It is not qualified. The
 compact result and screenshot-hash record is
-[sandbox-fresh-batch-r2-results.json](../../artifacts/phase1-20261014/sandbox-fresh-batch-r2-results.json).
+`sandbox-fresh-batch-r2-results.json`.
 Fourteen failed assertions do not establish fourteen product defects: they
 include empty-array and enabled-state harness failures, independently authored
 native-editor line-ending expectations, and an unqualified child startup.
@@ -3010,7 +3006,7 @@ normal WindowPattern close. That process exits normally; there is no force
 termination. The final bounded r3 repair then starts in the same Sandbox epoch
 from the new tested C: payload. Code receipts, hashes, retained failures and the
 live run path are recorded in
-[sandbox-r3-code-verification.json](../../artifacts/phase1-20261014/sandbox-r3-code-verification.json).
+`sandbox-r3-code-verification.json`.
 
 The WinUI UI-testing workflow permitted one remaining repair/rerun in this fresh
 batch; r3 uses that final cycle, not a reset of the retry budget. Guest-only 100%
@@ -3096,7 +3092,7 @@ Release-tested copy exactly. It is not launched or NativeAOT-published.
 Independent source review finds no concrete defect in these two repairs. Exact
 source/binary/TRX/log hashes, retained red and intermediate failures, sample
 identity and test-retention checks are recorded in
-[sandbox-r4-post-run-code-verification.json](../../artifacts/phase1-20261014/sandbox-r4-post-run-code-verification.json).
+`sandbox-r4-post-run-code-verification.json`.
 This is component/integration evidence only; it does not resolve the native
 crash or retroactively pass any r3 interaction.
 
@@ -3119,7 +3115,7 @@ restore registry types/data/existence, verify disk capacity and keep any dump
 local and uncommitted. A focused no-crash replay is inconclusive because the
 preceding batch may have conditioned the heap. No case filter or dump runner is
 yet implemented or executed. Readiness and boundaries are recorded in
-[sandbox-r3-crash-diagnostic-readiness.json](../../artifacts/phase1-20261014/sandbox-r3-crash-diagnostic-readiness.json).
+`sandbox-r3-crash-diagnostic-readiness.json`.
 
 Independent read-only lifetime review finds no demonstrated lock escape,
 double disposal or unsafe ownership handoff in snapshot retirement, paint/UIA
@@ -3175,7 +3171,7 @@ preparation while renewed Sandbox launch/dump-capture approval remains pending.
   change aborts preplanned writes. Independent final review finds no blocking
   defect; none of these helper tests prove live WER collection or renderer health.
 - Exact source/log hashes and retained intermediate findings are recorded in
-  [sandbox-crash-diagnostic-offline-preparation.json](../../artifacts/phase1-20261014/sandbox-crash-diagnostic-offline-preparation.json).
+  `sandbox-crash-diagnostic-offline-preparation.json`.
   Host coordination must still pin a fresh epoch/process/payload and restore
   settings in `finally`. No app launch, registry change, dump capture/transfer,
   host input/display action, product-source edit, commit, push or scheduled run
@@ -3211,7 +3207,7 @@ tests do not reproduce the old heap conditioning by definition.
 
 Exact receipts, sources, binaries, log hashes, retained intermediate findings
 and test-retention comparisons are saved in
-[sandbox-r5-image-selection-code-verification.json](../../artifacts/phase1-20261014/sandbox-r5-image-selection-code-verification.json).
+`sandbox-r5-image-selection-code-verification.json`.
 P1-032's native heap corruption remains the highest-priority open defect. The
 WinUI UI-testing retry limit still requires renewed direction for another
 Sandbox batch or live dump setup. No guest registry settings, host input/display
@@ -3238,7 +3234,7 @@ tool path, and `PROCDUMP_PATH` is unset. The installed DumpMinitool's presence i
 not a qualified automatic native-crash monitor. No crash, test run, download,
 installation, app launch or registry change is attempted. Exact inspected-source
 hashes and capability limits are recorded in
-[p1-032-headless-feasibility-20261016.json](../../artifacts/phase1-20261014/p1-032-headless-feasibility-20261016.json).
+`p1-032-headless-feasibility-20261016.json`.
 The next decisive step remains an approved Sandbox dump-capturing reproduction,
 preserving the retained R3 failing payload before separate R5 qualification.
 No source candidate, live gate or phase is newly passed by this assessment.
@@ -3278,7 +3274,7 @@ reproduction. Both original and replay C14 captures prove owned viewport and
 100% DPI; neither independently records every app theme/text-scale/RTL input.
 The transferred full-run receipts verify all three dump values restored and
 both pre-existing empty keys retained. Exact terminal receipts and limits are in
-[p1-032-sandbox-full-replay-20261017.json](../../artifacts/phase1-20261014/p1-032-sandbox-full-replay-20261017.json).
+`p1-032-sandbox-full-replay-20261017.json`.
 
 A corrected original-switch R3 replay runs separately with capture
 armed and the harness source archived before execution; its terminal crash and
@@ -3289,7 +3285,7 @@ prevent promising identical heap conditioning to the original batch. No product
 fix, current-candidate live pass, actual high-DPI pass or completed phase is
 claimed. Exact focused receipts
 and caveats are in
-[p1-032-sandbox-focused-reproduction-20261016.json](../../artifacts/phase1-20261014/p1-032-sandbox-focused-reproduction-20261016.json).
+`p1-032-sandbox-focused-reproduction-20261016.json`.
 
 ### Native crash reproduced with a full dump (UTC October 18)
 
@@ -3591,6 +3587,5 @@ Clipboard isolation cannot be attested, and the Phase 3 plain-text copy
 oracle stays NotEvaluated unless the Sandbox runs with clipboard
 redirection disabled.
 
-The [October 12 checkpoint](implementation-checkpoint-2026-10-12.md) preserves
-the old architecture/evidence. The [progressive performance plan](progressive-performance-plan.md)
-is historical and its performance/browser-parity gates no longer block this goal.
+The earlier performance and browser-parity program is historical; its gates
+did not block this goal.

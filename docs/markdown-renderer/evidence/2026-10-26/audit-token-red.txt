@@ -1,4 +1,0 @@
-  Failed JitHub.WinUI.Tests.Services.AuthServicePreviewTokenContractTests.BothTokenPathsResolveThePreviewOverrideToken [30 ms]
-   Assert.Contains() Failure: Sub-string not found
-Not found: "Program.CurrentLaunchOptions.ResolvePrevi"···
-Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 30 ms - JitHub.WinUI.Tests.dll (net10.0)

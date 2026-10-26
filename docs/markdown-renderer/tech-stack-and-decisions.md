@@ -9,9 +9,8 @@
 | resvg 0.48.1 | Optional isolated static-SVG rendering provider. |
 | TextMate | Optional syntax-highlighting integration with separate grammar packs. |
 
-The [October 12 architecture assessment](implementation-checkpoint-2026-10-12.md#architecture-assessment-and-rust-direction)
-records the proposed Rust-core direction and the measurements required before
-broad migration. The implementation currently retains its .NET document/WinUI
+A Rust core was considered and deferred as a separate future project. The
+implementation retains its .NET document/WinUI
 host and isolated Rust rendering/decoding workers.
 
 ## Native viewer instead of WebView

@@ -12,7 +12,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $script:MarkdownRendererTop500CorpusSha256 = '615c56723fb16d17744af2549615a4de32b1fc299a1759727cc86b70edacac72'
-$script:MarkdownRendererTop500CorpusRelativePath = 'artifacts/readme-top500/corpus-36360809497/top-repositories.json'
+$script:MarkdownRendererTop500CorpusRelativePath = 'docs/markdown-renderer/evidence/2026-10-17/top-repositories.json'
 $script:MarkdownRendererTop500ExpectedCount = 500
 
 function ConvertTo-MarkdownRendererHex {

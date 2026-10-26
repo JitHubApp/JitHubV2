@@ -176,23 +176,23 @@ The harness runtimeconfig explicitly disables tiered compilation, tiered PGO,
 concurrent GC, and ReadyToRun. Any `DOTNET_` or `COMPlus_` environment override
 makes the report ineligible; the runtimeconfig itself is part of the artifact hash
 set. The retained schema-10
-[deployment-bound quick smoke](../../MarkdownRenderer/artifacts/performance/performance-quick-schema10-deployment-bound-r3-20260910.json)
+deployment-bound quick smoke (local run artifact `performance-quick-schema10-deployment-bound-r3-20260910.json`)
 passes the structural, cache, runtime, monotonic-timestamp, and topology contract
 but is explicitly non-gating.
 The retained schema-8
-[baseline](../../MarkdownRenderer/artifacts/performance/performance-baseline-optimized-r7-schema8-20260910.json),
-[candidate A](../../MarkdownRenderer/artifacts/performance/performance-candidate-a-optimized-r7-schema8-20260910.json),
-and [candidate B](../../MarkdownRenderer/artifacts/performance/performance-candidate-b-optimized-r7-schema8-20260910.json)
+baseline (local run artifact `performance-baseline-optimized-r7-schema8-20260910.json`),
+candidate A (local run artifact `performance-candidate-a-optimized-r7-schema8-20260910.json`),
+and candidate B (local run artifact `performance-candidate-b-optimized-r7-schema8-20260910.json`)
 are methodology evidence. The later retained schema-9
-[baseline](../../MarkdownRenderer/artifacts/performance/performance-baseline-optimized-r8-schema9-20260910.json),
-[candidate A](../../MarkdownRenderer/artifacts/performance/performance-candidate-a-optimized-r8-schema9-20260910.json),
-and [candidate B](../../MarkdownRenderer/artifacts/performance/performance-candidate-b-optimized-r8-schema9-20260910.json)
+baseline (local run artifact `performance-baseline-optimized-r8-schema9-20260910.json`),
+candidate A (local run artifact `performance-candidate-a-optimized-r8-schema9-20260910.json`),
+and candidate B (local run artifact `performance-candidate-b-optimized-r8-schema9-20260910.json`)
 proved that order-invariant Hodges-Lehmann/MAD checks could accept a settling
 trend; candidate B failed the warm 10 MiB comparison. All are preserved as
 methodology evidence, not schema-10 release evidence.
 
 A first full schema-10
-[absolute baseline](../../MarkdownRenderer/artifacts/performance/performance-baseline-schema10-deployment-bound-r1-20260910.json)
+absolute baseline (local run artifact `performance-baseline-schema10-deployment-bound-r1-20260910.json`)
 is retained with a valid deployment manifest and frozen runtime evidence, but it
 failed viewport stationarity, the 1 MiB cache-disabled absolute budget, warm-scroll
 cadence/stall, and refresh qualification (240 Hz configured, 117.72 Hz observed).
@@ -252,8 +252,8 @@ content or a provider-generation retry. Static rasters decode to the
 displayed physical size (at most 8.4 million output pixels on x64/ARM64 or
 4.2 million on x86 by default), and records aggregate privacy-safe counters. JitHub
 enables this session for its Markdown views. This does not yet constitute the
-complete browser-relative performance gate described in the
-[progressive plan](progressive-performance-plan.md).
+complete browser-relative performance gate, which remains a separate 1.0
+release gate.
 
 Lease-aware resolvers can implement `IMarkdownLeasedImageResolver` from the optional
 Performance pack. Reserve source capacity before materialization and transfer it
