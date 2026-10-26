@@ -66,7 +66,7 @@ $context=@{ExpectedGuestComputerName='GUEST';ExpectedHostComputerName='HOST';Com
 Check 'approved guest facts accepted without side effects' {Assert-MarkdownCrashDumpGuestContext @context}
 foreach($bad in @(
     @{ComputerName='HOST'},@{ExpectedGuestComputerName='HOST'},@{ComputerName='REPLACEMENT'},
-    @{UserName='neroc'},@{IsAdministrator=$false},@{Is64BitProcess=$false},@{Is64BitOperatingSystem=$false},@{GuestWorkRoot='C:\Other'}
+    @{UserName='tester'},@{IsAdministrator=$false},@{Is64BitProcess=$false},@{Is64BitOperatingSystem=$false},@{GuestWorkRoot='C:\Other'}
 )){
     $copy=$context.Clone();foreach($key in $bad.Keys){$copy[$key]=$bad[$key]}
     Check ('reject unsafe context '+($bad|ConvertTo-Json -Compress)) {Must-Throw {Assert-MarkdownCrashDumpGuestContext @copy}}

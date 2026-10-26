@@ -361,7 +361,7 @@ $guestParseErrors = $null
 if ($guestParseErrors.Count -gt 0) {
     throw "Generated offline guest script did not parse: $($guestParseErrors[0].Message) at line $($guestParseErrors[0].Extent.StartLineNumber)."
 }
-$longGuestRoot = 'C:\Users\neroc\AppData\Local\Microsoft\WinApp\Sandbox\ManagedRoot\work'
+$longGuestRoot = 'C:\Users\tester\AppData\Local\Microsoft\WinApp\Sandbox\ManagedRoot\work'
 $longGuestRepo = 'offline-same-byte\' + ('a' * 32) + '\repo'
 $longPathGuestBatch = New-GuestBatchScript -GuestRepo $longGuestRepo -GuestWorkRoot $longGuestRoot `
     -Start 1 -Amount 25 -OutputRelativePath 'artifacts\offline-same-byte-output\ranks-001-025'
