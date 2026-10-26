@@ -1,9 +1,10 @@
 # MarkdownRenderer documentation
 
 MarkdownRenderer is a native WinUI markdown viewer with immutable parsing,
-explicit viewport ownership, Fluent defaults, and opt-in feature packs. It is a
-preview: the Math and Mermaid engines are implemented, while full 1.0
-certification and the remaining release gates are unfinished.
+explicit viewport ownership, Fluent defaults, and opt-in feature packs. Its
+correctness goal closed on October 25, 2026, except for three hardware- or
+codec-gated feature rows. It is still a preview: the 1.0 distribution and
+release gates are unfinished.
 
 ## Start here
 
@@ -20,7 +21,8 @@ certification and the remaining release gates are unfinished.
 | Track unfinished work | [Current gaps and roadmap](current-gaps-and-roadmap.md) |
 | Follow the active phased correctness goal | [Correctness goal and phase plan](correctness-plan.md) |
 | Review the proposed browser-free Phase 3 audit input | [Phase 3 correctness input design](phase3-correctness-input-design.md) |
-| Resume from the current goal, progress, challenges and methods | [October 17 project handoff](project-handoff-2026-10-17.md) |
+| Review the correctness closure, candidates and evidence hashes | [October 25 correctness closure](correctness-closure-2026-10-25.md) |
+| Review the earlier goal, progress, challenges and methods | [October 17 project handoff](project-handoff-2026-10-17.md) |
 | Inspect portable receipts and the frozen audit manifest | [October 17 evidence index](evidence/2026-10-17/README.md) |
 | Review the earlier implementation and architecture assessment | [October 12 historical checkpoint](implementation-checkpoint-2026-10-12.md) |
 | Review historical opt-in performance work | [Progressive performance plan](progressive-performance-plan.md) |
@@ -61,7 +63,13 @@ is available through the explicit Copy Markdown path.
 ## Preview boundary
 
 Safe HTML, native vector Math, Mermaid and declarative viewer adapters are
-implemented. All three active correctness phases remain open. The separate
-distribution checklist covers API, AOT, architecture, packaging and publishing;
-historical browser-parity/performance targets are not correctness-phase gates.
-Implemented capabilities and passing component tests are not release certification.
+implemented.
+
+- Phase 1 (core correctness) is closed.
+- Phase 3 (the 500-README audit) is complete.
+- Phase 2 (feature correctness) passes 29 of 32 rows. The other 3 need ARM64
+  hardware or the WebP Image Extension.
+
+The separate distribution checklist covers API, AOT, architecture, packaging
+and publishing. Historical browser-parity and performance targets are not
+correctness gates. Correctness closure is not release certification.

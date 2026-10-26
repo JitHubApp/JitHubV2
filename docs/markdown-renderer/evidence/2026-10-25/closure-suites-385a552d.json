@@ -1,0 +1,100 @@
+{
+  "schemaVersion": 1,
+  "kind": "closure-current-source-suites",
+  "sourceRevision": "385a552d",
+  "productSourceRevision": "7be71973",
+  "configuration": "Release",
+  "platform": "x64",
+  "suites": [
+    {
+      "project": "MarkdownRenderer.Conformance.Tests",
+      "failed": 0,
+      "passed": 9,
+      "skipped": 0,
+      "total": 9,
+      "trx": "MarkdownRenderer.Conformance.Tests.trx",
+      "trxSha256": "e526517e1e573b1e8f092e7dbae42f6213e10a64beb25b2d4b6e6d3324b647f2"
+    },
+    {
+      "project": "MarkdownRenderer.Tests",
+      "failed": 0,
+      "passed": 2047,
+      "skipped": 0,
+      "total": 2047,
+      "trx": "MarkdownRenderer.Tests.trx",
+      "trxSha256": "86cdc1769c6c1527066289630d48a08f7d67780f6fc8c4721ad0d64b51ba10ef"
+    },
+    {
+      "project": "MarkdownRenderer.GitHub.Tests",
+      "failed": 0,
+      "passed": 3321,
+      "skipped": 0,
+      "total": 3321,
+      "trx": "MarkdownRenderer.GitHub.Tests.trx",
+      "trxSha256": "d80a76b7806d798c84a6652a2c02d61666d49199d15820e1e7665f6483ffd6c3"
+    },
+    {
+      "project": "MarkdownRenderer.Html.Tests",
+      "failed": 0,
+      "passed": 10,
+      "skipped": 0,
+      "total": 10,
+      "trx": "MarkdownRenderer.Html.Tests.trx",
+      "trxSha256": "13c5855b135c2bcdb6aca03a28ca2cb712c9ac8b4a40e17b66bd08d20d4bed73"
+    },
+    {
+      "project": "MarkdownRenderer.Math.Tests",
+      "failed": 0,
+      "passed": 80,
+      "skipped": 0,
+      "total": 80,
+      "trx": "MarkdownRenderer.Math.Tests.trx",
+      "trxSha256": "ecba44a44f9ca8ae47b104494f02b201ea9ad57297ae751c84002d1f36a726fc"
+    },
+    {
+      "project": "MarkdownRenderer.Mermaid.Tests",
+      "failed": 0,
+      "passed": 259,
+      "skipped": 0,
+      "total": 259,
+      "trx": "MarkdownRenderer.Mermaid.Tests.trx",
+      "trxSha256": "2df7c76cfe3129e5db0b6a6d30a7c612c8ebb4b7f2c12929a431c4bb513154ff"
+    },
+    {
+      "project": "MarkdownRenderer.Svg.Resvg.Tests",
+      "failed": 0,
+      "passed": 753,
+      "skipped": 0,
+      "total": 753,
+      "trx": "MarkdownRenderer.Svg.Resvg.Tests.trx",
+      "trxSha256": "e1b8f9ab7972f43825138b53228d8987a3bcd4160d83cbe7a0b393a0d7fc0985"
+    },
+    {
+      "project": "MarkdownRenderer.SyntaxHighlighting.TextMate.Tests",
+      "failed": 0,
+      "passed": 74,
+      "skipped": 0,
+      "total": 74,
+      "trx": "MarkdownRenderer.SyntaxHighlighting.TextMate.Tests.trx",
+      "trxSha256": "49431565d7813892e8306b22ab140e0229b46c442c39acd3fa101252fbb507fb"
+    }
+  ],
+  "officialConformance": {
+    "tool": "MarkdownRenderer.Conformance --suite all",
+    "summary": {
+      "total": 1322,
+      "passed": 1322,
+      "excepted": 0,
+      "failed": 0
+    },
+    "reportSha256": "1952cad13ca5279e4022a17d0ac81a748bcc5c7daef6b477daaf978e6678aede",
+    "pinnedCorpora": [
+      "commonmark-0.31.2 spec.json",
+      "gfm-0.29 (cmark-gfm 0.29.0.gfm.13) spec.txt"
+    ]
+  },
+  "notEvaluated": {
+    "MarkdownRenderer.PixelTests": "Browser-parity SVG pixel comparison against Microsoft Edge (out of scope for the correctness goal). On this machine Edge's render process exits (\"Render process gone\") or DevTools times out for every fixture, so all 562 executed cases failed on the missing oracle before the run was stopped after about 4 hours. No renderer result is inferred either way."
+  },
+  "rawLocation": "MarkdownRenderer/artifacts/closure-suites-385a552d (Git-ignored)"
+}

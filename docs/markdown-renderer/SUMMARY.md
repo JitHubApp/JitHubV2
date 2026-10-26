@@ -33,7 +33,8 @@ Use this page as the canonical table of contents for a generated docs site.
 
 ## Operations
 
-- [October 17 project handoff and correctness status](project-handoff-2026-10-17.md)
+- [October 25 correctness closure](correctness-closure-2026-10-25.md)
+- [October 17 project handoff (historical)](project-handoff-2026-10-17.md)
 - [Active correctness goal and phase plan](correctness-plan.md)
 - [Phase 3 browser-free correctness input design](phase3-correctness-input-design.md)
 - [Portable evidence and frozen audit manifest](evidence/2026-10-17/README.md)

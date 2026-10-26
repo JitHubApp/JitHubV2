@@ -12,7 +12,33 @@ evidence, and proposed Rust direction, read the
 [implementation checkpoint](implementation-checkpoint-2026-10-12.md). Results
 below retain their historical scope and do not qualify later candidates.
 
-## October 14 correctness checkpoint
+## October 25 correctness closure
+
+The correctness goal is closed except for environment-gated items; read the
+[October 25 closure](correctness-closure-2026-10-25.md).
+
+- **Phase 1 is closed.** The full live batch passes at actual 100%, 150% and
+  200% display scaling, in Light, Dark and High Contrast, in both viewport modes.
+  Every known defect, P1-001 to P1-041, is fixed with a regression test.
+- **Phase 2:** 29 of 32 feature rows pass. Three rows wait on ARM64 hardware
+  (Mermaid and resvg workers) or on the WebP Image Extension, which Windows
+  Sandbox lacks.
+- **Phase 3 is complete:** all 500 frozen READMEs were evaluated, and every
+  renderer defect found was fixed.
+- **Current-source suites** pass 6,553 tests with no failures or skips, plus the
+  official CommonMark/GFM corpus (1,322/1,322).
+
+Still open within correctness:
+
+- P1-042, a one-off Mermaid scroll that did not recur;
+- live tooling limits for native touch cancellation, touch capture loss and
+  clipboard isolation, which are covered offline instead;
+- the browser-parity SVG pixel suite, which could not run because its Edge
+  oracle fails on the qualification machine. It was never a correctness gate.
+
+The 1.0 gates below are distribution and release work and remain open.
+
+## October 14 correctness checkpoint (historical)
 
 - All 500 frozen September 28 README bodies are acquired and integrity-verified.
   After the disclosure-parser repair, all 500 pass the headless parse/source-map
