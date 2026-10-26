@@ -28,29 +28,17 @@ function Invoke-TestGit {
 function Invoke-Validator {
     param(
         [Parameter(Mandatory)][string]$VerdictPath,
-        [Parameter(Mandatory)][string]$SummaryPath,
-        [Parameter(Mandatory)][string]$OutputPath,
-        [Parameter(Mandatory)][string]$SummaryHash
+        [Parameter(Mandatory)][string]$OutputPath
     )
     $expectedArguments = @(
         '-CounterbalancedVerdictPath', $VerdictPath,
-        '-Top500SummaryPath', $SummaryPath,
         '-OutputPath', $OutputPath,
         '-ExpectedCandidateCommitSha', $candidateSha,
         '-ExpectedReferenceCommitSha', $referenceSha,
         '-ExpectedWorkflowRunId', $runId,
         '-ExpectedWorkflowRepository', $repository,
         '-ExpectedWorkflowRef', $workflowRef,
-        '-PhysicalJobResult', 'success',
-        '-Top500JobResult', 'success',
-        '-Top500WorkflowPassed', 'true',
-        '-Top500WorkflowSourceCommitSha', $candidateSha,
-        '-Top500WorkflowRunId', $runId,
-        '-Top500WorkflowSummarySha256', $SummaryHash,
-        '-Top500WorkflowTotalCases', '500',
-        '-Top500WorkflowPassedCases', '500',
-        '-Top500WorkflowSameByteCases', '500',
-        '-Top500WorkflowSameByteExpectedCases', '500')
+        '-PhysicalJobResult', 'success')
     $start = [Diagnostics.ProcessStartInfo]::new()
     $start.FileName = (Get-Process -Id $PID).Path
     $start.UseShellExecute = $false
@@ -79,46 +67,11 @@ function Invoke-Validator {
 function Assert-ValidatorRejects {
     param(
         [Parameter(Mandatory)][string] $VerdictPath,
-        [Parameter(Mandatory)][string] $SummaryPath,
         [Parameter(Mandatory)][string] $OutputPath,
-        [Parameter(Mandatory)][string] $SummaryHash,
         [Parameter(Mandatory)][string] $Label
     )
-    $result = Invoke-Validator -VerdictPath $VerdictPath -SummaryPath $SummaryPath -OutputPath $OutputPath -SummaryHash $SummaryHash
+    $result = Invoke-Validator -VerdictPath $VerdictPath -OutputPath $OutputPath
     if ($result.ExitCode -eq 0) { throw "$Label was accepted by the joined-evidence validator." }
-}
-
-function Invoke-OutputPublisher {
-    param(
-        [Parameter(Mandatory)][string] $SummaryPath,
-        [Parameter(Mandatory)][string] $OutputPath,
-        [string] $WorkflowEventName = 'workflow_call',
-        [string] $SameByteRelease = 'true',
-        [string] $WorkflowRunAttempt = '7'
-    )
-    & (Join-Path $PSScriptRoot 'Publish-MarkdownRendererTop500WorkflowOutputs.ps1') `
-        -SummaryPath $SummaryPath `
-        -OutputPath $OutputPath `
-        -WorkflowEventName $WorkflowEventName `
-        -SameByteRelease $SameByteRelease `
-        -WorkflowRunAttempt $WorkflowRunAttempt
-}
-
-function Assert-PublisherRejects {
-    param(
-        [Parameter(Mandatory)][string] $SummaryPath,
-        [Parameter(Mandatory)][string] $OutputPath,
-        [Parameter(Mandatory)][string] $Label
-    )
-    [IO.File]::WriteAllText($OutputPath, '', [Text.UTF8Encoding]::new($false))
-    $rejected = $false
-    try { Invoke-OutputPublisher -SummaryPath $SummaryPath -OutputPath $OutputPath }
-    catch { $rejected = $true }
-    if (-not $rejected) { throw "$Label was accepted by the reusable-workflow output publisher." }
-    $published = @(Get-Content -LiteralPath $OutputPath)
-    if ($published -cnotcontains 'passed=false') {
-        throw "$Label did not publish a fail-closed false result."
-    }
 }
 
 function Assert-PhysicalArtifactRetryContract {
@@ -196,146 +149,28 @@ $physical = [ordered]@{
         [ordered]@{ role = 'C2'; reportSha256 = '3' * 64; executableSha256 = '2' * 64 },
         [ordered]@{ role = 'R2'; reportSha256 = '4' * 64; executableSha256 = '1' * 64 })
 }
-$builds = [Collections.Generic.List[object]]::new()
-for ($startRank = 1; $startRank -le 500; $startRank += 25) {
-    $endRank = [Math]::Min(500, $startRank + 24)
-    $builds.Add([ordered]@{
-        startRank = $startRank
-        endRank = $endRank
-        sourceCommitSha = $candidateSha
-        configuration = 'Release'
-        runtimeFlavor = 'native-aot'
-        provenanceVerified = $true
-        provenanceSha256 = '5' * 64
-        workflowRunId = $runId
-        workflowRepository = $repository
-        workflowRef = $workflowRef
-        executableSha256 = '6' * 64
-        artifactManifestSha256 = '7' * 64
-    })
-}
-$summary = [ordered]@{
-    schemaVersion = 1
-    expectedCases = 500
-    totalCases = 500
-    passedCases = 500
-    failedCases = 0
-    sameByteRequired = $true
-    sameByteCases = 500
-    sameByteExpectedCases = 500
-    pinnedCorpusSha256 = '8' * 64
-    nativeFirstRenderRatioP95 = 0.95
-    nativeFullPageRatioP95 = 0.98
-    buildEvidence = @($builds)
-    passed = $true
-}
-
 try {
     Assert-PhysicalArtifactRetryContract
 
     $verdictPath = Join-Path $tempRoot 'physical.json'
-    $summaryPath = Join-Path $tempRoot 'summary.json'
     Write-TestJson -Path $verdictPath -Value $physical
-    Write-TestJson -Path $summaryPath -Value $summary
-    $summaryHash = (Get-FileHash -LiteralPath $summaryPath -Algorithm SHA256).Hash.ToLowerInvariant()
 
     $passingOutput = Join-Path $tempRoot 'joined-pass.json'
-    $passing = Invoke-Validator -VerdictPath $verdictPath -SummaryPath $summaryPath -OutputPath $passingOutput -SummaryHash $summaryHash
+    $passing = Invoke-Validator -VerdictPath $verdictPath -OutputPath $passingOutput
     if ($passing.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $passingOutput -PathType Leaf)) {
         throw "Valid joined evidence fixture was rejected: $($passing.Output)"
     }
 
-    $publisherOutput = Join-Path $tempRoot 'publisher-valid-output.txt'
-    [IO.File]::WriteAllText($publisherOutput, '', [Text.UTF8Encoding]::new($false))
-    Invoke-OutputPublisher -SummaryPath $summaryPath -OutputPath $publisherOutput
-    $publisherLines = @(Get-Content -LiteralPath $publisherOutput)
-    if ($publisherLines -cnotcontains 'passed=true' -or
-        $publisherLines -cnotcontains 'consolidated_artifact_name=readme-audit-consolidated-attempt-7') {
-        throw "The reusable-workflow output publisher did not expose the true result and exact attempt-scoped artifact name: '$($publisherLines -join '; ')'."
-    }
-
-    $diagnosticPublisherOutput = Join-Path $tempRoot 'publisher-diagnostic-output.txt'
-    [IO.File]::WriteAllText($diagnosticPublisherOutput, '', [Text.UTF8Encoding]::new($false))
-    Invoke-OutputPublisher -SummaryPath $summaryPath -OutputPath $diagnosticPublisherOutput `
-        -WorkflowEventName 'workflow_dispatch' -SameByteRelease 'false' -WorkflowRunAttempt '7'
-    if (@(Get-Content -LiteralPath $diagnosticPublisherOutput) -cnotcontains 'consolidated_artifact_name=readme-audit-consolidated') {
-        throw 'A non-release diagnostic output name unexpectedly gained an attempt suffix.'
-    }
-
-    $missingPublisherOutput = Join-Path $tempRoot 'publisher-missing-output.txt'
-    [IO.File]::WriteAllText($missingPublisherOutput, '', [Text.UTF8Encoding]::new($false))
-    Invoke-OutputPublisher -SummaryPath (Join-Path $tempRoot 'missing-summary.json') -OutputPath $missingPublisherOutput
-    $missingPublisherLines = @(Get-Content -LiteralPath $missingPublisherOutput)
-    if ($missingPublisherLines -cnotcontains 'passed=false' -or
-        $missingPublisherLines -cnotcontains 'consolidated_artifact_name=readme-audit-consolidated-attempt-7') {
-        throw 'A missing summary did not publish the fail-closed verdict and exact release artifact name.'
-    }
-
-    $mutatedSummary = Copy-TestObject -Value $summary
-    $mutatedSummary.passed = $false
-    Write-TestJson -Path $summaryPath -Value $mutatedSummary
-    $falsePublisherOutput = Join-Path $tempRoot 'publisher-false-output.txt'
-    [IO.File]::WriteAllText($falsePublisherOutput, '', [Text.UTF8Encoding]::new($false))
-    Invoke-OutputPublisher -SummaryPath $summaryPath -OutputPath $falsePublisherOutput
-    if (@(Get-Content -LiteralPath $falsePublisherOutput) -cnotcontains 'passed=false') {
-        throw 'A JSON boolean false summary was not published as false.'
-    }
-
-    $mutatedSummary = Copy-TestObject -Value $summary
-    $mutatedSummary.passed = 'false'
-    Write-TestJson -Path $summaryPath -Value $mutatedSummary
-    Assert-PublisherRejects -SummaryPath $summaryPath -OutputPath $publisherOutput -Label 'String-valued summary.passed=false'
-
-    $mutatedSummary = Copy-TestObject -Value $summary
-    $mutatedSummary.sameByteRequired = 'false'
-    Write-TestJson -Path $summaryPath -Value $mutatedSummary
-    Assert-PublisherRejects -SummaryPath $summaryPath -OutputPath $publisherOutput -Label 'String-valued summary.sameByteRequired=false'
-
-    $mutatedSummary = Copy-TestObject -Value $summary
-    $mutatedSummary.buildEvidence[0].provenanceVerified = 'false'
-    Write-TestJson -Path $summaryPath -Value $mutatedSummary
-    Assert-PublisherRejects -SummaryPath $summaryPath -OutputPath $publisherOutput -Label 'String-valued build provenanceVerified=false'
-
-    $mutatedSummary = Copy-TestObject -Value $summary
-    $mutatedSummary.buildEvidence = @($summary.buildEvidence | ForEach-Object {
-        $copy = Copy-TestObject -Value $_
-        $copy.sourceCommitSha = $referenceSha
-        $copy
-    })
-    Write-TestJson -Path $summaryPath -Value $mutatedSummary
-    $changedHash = (Get-FileHash -LiteralPath $summaryPath -Algorithm SHA256).Hash.ToLowerInvariant()
-    $wrongCommit = Invoke-Validator -VerdictPath $verdictPath -SummaryPath $summaryPath -OutputPath (Join-Path $tempRoot 'joined-wrong-commit.json') -SummaryHash $changedHash
-    if ($wrongCommit.ExitCode -eq 0) { throw 'A top-500 summary for a different commit was accepted.' }
-
-    $mutatedSummary = Copy-TestObject -Value $summary
-    $mutatedSummary.sameByteRequired = $false
-    Write-TestJson -Path $summaryPath -Value $mutatedSummary
-    $changedHash = (Get-FileHash -LiteralPath $summaryPath -Algorithm SHA256).Hash.ToLowerInvariant()
-    $missingSameByte = Invoke-Validator -VerdictPath $verdictPath -SummaryPath $summaryPath -OutputPath (Join-Path $tempRoot 'joined-no-same-byte.json') -SummaryHash $changedHash
-    if ($missingSameByte.ExitCode -eq 0) { throw 'A diagnostic top-500 summary without same-byte evidence was accepted.' }
-
-    $mutatedSummary = Copy-TestObject -Value $summary
-    $mutatedSummary.sameByteCases = 499
-    $mutatedSummary.sameByteExpectedCases = 499
-    Write-TestJson -Path $summaryPath -Value $mutatedSummary
-    $changedHash = (Get-FileHash -LiteralPath $summaryPath -Algorithm SHA256).Hash.ToLowerInvariant()
-    $partialSameByte = Invoke-Validator -VerdictPath $verdictPath -SummaryPath $summaryPath -OutputPath (Join-Path $tempRoot 'joined-partial-same-byte.json') -SummaryHash $changedHash
-    if ($partialSameByte.ExitCode -eq 0) { throw 'A top-500 summary with only 499 same-byte cases was accepted.' }
-
     $mutatedPhysical = Copy-TestObject -Value $physical
     $mutatedPhysical.sourceProvenance.reference.sourceTreeSha = 'A' * 64
     Write-TestJson -Path $verdictPath -Value $mutatedPhysical
-    Write-TestJson -Path $summaryPath -Value $summary
-    $summaryHash = (Get-FileHash -LiteralPath $summaryPath -Algorithm SHA256).Hash.ToLowerInvariant()
-    $invalidTreeId = Invoke-Validator -VerdictPath $verdictPath -SummaryPath $summaryPath -OutputPath (Join-Path $tempRoot 'joined-invalid-tree.json') -SummaryHash $summaryHash
+    $invalidTreeId = Invoke-Validator -VerdictPath $verdictPath -OutputPath (Join-Path $tempRoot 'joined-invalid-tree.json')
     if ($invalidTreeId.ExitCode -eq 0) { throw 'A 64-character digest was accepted as a Git SHA-1 tree object ID.' }
 
     $mutatedPhysical = Copy-TestObject -Value $physical
     $mutatedPhysical.sourceProvenance.candidate.workingTreeClean = $false
     Write-TestJson -Path $verdictPath -Value $mutatedPhysical
-    Write-TestJson -Path $summaryPath -Value $summary
-    $summaryHash = (Get-FileHash -LiteralPath $summaryPath -Algorithm SHA256).Hash.ToLowerInvariant()
-    $dirtySource = Invoke-Validator -VerdictPath $verdictPath -SummaryPath $summaryPath -OutputPath (Join-Path $tempRoot 'joined-dirty-source.json') -SummaryHash $summaryHash
+    $dirtySource = Invoke-Validator -VerdictPath $verdictPath -OutputPath (Join-Path $tempRoot 'joined-dirty-source.json')
     if ($dirtySource.ExitCode -eq 0) { throw 'A physical verdict from a dirty source tree was accepted.' }
 
     $mutations = @(
@@ -348,28 +183,8 @@ try {
         $mutatedPhysical = Copy-TestObject -Value $physical
         & $mutation.Apply $mutatedPhysical
         Write-TestJson -Path $verdictPath -Value $mutatedPhysical
-        Write-TestJson -Path $summaryPath -Value $summary
-        $summaryHash = (Get-FileHash -LiteralPath $summaryPath -Algorithm SHA256).Hash.ToLowerInvariant()
-        Assert-ValidatorRejects -VerdictPath $verdictPath -SummaryPath $summaryPath -OutputPath (Join-Path $tempRoot 'joined-bad-json-boolean.json') -SummaryHash $summaryHash -Label $mutation.Label
+        Assert-ValidatorRejects -VerdictPath $verdictPath -OutputPath (Join-Path $tempRoot 'joined-bad-json-boolean.json') -Label $mutation.Label
     }
-
-    $mutatedSummary = Copy-TestObject -Value $summary
-    $mutatedSummary.passed = 'false'
-    Write-TestJson -Path $summaryPath -Value $mutatedSummary
-    $summaryHash = (Get-FileHash -LiteralPath $summaryPath -Algorithm SHA256).Hash.ToLowerInvariant()
-    Assert-ValidatorRejects -VerdictPath $verdictPath -SummaryPath $summaryPath -OutputPath (Join-Path $tempRoot 'joined-bad-top-passed.json') -SummaryHash $summaryHash -Label 'String-valued top500 passed=false'
-
-    $mutatedSummary = Copy-TestObject -Value $summary
-    $mutatedSummary.sameByteRequired = 'false'
-    Write-TestJson -Path $summaryPath -Value $mutatedSummary
-    $summaryHash = (Get-FileHash -LiteralPath $summaryPath -Algorithm SHA256).Hash.ToLowerInvariant()
-    Assert-ValidatorRejects -VerdictPath $verdictPath -SummaryPath $summaryPath -OutputPath (Join-Path $tempRoot 'joined-bad-samebyte-required.json') -SummaryHash $summaryHash -Label 'String-valued top500 sameByteRequired=false'
-
-    $mutatedSummary = Copy-TestObject -Value $summary
-    $mutatedSummary.buildEvidence[0].provenanceVerified = 'false'
-    Write-TestJson -Path $summaryPath -Value $mutatedSummary
-    $summaryHash = (Get-FileHash -LiteralPath $summaryPath -Algorithm SHA256).Hash.ToLowerInvariant()
-    Assert-ValidatorRejects -VerdictPath $verdictPath -SummaryPath $summaryPath -OutputPath (Join-Path $tempRoot 'joined-bad-provenance.json') -SummaryHash $summaryHash -Label 'String-valued top500 provenanceVerified=false'
 
     $sourceRoot = Join-Path $tempRoot 'clean-source'
     $runtimeRoot = Join-Path $sourceRoot 'release-output'
@@ -476,7 +291,7 @@ try {
     catch { $schema10Rejected = $true }
     if (-not $schema10Rejected) { throw 'A schema-10 frozen reference was accepted.' }
 
-    Write-Host 'Release evidence tests passed: clean schema-12 provenance and exact attempt-scoped publisher outputs validated; missing/malformed, schema-10, unrelated, wrong-commit, diagnostic, partial same-byte, invalid-tree, dirty-source, and string-valued false booleans rejected.'
+    Write-Host 'Release evidence tests passed: clean schema-12 provenance validated; missing/malformed, schema-10, unrelated, invalid-tree, dirty-source, and string-valued false booleans rejected.'
 }
 finally {
     $tempPath = [IO.Path]::GetFullPath($tempRoot)

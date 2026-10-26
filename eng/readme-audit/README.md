@@ -67,43 +67,10 @@ browser-evidence reuse:
 .\eng\Invoke-TopReadmeAudit.ps1 -StartRank 1 -Count 1 -CaptureSameByteCorpus
 ```
 
-Pull-request and scheduled 500-case runs are live diagnostics. Their
-consolidated check is deliberately labeled **not release qualified** because
-they do not collect the mandatory same-byte Edge corpus. A green diagnostic
-check must not be used as the MarkdownRenderer 1.0 release verdict.
-
-For a qualified full same-byte release audit, open **Actions → Top 500 README
-browser parity → Run workflow**, select the renderer revision, and enable
-`same_byte_release`. Keep `diagnostic_rank` at `0`. This opt-in dispatch runs the
-same immutable 500-repository manifest through all twenty 25-repository shards,
-using one verified x64 NativeAOT publication of the shipping app for every
-shard. The canonical publish job writes a `native-aot-provenance.json` sidecar
-only after checking that the source commit matches the workflow revision and
-the checkout is clean. The sidecar hashes every published payload file; each
-shard records and rechecks that sidecar, its workflow run/repository/ref, and
-the complete app file map. The final merge requires exact 25-rank shard
-boundaries, full 1–500 coverage, one shared sidecar hash, and one shared
-workflow identity. A local NativeAOT run without that canonical sidecar may
-still collect diagnostics, but is explicitly unqualified and cannot satisfy
-the release merge. The merge rejects managed app evidence and any per-shard executable
-or complete published-artifact file/hash drift, even when the source commit is
-identical. Hidden managed-runtime payloads and reparse-point entries are
-rejected by the NativeAOT verifier and its CI mutation tests. The audit harness is
-built separately on every invocation, including `-SkipBuild`, so a stale
-RID-specific runner cannot enforce an older evidence contract. Neither its
-managed runtime nor the legacy GitHub-HTML replay is the native performance
-candidate. The dispatch captures fresh Edge response
-bytes for every available pinned README, and makes
-the final merge require same-byte evidence for each such case. It also requires
-the complete rank set, clean native exits, zero unavailable or still-loading
-native images, aggregate first-render and full-page p95 no greater than 110% of
-Edge, and individually checks the previously slow ranks 60 and 203 against that
-same 110% ceiling. A focused rank replay, a mixed set of results with and
-without same-byte capture, or a partial 500-case result cannot pass this release
-path.
-For each rendered case, the merge recomputes the first-render and full-page
-ratios from native and offline Edge timings and rejects missing, non-finite,
-non-positive, or inconsistent stored ratios.
+This audit is a local developer tool; it does not run in CI. It compares
+JitHub's rendering with GitHub's in Edge by text and structure thresholds and
+is a quality check, not a correctness gate. The correctness audit of the
+frozen corpus is `eng/Invoke-TopReadmeSandboxCorrectnessAudit.ps1`.
 
 Capture pins README source bytes to the manifest's Git blob SHA and records
 completed visible Edge image responses as content-addressed files. If a raw
@@ -128,7 +95,7 @@ to 256 MiB. Schema version 2 pins the raw README SHA-256 and captures a
 32-MiB-bounded static `article.markdown-body` snapshot with computed presentation
 styles and indexed image routes. `rendered.html` is private, capture-only input:
 it may contain authored links or embedded data-image bytes, so it must never be
-uploaded as a workflow artifact. The manifest stores only its size/hash and
+shared or uploaded. The manifest stores only its size/hash and
 content-addressed route metadata. GitHub's captured image MIME is canonicalized
 from bounded payload signatures; unknown payloads fail closed. READMEs shown by
 GitHub as source have an explicit `browserRender.status: "not-applicable"`
@@ -227,12 +194,11 @@ frame equivalence: native timing charges `ChangeView` through its non-intermedia
 image-ready work remains charged. Edge charges each movement through its first
 target-matching sample and keeps image-decode work, without asserting that an
 rAF callback maps to a particular native paint event.
-Workflow shard artifacts retain
-manifests, reports, and raster screenshots/tiles for 14 days. Those images are
+Run directories keep
+manifests, reports, and raster screenshots/tiles. Those images are
 intentional visual evidence for public READMEs and can visibly show their text
-and images. The artifact excludes the raw `rendered.html`, `readme.md`, and
-`assets/**` corpus payload files; that exclusion does not mean the raster
-evidence is free of visible README content.
+and images. Keep the raw `rendered.html`, `readme.md`, and `assets/**` corpus payload
+files private; the raster evidence still shows visible README content.
 
 The standalone runner can also be used against an existing case corpus after
 the native viewport is known:
@@ -251,8 +217,7 @@ it binds only to IPv4 loopback and returns 404 for an uncaptured source.
 Process-free helper unit tests inject the process executor and exercise the
 exported generator logic against temporary files. They do not prove Windows
 process launch or browser replay. The distinct `*.integration.test.mjs` files
-retain real scoped PowerShell cleanup and Node CLI-launch assertions; the CI
-workflow explicitly requires these files alongside the same-byte Edge tests.
+retain real scoped PowerShell cleanup and Node CLI-launch assertions.
 An execution restriction such as `spawn EPERM` fails that integration partition
 and cannot be treated as browser or release qualification.
 Profile cleanup parses Windows command-line arguments and accepts only one
@@ -301,25 +266,6 @@ extra synchronous event/file work deliberately stays **off** in ordinary
 top-500 and release benchmark runs; diagnostic timings are not qualifying
 performance results.
 
-To reproduce an intermittent hosted-runner image stall, manually dispatch
-`Top 500 README browser parity` on the renderer branch with a nonzero
-`diagnostic_rank`. Supply `diagnostic_corpus_run_id` from a top-500 audit
-containing the pinned corpus and `diagnostic_repeats` from 1–5. A dispatch
-with rank zero still runs the entire 500-case release audit. The focused job
-downloads and validates that run's exact immutable README manifest. It uses
-the same pinned Windows App Runtime as the normal audit, builds Release once,
-and uploads all attempts'
-diagnostics even if a replay fails. Enable raster stage tracing only for raster
-stalls; SVG worker timeout stages are recorded without it. This preserves the
-original rank/README bytes, though externally served image bytes must still
-be compared by the recorded source hashes; the workflow does not freeze CDN
-responses. The focused reruns are strictly diagnostic, never a qualifying
-Edge timing or 500/500 result.
-If a failure occurs only after earlier cases in a shard, set
-`diagnostic_prior_cases` to 1–4 to replay those immediately preceding ranks
-before the target rank in every attempt. The default is zero, preserving the
-single-rank diagnostic; this context option does not skip or waive any case.
-
 Prerequisites are an interactive unlocked Windows desktop, Microsoft Edge, Node.js 22 or newer, and an authenticated GitHub CLI session. The runner passes the current GitHub token only to isolated audit child processes and never persists it in evidence.
 
 Native first-render timing is the Markdown host-ready to render-complete
@@ -356,28 +302,21 @@ replaced by a lower-ranked repository. The audit requires both GitHub and JitHub
 to expose no rendered README for that immutable commit, while still enforcing
 clean startup, navigation, and shutdown.
 
-Manifest API calls use the workflow token normally. If a public repository's
+Manifest API calls use the GitHub CLI token. If a public repository's
 organization IP allow list rejects that token, the generator falls back only
 that request to GitHub's unauthenticated public API. Other authorization errors
 remain fatal, and only an explicit README 404 is treated as an absent README.
-If GitHub rate-limits public metadata or its ephemeral Actions token is
-temporarily unavailable to the GitHub CLI, CI may use the checked-in immutable
+If GitHub rate-limits public metadata, the generator may use the checked-in immutable
 `pinned-top500.json` snapshot only after validating its
 schema, age (14 days or newer), exact rank coverage, uniqueness, commit/blob
 identities, and trusted GitHub URLs. No repository is skipped or substituted;
 stale or malformed fallback data fails the corpus job.
 
-The scheduled/manual workflow runs twenty isolated 25-repository shards and then
-requires a consolidated, duplicate-free set of ranks 1–500. Missing shards or
-case files fail the final job; a partial run cannot be reported as a top-500
-pass. Smaller shards bound each hosted runner's lifetime and narrow the
-diagnostic range if a runner disappears before its evidence upload.
-
 JitHub's audit build remains framework-dependent, matching the production
-deployment model. Each hosted runner installs the exact x64 Windows App Runtime
+deployment model. The audit installs the exact x64 Windows App Runtime
 1.8.10 release used by the app through Microsoft's silent installer, after
 verifying its pinned SHA-256. Native launch failures preserve isolated startup
-phase/error logs and abort the shard immediately because they occur before any
+phase/error logs and abort the run immediately because they occur before any
 repository-specific work and cannot produce meaningful per-case comparisons.
 
 `Test-WinAppManifestOverrideSandbox.ps1` verifies that WinApp CLI `run

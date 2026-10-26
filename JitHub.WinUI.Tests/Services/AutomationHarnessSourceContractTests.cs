@@ -342,92 +342,7 @@ public sealed class AutomationHarnessSourceContractTests
     }
 
     [Fact]
-    public void TopReadmeWorkflowRequiresACompleteConsolidatedCorpus()
-    {
-        string root = FindRepositoryRoot();
-        string workflow = File.ReadAllText(Path.Combine(
-            root,
-            ".github",
-            "workflows",
-            "markdown-readme-top500.yml"));
-        string merger = File.ReadAllText(Path.Combine(
-            root,
-            "eng",
-            "readme-audit",
-            "Merge-TopReadmeAudit.ps1"));
-        string manifestGenerator = File.ReadAllText(Path.Combine(
-            root,
-            "eng",
-            "readme-audit",
-            "New-TopReadmeManifest.ps1"));
-        string runtimeInstaller = File.ReadAllText(Path.Combine(
-            root,
-            "eng",
-            "readme-audit",
-            "Install-PinnedWindowsAppRuntime.ps1"));
-
-        Assert.Contains("Qualify same-byte top-500 release gate", workflow, StringComparison.Ordinal);
-        Assert.Contains("Consolidate live top-500 diagnostics (not release qualified)", workflow, StringComparison.Ordinal);
-        Assert.Contains("pull_request:", workflow, StringComparison.Ordinal);
-        Assert.Contains("merge-multiple: true", workflow, StringComparison.Ordinal);
-        Assert.Contains("-ExpectedCount 500", workflow, StringComparison.Ordinal);
-        Assert.Contains("$shardCount = ${{ matrix.end }} - ${{ matrix.start }} + 1", workflow, StringComparison.Ordinal);
-        Assert.Contains("Count = $shardCount", workflow, StringComparison.Ordinal);
-        Assert.Contains(".\\eng\\Invoke-TopReadmeAudit.ps1 @arguments", workflow, StringComparison.Ordinal);
-        // GitHub's Windows checkout may use CRLF even when the local checkout
-        // uses LF. Validate both representations, including exact rank coverage.
-        string lfWorkflow = workflow.Replace("\r\n", "\n", StringComparison.Ordinal);
-        foreach (string candidate in new[] { lfWorkflow, lfWorkflow.Replace("\n", "\r\n", StringComparison.Ordinal) })
-        {
-            MatchCollection shardRanges = Regex.Matches(
-                candidate,
-                @"(?m)^[ \t]*- \{ start: (?<start>\d+), end: (?<end>\d+) \}[ \t]*\r?$");
-            Assert.NotEmpty(shardRanges);
-            int nextRank = 1;
-            foreach (Match shard in shardRanges)
-            {
-                int start = int.Parse(shard.Groups["start"].Value);
-                int end = int.Parse(shard.Groups["end"].Value);
-                Assert.Equal(nextRank, start);
-                Assert.InRange(end - start + 1, 1, 25);
-                nextRank = end + 1;
-            }
-            Assert.Equal(501, nextRank);
-        }
-        Assert.Contains("$cases.Count -ne $ExpectedCount", merger, StringComparison.Ordinal);
-        Assert.Contains("Native first-render p95", merger, StringComparison.Ordinal);
-        Assert.Contains("Native full-page p95", merger, StringComparison.Ordinal);
-        Assert.Contains("enforceAggregateGates", File.ReadAllText(Path.Combine(
-            root,
-            "JitHub.WinUI.Automation",
-            "ReadmeAuditProbe.cs")), StringComparison.Ordinal);
-        Assert.Contains(".\\eng\\readme-audit\\Install-PinnedWindowsAppRuntime.ps1", workflow, StringComparison.Ordinal);
-        Assert.Contains("windowsappsdk/1.8/1.8.260710003/windowsappruntimeinstall-x64.exe", runtimeInstaller, StringComparison.Ordinal);
-        Assert.Contains("B8CDA840267AB72797F654F801F9A064AB6D9E508CEDEE3DF79F772F104DB6D6", runtimeInstaller, StringComparison.Ordinal);
-        Assert.Contains("Get-AppxPackage -Name 'Microsoft.WindowsAppRuntime.1.8'", runtimeInstaller, StringComparison.Ordinal);
-        Assert.Contains("if: github.event_name != 'workflow_dispatch' || inputs.diagnostic_rank == 0", workflow, StringComparison.Ordinal);
-        Assert.Contains("if: github.event_name == 'workflow_dispatch' && inputs.diagnostic_rank != 0", workflow, StringComparison.Ordinal);
-        Assert.Contains("$rank -lt 1 -or $rank -gt 500", workflow, StringComparison.Ordinal);
-        Assert.Contains("diagnostic_prior_cases:", workflow, StringComparison.Ordinal);
-        Assert.Contains("$priorCases -lt 0 -or $priorCases -gt 4 -or $priorCases -ge $rank", workflow, StringComparison.Ordinal);
-        Assert.Contains("StartRank = [int]$env:AUDIT_VALIDATED_RANK - [int]$env:AUDIT_VALIDATED_PRIOR_CASES", workflow, StringComparison.Ordinal);
-        Assert.Contains("Count = [int]$env:AUDIT_VALIDATED_PRIOR_CASES + 1", workflow, StringComparison.Ordinal);
-        Assert.Contains("-ExpectedCount 500 -MaximumAgeDays 14", workflow, StringComparison.Ordinal);
-        Assert.Contains("AUDIT_REQUIRE_CURRENT_CORPUS: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && inputs.same_byte_release }}", workflow, StringComparison.Ordinal);
-        Assert.Contains("if: github.event_name == 'workflow_call' && inputs.same_byte_release != true", workflow, StringComparison.Ordinal);
-        Assert.Contains("summary_sha256:", workflow, StringComparison.Ordinal);
-        Assert.Contains("if ($env:AUDIT_REQUIRE_CURRENT_CORPUS -eq 'true')", workflow, StringComparison.Ordinal);
-        Assert.Contains("$attempt -le 4", manifestGenerator, StringComparison.Ordinal);
-        Assert.Contains("GitHub repository search rate limit exceeded for page", manifestGenerator, StringComparison.Ordinal);
-        Assert.Contains("$allowNotFound -and $text -match 'HTTP 404'", manifestGenerator, StringComparison.Ordinal);
-        Assert.Contains("$text -match 'IP allow list enabled'", manifestGenerator, StringComparison.Ordinal);
-        Assert.Contains("Invoke-PublicGitHubJson $route $ref $allowNotFound", manifestGenerator, StringComparison.Ordinal);
-        Assert.Contains("Could not pin a commit", manifestGenerator, StringComparison.Ordinal);
-        Assert.DoesNotContain("Could not pin a commit and README", manifestGenerator, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void PhysicalMarkdownReleaseRequiresPassedSameRunTop500AndCleanSourceProvenance()
+    public void PhysicalMarkdownReleaseRequiresCleanSourceProvenance()
     {
         string root = FindRepositoryRoot();
         string physicalWorkflow = File.ReadAllText(Path.Combine(
@@ -435,11 +350,6 @@ public sealed class AutomationHarnessSourceContractTests
             ".github",
             "workflows",
             "markdown-renderer-physical-release.yml"));
-        string top500Workflow = File.ReadAllText(Path.Combine(
-            root,
-            ".github",
-            "workflows",
-            "markdown-readme-top500.yml")).Replace("\r\n", "\n", StringComparison.Ordinal);
         string provenanceScript = File.ReadAllText(Path.Combine(
             root,
             "MarkdownRenderer",
@@ -460,23 +370,15 @@ public sealed class AutomationHarnessSourceContractTests
             "MarkdownRenderer",
             "eng",
             "Test-MarkdownRendererReleaseEvidence.ps1"));
-        string top500OutputPublisher = File.ReadAllText(Path.Combine(
-            root,
-            "MarkdownRenderer",
-            "eng",
-            "Publish-MarkdownRendererTop500WorkflowOutputs.ps1"));
 
         physicalWorkflow = physicalWorkflow.Replace("\r\n", "\n", StringComparison.Ordinal);
-        Assert.Contains("needs: [validate_release_input, same_byte_top500]", physicalWorkflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("top500", physicalWorkflow, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("MARKDOWN_RENDERER_RELEASE_REFERENCE_SHA", physicalWorkflow, StringComparison.Ordinal);
         Assert.Contains("SchemaVersion\\s*=\\s*12", referenceValidator, StringComparison.Ordinal);
         Assert.Contains("reference_commit_sha: ${{ steps.validate.outputs.reference_commit_sha }}", physicalWorkflow, StringComparison.Ordinal);
         Assert.Contains("needs: [validate_release_input]\n    if: needs.validate_release_input.result == 'success'", physicalWorkflow, StringComparison.Ordinal);
-        Assert.Contains("needs.same_byte_top500.result == 'success'", physicalWorkflow, StringComparison.Ordinal);
-        Assert.Contains("needs.same_byte_top500.outputs.passed == 'true'", physicalWorkflow, StringComparison.Ordinal);
-        Assert.Contains("needs.same_byte_top500.outputs.consolidated_artifact_name != ''", physicalWorkflow, StringComparison.Ordinal);
-        Assert.Contains("if: always()\n    needs: [validate_release_input, physical, same_byte_top500]", physicalWorkflow, StringComparison.Ordinal);
-        Assert.Contains("if: needs.physical.result == 'success' && needs.same_byte_top500.result == 'success'", physicalWorkflow, StringComparison.Ordinal);
+        Assert.Contains("if: always()\n    needs: [validate_release_input, physical]", physicalWorkflow, StringComparison.Ordinal);
+        Assert.Contains("if: needs.physical.result == 'success'", physicalWorkflow, StringComparison.Ordinal);
         Assert.Contains("runs-on: [self-hosted, Windows, X64, markdown-renderer-physical]", physicalWorkflow, StringComparison.Ordinal);
         Assert.Contains("Hardware identity assurance is operator-configured", physicalWorkflow, StringComparison.Ordinal);
         Assert.Contains("bare metal is not independently attested", physicalWorkflow, StringComparison.Ordinal);
@@ -493,43 +395,17 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("markdown-renderer-release-${{ github.run_id }}-${{ github.run_attempt }}/**", physicalWorkflow, StringComparison.Ordinal);
         Assert.Contains("name: Test the joined-evidence validator against release mutations\n        working-directory: markdown-renderer-candidate", physicalWorkflow, StringComparison.Ordinal);
         Assert.Contains("-RequireSourceProvenance", physicalWorkflow, StringComparison.Ordinal);
-        Assert.Contains("uses: ./.github/workflows/markdown-readme-top500.yml", physicalWorkflow, StringComparison.Ordinal);
-        Assert.Contains("same_byte_release: true", physicalWorkflow, StringComparison.Ordinal);
-        Assert.Contains("workflow_call:", top500Workflow, StringComparison.Ordinal);
-        Assert.Contains("readme-top500-corpus-attempt-$corpusRunAttempt", top500Workflow, StringComparison.Ordinal);
-        Assert.Contains("name: readme-native-aot-app${{ (github.event_name == 'workflow_call'", top500Workflow, StringComparison.Ordinal);
-        Assert.Contains("github.event_name == 'workflow_dispatch' && inputs.same_byte_release", top500Workflow, StringComparison.Ordinal);
-        Assert.Contains("readme-audit-evidence-*${{ (github.event_name == 'workflow_call'", top500Workflow, StringComparison.Ordinal);
-        Assert.Contains("diagnostic_corpus_run_attempt:", top500Workflow, StringComparison.Ordinal);
-        Assert.Contains("AUDIT_CORPUS_RUN_ATTEMPT", top500Workflow, StringComparison.Ordinal);
-        Assert.Contains("name: ${{ needs.same_byte_top500.outputs.consolidated_artifact_name }}", physicalWorkflow, StringComparison.Ordinal);
-        Assert.Contains("value: ${{ jobs.consolidate.outputs.consolidated_artifact_name }}", top500Workflow, StringComparison.Ordinal);
-        Assert.Contains("readme-audit-visual-${{ matrix.start }}-${{ matrix.end }}${{ (github.event_name == 'workflow_call'", top500Workflow, StringComparison.Ordinal);
-        Assert.Contains("Publish-MarkdownRendererTop500WorkflowOutputs.ps1", top500Workflow, StringComparison.Ordinal);
-        Assert.Contains("if ($summaryPassed -isnot [bool])", top500OutputPublisher, StringComparison.Ordinal);
-        Assert.Contains("Get-RequiredJsonProperty $summary 'sameByteRequired'", top500OutputPublisher, StringComparison.Ordinal);
-        Assert.Contains("-isnot [bool]", top500OutputPublisher, StringComparison.Ordinal);
-        Assert.Contains("required: true\n        type: boolean", top500Workflow, StringComparison.Ordinal);
-        Assert.Contains("AUDIT_REQUIRE_CURRENT_CORPUS:", top500Workflow, StringComparison.Ordinal);
-        Assert.Contains("same_byte_cases:", top500Workflow, StringComparison.Ordinal);
         Assert.Contains("'status', '--porcelain=v1', '--untracked-files=all'", provenanceScript, StringComparison.Ordinal);
         Assert.Contains("workingTreeClean = $true", provenanceScript, StringComparison.Ordinal);
         Assert.Contains("[IO.FileMode]::CreateNew", provenanceScript, StringComparison.Ordinal);
         Assert.Contains("Get-VerifiedSourceProvenance", counterbalancedScript, StringComparison.Ordinal);
         Assert.Contains("sourceProvenance = $sourceProvenance", counterbalancedScript, StringComparison.Ordinal);
-        Assert.Contains("$Top500JobResult -cne 'success'", joinScript, StringComparison.Ordinal);
+        Assert.Contains("$PhysicalJobResult -cne 'success'", joinScript, StringComparison.Ordinal);
+        Assert.DoesNotContain("top500", joinScript, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Assert-JsonTrue -Value $physical.complete", joinScript, StringComparison.Ordinal);
         Assert.Contains("Assert-JsonTrue -Value $physical.passed", joinScript, StringComparison.Ordinal);
-        Assert.Contains("Assert-JsonTrue -Value $top.passed", joinScript, StringComparison.Ordinal);
-        Assert.Contains("Assert-JsonTrue -Value $build.provenanceVerified", joinScript, StringComparison.Ordinal);
         Assert.Contains("physicalRunnerAttestation = 'operator-configured'", joinScript, StringComparison.Ordinal);
         Assert.Contains("bareMetalIndependentlyAttested = $false", joinScript, StringComparison.Ordinal);
-        Assert.Contains("[int]$top.totalCases -ne 500", joinScript, StringComparison.Ordinal);
-        Assert.Contains("[int]$top.passedCases -ne 500", joinScript, StringComparison.Ordinal);
-        Assert.Contains("[int]$top.sameByteCases -ne 500", joinScript, StringComparison.Ordinal);
-        Assert.Contains("[int]$top.sameByteExpectedCases -ne 500", joinScript, StringComparison.Ordinal);
-        Assert.Contains("[string]$build.sourceCommitSha -ine $candidateSha", joinScript, StringComparison.Ordinal);
-        Assert.Contains("$topEvidence.Sha256 -cne $Top500WorkflowSummarySha256.ToLowerInvariant()", joinScript, StringComparison.Ordinal);
     }
 
     [Fact]

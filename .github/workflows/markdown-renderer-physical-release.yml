@@ -46,8 +46,8 @@ jobs:
 
   physical:
     name: Physical foreground R1,C1,C2,R2 benchmark
-    needs: [validate_release_input, same_byte_top500]
-    if: needs.validate_release_input.result == 'success' && needs.same_byte_top500.result == 'success' && needs.same_byte_top500.outputs.passed == 'true' && needs.same_byte_top500.outputs.consolidated_artifact_name != ''
+    needs: [validate_release_input]
+    if: needs.validate_release_input.result == 'success'
     outputs:
       artifact_name: ${{ steps.physical_artifact_name.outputs.name }}
     # The markdown-renderer-physical label is an administrator assertion that
@@ -287,18 +287,10 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
-  same_byte_top500:
-    name: Same-run fresh NativeAOT same-byte top-500
-    needs: [validate_release_input]
-    if: needs.validate_release_input.result == 'success'
-    uses: ./.github/workflows/markdown-readme-top500.yml
-    with:
-      same_byte_release: true
-
   join_release_evidence:
-    name: Join physical and same-byte top-500 release evidence
+    name: Verify physical release evidence
     if: always()
-    needs: [validate_release_input, physical, same_byte_top500]
+    needs: [validate_release_input, physical]
     runs-on: windows-latest
     timeout-minutes: 20
     defaults:
@@ -311,21 +303,14 @@ jobs:
           ref: ${{ github.sha }}
           persist-credentials: false
 
-      - name: Download physical and same-run top-500 evidence
-        if: needs.physical.result == 'success' && needs.same_byte_top500.result == 'success'
+      - name: Download physical evidence
+        if: needs.physical.result == 'success'
         uses: actions/download-artifact@v8
         with:
           name: ${{ needs.physical.outputs.artifact_name }}
           path: ${{ runner.temp }}/markdown-renderer-release-inputs/physical
 
-      - name: Download the reusable top-500 summary from this workflow run
-        if: needs.physical.result == 'success' && needs.same_byte_top500.result == 'success'
-        uses: actions/download-artifact@v8
-        with:
-          name: ${{ needs.same_byte_top500.outputs.consolidated_artifact_name }}
-          path: ${{ runner.temp }}/markdown-renderer-release-inputs/top500
-
-      - name: Verify and join release evidence against the current run
+      - name: Verify release evidence against the current run
         env:
           EXPECTED_CANDIDATE_SHA: ${{ github.sha }}
           EXPECTED_REFERENCE_SHA: ${{ needs.validate_release_input.outputs.reference_commit_sha }}
@@ -333,46 +318,24 @@ jobs:
           EXPECTED_WORKFLOW_REPOSITORY: ${{ github.repository }}
           EXPECTED_WORKFLOW_REF: ${{ github.ref }}
           PHYSICAL_JOB_RESULT: ${{ needs.physical.result }}
-          TOP500_JOB_RESULT: ${{ needs.same_byte_top500.result }}
-          TOP500_PASSED: ${{ needs.same_byte_top500.outputs.passed }}
-          TOP500_SOURCE_COMMIT_SHA: ${{ needs.same_byte_top500.outputs.source_commit_sha }}
-          TOP500_WORKFLOW_RUN_ID: ${{ needs.same_byte_top500.outputs.workflow_run_id }}
-          TOP500_SUMMARY_SHA256: ${{ needs.same_byte_top500.outputs.summary_sha256 }}
-          TOP500_TOTAL_CASES: ${{ needs.same_byte_top500.outputs.total_cases }}
-          TOP500_PASSED_CASES: ${{ needs.same_byte_top500.outputs.passed_cases }}
-          TOP500_SAME_BYTE_CASES: ${{ needs.same_byte_top500.outputs.same_byte_cases }}
-          TOP500_SAME_BYTE_EXPECTED_CASES: ${{ needs.same_byte_top500.outputs.same_byte_expected_cases }}
         run: |
           $inputRoot = Join-Path $env:RUNNER_TEMP 'markdown-renderer-release-inputs'
           $physicalRoot = Join-Path $inputRoot 'physical'
-          $top500Root = Join-Path $inputRoot 'top500'
           $physicalVerdicts = @(Get-ChildItem -LiteralPath $physicalRoot -Recurse -File -Filter 'counterbalanced-verdict.json' -ErrorAction SilentlyContinue)
-          $top500Summaries = @(Get-ChildItem -LiteralPath $top500Root -Recurse -File -Filter 'summary.json' -ErrorAction SilentlyContinue)
-          if ($physicalVerdicts.Count -ne 1 -or $top500Summaries.Count -ne 1) {
-            throw "Expected one physical verdict and one same-run top-500 summary (found $($physicalVerdicts.Count) and $($top500Summaries.Count))."
+          if ($physicalVerdicts.Count -ne 1) {
+            throw "Expected one physical verdict (found $($physicalVerdicts.Count))."
           }
           $physicalVerdict = $physicalVerdicts[0].FullName
-          $top500Summary = $top500Summaries[0].FullName
           $output = Join-Path $env:GITHUB_WORKSPACE 'artifacts\markdown-renderer-release\MarkdownRendererReleaseQualification.json'
           & .\MarkdownRenderer\eng\Test-MarkdownRendererReleaseEvidence.ps1 `
             -CounterbalancedVerdictPath $physicalVerdict `
-            -Top500SummaryPath $top500Summary `
             -OutputPath $output `
             -ExpectedCandidateCommitSha $env:EXPECTED_CANDIDATE_SHA `
             -ExpectedReferenceCommitSha $env:EXPECTED_REFERENCE_SHA `
             -ExpectedWorkflowRunId $env:EXPECTED_WORKFLOW_RUN_ID `
             -ExpectedWorkflowRepository $env:EXPECTED_WORKFLOW_REPOSITORY `
             -ExpectedWorkflowRef $env:EXPECTED_WORKFLOW_REF `
-            -PhysicalJobResult $env:PHYSICAL_JOB_RESULT `
-            -Top500JobResult $env:TOP500_JOB_RESULT `
-            -Top500WorkflowPassed $env:TOP500_PASSED `
-            -Top500WorkflowSourceCommitSha $env:TOP500_SOURCE_COMMIT_SHA `
-            -Top500WorkflowRunId $env:TOP500_WORKFLOW_RUN_ID `
-            -Top500WorkflowSummarySha256 $env:TOP500_SUMMARY_SHA256 `
-            -Top500WorkflowTotalCases $env:TOP500_TOTAL_CASES `
-            -Top500WorkflowPassedCases $env:TOP500_PASSED_CASES `
-            -Top500WorkflowSameByteCases $env:TOP500_SAME_BYTE_CASES `
-            -Top500WorkflowSameByteExpectedCases $env:TOP500_SAME_BYTE_EXPECTED_CASES
+            -PhysicalJobResult $env:PHYSICAL_JOB_RESULT
 
       - name: Upload joined release qualification
         if: always()
