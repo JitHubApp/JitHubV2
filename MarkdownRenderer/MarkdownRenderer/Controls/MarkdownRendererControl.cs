@@ -282,6 +282,10 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     private Layout.FocusableItem _pendingSpatialFocusOrigin;
     private long _pendingSpatialFocusGeneration;
     private bool _pendingFocusGeometryRefresh;
+    // P1-042: counts explicit scroll requests so a delayed focus reveal
+    // never overrides a newer one, even before its view change applies.
+    private long _viewportRequestSerial;
+    private FocusRevealOrigin? _focusReveal;
     private bool _hasPendingFocusResumePoint;
     private Point _pendingFocusResumePoint;
     private long _pendingFocusResumeGeneration;
@@ -2000,7 +2004,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         _pendingLazyFocus = null;
         _focusedItemIndex = index;
         _focusResumeItemIndex = -1;
-        ScrollFocusedItemIntoView();
+        BeginFocusedItemReveal();
         bool focused = Focus(FocusState.Programmatic);
         UpdateFocusRing();
         NotifyFocusedItemAutomation();
@@ -2017,7 +2021,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         _pendingLazyFocus = null;
         _focusedItemIndex = index;
         _focusResumeItemIndex = -1;
-        ScrollFocusedItemIntoView();
+        BeginFocusedItemReveal();
         bool focused = Focus(FocusState.Programmatic);
         UpdateFocusRing();
         NotifyFocusedItemAutomation();
@@ -2032,7 +2036,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         _pendingLazyFocus = null;
         _focusedItemIndex = index;
         _focusResumeItemIndex = -1;
-        ScrollFocusedItemIntoView();
+        BeginFocusedItemReveal();
         bool focused = Focus(FocusState.Programmatic);
         UpdateFocusRing();
         NotifyFocusedItemAutomation();
@@ -2293,6 +2297,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     {
         if (_scroll is null || amount == ScrollAmount.NoAmount)
             return;
+        NoteViewportRequest();
 
         double delta = amount switch
         {
@@ -2311,6 +2316,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     {
         if (_scroll is null)
             return;
+        NoteViewportRequest();
 
         double maximum = Math.Max(0, _scroll.ExtentHeight - _scroll.ViewportHeight);
         double target = maximum * (Math.Clamp(percent, 0, 100) / 100);
@@ -3015,6 +3021,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
 
     internal void ScrollDocumentRectIntoView(Windows.Foundation.Rect rect, bool alignToTop)
     {
+        NoteViewportRequest();
         if (_scroll is null)
         {
             BringDocumentRectIntoExternalViewport(rect, animate: false, alignToTop ? 0 : 0.5);
@@ -14334,6 +14341,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     /// </summary>
     public void ScrollToBlock(int blockIndex)
     {
+        NoteViewportRequest();
         if (_snapshot is not { } snapshot) return;
         long snapshotGeneration = Volatile.Read(ref _snapshotGeneration);
         SnapshotBlockScrollTargetState targetState = snapshot.TryCaptureBlockScrollTarget(
@@ -14976,7 +14984,10 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             if (_pendingFocusGeometryRefresh && _pendingSpatialFocusKeys.Count == 0)
             {
                 _pendingFocusGeometryRefresh = false;
-                _ = ScrollFocusedItemIntoView();
+                // P1-042: a reveal waiting for settled geometry must not
+                // override a scroll the user requested since focus moved.
+                if (IsFocusRevealCurrent())
+                    _ = ScrollFocusedItemIntoView();
                 UpdateFocusRing();
             }
         }
@@ -15146,7 +15157,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         }
 
         _pendingLazyFocus = null;
-        bool scrolled = ScrollFocusedItemIntoView();
+        bool scrolled = BeginFocusedItemReveal();
         FocusCurrentItem(reverse);
         if (scrolled)
         {
@@ -15770,6 +15781,29 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     }
 
     /// <summary>Scrolls the focused item into view if it's outside the current viewport.</summary>
+    /// <summary>Records an explicit scroll request; pending focus reveals yield to it.</summary>
+    private void NoteViewportRequest() => _viewportRequestSerial++;
+
+    /// <summary>
+    /// Starts revealing the focused item from the current viewport. Geometry
+    /// retries continue it only while <see cref="IsFocusRevealCurrent"/> holds.
+    /// </summary>
+    private bool BeginFocusedItemReveal()
+    {
+        TryGetViewport(out double top, out _, out _);
+        _focusReveal = new FocusRevealOrigin(_viewportRequestSerial, top, null);
+        return ScrollFocusedItemIntoView();
+    }
+
+    private bool IsFocusRevealCurrent()
+    {
+        TryGetViewport(out double top, out _, out _);
+        if (FocusRevealPolicy.IsCurrent(_focusReveal, _viewportRequestSerial, top))
+            return true;
+        _focusReveal = null;
+        return false;
+    }
+
     private bool ScrollFocusedItemIntoView()
     {
         var items = _focusableItems;
@@ -15901,22 +15935,34 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         if (GetCurrentFocusableIdentity() is not { } current ||
             !SameFocusableIdentity(current, item))
             return;
+        if (!IsFocusRevealCurrent())
+            return;
 
         TryGetViewport(out double top, out double viewportHeight, out _);
         double bottom = top + viewportHeight;
         const double margin = 24.0;
+        double? revealTop = null;
         if (rect.Top < top + margin)
         {
+            revealTop = _scroll is not null ? Math.Max(0, rect.Top - margin) : rect.Top;
             _ = _scroll is not null
                 ? _scroll.ChangeView(null, Math.Max(0, rect.Top - margin), null, disableAnimation: false)
                 : BringDocumentRectIntoExternalViewport(rect, animate: true);
         }
         else if (rect.Bottom > bottom - margin)
         {
+            revealTop = _scroll is not null
+                ? rect.Bottom - viewportHeight + margin
+                : rect.Bottom - viewportHeight;
             _ = _scroll is not null
                 ? _scroll.ChangeView(null, rect.Bottom - viewportHeight + margin, null, disableAnimation: false)
                 : BringDocumentRectIntoExternalViewport(rect, animate: true, alignmentRatio: 1);
         }
+        // The reveal's own animated scroll toward this top keeps it current.
+        // Owned: ChangeView's target. Ancestor: StartBringIntoView aligns the
+        // rect's top (ratio 0) or bottom (ratio 1) to the viewport edge.
+        if (revealTop is { } requested && _focusReveal is { } reveal)
+            _focusReveal = reveal with { RevealTop = requested };
     }
 
     private HostedFocusPlanStatus TryCaptureHostedFocusTuple(out HostedFocusTuple tuple)

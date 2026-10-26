@@ -1,0 +1,8 @@
+  Failed MarkdownRenderer.GitHub.Tests.FocusRevealViewportIntentTests.FocusRevealRetriesYieldToNewerScrollRequests [13 ms]
+  Error Message:
+   Assert.Contains() Failure: Sub-string not found
+--
+Not found: "NoteViewportRequest();"
+  Stack Trace:
+--
+Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 13 ms - MarkdownRenderer.GitHub.Tests.dll (net10.0)

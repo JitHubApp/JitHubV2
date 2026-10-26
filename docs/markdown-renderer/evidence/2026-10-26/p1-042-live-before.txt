@@ -1,0 +1,31 @@
+P1-042 live diagnosis before the fix (product 7be71973 plus temporary, uncommitted scroll-source logging; Windows Sandbox guest at 96 DPI).
+Cold-start probe: launch the Sample, open Mermaid, wait 2.5 s, UIA SetScrollPercent(-1, 100), sample VerticalScrollPercent for 4 s.
+Results without logging: 5/5 fail (1.35, 4.42 after reaching 100, 1.35, 1.35, 4.42). With logging: 3/3 fail. Harness C15 on a fresh launch: run 20261026T045251Z-cb0c339a8e324d9886dbb983b39db074 FAIL at 1.348%.
+Each log shows SetAutomationVerticalScrollPercent followed in the same or next frame by ApplyFocusedItemScroll scrolling back to the focused item:
+
+=== p1042-0.log
+[shake t=353681156 f=0] change-view source=ScrollToBlock current=0.00 target=0.00 viewport=296.00 extent=0.00
+[shake t=353682078 f=2] change-view source=ScrollToBlock current=0.00 target=0.00 viewport=296.00 extent=2267.50
+[shake t=353682281 f=2] change-view source=ScrollToBlock current=0.00 target=0.00 viewport=296.00 extent=2267.50
+[shake t=353684828 f=3] change-view source=SetAutomationVerticalScrollPercent current=0.00 target=7103.00 viewport=296.00 extent=7399.00
+[shake t=353684828 f=3] change-view source=ApplyFocusedItemScroll current=0.00 target=95.75 viewport=296.00 extent=7399.00
+[shake t=353684843 f=3] scroll-view-changed offset=95.75 viewport=296.00 extent=7399.00 intermediate=False
+probe requestTick=353684812
+=== p1042-1.log
+[shake t=353691406 f=0] change-view source=ScrollToBlock current=0.00 target=0.00 viewport=296.00 extent=0.00
+[shake t=353692281 f=2] change-view source=ScrollToBlock current=0.00 target=0.00 viewport=296.00 extent=2267.50
+[shake t=353692500 f=2] change-view source=ScrollToBlock current=0.00 target=0.00 viewport=296.00 extent=2267.50
+[shake t=353695031 f=3] change-view source=SetAutomationVerticalScrollPercent current=0.00 target=7103.00 viewport=296.00 extent=7399.00
+[shake t=353695031 f=3] scroll-view-changed offset=7103.00 viewport=296.00 extent=7399.00 intermediate=False
+[shake t=353695031 f=4] change-view source=ApplyFocusedItemScroll current=7103.00 target=314.27 viewport=296.00 extent=7399.00
+[shake t=353695031 f=4] scroll-view-changed offset=314.27 viewport=296.00 extent=7399.00 intermediate=False
+probe requestTick=353695015
+=== p1042-2.log
+[shake t=353701406 f=0] change-view source=ScrollToBlock current=0.00 target=0.00 viewport=296.00 extent=0.00
+[shake t=353702296 f=2] change-view source=ScrollToBlock current=0.00 target=0.00 viewport=296.00 extent=2267.50
+[shake t=353702500 f=2] change-view source=ScrollToBlock current=0.00 target=0.00 viewport=296.00 extent=2267.50
+[shake t=353705046 f=3] change-view source=SetAutomationVerticalScrollPercent current=0.00 target=7103.00 viewport=296.00 extent=7399.00
+[shake t=353705046 f=3] scroll-view-changed offset=7103.00 viewport=296.00 extent=7399.00 intermediate=False
+[shake t=353705062 f=4] change-view source=ApplyFocusedItemScroll current=7103.00 target=314.27 viewport=296.00 extent=7399.00
+[shake t=353705062 f=4] scroll-view-changed offset=314.27 viewport=296.00 extent=7399.00 intermediate=False
+probe requestTick=353705046
