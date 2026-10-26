@@ -537,7 +537,8 @@ public sealed class AuthService : IAuthService
     {
         if (Program.CurrentLaunchOptions.IsPublicPreviewOverride)
         {
-            return GitHubClientService.PublicAccessToken;
+            // Match GetToken: a production README audit injects its token here.
+            return Program.CurrentLaunchOptions.ResolvePreviewAccessToken(GitHubClientService.PublicAccessToken);
         }
 
         if (userId <= 0)
