@@ -23,6 +23,7 @@ public sealed class WicWebpOperationLifetimeQualificationTests(ITestOutputHelper
     private const int OutputHeight = 1025;
     private const int PrivateBytesSampleIntervalMilliseconds = 2;
 
+    [Trait("Requires", "WicWebpDecoder")]
     [Fact]
     [Trait("Category", "NativeMemoryQualification")]
     public async Task OversizedStaticWebp_ReportsTerminalOperationCloseComparison()

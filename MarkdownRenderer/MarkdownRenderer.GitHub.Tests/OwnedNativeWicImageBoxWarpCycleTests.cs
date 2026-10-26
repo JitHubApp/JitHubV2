@@ -33,6 +33,7 @@ public sealed class OwnedNativeWicImageBoxWarpCycleTests(ITestOutputHelper outpu
     private const string WebpFixtureSha256 =
         "6FEB51F257EF7FAC608FFA54E0D942EA4FE4DE11DECD165A12EA254C3886DB85";
 
+    [Trait("Requires", "WicWebpDecoder")]
     [Fact]
     [Trait("Category", "NativeMemoryQualification")]
     public async Task ImageBoxWarpCyclesAllQualifiedStaticRasterVariantsAndDrainsEachOutput()

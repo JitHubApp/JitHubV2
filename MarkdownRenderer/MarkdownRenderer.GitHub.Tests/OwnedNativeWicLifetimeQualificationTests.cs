@@ -35,6 +35,7 @@ public sealed partial class OwnedNativeWicLifetimeQualificationTests
 
     public OwnedNativeWicLifetimeQualificationTests(ITestOutputHelper output) => _output = output;
 
+    [Trait("Requires", "WicWebpDecoder")]
     [Fact]
     [Trait("Category", "NativeMemoryQualification")]
     public async Task OversizedStaticWebp_UniqueNativeWicColorManagedGraphMatchesWinRtExactly()
@@ -53,6 +54,7 @@ public sealed partial class OwnedNativeWicLifetimeQualificationTests
         await VerifyExactPreviewPixelsAsync(source);
     }
 
+    [Trait("Requires", "WicWebpDecoder")]
     [Fact]
     [Trait("Category", "NativeMemoryQualification")]
     public async Task OversizedStaticWebp_UniqueNativeWicGraphReportsLogicalRetirement()
@@ -84,6 +86,7 @@ public sealed partial class OwnedNativeWicLifetimeQualificationTests
             "native pipeline can be considered a fidelity candidate.");
     }
 
+    [Trait("Requires", "WicWebpDecoder")]
     [Fact]
     [Trait("Category", "NativeMemoryQualification")]
     public async Task OversizedStaticWebp_OneHundredOwnedNativeWicCyclesReportPerRetirementCustody()

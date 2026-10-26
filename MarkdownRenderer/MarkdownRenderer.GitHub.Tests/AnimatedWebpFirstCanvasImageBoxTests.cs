@@ -28,6 +28,7 @@ namespace MarkdownRenderer.GitHub.Tests;
 [Collection(SharedCanvasBitmapCacheTestCollection.Name)]
 public sealed class AnimatedWebpFirstCanvasImageBoxTests(ITestOutputHelper output)
 {
+    [Trait("Requires", "WicWebpDecoder")]
     [Fact]
     public async Task ImageBoxPublishesFirstCanvasAndSkipsStaticProviderForAnimation()
     {

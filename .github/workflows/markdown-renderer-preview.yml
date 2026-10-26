@@ -341,6 +341,19 @@ jobs:
           }
           $coreTestFilter = $coreExclusionTerms -join '&'
 
+          # WebP decoding goes through the Store-only Windows WebP Image
+          # Extension, which hosted Windows Server runners do not have. Tests
+          # that need it carry Requires=WicWebpDecoder; without the codec they
+          # are listed in a warning as not run, never counted as passed.
+          $webpDecoderAvailable = $null -ne (Get-AppxPackage -Name 'Microsoft.WebpImageExtension' -ErrorAction SilentlyContinue)
+          $githubTestFilter = $null
+          if (-not $webpDecoderAvailable) {
+            $githubTestFilter = 'Requires!=WicWebpDecoder'
+            $notRun = @(& dotnet test $tests.github --configuration $env:CONFIGURATION "-p:Platform=$env:PLATFORM" --no-build --disable-build-servers --list-tests --filter 'Requires=WicWebpDecoder' |
+              Where-Object { $_ -match '^\s{4}\S' } | ForEach-Object { $_.Trim() })
+            Write-Host "::warning title=WebP codec tests not run::The runner has no Windows WebP Image Extension, so $($notRun.Count) WicWebpDecoder tests did not run: $($notRun -join ', ')"
+          }
+
           foreach ($test in $tests.GetEnumerator()) {
             $arguments = @(
               'test', $test.Value,
@@ -356,6 +369,9 @@ jobs:
               # wall-clock-bounded security/cancellation tests into false failures.
               # Two such tests are isolated below to avoid unrelated xUnit load.
               $arguments += @('--filter', $coreTestFilter)
+            }
+            if ($test.Key -eq 'github' -and $githubTestFilter) {
+              $arguments += @('--filter', $githubTestFilter)
             }
             & dotnet @arguments
             if ($LASTEXITCODE -ne 0) { throw "$($test.Key) tests failed." }

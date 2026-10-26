@@ -22,6 +22,7 @@ public sealed partial class WicBitmapSourceTransformCapabilityTests(ITestOutputH
     private const int CoInitMultithreaded = 0;
     private const int WicTransformRotate0 = 0;
 
+    [Trait("Requires", "WicWebpDecoder")]
     [Fact]
     [Trait("Category", "NativeMemoryQualification")]
     public async Task PinnedWebpFrame_ReportsDecoderSideScaleCapabilityWithoutRequiringIt()

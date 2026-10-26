@@ -32,6 +32,7 @@ public sealed class WicRasterDecodeMemoryQualificationTests(ITestOutputHelper ou
         (IntPtr.Size == 4 ? 256L : 512L) * 1024 * 1024;
     private static readonly TimeSpan DecodeTimeout = TimeSpan.FromSeconds(30);
 
+    [Trait("Requires", "WicWebpDecoder")]
     [Fact]
     [Trait("Category", "NativeMemoryQualification")]
     public async Task BuiltInAcceptedStillCodecs_ReportSerialAndTwoWayDecodeEvidence()

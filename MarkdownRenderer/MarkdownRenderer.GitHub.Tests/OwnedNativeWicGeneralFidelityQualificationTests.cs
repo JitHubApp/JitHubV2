@@ -68,6 +68,7 @@ public sealed class OwnedNativeWicGeneralFidelityQualificationTests(ITestOutputH
             source, budget, swapAxes ? 11 : 17, swapAxes ? 17 : 11, orientation);
     }
 
+    [Trait("Requires", "WicWebpDecoder")]
     [Fact]
     public async Task OversizedPinnedWebpStillMatchesEveryWinRtPreviewByteThroughGeneralGraph()
     {
@@ -277,6 +278,7 @@ public sealed class OwnedNativeWicGeneralFidelityQualificationTests(ITestOutputH
         }
     }
 
+    [Trait("Requires", "WicWebpDecoder")]
     [Fact]
     public async Task ProjectAuthoredWebpIccpProfileMatchesWinRtPreviewExactly()
     {

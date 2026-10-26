@@ -46,6 +46,7 @@ public sealed class NearMaximumRasterWicDecodeQualificationTests(ITestOutputHelp
         await RunImageBoxQualificationAsync(source, "image/png", budget);
     }
 
+    [Trait("Requires", "WicWebpDecoder")]
     [Fact]
     [Trait("Category", "NativeMemoryQualification")]
     public async Task NearSeventeenMegapixelWebp_ReportsCappedImageBoxDecodeAndLeaseEvidence()
