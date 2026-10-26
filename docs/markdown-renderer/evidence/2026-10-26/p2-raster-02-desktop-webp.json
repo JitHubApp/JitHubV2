@@ -1,0 +1,133 @@
+{
+  "schemaVersion": 1,
+  "objective": "P2-RASTER-02 live animated WebP first canvas, on a desktop with the Windows WebP Image Extension",
+  "authorization": "The user approved running the Sample on their desktop for this check (October 26).",
+  "sourceRevision": "fb80f91ded92078e52dfc45ee4490f8b1cdb043b",
+  "productSourceRevision": "7be71973",
+  "build": "MarkdownRenderer.Sample Release/x64, framework-dependent, Windows App Runtime 1.8 installed on the host",
+  "sampleDllSha256": "bc639d3b62fd6d3d64e595503d691c6c991d946e3f4fe7367d05c5cfd93f0e0c",
+  "sampleExeSha256": "41ec333d614d0db641ab15e6c30bd0eafbccbeb9670fc1c0ef1a30824c2d239b",
+  "environment": {
+    "codec": "Microsoft.WebpImageExtension 1.2.31.0 (Store)",
+    "displayScale": 2.0,
+    "theme": "Dark (desktop default)"
+  },
+  "whyNotSandbox": "Registering the Store-origin WebP extension in Windows Sandbox fails with 0x80073CFF; Store packages cannot be sideloaded there.",
+  "oracle": "Same as the P2-RASTER-02 harness case: at 0 ms and 1500 ms the image center is the first canvas blue (0,90,200)+/-48 and the 5-DIP corner matches the background +/-24 (transparent, not the raw subframe or the red later frame).",
+  "results": [
+    {
+      "alt": "Animated GIF first canvas, 60×60 with a centered blue square",
+      "name": "Animated GIF first canvas, 60×60 with a centered blue square",
+      "bounds": {
+        "y": 836.0,
+        "width": 1582.0,
+        "height": 187.0,
+        "x": 2343.0
+      },
+      "samples": [
+        {
+          "delayMs": 0,
+          "center": {
+            "r": 0,
+            "g": 90,
+            "b": 200
+          },
+          "corner": {
+            "r": 32,
+            "g": 32,
+            "b": 32
+          },
+          "background": {
+            "r": 32,
+            "g": 32,
+            "b": 32
+          },
+          "centerBlue": true,
+          "cornerTransparent": true,
+          "screenshot": "gif-0ms.png",
+          "screenshotSha256": "2d00504f73618cf0f8066037ac71ed529cafa61e1d1932ec9e6daa0d39074c43"
+        },
+        {
+          "delayMs": 1500,
+          "center": {
+            "r": 0,
+            "g": 90,
+            "b": 200
+          },
+          "corner": {
+            "r": 32,
+            "g": 32,
+            "b": 32
+          },
+          "background": {
+            "r": 32,
+            "g": 32,
+            "b": 32
+          },
+          "centerBlue": true,
+          "cornerTransparent": true,
+          "screenshot": "gif-1500ms.png",
+          "screenshotSha256": "2d00504f73618cf0f8066037ac71ed529cafa61e1d1932ec9e6daa0d39074c43"
+        }
+      ],
+      "pass": true
+    },
+    {
+      "alt": "Animated WebP first canvas, 60×60 with a centered blue square",
+      "name": "Animated WebP first canvas, 60×60 with a centered blue square",
+      "bounds": {
+        "y": 836.0,
+        "width": 1582.0,
+        "height": 187.0,
+        "x": 2343.0
+      },
+      "samples": [
+        {
+          "delayMs": 0,
+          "center": {
+            "r": 0,
+            "g": 90,
+            "b": 200
+          },
+          "corner": {
+            "r": 32,
+            "g": 32,
+            "b": 32
+          },
+          "background": {
+            "r": 32,
+            "g": 32,
+            "b": 32
+          },
+          "centerBlue": true,
+          "cornerTransparent": true,
+          "screenshot": "webp-0ms.png",
+          "screenshotSha256": "289f0f4311c487a950128e04713ed4bac4542cbef9138541bc5ac0f35aa20ecf"
+        },
+        {
+          "delayMs": 1500,
+          "center": {
+            "r": 0,
+            "g": 90,
+            "b": 200
+          },
+          "corner": {
+            "r": 32,
+            "g": 32,
+            "b": 32
+          },
+          "background": {
+            "r": 32,
+            "g": 32,
+            "b": 32
+          },
+          "centerBlue": true,
+          "cornerTransparent": true,
+          "screenshot": "webp-1500ms.png",
+          "screenshotSha256": "289f0f4311c487a950128e04713ed4bac4542cbef9138541bc5ac0f35aa20ecf"
+        }
+      ],
+      "pass": true
+    }
+  ]
+}

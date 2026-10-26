@@ -15,7 +15,7 @@ out of scope and remain open; see [Current gaps and roadmap](current-gaps-and-ro
 | Phase | Result | Open items |
 | --- | --- | --- |
 | 1 Core document correctness | **Closed.** Every frozen case group passes live or through an attached current-source receipt. Every known Phase 1 defect (P1-001 to P1-041) is fixed and regression-covered. The full batch passes at actual 100%, 150% and 200% display scaling. | P1-042, a one-off scroll observation that never recurred (suspected only). Four live tooling limits, listed below. |
-| 2 Existing feature correctness | **29 of 32 matrix rows pass**; the other 3 are hardware- or codec-gated. Live rows also pass at 200% on the final candidate. | P2-MERMAID-01 and P2-SVG-05 need ARM64 hardware. P2-RASTER-02's animated WebP needs the WebP Image Extension, which Windows Sandbox lacks. |
+| 2 Existing feature correctness | **30 of 32 matrix rows pass**; the other 2 are hardware-gated. Live rows also pass at 200% on the final candidate. | P2-MERMAID-01 and P2-SVG-05 need ARM64 hardware. |
 | 3 Real-world audit | **Complete.** All 500 frozen READMEs were evaluated, and every renderer defect found (P3-001 to P3-023) is fixed. | None in scope. The audit candidate predates four narrow fixes (see Candidates). |
 
 ## Candidates
@@ -102,8 +102,8 @@ confirms it. Reopen it with a reproduction before changing code.
 
 ## Phase 2 evidence
 
-- **Matrix.** `phase2-matrix.json` has 29 PASS and 3 UNVERIFIED rows on candidate `c482610e`. Those rows are gated by ARM64 hardware (2) and by the Sandbox WebP codec (1).
-- **P2-RASTER-02 route.** Copying the host's installed WebP Image Extension (1.2.31, Store-signed) into the Sandbox and registering it fails with 0x80073CFF: a Store-origin package cannot be sideloaded. The live animated-WebP check therefore needs a desktop session where the extension is installed, not the Sandbox.
+- **Matrix.** `phase2-matrix.json` has 30 PASS and 2 UNVERIFIED rows. Run 6 qualified candidate `c482610e`; the 2 open rows are gated by ARM64 hardware.
+- **P2-RASTER-02 (October 26).** The animated WebP needs the WebP Image Extension. Windows Sandbox cannot install it: registering the Store-signed package fails with 0x80073CFF, because Store packages cannot be sideloaded. With the user's approval, the check ran on their desktop, which has the extension, on product revision `7be71973`. The center showed the first canvas's blue and the corner stayed transparent at 0 and 1,500 ms (`evidence/2026-10-26/p2-raster-02-desktop-webp.json`).
 - **x86 and x64.** NativeAOT smokes cover the worker on both (`phase2-aot-smokes-x86-x64.json`).
 - **Plain-text copy.** Mermaid plain-text copy is qualified live (`phase2-mermaid-plain-copy-8141e49c.json`).
 - **System High Contrast.** P2-MERMAID-03 and P2-HIGHLIGHT-02 pass under actual Windows High Contrast.
@@ -127,13 +127,13 @@ confirms it. Reopen it with a reproduction before changing code.
 
 ## Evidence hashes
 
-SHA-256 of the committed receipts, at the commit that adds this document.
+SHA-256 of the committed receipts, as of the latest commit that changes this document.
 Raw run directories under `MarkdownRenderer/artifacts/` are Git-ignored; each
 receipt names its run IDs.
 
 | Receipt | SHA-256 |
 | --- | --- |
-| `evidence/phase2-matrix.json` | `4fdd6d42006e6f0c7372c801eedba5fde4cabda77532c7cee38c2d254c4f84a5` |
+| `evidence/phase2-matrix.json` | `784e77590a601786e9745214520452bf1313f54c5aa02cc874771fe3a939ecad` |
 | `evidence/2026-10-22/phase2-offline-evidence.json` | `2acd4fb1d2a56101217487daea8725ab859cd43f90717617efc292114fdc2db2` |
 | `evidence/2026-10-22/phase3-top500-run-app7.json` | `52c2f1ec353a66d58ca2a87cacc17c90d0c0a6878382ebc850600ea7e0dd092a` |
 | `evidence/2026-10-22/touch-runners.json` | `b0698f8a91a5b521c367cac63c9163236907426e09d973646b38a9ab0b8acb54` |
@@ -155,6 +155,7 @@ receipt names its run IDs.
 | `evidence/2026-10-25/p1-041-green.txt` | `eed8ed8fcc63c784ed005c1d50423e4ee68b14f545930298633459c07af1318c` |
 | `evidence/2026-10-25/p1-041-live-before.txt` | `88e3715da78a10a2c39b140b03f60c40aac37a7b4e4f11dbce6f4820b0bffa82` |
 | `evidence/2026-10-25/p1-041-red.txt` | `fef3b650e3ba7b01c593450e90a3d21f46bc3e7fc4e00044dcdedad65ac0123e` |
+| `evidence/2026-10-26/p2-raster-02-desktop-webp.json` | `4de120c610f6e85105899d16e16b32f65c9b22a8cb42880017a6dfdbaf246f0f` |
 | `evidence/2026-10-17/top-repositories.json` | `615c56723fb16d17744af2549615a4de32b1fc299a1759727cc86b70edacac72` |
 | `evidence/2026-10-17/top500-source-integrity.json` | `88f067fdd565ea988ac5b496f864b9f35997b5c889303da04527c6d7a224a8b1` |
 

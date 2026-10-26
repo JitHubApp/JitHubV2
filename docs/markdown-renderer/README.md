@@ -2,8 +2,8 @@
 
 MarkdownRenderer is a native WinUI markdown viewer with immutable parsing,
 explicit viewport ownership, Fluent defaults, and opt-in feature packs. Its
-correctness goal closed on October 25, 2026, except for three hardware- or
-codec-gated feature rows. It is still a preview: the 1.0 distribution and
+correctness goal closed on October 25, 2026, except for two feature rows that
+need ARM64 hardware. It is still a preview: the 1.0 distribution and
 release gates are unfinished.
 
 ## Start here
@@ -67,8 +67,8 @@ implemented.
 
 - Phase 1 (core correctness) is closed.
 - Phase 3 (the 500-README audit) is complete.
-- Phase 2 (feature correctness) passes 29 of 32 rows. The other 3 need ARM64
-  hardware or the WebP Image Extension.
+- Phase 2 (feature correctness) passes 30 of 32 rows. The other 2 need ARM64
+  hardware.
 
 The separate distribution checklist covers API, AOT, architecture, packaging
 and publishing. Historical browser-parity and performance targets are not

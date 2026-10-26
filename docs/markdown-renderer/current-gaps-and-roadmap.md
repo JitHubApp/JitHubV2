@@ -20,9 +20,8 @@ The correctness goal is closed except for environment-gated items; read the
 - **Phase 1 is closed.** The full live batch passes at actual 100%, 150% and
   200% display scaling, in Light, Dark and High Contrast, in both viewport modes.
   Every known defect, P1-001 to P1-041, is fixed with a regression test.
-- **Phase 2:** 29 of 32 feature rows pass. Three rows wait on ARM64 hardware
-  (Mermaid and resvg workers) or on the WebP Image Extension, which Windows
-  Sandbox lacks.
+- **Phase 2:** 30 of 32 feature rows pass. Two rows wait on ARM64 hardware
+  (Mermaid and resvg workers).
 - **Phase 3 is complete:** all 500 frozen READMEs were evaluated, and every
   renderer defect found was fixed.
 - **Current-source suites** pass 6,553 tests with no failures or skips, plus the

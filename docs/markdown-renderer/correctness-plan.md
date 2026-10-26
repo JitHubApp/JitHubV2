@@ -22,9 +22,9 @@ first; it records each phase's candidate, evidence hashes and open items.
   attached current-source receipt. P1-001 to P1-041 are fixed and
   regression-covered, and the full batch passes at actual 100%, 150% and 200%.
   P1-042 stays open as a suspected, unreproduced observation.
-- **Phase 2:** 29 of 32 matrix rows pass. P2-MERMAID-01 and P2-SVG-05 need
-  ARM64 hardware, and P2-RASTER-02's animated WebP needs a codec Windows
-  Sandbox lacks.
+- **Phase 2:** 30 of 32 matrix rows pass. P2-MERMAID-01 and P2-SVG-05 need
+  ARM64 hardware. P2-RASTER-02 passed on October 26 on a desktop with the
+  WebP Image Extension, which Windows Sandbox cannot install.
 - **Phase 3 is complete:** all 500 frozen READMEs were evaluated and every
   renderer defect found is fixed.
 
@@ -386,10 +386,11 @@ Known specialized investigations carried forward from the checkpoint:
   of an inert standard SVG 1.1 external DOCTYPE. The Phase 1 script/animation
   admission fix does not silently change that separate specialized contract.
 
-**Phase 2 status (October 25):** 29 of 32 rows pass (`evidence/phase2-matrix.json`);
+**Phase 2 status (October 26):** 30 of 32 rows pass (`evidence/phase2-matrix.json`);
 the live rows also pass at 200% on the final candidate. P2-MERMAID-01 and
-P2-SVG-05 stay open until ARM64 hardware runs them; P2-RASTER-02 stays open
-until animated WebP runs where the WebP Image Extension is installed.
+P2-SVG-05 stay open until ARM64 hardware runs them. P2-RASTER-02's animated
+WebP passed on a desktop with the WebP Image Extension
+(`evidence/2026-10-26/p2-raster-02-desktop-webp.json`).
 
 ### Frozen Phase 2 feature-and-case matrix
 
@@ -463,7 +464,8 @@ the row requires them. **3 rows stay UNVERIFIED:**
   cannot host the x86 Sample UI: it cannot register the x86 Windows App Runtime
   Main/Singleton packages beside the x64 ones.
 - RASTER-02: animated WebP needs the Windows WebP codec, which Sandbox lacks.
-  The animated GIF passed.
+  The animated GIF passed. **Closed October 26:** the animated WebP passes on a
+  desktop with the codec (`evidence/2026-10-26/p2-raster-02-desktop-webp.json`).
 - SVG-05: ARM64 worker execution is hardware-gated. In the same smokes, the
   x86 and x64 exact-RID workers passed start, render, isolation, restart and
   cleanup.

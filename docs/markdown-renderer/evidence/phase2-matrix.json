@@ -472,16 +472,19 @@
         }
       ],
       "live": "Animated GIF/WebP fixtures show the composed first canvas without playback.",
-      "open": [
-        "The animated GIF shows its composed first canvas without playback; animated WebP needs the Windows WebP Image Extension, which Windows Sandbox lacks (T3-008), so it is verified only where that codec is installed."
-      ],
-      "status": "UNVERIFIED",
+      "open": [],
+      "status": "PASS",
       "evidence": {
         "candidate": "c482610e7304192a8c7c5f021586e853bee5a627",
         "offline": "PASS",
         "offlineReceipt": "docs/markdown-renderer/evidence/2026-10-24/phase2-offline-evidence-c482610e.json",
-        "live": "UNVERIFIED",
-        "liveReceipt": "docs/markdown-renderer/evidence/2026-10-24/phase2-live-run6-c482610e.json"
+        "live": "PASS",
+        "liveReceipt": "docs/markdown-renderer/evidence/2026-10-24/phase2-live-run6-c482610e.json",
+        "liveReceipts": [
+          "docs/markdown-renderer/evidence/2026-10-24/phase2-live-run6-c482610e.json",
+          "docs/markdown-renderer/evidence/2026-10-26/p2-raster-02-desktop-webp.json"
+        ],
+        "note": "Animated GIF passes live in Windows Sandbox (run 6 and at 200%). Animated WebP needs the Windows WebP Image Extension, which Sandbox cannot install (Store packages cannot be sideloaded, 0x80073CFF); it passes live on the user-approved desktop with the extension, product revision 7be71973, at 0 and 1500 ms."
       }
     },
     {
