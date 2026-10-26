@@ -103,6 +103,7 @@ confirms it. Reopen it with a reproduction before changing code.
 ## Phase 2 evidence
 
 - **Matrix.** `phase2-matrix.json` has 29 PASS and 3 UNVERIFIED rows on candidate `c482610e`. Those rows are gated by ARM64 hardware (2) and by the Sandbox WebP codec (1).
+- **P2-RASTER-02 route.** Copying the host's installed WebP Image Extension (1.2.31, Store-signed) into the Sandbox and registering it fails with 0x80073CFF: a Store-origin package cannot be sideloaded. The live animated-WebP check therefore needs a desktop session where the extension is installed, not the Sandbox.
 - **x86 and x64.** NativeAOT smokes cover the worker on both (`phase2-aot-smokes-x86-x64.json`).
 - **Plain-text copy.** Mermaid plain-text copy is qualified live (`phase2-mermaid-plain-copy-8141e49c.json`).
 - **System High Contrast.** P2-MERMAID-03 and P2-HIGHLIGHT-02 pass under actual Windows High Contrast.
