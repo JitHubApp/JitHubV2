@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <RootNamespace>MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All</RootNamespace>
+    <AssemblyName>MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All</AssemblyName>
+    <UseWinUI>true</UseWinUI>
+    <WinUISDKReferences>false</WinUISDKReferences>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <Platforms>x86;x64;ARM64</Platforms>
+    <Platform Condition="'$(Platform)' == '' or '$(Platform)' == 'AnyCPU' or '$(Platform)' == 'Any CPU'">x64</Platform>
+    <!-- Managed grammar resources ship once; the lock still records every
+         supported consumer deployment graph. -->
+    <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
+    <IsTrimmable>true</IsTrimmable>
+    <IsAotCompatible>true</IsAotCompatible>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <EnableSingleFileAnalyzer>true</EnableSingleFileAnalyzer>
+    <EnableAotAnalyzer>true</EnableAotAnalyzer>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <PackageId>MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All</PackageId>
+    <Version>1.0.0-preview.1</Version>
+    <Authors>nerocui</Authors>
+    <Description>Complete upstream grammar provider for MarkdownRenderer TextMate highlighting.</Description>
+    <PackageTags>markdown;winui;syntax-highlighting;textmate;grammars;all</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/JitHubApp/JitHubV2</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageProjectUrl>https://github.com/JitHubApp/JitHubV2/tree/main/docs/markdown-renderer</PackageProjectUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>icon-192.png</PackageIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MarkdownRenderer.SyntaxHighlighting.TextMate\MarkdownRenderer.SyntaxHighlighting.TextMate.csproj" />
+    <PackageReference Include="TextMateSharp.Grammars" Version="2.0.3" />
+    <Compile Include="..\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Shared\BundledTextMateGrammarProvider.cs" Link="Internal\BundledTextMateGrammarProvider.cs" />
+    <None Include="..\..\LICENSE" Pack="true" PackagePath="" Visible="false" />
+    <None Include="..\..\docs\markdown-renderer\README.md" Pack="true" PackagePath="README.md" Visible="false" />
+    <None Include="..\..\JitHub.Web\wwwroot\icon-192.png" Pack="true" PackagePath="icon-192.png" Visible="false" />
+    <None Include="..\eng\textmate\THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="THIRD-PARTY-NOTICES.md" Visible="false" />
+    <None Include="..\eng\textmate\GRAMMAR-PROVENANCE.v2.0.3.json" Pack="true" PackagePath="licenses/GRAMMAR-PROVENANCE.json" Visible="false" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "repository": "https://github.com/linebender/tiny-skia.git",
+  "revision": "e48b9027762d33731e60e40eb17eaa4f583b0185",
+  "packagePath": "path",
+  "sourceTree": "a4edaf846d0091e0dfa321c0d47d8114415022c7",
+  "archiveSha256": "edca365c3faccca67d06593c5980fa6c57687de727a03131735bb85f01fdeeb9",
+  "packageName": "tiny-skia-path",
+  "packageVersion": "0.12.0",
+  "license": "BSD-3-Clause",
+  "vendoredLicense": "BSD-3-Clause AND MIT",
+  "sourceInventorySha256": "2e76a06a5225f7bba82c24c0b5ef4520ecf9d2a824f88cca1830e80e90d213c7",
+  "patchSetSha256": "728ba904050f56cbd864368dbb03f2a936b99e45afe588852b44e4b5046d8657",
+  "sourceFiles": [
+    { "path": ".cargo_vcs_info.json", "sha256": "505c7f156d863c82cb529aa886a9484c400a12ab282ff5f3d55385788eca7319" },
+    { "path": "Cargo.lock", "sha256": "9ffe191e3bfc9032ee41a6dd201b4022cf92cbfb9bcf17f2af2b9263d1ccd237" },
+    { "path": "Cargo.toml", "sha256": "57385d5a00ab54c415cd63a08ef1365e87b661019c74cccd4b50d6d9e6d659ad" },
+    { "path": "Cargo.toml.orig", "sha256": "e42a3ad132f048814b333123c687fc12b312de3d27ac495b3b7e62ad1a1546b5" },
+    { "path": "LICENSE", "sha256": "6d41e05f1d54fe726997cb0334ec539f1dff50600b1d5d90462ec2b392770ced" },
+    { "path": "README.md", "sha256": "9c2feef7e0994b4a3941d46de8bb63fb74433cf04b8d2182d0da76c72c15329a" },
+    { "path": "src/dash.rs", "sha256": "754ef74246efa014a2ffa92f8f99fef17e968847ea8886db840913867957ca29" },
+    { "path": "src/f32x2_t.rs", "sha256": "cd99d6e1fa00ed9c544af718b3f01b68a6eb500d183d3eeced804effb96878f8" },
+    { "path": "src/f32x4_t.rs", "sha256": "6328e5670e9dffa3443b4ab2d7c7f1ab36e2ac14511c54c824e782c89a955607" },
+    { "path": "src/floating_point.rs", "sha256": "720e2fd327609d81534f970a1b04d20750a587246ae4d5291e17f9dc17885f68" },
+    { "path": "src/lib.rs", "sha256": "c5ccaf6aa5b793609bb10f3980a99f92b27a1e745617b9dc2498ae826e146de8" },
+    { "path": "src/path.rs", "sha256": "063d12c9412c8be5f1ba95ac94ec91e98502e44089ad2069314d51e2beeef973" },
+    { "path": "src/path_builder.rs", "sha256": "28c18ba8da6cdb85a08bc423175248c9a4d8d6736a2a1e4e389dce5fab2435c5" },
+    { "path": "src/path_geometry.rs", "sha256": "3cd381be3fd03f552fdb0ffacb526919342bae1cfef722a45682117e1b54a915" },
+    { "path": "src/rect.rs", "sha256": "f5e76a265c45f95145b9a7789ddbf285add7326bd7a347fea81ebe7b0d45e1aa" },
+    { "path": "src/scalar.rs", "sha256": "ffec71494c2c1c281300fab24efe4a33e900e770a836ea4c85aa4665e45b9e23" },
+    { "path": "src/size.rs", "sha256": "24b3cba0a70b1131a7bf16b5c921ffc102e3ff826fe347df41c9ce1ba259c2d0" },
+    { "path": "src/stroker.rs", "sha256": "6640206b58bfb73b9be756ca78518fb7d98862849d5b11286fe5e11ef0c92ff1" },
+    { "path": "src/transform.rs", "sha256": "03f7e45c2708a416c35983ab6ad800211d5ceef92ba881b6025f2e8bc91a550f" }
+  ],
+  "patches": [
+    { "path": "Cargo.toml", "upstreamSha256": "57385d5a00ab54c415cd63a08ef1365e87b661019c74cccd4b50d6d9e6d659ad", "patchedSha256": "e99247769cc72962ac68157a871343641dd5e8c1efc2de81ec0f71faa82370b1" },
+    { "path": "Cargo.toml.orig", "upstreamSha256": "e42a3ad132f048814b333123c687fc12b312de3d27ac495b3b7e62ad1a1546b5", "patchedSha256": "10db6ead8fe2b8f23c62cc36c572fe6a8c9e7027a9fa44867cf835c836fd1e72" },
+    { "path": "src/dash.rs", "upstreamSha256": "754ef74246efa014a2ffa92f8f99fef17e968847ea8886db840913867957ca29", "patchedSha256": "f8b902e3422b9fc87fe6643e21e3e6a6e553f7a99153f7459178e26757239ceb" },
+    { "path": "src/lib.rs", "upstreamSha256": "c5ccaf6aa5b793609bb10f3980a99f92b27a1e745617b9dc2498ae826e146de8", "patchedSha256": "f461148421722117cb689e6c2e4aef7aecfe3160d0c27bf8d766452816b2c222" },
+    { "path": "src/path.rs", "upstreamSha256": "063d12c9412c8be5f1ba95ac94ec91e98502e44089ad2069314d51e2beeef973", "patchedSha256": "0e3885e300358a6a05105f0f05ced89488052c136067d45d7728e5e1a73252a3" },
+    { "path": "src/path_builder.rs", "upstreamSha256": "28c18ba8da6cdb85a08bc423175248c9a4d8d6736a2a1e4e389dce5fab2435c5", "patchedSha256": "78dc44fc9a3db8567dc347a47b89190f7f853be1f2cf59ea055843efa342ef32" },
+    { "path": "src/stroker.rs", "upstreamSha256": "6640206b58bfb73b9be756ca78518fb7d98862849d5b11286fe5e11ef0c92ff1", "patchedSha256": "35ad00cb60594a914e0605f23df97639bb47483d801868d4234a0cabd7d186a1" }
+  ],
+  "addedFilesSha256": "610cdc2e036b1c6cb27145628068f418f9ce0a9a535c67ae72055eff7173285f",
+  "addedFiles": [
+    {
+      "path": "LICENSE-JITHUB-MIT",
+      "sha256": "41445984ed7c0ecf79e35bbf7c4afb6dea9eff5b76207ec9531b4be23a5e1683",
+      "license": "MIT",
+      "licenseTextPath": "LICENSE-JITHUB-MIT",
+      "licenseTextSha256": "41445984ed7c0ecf79e35bbf7c4afb6dea9eff5b76207ec9531b4be23a5e1683"
+    },
+    {
+      "path": "src/bounded.rs",
+      "sha256": "94b60bfda536ebce1390340aca4dded9bb876e1c9874afaa2ac1553cc5258c8b",
+      "license": "MIT",
+      "licenseTextPath": "LICENSE-JITHUB-MIT",
+      "licenseTextSha256": "41445984ed7c0ecf79e35bbf7c4afb6dea9eff5b76207ec9531b4be23a5e1683"
+    }
+  ]
+}

@@ -1,0 +1,98 @@
+﻿//Apache2, 2014-2016, Samuel Carlsson, WinterDev
+
+using System;
+using System.IO;
+using MarkdownRenderer.Math.Internal;
+
+namespace Typography.OpenFont.IO
+{
+    class ByteOrderSwappingBinaryReader : BinaryReader
+    {
+        int _bytesSinceCheckpoint;
+        //All OpenType fonts use Motorola-style byte ordering (Big Endian)
+        //
+        public ByteOrderSwappingBinaryReader(Stream input)
+            : base(input)
+        {
+        }
+        protected override void Dispose(bool disposing)
+        {
+            GC.SuppressFinalize(this);
+            base.Dispose(disposing);
+        }
+        //
+        //as original
+        //
+        //public override byte ReadByte() { return base.ReadByte(); } 
+        // 
+        //we override the 4 methods here
+        //
+        public override short ReadInt16() => BitConverter.ToInt16(RR(2), 8 - 2);
+        public override ushort ReadUInt16() => BitConverter.ToUInt16(RR(2), 8 - 2);
+        public override uint ReadUInt32() => BitConverter.ToUInt32(RR(4), 8 - 4);
+        public override ulong ReadUInt64() => BitConverter.ToUInt64(RR(8), 8 - 8);
+
+
+        //used in CFF font
+        public override double ReadDouble() => BitConverter.ToDouble(RR(8), 8 - 8);
+        //used in CFF font
+        public override int ReadInt32() => BitConverter.ToInt32(RR(4), 8 - 4);
+
+        public override byte ReadByte()
+        {
+            Checkpoint(1);
+            return base.ReadByte();
+        }
+
+        public override byte[] ReadBytes(int count)
+        {
+            Checkpoint(count);
+            byte[] result = base.ReadBytes(count);
+            MathCancellationScope.Checkpoint();
+            return result;
+        }
+
+        //
+        byte[] _reusable_buffer = new byte[8]; //fix buffer size to 8 bytes
+        /// <summary>
+        /// read and reverse 
+        /// </summary>
+        /// <param name="count"></param>
+        /// <returns></returns>
+        private byte[] RR(int count)
+        {
+            Checkpoint(count);
+            base.Read(_reusable_buffer, 0, count);
+            Array.Reverse(_reusable_buffer);
+            return _reusable_buffer;
+        }
+
+        private void Checkpoint(int byteCount)
+        {
+            if (byteCount < 0)
+                throw new ArgumentOutOfRangeException(nameof(byteCount));
+            _bytesSinceCheckpoint = checked(_bytesSinceCheckpoint + byteCount);
+            if (_bytesSinceCheckpoint < 256)
+                return;
+            _bytesSinceCheckpoint = 0;
+            MathCancellationScope.Checkpoint();
+        }
+
+        //we don't use these methods in our OpenFont, so => throw the exception
+        public override int PeekChar() { throw new NotImplementedException(); }
+        public override int Read() { throw new NotImplementedException(); }
+        public override int Read(byte[] buffer, int index, int count) { throw new NotImplementedException(); }
+        public override int Read(char[] buffer, int index, int count) { throw new NotImplementedException(); }
+        public override bool ReadBoolean() { throw new NotImplementedException(); }
+        public override char ReadChar() { throw new NotImplementedException(); }
+        public override char[] ReadChars(int count) { throw new NotImplementedException(); }
+        public override decimal ReadDecimal() { throw new NotImplementedException(); }
+
+        public override long ReadInt64() { throw new NotImplementedException(); }
+        public override sbyte ReadSByte() { throw new NotImplementedException(); }
+        public override float ReadSingle() { throw new NotImplementedException(); }
+        public override string ReadString() { throw new NotImplementedException(); }
+        //
+
+    }
+}

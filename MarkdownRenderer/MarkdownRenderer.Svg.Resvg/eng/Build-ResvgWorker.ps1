@@ -1,0 +1,158 @@
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory)]
+    [ValidateSet(
+        'i686-pc-windows-msvc',
+        'x86_64-pc-windows-msvc',
+        'aarch64-pc-windows-msvc')]
+    [string]$Target,
+
+    [string]$TargetDirectory = '',
+    [switch]$RefreshIdentity
+)
+
+$ErrorActionPreference = 'Stop'
+$providerRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+$identityModule = Join-Path $PSScriptRoot 'ResvgWorkerIdentity.psm1'
+Import-Module $identityModule -Force
+if ($RefreshIdentity) {
+    & (Join-Path $PSScriptRoot 'Verify-ResvgSupplyChain.ps1') | Out-Null
+}
+$sourceFingerprintBefore = if ($RefreshIdentity) {
+    Get-ResvgWorkerSourceFingerprint $providerRoot
+}
+else {
+    ''
+}
+$nativeRoot = [IO.Path]::GetFullPath((Join-Path $providerRoot 'native'))
+$manifest = Join-Path $nativeRoot 'Cargo.toml'
+if ([string]::IsNullOrWhiteSpace($TargetDirectory)) {
+    $TargetDirectory = Join-Path $nativeRoot 'target'
+}
+$TargetDirectory = [IO.Path]::GetFullPath($TargetDirectory)
+
+$verboseVersion = @(& rustc +1.96.0 -vV)
+$sysroot = (& rustc +1.96.0 --print sysroot).Trim()
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($sysroot)) {
+    throw 'The pinned Rust 1.96.0 sysroot could not be resolved.'
+}
+$hostTarget = @($verboseVersion | Where-Object { $_ -like 'host: *' } |
+    ForEach-Object { $_.Substring('host: '.Length).Trim() })
+if ($hostTarget.Count -ne 1 -or [string]::IsNullOrWhiteSpace($hostTarget[0])) {
+    throw 'The pinned Rust 1.96.0 host target could not be resolved.'
+}
+$rustCommitHash = @($verboseVersion | Where-Object { $_ -like 'commit-hash: *' } |
+    ForEach-Object { $_.Substring('commit-hash: '.Length).Trim() })
+if ($rustCommitHash.Count -ne 1 -or $rustCommitHash[0] -notmatch '^[0-9a-f]{40}$') {
+    throw 'The pinned Rust 1.96.0 commit hash could not be resolved.'
+}
+$rustcCommit = $rustCommitHash[0].ToLowerInvariant()
+$lldDirectory = Join-Path $sysroot "lib\rustlib\$($hostTarget[0])\bin"
+$lld = Join-Path $lldDirectory 'rust-lld.exe'
+if (-not (Test-Path -LiteralPath $lld -PathType Leaf)) {
+    throw "The pinned Rust 1.96.0 rust-lld executable was not found: '$lld'."
+}
+
+$cargoHome = if ([string]::IsNullOrWhiteSpace($env:CARGO_HOME)) {
+    Join-Path $env:USERPROFILE '.cargo'
+}
+else {
+    $env:CARGO_HOME
+}
+$cargoHome = [IO.Path]::GetFullPath($cargoHome)
+# rustc reports rust-src paths with the same mixed separators used by its
+# virtual source map on Windows; preserve that spelling for prefix matching.
+$rustLibrarySource = "$sysroot\lib/rustlib/src/rust\library"
+$canonicalRustLibrarySource = "/rustc/$($rustCommitHash[0])/library"
+
+$previousPath = $env:PATH
+$previousRustFlags = $env:RUSTFLAGS
+$previousEncodedRustFlags = $env:CARGO_ENCODED_RUSTFLAGS
+try {
+    # rust-lld is part of the pinned Rust toolchain, so the PE linker does not
+    # drift with the Visual Studio image installed on the build machine.
+    $env:PATH = "$lldDirectory$([IO.Path]::PathSeparator)$previousPath"
+    $flags = @(
+        '-C'
+        'linker=rust-lld.exe'
+        '-C'
+        'target-feature=+crt-static'
+        '-C'
+        'link-arg=/Brepro'
+        # Panic locations retain source paths even in stripped release workers.
+        # rust-src installations resolve standard-library locations through
+        # the local toolchain, whereas minimal CI toolchains retain rustc's
+        # canonical /rustc/<commit>/library paths. Normalize both forms so
+        # developer and hosted-runner profiles produce the same PE payload.
+        "--remap-path-prefix=$nativeRoot=/jithub/svg-native"
+        "--remap-path-prefix=$cargoHome=/cargo"
+        "--remap-path-prefix=$rustLibrarySource=$canonicalRustLibrarySource"
+    )
+    # Cargo's encoded form preserves checkout paths that contain spaces.
+    $env:RUSTFLAGS = $null
+    $env:CARGO_ENCODED_RUSTFLAGS = $flags -join [char]0x1F
+
+    & cargo +1.96.0 build `
+        --manifest-path $manifest `
+        --release `
+        --locked `
+        --target $Target `
+        --target-dir $TargetDirectory
+    if ($LASTEXITCODE -ne 0) {
+        throw "The pinned resvg worker build failed for $Target."
+    }
+}
+finally {
+    $env:PATH = $previousPath
+    $env:RUSTFLAGS = $previousRustFlags
+    $env:CARGO_ENCODED_RUSTFLAGS = $previousEncodedRustFlags
+}
+
+$binary = Join-Path $TargetDirectory "$Target\release\markdown_renderer_resvg_worker.exe"
+if (-not (Test-Path -LiteralPath $binary -PathType Leaf)) {
+    throw "The resvg worker build did not produce '$binary'."
+}
+
+if ($RefreshIdentity) {
+    $sourceFingerprintAfter = Get-ResvgWorkerSourceFingerprint $providerRoot
+    if ($sourceFingerprintAfter -cne $sourceFingerprintBefore) {
+        throw 'Worker source/build inputs changed during compilation; refusing to record an identity.'
+    }
+    $runtimeRid = switch ($Target) {
+        'i686-pc-windows-msvc' { 'win-x86' }
+        'x86_64-pc-windows-msvc' { 'win-x64' }
+        'aarch64-pc-windows-msvc' { 'win-arm64' }
+    }
+    $runtimeBinary = Join-Path $providerRoot "runtimes\$runtimeRid\native\MarkdownRenderer.Svg.Resvg.Worker.exe"
+    if (-not (Test-Path -LiteralPath $runtimeBinary -PathType Leaf)) {
+        throw "Cannot refresh identity before the compared runtime worker exists: '$runtimeBinary'."
+    }
+    & (Join-Path $PSScriptRoot 'Compare-ResvgWorkerBinary.ps1') -Expected $runtimeBinary -Actual $binary | Out-Null
+    $protocol = Get-ResvgWorkerProtocolVersions $providerRoot
+    $image = Get-ResvgWorkerImageInfo $binary
+    $buildFingerprint = Get-ResvgWorkerBuildFingerprint $sourceFingerprintBefore $Target $rustcCommit
+    $receiptPath = Join-Path ([IO.Path]::GetDirectoryName($binary)) 'worker-identity-receipt.json'
+    $receipt = [ordered]@{
+        schemaVersion = 1
+        target = $Target
+        rid = $runtimeRid
+        sourceFingerprintBefore = $sourceFingerprintBefore
+        sourceFingerprintAfter = $sourceFingerprintAfter
+        buildFingerprint = $buildFingerprint
+        rustcCommit = $rustcCommit
+        hostProtocolVersion = $protocol.Host
+        nativeProtocolVersion = $protocol.Native
+        reproducibleComparisonPassed = $true
+        outputPath = [IO.Path]::GetFullPath($binary)
+        outputBytes = [long]$image.bytes
+        outputSha256 = $image.sha256
+        outputNormalizedSha256 = $image.normalizedSha256
+    }
+    [IO.File]::WriteAllText(
+        $receiptPath,
+        (($receipt | ConvertTo-Json -Depth 6) + "`n"),
+        [Text.UTF8Encoding]::new($false))
+    & (Join-Path $PSScriptRoot 'Update-ResvgWorkerIdentity.ps1') -Target $Target -BuildReceipt $receiptPath
+}
+
+Write-Output $binary
