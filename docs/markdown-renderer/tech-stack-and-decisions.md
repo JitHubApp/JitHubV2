@@ -40,6 +40,34 @@ the same reason. Math and Mermaid provide bounded native implementations with
 accessible, atomic source fallbacks; their physical-device and release-evidence
 matrices remain separate 1.0 gates.
 
+## Out-of-process SVG and image worker
+
+`MarkdownRenderer.Svg.Resvg` decodes SVG and raster images in a separate worker
+process (`MarkdownRenderer.Svg.Resvg.Worker.exe`), not in the host process. The
+input is untrusted: any image a document links to. Running the decoder in its
+own process lets the host contain failures that an in-process library or WinRT
+component cannot:
+
+- The worker runs in a Job Object with a commit-memory limit, so an oversized or
+  decompression-bomb image ends the worker instead of exhausting the app.
+- Each request has a deadline. A stalled or looping decode is ended with
+  `TerminateProcess` and a fresh worker replaces it; a stuck thread inside the
+  host process cannot be stopped safely.
+- A native abort, stack overflow or memory fault ends only the worker
+  (`DieOnUnhandledException`, `KillOnJobClose`), and the image shows its
+  accessible fallback.
+
+An out-of-process WinRT server would still be an executable, would need
+activation registration (reg-free manifests for unpackaged hosts) and would not
+provide these limits by itself. The worker uses a small private pipe protocol,
+so hosts register nothing.
+
+The cost is one executable per architecture (x86, x64, ARM64) and one process
+startup per persistent worker. The executables are committed so that .NET
+builds and packing don't need Rust. CI rebuilds all three from the vendored
+source and fails if any differs from the committed binary, and every build
+checks `RESVG_WORKER_IDENTITY.json` against the sources and binaries.
+
 ## Extensibility and AOT
 
 Extensions register exact syntax-kind strings and emit declarative semantic
