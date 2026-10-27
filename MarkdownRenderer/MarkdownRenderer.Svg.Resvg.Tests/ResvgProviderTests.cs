@@ -11,6 +11,7 @@ using Xunit;
 
 namespace MarkdownRenderer.Svg.Resvg.Tests;
 
+[Collection(WorkerDeadlineSensitiveCollection.Name)]
 public sealed class ResvgProviderTests
 {
     [Fact]

@@ -136,22 +136,37 @@ public sealed class SvgStaticSnapshotWideInputTests
         _ = SvgStaticSnapshot.ParseStyle(repeatedUnknown, CancellationToken.None);
         _ = SvgStaticSnapshot.ParseStyle(overwritten, CancellationToken.None);
         _ = SvgStaticSnapshot.ParseStyle(rejectedWithLargeValue, CancellationToken.None);
-        long beforeUnknown = GC.GetAllocatedBytesForCurrentThread();
-        Dictionary<string, string> unknown = SvgStaticSnapshot.ParseStyle(repeatedUnknown, CancellationToken.None);
-        long unknownAllocated = GC.GetAllocatedBytesForCurrentThread() - beforeUnknown;
-        long beforeOverwrite = GC.GetAllocatedBytesForCurrentThread();
-        Dictionary<string, string> finalValue = SvgStaticSnapshot.ParseStyle(overwritten, CancellationToken.None);
-        long overwriteAllocated = GC.GetAllocatedBytesForCurrentThread() - beforeOverwrite;
-        long beforeRejected = GC.GetAllocatedBytesForCurrentThread();
-        Dictionary<string, string> rejected = SvgStaticSnapshot.ParseStyle(rejectedWithLargeValue, CancellationToken.None);
-        long rejectedAllocated = GC.GetAllocatedBytesForCurrentThread() - beforeRejected;
+        // The thread counter can pick up a one-off runtime allocation, such as
+        // an event listener from a parallel test class. A per-declaration
+        // string costs hundreds of KB on every attempt, so it still fails.
+        Dictionary<string, string> unknown = [];
+        Dictionary<string, string> finalValue = [];
+        Dictionary<string, string> rejected = [];
+        long unknownAllocated = 0, overwriteAllocated = 0, rejectedAllocated = 0;
+        var attempts = new List<string>(capacity: 5);
+        for (int attempt = 0; attempt < 5; attempt++)
+        {
+            long beforeUnknown = GC.GetAllocatedBytesForCurrentThread();
+            unknown = SvgStaticSnapshot.ParseStyle(repeatedUnknown, CancellationToken.None);
+            unknownAllocated = GC.GetAllocatedBytesForCurrentThread() - beforeUnknown;
+            long beforeOverwrite = GC.GetAllocatedBytesForCurrentThread();
+            finalValue = SvgStaticSnapshot.ParseStyle(overwritten, CancellationToken.None);
+            overwriteAllocated = GC.GetAllocatedBytesForCurrentThread() - beforeOverwrite;
+            long beforeRejected = GC.GetAllocatedBytesForCurrentThread();
+            rejected = SvgStaticSnapshot.ParseStyle(rejectedWithLargeValue, CancellationToken.None);
+            rejectedAllocated = GC.GetAllocatedBytesForCurrentThread() - beforeRejected;
+            attempts.Add($"{unknownAllocated}/{overwriteAllocated}/{rejectedAllocated}");
+            if (unknownAllocated < 4_096 && overwriteAllocated < 4_096 && rejectedAllocated < 4_096)
+                break;
+        }
 
         Assert.Single(unknown);
         Assert.Equal("16px", finalValue["font-size"]);
         Assert.Single(rejected);
-        Assert.True(unknownAllocated < 4_096, $"Repeated unknown declarations allocated {unknownAllocated} bytes.");
-        Assert.True(overwriteAllocated < 4_096, $"Overwritten value declarations allocated {overwriteAllocated} bytes.");
-        Assert.True(rejectedAllocated < 4_096, $"Rejected declarations allocated {rejectedAllocated} bytes.");
+        string history = $" Attempts (unknown/overwritten/rejected bytes): {string.Join(", ", attempts)}.";
+        Assert.True(unknownAllocated < 4_096, $"Repeated unknown declarations allocated {unknownAllocated} bytes." + history);
+        Assert.True(overwriteAllocated < 4_096, $"Overwritten value declarations allocated {overwriteAllocated} bytes." + history);
+        Assert.True(rejectedAllocated < 4_096, $"Rejected declarations allocated {rejectedAllocated} bytes." + history);
     }
 
     [Fact]
