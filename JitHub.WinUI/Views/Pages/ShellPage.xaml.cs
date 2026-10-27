@@ -18,6 +18,7 @@ using JitHub.WinUI.ViewModels.Pages;
 using JitHub.Services.Layout;
 using JitHub.WinUI.Views.Controls.App;
 using JitHub.WinUI.Views.Dialogs;
+using JitHub.WinUI.Performance;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
@@ -171,8 +172,21 @@ public sealed partial class ShellPage : Page
 
     public ShellPageViewModel ViewModel { get; }
 
-    private static void ShellPage_Loaded(object sender, RoutedEventArgs e) =>
+    private static void ShellPage_Loaded(object sender, RoutedEventArgs e)
+    {
         ProductPerformanceReadiness.CommitApplicationInteractive();
+        if (sender is not ShellPage page)
+        {
+            return;
+        }
+
+        DeferredFrameAction.Schedule(
+            page,
+            () => page.IsLoaded,
+            () => UiTaskGuard.Observe(
+                JitHubMarkdownRuntime.WarmUpSvgRendererAsync(),
+                "ui-markdown-svg-warmup"));
+    }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
@@ -220,6 +234,45 @@ public sealed partial class ShellPage : Page
         DetachRepositoryScrollViewer();
         _shellRailDrawerAnimator.Stop();
         ConnectedAnimationService.GetForCurrentView().PrepareToAnimate("AppLogoLogoutAnimation", AppLogoShellPage);
+    }
+
+    internal async Task DetachNestedContentForMarkdownShutdownAsync(TimeSpan timeout)
+    {
+        FrameworkElement? page = ShellContentFrame.Content as FrameworkElement;
+        if (page is null)
+        {
+            ShellContentFrame.Content = null;
+            return;
+        }
+
+        bool wasLoaded = page.IsLoaded;
+        var unloaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void OnUnloaded(object sender, RoutedEventArgs args) => unloaded.TrySetResult();
+        if (wasLoaded)
+            page.Unloaded += OnUnloaded;
+
+        try
+        {
+            ShellContentFrame.Content = null;
+            if (!wasLoaded)
+            {
+                return;
+            }
+
+            try
+            {
+                await unloaded.Task.WaitAsync(timeout);
+            }
+            catch (TimeoutException)
+            {
+                // Bounded: the window drains renderers after this returns.
+            }
+        }
+        finally
+        {
+            if (wasLoaded)
+                page.Unloaded -= OnUnloaded;
+        }
     }
 
     private void InitializeProductPerformanceBridge()

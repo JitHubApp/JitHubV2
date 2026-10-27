@@ -30,6 +30,34 @@ public sealed class MarkdownDocumentSecurityTests
     }
 
     [Fact]
+    public void RepositoryFileTreeRevisionChangeRevokesConsentEvenWhenBlobIsUnchanged()
+    {
+        const string blobSha = "0123456789abcdef0123456789abcdef01234567";
+        MarkdownDocumentSource original = MarkdownDocumentSourceFactory.TryCreateRepositoryFile(
+            blobSha,
+            "https://github.com/owner/repo/blob/main/README.md",
+            "README.md",
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            reloadRevision: "4")!;
+        MarkdownDocumentSource changedAssets = MarkdownDocumentSourceFactory.TryCreateRepositoryFile(
+            blobSha,
+            "https://github.com/owner/repo/blob/main/README.md",
+            "README.md",
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            reloadRevision: "5")!;
+        MarkdownRemoteContentConsent consent = new();
+
+        consent.Activate(original);
+        consent.Grant();
+        Assert.True(consent.IsGranted);
+
+        consent.Activate(changedAssets);
+
+        Assert.False(consent.IsGranted);
+        Assert.NotEqual(original.GetConsentIdentity(), changedAssets.GetConsentIdentity());
+    }
+
+    [Fact]
     public void Consent_AnonymousHostReuseAlwaysRevokesPermission()
     {
         MarkdownRemoteContentConsent consent = new();

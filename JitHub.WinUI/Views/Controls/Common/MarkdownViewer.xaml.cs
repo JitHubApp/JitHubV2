@@ -1,28 +1,36 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text;
+using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using JitHub.Models.GitHub;
 using JitHub.Models.NavArgs;
 using JitHub.Services;
+using JitHub.Services.CodeViewer;
 using JitHub.Services.Markdown;
 using JitHub.WinUI.Helpers;
+using JitHub.WinUI.ViewModels.CodeViewer;
 using JitHub.WinUI.ViewModels.Pages;
+using MarkdownRenderer;
+using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Controls;
-using MarkdownRenderer.Gfm;
+using MarkdownRenderer.GitHub;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Layout;
+using MarkdownRenderer.Performance;
 using MarkdownRenderer.Theming;
+using Microsoft.Graphics.Canvas;
 using Microsoft.UI;
-using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Windows.System;
-using Windows.UI;
+using Windows.Storage.Streams;
 using Windows.UI.ViewManagement;
 
 namespace JitHub.WinUI.Views.Controls.Common;
@@ -30,32 +38,151 @@ namespace JitHub.WinUI.Views.Controls.Common;
 [WinRT.GeneratedBindableCustomProperty]
 public sealed partial class MarkdownViewer : UserControl
 {
+    private static readonly object ShutdownRegistryGate = new();
+    private static readonly List<WeakReference<MarkdownViewer>> ShutdownRegistry = [];
+    private static TaskCompletionSource _rendererDisposalCompleted = CreateCompletedSource();
+    private static int _activeRendererCount;
+    private static int _registrationsSincePrune;
+    private static bool _applicationShutdownRequested;
+
     private static readonly Uri DefaultBaseUri = new("https://github.com/", UriKind.Absolute);
-    private static readonly Lazy<MarkdownExtensionRegistry> SharedGfmRegistry = new(CreateGfmRegistry);
+    private static MarkdownEngine SharedGitHubEngine => JitHubMarkdownRuntime.Engine;
+    private static MarkdownRenderer.Performance.MarkdownPerformanceSession SharedPerformanceSession =>
+        JitHubMarkdownRuntime.GetPerformanceSession(
+            Ioc.Default.GetService<IAccountService>()?.GetUser() ?? 0);
+
+    private static readonly string[] HostSurfaceRoles =
+    [
+        MarkdownElementKeys.Body,
+        MarkdownElementKeys.DefinitionDescription,
+        MarkdownElementKeys.Figure,
+        MarkdownElementKeys.FigureCaption,
+        MarkdownElementKeys.AlertNote,
+        MarkdownElementKeys.AlertTip,
+        MarkdownElementKeys.AlertImportant,
+        MarkdownElementKeys.AlertWarning,
+        MarkdownElementKeys.AlertCaution,
+    ];
+
+    private static readonly string[] StyledRoles =
+    [
+        MarkdownElementKeys.Body,
+        MarkdownElementKeys.Heading1,
+        MarkdownElementKeys.Heading2,
+        MarkdownElementKeys.Heading3,
+        MarkdownElementKeys.Heading4,
+        MarkdownElementKeys.Heading5,
+        MarkdownElementKeys.Heading6,
+        MarkdownElementKeys.Link,
+        MarkdownElementKeys.Strong,
+        MarkdownElementKeys.Emphasis,
+        MarkdownElementKeys.Strikethrough,
+        MarkdownElementKeys.Subscript,
+        MarkdownElementKeys.Superscript,
+        MarkdownElementKeys.Inserted,
+        MarkdownElementKeys.Marked,
+        MarkdownElementKeys.Abbreviation,
+        MarkdownElementKeys.CodeInline,
+        MarkdownElementKeys.CodeBlock,
+        MarkdownElementKeys.CodeBlockHeader,
+        MarkdownElementKeys.CodeBlockLanguage,
+        MarkdownElementKeys.CodeBlockGutter,
+        MarkdownElementKeys.CodeBlockLineNumber,
+        MarkdownElementKeys.Quote,
+        MarkdownElementKeys.ListMarker,
+        MarkdownElementKeys.ThematicBreak,
+        MarkdownElementKeys.ImageCaption,
+        MarkdownElementKeys.DefinitionTerm,
+        MarkdownElementKeys.DefinitionDescription,
+        MarkdownElementKeys.Figure,
+        MarkdownElementKeys.FigureCaption,
+        MarkdownElementKeys.Diagram,
+        MarkdownElementKeys.Math,
+        MarkdownElementKeys.Table,
+        MarkdownElementKeys.TableHeader,
+        MarkdownElementKeys.TableCell,
+        MarkdownElementKeys.AlertNote,
+        MarkdownElementKeys.AlertTip,
+        MarkdownElementKeys.AlertImportant,
+        MarkdownElementKeys.AlertWarning,
+        MarkdownElementKeys.AlertCaution,
+    ];
+
+    private static readonly (string Role, string Token, double Fallback)[] ScalableRoleFonts =
+    [
+        (MarkdownElementKeys.Body, "AppMarkdownBodyFontSize", 16),
+        (MarkdownElementKeys.Heading1, "AppMarkdownHeading1FontSize", 30),
+        (MarkdownElementKeys.Heading2, "AppMarkdownHeading2FontSize", 24),
+        (MarkdownElementKeys.Heading3, "AppMarkdownHeading3FontSize", 20),
+        (MarkdownElementKeys.Heading4, "AppMarkdownHeading4FontSize", 17),
+        (MarkdownElementKeys.Heading5, "AppMarkdownHeading5FontSize", 15),
+        (MarkdownElementKeys.Heading6, "AppMarkdownHeading6FontSize", 14),
+        (MarkdownElementKeys.Link, "AppMarkdownBodyFontSize", 16),
+        (MarkdownElementKeys.Strong, "AppMarkdownBodyFontSize", 16),
+        (MarkdownElementKeys.Emphasis, "AppMarkdownBodyFontSize", 16),
+        (MarkdownElementKeys.Strikethrough, "AppMarkdownBodyFontSize", 16),
+        (MarkdownElementKeys.Subscript, "AppMarkdownScriptFontSize", 12),
+        (MarkdownElementKeys.Superscript, "AppMarkdownScriptFontSize", 12),
+        (MarkdownElementKeys.Inserted, "AppMarkdownBodyFontSize", 16),
+        (MarkdownElementKeys.Marked, "AppMarkdownBodyFontSize", 16),
+        (MarkdownElementKeys.Abbreviation, "AppMarkdownBodyFontSize", 16),
+        (MarkdownElementKeys.CodeInline, "AppMarkdownCodeFontSize", 13),
+        (MarkdownElementKeys.CodeBlock, "AppMarkdownCodeFontSize", 13),
+        (MarkdownElementKeys.CodeBlockHeader, "AppMarkdownMetaFontSize", 13),
+        (MarkdownElementKeys.CodeBlockLanguage, "AppMarkdownMetaFontSize", 13),
+        (MarkdownElementKeys.CodeBlockGutter, "AppMarkdownMetaFontSize", 13),
+        (MarkdownElementKeys.CodeBlockLineNumber, "AppMarkdownMetaFontSize", 13),
+        (MarkdownElementKeys.Quote, "AppMarkdownBodyFontSize", 16),
+        (MarkdownElementKeys.ListMarker, "AppMarkdownBodyFontSize", 16),
+        (MarkdownElementKeys.ImageCaption, "AppMarkdownMetaFontSize", 13),
+        (MarkdownElementKeys.DefinitionTerm, "AppMarkdownBodyFontSize", 16),
+        (MarkdownElementKeys.DefinitionDescription, "AppMarkdownBodyFontSize", 16),
+        (MarkdownElementKeys.Figure, "AppMarkdownBodyFontSize", 16),
+        (MarkdownElementKeys.FigureCaption, "AppMarkdownMetaFontSize", 13),
+        (MarkdownElementKeys.Diagram, "AppMarkdownCodeFontSize", 13),
+        (MarkdownElementKeys.Math, "AppMarkdownBodyFontSize", 16),
+        (MarkdownElementKeys.Table, "AppMarkdownBodyFontSize", 16),
+        (MarkdownElementKeys.TableHeader, "AppMarkdownBodyFontSize", 16),
+        (MarkdownElementKeys.TableCell, "AppMarkdownBodyFontSize", 16),
+        (MarkdownElementKeys.AlertNote, "AppMarkdownBodyFontSize", 16),
+        (MarkdownElementKeys.AlertTip, "AppMarkdownBodyFontSize", 16),
+        (MarkdownElementKeys.AlertImportant, "AppMarkdownBodyFontSize", 16),
+        (MarkdownElementKeys.AlertWarning, "AppMarkdownBodyFontSize", 16),
+        (MarkdownElementKeys.AlertCaution, "AppMarkdownBodyFontSize", 16),
+    ];
 
     private readonly MarkdownTheme _theme = new();
     private readonly IMarkdownImageResolver _imageResolver;
     private readonly ITelemetryService? _telemetryService;
     private readonly MarkdownRemoteContentConsent _remoteContentConsent = new();
     private readonly HashSet<MarkdownImageUnavailableReason> _reportedImageUnavailableReasons = [];
-    private readonly UISettings? _uiSettings = RuntimeEventSubscription.TryCreate(
-        static () => new UISettings(),
-        nameof(UISettings));
-    private AppThemeSettingsMonitor? _themeSettings;
+    private bool _remoteImageNoticeDismissed;
+    private MarkdownViewerDocumentPayload? _documentPayload;
+#pragma warning disable MR1001 // Common storage for the two explicit viewport control types; never constructed directly.
     private MarkdownRendererControl? _renderer;
+#pragma warning restore MR1001
+    private bool _currentRendererDisposalCompleted;
+    private bool _rendererDisposalFaulted;
+#pragma warning disable MR1001 // Borrow either explicit viewport control while its shared retirement barrier drains.
+    private MarkdownRendererControl? _rendererRetirementPending;
+#pragma warning restore MR1001
     private bool _isLoaded;
+    private bool _shutdownRequested;
     private bool _rendererCreationQueued;
-    private bool _colorValuesSubscribed;
-    private bool _textScaleSubscribed;
-    private bool _highContrastSubscribed;
+    private bool _rendererLoadedSettingsHandlerAttached;
+    private bool _rendererLayoutSettingsHandlerAttached;
+    private bool _rendererInitialLayoutReady;
+    private EventHandler<object>? _rendererLayoutSettingsHandler;
+    private long _rendererLayoutSettingsTicket;
+#pragma warning disable MR1001 // Retain the explicit viewport renderer owning the initial-layout subscription.
+    private MarkdownRendererControl? _rendererLayoutSettingsTarget;
+#pragma warning restore MR1001
     private bool _paletteSubscribed;
-    private double _appliedTextScaleFactor = 1;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _lifecycleRuntimeSettingsTimer;
     private int _lifecycleRuntimeSettingsRevision;
     private string? _lastAppliedMarkdown;
     private bool _renderFailureReportedForDocument;
     private bool _retryRenderPending;
-
     public static readonly DependencyProperty TextProperty = DependencyProperty.Register(
         nameof(Text),
         typeof(string),
@@ -132,7 +259,19 @@ public sealed partial class MarkdownViewer : UserControl
         nameof(IsSyntaxHighlightingEnabled),
         typeof(bool),
         typeof(MarkdownViewer),
-        new PropertyMetadata(false, OnRendererPropertyChanged));
+        new PropertyMetadata(true, OnRendererPropertyChanged));
+
+    public static readonly DependencyProperty AllowThirdPartyRemoteImagesByDefaultProperty = DependencyProperty.Register(
+        nameof(AllowThirdPartyRemoteImagesByDefault),
+        typeof(bool),
+        typeof(MarkdownViewer),
+        new PropertyMetadata(true, OnRendererPropertyChanged));
+
+    public static readonly DependencyProperty OwnsScrollViewportProperty = DependencyProperty.Register(
+        nameof(OwnsScrollViewport),
+        typeof(bool),
+        typeof(MarkdownViewer),
+        new PropertyMetadata(false, OnViewportOwnershipChanged));
 
     public string? Text
     {
@@ -213,22 +352,72 @@ public sealed partial class MarkdownViewer : UserControl
         set => SetValue(IsSyntaxHighlightingEnabledProperty, value);
     }
 
+    /// <summary>
+    /// Gets or sets whether secure third-party HTTPS images load without asking
+    /// for per-document consent. JitHub enables this because repository content
+    /// commonly depends on external badges and screenshots. Setting it to false
+    /// restores the privacy prompt. Legacy HTTP references are never sent over
+    /// plaintext: the production resolver attempts the same origin over HTTPS
+    /// and fails closed when TLS is unavailable.
+    /// </summary>
+    public bool AllowThirdPartyRemoteImagesByDefault
+    {
+        get => (bool)GetValue(AllowThirdPartyRemoteImagesByDefaultProperty);
+        set => SetValue(AllowThirdPartyRemoteImagesByDefaultProperty, value);
+    }
+
+    /// <summary>
+    /// Gets or sets whether this viewer owns its vertical scrolling surface.
+    /// Page and conversation shells leave this false and provide the viewport;
+    /// standalone previews opt in explicitly.
+    /// </summary>
+    public bool OwnsScrollViewport
+    {
+        get => (bool)GetValue(OwnsScrollViewportProperty);
+        set => SetValue(OwnsScrollViewportProperty, value);
+    }
+
     public MarkdownViewer()
     {
         InitializeComponent();
+        lock (ShutdownRegistryGate)
+        {
+            _shutdownRequested = _applicationShutdownRequested;
+            if (++_registrationsSincePrune >= 64)
+            {
+                for (int index = ShutdownRegistry.Count - 1; index >= 0; index--)
+                {
+                    if (!ShutdownRegistry[index].TryGetTarget(out _))
+                        ShutdownRegistry.RemoveAt(index);
+                }
+
+                _registrationsSincePrune = 0;
+            }
+
+            ShutdownRegistry.Add(new WeakReference<MarkdownViewer>(this));
+        }
+
+        // The production app defaults to trusted HTTPS image loading. Lifecycle
+        // automation opts into the configurable privacy mode so that the prompt,
+        // consent, and retry path remain covered as well.
+        if (MarkdownLifecycleAutomationBridge.IsEnabled)
+        {
+            AllowThirdPartyRemoteImagesByDefault = false;
+        }
 
         _telemetryService = ResolveTelemetryService();
         IMarkdownImageResolver imageResolver = ResolveImageResolver();
         _imageResolver = MarkdownLifecycleAutomationBridge.IsEnabled
-            ? new MarkdownLifecycleImageResolver(imageResolver)
+            ? MarkdownLifecycleImageResolver.Create(imageResolver)
             : imageResolver;
-        ApplyTheme();
 
         Loaded += (_, _) =>
         {
+            if (_shutdownRequested)
+                return;
+
             _isLoaded = true;
             SubscribeRuntimeSettings();
-            ApplyTheme();
             UpdateHostLayout();
             EnsureRenderer();
             ApplyRendererSettings();
@@ -238,9 +427,8 @@ public sealed partial class MarkdownViewer : UserControl
             _isLoaded = false;
             UnsubscribeRuntimeSettings();
             _rendererCreationQueued = false;
-            DisposeRenderer();
+            TryDisposeRendererFromLifecycle();
         };
-        ActualThemeChanged += MarkdownViewer_ActualThemeChanged;
         DataContextChanged += (_, _) =>
         {
             if (DocumentSource is null)
@@ -250,12 +438,131 @@ public sealed partial class MarkdownViewer : UserControl
         };
     }
 
+    internal static async Task<bool> WaitForRendererDisposalAsync(TimeSpan timeout)
+    {
+        Task waitForDisposal;
+        lock (ShutdownRegistryGate)
+        {
+            if (_activeRendererCount == 0)
+                return true;
+
+            waitForDisposal = _rendererDisposalCompleted.Task;
+        }
+
+        try
+        {
+            await waitForDisposal.WaitAsync(timeout);
+            return true;
+        }
+        catch (TimeoutException)
+        {
+            return false;
+        }
+    }
+
+    internal static int PrepareAllForApplicationShutdown()
+    {
+        List<MarkdownViewer> viewers = [];
+        lock (ShutdownRegistryGate)
+        {
+            _applicationShutdownRequested = true;
+            for (int index = ShutdownRegistry.Count - 1; index >= 0; index--)
+            {
+                if (ShutdownRegistry[index].TryGetTarget(out MarkdownViewer? viewer))
+                    viewers.Add(viewer);
+                else
+                    ShutdownRegistry.RemoveAt(index);
+            }
+        }
+
+        int rendererCountBefore = GetActiveRendererCount();
+        List<Exception>? failures = null;
+        foreach (MarkdownViewer viewer in viewers)
+        {
+            try
+            {
+                viewer.PrepareForApplicationShutdown();
+            }
+            catch (Exception exception)
+            {
+                (failures ??= []).Add(exception);
+            }
+        }
+
+        if (failures is { Count: > 0 })
+        {
+            throw new AggregateException(
+                "One or more Markdown viewers could not release their renderer during application shutdown.",
+                failures);
+        }
+
+        return Math.Max(0, rendererCountBefore - GetActiveRendererCount());
+    }
+
+    private static TaskCompletionSource CreateCompletedSource()
+    {
+        var source = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        source.SetResult();
+        return source;
+    }
+
+    private static int GetActiveRendererCount()
+    {
+        lock (ShutdownRegistryGate)
+            return _activeRendererCount;
+    }
+
+    internal static int GetActiveRendererCountForShutdown() => GetActiveRendererCount();
+
+    private static void RecordRendererCreated()
+    {
+        lock (ShutdownRegistryGate)
+        {
+            if (_activeRendererCount == 0)
+                _rendererDisposalCompleted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            _activeRendererCount++;
+        }
+    }
+
+    private static void RecordRendererDisposed()
+    {
+        lock (ShutdownRegistryGate)
+        {
+            if (_activeRendererCount == 0)
+                return;
+
+            _activeRendererCount--;
+            if (_activeRendererCount == 0)
+                _rendererDisposalCompleted.TrySetResult();
+        }
+    }
+
+    private void PrepareForApplicationShutdown()
+    {
+        _shutdownRequested = true;
+        _rendererCreationQueued = false;
+        UnsubscribeRuntimeSettings();
+        // Shutdown can begin before WinUI delivers this element's Unloaded
+        // event. Explicit renderer retirement completes the viewer lifetime
+        // even when that event is still queued.
+        _isLoaded = false;
+
+        DisposeRenderer();
+    }
+
     private static IMarkdownImageResolver ResolveImageResolver()
     {
         try
         {
-            return Ioc.Default.GetService<IGitHubService>() as IMarkdownImageResolver
-                ?? DenyAllMarkdownImageResolver.Instance;
+            IGitHubService? gitHubService = Ioc.Default.GetService<IGitHubService>();
+            return gitHubService switch
+            {
+                GitHubService concreteService => concreteService.CreateMarkdownImageResolver(),
+                IGitHubMarkdownImageResolverProvider provider => provider.CreateMarkdownImageResolver(),
+                IMarkdownImageResolver resolver => resolver,
+                _ => DenyAllMarkdownImageResolver.Instance,
+            };
         }
         catch
         {
@@ -263,8 +570,18 @@ public sealed partial class MarkdownViewer : UserControl
         }
     }
 
-    private static MarkdownExtensionRegistry CreateGfmRegistry()
-        => new MarkdownExtensionRegistry().UseGitHubFlavoredMarkdown();
+    private static void OnViewportOwnershipChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is not MarkdownViewer viewer || viewer._renderer is null)
+        {
+            return;
+        }
+
+        if (!viewer.TryDisposeRendererFromLifecycle())
+            return;
+
+        viewer.QueueRendererCreation();
+    }
 
     private static void OnRendererPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
@@ -276,6 +593,14 @@ public sealed partial class MarkdownViewer : UserControl
                 {
                     viewer.ResetRemoteContentConsent();
                 }
+            }
+
+            if (e.Property == AllowThirdPartyRemoteImagesByDefaultProperty &&
+                viewer.ShouldAllowThirdPartyRemoteImages())
+            {
+                // A host can promote its policy at runtime. Do not leave a stale
+                // consent prompt visible while the renderer rebuilds its images.
+                viewer.RemoteImageInfoBar.IsOpen = false;
             }
 
             viewer.ApplyRendererSettings();
@@ -295,20 +620,12 @@ public sealed partial class MarkdownViewer : UserControl
     {
         if (d is MarkdownViewer viewer)
         {
-            viewer.ApplyTheme();
+            viewer.ApplyRendererResources();
         }
     }
 
     private void RootGrid_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        double textScaleFactor = GetTextScaleFactor();
-        if (Math.Abs(textScaleFactor - _appliedTextScaleFactor) > 0.001 ||
-            MarkdownLifecycleAutomationBridge.IsEnabled)
-        {
-            ApplyTheme();
-            ApplyRendererSettings();
-        }
-
         UpdateHostLayout();
     }
 
@@ -327,25 +644,6 @@ public sealed partial class MarkdownViewer : UserControl
 
     private void SubscribeRuntimeSettings()
     {
-        if (_uiSettings is not null && !_colorValuesSubscribed)
-        {
-            _colorValuesSubscribed = RuntimeEventSubscription.TrySubscribe(
-                () => _uiSettings.ColorValuesChanged += UISettings_ColorValuesChanged,
-                nameof(UISettings.ColorValuesChanged));
-        }
-        if (_uiSettings is not null && !_textScaleSubscribed)
-        {
-            _textScaleSubscribed = RuntimeEventSubscription.TrySubscribe(
-                () => _uiSettings.TextScaleFactorChanged += UISettings_TextScaleFactorChanged,
-                nameof(UISettings.TextScaleFactorChanged));
-        }
-        _themeSettings ??= ThemeSettingsHelper.TryGetFor(this);
-        if (_themeSettings is not null && !_highContrastSubscribed)
-        {
-            _highContrastSubscribed = RuntimeEventSubscription.TrySubscribe(
-                () => _themeSettings.Changed += ThemeSettings_Changed,
-                nameof(AppThemeSettingsMonitor.Changed));
-        }
         if (!_paletteSubscribed)
         {
             _paletteSubscribed = RuntimeEventSubscription.TrySubscribe(
@@ -365,36 +663,12 @@ public sealed partial class MarkdownViewer : UserControl
 
     private void UnsubscribeRuntimeSettings()
     {
-        if (_uiSettings is not null)
-        {
-            RuntimeEventSubscription.TryUnsubscribe(
-                () => _uiSettings.ColorValuesChanged -= UISettings_ColorValuesChanged,
-                _colorValuesSubscribed,
-                nameof(UISettings.ColorValuesChanged));
-            RuntimeEventSubscription.TryUnsubscribe(
-                () => _uiSettings.TextScaleFactorChanged -= UISettings_TextScaleFactorChanged,
-                _textScaleSubscribed,
-                nameof(UISettings.TextScaleFactorChanged));
-        }
-
-        if (_themeSettings is not null)
-        {
-            RuntimeEventSubscription.TryUnsubscribe(
-                () => _themeSettings.Changed -= ThemeSettings_Changed,
-                _highContrastSubscribed,
-                nameof(AppThemeSettingsMonitor.Changed));
-        }
-
         RuntimeEventSubscription.TryUnsubscribe(
             () => ThemePaletteRuntime.PaletteChanged -= ThemePaletteRuntime_PaletteChanged,
             _paletteSubscribed,
             nameof(ThemePaletteRuntime.PaletteChanged));
 
-        _colorValuesSubscribed = false;
-        _textScaleSubscribed = false;
-        _highContrastSubscribed = false;
         _paletteSubscribed = false;
-        _themeSettings = null;
         if (_lifecycleRuntimeSettingsTimer is not null)
         {
             _lifecycleRuntimeSettingsTimer.Stop();
@@ -408,33 +682,38 @@ public sealed partial class MarkdownViewer : UserControl
         object args)
     {
         int revision = MarkdownLifecycleAutomationBridge.GetRuntimeSettingsRevision();
-        if (revision <= 0 || revision == _lifecycleRuntimeSettingsRevision)
+        if (revision > 0 && revision != _lifecycleRuntimeSettingsRevision)
         {
-            return;
+            _lifecycleRuntimeSettingsRevision = revision;
+            QueueRendererResourceRefresh();
         }
-
-        _lifecycleRuntimeSettingsRevision = revision;
-        QueueRuntimeThemeRefresh();
     }
 
-    private void MarkdownViewer_ActualThemeChanged(FrameworkElement sender, object args) =>
-        QueueRuntimeThemeRefresh();
+    private static ScrollViewer? FindDescendantVerticalScrollViewer(DependencyObject root)
+    {
+        int childCount = VisualTreeHelper.GetChildrenCount(root);
+        for (int index = 0; index < childCount; index++)
+        {
+            DependencyObject child = VisualTreeHelper.GetChild(root, index);
+            if (child is ScrollViewer scrollViewer &&
+                scrollViewer.VerticalScrollMode != ScrollMode.Disabled)
+            {
+                return scrollViewer;
+            }
 
-    private void UISettings_ColorValuesChanged(UISettings sender, object args) =>
-        QueueRuntimeThemeRefresh();
+            if (FindDescendantVerticalScrollViewer(child) is { } descendant)
+                return descendant;
+        }
 
-    private void UISettings_TextScaleFactorChanged(UISettings sender, object args) =>
-        QueueRuntimeThemeRefresh();
-
-    private void ThemeSettings_Changed(object? sender, EventArgs args) =>
-        QueueRuntimeThemeRefresh();
+        return null;
+    }
 
     private void ThemePaletteRuntime_PaletteChanged(
         object? sender,
         ThemePaletteChangedEventArgs args) =>
-        QueueRuntimeThemeRefresh();
+        QueueRendererResourceRefresh();
 
-    private void QueueRuntimeThemeRefresh()
+    private void QueueRendererResourceRefresh()
     {
         Microsoft.UI.Dispatching.DispatcherQueue? dispatcher = DispatcherQueue;
         if (dispatcher is null)
@@ -449,8 +728,7 @@ public sealed partial class MarkdownViewer : UserControl
                 return;
             }
 
-            ApplyTheme();
-            ApplyRendererSettings();
+            ApplyRendererResources();
         }
 
         if (dispatcher.HasThreadAccess)
@@ -470,32 +748,76 @@ public sealed partial class MarkdownViewer : UserControl
             return;
         }
 
-        viewer._remoteContentConsent.Activate(e.NewValue as MarkdownDocumentSource);
-        viewer._reportedImageUnavailableReasons.Clear();
-        viewer._renderFailureReportedForDocument = false;
-        viewer._retryRenderPending = false;
-        if (viewer.RemoteImageInfoBar is not null)
-        {
-            viewer.RemoteImageInfoBar.IsOpen = false;
-        }
-        if (viewer.RenderErrorInfoBar is not null)
-        {
-            viewer.RenderErrorInfoBar.IsOpen = false;
-        }
+        viewer.OnDocumentSourceTransition(
+            e.OldValue as MarkdownDocumentSource,
+            e.NewValue as MarkdownDocumentSource);
         viewer.ApplyRendererSettings();
     }
 
-    private void ResetRemoteContentConsent()
+    internal void SetDocumentPayload(MarkdownViewerDocumentPayload? payload)
     {
-        _remoteContentConsent.ResetForHostReuse();
+        if (Equals(_documentPayload, payload))
+            return;
+
+        MarkdownDocumentSource? oldSource = _documentPayload?.DocumentSource ?? DocumentSource;
+        _documentPayload = payload;
+        MarkdownDocumentSource? newSource = _documentPayload is null
+            ? DocumentSource
+            : _documentPayload.DocumentSource;
+        OnDocumentSourceTransition(oldSource, newSource);
+        ApplyRendererSettings();
+    }
+
+    private void OnDocumentSourceTransition(
+        MarkdownDocumentSource? oldSource,
+        MarkdownDocumentSource? newSource)
+    {
+        if (!string.Equals(oldSource?.DocumentId, newSource?.DocumentId, StringComparison.Ordinal))
+        {
+            ResetOwnedViewportForNewDocument();
+        }
+
+        _remoteContentConsent.Activate(newSource);
         _reportedImageUnavailableReasons.Clear();
+        _remoteImageNoticeDismissed = false;
         _renderFailureReportedForDocument = false;
         _retryRenderPending = false;
         if (RemoteImageInfoBar is not null)
         {
             RemoteImageInfoBar.IsOpen = false;
         }
-        if (RenderErrorInfoBar is not null)
+        if (!_rendererDisposalFaulted && RenderErrorInfoBar is not null)
+        {
+            RenderErrorInfoBar.IsOpen = false;
+        }
+    }
+
+    private void ResetOwnedViewportForNewDocument()
+    {
+        // The document source is the logical navigation identity. A reused
+        // README preview must start at its own top; preserving a prior repo's
+        // anchor would also make lazy layout and image-readiness target the
+        // wrong first viewport. Do not move an ancestor/page-owned scroller.
+        if (!OwnsScrollViewport || _renderer is null)
+            return;
+
+        ScrollViewer? viewport = FindDescendantVerticalScrollViewer(_renderer);
+        if (viewport is { VerticalOffset: > 0.5 })
+            viewport.ChangeView(null, 0, null, disableAnimation: true);
+    }
+
+    private void ResetRemoteContentConsent()
+    {
+        _remoteContentConsent.ResetForHostReuse();
+        _reportedImageUnavailableReasons.Clear();
+        _remoteImageNoticeDismissed = false;
+        _renderFailureReportedForDocument = false;
+        _retryRenderPending = false;
+        if (RemoteImageInfoBar is not null)
+        {
+            RemoteImageInfoBar.IsOpen = false;
+        }
+        if (!_rendererDisposalFaulted && RenderErrorInfoBar is not null)
         {
             RenderErrorInfoBar.IsOpen = false;
         }
@@ -503,7 +825,11 @@ public sealed partial class MarkdownViewer : UserControl
 
     private void QueueRendererCreation()
     {
-        if (_renderer is not null || _rendererCreationQueued || !_isLoaded)
+        if (_shutdownRequested ||
+            _renderer is not null ||
+            _rendererRetirementPending is not null ||
+            _rendererCreationQueued ||
+            !_isLoaded)
         {
             return;
         }
@@ -514,7 +840,7 @@ public sealed partial class MarkdownViewer : UserControl
             !dispatcher.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
             {
                 _rendererCreationQueued = false;
-                if (!_isLoaded)
+                if (_shutdownRequested || !_isLoaded)
                 {
                     return;
                 }
@@ -529,27 +855,75 @@ public sealed partial class MarkdownViewer : UserControl
 
     private void EnsureRenderer()
     {
+        if (_shutdownRequested)
+            return;
+
+        // A failed teardown can latch the underlying control's disposed state
+        // before it has released every resource. Never reattach that instance.
+        if (_rendererDisposalFaulted)
+        {
+            ShowRendererDisposalFailure();
+            return;
+        }
+
+        // The old control is already disposed, but its published snapshot may
+        // still be releasing device resources on the pool. Do not reattach it
+        // if this viewer is loaded again before that retirement completes.
+        if (_rendererRetirementPending is not null)
+            return;
+
         if (_renderer is not null)
         {
             if (!RendererHost.Children.Contains(_renderer))
             {
+                EnsureRendererLoadedSettingsHandler(_renderer);
                 RendererHost.Children.Add(_renderer);
+                ApplyRendererSettings();
             }
 
             return;
         }
 
-        _renderer = new MarkdownRendererControlBuilder()
-            .WithExtensionRegistry(SharedGfmRegistry.Value)
-            .WithTheme(_theme)
-            .WithSelectionEnabled(IsSelectionEnabled)
-            .WithCodeBlockCopyEnabled(IsCodeBlockCopyEnabled)
-            .WithImageResolver(_imageResolver)
-            .WithImageBaseUri(GetBaseUri())
-            .WithImageDocumentPath(DocumentPath)
-            .WithImageDocumentSource(DocumentSource)
-            .WithThirdPartyRemoteImagesAllowed(_remoteContentConsent.IsGranted)
-            .Build();
+        if (OwnsScrollViewport)
+        {
+            _renderer = new MarkdownScrollView().UseGitHubReadme(SharedGitHubEngine);
+        }
+        else
+        {
+            _renderer = new MarkdownDocumentView().UseGitHubReadme(SharedGitHubEngine);
+        }
+        RecordRendererCreated();
+        _currentRendererDisposalCompleted = false;
+        _renderer.DisposalCompleted += OnRendererDisposalCompleted;
+        _renderer.Theme = _theme;
+        // GitHub articles use 16-DIP paragraph spacing, while list paragraphs
+        // collapse into the list-item flow. Keep JitHub's compact list token
+        // without shortening standalone paragraphs.
+        _renderer.StyleSheet = new MarkdownStyleSheet(
+            new MarkdownStyleRule[]
+            {
+                new MarkdownStyleRule(
+                    new MarkdownStyleSelector(MarkdownStyleRole.Body, minimumNestingDepth: 1),
+                    new ElementStyleOverride
+                    {
+                        Margin = ResolveThickness("AppMarkdownBodyMargin", new Thickness(0, 0, 0, 8)),
+                    }),
+            });
+        _renderer.StringProvider = JitHubMarkdownStringProvider.Instance;
+        ApplyRendererResources();
+        _renderer.IsSelectionEnabled = IsSelectionEnabled;
+        _renderer.CodeBlockChromeMode = CodeBlockChromeMode.Enhanced;
+        _renderer.CodeBlockLineNumberMode = CodeBlockLineNumberMode.AutoMultiline;
+        _renderer.IsCodeBlockCopyEnabled = IsCodeBlockCopyEnabled;
+        _renderer.ImageResolver = _imageResolver;
+        _renderer.SvgRenderer = JitHubMarkdownRuntime.SvgRenderer;
+        _renderer.RasterDecoder = JitHubMarkdownRuntime.RasterDecoder;
+        _renderer.PerformanceSession = SharedPerformanceSession;
+        MarkdownViewerDocumentPayload? documentPayload = _documentPayload;
+        _renderer.ImageBaseUri = GetBaseUri(documentPayload is null ? BaseUrl : documentPayload.BaseUrl);
+        _renderer.ImageDocumentPath = documentPayload is null ? DocumentPath : documentPayload.DocumentPath;
+        _renderer.ImageDocumentSource = documentPayload is null ? DocumentSource : documentPayload.DocumentSource;
+        _renderer.AllowThirdPartyRemoteImages = ShouldAllowThirdPartyRemoteImages();
         _renderer.LinkClick += OnRendererLinkClick;
         _renderer.DisclosureToggled += OnRendererDisclosureToggled;
         _renderer.CopyCompleted += OnRendererCopyCompleted;
@@ -562,26 +936,329 @@ public sealed partial class MarkdownViewer : UserControl
         MarkdownLifecycleAutomationBridge.SignalHostReady(automationId);
         _renderer.HorizontalAlignment = HorizontalAlignment.Stretch;
         _renderer.VerticalAlignment = VerticalAlignment.Stretch;
+        EnsureRendererLoadedSettingsHandler(_renderer);
         RendererHost.Children.Add(_renderer);
         ApplyRendererSettings();
     }
 
+#pragma warning disable MR1001 // Subscribe through the shared base of the two explicit viewport controls.
+    private void EnsureRendererLoadedSettingsHandler(MarkdownRendererControl renderer)
+    {
+        if (renderer.IsLoaded)
+        {
+            EnsureRendererLayoutSettingsHandler(renderer);
+            return;
+        }
+
+        _rendererInitialLayoutReady = false;
+        if (_rendererLoadedSettingsHandlerAttached)
+            return;
+
+        // ApplyRendererSettings can be reached as soon as the child is added,
+        // before its own Loaded event has made the renderer able to accept a
+        // pipeline. Install one handler before attachment so the first Loaded
+        // turn can register for the completed initial layout before assignment.
+        renderer.Loaded += OnRendererLoadedForSettings;
+        _rendererLoadedSettingsHandlerAttached = true;
+    }
+
+    private void OnRendererLoadedForSettings(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not MarkdownRendererControl renderer || !ReferenceEquals(renderer, _renderer))
+            return;
+
+        renderer.Loaded -= OnRendererLoadedForSettings;
+        _rendererLoadedSettingsHandlerAttached = false;
+        if (_shutdownRequested || !_isLoaded)
+            return;
+
+        _rendererInitialLayoutReady = false;
+        EnsureRendererLayoutSettingsHandler(renderer);
+    }
+
+    private void EnsureRendererLayoutSettingsHandler(MarkdownRendererControl renderer)
+    {
+        if (_rendererInitialLayoutReady || _rendererLayoutSettingsHandlerAttached)
+            return;
+
+        long ticket = ++_rendererLayoutSettingsTicket;
+        EventHandler<object> handler = (_, _) => OnRendererLayoutUpdatedForSettings(renderer, ticket);
+        _rendererLayoutSettingsHandler = handler;
+        _rendererLayoutSettingsTarget = renderer;
+        renderer.LayoutUpdated += handler;
+        _rendererLayoutSettingsHandlerAttached = true;
+    }
+
+#pragma warning disable MR1001 // The handler is scoped to the explicit renderer captured at subscription time.
+    private void OnRendererLayoutUpdatedForSettings(MarkdownRendererControl renderer, long ticket)
+    {
+        // WinUI raises LayoutUpdated with a null sender after all SizeChanged
+        // events in a layout sequence, so use the renderer currently owned by
+        // this viewer and validate its measured width directly. Capturing both
+        // renderer and ticket prevents an already-queued old callback from
+        // admitting a replacement renderer.
+        if (ticket != _rendererLayoutSettingsTicket ||
+            !ReferenceEquals(renderer, _rendererLayoutSettingsTarget) ||
+            !ReferenceEquals(renderer, _renderer) ||
+            !_rendererLayoutSettingsHandlerAttached)
+            return;
+
+        if (_shutdownRequested || !_isLoaded)
+        {
+            ClearRendererLayoutSettingsHandler();
+            return;
+        }
+
+        if (!renderer.IsLoaded ||
+            !double.IsFinite(renderer.ActualWidth) || renderer.ActualWidth <= 0 ||
+            !double.IsFinite(renderer.ActualHeight) || renderer.ActualHeight <= 0)
+            return;
+
+        ClearRendererLayoutSettingsHandler();
+        _rendererInitialLayoutReady = true;
+        ApplyRendererSettings();
+    }
+#pragma warning restore MR1001
+
+#pragma warning disable MR1001 // Remove the event from the retained explicit renderer instance.
+    private void ClearRendererLayoutSettingsHandler()
+    {
+        MarkdownRendererControl? renderer = _rendererLayoutSettingsTarget;
+        EventHandler<object>? handler = _rendererLayoutSettingsHandler;
+        _rendererLayoutSettingsTarget = null;
+        _rendererLayoutSettingsHandler = null;
+        _rendererLayoutSettingsHandlerAttached = false;
+        ++_rendererLayoutSettingsTicket;
+
+        if (renderer is not null && handler is not null)
+            renderer.LayoutUpdated -= handler;
+    }
+#pragma warning restore MR1001
+#pragma warning restore MR1001
+
     private void DisposeRenderer()
     {
-        if (_renderer is null)
+        var renderer = _renderer;
+        if (renderer is null)
         {
             return;
         }
 
-        _renderer.LinkClick -= OnRendererLinkClick;
-        _renderer.DisclosureToggled -= OnRendererDisclosureToggled;
-        _renderer.CopyCompleted -= OnRendererCopyCompleted;
-        _renderer.ImageUnavailable -= OnRendererImageUnavailable;
-        _renderer.RenderCompleted -= OnRendererRenderCompleted;
-        _renderer.RenderFailed -= OnRendererRenderFailed;
-        RendererHost.Children.Remove(_renderer);
-        _renderer.Dispose();
+        // Repeated Unloaded/shutdown paths must join the original drain rather
+        // than start a second one or release the same renderer twice.
+        if (ReferenceEquals(_rendererRetirementPending, renderer))
+            return;
+
+        Microsoft.UI.Dispatching.DispatcherQueue? retirementDispatcher = DispatcherQueue;
+        _rendererRetirementPending = renderer;
+        Task retirementCompletion;
+        try
+        {
+            retirementCompletion = MarkdownRendererDisposalCommit.Execute(
+                detachAndDispose: () =>
+                {
+                    renderer.Loaded -= OnRendererLoadedForSettings;
+                    ClearRendererLayoutSettingsHandler();
+                    _rendererLoadedSettingsHandlerAttached = false;
+                    _rendererInitialLayoutReady = false;
+                    renderer.LinkClick -= OnRendererLinkClick;
+                    renderer.DisclosureToggled -= OnRendererDisclosureToggled;
+                    renderer.CopyCompleted -= OnRendererCopyCompleted;
+                    renderer.ImageUnavailable -= OnRendererImageUnavailable;
+                    renderer.RenderCompleted -= OnRendererRenderCompleted;
+                    renderer.RenderFailed -= OnRendererRenderFailed;
+                    RendererHost.Children.Remove(renderer);
+                    renderer.Dispose();
+                },
+                disposalCompletedSuccessfully: () => _currentRendererDisposalCompleted,
+                retirementBegan: () => _renderer = null,
+                drainRetiredResources: renderer.DrainRetiredSnapshotsAsync,
+                releaseTracking: () => ReleaseRendererTrackingOnDispatcherAsync(renderer, retirementDispatcher));
+        }
+        catch
+        {
+            // If Dispose did not publish its completion signal, the existing
+            // retry/failure path still owns this renderer. If retirement had
+            // already begun, retain the pending latch and active count.
+            if (!_currentRendererDisposalCompleted)
+                _rendererRetirementPending = null;
+            throw;
+        }
+
+        UiTaskGuard.Observe(
+            ObserveRendererRetirementAsync(renderer, retirementCompletion, retirementDispatcher),
+            "ui-markdown-retirement");
+    }
+
+#pragma warning disable MR1001 // Retirement tracks the shared base of the two explicit viewport controls; it never constructs the obsolete control.
+    private Task ReleaseRendererTrackingOnDispatcherAsync(
+        MarkdownRendererControl renderer,
+        Microsoft.UI.Dispatching.DispatcherQueue? dispatcher)
+#pragma warning restore MR1001
+    {
+        if (dispatcher is null)
+        {
+            return Task.FromException(new InvalidOperationException(
+                "The Markdown viewer dispatcher was unavailable before renderer retirement completed."));
+        }
+
+        if (dispatcher.HasThreadAccess)
+        {
+            ReleaseRendererTracking(renderer);
+            return Task.CompletedTask;
+        }
+
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!dispatcher.TryEnqueue(() =>
+            {
+                try
+                {
+                    ReleaseRendererTracking(renderer);
+                    completion.TrySetResult();
+                }
+                catch (Exception exception)
+                {
+                    completion.TrySetException(exception);
+                }
+            }))
+        {
+            completion.TrySetException(new InvalidOperationException(
+                "The Markdown viewer dispatcher rejected renderer-retirement completion."));
+        }
+
+        return completion.Task;
+    }
+
+#pragma warning disable MR1001 // The retired instance is borrowed from an explicit MarkdownDocumentView or MarkdownScrollView.
+    private void ReleaseRendererTracking(MarkdownRendererControl renderer)
+#pragma warning restore MR1001
+    {
+        if (_renderer is not null ||
+            !ReferenceEquals(_rendererRetirementPending, renderer))
+        {
+            throw new InvalidOperationException(
+                "The Markdown renderer changed before its snapshot retirement completed.");
+        }
+
+        renderer.DisposalCompleted -= OnRendererDisposalCompleted;
         _renderer = null;
+        _currentRendererDisposalCompleted = false;
+        _rendererRetirementPending = null;
+        RecordRendererDisposed();
+
+        // A fast unload/reload or viewport ownership change can request a new
+        // renderer while the old snapshot drains. Recreate only after its
+        // ownership has been fully released.
+        if (_isLoaded && !_shutdownRequested && !_rendererDisposalFaulted)
+            QueueRendererCreation();
+    }
+
+#pragma warning disable MR1001 // Observe the explicit viewport renderer through its shared retirement contract.
+    private async Task ObserveRendererRetirementAsync(
+        MarkdownRendererControl renderer,
+        Task retirementCompletion,
+        Microsoft.UI.Dispatching.DispatcherQueue? dispatcher)
+#pragma warning restore MR1001
+    {
+        try
+        {
+            await retirementCompletion.ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            try
+            {
+                Trace.TraceError(
+                    "Markdown renderer snapshot retirement failed: {0}; HRESULT=0x{1:X8}",
+                    exception.GetType().Name,
+                    exception.HResult);
+
+                void ReportFailure()
+                {
+                    try
+                    {
+                        if (!ReferenceEquals(_rendererRetirementPending, renderer))
+                            return;
+
+                        _rendererDisposalFaulted = true;
+                        ShowRendererDisposalFailure();
+                        MarkdownLifecycleAutomationBridge.RecordRenderFailure(
+                            MarkdownHostContract.GetAutomationId(HostKind, AutomationInstanceId),
+                            new InvalidOperationException(
+                                $"Snapshot retirement failed with {exception.GetType().Name} " +
+                                $"(HRESULT 0x{exception.HResult:X8})."));
+                    }
+                    catch (Exception reportingException)
+                    {
+                        Trace.TraceError(
+                            "Markdown renderer retirement failure reporting failed: {0}; HRESULT=0x{1:X8}",
+                            reportingException.GetType().Name,
+                            reportingException.HResult);
+                    }
+                }
+
+                if (dispatcher is { HasThreadAccess: true })
+                {
+                    ReportFailure();
+                }
+                else if (dispatcher is null || !dispatcher.TryEnqueue(ReportFailure))
+                {
+                    // Keep the active-renderer count latched. The close path will
+                    // therefore skip shared-provider teardown rather than treating
+                    // an unreported or rejected completion as success.
+                    Trace.TraceError("Markdown viewer dispatcher rejected retirement-failure reporting.");
+                }
+            }
+            catch (Exception observerException)
+            {
+                // This observer is intentionally terminal: even diagnostics
+                // failure must not surface as an unobserved task exception.
+                try
+                {
+                    Trace.TraceError(
+                        "Markdown renderer retirement observer failed: {0}; HRESULT=0x{1:X8}",
+                        observerException.GetType().Name,
+                        observerException.HResult);
+                }
+                catch
+                {
+                }
+            }
+        }
+    }
+
+    private void OnRendererDisposalCompleted(object? sender, EventArgs e)
+    {
+        if (ReferenceEquals(sender, _renderer))
+            _currentRendererDisposalCompleted = true;
+    }
+
+    private bool TryDisposeRendererFromLifecycle()
+    {
+        try
+        {
+            DisposeRenderer();
+            return true;
+        }
+        catch (Exception exception)
+        {
+            _rendererDisposalFaulted = true;
+            ShowRendererDisposalFailure();
+            MarkdownLifecycleAutomationBridge.RecordRenderFailure(
+                MarkdownHostContract.GetAutomationId(HostKind, AutomationInstanceId),
+                exception);
+            Trace.TraceError("Markdown renderer disposal failed during a lifecycle transition: {0}", exception);
+            return false;
+        }
+    }
+
+    private void ShowRendererDisposalFailure()
+    {
+        RenderErrorInfoBar.Message = LocalizedResourceText.GetString(
+            "Markdown.RendererDisposalFailure.Message",
+            "This Markdown view could not restart safely. Close and reopen JitHub to try again.");
+        RetryRenderButton.Visibility = Visibility.Collapsed;
+        RenderErrorInfoBar.IsOpen = true;
     }
 
     private void UpdateHostLayout()
@@ -616,14 +1293,31 @@ public sealed partial class MarkdownViewer : UserControl
 
     private void ApplyRendererSettings()
     {
+        if (_rendererDisposalFaulted)
+            return;
+
         if (_renderer is null)
         {
             QueueRendererCreation();
             return;
         }
 
-        string markdown = GetEffectiveMarkdown();
-        if (!string.Equals(_lastAppliedMarkdown, markdown, StringComparison.Ordinal))
+        if (!_renderer.IsLoaded || !_rendererInitialLayoutReady)
+        {
+            // A source tick is meaningful only when Markdown assignment can
+            // request the pipeline at its measured width. The one-shot
+            // LayoutUpdated handler runs after the initial SizeChanged events,
+            // so the exact source will not be superseded by the first measure.
+            return;
+        }
+
+        MarkdownViewerDocumentPayload? documentPayload = _documentPayload;
+        string? documentPath = documentPayload is null ? DocumentPath : documentPayload.DocumentPath;
+        MarkdownDocumentSource? documentSource = documentPayload is null ? DocumentSource : documentPayload.DocumentSource;
+        string? baseUrl = documentPayload is null ? BaseUrl : documentPayload.BaseUrl;
+        string markdown = GetEffectiveMarkdown(documentPayload is null ? Text : documentPayload.Markdown);
+        bool markdownChanged = !string.Equals(_renderer.Markdown, markdown, StringComparison.Ordinal);
+        if (markdownChanged)
         {
             _lastAppliedMarkdown = markdown;
             _renderFailureReportedForDocument = false;
@@ -631,29 +1325,62 @@ public sealed partial class MarkdownViewer : UserControl
             RenderErrorInfoBar.IsOpen = false;
         }
 
-        _renderer.Markdown = markdown;
-        _renderer.IsSelectionEnabled = IsSelectionEnabled;
-        _renderer.IsCodeBlockCopyEnabled = IsCodeBlockCopyEnabled;
-        _renderer.CodeBlockCopyButtonStyle = TryResolveResource("AppToolbarButtonStyle", out object? copyStyle)
+        // Apply every renderer setting before assigning Markdown. Several of
+        // these properties request a rebuild and advance the pipeline
+        // generation; assigning the document last keeps one final generation.
+        if (_renderer.IsSelectionEnabled != IsSelectionEnabled)
+            _renderer.IsSelectionEnabled = IsSelectionEnabled;
+        CodeBlockChromeMode chromeMode = CodeBlockChromeMode.Enhanced;
+        CodeBlockLineNumberMode lineNumberMode = CodeBlockLineNumberMode.AutoMultiline;
+        bool copyEnabled = IsCodeBlockCopyEnabled;
+        if (_renderer.CodeBlockChromeMode != chromeMode)
+            _renderer.CodeBlockChromeMode = chromeMode;
+        if (_renderer.CodeBlockLineNumberMode != lineNumberMode)
+            _renderer.CodeBlockLineNumberMode = lineNumberMode;
+        if (_renderer.IsCodeBlockCopyEnabled != copyEnabled)
+            _renderer.IsCodeBlockCopyEnabled = copyEnabled;
+        Style? copyButtonStyle = TryResolveResource("AppToolbarButtonStyle", out object? copyStyle)
             ? copyStyle as Style
             : null;
-        // Keep JitHub's production markdown surfaces off TextMate/Onig for now.
-        // The native Onig runtime can fail-fast during packaged WinUI shutdown,
-        // and the package does not expose a safe registry/scanner disposal path.
-        _renderer.IsCodeBlockSyntaxHighlightingEnabled = false;
+        if (!ReferenceEquals(_renderer.CodeBlockCopyButtonStyle, copyButtonStyle))
+            _renderer.CodeBlockCopyButtonStyle = copyButtonStyle;
+        var codeHighlighter = IsSyntaxHighlightingEnabled
+            ? JitHubMarkdownRuntime.CodeHighlighter
+            : null;
+        if (!ReferenceEquals(_renderer.CodeHighlighter, codeHighlighter))
+            _renderer.CodeHighlighter = codeHighlighter;
+        if (_renderer.IsCodeBlockSyntaxHighlightingEnabled != IsSyntaxHighlightingEnabled)
+            _renderer.IsCodeBlockSyntaxHighlightingEnabled = IsSyntaxHighlightingEnabled;
 
-        _renderer.ImageResolver = _imageResolver;
-        _renderer.ImageBaseUri = GetBaseUri();
-        _renderer.ImageDocumentPath = DocumentPath;
-        _renderer.ImageDocumentSource = DocumentSource;
-        _renderer.AllowThirdPartyRemoteImages = _remoteContentConsent.IsGranted;
+        if (!ReferenceEquals(_renderer.ImageResolver, _imageResolver))
+            _renderer.ImageResolver = _imageResolver;
+        IMarkdownSvgRenderer svgRenderer = JitHubMarkdownRuntime.SvgRenderer;
+        if (!ReferenceEquals(_renderer.SvgRenderer, svgRenderer))
+            _renderer.SvgRenderer = svgRenderer;
+        MarkdownRenderer.Performance.MarkdownPerformanceSession performanceSession = SharedPerformanceSession;
+        if (!ReferenceEquals(_renderer.PerformanceSession, performanceSession))
+            _renderer.PerformanceSession = performanceSession;
+        Uri imageBaseUri = GetBaseUri(baseUrl);
+        if (!Equals(_renderer.ImageBaseUri, imageBaseUri))
+            _renderer.ImageBaseUri = imageBaseUri;
+        if (!string.Equals(_renderer.ImageDocumentPath, documentPath, StringComparison.Ordinal))
+            _renderer.ImageDocumentPath = documentPath;
+        if (!Equals(_renderer.ImageDocumentSource, documentSource))
+            _renderer.ImageDocumentSource = documentSource;
+        bool allowThirdPartyRemoteImages = ShouldAllowThirdPartyRemoteImages();
+        if (_renderer.AllowThirdPartyRemoteImages != allowThirdPartyRemoteImages)
+            _renderer.AllowThirdPartyRemoteImages = allowThirdPartyRemoteImages;
+
+        _renderer.Markdown = markdown;
         AutomationProperties.SetName(_renderer, MarkdownHostContract.GetAutomationName(HostKind));
-        AutomationProperties.SetAutomationId(_renderer, MarkdownHostContract.GetAutomationId(HostKind, AutomationInstanceId));
+        AutomationProperties.SetAutomationId(
+            _renderer,
+            MarkdownHostContract.GetAutomationId(HostKind, AutomationInstanceId));
     }
 
-    private string GetEffectiveMarkdown()
+    private string GetEffectiveMarkdown(string? sourceMarkdown)
     {
-        string markdown = Text ?? string.Empty;
+        string markdown = sourceMarkdown ?? string.Empty;
         if (!MarkdownLifecycleAutomationBridge.IsEnabled)
         {
             return markdown;
@@ -823,7 +1550,7 @@ public sealed partial class MarkdownViewer : UserControl
     private void OnRendererImageUnavailable(object? sender, MarkdownImageUnavailableEventArgs e)
     {
         if (e.Reason == MarkdownImageUnavailableReason.RemoteContentBlocked &&
-            _remoteContentConsent.IsGranted)
+            ShouldAllowThirdPartyRemoteImages())
         {
             return;
         }
@@ -908,11 +1635,27 @@ public sealed partial class MarkdownViewer : UserControl
             MarkdownImageUnavailableReason.MeteredConnection
             ? Visibility.Visible
             : Visibility.Collapsed;
-        RemoteImageInfoBar.IsOpen = true;
+        // The notice overlays the top of the reading region; once the reader
+        // closes it, later images in the same document do not reopen it.
+        if (!_remoteImageNoticeDismissed)
+        {
+            RemoteImageInfoBar.IsOpen = true;
+        }
+    }
+
+    private void RemoteImageInfoBar_Closed(InfoBar sender, InfoBarClosedEventArgs args)
+    {
+        if (args.Reason == InfoBarCloseReason.CloseButton)
+        {
+            _remoteImageNoticeDismissed = true;
+        }
     }
 
     private void OnRendererRenderCompleted(object? sender, EventArgs e)
     {
+        if (_rendererDisposalFaulted)
+            return;
+
         RenderErrorInfoBar.IsOpen = false;
         if (!_retryRenderPending)
         {
@@ -942,6 +1685,9 @@ public sealed partial class MarkdownViewer : UserControl
 
     private void OnRendererRenderFailed(object? sender, MarkdownRenderFailedEventArgs e)
     {
+        if (_rendererDisposalFaulted)
+            return;
+
         MarkdownLifecycleAutomationBridge.RecordRenderFailure(
             MarkdownHostContract.GetAutomationId(HostKind, AutomationInstanceId),
             e.Exception);
@@ -964,6 +1710,9 @@ public sealed partial class MarkdownViewer : UserControl
 
     private void RetryRenderButton_Click(object sender, RoutedEventArgs e)
     {
+        if (_rendererDisposalFaulted)
+            return;
+
         RenderErrorInfoBar.IsOpen = false;
         _retryRenderPending = true;
         TrackMarkdownEvent(
@@ -990,9 +1739,24 @@ public sealed partial class MarkdownViewer : UserControl
             resource: "remote_image");
     }
 
-    private Uri GetBaseUri()
+    private bool ShouldAllowThirdPartyRemoteImages() =>
+        AllowThirdPartyRemoteImagesByDefault || _remoteContentConsent.IsGranted;
+
+    private Uri GetEffectiveBaseUri()
     {
-        return Uri.TryCreate(BaseUrl, UriKind.Absolute, out Uri? baseUri)
+        MarkdownViewerDocumentPayload? documentPayload = _documentPayload;
+        return GetBaseUri(documentPayload is null ? BaseUrl : documentPayload.BaseUrl);
+    }
+
+    private MarkdownDocumentSource? GetEffectiveDocumentSource()
+    {
+        MarkdownViewerDocumentPayload? documentPayload = _documentPayload;
+        return documentPayload is null ? DocumentSource : documentPayload.DocumentSource;
+    }
+
+    private static Uri GetBaseUri(string? baseUrl)
+    {
+        return Uri.TryCreate(baseUrl, UriKind.Absolute, out Uri? baseUri)
             ? baseUri
             : DefaultBaseUri;
     }
@@ -1136,358 +1900,223 @@ public sealed partial class MarkdownViewer : UserControl
         out bool mayNavigateInternally)
         => MarkdownLinkNavigationPolicy.TryResolveLaunchUri(
             url,
-            GetBaseUri(),
-            DocumentSource,
+            GetEffectiveBaseUri(),
+            GetEffectiveDocumentSource(),
             out uri,
             out mayNavigateInternally);
 
-    private void ApplyTheme()
+    private void ApplyRendererResources()
     {
-        var colors = ResolveThemeColors();
-        double textScaleFactor = GetTextScaleFactor();
-        string bodyFont = ResolveFontFamily("AppBodyFontFamily", "Segoe UI Variable Text");
-        string monoFont = IsHighContrastActive()
-            ? ResolveFontFamily("AppHighContrastMonoFontFamily", "Consolas")
-            : ResolveFontFamily("AppMonoFontFamily", "Cascadia Mono");
-        float bodySize = ScaledToken("AppMarkdownBodyFontSize", 15, textScaleFactor);
-        float codeSize = ScaledToken("AppMarkdownCodeFontSize", 13, textScaleFactor);
-        float metaSize = ScaledToken("AppMarkdownMetaFontSize", 13, textScaleFactor);
-        float scriptSize = ScaledToken("AppMarkdownScriptFontSize", 12, textScaleFactor);
-        float bodyLineHeight = (float)ResolveDouble("AppMarkdownBodyLineHeight", 1.42);
-        float headingLineHeight = (float)ResolveDouble("AppMarkdownHeadingLineHeight", 1.25);
-        float smallRadius = ResolveCornerRadius("AppRadiusSmall", 5);
-        float mediumRadius = ResolveCornerRadius("AppRadiusMedium", 8);
-        float borderThickness = (float)ResolveThickness("AppHairlineBorderThickness", new Thickness(1)).Left;
-        float listIndent = (float)ResolveDouble("AppMarkdownListIndent", 24);
-        float nestedListIndent = (float)ResolveDouble("AppMarkdownNestedListIndent", 20);
-        _appliedTextScaleFactor = textScaleFactor;
-        using (_theme.BeginUpdate())
+        if (_renderer is null)
         {
-            _theme.AccentColor = colors.Accent;
-            _theme.SurfaceColor = colors.MarkdownSurface;
-            _theme.Overrides.Clear();
-
-            _theme.Overrides[MarkdownElementKeys.Body] = new ElementStyleOverride
-            {
-                FontFamily = bodyFont,
-                FontSize = bodySize,
-                Foreground = colors.Ink,
-                Background = colors.MarkdownSurface,
-                LineHeightMultiplier = bodyLineHeight,
-                ListIndent = listIndent,
-                NestedListIndent = nestedListIndent,
-                Margin = ResolveThickness("AppMarkdownBodyMargin", new Thickness(0, 0, 0, 8)),
-            };
-            _theme.Overrides[MarkdownElementKeys.Heading1] = Heading(bodyFont, colors.Ink, ScaledToken("AppMarkdownHeading1FontSize", 30, textScaleFactor), ResolveThickness("AppMarkdownHeading1Margin", new Thickness(0, 16, 0, 8)), headingLineHeight);
-            _theme.Overrides[MarkdownElementKeys.Heading2] = Heading(bodyFont, colors.Ink, ScaledToken("AppMarkdownHeading2FontSize", 24, textScaleFactor), ResolveThickness("AppMarkdownHeading2Margin", new Thickness(0, 16, 0, 8)), headingLineHeight);
-            _theme.Overrides[MarkdownElementKeys.Heading3] = Heading(bodyFont, colors.Ink, ScaledToken("AppMarkdownHeading3FontSize", 20, textScaleFactor), ResolveThickness("AppMarkdownHeading3Margin", new Thickness(0, 12, 0, 4)), headingLineHeight);
-            _theme.Overrides[MarkdownElementKeys.Heading4] = Heading(bodyFont, colors.Ink, ScaledToken("AppMarkdownHeading4FontSize", 17, textScaleFactor), ResolveThickness("AppMarkdownHeading4Margin", new Thickness(0, 12, 0, 4)), headingLineHeight);
-            _theme.Overrides[MarkdownElementKeys.Heading5] = Heading(bodyFont, colors.Ink, ScaledToken("AppMarkdownHeading5FontSize", 15, textScaleFactor), ResolveThickness("AppMarkdownHeading5Margin", new Thickness(0, 8, 0, 4)), headingLineHeight);
-            _theme.Overrides[MarkdownElementKeys.Heading6] = Heading(bodyFont, colors.InkSubtle, ScaledToken("AppMarkdownHeading6FontSize", 14, textScaleFactor), ResolveThickness("AppMarkdownHeading6Margin", new Thickness(0, 8, 0, 4)), headingLineHeight);
-            _theme.Overrides[MarkdownElementKeys.Link] = new ElementStyleOverride
-            {
-                FontFamily = bodyFont,
-                FontSize = bodySize,
-                Foreground = colors.Accent,
-                HoverForeground = colors.AccentHover,
-                FocusForeground = colors.AccentHover,
-                Underline = true,
-            };
-            _theme.Overrides[MarkdownElementKeys.Strong] = new ElementStyleOverride
-            {
-                FontFamily = bodyFont,
-                FontSize = bodySize,
-                FontWeight = FontWeights.SemiBold,
-                Foreground = colors.Ink,
-            };
-            _theme.Overrides[MarkdownElementKeys.Emphasis] = InlineTextStyle(bodyFont, bodySize, colors.Ink, fontStyle: Windows.UI.Text.FontStyle.Italic);
-            _theme.Overrides[MarkdownElementKeys.Strikethrough] = InlineTextStyle(bodyFont, bodySize, colors.Ink, strikethrough: true);
-            _theme.Overrides[MarkdownElementKeys.Subscript] = InlineTextStyle(bodyFont, scriptSize, colors.Ink);
-            _theme.Overrides[MarkdownElementKeys.Superscript] = InlineTextStyle(bodyFont, scriptSize, colors.Ink);
-            _theme.Overrides[MarkdownElementKeys.Inserted] = InlineTextStyle(bodyFont, bodySize, colors.Ink, underline: true);
-            _theme.Overrides[MarkdownElementKeys.Marked] = new ElementStyleOverride
-            {
-                FontFamily = bodyFont,
-                FontSize = bodySize,
-                Foreground = colors.Ink,
-                Background = colors.SurfaceSubtle,
-            };
-            _theme.Overrides[MarkdownElementKeys.Abbreviation] = InlineTextStyle(bodyFont, bodySize, colors.Ink, underline: true);
-            _theme.Overrides[MarkdownElementKeys.CodeInline] = new ElementStyleOverride
-            {
-                FontFamily = monoFont,
-                FontSize = codeSize,
-                Foreground = colors.Ink,
-                Background = colors.CodeInlineBackground,
-                CornerRadius = smallRadius,
-                Padding = ResolveThickness("AppMarkdownInlineCodePadding", new Thickness(4, 0, 4, 0)),
-            };
-            _theme.Overrides[MarkdownElementKeys.CodeBlock] = new ElementStyleOverride
-            {
-                FontFamily = monoFont,
-                FontSize = codeSize,
-                Foreground = colors.Ink,
-                Background = colors.CodeBlockBackground,
-                BorderBrush = colors.Outline,
-                BorderThickness = borderThickness,
-                CornerRadius = mediumRadius,
-                Padding = ResolveThickness("AppMarkdownCodeBlockPadding", new Thickness(12, 8, 12, 8)),
-                Margin = ResolveThickness("AppMarkdownCodeBlockMargin", new Thickness(0, 4, 0, 12)),
-            };
-            _theme.Overrides[MarkdownElementKeys.CodeBlockHeader] = new ElementStyleOverride
-            {
-                FontFamily = bodyFont,
-                FontSize = metaSize,
-                Foreground = colors.InkSubtle,
-                Background = colors.SurfaceSubtle,
-                BorderBrush = colors.Outline,
-            };
-            _theme.Overrides[MarkdownElementKeys.CodeBlockLanguage] = new ElementStyleOverride
-            {
-                FontFamily = bodyFont,
-                FontSize = metaSize,
-                Foreground = colors.InkSubtle,
-                FontWeight = FontWeights.SemiBold,
-            };
-            _theme.Overrides[MarkdownElementKeys.CodeBlockGutter] = new ElementStyleOverride
-            {
-                FontFamily = monoFont,
-                FontSize = metaSize,
-                Foreground = colors.InkSubtle,
-                Background = colors.SurfaceSubtle,
-            };
-            _theme.Overrides[MarkdownElementKeys.CodeBlockLineNumber] = new ElementStyleOverride
-            {
-                FontFamily = monoFont,
-                FontSize = metaSize,
-                Foreground = colors.InkSubtle,
-            };
-            _theme.Overrides[MarkdownElementKeys.Quote] = new ElementStyleOverride
-            {
-                FontFamily = bodyFont,
-                FontSize = bodySize,
-                Foreground = colors.InkMuted,
-                AccentBar = colors.Accent,
-                Padding = ResolveThickness("AppMarkdownQuotePadding", new Thickness(12, 4, 8, 4)),
-                Margin = ResolveThickness("AppMarkdownQuoteMargin", new Thickness(0, 4, 0, 8)),
-            };
-            _theme.Overrides[MarkdownElementKeys.ListMarker] = new ElementStyleOverride
-            {
-                FontFamily = bodyFont,
-                FontSize = bodySize,
-                Foreground = colors.InkSubtle,
-                ListIndent = listIndent,
-                NestedListIndent = nestedListIndent,
-            };
-            _theme.Overrides[MarkdownElementKeys.ThematicBreak] = new ElementStyleOverride
-            {
-                Foreground = colors.Outline,
-                Margin = ResolveThickness("AppMarkdownThematicBreakMargin", new Thickness(0, 12, 0, 12)),
-            };
-            _theme.Overrides[MarkdownElementKeys.ImageCaption] = new ElementStyleOverride
-            {
-                FontFamily = bodyFont,
-                FontSize = metaSize,
-                FontStyle = Windows.UI.Text.FontStyle.Italic,
-                Foreground = colors.InkSubtle,
-                Margin = ResolveThickness("AppMarkdownCaptionMargin", new Thickness(0, 4, 0, 8)),
-            };
-            _theme.Overrides[MarkdownElementKeys.DefinitionTerm] = new ElementStyleOverride
-            {
-                FontFamily = bodyFont,
-                FontSize = bodySize,
-                FontWeight = FontWeights.SemiBold,
-                Foreground = colors.Ink,
-                Margin = ResolveThickness("AppMarkdownDefinitionTermMargin", new Thickness(0, 4, 0, 0)),
-            };
-            _theme.Overrides[MarkdownElementKeys.DefinitionDescription] = new ElementStyleOverride
-            {
-                FontFamily = bodyFont,
-                FontSize = bodySize,
-                Foreground = colors.Ink,
-                Background = colors.MarkdownSurface,
-                Margin = ResolveThickness("AppMarkdownDefinitionDescriptionMargin", new Thickness(20, 0, 0, 8)),
-            };
-            _theme.Overrides[MarkdownElementKeys.Figure] = new ElementStyleOverride
-            {
-                FontFamily = bodyFont,
-                FontSize = bodySize,
-                Foreground = colors.Ink,
-                Background = colors.MarkdownSurface,
-                Margin = ResolveThickness("AppMarkdownFigureMargin", new Thickness(0, 8, 0, 12)),
-            };
-            _theme.Overrides[MarkdownElementKeys.FigureCaption] = new ElementStyleOverride
-            {
-                FontFamily = bodyFont,
-                FontSize = metaSize,
-                FontStyle = Windows.UI.Text.FontStyle.Italic,
-                Foreground = colors.InkSubtle,
-                Background = colors.MarkdownSurface,
-                Margin = ResolveThickness("AppMarkdownCaptionMargin", new Thickness(0, 4, 0, 8)),
-            };
-            _theme.Overrides[MarkdownElementKeys.Diagram] = new ElementStyleOverride
-            {
-                FontFamily = monoFont,
-                FontSize = codeSize,
-                Foreground = colors.Ink,
-                Background = colors.CodeBlockBackground,
-                BorderBrush = colors.Outline,
-                BorderThickness = borderThickness,
-                CornerRadius = mediumRadius,
-                Padding = ResolveThickness("AppMarkdownDiagramPadding", new Thickness(12, 8, 12, 8)),
-                Margin = ResolveThickness("AppMarkdownDiagramMargin", new Thickness(0, 8, 0, 12)),
-            };
-            _theme.Overrides[MarkdownElementKeys.Table] = new ElementStyleOverride
-            {
-                FontFamily = bodyFont,
-                FontSize = bodySize,
-                Foreground = colors.Ink,
-                Background = colors.Surface,
-                BorderBrush = colors.Outline,
-                BorderThickness = borderThickness,
-                CornerRadius = mediumRadius,
-                Margin = ResolveThickness("AppMarkdownTableMargin", new Thickness(0, 8, 0, 12)),
-            };
-            _theme.Overrides[MarkdownElementKeys.TableHeader] = new ElementStyleOverride
-            {
-                FontFamily = bodyFont,
-                FontSize = bodySize,
-                Foreground = colors.Ink,
-                Background = colors.SurfaceSubtle,
-                BorderBrush = colors.Outline,
-                FontWeight = FontWeights.SemiBold,
-                Padding = ResolveThickness("AppMarkdownTableCellPadding", new Thickness(12, 8, 12, 8)),
-            };
-            _theme.Overrides[MarkdownElementKeys.TableCell] = new ElementStyleOverride
-            {
-                FontFamily = bodyFont,
-                FontSize = bodySize,
-                Foreground = colors.Ink,
-                Background = colors.Surface,
-                BorderBrush = colors.Outline,
-                Padding = ResolveThickness("AppMarkdownTableCellPadding", new Thickness(12, 8, 12, 8)),
-            };
-            AddAlertOverride(MarkdownElementKeys.AlertNote, colors.Accent, bodyFont, bodySize, colors);
-            AddAlertOverride(MarkdownElementKeys.AlertTip, colors.Success, bodyFont, bodySize, colors);
-            AddAlertOverride(MarkdownElementKeys.AlertImportant, colors.AccentHover, bodyFont, bodySize, colors);
-            AddAlertOverride(MarkdownElementKeys.AlertWarning, colors.WarmAccent, bodyFont, bodySize, colors);
-            AddAlertOverride(MarkdownElementKeys.AlertCaution, colors.Danger, bodyFont, bodySize, colors);
-        }
-    }
-
-    private static float ScaleFont(float fontSize, double textScaleFactor) =>
-        (float)(fontSize * textScaleFactor);
-
-    private static float ScaledToken(string tokenName, double fallback, double textScaleFactor) =>
-        ScaleFont((float)ResolveDouble(tokenName, fallback), textScaleFactor);
-
-    private double GetTextScaleFactor()
-    {
-        double? lifecycleScale = MarkdownLifecycleAutomationBridge.GetTextScaleFactor();
-        if (lifecycleScale is not null)
-        {
-            return lifecycleScale.Value;
+            return;
         }
 
-        if (string.Equals(
-                Environment.GetEnvironmentVariable("JITHUB_MARKDOWN_LIFECYCLE_FIXTURE"),
-                "1",
-                StringComparison.Ordinal) &&
-            double.TryParse(
-                Environment.GetEnvironmentVariable("JITHUB_AUTOMATION_TEXT_SCALE_FACTOR"),
-                System.Globalization.NumberStyles.Float,
-                System.Globalization.CultureInfo.InvariantCulture,
-                out double automationScale))
+        ResourceDictionary resources = _renderer.Resources;
+        RemoveLocalRendererResources(resources);
+
+        if (TryResolveHostSurfaceBrush(out SolidColorBrush? hostSurface) && hostSurface is not null)
         {
-            return Math.Clamp(automationScale, 1, 3);
+            resources[MarkdownResourceKeys.DocumentSurfaceBrush] = hostSurface;
+            foreach (string role in HostSurfaceRoles)
+            {
+                resources[MarkdownResourceKeys.ForRole(
+                    MarkdownStyleRole.FromElementKey(role),
+                    MarkdownStyleProperty.BackgroundBrush)] = hostSurface;
+            }
         }
 
-        try
+        if (MarkdownLifecycleAutomationBridge.GetTextScaleFactor() is double requestedScale)
         {
-            return Math.Clamp(_uiSettings?.TextScaleFactor ?? 1, 1, 3);
+            double tokenScale = GetLifecycleTokenScaleFactor(requestedScale);
+            foreach ((string role, string token, double fallback) in ScalableRoleFonts)
+            {
+                resources[MarkdownResourceKeys.ForRole(
+                    MarkdownStyleRole.FromElementKey(role),
+                    MarkdownStyleProperty.FontSize)] =
+                    ResolveDouble(token, fallback) * tokenScale;
+            }
         }
-        catch (System.Runtime.InteropServices.COMException)
-        {
-            return 1;
-        }
-    }
 
-    private bool IsHighContrastActive()
-    {
         if (MarkdownLifecycleAutomationBridge.IsHighContrastEnabled)
         {
+            ApplyLifecycleHighContrastResources(resources);
+        }
+
+        // The renderer recompiles one immutable style snapshot. Its shared
+        // environment monitor remains the sole owner of real theme, accent,
+        // High Contrast, text scale, language, flow direction, and DPI events.
+        _theme.Invalidate();
+    }
+
+    private static void RemoveLocalRendererResources(ResourceDictionary resources)
+    {
+        resources.Remove(MarkdownResourceKeys.DocumentSurfaceBrush);
+        resources.Remove(MarkdownResourceKeys.SelectionBackgroundBrush);
+        resources.Remove(MarkdownResourceKeys.SelectionForegroundBrush);
+        resources.Remove(MarkdownResourceKeys.FocusVisualBrush);
+        resources.Remove(MarkdownResourceKeys.OverflowIndicatorBrush);
+
+        foreach (string roleName in StyledRoles)
+        {
+            MarkdownStyleRole role = MarkdownStyleRole.FromElementKey(roleName);
+            resources.Remove(MarkdownResourceKeys.ForRole(role, MarkdownStyleProperty.ForegroundBrush));
+            resources.Remove(MarkdownResourceKeys.ForRole(role, MarkdownStyleProperty.HoverForegroundBrush));
+            resources.Remove(MarkdownResourceKeys.ForRole(role, MarkdownStyleProperty.FocusForegroundBrush));
+            resources.Remove(MarkdownResourceKeys.ForRole(role, MarkdownStyleProperty.BackgroundBrush));
+            resources.Remove(MarkdownResourceKeys.ForRole(role, MarkdownStyleProperty.AccentBrush));
+            resources.Remove(MarkdownResourceKeys.ForRole(role, MarkdownStyleProperty.BorderBrush));
+            resources.Remove(MarkdownResourceKeys.ForRole(role, MarkdownStyleProperty.FontFamily));
+            resources.Remove(MarkdownResourceKeys.ForRole(role, MarkdownStyleProperty.FontSize));
+        }
+    }
+
+    private bool TryResolveHostSurfaceBrush(out SolidColorBrush? brush)
+    {
+        string token = string.IsNullOrWhiteSpace(SurfaceColorToken)
+            ? MarkdownHostContract.GetSurfaceColorToken(HostKind)
+            : SurfaceColorToken.Trim();
+
+        if (TryResolveResource(token + "Brush", out object? value) &&
+            value is SolidColorBrush resolvedBrush)
+        {
+            brush = resolvedBrush;
             return true;
         }
 
-        return ThemeSettingsHelper.IsHighContrastActive(_themeSettings);
-    }
-
-    private void AddAlertOverride(
-        string elementKey,
-        Color accent,
-        string fontFamily,
-        float fontSize,
-        MarkdownThemeColors colors)
-    {
-        _theme.Overrides[elementKey] = new ElementStyleOverride
+        if (TryResolveResource(token + "Color", out value) &&
+            value is Windows.UI.Color color)
         {
-            FontFamily = fontFamily,
-            FontSize = fontSize,
-            Foreground = colors.Ink,
-            Background = colors.MarkdownSurface,
-            AccentBar = accent,
-            Padding = ResolveThickness("AppMarkdownQuotePadding", new Thickness(12, 4, 8, 4)),
-            Margin = ResolveThickness("AppMarkdownQuoteMargin", new Thickness(0, 4, 0, 8)),
-        };
-    }
-
-    private static ElementStyleOverride InlineTextStyle(
-        string fontFamily,
-        float fontSize,
-        Color foreground,
-        Windows.UI.Text.FontStyle? fontStyle = null,
-        bool? underline = null,
-        bool? strikethrough = null) => new()
-        {
-            FontFamily = fontFamily,
-            FontSize = fontSize,
-            FontStyle = fontStyle,
-            Foreground = foreground,
-            Underline = underline,
-            Strikethrough = strikethrough,
-        };
-
-    private static ElementStyleOverride Heading(
-        string fontFamily,
-        Color foreground,
-        float fontSize,
-        Thickness margin,
-        float lineHeight)
-    {
-        return new ElementStyleOverride
-        {
-            FontFamily = fontFamily,
-            FontSize = fontSize,
-            FontWeight = FontWeights.SemiBold,
-            Foreground = foreground,
-            Margin = margin,
-            LineHeightMultiplier = lineHeight,
-        };
-    }
-
-    private static string ResolveFontFamily(string tokenName, string fallback)
-    {
-        if (TryResolveResource(tokenName, out object? value))
-        {
-            return value switch
-            {
-                FontFamily family when !string.IsNullOrWhiteSpace(family.Source) => family.Source,
-                string text when !string.IsNullOrWhiteSpace(text) => text,
-                _ => fallback,
-            };
+            brush = new SolidColorBrush(color);
+            return true;
         }
 
-        return fallback;
+        brush = null;
+        return false;
+    }
+
+    private static double GetLifecycleTokenScaleFactor(double requestedScale)
+    {
+        // The lifecycle fixture asks for a final effective scale. Divide out
+        // the real Windows scale because MarkdownEnvironmentMonitor applies it
+        // after resolving these test-only font resources.
+        double systemScale = 1;
+        UISettings? settings = RuntimeEventSubscription.TryCreate(
+            static () => new UISettings(),
+            nameof(UISettings));
+        try
+        {
+            double observedScale = settings?.TextScaleFactor ?? 1;
+            systemScale = double.IsFinite(observedScale) && observedScale > 0
+                ? Math.Clamp(observedScale, 1, 3)
+                : 1;
+        }
+        catch (System.Runtime.InteropServices.COMException)
+        {
+            systemScale = 1;
+        }
+
+        return Math.Clamp(requestedScale, 1, 3) / systemScale;
+    }
+
+    private static void ApplyLifecycleHighContrastResources(ResourceDictionary resources)
+    {
+        SolidColorBrush window = new(Colors.Black);
+        SolidColorBrush text = new(Colors.White);
+        SolidColorBrush link = new(Colors.Yellow);
+        SolidColorBrush focus = new(Colors.Cyan);
+
+        resources[MarkdownResourceKeys.DocumentSurfaceBrush] = window;
+        resources[MarkdownResourceKeys.SelectionBackgroundBrush] = link;
+        resources[MarkdownResourceKeys.SelectionForegroundBrush] = window;
+        resources[MarkdownResourceKeys.FocusVisualBrush] = focus;
+        resources[MarkdownResourceKeys.OverflowIndicatorBrush] = text;
+
+        foreach (string roleName in StyledRoles)
+        {
+            resources[MarkdownResourceKeys.ForRole(
+                MarkdownStyleRole.FromElementKey(roleName),
+                MarkdownStyleProperty.ForegroundBrush)] = text;
+        }
+
+        foreach (string roleName in new[]
+        {
+            MarkdownElementKeys.Body,
+            MarkdownElementKeys.CodeInline,
+            MarkdownElementKeys.CodeBlock,
+            MarkdownElementKeys.CodeBlockHeader,
+            MarkdownElementKeys.CodeBlockGutter,
+            MarkdownElementKeys.Marked,
+            MarkdownElementKeys.DefinitionDescription,
+            MarkdownElementKeys.Figure,
+            MarkdownElementKeys.FigureCaption,
+            MarkdownElementKeys.Diagram,
+            MarkdownElementKeys.Table,
+            MarkdownElementKeys.TableHeader,
+            MarkdownElementKeys.TableCell,
+            MarkdownElementKeys.AlertNote,
+            MarkdownElementKeys.AlertTip,
+            MarkdownElementKeys.AlertImportant,
+            MarkdownElementKeys.AlertWarning,
+            MarkdownElementKeys.AlertCaution,
+        })
+        {
+            resources[MarkdownResourceKeys.ForRole(
+                MarkdownStyleRole.FromElementKey(roleName),
+                MarkdownStyleProperty.BackgroundBrush)] = window;
+        }
+
+        foreach (string roleName in new[]
+        {
+            MarkdownElementKeys.CodeBlock,
+            MarkdownElementKeys.CodeBlockHeader,
+            MarkdownElementKeys.Diagram,
+            MarkdownElementKeys.Table,
+            MarkdownElementKeys.TableHeader,
+            MarkdownElementKeys.TableCell,
+        })
+        {
+            resources[MarkdownResourceKeys.ForRole(
+                MarkdownStyleRole.FromElementKey(roleName),
+                MarkdownStyleProperty.BorderBrush)] = text;
+        }
+
+        if (TryResolveResource("AppHighContrastMonoFontFamily", out object? monoFont))
+        {
+            foreach (string roleName in new[]
+            {
+                MarkdownElementKeys.CodeInline,
+                MarkdownElementKeys.CodeBlock,
+                MarkdownElementKeys.CodeBlockGutter,
+                MarkdownElementKeys.CodeBlockLineNumber,
+                MarkdownElementKeys.Diagram,
+            })
+            {
+                resources[MarkdownResourceKeys.ForRole(
+                    MarkdownStyleRole.FromElementKey(roleName),
+                    MarkdownStyleProperty.FontFamily)] = monoFont;
+            }
+        }
+
+        MarkdownStyleRole linkRole = MarkdownStyleRole.FromElementKey(MarkdownElementKeys.Link);
+        resources[MarkdownResourceKeys.ForRole(linkRole, MarkdownStyleProperty.ForegroundBrush)] = link;
+        resources[MarkdownResourceKeys.ForRole(linkRole, MarkdownStyleProperty.HoverForegroundBrush)] = link;
+        resources[MarkdownResourceKeys.ForRole(linkRole, MarkdownStyleProperty.FocusForegroundBrush)] = focus;
+
+        foreach (string roleName in new[]
+        {
+            MarkdownElementKeys.Quote,
+            MarkdownElementKeys.AlertNote,
+            MarkdownElementKeys.AlertTip,
+            MarkdownElementKeys.AlertImportant,
+            MarkdownElementKeys.AlertWarning,
+            MarkdownElementKeys.AlertCaution,
+        })
+        {
+            resources[MarkdownResourceKeys.ForRole(
+                MarkdownStyleRole.FromElementKey(roleName),
+                MarkdownStyleProperty.AccentBrush)] = link;
+        }
     }
 
     private static double ResolveDouble(string tokenName, double fallback)
@@ -1506,14 +2135,9 @@ public sealed partial class MarkdownViewer : UserControl
         return fallback;
     }
 
-    private static Thickness ResolveThickness(string tokenName, Thickness fallback) =>
-        TryResolveResource(tokenName, out object? value) && value is Thickness thickness
+    private static Thickness ResolveThickness(string tokenName, Thickness fallback)
+        => TryResolveResource(tokenName, out object? value) && value is Thickness thickness
             ? thickness
-            : fallback;
-
-    private static float ResolveCornerRadius(string tokenName, float fallback) =>
-        TryResolveResource(tokenName, out object? value) && value is CornerRadius radius
-            ? (float)radius.TopLeft
             : fallback;
 
     private static bool TryResolveResource(string tokenName, out object? value)
@@ -1523,134 +2147,4 @@ public sealed partial class MarkdownViewer : UserControl
             resources.TryGetValue(tokenName, out value);
     }
 
-    private MarkdownThemeColors ResolveThemeColors()
-    {
-        if (MarkdownLifecycleAutomationBridge.IsHighContrastEnabled)
-        {
-            Color window = Colors.Black;
-            Color text = Colors.White;
-            Color link = Colors.Yellow;
-            return new MarkdownThemeColors(
-                text,
-                text,
-                text,
-                window,
-                window,
-                window,
-                window,
-                text,
-                link,
-                Colors.Cyan,
-                window,
-                window,
-                link,
-                link,
-                link);
-        }
-
-        bool dark = ActualTheme == ElementTheme.Dark;
-        Color ink = ResolveColor("AppInk", dark ? "#F0F2EA" : "#1B1B1B");
-        Color inkMuted = ResolveColor("AppInkMuted", dark ? "#C7CDBF" : "#4F4F4F");
-        Color inkSubtle = ResolveColor("AppInkSubtle", dark ? "#99A294" : "#6B6B6B");
-        string markdownSurfaceToken = string.IsNullOrWhiteSpace(SurfaceColorToken)
-            ? MarkdownHostContract.GetSurfaceColorToken(HostKind)
-            : SurfaceColorToken.Trim();
-        Color markdownSurface = ResolveColor(
-            markdownSurfaceToken,
-            MarkdownHostContract.GetSurfaceFallback(HostKind, dark));
-        Color surface = ResolveColor("AppSurface", dark ? "#212621" : "#FAFAFA");
-        Color surfaceSubtle = ResolveColor("AppSurfaceSubtle", dark ? "#252B25" : "#F0F0F0");
-        Color canvasInset = ResolveColor("AppCanvasInset", dark ? "#11130F" : "#EDEDED");
-        Color outline = ResolveColor("AppOutline", dark ? "#3C463E" : "#D2D2D2");
-        Color accent = ResolveColor("AppAccent", dark ? "#77B59A" : "#256B52");
-        Color accentHover = ResolveColor("AppAccentHover", dark ? "#8BC2AA" : "#2F7C60");
-        Color success = ResolveColor("AppSuccess", dark ? "#5FAF82" : "#2B7A50");
-        Color warmAccent = ResolveColor("AppWarmAccent", dark ? "#D9AA63" : "#9B5F18");
-        Color danger = ResolveColor("AppDanger", dark ? "#F08C86" : "#B42318");
-        Color codeInlineBackground = ResolveColor("AppCanvasInset", dark ? "#303830" : "#E9E9E9");
-        Color codeBlockBackground = ResolveColor("AppCanvasInset", dark ? "#1C221C" : "#EDEDED");
-
-        return new MarkdownThemeColors(
-            ink,
-            inkMuted,
-            inkSubtle,
-            markdownSurface,
-            surface,
-            surfaceSubtle,
-            canvasInset,
-            outline,
-            accent,
-            accentHover,
-            codeInlineBackground,
-            codeBlockBackground,
-            success,
-            warmAccent,
-            danger);
-    }
-
-    private static Color ResolveColor(string tokenName, string fallbackHex)
-    {
-        if (Application.Current?.Resources is { } resources)
-        {
-            if (TryResolveResourceColor(resources, tokenName + "Brush", out Color brushColor))
-            {
-                return brushColor;
-            }
-
-            if (TryResolveResourceColor(resources, tokenName + "Color", out Color color))
-            {
-                return color;
-            }
-        }
-
-        return ParseColor(fallbackHex);
-    }
-
-    private static bool TryResolveResourceColor(ResourceDictionary resources, string key, out Color color)
-    {
-        color = default;
-        if (!resources.TryGetValue(key, out object value))
-        {
-            return false;
-        }
-
-        switch (value)
-        {
-            case Color resourceColor:
-                color = resourceColor;
-                return true;
-            case SolidColorBrush brush:
-                color = brush.Color;
-                return true;
-            default:
-                return false;
-        }
-    }
-
-    private static Color ParseColor(string hex)
-    {
-        hex = hex.TrimStart('#');
-        return Color.FromArgb(
-            0xFF,
-            Convert.ToByte(hex[0..2], 16),
-            Convert.ToByte(hex[2..4], 16),
-            Convert.ToByte(hex[4..6], 16));
-    }
-
-    private readonly record struct MarkdownThemeColors(
-        Color Ink,
-        Color InkMuted,
-        Color InkSubtle,
-        Color MarkdownSurface,
-        Color Surface,
-        Color SurfaceSubtle,
-        Color CanvasInset,
-        Color Outline,
-        Color Accent,
-        Color AccentHover,
-        Color CodeInlineBackground,
-        Color CodeBlockBackground,
-        Color Success,
-        Color WarmAccent,
-        Color Danger);
 }

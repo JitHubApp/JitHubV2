@@ -1,199 +1,367 @@
 using System;
-using System.IO;
+using System.Globalization;
+using System.Runtime.CompilerServices;
+using System.Security.Cryptography;
 using System.Threading;
-using SkiaSharp;
-using SvgSkia = Svg.Skia;
+using System.Threading.Tasks;
+using MarkdownRenderer.Images;
 
 namespace JitHub.Services.CodeViewer;
 
 internal interface IRepositorySvgRasterizer
 {
-    RepositorySvgDocument? Load(byte[]? bytes, CancellationToken cancellationToken);
+    ValueTask<RepositorySvgDocument?> LoadAsync(
+        byte[]? bytes,
+        string? locale,
+        MarkdownSvgColorScheme colorScheme,
+        MarkdownSvgColor? semanticColor,
+        CancellationToken cancellationToken);
 
-    RepositorySvgTile RasterizeTile(
+    ValueTask<RepositorySvgTile> RasterizeTileAsync(
         RepositorySvgDocument document,
         RepositorySvgTileRequest request,
+        MarkdownSvgPixelFormat pixelFormat,
         CancellationToken cancellationToken);
 }
 
-internal sealed class RepositorySvgRasterizer : IRepositorySvgRasterizer
+/// <summary>
+/// Adapts JitHub's repository preview viewport to the shared, isolated SVG
+/// provider. This type borrows the renderer and never owns or disposes it.
+/// </summary>
+internal sealed class RepositorySvgRasterizer(IMarkdownSvgRenderer renderer) : IRepositorySvgRasterizer
 {
-    public RepositorySvgDocument? Load(byte[]? bytes, CancellationToken cancellationToken)
+    private const double DefaultWidthDips = 300;
+    private const double DefaultHeightDips = 150;
+
+    private static readonly ConditionalWeakTable<IMarkdownSvgRenderer, RendererIdentity> RendererIdentities = new();
+    private static long _nextRendererIdentity;
+
+    private readonly IMarkdownSvgRenderer _renderer =
+        renderer ?? throw new ArgumentNullException(nameof(renderer));
+    private readonly long _rendererIdentity = RendererIdentities.GetValue(
+        renderer,
+        static _ => new RendererIdentity(Interlocked.Increment(ref _nextRendererIdentity))).Value;
+
+    public async ValueTask<RepositorySvgDocument?> LoadAsync(
+        byte[]? bytes,
+        string? locale,
+        MarkdownSvgColorScheme colorScheme,
+        MarkdownSvgColor? semanticColor,
+        CancellationToken cancellationToken)
     {
-        RepositorySvgValidationResult validation = RepositorySvgSecurityPolicy.Validate(bytes, cancellationToken);
+        (RepositorySvgValidationResult validation, string? contentHash) = await Task.Run(
+            () =>
+            {
+                RepositorySvgValidationResult result =
+                    RepositorySvgSecurityPolicy.Validate(bytes, cancellationToken);
+                string? hash = result.Accepted && bytes is not null
+                    ? Convert.ToHexString(SHA256.HashData(bytes))
+                    : null;
+                return (result, hash);
+            },
+            cancellationToken).ConfigureAwait(false);
         if (!validation.Accepted || bytes is null)
         {
             return null;
         }
 
         cancellationToken.ThrowIfCancellationRequested();
-        SvgSkia.SKSvg? svg = null;
+        long cacheGeneration = _renderer.CacheGeneration;
+        IMarkdownSvgDocument? document = null;
         try
         {
-            svg = new SvgSkia.SKSvg();
-            using MemoryStream stream = new(bytes, writable: false);
-            svg.Load(stream);
+            document = await _renderer.OpenAsync(
+                new MarkdownSvgOpenRequest(bytes, locale, colorScheme, semanticColor),
+                cancellationToken).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
 
-            SKPicture? picture = svg.Picture;
-            if (picture is null ||
-                !RepositorySvgSecurityPolicy.ArePictureBoundsSafe(
-                    picture.CullRect.Width,
-                    picture.CullRect.Height))
+            (double width, double height) = ResolveIntrinsicSize(document.Info);
+            if (!RepositorySvgSecurityPolicy.ArePictureBoundsSafe(width, height))
             {
-                DisposeSvg(svg);
+                document.Dispose();
                 return null;
             }
 
-            return new RepositorySvgDocument(svg, picture.CullRect);
+            string cacheIdentity = CreateCacheIdentity(
+                contentHash!,
+                document.Info,
+                _rendererIdentity,
+                cacheGeneration,
+                locale,
+                colorScheme,
+                semanticColor);
+            RepositorySvgDocument result = new(
+                document,
+                width,
+                height,
+                cacheIdentity,
+                cacheGeneration);
+            document = null;
+            return result;
         }
-        catch (OperationCanceledException)
+        finally
         {
-            DisposeSvg(svg);
-            throw;
-        }
-        catch
-        {
-            DisposeSvg(svg);
-            return null;
+            document?.Dispose();
         }
     }
 
-    public RepositorySvgTile RasterizeTile(
+    public ValueTask<RepositorySvgTile> RasterizeTileAsync(
         RepositorySvgDocument document,
         RepositorySvgTileRequest request,
+        MarkdownSvgPixelFormat pixelFormat,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(document);
         request.Validate();
         cancellationToken.ThrowIfCancellationRequested();
 
-        return document.UsePicture(picture =>
+        return document.UseAsync(async svgDocument =>
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            SKImageInfo imageInfo = new(
-                request.PixelWidth,
-                request.PixelHeight,
-                SKColorType.Bgra8888,
-                SKAlphaType.Premul);
-            using SKBitmap bitmap = new(imageInfo);
-            using SKCanvas canvas = new(bitmap);
-            canvas.Clear(SKColors.Transparent);
-            canvas.Translate(-request.PixelX, -request.PixelY);
-            canvas.Scale(request.PixelsPerSourceUnit, request.PixelsPerSourceUnit);
-            canvas.Translate(-document.Bounds.Left, -document.Bounds.Top);
-            canvas.DrawPicture(picture);
-            canvas.Flush();
-            cancellationToken.ThrowIfCancellationRequested();
-
-            byte[] pixels = bitmap.Bytes;
-            int expectedLength = checked(request.PixelWidth * request.PixelHeight * 4);
-            if (pixels.Length != expectedLength)
+            MarkdownSvgRaster? raster = null;
+            try
             {
-                throw new InvalidDataException("Skia returned an unexpected SVG tile stride.");
-            }
+                raster = await svgDocument.RenderAsync(
+                    new MarkdownSvgRenderRequest(
+                        request.TargetWidthPixels,
+                        request.TargetHeightPixels,
+                        new MarkdownSvgTileRegion(
+                            request.PixelX,
+                            request.PixelY,
+                            request.PixelWidth,
+                            request.PixelHeight),
+                        pixelFormat),
+                    cancellationToken).ConfigureAwait(false);
+                cancellationToken.ThrowIfCancellationRequested();
 
-            return new RepositorySvgTile(
-                request.PixelX,
-                request.PixelY,
-                request.PixelWidth,
-                request.PixelHeight,
-                pixels);
+                if (raster.PixelFormat != pixelFormat ||
+                    raster.WidthPixels != request.PixelWidth ||
+                    raster.HeightPixels != request.PixelHeight)
+                {
+                    throw new InvalidOperationException("The SVG worker returned an unexpected tile layout.");
+                }
+
+                RepositorySvgTile result = new(
+                    request.PixelX,
+                    request.PixelY,
+                    raster);
+                raster = null;
+                return result;
+            }
+            finally
+            {
+                raster?.Dispose();
+            }
         });
     }
 
-    private static void DisposeSvg(SvgSkia.SKSvg? svg)
+    private static (double Width, double Height) ResolveIntrinsicSize(MarkdownSvgDocumentInfo info)
     {
-        if (svg is IDisposable disposable)
+        double? width = PositiveFinite(info.IntrinsicWidthDips);
+        double? height = PositiveFinite(info.IntrinsicHeightDips);
+        double? aspectRatio = PositiveFinite(info.IntrinsicAspectRatio);
+
+        if (width is not null && height is not null)
         {
-            disposable.Dispose();
+            return (width.Value, height.Value);
         }
+
+        if (width is not null)
+        {
+            return (width.Value, aspectRatio is null ? DefaultHeightDips : width.Value / aspectRatio.Value);
+        }
+
+        if (height is not null)
+        {
+            return (aspectRatio is null ? DefaultWidthDips : height.Value * aspectRatio.Value, height.Value);
+        }
+
+        if (aspectRatio is not null)
+        {
+            return (DefaultWidthDips, DefaultWidthDips / aspectRatio.Value);
+        }
+
+        return (DefaultWidthDips, DefaultHeightDips);
+    }
+
+    private static double? PositiveFinite(double? value) =>
+        value is > 0 && double.IsFinite(value.Value) ? value : null;
+
+    private static string CreateCacheIdentity(
+        string contentHash,
+        MarkdownSvgDocumentInfo info,
+        long rendererIdentity,
+        long cacheGeneration,
+        string? locale,
+        MarkdownSvgColorScheme colorScheme,
+        MarkdownSvgColor? semanticColor)
+    {
+        string identity = string.Concat(
+            contentHash,
+            "|policy:1|renderer:",
+            rendererIdentity.ToString(CultureInfo.InvariantCulture));
+        if (info.HasText)
+        {
+            identity = string.Concat(
+                identity,
+                "|generation:",
+                cacheGeneration.ToString(CultureInfo.InvariantCulture),
+                "|locale:",
+                locale ?? string.Empty);
+        }
+
+        if (info.UsesColorScheme)
+        {
+            identity = string.Concat(identity, "|scheme:", colorScheme.ToString());
+        }
+
+        if (info.UsesCurrentColor)
+        {
+            identity = semanticColor is MarkdownSvgColor color
+                ? string.Concat(
+                    identity,
+                    "|color:",
+                    color.Red.ToString("X2", CultureInfo.InvariantCulture),
+                    color.Green.ToString("X2", CultureInfo.InvariantCulture),
+                    color.Blue.ToString("X2", CultureInfo.InvariantCulture),
+                    color.Alpha.ToString("X2", CultureInfo.InvariantCulture))
+                : string.Concat(identity, "|color:none");
+        }
+
+        return identity;
+    }
+
+    private sealed class RendererIdentity(long value)
+    {
+        internal long Value { get; } = value;
     }
 }
 
 internal sealed partial class RepositorySvgDocument : IDisposable
 {
     private readonly object _sync = new();
-    private SvgSkia.SKSvg? _svg;
+    private IMarkdownSvgDocument? _document;
+    private int _activeOperations;
+    private bool _disposeRequested;
 
-    internal RepositorySvgDocument(SvgSkia.SKSvg svg, SKRect bounds)
+    internal RepositorySvgDocument(
+        IMarkdownSvgDocument document,
+        double width,
+        double height,
+        string cacheIdentity,
+        long cacheGeneration)
     {
-        _svg = svg;
-        Bounds = bounds;
+        _document = document ?? throw new ArgumentNullException(nameof(document));
+        ArgumentException.ThrowIfNullOrEmpty(cacheIdentity);
+        Width = width;
+        Height = height;
+        CacheIdentity = cacheIdentity;
+        CacheGeneration = cacheGeneration;
+        Info = document.Info;
     }
 
-    public float Width => Bounds.Width;
+    public double Width { get; }
 
-    public float Height => Bounds.Height;
+    public double Height { get; }
 
-    internal SKRect Bounds { get; }
+    public string CacheIdentity { get; }
 
-    internal T UsePicture<T>(Func<SKPicture, T> action)
+    public long CacheGeneration { get; }
+
+    public MarkdownSvgDocumentInfo Info { get; }
+
+    internal async ValueTask<T> UseAsync<T>(Func<IMarkdownSvgDocument, ValueTask<T>> action)
     {
+        ArgumentNullException.ThrowIfNull(action);
+        IMarkdownSvgDocument document;
         lock (_sync)
         {
-            ObjectDisposedException.ThrowIf(_svg is null, this);
-            SKPicture? picture = _svg.Picture;
-            if (picture is null)
+            ObjectDisposedException.ThrowIf(_disposeRequested || _document is null, this);
+            document = _document;
+            _activeOperations++;
+        }
+
+        try
+        {
+            return await action(document).ConfigureAwait(false);
+        }
+        finally
+        {
+            IMarkdownSvgDocument? dispose = null;
+            lock (_sync)
             {
-                throw new ObjectDisposedException(nameof(RepositorySvgDocument));
+                _activeOperations--;
+                if (_disposeRequested && _activeOperations == 0)
+                {
+                    dispose = _document;
+                    _document = null;
+                }
             }
 
-            return action(picture);
+            dispose?.Dispose();
         }
     }
 
     public void Dispose()
     {
+        IMarkdownSvgDocument? dispose = null;
         lock (_sync)
         {
-            SvgSkia.SKSvg? svg = _svg;
-            _svg = null;
-            if (svg is IDisposable disposable)
+            if (_disposeRequested)
             {
-                disposable.Dispose();
+                return;
+            }
+
+            _disposeRequested = true;
+            if (_activeOperations == 0)
+            {
+                dispose = _document;
+                _document = null;
             }
         }
+
+        dispose?.Dispose();
     }
 }
 
 internal readonly record struct RepositorySvgTileRequest(
+    int TargetWidthPixels,
+    int TargetHeightPixels,
     int PixelX,
     int PixelY,
     int PixelWidth,
-    int PixelHeight,
-    float PixelsPerSourceUnit)
+    int PixelHeight)
 {
     public const int MaximumTileEdge = 1024;
 
     internal void Validate()
     {
-        if (PixelX < 0 ||
+        if (TargetWidthPixels <= 0 ||
+            TargetHeightPixels <= 0 ||
+            PixelX < 0 ||
             PixelY < 0 ||
             PixelWidth is <= 0 or > MaximumTileEdge ||
             PixelHeight is <= 0 or > MaximumTileEdge ||
-            !float.IsFinite(PixelsPerSourceUnit) ||
-            PixelsPerSourceUnit <= 0)
+            PixelX > TargetWidthPixels - PixelWidth ||
+            PixelY > TargetHeightPixels - PixelHeight)
         {
             throw new ArgumentOutOfRangeException(nameof(RepositorySvgTileRequest));
         }
     }
 }
 
-internal sealed class RepositorySvgTile
+internal sealed partial class RepositorySvgTile : IDisposable
 {
-    public RepositorySvgTile(
-        int pixelX,
-        int pixelY,
-        int pixelWidth,
-        int pixelHeight,
-        byte[] bgraPixels)
+    private MarkdownSvgRaster? _raster;
+
+    internal RepositorySvgTile(int pixelX, int pixelY, MarkdownSvgRaster raster)
     {
+        _raster = raster ?? throw new ArgumentNullException(nameof(raster));
         PixelX = pixelX;
         PixelY = pixelY;
-        PixelWidth = pixelWidth;
-        PixelHeight = pixelHeight;
-        BgraPixels = bgraPixels;
+        PixelWidth = raster.WidthPixels;
+        PixelHeight = raster.HeightPixels;
+        StrideBytes = raster.StrideBytes;
+        PixelFormat = raster.PixelFormat;
     }
 
     public int PixelX { get; }
@@ -204,7 +372,14 @@ internal sealed class RepositorySvgTile
 
     public int PixelHeight { get; }
 
-    public byte[] BgraPixels { get; }
+    public int StrideBytes { get; }
 
-    public int ByteCount => BgraPixels.Length;
+    public MarkdownSvgPixelFormat PixelFormat { get; }
+
+    public ReadOnlyMemory<byte> BgraPixels =>
+        (_raster ?? throw new ObjectDisposedException(nameof(RepositorySvgTile))).Pixels;
+
+    public int ByteCount => checked(PixelWidth * PixelHeight * 4);
+
+    public void Dispose() => Interlocked.Exchange(ref _raster, null)?.Dispose();
 }

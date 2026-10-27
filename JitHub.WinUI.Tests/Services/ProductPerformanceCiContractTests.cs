@@ -9,6 +9,7 @@ public sealed class ProductPerformanceCiContractTests
     {
         string root = FindRepositoryRoot();
         string workflow = File.ReadAllText(Path.Combine(root, ".github", "workflows", "product-performance-gate.yml"));
+        workflow = workflow.Replace("\r\n", "\n", StringComparison.Ordinal);
         string script = File.ReadAllText(Path.Combine(root, "eng", "Invoke-ProductPerformanceGate.ps1"));
 
         Assert.Contains("Invoke-ProductPerformanceGate.ps1", workflow);
@@ -18,9 +19,8 @@ public sealed class ProductPerformanceCiContractTests
         Assert.True(File.Exists(Path.Combine(root, "JitHub.WinUI.Automation", "ProductPerformanceReport.cs")));
         Assert.Contains("cold, warm, offline, and large-account", workflow);
         Assert.Contains("jithub-interactive", workflow);
-        Assert.Contains("push:", workflow);
-        Assert.Contains("pull_request:", workflow);
-        Assert.DoesNotContain("push:\n    branches:", workflow);
+        Assert.Matches("(?m)^on:\n(?:  #.*\n)*  push:\n    branches: \\[main\\]$", workflow);
+        Assert.Matches("(?m)^  pull_request:\n    branches: \\[main\\]$", workflow);
         Assert.DoesNotContain("paths:", workflow);
         Assert.DoesNotContain("github.event_name == 'schedule'", workflow);
         Assert.DoesNotContain("inputs.run_live", workflow);
