@@ -1,8 +1,0 @@
-  Failed MarkdownRenderer.GitHub.Tests.FocusRevealViewportIntentTests.FocusEntrySuppressionIsCapturedSynchronouslyBeforeGotFocus [4 ms]
-  Error Message:
-   Assert.Contains() Failure: Sub-string not found
---
-Not found: "_focusEntrySuppressed = _suppressNextFocu"···
-  Stack Trace:
---
-Failed!  - Failed:     1, Passed:     2, Skipped:     0, Total:     3, Duration: 59 ms - MarkdownRenderer.GitHub.Tests.dll (net10.0)

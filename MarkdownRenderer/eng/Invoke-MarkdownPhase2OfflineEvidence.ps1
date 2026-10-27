@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string] $MatrixPath = 'docs/markdown-renderer/evidence/phase2-matrix.json',
+    [string] $MatrixPath = 'MarkdownRenderer/eng/correctness-inputs/phase2-matrix.json',
     [string] $OutputRoot = 'MarkdownRenderer/artifacts/correctness/phase2-offline',
     [ValidateSet('Debug', 'Release')]
     [string] $Configuration = 'Release'

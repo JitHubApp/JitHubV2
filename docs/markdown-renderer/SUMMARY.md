@@ -35,7 +35,7 @@ Use this page as the canonical table of contents for a generated docs site.
 - [October 25 correctness closure](correctness-closure-2026-10-25.md)
 - [Correctness goal, cases and defect history](correctness-plan.md)
 - [Phase 3 browser-free correctness input design](phase3-correctness-input-design.md)
-- [Portable evidence and frozen audit manifest](evidence/2026-10-17/README.md)
+- [Correctness inputs: frozen audit manifest and Phase 2 matrix](../../MarkdownRenderer/eng/correctness-inputs/README.md)
 - [Testing and diagnostics](testing-and-diagnostics.md)
 - [Troubleshooting](troubleshooting.md)
 - [Packaging and distribution](packaging-and-distribution.md)

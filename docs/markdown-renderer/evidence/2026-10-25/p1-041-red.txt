@@ -1,5 +1,0 @@
-  Failed MarkdownRenderer.GitHub.Tests.SelectionHandleUnownedTerminalTests.HandleForwardsReleasesAndCancelsItDoesNotOwnToTheCanvasPath [47 ms]
-  Error Message:
-   Assert.Contains() Failure: Sub-string not found
-Not found: "ProcessPointerReleased(ref e);"
-Failed!  - Failed:     1, Passed:     1, Skipped:     0, Total:     2, Duration: 53 ms - MarkdownRenderer.GitHub.Tests.dll (net10.0)

@@ -1,4 +1,0 @@
-Test run for MarkdownRenderer\MarkdownRenderer.GitHub.Tests\bin\x64\Debug\net10.0-windows10.0.26100.0\MarkdownRenderer.GitHub.Tests.dll (.NETCoreApp,Version=v10.0)
-A total of 1 test files matched the specified pattern.
-
-Passed!  - Failed:     0, Passed:    14, Skipped:     0, Total:    14, Duration: 33 ms - MarkdownRenderer.GitHub.Tests.dll (net10.0)

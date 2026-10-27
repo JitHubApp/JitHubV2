@@ -52,7 +52,7 @@ if ($ClipboardRedirectionDisabled -and $SharedClipboardAccepted) {
     throw 'Choose either an attested isolated clipboard or an accepted shared clipboard, not both.'
 }
 if ([string]::IsNullOrWhiteSpace($ManifestPath)) {
-    $ManifestPath = Join-Path $repoRoot 'docs\markdown-renderer\evidence\2026-10-17\top-repositories.json'
+    $ManifestPath = Join-Path $repoRoot 'MarkdownRenderer\eng\correctness-inputs\top-repositories.json'
 }
 $ManifestPath = [IO.Path]::GetFullPath($ManifestPath)
 $AppDirectory = [IO.Path]::GetFullPath($AppDirectory)

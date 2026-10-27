@@ -19,10 +19,10 @@ release gates are unfinished.
 | Customize Fluent styling | [Theming and customization](theming-and-customization.md) |
 | Understand normal Copy vs Copy Markdown | [Selection and clipboard](selection-and-clipboard.md) |
 | Track unfinished work | [Current gaps and roadmap](current-gaps-and-roadmap.md) |
-| Review the correctness closure, candidates and evidence hashes | [October 25 correctness closure](correctness-closure-2026-10-25.md) |
+| Review the correctness closure, candidates and run records | [October 25 correctness closure](correctness-closure-2026-10-25.md) |
 | Review the correctness cases and defect history | [Correctness goal and phase plan](correctness-plan.md) |
 | Understand the browser-free Phase 3 audit input | [Phase 3 correctness input design](phase3-correctness-input-design.md) |
-| Inspect portable receipts and the frozen audit manifest | [October 17 evidence index](evidence/2026-10-17/README.md) |
+| Find the frozen audit manifest and Phase 2 case matrix | [Correctness inputs](../../MarkdownRenderer/eng/correctness-inputs/README.md) |
 
 For the complete documentation table of contents, see [Summary](SUMMARY.md).
 

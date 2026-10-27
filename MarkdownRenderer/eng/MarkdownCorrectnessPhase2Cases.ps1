@@ -1,4 +1,4 @@
-# Phase 2 live feature-matrix cases (docs/markdown-renderer/evidence/phase2-matrix.json).
+# Phase 2 live feature-matrix cases (MarkdownRenderer/eng/correctness-inputs/phase2-matrix.json).
 #
 # Dot-sourced by Invoke-MarkdownCorrectnessUiTests.ps1 -Phase2Only after the
 # C00 Sandbox/app identity case. Every case uses the runner's existing guest

@@ -5,7 +5,7 @@ $scriptPath = Join-Path $PSScriptRoot '..\Invoke-MarkdownRendererTop500SourceAcq
 . $scriptPath
 
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
-$pinnedPath = Join-Path $repoRoot 'docs/markdown-renderer/evidence/2026-10-17/top-repositories.json'
+$pinnedPath = Join-Path $repoRoot 'MarkdownRenderer/eng/correctness-inputs/top-repositories.json'
 $pinnedSha = '615c56723fb16d17744af2549615a4de32b1fc299a1759727cc86b70edacac72'
 $tempRoot = [IO.Path]::GetFullPath((Join-Path ([IO.Path]::GetTempPath()) "markdownrenderer-top500-source-tests-$([guid]::NewGuid().ToString('N'))"))
 [IO.Directory]::CreateDirectory($tempRoot) | Out-Null
