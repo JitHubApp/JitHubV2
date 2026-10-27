@@ -4,7 +4,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $provider = Split-Path -Parent $PSScriptRoot
-$repositoryPolicyPath = Join-Path (Split-Path -Parent $provider) 'eng\license-compatibility-policy.json'
+$repositoryPolicyPath = Join-Path $provider '..\..\eng\license-compatibility-policy.json'
 $manifest = Join-Path $provider 'native\Cargo.toml'
 $lockFile = if ([string]::IsNullOrWhiteSpace($LockFilePath)) {
     Join-Path $provider 'native\Cargo.lock'

@@ -6,7 +6,7 @@ $manifest = Join-Path $provider 'native\Cargo.toml'
 $lockFile = Join-Path $provider 'native\Cargo.lock'
 $sbomPath = Join-Path $provider 'NATIVE_RUST_DEPENDENCIES.json'
 $licenseNoticesPath = Join-Path $provider 'licenses\RUST-DEPENDENCY-LICENSES.txt'
-$repositoryPolicyPath = Join-Path (Split-Path -Parent $provider) 'eng\license-compatibility-policy.json'
+$repositoryPolicyPath = Join-Path $provider '..\..\eng\license-compatibility-policy.json'
 . (Join-Path $PSScriptRoot 'SpdxLicenseSelection.ps1')
 . (Join-Path $PSScriptRoot 'ResvgVendoredSources.ps1')
 $vendoredSources = @(Get-ResvgVendoredSourcesProvenance -ProviderRoot $provider)
