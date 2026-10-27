@@ -56,6 +56,23 @@ fixes, and the resvg WebP row decoder. Earlier failing CI steps hid the overrun.
 The budgets catch regressions; they are not size targets. Raise one only with a
 new measurement and a note here.
 
+## Package reproducibility
+
+The preview workflow rebuilds and packs every shipping package twice into
+clean directories. Strict package compliance then requires the two package sets
+to match byte for byte.
+
+Both passes compile through one shared compiler server (`VBCSCompiler`). The
+CsWinRT AOT source generator orders the vtable classes it emits by string hash
+codes, which .NET randomizes in each process
+([microsoft/CsWinRT#2562](https://github.com/microsoft/CsWinRT/issues/2562)).
+Two compiler processes therefore build different `MarkdownRenderer.dll` bytes
+from the same inputs: the same code in a different order, and with different
+names for the shared vtable classes. A single server keeps that order the same
+in both passes, and each pass still rebuilds every project from scratch. The
+workflow fails if the server restarts between passes. Go back to separate
+compiler processes (`UseSharedCompilation=false`) once that issue is fixed.
+
 ## AOT and trimming
 
 Immutable profiles, exact syntax-kind dispatch, and declarative extension output

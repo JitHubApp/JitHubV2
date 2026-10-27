@@ -692,6 +692,15 @@ jobs:
           $packageDirectories = @(
             (Join-Path $artifactRoot 'packages-reference')
             (Join-Path $artifactRoot 'packages-candidate'))
+          # Both passes compile through one shared compiler server. The CsWinRT
+          # AOT generator orders its output by string hash codes, which .NET
+          # randomizes per process (https://github.com/microsoft/CsWinRT/issues/2562),
+          # so two compiler processes emit different MarkdownRenderer.dll bytes
+          # from the same inputs. One server process keeps that order identical.
+          # The check still rebuilds every project from scratch in each pass.
+          # Revert to separate compiler processes once that issue is fixed.
+          & dotnet build-server shutdown --vbcscompiler
+          $compilerServerIds = @{}
           $projects = @(
             '.\MarkdownRenderer\MarkdownRenderer.Core\MarkdownRenderer.Core.csproj'
             '.\MarkdownRenderer\MarkdownRenderer\MarkdownRenderer.csproj'
@@ -775,13 +784,14 @@ jobs:
                   & dotnet build $project `
                     --configuration $env:CONFIGURATION `
                     -p:Platform=$env:PLATFORM `
-                    -p:UseSharedCompilation=false `
+                    -p:UseSharedCompilation=true `
+                    -p:UseRazorBuildServer=false `
                     -p:BuildInParallel=false `
                     -p:BuildProjectReferences=false `
                     -p:EmitCompilerGeneratedFiles=true `
                     -target:Rebuild `
                     --no-restore `
-                    --disable-build-servers `
+                    -nodeReuse:false `
                     "-bl:$binlogPath" `
                     -m:1
                   $exitCode = $LASTEXITCODE
@@ -826,10 +836,22 @@ jobs:
               }
             }
 
+            $serverIds = @(Get-Process -Name VBCSCompiler -ErrorAction SilentlyContinue |
+              ForEach-Object Id | Sort-Object)
+            $compilerServerIds[$passName] = $serverIds -join ','
+            if ($null -eq $rebuildFailure -and $serverIds.Count -ne 1) {
+              $rebuildFailure = "Expected one shared compiler server after '$passName', found $($serverIds.Count)."
+            }
+            if ($null -eq $rebuildFailure -and $compilerServerIds.Count -eq 2 -and
+                @($compilerServerIds.Values | Sort-Object -Unique).Count -ne 1) {
+              $rebuildFailure = 'The compiler server restarted between the two packing passes.'
+            }
+
             $rebuildReport = [pscustomobject][ordered]@{
               schemaVersion = 1
               pass = $passName
               generatedUtc = [DateTime]::UtcNow.ToString('O', [Globalization.CultureInfo]::InvariantCulture)
+              compilerServerProcessIds = $compilerServerIds[$passName]
               projects = $rebuildResults
               failure = $rebuildFailure
             }
@@ -862,6 +884,7 @@ jobs:
               throw "Expected $($projects.Count) shipping packages in '$packageDirectory', found $($packages.Count)."
             }
           }
+          & dotnet build-server shutdown --vbcscompiler
 
       - name: Upload package rebuild reproducibility evidence
         if: always()

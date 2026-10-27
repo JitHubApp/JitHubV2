@@ -30,6 +30,12 @@ public sealed class PackageRebuildReproducibilityWorkflowContractTests
         int packLoop = step.IndexOf("foreach ($project in $projects)", failure, StringComparison.Ordinal);
         int pack = step.IndexOf("& dotnet pack $project `", packLoop, StringComparison.Ordinal);
 
+        int serverReset = step.IndexOf("& dotnet build-server shutdown --vbcscompiler", StringComparison.Ordinal);
+        int serverGuard = step.IndexOf("The compiler server restarted between the two packing passes.", build, StringComparison.Ordinal);
+        int serverStop = step.LastIndexOf("& dotnet build-server shutdown --vbcscompiler", StringComparison.Ordinal);
+        Assert.True(serverReset >= 0 && serverReset < passLoop);
+        Assert.True(serverGuard > build && serverGuard < report);
+        Assert.True(serverStop > pack);
         Assert.True(passLoop >= 0);
         Assert.True(rebuildLoop > passLoop);
         Assert.True(build > rebuildLoop);
@@ -41,10 +47,13 @@ public sealed class PackageRebuildReproducibilityWorkflowContractTests
         string rebuildCommand = step[build..step.IndexOf("-m:1", build, StringComparison.Ordinal)];
         Assert.Contains("-target:Rebuild", rebuildCommand, StringComparison.Ordinal);
         Assert.Contains("--no-restore", rebuildCommand, StringComparison.Ordinal);
-        Assert.Contains("--disable-build-servers", rebuildCommand, StringComparison.Ordinal);
+        Assert.DoesNotContain("--disable-build-servers", rebuildCommand, StringComparison.Ordinal);
+        Assert.Contains("-nodeReuse:false", rebuildCommand, StringComparison.Ordinal);
         Assert.Contains("BuildProjectReferences=false", rebuildCommand, StringComparison.Ordinal);
         Assert.Contains("EmitCompilerGeneratedFiles=true", rebuildCommand, StringComparison.Ordinal);
-        Assert.Contains("UseSharedCompilation=false", rebuildCommand, StringComparison.Ordinal);
+        // Both passes share one compiler server so the CsWinRT generator's
+        // per-process hash order matches (microsoft/CsWinRT#2562).
+        Assert.Contains("UseSharedCompilation=true", rebuildCommand, StringComparison.Ordinal);
         Assert.Contains("BuildInParallel=false", rebuildCommand, StringComparison.Ordinal);
         Assert.Contains("-bl:$binlogPath", rebuildCommand, StringComparison.Ordinal);
 
