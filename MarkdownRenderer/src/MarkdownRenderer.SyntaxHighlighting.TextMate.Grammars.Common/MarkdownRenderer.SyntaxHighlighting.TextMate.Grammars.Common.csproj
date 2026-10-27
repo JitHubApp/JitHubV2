@@ -49,6 +49,13 @@
                       GeneratePathProperty="true"
                       PrivateAssets="all"
                       ExcludeAssets="compile;runtime" />
+    <!-- Exception to the one-folder rule, pending an owner decision: the
+         TextMateSharp adapter is shared by Common and All. It cannot move to
+         the lean TextMate pack (no TextMateSharp/Onigwrap payload there), it
+         cannot become public API (pack surfaces expose no TextMateSharp
+         types), and an InternalsVisibleTo between shipping packs is not
+         allowed. Removing it needs a new shared package or a stable-typed
+         public adapter. -->
     <Compile Include="..\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Shared\BundledTextMateGrammarProvider.cs" Link="Internal\BundledTextMateGrammarProvider.cs" />
     <None Include="..\..\..\LICENSE" Pack="true" PackagePath="" Visible="false" />
     <None Include="..\..\..\docs\markdown-renderer\README.md" Pack="true" PackagePath="README.md" Visible="false" />

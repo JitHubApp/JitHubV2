@@ -38,6 +38,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\MarkdownRenderer\MarkdownRenderer.csproj" />
+    <ProjectReference Include="..\MarkdownRenderer.PerformanceHarness.Core\MarkdownRenderer.PerformanceHarness.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>

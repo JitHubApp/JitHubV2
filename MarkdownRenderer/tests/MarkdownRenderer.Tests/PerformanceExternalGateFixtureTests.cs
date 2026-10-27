@@ -752,10 +752,35 @@ public sealed class PerformanceExternalGateFixtureTests
 
             return new GateEvidence(
                 directory,
-                Path.Combine(fixtureDirectory, "Test-MarkdownWinUIPerformanceGates.ps1"),
+                FindGateScript(),
                 executablePath,
                 baselinePath,
                 candidatePath);
+        }
+
+        // Run the repository's gate script itself (the same file CI primes)
+        // rather than a copy staged into the test output directory.
+        private static string FindGateScript()
+        {
+            for (DirectoryInfo? directory = new(AppContext.BaseDirectory);
+                 directory is not null;
+                 directory = directory.Parent)
+            {
+                string direct = Path.Combine(directory.FullName, "eng", "Test-MarkdownWinUIPerformanceGates.ps1");
+                if (File.Exists(direct))
+                    return direct;
+
+                string nested = Path.Combine(
+                    directory.FullName,
+                    "MarkdownRenderer",
+                    "eng",
+                    "Test-MarkdownWinUIPerformanceGates.ps1");
+                if (File.Exists(nested))
+                    return nested;
+            }
+
+            throw new FileNotFoundException(
+                "The MarkdownRenderer external performance-gate script was not found above the test output directory.");
         }
 
         internal void ApplyMutation(string mutation)

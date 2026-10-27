@@ -37,8 +37,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\MarkdownRenderer.Svg.Resvg\MarkdownRenderer.Svg.Resvg.csproj" />
-    <Compile Include="..\aot\MarkdownRenderer.Svg.Resvg.AotSmoke\SmokeRasterValidation.cs" Link="SmokeRasterValidation.cs" />
-    <Compile Include="..\aot\MarkdownRenderer.Svg.Resvg.AotSmoke\SmokeRasterDecodeFixture.cs" Link="SmokeRasterDecodeFixture.cs" />
+    <ProjectReference Include="..\MarkdownRenderer.Svg.Resvg.TestSupport\MarkdownRenderer.Svg.Resvg.TestSupport.csproj" />
     <EmbeddedResource Include="..\..\src\MarkdownRenderer.Svg.Resvg\native\tests\fixtures\opaque-vp8-256.webp"
                       LogicalName="OpaqueVp8StreamingFixture" />
   </ItemGroup>

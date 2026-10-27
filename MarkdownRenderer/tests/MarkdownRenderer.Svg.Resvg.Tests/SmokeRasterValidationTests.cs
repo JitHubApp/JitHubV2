@@ -1,3 +1,4 @@
+using MarkdownRenderer.Svg.Resvg.TestSupport;
 using Xunit;
 
 namespace MarkdownRenderer.Svg.Resvg.Tests;

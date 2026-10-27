@@ -1,5 +1,5 @@
 using System.Reflection;
-using MarkdownRenderer.Gfm.Renderers;
+using MarkdownRenderer.GitHub.Renderers;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;

@@ -28,5 +28,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\MarkdownRenderer.Svg.Resvg\MarkdownRenderer.Svg.Resvg.csproj" />
+    <ProjectReference Include="..\..\MarkdownRenderer.Svg.Resvg.TestSupport\MarkdownRenderer.Svg.Resvg.TestSupport.csproj" />
   </ItemGroup>
 </Project>

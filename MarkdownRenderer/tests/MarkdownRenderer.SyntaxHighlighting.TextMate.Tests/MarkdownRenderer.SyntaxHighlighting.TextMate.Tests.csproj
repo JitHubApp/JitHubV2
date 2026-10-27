@@ -14,11 +14,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Host-level highlighter behaviour (aliases, High Contrast, CR endings, provider reuse);
-         MarkdownRenderer.Tests excludes this file because it needs the TextMate assembly. -->
-    <Compile Include="..\MarkdownRenderer.Tests\TextMateCodeBlockSyntaxHighlighterTests.cs" Link="TextMateCodeBlockSyntaxHighlighterTests.cs" />
-  </ItemGroup>
-  <ItemGroup>
     <ProjectReference Include="..\..\src\MarkdownRenderer.SyntaxHighlighting.TextMate\MarkdownRenderer.SyntaxHighlighting.TextMate.csproj" />
     <ProjectReference Include="..\..\src\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.csproj" />
     <ProjectReference Include="..\..\src\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All.csproj" />

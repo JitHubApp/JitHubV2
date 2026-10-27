@@ -38,6 +38,8 @@
   <ItemGroup>
     <ProjectReference Include="..\MarkdownRenderer.SyntaxHighlighting.TextMate\MarkdownRenderer.SyntaxHighlighting.TextMate.csproj" />
     <PackageReference Include="TextMateSharp.Grammars" Version="2.0.3" />
+    <!-- Exception to the one-folder rule; see the matching note in
+         MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.csproj. -->
     <Compile Include="..\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Shared\BundledTextMateGrammarProvider.cs" Link="Internal\BundledTextMateGrammarProvider.cs" />
     <None Include="..\..\..\LICENSE" Pack="true" PackagePath="" Visible="false" />
     <None Include="..\..\..\docs\markdown-renderer\README.md" Pack="true" PackagePath="README.md" Visible="false" />

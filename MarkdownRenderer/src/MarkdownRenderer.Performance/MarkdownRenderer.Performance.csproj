@@ -35,22 +35,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer.csproj" />
-    <Compile Include="..\MarkdownRenderer\Performance\MarkdownPerformanceSession.cs"
-             Link="MarkdownPerformanceSession.cs" />
-    <Compile Include="..\MarkdownRenderer\Performance\MarkdownProgressiveScenePlan.cs"
-             Link="MarkdownProgressiveScenePlan.cs" />
-    <Compile Include="..\MarkdownRenderer\Performance\MarkdownProgressiveScenePlan.GraphResidency.cs"
-             Link="MarkdownProgressiveScenePlan.GraphResidency.cs" />
-    <Compile Include="..\MarkdownRenderer\Performance\MarkdownSceneProjectionSignature.cs"
-             Link="MarkdownSceneProjectionSignature.cs" />
-    <Compile Include="..\MarkdownRenderer\Performance\MarkdownDeferredSceneReadiness.cs"
-             Link="MarkdownDeferredSceneReadiness.cs" />
-    <Compile Include="..\MarkdownRenderer\Performance\MarkdownVectorSceneResidencyPolicy.cs"
-             Link="MarkdownVectorSceneResidencyPolicy.cs" />
-    <Compile Include="..\MarkdownRenderer\Performance\MarkdownStyleRoleDemandCollector.cs"
-             Link="MarkdownStyleRoleDemandCollector.cs" />
-    <Compile Include="..\MarkdownRenderer\Diagnostics\MarkdownRasterPreparationEventSource.cs"
-             Link="MarkdownRasterPreparationEventSource.cs" />
     <None Include="..\..\..\LICENSE" Pack="true" PackagePath="" Visible="false" />
     <None Include="..\..\..\docs\markdown-renderer\README.md" Pack="true" PackagePath="README.md" Visible="false" />
     <None Include="..\..\..\JitHub.Web\wwwroot\icon-192.png" Pack="true" PackagePath="icon-192.png" Visible="false" />

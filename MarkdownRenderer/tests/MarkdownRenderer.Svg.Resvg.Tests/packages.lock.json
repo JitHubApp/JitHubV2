@@ -171,6 +171,12 @@
           "MarkdownRenderer.WinUI": "[1.0.0-preview.1, )"
         }
       },
+      "markdownrenderer.svg.resvg.testsupport": {
+        "type": "Project",
+        "dependencies": {
+          "MarkdownRenderer.WinUI": "[1.0.0-preview.1, )"
+        }
+      },
       "MarkdownRenderer.WinUI": {
         "type": "Project",
         "dependencies": {

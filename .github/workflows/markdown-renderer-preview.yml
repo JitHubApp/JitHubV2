@@ -260,6 +260,7 @@ jobs:
             '.\MarkdownRenderer\tests\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests.csproj'
             '.\MarkdownRenderer\tests\MarkdownRenderer.Conformance.Tests\MarkdownRenderer.Conformance.Tests.csproj'
             '.\MarkdownRenderer\tests\MarkdownRenderer.PixelTests\MarkdownRenderer.PixelTests.csproj'
+            '.\MarkdownRenderer\tests\MarkdownRenderer.Sample.Automation.Tests\MarkdownRenderer.Sample.Automation.Tests.csproj'
           )
           foreach ($project in $projects) {
             & dotnet restore $project `
@@ -282,6 +283,7 @@ jobs:
             '.\MarkdownRenderer\tests\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests.csproj'
             '.\MarkdownRenderer\tests\MarkdownRenderer.Conformance.Tests\MarkdownRenderer.Conformance.Tests.csproj'
             '.\MarkdownRenderer\tests\MarkdownRenderer.PixelTests\MarkdownRenderer.PixelTests.csproj'
+            '.\MarkdownRenderer\tests\MarkdownRenderer.Sample.Automation.Tests\MarkdownRenderer.Sample.Automation.Tests.csproj'
           )
           foreach ($project in $projects) {
             & dotnet build $project `
@@ -317,7 +319,7 @@ jobs:
             throw 'The performance-gate priming invocation unexpectedly accepted a missing report.'
           }
 
-      - name: Run Core, GitHub, HTML, Math, Mermaid, SVG, TextMate, and conformance tests
+      - name: Run Core, GitHub, HTML, Math, Mermaid, SVG, TextMate, conformance, and sample-automation tests
         run: |
           $tests = [ordered]@{
             core = '.\MarkdownRenderer\tests\MarkdownRenderer.Tests\MarkdownRenderer.Tests.csproj'
@@ -328,18 +330,23 @@ jobs:
             svg = '.\MarkdownRenderer\tests\MarkdownRenderer.Svg.Resvg.Tests\MarkdownRenderer.Svg.Resvg.Tests.csproj'
             textmate = '.\MarkdownRenderer\tests\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests.csproj'
             conformance = '.\MarkdownRenderer\tests\MarkdownRenderer.Conformance.Tests\MarkdownRenderer.Conformance.Tests.csproj'
+            sampleautomation = '.\MarkdownRenderer\tests\MarkdownRenderer.Sample.Automation.Tests\MarkdownRenderer.Sample.Automation.Tests.csproj'
           }
           $results = Join-Path $env:RUNNER_TEMP 'markdownrenderer-preview\test-results'
-          $deadlineSensitiveCoreTests = [ordered]@{
-            hostedCancellation = 'MarkdownRenderer.Tests.HostedElementLifecycleContractTests.ThrowingCancellationCallbackCannotEscapeCleanup'
-            authoredSvgDoctype = 'MarkdownRenderer.Tests.SvgResourceBudgetTests.Validate_RejectsExternalDoctypeInTheAuthoredRootDocument'
+          # Wall-clock-bounded security/cancellation tests run alone in their
+          # own testhost, keyed by the suite whose project owns them.
+          $deadlineSensitiveTests = [ordered]@{
+            hostedCancellation = @{ Suite = 'core'; Name = 'MarkdownRenderer.Tests.HostedElementLifecycleContractTests.ThrowingCancellationCallbackCannotEscapeCleanup' }
+            authoredSvgDoctype = @{ Suite = 'svg'; Name = 'MarkdownRenderer.Svg.Resvg.Tests.SvgResourceBudgetTests.Validate_RejectsExternalDoctypeInTheAuthoredRootDocument' }
           }
-          $coreExclusionTerms = [Collections.Generic.List[string]]::new()
-          $coreExclusionTerms.Add('FullyQualifiedName!~PerformanceExternalGateFixtureTests')
-          foreach ($test in $deadlineSensitiveCoreTests.GetEnumerator()) {
-            $coreExclusionTerms.Add("FullyQualifiedName!~$($test.Value)")
+          $exclusionTerms = @{}
+          foreach ($suite in @('core', 'svg')) {
+            $exclusionTerms[$suite] = [Collections.Generic.List[string]]::new()
           }
-          $coreTestFilter = $coreExclusionTerms -join '&'
+          $exclusionTerms['core'].Add('FullyQualifiedName!~PerformanceExternalGateFixtureTests')
+          foreach ($test in $deadlineSensitiveTests.GetEnumerator()) {
+            $exclusionTerms[$test.Value.Suite].Add("FullyQualifiedName!~$($test.Value.Name)")
+          }
 
           # WebP decoding goes through the Store-only Windows WebP Image
           # Extension, which hosted Windows Server runners do not have. Tests
@@ -363,12 +370,13 @@ jobs:
               '--disable-build-servers',
               '--results-directory', $results,
               '--logger', "trx;LogFileName=$($test.Key).trx")
-            if ($test.Key -eq 'core') {
-              # The external-gate fixture launches many bounded child processes.
-              # Run it in its own testhost so scheduling pressure cannot turn
-              # wall-clock-bounded security/cancellation tests into false failures.
-              # Two such tests are isolated below to avoid unrelated xUnit load.
-              $arguments += @('--filter', $coreTestFilter)
+            if ($exclusionTerms.ContainsKey($test.Key)) {
+              # The core external-gate fixture launches many bounded child
+              # processes. Run it in its own testhost so scheduling pressure
+              # cannot turn wall-clock-bounded security/cancellation tests into
+              # false failures. Such tests are isolated below to avoid unrelated
+              # xUnit load.
+              $arguments += @('--filter', ($exclusionTerms[$test.Key] -join '&'))
             }
             if ($test.Key -eq 'github' -and $githubTestFilter) {
               $arguments += @('--filter', $githubTestFilter)
@@ -377,34 +385,37 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "$($test.Key) tests failed." }
           }
 
-          $coreResultsPath = Join-Path $results 'core.trx'
-          [xml]$coreTrx = Get-Content -LiteralPath $coreResultsPath -Raw
-          $coreResultNames = @($coreTrx.TestRun.Results.UnitTestResult | ForEach-Object { [string]$_.testName })
-          if ($coreResultNames.Count -lt 1) {
-            throw 'The broad Core test filter matched no tests.'
-          }
-          foreach ($test in $deadlineSensitiveCoreTests.GetEnumerator()) {
-            if ($coreResultNames -contains $test.Value) {
-              throw "Deadline-sensitive test '$($test.Value)' was not excluded from the parallel Core testhost."
+          foreach ($suite in $exclusionTerms.Keys) {
+            $suiteResultsPath = Join-Path $results "$suite.trx"
+            [xml]$suiteTrx = Get-Content -LiteralPath $suiteResultsPath -Raw
+            $suiteResultNames = @($suiteTrx.TestRun.Results.UnitTestResult | ForEach-Object { [string]$_.testName })
+            if ($suiteResultNames.Count -lt 1) {
+              throw "The broad $suite test filter matched no tests."
+            }
+            foreach ($test in $deadlineSensitiveTests.GetEnumerator()) {
+              if ($test.Value.Suite -eq $suite -and $suiteResultNames -contains $test.Value.Name) {
+                throw "Deadline-sensitive test '$($test.Value.Name)' was not excluded from the parallel $suite testhost."
+              }
             }
           }
 
-          foreach ($test in $deadlineSensitiveCoreTests.GetEnumerator()) {
-            & dotnet test $tests.core `
+          foreach ($test in $deadlineSensitiveTests.GetEnumerator()) {
+            $suite = $test.Value.Suite
+            & dotnet test $tests[$suite] `
               --configuration $env:CONFIGURATION `
               -p:Platform=$env:PLATFORM `
               --no-build `
               --disable-build-servers `
               --results-directory $results `
-              --logger "trx;LogFileName=core-$($test.Key).trx" `
-              --filter "FullyQualifiedName~$($test.Value)"
-            if ($LASTEXITCODE -ne 0) { throw "Isolated core test '$($test.Key)' failed." }
+              --logger "trx;LogFileName=$suite-$($test.Key).trx" `
+              --filter "FullyQualifiedName~$($test.Value.Name)"
+            if ($LASTEXITCODE -ne 0) { throw "Isolated $suite test '$($test.Key)' failed." }
 
-            $isolatedResultPath = Join-Path $results "core-$($test.Key).trx"
+            $isolatedResultPath = Join-Path $results "$suite-$($test.Key).trx"
             [xml]$isolatedTrx = Get-Content -LiteralPath $isolatedResultPath -Raw
             $isolatedResultNames = @($isolatedTrx.TestRun.Results.UnitTestResult | ForEach-Object { [string]$_.testName })
-            if ($isolatedResultNames.Count -ne 1 -or $isolatedResultNames[0] -ne $test.Value) {
-              throw "Isolated filter for '$($test.Value)' did not execute exactly that Core test."
+            if ($isolatedResultNames.Count -ne 1 -or $isolatedResultNames[0] -ne $test.Value.Name) {
+              throw "Isolated filter for '$($test.Value.Name)' did not execute exactly that $suite test."
             }
           }
 

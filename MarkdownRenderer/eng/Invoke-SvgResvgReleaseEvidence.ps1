@@ -589,8 +589,11 @@ $consumerProject = @'
     [Text.UTF8Encoding]::new($false))
 [IO.File]::Copy((Join-Path $markdownRoot 'tests\aot\MarkdownRenderer.Svg.Resvg.AotSmoke\Program.cs'), (Join-Path $consumerDirectory 'Program.cs'))
 [IO.File]::Copy((Join-Path $markdownRoot 'tests\aot\MarkdownRenderer.Svg.Resvg.AotSmoke\WorkerIsolationProbe.cs'), (Join-Path $consumerDirectory 'WorkerIsolationProbe.cs'))
-[IO.File]::Copy((Join-Path $markdownRoot 'tests\aot\MarkdownRenderer.Svg.Resvg.AotSmoke\SmokeRasterValidation.cs'), (Join-Path $consumerDirectory 'SmokeRasterValidation.cs'))
-[IO.File]::Copy((Join-Path $markdownRoot 'tests\aot\MarkdownRenderer.Svg.Resvg.AotSmoke\SmokeRasterDecodeFixture.cs'), (Join-Path $consumerDirectory 'SmokeRasterDecodeFixture.cs'))
+# The package-only consumer compiles the shared smoke fixtures as sources: a
+# ProjectReference to the test-support library would bring the renderer back in
+# as a project instead of as the packed package under test.
+[IO.File]::Copy((Join-Path $markdownRoot 'tests\MarkdownRenderer.Svg.Resvg.TestSupport\SmokeRasterValidation.cs'), (Join-Path $consumerDirectory 'SmokeRasterValidation.cs'))
+[IO.File]::Copy((Join-Path $markdownRoot 'tests\MarkdownRenderer.Svg.Resvg.TestSupport\SmokeRasterDecodeFixture.cs'), (Join-Path $consumerDirectory 'SmokeRasterDecodeFixture.cs'))
 $consumerProjectPath = Join-Path $consumerDirectory 'SvgResvgPackageConsumer.csproj'
 
 Push-Location $repositoryRoot

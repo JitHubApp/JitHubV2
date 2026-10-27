@@ -66,14 +66,16 @@
     <Compile Remove="StablePublicApiTests.cs" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="..\..\perf\MarkdownRenderer.PerformanceHarness\PerformanceDocumentFactory.cs"
-             Link="PerformanceHarness\PerformanceDocumentFactory.cs" />
+    <!-- Exception to the one-folder rule, to be removed: the harness listener
+         implements the renderer-internal IMarkdownPerformanceSink, so it cannot
+         move to the WinUI-free harness library without an InternalsVisibleTo
+         grant to a non-test assembly, and the harness WinExe bootstrap-initializes
+         the Windows App SDK on load, so a test project cannot reference it.
+         Plan: give the renderer a deliberate in-process performance observer
+         seam (or extract the frame ledger into PerformanceHarness.Core) and
+         drop this link. -->
     <Compile Include="..\..\perf\MarkdownRenderer.PerformanceHarness\PerformanceEventListener.cs"
              Link="PerformanceHarness\PerformanceEventListener.cs" />
-    <Compile Include="..\MarkdownRenderer.Tests\PagedEntryBufferTests.cs"
-             Link="Core\PagedEntryBufferTests.cs" />
-    <Compile Include="..\MarkdownRenderer.Tests\PackedSourceProjectionTests.cs"
-             Link="Core\PackedSourceProjectionTests.cs" />
     <EmbeddedResource Include="Fixtures\oversized-static.webp" />
     <EmbeddedResource Include="PublicApiBaselines\*.txt">
       <LogicalName>MarkdownRenderer.PublicApiBaselines.%(Filename)%(Extension)</LogicalName>

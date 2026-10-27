@@ -140,6 +140,12 @@
           "Markdig": "[0.42.0, )"
         }
       },
+      "markdownrenderer.performanceharness.core": {
+        "type": "Project",
+        "dependencies": {
+          "MarkdownRenderer.Core": "[1.0.0-preview.1, )"
+        }
+      },
       "MarkdownRenderer.WinUI": {
         "type": "Project",
         "dependencies": {

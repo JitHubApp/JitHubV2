@@ -1,6 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <!-- Match JitHub.WinUI and the renderer projects this test project references. -->
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
@@ -140,16 +142,6 @@
     <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownRendererDisposalCommit.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Views\Controls\Common\MarkdownHostContract.cs" Link="Views\Controls\Common\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Helpers\RepositoryLanguageColorPalette.cs" Link="Helpers\%(Filename)%(Extension)" />
-    <Compile Include="..\MarkdownRenderer\src\MarkdownRenderer\Images\IMarkdownImageResolver.cs" Link="MarkdownRenderer\Images\%(Filename)%(Extension)" />
-    <Compile Include="..\MarkdownRenderer\src\MarkdownRenderer\Images\IMarkdownImageResolutionLease.cs" Link="MarkdownRenderer\Images\%(Filename)%(Extension)" />
-    <Compile Include="..\MarkdownRenderer\src\MarkdownRenderer.Performance\IMarkdownLeasedImageResolver.cs" Link="MarkdownRenderer\Performance\%(Filename)%(Extension)" />
-    <Compile Include="..\MarkdownRenderer\src\MarkdownRenderer.Performance\IMarkdownImageSourceWorkTracker.cs" Link="MarkdownRenderer\Performance\%(Filename)%(Extension)" />
-    <Compile Include="..\MarkdownRenderer\src\MarkdownRenderer.Performance\MarkdownImageResolutionLease.cs" Link="MarkdownRenderer\Performance\%(Filename)%(Extension)" />
-    <Compile Include="..\MarkdownRenderer\src\MarkdownRenderer\Images\IMarkdownSvgRenderer.cs" Link="MarkdownRenderer\Images\%(Filename)%(Extension)" />
-    <Compile Include="..\MarkdownRenderer\src\MarkdownRenderer\Layout\Boxes\SvgIntrinsics.cs" Link="MarkdownRenderer\Layout\Boxes\%(Filename)%(Extension)" />
-    <Compile Include="..\MarkdownRenderer\src\MarkdownRenderer\Layout\Boxes\SvgSourceMetadata.cs" Link="MarkdownRenderer\Layout\Boxes\%(Filename)%(Extension)" />
-    <Compile Include="..\MarkdownRenderer\src\MarkdownRenderer\Engine\MarkdownParseLimits.cs" Link="MarkdownRenderer\Engine\%(Filename)%(Extension)" />
-    <Compile Include="..\MarkdownRenderer\src\MarkdownRenderer\Layout\Boxes\RasterImageResourceBudget.cs" Link="MarkdownRenderer\Layout\Boxes\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\ViewModels\Pages\SettingsPageViewModel.cs" Link="ViewModels\Pages\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\ViewModels\Pages\LoginPageViewModel.cs" Link="ViewModels\Pages\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\ViewModels\Pages\NotificationsPageViewModel.cs" Link="ViewModels\Pages\%(Filename)%(Extension)" />
@@ -170,6 +162,11 @@
     <Compile Include="..\JitHub.WinUI\ViewModels\CodeViewer\RepositoryRoutePrefetchCoordinator.cs" Link="ViewModels\CodeViewer\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\ViewModels\CodeViewer\RepoCodePageViewModel.cs" Link="ViewModels\CodeViewer\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Views\Controls\Profile\ProfileContributionGraphNavigation.cs" Link="Views\Controls\Profile\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MarkdownRenderer\src\MarkdownRenderer\MarkdownRenderer.csproj" />
+    <ProjectReference Include="..\MarkdownRenderer\src\MarkdownRenderer.Performance\MarkdownRenderer.Performance.csproj" />
   </ItemGroup>
 
   <ItemGroup>

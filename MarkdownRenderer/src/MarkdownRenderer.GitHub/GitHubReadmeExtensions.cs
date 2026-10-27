@@ -6,7 +6,7 @@ using Markdig.Parsers;
 using Markdig.Syntax;
 using MarkdownRenderer.Controls;
 using MarkdownRenderer.Gfm;
-using MarkdownRenderer.Gfm.Renderers;
+using MarkdownRenderer.GitHub.Renderers;
 using MarkdownRenderer.Html;
 using MarkdownRenderer.Parsing;
 

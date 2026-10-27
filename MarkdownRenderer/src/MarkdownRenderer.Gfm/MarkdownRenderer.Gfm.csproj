@@ -42,10 +42,4 @@
     <None Include="..\..\..\JitHub.Site\public\icon-192.png" Pack="true" PackagePath="icon-192.png" Visible="false" />
   </ItemGroup>
 
-  <ItemGroup>
-    <!-- GitHub README additions are compiled by MarkdownRenderer.GitHub. -->
-    <Compile Remove="Renderers\AlertRenderer.cs" />
-    <Compile Remove="Renderers\FootnoteRenderer.cs" />
-    <Compile Remove="Renderers\HtmlBlockRenderer.cs" />
-  </ItemGroup>
 </Project>

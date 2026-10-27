@@ -37,8 +37,6 @@
   <ItemGroup>
     <ProjectReference Include="..\MarkdownRenderer.Gfm\MarkdownRenderer.Gfm.csproj" />
     <ProjectReference Include="..\MarkdownRenderer.Html\MarkdownRenderer.Html.csproj" />
-    <Compile Include="..\MarkdownRenderer.Gfm\Renderers\AlertRenderer.cs" Link="Renderers\AlertRenderer.cs" />
-    <Compile Include="..\MarkdownRenderer.Gfm\Renderers\FootnoteRenderer.cs" Link="Renderers\FootnoteRenderer.cs" />
     <EmbeddedResource Include="Profiles\github-primer-light-v1.css"
                       LogicalName="MarkdownRenderer.GitHub.Profiles.github-primer-light-v1.css" />
     <EmbeddedResource Include="Profiles\github-primer-light-v2.css"

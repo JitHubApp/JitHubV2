@@ -28,6 +28,18 @@ public sealed class ReleaseEvidenceSmokeContractTests
             Assert.Contains($"'tests\\aot\\MarkdownRenderer.Svg.Resvg.AotSmoke\\{fileName}'", script);
             Assert.Contains($"(Join-Path $consumerDirectory '{fileName}')", script);
         }
+
+        // The smoke also compiles the shared raster fixtures from its
+        // test-support library; the package consumer must copy every one.
+        string supportDirectory = Path.Combine(rendererRoot, "tests", "MarkdownRenderer.Svg.Resvg.TestSupport");
+        string[] supportSources = Directory.EnumerateFiles(supportDirectory, "*.cs").ToArray();
+        Assert.NotEmpty(supportSources);
+        foreach (string source in supportSources)
+        {
+            string fileName = Path.GetFileName(source);
+            Assert.Contains($"'tests\\MarkdownRenderer.Svg.Resvg.TestSupport\\{fileName}'", script);
+            Assert.Contains($"(Join-Path $consumerDirectory '{fileName}')", script);
+        }
     }
 
     private static string FindRendererRoot()

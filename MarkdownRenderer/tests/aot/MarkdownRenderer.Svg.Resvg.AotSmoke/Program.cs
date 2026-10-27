@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Svg.Resvg;
+using MarkdownRenderer.Svg.Resvg.TestSupport;
 
 const int repeatedCycles = 100;
 const int maximumHandleGrowth = 4;

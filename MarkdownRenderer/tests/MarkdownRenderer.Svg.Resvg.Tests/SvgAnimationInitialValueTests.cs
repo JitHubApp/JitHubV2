@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Xml;
 using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Svg.Resvg.Internal;
 using Xunit;
 
 namespace MarkdownRenderer.Svg.Resvg.Tests;
