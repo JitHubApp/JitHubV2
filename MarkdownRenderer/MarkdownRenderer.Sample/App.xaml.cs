@@ -14,9 +14,6 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
-        if (args.Arguments.Contains("--markdown-renderer-diagnostics", StringComparison.OrdinalIgnoreCase))
-            MarkdownRenderer.Diagnostics.ShakeLogger.Enabled = true;
-
         _window = new MainWindow();
         _window.Activate();
     }
