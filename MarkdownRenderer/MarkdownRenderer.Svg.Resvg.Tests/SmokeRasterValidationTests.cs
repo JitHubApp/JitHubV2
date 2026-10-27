@@ -56,12 +56,27 @@ public sealed class SmokeRasterValidationTests
             pixels[offset + 3] = 255;
         }
         Assert.Equal(SmokeRasterFailure.None, SmokeRasterValidation.CheckManyImages(pixels, width, height));
-        long before = GC.GetAllocatedBytesForCurrentThread();
+
+        // Warm up past tiered-compilation promotion, then measure 100 calls.
+        // A per-call allocation shows up in every attempt (at least 100 bytes).
+        // Runtime work that happens once on this thread can show up in one
+        // attempt on a loaded CI runner, so a nonzero attempt is retried; the
+        // test fails only if no attempt is allocation-free.
         SmokeRasterFailure result = default;
-        for (int repeat = 0; repeat < 100; repeat++)
+        for (int warmup = 0; warmup < 1000; warmup++)
             result |= SmokeRasterValidation.CheckManyImages(pixels, width, height);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-        Assert.Equal(0, allocated);
+        var attempts = new List<long>(capacity: 5);
+        for (int attempt = 0; attempt < 5; attempt++)
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int repeat = 0; repeat < 100; repeat++)
+                result |= SmokeRasterValidation.CheckManyImages(pixels, width, height);
+            attempts.Add(GC.GetAllocatedBytesForCurrentThread() - before);
+            if (attempts[^1] == 0)
+                break;
+        }
+        Assert.True(attempts[^1] == 0,
+            $"Every 100-call attempt allocated: {string.Join(", ", attempts)} bytes.");
         Assert.Equal(SmokeRasterFailure.None, result);
 
         // No resource may silently disappear, including the last avatar.
