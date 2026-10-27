@@ -1,0 +1,82 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Source-generated COM qualification probes require generated unsafe stubs. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsTestProject>true</IsTestProject>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <UseWinUI>false</UseWinUI>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(EnableMarkdownLayoutDiagnostics)' == 'true'">
+    <DefineConstants>$(DefineConstants);MARKDOWN_LAYOUT_DIAGNOSTICS</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260317003" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.Runtime" Version="1.8.260317003" />
+    <ProjectReference Include="..\MarkdownRenderer.GitHub\MarkdownRenderer.GitHub.csproj" />
+    <ProjectReference Include="..\MarkdownRenderer.Performance\MarkdownRenderer.Performance.csproj" />
+    <!-- The managed-pack release lane intentionally exercises only Core, WinUI,
+         GFM, safe HTML, and GitHub. Public API baselines still run against every
+         shipping pack in the default build. -->
+    <ProjectReference Include="..\MarkdownRenderer.Math\MarkdownRenderer.Math.csproj"
+                      Condition="'$(ManagedPacksOnly)' != 'true'" />
+    <ProjectReference Include="..\MarkdownRenderer.Mermaid\MarkdownRenderer.Mermaid.csproj"
+                      Condition="'$(ManagedPacksOnly)' != 'true'" />
+    <ProjectReference Include="..\MarkdownRenderer.Svg.Resvg\MarkdownRenderer.Svg.Resvg.csproj"
+                      Condition="'$(ManagedPacksOnly)' != 'true'" />
+    <ProjectReference Include="..\MarkdownRenderer.SyntaxHighlighting.TextMate\MarkdownRenderer.SyntaxHighlighting.TextMate.csproj"
+                      Condition="'$(ManagedPacksOnly)' != 'true'" />
+    <ProjectReference Include="..\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.csproj"
+                      Condition="'$(ManagedPacksOnly)' != 'true'" />
+    <ProjectReference Include="..\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All.csproj"
+                      Condition="'$(ManagedPacksOnly)' != 'true'" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(ManagedPacksOnly)' == 'true'">
+    <!-- These focused tests compile directly against optional Math/Mermaid packs.
+         The default/full test build still compiles and runs them with all pack references. -->
+    <Compile Remove="MermaidHighContrastAccessibilityTests.cs" />
+    <Compile Remove="MermaidTypographyRegressionTests.cs" />
+    <Compile Remove="MarkdownPerformanceSessionTests.cs" />
+    <Compile Remove="MixedInlineVectorImageRelayoutTests.cs" />
+    <Compile Remove="MarkdownRangeFromPointTouchSelectionRegressionTests.cs" />
+    <Compile Remove="MathSourceMapCopyContractTests.cs" />
+    <!-- This test reuses private Math-vector fixture helpers from the file above. -->
+    <Compile Remove="InlineVectorGeometryTransferValidationTests.cs" />
+    <Compile Remove="ProgressiveSceneDeferralTests.cs" />
+    <Compile Remove="ProgressiveSceneDiagnosticAggregationTests.cs" />
+    <Compile Remove="ProgressiveSceneGraphRefillTests.cs" />
+    <Compile Remove="RootLocalContainerVectorImageRelayoutTests.cs" />
+    <Compile Remove="RootLocalTableVectorImageRelayoutTests.cs" />
+    <Compile Remove="SafeHtmlRenderingTests.cs" />
+    <Compile Remove="VectorSceneResourceResidencyTests.cs" />
+    <Compile Remove="PublicApiBaselineTests.cs" />
+    <Compile Remove="StablePublicApiTests.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\MarkdownRenderer.PerformanceHarness\PerformanceDocumentFactory.cs"
+             Link="PerformanceHarness\PerformanceDocumentFactory.cs" />
+    <Compile Include="..\MarkdownRenderer.PerformanceHarness\PerformanceEventListener.cs"
+             Link="PerformanceHarness\PerformanceEventListener.cs" />
+    <Compile Include="..\MarkdownRenderer.Tests\PagedEntryBufferTests.cs"
+             Link="Core\PagedEntryBufferTests.cs" />
+    <Compile Include="..\MarkdownRenderer.Tests\PackedSourceProjectionTests.cs"
+             Link="Core\PackedSourceProjectionTests.cs" />
+    <EmbeddedResource Include="Fixtures\oversized-static.webp" />
+    <EmbeddedResource Include="PublicApiBaselines\*.txt">
+      <LogicalName>MarkdownRenderer.PublicApiBaselines.%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+</Project>

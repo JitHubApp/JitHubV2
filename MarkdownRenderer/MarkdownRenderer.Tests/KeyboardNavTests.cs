@@ -1,4 +1,5 @@
 using MarkdownRenderer.Layout;
+using MarkdownRenderer.Controls;
 using Windows.Foundation;
 using Xunit;
 
@@ -126,5 +127,46 @@ public class KeyboardNavTests
         Assert.Equal(2, FocusNavigationHelper.MoveSpatial(rects, 0, FocusNavigationDirection.Down));
         Assert.Equal(-1, FocusNavigationHelper.MoveSpatial(rects, 0, FocusNavigationDirection.Left));
         Assert.Equal(3, FocusNavigationHelper.MoveSpatial(rects, 1, FocusNavigationDirection.Down));
+    }
+
+    [Fact]
+    public void HorizontalArrowRouting_PreservesSpatialFirstForNonOverflowFocus()
+    {
+        foreach (FocusableItemKind focusedKind in Enum.GetValues<FocusableItemKind>())
+        {
+            if (focusedKind == FocusableItemKind.HorizontalOverflow)
+                continue;
+
+            Assert.Equal(
+                HorizontalArrowHandlingOrder.SpatialThenOverflow,
+                MarkdownKeyboardInputPolicy.GetHorizontalArrowHandlingOrder(focusedKind));
+        }
+    }
+
+    [Fact]
+    public void HorizontalArrowRouting_PrioritizesFocusedPlainOverflow()
+    {
+        Assert.Equal(
+            HorizontalArrowHandlingOrder.OverflowThenSpatial,
+            MarkdownKeyboardInputPolicy.GetHorizontalArrowHandlingOrder(
+                FocusableItemKind.HorizontalOverflow));
+        Assert.Equal(
+            HorizontalArrowHandlingOrder.SpatialThenOverflow,
+            MarkdownKeyboardInputPolicy.GetHorizontalArrowHandlingOrder(focusedKind: null));
+    }
+
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(true, false, false)]
+    [InlineData(true, true, true)]
+    public void SelectAllShortcut_RequiresControlAndEnabledSelection(
+        bool controlDown,
+        bool selectionEnabled,
+        bool expected)
+    {
+        Assert.Equal(
+            expected,
+            MarkdownKeyboardInputPolicy.ShouldSelectAll(controlDown, selectionEnabled));
     }
 }

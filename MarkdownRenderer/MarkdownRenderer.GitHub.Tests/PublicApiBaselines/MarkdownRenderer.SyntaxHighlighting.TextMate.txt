@@ -1,0 +1,78 @@
+# MarkdownRenderer public API baseline
+# Format: 1
+# Assembly: MarkdownRenderer.SyntaxHighlighting.TextMate
+# Generated from compiled assembly metadata; update with eng/Update-PublicApiBaselines.ps1.
+
+assembly MarkdownRenderer.SyntaxHighlighting.TextMate
+
+public interface MarkdownRenderer.SyntaxHighlighting.TextMate.ITextMateGrammarProvider
+  public abstract System.Threading.Tasks.ValueTask<MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateGrammarHighlightResult?> HighlightAsync(MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateGrammarHighlightRequest request, System.Threading.CancellationToken cancellationToken);
+  public virtual int Revision { get; }
+
+public sealed class MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateCodeBlockSyntaxHighlighter : MarkdownRenderer.Hosting.ICodeHighlighter, System.IDisposable
+  public System.Threading.Tasks.ValueTask<MarkdownRenderer.CodeBlocks.CodeBlockHighlightResult?> HighlightAsync(MarkdownRenderer.CodeBlocks.CodeBlockHighlightRequest request);
+  public System.Threading.Tasks.ValueTask<MarkdownRenderer.CodeBlocks.CodeBlockHighlightResult?> HighlightAsync(MarkdownRenderer.CodeBlocks.CodeBlockHighlightRequest request, System.Threading.CancellationToken cancellationToken);
+  public TextMateCodeBlockSyntaxHighlighter() [Obsolete("Construct a grammar provider explicitly, then pass it to TextMateCodeBlockSyntaxHighlighter. This compatibility constructor owns the discovered provider; dispose the highlighter.")] [RequiresUnreferencedCode("Default TextMate grammar discovery loads optional provider types by name. Trimmed and NativeAOT applications must construct and pass an explicit provider.")];
+  public TextMateCodeBlockSyntaxHighlighter(MarkdownRenderer.SyntaxHighlighting.TextMate.ITextMateGrammarProvider provider);
+  public TextMateCodeBlockSyntaxHighlighter(MarkdownRenderer.SyntaxHighlighting.TextMate.ITextMateGrammarProvider provider, MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateHighlighterOptions? options);
+  public TextMateCodeBlockSyntaxHighlighter(MarkdownRenderer.SyntaxHighlighting.TextMate.ITextMateGrammarProvider provider, MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateHighlighterOptions? options, bool ownsProvider);
+  public bool OwnsProvider { get; }
+  public int Revision { get; }
+  public void Dispose();
+
+public sealed class MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateGrammarHighlightRequest
+  public MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateGrammarThemeVariant ThemeVariant { get; }
+  public TextMateGrammarHighlightRequest(string languageId, string code, MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateGrammarThemeVariant themeVariant);
+  public string Code { get; }
+  public string LanguageId { get; }
+
+public sealed class MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateGrammarHighlightResult
+  public System.Collections.Generic.IReadOnlyList<MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateGrammarHighlightSpan> Spans { get; }
+  public TextMateGrammarHighlightResult(System.Collections.Generic.IEnumerable<MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateGrammarHighlightSpan> spans);
+  public static MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateGrammarHighlightResult Empty { get; }
+
+public readonly struct MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateGrammarHighlightSpan : System.IEquatable<MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateGrammarHighlightSpan> [layout: Sequential; pack: 0; size: 0; charset: Ansi]
+  public TextMateGrammarHighlightSpan(int start, int length, uint foregroundArgb);
+  public bool Equals(MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateGrammarHighlightSpan other);
+  public int Length { get; }
+  public int Start { get; }
+  public override bool Equals(object obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static bool op_Equality(MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateGrammarHighlightSpan left, MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateGrammarHighlightSpan right);
+  public static bool op_Inequality(MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateGrammarHighlightSpan left, MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateGrammarHighlightSpan right);
+  public uint ForegroundArgb { get; }
+
+public static class MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateGrammarProviderFactory
+  public static MarkdownRenderer.SyntaxHighlighting.TextMate.ITextMateGrammarProvider CreateDefault() [RequiresUnreferencedCode("Default TextMate grammar discovery loads optional provider types by name. Trimmed and NativeAOT applications must construct and pass an explicit provider.")];
+  public static MarkdownRenderer.SyntaxHighlighting.TextMate.ITextMateGrammarProvider? TryCreateDefault() [RequiresUnreferencedCode("Default TextMate grammar discovery loads optional provider types by name. Trimmed and NativeAOT applications must construct and pass an explicit provider.")];
+
+public enum MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateGrammarThemeVariant
+  Dark = 1,
+  Light = 0,
+
+public sealed class MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateHighlighterOptions
+  public System.TimeSpan MaximumLineProcessingTime { get; }
+  public TextMateHighlighterOptions(int maximumCodeLength = 200000, int maximumLineCount = 5000, int maximumLineLength = 65536, int maximumSpanCount = 100000, int cacheBudgetBytes = 8388608, System.TimeSpan? maximumLineProcessingTime = null);
+  public const int DefaultCacheBudgetBytes = 8388608;
+  public const int DefaultMaximumCodeLength = 200000;
+  public const int DefaultMaximumLineCount = 5000;
+  public const int DefaultMaximumLineLength = 65536;
+  public const int DefaultMaximumSpanCount = 100000;
+  public int CacheBudgetBytes { get; }
+  public int MaximumCodeLength { get; }
+  public int MaximumLineCount { get; }
+  public int MaximumLineLength { get; }
+  public int MaximumSpanCount { get; }
+  public static readonly System.TimeSpan DefaultMaximumLineProcessingTime;
+
+public static class MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateSyntaxHighlightingExtensions
+  public static MarkdownRenderer.Controls.MarkdownDocumentView UseTextMateSyntaxHighlighting(this MarkdownRenderer.Controls.MarkdownDocumentView view) [Obsolete("Construct and dispose a TextMateCodeBlockSyntaxHighlighter explicitly. This compatibility overload transfers ownership to the view.")] [RequiresUnreferencedCode("Default TextMate grammar discovery loads optional provider types by name. Trimmed and NativeAOT applications must construct and pass an explicit provider.")];
+  public static MarkdownRenderer.Controls.MarkdownDocumentView UseTextMateSyntaxHighlighting(this MarkdownRenderer.Controls.MarkdownDocumentView view, MarkdownRenderer.SyntaxHighlighting.TextMate.ITextMateGrammarProvider provider) [Obsolete("Construct a TextMateCodeBlockSyntaxHighlighter explicitly to make provider ownership visible.")];
+  public static MarkdownRenderer.Controls.MarkdownDocumentView UseTextMateSyntaxHighlighting(this MarkdownRenderer.Controls.MarkdownDocumentView view, MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateCodeBlockSyntaxHighlighter highlighter);
+  public static MarkdownRenderer.Controls.MarkdownRendererControlBuilder UseTextMateSyntaxHighlighting(this MarkdownRenderer.Controls.MarkdownRendererControlBuilder builder) [Obsolete("Construct and dispose a TextMateCodeBlockSyntaxHighlighter explicitly. This compatibility overload transfers ownership to each built control.")] [RequiresUnreferencedCode("Default TextMate grammar discovery loads optional provider types by name. Trimmed and NativeAOT applications must construct and pass an explicit provider.")];
+  public static MarkdownRenderer.Controls.MarkdownRendererControlBuilder UseTextMateSyntaxHighlighting(this MarkdownRenderer.Controls.MarkdownRendererControlBuilder builder, MarkdownRenderer.SyntaxHighlighting.TextMate.ITextMateGrammarProvider provider) [Obsolete("Construct a TextMateCodeBlockSyntaxHighlighter explicitly to make provider ownership visible.")];
+  public static MarkdownRenderer.Controls.MarkdownRendererControlBuilder UseTextMateSyntaxHighlighting(this MarkdownRenderer.Controls.MarkdownRendererControlBuilder builder, MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateCodeBlockSyntaxHighlighter highlighter);
+  public static MarkdownRenderer.Controls.MarkdownScrollView UseTextMateSyntaxHighlighting(this MarkdownRenderer.Controls.MarkdownScrollView view) [Obsolete("Construct and dispose a TextMateCodeBlockSyntaxHighlighter explicitly. This compatibility overload transfers ownership to the view.")] [RequiresUnreferencedCode("Default TextMate grammar discovery loads optional provider types by name. Trimmed and NativeAOT applications must construct and pass an explicit provider.")];
+  public static MarkdownRenderer.Controls.MarkdownScrollView UseTextMateSyntaxHighlighting(this MarkdownRenderer.Controls.MarkdownScrollView view, MarkdownRenderer.SyntaxHighlighting.TextMate.ITextMateGrammarProvider provider) [Obsolete("Construct a TextMateCodeBlockSyntaxHighlighter explicitly to make provider ownership visible.")];
+  public static MarkdownRenderer.Controls.MarkdownScrollView UseTextMateSyntaxHighlighting(this MarkdownRenderer.Controls.MarkdownScrollView view, MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateCodeBlockSyntaxHighlighter highlighter);
