@@ -34,8 +34,8 @@ Working code is not enough. Review every change against these rules, and flag a 
 ### Projects and dependencies
 
 - One project owns one folder. A project compiles only files under its own folder. Do not use `<Compile Include="..\...">`, do not use `<Compile Remove>` to hand files to another project, and do not keep source folders that belong to no project. Code needed by two projects goes in a library both reference.
-- Dependencies point down: platform-neutral core, then the WinUI renderer, then feature packs, then the app. A library never names the app, and nothing references an executable project.
-- `InternalsVisibleTo` is granted only to the assembly's own test project. If another shipping assembly needs an internal, it is either public extension API or it belongs in a lower assembly.
+- Dependencies point down: platform-neutral core, then the WinUI renderer, then feature packs, then the app. A library never names the app. Only an executable's own test project may reference it; logic that anything else needs goes in a library.
+- `InternalsVisibleTo` is granted only to the assembly's own test and benchmark projects. If another shipping assembly needs an internal, it is either public extension API or it belongs in a lower assembly.
 - A packaged app keeps its logic in class libraries that its tests reference. Tests never compile app or library source files directly.
 
 ### Layout and build
