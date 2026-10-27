@@ -6,30 +6,22 @@
       Headless Edge / Chrome is invoked as a subprocess for ground-truth
       rasters; if no browser is found the dependent tests skip themselves.
     -->
-    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
     <IsTestProject>true</IsTestProject>
-    <IsPackable>false</IsPackable>
     <RootNamespace>MarkdownRenderer.PixelTests</RootNamespace>
-    <Platforms>x64</Platforms>
-    <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
     <UseWinUI>false</UseWinUI>
     <WindowsAppSdkSelfContained>true</WindowsAppSdkSelfContained>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <MarkdownRendererNativeArch Condition="'$(Platform)' == '' or '$(Platform)' == 'AnyCPU' or '$(Platform)' == 'Any CPU' or '$(Platform)' == 'x64'">x64</MarkdownRendererNativeArch>
-    <MarkdownRendererNativeArch Condition="'$(MarkdownRendererNativeArch)' == '' and ('$(Platform)' == 'ARM64' or '$(Platform)' == 'arm64')">arm64</MarkdownRendererNativeArch>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="$(JitHubWindowsSdkBuildToolsVersion)" PrivateAssets="all" />
-    <PackageReference Include="xunit" Version="2.9.3" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" PrivateAssets="all" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />
-    <PackageReference Include="System.Drawing.Common" Version="9.0.0" />
-    <PackageReference Include="Xunit.SkippableFact" Version="1.4.13" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="System.Drawing.Common" />
+    <PackageReference Include="Xunit.SkippableFact" />
   </ItemGroup>
   <ItemGroup>
     <!-- Rasterization is exercised through the compiled optional package. -->

@@ -7,22 +7,9 @@
        InternalsVisibleTo is reserved for test and benchmark projects; the
        library is not packed or shipped. -->
   <PropertyGroup>
-    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
-    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
     <RootNamespace>MarkdownRenderer.PerformanceHarness</RootNamespace>
     <AssemblyName>MarkdownRenderer.PerformanceHarness.Core</AssemblyName>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <LangVersion>latest</LangVersion>
-    <IsPackable>false</IsPackable>
-    <Platforms>x64;ARM64</Platforms>
-    <Platform Condition="'$(Platform)' == '' or '$(Platform)' == 'AnyCPU' or '$(Platform)' == 'Any CPU'">x64</Platform>
-    <PlatformTarget Condition="'$(PlatformTarget)' == ''">$(Platform)</PlatformTarget>
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
-  </PropertyGroup>
-
-  <PropertyGroup Condition="'$(EnableMarkdownLayoutDiagnostics)' == 'true'">
-    <DefineConstants>$(DefineConstants);MARKDOWN_LAYOUT_DIAGNOSTICS</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>

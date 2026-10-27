@@ -59,24 +59,29 @@ public sealed class SecurityReleaseGateTests
         ];
         string[] expectedRids = ["win-arm64", "win-x64", "win-x86"];
 
+        // Every shipping project inherits its supported runtimes and its
+        // architecture-neutral PlatformTarget from the shared src props.
+        XDocument sharedProps = XDocument.Load(
+            Path.Combine(root, "MarkdownRenderer", "src", "Directory.Build.props"));
+        XElement sharedRoot = Assert.IsType<XElement>(sharedProps.Root);
+        string[] declaredRids = Assert.Single(
+                sharedRoot.Elements("PropertyGroup").Elements("RuntimeIdentifiers"))
+            .Value
+            .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        Assert.Equal(expectedRids, declaredRids.Order(StringComparer.Ordinal));
+        Assert.Equal(
+            "AnyCPU",
+            Assert.Single(sharedRoot.Elements("PropertyGroup").Elements("PlatformTarget")).Value);
+
         foreach ((string relativePath, bool producesManagedAssembly, bool coveredByAppReleaseGate) in projects)
         {
             string projectPath = Path.Combine(root, relativePath);
             XDocument project = XDocument.Load(projectPath);
             XElement projectRoot = Assert.IsType<XElement>(project.Root);
-            XElement runtimeIdentifiers = Assert.Single(
-                projectRoot.Elements("PropertyGroup").Elements("RuntimeIdentifiers"));
-            string[] declaredRids = runtimeIdentifiers.Value
-                .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            Assert.Equal(expectedRids, declaredRids.Order(StringComparer.Ordinal));
+            Assert.Empty(projectRoot.Elements("PropertyGroup").Elements("RuntimeIdentifiers"));
+            Assert.Empty(projectRoot.Elements("PropertyGroup").Elements("PlatformTarget"));
 
-            if (producesManagedAssembly)
-            {
-                XElement platformTarget = Assert.Single(
-                    projectRoot.Elements("PropertyGroup").Elements("PlatformTarget"));
-                Assert.Equal("AnyCPU", platformTarget.Value);
-            }
-            else
+            if (!producesManagedAssembly)
             {
                 XElement includeBuildOutput = Assert.Single(
                     projectRoot.Elements("PropertyGroup").Elements("IncludeBuildOutput"));

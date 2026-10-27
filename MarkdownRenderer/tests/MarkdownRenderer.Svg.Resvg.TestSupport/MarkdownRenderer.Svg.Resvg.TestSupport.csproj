@@ -3,21 +3,14 @@
        resvg NativeAOT smoke. The package-only release-evidence consumer copies
        these same sources (eng/Invoke-SvgResvgReleaseEvidence.ps1). -->
   <PropertyGroup>
-    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
-    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
     <RootNamespace>MarkdownRenderer.Svg.Resvg.TestSupport</RootNamespace>
     <AssemblyName>MarkdownRenderer.Svg.Resvg.TestSupport</AssemblyName>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <LangVersion>latest</LangVersion>
-    <IsPackable>false</IsPackable>
+    <!-- Referenced by the multi-architecture resvg NativeAOT smoke, so it is
+         architecture-neutral and analyzed like a shipping AOT library. -->
     <Platforms>x86;x64;ARM64</Platforms>
-    <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
-    <Platform Condition="'$(Platform)' == '' or '$(Platform)' == 'AnyCPU' or '$(Platform)' == 'Any CPU'">x64</Platform>
     <PlatformTarget>AnyCPU</PlatformTarget>
-    <IsTrimmable>true</IsTrimmable>
     <IsAotCompatible>true</IsAotCompatible>
-    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <WarningsAsErrors>$(WarningsAsErrors);$(MarkdownRendererTrimAndAotWarningsAsErrors)</WarningsAsErrors>
   </PropertyGroup>
 
   <ItemGroup>

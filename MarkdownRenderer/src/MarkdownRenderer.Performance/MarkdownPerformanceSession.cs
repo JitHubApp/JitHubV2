@@ -2168,9 +2168,6 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
         SharedFetch flight;
         SharedFetch? superseded = null;
         bool startFlight = false;
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
-        bool joinedExisting = false;
-#endif
         lock (_flightGate)
         {
             if (IsDisposed)
@@ -2209,12 +2206,6 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
                     throw;
                 }
             }
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
-            else
-            {
-                joinedExisting = true;
-            }
-#endif
 
             flight.WaiterCount++;
         }
@@ -2958,9 +2949,6 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
             InflightRequest request;
             InflightRequest? abandoned = null;
             bool startRequest = false;
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
-            bool joinedExisting = false;
-#endif
             lock (_inFlightGate)
             {
                 if (_disposed != 0)
@@ -3003,18 +2991,10 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
                         throw;
                     }
                 }
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
-                else
-                {
-                    joinedExisting = true;
-                    request.WaiterCount++;
-                }
-#else
                 else
                 {
                     request.WaiterCount++;
                 }
-#endif
             }
             if (abandoned is not null)
             {

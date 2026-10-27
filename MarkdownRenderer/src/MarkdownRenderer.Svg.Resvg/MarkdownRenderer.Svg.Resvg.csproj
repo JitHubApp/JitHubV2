@@ -1,38 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
-    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
     <RootNamespace>MarkdownRenderer.Svg.Resvg</RootNamespace>
     <AssemblyName>MarkdownRenderer.Svg.Resvg</AssemblyName>
-    <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <LangVersion>latest</LangVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <Platforms>x86;x64;ARM64</Platforms>
-    <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
-    <Platform Condition="'$(Platform)' == '' or '$(Platform)' == 'AnyCPU' or '$(Platform)' == 'Any CPU'">x64</Platform>
-    <PlatformTarget>AnyCPU</PlatformTarget>
-    <IsTrimmable>true</IsTrimmable>
-    <IsAotCompatible>true</IsAotCompatible>
-    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
-    <EnableSingleFileAnalyzer>true</EnableSingleFileAnalyzer>
-    <EnableAotAnalyzer>true</EnableAotAnalyzer>
-    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <NoWarn>$(NoWarn);CS1591</NoWarn>
-    <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <PackageId>MarkdownRenderer.Svg.Resvg</PackageId>
-    <Version>1.0.0-preview.1</Version>
-    <Authors>nerocui</Authors>
     <Description>Optional isolated resvg static SVG renderer for MarkdownRenderer.</Description>
     <PackageTags>markdown;winui;svg;resvg;windows</PackageTags>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <RepositoryUrl>https://github.com/JitHubApp/JitHubV2</RepositoryUrl>
-    <RepositoryType>git</RepositoryType>
-    <PackageProjectUrl>https://github.com/JitHubApp/JitHubV2/tree/main/docs/markdown-renderer</PackageProjectUrl>
-    <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageIcon>icon-192.png</PackageIcon>
-    <NuGetLockFilePath>$(MSBuildProjectDirectory)\packages.lock.json</NuGetLockFilePath>
-    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <MarkdownRendererPackageReadme>$(MSBuildProjectDirectory)\README.md</MarkdownRendererPackageReadme>
     <ResvgWorkerRid Condition="'$(RuntimeIdentifier)' == 'win-x86'">win-x86</ResvgWorkerRid>
     <ResvgWorkerRid Condition="'$(RuntimeIdentifier)' == 'win-x64'">win-x64</ResvgWorkerRid>
     <ResvgWorkerRid Condition="'$(RuntimeIdentifier)' == 'win-arm64'">win-arm64</ResvgWorkerRid>
@@ -42,10 +18,6 @@
     <ResvgWorkerDirectory Condition="'$(ResvgWorkerDirectory)' == ''">$(MSBuildProjectDirectory)</ResvgWorkerDirectory>
     <ResvgUnsignedWorkerDirectory Condition="'$(ResvgUnsignedWorkerDirectory)' == ''">$(MSBuildProjectDirectory)</ResvgUnsignedWorkerDirectory>
     <RequireResvgWorkerSignatures Condition="'$(RequireResvgWorkerSignatures)' == ''">false</RequireResvgWorkerSignatures>
-  </PropertyGroup>
-
-  <PropertyGroup Condition="'$(EnableMarkdownLayoutDiagnostics)' == 'true'">
-    <DefineConstants>$(DefineConstants);MARKDOWN_LAYOUT_DIAGNOSTICS</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
@@ -58,9 +30,6 @@
          otherwise NuGet ships them twice under content and contentFiles. Keep
          the explicit licenses, provenance, protocol and RID payloads below. -->
     <Content Remove="native\**" />
-    <None Include="..\..\..\LICENSE" Pack="true" PackagePath="" Visible="false" />
-    <None Include="..\..\..\JitHub.Web\wwwroot\icon-192.png" Pack="true" PackagePath="icon-192.png" Visible="false" />
-    <None Update="README.md" Pack="true" PackagePath="README.md" />
     <None Update="THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="THIRD-PARTY-NOTICES.md" />
     <None Update="RESVG_PROVENANCE.json" Pack="true" PackagePath="provenance\RESVG_PROVENANCE.json" />
     <None Update="NATIVE_RUST_DEPENDENCIES.json" Pack="true" PackagePath="provenance\NATIVE_RUST_DEPENDENCIES.json" />

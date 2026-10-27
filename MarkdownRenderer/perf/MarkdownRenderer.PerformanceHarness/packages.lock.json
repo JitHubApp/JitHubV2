@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "dependencies": {
     "net10.0-windows10.0.26100": {
       "Microsoft.Graphics.Win2D": {
@@ -33,11 +33,6 @@
           "Microsoft.WindowsAppSDK.Widgets": "[1.8.251231004]",
           "Microsoft.WindowsAppSDK.WinUI": "[1.8.260709004]"
         }
-      },
-      "Markdig": {
-        "type": "Transitive",
-        "resolved": "0.42.0",
-        "contentHash": "tINdftVfbTujqfPXrQOSl9/6XCS2Y4Zwz+i7UPBgxRNnDtI1CjyQ5UA/5sKoSOmfECyWkTztY/vbcc/u1DA8nA=="
       },
       "Microsoft.Web.WebView2": {
         "type": "Transitive",
@@ -102,14 +97,6 @@
           "System.Numerics.Tensors": "9.0.0"
         }
       },
-      "Microsoft.WindowsAppSDK.Runtime": {
-        "type": "Transitive",
-        "resolved": "1.8.260710003",
-        "contentHash": "amDmthDwKB6+phmW/rRiHpvCJqmyDLs2fPvURFKss3hQuV5hAxEJIlNbKhJTZKCLJVV//AaOEKWfFDks3Ex/YA==",
-        "dependencies": {
-          "Microsoft.WindowsAppSDK.Base": "1.8.251216001"
-        }
-      },
       "Microsoft.WindowsAppSDK.Widgets": {
         "type": "Transitive",
         "resolved": "1.8.251231004",
@@ -152,6 +139,21 @@
           "Markdig": "[0.42.0, )",
           "MarkdownRenderer.Core": "[1.0.0-preview.1, )",
           "Microsoft.Graphics.Win2D": "[1.4.0, )"
+        }
+      },
+      "Markdig": {
+        "type": "CentralTransitive",
+        "requested": "[0.42.0, )",
+        "resolved": "0.42.0",
+        "contentHash": "tINdftVfbTujqfPXrQOSl9/6XCS2Y4Zwz+i7UPBgxRNnDtI1CjyQ5UA/5sKoSOmfECyWkTztY/vbcc/u1DA8nA=="
+      },
+      "Microsoft.WindowsAppSDK.Runtime": {
+        "type": "CentralTransitive",
+        "requested": "[1.8.260710003, )",
+        "resolved": "1.8.260710003",
+        "contentHash": "amDmthDwKB6+phmW/rRiHpvCJqmyDLs2fPvURFKss3hQuV5hAxEJIlNbKhJTZKCLJVV//AaOEKWfFDks3Ex/YA==",
+        "dependencies": {
+          "Microsoft.WindowsAppSDK.Base": "1.8.251216001"
         }
       }
     },

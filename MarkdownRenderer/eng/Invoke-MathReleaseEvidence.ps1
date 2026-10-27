@@ -320,6 +320,9 @@ $consumerProject = @'
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <RestoreLockedMode>false</RestoreLockedMode>
     <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
+    <!-- A package consumer outside the renderer's central version policy:
+         it pins the freshly packed version itself. -->
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
     <RestorePackagesPath>$(MSBuildProjectDirectory)\packages-cache</RestorePackagesPath>
   </PropertyGroup>
   <ItemGroup>

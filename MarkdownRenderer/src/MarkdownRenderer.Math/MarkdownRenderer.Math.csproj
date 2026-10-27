@@ -1,41 +1,16 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
-    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
     <RootNamespace>MarkdownRenderer.Math</RootNamespace>
     <AssemblyName>MarkdownRenderer.Math</AssemblyName>
-    <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <LangVersion>latest</LangVersion>
-    <Platforms>x86;x64;ARM64</Platforms>
-    <Platform Condition="'$(Platform)' == '' or '$(Platform)' == 'AnyCPU' or '$(Platform)' == 'Any CPU'">x64</Platform>
-    <!-- The pack is pure managed IL and must remain consumable by every target
-         architecture from one RID-neutral package. -->
-    <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
-    <PlatformTarget>AnyCPU</PlatformTarget>
-    <Prefer32Bit>false</Prefer32Bit>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <IsTrimmable>true</IsTrimmable>
-    <IsAotCompatible>true</IsAotCompatible>
-    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
-    <EnableSingleFileAnalyzer>true</EnableSingleFileAnalyzer>
-    <EnableAotAnalyzer>true</EnableAotAnalyzer>
-    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <DefaultItemExcludes>$(DefaultItemExcludes);obj\**;obj-*\**;bin\**;bin-*\**;artifacts\**</DefaultItemExcludes>
-    <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <PackageId>MarkdownRenderer.Math</PackageId>
-    <Version>0.1.0-preview.1</Version>
-    <Authors>nerocui</Authors>
     <Description>Native, AOT-compatible TeX parsing and immutable vector formula scenes for MarkdownRenderer.</Description>
     <PackageTags>markdown;winui;math;tex;windows</PackageTags>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <RepositoryUrl>https://github.com/JitHubApp/JitHubV2</RepositoryUrl>
-    <RepositoryType>git</RepositoryType>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
-    <PackageProjectUrl>https://github.com/JitHubApp/JitHubV2/tree/main/docs/markdown-renderer</PackageProjectUrl>
-    <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageIcon>icon-192.png</PackageIcon>
+    <MarkdownRendererPackageReadme>$(MSBuildProjectDirectory)\README.md</MarkdownRendererPackageReadme>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\MarkdownRenderer.Core\MarkdownRenderer.Core.csproj" />
@@ -80,9 +55,6 @@
     </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
-    <None Include="..\..\..\LICENSE" Pack="true" PackagePath="" Visible="false" />
-    <None Include="..\..\..\JitHub.Web\wwwroot\icon-192.png" Pack="true" PackagePath="icon-192.png" Visible="false" />
-    <None Include="README.md" Pack="true" PackagePath="" />
     <None Include="THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="" />
     <None Include="UPSTREAM-PATCHES.md" Pack="true" PackagePath="" />
     <None Include="ThirdParty\CSHARPMATH-LICENSE.txt" Pack="true" PackagePath="licenses\" />

@@ -12,7 +12,6 @@ on:
       - JitHub.WinUI/**
       - JitHub.WinUI.Tests/**
       - docs/markdown-renderer/**
-      - JitHub.Web/wwwroot/icon-192.png
       - JitHub.slnx
       - .github/workflows/markdown-renderer-preview.yml
       - Directory.Build.props
@@ -28,7 +27,6 @@ on:
       - JitHub.WinUI/**
       - JitHub.WinUI.Tests/**
       - docs/markdown-renderer/**
-      - JitHub.Web/wwwroot/icon-192.png
       - JitHub.slnx
       - .github/workflows/markdown-renderer-preview.yml
       - Directory.Build.props
@@ -690,7 +688,10 @@ jobs:
 
       - name: Restore legacy dependency license evidence in locked mode
         run: |
+          # Release restores verify the committed lock; Debug restores use an
+          # obj-local lock file under the repository policy.
           & dotnet restore '.\MarkdownRenderer\eng\ComplianceDependencyRestore\ComplianceDependencyRestore.csproj' `
+            -p:Configuration=$env:CONFIGURATION `
             --locked-mode `
             --disable-build-servers
           if ($LASTEXITCODE -ne 0) { throw 'Locked restore failed for compliance dependency evidence.' }

@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "dependencies": {
     "net10.0-windows10.0.19041": {
       "Microsoft.NET.Test.Sdk": {
@@ -28,26 +28,6 @@
         "requested": "[2.8.2, )",
         "resolved": "2.8.2",
         "contentHash": "vm1tbfXhFmjFMUmS4M0J0ASXz3/U5XvXBa6DOQUL3fEz4Vt6YPhv+ESCarx6M6D+9kJkJYZKCNvJMas1+nVfmQ=="
-      },
-      "FlaUI.Core": {
-        "type": "Transitive",
-        "resolved": "5.0.0",
-        "contentHash": "VWWYqwjsYkii2BrUsz5+bpXEp27NherKhLt19hTxHwJP4KrfyZoeo1FdBov4ZTh655wZAKDGIjR7NJLDesuzeg==",
-        "dependencies": {
-          "System.Diagnostics.PerformanceCounter": "8.0.1",
-          "System.Drawing.Common": "8.0.10",
-          "System.Management": "8.0.0",
-          "System.Security.Permissions": "8.0.0"
-        }
-      },
-      "FlaUI.UIA3": {
-        "type": "Transitive",
-        "resolved": "5.0.0",
-        "contentHash": "s1Yy1RsRJ0OXvmtxQlNJd0cu4sfvN3PFFu6skBGK8VlwPl/b38E0V5kCbo2gvkuhRIu4Itfxjdo7DUMF7qJw4Q==",
-        "dependencies": {
-          "FlaUI.Core": "5.0.0",
-          "Interop.UIAutomationClient": "10.19041.0"
-        }
       },
       "Interop.UIAutomationClient": {
         "type": "Transitive",
@@ -108,14 +88,6 @@
         "contentHash": "9RfEDiEjlUADeThs8IPdDVTXSnPRSqjfgTQJALpmGFPKC0k2mbdufOXnb/9JZ4I0TkmxOfy3VTJxrHOJSs8cXg==",
         "dependencies": {
           "System.Configuration.ConfigurationManager": "8.0.1"
-        }
-      },
-      "System.Drawing.Common": {
-        "type": "Transitive",
-        "resolved": "8.0.10",
-        "contentHash": "MdajRp3P+FOlThgY6FBjAqnmLiVl5t2yWEC/2AsDMqx1zYbJG3G5TnscFBQ4obqcaGqvN5UnhQHSFaJFG2HftQ==",
-        "dependencies": {
-          "Microsoft.Win32.SystemEvents": "8.0.0"
         }
       },
       "System.Management": {
@@ -189,6 +161,37 @@
         "dependencies": {
           "FlaUI.Core": "[5.0.0, )",
           "FlaUI.UIA3": "[5.0.0, )"
+        }
+      },
+      "FlaUI.Core": {
+        "type": "CentralTransitive",
+        "requested": "[5.0.0, )",
+        "resolved": "5.0.0",
+        "contentHash": "VWWYqwjsYkii2BrUsz5+bpXEp27NherKhLt19hTxHwJP4KrfyZoeo1FdBov4ZTh655wZAKDGIjR7NJLDesuzeg==",
+        "dependencies": {
+          "System.Diagnostics.PerformanceCounter": "8.0.1",
+          "System.Drawing.Common": "8.0.10",
+          "System.Management": "8.0.0",
+          "System.Security.Permissions": "8.0.0"
+        }
+      },
+      "FlaUI.UIA3": {
+        "type": "CentralTransitive",
+        "requested": "[5.0.0, )",
+        "resolved": "5.0.0",
+        "contentHash": "s1Yy1RsRJ0OXvmtxQlNJd0cu4sfvN3PFFu6skBGK8VlwPl/b38E0V5kCbo2gvkuhRIu4Itfxjdo7DUMF7qJw4Q==",
+        "dependencies": {
+          "FlaUI.Core": "5.0.0",
+          "Interop.UIAutomationClient": "10.19041.0"
+        }
+      },
+      "System.Drawing.Common": {
+        "type": "CentralTransitive",
+        "requested": "[9.0.0, )",
+        "resolved": "8.0.10",
+        "contentHash": "MdajRp3P+FOlThgY6FBjAqnmLiVl5t2yWEC/2AsDMqx1zYbJG3G5TnscFBQ4obqcaGqvN5UnhQHSFaJFG2HftQ==",
+        "dependencies": {
+          "Microsoft.Win32.SystemEvents": "8.0.0"
         }
       }
     }

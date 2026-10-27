@@ -63,15 +63,22 @@ $evidenceMarkdownRoot = Join-Path $evidenceRepositoryRoot 'MarkdownRenderer'
     (Join-Path $repositoryRoot 'LICENSE'),
     (Join-Path $evidenceRepositoryRoot 'LICENSE'),
     $true)
-[IO.Directory]::CreateDirectory((Join-Path $evidenceRepositoryRoot 'JitHub.Web\wwwroot')) | Out-Null
-[IO.File]::Copy(
-    (Join-Path $repositoryRoot 'JitHub.Web\wwwroot\icon-192.png'),
-    (Join-Path $evidenceRepositoryRoot 'JitHub.Web\wwwroot\icon-192.png'),
-    $true)
-[IO.File]::Copy(
-    (Join-Path $markdownRoot 'Directory.Build.targets'),
-    (Join-Path $evidenceMarkdownRoot 'Directory.Build.targets'),
-    $true)
+# The staged projects need the renderer's build settings, central package
+# versions and package assets exactly as the repository build sees them.
+foreach ($relativePath in @(
+    'Directory.Build.props',
+    'Directory.Build.targets',
+    'Directory.Packages.props',
+    'src\Directory.Build.props',
+    'tests\Directory.Build.props',
+    'assets\package-icon.png',
+    # Core and WinUI filter their packed XML documentation with this script.
+    'eng\Filter-PublicXmlDocumentation.ps1'
+)) {
+    $destinationPath = Join-Path $evidenceMarkdownRoot $relativePath
+    [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($destinationPath)) | Out-Null
+    [IO.File]::Copy((Join-Path $markdownRoot $relativePath), $destinationPath, $true)
+}
 Copy-EvidenceSourceTree `
     -Source (Join-Path $repositoryRoot 'docs\markdown-renderer') `
     -Destination (Join-Path $evidenceRepositoryRoot 'docs\markdown-renderer')
@@ -311,6 +318,9 @@ $consumerProject = @'
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <RestoreLockedMode>false</RestoreLockedMode>
     <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
+    <!-- A package consumer outside the renderer's central version policy:
+         it pins the freshly packed version itself. -->
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
     <RestorePackagesPath>$(MSBuildProjectDirectory)\packages-cache</RestorePackagesPath>
   </PropertyGroup>
   <ItemGroup>

@@ -510,6 +510,9 @@ $consumerProject = (@'
     <WindowsAppSDKSelfContained Condition="'$(PublishSingleFile)' == 'true'">true</WindowsAppSDKSelfContained>
     <RestoreLockedMode>false</RestoreLockedMode>
     <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
+    <!-- A package consumer outside the renderer's central version policy:
+         it pins the freshly packed versions itself. -->
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
     <RestorePackagesPath>__CONSUMER_PACKAGES__</RestorePackagesPath>
   </PropertyGroup>
   <ItemGroup>
