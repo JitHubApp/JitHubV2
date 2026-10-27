@@ -68,8 +68,12 @@ public static class MarkdownElementKeys
     public const string FigureCaption = "FigureCaption";
     /// <summary>Sample or extension-provided diagram block.</summary>
     public const string Diagram = "Diagram";
+    /// <summary>Inline or display mathematical expression.</summary>
+    public const string Math = "Math";
     /// <summary>List bullet or ordinal marker.</summary>
     public const string ListMarker = "ListMarker";
+    /// <summary>Unordered or ordered list container.</summary>
+    public const string List = "List";
     /// <summary>Thematic break separator.</summary>
     public const string ThematicBreak = "ThematicBreak";
     /// <summary>Image caption text.</summary>
@@ -117,7 +121,7 @@ public static class MarkdownElementKeys
     /// Returns the override key for a one-based list nesting depth.
     /// </summary>
     public static string ListDepth(int depth)
-        => $"ListDepth{Math.Max(1, depth)}";
+        => $"ListDepth{System.Math.Max(1, depth)}";
 
     private static string NormalizeAlias(string value)
     {
@@ -141,12 +145,14 @@ public sealed class ElementStyle
     public string FontFamily { get; init; } = "Segoe UI Variable, Segoe UI Emoji, Segoe UI Symbol";
     /// <summary>Font size in device-independent pixels.</summary>
     public float FontSize { get; init; } = 14f;
+    /// <summary>Internal percentage declaration used by relative inline typography rules.</summary>
+    internal float? RelativeFontSizeScale { get; init; }
     /// <summary>Font weight.</summary>
-    public Windows.UI.Text.FontWeight FontWeight { get; init; } = Microsoft.UI.Text.FontWeights.Normal;
+    public Windows.UI.Text.FontWeight FontWeight { get; init; } = new() { Weight = 400 };
     /// <summary>Font style.</summary>
     public Windows.UI.Text.FontStyle FontStyle { get; init; } = Windows.UI.Text.FontStyle.Normal;
     /// <summary>Primary foreground color.</summary>
-    public Color Foreground { get; init; } = Microsoft.UI.Colors.Black;
+    public Color Foreground { get; init; } = Color.FromArgb(0xFF, 0, 0, 0);
     /// <summary>Optional foreground color for hovered links.</summary>
     public Color? HoverForeground { get; init; }
     /// <summary>Optional foreground color for keyboard-focused links.</summary>
@@ -155,8 +161,17 @@ public sealed class ElementStyle
     public Color? Background { get; init; }
     /// <summary>Optional accent bar color for quote-like containers.</summary>
     public Color? AccentBar { get; init; }
+    /// <summary>Thickness of an accent bar in device-independent pixels.</summary>
+    public float AccentBarThickness { get; init; } = 3f;
+    /// <summary>
+    /// Gets whether an accent bar consumes its own leading content inset instead
+    /// of being painted over the element's padding.
+    /// </summary>
+    public bool AccentBarAffectsContentLayout { get; init; }
     /// <summary>Optional border color.</summary>
     public Color? BorderBrush { get; init; }
+    /// <summary>Internal profile hint for rendering a heading border as a bottom rule.</summary>
+    internal bool HeadingBorderBottomOnly { get; init; }
     /// <summary>Border thickness in device-independent pixels.</summary>
     public float BorderThickness { get; init; }
     /// <summary>Corner radius in device-independent pixels.</summary>
@@ -191,6 +206,8 @@ public sealed class ElementStyleOverride
     public string? FontFamily { get; init; }
     /// <summary>Optional font size override.</summary>
     public float? FontSize { get; init; }
+    /// <summary>Internal relative size declaration used by opt-in inline typography rules.</summary>
+    internal float? RelativeFontSizeScale { get; init; }
     /// <summary>Optional font weight override.</summary>
     public Windows.UI.Text.FontWeight? FontWeight { get; init; }
     /// <summary>Optional font style override.</summary>
@@ -205,8 +222,18 @@ public sealed class ElementStyleOverride
     public Color? Background { get; init; }
     /// <summary>Optional accent bar color override.</summary>
     public Color? AccentBar { get; init; }
+    /// <summary>Optional accent bar thickness override in device-independent pixels.</summary>
+    public float? AccentBarThickness { get; init; }
+    /// <summary>Optional override for whether the accent bar consumes a content inset.</summary>
+    public bool? AccentBarAffectsContentLayout { get; init; }
     /// <summary>Optional border color override.</summary>
     public Color? BorderBrush { get; init; }
+    /// <summary>
+    /// Gets whether an h1/h2 border is painted only along its bottom edge.
+    /// Set this when customizing a profile heading rule's brush or thickness
+    /// while retaining its bottom-rule geometry.
+    /// </summary>
+    public bool? HeadingBorderBottomOnly { get; init; }
     /// <summary>Optional border thickness override.</summary>
     public float? BorderThickness { get; init; }
     /// <summary>Optional corner radius override.</summary>

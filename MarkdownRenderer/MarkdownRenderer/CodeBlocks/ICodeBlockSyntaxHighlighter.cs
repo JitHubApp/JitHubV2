@@ -1,10 +1,15 @@
+using System;
 using System.Threading.Tasks;
 
 namespace MarkdownRenderer.CodeBlocks;
 
 /// <summary>
-/// Optional provider used to apply syntax highlighting to code blocks.
+/// Compatibility syntax-highlighting provider. Implementations and captured
+/// state must be thread-safe: the renderer may read <see cref="Revision"/>
+/// and invoke <see cref="HighlightAsync"/> concurrently for different blocks
+/// or controls.
 /// </summary>
+[Obsolete("Use MarkdownRenderer.Hosting.ICodeHighlighter for explicit cancellation support.")]
 public interface ICodeBlockSyntaxHighlighter
 {
     /// <summary>
