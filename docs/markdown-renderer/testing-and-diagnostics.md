@@ -11,6 +11,7 @@ Windows Sandbox UI runners.
 | `MarkdownRenderer.Sample` | Manual WinUI test host with feature pages. |
 | `MarkdownRenderer.Sample.Automation` | FlaUI UI automation against the sample app. |
 | `MarkdownRenderer.PixelTests` | SVG fixture and pixel-comparison infrastructure. |
+| `MarkdownRenderer.PublicApi.Tests` | Public-surface policy over every shipping assembly that the `PublicAPI.*.txt` files do not record. See [Public API](public-api.md#changing-the-public-api). |
 
 ## Common commands
 

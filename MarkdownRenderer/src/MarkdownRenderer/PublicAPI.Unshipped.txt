@@ -1,0 +1,953 @@
+#nullable enable
+const MarkdownRenderer.Controls.MarkdownRendererControl.EmbedVirtualizationDerealizeOverscanPx = 1200 -> double
+const MarkdownRenderer.Controls.MarkdownRendererControl.EmbedVirtualizationOverscanPx = 400 -> double
+const MarkdownRenderer.Controls.MarkdownRendererControl.LazyImageOverscanPx = 800 -> double
+const MarkdownRenderer.Hosting.MarkdownStringKeys.CodeCopied = "Feedback.CodeCopied" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.CodeLanguageHelp = "Code.LanguageHelp" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.Copy = "Command.Copy" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.CopyCode = "Command.CopyCode" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.CopyImage = "Command.CopyImage" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.CopyLink = "Command.CopyLink" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.CopyMarkdown = "Command.CopyMarkdown" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.CopyTable = "Command.CopyTable" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.DiagramName = "Diagram.Name" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.DocumentName = "Document.Name" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.EmbeddedContentName = "EmbeddedContent.Name" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.EmbeddedContentUnavailable = "EmbeddedContent.Unavailable" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.HtmlBudgetExceeded = "Html.BudgetExceeded" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.HtmlDetails = "Html.Details" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.ImageError = "Image.Error" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.ImageLoading = "Image.Loading" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.ImageName = "Image.Name" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.ListName = "List.Name" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.SelectAll = "Command.SelectAll" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.SelectionEndHandle = "Selection.EndHandle" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.SelectionHandleHelp = "Selection.HandleHelp" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.SelectionStartHandle = "Selection.StartHandle" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.StyleAbbreviation = "Style.Abbreviation" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.StyleBody = "Style.Body" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.StyleCodeBlock = "Style.CodeBlock" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.StyleDefinitionDescription = "Style.DefinitionDescription" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.StyleDefinitionTerm = "Style.DefinitionTerm" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.StyleDiagram = "Style.Diagram" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.StyleEmphasis = "Style.Emphasis" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.StyleFigure = "Style.Figure" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.StyleFigureCaption = "Style.FigureCaption" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.StyleHeading1 = "Style.Heading1" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.StyleHeading2 = "Style.Heading2" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.StyleHeading3 = "Style.Heading3" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.StyleHeading4 = "Style.Heading4" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.StyleHeading5 = "Style.Heading5" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.StyleHeading6 = "Style.Heading6" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.StyleInlineCode = "Style.InlineCode" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.StyleInserted = "Style.Inserted" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.StyleLink = "Style.Link" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.StyleListMarker = "Style.ListMarker" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.StyleMarked = "Style.Marked" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.StyleQuote = "Style.Quote" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.StyleStrikethrough = "Style.Strikethrough" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.StyleStrong = "Style.Strong" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.StyleSubscript = "Style.Subscript" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.StyleSuperscript = "Style.Superscript" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.StyleTable = "Style.Table" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.StyleTableCell = "Style.TableCell" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.StyleTableHeader = "Style.TableHeader" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.TableName = "Table.Name" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.TaskCompleted = "Task.Completed" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.TaskIncomplete = "Task.Incomplete" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.TaskReadOnly = "Task.ReadOnly" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.TaskToggle = "Task.Toggle" -> string!
+const MarkdownRenderer.Theming.MarkdownElementKeys.Abbreviation = "Abbreviation" -> string!
+const MarkdownRenderer.Theming.MarkdownElementKeys.AlertCaution = "AlertCaution" -> string!
+const MarkdownRenderer.Theming.MarkdownElementKeys.AlertImportant = "AlertImportant" -> string!
+const MarkdownRenderer.Theming.MarkdownElementKeys.AlertNote = "AlertNote" -> string!
+const MarkdownRenderer.Theming.MarkdownElementKeys.AlertTip = "AlertTip" -> string!
+const MarkdownRenderer.Theming.MarkdownElementKeys.AlertWarning = "AlertWarning" -> string!
+const MarkdownRenderer.Theming.MarkdownElementKeys.Body = "Body" -> string!
+const MarkdownRenderer.Theming.MarkdownElementKeys.CodeBlock = "CodeBlock" -> string!
+const MarkdownRenderer.Theming.MarkdownElementKeys.CodeBlockGutter = "CodeBlockGutter" -> string!
+const MarkdownRenderer.Theming.MarkdownElementKeys.CodeBlockHeader = "CodeBlockHeader" -> string!
+const MarkdownRenderer.Theming.MarkdownElementKeys.CodeBlockLanguage = "CodeBlockLanguage" -> string!
+const MarkdownRenderer.Theming.MarkdownElementKeys.CodeBlockLineNumber = "CodeBlockLineNumber" -> string!
+const MarkdownRenderer.Theming.MarkdownElementKeys.CodeInline = "CodeInline" -> string!
+const MarkdownRenderer.Theming.MarkdownElementKeys.DefinitionDescription = "DefinitionDescription" -> string!
+const MarkdownRenderer.Theming.MarkdownElementKeys.DefinitionTerm = "DefinitionTerm" -> string!
+const MarkdownRenderer.Theming.MarkdownElementKeys.Diagram = "Diagram" -> string!
+const MarkdownRenderer.Theming.MarkdownElementKeys.Emphasis = "Emphasis" -> string!
+const MarkdownRenderer.Theming.MarkdownElementKeys.Figure = "Figure" -> string!
+const MarkdownRenderer.Theming.MarkdownElementKeys.FigureCaption = "FigureCaption" -> string!
+const MarkdownRenderer.Theming.MarkdownElementKeys.Heading1 = "Heading1" -> string!
+const MarkdownRenderer.Theming.MarkdownElementKeys.Heading2 = "Heading2" -> string!
+const MarkdownRenderer.Theming.MarkdownElementKeys.Heading3 = "Heading3" -> string!
+const MarkdownRenderer.Theming.MarkdownElementKeys.Heading4 = "Heading4" -> string!
+const MarkdownRenderer.Theming.MarkdownElementKeys.Heading5 = "Heading5" -> string!
+const MarkdownRenderer.Theming.MarkdownElementKeys.Heading6 = "Heading6" -> string!
+const MarkdownRenderer.Theming.MarkdownElementKeys.ImageCaption = "ImageCaption" -> string!
+const MarkdownRenderer.Theming.MarkdownElementKeys.Inserted = "Inserted" -> string!
+const MarkdownRenderer.Theming.MarkdownElementKeys.Link = "Link" -> string!
+const MarkdownRenderer.Theming.MarkdownElementKeys.List = "List" -> string!
+const MarkdownRenderer.Theming.MarkdownElementKeys.ListMarker = "ListMarker" -> string!
+const MarkdownRenderer.Theming.MarkdownElementKeys.Marked = "Marked" -> string!
+const MarkdownRenderer.Theming.MarkdownElementKeys.Math = "Math" -> string!
+const MarkdownRenderer.Theming.MarkdownElementKeys.Quote = "Quote" -> string!
+const MarkdownRenderer.Theming.MarkdownElementKeys.Strikethrough = "Strikethrough" -> string!
+const MarkdownRenderer.Theming.MarkdownElementKeys.Strong = "Strong" -> string!
+const MarkdownRenderer.Theming.MarkdownElementKeys.Subscript = "Subscript" -> string!
+const MarkdownRenderer.Theming.MarkdownElementKeys.Superscript = "Superscript" -> string!
+const MarkdownRenderer.Theming.MarkdownElementKeys.Table = "Table" -> string!
+const MarkdownRenderer.Theming.MarkdownElementKeys.TableCell = "TableCell" -> string!
+const MarkdownRenderer.Theming.MarkdownElementKeys.TableHeader = "TableHeader" -> string!
+const MarkdownRenderer.Theming.MarkdownElementKeys.ThematicBreak = "ThematicBreak" -> string!
+const MarkdownRenderer.Theming.MarkdownResourceKeys.BlockSpacing = "MarkdownRenderer.Document.BlockSpacing" -> string!
+const MarkdownRenderer.Theming.MarkdownResourceKeys.BodyFontFamily = "MarkdownRenderer.Body.FontFamily" -> string!
+const MarkdownRenderer.Theming.MarkdownResourceKeys.BodyFontSize = "MarkdownRenderer.Body.FontSize" -> string!
+const MarkdownRenderer.Theming.MarkdownResourceKeys.BodyForegroundBrush = "MarkdownRenderer.Body.ForegroundBrush" -> string!
+const MarkdownRenderer.Theming.MarkdownResourceKeys.CodeBlockBackgroundBrush = "MarkdownRenderer.CodeBlock.BackgroundBrush" -> string!
+const MarkdownRenderer.Theming.MarkdownResourceKeys.CodeFontFamily = "MarkdownRenderer.CodeBlock.FontFamily" -> string!
+const MarkdownRenderer.Theming.MarkdownResourceKeys.DocumentPadding = "MarkdownRenderer.Document.Padding" -> string!
+const MarkdownRenderer.Theming.MarkdownResourceKeys.DocumentSurfaceBrush = "MarkdownRenderer.Document.SurfaceBrush" -> string!
+const MarkdownRenderer.Theming.MarkdownResourceKeys.FocusVisualBrush = "MarkdownRenderer.FocusVisual.Brush" -> string!
+const MarkdownRenderer.Theming.MarkdownResourceKeys.LinkForegroundBrush = "MarkdownRenderer.Link.ForegroundBrush" -> string!
+const MarkdownRenderer.Theming.MarkdownResourceKeys.LinkHoverForegroundBrush = "MarkdownRenderer.Link.HoverForegroundBrush" -> string!
+const MarkdownRenderer.Theming.MarkdownResourceKeys.MinimumInteractiveSize = "MarkdownRenderer.Interaction.MinimumSize" -> string!
+const MarkdownRenderer.Theming.MarkdownResourceKeys.OverflowIndicatorBrush = "MarkdownRenderer.Overflow.IndicatorBrush" -> string!
+const MarkdownRenderer.Theming.MarkdownResourceKeys.Prefix = "MarkdownRenderer." -> string!
+const MarkdownRenderer.Theming.MarkdownResourceKeys.QuoteAccentBrush = "MarkdownRenderer.Quote.AccentBrush" -> string!
+const MarkdownRenderer.Theming.MarkdownResourceKeys.SelectionBackgroundBrush = "MarkdownRenderer.Selection.BackgroundBrush" -> string!
+const MarkdownRenderer.Theming.MarkdownResourceKeys.SelectionForegroundBrush = "MarkdownRenderer.Selection.ForegroundBrush" -> string!
+const MarkdownRenderer.Theming.MarkdownResourceKeys.TableBorderBrush = "MarkdownRenderer.Table.BorderBrush" -> string!
+const MarkdownRenderer.Theming.MarkdownResourceKeys.TableCellPadding = "MarkdownRenderer.TableCell.Padding" -> string!
+MarkdownRenderer.CodeBlocks.CodeBlockChromeMode
+MarkdownRenderer.CodeBlocks.CodeBlockChromeMode.Enhanced = 0 -> MarkdownRenderer.CodeBlocks.CodeBlockChromeMode
+MarkdownRenderer.CodeBlocks.CodeBlockChromeMode.PlainMarkdown = 1 -> MarkdownRenderer.CodeBlocks.CodeBlockChromeMode
+MarkdownRenderer.CodeBlocks.CodeBlockHighlightRequest
+MarkdownRenderer.CodeBlocks.CodeBlockHighlightRequest.CancellationToken.get -> System.Threading.CancellationToken
+MarkdownRenderer.CodeBlocks.CodeBlockHighlightRequest.Code.get -> string!
+MarkdownRenderer.CodeBlocks.CodeBlockHighlightRequest.CodeBlockHighlightRequest(string? language, string! code, MarkdownRenderer.CodeBlocks.CodeBlockThemeVariant themeVariant, System.Threading.CancellationToken cancellationToken) -> void
+MarkdownRenderer.CodeBlocks.CodeBlockHighlightRequest.Language.get -> string?
+MarkdownRenderer.CodeBlocks.CodeBlockHighlightRequest.ThemeVariant.get -> MarkdownRenderer.CodeBlocks.CodeBlockThemeVariant
+MarkdownRenderer.CodeBlocks.CodeBlockHighlightResult
+MarkdownRenderer.CodeBlocks.CodeBlockHighlightResult.CodeBlockHighlightResult(System.Collections.Generic.IReadOnlyList<MarkdownRenderer.CodeBlocks.CodeBlockHighlightSpan>? spans) -> void
+MarkdownRenderer.CodeBlocks.CodeBlockHighlightResult.Spans.get -> System.Collections.Generic.IReadOnlyList<MarkdownRenderer.CodeBlocks.CodeBlockHighlightSpan>!
+MarkdownRenderer.CodeBlocks.CodeBlockHighlightSpan
+MarkdownRenderer.CodeBlocks.CodeBlockHighlightSpan.CodeBlockHighlightSpan() -> void
+MarkdownRenderer.CodeBlocks.CodeBlockHighlightSpan.CodeBlockHighlightSpan(int Start, int Length, Windows.UI.Color Foreground) -> void
+MarkdownRenderer.CodeBlocks.CodeBlockHighlightSpan.Deconstruct(out int Start, out int Length, out Windows.UI.Color Foreground) -> void
+MarkdownRenderer.CodeBlocks.CodeBlockHighlightSpan.Equals(MarkdownRenderer.CodeBlocks.CodeBlockHighlightSpan other) -> bool
+MarkdownRenderer.CodeBlocks.CodeBlockHighlightSpan.Foreground.get -> Windows.UI.Color
+MarkdownRenderer.CodeBlocks.CodeBlockHighlightSpan.Foreground.init -> void
+MarkdownRenderer.CodeBlocks.CodeBlockHighlightSpan.Length.get -> int
+MarkdownRenderer.CodeBlocks.CodeBlockHighlightSpan.Length.init -> void
+MarkdownRenderer.CodeBlocks.CodeBlockHighlightSpan.Start.get -> int
+MarkdownRenderer.CodeBlocks.CodeBlockHighlightSpan.Start.init -> void
+MarkdownRenderer.CodeBlocks.CodeBlockLineNumberMode
+MarkdownRenderer.CodeBlocks.CodeBlockLineNumberMode.Always = 1 -> MarkdownRenderer.CodeBlocks.CodeBlockLineNumberMode
+MarkdownRenderer.CodeBlocks.CodeBlockLineNumberMode.AutoMultiline = 0 -> MarkdownRenderer.CodeBlocks.CodeBlockLineNumberMode
+MarkdownRenderer.CodeBlocks.CodeBlockLineNumberMode.Never = 2 -> MarkdownRenderer.CodeBlocks.CodeBlockLineNumberMode
+MarkdownRenderer.CodeBlocks.CodeBlockThemeVariant
+MarkdownRenderer.CodeBlocks.CodeBlockThemeVariant.Dark = 1 -> MarkdownRenderer.CodeBlocks.CodeBlockThemeVariant
+MarkdownRenderer.CodeBlocks.CodeBlockThemeVariant.HighContrast = 2 -> MarkdownRenderer.CodeBlocks.CodeBlockThemeVariant
+MarkdownRenderer.CodeBlocks.CodeBlockThemeVariant.Light = 0 -> MarkdownRenderer.CodeBlocks.CodeBlockThemeVariant
+MarkdownRenderer.CodeBlocks.CodeBlockWrappingMode
+MarkdownRenderer.CodeBlocks.CodeBlockWrappingMode.NoWrap = 0 -> MarkdownRenderer.CodeBlocks.CodeBlockWrappingMode
+MarkdownRenderer.CodeBlocks.CodeBlockWrappingMode.Wrap = 1 -> MarkdownRenderer.CodeBlocks.CodeBlockWrappingMode
+MarkdownRenderer.CodeBlocks.ICodeBlockSyntaxHighlighter
+MarkdownRenderer.CodeBlocks.ICodeBlockSyntaxHighlighter.HighlightAsync(MarkdownRenderer.CodeBlocks.CodeBlockHighlightRequest! request) -> System.Threading.Tasks.ValueTask<MarkdownRenderer.CodeBlocks.CodeBlockHighlightResult?>
+MarkdownRenderer.CodeBlocks.ICodeBlockSyntaxHighlighter.Revision.get -> int
+MarkdownRenderer.Controls.EmbedVisibility
+MarkdownRenderer.Controls.MarkdownCopyCompletedEventArgs
+MarkdownRenderer.Controls.MarkdownCopyCompletedEventArgs.Kind.get -> MarkdownRenderer.Controls.MarkdownCopyKind
+MarkdownRenderer.Controls.MarkdownCopyCompletedEventArgs.MarkdownCopyCompletedEventArgs(MarkdownRenderer.Controls.MarkdownCopyKind kind, bool succeeded) -> void
+MarkdownRenderer.Controls.MarkdownCopyCompletedEventArgs.Succeeded.get -> bool
+MarkdownRenderer.Controls.MarkdownCopyKind
+MarkdownRenderer.Controls.MarkdownCopyKind.CodeBlock = 1 -> MarkdownRenderer.Controls.MarkdownCopyKind
+MarkdownRenderer.Controls.MarkdownCopyKind.Selection = 0 -> MarkdownRenderer.Controls.MarkdownCopyKind
+MarkdownRenderer.Controls.MarkdownDisclosureToggledEventArgs
+MarkdownRenderer.Controls.MarkdownDisclosureToggledEventArgs.IsExpanded.get -> bool
+MarkdownRenderer.Controls.MarkdownDisclosureToggledEventArgs.MarkdownDisclosureToggledEventArgs(bool isExpanded) -> void
+MarkdownRenderer.Controls.MarkdownDocumentView
+MarkdownRenderer.Controls.MarkdownDocumentView.MarkdownDocumentView() -> void
+MarkdownRenderer.Controls.MarkdownInputModifiers
+MarkdownRenderer.Controls.MarkdownInputModifiers.Alt = 4 -> MarkdownRenderer.Controls.MarkdownInputModifiers
+MarkdownRenderer.Controls.MarkdownInputModifiers.Control = 1 -> MarkdownRenderer.Controls.MarkdownInputModifiers
+MarkdownRenderer.Controls.MarkdownInputModifiers.None = 0 -> MarkdownRenderer.Controls.MarkdownInputModifiers
+MarkdownRenderer.Controls.MarkdownInputModifiers.Shift = 2 -> MarkdownRenderer.Controls.MarkdownInputModifiers
+MarkdownRenderer.Controls.MarkdownInputModifiers.Windows = 8 -> MarkdownRenderer.Controls.MarkdownInputModifiers
+MarkdownRenderer.Controls.MarkdownLinkClickEventArgs
+MarkdownRenderer.Controls.MarkdownLinkClickEventArgs.Action.get -> string?
+MarkdownRenderer.Controls.MarkdownLinkClickEventArgs.Handled.get -> bool
+MarkdownRenderer.Controls.MarkdownLinkClickEventArgs.Handled.set -> void
+MarkdownRenderer.Controls.MarkdownLinkClickEventArgs.InputKind.get -> MarkdownRenderer.Controls.MarkdownLinkInputKind
+MarkdownRenderer.Controls.MarkdownLinkClickEventArgs.MarkdownLinkClickEventArgs(string! url, string? title) -> void
+MarkdownRenderer.Controls.MarkdownLinkClickEventArgs.MarkdownLinkClickEventArgs(string! url, string? title, MarkdownRenderer.SourceSpan sourceRange, MarkdownRenderer.Controls.MarkdownLinkInputKind inputKind, MarkdownRenderer.Controls.MarkdownInputModifiers modifiers, MarkdownRenderer.Controls.MarkdownLinkDisposition requestedDisposition, string? action = null) -> void
+MarkdownRenderer.Controls.MarkdownLinkClickEventArgs.Modifiers.get -> MarkdownRenderer.Controls.MarkdownInputModifiers
+MarkdownRenderer.Controls.MarkdownLinkClickEventArgs.RequestedDisposition.get -> MarkdownRenderer.Controls.MarkdownLinkDisposition
+MarkdownRenderer.Controls.MarkdownLinkClickEventArgs.SourceRange.get -> MarkdownRenderer.SourceSpan
+MarkdownRenderer.Controls.MarkdownLinkClickEventArgs.Title.get -> string?
+MarkdownRenderer.Controls.MarkdownLinkClickEventArgs.Uri.get -> System.Uri?
+MarkdownRenderer.Controls.MarkdownLinkClickEventArgs.Url.get -> string!
+MarkdownRenderer.Controls.MarkdownLinkDisposition
+MarkdownRenderer.Controls.MarkdownLinkDisposition.BackgroundView = 2 -> MarkdownRenderer.Controls.MarkdownLinkDisposition
+MarkdownRenderer.Controls.MarkdownLinkDisposition.CurrentView = 0 -> MarkdownRenderer.Controls.MarkdownLinkDisposition
+MarkdownRenderer.Controls.MarkdownLinkDisposition.External = 3 -> MarkdownRenderer.Controls.MarkdownLinkDisposition
+MarkdownRenderer.Controls.MarkdownLinkDisposition.NewView = 1 -> MarkdownRenderer.Controls.MarkdownLinkDisposition
+MarkdownRenderer.Controls.MarkdownLinkInputKind
+MarkdownRenderer.Controls.MarkdownLinkInputKind.Automation = 5 -> MarkdownRenderer.Controls.MarkdownLinkInputKind
+MarkdownRenderer.Controls.MarkdownLinkInputKind.Keyboard = 4 -> MarkdownRenderer.Controls.MarkdownLinkInputKind
+MarkdownRenderer.Controls.MarkdownLinkInputKind.Mouse = 1 -> MarkdownRenderer.Controls.MarkdownLinkInputKind
+MarkdownRenderer.Controls.MarkdownLinkInputKind.Pen = 3 -> MarkdownRenderer.Controls.MarkdownLinkInputKind
+MarkdownRenderer.Controls.MarkdownLinkInputKind.Programmatic = 0 -> MarkdownRenderer.Controls.MarkdownLinkInputKind
+MarkdownRenderer.Controls.MarkdownLinkInputKind.Touch = 2 -> MarkdownRenderer.Controls.MarkdownLinkInputKind
+MarkdownRenderer.Controls.MarkdownRendererControl
+MarkdownRenderer.Controls.MarkdownRendererControl.AllowThirdPartyRemoteImages.get -> bool
+MarkdownRenderer.Controls.MarkdownRendererControl.AllowThirdPartyRemoteImages.set -> void
+MarkdownRenderer.Controls.MarkdownRendererControl.CodeBlockChromeMode.get -> MarkdownRenderer.CodeBlocks.CodeBlockChromeMode
+MarkdownRenderer.Controls.MarkdownRendererControl.CodeBlockChromeMode.set -> void
+MarkdownRenderer.Controls.MarkdownRendererControl.CodeBlockCopiedButtonLabel.get -> string?
+MarkdownRenderer.Controls.MarkdownRendererControl.CodeBlockCopiedButtonLabel.set -> void
+MarkdownRenderer.Controls.MarkdownRendererControl.CodeBlockCopyButtonLabel.get -> string?
+MarkdownRenderer.Controls.MarkdownRendererControl.CodeBlockCopyButtonLabel.set -> void
+MarkdownRenderer.Controls.MarkdownRendererControl.CodeBlockCopyButtonStyle.get -> Microsoft.UI.Xaml.Style?
+MarkdownRenderer.Controls.MarkdownRendererControl.CodeBlockCopyButtonStyle.set -> void
+MarkdownRenderer.Controls.MarkdownRendererControl.CodeBlockLineNumberMode.get -> MarkdownRenderer.CodeBlocks.CodeBlockLineNumberMode
+MarkdownRenderer.Controls.MarkdownRendererControl.CodeBlockLineNumberMode.set -> void
+MarkdownRenderer.Controls.MarkdownRendererControl.CodeBlockSyntaxHighlighter.get -> MarkdownRenderer.CodeBlocks.ICodeBlockSyntaxHighlighter?
+MarkdownRenderer.Controls.MarkdownRendererControl.CodeBlockSyntaxHighlighter.set -> void
+MarkdownRenderer.Controls.MarkdownRendererControl.CodeBlockWrappingMode.get -> MarkdownRenderer.CodeBlocks.CodeBlockWrappingMode
+MarkdownRenderer.Controls.MarkdownRendererControl.CodeBlockWrappingMode.set -> void
+MarkdownRenderer.Controls.MarkdownRendererControl.CodeHighlighter.get -> MarkdownRenderer.Hosting.ICodeHighlighter?
+MarkdownRenderer.Controls.MarkdownRendererControl.CodeHighlighter.set -> void
+MarkdownRenderer.Controls.MarkdownRendererControl.CommandProvider.get -> MarkdownRenderer.Hosting.IMarkdownCommandProvider?
+MarkdownRenderer.Controls.MarkdownRendererControl.CommandProvider.set -> void
+MarkdownRenderer.Controls.MarkdownRendererControl.CopyCompleted -> System.EventHandler<MarkdownRenderer.Controls.MarkdownCopyCompletedEventArgs!>?
+MarkdownRenderer.Controls.MarkdownRendererControl.CopySelectionAsMarkdown() -> bool
+MarkdownRenderer.Controls.MarkdownRendererControl.CopySelectionToClipboard(MarkdownRenderer.Selection.MarkdownCopyOptions? options = null) -> bool
+MarkdownRenderer.Controls.MarkdownRendererControl.DisclosureToggled -> System.EventHandler<MarkdownRenderer.Controls.MarkdownDisclosureToggledEventArgs!>?
+MarkdownRenderer.Controls.MarkdownRendererControl.Dispose() -> void
+MarkdownRenderer.Controls.MarkdownRendererControl.Document.get -> MarkdownRenderer.Document.MarkdownDocument?
+MarkdownRenderer.Controls.MarkdownRendererControl.Document.set -> void
+MarkdownRenderer.Controls.MarkdownRendererControl.EmbedsRealizationChanged -> System.EventHandler?
+MarkdownRenderer.Controls.MarkdownRendererControl.Engine.get -> MarkdownRenderer.MarkdownEngine?
+MarkdownRenderer.Controls.MarkdownRendererControl.Engine.set -> void
+MarkdownRenderer.Controls.MarkdownRendererControl.HostedElementFactory.get -> MarkdownRenderer.Hosting.IMarkdownHostedElementFactory?
+MarkdownRenderer.Controls.MarkdownRendererControl.HostedElementFactory.set -> void
+MarkdownRenderer.Controls.MarkdownRendererControl.ImageBaseUri.get -> System.Uri?
+MarkdownRenderer.Controls.MarkdownRendererControl.ImageBaseUri.set -> void
+MarkdownRenderer.Controls.MarkdownRendererControl.ImageDocumentPath.get -> string?
+MarkdownRenderer.Controls.MarkdownRendererControl.ImageDocumentPath.set -> void
+MarkdownRenderer.Controls.MarkdownRendererControl.ImageDocumentSource.get -> MarkdownRenderer.Images.MarkdownDocumentSource?
+MarkdownRenderer.Controls.MarkdownRendererControl.ImageDocumentSource.set -> void
+MarkdownRenderer.Controls.MarkdownRendererControl.ImageResolver.get -> MarkdownRenderer.Images.IMarkdownImageResolver?
+MarkdownRenderer.Controls.MarkdownRendererControl.ImageResolver.set -> void
+MarkdownRenderer.Controls.MarkdownRendererControl.ImageUnavailable -> System.EventHandler<MarkdownRenderer.Images.MarkdownImageUnavailableEventArgs!>?
+MarkdownRenderer.Controls.MarkdownRendererControl.InvalidateThemeResources() -> void
+MarkdownRenderer.Controls.MarkdownRendererControl.IsCodeBlockCopyEnabled.get -> bool
+MarkdownRenderer.Controls.MarkdownRendererControl.IsCodeBlockCopyEnabled.set -> void
+MarkdownRenderer.Controls.MarkdownRendererControl.IsCodeBlockSyntaxHighlightingEnabled.get -> bool
+MarkdownRenderer.Controls.MarkdownRendererControl.IsCodeBlockSyntaxHighlightingEnabled.set -> void
+MarkdownRenderer.Controls.MarkdownRendererControl.IsSelectionEnabled.get -> bool
+MarkdownRenderer.Controls.MarkdownRendererControl.IsSelectionEnabled.set -> void
+MarkdownRenderer.Controls.MarkdownRendererControl.IsTaskListEditingEnabled.get -> bool
+MarkdownRenderer.Controls.MarkdownRendererControl.IsTaskListEditingEnabled.set -> void
+MarkdownRenderer.Controls.MarkdownRendererControl.LinkClick -> System.EventHandler<MarkdownRenderer.Controls.MarkdownLinkClickEventArgs!>?
+MarkdownRenderer.Controls.MarkdownRendererControl.Markdown.get -> string!
+MarkdownRenderer.Controls.MarkdownRendererControl.Markdown.set -> void
+MarkdownRenderer.Controls.MarkdownRendererControl.MarkdownRendererControl() -> void
+MarkdownRenderer.Controls.MarkdownRendererControl.MarkdownRendererControl(bool ownsScrollViewport) -> void
+MarkdownRenderer.Controls.MarkdownRendererControl.PerformanceSession.get -> MarkdownRenderer.Performance.IMarkdownPerformanceSession?
+MarkdownRenderer.Controls.MarkdownRendererControl.PerformanceSession.set -> void
+MarkdownRenderer.Controls.MarkdownRendererControl.RasterDecoder.get -> MarkdownRenderer.Images.IMarkdownRasterDecoder?
+MarkdownRenderer.Controls.MarkdownRendererControl.RasterDecoder.set -> void
+MarkdownRenderer.Controls.MarkdownRendererControl.RealizedEmbedCount.get -> int
+MarkdownRenderer.Controls.MarkdownRendererControl.RenderCompleted -> System.EventHandler?
+MarkdownRenderer.Controls.MarkdownRendererControl.RenderFailed -> System.EventHandler<MarkdownRenderer.Controls.MarkdownRenderFailedEventArgs!>?
+MarkdownRenderer.Controls.MarkdownRendererControl.RequestRebuild() -> void
+MarkdownRenderer.Controls.MarkdownRendererControl.ScrollToBlock(int blockIndex) -> void
+MarkdownRenderer.Controls.MarkdownRendererControl.StringProvider.get -> MarkdownRenderer.Hosting.IMarkdownStringProvider?
+MarkdownRenderer.Controls.MarkdownRendererControl.StringProvider.set -> void
+MarkdownRenderer.Controls.MarkdownRendererControl.StyleSheet.get -> MarkdownRenderer.Theming.MarkdownStyleSheet?
+MarkdownRenderer.Controls.MarkdownRendererControl.StyleSheet.set -> void
+MarkdownRenderer.Controls.MarkdownRendererControl.SvgRenderer.get -> MarkdownRenderer.Images.IMarkdownSvgRenderer?
+MarkdownRenderer.Controls.MarkdownRendererControl.SvgRenderer.set -> void
+MarkdownRenderer.Controls.MarkdownRendererControl.Theme.get -> MarkdownRenderer.Theming.MarkdownTheme?
+MarkdownRenderer.Controls.MarkdownRendererControl.Theme.set -> void
+MarkdownRenderer.Controls.MarkdownRendererControlBuilder
+MarkdownRenderer.Controls.MarkdownRendererControlBuilder.AddProfile(MarkdownRenderer.MarkdownProfile! profile) -> MarkdownRenderer.Controls.MarkdownRendererControlBuilder!
+MarkdownRenderer.Controls.MarkdownRendererControlBuilder.Build() -> MarkdownRenderer.Controls.MarkdownRendererControl!
+MarkdownRenderer.Controls.MarkdownRendererControlBuilder.BuildDocumentView() -> MarkdownRenderer.Controls.MarkdownDocumentView!
+MarkdownRenderer.Controls.MarkdownRendererControlBuilder.BuildScrollView() -> MarkdownRenderer.Controls.MarkdownScrollView!
+MarkdownRenderer.Controls.MarkdownRendererControlBuilder.MarkdownRendererControlBuilder() -> void
+MarkdownRenderer.Controls.MarkdownRendererControlBuilder.WithCodeBlockChromeMode(MarkdownRenderer.CodeBlocks.CodeBlockChromeMode mode) -> MarkdownRenderer.Controls.MarkdownRendererControlBuilder!
+MarkdownRenderer.Controls.MarkdownRendererControlBuilder.WithCodeBlockCopiedButtonLabel(string? label) -> MarkdownRenderer.Controls.MarkdownRendererControlBuilder!
+MarkdownRenderer.Controls.MarkdownRendererControlBuilder.WithCodeBlockCopyButtonLabel(string? label) -> MarkdownRenderer.Controls.MarkdownRendererControlBuilder!
+MarkdownRenderer.Controls.MarkdownRendererControlBuilder.WithCodeBlockCopyEnabled(bool enabled = true) -> MarkdownRenderer.Controls.MarkdownRendererControlBuilder!
+MarkdownRenderer.Controls.MarkdownRendererControlBuilder.WithCodeBlockLineNumberMode(MarkdownRenderer.CodeBlocks.CodeBlockLineNumberMode mode) -> MarkdownRenderer.Controls.MarkdownRendererControlBuilder!
+MarkdownRenderer.Controls.MarkdownRendererControlBuilder.WithCodeBlockSyntaxHighlighter(MarkdownRenderer.CodeBlocks.ICodeBlockSyntaxHighlighter? highlighter) -> MarkdownRenderer.Controls.MarkdownRendererControlBuilder!
+MarkdownRenderer.Controls.MarkdownRendererControlBuilder.WithCodeBlockSyntaxHighlightingEnabled(bool enabled = true) -> MarkdownRenderer.Controls.MarkdownRendererControlBuilder!
+MarkdownRenderer.Controls.MarkdownRendererControlBuilder.WithCodeBlockWrappingMode(MarkdownRenderer.CodeBlocks.CodeBlockWrappingMode mode) -> MarkdownRenderer.Controls.MarkdownRendererControlBuilder!
+MarkdownRenderer.Controls.MarkdownRendererControlBuilder.WithCodeHighlighter(MarkdownRenderer.Hosting.ICodeHighlighter? highlighter) -> MarkdownRenderer.Controls.MarkdownRendererControlBuilder!
+MarkdownRenderer.Controls.MarkdownRendererControlBuilder.WithCommandProvider(MarkdownRenderer.Hosting.IMarkdownCommandProvider? provider) -> MarkdownRenderer.Controls.MarkdownRendererControlBuilder!
+MarkdownRenderer.Controls.MarkdownRendererControlBuilder.WithEngine(MarkdownRenderer.MarkdownEngine? engine) -> MarkdownRenderer.Controls.MarkdownRendererControlBuilder!
+MarkdownRenderer.Controls.MarkdownRendererControlBuilder.WithHostedElementFactory(MarkdownRenderer.Hosting.IMarkdownHostedElementFactory? hostedElementFactory) -> MarkdownRenderer.Controls.MarkdownRendererControlBuilder!
+MarkdownRenderer.Controls.MarkdownRendererControlBuilder.WithImageBaseUri(System.Uri? baseUri) -> MarkdownRenderer.Controls.MarkdownRendererControlBuilder!
+MarkdownRenderer.Controls.MarkdownRendererControlBuilder.WithImageDocumentPath(string? documentPath) -> MarkdownRenderer.Controls.MarkdownRendererControlBuilder!
+MarkdownRenderer.Controls.MarkdownRendererControlBuilder.WithImageDocumentSource(MarkdownRenderer.Images.MarkdownDocumentSource? documentSource) -> MarkdownRenderer.Controls.MarkdownRendererControlBuilder!
+MarkdownRenderer.Controls.MarkdownRendererControlBuilder.WithImageResolver(MarkdownRenderer.Images.IMarkdownImageResolver? imageResolver) -> MarkdownRenderer.Controls.MarkdownRendererControlBuilder!
+MarkdownRenderer.Controls.MarkdownRendererControlBuilder.WithMarkdown(string? markdown) -> MarkdownRenderer.Controls.MarkdownRendererControlBuilder!
+MarkdownRenderer.Controls.MarkdownRendererControlBuilder.WithPerformanceSession(MarkdownRenderer.Performance.IMarkdownPerformanceSession? session) -> MarkdownRenderer.Controls.MarkdownRendererControlBuilder!
+MarkdownRenderer.Controls.MarkdownRendererControlBuilder.WithRasterDecoder(MarkdownRenderer.Images.IMarkdownRasterDecoder? rasterDecoder) -> MarkdownRenderer.Controls.MarkdownRendererControlBuilder!
+MarkdownRenderer.Controls.MarkdownRendererControlBuilder.WithSelectionEnabled(bool isEnabled) -> MarkdownRenderer.Controls.MarkdownRendererControlBuilder!
+MarkdownRenderer.Controls.MarkdownRendererControlBuilder.WithStringProvider(MarkdownRenderer.Hosting.IMarkdownStringProvider? provider) -> MarkdownRenderer.Controls.MarkdownRendererControlBuilder!
+MarkdownRenderer.Controls.MarkdownRendererControlBuilder.WithStyleSheet(MarkdownRenderer.Theming.MarkdownStyleSheet? styleSheet) -> MarkdownRenderer.Controls.MarkdownRendererControlBuilder!
+MarkdownRenderer.Controls.MarkdownRendererControlBuilder.WithSvgRenderer(MarkdownRenderer.Images.IMarkdownSvgRenderer? svgRenderer) -> MarkdownRenderer.Controls.MarkdownRendererControlBuilder!
+MarkdownRenderer.Controls.MarkdownRendererControlBuilder.WithTaskListEditingEnabled(bool enabled = true) -> MarkdownRenderer.Controls.MarkdownRendererControlBuilder!
+MarkdownRenderer.Controls.MarkdownRendererControlBuilder.WithTheme(MarkdownRenderer.Theming.MarkdownTheme? theme) -> MarkdownRenderer.Controls.MarkdownRendererControlBuilder!
+MarkdownRenderer.Controls.MarkdownRendererControlBuilder.WithThirdPartyRemoteImagesAllowed(bool allowed) -> MarkdownRenderer.Controls.MarkdownRendererControlBuilder!
+MarkdownRenderer.Controls.MarkdownRenderFailedEventArgs
+MarkdownRenderer.Controls.MarkdownRenderFailedEventArgs.Exception.get -> System.Exception!
+MarkdownRenderer.Controls.MarkdownRenderFailedEventArgs.MarkdownRenderFailedEventArgs(System.Exception! exception) -> void
+MarkdownRenderer.Controls.MarkdownScrollView
+MarkdownRenderer.Controls.MarkdownScrollView.MarkdownScrollView() -> void
+MarkdownRenderer.Controls.MarkdownSystemIntegration
+MarkdownRenderer.Hosting.ICodeHighlighter
+MarkdownRenderer.Hosting.ICodeHighlighter.HighlightAsync(MarkdownRenderer.CodeBlocks.CodeBlockHighlightRequest! request, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<MarkdownRenderer.CodeBlocks.CodeBlockHighlightResult?>
+MarkdownRenderer.Hosting.IImageResolver
+MarkdownRenderer.Hosting.IMarkdownCommandProvider
+MarkdownRenderer.Hosting.IMarkdownCommandProvider.GetCommand(MarkdownRenderer.Hosting.MarkdownCommandContext! context) -> System.Windows.Input.ICommand?
+MarkdownRenderer.Hosting.IMarkdownHostedElementFactory
+MarkdownRenderer.Hosting.IMarkdownHostedElementFactory.CreateAsync(MarkdownRenderer.Hosting.MarkdownHostedElementRequest! request, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<Microsoft.UI.Xaml.FrameworkElement?>
+MarkdownRenderer.Hosting.IMarkdownHostedElementFactory.Recycle(MarkdownRenderer.Hosting.MarkdownHostedElementRequest! request, Microsoft.UI.Xaml.FrameworkElement! element) -> void
+MarkdownRenderer.Hosting.IMarkdownStringProvider
+MarkdownRenderer.Hosting.IMarkdownStringProvider.GetString(string! key, System.Globalization.CultureInfo! culture) -> string?
+MarkdownRenderer.Hosting.MarkdownCommandContext
+MarkdownRenderer.Hosting.MarkdownCommandContext.Kind.get -> MarkdownRenderer.Hosting.MarkdownCommandKind
+MarkdownRenderer.Hosting.MarkdownCommandContext.Language.get -> string?
+MarkdownRenderer.Hosting.MarkdownCommandContext.MarkdownCommandContext(MarkdownRenderer.Hosting.MarkdownCommandKind kind, MarkdownRenderer.SourceSpan sourceRange, string? target = null, string? language = null) -> void
+MarkdownRenderer.Hosting.MarkdownCommandContext.SourceRange.get -> MarkdownRenderer.SourceSpan
+MarkdownRenderer.Hosting.MarkdownCommandContext.Target.get -> string?
+MarkdownRenderer.Hosting.MarkdownCommandKind
+MarkdownRenderer.Hosting.MarkdownCommandKind.Activate = 6 -> MarkdownRenderer.Hosting.MarkdownCommandKind
+MarkdownRenderer.Hosting.MarkdownCommandKind.CopyCode = 4 -> MarkdownRenderer.Hosting.MarkdownCommandKind
+MarkdownRenderer.Hosting.MarkdownCommandKind.CopyImage = 3 -> MarkdownRenderer.Hosting.MarkdownCommandKind
+MarkdownRenderer.Hosting.MarkdownCommandKind.CopyLink = 2 -> MarkdownRenderer.Hosting.MarkdownCommandKind
+MarkdownRenderer.Hosting.MarkdownCommandKind.CopyMarkdown = 1 -> MarkdownRenderer.Hosting.MarkdownCommandKind
+MarkdownRenderer.Hosting.MarkdownCommandKind.CopyRendered = 0 -> MarkdownRenderer.Hosting.MarkdownCommandKind
+MarkdownRenderer.Hosting.MarkdownCommandKind.CopyTable = 5 -> MarkdownRenderer.Hosting.MarkdownCommandKind
+MarkdownRenderer.Hosting.MarkdownCommandKind.ToggleTask = 7 -> MarkdownRenderer.Hosting.MarkdownCommandKind
+MarkdownRenderer.Hosting.MarkdownHostedElementRequest
+MarkdownRenderer.Hosting.MarkdownHostedElementRequest.AccessibilityDescription.get -> string?
+MarkdownRenderer.Hosting.MarkdownHostedElementRequest.AccessibilityName.get -> string?
+MarkdownRenderer.Hosting.MarkdownHostedElementRequest.AccessibilityRole.get -> MarkdownRenderer.Extensions.MarkdownAccessibilityRole
+MarkdownRenderer.Hosting.MarkdownHostedElementRequest.Attributes.get -> System.Collections.Generic.IReadOnlyDictionary<string!, string!>!
+MarkdownRenderer.Hosting.MarkdownHostedElementRequest.AutomationId.get -> string?
+MarkdownRenderer.Hosting.MarkdownHostedElementRequest.EffectiveViewport.get -> Windows.Foundation.Rect
+MarkdownRenderer.Hosting.MarkdownHostedElementRequest.FactoryKey.get -> string!
+MarkdownRenderer.Hosting.MarkdownHostedElementRequest.LayoutBounds.get -> Windows.Foundation.Rect
+MarkdownRenderer.Hosting.MarkdownHostedElementRequest.MarkdownHostedElementRequest(string! factoryKey, MarkdownRenderer.SourceSpan sourceRange, Windows.Foundation.Rect layoutBounds, Windows.Foundation.Rect effectiveViewport, System.Collections.Generic.IReadOnlyDictionary<string!, string!>? attributes = null, MarkdownRenderer.Extensions.MarkdownAccessibilityRole accessibilityRole = MarkdownRenderer.Extensions.MarkdownAccessibilityRole.Group, string? accessibilityName = null, string? accessibilityDescription = null, string? semanticText = null, string? automationId = null) -> void
+MarkdownRenderer.Hosting.MarkdownHostedElementRequest.SemanticText.get -> string?
+MarkdownRenderer.Hosting.MarkdownHostedElementRequest.SourceRange.get -> MarkdownRenderer.SourceSpan
+MarkdownRenderer.Hosting.MarkdownStringKeys
+MarkdownRenderer.Images.IMarkdownImagePrefetcher
+MarkdownRenderer.Images.IMarkdownImagePrefetcher.PrefetchAsync(System.Collections.Generic.IReadOnlyList<string!>! sources, MarkdownRenderer.Images.MarkdownImageResolveContext! context, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask
+MarkdownRenderer.Images.IMarkdownImageResolver
+MarkdownRenderer.Images.IMarkdownImageResolver.ResolveAsync(string! source, MarkdownRenderer.Images.MarkdownImageResolveContext! context, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<MarkdownRenderer.Images.MarkdownImageResolution>
+MarkdownRenderer.Images.IMarkdownImageSourceByteAdmission
+MarkdownRenderer.Images.IMarkdownImageSourceByteAdmission.IsSpeculative.get -> bool
+MarkdownRenderer.Images.IMarkdownImageSourceByteAdmission.MaximumReservationBytes.get -> long
+MarkdownRenderer.Images.IMarkdownImageSourceByteAdmission.ReserveAsync(long bytes, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<System.IDisposable!>
+MarkdownRenderer.Images.IMarkdownImageSourceByteAdmittedResolver
+MarkdownRenderer.Images.IMarkdownImageSourceByteAdmittedResolver.ResolveWithSourceByteAdmissionAsync(string! source, MarkdownRenderer.Images.MarkdownImageResolveContext! context, MarkdownRenderer.Images.IMarkdownImageSourceByteAdmission! admission, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<MarkdownRenderer.Images.MarkdownImageResolution>
+MarkdownRenderer.Images.IMarkdownRasterDecoder
+MarkdownRenderer.Images.IMarkdownRasterDecoder.DecodeAsync(MarkdownRenderer.Images.MarkdownRasterDecodeRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<MarkdownRenderer.Images.MarkdownRaster!>
+MarkdownRenderer.Images.IMarkdownRasterDecoder.SupportsFormat(MarkdownRenderer.Images.MarkdownRasterFormat format) -> bool
+MarkdownRenderer.Images.IMarkdownSvgDocument
+MarkdownRenderer.Images.IMarkdownSvgDocument.Info.get -> MarkdownRenderer.Images.MarkdownSvgDocumentInfo!
+MarkdownRenderer.Images.IMarkdownSvgDocument.RenderAsync(MarkdownRenderer.Images.MarkdownSvgRenderRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<MarkdownRenderer.Images.MarkdownSvgRaster!>
+MarkdownRenderer.Images.IMarkdownSvgRenderer
+MarkdownRenderer.Images.IMarkdownSvgRenderer.CacheGeneration.get -> long
+MarkdownRenderer.Images.IMarkdownSvgRenderer.CacheInvalidated -> System.EventHandler?
+MarkdownRenderer.Images.IMarkdownSvgRenderer.OpenAsync(MarkdownRenderer.Images.MarkdownSvgOpenRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<MarkdownRenderer.Images.IMarkdownSvgDocument!>
+MarkdownRenderer.Images.IMarkdownSvgRenderer.PrepareSource(byte[]! source, System.Threading.CancellationToken cancellationToken) -> MarkdownRenderer.Images.MarkdownSvgSourcePreparation!
+MarkdownRenderer.Images.MarkdownDocumentSource
+MarkdownRenderer.Images.MarkdownDocumentSource.<Clone>$() -> MarkdownRenderer.Images.MarkdownDocumentSource!
+MarkdownRenderer.Images.MarkdownDocumentSource.Deconstruct(out string! DocumentId, out string? Owner, out string? Repository, out string? Ref, out string? Path) -> void
+MarkdownRenderer.Images.MarkdownDocumentSource.DocumentId.get -> string!
+MarkdownRenderer.Images.MarkdownDocumentSource.DocumentId.init -> void
+MarkdownRenderer.Images.MarkdownDocumentSource.Equals(MarkdownRenderer.Images.MarkdownDocumentSource? other) -> bool
+MarkdownRenderer.Images.MarkdownDocumentSource.GetConsentIdentity() -> string!
+MarkdownRenderer.Images.MarkdownDocumentSource.HasRepositoryContext.get -> bool
+MarkdownRenderer.Images.MarkdownDocumentSource.MarkdownDocumentSource(string! DocumentId, string? Owner = null, string? Repository = null, string? Ref = null, string? Path = null) -> void
+MarkdownRenderer.Images.MarkdownDocumentSource.Owner.get -> string?
+MarkdownRenderer.Images.MarkdownDocumentSource.Owner.init -> void
+MarkdownRenderer.Images.MarkdownDocumentSource.Path.get -> string?
+MarkdownRenderer.Images.MarkdownDocumentSource.Path.init -> void
+MarkdownRenderer.Images.MarkdownDocumentSource.Ref.get -> string?
+MarkdownRenderer.Images.MarkdownDocumentSource.Ref.init -> void
+MarkdownRenderer.Images.MarkdownDocumentSource.Repository.get -> string?
+MarkdownRenderer.Images.MarkdownDocumentSource.Repository.init -> void
+MarkdownRenderer.Images.MarkdownImageAsset
+MarkdownRenderer.Images.MarkdownImageAsset.<Clone>$() -> MarkdownRenderer.Images.MarkdownImageAsset!
+MarkdownRenderer.Images.MarkdownImageAsset.Bytes.get -> byte[]!
+MarkdownRenderer.Images.MarkdownImageAsset.Bytes.init -> void
+MarkdownRenderer.Images.MarkdownImageAsset.CacheKey.get -> string?
+MarkdownRenderer.Images.MarkdownImageAsset.CacheKey.init -> void
+MarkdownRenderer.Images.MarkdownImageAsset.ContentType.get -> string?
+MarkdownRenderer.Images.MarkdownImageAsset.ContentType.init -> void
+MarkdownRenderer.Images.MarkdownImageAsset.Deconstruct(out byte[]! Bytes, out string? ContentType, out System.Uri? ResolvedUri, out string? CacheKey) -> void
+MarkdownRenderer.Images.MarkdownImageAsset.Equals(MarkdownRenderer.Images.MarkdownImageAsset? other) -> bool
+MarkdownRenderer.Images.MarkdownImageAsset.MarkdownImageAsset(byte[]! Bytes, string? ContentType = null, System.Uri? ResolvedUri = null, string? CacheKey = null) -> void
+MarkdownRenderer.Images.MarkdownImageAsset.ResolvedUri.get -> System.Uri?
+MarkdownRenderer.Images.MarkdownImageAsset.ResolvedUri.init -> void
+MarkdownRenderer.Images.MarkdownImageResolution
+MarkdownRenderer.Images.MarkdownImageResolution.Asset.get -> MarkdownRenderer.Images.MarkdownImageAsset?
+MarkdownRenderer.Images.MarkdownImageResolution.Asset.init -> void
+MarkdownRenderer.Images.MarkdownImageResolution.Deconstruct(out bool IsHandled, out MarkdownRenderer.Images.MarkdownImageAsset? Asset, out MarkdownRenderer.Images.MarkdownImageUnavailableReason UnavailableReason) -> void
+MarkdownRenderer.Images.MarkdownImageResolution.Equals(MarkdownRenderer.Images.MarkdownImageResolution other) -> bool
+MarkdownRenderer.Images.MarkdownImageResolution.IsHandled.get -> bool
+MarkdownRenderer.Images.MarkdownImageResolution.IsHandled.init -> void
+MarkdownRenderer.Images.MarkdownImageResolution.MarkdownImageResolution() -> void
+MarkdownRenderer.Images.MarkdownImageResolution.MarkdownImageResolution(bool IsHandled, MarkdownRenderer.Images.MarkdownImageAsset? Asset, MarkdownRenderer.Images.MarkdownImageUnavailableReason UnavailableReason = MarkdownRenderer.Images.MarkdownImageUnavailableReason.None) -> void
+MarkdownRenderer.Images.MarkdownImageResolution.UnavailableReason.get -> MarkdownRenderer.Images.MarkdownImageUnavailableReason
+MarkdownRenderer.Images.MarkdownImageResolution.UnavailableReason.init -> void
+MarkdownRenderer.Images.MarkdownImageResolveContext
+MarkdownRenderer.Images.MarkdownImageResolveContext.<Clone>$() -> MarkdownRenderer.Images.MarkdownImageResolveContext!
+MarkdownRenderer.Images.MarkdownImageResolveContext.AllowThirdPartyRemoteImages.get -> bool
+MarkdownRenderer.Images.MarkdownImageResolveContext.AllowThirdPartyRemoteImages.init -> void
+MarkdownRenderer.Images.MarkdownImageResolveContext.BaseUri.get -> System.Uri?
+MarkdownRenderer.Images.MarkdownImageResolveContext.BaseUri.init -> void
+MarkdownRenderer.Images.MarkdownImageResolveContext.Deconstruct(out System.Uri? BaseUri, out string? DocumentPath, out bool AllowThirdPartyRemoteImages, out MarkdownRenderer.Images.MarkdownDocumentSource? DocumentSource) -> void
+MarkdownRenderer.Images.MarkdownImageResolveContext.DocumentPath.get -> string?
+MarkdownRenderer.Images.MarkdownImageResolveContext.DocumentPath.init -> void
+MarkdownRenderer.Images.MarkdownImageResolveContext.DocumentSource.get -> MarkdownRenderer.Images.MarkdownDocumentSource?
+MarkdownRenderer.Images.MarkdownImageResolveContext.DocumentSource.init -> void
+MarkdownRenderer.Images.MarkdownImageResolveContext.Equals(MarkdownRenderer.Images.MarkdownImageResolveContext? other) -> bool
+MarkdownRenderer.Images.MarkdownImageResolveContext.MarkdownImageResolveContext(System.Uri? BaseUri, string? DocumentPath = null, bool AllowThirdPartyRemoteImages = false, MarkdownRenderer.Images.MarkdownDocumentSource? DocumentSource = null) -> void
+MarkdownRenderer.Images.MarkdownImageSourceDeferredException
+MarkdownRenderer.Images.MarkdownImageSourceDeferredException.MarkdownImageSourceDeferredException() -> void
+MarkdownRenderer.Images.MarkdownImageUnavailableEventArgs
+MarkdownRenderer.Images.MarkdownImageUnavailableEventArgs.MarkdownImageUnavailableEventArgs(string! source, MarkdownRenderer.Images.MarkdownImageUnavailableReason reason) -> void
+MarkdownRenderer.Images.MarkdownImageUnavailableEventArgs.MarkdownImageUnavailableEventArgs(string! source, MarkdownRenderer.Images.MarkdownImageUnavailableReason reason, MarkdownRenderer.Images.MarkdownSvgFailureReason? svgFailureReason) -> void
+MarkdownRenderer.Images.MarkdownImageUnavailableEventArgs.Reason.get -> MarkdownRenderer.Images.MarkdownImageUnavailableReason
+MarkdownRenderer.Images.MarkdownImageUnavailableEventArgs.Source.get -> string!
+MarkdownRenderer.Images.MarkdownImageUnavailableEventArgs.SvgFailureReason.get -> MarkdownRenderer.Images.MarkdownSvgFailureReason?
+MarkdownRenderer.Images.MarkdownImageUnavailableReason
+MarkdownRenderer.Images.MarkdownImageUnavailableReason.InsecureRemoteContent = 3 -> MarkdownRenderer.Images.MarkdownImageUnavailableReason
+MarkdownRenderer.Images.MarkdownImageUnavailableReason.MeteredConnection = 5 -> MarkdownRenderer.Images.MarkdownImageUnavailableReason
+MarkdownRenderer.Images.MarkdownImageUnavailableReason.None = 0 -> MarkdownRenderer.Images.MarkdownImageUnavailableReason
+MarkdownRenderer.Images.MarkdownImageUnavailableReason.Offline = 4 -> MarkdownRenderer.Images.MarkdownImageUnavailableReason
+MarkdownRenderer.Images.MarkdownImageUnavailableReason.RemoteContentBlocked = 2 -> MarkdownRenderer.Images.MarkdownImageUnavailableReason
+MarkdownRenderer.Images.MarkdownImageUnavailableReason.Unavailable = 1 -> MarkdownRenderer.Images.MarkdownImageUnavailableReason
+MarkdownRenderer.Images.MarkdownRaster
+MarkdownRenderer.Images.MarkdownRaster.Dispose() -> void
+MarkdownRenderer.Images.MarkdownRaster.HeightPixels.get -> int
+MarkdownRenderer.Images.MarkdownRaster.LengthBytes.get -> int
+MarkdownRenderer.Images.MarkdownRaster.MarkdownRaster(System.Buffers.IMemoryOwner<byte>! owner, int widthPixels, int heightPixels, int strideBytes, MarkdownRenderer.Images.MarkdownRasterPixelFormat pixelFormat) -> void
+MarkdownRenderer.Images.MarkdownRaster.PixelFormat.get -> MarkdownRenderer.Images.MarkdownRasterPixelFormat
+MarkdownRenderer.Images.MarkdownRaster.Pixels.get -> System.ReadOnlyMemory<byte>
+MarkdownRenderer.Images.MarkdownRaster.StrideBytes.get -> int
+MarkdownRenderer.Images.MarkdownRaster.WidthPixels.get -> int
+MarkdownRenderer.Images.MarkdownRasterDecodePriority
+MarkdownRenderer.Images.MarkdownRasterDecodePriority.Overscan = 0 -> MarkdownRenderer.Images.MarkdownRasterDecodePriority
+MarkdownRenderer.Images.MarkdownRasterDecodePriority.Visible = 1 -> MarkdownRenderer.Images.MarkdownRasterDecodePriority
+MarkdownRenderer.Images.MarkdownRasterDecodeRequest
+MarkdownRenderer.Images.MarkdownRasterDecodeRequest.<Clone>$() -> MarkdownRenderer.Images.MarkdownRasterDecodeRequest!
+MarkdownRenderer.Images.MarkdownRasterDecodeRequest.Deconstruct(out System.ReadOnlyMemory<byte> EncodedBytes, out MarkdownRenderer.Images.MarkdownRasterFormat Format, out int TargetWidthPixels, out int TargetHeightPixels, out long MaximumWorkingBytes, out MarkdownRenderer.Images.MarkdownRasterPixelFormat PixelFormat, out MarkdownRenderer.Images.MarkdownRasterDecodePriority Priority) -> void
+MarkdownRenderer.Images.MarkdownRasterDecodeRequest.EncodedBytes.get -> System.ReadOnlyMemory<byte>
+MarkdownRenderer.Images.MarkdownRasterDecodeRequest.EncodedBytes.init -> void
+MarkdownRenderer.Images.MarkdownRasterDecodeRequest.Equals(MarkdownRenderer.Images.MarkdownRasterDecodeRequest? other) -> bool
+MarkdownRenderer.Images.MarkdownRasterDecodeRequest.Format.get -> MarkdownRenderer.Images.MarkdownRasterFormat
+MarkdownRenderer.Images.MarkdownRasterDecodeRequest.Format.init -> void
+MarkdownRenderer.Images.MarkdownRasterDecodeRequest.MarkdownRasterDecodeRequest(System.ReadOnlyMemory<byte> EncodedBytes, MarkdownRenderer.Images.MarkdownRasterFormat Format, int TargetWidthPixels, int TargetHeightPixels, long MaximumWorkingBytes, MarkdownRenderer.Images.MarkdownRasterPixelFormat PixelFormat = MarkdownRenderer.Images.MarkdownRasterPixelFormat.Bgra8Premultiplied, MarkdownRenderer.Images.MarkdownRasterDecodePriority Priority = MarkdownRenderer.Images.MarkdownRasterDecodePriority.Visible) -> void
+MarkdownRenderer.Images.MarkdownRasterDecodeRequest.MaximumWorkingBytes.get -> long
+MarkdownRenderer.Images.MarkdownRasterDecodeRequest.MaximumWorkingBytes.init -> void
+MarkdownRenderer.Images.MarkdownRasterDecodeRequest.PixelFormat.get -> MarkdownRenderer.Images.MarkdownRasterPixelFormat
+MarkdownRenderer.Images.MarkdownRasterDecodeRequest.PixelFormat.init -> void
+MarkdownRenderer.Images.MarkdownRasterDecodeRequest.Priority.get -> MarkdownRenderer.Images.MarkdownRasterDecodePriority
+MarkdownRenderer.Images.MarkdownRasterDecodeRequest.Priority.init -> void
+MarkdownRenderer.Images.MarkdownRasterDecodeRequest.TargetHeightPixels.get -> int
+MarkdownRenderer.Images.MarkdownRasterDecodeRequest.TargetHeightPixels.init -> void
+MarkdownRenderer.Images.MarkdownRasterDecodeRequest.TargetWidthPixels.get -> int
+MarkdownRenderer.Images.MarkdownRasterDecodeRequest.TargetWidthPixels.init -> void
+MarkdownRenderer.Images.MarkdownRasterException
+MarkdownRenderer.Images.MarkdownRasterException.MarkdownRasterException(MarkdownRenderer.Images.MarkdownRasterFailureReason reason, string? message = null, System.Exception? innerException = null) -> void
+MarkdownRenderer.Images.MarkdownRasterException.Reason.get -> MarkdownRenderer.Images.MarkdownRasterFailureReason
+MarkdownRenderer.Images.MarkdownRasterFailureReason
+MarkdownRenderer.Images.MarkdownRasterFailureReason.ArchitectureMismatch = 4 -> MarkdownRenderer.Images.MarkdownRasterFailureReason
+MarkdownRenderer.Images.MarkdownRasterFailureReason.Canceled = 5 -> MarkdownRenderer.Images.MarkdownRasterFailureReason
+MarkdownRenderer.Images.MarkdownRasterFailureReason.ResourceLimitExceeded = 1 -> MarkdownRenderer.Images.MarkdownRasterFailureReason
+MarkdownRenderer.Images.MarkdownRasterFailureReason.Timeout = 2 -> MarkdownRenderer.Images.MarkdownRasterFailureReason
+MarkdownRenderer.Images.MarkdownRasterFailureReason.UnsupportedContent = 0 -> MarkdownRenderer.Images.MarkdownRasterFailureReason
+MarkdownRenderer.Images.MarkdownRasterFailureReason.WorkerFailure = 3 -> MarkdownRenderer.Images.MarkdownRasterFailureReason
+MarkdownRenderer.Images.MarkdownRasterFormat
+MarkdownRenderer.Images.MarkdownRasterFormat.Avif = 5 -> MarkdownRenderer.Images.MarkdownRasterFormat
+MarkdownRenderer.Images.MarkdownRasterFormat.Bmp = 2 -> MarkdownRenderer.Images.MarkdownRasterFormat
+MarkdownRenderer.Images.MarkdownRasterFormat.Gif = 4 -> MarkdownRenderer.Images.MarkdownRasterFormat
+MarkdownRenderer.Images.MarkdownRasterFormat.Jpeg = 1 -> MarkdownRenderer.Images.MarkdownRasterFormat
+MarkdownRenderer.Images.MarkdownRasterFormat.Png = 0 -> MarkdownRenderer.Images.MarkdownRasterFormat
+MarkdownRenderer.Images.MarkdownRasterFormat.WebP = 3 -> MarkdownRenderer.Images.MarkdownRasterFormat
+MarkdownRenderer.Images.MarkdownRasterPixelFormat
+MarkdownRenderer.Images.MarkdownRasterPixelFormat.Bgra8Premultiplied = 1 -> MarkdownRenderer.Images.MarkdownRasterPixelFormat
+MarkdownRenderer.Images.MarkdownRasterPixelFormat.Rgba8Premultiplied = 0 -> MarkdownRenderer.Images.MarkdownRasterPixelFormat
+MarkdownRenderer.Images.MarkdownSvgColor
+MarkdownRenderer.Images.MarkdownSvgColor.Alpha.get -> byte
+MarkdownRenderer.Images.MarkdownSvgColor.Alpha.init -> void
+MarkdownRenderer.Images.MarkdownSvgColor.Blue.get -> byte
+MarkdownRenderer.Images.MarkdownSvgColor.Blue.init -> void
+MarkdownRenderer.Images.MarkdownSvgColor.Deconstruct(out byte Red, out byte Green, out byte Blue, out byte Alpha) -> void
+MarkdownRenderer.Images.MarkdownSvgColor.Equals(MarkdownRenderer.Images.MarkdownSvgColor other) -> bool
+MarkdownRenderer.Images.MarkdownSvgColor.Green.get -> byte
+MarkdownRenderer.Images.MarkdownSvgColor.Green.init -> void
+MarkdownRenderer.Images.MarkdownSvgColor.MarkdownSvgColor() -> void
+MarkdownRenderer.Images.MarkdownSvgColor.MarkdownSvgColor(byte Red, byte Green, byte Blue, byte Alpha = 255) -> void
+MarkdownRenderer.Images.MarkdownSvgColor.Red.get -> byte
+MarkdownRenderer.Images.MarkdownSvgColor.Red.init -> void
+MarkdownRenderer.Images.MarkdownSvgColorScheme
+MarkdownRenderer.Images.MarkdownSvgColorScheme.Dark = 1 -> MarkdownRenderer.Images.MarkdownSvgColorScheme
+MarkdownRenderer.Images.MarkdownSvgColorScheme.Light = 0 -> MarkdownRenderer.Images.MarkdownSvgColorScheme
+MarkdownRenderer.Images.MarkdownSvgDocumentInfo
+MarkdownRenderer.Images.MarkdownSvgDocumentInfo.<Clone>$() -> MarkdownRenderer.Images.MarkdownSvgDocumentInfo!
+MarkdownRenderer.Images.MarkdownSvgDocumentInfo.Deconstruct(out double? IntrinsicWidthDips, out double? IntrinsicHeightDips, out double? IntrinsicAspectRatio, out string? Description, out bool HasText, out bool UsesCurrentColor, out bool UsesColorScheme) -> void
+MarkdownRenderer.Images.MarkdownSvgDocumentInfo.Description.get -> string?
+MarkdownRenderer.Images.MarkdownSvgDocumentInfo.Description.init -> void
+MarkdownRenderer.Images.MarkdownSvgDocumentInfo.Equals(MarkdownRenderer.Images.MarkdownSvgDocumentInfo? other) -> bool
+MarkdownRenderer.Images.MarkdownSvgDocumentInfo.HasText.get -> bool
+MarkdownRenderer.Images.MarkdownSvgDocumentInfo.HasText.init -> void
+MarkdownRenderer.Images.MarkdownSvgDocumentInfo.IntrinsicAspectRatio.get -> double?
+MarkdownRenderer.Images.MarkdownSvgDocumentInfo.IntrinsicAspectRatio.init -> void
+MarkdownRenderer.Images.MarkdownSvgDocumentInfo.IntrinsicHeightDips.get -> double?
+MarkdownRenderer.Images.MarkdownSvgDocumentInfo.IntrinsicHeightDips.init -> void
+MarkdownRenderer.Images.MarkdownSvgDocumentInfo.IntrinsicWidthDips.get -> double?
+MarkdownRenderer.Images.MarkdownSvgDocumentInfo.IntrinsicWidthDips.init -> void
+MarkdownRenderer.Images.MarkdownSvgDocumentInfo.MarkdownSvgDocumentInfo(double? IntrinsicWidthDips = null, double? IntrinsicHeightDips = null, double? IntrinsicAspectRatio = null, string? Description = null, bool HasText = false, bool UsesCurrentColor = false, bool UsesColorScheme = false) -> void
+MarkdownRenderer.Images.MarkdownSvgDocumentInfo.UsesColorScheme.get -> bool
+MarkdownRenderer.Images.MarkdownSvgDocumentInfo.UsesColorScheme.init -> void
+MarkdownRenderer.Images.MarkdownSvgDocumentInfo.UsesCurrentColor.get -> bool
+MarkdownRenderer.Images.MarkdownSvgDocumentInfo.UsesCurrentColor.init -> void
+MarkdownRenderer.Images.MarkdownSvgException
+MarkdownRenderer.Images.MarkdownSvgException.MarkdownSvgException(MarkdownRenderer.Images.MarkdownSvgFailureReason reason, string? message = null, System.Exception? innerException = null) -> void
+MarkdownRenderer.Images.MarkdownSvgException.Reason.get -> MarkdownRenderer.Images.MarkdownSvgFailureReason
+MarkdownRenderer.Images.MarkdownSvgFailureReason
+MarkdownRenderer.Images.MarkdownSvgFailureReason.ArchitectureMismatch = 4 -> MarkdownRenderer.Images.MarkdownSvgFailureReason
+MarkdownRenderer.Images.MarkdownSvgFailureReason.Canceled = 5 -> MarkdownRenderer.Images.MarkdownSvgFailureReason
+MarkdownRenderer.Images.MarkdownSvgFailureReason.ResourceLimitExceeded = 1 -> MarkdownRenderer.Images.MarkdownSvgFailureReason
+MarkdownRenderer.Images.MarkdownSvgFailureReason.Timeout = 2 -> MarkdownRenderer.Images.MarkdownSvgFailureReason
+MarkdownRenderer.Images.MarkdownSvgFailureReason.UnsupportedContent = 0 -> MarkdownRenderer.Images.MarkdownSvgFailureReason
+MarkdownRenderer.Images.MarkdownSvgFailureReason.WorkerFailure = 3 -> MarkdownRenderer.Images.MarkdownSvgFailureReason
+MarkdownRenderer.Images.MarkdownSvgOpenRequest
+MarkdownRenderer.Images.MarkdownSvgOpenRequest.<Clone>$() -> MarkdownRenderer.Images.MarkdownSvgOpenRequest!
+MarkdownRenderer.Images.MarkdownSvgOpenRequest.ColorScheme.get -> MarkdownRenderer.Images.MarkdownSvgColorScheme
+MarkdownRenderer.Images.MarkdownSvgOpenRequest.ColorScheme.init -> void
+MarkdownRenderer.Images.MarkdownSvgOpenRequest.Deconstruct(out System.ReadOnlyMemory<byte> SanitizedSvgBytes, out string? Locale, out MarkdownRenderer.Images.MarkdownSvgColorScheme ColorScheme, out MarkdownRenderer.Images.MarkdownSvgColor? SemanticColor, out MarkdownRenderer.Images.MarkdownSvgRenderPriority Priority) -> void
+MarkdownRenderer.Images.MarkdownSvgOpenRequest.Equals(MarkdownRenderer.Images.MarkdownSvgOpenRequest? other) -> bool
+MarkdownRenderer.Images.MarkdownSvgOpenRequest.Locale.get -> string?
+MarkdownRenderer.Images.MarkdownSvgOpenRequest.Locale.init -> void
+MarkdownRenderer.Images.MarkdownSvgOpenRequest.MarkdownSvgOpenRequest(System.ReadOnlyMemory<byte> SanitizedSvgBytes, string? Locale = null, MarkdownRenderer.Images.MarkdownSvgColorScheme ColorScheme = MarkdownRenderer.Images.MarkdownSvgColorScheme.Light, MarkdownRenderer.Images.MarkdownSvgColor? SemanticColor = null, MarkdownRenderer.Images.MarkdownSvgRenderPriority Priority = MarkdownRenderer.Images.MarkdownSvgRenderPriority.Visible) -> void
+MarkdownRenderer.Images.MarkdownSvgOpenRequest.Priority.get -> MarkdownRenderer.Images.MarkdownSvgRenderPriority
+MarkdownRenderer.Images.MarkdownSvgOpenRequest.Priority.init -> void
+MarkdownRenderer.Images.MarkdownSvgOpenRequest.SanitizedSvgBytes.get -> System.ReadOnlyMemory<byte>
+MarkdownRenderer.Images.MarkdownSvgOpenRequest.SanitizedSvgBytes.init -> void
+MarkdownRenderer.Images.MarkdownSvgOpenRequest.SemanticColor.get -> MarkdownRenderer.Images.MarkdownSvgColor?
+MarkdownRenderer.Images.MarkdownSvgOpenRequest.SemanticColor.init -> void
+MarkdownRenderer.Images.MarkdownSvgPhysicalViewport
+MarkdownRenderer.Images.MarkdownSvgPhysicalViewport.Deconstruct(out double Width, out double Height) -> void
+MarkdownRenderer.Images.MarkdownSvgPhysicalViewport.Equals(MarkdownRenderer.Images.MarkdownSvgPhysicalViewport other) -> bool
+MarkdownRenderer.Images.MarkdownSvgPhysicalViewport.Height.get -> double
+MarkdownRenderer.Images.MarkdownSvgPhysicalViewport.Height.init -> void
+MarkdownRenderer.Images.MarkdownSvgPhysicalViewport.MarkdownSvgPhysicalViewport() -> void
+MarkdownRenderer.Images.MarkdownSvgPhysicalViewport.MarkdownSvgPhysicalViewport(double Width, double Height) -> void
+MarkdownRenderer.Images.MarkdownSvgPhysicalViewport.Width.get -> double
+MarkdownRenderer.Images.MarkdownSvgPhysicalViewport.Width.init -> void
+MarkdownRenderer.Images.MarkdownSvgPixelFormat
+MarkdownRenderer.Images.MarkdownSvgPixelFormat.Bgra8Premultiplied = 1 -> MarkdownRenderer.Images.MarkdownSvgPixelFormat
+MarkdownRenderer.Images.MarkdownSvgPixelFormat.Rgba8Premultiplied = 0 -> MarkdownRenderer.Images.MarkdownSvgPixelFormat
+MarkdownRenderer.Images.MarkdownSvgRaster
+MarkdownRenderer.Images.MarkdownSvgRaster.Dispose() -> void
+MarkdownRenderer.Images.MarkdownSvgRaster.HeightPixels.get -> int
+MarkdownRenderer.Images.MarkdownSvgRaster.LengthBytes.get -> int
+MarkdownRenderer.Images.MarkdownSvgRaster.MarkdownSvgRaster(System.Buffers.IMemoryOwner<byte>! owner, int lengthBytes, int widthPixels, int heightPixels, int strideBytes, MarkdownRenderer.Images.MarkdownSvgPixelFormat pixelFormat) -> void
+MarkdownRenderer.Images.MarkdownSvgRaster.PixelFormat.get -> MarkdownRenderer.Images.MarkdownSvgPixelFormat
+MarkdownRenderer.Images.MarkdownSvgRaster.Pixels.get -> System.ReadOnlyMemory<byte>
+MarkdownRenderer.Images.MarkdownSvgRaster.StrideBytes.get -> int
+MarkdownRenderer.Images.MarkdownSvgRaster.WidthPixels.get -> int
+MarkdownRenderer.Images.MarkdownSvgRenderPriority
+MarkdownRenderer.Images.MarkdownSvgRenderPriority.Overscan = 0 -> MarkdownRenderer.Images.MarkdownSvgRenderPriority
+MarkdownRenderer.Images.MarkdownSvgRenderPriority.Visible = 1 -> MarkdownRenderer.Images.MarkdownSvgRenderPriority
+MarkdownRenderer.Images.MarkdownSvgRenderRequest
+MarkdownRenderer.Images.MarkdownSvgRenderRequest.<Clone>$() -> MarkdownRenderer.Images.MarkdownSvgRenderRequest!
+MarkdownRenderer.Images.MarkdownSvgRenderRequest.Deconstruct(out int TargetWidthPixels, out int TargetHeightPixels, out MarkdownRenderer.Images.MarkdownSvgTileRegion? TileRegion, out MarkdownRenderer.Images.MarkdownSvgPixelFormat PixelFormat, out MarkdownRenderer.Images.MarkdownSvgRenderPriority Priority) -> void
+MarkdownRenderer.Images.MarkdownSvgRenderRequest.Equals(MarkdownRenderer.Images.MarkdownSvgRenderRequest? other) -> bool
+MarkdownRenderer.Images.MarkdownSvgRenderRequest.MarkdownSvgRenderRequest(int TargetWidthPixels, int TargetHeightPixels, MarkdownRenderer.Images.MarkdownSvgTileRegion? TileRegion = null, MarkdownRenderer.Images.MarkdownSvgPixelFormat PixelFormat = MarkdownRenderer.Images.MarkdownSvgPixelFormat.Rgba8Premultiplied, MarkdownRenderer.Images.MarkdownSvgRenderPriority Priority = MarkdownRenderer.Images.MarkdownSvgRenderPriority.Visible) -> void
+MarkdownRenderer.Images.MarkdownSvgRenderRequest.PhysicalViewport.get -> MarkdownRenderer.Images.MarkdownSvgPhysicalViewport?
+MarkdownRenderer.Images.MarkdownSvgRenderRequest.PhysicalViewport.init -> void
+MarkdownRenderer.Images.MarkdownSvgRenderRequest.PixelFormat.get -> MarkdownRenderer.Images.MarkdownSvgPixelFormat
+MarkdownRenderer.Images.MarkdownSvgRenderRequest.PixelFormat.init -> void
+MarkdownRenderer.Images.MarkdownSvgRenderRequest.Priority.get -> MarkdownRenderer.Images.MarkdownSvgRenderPriority
+MarkdownRenderer.Images.MarkdownSvgRenderRequest.Priority.init -> void
+MarkdownRenderer.Images.MarkdownSvgRenderRequest.TargetHeightPixels.get -> int
+MarkdownRenderer.Images.MarkdownSvgRenderRequest.TargetHeightPixels.init -> void
+MarkdownRenderer.Images.MarkdownSvgRenderRequest.TargetWidthPixels.get -> int
+MarkdownRenderer.Images.MarkdownSvgRenderRequest.TargetWidthPixels.init -> void
+MarkdownRenderer.Images.MarkdownSvgRenderRequest.TileRegion.get -> MarkdownRenderer.Images.MarkdownSvgTileRegion?
+MarkdownRenderer.Images.MarkdownSvgRenderRequest.TileRegion.init -> void
+MarkdownRenderer.Images.MarkdownSvgSourcePreparation
+MarkdownRenderer.Images.MarkdownSvgSourcePreparation.FailureDescription.get -> string?
+MarkdownRenderer.Images.MarkdownSvgSourcePreparation.FailureReason.get -> MarkdownRenderer.Images.MarkdownSvgFailureReason?
+MarkdownRenderer.Images.MarkdownSvgSourcePreparation.SanitizedBytes.get -> byte[]?
+MarkdownRenderer.Images.MarkdownSvgTileRegion
+MarkdownRenderer.Images.MarkdownSvgTileRegion.Deconstruct(out int X, out int Y, out int Width, out int Height) -> void
+MarkdownRenderer.Images.MarkdownSvgTileRegion.Equals(MarkdownRenderer.Images.MarkdownSvgTileRegion other) -> bool
+MarkdownRenderer.Images.MarkdownSvgTileRegion.Height.get -> int
+MarkdownRenderer.Images.MarkdownSvgTileRegion.Height.init -> void
+MarkdownRenderer.Images.MarkdownSvgTileRegion.MarkdownSvgTileRegion() -> void
+MarkdownRenderer.Images.MarkdownSvgTileRegion.MarkdownSvgTileRegion(int X, int Y, int Width, int Height) -> void
+MarkdownRenderer.Images.MarkdownSvgTileRegion.Width.get -> int
+MarkdownRenderer.Images.MarkdownSvgTileRegion.Width.init -> void
+MarkdownRenderer.Images.MarkdownSvgTileRegion.X.get -> int
+MarkdownRenderer.Images.MarkdownSvgTileRegion.X.init -> void
+MarkdownRenderer.Images.MarkdownSvgTileRegion.Y.get -> int
+MarkdownRenderer.Images.MarkdownSvgTileRegion.Y.init -> void
+MarkdownRenderer.MarkdownRendererRuntime
+MarkdownRenderer.Performance.IMarkdownPerformanceSession
+MarkdownRenderer.Performance.IMarkdownPerformanceSession.GetSnapshot() -> MarkdownRenderer.Performance.MarkdownPerformanceSnapshot!
+MarkdownRenderer.Performance.IMarkdownPerformanceSession.Options.get -> MarkdownRenderer.Performance.MarkdownPerformanceOptions!
+MarkdownRenderer.Performance.IMarkdownPerformanceSession.Trim() -> void
+MarkdownRenderer.Performance.MarkdownPerformanceOptions
+MarkdownRenderer.Performance.MarkdownPerformanceOptions.<Clone>$() -> MarkdownRenderer.Performance.MarkdownPerformanceOptions!
+MarkdownRenderer.Performance.MarkdownPerformanceOptions.DeferOffscreenScenes.get -> bool
+MarkdownRenderer.Performance.MarkdownPerformanceOptions.DeferOffscreenScenes.init -> void
+MarkdownRenderer.Performance.MarkdownPerformanceOptions.Equals(MarkdownRenderer.Performance.MarkdownPerformanceOptions? other) -> bool
+MarkdownRenderer.Performance.MarkdownPerformanceOptions.LookAheadViewports.get -> int
+MarkdownRenderer.Performance.MarkdownPerformanceOptions.LookAheadViewports.init -> void
+MarkdownRenderer.Performance.MarkdownPerformanceOptions.MarkdownPerformanceOptions() -> void
+MarkdownRenderer.Performance.MarkdownPerformanceOptions.MaxConcurrentCpuPreparations.get -> int
+MarkdownRenderer.Performance.MarkdownPerformanceOptions.MaxConcurrentCpuPreparations.init -> void
+MarkdownRenderer.Performance.MarkdownPerformanceOptions.MaxConcurrentImageFetches.get -> int
+MarkdownRenderer.Performance.MarkdownPerformanceOptions.MaxConcurrentImageFetches.init -> void
+MarkdownRenderer.Performance.MarkdownPerformanceOptions.MaxConcurrentScenePreparations.get -> int
+MarkdownRenderer.Performance.MarkdownPerformanceOptions.MaxConcurrentScenePreparations.init -> void
+MarkdownRenderer.Performance.MarkdownPerformanceOptions.MaxInFlightSourceBytes.get -> long
+MarkdownRenderer.Performance.MarkdownPerformanceOptions.MaxInFlightSourceBytes.init -> void
+MarkdownRenderer.Performance.MarkdownPerformanceOptions.MaxRasterOutputPixels.get -> long
+MarkdownRenderer.Performance.MarkdownPerformanceOptions.MaxRasterOutputPixels.init -> void
+MarkdownRenderer.Performance.MarkdownPerformanceOptions.PrefetchDocumentImages.get -> bool
+MarkdownRenderer.Performance.MarkdownPerformanceOptions.PrefetchDocumentImages.init -> void
+MarkdownRenderer.Performance.MarkdownPerformanceOptions.ReleaseOffscreenImageResources.get -> bool
+MarkdownRenderer.Performance.MarkdownPerformanceOptions.ReleaseOffscreenImageResources.init -> void
+MarkdownRenderer.Performance.MarkdownPerformanceOptions.ReservedVisibleImageFetches.get -> int
+MarkdownRenderer.Performance.MarkdownPerformanceOptions.ReservedVisibleImageFetches.init -> void
+MarkdownRenderer.Performance.MarkdownPerformanceOptions.ReservedVisibleSourceBytes.get -> long
+MarkdownRenderer.Performance.MarkdownPerformanceOptions.ReservedVisibleSourceBytes.init -> void
+MarkdownRenderer.Performance.MarkdownPerformanceOptions.SceneCacheBudgetBytes.get -> long
+MarkdownRenderer.Performance.MarkdownPerformanceOptions.SceneCacheBudgetBytes.init -> void
+MarkdownRenderer.Performance.MarkdownPerformanceOptions.SourceCacheBudgetBytes.get -> long
+MarkdownRenderer.Performance.MarkdownPerformanceOptions.SourceCacheBudgetBytes.init -> void
+MarkdownRenderer.Performance.MarkdownPerformanceOptions.UseCachedRasterPreview.get -> bool
+MarkdownRenderer.Performance.MarkdownPerformanceOptions.UseCachedRasterPreview.init -> void
+MarkdownRenderer.Performance.MarkdownPerformanceOptions.UseDisplaySizedRasterDecode.get -> bool
+MarkdownRenderer.Performance.MarkdownPerformanceOptions.UseDisplaySizedRasterDecode.init -> void
+MarkdownRenderer.Performance.MarkdownPerformanceSnapshot
+MarkdownRenderer.Performance.MarkdownPerformanceSnapshot.ActiveImageFetches.get -> int
+MarkdownRenderer.Performance.MarkdownPerformanceSnapshot.CpuPreparationMilliseconds.get -> long
+MarkdownRenderer.Performance.MarkdownPerformanceSnapshot.CpuPreparations.get -> long
+MarkdownRenderer.Performance.MarkdownPerformanceSnapshot.ImageFetchCancellations.get -> long
+MarkdownRenderer.Performance.MarkdownPerformanceSnapshot.ImageFetches.get -> long
+MarkdownRenderer.Performance.MarkdownPerformanceSnapshot.ImageFetchFailures.get -> long
+MarkdownRenderer.Performance.MarkdownPerformanceSnapshot.ImageFetchMilliseconds.get -> long
+MarkdownRenderer.Performance.MarkdownPerformanceSnapshot.InFlightSourceBytes.get -> long
+MarkdownRenderer.Performance.MarkdownPerformanceSnapshot.PeakInFlightSourceBytes.get -> long
+MarkdownRenderer.Performance.MarkdownPerformanceSnapshot.PendingImageFetches.get -> int
+MarkdownRenderer.Performance.MarkdownPerformanceSnapshot.PendingSourceByteRequests.get -> int
+MarkdownRenderer.Performance.MarkdownPerformanceSnapshot.SceneCacheEstimatedBytes.get -> long
+MarkdownRenderer.Performance.MarkdownPerformanceSnapshot.SceneCacheEvictions.get -> long
+MarkdownRenderer.Performance.MarkdownPerformanceSnapshot.SceneCacheHits.get -> long
+MarkdownRenderer.Performance.MarkdownPerformanceSnapshot.ScenePreparationMilliseconds.get -> long
+MarkdownRenderer.Performance.MarkdownPerformanceSnapshot.ScenePreparations.get -> long
+MarkdownRenderer.Performance.MarkdownPerformanceSnapshot.SourceCacheBytes.get -> long
+MarkdownRenderer.Performance.MarkdownPerformanceSnapshot.SourceCacheEvictions.get -> long
+MarkdownRenderer.Performance.MarkdownPerformanceSnapshot.SourceCacheHits.get -> long
+MarkdownRenderer.Selection.MarkdownCopyOptions
+MarkdownRenderer.Selection.MarkdownCopyOptions.IncludeHtml.get -> bool
+MarkdownRenderer.Selection.MarkdownCopyOptions.IncludeHtml.init -> void
+MarkdownRenderer.Selection.MarkdownCopyOptions.MarkdownCopyOptions() -> void
+MarkdownRenderer.Selection.MarkdownCopyOptions.PlainTextMode.get -> MarkdownRenderer.Selection.MarkdownPlainTextCopyMode
+MarkdownRenderer.Selection.MarkdownCopyOptions.PlainTextMode.init -> void
+MarkdownRenderer.Selection.MarkdownPlainTextCopyMode
+MarkdownRenderer.Selection.MarkdownPlainTextCopyMode.RenderedText = 1 -> MarkdownRenderer.Selection.MarkdownPlainTextCopyMode
+MarkdownRenderer.Selection.MarkdownPlainTextCopyMode.SourceMarkdown = 0 -> MarkdownRenderer.Selection.MarkdownPlainTextCopyMode
+MarkdownRenderer.Theming.ElementStyle
+MarkdownRenderer.Theming.ElementStyle.AccentBar.get -> Windows.UI.Color?
+MarkdownRenderer.Theming.ElementStyle.AccentBar.init -> void
+MarkdownRenderer.Theming.ElementStyle.AccentBarAffectsContentLayout.get -> bool
+MarkdownRenderer.Theming.ElementStyle.AccentBarAffectsContentLayout.init -> void
+MarkdownRenderer.Theming.ElementStyle.AccentBarThickness.get -> float
+MarkdownRenderer.Theming.ElementStyle.AccentBarThickness.init -> void
+MarkdownRenderer.Theming.ElementStyle.Background.get -> Windows.UI.Color?
+MarkdownRenderer.Theming.ElementStyle.Background.init -> void
+MarkdownRenderer.Theming.ElementStyle.BorderBrush.get -> Windows.UI.Color?
+MarkdownRenderer.Theming.ElementStyle.BorderBrush.init -> void
+MarkdownRenderer.Theming.ElementStyle.BorderThickness.get -> float
+MarkdownRenderer.Theming.ElementStyle.BorderThickness.init -> void
+MarkdownRenderer.Theming.ElementStyle.CornerRadius.get -> float
+MarkdownRenderer.Theming.ElementStyle.CornerRadius.init -> void
+MarkdownRenderer.Theming.ElementStyle.ElementStyle() -> void
+MarkdownRenderer.Theming.ElementStyle.FocusForeground.get -> Windows.UI.Color?
+MarkdownRenderer.Theming.ElementStyle.FocusForeground.init -> void
+MarkdownRenderer.Theming.ElementStyle.FontFamily.get -> string!
+MarkdownRenderer.Theming.ElementStyle.FontFamily.init -> void
+MarkdownRenderer.Theming.ElementStyle.FontSize.get -> float
+MarkdownRenderer.Theming.ElementStyle.FontSize.init -> void
+MarkdownRenderer.Theming.ElementStyle.FontStyle.get -> Windows.UI.Text.FontStyle
+MarkdownRenderer.Theming.ElementStyle.FontStyle.init -> void
+MarkdownRenderer.Theming.ElementStyle.FontWeight.get -> Windows.UI.Text.FontWeight
+MarkdownRenderer.Theming.ElementStyle.FontWeight.init -> void
+MarkdownRenderer.Theming.ElementStyle.Foreground.get -> Windows.UI.Color
+MarkdownRenderer.Theming.ElementStyle.Foreground.init -> void
+MarkdownRenderer.Theming.ElementStyle.HoverForeground.get -> Windows.UI.Color?
+MarkdownRenderer.Theming.ElementStyle.HoverForeground.init -> void
+MarkdownRenderer.Theming.ElementStyle.LineHeightMultiplier.get -> float
+MarkdownRenderer.Theming.ElementStyle.LineHeightMultiplier.init -> void
+MarkdownRenderer.Theming.ElementStyle.ListIndent.get -> float
+MarkdownRenderer.Theming.ElementStyle.ListIndent.init -> void
+MarkdownRenderer.Theming.ElementStyle.Margin.get -> Microsoft.UI.Xaml.Thickness
+MarkdownRenderer.Theming.ElementStyle.Margin.init -> void
+MarkdownRenderer.Theming.ElementStyle.NestedListIndent.get -> float
+MarkdownRenderer.Theming.ElementStyle.NestedListIndent.init -> void
+MarkdownRenderer.Theming.ElementStyle.Padding.get -> Microsoft.UI.Xaml.Thickness
+MarkdownRenderer.Theming.ElementStyle.Padding.init -> void
+MarkdownRenderer.Theming.ElementStyle.Strikethrough.get -> bool
+MarkdownRenderer.Theming.ElementStyle.Strikethrough.init -> void
+MarkdownRenderer.Theming.ElementStyle.Underline.get -> bool
+MarkdownRenderer.Theming.ElementStyle.Underline.init -> void
+MarkdownRenderer.Theming.ElementStyleOverride
+MarkdownRenderer.Theming.ElementStyleOverride.AccentBar.get -> Windows.UI.Color?
+MarkdownRenderer.Theming.ElementStyleOverride.AccentBar.init -> void
+MarkdownRenderer.Theming.ElementStyleOverride.AccentBarAffectsContentLayout.get -> bool?
+MarkdownRenderer.Theming.ElementStyleOverride.AccentBarAffectsContentLayout.init -> void
+MarkdownRenderer.Theming.ElementStyleOverride.AccentBarThickness.get -> float?
+MarkdownRenderer.Theming.ElementStyleOverride.AccentBarThickness.init -> void
+MarkdownRenderer.Theming.ElementStyleOverride.Background.get -> Windows.UI.Color?
+MarkdownRenderer.Theming.ElementStyleOverride.Background.init -> void
+MarkdownRenderer.Theming.ElementStyleOverride.BorderBrush.get -> Windows.UI.Color?
+MarkdownRenderer.Theming.ElementStyleOverride.BorderBrush.init -> void
+MarkdownRenderer.Theming.ElementStyleOverride.BorderThickness.get -> float?
+MarkdownRenderer.Theming.ElementStyleOverride.BorderThickness.init -> void
+MarkdownRenderer.Theming.ElementStyleOverride.CornerRadius.get -> float?
+MarkdownRenderer.Theming.ElementStyleOverride.CornerRadius.init -> void
+MarkdownRenderer.Theming.ElementStyleOverride.ElementStyleOverride() -> void
+MarkdownRenderer.Theming.ElementStyleOverride.FocusForeground.get -> Windows.UI.Color?
+MarkdownRenderer.Theming.ElementStyleOverride.FocusForeground.init -> void
+MarkdownRenderer.Theming.ElementStyleOverride.FontFamily.get -> string?
+MarkdownRenderer.Theming.ElementStyleOverride.FontFamily.init -> void
+MarkdownRenderer.Theming.ElementStyleOverride.FontSize.get -> float?
+MarkdownRenderer.Theming.ElementStyleOverride.FontSize.init -> void
+MarkdownRenderer.Theming.ElementStyleOverride.FontStyle.get -> Windows.UI.Text.FontStyle?
+MarkdownRenderer.Theming.ElementStyleOverride.FontStyle.init -> void
+MarkdownRenderer.Theming.ElementStyleOverride.FontWeight.get -> Windows.UI.Text.FontWeight?
+MarkdownRenderer.Theming.ElementStyleOverride.FontWeight.init -> void
+MarkdownRenderer.Theming.ElementStyleOverride.Foreground.get -> Windows.UI.Color?
+MarkdownRenderer.Theming.ElementStyleOverride.Foreground.init -> void
+MarkdownRenderer.Theming.ElementStyleOverride.HeadingBorderBottomOnly.get -> bool?
+MarkdownRenderer.Theming.ElementStyleOverride.HeadingBorderBottomOnly.init -> void
+MarkdownRenderer.Theming.ElementStyleOverride.HoverForeground.get -> Windows.UI.Color?
+MarkdownRenderer.Theming.ElementStyleOverride.HoverForeground.init -> void
+MarkdownRenderer.Theming.ElementStyleOverride.LineHeightMultiplier.get -> float?
+MarkdownRenderer.Theming.ElementStyleOverride.LineHeightMultiplier.init -> void
+MarkdownRenderer.Theming.ElementStyleOverride.ListIndent.get -> float?
+MarkdownRenderer.Theming.ElementStyleOverride.ListIndent.init -> void
+MarkdownRenderer.Theming.ElementStyleOverride.Margin.get -> Microsoft.UI.Xaml.Thickness?
+MarkdownRenderer.Theming.ElementStyleOverride.Margin.init -> void
+MarkdownRenderer.Theming.ElementStyleOverride.NestedListIndent.get -> float?
+MarkdownRenderer.Theming.ElementStyleOverride.NestedListIndent.init -> void
+MarkdownRenderer.Theming.ElementStyleOverride.Padding.get -> Microsoft.UI.Xaml.Thickness?
+MarkdownRenderer.Theming.ElementStyleOverride.Padding.init -> void
+MarkdownRenderer.Theming.ElementStyleOverride.Strikethrough.get -> bool?
+MarkdownRenderer.Theming.ElementStyleOverride.Strikethrough.init -> void
+MarkdownRenderer.Theming.ElementStyleOverride.Underline.get -> bool?
+MarkdownRenderer.Theming.ElementStyleOverride.Underline.init -> void
+MarkdownRenderer.Theming.MarkdownElementKeys
+MarkdownRenderer.Theming.MarkdownResourceKeys
+MarkdownRenderer.Theming.MarkdownStyleContext
+MarkdownRenderer.Theming.MarkdownStyleContext.AncestorRoles.get -> System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Theming.MarkdownStyleRole>!
+MarkdownRenderer.Theming.MarkdownStyleContext.ClassNames.get -> System.Collections.Generic.IReadOnlyList<string!>!
+MarkdownRenderer.Theming.MarkdownStyleContext.Language.get -> string?
+MarkdownRenderer.Theming.MarkdownStyleContext.MarkdownStyleContext() -> void
+MarkdownRenderer.Theming.MarkdownStyleContext.MarkdownStyleContext(MarkdownRenderer.Theming.MarkdownStyleRole role, int nestingDepth = 0, string? language = null, string? state = null, System.Collections.Generic.IEnumerable<string!>? classNames = null) -> void
+MarkdownRenderer.Theming.MarkdownStyleContext.MarkdownStyleContext(MarkdownRenderer.Theming.MarkdownStyleRole role, System.Collections.Generic.IEnumerable<MarkdownRenderer.Theming.MarkdownStyleRole>! ancestorRoles, int nestingDepth = 0, string? language = null, string? state = null, System.Collections.Generic.IEnumerable<string!>? classNames = null) -> void
+MarkdownRenderer.Theming.MarkdownStyleContext.NestingDepth.get -> int
+MarkdownRenderer.Theming.MarkdownStyleContext.Role.get -> MarkdownRenderer.Theming.MarkdownStyleRole
+MarkdownRenderer.Theming.MarkdownStyleContext.State.get -> string?
+MarkdownRenderer.Theming.MarkdownStyleProperty
+MarkdownRenderer.Theming.MarkdownStyleProperty.AccentBrush = 4 -> MarkdownRenderer.Theming.MarkdownStyleProperty
+MarkdownRenderer.Theming.MarkdownStyleProperty.BackgroundBrush = 3 -> MarkdownRenderer.Theming.MarkdownStyleProperty
+MarkdownRenderer.Theming.MarkdownStyleProperty.BorderBrush = 5 -> MarkdownRenderer.Theming.MarkdownStyleProperty
+MarkdownRenderer.Theming.MarkdownStyleProperty.BorderThickness = 12 -> MarkdownRenderer.Theming.MarkdownStyleProperty
+MarkdownRenderer.Theming.MarkdownStyleProperty.CornerRadius = 13 -> MarkdownRenderer.Theming.MarkdownStyleProperty
+MarkdownRenderer.Theming.MarkdownStyleProperty.FocusForegroundBrush = 2 -> MarkdownRenderer.Theming.MarkdownStyleProperty
+MarkdownRenderer.Theming.MarkdownStyleProperty.FontFamily = 6 -> MarkdownRenderer.Theming.MarkdownStyleProperty
+MarkdownRenderer.Theming.MarkdownStyleProperty.FontSize = 7 -> MarkdownRenderer.Theming.MarkdownStyleProperty
+MarkdownRenderer.Theming.MarkdownStyleProperty.FontStyle = 9 -> MarkdownRenderer.Theming.MarkdownStyleProperty
+MarkdownRenderer.Theming.MarkdownStyleProperty.FontWeight = 8 -> MarkdownRenderer.Theming.MarkdownStyleProperty
+MarkdownRenderer.Theming.MarkdownStyleProperty.ForegroundBrush = 0 -> MarkdownRenderer.Theming.MarkdownStyleProperty
+MarkdownRenderer.Theming.MarkdownStyleProperty.HoverForegroundBrush = 1 -> MarkdownRenderer.Theming.MarkdownStyleProperty
+MarkdownRenderer.Theming.MarkdownStyleProperty.LineHeightMultiplier = 14 -> MarkdownRenderer.Theming.MarkdownStyleProperty
+MarkdownRenderer.Theming.MarkdownStyleProperty.ListIndent = 15 -> MarkdownRenderer.Theming.MarkdownStyleProperty
+MarkdownRenderer.Theming.MarkdownStyleProperty.Margin = 10 -> MarkdownRenderer.Theming.MarkdownStyleProperty
+MarkdownRenderer.Theming.MarkdownStyleProperty.NestedListIndent = 16 -> MarkdownRenderer.Theming.MarkdownStyleProperty
+MarkdownRenderer.Theming.MarkdownStyleProperty.Padding = 11 -> MarkdownRenderer.Theming.MarkdownStyleProperty
+MarkdownRenderer.Theming.MarkdownStyleProperty.TextDecorations = 17 -> MarkdownRenderer.Theming.MarkdownStyleProperty
+MarkdownRenderer.Theming.MarkdownStyleRule
+MarkdownRenderer.Theming.MarkdownStyleRule.MarkdownStyleRule(MarkdownRenderer.Theming.MarkdownStyleSelector! selector, MarkdownRenderer.Theming.ElementStyleOverride! style) -> void
+MarkdownRenderer.Theming.MarkdownStyleRule.Selector.get -> MarkdownRenderer.Theming.MarkdownStyleSelector!
+MarkdownRenderer.Theming.MarkdownStyleRule.Style.get -> MarkdownRenderer.Theming.ElementStyleOverride!
+MarkdownRenderer.Theming.MarkdownStyleSelector
+MarkdownRenderer.Theming.MarkdownStyleSelector.AncestorRole.get -> MarkdownRenderer.Theming.MarkdownStyleRole?
+MarkdownRenderer.Theming.MarkdownStyleSelector.ClassName.get -> string?
+MarkdownRenderer.Theming.MarkdownStyleSelector.Language.get -> string?
+MarkdownRenderer.Theming.MarkdownStyleSelector.MarkdownStyleSelector(MarkdownRenderer.Theming.MarkdownStyleRole role, int minimumNestingDepth = 0, int maximumNestingDepth = 2147483647, string? language = null, string? state = null, string? className = null) -> void
+MarkdownRenderer.Theming.MarkdownStyleSelector.MarkdownStyleSelector(MarkdownRenderer.Theming.MarkdownStyleRole role, MarkdownRenderer.Theming.MarkdownStyleRole ancestorRole, int minimumNestingDepth = 0, int maximumNestingDepth = 2147483647, string? language = null, string? state = null, string? className = null) -> void
+MarkdownRenderer.Theming.MarkdownStyleSelector.Matches(MarkdownRenderer.Theming.MarkdownStyleContext context) -> bool
+MarkdownRenderer.Theming.MarkdownStyleSelector.MaximumNestingDepth.get -> int
+MarkdownRenderer.Theming.MarkdownStyleSelector.MinimumNestingDepth.get -> int
+MarkdownRenderer.Theming.MarkdownStyleSelector.Role.get -> MarkdownRenderer.Theming.MarkdownStyleRole
+MarkdownRenderer.Theming.MarkdownStyleSelector.State.get -> string?
+MarkdownRenderer.Theming.MarkdownStyleSheet
+MarkdownRenderer.Theming.MarkdownStyleSheet.MarkdownStyleSheet(System.Collections.Generic.IEnumerable<MarkdownRenderer.Theming.MarkdownStyleRule!>! rules) -> void
+MarkdownRenderer.Theming.MarkdownStyleSheet.Resolve(MarkdownRenderer.Theming.ElementStyle! baseStyle, MarkdownRenderer.Theming.MarkdownStyleContext context) -> MarkdownRenderer.Theming.ElementStyle!
+MarkdownRenderer.Theming.MarkdownStyleSheet.Rules.get -> System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Theming.MarkdownStyleRule!>!
+MarkdownRenderer.Theming.MarkdownStyleSheet.WithPositiveAdjacentMarginCollapse() -> MarkdownRenderer.Theming.MarkdownStyleSheet!
+MarkdownRenderer.Theming.MarkdownStyleSheet.WithRelativeScriptFontSize(float scale) -> MarkdownRenderer.Theming.MarkdownStyleSheet!
+MarkdownRenderer.Theming.MarkdownStyleSheet.WithRule(MarkdownRenderer.Theming.MarkdownStyleRule! rule) -> MarkdownRenderer.Theming.MarkdownStyleSheet!
+MarkdownRenderer.Theming.MarkdownStyleSheet.WithZeroTrailingTopLevelBlockMargin() -> MarkdownRenderer.Theming.MarkdownStyleSheet!
+MarkdownRenderer.Theming.MarkdownTheme
+MarkdownRenderer.Theming.MarkdownTheme.AccentColor.get -> Windows.UI.Color?
+MarkdownRenderer.Theming.MarkdownTheme.AccentColor.set -> void
+MarkdownRenderer.Theming.MarkdownTheme.BeginUpdate() -> System.IDisposable!
+MarkdownRenderer.Theming.MarkdownTheme.Changed -> System.EventHandler?
+MarkdownRenderer.Theming.MarkdownTheme.Invalidate() -> void
+MarkdownRenderer.Theming.MarkdownTheme.MarkdownTheme() -> void
+MarkdownRenderer.Theming.MarkdownTheme.Overrides.get -> System.Collections.Generic.IDictionary<string!, MarkdownRenderer.Theming.ElementStyleOverride!>!
+MarkdownRenderer.Theming.MarkdownTheme.Revision.get -> int
+MarkdownRenderer.Theming.MarkdownTheme.SurfaceColor.get -> Windows.UI.Color?
+MarkdownRenderer.Theming.MarkdownTheme.SurfaceColor.set -> void
+override MarkdownRenderer.CodeBlocks.CodeBlockHighlightSpan.GetHashCode() -> int
+override MarkdownRenderer.Controls.MarkdownRendererControl.OnCreateAutomationPeer() -> Microsoft.UI.Xaml.Automation.Peers.AutomationPeer!
+override MarkdownRenderer.Images.MarkdownDocumentSource.Equals(object? obj) -> bool
+override MarkdownRenderer.Images.MarkdownDocumentSource.GetHashCode() -> int
+override MarkdownRenderer.Images.MarkdownDocumentSource.ToString() -> string!
+override MarkdownRenderer.Images.MarkdownImageAsset.Equals(object? obj) -> bool
+override MarkdownRenderer.Images.MarkdownImageAsset.GetHashCode() -> int
+override MarkdownRenderer.Images.MarkdownImageAsset.ToString() -> string!
+override MarkdownRenderer.Images.MarkdownImageResolution.GetHashCode() -> int
+override MarkdownRenderer.Images.MarkdownImageResolveContext.Equals(object? obj) -> bool
+override MarkdownRenderer.Images.MarkdownImageResolveContext.GetHashCode() -> int
+override MarkdownRenderer.Images.MarkdownImageResolveContext.ToString() -> string!
+override MarkdownRenderer.Images.MarkdownRasterDecodeRequest.Equals(object? obj) -> bool
+override MarkdownRenderer.Images.MarkdownRasterDecodeRequest.GetHashCode() -> int
+override MarkdownRenderer.Images.MarkdownRasterDecodeRequest.ToString() -> string!
+override MarkdownRenderer.Images.MarkdownSvgColor.GetHashCode() -> int
+override MarkdownRenderer.Images.MarkdownSvgDocumentInfo.Equals(object? obj) -> bool
+override MarkdownRenderer.Images.MarkdownSvgDocumentInfo.GetHashCode() -> int
+override MarkdownRenderer.Images.MarkdownSvgDocumentInfo.ToString() -> string!
+override MarkdownRenderer.Images.MarkdownSvgOpenRequest.Equals(object? obj) -> bool
+override MarkdownRenderer.Images.MarkdownSvgOpenRequest.GetHashCode() -> int
+override MarkdownRenderer.Images.MarkdownSvgOpenRequest.ToString() -> string!
+override MarkdownRenderer.Images.MarkdownSvgPhysicalViewport.GetHashCode() -> int
+override MarkdownRenderer.Images.MarkdownSvgRenderRequest.Equals(object? obj) -> bool
+override MarkdownRenderer.Images.MarkdownSvgRenderRequest.GetHashCode() -> int
+override MarkdownRenderer.Images.MarkdownSvgRenderRequest.ToString() -> string!
+override MarkdownRenderer.Images.MarkdownSvgTileRegion.GetHashCode() -> int
+override MarkdownRenderer.Performance.MarkdownPerformanceOptions.Equals(object? obj) -> bool
+override MarkdownRenderer.Performance.MarkdownPerformanceOptions.GetHashCode() -> int
+override MarkdownRenderer.Performance.MarkdownPerformanceOptions.ToString() -> string!
+static MarkdownRenderer.CodeBlocks.CodeBlockHighlightResult.Empty.get -> MarkdownRenderer.CodeBlocks.CodeBlockHighlightResult!
+static MarkdownRenderer.CodeBlocks.CodeBlockHighlightSpan.operator !=(MarkdownRenderer.CodeBlocks.CodeBlockHighlightSpan left, MarkdownRenderer.CodeBlocks.CodeBlockHighlightSpan right) -> bool
+static MarkdownRenderer.CodeBlocks.CodeBlockHighlightSpan.operator ==(MarkdownRenderer.CodeBlocks.CodeBlockHighlightSpan left, MarkdownRenderer.CodeBlocks.CodeBlockHighlightSpan right) -> bool
+static MarkdownRenderer.Controls.EmbedVisibility.IsInDerealizeBand(double planTop, double planBottom, double viewportTop, double viewportBottom, double derealizeOverscan) -> bool
+static MarkdownRenderer.Controls.EmbedVisibility.IsInRealizeBand(double planTop, double planBottom, double viewportTop, double viewportBottom, double overscan) -> bool
+static MarkdownRenderer.Controls.MarkdownRendererControl.CreateDefault(string? markdown = null, MarkdownRenderer.Theming.MarkdownTheme? theme = null, bool isSelectionEnabled = true, bool isCodeBlockCopyEnabled = true, MarkdownRenderer.CodeBlocks.ICodeBlockSyntaxHighlighter? codeBlockSyntaxHighlighter = null, string? codeBlockCopyButtonLabel = null, string? codeBlockCopiedButtonLabel = null, MarkdownRenderer.Images.IMarkdownImageResolver? imageResolver = null, System.Uri? imageBaseUri = null, string? imageDocumentPath = null, MarkdownRenderer.CodeBlocks.CodeBlockWrappingMode codeBlockWrappingMode = MarkdownRenderer.CodeBlocks.CodeBlockWrappingMode.NoWrap) -> MarkdownRenderer.Controls.MarkdownScrollView!
+static MarkdownRenderer.Controls.MarkdownSystemIntegration.ApplySystemFlowDirection(Microsoft.UI.Xaml.FrameworkElement! element) -> void
+static MarkdownRenderer.Controls.MarkdownSystemIntegration.GetSystemFlowDirection() -> Microsoft.UI.Xaml.FlowDirection
+static MarkdownRenderer.Controls.MarkdownSystemIntegration.GetUseSystemFlowDirection(Microsoft.UI.Xaml.FrameworkElement! element) -> bool
+static MarkdownRenderer.Controls.MarkdownSystemIntegration.SetUseSystemFlowDirection(Microsoft.UI.Xaml.FrameworkElement! element, bool value) -> void
+static MarkdownRenderer.Images.MarkdownDocumentSource.operator !=(MarkdownRenderer.Images.MarkdownDocumentSource? left, MarkdownRenderer.Images.MarkdownDocumentSource? right) -> bool
+static MarkdownRenderer.Images.MarkdownDocumentSource.operator ==(MarkdownRenderer.Images.MarkdownDocumentSource? left, MarkdownRenderer.Images.MarkdownDocumentSource? right) -> bool
+static MarkdownRenderer.Images.MarkdownImageAsset.operator !=(MarkdownRenderer.Images.MarkdownImageAsset? left, MarkdownRenderer.Images.MarkdownImageAsset? right) -> bool
+static MarkdownRenderer.Images.MarkdownImageAsset.operator ==(MarkdownRenderer.Images.MarkdownImageAsset? left, MarkdownRenderer.Images.MarkdownImageAsset? right) -> bool
+static MarkdownRenderer.Images.MarkdownImageResolution.Blocked(MarkdownRenderer.Images.MarkdownImageUnavailableReason reason) -> MarkdownRenderer.Images.MarkdownImageResolution
+static MarkdownRenderer.Images.MarkdownImageResolution.NotHandled.get -> MarkdownRenderer.Images.MarkdownImageResolution
+static MarkdownRenderer.Images.MarkdownImageResolution.operator !=(MarkdownRenderer.Images.MarkdownImageResolution left, MarkdownRenderer.Images.MarkdownImageResolution right) -> bool
+static MarkdownRenderer.Images.MarkdownImageResolution.operator ==(MarkdownRenderer.Images.MarkdownImageResolution left, MarkdownRenderer.Images.MarkdownImageResolution right) -> bool
+static MarkdownRenderer.Images.MarkdownImageResolution.Resolved(MarkdownRenderer.Images.MarkdownImageAsset! asset) -> MarkdownRenderer.Images.MarkdownImageResolution
+static MarkdownRenderer.Images.MarkdownImageResolution.Unavailable.get -> MarkdownRenderer.Images.MarkdownImageResolution
+static MarkdownRenderer.Images.MarkdownImageResolveContext.operator !=(MarkdownRenderer.Images.MarkdownImageResolveContext? left, MarkdownRenderer.Images.MarkdownImageResolveContext? right) -> bool
+static MarkdownRenderer.Images.MarkdownImageResolveContext.operator ==(MarkdownRenderer.Images.MarkdownImageResolveContext? left, MarkdownRenderer.Images.MarkdownImageResolveContext? right) -> bool
+static MarkdownRenderer.Images.MarkdownRasterDecodeRequest.operator !=(MarkdownRenderer.Images.MarkdownRasterDecodeRequest? left, MarkdownRenderer.Images.MarkdownRasterDecodeRequest? right) -> bool
+static MarkdownRenderer.Images.MarkdownRasterDecodeRequest.operator ==(MarkdownRenderer.Images.MarkdownRasterDecodeRequest? left, MarkdownRenderer.Images.MarkdownRasterDecodeRequest? right) -> bool
+static MarkdownRenderer.Images.MarkdownSvgColor.operator !=(MarkdownRenderer.Images.MarkdownSvgColor left, MarkdownRenderer.Images.MarkdownSvgColor right) -> bool
+static MarkdownRenderer.Images.MarkdownSvgColor.operator ==(MarkdownRenderer.Images.MarkdownSvgColor left, MarkdownRenderer.Images.MarkdownSvgColor right) -> bool
+static MarkdownRenderer.Images.MarkdownSvgDocumentInfo.operator !=(MarkdownRenderer.Images.MarkdownSvgDocumentInfo? left, MarkdownRenderer.Images.MarkdownSvgDocumentInfo? right) -> bool
+static MarkdownRenderer.Images.MarkdownSvgDocumentInfo.operator ==(MarkdownRenderer.Images.MarkdownSvgDocumentInfo? left, MarkdownRenderer.Images.MarkdownSvgDocumentInfo? right) -> bool
+static MarkdownRenderer.Images.MarkdownSvgOpenRequest.operator !=(MarkdownRenderer.Images.MarkdownSvgOpenRequest? left, MarkdownRenderer.Images.MarkdownSvgOpenRequest? right) -> bool
+static MarkdownRenderer.Images.MarkdownSvgOpenRequest.operator ==(MarkdownRenderer.Images.MarkdownSvgOpenRequest? left, MarkdownRenderer.Images.MarkdownSvgOpenRequest? right) -> bool
+static MarkdownRenderer.Images.MarkdownSvgPhysicalViewport.operator !=(MarkdownRenderer.Images.MarkdownSvgPhysicalViewport left, MarkdownRenderer.Images.MarkdownSvgPhysicalViewport right) -> bool
+static MarkdownRenderer.Images.MarkdownSvgPhysicalViewport.operator ==(MarkdownRenderer.Images.MarkdownSvgPhysicalViewport left, MarkdownRenderer.Images.MarkdownSvgPhysicalViewport right) -> bool
+static MarkdownRenderer.Images.MarkdownSvgRenderRequest.operator !=(MarkdownRenderer.Images.MarkdownSvgRenderRequest? left, MarkdownRenderer.Images.MarkdownSvgRenderRequest? right) -> bool
+static MarkdownRenderer.Images.MarkdownSvgRenderRequest.operator ==(MarkdownRenderer.Images.MarkdownSvgRenderRequest? left, MarkdownRenderer.Images.MarkdownSvgRenderRequest? right) -> bool
+static MarkdownRenderer.Images.MarkdownSvgSourcePreparation.Admit(byte[]! sanitizedBytes) -> MarkdownRenderer.Images.MarkdownSvgSourcePreparation!
+static MarkdownRenderer.Images.MarkdownSvgSourcePreparation.Reject(MarkdownRenderer.Images.MarkdownSvgFailureReason reason, string! description) -> MarkdownRenderer.Images.MarkdownSvgSourcePreparation!
+static MarkdownRenderer.Images.MarkdownSvgTileRegion.operator !=(MarkdownRenderer.Images.MarkdownSvgTileRegion left, MarkdownRenderer.Images.MarkdownSvgTileRegion right) -> bool
+static MarkdownRenderer.Images.MarkdownSvgTileRegion.operator ==(MarkdownRenderer.Images.MarkdownSvgTileRegion left, MarkdownRenderer.Images.MarkdownSvgTileRegion right) -> bool
+static MarkdownRenderer.MarkdownRendererRuntime.BeginShutdown() -> void
+static MarkdownRenderer.MarkdownRendererRuntime.IsShutdownInProgress.get -> bool
+static MarkdownRenderer.MarkdownRendererRuntime.Shutdown(System.TimeSpan? timeout = null) -> void
+static MarkdownRenderer.Performance.MarkdownPerformanceOptions.operator !=(MarkdownRenderer.Performance.MarkdownPerformanceOptions? left, MarkdownRenderer.Performance.MarkdownPerformanceOptions? right) -> bool
+static MarkdownRenderer.Performance.MarkdownPerformanceOptions.operator ==(MarkdownRenderer.Performance.MarkdownPerformanceOptions? left, MarkdownRenderer.Performance.MarkdownPerformanceOptions? right) -> bool
+static MarkdownRenderer.Performance.MarkdownPerformanceOptions.Progressive.get -> MarkdownRenderer.Performance.MarkdownPerformanceOptions!
+static MarkdownRenderer.Selection.MarkdownCopyOptions.Default.get -> MarkdownRenderer.Selection.MarkdownCopyOptions!
+static MarkdownRenderer.Theming.MarkdownElementKeys.Class(string! className) -> string!
+static MarkdownRenderer.Theming.MarkdownElementKeys.Context(string! ancestorKey, string! elementKey) -> string!
+static MarkdownRenderer.Theming.MarkdownElementKeys.Id(string! id) -> string!
+static MarkdownRenderer.Theming.MarkdownElementKeys.ListDepth(int depth) -> string!
+static MarkdownRenderer.Theming.MarkdownResourceKeys.ForRole(MarkdownRenderer.Theming.MarkdownStyleRole role, MarkdownRenderer.Theming.MarkdownStyleProperty property) -> string!
+static MarkdownRenderer.Theming.MarkdownStyleSheet.Empty.get -> MarkdownRenderer.Theming.MarkdownStyleSheet!
+static readonly MarkdownRenderer.Controls.MarkdownRendererControl.AllowThirdPartyRemoteImagesProperty -> Microsoft.UI.Xaml.DependencyProperty!
+static readonly MarkdownRenderer.Controls.MarkdownRendererControl.CodeBlockChromeModeProperty -> Microsoft.UI.Xaml.DependencyProperty!
+static readonly MarkdownRenderer.Controls.MarkdownRendererControl.CodeBlockCopiedButtonLabelProperty -> Microsoft.UI.Xaml.DependencyProperty!
+static readonly MarkdownRenderer.Controls.MarkdownRendererControl.CodeBlockCopyButtonLabelProperty -> Microsoft.UI.Xaml.DependencyProperty!
+static readonly MarkdownRenderer.Controls.MarkdownRendererControl.CodeBlockCopyButtonStyleProperty -> Microsoft.UI.Xaml.DependencyProperty!
+static readonly MarkdownRenderer.Controls.MarkdownRendererControl.CodeBlockLineNumberModeProperty -> Microsoft.UI.Xaml.DependencyProperty!
+static readonly MarkdownRenderer.Controls.MarkdownRendererControl.CodeBlockSyntaxHighlighterProperty -> Microsoft.UI.Xaml.DependencyProperty!
+static readonly MarkdownRenderer.Controls.MarkdownRendererControl.CodeBlockWrappingModeProperty -> Microsoft.UI.Xaml.DependencyProperty!
+static readonly MarkdownRenderer.Controls.MarkdownRendererControl.CodeHighlighterProperty -> Microsoft.UI.Xaml.DependencyProperty!
+static readonly MarkdownRenderer.Controls.MarkdownRendererControl.CommandProviderProperty -> Microsoft.UI.Xaml.DependencyProperty!
+static readonly MarkdownRenderer.Controls.MarkdownRendererControl.DocumentProperty -> Microsoft.UI.Xaml.DependencyProperty!
+static readonly MarkdownRenderer.Controls.MarkdownRendererControl.EngineProperty -> Microsoft.UI.Xaml.DependencyProperty!
+static readonly MarkdownRenderer.Controls.MarkdownRendererControl.HostedElementFactoryProperty -> Microsoft.UI.Xaml.DependencyProperty!
+static readonly MarkdownRenderer.Controls.MarkdownRendererControl.ImageBaseUriProperty -> Microsoft.UI.Xaml.DependencyProperty!
+static readonly MarkdownRenderer.Controls.MarkdownRendererControl.ImageDocumentPathProperty -> Microsoft.UI.Xaml.DependencyProperty!
+static readonly MarkdownRenderer.Controls.MarkdownRendererControl.ImageDocumentSourceProperty -> Microsoft.UI.Xaml.DependencyProperty!
+static readonly MarkdownRenderer.Controls.MarkdownRendererControl.ImageResolverProperty -> Microsoft.UI.Xaml.DependencyProperty!
+static readonly MarkdownRenderer.Controls.MarkdownRendererControl.IsCodeBlockCopyEnabledProperty -> Microsoft.UI.Xaml.DependencyProperty!
+static readonly MarkdownRenderer.Controls.MarkdownRendererControl.IsCodeBlockSyntaxHighlightingEnabledProperty -> Microsoft.UI.Xaml.DependencyProperty!
+static readonly MarkdownRenderer.Controls.MarkdownRendererControl.IsSelectionEnabledProperty -> Microsoft.UI.Xaml.DependencyProperty!
+static readonly MarkdownRenderer.Controls.MarkdownRendererControl.IsTaskListEditingEnabledProperty -> Microsoft.UI.Xaml.DependencyProperty!
+static readonly MarkdownRenderer.Controls.MarkdownRendererControl.MarkdownProperty -> Microsoft.UI.Xaml.DependencyProperty!
+static readonly MarkdownRenderer.Controls.MarkdownRendererControl.PerformanceSessionProperty -> Microsoft.UI.Xaml.DependencyProperty!
+static readonly MarkdownRenderer.Controls.MarkdownRendererControl.RasterDecoderProperty -> Microsoft.UI.Xaml.DependencyProperty!
+static readonly MarkdownRenderer.Controls.MarkdownRendererControl.StringProviderProperty -> Microsoft.UI.Xaml.DependencyProperty!
+static readonly MarkdownRenderer.Controls.MarkdownRendererControl.StyleSheetProperty -> Microsoft.UI.Xaml.DependencyProperty!
+static readonly MarkdownRenderer.Controls.MarkdownRendererControl.SvgRendererProperty -> Microsoft.UI.Xaml.DependencyProperty!
+static readonly MarkdownRenderer.Controls.MarkdownRendererControl.ThemeProperty -> Microsoft.UI.Xaml.DependencyProperty!
+static readonly MarkdownRenderer.Controls.MarkdownSystemIntegration.UseSystemFlowDirectionProperty -> Microsoft.UI.Xaml.DependencyProperty!
+static readonly MarkdownRenderer.Theming.MarkdownTheme.AccentColorProperty -> Microsoft.UI.Xaml.DependencyProperty!
+static readonly MarkdownRenderer.Theming.MarkdownTheme.SurfaceColorProperty -> Microsoft.UI.Xaml.DependencyProperty!
+~override MarkdownRenderer.CodeBlocks.CodeBlockHighlightSpan.Equals(object obj) -> bool
+~override MarkdownRenderer.CodeBlocks.CodeBlockHighlightSpan.ToString() -> string
+~override MarkdownRenderer.Images.MarkdownImageResolution.Equals(object obj) -> bool
+~override MarkdownRenderer.Images.MarkdownImageResolution.ToString() -> string
+~override MarkdownRenderer.Images.MarkdownSvgColor.Equals(object obj) -> bool
+~override MarkdownRenderer.Images.MarkdownSvgColor.ToString() -> string
+~override MarkdownRenderer.Images.MarkdownSvgPhysicalViewport.Equals(object obj) -> bool
+~override MarkdownRenderer.Images.MarkdownSvgPhysicalViewport.ToString() -> string
+~override MarkdownRenderer.Images.MarkdownSvgTileRegion.Equals(object obj) -> bool
+~override MarkdownRenderer.Images.MarkdownSvgTileRegion.ToString() -> string

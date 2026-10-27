@@ -1,0 +1,62 @@
+#nullable enable
+const MarkdownRenderer.Html.SafeHtmlBudgets.DefaultMaxAttributeCount = 32 -> int
+const MarkdownRenderer.Html.SafeHtmlBudgets.DefaultMaxAttributeValueLength = 16384 -> int
+const MarkdownRenderer.Html.SafeHtmlBudgets.DefaultMaxInputLength = 4194304 -> int
+const MarkdownRenderer.Html.SafeHtmlBudgets.DefaultMaxNestingDepth = 64 -> int
+const MarkdownRenderer.Html.SafeHtmlBudgets.DefaultMaxNodeCount = 100000 -> int
+const MarkdownRenderer.Html.SafeHtmlBudgets.DefaultMaxTagLength = 65536 -> int
+const MarkdownRenderer.Html.SafeHtmlFeature.ContractVersion = 1 -> int
+const MarkdownRenderer.Html.SafeHtmlFeature.PackageId = "MarkdownRenderer.Html" -> string!
+MarkdownRenderer.Html.ISafeHtmlCapabilityMarker
+MarkdownRenderer.Html.ISafeHtmlCapabilityMarker.SafeHtmlCapabilities.get -> MarkdownRenderer.Html.SafeHtmlCapabilityDescriptor!
+MarkdownRenderer.Html.ISafeHtmlCapabilityMarker.SafeHtmlOptions.get -> MarkdownRenderer.Html.SafeHtmlOptions!
+MarkdownRenderer.Html.SafeHtmlBudgets
+MarkdownRenderer.Html.SafeHtmlBudgets.Equals(MarkdownRenderer.Html.SafeHtmlBudgets? other) -> bool
+MarkdownRenderer.Html.SafeHtmlBudgets.LoweredTo(MarkdownRenderer.Html.SafeHtmlBudgets! ceilings) -> MarkdownRenderer.Html.SafeHtmlBudgets!
+MarkdownRenderer.Html.SafeHtmlBudgets.MaxAttributeCount.get -> int
+MarkdownRenderer.Html.SafeHtmlBudgets.MaxAttributeValueLength.get -> int
+MarkdownRenderer.Html.SafeHtmlBudgets.MaxInputLength.get -> int
+MarkdownRenderer.Html.SafeHtmlBudgets.MaxNestingDepth.get -> int
+MarkdownRenderer.Html.SafeHtmlBudgets.MaxNodeCount.get -> int
+MarkdownRenderer.Html.SafeHtmlBudgets.MaxTagLength.get -> int
+MarkdownRenderer.Html.SafeHtmlBudgets.SafeHtmlBudgets(int maxInputLength = 4194304, int maxNodeCount = 100000, int maxNestingDepth = 64, int maxAttributeCount = 32, int maxAttributeValueLength = 16384, int maxTagLength = 65536) -> void
+MarkdownRenderer.Html.SafeHtmlCapabilityDescriptor
+MarkdownRenderer.Html.SafeHtmlCapabilityDescriptor.AppliesCssLayout.get -> bool
+MarkdownRenderer.Html.SafeHtmlCapabilityDescriptor.ContractVersion.get -> int
+MarkdownRenderer.Html.SafeHtmlCapabilityDescriptor.ExecutesScript.get -> bool
+MarkdownRenderer.Html.SafeHtmlCapabilityDescriptor.ExposesBrowserDom.get -> bool
+MarkdownRenderer.Html.SafeHtmlCapabilityDescriptor.HasDirectNetworkAccess.get -> bool
+MarkdownRenderer.Html.SafeHtmlCapabilityDescriptor.HasFilesystemAccess.get -> bool
+MarkdownRenderer.Html.SafeHtmlCapabilityDescriptor.ImageRouting.get -> MarkdownRenderer.Html.SafeHtmlExternalResourceRouting
+MarkdownRenderer.Html.SafeHtmlCapabilityDescriptor.IsNativeSubset.get -> bool
+MarkdownRenderer.Html.SafeHtmlCapabilityDescriptor.LinkRouting.get -> MarkdownRenderer.Html.SafeHtmlExternalResourceRouting
+MarkdownRenderer.Html.SafeHtmlCapabilityDescriptor.PackageId.get -> string!
+MarkdownRenderer.Html.SafeHtmlCapabilityDescriptor.UsesHalfOpenUtf16SourceRanges.get -> bool
+MarkdownRenderer.Html.SafeHtmlCapabilityMarker
+MarkdownRenderer.Html.SafeHtmlCapabilityMarker.SafeHtmlCapabilities.get -> MarkdownRenderer.Html.SafeHtmlCapabilityDescriptor!
+MarkdownRenderer.Html.SafeHtmlCapabilityMarker.SafeHtmlCapabilityMarker(MarkdownRenderer.Html.SafeHtmlOptions? options = null) -> void
+MarkdownRenderer.Html.SafeHtmlCapabilityMarker.SafeHtmlOptions.get -> MarkdownRenderer.Html.SafeHtmlOptions!
+MarkdownRenderer.Html.SafeHtmlExtensions
+MarkdownRenderer.Html.SafeHtmlExternalResourceRouting
+MarkdownRenderer.Html.SafeHtmlExternalResourceRouting.Disabled = 0 -> MarkdownRenderer.Html.SafeHtmlExternalResourceRouting
+MarkdownRenderer.Html.SafeHtmlExternalResourceRouting.HostMediated = 1 -> MarkdownRenderer.Html.SafeHtmlExternalResourceRouting
+MarkdownRenderer.Html.SafeHtmlFeature
+MarkdownRenderer.Html.SafeHtmlOptions
+MarkdownRenderer.Html.SafeHtmlOptions.AllowedStyleClasses.get -> System.Collections.Immutable.ImmutableHashSet<string!>!
+MarkdownRenderer.Html.SafeHtmlOptions.Budgets.get -> MarkdownRenderer.Html.SafeHtmlBudgets!
+MarkdownRenderer.Html.SafeHtmlOptions.EnableImages.get -> bool
+MarkdownRenderer.Html.SafeHtmlOptions.EnableLinks.get -> bool
+MarkdownRenderer.Html.SafeHtmlOptions.SafeHtmlOptions(MarkdownRenderer.Html.SafeHtmlBudgets? budgets = null, bool enableLinks = true, bool enableImages = true, MarkdownRenderer.Html.SafeHtmlUnknownElementBehavior unknownElementBehavior = MarkdownRenderer.Html.SafeHtmlUnknownElementBehavior.RenderLiteral, System.Collections.Generic.IEnumerable<string!>? allowedStyleClasses = null) -> void
+MarkdownRenderer.Html.SafeHtmlOptions.UnknownElementBehavior.get -> MarkdownRenderer.Html.SafeHtmlUnknownElementBehavior
+MarkdownRenderer.Html.SafeHtmlUnknownElementBehavior
+MarkdownRenderer.Html.SafeHtmlUnknownElementBehavior.KeepTextContent = 1 -> MarkdownRenderer.Html.SafeHtmlUnknownElementBehavior
+MarkdownRenderer.Html.SafeHtmlUnknownElementBehavior.RenderLiteral = 0 -> MarkdownRenderer.Html.SafeHtmlUnknownElementBehavior
+override MarkdownRenderer.Html.SafeHtmlBudgets.Equals(object? obj) -> bool
+override MarkdownRenderer.Html.SafeHtmlBudgets.GetHashCode() -> int
+static MarkdownRenderer.Html.SafeHtmlBudgets.Default.get -> MarkdownRenderer.Html.SafeHtmlBudgets!
+static MarkdownRenderer.Html.SafeHtmlExtensions.UseSafeHtml(this MarkdownRenderer.Controls.MarkdownDocumentView! view, MarkdownRenderer.Html.SafeHtmlOptions? options = null) -> MarkdownRenderer.Controls.MarkdownDocumentView!
+static MarkdownRenderer.Html.SafeHtmlExtensions.UseSafeHtml(this MarkdownRenderer.Controls.MarkdownRendererControlBuilder! builder, MarkdownRenderer.Html.SafeHtmlOptions? options = null) -> MarkdownRenderer.Controls.MarkdownRendererControlBuilder!
+static MarkdownRenderer.Html.SafeHtmlExtensions.UseSafeHtml(this MarkdownRenderer.Controls.MarkdownScrollView! view, MarkdownRenderer.Html.SafeHtmlOptions? options = null) -> MarkdownRenderer.Controls.MarkdownScrollView!
+static MarkdownRenderer.Html.SafeHtmlExtensions.UseSafeHtml(this MarkdownRenderer.MarkdownEngineBuilder! builder, MarkdownRenderer.Html.SafeHtmlOptions? options = null) -> MarkdownRenderer.MarkdownEngineBuilder!
+static MarkdownRenderer.Html.SafeHtmlFeature.Capabilities.get -> MarkdownRenderer.Html.SafeHtmlCapabilityDescriptor!
+static MarkdownRenderer.Html.SafeHtmlOptions.Default.get -> MarkdownRenderer.Html.SafeHtmlOptions!

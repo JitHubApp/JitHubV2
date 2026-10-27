@@ -5,29 +5,6 @@ namespace JitHub.WinUI.Tests.Services;
 
 public sealed class SolutionConfigurationContractTests
 {
-    [Fact]
-    public void RepositoryBuildProps_ExcludeConventionalAndIsolatedGeneratedTrees()
-    {
-        string root = FindRepositoryRoot();
-
-        foreach (string propsPath in new[]
-        {
-            Path.Combine(root, "Directory.Build.props"),
-            Path.Combine(root, "MarkdownRenderer", "Directory.Build.props")
-        })
-        {
-            XDocument props = XDocument.Load(propsPath);
-            string excludes = Assert.Single(
-                props.Root!.Elements("PropertyGroup").Elements("DefaultItemExcludes")).Value;
-
-            Assert.Contains("obj\\**", excludes, StringComparison.Ordinal);
-            Assert.Contains("obj-*\\**", excludes, StringComparison.Ordinal);
-            Assert.Contains("bin\\**", excludes, StringComparison.Ordinal);
-            Assert.Contains("bin-*\\**", excludes, StringComparison.Ordinal);
-            Assert.Contains("artifacts\\**", excludes, StringComparison.Ordinal);
-        }
-    }
-
     [Theory]
     [InlineData("MarkdownRenderer/tests/aot/MarkdownRenderer.ManagedPacks.AotSmoke/MarkdownRenderer.ManagedPacks.AotSmoke.csproj")]
     [InlineData("MarkdownRenderer/tests/MarkdownRenderer.PixelTests/MarkdownRenderer.PixelTests.csproj")]

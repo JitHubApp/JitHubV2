@@ -16,7 +16,6 @@
     <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
     <!-- Suppress warnings about Windows-specific APIs in test context -->
     <NoWarn>$(NoWarn);CA1416</NoWarn>
-    <DefaultItemExcludes>$(DefaultItemExcludes);obj\**;obj-*\**;bin\**;bin-*\**;artifacts\**</DefaultItemExcludes>
   </PropertyGroup>
 
 

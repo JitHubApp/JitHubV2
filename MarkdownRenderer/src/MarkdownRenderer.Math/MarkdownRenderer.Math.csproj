@@ -4,7 +4,6 @@
     <AssemblyName>MarkdownRenderer.Math</AssemblyName>
     <ImplicitUsings>enable</ImplicitUsings>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <DefaultItemExcludes>$(DefaultItemExcludes);obj\**;obj-*\**;bin\**;bin-*\**;artifacts\**</DefaultItemExcludes>
     <PackageId>MarkdownRenderer.Math</PackageId>
     <Description>Native, AOT-compatible TeX parsing and immutable vector formula scenes for MarkdownRenderer.</Description>
     <PackageTags>markdown;winui;math;tex;windows</PackageTags>

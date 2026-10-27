@@ -16,42 +16,12 @@
     <PackageReference Include="Microsoft.WindowsAppSDK.Runtime" />
     <ProjectReference Include="..\..\src\MarkdownRenderer.GitHub\MarkdownRenderer.GitHub.csproj" />
     <ProjectReference Include="..\..\src\MarkdownRenderer.Performance\MarkdownRenderer.Performance.csproj" />
-    <!-- The managed-pack release lane intentionally exercises only Core, WinUI,
-         GFM, safe HTML, and GitHub. Public API baselines still run against every
-         shipping pack in the default build. -->
-    <ProjectReference Include="..\..\src\MarkdownRenderer.Math\MarkdownRenderer.Math.csproj"
-                      Condition="'$(ManagedPacksOnly)' != 'true'" />
-    <ProjectReference Include="..\..\src\MarkdownRenderer.Mermaid\MarkdownRenderer.Mermaid.csproj"
-                      Condition="'$(ManagedPacksOnly)' != 'true'" />
-    <ProjectReference Include="..\..\src\MarkdownRenderer.Svg.Resvg\MarkdownRenderer.Svg.Resvg.csproj"
-                      Condition="'$(ManagedPacksOnly)' != 'true'" />
-    <ProjectReference Include="..\..\src\MarkdownRenderer.SyntaxHighlighting.TextMate\MarkdownRenderer.SyntaxHighlighting.TextMate.csproj"
-                      Condition="'$(ManagedPacksOnly)' != 'true'" />
-    <ProjectReference Include="..\..\src\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.csproj"
-                      Condition="'$(ManagedPacksOnly)' != 'true'" />
-    <ProjectReference Include="..\..\src\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All.csproj"
-                      Condition="'$(ManagedPacksOnly)' != 'true'" />
-  </ItemGroup>
-  <ItemGroup Condition="'$(ManagedPacksOnly)' == 'true'">
-    <!-- These focused tests compile directly against optional Math/Mermaid packs.
-         The default/full test build still compiles and runs them with all pack references. -->
-    <Compile Remove="MermaidHighContrastAccessibilityTests.cs" />
-    <Compile Remove="MermaidTypographyRegressionTests.cs" />
-    <Compile Remove="MarkdownPerformanceSessionTests.cs" />
-    <Compile Remove="MixedInlineVectorImageRelayoutTests.cs" />
-    <Compile Remove="MarkdownRangeFromPointTouchSelectionRegressionTests.cs" />
-    <Compile Remove="MathSourceMapCopyContractTests.cs" />
-    <!-- This test reuses private Math-vector fixture helpers from the file above. -->
-    <Compile Remove="InlineVectorGeometryTransferValidationTests.cs" />
-    <Compile Remove="ProgressiveSceneDeferralTests.cs" />
-    <Compile Remove="ProgressiveSceneDiagnosticAggregationTests.cs" />
-    <Compile Remove="ProgressiveSceneGraphRefillTests.cs" />
-    <Compile Remove="RootLocalContainerVectorImageRelayoutTests.cs" />
-    <Compile Remove="RootLocalTableVectorImageRelayoutTests.cs" />
-    <Compile Remove="SafeHtmlRenderingTests.cs" />
-    <Compile Remove="VectorSceneResourceResidencyTests.cs" />
-    <Compile Remove="PublicApiBaselineTests.cs" />
-    <Compile Remove="StablePublicApiTests.cs" />
+    <ProjectReference Include="..\..\src\MarkdownRenderer.Math\MarkdownRenderer.Math.csproj" />
+    <ProjectReference Include="..\..\src\MarkdownRenderer.Mermaid\MarkdownRenderer.Mermaid.csproj" />
+    <ProjectReference Include="..\..\src\MarkdownRenderer.Svg.Resvg\MarkdownRenderer.Svg.Resvg.csproj" />
+    <ProjectReference Include="..\..\src\MarkdownRenderer.SyntaxHighlighting.TextMate\MarkdownRenderer.SyntaxHighlighting.TextMate.csproj" />
+    <ProjectReference Include="..\..\src\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.csproj" />
+    <ProjectReference Include="..\..\src\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All.csproj" />
   </ItemGroup>
   <ItemGroup>
     <!-- Exception to the one-folder rule, to be removed: the harness listener
@@ -65,8 +35,5 @@
     <Compile Include="..\..\perf\MarkdownRenderer.PerformanceHarness\PerformanceEventListener.cs"
              Link="PerformanceHarness\PerformanceEventListener.cs" />
     <EmbeddedResource Include="Fixtures\oversized-static.webp" />
-    <EmbeddedResource Include="PublicApiBaselines\*.txt">
-      <LogicalName>MarkdownRenderer.PublicApiBaselines.%(Filename)%(Extension)</LogicalName>
-    </EmbeddedResource>
   </ItemGroup>
 </Project>

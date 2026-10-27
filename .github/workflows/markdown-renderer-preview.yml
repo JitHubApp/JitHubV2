@@ -258,6 +258,7 @@ jobs:
             '.\MarkdownRenderer\tests\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests.csproj'
             '.\MarkdownRenderer\tests\MarkdownRenderer.Conformance.Tests\MarkdownRenderer.Conformance.Tests.csproj'
             '.\MarkdownRenderer\tests\MarkdownRenderer.PixelTests\MarkdownRenderer.PixelTests.csproj'
+            '.\MarkdownRenderer\tests\MarkdownRenderer.PublicApi.Tests\MarkdownRenderer.PublicApi.Tests.csproj'
             '.\MarkdownRenderer\tests\MarkdownRenderer.Sample.Automation.Tests\MarkdownRenderer.Sample.Automation.Tests.csproj'
           )
           foreach ($project in $projects) {
@@ -281,6 +282,7 @@ jobs:
             '.\MarkdownRenderer\tests\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests.csproj'
             '.\MarkdownRenderer\tests\MarkdownRenderer.Conformance.Tests\MarkdownRenderer.Conformance.Tests.csproj'
             '.\MarkdownRenderer\tests\MarkdownRenderer.PixelTests\MarkdownRenderer.PixelTests.csproj'
+            '.\MarkdownRenderer\tests\MarkdownRenderer.PublicApi.Tests\MarkdownRenderer.PublicApi.Tests.csproj'
             '.\MarkdownRenderer\tests\MarkdownRenderer.Sample.Automation.Tests\MarkdownRenderer.Sample.Automation.Tests.csproj'
           )
           foreach ($project in $projects) {
@@ -317,7 +319,7 @@ jobs:
             throw 'The performance-gate priming invocation unexpectedly accepted a missing report.'
           }
 
-      - name: Run Core, GitHub, HTML, Math, Mermaid, SVG, TextMate, conformance, and sample-automation tests
+      - name: Run Core, GitHub, HTML, Math, Mermaid, SVG, TextMate, conformance, public API, and sample-automation tests
         run: |
           $tests = [ordered]@{
             core = '.\MarkdownRenderer\tests\MarkdownRenderer.Tests\MarkdownRenderer.Tests.csproj'
@@ -328,6 +330,7 @@ jobs:
             svg = '.\MarkdownRenderer\tests\MarkdownRenderer.Svg.Resvg.Tests\MarkdownRenderer.Svg.Resvg.Tests.csproj'
             textmate = '.\MarkdownRenderer\tests\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests.csproj'
             conformance = '.\MarkdownRenderer\tests\MarkdownRenderer.Conformance.Tests\MarkdownRenderer.Conformance.Tests.csproj'
+            publicapi = '.\MarkdownRenderer\tests\MarkdownRenderer.PublicApi.Tests\MarkdownRenderer.PublicApi.Tests.csproj'
             sampleautomation = '.\MarkdownRenderer\tests\MarkdownRenderer.Sample.Automation.Tests\MarkdownRenderer.Sample.Automation.Tests.csproj'
           }
           $results = Join-Path $env:RUNNER_TEMP 'markdownrenderer-preview\test-results'

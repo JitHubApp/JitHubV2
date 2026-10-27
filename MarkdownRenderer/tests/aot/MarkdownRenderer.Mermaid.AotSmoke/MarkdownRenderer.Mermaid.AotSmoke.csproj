@@ -7,7 +7,6 @@
     <Platforms>x64</Platforms>
     <RuntimeIdentifiers></RuntimeIdentifiers>
     <RuntimeIdentifier></RuntimeIdentifier>
-    <DefaultItemExcludes>$(DefaultItemExcludes);obj\**;obj-*\**;bin\**;bin-*\**;artifacts\**</DefaultItemExcludes>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\MarkdownRenderer.Mermaid\MarkdownRenderer.Mermaid.csproj" />

@@ -36,8 +36,9 @@ correctness.
 - The `MarkdownRenderer.Conformance` harness runs every official CommonMark
   0.31.2 and GFM 0.29 example and checks reference-HTML parity. Its exception
   list is empty. CI runs the harness's own tests, not the full corpus.
-- Public-API baseline tests guard the exported surface. They do not replace the
-  final human API approval.
+- The public API analyzer's `PublicAPI.*.txt` files and
+  `MarkdownRenderer.PublicApi.Tests` guard the exported surface. They do not
+  replace the final human API approval.
 - The Sandbox UI runners and `MarkdownRenderer.Sample.Automation` drive the x64
   sample live. Hosted CI does not run them.
 - The performance harness and its gates check first-view, scroll, allocation,

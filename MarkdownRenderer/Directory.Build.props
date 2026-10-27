@@ -6,14 +6,6 @@
        the committed Release lock graph. -->
   <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
 
-  <PropertyGroup>
-    <!-- Some builds (for example the public API baseline update) isolate
-         restore/build state in obj-* and bin-* directories. Keep every
-         generated tree out of SDK source/content globs even when a build
-         overrides BaseIntermediateOutputPath. -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);obj\**;obj-*\**;bin\**;bin-*\**;artifacts\**</DefaultItemExcludes>
-  </PropertyGroup>
-
   <!-- Code defaults for the renderer's own projects. The src, tests, samples,
        perf and tools folder props opt in by setting MarkdownRendererProject
        before they import this file. Projects that merely live under this

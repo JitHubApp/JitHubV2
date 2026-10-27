@@ -8,7 +8,6 @@
     <!-- The compatibility facade is intentionally used by the implementation and
          its two explicit-viewport subclasses; consumers still receive MR1001. -->
     <NoWarn>$(NoWarn);MR1001</NoWarn>
-    <DefaultItemExcludes>$(DefaultItemExcludes);obj\**;obj-*\**;bin\**;bin-*\**;artifacts\**</DefaultItemExcludes>
     <PackageId>MarkdownRenderer.WinUI</PackageId>
     <Description>Native Win2D layout, painting, input, selection, UI Automation, raster images, and Fluent styling for MarkdownRenderer.</Description>
     <PackageTags>markdown;winui;win2d;windows;accessibility</PackageTags>

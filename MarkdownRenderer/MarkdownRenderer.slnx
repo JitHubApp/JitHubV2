@@ -153,6 +153,11 @@
       <Platform Solution="Debug|Any CPU" Project="x64" />
       <Platform Solution="Release|Any CPU" Project="x64" />
     </Project>
+    <Project Path="tests/MarkdownRenderer.PublicApi.Tests/MarkdownRenderer.PublicApi.Tests.csproj">
+      <Platform Solution="*|x64" Project="x64" />
+      <Platform Solution="Debug|Any CPU" Project="x64" />
+      <Platform Solution="Release|Any CPU" Project="x64" />
+    </Project>
     <Project Path="tests/MarkdownRenderer.Sample.Automation.Tests/MarkdownRenderer.Sample.Automation.Tests.csproj">
       <Platform Solution="*|x64" Project="x64" />
       <Platform Solution="Debug|Any CPU" Project="x64" />

@@ -2,10 +2,6 @@
   <PropertyGroup>
     <RootNamespace>MarkdownRenderer</RootNamespace>
     <AssemblyName>MarkdownRenderer.Core</AssemblyName>
-    <!-- Evidence runs use per-lane obj-* directories. Preserve the canonical
-         artifact exclusions even when BaseIntermediateOutputPath is overridden,
-         otherwise generated assembly attributes are globbed as source. -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);obj\**;obj-*\**;bin\**;bin-*\**;artifacts\**</DefaultItemExcludes>
     <PackageId>MarkdownRenderer.Core</PackageId>
     <Description>Immutable markdown documents, standards profiles, UTF-16 source maps, diagnostics, and declarative extensions with no WinUI or native payload.</Description>
     <PackageTags>markdown;commonmark;gfm;windows;aot</PackageTags>
