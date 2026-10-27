@@ -11,6 +11,11 @@
     <MarkdownRendererPackageReadme>$(MSBuildProjectDirectory)\README.md</MarkdownRendererPackageReadme>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="MarkdownRenderer.GitHub.Tests" />
+    <InternalsVisibleTo Include="MarkdownRenderer.Html.Tests" />
+    <InternalsVisibleTo Include="MarkdownRenderer.GitHub" ProjectStructureException="GitHub composes safe HTML through internal SafeHtmlExtensions registry and presentation hooks; step 2 makes them public extension API." />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer.csproj" />
   </ItemGroup>
 </Project>

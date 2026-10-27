@@ -1,8 +1,8 @@
 # Runs the offline self-tests of the MarkdownRenderer engineering scripts:
-# the Windows Sandbox correctness runners, the Sandbox sample UI configuration
-# and the resvg vendored-source provenance check. None of them launches an
-# app, injects input or touches the desktop; each runs in its own PowerShell
-# process.
+# the Windows Sandbox correctness runners, the Sandbox sample UI configuration,
+# the resvg vendored-source provenance check and the code structure check.
+# None of them launches an app, injects input or touches the desktop; each runs
+# in its own PowerShell process.
 [CmdletBinding()]
 param()
 
@@ -16,6 +16,7 @@ $selfTests = @(
     'MarkdownRenderer\eng\Test-MarkdownCorrectnessSelectionTargets.ps1'
     'MarkdownRenderer\eng\Test-SandboxSampleUiConfiguration.ps1'
     'MarkdownRenderer\src\MarkdownRenderer.Svg.Resvg\eng\Test-ResvgVendoredSourceProvenance.ps1'
+    'MarkdownRenderer\eng\tests\Test-ProjectStructure.Tests.ps1'
 )
 
 $pwsh = (Get-Process -Id $PID).Path

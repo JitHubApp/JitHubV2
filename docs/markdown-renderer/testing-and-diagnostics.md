@@ -13,6 +13,48 @@ Windows Sandbox UI runners.
 | `MarkdownRenderer.PixelTests` | SVG fixture and pixel-comparison infrastructure. |
 | `MarkdownRenderer.PublicApi.Tests` | Public-surface policy over every shipping assembly that the `PublicAPI.*.txt` files do not record. See [Public API](public-api.md#changing-the-public-api). |
 
+## Project layout and structure checks
+
+`MarkdownRenderer/` keeps shipping libraries in `src/`, tests in `tests/`
+(NativeAOT smokes in `tests/aot/`), the sample apps in `samples/`, benchmarks
+and the performance harness in `perf/`, developer tools in `tools/`, and build
+scripts in `eng/`. The rules are the "Code Structure Standards" in the
+repository's `AGENTS.md`; two checks enforce part of them.
+
+Every renderer project build runs `CheckMarkdownRendererProjectStructure`
+(`MarkdownRenderer/Directory.Build.targets`) before it compiles:
+
+| Code | Fails on |
+| --- | --- |
+| `MRS0001` | A `Compile`, `Page` or `ApplicationDefinition` item outside the project folder. Generated files in the intermediate output and sources added by NuGet packages are not checked. |
+| `MRS0002` | An `InternalsVisibleTo` grant to an assembly whose name does not end in `.Tests` or `.Benchmarks`. |
+
+`eng/Test-ProjectStructure.ps1` runs early in the preview workflow and checks
+what one project build cannot see:
+
+| Code | Fails on |
+| --- | --- |
+| `MRS0003` | `[assembly: InternalsVisibleTo]` in a source file. Grants are `InternalsVisibleTo` items in the project file. |
+| `MRS0004` | A `.cs` file under `src`, `tests`, `samples`, `perf` or `tools` that is in no project folder and is not a declared exception. |
+| `MRS0005` | A project under those folders that is missing from `MarkdownRenderer.slnx`. |
+| `MRS0006` | A `MarkdownRenderer.slnx` entry that does not exist. |
+| `MRS0007` | An exception `Compile` item that does not name an existing file literally. |
+
+An item may break a rule only when it carries `ProjectStructureException`
+metadata that states the reason and how the exception is removed:
+
+```xml
+<InternalsVisibleTo Include="MarkdownRenderer.Gfm"
+                    ProjectStructureException="Gfm plugs in through internal renderer hooks; they become public extension API." />
+```
+
+The project files are the only list of exceptions; search them for
+`ProjectStructureException`. Run the script locally with:
+
+```powershell
+pwsh .\MarkdownRenderer\eng\Test-ProjectStructure.ps1
+```
+
 ## Common commands
 
 Build automation:
@@ -139,9 +181,9 @@ A case that the batch cannot check is recorded as `UNVERIFIED` with a reason,
 never as a pass.
 
 `Test-MarkdownEngineeringScripts.ps1` runs the offline self-tests of the
-Sandbox runners, the Sandbox sample UI configuration, and the resvg
-vendored-source provenance check. None of them launches an app or touches the
-desktop:
+Sandbox runners, the Sandbox sample UI configuration, the resvg
+vendored-source provenance check, and the code structure check. None of them
+launches an app or touches the desktop:
 
 ```powershell
 pwsh .\MarkdownRenderer\eng\Test-MarkdownEngineeringScripts.ps1

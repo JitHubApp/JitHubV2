@@ -11,6 +11,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="MarkdownRenderer.GitHub.Tests" />
+    <InternalsVisibleTo Include="MarkdownRenderer.GitHub" ProjectStructureException="GitHub composes GFM through the internal GfmExtensions.ConfigureGfmRegistry; step 2 makes it public extension API." />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer.csproj" />
   </ItemGroup>
 

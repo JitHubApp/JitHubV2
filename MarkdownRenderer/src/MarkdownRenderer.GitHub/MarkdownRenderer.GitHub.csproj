@@ -11,6 +11,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="MarkdownRenderer.GitHub.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\MarkdownRenderer.Gfm\MarkdownRenderer.Gfm.csproj" />
     <ProjectReference Include="..\MarkdownRenderer.Html\MarkdownRenderer.Html.csproj" />
     <EmbeddedResource Include="Profiles\github-primer-light-v1.css"

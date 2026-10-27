@@ -74,6 +74,9 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Check renderer code structure
+        run: .\MarkdownRenderer\eng\Test-ProjectStructure.ps1
+
       - name: Set up .NET 10
         uses: actions/setup-dotnet@v6
         with:

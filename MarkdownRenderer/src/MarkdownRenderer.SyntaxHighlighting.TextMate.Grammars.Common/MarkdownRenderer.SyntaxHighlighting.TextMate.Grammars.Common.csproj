@@ -22,14 +22,10 @@
                       GeneratePathProperty="true"
                       PrivateAssets="all"
                       ExcludeAssets="compile;runtime" />
-    <!-- Exception to the one-folder rule, pending an owner decision: the
-         TextMateSharp adapter is shared by Common and All. It cannot move to
-         the lean TextMate pack (no TextMateSharp/Onigwrap payload there), it
-         cannot become public API (pack surfaces expose no TextMateSharp
-         types), and an InternalsVisibleTo between shipping packs is not
-         allowed. Removing it needs a new shared package or a stable-typed
-         public adapter. -->
-    <Compile Include="..\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Shared\BundledTextMateGrammarProvider.cs" Link="Internal\BundledTextMateGrammarProvider.cs" />
+    <!-- Shared with Grammars.All. -->
+    <Compile Include="..\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Shared\BundledTextMateGrammarProvider.cs"
+             Link="Internal\BundledTextMateGrammarProvider.cs"
+             ProjectStructureException="The TextMateSharp adapter is shared by Grammars.Common and Grammars.All. It cannot move to the lean TextMate pack (no TextMateSharp/Onigwrap payload there) or become public API (packs expose no TextMateSharp types), and a grant between shipping packs is not allowed. Step 2 replaces the link with a shared package or a stable-typed public adapter (owner decision)." />
     <None Include="..\..\eng\textmate\THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="THIRD-PARTY-NOTICES.md" Visible="false" />
     <None Include="..\..\eng\textmate\GRAMMAR-PROVENANCE.v2.0.3.json" Pack="true" PackagePath="licenses/GRAMMAR-PROVENANCE.json" Visible="false" />
   </ItemGroup>

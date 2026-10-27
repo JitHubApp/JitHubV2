@@ -25,6 +25,9 @@
     <MarkdownRendererMermaidNativeRid Condition="'$(MarkdownRendererMermaidNativeRid)' == ''">win-x64</MarkdownRendererMermaidNativeRid>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="MarkdownRenderer.Mermaid.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\MarkdownRenderer.Core\MarkdownRenderer.Core.csproj" />
   </ItemGroup>
   <ItemGroup>
