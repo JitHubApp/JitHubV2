@@ -5,6 +5,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Supplies mt.exe for the Windows App SDK self-contained manifest step,
+         so the smoke builds outside a Developer PowerShell. -->
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\..\src\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.csproj">
       <!-- Single-file is an application publish concern. Do not propagate it to
            library project references, which otherwise makes ILLink look for an
