@@ -123,7 +123,7 @@ public sealed class MermaidProvenanceTests
         DirectoryInfo? directory = new(AppContext.BaseDirectory);
         while (directory is not null)
         {
-            string candidate = Path.Combine(directory.FullName, "MarkdownRenderer", "MarkdownRenderer.Mermaid", "MERMAN_PROVENANCE.json");
+            string candidate = Path.Combine(directory.FullName, "MarkdownRenderer", "src", "MarkdownRenderer.Mermaid", "MERMAN_PROVENANCE.json");
             if (File.Exists(candidate))
             {
                 return Path.GetDirectoryName(candidate)!;

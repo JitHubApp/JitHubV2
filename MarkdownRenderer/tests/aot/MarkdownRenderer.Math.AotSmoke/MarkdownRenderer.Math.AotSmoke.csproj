@@ -19,6 +19,6 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\MarkdownRenderer.Math\MarkdownRenderer.Math.csproj" />
+    <ProjectReference Include="..\..\..\src\MarkdownRenderer.Math\MarkdownRenderer.Math.csproj" />
   </ItemGroup>
 </Project>

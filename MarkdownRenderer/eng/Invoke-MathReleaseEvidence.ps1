@@ -149,7 +149,7 @@ function Invoke-CompatibleExecutable {
     }
 }
 
-$testsProject = Join-Path $markdownRoot 'MarkdownRenderer.Math.Tests\MarkdownRenderer.Math.Tests.csproj'
+$testsProject = Join-Path $markdownRoot 'tests\MarkdownRenderer.Math.Tests\MarkdownRenderer.Math.Tests.csproj'
 $testResultsDirectory = Join-Path $runDirectory 'tests'
 $buildArtifactsDirectory = Join-Path $runDirectory 'build'
 [IO.Directory]::CreateDirectory($testResultsDirectory) | Out-Null
@@ -173,14 +173,14 @@ try {
     $packageDirectory = Join-Path $runDirectory 'packages'
     [IO.Directory]::CreateDirectory($packageDirectory) | Out-Null
     Invoke-DotNet @(
-        'pack', (Join-Path $markdownRoot 'MarkdownRenderer.Core\MarkdownRenderer.Core.csproj'),
+        'pack', (Join-Path $markdownRoot 'src\MarkdownRenderer.Core\MarkdownRenderer.Core.csproj'),
         '-c', 'Release', '-p:Platform=x64', '--no-restore',
         ('-p:ArtifactsPath=' + $buildArtifactsDirectory),
         '--disable-build-servers', '-p:UseSharedCompilation=false', '-nr:false',
         '-o', $packageDirectory
     )
     Invoke-DotNet @(
-        'pack', (Join-Path $markdownRoot 'MarkdownRenderer.Math\MarkdownRenderer.Math.csproj'),
+        'pack', (Join-Path $markdownRoot 'src\MarkdownRenderer.Math\MarkdownRenderer.Math.csproj'),
         '-c', 'Release', '-p:Platform=x64', '--no-restore',
         ('-p:ArtifactsPath=' + $buildArtifactsDirectory),
         '--disable-build-servers', '-p:UseSharedCompilation=false', '-nr:false',
@@ -262,10 +262,10 @@ finally {
     $archive.Dispose()
 }
 
-$thirdPartyDirectory = Join-Path $markdownRoot 'MarkdownRenderer.Math\ThirdParty'
+$thirdPartyDirectory = Join-Path $markdownRoot 'src\MarkdownRenderer.Math\ThirdParty'
 $provenancePath = Join-Path $thirdPartyDirectory 'PROVENANCE.json'
 $provenance = Get-Content -LiteralPath $provenancePath -Raw | ConvertFrom-Json
-$mathProject = Join-Path $markdownRoot 'MarkdownRenderer.Math\MarkdownRenderer.Math.csproj'
+$mathProject = Join-Path $markdownRoot 'src\MarkdownRenderer.Math\MarkdownRenderer.Math.csproj'
 $vendorAggregate = Get-VendorAggregate `
     -ThirdPartyDirectory $thirdPartyDirectory `
     -ProjectPath $mathProject
@@ -332,7 +332,7 @@ $consumerProject = @'
     $consumerProject,
     [Text.UTF8Encoding]::new($false))
 [IO.File]::Copy(
-    (Join-Path $markdownRoot 'MarkdownRenderer.Math.AotSmoke\Program.cs'),
+    (Join-Path $markdownRoot 'tests\aot\MarkdownRenderer.Math.AotSmoke\Program.cs'),
     (Join-Path $consumerDirectory 'Program.cs'))
 
 $consumerProjectPath = Join-Path $consumerDirectory 'MathPackageConsumer.csproj'

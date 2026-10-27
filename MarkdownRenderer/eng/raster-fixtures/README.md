@@ -9,7 +9,7 @@ or encoder enter the renderer NuGet packages.
 Regenerate from the repository root:
 
 ```powershell
-cargo run --release --locked --offline --manifest-path MarkdownRenderer/eng/raster-fixtures/Cargo.toml -- MarkdownRenderer/MarkdownRenderer.GitHub.Tests/Fixtures/oversized-static.webp
+cargo run --release --locked --offline --manifest-path MarkdownRenderer/eng/raster-fixtures/Cargo.toml -- MarkdownRenderer/tests/MarkdownRenderer.GitHub.Tests/Fixtures/oversized-static.webp
 ```
 
 The checked-in fixture and Cargo.lock are deterministic. The WIC probe must

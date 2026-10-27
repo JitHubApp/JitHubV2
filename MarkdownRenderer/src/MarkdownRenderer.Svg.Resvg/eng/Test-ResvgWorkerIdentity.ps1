@@ -3,7 +3,7 @@ Set-StrictMode -Version Latest
 Import-Module (Join-Path $PSScriptRoot 'ResvgWorkerIdentity.psm1') -Force
 
 $providerRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$repositoryRoot = [IO.Path]::GetFullPath((Join-Path $providerRoot '..\..'))
+$repositoryRoot = [IO.Path]::GetFullPath((Join-Path $providerRoot '..\..\..'))
 $verifier = Join-Path $PSScriptRoot 'Verify-ResvgWorkerIdentity.ps1'
 $identityModule = Join-Path $PSScriptRoot 'ResvgWorkerIdentity.psm1'
 $tempRoot = Join-Path ([IO.Path]::GetTempPath()) ("resvg-worker-identity-{0}" -f [guid]::NewGuid().ToString('N'))
@@ -319,7 +319,7 @@ try {
         }
     }
 
-    [xml]$testProject = Get-Content -LiteralPath (Join-Path $providerRoot '..\MarkdownRenderer.Svg.Resvg.Tests\MarkdownRenderer.Svg.Resvg.Tests.csproj') -Raw
+    [xml]$testProject = Get-Content -LiteralPath (Join-Path $providerRoot '..\..\tests\MarkdownRenderer.Svg.Resvg.Tests\MarkdownRenderer.Svg.Resvg.Tests.csproj') -Raw
     $content = @($testProject.SelectNodes('//Content') | Where-Object { $_.GetAttribute('Include') -like '*MarkdownRenderer.Svg.Resvg.Worker.exe' })
     if ($content.Count -ne 1 -or
         $content[0].GetAttribute('Include') -notmatch '\$\(ResvgWorkerDirectory\).*\$\(ResvgWorkerRid\)' -or
@@ -328,7 +328,7 @@ try {
     }
     $checks++
 
-    $testProjectPath = Join-Path $providerRoot '..\MarkdownRenderer.Svg.Resvg.Tests\MarkdownRenderer.Svg.Resvg.Tests.csproj'
+    $testProjectPath = Join-Path $providerRoot '..\..\tests\MarkdownRenderer.Svg.Resvg.Tests\MarkdownRenderer.Svg.Resvg.Tests.csproj'
     $customRid = 'win-arm64'
     $itemsJson = @(& dotnet msbuild $testProjectPath '-getItem:Content' "-p:ResvgWorkerDirectory=$workerRoot" "-p:ResvgWorkerRid=$customRid" '-nologo') -join "`n"
     if ($LASTEXITCODE -ne 0) { throw 'MSBuild could not evaluate the provider test project worker override.' }

@@ -24,7 +24,7 @@ $PSNativeCommandUseErrorActionPreference = $false
 Set-StrictMode -Version Latest
 
 $script:RepoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
-$script:ProjectPath = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\MarkdownRenderer.Sample\MarkdownRenderer.Sample.csproj'))
+$script:ProjectPath = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\samples\MarkdownRenderer.Sample\MarkdownRenderer.Sample.csproj'))
 $script:OutputRoot = [System.IO.Path]::GetFullPath($OutputRoot)
 $script:BuildArtifactsPath = $BuildArtifactsPath
 if (-not [string]::IsNullOrWhiteSpace($script:BuildArtifactsPath)) {
@@ -185,7 +185,7 @@ function Get-SampleBuildOutputDirectory {
         return Join-Path $fullArtifactsPath "bin\MarkdownRenderer.Sample\${configurationPivot}_win-x64"
     }
 
-    return Join-Path $RepoRoot "MarkdownRenderer\MarkdownRenderer.Sample\bin\x64\$Configuration\net10.0-windows10.0.26100.0\win-x64"
+    return Join-Path $RepoRoot "MarkdownRenderer\samples\MarkdownRenderer.Sample\bin\x64\$Configuration\net10.0-windows10.0.26100.0\win-x64"
 }
 
 function Invoke-NativeChecked {

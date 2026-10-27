@@ -164,8 +164,8 @@ internal static partial class SampleDocuments
         PowerShell example:
 
         ```powershell filename="build.ps1"
-        dotnet test .\MarkdownRenderer\MarkdownRenderer.Tests\MarkdownRenderer.Tests.csproj -p:Platform=x64
-        dotnet build .\MarkdownRenderer\MarkdownRenderer.Sample\MarkdownRenderer.Sample.csproj -p:Platform=x64
+        dotnet test .\MarkdownRenderer\tests\MarkdownRenderer.Tests\MarkdownRenderer.Tests.csproj -p:Platform=x64
+        dotnet build .\MarkdownRenderer\samples\MarkdownRenderer.Sample\MarkdownRenderer.Sample.csproj -p:Platform=x64
         ```
 
         JSON example:

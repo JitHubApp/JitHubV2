@@ -140,16 +140,16 @@
     <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownRendererDisposalCommit.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Views\Controls\Common\MarkdownHostContract.cs" Link="Views\Controls\Common\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Helpers\RepositoryLanguageColorPalette.cs" Link="Helpers\%(Filename)%(Extension)" />
-    <Compile Include="..\MarkdownRenderer\MarkdownRenderer\Images\IMarkdownImageResolver.cs" Link="MarkdownRenderer\Images\%(Filename)%(Extension)" />
-    <Compile Include="..\MarkdownRenderer\MarkdownRenderer\Images\IMarkdownImageResolutionLease.cs" Link="MarkdownRenderer\Images\%(Filename)%(Extension)" />
-    <Compile Include="..\MarkdownRenderer\MarkdownRenderer.Performance\IMarkdownLeasedImageResolver.cs" Link="MarkdownRenderer\Performance\%(Filename)%(Extension)" />
-    <Compile Include="..\MarkdownRenderer\MarkdownRenderer.Performance\IMarkdownImageSourceWorkTracker.cs" Link="MarkdownRenderer\Performance\%(Filename)%(Extension)" />
-    <Compile Include="..\MarkdownRenderer\MarkdownRenderer.Performance\MarkdownImageResolutionLease.cs" Link="MarkdownRenderer\Performance\%(Filename)%(Extension)" />
-    <Compile Include="..\MarkdownRenderer\MarkdownRenderer\Images\IMarkdownSvgRenderer.cs" Link="MarkdownRenderer\Images\%(Filename)%(Extension)" />
-    <Compile Include="..\MarkdownRenderer\MarkdownRenderer\Layout\Boxes\SvgIntrinsics.cs" Link="MarkdownRenderer\Layout\Boxes\%(Filename)%(Extension)" />
-    <Compile Include="..\MarkdownRenderer\MarkdownRenderer\Layout\Boxes\SvgSourceMetadata.cs" Link="MarkdownRenderer\Layout\Boxes\%(Filename)%(Extension)" />
-    <Compile Include="..\MarkdownRenderer\MarkdownRenderer\Engine\MarkdownParseLimits.cs" Link="MarkdownRenderer\Engine\%(Filename)%(Extension)" />
-    <Compile Include="..\MarkdownRenderer\MarkdownRenderer\Layout\Boxes\RasterImageResourceBudget.cs" Link="MarkdownRenderer\Layout\Boxes\%(Filename)%(Extension)" />
+    <Compile Include="..\MarkdownRenderer\src\MarkdownRenderer\Images\IMarkdownImageResolver.cs" Link="MarkdownRenderer\Images\%(Filename)%(Extension)" />
+    <Compile Include="..\MarkdownRenderer\src\MarkdownRenderer\Images\IMarkdownImageResolutionLease.cs" Link="MarkdownRenderer\Images\%(Filename)%(Extension)" />
+    <Compile Include="..\MarkdownRenderer\src\MarkdownRenderer.Performance\IMarkdownLeasedImageResolver.cs" Link="MarkdownRenderer\Performance\%(Filename)%(Extension)" />
+    <Compile Include="..\MarkdownRenderer\src\MarkdownRenderer.Performance\IMarkdownImageSourceWorkTracker.cs" Link="MarkdownRenderer\Performance\%(Filename)%(Extension)" />
+    <Compile Include="..\MarkdownRenderer\src\MarkdownRenderer.Performance\MarkdownImageResolutionLease.cs" Link="MarkdownRenderer\Performance\%(Filename)%(Extension)" />
+    <Compile Include="..\MarkdownRenderer\src\MarkdownRenderer\Images\IMarkdownSvgRenderer.cs" Link="MarkdownRenderer\Images\%(Filename)%(Extension)" />
+    <Compile Include="..\MarkdownRenderer\src\MarkdownRenderer\Layout\Boxes\SvgIntrinsics.cs" Link="MarkdownRenderer\Layout\Boxes\%(Filename)%(Extension)" />
+    <Compile Include="..\MarkdownRenderer\src\MarkdownRenderer\Layout\Boxes\SvgSourceMetadata.cs" Link="MarkdownRenderer\Layout\Boxes\%(Filename)%(Extension)" />
+    <Compile Include="..\MarkdownRenderer\src\MarkdownRenderer\Engine\MarkdownParseLimits.cs" Link="MarkdownRenderer\Engine\%(Filename)%(Extension)" />
+    <Compile Include="..\MarkdownRenderer\src\MarkdownRenderer\Layout\Boxes\RasterImageResourceBudget.cs" Link="MarkdownRenderer\Layout\Boxes\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\ViewModels\Pages\SettingsPageViewModel.cs" Link="ViewModels\Pages\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\ViewModels\Pages\LoginPageViewModel.cs" Link="ViewModels\Pages\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\ViewModels\Pages\NotificationsPageViewModel.cs" Link="ViewModels\Pages\%(Filename)%(Extension)" />

@@ -33,7 +33,7 @@
   </ItemGroup>
   <ItemGroup>
     <!-- Rasterization is exercised through the compiled optional package. -->
-    <ProjectReference Include="..\MarkdownRenderer.Svg.Resvg\MarkdownRenderer.Svg.Resvg.csproj" />
+    <ProjectReference Include="..\..\src\MarkdownRenderer.Svg.Resvg\MarkdownRenderer.Svg.Resvg.csproj" />
   </ItemGroup>
   <ItemGroup>
     <None Update="Fixtures\**\*">

@@ -12,7 +12,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\MarkdownRenderer.Core\MarkdownRenderer.Core.csproj" />
+    <ProjectReference Include="..\..\src\MarkdownRenderer.Core\MarkdownRenderer.Core.csproj" />
     <None Include="conformance-exceptions.v1.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

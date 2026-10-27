@@ -54,7 +54,7 @@
     <EmbeddedResource Include="Profiles\github-primer-light-v7.css"
                       LogicalName="MarkdownRenderer.GitHub.Profiles.github-primer-light-v7.css" />
     <None Include="README.md" Pack="true" PackagePath="" />
-    <None Include="..\..\LICENSE" Pack="true" PackagePath="" Visible="false" />
-    <None Include="..\..\JitHub.Web\wwwroot\icon-192.png" Pack="true" PackagePath="icon-192.png" Visible="false" />
+    <None Include="..\..\..\LICENSE" Pack="true" PackagePath="" Visible="false" />
+    <None Include="..\..\..\JitHub.Web\wwwroot\icon-192.png" Pack="true" PackagePath="icon-192.png" Visible="false" />
   </ItemGroup>
 </Project>

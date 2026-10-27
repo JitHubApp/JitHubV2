@@ -83,7 +83,7 @@ jobs:
 
       - name: Rebuild and verify every pinned resvg worker
         run: |
-          $manifest = '.\MarkdownRenderer\MarkdownRenderer.Svg.Resvg\native\Cargo.toml'
+          $manifest = '.\MarkdownRenderer\src\MarkdownRenderer.Svg.Resvg\native\Cargo.toml'
           $validationTarget = 'x86_64-pc-windows-msvc'
           $workerTargets = [ordered]@{
             'i686-pc-windows-msvc' = 'win-x86'
@@ -114,7 +114,7 @@ jobs:
           New-Item -ItemType Directory -Path $rebuildRoot -Force | Out-Null
           $rebuiltWorkers = [ordered]@{}
           foreach ($worker in $workerTargets.GetEnumerator()) {
-            $rebuilt = .\MarkdownRenderer\MarkdownRenderer.Svg.Resvg\eng\Build-ResvgWorker.ps1 `
+            $rebuilt = .\MarkdownRenderer\src\MarkdownRenderer.Svg.Resvg\eng\Build-ResvgWorker.ps1 `
               -Target $worker.Key `
               -TargetDirectory $targetRoot
             $rebuiltDirectory = Join-Path $rebuildRoot $worker.Value
@@ -126,9 +126,9 @@ jobs:
 
           $mismatches = [Collections.Generic.List[string]]::new()
           foreach ($worker in $workerTargets.GetEnumerator()) {
-            $shipping = ".\MarkdownRenderer\MarkdownRenderer.Svg.Resvg\runtimes\$($worker.Value)\native\MarkdownRenderer.Svg.Resvg.Worker.exe"
+            $shipping = ".\MarkdownRenderer\src\MarkdownRenderer.Svg.Resvg\runtimes\$($worker.Value)\native\MarkdownRenderer.Svg.Resvg.Worker.exe"
             try {
-              .\MarkdownRenderer\MarkdownRenderer.Svg.Resvg\eng\Compare-ResvgWorkerBinary.ps1 `
+              .\MarkdownRenderer\src\MarkdownRenderer.Svg.Resvg\eng\Compare-ResvgWorkerBinary.ps1 `
                 -Expected $shipping `
                 -Actual $rebuiltWorkers[$worker.Value]
             }
@@ -139,11 +139,11 @@ jobs:
           if ($mismatches.Count -ne 0) {
             throw "One or more checked-in resvg workers were not reproduced:`n$($mismatches -join "`n")"
           }
-          .\MarkdownRenderer\MarkdownRenderer.Svg.Resvg\eng\Test-ResvgLicenseSelection.ps1
-          .\MarkdownRenderer\MarkdownRenderer.Svg.Resvg\eng\Verify-ResvgSupplyChain.ps1
-          .\MarkdownRenderer\MarkdownRenderer.Svg.Resvg\eng\Test-ResvgWorkerIdentity.ps1
-          .\MarkdownRenderer\MarkdownRenderer.Svg.Resvg\eng\Verify-ResvgWorkerIdentity.ps1 `
-            -WorkerRoot '.\MarkdownRenderer\MarkdownRenderer.Svg.Resvg' -Rid 'win-x64'
+          .\MarkdownRenderer\src\MarkdownRenderer.Svg.Resvg\eng\Test-ResvgLicenseSelection.ps1
+          .\MarkdownRenderer\src\MarkdownRenderer.Svg.Resvg\eng\Verify-ResvgSupplyChain.ps1
+          .\MarkdownRenderer\src\MarkdownRenderer.Svg.Resvg\eng\Test-ResvgWorkerIdentity.ps1
+          .\MarkdownRenderer\src\MarkdownRenderer.Svg.Resvg\eng\Verify-ResvgWorkerIdentity.ps1 `
+            -WorkerRoot '.\MarkdownRenderer\src\MarkdownRenderer.Svg.Resvg' -Rid 'win-x64'
 
       - name: Upload rebuilt resvg workers
         if: always()
@@ -189,11 +189,11 @@ jobs:
             $env:RUSTUP_TOOLCHAIN = '1.96.0'
             $env:CARGO_TERM_COLOR = 'never'
 
-            & .\MarkdownRenderer\MarkdownRenderer.Mermaid\native\Build-Native.ps1 `
+            & .\MarkdownRenderer\src\MarkdownRenderer.Mermaid\native\Build-Native.ps1 `
               -Platform @('x64', 'x86', 'ARM64')
             if ($LASTEXITCODE -ne 0) { throw 'The pinned Mermaid native build or adapter tests failed.' }
 
-            $provenance = Get-Content '.\MarkdownRenderer\MarkdownRenderer.Mermaid\MERMAN_PROVENANCE.json' -Raw |
+            $provenance = Get-Content '.\MarkdownRenderer\src\MarkdownRenderer.Mermaid\MERMAN_PROVENANCE.json' -Raw |
               ConvertFrom-Json -ErrorAction Stop
             $pinnedRevision = [string]$provenance.revision
             $cargoHome = if ([string]::IsNullOrWhiteSpace($env:CARGO_HOME)) {
@@ -224,7 +224,7 @@ jobs:
             }
             $pinnedRepositoryPath = $pinnedCheckouts[0]
 
-            $preparationResult = & .\MarkdownRenderer\MarkdownRenderer.Mermaid\native\Test-Prepare-MermanSource.ps1 `
+            $preparationResult = & .\MarkdownRenderer\src\MarkdownRenderer.Mermaid\native\Test-Prepare-MermanSource.ps1 `
               -PinnedRepositoryPath $pinnedRepositoryPath
             if ($preparationResult.Result -ne 'PASS' -or
                 $preparationResult.Checks -ne 49 -or
@@ -233,7 +233,7 @@ jobs:
               throw 'The isolated Merman source-preparation contract did not pass all 49 checks safely.'
             }
 
-            $sourcePatchResult = & .\MarkdownRenderer\MarkdownRenderer.Mermaid\native\Test-MermanPatchedSource.ps1 `
+            $sourcePatchResult = & .\MarkdownRenderer\src\MarkdownRenderer.Mermaid\native\Test-MermanPatchedSource.ps1 `
               -PinnedRepositoryPath $pinnedRepositoryPath
             if ($sourcePatchResult.Result -ne 'PASS' -or
                 $sourcePatchResult.TestCount -ne 117 -or
@@ -251,15 +251,15 @@ jobs:
       - name: Restore test projects in locked mode
         run: |
           $projects = @(
-            '.\MarkdownRenderer\MarkdownRenderer.Tests\MarkdownRenderer.Tests.csproj'
-            '.\MarkdownRenderer\MarkdownRenderer.GitHub.Tests\MarkdownRenderer.GitHub.Tests.csproj'
-            '.\MarkdownRenderer\MarkdownRenderer.Html.Tests\MarkdownRenderer.Html.Tests.csproj'
-            '.\MarkdownRenderer\MarkdownRenderer.Math.Tests\MarkdownRenderer.Math.Tests.csproj'
-            '.\MarkdownRenderer\MarkdownRenderer.Mermaid.Tests\MarkdownRenderer.Mermaid.Tests.csproj'
-            '.\MarkdownRenderer\MarkdownRenderer.Svg.Resvg.Tests\MarkdownRenderer.Svg.Resvg.Tests.csproj'
-            '.\MarkdownRenderer\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests.csproj'
-            '.\MarkdownRenderer\MarkdownRenderer.Conformance.Tests\MarkdownRenderer.Conformance.Tests.csproj'
-            '.\MarkdownRenderer\MarkdownRenderer.PixelTests\MarkdownRenderer.PixelTests.csproj'
+            '.\MarkdownRenderer\tests\MarkdownRenderer.Tests\MarkdownRenderer.Tests.csproj'
+            '.\MarkdownRenderer\tests\MarkdownRenderer.GitHub.Tests\MarkdownRenderer.GitHub.Tests.csproj'
+            '.\MarkdownRenderer\tests\MarkdownRenderer.Html.Tests\MarkdownRenderer.Html.Tests.csproj'
+            '.\MarkdownRenderer\tests\MarkdownRenderer.Math.Tests\MarkdownRenderer.Math.Tests.csproj'
+            '.\MarkdownRenderer\tests\MarkdownRenderer.Mermaid.Tests\MarkdownRenderer.Mermaid.Tests.csproj'
+            '.\MarkdownRenderer\tests\MarkdownRenderer.Svg.Resvg.Tests\MarkdownRenderer.Svg.Resvg.Tests.csproj'
+            '.\MarkdownRenderer\tests\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests.csproj'
+            '.\MarkdownRenderer\tests\MarkdownRenderer.Conformance.Tests\MarkdownRenderer.Conformance.Tests.csproj'
+            '.\MarkdownRenderer\tests\MarkdownRenderer.PixelTests\MarkdownRenderer.PixelTests.csproj'
           )
           foreach ($project in $projects) {
             & dotnet restore $project `
@@ -273,15 +273,15 @@ jobs:
       - name: Build test projects without restore
         run: |
           $projects = @(
-            '.\MarkdownRenderer\MarkdownRenderer.Tests\MarkdownRenderer.Tests.csproj'
-            '.\MarkdownRenderer\MarkdownRenderer.GitHub.Tests\MarkdownRenderer.GitHub.Tests.csproj'
-            '.\MarkdownRenderer\MarkdownRenderer.Html.Tests\MarkdownRenderer.Html.Tests.csproj'
-            '.\MarkdownRenderer\MarkdownRenderer.Math.Tests\MarkdownRenderer.Math.Tests.csproj'
-            '.\MarkdownRenderer\MarkdownRenderer.Mermaid.Tests\MarkdownRenderer.Mermaid.Tests.csproj'
-            '.\MarkdownRenderer\MarkdownRenderer.Svg.Resvg.Tests\MarkdownRenderer.Svg.Resvg.Tests.csproj'
-            '.\MarkdownRenderer\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests.csproj'
-            '.\MarkdownRenderer\MarkdownRenderer.Conformance.Tests\MarkdownRenderer.Conformance.Tests.csproj'
-            '.\MarkdownRenderer\MarkdownRenderer.PixelTests\MarkdownRenderer.PixelTests.csproj'
+            '.\MarkdownRenderer\tests\MarkdownRenderer.Tests\MarkdownRenderer.Tests.csproj'
+            '.\MarkdownRenderer\tests\MarkdownRenderer.GitHub.Tests\MarkdownRenderer.GitHub.Tests.csproj'
+            '.\MarkdownRenderer\tests\MarkdownRenderer.Html.Tests\MarkdownRenderer.Html.Tests.csproj'
+            '.\MarkdownRenderer\tests\MarkdownRenderer.Math.Tests\MarkdownRenderer.Math.Tests.csproj'
+            '.\MarkdownRenderer\tests\MarkdownRenderer.Mermaid.Tests\MarkdownRenderer.Mermaid.Tests.csproj'
+            '.\MarkdownRenderer\tests\MarkdownRenderer.Svg.Resvg.Tests\MarkdownRenderer.Svg.Resvg.Tests.csproj'
+            '.\MarkdownRenderer\tests\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests.csproj'
+            '.\MarkdownRenderer\tests\MarkdownRenderer.Conformance.Tests\MarkdownRenderer.Conformance.Tests.csproj'
+            '.\MarkdownRenderer\tests\MarkdownRenderer.PixelTests\MarkdownRenderer.PixelTests.csproj'
           )
           foreach ($project in $projects) {
             & dotnet build $project `
@@ -320,14 +320,14 @@ jobs:
       - name: Run Core, GitHub, HTML, Math, Mermaid, SVG, TextMate, and conformance tests
         run: |
           $tests = [ordered]@{
-            core = '.\MarkdownRenderer\MarkdownRenderer.Tests\MarkdownRenderer.Tests.csproj'
-            github = '.\MarkdownRenderer\MarkdownRenderer.GitHub.Tests\MarkdownRenderer.GitHub.Tests.csproj'
-            html = '.\MarkdownRenderer\MarkdownRenderer.Html.Tests\MarkdownRenderer.Html.Tests.csproj'
-            math = '.\MarkdownRenderer\MarkdownRenderer.Math.Tests\MarkdownRenderer.Math.Tests.csproj'
-            mermaid = '.\MarkdownRenderer\MarkdownRenderer.Mermaid.Tests\MarkdownRenderer.Mermaid.Tests.csproj'
-            svg = '.\MarkdownRenderer\MarkdownRenderer.Svg.Resvg.Tests\MarkdownRenderer.Svg.Resvg.Tests.csproj'
-            textmate = '.\MarkdownRenderer\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests.csproj'
-            conformance = '.\MarkdownRenderer\MarkdownRenderer.Conformance.Tests\MarkdownRenderer.Conformance.Tests.csproj'
+            core = '.\MarkdownRenderer\tests\MarkdownRenderer.Tests\MarkdownRenderer.Tests.csproj'
+            github = '.\MarkdownRenderer\tests\MarkdownRenderer.GitHub.Tests\MarkdownRenderer.GitHub.Tests.csproj'
+            html = '.\MarkdownRenderer\tests\MarkdownRenderer.Html.Tests\MarkdownRenderer.Html.Tests.csproj'
+            math = '.\MarkdownRenderer\tests\MarkdownRenderer.Math.Tests\MarkdownRenderer.Math.Tests.csproj'
+            mermaid = '.\MarkdownRenderer\tests\MarkdownRenderer.Mermaid.Tests\MarkdownRenderer.Mermaid.Tests.csproj'
+            svg = '.\MarkdownRenderer\tests\MarkdownRenderer.Svg.Resvg.Tests\MarkdownRenderer.Svg.Resvg.Tests.csproj'
+            textmate = '.\MarkdownRenderer\tests\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests.csproj'
+            conformance = '.\MarkdownRenderer\tests\MarkdownRenderer.Conformance.Tests\MarkdownRenderer.Conformance.Tests.csproj'
           }
           $results = Join-Path $env:RUNNER_TEMP 'markdownrenderer-preview\test-results'
           $deadlineSensitiveCoreTests = [ordered]@{
@@ -474,7 +474,7 @@ jobs:
           $candidateArtifacts = Join-Path $benchmarkRoot 'candidate'
           New-Item -ItemType Directory -Path $candidateArtifacts | Out-Null
 
-          $candidateProject = '.\MarkdownRenderer\MarkdownRenderer.Benchmarks\MarkdownRenderer.Benchmarks.csproj'
+          $candidateProject = '.\MarkdownRenderer\perf\MarkdownRenderer.Benchmarks\MarkdownRenderer.Benchmarks.csproj'
           & dotnet restore $candidateProject `
             -p:Configuration=$env:CONFIGURATION `
             -p:Platform=$env:PLATFORM `
@@ -500,7 +500,7 @@ jobs:
             $hasUsableBase = $LASTEXITCODE -eq 0
           }
           if ($hasUsableBase) {
-            & git cat-file -e "$($baseSha):MarkdownRenderer/MarkdownRenderer.Benchmarks/MarkdownRenderer.Benchmarks.csproj" 2>$null
+            & git cat-file -e "$($baseSha):MarkdownRenderer/perf/MarkdownRenderer.Benchmarks/MarkdownRenderer.Benchmarks.csproj" 2>$null
             $hasUsableBase = $LASTEXITCODE -eq 0
           }
 
@@ -517,7 +517,7 @@ jobs:
             & git worktree add --detach $resolvedBaseSource $baseSha
             if ($LASTEXITCODE -ne 0) { throw "Could not create benchmark reference worktree for '$baseSha'." }
 
-            $referenceProject = Join-Path $resolvedBaseSource 'MarkdownRenderer\MarkdownRenderer.Benchmarks\MarkdownRenderer.Benchmarks.csproj'
+            $referenceProject = Join-Path $resolvedBaseSource 'MarkdownRenderer\perf\MarkdownRenderer.Benchmarks\MarkdownRenderer.Benchmarks.csproj'
             & dotnet restore $referenceProject `
               -p:Configuration=$env:CONFIGURATION `
               -p:Platform=$env:PLATFORM `
@@ -574,7 +574,7 @@ jobs:
       - name: Restore NativeAOT smoke projects without mutating canonical locks
         run: |
           $nativeAotRoot = Join-Path $env:RUNNER_TEMP 'markdownrenderer-preview\native-aot'
-          $coreSmoke = '.\MarkdownRenderer\MarkdownRenderer.Core.AotSmoke\MarkdownRenderer.Core.AotSmoke.csproj'
+          $coreSmoke = '.\MarkdownRenderer\tests\aot\MarkdownRenderer.Core.AotSmoke\MarkdownRenderer.Core.AotSmoke.csproj'
           $coreLock = Join-Path $nativeAotRoot 'MarkdownRenderer.Core.AotSmoke-disabled.lock.json'
           & dotnet restore $coreSmoke `
             -p:Configuration=$env:CONFIGURATION `
@@ -586,7 +586,7 @@ jobs:
             --disable-build-servers
           if ($LASTEXITCODE -ne 0) { throw "NativeAOT restore failed for '$coreSmoke'." }
 
-          $mermaidSmoke = '.\MarkdownRenderer\MarkdownRenderer.Mermaid.AotSmoke\MarkdownRenderer.Mermaid.AotSmoke.csproj'
+          $mermaidSmoke = '.\MarkdownRenderer\tests\aot\MarkdownRenderer.Mermaid.AotSmoke\MarkdownRenderer.Mermaid.AotSmoke.csproj'
           $mermaidLock = Join-Path $nativeAotRoot 'MarkdownRenderer.Mermaid.AotSmoke-disabled.lock.json'
           & dotnet restore $mermaidSmoke `
             -p:Configuration=$env:CONFIGURATION `
@@ -598,7 +598,7 @@ jobs:
             --disable-build-servers
           if ($LASTEXITCODE -ne 0) { throw "NativeAOT restore failed for '$mermaidSmoke'." }
 
-          $svgSmoke = '.\MarkdownRenderer\MarkdownRenderer.Svg.Resvg.AotSmoke\MarkdownRenderer.Svg.Resvg.AotSmoke.csproj'
+          $svgSmoke = '.\MarkdownRenderer\tests\aot\MarkdownRenderer.Svg.Resvg.AotSmoke\MarkdownRenderer.Svg.Resvg.AotSmoke.csproj'
           $svgLock = Join-Path $nativeAotRoot 'MarkdownRenderer.Svg.Resvg.AotSmoke-disabled.lock.json'
           & dotnet restore $svgSmoke `
             -p:Configuration=$env:CONFIGURATION `
@@ -614,9 +614,9 @@ jobs:
         run: |
           $artifactRoot = Join-Path $env:RUNNER_TEMP 'markdownrenderer-preview\native-aot'
           $smokes = @(
-            @{ Name = 'MarkdownRenderer.Core.AotSmoke'; Project = '.\MarkdownRenderer\MarkdownRenderer.Core.AotSmoke\MarkdownRenderer.Core.AotSmoke.csproj' }
-            @{ Name = 'MarkdownRenderer.Mermaid.AotSmoke'; Project = '.\MarkdownRenderer\MarkdownRenderer.Mermaid.AotSmoke\MarkdownRenderer.Mermaid.AotSmoke.csproj' }
-            @{ Name = 'MarkdownRenderer.Svg.Resvg.AotSmoke'; Project = '.\MarkdownRenderer\MarkdownRenderer.Svg.Resvg.AotSmoke\MarkdownRenderer.Svg.Resvg.AotSmoke.csproj' }
+            @{ Name = 'MarkdownRenderer.Core.AotSmoke'; Project = '.\MarkdownRenderer\tests\aot\MarkdownRenderer.Core.AotSmoke\MarkdownRenderer.Core.AotSmoke.csproj' }
+            @{ Name = 'MarkdownRenderer.Mermaid.AotSmoke'; Project = '.\MarkdownRenderer\tests\aot\MarkdownRenderer.Mermaid.AotSmoke\MarkdownRenderer.Mermaid.AotSmoke.csproj' }
+            @{ Name = 'MarkdownRenderer.Svg.Resvg.AotSmoke'; Project = '.\MarkdownRenderer\tests\aot\MarkdownRenderer.Svg.Resvg.AotSmoke\MarkdownRenderer.Svg.Resvg.AotSmoke.csproj' }
           )
           foreach ($smoke in $smokes) {
             $output = Join-Path $artifactRoot $smoke.Name
@@ -653,20 +653,20 @@ jobs:
       - name: Restore every shipping package in locked mode
         run: |
           $projects = @(
-            '.\MarkdownRenderer\MarkdownRenderer.Core\MarkdownRenderer.Core.csproj'
-            '.\MarkdownRenderer\MarkdownRenderer\MarkdownRenderer.csproj'
-            '.\MarkdownRenderer\MarkdownRenderer.Performance\MarkdownRenderer.Performance.csproj'
-            '.\MarkdownRenderer\MarkdownRenderer.Package\MarkdownRenderer.Package.csproj'
-            '.\MarkdownRenderer\MarkdownRenderer.Gfm\MarkdownRenderer.Gfm.csproj'
-            '.\MarkdownRenderer\MarkdownRenderer.Html\MarkdownRenderer.Html.csproj'
-            '.\MarkdownRenderer\MarkdownRenderer.Math\MarkdownRenderer.Math.csproj'
-            '.\MarkdownRenderer\MarkdownRenderer.Mermaid\MarkdownRenderer.Mermaid.csproj'
-            '.\MarkdownRenderer\MarkdownRenderer.Svg.Resvg\MarkdownRenderer.Svg.Resvg.csproj'
-            '.\MarkdownRenderer\MarkdownRenderer.SyntaxHighlighting.TextMate\MarkdownRenderer.SyntaxHighlighting.TextMate.csproj'
-            '.\MarkdownRenderer\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.csproj'
-            '.\MarkdownRenderer\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All.csproj'
-            '.\MarkdownRenderer\MarkdownRenderer.GitHub\MarkdownRenderer.GitHub.csproj'
-            '.\MarkdownRenderer\MarkdownRenderer.All\MarkdownRenderer.All.csproj'
+            '.\MarkdownRenderer\src\MarkdownRenderer.Core\MarkdownRenderer.Core.csproj'
+            '.\MarkdownRenderer\src\MarkdownRenderer\MarkdownRenderer.csproj'
+            '.\MarkdownRenderer\src\MarkdownRenderer.Performance\MarkdownRenderer.Performance.csproj'
+            '.\MarkdownRenderer\src\MarkdownRenderer.Package\MarkdownRenderer.Package.csproj'
+            '.\MarkdownRenderer\src\MarkdownRenderer.Gfm\MarkdownRenderer.Gfm.csproj'
+            '.\MarkdownRenderer\src\MarkdownRenderer.Html\MarkdownRenderer.Html.csproj'
+            '.\MarkdownRenderer\src\MarkdownRenderer.Math\MarkdownRenderer.Math.csproj'
+            '.\MarkdownRenderer\src\MarkdownRenderer.Mermaid\MarkdownRenderer.Mermaid.csproj'
+            '.\MarkdownRenderer\src\MarkdownRenderer.Svg.Resvg\MarkdownRenderer.Svg.Resvg.csproj'
+            '.\MarkdownRenderer\src\MarkdownRenderer.SyntaxHighlighting.TextMate\MarkdownRenderer.SyntaxHighlighting.TextMate.csproj'
+            '.\MarkdownRenderer\src\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.csproj'
+            '.\MarkdownRenderer\src\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All.csproj'
+            '.\MarkdownRenderer\src\MarkdownRenderer.GitHub\MarkdownRenderer.GitHub.csproj'
+            '.\MarkdownRenderer\src\MarkdownRenderer.All\MarkdownRenderer.All.csproj'
           )
           foreach ($project in $projects) {
             & dotnet restore $project `
@@ -702,20 +702,20 @@ jobs:
           & dotnet build-server shutdown --vbcscompiler
           $compilerServerIds = @{}
           $projects = @(
-            '.\MarkdownRenderer\MarkdownRenderer.Core\MarkdownRenderer.Core.csproj'
-            '.\MarkdownRenderer\MarkdownRenderer\MarkdownRenderer.csproj'
-            '.\MarkdownRenderer\MarkdownRenderer.Performance\MarkdownRenderer.Performance.csproj'
-            '.\MarkdownRenderer\MarkdownRenderer.Package\MarkdownRenderer.Package.csproj'
-            '.\MarkdownRenderer\MarkdownRenderer.Gfm\MarkdownRenderer.Gfm.csproj'
-            '.\MarkdownRenderer\MarkdownRenderer.Html\MarkdownRenderer.Html.csproj'
-            '.\MarkdownRenderer\MarkdownRenderer.Math\MarkdownRenderer.Math.csproj'
-            '.\MarkdownRenderer\MarkdownRenderer.Mermaid\MarkdownRenderer.Mermaid.csproj'
-            '.\MarkdownRenderer\MarkdownRenderer.Svg.Resvg\MarkdownRenderer.Svg.Resvg.csproj'
-            '.\MarkdownRenderer\MarkdownRenderer.SyntaxHighlighting.TextMate\MarkdownRenderer.SyntaxHighlighting.TextMate.csproj'
-            '.\MarkdownRenderer\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.csproj'
-            '.\MarkdownRenderer\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All.csproj'
-            '.\MarkdownRenderer\MarkdownRenderer.GitHub\MarkdownRenderer.GitHub.csproj'
-            '.\MarkdownRenderer\MarkdownRenderer.All\MarkdownRenderer.All.csproj'
+            '.\MarkdownRenderer\src\MarkdownRenderer.Core\MarkdownRenderer.Core.csproj'
+            '.\MarkdownRenderer\src\MarkdownRenderer\MarkdownRenderer.csproj'
+            '.\MarkdownRenderer\src\MarkdownRenderer.Performance\MarkdownRenderer.Performance.csproj'
+            '.\MarkdownRenderer\src\MarkdownRenderer.Package\MarkdownRenderer.Package.csproj'
+            '.\MarkdownRenderer\src\MarkdownRenderer.Gfm\MarkdownRenderer.Gfm.csproj'
+            '.\MarkdownRenderer\src\MarkdownRenderer.Html\MarkdownRenderer.Html.csproj'
+            '.\MarkdownRenderer\src\MarkdownRenderer.Math\MarkdownRenderer.Math.csproj'
+            '.\MarkdownRenderer\src\MarkdownRenderer.Mermaid\MarkdownRenderer.Mermaid.csproj'
+            '.\MarkdownRenderer\src\MarkdownRenderer.Svg.Resvg\MarkdownRenderer.Svg.Resvg.csproj'
+            '.\MarkdownRenderer\src\MarkdownRenderer.SyntaxHighlighting.TextMate\MarkdownRenderer.SyntaxHighlighting.TextMate.csproj'
+            '.\MarkdownRenderer\src\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.csproj'
+            '.\MarkdownRenderer\src\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All.csproj'
+            '.\MarkdownRenderer\src\MarkdownRenderer.GitHub\MarkdownRenderer.GitHub.csproj'
+            '.\MarkdownRenderer\src\MarkdownRenderer.All\MarkdownRenderer.All.csproj'
           )
           foreach ($packageDirectory in $packageDirectories) {
             if (@(Get-ChildItem -LiteralPath $packageDirectory -Force).Count -ne 0) {
@@ -921,7 +921,7 @@ jobs:
           $packageDirectory = Join-Path $artifactRoot 'packages-candidate'
           $evidenceDirectory = Join-Path $artifactRoot 'managed-pack-evidence'
           $packagesCache = Join-Path $evidenceDirectory 'packages-cache'
-          $smoke = '.\MarkdownRenderer\MarkdownRenderer.ManagedPacks.AotSmoke\MarkdownRenderer.ManagedPacks.AotSmoke.csproj'
+          $smoke = '.\MarkdownRenderer\tests\aot\MarkdownRenderer.ManagedPacks.AotSmoke\MarkdownRenderer.ManagedPacks.AotSmoke.csproj'
           $managedPackageIds = @(
             'MarkdownRenderer'
             'MarkdownRenderer.Core'

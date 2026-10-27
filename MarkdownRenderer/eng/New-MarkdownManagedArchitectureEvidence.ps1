@@ -14,10 +14,10 @@ Set-StrictMode -Version Latest
 
 $rendererRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $targetFramework = 'net10.0-windows10.0.26100.0'
-$rendererProject = Join-Path $rendererRoot 'MarkdownRenderer\MarkdownRenderer.csproj'
-$performanceProject = Join-Path $rendererRoot 'MarkdownRenderer.Performance\MarkdownRenderer.Performance.csproj'
-$harnessProject = Join-Path $rendererRoot 'MarkdownRenderer.PerformanceHarness\MarkdownRenderer.PerformanceHarness.csproj'
-$sampleProject = Join-Path $rendererRoot 'MarkdownRenderer.Sample\MarkdownRenderer.Sample.csproj'
+$rendererProject = Join-Path $rendererRoot 'src\MarkdownRenderer\MarkdownRenderer.csproj'
+$performanceProject = Join-Path $rendererRoot 'src\MarkdownRenderer.Performance\MarkdownRenderer.Performance.csproj'
+$harnessProject = Join-Path $rendererRoot 'perf\MarkdownRenderer.PerformanceHarness\MarkdownRenderer.PerformanceHarness.csproj'
+$sampleProject = Join-Path $rendererRoot 'samples\MarkdownRenderer.Sample\MarkdownRenderer.Sample.csproj'
 
 function Invoke-CheckedBuild {
     param(
@@ -109,23 +109,23 @@ function Add-PeEvidence {
 }
 
 foreach ($platform in @('x86', 'x64', 'ARM64')) {
-    $libraryDirectory = Join-Path $rendererRoot "MarkdownRenderer.Core\bin\$platform\$Configuration\$targetFramework"
+    $libraryDirectory = Join-Path $rendererRoot "src\MarkdownRenderer.Core\bin\$platform\$Configuration\$targetFramework"
     Add-PeEvidence -Platform $platform -Component 'MarkdownRenderer.Core' `
         -Path (Join-Path $libraryDirectory 'MarkdownRenderer.Core.dll') `
         -ExpectedMachine 'I386' -ExpectedKind 'AnyCpuLibrary'
 
-    $libraryDirectory = Join-Path $rendererRoot "MarkdownRenderer\bin\$platform\$Configuration\$targetFramework"
+    $libraryDirectory = Join-Path $rendererRoot "src\MarkdownRenderer\bin\$platform\$Configuration\$targetFramework"
     Add-PeEvidence -Platform $platform -Component 'MarkdownRenderer.WinUI' `
         -Path (Join-Path $libraryDirectory 'MarkdownRenderer.dll') `
         -ExpectedMachine 'I386' -ExpectedKind 'AnyCpuLibrary'
 
-    $libraryDirectory = Join-Path $rendererRoot "MarkdownRenderer.Performance\bin\$platform\$Configuration\$targetFramework"
+    $libraryDirectory = Join-Path $rendererRoot "src\MarkdownRenderer.Performance\bin\$platform\$Configuration\$targetFramework"
     Add-PeEvidence -Platform $platform -Component 'MarkdownRenderer.Performance' `
         -Path (Join-Path $libraryDirectory 'MarkdownRenderer.Performance.dll') `
         -ExpectedMachine 'I386' -ExpectedKind 'AnyCpuLibrary'
 }
 
-$x86Consumer = Join-Path $rendererRoot "MarkdownRenderer.Sample\bin\x86\$Configuration\$targetFramework\win-x86"
+$x86Consumer = Join-Path $rendererRoot "samples\MarkdownRenderer.Sample\bin\x86\$Configuration\$targetFramework\win-x86"
 Add-PeEvidence -Platform 'x86' -Component 'sample-apphost' `
     -Path (Join-Path $x86Consumer 'MarkdownRenderer.Sample.exe') `
     -ExpectedMachine 'I386' -ExpectedKind 'Native'
@@ -142,7 +142,7 @@ Add-PeEvidence -Platform 'x86' -Component 'consumer-MarkdownRenderer.WinUI' `
 foreach ($platform in @('x64', 'ARM64')) {
     $rid = if ($platform -eq 'x64') { 'win-x64' } else { 'win-arm64' }
     $expectedMachine = if ($platform -eq 'x64') { 'Amd64' } else { 'Arm64' }
-    $consumer = Join-Path $rendererRoot "MarkdownRenderer.PerformanceHarness\bin\$platform\$Configuration\$targetFramework\$rid"
+    $consumer = Join-Path $rendererRoot "perf\MarkdownRenderer.PerformanceHarness\bin\$platform\$Configuration\$targetFramework\$rid"
     Add-PeEvidence -Platform $platform -Component 'performance-harness-managed' `
         -Path (Join-Path $consumer 'MarkdownRenderer.PerformanceHarness.dll') `
         -ExpectedMachine $expectedMachine -ExpectedKind 'PlatformManagedApp'

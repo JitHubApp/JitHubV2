@@ -33,7 +33,7 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 
 $markdownRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $repositoryRoot = (Resolve-Path -LiteralPath (Join-Path $markdownRoot '..')).Path
-$providerRoot = Join-Path $markdownRoot 'MarkdownRenderer.Svg.Resvg'
+$providerRoot = Join-Path $markdownRoot 'src\MarkdownRenderer.Svg.Resvg'
 $runName = 'run-' + [DateTime]::UtcNow.ToString('yyyyMMdd-HHmmssfff', [Globalization.CultureInfo]::InvariantCulture)
 $runDirectory = [IO.Path]::GetFullPath((Join-Path $OutputDirectory $runName))
 $testResultsDirectory = Join-Path $runDirectory 'tests'
@@ -349,12 +349,12 @@ if (Test-IsProvided $liveAudits) {
     }
 }
 
-$testsProject = Join-Path $markdownRoot 'MarkdownRenderer.Svg.Resvg.Tests\MarkdownRenderer.Svg.Resvg.Tests.csproj'
-$pixelTestsProject = Join-Path $markdownRoot 'MarkdownRenderer.PixelTests\MarkdownRenderer.PixelTests.csproj'
+$testsProject = Join-Path $markdownRoot 'tests\MarkdownRenderer.Svg.Resvg.Tests\MarkdownRenderer.Svg.Resvg.Tests.csproj'
+$pixelTestsProject = Join-Path $markdownRoot 'tests\MarkdownRenderer.PixelTests\MarkdownRenderer.PixelTests.csproj'
 $packageProjects = @(
-    (Join-Path $markdownRoot 'MarkdownRenderer.Core\MarkdownRenderer.Core.csproj'),
-    (Join-Path $markdownRoot 'MarkdownRenderer\MarkdownRenderer.csproj'),
-    (Join-Path $markdownRoot 'MarkdownRenderer.Package\MarkdownRenderer.Package.csproj'),
+    (Join-Path $markdownRoot 'src\MarkdownRenderer.Core\MarkdownRenderer.Core.csproj'),
+    (Join-Path $markdownRoot 'src\MarkdownRenderer\MarkdownRenderer.csproj'),
+    (Join-Path $markdownRoot 'src\MarkdownRenderer.Package\MarkdownRenderer.Package.csproj'),
     (Join-Path $providerRoot 'MarkdownRenderer.Svg.Resvg.csproj')
 )
 
@@ -587,10 +587,10 @@ $consumerProject = @'
     (Join-Path $consumerDirectory 'SvgResvgPackageConsumer.csproj'),
     $consumerProject,
     [Text.UTF8Encoding]::new($false))
-[IO.File]::Copy((Join-Path $markdownRoot 'MarkdownRenderer.Svg.Resvg.AotSmoke\Program.cs'), (Join-Path $consumerDirectory 'Program.cs'))
-[IO.File]::Copy((Join-Path $markdownRoot 'MarkdownRenderer.Svg.Resvg.AotSmoke\WorkerIsolationProbe.cs'), (Join-Path $consumerDirectory 'WorkerIsolationProbe.cs'))
-[IO.File]::Copy((Join-Path $markdownRoot 'MarkdownRenderer.Svg.Resvg.AotSmoke\SmokeRasterValidation.cs'), (Join-Path $consumerDirectory 'SmokeRasterValidation.cs'))
-[IO.File]::Copy((Join-Path $markdownRoot 'MarkdownRenderer.Svg.Resvg.AotSmoke\SmokeRasterDecodeFixture.cs'), (Join-Path $consumerDirectory 'SmokeRasterDecodeFixture.cs'))
+[IO.File]::Copy((Join-Path $markdownRoot 'tests\aot\MarkdownRenderer.Svg.Resvg.AotSmoke\Program.cs'), (Join-Path $consumerDirectory 'Program.cs'))
+[IO.File]::Copy((Join-Path $markdownRoot 'tests\aot\MarkdownRenderer.Svg.Resvg.AotSmoke\WorkerIsolationProbe.cs'), (Join-Path $consumerDirectory 'WorkerIsolationProbe.cs'))
+[IO.File]::Copy((Join-Path $markdownRoot 'tests\aot\MarkdownRenderer.Svg.Resvg.AotSmoke\SmokeRasterValidation.cs'), (Join-Path $consumerDirectory 'SmokeRasterValidation.cs'))
+[IO.File]::Copy((Join-Path $markdownRoot 'tests\aot\MarkdownRenderer.Svg.Resvg.AotSmoke\SmokeRasterDecodeFixture.cs'), (Join-Path $consumerDirectory 'SmokeRasterDecodeFixture.cs'))
 $consumerProjectPath = Join-Path $consumerDirectory 'SvgResvgPackageConsumer.csproj'
 
 Push-Location $repositoryRoot

@@ -39,19 +39,19 @@
 
   <ItemGroup Condition="'$(ManagedPacksPackageVersion)' == ''">
     <!-- Single-file and MSIX settings apply to this executable, not the referenced libraries. -->
-    <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer.csproj">
+    <ProjectReference Include="..\..\..\src\MarkdownRenderer\MarkdownRenderer.csproj">
       <GlobalPropertiesToRemove>PublishSingleFile;EnableMsixTooling</GlobalPropertiesToRemove>
     </ProjectReference>
-    <ProjectReference Include="..\MarkdownRenderer.Gfm\MarkdownRenderer.Gfm.csproj">
+    <ProjectReference Include="..\..\..\src\MarkdownRenderer.Gfm\MarkdownRenderer.Gfm.csproj">
       <GlobalPropertiesToRemove>PublishSingleFile;EnableMsixTooling</GlobalPropertiesToRemove>
     </ProjectReference>
-    <ProjectReference Include="..\MarkdownRenderer.GitHub\MarkdownRenderer.GitHub.csproj">
+    <ProjectReference Include="..\..\..\src\MarkdownRenderer.GitHub\MarkdownRenderer.GitHub.csproj">
       <GlobalPropertiesToRemove>PublishSingleFile;EnableMsixTooling</GlobalPropertiesToRemove>
     </ProjectReference>
-    <ProjectReference Include="..\MarkdownRenderer.Html\MarkdownRenderer.Html.csproj">
+    <ProjectReference Include="..\..\..\src\MarkdownRenderer.Html\MarkdownRenderer.Html.csproj">
       <GlobalPropertiesToRemove>PublishSingleFile;EnableMsixTooling</GlobalPropertiesToRemove>
     </ProjectReference>
-    <ProjectReference Include="..\MarkdownRenderer.Performance\MarkdownRenderer.Performance.csproj">
+    <ProjectReference Include="..\..\..\src\MarkdownRenderer.Performance\MarkdownRenderer.Performance.csproj">
       <GlobalPropertiesToRemove>PublishSingleFile;EnableMsixTooling</GlobalPropertiesToRemove>
     </ProjectReference>
   </ItemGroup>

@@ -183,6 +183,7 @@ public sealed class AutomationHarnessSourceContractTests
         string rendererSource = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
             "MarkdownRenderer",
+            "src",
             "MarkdownRenderer",
             "Controls",
             "MarkdownRendererControl.cs"));
@@ -377,6 +378,7 @@ public sealed class AutomationHarnessSourceContractTests
         string source = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
             "MarkdownRenderer",
+            "src",
             "MarkdownRenderer",
             "Layout",
             "Boxes",
@@ -397,6 +399,7 @@ public sealed class AutomationHarnessSourceContractTests
         string source = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
             "MarkdownRenderer",
+            "src",
             "MarkdownRenderer",
             "Layout",
             "Boxes",
@@ -419,7 +422,7 @@ public sealed class AutomationHarnessSourceContractTests
             @"SharedCanvasTextFormatCache\.Acquire\(\s*style,\s*compactInlineFailure \? CanvasWordWrapping\.NoWrap : CanvasWordWrapping\.Wrap,\s*CanvasHorizontalAlignment\.Center,\s*Context\.FlowDirection,\s*Context\.Language,\s*true,\s*CanvasVerticalAlignment\.Center\)",
             placeholder);
         string formatSource = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(), "MarkdownRenderer", "MarkdownRenderer", "Layout",
+            FindRepositoryRoot(), "MarkdownRenderer", "src", "MarkdownRenderer", "Layout",
             "SharedCanvasTextFormatCache.cs"));
         Assert.Contains("NormalizeFontFamilyForCanvas(style.FontFamily)", formatSource, StringComparison.Ordinal);
         Assert.Contains("style.FontSize,", formatSource, StringComparison.Ordinal);
@@ -434,6 +437,7 @@ public sealed class AutomationHarnessSourceContractTests
         string source = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
             "MarkdownRenderer",
+            "src",
             "MarkdownRenderer",
             "Controls",
             "MarkdownRendererControl.cs"));
@@ -456,12 +460,14 @@ public sealed class AutomationHarnessSourceContractTests
         string controlSource = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
             "MarkdownRenderer",
+            "src",
             "MarkdownRenderer",
             "Controls",
             "MarkdownRendererControl.cs")).Replace("\r\n", "\n", StringComparison.Ordinal);
         string snapshotSource = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
             "MarkdownRenderer",
+            "src",
             "MarkdownRenderer",
             "Layout",
             "LayoutSnapshot.cs"));
@@ -517,6 +523,7 @@ public sealed class AutomationHarnessSourceContractTests
         string weakRecoveryTimer = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
             "MarkdownRenderer",
+            "src",
             "MarkdownRenderer",
             "Controls",
             "WeakRecoveryTimer.cs"));
@@ -559,7 +566,7 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.True(taskLaunch >= 0 && acceptedRemoval > taskLaunch);
         Assert.DoesNotContain("_pendingImageRelayoutBlockIndices.Clear()", process, StringComparison.Ordinal);
         string rasterPublication = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(), "MarkdownRenderer", "MarkdownRenderer", "Controls",
+            FindRepositoryRoot(), "MarkdownRenderer", "src", "MarkdownRenderer", "Controls",
             "MarkdownRendererControl.ImageCandidate.cs"));
         Assert.Contains("TryPrepareCodeBlockActionPublication(plan", rasterPublication, StringComparison.Ordinal);
         Assert.Contains("ReferenceEquals(newPlan.Box, identity.Placement)", rasterPublication, StringComparison.Ordinal);
@@ -625,12 +632,14 @@ public sealed class AutomationHarnessSourceContractTests
         string source = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
             "MarkdownRenderer",
+            "src",
             "MarkdownRenderer",
             "Controls",
             "MarkdownRendererControl.cs")).Replace("\r\n", "\n", StringComparison.Ordinal);
         string pointerSource = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
             "MarkdownRenderer",
+            "src",
             "MarkdownRenderer",
             "Controls",
             "MarkdownRendererControl.PointerInput.cs")).Replace("\r\n", "\n", StringComparison.Ordinal);

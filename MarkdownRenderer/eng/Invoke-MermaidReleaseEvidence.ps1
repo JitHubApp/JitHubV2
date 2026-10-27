@@ -76,10 +76,10 @@ Copy-EvidenceSourceTree `
     -Source (Join-Path $repositoryRoot 'docs\markdown-renderer') `
     -Destination (Join-Path $evidenceRepositoryRoot 'docs\markdown-renderer')
 foreach ($projectName in @(
-    'MarkdownRenderer',
-    'MarkdownRenderer.Core',
-    'MarkdownRenderer.Mermaid',
-    'MarkdownRenderer.Mermaid.Tests'
+    'src\MarkdownRenderer',
+    'src\MarkdownRenderer.Core',
+    'src\MarkdownRenderer.Mermaid',
+    'tests\MarkdownRenderer.Mermaid.Tests'
 )) {
     Copy-EvidenceSourceTree `
         -Source (Join-Path $markdownRoot $projectName) `
@@ -174,8 +174,8 @@ function Invoke-CompatibleExecutable {
     }
 }
 
-$testsProject = Join-Path $evidenceMarkdownRoot 'MarkdownRenderer.Mermaid.Tests\MarkdownRenderer.Mermaid.Tests.csproj'
-$packageProject = Join-Path $evidenceMarkdownRoot 'MarkdownRenderer.Mermaid\MarkdownRenderer.Mermaid.csproj'
+$testsProject = Join-Path $evidenceMarkdownRoot 'tests\MarkdownRenderer.Mermaid.Tests\MarkdownRenderer.Mermaid.Tests.csproj'
+$packageProject = Join-Path $evidenceMarkdownRoot 'src\MarkdownRenderer.Mermaid\MarkdownRenderer.Mermaid.csproj'
 $testResultsDirectory = Join-Path $runDirectory 'tests'
 $packageDirectory = Join-Path $runDirectory 'packages'
 [IO.Directory]::CreateDirectory($testResultsDirectory) | Out-Null
@@ -190,7 +190,7 @@ try {
         '--logger', 'trx;LogFileName=mermaid-contracts.trx', '--results-directory', $testResultsDirectory
     )
     Invoke-DotNet @(
-        'pack', (Join-Path $evidenceMarkdownRoot 'MarkdownRenderer.Core\MarkdownRenderer.Core.csproj'),
+        'pack', (Join-Path $evidenceMarkdownRoot 'src\MarkdownRenderer.Core\MarkdownRenderer.Core.csproj'),
         '-c', 'Release', '-p:Platform=x64', '--no-restore',
         '--disable-build-servers', '-p:UseSharedCompilation=false', '-nr:false', '-o', $packageDirectory
     )
@@ -426,7 +426,7 @@ foreach ($target in $matrix) {
 $projectReferenceDirectory = Join-Path $runDirectory 'project-reference-consumer'
 [IO.Directory]::CreateDirectory($projectReferenceDirectory) | Out-Null
 $mermaidProjectReference = [Security.SecurityElement]::Escape(
-    (Join-Path $evidenceMarkdownRoot 'MarkdownRenderer.Mermaid\MarkdownRenderer.Mermaid.csproj'))
+    (Join-Path $evidenceMarkdownRoot 'src\MarkdownRenderer.Mermaid\MarkdownRenderer.Mermaid.csproj'))
 $projectReferenceProject = @'
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>

@@ -12,6 +12,6 @@
     <DefaultItemExcludes>$(DefaultItemExcludes);obj\**;obj-*\**;bin\**;bin-*\**;artifacts\**</DefaultItemExcludes>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\MarkdownRenderer.Mermaid\MarkdownRenderer.Mermaid.csproj" />
+    <ProjectReference Include="..\..\..\src\MarkdownRenderer.Mermaid\MarkdownRenderer.Mermaid.csproj" />
   </ItemGroup>
 </Project>

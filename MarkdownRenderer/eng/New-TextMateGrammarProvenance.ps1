@@ -62,7 +62,7 @@ if ($resourceNames.Length -ne 317) {
 }
 
 $commonProject = [xml] (Get-Content -LiteralPath `
-    (Join-Path $PSScriptRoot '..\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.csproj') `
+    (Join-Path $PSScriptRoot '..\src\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.csproj') `
     -Raw)
 $commonResourceNames = [string[]] @(
     $commonProject.SelectNodes("//*[local-name()='_CommonTextMateResource']") |

@@ -26,22 +26,22 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260317003" />
     <PackageReference Include="Microsoft.WindowsAppSDK.Runtime" Version="1.8.260317003" />
-    <ProjectReference Include="..\MarkdownRenderer.GitHub\MarkdownRenderer.GitHub.csproj" />
-    <ProjectReference Include="..\MarkdownRenderer.Performance\MarkdownRenderer.Performance.csproj" />
+    <ProjectReference Include="..\..\src\MarkdownRenderer.GitHub\MarkdownRenderer.GitHub.csproj" />
+    <ProjectReference Include="..\..\src\MarkdownRenderer.Performance\MarkdownRenderer.Performance.csproj" />
     <!-- The managed-pack release lane intentionally exercises only Core, WinUI,
          GFM, safe HTML, and GitHub. Public API baselines still run against every
          shipping pack in the default build. -->
-    <ProjectReference Include="..\MarkdownRenderer.Math\MarkdownRenderer.Math.csproj"
+    <ProjectReference Include="..\..\src\MarkdownRenderer.Math\MarkdownRenderer.Math.csproj"
                       Condition="'$(ManagedPacksOnly)' != 'true'" />
-    <ProjectReference Include="..\MarkdownRenderer.Mermaid\MarkdownRenderer.Mermaid.csproj"
+    <ProjectReference Include="..\..\src\MarkdownRenderer.Mermaid\MarkdownRenderer.Mermaid.csproj"
                       Condition="'$(ManagedPacksOnly)' != 'true'" />
-    <ProjectReference Include="..\MarkdownRenderer.Svg.Resvg\MarkdownRenderer.Svg.Resvg.csproj"
+    <ProjectReference Include="..\..\src\MarkdownRenderer.Svg.Resvg\MarkdownRenderer.Svg.Resvg.csproj"
                       Condition="'$(ManagedPacksOnly)' != 'true'" />
-    <ProjectReference Include="..\MarkdownRenderer.SyntaxHighlighting.TextMate\MarkdownRenderer.SyntaxHighlighting.TextMate.csproj"
+    <ProjectReference Include="..\..\src\MarkdownRenderer.SyntaxHighlighting.TextMate\MarkdownRenderer.SyntaxHighlighting.TextMate.csproj"
                       Condition="'$(ManagedPacksOnly)' != 'true'" />
-    <ProjectReference Include="..\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.csproj"
+    <ProjectReference Include="..\..\src\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.csproj"
                       Condition="'$(ManagedPacksOnly)' != 'true'" />
-    <ProjectReference Include="..\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All.csproj"
+    <ProjectReference Include="..\..\src\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All.csproj"
                       Condition="'$(ManagedPacksOnly)' != 'true'" />
   </ItemGroup>
   <ItemGroup Condition="'$(ManagedPacksOnly)' == 'true'">
@@ -66,9 +66,9 @@
     <Compile Remove="StablePublicApiTests.cs" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="..\MarkdownRenderer.PerformanceHarness\PerformanceDocumentFactory.cs"
+    <Compile Include="..\..\perf\MarkdownRenderer.PerformanceHarness\PerformanceDocumentFactory.cs"
              Link="PerformanceHarness\PerformanceDocumentFactory.cs" />
-    <Compile Include="..\MarkdownRenderer.PerformanceHarness\PerformanceEventListener.cs"
+    <Compile Include="..\..\perf\MarkdownRenderer.PerformanceHarness\PerformanceEventListener.cs"
              Link="PerformanceHarness\PerformanceEventListener.cs" />
     <Compile Include="..\MarkdownRenderer.Tests\PagedEntryBufferTests.cs"
              Link="Core\PagedEntryBufferTests.cs" />

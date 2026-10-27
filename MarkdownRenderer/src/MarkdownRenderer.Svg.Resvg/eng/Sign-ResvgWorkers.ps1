@@ -57,7 +57,7 @@ function Test-PathWithin([string] $Path, [string] $Directory) {
 }
 
 $providerRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$repositoryRoot = [IO.Path]::GetFullPath((Join-Path $providerRoot '..\..'))
+$repositoryRoot = [IO.Path]::GetFullPath((Join-Path $providerRoot '..\..\..'))
 if (-not (Test-Path -LiteralPath $InputDirectory -PathType Container)) {
     throw "Input worker directory '$InputDirectory' does not exist."
 }

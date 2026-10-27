@@ -670,10 +670,10 @@ dotnet test JitHub.WinUI.Tests\JitHub.WinUI.Tests.csproj -c Release --no-restore
 dotnet test JitHub.Web.Tests\JitHub.Web.Tests.csproj -c Debug --no-restore
 dotnet test JitHub.Web.Tests\JitHub.Web.Tests.csproj -c Release --no-restore
 
-dotnet test MarkdownRenderer\MarkdownRenderer.Tests\MarkdownRenderer.Tests.csproj -c Debug --no-restore -p:Platform=x64
-dotnet test MarkdownRenderer\MarkdownRenderer.Tests\MarkdownRenderer.Tests.csproj -c Release --no-restore -p:Platform=x64
-dotnet test MarkdownRenderer\MarkdownRenderer.PixelTests\MarkdownRenderer.PixelTests.csproj -c Debug --no-restore -p:Platform=x64
-dotnet test MarkdownRenderer\MarkdownRenderer.PixelTests\MarkdownRenderer.PixelTests.csproj -c Release --no-restore -p:Platform=x64
+dotnet test MarkdownRenderer\tests\MarkdownRenderer.Tests\MarkdownRenderer.Tests.csproj -c Debug --no-restore -p:Platform=x64
+dotnet test MarkdownRenderer\tests\MarkdownRenderer.Tests\MarkdownRenderer.Tests.csproj -c Release --no-restore -p:Platform=x64
+dotnet test MarkdownRenderer\tests\MarkdownRenderer.PixelTests\MarkdownRenderer.PixelTests.csproj -c Debug --no-restore -p:Platform=x64
+dotnet test MarkdownRenderer\tests\MarkdownRenderer.PixelTests\MarkdownRenderer.PixelTests.csproj -c Release --no-restore -p:Platform=x64
 ```
 
 Run pixel tests sequentially; concurrent browser-backed pixel runs waste disk

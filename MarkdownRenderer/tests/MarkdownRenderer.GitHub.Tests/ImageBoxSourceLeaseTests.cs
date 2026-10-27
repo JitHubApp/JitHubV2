@@ -424,7 +424,7 @@ public sealed class ImageBoxSourceLeaseTests
     {
         for (DirectoryInfo? directory = new(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
         {
-            string candidate = Path.Combine(directory.FullName, "MarkdownRenderer", "MarkdownRenderer.PixelTests",
+            string candidate = Path.Combine(directory.FullName, "MarkdownRenderer", "tests", "MarkdownRenderer.PixelTests",
                 "Fixtures", "svg", "18-data-uris", "simple.svg");
             if (File.Exists(candidate))
                 return candidate;

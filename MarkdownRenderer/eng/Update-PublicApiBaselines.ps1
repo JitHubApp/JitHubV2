@@ -16,8 +16,8 @@ if (-not $Update) {
 }
 
 $rendererRoot = Split-Path -Parent $PSScriptRoot
-$testProject = Join-Path $rendererRoot 'MarkdownRenderer.GitHub.Tests\MarkdownRenderer.GitHub.Tests.csproj'
-$baselineDirectory = Join-Path $rendererRoot 'MarkdownRenderer.GitHub.Tests\PublicApiBaselines'
+$testProject = Join-Path $rendererRoot 'tests\MarkdownRenderer.GitHub.Tests\MarkdownRenderer.GitHub.Tests.csproj'
+$baselineDirectory = Join-Path $rendererRoot 'tests\MarkdownRenderer.GitHub.Tests\PublicApiBaselines'
 $intermediatePath = 'obj-public-api\'
 $outputPath = 'bin-public-api\'
 $lockFilePath = 'obj-public-api\packages.lock.json'

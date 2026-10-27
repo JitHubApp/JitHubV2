@@ -61,8 +61,8 @@
          otherwise NuGet ships them twice under content and contentFiles. Keep
          the explicit licenses, provenance, protocol and RID payloads below. -->
     <Content Remove="native\**" />
-    <None Include="..\..\LICENSE" Pack="true" PackagePath="" Visible="false" />
-    <None Include="..\..\JitHub.Web\wwwroot\icon-192.png" Pack="true" PackagePath="icon-192.png" Visible="false" />
+    <None Include="..\..\..\LICENSE" Pack="true" PackagePath="" Visible="false" />
+    <None Include="..\..\..\JitHub.Web\wwwroot\icon-192.png" Pack="true" PackagePath="icon-192.png" Visible="false" />
     <None Update="README.md" Pack="true" PackagePath="README.md" />
     <None Update="THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="THIRD-PARTY-NOTICES.md" />
     <None Update="RESVG_PROVENANCE.json" Pack="true" PackagePath="provenance\RESVG_PROVENANCE.json" />

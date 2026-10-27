@@ -37,7 +37,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer.csproj" />
+    <ProjectReference Include="..\..\src\MarkdownRenderer\MarkdownRenderer.csproj" />
   </ItemGroup>
 
   <ItemGroup>

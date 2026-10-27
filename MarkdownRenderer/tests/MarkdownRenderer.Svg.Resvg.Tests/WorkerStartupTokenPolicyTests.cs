@@ -106,7 +106,7 @@ public sealed partial class WorkerStartupTokenPolicyTests
     {
         for (DirectoryInfo? directory = new(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
         {
-            string provider = Path.Combine(directory.FullName, "MarkdownRenderer", "MarkdownRenderer.Svg.Resvg");
+            string provider = Path.Combine(directory.FullName, "MarkdownRenderer", "src", "MarkdownRenderer.Svg.Resvg");
             string fullPath = Path.Combine([provider, .. path]);
             if (File.Exists(fullPath))
                 return File.ReadAllText(fullPath);

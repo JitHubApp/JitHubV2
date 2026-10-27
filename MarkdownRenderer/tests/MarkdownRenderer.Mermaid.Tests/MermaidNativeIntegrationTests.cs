@@ -22,6 +22,7 @@ public sealed class MermaidNativeIntegrationTests
     {
         string arm64 = FindRepositoryFile(
             "MarkdownRenderer",
+            "src",
             "MarkdownRenderer.Mermaid",
             "runtimes",
             "win-arm64",
@@ -38,6 +39,7 @@ public sealed class MermaidNativeIntegrationTests
     {
         string x64 = FindRepositoryFile(
             "MarkdownRenderer",
+            "src",
             "MarkdownRenderer.Mermaid",
             "runtimes",
             "win-x64",

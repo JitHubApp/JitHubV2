@@ -2905,7 +2905,7 @@ internal static class Program
         while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "Directory.Build.props")))
             dir = dir.Parent;
         if (dir is null) return null;
-        string sampleDir = Path.Combine(dir.FullName, "MarkdownRenderer", "MarkdownRenderer.Sample", "bin");
+        string sampleDir = Path.Combine(dir.FullName, "MarkdownRenderer", "samples", "MarkdownRenderer.Sample", "bin");
         if (!Directory.Exists(sampleDir)) return null;
         var candidates = Directory.GetFiles(sampleDir, "MarkdownRenderer.Sample.exe", SearchOption.AllDirectories);
         return candidates.OrderByDescending(File.GetLastWriteTimeUtc).FirstOrDefault();

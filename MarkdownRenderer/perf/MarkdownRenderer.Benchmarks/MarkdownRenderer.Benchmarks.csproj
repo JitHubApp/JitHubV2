@@ -13,12 +13,12 @@
 
   <ItemGroup>
     <PackageReference Include="BenchmarkDotNet" Version="0.15.8" />
-    <ProjectReference Include="..\MarkdownRenderer.Core\MarkdownRenderer.Core.csproj" />
-    <ProjectReference Include="..\MarkdownRenderer.Math\MarkdownRenderer.Math.csproj" />
+    <ProjectReference Include="..\..\src\MarkdownRenderer.Core\MarkdownRenderer.Core.csproj" />
+    <ProjectReference Include="..\..\src\MarkdownRenderer.Math\MarkdownRenderer.Math.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Include="..\MarkdownRenderer\Layout\VerticalViewportIndex.cs"
+    <Compile Include="..\..\src\MarkdownRenderer\Layout\VerticalViewportIndex.cs"
              Link="Layout\VerticalViewportIndex.cs" />
   </ItemGroup>
 </Project>

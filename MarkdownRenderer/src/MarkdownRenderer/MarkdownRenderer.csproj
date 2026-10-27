@@ -74,14 +74,14 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="..\..\LICENSE" Pack="true" PackagePath="" Visible="false" />
-    <None Include="..\..\docs\markdown-renderer\README.md" Pack="true" PackagePath="README.md" Visible="false" />
-    <None Include="..\..\JitHub.Site\public\icon-192.png" Pack="true" PackagePath="icon-192.png" Visible="false" />
+    <None Include="..\..\..\LICENSE" Pack="true" PackagePath="" Visible="false" />
+    <None Include="..\..\..\docs\markdown-renderer\README.md" Pack="true" PackagePath="README.md" Visible="false" />
+    <None Include="..\..\..\JitHub.Site\public\icon-192.png" Pack="true" PackagePath="icon-192.png" Visible="false" />
   </ItemGroup>
 
   <Target Name="FilterPublicXmlDocumentationForPack" BeforeTargets="GenerateNuspec"
           Condition="Exists('$(TargetPath)') and Exists('$(TargetDir)$(AssemblyName).xml')">
-    <Exec Command="pwsh -NoProfile -NonInteractive -File &quot;$(MSBuildProjectDirectory)\..\eng\Filter-PublicXmlDocumentation.ps1&quot; -AssemblyPath &quot;$(TargetPath)&quot; -XmlPath &quot;$(TargetDir)$(AssemblyName).xml&quot;" />
+    <Exec Command="pwsh -NoProfile -NonInteractive -File &quot;$(MSBuildProjectDirectory)\..\..\eng\Filter-PublicXmlDocumentation.ps1&quot; -AssemblyPath &quot;$(TargetPath)&quot; -XmlPath &quot;$(TargetDir)$(AssemblyName).xml&quot;" />
   </Target>
 
 </Project>

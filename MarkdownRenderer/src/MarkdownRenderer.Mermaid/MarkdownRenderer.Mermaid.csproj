@@ -49,8 +49,8 @@
     <ProjectReference Include="..\MarkdownRenderer.Core\MarkdownRenderer.Core.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="..\..\LICENSE" Pack="true" PackagePath="" Visible="false" />
-    <None Include="..\..\JitHub.Web\wwwroot\icon-192.png" Pack="true" PackagePath="icon-192.png" Visible="false" />
+    <None Include="..\..\..\LICENSE" Pack="true" PackagePath="" Visible="false" />
+    <None Include="..\..\..\JitHub.Web\wwwroot\icon-192.png" Pack="true" PackagePath="icon-192.png" Visible="false" />
     <None Include="README.md" Pack="true" PackagePath="" />
     <None Update="MERMAN_PROVENANCE.json" Pack="true" PackagePath="provenance\MERMAN_PROVENANCE.json" />
     <None Update="MERMAN_PATCH_LEDGER.md" Pack="true" PackagePath="provenance\MERMAN_PATCH_LEDGER.md" />

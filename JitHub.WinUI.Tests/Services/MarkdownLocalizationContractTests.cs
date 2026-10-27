@@ -14,6 +14,7 @@ public sealed partial class MarkdownLocalizationContractTests
         string contracts = File.ReadAllText(Path.Combine(
             root,
             "MarkdownRenderer",
+            "src",
             "MarkdownRenderer",
             "Hosting",
             "MarkdownHostServices.cs"));
@@ -41,6 +42,7 @@ public sealed partial class MarkdownLocalizationContractTests
         string contracts = File.ReadAllText(Path.Combine(
             root,
             "MarkdownRenderer",
+            "src",
             "MarkdownRenderer",
             "Hosting",
             "MarkdownHostServices.cs"));
@@ -63,6 +65,7 @@ public sealed partial class MarkdownLocalizationContractTests
         string contracts = File.ReadAllText(Path.Combine(
             root,
             "MarkdownRenderer",
+            "src",
             "MarkdownRenderer",
             "Hosting",
             "MarkdownHostServices.cs"));

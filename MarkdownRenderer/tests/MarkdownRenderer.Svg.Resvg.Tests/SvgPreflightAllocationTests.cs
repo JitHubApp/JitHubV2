@@ -16,6 +16,7 @@ public sealed class SvgPreflightAllocationTests(ITestOutputHelper output)
         while (directory is not null)
         {
             string candidate = Path.Combine(directory.FullName, "MarkdownRenderer",
+                "tests",
                 "MarkdownRenderer.PixelTests", "Fixtures", "svg", "20-stress", "katex-182-unique-images.svg");
             if (File.Exists(candidate))
             {

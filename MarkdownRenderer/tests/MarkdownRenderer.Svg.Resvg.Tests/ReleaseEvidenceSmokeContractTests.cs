@@ -21,11 +21,11 @@ public sealed class ReleaseEvidenceSmokeContractTests
         // The package-only consumer must compile the same smoke implementation,
         // including fixtures added later; a project-reference build alone does
         // not catch missing copies in the release evidence path.
-        string smokeDirectory = Path.Combine(rendererRoot, "MarkdownRenderer.Svg.Resvg.AotSmoke");
+        string smokeDirectory = Path.Combine(rendererRoot, "tests", "aot", "MarkdownRenderer.Svg.Resvg.AotSmoke");
         foreach (string source in Directory.EnumerateFiles(smokeDirectory, "*.cs"))
         {
             string fileName = Path.GetFileName(source);
-            Assert.Contains($"'MarkdownRenderer.Svg.Resvg.AotSmoke\\{fileName}'", script);
+            Assert.Contains($"'tests\\aot\\MarkdownRenderer.Svg.Resvg.AotSmoke\\{fileName}'", script);
             Assert.Contains($"(Join-Path $consumerDirectory '{fileName}')", script);
         }
     }

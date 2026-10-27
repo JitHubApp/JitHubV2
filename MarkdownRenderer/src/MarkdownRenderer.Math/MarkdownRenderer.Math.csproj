@@ -80,8 +80,8 @@
     </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
-    <None Include="..\..\LICENSE" Pack="true" PackagePath="" Visible="false" />
-    <None Include="..\..\JitHub.Web\wwwroot\icon-192.png" Pack="true" PackagePath="icon-192.png" Visible="false" />
+    <None Include="..\..\..\LICENSE" Pack="true" PackagePath="" Visible="false" />
+    <None Include="..\..\..\JitHub.Web\wwwroot\icon-192.png" Pack="true" PackagePath="icon-192.png" Visible="false" />
     <None Include="README.md" Pack="true" PackagePath="" />
     <None Include="THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="" />
     <None Include="UPSTREAM-PATCHES.md" Pack="true" PackagePath="" />

@@ -34,7 +34,7 @@ Invoke-Expression $runArgumentsFunction.Extent.Text
 Invoke-Expression $buildOutputFunction.Extent.Text
 
 $testRepoRoot = 'E:\fixture repo'
-$testProjectPath = Join-Path $testRepoRoot 'MarkdownRenderer\MarkdownRenderer.Sample\MarkdownRenderer.Sample.csproj'
+$testProjectPath = Join-Path $testRepoRoot 'MarkdownRenderer\samples\MarkdownRenderer.Sample\MarkdownRenderer.Sample.csproj'
 $defaultRunArguments = @(Get-SampleProjectRunArguments -ProjectPath $testProjectPath -Configuration Release)
 $expectedDefaultRunArguments = @('run', $testProjectPath, '--on', 'sandbox', '--detach', '--json', '-c', 'Release', '--arch', 'x64')
 if ($defaultRunArguments.Count -ne $expectedDefaultRunArguments.Count -or
@@ -42,7 +42,7 @@ if ($defaultRunArguments.Count -ne $expectedDefaultRunArguments.Count -or
     throw 'The default sample launch must preserve the existing Sandbox project-mode arguments without an ArtifactsPath override.'
 }
 $defaultBuildOutput = Get-SampleBuildOutputDirectory -RepoRoot $testRepoRoot -Configuration Release
-$expectedDefaultBuildOutput = Join-Path $testRepoRoot 'MarkdownRenderer\MarkdownRenderer.Sample\bin\x64\Release\net10.0-windows10.0.26100.0\win-x64'
+$expectedDefaultBuildOutput = Join-Path $testRepoRoot 'MarkdownRenderer\samples\MarkdownRenderer.Sample\bin\x64\Release\net10.0-windows10.0.26100.0\win-x64'
 if (-not [string]::Equals($defaultBuildOutput, $expectedDefaultBuildOutput, [StringComparison]::OrdinalIgnoreCase)) {
     throw 'The default payload path must remain the existing x64 Release output directory.'
 }
@@ -111,7 +111,7 @@ try {
 finally {
     Remove-Item -LiteralPath $initializationPath -Force -ErrorAction SilentlyContinue
 }
-$expectedFixtureProject = Join-Path $testRepoRoot 'MarkdownRenderer\MarkdownRenderer.Sample\MarkdownRenderer.Sample.csproj'
+$expectedFixtureProject = Join-Path $testRepoRoot 'MarkdownRenderer\samples\MarkdownRenderer.Sample\MarkdownRenderer.Sample.csproj'
 if (-not [string]::Equals([string]$customInitialization.effectiveBuildArtifactsPath, $testArtifactsPath, [StringComparison]::OrdinalIgnoreCase) -or
     -not [string]::Equals([string]$customInitialization.repoRoot, $testRepoRoot, [StringComparison]::OrdinalIgnoreCase) -or
     -not [string]::Equals([string]$customInitialization.projectPath, $expectedFixtureProject, [StringComparison]::OrdinalIgnoreCase) -or
@@ -512,7 +512,7 @@ foreach ($nativeProofFailure in @('lastNativeCanceled', 'nativeCanceledPacketCou
     try { Assert-SyntheticTouchDelivery -Before $cancelBefore -After $changedProof -ExpectedPoint $expectedTouchPoint -ExpectedState 'Canceled' | Out-Null } catch { $rejected = $true }
     if (-not $rejected) { throw "A raw release was relabeled as cancellation without valid $nativeProofFailure evidence." }
 }
-$pointerInputSourcePath = Join-Path $PSScriptRoot '..\MarkdownRenderer\Controls\MarkdownRendererControl.PointerInput.cs'
+$pointerInputSourcePath = Join-Path $PSScriptRoot '..\src\MarkdownRenderer\Controls\MarkdownRendererControl.PointerInput.cs'
 $pointerInputSource = Get-Content -LiteralPath $pointerInputSourcePath -Raw
 $dispatcherStart = $pointerInputSource.IndexOf('private void DispatchPointerInput(', [StringComparison]::Ordinal)
 $dispatcherEnd = $pointerInputSource.IndexOf('private DispatcherQueueTimer CreatePointerRetryTimer()', $dispatcherStart, [StringComparison]::Ordinal)

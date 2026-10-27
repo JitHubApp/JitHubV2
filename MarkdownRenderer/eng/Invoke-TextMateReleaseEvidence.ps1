@@ -282,15 +282,15 @@ function Export-PackageEntry {
 }
 
 $testsProject = Join-Path $markdownRoot `
-    'MarkdownRenderer.SyntaxHighlighting.TextMate.Tests\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests.csproj'
+    'tests\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests.csproj'
 $buildArtifactsDirectory = Join-Path $runDirectory 'build'
 $restoreProjects = @(
-    'MarkdownRenderer.Core\MarkdownRenderer.Core.csproj',
-    'MarkdownRenderer\MarkdownRenderer.csproj',
-    'MarkdownRenderer.SyntaxHighlighting.TextMate\MarkdownRenderer.SyntaxHighlighting.TextMate.csproj',
-    'MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.csproj',
-    'MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All.csproj',
-    'MarkdownRenderer.SyntaxHighlighting.TextMate.Tests\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests.csproj'
+    'src\MarkdownRenderer.Core\MarkdownRenderer.Core.csproj',
+    'src\MarkdownRenderer\MarkdownRenderer.csproj',
+    'src\MarkdownRenderer.SyntaxHighlighting.TextMate\MarkdownRenderer.SyntaxHighlighting.TextMate.csproj',
+    'src\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.csproj',
+    'src\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All.csproj',
+    'tests\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests.csproj'
 )
 $restoreLockDirectory = Join-Path $buildArtifactsDirectory 'locks'
 [IO.Directory]::CreateDirectory($restoreLockDirectory) | Out-Null
@@ -335,11 +335,11 @@ if ([int] $counters.failed -ne 0 -or [int] $counters.executed -ne [int] $counter
 if ($LASTEXITCODE -ne 0) { throw 'TextMate provenance verification failed.' }
 
 $projects = @(
-    'MarkdownRenderer.Core\MarkdownRenderer.Core.csproj',
-    'MarkdownRenderer\MarkdownRenderer.csproj',
-    'MarkdownRenderer.SyntaxHighlighting.TextMate\MarkdownRenderer.SyntaxHighlighting.TextMate.csproj',
-    'MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.csproj',
-    'MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All.csproj'
+    'src\MarkdownRenderer.Core\MarkdownRenderer.Core.csproj',
+    'src\MarkdownRenderer\MarkdownRenderer.csproj',
+    'src\MarkdownRenderer.SyntaxHighlighting.TextMate\MarkdownRenderer.SyntaxHighlighting.TextMate.csproj',
+    'src\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.csproj',
+    'src\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All.csproj'
 )
 $packageDirectoryA = Join-Path $runDirectory 'packages-a'
 $packageDirectoryB = Join-Path $runDirectory 'packages-b'
@@ -527,7 +527,7 @@ $consumerProject = (@'
     $consumerProject,
     [Text.UTF8Encoding]::new($false))
 [IO.File]::Copy(
-    (Join-Path $markdownRoot 'MarkdownRenderer.SyntaxHighlighting.TextMate.AotSmoke\Program.cs'),
+    (Join-Path $markdownRoot 'tests\aot\MarkdownRenderer.SyntaxHighlighting.TextMate.AotSmoke\Program.cs'),
     (Join-Path $consumerDirectory 'Program.cs'))
 
 $consumerProjectPath = Join-Path $consumerDirectory 'TextMatePackageConsumer.csproj'

@@ -31,6 +31,7 @@ public sealed class WindowsWorkerTokenIsolationContractTests
             string sourcePath = Path.Combine(
                 directory.FullName,
                 "MarkdownRenderer",
+                "src",
                 "MarkdownRenderer.Svg.Resvg",
                 "Internal",
                 "WindowsWorkerProcess.cs");

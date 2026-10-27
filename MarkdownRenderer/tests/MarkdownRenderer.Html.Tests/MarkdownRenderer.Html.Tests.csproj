@@ -21,6 +21,6 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260317003" />
     <PackageReference Include="Microsoft.WindowsAppSDK.Runtime" Version="1.8.260317003" />
-    <ProjectReference Include="..\MarkdownRenderer.Html\MarkdownRenderer.Html.csproj" />
+    <ProjectReference Include="..\..\src\MarkdownRenderer.Html\MarkdownRenderer.Html.csproj" />
   </ItemGroup>
 </Project>

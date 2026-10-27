@@ -18,7 +18,7 @@
     <ResvgWorkerRid Condition="'$(ResvgWorkerRid)' == '' and '$(Platform)' == 'x86'">win-x86</ResvgWorkerRid>
     <ResvgWorkerRid Condition="'$(ResvgWorkerRid)' == '' and ('$(Platform)' == 'ARM64' or '$(Platform)' == 'arm64')">win-arm64</ResvgWorkerRid>
     <ResvgWorkerRid Condition="'$(ResvgWorkerRid)' == ''">win-x64</ResvgWorkerRid>
-    <ResvgWorkerDirectory Condition="'$(ResvgWorkerDirectory)' == ''">$(MSBuildThisFileDirectory)..\MarkdownRenderer.Svg.Resvg</ResvgWorkerDirectory>
+    <ResvgWorkerDirectory Condition="'$(ResvgWorkerDirectory)' == ''">$(MSBuildThisFileDirectory)..\..\src\MarkdownRenderer.Svg.Resvg</ResvgWorkerDirectory>
     <UseWinUI>false</UseWinUI>
     <WindowsAppSdkSelfContained>true</WindowsAppSdkSelfContained>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
@@ -36,10 +36,10 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\MarkdownRenderer.Svg.Resvg\MarkdownRenderer.Svg.Resvg.csproj" />
-    <Compile Include="..\MarkdownRenderer.Svg.Resvg.AotSmoke\SmokeRasterValidation.cs" Link="SmokeRasterValidation.cs" />
-    <Compile Include="..\MarkdownRenderer.Svg.Resvg.AotSmoke\SmokeRasterDecodeFixture.cs" Link="SmokeRasterDecodeFixture.cs" />
-    <EmbeddedResource Include="..\MarkdownRenderer.Svg.Resvg\native\tests\fixtures\opaque-vp8-256.webp"
+    <ProjectReference Include="..\..\src\MarkdownRenderer.Svg.Resvg\MarkdownRenderer.Svg.Resvg.csproj" />
+    <Compile Include="..\aot\MarkdownRenderer.Svg.Resvg.AotSmoke\SmokeRasterValidation.cs" Link="SmokeRasterValidation.cs" />
+    <Compile Include="..\aot\MarkdownRenderer.Svg.Resvg.AotSmoke\SmokeRasterDecodeFixture.cs" Link="SmokeRasterDecodeFixture.cs" />
+    <EmbeddedResource Include="..\..\src\MarkdownRenderer.Svg.Resvg\native\tests\fixtures\opaque-vp8-256.webp"
                       LogicalName="OpaqueVp8StreamingFixture" />
   </ItemGroup>
   <ItemGroup>
@@ -51,6 +51,6 @@
   </ItemGroup>
 
   <Target Name="ValidateResvgTestWorkerIdentity" BeforeTargets="PrepareForBuild" Condition="'$(DesignTimeBuild)' != 'true'">
-    <Exec Command="pwsh -NoProfile -NonInteractive -File &quot;$(MSBuildThisFileDirectory)..\MarkdownRenderer.Svg.Resvg\eng\Verify-ResvgWorkerIdentity.ps1&quot; -WorkerRoot &quot;$(ResvgWorkerDirectory)&quot; -Rid &quot;$(ResvgWorkerRid)&quot;" />
+    <Exec Command="pwsh -NoProfile -NonInteractive -File &quot;$(MSBuildThisFileDirectory)..\..\src\MarkdownRenderer.Svg.Resvg\eng\Verify-ResvgWorkerIdentity.ps1&quot; -WorkerRoot &quot;$(ResvgWorkerDirectory)&quot; -Rid &quot;$(ResvgWorkerRid)&quot;" />
   </Target>
 </Project>

@@ -27,6 +27,6 @@
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="$(JitHubWindowsSdkBuildToolsVersion)" PrivateAssets="all" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\MarkdownRenderer.Svg.Resvg\MarkdownRenderer.Svg.Resvg.csproj" />
+    <ProjectReference Include="..\..\..\src\MarkdownRenderer.Svg.Resvg\MarkdownRenderer.Svg.Resvg.csproj" />
   </ItemGroup>
 </Project>

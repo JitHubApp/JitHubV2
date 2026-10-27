@@ -15,7 +15,7 @@ plan integrity.
 Run both suites (downloads the pinned corpora on first use):
 
 ```powershell
-dotnet run --project MarkdownRenderer/MarkdownRenderer.Conformance/MarkdownRenderer.Conformance.csproj -c Release -- --suite all
+dotnet run --project MarkdownRenderer/tools/MarkdownRenderer.Conformance/MarkdownRenderer.Conformance.csproj -c Release -- --suite all
 ```
 
 Use `--offline` in a hermetic CI phase after caching. CommonMark publishes

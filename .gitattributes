@@ -1,19 +1,19 @@
 # Rust worker payloads are rebuilt and byte-normalized in CI. Keep their
 # source line endings invariant across Windows developer and hosted-runner
 # checkouts so compiler-emitted panic/source metadata stays reproducible.
-MarkdownRenderer/MarkdownRenderer.Svg.Resvg/native/**/*.rs text eol=lf
+MarkdownRenderer/src/MarkdownRenderer.Svg.Resvg/native/**/*.rs text eol=lf
 
 # Mermaid's reviewed source patch is applied to a byte-verified upstream checkout.
 # Keep patch/manifests canonical; CRLF must not change Rust raw-string contents.
-MarkdownRenderer/MarkdownRenderer.Mermaid/native/**/*.rs text eol=lf
-MarkdownRenderer/MarkdownRenderer.Mermaid/native/patches/* text eol=lf
-MarkdownRenderer/MarkdownRenderer.Mermaid/MERMAN_PROVENANCE.json text eol=lf
-MarkdownRenderer/MarkdownRenderer.Mermaid/NATIVE_RUST_DEPENDENCIES.json text eol=lf
+MarkdownRenderer/src/MarkdownRenderer.Mermaid/native/**/*.rs text eol=lf
+MarkdownRenderer/src/MarkdownRenderer.Mermaid/native/patches/* text eol=lf
+MarkdownRenderer/src/MarkdownRenderer.Mermaid/MERMAN_PROVENANCE.json text eol=lf
+MarkdownRenderer/src/MarkdownRenderer.Mermaid/NATIVE_RUST_DEPENDENCIES.json text eol=lf
 
 # The native GitHub README profile fingerprints these CSS bytes.
 # Keep the embedded resources identical on Windows and non-Windows checkouts.
-MarkdownRenderer/MarkdownRenderer.GitHub/Profiles/*.css text eol=lf
+MarkdownRenderer/src/MarkdownRenderer.GitHub/Profiles/*.css text eol=lf
 
 # The vendored native packages are verified against exact upstream and patch
 # byte hashes. Do not let a Windows checkout rewrite pinned text files.
-MarkdownRenderer/MarkdownRenderer.Svg.Resvg/native/vendor/** -text !eol
+MarkdownRenderer/src/MarkdownRenderer.Svg.Resvg/native/vendor/** -text !eol

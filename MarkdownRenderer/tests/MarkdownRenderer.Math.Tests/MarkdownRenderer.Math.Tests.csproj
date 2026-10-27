@@ -17,6 +17,6 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />
-    <ProjectReference Include="..\MarkdownRenderer.Math\MarkdownRenderer.Math.csproj" />
+    <ProjectReference Include="..\..\src\MarkdownRenderer.Math\MarkdownRenderer.Math.csproj" />
   </ItemGroup>
 </Project>

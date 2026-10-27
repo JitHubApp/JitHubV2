@@ -15,7 +15,7 @@ $selfTests = @(
     'MarkdownRenderer\eng\Test-MarkdownCorrectnessSandboxFollowUp.ps1'
     'MarkdownRenderer\eng\Test-MarkdownCorrectnessSelectionTargets.ps1'
     'MarkdownRenderer\eng\Test-SandboxSampleUiConfiguration.ps1'
-    'MarkdownRenderer\MarkdownRenderer.Svg.Resvg\eng\Test-ResvgVendoredSourceProvenance.ps1'
+    'MarkdownRenderer\src\MarkdownRenderer.Svg.Resvg\eng\Test-ResvgVendoredSourceProvenance.ps1'
 )
 
 $pwsh = (Get-Process -Id $PID).Path
