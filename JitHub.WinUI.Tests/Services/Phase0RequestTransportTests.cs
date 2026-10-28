@@ -5,6 +5,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Services;
+using JitHub.WinUI.Tests.TestSupport;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;
@@ -74,7 +75,7 @@ public sealed class Phase0RequestTransportTests
             return 84;
         });
 
-        await bothStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await bothStarted.Task.WaitAsync(AsyncTestWait.HangGuard);
         release.SetResult();
 
         int[] results = await Task.WhenAll(first, second);
@@ -99,9 +100,9 @@ public sealed class Phase0RequestTransportTests
         Task<int> queuedBackground = queue.EnqueueAsync("prefetch-queued", GitHubRequestPriority.BackgroundRefresh, _ => Task.FromResult(2));
         Task<int> foreground = queue.EnqueueAsync("foreground", GitHubRequestPriority.UserInitiated, _ => Task.FromResult(3));
 
-        Task completed = await Task.WhenAny(foreground, Task.Delay(TimeSpan.FromSeconds(2)));
-        Assert.Same(foreground, completed);
-        Assert.Equal(3, await foreground);
+        // The background lane stays held until releaseBackground is set below, so a
+        // foreground read stuck behind background work would never finish here.
+        Assert.Equal(3, await foreground.WaitAsync(AsyncTestWait.HangGuard));
         Assert.False(queuedBackground.IsCompleted);
 
         releaseBackground.SetResult();
@@ -130,7 +131,7 @@ public sealed class Phase0RequestTransportTests
             Interlocked.Increment(ref calls);
             return Task.FromResult(42);
         });
-        await WaitUntilAsync(() => queue.InFlightCount == 2);
+        await AsyncTestWait.UntilAsync(() => queue.InFlightCount == 2);
 
         Task<int> foreground = queue.EnqueueAsync("shared-read", GitHubRequestPriority.UserInitiated, _ =>
         {
@@ -138,8 +139,8 @@ public sealed class Phase0RequestTransportTests
             return Task.FromResult(84);
         });
 
-        Assert.Equal(42, await foreground.WaitAsync(TimeSpan.FromSeconds(2)));
-        Assert.Equal(42, await background.WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.Equal(42, await foreground.WaitAsync(AsyncTestWait.HangGuard));
+        Assert.Equal(42, await background.WaitAsync(AsyncTestWait.HangGuard));
         Assert.Equal(1, calls);
         Assert.False(blocker.IsCompleted);
 
@@ -186,26 +187,43 @@ public sealed class Phase0RequestTransportTests
     {
         GitHubRequestQueue queue = new(foregroundReadConcurrency: 1, backgroundReadConcurrency: 1, mutationConcurrency: 1);
         TaskCompletionSource workStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        TaskCompletionSource transportCancelled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource workStoppedByCancellation = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        CancellationToken workToken = default;
         using CancellationTokenSource callerCancellation = new();
         Task<int> prefetch = queue.EnqueueAsync(
             "cancel-active-prefetch",
             GitHubRequestPriority.Prefetch,
             async token =>
             {
-                using CancellationTokenRegistration registration = token.Register(transportCancelled.SetResult);
+                workToken = token;
                 workStarted.SetResult();
-                await Task.Delay(Timeout.InfiniteTimeSpan, token);
+                try
+                {
+                    await Task.Delay(Timeout.InfiniteTimeSpan, token);
+                }
+                catch (OperationCanceledException) when (token.IsCancellationRequested)
+                {
+                    // Signal from the work's own cancellation path. A token.Register
+                    // callback scoped to this method can be unregistered by the resumed
+                    // work before the token gets to run it, which loses the signal.
+                    workStoppedByCancellation.SetResult();
+                    throw;
+                }
+
                 return 1;
             },
             callerCancellation.Token);
-        await workStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        await workStarted.Task.WaitAsync(AsyncTestWait.HangGuard);
+        Assert.False(workToken.IsCancellationRequested);
 
         callerCancellation.Cancel();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => prefetch);
-        await transportCancelled.Task.WaitAsync(TimeSpan.FromSeconds(10));
-        await WaitUntilAsync(() => queue.InFlightCount == 0);
+        // The caller only observes cancellation after the queue has dropped its last
+        // subscriber, and dropping the last subscriber cancels the shared work token.
+        Assert.True(workToken.IsCancellationRequested);
+        await workStoppedByCancellation.Task.WaitAsync(AsyncTestWait.HangGuard);
+        await AsyncTestWait.UntilAsync(() => queue.InFlightCount == 0, "the cancelled prefetch to leave the in-flight table");
     }
 
     [Fact]
@@ -233,11 +251,11 @@ public sealed class Phase0RequestTransportTests
                 return Task.FromResult(2);
             },
             callerCancellation.Token);
-        await WaitUntilAsync(() => queue.InFlightCount == 2);
+        await AsyncTestWait.UntilAsync(() => queue.InFlightCount == 2);
 
         callerCancellation.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => queued);
-        await WaitUntilAsync(() => queue.InFlightCount == 1);
+        await AsyncTestWait.UntilAsync(() => queue.InFlightCount == 1);
         releaseBlocker.SetResult();
 
         Assert.Equal(1, await blocker);
@@ -280,13 +298,13 @@ public sealed class Phase0RequestTransportTests
             "promoted-shared-read",
             GitHubRequestPriority.UserInitiated,
             _ => Task.FromResult(84));
-        await sharedStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await sharedStarted.Task.WaitAsync(AsyncTestWait.HangGuard);
         prefetchCancellation.Cancel();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => prefetch);
         Assert.False(sharedTokenCancelled);
         releaseShared.SetResult();
-        Assert.Equal(42, await foreground.WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.Equal(42, await foreground.WaitAsync(AsyncTestWait.HangGuard));
         Assert.Equal(1, Volatile.Read(ref transportCalls));
         Assert.False(sharedTokenCancelled);
         Assert.False(blocker.IsCompleted);
@@ -330,15 +348,15 @@ public sealed class Phase0RequestTransportTests
                 });
         }
 
-        await finalStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
-        Task<int> finalRequest = await finalRequestAssigned.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await finalStarted.Task.WaitAsync(AsyncTestWait.HangGuard);
+        Task<int> finalRequest = await finalRequestAssigned.Task.WaitAsync(AsyncTestWait.HangGuard);
         Assert.Equal(1, Volatile.Read(ref transportCalls));
         Assert.Equal(99, Volatile.Read(ref startedItem));
         Assert.Equal(1, queue.InFlightCount);
 
         scheduler.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => finalRequest);
-        await WaitUntilAsync(() => queue.InFlightCount == 0);
+        await AsyncTestWait.UntilAsync(() => queue.InFlightCount == 0);
     }
 
     [Fact]
@@ -530,15 +548,6 @@ public sealed class Phase0RequestTransportTests
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
             Task.FromResult(_handler(request));
-    }
-
-    private static async Task WaitUntilAsync(Func<bool> predicate)
-    {
-        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(2));
-        while (!predicate())
-        {
-            await Task.Delay(10, timeout.Token);
-        }
     }
 
     private sealed class CancellationHandle(CancellationTokenSource cancellation) : IDisposable
