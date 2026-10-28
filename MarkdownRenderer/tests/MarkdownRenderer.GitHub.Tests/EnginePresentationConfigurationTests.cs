@@ -229,7 +229,7 @@ public sealed class EnginePresentationConfigurationTests
         Assert.False(viewRegistry.HasUnclassifiedStyleRoleRenderers);
         Assert.False(effectiveRegistry.HasUnclassifiedStyleRoleRenderers);
         Assert.True(registry.TryGetRenderer(typeof(HtmlBlock), out var htmlRenderer));
-        Assert.Equal("MarkdownRenderer.Html", htmlRenderer!.GetType().Assembly.GetName().Name);
+        Assert.IsType<MarkdownRenderer.Html.Renderers.HtmlBlockRenderer>(htmlRenderer);
     }
 
     [Fact]

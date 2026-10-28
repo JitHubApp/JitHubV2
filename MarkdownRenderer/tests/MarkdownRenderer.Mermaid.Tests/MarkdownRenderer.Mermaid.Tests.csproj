@@ -2,13 +2,12 @@
   <PropertyGroup>
     <IsTestProject>true</IsTestProject>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <!-- The Mermaid project copies the native library for the build's
-         Platform itself; the test graph has no RID-specific package assets. -->
-    <RuntimeIdentifiers></RuntimeIdentifiers>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\MarkdownRenderer.Mermaid\MarkdownRenderer.Mermaid.csproj" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.Runtime" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio">
       <PrivateAssets>all</PrivateAssets>

@@ -15,10 +15,11 @@ path that transfers parse ownership back to each view.
 
 ## GFM or GitHub syntax is missing
 
-The lean package defaults to CommonMark. Install `MarkdownRenderer.Gfm` and call
-`UseGitHubFlavoredMarkdown()` for strict GFM. Install `MarkdownRenderer.GitHub`
-and call `UseGitHubReadme()` for the broader GitHub README profile. Neither is
-enabled merely because the base viewer is installed.
+The default engine is CommonMark. Call `UseGitHubFlavoredMarkdown()`
+(`MarkdownRenderer.Gfm` namespace) for strict GFM, or `UseGitHubReadme()`
+(`MarkdownRenderer.GitHub` namespace) for the broader GitHub README profile. Both
+ship in the `MarkdownRenderer` package, but neither is enabled until the engine
+builder or view asks for it.
 
 ## SVGs render as placeholders
 

@@ -61,8 +61,7 @@ public sealed class TextMateGrammarPackTests
         var result = await highlighter.HighlightAsync(new CodeBlockHighlightRequest(
             language,
             code,
-            CodeBlockThemeVariant.Dark,
-            CancellationToken.None));
+            CodeBlockThemeVariant.Dark), CancellationToken.None);
 
         Assert.NotNull(result);
         Assert.NotEmpty(result.Spans);
@@ -110,8 +109,7 @@ public sealed class TextMateGrammarPackTests
         var result = await highlighter.HighlightAsync(new CodeBlockHighlightRequest(
             "pascal",
             "program Demo; begin writeln('hello'); end.",
-            CodeBlockThemeVariant.Dark,
-            CancellationToken.None));
+            CodeBlockThemeVariant.Dark), CancellationToken.None);
 
         Assert.NotNull(result);
         Assert.NotEmpty(result.Spans);
@@ -132,99 +130,6 @@ public sealed class TextMateGrammarPackTests
             cancellation.Token);
 
         Assert.Null(result);
-    }
-
-    [Fact]
-    public void CompatibilityFactory_DiscoversInstalledCommonPack()
-    {
-        var provider = TextMateGrammarProviderFactory.TryCreateDefault();
-
-        Assert.IsType<CommonTextMateGrammarProvider>(provider);
-        (provider as IDisposable)?.Dispose();
-    }
-
-    [Fact]
-    public void DiscoveryCompatibilityConstructorOwnsProviderAndIsObsolete()
-    {
-        ConstructorInfo explicitConstructor = typeof(TextMateCodeBlockSyntaxHighlighter)
-            .GetConstructor([typeof(ITextMateGrammarProvider)])!;
-        ConstructorInfo compatibilityConstructor = typeof(TextMateCodeBlockSyntaxHighlighter)
-            .GetConstructor(Type.EmptyTypes)!;
-
-        Assert.NotNull(compatibilityConstructor.GetCustomAttribute<ObsoleteAttribute>());
-        Assert.NotNull(compatibilityConstructor.GetCustomAttribute<RequiresUnreferencedCodeAttribute>());
-        Assert.Null(explicitConstructor.GetCustomAttribute<RequiresUnreferencedCodeAttribute>());
-
-        foreach (string methodName in new[] { nameof(TextMateGrammarProviderFactory.TryCreateDefault), nameof(TextMateGrammarProviderFactory.CreateDefault) })
-        {
-            MethodInfo method = typeof(TextMateGrammarProviderFactory).GetMethod(methodName)!;
-            Assert.NotNull(method.GetCustomAttribute<RequiresUnreferencedCodeAttribute>());
-        }
-    }
-
-    [Fact]
-    public void CompatibilityExtensionsAreObsoleteAndHaveDeterministicOwnership()
-    {
-        MethodInfo[] extensionMethods = typeof(TextMateSyntaxHighlightingExtensions)
-            .GetMethods(BindingFlags.Public | BindingFlags.Static)
-            .Where(method => method.Name == nameof(TextMateSyntaxHighlightingExtensions.UseTextMateSyntaxHighlighting))
-            .ToArray();
-        MethodInfo[] providerOverloads = extensionMethods
-            .Where(method =>
-                method.GetParameters().Length == 2 &&
-                method.GetParameters()[1].ParameterType == typeof(ITextMateGrammarProvider))
-            .ToArray();
-        MethodInfo[] viewOverloads = extensionMethods
-            .Where(method => method.GetParameters()[0].ParameterType != typeof(MarkdownRendererControlBuilder))
-            .ToArray();
-
-        Assert.Equal(3, providerOverloads.Length);
-        Assert.All(providerOverloads, method => Assert.NotNull(method.GetCustomAttribute<ObsoleteAttribute>()));
-        MethodInfo[] parameterlessOverloads = extensionMethods
-            .Where(method => method.GetParameters().Length == 1)
-            .ToArray();
-        Assert.Equal(3, parameterlessOverloads.Length);
-        Assert.All(parameterlessOverloads, method =>
-        {
-            Assert.NotNull(method.GetCustomAttribute<ObsoleteAttribute>());
-            Assert.NotNull(method.GetCustomAttribute<RequiresUnreferencedCodeAttribute>());
-        });
-        Assert.Equal(6, viewOverloads.Length);
-        Assert.DoesNotContain(viewOverloads, method =>
-            method.GetParameters()[0].ParameterType.FullName == "MarkdownRenderer.Controls.MarkdownRendererControl");
-        Assert.Equal(3, extensionMethods.Count(method =>
-            method.GetParameters().Length == 2 &&
-            method.GetParameters()[1].ParameterType == typeof(TextMateCodeBlockSyntaxHighlighter)));
-
-        var provider = new CountingProvider();
-#pragma warning disable CS0618
-        var builder = new MarkdownRendererControlBuilder()
-            .UseTextMateSyntaxHighlighting(provider);
-#pragma warning restore CS0618
-        FieldInfo factoryField = typeof(MarkdownRendererControlBuilder).GetField(
-            "_ownedCodeHighlighterFactory",
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
-        var factory = Assert.IsType<Func<MarkdownRenderer.Hosting.ICodeHighlighter>>(
-            factoryField.GetValue(builder));
-        using var highlighter = Assert.IsType<TextMateCodeBlockSyntaxHighlighter>(factory());
-        Assert.False(highlighter.OwnsProvider);
-    }
-
-    [Fact]
-    public void OwnedViewHelperDisposesHighlighterWhenOwnershipIsNotTransferred()
-    {
-        var highlighter = new TextMateCodeBlockSyntaxHighlighter(new CountingProvider());
-        MethodInfo configureOwnedView = typeof(TextMateSyntaxHighlightingExtensions).GetMethod(
-            "ConfigureOwnedView",
-            BindingFlags.NonPublic | BindingFlags.Static)!;
-
-        TargetInvocationException exception = Assert.Throws<TargetInvocationException>(() =>
-        {
-            _ = configureOwnedView.Invoke(null, [new object(), highlighter]);
-        });
-
-        Assert.IsType<ArgumentException>(exception.InnerException);
-        Assert.Throws<ObjectDisposedException>(() => _ = highlighter.Revision);
     }
 
     [Fact]
@@ -356,7 +261,7 @@ public sealed class TextMateGrammarPackTests
             try
             {
                 callerWasThreadPool = Thread.CurrentThread.IsThreadPoolThread;
-                _ = highlighter.HighlightAsync(CreateRequest("csharp", "var value = 1;"))
+                _ = highlighter.HighlightAsync(CreateRequest("csharp", "var value = 1;"), CancellationToken.None)
                     .AsTask()
                     .GetAwaiter()
                     .GetResult();
@@ -389,11 +294,11 @@ public sealed class TextMateGrammarPackTests
         using var firstCancellation = new CancellationTokenSource();
 
         Task<CodeBlockHighlightResult?> first = highlighter.HighlightAsync(
-            CreateRequest("csharp", "var value = 1;", firstCancellation.Token)).AsTask();
+            CreateRequest("csharp", "var value = 1;"), firstCancellation.Token).AsTask();
         await provider.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         Task<CodeBlockHighlightResult?> second = highlighter.HighlightAsync(
-            CreateRequest("csharp", "var value = 1;")).AsTask();
+            CreateRequest("csharp", "var value = 1;"), CancellationToken.None).AsTask();
         await firstCancellation.CancelAsync();
 
         Assert.Null(await first.WaitAsync(TimeSpan.FromSeconds(2)));
@@ -415,7 +320,7 @@ public sealed class TextMateGrammarPackTests
         using var cancellation = new CancellationTokenSource();
 
         Task<CodeBlockHighlightResult?> work = highlighter.HighlightAsync(
-            CreateRequest("csharp", "var value = 1;", cancellation.Token)).AsTask();
+            CreateRequest("csharp", "var value = 1;"), cancellation.Token).AsTask();
         await provider.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         var stopwatch = Stopwatch.StartNew();
@@ -433,12 +338,12 @@ public sealed class TextMateGrammarPackTests
         var options = new TextMateHighlighterOptions(cacheBudgetBytes: 330);
         var highlighter = new TextMateCodeBlockSyntaxHighlighter(provider, options);
 
-        _ = await highlighter.HighlightAsync(CreateRequest("csharp", "a"));
-        _ = await highlighter.HighlightAsync(CreateRequest("csharp", "a"));
+        _ = await highlighter.HighlightAsync(CreateRequest("csharp", "a"), CancellationToken.None);
+        _ = await highlighter.HighlightAsync(CreateRequest("csharp", "a"), CancellationToken.None);
         Assert.Equal(1, provider.InvocationCount);
 
-        _ = await highlighter.HighlightAsync(CreateRequest("csharp", "second"));
-        _ = await highlighter.HighlightAsync(CreateRequest("csharp", "a"));
+        _ = await highlighter.HighlightAsync(CreateRequest("csharp", "second"), CancellationToken.None);
+        _ = await highlighter.HighlightAsync(CreateRequest("csharp", "a"), CancellationToken.None);
         Assert.Equal(3, provider.InvocationCount);
     }
 
@@ -462,7 +367,7 @@ public sealed class TextMateGrammarPackTests
         var highlighter = new TextMateCodeBlockSyntaxHighlighter(provider, options);
 
         CodeBlockHighlightResult? result = await highlighter.HighlightAsync(
-            CreateRequest("csharp", code));
+            CreateRequest("csharp", code), CancellationToken.None);
 
         Assert.Same(CodeBlockHighlightResult.Empty, result);
         Assert.Equal(0, provider.InvocationCount);
@@ -480,7 +385,7 @@ public sealed class TextMateGrammarPackTests
         var highlighter = new TextMateCodeBlockSyntaxHighlighter(provider, options);
 
         CodeBlockHighlightResult? result = await highlighter.HighlightAsync(
-            CreateRequest("csharp", "ab"));
+            CreateRequest("csharp", "ab"), CancellationToken.None);
 
         Assert.Same(CodeBlockHighlightResult.Empty, result);
     }
@@ -496,7 +401,7 @@ public sealed class TextMateGrammarPackTests
         var highlighter = new TextMateCodeBlockSyntaxHighlighter(provider);
 
         CodeBlockHighlightResult? result = await highlighter.HighlightAsync(
-            CreateRequest("csharp", "abc"));
+            CreateRequest("csharp", "abc"), CancellationToken.None);
 
         Assert.Same(CodeBlockHighlightResult.Empty, result);
     }
@@ -512,7 +417,7 @@ public sealed class TextMateGrammarPackTests
         var highlighter = new TextMateCodeBlockSyntaxHighlighter(provider);
 
         CodeBlockHighlightResult? result = await highlighter.HighlightAsync(
-            CreateRequest("csharp", "abc"));
+            CreateRequest("csharp", "abc"), CancellationToken.None);
 
         Assert.Same(CodeBlockHighlightResult.Empty, result);
     }
@@ -523,7 +428,7 @@ public sealed class TextMateGrammarPackTests
         var highlighter = new TextMateCodeBlockSyntaxHighlighter(new ThrowingProvider());
 
         CodeBlockHighlightResult? result = await highlighter.HighlightAsync(
-            CreateRequest("csharp", "var value = 1;"));
+            CreateRequest("csharp", "var value = 1;"), CancellationToken.None);
 
         Assert.Same(CodeBlockHighlightResult.Empty, result);
     }
@@ -537,7 +442,7 @@ public sealed class TextMateGrammarPackTests
             options: null,
             ownsProvider: true);
         Task<CodeBlockHighlightResult?> work = highlighter.HighlightAsync(
-            CreateRequest("csharp", "value")).AsTask();
+            CreateRequest("csharp", "value"), CancellationToken.None).AsTask();
         await provider.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
 
         highlighter.Dispose();
@@ -547,7 +452,7 @@ public sealed class TextMateGrammarPackTests
         Assert.True(SpinWait.SpinUntil(() => provider.IsDisposed, TimeSpan.FromSeconds(2)));
         Assert.Throws<ObjectDisposedException>(() => _ = highlighter.Revision);
         await Assert.ThrowsAsync<ObjectDisposedException>(() =>
-            highlighter.HighlightAsync(CreateRequest("csharp", "later")).AsTask());
+            highlighter.HighlightAsync(CreateRequest("csharp", "later"), CancellationToken.None).AsTask());
     }
 
     [Fact]
@@ -559,7 +464,7 @@ public sealed class TextMateGrammarPackTests
             options: null,
             ownsProvider: true);
         Task<CodeBlockHighlightResult?> work = highlighter.HighlightAsync(
-            CreateRequest("csharp", "value")).AsTask();
+            CreateRequest("csharp", "value"), CancellationToken.None).AsTask();
         await provider.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
 
         var stopwatch = Stopwatch.StartNew();
@@ -751,11 +656,8 @@ public sealed class TextMateGrammarPackTests
         Assert.Same(TextMateGrammarHighlightResult.Empty, result);
     }
 
-    private static CodeBlockHighlightRequest CreateRequest(
-        string language,
-        string code,
-        CancellationToken cancellationToken = default) =>
-        new(language, code, CodeBlockThemeVariant.Dark, cancellationToken);
+    private static CodeBlockHighlightRequest CreateRequest(string language, string code) =>
+        new(language, code, CodeBlockThemeVariant.Dark);
 
     private static void AssertStableType(Type? type)
     {

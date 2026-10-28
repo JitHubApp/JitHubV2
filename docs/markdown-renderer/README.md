@@ -23,12 +23,13 @@ For the complete documentation table of contents, see [Summary](SUMMARY.md).
 
 ## Package model
 
-`MarkdownRenderer.Core` contains immutable engines and documents without WinUI.
-The `MarkdownRenderer` convenience package is deliberately lean: Core plus the
-native WinUI viewer. GFM, the GitHub README profile, safe HTML, Math, Mermaid,
-resvg SVG rasterization, TextMate integration, and grammar resources are
-optional packages. `MarkdownRenderer.All` is an explicit opt-in to every feature
-and payload.
+`dotnet add package MarkdownRenderer` gives the whole viewer: immutable engines
+and documents, the CommonMark, strict GFM, Markdown Extra and GitHub README
+profiles, budgeted safe HTML, the optional progressive performance session, and
+the native WinUI views. The default engine is CommonMark; the other profiles are
+opt-in builder calls. Math, Mermaid, resvg SVG rasterization, TextMate
+integration, and grammar resources are separate feature packs.
+`MarkdownRenderer.All` is an explicit opt-in to every feature and payload.
 
 ## Recommended API shape
 
@@ -46,8 +47,9 @@ var view = new MarkdownScrollView
 Use `MarkdownDocumentView` inside an ancestor-owned scroll surface.
 `MarkdownRendererControl` is obsolete compatibility surface.
 
-The base presentation follows WinUI/Fluent resources. The GitHub profile and any
-GitHub-themed presentation are opt-in through `MarkdownRenderer.GitHub`.
+The base presentation follows WinUI/Fluent resources. The GitHub README profile
+and any GitHub-themed presentation are opt-in through `UseGitHubReadme()` and
+the `MarkdownRenderer.GitHub` namespace.
 
 Normal Copy writes rendered semantic text and `CF_HTML`. Exact source markdown
 is available through the explicit Copy Markdown path.

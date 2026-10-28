@@ -1,8 +1,9 @@
 # Quick start
 
-`MarkdownRenderer` is the lean WinUI viewer package. It includes the native
-CommonMark viewer and immutable document API; add only the feature packs your app
-uses.
+`MarkdownRenderer` is the WinUI viewer package. It includes the native viewer,
+the immutable document API, the CommonMark, strict GFM, Markdown Extra and
+GitHub README profiles, and budgeted safe HTML. Add only the feature packs your
+app uses.
 
 ## Install
 
@@ -10,8 +11,7 @@ uses.
 dotnet add package MarkdownRenderer
 ```
 
-Optional packages include `MarkdownRenderer.Gfm`, `MarkdownRenderer.GitHub`,
-`MarkdownRenderer.Html`, `MarkdownRenderer.Math`, `MarkdownRenderer.Mermaid`,
+Feature packs are `MarkdownRenderer.Math`, `MarkdownRenderer.Mermaid`,
 `MarkdownRenderer.Svg.Resvg`, and
 `MarkdownRenderer.SyntaxHighlighting.TextMate`. Add
 `MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common` for the curated
@@ -104,9 +104,11 @@ view.Document = await engine.ParseAsync(markdownSource);
 ```
 
 For GitHub README additions such as alerts, footnotes, emoji, generic attributes,
-and the native safe-HTML subset, reference `MarkdownRenderer.GitHub` and use
+and the native safe-HTML subset, add `using MarkdownRenderer.GitHub;` and call
 `UseGitHubReadme()`. The base renderer follows WinUI/Fluent styling by default;
-GitHub-specific parsing and presentation are opt-in.
+GitHub-specific parsing and presentation are opt-in. See
+[Supported markdown](supported-markdown.md#github-readme-profile) for the
+profile and its versioned Primer visual comparison profile.
 
 The builder is also available when constructing a view in code:
 

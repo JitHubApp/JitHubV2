@@ -110,7 +110,7 @@ public sealed class PerformanceExternalGateFixtureTests
     }
 
     [Fact]
-    public void DifferentDeploymentIdentitiesMayShareTheFiveCriticalArtifactHashes()
+    public void DifferentDeploymentIdentitiesMayShareTheCriticalArtifactHashes()
     {
         using var evidence = GateEvidence.Create();
         evidence.AddPrivateRuntimeDependencyAndRefreshCandidateIdentity();
@@ -2791,7 +2791,6 @@ public sealed class PerformanceExternalGateFixtureTests
                 Executable = executable,
                 PerformanceHarnessDll = Capture("MarkdownRenderer.PerformanceHarness.dll"),
                 MarkdownRendererDll = Capture("MarkdownRenderer.dll"),
-                MarkdownRendererCoreDll = Capture("MarkdownRenderer.Core.dll"),
                 RuntimeConfig = Capture("MarkdownRenderer.PerformanceHarness.runtimeconfig.json"),
             };
         }

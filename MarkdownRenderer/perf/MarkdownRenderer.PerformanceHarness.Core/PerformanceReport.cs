@@ -245,7 +245,6 @@ public sealed class BuildArtifactHashes
     public BuildArtifactHash Executable { get; init; } = new();
     public BuildArtifactHash PerformanceHarnessDll { get; init; } = new();
     public BuildArtifactHash MarkdownRendererDll { get; init; } = new();
-    public BuildArtifactHash MarkdownRendererCoreDll { get; init; } = new();
     public BuildArtifactHash RuntimeConfig { get; init; } = new();
 }
 

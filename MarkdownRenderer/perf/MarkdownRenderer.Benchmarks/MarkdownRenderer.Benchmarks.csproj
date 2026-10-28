@@ -12,7 +12,6 @@
          architecture-specific Windows App SDK deployment. -->
     <PackageReference Include="Microsoft.WindowsAppSDK" />
     <PackageReference Include="Microsoft.WindowsAppSDK.Runtime" />
-    <ProjectReference Include="..\..\src\MarkdownRenderer.Core\MarkdownRenderer.Core.csproj" />
     <ProjectReference Include="..\..\src\MarkdownRenderer\MarkdownRenderer.csproj" />
     <ProjectReference Include="..\..\src\MarkdownRenderer.Math\MarkdownRenderer.Math.csproj" />
   </ItemGroup>

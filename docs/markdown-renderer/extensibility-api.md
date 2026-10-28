@@ -214,8 +214,14 @@ diagram without distorting its internal layout.
 
 ## Feature packs
 
-The official GFM, GitHub, HTML, Math, Mermaid, resvg, and TextMate packages use
-the same opt-in packaging principle. Their presence must not be inferred from the
-lean base package. Math supplies CSharpMath-based vector typesetting; Mermaid
-supplies a selected-RID Merman engine with validated MMIR scene output. Both
-retain bounded processing and explicit fallback behavior.
+The official Math, Mermaid, resvg, and TextMate packages are separate assemblies
+that use the same public extension points described here. Their presence must not
+be inferred from the `MarkdownRenderer` package. Math supplies CSharpMath-based
+vector typesetting; Mermaid supplies a selected-RID Merman engine with validated
+MMIR scene output. Both retain bounded processing and explicit fallback behavior.
+
+The GFM, Markdown Extra, GitHub README, and safe-HTML profiles ship inside the
+`MarkdownRenderer` assembly because their renderers read the parser's internal
+syntax tree; see
+[Tech stack and decisions](tech-stack-and-decisions.md#one-renderer-assembly).
+They are still opt-in builder calls.

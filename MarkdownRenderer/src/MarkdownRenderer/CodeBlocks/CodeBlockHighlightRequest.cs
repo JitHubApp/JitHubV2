@@ -1,5 +1,3 @@
-using System.Threading;
-
 namespace MarkdownRenderer.CodeBlocks;
 
 /// <summary>
@@ -11,13 +9,11 @@ public sealed class CodeBlockHighlightRequest
     public CodeBlockHighlightRequest(
         string? language,
         string code,
-        CodeBlockThemeVariant themeVariant,
-        CancellationToken cancellationToken)
+        CodeBlockThemeVariant themeVariant)
     {
         Language = language;
         Code = code ?? string.Empty;
         ThemeVariant = themeVariant;
-        CancellationToken = cancellationToken;
     }
 
     /// <summary>Normalized language identifier from the fence info string, if any.</summary>
@@ -28,7 +24,4 @@ public sealed class CodeBlockHighlightRequest
 
     /// <summary>Resolved renderer theme variant for choosing token colors.</summary>
     public CodeBlockThemeVariant ThemeVariant { get; }
-
-    /// <summary>Cancellation token for abandoning stale highlight work.</summary>
-    public CancellationToken CancellationToken { get; }
 }

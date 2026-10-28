@@ -12,6 +12,6 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="Microsoft.WindowsAppSDK" />
     <PackageReference Include="Microsoft.WindowsAppSDK.Runtime" />
-    <ProjectReference Include="..\..\src\MarkdownRenderer.Html\MarkdownRenderer.Html.csproj" />
+    <ProjectReference Include="..\..\src\MarkdownRenderer\MarkdownRenderer.csproj" />
   </ItemGroup>
 </Project>

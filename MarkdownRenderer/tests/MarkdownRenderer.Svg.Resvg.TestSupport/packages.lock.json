@@ -55,17 +55,10 @@
           "Microsoft.WindowsAppSDK.InteractiveExperiences": "1.8.260125001"
         }
       },
-      "markdownrenderer.core": {
-        "type": "Project",
-        "dependencies": {
-          "Markdig": "[0.42.0, )"
-        }
-      },
-      "MarkdownRenderer.WinUI": {
+      "markdownrenderer": {
         "type": "Project",
         "dependencies": {
           "Markdig": "[0.42.0, )",
-          "MarkdownRenderer.Core": "[1.0.0-preview.1, )",
           "Microsoft.Graphics.Win2D": "[1.4.0, )"
         }
       },

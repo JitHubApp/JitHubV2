@@ -18,9 +18,7 @@
     <PackageReference Include="Microsoft.WindowsAppSDK.Runtime" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\src\MarkdownRenderer.Core\MarkdownRenderer.Core.csproj" />
     <ProjectReference Include="..\..\src\MarkdownRenderer\MarkdownRenderer.csproj" />
-    <ProjectReference Include="..\..\src\MarkdownRenderer.Performance\MarkdownRenderer.Performance.csproj" />
     <ProjectReference Include="..\..\perf\MarkdownRenderer.PerformanceHarness.Core\MarkdownRenderer.PerformanceHarness.Core.csproj" />
   </ItemGroup>
   <ItemGroup>

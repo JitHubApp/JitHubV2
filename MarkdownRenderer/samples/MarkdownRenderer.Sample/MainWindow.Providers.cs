@@ -20,7 +20,6 @@ namespace MarkdownRenderer.Sample;
 
 // The sample switches between both concrete viewport owners through their
 // shared base type, as MainWindow.xaml.cs does.
-#pragma warning disable MR1001
 
 // The Providers page swaps the renderer's engine, grammar provider, hosted
 // factory and optional providers while documents are live, and adds a second

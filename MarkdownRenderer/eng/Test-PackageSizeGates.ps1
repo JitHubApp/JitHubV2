@@ -9,13 +9,17 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 . (Join-Path $PSScriptRoot 'PackageSizeGates.Common.ps1')
 
 function Get-LatestPackage([string] $packageId) {
-    $matches = Get-ChildItem -LiteralPath $PackageDirectory -Filter "$packageId.*.nupkg" -File |
-        Where-Object { $_.Name -notlike '*.symbols.nupkg' } |
-        Sort-Object LastWriteTimeUtc -Descending
-    if (-not $matches) {
+    # The package ID must be followed by a numeric version. A
+    # 'MarkdownRenderer.*' glob also matches every MarkdownRenderer.<pack>
+    # package, so it could pick a feature pack instead of the renderer.
+    $fileNamePattern = '^' + [regex]::Escape($packageId) + '\.[0-9][0-9A-Za-z.+-]*\.nupkg$'
+    $candidates = @(Get-ChildItem -LiteralPath $PackageDirectory -Filter '*.nupkg' -File |
+        Where-Object { $_.Name -notlike '*.symbols.nupkg' -and $_.Name -match $fileNamePattern } |
+        Sort-Object LastWriteTimeUtc -Descending)
+    if ($candidates.Count -eq 0) {
         throw "Required package '$packageId' was not found in '$PackageDirectory'."
     }
-    return $matches[0]
+    return $candidates[0]
 }
 
 function Get-PackageEntries([System.IO.FileInfo] $package) {
@@ -40,32 +44,33 @@ function Assert-Max([long] $actual, [long] $maximum, [string] $label) {
     }
 }
 
-$core = Get-LatestPackage 'MarkdownRenderer.Core'
-$winui = Get-LatestPackage 'MarkdownRenderer.WinUI'
-$coreEntries = Get-PackageEntries $core
-$winuiEntries = Get-PackageEntries $winui
+$renderer = Get-LatestPackage 'MarkdownRenderer'
+$rendererEntries = Get-PackageEntries $renderer
 
-$leanCompressedBytes = $core.Length + $winui.Length
-$leanManagedBytes = @($coreEntries + $winuiEntries |
+$rendererCompressedBytes = $renderer.Length
+$rendererManagedBytes = [long] (@($rendererEntries |
     Where-Object { $_.Name -match '^lib/.+\.dll$' } |
-    Measure-Object -Property Length -Sum).Sum
-$leanNativeEntries = @($coreEntries + $winuiEntries |
+    Measure-Object -Property Length -Sum).Sum)
+$rendererNativeEntries = @($rendererEntries |
     Where-Object {
         $_.Name -match '(^|/)runtimes/.+/native/' -or
         ($_.Name -notmatch '^lib/' -and $_.Name -match '\.(dll|exe|so|dylib)$')
     })
 
-# Budgets are the 2026-10-26 measured sizes plus about 10% headroom; see
+# Budgets are measured sizes plus about 10% headroom. The compressed budget is
+# the sum of the earlier engine/viewer (900 KiB) and performance-session
+# (128 KiB) budgets. The managed budget is the measured MarkdownRenderer.dll
+# (2,302,464 bytes on 2026-10-27) plus about 10%: the GFM, GitHub, HTML and
+# performance code it now holds had no managed budget of its own. See
 # docs/markdown-renderer/packaging-and-distribution.md. Native code must not
-# leak into the lean pair (checked separately immediately below).
-Assert-Max $leanCompressedBytes (900KB) 'Core + WinUI compressed size'
-Assert-Max $leanManagedBytes (2150KB) 'Core + WinUI renderer-owned managed code'
-if ($leanNativeEntries.Count -ne 0) {
-    throw "Core + WinUI contain native payload: $($leanNativeEntries.Name -join ', ')."
+# leak into the MarkdownRenderer package (checked separately immediately below).
+Assert-Max $rendererCompressedBytes (1028KB) 'MarkdownRenderer compressed package'
+Assert-Max $rendererManagedBytes (2475KB) 'MarkdownRenderer renderer-owned managed code'
+if ($rendererNativeEntries.Count -ne 0) {
+    throw "MarkdownRenderer contains native payload: $($rendererNativeEntries.Name -join ', ')."
 }
 
 $optionalCaps = [ordered]@{
-    'MarkdownRenderer.Performance' = 128KB
     'MarkdownRenderer.Svg.Resvg' = 5950KB
     'MarkdownRenderer.Math' = 2.3MB
     'MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common' = 6MB
@@ -111,4 +116,4 @@ foreach ($entry in $optionalCaps.GetEnumerator()) {
     }
 }
 
-Write-Host "Package size gates passed. Lean compressed: $leanCompressedBytes bytes; managed: $leanManagedBytes bytes."
+Write-Host "Package size gates passed. MarkdownRenderer compressed: $rendererCompressedBytes bytes; managed: $rendererManagedBytes bytes."

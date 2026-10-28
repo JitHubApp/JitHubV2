@@ -81,7 +81,7 @@ $temporaryRoot = Join-Path $temporaryBase ('MarkdownRenderer.PackageCompliance.T
 [IO.Directory]::CreateDirectory($temporaryRoot) | Out-Null
 try {
     $expectedPackageIds = @(Get-ExpectedReleasePackageIds)
-    Assert-True ($expectedPackageIds.Count -eq 14) 'the release package set must contain exactly 14 IDs'
+    Assert-True ($expectedPackageIds.Count -eq 8) 'the release package set must contain exactly 8 IDs'
 
     & (Join-Path $PSScriptRoot 'Test-ResvgSelectedDeploymentSize.ps1')
 
@@ -109,7 +109,7 @@ try {
 
         $defaultScopeRejected = $false
         try { Assert-ExpectedReleasePackageSet -PackageDirectory $scopedSet }
-        catch { $defaultScopeRejected = $_.Exception.Message -like '*Expected exactly 14 release packages*' }
+        catch { $defaultScopeRejected = $_.Exception.Message -like '*Expected exactly 8 release packages*' }
         Assert-True $defaultScopeRejected "$scope subset must never satisfy the default full-release gate"
     }
 
@@ -122,7 +122,7 @@ try {
     }
     $missingPackageSetFailed = $false
     try { Assert-ExpectedReleasePackageSet -PackageDirectory $missingPackageSet }
-    catch { $missingPackageSetFailed = $_.Exception.Message -like '*Expected exactly 14 release packages*' }
+    catch { $missingPackageSetFailed = $_.Exception.Message -like '*Expected exactly 8 release packages*' }
     Assert-True $missingPackageSetFailed 'the release package gate must reject a missing package/count shortfall'
 
     $unexpectedPackageSet = Join-Path $temporaryRoot 'unexpected-package-set'
@@ -139,10 +139,10 @@ try {
     $unexpectedPackageSetFailed = $false
     try { Assert-ExpectedReleasePackageSet -PackageDirectory $unexpectedPackageSet }
     catch { $unexpectedPackageSetFailed = $_.Exception.Message -like '*ID set mismatch*' }
-    Assert-True $unexpectedPackageSetFailed 'the release package gate must reject an unexpected ID even when the count is 14'
+    Assert-True $unexpectedPackageSetFailed 'the release package gate must reject an unexpected ID even when the count is 8'
 
     $duplicatePackageSet = Join-Path $temporaryRoot 'duplicate-package-set'
-    foreach ($packageId in $expectedPackageIds | Select-Object -First 13) {
+    foreach ($packageId in $expectedPackageIds | Select-Object -First 7) {
         New-FixturePackage `
             -Path (Join-Path $duplicatePackageSet ($packageId + '.1.2.3-preview.1.nupkg')) `
             -Payload ('payload-' + $packageId) `
@@ -292,11 +292,11 @@ try {
 
     $requiredAssemblySet = Join-Path $temporaryRoot 'required-managed-asset-present'
     New-FixturePackage `
-        -Path (Join-Path $requiredAssemblySet 'MarkdownRenderer.Core.1.2.3-preview.1.nupkg') `
+        -Path (Join-Path $requiredAssemblySet 'MarkdownRenderer.1.2.3-preview.1.nupkg') `
         -Payload '' `
-        -PackageId 'MarkdownRenderer.Core' `
+        -PackageId 'MarkdownRenderer' `
         -ManagedAssemblyBytes $anyCpuAssemblyBytes `
-        -ManagedAssemblyPath 'lib/net10.0/MarkdownRenderer.Core.dll'
+        -ManagedAssemblyPath 'lib/net10.0/MarkdownRenderer.dll'
     $requiredAssemblyReport = Join-Path $temporaryRoot 'required-managed-asset-present.json'
     & (Join-Path $PSScriptRoot 'Test-ManagedPackageArchitecture.ps1') `
         -PackageDirectory $requiredAssemblySet `
@@ -306,9 +306,9 @@ try {
 
     $missingAssemblySet = Join-Path $temporaryRoot 'required-managed-asset-missing'
     New-FixturePackage `
-        -Path (Join-Path $missingAssemblySet 'MarkdownRenderer.Core.1.2.3-preview.1.nupkg') `
+        -Path (Join-Path $missingAssemblySet 'MarkdownRenderer.1.2.3-preview.1.nupkg') `
         -Payload '' `
-        -PackageId 'MarkdownRenderer.Core' `
+        -PackageId 'MarkdownRenderer' `
         -ManagedAssemblyBytes $anyCpuAssemblyBytes `
         -ManagedAssemblyPath 'lib/net10.0/Wrong.dll'
     $missingAssemblyReport = Join-Path $temporaryRoot 'required-managed-asset-missing.json'

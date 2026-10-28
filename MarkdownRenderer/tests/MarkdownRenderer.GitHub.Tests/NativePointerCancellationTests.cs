@@ -3,7 +3,6 @@ using System.Reflection;
 using MarkdownRenderer.Controls;
 using Xunit;
 
-#pragma warning disable MR1001 // Tests the shared private dispatcher used by both public viewport controls.
 
 namespace MarkdownRenderer.GitHub.Tests;
 
@@ -38,4 +37,3 @@ public sealed class NativePointerCancellationTests
     }
 }
 
-#pragma warning restore MR1001

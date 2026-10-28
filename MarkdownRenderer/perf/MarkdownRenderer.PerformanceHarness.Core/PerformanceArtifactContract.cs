@@ -9,7 +9,6 @@ public static class PerformanceArtifactContract
         "MarkdownRenderer.PerformanceHarness.exe",
         "MarkdownRenderer.PerformanceHarness.dll",
         "MarkdownRenderer.dll",
-        "MarkdownRenderer.Core.dll",
         "MarkdownRenderer.PerformanceHarness.runtimeconfig.json",
     ];
 
@@ -28,7 +27,6 @@ public static class PerformanceArtifactContract
             artifacts.Executable,
             artifacts.PerformanceHarnessDll,
             artifacts.MarkdownRendererDll,
-            artifacts.MarkdownRendererCoreDll,
             artifacts.RuntimeConfig,
         ];
         for (int index = 0; index < entries.Length; index++)
@@ -65,7 +63,6 @@ public static class PerformanceArtifactContract
             artifacts!.Executable,
             artifacts.PerformanceHarnessDll,
             artifacts.MarkdownRendererDll,
-            artifacts.MarkdownRendererCoreDll,
             artifacts.RuntimeConfig,
         ];
         try
@@ -103,7 +100,6 @@ public static class PerformanceArtifactContract
            HashEquals(candidate.Executable, reference.Executable) &&
            HashEquals(candidate.PerformanceHarnessDll, reference.PerformanceHarnessDll) &&
            HashEquals(candidate.MarkdownRendererDll, reference.MarkdownRendererDll) &&
-           HashEquals(candidate.MarkdownRendererCoreDll, reference.MarkdownRendererCoreDll) &&
            HashEquals(candidate.RuntimeConfig, reference.RuntimeConfig);
 
     private static string ComputeFileSha256(string path)

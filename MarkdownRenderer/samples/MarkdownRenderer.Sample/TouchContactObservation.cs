@@ -15,7 +15,6 @@ using Windows.Foundation;
 namespace MarkdownRenderer.Sample;
 
 // The observer attaches to both public viewport implementations through their shared control surface.
-#pragma warning disable MR1001
 /// <summary>
 /// Sample-only, read-only observation of touch contacts routed through the
 /// active renderer. It exists so the touch UI test can distinguish a held
@@ -791,4 +790,3 @@ internal sealed class TouchContactObservation
         CaptureLost,
     }
 }
-#pragma warning restore MR1001

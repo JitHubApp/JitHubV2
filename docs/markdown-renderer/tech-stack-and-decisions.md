@@ -27,9 +27,25 @@ thread-safe engine. `ParseAsync` returns immutable documents that preserve
 half-open UTF-16 source spans, diagnostics, and semantic queries. Views consume
 documents without exposing their private layout or drawing implementation.
 
+## One renderer assembly
+
+The engine, document model, profiles (CommonMark, strict GFM, Markdown Extra,
+GitHub README), safe HTML, the performance session, and the WinUI renderer ship
+as one assembly, `MarkdownRenderer.dll`, in the `MarkdownRenderer` package.
+
+The WinUI layout walks the parser's Markdig syntax tree directly. That tree must
+not appear in the public API, and shipping assemblies do not grant each other
+`InternalsVisibleTo`. Splitting the engine, profiles, safe HTML, or viewer into
+separate assemblies would force one of those two rules to break, so they stay
+together. Math, Mermaid, resvg, and TextMate do not need the syntax tree: they
+stay separate packages and plug in through public extension points.
+
 ## Optional capabilities
 
-The base `MarkdownRenderer` package stays lean. GitHub behavior, safe HTML, Math,
+The `MarkdownRenderer` package carries no native payload of its own; Win2D and
+the Windows App SDK arrive as package dependencies. Its GFM, GitHub
+README, Markdown Extra, and safe-HTML profiles are compiled in but stay off
+until a builder call selects them; the default engine is CommonMark. Math,
 Mermaid, resvg, TextMate, and grammar payloads require explicit package choices.
 The default presentation follows WinUI/Fluent resources; GitHub behavior is not
 silently imposed on every app.

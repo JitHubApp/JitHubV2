@@ -4,6 +4,12 @@
     <InvariantGlobalization>false</InvariantGlobalization>
   </PropertyGroup>
   <ItemGroup>
+    <!-- Supplies mt.exe for the Windows App SDK self-contained manifest step,
+         so the executable builds outside a Developer PowerShell. -->
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\..\src\MarkdownRenderer.Math\MarkdownRenderer.Math.csproj" />
   </ItemGroup>
 </Project>

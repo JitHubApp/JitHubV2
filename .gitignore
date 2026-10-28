@@ -455,6 +455,6 @@ JitHub.WinUI/JitHub.WinUI/
 **/obj-security/
 JitHub.WinUI.Tests/artifacts/
 MarkdownRenderer/artifacts/
-MarkdownRenderer/tests/MarkdownRenderer.PixelTests/artifacts/
+MarkdownRenderer/tests/MarkdownRenderer.Pixel.Tests/artifacts/
 markdown-security-lifecycle-smoke/
 *.backup.png

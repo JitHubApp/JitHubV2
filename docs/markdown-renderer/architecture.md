@@ -15,10 +15,14 @@ MarkdownEngineBuilder
 
 | Layer | Responsibility |
 | --- | --- |
-| `MarkdownRenderer.Core` | Profiles, immutable engines/documents, diagnostics, UTF-16 source maps, and declarative extensions. |
-| `MarkdownRenderer` | Native WinUI views, Fluent defaults, selection, accessibility, images, host services, and rendering. |
-| Feature packs | GFM, GitHub README behavior, safe HTML, Math, Mermaid, isolated resvg SVG, and TextMate syntax highlighting. |
+| `MarkdownRenderer` | One assembly with the engine and document model (profiles, immutable engines and documents, diagnostics, UTF-16 source maps, declarative extensions), the strict GFM, Markdown Extra and GitHub README profiles, budgeted safe HTML, the optional progressive performance session, and the native WinUI views: Fluent defaults, selection, accessibility, images, host services, and rendering. |
+| Feature packs | Math, Mermaid, isolated resvg SVG, and TextMate syntax highlighting with separate grammar packs. Each is its own package and plugs in through public extension points. |
 | Host application | Viewport composition, URI/image policy, commands, localization, optional hosted elements, and selected feature packs. |
+
+Inside the `MarkdownRenderer` assembly, namespaces keep the opt-in areas apart:
+`MarkdownRenderer.Gfm`, `MarkdownRenderer.GitHub`, `MarkdownRenderer.Html`, and
+`MarkdownRenderer.Performance`. The parser's Markdig syntax tree stays internal;
+see [Tech stack and decisions](tech-stack-and-decisions.md#one-renderer-assembly).
 
 ## Viewport ownership
 

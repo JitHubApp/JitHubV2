@@ -28,12 +28,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\MarkdownRenderer\MarkdownRenderer.csproj" />
-    <ProjectReference Include="..\..\src\MarkdownRenderer.Gfm\MarkdownRenderer.Gfm.csproj" />
-    <ProjectReference Include="..\..\src\MarkdownRenderer.GitHub\MarkdownRenderer.GitHub.csproj" />
-    <ProjectReference Include="..\..\src\MarkdownRenderer.Html\MarkdownRenderer.Html.csproj" />
     <ProjectReference Include="..\..\src\MarkdownRenderer.Math\MarkdownRenderer.Math.csproj" />
     <ProjectReference Include="..\..\src\MarkdownRenderer.Mermaid\MarkdownRenderer.Mermaid.csproj" />
-    <ProjectReference Include="..\..\src\MarkdownRenderer.Performance\MarkdownRenderer.Performance.csproj" />
     <ProjectReference Include="..\..\src\MarkdownRenderer.Svg.Resvg\MarkdownRenderer.Svg.Resvg.csproj" />
     <ProjectReference Include="..\..\src\MarkdownRenderer.SyntaxHighlighting.TextMate\MarkdownRenderer.SyntaxHighlighting.TextMate.csproj" />
     <ProjectReference Include="..\..\src\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.csproj" />

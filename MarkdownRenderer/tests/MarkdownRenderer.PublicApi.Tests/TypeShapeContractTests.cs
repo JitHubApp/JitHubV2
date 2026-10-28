@@ -14,14 +14,6 @@ namespace MarkdownRenderer.PublicApi.Tests;
 /// </summary>
 public sealed class TypeShapeContractTests
 {
-    // The obsolete compatibility facade that MarkdownScrollView and
-    // MarkdownDocumentView derive from. Step 2 of the structure cleanup
-    // deletes it, and this list with it.
-    private static readonly string[] ReviewedInheritableClasses =
-    [
-        "MarkdownRenderer.Controls.MarkdownRendererControl",
-    ];
-
     private const BindingFlags DeclaredInstance =
         BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly;
 
@@ -54,13 +46,20 @@ public sealed class TypeShapeContractTests
     }
 
     [Fact]
-    public void Classes_AreSealedOrStatic_ExceptTheReviewedBaseClasses()
+    public void Classes_CannotBeDerivedOutsideTheirAssembly()
     {
-        IEnumerable<string> inheritable = ShippingAssemblies.ExportedTypes()
+        // A class is sealed, static, or an abstract base whose constructors
+        // only its own assembly can call, such as MarkdownRendererControl
+        // for MarkdownScrollView and MarkdownDocumentView.
+        string[] inheritable = ShippingAssemblies.ExportedTypes()
             .Where(static type => type.IsClass && !type.IsSealed && !typeof(Delegate).IsAssignableFrom(type))
-            .Select(ConsumerSurface.Name);
+            .Where(static type => type
+                .GetConstructors(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                .Any(static constructor => constructor.IsPublic || constructor.IsFamily || constructor.IsFamilyOrAssembly))
+            .Select(ConsumerSurface.Name)
+            .ToArray();
 
-        ReviewedContract.AssertMatches("The set of inheritable exported classes", ReviewedInheritableClasses, inheritable);
+        Assert.Empty(inheritable);
     }
 
     [Fact]

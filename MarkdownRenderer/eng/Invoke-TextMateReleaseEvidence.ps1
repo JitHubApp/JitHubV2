@@ -285,7 +285,6 @@ $testsProject = Join-Path $markdownRoot `
     'tests\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests.csproj'
 $buildArtifactsDirectory = Join-Path $runDirectory 'build'
 $restoreProjects = @(
-    'src\MarkdownRenderer.Core\MarkdownRenderer.Core.csproj',
     'src\MarkdownRenderer\MarkdownRenderer.csproj',
     'src\MarkdownRenderer.SyntaxHighlighting.TextMate\MarkdownRenderer.SyntaxHighlighting.TextMate.csproj',
     'src\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.csproj',
@@ -335,7 +334,6 @@ if ([int] $counters.failed -ne 0 -or [int] $counters.executed -ne [int] $counter
 if ($LASTEXITCODE -ne 0) { throw 'TextMate provenance verification failed.' }
 
 $projects = @(
-    'src\MarkdownRenderer.Core\MarkdownRenderer.Core.csproj',
     'src\MarkdownRenderer\MarkdownRenderer.csproj',
     'src\MarkdownRenderer.SyntaxHighlighting.TextMate\MarkdownRenderer.SyntaxHighlighting.TextMate.csproj',
     'src\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.csproj',
@@ -381,8 +379,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Could not create the TextMate package referenc
 if ($LASTEXITCODE -ne 0) { throw 'TextMate package reproducibility failed.' }
 
 $packageIds = @(
-    'MarkdownRenderer.Core',
-    'MarkdownRenderer.WinUI',
+    'MarkdownRenderer',
     'MarkdownRenderer.SyntaxHighlighting.TextMate',
     'MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common',
     'MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All'
@@ -415,7 +412,7 @@ Assert-PackageEntries -Package $allPackage -Required @(
     ($frameworkPath + 'MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All.xml')
 )
 Assert-Dependencies -Package $enginePackage `
-    -Required @('MarkdownRenderer.WinUI') `
+    -Required @('MarkdownRenderer') `
     -Forbidden @('TextMateSharp', 'TextMateSharp.Grammars', 'Onigwrap')
 Assert-Dependencies -Package $commonPackage `
     -Required @('MarkdownRenderer.SyntaxHighlighting.TextMate', 'TextMateSharp') `

@@ -16,7 +16,7 @@ namespace MarkdownRenderer.GitHub.Tests;
 
 public sealed class ProgressiveScenePublicationHandoffTests
 {
-    private const string MarkerAttribute = "renderer.internal.deferred-scene";
+    private const string MarkerAttribute = MarkdownContentAttributes.DeferredScene;
 
     [Theory]
     [InlineData(1)]
@@ -654,7 +654,7 @@ public sealed class ProgressiveScenePublicationHandoffTests
         {
             string marker = MarkdownSyntaxKinds.Block.Paragraph + "|" +
                 context.Node.SourceSpan.Start.ToString(System.Globalization.CultureInfo.InvariantCulture);
-            if (context.ShouldDeferOffscreenScenes)
+            if (context.CanDeferOffscreenScenes)
             {
                 builder.AddCodeBlock(
                     context.Node.Literal ?? "scene",

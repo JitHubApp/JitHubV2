@@ -18362,8 +18362,7 @@ internal sealed class CaptureOptions
         string[] sourceRoots =
         [
             Path.Combine(baseDirectory, "JitHub.WinUI"),
-            Path.Combine(baseDirectory, "MarkdownRenderer", "src", "MarkdownRenderer"),
-            Path.Combine(baseDirectory, "MarkdownRenderer", "src", "MarkdownRenderer.Gfm")
+            Path.Combine(baseDirectory, "MarkdownRenderer", "src", "MarkdownRenderer")
         ];
         string[] sourceExtensions = [".cs", ".xaml", ".csproj", ".props", ".targets"];
         DateTime newest = DateTime.MinValue;

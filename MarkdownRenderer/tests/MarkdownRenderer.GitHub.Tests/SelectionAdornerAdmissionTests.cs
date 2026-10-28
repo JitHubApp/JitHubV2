@@ -592,7 +592,6 @@ public sealed class SelectionAdornerAdmissionTests
         drawing.Clear(color);
     }
 
-#pragma warning disable MR1001 // Exercise the shared control's private hit-test helper without widening its consumer API.
     private static bool TryCreateGestureHitTestBand(
         Point gestureCanvas,
         double rasterizationScale,
@@ -604,7 +603,6 @@ public sealed class SelectionAdornerAdmissionTests
             includeContact,
             capturedContact,
             out band);
-#pragma warning restore MR1001
 
     private struct RefreshOperation(
         SelectionController selection,

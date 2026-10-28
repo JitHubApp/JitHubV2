@@ -165,8 +165,8 @@ or failed scenario returns a nonzero exit code.
 
 Release evidence is schema 12 and binds the complete private runtime output with
 the canonical `runtime-output-manifest-v1` digest. The executable, runtimeconfig,
-harness, renderer, and core assemblies retain separate SHA-256 entries for direct
-review, and a candidate also binds the exact reference-report bytes. Candidate and
+harness assembly, and `MarkdownRenderer.dll` retain separate SHA-256 entries for
+direct review, and a candidate also binds the exact reference-report bytes. Candidate and
 reference must match the configured refresh rate, while
 each report independently qualifies its observed rate as at least the greater
 of 115 Hz and 95% of the configured rate. Observed-rate jitter between otherwise
@@ -186,9 +186,10 @@ Every output path must be new, cannot alias the reference under Windows path
 semantics, and is opened with `CreateNew`, so no normal, fatal, or startup path can
 overwrite prior evidence. Output and reference reports must remain outside the
 measured deployment directory. Reference-report SHA-256 authenticates the
-reference's stored artifact metadata; the current report's five critical artifacts
-and complete runtime-output manifest are recomputed from disk. Equal manifest
-identities must agree on all five explicit hashes. Different manifest identities
+reference's stored artifact metadata; the current report's four critical artifacts
+(executable, harness assembly, `MarkdownRenderer.dll`, and runtimeconfig) and
+complete runtime-output manifest are recomputed from disk. Equal manifest
+identities must agree on all four explicit hashes. Different manifest identities
 may legitimately share those hashes when another managed, native, WinRT, XBF, PRI,
 dependency, or host file changed.
 
@@ -204,9 +205,9 @@ blocking work in host services, or returning heavyweight hosted elements for
 large repeated sets. Hosted-element creation is asynchronous and
 cancellation-aware; `Recycle` should release app-owned handlers and state.
 
-The opt-in `MarkdownRenderer.Performance` pack supplies
-`MarkdownPerformanceSession`. It starts admitted image-source requests
-after parsing while layout proceeds, shares source bytes within one security
+The opt-in `MarkdownPerformanceSession` (`MarkdownRenderer.Performance`
+namespace in the `MarkdownRenderer` package) starts admitted image-source
+requests after parsing while layout proceeds, shares source bytes within one security
 partition, and keeps unkeyed assets local to a document. Its source LRU is
 bounded to 64 MiB on x64/ARM64 and 32 MiB on x86 by default. Visible requests
 have reserved fetch capacity and can supersede a queued speculative request.
@@ -229,9 +230,9 @@ displayed physical size (at most 8.4 million output pixels on x64/ARM64 or
 4.2 million on x86 by default), and records aggregate privacy-safe counters. JitHub
 enables this session for its Markdown views.
 
-Lease-aware resolvers can implement `IMarkdownLeasedImageResolver` from the optional
-Performance pack. Reserve source capacity before materialization and transfer it
-with `MarkdownImageResolutionLease`; keep a retained handle for each simultaneous
+Lease-aware resolvers can implement `IMarkdownLeasedImageResolver` from the
+`MarkdownRenderer.Performance` namespace. Reserve source capacity before
+materialization and transfer it with `MarkdownImageResolutionLease`; keep a retained handle for each simultaneous
 consumer and dispose every handle deterministically. The renderer carries these
 handles through shared fetches, decode admission and actual source use. Fetch
 slots end at resolution, not at decode completion. Completed fan-out tasks store
@@ -554,7 +555,8 @@ DPI/theme behavior.
 
 ## Optional payloads
 
-The resvg worker and TextMate grammar packs are not costs of the lean package.
+The resvg worker and TextMate grammar packs are not costs of the
+`MarkdownRenderer` package.
 Select only the SVG capability and grammar resources the application needs. The
 provider bounds its parsed-resource and GPU caches by architecture, deduplicates
 in-flight work, and discards CPU rasters after upload. Math and Mermaid also

@@ -750,8 +750,8 @@ public sealed class MixedInlineVectorImageRelayoutTests
     private static string[] GetInlineMarkers(MarkdownDocument document) =>
         document.ExtensionInlineNodeContent.Values
             .SelectMany(static fragment => fragment.Items)
-        .Where(static content => content.Attributes.ContainsKey("renderer.internal.deferred-scene"))
-        .Select(static content => Assert.IsType<string>(content.Attributes["renderer.internal.deferred-scene"]))
+        .Where(static content => content.Attributes.ContainsKey(MarkdownContentAttributes.DeferredScene))
+        .Select(static content => Assert.IsType<string>(content.Attributes[MarkdownContentAttributes.DeferredScene]))
         .ToArray();
 
     private static MarkdownProgressiveScenePlan GetRegisteredPlan(MarkdownPerformanceSession session, object owner)

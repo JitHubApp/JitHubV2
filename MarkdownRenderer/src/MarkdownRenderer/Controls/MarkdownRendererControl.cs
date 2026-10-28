@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Numerics;
@@ -44,15 +44,13 @@ using Markdig;
 namespace MarkdownRenderer.Controls;
 
 /// <summary>
-/// The native Win2D + DirectWrite markdown renderer. Hosts a
-/// <see cref="CanvasVirtualControl"/> for paint and a sibling <see cref="Canvas"/>
-/// overlay for hosted WinUI embeds.
+/// The native Win2D + DirectWrite markdown renderer shared by
+/// <see cref="MarkdownScrollView"/>, which owns its scroll viewport, and
+/// <see cref="MarkdownDocumentView"/>, which uses an ancestor's viewport.
+/// Hosts a <see cref="CanvasVirtualControl"/> for paint and a sibling
+/// <see cref="Canvas"/> overlay for hosted WinUI embeds.
 /// </summary>
-[Obsolete(
-    "Use MarkdownScrollView for an owned viewport or MarkdownDocumentView for an ancestor-owned viewport.",
-    DiagnosticId = "MR1001",
-    UrlFormat = "https://github.com/JitHubApp/JitHubV2/tree/main/docs/markdown-renderer#{0}")]
-public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdownEnvironmentListener,
+public abstract partial class MarkdownRendererControl : UserControl, IDisposable, IAsyncDisposable, IMarkdownEnvironmentListener,
     IMarkdownPerformanceLegacyParser
 {
     private readonly bool _ownsScrollViewport;
@@ -64,10 +62,6 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     private bool _scrollViewIntermediate;
     private Grid? _root;
     private MarkdownEngine? _ownedEngine;
-    private bool _synchronizingCodeHighlighter;
-    private LegacyCodeHighlighterAdapter? _legacyCodeHighlighterAdapter;
-    private ICodeHighlighter? _ownedCodeHighlighterService;
-    private IDisposable? _ownedCodeHighlighter;
     private Rect _externalViewport;
     private bool _hasExternalViewport;
 
@@ -307,6 +301,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     // Set in OnUnloaded; checked in dispatcher lambdas to guard against post-unload execution.
     private bool _isUnloaded = true;
     private bool _isDisposed;
+    private bool _isDisposalComplete;
     // The provider may raise CacheInvalidated from a worker or system-event
     // callback. Keep the subscribed instance outside DependencyObject storage
     // so the callback never reads a thread-affine dependency property.
@@ -1312,45 +1307,6 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             RetireOwnedEngine(previous);
     }
 
-    /// <summary>
-    /// Assigns a highlighter created specifically for this control. Direct
-    /// public highlighter assignments remain borrowed.
-    /// </summary>
-    internal void SetOwnedCodeHighlighter(ICodeHighlighter highlighter, IDisposable owner)
-    {
-        ArgumentNullException.ThrowIfNull(highlighter);
-        ArgumentNullException.ThrowIfNull(owner);
-
-        // Validate before changing the dependency property or ownership fields.
-        // A rejected transfer leaves both the active assignment and the passed
-        // owner untouched; ownership transfers only after successful assignment.
-        OwnedCodeHighlighterAssignment.ValidateTransfer(
-            _ownedCodeHighlighterService,
-            _ownedCodeHighlighter,
-            highlighter,
-            owner);
-
-        IDisposable? previousOwner = _ownedCodeHighlighter;
-        ICodeHighlighter? previousService = _ownedCodeHighlighterService;
-        _ownedCodeHighlighter = null;
-        _ownedCodeHighlighterService = null;
-        try
-        {
-            CodeHighlighter = highlighter;
-            _ownedCodeHighlighter = owner;
-            _ownedCodeHighlighterService = highlighter;
-        }
-        catch
-        {
-            _ownedCodeHighlighter = previousOwner;
-            _ownedCodeHighlighterService = previousService;
-            throw;
-        }
-
-        if (previousOwner is not null && !ReferenceEquals(previousOwner, owner))
-            RetireOwnedCodeHighlighter(previousOwner, _codeBlockHighlightRetirement);
-    }
-
     /// <summary>Dependency property backing <see cref="StyleSheet"/>.</summary>
     public static readonly DependencyProperty StyleSheetProperty =
         DependencyProperty.Register(
@@ -1756,24 +1712,6 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         set => SetValue(IsCodeBlockSyntaxHighlightingEnabledProperty, value);
     }
 
-    /// <summary>Dependency property backing <see cref="CodeBlockSyntaxHighlighter"/>.</summary>
-    [Obsolete("Use CodeHighlighterProperty. This compatibility alias shares the same provider backing.")]
-    public static readonly DependencyProperty CodeBlockSyntaxHighlighterProperty =
-        DependencyProperty.Register(nameof(CodeBlockSyntaxHighlighter), typeof(ICodeBlockSyntaxHighlighter),
-            typeof(MarkdownRendererControl), new PropertyMetadata(null, (d, e) => ((MarkdownRendererControl)d).OnLegacyCodeHighlighterChanged(e)));
-
-    /// <summary>
-    /// Gets or sets the preview syntax-highlighting provider. This compatibility
-    /// alias is adapted to <see cref="CodeHighlighter"/> and does not create a
-    /// second highlighting pipeline.
-    /// </summary>
-    [Obsolete("Use CodeHighlighter for explicit cancellation support.")]
-    public ICodeBlockSyntaxHighlighter? CodeBlockSyntaxHighlighter
-    {
-        get => (ICodeBlockSyntaxHighlighter?)GetValue(CodeBlockSyntaxHighlighterProperty);
-        set => SetValue(CodeBlockSyntaxHighlighterProperty, value);
-    }
-
     /// <summary>Dependency property backing <see cref="IsTaskListEditingEnabled"/>.</summary>
     public static readonly DependencyProperty IsTaskListEditingEnabledProperty =
         DependencyProperty.Register(
@@ -1867,7 +1805,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     /// <param name="theme">Theme to assign, or null to use the renderer default.</param>
     /// <param name="isSelectionEnabled">True to enable text selection.</param>
     /// <param name="isCodeBlockCopyEnabled">True to show copy buttons on code blocks.</param>
-    /// <param name="codeBlockSyntaxHighlighter">Optional code-block syntax-highlighting provider.</param>
+    /// <param name="codeHighlighter">Optional code-block syntax highlighter.</param>
     /// <param name="codeBlockCopyButtonLabel">Accessible label and tooltip for code-block copy buttons, or null for the localized default.</param>
     /// <param name="codeBlockCopiedButtonLabel">Accessible label and tooltip after copy succeeds, or null for the localized default.</param>
     /// <param name="imageResolver">Optional host-specific image resolver used before public URI loading.</param>
@@ -1880,7 +1818,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         MarkdownTheme? theme = null,
         bool isSelectionEnabled = true,
         bool isCodeBlockCopyEnabled = true,
-        ICodeBlockSyntaxHighlighter? codeBlockSyntaxHighlighter = null,
+        ICodeHighlighter? codeHighlighter = null,
         string? codeBlockCopyButtonLabel = null,
         string? codeBlockCopiedButtonLabel = null,
         IMarkdownImageResolver? imageResolver = null,
@@ -1897,7 +1835,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             .WithCodeBlockCopyEnabled(isCodeBlockCopyEnabled)
             .WithCodeBlockCopyButtonLabel(codeBlockCopyButtonLabel)
             .WithCodeBlockCopiedButtonLabel(codeBlockCopiedButtonLabel)
-            .WithCodeBlockSyntaxHighlighter(codeBlockSyntaxHighlighter)
+            .WithCodeHighlighter(codeHighlighter)
             .WithCodeBlockWrappingMode(codeBlockWrappingMode)
             .BuildScrollView();
 
@@ -3000,21 +2938,15 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         _scroll.ChangeView(null, Math.Max(0, target), null, disableAnimation: true);
     }
 
-    /// <summary>Initializes a new markdown renderer control.</summary>
-    public MarkdownRendererControl()
-        : this(ownsScrollViewport: true)
-    {
-    }
-
     /// <summary>
     /// Initializes a renderer with either an owned scroll viewport or an
     /// externally supplied effective viewport.
     /// </summary>
     /// <param name="ownsScrollViewport">
-    /// True to create the compatibility scroll viewer; false to participate in
-    /// the nearest ancestor viewport through EffectiveViewportChanged.
+    /// True to create the scroll viewer; false to participate in the nearest
+    /// ancestor viewport through EffectiveViewportChanged.
     /// </param>
-    protected MarkdownRendererControl(bool ownsScrollViewport)
+    private protected MarkdownRendererControl(bool ownsScrollViewport)
     {
         _ownsScrollViewport = ownsScrollViewport;
         _canvasPointerMovedHandler = OnPointerMoved;
@@ -3383,68 +3315,10 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         RequestRebuild(RebuildReason.Full);
     }
 
-    private void OnLegacyCodeHighlighterChanged(DependencyPropertyChangedEventArgs e)
-    {
-        if (_synchronizingCodeHighlighter)
-            return;
-
-        ICodeHighlighter? previous = CodeHighlighter;
-        _synchronizingCodeHighlighter = true;
-        try
-        {
-#pragma warning disable CS0618 // Synchronizes the preview compatibility alias.
-            if (e.NewValue is null)
-            {
-                _legacyCodeHighlighterAdapter = null;
-                CodeHighlighter = null;
-            }
-            else if (e.NewValue is ICodeHighlighter stable)
-            {
-                _legacyCodeHighlighterAdapter = null;
-                CodeHighlighter = stable;
-            }
-            else if (e.NewValue is ICodeBlockSyntaxHighlighter legacy)
-            {
-                if (_legacyCodeHighlighterAdapter is null ||
-                    !ReferenceEquals(_legacyCodeHighlighterAdapter.Inner, legacy))
-                {
-                    _legacyCodeHighlighterAdapter = new LegacyCodeHighlighterAdapter(legacy);
-                }
-
-                CodeHighlighter = _legacyCodeHighlighterAdapter;
-            }
-#pragma warning restore CS0618
-        }
-        finally
-        {
-            _synchronizingCodeHighlighter = false;
-        }
-
-        OnEffectiveCodeHighlighterChanged(previous, CodeHighlighter);
-    }
-
     private void OnCodeHighlighterChanged(DependencyPropertyChangedEventArgs e)
-    {
-        if (_synchronizingCodeHighlighter)
-            return;
-
-        _synchronizingCodeHighlighter = true;
-        try
-        {
-            _legacyCodeHighlighterAdapter = e.NewValue as LegacyCodeHighlighterAdapter;
-#pragma warning disable CS0618 // Keep the compatibility alias bidirectionally synchronized.
-            CodeBlockSyntaxHighlighter = e.NewValue as ICodeBlockSyntaxHighlighter;
-#pragma warning restore CS0618
-        }
-        finally
-        {
-            _synchronizingCodeHighlighter = false;
-        }
-
-        OnEffectiveCodeHighlighterChanged(
+        => OnEffectiveCodeHighlighterChanged(
             e.OldValue as ICodeHighlighter,
             e.NewValue as ICodeHighlighter);
-    }
 
     private void OnEffectiveCodeHighlighterChanged(
         ICodeHighlighter? previous,
@@ -3453,18 +3327,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         if (ReferenceEquals(previous, current))
             return;
 
-        IDisposable? replacedOwner = null;
-        if (_ownedCodeHighlighterService is not null &&
-            ReferenceEquals(previous, _ownedCodeHighlighterService))
-        {
-            replacedOwner = _ownedCodeHighlighter;
-            _ownedCodeHighlighter = null;
-            _ownedCodeHighlighterService = null;
-        }
-
-        Task retirement = RetireCodeBlockHighlighting(restart: !_isUnloaded && !_isDisposed);
-        if (replacedOwner is not null)
-            RetireOwnedCodeHighlighter(replacedOwner, retirement);
+        RetireCodeBlockHighlighting(restart: !_isUnloaded && !_isDisposed);
         ClearCodeBlockHighlightCache();
         RequestRebuild(RebuildReason.Full);
     }
@@ -4100,12 +3963,8 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         _ownedEngine = null;
         if (ownedEngine is not null)
             RetireOwnedEngine(ownedEngine);
-        IDisposable? ownedHighlighter = _ownedCodeHighlighter;
-        _ownedCodeHighlighter = null;
-        _ownedCodeHighlighterService = null;
-        if (ownedHighlighter is not null)
-            RetireOwnedCodeHighlighter(ownedHighlighter, _codeBlockHighlightRetirement);
-        try { DisposalCompleted?.Invoke(this, EventArgs.Empty); }
+        _isDisposalComplete = true;
+        try { Disposed?.Invoke(this, EventArgs.Empty); }
         catch (Exception ex)
         {
             MarkdownDiagnostics.WriteLine(
@@ -4114,9 +3973,35 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         }
     }
 
-    // Release tooling observes actual control teardown without expanding the
-    // public API or treating process disappearance as proof of disposal.
-    internal event EventHandler? DisposalCompleted;
+    /// <summary>
+    /// Disposes the view, then completes when every native resource it has
+    /// released is freed. Call it on the UI thread.
+    /// </summary>
+    /// <returns>
+    /// A task that completes when the released resources are freed, and faults
+    /// if one of them could not be released.
+    /// </returns>
+    /// <exception cref="InvalidOperationException">
+    /// Teardown did not finish, here or in an earlier <see cref="Dispose"/> call,
+    /// so the view may still hold resources.
+    /// </exception>
+    public ValueTask DisposeAsync()
+    {
+        Dispose();
+        if (!_isDisposalComplete)
+        {
+            throw new InvalidOperationException(
+                "The markdown view did not finish an earlier Dispose call and may still hold resources.");
+        }
+
+        return new ValueTask(_snapshotRetirements.DrainAsync());
+    }
+
+    /// <summary>
+    /// Raised on the UI thread when <see cref="Dispose"/> finishes teardown,
+    /// whether the app or the view's window started it.
+    /// </summary>
+    public event EventHandler? Disposed;
 
 
     // WinUI does not guarantee a child UserControl receives Unloaded when its
@@ -6004,17 +5889,6 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         return retirement;
     }
 
-    private void RetireOwnedCodeHighlighter(IDisposable owner, Task lifetime)
-    {
-        Task retirement = OwnedResourceRetirement.DisposeAfter(
-            owner,
-            lifetime,
-            static exception => MarkdownDiagnostics.WriteLine(
-                $"[MarkdownRendererControl] Code highlighter retirement failed: " +
-                $"{exception.GetType().Name} (0x{exception.HResult:X8})."));
-        _snapshotRetirements.Track(retirement);
-    }
-
     private void ScheduleVisibleCodeBlockHighlighting()
     {
         if (RequestGeometryRecoveryIfRequired(_snapshot))
@@ -6280,7 +6154,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                 if (workToken.IsCancellationRequested)
                     return;
 
-                var request = new CodeBlockHighlightRequest(key.Language, codeText, key.ThemeVariant, workToken);
+                var request = new CodeBlockHighlightRequest(key.Language, codeText, key.ThemeVariant);
                 CodeBlockHighlightResult? providerResult = await highlighter.HighlightAsync(
                     request,
                     workToken).ConfigureAwait(false);

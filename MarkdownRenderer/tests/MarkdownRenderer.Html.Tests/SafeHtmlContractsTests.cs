@@ -78,7 +78,12 @@ public sealed class SafeHtmlContractsTests
     [Fact]
     public void PublicContract_DoesNotExposeWinUiOrMarkdigTypes()
     {
-        Type[] publicTypes = typeof(SafeHtmlFeature).Assembly.GetExportedTypes();
+        // The safe-HTML contract is the MarkdownRenderer.Html namespace; the renderer
+        // assembly that ships it exposes WinUI types elsewhere by design.
+        Type[] publicTypes = typeof(SafeHtmlFeature).Assembly.GetExportedTypes()
+            .Where(static type => type.Namespace == typeof(SafeHtmlFeature).Namespace)
+            .ToArray();
+        Assert.NotEmpty(publicTypes);
         IEnumerable<Type> signatureTypes = publicTypes.SelectMany(type =>
             type.GetMembers(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static)
                 .SelectMany(GetSignatureTypes));

@@ -574,7 +574,6 @@ public sealed class PerformanceRegressionEvaluatorTests
                 Sha256 = artifacts.Hashes.Executable.Sha256,
             },
             MarkdownRendererDll = artifacts.Hashes.MarkdownRendererDll,
-            MarkdownRendererCoreDll = artifacts.Hashes.MarkdownRendererCoreDll,
             RuntimeConfig = artifacts.Hashes.RuntimeConfig,
         };
 
@@ -1679,7 +1678,6 @@ public sealed class PerformanceRegressionEvaluatorTests
                     Executable = Capture("MarkdownRenderer.PerformanceHarness.exe"),
                     PerformanceHarnessDll = Capture("MarkdownRenderer.PerformanceHarness.dll"),
                     MarkdownRendererDll = Capture("MarkdownRenderer.dll"),
-                    MarkdownRendererCoreDll = Capture("MarkdownRenderer.Core.dll"),
                     RuntimeConfig = Capture(
                         "MarkdownRenderer.PerformanceHarness.runtimeconfig.json"),
                 });
@@ -1696,7 +1694,6 @@ public sealed class PerformanceRegressionEvaluatorTests
                 },
                 PerformanceHarnessDll = Hashes.PerformanceHarnessDll,
                 MarkdownRendererDll = Hashes.MarkdownRendererDll,
-                MarkdownRendererCoreDll = Hashes.MarkdownRendererCoreDll,
                 RuntimeConfig = Hashes.RuntimeConfig,
             };
 
@@ -1706,7 +1703,6 @@ public sealed class PerformanceRegressionEvaluatorTests
                 Executable = Hashes.Executable,
                 PerformanceHarnessDll = Hashes.PerformanceHarnessDll,
                 MarkdownRendererDll = Hashes.MarkdownRendererDll,
-                MarkdownRendererCoreDll = Hashes.MarkdownRendererCoreDll,
                 RuntimeConfig = new BuildArtifactHash
                 {
                     FileName = Hashes.RuntimeConfig.FileName,

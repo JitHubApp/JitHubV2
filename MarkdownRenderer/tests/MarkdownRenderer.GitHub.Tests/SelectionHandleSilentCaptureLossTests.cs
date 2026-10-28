@@ -15,11 +15,9 @@ public sealed class SelectionHandleSilentCaptureLossTests
     [Fact]
     public void CaptureMissingFromAnActiveDragIsLost()
     {
-#pragma warning disable MR1001 // Exercises the compatibility control's internal capture policy.
         Assert.True(MarkdownRendererControl.IsSelectionHandleCaptureSilentlyLost(
             dragPointerId: 7, hasCaptureTarget: true, captureViewAvailable: true,
             captureTargetHoldsPointer: false, hasDeferredCaptureOrQueuedInput: false));
-#pragma warning restore MR1001
     }
 
     [Theory]
@@ -32,10 +30,8 @@ public sealed class SelectionHandleSilentCaptureLossTests
         uint dragPointerId, bool hasCaptureTarget, bool captureViewAvailable,
         bool captureTargetHoldsPointer, bool hasDeferredCaptureOrQueuedInput)
     {
-#pragma warning disable MR1001 // Exercises the compatibility control's internal capture policy.
         Assert.False(MarkdownRendererControl.IsSelectionHandleCaptureSilentlyLost(
             dragPointerId, hasCaptureTarget, captureViewAvailable,
             captureTargetHoldsPointer, hasDeferredCaptureOrQueuedInput));
-#pragma warning restore MR1001
     }
 }

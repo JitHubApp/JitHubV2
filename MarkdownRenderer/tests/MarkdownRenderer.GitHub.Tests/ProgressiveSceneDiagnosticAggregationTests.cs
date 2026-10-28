@@ -14,7 +14,7 @@ namespace MarkdownRenderer.GitHub.Tests;
 
 public sealed class ProgressiveSceneDiagnosticAggregationTests
 {
-    private const string DeferredSceneMarkerAttribute = "renderer.internal.deferred-scene";
+    private const string DeferredSceneMarkerAttribute = MarkdownContentAttributes.DeferredScene;
 
     [Fact]
     public async Task SceneDiagnosticsAggregateInSourceOrderAndSuccessfulPublicationPreservesSnapshot()
@@ -317,7 +317,7 @@ public sealed class ProgressiveSceneDiagnosticAggregationTests
 
         private ValueTask RenderAsync(MarkdownExtensionContext context, MarkdownContentBuilder content)
         {
-            if (context.ShouldDeferOffscreenScenes)
+            if (context.CanDeferOffscreenScenes)
             {
                 content.AddCodeBlock(
                     context.Node.Literal ?? string.Empty,

@@ -260,7 +260,7 @@ public sealed class MarkdownHostContractTests
     {
         string root = FindRepositoryRoot();
         string renderer = File.ReadAllText(Path.Combine(
-            root, "MarkdownRenderer", "src", "MarkdownRenderer.Html", "Renderers", "HtmlBlockRenderer.cs"));
+            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Html", "Renderers", "HtmlBlockRenderer.cs"));
         string control = File.ReadAllText(Path.Combine(
             root, "MarkdownRenderer", "src", "MarkdownRenderer", "Controls", "MarkdownRendererControl.cs"));
         string peer = File.ReadAllText(Path.Combine(
@@ -409,7 +409,7 @@ public sealed class MarkdownHostContractTests
 
         foreach (string projectName in new[]
         {
-            "MarkdownRenderer.GitHub",
+            "MarkdownRenderer",
             "MarkdownRenderer.Math",
             "MarkdownRenderer.Mermaid",
             "MarkdownRenderer.Svg.Resvg",

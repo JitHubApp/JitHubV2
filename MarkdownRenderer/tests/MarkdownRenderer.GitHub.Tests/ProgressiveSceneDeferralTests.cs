@@ -24,7 +24,7 @@ namespace MarkdownRenderer.GitHub.Tests;
 
 public sealed class ProgressiveSceneDeferralTests
 {
-    private const string MarkerAttribute = "renderer.internal.deferred-scene";
+    private const string MarkerAttribute = MarkdownContentAttributes.DeferredScene;
 
     [Fact]
     public void OffscreenSceneDeferral_IsEnabledOnlyByTheProgressivePreset()
@@ -590,7 +590,7 @@ public sealed class ProgressiveSceneDeferralTests
             {
                 AddScene(builder, context.Node.SourceSpan);
             }
-            else if (context.ShouldDeferOffscreenScenes)
+            else if (context.CanDeferOffscreenScenes)
             {
                 builder.AddCodeBlock("pending", "test", context.Node.SourceSpan, MarkdownStyleRole.CodeBlock,
                     new Dictionary<string, string>(StringComparer.Ordinal)
@@ -1601,7 +1601,7 @@ public sealed class ProgressiveSceneDeferralTests
 
         private ValueTask RenderAsync(MarkdownExtensionContext context, MarkdownContentBuilder content)
         {
-            if (!context.ShouldDeferOffscreenScenes)
+            if (!context.CanDeferOffscreenScenes)
             {
                 content.AddText("materialized", context.Node.SourceSpan);
                 return ValueTask.CompletedTask;
@@ -1655,7 +1655,7 @@ public sealed class ProgressiveSceneDeferralTests
         private ValueTask ProduceAsync(MarkdownExtensionContext context, MarkdownContentBuilder content)
         {
             Interlocked.Increment(ref _producerCallCount);
-            if (!context.ShouldDeferOffscreenScenes)
+            if (!context.CanDeferOffscreenScenes)
             {
                 content.AddText("materialized-by-producer", context.Node.SourceSpan);
                 return ValueTask.CompletedTask;
@@ -1698,7 +1698,7 @@ public sealed class ProgressiveSceneDeferralTests
 
         private ValueTask RenderAsync(MarkdownExtensionContext context, MarkdownContentBuilder content)
         {
-            if (!context.ShouldDeferOffscreenScenes)
+            if (!context.CanDeferOffscreenScenes)
             {
                 content.AddText("materialized-from-nested-producer", context.Node.SourceSpan);
                 return ValueTask.CompletedTask;
@@ -1741,7 +1741,7 @@ public sealed class ProgressiveSceneDeferralTests
             MarkdownExtensionContext context,
             MarkdownContentBuilder content)
         {
-            if (context.ShouldDeferOffscreenScenes)
+            if (context.CanDeferOffscreenScenes)
             {
                 content.AddCodeBlock(
                     context.Node.Literal ?? string.Empty,
@@ -1789,7 +1789,7 @@ public sealed class ProgressiveSceneDeferralTests
             MarkdownExtensionContext context,
             MarkdownContentBuilder content)
         {
-            if (context.ShouldDeferOffscreenScenes)
+            if (context.CanDeferOffscreenScenes)
             {
                 content.AddCodeBlock(
                     context.Node.Literal ?? string.Empty,
@@ -1825,7 +1825,7 @@ public sealed class ProgressiveSceneDeferralTests
             MarkdownExtensionContext context,
             MarkdownContentBuilder content)
         {
-            if (context.ShouldDeferOffscreenScenes)
+            if (context.CanDeferOffscreenScenes)
             {
                 content.AddCodeBlock(
                     context.Node.Literal ?? string.Empty,
@@ -1864,7 +1864,7 @@ public sealed class ProgressiveSceneDeferralTests
             MarkdownExtensionContext context,
             MarkdownContentBuilder content)
         {
-            if (context.ShouldDeferOffscreenScenes)
+            if (context.CanDeferOffscreenScenes)
             {
                 string token = context.Node.SourceSpan.Start == 0 ? "first" : "second";
                 content.AddCodeBlock(
@@ -1923,7 +1923,7 @@ public sealed class ProgressiveSceneDeferralTests
 
         private ValueTask RenderAsync(MarkdownExtensionContext context, MarkdownContentBuilder content)
         {
-            if (context.ShouldDeferOffscreenScenes)
+            if (context.CanDeferOffscreenScenes)
             {
                 content.AddCodeBlock(
                     context.Node.Literal ?? string.Empty,

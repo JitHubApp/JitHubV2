@@ -25,7 +25,7 @@ assistive-technology, packaging, signing, or publishing work named below.
 - [ ] Give the automated public surface its final human compatibility review;
   test success is not API approval or 1.0 certification.
 - [ ] Check every README and quick start for `MarkdownScrollView` versus
-  `MarkdownDocumentView`, lean package composition, Fluent defaults, GitHub
+  `MarkdownDocumentView`, package composition, Fluent defaults, GitHub
   opt-in, and rendered-text plus `CF_HTML` default copy.
 - [ ] Describe implemented safe HTML, native vector Math, Mermaid and declarative
   adapters accurately; record syntax limitations and unverified release gates
@@ -33,9 +33,11 @@ assistive-technology, packaging, signing, or publishing work named below.
 
 ## Package matrix
 
-- [ ] Inspect `MarkdownRenderer.Core` and the lean `MarkdownRenderer` package.
-- [ ] Inspect each selected GFM, GitHub, HTML, Math, Mermaid, resvg, TextMate, and
-  grammar pack independently.
+- [ ] Inspect the `MarkdownRenderer` package: one AnyCPU `MarkdownRenderer.dll`
+  with its filtered XML documentation, the embedded Primer profile CSS, and no
+  native payload of its own.
+- [ ] Inspect each selected Math, Mermaid, resvg, TextMate, and grammar pack
+  independently.
 - [ ] Confirm `MarkdownRenderer.All` is the only deliberate all-feature/all-payload
   dependency path.
 - [ ] Verify README, license, icon, repository metadata, symbols, source link, XML
@@ -53,9 +55,10 @@ assistive-technology, packaging, signing, or publishing work named below.
 
 ## Correctness and conformance
 
-- [ ] Run the `MarkdownRenderer.Conformance` harness over the official
-  CommonMark 0.31.2 and GFM 0.29 examples (`--suite all`) and confirm every
-  example passes.
+- [ ] Run the opt-in full-corpus test in `MarkdownRenderer.Conformance.Tests`
+  over the official CommonMark 0.31.2 and GFM 0.29 examples
+  (`MARKDOWN_RENDERER_CONFORMANCE=1`, `--filter Category=Conformance`) and
+  confirm every example passes.
 - [x] Keep `conformance-exceptions.v1.json` empty; any new entry needs an issue
   link and is reported as stale once the example passes.
 - [ ] Validate immutable source, diagnostic, semantic-query, and half-open UTF-16

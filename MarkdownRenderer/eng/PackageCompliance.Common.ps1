@@ -229,18 +229,12 @@ function Get-ExpectedReleasePackageIds {
     return @(
         'MarkdownRenderer'
         'MarkdownRenderer.All'
-        'MarkdownRenderer.Core'
-        'MarkdownRenderer.Gfm'
-        'MarkdownRenderer.GitHub'
-        'MarkdownRenderer.Html'
         'MarkdownRenderer.Math'
         'MarkdownRenderer.Mermaid'
-        'MarkdownRenderer.Performance'
         'MarkdownRenderer.Svg.Resvg'
         'MarkdownRenderer.SyntaxHighlighting.TextMate'
         'MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All'
         'MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common'
-        'MarkdownRenderer.WinUI'
     )
 }
 
@@ -255,19 +249,11 @@ function Get-ExpectedPackageIdsForScope {
 
     switch ($Scope) {
         'FullRelease' { return @(Get-ExpectedReleasePackageIds) }
-        'Math' { return @('MarkdownRenderer.Core', 'MarkdownRenderer.Math') }
-        'SvgResvg' {
-            return @(
-                'MarkdownRenderer.Core'
-                'MarkdownRenderer.WinUI'
-                'MarkdownRenderer'
-                'MarkdownRenderer.Svg.Resvg'
-            )
-        }
+        'Math' { return @('MarkdownRenderer', 'MarkdownRenderer.Math') }
+        'SvgResvg' { return @('MarkdownRenderer', 'MarkdownRenderer.Svg.Resvg') }
         'TextMate' {
             return @(
-                'MarkdownRenderer.Core'
-                'MarkdownRenderer.WinUI'
+                'MarkdownRenderer'
                 'MarkdownRenderer.SyntaxHighlighting.TextMate'
                 'MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common'
                 'MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All'

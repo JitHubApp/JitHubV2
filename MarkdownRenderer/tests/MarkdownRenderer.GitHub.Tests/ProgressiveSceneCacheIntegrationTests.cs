@@ -10,7 +10,7 @@ namespace MarkdownRenderer.GitHub.Tests;
 
 public sealed class ProgressiveSceneCacheIntegrationTests
 {
-    private const string MarkerAttribute = "renderer.internal.deferred-scene";
+    private const string MarkerAttribute = MarkdownContentAttributes.DeferredScene;
 
     [Theory]
     [InlineData(0)]
@@ -191,7 +191,7 @@ public sealed class ProgressiveSceneCacheIntegrationTests
 
         private ValueTask RenderAsync(MarkdownExtensionContext context, MarkdownContentBuilder builder)
         {
-            if (context.ShouldDeferOffscreenScenes)
+            if (context.CanDeferOffscreenScenes)
             {
                 builder.AddCodeBlock("scene", null, context.Node.SourceSpan, MarkdownStyleRole.CodeBlock,
                     new Dictionary<string, string>(StringComparer.Ordinal)

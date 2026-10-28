@@ -131,11 +131,9 @@ public sealed class MarkdownImageSourceMapCopyContractTests
 
     private static object InvokeRenderedSelectionPayload(LayoutSnapshot snapshot, DocumentRange range)
     {
-#pragma warning disable MR1001 // Exercise the shared legacy copy pipeline without registering the obsolete control.
         MethodInfo method = typeof(MarkdownRendererControl).GetMethod(
             "GetRenderedSelectionPayload", PrivateStatic)
             ?? throw new InvalidOperationException("The control rendered-selection payload helper was not found.");
-#pragma warning restore MR1001
         return method.Invoke(null, new object[] { snapshot, range })
             ?? throw new InvalidOperationException("The control returned no rendered-selection payload.");
     }

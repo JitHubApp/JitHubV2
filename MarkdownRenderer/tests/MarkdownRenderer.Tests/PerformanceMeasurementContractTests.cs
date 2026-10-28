@@ -1049,7 +1049,6 @@ public sealed class PerformanceMeasurementContractTests
             Executable = Create("MarkdownRenderer.PerformanceHarness.exe"),
             PerformanceHarnessDll = Create("MarkdownRenderer.PerformanceHarness.dll"),
             MarkdownRendererDll = Create("MarkdownRenderer.dll"),
-            MarkdownRendererCoreDll = Create("MarkdownRenderer.Core.dll"),
             RuntimeConfig = Create("MarkdownRenderer.PerformanceHarness.runtimeconfig.json"),
         };
     }

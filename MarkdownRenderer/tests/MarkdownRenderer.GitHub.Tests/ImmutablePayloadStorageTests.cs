@@ -118,7 +118,6 @@ public sealed class ImmutablePayloadStorageTests
         AssertReadonly(typeof(HostedElementFallbackKey), "Fragment");
         AssertReadonly(typeof(MarkdownRenderer.Images.MarkdownImagePreparationAdmission), "CapacityBytes MaxConcurrency");
         AssertReadonly(Nested(typeof(HostedElementRealizationGate<>), "Operation"), "CancellationToken");
-        AssertReadonly(typeof(LegacyCodeHighlighterAdapter), "Inner");
         AssertReadonly(Nested(typeof(SnapshotRetirementTracker), "FailureBucket"), "Details");
         AssertReadonly(typeof(TextElementBoundaryIndex), "TextLength");
         AssertReadonly(Nested(typeof(LayoutSnapshot), "CommittedMetadata"), "Revision MeasuredCount");
@@ -155,9 +154,7 @@ public sealed class ImmutablePayloadStorageTests
     [Fact]
     public void ContextMenuTargetStoresDetachedValuesAndOnlyItsBitmapLease()
     {
-#pragma warning disable MR1001 // Tests the shared implementation's private target storage, not a consumer registration.
         Type type = Nested(typeof(MarkdownRendererControl), "ContextMenuTarget");
-#pragma warning restore MR1001
         Assert.False(type.IsVisible);
         object target = Activator.CreateInstance(type, nonPublic: true)!;
         const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
@@ -197,9 +194,7 @@ public sealed class ImmutablePayloadStorageTests
     [Fact]
     public void ContextMenuTableSnapshotHasTextMatchesFormattedPayload()
     {
-#pragma warning disable MR1001 // Tests the private snapshot value used by the shared control.
         Type type = Nested(typeof(MarkdownRendererControl), "MarkdownTableClipboardSnapshot");
-#pragma warning restore MR1001
         const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
         (string[][] Rows, int HeaderRows)[] cases =
         [
@@ -225,9 +220,7 @@ public sealed class ImmutablePayloadStorageTests
     public void ContextMenuExecutionCloneKeepsBitmapAliveAfterMenuTargetDisposes()
     {
         using var device = new CanvasDevice();
-#pragma warning disable MR1001 // Tests the shared implementation's private target lifetime, not a consumer registration.
         Type type = Nested(typeof(MarkdownRendererControl), "ContextMenuTarget");
-#pragma warning restore MR1001
         const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
         object menuTarget = Activator.CreateInstance(type, nonPublic: true)!;
         type.GetProperty("ImageUrl", flags)!.SetValue(menuTarget, "https://example.test/image.png");

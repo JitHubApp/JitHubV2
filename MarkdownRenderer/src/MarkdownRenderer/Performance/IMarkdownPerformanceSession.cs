@@ -154,14 +154,12 @@ internal interface IMarkdownPerformanceSessionInternal : IMarkdownPerformanceSes
         out MarkdownContentFragment? result, out object? projectionIdentity);
     bool HasRegisteredDeferredSceneWork(object documentOwner);
     bool IsRegisteredDeferredSceneMarker(object documentOwner, string marker);
-#pragma warning disable MR1001 // The optional scene policy integrates with the compatibility control surface.
     MarkdownVisibleSceneReadiness GetVisibleDeferredSceneReadiness(
         MarkdownRendererControl owner,
         LayoutSnapshot expectedSnapshot,
         long expectedGeneration,
         long expectedLayoutRevision,
         Rect viewport);
-#pragma warning restore MR1001
     IMarkdownVectorSceneResidencyPolicy? CreateVectorSceneResidencyPolicy(
         IReadOnlyList<BlockBox> blocks,
         object? documentOwner = null);

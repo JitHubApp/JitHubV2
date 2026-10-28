@@ -12,7 +12,7 @@
     <MarkdownRendererPackageReadme>$(MSBuildProjectDirectory)\README.md</MarkdownRendererPackageReadme>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\MarkdownRenderer.Core\MarkdownRenderer.Core.csproj" />
+    <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer.csproj" />
   </ItemGroup>
   <ItemGroup>
     <!-- Typography is deliberately opt-in at the file level. The bundled fonts

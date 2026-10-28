@@ -248,7 +248,8 @@ public sealed class InlineAlignmentContractTests
             FindRepositoryRoot(),
             "MarkdownRenderer",
             "src",
-            "MarkdownRenderer.Gfm",
+            "MarkdownRenderer",
+            "Gfm",
             "Renderers",
             "TaskListItemRenderer.cs"));
         string factorySource = File.ReadAllText(Path.Combine(

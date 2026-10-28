@@ -8,12 +8,7 @@ are implementation details.
 
 | Package | Purpose |
 | --- | --- |
-| `MarkdownRenderer.Core` | Immutable engines, documents, profiles, diagnostics, UTF-16 source maps, and declarative extension contracts; no WinUI or native payload. |
-| `MarkdownRenderer` | Lean convenience package containing Core plus the native WinUI viewer. |
-| `MarkdownRenderer.Gfm` | Strict GFM 0.29 plus separately opt-in Markdown Extra helpers. |
-| `MarkdownRenderer.GitHub` | Opt-in GitHub README profile: GFM plus alerts, footnotes, emoji, attributes, and safe HTML. |
-| `MarkdownRenderer.Html` | Bounded native safe-HTML subset parser/painter and immutable options. |
-| `MarkdownRenderer.Performance` | Optional host-owned progressive preparation session; the WinUI controls borrow it through the engine-neutral session contract. |
+| `MarkdownRenderer` | The viewer: immutable engines, documents, profiles, diagnostics, UTF-16 source maps, declarative extension contracts, the opt-in profiles and safe HTML listed below, the optional performance session, and the native WinUI views. |
 | `MarkdownRenderer.Math` | CSharpMath-based TeX processor, immutable vector scenes, fallback and accessibility. |
 | `MarkdownRenderer.Mermaid` | Selected-RID Merman engine, validated MMIR scenes, bounded processing and fallback. |
 | `MarkdownRenderer.Svg.Resvg` | Optional isolated resvg static-SVG provider and RID workers. |
@@ -21,6 +16,15 @@ are implementation details.
 | `MarkdownRenderer.All` | Explicit, deliberately large meta-package for every feature and payload. |
 
 Most apps should install `MarkdownRenderer` and only the packs they need.
+
+The `MarkdownRenderer` assembly groups its opt-in areas by namespace:
+
+| Namespace | Purpose |
+| --- | --- |
+| `MarkdownRenderer.Gfm` | Strict GFM 0.29 plus separately opt-in Markdown Extra helpers. |
+| `MarkdownRenderer.GitHub` | Opt-in GitHub README profile: GFM plus alerts, footnotes, emoji, attributes, and safe HTML; versioned Primer visual comparison profiles. |
+| `MarkdownRenderer.Html` | Bounded native safe-HTML subset parser/painter and immutable options. |
+| `MarkdownRenderer.Performance` | Optional host-owned progressive preparation session; the WinUI controls borrow it through the engine-neutral session contract. |
 
 ## Engines and documents
 
@@ -58,11 +62,10 @@ diagnostics, source-map entries, and stable queries such as `GetHeadings()`,
 fragment associated with a source range; this preserves nested syntax nodes
 whose half-open UTF-16 ranges are identical.
 
-`ICodeHighlighter` is the canonical syntax-highlighting contract. Its revision
-and callbacks can be queried concurrently for different blocks and controls;
-implementations and captured state must be thread-safe and UI-context independent.
-`ICodeBlockSyntaxHighlighter` remains an obsolete compatibility alias and is
-adapted to the same single provider backing without sync-over-async blocking.
+`ICodeHighlighter` is the syntax-highlighting contract. Its revision and
+callbacks can be queried concurrently for different blocks and controls;
+implementations and captured state must be thread-safe and UI-context
+independent. Cancellation arrives only through the `HighlightAsync` token.
 
 ## Views
 
@@ -73,8 +76,16 @@ adapted to the same single provider backing without sync-over-async blocking.
 
 Both views expose `Markdown`, `Document`, `Engine`, `StyleSheet`, `Theme`, image
 policy, selection, code highlighting, commands, localization, and hosted-element
-services. `MarkdownRendererControl` is obsolete compatibility surface; new code
-should not derive from or construct it.
+services through their shared abstract base, `MarkdownRendererControl`. Only
+the two views derive from it; apps construct a view.
+
+A view releases its Win2D resources when it is unloaded, its window closes, or
+the app disposes it. `Dispose()` returns once teardown is done; some native
+resources are freed shortly after. Apps that must know when they are gone, for
+example before shutting down shared services, await `DisposeAsync()` on the UI
+thread. It throws if teardown could not finish, and its task faults if a
+resource could not be released. The `Disposed` event reports teardown that the
+view's window started.
 
 GFM, GitHub README, Markdown Extra, and safe-HTML helpers freeze their native
 presentation registrations into the engine. Parsed documents retain that
@@ -92,8 +103,8 @@ var view = new MarkdownRendererControlBuilder()
 Use `BuildDocumentView()` for an ancestor-owned viewport. The builder's `Build()`
 method is obsolete.
 
-For the opt-in progressive image pipeline, install `MarkdownRenderer.Performance`,
-create one session per account or security partition, and share it between
+For the opt-in progressive image pipeline, create one `MarkdownPerformanceSession`
+per account or security partition, and share it between
 views. Controls borrow it; the host disposes it after those views stop using it:
 
 ```csharp
@@ -130,9 +141,9 @@ rejects registrations after the resolver call has returned.
 ## Themes and host services
 
 The base visual design follows WinUI/Fluent resources, including light, dark,
-high-contrast, text-scale, and flow-direction changes. The GitHub profile and
-GitHub-themed presentation are opt-in through `MarkdownRenderer.GitHub`;
-applications can further customize
+high-contrast, text-scale, and flow-direction changes. The GitHub README profile
+and GitHub-themed presentation are opt-in through `UseGitHubReadme()` and the
+`MarkdownRenderer.GitHub` namespace; applications can further customize
 roles through `MarkdownStyleSheet`, `MarkdownStyleRole`, and
 `MarkdownResourceKeys`.
 
@@ -193,7 +204,7 @@ To accept an intentional change, apply the RS0016 code fix in the IDE, or run
 from the repository root:
 
 ```powershell
-dotnet format analyzers MarkdownRenderer\src\MarkdownRenderer.Core\MarkdownRenderer.Core.csproj --diagnostics RS0016 --severity warn
+dotnet format analyzers MarkdownRenderer\src\MarkdownRenderer\MarkdownRenderer.csproj --diagnostics RS0016 --severity warn
 ```
 
 For a removed or changed symbol, delete or edit its old line in

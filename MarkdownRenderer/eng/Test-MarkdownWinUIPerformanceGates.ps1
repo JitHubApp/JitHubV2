@@ -1324,13 +1324,12 @@ $requiredPaths = @(
     'sampleRequirements.sourceLookupRegressionOperationCountRequired',
     'buildArtifacts.hashAlgorithm', 'buildArtifacts.executable',
     'buildArtifacts.performanceHarnessDll', 'buildArtifacts.markdownRendererDll',
-    'buildArtifacts.markdownRendererCoreDll', 'buildArtifacts.runtimeConfig',
+    'buildArtifacts.runtimeConfig',
     'buildArtifacts.executable.fileName', 'buildArtifacts.executable.path',
     'buildArtifacts.executable.sha256', 'buildArtifacts.performanceHarnessDll.fileName',
     'buildArtifacts.performanceHarnessDll.path', 'buildArtifacts.performanceHarnessDll.sha256',
     'buildArtifacts.markdownRendererDll.fileName', 'buildArtifacts.markdownRendererDll.path',
-    'buildArtifacts.markdownRendererDll.sha256', 'buildArtifacts.markdownRendererCoreDll.fileName',
-    'buildArtifacts.markdownRendererCoreDll.path', 'buildArtifacts.markdownRendererCoreDll.sha256',
+    'buildArtifacts.markdownRendererDll.sha256',
     'buildArtifacts.runtimeConfig.fileName', 'buildArtifacts.runtimeConfig.path',
     'buildArtifacts.runtimeConfig.sha256',
     'runtimeConfiguration.policy', 'runtimeConfiguration.tieredCompilationEnabled',
@@ -1430,7 +1429,7 @@ $jsonObjectContracts = @{
         'sourceLookup', 'cancellation', 'regression', 'failures')
     BuildArtifacts = @(
         'hashAlgorithm', 'executable', 'performanceHarnessDll', 'markdownRendererDll',
-        'markdownRendererCoreDll', 'runtimeConfig')
+        'runtimeConfig')
     Artifact = @('fileName', 'path', 'sha256')
     RuntimeConfiguration = @(
         'policy', 'tieredCompilationEnabled', 'tieredPgoEnabled', 'concurrentGcEnabled',
@@ -1582,7 +1581,7 @@ $jsonObjectChildren = @{
     }
     BuildArtifacts = @{
         executable = 'Artifact'; performanceHarnessDll = 'Artifact';
-        markdownRendererDll = 'Artifact'; markdownRendererCoreDll = 'Artifact';
+        markdownRendererDll = 'Artifact';
         runtimeConfig = 'Artifact'
     }
 }
@@ -2640,7 +2639,6 @@ $artifactExpectations = @(
     @('executable', 'MarkdownRenderer.PerformanceHarness.exe'),
     @('performanceHarnessDll', 'MarkdownRenderer.PerformanceHarness.dll'),
     @('markdownRendererDll', 'MarkdownRenderer.dll'),
-    @('markdownRendererCoreDll', 'MarkdownRenderer.Core.dll'),
     @('runtimeConfig', 'MarkdownRenderer.PerformanceHarness.runtimeconfig.json')
 )
 foreach ($expectation in $artifactExpectations) {
@@ -3093,13 +3091,12 @@ elseif ($mode -eq 'candidate') {
             'measurementVisibility',
             'buildArtifacts.hashAlgorithm', 'buildArtifacts.executable',
             'buildArtifacts.performanceHarnessDll', 'buildArtifacts.markdownRendererDll',
-            'buildArtifacts.markdownRendererCoreDll', 'buildArtifacts.runtimeConfig',
+            'buildArtifacts.runtimeConfig',
             'buildArtifacts.executable.fileName', 'buildArtifacts.executable.path',
             'buildArtifacts.executable.sha256', 'buildArtifacts.performanceHarnessDll.fileName',
             'buildArtifacts.performanceHarnessDll.path', 'buildArtifacts.performanceHarnessDll.sha256',
             'buildArtifacts.markdownRendererDll.fileName', 'buildArtifacts.markdownRendererDll.path',
-            'buildArtifacts.markdownRendererDll.sha256', 'buildArtifacts.markdownRendererCoreDll.fileName',
-            'buildArtifacts.markdownRendererCoreDll.path', 'buildArtifacts.markdownRendererCoreDll.sha256',
+            'buildArtifacts.markdownRendererDll.sha256',
             'buildArtifacts.runtimeConfig.fileName', 'buildArtifacts.runtimeConfig.path',
             'buildArtifacts.runtimeConfig.sha256',
             'runtimeConfiguration.policy', 'runtimeConfiguration.tieredCompilationEnabled',

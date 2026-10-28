@@ -9,16 +9,16 @@ correctness.
 - immutable `MarkdownEngineBuilder` -> `MarkdownEngine` ->
   `MarkdownDocument` model;
 - explicit `MarkdownScrollView` and `MarkdownDocumentView` viewport ownership;
-- lean base package and optional GFM, GitHub, HTML, Math, Mermaid, resvg, and
-  TextMate packs;
+- one `MarkdownRenderer` package with opt-in GFM, Markdown Extra, GitHub README
+  and safe-HTML profiles, plus optional Math, Mermaid, resvg, and TextMate packs;
 - Fluent default behavior with GitHub-specific behavior opt-in;
 - rendered-text plus `CF_HTML` default copy and explicit Copy Markdown;
 - parser-independent declarative extension and stable host-service boundaries.
 
 ## Implemented capabilities, not release certification
 
-- `MarkdownRenderer.Html` implements a bounded native safe-HTML subset parser
-  and painter, including inline tags and cross-block scopes. It is not a browser.
+- Safe HTML (`MarkdownRenderer.Html`) is a bounded native subset parser and
+  painter, including inline tags and cross-block scopes. It is not a browser.
 - `MarkdownRenderer.Math` implements CSharpMath-based TeX typesetting into
   immutable vector scenes. Invalid input retains source fallback; only dollar
   delimiters are enabled for 1.0.
@@ -33,9 +33,9 @@ correctness.
 
 ## Automated coverage
 
-- The `MarkdownRenderer.Conformance` harness runs every official CommonMark
-  0.31.2 and GFM 0.29 example and checks reference-HTML parity. Its exception
-  list is empty. CI runs the harness's own tests, not the full corpus.
+- `MarkdownRenderer.Conformance.Tests` runs every official CommonMark 0.31.2
+  and GFM 0.29 example and checks reference-HTML parity. Its exception list is
+  empty. CI runs the harness tests; the full-corpus run is opt-in.
 - The public API analyzer's `PublicAPI.*.txt` files and
   `MarkdownRenderer.PublicApi.Tests` guard the exported surface. They do not
   replace the final human API approval.

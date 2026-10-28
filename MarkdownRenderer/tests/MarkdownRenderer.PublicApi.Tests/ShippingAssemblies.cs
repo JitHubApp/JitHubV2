@@ -1,11 +1,6 @@
 using System.Reflection;
-using MarkdownRenderer.Controls;
-using MarkdownRenderer.Gfm;
-using MarkdownRenderer.GitHub;
-using MarkdownRenderer.Html;
 using MarkdownRenderer.Math;
 using MarkdownRenderer.Mermaid;
-using MarkdownRenderer.Performance;
 using MarkdownRenderer.Svg.Resvg;
 using MarkdownRenderer.SyntaxHighlighting.TextMate;
 using MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All;
@@ -15,21 +10,16 @@ namespace MarkdownRenderer.PublicApi.Tests;
 
 /// <summary>
 /// Every assembly the renderer packages ship, each found through one of its
-/// public types. The MarkdownRenderer and MarkdownRenderer.All meta-packages
-/// ship no assembly of their own.
+/// public types. The MarkdownRenderer.All meta-package ships no assembly of
+/// its own.
 /// </summary>
 internal static class ShippingAssemblies
 {
     public static IReadOnlyList<Assembly> All { get; } =
     [
         typeof(MarkdownEngine).Assembly,
-        typeof(MarkdownScrollView).Assembly,
-        typeof(GfmExtensions).Assembly,
-        typeof(GitHubReadmeExtensions).Assembly,
-        typeof(SafeHtmlFeature).Assembly,
         typeof(MathFeature).Assembly,
         typeof(MermaidRenderer).Assembly,
-        typeof(MarkdownPerformanceSession).Assembly,
         typeof(ResvgMarkdownSvgRenderer).Assembly,
         typeof(TextMateSyntaxHighlightingExtensions).Assembly,
         typeof(CommonTextMateGrammarProvider).Assembly,
