@@ -1,4 +1,4 @@
-namespace MarkdownRenderer.Conformance;
+namespace MarkdownRenderer.Conformance.Tests.Harness;
 
 public static class CorpusCatalog
 {

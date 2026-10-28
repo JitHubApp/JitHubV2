@@ -14,7 +14,7 @@ Windows Sandbox UI runners.
 | `MarkdownRenderer.Conformance.Tests` | Tests of the CommonMark/GFM conformance harness itself. |
 | `MarkdownRenderer.Sample` | Manual WinUI test host with feature pages. |
 | `MarkdownRenderer.Sample.Automation` | FlaUI UI automation against the sample app. |
-| `MarkdownRenderer.PixelTests` | SVG fixture and pixel-comparison infrastructure. |
+| `MarkdownRenderer.Pixel.Tests` | SVG fixture and pixel-comparison infrastructure. |
 | `MarkdownRenderer.PublicApi.Tests` | Public-surface policy over every shipping assembly that the `PublicAPI.*.txt` files do not record. See [Public API](public-api.md#changing-the-public-api). |
 
 ### NativeAOT smokes
@@ -31,8 +31,7 @@ single-file) and treat the trim and AOT analyzer warnings as errors:
 
 `MarkdownRenderer/` keeps shipping libraries in `src/`, tests in `tests/`
 (NativeAOT smokes in `tests/aot/`), the sample apps in `samples/`, benchmarks
-and the performance harness in `perf/`, developer tools in `tools/`, and build
-scripts in `eng/`. The rules are the "Code Structure Standards" in the
+and the performance harness in `perf/`, and build scripts in `eng/`. The rules are the "Code Structure Standards" in the
 repository's `AGENTS.md`; two checks enforce part of them.
 
 Every renderer project build runs `CheckMarkdownRendererProjectStructure`

@@ -2,7 +2,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using MarkdownRenderer.Document;
 
-namespace MarkdownRenderer.Conformance;
+namespace MarkdownRenderer.Conformance.Tests.Harness;
 
 public static class SemanticPlanSerializer
 {

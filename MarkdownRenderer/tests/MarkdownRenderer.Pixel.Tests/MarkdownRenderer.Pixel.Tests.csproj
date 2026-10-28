@@ -7,7 +7,7 @@
       rasters; if no browser is found the dependent tests skip themselves.
     -->
     <IsTestProject>true</IsTestProject>
-    <RootNamespace>MarkdownRenderer.PixelTests</RootNamespace>
+    <RootNamespace>MarkdownRenderer.Pixel.Tests</RootNamespace>
     <UseWinUI>false</UseWinUI>
     <WindowsAppSdkSelfContained>true</WindowsAppSdkSelfContained>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>

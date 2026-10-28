@@ -11,6 +11,8 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="Microsoft.WindowsAppSDK" />
     <PackageReference Include="Microsoft.WindowsAppSDK.Runtime" />
-    <ProjectReference Include="..\..\tools\MarkdownRenderer.Conformance\MarkdownRenderer.Conformance.csproj" />
+    <PackageReference Include="Xunit.SkippableFact" />
+    <ProjectReference Include="..\..\src\MarkdownRenderer\MarkdownRenderer.csproj" />
+    <None Update="conformance-exceptions.v1.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

@@ -6,7 +6,7 @@ using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Svg.Resvg;
 using Xunit;
 
-namespace MarkdownRenderer.PixelTests;
+namespace MarkdownRenderer.Pixel.Tests;
 
 /// <summary>
 /// Auto-discovered SVG fixture suite. Each <c>Fixtures\svg\**\*.svg</c>

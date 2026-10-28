@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace MarkdownRenderer.Conformance;
+namespace MarkdownRenderer.Conformance.Tests.Harness;
 
 public sealed class ConformanceExceptionAllowlist
 {

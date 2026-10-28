@@ -100,7 +100,7 @@
       <Platform Solution="Debug|Any CPU" Project="x64" />
       <Platform Solution="Release|Any CPU" Project="x64" />
     </Project>
-    <Project Path="tests/MarkdownRenderer.PixelTests/MarkdownRenderer.PixelTests.csproj">
+    <Project Path="tests/MarkdownRenderer.Pixel.Tests/MarkdownRenderer.Pixel.Tests.csproj">
       <Platform Solution="*|x64" Project="x64" />
       <Platform Solution="Debug|Any CPU" Project="x64" />
       <Platform Solution="Release|Any CPU" Project="x64" />
@@ -208,13 +208,6 @@
     </Project>
     <Project Path="perf/MarkdownRenderer.PerformanceHarness.Core/MarkdownRenderer.PerformanceHarness.Core.csproj">
       <Platform Solution="*|ARM64" Project="ARM64" />
-      <Platform Solution="*|x64" Project="x64" />
-      <Platform Solution="Debug|Any CPU" Project="x64" />
-      <Platform Solution="Release|Any CPU" Project="x64" />
-    </Project>
-  </Folder>
-  <Folder Name="/tools/">
-    <Project Path="tools/MarkdownRenderer.Conformance/MarkdownRenderer.Conformance.csproj">
       <Platform Solution="*|x64" Project="x64" />
       <Platform Solution="Debug|Any CPU" Project="x64" />
       <Platform Solution="Release|Any CPU" Project="x64" />

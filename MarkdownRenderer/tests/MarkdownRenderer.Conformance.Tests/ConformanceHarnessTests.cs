@@ -1,7 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using MarkdownRenderer.Conformance;
+using MarkdownRenderer.Conformance.Tests.Harness;
 using Xunit;
 
 namespace MarkdownRenderer.Conformance.Tests;

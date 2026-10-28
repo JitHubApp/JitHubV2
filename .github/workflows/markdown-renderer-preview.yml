@@ -260,7 +260,7 @@ jobs:
             '.\MarkdownRenderer\tests\MarkdownRenderer.Svg.Resvg.Tests\MarkdownRenderer.Svg.Resvg.Tests.csproj'
             '.\MarkdownRenderer\tests\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests.csproj'
             '.\MarkdownRenderer\tests\MarkdownRenderer.Conformance.Tests\MarkdownRenderer.Conformance.Tests.csproj'
-            '.\MarkdownRenderer\tests\MarkdownRenderer.PixelTests\MarkdownRenderer.PixelTests.csproj'
+            '.\MarkdownRenderer\tests\MarkdownRenderer.Pixel.Tests\MarkdownRenderer.Pixel.Tests.csproj'
             '.\MarkdownRenderer\tests\MarkdownRenderer.PublicApi.Tests\MarkdownRenderer.PublicApi.Tests.csproj'
             '.\MarkdownRenderer\tests\MarkdownRenderer.Sample.Automation.Tests\MarkdownRenderer.Sample.Automation.Tests.csproj'
           )
@@ -284,7 +284,7 @@ jobs:
             '.\MarkdownRenderer\tests\MarkdownRenderer.Svg.Resvg.Tests\MarkdownRenderer.Svg.Resvg.Tests.csproj'
             '.\MarkdownRenderer\tests\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests.csproj'
             '.\MarkdownRenderer\tests\MarkdownRenderer.Conformance.Tests\MarkdownRenderer.Conformance.Tests.csproj'
-            '.\MarkdownRenderer\tests\MarkdownRenderer.PixelTests\MarkdownRenderer.PixelTests.csproj'
+            '.\MarkdownRenderer\tests\MarkdownRenderer.Pixel.Tests\MarkdownRenderer.Pixel.Tests.csproj'
             '.\MarkdownRenderer\tests\MarkdownRenderer.PublicApi.Tests\MarkdownRenderer.PublicApi.Tests.csproj'
             '.\MarkdownRenderer\tests\MarkdownRenderer.Sample.Automation.Tests\MarkdownRenderer.Sample.Automation.Tests.csproj'
           )

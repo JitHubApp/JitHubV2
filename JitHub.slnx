@@ -33,7 +33,7 @@
     <Deploy Solution="*|x86" />
     <Deploy Solution="Debug|Any CPU" />
   </Project>
-  <Project Path="MarkdownRenderer/tests/MarkdownRenderer.PixelTests/MarkdownRenderer.PixelTests.csproj">
+  <Project Path="MarkdownRenderer/tests/MarkdownRenderer.Pixel.Tests/MarkdownRenderer.Pixel.Tests.csproj">
     <Platform Solution="*|x64" Project="x64" />
     <Platform Solution="Debug|Any CPU" Project="x64" />
     <Platform Solution="Release|Any CPU" Project="x64" />
@@ -67,11 +67,6 @@
     <Platform Solution="Debug|Any CPU" Project="x64" />
     <Platform Solution="Release|Any CPU" Project="x64" />
   </Project>
-    <Project Path="MarkdownRenderer/tools/MarkdownRenderer.Conformance/MarkdownRenderer.Conformance.csproj">
-      <Platform Solution="*|x64" Project="x64" />
-      <Platform Solution="Debug|Any CPU" Project="x64" />
-      <Platform Solution="Release|Any CPU" Project="x64" />
-    </Project>
   <Project Path="MarkdownRenderer/tests/MarkdownRenderer.Conformance.Tests/MarkdownRenderer.Conformance.Tests.csproj">
     <Platform Solution="*|x64" Project="x64" />
     <Platform Solution="Debug|Any CPU" Project="x64" />

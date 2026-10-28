@@ -350,7 +350,7 @@ if (Test-IsProvided $liveAudits) {
 }
 
 $testsProject = Join-Path $markdownRoot 'tests\MarkdownRenderer.Svg.Resvg.Tests\MarkdownRenderer.Svg.Resvg.Tests.csproj'
-$pixelTestsProject = Join-Path $markdownRoot 'tests\MarkdownRenderer.PixelTests\MarkdownRenderer.PixelTests.csproj'
+$pixelTestsProject = Join-Path $markdownRoot 'tests\MarkdownRenderer.Pixel.Tests\MarkdownRenderer.Pixel.Tests.csproj'
 $packageProjects = @(
     (Join-Path $markdownRoot 'src\MarkdownRenderer\MarkdownRenderer.csproj'),
     (Join-Path $providerRoot 'MarkdownRenderer.Svg.Resvg.csproj')

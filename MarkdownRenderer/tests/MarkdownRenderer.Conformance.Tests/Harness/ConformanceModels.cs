@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace MarkdownRenderer.Conformance;
+namespace MarkdownRenderer.Conformance.Tests.Harness;
 
 public enum CorpusSourceFormat
 {

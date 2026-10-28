@@ -55,9 +55,10 @@ assistive-technology, packaging, signing, or publishing work named below.
 
 ## Correctness and conformance
 
-- [ ] Run the `MarkdownRenderer.Conformance` harness over the official
-  CommonMark 0.31.2 and GFM 0.29 examples (`--suite all`) and confirm every
-  example passes.
+- [ ] Run the opt-in full-corpus test in `MarkdownRenderer.Conformance.Tests`
+  over the official CommonMark 0.31.2 and GFM 0.29 examples
+  (`MARKDOWN_RENDERER_CONFORMANCE=1`, `--filter Category=Conformance`) and
+  confirm every example passes.
 - [x] Keep `conformance-exceptions.v1.json` empty; any new entry needs an issue
   link and is reported as stale once the example passes.
 - [ ] Validate immutable source, diagnostic, semantic-query, and half-open UTF-16

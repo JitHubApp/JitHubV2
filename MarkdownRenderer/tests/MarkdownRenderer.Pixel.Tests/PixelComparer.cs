@@ -4,7 +4,7 @@ using System.Drawing.Imaging;
 using System.IO;
 using System.Runtime.InteropServices;
 
-namespace MarkdownRenderer.PixelTests;
+namespace MarkdownRenderer.Pixel.Tests;
 
 /// <summary>
 /// Pixel-by-pixel comparison helpers for two RGBA / BGRA buffers, with
@@ -56,7 +56,7 @@ public static class PixelComparer
         // GDI+ still uses legacy path handling even when the process and .NET
         // file APIs are long-path aware. Encode through a short temporary path,
         // then let System.IO move the completed PNG to a deep worktree/CI path.
-        string temporaryDirectory = Path.Combine(Path.GetTempPath(), "MarkdownRenderer.PixelTests");
+        string temporaryDirectory = Path.Combine(Path.GetTempPath(), "MarkdownRenderer.Pixel.Tests");
         Directory.CreateDirectory(temporaryDirectory);
         string temporaryPath = Path.Combine(temporaryDirectory, $"{Guid.NewGuid():N}.png");
         try

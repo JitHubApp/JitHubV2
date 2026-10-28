@@ -5,7 +5,7 @@ using System.IO;
 using System.Linq;
 using Xunit;
 
-namespace MarkdownRenderer.PixelTests;
+namespace MarkdownRenderer.Pixel.Tests;
 
 public sealed class PixelComparerTests
 {

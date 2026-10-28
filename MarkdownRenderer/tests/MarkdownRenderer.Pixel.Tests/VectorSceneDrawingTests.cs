@@ -2,7 +2,7 @@ using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Layout;
 using Xunit;
 
-namespace MarkdownRenderer.PixelTests;
+namespace MarkdownRenderer.Pixel.Tests;
 
 public sealed class VectorSceneDrawingTests
 {

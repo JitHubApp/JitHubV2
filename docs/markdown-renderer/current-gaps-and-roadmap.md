@@ -33,9 +33,9 @@ correctness.
 
 ## Automated coverage
 
-- The `MarkdownRenderer.Conformance` harness runs every official CommonMark
-  0.31.2 and GFM 0.29 example and checks reference-HTML parity. Its exception
-  list is empty. CI runs the harness's own tests, not the full corpus.
+- `MarkdownRenderer.Conformance.Tests` runs every official CommonMark 0.31.2
+  and GFM 0.29 example and checks reference-HTML parity. Its exception list is
+  empty. CI runs the harness tests; the full-corpus run is opt-in.
 - The public API analyzer's `PublicAPI.*.txt` files and
   `MarkdownRenderer.PublicApi.Tests` guard the exported surface. They do not
   replace the final human API approval.

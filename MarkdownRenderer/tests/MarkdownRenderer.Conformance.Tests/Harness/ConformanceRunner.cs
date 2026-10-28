@@ -1,7 +1,7 @@
 using System.Text.Json;
 using MarkdownRenderer.Document;
 
-namespace MarkdownRenderer.Conformance;
+namespace MarkdownRenderer.Conformance.Tests.Harness;
 
 public sealed class ConformanceRunner
 {

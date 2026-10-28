@@ -1,7 +1,7 @@
 using MarkdownRenderer.Accessibility;
 using Xunit;
 
-namespace MarkdownRenderer.PixelTests;
+namespace MarkdownRenderer.Pixel.Tests;
 
 public sealed class MarkdownSemanticTraversalTests
 {
