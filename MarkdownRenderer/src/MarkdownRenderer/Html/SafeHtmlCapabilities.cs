@@ -1,6 +1,8 @@
+using System;
+
 namespace MarkdownRenderer.Html;
 
-/// <summary>Describes how external resources are routed by the safe-HTML pack.</summary>
+/// <summary>Describes how the safe-HTML feature routes external resources.</summary>
 public enum SafeHtmlExternalResourceRouting
 {
     /// <summary>The resource kind is disabled.</summary>
@@ -17,9 +19,6 @@ public sealed class SafeHtmlCapabilityDescriptor
     internal SafeHtmlCapabilityDescriptor()
     {
     }
-
-    /// <summary>Gets the owning NuGet package identifier.</summary>
-    public string PackageId => SafeHtmlFeature.PackageId;
 
     /// <summary>Gets the stable capability contract version.</summary>
     public int ContractVersion => SafeHtmlFeature.ContractVersion;
@@ -79,12 +78,9 @@ public sealed class SafeHtmlCapabilityMarker : ISafeHtmlCapabilityMarker
     public SafeHtmlOptions SafeHtmlOptions { get; }
 }
 
-/// <summary>Stable metadata for the native safe-HTML feature pack.</summary>
+/// <summary>Stable metadata for the native safe-HTML feature.</summary>
 public static class SafeHtmlFeature
 {
-    /// <summary>The owning NuGet package identifier.</summary>
-    public const string PackageId = "MarkdownRenderer.Html";
-
     /// <summary>The stable capability contract version.</summary>
     public const int ContractVersion = 1;
 

@@ -1,9 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <IsTestProject>true</IsTestProject>
-    <!-- Exercises the WinUI-free conformance tool only; its graph has no
-         RID-specific assets. -->
-    <RuntimeIdentifiers></RuntimeIdentifiers>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="xunit" />
@@ -12,6 +9,8 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.Runtime" />
     <ProjectReference Include="..\..\tools\MarkdownRenderer.Conformance\MarkdownRenderer.Conformance.csproj" />
   </ItemGroup>
 </Project>

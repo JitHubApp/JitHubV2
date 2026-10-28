@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using Markdig.Syntax;
 using MarkdownRenderer.Controls;
 using MarkdownRenderer.Html.Renderers;
@@ -5,7 +7,7 @@ using MarkdownRenderer.Parsing;
 
 namespace MarkdownRenderer.Html;
 
-/// <summary>Configures the native, non-executable safe-HTML feature pack.</summary>
+/// <summary>Configures the native, non-executable safe-HTML feature.</summary>
 public static class SafeHtmlExtensions
 {
     private const string SafeHtmlPresentationFeature = "MarkdownRenderer.SafeHtml.Presentation";

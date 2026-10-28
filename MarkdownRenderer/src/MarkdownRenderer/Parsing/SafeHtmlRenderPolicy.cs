@@ -4,7 +4,7 @@ using System.Collections.Generic;
 namespace MarkdownRenderer.Parsing;
 
 /// <summary>
-/// Internal, dependency-free snapshot of the optional HTML pack's rendering policy.
+/// Internal, dependency-free snapshot of the optional safe-HTML feature's rendering policy.
 /// </summary>
 internal sealed class SafeHtmlRenderPolicy
 {

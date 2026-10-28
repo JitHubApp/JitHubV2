@@ -146,30 +146,23 @@
           "xunit.extensibility.core": "[2.9.3]"
         }
       },
-      "markdownrenderer.core": {
+      "markdownrenderer": {
         "type": "Project",
         "dependencies": {
-          "Markdig": "[0.42.0, )"
+          "Markdig": "[0.42.0, )",
+          "Microsoft.Graphics.Win2D": "[1.4.0, )"
         }
       },
       "markdownrenderer.svg.resvg": {
         "type": "Project",
         "dependencies": {
-          "MarkdownRenderer.WinUI": "[1.0.0-preview.1, )"
+          "MarkdownRenderer": "[1.0.0-preview.1, )"
         }
       },
       "markdownrenderer.svg.resvg.testsupport": {
         "type": "Project",
         "dependencies": {
-          "MarkdownRenderer.WinUI": "[1.0.0-preview.1, )"
-        }
-      },
-      "MarkdownRenderer.WinUI": {
-        "type": "Project",
-        "dependencies": {
-          "Markdig": "[0.42.0, )",
-          "MarkdownRenderer.Core": "[1.0.0-preview.1, )",
-          "Microsoft.Graphics.Win2D": "[1.4.0, )"
+          "MarkdownRenderer": "[1.0.0-preview.1, )"
         }
       },
       "Markdig": {

@@ -132,59 +132,35 @@
         "resolved": "9.0.0",
         "contentHash": "hyJB4UlpAi19Xr9AXzu2NuagKC4lPfHObNMEAA0HmqFz2rX7wKgzeYzO/jM/eBHDhnUGFFEjk5cOoJaxqg5J4A=="
       },
-      "markdownrenderer.core": {
+      "markdownrenderer": {
         "type": "Project",
         "dependencies": {
-          "Markdig": "[0.42.0, )"
-        }
-      },
-      "markdownrenderer.gfm": {
-        "type": "Project",
-        "dependencies": {
-          "MarkdownRenderer.WinUI": "[1.0.0-preview.1, )"
-        }
-      },
-      "markdownrenderer.github": {
-        "type": "Project",
-        "dependencies": {
-          "MarkdownRenderer.Gfm": "[1.0.0-preview.1, )",
-          "MarkdownRenderer.Html": "[1.0.0-preview.1, )"
-        }
-      },
-      "markdownrenderer.html": {
-        "type": "Project",
-        "dependencies": {
-          "MarkdownRenderer.WinUI": "[1.0.0-preview.1, )"
+          "Markdig": "[0.42.0, )",
+          "Microsoft.Graphics.Win2D": "[1.4.0, )"
         }
       },
       "markdownrenderer.math": {
         "type": "Project",
         "dependencies": {
-          "MarkdownRenderer.Core": "[1.0.0-preview.1, )"
+          "MarkdownRenderer": "[1.0.0-preview.1, )"
         }
       },
       "markdownrenderer.mermaid": {
         "type": "Project",
         "dependencies": {
-          "MarkdownRenderer.Core": "[1.0.0-preview.1, )"
-        }
-      },
-      "markdownrenderer.performance": {
-        "type": "Project",
-        "dependencies": {
-          "MarkdownRenderer.WinUI": "[1.0.0-preview.1, )"
+          "MarkdownRenderer": "[1.0.0-preview.1, )"
         }
       },
       "markdownrenderer.svg.resvg": {
         "type": "Project",
         "dependencies": {
-          "MarkdownRenderer.WinUI": "[1.0.0-preview.1, )"
+          "MarkdownRenderer": "[1.0.0-preview.1, )"
         }
       },
       "markdownrenderer.syntaxhighlighting.textmate": {
         "type": "Project",
         "dependencies": {
-          "MarkdownRenderer.WinUI": "[1.0.0-preview.1, )"
+          "MarkdownRenderer": "[1.0.0-preview.1, )"
         }
       },
       "markdownrenderer.syntaxhighlighting.textmate.grammars.common": {
@@ -192,14 +168,6 @@
         "dependencies": {
           "MarkdownRenderer.SyntaxHighlighting.TextMate": "[1.0.0-preview.1, )",
           "TextMateSharp": "[2.0.3, )"
-        }
-      },
-      "MarkdownRenderer.WinUI": {
-        "type": "Project",
-        "dependencies": {
-          "Markdig": "[0.42.0, )",
-          "MarkdownRenderer.Core": "[1.0.0-preview.1, )",
-          "Microsoft.Graphics.Win2D": "[1.4.0, )"
         }
       },
       "Markdig": {

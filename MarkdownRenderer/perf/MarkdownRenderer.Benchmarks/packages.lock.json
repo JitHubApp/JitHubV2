@@ -279,24 +279,17 @@
         "resolved": "4.7.0",
         "contentHash": "VybpaOQQhqE6siHppMktjfGBw1GCwvCqiufqmP8F1nj7fTUNtW35LOEt3UZTEsECfo+ELAl/9o9nJx3U91i7vA=="
       },
-      "markdownrenderer.core": {
+      "markdownrenderer": {
         "type": "Project",
         "dependencies": {
-          "Markdig": "[0.42.0, )"
+          "Markdig": "[0.42.0, )",
+          "Microsoft.Graphics.Win2D": "[1.4.0, )"
         }
       },
       "markdownrenderer.math": {
         "type": "Project",
         "dependencies": {
-          "MarkdownRenderer.Core": "[1.0.0-preview.1, )"
-        }
-      },
-      "MarkdownRenderer.WinUI": {
-        "type": "Project",
-        "dependencies": {
-          "Markdig": "[0.42.0, )",
-          "MarkdownRenderer.Core": "[1.0.0-preview.1, )",
-          "Microsoft.Graphics.Win2D": "[1.4.0, )"
+          "MarkdownRenderer": "[1.0.0-preview.1, )"
         }
       },
       "Markdig": {

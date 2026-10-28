@@ -1000,7 +1000,6 @@ internal sealed class PerformanceWindow : Window
             Executable = CopyBuildArtifactHash(source.Executable),
             PerformanceHarnessDll = CopyBuildArtifactHash(source.PerformanceHarnessDll),
             MarkdownRendererDll = CopyBuildArtifactHash(source.MarkdownRendererDll),
-            MarkdownRendererCoreDll = CopyBuildArtifactHash(source.MarkdownRendererCoreDll),
             RuntimeConfig = CopyBuildArtifactHash(source.RuntimeConfig),
         };
 

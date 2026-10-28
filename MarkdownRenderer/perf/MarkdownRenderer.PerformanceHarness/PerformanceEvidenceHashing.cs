@@ -14,7 +14,6 @@ internal static class PerformanceEvidenceHashing
             Executable = CaptureArtifact(executablePath),
             PerformanceHarnessDll = CaptureArtifact(typeof(PerformanceEvidenceHashing).Assembly.Location),
             MarkdownRendererDll = CaptureArtifact(typeof(MarkdownScrollView).Assembly.Location),
-            MarkdownRendererCoreDll = CaptureArtifact(typeof(MarkdownEngine).Assembly.Location),
             RuntimeConfig = CaptureArtifact(Path.ChangeExtension(executablePath, ".runtimeconfig.json")),
         };
     }

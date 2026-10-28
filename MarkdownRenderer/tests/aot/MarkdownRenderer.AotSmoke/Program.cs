@@ -8,17 +8,23 @@ const string source = "# Native Markdown\n\n- [x] accessible\n\n| Pack | State |
 
 MarkdownEngine strictGfm = new MarkdownEngineBuilder()
     .UseGitHubFlavoredMarkdown()
+    .WithParseCacheBudgetBytes(256 * 1024)
     .Build();
 MarkdownEngine githubReadme = new MarkdownEngineBuilder()
     .UseGitHubReadme()
     .Build();
 
 var strictDocument = await strictGfm.ParseAsync(source).ConfigureAwait(false);
+var cachedDocument = await strictGfm.ParseAsync(source).ConfigureAwait(false);
 var githubDocument = await githubReadme.ParseAsync(source).ConfigureAwait(false);
 SafeHtmlCapabilityDescriptor safeHtml = SafeHtmlFeature.Capabilities;
 using var performanceSession = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
 
-if (strictDocument.GetHeadings().Count != 1 ||
+if (!ReferenceEquals(strictDocument, cachedDocument) ||
+    strictDocument.Source != source ||
+    strictDocument.HasErrors ||
+    strictDocument.SourceMap.Count == 0 ||
+    strictDocument.GetHeadings().Count != 1 ||
     githubDocument.GetHeadings().Count != 1 ||
     strictGfm.Profile.Id != MarkdownProfiles.GfmStrict.Id ||
     githubReadme.Profile.Id != MarkdownProfiles.GitHubReadme.Id ||

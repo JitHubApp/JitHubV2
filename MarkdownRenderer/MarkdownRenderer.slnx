@@ -25,38 +25,6 @@
       <Platform Solution="Debug|Any CPU" Project="x64" />
       <Platform Solution="Release|Any CPU" Project="x64" />
     </Project>
-    <Project Path="src/MarkdownRenderer.Core/MarkdownRenderer.Core.csproj">
-      <Platform Solution="*|ARM" Project="x86" />
-      <Platform Solution="*|ARM64" Project="ARM64" />
-      <Platform Solution="*|x64" Project="x64" />
-      <Platform Solution="*|x86" Project="x86" />
-      <Platform Solution="Debug|Any CPU" Project="x64" />
-      <Platform Solution="Release|Any CPU" Project="x86" />
-    </Project>
-    <Project Path="src/MarkdownRenderer.Gfm/MarkdownRenderer.Gfm.csproj">
-      <Platform Solution="*|ARM" Project="x86" />
-      <Platform Solution="*|ARM64" Project="ARM64" />
-      <Platform Solution="*|x64" Project="x64" />
-      <Platform Solution="*|x86" Project="x86" />
-      <Platform Solution="Debug|Any CPU" Project="x64" />
-      <Platform Solution="Release|Any CPU" Project="x86" />
-    </Project>
-    <Project Path="src/MarkdownRenderer.GitHub/MarkdownRenderer.GitHub.csproj">
-      <Platform Solution="*|ARM" Project="x86" />
-      <Platform Solution="*|ARM64" Project="ARM64" />
-      <Platform Solution="*|x64" Project="x64" />
-      <Platform Solution="*|x86" Project="x86" />
-      <Platform Solution="Debug|Any CPU" Project="x64" />
-      <Platform Solution="Release|Any CPU" Project="x86" />
-    </Project>
-    <Project Path="src/MarkdownRenderer.Html/MarkdownRenderer.Html.csproj">
-      <Platform Solution="*|ARM" Project="x86" />
-      <Platform Solution="*|ARM64" Project="ARM64" />
-      <Platform Solution="*|x64" Project="x64" />
-      <Platform Solution="*|x86" Project="x86" />
-      <Platform Solution="Debug|Any CPU" Project="x64" />
-      <Platform Solution="Release|Any CPU" Project="x86" />
-    </Project>
     <Project Path="src/MarkdownRenderer.Math/MarkdownRenderer.Math.csproj">
       <Platform Solution="*|ARM" Project="x86" />
       <Platform Solution="*|ARM64" Project="ARM64" />
@@ -66,22 +34,6 @@
       <Platform Solution="Release|Any CPU" Project="x86" />
     </Project>
     <Project Path="src/MarkdownRenderer.Mermaid/MarkdownRenderer.Mermaid.csproj">
-      <Platform Solution="*|ARM" Project="x86" />
-      <Platform Solution="*|ARM64" Project="ARM64" />
-      <Platform Solution="*|x64" Project="x64" />
-      <Platform Solution="*|x86" Project="x86" />
-      <Platform Solution="Debug|Any CPU" Project="x64" />
-      <Platform Solution="Release|Any CPU" Project="x86" />
-    </Project>
-    <Project Path="src/MarkdownRenderer.Package/MarkdownRenderer.Package.csproj">
-      <Platform Solution="*|ARM" Project="x86" />
-      <Platform Solution="*|ARM64" Project="ARM64" />
-      <Platform Solution="*|x64" Project="x64" />
-      <Platform Solution="*|x86" Project="x86" />
-      <Platform Solution="Debug|Any CPU" Project="x64" />
-      <Platform Solution="Release|Any CPU" Project="x86" />
-    </Project>
-    <Project Path="src/MarkdownRenderer.Performance/MarkdownRenderer.Performance.csproj">
       <Platform Solution="*|ARM" Project="x86" />
       <Platform Solution="*|ARM64" Project="ARM64" />
       <Platform Solution="*|x64" Project="x64" />
@@ -188,15 +140,7 @@
     </Project>
   </Folder>
   <Folder Name="/tests/aot/">
-    <Project Path="tests/aot/MarkdownRenderer.Core.AotSmoke/MarkdownRenderer.Core.AotSmoke.csproj">
-      <Platform Solution="*|ARM" Project="x86" />
-      <Platform Solution="*|ARM64" Project="ARM64" />
-      <Platform Solution="*|x64" Project="x64" />
-      <Platform Solution="*|x86" Project="x86" />
-      <Platform Solution="Debug|Any CPU" Project="x64" />
-      <Platform Solution="Release|Any CPU" Project="x64" />
-    </Project>
-    <Project Path="tests/aot/MarkdownRenderer.ManagedPacks.AotSmoke/MarkdownRenderer.ManagedPacks.AotSmoke.csproj">
+    <Project Path="tests/aot/MarkdownRenderer.AotSmoke/MarkdownRenderer.AotSmoke.csproj">
       <Platform Solution="*|ARM" Project="x86" />
       <Platform Solution="*|ARM64" Project="ARM64" />
       <Platform Solution="*|x64" Project="x64" />

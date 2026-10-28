@@ -1,9 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <InvariantGlobalization>false</InvariantGlobalization>
-  </PropertyGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\..\..\src\MarkdownRenderer.Core\MarkdownRenderer.Core.csproj" />
-  </ItemGroup>
-</Project>

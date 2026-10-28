@@ -90,7 +90,7 @@ public static class GitHubReadmeVisualStyleProfiles
 {
     /// <summary>
     /// Gets the fixed Light profile backed by
-    /// <c>MarkdownRenderer.GitHub/Profiles/github-primer-light-v1.css</c>.
+    /// <c>GitHub/Profiles/github-primer-light-v1.css</c>.
     /// </summary>
     /// <remarks>
     /// The profile uses a white surface, GitHub's light foreground and link

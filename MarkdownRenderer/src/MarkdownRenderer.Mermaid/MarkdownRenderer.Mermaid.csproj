@@ -28,7 +28,7 @@
     <InternalsVisibleTo Include="MarkdownRenderer.Mermaid.Tests" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\MarkdownRenderer.Core\MarkdownRenderer.Core.csproj" />
+    <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer.csproj" />
   </ItemGroup>
   <ItemGroup>
     <None Update="MERMAN_PROVENANCE.json" Pack="true" PackagePath="provenance\MERMAN_PROVENANCE.json" />

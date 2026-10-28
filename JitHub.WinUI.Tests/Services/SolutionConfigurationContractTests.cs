@@ -6,7 +6,7 @@ namespace JitHub.WinUI.Tests.Services;
 public sealed class SolutionConfigurationContractTests
 {
     [Theory]
-    [InlineData("MarkdownRenderer/tests/aot/MarkdownRenderer.ManagedPacks.AotSmoke/MarkdownRenderer.ManagedPacks.AotSmoke.csproj")]
+    [InlineData("MarkdownRenderer/tests/aot/MarkdownRenderer.AotSmoke/MarkdownRenderer.AotSmoke.csproj")]
     [InlineData("MarkdownRenderer/tests/MarkdownRenderer.PixelTests/MarkdownRenderer.PixelTests.csproj")]
     [InlineData("MarkdownRenderer/tests/aot/MarkdownRenderer.Svg.Resvg.AotSmoke/MarkdownRenderer.Svg.Resvg.AotSmoke.csproj")]
     [InlineData("MarkdownRenderer/tests/MarkdownRenderer.Svg.Resvg.Tests/MarkdownRenderer.Svg.Resvg.Tests.csproj")]

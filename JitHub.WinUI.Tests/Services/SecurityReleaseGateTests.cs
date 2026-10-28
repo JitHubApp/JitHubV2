@@ -49,12 +49,11 @@ public sealed class SecurityReleaseGateTests
         string root = FindRepositoryRoot();
         (string RelativePath, bool ProducesManagedAssembly, bool CoveredByAppReleaseGate)[] projects =
         [
-            (Path.Combine("MarkdownRenderer", "src", "MarkdownRenderer.Core", "MarkdownRenderer.Core.csproj"), true, true),
+            (Path.Combine("MarkdownRenderer", "src", "MarkdownRenderer", "MarkdownRenderer.csproj"), true, true),
             (Path.Combine("MarkdownRenderer", "src", "MarkdownRenderer.Math", "MarkdownRenderer.Math.csproj"), true, false),
             (Path.Combine("MarkdownRenderer", "src", "MarkdownRenderer.SyntaxHighlighting.TextMate", "MarkdownRenderer.SyntaxHighlighting.TextMate.csproj"), true, true),
             (Path.Combine("MarkdownRenderer", "src", "MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common", "MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.csproj"), true, true),
             (Path.Combine("MarkdownRenderer", "src", "MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All", "MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All.csproj"), true, false),
-            (Path.Combine("MarkdownRenderer", "src", "MarkdownRenderer.Package", "MarkdownRenderer.Package.csproj"), false, false),
             (Path.Combine("MarkdownRenderer", "src", "MarkdownRenderer.All", "MarkdownRenderer.All.csproj"), false, false)
         ];
         string[] expectedRids = ["win-arm64", "win-x64", "win-x86"];

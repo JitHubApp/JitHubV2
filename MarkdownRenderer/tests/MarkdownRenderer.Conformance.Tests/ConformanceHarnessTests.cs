@@ -11,7 +11,7 @@ public sealed class ConformanceHarnessTests
     [Fact]
     public async Task Serializer_UsesBuiltCoreAssembly_AndIsDeterministic()
     {
-        Assert.Equal("MarkdownRenderer.Core", typeof(MarkdownEngine).Assembly.GetName().Name);
+        Assert.Equal("MarkdownRenderer", typeof(MarkdownEngine).Assembly.GetName().Name);
         var engine = new MarkdownEngineBuilder().UseProfile(MarkdownProfiles.CommonMark).Build();
         var document = await engine.ParseAsync("# Heading\n\n[link](https://example.test)\n");
 

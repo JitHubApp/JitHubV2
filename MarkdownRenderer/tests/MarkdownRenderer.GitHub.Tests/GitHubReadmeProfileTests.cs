@@ -96,20 +96,6 @@ public sealed class GitHubReadmeProfileTests
             static inline => inline.Content.ToString().Contains("🚀", StringComparison.Ordinal));
     }
 
-    [Fact]
-    public void GitHubOnlyRenderers_AreShippedByGitHubAssembly()
-    {
-        Assembly gfmAssembly = typeof(GfmExtensions).Assembly;
-        Assembly gitHubAssembly = typeof(GitHubReadmeExtensions).Assembly;
-
-        Assert.DoesNotContain(gfmAssembly.GetTypes(), type =>
-            type.Name is "AlertRenderer" or "FootnoteRenderer" or "HtmlBlockRenderer");
-        Assert.Contains(gitHubAssembly.GetTypes(), type => type.Name == "AlertRenderer");
-        Assert.Contains(gitHubAssembly.GetTypes(), type => type.Name == "FootnoteRenderer");
-        Assert.DoesNotContain(gitHubAssembly.GetTypes(), type => type.Name == "HtmlBlockRenderer");
-        Assert.Contains(typeof(SafeHtmlFeature).Assembly.GetTypes(), type => type.Name == "HtmlBlockRenderer");
-    }
-
     private static bool HasRenderer<TNode>(MarkdownExtensionRegistry registry) where TNode : class
     {
         MethodInfo method = typeof(MarkdownExtensionRegistry).GetMethod(
