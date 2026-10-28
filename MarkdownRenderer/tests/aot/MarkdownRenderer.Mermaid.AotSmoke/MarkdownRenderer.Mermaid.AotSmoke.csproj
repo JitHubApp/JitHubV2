@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PublishAot>true</PublishAot>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- x64 only. CI restores and publishes it with an explicit -r win-x64,
+         so it keeps a single-RID lock graph instead of the multi-RID one. -->
+    <Platforms>x64</Platforms>
+    <RuntimeIdentifiers></RuntimeIdentifiers>
+    <RuntimeIdentifier></RuntimeIdentifier>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\MarkdownRenderer.Mermaid\MarkdownRenderer.Mermaid.csproj" />
+  </ItemGroup>
+</Project>

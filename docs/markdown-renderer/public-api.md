@@ -176,6 +176,40 @@ Unsupported fragments retain atomic fallback to built-in rendering.
 
 See [Extensibility API](extensibility-api.md) for the supported model.
 
+## Changing the public API
+
+Every package that ships an assembly declares its public and protected surface
+in `PublicAPI.Shipped.txt` and `PublicAPI.Unshipped.txt` next to its project
+file, checked by
+[`Microsoft.CodeAnalysis.PublicApiAnalyzers`](https://github.com/dotnet/roslyn/blob/main/src/RoslynAnalyzers/PublicApiAnalyzers/PublicApiAnalyzers.Help.md).
+Nothing has shipped yet, so every entry is in `PublicAPI.Unshipped.txt`. The
+build fails when a public symbol is not declared (RS0016), a declared symbol no
+longer exists (RS0017), or an entry lacks its nullability annotations (RS0036);
+`MarkdownRenderer/src/PublicApiAnalyzers.globalconfig` sets these severities.
+It also fails when a shipping project lacks either file
+(`MarkdownRenderer/src/Directory.Build.targets`).
+
+To accept an intentional change, apply the RS0016 code fix in the IDE, or run
+from the repository root:
+
+```powershell
+dotnet format analyzers MarkdownRenderer\src\MarkdownRenderer.Core\MarkdownRenderer.Core.csproj --diagnostics RS0016 --severity warn
+```
+
+For a removed or changed symbol, delete or edit its old line in
+`PublicAPI.Unshipped.txt` by hand; RS0017 has no code fix. Review the diff of the
+API files as a public compatibility decision.
+
+`MarkdownRenderer.PublicApi.Tests` checks design rules the API files cannot
+express: public signatures expose no third-party or renderer-internal types,
+structs are readonly with default layout, classes are sealed or static, and
+`IEquatable<T>` is paired with an `Equals(object)` override.
+
+Once a version has shipped, binary compatibility beyond member signatures
+(base types, sealing, attributes, enum storage) is checked by the .NET SDK's
+package validation against that version; see the
+[release checklist](release-checklist.md#api-and-documentation).
+
 ## Preview status
 
 The packages are still previews. These implementations exist, but full 1.0 conformance, API,

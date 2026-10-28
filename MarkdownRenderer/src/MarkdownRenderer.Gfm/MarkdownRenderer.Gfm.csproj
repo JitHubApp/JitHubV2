@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>MarkdownRenderer.Gfm</RootNamespace>
+    <AssemblyName>MarkdownRenderer.Gfm</AssemblyName>
+    <UseWinUI>true</UseWinUI>
+    <WinUISDKReferences>false</WinUISDKReferences>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <PackageId>MarkdownRenderer.Gfm</PackageId>
+    <Description>Strict GFM 0.29 extensions for MarkdownRenderer, plus independently opt-in Markdown Extra helpers.</Description>
+    <PackageTags>markdown;winui;win2d;gfm;markdig;windows</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="MarkdownRenderer.GitHub.Tests" />
+    <InternalsVisibleTo Include="MarkdownRenderer.GitHub" ProjectStructureException="GitHub composes GFM through the internal GfmExtensions.ConfigureGfmRegistry; step 2 makes it public extension API." />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer.csproj" />
+  </ItemGroup>
+
+</Project>

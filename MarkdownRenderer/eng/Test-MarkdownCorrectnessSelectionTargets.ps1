@@ -5,13 +5,13 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $script:RunnerPath = Join-Path $PSScriptRoot 'Invoke-MarkdownCorrectnessUiTests.ps1'
-$script:ImageBoxPath = Join-Path $PSScriptRoot '..\MarkdownRenderer\Layout\Boxes\ImageBox.cs'
-$script:LayoutBuilderPath = Join-Path $PSScriptRoot '..\MarkdownRenderer\Layout\LayoutBuilder.cs'
-$script:ThemeResolverPath = Join-Path $PSScriptRoot '..\MarkdownRenderer\Theming\ThemeResolver.cs'
-$script:ElementStylePath = Join-Path $PSScriptRoot '..\MarkdownRenderer\Theming\ElementStyle.cs'
-$script:ThemeSnapshotPath = Join-Path $PSScriptRoot '..\MarkdownRenderer\Theming\ThemeSnapshot.cs'
-$script:SampleWindowPath = Join-Path $PSScriptRoot '..\MarkdownRenderer.Sample\MainWindow.xaml.cs'
-$script:SampleAppPath = Join-Path $PSScriptRoot '..\MarkdownRenderer.Sample\App.xaml'
+$script:ImageBoxPath = Join-Path $PSScriptRoot '..\src\MarkdownRenderer\Layout\Boxes\ImageBox.cs'
+$script:LayoutBuilderPath = Join-Path $PSScriptRoot '..\src\MarkdownRenderer\Layout\LayoutBuilder.cs'
+$script:ThemeResolverPath = Join-Path $PSScriptRoot '..\src\MarkdownRenderer\Theming\ThemeResolver.cs'
+$script:ElementStylePath = Join-Path $PSScriptRoot '..\src\MarkdownRenderer\Theming\ElementStyle.cs'
+$script:ThemeSnapshotPath = Join-Path $PSScriptRoot '..\src\MarkdownRenderer\Theming\ThemeSnapshot.cs'
+$script:SampleWindowPath = Join-Path $PSScriptRoot '..\samples\MarkdownRenderer.Sample\MainWindow.xaml.cs'
+$script:SampleAppPath = Join-Path $PSScriptRoot '..\samples\MarkdownRenderer.Sample\App.xaml'
 $tokens = $null
 $parseErrors = $null
 $runnerAst = [System.Management.Automation.Language.Parser]::ParseFile($script:RunnerPath, [ref]$tokens, [ref]$parseErrors)

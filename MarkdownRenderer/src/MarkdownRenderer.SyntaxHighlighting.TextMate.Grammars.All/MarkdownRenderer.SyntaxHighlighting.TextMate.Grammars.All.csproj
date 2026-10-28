@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All</RootNamespace>
+    <AssemblyName>MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All</AssemblyName>
+    <UseWinUI>true</UseWinUI>
+    <WinUISDKReferences>false</WinUISDKReferences>
+    <PackageId>MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All</PackageId>
+    <Description>Complete upstream grammar provider for MarkdownRenderer TextMate highlighting.</Description>
+    <PackageTags>markdown;winui;syntax-highlighting;textmate;grammars;all</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MarkdownRenderer.SyntaxHighlighting.TextMate\MarkdownRenderer.SyntaxHighlighting.TextMate.csproj" />
+    <PackageReference Include="TextMateSharp.Grammars" />
+    <!-- Shared with Grammars.Common. -->
+    <Compile Include="..\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Shared\BundledTextMateGrammarProvider.cs"
+             Link="Internal\BundledTextMateGrammarProvider.cs"
+             ProjectStructureException="The TextMateSharp adapter is shared by Grammars.Common and Grammars.All. It cannot move to the lean TextMate pack (no TextMateSharp/Onigwrap payload there) or become public API (packs expose no TextMateSharp types), and a grant between shipping packs is not allowed. Step 2 replaces the link with a shared package or a stable-typed public adapter (owner decision)." />
+    <None Include="..\..\eng\textmate\THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="THIRD-PARTY-NOTICES.md" Visible="false" />
+    <None Include="..\..\eng\textmate\GRAMMAR-PROVENANCE.v2.0.3.json" Pack="true" PackagePath="licenses/GRAMMAR-PROVENANCE.json" Visible="false" />
+  </ItemGroup>
+</Project>

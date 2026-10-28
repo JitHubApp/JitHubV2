@@ -12,6 +12,7 @@ public sealed class MarkdownPerformanceSessionDisposalContractTests
         string source = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
             "MarkdownRenderer",
+            "src",
             "MarkdownRenderer",
             "Controls",
             "MarkdownRendererControl.cs"));

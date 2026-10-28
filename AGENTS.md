@@ -26,3 +26,48 @@ JitHub is a Windows native productivity app, not a website. Page layout must be 
 - All spacing, typography, colors, dimensions, and motion must use app design tokens. Add a narrowly named token when an existing token does not express the intended value.
 - Before closing UI work, inspect the rendered item template itself at 100%, 150%, and 200% scaling; parent alignment is not proof that child controls, font metrics, or internal padding are aligned.
 - Keep `InlineAlignmentContractTests` current whenever an inline layout pattern or icon type is added. Verify alignment at 100%, 150%, and 200% scaling in light, dark, and High Contrast themes.
+
+## Code Structure Standards
+
+Working code is not enough. Review every change against these rules, and flag a workaround even when it builds and passes tests. A rule may be broken only with a written reason in the code or the PR, plus a plan to remove the exception.
+
+### Projects and dependencies
+
+- One project owns one folder. A project compiles only files under its own folder. Do not use `<Compile Include="..\...">`, do not use `<Compile Remove>` to hand files to another project, and do not keep source folders that belong to no project. Code needed by two projects goes in a library both reference.
+- Dependencies point down: platform-neutral core, then the WinUI renderer, then feature packs, then the app. A library never names the app. Only an executable's own test project may reference it; logic that anything else needs goes in a library.
+- `InternalsVisibleTo` is granted only to the assembly's own test and benchmark projects. If another shipping assembly needs an internal, it is either public extension API or it belongs in a lower assembly.
+- A packaged app keeps its logic in class libraries that its tests reference. Tests never compile app or library source files directly.
+
+### Layout and build
+
+- Disk layout states what a project is: `src/` for shipping libraries, `tests/` for tests, `samples/`, `perf/` for benchmarks and harnesses, `tools/`, and `eng/` for build scripts.
+- Shared settings live in `Directory.Build.props`. Package versions live in `Directory.Packages.props` (central package management), one version per package. A project file holds only what is unique to that project.
+- Package assets such as icons and READMEs come from the product's own folder, never from another product's project.
+
+### Public API
+
+- The public surface is deliberate and tracked with `Microsoft.CodeAnalysis.PublicApiAnalyzers` (`PublicAPI.Shipped.txt` and `PublicAPI.Unshipped.txt`). Missing or removed entries are build errors.
+- Implementation types are `internal sealed` unless there is a reason otherwise. Wire formats, diagnostics plumbing and test hooks are never public.
+- Do not ship `[Obsolete]` members in a first release. Delete them instead.
+
+### Code shape
+
+- One top-level type per file, and the file is named after the type.
+- A file over 500 lines needs a reason; over 1,000 lines fails review. A method over about 80 lines needs a reason.
+- Use composition, not partial classes, to split behavior. Partial classes are for generated code, XAML code-behind and interop only.
+- Each class owns its state and its lock. No class resets another class's fields. Encode concurrency rules in types (leases, tokens), not in method-name suffixes or comments.
+- No process-wide mutable statics. Caches and budgets belong to an engine or device scope and are passed in.
+- One build of the product: no `#if` diagnostics builds and no `*ForTests` members in product code. Diagnostics go through `EventSource` or an injected observer. Tests use injected clocks, schedulers and fault hooks.
+- No empty `catch` blocks. Handle the exception or record why it is safe to ignore.
+
+### WinUI
+
+- A control is a thin composition root: dependency properties, events and wiring. Logic lives in WinUI-free classes behind small interfaces such as a UI scheduler or a graphics device, so it can be unit tested.
+- Layout and rendering code does not depend on the control that hosts it.
+
+### Tests
+
+- `tests/X.Tests` references `src/X` and tests the assembly that ships. Its folders mirror the product's namespaces.
+- Do not reach private members through reflection and do not assert on source-file text. Add a deliberate seam instead.
+- Shared fixtures live in a test-support project, not copied between files.
+- Slow, native or environment-dependent tests carry a trait, and a plain `dotnet test` stays fast.

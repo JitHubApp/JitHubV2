@@ -1,7 +1,7 @@
 {
   "version": 1,
   "dependencies": {
-    "net10.0-windows10.0.19041": {
+    "net10.0-windows10.0.26100": {
       "CommunityToolkit.Common": {
         "type": "Direct",
         "requested": "[8.2.1, )",
@@ -102,6 +102,11 @@
           "System.Diagnostics.EventLog": "6.0.0"
         }
       },
+      "Markdig": {
+        "type": "Transitive",
+        "resolved": "0.42.0",
+        "contentHash": "tINdftVfbTujqfPXrQOSl9/6XCS2Y4Zwz+i7UPBgxRNnDtI1CjyQ5UA/5sKoSOmfECyWkTztY/vbcc/u1DA8nA=="
+      },
       "Microsoft.CodeCoverage": {
         "type": "Transitive",
         "resolved": "17.12.0",
@@ -113,6 +118,14 @@
         "contentHash": "26t7WDiEjjAls/sFpWvVEFDxt+7Q5VPt6+blU2Lafuj9L8PzAv/GtGV4cqVPtrhWbfD2BX/z2v8hD1qXYtK6Aw==",
         "dependencies": {
           "SQLitePCLRaw.core": "2.1.11"
+        }
+      },
+      "Microsoft.Graphics.Win2D": {
+        "type": "Transitive",
+        "resolved": "1.4.0",
+        "contentHash": "/04yyf3xEOxeBK+SXxGB6OYLjXBVuujcLQF04mREcRcBT59IMI+oDbXOZZG2c/mJL8kKFC8r3wqz6MyA6IP3oA==",
+        "dependencies": {
+          "Microsoft.WindowsAppSDK.WinUI": "1.8.260204000"
         }
       },
       "Microsoft.TestPlatform.ObjectModel": {
@@ -304,9 +317,37 @@
         "dependencies": {
           "xunit.extensibility.core": "[2.9.2]"
         }
+      },
+      "markdownrenderer.core": {
+        "type": "Project",
+        "dependencies": {
+          "Markdig": "[0.42.0, )"
+        }
+      },
+      "markdownrenderer.performance": {
+        "type": "Project",
+        "dependencies": {
+          "MarkdownRenderer.WinUI": "[1.0.0-preview.1, )"
+        }
+      },
+      "MarkdownRenderer.WinUI": {
+        "type": "Project",
+        "dependencies": {
+          "Markdig": "[0.42.0, )",
+          "MarkdownRenderer.Core": "[1.0.0-preview.1, )",
+          "Microsoft.Graphics.Win2D": "[1.4.0, )"
+        }
       }
     },
-    "net10.0-windows10.0.19041/win-arm64": {
+    "net10.0-windows10.0.26100/win-arm64": {
+      "Microsoft.Graphics.Win2D": {
+        "type": "Transitive",
+        "resolved": "1.4.0",
+        "contentHash": "/04yyf3xEOxeBK+SXxGB6OYLjXBVuujcLQF04mREcRcBT59IMI+oDbXOZZG2c/mJL8kKFC8r3wqz6MyA6IP3oA==",
+        "dependencies": {
+          "Microsoft.WindowsAppSDK.WinUI": "1.8.260204000"
+        }
+      },
       "Microsoft.Web.WebView2": {
         "type": "Transitive",
         "resolved": "1.0.3179.45",
@@ -332,7 +373,15 @@
         "contentHash": "lcyUiXTsETK2ALsZrX+nWuHSIQeazhqPphLfaRxzdGaG93+0kELqpgEHtwWOlQe7+jSFnKwaCAgL4kjeZCQJnw=="
       }
     },
-    "net10.0-windows10.0.19041/win-x64": {
+    "net10.0-windows10.0.26100/win-x64": {
+      "Microsoft.Graphics.Win2D": {
+        "type": "Transitive",
+        "resolved": "1.4.0",
+        "contentHash": "/04yyf3xEOxeBK+SXxGB6OYLjXBVuujcLQF04mREcRcBT59IMI+oDbXOZZG2c/mJL8kKFC8r3wqz6MyA6IP3oA==",
+        "dependencies": {
+          "Microsoft.WindowsAppSDK.WinUI": "1.8.260204000"
+        }
+      },
       "Microsoft.Web.WebView2": {
         "type": "Transitive",
         "resolved": "1.0.3179.45",
@@ -358,7 +407,15 @@
         "contentHash": "lcyUiXTsETK2ALsZrX+nWuHSIQeazhqPphLfaRxzdGaG93+0kELqpgEHtwWOlQe7+jSFnKwaCAgL4kjeZCQJnw=="
       }
     },
-    "net10.0-windows10.0.19041/win-x86": {
+    "net10.0-windows10.0.26100/win-x86": {
+      "Microsoft.Graphics.Win2D": {
+        "type": "Transitive",
+        "resolved": "1.4.0",
+        "contentHash": "/04yyf3xEOxeBK+SXxGB6OYLjXBVuujcLQF04mREcRcBT59IMI+oDbXOZZG2c/mJL8kKFC8r3wqz6MyA6IP3oA==",
+        "dependencies": {
+          "Microsoft.WindowsAppSDK.WinUI": "1.8.260204000"
+        }
+      },
       "Microsoft.Web.WebView2": {
         "type": "Transitive",
         "resolved": "1.0.3179.45",

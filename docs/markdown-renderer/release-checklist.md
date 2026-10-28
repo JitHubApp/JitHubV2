@@ -10,8 +10,15 @@ assistive-technology, packaging, signing, or publishing work named below.
 
 ## API and documentation
 
-- [x] Run the stable public-API/reference-surface baseline tests; they guard the
-  intended exported surface.
+- [x] Build with the public API analyzer: each shipping assembly's
+  `PublicAPI.*.txt` files must match its public surface. Run
+  `MarkdownRenderer.PublicApi.Tests` for the design rules those files cannot
+  express.
+- [ ] At the first release, move every `PublicAPI.Unshipped.txt` entry to
+  `PublicAPI.Shipped.txt`. From then on, set `EnablePackageValidation` and
+  `PackageValidationBaselineVersion` to the last shipped version in
+  `MarkdownRenderer/src/Directory.Build.props`, so `dotnet pack` fails on a
+  binary-breaking change.
 - [ ] Approve the immutable engine/document API and explicit viewport types.
 - [ ] Confirm `MarkdownRendererControl` and its builder `Build()` path remain
   obsolete compatibility surface.

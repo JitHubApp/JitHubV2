@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PublishAot>true</PublishAot>
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\MarkdownRenderer.Math\MarkdownRenderer.Math.csproj" />
+  </ItemGroup>
+</Project>

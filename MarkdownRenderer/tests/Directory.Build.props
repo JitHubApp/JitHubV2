@@ -1,0 +1,19 @@
+<Project>
+  <PropertyGroup>
+    <MarkdownRendererProject>true</MarkdownRendererProject>
+  </PropertyGroup>
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+
+  <!-- Test projects, test-support libraries and (via tests/aot) the NativeAOT
+       smoke executables. None of them ships. -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- Test hosts run on x64. Multi-architecture projects widen this. -->
+    <Platforms>x64</Platforms>
+    <!-- The same consumer RID graphs as the shipping libraries. A project whose
+         graph has no RID-specific assets clears this to keep its portable lock. -->
+    <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
+  </PropertyGroup>
+</Project>

@@ -52,7 +52,7 @@ if ($version -lt [version]'0.7.0') {
     throw "WinApp CLI 0.7 or newer is required; found $versionText."
 }
 
-$projectPath = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\MarkdownRenderer.Sample\MarkdownRenderer.Sample.csproj'))
+$projectPath = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\samples\MarkdownRenderer.Sample\MarkdownRenderer.Sample.csproj'))
 $outputPath = [System.IO.Path]::GetFullPath($OutputDirectory)
 [System.IO.Directory]::CreateDirectory($outputPath) | Out-Null
 

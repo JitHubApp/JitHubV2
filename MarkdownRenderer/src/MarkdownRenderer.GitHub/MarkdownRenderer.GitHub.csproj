@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>MarkdownRenderer.GitHub</RootNamespace>
+    <AssemblyName>MarkdownRenderer.GitHub</AssemblyName>
+    <UseWinUI>true</UseWinUI>
+    <WinUISDKReferences>false</WinUISDKReferences>
+    <PackageId>MarkdownRenderer.GitHub</PackageId>
+    <Description>GitHub README profile for MarkdownRenderer: strict GFM, alerts, footnotes, emoji, generic attributes, and native safe HTML.</Description>
+    <PackageTags>markdown;winui;win2d;gfm;github;readme;html;windows</PackageTags>
+    <MarkdownRendererPackageReadme>$(MSBuildProjectDirectory)\README.md</MarkdownRendererPackageReadme>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="MarkdownRenderer.GitHub.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MarkdownRenderer.Gfm\MarkdownRenderer.Gfm.csproj" />
+    <ProjectReference Include="..\MarkdownRenderer.Html\MarkdownRenderer.Html.csproj" />
+    <EmbeddedResource Include="Profiles\github-primer-light-v1.css"
+                      LogicalName="MarkdownRenderer.GitHub.Profiles.github-primer-light-v1.css" />
+    <EmbeddedResource Include="Profiles\github-primer-light-v2.css"
+                      LogicalName="MarkdownRenderer.GitHub.Profiles.github-primer-light-v2.css" />
+    <EmbeddedResource Include="Profiles\github-primer-light-v3.css"
+                      LogicalName="MarkdownRenderer.GitHub.Profiles.github-primer-light-v3.css" />
+    <EmbeddedResource Include="Profiles\github-primer-light-v4.css"
+                      LogicalName="MarkdownRenderer.GitHub.Profiles.github-primer-light-v4.css" />
+    <EmbeddedResource Include="Profiles\github-primer-light-v5.css"
+                      LogicalName="MarkdownRenderer.GitHub.Profiles.github-primer-light-v5.css" />
+    <EmbeddedResource Include="Profiles\github-primer-light-v6.css"
+                      LogicalName="MarkdownRenderer.GitHub.Profiles.github-primer-light-v6.css" />
+    <EmbeddedResource Include="Profiles\github-primer-light-v7.css"
+                      LogicalName="MarkdownRenderer.GitHub.Profiles.github-primer-light-v7.css" />
+  </ItemGroup>
+</Project>

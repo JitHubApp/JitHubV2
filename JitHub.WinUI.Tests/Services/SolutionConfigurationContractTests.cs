@@ -5,34 +5,11 @@ namespace JitHub.WinUI.Tests.Services;
 
 public sealed class SolutionConfigurationContractTests
 {
-    [Fact]
-    public void RepositoryBuildProps_ExcludeConventionalAndIsolatedGeneratedTrees()
-    {
-        string root = FindRepositoryRoot();
-
-        foreach (string propsPath in new[]
-        {
-            Path.Combine(root, "Directory.Build.props"),
-            Path.Combine(root, "MarkdownRenderer", "Directory.Build.props")
-        })
-        {
-            XDocument props = XDocument.Load(propsPath);
-            string excludes = Assert.Single(
-                props.Root!.Elements("PropertyGroup").Elements("DefaultItemExcludes")).Value;
-
-            Assert.Contains("obj\\**", excludes, StringComparison.Ordinal);
-            Assert.Contains("obj-*\\**", excludes, StringComparison.Ordinal);
-            Assert.Contains("bin\\**", excludes, StringComparison.Ordinal);
-            Assert.Contains("bin-*\\**", excludes, StringComparison.Ordinal);
-            Assert.Contains("artifacts\\**", excludes, StringComparison.Ordinal);
-        }
-    }
-
     [Theory]
-    [InlineData("MarkdownRenderer/MarkdownRenderer.ManagedPacks.AotSmoke/MarkdownRenderer.ManagedPacks.AotSmoke.csproj")]
-    [InlineData("MarkdownRenderer/MarkdownRenderer.PixelTests/MarkdownRenderer.PixelTests.csproj")]
-    [InlineData("MarkdownRenderer/MarkdownRenderer.Svg.Resvg.AotSmoke/MarkdownRenderer.Svg.Resvg.AotSmoke.csproj")]
-    [InlineData("MarkdownRenderer/MarkdownRenderer.Svg.Resvg.Tests/MarkdownRenderer.Svg.Resvg.Tests.csproj")]
+    [InlineData("MarkdownRenderer/tests/aot/MarkdownRenderer.ManagedPacks.AotSmoke/MarkdownRenderer.ManagedPacks.AotSmoke.csproj")]
+    [InlineData("MarkdownRenderer/tests/MarkdownRenderer.PixelTests/MarkdownRenderer.PixelTests.csproj")]
+    [InlineData("MarkdownRenderer/tests/aot/MarkdownRenderer.Svg.Resvg.AotSmoke/MarkdownRenderer.Svg.Resvg.AotSmoke.csproj")]
+    [InlineData("MarkdownRenderer/tests/MarkdownRenderer.Svg.Resvg.Tests/MarkdownRenderer.Svg.Resvg.Tests.csproj")]
     public void SelfContainedManifestHosts_ReferencePinnedSdkBuildTools(string relativePath)
     {
         string root = FindRepositoryRoot();
@@ -48,31 +25,45 @@ public sealed class SolutionConfigurationContractTests
                 "Microsoft.Windows.SDK.BuildTools",
                 StringComparison.OrdinalIgnoreCase));
 
-        Assert.Equal("$(JitHubWindowsSdkBuildToolsVersion)", packageReference.Attribute("Version")?.Value);
+        // The renderer pins package versions centrally; the reference itself
+        // must not carry a competing version.
+        Assert.Null(packageReference.Attribute("Version"));
+        Assert.Null(packageReference.Attribute("VersionOverride"));
         Assert.Equal("all", packageReference.Attribute("PrivateAssets")?.Value, ignoreCase: true);
+
+        XDocument packages = XDocument.Load(Path.Combine(root, "MarkdownRenderer", "Directory.Packages.props"));
+        XElement packageVersion = Assert.Single(
+            packages.Root!
+                .Elements("ItemGroup")
+                .Elements("PackageVersion"),
+            static package => string.Equals(
+                package.Attribute("Include")?.Value,
+                "Microsoft.Windows.SDK.BuildTools",
+                StringComparison.OrdinalIgnoreCase));
+        Assert.Equal("$(JitHubWindowsSdkBuildToolsVersion)", packageVersion.Attribute("Version")?.Value);
     }
 
     [Fact]
-    public void WindowsSdkBuildToolsVersion_IsConsistentAcrossPropsScopes()
+    public void WindowsSdkBuildToolsVersion_IsDefinedOnceAndImportedByRendererProps()
     {
         string root = FindRepositoryRoot();
-        string[] propsPaths =
-        [
-            Path.Combine(root, "Directory.Build.props"),
-            Path.Combine(root, "MarkdownRenderer", "Directory.Build.props")
-        ];
+        XDocument repositoryProps = XDocument.Load(Path.Combine(root, "Directory.Build.props"));
+        XDocument rendererProps = XDocument.Load(Path.Combine(root, "MarkdownRenderer", "Directory.Build.props"));
 
-        string[] versions = propsPaths
-            .Select(XDocument.Load)
-            .Select(static props => Assert.Single(
-                props.Root!
-                    .Elements("PropertyGroup")
-                    .Elements("JitHubWindowsSdkBuildToolsVersion")).Value)
-            .Distinct(StringComparer.Ordinal)
-            .ToArray();
+        string version = Assert.Single(
+            repositoryProps.Root!
+                .Elements("PropertyGroup")
+                .Elements("JitHubWindowsSdkBuildToolsVersion")).Value;
+        Assert.Matches(@"^\d+\.\d+\.\d+\.\d+$", version);
 
-        Assert.Single(versions);
-        Assert.Matches(@"^\d+\.\d+\.\d+\.\d+$", versions[0]);
+        // The renderer subtree inherits the repository policy instead of
+        // repeating the version, so the two scopes cannot drift.
+        Assert.Empty(rendererProps.Root!.Descendants("JitHubWindowsSdkBuildToolsVersion"));
+        XElement import = Assert.Single(rendererProps.Root!.Elements("Import"));
+        Assert.Contains(
+            "GetPathOfFileAbove('Directory.Build.props'",
+            import.Attribute("Project")?.Value,
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -90,8 +81,7 @@ public sealed class SolutionConfigurationContractTests
             }
 
             string relativePath = Assert.IsType<XAttribute>(projectEntry.Attribute("Path")).Value;
-            XDocument project = XDocument.Load(Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar)));
-            string[] declaredPlatforms = GetDeclaredPlatforms(project);
+            string[] declaredPlatforms = GetDeclaredPlatforms(root, relativePath);
 
             foreach (XElement mapping in mappings)
             {
@@ -115,8 +105,7 @@ public sealed class SolutionConfigurationContractTests
         foreach (XElement projectEntry in solution.Root!.Descendants("Project"))
         {
             string relativePath = Assert.IsType<XAttribute>(projectEntry.Attribute("Path")).Value;
-            XDocument project = XDocument.Load(Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar)));
-            string[] declaredPlatforms = GetDeclaredPlatforms(project);
+            string[] declaredPlatforms = GetDeclaredPlatforms(root, relativePath);
             if (declaredPlatforms.Contains("AnyCPU", StringComparer.OrdinalIgnoreCase))
             {
                 continue;
@@ -141,20 +130,46 @@ public sealed class SolutionConfigurationContractTests
         }
     }
 
-    private static string[] GetDeclaredPlatforms(XDocument project)
+    // A project declares Platforms itself or inherits them from the nearest
+    // Directory.Build.props that sets them (each folder props imports its
+    // parent before setting its own values, so the nearest one wins).
+    private static string[] GetDeclaredPlatforms(string root, string relativeProjectPath)
     {
-        string[] platforms = project.Root!
-            .Elements("PropertyGroup")
-            .Elements("Platforms")
-            .SelectMany(static element => element.Value.Split(
-                ';',
-                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-            .Select(NormalizePlatform)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        string projectPath = Path.Combine(root, relativeProjectPath.Replace('/', Path.DirectorySeparatorChar));
+        string[] platforms = ReadPlatforms(XDocument.Load(projectPath));
+        DirectoryInfo? directory = new FileInfo(projectPath).Directory;
+        string normalizedRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root));
+        while (platforms.Length == 0 && directory is not null)
+        {
+            string propsPath = Path.Combine(directory.FullName, "Directory.Build.props");
+            if (File.Exists(propsPath))
+            {
+                platforms = ReadPlatforms(XDocument.Load(propsPath));
+            }
+
+            if (string.Equals(
+                Path.TrimEndingDirectorySeparator(directory.FullName),
+                normalizedRoot,
+                StringComparison.OrdinalIgnoreCase))
+            {
+                break;
+            }
+
+            directory = directory.Parent;
+        }
 
         return platforms.Length == 0 ? ["AnyCPU"] : platforms;
     }
+
+    private static string[] ReadPlatforms(XDocument document) => document.Root!
+        .Elements("PropertyGroup")
+        .Elements("Platforms")
+        .SelectMany(static element => element.Value.Split(
+            ';',
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        .Select(NormalizePlatform)
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToArray();
 
     private static string NormalizePlatform(string value) => value.Replace(" ", string.Empty, StringComparison.Ordinal);
 

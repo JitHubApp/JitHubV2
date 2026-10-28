@@ -97,6 +97,7 @@ trimmed and NativeAOT package consumers.
 ## Preview and versioning
 
 The packages use preview versions while the supported API and conformance gates
-are being completed. Do not infer 1.0 readiness from the presence of package
-metadata. Full conformance, API compatibility, accessibility, architecture,
+are being completed. Every MarkdownRenderer package ships with the same version,
+set once in `MarkdownRenderer/src/Directory.Build.props`. Do not infer 1.0
+readiness from the presence of package metadata. Full conformance, API compatibility, accessibility, architecture,
 packaging, and publishing checks remain release gates.

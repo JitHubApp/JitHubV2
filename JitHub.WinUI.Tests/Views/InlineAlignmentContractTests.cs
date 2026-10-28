@@ -247,12 +247,14 @@ public sealed class InlineAlignmentContractTests
         string rendererSource = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
             "MarkdownRenderer",
+            "src",
             "MarkdownRenderer.Gfm",
             "Renderers",
             "TaskListItemRenderer.cs"));
         string factorySource = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
             "MarkdownRenderer",
+            "src",
             "MarkdownRenderer",
             "Layout",
             "TaskMarkerControlFactory.cs"));

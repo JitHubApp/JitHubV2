@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- Meta-package: it ships dependencies only, so there is no assembly to
+         analyze for trimming or NativeAOT. -->
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <IsAotCompatible>false</IsAotCompatible>
+    <NoWarn>$(NoWarn);NU5128</NoWarn>
+    <PackageId>MarkdownRenderer</PackageId>
+    <Description>Lean convenience package for the MarkdownRenderer Core and native WinUI viewer.</Description>
+    <PackageTags>markdown;winui;win2d;windows</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MarkdownRenderer.Core\MarkdownRenderer.Core.csproj" />
+    <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer.csproj" />
+  </ItemGroup>
+</Project>

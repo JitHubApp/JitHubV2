@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>MarkdownRenderer</RootNamespace>
+    <AssemblyName>MarkdownRenderer.Core</AssemblyName>
+    <PackageId>MarkdownRenderer.Core</PackageId>
+    <Description>Immutable markdown documents, standards profiles, UTF-16 source maps, diagnostics, and declarative extensions with no WinUI or native payload.</Description>
+    <PackageTags>markdown;commonmark;gfm;windows;aot</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="MarkdownRenderer.GitHub.Tests" />
+    <InternalsVisibleTo Include="MarkdownRenderer.Tests" />
+    <InternalsVisibleTo Include="MarkdownRenderer.PixelTests" ProjectStructureException="Test project whose name lacks the .Tests suffix; step 6 renames it to MarkdownRenderer.Pixel.Tests." />
+    <InternalsVisibleTo Include="MarkdownRenderer" ProjectStructureException="The WinUI renderer uses internal document, source-map, engine and task helpers from Core; step 2 makes them public extension API or moves them into the renderer." />
+    <InternalsVisibleTo Include="MarkdownRenderer.Gfm" ProjectStructureException="Gfm configures engines through internal builder and presentation hooks; step 2 makes them public extension API." />
+    <InternalsVisibleTo Include="MarkdownRenderer.GitHub" ProjectStructureException="GitHub configures engines through internal builder, presentation and GFM 0.29 source hooks; step 2 makes them public extension API." />
+    <InternalsVisibleTo Include="MarkdownRenderer.Html" ProjectStructureException="Html configures engines and source projections through internal hooks; step 2 makes them public extension API." />
+    <InternalsVisibleTo Include="MarkdownRenderer.Math" ProjectStructureException="Math reads the internal MarkdownExtensionContext.ShouldDeferOffscreenScenes; step 2 makes it public extension API." />
+    <InternalsVisibleTo Include="MarkdownRenderer.Mermaid" ProjectStructureException="Mermaid reads the internal MarkdownExtensionContext.ShouldDeferOffscreenScenes; step 2 makes it public extension API." />
+    <InternalsVisibleTo Include="MarkdownRenderer.Performance" ProjectStructureException="Performance drives internal document, syntax-adapter and extension-lifetime hooks; step 2 makes them public extension API." />
+    <InternalsVisibleTo Include="MarkdownRenderer.Conformance" ProjectStructureException="The conformance tool calls internal spec-validation entry points on MarkdownEngine and MarkdownProfiles; step 2 gives it a deliberate public seam." />
+    <InternalsVisibleTo Include="MarkdownRenderer.PerformanceHarness" ProjectStructureException="The performance harness reads internal MarkdownEngine parse counters; step 2 exposes them through EventSource or an injected observer." />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Markdig" />
+  </ItemGroup>
+  <!-- Match the WinUI pack: keep every exact public/protected XML member, but
+       do not ship documentation for private implementation/lifetime helpers.
+       The metadata-only filter fails closed on unknown signatures. -->
+  <Target Name="FilterPublicXmlDocumentationForPack" BeforeTargets="GenerateNuspec"
+          Condition="Exists('$(TargetPath)') and Exists('$(TargetDir)$(AssemblyName).xml')">
+    <Exec Command="pwsh -NoProfile -NonInteractive -File &quot;$(MSBuildProjectDirectory)\..\..\eng\Filter-PublicXmlDocumentation.ps1&quot; -AssemblyPath &quot;$(TargetPath)&quot; -XmlPath &quot;$(TargetDir)$(AssemblyName).xml&quot;" />
+  </Target>
+</Project>

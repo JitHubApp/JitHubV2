@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- Source-generated COM qualification probes require generated unsafe stubs. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsTestProject>true</IsTestProject>
+    <UseWinUI>false</UseWinUI>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.Runtime" />
+    <ProjectReference Include="..\..\src\MarkdownRenderer.GitHub\MarkdownRenderer.GitHub.csproj" />
+    <ProjectReference Include="..\..\src\MarkdownRenderer.Performance\MarkdownRenderer.Performance.csproj" />
+    <ProjectReference Include="..\..\src\MarkdownRenderer.Math\MarkdownRenderer.Math.csproj" />
+    <ProjectReference Include="..\..\src\MarkdownRenderer.Mermaid\MarkdownRenderer.Mermaid.csproj" />
+    <ProjectReference Include="..\..\src\MarkdownRenderer.Svg.Resvg\MarkdownRenderer.Svg.Resvg.csproj" />
+    <ProjectReference Include="..\..\src\MarkdownRenderer.SyntaxHighlighting.TextMate\MarkdownRenderer.SyntaxHighlighting.TextMate.csproj" />
+    <ProjectReference Include="..\..\src\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.csproj" />
+    <ProjectReference Include="..\..\src\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\..\perf\MarkdownRenderer.PerformanceHarness\PerformanceEventListener.cs"
+             Link="PerformanceHarness\PerformanceEventListener.cs"
+             ProjectStructureException="The harness listener implements the renderer-internal IMarkdownPerformanceSink, so it cannot move to the WinUI-free harness library without a grant to a non-test assembly, and the harness WinExe initializes the Windows App SDK on load, so a test project cannot reference it. Step 2 gives the renderer an in-process performance observer seam (or moves the frame ledger into PerformanceHarness.Core) and drops the link." />
+    <EmbeddedResource Include="Fixtures\oversized-static.webp" />
+  </ItemGroup>
+</Project>

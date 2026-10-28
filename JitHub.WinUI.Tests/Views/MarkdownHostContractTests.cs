@@ -260,11 +260,11 @@ public sealed class MarkdownHostContractTests
     {
         string root = FindRepositoryRoot();
         string renderer = File.ReadAllText(Path.Combine(
-            root, "MarkdownRenderer", "MarkdownRenderer.Gfm", "Renderers", "HtmlBlockRenderer.cs"));
+            root, "MarkdownRenderer", "src", "MarkdownRenderer.Html", "Renderers", "HtmlBlockRenderer.cs"));
         string control = File.ReadAllText(Path.Combine(
-            root, "MarkdownRenderer", "MarkdownRenderer", "Controls", "MarkdownRendererControl.cs"));
+            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Controls", "MarkdownRendererControl.cs"));
         string peer = File.ReadAllText(Path.Combine(
-            root, "MarkdownRenderer", "MarkdownRenderer", "Accessibility", "MarkdownLinkPeer.cs"));
+            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Accessibility", "MarkdownLinkPeer.cs"));
         string viewer = File.ReadAllText(Path.Combine(
             root, "JitHub.WinUI", "Views", "Controls", "Common", "MarkdownViewer.xaml.cs"));
 
@@ -291,17 +291,17 @@ public sealed class MarkdownHostContractTests
     {
         string root = FindRepositoryRoot();
         string snapshot = File.ReadAllText(Path.Combine(
-            root, "MarkdownRenderer", "MarkdownRenderer", "Layout", "LayoutSnapshot.cs"));
+            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Layout", "LayoutSnapshot.cs"));
         string snapshotIndexes = File.ReadAllText(Path.Combine(
-            root, "MarkdownRenderer", "MarkdownRenderer", "Layout", "LayoutSnapshotIndexBuilder.cs"));
+            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Layout", "LayoutSnapshotIndexBuilder.cs"));
         string semanticDocument = File.ReadAllText(Path.Combine(
-            root, "MarkdownRenderer", "MarkdownRenderer", "Accessibility", "MarkdownSemanticDocument.cs"));
+            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Accessibility", "MarkdownSemanticDocument.cs"));
         string control = File.ReadAllText(Path.Combine(
-            root, "MarkdownRenderer", "MarkdownRenderer", "Controls", "MarkdownRendererControl.cs"));
+            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Controls", "MarkdownRendererControl.cs"));
         string automationPeer = File.ReadAllText(Path.Combine(
-            root, "MarkdownRenderer", "MarkdownRenderer", "Accessibility", "MarkdownAutomationPeer.cs"));
+            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Accessibility", "MarkdownAutomationPeer.cs"));
         string imagePeer = File.ReadAllText(Path.Combine(
-            root, "MarkdownRenderer", "MarkdownRenderer", "Accessibility", "MarkdownLinkedImagePeer.cs"));
+            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Accessibility", "MarkdownLinkedImagePeer.cs"));
 
         Assert.Contains("MarkdownSemanticDocument.Build(this, matchingTextProjection, indexBuilder)", snapshot, StringComparison.Ordinal);
         Assert.Contains("_focusablePlan = indexBuilder.CompleteFocusablePlan();", snapshot, StringComparison.Ordinal);
@@ -333,7 +333,7 @@ public sealed class MarkdownHostContractTests
     {
         string root = FindRepositoryRoot();
         string control = File.ReadAllText(Path.Combine(
-            root, "MarkdownRenderer", "MarkdownRenderer", "Controls", "MarkdownRendererControl.cs"));
+            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Controls", "MarkdownRendererControl.cs"));
         string viewer = File.ReadAllText(Path.Combine(
             root, "JitHub.WinUI", "Views", "Controls", "Common", "MarkdownViewer.xaml.cs"));
 
@@ -762,6 +762,7 @@ public sealed class MarkdownHostContractTests
         string renderer = File.ReadAllText(Path.Combine(
             root,
             "MarkdownRenderer",
+            "src",
             "MarkdownRenderer",
             "Controls",
             "MarkdownRendererControl.cs"));

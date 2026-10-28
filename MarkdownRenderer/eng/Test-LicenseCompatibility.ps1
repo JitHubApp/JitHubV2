@@ -95,7 +95,7 @@ if (-not $SkipPackageArtifacts) {
     })
 }
 
-$mermaidRoot = Join-Path $repositoryRoot 'MarkdownRenderer\MarkdownRenderer.Mermaid'
+$mermaidRoot = Join-Path $repositoryRoot 'MarkdownRenderer\src\MarkdownRenderer.Mermaid'
 $rustInventoryPath = Join-Path $mermaidRoot 'NATIVE_RUST_DEPENDENCIES.json'
 $rustInventory = Get-Content -LiteralPath $rustInventoryPath -Raw | ConvertFrom-Json -Depth 100
 if ([int] $rustInventory.packageCount -ne @($rustInventory.packages).Count) {
@@ -165,7 +165,7 @@ $reviewedSubjects.Add([pscustomobject][ordered]@{
     status = 'allowed'
 })
 
-$mathProvenancePath = Join-Path $repositoryRoot 'MarkdownRenderer\MarkdownRenderer.Math\ThirdParty\PROVENANCE.json'
+$mathProvenancePath = Join-Path $repositoryRoot 'MarkdownRenderer\src\MarkdownRenderer.Math\ThirdParty\PROVENANCE.json'
 $math = Get-Content -LiteralPath $mathProvenancePath -Raw | ConvertFrom-Json -Depth 100
 foreach ($font in @($math.fonts)) {
     if ([string] $font.license -cnotin @($allowedSpdx + $allowedLegacy)) {
@@ -178,7 +178,7 @@ $reviewedSubjects.Add([pscustomobject][ordered]@{
     status = 'allowed'
 })
 
-$resvgRoot = Join-Path $repositoryRoot 'MarkdownRenderer\MarkdownRenderer.Svg.Resvg'
+$resvgRoot = Join-Path $repositoryRoot 'MarkdownRenderer\src\MarkdownRenderer.Svg.Resvg'
 $resvgProvenancePath = Join-Path $resvgRoot 'RESVG_PROVENANCE.json'
 $resvg = Get-Content -LiteralPath $resvgProvenancePath -Raw | ConvertFrom-Json -Depth 100
 Assert-LicenseExpressionAllowed `

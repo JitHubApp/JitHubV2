@@ -7,7 +7,7 @@ Fluent theming, optional feature packs, and host services composed together.
 ## Running the sample
 
 ```powershell
-dotnet build MarkdownRenderer\MarkdownRenderer.Sample\MarkdownRenderer.Sample.csproj -c Debug -p:Platform=x64
+dotnet build MarkdownRenderer\samples\MarkdownRenderer.Sample\MarkdownRenderer.Sample.csproj -c Debug -p:Platform=x64
 ```
 
 Launch the built app from Visual Studio or from the output folder. Use x86,
