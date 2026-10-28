@@ -836,12 +836,10 @@ public sealed class VectorAccessibilityContractTests
         Assert.Equal(expectedLinked, vector.TryGetLinkAt(point, out MarkdownVectorLinkAction? link));
         Assert.Equal(expectedLinked, link is not null);
 
-#pragma warning disable MR1001 // Exercise the shared pointer activation implementation.
         var target = MarkdownRendererControl.FindLinkTargetInBlock(
             vector,
             new DocumentPosition(vector.BlockIndex, 1, 0),
             point);
-#pragma warning restore MR1001
         Assert.Equal(expectedLinked, target.HasValue);
     }
 
@@ -898,12 +896,10 @@ public sealed class VectorAccessibilityContractTests
         vector.Measure(100);
         vector.Arrange(10, 20, 100);
 
-#pragma warning disable MR1001 // Exercise the shared implementation used by MarkdownDocumentView.
         var target = MarkdownRendererControl.FindLinkTargetInBlock(
             vector,
             new DocumentPosition(vector.BlockIndex, 0, 0),
             new Point(30, 30));
-#pragma warning restore MR1001
 
         Assert.NotNull(target);
         Assert.Equal("https://example.test/alpha", target.Value.Url);
@@ -1011,7 +1007,6 @@ public sealed class VectorAccessibilityContractTests
             Assert.Equal(paragraph.BlockIndex, focusable.BlockIndex);
             Assert.Equal(math.InlineIndex, focusable.InlineIndex);
 
-#pragma warning disable MR1001 // Exercise the shared production keyboard target lookup and activation target factory.
             Assert.True(MarkdownRendererControl.TryGetLinkedAtomicForFocusable(
                 snapshot,
                 focusable,
@@ -1025,7 +1020,6 @@ public sealed class VectorAccessibilityContractTests
                 paragraph,
                 new DocumentPosition(paragraph.BlockIndex, math.InlineIndex, 0),
                 point: null);
-#pragma warning restore MR1001
 
             Assert.NotNull(keyboardTarget);
             Assert.Equal(linkUrl, target.Url);
@@ -1118,7 +1112,6 @@ public sealed class VectorAccessibilityContractTests
 
         Assert.Equal(2, focusable.Count);
         Assert.All(focusable, static item => Assert.True(item.IsHorizontalOverflow));
-#pragma warning disable MR1001 // Exercise the shared implementation used by MarkdownDocumentView.
         Assert.True(MarkdownRendererControl.TryFindHorizontalOverflowFocusableIndex(
             snapshot,
             focusable,
@@ -1129,7 +1122,6 @@ public sealed class VectorAccessibilityContractTests
             focusable,
             second,
             out int secondIndex));
-#pragma warning restore MR1001
         Assert.Equal(0, firstIndex);
         Assert.Equal(1, secondIndex);
 

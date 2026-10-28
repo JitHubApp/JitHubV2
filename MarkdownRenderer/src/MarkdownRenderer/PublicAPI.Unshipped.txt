@@ -189,9 +189,8 @@ MarkdownRenderer.CodeBlocks.CodeBlockChromeMode
 MarkdownRenderer.CodeBlocks.CodeBlockChromeMode.Enhanced = 0 -> MarkdownRenderer.CodeBlocks.CodeBlockChromeMode
 MarkdownRenderer.CodeBlocks.CodeBlockChromeMode.PlainMarkdown = 1 -> MarkdownRenderer.CodeBlocks.CodeBlockChromeMode
 MarkdownRenderer.CodeBlocks.CodeBlockHighlightRequest
-MarkdownRenderer.CodeBlocks.CodeBlockHighlightRequest.CancellationToken.get -> System.Threading.CancellationToken
 MarkdownRenderer.CodeBlocks.CodeBlockHighlightRequest.Code.get -> string!
-MarkdownRenderer.CodeBlocks.CodeBlockHighlightRequest.CodeBlockHighlightRequest(string? language, string! code, MarkdownRenderer.CodeBlocks.CodeBlockThemeVariant themeVariant, System.Threading.CancellationToken cancellationToken) -> void
+MarkdownRenderer.CodeBlocks.CodeBlockHighlightRequest.CodeBlockHighlightRequest(string? language, string! code, MarkdownRenderer.CodeBlocks.CodeBlockThemeVariant themeVariant) -> void
 MarkdownRenderer.CodeBlocks.CodeBlockHighlightRequest.Language.get -> string?
 MarkdownRenderer.CodeBlocks.CodeBlockHighlightRequest.ThemeVariant.get -> MarkdownRenderer.CodeBlocks.CodeBlockThemeVariant
 MarkdownRenderer.CodeBlocks.CodeBlockHighlightResult
@@ -219,9 +218,6 @@ MarkdownRenderer.CodeBlocks.CodeBlockThemeVariant.Light = 0 -> MarkdownRenderer.
 MarkdownRenderer.CodeBlocks.CodeBlockWrappingMode
 MarkdownRenderer.CodeBlocks.CodeBlockWrappingMode.NoWrap = 0 -> MarkdownRenderer.CodeBlocks.CodeBlockWrappingMode
 MarkdownRenderer.CodeBlocks.CodeBlockWrappingMode.Wrap = 1 -> MarkdownRenderer.CodeBlocks.CodeBlockWrappingMode
-MarkdownRenderer.CodeBlocks.ICodeBlockSyntaxHighlighter
-MarkdownRenderer.CodeBlocks.ICodeBlockSyntaxHighlighter.HighlightAsync(MarkdownRenderer.CodeBlocks.CodeBlockHighlightRequest! request) -> System.Threading.Tasks.ValueTask<MarkdownRenderer.CodeBlocks.CodeBlockHighlightResult?>
-MarkdownRenderer.CodeBlocks.ICodeBlockSyntaxHighlighter.Revision.get -> int
 MarkdownRenderer.Controls.EmbedVisibility
 MarkdownRenderer.Controls.MarkdownCopyCompletedEventArgs
 MarkdownRenderer.Controls.MarkdownCopyCompletedEventArgs.Kind.get -> MarkdownRenderer.Controls.MarkdownCopyKind
@@ -279,8 +275,6 @@ MarkdownRenderer.Controls.MarkdownRendererControl.CodeBlockCopyButtonStyle.get -
 MarkdownRenderer.Controls.MarkdownRendererControl.CodeBlockCopyButtonStyle.set -> void
 MarkdownRenderer.Controls.MarkdownRendererControl.CodeBlockLineNumberMode.get -> MarkdownRenderer.CodeBlocks.CodeBlockLineNumberMode
 MarkdownRenderer.Controls.MarkdownRendererControl.CodeBlockLineNumberMode.set -> void
-MarkdownRenderer.Controls.MarkdownRendererControl.CodeBlockSyntaxHighlighter.get -> MarkdownRenderer.CodeBlocks.ICodeBlockSyntaxHighlighter?
-MarkdownRenderer.Controls.MarkdownRendererControl.CodeBlockSyntaxHighlighter.set -> void
 MarkdownRenderer.Controls.MarkdownRendererControl.CodeBlockWrappingMode.get -> MarkdownRenderer.CodeBlocks.CodeBlockWrappingMode
 MarkdownRenderer.Controls.MarkdownRendererControl.CodeBlockWrappingMode.set -> void
 MarkdownRenderer.Controls.MarkdownRendererControl.CodeHighlighter.get -> MarkdownRenderer.Hosting.ICodeHighlighter?
@@ -320,8 +314,6 @@ MarkdownRenderer.Controls.MarkdownRendererControl.IsTaskListEditingEnabled.set -
 MarkdownRenderer.Controls.MarkdownRendererControl.LinkClick -> System.EventHandler<MarkdownRenderer.Controls.MarkdownLinkClickEventArgs!>?
 MarkdownRenderer.Controls.MarkdownRendererControl.Markdown.get -> string!
 MarkdownRenderer.Controls.MarkdownRendererControl.Markdown.set -> void
-MarkdownRenderer.Controls.MarkdownRendererControl.MarkdownRendererControl() -> void
-MarkdownRenderer.Controls.MarkdownRendererControl.MarkdownRendererControl(bool ownsScrollViewport) -> void
 MarkdownRenderer.Controls.MarkdownRendererControl.PerformanceSession.get -> MarkdownRenderer.Performance.IMarkdownPerformanceSession?
 MarkdownRenderer.Controls.MarkdownRendererControl.PerformanceSession.set -> void
 MarkdownRenderer.Controls.MarkdownRendererControl.RasterDecoder.get -> MarkdownRenderer.Images.IMarkdownRasterDecoder?
@@ -341,7 +333,6 @@ MarkdownRenderer.Controls.MarkdownRendererControl.Theme.get -> MarkdownRenderer.
 MarkdownRenderer.Controls.MarkdownRendererControl.Theme.set -> void
 MarkdownRenderer.Controls.MarkdownRendererControlBuilder
 MarkdownRenderer.Controls.MarkdownRendererControlBuilder.AddProfile(MarkdownRenderer.MarkdownProfile! profile) -> MarkdownRenderer.Controls.MarkdownRendererControlBuilder!
-MarkdownRenderer.Controls.MarkdownRendererControlBuilder.Build() -> MarkdownRenderer.Controls.MarkdownRendererControl!
 MarkdownRenderer.Controls.MarkdownRendererControlBuilder.BuildDocumentView() -> MarkdownRenderer.Controls.MarkdownDocumentView!
 MarkdownRenderer.Controls.MarkdownRendererControlBuilder.BuildScrollView() -> MarkdownRenderer.Controls.MarkdownScrollView!
 MarkdownRenderer.Controls.MarkdownRendererControlBuilder.MarkdownRendererControlBuilder() -> void
@@ -350,7 +341,6 @@ MarkdownRenderer.Controls.MarkdownRendererControlBuilder.WithCodeBlockCopiedButt
 MarkdownRenderer.Controls.MarkdownRendererControlBuilder.WithCodeBlockCopyButtonLabel(string? label) -> MarkdownRenderer.Controls.MarkdownRendererControlBuilder!
 MarkdownRenderer.Controls.MarkdownRendererControlBuilder.WithCodeBlockCopyEnabled(bool enabled = true) -> MarkdownRenderer.Controls.MarkdownRendererControlBuilder!
 MarkdownRenderer.Controls.MarkdownRendererControlBuilder.WithCodeBlockLineNumberMode(MarkdownRenderer.CodeBlocks.CodeBlockLineNumberMode mode) -> MarkdownRenderer.Controls.MarkdownRendererControlBuilder!
-MarkdownRenderer.Controls.MarkdownRendererControlBuilder.WithCodeBlockSyntaxHighlighter(MarkdownRenderer.CodeBlocks.ICodeBlockSyntaxHighlighter? highlighter) -> MarkdownRenderer.Controls.MarkdownRendererControlBuilder!
 MarkdownRenderer.Controls.MarkdownRendererControlBuilder.WithCodeBlockSyntaxHighlightingEnabled(bool enabled = true) -> MarkdownRenderer.Controls.MarkdownRendererControlBuilder!
 MarkdownRenderer.Controls.MarkdownRendererControlBuilder.WithCodeBlockWrappingMode(MarkdownRenderer.CodeBlocks.CodeBlockWrappingMode mode) -> MarkdownRenderer.Controls.MarkdownRendererControlBuilder!
 MarkdownRenderer.Controls.MarkdownRendererControlBuilder.WithCodeHighlighter(MarkdownRenderer.Hosting.ICodeHighlighter? highlighter) -> MarkdownRenderer.Controls.MarkdownRendererControlBuilder!
@@ -859,6 +849,7 @@ MarkdownRenderer.GitHub.GitHubReadmeVisualStyleProfile.Version.get -> int
 MarkdownRenderer.GitHub.GitHubReadmeVisualStyleProfiles
 MarkdownRenderer.Hosting.ICodeHighlighter
 MarkdownRenderer.Hosting.ICodeHighlighter.HighlightAsync(MarkdownRenderer.CodeBlocks.CodeBlockHighlightRequest! request, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<MarkdownRenderer.CodeBlocks.CodeBlockHighlightResult?>
+MarkdownRenderer.Hosting.ICodeHighlighter.Revision.get -> int
 MarkdownRenderer.Hosting.IImageResolver
 MarkdownRenderer.Hosting.IMarkdownCommandProvider
 MarkdownRenderer.Hosting.IMarkdownCommandProvider.GetCommand(MarkdownRenderer.Hosting.MarkdownCommandContext! context) -> System.Windows.Input.ICommand?
@@ -1490,7 +1481,6 @@ MarkdownRenderer.Theming.MarkdownTheme.Revision.get -> int
 MarkdownRenderer.Theming.MarkdownTheme.SurfaceColor.get -> Windows.UI.Color?
 MarkdownRenderer.Theming.MarkdownTheme.SurfaceColor.set -> void
 override MarkdownRenderer.CodeBlocks.CodeBlockHighlightSpan.GetHashCode() -> int
-override MarkdownRenderer.Controls.MarkdownRendererControl.OnCreateAutomationPeer() -> Microsoft.UI.Xaml.Automation.Peers.AutomationPeer!
 override MarkdownRenderer.Document.DocumentPosition.GetHashCode() -> int
 override MarkdownRenderer.Document.DocumentRange.GetHashCode() -> int
 override MarkdownRenderer.Document.MarkdownAbbreviation.Equals(object? obj) -> bool
@@ -1571,7 +1561,7 @@ static MarkdownRenderer.CodeBlocks.CodeBlockHighlightSpan.operator !=(MarkdownRe
 static MarkdownRenderer.CodeBlocks.CodeBlockHighlightSpan.operator ==(MarkdownRenderer.CodeBlocks.CodeBlockHighlightSpan left, MarkdownRenderer.CodeBlocks.CodeBlockHighlightSpan right) -> bool
 static MarkdownRenderer.Controls.EmbedVisibility.IsInDerealizeBand(double planTop, double planBottom, double viewportTop, double viewportBottom, double derealizeOverscan) -> bool
 static MarkdownRenderer.Controls.EmbedVisibility.IsInRealizeBand(double planTop, double planBottom, double viewportTop, double viewportBottom, double overscan) -> bool
-static MarkdownRenderer.Controls.MarkdownRendererControl.CreateDefault(string? markdown = null, MarkdownRenderer.Theming.MarkdownTheme? theme = null, bool isSelectionEnabled = true, bool isCodeBlockCopyEnabled = true, MarkdownRenderer.CodeBlocks.ICodeBlockSyntaxHighlighter? codeBlockSyntaxHighlighter = null, string? codeBlockCopyButtonLabel = null, string? codeBlockCopiedButtonLabel = null, MarkdownRenderer.Images.IMarkdownImageResolver? imageResolver = null, System.Uri? imageBaseUri = null, string? imageDocumentPath = null, MarkdownRenderer.CodeBlocks.CodeBlockWrappingMode codeBlockWrappingMode = MarkdownRenderer.CodeBlocks.CodeBlockWrappingMode.NoWrap) -> MarkdownRenderer.Controls.MarkdownScrollView!
+static MarkdownRenderer.Controls.MarkdownRendererControl.CreateDefault(string? markdown = null, MarkdownRenderer.Theming.MarkdownTheme? theme = null, bool isSelectionEnabled = true, bool isCodeBlockCopyEnabled = true, MarkdownRenderer.Hosting.ICodeHighlighter? codeHighlighter = null, string? codeBlockCopyButtonLabel = null, string? codeBlockCopiedButtonLabel = null, MarkdownRenderer.Images.IMarkdownImageResolver? imageResolver = null, System.Uri? imageBaseUri = null, string? imageDocumentPath = null, MarkdownRenderer.CodeBlocks.CodeBlockWrappingMode codeBlockWrappingMode = MarkdownRenderer.CodeBlocks.CodeBlockWrappingMode.NoWrap) -> MarkdownRenderer.Controls.MarkdownScrollView!
 static MarkdownRenderer.Controls.MarkdownSystemIntegration.ApplySystemFlowDirection(Microsoft.UI.Xaml.FrameworkElement! element) -> void
 static MarkdownRenderer.Controls.MarkdownSystemIntegration.GetSystemFlowDirection() -> Microsoft.UI.Xaml.FlowDirection
 static MarkdownRenderer.Controls.MarkdownSystemIntegration.GetUseSystemFlowDirection(Microsoft.UI.Xaml.FrameworkElement! element) -> bool
@@ -1754,7 +1744,6 @@ static readonly MarkdownRenderer.Controls.MarkdownRendererControl.CodeBlockCopie
 static readonly MarkdownRenderer.Controls.MarkdownRendererControl.CodeBlockCopyButtonLabelProperty -> Microsoft.UI.Xaml.DependencyProperty!
 static readonly MarkdownRenderer.Controls.MarkdownRendererControl.CodeBlockCopyButtonStyleProperty -> Microsoft.UI.Xaml.DependencyProperty!
 static readonly MarkdownRenderer.Controls.MarkdownRendererControl.CodeBlockLineNumberModeProperty -> Microsoft.UI.Xaml.DependencyProperty!
-static readonly MarkdownRenderer.Controls.MarkdownRendererControl.CodeBlockSyntaxHighlighterProperty -> Microsoft.UI.Xaml.DependencyProperty!
 static readonly MarkdownRenderer.Controls.MarkdownRendererControl.CodeBlockWrappingModeProperty -> Microsoft.UI.Xaml.DependencyProperty!
 static readonly MarkdownRenderer.Controls.MarkdownRendererControl.CodeHighlighterProperty -> Microsoft.UI.Xaml.DependencyProperty!
 static readonly MarkdownRenderer.Controls.MarkdownRendererControl.CommandProviderProperty -> Microsoft.UI.Xaml.DependencyProperty!

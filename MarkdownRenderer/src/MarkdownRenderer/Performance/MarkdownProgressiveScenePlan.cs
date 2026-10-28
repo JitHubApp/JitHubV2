@@ -58,9 +58,7 @@ internal sealed partial class MarkdownProgressiveScenePlan : IDisposable
     private readonly Dictionary<string, ActiveSceneWork> _active = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _diagnosticPublicationGate = new(1, 1);
     private HashSet<string> _visibleMarkers = new(StringComparer.Ordinal);
-#pragma warning disable MR1001 // Internal bridge to the compatibility control implementation.
     private MarkdownRendererControl? _callbackOwner;
-#pragma warning restore MR1001
     private Func<Action, bool>? _enqueuePublication;
     private Action? _onPublished;
     private Action? _onRetryVisibleBand;
@@ -584,10 +582,8 @@ internal sealed partial class MarkdownProgressiveScenePlan : IDisposable
 
     internal bool ScheduleVisible(object documentOwner)
     {
-#pragma warning disable MR1001 // The optional scheduler integrates with the compatibility control surface.
         if (_session.IsDisposed || documentOwner is not MarkdownRendererControl control)
             return false;
-#pragma warning restore MR1001
 
         EnsureControlCallbacks(control);
 
@@ -670,11 +666,9 @@ internal sealed partial class MarkdownProgressiveScenePlan : IDisposable
         return true;
     }
 
-#pragma warning disable MR1001 // Internal optional integration supports both viewport control subclasses.
     private void NotifyVisiblePlaceholderStatusIfChanged(
         MarkdownRendererControl control,
         bool pending)
-#pragma warning restore MR1001
     {
         bool changed;
         lock (_gate)
@@ -692,7 +686,6 @@ internal sealed partial class MarkdownProgressiveScenePlan : IDisposable
             control.NotifyVisibleDeferredSceneItemStatusMayHaveChanged();
     }
 
-#pragma warning disable MR1001 // Internal bridge to the compatibility control implementation.
     private void EnsureControlCallbacks(MarkdownRendererControl control)
     {
         if (ReferenceEquals(_callbackOwner, control))
@@ -706,7 +699,6 @@ internal sealed partial class MarkdownProgressiveScenePlan : IDisposable
             control.DispatcherQueue?.TryEnqueue(control.ScheduleVisibleDeferredScenes);
         };
     }
-#pragma warning restore MR1001
 
     /// <summary>
     /// Reconciles queued and active scene requests with the latest measured

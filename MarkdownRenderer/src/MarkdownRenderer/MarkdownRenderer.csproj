@@ -5,9 +5,6 @@
     <UseWinUI>true</UseWinUI>
     <WinUISDKReferences>false</WinUISDKReferences>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <!-- The compatibility facade is intentionally used by the implementation and
-         its two explicit-viewport subclasses; consumers still receive MR1001. -->
-    <NoWarn>$(NoWarn);MR1001</NoWarn>
     <PackageId>MarkdownRenderer</PackageId>
     <Description>Native WinUI markdown viewer: immutable documents with source maps and diagnostics, CommonMark, strict GFM and GitHub README profiles, budgeted safe HTML, and Win2D layout, painting, input, selection and UI Automation.</Description>
     <PackageTags>markdown;commonmark;gfm;github;html;winui;win2d;windows;accessibility;aot</PackageTags>

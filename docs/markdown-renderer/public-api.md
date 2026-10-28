@@ -62,11 +62,10 @@ diagnostics, source-map entries, and stable queries such as `GetHeadings()`,
 fragment associated with a source range; this preserves nested syntax nodes
 whose half-open UTF-16 ranges are identical.
 
-`ICodeHighlighter` is the canonical syntax-highlighting contract. Its revision
-and callbacks can be queried concurrently for different blocks and controls;
-implementations and captured state must be thread-safe and UI-context independent.
-`ICodeBlockSyntaxHighlighter` remains an obsolete compatibility alias and is
-adapted to the same single provider backing without sync-over-async blocking.
+`ICodeHighlighter` is the syntax-highlighting contract. Its revision and
+callbacks can be queried concurrently for different blocks and controls;
+implementations and captured state must be thread-safe and UI-context
+independent. Cancellation arrives only through the `HighlightAsync` token.
 
 ## Views
 
@@ -77,8 +76,8 @@ adapted to the same single provider backing without sync-over-async blocking.
 
 Both views expose `Markdown`, `Document`, `Engine`, `StyleSheet`, `Theme`, image
 policy, selection, code highlighting, commands, localization, and hosted-element
-services. `MarkdownRendererControl` is obsolete compatibility surface; new code
-should not derive from or construct it.
+services through their shared abstract base, `MarkdownRendererControl`. Only
+the two views derive from it; apps construct a view.
 
 GFM, GitHub README, Markdown Extra, and safe-HTML helpers freeze their native
 presentation registrations into the engine. Parsed documents retain that

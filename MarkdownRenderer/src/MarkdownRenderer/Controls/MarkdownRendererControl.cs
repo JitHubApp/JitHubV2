@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Numerics;
@@ -44,15 +44,13 @@ using Markdig;
 namespace MarkdownRenderer.Controls;
 
 /// <summary>
-/// The native Win2D + DirectWrite markdown renderer. Hosts a
-/// <see cref="CanvasVirtualControl"/> for paint and a sibling <see cref="Canvas"/>
-/// overlay for hosted WinUI embeds.
+/// The native Win2D + DirectWrite markdown renderer shared by
+/// <see cref="MarkdownScrollView"/>, which owns its scroll viewport, and
+/// <see cref="MarkdownDocumentView"/>, which uses an ancestor's viewport.
+/// Hosts a <see cref="CanvasVirtualControl"/> for paint and a sibling
+/// <see cref="Canvas"/> overlay for hosted WinUI embeds.
 /// </summary>
-[Obsolete(
-    "Use MarkdownScrollView for an owned viewport or MarkdownDocumentView for an ancestor-owned viewport.",
-    DiagnosticId = "MR1001",
-    UrlFormat = "https://github.com/JitHubApp/JitHubV2/tree/main/docs/markdown-renderer#{0}")]
-public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdownEnvironmentListener,
+public abstract partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdownEnvironmentListener,
     IMarkdownPerformanceLegacyParser
 {
     private readonly bool _ownsScrollViewport;
@@ -64,8 +62,6 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     private bool _scrollViewIntermediate;
     private Grid? _root;
     private MarkdownEngine? _ownedEngine;
-    private bool _synchronizingCodeHighlighter;
-    private LegacyCodeHighlighterAdapter? _legacyCodeHighlighterAdapter;
     private Rect _externalViewport;
     private bool _hasExternalViewport;
 
@@ -1715,24 +1711,6 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         set => SetValue(IsCodeBlockSyntaxHighlightingEnabledProperty, value);
     }
 
-    /// <summary>Dependency property backing <see cref="CodeBlockSyntaxHighlighter"/>.</summary>
-    [Obsolete("Use CodeHighlighterProperty. This compatibility alias shares the same provider backing.")]
-    public static readonly DependencyProperty CodeBlockSyntaxHighlighterProperty =
-        DependencyProperty.Register(nameof(CodeBlockSyntaxHighlighter), typeof(ICodeBlockSyntaxHighlighter),
-            typeof(MarkdownRendererControl), new PropertyMetadata(null, (d, e) => ((MarkdownRendererControl)d).OnLegacyCodeHighlighterChanged(e)));
-
-    /// <summary>
-    /// Gets or sets the preview syntax-highlighting provider. This compatibility
-    /// alias is adapted to <see cref="CodeHighlighter"/> and does not create a
-    /// second highlighting pipeline.
-    /// </summary>
-    [Obsolete("Use CodeHighlighter for explicit cancellation support.")]
-    public ICodeBlockSyntaxHighlighter? CodeBlockSyntaxHighlighter
-    {
-        get => (ICodeBlockSyntaxHighlighter?)GetValue(CodeBlockSyntaxHighlighterProperty);
-        set => SetValue(CodeBlockSyntaxHighlighterProperty, value);
-    }
-
     /// <summary>Dependency property backing <see cref="IsTaskListEditingEnabled"/>.</summary>
     public static readonly DependencyProperty IsTaskListEditingEnabledProperty =
         DependencyProperty.Register(
@@ -1826,7 +1804,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     /// <param name="theme">Theme to assign, or null to use the renderer default.</param>
     /// <param name="isSelectionEnabled">True to enable text selection.</param>
     /// <param name="isCodeBlockCopyEnabled">True to show copy buttons on code blocks.</param>
-    /// <param name="codeBlockSyntaxHighlighter">Optional code-block syntax-highlighting provider.</param>
+    /// <param name="codeHighlighter">Optional code-block syntax highlighter.</param>
     /// <param name="codeBlockCopyButtonLabel">Accessible label and tooltip for code-block copy buttons, or null for the localized default.</param>
     /// <param name="codeBlockCopiedButtonLabel">Accessible label and tooltip after copy succeeds, or null for the localized default.</param>
     /// <param name="imageResolver">Optional host-specific image resolver used before public URI loading.</param>
@@ -1839,7 +1817,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         MarkdownTheme? theme = null,
         bool isSelectionEnabled = true,
         bool isCodeBlockCopyEnabled = true,
-        ICodeBlockSyntaxHighlighter? codeBlockSyntaxHighlighter = null,
+        ICodeHighlighter? codeHighlighter = null,
         string? codeBlockCopyButtonLabel = null,
         string? codeBlockCopiedButtonLabel = null,
         IMarkdownImageResolver? imageResolver = null,
@@ -1856,7 +1834,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             .WithCodeBlockCopyEnabled(isCodeBlockCopyEnabled)
             .WithCodeBlockCopyButtonLabel(codeBlockCopyButtonLabel)
             .WithCodeBlockCopiedButtonLabel(codeBlockCopiedButtonLabel)
-            .WithCodeBlockSyntaxHighlighter(codeBlockSyntaxHighlighter)
+            .WithCodeHighlighter(codeHighlighter)
             .WithCodeBlockWrappingMode(codeBlockWrappingMode)
             .BuildScrollView();
 
@@ -2959,21 +2937,15 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         _scroll.ChangeView(null, Math.Max(0, target), null, disableAnimation: true);
     }
 
-    /// <summary>Initializes a new markdown renderer control.</summary>
-    public MarkdownRendererControl()
-        : this(ownsScrollViewport: true)
-    {
-    }
-
     /// <summary>
     /// Initializes a renderer with either an owned scroll viewport or an
     /// externally supplied effective viewport.
     /// </summary>
     /// <param name="ownsScrollViewport">
-    /// True to create the compatibility scroll viewer; false to participate in
-    /// the nearest ancestor viewport through EffectiveViewportChanged.
+    /// True to create the scroll viewer; false to participate in the nearest
+    /// ancestor viewport through EffectiveViewportChanged.
     /// </param>
-    protected MarkdownRendererControl(bool ownsScrollViewport)
+    private protected MarkdownRendererControl(bool ownsScrollViewport)
     {
         _ownsScrollViewport = ownsScrollViewport;
         _canvasPointerMovedHandler = OnPointerMoved;
@@ -3342,68 +3314,10 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         RequestRebuild(RebuildReason.Full);
     }
 
-    private void OnLegacyCodeHighlighterChanged(DependencyPropertyChangedEventArgs e)
-    {
-        if (_synchronizingCodeHighlighter)
-            return;
-
-        ICodeHighlighter? previous = CodeHighlighter;
-        _synchronizingCodeHighlighter = true;
-        try
-        {
-#pragma warning disable CS0618 // Synchronizes the preview compatibility alias.
-            if (e.NewValue is null)
-            {
-                _legacyCodeHighlighterAdapter = null;
-                CodeHighlighter = null;
-            }
-            else if (e.NewValue is ICodeHighlighter stable)
-            {
-                _legacyCodeHighlighterAdapter = null;
-                CodeHighlighter = stable;
-            }
-            else if (e.NewValue is ICodeBlockSyntaxHighlighter legacy)
-            {
-                if (_legacyCodeHighlighterAdapter is null ||
-                    !ReferenceEquals(_legacyCodeHighlighterAdapter.Inner, legacy))
-                {
-                    _legacyCodeHighlighterAdapter = new LegacyCodeHighlighterAdapter(legacy);
-                }
-
-                CodeHighlighter = _legacyCodeHighlighterAdapter;
-            }
-#pragma warning restore CS0618
-        }
-        finally
-        {
-            _synchronizingCodeHighlighter = false;
-        }
-
-        OnEffectiveCodeHighlighterChanged(previous, CodeHighlighter);
-    }
-
     private void OnCodeHighlighterChanged(DependencyPropertyChangedEventArgs e)
-    {
-        if (_synchronizingCodeHighlighter)
-            return;
-
-        _synchronizingCodeHighlighter = true;
-        try
-        {
-            _legacyCodeHighlighterAdapter = e.NewValue as LegacyCodeHighlighterAdapter;
-#pragma warning disable CS0618 // Keep the compatibility alias bidirectionally synchronized.
-            CodeBlockSyntaxHighlighter = e.NewValue as ICodeBlockSyntaxHighlighter;
-#pragma warning restore CS0618
-        }
-        finally
-        {
-            _synchronizingCodeHighlighter = false;
-        }
-
-        OnEffectiveCodeHighlighterChanged(
+        => OnEffectiveCodeHighlighterChanged(
             e.OldValue as ICodeHighlighter,
             e.NewValue as ICodeHighlighter);
-    }
 
     private void OnEffectiveCodeHighlighterChanged(
         ICodeHighlighter? previous,
@@ -6212,7 +6126,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                 if (workToken.IsCancellationRequested)
                     return;
 
-                var request = new CodeBlockHighlightRequest(key.Language, codeText, key.ThemeVariant, workToken);
+                var request = new CodeBlockHighlightRequest(key.Language, codeText, key.ThemeVariant);
                 CodeBlockHighlightResult? providerResult = await highlighter.HighlightAsync(
                     request,
                     workToken).ConfigureAwait(false);

@@ -24,7 +24,6 @@ using MarkdownRenderer.Theming;
 namespace MarkdownRenderer.Sample;
 
 // This sample deliberately switches between both concrete viewport owners to exercise both touch viewport modes.
-#pragma warning disable MR1001
 public sealed partial class MainWindow : Window
 {
     private const int FirstDocumentBlockIndex = 1;
@@ -1152,5 +1151,4 @@ public sealed partial class MainWindow : Window
         }
     }
 }
-#pragma warning restore MR1001
 

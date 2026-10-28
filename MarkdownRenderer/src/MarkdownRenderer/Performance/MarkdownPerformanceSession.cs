@@ -904,7 +904,6 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
         return false;
     }
 
-#pragma warning disable MR1001 // The optional scene policy integrates with the compatibility control surface.
     MarkdownVisibleSceneReadiness IMarkdownPerformanceSessionInternal.GetVisibleDeferredSceneReadiness(
         MarkdownRendererControl owner,
         LayoutSnapshot expectedSnapshot,
@@ -1040,7 +1039,6 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
             expectedGeneration,
             expectedLayoutRevision) &&
         ReferenceEquals(owner.PerformanceSession, this);
-#pragma warning restore MR1001
 
     IMarkdownVectorSceneResidencyPolicy? IMarkdownPerformanceSessionInternal.CreateVectorSceneResidencyPolicy(
         IReadOnlyList<BlockBox> blocks,

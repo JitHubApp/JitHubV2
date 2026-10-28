@@ -38,9 +38,7 @@ public sealed class MarkdownRendererControlBuilder
     private string? _codeBlockCopyButtonLabel;
     private string? _codeBlockCopiedButtonLabel;
     private bool _isCodeBlockSyntaxHighlightingEnabled = true;
-#pragma warning disable CS0618 // Stored solely for the source-compatible builder alias.
-    private ICodeBlockSyntaxHighlighter? _codeHighlighter;
-#pragma warning restore CS0618
+    private ICodeHighlighter? _codeHighlighter;
     private CodeBlockLineNumberMode _codeBlockLineNumberMode = CodeBlockLineNumberMode.AutoMultiline;
     private CodeBlockWrappingMode _codeBlockWrappingMode = CodeBlockWrappingMode.NoWrap;
     private CodeBlockChromeMode _codeBlockChromeMode = CodeBlockChromeMode.Enhanced;
@@ -248,15 +246,6 @@ public sealed class MarkdownRendererControlBuilder
         return this;
     }
 
-    /// <summary>Sets the optional syntax highlighter used for code blocks.</summary>
-#pragma warning disable CS0618 // Declares the source-compatible builder alias.
-    [Obsolete("Use WithCodeHighlighter(ICodeHighlighter?) for cancellation-aware highlighting.")]
-    public MarkdownRendererControlBuilder WithCodeBlockSyntaxHighlighter(ICodeBlockSyntaxHighlighter? highlighter)
-    {
-        _codeHighlighter = highlighter;
-        return this;
-    }
-
     /// <summary>Sets the viewport-aware factory for declarative hosted content.</summary>
     public MarkdownRendererControlBuilder WithHostedElementFactory(
         IMarkdownHostedElementFactory? hostedElementFactory)
@@ -283,7 +272,6 @@ public sealed class MarkdownRendererControlBuilder
         GetOrCreateDerivedEngineBuilder().AddProfile(profile);
         return this;
     }
-#pragma warning restore CS0618
 
     /// <summary>Enables editable task markers backed by explicit host commands.</summary>
     public MarkdownRendererControlBuilder WithTaskListEditingEnabled(bool enabled = true)
@@ -340,11 +328,6 @@ public sealed class MarkdownRendererControlBuilder
     /// <summary>Creates a configured view for an ancestor-owned effective viewport.</summary>
     public MarkdownDocumentView BuildDocumentView() => Configure(new MarkdownDocumentView());
 
-    /// <summary>Creates the obsolete 1.x compatibility facade.</summary>
-    [Obsolete("Use BuildScrollView or BuildDocumentView to make viewport ownership explicit.")]
-    public MarkdownRendererControl Build()
-        => Configure(new MarkdownRendererControl());
-
     private T Configure<T>(T control) where T : MarkdownRendererControl
     {
         MarkdownEngine? unassignedDerivedEngine = null;
@@ -386,12 +369,7 @@ public sealed class MarkdownRendererControlBuilder
             control.CodeBlockCopyButtonLabel = _codeBlockCopyButtonLabel;
             control.CodeBlockCopiedButtonLabel = _codeBlockCopiedButtonLabel;
             control.IsCodeBlockSyntaxHighlightingEnabled = _isCodeBlockSyntaxHighlightingEnabled;
-            if (_codeHighlighter is ICodeHighlighter highlighter)
-                control.CodeHighlighter = highlighter;
-            else
-#pragma warning disable CS0618 // Assign the compatibility alias only for legacy providers.
-                control.CodeBlockSyntaxHighlighter = _codeHighlighter;
-#pragma warning restore CS0618
+            control.CodeHighlighter = _codeHighlighter;
             control.CodeBlockLineNumberMode = _codeBlockLineNumberMode;
             control.CodeBlockWrappingMode = _codeBlockWrappingMode;
             control.CodeBlockChromeMode = _codeBlockChromeMode;

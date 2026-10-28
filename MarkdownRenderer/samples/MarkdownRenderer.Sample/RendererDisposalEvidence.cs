@@ -4,7 +4,6 @@ using System.Text.Json;
 using MarkdownRenderer.Controls;
 
 // The probe observes the common implementation shared by both public view types.
-#pragma warning disable MR1001
 
 namespace MarkdownRenderer.Sample;
 

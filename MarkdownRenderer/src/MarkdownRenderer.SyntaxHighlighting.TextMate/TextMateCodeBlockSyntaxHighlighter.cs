@@ -68,88 +68,59 @@ public sealed class TextMateCodeBlockSyntaxHighlighter : ICodeHighlighter, IDisp
     }
 
     /// <inheritdoc />
-    public ValueTask<CodeBlockHighlightResult?> HighlightAsync(CodeBlockHighlightRequest request)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        return HighlightAsync(request, request.CancellationToken);
-    }
-
-    /// <inheritdoc />
     public async ValueTask<CodeBlockHighlightResult?> HighlightAsync(
         CodeBlockHighlightRequest request,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        if (request.CancellationToken.IsCancellationRequested || cancellationToken.IsCancellationRequested)
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (cancellationToken.IsCancellationRequested)
             return null;
 
-        CancellationTokenSource? linkedCancellation = null;
-        CancellationToken effectiveCancellation = cancellationToken;
-        if (!effectiveCancellation.CanBeCanceled)
+        if (request.ThemeVariant == CodeBlockThemeVariant.HighContrast)
+            return CodeBlockHighlightResult.Empty;
+
+        var languageId = NormalizeLanguageId(request.Language);
+        if (languageId is null)
+            return CodeBlockHighlightResult.Empty;
+        if (!IsWithinInputBudget(request.Code))
+            return CodeBlockHighlightResult.Empty;
+
+        var providerRequest = new TextMateGrammarHighlightRequest(
+            languageId,
+            request.Code,
+            request.ThemeVariant == CodeBlockThemeVariant.Light
+                ? TextMateGrammarThemeVariant.Light
+                : TextMateGrammarThemeVariant.Dark);
+
+        var result = await GetOrCreateHighlightAsync(providerRequest, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (result is null)
+            return null;
+        if (result.Spans.Count == 0)
+            return CodeBlockHighlightResult.Empty;
+
+        var spans = new List<CodeBlockHighlightSpan>(result.Spans.Count);
+        foreach (var span in result.Spans)
         {
-            effectiveCancellation = request.CancellationToken;
+            if (span.Start < 0 || span.Length <= 0 || span.Start > request.Code.Length - span.Length)
+                continue;
+
+            var argb = span.ForegroundArgb;
+            spans.Add(new CodeBlockHighlightSpan(
+                span.Start,
+                span.Length,
+                Color.FromArgb(
+                    (byte)(argb >> 24),
+                    (byte)(argb >> 16),
+                    (byte)(argb >> 8),
+                    (byte)argb)));
         }
-        else if (request.CancellationToken.CanBeCanceled &&
-                 request.CancellationToken != cancellationToken)
-        {
-            linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
-                request.CancellationToken,
-                cancellationToken);
-            effectiveCancellation = linkedCancellation.Token;
-        }
 
-        try
-        {
-            if (request.ThemeVariant == CodeBlockThemeVariant.HighContrast)
-                return CodeBlockHighlightResult.Empty;
-
-            var languageId = NormalizeLanguageId(request.Language);
-            if (languageId is null)
-                return CodeBlockHighlightResult.Empty;
-            if (!IsWithinInputBudget(request.Code))
-                return CodeBlockHighlightResult.Empty;
-
-            var providerRequest = new TextMateGrammarHighlightRequest(
-                languageId,
-                request.Code,
-                request.ThemeVariant == CodeBlockThemeVariant.Light
-                    ? TextMateGrammarThemeVariant.Light
-                    : TextMateGrammarThemeVariant.Dark);
-
-            var result = await GetOrCreateHighlightAsync(providerRequest, effectiveCancellation)
-                .ConfigureAwait(false);
-
-            if (result is null)
-                return null;
-            if (result.Spans.Count == 0)
-                return CodeBlockHighlightResult.Empty;
-
-            var spans = new List<CodeBlockHighlightSpan>(result.Spans.Count);
-            foreach (var span in result.Spans)
-            {
-                if (span.Start < 0 || span.Length <= 0 || span.Start > request.Code.Length - span.Length)
-                    continue;
-
-                var argb = span.ForegroundArgb;
-                spans.Add(new CodeBlockHighlightSpan(
-                    span.Start,
-                    span.Length,
-                    Color.FromArgb(
-                        (byte)(argb >> 24),
-                        (byte)(argb >> 16),
-                        (byte)(argb >> 8),
-                        (byte)argb)));
-            }
-
-            return spans.Count == 0
-                ? CodeBlockHighlightResult.Empty
-                : new CodeBlockHighlightResult(spans);
-        }
-        finally
-        {
-            linkedCancellation?.Dispose();
-        }
+        return spans.Count == 0
+            ? CodeBlockHighlightResult.Empty
+            : new CodeBlockHighlightResult(spans);
     }
 
     private async ValueTask<TextMateGrammarHighlightResult?> GetOrCreateHighlightAsync(

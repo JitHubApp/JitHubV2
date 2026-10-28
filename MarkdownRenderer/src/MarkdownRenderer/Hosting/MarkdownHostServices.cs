@@ -22,25 +22,24 @@ public interface IImageResolver : IMarkdownImageResolver
 }
 
 /// <summary>
-/// Stable asynchronous, cancellation-aware syntax-highlighting service.
+/// Asynchronous, cancellation-aware syntax-highlighting service.
 /// Implementations and captured state must be thread-safe. A renderer can
-/// query <see cref="ICodeBlockSyntaxHighlighter.Revision"/> and invoke
+/// query <see cref="Revision"/> and invoke
 /// <see cref="HighlightAsync(CodeBlockHighlightRequest, CancellationToken)"/>
 /// concurrently for different blocks and controls. Implementations must not
 /// require a UI synchronization context.
 /// </summary>
-#pragma warning disable CS0618 // The stable service intentionally bridges the 0.x compatibility interface.
-public interface ICodeHighlighter : ICodeBlockSyntaxHighlighter
-#pragma warning restore CS0618
+public interface ICodeHighlighter
 {
+    /// <summary>
+    /// Revision for cache invalidation when the highlighter's grammar or theme changes.
+    /// </summary>
+    int Revision => 0;
+
     /// <summary>Highlights one code block without blocking the UI thread.</summary>
     ValueTask<CodeBlockHighlightResult?> HighlightAsync(
         CodeBlockHighlightRequest request,
         CancellationToken cancellationToken);
-
-    ValueTask<CodeBlockHighlightResult?> ICodeBlockSyntaxHighlighter.HighlightAsync(
-        CodeBlockHighlightRequest request)
-        => HighlightAsync(request, request.CancellationToken);
 }
 
 /// <summary>Supplies localized renderer strings without exposing resource internals.</summary>

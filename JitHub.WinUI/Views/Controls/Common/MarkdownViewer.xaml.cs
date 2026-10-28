@@ -158,14 +158,10 @@ public sealed partial class MarkdownViewer : UserControl
     private readonly HashSet<MarkdownImageUnavailableReason> _reportedImageUnavailableReasons = [];
     private bool _remoteImageNoticeDismissed;
     private MarkdownViewerDocumentPayload? _documentPayload;
-#pragma warning disable MR1001 // Common storage for the two explicit viewport control types; never constructed directly.
     private MarkdownRendererControl? _renderer;
-#pragma warning restore MR1001
     private bool _currentRendererDisposalCompleted;
     private bool _rendererDisposalFaulted;
-#pragma warning disable MR1001 // Borrow either explicit viewport control while its shared retirement barrier drains.
     private MarkdownRendererControl? _rendererRetirementPending;
-#pragma warning restore MR1001
     private bool _isLoaded;
     private bool _shutdownRequested;
     private bool _rendererCreationQueued;
@@ -174,9 +170,7 @@ public sealed partial class MarkdownViewer : UserControl
     private bool _rendererInitialLayoutReady;
     private EventHandler<object>? _rendererLayoutSettingsHandler;
     private long _rendererLayoutSettingsTicket;
-#pragma warning disable MR1001 // Retain the explicit viewport renderer owning the initial-layout subscription.
     private MarkdownRendererControl? _rendererLayoutSettingsTarget;
-#pragma warning restore MR1001
     private bool _paletteSubscribed;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _lifecycleRuntimeSettingsTimer;
     private int _lifecycleRuntimeSettingsRevision;
@@ -941,7 +935,6 @@ public sealed partial class MarkdownViewer : UserControl
         ApplyRendererSettings();
     }
 
-#pragma warning disable MR1001 // Subscribe through the shared base of the two explicit viewport controls.
     private void EnsureRendererLoadedSettingsHandler(MarkdownRendererControl renderer)
     {
         if (renderer.IsLoaded)
@@ -989,7 +982,6 @@ public sealed partial class MarkdownViewer : UserControl
         _rendererLayoutSettingsHandlerAttached = true;
     }
 
-#pragma warning disable MR1001 // The handler is scoped to the explicit renderer captured at subscription time.
     private void OnRendererLayoutUpdatedForSettings(MarkdownRendererControl renderer, long ticket)
     {
         // WinUI raises LayoutUpdated with a null sender after all SizeChanged
@@ -1018,9 +1010,7 @@ public sealed partial class MarkdownViewer : UserControl
         _rendererInitialLayoutReady = true;
         ApplyRendererSettings();
     }
-#pragma warning restore MR1001
 
-#pragma warning disable MR1001 // Remove the event from the retained explicit renderer instance.
     private void ClearRendererLayoutSettingsHandler()
     {
         MarkdownRendererControl? renderer = _rendererLayoutSettingsTarget;
@@ -1033,8 +1023,6 @@ public sealed partial class MarkdownViewer : UserControl
         if (renderer is not null && handler is not null)
             renderer.LayoutUpdated -= handler;
     }
-#pragma warning restore MR1001
-#pragma warning restore MR1001
 
     private void DisposeRenderer()
     {
@@ -1090,11 +1078,9 @@ public sealed partial class MarkdownViewer : UserControl
             "ui-markdown-retirement");
     }
 
-#pragma warning disable MR1001 // Retirement tracks the shared base of the two explicit viewport controls; it never constructs the obsolete control.
     private Task ReleaseRendererTrackingOnDispatcherAsync(
         MarkdownRendererControl renderer,
         Microsoft.UI.Dispatching.DispatcherQueue? dispatcher)
-#pragma warning restore MR1001
     {
         if (dispatcher is null)
         {
@@ -1129,9 +1115,7 @@ public sealed partial class MarkdownViewer : UserControl
         return completion.Task;
     }
 
-#pragma warning disable MR1001 // The retired instance is borrowed from an explicit MarkdownDocumentView or MarkdownScrollView.
     private void ReleaseRendererTracking(MarkdownRendererControl renderer)
-#pragma warning restore MR1001
     {
         if (_renderer is not null ||
             !ReferenceEquals(_rendererRetirementPending, renderer))
@@ -1153,12 +1137,10 @@ public sealed partial class MarkdownViewer : UserControl
             QueueRendererCreation();
     }
 
-#pragma warning disable MR1001 // Observe the explicit viewport renderer through its shared retirement contract.
     private async Task ObserveRendererRetirementAsync(
         MarkdownRendererControl renderer,
         Task retirementCompletion,
         Microsoft.UI.Dispatching.DispatcherQueue? dispatcher)
-#pragma warning restore MR1001
     {
         try
         {

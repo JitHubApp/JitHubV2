@@ -1,4 +1,5 @@
 using MarkdownRenderer.CodeBlocks;
+using MarkdownRenderer.Hosting;
 using Xunit;
 
 namespace MarkdownRenderer.Tests;
@@ -61,9 +62,7 @@ public sealed class CodeBlockHighlightPublicationFenceTests
                 sceneSessionDisposed, providerCurrent));
     }
 
-#pragma warning disable CS0618 // Pure-logic tests intentionally avoid the WinUI host-services source file.
-    private sealed class TestHighlighter : ICodeBlockSyntaxHighlighter, IDisposable
-#pragma warning restore CS0618
+    private sealed class TestHighlighter : ICodeHighlighter, IDisposable
     {
         private bool _disposed;
         private int _revision;
@@ -76,7 +75,7 @@ public sealed class CodeBlockHighlightPublicationFenceTests
             set => _revision = value;
         }
 
-        public ValueTask<CodeBlockHighlightResult?> HighlightAsync(CodeBlockHighlightRequest request) =>
+        public ValueTask<CodeBlockHighlightResult?> HighlightAsync(CodeBlockHighlightRequest request, CancellationToken cancellationToken) =>
             ValueTask.FromResult<CodeBlockHighlightResult?>(CodeBlockHighlightResult.Empty);
 
         public void Dispose() => _disposed = true;

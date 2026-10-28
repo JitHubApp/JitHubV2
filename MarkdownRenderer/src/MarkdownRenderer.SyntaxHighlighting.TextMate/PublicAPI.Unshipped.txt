@@ -1,4 +1,6 @@
 #nullable enable
+~override MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateGrammarHighlightSpan.Equals(object obj) -> bool
+~override MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateGrammarHighlightSpan.ToString() -> string
 const MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateHighlighterOptions.DefaultCacheBudgetBytes = 8388608 -> int
 const MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateHighlighterOptions.DefaultMaximumCodeLength = 200000 -> int
 const MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateHighlighterOptions.DefaultMaximumLineCount = 5000 -> int
@@ -9,13 +11,12 @@ MarkdownRenderer.SyntaxHighlighting.TextMate.ITextMateGrammarProvider.HighlightA
 MarkdownRenderer.SyntaxHighlighting.TextMate.ITextMateGrammarProvider.Revision.get -> int
 MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateCodeBlockSyntaxHighlighter
 MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateCodeBlockSyntaxHighlighter.Dispose() -> void
-MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateCodeBlockSyntaxHighlighter.HighlightAsync(MarkdownRenderer.CodeBlocks.CodeBlockHighlightRequest! request) -> System.Threading.Tasks.ValueTask<MarkdownRenderer.CodeBlocks.CodeBlockHighlightResult?>
 MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateCodeBlockSyntaxHighlighter.HighlightAsync(MarkdownRenderer.CodeBlocks.CodeBlockHighlightRequest! request, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<MarkdownRenderer.CodeBlocks.CodeBlockHighlightResult?>
 MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateCodeBlockSyntaxHighlighter.OwnsProvider.get -> bool
 MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateCodeBlockSyntaxHighlighter.Revision.get -> int
-MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateCodeBlockSyntaxHighlighter.TextMateCodeBlockSyntaxHighlighter(MarkdownRenderer.SyntaxHighlighting.TextMate.ITextMateGrammarProvider! provider) -> void
-MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateCodeBlockSyntaxHighlighter.TextMateCodeBlockSyntaxHighlighter(MarkdownRenderer.SyntaxHighlighting.TextMate.ITextMateGrammarProvider! provider, MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateHighlighterOptions? options) -> void
 MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateCodeBlockSyntaxHighlighter.TextMateCodeBlockSyntaxHighlighter(MarkdownRenderer.SyntaxHighlighting.TextMate.ITextMateGrammarProvider! provider, MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateHighlighterOptions? options, bool ownsProvider) -> void
+MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateCodeBlockSyntaxHighlighter.TextMateCodeBlockSyntaxHighlighter(MarkdownRenderer.SyntaxHighlighting.TextMate.ITextMateGrammarProvider! provider, MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateHighlighterOptions? options) -> void
+MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateCodeBlockSyntaxHighlighter.TextMateCodeBlockSyntaxHighlighter(MarkdownRenderer.SyntaxHighlighting.TextMate.ITextMateGrammarProvider! provider) -> void
 MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateGrammarHighlightRequest
 MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateGrammarHighlightRequest.Code.get -> string!
 MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateGrammarHighlightRequest.LanguageId.get -> string!
@@ -51,5 +52,3 @@ static MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateSyntaxHighlightingEx
 static MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateSyntaxHighlightingExtensions.UseTextMateSyntaxHighlighting(this MarkdownRenderer.Controls.MarkdownRendererControlBuilder! builder, MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateCodeBlockSyntaxHighlighter! highlighter) -> MarkdownRenderer.Controls.MarkdownRendererControlBuilder!
 static MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateSyntaxHighlightingExtensions.UseTextMateSyntaxHighlighting(this MarkdownRenderer.Controls.MarkdownScrollView! view, MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateCodeBlockSyntaxHighlighter! highlighter) -> MarkdownRenderer.Controls.MarkdownScrollView!
 static readonly MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateHighlighterOptions.DefaultMaximumLineProcessingTime -> System.TimeSpan
-~override MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateGrammarHighlightSpan.Equals(object obj) -> bool
-~override MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateGrammarHighlightSpan.ToString() -> string

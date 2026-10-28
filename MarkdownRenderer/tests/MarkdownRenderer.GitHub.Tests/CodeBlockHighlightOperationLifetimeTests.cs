@@ -159,7 +159,6 @@ public sealed class CodeBlockHighlightOperationLifetimeTests
         Assert.Equal(1, original.RevisionReadCount);
     }
 
-#pragma warning disable CS0618 // The stable provider interface inherits this compatibility contract.
     private sealed class TestHighlighter : ICodeHighlighter
     {
         private readonly int _revision;
@@ -188,10 +187,5 @@ public sealed class CodeBlockHighlightOperationLifetimeTests
             CodeBlockHighlightRequest request,
             CancellationToken cancellationToken)
             => ValueTask.FromResult<CodeBlockHighlightResult?>(CodeBlockHighlightResult.Empty);
-
-        ValueTask<CodeBlockHighlightResult?> ICodeBlockSyntaxHighlighter.HighlightAsync(
-            CodeBlockHighlightRequest request)
-            => HighlightAsync(request, request.CancellationToken);
     }
-#pragma warning restore CS0618
 }
