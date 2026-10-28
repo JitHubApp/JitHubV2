@@ -239,7 +239,7 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
             {
                 ("_bitmapOutputDeferred", 1),
                 ("_bitmapOutputRetryOfferPending", 1),
-                ("_bitmapOutputDemand", new MarkdownSvgDemandTicket(MarkdownSvgRenderPriority.Overscan)),
+                ("_bitmapOutputDemand", new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan)),
                 ("_bitmapOutputWaiterOwner", fakeOwner),
             };
 

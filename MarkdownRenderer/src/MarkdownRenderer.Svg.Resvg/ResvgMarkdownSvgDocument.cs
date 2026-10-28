@@ -3,7 +3,7 @@ using MarkdownRenderer.Svg.Resvg.Internal;
 
 namespace MarkdownRenderer.Svg.Resvg;
 
-internal sealed class ResvgMarkdownSvgDocument : IMarkdownSvgDocument, IMarkdownSvgHostDocument
+internal sealed class ResvgMarkdownSvgDocument : IMarkdownSvgDocument, IMarkdownSvgPrioritizedDocument
 {
     private readonly ResvgMarkdownSvgRenderer _renderer;
     private readonly WorkerPool _workers;
@@ -80,9 +80,9 @@ internal sealed class ResvgMarkdownSvgDocument : IMarkdownSvgDocument, IMarkdown
         CancellationToken cancellationToken = default) =>
         RenderCoreAsync(request, demand: null, cancellationToken);
 
-    ValueTask<MarkdownSvgRaster> IMarkdownSvgHostDocument.RenderForHostAsync(
+    ValueTask<MarkdownSvgRaster> IMarkdownSvgPrioritizedDocument.RenderAsync(
         MarkdownSvgRenderRequest request,
-        MarkdownSvgDemandTicket demand,
+        MarkdownSvgRenderDemand demand,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -95,7 +95,7 @@ internal sealed class ResvgMarkdownSvgDocument : IMarkdownSvgDocument, IMarkdown
 
     private async ValueTask<MarkdownSvgRaster> RenderCoreAsync(
         MarkdownSvgRenderRequest request,
-        MarkdownSvgDemandTicket? demand,
+        MarkdownSvgRenderDemand? demand,
         CancellationToken cancellationToken)
     {
         SvgDocumentLifetime.RenderLease lifetime = EnterRender();

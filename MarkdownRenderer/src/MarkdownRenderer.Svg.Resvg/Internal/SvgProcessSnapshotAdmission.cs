@@ -254,7 +254,7 @@ internal sealed class SvgProcessSnapshotAdmission
         return new SvgProcessSnapshotAdmission(capacityBytes, visibleHeadroomBytes, ProcessDomainToken);
     }
 
-    internal sealed class Lease : IDisposable, IMarkdownSvgHostPreparationLease
+    internal sealed class Lease : IDisposable, IMarkdownSvgPreparationLease
     {
         private readonly object _gate = new();
         private SvgProcessSnapshotAdmission? _owner;
@@ -322,7 +322,7 @@ internal sealed class SvgProcessSnapshotAdmission
             signal?.TrySetResult();
         }
 
-        void IMarkdownSvgHostPreparationLease.SetLength(long retainedBytes) => SetLength(retainedBytes);
+        void IMarkdownSvgPreparationLease.SetLength(long retainedBytes) => SetLength(retainedBytes);
 
         public void Dispose()
         {

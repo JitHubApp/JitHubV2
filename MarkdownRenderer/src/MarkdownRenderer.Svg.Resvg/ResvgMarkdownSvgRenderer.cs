@@ -2,7 +2,6 @@ using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Svg.Resvg.Internal;
 
 namespace MarkdownRenderer.Svg.Resvg;
@@ -15,7 +14,7 @@ namespace MarkdownRenderer.Svg.Resvg;
 /// <see cref="IMarkdownRasterDecoder"/> using the same isolated worker pool.
 /// Registering this object as an SVG renderer does not implicitly enable raster decoding.
 /// </remarks>
-public sealed partial class ResvgMarkdownSvgRenderer : IMarkdownSvgRenderer, IMarkdownRasterDecoder, IMarkdownSvgHostPreparationAdmission, IDisposable, IAsyncDisposable
+public sealed partial class ResvgMarkdownSvgRenderer : IMarkdownSvgRenderer, IMarkdownRasterDecoder, IMarkdownSvgPreparationAdmission, IDisposable, IAsyncDisposable
 {
     /// <inheritdoc />
     public MarkdownSvgSourcePreparation PrepareSource(byte[] source, CancellationToken cancellationToken)
@@ -25,7 +24,7 @@ public sealed partial class ResvgMarkdownSvgRenderer : IMarkdownSvgRenderer, IMa
         cancellationToken.ThrowIfCancellationRequested();
         byte[] prepared;
         SvgResourceBudgetResult budget;
-        SvgSourceMetadata preparedMetadata = default;
+        MarkdownSvgSourceInfo? preparedInfo = null;
         try
         {
             // An inert W3C SVG DOCTYPE (published public/system pair,
@@ -42,7 +41,7 @@ public sealed partial class ResvgMarkdownSvgRenderer : IMarkdownSvgRenderer, IMa
             SvgResourceBudgetResult originalBudget = SvgResourceBudget.ValidateWithMetadata(
                 authored,
                 cancellationToken,
-                out SvgSourceMetadata originalMetadata);
+                out MarkdownSvgSourceInfo? originalInfo);
             cancellationToken.ThrowIfCancellationRequested();
             if (!originalBudget.Accepted)
                 return RejectPreparedSource(source, originalBudget.Reason ?? "invalid-content");
@@ -61,14 +60,14 @@ public sealed partial class ResvgMarkdownSvgRenderer : IMarkdownSvgRenderer, IMa
                 // leaves the source unchanged; reuse its matching metadata and
                 // avoid a second complete resource walk on the common path.
                 budget = SvgResourceBudgetResult.Success;
-                preparedMetadata = originalMetadata;
+                preparedInfo = originalInfo;
             }
             else
             {
                 budget = SvgResourceBudget.ValidateWithMetadata(
                     prepared,
                     cancellationToken,
-                    out preparedMetadata);
+                    out preparedInfo);
             }
         }
         catch (SvgStaticSnapshotResourceException exception)
@@ -80,7 +79,8 @@ public sealed partial class ResvgMarkdownSvgRenderer : IMarkdownSvgRenderer, IMa
         if (budget.Accepted)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            return MarkdownSvgSourcePreparation.AdmitWithMetadata(prepared, preparedMetadata);
+            // An accepted validation always reads the source information.
+            return MarkdownSvgSourcePreparation.Admit(prepared, preparedInfo!);
         }
 
         return RejectPreparedSource(source, budget.Reason ?? "invalid-content");
@@ -147,11 +147,11 @@ public sealed partial class ResvgMarkdownSvgRenderer : IMarkdownSvgRenderer, IMa
     internal long SourceAttachmentCount => _workers.SourceAttachmentCount;
     internal bool IsDisposed => Volatile.Read(ref _disposed) != 0;
 
-    object IMarkdownSvgHostAdmission.AdmissionDomain => _snapshotAdmission.AdmissionDomain;
+    object IMarkdownSvgAdmission.AdmissionDomain => _snapshotAdmission.AdmissionDomain;
 
-    long IMarkdownSvgHostAdmission.CapacityVersion => _snapshotAdmission.CapacityVersion;
+    long IMarkdownSvgAdmission.CapacityVersion => _snapshotAdmission.CapacityVersion;
 
-    Task IMarkdownSvgHostAdmission.WaitForCapacityAsync(
+    Task IMarkdownSvgAdmission.WaitForCapacityAsync(
         long requiredFreeBytes,
         MarkdownSvgRenderPriority priority,
         CancellationToken cancellationToken)
@@ -172,9 +172,9 @@ public sealed partial class ResvgMarkdownSvgRenderer : IMarkdownSvgRenderer, IMa
         return _snapshotAdmission.WaitForCapacityAsync(requiredFreeBytes, priority, cancellationToken);
     }
 
-    bool IMarkdownSvgHostPreparationAdmission.TryReserveHostPreparationScratch(
-        MarkdownSvgDemandTicket demand,
-        out IMarkdownSvgHostPreparationLease? lease,
+    bool IMarkdownSvgPreparationAdmission.TryReservePreparationScratch(
+        MarkdownSvgRenderDemand demand,
+        out IMarkdownSvgPreparationLease? lease,
         out long observedCapacityVersion,
         out long requiredFreeBytes)
     {
@@ -207,9 +207,9 @@ public sealed partial class ResvgMarkdownSvgRenderer : IMarkdownSvgRenderer, IMa
         return admitted;
     }
 
-    async ValueTask<MarkdownSvgHostOpenResult> IMarkdownSvgHostAdmission.OpenForHostAsync(
+    async ValueTask<MarkdownSvgAdmissionResult> IMarkdownSvgAdmission.TryOpenAsync(
         MarkdownSvgOpenRequest request,
-        MarkdownSvgDemandTicket demand,
+        MarkdownSvgRenderDemand demand,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -306,7 +306,7 @@ public sealed partial class ResvgMarkdownSvgRenderer : IMarkdownSvgRenderer, IMa
     {
         try
         {
-            MarkdownSvgHostOpenResult result = await OpenCoreAsync(
+            MarkdownSvgAdmissionResult result = await OpenCoreAsync(
                 request,
                 demand: null,
                 returnCapacityUnavailable: false,
@@ -323,9 +323,9 @@ public sealed partial class ResvgMarkdownSvgRenderer : IMarkdownSvgRenderer, IMa
         }
     }
 
-    private async ValueTask<MarkdownSvgHostOpenResult> OpenCoreAsync(
+    private async ValueTask<MarkdownSvgAdmissionResult> OpenCoreAsync(
         MarkdownSvgOpenRequest request,
-        MarkdownSvgDemandTicket? demand,
+        MarkdownSvgRenderDemand? demand,
         bool returnCapacityUnavailable,
         CancellationToken cancellationToken)
     {
@@ -371,7 +371,7 @@ public sealed partial class ResvgMarkdownSvgRenderer : IMarkdownSvgRenderer, IMa
             {
                 if (returnCapacityUnavailable)
                 {
-                    return MarkdownSvgHostOpenResult.CapacityUnavailable(
+                    return MarkdownSvgAdmissionResult.CapacityUnavailable(
                         observedCapacityVersion,
                         initialSourceReservationBytes);
                 }
@@ -400,7 +400,7 @@ public sealed partial class ResvgMarkdownSvgRenderer : IMarkdownSvgRenderer, IMa
                 // and reservation before this host result becomes observable.
                 if (returnCapacityUnavailable)
                 {
-                    return MarkdownSvgHostOpenResult.CapacityUnavailable(
+                    return MarkdownSvgAdmissionResult.CapacityUnavailable(
                         exception.CapacityVersion,
                         exception.RequiredSourceReservationBytes);
                 }
@@ -468,7 +468,7 @@ public sealed partial class ResvgMarkdownSvgRenderer : IMarkdownSvgRenderer, IMa
                 unownedWorkerDocument = null;
                 sourceTransferredToDocument = true;
                 preflight = null;
-                return MarkdownSvgHostOpenResult.Opened(
+                return MarkdownSvgAdmissionResult.Opened(
                     document,
                     sourceReservationBytes,
                     _snapshotAdmission.AdmissionDomain);

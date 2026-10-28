@@ -118,7 +118,7 @@ public sealed class SvgHostDeferredSourceRetentionTests
             "A completed ImageBox capacity-deferral task retained the resolver's raw SVG byte array.");
     }
 
-    private sealed class CapacityDeniedAdmission : IMarkdownSvgHostAdmission
+    private sealed class CapacityDeniedAdmission : IMarkdownSvgAdmission
     {
         private readonly TaskCompletionSource _capacityWaitStarted = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
@@ -142,15 +142,15 @@ public sealed class SvgHostDeferredSourceRetentionTests
             return Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
         }
 
-        public ValueTask<MarkdownSvgHostOpenResult> OpenForHostAsync(
+        public ValueTask<MarkdownSvgAdmissionResult> TryOpenAsync(
             MarkdownSvgOpenRequest request,
-            MarkdownSvgDemandTicket demand,
+            MarkdownSvgRenderDemand demand,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             _openStarted.TrySetResult();
             ObservedSourceLength = request.SanitizedSvgBytes.Length;
-            return ValueTask.FromResult(MarkdownSvgHostOpenResult.CapacityUnavailable(
+            return ValueTask.FromResult(MarkdownSvgAdmissionResult.CapacityUnavailable(
                 capacityVersion: 0,
                 requiredSourceReservationBytes: 1024));
         }
@@ -180,22 +180,22 @@ public sealed class SvgHostDeferredSourceRetentionTests
 
     private sealed class CapacityDeniedRenderer(CapacityDeniedAdmission admission) :
         IMarkdownSvgRenderer,
-        IMarkdownSvgHostAdmission
+        IMarkdownSvgAdmission
     {
-        object IMarkdownSvgHostAdmission.AdmissionDomain => admission.AdmissionDomain;
-        long IMarkdownSvgHostAdmission.CapacityVersion => admission.CapacityVersion;
+        object IMarkdownSvgAdmission.AdmissionDomain => admission.AdmissionDomain;
+        long IMarkdownSvgAdmission.CapacityVersion => admission.CapacityVersion;
 
-        Task IMarkdownSvgHostAdmission.WaitForCapacityAsync(
+        Task IMarkdownSvgAdmission.WaitForCapacityAsync(
             long requiredFreeBytes,
             MarkdownSvgRenderPriority priority,
             CancellationToken cancellationToken) =>
             admission.WaitForCapacityAsync(requiredFreeBytes, priority, cancellationToken);
 
-        ValueTask<MarkdownSvgHostOpenResult> IMarkdownSvgHostAdmission.OpenForHostAsync(
+        ValueTask<MarkdownSvgAdmissionResult> IMarkdownSvgAdmission.TryOpenAsync(
             MarkdownSvgOpenRequest request,
-            MarkdownSvgDemandTicket demand,
+            MarkdownSvgRenderDemand demand,
             CancellationToken cancellationToken) =>
-            admission.OpenForHostAsync(request, demand, cancellationToken);
+            admission.TryOpenAsync(request, demand, cancellationToken);
 
         public long CacheGeneration => 0;
 

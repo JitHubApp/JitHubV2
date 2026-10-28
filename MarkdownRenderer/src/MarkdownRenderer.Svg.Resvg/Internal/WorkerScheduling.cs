@@ -204,7 +204,7 @@ internal sealed class WorkerFontWaitReservation : IDisposable
         Action release,
         bool countsAsVisibleRender = false,
         bool countsAsVisibleTextRender = false,
-        MarkdownSvgDemandTicket? demandTicket = null,
+        MarkdownSvgRenderDemand? demandTicket = null,
         bool isRender = false,
         bool requiresFontCatalog = false,
         Action? consumed = null)
@@ -224,7 +224,7 @@ internal sealed class WorkerFontWaitReservation : IDisposable
     public bool IsActive => Volatile.Read(ref _state) == 0;
     public bool CountsAsVisibleRender => Volatile.Read(ref _countsAsVisibleRender) != 0;
     public bool CountsAsVisibleTextRender => Volatile.Read(ref _countsAsVisibleTextRender) != 0;
-    internal MarkdownSvgDemandTicket? DemandTicket { get; }
+    internal MarkdownSvgRenderDemand? DemandTicket { get; }
 
     internal void SetPromotionRegistration(IDisposable registration)
     {

@@ -539,7 +539,7 @@ public sealed class ImageBoxSourceLeaseTests
                 BindingFlags.Instance | BindingFlags.NonPublic)!;
             object operation = open.Invoke(image, [CreateSvgBytes("unconsumed-handoff"),
                 default(Windows.Foundation.Size), image.Url, null,
-                new MarkdownSvgDemandTicket(MarkdownSvgRenderPriority.Visible), 0])!;
+                new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Visible), 0])!;
             await ((Task)operation).WaitAsync(TimeSpan.FromSeconds(5));
             object result = operation.GetType().GetProperty("Result")!.GetValue(operation)!;
             openedWork = Assert.IsAssignableFrom<IDisposable>(

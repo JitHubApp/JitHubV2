@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO.Compression;
 using System.Text;
+using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Svg.Resvg.Internal;
 using Xunit;
@@ -90,7 +91,8 @@ public sealed class SvgAdmissionMetadataPerformanceTests(ITestOutputHelper outpu
         SvgResourceBudgetResult validation = SvgResourceBudget.ValidateWithMetadata(
             source,
             CancellationToken.None,
-            out SvgSourceMetadata metadata);
+            out MarkdownSvgSourceInfo? metadataInfo);
+        SvgSourceMetadata metadata = metadataInfo?.Metadata ?? default;
         if (!validation.Accepted)
             throw new InvalidOperationException($"Combined fixture was rejected: {validation.Reason}");
         if (metadata.Title != "KaTeX-shaped asset" ||

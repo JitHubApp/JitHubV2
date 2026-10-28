@@ -9,7 +9,7 @@ public sealed class MarkdownImageActivationDemandTests
     [Fact]
     public void GenericVisibilityReadsAreMonotonicAndAllocationFree()
     {
-        var ticket = new MarkdownSvgDemandTicket(MarkdownSvgRenderPriority.Overscan);
+        var ticket = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         IMarkdownImageActivationDemand demand = ticket;
         Assert.False(demand.IsVisible);
         ticket.PromoteVisible();
@@ -28,7 +28,7 @@ public sealed class MarkdownImageActivationDemandTests
     [InlineData(true)]
     public async Task GenericPromotionUsesTheExistingAsynchronousTicketAndRetiresItsRegistration(bool initiallyVisible)
     {
-        var ticket = new MarkdownSvgDemandTicket(initiallyVisible
+        var ticket = new MarkdownSvgRenderDemand(initiallyVisible
             ? MarkdownSvgRenderPriority.Visible : MarkdownSvgRenderPriority.Overscan);
         IMarkdownImageActivationDemand demand = ticket;
         var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

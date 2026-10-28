@@ -87,7 +87,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
             Assert.IsType<SvgHostAdmissionCoordinator.OwnerSlot>(
                 Reserve(domain, new object(), out _));
         ImageBox owner = BareBox();
-        var demand = new MarkdownSvgDemandTicket(MarkdownSvgRenderPriority.Overscan);
+        var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         var plan = new ImageBox.SvgTileRenderPlan(
             new RegistryDocument(), "registry-race", 2048, 2048, 1,
             demand, sourceReservationBytes: 128, ownerSlot: slot);
@@ -170,7 +170,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
                 Reserve(domain, new object(), out _));
         retired.Dispose();
         ImageBox owner = BareBox();
-        var demand = new MarkdownSvgDemandTicket(MarkdownSvgRenderPriority.Visible);
+        var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Visible);
         var plan = new ImageBox.SvgTileRenderPlan(new RegistryDocument(), "retired", 2048, 2048, 1);
         Assert.Throws<InvalidOperationException>(() => retired.Commit(owner, plan, demand, 128));
         retired.Dispose();
@@ -184,7 +184,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
     {
         var domain = new SvgHostAdmissionCoordinator.DomainState();
         var identity = new object();
-        var demand = new MarkdownSvgDemandTicket(MarkdownSvgRenderPriority.Overscan);
+        var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         using (SvgHostAdmissionCoordinator.OwnerSlot warm =
             Assert.IsType<SvgHostAdmissionCoordinator.OwnerSlot>(Reserve(domain, identity, out _)))
         {
@@ -235,7 +235,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
         using SvgHostAdmissionCoordinator.OwnerSlot slot =
             Assert.IsType<SvgHostAdmissionCoordinator.OwnerSlot>(Reserve(domain, new object(), out _));
         ImageBox owner = BareBox();
-        var demand = new MarkdownSvgDemandTicket(MarkdownSvgRenderPriority.Overscan);
+        var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         var plan = new ImageBox.SvgTileRenderPlan(new RegistryDocument(), "recency", 2048, 2048, 1);
         var older = new SvgHostAdmissionCoordinator.OwnerEntry(owner, plan, demand, 64, slot, 10);
         var newer = new SvgHostAdmissionCoordinator.OwnerEntry(owner, plan, demand, 64, slot, 20);
@@ -263,7 +263,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
         SetField(owner, "_svgHostDeferredSync", new object());
         var domain = new SvgHostAdmissionCoordinator.DomainState();
         var admission = new RegistryAdmission();
-        var demand = new MarkdownSvgDemandTicket(MarkdownSvgRenderPriority.Overscan);
+        var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         const int generation = 41;
         SetField(owner, "_svgLoadDemandTicket", demand);
         SetField(owner, "_svgLoadDemandGeneration", generation);
@@ -317,7 +317,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
         var domain = new SvgHostAdmissionCoordinator.DomainState();
         var admission = new ThresholdAdmission();
         var owner = BareBox();
-        var demand = new MarkdownSvgDemandTicket(MarkdownSvgRenderPriority.Overscan);
+        var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         using var lifetime = new CancellationTokenSource();
         var firstAttempt = new object();
         InitializeSourceDeferredOwner(owner, demand, firstAttempt, admission, requiredBytes: 128);
@@ -373,7 +373,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
         var domain = new SvgHostAdmissionCoordinator.DomainState();
         var admission = new ThresholdAdmission();
         var owner = BareBox();
-        var demand = new MarkdownSvgDemandTicket(MarkdownSvgRenderPriority.Overscan);
+        var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         using var lifetime = new CancellationTokenSource();
         var firstAttempt = new object();
         InitializeSourceDeferredOwner(owner, demand, firstAttempt, admission, requiredBytes: 128);
@@ -433,7 +433,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
         var domain = new SvgHostAdmissionCoordinator.DomainState();
         var admission = new ThresholdAdmission();
         ImageBox owner = BareBox();
-        var demand = new MarkdownSvgDemandTicket(MarkdownSvgRenderPriority.Overscan);
+        var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         using var lifetime = new CancellationTokenSource();
         var rejectedAttempt = new object();
         var acceptedAttempt = new object();
@@ -506,7 +506,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
         var domain = new SvgHostAdmissionCoordinator.DomainState();
         var admission = new ThresholdAdmission(initialAvailableBytes: 1024);
         var owner = BareBox();
-        var demand = new MarkdownSvgDemandTicket(MarkdownSvgRenderPriority.Overscan);
+        var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         using var lifetime = new CancellationTokenSource();
         var attempt = new object();
         InitializeSourceDeferredOwner(owner, demand, attempt, admission, requiredBytes: 768);
@@ -537,7 +537,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
         var domain = new SvgHostAdmissionCoordinator.DomainState();
         var admission = new NeverReadyAdmission();
         var owner = BareBox();
-        var demand = new MarkdownSvgDemandTicket(MarkdownSvgRenderPriority.Overscan);
+        var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         using var lifetime = new CancellationTokenSource();
         var attempt = new object();
         InitializeSourceDeferredOwner(owner, demand, attempt, admission, requiredBytes: 768);
@@ -594,7 +594,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
         var domain = new SvgHostAdmissionCoordinator.DomainState();
         var admission = new ThresholdAdmission();
         var owner = BareBox();
-        var demand = new MarkdownSvgDemandTicket(MarkdownSvgRenderPriority.Overscan);
+        var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         using var lifetime = new CancellationTokenSource();
         var firstAttempt = new object();
         InitializeSourceDeferredOwner(owner, demand, firstAttempt, admission, requiredBytes: 128);
@@ -662,7 +662,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
         var domain = new SvgHostAdmissionCoordinator.DomainState();
         var admission = new ThresholdAdmission();
         var owner = BareBox();
-        var demand = new MarkdownSvgDemandTicket(MarkdownSvgRenderPriority.Overscan);
+        var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         using var lifetime = new CancellationTokenSource();
         var firstAttempt = new object();
         InitializeSourceDeferredOwner(owner, demand, firstAttempt, admission, requiredBytes: 128);
@@ -716,7 +716,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
         var domain = new SvgHostAdmissionCoordinator.DomainState();
         var admission = new RegistryAdmission();
         ImageBox owner = BareBox();
-        var demand = new MarkdownSvgDemandTicket(MarkdownSvgRenderPriority.Overscan);
+        var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         using var lifetime = new CancellationTokenSource();
         var attempt = new object();
         InitializeDeferredOwner(owner, demand, attempt);
@@ -766,7 +766,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
         var plans = new ImageBox.SvgTileRenderPlan[ownerCount];
         var documents = new PressureDocument[ownerCount];
         var ownerSlots = new SvgHostAdmissionCoordinator.OwnerSlot[ownerCount];
-        var ownerDemand = new MarkdownSvgDemandTicket[ownerCount];
+        var ownerDemand = new MarkdownSvgRenderDemand[ownerCount];
         using var lifetime = new CancellationTokenSource();
         var waiters = new List<SvgHostAdmissionCoordinator.PendingWaiter>(4);
         var knownEntries = new List<SvgHostAdmissionCoordinator.PendingEntry>(1);
@@ -776,7 +776,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
             for (int i = 0; i < ownerCount; i++)
             {
                 documents[i] = new PressureDocument();
-                ownerDemand[i] = new MarkdownSvgDemandTicket(MarkdownSvgRenderPriority.Overscan);
+                ownerDemand[i] = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
                 ownerSlots[i] = Assert.IsType<SvgHostAdmissionCoordinator.OwnerSlot>(
                     domain.TryReserveOwnerSlot(admission.AdmissionDomain, out _));
                 plans[i] = new ImageBox.SvgTileRenderPlan(
@@ -787,7 +787,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
             }
 
             var requester = BareBox();
-            var requestDemand = new MarkdownSvgDemandTicket(MarkdownSvgRenderPriority.Overscan);
+            var requestDemand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
             var attempts = new object[] { new(), new(), new(), new() };
             InitializeSourceDeferredOwner(requester, requestDemand, attempts[0], admission, requiredBytes: 100);
             SvgHostAdmissionCoordinator.PendingWaiter? firstCandidate =
@@ -896,7 +896,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
         var owners = new List<ImageBox>(eligibleOwnerCount);
         var plans = new List<ImageBox.SvgTileRenderPlan>(eligibleOwnerCount);
         var documents = new List<PressureDocument>(eligibleOwnerCount);
-        var demands = new List<MarkdownSvgDemandTicket>(eligibleOwnerCount);
+        var demands = new List<MarkdownSvgRenderDemand>(eligibleOwnerCount);
         try
         {
             for (int i = 0; i < existingReservationCount; i++)
@@ -911,7 +911,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
                     SvgHostAdmissionCoordinator.OwnerSlot>(domain.TryReserveOwnerSlot(identity, out _));
                 ownerSlots.Add(slot);
                 var document = new PressureDocument();
-                var demand = new MarkdownSvgDemandTicket(MarkdownSvgRenderPriority.Overscan);
+                var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
                 var plan = new ImageBox.SvgTileRenderPlan(
                     document, $"single-owner-slot-victim-{i}", 2048, 2048, i + 1,
                     demand, sourceReservationBytes: 100, ownerSlot: slot);
@@ -968,7 +968,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
         var domain = new SvgHostAdmissionCoordinator.DomainState();
         var admission = new WaitingAdmission();
         var boxes = new ImageBox[129];
-        var demands = new MarkdownSvgDemandTicket[129];
+        var demands = new MarkdownSvgRenderDemand[129];
         var attempts = new object[129];
         var handles = new SvgHostAdmissionCoordinator.PendingWaiter?[129];
         using var lifetime = new CancellationTokenSource();
@@ -977,7 +977,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
             for (int i = 0; i < boxes.Length; i++)
             {
                 boxes[i] = BareBox();
-                demands[i] = new MarkdownSvgDemandTicket(MarkdownSvgRenderPriority.Overscan);
+                demands[i] = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
                 attempts[i] = new object();
                 SetField(boxes[i], "_svgHostDeferredSync", new object());
                 SetField(boxes[i], "_svgLoadDemandTicket", demands[i]);
@@ -1027,7 +1027,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
             }
             Assert.All(weakOwners, weak => Assert.False(weak.IsAlive));
             ImageBox replacementOwner = BareBox();
-            var replacementDemand = new MarkdownSvgDemandTicket(MarkdownSvgRenderPriority.Overscan);
+            var replacementDemand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
             object attempt = new();
             InitializeDeferredOwner(replacementOwner, replacementDemand, attempt);
             using SvgHostAdmissionCoordinator.PendingWaiter replacement =
@@ -1054,7 +1054,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
         var domain = new SvgHostAdmissionCoordinator.DomainState();
         var admission = new WaitingAdmission();
         using var lifetime = new CancellationTokenSource();
-        var demand = new MarkdownSvgDemandTicket(MarkdownSvgRenderPriority.Visible,
+        var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Visible,
             () => throw new InvalidOperationException("Reject injected promotion scheduling."));
         WeakReference weak = CreateRejectedPendingOwner(domain, admission, demand, lifetime.Token);
         Assert.Empty(Field<ICollection>(domain, "_pending"));
@@ -1073,8 +1073,8 @@ public sealed class SvgHostAdmissionCoordinatorTests
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static WeakReference CreateRejectedPendingOwner(
-        SvgHostAdmissionCoordinator.DomainState domain, IMarkdownSvgHostAdmission admission,
-        MarkdownSvgDemandTicket demand, CancellationToken lifetime)
+        SvgHostAdmissionCoordinator.DomainState domain, IMarkdownSvgAdmission admission,
+        MarkdownSvgRenderDemand demand, CancellationToken lifetime)
     {
         ImageBox owner = BareBox();
         object attempt = new();
@@ -1087,7 +1087,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static (WeakReference[], SvgHostAdmissionCoordinator.PendingWaiter[]) CreateWeakPendingOwners(
         SvgHostAdmissionCoordinator.DomainState domain,
-        IMarkdownSvgHostAdmission admission,
+        IMarkdownSvgAdmission admission,
         CancellationToken lifetime)
     {
         var weakOwners = new WeakReference[128];
@@ -1097,7 +1097,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
         {
             ImageBox owner = BareBox();
             owners[i] = owner;
-            var demand = new MarkdownSvgDemandTicket(MarkdownSvgRenderPriority.Overscan);
+            var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
             object attempt = new();
             InitializeDeferredOwner(owner, demand, attempt);
             handles[i] = Assert.IsType<SvgHostAdmissionCoordinator.PendingWaiter>(
@@ -1112,7 +1112,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
         return (weakOwners, handles);
     }
 
-    private static void InitializeDeferredOwner(ImageBox owner, MarkdownSvgDemandTicket demand, object attempt)
+    private static void InitializeDeferredOwner(ImageBox owner, MarkdownSvgRenderDemand demand, object attempt)
     {
         SetField(owner, "_svgHostDeferredSync", new object());
         SetField(owner, "_svgLoadDemandTicket", demand);
@@ -1123,14 +1123,14 @@ public sealed class SvgHostAdmissionCoordinatorTests
 
     private static void InitializeSourceDeferredOwner(
         ImageBox owner,
-        MarkdownSvgDemandTicket demand,
+        MarkdownSvgRenderDemand demand,
         object attempt,
-        IMarkdownSvgHostAdmission admission,
+        IMarkdownSvgAdmission admission,
         long requiredBytes)
     {
         InitializeDeferredOwner(owner, demand, attempt);
         SetField(owner, "_svgHostDeferredDenialIdentity", attempt);
-        SetField(owner, "_svgHostDeferredAdmission", new WeakReference<IMarkdownSvgHostAdmission>(admission));
+        SetField(owner, "_svgHostDeferredAdmission", new WeakReference<IMarkdownSvgAdmission>(admission));
         SetField(owner, "_svgHostDeferredDemandVersion", demand.Version);
         SetField(owner, "_svgHostDeferredVisualDemandEpoch", 0L);
         SetField(owner, "_svgHostDeferredCapacityVersion", admission.CapacityVersion);
@@ -1143,8 +1143,8 @@ public sealed class SvgHostAdmissionCoordinatorTests
     private static SvgHostAdmissionCoordinator.PendingWaiter? DeferDuplicate(
         SvgHostAdmissionCoordinator.DomainState domain,
         ImageBox owner,
-        IMarkdownSvgHostAdmission admission,
-        MarkdownSvgDemandTicket demand,
+        IMarkdownSvgAdmission admission,
+        MarkdownSvgRenderDemand demand,
         object attempt,
         long requiredBytes,
         CancellationToken lifetime)
@@ -1246,7 +1246,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
                 typeof(ImageBox).GetNestedType("SvgTileWorkOwner", BindingFlags.NonPublic)!))
             ?? throw new Xunit.Sdk.XunitException("Could not create ImageBox SVG work-owner map."));
 
-    private sealed class ThresholdAdmission(long initialAvailableBytes = 0) : IMarkdownSvgHostAdmission
+    private sealed class ThresholdAdmission(long initialAvailableBytes = 0) : IMarkdownSvgAdmission
     {
         private readonly object _sync = new();
         private readonly List<(long RequiredBytes, MarkdownSvgRenderPriority Priority,
@@ -1297,14 +1297,14 @@ public sealed class SvgHostAdmissionCoordinatorTests
                 signal.TrySetResult();
         }
 
-        public ValueTask<MarkdownSvgHostOpenResult> OpenForHostAsync(
+        public ValueTask<MarkdownSvgAdmissionResult> TryOpenAsync(
             MarkdownSvgOpenRequest request,
-            MarkdownSvgDemandTicket demand,
+            MarkdownSvgRenderDemand demand,
             CancellationToken cancellationToken) =>
             throw new InvalidOperationException("Pure admission tests must not open a document.");
     }
 
-    private sealed class NeverReadyAdmission : IMarkdownSvgHostAdmission
+    private sealed class NeverReadyAdmission : IMarkdownSvgAdmission
     {
         private readonly TaskCompletionSource<Task> _waitStarted = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
@@ -1329,9 +1329,9 @@ public sealed class SvgHostAdmissionCoordinatorTests
             return wait;
         }
 
-        public ValueTask<MarkdownSvgHostOpenResult> OpenForHostAsync(
+        public ValueTask<MarkdownSvgAdmissionResult> TryOpenAsync(
             MarkdownSvgOpenRequest request,
-            MarkdownSvgDemandTicket demand,
+            MarkdownSvgRenderDemand demand,
             CancellationToken cancellationToken) =>
             throw new InvalidOperationException("The promotion test must not open source bytes.");
     }
@@ -1357,7 +1357,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
         bool collectPlan)
     {
         ImageBox owner = BareBox();
-        var demand = new MarkdownSvgDemandTicket(MarkdownSvgRenderPriority.Overscan);
+        var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         var plan = new ImageBox.SvgTileRenderPlan(new RegistryDocument(), "weak", 2048, 2048, 1);
         slot.Commit(owner, plan, demand, 64);
         return collectPlan ? (new WeakReference(plan), owner) : (new WeakReference(owner), plan);
@@ -1381,7 +1381,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
     private static void SetField(object owner, string name, object? value) =>
         owner.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(owner, value);
 
-    private sealed class RegistryAdmission : IMarkdownSvgHostAdmission
+    private sealed class RegistryAdmission : IMarkdownSvgAdmission
     {
         public object AdmissionDomain { get; } = new();
         public long CapacityVersion => 0;
@@ -1390,12 +1390,12 @@ public sealed class SvgHostAdmissionCoordinatorTests
             MarkdownSvgRenderPriority priority,
             CancellationToken cancellationToken) =>
             throw new InvalidOperationException("Pure identity tests must not start admission waiters.");
-        public ValueTask<MarkdownSvgHostOpenResult> OpenForHostAsync(
-            MarkdownSvgOpenRequest request, MarkdownSvgDemandTicket demand, CancellationToken cancellationToken) =>
+        public ValueTask<MarkdownSvgAdmissionResult> TryOpenAsync(
+            MarkdownSvgOpenRequest request, MarkdownSvgRenderDemand demand, CancellationToken cancellationToken) =>
             throw new InvalidOperationException("Pure identity tests must not open a document.");
     }
 
-    private sealed class WaitingAdmission : IMarkdownSvgHostAdmission
+    private sealed class WaitingAdmission : IMarkdownSvgAdmission
     {
         private readonly TaskCompletionSource _changed = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public object AdmissionDomain { get; } = new();
@@ -1405,8 +1405,8 @@ public sealed class SvgHostAdmissionCoordinatorTests
             MarkdownSvgRenderPriority priority,
             CancellationToken cancellationToken) =>
             _changed.Task.WaitAsync(cancellationToken);
-        public ValueTask<MarkdownSvgHostOpenResult> OpenForHostAsync(
-            MarkdownSvgOpenRequest request, MarkdownSvgDemandTicket demand, CancellationToken cancellationToken) =>
+        public ValueTask<MarkdownSvgAdmissionResult> TryOpenAsync(
+            MarkdownSvgOpenRequest request, MarkdownSvgRenderDemand demand, CancellationToken cancellationToken) =>
             throw new InvalidOperationException("Pure registry tests must not open a document.");
     }
 

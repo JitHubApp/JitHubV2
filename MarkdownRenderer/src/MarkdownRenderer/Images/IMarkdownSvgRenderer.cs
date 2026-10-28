@@ -61,18 +61,18 @@ public interface IMarkdownSvgRenderer
 /// <summary>Inert SVG bytes or a typed host-preflight rejection.</summary>
 public sealed class MarkdownSvgSourcePreparation
 {
-    private readonly PreparedMetadataHolder? _preparedMetadata;
+    private readonly MarkdownSvgSourceInfo? _sourceInfo;
 
     private MarkdownSvgSourcePreparation(
         byte[]? sanitizedBytes,
         MarkdownSvgFailureReason? failureReason,
         string? failureDescription,
-        PreparedMetadataHolder? preparedMetadata = null)
+        MarkdownSvgSourceInfo? sourceInfo = null)
     {
         SanitizedBytes = sanitizedBytes;
         FailureReason = failureReason;
         FailureDescription = failureDescription;
-        _preparedMetadata = preparedMetadata;
+        _sourceInfo = sourceInfo;
     }
 
     /// <summary>Gets the admitted static source, or null for a rejection.</summary>
@@ -91,16 +91,22 @@ public sealed class MarkdownSvgSourcePreparation
         return new MarkdownSvgSourcePreparation(sanitizedBytes, null, null);
     }
 
-    internal static MarkdownSvgSourcePreparation AdmitWithMetadata(
+    /// <summary>
+    /// Creates an admitted static source together with the information the
+    /// renderer read from it, so the view does not read the source again.
+    /// </summary>
+    /// <param name="sanitizedBytes">The admitted static source.</param>
+    /// <param name="sourceInfo">
+    /// Information read from exactly <paramref name="sanitizedBytes"/> with a
+    /// <see cref="MarkdownSvgSourceInfoReader"/>.
+    /// </param>
+    public static MarkdownSvgSourcePreparation Admit(
         byte[] sanitizedBytes,
-        SvgSourceMetadata metadata)
+        MarkdownSvgSourceInfo sourceInfo)
     {
         ArgumentNullException.ThrowIfNull(sanitizedBytes);
-        return new MarkdownSvgSourcePreparation(
-            sanitizedBytes,
-            null,
-            null,
-            new PreparedMetadataHolder(metadata));
+        ArgumentNullException.ThrowIfNull(sourceInfo);
+        return new MarkdownSvgSourcePreparation(sanitizedBytes, null, null, sourceInfo);
     }
 
     internal bool TryGetPreparedMetadata(
@@ -108,9 +114,9 @@ public sealed class MarkdownSvgSourcePreparation
         out SvgSourceMetadata metadata)
     {
         ArgumentNullException.ThrowIfNull(expectedSource);
-        if (ReferenceEquals(SanitizedBytes, expectedSource) && _preparedMetadata is { } holder)
+        if (ReferenceEquals(SanitizedBytes, expectedSource) && _sourceInfo is { } sourceInfo)
         {
-            metadata = holder.Metadata;
+            metadata = sourceInfo.Metadata;
             return true;
         }
 
@@ -128,11 +134,6 @@ public sealed class MarkdownSvgSourcePreparation
             throw new ArgumentOutOfRangeException(nameof(reason));
         ArgumentException.ThrowIfNullOrWhiteSpace(description);
         return new MarkdownSvgSourcePreparation(null, reason, description);
-    }
-
-    private sealed class PreparedMetadataHolder(SvgSourceMetadata metadata)
-    {
-        internal SvgSourceMetadata Metadata { get; } = metadata;
     }
 }
 

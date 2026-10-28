@@ -233,7 +233,7 @@ internal static class SvgPreflight
         , SvgProviderSnapshotLedger? ownershipLedger = null
 #endif
         , SvgProcessSnapshotAdmission.Lease? snapshotAdmission = null
-        , MarkdownSvgDemandTicket? demand = null
+        , MarkdownSvgRenderDemand? demand = null
         , Action? beforeFirstNormalizedSegmentAllocation = null
         )
     {
@@ -352,7 +352,7 @@ internal static class SvgPreflight
         , SvgProviderSnapshotLedger.Lease? ownership = null
 #endif
         , SvgProcessSnapshotAdmission.Lease? snapshotAdmission = null
-        , MarkdownSvgDemandTicket? demand = null
+        , MarkdownSvgRenderDemand? demand = null
         , MarkdownSvgRenderPriority sourcePriority = MarkdownSvgRenderPriority.Visible
         , Action? beforeFirstNormalizedSegmentAllocation = null
         )
@@ -380,7 +380,7 @@ internal static class SvgPreflight
         , SvgProviderSnapshotLedger.Lease? ownership = null
 #endif
         , SvgProcessSnapshotAdmission.Lease? snapshotAdmission = null
-        , MarkdownSvgDemandTicket? demand = null
+        , MarkdownSvgRenderDemand? demand = null
         , MarkdownSvgRenderPriority sourcePriority = MarkdownSvgRenderPriority.Visible
         , Action? beforeFirstNormalizedSegmentAllocation = null
         )

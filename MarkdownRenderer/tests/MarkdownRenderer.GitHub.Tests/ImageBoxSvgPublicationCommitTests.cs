@@ -998,7 +998,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
                 ownerType,
                 BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
                 binder: null,
-                args: [plan, cancellation, Field<MarkdownSvgDemandTicket>(plan, "Demand")],
+                args: [plan, cancellation, Field<MarkdownSvgRenderDemand>(plan, "Demand")],
                 culture: null)
             ?? throw new Xunit.Sdk.XunitException("Could not create SVG tile work owner.");
         SetField(owner, "State", 1);

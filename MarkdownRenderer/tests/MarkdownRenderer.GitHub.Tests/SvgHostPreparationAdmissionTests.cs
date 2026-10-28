@@ -326,7 +326,7 @@ public sealed class SvgHostPreparationAdmissionTests
             sourceOwner = renderer.CreateProviderSourceOwner(providerSourceWeight);
             openedDocument = new TrackingSvgDocument(sourceOwner);
             renderer.LastOpenedDocument = openedDocument;
-            return MarkdownSvgHostOpenResult.Opened(
+            return MarkdownSvgAdmissionResult.Opened(
                 openedDocument,
                 providerSourceWeight,
                 renderer.AdmissionDomain);
@@ -564,7 +564,7 @@ public sealed class SvgHostPreparationAdmissionTests
         ThrowsAfterLeaseCreation,
     }
 
-    private abstract class SvgTestRenderer : IMarkdownSvgRenderer, IMarkdownSvgHostAdmission
+    private abstract class SvgTestRenderer : IMarkdownSvgRenderer, IMarkdownSvgAdmission
     {
         private readonly TaskCompletionSource _capacityWaitStarted = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
@@ -578,7 +578,7 @@ public sealed class SvgHostPreparationAdmissionTests
         internal Func<byte[], CancellationToken, MarkdownSvgSourcePreparation>? Prepare { get; set; }
         internal long OpenRequiredBytes { get; set; } = 4_096;
         internal bool HoldOpenUntilReleased { get; set; }
-        internal Func<MarkdownSvgOpenRequest, CancellationToken, MarkdownSvgHostOpenResult>? OpenResultFactory { get; set; }
+        internal Func<MarkdownSvgOpenRequest, CancellationToken, MarkdownSvgAdmissionResult>? OpenResultFactory { get; set; }
         internal int PrepareSourceCount => Volatile.Read(ref _prepareSourceCount);
         internal int OpenCount => Volatile.Read(ref _openCount);
         internal long OpenSourceLength { get; private set; }
@@ -608,11 +608,11 @@ public sealed class SvgHostPreparationAdmissionTests
             MarkdownSvgOpenRequest request,
             CancellationToken cancellationToken = default) =>
             ValueTask.FromException<IMarkdownSvgDocument>(
-                new InvalidOperationException("Host-capable opens use OpenForHostAsync."));
+                new InvalidOperationException("Host-capable opens use TryOpenAsync."));
 
-        public ValueTask<MarkdownSvgHostOpenResult> OpenForHostAsync(
+        public ValueTask<MarkdownSvgAdmissionResult> TryOpenAsync(
             MarkdownSvgOpenRequest request,
-            MarkdownSvgDemandTicket demand,
+            MarkdownSvgRenderDemand demand,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -622,7 +622,7 @@ public sealed class SvgHostPreparationAdmissionTests
 
             if (OpenResultFactory is { } openResultFactory)
             {
-                MarkdownSvgHostOpenResult result = openResultFactory(request, cancellationToken);
+                MarkdownSvgAdmissionResult result = openResultFactory(request, cancellationToken);
                 _openStarted.TrySetResult();
                 return ValueTask.FromResult(result);
             }
@@ -630,7 +630,7 @@ public sealed class SvgHostPreparationAdmissionTests
             _openStarted.TrySetResult();
 
             if (HoldOpenUntilReleased)
-                return new ValueTask<MarkdownSvgHostOpenResult>(CompleteHeldOpenAsync(cancellationToken));
+                return new ValueTask<MarkdownSvgAdmissionResult>(CompleteHeldOpenAsync(cancellationToken));
 
             return ValueTask.FromResult(CreateCapacityDenial());
         }
@@ -649,21 +649,21 @@ public sealed class SvgHostPreparationAdmissionTests
 
         internal void ReleaseOpen() => _releaseOpen.TrySetResult();
 
-        private async Task<MarkdownSvgHostOpenResult> CompleteHeldOpenAsync(
+        private async Task<MarkdownSvgAdmissionResult> CompleteHeldOpenAsync(
             CancellationToken cancellationToken)
         {
             await _releaseOpen.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
             return CreateCapacityDenial();
         }
 
-        private MarkdownSvgHostOpenResult CreateCapacityDenial() =>
-            MarkdownSvgHostOpenResult.CapacityUnavailable(CapacityVersion, OpenRequiredBytes);
+        private MarkdownSvgAdmissionResult CreateCapacityDenial() =>
+            MarkdownSvgAdmissionResult.CapacityUnavailable(CapacityVersion, OpenRequiredBytes);
     }
 
     private sealed class LegacyHostRenderer : SvgTestRenderer { }
 
     private sealed class PreparationAdmissionRenderer : SvgTestRenderer,
-        IMarkdownSvgHostPreparationAdmission
+        IMarkdownSvgPreparationAdmission
     {
         private int _scratchReservationCount;
         private long _providerSourceWeight;
@@ -691,9 +691,9 @@ public sealed class SvgHostPreparationAdmissionTests
             return owner;
         }
 
-        public bool TryReserveHostPreparationScratch(
-            MarkdownSvgDemandTicket demand,
-            out IMarkdownSvgHostPreparationLease? lease,
+        public bool TryReservePreparationScratch(
+            MarkdownSvgRenderDemand demand,
+            out IMarkdownSvgPreparationLease? lease,
             out long observedCapacityVersion,
             out long requiredFreeBytes)
         {
@@ -732,7 +732,7 @@ public sealed class SvgHostPreparationAdmissionTests
         }
     }
 
-    private sealed class TrackingPreparationLease : IMarkdownSvgHostPreparationLease
+    private sealed class TrackingPreparationLease : IMarkdownSvgPreparationLease
     {
         private int _disposeCount;
         private int _setLengthCount;

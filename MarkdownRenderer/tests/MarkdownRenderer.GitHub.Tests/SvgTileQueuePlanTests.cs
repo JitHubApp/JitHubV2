@@ -216,7 +216,7 @@ public sealed class SvgTileQueuePlanTests
     public async Task NeverPaintedOverscanPlanCanReleaseItsProviderDocument(int maximumTier)
     {
         var document = new CountingDocument();
-        MarkdownSvgDemandTicket demand = new(MarkdownSvgRenderPriority.Overscan);
+        MarkdownSvgRenderDemand demand = new(MarkdownSvgRenderPriority.Overscan);
         SvgHostAdmissionCoordinator.DomainState domain = new();
         SvgHostAdmissionCoordinator.OwnerSlot ownerSlot = domain.TryReserveOwnerSlot(
             new object(),
@@ -251,7 +251,7 @@ public sealed class SvgTileQueuePlanTests
     public async Task OverscanPromotionWhileParkingWaitsForTileLockAbortsTheDetach()
     {
         var document = new CountingDocument();
-        MarkdownSvgDemandTicket demand = new(MarkdownSvgRenderPriority.Overscan);
+        MarkdownSvgRenderDemand demand = new(MarkdownSvgRenderPriority.Overscan);
         SvgHostAdmissionCoordinator.DomainState domain = new();
         SvgHostAdmissionCoordinator.OwnerSlot ownerSlot = domain.TryReserveOwnerSlot(
             new object(),
@@ -303,7 +303,7 @@ public sealed class SvgTileQueuePlanTests
     public void ViewportObservationReleasesOffscreenPlansAndPinsReentryUntilPaint(bool initiallyVisible)
     {
         var document = new CountingDocument();
-        MarkdownSvgDemandTicket demand = new(
+        MarkdownSvgRenderDemand demand = new(
             initiallyVisible ? MarkdownSvgRenderPriority.Visible : MarkdownSvgRenderPriority.Overscan);
         SvgHostAdmissionCoordinator.DomainState domain = new();
         SvgHostAdmissionCoordinator.OwnerSlot ownerSlot = domain.TryReserveOwnerSlot(
@@ -347,7 +347,7 @@ public sealed class SvgTileQueuePlanTests
     public void PaintPublishesOnlyChangedExactViewportRangesToTheParkingFence()
     {
         var document = new CountingDocument();
-        MarkdownSvgDemandTicket demand = new(MarkdownSvgRenderPriority.Overscan);
+        MarkdownSvgRenderDemand demand = new(MarkdownSvgRenderPriority.Overscan);
         SvgHostAdmissionCoordinator.DomainState domain = new();
         SvgHostAdmissionCoordinator.OwnerSlot ownerSlot = domain.TryReserveOwnerSlot(
             new object(),
@@ -418,7 +418,7 @@ public sealed class SvgTileQueuePlanTests
     public void ViewportMutationClaimWinsWhenParkingIsAttempted()
     {
         var document = new CountingDocument();
-        MarkdownSvgDemandTicket demand = new(MarkdownSvgRenderPriority.Overscan);
+        MarkdownSvgRenderDemand demand = new(MarkdownSvgRenderPriority.Overscan);
         SvgHostAdmissionCoordinator.DomainState domain = new();
         SvgHostAdmissionCoordinator.OwnerSlot ownerSlot = domain.TryReserveOwnerSlot(
             new object(),
@@ -457,7 +457,7 @@ public sealed class SvgTileQueuePlanTests
     public async Task ParkingClaimWinsAndRejectsAConcurrentViewportObservation()
     {
         var document = new CountingDocument();
-        MarkdownSvgDemandTicket demand = new(MarkdownSvgRenderPriority.Overscan);
+        MarkdownSvgRenderDemand demand = new(MarkdownSvgRenderPriority.Overscan);
         SvgHostAdmissionCoordinator.DomainState domain = new();
         SvgHostAdmissionCoordinator.OwnerSlot ownerSlot = domain.TryReserveOwnerSlot(
             new object(),
@@ -964,7 +964,7 @@ public sealed class SvgTileQueuePlanTests
         int fullWidthPixels,
         int fullHeightPixels,
         int renderGeneration,
-        MarkdownSvgDemandTicket? demand = null,
+        MarkdownSvgRenderDemand? demand = null,
         SvgHostAdmissionCoordinator.OwnerSlot? ownerSlot = null)
         => new(
             document,
@@ -1035,7 +1035,7 @@ public sealed class SvgTileQueuePlanTests
         SetField(box, "_svgCurrentViewportVisible", -1);
         SetField(box, "_svgTileRenderPlan", plan);
         SetField(box, "_svgDocument", PlanMember<IMarkdownSvgDocument>(plan, "Document"));
-        SetField(box, "_svgLoadDemandTicket", PlanMember<MarkdownSvgDemandTicket>(plan, "Demand"));
+        SetField(box, "_svgLoadDemandTicket", PlanMember<MarkdownSvgRenderDemand>(plan, "Demand"));
         SetField(box, "_svgRenderGeneration", PlanMember<int>(plan, "RenderGeneration"));
         SetField(box, "_svgUsesTiles", true);
         SetField(box, "_resourcesSuspended", false);
