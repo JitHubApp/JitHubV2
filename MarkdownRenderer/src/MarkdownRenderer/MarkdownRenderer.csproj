@@ -21,7 +21,6 @@
     <InternalsVisibleTo Include="MarkdownRenderer.Benchmarks" />
     <InternalsVisibleTo Include="MarkdownRenderer.PixelTests" ProjectStructureException="Test project whose name lacks the .Tests suffix; step 2 renames it to MarkdownRenderer.Pixel.Tests." />
     <InternalsVisibleTo Include="MarkdownRenderer.Svg.Resvg" ProjectStructureException="resvg plugs in through internal SVG host and raster budget contracts; step 2 makes them public extension API." />
-    <InternalsVisibleTo Include="MarkdownRenderer.SyntaxHighlighting.TextMate" ProjectStructureException="TextMate installs its highlighter through internal control and builder hooks; step 2 makes them public extension API." />
     <InternalsVisibleTo Include="MarkdownRenderer.Conformance" ProjectStructureException="The conformance tool calls internal spec-validation entry points on MarkdownEngine and MarkdownProfiles; step 2 gives it a deliberate seam." />
     <InternalsVisibleTo Include="MarkdownRenderer.PerformanceHarness" ProjectStructureException="The performance harness reads internal parse counters, pipeline timing snapshots and the performance sink; step 2 replaces them with EventSource or an injected observer." />
     <InternalsVisibleTo Include="MarkdownRenderer.Sample" ProjectStructureException="The sample reads internal control and theme snapshots for its diagnostics pages; step 2 exposes them through public diagnostics API." />

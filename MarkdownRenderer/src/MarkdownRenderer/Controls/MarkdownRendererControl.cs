@@ -66,8 +66,6 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     private MarkdownEngine? _ownedEngine;
     private bool _synchronizingCodeHighlighter;
     private LegacyCodeHighlighterAdapter? _legacyCodeHighlighterAdapter;
-    private ICodeHighlighter? _ownedCodeHighlighterService;
-    private IDisposable? _ownedCodeHighlighter;
     private Rect _externalViewport;
     private bool _hasExternalViewport;
 
@@ -1310,45 +1308,6 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
 
         if (previous is not null && !ReferenceEquals(previous, engine))
             RetireOwnedEngine(previous);
-    }
-
-    /// <summary>
-    /// Assigns a highlighter created specifically for this control. Direct
-    /// public highlighter assignments remain borrowed.
-    /// </summary>
-    internal void SetOwnedCodeHighlighter(ICodeHighlighter highlighter, IDisposable owner)
-    {
-        ArgumentNullException.ThrowIfNull(highlighter);
-        ArgumentNullException.ThrowIfNull(owner);
-
-        // Validate before changing the dependency property or ownership fields.
-        // A rejected transfer leaves both the active assignment and the passed
-        // owner untouched; ownership transfers only after successful assignment.
-        OwnedCodeHighlighterAssignment.ValidateTransfer(
-            _ownedCodeHighlighterService,
-            _ownedCodeHighlighter,
-            highlighter,
-            owner);
-
-        IDisposable? previousOwner = _ownedCodeHighlighter;
-        ICodeHighlighter? previousService = _ownedCodeHighlighterService;
-        _ownedCodeHighlighter = null;
-        _ownedCodeHighlighterService = null;
-        try
-        {
-            CodeHighlighter = highlighter;
-            _ownedCodeHighlighter = owner;
-            _ownedCodeHighlighterService = highlighter;
-        }
-        catch
-        {
-            _ownedCodeHighlighter = previousOwner;
-            _ownedCodeHighlighterService = previousService;
-            throw;
-        }
-
-        if (previousOwner is not null && !ReferenceEquals(previousOwner, owner))
-            RetireOwnedCodeHighlighter(previousOwner, _codeBlockHighlightRetirement);
     }
 
     /// <summary>Dependency property backing <see cref="StyleSheet"/>.</summary>
@@ -3453,18 +3412,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         if (ReferenceEquals(previous, current))
             return;
 
-        IDisposable? replacedOwner = null;
-        if (_ownedCodeHighlighterService is not null &&
-            ReferenceEquals(previous, _ownedCodeHighlighterService))
-        {
-            replacedOwner = _ownedCodeHighlighter;
-            _ownedCodeHighlighter = null;
-            _ownedCodeHighlighterService = null;
-        }
-
-        Task retirement = RetireCodeBlockHighlighting(restart: !_isUnloaded && !_isDisposed);
-        if (replacedOwner is not null)
-            RetireOwnedCodeHighlighter(replacedOwner, retirement);
+        RetireCodeBlockHighlighting(restart: !_isUnloaded && !_isDisposed);
         ClearCodeBlockHighlightCache();
         RequestRebuild(RebuildReason.Full);
     }
@@ -4100,11 +4048,6 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         _ownedEngine = null;
         if (ownedEngine is not null)
             RetireOwnedEngine(ownedEngine);
-        IDisposable? ownedHighlighter = _ownedCodeHighlighter;
-        _ownedCodeHighlighter = null;
-        _ownedCodeHighlighterService = null;
-        if (ownedHighlighter is not null)
-            RetireOwnedCodeHighlighter(ownedHighlighter, _codeBlockHighlightRetirement);
         try { DisposalCompleted?.Invoke(this, EventArgs.Empty); }
         catch (Exception ex)
         {
@@ -6002,17 +5945,6 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         Task retirement = RetireCancellationTokenSource(old, workLifetime);
         _codeBlockHighlightRetirement = retirement;
         return retirement;
-    }
-
-    private void RetireOwnedCodeHighlighter(IDisposable owner, Task lifetime)
-    {
-        Task retirement = OwnedResourceRetirement.DisposeAfter(
-            owner,
-            lifetime,
-            static exception => MarkdownDiagnostics.WriteLine(
-                $"[MarkdownRendererControl] Code highlighter retirement failed: " +
-                $"{exception.GetType().Name} (0x{exception.HResult:X8})."));
-        _snapshotRetirements.Track(retirement);
     }
 
     private void ScheduleVisibleCodeBlockHighlighting()

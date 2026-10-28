@@ -41,7 +41,6 @@ public sealed class MarkdownRendererControlBuilder
 #pragma warning disable CS0618 // Stored solely for the source-compatible builder alias.
     private ICodeBlockSyntaxHighlighter? _codeHighlighter;
 #pragma warning restore CS0618
-    private Func<ICodeHighlighter>? _ownedCodeHighlighterFactory;
     private CodeBlockLineNumberMode _codeBlockLineNumberMode = CodeBlockLineNumberMode.AutoMultiline;
     private CodeBlockWrappingMode _codeBlockWrappingMode = CodeBlockWrappingMode.NoWrap;
     private CodeBlockChromeMode _codeBlockChromeMode = CodeBlockChromeMode.Enhanced;
@@ -255,7 +254,6 @@ public sealed class MarkdownRendererControlBuilder
     public MarkdownRendererControlBuilder WithCodeBlockSyntaxHighlighter(ICodeBlockSyntaxHighlighter? highlighter)
     {
         _codeHighlighter = highlighter;
-        _ownedCodeHighlighterFactory = null;
         return this;
     }
 
@@ -312,19 +310,6 @@ public sealed class MarkdownRendererControlBuilder
     public MarkdownRendererControlBuilder WithCodeHighlighter(ICodeHighlighter? highlighter)
     {
         _codeHighlighter = highlighter;
-        _ownedCodeHighlighterFactory = null;
-        return this;
-    }
-
-    /// <summary>
-    /// Configures a fresh highlighter owned by each control produced from this
-    /// reusable builder. Used only by source-compatible optional-pack helpers.
-    /// </summary>
-    internal MarkdownRendererControlBuilder WithOwnedCodeHighlighterFactory(
-        Func<ICodeHighlighter> create)
-    {
-        _ownedCodeHighlighterFactory = create ?? throw new ArgumentNullException(nameof(create));
-        _codeHighlighter = null;
         return this;
     }
 
@@ -363,7 +348,6 @@ public sealed class MarkdownRendererControlBuilder
     private T Configure<T>(T control) where T : MarkdownRendererControl
     {
         MarkdownEngine? unassignedDerivedEngine = null;
-        IDisposable? unassignedHighlighterOwner = null;
         try
         {
             if (_derivedEngineBuilder is not null)
@@ -402,17 +386,7 @@ public sealed class MarkdownRendererControlBuilder
             control.CodeBlockCopyButtonLabel = _codeBlockCopyButtonLabel;
             control.CodeBlockCopiedButtonLabel = _codeBlockCopiedButtonLabel;
             control.IsCodeBlockSyntaxHighlightingEnabled = _isCodeBlockSyntaxHighlightingEnabled;
-            if (_ownedCodeHighlighterFactory is not null)
-            {
-                ICodeHighlighter ownedHighlighter = _ownedCodeHighlighterFactory() ??
-                    throw new InvalidOperationException("The code-highlighter factory returned null.");
-                unassignedHighlighterOwner = ownedHighlighter as IDisposable ??
-                    throw new InvalidOperationException("An owned code-highlighter factory must return an IDisposable service.");
-                IDisposable highlighterOwner = unassignedHighlighterOwner;
-                control.SetOwnedCodeHighlighter(ownedHighlighter, highlighterOwner);
-                unassignedHighlighterOwner = null;
-            }
-            else if (_codeHighlighter is ICodeHighlighter highlighter)
+            if (_codeHighlighter is ICodeHighlighter highlighter)
                 control.CodeHighlighter = highlighter;
             else
 #pragma warning disable CS0618 // Assign the compatibility alias only for legacy providers.
@@ -426,7 +400,6 @@ public sealed class MarkdownRendererControlBuilder
         catch
         {
             unassignedDerivedEngine?.Dispose();
-            unassignedHighlighterOwner?.Dispose();
             control.Dispose();
             throw;
         }

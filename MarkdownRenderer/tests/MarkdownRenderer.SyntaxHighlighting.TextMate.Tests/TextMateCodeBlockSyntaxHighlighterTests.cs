@@ -1,5 +1,6 @@
 using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.SyntaxHighlighting.TextMate;
+using MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common;
 using Xunit;
 
 namespace MarkdownRenderer.SyntaxHighlighting.TextMate.Tests;
@@ -111,7 +112,7 @@ public sealed class TextMateCodeBlockSyntaxHighlighterTests
     }
 
     private static TextMateCodeBlockSyntaxHighlighter CreateHighlighter() => new(
-        TextMateGrammarProviderFactory.CreateDefault(),
+        new CommonTextMateGrammarProvider(),
         options: null,
         ownsProvider: true);
 }

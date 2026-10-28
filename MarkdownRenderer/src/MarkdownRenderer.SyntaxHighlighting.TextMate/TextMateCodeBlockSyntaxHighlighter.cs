@@ -26,23 +26,6 @@ public sealed class TextMateCodeBlockSyntaxHighlighter : ICodeHighlighter, IDisp
     private bool _disposed;
     private bool _providerDisposed;
 
-    /// <summary>
-    /// Creates a highlighter by discovering an installed grammar pack. The
-    /// discovered provider is owned by this highlighter and is disposed when
-    /// the highlighter is disposed. Explicit provider construction is required
-    /// for trimming and NativeAOT.
-    /// </summary>
-    [Obsolete(
-        "Construct a grammar provider explicitly, then pass it to TextMateCodeBlockSyntaxHighlighter. " +
-        "This compatibility constructor owns the discovered provider; dispose the highlighter.")]
-    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode(
-        "Default TextMate grammar discovery loads optional provider types by name. " +
-        "Trimmed and NativeAOT applications must construct and pass an explicit provider.")]
-    public TextMateCodeBlockSyntaxHighlighter()
-        : this(TextMateGrammarProviderFactory.CreateDefault(), options: null, ownsProvider: true)
-    {
-    }
-
     /// <summary>Creates a highlighter backed by <paramref name="provider"/>.</summary>
     public TextMateCodeBlockSyntaxHighlighter(ITextMateGrammarProvider provider)
         : this(provider, options: null, ownsProvider: false)
