@@ -412,6 +412,8 @@ public sealed class MarkdownDocument
         if (extensions.BlockSyntaxKinds.Count == 0 && extensions.InlineSyntaxKinds.Count == 0)
             return ExtensionContentSnapshot.Empty;
 
+        MarkdownExtensionSet? deferredSceneMarkers = deferOffscreenScenes ? extensions : null;
+
         var blocks = new Dictionary<SourceSpan, List<MarkdownContentFragment>>();
         var inlines = new Dictionary<SourceSpan, List<MarkdownContentFragment>>();
         var blockNodes = new Dictionary<Block, MarkdownContentFragment>(ReferenceEqualityComparer.Instance);
@@ -448,7 +450,7 @@ public sealed class MarkdownDocument
                                 node,
                                 cancellationToken,
                                 extensionDiagnostics.Add,
-                                deferOffscreenScenes),
+                                deferredSceneMarkers),
                             content)
                         .ConfigureAwait(false);
                     cancellationToken.ThrowIfCancellationRequested();
@@ -486,7 +488,7 @@ public sealed class MarkdownDocument
                                 node,
                                 cancellationToken,
                                 extensionDiagnostics.Add,
-                                deferOffscreenScenes),
+                                deferredSceneMarkers),
                             content)
                         .ConfigureAwait(false);
                     cancellationToken.ThrowIfCancellationRequested();

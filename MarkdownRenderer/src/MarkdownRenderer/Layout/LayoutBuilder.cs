@@ -27,7 +27,6 @@ namespace MarkdownRenderer.Layout;
 internal sealed class LayoutBuilder
 {
     private const string ListContainerStyleRole = MarkdownElementKeys.List;
-    private const string DeferredSceneMarkerAttribute = "renderer.internal.deferred-scene";
 
     private const int MaxMonolithicTextLayoutLength = 32_768;
     private const int MaxCodeBlockLinesPerChunk = 128;
@@ -833,7 +832,7 @@ internal sealed class LayoutBuilder
 
         if (content.Kind == MarkdownContentKind.CodeBlock)
         {
-            if (content.Attributes.TryGetValue("renderer.internal.deferred-scene", out string? deferredSceneMarker) &&
+            if (content.Attributes.TryGetValue(MarkdownContentAttributes.DeferredScene, out string? deferredSceneMarker) &&
                 !string.IsNullOrWhiteSpace(deferredSceneMarker) &&
                 _context.PerformanceSession is IMarkdownPerformanceSessionInternal session &&
                 _context.PerformanceDocumentOwner is { } documentOwner &&
@@ -1128,7 +1127,7 @@ internal sealed class LayoutBuilder
     private void AppendDeclarativeInline(MarkdownContent content, List<InlineRun> destination)
     {
         if (content.Kind == MarkdownContentKind.VectorScene &&
-            content.Attributes.TryGetValue(DeferredSceneMarkerAttribute, out string? marker) &&
+            content.Attributes.TryGetValue(MarkdownContentAttributes.DeferredScene, out string? marker) &&
             !string.IsNullOrWhiteSpace(marker) &&
             _context.PerformanceSession is IMarkdownPerformanceSessionInternal session &&
             _context.PerformanceDocumentOwner is { } documentOwner &&
@@ -1160,7 +1159,7 @@ internal sealed class LayoutBuilder
                         content.AccessibilityRole == MarkdownAccessibilityRole.Math
                             ? MarkdownElementKeys.Math
                             : MarkdownElementKeys.Diagram);
-                    string? deferredMarker = GetAttribute(content, DeferredSceneMarkerAttribute);
+                    string? deferredMarker = GetAttribute(content, MarkdownContentAttributes.DeferredScene);
                     var run = new InlineVectorSceneRun(
                         _context,
                         content.VectorScene,

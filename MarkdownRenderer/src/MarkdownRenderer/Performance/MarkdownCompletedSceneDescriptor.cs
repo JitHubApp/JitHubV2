@@ -115,7 +115,7 @@ internal sealed class MarkdownCompletedSceneDescriptor
             metadataWeight,
             sourceItems.Count == 1 && sourceItems[0].Kind == MarkdownContentKind.VectorScene &&
                 sourceItems[0].VectorScene is not null && sourceItems[0].Children.Count == 0 &&
-                !sourceItems[0].Attributes.ContainsKey(MarkdownProgressiveScenePlan.DeferredSceneMarkerAttribute)
+                !sourceItems[0].Attributes.ContainsKey(MarkdownContentAttributes.DeferredScene)
                 ? MarkdownSceneProjectionSignature.Create(sourceItems[0], cancellationToken)
                 : null);
     }

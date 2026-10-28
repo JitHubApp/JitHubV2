@@ -37,7 +37,6 @@ internal sealed partial class MarkdownProgressiveScenePlan : IDisposable
     // attribute to mark a readable fallback. The marker value is
     // "<exact syntax kind>|<document-unique token>". It is metadata only; the
     // source text and source span remain the fallback and diagnostic authority.
-    internal const string DeferredSceneMarkerAttribute = "renderer.internal.deferred-scene";
 
     private const char MarkerSeparator = '|';
     private static readonly IComparer<MarkdownDiagnostic> DiagnosticComparer =
@@ -133,7 +132,7 @@ internal sealed partial class MarkdownProgressiveScenePlan : IDisposable
             MarkdownSyntaxNode? node = null;
             Collect(entry.Value.Items, content =>
             {
-                if (!content.Attributes.TryGetValue(DeferredSceneMarkerAttribute, out string? marker) ||
+                if (!content.Attributes.TryGetValue(MarkdownContentAttributes.DeferredScene, out string? marker) ||
                     marker is null ||
                     !TryReadMarker(marker, syntaxKind, out _) ||
                     entry.Value.DeferredSceneRenderer is not { } renderer)
@@ -171,7 +170,7 @@ internal sealed partial class MarkdownProgressiveScenePlan : IDisposable
             MarkdownSyntaxNode? node = null;
             Collect(entry.Value.Items, content =>
             {
-                if (!content.Attributes.TryGetValue(DeferredSceneMarkerAttribute, out string? marker) ||
+                if (!content.Attributes.TryGetValue(MarkdownContentAttributes.DeferredScene, out string? marker) ||
                     marker is null ||
                     !TryReadMarker(marker, syntaxKind, out _) ||
                     entry.Value.DeferredSceneRenderer is not { } renderer)
@@ -1397,7 +1396,7 @@ internal sealed partial class MarkdownProgressiveScenePlan : IDisposable
     {
         foreach (MarkdownContent item in content)
         {
-            if (item.Attributes.ContainsKey(DeferredSceneMarkerAttribute))
+            if (item.Attributes.ContainsKey(MarkdownContentAttributes.DeferredScene))
             {
                 onCandidate(item);
             }

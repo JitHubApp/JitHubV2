@@ -28,6 +28,7 @@ const MarkdownRenderer.Controls.MarkdownRendererControl.EmbedVirtualizationOvers
 const MarkdownRenderer.Controls.MarkdownRendererControl.LazyImageOverscanPx = 800 -> double
 const MarkdownRenderer.Extensions.MarkdownContentAttributes.CodeShowLineNumbers = "code.lineNumbers" -> string!
 const MarkdownRenderer.Extensions.MarkdownContentAttributes.CodeStartLine = "code.startLine" -> string!
+const MarkdownRenderer.Extensions.MarkdownContentAttributes.DeferredScene = "content.deferredScene" -> string!
 const MarkdownRenderer.Extensions.MarkdownContentAttributes.ImageHeight = "image.height" -> string!
 const MarkdownRenderer.Extensions.MarkdownContentAttributes.ImageWidth = "image.width" -> string!
 const MarkdownRenderer.Extensions.MarkdownContentAttributes.ListOrdered = "list.ordered" -> string!
@@ -651,6 +652,8 @@ MarkdownRenderer.Extensions.MarkdownExtensionBuilder.RegisterInline(string! synt
 MarkdownRenderer.Extensions.MarkdownExtensionBuilder.RegisterInlineAsync(string! syntaxKind, MarkdownRenderer.Extensions.MarkdownAsyncNodeRenderer! renderer) -> MarkdownRenderer.Extensions.MarkdownExtensionBuilder!
 MarkdownRenderer.Extensions.MarkdownExtensionContext
 MarkdownRenderer.Extensions.MarkdownExtensionContext.CancellationToken.get -> System.Threading.CancellationToken
+MarkdownRenderer.Extensions.MarkdownExtensionContext.CanDeferOffscreenScenes.get -> bool
+MarkdownRenderer.Extensions.MarkdownExtensionContext.CreateDeferredSceneMarker() -> string!
 MarkdownRenderer.Extensions.MarkdownExtensionContext.MarkdownExtensionContext(MarkdownRenderer.Extensions.MarkdownSyntaxNode! node, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> void
 MarkdownRenderer.Extensions.MarkdownExtensionContext.Node.get -> MarkdownRenderer.Extensions.MarkdownSyntaxNode!
 MarkdownRenderer.Extensions.MarkdownExtensionContext.ReportDiagnostic(string! code, MarkdownRenderer.Document.MarkdownDiagnosticSeverity severity, string! message, MarkdownRenderer.SourceSpan sourceSpan) -> void

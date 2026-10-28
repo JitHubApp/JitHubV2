@@ -24,7 +24,7 @@ namespace MarkdownRenderer.GitHub.Tests;
 
 public sealed class ProgressiveSceneGraphRefillTests
 {
-    private const string MarkerAttribute = "renderer.internal.deferred-scene";
+    private const string MarkerAttribute = MarkdownContentAttributes.DeferredScene;
 
     [Fact]
     public async Task SingleBlockGraphRefillsFromRetainedCacheWithoutChangingLayoutOrProjections()
@@ -601,7 +601,7 @@ public sealed class ProgressiveSceneGraphRefillTests
 
         private async ValueTask RenderAsync(MarkdownExtensionContext context, MarkdownContentBuilder content)
         {
-            if (context.ShouldDeferOffscreenScenes)
+            if (context.CanDeferOffscreenScenes)
             {
                 content.AddCodeBlock(
                     context.Node.Literal ?? string.Empty,

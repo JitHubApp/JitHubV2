@@ -20,8 +20,6 @@
     <InternalsVisibleTo Include="MarkdownRenderer.Tests" />
     <InternalsVisibleTo Include="MarkdownRenderer.Benchmarks" />
     <InternalsVisibleTo Include="MarkdownRenderer.PixelTests" ProjectStructureException="Test project whose name lacks the .Tests suffix; step 2 renames it to MarkdownRenderer.Pixel.Tests." />
-    <InternalsVisibleTo Include="MarkdownRenderer.Math" ProjectStructureException="Math reads the internal MarkdownExtensionContext.ShouldDeferOffscreenScenes; step 2 makes it public extension API." />
-    <InternalsVisibleTo Include="MarkdownRenderer.Mermaid" ProjectStructureException="Mermaid reads the internal MarkdownExtensionContext.ShouldDeferOffscreenScenes; step 2 makes it public extension API." />
     <InternalsVisibleTo Include="MarkdownRenderer.Svg.Resvg" ProjectStructureException="resvg plugs in through internal SVG host and raster budget contracts; step 2 makes them public extension API." />
     <InternalsVisibleTo Include="MarkdownRenderer.SyntaxHighlighting.TextMate" ProjectStructureException="TextMate installs its highlighter through internal control and builder hooks; step 2 makes them public extension API." />
     <InternalsVisibleTo Include="MarkdownRenderer.Conformance" ProjectStructureException="The conformance tool calls internal spec-validation entry points on MarkdownEngine and MarkdownProfiles; step 2 gives it a deliberate seam." />

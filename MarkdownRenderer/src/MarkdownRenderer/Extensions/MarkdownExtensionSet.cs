@@ -19,6 +19,7 @@ public sealed class MarkdownExtensionSet
     private readonly IReadOnlyDictionary<string, MarkdownNodeRenderer> _synchronousBlockRenderers;
     private readonly IReadOnlyDictionary<string, MarkdownNodeRenderer> _synchronousInlineRenderers;
     private readonly MarkdownExtensionSet? _reusableTemplate;
+    private long _deferredSceneMarkerCount;
 
     internal MarkdownExtensionSet(
         IEnumerable<string> extensionIds,
@@ -69,6 +70,18 @@ public sealed class MarkdownExtensionSet
     internal MarkdownExtensionSet ReusableTemplate => _reusableTemplate ?? this;
 
     internal IReadOnlyList<MarkdownOwnedExtensionFactory> OwnedExtensionFactories { get; }
+
+    /// <summary>
+    /// Creates a deferred-scene marker that is unique across every document
+    /// this engine-local set renders. The progressive scene plan reads the
+    /// syntax kind back from the prefix.
+    /// </summary>
+    internal string CreateDeferredSceneMarker(string syntaxKind)
+        => string.Concat(
+            syntaxKind,
+            "|",
+            System.Threading.Interlocked.Increment(ref _deferredSceneMarkerCount)
+                .ToString(System.Globalization.CultureInfo.InvariantCulture));
 
     internal IReadOnlyList<MarkdownExtensionRegistration> Registrations { get; }
 

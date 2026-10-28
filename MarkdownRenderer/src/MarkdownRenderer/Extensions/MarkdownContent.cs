@@ -75,6 +75,15 @@ public static class MarkdownContentAttributes
 
     /// <summary>Optional one-based first line number for code blocks.</summary>
     public const string CodeStartLine = "code.startLine";
+
+    /// <summary>
+    /// Marks a cheap placeholder that the host replaces with the renderer's
+    /// full output before it becomes visible. Set it only while
+    /// <see cref="MarkdownExtensionContext.CanDeferOffscreenScenes"/> is
+    /// <see langword="true"/>, on content that spans the whole syntax node,
+    /// with a value from <see cref="MarkdownExtensionContext.CreateDeferredSceneMarker"/>.
+    /// </summary>
+    public const string DeferredScene = "content.deferredScene";
 }
 
 /// <summary>Accessibility semantics carried by declarative extension content.</summary>
@@ -540,7 +549,7 @@ public sealed class MarkdownContentBuilder
             MarkdownContentKind.TableCell;
 
     private static bool HasDeferredSceneMarker(IReadOnlyDictionary<string, string> attributes)
-        => attributes.TryGetValue("renderer.internal.deferred-scene", out string? marker) &&
+        => attributes.TryGetValue(MarkdownContentAttributes.DeferredScene, out string? marker) &&
             !string.IsNullOrWhiteSpace(marker);
 
     private static MarkdownStyleRole NormalizeRole(

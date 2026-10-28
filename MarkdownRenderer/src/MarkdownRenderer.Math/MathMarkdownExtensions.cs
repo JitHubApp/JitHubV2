@@ -31,12 +31,10 @@ public static class MathMarkdownExtensions
 
     private sealed class MathMarkdownExtension : IMarkdownExtension
     {
-        private const string DeferredSceneMarkerAttribute = "renderer.internal.deferred-scene";
         private readonly MathProcessingOptions _options;
         private readonly MathFormulaProcessor _processor;
         private readonly IMathStringProvider? _strings;
         private readonly string _languageTag;
-        private long _nextDeferredSceneToken;
 
         internal MathMarkdownExtension(
             MathProcessingOptions options,
@@ -65,14 +63,11 @@ public static class MathMarkdownExtensions
         private ValueTask RenderInlineAsync(MarkdownExtensionContext context, MarkdownContentBuilder content)
         {
             string original = context.Node.Literal ?? string.Empty;
-            if (context.ShouldDeferOffscreenScenes &&
+            if (context.CanDeferOffscreenScenes &&
                 TryReadContentRange(context.Node, original.Length, out int contentOffset, out int contentLength))
             {
                 string tex = original.Substring(contentOffset, contentLength);
-                string marker = string.Concat(
-                    MarkdownSyntaxKinds.Inline.Math,
-                    "|",
-                    Interlocked.Increment(ref _nextDeferredSceneToken).ToString(CultureInfo.InvariantCulture));
+                string marker = context.CreateDeferredSceneMarker();
                 content.AddVectorScene(
                     CreateDeferredInlineScene(tex),
                     context.Node.SourceSpan,
@@ -83,7 +78,7 @@ public static class MathMarkdownExtensions
                     semanticText: tex,
                     attributes: new Dictionary<string, string>(StringComparer.Ordinal)
                     {
-                        [DeferredSceneMarkerAttribute] = marker,
+                        [MarkdownContentAttributes.DeferredScene] = marker,
                     });
                 return ValueTask.CompletedTask;
             }
@@ -146,15 +141,12 @@ public static class MathMarkdownExtensions
         private ValueTask RenderBlockAsync(MarkdownExtensionContext context, MarkdownContentBuilder content)
         {
             string original = context.Node.Literal ?? string.Empty;
-            if (context.ShouldDeferOffscreenScenes &&
+            if (context.CanDeferOffscreenScenes &&
                 TryReadContentRange(context.Node, original.Length, out _, out _) &&
                 (!context.Node.Attributes.TryGetValue("closed", out string? closed) ||
                  string.Equals(closed, "true", StringComparison.Ordinal)))
             {
-                string marker = string.Concat(
-                    MarkdownSyntaxKinds.Block.Math,
-                    "|",
-                    Interlocked.Increment(ref _nextDeferredSceneToken).ToString(CultureInfo.InvariantCulture));
+                string marker = context.CreateDeferredSceneMarker();
                 content.AddCodeBlock(
                     original,
                     "tex",
@@ -162,7 +154,7 @@ public static class MathMarkdownExtensions
                     MarkdownStyleRole.CodeBlock,
                     new Dictionary<string, string>(StringComparer.Ordinal)
                     {
-                        [DeferredSceneMarkerAttribute] = marker,
+                        [MarkdownContentAttributes.DeferredScene] = marker,
                     });
                 return ValueTask.CompletedTask;
             }

@@ -92,7 +92,7 @@ public sealed class MarkdownSyntaxNode
 public sealed class MarkdownExtensionContext
 {
     private readonly Action<MarkdownDiagnostic>? _reportDiagnostic;
-    private readonly bool _deferOffscreenScenes;
+    private readonly MarkdownExtensionSet? _deferredSceneMarkers;
     private int _diagnosticCount;
 
     /// <summary>Initializes a renderer context.</summary>
@@ -105,12 +105,12 @@ public sealed class MarkdownExtensionContext
         MarkdownSyntaxNode node,
         CancellationToken cancellationToken,
         Action<MarkdownDiagnostic>? reportDiagnostic,
-        bool deferOffscreenScenes = false)
+        MarkdownExtensionSet? deferredSceneMarkers = null)
     {
         Node = node ?? throw new ArgumentNullException(nameof(node));
         CancellationToken = cancellationToken;
         _reportDiagnostic = reportDiagnostic;
-        _deferOffscreenScenes = deferOffscreenScenes;
+        _deferredSceneMarkers = deferredSceneMarkers;
     }
 
     /// <summary>Gets the parser-independent syntax node.</summary>
@@ -120,8 +120,27 @@ public sealed class MarkdownExtensionContext
 
     internal int DiagnosticCount => _diagnosticCount;
 
-    /// <summary>True only for the renderer control's opt-in progressive parse path.</summary>
-    internal bool ShouldDeferOffscreenScenes => _deferOffscreenScenes;
+    /// <summary>
+    /// Gets whether the host presents this document progressively. When
+    /// <see langword="true"/>, an expensive renderer may add a cheap
+    /// placeholder marked with <see cref="MarkdownContentAttributes.DeferredScene"/>
+    /// instead of its full output. Before the placeholder becomes visible, the
+    /// host calls the renderer again for the same node, with this property
+    /// <see langword="false"/>, and shows that result instead.
+    /// </summary>
+    public bool CanDeferOffscreenScenes => _deferredSceneMarkers is not null;
+
+    /// <summary>
+    /// Creates the value for <see cref="MarkdownContentAttributes.DeferredScene"/>
+    /// on this node's placeholder. Every call returns a new value.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// <see cref="CanDeferOffscreenScenes"/> is <see langword="false"/>.
+    /// </exception>
+    public string CreateDeferredSceneMarker()
+        => _deferredSceneMarkers?.CreateDeferredSceneMarker(Node.Kind) ??
+            throw new InvalidOperationException(
+                "This render pass cannot defer scenes; add the node's full content instead.");
 
     /// <summary>
     /// Reports a localized diagnostic for this node. Diagnostics are captured
