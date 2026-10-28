@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Hosting;
+using MarkdownRenderer.Theming;
 using Windows.UI;
 
 namespace MarkdownRenderer.SyntaxHighlighting.TextMate;
@@ -77,7 +78,7 @@ public sealed class TextMateCodeBlockSyntaxHighlighter : ICodeHighlighter, IDisp
         if (cancellationToken.IsCancellationRequested)
             return null;
 
-        if (request.ThemeVariant == CodeBlockThemeVariant.HighContrast)
+        if (request.ThemeVariant == MarkdownThemeVariant.HighContrast)
             return CodeBlockHighlightResult.Empty;
 
         var languageId = NormalizeLanguageId(request.Language);
@@ -89,7 +90,7 @@ public sealed class TextMateCodeBlockSyntaxHighlighter : ICodeHighlighter, IDisp
         var providerRequest = new TextMateGrammarHighlightRequest(
             languageId,
             request.Code,
-            request.ThemeVariant == CodeBlockThemeVariant.Light
+            request.ThemeVariant == MarkdownThemeVariant.Light
                 ? TextMateGrammarThemeVariant.Light
                 : TextMateGrammarThemeVariant.Dark);
 

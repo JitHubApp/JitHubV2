@@ -2096,6 +2096,38 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     /// <summary>Raised when the current Markdown document cannot be rendered.</summary>
     public event EventHandler<MarkdownRenderFailedEventArgs>? RenderFailed;
 
+    /// <summary>
+    /// Gets the size, in device-independent pixels, of the laid-out document
+    /// the control displays, or null when it displays none.
+    /// </summary>
+    /// <remarks>
+    /// The value describes the layout on screen: after the available width
+    /// changes it keeps the previous size until the new layout is displayed,
+    /// and its height can change while parts of a long document are still
+    /// being laid out. It is current when <see cref="RenderCompleted"/> is
+    /// raised.
+    /// </remarks>
+    public Size? RenderedContentSize => _snapshot?.Size;
+
+    /// <summary>
+    /// Gets the theme the displayed document was rendered for, or null when
+    /// the control displays none.
+    /// </summary>
+    /// <remarks>
+    /// It is <see cref="MarkdownThemeVariant.HighContrast"/> when a Windows
+    /// contrast theme is on or the theme's
+    /// <see cref="MarkdownTheme.ForcedContrastColors"/> are set, and otherwise
+    /// follows the control's actual light or dark theme. Like
+    /// <see cref="RenderedContentSize"/>, it changes when a new rendering is
+    /// displayed, not when the setting changes.
+    /// </remarks>
+    public MarkdownThemeVariant? RenderedThemeVariant =>
+        _snapshot is null || _themeSnapshot is not { } theme
+            ? null
+            : theme.IsHighContrast
+                ? MarkdownThemeVariant.HighContrast
+                : theme.IsDark ? MarkdownThemeVariant.Dark : MarkdownThemeVariant.Light;
+
     private void RaiseImageUnavailable(
         string source,
         MarkdownImageUnavailableReason reason,
@@ -6385,7 +6417,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private CodeBlockHighlightCacheKey CreateHighlightCacheKey(
         Layout.Boxes.CodeBlockBox block,
-        CodeBlockThemeVariant variant,
+        MarkdownThemeVariant variant,
         int providerIdentity,
         int providerRevision)
         => new(block.CodeLanguage, block.Metadata.CodeTextHash, block.CodeText.Length, variant, providerIdentity, providerRevision);
@@ -6393,14 +6425,14 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private void ClearCodeBlockHighlightCache()
         => _codeBlockHighlightCache.Clear();
 
-    private static CodeBlockThemeVariant ResolveCodeBlockThemeVariant(Theming.ThemeSnapshot theme)
+    private static MarkdownThemeVariant ResolveCodeBlockThemeVariant(Theming.ThemeSnapshot theme)
     {
         if (theme.IsHighContrast)
-            return CodeBlockThemeVariant.HighContrast;
+            return MarkdownThemeVariant.HighContrast;
 
         var bg = theme.SurfaceColor;
         double luminance = (0.2126 * bg.R + 0.7152 * bg.G + 0.0722 * bg.B) / 255.0;
-        return luminance < 0.5 ? CodeBlockThemeVariant.Dark : CodeBlockThemeVariant.Light;
+        return luminance < 0.5 ? MarkdownThemeVariant.Dark : MarkdownThemeVariant.Light;
     }
 
     private static ulong ComputeDisclosureFingerprint(

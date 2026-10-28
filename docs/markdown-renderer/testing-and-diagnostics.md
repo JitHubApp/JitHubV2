@@ -40,7 +40,7 @@ Every renderer project build runs `CheckMarkdownRendererProjectStructure`
 | Code | Fails on |
 | --- | --- |
 | `MRS0001` | A `Compile`, `Page` or `ApplicationDefinition` item outside the project folder. Generated files in the intermediate output and sources added by NuGet packages are not checked. |
-| `MRS0002` | An `InternalsVisibleTo` grant to an assembly whose name does not end in `.Tests` or `.Benchmarks`. |
+| `MRS0002` | An `InternalsVisibleTo` grant to an assembly that is not a renderer project at `tests\<name>\<name>.csproj` or `perf\<name>\<name>.csproj`. Tests and performance projects never ship. |
 
 `eng/Test-ProjectStructure.ps1` runs early in the preview workflow and checks
 what one project build cannot see:

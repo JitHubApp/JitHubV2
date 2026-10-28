@@ -230,6 +230,12 @@
           "MarkdownRenderer": "[1.0.0-preview.1, )"
         }
       },
+      "markdownrenderer.performanceharness.core": {
+        "type": "Project",
+        "dependencies": {
+          "MarkdownRenderer": "[1.0.0-preview.1, )"
+        }
+      },
       "markdownrenderer.svg.resvg": {
         "type": "Project",
         "dependencies": {

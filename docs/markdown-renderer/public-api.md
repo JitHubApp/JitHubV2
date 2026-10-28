@@ -87,6 +87,13 @@ thread. It throws if teardown could not finish, and its task faults if a
 resource could not be released. The `Disposed` event reports teardown that the
 view's window started.
 
+`RenderCompleted` is raised after a document is displayed. Two properties
+describe what is on screen at that point: `RenderedContentSize` is the laid-out
+document's size in DIPs, and `RenderedThemeVariant` is the `MarkdownThemeVariant`
+it was rendered for (light, dark or contrast). Both are null until a document is
+displayed, and both change only when a new rendering appears, so a host can
+tell whether the layout on screen already reflects a new width or theme.
+
 GFM, GitHub README, Markdown Extra, and safe-HTML helpers freeze their native
 presentation registrations into the engine. Parsed documents retain that
 snapshot internally, so assigning a reusable document to a bare view preserves
@@ -141,7 +148,10 @@ rejects registrations after the resolver call has returned.
 ## Themes and host services
 
 The base visual design follows WinUI/Fluent resources, including light, dark,
-high-contrast, text-scale, and flow-direction changes. The GitHub README profile
+high-contrast, text-scale, and flow-direction changes. To preview or test
+contrast rendering without changing Windows settings, set
+`MarkdownTheme.ForcedContrastColors` to a `MarkdownContrastColors` value; views
+using that theme render as though a contrast theme with those colors were on. The GitHub README profile
 and GitHub-themed presentation are opt-in through `UseGitHubReadme()` and the
 `MarkdownRenderer.GitHub` namespace; applications can further customize
 roles through `MarkdownStyleSheet`, `MarkdownStyleRole`, and

@@ -6,7 +6,7 @@ namespace MarkdownRenderer.PerformanceHarness;
 
 using Math = System.Math;
 
-internal sealed class PerformanceEventListener : IMarkdownPerformanceSink, IDisposable
+public sealed class PerformanceEventListener : IMarkdownPerformanceSink, IDisposable
 {
     private readonly object _gate = new();
     private readonly List<PipelineEvent> _pipelines = [];
@@ -22,20 +22,20 @@ internal sealed class PerformanceEventListener : IMarkdownPerformanceSink, IDisp
     private FirstViewportStageProfileObservation? _stageProfileObservation;
     private bool _disposed;
 
-    internal PerformanceEventListener()
+    public PerformanceEventListener()
     {
         MarkdownPerformanceEventSource.SetInProcessSink(this);
     }
 
-    internal long CurrentSequence
+    public long CurrentSequence
     {
         get { lock (_gate) return _sequence; }
     }
 
-    internal void SetMeasurementEnvironmentAbortToken(CancellationToken cancellationToken)
+    public void SetMeasurementEnvironmentAbortToken(CancellationToken cancellationToken)
         => _measurementEnvironmentAbortToken = cancellationToken;
 
-    internal void BeginStageProfilePresentation(long afterSequence, long sourceUtf16Bytes)
+    public void BeginStageProfilePresentation(long afterSequence, long sourceUtf16Bytes)
     {
         var capture = new FirstViewportStageProfileCapture(
             afterSequence,
@@ -55,7 +55,7 @@ internal sealed class PerformanceEventListener : IMarkdownPerformanceSink, IDisp
         }
     }
 
-    internal bool TryConsumeStageProfileMetrics(
+    public bool TryConsumeStageProfileMetrics(
         FirstViewportEvent presentation,
         out FirstViewportStageProfileThreadMetrics metrics)
     {
@@ -83,12 +83,12 @@ internal sealed class PerformanceEventListener : IMarkdownPerformanceSink, IDisp
         }
     }
 
-    internal IReadOnlyList<FirstViewportEvent> FirstViewports
+    public IReadOnlyList<FirstViewportEvent> FirstViewports
     {
         get { lock (_gate) return _firstViewports.ToArray(); }
     }
 
-    internal IReadOnlyList<string> ProviderErrors
+    public IReadOnlyList<string> ProviderErrors
     {
         get { lock (_gate) return _providerErrors.ToArray(); }
     }
@@ -295,7 +295,7 @@ internal sealed class PerformanceEventListener : IMarkdownPerformanceSink, IDisp
         }
     }
 
-    internal void PrepareFrameCapture(long firstFrameId, int frameCount)
+    public void PrepareFrameCapture(long firstFrameId, int frameCount)
     {
         lock (_gate)
         {
@@ -322,7 +322,7 @@ internal sealed class PerformanceEventListener : IMarkdownPerformanceSink, IDisp
         changed.TrySetResult();
     }
 
-    internal Task<PipelineEvent> WaitForPipelineAsync(
+    public Task<PipelineEvent> WaitForPipelineAsync(
         long afterSequence,
         long sourceUtf16Bytes,
         TimeSpan timeout,
@@ -335,7 +335,7 @@ internal sealed class PerformanceEventListener : IMarkdownPerformanceSink, IDisp
             $"pipeline start for {sourceUtf16Bytes:N0} UTF-16 bytes",
             cancellationToken);
 
-    internal Task<FirstViewportEvent> WaitForFirstViewportAsync(
+    public Task<FirstViewportEvent> WaitForFirstViewportAsync(
         long afterSequence,
         long sourceUtf16Bytes,
         TimeSpan timeout,
@@ -348,7 +348,7 @@ internal sealed class PerformanceEventListener : IMarkdownPerformanceSink, IDisp
             $"first viewport for {sourceUtf16Bytes:N0} UTF-16 bytes",
             cancellationToken);
 
-    internal Task<CancellationEvent> WaitForCancellationAsync(
+    public Task<CancellationEvent> WaitForCancellationAsync(
         long afterSequence,
         long generation,
         TimeSpan timeout,
@@ -361,7 +361,7 @@ internal sealed class PerformanceEventListener : IMarkdownPerformanceSink, IDisp
             $"cancellation of generation {generation}",
             cancellationToken);
 
-    internal Task<SupersessionEvent> WaitForSupersessionAsync(
+    public Task<SupersessionEvent> WaitForSupersessionAsync(
         long afterSequence,
         long generation,
         TimeSpan timeout,
@@ -374,7 +374,7 @@ internal sealed class PerformanceEventListener : IMarkdownPerformanceSink, IDisp
             $"supersession of generation {generation}",
             cancellationToken);
 
-    internal IReadOnlyDictionary<long, FrameWork> SnapshotFrames(long firstFrameId, long lastFrameId)
+    public IReadOnlyDictionary<long, FrameWork> SnapshotFrames(long firstFrameId, long lastFrameId)
     {
         lock (_gate)
         {
@@ -483,21 +483,21 @@ internal sealed class PerformanceEventListener : IMarkdownPerformanceSink, IDisp
         => new(TaskCreationOptions.RunContinuationsAsynchronously);
 }
 
-internal readonly record struct PipelineEvent(long Sequence, long Generation, long SourceUtf16Bytes);
+public readonly record struct PipelineEvent(long Sequence, long Generation, long SourceUtf16Bytes);
 
-internal readonly record struct FirstViewportEvent(
+public readonly record struct FirstViewportEvent(
     long Sequence,
     long Generation,
     long SourceUtf16Bytes,
     double ElapsedMilliseconds);
 
-internal readonly record struct FirstViewportStageProfileThreadMetrics(
+public readonly record struct FirstViewportStageProfileThreadMetrics(
     double? UiThreadCpuMilliseconds,
     int? ProcessGen0Collections,
     int? ProcessGen1Collections,
     int? ProcessGen2Collections);
 
-internal sealed record FirstViewportStageProfileCapture(
+public sealed record FirstViewportStageProfileCapture(
     long AfterSequence,
     long SourceUtf16Bytes,
     int ManagedThreadId,
@@ -506,17 +506,17 @@ internal sealed record FirstViewportStageProfileCapture(
     int Gen1Collections,
     int Gen2Collections);
 
-internal readonly record struct FirstViewportStageProfileObservation(
+public readonly record struct FirstViewportStageProfileObservation(
     long Sequence,
     long Generation,
     long SourceUtf16Bytes,
     FirstViewportStageProfileThreadMetrics Metrics);
 
-internal readonly record struct SupersessionEvent(long Sequence, long Generation);
+public readonly record struct SupersessionEvent(long Sequence, long Generation);
 
-internal readonly record struct CancellationEvent(long Sequence, long Generation, double ElapsedMilliseconds);
+public readonly record struct CancellationEvent(long Sequence, long Generation, double ElapsedMilliseconds);
 
-internal sealed record FrameWork
+public sealed record FrameWork
 {
     public long UiThreadWorkElapsedTicks { get; set; }
     public double ElapsedMilliseconds { get; set; }

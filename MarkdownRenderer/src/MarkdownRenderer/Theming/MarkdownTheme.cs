@@ -44,6 +44,30 @@ public sealed partial class MarkdownTheme : DependencyObject
         set => SetValue(SurfaceColorProperty, value);
     }
 
+    private MarkdownContrastColors? _forcedContrastColors;
+
+    /// <summary>
+    /// Gets or sets contrast colors that renderers using this theme apply as
+    /// though a Windows contrast theme were on. The default, null, follows the
+    /// system's contrast setting.
+    /// </summary>
+    /// <remarks>
+    /// Use it to preview or test contrast rendering without changing Windows
+    /// settings. It affects only renderers that use this theme.
+    /// </remarks>
+    public MarkdownContrastColors? ForcedContrastColors
+    {
+        get => _forcedContrastColors;
+        set
+        {
+            if (ReferenceEquals(_forcedContrastColors, value))
+                return;
+
+            _forcedContrastColors = value;
+            NotifyChanged();
+        }
+    }
+
     /// <summary>
     /// Per-element overrides keyed by <see cref="MarkdownElementKeys"/>, including
     /// extension-defined element, context, class, and identifier aliases. These

@@ -1,3 +1,5 @@
+using MarkdownRenderer.Theming;
+
 namespace MarkdownRenderer.CodeBlocks;
 
 /// <summary>
@@ -9,7 +11,7 @@ public sealed class CodeBlockHighlightRequest
     public CodeBlockHighlightRequest(
         string? language,
         string code,
-        CodeBlockThemeVariant themeVariant)
+        MarkdownThemeVariant themeVariant)
     {
         Language = language;
         Code = code ?? string.Empty;
@@ -23,5 +25,5 @@ public sealed class CodeBlockHighlightRequest
     public string Code { get; }
 
     /// <summary>Resolved renderer theme variant for choosing token colors.</summary>
-    public CodeBlockThemeVariant ThemeVariant { get; }
+    public MarkdownThemeVariant ThemeVariant { get; }
 }

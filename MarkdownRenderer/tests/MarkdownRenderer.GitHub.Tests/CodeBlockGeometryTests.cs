@@ -39,7 +39,7 @@ public sealed class CodeBlockGeometryTests
             new SourceSpan(0, 3), "code", "text", new Dictionary<string, string>());
         var block = new CodeBlockBox(context, metadata, "code", false, false);
         CodeBlockHighlightSpan[] spans = [new(0, 2, Color.FromArgb(255, 1, 2, 3))];
-        var firstKey = new CodeBlockHighlightCacheKey("text", 1, 4, CodeBlockThemeVariant.Light, 1, 1);
+        var firstKey = new CodeBlockHighlightCacheKey("text", 1, 4, MarkdownThemeVariant.Light, 1, 1);
         var revisedKey = new CodeBlockHighlightCacheKey(
             firstKey.Language, firstKey.CodeHash, firstKey.CodeLength,
             firstKey.ThemeVariant, firstKey.ProviderIdentity, ProviderRevision: 2);

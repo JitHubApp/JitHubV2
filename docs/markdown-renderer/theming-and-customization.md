@@ -8,7 +8,7 @@ defaults, the current WinUI `ActualTheme`, and Windows high contrast settings.
 
 | Type | Purpose |
 | --- | --- |
-| `MarkdownTheme` | Consumer-owned theme object with `AccentColor`, `Overrides`, `Revision`, and `Changed`. |
+| `MarkdownTheme` | Consumer-owned theme object with `AccentColor`, `SurfaceColor`, `ForcedContrastColors`, `Overrides`, `Revision`, and `Changed`. |
 | `ElementStyle` | Fully resolved immutable-ish style used by layout and paint. |
 | `ElementStyleOverride` | Nullable partial style override supplied by consumers. |
 | `ThemeResolver` | Merges Win11 defaults, current light/dark theme, high contrast system colors, accent color, and overrides. |
@@ -194,8 +194,9 @@ so high contrast does not leave a light/dark hardcoded background behind.
 
 High contrast defaults avoid scheme-name-specific palettes. The role mapping
 lives in `MarkdownHighContrastDefaults` and is unit-tested with deterministic
-roles; the sample automation also forces a fake high-contrast palette and checks
-the resulting UIA text attributes. When a contrast theme is active, renderer and
+roles; the sample automation also forces a high-contrast palette through
+`MarkdownTheme.ForcedContrastColors` and checks the resulting UIA text
+attributes. When a contrast theme is active, renderer and
 consumer color overrides are mapped onto mandatory system-color roles rather
 than painted literally. Typography, spacing, and decoration overrides remain in
 effect, while Window/WindowText, Hotlight, Highlight, and HighlightText preserve

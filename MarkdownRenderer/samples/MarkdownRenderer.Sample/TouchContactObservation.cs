@@ -7,6 +7,7 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
+using Microsoft.UI.Xaml.Automation.Provider;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
@@ -411,9 +412,8 @@ internal sealed class TouchContactObservation
         json.Append(",\"rendererActualHeightDip\":");
         AppendJsonNumber(json, renderer.ActualHeight);
         json.Append(",\"snapshotSizeDip\":");
-        if (renderer.CurrentSnapshot is { } snapshot)
+        if (renderer.RenderedContentSize is { } size)
         {
-            Size size = snapshot.Size;
             json.Append("{\"width\":");
             AppendJsonNumber(json, size.Width);
             json.Append(",\"height\":");
@@ -424,15 +424,18 @@ internal sealed class TouchContactObservation
         {
             json.Append("null");
         }
-        json.Append(",\"ownedScrollMetrics\":");
-        if (renderer.TryGetAutomationScrollMetrics(out double offset, out double viewportHeight, out double extentHeight))
+        // The renderer exposes the UI Automation scroll pattern only when it
+        // owns its scroll viewport; with an ancestor ScrollViewer this is null.
+        json.Append(",\"ownedScroll\":");
+        if (FrameworkElementAutomationPeer.CreatePeerForElement(renderer)?.GetPattern(PatternInterface.Scroll)
+            is IScrollProvider scroll)
         {
-            json.Append("{\"offsetDip\":");
-            AppendJsonNumber(json, offset);
-            json.Append(",\"viewportHeightDip\":");
-            AppendJsonNumber(json, viewportHeight);
-            json.Append(",\"extentHeightDip\":");
-            AppendJsonNumber(json, extentHeight);
+            json.Append("{\"verticallyScrollable\":")
+                .Append(scroll.VerticallyScrollable ? "true" : "false")
+                .Append(",\"verticalPercent\":");
+            AppendJsonNumber(json, scroll.VerticalScrollPercent);
+            json.Append(",\"verticalViewSizePercent\":");
+            AppendJsonNumber(json, scroll.VerticalViewSize);
             json.Append('}');
         }
         else

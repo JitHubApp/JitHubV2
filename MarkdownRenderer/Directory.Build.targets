@@ -1,4 +1,8 @@
 <Project>
+  <PropertyGroup>
+    <_MarkdownRendererRootDirectory>$(MSBuildThisFileDirectory)</_MarkdownRendererRootDirectory>
+  </PropertyGroup>
+
   <!--
     Code structure check for the renderer's own projects, the ones whose folder
     props set MarkdownRendererProject (src, tests, samples, perf and tools). The
@@ -11,8 +15,10 @@
       MRS0001  A project compiles only files under its own folder. Every
                Compile, Page and ApplicationDefinition item must be under the
                project directory.
-      MRS0002  InternalsVisibleTo is granted only to test and benchmark
-               assemblies, whose names end in .Tests or .Benchmarks.
+      MRS0002  InternalsVisibleTo is granted only to the renderer's own
+               test and performance projects, which never ship: the grantee
+               is a project at tests\<name>\<name>.csproj or
+               perf\<name>\<name>.csproj.
 
     Sources the project does not author are skipped by path: files generated
     into the project's intermediate output (outside the project folder when a
@@ -55,8 +61,8 @@
 
       <_MarkdownRendererUnlistedGrant Include="@(InternalsVisibleTo)"
           Condition="'%(InternalsVisibleTo.ProjectStructureException)' == ''
-                     and !$([System.String]::Copy('%(InternalsVisibleTo.Identity)').EndsWith('.Tests', StringComparison.OrdinalIgnoreCase))
-                     and !$([System.String]::Copy('%(InternalsVisibleTo.Identity)').EndsWith('.Benchmarks', StringComparison.OrdinalIgnoreCase))" />
+                     and !Exists('$(_MarkdownRendererRootDirectory)tests\%(InternalsVisibleTo.Identity)\%(InternalsVisibleTo.Identity).csproj')
+                     and !Exists('$(_MarkdownRendererRootDirectory)perf\%(InternalsVisibleTo.Identity)\%(InternalsVisibleTo.Identity).csproj')" />
     </ItemGroup>
 
     <!-- Report both rules in one build, then stop. -->
@@ -73,6 +79,6 @@
     <Error Condition="'@(_MarkdownRendererUnlistedGrant)' != ''"
            Code="MRS0002"
            File="$(MSBuildProjectFullPath)"
-           Text="InternalsVisibleTo grant to an assembly that is not a test or benchmark project: @(_MarkdownRendererUnlistedGrant, ', '). Internals are visible only to assemblies whose names end in .Tests or .Benchmarks: make what the grantee needs public extension API, or move it to a lower assembly. A temporary exception needs ProjectStructureException=&quot;reason; how it is removed&quot; metadata on the grant. See AGENTS.md, &quot;Code Structure Standards&quot;." />
+           Text="InternalsVisibleTo grant to an assembly that is not one of the renderer's test or performance projects: @(_MarkdownRendererUnlistedGrant, ', '). Internals are visible only to projects at tests\&lt;name&gt;\&lt;name&gt;.csproj or perf\&lt;name&gt;\&lt;name&gt;.csproj, which never ship: make what the grantee needs public extension API, or move it to a lower assembly. A temporary exception needs ProjectStructureException=&quot;reason; how it is removed&quot; metadata on the grant. See AGENTS.md, &quot;Code Structure Standards&quot;." />
   </Target>
 </Project>

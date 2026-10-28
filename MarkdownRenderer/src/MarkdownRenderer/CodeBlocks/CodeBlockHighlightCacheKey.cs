@@ -1,4 +1,5 @@
 using System;
+using MarkdownRenderer.Theming;
 
 namespace MarkdownRenderer.CodeBlocks;
 
@@ -10,14 +11,14 @@ internal readonly struct CodeBlockHighlightCacheKey(
     string? Language,
     ulong CodeHash,
     int CodeLength,
-    CodeBlockThemeVariant ThemeVariant,
+    MarkdownThemeVariant ThemeVariant,
     int ProviderIdentity,
     int ProviderRevision) : IEquatable<CodeBlockHighlightCacheKey>
 {
     internal readonly string? Language = Language;
     internal readonly ulong CodeHash = CodeHash;
     internal readonly int CodeLength = CodeLength;
-    internal readonly CodeBlockThemeVariant ThemeVariant = ThemeVariant;
+    internal readonly MarkdownThemeVariant ThemeVariant = ThemeVariant;
     internal readonly int ProviderIdentity = ProviderIdentity;
     internal readonly int ProviderRevision = ProviderRevision;
 

@@ -10,16 +10,20 @@
     <PackageTags>markdown;commonmark;gfm;github;html;winui;win2d;windows;accessibility;aot</PackageTags>
   </PropertyGroup>
 
+  <!-- White-box tests and performance measurement. The performance harness
+       and its library time internal pipeline stages and read the in-process
+       performance sink, so their measurements match the renderer's own
+       instrumentation. -->
   <ItemGroup>
     <InternalsVisibleTo Include="MarkdownRenderer.GitHub.Tests" />
     <InternalsVisibleTo Include="MarkdownRenderer.Html.Tests" />
     <InternalsVisibleTo Include="MarkdownRenderer.Svg.Resvg.Tests" />
     <InternalsVisibleTo Include="MarkdownRenderer.Tests" />
-    <InternalsVisibleTo Include="MarkdownRenderer.Benchmarks" />
     <InternalsVisibleTo Include="MarkdownRenderer.Pixel.Tests" />
     <InternalsVisibleTo Include="MarkdownRenderer.Conformance.Tests" />
-    <InternalsVisibleTo Include="MarkdownRenderer.PerformanceHarness" ProjectStructureException="The performance harness reads internal parse counters, pipeline timing snapshots and the performance sink; step 2 replaces them with EventSource or an injected observer." />
-    <InternalsVisibleTo Include="MarkdownRenderer.Sample" ProjectStructureException="The sample reads internal control and theme snapshots for its diagnostics pages; step 2 exposes them through public diagnostics API." />
+    <InternalsVisibleTo Include="MarkdownRenderer.Benchmarks" />
+    <InternalsVisibleTo Include="MarkdownRenderer.PerformanceHarness" />
+    <InternalsVisibleTo Include="MarkdownRenderer.PerformanceHarness.Core" />
   </ItemGroup>
 
   <ItemGroup>

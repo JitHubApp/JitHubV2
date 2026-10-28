@@ -21,11 +21,9 @@
     <ProjectReference Include="..\..\src\MarkdownRenderer.SyntaxHighlighting.TextMate\MarkdownRenderer.SyntaxHighlighting.TextMate.csproj" />
     <ProjectReference Include="..\..\src\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.csproj" />
     <ProjectReference Include="..\..\src\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All.csproj" />
+    <ProjectReference Include="..\..\perf\MarkdownRenderer.PerformanceHarness.Core\MarkdownRenderer.PerformanceHarness.Core.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="..\..\perf\MarkdownRenderer.PerformanceHarness\PerformanceEventListener.cs"
-             Link="PerformanceHarness\PerformanceEventListener.cs"
-             ProjectStructureException="The harness listener implements the renderer-internal IMarkdownPerformanceSink, so it cannot move to the WinUI-free harness library without a grant to a non-test assembly, and the harness WinExe initializes the Windows App SDK on load, so a test project cannot reference it. Step 2 gives the renderer an in-process performance observer seam (or moves the frame ledger into PerformanceHarness.Core) and drops the link." />
     <EmbeddedResource Include="Fixtures\oversized-static.webp" />
   </ItemGroup>
 </Project>

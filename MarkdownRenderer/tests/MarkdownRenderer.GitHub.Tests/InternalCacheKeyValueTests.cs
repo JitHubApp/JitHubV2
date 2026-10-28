@@ -1,6 +1,7 @@
 using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout;
+using MarkdownRenderer.Theming;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;
@@ -13,14 +14,14 @@ public sealed class InternalCacheKeyValueTests
         CodeBlockHighlightCacheKey[] keys =
         [
             default, new(null, 0, 0, default, 0, 0), new(string.Empty, 0, 0, default, 0, 0),
-            new("csharp", 42, 10, CodeBlockThemeVariant.Light, 7, 3),
-            new(new string("csharp".ToCharArray()), 42, 10, CodeBlockThemeVariant.Light, 7, 3),
-            new("CSharp", 42, 10, CodeBlockThemeVariant.Light, 7, 3),
-            new("csharp", 43, 10, CodeBlockThemeVariant.Light, 7, 3),
-            new("csharp", 42, 11, CodeBlockThemeVariant.Light, 7, 3),
-            new("csharp", 42, 10, CodeBlockThemeVariant.Dark, 7, 3),
-            new("csharp", 42, 10, CodeBlockThemeVariant.Light, 8, 3),
-            new("csharp", 42, 10, CodeBlockThemeVariant.Light, 7, 4),
+            new("csharp", 42, 10, MarkdownThemeVariant.Light, 7, 3),
+            new(new string("csharp".ToCharArray()), 42, 10, MarkdownThemeVariant.Light, 7, 3),
+            new("CSharp", 42, 10, MarkdownThemeVariant.Light, 7, 3),
+            new("csharp", 43, 10, MarkdownThemeVariant.Light, 7, 3),
+            new("csharp", 42, 11, MarkdownThemeVariant.Light, 7, 3),
+            new("csharp", 42, 10, MarkdownThemeVariant.Dark, 7, 3),
+            new("csharp", 42, 10, MarkdownThemeVariant.Light, 8, 3),
+            new("csharp", 42, 10, MarkdownThemeVariant.Light, 7, 4),
         ];
         foreach (CodeBlockHighlightCacheKey left in keys)
         foreach (CodeBlockHighlightCacheKey right in keys)
@@ -74,12 +75,12 @@ public sealed class InternalCacheKeyValueTests
     [Fact]
     public void HighlightKeysKeepCodeAndProviderRevisionsPartitionedInHashCollections()
     {
-        var key = new CodeBlockHighlightCacheKey("text", 1, 5, CodeBlockThemeVariant.Light, 1, 1);
+        var key = new CodeBlockHighlightCacheKey("text", 1, 5, MarkdownThemeVariant.Light, 1, 1);
         var keys = new HashSet<CodeBlockHighlightCacheKey> { key };
-        Assert.False(keys.Add(new("text", 1, 5, CodeBlockThemeVariant.Light, 1, 1)));
-        Assert.True(keys.Add(new("text", 2, 5, CodeBlockThemeVariant.Light, 1, 1)));
-        Assert.True(keys.Add(new("text", 1, 5, CodeBlockThemeVariant.Light, 2, 1)));
-        Assert.True(keys.Add(new("text", 1, 5, CodeBlockThemeVariant.Light, 1, 2)));
+        Assert.False(keys.Add(new("text", 1, 5, MarkdownThemeVariant.Light, 1, 1)));
+        Assert.True(keys.Add(new("text", 2, 5, MarkdownThemeVariant.Light, 1, 1)));
+        Assert.True(keys.Add(new("text", 1, 5, MarkdownThemeVariant.Light, 2, 1)));
+        Assert.True(keys.Add(new("text", 1, 5, MarkdownThemeVariant.Light, 1, 2)));
         Assert.Equal(4, keys.Count);
     }
 
@@ -97,7 +98,7 @@ public sealed class InternalCacheKeyValueTests
     // Reference contracts live in the test assembly only; generated record
     // hash values are not serialized or compared across implementations.
     private readonly record struct OriginalHighlightKey(string? Language, ulong CodeHash, int CodeLength,
-        CodeBlockThemeVariant ThemeVariant, int ProviderIdentity, int ProviderRevision);
+        MarkdownThemeVariant ThemeVariant, int ProviderIdentity, int ProviderRevision);
     private readonly record struct OriginalImageContext(string? BaseUri, string? DocumentPath,
         bool AllowThirdPartyRemoteImages, MarkdownDocumentSource? DocumentSource);
 }

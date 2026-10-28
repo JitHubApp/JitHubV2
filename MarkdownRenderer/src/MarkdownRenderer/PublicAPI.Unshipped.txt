@@ -190,9 +190,9 @@ MarkdownRenderer.CodeBlocks.CodeBlockChromeMode.Enhanced = 0 -> MarkdownRenderer
 MarkdownRenderer.CodeBlocks.CodeBlockChromeMode.PlainMarkdown = 1 -> MarkdownRenderer.CodeBlocks.CodeBlockChromeMode
 MarkdownRenderer.CodeBlocks.CodeBlockHighlightRequest
 MarkdownRenderer.CodeBlocks.CodeBlockHighlightRequest.Code.get -> string!
-MarkdownRenderer.CodeBlocks.CodeBlockHighlightRequest.CodeBlockHighlightRequest(string? language, string! code, MarkdownRenderer.CodeBlocks.CodeBlockThemeVariant themeVariant) -> void
+MarkdownRenderer.CodeBlocks.CodeBlockHighlightRequest.CodeBlockHighlightRequest(string? language, string! code, MarkdownRenderer.Theming.MarkdownThemeVariant themeVariant) -> void
 MarkdownRenderer.CodeBlocks.CodeBlockHighlightRequest.Language.get -> string?
-MarkdownRenderer.CodeBlocks.CodeBlockHighlightRequest.ThemeVariant.get -> MarkdownRenderer.CodeBlocks.CodeBlockThemeVariant
+MarkdownRenderer.CodeBlocks.CodeBlockHighlightRequest.ThemeVariant.get -> MarkdownRenderer.Theming.MarkdownThemeVariant
 MarkdownRenderer.CodeBlocks.CodeBlockHighlightResult
 MarkdownRenderer.CodeBlocks.CodeBlockHighlightResult.CodeBlockHighlightResult(System.Collections.Generic.IReadOnlyList<MarkdownRenderer.CodeBlocks.CodeBlockHighlightSpan>? spans) -> void
 MarkdownRenderer.CodeBlocks.CodeBlockHighlightResult.Spans.get -> System.Collections.Generic.IReadOnlyList<MarkdownRenderer.CodeBlocks.CodeBlockHighlightSpan>!
@@ -211,10 +211,6 @@ MarkdownRenderer.CodeBlocks.CodeBlockLineNumberMode
 MarkdownRenderer.CodeBlocks.CodeBlockLineNumberMode.Always = 1 -> MarkdownRenderer.CodeBlocks.CodeBlockLineNumberMode
 MarkdownRenderer.CodeBlocks.CodeBlockLineNumberMode.AutoMultiline = 0 -> MarkdownRenderer.CodeBlocks.CodeBlockLineNumberMode
 MarkdownRenderer.CodeBlocks.CodeBlockLineNumberMode.Never = 2 -> MarkdownRenderer.CodeBlocks.CodeBlockLineNumberMode
-MarkdownRenderer.CodeBlocks.CodeBlockThemeVariant
-MarkdownRenderer.CodeBlocks.CodeBlockThemeVariant.Dark = 1 -> MarkdownRenderer.CodeBlocks.CodeBlockThemeVariant
-MarkdownRenderer.CodeBlocks.CodeBlockThemeVariant.HighContrast = 2 -> MarkdownRenderer.CodeBlocks.CodeBlockThemeVariant
-MarkdownRenderer.CodeBlocks.CodeBlockThemeVariant.Light = 0 -> MarkdownRenderer.CodeBlocks.CodeBlockThemeVariant
 MarkdownRenderer.CodeBlocks.CodeBlockWrappingMode
 MarkdownRenderer.CodeBlocks.CodeBlockWrappingMode.NoWrap = 0 -> MarkdownRenderer.CodeBlocks.CodeBlockWrappingMode
 MarkdownRenderer.CodeBlocks.CodeBlockWrappingMode.Wrap = 1 -> MarkdownRenderer.CodeBlocks.CodeBlockWrappingMode
@@ -242,8 +238,8 @@ MarkdownRenderer.Controls.MarkdownLinkClickEventArgs.Action.get -> string?
 MarkdownRenderer.Controls.MarkdownLinkClickEventArgs.Handled.get -> bool
 MarkdownRenderer.Controls.MarkdownLinkClickEventArgs.Handled.set -> void
 MarkdownRenderer.Controls.MarkdownLinkClickEventArgs.InputKind.get -> MarkdownRenderer.Controls.MarkdownLinkInputKind
-MarkdownRenderer.Controls.MarkdownLinkClickEventArgs.MarkdownLinkClickEventArgs(string! url, string? title, MarkdownRenderer.SourceSpan sourceRange, MarkdownRenderer.Controls.MarkdownLinkInputKind inputKind, MarkdownRenderer.Controls.MarkdownInputModifiers modifiers, MarkdownRenderer.Controls.MarkdownLinkDisposition requestedDisposition, string? action = null) -> void
 MarkdownRenderer.Controls.MarkdownLinkClickEventArgs.MarkdownLinkClickEventArgs(string! url, string? title) -> void
+MarkdownRenderer.Controls.MarkdownLinkClickEventArgs.MarkdownLinkClickEventArgs(string! url, string? title, MarkdownRenderer.SourceSpan sourceRange, MarkdownRenderer.Controls.MarkdownLinkInputKind inputKind, MarkdownRenderer.Controls.MarkdownInputModifiers modifiers, MarkdownRenderer.Controls.MarkdownLinkDisposition requestedDisposition, string? action = null) -> void
 MarkdownRenderer.Controls.MarkdownLinkClickEventArgs.Modifiers.get -> MarkdownRenderer.Controls.MarkdownInputModifiers
 MarkdownRenderer.Controls.MarkdownLinkClickEventArgs.RequestedDisposition.get -> MarkdownRenderer.Controls.MarkdownLinkDisposition
 MarkdownRenderer.Controls.MarkdownLinkClickEventArgs.SourceRange.get -> MarkdownRenderer.SourceSpan
@@ -322,6 +318,8 @@ MarkdownRenderer.Controls.MarkdownRendererControl.RasterDecoder.get -> MarkdownR
 MarkdownRenderer.Controls.MarkdownRendererControl.RasterDecoder.set -> void
 MarkdownRenderer.Controls.MarkdownRendererControl.RealizedEmbedCount.get -> int
 MarkdownRenderer.Controls.MarkdownRendererControl.RenderCompleted -> System.EventHandler?
+MarkdownRenderer.Controls.MarkdownRendererControl.RenderedContentSize.get -> Windows.Foundation.Size?
+MarkdownRenderer.Controls.MarkdownRendererControl.RenderedThemeVariant.get -> MarkdownRenderer.Theming.MarkdownThemeVariant?
 MarkdownRenderer.Controls.MarkdownRendererControl.RenderFailed -> System.EventHandler<MarkdownRenderer.Controls.MarkdownRenderFailedEventArgs!>?
 MarkdownRenderer.Controls.MarkdownRendererControl.RequestRebuild() -> void
 MarkdownRenderer.Controls.MarkdownRendererControl.ScrollToBlock(int blockIndex) -> void
@@ -1020,8 +1018,8 @@ MarkdownRenderer.Images.MarkdownImageResolveContext.MarkdownImageResolveContext(
 MarkdownRenderer.Images.MarkdownImageSourceDeferredException
 MarkdownRenderer.Images.MarkdownImageSourceDeferredException.MarkdownImageSourceDeferredException() -> void
 MarkdownRenderer.Images.MarkdownImageUnavailableEventArgs
-MarkdownRenderer.Images.MarkdownImageUnavailableEventArgs.MarkdownImageUnavailableEventArgs(string! source, MarkdownRenderer.Images.MarkdownImageUnavailableReason reason, MarkdownRenderer.Images.MarkdownSvgFailureReason? svgFailureReason) -> void
 MarkdownRenderer.Images.MarkdownImageUnavailableEventArgs.MarkdownImageUnavailableEventArgs(string! source, MarkdownRenderer.Images.MarkdownImageUnavailableReason reason) -> void
+MarkdownRenderer.Images.MarkdownImageUnavailableEventArgs.MarkdownImageUnavailableEventArgs(string! source, MarkdownRenderer.Images.MarkdownImageUnavailableReason reason, MarkdownRenderer.Images.MarkdownSvgFailureReason? svgFailureReason) -> void
 MarkdownRenderer.Images.MarkdownImageUnavailableEventArgs.Reason.get -> MarkdownRenderer.Images.MarkdownImageUnavailableReason
 MarkdownRenderer.Images.MarkdownImageUnavailableEventArgs.Source.get -> string!
 MarkdownRenderer.Images.MarkdownImageUnavailableEventArgs.SvgFailureReason.get -> MarkdownRenderer.Images.MarkdownSvgFailureReason?
@@ -1463,6 +1461,13 @@ MarkdownRenderer.Theming.ElementStyleOverride.Strikethrough.get -> bool?
 MarkdownRenderer.Theming.ElementStyleOverride.Strikethrough.init -> void
 MarkdownRenderer.Theming.ElementStyleOverride.Underline.get -> bool?
 MarkdownRenderer.Theming.ElementStyleOverride.Underline.init -> void
+MarkdownRenderer.Theming.MarkdownContrastColors
+MarkdownRenderer.Theming.MarkdownContrastColors.HighlightColor.get -> Windows.UI.Color
+MarkdownRenderer.Theming.MarkdownContrastColors.HighlightTextColor.get -> Windows.UI.Color
+MarkdownRenderer.Theming.MarkdownContrastColors.HotlightColor.get -> Windows.UI.Color
+MarkdownRenderer.Theming.MarkdownContrastColors.MarkdownContrastColors(Windows.UI.Color windowTextColor, Windows.UI.Color windowColor, Windows.UI.Color hotlightColor, Windows.UI.Color highlightColor, Windows.UI.Color highlightTextColor) -> void
+MarkdownRenderer.Theming.MarkdownContrastColors.WindowColor.get -> Windows.UI.Color
+MarkdownRenderer.Theming.MarkdownContrastColors.WindowTextColor.get -> Windows.UI.Color
 MarkdownRenderer.Theming.MarkdownElementKeys
 MarkdownRenderer.Theming.MarkdownResourceKeys
 MarkdownRenderer.Theming.MarkdownStyleContext
@@ -1528,12 +1533,18 @@ MarkdownRenderer.Theming.MarkdownTheme.AccentColor.get -> Windows.UI.Color?
 MarkdownRenderer.Theming.MarkdownTheme.AccentColor.set -> void
 MarkdownRenderer.Theming.MarkdownTheme.BeginUpdate() -> System.IDisposable!
 MarkdownRenderer.Theming.MarkdownTheme.Changed -> System.EventHandler?
+MarkdownRenderer.Theming.MarkdownTheme.ForcedContrastColors.get -> MarkdownRenderer.Theming.MarkdownContrastColors?
+MarkdownRenderer.Theming.MarkdownTheme.ForcedContrastColors.set -> void
 MarkdownRenderer.Theming.MarkdownTheme.Invalidate() -> void
 MarkdownRenderer.Theming.MarkdownTheme.MarkdownTheme() -> void
 MarkdownRenderer.Theming.MarkdownTheme.Overrides.get -> System.Collections.Generic.IDictionary<string!, MarkdownRenderer.Theming.ElementStyleOverride!>!
 MarkdownRenderer.Theming.MarkdownTheme.Revision.get -> int
 MarkdownRenderer.Theming.MarkdownTheme.SurfaceColor.get -> Windows.UI.Color?
 MarkdownRenderer.Theming.MarkdownTheme.SurfaceColor.set -> void
+MarkdownRenderer.Theming.MarkdownThemeVariant
+MarkdownRenderer.Theming.MarkdownThemeVariant.Dark = 1 -> MarkdownRenderer.Theming.MarkdownThemeVariant
+MarkdownRenderer.Theming.MarkdownThemeVariant.HighContrast = 2 -> MarkdownRenderer.Theming.MarkdownThemeVariant
+MarkdownRenderer.Theming.MarkdownThemeVariant.Light = 0 -> MarkdownRenderer.Theming.MarkdownThemeVariant
 override MarkdownRenderer.CodeBlocks.CodeBlockHighlightSpan.GetHashCode() -> int
 override MarkdownRenderer.Document.DocumentPosition.GetHashCode() -> int
 override MarkdownRenderer.Document.DocumentRange.GetHashCode() -> int
@@ -1694,8 +1705,8 @@ static MarkdownRenderer.Gfm.GfmMarkdownRenderer.SharedEngine.get -> MarkdownRend
 static MarkdownRenderer.GitHub.GitHubReadmeExtensions.UseGitHubReadme(this MarkdownRenderer.Controls.MarkdownDocumentView! view, MarkdownRenderer.MarkdownEngine? engine = null, MarkdownRenderer.Html.SafeHtmlOptions? safeHtmlOptions = null) -> MarkdownRenderer.Controls.MarkdownDocumentView!
 static MarkdownRenderer.GitHub.GitHubReadmeExtensions.UseGitHubReadme(this MarkdownRenderer.Controls.MarkdownRendererControlBuilder! builder, MarkdownRenderer.Html.SafeHtmlOptions? safeHtmlOptions = null) -> MarkdownRenderer.Controls.MarkdownRendererControlBuilder!
 static MarkdownRenderer.GitHub.GitHubReadmeExtensions.UseGitHubReadme(this MarkdownRenderer.Controls.MarkdownScrollView! view, MarkdownRenderer.MarkdownEngine? engine = null, MarkdownRenderer.Html.SafeHtmlOptions? safeHtmlOptions = null) -> MarkdownRenderer.Controls.MarkdownScrollView!
-static MarkdownRenderer.GitHub.GitHubReadmeExtensions.UseGitHubReadme(this MarkdownRenderer.MarkdownEngineBuilder! builder, MarkdownRenderer.Html.SafeHtmlOptions! safeHtmlOptions) -> MarkdownRenderer.MarkdownEngineBuilder!
 static MarkdownRenderer.GitHub.GitHubReadmeExtensions.UseGitHubReadme(this MarkdownRenderer.MarkdownEngineBuilder! builder) -> MarkdownRenderer.MarkdownEngineBuilder!
+static MarkdownRenderer.GitHub.GitHubReadmeExtensions.UseGitHubReadme(this MarkdownRenderer.MarkdownEngineBuilder! builder, MarkdownRenderer.Html.SafeHtmlOptions! safeHtmlOptions) -> MarkdownRenderer.MarkdownEngineBuilder!
 static MarkdownRenderer.GitHub.GitHubReadmeMarkdownRenderer.CreateDefault(string? markdown = null, MarkdownRenderer.Theming.MarkdownTheme? theme = null, bool isSelectionEnabled = true, MarkdownRenderer.Images.IMarkdownImageResolver? imageResolver = null, System.Uri? imageBaseUri = null, string? imageDocumentPath = null) -> MarkdownRenderer.Controls.MarkdownScrollView!
 static MarkdownRenderer.GitHub.GitHubReadmeMarkdownRenderer.SharedEngine.get -> MarkdownRenderer.MarkdownEngine!
 static MarkdownRenderer.GitHub.GitHubReadmeVisualStyleProfiles.PrimerLightV1.get -> MarkdownRenderer.GitHub.GitHubReadmeVisualStyleProfile!
@@ -1739,8 +1750,8 @@ static MarkdownRenderer.Images.MarkdownSvgPhysicalViewport.operator !=(MarkdownR
 static MarkdownRenderer.Images.MarkdownSvgPhysicalViewport.operator ==(MarkdownRenderer.Images.MarkdownSvgPhysicalViewport left, MarkdownRenderer.Images.MarkdownSvgPhysicalViewport right) -> bool
 static MarkdownRenderer.Images.MarkdownSvgRenderRequest.operator !=(MarkdownRenderer.Images.MarkdownSvgRenderRequest? left, MarkdownRenderer.Images.MarkdownSvgRenderRequest? right) -> bool
 static MarkdownRenderer.Images.MarkdownSvgRenderRequest.operator ==(MarkdownRenderer.Images.MarkdownSvgRenderRequest? left, MarkdownRenderer.Images.MarkdownSvgRenderRequest? right) -> bool
-static MarkdownRenderer.Images.MarkdownSvgSourcePreparation.Admit(byte[]! sanitizedBytes, MarkdownRenderer.Images.MarkdownSvgSourceInfo! sourceInfo) -> MarkdownRenderer.Images.MarkdownSvgSourcePreparation!
 static MarkdownRenderer.Images.MarkdownSvgSourcePreparation.Admit(byte[]! sanitizedBytes) -> MarkdownRenderer.Images.MarkdownSvgSourcePreparation!
+static MarkdownRenderer.Images.MarkdownSvgSourcePreparation.Admit(byte[]! sanitizedBytes, MarkdownRenderer.Images.MarkdownSvgSourceInfo! sourceInfo) -> MarkdownRenderer.Images.MarkdownSvgSourcePreparation!
 static MarkdownRenderer.Images.MarkdownSvgSourcePreparation.Reject(MarkdownRenderer.Images.MarkdownSvgFailureReason reason, string! description) -> MarkdownRenderer.Images.MarkdownSvgSourcePreparation!
 static MarkdownRenderer.Images.MarkdownSvgTileRegion.operator !=(MarkdownRenderer.Images.MarkdownSvgTileRegion left, MarkdownRenderer.Images.MarkdownSvgTileRegion right) -> bool
 static MarkdownRenderer.Images.MarkdownSvgTileRegion.operator ==(MarkdownRenderer.Images.MarkdownSvgTileRegion left, MarkdownRenderer.Images.MarkdownSvgTileRegion right) -> bool

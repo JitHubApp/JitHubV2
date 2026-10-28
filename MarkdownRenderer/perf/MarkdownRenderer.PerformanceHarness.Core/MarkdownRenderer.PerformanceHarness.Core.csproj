@@ -1,11 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- WinUI-free measurement logic for the performance harness: statistics,
-       report contracts and writer, regression evaluation, evidence validators,
-       options, clock and thread scope. The harness executable and the test
-       projects reference this library instead of compiling harness sources.
-       Its types are public because the harness executable consumes them and
-       InternalsVisibleTo is reserved for test and benchmark projects; the
-       library is not packed or shipped. -->
+  <!-- WinUI-free measurement logic for the performance harness: the
+       performance event ledger, statistics, report contracts and writer,
+       regression evaluation, evidence validators, options, clock and thread
+       scope. The harness executable and the test projects reference this
+       library instead of compiling harness sources. Its types are public
+       because the harness executable consumes them; the library is not packed
+       or shipped. It sees the renderer's internals because the event ledger
+       is the renderer's in-process performance sink. -->
   <PropertyGroup>
     <RootNamespace>MarkdownRenderer.PerformanceHarness</RootNamespace>
     <AssemblyName>MarkdownRenderer.PerformanceHarness.Core</AssemblyName>
