@@ -50,7 +50,7 @@ namespace MarkdownRenderer.Controls;
 /// Hosts a <see cref="CanvasVirtualControl"/> for paint and a sibling
 /// <see cref="Canvas"/> overlay for hosted WinUI embeds.
 /// </summary>
-public abstract partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdownEnvironmentListener,
+public abstract partial class MarkdownRendererControl : UserControl, IDisposable, IAsyncDisposable, IMarkdownEnvironmentListener,
     IMarkdownPerformanceLegacyParser
 {
     private readonly bool _ownsScrollViewport;
@@ -301,6 +301,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     // Set in OnUnloaded; checked in dispatcher lambdas to guard against post-unload execution.
     private bool _isUnloaded = true;
     private bool _isDisposed;
+    private bool _isDisposalComplete;
     // The provider may raise CacheInvalidated from a worker or system-event
     // callback. Keep the subscribed instance outside DependencyObject storage
     // so the callback never reads a thread-affine dependency property.
@@ -3962,7 +3963,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _ownedEngine = null;
         if (ownedEngine is not null)
             RetireOwnedEngine(ownedEngine);
-        try { DisposalCompleted?.Invoke(this, EventArgs.Empty); }
+        _isDisposalComplete = true;
+        try { Disposed?.Invoke(this, EventArgs.Empty); }
         catch (Exception ex)
         {
             MarkdownDiagnostics.WriteLine(
@@ -3971,9 +3973,35 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         }
     }
 
-    // Release tooling observes actual control teardown without expanding the
-    // public API or treating process disappearance as proof of disposal.
-    internal event EventHandler? DisposalCompleted;
+    /// <summary>
+    /// Disposes the view, then completes when every native resource it has
+    /// released is freed. Call it on the UI thread.
+    /// </summary>
+    /// <returns>
+    /// A task that completes when the released resources are freed, and faults
+    /// if one of them could not be released.
+    /// </returns>
+    /// <exception cref="InvalidOperationException">
+    /// Teardown did not finish, here or in an earlier <see cref="Dispose"/> call,
+    /// so the view may still hold resources.
+    /// </exception>
+    public ValueTask DisposeAsync()
+    {
+        Dispose();
+        if (!_isDisposalComplete)
+        {
+            throw new InvalidOperationException(
+                "The markdown view did not finish an earlier Dispose call and may still hold resources.");
+        }
+
+        return new ValueTask(_snapshotRetirements.DrainAsync());
+    }
+
+    /// <summary>
+    /// Raised on the UI thread when <see cref="Dispose"/> finishes teardown,
+    /// whether the app or the view's window started it.
+    /// </summary>
+    public event EventHandler? Disposed;
 
 
     // WinUI does not guarantee a child UserControl receives Unloaded when its

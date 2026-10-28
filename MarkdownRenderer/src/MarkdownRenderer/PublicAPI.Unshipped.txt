@@ -286,6 +286,8 @@ MarkdownRenderer.Controls.MarkdownRendererControl.CopySelectionAsMarkdown() -> b
 MarkdownRenderer.Controls.MarkdownRendererControl.CopySelectionToClipboard(MarkdownRenderer.Selection.MarkdownCopyOptions? options = null) -> bool
 MarkdownRenderer.Controls.MarkdownRendererControl.DisclosureToggled -> System.EventHandler<MarkdownRenderer.Controls.MarkdownDisclosureToggledEventArgs!>?
 MarkdownRenderer.Controls.MarkdownRendererControl.Dispose() -> void
+MarkdownRenderer.Controls.MarkdownRendererControl.DisposeAsync() -> System.Threading.Tasks.ValueTask
+MarkdownRenderer.Controls.MarkdownRendererControl.Disposed -> System.EventHandler?
 MarkdownRenderer.Controls.MarkdownRendererControl.Document.get -> MarkdownRenderer.Document.MarkdownDocument?
 MarkdownRenderer.Controls.MarkdownRendererControl.Document.set -> void
 MarkdownRenderer.Controls.MarkdownRendererControl.EmbedsRealizationChanged -> System.EventHandler?

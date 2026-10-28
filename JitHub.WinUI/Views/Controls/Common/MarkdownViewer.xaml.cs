@@ -159,7 +159,6 @@ public sealed partial class MarkdownViewer : UserControl
     private bool _remoteImageNoticeDismissed;
     private MarkdownViewerDocumentPayload? _documentPayload;
     private MarkdownRendererControl? _renderer;
-    private bool _currentRendererDisposalCompleted;
     private bool _rendererDisposalFaulted;
     private MarkdownRendererControl? _rendererRetirementPending;
     private bool _isLoaded;
@@ -887,8 +886,6 @@ public sealed partial class MarkdownViewer : UserControl
             _renderer = new MarkdownDocumentView().UseGitHubReadme(SharedGitHubEngine);
         }
         RecordRendererCreated();
-        _currentRendererDisposalCompleted = false;
-        _renderer.DisposalCompleted += OnRendererDisposalCompleted;
         _renderer.Theme = _theme;
         // GitHub articles use 16-DIP paragraph spacing, while list paragraphs
         // collapse into the list-item flow. Keep JitHub's compact list token
@@ -1040,6 +1037,7 @@ public sealed partial class MarkdownViewer : UserControl
         Microsoft.UI.Dispatching.DispatcherQueue? retirementDispatcher = DispatcherQueue;
         _rendererRetirementPending = renderer;
         Task retirementCompletion;
+        Task? resourceRelease = null;
         try
         {
             retirementCompletion = MarkdownRendererDisposalCommit.Execute(
@@ -1056,19 +1054,22 @@ public sealed partial class MarkdownViewer : UserControl
                     renderer.RenderCompleted -= OnRendererRenderCompleted;
                     renderer.RenderFailed -= OnRendererRenderFailed;
                     RendererHost.Children.Remove(renderer);
-                    renderer.Dispose();
+                    // Throws when the view could not finish teardown; the task
+                    // completes when the resources it released are freed.
+                    resourceRelease = renderer.DisposeAsync().AsTask();
                 },
-                disposalCompletedSuccessfully: () => _currentRendererDisposalCompleted,
+                disposalCompletedSuccessfully: () => resourceRelease is not null,
                 retirementBegan: () => _renderer = null,
-                drainRetiredResources: renderer.DrainRetiredSnapshotsAsync,
+                drainRetiredResources: () => resourceRelease ??
+                    throw new InvalidOperationException("The Markdown renderer returned no resource-release task."),
                 releaseTracking: () => ReleaseRendererTrackingOnDispatcherAsync(renderer, retirementDispatcher));
         }
         catch
         {
-            // If Dispose did not publish its completion signal, the existing
-            // retry/failure path still owns this renderer. If retirement had
-            // already begun, retain the pending latch and active count.
-            if (!_currentRendererDisposalCompleted)
+            // If the view did not finish teardown, the existing retry/failure
+            // path still owns this renderer. If retirement had already begun,
+            // retain the pending latch and active count.
+            if (resourceRelease is null)
                 _rendererRetirementPending = null;
             throw;
         }
@@ -1124,9 +1125,7 @@ public sealed partial class MarkdownViewer : UserControl
                 "The Markdown renderer changed before its snapshot retirement completed.");
         }
 
-        renderer.DisposalCompleted -= OnRendererDisposalCompleted;
         _renderer = null;
-        _currentRendererDisposalCompleted = false;
         _rendererRetirementPending = null;
         RecordRendererDisposed();
 
@@ -1207,12 +1206,6 @@ public sealed partial class MarkdownViewer : UserControl
                 }
             }
         }
-    }
-
-    private void OnRendererDisposalCompleted(object? sender, EventArgs e)
-    {
-        if (ReferenceEquals(sender, _renderer))
-            _currentRendererDisposalCompleted = true;
     }
 
     private bool TryDisposeRendererFromLifecycle()

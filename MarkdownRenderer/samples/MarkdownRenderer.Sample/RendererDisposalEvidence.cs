@@ -19,7 +19,7 @@ internal static class RendererDisposalEvidence
         if (string.IsNullOrWhiteSpace(path))
             return;
         _attached++;
-        view.DisposalCompleted += (_, _) => File.WriteAllText(path, JsonSerializer.Serialize(new
+        view.Disposed += (_, _) => File.WriteAllText(path, JsonSerializer.Serialize(new
         {
             processId = Environment.ProcessId,
             disposalCompleted = ++_disposed == _attached,

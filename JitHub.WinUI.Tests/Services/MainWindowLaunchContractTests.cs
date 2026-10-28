@@ -131,11 +131,10 @@ public sealed class MainWindowLaunchContractTests
         Assert.Contains("WeakReference<MarkdownViewer>", markdownViewer, StringComparison.Ordinal);
         Assert.Contains("WaitAsync(timeout)", markdownViewer, StringComparison.Ordinal);
         Assert.Contains("viewer.PrepareForApplicationShutdown()", markdownViewer, StringComparison.Ordinal);
-        Assert.Contains("renderer.Dispose()", markdownViewer, StringComparison.Ordinal);
-        Assert.Contains("renderer.DisposalCompleted += OnRendererDisposalCompleted", markdownViewer, StringComparison.Ordinal);
-        Assert.Contains("_currentRendererDisposalCompleted", markdownViewer, StringComparison.Ordinal);
+        Assert.Contains("resourceRelease = renderer.DisposeAsync().AsTask()", markdownViewer, StringComparison.Ordinal);
+        Assert.Contains("disposalCompletedSuccessfully: () => resourceRelease is not null", markdownViewer, StringComparison.Ordinal);
         Assert.Contains("retirementBegan: () => _renderer = null", markdownViewer, StringComparison.Ordinal);
-        Assert.Contains("drainRetiredResources: renderer.DrainRetiredSnapshotsAsync", markdownViewer, StringComparison.Ordinal);
+        Assert.Contains("drainRetiredResources: () => resourceRelease ??", markdownViewer, StringComparison.Ordinal);
         Assert.Contains("Microsoft.UI.Dispatching.DispatcherQueue? retirementDispatcher = DispatcherQueue", markdownViewer, StringComparison.Ordinal);
         Assert.Contains("ReleaseRendererTrackingOnDispatcherAsync(renderer, retirementDispatcher)", markdownViewer, StringComparison.Ordinal);
         Assert.Contains("UiTaskGuard.Observe(", markdownViewer, StringComparison.Ordinal);

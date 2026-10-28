@@ -21,7 +21,6 @@
     <InternalsVisibleTo Include="MarkdownRenderer.Conformance.Tests" />
     <InternalsVisibleTo Include="MarkdownRenderer.PerformanceHarness" ProjectStructureException="The performance harness reads internal parse counters, pipeline timing snapshots and the performance sink; step 2 replaces them with EventSource or an injected observer." />
     <InternalsVisibleTo Include="MarkdownRenderer.Sample" ProjectStructureException="The sample reads internal control and theme snapshots for its diagnostics pages; step 2 exposes them through public diagnostics API." />
-    <InternalsVisibleTo Include="JitHub.WinUI" ProjectStructureException="The JitHub app waits for control disposal through internal MarkdownRendererControl members; step 2 makes them public API so the library no longer names the app." />
   </ItemGroup>
 
   <ItemGroup>

@@ -79,6 +79,14 @@ policy, selection, code highlighting, commands, localization, and hosted-element
 services through their shared abstract base, `MarkdownRendererControl`. Only
 the two views derive from it; apps construct a view.
 
+A view releases its Win2D resources when it is unloaded, its window closes, or
+the app disposes it. `Dispose()` returns once teardown is done; some native
+resources are freed shortly after. Apps that must know when they are gone, for
+example before shutting down shared services, await `DisposeAsync()` on the UI
+thread. It throws if teardown could not finish, and its task faults if a
+resource could not be released. The `Disposed` event reports teardown that the
+view's window started.
+
 GFM, GitHub README, Markdown Extra, and safe-HTML helpers freeze their native
 presentation registrations into the engine. Parsed documents retain that
 snapshot internally, so assigning a reusable document to a bare view preserves
