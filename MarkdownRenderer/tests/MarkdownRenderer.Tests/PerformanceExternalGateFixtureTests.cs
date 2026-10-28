@@ -110,7 +110,7 @@ public sealed class PerformanceExternalGateFixtureTests
     }
 
     [Fact]
-    public void DifferentDeploymentIdentitiesMayShareTheFiveCriticalArtifactHashes()
+    public void DifferentDeploymentIdentitiesMayShareTheCriticalArtifactHashes()
     {
         using var evidence = GateEvidence.Create();
         evidence.AddPrivateRuntimeDependencyAndRefreshCandidateIdentity();

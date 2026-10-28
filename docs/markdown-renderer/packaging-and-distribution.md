@@ -1,16 +1,12 @@
 # Packaging and distribution
 
-MarkdownRenderer is intentionally split so a basic viewer does not pull every
-syntax feature, native DLL, or grammar into an application.
+MarkdownRenderer ships one viewer package plus feature packs, so a basic viewer
+does not pull a native DLL, an extra rendering engine, or a grammar corpus into
+an application.
 
 | Package | Payload |
 | --- | --- |
-| `MarkdownRenderer.Core` | Immutable document and extension API with no WinUI or native payload. |
-| `MarkdownRenderer` | Lean Core + native WinUI viewer convenience package. |
-| `MarkdownRenderer.Gfm` | Strict GFM and separately opt-in Markdown Extra. |
-| `MarkdownRenderer.GitHub` | GitHub README profile and safe-HTML composition. |
-| `MarkdownRenderer.Html` | Native safe-HTML subset parser/painter and budgets. |
-| `MarkdownRenderer.Performance` | Opt-in progressive image-source preparation and bounded per-account resource session. |
+| `MarkdownRenderer` | `MarkdownRenderer.dll`: the engine and immutable document API, CommonMark, strict GFM, Markdown Extra and GitHub README profiles, the budgeted native safe-HTML subset, the opt-in progressive performance session, and the native WinUI viewer. No native payload of its own. |
 | `MarkdownRenderer.Math` | Managed CSharpMath-based vector typesetter and bundled hash-locked math fonts. |
 | `MarkdownRenderer.Mermaid` | Selected-RID Merman native engine plus validated MMIR scene contracts. |
 | `MarkdownRenderer.Svg.Resvg` | Isolated, architecture-specific resvg 0.48.1 static-SVG worker. |
@@ -20,13 +16,36 @@ syntax feature, native DLL, or grammar into an application.
 | `MarkdownRenderer.All` | Explicit meta-package for all features and large payloads. |
 
 Most applications should reference `MarkdownRenderer` plus the smallest set of
-optional packs they actually use. `MarkdownRenderer.All` is a convenience for
+feature packs they actually use. `MarkdownRenderer.All` is a convenience for
 apps that consciously accept the full dependency and size cost.
+
+The profiles inside `MarkdownRenderer` stay off until they are selected: the
+default engine is CommonMark, and GFM, Markdown Extra, the GitHub README profile
+and safe HTML are builder calls. Why these live in one assembly is explained in
+[Tech stack and decisions](tech-stack-and-decisions.md#one-renderer-assembly).
+
+Package dependencies (third-party grammar and TextMate engine packages omitted):
+
+```text
+MarkdownRenderer                     -> Markdig, Microsoft.Graphics.Win2D (-> Windows App SDK)
+MarkdownRenderer.Math                -> MarkdownRenderer
+MarkdownRenderer.Mermaid             -> MarkdownRenderer
+MarkdownRenderer.Svg.Resvg           -> MarkdownRenderer
+...SyntaxHighlighting.TextMate       -> MarkdownRenderer
+...TextMate.Grammars.Common          -> ...SyntaxHighlighting.TextMate
+...TextMate.Grammars.All             -> ...SyntaxHighlighting.TextMate
+MarkdownRenderer.All                 -> MarkdownRenderer, Math, Mermaid, Svg.Resvg,
+                                        SyntaxHighlighting.TextMate, Grammars.All
+```
+
+Every feature pack depends on `MarkdownRenderer`, so each one brings Win2D and
+the Windows App SDK with it.
 
 ## Platform packages
 
 The native viewer targets WinUI on Windows and builds for x86, x64, and ARM64.
-`MarkdownRenderer.Core` carries no WinUI or native payload. The resvg worker
+`MarkdownRenderer` is AnyCPU managed code with no native payload of its own;
+Win2D supplies its own per-RID native assets. The resvg worker
 belongs to the optional `MarkdownRenderer.Svg.Resvg` package and must be
 validated for each architecture only when that pack is selected. Provider
 registration is explicit; trimming and NativeAOT never probe assemblies or load
@@ -38,21 +57,27 @@ an engine dynamically.
 budgets. The resvg release and worker-signing scripts enforce the same resvg
 limits.
 
-| Gate | Budget | Measured 2026-10-26 |
+| Gate | Budget | Measured |
 | --- | --- | --- |
-| Core + WinUI, compressed | 900 KiB | 820,589 bytes |
-| Core + WinUI, managed DLLs | 2,150 KiB | 1,974,784 bytes |
-| resvg selected deployment (worker + provider DLL), per RID | 4,500 KiB | 4,136,448 bytes (x64) |
-| resvg package, all RIDs, compressed | 5,950 KiB | 5,524,179 bytes |
-| Performance, compressed | 128 KiB | 117,324 bytes |
-| Math, compressed | 2.3 MiB | 701,640 bytes |
-| Grammars.Common, compressed | 6 MiB | 654,534 bytes |
-| Mermaid native DLL, compressed, per RID | 12 MiB | 5,969,501 bytes (x64) |
+| `MarkdownRenderer`, compressed | 1,028 KiB | 932,824 bytes (2026-10-27) |
+| `MarkdownRenderer`, managed DLL | 2,475 KiB | 2,302,464 bytes (2026-10-27) |
+| resvg selected deployment (worker + provider DLL), per RID | 4,500 KiB | 4,136,448 bytes (x64, 2026-10-26) |
+| resvg package, all RIDs, compressed | 5,950 KiB | 5,524,179 bytes (2026-10-26) |
+| Math, compressed | 2.3 MiB | 701,640 bytes (2026-10-26) |
+| Grammars.Common, compressed | 6 MiB | 654,534 bytes (2026-10-26) |
+| Mermaid native DLL, compressed, per RID | 12 MiB | 5,969,501 bytes (x64, 2026-10-26) |
 
-The first four budgets were raised on 2026-10-26 to the measured size plus about
-10%. The earlier budgets (525 KiB, 1.2 MiB, 3.5 MiB, 5 MiB) were set in
+The viewer and resvg budgets were raised on 2026-10-26 to the measured size plus
+about 10%. The earlier budgets (525 KiB, 1.2 MiB, 3.5 MiB, 5 MiB) were set in
 September. Later work grew past them: the progressive renderer, the correctness
 fixes, and the resvg WebP row decoder. Earlier failing CI steps hid the overrun.
+
+The `MarkdownRenderer` compressed budget is the sum of the earlier engine and
+viewer (900 KiB) and performance-session (128 KiB) budgets. Its managed budget
+is the measured `MarkdownRenderer.dll` plus about 10%: the GFM, GitHub README,
+safe-HTML and performance code it now holds never had a managed budget of its
+own, so the earlier engine and viewer budget (2,150 KiB) did not cover it.
+
 The budgets catch regressions; they are not size targets. Raise one only with a
 new measurement and a note here.
 
@@ -80,13 +105,11 @@ avoid reflection-based plug-in discovery. Each selected package still needs its
 own trim/AOT verification, including native asset resolution and TextMate grammar
 resource loading where applicable.
 
-Trimmed and NativeAOT consumers should construct `CommonTextMateGrammarProvider`
-or `AllTextMateGrammarProvider` explicitly. Reflection-based optional-pack
-discovery remains available only as a compatibility convenience and is annotated
-with `RequiresUnreferencedCode` and `Obsolete`. The parameterless view helpers
-transfer the discovered highlighter/provider to the view, which disposes them.
-Provider-taking compatibility helpers borrow the caller's provider but transfer
-their adapter to the view. Explicit highlighter overloads remain caller-owned.
+Apps construct `CommonTextMateGrammarProvider` or `AllTextMateGrammarProvider`
+explicitly and pass it to a `TextMateCodeBlockSyntaxHighlighter`; nothing loads
+grammar packs by name. The highlighter is caller-owned: keep it alive while any
+view uses it, then dispose it. It disposes its provider only when it was
+constructed with `ownsProvider: true`.
 
 Each grammar pack carries the deterministic `GRAMMAR-PROVENANCE.json` inventory
 and third-party notices. Run `eng/Invoke-TextMateReleaseEvidence.ps1` to verify

@@ -1,7 +1,7 @@
 # MarkdownRenderer conformance harness
 
 This tool runs every official CommonMark 0.31.2 and GFM 0.29 example through
-the built `MarkdownRenderer.Core` assembly. It verifies pinned corpus SHA-256
+the built `MarkdownRenderer` assembly. It verifies pinned corpus SHA-256
 digests, exact source retention, half-open UTF-16 source ranges, immutable
 semantic invariants, byte-stable semantic-plan serialization, and exact official
 reference-HTML parity.

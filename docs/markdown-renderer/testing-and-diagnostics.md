@@ -8,10 +8,24 @@ Windows Sandbox UI runners.
 | Project | Purpose |
 | --- | --- |
 | `MarkdownRenderer.Tests` | Pure-logic unit tests for parsing, source maps, text boundaries, focus item semantics, SVG helpers, image loading, and regressions. |
+| `MarkdownRenderer.GitHub.Tests` | Renderer tests that run on the WinUI/Win2D stack: layout, images, code blocks, accessibility, the GitHub README profile, and the Primer visual profiles. |
+| `MarkdownRenderer.Html.Tests` | Safe-HTML contract, budget, and fuzz tests. |
+| `MarkdownRenderer.Math.Tests`, `MarkdownRenderer.Mermaid.Tests`, `MarkdownRenderer.Svg.Resvg.Tests`, `MarkdownRenderer.SyntaxHighlighting.TextMate.Tests` | Tests for each feature pack. |
+| `MarkdownRenderer.Conformance.Tests` | Tests of the CommonMark/GFM conformance harness itself. |
 | `MarkdownRenderer.Sample` | Manual WinUI test host with feature pages. |
 | `MarkdownRenderer.Sample.Automation` | FlaUI UI automation against the sample app. |
 | `MarkdownRenderer.PixelTests` | SVG fixture and pixel-comparison infrastructure. |
 | `MarkdownRenderer.PublicApi.Tests` | Public-surface policy over every shipping assembly that the `PublicAPI.*.txt` files do not record. See [Public API](public-api.md#changing-the-public-api). |
+
+### NativeAOT smokes
+
+`tests/aot/` holds console consumers that publish with NativeAOT (or trimmed
+single-file) and treat the trim and AOT analyzer warnings as errors:
+
+| Project | Checks |
+| --- | --- |
+| `MarkdownRenderer.AotSmoke` | The `MarkdownRenderer` package: strict GFM and GitHub README engines, parse-cache identity, source map, headings, the safe-HTML capability contract, and the performance session. Prints `gfm-0.29;github-readme;safe-html-v1`. CI publishes it from project references for win-x64, and from the freshly packed package (`-p:MarkdownRendererPackageVersion=<version>`) for x86, x64, and ARM64 in NativeAOT and trimmed single-file modes. |
+| `MarkdownRenderer.Math.AotSmoke`, `MarkdownRenderer.Mermaid.AotSmoke`, `MarkdownRenderer.Svg.Resvg.AotSmoke`, `MarkdownRenderer.SyntaxHighlighting.TextMate.AotSmoke` | One feature pack each. CI runs the Mermaid and resvg smokes; the per-pack release evidence scripts publish the others as package consumers. |
 
 ## Project layout and structure checks
 
@@ -44,8 +58,8 @@ An item may break a rule only when it carries `ProjectStructureException`
 metadata that states the reason and how the exception is removed:
 
 ```xml
-<InternalsVisibleTo Include="MarkdownRenderer.Gfm"
-                    ProjectStructureException="Gfm plugs in through internal renderer hooks; they become public extension API." />
+<InternalsVisibleTo Include="MarkdownRenderer.ExampleTool"
+                    ProjectStructureException="ExampleTool reads an internal counter; the counter moves to public diagnostics API." />
 ```
 
 The project files are the only list of exceptions; search them for
@@ -174,7 +188,7 @@ CLI 0.7 or newer and write their run directories under the Git-ignored
 | `Test-TouchSelectionSampleUi.ps1` | Touch selection checks at one architecture and display scale. |
 | `Test-TouchSelectionReleaseMatrix.ps1` | Validates a set of touch selection runs across architectures, scales, and contrast. |
 | `Invoke-MathReleaseEvidence.ps1`, `Invoke-MermaidReleaseEvidence.ps1`, `Invoke-SvgResvgReleaseEvidence.ps1`, `Invoke-TextMateReleaseEvidence.ps1` | Per-pack release evidence, including NativeAOT consumer smokes. |
-| `New-MarkdownManagedArchitectureEvidence.ps1` | Static cross-architecture build and PE-header evidence for the managed packs. |
+| `New-MarkdownManagedArchitectureEvidence.ps1` | Static cross-architecture build and PE-header evidence for `MarkdownRenderer.dll` and its sample and performance-harness consumers. |
 
 Each UI run writes `run.json`, `results.json`, command logs, and screenshots.
 A case that the batch cannot check is recorded as `UNVERIFIED` with a reason,

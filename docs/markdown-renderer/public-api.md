@@ -8,12 +8,7 @@ are implementation details.
 
 | Package | Purpose |
 | --- | --- |
-| `MarkdownRenderer.Core` | Immutable engines, documents, profiles, diagnostics, UTF-16 source maps, and declarative extension contracts; no WinUI or native payload. |
-| `MarkdownRenderer` | Lean convenience package containing Core plus the native WinUI viewer. |
-| `MarkdownRenderer.Gfm` | Strict GFM 0.29 plus separately opt-in Markdown Extra helpers. |
-| `MarkdownRenderer.GitHub` | Opt-in GitHub README profile: GFM plus alerts, footnotes, emoji, attributes, and safe HTML. |
-| `MarkdownRenderer.Html` | Bounded native safe-HTML subset parser/painter and immutable options. |
-| `MarkdownRenderer.Performance` | Optional host-owned progressive preparation session; the WinUI controls borrow it through the engine-neutral session contract. |
+| `MarkdownRenderer` | The viewer: immutable engines, documents, profiles, diagnostics, UTF-16 source maps, declarative extension contracts, the opt-in profiles and safe HTML listed below, the optional performance session, and the native WinUI views. |
 | `MarkdownRenderer.Math` | CSharpMath-based TeX processor, immutable vector scenes, fallback and accessibility. |
 | `MarkdownRenderer.Mermaid` | Selected-RID Merman engine, validated MMIR scenes, bounded processing and fallback. |
 | `MarkdownRenderer.Svg.Resvg` | Optional isolated resvg static-SVG provider and RID workers. |
@@ -21,6 +16,15 @@ are implementation details.
 | `MarkdownRenderer.All` | Explicit, deliberately large meta-package for every feature and payload. |
 
 Most apps should install `MarkdownRenderer` and only the packs they need.
+
+The `MarkdownRenderer` assembly groups its opt-in areas by namespace:
+
+| Namespace | Purpose |
+| --- | --- |
+| `MarkdownRenderer.Gfm` | Strict GFM 0.29 plus separately opt-in Markdown Extra helpers. |
+| `MarkdownRenderer.GitHub` | Opt-in GitHub README profile: GFM plus alerts, footnotes, emoji, attributes, and safe HTML; versioned Primer visual comparison profiles. |
+| `MarkdownRenderer.Html` | Bounded native safe-HTML subset parser/painter and immutable options. |
+| `MarkdownRenderer.Performance` | Optional host-owned progressive preparation session; the WinUI controls borrow it through the engine-neutral session contract. |
 
 ## Engines and documents
 
@@ -92,8 +96,8 @@ var view = new MarkdownRendererControlBuilder()
 Use `BuildDocumentView()` for an ancestor-owned viewport. The builder's `Build()`
 method is obsolete.
 
-For the opt-in progressive image pipeline, install `MarkdownRenderer.Performance`,
-create one session per account or security partition, and share it between
+For the opt-in progressive image pipeline, create one `MarkdownPerformanceSession`
+per account or security partition, and share it between
 views. Controls borrow it; the host disposes it after those views stop using it:
 
 ```csharp
@@ -130,9 +134,9 @@ rejects registrations after the resolver call has returned.
 ## Themes and host services
 
 The base visual design follows WinUI/Fluent resources, including light, dark,
-high-contrast, text-scale, and flow-direction changes. The GitHub profile and
-GitHub-themed presentation are opt-in through `MarkdownRenderer.GitHub`;
-applications can further customize
+high-contrast, text-scale, and flow-direction changes. The GitHub README profile
+and GitHub-themed presentation are opt-in through `UseGitHubReadme()` and the
+`MarkdownRenderer.GitHub` namespace; applications can further customize
 roles through `MarkdownStyleSheet`, `MarkdownStyleRole`, and
 `MarkdownResourceKeys`.
 
@@ -193,7 +197,7 @@ To accept an intentional change, apply the RS0016 code fix in the IDE, or run
 from the repository root:
 
 ```powershell
-dotnet format analyzers MarkdownRenderer\src\MarkdownRenderer.Core\MarkdownRenderer.Core.csproj --diagnostics RS0016 --severity warn
+dotnet format analyzers MarkdownRenderer\src\MarkdownRenderer\MarkdownRenderer.csproj --diagnostics RS0016 --severity warn
 ```
 
 For a removed or changed symbol, delete or edit its old line in

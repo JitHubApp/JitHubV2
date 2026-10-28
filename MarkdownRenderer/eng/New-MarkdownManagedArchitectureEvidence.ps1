@@ -15,7 +15,6 @@ Set-StrictMode -Version Latest
 $rendererRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $targetFramework = 'net10.0-windows10.0.26100.0'
 $rendererProject = Join-Path $rendererRoot 'src\MarkdownRenderer\MarkdownRenderer.csproj'
-$performanceProject = Join-Path $rendererRoot 'src\MarkdownRenderer.Performance\MarkdownRenderer.Performance.csproj'
 $harnessProject = Join-Path $rendererRoot 'perf\MarkdownRenderer.PerformanceHarness\MarkdownRenderer.PerformanceHarness.csproj'
 $sampleProject = Join-Path $rendererRoot 'samples\MarkdownRenderer.Sample\MarkdownRenderer.Sample.csproj'
 
@@ -34,7 +33,6 @@ function Invoke-CheckedBuild {
 if (-not $NoBuild) {
     foreach ($platform in @('x86', 'x64', 'ARM64')) {
         Invoke-CheckedBuild -Project $rendererProject -Platform $platform
-        Invoke-CheckedBuild -Project $performanceProject -Platform $platform
     }
     Invoke-CheckedBuild -Project $sampleProject -Platform 'x86'
     foreach ($platform in @('x64', 'ARM64')) {
@@ -109,19 +107,9 @@ function Add-PeEvidence {
 }
 
 foreach ($platform in @('x86', 'x64', 'ARM64')) {
-    $libraryDirectory = Join-Path $rendererRoot "src\MarkdownRenderer.Core\bin\$platform\$Configuration\$targetFramework"
-    Add-PeEvidence -Platform $platform -Component 'MarkdownRenderer.Core' `
-        -Path (Join-Path $libraryDirectory 'MarkdownRenderer.Core.dll') `
-        -ExpectedMachine 'I386' -ExpectedKind 'AnyCpuLibrary'
-
     $libraryDirectory = Join-Path $rendererRoot "src\MarkdownRenderer\bin\$platform\$Configuration\$targetFramework"
-    Add-PeEvidence -Platform $platform -Component 'MarkdownRenderer.WinUI' `
+    Add-PeEvidence -Platform $platform -Component 'MarkdownRenderer' `
         -Path (Join-Path $libraryDirectory 'MarkdownRenderer.dll') `
-        -ExpectedMachine 'I386' -ExpectedKind 'AnyCpuLibrary'
-
-    $libraryDirectory = Join-Path $rendererRoot "src\MarkdownRenderer.Performance\bin\$platform\$Configuration\$targetFramework"
-    Add-PeEvidence -Platform $platform -Component 'MarkdownRenderer.Performance' `
-        -Path (Join-Path $libraryDirectory 'MarkdownRenderer.Performance.dll') `
         -ExpectedMachine 'I386' -ExpectedKind 'AnyCpuLibrary'
 }
 
@@ -132,10 +120,7 @@ Add-PeEvidence -Platform 'x86' -Component 'sample-apphost' `
 Add-PeEvidence -Platform 'x86' -Component 'Win2D-native' `
     -Path (Join-Path $x86Consumer 'Microsoft.Graphics.Canvas.dll') `
     -ExpectedMachine 'I386' -ExpectedKind 'Native'
-Add-PeEvidence -Platform 'x86' -Component 'consumer-MarkdownRenderer.Core' `
-    -Path (Join-Path $x86Consumer 'MarkdownRenderer.Core.dll') `
-    -ExpectedMachine 'I386' -ExpectedKind 'AnyCpuLibrary'
-Add-PeEvidence -Platform 'x86' -Component 'consumer-MarkdownRenderer.WinUI' `
+Add-PeEvidence -Platform 'x86' -Component 'consumer-MarkdownRenderer' `
     -Path (Join-Path $x86Consumer 'MarkdownRenderer.dll') `
     -ExpectedMachine 'I386' -ExpectedKind 'AnyCpuLibrary'
 
@@ -152,10 +137,7 @@ foreach ($platform in @('x64', 'ARM64')) {
     Add-PeEvidence -Platform $platform -Component 'Win2D-native' `
         -Path (Join-Path $consumer 'Microsoft.Graphics.Canvas.dll') `
         -ExpectedMachine $expectedMachine -ExpectedKind 'Native'
-    Add-PeEvidence -Platform $platform -Component 'consumer-MarkdownRenderer.Core' `
-        -Path (Join-Path $consumer 'MarkdownRenderer.Core.dll') `
-        -ExpectedMachine 'I386' -ExpectedKind 'AnyCpuLibrary'
-    Add-PeEvidence -Platform $platform -Component 'consumer-MarkdownRenderer.WinUI' `
+    Add-PeEvidence -Platform $platform -Component 'consumer-MarkdownRenderer' `
         -Path (Join-Path $consumer 'MarkdownRenderer.dll') `
         -ExpectedMachine 'I386' -ExpectedKind 'AnyCpuLibrary'
 }

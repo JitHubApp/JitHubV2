@@ -8,8 +8,8 @@ backend-neutral little-endian MMIR scene to managed code.
 The package provides immutable scene contracts, UTF-8-to-UTF-16 source mappings, generated
 fixed-width `cdecl` bindings, `SafeHandle` ownership, cancellation/deadline/budget enforcement,
 and atomic original-code fallback. Register it with `new MarkdownEngineBuilder().UseMermaid()`;
-normalized `mermaid` fences then become renderer-neutral vector scenes that the WinUI package
-paints and exposes through UI Automation. Mermaid/Markdown content can never execute scripts,
+normalized `mermaid` fences then become renderer-neutral vector scenes that the MarkdownRenderer
+viewer paints and exposes through UI Automation. Mermaid/Markdown content can never execute scripts,
 load files, perform external fetches, or supply callbacks. The only callback is the host-owned,
 explicitly configured diagnostic string provider described below.
 

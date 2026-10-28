@@ -15,6 +15,15 @@ $runDirectory = [IO.Path]::GetFullPath((Join-Path $OutputDirectory $runName))
 [IO.Directory]::CreateDirectory($runDirectory) | Out-Null
 $evidenceLockPath = Join-Path $runDirectory 'evidence.packages.lock.json'
 
+# MarkdownRenderer.Math depends on MarkdownRenderer, which brings the Windows
+# App SDK. Its self-contained targets invoke mt.exe by name in the package
+# consumer publishes. Prefer the pinned 26100 SDK host tool when it exists but
+# was not added to PATH by the shell.
+$sdkTools = 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64'
+if (Test-Path -LiteralPath (Join-Path $sdkTools 'mt.exe') -PathType Leaf) {
+    $env:PATH = $sdkTools + [IO.Path]::PathSeparator + $env:PATH
+}
+
 function Invoke-DotNet {
     param([Parameter(Mandatory)][string[]] $Arguments)
 
@@ -173,7 +182,7 @@ try {
     $packageDirectory = Join-Path $runDirectory 'packages'
     [IO.Directory]::CreateDirectory($packageDirectory) | Out-Null
     Invoke-DotNet @(
-        'pack', (Join-Path $markdownRoot 'src\MarkdownRenderer.Core\MarkdownRenderer.Core.csproj'),
+        'pack', (Join-Path $markdownRoot 'src\MarkdownRenderer\MarkdownRenderer.csproj'),
         '-c', 'Release', '-p:Platform=x64', '--no-restore',
         ('-p:ArtifactsPath=' + $buildArtifactsDirectory),
         '--disable-build-servers', '-p:UseSharedCompilation=false', '-nr:false',
@@ -254,8 +263,8 @@ try {
         throw 'Math package repository/SourceLink metadata is incomplete.'
     }
     $dependencies = @($nuspec.SelectNodes("//*[local-name()='dependency']"))
-    if ($dependencies.Count -ne 1 -or $dependencies[0].id -ne 'MarkdownRenderer.Core') {
-        throw "Math package must declare exactly one MarkdownRenderer.Core package dependency; found $($dependencies.Count)."
+    if ($dependencies.Count -ne 1 -or $dependencies[0].id -ne 'MarkdownRenderer') {
+        throw "Math package must declare exactly one MarkdownRenderer package dependency; found $($dependencies.Count)."
     }
 }
 finally {

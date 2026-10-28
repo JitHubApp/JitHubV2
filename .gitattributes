@@ -12,7 +12,7 @@ MarkdownRenderer/src/MarkdownRenderer.Mermaid/NATIVE_RUST_DEPENDENCIES.json text
 
 # The native GitHub README profile fingerprints these CSS bytes.
 # Keep the embedded resources identical on Windows and non-Windows checkouts.
-MarkdownRenderer/src/MarkdownRenderer.GitHub/Profiles/*.css text eol=lf
+MarkdownRenderer/src/MarkdownRenderer/GitHub/Profiles/*.css text eol=lf
 
 # The vendored native packages are verified against exact upstream and patch
 # byte hashes. Do not let a Windows checkout rewrite pinned text files.

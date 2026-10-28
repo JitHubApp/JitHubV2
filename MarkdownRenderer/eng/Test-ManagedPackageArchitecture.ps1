@@ -14,20 +14,15 @@ Set-StrictMode -Version Latest
 $managedAssetPattern = '(?i)^(?:lib|ref)/.+\.dll$|^runtimes/[^/]+/(?:lib|ref)/.+\.dll$'
 $maximumManagedAssemblyBytes = 256MB
 $requiredLibraryDllByPackageId = @{
-    'MarkdownRenderer.Core' = 'MarkdownRenderer.Core.dll'
-    'MarkdownRenderer.WinUI' = 'MarkdownRenderer.dll'
-    'MarkdownRenderer.Performance' = 'MarkdownRenderer.Performance.dll'
-    'MarkdownRenderer.Gfm' = 'MarkdownRenderer.Gfm.dll'
-    'MarkdownRenderer.Html' = 'MarkdownRenderer.Html.dll'
+    'MarkdownRenderer' = 'MarkdownRenderer.dll'
     'MarkdownRenderer.Math' = 'MarkdownRenderer.Math.dll'
     'MarkdownRenderer.Mermaid' = 'MarkdownRenderer.Mermaid.dll'
     'MarkdownRenderer.Svg.Resvg' = 'MarkdownRenderer.Svg.Resvg.dll'
     'MarkdownRenderer.SyntaxHighlighting.TextMate' = 'MarkdownRenderer.SyntaxHighlighting.TextMate.dll'
     'MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common' = 'MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.dll'
     'MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All' = 'MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All.dll'
-    'MarkdownRenderer.GitHub' = 'MarkdownRenderer.GitHub.dll'
 }
-$metapackageIds = @('MarkdownRenderer', 'MarkdownRenderer.All')
+$metapackageIds = @('MarkdownRenderer.All')
 $packageFiles = @(Get-ChildItem -LiteralPath $PackageDirectory -Filter '*.nupkg' -File | Sort-Object Name)
 if ($packageFiles.Count -eq 0) {
     throw "No NuGet packages were found in '$PackageDirectory'."

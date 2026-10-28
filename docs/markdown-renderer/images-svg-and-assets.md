@@ -15,7 +15,7 @@ incompatible trust boundary.
 
 ## SVG is optional
 
-The lean `MarkdownRenderer` package does not include an SVG engine. Install
+The `MarkdownRenderer` package does not include an SVG engine. Install
 `MarkdownRenderer.Svg.Resvg` and explicitly assign one shared
 `ResvgMarkdownSvgRenderer` to `SvgRenderer`, or register it with
 `WithResvgSvgRenderer(...)`. The control borrows the renderer; the host owns and

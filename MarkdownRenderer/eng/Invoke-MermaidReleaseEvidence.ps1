@@ -15,6 +15,15 @@ $runDirectory = [IO.Path]::GetFullPath((Join-Path $OutputDirectory $runName))
 [IO.Directory]::CreateDirectory($runDirectory) | Out-Null
 $evidenceLockPath = Join-Path $runDirectory 'evidence.packages.lock.json'
 
+# MarkdownRenderer.Mermaid depends on MarkdownRenderer, which brings the
+# Windows App SDK. Its self-contained targets invoke mt.exe by name in the
+# package consumer publishes. Prefer the pinned 26100 SDK host tool when it
+# exists but was not added to PATH by the shell.
+$sdkTools = 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64'
+if (Test-Path -LiteralPath (Join-Path $sdkTools 'mt.exe') -PathType Leaf) {
+    $env:PATH = $sdkTools + [IO.Path]::PathSeparator + $env:PATH
+}
+
 function Copy-EvidenceSourceTree {
     param(
         [Parameter(Mandatory)][string] $Source,
@@ -72,7 +81,7 @@ foreach ($relativePath in @(
     'src\Directory.Build.props',
     'tests\Directory.Build.props',
     'assets\package-icon.png',
-    # Core and WinUI filter their packed XML documentation with this script.
+    # MarkdownRenderer filters its packed XML documentation with this script.
     'eng\Filter-PublicXmlDocumentation.ps1'
 )) {
     $destinationPath = Join-Path $evidenceMarkdownRoot $relativePath
@@ -84,7 +93,6 @@ Copy-EvidenceSourceTree `
     -Destination (Join-Path $evidenceRepositoryRoot 'docs\markdown-renderer')
 foreach ($projectName in @(
     'src\MarkdownRenderer',
-    'src\MarkdownRenderer.Core',
     'src\MarkdownRenderer.Mermaid',
     'tests\MarkdownRenderer.Mermaid.Tests'
 )) {
@@ -197,7 +205,7 @@ try {
         '--logger', 'trx;LogFileName=mermaid-contracts.trx', '--results-directory', $testResultsDirectory
     )
     Invoke-DotNet @(
-        'pack', (Join-Path $evidenceMarkdownRoot 'src\MarkdownRenderer.Core\MarkdownRenderer.Core.csproj'),
+        'pack', (Join-Path $evidenceMarkdownRoot 'src\MarkdownRenderer\MarkdownRenderer.csproj'),
         '-c', 'Release', '-p:Platform=x64', '--no-restore',
         '--disable-build-servers', '-p:UseSharedCompilation=false', '-nr:false', '-o', $packageDirectory
     )

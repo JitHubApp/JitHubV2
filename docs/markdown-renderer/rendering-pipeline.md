@@ -18,12 +18,18 @@ sharing explicit.
 
 ## Feature composition
 
-The default engine uses the CommonMark profile. Optional packs add profiles or
-services without changing the base package's dependency footprint:
+The default engine uses the CommonMark profile. Builder calls in the
+`MarkdownRenderer` package select the other built-in profiles:
 
-- `MarkdownRenderer.Gfm` for strict GFM and opt-in Markdown Extra;
-- `MarkdownRenderer.GitHub` for the GitHub README profile;
-- `MarkdownRenderer.Html` for bounded native safe-HTML rendering;
+- `UseGitHubFlavoredMarkdown()` for strict GFM and `UseMarkdownExtra()` for
+  Markdown Extra (`MarkdownRenderer.Gfm`);
+- `UseGitHubReadme()` for the GitHub README profile (`MarkdownRenderer.GitHub`);
+- `UseSafeHtml()` for bounded native safe-HTML rendering
+  (`MarkdownRenderer.Html`).
+
+Feature packs add services without changing the base package's dependency
+footprint:
+
 - `MarkdownRenderer.Math` and `MarkdownRenderer.Mermaid` for bounded native
   processing, vector scenes and fallbacks;
 - `MarkdownRenderer.Svg.Resvg` for isolated static SVG rasterization;
@@ -31,7 +37,7 @@ services without changing the base package's dependency footprint:
 
 Math uses CSharpMath-based typesetting, while Mermaid uses a selected-RID Merman
 engine and validated MMIR scenes. Safe HTML uses a restricted native parser and
-painter. No browser or JavaScript runtime is introduced by these packs.
+painter. No browser or JavaScript runtime is introduced by any of them.
 
 ## Source and diagnostics
 

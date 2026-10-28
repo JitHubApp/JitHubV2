@@ -225,7 +225,7 @@ Legend: 🔴 blocks release · 🟠 must fix before 1.0 · 🟡 v1.1 candidate
 
 ## Packaging & Public API
 
-> Implementation complete. Core and optional-pack metadata, XML docs,
+> Implementation complete. Renderer and feature-pack metadata, XML docs,
 > quick-start APIs, document queries, public-surface cleanup, and
 > x86/x64/ARM64 native assets are in place. Final release validation remains a
 > separate gate.
@@ -252,8 +252,8 @@ Legend: 🔴 blocks release · 🟠 must fix before 1.0 · 🟡 v1.1 candidate
   `GetHeadings()`, `GetLinks()`, `GetCodeBlocks()`, and `GetImages()`.
 
 - ✅ **Add NuGet package metadata**
-  Core and GFM include package IDs, descriptions, authors, MIT license metadata,
-  repository/project URLs, tags, README, and icon assets.
+  Every shipping package includes its package ID, description, authors, MIT
+  license metadata, repository/project URLs, tags, README, and icon assets.
 
 ---
 
@@ -262,7 +262,7 @@ Legend: 🔴 blocks release · 🟠 must fix before 1.0 · 🟡 v1.1 candidate
 Remaining tracked debt for 1.0 is validation-oriented rather than known code
 blockers:
 
-- ✅ **Raw HTML policy** — `MarkdownRenderer.Html` provides an opt-in,
+- ✅ **Raw HTML policy** — safe HTML (`MarkdownRenderer.Html`) provides an opt-in,
   non-executable safe-HTML subset with bounded parsing and explicit link/image
   policy.
 - ✅ **LaTeX/math support** — `MarkdownRenderer.Math` provides bounded native

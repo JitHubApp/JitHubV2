@@ -47,10 +47,9 @@
        PublicAPI.Shipped.txt and PublicAPI.Unshipped.txt next to its project
        file. PublicApiAnalyzers.globalconfig makes undeclared, removed and
        unannotated entries build errors, and Directory.Build.targets fails
-       the build when either file is missing. The
-       meta-packages (MarkdownRenderer.Package and MarkdownRenderer.All) set
-       IncludeBuildOutput=false and ship no assembly, so they have no API to
-       track. Item conditions are evaluated after all properties, so the
+       the build when either file is missing. The meta-package
+       MarkdownRenderer.All sets IncludeBuildOutput=false and ships no
+       assembly, so it has no API to track. Item conditions are evaluated after all properties, so the
        project file's IncludeBuildOutput is visible here. -->
   <ItemGroup Condition="'$(IncludeBuildOutput)' != 'false'">
     <PackageReference Include="Microsoft.CodeAnalysis.PublicApiAnalyzers" PrivateAssets="all" />
