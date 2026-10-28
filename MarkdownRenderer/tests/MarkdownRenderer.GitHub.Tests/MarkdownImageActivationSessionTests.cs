@@ -15,7 +15,7 @@ public sealed class MarkdownImageActivationSessionTests
         using var release = new ManualResetEventSlim();
 
         Assert.True(api.TryScheduleImageActivation(
-            new MarkdownSvgDemandTicket(MarkdownSvgRenderPriority.Visible),
+            new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Visible),
             startAsyncWork: () =>
             {
                 entered.Set();
@@ -50,14 +50,14 @@ public sealed class MarkdownImageActivationSessionTests
         using var entered = new CountdownEvent(workerCount);
         using var release = new ManualResetEventSlim();
         var started = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var queuedDemand = new MarkdownSvgDemandTicket(MarkdownSvgRenderPriority.Overscan);
+        var queuedDemand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         int rejected = 0;
         try
         {
             for (int index = 0; index < workerCount; index++)
             {
                 Assert.True(api.TryScheduleImageActivation(
-                    new MarkdownSvgDemandTicket(MarkdownSvgRenderPriority.Visible),
+                    new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Visible),
                     () =>
                     {
                         entered.Signal();

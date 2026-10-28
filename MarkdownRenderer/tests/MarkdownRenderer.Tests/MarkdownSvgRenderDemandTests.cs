@@ -5,14 +5,14 @@ using Xunit;
 namespace MarkdownRenderer.Tests;
 
 [Collection(AllocationSensitiveContractCollection.Name)]
-public sealed class MarkdownSvgDemandTicketTests
+public sealed class MarkdownSvgRenderDemandTests
 {
     [Theory]
     [InlineData(MarkdownSvgRenderPriority.Overscan, 0)]
     [InlineData(MarkdownSvgRenderPriority.Visible, 1)]
     public void InitialDemandIsAnAtomicSnapshot(MarkdownSvgRenderPriority priority, long version)
     {
-        var ticket = new MarkdownSvgDemandTicket(priority);
+        var ticket = new MarkdownSvgRenderDemand(priority);
         Assert.Equal(priority, ticket.Priority);
         Assert.Equal(version, ticket.Version);
         Assert.Equal(0, ticket.PendingPromotionCount);
@@ -20,12 +20,12 @@ public sealed class MarkdownSvgDemandTicketTests
 
     [Fact]
     public void InvalidInitialPriorityIsRejected() => Assert.Throws<ArgumentOutOfRangeException>(
-        () => new MarkdownSvgDemandTicket((MarkdownSvgRenderPriority)42));
+        () => new MarkdownSvgRenderDemand((MarkdownSvgRenderPriority)42));
 
     [Fact]
     public void VisibleObservationIsMonotonicAndAllocationFree()
     {
-        var ticket = new MarkdownSvgDemandTicket(MarkdownSvgRenderPriority.Overscan);
+        var ticket = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         Assert.True(ticket.PromoteVisible());
         for (int index = 0; index < 100; index++)
             ticket.PromoteVisible();
@@ -43,7 +43,7 @@ public sealed class MarkdownSvgDemandTicketTests
     [Fact]
     public async Task RegistrationBeforeAndAfterPromotionIsDeliveredExactlyOnce()
     {
-        var ticket = new MarkdownSvgDemandTicket(MarkdownSvgRenderPriority.Overscan);
+        var ticket = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         var first = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var second = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         int firstCalls = 0, secondCalls = 0;
@@ -71,7 +71,7 @@ public sealed class MarkdownSvgDemandTicketTests
     [InlineData(true)]
     public void DeliveryNeverInvokesTheSubscriberInline(bool initiallyVisible)
     {
-        var ticket = new MarkdownSvgDemandTicket(initiallyVisible
+        var ticket = new MarkdownSvgRenderDemand(initiallyVisible
             ? MarkdownSvgRenderPriority.Visible : MarkdownSvgRenderPriority.Overscan);
         using var completed = new ManualResetEventSlim();
         int callerThread = Environment.CurrentManagedThreadId;
@@ -90,7 +90,7 @@ public sealed class MarkdownSvgDemandTicketTests
     [Fact]
     public void DisposingBeforePromotionRemovesTheCallbackAndIsIdempotent()
     {
-        var ticket = new MarkdownSvgDemandTicket(MarkdownSvgRenderPriority.Overscan);
+        var ticket = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         int calls = 0;
         IDisposable registration = ticket.RegisterPromotion(() => Interlocked.Increment(ref calls));
         Assert.Equal(1, ticket.PendingPromotionCount);
@@ -104,17 +104,17 @@ public sealed class MarkdownSvgDemandTicketTests
     [Fact]
     public void SubscriptionCountIsBoundedAndCanceledSlotsCanBeReused()
     {
-        var ticket = new MarkdownSvgDemandTicket(MarkdownSvgRenderPriority.Overscan);
+        var ticket = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         var registrations = new List<IDisposable>();
         try
         {
-            for (int index = 0; index < MarkdownSvgDemandTicket.MaximumPromotionRegistrations; index++)
+            for (int index = 0; index < MarkdownSvgRenderDemand.MaximumPromotionRegistrations; index++)
                 registrations.Add(ticket.RegisterPromotion(static () => { }));
-            Assert.Equal(MarkdownSvgDemandTicket.MaximumPromotionRegistrations, ticket.PendingPromotionCount);
+            Assert.Equal(MarkdownSvgRenderDemand.MaximumPromotionRegistrations, ticket.PendingPromotionCount);
             Assert.Throws<InvalidOperationException>(() => ticket.RegisterPromotion(static () => { }));
             registrations[0].Dispose();
             using IDisposable replacement = ticket.RegisterPromotion(static () => { });
-            Assert.Equal(MarkdownSvgDemandTicket.MaximumPromotionRegistrations, ticket.PendingPromotionCount);
+            Assert.Equal(MarkdownSvgRenderDemand.MaximumPromotionRegistrations, ticket.PendingPromotionCount);
         }
         finally
         {
@@ -129,7 +129,7 @@ public sealed class MarkdownSvgDemandTicketTests
     {
         for (int index = 0; index < 200; index++)
         {
-            var ticket = new MarkdownSvgDemandTicket(MarkdownSvgRenderPriority.Overscan);
+            var ticket = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
             var delivered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             int calls = 0;
             IDisposable? registration = null;
@@ -152,7 +152,7 @@ public sealed class MarkdownSvgDemandTicketTests
     [Fact]
     public async Task OneBadSubscriberCannotStopOtherNotifications()
     {
-        var ticket = new MarkdownSvgDemandTicket(MarkdownSvgRenderPriority.Overscan);
+        var ticket = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         var failedSubscriberEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var successfulSubscriberEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using IDisposable bad = ticket.RegisterPromotion(() =>
@@ -171,7 +171,7 @@ public sealed class MarkdownSvgDemandTicketTests
     public async Task FailedSchedulingReturnsTheSlotAndDoesNotStrandOtherSubscribers()
     {
         int attempts = 0;
-        var ticket = new MarkdownSvgDemandTicket(MarkdownSvgRenderPriority.Overscan,
+        var ticket = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan,
             () => Interlocked.Increment(ref attempts) != 1);
         int failedCalls = 0;
         var delivered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -187,8 +187,8 @@ public sealed class MarkdownSvgDemandTicketTests
     [Fact]
     public void FailedVisibleRegistrationDoesNotExhaustTheSubscriptionLimit()
     {
-        var ticket = new MarkdownSvgDemandTicket(MarkdownSvgRenderPriority.Visible, static () => false);
-        for (int index = 0; index < MarkdownSvgDemandTicket.MaximumPromotionRegistrations * 2; index++)
+        var ticket = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Visible, static () => false);
+        for (int index = 0; index < MarkdownSvgRenderDemand.MaximumPromotionRegistrations * 2; index++)
             Assert.Throws<InvalidOperationException>(() => ticket.RegisterPromotion(static () => { }));
         Assert.Equal(0, ticket.PendingPromotionCount);
     }
@@ -197,7 +197,7 @@ public sealed class MarkdownSvgDemandTicketTests
     public async Task ThrowingQueueProbeCannotStrandTheRestOfThePromotionBatch()
     {
         int attempts = 0;
-        var ticket = new MarkdownSvgDemandTicket(MarkdownSvgRenderPriority.Overscan, () =>
+        var ticket = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan, () =>
         {
             if (Interlocked.Increment(ref attempts) == 1)
                 throw new InvalidOperationException("Injected scheduling failure.");
@@ -215,7 +215,7 @@ public sealed class MarkdownSvgDemandTicketTests
     [Fact]
     public void CanceledRegistrationDoesNotRetainItsCallbackOwner()
     {
-        var ticket = new MarkdownSvgDemandTicket(MarkdownSvgRenderPriority.Overscan);
+        var ticket = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         WeakReference callbackOwner = RegisterAndCancel(ticket);
         for (int index = 0; index < 3; index++)
         {
@@ -228,7 +228,7 @@ public sealed class MarkdownSvgDemandTicketTests
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static WeakReference RegisterAndCancel(MarkdownSvgDemandTicket ticket)
+    private static WeakReference RegisterAndCancel(MarkdownSvgRenderDemand ticket)
     {
         var owner = new CallbackOwner();
         var weak = new WeakReference(owner);

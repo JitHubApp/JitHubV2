@@ -38,7 +38,7 @@ internal static class SvgHostAdmissionCoordinator
         internal void Commit(
             ImageBox owner,
             ImageBox.SvgTileRenderPlan plan,
-            MarkdownSvgDemandTicket demand,
+            MarkdownSvgRenderDemand demand,
             long sourceReservationBytes)
         {
             ArgumentNullException.ThrowIfNull(owner);
@@ -97,14 +97,14 @@ internal static class SvgHostAdmissionCoordinator
     internal sealed class OwnerEntry(
         ImageBox owner,
         ImageBox.SvgTileRenderPlan plan,
-        MarkdownSvgDemandTicket demand,
+        MarkdownSvgRenderDemand demand,
         long sourceReservationBytes,
         OwnerSlot slot,
         long lastUse)
     {
         internal readonly WeakReference<ImageBox> Owner = new(owner);
         internal readonly WeakReference<ImageBox.SvgTileRenderPlan> Plan = new(plan);
-        internal readonly MarkdownSvgDemandTicket Demand = demand;
+        internal readonly MarkdownSvgRenderDemand Demand = demand;
         internal readonly long SourceReservationBytes = sourceReservationBytes;
         internal readonly WeakReference<OwnerSlot> Slot = new(slot);
         internal long LastUse = lastUse;
@@ -112,8 +112,8 @@ internal static class SvgHostAdmissionCoordinator
 
     internal sealed class PendingEntry(
         ImageBox owner,
-        IMarkdownSvgHostAdmission admission,
-        MarkdownSvgDemandTicket demand,
+        IMarkdownSvgAdmission admission,
+        MarkdownSvgRenderDemand demand,
         int loadGeneration,
         long capacityVersion,
         long requiredSourceReservationBytes,
@@ -124,8 +124,8 @@ internal static class SvgHostAdmissionCoordinator
         CancellationToken cancellationToken)
     {
         internal readonly WeakReference<ImageBox> Owner = new(owner);
-        internal readonly WeakReference<IMarkdownSvgHostAdmission> Admission = new(admission);
-        internal readonly MarkdownSvgDemandTicket Demand = demand;
+        internal readonly WeakReference<IMarkdownSvgAdmission> Admission = new(admission);
+        internal readonly MarkdownSvgRenderDemand Demand = demand;
         internal readonly int LoadGeneration = loadGeneration;
         internal readonly object Identity = new();
         internal long CapacityVersion = capacityVersion;
@@ -236,7 +236,7 @@ internal static class SvgHostAdmissionCoordinator
         internal OwnerEntry Commit(
             ImageBox owner,
             ImageBox.SvgTileRenderPlan plan,
-            MarkdownSvgDemandTicket demand,
+            MarkdownSvgRenderDemand demand,
             OwnerSlot slot,
             long sourceReservationBytes)
         {
@@ -322,8 +322,8 @@ internal static class SvgHostAdmissionCoordinator
 
         internal PendingWaiter? Defer(
             ImageBox owner,
-            IMarkdownSvgHostAdmission admission,
-            MarkdownSvgDemandTicket demand,
+            IMarkdownSvgAdmission admission,
+            MarkdownSvgRenderDemand demand,
             int loadGeneration,
             long capacityVersion,
             long requiredSourceReservationBytes,
@@ -474,7 +474,7 @@ internal static class SvgHostAdmissionCoordinator
             long capacityVersion,
             long requiredSourceReservationBytes,
             bool requiresOwnerSlot,
-            IMarkdownSvgHostAdmission admission,
+            IMarkdownSvgAdmission admission,
             long ownerVersionAtDenial,
             long demandVersionAtDenial,
             long visualDemandEpochAtDenial,
@@ -769,7 +769,7 @@ internal static class SvgHostAdmissionCoordinator
                 {
                     if (!TryGetPendingWaitSnapshot(
                             entry,
-                            out IMarkdownSvgHostAdmission? admission,
+                            out IMarkdownSvgAdmission? admission,
                             out long requiredSourceBytes,
                             out long ownerVersion,
                             out Task? registrationsDrained))
@@ -909,7 +909,7 @@ internal static class SvgHostAdmissionCoordinator
 
         private bool TryGetPendingWaitSnapshot(
             PendingEntry entry,
-            out IMarkdownSvgHostAdmission? admission,
+            out IMarkdownSvgAdmission? admission,
             out long requiredSourceBytes,
             out long ownerVersion,
             out Task? registrationsDrained)
@@ -984,7 +984,7 @@ internal static class SvgHostAdmissionCoordinator
 
         private void SignalDeferredOwner(
             PendingEntry entry,
-            IMarkdownSvgHostAdmission? admission,
+            IMarkdownSvgAdmission? admission,
             bool promotionObserved,
             bool capacityThresholdSatisfied,
             bool ownerObserved)
@@ -1131,7 +1131,7 @@ internal static class SvgHostAdmissionCoordinator
         private PendingEntry? FindPendingNoLock(
             ImageBox owner,
             int loadGeneration,
-            MarkdownSvgDemandTicket demand)
+            MarkdownSvgRenderDemand demand)
         {
             foreach (PendingEntry pending in _pending)
             {
@@ -1355,7 +1355,7 @@ internal static class SvgHostAdmissionCoordinator
 
     internal static OwnerSlot? TryReserveOwnerSlot(
         object admissionDomain,
-        MarkdownSvgDemandTicket demand,
+        MarkdownSvgRenderDemand demand,
         out long ownerVersionAtDenial)
     {
         ArgumentNullException.ThrowIfNull(admissionDomain);
@@ -1371,8 +1371,8 @@ internal static class SvgHostAdmissionCoordinator
 
     internal static PendingWaiter? Defer(
         ImageBox owner,
-        IMarkdownSvgHostAdmission admission,
-        MarkdownSvgDemandTicket demand,
+        IMarkdownSvgAdmission admission,
+        MarkdownSvgRenderDemand demand,
         int loadGeneration,
         long capacityVersion,
         long requiredSourceReservationBytes,

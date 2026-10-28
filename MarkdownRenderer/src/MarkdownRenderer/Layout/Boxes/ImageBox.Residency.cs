@@ -204,7 +204,7 @@ internal sealed partial class ImageBox : IMarkdownImageResidencyTarget
 
     private void ReopenPressureParkedSvgForVisibleDemand(long visualDemandEpoch)
     {
-        MarkdownSvgDemandTicket? demand = Volatile.Read(ref _svgLoadDemandTicket);
+        MarkdownSvgRenderDemand? demand = Volatile.Read(ref _svgLoadDemandTicket);
         if (demand is null)
             return;
         demand.PromoteVisible();
@@ -505,7 +505,7 @@ internal sealed partial class ImageBox : IMarkdownImageResidencyTarget
     }
 
     private void QueueSvgPressureParkedVisualUpdate(
-        MarkdownSvgDemandTicket demand,
+        MarkdownSvgRenderDemand demand,
         int renderGeneration,
         long parkedPublicationEpoch)
     {

@@ -167,6 +167,27 @@ private source through admitted renders and cancellation callbacks before
 document retirement releases it; this lifetime contract is not an aggregate
 source-memory cap.
 
+An SVG provider can implement optional capabilities that the views detect and
+use:
+
+| Capability | What the view does with it |
+| --- | --- |
+| `IMarkdownSvgAdmission` | Opens documents through `TryOpenAsync` and, when the provider reports `MarkdownSvgAdmissionStatus.CapacityUnavailable`, waits with `WaitForCapacityAsync` instead of failing the image. |
+| `IMarkdownSvgPreparationAdmission` | Reserves the provider's `PrepareSource` scratch memory from the same capacity before preparing a source. |
+| `IMarkdownSvgPrioritizedDocument` | Passes a `MarkdownSvgRenderDemand` with each render, so queued work can move ahead when its image scrolls into view (`RegisterPromotion`). |
+
+Two helpers let a provider apply the view's own rules instead of copying them:
+
+- `MarkdownRasterImageInspection.Inspect` checks encoded raster bytes against
+  the renderer's decode budget without decoding pixels. Raster decoders and SVG
+  providers use it before they hand untrusted bytes to a decoder.
+- `MarkdownSvgSourceInfoReader` collects an SVG's title, description and
+  intrinsic size from the XML pass a provider already makes in `PrepareSource`.
+  Returning `MarkdownSvgSourcePreparation.Admit(bytes, info)` saves the view
+  from reading the document a second time.
+
+The resvg pack implements all of these through public API only.
+
 ## Clipboard
 
 `CopySelectionToClipboard()` uses `MarkdownCopyOptions.Default`: rendered

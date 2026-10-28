@@ -16,7 +16,7 @@ public sealed class SvgPreparedMetadataCustodyTests
     {
         byte[] source = Source("original", 48, 24);
         SvgSourceMetadata metadata = SvgSourceMetadata.Extract(source, CancellationToken.None);
-        MarkdownSvgSourcePreparation preparation = MarkdownSvgSourcePreparation.AdmitWithMetadata(source, metadata);
+        MarkdownSvgSourcePreparation preparation = MarkdownSvgSourcePreparation.Admit(source, new MarkdownSvgSourceInfo(metadata));
 
         Assert.Same(source, preparation.SanitizedBytes);
         Assert.True(preparation.TryGetPreparedMetadata(source, out SvgSourceMetadata matching));
@@ -28,7 +28,7 @@ public sealed class SvgPreparedMetadataCustodyTests
     }
 
     [Fact]
-    public void PublicAdmissionAndRejectionCannotSupplyInternalPreparedMetadata()
+    public void AdmissionWithoutSourceInfoAndRejectionCarryNoMetadata()
     {
         byte[] source = Source("fallback", 48, 24);
         MarkdownSvgSourcePreparation generic = MarkdownSvgSourcePreparation.Admit(source);
@@ -46,7 +46,8 @@ public sealed class SvgPreparedMetadataCustodyTests
     [Fact]
     public void PreparedMetadataHelpersRejectNullSource()
     {
-        Assert.Throws<ArgumentNullException>(() => MarkdownSvgSourcePreparation.AdmitWithMetadata(null!, default));
+        Assert.Throws<ArgumentNullException>(() => MarkdownSvgSourcePreparation.Admit(null!, new MarkdownSvgSourceInfo(default)));
+        Assert.Throws<ArgumentNullException>(() => MarkdownSvgSourcePreparation.Admit(Source("label", 1, 1), null!));
         MarkdownSvgSourcePreparation preparation = MarkdownSvgSourcePreparation.Admit(Source("label", 1, 1));
         Assert.Throws<ArgumentNullException>(() => preparation.TryGetPreparedMetadata(null!, out _));
     }
@@ -75,7 +76,7 @@ public sealed class SvgPreparedMetadataCustodyTests
     {
         byte[] admittedSource = Source("XML label", 48, 24);
         SvgSourceMetadata carried = SvgSourceMetadata.Extract(Source("carried label", 96, 32), CancellationToken.None);
-        MarkdownSvgSourcePreparation preparation = MarkdownSvgSourcePreparation.AdmitWithMetadata(admittedSource, carried);
+        MarkdownSvgSourcePreparation preparation = MarkdownSvgSourcePreparation.Admit(admittedSource, new MarkdownSvgSourceInfo(carried));
 
         var exact = Preflight(admittedSource, preparation);
         Assert.Equal(new Size(96, 32), exact.Intrinsic);

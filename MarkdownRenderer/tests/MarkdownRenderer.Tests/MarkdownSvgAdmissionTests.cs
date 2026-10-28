@@ -3,15 +3,15 @@ using Xunit;
 
 namespace MarkdownRenderer.Tests;
 
-public sealed class MarkdownSvgHostAdmissionTests
+public sealed class MarkdownSvgAdmissionTests
 {
     [Fact]
     public void OpenedCarriesTheExactDocumentWeightAndAdmissionDomain()
     {
         using var document = new StubDocument();
         var domain = new object();
-        MarkdownSvgHostOpenResult result = MarkdownSvgHostOpenResult.Opened(document, 731, domain);
-        Assert.Equal(MarkdownSvgHostOpenStatus.Opened, result.Status);
+        MarkdownSvgAdmissionResult result = MarkdownSvgAdmissionResult.Opened(document, 731, domain);
+        Assert.Equal(MarkdownSvgAdmissionStatus.Opened, result.Status);
         Assert.Same(document, result.Document);
         Assert.Equal(731, result.SourceReservationBytes);
         Assert.Same(domain, result.AdmissionDomain);
@@ -22,8 +22,8 @@ public sealed class MarkdownSvgHostAdmissionTests
     [Fact]
     public void CapacityDenialOwnsNoDocumentSourceOrDomain()
     {
-        MarkdownSvgHostOpenResult result = MarkdownSvgHostOpenResult.CapacityUnavailable(19, 4096);
-        Assert.Equal(MarkdownSvgHostOpenStatus.CapacityUnavailable, result.Status);
+        MarkdownSvgAdmissionResult result = MarkdownSvgAdmissionResult.CapacityUnavailable(19, 4096);
+        Assert.Equal(MarkdownSvgAdmissionStatus.CapacityUnavailable, result.Status);
         Assert.Null(result.Document);
         Assert.Equal(0, result.SourceReservationBytes);
         Assert.Null(result.AdmissionDomain);
@@ -34,8 +34,8 @@ public sealed class MarkdownSvgHostAdmissionTests
     [Fact]
     public void DefaultResultIsMalformedRatherThanAZeroWeightCapacityWait()
     {
-        MarkdownSvgHostOpenResult result = default;
-        Assert.Equal(MarkdownSvgHostOpenStatus.Invalid, result.Status);
+        MarkdownSvgAdmissionResult result = default;
+        Assert.Equal(MarkdownSvgAdmissionStatus.Invalid, result.Status);
         Assert.Null(result.Document);
     }
 
@@ -46,15 +46,15 @@ public sealed class MarkdownSvgHostAdmissionTests
     {
         using var document = new StubDocument();
         Assert.Throws<ArgumentOutOfRangeException>(() =>
-            MarkdownSvgHostOpenResult.Opened(document, bytes, new object()));
+            MarkdownSvgAdmissionResult.Opened(document, bytes, new object()));
     }
 
     [Fact]
     public void OpenedRequiresDocumentAndDomain()
     {
         using var document = new StubDocument();
-        Assert.Throws<ArgumentNullException>(() => MarkdownSvgHostOpenResult.Opened(null!, 1, new object()));
-        Assert.Throws<ArgumentNullException>(() => MarkdownSvgHostOpenResult.Opened(document, 1, null!));
+        Assert.Throws<ArgumentNullException>(() => MarkdownSvgAdmissionResult.Opened(null!, 1, new object()));
+        Assert.Throws<ArgumentNullException>(() => MarkdownSvgAdmissionResult.Opened(document, 1, null!));
     }
 
     [Theory]
@@ -63,7 +63,7 @@ public sealed class MarkdownSvgHostAdmissionTests
     [InlineData(0, 0)]
     public void DenialRequiresValidVersionAndPositiveReservation(long version, long bytes) =>
         Assert.Throws<ArgumentOutOfRangeException>(() =>
-            MarkdownSvgHostOpenResult.CapacityUnavailable(version, bytes));
+            MarkdownSvgAdmissionResult.CapacityUnavailable(version, bytes));
 
     private sealed class StubDocument : IMarkdownSvgDocument
     {

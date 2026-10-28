@@ -97,12 +97,12 @@ public sealed class WorkerFontWaitPoolTests
     public async Task PromotionRegistrationLimitFailureDoesNotPublishDetachedOwnership()
     {
         using WorkerPool pool = CreatePool();
-        var ticket = new MarkdownSvgDemandTicket(MarkdownSvgRenderPriority.Overscan);
+        var ticket = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         using IDisposable active = await GetLeaseAsync(Acquire(
             pool,
             CancellationToken.None,
             demandTicket: ticket));
-        IDisposable[] registrations = Enumerable.Range(0, MarkdownSvgDemandTicket.MaximumPromotionRegistrations)
+        IDisposable[] registrations = Enumerable.Range(0, MarkdownSvgRenderDemand.MaximumPromotionRegistrations)
             .Select(_ => ticket.RegisterPromotion(static () => { }))
             .ToArray();
 
@@ -137,7 +137,7 @@ public sealed class WorkerFontWaitPoolTests
         // Force checked visible-counter preparation to fail after creating a
         // local reservation wrapper. Rollback must not publish set membership
         // or the active-lease transfer marker.
-        var visibleTicket = new MarkdownSvgDemandTicket(MarkdownSvgRenderPriority.Visible);
+        var visibleTicket = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Visible);
         using IDisposable visibleRender = await GetLeaseAsync(Acquire(
             pool,
             CancellationToken.None,
@@ -165,7 +165,7 @@ public sealed class WorkerFontWaitPoolTests
     public async Task DetachedFontWaitPromotionUpdatesCountersOnceAndRetiresItsRegistrationOnResume()
     {
         using WorkerPool pool = CreatePool();
-        var demand = new MarkdownSvgDemandTicket(MarkdownSvgRenderPriority.Overscan);
+        var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         using IDisposable active = await GetLeaseAsync(Acquire(
             pool,
             CancellationToken.None,
@@ -205,7 +205,7 @@ public sealed class WorkerFontWaitPoolTests
 
         // A later detached owner disposed before promotion must remove its
         // callback and counters. Promoting that ticket afterwards is harmless.
-        var canceledDemand = new MarkdownSvgDemandTicket(MarkdownSvgRenderPriority.Overscan);
+        var canceledDemand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         using IDisposable secondActive = await GetLeaseAsync(Acquire(
             pool,
             CancellationToken.None,
@@ -272,7 +272,7 @@ public sealed class WorkerFontWaitPoolTests
         WorkerPool pool,
         CancellationToken cancellationToken,
         WorkerFontWaitReservation? reservation = null,
-        MarkdownSvgDemandTicket? demandTicket = null,
+        MarkdownSvgRenderDemand? demandTicket = null,
         WorkerOperation operation = WorkerOperation.Open,
         bool requiresFontCatalog = true) =>
         (Task)FindMethod("AcquireAsync").Invoke(pool,
@@ -290,7 +290,7 @@ public sealed class WorkerFontWaitPoolTests
         Assert.Equal(expected, GetField(pool, name));
     }
 
-    private static async Task WaitForTicketRegistrationsAsync(MarkdownSvgDemandTicket ticket, int expected)
+    private static async Task WaitForTicketRegistrationsAsync(MarkdownSvgRenderDemand ticket, int expected)
     {
         for (int attempt = 0; attempt < 200; attempt++)
         {
@@ -323,8 +323,8 @@ public sealed class WorkerFontWaitPoolTests
     private static void SetField(WorkerPool pool, string name, object value) =>
         typeof(WorkerPool).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(pool, value);
 
-    private static int GetDemandRegistrationCount(MarkdownSvgDemandTicket ticket) =>
-        (int)typeof(MarkdownSvgDemandTicket).GetField(
+    private static int GetDemandRegistrationCount(MarkdownSvgRenderDemand ticket) =>
+        (int)typeof(MarkdownSvgRenderDemand).GetField(
             "_activeRegistrations",
             BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(ticket)!;
 

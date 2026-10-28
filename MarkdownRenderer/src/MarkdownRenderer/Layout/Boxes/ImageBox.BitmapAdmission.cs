@@ -20,7 +20,7 @@ internal sealed partial class ImageBox
     private long _bitmapOutputRequiredBytes;
     private long _bitmapOutputCapacityVersion;
     private long _bitmapOutputWaiterSlotVersion;
-    private MarkdownSvgDemandTicket? _bitmapOutputDemand;
+    private MarkdownSvgRenderDemand? _bitmapOutputDemand;
     private int _bitmapOutputDemandGeneration;
     private int _bitmapOutputSvgGeneration;
     private int _bitmapOutputDeferred;
@@ -38,14 +38,14 @@ internal sealed partial class ImageBox
     private int _bitmapOutputCancellationRegistered;
 
     private readonly struct BitmapOutputWorkContext(
-        MarkdownSvgDemandTicket? Demand,
+        MarkdownSvgRenderDemand? Demand,
         int LoadGeneration,
         int SvgGeneration,
         CancellationToken CancellationToken,
         bool IsExistingSvgTileOutput,
         bool IsValid)
     {
-        public MarkdownSvgDemandTicket? Demand { get; init; } = Demand;
+        public MarkdownSvgRenderDemand? Demand { get; init; } = Demand;
         public int LoadGeneration { get; init; } = LoadGeneration;
         public int SvgGeneration { get; init; } = SvgGeneration;
         public CancellationToken CancellationToken { get; init; } = CancellationToken;
@@ -56,10 +56,10 @@ internal sealed partial class ImageBox
     private BitmapOutputWorkContext CaptureBitmapOutputWorkContext(
         CancellationToken token,
         bool isExistingSvgTileOutput = false,
-        MarkdownSvgDemandTicket? expectedDemand = null,
+        MarkdownSvgRenderDemand? expectedDemand = null,
         int? expectedSvgGeneration = null)
     {
-        MarkdownSvgDemandTicket? demand = Volatile.Read(ref _svgLoadDemandTicket);
+        MarkdownSvgRenderDemand? demand = Volatile.Read(ref _svgLoadDemandTicket);
         int loadGeneration = Volatile.Read(ref _svgLoadDemandGeneration);
         int svgGeneration = Volatile.Read(ref _svgRenderGeneration);
         bool valid = !token.IsCancellationRequested &&
@@ -121,7 +121,7 @@ internal sealed partial class ImageBox
             expectedWork,
             out bool isVisible,
             out bool isReplacement,
-            out MarkdownSvgDemandTicket? demand,
+            out MarkdownSvgRenderDemand? demand,
             out int demandGeneration,
             out int svgGeneration);
 
@@ -249,7 +249,7 @@ internal sealed partial class ImageBox
         BitmapOutputWorkContext? expectedWork,
         out bool isVisible,
         out bool isReplacement,
-        out MarkdownSvgDemandTicket? demand,
+        out MarkdownSvgRenderDemand? demand,
         out int demandGeneration,
         out int svgGeneration)
     {
@@ -285,7 +285,7 @@ internal sealed partial class ImageBox
         bool isReplacement,
         bool needsCacheTrim)
     {
-        MarkdownSvgDemandTicket? demand = work.Demand;
+        MarkdownSvgRenderDemand? demand = work.Demand;
         int demandGeneration = work.LoadGeneration;
         int svgGeneration = work.SvgGeneration;
         bool isExistingSvgTileOutput = work.IsExistingSvgTileOutput;
@@ -587,7 +587,7 @@ internal sealed partial class ImageBox
         if (!IsBitmapOutputParticipationEnabled || !IsBitmapOutputDeferred)
             return false;
 
-        MarkdownSvgDemandTicket? observedDemand = Volatile.Read(ref _svgLoadDemandTicket);
+        MarkdownSvgRenderDemand? observedDemand = Volatile.Read(ref _svgLoadDemandTicket);
         if (isVisible)
             observedDemand?.PromoteVisible();
 
@@ -596,7 +596,7 @@ internal sealed partial class ImageBox
         long currentWaiterSlotVersion = admissionSnapshot.WaiterSlotVersion;
         bool replacementSnapshot = HasRetainedBitmapOutput(_bitmapOutputExistingTile != 0);
 
-        MarkdownSvgDemandTicket? demand;
+        MarkdownSvgRenderDemand? demand;
         BitmapOutputAdmission.WaiterRegistration? waiter;
         long bytes;
         long version;
@@ -715,7 +715,7 @@ internal sealed partial class ImageBox
                     return false;
                 }
 
-                MarkdownSvgDemandTicket? demand = _bitmapOutputDemand;
+                MarkdownSvgRenderDemand? demand = _bitmapOutputDemand;
                 return demand is not null &&
                     ReferenceEquals(demand, Volatile.Read(ref _svgLoadDemandTicket)) &&
                     _bitmapOutputDemandGeneration == Volatile.Read(ref _svgLoadDemandGeneration) &&
@@ -847,7 +847,7 @@ internal sealed partial class ImageBox
         long observedVersion;
         bool visible;
         bool replacement;
-        MarkdownSvgDemandTicket? demand;
+        MarkdownSvgRenderDemand? demand;
         int generation;
         int svgGeneration;
         bool needsTrim;
@@ -1099,7 +1099,7 @@ internal sealed partial class ImageBox
 
     private void RunBitmapOutputRetry(long epoch)
     {
-        MarkdownSvgDemandTicket? demand;
+        MarkdownSvgRenderDemand? demand;
         int demandGeneration;
         int svgGeneration;
         bool visible;
@@ -1209,7 +1209,7 @@ internal sealed partial class ImageBox
 
     private void CancelBitmapOutputDeferral(long epoch, bool resetLoad)
     {
-        MarkdownSvgDemandTicket? demand;
+        MarkdownSvgRenderDemand? demand;
         int generation;
         int svgGeneration;
         lock (_bitmapOutputSync)
@@ -1245,7 +1245,7 @@ internal sealed partial class ImageBox
 
     private void RequestBitmapOutputRepaint()
     {
-        MarkdownSvgDemandTicket? demand = Volatile.Read(ref _svgLoadDemandTicket);
+        MarkdownSvgRenderDemand? demand = Volatile.Read(ref _svgLoadDemandTicket);
         int generation = Volatile.Read(ref _svgLoadDemandGeneration);
         try
         {
@@ -1264,7 +1264,7 @@ internal sealed partial class ImageBox
         }
     }
 
-    private void DeliverBitmapOutputRepaint(MarkdownSvgDemandTicket? demand, int generation)
+    private void DeliverBitmapOutputRepaint(MarkdownSvgRenderDemand? demand, int generation)
     {
         if (_disposed || _resourcesSuspended ||
             (Context.PerformanceSession?.IsDisposed ?? false) ||

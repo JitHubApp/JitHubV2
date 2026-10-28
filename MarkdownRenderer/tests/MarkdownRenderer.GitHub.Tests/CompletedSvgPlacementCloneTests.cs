@@ -829,7 +829,7 @@ public sealed class CompletedSvgPlacementCloneTests
     }
 
     private sealed class HostDeferredSvgRenderer(MarkdownSvgDocumentInfo info)
-        : TestSvgRenderer(info), IMarkdownSvgHostAdmission
+        : TestSvgRenderer(info), IMarkdownSvgAdmission
     {
         private readonly object _domain = new();
         private int _waitCount;
@@ -848,14 +848,14 @@ public sealed class CompletedSvgPlacementCloneTests
             return Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
         }
 
-        public ValueTask<MarkdownSvgHostOpenResult> OpenForHostAsync(
+        public ValueTask<MarkdownSvgAdmissionResult> TryOpenAsync(
             MarkdownSvgOpenRequest request,
-            MarkdownSvgDemandTicket demand,
+            MarkdownSvgRenderDemand demand,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             Interlocked.Increment(ref _openForHostCount);
-            return ValueTask.FromResult(MarkdownSvgHostOpenResult.CapacityUnavailable(
+            return ValueTask.FromResult(MarkdownSvgAdmissionResult.CapacityUnavailable(
                 CapacityVersion,
                 requiredSourceReservationBytes: 1024));
         }

@@ -1,5 +1,4 @@
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Layout.Boxes;
 
 namespace MarkdownRenderer.Svg.Resvg.Internal;
 
@@ -36,20 +35,21 @@ internal static class RasterDecodePolicy
         if (outputLength > MaximumOutputBytes || MappingBytes(request.EncodedBytes.Length, outputLength) > workingBytes)
             throw Failure(MarkdownRasterFailureReason.ResourceLimitExceeded);
 
-        RasterImageBudgetResult budget = RasterImageResourceBudget.Validate(request.EncodedBytes.Span);
-        if ((!budget.Accepted && !budget.CanRenderStaticPreview) || budget.Format != "WEBP" ||
-            budget.FrameCount != 1 || budget.FirstFrame is not null ||
-            !RasterIntrinsicMetadata.TryReadValidated(request.EncodedBytes.Span, budget,
-                out RasterIntrinsicMetadata intrinsic, out int orientation, cancellationToken))
+        MarkdownRasterImageInspection image = MarkdownRasterImageInspection.Inspect(
+            request.EncodedBytes.Span,
+            cancellationToken);
+        if ((!image.IsAccepted && !image.CanRenderStaticPreview) || image.Format != MarkdownRasterFormat.WebP ||
+            image.FrameCount != 1 || image.HasFirstFrameRegion ||
+            image.DisplayWidth <= 0 || image.DisplayHeight <= 0)
             throw Failure(MarkdownRasterFailureReason.UnsupportedContent);
-        if (budget.Width <= 0 || budget.Height <= 0 ||
-            budget.Width > MaximumDimension || budget.Height > MaximumDimension ||
-            (long)budget.Width * budget.Height > MaximumSourcePixels)
+        if (image.PixelWidth <= 0 || image.PixelHeight <= 0 ||
+            image.PixelWidth > MaximumDimension || image.PixelHeight > MaximumDimension ||
+            (long)image.PixelWidth * image.PixelHeight > MaximumSourcePixels)
             throw Failure(MarkdownRasterFailureReason.ResourceLimitExceeded);
-        if (request.TargetWidthPixels > intrinsic.Width || request.TargetHeightPixels > intrinsic.Height)
+        if (request.TargetWidthPixels > image.DisplayWidth || request.TargetHeightPixels > image.DisplayHeight)
             throw Failure(MarkdownRasterFailureReason.UnsupportedContent);
         cancellationToken.ThrowIfCancellationRequested();
-        return new(budget.Width, budget.Height, orientation, intrinsic.Width, intrinsic.Height,
+        return new(image.PixelWidth, image.PixelHeight, image.Orientation, image.DisplayWidth, image.DisplayHeight,
             checked((int)outputLength), workingBytes);
     }
 

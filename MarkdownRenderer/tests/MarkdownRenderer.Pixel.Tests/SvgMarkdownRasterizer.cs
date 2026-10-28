@@ -148,13 +148,13 @@ internal static class SvgMarkdownRasterizer
     }
 
     private sealed class CountingRenderer(IMarkdownSvgRenderer renderer)
-        : IMarkdownSvgRenderer, IMarkdownSvgHostPreparationAdmission
+        : IMarkdownSvgRenderer, IMarkdownSvgPreparationAdmission
     {
         // Keep the same progressive admission and priority-promotion path used
         // by the real provider. Instrumentation must not hide its interfaces
         // and silently exercise only the compatibility path.
-        private readonly IMarkdownSvgHostPreparationAdmission _admission =
-            Assert.IsAssignableFrom<IMarkdownSvgHostPreparationAdmission>(renderer);
+        private readonly IMarkdownSvgPreparationAdmission _admission =
+            Assert.IsAssignableFrom<IMarkdownSvgPreparationAdmission>(renderer);
         private int _opens;
         private int _renders;
         internal int OpenCount => Volatile.Read(ref _opens);
@@ -167,21 +167,21 @@ internal static class SvgMarkdownRasterizer
             MarkdownSvgRenderPriority priority, CancellationToken cancellationToken)
             => _admission.WaitForCapacityAsync(requiredFreeBytes, priority, cancellationToken);
 
-        public bool TryReserveHostPreparationScratch(MarkdownSvgDemandTicket demand,
-            out IMarkdownSvgHostPreparationLease? lease, out long observedCapacityVersion,
+        public bool TryReservePreparationScratch(MarkdownSvgRenderDemand demand,
+            out IMarkdownSvgPreparationLease? lease, out long observedCapacityVersion,
             out long requiredFreeBytes)
-            => _admission.TryReserveHostPreparationScratch(demand, out lease,
+            => _admission.TryReservePreparationScratch(demand, out lease,
                 out observedCapacityVersion, out requiredFreeBytes);
 
-        public async ValueTask<MarkdownSvgHostOpenResult> OpenForHostAsync(
-            MarkdownSvgOpenRequest request, MarkdownSvgDemandTicket demand,
+        public async ValueTask<MarkdownSvgAdmissionResult> TryOpenAsync(
+            MarkdownSvgOpenRequest request, MarkdownSvgRenderDemand demand,
             CancellationToken cancellationToken)
         {
             Interlocked.Increment(ref _opens);
-            MarkdownSvgHostOpenResult result = await _admission.OpenForHostAsync(
+            MarkdownSvgAdmissionResult result = await _admission.TryOpenAsync(
                 request, demand, cancellationToken);
-            return result.Status == MarkdownSvgHostOpenStatus.Opened
-                ? MarkdownSvgHostOpenResult.Opened(new CountingDocument(result.Document!, this),
+            return result.Status == MarkdownSvgAdmissionStatus.Opened
+                ? MarkdownSvgAdmissionResult.Opened(new CountingDocument(result.Document!, this),
                     result.SourceReservationBytes, result.AdmissionDomain!)
                 : result;
         }
@@ -197,7 +197,7 @@ internal static class SvgMarkdownRasterizer
         }
 
         private sealed class CountingDocument(IMarkdownSvgDocument document, CountingRenderer owner)
-            : IMarkdownSvgDocument, IMarkdownSvgHostDocument
+            : IMarkdownSvgDocument, IMarkdownSvgPrioritizedDocument
         {
             public MarkdownSvgDocumentInfo Info => document.Info;
             public ValueTask<MarkdownSvgRaster> RenderAsync(
@@ -207,14 +207,14 @@ internal static class SvgMarkdownRasterizer
                 Interlocked.Increment(ref owner._renders);
                 return document.RenderAsync(request, cancellationToken);
             }
-            public ValueTask<MarkdownSvgRaster> RenderForHostAsync(
-                MarkdownSvgRenderRequest request, MarkdownSvgDemandTicket demand,
+            public ValueTask<MarkdownSvgRaster> RenderAsync(
+                MarkdownSvgRenderRequest request, MarkdownSvgRenderDemand demand,
                 CancellationToken cancellationToken)
             {
                 AssertPhysicalViewport(request);
                 Interlocked.Increment(ref owner._renders);
-                return Assert.IsAssignableFrom<IMarkdownSvgHostDocument>(document)
-                    .RenderForHostAsync(request, demand, cancellationToken);
+                return Assert.IsAssignableFrom<IMarkdownSvgPrioritizedDocument>(document)
+                    .RenderAsync(request, demand, cancellationToken);
             }
 
             private static void AssertPhysicalViewport(MarkdownSvgRenderRequest request)

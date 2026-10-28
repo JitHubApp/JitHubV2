@@ -114,7 +114,7 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
         CancellationToken cancellationToken,
         Action? contentAdmissionGuard = null,
         Action? contentFailureCallback = null,
-        MarkdownSvgDemandTicket? demand = null)
+        MarkdownSvgRenderDemand? demand = null)
     {
         WorkerLease? lease = null;
         using var openFailureMarker = new WorkerContentFailureMarker(contentFailureCallback);
@@ -257,7 +257,7 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
         MarkdownSvgRenderRequest renderRequest,
         int outputLength,
         CancellationToken cancellationToken,
-        MarkdownSvgDemandTicket? demand = null)
+        MarkdownSvgRenderDemand? demand = null)
     {
         ulong requestId = NextRequestId();
         long requestGeneration = FontGeneration;
@@ -310,7 +310,7 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
         WorkerDocumentHandle document,
         ulong requestId,
         long requestGeneration,
-        MarkdownSvgDemandTicket? demand,
+        MarkdownSvgRenderDemand? demand,
 #if MARKDOWN_LAYOUT_DIAGNOSTICS
         long targetPixels,
         long diagnosticWorkId,
@@ -416,7 +416,7 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
         MarkdownSvgRenderPriority priority,
         long requestGeneration,
         CancellationToken cancellationToken,
-        MarkdownSvgDemandTicket? demand
+        MarkdownSvgRenderDemand? demand
 #if MARKDOWN_LAYOUT_DIAGNOSTICS
         , long diagnosticWorkId,
         ulong diagnosticRequestId,
@@ -1600,7 +1600,7 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
         long preferredWorkerInstanceId = 0,
         bool isSecondaryFontProbe = false,
         WorkerFontWaitReservation? fontWaitReservation = null,
-        MarkdownSvgDemandTicket? demandTicket = null)
+        MarkdownSvgRenderDemand? demandTicket = null)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         cancellationToken.ThrowIfCancellationRequested();
@@ -3269,7 +3269,7 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
         bool requiresFontCatalog = false,
         long preferredWorkerInstanceId = 0,
         bool isSecondaryFontProbe = false,
-        MarkdownSvgDemandTicket? demandTicket = null)
+        MarkdownSvgRenderDemand? demandTicket = null)
     {
         public WorkerOperation Operation { get; } = operation;
         private MarkdownSvgRenderPriority _priority = priority;
@@ -3279,7 +3279,7 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
         public bool RequiresFontCatalog { get; } = requiresFontCatalog;
         public long PreferredWorkerInstanceId { get; } = preferredWorkerInstanceId;
         public bool IsSecondaryFontProbe { get; } = isSecondaryFontProbe;
-        public MarkdownSvgDemandTicket? DemandTicket { get; } = demandTicket;
+        public MarkdownSvgRenderDemand? DemandTicket { get; } = demandTicket;
         public TaskCompletionSource<WorkerLease> Completion { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
         public CancellationTokenRegistration CancellationRegistration { get; set; }

@@ -944,9 +944,20 @@ MarkdownRenderer.Images.IMarkdownImageSourceByteAdmittedResolver.ResolveWithSour
 MarkdownRenderer.Images.IMarkdownRasterDecoder
 MarkdownRenderer.Images.IMarkdownRasterDecoder.DecodeAsync(MarkdownRenderer.Images.MarkdownRasterDecodeRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<MarkdownRenderer.Images.MarkdownRaster!>
 MarkdownRenderer.Images.IMarkdownRasterDecoder.SupportsFormat(MarkdownRenderer.Images.MarkdownRasterFormat format) -> bool
+MarkdownRenderer.Images.IMarkdownSvgAdmission
+MarkdownRenderer.Images.IMarkdownSvgAdmission.AdmissionDomain.get -> object!
+MarkdownRenderer.Images.IMarkdownSvgAdmission.CapacityVersion.get -> long
+MarkdownRenderer.Images.IMarkdownSvgAdmission.TryOpenAsync(MarkdownRenderer.Images.MarkdownSvgOpenRequest! request, MarkdownRenderer.Images.MarkdownSvgRenderDemand! demand, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<MarkdownRenderer.Images.MarkdownSvgAdmissionResult>
+MarkdownRenderer.Images.IMarkdownSvgAdmission.WaitForCapacityAsync(long requiredFreeBytes, MarkdownRenderer.Images.MarkdownSvgRenderPriority priority, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task!
 MarkdownRenderer.Images.IMarkdownSvgDocument
 MarkdownRenderer.Images.IMarkdownSvgDocument.Info.get -> MarkdownRenderer.Images.MarkdownSvgDocumentInfo!
 MarkdownRenderer.Images.IMarkdownSvgDocument.RenderAsync(MarkdownRenderer.Images.MarkdownSvgRenderRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<MarkdownRenderer.Images.MarkdownSvgRaster!>
+MarkdownRenderer.Images.IMarkdownSvgPreparationAdmission
+MarkdownRenderer.Images.IMarkdownSvgPreparationAdmission.TryReservePreparationScratch(MarkdownRenderer.Images.MarkdownSvgRenderDemand! demand, out MarkdownRenderer.Images.IMarkdownSvgPreparationLease? lease, out long observedCapacityVersion, out long requiredFreeBytes) -> bool
+MarkdownRenderer.Images.IMarkdownSvgPreparationLease
+MarkdownRenderer.Images.IMarkdownSvgPreparationLease.SetLength(long retainedBytes) -> void
+MarkdownRenderer.Images.IMarkdownSvgPrioritizedDocument
+MarkdownRenderer.Images.IMarkdownSvgPrioritizedDocument.RenderAsync(MarkdownRenderer.Images.MarkdownSvgRenderRequest! request, MarkdownRenderer.Images.MarkdownSvgRenderDemand! demand, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<MarkdownRenderer.Images.MarkdownSvgRaster!>
 MarkdownRenderer.Images.IMarkdownSvgRenderer
 MarkdownRenderer.Images.IMarkdownSvgRenderer.CacheGeneration.get -> long
 MarkdownRenderer.Images.IMarkdownSvgRenderer.CacheInvalidated -> System.EventHandler?
@@ -1066,12 +1077,38 @@ MarkdownRenderer.Images.MarkdownRasterFormat
 MarkdownRenderer.Images.MarkdownRasterFormat.Avif = 5 -> MarkdownRenderer.Images.MarkdownRasterFormat
 MarkdownRenderer.Images.MarkdownRasterFormat.Bmp = 2 -> MarkdownRenderer.Images.MarkdownRasterFormat
 MarkdownRenderer.Images.MarkdownRasterFormat.Gif = 4 -> MarkdownRenderer.Images.MarkdownRasterFormat
+MarkdownRenderer.Images.MarkdownRasterFormat.Ico = 6 -> MarkdownRenderer.Images.MarkdownRasterFormat
 MarkdownRenderer.Images.MarkdownRasterFormat.Jpeg = 1 -> MarkdownRenderer.Images.MarkdownRasterFormat
 MarkdownRenderer.Images.MarkdownRasterFormat.Png = 0 -> MarkdownRenderer.Images.MarkdownRasterFormat
 MarkdownRenderer.Images.MarkdownRasterFormat.WebP = 3 -> MarkdownRenderer.Images.MarkdownRasterFormat
+MarkdownRenderer.Images.MarkdownRasterImageInspection
+MarkdownRenderer.Images.MarkdownRasterImageInspection.CanRenderStaticPreview.get -> bool
+MarkdownRenderer.Images.MarkdownRasterImageInspection.DecodedBytes.get -> long
+MarkdownRenderer.Images.MarkdownRasterImageInspection.DisplayHeight.get -> int
+MarkdownRenderer.Images.MarkdownRasterImageInspection.DisplayWidth.get -> int
+MarkdownRenderer.Images.MarkdownRasterImageInspection.Format.get -> MarkdownRenderer.Images.MarkdownRasterFormat?
+MarkdownRenderer.Images.MarkdownRasterImageInspection.FrameCount.get -> int
+MarkdownRenderer.Images.MarkdownRasterImageInspection.HasFirstFrameRegion.get -> bool
+MarkdownRenderer.Images.MarkdownRasterImageInspection.IsAccepted.get -> bool
+MarkdownRenderer.Images.MarkdownRasterImageInspection.Orientation.get -> int
+MarkdownRenderer.Images.MarkdownRasterImageInspection.PixelHeight.get -> int
+MarkdownRenderer.Images.MarkdownRasterImageInspection.PixelWidth.get -> int
+MarkdownRenderer.Images.MarkdownRasterImageInspection.RejectionReason.get -> string?
 MarkdownRenderer.Images.MarkdownRasterPixelFormat
 MarkdownRenderer.Images.MarkdownRasterPixelFormat.Bgra8Premultiplied = 1 -> MarkdownRenderer.Images.MarkdownRasterPixelFormat
 MarkdownRenderer.Images.MarkdownRasterPixelFormat.Rgba8Premultiplied = 0 -> MarkdownRenderer.Images.MarkdownRasterPixelFormat
+MarkdownRenderer.Images.MarkdownSvgAdmissionResult
+MarkdownRenderer.Images.MarkdownSvgAdmissionResult.AdmissionDomain.get -> object?
+MarkdownRenderer.Images.MarkdownSvgAdmissionResult.CapacityVersion.get -> long
+MarkdownRenderer.Images.MarkdownSvgAdmissionResult.Document.get -> MarkdownRenderer.Images.IMarkdownSvgDocument?
+MarkdownRenderer.Images.MarkdownSvgAdmissionResult.MarkdownSvgAdmissionResult() -> void
+MarkdownRenderer.Images.MarkdownSvgAdmissionResult.RequiredSourceReservationBytes.get -> long
+MarkdownRenderer.Images.MarkdownSvgAdmissionResult.SourceReservationBytes.get -> long
+MarkdownRenderer.Images.MarkdownSvgAdmissionResult.Status.get -> MarkdownRenderer.Images.MarkdownSvgAdmissionStatus
+MarkdownRenderer.Images.MarkdownSvgAdmissionStatus
+MarkdownRenderer.Images.MarkdownSvgAdmissionStatus.CapacityUnavailable = 1 -> MarkdownRenderer.Images.MarkdownSvgAdmissionStatus
+MarkdownRenderer.Images.MarkdownSvgAdmissionStatus.Invalid = 0 -> MarkdownRenderer.Images.MarkdownSvgAdmissionStatus
+MarkdownRenderer.Images.MarkdownSvgAdmissionStatus.Opened = 2 -> MarkdownRenderer.Images.MarkdownSvgAdmissionStatus
 MarkdownRenderer.Images.MarkdownSvgColor
 MarkdownRenderer.Images.MarkdownSvgColor.Alpha.get -> byte
 MarkdownRenderer.Images.MarkdownSvgColor.Alpha.init -> void
@@ -1153,6 +1190,9 @@ MarkdownRenderer.Images.MarkdownSvgRaster.PixelFormat.get -> MarkdownRenderer.Im
 MarkdownRenderer.Images.MarkdownSvgRaster.Pixels.get -> System.ReadOnlyMemory<byte>
 MarkdownRenderer.Images.MarkdownSvgRaster.StrideBytes.get -> int
 MarkdownRenderer.Images.MarkdownSvgRaster.WidthPixels.get -> int
+MarkdownRenderer.Images.MarkdownSvgRenderDemand
+MarkdownRenderer.Images.MarkdownSvgRenderDemand.Priority.get -> MarkdownRenderer.Images.MarkdownSvgRenderPriority
+MarkdownRenderer.Images.MarkdownSvgRenderDemand.RegisterPromotion(System.Action! callback) -> System.IDisposable!
 MarkdownRenderer.Images.MarkdownSvgRenderPriority
 MarkdownRenderer.Images.MarkdownSvgRenderPriority.Overscan = 0 -> MarkdownRenderer.Images.MarkdownSvgRenderPriority
 MarkdownRenderer.Images.MarkdownSvgRenderPriority.Visible = 1 -> MarkdownRenderer.Images.MarkdownSvgRenderPriority
@@ -1173,6 +1213,18 @@ MarkdownRenderer.Images.MarkdownSvgRenderRequest.TargetWidthPixels.get -> int
 MarkdownRenderer.Images.MarkdownSvgRenderRequest.TargetWidthPixels.init -> void
 MarkdownRenderer.Images.MarkdownSvgRenderRequest.TileRegion.get -> MarkdownRenderer.Images.MarkdownSvgTileRegion?
 MarkdownRenderer.Images.MarkdownSvgRenderRequest.TileRegion.init -> void
+MarkdownRenderer.Images.MarkdownSvgSourceInfo
+MarkdownRenderer.Images.MarkdownSvgSourceInfo.Description.get -> string?
+MarkdownRenderer.Images.MarkdownSvgSourceInfo.IntrinsicHeight.get -> double
+MarkdownRenderer.Images.MarkdownSvgSourceInfo.IntrinsicWidth.get -> double
+MarkdownRenderer.Images.MarkdownSvgSourceInfo.Title.get -> string?
+MarkdownRenderer.Images.MarkdownSvgSourceInfoReader
+MarkdownRenderer.Images.MarkdownSvgSourceInfoReader.GetResult() -> MarkdownRenderer.Images.MarkdownSvgSourceInfo!
+MarkdownRenderer.Images.MarkdownSvgSourceInfoReader.MarkdownSvgSourceInfoReader(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> void
+MarkdownRenderer.Images.MarkdownSvgSourceInfoReader.ObserveAttribute(int ownerDepth, string! localName, string? namespaceUri, string! value) -> void
+MarkdownRenderer.Images.MarkdownSvgSourceInfoReader.ObserveElement(int depth, string! localName, string? namespaceUri, bool isEmptyElement) -> bool
+MarkdownRenderer.Images.MarkdownSvgSourceInfoReader.ObserveEndElement(int depth) -> void
+MarkdownRenderer.Images.MarkdownSvgSourceInfoReader.ObserveText(int depth, System.ReadOnlySpan<char> value) -> void
 MarkdownRenderer.Images.MarkdownSvgSourcePreparation
 MarkdownRenderer.Images.MarkdownSvgSourcePreparation.FailureDescription.get -> string?
 MarkdownRenderer.Images.MarkdownSvgSourcePreparation.FailureReason.get -> MarkdownRenderer.Images.MarkdownSvgFailureReason?
@@ -1674,6 +1726,9 @@ static MarkdownRenderer.Images.MarkdownImageResolveContext.operator !=(MarkdownR
 static MarkdownRenderer.Images.MarkdownImageResolveContext.operator ==(MarkdownRenderer.Images.MarkdownImageResolveContext? left, MarkdownRenderer.Images.MarkdownImageResolveContext? right) -> bool
 static MarkdownRenderer.Images.MarkdownRasterDecodeRequest.operator !=(MarkdownRenderer.Images.MarkdownRasterDecodeRequest? left, MarkdownRenderer.Images.MarkdownRasterDecodeRequest? right) -> bool
 static MarkdownRenderer.Images.MarkdownRasterDecodeRequest.operator ==(MarkdownRenderer.Images.MarkdownRasterDecodeRequest? left, MarkdownRenderer.Images.MarkdownRasterDecodeRequest? right) -> bool
+static MarkdownRenderer.Images.MarkdownRasterImageInspection.Inspect(System.ReadOnlySpan<byte> encodedBytes, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> MarkdownRenderer.Images.MarkdownRasterImageInspection!
+static MarkdownRenderer.Images.MarkdownSvgAdmissionResult.CapacityUnavailable(long capacityVersion, long requiredSourceReservationBytes) -> MarkdownRenderer.Images.MarkdownSvgAdmissionResult
+static MarkdownRenderer.Images.MarkdownSvgAdmissionResult.Opened(MarkdownRenderer.Images.IMarkdownSvgDocument! document, long sourceReservationBytes, object! admissionDomain) -> MarkdownRenderer.Images.MarkdownSvgAdmissionResult
 static MarkdownRenderer.Images.MarkdownSvgColor.operator !=(MarkdownRenderer.Images.MarkdownSvgColor left, MarkdownRenderer.Images.MarkdownSvgColor right) -> bool
 static MarkdownRenderer.Images.MarkdownSvgColor.operator ==(MarkdownRenderer.Images.MarkdownSvgColor left, MarkdownRenderer.Images.MarkdownSvgColor right) -> bool
 static MarkdownRenderer.Images.MarkdownSvgDocumentInfo.operator !=(MarkdownRenderer.Images.MarkdownSvgDocumentInfo? left, MarkdownRenderer.Images.MarkdownSvgDocumentInfo? right) -> bool
@@ -1684,6 +1739,7 @@ static MarkdownRenderer.Images.MarkdownSvgPhysicalViewport.operator !=(MarkdownR
 static MarkdownRenderer.Images.MarkdownSvgPhysicalViewport.operator ==(MarkdownRenderer.Images.MarkdownSvgPhysicalViewport left, MarkdownRenderer.Images.MarkdownSvgPhysicalViewport right) -> bool
 static MarkdownRenderer.Images.MarkdownSvgRenderRequest.operator !=(MarkdownRenderer.Images.MarkdownSvgRenderRequest? left, MarkdownRenderer.Images.MarkdownSvgRenderRequest? right) -> bool
 static MarkdownRenderer.Images.MarkdownSvgRenderRequest.operator ==(MarkdownRenderer.Images.MarkdownSvgRenderRequest? left, MarkdownRenderer.Images.MarkdownSvgRenderRequest? right) -> bool
+static MarkdownRenderer.Images.MarkdownSvgSourcePreparation.Admit(byte[]! sanitizedBytes, MarkdownRenderer.Images.MarkdownSvgSourceInfo! sourceInfo) -> MarkdownRenderer.Images.MarkdownSvgSourcePreparation!
 static MarkdownRenderer.Images.MarkdownSvgSourcePreparation.Admit(byte[]! sanitizedBytes) -> MarkdownRenderer.Images.MarkdownSvgSourcePreparation!
 static MarkdownRenderer.Images.MarkdownSvgSourcePreparation.Reject(MarkdownRenderer.Images.MarkdownSvgFailureReason reason, string! description) -> MarkdownRenderer.Images.MarkdownSvgSourcePreparation!
 static MarkdownRenderer.Images.MarkdownSvgTileRegion.operator !=(MarkdownRenderer.Images.MarkdownSvgTileRegion left, MarkdownRenderer.Images.MarkdownSvgTileRegion right) -> bool

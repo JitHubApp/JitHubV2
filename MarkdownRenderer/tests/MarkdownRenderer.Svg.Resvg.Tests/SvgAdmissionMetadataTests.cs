@@ -88,7 +88,8 @@ public sealed class SvgAdmissionMetadataTests
             SvgResourceBudgetResult combined = SvgResourceBudget.ValidateWithMetadata(
                 bytes,
                 CancellationToken.None,
-                out SvgSourceMetadata metadata);
+                out MarkdownSvgSourceInfo? metadataInfo);
+            SvgSourceMetadata metadata = metadataInfo?.Metadata ?? default;
 
             Assert.Equal(original.Accepted, combined.Accepted);
             Assert.Equal(original.Reason, combined.Reason);
@@ -113,7 +114,8 @@ public sealed class SvgAdmissionMetadataTests
         SvgResourceBudgetResult result = SvgResourceBudget.ValidateWithMetadata(
             bytes,
             CancellationToken.None,
-            out SvgSourceMetadata metadata);
+            out MarkdownSvgSourceInfo? metadataInfo);
+        SvgSourceMetadata metadata = metadataInfo?.Metadata ?? default;
 
         Assert.True(result.Accepted, result.Reason);
         Assert.Equal("Direct & root title", metadata.Title);
@@ -130,7 +132,8 @@ public sealed class SvgAdmissionMetadataTests
         SvgResourceBudgetResult result = SvgResourceBudget.ValidateWithMetadata(
             Svg("<svg><defs/><title/><title>Must not replace first occurrence</title><desc>Root</desc></svg>"),
             CancellationToken.None,
-            out SvgSourceMetadata metadata);
+            out MarkdownSvgSourceInfo? metadataInfo);
+        SvgSourceMetadata metadata = metadataInfo?.Metadata ?? default;
 
         Assert.True(result.Accepted, result.Reason);
         Assert.Null(metadata.Title);
@@ -143,7 +146,8 @@ public sealed class SvgAdmissionMetadataTests
         SvgResourceBudgetResult result = SvgResourceBudget.ValidateWithMetadata(
             Svg("<svg xmlns='http://www.w3.org/2000/svg'><x:title xmlns:x='urn:foreign'>Foreign</x:title><title>Native</title></svg>"),
             CancellationToken.None,
-            out SvgSourceMetadata metadata);
+            out MarkdownSvgSourceInfo? metadataInfo);
+        SvgSourceMetadata metadata = metadataInfo?.Metadata ?? default;
 
         Assert.True(result.Accepted, result.Reason);
         Assert.Equal("Native", metadata.Title);
@@ -162,11 +166,13 @@ public sealed class SvgAdmissionMetadataTests
         SvgResourceBudgetResult externalResult = SvgResourceBudget.ValidateWithMetadata(
             externalDoctype,
             CancellationToken.None,
-            out SvgSourceMetadata externalMetadata);
+            out MarkdownSvgSourceInfo? externalMetadataInfo);
+        SvgSourceMetadata externalMetadata = externalMetadataInfo?.Metadata ?? default;
         SvgResourceBudgetResult internalResult = SvgResourceBudget.ValidateWithMetadata(
             internalSubset,
             CancellationToken.None,
-            out SvgSourceMetadata internalMetadata);
+            out MarkdownSvgSourceInfo? internalMetadataInfo);
+        SvgSourceMetadata internalMetadata = internalMetadataInfo?.Metadata ?? default;
 
         Assert.False(externalResult.Accepted);
         Assert.Equal("dtd-forbidden", externalResult.Reason);
@@ -191,7 +197,8 @@ public sealed class SvgAdmissionMetadataTests
             SvgResourceBudgetResult result = SvgResourceBudget.ValidateWithMetadata(
                 Svg(document),
                 CancellationToken.None,
-                out SvgSourceMetadata metadata);
+                out MarkdownSvgSourceInfo? metadataInfo);
+            SvgSourceMetadata metadata = metadataInfo?.Metadata ?? default;
 
             Assert.False(result.Accepted);
             Assert.Equal(default, metadata);
@@ -207,11 +214,13 @@ public sealed class SvgAdmissionMetadataTests
         SvgResourceBudgetResult firstResult = SvgResourceBudget.ValidateWithMetadata(
             Svg($"<svg><title>{astralAtBoundary}</title></svg>"),
             CancellationToken.None,
-            out SvgSourceMetadata first);
+            out MarkdownSvgSourceInfo? firstInfo);
+        SvgSourceMetadata first = firstInfo?.Metadata ?? default;
         SvgResourceBudgetResult secondResult = SvgResourceBudget.ValidateWithMetadata(
             Svg($"<svg><title>{pendingSeparatorAtBoundary}</title></svg>"),
             CancellationToken.None,
-            out SvgSourceMetadata second);
+            out MarkdownSvgSourceInfo? secondInfo);
+        SvgSourceMetadata second = secondInfo?.Metadata ?? default;
 
         Assert.True(firstResult.Accepted, firstResult.Reason);
         Assert.True(secondResult.Accepted, secondResult.Reason);

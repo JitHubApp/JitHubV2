@@ -44,6 +44,8 @@ public enum MarkdownRasterFormat
     Gif,
     /// <summary>AV1 Image File Format.</summary>
     Avif,
+    /// <summary>Windows icon.</summary>
+    Ico,
 }
 
 /// <summary>Immutable decode settings for one borrowed encoded source.</summary>

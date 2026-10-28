@@ -22,7 +22,7 @@ public sealed class SvgHostRetryReadinessTests
         var queued = new ConcurrentQueue<Action>();
         Set(owner, "_svgWorkSync", new object());
         Set(owner, "_imageLifetimeCancellation", lifetime);
-        Set(owner, "_svgHostDeferredAdmission", new WeakReference<IMarkdownSvgHostAdmission>(admission));
+        Set(owner, "_svgHostDeferredAdmission", new WeakReference<IMarkdownSvgAdmission>(admission));
         Set(owner, "_svgDeferredRetryEnqueueOverride", (Func<Action, bool>)(work => { queued.Enqueue(work); return true; }));
         try
         {
@@ -289,10 +289,10 @@ public sealed class SvgHostRetryReadinessTests
         Assert.Null(Value(owner, "_svgHostDeferredRegistrationAttempt"));
     }
 
-    private static (ImageBox, MarkdownSvgDemandTicket, object) CreateWaiting()
+    private static (ImageBox, MarkdownSvgRenderDemand, object) CreateWaiting()
     {
         var owner = (ImageBox)RuntimeHelpers.GetUninitializedObject(typeof(ImageBox));
-        var demand = new MarkdownSvgDemandTicket(MarkdownSvgRenderPriority.Overscan);
+        var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         object waiterIdentity = new();
         object denialIdentity = new();
         Set(owner, "_svgHostDeferredSync", new object());
@@ -313,7 +313,7 @@ public sealed class SvgHostRetryReadinessTests
     private static void Set(ImageBox owner, string name, object value) =>
         typeof(ImageBox).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(owner, value);
 
-    private sealed class ThresholdProbe : IMarkdownSvgHostAdmission
+    private sealed class ThresholdProbe : IMarkdownSvgAdmission
     {
         public object AdmissionDomain { get; } = new();
         public long CapacityVersion => 12;
@@ -334,8 +334,8 @@ public sealed class SvgHostRetryReadinessTests
             return Ready.Task.WaitAsync(cancellationToken);
         }
 
-        public ValueTask<MarkdownSvgHostOpenResult> OpenForHostAsync(MarkdownSvgOpenRequest request,
-            MarkdownSvgDemandTicket demand, CancellationToken cancellationToken)
+        public ValueTask<MarkdownSvgAdmissionResult> TryOpenAsync(MarkdownSvgOpenRequest request,
+            MarkdownSvgRenderDemand demand, CancellationToken cancellationToken)
         {
             Interlocked.Increment(ref OpenCount);
             throw new InvalidOperationException("A scalar retry observation must not open source bytes.");

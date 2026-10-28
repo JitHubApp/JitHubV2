@@ -18,7 +18,7 @@ public sealed class ImageBoxActivationResetTests
     [Fact]
     public void CurrentUnstartedActivationClearsItsOwnLoadStartedState()
     {
-        MarkdownSvgDemandTicket demand = OverscanDemand();
+        MarkdownSvgRenderDemand demand = OverscanDemand();
         ImageBox box = BareBox(demand, loadGeneration: 41);
 
         ResetUnstartedActivation(box, demand, 41, CancellationToken.None);
@@ -29,7 +29,7 @@ public sealed class ImageBoxActivationResetTests
     [Fact]
     public void StaleDemandOrGenerationCannotClearCurrentLoadStartedState()
     {
-        MarkdownSvgDemandTicket current = OverscanDemand();
+        MarkdownSvgRenderDemand current = OverscanDemand();
         ImageBox box = BareBox(current, loadGeneration: 42);
 
         ResetUnstartedActivation(box, OverscanDemand(), 42, CancellationToken.None);
@@ -42,7 +42,7 @@ public sealed class ImageBoxActivationResetTests
     [Fact]
     public void CanceledQueuedActivationCannotClearLoadStartedState()
     {
-        MarkdownSvgDemandTicket demand = OverscanDemand();
+        MarkdownSvgRenderDemand demand = OverscanDemand();
         ImageBox box = BareBox(demand, loadGeneration: 43);
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
@@ -59,7 +59,7 @@ public sealed class ImageBoxActivationResetTests
         bool disposed,
         bool suspended)
     {
-        MarkdownSvgDemandTicket demand = OverscanDemand();
+        MarkdownSvgRenderDemand demand = OverscanDemand();
         ImageBox box = BareBox(demand, loadGeneration: 44);
         SetField(box, "_disposed", disposed);
         SetField(box, "_resourcesSuspended", suspended);
@@ -72,7 +72,7 @@ public sealed class ImageBoxActivationResetTests
     [Fact]
     public void OldCanceledActivationCannotResetResumedLoadWithSameDemandAndGeneration()
     {
-        MarkdownSvgDemandTicket demand = OverscanDemand();
+        MarkdownSvgRenderDemand demand = OverscanDemand();
         ImageBox box = BareBox(demand, loadGeneration: 45);
         using var oldResidencyCancellation = new CancellationTokenSource();
         oldResidencyCancellation.Cancel();
@@ -86,7 +86,7 @@ public sealed class ImageBoxActivationResetTests
         Assert.True(GetField<bool>(box, "_loadStarted"));
     }
 
-    private static ImageBox BareBox(MarkdownSvgDemandTicket demand, int loadGeneration)
+    private static ImageBox BareBox(MarkdownSvgRenderDemand demand, int loadGeneration)
     {
         var box = (ImageBox)RuntimeHelpers.GetUninitializedObject(typeof(ImageBox));
         SetField(box, "_svgHostDeferredSync", new object());
@@ -98,7 +98,7 @@ public sealed class ImageBoxActivationResetTests
         return box;
     }
 
-    private static MarkdownSvgDemandTicket OverscanDemand() =>
+    private static MarkdownSvgRenderDemand OverscanDemand() =>
         new(MarkdownSvgRenderPriority.Overscan);
 
     private static T GetField<T>(object target, string name) =>
@@ -116,7 +116,7 @@ public sealed class ImageBoxActivationResetTests
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "ResetLoadStartedAfterUnstartedActivation")]
     private static extern void ResetUnstartedActivation(
         ImageBox box,
-        MarkdownSvgDemandTicket demand,
+        MarkdownSvgRenderDemand demand,
         int loadGeneration,
         CancellationToken activationCancellation);
 }

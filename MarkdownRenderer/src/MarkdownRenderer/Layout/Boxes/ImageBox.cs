@@ -199,8 +199,8 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         long WorkId,
         long PublishRequestedAt,
         long TargetPixels,
-        MarkdownSvgDemandTicket? Demand = null,
-        IMarkdownSvgHostAdmission? HostAdmission = null,
+        MarkdownSvgRenderDemand? Demand = null,
+        IMarkdownSvgAdmission? HostAdmission = null,
         long SourceReservationBytes = 0,
         SvgHostAdmissionCoordinator.OwnerSlot? OwnerSlot = null,
         MarkdownSvgPhysicalViewport? PhysicalViewport = null)
@@ -226,8 +226,8 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         internal readonly long WorkId = WorkId;
         internal readonly long PublishRequestedAt = PublishRequestedAt;
         internal readonly long TargetPixels = TargetPixels;
-        internal readonly MarkdownSvgDemandTicket? Demand = Demand;
-        internal readonly IMarkdownSvgHostAdmission? HostAdmission = HostAdmission;
+        internal readonly MarkdownSvgRenderDemand? Demand = Demand;
+        internal readonly IMarkdownSvgAdmission? HostAdmission = HostAdmission;
         internal readonly long SourceReservationBytes = SourceReservationBytes;
         internal readonly SvgHostAdmissionCoordinator.OwnerSlot? OwnerSlot = OwnerSlot;
         internal readonly MarkdownSvgPhysicalViewport? PhysicalViewport = PhysicalViewport;
@@ -346,8 +346,8 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
     }
 
     private readonly struct SvgHostCapacityDeferral(
-        IMarkdownSvgHostAdmission Admission,
-        MarkdownSvgDemandTicket Demand,
+        IMarkdownSvgAdmission Admission,
+        MarkdownSvgRenderDemand Demand,
         int LoadGeneration,
         long CapacityVersion,
         long RequiredSourceReservationBytes,
@@ -356,8 +356,8 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         long DemandVersionAtDenial,
         long VisualDemandEpochAtDenial)
     {
-        internal IMarkdownSvgHostAdmission Admission { get; } = Admission;
-        internal MarkdownSvgDemandTicket Demand { get; } = Demand;
+        internal IMarkdownSvgAdmission Admission { get; } = Admission;
+        internal MarkdownSvgRenderDemand Demand { get; } = Demand;
         internal int LoadGeneration { get; } = LoadGeneration;
         internal long CapacityVersion { get; } = CapacityVersion;
         internal long RequiredSourceReservationBytes { get; } = RequiredSourceReservationBytes;
@@ -558,14 +558,14 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
     // A pressure-park transition temporarily closes tile admission while it
     // detaches the accepted document. It is never a source/document owner.
     private SvgTileRenderPlan? _svgParkingPlan;
-    private MarkdownSvgDemandTicket? _svgLoadDemandTicket;
+    private MarkdownSvgRenderDemand? _svgLoadDemandTicket;
     private int _svgLoadDemandGeneration;
     private readonly object _svgHostDeferredSync = new();
     private SvgHostAdmissionCoordinator.PendingWaiter? _svgHostDeferredWaiter;
     private object? _svgHostDeferredWaiterIdentity;
     private object? _svgHostDeferredRegistrationAttempt;
     private object? _svgHostDeferredDenialIdentity;
-    private WeakReference<IMarkdownSvgHostAdmission>? _svgHostDeferredAdmission;
+    private WeakReference<IMarkdownSvgAdmission>? _svgHostDeferredAdmission;
     private int _svgHostDeferred;
     private long _svgHostDeferredDemandVersion;
     private long _svgHostDeferredCapacityVersion;
@@ -613,11 +613,11 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
     private sealed class SvgTileWorkOwner(
         SvgTileRenderPlan plan,
         CancellationTokenSource cancellation,
-        MarkdownSvgDemandTicket demand)
+        MarkdownSvgRenderDemand demand)
     {
         internal readonly SvgTileRenderPlan Plan = plan;
         internal readonly CancellationTokenSource Cancellation = cancellation;
-        internal readonly MarkdownSvgDemandTicket Demand = demand;
+        internal readonly MarkdownSvgRenderDemand Demand = demand;
         // 0=active, 1=terminal failure claimed, 2=retired/reassigned,
         // 3=terminal failure map invalidation in progress.
         // The transition is coordinated while holding _svgTileLock.
@@ -626,12 +626,12 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
 
     private readonly struct SvgDeferredLoadWork(
         ImageBox owner,
-        MarkdownSvgDemandTicket demand,
+        MarkdownSvgRenderDemand demand,
         int loadGeneration,
         object? denialIdentity)
     {
         internal readonly ImageBox Owner = owner;
-        internal readonly MarkdownSvgDemandTicket Demand = demand;
+        internal readonly MarkdownSvgRenderDemand Demand = demand;
         internal readonly int LoadGeneration = loadGeneration;
         internal readonly object? DenialIdentity = denialIdentity;
     }
@@ -642,8 +642,8 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         int fullWidthPixels,
         int fullHeightPixels,
         int renderGeneration,
-        MarkdownSvgDemandTicket? demand = null,
-        IMarkdownSvgHostAdmission? hostAdmission = null,
+        MarkdownSvgRenderDemand? demand = null,
+        IMarkdownSvgAdmission? hostAdmission = null,
         long sourceReservationBytes = 0,
         SvgHostAdmissionCoordinator.OwnerSlot? ownerSlot = null,
         MarkdownSvgPhysicalViewport? physicalViewport = null)
@@ -660,9 +660,9 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         internal readonly MarkdownSvgPhysicalViewport PhysicalViewport = physicalViewport ??
             new MarkdownSvgPhysicalViewport(fullWidthPixels, fullHeightPixels);
         internal readonly int RenderGeneration = renderGeneration;
-        internal readonly MarkdownSvgDemandTicket Demand = demand ??
-            new MarkdownSvgDemandTicket(MarkdownSvgRenderPriority.Visible);
-        internal readonly IMarkdownSvgHostAdmission? HostAdmission = hostAdmission;
+        internal readonly MarkdownSvgRenderDemand Demand = demand ??
+            new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Visible);
+        internal readonly IMarkdownSvgAdmission? HostAdmission = hostAdmission;
         internal readonly object? AdmissionDomain = ownerSlot?.AdmissionDomain;
         internal readonly long SourceReservationBytes = sourceReservationBytes;
         internal readonly SvgHostAdmissionCoordinator.OwnerSlot? OwnerSlot = ownerSlot;
@@ -2502,7 +2502,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
 
         if (_loadStarted)
         {
-            MarkdownSvgDemandTicket? currentDemand = Volatile.Read(ref _svgLoadDemandTicket);
+            MarkdownSvgRenderDemand? currentDemand = Volatile.Read(ref _svgLoadDemandTicket);
             if (isVisible)
                 currentDemand?.PromoteVisible();
             TryResumeDeferredSvgLoadForObservedDemandOrCapacity(currentDemand);
@@ -2559,7 +2559,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             _svgHostDeferredWaiterIdentity = null;
             _svgHostDeferredRegistrationAttempt = registrationAttempt;
             _svgHostDeferredDenialIdentity = registrationAttempt;
-            _svgHostDeferredAdmission = new WeakReference<IMarkdownSvgHostAdmission>(deferral.Admission);
+            _svgHostDeferredAdmission = new WeakReference<IMarkdownSvgAdmission>(deferral.Admission);
             _svgHostDeferred = SvgHostDeferredWaiting;
             _svgHostDeferredDemandVersion = deferral.DemandVersionAtDenial;
             _svgHostDeferredVisualDemandEpoch = deferral.VisualDemandEpochAtDenial;
@@ -2632,12 +2632,12 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
     }
 
     private void TryResumeDeferredSvgLoadForObservedDemandOrCapacity(
-        MarkdownSvgDemandTicket? demand)
+        MarkdownSvgRenderDemand? demand)
     {
         if (demand is null)
             return;
 
-        IMarkdownSvgHostAdmission? admission = null;
+        IMarkdownSvgAdmission? admission = null;
         int loadGeneration;
         long demandVersionAtDenial;
         long capacityVersionAtDenial;
@@ -2714,7 +2714,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
     }
 
     internal void TryQueueDeferredSvgHostRetry(
-        MarkdownSvgDemandTicket demand,
+        MarkdownSvgRenderDemand demand,
         int loadGeneration,
         long observedDemandVersion,
         long observedCapacityVersion,
@@ -2840,7 +2840,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
     }
 
     private void StartDeferredSvgLoad(
-        MarkdownSvgDemandTicket demand, int loadGeneration, object? denialIdentity)
+        MarkdownSvgRenderDemand demand, int loadGeneration, object? denialIdentity)
     {
         lock (_svgHostDeferredSync)
         {
@@ -2862,7 +2862,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
     }
 
     internal bool OnSvgHostAdmissionWaiterRegistered(
-        MarkdownSvgDemandTicket demand,
+        MarkdownSvgRenderDemand demand,
         int loadGeneration,
         object registrationAttempt,
         SvgHostAdmissionCoordinator.PendingWaiter waiter)
@@ -2884,7 +2884,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
     }
 
     internal void OnSvgHostAdmissionWaiterFinished(
-        MarkdownSvgDemandTicket demand,
+        MarkdownSvgRenderDemand demand,
         int loadGeneration,
         object waiterIdentity)
     {
@@ -3789,7 +3789,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
 
     private void StartLoad(
         bool isVisible = true,
-        MarkdownSvgDemandTicket? demandOverride = null,
+        MarkdownSvgRenderDemand? demandOverride = null,
         int loadDemandGeneration = 0)
     {
         if (!TryBeginImageWork(out ImageWorkLease? setupWork) || setupWork is null)
@@ -3798,13 +3798,13 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         using ImageWorkLease loadSetup = setupWork;
         ClearBitmapOutputDeferral(preserveRetryOffer: demandOverride is not null);
         IDisposable? previousDeferredWaiter = null;
-        MarkdownSvgDemandTicket demand;
+        MarkdownSvgRenderDemand demand;
         lock (_svgHostDeferredSync)
         {
             if (demandOverride is null)
             {
                 previousDeferredWaiter = ClearSvgHostDeferralNoLock();
-                demand = new MarkdownSvgDemandTicket(isVisible
+                demand = new MarkdownSvgRenderDemand(isVisible
                     ? MarkdownSvgRenderPriority.Visible
                     : MarkdownSvgRenderPriority.Overscan);
                 loadDemandGeneration = Interlocked.Increment(ref _svgLoadDemandGeneration);
@@ -3910,7 +3910,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
     }
 
     private void ResetLoadStartedAfterUnstartedActivation(
-        MarkdownSvgDemandTicket demand,
+        MarkdownSvgRenderDemand demand,
         int loadGeneration,
         CancellationToken activationCancellation)
     {
@@ -3960,7 +3960,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
 
     private void LoadFromDefaultSource(
         MarkdownBuiltInImageSource source,
-        MarkdownSvgDemandTicket demand,
+        MarkdownSvgRenderDemand demand,
         int loadDemandGeneration)
     {
         switch (source.Kind)
@@ -3991,7 +3991,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
 
     private async Task ResolveAndLoadAsync(
         IMarkdownImageResolver resolver,
-        MarkdownSvgDemandTicket demand,
+        MarkdownSvgRenderDemand demand,
         int loadDemandGeneration)
     {
         // Keep the document resolver and any returned-but-not-yet-rasterized
@@ -4336,7 +4336,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
     private async Task LoadBuiltInImageAsync(
         MarkdownBuiltInImageSource source,
         bool isSvg,
-        MarkdownSvgDemandTicket demand,
+        MarkdownSvgRenderDemand demand,
         int loadDemandGeneration)
     {
         if (!TryBeginImageWork(out ImageWorkLease? admittedWork) || admittedWork is null)
@@ -5317,7 +5317,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
 
     private async Task LoadSvgDataUriAsync(
         string rawDataUri,
-        MarkdownSvgDemandTicket demand,
+        MarkdownSvgRenderDemand demand,
         int loadDemandGeneration)
     {
         if (!TryBeginImageWork(out ImageWorkLease? decodeWork) || decodeWork is null)
@@ -5394,7 +5394,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         Size intrinsicHint,
         string? securityPartitionKey,
         string? builtInSourceAliasKey,
-        MarkdownSvgDemandTicket demand,
+        MarkdownSvgRenderDemand demand,
         int loadDemandGeneration)
     {
         if (!TryBeginImageWork(out ImageWorkLease? renderWork) || renderWork is null)
@@ -5475,7 +5475,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         ImageWorkLease renderWork,
         string? securityPartitionKey,
         string? builtInSourceAliasKey,
-        MarkdownSvgDemandTicket demand,
+        MarkdownSvgRenderDemand demand,
         int loadDemandGeneration)
     {
         CancellationToken lifetimeToken = renderWork.Token;
@@ -5483,7 +5483,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         string resolvedCacheKey = securityPartitionKey ?? Url;
         string effectiveSecurityPartitionKey = GetSvgSourceSecurityPartitionKey(resolvedCacheKey);
         IMarkdownSvgRenderer? renderer = Context.SvgRenderer;
-        IMarkdownSvgHostAdmission? hostAdmission = renderer as IMarkdownSvgHostAdmission;
+        IMarkdownSvgAdmission? hostAdmission = renderer as IMarkdownSvgAdmission;
 #if MARKDOWN_LAYOUT_DIAGNOSTICS
         long svgWorkId = MarkdownSvgStageTrace.CurrentWorkId;
         long svgSourceBytes = rawBytes.LongLength;
@@ -5521,7 +5521,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         SvgDocumentUseLease? openedDocumentUse = null;
         SvgHostAdmissionCoordinator.OwnerSlot? ownerSlot = null;
         SvgHostCapacityDeferral? hostCapacityDeferral = null;
-        IMarkdownSvgHostPreparationLease? hostPreparationLease = null;
+        IMarkdownSvgPreparationLease? hostPreparationLease = null;
         long hostPreparationScratchBytes = 0;
         long hostPreparedSourceBytes = 0;
         MarkdownSvgSourcePreparation? preparation = null;
@@ -5572,10 +5572,10 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                     // Only the opt-in session path and a participating provider
                     // use this reservation; legacy/custom providers are unchanged.
                     if (preparationSession is not null &&
-                        renderer is IMarkdownSvgHostPreparationAdmission scratchAdmission)
+                        renderer is IMarkdownSvgPreparationAdmission scratchAdmission)
                     {
                         long demandVersionAtPreparation = demand.Version;
-                        bool admitted = scratchAdmission.TryReserveHostPreparationScratch(
+                        bool admitted = scratchAdmission.TryReservePreparationScratch(
                             demand,
                             out hostPreparationLease,
                             out long capacityVersionAtPreparation,
@@ -5812,12 +5812,12 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                 if (hostAdmission is not null)
                 {
                     long demandVersionAtOpen = demand.Version;
-                    MarkdownSvgHostOpenResult hostResult = await hostAdmission.OpenForHostAsync(
+                    MarkdownSvgAdmissionResult hostResult = await hostAdmission.TryOpenAsync(
                             openRequest,
                             demand,
                             cancellationToken)
                         .ConfigureAwait(false);
-                    if (hostResult.Status == MarkdownSvgHostOpenStatus.CapacityUnavailable)
+                    if (hostResult.Status == MarkdownSvgAdmissionStatus.CapacityUnavailable)
                     {
                         if (hostResult.Document is not null ||
                             hostResult.SourceReservationBytes != 0 ||
@@ -5852,7 +5852,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                     // foreign-domain handles are still caller-owned and must
                     // be retired in finally.
                     openedDocument = hostResult.Document;
-                    if (hostResult.Status != MarkdownSvgHostOpenStatus.Opened ||
+                    if (hostResult.Status != MarkdownSvgAdmissionStatus.Opened ||
                         openedDocument is null)
                     {
                         throw new MarkdownSvgException(
@@ -6130,7 +6130,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         int targetHeight = metadata.TargetHeightPixels;
         long targetPixels = metadata.TargetPixels;
         string bitmapIdentity = metadata.BitmapIdentity;
-        MarkdownSvgDemandTicket demand = metadata.Demand!;
+        MarkdownSvgRenderDemand demand = metadata.Demand!;
         BitmapOutputWorkContext bitmapOutputWork = CaptureBitmapOutputWorkContext(
             cancellationToken, expectedDemand: demand, expectedSvgGeneration: renderGeneration);
 #if MARKDOWN_LAYOUT_DIAGNOSTICS
@@ -6943,7 +6943,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                 }
 
                 CancellationTokenSource workCancellation;
-                var tileDemand = new MarkdownSvgDemandTicket(priority);
+                var tileDemand = new MarkdownSvgRenderDemand(priority);
                 try
                 {
                     workCancellation = new CancellationTokenSource();
@@ -7075,7 +7075,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                 lifetimeWork.Token,
                 workCancellation.Token);
             bool providerOwnsAdmission = plan.HostAdmission is not null &&
-                plan.Document is IMarkdownSvgHostDocument;
+                plan.Document is IMarkdownSvgPrioritizedDocument;
             if (!providerOwnsAdmission)
             {
                 await _svgProviderAdmissionGate.WaitAsync(admissionCancellation.Token).ConfigureAwait(false);
@@ -8178,8 +8178,8 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         long workId,
         long publishRequestedAt,
         long targetPixels,
-        MarkdownSvgDemandTicket? demand = null,
-        IMarkdownSvgHostAdmission? hostAdmission = null,
+        MarkdownSvgRenderDemand? demand = null,
+        IMarkdownSvgAdmission? hostAdmission = null,
         long sourceReservationBytes = 0,
         SvgHostAdmissionCoordinator.OwnerSlot? ownerSlot = null,
         MarkdownSvgPhysicalViewport? physicalViewport = null) =>
@@ -8772,7 +8772,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         MarkdownSvgRenderRequest request,
         CancellationToken cancellationToken,
         SvgDocumentUseLease parentUse,
-        MarkdownSvgDemandTicket? demand = null)
+        MarkdownSvgRenderDemand? demand = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         SvgDocumentUseLease nativeUse = TryAcquireNestedSvgDocumentUse(parentUse) ??
@@ -8780,8 +8780,8 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         ValueTask<MarkdownSvgRaster> operation;
         try
         {
-            operation = demand is not null && document is IMarkdownSvgHostDocument hostDocument
-                ? hostDocument.RenderForHostAsync(request, demand, cancellationToken)
+            operation = demand is not null && document is IMarkdownSvgPrioritizedDocument hostDocument
+                ? hostDocument.RenderAsync(request, demand, cancellationToken)
                 : document.RenderAsync(request, cancellationToken);
         }
         catch

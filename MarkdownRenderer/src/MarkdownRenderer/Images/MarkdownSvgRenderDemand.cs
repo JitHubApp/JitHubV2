@@ -6,11 +6,16 @@ using MarkdownRenderer.Diagnostics;
 namespace MarkdownRenderer.Images;
 
 /// <summary>
-/// One load or tile's monotonic demand. It contains no source, control, or
-/// provider. Repeated visible observations are allocation-free. Queued work
-/// validates its own membership when asynchronous promotion is delivered.
+/// The visibility of one SVG load or tile, which the view raises from
+/// overscan to visible as the image scrolls into view. It never drops back.
+/// Renderers that queue work read <see cref="Priority"/> and use
+/// <see cref="RegisterPromotion"/> to move that work ahead.
 /// </summary>
-internal sealed class MarkdownSvgDemandTicket : IMarkdownImageActivationDemand
+/// <remarks>
+/// A demand holds no source, view or renderer. Only the view creates and
+/// raises demands.
+/// </remarks>
+public sealed class MarkdownSvgRenderDemand : IMarkdownImageActivationDemand
 {
     // Host demand has one queued operation owner at a time. This defensive
     // ceiling also bounds unexpected overlapping internal subscriptions.
@@ -21,14 +26,14 @@ internal sealed class MarkdownSvgDemandTicket : IMarkdownImageActivationDemand
     private int _activeRegistrations;
     private int _visible;
 
-    internal MarkdownSvgDemandTicket(MarkdownSvgRenderPriority priority)
+    internal MarkdownSvgRenderDemand(MarkdownSvgRenderPriority priority)
         : this(priority, null)
     {
     }
 
     // A rejecting-only fault seam for deterministic component tests. Normal
     // hosts always use the constructor above and the real asynchronous queue.
-    internal MarkdownSvgDemandTicket(MarkdownSvgRenderPriority priority, Func<bool>? queueAdmissionProbe)
+    internal MarkdownSvgRenderDemand(MarkdownSvgRenderPriority priority, Func<bool>? queueAdmissionProbe)
     {
         if (priority is not (MarkdownSvgRenderPriority.Visible or MarkdownSvgRenderPriority.Overscan))
             throw new ArgumentOutOfRangeException(nameof(priority));
@@ -36,7 +41,8 @@ internal sealed class MarkdownSvgDemandTicket : IMarkdownImageActivationDemand
         _queueAdmissionProbe = queueAdmissionProbe;
     }
 
-    internal MarkdownSvgRenderPriority Priority => Volatile.Read(ref _visible) != 0
+    /// <summary>Gets the current priority: overscan, or visible once the image is on screen.</summary>
+    public MarkdownSvgRenderPriority Priority => Volatile.Read(ref _visible) != 0
         ? MarkdownSvgRenderPriority.Visible : MarkdownSvgRenderPriority.Overscan;
 
     internal long Version => Volatile.Read(ref _visible);
@@ -78,7 +84,18 @@ internal sealed class MarkdownSvgDemandTicket : IMarkdownImageActivationDemand
         return true;
     }
 
-    internal IDisposable RegisterPromotion(Action callback)
+    /// <summary>
+    /// Registers a callback that runs once on the thread pool when this demand
+    /// becomes visible, or soon after registration if it already is.
+    /// </summary>
+    /// <param name="callback">
+    /// The callback. It runs on a thread-pool thread, never inline, so it may
+    /// be registered while holding a lock. Exceptions it throws are logged and
+    /// ignored.
+    /// </param>
+    /// <returns>A registration; disposing it cancels a callback that has not run.</returns>
+    /// <exception cref="InvalidOperationException">Too many registrations are active on this demand.</exception>
+    public IDisposable RegisterPromotion(Action callback)
     {
         ArgumentNullException.ThrowIfNull(callback);
         var registration = new PromotionRegistration(this, callback);
@@ -117,9 +134,9 @@ internal sealed class MarkdownSvgDemandTicket : IMarkdownImageActivationDemand
         get { lock (_gate) return _registrations?.Count ?? 0; }
     }
 
-    private sealed class PromotionRegistration(MarkdownSvgDemandTicket owner, Action callback) : IDisposable
+    private sealed class PromotionRegistration(MarkdownSvgRenderDemand owner, Action callback) : IDisposable
     {
-        private MarkdownSvgDemandTicket? _owner = owner;
+        private MarkdownSvgRenderDemand? _owner = owner;
         private Action? _callback = callback;
         private int _queued;
 
@@ -127,7 +144,7 @@ internal sealed class MarkdownSvgDemandTicket : IMarkdownImageActivationDemand
         {
             if (Interlocked.Exchange(ref _queued, 1) == 0)
             {
-                MarkdownSvgDemandTicket? owner = Volatile.Read(ref _owner);
+                MarkdownSvgRenderDemand? owner = Volatile.Read(ref _owner);
                 if (owner is null)
                     return;
                 if (owner._queueAdmissionProbe?.Invoke() == false ||

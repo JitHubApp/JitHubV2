@@ -7,7 +7,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Xml;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Images;
 
 namespace MarkdownRenderer.Svg.Resvg.Internal;
 
@@ -61,16 +61,16 @@ internal static class SvgResourceBudget
     public static SvgResourceBudgetResult ValidateWithMetadata(
         byte[]? bytes,
         CancellationToken cancellationToken,
-        out SvgSourceMetadata metadata)
-        => ValidateCore(bytes, cancellationToken, new SvgMetadataCollector(cancellationToken), out metadata);
+        out MarkdownSvgSourceInfo? sourceInfo)
+        => ValidateCore(bytes, cancellationToken, new MarkdownSvgSourceInfoReader(cancellationToken), out sourceInfo);
 
     private static SvgResourceBudgetResult ValidateCore(
         byte[]? bytes,
         CancellationToken cancellationToken,
-        SvgMetadataCollector? metadataCollector,
-        out SvgSourceMetadata metadata)
+        MarkdownSvgSourceInfoReader? metadataCollector,
+        out MarkdownSvgSourceInfo? sourceInfo)
     {
-        metadata = default;
+        sourceInfo = null;
         if (bytes is null || bytes.Length == 0)
             return SvgResourceBudgetResult.Reject("empty");
         if (bytes.Length > MaxInputBytes)
@@ -85,9 +85,9 @@ internal static class SvgResourceBudget
                 // Keep the successful metadata path inside the same active
                 // deadline, including bounded final string/geometry work.
                 context.ThrowIfStopped();
-                SvgSourceMetadata collected = metadataCollector.GetMetadata();
+                MarkdownSvgSourceInfo collected = metadataCollector.GetResult();
                 context.ThrowIfStopped();
-                metadata = collected;
+                sourceInfo = collected;
             }
             catch (SvgValidationDeadlineException)
             {
@@ -101,7 +101,7 @@ internal static class SvgResourceBudget
         byte[] bytes,
         ValidationContext context,
         int nestedDepth,
-        SvgMetadataCollector? metadataCollector)
+        MarkdownSvgSourceInfoReader? metadataCollector)
     {
         if (nestedDepth > MaxNestedSvgDepth)
             return SvgResourceBudgetResult.Reject("nested-svg-depth");
@@ -254,7 +254,7 @@ internal static class SvgResourceBudget
                 }
                 else if (reader.NodeType == XmlNodeType.EndElement)
                 {
-                    metadataCollector?.EndElement(reader.Depth);
+                    metadataCollector?.ObserveEndElement(reader.Depth);
                     if (styleElementDepth == reader.Depth &&
                         reader.LocalName.Equals("style", StringComparison.OrdinalIgnoreCase))
                     {
@@ -269,7 +269,7 @@ internal static class SvgResourceBudget
                     if (context.TextCharacters > MaxTextCharacters)
                         return SvgResourceBudgetResult.Reject("text-length");
 
-                    metadataCollector?.AppendText(reader.Depth, reader.Value.AsSpan());
+                    metadataCollector?.ObserveText(reader.Depth, reader.Value.AsSpan());
 
                     if (styleElementDepth >= 0)
                     {
@@ -280,7 +280,7 @@ internal static class SvgResourceBudget
                 }
                 else if (reader.NodeType == XmlNodeType.Whitespace)
                 {
-                    metadataCollector?.AppendText(reader.Depth, reader.Value.AsSpan());
+                    metadataCollector?.ObserveText(reader.Depth, reader.Value.AsSpan());
                 }
             }
         }
@@ -349,8 +349,8 @@ internal static class SvgResourceBudget
             return ValidateDocument(payload, context, nestedDepth + 1, metadataCollector: null);
         }
 
-        RasterImageBudgetResult raster = RasterImageResourceBudget.Validate(payload);
-        if (!raster.Accepted || raster.FrameCount != 1 ||
+        MarkdownRasterImageInspection raster = MarkdownRasterImageInspection.Inspect(payload);
+        if (!raster.IsAccepted || raster.FrameCount != 1 ||
             !IsSupportedEmbeddedRasterType(mediaType, raster.Format))
         {
             return SvgResourceBudgetResult.Reject("embedded-image-format");
@@ -821,12 +821,12 @@ internal static class SvgResourceBudget
         return null;
     }
 
-    private static bool IsSupportedEmbeddedRasterType(string mediaType, string? detectedFormat) =>
-        (mediaType.Equals("image/png", StringComparison.OrdinalIgnoreCase) && detectedFormat == "PNG") ||
+    private static bool IsSupportedEmbeddedRasterType(string mediaType, MarkdownRasterFormat? detectedFormat) =>
+        (mediaType.Equals("image/png", StringComparison.OrdinalIgnoreCase) && detectedFormat == MarkdownRasterFormat.Png) ||
         ((mediaType.Equals("image/jpeg", StringComparison.OrdinalIgnoreCase) ||
-          mediaType.Equals("image/jpg", StringComparison.OrdinalIgnoreCase)) && detectedFormat == "JPEG") ||
-        (mediaType.Equals("image/gif", StringComparison.OrdinalIgnoreCase) && detectedFormat == "GIF") ||
-        (mediaType.Equals("image/webp", StringComparison.OrdinalIgnoreCase) && detectedFormat == "WEBP");
+          mediaType.Equals("image/jpg", StringComparison.OrdinalIgnoreCase)) && detectedFormat == MarkdownRasterFormat.Jpeg) ||
+        (mediaType.Equals("image/gif", StringComparison.OrdinalIgnoreCase) && detectedFormat == MarkdownRasterFormat.Gif) ||
+        (mediaType.Equals("image/webp", StringComparison.OrdinalIgnoreCase) && detectedFormat == MarkdownRasterFormat.WebP);
 
     private static bool IsSvgNamespace(string? namespaceUri) =>
         string.IsNullOrEmpty(namespaceUri) ||
