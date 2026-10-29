@@ -154,7 +154,7 @@ public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper out
             source.Box.CodeLanguage,
             source.Box.Metadata.CodeTextHash,
             source.Box.CodeText.Length,
-            CodeBlockThemeVariant.Light,
+            MarkdownThemeVariant.Light,
             ProviderIdentity: 921,
             ProviderRevision: 1);
         CodeBlockHighlightSpan[] spans =

@@ -4,6 +4,7 @@ using MarkdownRenderer.Hosting;
 using MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All;
 using MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common;
 using MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Internal;
+using MarkdownRenderer.Theming;
 using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics;
 using System.Reflection;
@@ -61,7 +62,7 @@ public sealed class TextMateGrammarPackTests
         var result = await highlighter.HighlightAsync(new CodeBlockHighlightRequest(
             language,
             code,
-            CodeBlockThemeVariant.Dark), CancellationToken.None);
+            MarkdownThemeVariant.Dark), CancellationToken.None);
 
         Assert.NotNull(result);
         Assert.NotEmpty(result.Spans);
@@ -109,7 +110,7 @@ public sealed class TextMateGrammarPackTests
         var result = await highlighter.HighlightAsync(new CodeBlockHighlightRequest(
             "pascal",
             "program Demo; begin writeln('hello'); end.",
-            CodeBlockThemeVariant.Dark), CancellationToken.None);
+            MarkdownThemeVariant.Dark), CancellationToken.None);
 
         Assert.NotNull(result);
         Assert.NotEmpty(result.Spans);
@@ -657,7 +658,7 @@ public sealed class TextMateGrammarPackTests
     }
 
     private static CodeBlockHighlightRequest CreateRequest(string language, string code) =>
-        new(language, code, CodeBlockThemeVariant.Dark);
+        new(language, code, MarkdownThemeVariant.Dark);
 
     private static void AssertStableType(Type? type)
     {

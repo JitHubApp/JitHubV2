@@ -14,6 +14,7 @@ using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Parsing;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Theming;
 using Microsoft.Graphics.Canvas;
 using Microsoft.UI.Xaml;
 using Windows.Foundation;
@@ -331,7 +332,7 @@ public sealed class CodeBlockLayoutCandidateTests
             code.CodeLanguage,
             code.Metadata.CodeTextHash,
             code.CodeText.Length,
-            CodeBlockThemeVariant.Light,
+            MarkdownThemeVariant.Light,
             ProviderIdentity: 417,
             ProviderRevision: providerRevision);
         CodeBlockHighlightSpan[] spans =

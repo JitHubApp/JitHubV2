@@ -50,14 +50,12 @@ public sealed class ThemeResolverDefaultEquivalenceTests
             Color.FromArgb(0xFF, 0x67, 0x45, 0x23),
             Color.FromArgb(0xFF, 0x78, 0x56, 0x34),
             Color.FromArgb(0xFF, 0x89, 0x67, 0x45));
-        var systemTheme = new ForcedMarkdownSystemThemeProvider
-        {
-            WindowTextColor = Color.FromArgb(0xFF, 0x10, 0x21, 0x32),
-            WindowColor = Color.FromArgb(0xFF, 0x43, 0x54, 0x65),
-            HotlightColor = Color.FromArgb(0xFF, 0x76, 0x87, 0x98),
-            HighlightColor = Color.FromArgb(0xFF, 0xA9, 0xBA, 0xCB),
-            HighlightTextColor = Color.FromArgb(0xFF, 0xDC, 0xED, 0xFE),
-        };
+        var systemTheme = new ForcedMarkdownSystemThemeProvider(new MarkdownContrastColors(
+            windowTextColor: Color.FromArgb(0xFF, 0x10, 0x21, 0x32),
+            windowColor: Color.FromArgb(0xFF, 0x43, 0x54, 0x65),
+            hotlightColor: Color.FromArgb(0xFF, 0x76, 0x87, 0x98),
+            highlightColor: Color.FromArgb(0xFF, 0xA9, 0xBA, 0xCB),
+            highlightTextColor: Color.FromArgb(0xFF, 0xDC, 0xED, 0xFE)));
         Color customAccent = Color.FromArgb(0xFF, 0x0A, 0xBC, 0xDE);
 
         foreach (bool isHighContrast in new[] { false, true })

@@ -153,28 +153,34 @@ public sealed partial class MainWindow : Window
         forcedHighContrastToggle.Checked += (_, _) =>
         {
             MarkThemeStatusPending();
-            ThemeResolver.SystemThemeProviderOverride = new ForcedMarkdownSystemThemeProvider
-            {
-                IsHighContrast = true,
-                WindowTextColor = Windows.UI.Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF),
-                WindowColor = Windows.UI.Color.FromArgb(0xFF, 0x00, 0x00, 0x00),
-                HotlightColor = Windows.UI.Color.FromArgb(0xFF, 0x00, 0xFF, 0xFF),
-                HighlightColor = Windows.UI.Color.FromArgb(0xFF, 0xFF, 0xFF, 0x00),
-                HighlightTextColor = Windows.UI.Color.FromArgb(0xFF, 0x00, 0x00, 0x00),
-            };
             if (_renderer?.Theme is { } theme)
-                theme.AccentColor = Windows.UI.Color.FromArgb(0xFF, 0x80, 0x00, 0x80);
+            {
+                // The custom accent checks that contrast colors win over it.
+                using (theme.BeginUpdate())
+                {
+                    theme.ForcedContrastColors = new MarkdownContrastColors(
+                        windowTextColor: Windows.UI.Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF),
+                        windowColor: Windows.UI.Color.FromArgb(0xFF, 0x00, 0x00, 0x00),
+                        hotlightColor: Windows.UI.Color.FromArgb(0xFF, 0x00, 0xFF, 0xFF),
+                        highlightColor: Windows.UI.Color.FromArgb(0xFF, 0xFF, 0xFF, 0x00),
+                        highlightTextColor: Windows.UI.Color.FromArgb(0xFF, 0x00, 0x00, 0x00));
+                    theme.AccentColor = Windows.UI.Color.FromArgb(0xFF, 0x80, 0x00, 0x80);
+                }
+            }
             UpdateHighContrastStatus(true);
-            _renderer?.RequestRebuild();
         };
         forcedHighContrastToggle.Unchecked += (_, _) =>
         {
             MarkThemeStatusPending();
-            ThemeResolver.SystemThemeProviderOverride = null;
             if (_renderer?.Theme is { } theme)
-                theme.AccentColor = null;
+            {
+                using (theme.BeginUpdate())
+                {
+                    theme.ForcedContrastColors = null;
+                    theme.AccentColor = null;
+                }
+            }
             UpdateHighContrastStatus(false);
-            _renderer?.RequestRebuild();
         };
         displayControls.PrimaryCommands.Add(forcedHighContrastToggle);
 
@@ -463,7 +469,6 @@ public sealed partial class MainWindow : Window
         Closed += (_, _) =>
         {
             _touchContactObservation.Detach();
-            ThemeResolver.SystemThemeProviderOverride = null;
             _renderer.Dispose();
             DisposeProviderResources();
             _textMateHighlighter.Dispose();
@@ -998,12 +1003,15 @@ public sealed partial class MainWindow : Window
 
     private void UpdateThemeStatus()
     {
-        if (_themeStatus is null || _renderer.CurrentThemeSnapshot is not { } snapshot)
+        if (_themeStatus is null || _renderer.RenderedThemeVariant is not { } variant)
             return;
 
-        string status = snapshot.IsHighContrast
-            ? "theme:high-contrast"
-            : snapshot.IsDark ? "theme:dark" : "theme:light";
+        string status = variant switch
+        {
+            MarkdownThemeVariant.HighContrast => "theme:high-contrast",
+            MarkdownThemeVariant.Dark => "theme:dark",
+            _ => "theme:light",
+        };
         _themeStatus.Text = status;
         AutomationProperties.SetName(_themeStatus, status);
     }

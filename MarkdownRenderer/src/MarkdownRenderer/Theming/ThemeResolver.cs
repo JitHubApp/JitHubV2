@@ -95,8 +95,6 @@ internal sealed class ThemeResolver
     // values once per synchronous snapshot; never enumerate the app dictionary.
     private Dictionary<string, object>? _scopedResourceValues;
 
-    internal static IMarkdownSystemThemeProvider? SystemThemeProviderOverride { get; set; }
-
     public ThemeResolver(FrameworkElement host, MarkdownTheme theme)
     {
         _host = host ?? throw new ArgumentNullException(nameof(host));
@@ -105,7 +103,9 @@ internal sealed class ThemeResolver
         // lifetime of one resolver. Capture the root once instead of crossing
         // the WinUI projection for every role/property lookup in the snapshot.
         _applicationResources = Application.Current?.Resources;
-        _systemTheme = SystemThemeProviderOverride ?? new MarkdownSystemThemeProvider(_host);
+        _systemTheme = theme.ForcedContrastColors is { } forcedContrastColors
+            ? new ForcedMarkdownSystemThemeProvider(forcedContrastColors)
+            : new MarkdownSystemThemeProvider(_host);
         _isHighContrast = _systemTheme.IsHighContrast;
     }
 

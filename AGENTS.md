@@ -35,7 +35,7 @@ Working code is not enough. Review every change against these rules, and flag a 
 
 - One project owns one folder. A project compiles only files under its own folder. Do not use `<Compile Include="..\...">`, do not use `<Compile Remove>` to hand files to another project, and do not keep source folders that belong to no project. Code needed by two projects goes in a library both reference.
 - Dependencies point down: the renderer, then feature packs, then the app. A library never names the app. Only an executable's own test project may reference it; logic that anything else needs goes in a library.
-- `InternalsVisibleTo` is granted only to the assembly's own test and benchmark projects. If another shipping assembly needs an internal, it is either public extension API or it belongs in a lower assembly.
+- `InternalsVisibleTo` is granted only to the assembly's own test and performance projects, under `tests/` and `perf/`, which never ship. If a shipping assembly or a sample needs an internal, it is either public extension API or it belongs in a lower assembly.
 - A packaged app keeps its logic in class libraries that its tests reference. Tests never compile app or library source files directly.
 
 ### Layout and build
