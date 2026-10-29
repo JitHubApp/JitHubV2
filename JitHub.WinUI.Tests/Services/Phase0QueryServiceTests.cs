@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Services;
 using JitHub.WinUI.Tests.TestDoubles;
+using JitHub.WinUI.Tests.TestSupport;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;
@@ -63,7 +64,7 @@ public sealed class Phase0QueryServiceTests : IDisposable
         Assert.True(result.IsRefreshInProgress);
 
         release.SetResult();
-        await WaitForAsync(() => transport.CallCount > 0);
+        await AsyncTestWait.UntilAsync(() => transport.CallCount > 0);
     }
 
     [Fact]
@@ -143,7 +144,7 @@ public sealed class Phase0QueryServiceTests : IDisposable
         GitHubQueryService service = CreateService(store, transport);
 
         CachedResult<Phase0TestPayload> result = await service.GetAsync(query, QueryFetchPolicy.StaleFirst);
-        await WaitForAsync(() => transport.LastRequest is not null);
+        await AsyncTestWait.UntilAsync(() => transport.LastRequest is not null);
 
         Assert.Equal("cached", result.Value!.Name);
         Assert.Equal(GitHubRequestPriority.Prefetch, transport.LastRequest!.Priority);
@@ -171,12 +172,12 @@ public sealed class Phase0QueryServiceTests : IDisposable
         GitHubQueryService service = new(store, transport, queue, new NoopTelemetryService());
         CachedResult<Phase0TestPayload> stale = await service.GetAsync(query, QueryFetchPolicy.StaleFirst);
         Assert.Equal("cached", stale.Value!.Name);
-        await WaitForAsync(() => queue.InFlightCount == 2);
+        await AsyncTestWait.UntilAsync(() => queue.InFlightCount == 2);
 
         GitHubQuery<Phase0TestPayload> foregroundQuery = query with { Priority = GitHubRequestPriority.UserInitiated };
         CachedResult<Phase0TestPayload> refreshed = await service
             .GetAsync(foregroundQuery, QueryFetchPolicy.NetworkOnly)
-            .WaitAsync(TimeSpan.FromSeconds(2));
+            .WaitAsync(AsyncTestWait.HangGuard);
 
         Assert.Equal("network", refreshed.Value!.Name);
         Assert.Equal(1, transport.CallCount);
@@ -199,7 +200,7 @@ public sealed class Phase0QueryServiceTests : IDisposable
 
         CachedResult<Phase0TestPayload> stale = await service.GetAsync(query, QueryFetchPolicy.StaleFirst);
         Assert.Equal("cached", stale.Value!.Name);
-        await WaitForAsync(() => transport.CallCount == 1);
+        await AsyncTestWait.UntilAsync(() => transport.CallCount == 1);
 
         using CancellationTokenSource callerCancellation = new();
         GitHubQuery<Phase0TestPayload> foregroundQuery = query with { Priority = GitHubRequestPriority.UserInitiated };
@@ -213,7 +214,7 @@ public sealed class Phase0QueryServiceTests : IDisposable
         Assert.False(transport.LastCancellationToken.IsCancellationRequested);
 
         releaseTransport.SetResult();
-        await WaitForAsync(() => queue.InFlightCount == 0);
+        await AsyncTestWait.UntilAsync(() => queue.InFlightCount == 0);
         Assert.False(transport.LastCancellationToken.IsCancellationRequested);
         Assert.Equal(1, transport.CallCount);
     }
@@ -357,12 +358,17 @@ public sealed class Phase0QueryServiceTests : IDisposable
         GitHubQueryService service = new(store, transport, queue, new NoopTelemetryService());
         GitHubQuery<Phase0TestPayload> query = CreateQuery("test/cleanup-race", TimeSpan.FromMinutes(5));
 
+        // The final assertion relies on the partition starting empty. Checking that here
+        // also creates the SQLite schema up front, so slow first-use disk I/O on a loaded
+        // runner is not part of the refresh being raced below.
+        Assert.Null(await innerStore.TryGetAsync(query));
+
         Task<CachedResult<Phase0TestPayload>> refresh = service.RefreshAsync(query);
-        await store.PutStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await store.PutStarted.Task.WaitAsync(AsyncTestWait.HangGuard);
 
         Task quiesce = accountWork.QuiesceAsync("u1");
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => refresh);
-        await quiesce.WaitAsync(TimeSpan.FromSeconds(2));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => refresh.WaitAsync(AsyncTestWait.HangGuard));
+        await quiesce.WaitAsync(AsyncTestWait.HangGuard);
         await store.ClearPartitionAsync("u1");
         store.ReleasePut.TrySetResult();
 
@@ -419,21 +425,6 @@ public sealed class Phase0QueryServiceTests : IDisposable
             RateLimitReset: null,
             RetryAfter: null,
             FetchedAt: DateTimeOffset.UtcNow);
-
-    private static async Task WaitForAsync(Func<bool> predicate)
-    {
-        for (int i = 0; i < 50; i++)
-        {
-            if (predicate())
-            {
-                return;
-            }
-
-            await Task.Delay(20);
-        }
-
-        Assert.True(predicate());
-    }
 
     private sealed class FakeTransport : IGitHubRestTransport
     {

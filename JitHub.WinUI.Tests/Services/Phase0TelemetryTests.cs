@@ -12,6 +12,7 @@ using JitHub.Models;
 using JitHub.Services;
 using JitHub.Services.CodeViewer;
 using JitHub.WinUI.Tests.TestDoubles;
+using JitHub.WinUI.Tests.TestSupport;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;
@@ -700,7 +701,7 @@ public sealed class Phase0TelemetryTests : IDisposable
         sink.TrackEvent("shell.route.opened");
         sink.TrackEvent("dashboard.opened");
 
-        Assert.True(await sink.WaitForIdleAsync(TimeSpan.FromSeconds(2)));
+        Assert.True(await sink.WaitForIdleAsync(AsyncTestWait.HangGuard));
         Assert.Equal(3, dispatchTimes.Count);
         Assert.True(dispatchTimes[1] - dispatchTimes[0] >= 40);
         Assert.True(dispatchTimes[2] - dispatchTimes[1] >= 40);
@@ -724,14 +725,14 @@ public sealed class Phase0TelemetryTests : IDisposable
                 if (name == "app.started")
                 {
                     firstDispatchStarted.Set();
-                    Assert.True(releaseFirstDispatch.Wait(TimeSpan.FromSeconds(2)));
+                    Assert.True(releaseFirstDispatch.Wait(AsyncTestWait.HangGuard));
                 }
             },
             TimeSpan.Zero,
             queueCapacity: 2);
 
         sink.TrackEvent("app.started");
-        Assert.True(firstDispatchStarted.Wait(TimeSpan.FromSeconds(2)));
+        Assert.True(firstDispatchStarted.Wait(AsyncTestWait.HangGuard));
         sink.TrackEvent("shell.route.opened");
         sink.TrackEvent("shell.route.opened");
         sink.TrackEvent("dashboard.opened");
@@ -742,7 +743,7 @@ public sealed class Phase0TelemetryTests : IDisposable
         Assert.Equal(3, sink.PendingEventCount);
 
         releaseFirstDispatch.Set();
-        Assert.True(await sink.WaitForIdleAsync(TimeSpan.FromSeconds(2)));
+        Assert.True(await sink.WaitForIdleAsync(AsyncTestWait.HangGuard));
         Assert.Equal(
             ["app.started", "shell.route.opened", "dashboard.opened"],
             dispatched);
@@ -784,8 +785,8 @@ public sealed class Phase0TelemetryTests : IDisposable
             .Select(index => store.AppendAsync(CreateDiagnostic($"ordered-{index:D2}")))
             .ToArray();
 
-        await Task.WhenAll(appends).WaitAsync(TimeSpan.FromSeconds(5));
-        await store.FlushAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        await Task.WhenAll(appends).WaitAsync(AsyncTestWait.HangGuard);
+        await store.FlushAsync().WaitAsync(AsyncTestWait.HangGuard);
 
         IReadOnlyList<LocalDiagnosticEvent> entries = await store.ReadAsync();
         Assert.Equal(
@@ -823,7 +824,7 @@ public sealed class Phase0TelemetryTests : IDisposable
             })
             .ToArray();
 
-        await Task.WhenAll(producers).WaitAsync(TimeSpan.FromSeconds(10));
+        await Task.WhenAll(producers).WaitAsync(AsyncTestWait.HangGuard);
         IReadOnlyList<LocalDiagnosticEvent> entries = await store.ReadAsync();
 
         Assert.Equal(producerCount * eventsPerProducer, entries.Count);
@@ -852,7 +853,7 @@ public sealed class Phase0TelemetryTests : IDisposable
             .ToArray();
 
         Assert.All(accepted, Assert.True);
-        await store.FlushAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        await store.FlushAsync().WaitAsync(AsyncTestWait.HangGuard);
 
         string[] lines = await File.ReadAllLinesAsync(path);
         Assert.Equal(96, lines.Length);
@@ -882,7 +883,7 @@ public sealed class Phase0TelemetryTests : IDisposable
             }
         }
 
-        await store.FlushAsync().WaitAsync(TimeSpan.FromSeconds(10));
+        await store.FlushAsync().WaitAsync(AsyncTestWait.HangGuard);
         IReadOnlyList<LocalDiagnosticEvent> entries = await store.ReadAsync();
         LocalDiagnosticEvent[] overflowSignals = entries
             .Where(static entry => entry.Name == "diagnostics.queue.overflow")
@@ -910,9 +911,9 @@ public sealed class Phase0TelemetryTests : IDisposable
             .Select(index => store.AppendAsync(CreateDiagnostic($"shutdown-{index:D3}")))
             .ToArray();
 
-        await store.ShutdownAsync().WaitAsync(TimeSpan.FromSeconds(10));
-        await Task.WhenAll(appends).WaitAsync(TimeSpan.FromSeconds(2));
-        await store.FlushAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        await store.ShutdownAsync().WaitAsync(AsyncTestWait.HangGuard);
+        await Task.WhenAll(appends).WaitAsync(AsyncTestWait.HangGuard);
+        await store.FlushAsync().WaitAsync(AsyncTestWait.HangGuard);
 
         string[] lines = await File.ReadAllLinesAsync(path);
         Assert.Equal(100, lines.Length);
