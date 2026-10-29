@@ -52,6 +52,7 @@ public sealed class SecurityReleaseGateTests
             (Path.Combine("MarkdownRenderer", "src", "MarkdownRenderer", "MarkdownRenderer.csproj"), true, true),
             (Path.Combine("MarkdownRenderer", "src", "MarkdownRenderer.Math", "MarkdownRenderer.Math.csproj"), true, false),
             (Path.Combine("MarkdownRenderer", "src", "MarkdownRenderer.SyntaxHighlighting.TextMate", "MarkdownRenderer.SyntaxHighlighting.TextMate.csproj"), true, true),
+            (Path.Combine("MarkdownRenderer", "src", "MarkdownRenderer.SyntaxHighlighting.TextMate.Engine", "MarkdownRenderer.SyntaxHighlighting.TextMate.Engine.csproj"), true, true),
             (Path.Combine("MarkdownRenderer", "src", "MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common", "MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.csproj"), true, true),
             (Path.Combine("MarkdownRenderer", "src", "MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All", "MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All.csproj"), true, false),
             (Path.Combine("MarkdownRenderer", "src", "MarkdownRenderer.All", "MarkdownRenderer.All.csproj"), false, false)

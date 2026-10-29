@@ -19,6 +19,7 @@ $requiredLibraryDllByPackageId = @{
     'MarkdownRenderer.Mermaid' = 'MarkdownRenderer.Mermaid.dll'
     'MarkdownRenderer.Svg.Resvg' = 'MarkdownRenderer.Svg.Resvg.dll'
     'MarkdownRenderer.SyntaxHighlighting.TextMate' = 'MarkdownRenderer.SyntaxHighlighting.TextMate.dll'
+    'MarkdownRenderer.SyntaxHighlighting.TextMate.Engine' = 'MarkdownRenderer.SyntaxHighlighting.TextMate.Engine.dll'
     'MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common' = 'MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.dll'
     'MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All' = 'MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All.dll'
 }

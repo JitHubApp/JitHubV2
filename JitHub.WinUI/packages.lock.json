@@ -481,10 +481,17 @@
           "MarkdownRenderer": "[1.0.0-preview.1, )"
         }
       },
-      "markdownrenderer.syntaxhighlighting.textmate.grammars.common": {
+      "markdownrenderer.syntaxhighlighting.textmate.engine": {
         "type": "Project",
         "dependencies": {
           "MarkdownRenderer.SyntaxHighlighting.TextMate": "[1.0.0-preview.1, )",
+          "TextMateSharp": "[2.0.3, )"
+        }
+      },
+      "markdownrenderer.syntaxhighlighting.textmate.grammars.common": {
+        "type": "Project",
+        "dependencies": {
+          "MarkdownRenderer.SyntaxHighlighting.TextMate.Engine": "[1.0.0-preview.1, )",
           "TextMateSharp": "[2.0.3, )"
         }
       }

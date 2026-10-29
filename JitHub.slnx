@@ -161,6 +161,14 @@
     <Platform Solution="Debug|Any CPU" Project="x64" />
     <Platform Solution="Release|Any CPU" Project="x86" />
   </Project>
+  <Project Path="MarkdownRenderer/src/MarkdownRenderer.SyntaxHighlighting.TextMate.Engine/MarkdownRenderer.SyntaxHighlighting.TextMate.Engine.csproj">
+    <Platform Solution="*|ARM" Project="x86" />
+    <Platform Solution="*|ARM64" Project="ARM64" />
+    <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="*|x86" Project="x86" />
+    <Platform Solution="Debug|Any CPU" Project="x64" />
+    <Platform Solution="Release|Any CPU" Project="x64" />
+  </Project>
   <Project Path="MarkdownRenderer/src/MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common/MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.csproj">
     <Platform Solution="*|ARM" Project="x86" />
     <Platform Solution="*|ARM64" Project="ARM64" />

@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Internal;
+using MarkdownRenderer.SyntaxHighlighting.TextMate.Engine;
 
 namespace MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common;
 
@@ -51,7 +51,7 @@ public sealed class CommonTextMateGrammarProvider : ITextMateGrammarProvider, ID
         "yaml",
     ];
 
-    private readonly BundledTextMateGrammarProvider _provider;
+    private readonly TextMateSharpGrammarProvider _provider;
 
     /// <summary>Creates a provider using the default resource limits.</summary>
     public CommonTextMateGrammarProvider()
@@ -62,15 +62,15 @@ public sealed class CommonTextMateGrammarProvider : ITextMateGrammarProvider, ID
     /// <summary>Creates a provider using explicit resource limits.</summary>
     public CommonTextMateGrammarProvider(TextMateHighlighterOptions? options)
     {
-        _provider = new BundledTextMateGrammarProvider(
-            Languages,
+        _provider = new TextMateSharpGrammarProvider(
             revision: 20_003_001,
-            options ?? new TextMateHighlighterOptions(),
-            registryOptionsFactory: variant => new CuratedRegistryOptions(variant),
+            registryOptionsFactory: static variant => new CuratedRegistryOptions(variant),
             scopeResolver: static (registryOptions, languageId) =>
                 registryOptions is CuratedRegistryOptions curated
                     ? curated.ResolveScope(languageId)
-                    : null);
+                    : null,
+            allowedLanguageIds: Languages,
+            options);
     }
 
     /// <summary>Language identifiers enabled by the common profile.</summary>

@@ -233,6 +233,7 @@ function Get-ExpectedReleasePackageIds {
         'MarkdownRenderer.Mermaid'
         'MarkdownRenderer.Svg.Resvg'
         'MarkdownRenderer.SyntaxHighlighting.TextMate'
+        'MarkdownRenderer.SyntaxHighlighting.TextMate.Engine'
         'MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All'
         'MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common'
     )
@@ -255,6 +256,7 @@ function Get-ExpectedPackageIdsForScope {
             return @(
                 'MarkdownRenderer'
                 'MarkdownRenderer.SyntaxHighlighting.TextMate'
+                'MarkdownRenderer.SyntaxHighlighting.TextMate.Engine'
                 'MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common'
                 'MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All'
             )

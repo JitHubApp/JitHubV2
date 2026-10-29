@@ -1,0 +1,6 @@
+#nullable enable
+MarkdownRenderer.SyntaxHighlighting.TextMate.Engine.TextMateSharpGrammarProvider
+MarkdownRenderer.SyntaxHighlighting.TextMate.Engine.TextMateSharpGrammarProvider.Dispose() -> void
+MarkdownRenderer.SyntaxHighlighting.TextMate.Engine.TextMateSharpGrammarProvider.HighlightAsync(MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateGrammarHighlightRequest! request, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateGrammarHighlightResult?>
+MarkdownRenderer.SyntaxHighlighting.TextMate.Engine.TextMateSharpGrammarProvider.Revision.get -> int
+MarkdownRenderer.SyntaxHighlighting.TextMate.Engine.TextMateSharpGrammarProvider.TextMateSharpGrammarProvider(int revision, System.Func<MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateGrammarThemeVariant, TextMateSharp.Registry.IRegistryOptions!>! registryOptionsFactory, System.Func<TextMateSharp.Registry.IRegistryOptions!, string!, string?>! scopeResolver, System.Collections.Generic.IEnumerable<string!>? allowedLanguageIds = null, MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateHighlighterOptions? options = null) -> void

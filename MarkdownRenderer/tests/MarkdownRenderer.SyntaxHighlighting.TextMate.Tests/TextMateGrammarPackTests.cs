@@ -3,7 +3,7 @@ using MarkdownRenderer.Controls;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All;
 using MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common;
-using MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Internal;
+using MarkdownRenderer.SyntaxHighlighting.TextMate.Engine;
 using MarkdownRenderer.Theming;
 using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics;
@@ -576,12 +576,12 @@ public sealed class TextMateGrammarPackTests
     {
         var innerOptions = new CuratedRegistryOptions(TextMateGrammarThemeVariant.Dark);
         using var blockingOptions = new BlockingRegistryOptions(innerOptions);
-        using var provider = new BundledTextMateGrammarProvider(
-            ["csharp"],
+        using var provider = new TextMateSharpGrammarProvider(
             revision: 1,
-            new TextMateHighlighterOptions(),
             _ => blockingOptions,
-            static (_, _) => "source.cs");
+            static (_, _) => "source.cs",
+            allowedLanguageIds: ["csharp"],
+            options: new TextMateHighlighterOptions());
         using var cancellation = new CancellationTokenSource();
 
         Task<TextMateGrammarHighlightResult?> work = provider.HighlightAsync(
@@ -606,13 +606,13 @@ public sealed class TextMateGrammarPackTests
         var checkpointReached = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var registryOptions = new CuratedRegistryOptions(TextMateGrammarThemeVariant.Dark);
-        using var provider = new BundledTextMateGrammarProvider(
-            ["csharp"],
+        using var provider = new TextMateSharpGrammarProvider(
             revision: 1,
-            new TextMateHighlighterOptions(),
             _ => registryOptions,
             static (_, _) => "source.cs",
-            (checkpoint, lineIndex) =>
+            allowedLanguageIds: ["csharp"],
+            options: new TextMateHighlighterOptions(),
+            checkpointObserver: (checkpoint, lineIndex) =>
             {
                 if (checkpoint != TextMateProviderCheckpoint.AfterLineTokenizationSlice || lineIndex != 0)
                     return;

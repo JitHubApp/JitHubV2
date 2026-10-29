@@ -287,6 +287,7 @@ $buildArtifactsDirectory = Join-Path $runDirectory 'build'
 $restoreProjects = @(
     'src\MarkdownRenderer\MarkdownRenderer.csproj',
     'src\MarkdownRenderer.SyntaxHighlighting.TextMate\MarkdownRenderer.SyntaxHighlighting.TextMate.csproj',
+    'src\MarkdownRenderer.SyntaxHighlighting.TextMate.Engine\MarkdownRenderer.SyntaxHighlighting.TextMate.Engine.csproj',
     'src\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.csproj',
     'src\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All.csproj',
     'tests\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests.csproj'
@@ -336,6 +337,7 @@ if ($LASTEXITCODE -ne 0) { throw 'TextMate provenance verification failed.' }
 $projects = @(
     'src\MarkdownRenderer\MarkdownRenderer.csproj',
     'src\MarkdownRenderer.SyntaxHighlighting.TextMate\MarkdownRenderer.SyntaxHighlighting.TextMate.csproj',
+    'src\MarkdownRenderer.SyntaxHighlighting.TextMate.Engine\MarkdownRenderer.SyntaxHighlighting.TextMate.Engine.csproj',
     'src\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.csproj',
     'src\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All.csproj'
 )
@@ -381,6 +383,7 @@ if ($LASTEXITCODE -ne 0) { throw 'TextMate package reproducibility failed.' }
 $packageIds = @(
     'MarkdownRenderer',
     'MarkdownRenderer.SyntaxHighlighting.TextMate',
+    'MarkdownRenderer.SyntaxHighlighting.TextMate.Engine',
     'MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common',
     'MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All'
 )
@@ -389,17 +392,23 @@ foreach ($id in $packageIds) {
     $packages[$id] = Get-PackageEvidence -Directory $packageDirectoryA -Id $id
 }
 
-$enginePackage = $packages['MarkdownRenderer.SyntaxHighlighting.TextMate']
+$integrationPackage = $packages['MarkdownRenderer.SyntaxHighlighting.TextMate']
+$enginePackage = $packages['MarkdownRenderer.SyntaxHighlighting.TextMate.Engine']
 $commonPackage = $packages['MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common']
 $allPackage = $packages['MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All']
 $frameworkPath = 'lib/net10.0-windows10.0.26100/'
 $noticeSource = Join-Path $markdownRoot 'eng\textmate\THIRD-PARTY-NOTICES.md'
 $provenanceSource = Join-Path $markdownRoot 'eng\textmate\GRAMMAR-PROVENANCE.v2.0.3.json'
 
-Assert-PackageEntries -Package $enginePackage -Required @(
+Assert-PackageEntries -Package $integrationPackage -Required @(
     'README.md',
     ($frameworkPath + 'MarkdownRenderer.SyntaxHighlighting.TextMate.dll'),
     ($frameworkPath + 'MarkdownRenderer.SyntaxHighlighting.TextMate.xml')
+)
+Assert-PackageEntries -Package $enginePackage -Required @(
+    'README.md',
+    ($frameworkPath + 'MarkdownRenderer.SyntaxHighlighting.TextMate.Engine.dll'),
+    ($frameworkPath + 'MarkdownRenderer.SyntaxHighlighting.TextMate.Engine.xml')
 )
 Assert-PackageEntries -Package $commonPackage -Required @(
     'README.md', 'THIRD-PARTY-NOTICES.md', 'licenses/GRAMMAR-PROVENANCE.json',
@@ -411,14 +420,17 @@ Assert-PackageEntries -Package $allPackage -Required @(
     ($frameworkPath + 'MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All.dll'),
     ($frameworkPath + 'MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All.xml')
 )
-Assert-Dependencies -Package $enginePackage `
+Assert-Dependencies -Package $integrationPackage `
     -Required @('MarkdownRenderer') `
     -Forbidden @('TextMateSharp', 'TextMateSharp.Grammars', 'Onigwrap')
-Assert-Dependencies -Package $commonPackage `
+Assert-Dependencies -Package $enginePackage `
     -Required @('MarkdownRenderer.SyntaxHighlighting.TextMate', 'TextMateSharp') `
     -Forbidden @('TextMateSharp.Grammars')
+Assert-Dependencies -Package $commonPackage `
+    -Required @('MarkdownRenderer.SyntaxHighlighting.TextMate.Engine', 'TextMateSharp') `
+    -Forbidden @('TextMateSharp.Grammars')
 Assert-Dependencies -Package $allPackage `
-    -Required @('MarkdownRenderer.SyntaxHighlighting.TextMate', 'TextMateSharp.Grammars')
+    -Required @('MarkdownRenderer.SyntaxHighlighting.TextMate.Engine', 'TextMateSharp.Grammars')
 
 $commonCapBytes = [long] (6MB)
 if ($commonPackage.compressedBytes -gt $commonCapBytes) {
@@ -428,9 +440,14 @@ if ($commonPackage.compressedBytes -gt $commonCapBytes) {
 $extractedDirectory = Join-Path $runDirectory 'package-assets'
 $managedPackageAssets = @(
     [pscustomobject]@{
-        Package = $enginePackage
+        Package = $integrationPackage
         Entry = $frameworkPath + 'MarkdownRenderer.SyntaxHighlighting.TextMate.dll'
         File = 'MarkdownRenderer.SyntaxHighlighting.TextMate.dll'
+    },
+    [pscustomobject]@{
+        Package = $enginePackage
+        Entry = $frameworkPath + 'MarkdownRenderer.SyntaxHighlighting.TextMate.Engine.dll'
+        File = 'MarkdownRenderer.SyntaxHighlighting.TextMate.Engine.dll'
     },
     [pscustomobject]@{
         Package = $commonPackage
@@ -573,6 +590,7 @@ foreach ($target in $matrix) {
 
     $payloadNames = @(
         'MarkdownRenderer.SyntaxHighlighting.TextMate.dll',
+        'MarkdownRenderer.SyntaxHighlighting.TextMate.Engine.dll',
         'MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.dll',
         'TextMateSharp.dll',
         'Onigwrap.dll',
@@ -715,7 +733,7 @@ $report = [pscustomobject][ordered]@{
     schemaVersion = 1
     generatedUtc = [DateTime]::UtcNow.ToString('O', [Globalization.CultureInfo]::InvariantCulture)
     hostArchitecture = $hostArchitecture
-    scope = 'TextMate engine, Common grammar pack, All grammar pack, packaging, and deployment consumers'
+    scope = 'TextMate integration, TextMate engine, Common grammar pack, All grammar pack, packaging, and deployment consumers'
     contractTests = [pscustomobject][ordered]@{
         total = [int] $counters.total
         executed = [int] $counters.executed

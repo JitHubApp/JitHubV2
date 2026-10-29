@@ -8,9 +8,10 @@ an application.
 | --- | --- |
 | `MarkdownRenderer` | `MarkdownRenderer.dll`: the engine and immutable document API, CommonMark, strict GFM, Markdown Extra and GitHub README profiles, the budgeted native safe-HTML subset, the opt-in progressive performance session, and the native WinUI viewer. No native payload of its own. |
 | `MarkdownRenderer.Math` | Managed CSharpMath-based vector typesetter and bundled hash-locked math fonts. |
-| `MarkdownRenderer.Mermaid` | Selected-RID Merman native engine plus validated MMIR scene contracts. |
+| `MarkdownRenderer.Mermaid` | Selected-RID Merman native engine and its internal validated MMIR scene decoder. |
 | `MarkdownRenderer.Svg.Resvg` | Isolated, architecture-specific resvg 0.48.1 static-SVG worker. |
 | `MarkdownRenderer.SyntaxHighlighting.TextMate` | Async TextMate integration, cancellation/deduplication, budgets, and provider contracts; no grammar or native payload. |
+| `MarkdownRenderer.SyntaxHighlighting.TextMate.Engine` | The TextMateSharp-backed tokenizer both grammar packs build on. It brings TextMateSharp and the Onigwrap native regex engine; install a grammar pack rather than this package. |
 | `MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common` | Curated C/C++, C#, web, JVM, Go, Rust, scripting, data, Docker, and shader grammars. |
 | `MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All` | Complete pinned upstream TextMateSharp grammar/resource corpus. |
 | `MarkdownRenderer.All` | Explicit meta-package for all features and large payloads. |
@@ -32,8 +33,9 @@ MarkdownRenderer.Math                -> MarkdownRenderer
 MarkdownRenderer.Mermaid             -> MarkdownRenderer
 MarkdownRenderer.Svg.Resvg           -> MarkdownRenderer
 ...SyntaxHighlighting.TextMate       -> MarkdownRenderer
-...TextMate.Grammars.Common          -> ...SyntaxHighlighting.TextMate
-...TextMate.Grammars.All             -> ...SyntaxHighlighting.TextMate
+...TextMate.Engine                   -> ...SyntaxHighlighting.TextMate, TextMateSharp
+...TextMate.Grammars.Common          -> ...TextMate.Engine
+...TextMate.Grammars.All             -> ...TextMate.Engine
 MarkdownRenderer.All                 -> MarkdownRenderer, Math, Mermaid, Svg.Resvg,
                                         SyntaxHighlighting.TextMate, Grammars.All
 ```

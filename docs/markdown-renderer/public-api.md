@@ -13,6 +13,7 @@ are implementation details.
 | `MarkdownRenderer.Mermaid` | `UseMermaid`: the selected-RID Merman engine with bounded processing and fallback, its options, a shareable `MermaidRenderer` and a native-runtime probe. Its MMIR scene format is internal. |
 | `MarkdownRenderer.Svg.Resvg` | Optional isolated resvg static-SVG provider and RID workers. |
 | `MarkdownRenderer.SyntaxHighlighting.TextMate` | Lean TextMate integration and provider contracts; grammar packs are separate. |
+| `MarkdownRenderer.SyntaxHighlighting.TextMate.Engine` | `TextMateSharpGrammarProvider`, the TextMateSharp tokenizer shared by the grammar packs. It is the only package whose API names TextMateSharp types, so it is versioned with TextMateSharp. Hosts install a grammar pack instead. |
 | `MarkdownRenderer.All` | Explicit, deliberately large meta-package for every feature and payload. |
 
 Most apps should install `MarkdownRenderer` and only the packs they need.
