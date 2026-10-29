@@ -4,7 +4,7 @@ using MarkdownRenderer.Math.Internal;
 namespace MarkdownRenderer.Math;
 
 /// <summary>Immutable formulas and diagnostics produced by one delimiter scan.</summary>
-public sealed class MathDelimiterScanResult
+internal sealed class MathDelimiterScanResult
 {
     internal MathDelimiterScanResult(
         ImmutableArray<MathFormulaRequest> formulas,
@@ -25,7 +25,7 @@ public sealed class MathDelimiterScanResult
 /// Scans Markdown text-leaf source for unescaped <c>$...$</c> and <c>$$...$$</c>
 /// formulas. Backslash and bracket delimiters are intentionally unsupported.
 /// </summary>
-public static class MathDelimiterScanner
+internal static class MathDelimiterScanner
 {
     /// <summary>
     /// Scans one Markdown text leaf and returns exact UTF-16 source ranges for

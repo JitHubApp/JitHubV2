@@ -5,7 +5,7 @@ using static MarkdownRenderer.Mermaid.MmirFormat;
 namespace MarkdownRenderer.Mermaid;
 
 /// <summary>Stable failure categories returned when an untrusted MMIR buffer cannot be consumed.</summary>
-public enum MermaidSceneDecodeStatus
+internal enum MermaidSceneDecodeStatus
 {
     Success,
     InvalidBudget,
@@ -27,7 +27,7 @@ public enum MermaidSceneDecodeStatus
 }
 
 /// <summary>A non-throwing result from decoding an untrusted MMIR buffer.</summary>
-public sealed class MermaidSceneDecodeResult
+internal sealed class MermaidSceneDecodeResult
 {
     internal MermaidSceneDecodeResult(
         MermaidSceneDecodeStatus status,
@@ -53,7 +53,7 @@ public sealed class MermaidSceneDecodeResult
 }
 
 /// <summary>Decodes the private little-endian MMIR transport into an immutable managed scene.</summary>
-public static class MermaidSceneDecoder
+internal static class MermaidSceneDecoder
 {
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
 

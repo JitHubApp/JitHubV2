@@ -378,9 +378,9 @@ public sealed class VectorAccessibilityContractTests
     public void HostFontRoleAppliesDiagramFontFamilyWithoutChangingAuthoredText()
     {
         var hostText = new MarkdownVectorTextStyle(
-            MarkdownVectorFontRole.Host,
             "Scene Fallback",
-            16);
+            16,
+            fontRole: MarkdownVectorFontRole.Host);
         var authoredText = new MarkdownVectorTextStyle("Authored Face", 16);
 
         Assert.Equal(
@@ -446,11 +446,11 @@ public sealed class VectorAccessibilityContractTests
             MarkdownVectorPaintRole.Foreground,
             MarkdownVectorPaintRole.Authored);
         var hostText = new MarkdownVectorTextStyle(
-            MarkdownVectorFontRole.Host,
             "Scene fallback",
             18,
             fontWeight: 650,
-            italic: true);
+            italic: true,
+            fontRole: MarkdownVectorFontRole.Host);
         MarkdownVectorSemanticItem[] semantics =
         [
             new(

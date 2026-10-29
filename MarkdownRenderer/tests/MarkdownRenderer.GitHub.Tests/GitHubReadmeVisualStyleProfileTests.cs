@@ -146,7 +146,7 @@ public sealed class GitHubReadmeVisualStyleProfileTests
         foreach (MarkdownStyleRole role in inheritedRoles)
         {
             var baseStyle = new ElementStyle { Foreground = inheritedBase };
-            var quoteContext = new MarkdownStyleContext(role, [MarkdownStyleRole.Quote]);
+            var quoteContext = new MarkdownStyleContext(role, ancestorRoles: [MarkdownStyleRole.Quote]);
             var plainContext = new MarkdownStyleContext(role);
 
             Assert.Equal(muted, profile.StyleSheet.Resolve(baseStyle, quoteContext).Foreground);
@@ -548,7 +548,7 @@ public sealed class GitHubReadmeVisualStyleProfileTests
         MarkdownStyleRole role,
         IEnumerable<MarkdownStyleRole> ancestorRoles,
         int nestingDepth = 0)
-        => sheet.Resolve(new ElementStyle(), new MarkdownStyleContext(role, ancestorRoles, nestingDepth));
+        => sheet.Resolve(new ElementStyle(), new MarkdownStyleContext(role, nestingDepth, ancestorRoles: ancestorRoles));
 
     private static bool HasLayoutPolicy(MarkdownStyleSheet sheet, byte flag)
         => (sheet.Compile().LayoutPolicy & flag) != 0;

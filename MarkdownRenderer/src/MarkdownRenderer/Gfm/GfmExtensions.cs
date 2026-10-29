@@ -1,5 +1,6 @@
 using Markdig;
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Markdig.Extensions.DefinitionLists;
 using Markdig.Extensions.EmphasisExtras;
@@ -17,6 +18,10 @@ namespace MarkdownRenderer.Gfm;
 /// <summary>
 /// Stable configuration entry points for strict GitHub Flavored Markdown.
 /// </summary>
+[SuppressMessage(
+    "ApiDesign",
+    "RS0026:Do not add multiple public overloads with optional parameters",
+    Justification = MarkdownExtensionOverloads.Justification)]
 public static class GfmExtensions
 {
     private const string GfmPresentationFeature = "MarkdownRenderer.Gfm.Presentation";

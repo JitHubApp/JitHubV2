@@ -4,7 +4,7 @@ using System.Globalization;
 namespace MarkdownRenderer.Mermaid;
 
 /// <summary>Describes the terminal state of a Mermaid render request.</summary>
-public enum MermaidRenderStatus
+internal enum MermaidRenderStatus
 {
     Success,
     EngineUnavailable,
@@ -20,7 +20,7 @@ public enum MermaidRenderStatus
 }
 
 /// <summary>Severity attached to a parser, layout, or scene diagnostic.</summary>
-public enum MermaidDiagnosticSeverity
+internal enum MermaidDiagnosticSeverity
 {
     Information,
     Warning,
@@ -32,7 +32,7 @@ public enum MermaidDiagnosticSeverity
 /// units. Markdown extension integration maps this range into the containing
 /// Markdown document before publishing a <c>MarkdownDiagnostic</c>.
 /// </summary>
-public readonly record struct MermaidSourceRange(int Start, int Length)
+internal readonly record struct MermaidSourceRange(int Start, int Length)
 {
     public int End => checked(Start + Length);
 
@@ -40,17 +40,17 @@ public readonly record struct MermaidSourceRange(int Start, int Length)
 }
 
 /// <summary>A stable, backend-neutral Mermaid diagnostic.</summary>
-public sealed record MermaidDiagnostic(
+internal sealed record MermaidDiagnostic(
     string Code,
     MermaidDiagnosticSeverity Severity,
     string Message,
     MermaidSourceRange? SourceRange = null);
 
 /// <summary>The content to show atomically when a native diagram cannot be rendered.</summary>
-public sealed record MermaidCodeBlockFallback(string Language, string Source);
+internal sealed record MermaidCodeBlockFallback(string Language, string Source);
 
 /// <summary>The result of a native Mermaid request. A non-success result always carries the original code-block fallback.</summary>
-public sealed class MermaidRenderResult
+internal sealed class MermaidRenderResult
 {
     private readonly ReadOnlyCollection<MermaidDiagnostic> _diagnostics;
 

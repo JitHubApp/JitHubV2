@@ -186,7 +186,7 @@ public static class GitHubReadmeVisualStyleProfiles
         for (int i = 0; i < inheritedRoles.Length; i++)
         {
             styleSheet = styleSheet.WithRule(new MarkdownStyleRule(
-                new MarkdownStyleSelector(inheritedRoles[i], MarkdownStyleRole.Quote),
+                new MarkdownStyleSelector(inheritedRoles[i], ancestorRole: MarkdownStyleRole.Quote),
                 new ElementStyleOverride { Foreground = inheritedForeground }));
         }
 

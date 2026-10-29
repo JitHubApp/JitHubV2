@@ -41,7 +41,9 @@ public class MathFormulaBenchmarks
             throw new InvalidOperationException(warm.Diagnostic?.Message ?? "Math warmup failed.");
     }
 
+    // The processor's result type is internal, so the benchmark returns whether
+    // the formula was accepted; returning a value keeps the work observable.
     [Benchmark]
-    public ValueTask<MathFormulaResult> ParseTypesetAndBuildVectorScene() =>
-        _processor.ProcessAsync(_request);
+    public async ValueTask<bool> ParseTypesetAndBuildVectorScene() =>
+        (await _processor.ProcessAsync(_request)).IsAccepted;
 }

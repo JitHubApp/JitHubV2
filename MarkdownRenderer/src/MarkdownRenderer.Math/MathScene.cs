@@ -3,7 +3,7 @@ using System.Collections.ObjectModel;
 namespace MarkdownRenderer.Math;
 
 /// <summary>Identifies one operation in a vector path.</summary>
-public enum MathPathOperationKind
+internal enum MathPathOperationKind
 {
     /// <summary>Starts a new contour.</summary>
     Move,
@@ -18,7 +18,7 @@ public enum MathPathOperationKind
 }
 
 /// <summary>A finite point in device-independent scene coordinates.</summary>
-public readonly record struct MathPoint
+internal readonly record struct MathPoint
 {
     /// <summary>Creates a point.</summary>
     public MathPoint(float x, float y)
@@ -37,7 +37,7 @@ public readonly record struct MathPoint
 }
 
 /// <summary>An immutable path operation.</summary>
-public readonly record struct MathPathOperation
+internal readonly record struct MathPathOperation
 {
     private MathPathOperation(
         MathPathOperationKind kind,
@@ -85,7 +85,7 @@ public readonly record struct MathPathOperation
 }
 
 /// <summary>Identifies a native-painter-neutral drawing operation.</summary>
-public enum MathSceneCommandKind
+internal enum MathSceneCommandKind
 {
     /// <summary>Fills a vector path.</summary>
     FillPath,
@@ -100,7 +100,7 @@ public enum MathSceneCommandKind
 }
 
 /// <summary>An immutable rectangle in device-independent scene coordinates.</summary>
-public readonly record struct MathRectangle
+internal readonly record struct MathRectangle
 {
     /// <summary>Creates a rectangle.</summary>
     public MathRectangle(float x, float y, float width, float height)
@@ -132,7 +132,7 @@ public readonly record struct MathRectangle
 /// One immutable formula scene command. A null color requests the host's semantic
 /// math foreground; explicit colors may still be replaced in High Contrast.
 /// </summary>
-public sealed class MathSceneCommand
+internal sealed class MathSceneCommand
 {
     private static readonly IReadOnlyList<MathPathOperation> EmptyPath = Array.Empty<MathPathOperation>();
 
@@ -192,7 +192,7 @@ public sealed class MathSceneCommand
 /// An immutable, thread-safe vector scene for one formula. The scene contains
 /// outlines and rules only; it owns no Win2D, device, bitmap, or font-lifetime object.
 /// </summary>
-public sealed class MathScene
+internal sealed class MathScene
 {
     internal MathScene(float width, float height, float baseline, IReadOnlyList<MathSceneCommand> commands)
     {

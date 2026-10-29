@@ -119,9 +119,9 @@ public static class MathMarkdownExtensions
             float height = fontSize * 1.5f;
             float baseline = fontSize * 1.1f;
             var textStyle = new MarkdownVectorTextStyle(
-                MarkdownVectorFontRole.Authored,
                 "Consolas",
-                fontSize);
+                fontSize,
+                fontRole: MarkdownVectorFontRole.Authored);
             MarkdownVectorPaintStyle paintStyle = MarkdownVectorPaintStyle.CreateSemantic(
                 MarkdownVectorPaintRole.Foreground,
                 MarkdownVectorPaintRole.Foreground);

@@ -22,12 +22,22 @@ public readonly struct MarkdownStyleContext
     private readonly IReadOnlyList<MarkdownStyleRole>? _ancestorRoles;
 
     /// <summary>Initializes a style-matching context.</summary>
+    /// <param name="role">The role being matched.</param>
+    /// <param name="nestingDepth">The zero-based semantic nesting depth.</param>
+    /// <param name="language">The code or document language, when present.</param>
+    /// <param name="state">The interaction or semantic state, when present.</param>
+    /// <param name="classNames">Safe HTML or extension class names.</param>
+    /// <param name="ancestorRoles">
+    /// The containing semantic roles, from outermost to innermost. The context keeps
+    /// a defensive snapshot.
+    /// </param>
     public MarkdownStyleContext(
         MarkdownStyleRole role,
         int nestingDepth = 0,
         string? language = null,
         string? state = null,
-        IEnumerable<string>? classNames = null)
+        IEnumerable<string>? classNames = null,
+        IEnumerable<MarkdownStyleRole>? ancestorRoles = null)
     {
         if (role.IsEmpty)
             throw new ArgumentException("A style role is required.", nameof(role));
@@ -39,26 +49,7 @@ public readonly struct MarkdownStyleContext
         Language = NormalizeOptional(language);
         State = NormalizeOptional(state);
         ClassNames = CopyClasses(classNames);
-        _ancestorRoles = EmptyAncestorRoles;
-    }
-
-    /// <summary>Initializes a context with a defensive snapshot of semantic ancestor roles.</summary>
-    /// <param name="role">The role being matched.</param>
-    /// <param name="ancestorRoles">The containing semantic roles, from outermost to innermost.</param>
-    /// <param name="nestingDepth">The zero-based semantic nesting depth.</param>
-    /// <param name="language">The code or document language, when present.</param>
-    /// <param name="state">The interaction or semantic state, when present.</param>
-    /// <param name="classNames">Safe HTML or extension class names.</param>
-    public MarkdownStyleContext(
-        MarkdownStyleRole role,
-        IEnumerable<MarkdownStyleRole> ancestorRoles,
-        int nestingDepth = 0,
-        string? language = null,
-        string? state = null,
-        IEnumerable<string>? classNames = null)
-        : this(role, nestingDepth, language, state, classNames)
-    {
-        _ancestorRoles = CopyAncestorRoles(ancestorRoles);
+        _ancestorRoles = ancestorRoles is null ? EmptyAncestorRoles : CopyAncestorRoles(ancestorRoles);
     }
 
     /// <summary>Gets the semantic role.</summary>
@@ -141,13 +132,23 @@ internal static class MarkdownStyleContextKeys
 public sealed class MarkdownStyleSelector
 {
     /// <summary>Initializes a style selector.</summary>
+    /// <param name="role">The semantic role selected by this rule.</param>
+    /// <param name="minimumNestingDepth">The inclusive minimum nesting depth.</param>
+    /// <param name="maximumNestingDepth">The inclusive maximum nesting depth.</param>
+    /// <param name="language">The optional language qualifier.</param>
+    /// <param name="state">The optional semantic or interaction state qualifier.</param>
+    /// <param name="className">The optional safe HTML or extension class qualifier.</param>
+    /// <param name="ancestorRole">
+    /// An optional role that must occur in the containing style-context stack.
+    /// </param>
     public MarkdownStyleSelector(
         MarkdownStyleRole role,
         int minimumNestingDepth = 0,
         int maximumNestingDepth = int.MaxValue,
         string? language = null,
         string? state = null,
-        string? className = null)
+        string? className = null,
+        MarkdownStyleRole? ancestorRole = null)
     {
         if (role.IsEmpty)
             throw new ArgumentException("A style role is required.", nameof(role));
@@ -155,6 +156,8 @@ public sealed class MarkdownStyleSelector
             throw new ArgumentOutOfRangeException(nameof(minimumNestingDepth));
         if (maximumNestingDepth < minimumNestingDepth)
             throw new ArgumentOutOfRangeException(nameof(maximumNestingDepth));
+        if (ancestorRole is { IsEmpty: true })
+            throw new ArgumentException("An ancestor role cannot be empty.", nameof(ancestorRole));
 
         Role = role;
         MinimumNestingDepth = minimumNestingDepth;
@@ -166,30 +169,6 @@ public sealed class MarkdownStyleSelector
         ClassName = normalizedClass is not null && normalizedClass[0] == '.'
             ? normalizedClass.Substring(1)
             : normalizedClass;
-        AncestorRole = null;
-    }
-
-    /// <summary>Initializes a selector qualified by a containing semantic role.</summary>
-    /// <param name="role">The semantic role selected by this rule.</param>
-    /// <param name="ancestorRole">A role that must occur in the containing style-context stack.</param>
-    /// <param name="minimumNestingDepth">The inclusive minimum nesting depth.</param>
-    /// <param name="maximumNestingDepth">The inclusive maximum nesting depth.</param>
-    /// <param name="language">The optional language qualifier.</param>
-    /// <param name="state">The optional semantic or interaction state qualifier.</param>
-    /// <param name="className">The optional safe HTML or extension class qualifier.</param>
-    public MarkdownStyleSelector(
-        MarkdownStyleRole role,
-        MarkdownStyleRole ancestorRole,
-        int minimumNestingDepth = 0,
-        int maximumNestingDepth = int.MaxValue,
-        string? language = null,
-        string? state = null,
-        string? className = null)
-        : this(role, minimumNestingDepth, maximumNestingDepth, language, state, className)
-    {
-        if (ancestorRole.IsEmpty)
-            throw new ArgumentException("An ancestor role is required.", nameof(ancestorRole));
-
         AncestorRole = ancestorRole;
     }
 

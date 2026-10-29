@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Markdig;
 using Markdig.Extensions.Footnotes;
@@ -7,6 +8,7 @@ using Markdig.Syntax;
 using MarkdownRenderer.Controls;
 using MarkdownRenderer.Gfm;
 using MarkdownRenderer.GitHub.Renderers;
+using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Html;
 using MarkdownRenderer.Parsing;
 
@@ -16,6 +18,14 @@ namespace MarkdownRenderer.GitHub;
 /// Composes the strict GFM profile with the additional syntax and native rendering
 /// behavior commonly required by GitHub README documents.
 /// </summary>
+[SuppressMessage(
+    "ApiDesign",
+    "RS0026:Do not add multiple public overloads with optional parameters",
+    Justification = MarkdownExtensionOverloads.Justification)]
+[SuppressMessage(
+    "ApiDesign",
+    "RS0027:API with optional parameter(s) should have the most parameters amongst its public overloads",
+    Justification = MarkdownExtensionOverloads.Justification)]
 public static class GitHubReadmeExtensions
 {
     private const string GitHubReadmePresentationFeature = "MarkdownRenderer.GitHubReadme.Presentation";

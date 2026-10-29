@@ -12,6 +12,10 @@
     <MarkdownRendererPackageReadme>$(MSBuildProjectDirectory)\README.md</MarkdownRendererPackageReadme>
   </PropertyGroup>
   <ItemGroup>
+    <!-- White-box tests and the benchmarks drive the formula processor and its
+         scene model directly; hosts reach them only through UseMathematics. -->
+    <InternalsVisibleTo Include="MarkdownRenderer.Math.Tests" />
+    <InternalsVisibleTo Include="MarkdownRenderer.Benchmarks" />
     <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer.csproj" />
   </ItemGroup>
   <ItemGroup>

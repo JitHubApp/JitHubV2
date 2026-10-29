@@ -8,7 +8,7 @@ namespace MarkdownRenderer.Math;
 /// The processor is thread-safe and never creates Win2D, UI, SVG, bitmap, or
 /// browser objects.
 /// </summary>
-public sealed class MathFormulaProcessor
+internal sealed class MathFormulaProcessor
 {
     private const int MaximumEmergencyTexPreviewLength = 256;
     private const int MaximumEmergencyHelpTextLength = 2048;

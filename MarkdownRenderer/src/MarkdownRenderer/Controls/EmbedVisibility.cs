@@ -6,7 +6,7 @@ namespace MarkdownRenderer.Controls;
 /// Lives in its own file (no WinUI/Win2D dependencies) so it can be
 /// exercised by unit tests.
 /// </summary>
-public static class EmbedVisibility
+internal static class EmbedVisibility
 {
     /// <summary>
     /// Returns true if the rect spanning [<paramref name="planTop"/>,

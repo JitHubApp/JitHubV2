@@ -429,13 +429,24 @@ public enum MarkdownVectorTextAlignment
 public sealed class MarkdownVectorTextStyle
 {
     /// <summary>Creates a resolved text style.</summary>
+    /// <param name="fontFamily">The font-family name.</param>
+    /// <param name="fontSize">The font size in scene units.</param>
+    /// <param name="fontWeight">The OpenType weight from 1 through 999.</param>
+    /// <param name="italic">Whether the line uses italic styling.</param>
+    /// <param name="rightToLeft">Whether the resolved line direction is right-to-left.</param>
+    /// <param name="alignment">How the line is positioned relative to its baseline origin.</param>
+    /// <param name="fontRole">
+    /// Whether the host keeps <paramref name="fontFamily"/> or resolves the family
+    /// from the containing markdown style role.
+    /// </param>
     public MarkdownVectorTextStyle(
         string fontFamily,
         float fontSize,
         ushort fontWeight = 400,
         bool italic = false,
         bool rightToLeft = false,
-        MarkdownVectorTextAlignment alignment = MarkdownVectorTextAlignment.Start)
+        MarkdownVectorTextAlignment alignment = MarkdownVectorTextAlignment.Start,
+        MarkdownVectorFontRole fontRole = MarkdownVectorFontRole.Authored)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(fontFamily);
         if (!float.IsFinite(fontSize) || fontSize <= 0)
@@ -444,6 +455,8 @@ public sealed class MarkdownVectorTextStyle
             throw new ArgumentOutOfRangeException(nameof(fontWeight));
         if (!Enum.IsDefined(alignment))
             throw new ArgumentOutOfRangeException(nameof(alignment));
+        if (!Enum.IsDefined(fontRole))
+            throw new ArgumentOutOfRangeException(nameof(fontRole));
 
         FontFamily = fontFamily.Trim();
         FontSize = fontSize;
@@ -451,22 +464,6 @@ public sealed class MarkdownVectorTextStyle
         Italic = italic;
         RightToLeft = rightToLeft;
         Alignment = alignment;
-        FontRole = MarkdownVectorFontRole.Authored;
-    }
-
-    /// <summary>Creates a text style with an explicit font-family role.</summary>
-    public MarkdownVectorTextStyle(
-        MarkdownVectorFontRole fontRole,
-        string fontFamily,
-        float fontSize,
-        ushort fontWeight = 400,
-        bool italic = false,
-        bool rightToLeft = false,
-        MarkdownVectorTextAlignment alignment = MarkdownVectorTextAlignment.Start)
-        : this(fontFamily, fontSize, fontWeight, italic, rightToLeft, alignment)
-    {
-        if (!Enum.IsDefined(fontRole))
-            throw new ArgumentOutOfRangeException(nameof(fontRole));
         FontRole = fontRole;
     }
 
@@ -852,13 +849,26 @@ public sealed class MarkdownVectorScene
     internal readonly IReadOnlyList<MarkdownVectorLinkAction?> SemanticLinks;
     private readonly int[] _semanticDepths;
 
+    /// <summary>
+    /// Creates an immutable vector scene with no reference font size, so the renderer
+    /// applies its documented fallback; see <see cref="ReferenceFontSize"/>.
+    /// </summary>
+    public MarkdownVectorScene(
+        float width,
+        float height,
+        float baseline,
+        IReadOnlyList<MarkdownVectorCommand> commands)
+        : this(width, height, baseline, commands, referenceFontSize: 0)
+    {
+    }
+
     /// <summary>Creates an immutable vector scene.</summary>
     public MarkdownVectorScene(
         float width,
         float height,
         float baseline,
         IReadOnlyList<MarkdownVectorCommand> commands,
-        float referenceFontSize = 0)
+        float referenceFontSize)
         : this(
             width,
             height,
