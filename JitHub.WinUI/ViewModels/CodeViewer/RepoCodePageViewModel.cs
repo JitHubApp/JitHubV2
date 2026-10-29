@@ -358,6 +358,12 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
                 routeToken,
                 QueryFetchPolicy.NetworkOnly).ConfigureAwait(false);
             if (!IsCurrentInitialize(generation)) return;
+            // The cached tree may have queued a README preview that is still loading.
+            // ApplyTreeAsync decides whether to reload the visible file from a snapshot
+            // of the preview, so let that README land first. Otherwise it can apply
+            // after the snapshot, leaving the stale README visible over the new tree.
+            await AwaitDefaultPreviewSettledAsync(routeToken).ConfigureAwait(false);
+            if (!IsCurrentInitialize(generation)) return;
             await ApplyTreeAsync(
                 refreshed,
                 owner,
