@@ -56,6 +56,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 {
     private readonly MarkdownViewSurface _surface;
     private readonly MarkdownViewLifetime _lifetime = new();
+    private readonly MarkdownViewport _viewport;
     private readonly PointerHoverState _hover = new();
     private readonly PointerCursorPresenter _cursor;
     private readonly AbbreviationTooltipPresenter _abbreviationTooltip;
@@ -63,8 +64,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private WindowLifecycleSubscription? _windowLifecycleSubscription;
     private bool _scrollViewIntermediate;
     private MarkdownEngine? _ownedEngine;
-    private Rect _externalViewport;
-    private bool _hasExternalViewport;
 
     private volatile LayoutSnapshot? _snapshot;
     private ImagePlanPublication? _imagePlanPublication;
@@ -292,9 +291,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private Windows.UI.Color _focusRingBrushColor; // cached to avoid per-keystroke SolidColorBrush allocations
 
     // ---- Multi-click tracking (double/triple click selection) ----
-    private long _lastPressTickMs;
-    private Point _lastPressPoint;
-    private int _consecutiveClickCount;
+    private readonly ClickSequenceTracker _clicks = new();
     // Tracks the currently captured primary-pointer gesture. Keeping the pointer
     // id with the state makes release/cancel/capture-lost handling idempotent
     // when events arrive out of order or are routed through the drag shield.
@@ -310,7 +307,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private readonly PointerEventHandler _canvasPointerCanceledHandler;
     private readonly PointerEventHandler _canvasPointerCaptureLostHandler;
     // System double-click time; read from the Win32 API at first use.
-    private static readonly int _doubleClickTimeMs = SystemInputMetrics.GetDoubleClickTimeMs();
     private ClickSelectionMode _clickMode;
     private readonly struct InlineEmbedPlacementUpdate(
         WeakReference<InlineEmbedPlan> Plan,
@@ -2524,7 +2520,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     internal bool TryGetVisibleDocumentRect(out Windows.Foundation.Rect rect)
     {
-        bool hasViewport = TryGetViewport(out double top, out double height, out double width);
+        bool hasViewport = _viewport.TryGet(out double top, out double height, out double width);
         rect = new Windows.Foundation.Rect(0, top, width, height);
         return hasViewport;
     }
@@ -2845,6 +2841,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private protected MarkdownRendererControl(bool ownsScrollViewport)
     {
         _surface = new MarkdownViewSurface(ownsScrollViewport);
+        _viewport = new MarkdownViewport(this, _surface);
         _cursor = new PointerCursorPresenter(cursor => ProtectedCursor = cursor);
         _abbreviationTooltip = new AbbreviationTooltipPresenter(this, _surface, _lifetime, _hover);
         _canvasPointerMovedHandler = OnPointerMoved;
@@ -2913,22 +2910,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (_surface.OwnsScrollViewport || _lifetime.IsDisposed)
             return;
 
-        Rect viewport = args.EffectiveViewport;
-        if (!double.IsFinite(viewport.X) || !double.IsFinite(viewport.Y) ||
-            !double.IsFinite(viewport.Width) || !double.IsFinite(viewport.Height) ||
-            viewport.Width <= 0 || viewport.Height <= 0)
-        {
-            return;
-        }
-
-        bool materiallyChanged = !_hasExternalViewport ||
-            Math.Abs(_externalViewport.X - viewport.X) >= 0.5 ||
-            Math.Abs(_externalViewport.Y - viewport.Y) >= 0.5 ||
-            Math.Abs(_externalViewport.Width - viewport.Width) >= 0.5 ||
-            Math.Abs(_externalViewport.Height - viewport.Height) >= 0.5;
-        _externalViewport = viewport;
-        _hasExternalViewport = true;
-        if (!materiallyChanged || _lifetime.IsUnloaded)
+        if (!_viewport.TryAcceptExternal(args.EffectiveViewport, out bool materiallyChanged) ||
+            !materiallyChanged || _lifetime.IsUnloaded)
             return;
 
         QueueLazyLayoutForViewport();
@@ -2939,28 +2922,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     }
 
     internal bool TryGetViewport(out double top, out double height, out double width)
-    {
-        if (_surface.Scroll is not null)
-        {
-            top = _surface.Scroll.VerticalOffset;
-            height = _surface.Scroll.ViewportHeight > 0 ? _surface.Scroll.ViewportHeight : Math.Max(ActualHeight, 1);
-            width = _surface.Scroll.ViewportWidth > 0 ? _surface.Scroll.ViewportWidth : Math.Max(ActualWidth, 1);
-            return true;
-        }
-
-        if (_hasExternalViewport)
-        {
-            top = Math.Max(0, _externalViewport.Top);
-            height = Math.Max(1, _externalViewport.Height);
-            width = Math.Max(1, _externalViewport.Width);
-            return true;
-        }
-
-        top = 0;
-        height = Math.Max(ActualHeight, 600);
-        width = Math.Max(ActualWidth, 1);
-        return false;
-    }
+        => _viewport.TryGet(out top, out height, out width);
 
     private bool BringDocumentRectIntoExternalViewport(Rect rect, bool animate, double alignmentRatio = 0)
     {
@@ -3437,9 +3399,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         SetSelectionDragShieldActive(false);
         if (resetClickTracking)
         {
-            _consecutiveClickCount = 0;
-            _lastPressTickMs = 0;
-            _lastPressPoint = default;
+            _clicks.Reset();
         }
 
         if (_selection.IsActive || !_selection.Range.IsEmpty)
@@ -4545,9 +4505,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _clickMode = ClickSelectionMode.Single;
         _dragAnchorStart = default;
         _dragAnchorEnd = default;
-        _consecutiveClickCount = 0;
-        _lastPressTickMs = 0;
-        _lastPressPoint = default;
+        _clicks.Reset();
         _hover.Clear();
         _abbreviationTooltip.ForgetTarget();
         CloseSelectionContextMenu();
@@ -4997,7 +4955,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (ct.IsCancellationRequested || generation != _pipelineGeneration)
             return;
 
-        TryGetViewport(out double viewportTop, out double viewportHeight, out _);
+        _viewport.TryGet(out double viewportTop, out double viewportHeight, out _);
         // Custom block embed measurement remains on the background build path.
         // Subsequent lazy-band extension is also dispatched to a background
         // worker, so IMarkdownEmbedFactory.MeasureHeight and text reflow never
@@ -5763,7 +5721,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
         bool appliedCached = false;
         List<(CodeBlockHighlightCacheKey Key, string CodeText)>? pendingHighlights = null;
-        TryGetViewport(out double viewportTop, out double viewportHeight, out _);
+        _viewport.TryGet(out double viewportTop, out double viewportHeight, out _);
         LazyLayoutBand highlightBand = performanceSession is { } activePerformanceSession
             ? LazyLayoutBand.FromDirectionalViewport(
                 viewportTop,
@@ -6114,7 +6072,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             }
             else
             {
-                TryGetViewport(out double viewportTop, out double viewportHeight, out _);
+                _viewport.TryGet(out double viewportTop, out double viewportHeight, out _);
                 band = LazyLayoutBand.FromDirectionalViewport(
                     viewportTop,
                     viewportHeight,
@@ -6298,7 +6256,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (RequestGeometryRecoveryIfRequired(snapshot) || snapshot is null)
             return;
 
-        TryGetViewport(out double viewportTop, out double viewportHeight, out _);
+        _viewport.TryGet(out double viewportTop, out double viewportHeight, out _);
         LazyLayoutBand visibleVectorBand = LazyLayoutBand.FromVisibleViewport(
             viewportTop, viewportHeight);
         LazyLayoutBand band;
@@ -6369,7 +6327,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (RequestGeometryRecoveryIfRequired(snapshot) || snapshot is null)
             return;
 
-        TryGetViewport(out double viewportTop, out double viewportHeight, out _);
+        _viewport.TryGet(out double viewportTop, out double viewportHeight, out _);
         LazyLayoutBand visibleVectorBand = LazyLayoutBand.FromVisibleViewport(
             viewportTop, viewportHeight);
 
@@ -7525,7 +7483,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 imageIndex, embedIndex, actionIndex))
             return;
 
-        TryGetViewport(out double top, out double viewportHeight, out _);
+        _viewport.TryGet(out double top, out double viewportHeight, out _);
         double bottom = top + viewportHeight;
 
         // Lazy image loading: trigger EnsureLoading for images within the
@@ -7754,7 +7712,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void GetCodeBlockActionRealizationCounts(out int realizedCount, out int offscreenCount)
     {
-        TryGetViewport(out double top, out double viewportHeight, out _);
+        _viewport.TryGet(out double top, out double viewportHeight, out _);
         double bottom = top + viewportHeight;
         realizedCount = 0;
         offscreenCount = 0;
@@ -7773,7 +7731,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         Layout.Boxes.DeclarativeHostedElementBox box,
         Rect layoutBounds)
     {
-        TryGetViewport(out double viewportTop, out double viewportHeight, out double viewportWidth);
+        _viewport.TryGet(out double viewportTop, out double viewportHeight, out double viewportWidth);
         return new MarkdownHostedElementRequest(
             box.FactoryKey,
             box.SourceRange,
@@ -7797,7 +7755,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             !_embedPlans.Contains(plan))
             return false;
 
-        TryGetViewport(out double top, out double viewportHeight, out _);
+        _viewport.TryGet(out double top, out double viewportHeight, out _);
         double bottom = top + viewportHeight;
         return EmbedVisibility.IsInRealizeBand(
             plan.Rect.Top,
@@ -10156,7 +10114,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _touchTapSuppression.Reset();
         _touchSelection.Reset();
         UpdateSelectionHandles();
-        TryGetViewport(out double pointerViewportTop, out _, out _);
+        _viewport.TryGet(out double pointerViewportTop, out _, out _);
         _lastSelectionPointerViewportY = pt.Y - pointerViewportTop;
         RememberFocusResumePoint(pt);
 
@@ -10164,9 +10122,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // selection; let the native button handle the click.
         if (IsPointOverCodeBlockAction(pt))
         {
-            _consecutiveClickCount = 0;
-            _lastPressTickMs = 0;
-            _lastPressPoint = default;
+            _clicks.Reset();
             return;
         }
 
@@ -10182,9 +10138,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         {
             // A press on an embedded control breaks any ongoing double/triple-click
             // sequence; reset timing state so the next text press starts fresh.
-            _consecutiveClickCount = 0;
-            _lastPressTickMs = 0;
-            _lastPressPoint  = default;
+            _clicks.Reset();
             // Clear any prior selection so the user gets visual feedback that
             // the click isn't a new selection start.
             if (!_selection.Range.IsEmpty)
@@ -10215,17 +10169,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
         // Track consecutive clicks for word (double) and line (triple) selection.
         long nowMs = e.TickCount;
-        double dx = pt.X - _lastPressPoint.X;
-        double dy = pt.Y - _lastPressPoint.Y;
-        bool sameSpot = dx * dx + dy * dy < 16; // 4px radius
-        bool withinTime = (nowMs - _lastPressTickMs) <= _doubleClickTimeMs;
-        if (sameSpot && withinTime)
-        {
-            _consecutiveClickCount++;
-            if (_consecutiveClickCount > 3) _consecutiveClickCount = 3; // cap: 4+ repeats = line-select
-        }
-        else
-            _consecutiveClickCount = 1;
+        int clickCount = _clicks.RegisterPress(pt, nowMs);
+
 
         FocusRendererForPointerInteraction();
         // Focus can synchronously re-enter application code, including document
@@ -10238,8 +10183,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         {
             // Advance clock/position only on successful text hits so a miss in the
             // same spot doesn't corrupt the double/triple-click timing window.
-            _lastPressTickMs = nowMs;
-            _lastPressPoint  = pt;
+            _clicks.AcceptPress(pt, nowMs);
             _pointerSession = new PointerSession(e.Pointer.PointerId, IsPrimary: true);
 
             if (!IsSelectionEnabled)
@@ -10260,7 +10204,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             // and prevents a stale anchor from an earlier interaction being reused.
             _selectionAnchor = pos;
 
-            if (_consecutiveClickCount == 3)
+            if (clickCount == 3)
             {
                 // Triple-click: select the entire block (line).
                 _clickMode = ClickSelectionMode.Block;
@@ -10281,7 +10225,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 else e.Handled = true;
                 return;
             }
-            if (_consecutiveClickCount == 2)
+            if (clickCount == 2)
             {
                 // Double-click: select the word under the cursor.
                 _clickMode = ClickSelectionMode.Word;
@@ -10316,8 +10260,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             // Linked and Selectable are independent scene semantics. A linked-only
             // item must still receive a complete press/release gesture, but it must
             // not become a text-selection anchor.
-            _lastPressTickMs = nowMs;
-            _lastPressPoint = pt;
+            _clicks.AcceptPress(pt, nowMs);
             _clickMode = ClickSelectionMode.Single;
             _pointerSession = new PointerSession(e.Pointer.PointerId, IsPrimary: true);
             _selectionAnchor = null;
@@ -10335,9 +10278,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             // Reset click state so this miss isn't counted toward a future
             // double/triple-click; also reset timing so a miss→text sequence
             // never misclassifies as a double-click.
-            _consecutiveClickCount = 0;
-            _lastPressTickMs = 0;
-            _lastPressPoint  = default;
+            _clicks.Reset();
             _selectionAnchor = null; // defensive: clear any stale anchor from a prior capture loss
             _lastSelectionPointerViewportY = double.NaN;
             _selection.Clear();
@@ -10532,9 +10473,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (!IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))
             return false;
 
-        _consecutiveClickCount = 0;
-        _lastPressTickMs = 0;
-        _lastPressPoint = default;
+        _clicks.Reset();
         _selectionAnchor = null;
         _clickMode = ClickSelectionMode.Word;
         (_dragAnchorStart, _dragAnchorEnd) = ExpandSelectionToWord(
@@ -10586,7 +10525,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private bool IsPointInsideSelection(LayoutSnapshot snapshot, Point point)
     {
-        TryGetViewport(out double top, out double height, out double width);
+        _viewport.TryGet(out double top, out double height, out double width);
         double scale = XamlRoot?.RasterizationScale ?? 1.0;
         if (!double.IsFinite(scale) || scale <= 0)
             scale = 1.0;
@@ -11083,7 +11022,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             return SelectionAdornerRefreshOperationResult.Retry;
         }
 
-        bool hasViewport = TryGetViewport(out double top, out double height, out double width);
+        bool hasViewport = _viewport.TryGet(out double top, out double height, out double width);
         if (!hasViewport && (!double.IsFinite(height) || !double.IsFinite(width)))
             return SelectionAdornerRefreshOperationResult.AwaitLifecycle;
 
@@ -11394,7 +11333,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (_surface.Canvas is null)
             return point;
 
-        TryGetViewport(out double viewportTop, out double viewportHeight, out _);
+        _viewport.TryGet(out double viewportTop, out double viewportHeight, out _);
         double pointerViewportY = point.Y - viewportTop;
         double delta = sustained
             ? SelectionAutoScroll.ComputeFrameDelta(
@@ -12171,7 +12110,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _selectionHandleFixedPosition = endpoint == SelectionHandleEndpoint.Start
             ? range.End
             : range.Start;
-        TryGetViewport(out double viewportTop, out _, out _);
+        _viewport.TryGet(out double viewportTop, out _, out _);
         _lastSelectionPointerViewportY = point.Position.Y - viewportTop;
         Point endpointPoint = GetSelectionHandleEndpointPoint(endpoint);
         _selectionHandleCaretOffset = new Point(
@@ -12239,7 +12178,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             return;
 
         _selectionHandleLatestPoint = pointerPoint.Position;
-        TryGetViewport(out double viewportTop, out _, out _);
+        _viewport.TryGet(out double viewportTop, out _, out _);
         _selectionHandleLatestViewportY = pointerPoint.Position.Y - viewportTop;
         _selectionHandleMovePending = true;
         StartSelectionHandleFrameClock();
@@ -12261,7 +12200,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // final PointerMoved event. This mirrors the main text-drag path and
         // prevents quick flick-and-release gestures from stopping one frame early.
         _selectionHandleLatestPoint = e.Point.Position;
-        TryGetViewport(out double viewportTop, out _, out _);
+        _viewport.TryGet(out double viewportTop, out _, out _);
         _selectionHandleLatestViewportY = e.Point.Position.Y - viewportTop;
         _selectionHandleMovePending = true;
         ApplyPendingSelectionHandleMove(sustained: false);
@@ -12425,7 +12364,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             return false;
         }
 
-        TryGetViewport(out double viewportTop, out _, out _);
+        _viewport.TryGet(out double viewportTop, out _, out _);
         Point contact = new(
             _selectionHandleLatestPoint.X,
             viewportTop + _selectionHandleLatestViewportY);
@@ -12434,7 +12373,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             contact.Y + _selectionHandleCaretOffset.Y);
         if (sustained && !_selectionHandleMovePending)
         {
-            TryGetViewport(out double edgeViewportTop, out double edgeViewportHeight, out _);
+            _viewport.TryGet(out double edgeViewportTop, out double edgeViewportHeight, out _);
             if (Math.Abs(SelectionAutoScroll.ComputeVelocity(
                     caretPoint.Y,
                     edgeViewportTop,
@@ -12461,7 +12400,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (_surface.Canvas is null)
             return false;
 
-        TryGetViewport(out double viewportTop, out double viewportHeight, out _);
+        _viewport.TryGet(out double viewportTop, out double viewportHeight, out _);
         double velocity = SelectionAutoScroll.ComputeVelocity(
             caretPoint.Y,
             viewportTop,
@@ -12798,13 +12737,13 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private double GetSelectionOverlayWidth()
     {
-        TryGetViewport(out _, out _, out double width);
+        _viewport.TryGet(out _, out _, out double width);
         return double.IsFinite(width) && width > 0 ? width : 1.0;
     }
 
     private double GetSelectionOverlayHeight()
     {
-        TryGetViewport(out _, out double height, out _);
+        _viewport.TryGet(out _, out double height, out _);
         return double.IsFinite(height) && height > 0 ? height : 1.0;
     }
 
@@ -14004,7 +13943,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void ScrollLazyFocusTargetIntoView(LazyLayoutBand band, bool reverse)
     {
-        TryGetViewport(out double viewportTop, out double viewportHeight, out double viewportWidth);
+        _viewport.TryGet(out double viewportTop, out double viewportHeight, out double viewportWidth);
         double viewportBottom = viewportTop + viewportHeight;
         const double margin = 24;
         if (band.Top >= viewportTop + margin && band.Bottom <= viewportBottom - margin)
@@ -14502,14 +14441,14 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     /// </summary>
     private bool BeginFocusedItemReveal()
     {
-        TryGetViewport(out double top, out _, out _);
+        _viewport.TryGet(out double top, out _, out _);
         _focusReveal = new FocusRevealOrigin(_viewportRequestSerial, top, null);
         return ScrollFocusedItemIntoView();
     }
 
     private bool IsFocusRevealCurrent()
     {
-        TryGetViewport(out double top, out _, out _);
+        _viewport.TryGet(out double top, out _, out _);
         if (FocusRevealPolicy.IsCurrent(_focusReveal, _viewportRequestSerial, top))
             return true;
         _focusReveal = null;
@@ -14597,7 +14536,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (capturedRect is not { } detachedRect)
             return horizontalScrolled;
 
-        TryGetViewport(out double top, out double viewportHeight, out _);
+        _viewport.TryGet(out double top, out double viewportHeight, out _);
         double bottom = top + viewportHeight;
         const double margin = 24.0;
         bool verticalNeeded = detachedRect.Top < top + margin || detachedRect.Bottom > bottom - margin;
@@ -14650,7 +14589,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (!IsFocusRevealCurrent())
             return;
 
-        TryGetViewport(out double top, out double viewportHeight, out _);
+        _viewport.TryGet(out double top, out double viewportHeight, out _);
         double bottom = top + viewportHeight;
         const double margin = 24.0;
         double? revealTop = null;
@@ -15798,7 +15737,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private Point GetKeyboardContextMenuPoint()
     {
-        TryGetViewport(out double viewportTop, out double viewportHeight, out double viewportWidth);
+        _viewport.TryGet(out double viewportTop, out double viewportHeight, out double viewportWidth);
         double viewportBottom = viewportTop + viewportHeight;
         if (_focusableItems is { } items &&
             _focusedItemIndex >= 0 &&

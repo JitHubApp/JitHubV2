@@ -152,7 +152,7 @@ public partial class MarkdownRendererControl
 
     private LazyLayoutBand GetCurrentVisibleVectorBand()
     {
-        TryGetViewport(out double top, out double height, out _);
+        _viewport.TryGet(out double top, out double height, out _);
         return LazyLayoutBand.FromVisibleViewport(top, height);
     }
 

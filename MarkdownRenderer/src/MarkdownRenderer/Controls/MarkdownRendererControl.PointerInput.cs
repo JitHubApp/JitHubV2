@@ -102,9 +102,9 @@ public partial class MarkdownRendererControl
                 input.IgnoreUnattributableTouchGesture = true;
             }
         }
-        input.HasViewportGesturePosition = TryMapCanvasToViewport(point, out input.ViewportGesturePosition);
+        input.HasViewportGesturePosition = _viewport.TryMapCanvasToViewport(point, out input.ViewportGesturePosition);
         if (input.HasGestureContact &&
-            TryMapCanvasContactToViewport(input.GestureContact, out TouchContactGeometry viewportContact))
+            _viewport.TryMapCanvasContactToViewport(input.GestureContact, out TouchContactGeometry viewportContact))
         {
             input.ViewportGestureContact = viewportContact;
             input.HasViewportGestureContact = true;
@@ -349,14 +349,14 @@ public partial class MarkdownRendererControl
     private bool TryReprojectDeferredGesture(ref PointerInput input)
     {
         if (!input.HasViewportGesturePosition ||
-            !TryMapViewportToCanvas(input.ViewportGesturePosition, out var currentPosition))
+            !_viewport.TryMapViewportToCanvas(input.ViewportGesturePosition, out var currentPosition))
         {
             input.InvalidDeferredProjection = true;
             return false;
         }
         input.GesturePosition = currentPosition;
         if (input.HasViewportGestureContact &&
-            TryMapViewportContactToCanvas(input.ViewportGestureContact, out TouchContactGeometry contact))
+            _viewport.TryMapViewportContactToCanvas(input.ViewportGestureContact, out TouchContactGeometry contact))
         {
             input.GestureContact = contact;
             input.HasGestureContact = true;
@@ -367,153 +367,6 @@ public partial class MarkdownRendererControl
             input.HasGestureContact = false;
         }
         return true;
-    }
-
-    private bool TryMapCanvasToViewport(
-        Windows.Foundation.Point canvasPoint,
-        out Windows.Foundation.Point viewportPoint)
-    {
-        viewportPoint = default;
-        if (_surface.Canvas is null)
-            return false;
-        try
-        {
-            if (_surface.Scroll is { } scroll)
-            {
-                viewportPoint = _surface.Canvas.TransformToVisual(scroll).TransformPoint(canvasPoint);
-            }
-            else if (_hasExternalViewport)
-            {
-                viewportPoint = new Windows.Foundation.Point(
-                    canvasPoint.X - _externalViewport.X,
-                    canvasPoint.Y - _externalViewport.Y);
-            }
-            else
-            {
-                viewportPoint = _surface.Canvas.TransformToVisual(this).TransformPoint(canvasPoint);
-            }
-            return double.IsFinite(viewportPoint.X) && double.IsFinite(viewportPoint.Y);
-        }
-        catch (Exception)
-        {
-            viewportPoint = default;
-            return false;
-        }
-    }
-
-    private bool TryMapViewportToCanvas(
-        Windows.Foundation.Point viewportPoint,
-        out Windows.Foundation.Point canvasPoint)
-    {
-        canvasPoint = default;
-        if (_surface.Canvas is null || !double.IsFinite(viewportPoint.X) || !double.IsFinite(viewportPoint.Y))
-            return false;
-        try
-        {
-            if (_surface.Scroll is { } scroll)
-            {
-                canvasPoint = scroll.TransformToVisual(_surface.Canvas).TransformPoint(viewportPoint);
-            }
-            else if (_hasExternalViewport)
-            {
-                canvasPoint = new Windows.Foundation.Point(
-                    viewportPoint.X + _externalViewport.X,
-                    viewportPoint.Y + _externalViewport.Y);
-            }
-            else
-            {
-                canvasPoint = this.TransformToVisual(_surface.Canvas).TransformPoint(viewportPoint);
-            }
-            return double.IsFinite(canvasPoint.X) && double.IsFinite(canvasPoint.Y);
-        }
-        catch (Exception)
-        {
-            canvasPoint = default;
-            return false;
-        }
-    }
-
-    private bool TryMapCanvasContactToViewport(
-        TouchContactGeometry contact,
-        out TouchContactGeometry viewportContact)
-        => TryMapContact(contact, canvasToViewport: true, out viewportContact);
-
-    private bool TryMapViewportContactToCanvas(
-        TouchContactGeometry contact,
-        out TouchContactGeometry canvasContact)
-        => TryMapContact(contact, canvasToViewport: false, out canvasContact);
-
-    private bool TryMapContact(
-        TouchContactGeometry contact,
-        bool canvasToViewport,
-        out TouchContactGeometry mapped)
-    {
-        mapped = default;
-        if (_surface.Canvas is null || !double.IsFinite(contact.X) || !double.IsFinite(contact.Y) ||
-            !double.IsFinite(contact.Width) || !double.IsFinite(contact.Height) ||
-            contact.Width < 0 || contact.Height < 0)
-        {
-            return false;
-        }
-
-        Windows.Foundation.Point p1 = new(contact.X, contact.Y);
-        Windows.Foundation.Point p2 = new(contact.X + contact.Width, contact.Y);
-        Windows.Foundation.Point p3 = new(contact.X, contact.Y + contact.Height);
-        Windows.Foundation.Point p4 = new(contact.X + contact.Width, contact.Y + contact.Height);
-        if (!TryMapContactPoint(p1, canvasToViewport, out p1) ||
-            !TryMapContactPoint(p2, canvasToViewport, out p2) ||
-            !TryMapContactPoint(p3, canvasToViewport, out p3) ||
-            !TryMapContactPoint(p4, canvasToViewport, out p4))
-        {
-            return false;
-        }
-
-        double left = Math.Min(Math.Min(p1.X, p2.X), Math.Min(p3.X, p4.X));
-        double top = Math.Min(Math.Min(p1.Y, p2.Y), Math.Min(p3.Y, p4.Y));
-        double right = Math.Max(Math.Max(p1.X, p2.X), Math.Max(p3.X, p4.X));
-        double bottom = Math.Max(Math.Max(p1.Y, p2.Y), Math.Max(p3.Y, p4.Y));
-        if (!double.IsFinite(left) || !double.IsFinite(top) ||
-            !double.IsFinite(right) || !double.IsFinite(bottom))
-        {
-            return false;
-        }
-        mapped = new TouchContactGeometry(left, top, right - left, bottom - top);
-        return double.IsFinite(mapped.Width) && double.IsFinite(mapped.Height);
-    }
-
-    private bool TryMapContactPoint(
-        Windows.Foundation.Point point,
-        bool canvasToViewport,
-        out Windows.Foundation.Point mapped)
-    {
-        mapped = default;
-        try
-        {
-            if (_surface.Scroll is { } scroll)
-            {
-                mapped = canvasToViewport
-                    ? _surface.Canvas!.TransformToVisual(scroll).TransformPoint(point)
-                    : scroll.TransformToVisual(_surface.Canvas!).TransformPoint(point);
-            }
-            else if (_hasExternalViewport)
-            {
-                mapped = canvasToViewport
-                    ? new Windows.Foundation.Point(point.X - _externalViewport.X, point.Y - _externalViewport.Y)
-                    : new Windows.Foundation.Point(point.X + _externalViewport.X, point.Y + _externalViewport.Y);
-            }
-            else
-            {
-                mapped = canvasToViewport
-                    ? _surface.Canvas!.TransformToVisual(this).TransformPoint(point)
-                    : this.TransformToVisual(_surface.Canvas!).TransformPoint(point);
-            }
-            return double.IsFinite(mapped.X) && double.IsFinite(mapped.Y);
-        }
-        catch (Exception)
-        {
-            mapped = default;
-            return false;
-        }
     }
 
     private void PrepareContextGestureForDeferral(ref PointerInput input)
@@ -559,7 +412,7 @@ public partial class MarkdownRendererControl
         }
 
         LazyLayoutBand viewportBand = hitBand;
-        if (TryGetViewport(out double viewportTop, out double viewportHeight, out _) &&
+        if (_viewport.TryGet(out double viewportTop, out double viewportHeight, out _) &&
             double.IsFinite(viewportTop) && double.IsFinite(viewportHeight) &&
             viewportHeight > 0 && viewportHeight <= 6000)
         {
@@ -1317,7 +1170,7 @@ public partial class MarkdownRendererControl
         {
             input.GestureContact = _touchSelection.Contact;
             input.HasGestureContact = true;
-            if (TryMapCanvasContactToViewport(input.GestureContact, out TouchContactGeometry viewportContact))
+            if (_viewport.TryMapCanvasContactToViewport(input.GestureContact, out TouchContactGeometry viewportContact))
             {
                 input.ViewportGestureContact = viewportContact;
                 input.HasViewportGestureContact = true;
