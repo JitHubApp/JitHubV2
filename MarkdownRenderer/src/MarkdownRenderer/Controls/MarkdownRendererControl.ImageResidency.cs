@@ -33,7 +33,7 @@ public partial class MarkdownRendererControl
     private void ReconcileImageResidency(LazyLayoutBand band, ViewportRange range)
     {
         if (_imageResidencyPolicy is not { } policy ||
-            _snapshot is not { } snapshot ||
+            _published.Snapshot is not { } snapshot ||
             !ReferenceEquals(snapshot, _imageResidencySnapshot) ||
             !snapshot.TryBeginInteraction())
             return;

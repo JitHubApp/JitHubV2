@@ -45,7 +45,7 @@ public partial class MarkdownRendererControl
 
     private bool DispatchRecognizedGesture(PointerInputKind kind, Windows.Foundation.Point point, PointerDeviceType device)
     {
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _surface.Canvas is null || _snapshot is not { } snapshot)
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _surface.Canvas is null || _published.Snapshot is not { } snapshot)
             return false;
         if (RequestGeometryRecoveryIfRequired(snapshot))
             return false;
@@ -56,7 +56,7 @@ public partial class MarkdownRendererControl
             GesturePosition = point,
             GestureDevice = device,
             LinkModifiers = InputModifierState.GetCurrentInputModifiers(),
-            GestureSnapshotGeneration = Volatile.Read(ref _snapshotGeneration),
+            GestureSnapshotGeneration = _published.Generation,
         };
 
         if (device == PointerDeviceType.Touch)
@@ -112,7 +112,7 @@ public partial class MarkdownRendererControl
         input.WaitForMeasuredHitTest = IsMeasuredHitTestGesture(input);
         if (!_drainingPointerInput && (_deferredPointerInput?.Count ?? 0) == 0 && snapshot.TryBeginInteraction())
         {
-            long snapshotGeneration = Volatile.Read(ref _snapshotGeneration);
+            long snapshotGeneration = _published.Generation;
             long layoutRevision = snapshot.LayoutRevision;
             input.GestureLayoutRevision = layoutRevision;
             bool waitForGeometry = false;
@@ -341,7 +341,7 @@ public partial class MarkdownRendererControl
 
     private bool IsDeferredGestureLayoutPublished(LayoutSnapshot snapshot) =>
         !_lifetime.IsDisposed && !_lifetime.IsUnloaded &&
-        ReferenceEquals(snapshot, _snapshot) &&
+        ReferenceEquals(snapshot, _published.Snapshot) &&
         !_publishingLayoutCommit &&
         _pendingLayoutCommit is null &&
         _appliedLazyLayoutRevision >= snapshot.LayoutRevision;
@@ -393,7 +393,7 @@ public partial class MarkdownRendererControl
 
     private void RequestDeferredGestureBandRealization(LayoutSnapshot snapshot, LazyLayoutBand hitBand)
     {
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !ReferenceEquals(snapshot, _snapshot) ||
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !ReferenceEquals(snapshot, _published.Snapshot) ||
             !ReferenceEquals(snapshot, _deferredPointerSnapshot))
         {
             DropDeferredInputQueuePreservingSelection();
@@ -454,7 +454,7 @@ public partial class MarkdownRendererControl
             return;
         }
 
-        if (!ReferenceEquals(_snapshot, snapshot))
+        if (!ReferenceEquals(_published.Snapshot, snapshot))
         {
             DropDeferredInputQueuePreservingSelection();
             return;
@@ -508,7 +508,7 @@ public partial class MarkdownRendererControl
 
     private void DispatchPointerInput(PointerInputKind kind, object sender, PointerRoutedEventArgs args)
     {
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _resettingPointerInput || _surface.Canvas is null || _snapshot is not { } snapshot)
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _resettingPointerInput || _surface.Canvas is null || _published.Snapshot is not { } snapshot)
             return;
         PointerPoint point = args.GetCurrentPoint(_surface.Canvas);
         kind = PointerInputClassification.NormalizeCanceledPointerInputKind(kind, point.Properties.IsCanceled);
@@ -567,7 +567,7 @@ public partial class MarkdownRendererControl
 
         if (!_drainingPointerInput && (_deferredPointerInput?.Count ?? 0) == 0 && snapshot.TryBeginInteraction())
         {
-            long snapshotGeneration = Volatile.Read(ref _snapshotGeneration);
+            long snapshotGeneration = _published.Generation;
             long layoutRevision = snapshot.LayoutRevision;
             try
             {
@@ -601,15 +601,15 @@ public partial class MarkdownRendererControl
         if (startsNewCapturedOwnership &&
             _deferredPointerInput is { Count: > 0, HasBlockingSnapshotInteractions: false })
         {
-            long generationBeforeWaiterDrop = Volatile.Read(ref _snapshotGeneration);
+            long generationBeforeWaiterDrop = _published.Generation;
             DropDeferredInputQueuePreservingSelection();
-            if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !ReferenceEquals(_snapshot, snapshot) ||
-                generationBeforeWaiterDrop != Volatile.Read(ref _snapshotGeneration))
+            if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !ReferenceEquals(_published.Snapshot, snapshot) ||
+                generationBeforeWaiterDrop != _published.Generation)
                 return;
 
             if (snapshot.TryBeginInteraction())
             {
-                long snapshotGeneration = Volatile.Read(ref _snapshotGeneration);
+                long snapshotGeneration = _published.Generation;
                 long layoutRevision = snapshot.LayoutRevision;
                 try
                 {
@@ -690,12 +690,12 @@ public partial class MarkdownRendererControl
         if (!ReferenceEquals(sender, _pointerRetryTimer))
             return;
 
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !ReferenceEquals(_snapshot, _deferredPointerSnapshot))
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !ReferenceEquals(_published.Snapshot, _deferredPointerSnapshot))
         {
             ResetDeferredPointerInput();
             return;
         }
-        while (_snapshot is { } snapshot && ReferenceEquals(snapshot, _deferredPointerSnapshot))
+        while (_published.Snapshot is { } snapshot && ReferenceEquals(snapshot, _deferredPointerSnapshot))
         {
             if (_lifetime.IsDisposed || _lifetime.IsUnloaded)
             {
@@ -715,7 +715,7 @@ public partial class MarkdownRendererControl
             if (!snapshot.TryBeginInteraction())
                 return;
 
-            long snapshotGeneration = Volatile.Read(ref _snapshotGeneration);
+            long snapshotGeneration = _published.Generation;
             long layoutRevision = snapshot.LayoutRevision;
             PointerInput? postInteractionInput = null;
             bool waitingForGeometry = false;
@@ -730,7 +730,7 @@ public partial class MarkdownRendererControl
                     while (_deferredPointerInput?.TryPeek(out var input, out _) == true)
                     {
                         if (_lifetime.IsDisposed || _lifetime.IsUnloaded ||
-                            !ReferenceEquals(_snapshot, snapshot) ||
+                            !ReferenceEquals(_published.Snapshot, snapshot) ||
                             !ReferenceEquals(_deferredPointerSnapshot, snapshot))
                         {
                             staleQueue = true;
@@ -856,9 +856,9 @@ public partial class MarkdownRendererControl
                         layoutRevision);
                 }
                 if (_lifetime.IsDisposed || _lifetime.IsUnloaded ||
-                    !ReferenceEquals(_snapshot, snapshot) ||
+                    !ReferenceEquals(_published.Snapshot, snapshot) ||
                     !ReferenceEquals(_deferredPointerSnapshot, snapshot) ||
-                    snapshotGeneration != Volatile.Read(ref _snapshotGeneration) ||
+                    snapshotGeneration != _published.Generation ||
                     snapshot.LayoutRevision != layoutRevision)
                 {
                     ResetDeferredPointerInput();
@@ -915,8 +915,8 @@ public partial class MarkdownRendererControl
                     return;
                 }
                 if (!_lifetime.IsDisposed && !_lifetime.IsUnloaded &&
-                    ReferenceEquals(_snapshot, snapshot) &&
-                    snapshotGeneration == Volatile.Read(ref _snapshotGeneration))
+                    ReferenceEquals(_published.Snapshot, snapshot) &&
+                    snapshotGeneration == _published.Generation)
                 {
                     RequestDeferredGestureBandRealization(snapshot, waitingBand);
                 }
@@ -928,7 +928,7 @@ public partial class MarkdownRendererControl
             }
 
             if (_lifetime.IsDisposed || _lifetime.IsUnloaded ||
-                !ReferenceEquals(_snapshot, snapshot) ||
+                !ReferenceEquals(_published.Snapshot, snapshot) ||
                 !ReferenceEquals(_deferredPointerSnapshot, snapshot))
             {
                 ResetDeferredPointerInput();
@@ -974,8 +974,8 @@ public partial class MarkdownRendererControl
             return input.Handled;
 
         if (_lifetime.IsDisposed || _lifetime.IsUnloaded ||
-            !ReferenceEquals(_snapshot, snapshot) ||
-            snapshotGeneration != Volatile.Read(ref _snapshotGeneration) ||
+            !ReferenceEquals(_published.Snapshot, snapshot) ||
+            snapshotGeneration != _published.Generation ||
             input.GestureLayoutRevision != layoutRevision ||
             snapshot.LayoutRevision != layoutRevision)
         {
@@ -1101,8 +1101,8 @@ public partial class MarkdownRendererControl
         long snapshotGeneration,
         long layoutRevision) =>
         !_lifetime.IsDisposed && !_lifetime.IsUnloaded &&
-        ReferenceEquals(_snapshot, snapshot) &&
-        snapshotGeneration == Volatile.Read(ref _snapshotGeneration) &&
+        ReferenceEquals(_published.Snapshot, snapshot) &&
+        snapshotGeneration == _published.Generation &&
         snapshot.LayoutRevision == layoutRevision;
 
     private void ProcessPointerInput(ref PointerInput input)

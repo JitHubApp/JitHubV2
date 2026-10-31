@@ -40,8 +40,8 @@ public partial class MarkdownRendererControl
         {
             if (receiver.TryGetTarget(out MarkdownRendererControl? control) &&
                 Volatile.Read(ref _candidateSnapshot) is { } identity && identity.TryGetTarget(out LayoutSnapshot? snapshot) &&
-                !control._lifetime.IsDisposed && !control._lifetime.IsUnloaded && generation == control._snapshotGeneration &&
-                ReferenceEquals(snapshot, control._snapshot))
+                !control._lifetime.IsDisposed && !control._lifetime.IsUnloaded && generation == control._published.Generation &&
+                ReferenceEquals(snapshot, control._published.Snapshot))
                 control.RaiseImageUnavailable(url, reason, svgReason);
         }
     }
@@ -156,7 +156,7 @@ public partial class MarkdownRendererControl
         // callbacks intervene. Image publication readers verify snapshot identity.
         if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _publishingLayoutCommit || _canvasDeviceRecoveryQueued ||
             _rebuildCoordinator.HasPendingOrBuilding || HasPendingLazyLayoutWork || HasSnapshotPointerInteraction ||
-            !ReferenceEquals(source, _snapshot) || generation != _snapshotGeneration ||
+            !ReferenceEquals(source, _published.Snapshot) || generation != _published.Generation ||
             source.IsRetiringOrDisposed || source.LayoutRevision != owner.SourceRevision ||
             (float)Math.Max(50, ActualWidth) != owner.Width ||
             !ReferenceEquals(_themeSnapshot, context.ThemeSnapshot) ||
@@ -235,7 +235,7 @@ public partial class MarkdownRendererControl
             _hover.Clear();
             _abbreviationTooltip.ForgetTarget();
             long epoch = InvalidateHostedFocusPlanPublication();
-            _snapshot = owner.TransferToControl();
+            _published.Snapshot = owner.TransferToControl();
             Volatile.Write(ref _imagePlanPublication, plan.Publication);
             Volatile.Write(ref _publishedHostedFocusPlanGeneration, generation);
             Volatile.Write(ref _publishedHostedFocusPlanRevision, candidate.LayoutRevision);
@@ -500,8 +500,8 @@ public partial class MarkdownRendererControl
         long generation,
         long layoutRevision,
         long epoch)
-        => !_lifetime.IsDisposed && !_lifetime.IsUnloaded && ReferenceEquals(candidate, _snapshot) &&
-           generation == Volatile.Read(ref _snapshotGeneration) &&
+        => !_lifetime.IsDisposed && !_lifetime.IsUnloaded && ReferenceEquals(candidate, _published.Snapshot) &&
+           generation == _published.Generation &&
            candidate.LayoutRevision == layoutRevision &&
            layoutRevision == Volatile.Read(ref _publishedHostedFocusPlanRevision) &&
            generation == Volatile.Read(ref _publishedHostedFocusPlanGeneration) &&

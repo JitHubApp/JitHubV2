@@ -17,7 +17,7 @@ public partial class MarkdownRendererControl
     private bool RequestGeometryRecoveryIfRequired(LayoutSnapshot? snapshot)
     {
         if (_lifetime.IsDisposed || _lifetime.IsUnloaded || snapshot is null ||
-            !ReferenceEquals(snapshot, _snapshot) || !snapshot.GeometryRecoveryRequired)
+            !ReferenceEquals(snapshot, _published.Snapshot) || !snapshot.GeometryRecoveryRequired)
         {
             return false;
         }

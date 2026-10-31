@@ -55,7 +55,7 @@ public partial class MarkdownRendererControl
     private void SynchronizeVectorCapacityObserver(LayoutSnapshot? snapshot)
     {
         if (_lifetime.IsDisposed || _lifetime.IsUnloaded || snapshot is null ||
-            !ReferenceEquals(snapshot, _snapshot) ||
+            !ReferenceEquals(snapshot, _published.Snapshot) ||
             !IsVisibleFirstVectorAdmissionEnabled ||
             !snapshot.HasCapacityDeferredScenes)
         {
@@ -105,7 +105,7 @@ public partial class MarkdownRendererControl
 
     private bool ConsumePendingVectorCapacityWake(LayoutSnapshot snapshot)
     {
-        if (!ReferenceEquals(snapshot, _snapshot) ||
+        if (!ReferenceEquals(snapshot, _published.Snapshot) ||
             !ReferenceEquals(snapshot, _vectorCapacityObserverSnapshot) ||
             _vectorCapacityWakeObserver is not { } observer)
         {
@@ -124,7 +124,7 @@ public partial class MarkdownRendererControl
             return;
 
         long generation = observer.ConsumePendingGeneration();
-        LayoutSnapshot? snapshot = _snapshot;
+        LayoutSnapshot? snapshot = _published.Snapshot;
         if (generation < 0 || _lifetime.IsDisposed || _lifetime.IsUnloaded ||
             snapshot is null || !ReferenceEquals(snapshot, _vectorCapacityObserverSnapshot) ||
             RequestGeometryRecoveryIfRequired(snapshot))

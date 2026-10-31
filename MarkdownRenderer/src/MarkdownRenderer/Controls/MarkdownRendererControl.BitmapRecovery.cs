@@ -9,7 +9,7 @@ public partial class MarkdownRendererControl
 
     private void RequestBitmapOutputRecovery(ImageBox image)
     {
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _snapshot?.GeometryRecoveryRequired == true ||
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _published.Snapshot?.GeometryRecoveryRequired == true ||
             !_subscribedImages.Contains(image) ||
             !image.NeedsBitmapOutputRecovery)
             return;
@@ -27,7 +27,7 @@ public partial class MarkdownRendererControl
 
     private void ProcessBitmapOutputRecovery()
     {
-        if (_snapshot?.GeometryRecoveryRequired == true)
+        if (_published.Snapshot?.GeometryRecoveryRequired == true)
         {
             ResetBitmapOutputRecovery();
             return;
