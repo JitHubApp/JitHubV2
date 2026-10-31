@@ -319,15 +319,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private readonly PointerEventHandler _canvasPointerCanceledHandler;
     private readonly PointerEventHandler _canvasPointerCaptureLostHandler;
     // System double-click time; read from the Win32 API at first use.
-    private static readonly int _doubleClickTimeMs = GetSystemDoubleClickTimeMs();
-
-    [System.Runtime.InteropServices.DllImport("user32.dll")]
-    private static extern uint GetDoubleClickTime();
-
-    private static int GetSystemDoubleClickTimeMs()
-    {
-        try { return (int)Math.Min(GetDoubleClickTime(), (uint)int.MaxValue); } catch { return 500; }
-    }
+    private static readonly int _doubleClickTimeMs = SystemInputMetrics.GetDoubleClickTimeMs();
     private ClickSelectionMode _clickMode;
     private readonly struct InlineEmbedPlacementUpdate(
         WeakReference<InlineEmbedPlan> Plan,
@@ -1803,7 +1795,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     {
         return TryGetFocusedLinkedAtomic(out _, out InlineRun linkedRun) &&
                linkedRun is LinkRun focusedRun &&
-               AreEquivalentLinks(focusedRun, run);
+               LinkTargets.AreEquivalentLinks(focusedRun, run);
     }
 
     internal bool IsKeyboardFocusOnLinkedImage(InlineImageRun run) =>
@@ -1929,40 +1921,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     internal void RaiseLinkedAtomicClickFromAutomation(InlineRun run)
     {
-        if (TryCreateLinkedAtomicTarget(run, out LinkTarget target))
+        if (LinkTargets.TryCreateLinkedAtomicTarget(run, out LinkTarget target))
             DispatchAutomationLinkActivation(target);
-    }
-
-    internal static bool TryCreateLinkedAtomicTarget(InlineRun run, out LinkTarget target)
-    {
-        ArgumentNullException.ThrowIfNull(run);
-        switch (run)
-        {
-            case LinkRun link:
-                target = new LinkTarget(
-                    link.Url,
-                    link.Title,
-                    link.SourceSpan,
-                    link);
-                return true;
-            case InlineImageRun { IsLinked: true, LinkUrl: { } imageUrl } image:
-                target = new LinkTarget(
-                    imageUrl,
-                    image.LinkTitle,
-                    image.SourceSpan,
-                    null);
-                return true;
-            case InlineVectorSceneRun { IsLinked: true, LinkUrl: { } sceneUrl } scene:
-                target = new LinkTarget(
-                    sceneUrl,
-                    scene.LinkTitle,
-                    scene.SourceSpan,
-                    null);
-                return true;
-            default:
-                target = default;
-                return false;
-        }
     }
 
     internal void SetDisclosureExpanded(LinkRun run, bool expanded)
@@ -2539,7 +2499,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
         if (e.Key == VirtualKey.Tab)
         {
-            if (TryMoveFocusWithinHostedEmbed(element, e.OriginalSource, shift))
+            if (HostedFocusNavigation.TryMoveFocusWithinHostedEmbed(element, e.OriginalSource, shift))
             {
                 e.Handled = true;
                 return;
@@ -7443,7 +7403,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         Layout.FocusableItem? focusedIdentity = GetCurrentFocusableIdentity();
         _focusableItems = collectedFocusableItems;
         _focusedItemIndex = focusedIdentity is { } identity
-            ? FindFocusableItemIndex(collectedFocusableItems, identity)
+            ? FocusableItemQueries.FindFocusableItemIndex(collectedFocusableItems, identity)
             : -1;
         Volatile.Write(ref _publishedHostedFocusPlanGeneration, planGeneration);
         Volatile.Write(ref _publishedHostedFocusPlanRevision, hostedFocusPlanRevision);
@@ -7983,7 +7943,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         }
 
         var focusedItem = items[_focusedItemIndex];
-        if (SameFocusableIdentity(focusedItem, planIdentity))
+        if (FocusableItemQueries.SameFocusableIdentity(focusedItem, planIdentity))
         {
             _ = TryFocusHostedElement(focusedItem, reverse: false);
         }
@@ -8830,7 +8790,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         Layout.FocusableItem? focusedIdentity = GetCurrentFocusableIdentity();
         _focusableItems = collected;
         _focusedItemIndex = focusedIdentity is { } identity
-            ? FindFocusableItemIndex(collected, identity)
+            ? FocusableItemQueries.FindFocusableItemIndex(collected, identity)
             : -1;
         ClearFocusableItemsRefresh(request.RequestVersion);
         InvalidateAutomationLayout();
@@ -9529,22 +9489,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             RequestRebuild(RebuildReason.Full);
     }
 
-    // ---- Input ----
-
-    private static bool IsPrecisePointer(PointerInput e)
-        => MarkdownPointerGesturePolicy.BeginsImmediateSelection(
-            GetPointerModality(e.Pointer.PointerDeviceType));
-
-    private static MarkdownPointerModality GetPointerModality(
-        Microsoft.UI.Input.PointerDeviceType deviceType)
-        => deviceType switch
-        {
-            Microsoft.UI.Input.PointerDeviceType.Mouse => MarkdownPointerModality.Mouse,
-            Microsoft.UI.Input.PointerDeviceType.Touch => MarkdownPointerModality.Touch,
-            Microsoft.UI.Input.PointerDeviceType.Pen => MarkdownPointerModality.Pen,
-            _ => MarkdownPointerModality.Unknown,
-        };
-
     private bool IsActivePointerSessionEvent(PointerInput e)
         => _pointerSession.IsActive && _pointerSession.PointerId == e.Pointer.PointerId;
 
@@ -9592,7 +9536,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         }
 
         Rect track = target.HorizontalScrollTrackBounds;
-        bool precise = IsPrecisePointer(e);
+        bool precise = PointerInputClassification.IsPrecisePointer(e);
         if (precise && !track.Contains(point.Position))
             return false;
 
@@ -9624,7 +9568,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             0,
             Math.Max(0, thumb.Width));
 
-        if (!CapturePointerForInput(_canvas, e))
+        if (!PointerInputClassification.CapturePointerForInput(_canvas, e))
         {
             ClearHorizontalOverflowPointerState();
             e.ResumeRebuildAfterInteraction = true;
@@ -9679,7 +9623,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 return false;
             }
 
-            if (_canvas is null || !CapturePointerForInput(_canvas, e))
+            if (_canvas is null || !PointerInputClassification.CapturePointerForInput(_canvas, e))
             {
                 ClearHorizontalOverflowPointerState();
                 e.ResumeRebuildAfterInteraction = true;
@@ -10267,10 +10211,10 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         {
             if (e.Handled)
                 return;
-            if (!IsPrecisePointer(e))
+            if (!PointerInputClassification.IsPrecisePointer(e))
                 return;
         }
-        MarkdownPointerModality modality = GetPointerModality(e.Pointer.PointerDeviceType);
+        MarkdownPointerModality modality = PointerInputClassification.GetPointerModality(e.Pointer.PointerDeviceType);
         if (!MarkdownPointerGesturePolicy.BeginsImmediateSelection(modality))
             return;
 
@@ -10383,7 +10327,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 // OnPointerReleased is not stale from a previous double/triple-click
                 // sequence made while IsSelectionEnabled was true.
                 _clickMode = ClickSelectionMode.Single;
-                if (!CapturePointerForInput(_canvas, e)) _pointerSession = default;
+                if (!PointerInputClassification.CapturePointerForInput(_canvas, e)) _pointerSession = default;
                 else e.Handled = true;
                 return;
             }
@@ -10410,7 +10354,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 // Selection is rendered by the XAML overlay; do not dirty canvas
                 // text during mouse-down. Repainting DirectWrite text here causes
                 // visible shake on selection starts, especially on the embeds page.
-                if (!CapturePointerForInput(_canvas, e)) { _pointerSession = default; _selectionAnchor = null; }
+                if (!PointerInputClassification.CapturePointerForInput(_canvas, e)) { _pointerSession = default; _selectionAnchor = null; }
                 else e.Handled = true;
                 return;
             }
@@ -10430,7 +10374,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                     return;
                 // Selection is rendered by the XAML overlay; do not dirty canvas
                 // text during mouse-down.
-                if (!CapturePointerForInput(_canvas, e)) { _pointerSession = default; _selectionAnchor = null; }
+                if (!PointerInputClassification.CapturePointerForInput(_canvas, e)) { _pointerSession = default; _selectionAnchor = null; }
                 else e.Handled = true;
                 return;
             }
@@ -10440,7 +10384,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 return;
             // Selection is rendered by the XAML overlay; do not dirty canvas text
             // for the empty anchor state.
-            bool captured = CapturePointerForInput(_canvas, e);
+            bool captured = PointerInputClassification.CapturePointerForInput(_canvas, e);
             if (!captured) { _pointerSession = default; _selectionAnchor = null; }
                 else e.Handled = true;
             }
@@ -10457,7 +10401,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             _selection.Clear();
             if (!IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))
                 return;
-            if (!CapturePointerForInput(_canvas, e))
+            if (!PointerInputClassification.CapturePointerForInput(_canvas, e))
                 _pointerSession = default;
             else
                 e.Handled = true;
@@ -10692,7 +10636,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             return true;
 
         if (capturedContact is not { } contact ||
-            !IsBoundedGestureContact(gesturePoint, contact))
+            !GestureHitTestBands.IsBoundedGestureContact(gesturePoint, contact))
             return false;
 
         double left = contact.X;
@@ -10827,7 +10771,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 // browser / native text editor behaviour.
                 if (_clickMode == ClickSelectionMode.Word)
                 {
-                    var icb = FindInlineContainerAt(_snapshot, pos.BlockIndex);
+                    var icb = DocumentHitTesting.FindInlineContainerAt(_snapshot, pos.BlockIndex);
                     if (icb is not null)
                     {
                         var (ws, we) = icb.GetWordBoundaries(pos);
@@ -10843,7 +10787,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 }
                 else if (_clickMode == ClickSelectionMode.Block)
                 {
-                    var icb = FindInlineContainerAt(_snapshot, pos.BlockIndex);
+                    var icb = DocumentHitTesting.FindInlineContainerAt(_snapshot, pos.BlockIndex);
                     if (icb is not null)
                     {
                         var (bs, be) = icb.GetBlockBoundaries();
@@ -10876,7 +10820,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // Touch contacts should pan the containing ScrollViewer. Treating touch
         // like a mouse press can capture the pointer, start text selection, and
         // drive the Win2D selection overlay at touch-scroll frequency.
-        if (!IsPrecisePointer(e))
+        if (!PointerInputClassification.IsPrecisePointer(e))
         {
             HideAbbreviationTooltip();
             SetCursorShape(null);
@@ -10906,7 +10850,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 // variance at tile boundaries → visible text shake.
                 bool wasLink = _lastHoveredRun is LinkRun;
                 var boxToInvalidate = _lastHoveredBox;
-                foreach (var b in _snapshot.Blocks) ClearHover(b);
+                foreach (var b in _snapshot.Blocks) DocumentHitTesting.ClearHover(b);
                 _lastHoveredRun = null;
                 _lastHoveredBox = null;
                 // No canvas invalidate: hover transitions no longer mutate
@@ -10941,7 +10885,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 : pt;
             using LayoutPlacementTransformContext.Scope placementScope =
                 e.InteractionSnapshot?.EnterPlacementTransformScopeForTopLevelBlockUnderPaint(b) ?? default;
-            if (FindInlineHover(b, physicalPoint) is var h && h.Run is not null)
+            if (DocumentHitTesting.FindInlineHover(b, physicalPoint) is var h && h.Run is not null)
             {
                 hovered = h.Run;
                 hoveredBox = h.Box;
@@ -10950,7 +10894,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             }
         }
 
-        if (IsLinkedRun(hovered) && hoveredBox is { } linkedBox)
+        if (LinkTargets.IsLinkedRun(hovered) && hoveredBox is { } linkedBox)
         {
             using LayoutPlacementTransformContext.Scope placementScope =
                 e.InteractionSnapshot?.EnterPlacementTransformScopeForBlockIndexUnderPaint(linkedBox.BlockIndex) ?? default;
@@ -10961,8 +10905,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             }
         }
 
-        var hoveredLinkedRun = IsLinkedRun(hovered) ? hovered : null;
-        var lastLinkedRun = IsLinkedRun(_lastHoveredRun) ? _lastHoveredRun : null;
+        var hoveredLinkedRun = LinkTargets.IsLinkedRun(hovered) ? hovered : null;
+        var lastLinkedRun = LinkTargets.IsLinkedRun(_lastHoveredRun) ? _lastHoveredRun : null;
         bool linkChanged = !ReferenceEquals(hoveredLinkedRun, lastLinkedRun);
         bool overVectorScene = TryGetVectorPointerState(
             pt,
@@ -10983,7 +10927,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             // standing text-shake bug: even with grayscale AA + device-pixel
             // origin snapping, repainting a partial canvas region forced
             // DirectWrite to re-tile glyphs at sub-pixel-different positions.
-            foreach (var b in _snapshot.Blocks) ClearHover(b);
+            foreach (var b in _snapshot.Blocks) DocumentHitTesting.ClearHover(b);
             if (hoveredBox is not null && hoveredLinkedRun is LinkRun hoveredLink)
                 hoveredBox.HoveredRun = hoveredLink;
             InvalidateInteractiveTextAdorner();
@@ -11815,65 +11759,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         catch { /* ProtectedCursor isn't always settable */ }
     }
 
-    private static (Layout.Boxes.InlineContainerBox? Box, InlineRun? Run) FindInlineHover(Layout.BlockBox box, Point pt)
-    {
-        switch (box)
-        {
-            case Layout.Boxes.InlineContainerBox icb:
-                var r = icb.RunAt(pt);
-                return r is not null ? (icb, r) : (null, null);
-            case Layout.Boxes.CodeBlockBox codeBlock:
-                foreach (var chunk in codeBlock.Chunks)
-                {
-                    var c = FindInlineHover(chunk, pt);
-                    if (c.Run is not null) return c;
-                }
-                return (null, null);
-            case Layout.Boxes.ListItemBox lib:
-                var m = FindInlineHover(lib.Marker, pt);
-                if (m.Run is not null) return m;
-                return FindInlineHover(lib.Content, pt);
-            case Layout.Boxes.TableBox tb:
-                foreach (var cell in tb.GetCellBoxes())
-                {
-                    var c = FindInlineHover(cell, pt);
-                    if (c.Run is not null) return c;
-                }
-                return (null, null);
-            case Layout.Boxes.StackBox sb:
-                foreach (var ch in sb.Children)
-                {
-                    var c = FindInlineHover(ch, pt);
-                    if (c.Run is not null) return c;
-                }
-                return (null, null);
-        }
-        return (null, null);
-    }
-
-    private static void ClearHover(Layout.BlockBox box)
-    {
-        switch (box)
-        {
-            case Layout.Boxes.InlineContainerBox icb:
-                icb.HoveredRun = null;
-                break;
-            case Layout.Boxes.CodeBlockBox codeBlock:
-                foreach (var chunk in codeBlock.Chunks) ClearHover(chunk);
-                break;
-            case Layout.Boxes.ListItemBox lib:
-                ClearHover(lib.Marker);
-                ClearHover(lib.Content);
-                break;
-            case Layout.Boxes.TableBox tb:
-                foreach (var cell in tb.GetCellBoxes()) ClearHover(cell);
-                break;
-            case Layout.Boxes.StackBox sb:
-                foreach (var c in sb.Children) ClearHover(c);
-                break;
-        }
-    }
-
     /// <summary>
     /// True when the given point in canvas coordinates is inside the
     /// rectangle of any realised inline or block embed.
@@ -12595,7 +12480,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _pendingTouchSelectionPresentationRestore = null;
 
         var point = e.Point;
-        MarkdownPointerModality modality = GetPointerModality(e.Pointer.PointerDeviceType);
+        MarkdownPointerModality modality = PointerInputClassification.GetPointerModality(e.Pointer.PointerDeviceType);
         bool primary = modality == MarkdownPointerModality.Touch
             ? point.IsInContact
             : MarkdownPointerGesturePolicy.IsPrimarySelectionPress(
@@ -12641,7 +12526,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             _touchSelection.Cancel(e.Pointer.PointerId);
             return;
         }
-        if (!CapturePointerForInput(handle, e))
+        if (!PointerInputClassification.CapturePointerForInput(handle, e))
         {
             if (e.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Touch)
                 _touchTapSuppression.CancelContact(e.Pointer.PointerId);
@@ -12781,7 +12666,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 pointerId,
                 target is not null,
                 captures is not null,
-                ContainsPointerCapture(captures, pointerId),
+                PointerInputClassification.ContainsPointerCapture(captures, pointerId),
                 _deferredPointerCaptures.ContainsKey(pointerId) || HasQueuedPointerInput(pointerId)))
         {
             return false;
@@ -13395,7 +13280,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             // _selectionAnchor already nulled by OnPointerCanceledOrCaptureLost).
             bool wasLink = _lastHoveredRun is LinkRun;
             var boxToInvalidate = _lastHoveredBox;
-            foreach (var b in _snapshot.Blocks) ClearHover(b);
+            foreach (var b in _snapshot.Blocks) DocumentHitTesting.ClearHover(b);
             _lastHoveredRun = null;
             _lastHoveredBox = null;
             // No canvas invalidate: hover transitions no longer mutate the
@@ -13464,7 +13349,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (TryCreateLinkActivationIntent(
             snapshot,
             pt,
-            GetLinkInputKind(e.Pointer.PointerDeviceType),
+            LinkTargets.GetLinkInputKind(e.Pointer.PointerDeviceType),
             e.LinkModifiers,
             out LinkActivationIntent intent))
         {
@@ -13594,7 +13479,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             modifiers,
             link.External
                 ? MarkdownLinkDisposition.External
-                : GetRequestedDisposition(modifiers),
+                : LinkTargets.GetRequestedDisposition(modifiers),
             link.Action));
         return true;
     }
@@ -14022,12 +13907,12 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         foreach (var plan in _embedPlans)
         {
             if (plan.Realized is { } realized)
-                SuppressHostedTabStops(realized, suppressed, seen);
+                HostedFocusNavigation.SuppressHostedTabStops(realized, suppressed, seen);
         }
         foreach (var plan in _codeBlockActionPlans)
         {
             if (plan.Realized is { } realized)
-                SuppressHostedTabStops(realized, suppressed, seen);
+                HostedFocusNavigation.SuppressHostedTabStops(realized, suppressed, seen);
         }
 
         if (suppressed.Count == 0)
@@ -14038,24 +13923,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             foreach (var (control, isTabStop) in suppressed)
                 control.IsTabStop = isTabStop;
         });
-    }
-
-    private static void SuppressHostedTabStops(
-        DependencyObject root,
-        List<(Control Control, bool IsTabStop)> suppressed,
-        HashSet<Control> seen)
-    {
-        if (root is Control control && seen.Add(control))
-        {
-            suppressed.Add((control, control.IsTabStop));
-            control.IsTabStop = false;
-        }
-
-        int childCount = VisualTreeHelper.GetChildrenCount(root);
-        for (int i = 0; i < childCount; i++)
-        {
-            SuppressHostedTabStops(VisualTreeHelper.GetChild(root, i), suppressed, seen);
-        }
     }
 
     private bool MoveFocusSpatial(VirtualKey key)
@@ -14150,7 +14017,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             (_pendingSpatialFocusGeneration != generation ||
              !_hasPendingSpatialFocusOrigin ||
              GetCurrentFocusableIdentity() is not { } current ||
-             !SameFocusableIdentity(current, _pendingSpatialFocusOrigin)))
+             !FocusableItemQueries.SameFocusableIdentity(current, _pendingSpatialFocusOrigin)))
         {
             ClearPendingSpatialFocusKeys();
         }
@@ -14197,7 +14064,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 if (_pendingSpatialFocusGeneration != Volatile.Read(ref _snapshotGeneration) ||
                     !_hasPendingSpatialFocusOrigin ||
                     GetCurrentFocusableIdentity() is not { } current ||
-                    !SameFocusableIdentity(current, _pendingSpatialFocusOrigin))
+                    !FocusableItemQueries.SameFocusableIdentity(current, _pendingSpatialFocusOrigin))
                 {
                     ClearPendingSpatialFocusKeys();
                 }
@@ -14248,7 +14115,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                     {
                         Point point = _pendingFocusResumePoint;
                         _hasPendingFocusResumePoint = false;
-                        _focusResumeItemIndex = FindNearestFocusableItem(map, point);
+                        _focusResumeItemIndex = FocusableItemQueries.FindNearestFocusableItem(map, point);
                     }
                     else if (status == FocusGeometryReadStatus.Stale &&
                              generation != Volatile.Read(ref _snapshotGeneration))
@@ -14298,11 +14165,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         return TryMoveFocusSpatial(key);
     }
 
-    private static bool SameFocusableIdentity(Layout.FocusableItem left, Layout.FocusableItem right) =>
-        left.BlockIndex == right.BlockIndex &&
-        left.InlineIndex == right.InlineIndex &&
-        left.Kind == right.Kind;
-
     private void ClearPendingSpatialFocusKeys()
     {
         ++_pendingSpatialFocusQueueEpoch;
@@ -14339,19 +14201,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             _focusResumeItemIndex = -1;
             RequestRebuild(RebuildReason.Full);
         }
-    }
-
-    private static int FindNearestFocusableItem(
-        IReadOnlyList<(int Index, Rect Rect)> map,
-        Point point)
-    {
-        if (map.Count == 0)
-            return -1;
-        var rects = new List<Rect>(map.Count);
-        foreach (var entry in map)
-            rects.Add(entry.Rect);
-        int nearest = FocusNavigationHelper.FindNearestIndex(rects, point);
-        return nearest >= 0 ? map[nearest].Index : -1;
     }
 
     private bool CommitFocusedItem(bool reverse)
@@ -14461,7 +14310,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             return false;
         }
 
-        int index = FindFocusableItemIndex(_focusableItems, pending.Item);
+        int index = FocusableItemQueries.FindFocusableItemIndex(_focusableItems, pending.Item);
         if (index < 0)
         {
             _pendingLazyFocus = null;
@@ -14481,27 +14330,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                _focusedItemIndex < items.Count
             ? items[_focusedItemIndex]
             : null;
-    }
-
-    private static int FindFocusableItemIndex(
-        System.Collections.Generic.IReadOnlyList<Layout.FocusableItem>? items,
-        Layout.FocusableItem target)
-    {
-        if (items is null)
-            return -1;
-
-        for (int index = 0; index < items.Count; index++)
-        {
-            Layout.FocusableItem candidate = items[index];
-            if (candidate.BlockIndex == target.BlockIndex &&
-                candidate.InlineIndex == target.InlineIndex &&
-                candidate.Kind == target.Kind)
-            {
-                return index;
-            }
-        }
-
-        return -1;
     }
 
     private void ScrollLazyFocusTargetIntoView(LazyLayoutBand band, bool reverse)
@@ -14548,7 +14376,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             return false;
 
         var item = items[_focusedItemIndex];
-        MarkdownInputModifiers modifiers = GetCurrentInputModifiers();
+        MarkdownInputModifiers modifiers = InputModifierState.GetCurrentInputModifiers();
         if (item.IsVectorSemantic &&
             TryGetVectorSemanticForFocusable(item, out var vectorBox, out int semanticIndex) &&
             vectorBox.TryGetLink(semanticIndex, out var vectorLink) &&
@@ -14777,7 +14605,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (item is not { } expected ||
             rect is not { Width: > 0, Height: > 0 } r ||
             GetCurrentFocusableIdentity() is not { } current ||
-            !SameFocusableIdentity(current, expected))
+            !FocusableItemQueries.SameFocusableIdentity(current, expected))
         {
             if (_focusRing is not null)
                 _focusRing.Visibility = Visibility.Collapsed;
@@ -14883,7 +14711,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         }
 
         _hasPendingFocusResumePoint = false;
-        _focusResumeItemIndex = FindNearestFocusableItem(map, documentPoint);
+        _focusResumeItemIndex = FocusableItemQueries.FindNearestFocusableItem(map, documentPoint);
     }
 
     private FocusGeometryReadStatus TryCaptureFocusableItemRect(
@@ -14981,7 +14809,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                     physicalRect = icb.GetRunRect(item.InlineIndex);
                     break;
                 }
-                if (GetFocusableItemRectFromBlock(block, item) is { } nested)
+                if (FocusableItemQueries.GetFocusableItemRectFromBlock(block, item) is { } nested)
                 {
                     physicalRect = nested;
                     break;
@@ -14992,70 +14820,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         return physicalRect is { } rect
             ? snapshot.ToLogicalRectForBlockIndexUnderPaint(item.BlockIndex, rect)
             : null;
-    }
-
-    private static Rect? GetFocusableItemRectFromBlock(BlockBox box, Layout.FocusableItem item)
-    {
-        if (item.IsHorizontalOverflow &&
-            box.BlockIndex == item.BlockIndex &&
-            box is IHorizontalOverflowBox overflow)
-        {
-            return overflow.HorizontalViewportBounds;
-        }
-
-        if (box is Layout.Boxes.DeclarativeHostedElementBox hosted &&
-            item.IsDeclarativeHostedElement &&
-            hosted.BlockIndex == item.BlockIndex)
-        {
-            return new Rect(
-                hosted.Bounds.X + hosted.Margin.Left,
-                hosted.Bounds.Y + hosted.Margin.Top,
-                Math.Max(0, hosted.Bounds.Width - hosted.Margin.Left - hosted.Margin.Right),
-                Math.Max(0, hosted.Bounds.Height - hosted.Margin.Top - hosted.Margin.Bottom));
-        }
-        if (box is Layout.Boxes.EmbedBox eb && eb.BlockIndex == item.BlockIndex)
-        {
-            return new Rect(
-                eb.Bounds.X + eb.Margin.Left,
-                eb.Bounds.Y + eb.Margin.Top,
-                eb.Bounds.Width - eb.Margin.Left - eb.Margin.Right,
-                eb.Bounds.Height - eb.Margin.Top - eb.Margin.Bottom);
-        }
-        if (box is Layout.Boxes.CodeBlockBox codeBlock && codeBlock.BlockIndex == item.BlockIndex)
-        {
-            if (item.IsCodeBlockCopy)
-                return codeBlock.CopyButtonBounds;
-        }
-        if (box is Layout.Boxes.VectorSceneBox vector &&
-            item.IsVectorSemantic &&
-            vector.BlockIndex == item.BlockIndex)
-        {
-            return vector.GetSemanticBounds(item.InlineIndex);
-        }
-        if (box is Layout.Boxes.InlineContainerBox icb && icb.BlockIndex == item.BlockIndex)
-            return icb.GetRunRect(item.InlineIndex);
-        if (box is Layout.Boxes.ListItemBox lib)
-        {
-            return GetFocusableItemRectFromBlock(lib.Marker, item)
-                ?? GetFocusableItemRectFromBlock(lib.Content, item);
-        }
-        if (box is Layout.Boxes.StackBox sb)
-        {
-            foreach (var c in sb.Children)
-            {
-                var r = GetFocusableItemRectFromBlock(c, item);
-                if (r is not null) return r;
-            }
-        }
-        if (box is Layout.Boxes.TableBox tb)
-        {
-            foreach (var cell in tb.GetCellBoxes())
-            {
-                var r = GetFocusableItemRectFromBlock(cell, item);
-                if (r is not null) return r;
-            }
-        }
-        return null;
     }
 
     /// <summary>Scrolls the focused item into view if it's outside the current viewport.</summary>
@@ -15108,7 +14872,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         {
             if (IsCurrentScrollTarget(snapshot, generation, revision) &&
                 focusedIndex < items.Count &&
-                SameFocusableIdentity(items[focusedIndex], item))
+                FocusableItemQueries.SameFocusableIdentity(items[focusedIndex], item))
             {
                 capturedRect = GetFocusableItemRectFromSnapshotNoLock(snapshot, item);
                 captured = true;
@@ -15211,7 +14975,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             return;
         }
         if (GetCurrentFocusableIdentity() is not { } current ||
-            !SameFocusableIdentity(current, item))
+            !FocusableItemQueries.SameFocusableIdentity(current, item))
             return;
         if (!IsFocusRevealCurrent())
             return;
@@ -15296,35 +15060,20 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         tuple.LayoutRevision == tuple.Snapshot.LayoutRevision &&
         tuple.PlanEpoch == Volatile.Read(ref _hostedFocusPlanEpoch) &&
         ReferenceEquals(tuple.Items, _focusableItems) &&
-        IsFocusedIdentity(tuple.Items, _focusedItemIndex, item);
-
-    private static bool SamePendingLazyFocus(
-        in PendingLazyFocus left,
-        in PendingLazyFocus right) =>
-        ReferenceEquals(left.Snapshot, right.Snapshot) &&
-        left.SnapshotGeneration == right.SnapshotGeneration &&
-        left.Reverse == right.Reverse &&
-        SameFocusableIdentity(left.Item, right.Item);
+        FocusableItemQueries.IsFocusedIdentity(tuple.Items, _focusedItemIndex, item);
 
     private bool IsCurrentPendingLazyFocus(in PendingLazyFocus pending) =>
         !_isDisposed && !_isUnloaded &&
         ReferenceEquals(pending.Snapshot, _snapshot) &&
         pending.SnapshotGeneration == Volatile.Read(ref _snapshotGeneration) &&
         _pendingLazyFocus is { } current &&
-        SamePendingLazyFocus(current, pending);
+        FocusableItemQueries.SamePendingLazyFocus(current, pending);
 
     private bool IsCurrentHostedFocusOperation(
         in HostedFocusTuple tuple,
         Layout.FocusableItem item) =>
         IsCurrentHostedFocusTuple(tuple) &&
-        IsFocusedIdentity(tuple.Items, _focusedItemIndex, item);
-
-    private static bool IsFocusedIdentity(
-        System.Collections.Generic.IReadOnlyList<Layout.FocusableItem> items,
-        int focusedIndex,
-        Layout.FocusableItem item) =>
-        (uint)focusedIndex < (uint)items.Count &&
-        SameFocusableIdentity(items[focusedIndex], item);
+        FocusableItemQueries.IsFocusedIdentity(tuple.Items, _focusedItemIndex, item);
 
     private HostedFocusResult DeferHostedFocus(
         in HostedFocusTuple tuple,
@@ -15373,7 +15122,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (element is null)
             return HostedFocusResult.NotRealized;
 
-        if (TryFocusHostedDescendant(element, reverse))
+        if (HostedFocusNavigation.TryFocusHostedDescendant(element, reverse))
             return IsCurrentHostedFocusOperation(tuple, item)
                 ? HostedFocusResult.Focused
                 : HostedFocusResult.Stale;
@@ -15392,7 +15141,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         foreach (EmbedPlan plan in _embedPlans)
         {
             if (plan.FocusIdentity is { } identity &&
-                SameFocusableIdentity(identity, item) &&
+                FocusableItemQueries.SameFocusableIdentity(identity, item) &&
                 plan.Realized is { } element)
             {
                 return element;
@@ -15402,7 +15151,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         foreach (CodeBlockActionPlan plan in _codeBlockActionPlans)
         {
             if (plan.FocusIdentity is { } identity &&
-                SameFocusableIdentity(identity, item) &&
+                FocusableItemQueries.SameFocusableIdentity(identity, item) &&
                 plan.Realized is { } element)
             {
                 return element;
@@ -15426,7 +15175,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         }
 
         var focusedItem = items[_focusedItemIndex];
-        if (SameFocusableIdentity(focusedItem, planIdentity))
+        if (FocusableItemQueries.SameFocusableIdentity(focusedItem, planIdentity))
             _ = TryFocusHostedElement(focusedItem, reverse: false);
     }
 
@@ -15454,120 +15203,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _ = Focus(FocusState.Keyboard);
         UpdateFocusRing();
     }
-
-    private static bool TryMoveFocusWithinHostedEmbed(FrameworkElement host, object originalSource, bool reverse)
-    {
-        var focusables = CollectHostedFocusableControls(host);
-        if (focusables.Count <= 1)
-            return false;
-
-        var current = FindCurrentHostedFocusable(host, originalSource, focusables);
-        if (current is null)
-            return false;
-
-        int index = focusables.IndexOf(current);
-        if (index < 0)
-            return false;
-
-        int next = reverse ? index - 1 : index + 1;
-        if (next < 0 || next >= focusables.Count)
-            return false;
-
-        return focusables[next].Focus(FocusState.Keyboard);
-    }
-
-    private static bool TryFocusHostedDescendant(FrameworkElement host, bool reverse)
-    {
-        var focusables = CollectHostedFocusableControls(host);
-        if (focusables.Count == 0)
-            return false;
-
-        var target = reverse ? focusables[^1] : focusables[0];
-        return target.Focus(FocusState.Keyboard);
-    }
-
-    private static Control? FindCurrentHostedFocusable(
-        FrameworkElement host,
-        object originalSource,
-        HostedFocusableControlBuffer focusables)
-    {
-        DependencyObject? focused = null;
-        try
-        {
-            if (host.XamlRoot is not null)
-                focused = FocusManager.GetFocusedElement(host.XamlRoot) as DependencyObject;
-        }
-        catch
-        {
-        }
-
-        var current = FindFocusableAncestorWithin(host, focused);
-        if (current is not null && ContainsHostedFocusable(focusables, current))
-            return current;
-
-        current = FindFocusableAncestorWithin(host, originalSource as DependencyObject);
-        return current is not null && ContainsHostedFocusable(focusables, current) ? current : null;
-    }
-
-    private static bool ContainsHostedFocusable(HostedFocusableControlBuffer focusables, Control control)
-    {
-        for (int i = 0; i < focusables.Count; i++)
-        {
-            if (ReferenceEquals(focusables[i], control))
-                return true;
-        }
-
-        return false;
-    }
-
-    private static Control? FindFocusableAncestorWithin(FrameworkElement host, DependencyObject? node)
-    {
-        while (node is not null)
-        {
-            if (ReferenceEquals(node, host))
-                return node is Control hostControl && IsHostedFocusableControl(hostControl) ? hostControl : null;
-
-            if (node is Control control && IsHostedFocusableControl(control))
-                return control;
-
-            DependencyObject? parent = null;
-            try { parent = VisualTreeHelper.GetParent(node); }
-            catch { }
-            node = parent;
-        }
-
-        return null;
-    }
-
-    private static HostedFocusableControlBuffer CollectHostedFocusableControls(DependencyObject root)
-    {
-        var result = new HostedFocusableControlBuffer();
-        CollectHostedFocusableControls(root, result);
-        return result;
-    }
-
-    private static void CollectHostedFocusableControls(DependencyObject node, HostedFocusableControlBuffer result)
-    {
-        if (node is Control control && IsHostedFocusableControl(control))
-            result.Add(control);
-
-        int childCount;
-        try { childCount = VisualTreeHelper.GetChildrenCount(node); }
-        catch { return; }
-
-        for (int i = 0; i < childCount; i++)
-        {
-            DependencyObject child;
-            try { child = VisualTreeHelper.GetChild(node, i); }
-            catch { continue; }
-            CollectHostedFocusableControls(child, result);
-        }
-    }
-
-    private static bool IsHostedFocusableControl(Control control) =>
-        control.Visibility == Visibility.Visible &&
-        control.IsEnabled &&
-        control.IsTabStop;
 
     private bool TrySetFocusedItemForHostedElement(FrameworkElement element)
     {
@@ -15602,7 +15237,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             return false;
         }
 
-        int focusedIndex = FindFocusableItemIndex(tuple.Items, focusedIdentity);
+        int focusedIndex = FocusableItemQueries.FindFocusableItemIndex(tuple.Items, focusedIdentity);
         if (focusedIndex < 0 || !IsCurrentHostedFocusTuple(tuple))
             return false;
 
@@ -15619,46 +15254,9 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         {
             foreach (BlockBox block in _snapshot.Blocks)
             {
-                if (TryGetVectorPointerStateInBlock(block, point, out linked, out selectable))
+                if (DocumentHitTesting.TryGetVectorPointerStateInBlock(block, point, out linked, out selectable))
                     return true;
             }
-        }
-
-        linked = false;
-        selectable = false;
-        return false;
-    }
-
-    private static bool TryGetVectorPointerStateInBlock(
-        BlockBox box,
-        Point point,
-        out bool linked,
-        out bool selectable)
-    {
-        switch (box)
-        {
-            case Layout.Boxes.VectorSceneBox vector when vector.ContainsSceneViewport(point):
-                linked = vector.TryGetLinkAt(point, out _);
-                selectable = vector.IsSelectableAt(point);
-                return true;
-            case Layout.Boxes.ListItemBox listItem:
-                if (TryGetVectorPointerStateInBlock(listItem.Marker, point, out linked, out selectable))
-                    return true;
-                return TryGetVectorPointerStateInBlock(listItem.Content, point, out linked, out selectable);
-            case Layout.Boxes.TableBox table:
-                foreach (Layout.Boxes.InlineContainerBox cell in table.GetCellBoxes())
-                {
-                    if (TryGetVectorPointerStateInBlock(cell, point, out linked, out selectable))
-                        return true;
-                }
-                break;
-            case Layout.Boxes.StackBox stack:
-                foreach (BlockBox child in stack.Children)
-                {
-                    if (TryGetVectorPointerStateInBlock(child, point, out linked, out selectable))
-                        return true;
-                }
-                break;
         }
 
         linked = false;
@@ -15677,7 +15275,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     {
         foreach (BlockBox block in snapshot.Blocks)
         {
-            if (TryGetVectorLinkAtPointInBlock(block, point, out var vector, out var link))
+            if (LinkTargets.TryGetVectorLinkAtPointInBlock(block, point, out var vector, out var link))
             {
                 MarkdownVectorSemanticItem? semantic = vector.GetSemanticItem(link.SemanticIndex);
                 return new LinkTarget(
@@ -15691,43 +15289,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         }
 
         return null;
-    }
-
-    private static bool TryGetVectorLinkAtPointInBlock(
-        BlockBox box,
-        Point point,
-        out Layout.Boxes.VectorSceneBox vector,
-        out MarkdownVectorLinkAction link)
-    {
-        switch (box)
-        {
-            case Layout.Boxes.VectorSceneBox candidate
-                when candidate.TryGetLinkAt(point, out var candidateLink) && candidateLink is not null:
-                vector = candidate;
-                link = candidateLink;
-                return true;
-            case Layout.Boxes.ListItemBox listItem:
-                return TryGetVectorLinkAtPointInBlock(listItem.Marker, point, out vector, out link) ||
-                       TryGetVectorLinkAtPointInBlock(listItem.Content, point, out vector, out link);
-            case Layout.Boxes.TableBox table:
-                foreach (Layout.Boxes.InlineContainerBox cell in table.GetCellBoxes())
-                {
-                    if (TryGetVectorLinkAtPointInBlock(cell, point, out vector, out link))
-                        return true;
-                }
-                break;
-            case Layout.Boxes.StackBox stack:
-                foreach (BlockBox child in stack.Children)
-                {
-                    if (TryGetVectorLinkAtPointInBlock(child, point, out vector, out link))
-                        return true;
-                }
-                break;
-        }
-
-        vector = null!;
-        link = null!;
-        return false;
     }
 
     private LinkTarget? FindLinkTargetAt(DocumentPosition pos, Point? point = null)
@@ -15744,7 +15305,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     {
         foreach (var b in snapshot.Blocks)
         {
-            if (FindLinkTargetInBlock(b, pos, point) is { } found) return found;
+            if (LinkTargets.FindLinkTargetInBlock(b, pos, point) is { } found) return found;
         }
         return null;
     }
@@ -15771,7 +15332,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             _focusedItemIndex < 0 || _focusedItemIndex >= items.Count)
             return false;
 
-        return TryGetLinkedAtomicForFocusable(snapshot, items[_focusedItemIndex], out inline, out run);
+        return FocusableItemQueries.TryGetLinkedAtomicForFocusable(snapshot, items[_focusedItemIndex], out inline, out run);
     }
 
     private bool TryGetFocusedVectorSemantic(
@@ -15822,7 +15383,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         for (int itemIndex = 0; itemIndex < items.Count; itemIndex++)
         {
             if (!items[itemIndex].IsLink ||
-                !TryGetLinkedAtomicForFocusable(_snapshot, items[itemIndex], out _, out InlineRun candidate))
+                !FocusableItemQueries.TryGetLinkedAtomicForFocusable(_snapshot, items[itemIndex], out _, out InlineRun candidate))
             {
                 continue;
             }
@@ -15836,7 +15397,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             if (run is LinkRun requestedLink &&
                 candidate is LinkRun candidateLink &&
                 equivalentLinkIndex < 0 &&
-                AreEquivalentLinks(candidateLink, requestedLink))
+                LinkTargets.AreEquivalentLinks(candidateLink, requestedLink))
             {
                 equivalentLinkIndex = itemIndex;
             }
@@ -15884,34 +15445,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             return false;
         }
 
-        return TryFindHorizontalOverflowFocusableIndex(snapshot, items, overflow, out index);
-    }
-
-    internal static bool TryFindHorizontalOverflowFocusableIndex(
-        LayoutSnapshot snapshot,
-        IReadOnlyList<Layout.FocusableItem> items,
-        IHorizontalOverflowBox overflow,
-        out int index)
-    {
-        ArgumentNullException.ThrowIfNull(snapshot);
-        ArgumentNullException.ThrowIfNull(items);
-        ArgumentNullException.ThrowIfNull(overflow);
-        index = -1;
-
-        for (int i = 0; i < items.Count; i++)
-        {
-            if (items[i].IsHorizontalOverflow &&
-                snapshot.TryGetHorizontalOverflowForBlockIndex(
-                    items[i].BlockIndex,
-                    out IHorizontalOverflowBox? candidate) &&
-                ReferenceEquals(candidate, overflow))
-            {
-                index = i;
-                return true;
-            }
-        }
-
-        return false;
+        return FocusableItemQueries.TryFindHorizontalOverflowFocusableIndex(snapshot, items, overflow, out index);
     }
 
     private bool TryGetVectorSemanticForFocusable(
@@ -15972,79 +15506,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         }
     }
 
-    private static bool AreEquivalentLinks(LinkRun left, LinkRun right) =>
-        ReferenceEquals(left, right) ||
-        (left.IsDisclosure && right.IsDisclosure &&
-         string.Equals(left.DisclosureId, right.DisclosureId, StringComparison.Ordinal)) ||
-        (string.Equals(left.Text, right.Text, StringComparison.Ordinal) &&
-         string.Equals(left.Url, right.Url, StringComparison.Ordinal) &&
-         string.Equals(left.Title, right.Title, StringComparison.Ordinal));
-
-    internal static bool TryGetLinkedAtomicForFocusable(
-        LayoutSnapshot snapshot,
-        Layout.FocusableItem item,
-        out Layout.Boxes.InlineContainerBox inline,
-        out InlineRun run)
-    {
-        ArgumentNullException.ThrowIfNull(snapshot);
-        inline = null!;
-        run = null!;
-        if (!item.IsLink)
-            return false;
-
-        foreach (BlockBox block in snapshot.Blocks)
-        {
-            if (TryGetLinkedAtomicForFocusable(block, item, out inline, out run))
-                return true;
-        }
-
-        return false;
-    }
-
-    private static bool TryGetLinkedAtomicForFocusable(
-        BlockBox box,
-        Layout.FocusableItem item,
-        out Layout.Boxes.InlineContainerBox inline,
-        out InlineRun run)
-    {
-        inline = null!;
-        run = null!;
-
-        switch (box)
-        {
-            case Layout.Boxes.InlineContainerBox icb when icb.BlockIndex == item.BlockIndex:
-                foreach (InlineRun candidate in icb.Runs)
-                {
-                    if (candidate.InlineIndex == item.InlineIndex && IsLinkedRun(candidate))
-                    {
-                        inline = icb;
-                        run = candidate;
-                        return true;
-                    }
-                }
-                return false;
-            case Layout.Boxes.ListItemBox lib:
-                return TryGetLinkedAtomicForFocusable(lib.Marker, item, out inline, out run)
-                       || TryGetLinkedAtomicForFocusable(lib.Content, item, out inline, out run);
-            case Layout.Boxes.TableBox tb:
-                foreach (var cell in tb.GetCellBoxes())
-                {
-                    if (TryGetLinkedAtomicForFocusable(cell, item, out inline, out run))
-                        return true;
-                }
-                return false;
-            case Layout.Boxes.StackBox sb:
-                foreach (var c in sb.Children)
-                {
-                    if (TryGetLinkedAtomicForFocusable(c, item, out inline, out run))
-                        return true;
-                }
-                return false;
-            default:
-                return false;
-        }
-    }
-
     // ---- Word / line selection helpers ----
 
     /// <summary>
@@ -16058,7 +15519,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         long snapshotGeneration,
         long layoutRevision)
     {
-        var icb = FindInlineContainerAt(snapshot, pos.BlockIndex);
+        var icb = DocumentHitTesting.FindInlineContainerAt(snapshot, pos.BlockIndex);
         if (icb is null)
         {
             // Block has no inline container (code block, embed row, etc.).
@@ -16091,7 +15552,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         long snapshotGeneration,
         long layoutRevision)
     {
-        var icb = FindInlineContainerAt(snapshot, pos.BlockIndex);
+        var icb = DocumentHitTesting.FindInlineContainerAt(snapshot, pos.BlockIndex);
         if (icb is null)
         {
             // Block has no inline container (code block, embed row, etc.).
@@ -16113,47 +15574,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         return (start, end);
     }
 
-    private static Layout.Boxes.InlineContainerBox? FindInlineContainerAt(LayoutSnapshot snapshot, int blockIndex)
-    {
-        foreach (var b in snapshot.Blocks)
-        {
-            var found = FindIcbInBlock(b, blockIndex);
-            if (found is not null) return found;
-        }
-        return null;
-    }
-
-    private static Layout.Boxes.InlineContainerBox? FindIcbInBlock(BlockBox box, int blockIndex)
-    {
-        if (box is Layout.Boxes.InlineContainerBox icb && icb.BlockIndex == blockIndex) return icb;
-        if (box is Layout.Boxes.CodeBlockBox codeBlock)
-        {
-            foreach (var chunk in codeBlock.Chunks)
-            {
-                if (chunk.BlockIndex == blockIndex) return chunk;
-            }
-        }
-        if (box is Layout.Boxes.ListItemBox lib)
-            return FindIcbInBlock(lib.Marker, blockIndex) ?? FindIcbInBlock(lib.Content, blockIndex);
-        if (box is Layout.Boxes.StackBox sb)
-        {
-            foreach (var c in sb.Children)
-            {
-                var found = FindIcbInBlock(c, blockIndex);
-                if (found is not null) return found;
-            }
-        }
-        if (box is Layout.Boxes.TableBox tb)
-        {
-            foreach (var cell in tb.GetCellBoxes())
-            {
-                var found = FindIcbInBlock(cell, blockIndex);
-                if (found is not null) return found;
-            }
-        }
-        return null;
-    }
-
     // ---- Right-click context menu ----
 
     private void OnRightTapped(object sender, RightTappedRoutedEventArgs e)
@@ -16167,7 +15587,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // Handles live in the overlay, a sibling of the canvas, so their
         // right-taps never reach OnRightTapped.
         if (_canvas is null ||
-            !MarkdownPointerGesturePolicy.ForwardsSelectionHandleRightTap(GetPointerModality(e.PointerDeviceType)))
+            !MarkdownPointerGesturePolicy.ForwardsSelectionHandleRightTap(PointerInputClassification.GetPointerModality(e.PointerDeviceType)))
         {
             return;
         }
@@ -16301,7 +15721,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                     expectedLayoutRevision) ||
                 !ReferenceEquals(canvas, _canvas))
             {
-                DisposeContextMenuTarget(target);
+                ContextMenuTargets.DisposeContextMenuTarget(target);
                 OnSelectionContextMenuClosed(menu, touchSelection);
                 return false;
             }
@@ -16337,7 +15757,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                     expectedLayoutRevision) ||
                 !ReferenceEquals(canvas, _canvas))
             {
-                DisposeContextMenuTarget(target);
+                ContextMenuTargets.DisposeContextMenuTarget(target);
                 OnSelectionContextMenuClosed(menu, touchSelection);
                 return false;
             }
@@ -16352,7 +15772,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 !ReferenceEquals(_selectionContextMenu, menu) ||
                 !_contextMenuOpen)
             {
-                DisposeContextMenuTarget(target);
+                ContextMenuTargets.DisposeContextMenuTarget(target);
                 OnSelectionContextMenuClosed(menu, touchSelection);
                 return false;
             }
@@ -16362,7 +15782,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         }
         catch (Exception ex)
         {
-            DisposeContextMenuTarget(target);
+            ContextMenuTargets.DisposeContextMenuTarget(target);
             OnSelectionContextMenuClosed(menu, touchSelection);
             try { menu.Hide(); } catch { }
             MarkdownDiagnostics.WriteLine(
@@ -16418,21 +15838,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 var command = (ValueTuple<MarkdownTargetCommand, ContextMenuTarget>)item.Tag;
                 item.Click -= OnTargetContextMenuItemClick;
                 item.Tag = null;
-                DisposeContextMenuTarget(command.Item2);
+                ContextMenuTargets.DisposeContextMenuTarget(command.Item2);
             }
-        }
-    }
-
-    private static void DisposeContextMenuTarget(ContextMenuTarget target)
-    {
-        try
-        {
-            target.Dispose();
-        }
-        catch (Exception exception)
-        {
-            MarkdownDiagnostics.WriteLine(
-                $"[MarkdownRendererControl] context-menu target cleanup failed: {exception.Message}");
         }
     }
 
@@ -16612,145 +16019,25 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
         return action.Kind switch
         {
-            MarkdownCommandKind.CopyLink => CopyTextTargetToClipboard(action.Target),
+            MarkdownCommandKind.CopyLink => SelectionClipboard.CopyTextTargetToClipboard(action.Target),
             MarkdownCommandKind.CopyImage when target.ImageUrl is not null ||
                                                target.ImageBitmapLease is not null =>
-                await CopyImageTargetToClipboardAsync(
+                await SelectionClipboard.CopyImageTargetToClipboardAsync(
                     target.ImageUrl,
                     target.ImageBitmapLease?.Bitmap).ConfigureAwait(true),
             MarkdownCommandKind.CopyCode when target.CodeText is not null =>
                 CopyCodeTargetToClipboard(target.CodeText),
             MarkdownCommandKind.CopyTable when target.TableSnapshot is { } tableSnapshot =>
-                await CopyTableTargetToClipboardAsync(tableSnapshot).ConfigureAwait(true),
+                await SelectionClipboard.CopyTableTargetToClipboardAsync(tableSnapshot).ConfigureAwait(true),
             _ => false,
         };
     }
 
-    private static bool CopyTextTargetToClipboard(string? text)
-    {
-        if (string.IsNullOrWhiteSpace(text))
-            return false;
-
-        try
-        {
-            var package = new DataPackage { RequestedOperation = DataPackageOperation.Copy };
-            package.SetText(text);
-            Clipboard.SetContent(package);
-            Clipboard.Flush();
-            return true;
-        }
-        catch (Exception)
-        {
-            return false;
-        }
-    }
-
     private bool CopyCodeTargetToClipboard(string codeText)
     {
-        bool succeeded = CopyTextTargetToClipboard(codeText);
+        bool succeeded = SelectionClipboard.CopyTextTargetToClipboard(codeText);
         RaiseCopyCompleted(MarkdownCopyKind.CodeBlock, succeeded);
         return succeeded;
-    }
-
-    private static async Task<bool> CopyImageTargetToClipboardAsync(
-        string? imageUrl,
-        CanvasBitmap? bitmap)
-    {
-        if (bitmap is null && string.IsNullOrWhiteSpace(imageUrl))
-            return false;
-
-        try
-        {
-            var package = new DataPackage { RequestedOperation = DataPackageOperation.Copy };
-            using var stream = new InMemoryRandomAccessStream();
-            bool hasBitmap = false;
-            if (bitmap is { } sourceBitmap)
-            {
-                await sourceBitmap.SaveAsync(
-                    stream,
-                    CanvasBitmapFileFormat.Png,
-                    1f);
-                stream.Seek(0);
-                package.SetBitmap(RandomAccessStreamReference.CreateFromStream(stream));
-                hasBitmap = true;
-            }
-            else if (Uri.TryCreate(imageUrl, UriKind.Absolute, out Uri? uri) &&
-                     uri.Scheme is "http" or "https" or "file" or "ms-appx")
-            {
-                package.SetBitmap(RandomAccessStreamReference.CreateFromUri(uri));
-                hasBitmap = true;
-            }
-
-            if (!string.IsNullOrWhiteSpace(imageUrl))
-                package.SetText(imageUrl);
-            if (!hasBitmap && string.IsNullOrWhiteSpace(imageUrl))
-                return false;
-
-            Clipboard.SetContent(package);
-            Clipboard.Flush();
-            return true;
-        }
-        catch (Exception)
-        {
-            return false;
-        }
-    }
-
-    private static bool CopyTableTargetToClipboard(MarkdownTableClipboardPayload payload)
-    {
-        if (string.IsNullOrEmpty(payload.Text))
-            return false;
-
-        try
-        {
-            var package = new DataPackage { RequestedOperation = DataPackageOperation.Copy };
-            package.SetText(payload.Text);
-            package.SetHtmlFormat(HtmlFormatHelper.CreateHtmlFormat(payload.Html));
-            Clipboard.SetContent(package);
-            Clipboard.Flush();
-            return true;
-        }
-        catch (Exception)
-        {
-            return false;
-        }
-    }
-
-    private static async Task<bool> CopyTableTargetToClipboardAsync(
-        MarkdownTableClipboardSnapshot snapshot)
-    {
-        MarkdownTableClipboardPayload payload =
-            await Task.Run(() => snapshot.Format()).ConfigureAwait(true);
-        return CopyTableTargetToClipboard(payload);
-    }
-
-    private static MarkdownTableClipboardSnapshot BuildTableClipboardSnapshot(
-        Layout.Boxes.TableBox table)
-    {
-        var rows = new string[table.RowCount][];
-        for (int row = 0; row < rows.Length; row++)
-        {
-            var cells = new string[table.ColumnCount];
-            Array.Fill(cells, string.Empty);
-            rows[row] = cells;
-        }
-
-        foreach (var cell in table.GetCellInfos())
-            rows[cell.Row][cell.Column] = GetInlineClipboardText(cell.Box);
-
-        return new MarkdownTableClipboardSnapshot(rows, table.HeaderRowCount);
-    }
-
-    private static string GetInlineClipboardText(Layout.Boxes.InlineContainerBox box)
-    {
-        var text = new StringBuilder();
-        foreach (InlineRun run in box.Runs)
-        {
-            text.Append(run is InlineImageRun or InlineEmbedRun or InlineVectorSceneRun
-                ? run.AccessibleText
-                : run.Text);
-        }
-        return text.ToString();
     }
 
     private bool IsCurrentContextMenuSnapshot(
@@ -16808,7 +16095,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                         Point physicalPoint = snapshot.ToPhysicalPointForTopLevelBlockUnderPaint(block, point);
                         using LayoutPlacementTransformContext.Scope placementScope =
                             snapshot.EnterPlacementTransformScopeForTopLevelBlockUnderPaint(block);
-                        if (PopulateContextMenuTarget(block, physicalPoint, target))
+                        if (ContextMenuTargets.PopulateContextMenuTarget(block, physicalPoint, target))
                             break;
                     }
                     captured = true;
@@ -16821,7 +16108,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         }
         catch
         {
-            DisposeContextMenuTarget(target);
+            ContextMenuTargets.DisposeContextMenuTarget(target);
             target = new ContextMenuTarget();
             throw;
         }
@@ -16831,146 +16118,12 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 expectedSnapshotGeneration,
                 expectedLayoutRevision))
         {
-            DisposeContextMenuTarget(target);
+            ContextMenuTargets.DisposeContextMenuTarget(target);
             target = new ContextMenuTarget();
             return false;
         }
 
         return true;
-    }
-
-    private static bool PopulateContextMenuTarget(
-        BlockBox box,
-        Point point,
-        ContextMenuTarget target)
-    {
-        if (!box.Bounds.Contains(point))
-            return false;
-
-        switch (box)
-        {
-            case Layout.Boxes.CodeBlockBox code:
-                target.CodeText = code.CodeText;
-                target.CodeLanguage = code.CodeLanguage;
-                target.CodeSourceRange = GetSourceRange(code);
-                return true;
-            case Layout.Boxes.ImageBox image:
-                target.ImageUrl = image.Url;
-                target.ImageSourceRange = GetSourceRange(image);
-                target.SetImageBitmapLease(image.AcquireBitmapLease());
-                return true;
-            case Layout.Boxes.VectorSceneBox vector:
-                if (vector.TryGetLinkAt(point, out var vectorLink) && vectorLink is not null)
-                {
-                    var semantic = vector.GetSemanticItem(vectorLink.SemanticIndex);
-                    target.LinkUrl = vectorLink.Target ?? string.Empty;
-                    target.LinkSourceRange = semantic?.SourceSpan ?? vector.SourceRange;
-                }
-                return true;
-            case Layout.Boxes.InlineContainerBox inline:
-                PopulateInlineContextMenuTarget(inline, point, target);
-                return true;
-            case Layout.Boxes.TableBox table:
-                target.TableSourceRange = GetSourceRange(table);
-                target.TableSnapshot = BuildTableClipboardSnapshot(table);
-                foreach (var cell in table.GetCellBoxes())
-                {
-                    if (PopulateContextMenuTarget(cell, point, target))
-                        break;
-                }
-                return true;
-            case Layout.Boxes.ListItemBox listItem:
-                if (PopulateContextMenuTarget(listItem.Marker, point, target))
-                    return true;
-                PopulateContextMenuTarget(listItem.Content, point, target);
-                return true;
-            case Layout.Boxes.StackBox stack:
-                foreach (BlockBox child in stack.Children)
-                {
-                    if (PopulateContextMenuTarget(child, point, target))
-                        return true;
-                }
-                return true;
-            default:
-                return true;
-        }
-    }
-
-    private static void PopulateInlineContextMenuTarget(
-        Layout.Boxes.InlineContainerBox inline,
-        Point point,
-        ContextMenuTarget target)
-    {
-        InlineRun? run = inline.RunAtVisualPoint(point);
-        if (run is InlineImageRun image)
-        {
-            target.ImageUrl = image.Image.Url;
-            target.ImageSourceRange = image.SourceSpan;
-            target.SetImageBitmapLease(image.Image.AcquireBitmapLease());
-        }
-
-        if (run is not null && TryCreateLinkedAtomicTarget(run, out LinkTarget link))
-        {
-            target.LinkUrl = link.Url;
-            target.LinkSourceRange = link.SourceSpan;
-        }
-    }
-
-    private static SourceSpan GetSourceRange(BlockBox box)
-    {
-        int start = int.MaxValue;
-        int end = 0;
-        CollectSourceRange(box, ref start, ref end);
-        return start == int.MaxValue || end <= start
-            ? SourceSpan.Empty
-            : new SourceSpan(start, end - start);
-    }
-
-    private static void CollectSourceRange(BlockBox box, ref int start, ref int end)
-    {
-        switch (box)
-        {
-            case Layout.Boxes.InlineContainerBox inline:
-                foreach (InlineRun run in inline.Runs)
-                    IncludeSourceSpan(run.SourceSpan, ref start, ref end);
-                return;
-            case Layout.Boxes.CodeBlockBox code:
-                foreach (var chunk in code.Chunks)
-                    CollectSourceRange(chunk, ref start, ref end);
-                return;
-            case Layout.Boxes.TableBox table:
-                foreach (var cell in table.GetCellBoxes())
-                    CollectSourceRange(cell, ref start, ref end);
-                return;
-            case Layout.Boxes.ListItemBox listItem:
-                CollectSourceRange(listItem.Marker, ref start, ref end);
-                CollectSourceRange(listItem.Content, ref start, ref end);
-                return;
-            case Layout.Boxes.StackBox stack:
-                foreach (BlockBox child in stack.Children)
-                    CollectSourceRange(child, ref start, ref end);
-                return;
-            case Layout.Boxes.VectorSceneBox vector:
-                IncludeSourceSpan(vector.SourceRange, ref start, ref end);
-                return;
-        }
-
-        if (box is Layout.Boxes.ImageBox image)
-        {
-            foreach (var entry in image.Context.SourceMap.Entries)
-            {
-                if (entry.BlockIndex == image.BlockIndex)
-                    IncludeSourceSpan(entry.Span, ref start, ref end);
-            }
-        }
-    }
-
-    private static void IncludeSourceSpan(SourceSpan span, ref int start, ref int end)
-    {
-        if (span.IsEmpty)
-            return;
-        start = Math.Min(start, span.Start);
-        end = Math.Max(end, span.End);
     }
 
     private Point GetKeyboardContextMenuPoint()
@@ -17009,106 +16162,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         return new Point(
             Math.Clamp(selectionRect.Left + 8, 0, Math.Max(0, viewportWidth - 1)),
             Math.Clamp(selectionRect.Bottom, viewportTop, Math.Max(viewportTop, viewportBottom - 1)));
-    }
-
-    internal static LinkTarget? FindLinkTargetInBlock(BlockBox box, DocumentPosition pos, Point? point)
-    {
-        switch (box)
-        {
-            case Layout.Boxes.VectorSceneBox vector when vector.BlockIndex == pos.BlockIndex && point is { } vectorPoint:
-                if (vector.TryGetLinkAt(vectorPoint, out var vectorLink) && vectorLink is not null)
-                {
-                    var semantic = vector.GetSemanticItem(vectorLink.SemanticIndex);
-                    return new LinkTarget(
-                        vectorLink.Target ?? string.Empty,
-                        semantic?.Description,
-                        semantic?.SourceSpan ?? vector.SourceRange,
-                        null,
-                        vectorLink.Action,
-                        vectorLink.External);
-                }
-                return null;
-            case Layout.Boxes.InlineContainerBox icb when icb.BlockIndex == pos.BlockIndex:
-                foreach (var r in icb.Runs)
-                {
-                    if (r.InlineIndex != pos.InlineIndex)
-                        continue;
-
-                    if (point is { } p && !icb.IsPointInsideRunBounds(r, p))
-                        return null;
-
-                    return TryCreateLinkedAtomicTarget(r, out LinkTarget target)
-                        ? target
-                        : null;
-                }
-                return null;
-            case Layout.Boxes.ListItemBox lib:
-                if (FindLinkTargetInBlock(lib.Marker, pos, point) is { } lm) return lm;
-                return FindLinkTargetInBlock(lib.Content, pos, point);
-            case Layout.Boxes.TableBox tb:
-                foreach (var cell in tb.GetCellBoxes())
-                {
-                    if (FindLinkTargetInBlock(cell, pos, point) is { } tf) return tf;
-                }
-                return null;
-            case Layout.Boxes.StackBox sb:
-                foreach (var c in sb.Children)
-                {
-                    if (FindLinkTargetInBlock(c, pos, point) is { } f) return f;
-                }
-                return null;
-        }
-        return null;
-    }
-
-    private static bool IsLinkedRun(InlineRun? run)
-        => run is LinkRun or InlineImageRun { IsLinked: true } or InlineVectorSceneRun { IsLinked: true };
-
-    private static MarkdownLinkInputKind GetLinkInputKind(Microsoft.UI.Input.PointerDeviceType deviceType)
-        => deviceType switch
-        {
-            Microsoft.UI.Input.PointerDeviceType.Touch => MarkdownLinkInputKind.Touch,
-            Microsoft.UI.Input.PointerDeviceType.Pen => MarkdownLinkInputKind.Pen,
-            _ => MarkdownLinkInputKind.Mouse,
-        };
-
-    private static MarkdownInputModifiers GetCurrentInputModifiers()
-    {
-        MarkdownInputModifiers result = MarkdownInputModifiers.None;
-        if (IsVirtualKeyDown(VirtualKey.Control)) result |= MarkdownInputModifiers.Control;
-        if (IsVirtualKeyDown(VirtualKey.Shift)) result |= MarkdownInputModifiers.Shift;
-        if (IsVirtualKeyDown(VirtualKey.Menu)) result |= MarkdownInputModifiers.Alt;
-        if (IsVirtualKeyDown(VirtualKey.LeftWindows) || IsVirtualKeyDown(VirtualKey.RightWindows))
-            result |= MarkdownInputModifiers.Windows;
-        return result;
-    }
-
-    private static MarkdownInputModifiers MapInputModifiers(VirtualKeyModifiers modifiers)
-    {
-        MarkdownInputModifiers result = MarkdownInputModifiers.None;
-        if ((modifiers & VirtualKeyModifiers.Control) != 0) result |= MarkdownInputModifiers.Control;
-        if ((modifiers & VirtualKeyModifiers.Shift) != 0) result |= MarkdownInputModifiers.Shift;
-        if ((modifiers & VirtualKeyModifiers.Menu) != 0) result |= MarkdownInputModifiers.Alt;
-        if ((modifiers & VirtualKeyModifiers.Windows) != 0) result |= MarkdownInputModifiers.Windows;
-        return result;
-    }
-
-    private static bool IsVirtualKeyDown(VirtualKey key)
-        => (Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(key) &
-            Windows.UI.Core.CoreVirtualKeyStates.Down) == Windows.UI.Core.CoreVirtualKeyStates.Down;
-
-    private static MarkdownLinkDisposition GetRequestedDisposition(MarkdownInputModifiers modifiers)
-    {
-        if ((modifiers & MarkdownInputModifiers.Alt) != 0)
-            return MarkdownLinkDisposition.External;
-        if ((modifiers & MarkdownInputModifiers.Control) != 0 &&
-            (modifiers & MarkdownInputModifiers.Shift) == 0)
-        {
-            return MarkdownLinkDisposition.BackgroundView;
-        }
-        if ((modifiers & MarkdownInputModifiers.Shift) != 0)
-            return MarkdownLinkDisposition.NewView;
-        return MarkdownLinkDisposition.CurrentView;
     }
 
     private bool TryActivateDisclosure(LinkRun? run)

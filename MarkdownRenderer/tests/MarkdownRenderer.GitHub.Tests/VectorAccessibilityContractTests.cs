@@ -1,5 +1,7 @@
 using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Controls;
+using MarkdownRenderer.Controls.Input;
+using MarkdownRenderer.Controls.Focus;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Hosting;
@@ -836,7 +838,7 @@ public sealed class VectorAccessibilityContractTests
         Assert.Equal(expectedLinked, vector.TryGetLinkAt(point, out MarkdownVectorLinkAction? link));
         Assert.Equal(expectedLinked, link is not null);
 
-        var target = MarkdownRendererControl.FindLinkTargetInBlock(
+        var target = LinkTargets.FindLinkTargetInBlock(
             vector,
             new DocumentPosition(vector.BlockIndex, 1, 0),
             point);
@@ -896,7 +898,7 @@ public sealed class VectorAccessibilityContractTests
         vector.Measure(100);
         vector.Arrange(10, 20, 100);
 
-        var target = MarkdownRendererControl.FindLinkTargetInBlock(
+        var target = LinkTargets.FindLinkTargetInBlock(
             vector,
             new DocumentPosition(vector.BlockIndex, 0, 0),
             new Point(30, 30));
@@ -1007,16 +1009,16 @@ public sealed class VectorAccessibilityContractTests
             Assert.Equal(paragraph.BlockIndex, focusable.BlockIndex);
             Assert.Equal(math.InlineIndex, focusable.InlineIndex);
 
-            Assert.True(MarkdownRendererControl.TryGetLinkedAtomicForFocusable(
+            Assert.True(FocusableItemQueries.TryGetLinkedAtomicForFocusable(
                 snapshot,
                 focusable,
                 out InlineContainerBox resolvedInline,
                 out InlineRun resolvedRun));
             Assert.Same(paragraph, resolvedInline);
             Assert.Same(math, resolvedRun);
-            Assert.True(MarkdownRendererControl.TryCreateLinkedAtomicTarget(math, out LinkTarget target));
-            Assert.False(MarkdownRendererControl.TryCreateLinkedAtomicTarget(unlinkedMath, out _));
-            LinkTarget? keyboardTarget = MarkdownRendererControl.FindLinkTargetInBlock(
+            Assert.True(LinkTargets.TryCreateLinkedAtomicTarget(math, out LinkTarget target));
+            Assert.False(LinkTargets.TryCreateLinkedAtomicTarget(unlinkedMath, out _));
+            LinkTarget? keyboardTarget = LinkTargets.FindLinkTargetInBlock(
                 paragraph,
                 new DocumentPosition(paragraph.BlockIndex, math.InlineIndex, 0),
                 point: null);
@@ -1112,12 +1114,12 @@ public sealed class VectorAccessibilityContractTests
 
         Assert.Equal(2, focusable.Count);
         Assert.All(focusable, static item => Assert.True(item.IsHorizontalOverflow));
-        Assert.True(MarkdownRendererControl.TryFindHorizontalOverflowFocusableIndex(
+        Assert.True(FocusableItemQueries.TryFindHorizontalOverflowFocusableIndex(
             snapshot,
             focusable,
             first,
             out int firstIndex));
-        Assert.True(MarkdownRendererControl.TryFindHorizontalOverflowFocusableIndex(
+        Assert.True(FocusableItemQueries.TryFindHorizontalOverflowFocusableIndex(
             snapshot,
             focusable,
             second,

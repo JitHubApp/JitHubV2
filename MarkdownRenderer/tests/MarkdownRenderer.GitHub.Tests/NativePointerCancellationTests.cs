@@ -1,8 +1,5 @@
-using System;
-using System.Reflection;
-using MarkdownRenderer.Controls;
+using MarkdownRenderer.Controls.Input;
 using Xunit;
-
 
 namespace MarkdownRenderer.GitHub.Tests;
 
@@ -25,15 +22,11 @@ public sealed class NativePointerCancellationTests
     [InlineData("RightTap", "RightTap")]
     public void NativeCancellationIsClassifiedBeforeLiveOrDeferredInput(string kind, string canceledKind)
     {
-        // Reflection is confined to the test assembly; the production path is
-        // a statically bound call and introduces no public testing API.
-        MethodInfo method = typeof(MarkdownRendererControl).GetMethod(
-            "NormalizeCanceledPointerInputKind", BindingFlags.NonPublic | BindingFlags.Static)
-            ?? throw new InvalidOperationException("The real pointer dispatcher must classify device cancellation before dispatch.");
-        Type kindType = method.GetParameters()[0].ParameterType;
-        object value = Enum.Parse(kindType, kind);
-        Assert.Equal(kind, method.Invoke(null, [value, false])?.ToString());
-        Assert.Equal(canceledKind, method.Invoke(null, [value, true])?.ToString());
+        PointerInputKind input = Enum.Parse<PointerInputKind>(kind);
+
+        Assert.Equal(input, PointerInputClassification.NormalizeCanceledPointerInputKind(input, isCanceled: false));
+        Assert.Equal(
+            Enum.Parse<PointerInputKind>(canceledKind),
+            PointerInputClassification.NormalizeCanceledPointerInputKind(input, isCanceled: true));
     }
 }
-

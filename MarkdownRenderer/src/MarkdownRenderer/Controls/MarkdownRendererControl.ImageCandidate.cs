@@ -10,6 +10,7 @@ using MarkdownRenderer.Performance;
 using Windows.Foundation;
 using MarkdownRenderer.Controls.Embeds;
 using MarkdownRenderer.Controls.Images;
+using MarkdownRenderer.Controls.Focus;
 
 namespace MarkdownRenderer.Controls;
 
@@ -215,10 +216,10 @@ public partial class MarkdownRendererControl
             _imagePlanIndex = plan.Publication!.Index;
             _focusableItems = plan.Focus;
             _focusedItemIndex = focusedIdentity is { } identity
-                ? FindFocusableItemIndex(_focusableItems, identity)
+                ? FocusableItemQueries.FindFocusableItemIndex(_focusableItems, identity)
                 : -1;
             _focusResumeItemIndex = resumeFocusIdentity is { } resumeIdentity
-                ? FindFocusableItemIndex(_focusableItems, resumeIdentity)
+                ? FocusableItemQueries.FindFocusableItemIndex(_focusableItems, resumeIdentity)
                 : -1;
             _codeBlockActionPlans = plan.CodeActionPlans!;
             plan.CodeActionPlans = null;
@@ -471,7 +472,7 @@ public partial class MarkdownRendererControl
                 oldFocus.Kind != FocusableItemKind.CodeBlockCopy ||
                 newFocus.BlockIndex != sourceBox.BlockIndex || newFocus.InlineIndex != 0 ||
                 newFocus.Kind != FocusableItemKind.CodeBlockCopy ||
-                FindFocusableItemIndex(plan.Focus, newFocus) < 0 ||
+                FocusableItemQueries.FindFocusableItemIndex(plan.Focus, newFocus) < 0 ||
                 !ReferenceEquals(sourceBox.Metadata, identity.Placement.Metadata) ||
                 !ReferenceEquals(sourceBox.CodeText, identity.Placement.CodeText) ||
                 !sourceBox.HasCopyButtonAction || !identity.Placement.HasCopyButtonAction ||
