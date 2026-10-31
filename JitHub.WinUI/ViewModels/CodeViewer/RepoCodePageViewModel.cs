@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -38,6 +39,7 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
     private readonly object _reconciliationTaskGate = new();
     private readonly object _treeRefreshTaskGate = new();
     private readonly object _defaultPreviewTaskGate = new();
+    private readonly object _selectionGate = new();
 
     private string _owner = string.Empty;
     private string _repositoryName = string.Empty;
@@ -449,13 +451,9 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
         }
         catch (OperationCanceledException) when (request.Token.IsCancellationRequested)
         {
-            await RunOnUiAsync(() =>
-            {
-                if (generation == Volatile.Read(ref _selectionGeneration))
-                {
-                    RestoreSelectionToVisiblePreview();
-                }
-            }, CancellationToken.None).ConfigureAwait(false);
+            await RunOnUiAsync(
+                () => UpdateIfCurrentSelection(generation, RestoreSelectionToVisiblePreview),
+                CancellationToken.None).ConfigureAwait(false);
             throw;
         }
         finally
@@ -520,19 +518,14 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
         }
         catch (OperationCanceledException) when (request.Token.IsCancellationRequested)
         {
-            await RunOnUiAsync(() =>
-            {
-                if (generation == Volatile.Read(ref _selectionGeneration))
-                {
-                    RestoreSelectionToVisiblePreview();
-                }
-            }, CancellationToken.None).ConfigureAwait(false);
+            await RunOnUiAsync(
+                () => UpdateIfCurrentSelection(generation, RestoreSelectionToVisiblePreview),
+                CancellationToken.None).ConfigureAwait(false);
         }
         catch (Exception exception)
         {
-            await RunOnUiAsync(() =>
+            await RunOnUiAsync(() => UpdateIfCurrentSelection(generation, () =>
             {
-                if (generation != Volatile.Read(ref _selectionGeneration)) return;
                 Preview.ErrorMessage = UserFacingError.For(
                     exception,
                     Preview.CurrentFile is null
@@ -540,7 +533,7 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
                         : UserFacingErrorKind.Refresh,
                     "repository-file");
                 RestoreSelectionToVisiblePreview();
-            }, CancellationToken.None).ConfigureAwait(false);
+            }), CancellationToken.None).ConfigureAwait(false);
         }
         finally
         {
@@ -604,13 +597,12 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
             return false;
         }
 
-        if (!IsCurrentSelection(generation, _owner, _repositoryName, _ref))
-        {
-            return false;
-        }
-
-        ApplyPreparedFilePreview(node, prepared, push);
-        return true;
+        return UpdateIfCurrentSelection(
+            generation,
+            _owner,
+            _repositoryName,
+            _ref,
+            () => ApplyPreparedFilePreview(node, prepared, push));
     }
 
     public void CancelPendingRequests()
@@ -671,6 +663,7 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
         RepoTreeNode? fileToRestore = null;
         bool shouldReloadFile = false;
         bool shouldOpenReadme = false;
+        long decidedSelectionGeneration = 0;
         await RunOnUiAsync(async () =>
         {
             if (!IsCurrentInitialize(generation)) return;
@@ -747,12 +740,18 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
                 ResetBreadcrumb(name);
                 shouldOpenReadme = true;
             }
+
+            decidedSelectionGeneration = Volatile.Read(ref _selectionGeneration);
         }, ct).ConfigureAwait(false);
 
         if (!IsCurrentInitialize(generation)) return;
         if (!identityChanged && fileToRestore is not null && shouldReloadFile)
         {
-            bool restored = await SelectFileWithNewGenerationAsync(fileToRestore, ct, push: true).ConfigureAwait(false);
+            bool restored = await SelectFileIfSelectionUnchangedAsync(
+                fileToRestore,
+                decidedSelectionGeneration,
+                ct,
+                push: true).ConfigureAwait(false);
             if (restored)
             {
                 ClearPendingVisiblePath(generation);
@@ -760,14 +759,16 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
         }
         else if (shouldOpenReadme)
         {
-            QueueDefaultReadmePreview(generation, ct);
+            QueueDefaultReadmePreview(generation, decidedSelectionGeneration, ct);
         }
     }
 
-    private void QueueDefaultReadmePreview(long generation, CancellationToken routeToken)
+    private void QueueDefaultReadmePreview(
+        long generation,
+        long selectionGeneration,
+        CancellationToken routeToken)
     {
         long previewGeneration = Interlocked.Increment(ref _defaultPreviewGeneration);
-        long selectionGeneration = Volatile.Read(ref _selectionGeneration);
         RequestCancellation request = new(routeToken);
         RequestCancellation? previous = Interlocked.Exchange(ref _defaultPreviewRequest, request);
         previous?.Cancel();
@@ -897,19 +898,92 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Selects a file for background work (default README, tree refresh,
+    /// reconciliation) that chose to do so when the selection generation was
+    /// <paramref name="decidedSelectionGeneration"/>. A selection that started after
+    /// that choice wins: this returns false instead of superseding it.
+    /// </summary>
+    private async Task<bool> SelectFileIfSelectionUnchangedAsync(
+        RepoTreeNode node,
+        long decidedSelectionGeneration,
+        CancellationToken ct,
+        bool push)
+    {
+        if (!TryReserveSelection(
+            decidedSelectionGeneration,
+            ct,
+            out long generation,
+            out RequestCancellation? request))
+        {
+            return false;
+        }
+
+        try
+        {
+            return await SelectFileAsyncInternal(node, request.Token, generation, push).ConfigureAwait(false);
+        }
+        finally
+        {
+            CompleteSelectionRequest(request);
+        }
+    }
+
     private (long Generation, RequestCancellation Request) ReserveSelection(CancellationToken cancellationToken)
     {
-        long generation = Interlocked.Increment(ref _selectionGeneration);
-        RequestCancellation request = new(cancellationToken);
-        RequestCancellation? previous = Interlocked.Exchange(ref _selectionRequest, request);
+        TryReserveSelection(
+            expectedGeneration: null,
+            cancellationToken,
+            out long generation,
+            out RequestCancellation? request);
+        return (generation, request!);
+    }
+
+    /// <summary>
+    /// Advances the selection generation and installs its request in one step, so
+    /// concurrent reservations cannot leave the newest generation holding a
+    /// cancelled request. With <paramref name="expectedGeneration"/>, it reserves
+    /// only if no selection started or was cancelled since that generation.
+    /// </summary>
+    private bool TryReserveSelection(
+        long? expectedGeneration,
+        CancellationToken cancellationToken,
+        out long generation,
+        [NotNullWhen(true)] out RequestCancellation? request)
+    {
+        RequestCancellation candidate = new(cancellationToken);
+        RequestCancellation? previous = null;
+        generation = 0;
+        request = null;
+        lock (_selectionGate)
+        {
+            if (expectedGeneration is not { } expected ||
+                expected == Volatile.Read(ref _selectionGeneration))
+            {
+                generation = Interlocked.Increment(ref _selectionGeneration);
+                previous = Interlocked.Exchange(ref _selectionRequest, candidate);
+                request = candidate;
+            }
+        }
+
+        if (request is null)
+        {
+            candidate.Dispose();
+            return false;
+        }
+
         previous?.Cancel();
         previous?.Dispose();
-        return (generation, request);
+        return true;
     }
 
     private void CompleteSelectionRequest(RequestCancellation request)
     {
-        Interlocked.CompareExchange(ref _selectionRequest, null, request);
+        lock (_selectionGate)
+        {
+            Interlocked.CompareExchange(ref _selectionRequest, null, request);
+        }
+
         request.Dispose();
     }
 
@@ -924,12 +998,11 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
         string owner = _owner;
         string repositoryName = _repositoryName;
         string gitRef = _ref;
-        await RunOnUiAsync(() =>
+        await RunOnUiAsync(() => UpdateIfCurrentSelection(generation, owner, repositoryName, gitRef, () =>
         {
-            if (!IsCurrentSelection(generation, owner, repositoryName, gitRef)) return;
             Preview.IsLoading = true;
             Preview.ErrorMessage = null;
-        }, token).ConfigureAwait(false);
+        }), token).ConfigureAwait(false);
 
         try
         {
@@ -943,9 +1016,8 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
             if (!IsCurrentSelection(generation, owner, repositoryName, gitRef)) return false;
 
             bool applied = false;
-            await RunOnUiAsync(() =>
+            await RunOnUiAsync(() => UpdateIfCurrentSelection(generation, owner, repositoryName, gitRef, () =>
             {
-                if (!IsCurrentSelection(generation, owner, repositoryName, gitRef)) return;
                 RepoTreeNodeViewModel? currentNode = Tree.FindNodeByPath(node.Path);
                 if (currentNode is null ||
                     currentNode.IsDirectory ||
@@ -959,23 +1031,20 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
 
                 ApplyPreparedFilePreview(node, prepared, push);
                 applied = true;
-            }, token).ConfigureAwait(false);
+            }), token).ConfigureAwait(false);
             return applied && IsCurrentSelection(generation, owner, repositoryName, gitRef);
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
-            await RunOnUiAsync(() =>
-            {
-                if (generation != Volatile.Read(ref _selectionGeneration)) return;
-                RestoreSelectionToVisiblePreview();
-            }, CancellationToken.None).ConfigureAwait(false);
+            await RunOnUiAsync(
+                () => UpdateIfCurrentSelection(generation, RestoreSelectionToVisiblePreview),
+                CancellationToken.None).ConfigureAwait(false);
             return false;
         }
         catch (Exception exception)
         {
-            await RunOnUiAsync(() =>
+            await RunOnUiAsync(() => UpdateIfCurrentSelection(generation, owner, repositoryName, gitRef, () =>
             {
-                if (!IsCurrentSelection(generation, owner, repositoryName, gitRef)) return;
                 Preview.IsLoading = false;
                 Preview.ErrorMessage = UserFacingError.For(
                     exception,
@@ -984,7 +1053,7 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
                         : UserFacingErrorKind.Refresh,
                     "repository-file");
                 RestoreSelectionToVisiblePreview();
-            }, CancellationToken.None).ConfigureAwait(false);
+            }), CancellationToken.None).ConfigureAwait(false);
             return false;
         }
     }
@@ -1323,13 +1392,15 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
         if (readme is not null)
         {
             if (!IsCurrentInitialize(initializeGeneration) ||
-                previewGeneration != Volatile.Read(ref _defaultPreviewGeneration) ||
-                selectionGeneration != Volatile.Read(ref _selectionGeneration))
+                previewGeneration != Volatile.Read(ref _defaultPreviewGeneration))
             {
                 return;
             }
 
-            await SelectFileWithNewGenerationAsync(readme, ct, push: true).ConfigureAwait(false);
+            // The user can select a file right after the checks above pass, so the
+            // reservation itself must refuse to supersede a newer selection.
+            await SelectFileIfSelectionUnchangedAsync(readme, selectionGeneration, ct, push: true)
+                .ConfigureAwait(false);
         }
     }
 
@@ -1613,6 +1684,7 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
             RepoTreeNode? fileToReload = null;
             RepoTreeNodeViewModel? directoryToValidate = null;
             bool shouldOpenReadme = false;
+            long decidedSelectionGeneration = 0;
 
             routeToken.ThrowIfCancellationRequested();
             await RunOnUiAsync(() =>
@@ -1642,10 +1714,12 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
                     Preview.Reset();
                     ResetBreadcrumb(repositoryName);
                     ClearPendingVisiblePath(generation);
+                    decidedSelectionGeneration = Volatile.Read(ref _selectionGeneration);
                     shouldOpenReadme = true;
                     return;
                 }
 
+                decidedSelectionGeneration = Volatile.Read(ref _selectionGeneration);
                 RepoTreeNode replacement = ToModelNode(refreshed);
                 if (current is null ||
                     !string.Equals(current.Path, replacement.Path, StringComparison.Ordinal) ||
@@ -1674,8 +1748,9 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
             }
             else if (fileToReload is not null)
             {
-                bool restored = await SelectFileWithNewGenerationAsync(
+                bool restored = await SelectFileIfSelectionUnchangedAsync(
                     fileToReload,
+                    decidedSelectionGeneration,
                     routeToken,
                     push: true).ConfigureAwait(false);
                 if (restored)
@@ -1685,7 +1760,7 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
             }
             else if (shouldOpenReadme)
             {
-                QueueDefaultReadmePreview(generation, routeToken);
+                QueueDefaultReadmePreview(generation, decidedSelectionGeneration, routeToken);
             }
         }
         catch (OperationCanceledException) when (routeToken.IsCancellationRequested)
@@ -1803,8 +1878,13 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
 
     private void CancelSelection()
     {
-        Interlocked.Increment(ref _selectionGeneration);
-        RequestCancellation? request = Interlocked.Exchange(ref _selectionRequest, null);
+        RequestCancellation? request;
+        lock (_selectionGate)
+        {
+            Interlocked.Increment(ref _selectionGeneration);
+            request = Interlocked.Exchange(ref _selectionRequest, null);
+        }
+
         request?.Cancel();
         request?.Dispose();
     }
@@ -1848,6 +1928,36 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
         string.Equals(owner, _owner, StringComparison.Ordinal) &&
         string.Equals(repositoryName, _repositoryName, StringComparison.Ordinal) &&
         string.Equals(gitRef, _ref, StringComparison.Ordinal);
+
+    /// <summary>
+    /// Runs a selection's UI update only while it is still the current selection.
+    /// The reservation gate keeps a newer selection from starting between the
+    /// check and the update, so a superseded selection never paints over it.
+    /// </summary>
+    private bool UpdateIfCurrentSelection(long generation, Action update)
+    {
+        lock (_selectionGate)
+        {
+            if (generation != Volatile.Read(ref _selectionGeneration)) return false;
+            update();
+            return true;
+        }
+    }
+
+    private bool UpdateIfCurrentSelection(
+        long generation,
+        string owner,
+        string repositoryName,
+        string gitRef,
+        Action update)
+    {
+        lock (_selectionGate)
+        {
+            if (!IsCurrentSelection(generation, owner, repositoryName, gitRef)) return false;
+            update();
+            return true;
+        }
+    }
 
     private CancellationToken GetCurrentRouteToken()
     {
