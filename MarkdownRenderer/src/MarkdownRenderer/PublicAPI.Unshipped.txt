@@ -237,8 +237,8 @@ MarkdownRenderer.Controls.MarkdownLinkClickEventArgs.Action.get -> string?
 MarkdownRenderer.Controls.MarkdownLinkClickEventArgs.Handled.get -> bool
 MarkdownRenderer.Controls.MarkdownLinkClickEventArgs.Handled.set -> void
 MarkdownRenderer.Controls.MarkdownLinkClickEventArgs.InputKind.get -> MarkdownRenderer.Controls.MarkdownLinkInputKind
-MarkdownRenderer.Controls.MarkdownLinkClickEventArgs.MarkdownLinkClickEventArgs(string! url, string? title, MarkdownRenderer.SourceSpan sourceRange, MarkdownRenderer.Controls.MarkdownLinkInputKind inputKind, MarkdownRenderer.Controls.MarkdownInputModifiers modifiers, MarkdownRenderer.Controls.MarkdownLinkDisposition requestedDisposition, string? action = null) -> void
 MarkdownRenderer.Controls.MarkdownLinkClickEventArgs.MarkdownLinkClickEventArgs(string! url, string? title) -> void
+MarkdownRenderer.Controls.MarkdownLinkClickEventArgs.MarkdownLinkClickEventArgs(string! url, string? title, MarkdownRenderer.SourceSpan sourceRange, MarkdownRenderer.Controls.MarkdownLinkInputKind inputKind, MarkdownRenderer.Controls.MarkdownInputModifiers modifiers, MarkdownRenderer.Controls.MarkdownLinkDisposition requestedDisposition, string? action = null) -> void
 MarkdownRenderer.Controls.MarkdownLinkClickEventArgs.Modifiers.get -> MarkdownRenderer.Controls.MarkdownInputModifiers
 MarkdownRenderer.Controls.MarkdownLinkClickEventArgs.RequestedDisposition.get -> MarkdownRenderer.Controls.MarkdownLinkDisposition
 MarkdownRenderer.Controls.MarkdownLinkClickEventArgs.SourceRange.get -> MarkdownRenderer.SourceSpan
@@ -1017,8 +1017,8 @@ MarkdownRenderer.Images.MarkdownImageResolveContext.MarkdownImageResolveContext(
 MarkdownRenderer.Images.MarkdownImageSourceDeferredException
 MarkdownRenderer.Images.MarkdownImageSourceDeferredException.MarkdownImageSourceDeferredException() -> void
 MarkdownRenderer.Images.MarkdownImageUnavailableEventArgs
-MarkdownRenderer.Images.MarkdownImageUnavailableEventArgs.MarkdownImageUnavailableEventArgs(string! source, MarkdownRenderer.Images.MarkdownImageUnavailableReason reason, MarkdownRenderer.Images.MarkdownSvgFailureReason? svgFailureReason) -> void
 MarkdownRenderer.Images.MarkdownImageUnavailableEventArgs.MarkdownImageUnavailableEventArgs(string! source, MarkdownRenderer.Images.MarkdownImageUnavailableReason reason) -> void
+MarkdownRenderer.Images.MarkdownImageUnavailableEventArgs.MarkdownImageUnavailableEventArgs(string! source, MarkdownRenderer.Images.MarkdownImageUnavailableReason reason, MarkdownRenderer.Images.MarkdownSvgFailureReason? svgFailureReason) -> void
 MarkdownRenderer.Images.MarkdownImageUnavailableEventArgs.Reason.get -> MarkdownRenderer.Images.MarkdownImageUnavailableReason
 MarkdownRenderer.Images.MarkdownImageUnavailableEventArgs.Source.get -> string!
 MarkdownRenderer.Images.MarkdownImageUnavailableEventArgs.SvgFailureReason.get -> MarkdownRenderer.Images.MarkdownSvgFailureReason?
@@ -1700,8 +1700,8 @@ static MarkdownRenderer.Gfm.GfmMarkdownRenderer.SharedEngine.get -> MarkdownRend
 static MarkdownRenderer.GitHub.GitHubReadmeExtensions.UseGitHubReadme(this MarkdownRenderer.Controls.MarkdownDocumentView! view, MarkdownRenderer.MarkdownEngine? engine = null, MarkdownRenderer.Html.SafeHtmlOptions? safeHtmlOptions = null) -> MarkdownRenderer.Controls.MarkdownDocumentView!
 static MarkdownRenderer.GitHub.GitHubReadmeExtensions.UseGitHubReadme(this MarkdownRenderer.Controls.MarkdownRendererControlBuilder! builder, MarkdownRenderer.Html.SafeHtmlOptions? safeHtmlOptions = null) -> MarkdownRenderer.Controls.MarkdownRendererControlBuilder!
 static MarkdownRenderer.GitHub.GitHubReadmeExtensions.UseGitHubReadme(this MarkdownRenderer.Controls.MarkdownScrollView! view, MarkdownRenderer.MarkdownEngine? engine = null, MarkdownRenderer.Html.SafeHtmlOptions? safeHtmlOptions = null) -> MarkdownRenderer.Controls.MarkdownScrollView!
-static MarkdownRenderer.GitHub.GitHubReadmeExtensions.UseGitHubReadme(this MarkdownRenderer.MarkdownEngineBuilder! builder, MarkdownRenderer.Html.SafeHtmlOptions! safeHtmlOptions) -> MarkdownRenderer.MarkdownEngineBuilder!
 static MarkdownRenderer.GitHub.GitHubReadmeExtensions.UseGitHubReadme(this MarkdownRenderer.MarkdownEngineBuilder! builder) -> MarkdownRenderer.MarkdownEngineBuilder!
+static MarkdownRenderer.GitHub.GitHubReadmeExtensions.UseGitHubReadme(this MarkdownRenderer.MarkdownEngineBuilder! builder, MarkdownRenderer.Html.SafeHtmlOptions! safeHtmlOptions) -> MarkdownRenderer.MarkdownEngineBuilder!
 static MarkdownRenderer.GitHub.GitHubReadmeMarkdownRenderer.CreateDefault(string? markdown = null, MarkdownRenderer.Theming.MarkdownTheme? theme = null, bool isSelectionEnabled = true, MarkdownRenderer.Images.IMarkdownImageResolver? imageResolver = null, System.Uri? imageBaseUri = null, string? imageDocumentPath = null) -> MarkdownRenderer.Controls.MarkdownScrollView!
 static MarkdownRenderer.GitHub.GitHubReadmeMarkdownRenderer.SharedEngine.get -> MarkdownRenderer.MarkdownEngine!
 static MarkdownRenderer.GitHub.GitHubReadmeVisualStyleProfiles.PrimerLightV1.get -> MarkdownRenderer.GitHub.GitHubReadmeVisualStyleProfile!
@@ -1745,8 +1745,8 @@ static MarkdownRenderer.Images.MarkdownSvgPhysicalViewport.operator !=(MarkdownR
 static MarkdownRenderer.Images.MarkdownSvgPhysicalViewport.operator ==(MarkdownRenderer.Images.MarkdownSvgPhysicalViewport left, MarkdownRenderer.Images.MarkdownSvgPhysicalViewport right) -> bool
 static MarkdownRenderer.Images.MarkdownSvgRenderRequest.operator !=(MarkdownRenderer.Images.MarkdownSvgRenderRequest? left, MarkdownRenderer.Images.MarkdownSvgRenderRequest? right) -> bool
 static MarkdownRenderer.Images.MarkdownSvgRenderRequest.operator ==(MarkdownRenderer.Images.MarkdownSvgRenderRequest? left, MarkdownRenderer.Images.MarkdownSvgRenderRequest? right) -> bool
-static MarkdownRenderer.Images.MarkdownSvgSourcePreparation.Admit(byte[]! sanitizedBytes, MarkdownRenderer.Images.MarkdownSvgSourceInfo! sourceInfo) -> MarkdownRenderer.Images.MarkdownSvgSourcePreparation!
 static MarkdownRenderer.Images.MarkdownSvgSourcePreparation.Admit(byte[]! sanitizedBytes) -> MarkdownRenderer.Images.MarkdownSvgSourcePreparation!
+static MarkdownRenderer.Images.MarkdownSvgSourcePreparation.Admit(byte[]! sanitizedBytes, MarkdownRenderer.Images.MarkdownSvgSourceInfo! sourceInfo) -> MarkdownRenderer.Images.MarkdownSvgSourcePreparation!
 static MarkdownRenderer.Images.MarkdownSvgSourcePreparation.Reject(MarkdownRenderer.Images.MarkdownSvgFailureReason reason, string! description) -> MarkdownRenderer.Images.MarkdownSvgSourcePreparation!
 static MarkdownRenderer.Images.MarkdownSvgTileRegion.operator !=(MarkdownRenderer.Images.MarkdownSvgTileRegion left, MarkdownRenderer.Images.MarkdownSvgTileRegion right) -> bool
 static MarkdownRenderer.Images.MarkdownSvgTileRegion.operator ==(MarkdownRenderer.Images.MarkdownSvgTileRegion left, MarkdownRenderer.Images.MarkdownSvgTileRegion right) -> bool
