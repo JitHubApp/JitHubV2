@@ -24,7 +24,18 @@ internal static class MarkdownImageSourcePolicy
         absoluteUri = parsed;
         if (parsed.Scheme == Uri.UriSchemeHttp)
         {
-            return MarkdownImageSourceDisposition.BlockedInsecureRemote;
+            // GitHub's web renderer proxies legacy HTTP image references through
+            // an HTTPS endpoint. The native client does not transmit an insecure
+            // request: address the same origin over TLS, then apply the normal
+            // HTTPS policy, redirect validation, limits, and cache partitioning.
+            // Servers without HTTPS still fail closed; there is no HTTP fallback.
+            var upgraded = new UriBuilder(parsed)
+            {
+                Scheme = Uri.UriSchemeHttps,
+                Port = parsed.IsDefaultPort ? -1 : parsed.Port,
+            };
+            absoluteUri = upgraded.Uri;
+            return MarkdownImageSourceDisposition.SharedHttps;
         }
 
         return parsed.Scheme == Uri.UriSchemeHttps

@@ -1,0 +1,7 @@
+#nullable enable
+MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All.AllTextMateGrammarProvider
+MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All.AllTextMateGrammarProvider.AllTextMateGrammarProvider() -> void
+MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All.AllTextMateGrammarProvider.AllTextMateGrammarProvider(MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateHighlighterOptions? options) -> void
+MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All.AllTextMateGrammarProvider.Dispose() -> void
+MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All.AllTextMateGrammarProvider.HighlightAsync(MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateGrammarHighlightRequest! request, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateGrammarHighlightResult?>
+MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All.AllTextMateGrammarProvider.Revision.get -> int

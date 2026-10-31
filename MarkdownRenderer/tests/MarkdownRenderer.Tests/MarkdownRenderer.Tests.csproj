@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsTestProject>true</IsTestProject>
+    <RootNamespace>MarkdownRenderer.Tests</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Tests reference the shipped renderer assemblies; WinUI XAML tooling is not needed. -->
+    <UseWinUI>false</UseWinUI>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="Markdig" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.Runtime" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\MarkdownRenderer\MarkdownRenderer.csproj" />
+    <ProjectReference Include="..\..\perf\MarkdownRenderer.PerformanceHarness.Core\MarkdownRenderer.PerformanceHarness.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="Fixtures\performance-gate-schema10-values.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <TargetPath>PerformanceFixtures\performance-gate-schema10-values.json</TargetPath>
+    </Content>
+  </ItemGroup>
+</Project>

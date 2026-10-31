@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using JitHub.Services.CodeViewer;
 using MarkdownRenderer.Images;
 
 namespace JitHub.Services.Markdown;
@@ -15,19 +17,48 @@ public static class MarkdownDocumentSourceFactory
         string owner,
         string repository,
         string? gitRef = null,
-        string? path = null)
+        string? path = null,
+        string? repositoryTreeSha = null,
+        string? reloadRevision = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(kind);
         ArgumentException.ThrowIfNullOrWhiteSpace(stableId);
         ArgumentException.ThrowIfNullOrWhiteSpace(owner);
         ArgumentException.ThrowIfNullOrWhiteSpace(repository);
 
+        string normalizedKind = kind.Trim();
+        string normalizedOwner = owner.Trim();
+        string normalizedRepository = repository.Trim();
+        string normalizedRef = string.IsNullOrWhiteSpace(gitRef) ? "HEAD" : gitRef.Trim();
+        string normalizedPath = string.IsNullOrWhiteSpace(path) ? RepositoryRootDocumentPath : NormalizePath(path);
+        List<string> identityComponents =
+        [
+            normalizedKind,
+            normalizedOwner,
+            normalizedRepository,
+            Uri.EscapeDataString(normalizedRef),
+            Uri.EscapeDataString(normalizedPath),
+            GetTreeRevisionComponent(repositoryTreeSha)
+        ];
+        // A valid tree object ID already pins the entire path/relative-asset
+        // context. A per-navigation revision is only a fallback when that
+        // authoritative snapshot is unavailable; including both would make
+        // identical reads of the same tree acquire different identities.
+        if (!GitReferencePolicy.IsImmutableObjectId(repositoryTreeSha) &&
+            !string.IsNullOrWhiteSpace(reloadRevision))
+        {
+            identityComponents.Add($"reload-{Uri.EscapeDataString(reloadRevision.Trim())}");
+        }
+
+        identityComponents.Add(stableId.Trim());
+        string documentId = string.Join(":", identityComponents);
+
         return new MarkdownDocumentSource(
-            $"{kind.Trim()}:{owner.Trim()}/{repository.Trim()}:{stableId.Trim()}",
-            owner.Trim(),
-            repository.Trim(),
-            string.IsNullOrWhiteSpace(gitRef) ? "HEAD" : gitRef.Trim(),
-            string.IsNullOrWhiteSpace(path) ? RepositoryRootDocumentPath : NormalizePath(path));
+            documentId,
+            normalizedOwner,
+            normalizedRepository,
+            normalizedRef,
+            normalizedPath);
     }
 
     public static MarkdownDocumentSource? TryCreateFromGitHubUrl(
@@ -35,14 +66,16 @@ public static class MarkdownDocumentSourceFactory
         string stableId,
         string? githubUrl,
         string? gitRef = null,
-        string? path = null)
+        string? path = null,
+        string? repositoryTreeSha = null,
+        string? reloadRevision = null)
     {
         if (!TryGetRepository(githubUrl, out string owner, out string repository))
         {
             return null;
         }
 
-        return CreateRepositoryDocument(kind, stableId, owner, repository, gitRef, path);
+        return CreateRepositoryDocument(kind, stableId, owner, repository, gitRef, path, repositoryTreeSha, reloadRevision);
     }
 
     public static bool TryGetRepository(string? githubUrl, out string owner, out string repository)
@@ -78,7 +111,9 @@ public static class MarkdownDocumentSourceFactory
     public static MarkdownDocumentSource? TryCreateRepositoryFile(
         string stableId,
         string? githubBlobUrl,
-        string? documentPath)
+        string? documentPath,
+        string? repositoryTreeSha = null,
+        string? reloadRevision = null)
     {
         if (!Uri.TryCreate(githubBlobUrl, UriKind.Absolute, out Uri? uri) ||
             !uri.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase) ||
@@ -101,9 +136,28 @@ public static class MarkdownDocumentSourceFactory
         }
 
         string gitRef = remainder[..^suffix.Length];
-        return gitRef.Length == 0
-            ? null
-            : CreateRepositoryDocument("repository-file", stableId, segments[0], segments[1], gitRef, normalizedPath);
+        if (gitRef.Length == 0)
+        {
+            return null;
+        }
+
+        // Repository-relative image resolution depends on the complete ref/path
+        // context and the tree snapshot.
+        return CreateRepositoryDocument(
+            "repository-file", stableId, segments[0], segments[1], gitRef, normalizedPath,
+            repositoryTreeSha, reloadRevision);
+    }
+
+    private static string GetTreeRevisionComponent(string? repositoryTreeSha)
+    {
+        // A root tree object ID identifies the relative-asset context. It is
+        // not a commit ID.
+        if (GitReferencePolicy.IsImmutableObjectId(repositoryTreeSha))
+        {
+            return $"tree-{repositoryTreeSha!.ToLowerInvariant()}";
+        }
+
+        return "tree-unavailable";
     }
 
     private static string NormalizePath(string path) =>

@@ -76,14 +76,6 @@ public sealed class GitHubRepoCodeQueryServiceTests : IDisposable
             svgBytes,
             CancellationToken.None);
         Assert.True(validation.Accepted, validation.Reason);
-        RepositorySvgRasterizer rasterizer = new();
-        using RepositorySvgDocument? svgDocument = rasterizer.Load(svgBytes, CancellationToken.None);
-        Assert.NotNull(svgDocument);
-        RepositorySvgTile svgTile = rasterizer.RasterizeTile(
-            svgDocument,
-            new RepositorySvgTileRequest(0, 0, 960, 540, 1),
-            CancellationToken.None);
-        Assert.Contains(svgTile.BgraPixels.Where((_, index) => index % 4 == 3), alpha => alpha != 0);
     }
 
     private static async Task<string> ReadPublicPreviewBlobAsync(

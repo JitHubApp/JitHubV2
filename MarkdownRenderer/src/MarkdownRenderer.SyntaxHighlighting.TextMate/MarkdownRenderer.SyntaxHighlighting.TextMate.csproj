@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>MarkdownRenderer.SyntaxHighlighting.TextMate</RootNamespace>
+    <AssemblyName>MarkdownRenderer.SyntaxHighlighting.TextMate</AssemblyName>
+    <UseWinUI>true</UseWinUI>
+    <WinUISDKReferences>false</WinUISDKReferences>
+    <PackageId>MarkdownRenderer.SyntaxHighlighting.TextMate</PackageId>
+    <Description>Lean TextMate syntax-highlighting integration and grammar-provider contracts for MarkdownRenderer. Grammar resources are supplied by a separate pack.</Description>
+    <PackageTags>markdown;winui;syntax-highlighting;textmate;code;engine</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer.csproj" />
+  </ItemGroup>
+</Project>

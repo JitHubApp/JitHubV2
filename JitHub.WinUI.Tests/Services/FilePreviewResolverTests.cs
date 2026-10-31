@@ -4,6 +4,7 @@ using System.IO;
 using System.Text;
 using JitHub.Models.CodeViewer;
 using JitHub.Services.CodeViewer;
+using MarkdownRenderer;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;
@@ -144,6 +145,38 @@ public class FilePreviewResolverTests
         var result = resolver.Resolve($"README{ext}", 100, default);
         Assert.Equal(RepoFilePreviewKind.Markdown, result.Kind);
         Assert.Equal("markdown", result.LanguageId);
+    }
+
+    [Fact]
+    public void Resolve_MarkdownAboveEditorBudget_UsesBoundedMarkdownPipeline()
+    {
+        var resolver = CreateResolver();
+        long size = FilePreviewResolver.MaximumInteractiveTextBytes + 1;
+
+        var result = resolver.Resolve("README.md", size, TextBytes("# large readme"));
+
+        Assert.Equal(RepoFilePreviewKind.Markdown, result.Kind);
+    }
+
+    [Fact]
+    public void Resolve_MarkdownAboveRendererAdmissionLimit_ReturnsTooLarge()
+    {
+        var resolver = CreateResolver();
+
+        var result = resolver.Resolve(
+            "README.md",
+            FilePreviewResolver.MaximumMarkdownBytes + 1,
+            TextBytes("# abusive readme"));
+
+        Assert.Equal(RepoFilePreviewKind.TooLarge, result.Kind);
+    }
+
+    [Fact]
+    public void MarkdownBudget_TracksRendererMaximumSourceLength()
+    {
+        Assert.Equal(
+            MarkdownParseLimits.DefaultMaximumSourceLength,
+            FilePreviewResolver.MaximumMarkdownBytes);
     }
 
     // ── CSV / TSV ─────────────────────────────────────────────────────────────

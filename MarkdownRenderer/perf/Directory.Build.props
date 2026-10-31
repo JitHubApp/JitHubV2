@@ -1,0 +1,15 @@
+<Project>
+  <PropertyGroup>
+    <MarkdownRendererProject>true</MarkdownRendererProject>
+  </PropertyGroup>
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+
+  <!-- Benchmarks and the performance harness. Measurements run on x64 and
+       ARM64 hardware only. None of them ships. -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Platforms>x64;ARM64</Platforms>
+    <PlatformTarget Condition="'$(PlatformTarget)' == ''">$(Platform)</PlatformTarget>
+  </PropertyGroup>
+</Project>

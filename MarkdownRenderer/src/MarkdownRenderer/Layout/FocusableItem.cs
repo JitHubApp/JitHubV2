@@ -1,0 +1,35 @@
+namespace MarkdownRenderer.Layout;
+
+/// <summary>The kind of keyboard-focusable element represented by <see cref="FocusableItem"/>.</summary>
+internal enum FocusableItemKind
+{
+    Link,
+    InlineEmbed,
+    BlockEmbed,
+    DeclarativeHostedElement,
+    CodeBlockCopy,
+    VectorSemantic,
+    HorizontalOverflow,
+}
+
+/// <summary>Represents a keyboard-focusable element in the document.</summary>
+internal readonly struct FocusableItem
+{
+    public FocusableItem(int blockIndex, int inlineIndex, bool isLink) =>
+        (BlockIndex, InlineIndex, Kind) = (blockIndex, inlineIndex, isLink ? FocusableItemKind.Link : FocusableItemKind.InlineEmbed);
+
+    public FocusableItem(int blockIndex, int inlineIndex, FocusableItemKind kind) =>
+        (BlockIndex, InlineIndex, Kind) = (blockIndex, inlineIndex, kind);
+
+    public readonly int BlockIndex;
+    public readonly int InlineIndex;
+    public readonly FocusableItemKind Kind;
+    public bool IsLink => Kind == FocusableItemKind.Link;
+    public bool IsVectorSemantic => Kind == FocusableItemKind.VectorSemantic;
+    public bool IsInlineEmbed => Kind == FocusableItemKind.InlineEmbed;
+    public bool IsBlockEmbed => Kind == FocusableItemKind.BlockEmbed;
+    public bool IsDeclarativeHostedElement => Kind == FocusableItemKind.DeclarativeHostedElement;
+    public bool IsCodeBlockCopy => Kind == FocusableItemKind.CodeBlockCopy;
+    public bool IsHorizontalOverflow => Kind == FocusableItemKind.HorizontalOverflow;
+    public bool IsCodeBlockAction => IsCodeBlockCopy;
+}

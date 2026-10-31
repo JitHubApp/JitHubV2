@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>MarkdownRenderer</RootNamespace>
+    <AssemblyName>MarkdownRenderer</AssemblyName>
+    <UseWinUI>true</UseWinUI>
+    <WinUISDKReferences>false</WinUISDKReferences>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <PackageId>MarkdownRenderer</PackageId>
+    <Description>Native WinUI markdown viewer: immutable documents with source maps and diagnostics, CommonMark, strict GFM and GitHub README profiles, budgeted safe HTML, and Win2D layout, painting, input, selection and UI Automation.</Description>
+    <PackageTags>markdown;commonmark;gfm;github;html;winui;win2d;windows;accessibility;aot</PackageTags>
+  </PropertyGroup>
+
+  <!-- White-box tests and performance measurement. The performance harness
+       and its library time internal pipeline stages and read the in-process
+       performance sink, so their measurements match the renderer's own
+       instrumentation. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="MarkdownRenderer.GitHub.Tests" />
+    <InternalsVisibleTo Include="MarkdownRenderer.Html.Tests" />
+    <InternalsVisibleTo Include="MarkdownRenderer.Svg.Resvg.Tests" />
+    <InternalsVisibleTo Include="MarkdownRenderer.Tests" />
+    <InternalsVisibleTo Include="MarkdownRenderer.Pixel.Tests" />
+    <InternalsVisibleTo Include="MarkdownRenderer.Conformance.Tests" />
+    <InternalsVisibleTo Include="MarkdownRenderer.Benchmarks" />
+    <InternalsVisibleTo Include="MarkdownRenderer.PerformanceHarness" />
+    <InternalsVisibleTo Include="MarkdownRenderer.PerformanceHarness.Core" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Markdig" />
+    <PackageReference Include="Microsoft.Graphics.Win2D" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="GitHub\Profiles\github-primer-light-v*.css"
+                      LogicalName="MarkdownRenderer.GitHub.Profiles.%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <Target Name="FilterPublicXmlDocumentationForPack" BeforeTargets="GenerateNuspec"
+          Condition="Exists('$(TargetPath)') and Exists('$(TargetDir)$(AssemblyName).xml')">
+    <Exec Command="pwsh -NoProfile -NonInteractive -File &quot;$(MSBuildProjectDirectory)\..\..\eng\Filter-PublicXmlDocumentation.ps1&quot; -AssemblyPath &quot;$(TargetPath)&quot; -XmlPath &quot;$(TargetDir)$(AssemblyName).xml&quot;" />
+  </Target>
+
+</Project>

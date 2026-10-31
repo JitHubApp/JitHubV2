@@ -1,11 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <!-- Match JitHub.WinUI and the renderer projects this test project references. -->
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
-    <Platform Condition="'$(Platform)' == ''">x64</Platform>
+    <!-- The SDK defaults Platform to AnyCPU before this file is evaluated. -->
+    <Platform Condition="'$(Platform)' == '' or '$(Platform)' == 'AnyCPU' or '$(Platform)' == 'Any CPU'">x64</Platform>
     <Platforms>x86;x64;ARM64</Platforms>
     <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
     <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == '' and '$(Platform)' == 'x86'">win-x86</RuntimeIdentifier>
@@ -14,8 +17,8 @@
     <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
     <!-- Suppress warnings about Windows-specific APIs in test context -->
     <NoWarn>$(NoWarn);CA1416</NoWarn>
-    <DefaultItemExcludes>$(DefaultItemExcludes);obj\**;obj-*\**;bin\**;bin-*\**;artifacts\**</DefaultItemExcludes>
   </PropertyGroup>
+
 
   <ItemGroup>
     <Compile Include="..\Shared\OAuthHandoffProtocol.cs" Link="Security\OAuthHandoffProtocol.cs" />
@@ -75,6 +78,8 @@
     <Compile Include="..\JitHub.WinUI\Services\CodeViewer\FilePreviewResolver.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\CodeViewer\RepositorySvgSecurityPolicy.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\CodeViewer\RepositorySvgRasterizer.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\CodeViewer\RepositorySvgPixelFormatPolicy.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\CodeViewer\StrictResourceLeaseCache.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\CodeViewer\CsvDocumentParser.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\CodeViewer\SvgPreviewRequestGate.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\CodeViewer\SettledZoomTracker.cs" Link="Services\%(Filename)%(Extension)" />
@@ -116,7 +121,15 @@
     <Compile Include="..\JitHub.WinUI\Services\Settings\SettingsActionGate.cs" Link="Services\Settings\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Settings\SettingsSourceNavigationContracts.cs" Link="Services\Settings\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubMarkdownImageReference.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubMarkdownImageCandidate.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubLeasedImageDownloadTransfer.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Markdown\IGitHubMarkdownImageResolverProvider.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Markdown\LeasedGitHubMarkdownImageResolver.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Markdown\GitLfsPointer.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubMarkdownImageUrlResolver.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubRepositoryImageFetchPipeline.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubCamoImageMapParser.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownImageFallbackPipeline.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\GloballyRoutableAddressPolicy.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownRemoteContentConsent.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\RuntimeEventSubscription.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
@@ -125,10 +138,10 @@
     <Compile Include="..\JitHub.WinUI\Services\Markdown\DenyAllMarkdownImageResolver.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownDocumentSourceFactory.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownLifecycleAutomationBridge.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownLifecycleImageResolver.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownRendererDisposalCommit.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Views\Controls\Common\MarkdownHostContract.cs" Link="Views\Controls\Common\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Helpers\RepositoryLanguageColorPalette.cs" Link="Helpers\%(Filename)%(Extension)" />
-    <Compile Include="..\MarkdownRenderer\MarkdownRenderer\Images\IMarkdownImageResolver.cs" Link="MarkdownRenderer\Images\%(Filename)%(Extension)" />
-    <Compile Include="..\MarkdownRenderer\MarkdownRenderer\Layout\Boxes\RasterImageResourceBudget.cs" Link="MarkdownRenderer\Layout\Boxes\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\ViewModels\Pages\SettingsPageViewModel.cs" Link="ViewModels\Pages\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\ViewModels\Pages\LoginPageViewModel.cs" Link="ViewModels\Pages\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\ViewModels\Pages\NotificationsPageViewModel.cs" Link="ViewModels\Pages\%(Filename)%(Extension)" />
@@ -152,6 +165,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\MarkdownRenderer\src\MarkdownRenderer\MarkdownRenderer.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageReference Include="CommunityToolkit.Common" Version="8.2.1" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260710003" />
@@ -165,8 +182,6 @@
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.3" />
     <PackageReference Include="NSubstitute" Version="5.3.0" />
     <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.10.0" />
-    <PackageReference Include="SkiaSharp" Version="4.151.1" />
-    <PackageReference Include="Svg.Skia" Version="5.2.1" />
     <PackageReference Include="coverlet.collector" Version="6.0.2">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>

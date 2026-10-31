@@ -33,7 +33,22 @@
     <Deploy Solution="*|x86" />
     <Deploy Solution="Debug|Any CPU" />
   </Project>
-  <Project Path="MarkdownRenderer/MarkdownRenderer.Gfm/MarkdownRenderer.Gfm.csproj">
+  <Project Path="MarkdownRenderer/tests/MarkdownRenderer.Pixel.Tests/MarkdownRenderer.Pixel.Tests.csproj">
+    <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="Debug|Any CPU" Project="x64" />
+    <Platform Solution="Release|Any CPU" Project="x64" />
+  </Project>
+  <Project Path="MarkdownRenderer/samples/MarkdownRenderer.Sample.Automation/MarkdownRenderer.Sample.Automation.csproj">
+    <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="Debug|Any CPU" Project="x64" />
+    <Platform Solution="Release|Any CPU" Project="x64" />
+  </Project>
+  <Project Path="MarkdownRenderer/tests/MarkdownRenderer.Sample.Automation.Tests/MarkdownRenderer.Sample.Automation.Tests.csproj">
+    <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="Debug|Any CPU" Project="x64" />
+    <Platform Solution="Release|Any CPU" Project="x64" />
+  </Project>
+  <Project Path="MarkdownRenderer/samples/MarkdownRenderer.Sample/MarkdownRenderer.Sample.csproj">
     <Platform Solution="*|ARM" Project="x86" />
     <Platform Solution="*|ARM64" Project="ARM64" />
     <Platform Solution="*|x64" Project="x64" />
@@ -41,17 +56,36 @@
     <Platform Solution="Debug|Any CPU" Project="x64" />
     <Platform Solution="Release|Any CPU" Project="x86" />
   </Project>
-  <Project Path="MarkdownRenderer/MarkdownRenderer.PixelTests/MarkdownRenderer.PixelTests.csproj">
+  <Project Path="MarkdownRenderer/tests/MarkdownRenderer.GitHub.Tests/MarkdownRenderer.GitHub.Tests.csproj">
     <Platform Solution="*|x64" Project="x64" />
     <Platform Solution="Debug|Any CPU" Project="x64" />
     <Platform Solution="Release|Any CPU" Project="x64" />
   </Project>
-  <Project Path="MarkdownRenderer/MarkdownRenderer.Sample.Automation/MarkdownRenderer.Sample.Automation.csproj">
+  <Project Path="MarkdownRenderer/perf/MarkdownRenderer.Benchmarks/MarkdownRenderer.Benchmarks.csproj">
+    <Platform Solution="*|ARM64" Project="ARM64" />
     <Platform Solution="*|x64" Project="x64" />
     <Platform Solution="Debug|Any CPU" Project="x64" />
     <Platform Solution="Release|Any CPU" Project="x64" />
   </Project>
-  <Project Path="MarkdownRenderer/MarkdownRenderer.Sample/MarkdownRenderer.Sample.csproj">
+  <Project Path="MarkdownRenderer/tests/MarkdownRenderer.Conformance.Tests/MarkdownRenderer.Conformance.Tests.csproj">
+    <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="Debug|Any CPU" Project="x64" />
+    <Platform Solution="Release|Any CPU" Project="x64" />
+  </Project>
+  <Project Path="MarkdownRenderer/tests/aot/MarkdownRenderer.AotSmoke/MarkdownRenderer.AotSmoke.csproj">
+    <Platform Solution="*|ARM" Project="x86" />
+    <Platform Solution="*|ARM64" Project="ARM64" />
+    <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="*|x86" Project="x86" />
+    <Platform Solution="Debug|Any CPU" Project="x64" />
+    <Platform Solution="Release|Any CPU" Project="x64" />
+  </Project>
+  <Project Path="MarkdownRenderer/tests/MarkdownRenderer.Html.Tests/MarkdownRenderer.Html.Tests.csproj">
+    <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="Debug|Any CPU" Project="x64" />
+    <Platform Solution="Release|Any CPU" Project="x64" />
+  </Project>
+  <Project Path="MarkdownRenderer/src/MarkdownRenderer.Math/MarkdownRenderer.Math.csproj">
     <Platform Solution="*|ARM" Project="x86" />
     <Platform Solution="*|ARM64" Project="ARM64" />
     <Platform Solution="*|x64" Project="x64" />
@@ -59,7 +93,12 @@
     <Platform Solution="Debug|Any CPU" Project="x64" />
     <Platform Solution="Release|Any CPU" Project="x86" />
   </Project>
-  <Project Path="MarkdownRenderer/MarkdownRenderer.SyntaxHighlighting.TextMate/MarkdownRenderer.SyntaxHighlighting.TextMate.csproj">
+  <Project Path="MarkdownRenderer/tests/MarkdownRenderer.Math.Tests/MarkdownRenderer.Math.Tests.csproj">
+    <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="Debug|Any CPU" Project="x64" />
+    <Platform Solution="Release|Any CPU" Project="x64" />
+  </Project>
+  <Project Path="MarkdownRenderer/src/MarkdownRenderer.Mermaid/MarkdownRenderer.Mermaid.csproj">
     <Platform Solution="*|ARM" Project="x86" />
     <Platform Solution="*|ARM64" Project="ARM64" />
     <Platform Solution="*|x64" Project="x64" />
@@ -67,12 +106,107 @@
     <Platform Solution="Debug|Any CPU" Project="x64" />
     <Platform Solution="Release|Any CPU" Project="x86" />
   </Project>
-  <Project Path="MarkdownRenderer/MarkdownRenderer.Tests/MarkdownRenderer.Tests.csproj">
+  <Project Path="MarkdownRenderer/tests/MarkdownRenderer.Mermaid.Tests/MarkdownRenderer.Mermaid.Tests.csproj">
     <Platform Solution="*|x64" Project="x64" />
     <Platform Solution="Debug|Any CPU" Project="x64" />
     <Platform Solution="Release|Any CPU" Project="x64" />
   </Project>
-  <Project Path="MarkdownRenderer/MarkdownRenderer/MarkdownRenderer.csproj">
+  <Project Path="MarkdownRenderer/tests/aot/MarkdownRenderer.Mermaid.AotSmoke/MarkdownRenderer.Mermaid.AotSmoke.csproj">
+      <Platform Solution="*|x64" Project="x64" />
+      <Platform Solution="Debug|Any CPU" Project="x64" />
+      <Platform Solution="Release|Any CPU" Project="x64" />
+  </Project>
+  <Project Path="MarkdownRenderer/src/MarkdownRenderer.All/MarkdownRenderer.All.csproj">
+    <Platform Solution="*|ARM" Project="x86" />
+    <Platform Solution="*|ARM64" Project="ARM64" />
+    <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="*|x86" Project="x86" />
+    <Platform Solution="Debug|Any CPU" Project="x64" />
+    <Platform Solution="Release|Any CPU" Project="x64" />
+  </Project>
+  <Project Path="MarkdownRenderer/src/MarkdownRenderer.Svg.Resvg/MarkdownRenderer.Svg.Resvg.csproj">
+    <Platform Solution="*|ARM" Project="x86" />
+    <Platform Solution="*|ARM64" Project="ARM64" />
+    <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="*|x86" Project="x86" />
+    <Platform Solution="Debug|Any CPU" Project="x64" />
+    <Platform Solution="Release|Any CPU" Project="x86" />
+  </Project>
+  <Project Path="MarkdownRenderer/tests/MarkdownRenderer.Svg.Resvg.Tests/MarkdownRenderer.Svg.Resvg.Tests.csproj">
+    <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="Debug|Any CPU" Project="x64" />
+    <Platform Solution="Release|Any CPU" Project="x64" />
+  </Project>
+  <Project Path="MarkdownRenderer/tests/aot/MarkdownRenderer.Svg.Resvg.AotSmoke/MarkdownRenderer.Svg.Resvg.AotSmoke.csproj">
+    <Platform Solution="*|ARM" Project="x86" />
+    <Platform Solution="*|ARM64" Project="ARM64" />
+    <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="*|x86" Project="x86" />
+    <Platform Solution="Debug|Any CPU" Project="x64" />
+    <Platform Solution="Release|Any CPU" Project="x86" />
+  </Project>
+  <Project Path="MarkdownRenderer/tests/MarkdownRenderer.Svg.Resvg.TestSupport/MarkdownRenderer.Svg.Resvg.TestSupport.csproj">
+    <Platform Solution="*|ARM" Project="x86" />
+    <Platform Solution="*|ARM64" Project="ARM64" />
+    <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="*|x86" Project="x86" />
+    <Platform Solution="Debug|Any CPU" Project="x64" />
+    <Platform Solution="Release|Any CPU" Project="x86" />
+  </Project>
+  <Project Path="MarkdownRenderer/src/MarkdownRenderer.SyntaxHighlighting.TextMate/MarkdownRenderer.SyntaxHighlighting.TextMate.csproj">
+    <Platform Solution="*|ARM" Project="x86" />
+    <Platform Solution="*|ARM64" Project="ARM64" />
+    <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="*|x86" Project="x86" />
+    <Platform Solution="Debug|Any CPU" Project="x64" />
+    <Platform Solution="Release|Any CPU" Project="x86" />
+  </Project>
+  <Project Path="MarkdownRenderer/src/MarkdownRenderer.SyntaxHighlighting.TextMate.Engine/MarkdownRenderer.SyntaxHighlighting.TextMate.Engine.csproj">
+    <Platform Solution="*|ARM" Project="x86" />
+    <Platform Solution="*|ARM64" Project="ARM64" />
+    <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="*|x86" Project="x86" />
+    <Platform Solution="Debug|Any CPU" Project="x64" />
+    <Platform Solution="Release|Any CPU" Project="x64" />
+  </Project>
+  <Project Path="MarkdownRenderer/src/MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common/MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.csproj">
+    <Platform Solution="*|ARM" Project="x86" />
+    <Platform Solution="*|ARM64" Project="ARM64" />
+    <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="*|x86" Project="x86" />
+    <Platform Solution="Debug|Any CPU" Project="x64" />
+    <Platform Solution="Release|Any CPU" Project="x64" />
+  </Project>
+  <Project Path="MarkdownRenderer/src/MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All/MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All.csproj">
+    <Platform Solution="*|ARM" Project="x86" />
+    <Platform Solution="*|ARM64" Project="ARM64" />
+    <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="*|x86" Project="x86" />
+    <Platform Solution="Debug|Any CPU" Project="x64" />
+    <Platform Solution="Release|Any CPU" Project="x64" />
+  </Project>
+  <Project Path="MarkdownRenderer/tests/MarkdownRenderer.SyntaxHighlighting.TextMate.Tests/MarkdownRenderer.SyntaxHighlighting.TextMate.Tests.csproj">
+    <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="Debug|Any CPU" Project="x64" />
+    <Platform Solution="Release|Any CPU" Project="x64" />
+  </Project>
+  <Project Path="MarkdownRenderer/tests/MarkdownRenderer.Tests/MarkdownRenderer.Tests.csproj">
+    <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="Debug|Any CPU" Project="x64" />
+    <Platform Solution="Release|Any CPU" Project="x64" />
+  </Project>
+  <Project Path="MarkdownRenderer/tests/MarkdownRenderer.PublicApi.Tests/MarkdownRenderer.PublicApi.Tests.csproj">
+    <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="Debug|Any CPU" Project="x64" />
+    <Platform Solution="Release|Any CPU" Project="x64" />
+  </Project>
+  <Project Path="MarkdownRenderer/perf/MarkdownRenderer.PerformanceHarness.Core/MarkdownRenderer.PerformanceHarness.Core.csproj">
+    <Platform Solution="*|ARM64" Project="ARM64" />
+    <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="Debug|Any CPU" Project="x64" />
+    <Platform Solution="Release|Any CPU" Project="x64" />
+  </Project>
+  <Project Path="MarkdownRenderer/src/MarkdownRenderer/MarkdownRenderer.csproj">
     <Platform Solution="*|ARM" Project="x86" />
     <Platform Solution="*|ARM64" Project="ARM64" />
     <Platform Solution="*|x64" Project="x64" />

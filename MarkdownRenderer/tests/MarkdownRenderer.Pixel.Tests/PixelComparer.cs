@@ -1,0 +1,331 @@
+using System;
+using System.Drawing;
+using System.Drawing.Imaging;
+using System.IO;
+using System.Runtime.InteropServices;
+
+namespace MarkdownRenderer.Pixel.Tests;
+
+/// <summary>
+/// Pixel-by-pixel comparison helpers for two RGBA / BGRA buffers, with
+/// optional cropping to the exact image rectangle (the headless browser
+/// shim sometimes pads the screenshot to the requested window size). All
+/// buffers are normalized to RGBA8888 in memory and compared per-channel.
+/// </summary>
+public static class PixelComparer
+{
+    /// <summary>Aggregated per-pixel diff statistics.</summary>
+    public readonly record struct DiffReport(
+        int WidthPx,
+        int HeightPx,
+        long MaxChannelDelta,
+        double MeanChannelDelta,
+        double DifferingPixelFraction,
+        double StructuralSimilarity,
+        double AlphaIntersectionOverUnion);
+
+    /// <summary>Loads a PNG from disk into a top-down RGBA8888 byte buffer.</summary>
+    public static (byte[] Rgba, int Width, int Height) LoadPngAsRgba(string path)
+        => LoadPngAsRgba(File.ReadAllBytes(path));
+
+    /// <summary>Decodes a completed browser protocol PNG without a staging file.</summary>
+    public static (byte[] Rgba, int Width, int Height) LoadPngAsRgba(byte[] png)
+    {
+        // Bitmap(string) still delegates path handling to GDI+, which rejects
+        // otherwise valid long worktree/CI paths. System.IO reads those paths
+        // correctly; keep the stream alive for the lifetime of the bitmap.
+        using var stream = new MemoryStream(png, writable: false);
+        using var bmp = new Bitmap(stream);
+        return BitmapToRgba(bmp);
+    }
+
+    internal static byte[] EncodeRgbaAsPng(byte[] rgba, int width, int height)
+    {
+        using var bitmap = RgbaToBitmap(rgba, width, height);
+        using var stream = new MemoryStream();
+        bitmap.Save(stream, ImageFormat.Png);
+        return stream.ToArray();
+    }
+
+    /// <summary>Saves an RGBA8888 byte buffer as a PNG.</summary>
+    public static void SaveRgbaAsPng(byte[] rgba, int width, int height, string path)
+    {
+        string destination = Path.GetFullPath(path);
+        Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+
+        // GDI+ still uses legacy path handling even when the process and .NET
+        // file APIs are long-path aware. Encode through a short temporary path,
+        // then let System.IO move the completed PNG to a deep worktree/CI path.
+        string temporaryDirectory = Path.Combine(Path.GetTempPath(), "MarkdownRenderer.Pixel.Tests");
+        Directory.CreateDirectory(temporaryDirectory);
+        string temporaryPath = Path.Combine(temporaryDirectory, $"{Guid.NewGuid():N}.png");
+        try
+        {
+            using var bmp = RgbaToBitmap(rgba, width, height);
+            bmp.Save(temporaryPath, ImageFormat.Png);
+            File.Move(temporaryPath, destination, overwrite: true);
+        }
+        finally
+        {
+            try { File.Delete(temporaryPath); } catch { }
+        }
+    }
+
+    /// <summary>Converts a BGRA premultiplied buffer (Skia output) to RGBA8888 unpremultiplied.</summary>
+    public static byte[] BgraPremulToRgba(byte[] bgra, int width, int height)
+    {
+        var rgba = new byte[width * height * 4];
+        for (int i = 0; i < width * height; i++)
+        {
+            byte b = bgra[i * 4 + 0];
+            byte g = bgra[i * 4 + 1];
+            byte r = bgra[i * 4 + 2];
+            byte a = bgra[i * 4 + 3];
+            // Unpremultiply so comparisons against the browser (which emits
+            // un-premultiplied PNGs) align channel-for-channel.
+            if (a > 0 && a < 255)
+            {
+                r = (byte)Math.Min(255, (r * 255) / a);
+                g = (byte)Math.Min(255, (g * 255) / a);
+                b = (byte)Math.Min(255, (b * 255) / a);
+            }
+            rgba[i * 4 + 0] = r;
+            rgba[i * 4 + 1] = g;
+            rgba[i * 4 + 2] = b;
+            rgba[i * 4 + 3] = a;
+        }
+        return rgba;
+    }
+
+    /// <summary>Converts an RGBA premultiplied buffer to RGBA8888 unpremultiplied.</summary>
+    public static byte[] RgbaPremulToRgba(ReadOnlySpan<byte> premultiplied, int width, int height)
+    {
+        if (premultiplied.Length != checked(width * height * 4))
+            throw new ArgumentException("dimensions mismatch buffer length", nameof(premultiplied));
+
+        byte[] rgba = premultiplied.ToArray();
+        for (int index = 0; index < width * height; index++)
+        {
+            int offset = index * 4;
+            byte alpha = rgba[offset + 3];
+            if (alpha is > 0 and < 255)
+            {
+                rgba[offset] = (byte)Math.Min(255, (rgba[offset] * 255) / alpha);
+                rgba[offset + 1] = (byte)Math.Min(255, (rgba[offset + 1] * 255) / alpha);
+                rgba[offset + 2] = (byte)Math.Min(255, (rgba[offset + 2] * 255) / alpha);
+            }
+        }
+        return rgba;
+    }
+
+    /// <summary>
+    /// Crops <paramref name="rgba"/> to a sub-rect. Useful when the headless
+    /// browser screenshot is padded to the window size with transparent
+    /// pixels and only the SVG-occupied rect should participate in compare.
+    /// </summary>
+    public static byte[] Crop(byte[] rgba, int srcW, int srcH, int x, int y, int w, int h)
+    {
+        if (x < 0 || y < 0 || x + w > srcW || y + h > srcH)
+            throw new ArgumentOutOfRangeException(nameof(w), $"crop {x},{y} {w}×{h} doesn't fit in {srcW}×{srcH}");
+        var dst = new byte[w * h * 4];
+        for (int row = 0; row < h; row++)
+        {
+            int srcOffset = ((y + row) * srcW + x) * 4;
+            int dstOffset = row * w * 4;
+            Buffer.BlockCopy(rgba, srcOffset, dst, dstOffset, w * 4);
+        }
+        return dst;
+    }
+
+    public static byte[] CropToRequiredBounds(
+        byte[] rgba,
+        int sourceWidth,
+        int sourceHeight,
+        int requiredWidth,
+        int requiredHeight)
+    {
+        if (sourceWidth < requiredWidth || sourceHeight < requiredHeight)
+        {
+            throw new InvalidDataException(
+                $"Raster capture {sourceWidth}x{sourceHeight} does not cover the required " +
+                $"{requiredWidth}x{requiredHeight} comparison area.");
+        }
+
+        return sourceWidth == requiredWidth && sourceHeight == requiredHeight
+            ? rgba
+            : Crop(rgba, sourceWidth, sourceHeight, 0, 0, requiredWidth, requiredHeight);
+    }
+
+    /// <summary>
+    /// Compares two RGBA buffers of identical dimensions. RGB is compared in
+    /// premultiplied-alpha space because unpremultiplied color beneath a fully
+    /// transparent pixel is undefined and cannot affect the rendered image.
+    /// Alpha is compared directly. A pixel is "differing" if any resulting
+    /// channel exceeds <paramref name="channelTolerance"/>.
+    /// </summary>
+    public static DiffReport Compare(byte[] a, byte[] b, int width, int height, int channelTolerance = 6)
+    {
+        if (a.Length != b.Length) throw new ArgumentException("buffer length mismatch");
+        if (a.Length != width * height * 4) throw new ArgumentException("dimensions mismatch buffer length");
+
+        long maxDelta = 0;
+        long sumDelta = 0;
+        long differing = 0;
+        long totalChannels = (long)width * height * 4;
+        for (int i = 0; i < width * height; i++)
+        {
+            int baseIdx = i * 4;
+            bool pixelDiffers = false;
+            for (int c = 0; c < 4; c++)
+            {
+                int aValue = c == 3
+                    ? a[baseIdx + c]
+                    : Premultiply(a[baseIdx + c], a[baseIdx + 3]);
+                int bValue = c == 3
+                    ? b[baseIdx + c]
+                    : Premultiply(b[baseIdx + c], b[baseIdx + 3]);
+                int delta = Math.Abs(aValue - bValue);
+                if (delta > maxDelta) maxDelta = delta;
+                sumDelta += delta;
+                if (delta > channelTolerance) pixelDiffers = true;
+            }
+            if (pixelDiffers) differing++;
+        }
+        double mean = (double)sumDelta / totalChannels;
+        double frac = (double)differing / (width * height);
+        double alphaIou = CalculateAlphaIou(a, b);
+        double ssim = CalculateSsim(a, b, width, height);
+        return new DiffReport(width, height, maxDelta, mean, frac, ssim, alphaIou);
+    }
+
+    private static double CalculateAlphaIou(byte[] a, byte[] b)
+    {
+        long intersection = 0;
+        long union = 0;
+        for (int offset = 3; offset < a.Length; offset += 4)
+        {
+            intersection += Math.Min(a[offset], b[offset]);
+            union += Math.Max(a[offset], b[offset]);
+        }
+        // Exact coverage intersection/union at corresponding pixels: no
+        // dilation, nearest-neighbor matches, opacity threshold or alignment.
+        return union == 0 ? 1 : (double)intersection / union;
+    }
+
+    private static double CalculateSsim(byte[] a, byte[] b, int width, int height)
+    {
+        const double c1 = 6.5025;  // (0.01 * 255)^2
+        const double c2 = 58.5225; // (0.03 * 255)^2
+        const int windowSize = 8;
+        double weightedScore = 0;
+        long totalPixels = 0;
+        // Local, uniformly weighted SSIM windows cover every output pixel,
+        // including partial edge windows. Transparent RGB is premultiplied,
+        // not ignored; no candidate color is snapped to the reference.
+        for (int top = 0; top < height; top += windowSize)
+        {
+            for (int left = 0; left < width; left += windowSize)
+            {
+                int right = Math.Min(width, left + windowSize);
+                int bottom = Math.Min(height, top + windowSize);
+                int count = (right - left) * (bottom - top);
+                double sumA = 0, sumB = 0, squaresA = 0, squaresB = 0, products = 0;
+                for (int y = top; y < bottom; y++)
+                {
+                    for (int x = left; x < right; x++)
+                    {
+                        int offset = (y * width + x) * 4;
+                        double valueA = PremultipliedLuminance(a, offset);
+                        double valueB = PremultipliedLuminance(b, offset);
+                        sumA += valueA;
+                        sumB += valueB;
+                        squaresA += valueA * valueA;
+                        squaresB += valueB * valueB;
+                        products += valueA * valueB;
+                    }
+                }
+                double meanA = sumA / count;
+                double meanB = sumB / count;
+                double varianceA = Math.Max(0, squaresA / count - meanA * meanA);
+                double varianceB = Math.Max(0, squaresB / count - meanB * meanB);
+                double covariance = products / count - meanA * meanB;
+                double score = ((2 * meanA * meanB + c1) * (2 * covariance + c2)) /
+                    ((meanA * meanA + meanB * meanB + c1) * (varianceA + varianceB + c2));
+                weightedScore += score * count;
+                totalPixels += count;
+            }
+        }
+        return totalPixels == 0 ? 1 : Math.Clamp(weightedScore / totalPixels, -1, 1);
+    }
+
+    private static double PremultipliedLuminance(byte[] rgba, int offset) =>
+        (0.2126 * Premultiply(rgba[offset], rgba[offset + 3])) +
+        (0.7152 * Premultiply(rgba[offset + 1], rgba[offset + 3])) +
+        (0.0722 * Premultiply(rgba[offset + 2], rgba[offset + 3]));
+
+    private static int Premultiply(byte color, byte alpha) =>
+        (color * alpha + 127) / 255;
+
+    private static (byte[] Rgba, int Width, int Height) BitmapToRgba(Bitmap bmp)
+    {
+        int w = bmp.Width, h = bmp.Height;
+        var data = bmp.LockBits(new Rectangle(0, 0, w, h),
+            ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+        try
+        {
+            var bgra = new byte[w * h * 4];
+            int stride = data.Stride;
+            // GDI+ Format32bppArgb is BGRA bottom-up only when negative
+            // stride; modern .NET on Windows yields top-down with positive
+            // stride. Copy row-by-row so we don't depend on stride sign.
+            unsafe
+            {
+                byte* src = (byte*)data.Scan0;
+                for (int row = 0; row < h; row++)
+                {
+                    Marshal.Copy(new IntPtr(src + row * stride), bgra, row * w * 4, w * 4);
+                }
+            }
+            // BGRA → RGBA channel swap.
+            var rgba = new byte[w * h * 4];
+            for (int i = 0; i < w * h; i++)
+            {
+                rgba[i * 4 + 0] = bgra[i * 4 + 2];
+                rgba[i * 4 + 1] = bgra[i * 4 + 1];
+                rgba[i * 4 + 2] = bgra[i * 4 + 0];
+                rgba[i * 4 + 3] = bgra[i * 4 + 3];
+            }
+            return (rgba, w, h);
+        }
+        finally { bmp.UnlockBits(data); }
+    }
+
+    private static Bitmap RgbaToBitmap(byte[] rgba, int w, int h)
+    {
+        var bmp = new Bitmap(w, h, PixelFormat.Format32bppArgb);
+        var data = bmp.LockBits(new Rectangle(0, 0, w, h),
+            ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+        try
+        {
+            var bgra = new byte[w * h * 4];
+            for (int i = 0; i < w * h; i++)
+            {
+                bgra[i * 4 + 0] = rgba[i * 4 + 2];
+                bgra[i * 4 + 1] = rgba[i * 4 + 1];
+                bgra[i * 4 + 2] = rgba[i * 4 + 0];
+                bgra[i * 4 + 3] = rgba[i * 4 + 3];
+            }
+            unsafe
+            {
+                byte* dst = (byte*)data.Scan0;
+                int stride = data.Stride;
+                for (int row = 0; row < h; row++)
+                {
+                    Marshal.Copy(bgra, row * w * 4, new IntPtr(dst + row * stride), w * 4);
+                }
+            }
+        }
+        finally { bmp.UnlockBits(data); }
+        return bmp;
+    }
+}

@@ -1,130 +1,378 @@
+using System.Buffers;
 using System.Text;
 using JitHub.Services.CodeViewer;
+using MarkdownRenderer.Images;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;
 
 public sealed class RepositorySvgRasterizerTests
 {
-    private readonly RepositorySvgRasterizer _rasterizer = new();
+    private static readonly byte[] ValidSvg = Encoding.UTF8.GetBytes(
+        "<svg xmlns='http://www.w3.org/2000/svg' width='10' height='8'/>");
 
     [Fact]
-    public void RasterizeTile_PreservesTransparentBgraPixels()
+    public async Task LoadAsync_PassesRenderingEnvironmentAndIntrinsicMetadata()
     {
-        using RepositorySvgDocument document = Load(
-            "<svg xmlns='http://www.w3.org/2000/svg' width='4' height='4'>" +
-            "<rect x='1' y='1' width='2' height='2' fill='#ff0000'/></svg>");
+        FakeSvgDocument providerDocument = new(new MarkdownSvgDocumentInfo(
+            IntrinsicWidthDips: 10,
+            IntrinsicHeightDips: 8,
+            Description: "Architecture diagram",
+            UsesCurrentColor: true,
+            UsesColorScheme: true));
+        FakeSvgRenderer renderer = new(providerDocument);
+        RepositorySvgRasterizer rasterizer = new(renderer);
+        MarkdownSvgColor semanticColor = new(0x12, 0x34, 0x56);
 
-        RepositorySvgTile tile = _rasterizer.RasterizeTile(
-            document,
-            new RepositorySvgTileRequest(0, 0, 8, 8, 2),
+        using RepositorySvgDocument? document = await rasterizer.LoadAsync(
+            ValidSvg,
+            "ar-SA",
+            MarkdownSvgColorScheme.Dark,
+            semanticColor,
             CancellationToken.None);
 
-        Assert.Equal(8 * 8 * 4, tile.ByteCount);
-        Assert.Equal(0, AlphaAt(tile, 0, 0));
-        Assert.Equal(255, AlphaAt(tile, 4, 4));
-        Assert.Equal(0, BlueAt(tile, 4, 4));
-        Assert.Equal(0, GreenAt(tile, 4, 4));
-        Assert.Equal(255, RedAt(tile, 4, 4));
+        Assert.NotNull(document);
+        Assert.Equal(10, document.Width);
+        Assert.Equal(8, document.Height);
+        Assert.Equal(0, document.CacheGeneration);
+        Assert.Equal("Architecture diagram", document.Info.Description);
+        Assert.Equal("ar-SA", renderer.LastOpenRequest!.Locale);
+        Assert.Equal(MarkdownSvgColorScheme.Dark, renderer.LastOpenRequest.ColorScheme);
+        Assert.Equal(semanticColor, renderer.LastOpenRequest.SemanticColor);
+        Assert.Equal(ValidSvg, renderer.LastOpenRequest.SanitizedSvgBytes.ToArray());
+    }
+
+    [Fact]
+    public async Task RasterizeTileAsync_RequestsExactBgraTileAndOwnsRasterUntilDisposed()
+    {
+        TrackingMemoryOwner owner = new(new byte[8 * 6 * 4]);
+        owner.Memory.Span.Fill(0x7f);
+        FakeSvgDocument providerDocument = new(
+            new MarkdownSvgDocumentInfo(10, 8),
+            (request, _) => ValueTask.FromResult(new MarkdownSvgRaster(
+                owner,
+                owner.Memory.Length,
+                request.TileRegion!.Value.Width,
+                request.TileRegion.Value.Height,
+                request.TileRegion.Value.Width * 4,
+                request.PixelFormat)));
+        RepositorySvgRasterizer rasterizer = new(new FakeSvgRenderer(providerDocument));
+        using RepositorySvgDocument document = Assert.IsType<RepositorySvgDocument>(
+            await rasterizer.LoadAsync(
+                ValidSvg,
+                null,
+                MarkdownSvgColorScheme.Light,
+                null,
+                CancellationToken.None));
+
+        using (RepositorySvgTile tile = await rasterizer.RasterizeTileAsync(
+            document,
+            new RepositorySvgTileRequest(40, 32, 4, 3, 8, 6),
+            MarkdownSvgPixelFormat.Bgra8Premultiplied,
+            CancellationToken.None))
+        {
+            Assert.Equal(8 * 6 * 4, tile.ByteCount);
+            Assert.All(tile.BgraPixels.ToArray(), value => Assert.Equal(0x7f, value));
+            Assert.False(owner.IsDisposed);
+        }
+
+        Assert.True(owner.IsDisposed);
+        MarkdownSvgRenderRequest request = Assert.IsType<MarkdownSvgRenderRequest>(
+            providerDocument.LastRenderRequest);
+        Assert.Equal(40, request.TargetWidthPixels);
+        Assert.Equal(32, request.TargetHeightPixels);
+        Assert.Equal(new MarkdownSvgTileRegion(4, 3, 8, 6), request.TileRegion);
+        Assert.Equal(MarkdownSvgPixelFormat.Bgra8Premultiplied, request.PixelFormat);
     }
 
     [Theory]
-    [InlineData(0.1f, 1)]
-    [InlineData(1f, 10)]
-    [InlineData(8f, 80)]
-    public void RasterizeTile_SupportsRequiredZoomScales(float scale, int edge)
+    [InlineData(MarkdownSvgPixelFormat.Rgba8Premultiplied)]
+    [InlineData(MarkdownSvgPixelFormat.Bgra8Premultiplied)]
+    public async Task RasterizeTileAsync_ForwardsNegotiatedPixelFormat(
+        MarkdownSvgPixelFormat pixelFormat)
     {
-        using RepositorySvgDocument document = Load(
-            "<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10'>" +
-            "<rect width='10' height='10' fill='#246bce'/></svg>");
+        FakeSvgDocument providerDocument = new(new MarkdownSvgDocumentInfo(10, 8));
+        RepositorySvgRasterizer rasterizer = new(new FakeSvgRenderer(providerDocument));
+        using RepositorySvgDocument document = Assert.IsType<RepositorySvgDocument>(
+            await rasterizer.LoadAsync(
+                ValidSvg,
+                null,
+                MarkdownSvgColorScheme.Light,
+                null,
+                CancellationToken.None));
 
-        RepositorySvgTile tile = _rasterizer.RasterizeTile(
+        using RepositorySvgTile tile = await rasterizer.RasterizeTileAsync(
             document,
-            new RepositorySvgTileRequest(0, 0, edge, edge, scale),
+            new RepositorySvgTileRequest(10, 8, 0, 0, 10, 8),
+            pixelFormat,
             CancellationToken.None);
 
-        Assert.Contains(tile.BgraPixels.Where((_, index) => index % 4 == 3), alpha => alpha != 0);
+        Assert.Equal(pixelFormat, tile.PixelFormat);
+        Assert.NotNull(providerDocument.LastRenderRequest);
+        Assert.Equal(pixelFormat, providerDocument.LastRenderRequest.PixelFormat);
     }
 
     [Fact]
-    public void LoadAndRasterize_SupportsGradientsClippingAndUse()
+    public async Task LoadAsync_RejectsExternalResourcesBeforeOpeningWorkerDocument()
     {
-        using RepositorySvgDocument document = Load("""
-            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="24">
-              <defs>
-                <linearGradient id="paint"><stop stop-color="#00a86b"/><stop offset="1" stop-color="#246bce"/></linearGradient>
-                <clipPath id="clip"><circle cx="16" cy="12" r="10"/></clipPath>
-                <rect id="shape" width="32" height="24" fill="url(#paint)"/>
-              </defs>
-              <use href="#shape" clip-path="url(#clip)"/>
-            </svg>
-            """);
-
-        RepositorySvgTile tile = _rasterizer.RasterizeTile(
-            document,
-            new RepositorySvgTileRequest(0, 0, 64, 48, 2),
-            CancellationToken.None);
-
-        Assert.Equal(0, AlphaAt(tile, 0, 0));
-        Assert.True(AlphaAt(tile, 32, 24) > 200);
-    }
-
-    [Fact]
-    public void Load_RejectsExternalResources()
-    {
+        FakeSvgRenderer renderer = new(new FakeSvgDocument(new MarkdownSvgDocumentInfo(10, 8)));
+        RepositorySvgRasterizer rasterizer = new(renderer);
         byte[] bytes = Encoding.UTF8.GetBytes(
             "<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10'>" +
             "<image href='https://example.com/tracker.png'/></svg>");
 
-        Assert.Null(_rasterizer.Load(bytes, CancellationToken.None));
-    }
-
-    [Fact]
-    public void Load_ObservesCancellation()
-    {
-        using CancellationTokenSource cancellation = new();
-        cancellation.Cancel();
-
-        Assert.ThrowsAny<OperationCanceledException>(() => _rasterizer.Load(
-            Encoding.UTF8.GetBytes(
-                "<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10'/>"),
-            cancellation.Token));
-    }
-
-    [Fact]
-    public void RasterizeTile_ObservesCancellation()
-    {
-        using RepositorySvgDocument document = Load(
-            "<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10'/>");
-        using CancellationTokenSource cancellation = new();
-        cancellation.Cancel();
-
-        Assert.ThrowsAny<OperationCanceledException>(() => _rasterizer.RasterizeTile(
-            document,
-            new RepositorySvgTileRequest(0, 0, 10, 10, 1),
-            cancellation.Token));
-    }
-
-    private RepositorySvgDocument Load(string svg)
-    {
-        RepositorySvgDocument? document = _rasterizer.Load(
-            Encoding.UTF8.GetBytes(svg),
+        RepositorySvgDocument? document = await rasterizer.LoadAsync(
+            bytes,
+            null,
+            MarkdownSvgColorScheme.Light,
+            null,
             CancellationToken.None);
-        return Assert.IsType<RepositorySvgDocument>(document);
+
+        Assert.Null(document);
+        Assert.Equal(0, renderer.OpenCount);
     }
 
-    private static byte BlueAt(RepositorySvgTile tile, int x, int y) =>
-        tile.BgraPixels[PixelOffset(tile, x, y)];
+    [Fact]
+    public async Task LoadAsync_AllowsSupportedEmbeddedImageDataUri()
+    {
+        FakeSvgRenderer renderer = new(new FakeSvgDocument(new MarkdownSvgDocumentInfo(10, 8)));
+        RepositorySvgRasterizer rasterizer = new(renderer);
+        byte[] bytes = Encoding.UTF8.GetBytes(
+            "<svg xmlns='http://www.w3.org/2000/svg' width='10' height='8'>" +
+            "<image href='data:image/png;base64,iVBORw0KGgo='/></svg>");
 
-    private static byte GreenAt(RepositorySvgTile tile, int x, int y) =>
-        tile.BgraPixels[PixelOffset(tile, x, y) + 1];
+        using RepositorySvgDocument? document = await rasterizer.LoadAsync(
+            bytes,
+            null,
+            MarkdownSvgColorScheme.Light,
+            null,
+            CancellationToken.None);
 
-    private static byte RedAt(RepositorySvgTile tile, int x, int y) =>
-        tile.BgraPixels[PixelOffset(tile, x, y) + 2];
+        Assert.NotNull(document);
+        Assert.Equal(1, renderer.OpenCount);
+    }
 
-    private static byte AlphaAt(RepositorySvgTile tile, int x, int y) =>
-        tile.BgraPixels[PixelOffset(tile, x, y) + 3];
+    [Fact]
+    public async Task LoadAsync_ObservesCancellation()
+    {
+        RepositorySvgRasterizer rasterizer = new(
+            new FakeSvgRenderer(new FakeSvgDocument(new MarkdownSvgDocumentInfo(10, 8))));
+        using CancellationTokenSource cancellation = new();
+        cancellation.Cancel();
 
-    private static int PixelOffset(RepositorySvgTile tile, int x, int y) =>
-        ((y * tile.PixelWidth) + x) * 4;
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+            await rasterizer.LoadAsync(
+                ValidSvg,
+                null,
+                MarkdownSvgColorScheme.Light,
+                null,
+                cancellation.Token));
+    }
+
+    [Fact]
+    public async Task DocumentDisposal_WaitsForAnActiveRender()
+    {
+        TaskCompletionSource<MarkdownSvgRaster> renderCompletion =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        FakeSvgDocument providerDocument = new(
+            new MarkdownSvgDocumentInfo(10, 8),
+            (_, _) => new ValueTask<MarkdownSvgRaster>(renderCompletion.Task));
+        RepositorySvgRasterizer rasterizer = new(new FakeSvgRenderer(providerDocument));
+        RepositorySvgDocument document = Assert.IsType<RepositorySvgDocument>(
+            await rasterizer.LoadAsync(
+                ValidSvg,
+                null,
+                MarkdownSvgColorScheme.Light,
+                null,
+                CancellationToken.None));
+
+        Task<RepositorySvgTile> render = rasterizer.RasterizeTileAsync(
+            document,
+            new RepositorySvgTileRequest(10, 8, 0, 0, 10, 8),
+            MarkdownSvgPixelFormat.Bgra8Premultiplied,
+            CancellationToken.None).AsTask();
+        document.Dispose();
+        Assert.False(providerDocument.IsDisposed);
+
+        TrackingMemoryOwner owner = new(new byte[10 * 8 * 4]);
+        renderCompletion.SetResult(new MarkdownSvgRaster(
+            owner,
+            owner.Memory.Length,
+            10,
+            8,
+            10 * 4,
+            MarkdownSvgPixelFormat.Bgra8Premultiplied));
+        using RepositorySvgTile tile = await render;
+
+        Assert.True(providerDocument.IsDisposed);
+    }
+
+    [Fact]
+    public async Task CacheIdentity_UsesOnlyDocumentRelevantEnvironmentInputs()
+    {
+        FakeSvgRenderer renderer = new(
+            new FakeSvgDocument(new MarkdownSvgDocumentInfo(10, 8)))
+        {
+            CacheGeneration = 4,
+        };
+
+        using RepositorySvgDocument first = Assert.IsType<RepositorySvgDocument>(
+            await new RepositorySvgRasterizer(renderer).LoadAsync(
+                ValidSvg,
+                "en-US",
+                MarkdownSvgColorScheme.Light,
+                new MarkdownSvgColor(1, 2, 3),
+                CancellationToken.None));
+        using RepositorySvgDocument second = Assert.IsType<RepositorySvgDocument>(
+            await new RepositorySvgRasterizer(renderer).LoadAsync(
+                ValidSvg,
+                "ar-SA",
+                MarkdownSvgColorScheme.Dark,
+                new MarkdownSvgColor(4, 5, 6),
+                CancellationToken.None));
+
+        Assert.Equal(first.CacheIdentity, second.CacheIdentity);
+    }
+
+    [Fact]
+    public async Task CacheIdentity_PartitionsByRendererButIgnoresUnusedFontGeneration()
+    {
+        MarkdownSvgDocumentInfo info = new(10, 8);
+        FakeSvgRenderer firstRenderer = new(new FakeSvgDocument(info)) { CacheGeneration = 4 };
+        FakeSvgRenderer secondRenderer = new(new FakeSvgDocument(info)) { CacheGeneration = 4 };
+
+        using RepositorySvgDocument first = Assert.IsType<RepositorySvgDocument>(
+            await new RepositorySvgRasterizer(firstRenderer).LoadAsync(
+                ValidSvg,
+                null,
+                MarkdownSvgColorScheme.Light,
+                null,
+                CancellationToken.None));
+        using RepositorySvgDocument otherRenderer = Assert.IsType<RepositorySvgDocument>(
+            await new RepositorySvgRasterizer(secondRenderer).LoadAsync(
+                ValidSvg,
+                null,
+                MarkdownSvgColorScheme.Light,
+                null,
+                CancellationToken.None));
+
+        firstRenderer.CacheGeneration = 5;
+        using RepositorySvgDocument nextGeneration = Assert.IsType<RepositorySvgDocument>(
+            await new RepositorySvgRasterizer(firstRenderer).LoadAsync(
+                ValidSvg,
+                null,
+                MarkdownSvgColorScheme.Light,
+                null,
+                CancellationToken.None));
+
+        Assert.NotEqual(first.CacheIdentity, otherRenderer.CacheIdentity);
+        Assert.Equal(first.CacheIdentity, nextGeneration.CacheIdentity);
+    }
+
+    [Fact]
+    public async Task CacheIdentity_ChangesForTextFontGenerationAndUsedThemeInputs()
+    {
+        MarkdownSvgDocumentInfo info = new(
+            10,
+            8,
+            HasText: true,
+            UsesCurrentColor: true,
+            UsesColorScheme: true);
+        FakeSvgRenderer renderer = new(new FakeSvgDocument(info)) { CacheGeneration = 4 };
+
+        using RepositorySvgDocument first = Assert.IsType<RepositorySvgDocument>(
+            await new RepositorySvgRasterizer(renderer).LoadAsync(
+                ValidSvg,
+                "en-US",
+                MarkdownSvgColorScheme.Light,
+                new MarkdownSvgColor(1, 2, 3),
+                CancellationToken.None));
+        renderer.CacheGeneration = 5;
+        using RepositorySvgDocument second = Assert.IsType<RepositorySvgDocument>(
+            await new RepositorySvgRasterizer(renderer).LoadAsync(
+                ValidSvg,
+                "ar-SA",
+                MarkdownSvgColorScheme.Dark,
+                new MarkdownSvgColor(4, 5, 6),
+                CancellationToken.None));
+
+        Assert.NotEqual(first.CacheIdentity, second.CacheIdentity);
+    }
+
+    private sealed class FakeSvgRenderer(FakeSvgDocument document) : IMarkdownSvgRenderer
+    {
+        public long CacheGeneration { get; set; }
+
+        public int OpenCount { get; private set; }
+
+        public MarkdownSvgOpenRequest? LastOpenRequest { get; private set; }
+
+        public MarkdownSvgSourcePreparation PrepareSource(
+            byte[] source,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return MarkdownSvgSourcePreparation.Admit(source);
+        }
+
+        public ValueTask<IMarkdownSvgDocument> OpenAsync(
+            MarkdownSvgOpenRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            OpenCount++;
+            LastOpenRequest = request;
+            return ValueTask.FromResult<IMarkdownSvgDocument>(document);
+        }
+    }
+
+    private sealed class FakeSvgDocument(
+        MarkdownSvgDocumentInfo info,
+        Func<MarkdownSvgRenderRequest, CancellationToken, ValueTask<MarkdownSvgRaster>>? render = null)
+        : IMarkdownSvgDocument
+    {
+        public MarkdownSvgDocumentInfo Info { get; } = info;
+
+        public bool IsDisposed { get; private set; }
+
+        public MarkdownSvgRenderRequest? LastRenderRequest { get; private set; }
+
+        public ValueTask<MarkdownSvgRaster> RenderAsync(
+            MarkdownSvgRenderRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            ObjectDisposedException.ThrowIf(IsDisposed, this);
+            cancellationToken.ThrowIfCancellationRequested();
+            LastRenderRequest = request;
+            if (render is not null)
+            {
+                return render(request, cancellationToken);
+            }
+
+            MarkdownSvgTileRegion region = request.TileRegion ??
+                new MarkdownSvgTileRegion(0, 0, request.TargetWidthPixels, request.TargetHeightPixels);
+            TrackingMemoryOwner owner = new(new byte[region.Width * region.Height * 4]);
+            return ValueTask.FromResult(new MarkdownSvgRaster(
+                owner,
+                owner.Memory.Length,
+                region.Width,
+                region.Height,
+                region.Width * 4,
+                request.PixelFormat));
+        }
+
+        public void Dispose() => IsDisposed = true;
+    }
+
+    private sealed class TrackingMemoryOwner(byte[] bytes) : IMemoryOwner<byte>
+    {
+        private byte[]? _bytes = bytes;
+
+        public bool IsDisposed => _bytes is null;
+
+        public Memory<byte> Memory => _bytes ??
+            throw new ObjectDisposedException(nameof(TrackingMemoryOwner));
+
+        public void Dispose() => _bytes = null;
+    }
 }
