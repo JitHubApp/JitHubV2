@@ -2,12 +2,14 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Models.CodeViewer;
 using JitHub.Services;
 using JitHub.Services.CodeViewer;
 using JitHub.WinUI.Tests.TestDoubles;
+using JitHub.WinUI.Tests.TestSupport;
 using JitHub.WinUI.ViewModels.CodeViewer;
 using Xunit;
 
@@ -598,6 +600,102 @@ public sealed class RepoCodePageViewModelTests
     }
 
     [Fact]
+    public async Task DefaultReadmePreviewNeverSupersedesFileSelectedAsItStarts()
+    {
+        // InitializeAsync queues the default README preview, which resumes on the
+        // thread pool while the caller goes on to select a file. The README must never
+        // cancel or paint over that selection, whichever order the two reach the view
+        // model in. Callers run on dedicated threads so a pool worker is free to run
+        // the README at the same moment, which makes the interleavings happen naturally.
+        const int threadCount = 4;
+        const int iterationsPerThread = 1500;
+        int lostSelections = 0;
+        List<Task> callers = [];
+        for (int threadIndex = 0; threadIndex < threadCount; threadIndex++)
+        {
+            int callerIndex = threadIndex;
+            TaskCompletionSource completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            Thread caller = new(() =>
+            {
+                try
+                {
+                    // Each round opens a new repository whose tree lacks the previous
+                    // file, so the view model resets and queues the README exactly as a
+                    // fresh one does, without paying view model construction each time.
+                    MutableTreeService service = new(CreateTree());
+                    RepoCodePageViewModel viewModel = CreateViewModel(service);
+                    for (int iteration = 0; iteration < iterationsPerThread; iteration++)
+                    {
+                        if (!UserSelectionSurvivesDefaultReadme(
+                            viewModel,
+                            service,
+                            $"repo-{callerIndex}-{iteration}"))
+                        {
+                            Interlocked.Increment(ref lostSelections);
+                        }
+                    }
+
+                    completion.SetResult();
+                }
+                catch (Exception exception)
+                {
+                    completion.SetException(exception);
+                }
+            })
+            {
+                IsBackground = true
+            };
+            caller.Start();
+            callers.Add(completion.Task);
+        }
+
+        await Task.WhenAll(callers).WaitAsync(AsyncTestWait.HangGuard);
+
+        Assert.Equal(0, lostSelections);
+
+        static bool UserSelectionSurvivesDefaultReadme(
+            RepoCodePageViewModel viewModel,
+            MutableTreeService service,
+            string repository)
+        {
+            string folder = $"src-{repository}";
+            string filePath = $"{folder}/App.cs";
+            string fileSha = $"app-{repository}";
+            string readmeSha = $"readme-{repository}";
+            service.Tree = CreateTree(
+                Directory(folder, $"{folder}-sha", File(filePath, fileSha)),
+                File("README.md", readmeSha));
+            service.Blobs[fileSha] = Blob(fileSha, "public sealed class App {}");
+            service.Blobs[readmeSha] = Blob(readmeSha, "readme");
+
+            // The tree service completes synchronously, so these calls return without
+            // blocking. Only the README preview leaves the calling thread.
+            viewModel.InitializeAsync("owner", repository, "main", default).GetAwaiter().GetResult();
+            try
+            {
+                viewModel.SelectFileAsync(File(filePath, fileSha), default).GetAwaiter().GetResult();
+            }
+            catch (OperationCanceledException)
+            {
+                return false;
+            }
+
+            try
+            {
+                viewModel.DefaultPreviewTask.WaitAsync(AsyncTestWait.HangGuard).GetAwaiter().GetResult();
+            }
+            catch (OperationCanceledException)
+            {
+                // A superseded README preview may end cancelled.
+            }
+
+            return viewModel.IsFileSelectionCoherent(filePath) &&
+                viewModel.Breadcrumb.Segments.Any(segment => segment.Path == folder) &&
+                viewModel.Breadcrumb.Segments.All(segment => segment.Path != "README.md");
+        }
+    }
+
+    [Fact]
     public async Task CancelledRouteReconciliationDoesNotLaunchDirectoryOrBlobFollowUp()
     {
         TruncatedNestedTreeService service = new(CreateTree(
@@ -864,7 +962,11 @@ public sealed class RepoCodePageViewModelTests
             QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst)
         {
             ct.ThrowIfCancellationRequested();
-            RequestedBlobShas.Add(sha);
+            lock (RequestedBlobShas)
+            {
+                RequestedBlobShas.Add(sha);
+            }
+
             return BlobError is null
                 ? Task.FromResult(Fresh(Blobs[sha]))
                 : Task.FromException<RepoCodeLoadResult<RepoFileBlob>>(BlobError);
