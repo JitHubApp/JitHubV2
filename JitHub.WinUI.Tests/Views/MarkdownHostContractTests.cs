@@ -302,6 +302,8 @@ public sealed class MarkdownHostContractTests
             root, "MarkdownRenderer", "src", "MarkdownRenderer", "Accessibility", "MarkdownAutomationPeer.cs"));
         string imagePeer = File.ReadAllText(Path.Combine(
             root, "MarkdownRenderer", "src", "MarkdownRenderer", "Accessibility", "MarkdownLinkedImagePeer.cs"));
+        string linkTargets = File.ReadAllText(Path.Combine(
+            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Controls", "Input", "LinkTargets.cs"));
 
         Assert.Contains("MarkdownSemanticDocument.Build(this, matchingTextProjection, indexBuilder)", snapshot, StringComparison.Ordinal);
         Assert.Contains("_focusablePlan = indexBuilder.CompleteFocusablePlan();", snapshot, StringComparison.Ordinal);
@@ -315,7 +317,7 @@ public sealed class MarkdownHostContractTests
             decorativeImageFilter > observeInlineRun,
             "The focus planner must observe linked images before decorative empty-alt runs are omitted from UIA semantics.");
         Assert.Contains("TryGetFocusedLinkedAtomic", control, StringComparison.Ordinal);
-        Assert.Contains("case InlineImageRun { IsLinked: true, LinkUrl: { } imageUrl } image:", control, StringComparison.Ordinal);
+        Assert.Contains("case InlineImageRun { IsLinked: true, LinkUrl: { } imageUrl } image:", linkTargets, StringComparison.Ordinal);
         Assert.Contains("RaiseLinkedImageClickFromAutomation", control, StringComparison.Ordinal);
         Assert.Contains("InvalidateAutomationLayout();", control, StringComparison.Ordinal);
         Assert.Contains("FrameworkElementAutomationPeer.FromElement(this)?.InvalidatePeer();", control, StringComparison.Ordinal);
