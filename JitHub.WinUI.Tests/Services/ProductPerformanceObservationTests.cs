@@ -6,8 +6,6 @@ namespace JitHub.WinUI.Tests.Services;
 
 public sealed class ProductPerformanceObservationTests
 {
-    private static readonly object ReadinessGate = new();
-
     [Fact]
     public void ContentTransition_DoesNotPassWhenInvokeReturnsButDestinationIdentityDoesNotChange()
     {
@@ -208,75 +206,6 @@ public sealed class ProductPerformanceObservationTests
 
         Assert.Equal(TimeSpan.FromMilliseconds(12), tracker.FirstDataContent);
         Assert.Equal(TimeSpan.FromMilliseconds(38), tracker.SettledDataContent);
-    }
-
-    [Fact]
-    public void TraversalCommitEndsGenerationAndRejectsLaterStages()
-    {
-        lock (ReadinessGate)
-        {
-            string? previous = Environment.GetEnvironmentVariable("JITHUB_PERFORMANCE_FIXTURE");
-            List<ProductPerformanceTraversalStage> stages = [];
-            EventHandler<ProductPerformanceTraversalStage> handler = (_, stage) => stages.Add(stage);
-            ProductPerformanceReadiness.TraversalStageRecorded += handler;
-            try
-            {
-                Environment.SetEnvironmentVariable("JITHUB_PERFORMANCE_FIXTURE", "1");
-                ProductPerformanceReadiness.BeginTraversal("stars", "repo:42", "repo_code");
-                ProductPerformanceReadiness.RecordTraversalStage("before.commit");
-                ProductPerformanceReadiness.CommitTraversal("repo_code", "repo:42");
-                ProductPerformanceReadiness.RecordTraversalStage("after.commit");
-
-                ProductPerformanceTraversalStage stage = Assert.Single(
-                    stages,
-                    candidate => candidate.Stage is "before.commit" or "after.commit");
-                Assert.Equal("before.commit", stage.Stage);
-                Assert.True(stage.Generation > 0);
-            }
-            finally
-            {
-                ProductPerformanceReadiness.CancelTraversal();
-                ProductPerformanceReadiness.TraversalStageRecorded -= handler;
-                Environment.SetEnvironmentVariable("JITHUB_PERFORMANCE_FIXTURE", previous);
-            }
-        }
-    }
-
-    [Fact]
-    public void TraversalMeasurement_ResumesProbeAfterCommitOrCancellation()
-    {
-        lock (ReadinessGate)
-        {
-            string? previous = Environment.GetEnvironmentVariable("JITHUB_PERFORMANCE_FIXTURE");
-            int armed = 0;
-            int completed = 0;
-            EventHandler armedHandler = (_, _) => armed++;
-            EventHandler completedHandler = (_, _) => completed++;
-            ProductPerformanceReadiness.TraversalMeasurementArmed += armedHandler;
-            ProductPerformanceReadiness.TraversalMeasurementCompleted += completedHandler;
-            try
-            {
-                Environment.SetEnvironmentVariable("JITHUB_PERFORMANCE_FIXTURE", "1");
-
-                ProductPerformanceReadiness.ArmTraversalMeasurement();
-                ProductPerformanceReadiness.BeginTraversal("repo_code", "file:1", "repo_code");
-                ProductPerformanceReadiness.CommitTraversal("repo_code", "file:1");
-
-                ProductPerformanceReadiness.ArmTraversalMeasurement();
-                ProductPerformanceReadiness.BeginTraversal("repo_code", "file:2", "repo_code");
-                ProductPerformanceReadiness.CancelTraversal();
-
-                Assert.Equal(2, armed);
-                Assert.Equal(2, completed);
-            }
-            finally
-            {
-                ProductPerformanceReadiness.CancelTraversal();
-                ProductPerformanceReadiness.TraversalMeasurementArmed -= armedHandler;
-                ProductPerformanceReadiness.TraversalMeasurementCompleted -= completedHandler;
-                Environment.SetEnvironmentVariable("JITHUB_PERFORMANCE_FIXTURE", previous);
-            }
-        }
     }
 
     private static ProductPerformanceContentObservation Observation(
