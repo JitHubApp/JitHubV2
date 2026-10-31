@@ -13,6 +13,11 @@ namespace MarkdownRenderer.GitHub.Tests;
 
 public sealed class LayoutGeometryRecoveryTests
 {
+    // Bounds a wait so a broken handshake fails instead of hanging the run.
+    // It is not a deadline under test, so it stays generous enough for a
+    // loaded parallel testhost.
+    private static readonly TimeSpan HangGuard = TimeSpan.FromSeconds(30);
+
     public enum LivePass
     {
         LazyBand,
@@ -302,7 +307,7 @@ public sealed class LayoutGeometryRecoveryTests
         // Recovery state is deliberately scalar-only. The exception graph is
         // surfaced to this caller, never retained by the published snapshot.
         AssertRecoveryStateUsesOnlyScalarFields();
-        await snapshot.Retire().WaitAsync(TimeSpan.FromSeconds(2));
+        await snapshot.Retire().WaitAsync(HangGuard);
     }
 
     [Fact]
@@ -320,12 +325,17 @@ public sealed class LayoutGeometryRecoveryTests
         using var releaseMeasure = new ManualResetEventSlim();
         fixture.Leaf.MeasureEntered = measureEntered;
         fixture.Leaf.ReleaseMeasure = releaseMeasure;
-        Task realization = Task.Run(() =>
-            snapshot.EnsureMeasuredBand(new LazyLayoutBand(0, 1), CancellationToken.None));
+        // A dedicated thread, so the busy measure starts even when the thread
+        // pool is saturated by the parallel testhost.
+        Task realization = Task.Factory.StartNew(
+            () => snapshot.EnsureMeasuredBand(new LazyLayoutBand(0, 1), CancellationToken.None),
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
 
         try
         {
-            Assert.True(measureEntered.Wait(TimeSpan.FromSeconds(2)));
+            Assert.True(measureEntered.Wait(HangGuard));
             Assert.False(snapshot.TryBeginPaint());
             Assert.False(snapshot.TryBeginInteraction());
             Assert.False(snapshot.GeometryRecoveryRequired);
@@ -336,7 +346,7 @@ public sealed class LayoutGeometryRecoveryTests
         {
             releaseMeasure.Set();
         }
-        await realization.WaitAsync(TimeSpan.FromSeconds(2));
+        await realization.WaitAsync(HangGuard);
 
         Assert.False(snapshot.GeometryRecoveryRequired);
         Assert.False(snapshot.TryClaimGeometryRecoveryRequest());
@@ -358,7 +368,7 @@ public sealed class LayoutGeometryRecoveryTests
             width: 100,
             height: 100);
 
-        await snapshot.Retire().WaitAsync(TimeSpan.FromSeconds(2));
+        await snapshot.Retire().WaitAsync(HangGuard);
 
         Assert.False(snapshot.GeometryRecoveryRequired);
         Assert.False(snapshot.TryClaimGeometryRecoveryRequest());
@@ -554,7 +564,7 @@ public sealed class LayoutGeometryRecoveryTests
             MeasureCount++;
             Bounds = new Rect(0, 0, availableWidth, NextHeight);
             MeasureEntered?.Set();
-            if (ReleaseMeasure is { } release && !release.Wait(TimeSpan.FromSeconds(2)))
+            if (ReleaseMeasure is { } release && !release.Wait(HangGuard))
                 throw new TimeoutException("The test did not release nested measurement.");
             Exception? failure = FailNextMeasure;
             FailNextMeasure = null;
