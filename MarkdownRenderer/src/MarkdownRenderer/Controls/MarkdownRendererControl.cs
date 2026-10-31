@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Graphics.Canvas;
@@ -15,13 +14,10 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Controls.Primitives;
-using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Shapes;
 using Windows.Foundation;
-using Windows.Storage.Streams;
 using Windows.System;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.UI;
@@ -39,7 +35,6 @@ using MarkdownRenderer.Parsing;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Selection;
 using MarkdownRenderer.Theming;
-using Markdig;
 using MarkdownRenderer.Controls.Embeds;
 using MarkdownRenderer.Controls.Focus;
 using MarkdownRenderer.Controls.Images;
@@ -59,14 +54,14 @@ namespace MarkdownRenderer.Controls;
 public abstract partial class MarkdownRendererControl : UserControl, IDisposable, IAsyncDisposable, IMarkdownEnvironmentListener,
     IMarkdownPerformanceLegacyParser
 {
-    private readonly bool _ownsScrollViewport;
+    private readonly MarkdownViewSurface _surface;
+    private readonly MarkdownViewLifetime _lifetime = new();
+    private readonly PointerHoverState _hover = new();
+    private readonly PointerCursorPresenter _cursor;
+    private readonly AbbreviationTooltipPresenter _abbreviationTooltip;
     private AppWindow? _windowLifecycleAppWindow;
     private WindowLifecycleSubscription? _windowLifecycleSubscription;
-    private CanvasVirtualControl? _canvas;
-    private Canvas? _overlay;
-    private ScrollViewer? _scroll;
     private bool _scrollViewIntermediate;
-    private Grid? _root;
     private MarkdownEngine? _ownedEngine;
     private Rect _externalViewport;
     private bool _hasExternalViewport;
@@ -292,7 +287,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private int _pendingHorizontalOverflowRefreshBlockIndex;
     private double _pendingHorizontalOverflowRefreshOldOffset;
     // XAML Border element used to show a focus ring around the focused item.
-    // Lives on _overlay at ZIndex 1 (above selection at -1, below embeds at 0).
+    // Lives on the overlay at ZIndex 1 (above selection at -1, below embeds at 0).
     private Microsoft.UI.Xaml.Controls.Border? _focusRing;
     private Windows.UI.Color _focusRingBrushColor; // cached to avoid per-keystroke SolidColorBrush allocations
 
@@ -304,10 +299,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     // id with the state makes release/cancel/capture-lost handling idempotent
     // when events arrive out of order or are routed through the drag shield.
     private PointerSession _pointerSession;
-    // Set in OnUnloaded; checked in dispatcher lambdas to guard against post-unload execution.
-    private bool _isUnloaded = true;
-    private bool _isDisposed;
-    private bool _isDisposalComplete;
     // The provider may raise CacheInvalidated from a worker or system-event
     // callback. Keep the subscribed instance outside DependencyObject storage
     // so the callback never reads a thread-affine dependency property.
@@ -370,10 +361,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     // start of the word/block under the pointer rather than always to the end.
     private DocumentPosition _dragAnchorStart;
     private DocumentPosition _dragAnchorEnd;
-
-    // Cached cursor instances (created once, reused; disposed on Unload).
-    private Microsoft.UI.Input.InputSystemCursor? _cursorHand;
-    private Microsoft.UI.Input.InputSystemCursor? _cursorIBeam;
 
     // Cache of inline-embed rectangles (in canvas/document coordinates) plus
     // the InlineRun + owning InlineContainerBox.  Built during PlaceEmbeds
@@ -446,7 +433,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             try
             {
                 var fe = Box.Factory.CreateBlock(Box.SourceBlock);
-                if (owner._isDisposed || owner._isUnloaded || generation != owner._snapshotGeneration)
+                if (owner._lifetime.IsDisposed || owner._lifetime.IsUnloaded || generation != owner._snapshotGeneration)
                 {
                     try { Box.Factory.RecycleBlock(Box.SourceBlock, fe); } catch { }
                     return;
@@ -454,10 +441,10 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 Realized = fe;
                 Box.RealizedElement = fe;
                 UpdatePlacement();
-                if (!ReferenceEquals(Realized, fe) || owner._isDisposed || owner._isUnloaded)
+                if (!ReferenceEquals(Realized, fe) || owner._lifetime.IsDisposed || owner._lifetime.IsUnloaded)
                     return;
                 fe.KeyDown += owner.OnHostedEmbedKeyDown;
-                owner._overlay!.Children.Add(fe);
+                owner._surface.Overlay!.Children.Add(fe);
                 // _blockEmbedRects rebuilt in RealizeVisibleEmbeds.
             }
             catch (Exception ex)
@@ -472,7 +459,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             Realized = null;
             Box.RealizedElement = null;
             fe.KeyDown -= owner.OnHostedEmbedKeyDown;
-            try { owner._overlay!.Children.Remove(fe); } catch { }
+            try { owner._surface.Overlay!.Children.Remove(fe); } catch { }
             try { Box.Factory.RecycleBlock(Box.SourceBlock, fe); } catch { }
             // Refresh _blockEmbedRects defensively (rebuilt fully each Realize cycle from realised plans).
         }
@@ -494,7 +481,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             try
             {
                 var fe = Run.ElementFactory();
-                if (owner._isDisposed || owner._isUnloaded || generation != owner._snapshotGeneration)
+                if (owner._lifetime.IsDisposed || owner._lifetime.IsUnloaded || generation != owner._snapshotGeneration)
                 {
                     try { Run.Recycle?.Invoke(fe); } catch { }
                     return;
@@ -502,10 +489,10 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 Realized = fe;
                 Run.RealizedElement = fe;
                 UpdatePlacement();
-                if (!ReferenceEquals(Realized, fe) || owner._isDisposed || owner._isUnloaded)
+                if (!ReferenceEquals(Realized, fe) || owner._lifetime.IsDisposed || owner._lifetime.IsUnloaded)
                     return;
                 fe.KeyDown += owner.OnHostedEmbedKeyDown;
-                owner._overlay!.Children.Add(fe);
+                owner._surface.Overlay!.Children.Add(fe);
                 // _embedRects rebuilt in RealizeVisibleEmbeds.
             }
             catch (Exception ex)
@@ -520,7 +507,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             Realized = null;
             Run.RealizedElement = null;
             fe.KeyDown -= owner.OnHostedEmbedKeyDown;
-            try { owner._overlay!.Children.Remove(fe); } catch { }
+            try { owner._surface.Overlay!.Children.Remove(fe); } catch { }
             try { Run.Recycle?.Invoke(fe); }
             catch (Exception ex)
             {
@@ -555,20 +542,20 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             if (Realized is not null) return;
             long generation = owner._snapshotGeneration;
             var (button, alreadyAttached) = owner.RentCodeBlockCopyButton();
-            if (owner._isDisposed || owner._isUnloaded || generation != owner._snapshotGeneration)
+            if (owner._lifetime.IsDisposed || owner._lifetime.IsUnloaded || generation != owner._snapshotGeneration)
                 return;
             AutomationProperties.SetAutomationId(button, MarkdownAutomationIdentity.ForCodeCopy(Box));
-            if (owner._isDisposed || owner._isUnloaded || generation != owner._snapshotGeneration)
+            if (owner._lifetime.IsDisposed || owner._lifetime.IsUnloaded || generation != owner._snapshotGeneration)
                 return;
             AttachHandlers(button, owner);
             button.KeyDown += owner.OnHostedEmbedKeyDown;
             Realized = button;
             Box.RealizedCopyButton = button;
             UpdatePlacement();
-            if (!ReferenceEquals(Realized, button) || owner._isDisposed || owner._isUnloaded)
+            if (!ReferenceEquals(Realized, button) || owner._lifetime.IsDisposed || owner._lifetime.IsUnloaded)
                 return;
             if (!alreadyAttached)
-                owner._overlay!.Children.Add(button);
+                owner._surface.Overlay!.Children.Add(button);
             button.Visibility = Visibility.Visible;
             owner.RestoreFocusedCodeBlockActionIfNeeded(this);
         }
@@ -596,7 +583,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 owner.ReturnCodeBlockCopyButton(pooledButton);
             else
             {
-                try { owner._overlay!.Children.Remove(fe); } catch { }
+                try { owner._surface.Overlay!.Children.Remove(fe); } catch { }
             }
         }
 
@@ -621,10 +608,10 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 AttachHandlers(button, owner);
                 button.KeyDown += owner.OnHostedEmbedKeyDown;
                 AutomationProperties.SetAutomationId(button, MarkdownAutomationIdentity.ForCodeCopy(Box));
-                if (!ReferenceEquals(Realized, fe) || owner._isDisposed || owner._isUnloaded)
+                if (!ReferenceEquals(Realized, fe) || owner._lifetime.IsDisposed || owner._lifetime.IsUnloaded)
                     return;
                 owner.SetCodeBlockCopyButtonState(button, copied: false);
-                if (!ReferenceEquals(Realized, fe) || owner._isDisposed || owner._isUnloaded)
+                if (!ReferenceEquals(Realized, fe) || owner._lifetime.IsDisposed || owner._lifetime.IsUnloaded)
                     return;
             }
             UpdatePlacement();
@@ -784,7 +771,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
                 owner.DispatcherQueue.TryEnqueue(() =>
                 {
-                    if (owner._isUnloaded || _feedbackVersion != version)
+                    if (owner._lifetime.IsUnloaded || _feedbackVersion != version)
                         return;
                     if (Realized is Button realizedButton)
                     {
@@ -1056,7 +1043,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             try
             {
                 MarkdownRendererControl.ApplyHostedElementAutomationProperties(Box, element);
-                if (owner._isDisposed || !owner.CanAttachHostedElement(this, pipelineGeneration))
+                if (owner._lifetime.IsDisposed || !owner.CanAttachHostedElement(this, pipelineGeneration))
                 {
                     RecycleResult(operation.Request, element);
                     return;
@@ -1068,20 +1055,20 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 UpdatePlacement();
                 if (!ReferenceEquals(Realized, element))
                     return; // Reentrant teardown already recycled this result.
-                if (owner._isDisposed || !owner.CanAttachHostedElement(this, pipelineGeneration))
+                if (owner._lifetime.IsDisposed || !owner.CanAttachHostedElement(this, pipelineGeneration))
                 {
                     Derealize(owner);
                     return;
                 }
                 element.KeyDown += owner.OnHostedEmbedKeyDown;
-                owner._overlay!.Children.Add(element);
+                owner._surface.Overlay!.Children.Add(element);
             }
             catch (Exception ex)
             {
                 if (ownershipEstablished && !ReferenceEquals(Realized, element))
                     return; // Never mutate or recycle an already-transferred result.
                 element.KeyDown -= owner.OnHostedEmbedKeyDown;
-                try { owner._overlay?.Children.Remove(element); } catch { }
+                try { owner._surface.Overlay?.Children.Remove(element); } catch { }
                 _realizedRequest = null;
                 Realized = null;
                 Box.RealizedElement = null;
@@ -1093,7 +1080,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 return;
             }
 
-            if (!ReferenceEquals(Realized, element) || owner._isDisposed ||
+            if (!ReferenceEquals(Realized, element) || owner._lifetime.IsDisposed ||
                 !owner.CanAttachHostedElement(this, pipelineGeneration))
                 return;
             owner.RealizeVisibleEmbeds();
@@ -1116,7 +1103,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             Realized = null;
             Box.RealizedElement = null;
             element.KeyDown -= owner.OnHostedEmbedKeyDown;
-            try { owner._overlay?.Children.Remove(element); } catch { }
+            try { owner._surface.Overlay?.Children.Remove(element); } catch { }
             if (request is not null)
                 RecycleResult(request, element);
         }
@@ -1399,7 +1386,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void AttachPerformanceSessionDisposalNotification()
     {
-        if (_isDisposed || _isUnloaded ||
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded ||
             PerformanceSession is not IMarkdownPerformanceSessionInternal session)
         {
             return;
@@ -1421,8 +1408,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private void OnPerformanceSessionDisposed(object? sender, EventArgs args)
     {
         if (!ReferenceEquals(sender, Volatile.Read(ref _subscribedPerformanceSession)) ||
-            Volatile.Read(ref _isDisposed) ||
-            Volatile.Read(ref _isUnloaded))
+            _lifetime.IsDisposed ||
+            _lifetime.IsUnloaded)
         {
             return;
         }
@@ -1430,7 +1417,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         DispatcherQueue?.TryEnqueue(() =>
         {
             if (ReferenceEquals(sender, Volatile.Read(ref _subscribedPerformanceSession)) &&
-                !_isDisposed && !_isUnloaded)
+                !_lifetime.IsDisposed && !_lifetime.IsUnloaded)
             {
                 // RebuildInternalAsync detects the disposed borrowed session
                 // and uses the eager engine/legacy parser path, replacing any
@@ -1445,7 +1432,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         IMarkdownSvgRenderer? previous = Interlocked.Exchange(ref _subscribedSvgRenderer, null);
         if (previous is not null)
             previous.CacheInvalidated -= OnSvgRendererCacheInvalidated;
-        if (!_isUnloaded && args.NewValue is IMarkdownSvgRenderer current)
+        if (!_lifetime.IsUnloaded && args.NewValue is IMarkdownSvgRenderer current)
         {
             current.CacheInvalidated -= OnSvgRendererCacheInvalidated;
             Volatile.Write(ref _subscribedSvgRenderer, current);
@@ -1457,15 +1444,15 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private void OnSvgRendererCacheInvalidated(object? sender, EventArgs args)
     {
         if (!ReferenceEquals(sender, Volatile.Read(ref _subscribedSvgRenderer)) ||
-            Volatile.Read(ref _isDisposed) ||
-            Volatile.Read(ref _isUnloaded))
+            _lifetime.IsDisposed ||
+            _lifetime.IsUnloaded)
             return;
 
         void InvalidateProviderRasters()
         {
             if (!ReferenceEquals(sender, Volatile.Read(ref _subscribedSvgRenderer)) ||
-                _isDisposed ||
-                _isUnloaded)
+                _lifetime.IsDisposed ||
+                _lifetime.IsUnloaded)
                 return;
             RequestRebuild(RebuildReason.Full);
             InvalidateCanvas();
@@ -2010,12 +1997,12 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         MarkdownImageUnavailableReason reason,
         MarkdownSvgFailureReason? svgFailureReason)
     {
-        if (_isDisposed || reason == MarkdownImageUnavailableReason.None)
+        if (_lifetime.IsDisposed || reason == MarkdownImageUnavailableReason.None)
             return;
 
         void Raise()
         {
-            if (!_isDisposed)
+            if (!_lifetime.IsDisposed)
                 ImageUnavailable?.Invoke(this, new MarkdownImageUnavailableEventArgs(source, reason, svgFailureReason));
         }
 
@@ -2039,9 +2026,9 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     /// effective viewport is already represented by the control's transform to
     /// screen coordinates and must not be subtracted a second time.
     /// </summary>
-    internal double CurrentScrollOffsetY => _scroll?.VerticalOffset ?? 0;
+    internal double CurrentScrollOffsetY => _surface.Scroll?.VerticalOffset ?? 0;
 
-    internal bool OwnsScrollViewport => _ownsScrollViewport;
+    internal bool OwnsScrollViewport => _surface.OwnsScrollViewport;
 
     /// <summary>
     /// Internal gate-harness signal used to ensure a warm scroll trace starts
@@ -2121,7 +2108,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         out double viewportHeight,
         out double extentHeight)
     {
-        if (_scroll is null)
+        if (_surface.Scroll is null)
         {
             verticalOffset = 0;
             viewportHeight = 0;
@@ -2129,40 +2116,40 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             return false;
         }
 
-        verticalOffset = _scroll.VerticalOffset;
-        viewportHeight = _scroll.ViewportHeight;
-        extentHeight = _scroll.ExtentHeight;
+        verticalOffset = _surface.Scroll.VerticalOffset;
+        viewportHeight = _surface.Scroll.ViewportHeight;
+        extentHeight = _surface.Scroll.ExtentHeight;
         return true;
     }
 
     internal void ScrollFromAutomation(ScrollAmount amount)
     {
-        if (_scroll is null || amount == ScrollAmount.NoAmount)
+        if (_surface.Scroll is null || amount == ScrollAmount.NoAmount)
             return;
         NoteViewportRequest();
 
         double delta = amount switch
         {
-            ScrollAmount.LargeDecrement => -Math.Max(48, _scroll.ViewportHeight * 0.8),
+            ScrollAmount.LargeDecrement => -Math.Max(48, _surface.Scroll.ViewportHeight * 0.8),
             ScrollAmount.SmallDecrement => -48,
             ScrollAmount.SmallIncrement => 48,
-            ScrollAmount.LargeIncrement => Math.Max(48, _scroll.ViewportHeight * 0.8),
+            ScrollAmount.LargeIncrement => Math.Max(48, _surface.Scroll.ViewportHeight * 0.8),
             _ => 0,
         };
-        double maximum = Math.Max(0, _scroll.ExtentHeight - _scroll.ViewportHeight);
-        double target = Math.Clamp(_scroll.VerticalOffset + delta, 0, maximum);
-        _scroll.ChangeView(null, target, null, disableAnimation: true);
+        double maximum = Math.Max(0, _surface.Scroll.ExtentHeight - _surface.Scroll.ViewportHeight);
+        double target = Math.Clamp(_surface.Scroll.VerticalOffset + delta, 0, maximum);
+        _surface.Scroll.ChangeView(null, target, null, disableAnimation: true);
     }
 
     internal void SetAutomationVerticalScrollPercent(double percent)
     {
-        if (_scroll is null)
+        if (_surface.Scroll is null)
             return;
         NoteViewportRequest();
 
-        double maximum = Math.Max(0, _scroll.ExtentHeight - _scroll.ViewportHeight);
+        double maximum = Math.Max(0, _surface.Scroll.ExtentHeight - _surface.Scroll.ViewportHeight);
         double target = maximum * (Math.Clamp(percent, 0, 100) / 100);
-        _scroll.ChangeView(null, target, null, disableAnimation: true);
+        _surface.Scroll.ChangeView(null, target, null, disableAnimation: true);
     }
 
     /// <summary>
@@ -2258,19 +2245,19 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         bool keepAttached = !_derealizingAllEmbeds &&
                             _codeBlockCopyButtonPool.Count < CodeBlockCopyButtonPoolCapacity;
         button.Visibility = Visibility.Collapsed;
-        if (_isDisposed || _isUnloaded)
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded)
         {
-            try { _overlay?.Children.Remove(button); } catch { }
+            try { _surface.Overlay?.Children.Remove(button); } catch { }
             return;
         }
         if (_codeBlockCopyButtonPool.Count < CodeBlockCopyButtonPoolCapacity)
         {
             _codeBlockCopyButtonPool.Push((button,
-                keepAttached && ReferenceEquals(VisualTreeHelper.GetParent(button), _overlay)));
+                keepAttached && ReferenceEquals(VisualTreeHelper.GetParent(button), _surface.Overlay)));
             return;
         }
 
-        try { _overlay?.Children.Remove(button); } catch { }
+        try { _surface.Overlay?.Children.Remove(button); } catch { }
     }
 
     internal string ResolvedCodeBlockCopyButtonLabel =>
@@ -2644,7 +2631,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         LayoutSnapshot snapshot,
         long snapshotGeneration,
         ImagePlanPublication publication) =>
-        !_isDisposed && !_isUnloaded &&
+        !_lifetime.IsDisposed && !_lifetime.IsUnloaded &&
         ReferenceEquals(snapshot, _snapshot) &&
         snapshotGeneration == Volatile.Read(ref _snapshotGeneration) &&
         ReferenceEquals(publication, Volatile.Read(ref _imagePlanPublication)) &&
@@ -2679,7 +2666,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     internal void NotifyVisibleDeferredSceneItemStatusMayHaveChanged()
     {
-        if (_isDisposed || _isUnloaded)
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded)
             return;
 
         var peer = FrameworkElementAutomationPeer.FromElement(this) as MarkdownAutomationPeer;
@@ -2717,8 +2704,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private void RefreshDeferredSceneStatusAfterSuccessfulPaintIfNeeded()
     {
         if (Interlocked.Exchange(ref _deferredSceneStatusRefreshAfterPaint, 0) == 0 ||
-            _isDisposed ||
-            _isUnloaded)
+            _lifetime.IsDisposed ||
+            _lifetime.IsUnloaded)
         {
             return;
         }
@@ -2828,7 +2815,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     internal void ScrollDocumentRectIntoView(Windows.Foundation.Rect rect, bool alignToTop)
     {
         NoteViewportRequest();
-        if (_scroll is null)
+        if (_surface.Scroll is null)
         {
             BringDocumentRectIntoExternalViewport(rect, animate: false, alignToTop ? 0 : 0.5);
             return;
@@ -2836,15 +2823,15 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         const double margin = 24.0;
         double target = alignToTop
             ? rect.Top
-            : rect.Top < _scroll.VerticalOffset + margin
+            : rect.Top < _surface.Scroll.VerticalOffset + margin
                 ? rect.Top - margin
-                : rect.Bottom > _scroll.VerticalOffset + _scroll.ViewportHeight - margin
-                    ? rect.Bottom - _scroll.ViewportHeight + margin
-                    : _scroll.VerticalOffset;
+                : rect.Bottom > _surface.Scroll.VerticalOffset + _surface.Scroll.ViewportHeight - margin
+                    ? rect.Bottom - _surface.Scroll.ViewportHeight + margin
+                    : _surface.Scroll.VerticalOffset;
         // UI Automation's ScrollIntoView contract is immediate. An animated
         // change can be superseded by lazy-layout realization before its first
         // frame, leaving the requested range offscreen.
-        _scroll.ChangeView(null, Math.Max(0, target), null, disableAnimation: true);
+        _surface.Scroll.ChangeView(null, Math.Max(0, target), null, disableAnimation: true);
     }
 
     /// <summary>
@@ -2857,7 +2844,9 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     /// </param>
     private protected MarkdownRendererControl(bool ownsScrollViewport)
     {
-        _ownsScrollViewport = ownsScrollViewport;
+        _surface = new MarkdownViewSurface(ownsScrollViewport);
+        _cursor = new PointerCursorPresenter(cursor => ProtectedCursor = cursor);
+        _abbreviationTooltip = new AbbreviationTooltipPresenter(this, _surface, _lifetime, _hover);
         _canvasPointerMovedHandler = OnPointerMoved;
         _canvasPointerReleasedHandler = OnPointerReleased;
         _canvasPointerCanceledHandler = OnPointerCanceledOrCaptureLost;
@@ -2890,89 +2879,38 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void BuildVisualTree()
     {
-        if (_ownsScrollViewport)
-        {
-            _scroll = new ScrollViewer
-            {
-                HorizontalAlignment = HorizontalAlignment.Stretch,
-                HorizontalScrollMode = ScrollMode.Disabled,
-                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-                HorizontalContentAlignment = HorizontalAlignment.Stretch,
-                VerticalAlignment = VerticalAlignment.Stretch,
-                VerticalScrollMode = ScrollMode.Auto,
-                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-                VerticalContentAlignment = VerticalAlignment.Top,
-                ZoomMode = ZoomMode.Disabled,
-            };
-        }
-        _root = new Grid
-        {
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            VerticalAlignment = VerticalAlignment.Top,
-        };
-        _overlay = new Canvas
-        {
-            // Background null so the empty overlay doesn't capture pointer
-            // events. Hosted embeds are individually hit-testable.
-            Background = null,
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            IsHitTestVisible = true,
-            VerticalAlignment = VerticalAlignment.Top,
-        };
-        _root.Children.Add(_overlay);
-        // Selection, hover and drag chrome is created only when used. A new
-        // document does not need an Image, Border and two Button handles in
-        // its XAML tree merely to paint its first viewport.
-        if (_scroll is not null)
-            _scroll.Content = _root;
-
         EnsureCanvas();
         GettingFocus += OnGettingFocus;
         GotFocus += OnGotFocus;
         LosingFocus += OnLosingFocus;
         KeyDown += OnKeyDown;
 
-        if (_scroll is not null)
-        {
-            Content = _scroll;
-        }
-        else
-        {
+        if (!_surface.OwnsScrollViewport)
             EffectiveViewportChanged += OnEffectiveViewportChanged;
-            Content = _root;
-        }
+        Content = _surface.ContentElement;
     }
 
     private void EnsureCanvas()
     {
-        if (_canvas is not null || _root is null || _isDisposed)
+        if (_lifetime.IsDisposed || _surface.TryCreateCanvas() is not { } canvas)
             return;
-        _canvas = new CanvasVirtualControl
-        {
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            IsDoubleTapEnabled = true,
-            IsHoldingEnabled = true,
-            IsTapEnabled = true,
-            VerticalAlignment = VerticalAlignment.Top,
-        };
-        _root.Children.Insert(0, _canvas);
-        _canvas.PointerPressed += OnPointerPressed;
-        _canvas.PointerWheelChanged += OnPointerWheelChanged;
-        _canvas.PointerExited += OnPointerExited;
-        _canvas.Tapped += OnTapped;
-        _canvas.DoubleTapped += OnDoubleTapped;
-        _canvas.Holding += OnHolding;
-        _canvas.RightTapped += OnRightTapped;
-        _canvas.AddHandler(UIElement.PointerMovedEvent, _canvasPointerMovedHandler, handledEventsToo: true);
-        _canvas.AddHandler(UIElement.PointerReleasedEvent, _canvasPointerReleasedHandler, handledEventsToo: true);
-        _canvas.AddHandler(UIElement.PointerCanceledEvent, _canvasPointerCanceledHandler, handledEventsToo: true);
-        _canvas.AddHandler(UIElement.PointerCaptureLostEvent, _canvasPointerCaptureLostHandler, handledEventsToo: true);
+        canvas.PointerPressed += OnPointerPressed;
+        canvas.PointerWheelChanged += OnPointerWheelChanged;
+        canvas.PointerExited += OnPointerExited;
+        canvas.Tapped += OnTapped;
+        canvas.DoubleTapped += OnDoubleTapped;
+        canvas.Holding += OnHolding;
+        canvas.RightTapped += OnRightTapped;
+        canvas.AddHandler(UIElement.PointerMovedEvent, _canvasPointerMovedHandler, handledEventsToo: true);
+        canvas.AddHandler(UIElement.PointerReleasedEvent, _canvasPointerReleasedHandler, handledEventsToo: true);
+        canvas.AddHandler(UIElement.PointerCanceledEvent, _canvasPointerCanceledHandler, handledEventsToo: true);
+        canvas.AddHandler(UIElement.PointerCaptureLostEvent, _canvasPointerCaptureLostHandler, handledEventsToo: true);
         AttachCanvasRenderHandlers();
     }
 
     private void OnEffectiveViewportChanged(FrameworkElement sender, EffectiveViewportChangedEventArgs args)
     {
-        if (_ownsScrollViewport || _isDisposed)
+        if (_surface.OwnsScrollViewport || _lifetime.IsDisposed)
             return;
 
         Rect viewport = args.EffectiveViewport;
@@ -2990,7 +2928,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             Math.Abs(_externalViewport.Height - viewport.Height) >= 0.5;
         _externalViewport = viewport;
         _hasExternalViewport = true;
-        if (!materiallyChanged || _isUnloaded)
+        if (!materiallyChanged || _lifetime.IsUnloaded)
             return;
 
         QueueLazyLayoutForViewport();
@@ -3002,11 +2940,11 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     internal bool TryGetViewport(out double top, out double height, out double width)
     {
-        if (_scroll is not null)
+        if (_surface.Scroll is not null)
         {
-            top = _scroll.VerticalOffset;
-            height = _scroll.ViewportHeight > 0 ? _scroll.ViewportHeight : Math.Max(ActualHeight, 1);
-            width = _scroll.ViewportWidth > 0 ? _scroll.ViewportWidth : Math.Max(ActualWidth, 1);
+            top = _surface.Scroll.VerticalOffset;
+            height = _surface.Scroll.ViewportHeight > 0 ? _surface.Scroll.ViewportHeight : Math.Max(ActualHeight, 1);
+            width = _surface.Scroll.ViewportWidth > 0 ? _surface.Scroll.ViewportWidth : Math.Max(ActualWidth, 1);
             return true;
         }
 
@@ -3026,12 +2964,12 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private bool BringDocumentRectIntoExternalViewport(Rect rect, bool animate, double alignmentRatio = 0)
     {
-        if (_ownsScrollViewport || _root is null)
+        if (_surface.OwnsScrollViewport || _surface.Root is null)
             return false;
 
         try
         {
-            _root.StartBringIntoView(new BringIntoViewOptions
+            _surface.Root.StartBringIntoView(new BringIntoViewOptions
             {
                 AnimationDesired = animate,
                 TargetRect = rect,
@@ -3063,7 +3001,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void OnGotFocus(object sender, RoutedEventArgs e)
     {
-        if (_promotingKeyboardFocusEntry || _isUnloaded)
+        if (_promotingKeyboardFocusEntry || _lifetime.IsUnloaded)
             return;
 
         if (!ReferenceEquals(e.OriginalSource, this) || FocusState == FocusState.Pointer)
@@ -3236,7 +3174,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (ReferenceEquals(previous, current))
             return;
 
-        RetireCodeBlockHighlighting(restart: !_isUnloaded && !_isDisposed);
+        RetireCodeBlockHighlighting(restart: !_lifetime.IsUnloaded && !_lifetime.IsDisposed);
         ClearCodeBlockHighlightCache();
         RequestRebuild(RebuildReason.Full);
     }
@@ -3312,7 +3250,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void OnAppRootPointerPressed(object sender, PointerRoutedEventArgs e)
     {
-        if (_isUnloaded)
+        if (_lifetime.IsUnloaded)
             return;
 
         var point = e.GetCurrentPoint(sender as UIElement ?? this);
@@ -3340,7 +3278,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void OnAppRootKeyDown(object sender, KeyRoutedEventArgs e)
     {
-        if (_isUnloaded || _snapshot is null || !_selection.IsActive)
+        if (_lifetime.IsUnloaded || _snapshot is null || !_selection.IsActive)
             return;
 
         bool ctrl = (Microsoft.UI.Input.InputKeyboardSource
@@ -3518,16 +3456,16 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private bool IsPointerOverCanvasTextSurface(PointerRoutedEventArgs e, out Point canvasPoint)
     {
         canvasPoint = default;
-        if (_canvas is null)
+        if (_surface.Canvas is null)
             return false;
 
         try
         {
-            canvasPoint = e.GetCurrentPoint(_canvas).Position;
+            canvasPoint = e.GetCurrentPoint(_surface.Canvas).Position;
             return canvasPoint.X >= 0 &&
                    canvasPoint.Y >= 0 &&
-                   canvasPoint.X <= _canvas.ActualWidth &&
-                   canvasPoint.Y <= _canvas.ActualHeight;
+                   canvasPoint.X <= _surface.Canvas.ActualWidth &&
+                   canvasPoint.Y <= _surface.Canvas.ActualHeight;
         }
         catch
         {
@@ -3558,7 +3496,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void QueueSelectionAutomationEvent()
     {
-        if (_selectionAutomationEventQueued || _isDisposed || _isUnloaded)
+        if (_selectionAutomationEventQueued || _lifetime.IsDisposed || _lifetime.IsUnloaded)
             return;
 
         _selectionAutomationEventQueued = true;
@@ -3566,7 +3504,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (dispatcher is null || !dispatcher.TryEnqueue(() =>
             {
                 _selectionAutomationEventQueued = false;
-                if (_isDisposed || _isUnloaded)
+                if (_lifetime.IsDisposed || _lifetime.IsUnloaded)
                     return;
 
                 (FrameworkElementAutomationPeer.FromElement(this) as MarkdownAutomationPeer)?
@@ -3590,16 +3528,16 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // Recreate the peer-facing semantic snapshot and refresh cursor state.
         RequestRebuild(RebuildReason.Full);
         InvalidateAutomationLayout();
-        SetCursorShape(null);
+        _cursor.SetShape(null);
     }
 
     private void OnLoadedInternal()
     {
-        if (_isDisposed)
+        if (_lifetime.IsDisposed)
             return;
 
-        _isUnloaded = false;
-        // RemoveFromVisualTree physically removes the Win2D child from _root.
+        _lifetime.MarkLoaded();
+        // RemoveFromVisualTree physically removes the Win2D child from the root.
         // Recreate it for a retained view; the old native child and its input
         // delegates must not retain the unloaded view through a WinRT cycle.
         EnsureCanvas();
@@ -3643,13 +3581,13 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void OnUnloaded()
     {
-        if (_isUnloaded)
+        if (_lifetime.IsUnloaded)
             return;
 
         // Set before any unsubscription so dispatcher-queued lambdas
         // (e.g. from OnImageLoadCompleted) that are already in-flight know
         // not to call RequestRebuild after we've torn down.
-        _isUnloaded = true;
+        _lifetime.MarkUnloaded();
         _pendingTouchSelectionPresentationRestore = null;
         // Keep the recognizer barrier while the owner epoch is still intact.
         // A queued Cancel must apply its per-contact selection disposition
@@ -3673,8 +3611,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // Unloaded boundary. At this point XAML has begun detaching the renderer,
         // so each Win2D child can unregister its XamlRoot callback without racing a
         // subsequent window resize.
-        _canvas?.RemoveFromVisualTree();
-        _canvas = null;
+        _surface.RemoveCanvas();
         ReleaseLoadedResources();
     }
 
@@ -3686,8 +3623,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         Interlocked.Exchange(ref _deferredSceneProbeAfterPaint, 0);
         CloseSelectionContextMenu();
         ClearHorizontalOverflowPointerState();
-        HideAbbreviationTooltip();
-        ReleaseAbbreviationTooltipTimers();
+        _abbreviationTooltip.Hide();
+        _abbreviationTooltip.ReleaseTimers();
         if (_sizeChangedHandler is not null)
         {
             SizeChanged -= _sizeChangedHandler;
@@ -3735,7 +3672,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         RetireCodeBlockHighlighting(restart: false);
         // Unsubscribe scroll handler so scroll-inertia events after visual-tree
         // removal don't fire OnScrollViewChanged on a partially-torn-down control.
-        if (_scroll is not null) _scroll.ViewChanged -= OnScrollViewChanged;
+        if (_surface.Scroll is not null) _surface.Scroll.ViewChanged -= OnScrollViewChanged;
         _scrollViewIntermediate = false;
         // Unsubscribe all in-flight image load handlers before clearing the plan
         // list; otherwise an async load completing after unload fires
@@ -3780,21 +3717,13 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // or keep stale FrameworkElements alive. A failed XAML detach must not
         // abort the remaining one-shot cleanup or snapshot retirement below.
         TryReleaseSelectionAdornerSurface();
-        _overlay?.Children.Clear();
+        _surface.Overlay?.Children.Clear();
         // No refresh frame follows an unload, so dispose the detached adorner
         // surfaces, the child visual and the graphics device here.
         _selectionAdornerSurfaces.DropRetired();
         _selectionAdornerHost?.Dispose();
         ReleaseSelectionAdornerGraphicsDevice();
-        // Release ProtectedCursor before disposing the native cursor objects so the
-        // XAML compositor doesn't access a dangling handle during the same render frame.
-        ProtectedCursor = null;
-        _currentCursorShape = null;
-        // Dispose cached cursor objects; they will be lazily re-created on next use.
-        _cursorHand?.Dispose();
-        _cursorIBeam?.Dispose();
-        _cursorHand = null;
-        _cursorIBeam = null;
+        _cursor.Release();
         _selectionAdornerRects.Clear();
         _selectionAdornerRectScratch.Clear();
         _selectionAdornerBackgrounds.Clear();
@@ -3830,10 +3759,10 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     /// </summary>
     public void Dispose()
     {
-        if (_isDisposed)
+        if (_lifetime.IsDisposed)
             return;
 
-        _isDisposed = true;
+        _lifetime.MarkDisposing();
         _pendingTouchSelectionPresentationRestore = null;
         _touchTapSuppression.Reset();
         StopCanvasDeviceRecovery();
@@ -3852,15 +3781,12 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         DetachCanvasHandlers();
         DetachSelectionDragShieldHandlers();
         Content = null;
-        _canvas = null;
-        _overlay = null;
-        _scroll = null;
-        _root = null;
+        _surface.Detach();
         MarkdownEngine? ownedEngine = _ownedEngine;
         _ownedEngine = null;
         if (ownedEngine is not null)
             RetireOwnedEngine(ownedEngine);
-        _isDisposalComplete = true;
+        _lifetime.MarkDisposalComplete();
         try { Disposed?.Invoke(this, EventArgs.Empty); }
         catch (Exception ex)
         {
@@ -3885,7 +3811,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     public ValueTask DisposeAsync()
     {
         Dispose();
-        if (!_isDisposalComplete)
+        if (!_lifetime.IsDisposalComplete)
         {
             throw new InvalidOperationException(
                 "The markdown view did not finish an earlier Dispose call and may still hold resources.");
@@ -3957,7 +3883,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         {
             if (_owner.TryGetTarget(out var owner) &&
                 ReferenceEquals(sender, owner._windowLifecycleAppWindow) &&
-                !owner._isDisposed)
+                !owner._lifetime.IsDisposed)
             {
                 owner.Dispose();
             }
@@ -3977,40 +3903,40 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void DetachCanvasInputHandlers()
     {
-        if (_canvas is not null)
+        if (_surface.Canvas is not null)
         {
-            _canvas.PointerPressed -= OnPointerPressed;
-            _canvas.PointerWheelChanged -= OnPointerWheelChanged;
-            _canvas.PointerExited -= OnPointerExited;
-        _canvas.Tapped -= OnTapped;
-        _canvas.DoubleTapped -= OnDoubleTapped;
-        _canvas.Holding -= OnHolding;
-            _canvas.RightTapped -= OnRightTapped;
-            _canvas.RemoveHandler(UIElement.PointerMovedEvent, _canvasPointerMovedHandler);
-            _canvas.RemoveHandler(UIElement.PointerReleasedEvent, _canvasPointerReleasedHandler);
-            _canvas.RemoveHandler(UIElement.PointerCanceledEvent, _canvasPointerCanceledHandler);
-            _canvas.RemoveHandler(UIElement.PointerCaptureLostEvent, _canvasPointerCaptureLostHandler);
+            _surface.Canvas.PointerPressed -= OnPointerPressed;
+            _surface.Canvas.PointerWheelChanged -= OnPointerWheelChanged;
+            _surface.Canvas.PointerExited -= OnPointerExited;
+        _surface.Canvas.Tapped -= OnTapped;
+        _surface.Canvas.DoubleTapped -= OnDoubleTapped;
+        _surface.Canvas.Holding -= OnHolding;
+            _surface.Canvas.RightTapped -= OnRightTapped;
+            _surface.Canvas.RemoveHandler(UIElement.PointerMovedEvent, _canvasPointerMovedHandler);
+            _surface.Canvas.RemoveHandler(UIElement.PointerReleasedEvent, _canvasPointerReleasedHandler);
+            _surface.Canvas.RemoveHandler(UIElement.PointerCanceledEvent, _canvasPointerCanceledHandler);
+            _surface.Canvas.RemoveHandler(UIElement.PointerCaptureLostEvent, _canvasPointerCaptureLostHandler);
         }
 
     }
 
     private void AttachCanvasRenderHandlers()
     {
-        if (_canvas is null || _canvasRenderHandlersAttached)
+        if (_surface.Canvas is null || _canvasRenderHandlersAttached)
             return;
 
-        _canvas.RegionsInvalidated += OnRegionsInvalidated;
-        _canvas.CreateResources += OnCanvasCreateResources;
+        _surface.Canvas.RegionsInvalidated += OnRegionsInvalidated;
+        _surface.Canvas.CreateResources += OnCanvasCreateResources;
         _canvasRenderHandlersAttached = true;
     }
 
     private void DetachCanvasRenderHandlers()
     {
-        if (_canvas is null || !_canvasRenderHandlersAttached)
+        if (_surface.Canvas is null || !_canvasRenderHandlersAttached)
             return;
 
-        _canvas.RegionsInvalidated -= OnRegionsInvalidated;
-        _canvas.CreateResources -= OnCanvasCreateResources;
+        _surface.Canvas.RegionsInvalidated -= OnRegionsInvalidated;
+        _surface.Canvas.CreateResources -= OnCanvasCreateResources;
         _canvasRenderHandlersAttached = false;
     }
 
@@ -4028,7 +3954,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void OnThemeChanged()
     {
-        if (_isDisposed || _isUnloaded)
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded)
             return;
 
         // NotifyEnvironmentChanged fires Theme.Changed → OnThemeRevisionChanged → a restyle.
@@ -4043,7 +3969,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         MarkdownEnvironmentChange changes)
     {
         _environmentSnapshot = snapshot;
-        if (_isDisposed || _isUnloaded)
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded)
             return;
 
         if ((changes & MarkdownEnvironmentChange.Relayout) != 0)
@@ -4085,8 +4011,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // Accessing DependencyObject members off the UI thread throws RPC_E_WRONG_THREAD.
         var dq = DispatcherQueue;
         if (dq is null) return;
-        if (dq.HasThreadAccess) { if (!_isUnloaded) RequestRebuild(RebuildReason.Restyle); return; }
-        dq.TryEnqueue(() => { if (!_isUnloaded) RequestRebuild(RebuildReason.Restyle); });
+        if (dq.HasThreadAccess) { if (!_lifetime.IsUnloaded) RequestRebuild(RebuildReason.Restyle); return; }
+        dq.TryEnqueue(() => { if (!_lifetime.IsUnloaded) RequestRebuild(RebuildReason.Restyle); });
     }
 
     /// <summary>Kicks off (or re-kicks) the parse + layout pipeline.</summary>
@@ -4104,7 +4030,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     /// </summary>
     public void InvalidateThemeResources()
     {
-        if (_isDisposed)
+        if (_lifetime.IsDisposed)
             return;
 
         ThemeResolver.InvalidateResourceKeyCache();
@@ -4114,7 +4040,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private void RequestRebuild(
         RebuildReason reason)
     {
-        if (_isDisposed)
+        if (_lifetime.IsDisposed)
             return;
 
         var dispatcher = DispatcherQueue;
@@ -4134,7 +4060,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
             if (!enqueued)
             {
-                if (!Volatile.Read(ref _isDisposed) && !Volatile.Read(ref _isUnloaded))
+                if (!_lifetime.IsDisposed && !_lifetime.IsUnloaded)
                 {
                     RecordRejectedCrossThreadRebuildRequest(reason);
                     MarkdownDiagnostics.WriteLine("[MarkdownRendererControl] Dispatcher rejected cross-thread rebuild request.");
@@ -4143,7 +4069,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             return;
         }
 
-        if (_isUnloaded)
+        if (_lifetime.IsUnloaded)
             return;
 
         DrainRejectedCrossThreadRebuildRequest();
@@ -4240,7 +4166,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private void DrainRejectedCrossThreadRebuildRequest()
     {
         var dispatcher = DispatcherQueue;
-        if (_isDisposed || _isUnloaded || dispatcher is not null && !dispatcher.HasThreadAccess)
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || dispatcher is not null && !dispatcher.HasThreadAccess)
             return;
 
         int reason = Interlocked.Exchange(ref _rejectedCrossThreadRebuildReason, -1);
@@ -4253,9 +4179,9 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private void QueuePendingRebuild()
     {
         DrainRejectedCrossThreadRebuildRequest();
-        if (_isDisposed || _isUnloaded ||
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded ||
             !_rebuildCoordinator.TryGetDispatchReason(out MarkdownRebuildCoordinatorReason pendingReason) ||
-            !IsLoaded || _canvas is null || _overlay is null || _root is null)
+            !IsLoaded || _surface.Canvas is null || _surface.Overlay is null || _surface.Root is null)
         {
             return;
         }
@@ -4328,7 +4254,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void ProcessQueuedRebuildCore()
     {
-        if (_isDisposed || _isUnloaded || !IsLoaded)
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !IsLoaded)
             return;
 
         // Image completion, theme changes, and width changes may request a
@@ -4491,7 +4417,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void OnRebuildPipelineCompleted(long generation)
     {
-        if (_isDisposed || _isUnloaded || !_rebuildCoordinator.CompletePipeline(generation))
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !_rebuildCoordinator.CompletePipeline(generation))
             return;
 
         DrainRejectedCrossThreadRebuildRequest();
@@ -4622,17 +4548,15 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _consecutiveClickCount = 0;
         _lastPressTickMs = 0;
         _lastPressPoint = default;
-        _lastHoveredRun = null;
-        _lastHoveredBox = null;
-        _lastHoveredAbbreviation = null;
-        _pendingAbbreviationTooltipRun = null;
+        _hover.Clear();
+        _abbreviationTooltip.ForgetTarget();
         CloseSelectionContextMenu();
         SetSelectionDragShieldActive(false);
-        HideAbbreviationTooltip();
+        _abbreviationTooltip.Hide();
 
-        SetCursorShape(null);
+        _cursor.SetShape(null);
 
-        try { _canvas?.ReleasePointerCaptures(); } catch { }
+        try { _surface.Canvas?.ReleasePointerCaptures(); } catch { }
 
         if (!clearSelection)
             return;
@@ -4686,7 +4610,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void RaiseRenderCompleted(long generation)
     {
-        if (_isDisposed || _isUnloaded || generation != _pipelineGeneration)
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || generation != _pipelineGeneration)
             return;
 
         try
@@ -4715,7 +4639,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void RaiseRenderFailed(long generation, Exception exception)
     {
-        if (_isDisposed || _isUnloaded || generation != _pipelineGeneration)
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || generation != _pipelineGeneration)
             return;
 
         try
@@ -4779,7 +4703,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         long pipelineStartTimestamp,
         long sourceUtf16Bytes)
     {
-        if (_canvas is null || _overlay is null || _root is null) return;
+        if (_surface.Canvas is null || _surface.Overlay is null || _surface.Root is null) return;
         var width = (float)Math.Max(50, ActualWidth);
         _lastWidth = width;
 
@@ -4947,7 +4871,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         double themeSnapshotMilliseconds = Stopwatch.GetElapsedTime(themeSnapshotStarted).TotalMilliseconds;
         // Use the shared CanvasDevice (always available, no visual-tree required).
         // CanvasVirtualControl only has a device after CreateResources fires, so
-        // passing _canvas directly would crash if layout runs before first draw.
+        // passing the canvas directly would crash if layout runs before first draw.
         var device = CanvasDevice.GetSharedDevice();
         // Capture the host's rasterization scale so raster-fallback image
         // paths (e.g. SvgSkiaRasterizer) render at device-pixel resolution.
@@ -5186,7 +5110,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         string? imageDocumentId = imageDocumentSourceSnapshot?.DocumentId;
         bool sameDocumentIdentity = _committedImageDocumentId == imageDocumentId;
         if (sameDocumentIdentity &&
-            _scroll is { VerticalOffset: > 0 } scrollSnap &&
+            _surface.Scroll is { VerticalOffset: > 0 } scrollSnap &&
             _snapshot is { } prevSnap)
         {
             double vTop = scrollSnap.VerticalOffset;
@@ -5203,7 +5127,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 // Lazy measurement still owns the old snapshot. Preserve a
                 // proportional fallback from the already-committed XAML extent
                 // rather than blocking this UI-thread replacement for its lock.
-                scrollAnchor = (null, 0, vTop, _root?.Height ?? 0);
+                scrollAnchor = (null, 0, vTop, _surface.Root?.Height ?? 0);
             }
         }
 
@@ -5317,14 +5241,13 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         ctx.RegisterRetirement(RetireSnapshot(old));
         // Clear stale hover references so OnPointerExited/OnPointerMoved after the
         // rebuild don't use Bounds from the now-disposed old snapshot for invalidation.
-        _lastHoveredRun = null;
-        _lastHoveredBox = null;
+        _hover.Clear();
         ApplySnapshotSize(snapshot.Size);
 
         // Restore scroll anchor: find the anchor block's new Y in the new layout
         // and adjust the scroll offset so the user's read position is unchanged.
         if (scrollAnchor is { } anchor &&
-            _scroll is { } scrollRestore &&
+            _surface.Scroll is { } scrollRestore &&
             LazyLayoutScrollAnchorPolicy.ShouldRestore(
                 anchor.OldOffset,
                 scrollRestore.VerticalOffset,
@@ -5362,7 +5285,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
         // UI thread: collect embed plans (don't realise yet), hook image
         // LoadCompleted, then realise only embeds that fall in the current
-        // viewport. Hooking _scroll.ViewChanged drives subsequent realisation
+        // viewport. Hooking ScrollViewer.ViewChanged drives subsequent realisation
         // as the user scrolls.
         DerealizeAllEmbeds();
         SetSelectionDragShieldActive(false);
@@ -5456,10 +5379,10 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (!realizationPlansReady)
             DeferLayoutCommit(scrollAnchor: null);
         long planConstructionEnded = Stopwatch.GetTimestamp();
-        if (_scroll is not null)
+        if (_surface.Scroll is not null)
         {
-            _scroll.ViewChanged -= OnScrollViewChanged;
-            _scroll.ViewChanged += OnScrollViewChanged;
+            _surface.Scroll.ViewChanged -= OnScrollViewChanged;
+            _surface.Scroll.ViewChanged += OnScrollViewChanged;
         }
         RealizeVisibleEmbeds();
         long embedRealizationEnded = Stopwatch.GetTimestamp();
@@ -5831,8 +5754,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 highlighter,
                 _codeBlockHighlightGeneration,
                 generation,
-                _isDisposed,
-                _isUnloaded,
+                _lifetime.IsDisposed,
+                _lifetime.IsUnloaded,
                 operationToken))
         {
             return;
@@ -5919,8 +5842,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                         highlighter,
                         _codeBlockHighlightGeneration,
                         generation,
-                        _isDisposed,
-                        _isUnloaded,
+                        _lifetime.IsDisposed,
+                        _lifetime.IsUnloaded,
                         operationToken))
                 {
                     for (int remaining = pendingIndex; remaining < pendingHighlights.Count; remaining++)
@@ -6074,8 +5997,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                             highlighter,
                             _codeBlockHighlightGeneration,
                             generation,
-                            _isDisposed,
-                            _isUnloaded,
+                            _lifetime.IsDisposed,
+                            _lifetime.IsUnloaded,
                             token))
                     {
                         try
@@ -6086,8 +6009,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                                 highlighter,
                                 _codeBlockHighlightGeneration,
                                 generation,
-                                _isDisposed,
-                                _isUnloaded,
+                                _lifetime.IsDisposed,
+                                _lifetime.IsUnloaded,
                                 token,
                                 observedRevision,
                                 key.ProviderRevision);
@@ -6102,7 +6025,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                     CodeBlockHighlightCompletionAction completion =
                         CodeBlockHighlightPublicationFence.DecideCompletion(
                             snapshotChanged,
-                            _isUnloaded,
+                            _lifetime.IsUnloaded,
                             workToken.IsCancellationRequested,
                             sceneSession?.IsDisposed == true,
                             providerCurrent);
@@ -6328,18 +6251,18 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void ApplySnapshotSize(Size committedSize)
     {
-        if (_canvas is null || _root is null || _overlay is null) return;
-        _canvas.Width = Math.Max(1, committedSize.Width);
+        if (_surface.Canvas is null || _surface.Root is null || _surface.Overlay is null) return;
+        _surface.Canvas.Width = Math.Max(1, committedSize.Width);
         // Round the height up to whole device pixels so layout rounding never
         // clips the document's last partial pixel row. Width stays
         // as committed: rounding it up could add a horizontal scroll range.
-        _canvas.Height = Math.Max(1, SelectionController.SnapExtentUpToPixelGrid(
+        _surface.Canvas.Height = Math.Max(1, SelectionController.SnapExtentUpToPixelGrid(
             committedSize.Height,
             XamlRoot?.RasterizationScale ?? 1.0));
-        _root.Width = _canvas.Width;
-        _root.Height = _canvas.Height;
-        _overlay.Width = _canvas.Width;
-        _overlay.Height = _canvas.Height;
+        _surface.Root.Width = _surface.Canvas.Width;
+        _surface.Root.Height = _surface.Canvas.Height;
+        _surface.Overlay.Width = _surface.Canvas.Width;
+        _surface.Overlay.Height = _surface.Canvas.Height;
         SetSelectionDragShieldActive(_selectionAnchor is not null);
     }
 
@@ -6437,7 +6360,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             snapshot,
             band,
             visibleVectorBand,
-            preserveScrollAnchor: _scroll is not null);
+            preserveScrollAnchor: _surface.Scroll is not null);
     }
 
     private void QueueLazyLayoutForPaintRegion(Rect region)
@@ -6484,7 +6407,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             snapshot,
             band,
             visibleVectorBand,
-            preserveScrollAnchor: _scroll is not null);
+            preserveScrollAnchor: _surface.Scroll is not null);
     }
 
     private void QueueLazyLayoutForBand(
@@ -6493,7 +6416,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         LazyLayoutBand visibleVectorBand,
         bool preserveScrollAnchor)
     {
-        if (_isDisposed || _isUnloaded || !ReferenceEquals(snapshot, _snapshot))
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !ReferenceEquals(snapshot, _snapshot))
             return;
 
         if (RequestGeometryRecoveryIfRequired(snapshot))
@@ -6513,9 +6436,9 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
              visibleVectorBand.Top == _activeLazyLayoutVisibleVectorBand.Top &&
              visibleVectorBand.Bottom == _activeLazyLayoutVisibleVectorBand.Bottom) &&
             (!preserveScrollAnchor ||
-             (_scroll is not null &&
+             (_surface.Scroll is not null &&
               _activeLazyLayoutAnchorOffset is { } activeOffset &&
-              Math.Abs(_scroll.VerticalOffset - activeOffset) < 0.5)))
+              Math.Abs(_surface.Scroll.VerticalOffset - activeOffset) < 0.5)))
         {
             return;
         }
@@ -6593,7 +6516,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             return;
 
         _lazyLayoutDispatchQueued = false;
-        if (_isDisposed || _isUnloaded || !_hasPendingLazyLayoutBand)
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !_hasPendingLazyLayoutBand)
         {
             _pendingLazyLayoutSnapshot = null;
             _hasPendingLazyLayoutBand = false;
@@ -6621,8 +6544,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _lazyLayoutPublicationHandoff.Reset(realizationGeneration);
         long pipelineGeneration = _pipelineGeneration;
         CancellationToken operationToken = cts.Token;
-        double? anchorOffset = preserveScrollAnchor && _scroll is not null
-            ? _scroll.VerticalOffset
+        double? anchorOffset = preserveScrollAnchor && _surface.Scroll is not null
+            ? _surface.Scroll.VerticalOffset
             : null;
         var dispatcher = DispatcherQueue;
 
@@ -6858,8 +6781,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // A current canceled or obsolete operation still owns its CTS/task
         // fields. Retire those before dropping its result, or the timer will
         // keep observing a completed but permanently active operation.
-        if (_isDisposed ||
-            _isUnloaded ||
+        if (_lifetime.IsDisposed ||
+            _lifetime.IsUnloaded ||
             operationWasCanceled ||
             pipelineGeneration != _pipelineGeneration ||
             snapshot is null ||
@@ -6933,7 +6856,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // completion still arrives. Never restore its captured scroll anchor
         // over a newer viewport position.
         bool restoreAnchor = LazyLayoutScrollAnchorPolicy.ShouldRestore(
-            anchorOffset, _scroll?.VerticalOffset, _scrollViewIntermediate);
+            anchorOffset, _surface.Scroll?.VerticalOffset, _scrollViewIntermediate);
         ApplyLazyLayoutCommit(snapshot, restoreAnchor ? result.ScrollAnchor : null);
         SynchronizeVectorCapacityObserver(snapshot);
         if (result.Commit.NativeSceneResourcesChanged)
@@ -6971,7 +6894,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         LayoutSnapshot snapshot,
         (int BlockIndex, double OffsetFromTop)? scrollAnchor)
     {
-        if (_isDisposed || _isUnloaded || !ReferenceEquals(snapshot, _snapshot))
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !ReferenceEquals(snapshot, _snapshot))
             return;
         if (RequestGeometryRecoveryIfRequired(snapshot))
             return;
@@ -6990,10 +6913,10 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 DeferLayoutCommit(scrollAnchor);
                 return;
             }
-            if (_isDisposed || _isUnloaded || !ReferenceEquals(snapshot, _snapshot))
+            if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !ReferenceEquals(snapshot, _snapshot))
                 return;
             ApplySnapshotSize(size);
-            if (anchorOffset is { } target && _scroll is { } scroll &&
+            if (anchorOffset is { } target && _surface.Scroll is { } scroll &&
                 Math.Abs(target - scroll.VerticalOffset) >= 0.5)
                 scroll.ChangeView(null, target, null, disableAnimation: true);
             RealizeVisibleEmbeds();
@@ -7010,7 +6933,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         }
 
         TryResumePendingScrollToBlock(snapshot, Volatile.Read(ref _snapshotGeneration));
-        if (!_isDisposed && !_isUnloaded &&
+        if (!_lifetime.IsDisposed && !_lifetime.IsUnloaded &&
             ReferenceEquals(snapshot, _snapshot) &&
             _pendingLayoutCommit is null &&
             _appliedLazyLayoutRevision >= snapshot.LayoutRevision)
@@ -7023,12 +6946,12 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void DeferLayoutCommit((int BlockIndex, double OffsetFromTop)? scrollAnchor)
     {
-        if (_isDisposed || _isUnloaded || _snapshot is null)
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _snapshot is null)
             return;
         // Retain only value metadata, never a retired graph. Keep old plans and
         // native children until one coherent geometry read is admitted. The
         // existing weak recovery timer also covers a withheld UI dispatch.
-        _pendingLayoutCommit = (_snapshotGeneration, scrollAnchor, _scroll?.VerticalOffset);
+        _pendingLayoutCommit = (_snapshotGeneration, scrollAnchor, _surface.Scroll?.VerticalOffset);
         ++_lastLayoutCommitTicket;
         StartImageRelayoutRecovery();
         if (!HasImageRelayoutRecoveryClock)
@@ -7045,7 +6968,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             return;
         }
         bool restoreAnchor = LazyLayoutScrollAnchorPolicy.ShouldRestore(
-            pending.ScrollOffset, _scroll?.VerticalOffset, _scrollViewIntermediate);
+            pending.ScrollOffset, _surface.Scroll?.VerticalOffset, _scrollViewIntermediate);
         ApplyLazyLayoutCommit(snapshot, restoreAnchor ? pending.Anchor : null);
     }
 
@@ -7417,7 +7340,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     }
 
     private bool IsCurrentRealizationSnapshot(LayoutSnapshot snapshot, long generation) =>
-        !_isDisposed && !_isUnloaded && generation == _snapshotGeneration &&
+        !_lifetime.IsDisposed && !_lifetime.IsUnloaded && generation == _snapshotGeneration &&
         ReferenceEquals(snapshot, _snapshot);
 
     private bool IsCurrentFocusablePlanAttempt(
@@ -7498,7 +7421,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     /// </summary>
     internal void RealizeVisibleEmbeds()
     {
-        if (_isDisposed || _isUnloaded || _derealizingAllEmbeds)
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _derealizingAllEmbeds)
             return;
 
         // Plan factories and native child teardown can synchronously raise
@@ -7517,7 +7440,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             for (int pass = 0; pass < 2; pass++)
             {
                 _realizeVisibleEmbedsRequested = false;
-                if (_isDisposed || _isUnloaded || _derealizingAllEmbeds)
+                if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _derealizingAllEmbeds)
                     break;
 
                 RealizeVisibleEmbedsCore();
@@ -7525,7 +7448,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                     break;
             }
             queueContinuation = _realizeVisibleEmbedsRequested &&
-                !_isDisposed && !_isUnloaded && !_derealizingAllEmbeds;
+                !_lifetime.IsDisposed && !_lifetime.IsUnloaded && !_derealizingAllEmbeds;
         }
         finally
         {
@@ -7539,7 +7462,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private void QueueVisibleRealizationContinuation()
     {
         if (_realizeVisibleEmbedsContinuationQueued ||
-            _isDisposed || _isUnloaded || _derealizingAllEmbeds)
+            _lifetime.IsDisposed || _lifetime.IsUnloaded || _derealizingAllEmbeds)
             return;
 
         var dispatcher = DispatcherQueue;
@@ -7577,7 +7500,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             return;
 
         _realizeVisibleEmbedsContinuationQueued = false;
-        if (_isDisposed || _isUnloaded || _derealizingAllEmbeds)
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _derealizingAllEmbeds)
         {
             _realizeVisibleEmbedsRequested = false;
             return;
@@ -7821,7 +7744,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         ViewportBandIndex? imageIndex,
         ViewportBandIndex? embedIndex,
         ViewportBandIndex? actionIndex) =>
-        !_isDisposed && !_isUnloaded && !_derealizingAllEmbeds &&
+        !_lifetime.IsDisposed && !_lifetime.IsUnloaded && !_derealizingAllEmbeds &&
         snapshotGeneration == _snapshotGeneration &&
         realizationPassEpoch == _realizationPassEpoch &&
         ReferenceEquals(snapshot, _snapshot) &&
@@ -7868,9 +7791,9 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         DeclarativeHostedElementPlan plan,
         long pipelineGeneration)
     {
-        if (_isUnloaded ||
+        if (_lifetime.IsUnloaded ||
             pipelineGeneration != _pipelineGeneration ||
-            _overlay is null ||
+            _surface.Overlay is null ||
             !_embedPlans.Contains(plan))
             return false;
 
@@ -7887,7 +7810,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private bool CanActivateHostedElementFallback(
         DeclarativeHostedElementPlan plan,
         long pipelineGeneration)
-        => !_isUnloaded &&
+        => !_lifetime.IsUnloaded &&
            pipelineGeneration == _pipelineGeneration &&
            _embedPlans.Contains(plan);
 
@@ -8238,14 +8161,14 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         {
             ReportImageRelayoutFailure("completion dispatch", exception.Message);
         }
-        if (!enqueued && !_isDisposed && !_isUnloaded)
+        if (!enqueued && !_lifetime.IsDisposed && !_lifetime.IsUnloaded)
             RecordRejectedCrossThreadRebuildRequest(RebuildReason.Full);
     }
 
     private void ApplyImageLoadCompleted(Layout.Boxes.ImageBox? completedImage, bool layoutInvalidated,
         bool bitmapOutputRecoverySignal = false)
     {
-        if (_isDisposed || _isUnloaded)
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded)
             return;
         if (RequestGeometryRecoveryIfRequired(_snapshot))
             return;
@@ -8263,7 +8186,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 .NotifyImageStatusChanged(completedImage);
             // UIA notification can run host code. Recheck lifetime and membership
             // before using a snapshot-owned placement proof or queuing work.
-            if (_isDisposed || _isUnloaded || !_subscribedImages.Contains(completedImage))
+            if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !_subscribedImages.Contains(completedImage))
                 return;
             if (layoutInvalidated && !_publishingLayoutCommit &&
                 PerformanceSession is IMarkdownPerformanceSessionInternal session &&
@@ -8296,7 +8219,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void QueueImageRelayout(int blockIndex)
     {
-        if (_isDisposed || _isUnloaded || _snapshot is null)
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _snapshot is null)
             return;
 
         if (RequestGeometryRecoveryIfRequired(_snapshot))
@@ -8374,7 +8297,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             // A transient native timer failure must not clear one-shot overflow
             // signals or pending publication. This fallback remains weak and
             // has at most one queued UI tick, even if delivery is withheld.
-            if (!_isDisposed && !_isUnloaded)
+            if (!_lifetime.IsDisposed && !_lifetime.IsUnloaded)
             {
                 try
                 {
@@ -8398,7 +8321,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         long layoutTicket = control._lastLayoutCommitTicket;
         try
         {
-            if (!control._isDisposed && !control._isUnloaded)
+            if (!control._lifetime.IsDisposed && !control._lifetime.IsUnloaded)
             {
                 if (control.RequestGeometryRecoveryIfRequired(control._snapshot))
                 {
@@ -8442,7 +8365,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         }
         finally
         {
-            if (control._isDisposed || control._isUnloaded)
+            if (control._lifetime.IsDisposed || control._lifetime.IsUnloaded)
                 control.StopImageRelayoutRecovery(force: true);
             else
                 control.StopImageRelayoutRecoveryIfIdle();
@@ -8498,7 +8421,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         LayoutSnapshot? snapshot = _snapshot;
         if (RequestGeometryRecoveryIfRequired(snapshot))
             return;
-        if (_isDisposed || _isUnloaded || snapshot is null ||
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || snapshot is null ||
             _pendingImageRelayoutBlockIndices.Count == 0)
         {
             _imageRelayoutQueued = false;
@@ -8537,7 +8460,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 _pendingImageRelayoutBlockIndices,
                 optedIn: session is not null);
             (int BlockIndex, double OffsetFromTop)? anchor = null;
-            if (_scroll is { VerticalOffset: > 0 } scroll &&
+            if (_surface.Scroll is { VerticalOffset: > 0 } scroll &&
                 snapshot.TryCaptureScrollAnchor(scroll.VerticalOffset, out var captured) &&
                 captured.BlockIndex is { } blockIndex)
             {
@@ -8561,12 +8484,12 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 _imagePlans.Count is > 0 and <= InlineContainerBox.MaximumPrivateRasterPlacementImages
                 ? new RasterPlacementInputs(receiver, _snapshotGeneration,
                     _imagePreparationOwnerToken, _imageLifetimeCts?.Token ?? CancellationToken.None,
-                    _snapshotRetirements, _scroll?.VerticalOffset)
+                    _snapshotRetirements, _surface.Scroll?.VerticalOffset)
                 : null;
             _imageRelayoutTask = RunImageRelayoutAsync(
                 payload, anchor, _snapshotGeneration, cancellation, DispatcherQueue,
                 receiver, session, rasterPlacement, snapshot.PointerInputEpoch,
-                _scroll?.VerticalOffset);
+                _surface.Scroll?.VerticalOffset);
             // The worker now owns only this immutable bounded index array.
             // Leave any storm remainder in the UI-owned pending set for the
             // normal completion/recovery route to schedule next.
@@ -8597,7 +8520,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void OnTaskCommandAvailabilityChanged()
     {
-        if (_isDisposed || _isUnloaded || _taskCommandAvailabilityRefreshQueued)
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _taskCommandAvailabilityRefreshQueued)
             return;
 
         _taskCommandAvailabilityRefreshQueued = true;
@@ -8608,7 +8531,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private void RefreshTaskCommandAvailability()
     {
         _taskCommandAvailabilityRefreshQueued = false;
-        if (_isDisposed || _isUnloaded || _snapshot is not { } snapshot)
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _snapshot is not { } snapshot)
             return;
 
         MarkFocusableItemsRefreshPending(snapshot, Volatile.Read(ref _snapshotGeneration));
@@ -8635,7 +8558,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         var request = _pendingFocusableItemsRefresh;
         if (!request.IsPending)
             return true;
-        if (_isDisposed || _isUnloaded)
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded)
             return false;
 
         LayoutSnapshot? snapshot = _snapshot;
@@ -8878,7 +8801,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void OnRegionsInvalidated(CanvasVirtualControl sender, CanvasRegionsInvalidatedEventArgs args)
     {
-        if (_isDisposed || _isUnloaded || !IsLoaded || !ReferenceEquals(sender, _canvas))
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !IsLoaded || !ReferenceEquals(sender, _surface.Canvas))
             return;
 
         var performance = MarkdownPerformanceEventSource.Log;
@@ -9004,7 +8927,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         }
         if (paintedRegion &&
             Interlocked.Exchange(ref _deferredSceneProbeAfterPaint, 0) != 0 &&
-            !_isDisposed && !_isUnloaded)
+            !_lifetime.IsDisposed && !_lifetime.IsUnloaded)
         {
             // A Mermaid or Math scene that scrolled into a band that was
             // still being measured was never scheduled; its source fallback
@@ -9294,7 +9217,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             // committed, its live size/paint state must still reach the UI even
             // if cancellation arrived after that non-cancelable commit point.
             // A private whole-tree candidate has not committed and is excluded.
-            if (current && snapshot is not null && !_isDisposed && !_isUnloaded &&
+            if (current && snapshot is not null && !_lifetime.IsDisposed && !_lifetime.IsUnloaded &&
                 (!canceled || rootMeasureCommitted) &&
                 generation == _snapshotGeneration && ReferenceEquals(snapshot, _snapshot))
             {
@@ -9340,7 +9263,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 }
                 else
                     ApplyLazyLayoutCommit(snapshot, rootMeasureCommitted &&
-                        (canceled || capturedScrollOffset != _scroll?.VerticalOffset) ? null : anchor);
+                        (canceled || capturedScrollOffset != _surface.Scroll?.VerticalOffset) ? null : anchor);
             }
         }
         catch (Exception exception)
@@ -9353,7 +9276,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             // A replacement can cancel an active reflow and then fail itself.
             // Recover current image geometry without retaining the worker's
             // dirty array in the delayed UI envelope or touching a retired graph.
-            if (current && canceled && !_isDisposed && !_isUnloaded &&
+            if (current && canceled && !_lifetime.IsDisposed && !_lifetime.IsUnloaded &&
                 ReferenceEquals(snapshot, _snapshot) && snapshot?.GeometryRecoveryRequired != true)
             {
                 foreach (var image in _subscribedImages)
@@ -9361,7 +9284,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             }
             // The pending set is cleared before every snapshot replacement.
             // New-snapshot completions may accumulate while an old task drains.
-            if (current && _pendingImageRelayoutBlockIndices.Count > 0 && !_isDisposed && !_isUnloaded &&
+            if (current && _pendingImageRelayoutBlockIndices.Count > 0 && !_lifetime.IsDisposed && !_lifetime.IsUnloaded &&
                 _snapshot?.GeometryRecoveryRequired != true)
             {
                 foreach (int pending in _pendingImageRelayoutBlockIndices)
@@ -9389,7 +9312,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         CanvasDevice? layoutDevice = _snapshotLayoutDevice;
         CanvasDevice? surfaceDevice = _selectionAdornerCanvasDevice;
         CanvasDevice? canvasDevice = null;
-        try { canvasDevice = _canvas?.Device; }
+        try { canvasDevice = _surface.Canvas?.Device; }
         catch (Exception deviceException)
         {
             MarkdownDiagnostics.WriteLine(
@@ -9406,7 +9329,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // genuinely lost device as the manual device-loss contract requires.
         NotifyLostCanvasDevices(failureHResult, layoutDevice, surfaceDevice, canvasDevice);
 
-        if (_canvasDeviceRecoveryQueued || _isDisposed || _isUnloaded)
+        if (_canvasDeviceRecoveryQueued || _lifetime.IsDisposed || _lifetime.IsUnloaded)
             return;
 
         _canvasDeviceRecoveryAttempt = Math.Min(_canvasDeviceRecoveryAttempt + 1, 6);
@@ -9477,7 +9400,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         CanvasVirtualControl sender,
         Microsoft.Graphics.Canvas.UI.CanvasCreateResourcesEventArgs args)
     {
-        if (_isDisposed || _isUnloaded || !ReferenceEquals(sender, _canvas))
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !ReferenceEquals(sender, _surface.Canvas))
             return;
 
         // Initial resource creation can be deferred until the first input frame in
@@ -9494,7 +9417,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void ProcessPointerWheelChanged(ref PointerInput e)
     {
-        if (_snapshot is not { } snapshot || _canvas is null)
+        if (_snapshot is not { } snapshot || _surface.Canvas is null)
             return;
 
         var point = e.Point;
@@ -9524,7 +9447,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private bool TryBeginHorizontalOverflowPointer(ref PointerInput e)
     {
-        if (_snapshot is not { } snapshot || _canvas is null)
+        if (_snapshot is not { } snapshot || _surface.Canvas is null)
             return false;
 
         var point = e.Point;
@@ -9568,7 +9491,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             0,
             Math.Max(0, thumb.Width));
 
-        if (!PointerInputClassification.CapturePointerForInput(_canvas, e))
+        if (!PointerInputClassification.CapturePointerForInput(_surface.Canvas, e))
         {
             ClearHorizontalOverflowPointerState();
             e.ResumeRebuildAfterInteraction = true;
@@ -9623,7 +9546,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 return false;
             }
 
-            if (_canvas is null || !PointerInputClassification.CapturePointerForInput(_canvas, e))
+            if (_surface.Canvas is null || !PointerInputClassification.CapturePointerForInput(_surface.Canvas, e))
             {
                 ClearHorizontalOverflowPointerState();
                 e.ResumeRebuildAfterInteraction = true;
@@ -9652,11 +9575,11 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         }
 
         bool captured = _horizontalOverflowCaptured;
-        if (captured && _canvas is not null)
+        if (captured && _surface.Canvas is not null)
             SuppressTouchTap(e.Point.Position, e.TouchTapGestureEpoch);
         ClearHorizontalOverflowPointerState();
         e.ResumeRebuildAfterInteraction = true;
-        if (captured && _canvas is not null)
+        if (captured && _surface.Canvas is not null)
         {
             e.Handled = true;
             e.ReleaseCanvasCaptureAfterInteraction = true;
@@ -9710,7 +9633,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         IHorizontalOverflowBox target,
         double oldOffset)
     {
-        if (_isDisposed || _isUnloaded || _snapshot is not { } snapshot ||
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _snapshot is not { } snapshot ||
             target is not BlockBox targetBlock)
         {
             return;
@@ -9839,7 +9762,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     {
         LayoutSnapshot? snapshot = null;
         IHorizontalOverflowBox? target = null;
-        if (_isDisposed || _isUnloaded ||
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded ||
             state.Snapshot is null || state.Target is null ||
             !state.Snapshot.TryGetTarget(out snapshot) ||
             !state.Target.TryGetTarget(out target) ||
@@ -9893,7 +9816,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             state.Viewport,
             state.IsRightToLeft);
 
-        if (_canvas is { } canvas)
+        if (_surface.Canvas is { } canvas)
         {
             if (MarkdownCanvasInvalidationPolicy.TryClipToCanvas(
                     new Rect(
@@ -9943,7 +9866,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             _hasPendingHorizontalOverflowRefresh = false;
             return;
         }
-        if (_isDisposed || _isUnloaded || _snapshot is not { } snapshot ||
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _snapshot is not { } snapshot ||
             _pendingHorizontalOverflowRefreshGeneration != Volatile.Read(ref _snapshotGeneration))
         {
             _hasPendingHorizontalOverflowRefresh = false;
@@ -10010,8 +9933,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         bool isRightToLeft)
     {
         if (!AutomationPeer.ListenerExists(AutomationEvents.PropertyChanged) ||
-            _isDisposed ||
-            _isUnloaded ||
+            _lifetime.IsDisposed ||
+            _lifetime.IsUnloaded ||
             !ReferenceEquals(snapshot, _snapshot) ||
             snapshotGeneration != Volatile.Read(ref _snapshotGeneration) ||
             !snapshot.SemanticDocument.TryGetHorizontalOverflowNode(target, out _))
@@ -10073,7 +9996,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             _pendingHorizontalOverflowAutomationChanges).CopyTo(changes, 0);
         _pendingHorizontalOverflowAutomationChanges.Clear();
 
-        if (_isDisposed || _isUnloaded || _snapshot is not { } currentSnapshot)
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _snapshot is not { } currentSnapshot)
             return;
 
         MarkdownAutomationPeer? peer =
@@ -10176,7 +10099,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void ProcessPointerPressed(ref PointerInput e)
     {
-        if (_snapshot is not { } snapshot || _canvas is null)
+        if (_snapshot is not { } snapshot || _surface.Canvas is null)
             return;
         _pendingTouchSelectionPresentationRestore = null;
         long snapshotGeneration = Volatile.Read(ref _snapshotGeneration);
@@ -10247,7 +10170,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             return;
         }
 
-        HideAbbreviationTooltip();
+        _abbreviationTooltip.Hide();
 
         // Pressing *on* a hosted inline embed must NOT start a selection.
         // The embed is a real WinUI element layered above the canvas — its
@@ -10267,7 +10190,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             if (!_selection.Range.IsEmpty)
             {
                 _selection.Clear();
-                // No _canvas.Invalidate() needed — overlay cleared by Changed handler.
+                // No canvas Invalidate() needed — overlay cleared by Changed handler.
             }
             // Also dismiss keyboard focus ring on click over embed.
             if (_focusedItemIndex >= 0)
@@ -10327,7 +10250,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 // OnPointerReleased is not stale from a previous double/triple-click
                 // sequence made while IsSelectionEnabled was true.
                 _clickMode = ClickSelectionMode.Single;
-                if (!PointerInputClassification.CapturePointerForInput(_canvas, e)) _pointerSession = default;
+                if (!PointerInputClassification.CapturePointerForInput(_surface.Canvas, e)) _pointerSession = default;
                 else e.Handled = true;
                 return;
             }
@@ -10354,7 +10277,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 // Selection is rendered by the XAML overlay; do not dirty canvas
                 // text during mouse-down. Repainting DirectWrite text here causes
                 // visible shake on selection starts, especially on the embeds page.
-                if (!PointerInputClassification.CapturePointerForInput(_canvas, e)) { _pointerSession = default; _selectionAnchor = null; }
+                if (!PointerInputClassification.CapturePointerForInput(_surface.Canvas, e)) { _pointerSession = default; _selectionAnchor = null; }
                 else e.Handled = true;
                 return;
             }
@@ -10374,7 +10297,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                     return;
                 // Selection is rendered by the XAML overlay; do not dirty canvas
                 // text during mouse-down.
-                if (!PointerInputClassification.CapturePointerForInput(_canvas, e)) { _pointerSession = default; _selectionAnchor = null; }
+                if (!PointerInputClassification.CapturePointerForInput(_surface.Canvas, e)) { _pointerSession = default; _selectionAnchor = null; }
                 else e.Handled = true;
                 return;
             }
@@ -10384,7 +10307,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 return;
             // Selection is rendered by the XAML overlay; do not dirty canvas text
             // for the empty anchor state.
-            bool captured = PointerInputClassification.CapturePointerForInput(_canvas, e);
+            bool captured = PointerInputClassification.CapturePointerForInput(_surface.Canvas, e);
             if (!captured) { _pointerSession = default; _selectionAnchor = null; }
                 else e.Handled = true;
             }
@@ -10401,7 +10324,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             _selection.Clear();
             if (!IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))
                 return;
-            if (!PointerInputClassification.CapturePointerForInput(_canvas, e))
+            if (!PointerInputClassification.CapturePointerForInput(_surface.Canvas, e))
                 _pointerSession = default;
             else
                 e.Handled = true;
@@ -10424,19 +10347,19 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void OnTapped(object sender, TappedRoutedEventArgs e)
     {
-        if (_canvas is not null && e.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Touch)
-            e.Handled |= DispatchRecognizedGesture(PointerInputKind.Tap, e.GetPosition(_canvas), e.PointerDeviceType);
+        if (_surface.Canvas is not null && e.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Touch)
+            e.Handled |= DispatchRecognizedGesture(PointerInputKind.Tap, e.GetPosition(_surface.Canvas), e.PointerDeviceType);
     }
 
     private void OnDoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
-        if (_canvas is not null && e.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Touch)
-            e.Handled |= DispatchRecognizedGesture(PointerInputKind.DoubleTap, e.GetPosition(_canvas), e.PointerDeviceType);
+        if (_surface.Canvas is not null && e.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Touch)
+            e.Handled |= DispatchRecognizedGesture(PointerInputKind.DoubleTap, e.GetPosition(_surface.Canvas), e.PointerDeviceType);
     }
 
     private void ProcessTapped(ref PointerInput e)
     {
-        if (e.InteractionSnapshot is not { } snapshot || _canvas is null ||
+        if (e.InteractionSnapshot is not { } snapshot || _surface.Canvas is null ||
             e.GestureDevice != Microsoft.UI.Input.PointerDeviceType.Touch)
         {
             return;
@@ -10484,7 +10407,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void ProcessDoubleTapped(ref PointerInput e)
     {
-        if (_snapshot is not { } snapshot || _canvas is null ||
+        if (_snapshot is not { } snapshot || _surface.Canvas is null ||
             e.GestureDevice != Microsoft.UI.Input.PointerDeviceType.Touch)
         {
             return;
@@ -10514,14 +10437,14 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void OnHolding(object sender, HoldingRoutedEventArgs e)
     {
-        if (_canvas is not null && e.HoldingState == Microsoft.UI.Input.HoldingState.Started &&
+        if (_surface.Canvas is not null && e.HoldingState == Microsoft.UI.Input.HoldingState.Started &&
             e.PointerDeviceType is Microsoft.UI.Input.PointerDeviceType.Touch or Microsoft.UI.Input.PointerDeviceType.Pen)
-            e.Handled |= DispatchRecognizedGesture(PointerInputKind.Hold, e.GetPosition(_canvas), e.PointerDeviceType);
+            e.Handled |= DispatchRecognizedGesture(PointerInputKind.Hold, e.GetPosition(_surface.Canvas), e.PointerDeviceType);
     }
 
     private void ProcessHolding(ref PointerInput e)
     {
-        if (_snapshot is not { } snapshot || _canvas is null ||
+        if (_snapshot is not { } snapshot || _surface.Canvas is null ||
             e.GestureDevice is not (
                 Microsoft.UI.Input.PointerDeviceType.Touch or
                 Microsoft.UI.Input.PointerDeviceType.Pen))
@@ -10576,7 +10499,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             return;
         input.ContextCaptureEnded = true;
 
-        if (!_pointerSession.IsActive || _canvas is null)
+        if (!_pointerSession.IsActive || _surface.Canvas is null)
             return;
 
         // Retire the live logical session under the snapshot lease, but defer
@@ -10586,7 +10509,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _selectionAnchor = null;
         _lastSelectionPointerViewportY = double.NaN;
         SetSelectionDragShieldActive(false);
-        input.InteractionCanvas = _canvas;
+        input.InteractionCanvas = _surface.Canvas;
         input.ReleasePointerIdAfterInteraction = pointerId;
         input.ReleaseCanvasCaptureAfterInteraction = pointerId != 0;
     }
@@ -10702,31 +10625,9 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         DispatcherQueue.TryEnqueue(() => _suppressNextFocusPromotion = false);
     }
 
-    private InlineRun? _lastHoveredRun;
-    private Layout.Boxes.InlineContainerBox? _lastHoveredBox; // box that contains _lastHoveredRun; used for targeted canvas invalidation
-    private AbbreviationRun? _lastHoveredAbbreviation;
-    private ToolTip? _abbreviationToolTip;
-    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _abbreviationTooltipShowTimer;
-    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _abbreviationTooltipHideTimer;
-    private AbbreviationRun? _pendingAbbreviationTooltipRun;
-    private Rect _pendingAbbreviationTooltipPlacementRect;
-    private static readonly TimeSpan AbbreviationTooltipShowDelay = TimeSpan.FromMilliseconds(250);
-    private static readonly TimeSpan AbbreviationTooltipHideDelay = TimeSpan.FromMilliseconds(200);
-    // Tracks the ProtectedCursor shape we last set, or null when we have
-    // reset to the system default.  Three states:
-    //   null            → ProtectedCursor was reset; system default (Arrow) shows.
-    //                     Occurs when pointer exits the canvas or is over an embed.
-    //   IBeam           → pointer is over selectable text (not a link).
-    //   Hand            → pointer is over a link run.
-    // We only call ProtectedCursor setter when the desired state changes, but
-    // the "null" state is critical: setting ProtectedCursor = null on *this*
-    // UserControl means child elements (embeds) can use their own cursors
-    // without a parent IBeam overriding them.
-    private Microsoft.UI.Input.InputSystemCursorShape? _currentCursorShape;
-
     private void ProcessPointerMoved(ref PointerInput e)
     {
-        if (_snapshot is null || _canvas is null) return;
+        if (_snapshot is null || _surface.Canvas is null) return;
         var pt = e.Point.Position;
 
         if (e.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Touch)
@@ -10748,7 +10649,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
             e.Handled = true;
 
-            HideAbbreviationTooltip();
+            _abbreviationTooltip.Hide();
             var dragPoint = PrepareSelectionDragPoint(pt);
             // Atomic embed inclusion: when the pointer is inside an inline
             // embed rect during a drag, snap the position to either the
@@ -10761,7 +10662,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             if (TryHitTestEmbed(dragPoint, out var embedPos))
             {
                 _selection.ExtendTo(embedPos);
-                // No _canvas.Invalidate(): selection is on the XAML overlay.
+                // No canvas Invalidate(): selection is on the XAML overlay.
             }
             else if (_snapshot.HitTestSelectionEndpoint(dragPoint, out var pos))
             {
@@ -10801,7 +10702,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 }
                 else
                     _selection.ExtendTo(pos);
-                // No _canvas.Invalidate(): selection is on the XAML overlay.
+                // No canvas Invalidate(): selection is on the XAML overlay.
             }
             // Do NOT update hover state during an active selection drag.
             // Calling SetColor on the CanvasTextLayout (which ApplyHoverColor
@@ -10822,8 +10723,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // drive the Win2D selection overlay at touch-scroll frequency.
         if (!PointerInputClassification.IsPrecisePointer(e))
         {
-            HideAbbreviationTooltip();
-            SetCursorShape(null);
+            _abbreviationTooltip.Hide();
+            _cursor.SetShape(null);
             return;
         }
 
@@ -10837,30 +10738,11 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // embed to set its own cursor if desired.
         if (IsPointOverEmbed(pt))
         {
-            HideAbbreviationTooltip();
+            _abbreviationTooltip.Hide();
             // Clear our own link-hover so when the pointer leaves the embed
             // the previous hovered link doesn't appear stuck-on.
-            if (_lastHoveredRun is not null)
-            {
-                // Only the LinkRun case actually mutates visible state (link
-                // foreground color); plain TextRun hover changes nothing.
-                // Issuing a _canvas.Invalidate for a TextRun→null transition
-                // causes a partial tile repaint, and CanvasVirtualControl
-                // partial-tile repaints reveal DirectWrite glyph-position
-                // variance at tile boundaries → visible text shake.
-                bool wasLink = _lastHoveredRun is LinkRun;
-                var boxToInvalidate = _lastHoveredBox;
-                foreach (var b in _snapshot.Blocks) DocumentHitTesting.ClearHover(b);
-                _lastHoveredRun = null;
-                _lastHoveredBox = null;
-                // No canvas invalidate: hover transitions no longer mutate
-                // the text layout, so the link→null transition has no painted
-                // representation either.
-                _ = wasLink; _ = boxToInvalidate;
-                if (wasLink)
-                    InvalidateInteractiveTextAdorner();
-            }
-            SetCursorShape(null);
+            ClearPointerHover();
+            _cursor.SetShape(null);
             return;
         }
 
@@ -10906,7 +10788,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         }
 
         var hoveredLinkedRun = LinkTargets.IsLinkedRun(hovered) ? hovered : null;
-        var lastLinkedRun = LinkTargets.IsLinkedRun(_lastHoveredRun) ? _lastHoveredRun : null;
+        var lastLinkedRun = LinkTargets.IsLinkedRun(_hover.Run) ? _hover.Run : null;
         bool linkChanged = !ReferenceEquals(hoveredLinkedRun, lastLinkedRun);
         bool overVectorScene = TryGetVectorPointerState(
             pt,
@@ -10932,199 +10814,19 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 hoveredBox.HoveredRun = hoveredLink;
             InvalidateInteractiveTextAdorner();
         }
-        _lastHoveredRun = hovered;
-        _lastHoveredBox = hoveredBox;
+        _hover.Set(hovered, hoveredBox);
 
-        UpdateAbbreviationTooltip(hovered, hoveredBox, pt);
-        SetCursorShape(wantedShape);
-    }
-
-    private void UpdateAbbreviationTooltip(
-        InlineRun? hoveredRun,
-        Layout.Boxes.InlineContainerBox? hoveredBox,
-        Point pointerPoint)
-    {
-        var abbreviation = hoveredRun as AbbreviationRun;
-        if (abbreviation is null ||
-            string.IsNullOrWhiteSpace(abbreviation.Expansion) ||
-            _canvas is null ||
-            hoveredBox is null ||
-            !hoveredBox.TryGetRunBounds(abbreviation, pointerPoint, out var placementRect))
-        {
-            ScheduleAbbreviationTooltipHide();
-            return;
-        }
-
-        CancelAbbreviationTooltipHide();
-        if (ReferenceEquals(abbreviation, _lastHoveredAbbreviation))
-        {
-            CancelAbbreviationTooltipShow();
-            return;
-        }
-
-        if (ReferenceEquals(abbreviation, _pendingAbbreviationTooltipRun))
-        {
-            _pendingAbbreviationTooltipPlacementRect = placementRect;
-            return;
-        }
-
-        if (_lastHoveredAbbreviation is not null)
-            HideAbbreviationTooltip();
-
-        ScheduleAbbreviationTooltipShow(abbreviation, placementRect);
-    }
-
-    private void ScheduleAbbreviationTooltipShow(AbbreviationRun abbreviation, Rect placementRect)
-    {
-        CancelAbbreviationTooltipHide();
-        _pendingAbbreviationTooltipRun = abbreviation;
-        _pendingAbbreviationTooltipPlacementRect = placementRect;
-
-        var timer = EnsureAbbreviationTooltipShowTimer();
-        if (timer is null)
-        {
-            ShowAbbreviationTooltip(abbreviation, placementRect);
-            return;
-        }
-
-        timer.Stop();
-        timer.Interval = AbbreviationTooltipShowDelay;
-        timer.Start();
-    }
-
-    private void ShowPendingAbbreviationTooltip()
-    {
-        _abbreviationTooltipShowTimer?.Stop();
-        var abbreviation = _pendingAbbreviationTooltipRun;
-        var placementRect = _pendingAbbreviationTooltipPlacementRect;
-        _pendingAbbreviationTooltipRun = null;
-
-        if (_isUnloaded ||
-            abbreviation is null ||
-            !ReferenceEquals(abbreviation, _lastHoveredRun as AbbreviationRun))
-        {
-            return;
-        }
-
-        ShowAbbreviationTooltip(abbreviation, placementRect);
-    }
-
-    private void ShowAbbreviationTooltip(AbbreviationRun abbreviation, Rect placementRect)
-    {
-        if (_isUnloaded || _canvas is null || string.IsNullOrWhiteSpace(abbreviation.Expansion))
-            return;
-
-        CloseAbbreviationTooltip();
-        _lastHoveredAbbreviation = abbreviation;
-        _abbreviationToolTip = new ToolTip
-        {
-            Content = abbreviation.Expansion,
-            IsHitTestVisible = false,
-            Placement = PlacementMode.Top,
-            PlacementTarget = _canvas,
-            PlacementRect = placementRect,
-            VerticalOffset = -4,
-        };
-        ToolTipService.SetToolTip(_canvas, _abbreviationToolTip);
-        _abbreviationToolTip.IsOpen = true;
-    }
-
-    private void ScheduleAbbreviationTooltipHide()
-    {
-        CancelAbbreviationTooltipShow();
-        _pendingAbbreviationTooltipRun = null;
-
-        if (_abbreviationToolTip is null)
-        {
-            _lastHoveredAbbreviation = null;
-            return;
-        }
-
-        var timer = EnsureAbbreviationTooltipHideTimer();
-        if (timer is null)
-        {
-            HideAbbreviationTooltip();
-            return;
-        }
-
-        timer.Stop();
-        timer.Interval = AbbreviationTooltipHideDelay;
-        timer.Start();
-    }
-
-    private void HideAbbreviationTooltip()
-    {
-        CancelAbbreviationTooltipShow();
-        CancelAbbreviationTooltipHide();
-        _pendingAbbreviationTooltipRun = null;
-        CloseAbbreviationTooltip();
-        _lastHoveredAbbreviation = null;
-    }
-
-    private void CloseAbbreviationTooltip()
-    {
-        if (_abbreviationToolTip is not null)
-        {
-            try { _abbreviationToolTip.IsOpen = false; } catch { }
-            if (_canvas is not null)
-                ToolTipService.SetToolTip(_canvas, null);
-            _abbreviationToolTip = null;
-        }
-    }
-
-    private void CancelAbbreviationTooltipShow()
-    {
-        _abbreviationTooltipShowTimer?.Stop();
-    }
-
-    private void CancelAbbreviationTooltipHide()
-    {
-        _abbreviationTooltipHideTimer?.Stop();
-    }
-
-    private void ReleaseAbbreviationTooltipTimers()
-    {
-        _abbreviationTooltipShowTimer?.Stop();
-        _abbreviationTooltipHideTimer?.Stop();
-        _abbreviationTooltipShowTimer = null;
-        _abbreviationTooltipHideTimer = null;
-    }
-
-    private Microsoft.UI.Dispatching.DispatcherQueueTimer? EnsureAbbreviationTooltipShowTimer()
-    {
-        if (_abbreviationTooltipShowTimer is not null)
-            return _abbreviationTooltipShowTimer;
-
-        var dispatcher = DispatcherQueue ?? _canvas?.DispatcherQueue;
-        if (dispatcher is null)
-            return null;
-
-        _abbreviationTooltipShowTimer = dispatcher.CreateTimer();
-        _abbreviationTooltipShowTimer.Tick += (_, _) => ShowPendingAbbreviationTooltip();
-        return _abbreviationTooltipShowTimer;
-    }
-
-    private Microsoft.UI.Dispatching.DispatcherQueueTimer? EnsureAbbreviationTooltipHideTimer()
-    {
-        if (_abbreviationTooltipHideTimer is not null)
-            return _abbreviationTooltipHideTimer;
-
-        var dispatcher = DispatcherQueue ?? _canvas?.DispatcherQueue;
-        if (dispatcher is null)
-            return null;
-
-        _abbreviationTooltipHideTimer = dispatcher.CreateTimer();
-        _abbreviationTooltipHideTimer.Tick += (_, _) => HideAbbreviationTooltip();
-        return _abbreviationTooltipHideTimer;
+        _abbreviationTooltip.Update(hovered, hoveredBox, pt);
+        _cursor.SetShape(wantedShape);
     }
 
     private void InvalidateInteractiveTextAdorner()
     {
-        if (_overlay is null)
+        if (_surface.Overlay is null)
             return;
 
         if (_selectionAdorner is null && !_selection.IsActive &&
-            _lastHoveredRun is not LinkRun && !TryGetFocusedLink(out _, out _))
+            _hover.Run is not LinkRun && !TryGetFocusedLink(out _, out _))
             return;
 
         InvalidateSelectionAdorner();
@@ -11154,7 +10856,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void RequestSelectionAdornerRefresh()
     {
-        if (_isDisposed || _isUnloaded || !IsLoaded)
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !IsLoaded)
         {
             CancelSelectionAdornerRetry();
             return;
@@ -11197,7 +10899,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (!_selectionAdornerRetryState.TryBeginFrame())
             return;
 
-        if (_isDisposed || _isUnloaded || !IsLoaded)
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !IsLoaded)
         {
             CancelSelectionAdornerRetry();
             return;
@@ -11236,7 +10938,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             _selectionAdornerRefreshInProgress = false;
         }
 
-        if (_isDisposed || _isUnloaded || !IsLoaded)
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !IsLoaded)
         {
             CancelSelectionAdornerRetry();
             return;
@@ -11289,7 +10991,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void OnSelectionAdornerRetryFrame(object? sender, object args)
     {
-        if (_isDisposed || _isUnloaded || !IsLoaded)
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !IsLoaded)
         {
             CancelSelectionAdornerRetry();
             return;
@@ -11334,7 +11036,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void ScheduleSelectionAdornerRetry()
     {
-        if (_isDisposed || _isUnloaded || !IsLoaded)
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !IsLoaded)
         {
             CancelSelectionAdornerRetry();
             return;
@@ -11427,7 +11129,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         }
 
         bool hasContent = paintRects.Count > 0 ||
-            (_lastHoveredRun is LinkRun && _lastHoveredBox is not null) ||
+            _hover.HasLink ||
             TryGetFocusedLink(out _, out _);
         if (!hasContent)
         {
@@ -11483,7 +11185,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                     paintBackgrounds);
             }
 
-            if (_isDisposed || _isUnloaded || !IsLoaded)
+            if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !IsLoaded)
                 return SelectionAdornerRefreshOperationResult.AwaitLifecycle;
             if (surfaceVersion != _selectionAdornerSurfaces.Generation ||
                 !ReferenceEquals(source, _selectionAdornerSurfaces.Surface) ||
@@ -11663,12 +11365,12 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void InvalidateCanvas()
     {
-        if (_isDisposed || _isUnloaded || !IsLoaded)
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !IsLoaded)
             return;
 
         try
         {
-            _canvas?.Invalidate();
+            _surface.Canvas?.Invalidate();
         }
         catch (Exception ex) when (GraphicsDeviceErrors.IsDeviceLost(ex))
         {
@@ -11689,7 +11391,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         bool sustained = false,
         double elapsedSeconds = 0)
     {
-        if (_canvas is null)
+        if (_surface.Canvas is null)
             return point;
 
         TryGetViewport(out double viewportTop, out double viewportHeight, out _);
@@ -11708,55 +11410,21 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _lastSelectionPointerViewportY = pointerViewportY;
         if (Math.Abs(delta) > 0.0001)
         {
-            double maxOffset = Math.Max(0, _canvas.ActualHeight - viewportHeight);
+            double maxOffset = Math.Max(0, _surface.Canvas.ActualHeight - viewportHeight);
             double target = Math.Clamp(viewportTop + delta, 0, maxOffset);
             if (Math.Abs(target - viewportTop) > 0.0001)
             {
-                if (_scroll is not null)
-                    _scroll.ChangeView(null, target, null, disableAnimation: true);
+                if (_surface.Scroll is not null)
+                    _surface.Scroll.ChangeView(null, target, null, disableAnimation: true);
                 else
                     BringDocumentRectIntoExternalViewport(new Rect(0, target, 1, 1), animate: false);
                 viewportTop = target;
             }
         }
 
-        double x = Math.Clamp(point.X, 0, Math.Max(0, _canvas.ActualWidth - 1));
+        double x = Math.Clamp(point.X, 0, Math.Max(0, _surface.Canvas.ActualWidth - 1));
         double y = SelectionAutoScroll.ClampPointToViewport(point.Y, viewportTop, viewportHeight);
         return new Point(x, y);
-    }
-
-    /// <summary>
-    /// Sets the cursor shape to <paramref name="shape"/> if it
-    /// differs from the last-set shape, or resets it to <c>null</c> (system
-    /// default — Arrow) when <paramref name="shape"/> is <c>null</c>.
-    /// Resetting to null is essential when the pointer leaves text areas and
-    /// enters overlay embeds: with null, XAML walks up the tree and finds no
-    /// cursor override, so child elements (Button, CheckBox, …) can show their
-    /// own cursors instead of inheriting IBeam from this UserControl.
-    /// Cursors are cached as fields to avoid creating a new IDisposable on every
-    /// Hand↔IBeam transition.
-    /// </summary>
-    private void SetCursorShape(Microsoft.UI.Input.InputSystemCursorShape? shape)
-    {
-        if (shape == _currentCursorShape) return;
-        // Update tracked state first so repeated failures don't cause a per-frame
-        // exception storm: if ProtectedCursor throws, we still record the intent
-        // and skip the setter on the next move event.
-        _currentCursorShape = shape;
-        try
-        {
-            ProtectedCursor = shape switch
-            {
-                Microsoft.UI.Input.InputSystemCursorShape.Hand =>
-                    _cursorHand ??= Microsoft.UI.Input.InputSystemCursor.Create(
-                        Microsoft.UI.Input.InputSystemCursorShape.Hand),
-                Microsoft.UI.Input.InputSystemCursorShape.IBeam =>
-                    _cursorIBeam ??= Microsoft.UI.Input.InputSystemCursor.Create(
-                        Microsoft.UI.Input.InputSystemCursorShape.IBeam),
-                _ => null
-            };
-        }
-        catch { /* ProtectedCursor isn't always settable */ }
     }
 
     /// <summary>
@@ -11861,12 +11529,12 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private bool HasInteractiveTextAdornerContent()
         => (_selection.IsActive && _selectionAdornerRects.Count > 0) ||
-           (_lastHoveredRun is LinkRun && _lastHoveredBox is not null) ||
+           _hover.HasLink ||
            TryGetFocusedLink(out _, out _);
 
     private bool ShouldRefreshSelectionAdornerForScroll()
     {
-        bool hasHoveredLink = _lastHoveredRun is LinkRun && _lastHoveredBox is not null;
+        bool hasHoveredLink = _hover.HasLink;
         IReadOnlyList<Layout.FocusableItem>? focusableItems = _focusableItems;
         bool hasFocusedLink = focusableItems is not null &&
             (uint)_focusedItemIndex < (uint)focusableItems.Count &&
@@ -11911,7 +11579,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private SelectionAdornerCompositionSurface? EnsureSelectionAdornerSurface(double width, double height)
     {
         SelectionAdornerVisualHost? host = _selectionAdornerHost;
-        if (host is null || _selectionAdorner is null || _isDisposed || _isUnloaded ||
+        if (host is null || _selectionAdorner is null || _lifetime.IsDisposed || _lifetime.IsUnloaded ||
             !ReferenceEquals(host.Placeholder, _selectionAdorner))
         {
             return null;
@@ -11929,7 +11597,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             dpi,
             EnsureSelectionAdornerGraphicsDevice(host.Compositor));
         // Attachment can reenter unload or replace the adorner placeholder.
-        if (surface is null || _isDisposed || _isUnloaded || !ReferenceEquals(host, _selectionAdornerHost))
+        if (surface is null || _lifetime.IsDisposed || _lifetime.IsUnloaded || !ReferenceEquals(host, _selectionAdornerHost))
             return null;
 
         return surface;
@@ -11972,7 +11640,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         RenderingDeviceReplacedEventArgs args)
         => DispatcherQueue?.TryEnqueue(() =>
         {
-            if (_isDisposed || _isUnloaded || !ReferenceEquals(sender, _selectionAdornerGraphicsDevice))
+            if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !ReferenceEquals(sender, _selectionAdornerGraphicsDevice))
                 return;
             InvalidateSelectionAdornerPresentation();
             InvalidateSelectionAdorner();
@@ -12057,10 +11725,10 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void RemoveOverlayChildrenExceptSelectionAdorner()
     {
-        if (_overlay is null)
+        if (_surface.Overlay is null)
             return;
 
-        var children = _overlay.Children;
+        var children = _surface.Overlay.Children;
         for (int index = children.Count - 1; index >= 0; index--)
         {
             if (!ReferenceEquals(children[index], _selectionAdorner))
@@ -12071,7 +11739,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private void RequestSelectionAdornerDeviceRebuild()
     {
         // Device recovery already rebuilds against the replacement device.
-        if (_canvasDeviceRecoveryQueued || _isDisposed || _isUnloaded)
+        if (_canvasDeviceRecoveryQueued || _lifetime.IsDisposed || _lifetime.IsUnloaded)
             return;
 
         MarkdownDiagnostics.WriteLine(
@@ -12081,7 +11749,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private bool EnsureSelectionAdorner()
     {
-        if (_overlay is null)
+        if (_surface.Overlay is null)
             return false;
 
         if (_selectionAdorner is null)
@@ -12090,7 +11758,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         try
         {
             if (VisualTreeHelper.GetParent(_selectionAdorner) is null)
-                _overlay.Children.Add(_selectionAdorner);
+                _surface.Overlay.Children.Add(_selectionAdorner);
         }
         catch (System.Runtime.InteropServices.COMException ex)
         {
@@ -12103,13 +11771,13 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void CreateSelectionHandles()
     {
-        if (_overlay is null)
+        if (_surface.Overlay is null)
             return;
 
         _selectionStartHandle = CreateSelectionHandle(SelectionHandleEndpoint.Start);
         _selectionEndHandle = CreateSelectionHandle(SelectionHandleEndpoint.End);
-        _overlay.Children.Add(_selectionStartHandle);
-        _overlay.Children.Add(_selectionEndHandle);
+        _surface.Overlay.Children.Add(_selectionStartHandle);
+        _surface.Overlay.Children.Add(_selectionEndHandle);
     }
 
     private Button CreateSelectionHandle(SelectionHandleEndpoint endpoint)
@@ -12173,7 +11841,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private bool EnsureSelectionHandles()
     {
-        if (_overlay is null)
+        if (_surface.Overlay is null)
             return false;
         if (_selectionStartHandle is null || _selectionEndHandle is null)
             CreateSelectionHandles();
@@ -12183,12 +11851,12 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         {
             if (VisualTreeHelper.GetParent(_selectionStartHandle) is null)
             {
-                _overlay.Children.Add(_selectionStartHandle);
+                _surface.Overlay.Children.Add(_selectionStartHandle);
                 attached = true;
             }
             if (VisualTreeHelper.GetParent(_selectionEndHandle) is null)
             {
-                _overlay.Children.Add(_selectionEndHandle);
+                _surface.Overlay.Children.Add(_selectionEndHandle);
                 attached = true;
             }
         }
@@ -12419,11 +12087,11 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private Point GetSelectionOverlayOriginInRoot()
     {
-        if (_overlay is null || XamlRoot is null)
+        if (_surface.Overlay is null || XamlRoot is null)
             return new Point(double.NaN, double.NaN);
         try
         {
-            return _overlay.TransformToVisual(null).TransformPoint(new Point(0, 0));
+            return _surface.Overlay.TransformToVisual(null).TransformPoint(new Point(0, 0));
         }
         catch (ArgumentException)
         {
@@ -12469,7 +12137,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     {
         if (e.Sender is not Button { Tag: SelectionHandleEndpoint endpoint } handle ||
             endpoint == SelectionHandleEndpoint.None ||
-            _snapshot is null || !_selection.IsActive || _canvas is null ||
+            _snapshot is null || !_selection.IsActive || _surface.Canvas is null ||
             _selectionHandleCaptureTarget is not null ||
             _selectionHandlePointerId != 0 ||
             _activeSelectionHandle != SelectionHandleEndpoint.None)
@@ -12561,7 +12229,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     {
         if (_activeSelectionHandle == SelectionHandleEndpoint.None ||
             _selectionHandlePointerId != e.Pointer.PointerId ||
-            _snapshot is null || _canvas is null)
+            _snapshot is null || _surface.Canvas is null)
         {
             return;
         }
@@ -12597,7 +12265,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _selectionHandleLatestViewportY = e.Point.Position.Y - viewportTop;
         _selectionHandleMovePending = true;
         ApplyPendingSelectionHandleMove(sustained: false);
-        if (_canvas is not null && e.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Touch)
+        if (_surface.Canvas is not null && e.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Touch)
             SuppressTouchTap(e.Point.Position, e.TouchTapGestureEpoch);
         if (e.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Touch)
             _touchTapSuppression.EndContact(e.Pointer.PointerId);
@@ -12705,7 +12373,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void OnSelectionHandleFrame(object? sender, object args)
     {
-        if (_isDisposed || _isUnloaded ||
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded ||
             _activeSelectionHandle == SelectionHandleEndpoint.None ||
             _snapshot is not { } snapshot)
         {
@@ -12751,7 +12419,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         double elapsedSeconds = 0)
     {
         if (_activeSelectionHandle == SelectionHandleEndpoint.None ||
-            _snapshot is null || _canvas is null ||
+            _snapshot is null || _surface.Canvas is null ||
             (!sustained && !_selectionHandleMovePending))
         {
             return false;
@@ -12790,7 +12458,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private bool IsSelectionHandleInAutoScrollBand(Point caretPoint)
     {
-        if (_canvas is null)
+        if (_surface.Canvas is null)
             return false;
 
         TryGetViewport(out double viewportTop, out double viewportHeight, out _);
@@ -12801,7 +12469,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (Math.Abs(velocity) < 0.5)
             return false;
 
-        double maxOffset = Math.Max(0, _canvas.ActualHeight - viewportHeight);
+        double maxOffset = Math.Max(0, _surface.Canvas.ActualHeight - viewportHeight);
         return velocity < 0
             ? viewportTop > 0.0001
             : viewportTop < maxOffset - 0.0001;
@@ -13024,7 +12692,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             try { _selectionEndHandle?.ReleasePointerCaptures(); } catch { }
         }
 
-        if (hadCapturedButton && !_isDisposed && !_isUnloaded && IsLoaded)
+        if (hadCapturedButton && !_lifetime.IsDisposed && !_lifetime.IsUnloaded && IsLoaded)
             RequestSelectionAdornerRefresh();
     }
 
@@ -13069,7 +12737,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void SetSelectionDragShieldActive(bool active)
     {
-        if (_overlay is null)
+        if (_surface.Overlay is null)
             return;
 
         if (!active)
@@ -13108,7 +12776,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private bool EnsureSelectionDragShield()
     {
-        if (_overlay is null)
+        if (_surface.Overlay is null)
             return false;
 
         if (_selectionDragShield is null)
@@ -13117,7 +12785,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         try
         {
             if (VisualTreeHelper.GetParent(_selectionDragShield) is null)
-                _overlay.Children.Add(_selectionDragShield);
+                _surface.Overlay.Children.Add(_selectionDragShield);
         }
         catch (System.Runtime.InteropServices.COMException ex)
         {
@@ -13182,7 +12850,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void PaintLinkStateOverlay(CanvasDrawingSession drawingSession, Rect viewport)
     {
-        if (_lastHoveredRun is LinkRun hover && _lastHoveredBox is { } hoverBox)
+        if (_hover.TryGetLink(out var hover, out var hoverBox))
             hoverBox.PaintLinkStateForeground(drawingSession, hover, focused: false, viewport);
 
         if (TryGetFocusedLink(out var focusedBox, out var focusedLink))
@@ -13234,7 +12902,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void ProcessPointerExited(ref PointerInput e)
     {
-        ScheduleAbbreviationTooltipHide();
+        _abbreviationTooltip.ScheduleHide();
 
         // PointerExited fires when the pointer leaves canvas bounds. During an
         // active captured drag this is expected (drag through hosted embeds /
@@ -13246,7 +12914,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // During an active drag (_selectionAnchor != null), PointerExited fires
         // whenever the captured pointer physically leaves the canvas bounds (e.g.
         // the user drags toward the window edge). Calling InvalidateLinkHoverRegion
-        // here issues a partial _canvas.Invalidate(), which triggers a tile repaint
+        // here issues a partial canvas Invalidate(), which triggers a tile repaint
         // that calls InlineContainerBox.Paint() → ApplyHoverColor() → CanvasTextLayout
         // .SetColor() → DirectWrite invalidates cached glyph-run metrics → character
         // region coordinates shift by sub-pixel amounts → visible text shake on every
@@ -13259,36 +12927,17 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             // Cursor reset is still safe and needed: if the pointer crosses from
             // the canvas into a hosted embed during drag, the embed must see the
             // default cursor (not an inherited IBeam).
-            SetCursorShape(null);
+            _cursor.SetShape(null);
             return;
         }
 
         // Clear hover state when the pointer leaves the canvas (or capture is
         // lost).  Without this, a link's hover colour and the hand cursor
         // persist even when the pointer is no longer over the control.
-        if (_snapshot is null || _canvas is null) return;
-        bool hadHover = _lastHoveredRun is not null;
-        if (hadHover)
-        {
-            // Only LinkRun hovers produce a visible color change. Plain TextRun
-            // hover state is purely cursor/IBeam tracking and has no painted
-            // representation. Calling _canvas.Invalidate for a TextRun→null
-            // transition causes a partial-tile repaint, and CanvasVirtualControl
-            // partial repaints expose DirectWrite sub-pixel glyph-position
-            // variance at tile boundaries — i.e. the text-shake the user sees
-            // on click-to-dismiss (capture-loss routes through here with
-            // _selectionAnchor already nulled by OnPointerCanceledOrCaptureLost).
-            bool wasLink = _lastHoveredRun is LinkRun;
-            var boxToInvalidate = _lastHoveredBox;
-            foreach (var b in _snapshot.Blocks) DocumentHitTesting.ClearHover(b);
-            _lastHoveredRun = null;
-            _lastHoveredBox = null;
-            // No canvas invalidate: hover transitions no longer mutate the
-            // text layout (see InlineContainerBox.HoveredRun docs).
-            _ = wasLink; _ = boxToInvalidate;
-            if (wasLink)
-                InvalidateInteractiveTextAdorner();
-        }
+        if (_snapshot is null || _surface.Canvas is null) return;
+        // Capture loss routes through here too, with _selectionAnchor already
+        // cleared, so this also runs on click-to-dismiss.
+        ClearPointerHover();
         // Always reset cursor to null (system default) on exit — not just
         // when a link was hovered.  PointerExited fires whenever the pointer
         // moves from the canvas to any sibling element — most importantly the
@@ -13296,7 +12945,28 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // null on this UserControl, XAML finds no cursor override anywhere in
         // the tree above the embed, so the embed (Button, CheckBox, …) can
         // show its own cursor instead of inheriting IBeam from us.
-        SetCursorShape(null);
+        _cursor.SetShape(null);
+    }
+
+    /// <summary>
+    /// Clears hover from every block. Only a hovered link has painted state,
+    /// its link-state overlay, so only that case refreshes the adorner.
+    /// </summary>
+    /// <remarks>
+    /// Never invalidates the canvas: hover does not change the text layout,
+    /// and a partial CanvasVirtualControl repaint exposes DirectWrite
+    /// sub-pixel glyph variance at tile edges as visible text shake.
+    /// </remarks>
+    private void ClearPointerHover()
+    {
+        if (_hover.Run is null || _snapshot is null)
+            return;
+
+        bool wasLink = _hover.Run is LinkRun;
+        foreach (var b in _snapshot.Blocks) DocumentHitTesting.ClearHover(b);
+        _hover.Clear();
+        if (wasLink)
+            InvalidateInteractiveTextAdorner();
     }
 
     private void ProcessPointerReleased(ref PointerInput e)
@@ -13307,7 +12977,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             _touchSelection.EndContact(e.Pointer.PointerId);
         }
 
-        if (_canvas is null) return;
+        if (_surface.Canvas is null) return;
         if (HandleHorizontalOverflowPointerReleased(ref e))
             return;
         if (!IsActivePointerSessionEvent(e))
@@ -13486,9 +13156,9 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void ResumePendingRebuildAfterPointerInteraction()
     {
-        if (!_rebuildDispatchState.IsQueued && !_isUnloaded)
+        if (!_rebuildDispatchState.IsQueued && !_lifetime.IsUnloaded)
             QueuePendingRebuild();
-        if (!_isDisposed && !_isUnloaded && _pendingImageRelayoutBlockIndices.Count > 0)
+        if (!_lifetime.IsDisposed && !_lifetime.IsUnloaded && _pendingImageRelayoutBlockIndices.Count > 0)
         {
             foreach (int pending in _pendingImageRelayoutBlockIndices)
             {
@@ -13552,8 +13222,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (!IsCurrentScrollTarget(snapshot, snapshotGeneration, target.LayoutRevision))
             return;
 
-        if (_scroll is not null)
-            _scroll.ChangeView(null, Math.Max(0, targetTop - 24), null, disableAnimation: true);
+        if (_surface.Scroll is not null)
+            _surface.Scroll.ChangeView(null, Math.Max(0, targetTop - 24), null, disableAnimation: true);
         else
             BringDocumentRectIntoExternalViewport(
                 new Rect(0, Math.Max(0, targetTop - 24), 1, Math.Max(1, target.OwnerHeight)),
@@ -13561,7 +13231,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     }
 
     private bool IsCurrentScrollTarget(LayoutSnapshot snapshot, long snapshotGeneration, long layoutRevision) =>
-        !_isDisposed && !_isUnloaded &&
+        !_lifetime.IsDisposed && !_lifetime.IsUnloaded &&
         ReferenceEquals(snapshot, _snapshot) &&
         snapshotGeneration == Volatile.Read(ref _snapshotGeneration) &&
         snapshot.LayoutRevision == layoutRevision;
@@ -14006,7 +13676,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     {
         if (RequestGeometryRecoveryIfRequired(_snapshot))
             return false;
-        if (_isDisposed || _isUnloaded || _snapshot is not { } snapshot ||
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _snapshot is not { } snapshot ||
             _focusableItems is not { } items || items.Count == 0)
         {
             return false;
@@ -14047,7 +13717,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void ProcessPendingFocusGeometry()
     {
-        if (_processingPendingFocusGeometry || _isDisposed || _isUnloaded || _snapshot is not { } snapshot)
+        if (_processingPendingFocusGeometry || _lifetime.IsDisposed || _lifetime.IsUnloaded || _snapshot is not { } snapshot)
             return;
 
         if (RequestGeometryRecoveryIfRequired(snapshot))
@@ -14186,7 +13856,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void RequestFocusGeometryRetry()
     {
-        if (_isDisposed || _isUnloaded)
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded)
             return;
 
         if (RequestGeometryRecoveryIfRequired(_snapshot))
@@ -14262,7 +13932,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                     snapshot,
                     IncludeBand(realizationBand, visibleVectorBand),
                     visibleVectorBand,
-                    preserveScrollAnchor: _scroll is not null);
+                    preserveScrollAnchor: _surface.Scroll is not null);
             }
 
             return true;
@@ -14290,7 +13960,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         {
             DispatcherQueue.TryEnqueue(() =>
             {
-                if (_isUnloaded) return;
+                if (_lifetime.IsUnloaded) return;
                 RealizeVisibleEmbeds();
                 FocusCurrentItem(reverse);
             });
@@ -14340,13 +14010,13 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (band.Top >= viewportTop + margin && band.Bottom <= viewportBottom - margin)
             return;
 
-        if (_scroll is not null)
+        if (_surface.Scroll is not null)
         {
             double target = reverse
                 ? band.Bottom - viewportHeight + margin
                 : band.Top - margin;
             double maximum = Math.Max(0, (_snapshot?.Size.Height ?? band.Bottom) - viewportHeight);
-            _scroll.ChangeView(
+            _surface.Scroll.ChangeView(
                 null,
                 Math.Clamp(target, 0, maximum),
                 null,
@@ -14596,7 +14266,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         Rect? rect)
     {
         if (ticket != _focusRingPublicationTicket ||
-            _isDisposed || _isUnloaded ||
+            _lifetime.IsDisposed || _lifetime.IsUnloaded ||
             snapshotGeneration != Volatile.Read(ref _snapshotGeneration))
         {
             return;
@@ -14649,7 +14319,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (_focusRing is not null)
             return true;
 
-        if (_overlay is null || _isUnloaded || XamlRoot is null)
+        if (_surface.Overlay is null || _lifetime.IsUnloaded || XamlRoot is null)
             return false;
 
         var focusRing = new Microsoft.UI.Xaml.Controls.Border
@@ -14662,7 +14332,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
         try
         {
-            _overlay.Children.Add(focusRing);
+            _surface.Overlay.Children.Add(focusRing);
         }
         catch (System.Runtime.InteropServices.COMException ex)
         {
@@ -14962,7 +14632,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         Layout.FocusableItem item,
         Rect rect)
     {
-        if (_isDisposed || _isUnloaded ||
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded ||
             !weakSnapshot.TryGetTarget(out LayoutSnapshot? snapshot) ||
             !ReferenceEquals(snapshot, _snapshot) ||
             snapshotGeneration != Volatile.Read(ref _snapshotGeneration))
@@ -14986,18 +14656,18 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         double? revealTop = null;
         if (rect.Top < top + margin)
         {
-            revealTop = _scroll is not null ? Math.Max(0, rect.Top - margin) : rect.Top;
-            _ = _scroll is not null
-                ? _scroll.ChangeView(null, Math.Max(0, rect.Top - margin), null, disableAnimation: false)
+            revealTop = _surface.Scroll is not null ? Math.Max(0, rect.Top - margin) : rect.Top;
+            _ = _surface.Scroll is not null
+                ? _surface.Scroll.ChangeView(null, Math.Max(0, rect.Top - margin), null, disableAnimation: false)
                 : BringDocumentRectIntoExternalViewport(rect, animate: true);
         }
         else if (rect.Bottom > bottom - margin)
         {
-            revealTop = _scroll is not null
+            revealTop = _surface.Scroll is not null
                 ? rect.Bottom - viewportHeight + margin
                 : rect.Bottom - viewportHeight;
-            _ = _scroll is not null
-                ? _scroll.ChangeView(null, rect.Bottom - viewportHeight + margin, null, disableAnimation: false)
+            _ = _surface.Scroll is not null
+                ? _surface.Scroll.ChangeView(null, rect.Bottom - viewportHeight + margin, null, disableAnimation: false)
                 : BringDocumentRectIntoExternalViewport(rect, animate: true, alignmentRatio: 1);
         }
         // The reveal's own animated scroll toward this top keeps it current.
@@ -15010,7 +14680,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private HostedFocusPlanStatus TryCaptureHostedFocusTuple(out HostedFocusTuple tuple)
     {
         tuple = default;
-        if (_isDisposed || _isUnloaded || _snapshot is not { } snapshot ||
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _snapshot is not { } snapshot ||
             _focusableItems is not { } items)
         {
             return HostedFocusPlanStatus.Stale;
@@ -15040,7 +14710,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     }
 
     private bool IsCurrentHostedFocusTuple(in HostedFocusTuple tuple) =>
-        !_isDisposed && !_isUnloaded &&
+        !_lifetime.IsDisposed && !_lifetime.IsUnloaded &&
         ReferenceEquals(tuple.Snapshot, _snapshot) &&
         tuple.SnapshotGeneration == Volatile.Read(ref _snapshotGeneration) &&
         tuple.LayoutRevision == tuple.Snapshot.LayoutRevision &&
@@ -15054,7 +14724,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private bool IsCurrentHostedFocusRequest(
         in HostedFocusTuple tuple,
         Layout.FocusableItem item) =>
-        !_isDisposed && !_isUnloaded &&
+        !_lifetime.IsDisposed && !_lifetime.IsUnloaded &&
         ReferenceEquals(tuple.Snapshot, _snapshot) &&
         tuple.SnapshotGeneration == Volatile.Read(ref _snapshotGeneration) &&
         tuple.LayoutRevision == tuple.Snapshot.LayoutRevision &&
@@ -15063,7 +14733,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         FocusableItemQueries.IsFocusedIdentity(tuple.Items, _focusedItemIndex, item);
 
     private bool IsCurrentPendingLazyFocus(in PendingLazyFocus pending) =>
-        !_isDisposed && !_isUnloaded &&
+        !_lifetime.IsDisposed && !_lifetime.IsUnloaded &&
         ReferenceEquals(pending.Snapshot, _snapshot) &&
         pending.SnapshotGeneration == Volatile.Read(ref _snapshotGeneration) &&
         _pendingLazyFocus is { } current &&
@@ -15181,7 +14851,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void PreserveLogicalFocusBeforeDerealizingCodeBlockAction(FrameworkElement element)
     {
-        if (_isUnloaded || _isDisposed)
+        if (_lifetime.IsUnloaded || _lifetime.IsDisposed)
             return;
 
         DependencyObject? focused = null;
@@ -15529,7 +15199,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             _selection.SetAnchor(pos);
             if (!IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))
                 return (pos, pos);
-            // No _canvas.Invalidate(): selection is rendered on the XAML overlay only.
+            // No canvas Invalidate(): selection is rendered on the XAML overlay only.
             return (pos, pos);
         }
         var (start, end) = icb.GetWordBoundaries(pos);
@@ -15537,7 +15207,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (!IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))
             return (start, end);
         _selection.ExtendTo(end);
-        // No _canvas.Invalidate(): selection is rendered on the XAML overlay only.
+        // No canvas Invalidate(): selection is rendered on the XAML overlay only.
         return (start, end);
     }
 
@@ -15562,7 +15232,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             _selection.SetAnchor(pos);
             if (!IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))
                 return (pos, pos);
-            // No _canvas.Invalidate(): selection is rendered on the XAML overlay only.
+            // No canvas Invalidate(): selection is rendered on the XAML overlay only.
             return (pos, pos);
         }
         var (start, end) = icb.GetBlockBoundaries();
@@ -15570,7 +15240,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (!IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))
             return (start, end);
         _selection.ExtendTo(end);
-        // No _canvas.Invalidate(): selection is rendered on the XAML overlay only.
+        // No canvas Invalidate(): selection is rendered on the XAML overlay only.
         return (start, end);
     }
 
@@ -15578,26 +15248,26 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void OnRightTapped(object sender, RightTappedRoutedEventArgs e)
     {
-        if (_canvas is not null)
-            e.Handled |= DispatchRecognizedGesture(PointerInputKind.RightTap, e.GetPosition(_canvas), e.PointerDeviceType);
+        if (_surface.Canvas is not null)
+            e.Handled |= DispatchRecognizedGesture(PointerInputKind.RightTap, e.GetPosition(_surface.Canvas), e.PointerDeviceType);
     }
 
     private void OnSelectionHandleRightTapped(object sender, RightTappedRoutedEventArgs e)
     {
         // Handles live in the overlay, a sibling of the canvas, so their
         // right-taps never reach OnRightTapped.
-        if (_canvas is null ||
+        if (_surface.Canvas is null ||
             !MarkdownPointerGesturePolicy.ForwardsSelectionHandleRightTap(PointerInputClassification.GetPointerModality(e.PointerDeviceType)))
         {
             return;
         }
 
-        e.Handled |= DispatchRecognizedGesture(PointerInputKind.RightTap, e.GetPosition(_canvas), e.PointerDeviceType);
+        e.Handled |= DispatchRecognizedGesture(PointerInputKind.RightTap, e.GetPosition(_surface.Canvas), e.PointerDeviceType);
     }
 
     private void ProcessRightTapped(ref PointerInput e)
     {
-        if (_canvas is null || e.InteractionSnapshot is not { } snapshot) return;
+        if (_surface.Canvas is null || e.InteractionSnapshot is not { } snapshot) return;
         long snapshotGeneration = Volatile.Read(ref _snapshotGeneration);
         long layoutRevision = snapshot.LayoutRevision;
         var pt = e.GesturePosition;
@@ -15629,7 +15299,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         long requiredSnapshotGeneration = 0,
         long requiredLayoutRevision = 0)
     {
-        UIElement? canvas = _canvas;
+        UIElement? canvas = _surface.Canvas;
         if (canvas is null)
         {
             return false;
@@ -15649,7 +15319,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 expectedSnapshot,
                 expectedSnapshotGeneration,
                 expectedLayoutRevision) ||
-            !ReferenceEquals(canvas, _canvas))
+            !ReferenceEquals(canvas, _surface.Canvas))
         {
             return false;
         }
@@ -15659,7 +15329,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 expectedSnapshot,
                 expectedSnapshotGeneration,
                 expectedLayoutRevision) ||
-            !ReferenceEquals(canvas, _canvas))
+            !ReferenceEquals(canvas, _surface.Canvas))
         {
             return false;
         }
@@ -15719,7 +15389,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                     expectedSnapshot,
                     expectedSnapshotGeneration,
                     expectedLayoutRevision) ||
-                !ReferenceEquals(canvas, _canvas))
+                !ReferenceEquals(canvas, _surface.Canvas))
             {
                 ContextMenuTargets.DisposeContextMenuTarget(target);
                 OnSelectionContextMenuClosed(menu, touchSelection);
@@ -15755,7 +15425,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                     expectedSnapshot,
                     expectedSnapshotGeneration,
                     expectedLayoutRevision) ||
-                !ReferenceEquals(canvas, _canvas))
+                !ReferenceEquals(canvas, _surface.Canvas))
             {
                 ContextMenuTargets.DisposeContextMenuTarget(target);
                 OnSelectionContextMenuClosed(menu, touchSelection);
@@ -15768,7 +15438,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                     expectedSnapshot,
                     expectedSnapshotGeneration,
                     expectedLayoutRevision) ||
-                !ReferenceEquals(canvas, _canvas) ||
+                !ReferenceEquals(canvas, _surface.Canvas) ||
                 !ReferenceEquals(_selectionContextMenu, menu) ||
                 !_contextMenuOpen)
             {
@@ -16045,7 +15715,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         long snapshotGeneration,
         long layoutRevision)
     {
-        return !_isDisposed && !_isUnloaded &&
+        return !_lifetime.IsDisposed && !_lifetime.IsUnloaded &&
             ReferenceEquals(snapshot, _snapshot) &&
             snapshotGeneration == Volatile.Read(ref _snapshotGeneration) &&
             (snapshot is null || snapshot.LayoutRevision == layoutRevision);

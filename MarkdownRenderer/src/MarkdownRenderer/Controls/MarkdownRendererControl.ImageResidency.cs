@@ -72,7 +72,7 @@ public partial class MarkdownRendererControl
         if (dispatcher is null || !dispatcher.TryEnqueue(() =>
         {
             Interlocked.Exchange(ref _imageResidencyReconcileQueued, 0);
-            if (_isDisposed || _isUnloaded)
+            if (_lifetime.IsDisposed || _lifetime.IsUnloaded)
                 return;
             RealizeVisibleEmbeds();
             InvalidateCanvas();

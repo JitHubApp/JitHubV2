@@ -40,7 +40,7 @@ public partial class MarkdownRendererControl
         {
             if (receiver.TryGetTarget(out MarkdownRendererControl? control) &&
                 Volatile.Read(ref _candidateSnapshot) is { } identity && identity.TryGetTarget(out LayoutSnapshot? snapshot) &&
-                !control._isDisposed && !control._isUnloaded && generation == control._snapshotGeneration &&
+                !control._lifetime.IsDisposed && !control._lifetime.IsUnloaded && generation == control._snapshotGeneration &&
                 ReferenceEquals(snapshot, control._snapshot))
                 control.RaiseImageUnavailable(url, reason, svgReason);
         }
@@ -154,7 +154,7 @@ public partial class MarkdownRendererControl
             return false;
         // UI-dispatcher-only, synchronous fence and swap. No host/XAML/native
         // callbacks intervene. Image publication readers verify snapshot identity.
-        if (_isDisposed || _isUnloaded || _publishingLayoutCommit || _canvasDeviceRecoveryQueued ||
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _publishingLayoutCommit || _canvasDeviceRecoveryQueued ||
             _rebuildCoordinator.HasPendingOrBuilding || HasPendingLazyLayoutWork || HasSnapshotPointerInteraction ||
             !ReferenceEquals(source, _snapshot) || generation != _snapshotGeneration ||
             source.IsRetiringOrDisposed || source.LayoutRevision != owner.SourceRevision ||
@@ -232,10 +232,8 @@ public partial class MarkdownRendererControl
             plan.CodeActionRects = null;
             _appliedLazyLayoutRevision = candidate.LayoutRevision;
             _pendingLayoutCommit = null;
-            _lastHoveredRun = null;
-            _lastHoveredBox = null;
-            _lastHoveredAbbreviation = null;
-            _pendingAbbreviationTooltipRun = null;
+            _hover.Clear();
+            _abbreviationTooltip.ForgetTarget();
             long epoch = InvalidateHostedFocusPlanPublication();
             _snapshot = owner.TransferToControl();
             Volatile.Write(ref _imagePlanPublication, plan.Publication);
@@ -359,11 +357,11 @@ public partial class MarkdownRendererControl
             if (!IsCurrentRasterCodeActionPublication(
                     candidate, generation, candidate.LayoutRevision, epoch))
                 return true;
-            HideAbbreviationTooltip();
+            _abbreviationTooltip.Hide();
             if (!IsCurrentRasterCodeActionPublication(
                     candidate, generation, candidate.LayoutRevision, epoch))
                 return true;
-            SetCursorShape(null);
+            _cursor.SetShape(null);
             if (!IsCurrentRasterCodeActionPublication(
                     candidate, generation, candidate.LayoutRevision, epoch))
                 return true;
@@ -371,7 +369,7 @@ public partial class MarkdownRendererControl
             if (!IsCurrentRasterCodeActionPublication(
                     candidate, generation, candidate.LayoutRevision, epoch))
                 return true;
-            if (plan.AnchorOffset is { } target && _scroll is { } scroll &&
+            if (plan.AnchorOffset is { } target && _surface.Scroll is { } scroll &&
                 LazyLayoutScrollAnchorPolicy.ShouldRestore(plan.CapturedScrollOffset, scroll.VerticalOffset, _scrollViewIntermediate) &&
                 Math.Abs(target - scroll.VerticalOffset) >= .5)
                 scroll.ChangeView(null, target, null, disableAnimation: true);
@@ -502,7 +500,7 @@ public partial class MarkdownRendererControl
         long generation,
         long layoutRevision,
         long epoch)
-        => !_isDisposed && !_isUnloaded && ReferenceEquals(candidate, _snapshot) &&
+        => !_lifetime.IsDisposed && !_lifetime.IsUnloaded && ReferenceEquals(candidate, _snapshot) &&
            generation == Volatile.Read(ref _snapshotGeneration) &&
            candidate.LayoutRevision == layoutRevision &&
            layoutRevision == Volatile.Read(ref _publishedHostedFocusPlanRevision) &&

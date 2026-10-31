@@ -1,4 +1,3 @@
-using System;
 using MarkdownRenderer.Layout.Boxes;
 
 namespace MarkdownRenderer.Controls;
@@ -10,11 +9,11 @@ public partial class MarkdownRendererControl
 
     private void RequestBitmapOutputRecovery(ImageBox image)
     {
-        if (_isDisposed || _isUnloaded || _snapshot?.GeometryRecoveryRequired == true ||
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _snapshot?.GeometryRecoveryRequired == true ||
             !_subscribedImages.Contains(image) ||
             !image.NeedsBitmapOutputRecovery)
             return;
-        if (_isDisposed || _isUnloaded || !_subscribedImages.Contains(image))
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !_subscribedImages.Contains(image))
             return;
         _bitmapOutputRecovery.Request();
         StartImageRelayoutRecovery();
@@ -51,7 +50,7 @@ public partial class MarkdownRendererControl
         {
             ImageBox image = plans[ordinal];
             bool pending = _subscribedImages.Contains(image) && image.NeedsBitmapOutputRecovery;
-            if (_isDisposed || _isUnloaded || epoch != _bitmapOutputRecoveryEpoch ||
+            if (_lifetime.IsDisposed || _lifetime.IsUnloaded || epoch != _bitmapOutputRecoveryEpoch ||
                 !ReferenceEquals(plans, _imagePlans))
                 return;
             if (pending)
@@ -59,7 +58,7 @@ public partial class MarkdownRendererControl
                 // Visibility comes from the ImageBox's last viewport demand,
                 // not potentially stale native geometry while reflow is busy.
                 image.ObserveBitmapOutputRecovery(isVisible: false);
-                if (_isDisposed || _isUnloaded || epoch != _bitmapOutputRecoveryEpoch ||
+                if (_lifetime.IsDisposed || _lifetime.IsUnloaded || epoch != _bitmapOutputRecoveryEpoch ||
                     !ReferenceEquals(plans, _imagePlans))
                     return;
             }

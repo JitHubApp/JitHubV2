@@ -54,7 +54,7 @@ public partial class MarkdownRendererControl
     /// </summary>
     private void SynchronizeVectorCapacityObserver(LayoutSnapshot? snapshot)
     {
-        if (_isDisposed || _isUnloaded || snapshot is null ||
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || snapshot is null ||
             !ReferenceEquals(snapshot, _snapshot) ||
             !IsVisibleFirstVectorAdmissionEnabled ||
             !snapshot.HasCapacityDeferredScenes)
@@ -125,7 +125,7 @@ public partial class MarkdownRendererControl
 
         long generation = observer.ConsumePendingGeneration();
         LayoutSnapshot? snapshot = _snapshot;
-        if (generation < 0 || _isDisposed || _isUnloaded ||
+        if (generation < 0 || _lifetime.IsDisposed || _lifetime.IsUnloaded ||
             snapshot is null || !ReferenceEquals(snapshot, _vectorCapacityObserverSnapshot) ||
             RequestGeometryRecoveryIfRequired(snapshot))
         {
