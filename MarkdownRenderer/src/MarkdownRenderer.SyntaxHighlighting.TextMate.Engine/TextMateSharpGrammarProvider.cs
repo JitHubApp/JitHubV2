@@ -8,14 +8,24 @@ using MarkdownRenderer.SyntaxHighlighting.TextMate;
 using TextMateSharp.Grammars;
 using TextMateSharp.Registry;
 
-namespace MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Internal;
+namespace MarkdownRenderer.SyntaxHighlighting.TextMate.Engine;
 
 /// <summary>
-/// Adapter around the upstream bundled grammar registry. This source is linked
-/// into the resource-pack assemblies and is intentionally absent from the lean
-/// integration assembly.
+/// A grammar provider that tokenizes with TextMateSharp. The grammar packs
+/// build on it; hosts install a pack, such as
+/// <c>MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common</c>, rather
+/// than using this type directly.
 /// </summary>
-internal sealed class BundledTextMateGrammarProvider : ITextMateGrammarProvider, IDisposable
+/// <remarks>
+/// This is the only renderer package whose public API names TextMateSharp
+/// types, so it is versioned with TextMateSharp. The lean
+/// <c>MarkdownRenderer.SyntaxHighlighting.TextMate</c> integration carries no
+/// TextMateSharp or Onigwrap payload. Requests run one at a time on a worker,
+/// within the input, span and per-line time limits of
+/// <see cref="TextMateHighlighterOptions"/>, and stop at line-level
+/// cancellation checkpoints.
+/// </remarks>
+public sealed class TextMateSharpGrammarProvider : ITextMateGrammarProvider, IDisposable
 {
     private static readonly TimeSpan MaximumTokenizationSlice = TimeSpan.FromMilliseconds(16);
 
@@ -29,27 +39,57 @@ internal sealed class BundledTextMateGrammarProvider : ITextMateGrammarProvider,
     private readonly Action<TextMateProviderCheckpoint, int>? _checkpointObserver;
     private volatile bool _disposed;
 
-    public BundledTextMateGrammarProvider(
-        IEnumerable<string>? allowedLanguageIds,
+    /// <summary>Creates a provider over a TextMateSharp grammar registry.</summary>
+    /// <param name="revision">
+    /// The provider's <see cref="ITextMateGrammarProvider.Revision"/>. Change it whenever the
+    /// grammars, themes or scope rules change, so cached highlighting is not reused.
+    /// </param>
+    /// <param name="registryOptionsFactory">
+    /// Creates the registry options for a theme variant. Called at most once per variant.
+    /// </param>
+    /// <param name="scopeResolver">
+    /// Maps a language identifier to a grammar scope name for the given registry options, or
+    /// returns <see langword="null"/> when the language is not supported.
+    /// </param>
+    /// <param name="allowedLanguageIds">
+    /// The languages the provider highlights, compared without case, or <see langword="null"/>
+    /// for every language the registry resolves.
+    /// </param>
+    /// <param name="options">Resource limits, or <see langword="null"/> for the defaults.</param>
+    public TextMateSharpGrammarProvider(
         int revision,
-        TextMateHighlighterOptions options,
         Func<TextMateGrammarThemeVariant, IRegistryOptions> registryOptionsFactory,
         Func<IRegistryOptions, string, string?> scopeResolver,
-        Action<TextMateProviderCheckpoint, int>? checkpointObserver = null)
+        IEnumerable<string>? allowedLanguageIds = null,
+        TextMateHighlighterOptions? options = null)
+        : this(revision, registryOptionsFactory, scopeResolver, allowedLanguageIds, options, checkpointObserver: null)
+    {
+    }
+
+    /// <summary>Creates a provider that reports each cancellation checkpoint, for tests.</summary>
+    internal TextMateSharpGrammarProvider(
+        int revision,
+        Func<TextMateGrammarThemeVariant, IRegistryOptions> registryOptionsFactory,
+        Func<IRegistryOptions, string, string?> scopeResolver,
+        IEnumerable<string>? allowedLanguageIds,
+        TextMateHighlighterOptions? options,
+        Action<TextMateProviderCheckpoint, int>? checkpointObserver)
     {
         _allowedLanguageIds = allowedLanguageIds is null
             ? null
             : new HashSet<string>(allowedLanguageIds, StringComparer.OrdinalIgnoreCase);
         Revision = revision;
-        _options = options ?? throw new ArgumentNullException(nameof(options));
+        _options = options ?? new TextMateHighlighterOptions();
         _registryOptionsFactory = registryOptionsFactory ??
             throw new ArgumentNullException(nameof(registryOptionsFactory));
         _scopeResolver = scopeResolver ?? throw new ArgumentNullException(nameof(scopeResolver));
         _checkpointObserver = checkpointObserver;
     }
 
+    /// <inheritdoc />
     public int Revision { get; }
 
+    /// <inheritdoc />
     public async ValueTask<TextMateGrammarHighlightResult?> HighlightAsync(
         TextMateGrammarHighlightRequest request,
         CancellationToken cancellationToken)
@@ -96,6 +136,7 @@ internal sealed class BundledTextMateGrammarProvider : ITextMateGrammarProvider,
         }
     }
 
+    /// <summary>Cancels outstanding requests; later requests throw <see cref="ObjectDisposedException"/>.</summary>
     public void Dispose()
     {
         if (_disposed)

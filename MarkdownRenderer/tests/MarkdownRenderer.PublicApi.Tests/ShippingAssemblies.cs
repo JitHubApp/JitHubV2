@@ -3,6 +3,7 @@ using MarkdownRenderer.Math;
 using MarkdownRenderer.Mermaid;
 using MarkdownRenderer.Svg.Resvg;
 using MarkdownRenderer.SyntaxHighlighting.TextMate;
+using MarkdownRenderer.SyntaxHighlighting.TextMate.Engine;
 using MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All;
 using MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common;
 
@@ -22,6 +23,7 @@ internal static class ShippingAssemblies
         typeof(MermaidRenderer).Assembly,
         typeof(ResvgMarkdownSvgRenderer).Assembly,
         typeof(TextMateSyntaxHighlightingExtensions).Assembly,
+        typeof(TextMateSharpGrammarProvider).Assembly,
         typeof(CommonTextMateGrammarProvider).Assembly,
         typeof(AllTextMateGrammarProvider).Assembly,
     ];

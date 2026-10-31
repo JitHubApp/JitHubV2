@@ -5,10 +5,22 @@ namespace MarkdownRenderer.PublicApi.Tests;
 /// <summary>
 /// Public signatures expose renderer-owned contracts only: no third-party
 /// implementation types (Markdig, Win2D, CSharpMath, Typography, TextMateSharp,
-/// Merman) and no renderer-internal namespaces or types.
+/// Merman) and no renderer-internal namespaces or types. The one exception is
+/// listed in <see cref="AllowedThirdPartyNamespacePrefixes"/>.
 /// </summary>
 public sealed class ForbiddenContractTypeTests
 {
+    /// <summary>
+    /// The TextMate engine package exists to share a TextMateSharp-backed
+    /// provider between the grammar packs, which supply TextMateSharp registry
+    /// options. It is the only package versioned with TextMateSharp; the lean
+    /// integration and the grammar packs still expose no TextMateSharp type.
+    /// </summary>
+    private static readonly Dictionary<string, string[]> AllowedThirdPartyNamespacePrefixes = new(StringComparer.Ordinal)
+    {
+        ["MarkdownRenderer.SyntaxHighlighting.TextMate.Engine"] = ["TextMateSharp."],
+    };
+
     private static readonly string[] ForbiddenNamespacePrefixes =
     [
         "Markdig.",
@@ -49,14 +61,27 @@ public sealed class ForbiddenContractTypeTests
     [MemberData(nameof(AssemblyNames))]
     public void PublicSignatures_DoNotExposeThirdPartyOrRendererInternalTypes(string assemblyName)
     {
+        string[] allowed = AllowedThirdPartyNamespacePrefixes.GetValueOrDefault(assemblyName, []);
         string[] findings = Find(
             ShippingAssemblies.Get(assemblyName).GetExportedTypes(),
-            ForbiddenNamespacePrefixes,
+            ForbiddenNamespacePrefixes.Except(allowed, StringComparer.Ordinal).ToArray(),
             ForbiddenTypeNames);
 
         Assert.True(
             findings.Length == 0,
             $"{assemblyName} exposes forbidden contracts:{Environment.NewLine}{string.Join(Environment.NewLine, findings)}");
+    }
+
+    [Fact]
+    public void ThirdPartyExceptions_NameShippingAssembliesThatActuallyUseThem()
+    {
+        // An exception must stay necessary: it names a shipping assembly whose
+        // public signatures really do reference the allowed namespace.
+        foreach ((string assemblyName, string[] prefixes) in AllowedThirdPartyNamespacePrefixes)
+        {
+            string[] uses = Find(ShippingAssemblies.Get(assemblyName).GetExportedTypes(), prefixes, new HashSet<string>());
+            Assert.True(uses.Length > 0, $"{assemblyName} no longer exposes {string.Join(", ", prefixes)}; remove its exception.");
+        }
     }
 
     [Fact]

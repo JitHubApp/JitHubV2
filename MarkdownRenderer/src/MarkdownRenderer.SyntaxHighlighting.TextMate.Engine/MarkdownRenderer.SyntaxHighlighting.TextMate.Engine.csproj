@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>MarkdownRenderer.SyntaxHighlighting.TextMate.Engine</RootNamespace>
+    <AssemblyName>MarkdownRenderer.SyntaxHighlighting.TextMate.Engine</AssemblyName>
+    <UseWinUI>true</UseWinUI>
+    <WinUISDKReferences>false</WinUISDKReferences>
+    <PackageId>MarkdownRenderer.SyntaxHighlighting.TextMate.Engine</PackageId>
+    <Description>TextMateSharp tokenization engine shared by the MarkdownRenderer TextMate grammar packs. Install a grammar pack rather than this package.</Description>
+    <PackageTags>markdown;winui;syntax-highlighting;textmate;engine</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="MarkdownRenderer.SyntaxHighlighting.TextMate.Tests" />
+    <ProjectReference Include="..\MarkdownRenderer.SyntaxHighlighting.TextMate\MarkdownRenderer.SyntaxHighlighting.TextMate.csproj" />
+    <PackageReference Include="TextMateSharp" />
+  </ItemGroup>
+</Project>

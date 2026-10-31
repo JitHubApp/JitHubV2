@@ -97,6 +97,13 @@
           "MarkdownRenderer": "[1.0.0-preview.1, )"
         }
       },
+      "markdownrenderer.syntaxhighlighting.textmate.engine": {
+        "type": "Project",
+        "dependencies": {
+          "MarkdownRenderer.SyntaxHighlighting.TextMate": "[1.0.0-preview.1, )",
+          "TextMateSharp": "[2.0.3, )"
+        }
+      },
       "Markdig": {
         "type": "CentralTransitive",
         "requested": "[0.42.0, )",

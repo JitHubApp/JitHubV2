@@ -25,7 +25,7 @@ Set-StrictMode -Version Latest
 . (Join-Path $PSScriptRoot 'PackageCompliance.Common.ps1')
 
 if ($PackageScope -ne 'FullRelease' -and -not $SkipSizeGates) {
-    throw "The '$PackageScope' component scope requires -SkipSizeGates; the full 8-package size gate is release-only."
+    throw "The '$PackageScope' component scope requires -SkipSizeGates; the full release package size gate is release-only."
 }
 
 Assert-ExpectedReleasePackageSet -PackageDirectory $PackageDirectory -Scope $PackageScope
