@@ -40,6 +40,12 @@ using MarkdownRenderer.Performance;
 using MarkdownRenderer.Selection;
 using MarkdownRenderer.Theming;
 using Markdig;
+using MarkdownRenderer.Controls.Embeds;
+using MarkdownRenderer.Controls.Focus;
+using MarkdownRenderer.Controls.Images;
+using MarkdownRenderer.Controls.Input;
+using MarkdownRenderer.Controls.Pipeline;
+using MarkdownRenderer.Controls.Selection;
 
 namespace MarkdownRenderer.Controls;
 
@@ -322,53 +328,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     {
         try { return (int)Math.Min(GetDoubleClickTime(), (uint)int.MaxValue); } catch { return 500; }
     }
-
-    // Click mode for the current press; governs drag-extension behaviour.
-    private enum ClickMode { Single, Word, Block }
-    private enum SelectionHandleEndpoint { None, Start, End }
-    private enum FocusGeometryReadStatus { Ready, Busy, Stale }
-    private ClickMode _clickMode;
-    private readonly struct PointerSession(uint PointerId, bool IsPrimary)
-    {
-        public readonly uint PointerId = PointerId;
-        public readonly bool IsPrimary = IsPrimary;
-        public bool IsActive => PointerId != 0;
-    }
-    private readonly struct PendingLazyFocus(
-        LayoutSnapshot Snapshot,
-        long SnapshotGeneration,
-        Layout.FocusableItem Item,
-        bool Reverse)
-    {
-        public readonly LayoutSnapshot Snapshot = Snapshot;
-        public readonly long SnapshotGeneration = SnapshotGeneration;
-        public readonly Layout.FocusableItem Item = Item;
-        public readonly bool Reverse = Reverse;
-    }
-    private enum HostedFocusPlanStatus { Current, LayoutPending, Stale }
-    private enum HostedFocusResult { Focused, NotRealized, Deferred, Stale }
-    private readonly struct HostedFocusTuple(
-        LayoutSnapshot Snapshot,
-        long SnapshotGeneration,
-        long LayoutRevision,
-        long PlanEpoch,
-        System.Collections.Generic.IReadOnlyList<Layout.FocusableItem> Items)
-    {
-        public readonly LayoutSnapshot Snapshot = Snapshot;
-        public readonly long SnapshotGeneration = SnapshotGeneration;
-        public readonly long LayoutRevision = LayoutRevision;
-        public readonly long PlanEpoch = PlanEpoch;
-        public readonly System.Collections.Generic.IReadOnlyList<Layout.FocusableItem> Items = Items;
-    }
-    private readonly struct PendingHorizontalOverflowAutomationChange(
-        LayoutSnapshot Snapshot,
-        double OldPhysicalPercent,
-        double NewPhysicalPercent)
-    {
-        public readonly LayoutSnapshot Snapshot = Snapshot;
-        public readonly double OldPhysicalPercent = OldPhysicalPercent;
-        public readonly double NewPhysicalPercent = NewPhysicalPercent;
-    }
+    private ClickSelectionMode _clickMode;
     private readonly struct InlineEmbedPlacementUpdate(
         WeakReference<InlineEmbedPlan> Plan,
         Rect Rect)
@@ -440,14 +400,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     // Used by IsPointOverEmbed so that hovering a block-embed button correctly
     // suppresses link-hover and IBeam-cursor work, just like inline embeds.
     private readonly List<(BlockBox Box, Rect Rect)> _blockEmbedRects = new();
-
-    // Code block copy buttons are overlay-hosted native controls, but they are
-    // renderer chrome rather than user-authored embeds. Keep them on a separate
-    // realization track so RealizedEmbedCount remains embed-only.
-    private enum CodeBlockHostedElementKind
-    {
-        Copy,
-    }
 
     private List<(Layout.Boxes.CodeBlockBox Box, Rect Rect, CodeBlockHostedElementKind Kind)> _codeBlockActionRects = new();
 
@@ -902,41 +854,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private MarkdownImageResolveContext? _activeImagePrefetchContext;
     private int _prefetchedImageRegistryRevision = -1;
     private PendingImagePrefetch? _pendingImagePrefetch;
-
-    private sealed class PendingImagePrefetch(
-        Markdig.Syntax.MarkdownDocument Document,
-        SafeHtmlRenderPolicy? SafeHtmlPolicy,
-        IMarkdownImagePrefetcher Prefetcher,
-        MarkdownImageResolveContext Context,
-        CancellationToken CancellationToken)
-    {
-        public readonly Markdig.Syntax.MarkdownDocument Document = Document;
-        public readonly SafeHtmlRenderPolicy? SafeHtmlPolicy = SafeHtmlPolicy;
-        public readonly IMarkdownImagePrefetcher Prefetcher = Prefetcher;
-        public readonly MarkdownImageResolveContext Context = Context;
-        public readonly CancellationToken CancellationToken = CancellationToken;
-    }
-
-    /// <summary>
-    /// Immutable membership/index publication for automation readiness. ImageBox
-    /// objects are borrowed from the stated snapshot and read only while that
-    /// snapshot's interaction lease is held.
-    /// </summary>
-    private sealed class ImagePlanPublication(
-        LayoutSnapshot Snapshot,
-        long SnapshotGeneration,
-        long LayoutRevision,
-        Layout.Boxes.ImageBox[] Images,
-        Rect[] ImageBounds,
-        ViewportBandIndex? Index)
-    {
-        internal readonly LayoutSnapshot Snapshot = Snapshot;
-        internal readonly long SnapshotGeneration = SnapshotGeneration;
-        internal readonly long LayoutRevision = LayoutRevision;
-        internal readonly Layout.Boxes.ImageBox[] Images = Images;
-        internal readonly Rect[] ImageBounds = ImageBounds;
-        internal readonly ViewportBandIndex? Index = Index;
-    }
 
     private const int CodeBlockHighlightCacheMaxEntries = 128;
     private const long CodeBlockHighlightCacheBudgetBytes = 8L * 1024 * 1024;
@@ -3247,7 +3164,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (!_contextMenuOpen)
         {
             _selectionAnchor = null;
-            _clickMode = ClickMode.Single;
+            _clickMode = ClickSelectionMode.Single;
         }
     }
 
@@ -3600,18 +3517,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             MarkdownRenderedHtmlWriter.BuildFragment(semantic, start, end));
     }
 
-    private readonly struct RenderedSelectionPayload
-    {
-        internal readonly string Text;
-        internal readonly string Html;
-
-        internal RenderedSelectionPayload(string text, string html)
-        {
-            Text = text;
-            Html = html;
-        }
-    }
-
     internal void ClearSelectionFromCoordinator()
     {
         ClearSelectionForExternalInteraction();
@@ -3630,7 +3535,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         ResetSelectionHandleDrag();
         _touchSelection.Reset();
         _selectionAnchor = null;
-        _clickMode = ClickMode.Single;
+        _clickMode = ClickSelectionMode.Single;
         SetSelectionDragShieldActive(false);
         if (resetClickTracking)
         {
@@ -4034,7 +3939,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     /// whether the app or the view's window started it.
     /// </summary>
     public event EventHandler? Disposed;
-
 
     // WinUI does not guarantee a child UserControl receives Unloaded when its
     // top-level window is destroyed. Subscribe to the non-cancelable window
@@ -4742,14 +4646,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         return retirement;
     }
 
-    private sealed class PipelineCancellationObservation(
-        long Generation,
-        long CancellationStartTimestamp)
-    {
-        public readonly long Generation = Generation;
-        public readonly long CancellationStartTimestamp = CancellationStartTimestamp;
-    }
-
     private void ResetTransientInteractionState(bool clearSelection)
     {
         // Clear logical capture ownership before touching XAML. A disconnected
@@ -4760,7 +4656,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _pointerSession = default;
         _selectionAnchor = null;
         _lastSelectionPointerViewportY = double.NaN;
-        _clickMode = ClickMode.Single;
+        _clickMode = ClickSelectionMode.Single;
         _dragAnchorStart = default;
         _dragAnchorEnd = default;
         _consecutiveClickCount = 0;
@@ -10486,7 +10382,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 // Also ensure _clickMode is reset so the link-click guard in
                 // OnPointerReleased is not stale from a previous double/triple-click
                 // sequence made while IsSelectionEnabled was true.
-                _clickMode = ClickMode.Single;
+                _clickMode = ClickSelectionMode.Single;
                 if (!CapturePointerForInput(_canvas, e)) _pointerSession = default;
                 else e.Handled = true;
                 return;
@@ -10500,7 +10396,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             if (_consecutiveClickCount == 3)
             {
                 // Triple-click: select the entire block (line).
-                _clickMode = ClickMode.Block;
+                _clickMode = ClickSelectionMode.Block;
                 (_dragAnchorStart, _dragAnchorEnd) = ExpandSelectionToBlock(
                     snapshot, pos, snapshotGeneration, layoutRevision);
                 if (!IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))
@@ -10521,7 +10417,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             if (_consecutiveClickCount == 2)
             {
                 // Double-click: select the word under the cursor.
-                _clickMode = ClickMode.Word;
+                _clickMode = ClickSelectionMode.Word;
                 (_dragAnchorStart, _dragAnchorEnd) = ExpandSelectionToWord(
                     snapshot, pos, snapshotGeneration, layoutRevision);
                 if (!IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))
@@ -10538,7 +10434,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 else e.Handled = true;
                 return;
             }
-            _clickMode = ClickMode.Single;
+            _clickMode = ClickSelectionMode.Single;
             _selection.SetAnchor(pos);
             if (!IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))
                 return;
@@ -10555,7 +10451,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             // not become a text-selection anchor.
             _lastPressTickMs = nowMs;
             _lastPressPoint = pt;
-            _clickMode = ClickMode.Single;
+            _clickMode = ClickSelectionMode.Single;
             _pointerSession = new PointerSession(e.Pointer.PointerId, IsPrimary: true);
             _selectionAnchor = null;
             _selection.Clear();
@@ -10773,7 +10669,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _lastPressTickMs = 0;
         _lastPressPoint = default;
         _selectionAnchor = null;
-        _clickMode = ClickMode.Word;
+        _clickMode = ClickSelectionMode.Word;
         (_dragAnchorStart, _dragAnchorEnd) = ExpandSelectionToWord(
             snapshot, position, snapshotGeneration, layoutRevision);
         if (!IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))
@@ -10929,7 +10825,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 // appropriate boundary so dragging after double/triple-click
                 // produces word-by-word or block-by-block selection, matching
                 // browser / native text editor behaviour.
-                if (_clickMode == ClickMode.Word)
+                if (_clickMode == ClickSelectionMode.Word)
                 {
                     var icb = FindInlineContainerAt(_snapshot, pos.BlockIndex);
                     if (icb is not null)
@@ -10945,7 +10841,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                     else
                         _selection.ExtendTo(pos); // no ICB (code block/embed) — fall back to char selection
                 }
-                else if (_clickMode == ClickMode.Block)
+                else if (_clickMode == ClickSelectionMode.Block)
                 {
                     var icb = FindInlineContainerAt(_snapshot, pos.BlockIndex);
                     if (icb is not null)
@@ -12298,121 +12194,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         RequestRebuild(RebuildReason.Full);
     }
 
-    /// <summary>
-    /// One Win2D-drawn composition surface and the brush that presents it.
-    /// It has no XAML peer, so its native release never races XAML teardown.
-    /// </summary>
-    private sealed class SelectionAdornerCompositionSurface : IDisposable
-    {
-        internal SelectionAdornerCompositionSurface(
-            CompositionGraphicsDevice device,
-            SelectionAdornerSurfaceAllocation allocation)
-        {
-            int pixelWidth = Math.Max(1, (int)Math.Ceiling(allocation.Width * allocation.Dpi / 96.0));
-            int pixelHeight = Math.Max(1, (int)Math.Ceiling(allocation.Height * allocation.Dpi / 96.0));
-            Surface = device.CreateDrawingSurface(
-                new Size(pixelWidth, pixelHeight),
-                Microsoft.Graphics.DirectX.DirectXPixelFormat.B8G8R8A8UIntNormalized,
-                Microsoft.Graphics.DirectX.DirectXAlphaMode.Premultiplied);
-            try
-            {
-                Brush = device.Compositor.CreateSurfaceBrush(Surface);
-                Brush.Stretch = CompositionStretch.Fill;
-            }
-            catch
-            {
-                Surface.Dispose();
-                throw;
-            }
-
-            PixelBounds = new Rect(0, 0, pixelWidth, pixelHeight);
-            Dpi = allocation.Dpi;
-        }
-
-        internal CompositionDrawingSurface Surface { get; }
-        internal CompositionSurfaceBrush Brush { get; }
-        internal Rect PixelBounds { get; }
-        internal float Dpi { get; }
-
-        public void Dispose()
-        {
-            Brush.Dispose();
-            Surface.Dispose();
-        }
-    }
-
-    /// <summary>
-    /// Presents the adorner surface through a sprite visual hosted as the
-    /// child visual of an inert placeholder element in the overlay.
-    /// </summary>
-    private sealed class SelectionAdornerVisualHost
-        : ISelectionAdornerSurfaceHost<SelectionAdornerCompositionSurface>, IDisposable
-    {
-        private readonly SpriteVisual _visual;
-        private SelectionAdornerCompositionSurface? _source;
-        private bool _disposed;
-
-        internal SelectionAdornerVisualHost(Border placeholder)
-        {
-            Placeholder = placeholder;
-            Compositor = ElementCompositionPreview.GetElementVisual(placeholder).Compositor;
-            _visual = Compositor.CreateSpriteVisual();
-            ElementCompositionPreview.SetElementChildVisual(placeholder, _visual);
-        }
-
-        internal Border Placeholder { get; }
-        internal Compositor Compositor { get; }
-
-        public SelectionAdornerCompositionSurface? Source
-        {
-            get => _source;
-            set
-            {
-                if (_disposed)
-                    return;
-                _visual.Brush = value?.Brush;
-                _source = value;
-            }
-        }
-
-        /// <summary>
-        /// Sizes the visual to the whole allocation and clips it to the viewport.
-        /// </summary>
-        internal void SetViewport(SelectionAdornerSurfaceAllocation allocation, double width, double height)
-        {
-            if (_disposed)
-                return;
-            var size = new Vector2(allocation.Width, allocation.Height);
-            if (_visual.Size != size)
-                _visual.Size = size;
-            float right = Math.Max(0f, allocation.Width - (float)width);
-            float bottom = Math.Max(0f, allocation.Height - (float)height);
-            if (_visual.Clip is InsetClip clip)
-            {
-                if (clip.RightInset != right)
-                    clip.RightInset = right;
-                if (clip.BottomInset != bottom)
-                    clip.BottomInset = bottom;
-            }
-            else
-            {
-                _visual.Clip = Compositor.CreateInsetClip(0, 0, right, bottom);
-            }
-        }
-
-        public void Dispose()
-        {
-            if (_disposed)
-                return;
-            _disposed = true;
-            _source = null;
-            _visual.Brush = null;
-            ElementCompositionPreview.SetElementChildVisual(Placeholder, null);
-            _visual.Clip?.Dispose();
-            _visual.Dispose();
-        }
-    }
-
     private bool EnsureSelectionAdorner()
     {
         if (_overlay is null)
@@ -13558,7 +13339,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _pointerSession = default;
         _selectionAnchor = null;
         _lastSelectionPointerViewportY = double.NaN;
-        _clickMode = ClickMode.Single;
+        _clickMode = ClickSelectionMode.Single;
         SetSelectionDragShieldActive(false);
         if (!_selection.Range.Normalized().IsEmpty)
             InvalidateSelectionAdorner();
@@ -13677,7 +13458,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // Click handling for links: if no real selection occurred, raise LinkClick
         // when the click lands on a LinkRun.
         if (e.InteractionSnapshot is not { } snapshot) return;
-        if (_clickMode != ClickMode.Single) return; // double/triple-click: selection intent, not link-click
+        if (_clickMode != ClickSelectionMode.Single) return; // double/triple-click: selection intent, not link-click
         if (!_selection.Range.Normalized().IsEmpty) return; // text was dragged — not a click
         var pt = e.Point.Position;
         if (TryCreateLinkActivationIntent(
@@ -15674,53 +15455,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         UpdateFocusRing();
     }
 
-    // These controls never cross a WinRT collection boundary. Private array
-    // storage avoids generating projection adapters for this focus-only path.
-    private sealed class HostedFocusableControlBuffer
-    {
-        private Control[] _items = Array.Empty<Control>();
-
-        public int Count { get; private set; }
-
-        public Control this[int index]
-        {
-            get
-            {
-                if ((uint)index >= (uint)Count)
-                    throw new ArgumentOutOfRangeException(nameof(index));
-                return _items[index];
-            }
-        }
-
-        public void Add(Control control)
-        {
-            if (Count == _items.Length)
-            {
-                int capacity = _items.Length == 0
-                    ? 4
-                    : _items.Length > Array.MaxLength / 2
-                        ? Array.MaxLength
-                        : _items.Length * 2;
-                if (capacity <= Count)
-                    throw new OutOfMemoryException();
-                Array.Resize(ref _items, capacity);
-            }
-
-            _items[Count++] = control;
-        }
-
-        public int IndexOf(Control control)
-        {
-            for (int i = 0; i < Count; i++)
-            {
-                if (EqualityComparer<Control>.Default.Equals(_items[i], control))
-                    return i;
-            }
-
-            return -1;
-        }
-    }
-
     private static bool TryMoveFocusWithinHostedEmbed(FrameworkElement host, object originalSource, bool reverse)
     {
         var focusables = CollectHostedFocusableControls(host);
@@ -17387,317 +17121,4 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         SetDisclosureExpanded(run, !run.IsExpanded);
         return true;
     }
-
-    private readonly struct LazyLayoutWorkResult
-    {
-        internal readonly LazyLayoutCommit Commit;
-        internal readonly (int BlockIndex, double OffsetFromTop)? ScrollAnchor;
-
-        internal LazyLayoutWorkResult(
-            LazyLayoutCommit commit,
-            (int BlockIndex, double OffsetFromTop)? scrollAnchor)
-        {
-            Commit = commit;
-            ScrollAnchor = scrollAnchor;
-        }
-    }
-
-    private sealed class ContextMenuTarget : IDisposable
-    {
-        private Layout.Boxes.SharedCanvasBitmapCache.Lease? _imageBitmapLease;
-
-        public string? LinkUrl { get; set; }
-        public SourceSpan LinkSourceRange { get; set; }
-        public string? ImageUrl { get; set; }
-        public SourceSpan ImageSourceRange { get; set; }
-        public string? CodeText { get; set; }
-        public string? CodeLanguage { get; set; }
-        public SourceSpan CodeSourceRange { get; set; }
-        public MarkdownTableClipboardSnapshot? TableSnapshot { get; set; }
-        public SourceSpan TableSourceRange { get; set; }
-
-        public Layout.Boxes.SharedCanvasBitmapCache.Lease? ImageBitmapLease =>
-            Volatile.Read(ref _imageBitmapLease);
-
-        public void SetImageBitmapLease(Layout.Boxes.SharedCanvasBitmapCache.Lease? lease)
-        {
-            Layout.Boxes.SharedCanvasBitmapCache.Lease? previous =
-                Interlocked.Exchange(ref _imageBitmapLease, lease);
-            previous?.Dispose();
-        }
-
-        public ContextMenuTarget CloneForExecution() => new()
-        {
-            LinkUrl = LinkUrl,
-            LinkSourceRange = LinkSourceRange,
-            ImageUrl = ImageUrl,
-            ImageSourceRange = ImageSourceRange,
-            CodeText = CodeText,
-            CodeLanguage = CodeLanguage,
-            CodeSourceRange = CodeSourceRange,
-            TableSnapshot = TableSnapshot,
-            TableSourceRange = TableSourceRange,
-            _imageBitmapLease = ImageBitmapLease?.TryClone(),
-        };
-
-        public void Dispose() =>
-            Interlocked.Exchange(ref _imageBitmapLease, null)?.Dispose();
-    }
-
-    private sealed class MarkdownTableClipboardSnapshot
-    {
-        private readonly string[][] _rows;
-        private readonly int _headerRowCount;
-
-        internal MarkdownTableClipboardSnapshot(
-            string[][] rows,
-            int headerRowCount)
-        {
-            _rows = rows;
-            _headerRowCount = headerRowCount;
-        }
-
-        internal MarkdownTableClipboardPayload Format() =>
-            MarkdownTableClipboardFormatter.Format(_rows, _headerRowCount);
-
-        internal bool HasText
-        {
-            get
-            {
-                if (_rows.Length == 0)
-                    return false;
-                if (_rows.Length > 1)
-                    return true;
-
-                string[] row = _rows[0];
-                if (row.Length > 1)
-                    return true;
-
-                return row.Length > 0 && row[0].Length > 0;
-            }
-        }
-    }
-
-    internal readonly struct LinkTarget
-    {
-        internal readonly string Url;
-        internal readonly string? Title;
-        internal readonly SourceSpan SourceSpan;
-        internal readonly LinkRun? Run;
-        internal readonly string? Action;
-        internal readonly bool External;
-
-        internal LinkTarget(
-            string url,
-            string? title,
-            SourceSpan sourceSpan,
-            LinkRun? run,
-            string? action = null,
-            bool external = false)
-        {
-            Url = url;
-            Title = title;
-            SourceSpan = sourceSpan;
-            Run = run;
-            Action = action;
-            External = external;
-        }
-    }
-
-    private readonly struct LinkActivationIntent
-    {
-        internal readonly string Url;
-        internal readonly string? Title;
-        internal readonly SourceSpan SourceSpan;
-        internal readonly string? Action;
-        internal readonly bool External;
-        internal readonly MarkdownLinkInputKind InputKind;
-        internal readonly MarkdownInputModifiers Modifiers;
-        internal readonly string? DisclosureId;
-        internal readonly bool DisclosureExpanded;
-
-        internal LinkActivationIntent(
-            LinkTarget link,
-            MarkdownLinkInputKind inputKind,
-            MarkdownInputModifiers modifiers)
-        {
-            Url = link.Url;
-            Title = link.Title;
-            SourceSpan = link.SourceSpan;
-            Action = link.Action;
-            External = link.External;
-            InputKind = inputKind;
-            Modifiers = modifiers;
-            if (link.Run is { IsDisclosure: true, DisclosureId: { Length: > 0 } id } run)
-            {
-                DisclosureId = id;
-                DisclosureExpanded = !run.IsExpanded;
-            }
-            else
-            {
-                DisclosureId = null;
-                DisclosureExpanded = false;
-            }
-        }
-    }
 }
-
-/// <summary>Event data for markdown link activation.</summary>
-public sealed class MarkdownLinkClickEventArgs : EventArgs
-{
-    /// <summary>Initializes link activation event data.</summary>
-    public MarkdownLinkClickEventArgs(string url, string? title)
-        : this(
-            url,
-            title,
-            SourceSpan.Empty,
-            MarkdownLinkInputKind.Programmatic,
-            MarkdownInputModifiers.None,
-            MarkdownLinkDisposition.CurrentView)
-    {
-    }
-
-    /// <summary>Initializes complete link activation event data.</summary>
-    public MarkdownLinkClickEventArgs(
-        string url,
-        string? title,
-        SourceSpan sourceRange,
-        MarkdownLinkInputKind inputKind,
-        MarkdownInputModifiers modifiers,
-        MarkdownLinkDisposition requestedDisposition,
-        string? action = null)
-    {
-        Url = url ?? string.Empty;
-        Title = title;
-        SourceRange = sourceRange;
-        InputKind = inputKind;
-        Modifiers = modifiers;
-        RequestedDisposition = requestedDisposition;
-        Action = string.IsNullOrWhiteSpace(action) ? null : action;
-        if (Uri.TryCreate(Url, UriKind.RelativeOrAbsolute, out var uri))
-            Uri = uri;
-    }
-    /// <summary>Gets the link URL.</summary>
-    public string Url { get; }
-
-    /// <summary>Gets the optional link title.</summary>
-    public string? Title { get; }
-
-    /// <summary>Gets the parsed relative or absolute URI, when valid.</summary>
-    public Uri? Uri { get; }
-
-    /// <summary>Gets the declarative host action identifier, when present.</summary>
-    public string? Action { get; }
-
-    /// <summary>Gets the half-open UTF-16 source range of the activated link.</summary>
-    public SourceSpan SourceRange { get; }
-
-    /// <summary>Gets the input modality that activated the link.</summary>
-    public MarkdownLinkInputKind InputKind { get; }
-
-    /// <summary>Gets keyboard modifiers active for the activation.</summary>
-    public MarkdownInputModifiers Modifiers { get; }
-
-    /// <summary>Gets the navigation disposition requested by the gesture.</summary>
-    public MarkdownLinkDisposition RequestedDisposition { get; }
-
-    /// <summary>Gets or sets whether the host handled the activation.</summary>
-    public bool Handled { get; set; }
-}
-
-/// <summary>Identifies the input modality used to activate markdown content.</summary>
-public enum MarkdownLinkInputKind
-{
-    /// <summary>The activation was raised by application code.</summary>
-    Programmatic,
-    /// <summary>Mouse input.</summary>
-    Mouse,
-    /// <summary>Touch input.</summary>
-    Touch,
-    /// <summary>Pen input.</summary>
-    Pen,
-    /// <summary>Keyboard input.</summary>
-    Keyboard,
-    /// <summary>A UI Automation client invoked the element.</summary>
-    Automation,
-}
-
-/// <summary>Keyboard modifiers captured for a markdown command or activation.</summary>
-[Flags]
-public enum MarkdownInputModifiers
-{
-    /// <summary>No modifier keys.</summary>
-    None = 0,
-    /// <summary>Control key.</summary>
-    Control = 1,
-    /// <summary>Shift key.</summary>
-    Shift = 2,
-    /// <summary>Alt/Menu key.</summary>
-    Alt = 4,
-    /// <summary>Windows key.</summary>
-    Windows = 8,
-}
-
-/// <summary>Navigation disposition requested by a link gesture.</summary>
-public enum MarkdownLinkDisposition
-{
-    /// <summary>Navigate in the host's current view.</summary>
-    CurrentView,
-    /// <summary>Open a new foreground view or window.</summary>
-    NewView,
-    /// <summary>Open a new background view when the host supports it.</summary>
-    BackgroundView,
-    /// <summary>Delegate navigation to the system or external application.</summary>
-    External,
-}
-
-/// <summary>Event data for safe HTML disclosure activation.</summary>
-public sealed class MarkdownDisclosureToggledEventArgs : EventArgs
-{
-    /// <summary>Initializes disclosure event data.</summary>
-    public MarkdownDisclosureToggledEventArgs(bool isExpanded) => IsExpanded = isExpanded;
-
-    /// <summary>Gets whether the disclosure is expanded after activation.</summary>
-    public bool IsExpanded { get; }
-}
-
-/// <summary>Identifies the Markdown content copied to the clipboard.</summary>
-public enum MarkdownCopyKind
-{
-    /// <summary>The active text selection.</summary>
-    Selection,
-
-    /// <summary>An entire fenced or indented code block.</summary>
-    CodeBlock,
-}
-
-/// <summary>Event data for a Markdown clipboard copy attempt.</summary>
-public sealed class MarkdownCopyCompletedEventArgs : EventArgs
-{
-    /// <summary>Initializes clipboard copy event data.</summary>
-    public MarkdownCopyCompletedEventArgs(MarkdownCopyKind kind, bool succeeded)
-    {
-        Kind = kind;
-        Succeeded = succeeded;
-    }
-
-    /// <summary>Gets the copied content kind.</summary>
-    public MarkdownCopyKind Kind { get; }
-
-    /// <summary>Gets whether the clipboard accepted the content.</summary>
-    public bool Succeeded { get; }
-}
-
-/// <summary>Event data for a Markdown document render failure.</summary>
-public sealed class MarkdownRenderFailedEventArgs : EventArgs
-{
-    /// <summary>Initializes render-failure event data.</summary>
-    public MarkdownRenderFailedEventArgs(Exception exception)
-    {
-        Exception = exception ?? throw new ArgumentNullException(nameof(exception));
-    }
-
-    /// <summary>Gets the exception raised by the render pipeline.</summary>
-    public Exception Exception { get; }
-}
-

@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Controls;
+using MarkdownRenderer.Controls.Selection;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Hosting;
@@ -154,7 +155,7 @@ public sealed class ImmutablePayloadStorageTests
     [Fact]
     public void ContextMenuTargetStoresDetachedValuesAndOnlyItsBitmapLease()
     {
-        Type type = Nested(typeof(MarkdownRendererControl), "ContextMenuTarget");
+        Type type = typeof(ContextMenuTarget);
         Assert.False(type.IsVisible);
         object target = Activator.CreateInstance(type, nonPublic: true)!;
         const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
@@ -194,7 +195,7 @@ public sealed class ImmutablePayloadStorageTests
     [Fact]
     public void ContextMenuTableSnapshotHasTextMatchesFormattedPayload()
     {
-        Type type = Nested(typeof(MarkdownRendererControl), "MarkdownTableClipboardSnapshot");
+        Type type = typeof(MarkdownTableClipboardSnapshot);
         const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
         (string[][] Rows, int HeaderRows)[] cases =
         [
@@ -220,7 +221,7 @@ public sealed class ImmutablePayloadStorageTests
     public void ContextMenuExecutionCloneKeepsBitmapAliveAfterMenuTargetDisposes()
     {
         using var device = new CanvasDevice();
-        Type type = Nested(typeof(MarkdownRendererControl), "ContextMenuTarget");
+        Type type = typeof(ContextMenuTarget);
         const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
         object menuTarget = Activator.CreateInstance(type, nonPublic: true)!;
         type.GetProperty("ImageUrl", flags)!.SetValue(menuTarget, "https://example.test/image.png");

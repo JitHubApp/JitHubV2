@@ -9,6 +9,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Input;
 using Windows.Foundation;
 using VirtualKeyModifiers = Windows.System.VirtualKeyModifiers;
+using MarkdownRenderer.Controls.Input;
 
 namespace MarkdownRenderer.Controls;
 

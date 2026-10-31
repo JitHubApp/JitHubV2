@@ -8,6 +8,8 @@ using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Performance;
 using Windows.Foundation;
+using MarkdownRenderer.Controls.Embeds;
+using MarkdownRenderer.Controls.Images;
 
 namespace MarkdownRenderer.Controls;
 

@@ -15,7 +15,7 @@ using System.Globalization;
 using Windows.Foundation;
 using Windows.UI;
 using Xunit;
-using LinkTarget = MarkdownRenderer.Controls.MarkdownRendererControl.LinkTarget;
+using LinkTarget = MarkdownRenderer.Controls.Input.LinkTarget;
 
 namespace MarkdownRenderer.GitHub.Tests;
 
