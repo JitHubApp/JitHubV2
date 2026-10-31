@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Threading;
 using MarkdownRenderer.Diagnostics;
 using MarkdownRenderer.Layout;
 using Microsoft.UI.Dispatching;
@@ -1068,8 +1067,8 @@ public partial class MarkdownRendererControl
 
             if (input.RefreshSelectionAdornerAfterInteraction)
             {
-                UpdateSelectionAdornerViewport();
-                InvalidateSelectionAdorner();
+                _adorner.InvalidateGeometry();
+                _adorner.Invalidate();
             }
 
             if (!IsCurrentPointerInteraction(snapshot, snapshotGeneration, layoutRevision))

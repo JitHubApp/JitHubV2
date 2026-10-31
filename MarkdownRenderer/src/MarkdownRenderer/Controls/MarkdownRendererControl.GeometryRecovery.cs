@@ -31,7 +31,7 @@ public partial class MarkdownRendererControl
         TryGeometryRecoveryCleanup(ResetVectorCapacityObserver);
         ClearHorizontalOverflowPointerState();
         ClearPendingFocusGeometryWork();
-        _selectionAdornerRects.Clear();
+        _adorner.ClearGeometry();
         // This tuple describes re-publication of this snapshot's geometry, not
         // an offside replacement candidate. It cannot repair a failed tree.
         _pendingLayoutCommit = null;
@@ -62,7 +62,7 @@ public partial class MarkdownRendererControl
                 _focusRing.Visibility = Visibility.Collapsed;
         });
         TryGeometryRecoveryCleanup(() => SetSelectionHandleVisibility(Visibility.Collapsed));
-        TryGeometryRecoveryCleanup(ReleaseSelectionAdornerSurface);
+        TryGeometryRecoveryCleanup(_adorner.ReleaseSurface);
         TryGeometryRecoveryCleanup(InvalidateAutomationLayout);
 
         if (snapshot.GeometryRecoveryIsDeviceLost)
@@ -108,7 +108,7 @@ public partial class MarkdownRendererControl
 
         RequestRebuild(RebuildReason.Full);
         InvalidateCanvas();
-        InvalidateSelectionAdorner();
+        _adorner.Invalidate();
     }
 
     private void StopCanvasDeviceRecovery()
