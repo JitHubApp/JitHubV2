@@ -11,9 +11,22 @@ namespace JitHub.Services;
 public sealed partial class LatestWinsPrefetchScheduler
 {
     private readonly object _gate = new();
+    private readonly TimeProvider _timeProvider;
     private CancellationTokenSource? _pendingCancellation;
     private IDisposable? _activePrefetch;
     private long _generation;
+
+    public LatestWinsPrefetchScheduler()
+        : this(TimeProvider.System)
+    {
+    }
+
+    /// <param name="timeProvider">Clock that times the debounce. Tests pass a fake clock.</param>
+    public LatestWinsPrefetchScheduler(TimeProvider timeProvider)
+    {
+        ArgumentNullException.ThrowIfNull(timeProvider);
+        _timeProvider = timeProvider;
+    }
 
     public void Schedule(TimeSpan debounce, Func<IDisposable?> startPrefetch)
     {
@@ -67,7 +80,7 @@ public sealed partial class LatestWinsPrefetchScheduler
         IDisposable? started = null;
         try
         {
-            await Task.Delay(debounce, cancellation.Token).ConfigureAwait(false);
+            await Task.Delay(debounce, _timeProvider, cancellation.Token).ConfigureAwait(false);
             cancellation.Token.ThrowIfCancellationRequested();
             started = startPrefetch() ?? EmptyDisposable.Instance;
 

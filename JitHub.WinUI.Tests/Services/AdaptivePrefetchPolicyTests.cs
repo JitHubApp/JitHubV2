@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Models.GitHub;
 using JitHub.Services;
+using JitHub.WinUI.Tests.TestSupport;
 using NSubstitute;
 using Xunit;
 
@@ -559,24 +560,35 @@ public sealed class AdaptivePrefetchPolicyTests
     [Fact]
     public async Task LatestWinsScheduler_HoverStormStartsOnlyFinalPrediction()
     {
-        LatestWinsPrefetchScheduler scheduler = new();
+        TimeSpan debounce = TimeSpan.FromMilliseconds(30);
+        TimerCountingTimeProvider clock = new();
+        LatestWinsPrefetchScheduler scheduler = new(clock);
+        TaskCompletionSource finalStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         int startedCount = 0;
         int startedItem = -1;
         for (int item = 0; item < 100; item++)
         {
             int captured = item;
             scheduler.Schedule(
-                TimeSpan.FromMilliseconds(30),
+                debounce,
                 () =>
                 {
                     Interlocked.Increment(ref startedCount);
                     Volatile.Write(ref startedItem, captured);
+                    finalStarted.TrySetResult();
                     return new RecordingDisposable();
                 });
         }
 
-        await Task.Delay(150);
+        // One millisecond short of the debounce: nothing may start yet.
+        clock.Advance(debounce - TimeSpan.FromMilliseconds(1));
+        Assert.Equal(0, clock.FiredTimerCount);
 
+        // Well past every debounce. Superseded predictions were cancelled, so only the
+        // final prediction's debounce may elapse, and only it may start.
+        clock.Advance(TimeSpan.FromSeconds(1));
+        Assert.Equal(1, clock.FiredTimerCount);
+        await finalStarted.Task.WaitAsync(AsyncTestWait.HangGuard);
         Assert.Equal(1, Volatile.Read(ref startedCount));
         Assert.Equal(99, Volatile.Read(ref startedItem));
         scheduler.Cancel();
@@ -585,7 +597,8 @@ public sealed class AdaptivePrefetchPolicyTests
     [Fact]
     public async Task LatestWinsScheduler_RouteDepartureCancelsPendingAndActivePrediction()
     {
-        LatestWinsPrefetchScheduler scheduler = new();
+        TimerCountingTimeProvider clock = new();
+        LatestWinsPrefetchScheduler scheduler = new(clock);
         int pendingStarted = 0;
         scheduler.Schedule(
             TimeSpan.FromMilliseconds(100),
@@ -595,7 +608,8 @@ public sealed class AdaptivePrefetchPolicyTests
                 return new RecordingDisposable();
             });
         scheduler.Cancel();
-        await Task.Delay(150);
+        clock.Advance(TimeSpan.FromSeconds(1));
+        Assert.Equal(0, clock.FiredTimerCount);
         Assert.Equal(0, Volatile.Read(ref pendingStarted));
 
         TaskCompletionSource started = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -607,7 +621,7 @@ public sealed class AdaptivePrefetchPolicyTests
                 started.TrySetResult();
                 return active;
             });
-        await started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await started.Task.WaitAsync(AsyncTestWait.HangGuard);
 
         scheduler.Cancel();
 

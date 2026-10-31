@@ -317,7 +317,9 @@ public sealed class Phase0RequestTransportTests
     public async Task LatestWinsHoverStorm_DoesNotAccumulateQueuedNetworkRequests()
     {
         GitHubRequestQueue queue = new(foregroundReadConcurrency: 1, backgroundReadConcurrency: 1, mutationConcurrency: 1);
-        LatestWinsPrefetchScheduler scheduler = new();
+        TimeSpan debounce = TimeSpan.FromMilliseconds(30);
+        TimerCountingTimeProvider clock = new();
+        LatestWinsPrefetchScheduler scheduler = new(clock);
         TaskCompletionSource finalStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource<Task<int>> finalRequestAssigned = new(TaskCreationOptions.RunContinuationsAsynchronously);
         int transportCalls = 0;
@@ -327,7 +329,7 @@ public sealed class Phase0RequestTransportTests
         {
             int captured = item;
             scheduler.Schedule(
-                TimeSpan.FromMilliseconds(30),
+                debounce,
                 () =>
                 {
                     CancellationTokenSource cancellation = new();
@@ -347,6 +349,10 @@ public sealed class Phase0RequestTransportTests
                     return new CancellationHandle(cancellation);
                 });
         }
+
+        Assert.False(finalRequestAssigned.Task.IsCompleted);
+        clock.Advance(debounce);
+        Assert.Equal(1, clock.FiredTimerCount);
 
         await finalStarted.Task.WaitAsync(AsyncTestWait.HangGuard);
         Task<int> finalRequest = await finalRequestAssigned.Task.WaitAsync(AsyncTestWait.HangGuard);
