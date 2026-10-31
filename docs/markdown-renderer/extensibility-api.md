@@ -192,16 +192,16 @@ value in Light and Dark. Windows High Contrast always maps visible authored
 paint to a suitable system surface, foreground, or link color so text and
 geometry remain distinguishable.
 
-Vector text has an independent font-family contract. The original
-`MarkdownVectorTextStyle` constructor keeps its scene-authored family. Use the
-`MarkdownVectorFontRole.Host` overload when text should use the containing
+Vector text has an independent font-family contract. By default a
+`MarkdownVectorTextStyle` keeps its scene-authored family. Pass
+`fontRole: MarkdownVectorFontRole.Host` when text should use the containing
 markdown role's resolved `FontFamily` (for example, `Diagram.FontFamily`):
 
 ```csharp
 var labelStyle = new MarkdownVectorTextStyle(
-    MarkdownVectorFontRole.Host,
     fontFamily: "Segoe UI", // deterministic fallback when no host family is available
-    fontSize: 16);
+    fontSize: 16,
+    fontRole: MarkdownVectorFontRole.Host);
 ```
 
 Font size remains geometric because vector commands are already positioned in

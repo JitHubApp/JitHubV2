@@ -60,7 +60,6 @@ internal static class MermaidVectorSceneAdapter
                         source.Strings[command.TextIndex],
                         baseline,
                         new MarkdownVectorTextStyle(
-                            MarkdownVectorFontRole.Authored,
                             command.FontFamilyIndex >= 0 ? source.Strings[command.FontFamilyIndex] : "Segoe UI",
                             GetTextSize(source, command),
                             GetTextWeight(source, command),
@@ -70,7 +69,8 @@ internal static class MermaidVectorSceneAdapter
                                 ? MarkdownVectorTextAlignment.Center
                                 : (command.TextFlags & MermaidTextFlags.AnchorEnd) != 0
                                     ? MarkdownVectorTextAlignment.End
-                                    : MarkdownVectorTextAlignment.Start),
+                                    : MarkdownVectorTextAlignment.Start,
+                            MarkdownVectorFontRole.Authored),
                         style,
                         command.SemanticIndex),
                 _ => null,

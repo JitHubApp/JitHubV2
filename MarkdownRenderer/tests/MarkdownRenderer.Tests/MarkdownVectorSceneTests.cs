@@ -77,16 +77,16 @@ public sealed class MarkdownVectorSceneTests
     {
         var authored = new MarkdownVectorTextStyle("Custom Diagram Face", 16);
         var host = new MarkdownVectorTextStyle(
-            MarkdownVectorFontRole.Host,
             "Scene Fallback",
-            16);
+            16,
+            fontRole: MarkdownVectorFontRole.Host);
 
         Assert.Equal(MarkdownVectorFontRole.Authored, authored.FontRole);
         Assert.Equal(MarkdownVectorFontRole.Host, host.FontRole);
         Assert.Throws<ArgumentOutOfRangeException>(() => new MarkdownVectorTextStyle(
-            (MarkdownVectorFontRole)99,
             "Scene Fallback",
-            16));
+            16,
+            fontRole: (MarkdownVectorFontRole)99));
     }
 
     [Fact]

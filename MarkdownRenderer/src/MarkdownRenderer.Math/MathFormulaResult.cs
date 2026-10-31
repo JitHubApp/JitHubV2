@@ -1,7 +1,7 @@
 namespace MarkdownRenderer.Math;
 
 /// <summary>Identifies the outcome of bounded native formula processing.</summary>
-public enum MathFormulaResultKind
+internal enum MathFormulaResultKind
 {
     /// <summary>The formula produced a usable vector scene.</summary>
     Accepted,
@@ -14,7 +14,7 @@ public enum MathFormulaResultKind
 }
 
 /// <summary>A stable localized diagnostic over an atomic UTF-16 source range.</summary>
-public sealed class MathFormulaDiagnostic
+internal sealed class MathFormulaDiagnostic
 {
     /// <summary>Creates a formula diagnostic.</summary>
     public MathFormulaDiagnostic(string code, string message, MathSourceRange sourceRange)
@@ -41,7 +41,7 @@ public sealed class MathFormulaDiagnostic
 /// Parser- and painter-independent outcome for a formula. Non-accepted outcomes always
 /// preserve the exact delimited source for a code-styled fallback.
 /// </summary>
-public sealed class MathFormulaResult
+internal sealed class MathFormulaResult
 {
     private MathFormulaResult(
         MathFormulaRequest request,

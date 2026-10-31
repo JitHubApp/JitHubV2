@@ -9,8 +9,8 @@ are implementation details.
 | Package | Purpose |
 | --- | --- |
 | `MarkdownRenderer` | The viewer: immutable engines, documents, profiles, diagnostics, UTF-16 source maps, declarative extension contracts, the opt-in profiles and safe HTML listed below, the optional performance session, and the native WinUI views. |
-| `MarkdownRenderer.Math` | CSharpMath-based TeX processor, immutable vector scenes, fallback and accessibility. |
-| `MarkdownRenderer.Mermaid` | Selected-RID Merman engine, validated MMIR scenes, bounded processing and fallback. |
+| `MarkdownRenderer.Math` | `UseMathematics`: CSharpMath-based TeX rendering into core vector scenes, with options, fallback, localization and a replaceable accessibility formatter. |
+| `MarkdownRenderer.Mermaid` | `UseMermaid`: the selected-RID Merman engine with bounded processing and fallback, its options, a shareable `MermaidRenderer` and a native-runtime probe. Its MMIR scene format is internal. |
 | `MarkdownRenderer.Svg.Resvg` | Optional isolated resvg static-SVG provider and RID workers. |
 | `MarkdownRenderer.SyntaxHighlighting.TextMate` | Lean TextMate integration and provider contracts; grammar packs are separate. |
 | `MarkdownRenderer.All` | Explicit, deliberately large meta-package for every feature and payload. |

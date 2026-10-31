@@ -1,3 +1,6 @@
+using MarkdownRenderer;
+using MarkdownRenderer.Document;
+using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Mermaid;
 
 MermaidNativeRuntimeInfo runtime = MermaidNativeRuntime.Probe();
@@ -7,14 +10,21 @@ if (!runtime.IsAvailable)
     return 1;
 }
 
-using var renderer = new MermaidRenderer();
-MermaidRenderResult result = await renderer.RenderAsync("flowchart LR\nA-->B");
-if (result.Status != MermaidRenderStatus.Success ||
-    result.ShouldUseFallback ||
-    result.Scene is not { Commands.Count: > 0 } scene ||
-    result.Diagnostics.Any(diagnostic => diagnostic.Severity == MermaidDiagnosticSeverity.Error))
+// Render through the public host path: an engine with UseMermaid parses the
+// fence and stores the diagram's vector scene as the block's extension content.
+const string markdown = "```mermaid\nflowchart LR\nA-->B\n```\n";
+using MarkdownEngine engine = new MarkdownEngineBuilder()
+    .UseMermaid()
+    .Build();
+MarkdownDocument document = await engine.ParseAsync(markdown);
+
+MarkdownCodeBlock fence = document.GetCodeBlocks().Single();
+if (document.HasErrors ||
+    !document.TryGetBlockExtensionContent(fence.SourceSpan, out MarkdownContentFragment? fragment) ||
+    fragment!.Items is not [{ Kind: MarkdownContentKind.VectorScene, VectorScene: { Commands.Count: > 0 } scene }])
 {
-    Console.Error.WriteLine($"Mermaid deployment smoke failed: {result.Status}; no successful scene.");
+    string diagnostics = string.Join("; ", document.Diagnostics.Select(diagnostic => diagnostic.Code));
+    Console.Error.WriteLine($"Mermaid deployment smoke failed: no diagram scene ({diagnostics}).");
     return 2;
 }
 

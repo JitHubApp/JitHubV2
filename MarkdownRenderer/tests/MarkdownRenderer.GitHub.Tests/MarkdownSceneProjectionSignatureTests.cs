@@ -253,13 +253,13 @@ public sealed class MarkdownSceneProjectionSignatureTests
                 dashOffset: 0.5f)
             .WithHighContrastRoles(highContrastFillRole, MarkdownVectorPaintRole.Foreground);
         var textStyle = new MarkdownVectorTextStyle(
-            fontRole,
             textFontFamily,
             textFontSize,
             textFontWeight,
             textItalic,
             textRightToLeft,
-            textAlignment);
+            textAlignment,
+            fontRole);
         MarkdownVectorPathOperation[] path =
         [
             MarkdownVectorPathOperation.MoveTo(new MarkdownVectorPoint(1, 2)),

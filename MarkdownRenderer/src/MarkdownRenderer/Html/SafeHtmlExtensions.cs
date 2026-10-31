@@ -1,13 +1,19 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Markdig.Syntax;
 using MarkdownRenderer.Controls;
+using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Html.Renderers;
 using MarkdownRenderer.Parsing;
 
 namespace MarkdownRenderer.Html;
 
 /// <summary>Configures the native, non-executable safe-HTML feature.</summary>
+[SuppressMessage(
+    "ApiDesign",
+    "RS0026:Do not add multiple public overloads with optional parameters",
+    Justification = MarkdownExtensionOverloads.Justification)]
 public static class SafeHtmlExtensions
 {
     private const string SafeHtmlPresentationFeature = "MarkdownRenderer.SafeHtml.Presentation";

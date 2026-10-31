@@ -5,9 +5,10 @@ with Mermaid 11.16.1. The selected-RID native engine parses and lays out diagram
 browser or JavaScript runtime, measures labels with DirectWrite, and transfers a validated,
 backend-neutral little-endian MMIR scene to managed code.
 
-The package provides immutable scene contracts, UTF-8-to-UTF-16 source mappings, generated
-fixed-width `cdecl` bindings, `SafeHandle` ownership, cancellation/deadline/budget enforcement,
-and atomic original-code fallback. Register it with `new MarkdownEngineBuilder().UseMermaid()`;
+Internally, the package validates each scene, maps UTF-8 source ranges to UTF-16, binds the
+engine through generated fixed-width `cdecl` signatures with `SafeHandle` ownership, enforces
+cancellation, deadlines and budgets, and falls back atomically to the original code. The scene
+format is not public API. Register it with `new MarkdownEngineBuilder().UseMermaid()`;
 normalized `mermaid` fences then become renderer-neutral vector scenes that the MarkdownRenderer
 viewer paints and exposes through UI Automation. Mermaid/Markdown content can never execute scripts,
 load files, perform external fetches, or supply callbacks. The only callback is the host-owned,

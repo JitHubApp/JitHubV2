@@ -36,12 +36,18 @@ public sealed class MarkdownStyleSelectorAncestorTests
         BindingFlags.Instance | BindingFlags.NonPublic)!;
 
     [Fact]
-    public void ExistingPublicConstructorSignaturesRemainAvailable()
+    public void PreAncestorArgumentListsStillBindAndStayUnqualified()
     {
-        Assert.NotNull(typeof(MarkdownStyleContext).GetConstructor(
-            [typeof(MarkdownStyleRole), typeof(int), typeof(string), typeof(string), typeof(IEnumerable<string>)]));
-        Assert.NotNull(typeof(MarkdownStyleSelector).GetConstructor(
-            [typeof(MarkdownStyleRole), typeof(int), typeof(int), typeof(string), typeof(string), typeof(string)]));
+        // The ancestor qualifiers are trailing optional parameters, so every
+        // argument list written before they existed still binds, positionally,
+        // to the same constructor and produces an unqualified context or selector.
+        // Binary signatures are not pinned: no version of this API has shipped.
+        var context = new MarkdownStyleContext(MarkdownStyleRole.Body, 1, "csharp", "active", ["note"]);
+        var selector = new MarkdownStyleSelector(MarkdownStyleRole.Body, 1, 2, "csharp", "active", "note");
+
+        Assert.Empty(context.AncestorRoles);
+        Assert.Null(selector.AncestorRole);
+        Assert.True(selector.Matches(context));
     }
 
     [Fact]
@@ -50,30 +56,30 @@ public sealed class MarkdownStyleSelectorAncestorTests
         var ancestors = new[] { MarkdownStyleRole.Quote, MarkdownStyleRole.List };
         var context = new MarkdownStyleContext(
             MarkdownStyleRole.Body,
-            ancestors,
             nestingDepth: 2,
             language: " CSharp ",
             state: " Active ",
-            classNames: [".note"]);
+            classNames: [".note"],
+            ancestorRoles: ancestors);
         var selector = new MarkdownStyleSelector(
             MarkdownStyleRole.Body,
-            MarkdownStyleRole.Quote,
             minimumNestingDepth: 2,
             maximumNestingDepth: 3,
             language: "csharp",
             state: "active",
-            className: "note");
+            className: "note",
+            ancestorRole: MarkdownStyleRole.Quote);
 
         ancestors[0] = MarkdownStyleRole.Link;
 
         Assert.Equal(new[] { MarkdownStyleRole.Quote, MarkdownStyleRole.List }, context.AncestorRoles);
         Assert.Equal(MarkdownStyleRole.Quote, selector.AncestorRole);
         Assert.True(selector.Matches(context));
-        Assert.False(new MarkdownStyleSelector(MarkdownStyleRole.Body, MarkdownStyleRole.FromElementKey("quote"))
+        Assert.False(new MarkdownStyleSelector(MarkdownStyleRole.Body, ancestorRole: MarkdownStyleRole.FromElementKey("quote"))
             .Matches(context));
-        Assert.False(new MarkdownStyleSelector(MarkdownStyleRole.Body, MarkdownStyleRole.Quote, className: "other")
+        Assert.False(new MarkdownStyleSelector(MarkdownStyleRole.Body, className: "other", ancestorRole: MarkdownStyleRole.Quote)
             .Matches(context));
-        Assert.False(new MarkdownStyleSelector(MarkdownStyleRole.Body, MarkdownStyleRole.Quote, minimumNestingDepth: 3)
+        Assert.False(new MarkdownStyleSelector(MarkdownStyleRole.Body, minimumNestingDepth: 3, ancestorRole: MarkdownStyleRole.Quote)
             .Matches(context));
     }
 
@@ -82,10 +88,10 @@ public sealed class MarkdownStyleSelectorAncestorTests
     {
         Assert.Throws<ArgumentException>(() => new MarkdownStyleContext(
             MarkdownStyleRole.Body,
-            [default(MarkdownStyleRole)]));
+            ancestorRoles: [default(MarkdownStyleRole)]));
         Assert.Throws<ArgumentException>(() => new MarkdownStyleSelector(
             MarkdownStyleRole.Body,
-            default(MarkdownStyleRole)));
+            ancestorRole: default(MarkdownStyleRole)));
 
         var legacyContext = new MarkdownStyleContext(MarkdownStyleRole.Body);
         Assert.Empty(legacyContext.AncestorRoles);
@@ -131,13 +137,13 @@ public sealed class MarkdownStyleSelectorAncestorTests
                     maximumNestingDepth: 1),
                 new ElementStyleOverride { Foreground = QuoteForeground }),
             new MarkdownStyleRule(
-                new MarkdownStyleSelector(MarkdownStyleRole.Body, listDepthRole),
+                new MarkdownStyleSelector(MarkdownStyleRole.Body, ancestorRole: listDepthRole),
                 new ElementStyleOverride { Foreground = LaterForeground }),
             new MarkdownStyleRule(
-                new MarkdownStyleSelector(MarkdownStyleRole.Body, zeroPaddedListDepthRole),
+                new MarkdownStyleSelector(MarkdownStyleRole.Body, ancestorRole: zeroPaddedListDepthRole),
                 new ElementStyleOverride { Foreground = HeadingForeground }),
             new MarkdownStyleRule(
-                new MarkdownStyleSelector(MarkdownStyleRole.Body, malformedListDepthRole),
+                new MarkdownStyleSelector(MarkdownStyleRole.Body, ancestorRole: malformedListDepthRole),
                 new ElementStyleOverride { Foreground = LinkForeground }),
         ]);
         ThemeSnapshot snapshot = CreateSnapshot(sheet);
@@ -229,7 +235,7 @@ public sealed class MarkdownStyleSelectorAncestorTests
                 new MarkdownStyleSelector(MarkdownStyleRole.Body),
                 new ElementStyleOverride { Foreground = BaseForeground }),
             new MarkdownStyleRule(
-                new MarkdownStyleSelector(MarkdownStyleRole.Body, MarkdownStyleRole.Quote),
+                new MarkdownStyleSelector(MarkdownStyleRole.Body, ancestorRole: MarkdownStyleRole.Quote),
                 new ElementStyleOverride { Foreground = QuoteForeground }),
         ]);
 

@@ -33,14 +33,7 @@ dotnet_diagnostic.RS0036.severity = error
 dotnet_diagnostic.RS0037.severity = error
 dotnet_diagnostic.RS0041.severity = error
 
-# Temporary exception, resolved in step 2 of the renderer structure cleanup:
-# today's MarkdownRenderer.Core API breaks the optional-parameter overload
-# rules in two places, and changing public API is out of scope for this step.
-#   RS0026: the two MarkdownVectorTextStyle constructors both take optional
-#           parameters.
-#   RS0027: the MarkdownVectorScene constructor with an optional
-#           referenceFontSize is not its longest public overload.
-# Step 2 fixes those constructors and deletes this section, so both rules
-# return to their default severity (an error under TreatWarningsAsErrors).
-dotnet_diagnostic.RS0026.severity = suggestion
-dotnet_diagnostic.RS0027.severity = suggestion
+# Overloads and optional parameters: at most one public overload may take
+# optional parameters, and it must be the overload with the most parameters.
+dotnet_diagnostic.RS0026.severity = error
+dotnet_diagnostic.RS0027.severity = error

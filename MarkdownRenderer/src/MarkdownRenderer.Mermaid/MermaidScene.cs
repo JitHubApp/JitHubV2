@@ -3,16 +3,16 @@ using System.Collections.ObjectModel;
 namespace MarkdownRenderer.Mermaid;
 
 /// <summary>Version of the private MMIR scene transport understood by this package.</summary>
-public readonly record struct MermaidSceneVersion(ushort Major, ushort Minor)
+internal readonly record struct MermaidSceneVersion(ushort Major, ushort Minor)
 {
     public static MermaidSceneVersion Current => new(1, 1);
 }
 
 /// <summary>A device-independent viewport in Mermaid scene coordinates.</summary>
-public readonly record struct MermaidViewport(float X, float Y, float Width, float Height);
+internal readonly record struct MermaidViewport(float X, float Y, float Width, float Height);
 
 /// <summary>A packed, non-premultiplied RGBA color.</summary>
-public readonly record struct MermaidRgba32(byte Red, byte Green, byte Blue, byte Alpha)
+internal readonly record struct MermaidRgba32(byte Red, byte Green, byte Blue, byte Alpha)
 {
     internal static MermaidRgba32 FromPacked(uint value) => new(
         (byte)(value & 0xff),
@@ -22,7 +22,7 @@ public readonly record struct MermaidRgba32(byte Red, byte Green, byte Blue, byt
 }
 
 [Flags]
-public enum MermaidStyleFlags : uint
+internal enum MermaidStyleFlags : uint
 {
     None = 0,
     NonScalingStroke = 1 << 0,
@@ -31,7 +31,7 @@ public enum MermaidStyleFlags : uint
 }
 
 /// <summary>Backend-neutral paint values referenced by flattened draw commands.</summary>
-public readonly record struct MermaidSceneStyle(
+internal readonly record struct MermaidSceneStyle(
     MermaidRgba32 Stroke,
     MermaidRgba32 Fill,
     float StrokeWidth,
@@ -40,7 +40,7 @@ public readonly record struct MermaidSceneStyle(
     uint DashGeometryStart,
     uint DashGeometryCount);
 
-public enum MermaidDrawOpcode : ushort
+internal enum MermaidDrawOpcode : ushort
 {
     GroupBegin = 1,
     GroupEnd = 2,
@@ -55,7 +55,7 @@ public enum MermaidDrawOpcode : ushort
 }
 
 [Flags]
-public enum MermaidDrawFlags : ushort
+internal enum MermaidDrawFlags : ushort
 {
     None = 0,
     EvenOddFill = 1 << 0,
@@ -64,7 +64,7 @@ public enum MermaidDrawFlags : ushort
 }
 
 [Flags]
-public enum MermaidTextFlags : uint
+internal enum MermaidTextFlags : uint
 {
     None = 0,
     Italic = 1 << 0,
@@ -74,7 +74,7 @@ public enum MermaidTextFlags : uint
 }
 
 /// <summary>A flattened draw operation. Indices use -1 when a referenced item is absent.</summary>
-public readonly record struct MermaidDrawCommand(
+internal readonly record struct MermaidDrawCommand(
     MermaidDrawOpcode Opcode,
     MermaidDrawFlags Flags,
     int StyleIndex,
@@ -85,7 +85,7 @@ public readonly record struct MermaidDrawCommand(
     int FontFamilyIndex,
     MermaidTextFlags TextFlags);
 
-public enum MermaidSemanticRole : uint
+internal enum MermaidSemanticRole : uint
 {
     Diagram = 1,
     Group = 2,
@@ -96,7 +96,7 @@ public enum MermaidSemanticRole : uint
 }
 
 [Flags]
-public enum MermaidSemanticFlags : uint
+internal enum MermaidSemanticFlags : uint
 {
     None = 0,
     Focusable = 1 << 0,
@@ -106,7 +106,7 @@ public enum MermaidSemanticFlags : uint
 }
 
 /// <summary>Accessible diagram semantics independent of UI Automation or any drawing backend.</summary>
-public readonly record struct MermaidSemanticItem(
+internal readonly record struct MermaidSemanticItem(
     uint SourceId,
     MermaidSemanticRole Role,
     int NameIndex,
@@ -116,7 +116,7 @@ public readonly record struct MermaidSemanticItem(
     MermaidSemanticFlags Flags);
 
 [Flags]
-public enum MermaidLinkFlags : uint
+internal enum MermaidLinkFlags : uint
 {
     None = 0,
     External = 1 << 0,
@@ -124,20 +124,20 @@ public enum MermaidLinkFlags : uint
 }
 
 /// <summary>A declarative host-approved link or action. No executable callback crosses the native boundary.</summary>
-public readonly record struct MermaidSceneLink(
+internal readonly record struct MermaidSceneLink(
     int SemanticIndex,
     int TargetIndex,
     int ActionIndex,
     MermaidLinkFlags Flags);
 
 /// <summary>A mapping from a native source ID to a public UTF-16 source range.</summary>
-public readonly record struct MermaidSceneSourceMapping(
+internal readonly record struct MermaidSceneSourceMapping(
     uint SourceId,
     MermaidSourceRange SourceRange,
     int SemanticIndex);
 
 /// <summary>An immutable flattened Mermaid scene. It contains no Win2D, Merman, or native lifetime objects.</summary>
-public sealed class MermaidScene
+internal sealed class MermaidScene
 {
     internal MermaidScene(
         MermaidSceneVersion version,

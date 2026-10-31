@@ -5,8 +5,15 @@ using System.Text;
 namespace MarkdownRenderer.Mermaid;
 
 /// <summary>
-/// Coordinates bounded native Mermaid requests and always returns an atomic original-code fallback on failure.
+/// Owns the native Mermaid engine, its scene cache and its render budgets.
+/// Pass one instance to
+/// <see cref="MermaidMarkdownExtensions.UseMermaid(MarkdownEngineBuilder, MermaidRenderer)"/>
+/// to share them across engines; the caller disposes it.
 /// </summary>
+/// <remarks>
+/// Requests are bounded, and a failed request always falls back to the
+/// original fenced code.
+/// </remarks>
 public sealed class MermaidRenderer : IDisposable
 {
     private const int NativeCopyChunkBytes = 1024 * 1024;
@@ -62,7 +69,7 @@ public sealed class MermaidRenderer : IDisposable
 
     public MermaidNativeRuntimeInfo RuntimeInfo => MermaidNativeRuntime.Probe();
 
-    public ValueTask<MermaidRenderResult> RenderAsync(
+    internal ValueTask<MermaidRenderResult> RenderAsync(
         string source,
         CancellationToken cancellationToken = default)
         => RenderCoreAsync(source, cancellationToken, scheduleNativeRender: true);
