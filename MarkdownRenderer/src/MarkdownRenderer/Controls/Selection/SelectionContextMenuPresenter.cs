@@ -83,6 +83,12 @@ internal sealed class SelectionContextMenuPresenter
     /// </param>
     /// <param name="requiredSnapshotGeneration">The generation that goes with <paramref name="requiredSnapshot"/>.</param>
     /// <param name="requiredLayoutRevision">The layout revision that goes with <paramref name="requiredSnapshot"/>.</param>
+    /// <remarks>
+    /// Kept whole: building the target, attaching its commands and opening
+    /// the flyout can each reenter XAML, and every exit path must dispose the
+    /// target it created, so the currency checks and disposals stay in one
+    /// method.
+    /// </remarks>
     internal bool Show(
         Point placementPoint,
         bool touchSelection = false,

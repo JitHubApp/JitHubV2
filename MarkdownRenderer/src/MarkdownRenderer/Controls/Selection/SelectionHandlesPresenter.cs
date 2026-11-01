@@ -35,6 +35,12 @@ namespace MarkdownRenderer.Controls.Selection;
 /// continues, and it retires a drag whose capture was lost without a
 /// routed terminal.
 /// </para>
+/// <para>
+/// This file is longer than 500 lines because placement and the drag
+/// lifecycle (press, frame-coalesced move, release, cancel and silent
+/// capture loss) read and reset the same drag fields; splitting them would
+/// make one class reset another's state.
+/// </para>
 /// </remarks>
 internal sealed class SelectionHandlesPresenter
 {
@@ -154,6 +160,10 @@ internal sealed class SelectionHandlesPresenter
     }
 
     /// <summary>Places the handles at the selection's endpoints while the snapshot paint lease is held.</summary>
+    /// <remarks>
+    /// Kept whole: each endpoint's availability, placement and visibility
+    /// must be decided from the same viewport and snapshot in one pass.
+    /// </remarks>
     internal void UpdateUnderPaint(LayoutSnapshot snapshot, Rect viewport)
     {
         if (snapshot.GeometryRecoveryRequired || snapshot.IsRetiringOrDisposed ||
@@ -274,6 +284,11 @@ internal sealed class SelectionHandlesPresenter
     }
 
     /// <summary>Starts a drag when a primary contact presses a placed handle.</summary>
+    /// <remarks>
+    /// Kept whole: the drag state is set before the touch session, the tap
+    /// policy and the capture accept it, and each failed step resets every
+    /// field set before it.
+    /// </remarks>
     internal void ProcessPointerPressed(ref PointerInput e)
     {
         if (e.Sender is not Button { Tag: SelectionHandleEndpoint endpoint } handle ||

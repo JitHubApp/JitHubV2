@@ -24,6 +24,11 @@ namespace MarkdownRenderer.Controls.Input;
 /// are followed by a check that the snapshot, generation and layout
 /// revision are still published.
 /// </para>
+/// <para>
+/// This file is longer than 500 lines because press, move, release and
+/// cancel share the session, anchor and click state, and each ordering rule
+/// keeps its explanation next to the code it constrains.
+/// </para>
 /// </remarks>
 internal sealed class DocumentPointerInteraction
 {
@@ -139,6 +144,13 @@ internal sealed class DocumentPointerInteraction
     /// Begins a text selection, a multi-click selection or a link press, or
     /// lets the press through to a hosted embed or code block action.
     /// </summary>
+    /// <remarks>
+    /// Kept whole: the press is classified in priority order (touch contact,
+    /// horizontal overflow drag, primary-button policy, selection handles,
+    /// code block action, embed, then text or a linked vector), and the
+    /// layout currency check must follow the focus move before any geometry
+    /// is read.
+    /// </remarks>
     internal void ProcessPressed(ref PointerInput e)
     {
         if (_published.Snapshot is not { } snapshot || _surface.Canvas is null)

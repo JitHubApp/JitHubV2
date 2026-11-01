@@ -253,6 +253,11 @@ internal sealed class PointerInputRouter
     /// Dispatches a routed pointer event from the canvas, a selection handle
     /// or the drag shield.
     /// </summary>
+    /// <remarks>
+    /// Kept whole: cancel classification must precede input creation, the
+    /// immediate path and deferral, and the source-contract harness checks
+    /// that order within this method.
+    /// </remarks>
     internal void DispatchPointerInput(PointerInputKind kind, object sender, PointerRoutedEventArgs args)
     {
         if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _resetting || _surface.Canvas is null || _published.Snapshot is not { } snapshot)
