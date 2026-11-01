@@ -163,4 +163,62 @@ internal static class LinkTargets
             return MarkdownLinkDisposition.NewView;
         return MarkdownLinkDisposition.CurrentView;
     }
+
+    /// <summary>The link of the vector scene item under <paramref name="point"/>, or null.</summary>
+    internal static LinkTarget? FindVectorLinkTargetAtPoint(LayoutSnapshot snapshot, Point point)
+    {
+        foreach (BlockBox block in snapshot.Blocks)
+        {
+            if (TryGetVectorLinkAtPointInBlock(block, point, out var vector, out var link))
+            {
+                MarkdownVectorSemanticItem? semantic = vector.GetSemanticItem(link.SemanticIndex);
+                return new LinkTarget(
+                    link.Target ?? string.Empty,
+                    semantic?.Description,
+                    semantic?.SourceSpan ?? vector.SourceRange,
+                    null,
+                    link.Action,
+                    link.External);
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>The link at <paramref name="pos"/>, optionally bounded to <paramref name="point"/>, or null.</summary>
+    internal static LinkTarget? FindLinkTargetAt(
+        LayoutSnapshot snapshot,
+        DocumentPosition pos,
+        Point? point = null)
+    {
+        foreach (var b in snapshot.Blocks)
+        {
+            if (FindLinkTargetInBlock(b, pos, point) is { } found) return found;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Captures what activating the link under <paramref name="point"/> would
+    /// do, so the activation can run after the snapshot lease ends.
+    /// </summary>
+    internal static bool TryCreateActivationIntent(
+        LayoutSnapshot snapshot,
+        Point point,
+        MarkdownLinkInputKind inputKind,
+        MarkdownInputModifiers modifiers,
+        out LinkActivationIntent intent)
+    {
+        LinkTarget? link = FindVectorLinkTargetAtPoint(snapshot, point);
+        if (link is null && snapshot.HitTest(point, out var position))
+            link = FindLinkTargetAt(snapshot, position, point);
+        if (link is null)
+        {
+            intent = default;
+            return false;
+        }
+
+        intent = new LinkActivationIntent(link.Value, inputKind, modifiers);
+        return true;
+    }
 }

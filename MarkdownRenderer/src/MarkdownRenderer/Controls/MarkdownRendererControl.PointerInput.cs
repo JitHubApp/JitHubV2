@@ -18,7 +18,7 @@ public partial class MarkdownRendererControl
     // and queued input likewise must finish against their original geometry.
     // Read only on the UI dispatcher, including the final publication fence.
     private bool HasSnapshotPointerInteraction =>
-        _pointerSession.IsActive || _horizontalOverflowPointerId != 0 ||
+        _document.HasActiveSession || _horizontalOverflowDrag.PointerId != 0 ||
         _handles.DragPointerId != 0 || _drainingPointerInput ||
         _deferredPointerCaptures.Count != 0 ||
         (_deferredPointerInput?.HasBlockingSnapshotInteractions ?? false);
@@ -261,7 +261,7 @@ public partial class MarkdownRendererControl
         if (!candidate)
             return false;
         if (input.Kind == PointerInputKind.Tap &&
-            IsSuppressedTouchGesture(input.TouchTapGestureEpoch, input.GesturePosition))
+            _touchTapSuppression.ShouldSuppressTap(input.TouchTapGestureEpoch, Environment.TickCount64, input.GesturePosition))
             return false;
         return !IsPointOverEmbed(input.GesturePosition) &&
             !IsPointOverCodeBlockAction(input.GesturePosition);
@@ -325,7 +325,7 @@ public partial class MarkdownRendererControl
         // returns before the wider touch-contact fallback probes. Do not delay
         // that common case on neighboring, unmeasured contact roots.
         if (!GestureHitTestBands.IncludesContactProbes(input) ||
-            IsSelectableTouchPoint(input.GesturePosition, snapshot, out _))
+            _document.IsSelectableTouchPoint(input.GesturePosition, snapshot, out _))
         {
             return true;
         }
@@ -381,9 +381,9 @@ public partial class MarkdownRendererControl
         if (input.ContextCaptureEnded || input.Kind is not (PointerInputKind.DoubleTap or PointerInputKind.Hold))
             return;
 
-        ClearHorizontalOverflowPointerState();
+        _horizontalOverflowDrag.Clear();
         input.ResumeRebuildAfterInteraction = true;
-        EndCapturedSelectionForContextGesture(ref input);
+        _document.EndCapturedSessionForContextGesture(ref input);
     }
 
     private bool IsDeferredGestureBandCovered(LayoutSnapshot snapshot, LazyLayoutBand band)
@@ -662,8 +662,8 @@ public partial class MarkdownRendererControl
         }
         input.CapturedBeforeDeferral |= _deferredPointerCaptures.ContainsKey(input.Pointer.PointerId);
         bool hasSnapshotPointerOwner = input.CapturedBeforeDeferral ||
-            (_pointerSession.IsActive && _pointerSession.PointerId == input.Pointer.PointerId) ||
-            (_horizontalOverflowPointerId == input.Pointer.PointerId && _horizontalOverflowPointerId != 0) ||
+            _document.IsSessionPointer(input.Pointer.PointerId) ||
+            (_horizontalOverflowDrag.PointerId == input.Pointer.PointerId && _horizontalOverflowDrag.PointerId != 0) ||
             _handles.DragPointerId == input.Pointer.PointerId;
         bool blocksSnapshotInteraction = kind is not (
             PointerInputKind.Move or PointerInputKind.Release or PointerInputKind.Cancel or PointerInputKind.Exit) ||
@@ -962,8 +962,8 @@ public partial class MarkdownRendererControl
         foreach (var capture in captures)
         {
             uint id = capture.Pointer.PointerId;
-            if ((_pointerSession.IsActive && _pointerSession.PointerId == id) ||
-                (_horizontalOverflowCaptured && _horizontalOverflowPointerId == id) ||
+            if (_document.IsSessionPointer(id) ||
+                (_horizontalOverflowDrag.IsCaptured && _horizontalOverflowDrag.PointerId == id) ||
                 _handles.DragPointerId == id)
                 continue;
             capture.Target.ReleasePointerCapture(capture.Pointer);
@@ -1138,26 +1138,26 @@ public partial class MarkdownRendererControl
 
         switch (input.Kind)
         {
-            case PointerInputKind.Press: ProcessPointerPressed(ref input); break;
-            case PointerInputKind.Move: ProcessPointerMoved(ref input); break;
-            case PointerInputKind.Release: ProcessPointerReleased(ref input); break;
-            case PointerInputKind.Cancel: ProcessPointerCanceledOrCaptureLost(ref input); break;
-            case PointerInputKind.Exit: ProcessPointerExited(ref input); break;
-            case PointerInputKind.Wheel: ProcessPointerWheelChanged(ref input); break;
+            case PointerInputKind.Press: _document.ProcessPressed(ref input); break;
+            case PointerInputKind.Move: _document.ProcessMoved(ref input); break;
+            case PointerInputKind.Release: _document.ProcessReleased(ref input); break;
+            case PointerInputKind.Cancel: _document.ProcessCanceledOrCaptureLost(ref input); break;
+            case PointerInputKind.Exit: _document.ProcessExited(ref input); break;
+            case PointerInputKind.Wheel: _horizontalOverflowDrag.ProcessWheel(ref input); break;
             case PointerInputKind.HandlePress: _handles.ProcessPointerPressed(ref input); break;
             case PointerInputKind.HandleMove: _handles.ProcessPointerMoved(ref input); break;
             case PointerInputKind.HandleRelease:
                 if (!_handles.TryProcessPointerReleased(ref input))
-                    ProcessPointerReleased(ref input);
+                    _document.ProcessReleased(ref input);
                 break;
             case PointerInputKind.HandleCancel:
                 if (!_handles.TryProcessPointerCanceled(ref input))
-                    ProcessPointerCanceledOrCaptureLost(ref input);
+                    _document.ProcessCanceledOrCaptureLost(ref input);
                 break;
-            case PointerInputKind.Tap: ProcessTapped(ref input); break;
-            case PointerInputKind.DoubleTap: ProcessDoubleTapped(ref input); break;
-            case PointerInputKind.Hold: ProcessHolding(ref input); break;
-            case PointerInputKind.RightTap: ProcessRightTapped(ref input); break;
+            case PointerInputKind.Tap: _touchGestures.ProcessTapped(ref input); break;
+            case PointerInputKind.DoubleTap: _touchGestures.ProcessDoubleTapped(ref input); break;
+            case PointerInputKind.Hold: _touchGestures.ProcessHolding(ref input); break;
+            case PointerInputKind.RightTap: _touchGestures.ProcessRightTapped(ref input); break;
         }
     }
 
@@ -1196,9 +1196,8 @@ public partial class MarkdownRendererControl
     private void CancelDeferredGesture()
     {
         ResetDeferredPointerInput();
-        _pointerSession = default;
-        _selectionAnchor = null;
-        ClearHorizontalOverflowPointerState();
+        _document.EndSession();
+        _horizontalOverflowDrag.Clear();
         _handles.ResetDrag();
         _touchTapSuppression.Reset();
         _touchSelection.Reset();

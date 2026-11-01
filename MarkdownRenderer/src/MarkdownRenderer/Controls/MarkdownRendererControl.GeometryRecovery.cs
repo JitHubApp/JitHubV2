@@ -29,7 +29,7 @@ public partial class MarkdownRendererControl
         // waiting for a release that can no longer safely hit-test this tree.
         TryGeometryRecoveryCleanup(ResetDeferredPointerInput);
         TryGeometryRecoveryCleanup(ResetVectorCapacityObserver);
-        ClearHorizontalOverflowPointerState();
+        _horizontalOverflowDrag.Clear();
         ClearPendingFocusGeometryWork();
         _adorner.ClearGeometry();
         // This tuple describes re-publication of this snapshot's geometry, not

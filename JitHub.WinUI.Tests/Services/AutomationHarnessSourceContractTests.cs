@@ -651,18 +651,26 @@ public sealed class AutomationHarnessSourceContractTests
             "Controls",
             "Selection",
             "SelectionContextMenuPresenter.cs")).Replace("\r\n", "\n", StringComparison.Ordinal);
+        string gestureSource = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "MarkdownRenderer",
+            "src",
+            "MarkdownRenderer",
+            "Controls",
+            "Input",
+            "TouchGestureInteraction.cs")).Replace("\r\n", "\n", StringComparison.Ordinal);
 
         Assert.Contains("case VirtualKey.F10 when shift && _selection.IsActive", source, StringComparison.Ordinal);
         Assert.Contains("_contextMenu.Show(_contextMenu.GetKeyboardPoint())", source, StringComparison.Ordinal);
 
-        int rightTappedStart = source.IndexOf("private void ProcessRightTapped(ref PointerInput e)", StringComparison.Ordinal);
-        int rightTappedEnd = source.IndexOf("\n    }\n", rightTappedStart, StringComparison.Ordinal);
+        int rightTappedStart = gestureSource.IndexOf("internal void ProcessRightTapped(ref PointerInput e)", StringComparison.Ordinal);
+        int rightTappedEnd = gestureSource.IndexOf("\n    }\n", rightTappedStart, StringComparison.Ordinal);
         Assert.True(rightTappedStart >= 0 && rightTappedEnd > rightTappedStart);
-        string rightTapped = source[rightTappedStart..rightTappedEnd];
+        string rightTapped = gestureSource[rightTappedStart..rightTappedEnd];
         Assert.Contains("long snapshotGeneration = _published.Generation;", rightTapped, StringComparison.Ordinal);
         Assert.Contains("if (touchOrPen && (!_selection.IsActive || !IsPointInsideSelection(snapshot, pt)))", rightTapped, StringComparison.Ordinal);
         Assert.Contains("TrySelectWordForTouchContext(\n                pt,\n                snapshot,\n                snapshotGeneration,\n                layoutRevision,", rightTapped, StringComparison.Ordinal);
-        Assert.Contains("if (!IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))", rightTapped, StringComparison.Ordinal);
+        Assert.Contains("if (!_host.IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))", rightTapped, StringComparison.Ordinal);
         Assert.Contains("e.ShowContextMenuAfterInteraction = true;", rightTapped, StringComparison.Ordinal);
         Assert.Contains("e.TouchSelectionContextMenu = touchOrPen;", rightTapped, StringComparison.Ordinal);
 

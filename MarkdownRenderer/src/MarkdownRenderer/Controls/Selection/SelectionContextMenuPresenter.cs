@@ -4,7 +4,6 @@ using MarkdownRenderer.Diagnostics;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Selection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
