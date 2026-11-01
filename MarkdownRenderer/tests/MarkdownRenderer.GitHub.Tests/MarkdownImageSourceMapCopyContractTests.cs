@@ -1,9 +1,9 @@
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using System.Threading.Tasks;
 using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Controls;
+using MarkdownRenderer.Controls.Selection;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.GitHub;
@@ -24,9 +24,6 @@ namespace MarkdownRenderer.GitHub.Tests;
 
 public sealed class MarkdownImageSourceMapCopyContractTests
 {
-    private const BindingFlags PrivateStatic = BindingFlags.Static | BindingFlags.NonPublic;
-    private const BindingFlags PrivateInstance = BindingFlags.Instance | BindingFlags.NonPublic;
-
     [Fact]
     public async Task PromotedImageAfterTextKeepsAtomicEndInDocumentAndSourceCopy()
     {
@@ -56,8 +53,8 @@ public sealed class MarkdownImageSourceMapCopyContractTests
         Assert.Equal(imageMarkdown, snapshot.SourceMap.Slice(imageRange));
         Assert.Equal(source, snapshot.SourceMap.Slice(fullRange));
 
-        object payload = InvokeRenderedSelectionPayload(snapshot, fullRange);
-        Assert.Equal(semantic.Text, ReadPayloadField(payload, "Text"));
+        RenderedSelectionPayload payload = SelectionCommands.GetRenderedSelectionPayload(snapshot, fullRange);
+        Assert.Equal(semantic.Text, payload.Text);
     }
 
     [Fact]
@@ -127,22 +124,6 @@ public sealed class MarkdownImageSourceMapCopyContractTests
             semantic,
             hosted.BlockIndex,
             Assert.Single(semantic.TextSpans, span => ReferenceEquals(span.HostedElementBox, hosted)));
-    }
-
-    private static object InvokeRenderedSelectionPayload(LayoutSnapshot snapshot, DocumentRange range)
-    {
-        MethodInfo method = typeof(MarkdownRendererControl).GetMethod(
-            "GetRenderedSelectionPayload", PrivateStatic)
-            ?? throw new InvalidOperationException("The control rendered-selection payload helper was not found.");
-        return method.Invoke(null, new object[] { snapshot, range })
-            ?? throw new InvalidOperationException("The control returned no rendered-selection payload.");
-    }
-
-    private static string ReadPayloadField(object payload, string fieldName)
-    {
-        FieldInfo field = payload.GetType().GetField(fieldName, PrivateInstance)
-            ?? throw new InvalidOperationException($"Rendered-selection payload field '{fieldName}' was not found.");
-        return Assert.IsType<string>(field.GetValue(payload));
     }
 
     private static async Task<LayoutSnapshot> Build(string source)

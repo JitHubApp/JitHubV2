@@ -49,7 +49,7 @@ namespace MarkdownRenderer.Controls;
 /// <see cref="Canvas"/> overlay for hosted WinUI embeds.
 /// </summary>
 public abstract partial class MarkdownRendererControl : UserControl, IDisposable, IAsyncDisposable, IMarkdownEnvironmentListener,
-    IMarkdownPerformanceLegacyParser, ISelectionAdornerHost
+    IMarkdownPerformanceLegacyParser, ISelectionAdornerHost, ISelectionCommandsHost, ISelectionDismissalHost
 {
     private readonly MarkdownViewSurface _surface;
     private readonly MarkdownViewLifetime _lifetime = new();
@@ -59,6 +59,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private readonly PointerCursorPresenter _cursor;
     private readonly AbbreviationTooltipPresenter _abbreviationTooltip;
     private readonly SelectionAdornerPresenter _adorner;
+    private readonly SelectionCommands _selectionCommands;
+    private readonly SelectionDismissalHook _selectionDismissal;
     private AppWindow? _windowLifecycleAppWindow;
     private WindowLifecycleSubscription? _windowLifecycleSubscription;
     private bool _scrollViewIntermediate;
@@ -765,9 +767,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private bool _suppressNextFocusPromotion;
     private bool _contextMenuOpen;
     private MenuFlyout? _selectionContextMenu;
-    private UIElement? _selectionDismissalRoot;
-    private PointerEventHandler? _selectionDismissalPointerPressedHandler;
-    private KeyEventHandler? _selectionCopyKeyDownHandler;
 
     // Lazy-load queue: all ImageBox instances in the current snapshot.
     // EnsureLoading() is called for each when its bounds enter the
@@ -2801,6 +2800,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _cursor = new PointerCursorPresenter(cursor => ProtectedCursor = cursor);
         _abbreviationTooltip = new AbbreviationTooltipPresenter(this, _surface, _lifetime, _hover);
         _adorner = new SelectionAdornerPresenter(this, this, _surface, _lifetime, _published, _viewport, _selection, _hover);
+        _selectionCommands = new SelectionCommands(this, _published, _selection);
+        _selectionDismissal = new SelectionDismissalHook(this, this, _surface, _lifetime, _published, _selection, _selectionCommands);
         _canvasPointerMovedHandler = OnPointerMoved;
         _canvasPointerReleasedHandler = OnPointerReleased;
         _canvasPointerCanceledHandler = OnPointerCanceledOrCaptureLost;
@@ -3099,116 +3100,28 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     }
 
     private bool IsElementWithinRenderer(DependencyObject element)
-        => IsElementWithin(element, this);
+        => VisualTreeAncestry.IsWithin(element, this);
 
-    private bool IsElementWithinCodeBlockAction(DependencyObject element)
+    bool ISelectionDismissalHost.IsElementWithinCodeBlockAction(DependencyObject element)
     {
         foreach (var plan in _codeBlockActionPlans)
         {
-            if (plan.Realized is DependencyObject realized && IsElementWithin(element, realized))
+            if (plan.Realized is DependencyObject realized && VisualTreeAncestry.IsWithin(element, realized))
                 return true;
         }
 
         return false;
     }
 
-    private bool IsElementWithinSelectionHandle(DependencyObject element)
+    bool ISelectionDismissalHost.IsElementWithinSelectionHandle(DependencyObject element)
     {
-        return (_selectionStartHandle is not null && IsElementWithin(element, _selectionStartHandle)) ||
-               (_selectionEndHandle is not null && IsElementWithin(element, _selectionEndHandle));
+        return (_selectionStartHandle is not null && VisualTreeAncestry.IsWithin(element, _selectionStartHandle)) ||
+               (_selectionEndHandle is not null && VisualTreeAncestry.IsWithin(element, _selectionEndHandle));
     }
 
-    private static bool IsElementWithin(DependencyObject element, DependencyObject ancestor)
-    {
-        for (DependencyObject? current = element; current is not null;)
-        {
-            if (ReferenceEquals(current, ancestor))
-                return true;
+    bool ISelectionDismissalHost.IsPointOverEmbed(Point canvasPoint) => IsPointOverEmbed(canvasPoint);
 
-            try { current = VisualTreeHelper.GetParent(current); }
-            catch { return false; }
-        }
-
-        return false;
-    }
-
-    private void RegisterSelectionDismissalHook()
-    {
-        if (_selectionDismissalRoot is not null)
-            return;
-
-        var root = XamlRoot?.Content as UIElement;
-        if (root is null)
-            return;
-
-        _selectionDismissalPointerPressedHandler = OnAppRootPointerPressed;
-        root.AddHandler(UIElement.PointerPressedEvent, _selectionDismissalPointerPressedHandler, handledEventsToo: true);
-        _selectionCopyKeyDownHandler = OnAppRootKeyDown;
-        root.AddHandler(UIElement.KeyDownEvent, _selectionCopyKeyDownHandler, handledEventsToo: true);
-        _selectionDismissalRoot = root;
-    }
-
-    private void UnregisterSelectionDismissalHook()
-    {
-        if (_selectionDismissalRoot is not null && _selectionDismissalPointerPressedHandler is not null)
-        {
-            try { _selectionDismissalRoot.RemoveHandler(UIElement.PointerPressedEvent, _selectionDismissalPointerPressedHandler); }
-            catch { }
-        }
-
-        if (_selectionDismissalRoot is not null && _selectionCopyKeyDownHandler is not null)
-        {
-            try { _selectionDismissalRoot.RemoveHandler(UIElement.KeyDownEvent, _selectionCopyKeyDownHandler); }
-            catch { }
-        }
-
-        _selectionDismissalRoot = null;
-        _selectionDismissalPointerPressedHandler = null;
-        _selectionCopyKeyDownHandler = null;
-    }
-
-    private void OnAppRootPointerPressed(object sender, PointerRoutedEventArgs e)
-    {
-        if (_lifetime.IsUnloaded)
-            return;
-
-        var point = e.GetCurrentPoint(sender as UIElement ?? this);
-        var properties = point.Properties;
-        if (properties.IsRightButtonPressed || properties.IsMiddleButtonPressed || properties.IsXButton1Pressed || properties.IsXButton2Pressed)
-            return;
-
-        if (e.OriginalSource is DependencyObject source && IsElementWithinRenderer(source))
-        {
-            MarkdownSelectionCoordinator.ClearSelectionsExcept(this);
-            if (IsElementWithinCodeBlockAction(source))
-                return;
-            if (IsElementWithinSelectionHandle(source))
-                return;
-
-            bool overCanvas = IsPointerOverCanvasTextSurface(e, out var canvasPoint);
-            bool overEmbed = overCanvas && IsPointOverEmbed(canvasPoint);
-            if (!overCanvas || overEmbed)
-                ClearSelectionForExternalInteraction();
-            return;
-        }
-
-        ClearSelectionForExternalInteraction();
-    }
-
-    private void OnAppRootKeyDown(object sender, KeyRoutedEventArgs e)
-    {
-        if (_lifetime.IsUnloaded || _published.Snapshot is null || !_selection.IsActive)
-            return;
-
-        bool ctrl = (Microsoft.UI.Input.InputKeyboardSource
-            .GetKeyStateForCurrentThread(VirtualKey.Control) & Windows.UI.Core.CoreVirtualKeyStates.Down)
-            == Windows.UI.Core.CoreVirtualKeyStates.Down;
-        if (!ctrl || e.Key != VirtualKey.C)
-            return;
-
-        if (ExecuteSelectionCommand(MarkdownCommandKind.CopyRendered))
-            e.Handled = true;
-    }
+    void ISelectionDismissalHost.ClearSelectionForExternalInteraction() => ClearSelectionForExternalInteraction();
 
     /// <summary>
     /// Copies the active selection to the clipboard.
@@ -3216,123 +3129,16 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     /// <param name="options">Optional copy format options. Defaults use rendered plain text and add CF_HTML.</param>
     /// <returns>True when a selection was copied successfully.</returns>
     public bool CopySelectionToClipboard(MarkdownCopyOptions? options = null)
-    {
-        var snapshot = _published.Snapshot;
-        if (snapshot is null || !_selection.IsActive)
-            return false;
-
-        bool succeeded;
-        try
-        {
-            var effectiveOptions = options ?? MarkdownCopyOptions.Default;
-            string? renderedText = null;
-            string? renderedHtml = null;
-            if (effectiveOptions.PlainTextMode == MarkdownPlainTextCopyMode.RenderedText ||
-                effectiveOptions.IncludeHtml)
-            {
-                var rendered = GetRenderedSelectionPayload(snapshot, _selection.Range);
-                if (effectiveOptions.PlainTextMode == MarkdownPlainTextCopyMode.RenderedText)
-                    renderedText = rendered.Text;
-                if (effectiveOptions.IncludeHtml)
-                    renderedHtml = rendered.Html;
-            }
-
-            succeeded = MarkdownClipboardWriter.Copy(
-                snapshot.SourceMap,
-                _selection.Range,
-                effectiveOptions,
-                renderedText,
-                renderedHtml);
-        }
-        catch (Exception ex)
-        {
-            MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] Selection copy failed: {ex.Message}");
-            succeeded = false;
-        }
-
-        RaiseCopyCompleted(MarkdownCopyKind.Selection, succeeded);
-        return succeeded;
-    }
+        => _selectionCommands.CopyToClipboard(options);
 
     /// <summary>Copies the active selection as exact markdown source plus CF_HTML.</summary>
     public bool CopySelectionAsMarkdown()
-        => CopySelectionToClipboard(new MarkdownCopyOptions
-        {
-            PlainTextMode = MarkdownPlainTextCopyMode.SourceMarkdown,
-            IncludeHtml = true,
-        });
+        => _selectionCommands.CopyAsMarkdown();
 
-    private bool ExecuteSelectionCommand(MarkdownCommandKind kind)
-    {
-        try
-        {
-            if (TryResolveSelectionCommand(kind, out var command, out var context))
-            {
-                if (!command.CanExecute(context))
-                    return false;
+    IMarkdownCommandProvider? ISelectionCommandsHost.CommandProvider => CommandProvider;
 
-                command.Execute(context);
-                return true;
-            }
-
-            return kind == MarkdownCommandKind.CopyMarkdown
-                ? CopySelectionAsMarkdown()
-                : CopySelectionToClipboard();
-        }
-        catch (Exception ex)
-        {
-            MarkdownDiagnostics.WriteLine(
-                $"[MarkdownRendererControl] Host command '{kind}' failed: {ex.Message}");
-            return false;
-        }
-    }
-
-    private bool CanExecuteSelectionCommandOrDefault(MarkdownCommandKind kind)
-    {
-        try
-        {
-            return !TryResolveSelectionCommand(kind, out var command, out var context) ||
-                   command.CanExecute(context);
-        }
-        catch (Exception ex)
-        {
-            MarkdownDiagnostics.WriteLine(
-                $"[MarkdownRendererControl] Host command '{kind}' query failed: {ex.Message}");
-            return false;
-        }
-    }
-
-    private bool TryResolveSelectionCommand(
-        MarkdownCommandKind kind,
-        out System.Windows.Input.ICommand command,
-        out MarkdownCommandContext context)
-    {
-        SourceSpan sourceRange = SourceSpan.Empty;
-        if (_published.Snapshot is { } snapshot && _selection.IsActive)
-            snapshot.SourceMap.TryMapRange(_selection.Range, out sourceRange);
-
-        context = new MarkdownCommandContext(kind, sourceRange);
-        command = CommandProvider?.GetCommand(context)!;
-        return command is not null;
-    }
-
-    private static RenderedSelectionPayload GetRenderedSelectionPayload(
-        LayoutSnapshot snapshot,
-        DocumentRange range)
-    {
-        var semantic = snapshot.SemanticDocument;
-        var normalized = range.Normalized();
-        int start = semantic.TextOffsetFromDocumentPosition(normalized.Start);
-        int end = semantic.TextOffsetFromDocumentPosition(normalized.End);
-        if (end < start)
-            (start, end) = (end, start);
-
-        start = Math.Clamp(start, 0, semantic.Text.Length);
-        end = Math.Clamp(end, start, semantic.Text.Length);
-        return new RenderedSelectionPayload(
-            semantic.Text.Substring(start, end - start),
-            MarkdownRenderedHtmlWriter.BuildFragment(semantic, start, end));
-    }
+    void ISelectionCommandsHost.RaiseCopyCompleted(MarkdownCopyKind kind, bool succeeded)
+        => RaiseCopyCompleted(kind, succeeded);
 
     internal void ClearSelectionFromCoordinator()
     {
@@ -3367,27 +3173,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             _pendingLazyFocus = null;
             _focusedItemIndex = -1;
             UpdateFocusRing();
-        }
-    }
-
-    private bool IsPointerOverCanvasTextSurface(PointerRoutedEventArgs e, out Point canvasPoint)
-    {
-        canvasPoint = default;
-        if (_surface.Canvas is null)
-            return false;
-
-        try
-        {
-            canvasPoint = e.GetCurrentPoint(_surface.Canvas).Position;
-            return canvasPoint.X >= 0 &&
-                   canvasPoint.Y >= 0 &&
-                   canvasPoint.X <= _surface.Canvas.ActualWidth &&
-                   canvasPoint.Y <= _surface.Canvas.ActualHeight;
-        }
-        catch
-        {
-            canvasPoint = default;
-            return false;
         }
     }
 
@@ -3466,7 +3251,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             _imageLifetimeCts = new CancellationTokenSource();
         }
         MarkdownSelectionCoordinator.Register(this);
-        RegisterSelectionDismissalHook();
+        _selectionDismissal.Register();
         _environmentSubscription?.Dispose();
         _environmentSubscription = MarkdownEnvironmentMonitor.Acquire(this, this);
         _environmentSnapshot = _environmentSubscription?.Snapshot ?? default;
@@ -3555,7 +3340,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             svgRenderer.CacheInvalidated -= OnSvgRendererCacheInvalidated;
         _environmentSubscription?.Dispose();
         _environmentSubscription = null;
-        UnregisterSelectionDismissalHook();
+        _selectionDismissal.Unregister();
         MarkdownSelectionCoordinator.Unregister(this);
         var oldCts = _pipelineCts;
         var oldTask = _pipelineTask;
@@ -12482,7 +12267,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         switch (e.Key)
         {
             case VirtualKey.C when ctrl && _selection.IsActive:
-                e.Handled = ExecuteSelectionCommand(MarkdownCommandKind.CopyRendered);
+                e.Handled = _selectionCommands.Execute(MarkdownCommandKind.CopyRendered);
                 return;
             case VirtualKey.A when MarkdownKeyboardInputPolicy.ShouldSelectAll(ctrl, IsSelectionEnabled):
                 _selection.SetAnchor(DocumentPosition.Zero);
@@ -14021,7 +13806,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         {
         }
 
-        if (focused is null || !IsElementWithin(focused, element))
+        if (focused is null || !VisualTreeAncestry.IsWithin(focused, element))
             return;
 
         // Keep the renderer's logical focus index while the native copy button
@@ -14519,12 +14304,12 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                     Text = ResolveLocalizedString(
                         MarkdownStringKeys.Copy,
                         MarkdownLocalizedStrings.ContextMenuCopy),
-                    IsEnabled = CanExecuteSelectionCommandOrDefault(
+                    IsEnabled = _selectionCommands.CanExecuteOrDefault(
                         MarkdownCommandKind.CopyRendered),
                 };
                 AutomationProperties.SetAutomationId(copyItem, "MarkdownContextCopy");
                 copyItem.Click += (_, _) =>
-                    ExecuteSelectionCommand(MarkdownCommandKind.CopyRendered);
+                    _selectionCommands.Execute(MarkdownCommandKind.CopyRendered);
                 menu.Items.Add(copyItem);
 
                 var copyMarkdownItem = new MenuFlyoutItem
@@ -14532,12 +14317,12 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                     Text = ResolveLocalizedString(
                         MarkdownStringKeys.CopyMarkdown,
                         MarkdownLocalizedStrings.ContextMenuCopyMarkdown),
-                    IsEnabled = CanExecuteSelectionCommandOrDefault(
+                    IsEnabled = _selectionCommands.CanExecuteOrDefault(
                         MarkdownCommandKind.CopyMarkdown),
                 };
                 AutomationProperties.SetAutomationId(copyMarkdownItem, "MarkdownContextCopyMarkdown");
                 copyMarkdownItem.Click += (_, _) =>
-                    ExecuteSelectionCommand(MarkdownCommandKind.CopyMarkdown);
+                    _selectionCommands.Execute(MarkdownCommandKind.CopyMarkdown);
                 menu.Items.Add(copyMarkdownItem);
             }
 

@@ -1,9 +1,9 @@
 using System.Collections.Generic;
-using System.Reflection;
 using System.Threading.Tasks;
 using System.Xml.Linq;
 using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Controls;
+using MarkdownRenderer.Controls.Selection;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.GitHub;
@@ -20,9 +20,6 @@ namespace MarkdownRenderer.GitHub.Tests;
 
 public sealed class MarkdownRenderedSelectionPayloadTerminalCodeTests
 {
-    private const BindingFlags PrivateStatic = BindingFlags.Static | BindingFlags.NonPublic;
-    private const BindingFlags PrivateInstance = BindingFlags.Instance | BindingFlags.NonPublic;
-
     [Theory]
     [InlineData("\n")]
     [InlineData("\r\n")]
@@ -43,30 +40,14 @@ public sealed class MarkdownRenderedSelectionPayloadTerminalCodeTests
         Assert.Equal(0, semantic.TextOffsetFromDocumentPosition(range.Start));
         Assert.Equal(semantic.Text.Length, semantic.TextOffsetFromDocumentPosition(range.End));
 
-        object payload = InvokeRenderedSelectionPayload(snapshot, range);
-        Assert.Equal(expected, ReadPayloadField(payload, "Text"));
+        RenderedSelectionPayload payload = SelectionCommands.GetRenderedSelectionPayload(snapshot, range);
+        Assert.Equal(expected, payload.Text);
 
-        string html = ReadPayloadField(payload, "Html");
+        string html = payload.Html;
         XElement root = XElement.Parse(html, LoadOptions.PreserveWhitespace);
         XElement code = Assert.Single(root.Descendants("code"));
         Assert.Equal(expected, code.Value);
         Assert.Equal(expected, root.Value);
-    }
-
-    private static object InvokeRenderedSelectionPayload(LayoutSnapshot snapshot, DocumentRange range)
-    {
-        MethodInfo method = typeof(MarkdownRendererControl).GetMethod(
-            "GetRenderedSelectionPayload", PrivateStatic)
-            ?? throw new InvalidOperationException("The control rendered-selection payload helper was not found.");
-        return method.Invoke(null, new object[] { snapshot, range })
-            ?? throw new InvalidOperationException("The control returned no rendered-selection payload.");
-    }
-
-    private static string ReadPayloadField(object payload, string fieldName)
-    {
-        FieldInfo field = payload.GetType().GetField(fieldName, PrivateInstance)
-            ?? throw new InvalidOperationException($"Rendered-selection payload field '{fieldName}' was not found.");
-        return Assert.IsType<string>(field.GetValue(payload));
     }
 
     private static async Task<LayoutSnapshot> Build(string source)
