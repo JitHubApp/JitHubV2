@@ -27,7 +27,7 @@ public partial class MarkdownRendererControl
 
         // Deferred presses/captured handles must not keep the Full request
         // waiting for a release that can no longer safely hit-test this tree.
-        TryGeometryRecoveryCleanup(ResetDeferredPointerInput);
+        TryGeometryRecoveryCleanup(_pointerInput.Reset);
         TryGeometryRecoveryCleanup(ResetVectorCapacityObserver);
         _horizontalOverflowDrag.Clear();
         ClearPendingFocusGeometryWork();

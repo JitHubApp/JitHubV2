@@ -51,7 +51,7 @@ namespace MarkdownRenderer.Controls;
 public abstract partial class MarkdownRendererControl : UserControl, IDisposable, IAsyncDisposable, IMarkdownEnvironmentListener,
     IMarkdownPerformanceLegacyParser, ISelectionAdornerHost, ISelectionCommandsHost, ISelectionDismissalHost,
     ISelectionHandlesHost, ISelectionContextMenuHost, IPointerInputSink, IPointerInteractionHost,
-    IHorizontalOverflowPointerHost
+    IHorizontalOverflowPointerHost, IPointerInputRouterHost, IDeferredGestureLayoutHost
 {
     private readonly MarkdownViewSurface _surface;
     private readonly MarkdownViewLifetime _lifetime = new();
@@ -70,6 +70,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private readonly HorizontalOverflowPointerDrag _horizontalOverflowDrag;
     private readonly DocumentPointerInteraction _document;
     private readonly TouchGestureInteraction _touchGestures;
+    private readonly PointerInputRouter _pointerInput;
+    private readonly CanvasPointerEvents _canvasPointerEvents;
     private AppWindow? _windowLifecycleAppWindow;
     private WindowLifecycleSubscription? _windowLifecycleSubscription;
     private bool _scrollViewIntermediate;
@@ -243,10 +245,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private IMarkdownSvgRenderer? _subscribedSvgRenderer;
     private IMarkdownPerformanceSessionInternal? _subscribedPerformanceSession;
     private bool _canvasRenderHandlersAttached;
-    private readonly PointerEventHandler _canvasPointerMovedHandler;
-    private readonly PointerEventHandler _canvasPointerReleasedHandler;
-    private readonly PointerEventHandler _canvasPointerCanceledHandler;
-    private readonly PointerEventHandler _canvasPointerCaptureLostHandler;
     private readonly struct InlineEmbedPlacementUpdate(
         WeakReference<InlineEmbedPlan> Plan,
         Rect Rect)
@@ -2772,10 +2770,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _horizontalOverflowDrag = new HorizontalOverflowPointerDrag(this, _surface, _published, _touchTapSuppression);
         _document = new DocumentPointerInteraction(this, _surface, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, _horizontalOverflowDrag, _handles, _autoScroll, _dragShield, _adorner, _contextMenu, new PointerHoverTracker(this, _published, _hover, _cursor, _abbreviationTooltip), _cursor, _abbreviationTooltip);
         _touchGestures = new TouchGestureInteraction(this, this, _surface, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, _horizontalOverflowDrag, _document);
-        _canvasPointerMovedHandler = OnPointerMoved;
-        _canvasPointerReleasedHandler = OnPointerReleased;
-        _canvasPointerCanceledHandler = OnPointerCanceledOrCaptureLost;
-        _canvasPointerCaptureLostHandler = OnPointerCanceledOrCaptureLost;
+        _pointerInput = new PointerInputRouter(this, this, DispatcherQueue, _surface, _lifetime, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, _handles, _document, _horizontalOverflowDrag, _touchGestures, _contextMenu, _adorner, _dragShield);
+        _canvasPointerEvents = new CanvasPointerEvents(_surface, _pointerInput);
         IsTabStop = true;
         Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
         Loaded += (_, _) => OnLoadedInternal();
@@ -2819,17 +2815,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     {
         if (_lifetime.IsDisposed || _surface.TryCreateCanvas() is not { } canvas)
             return;
-        canvas.PointerPressed += OnPointerPressed;
-        canvas.PointerWheelChanged += OnPointerWheelChanged;
-        canvas.PointerExited += OnPointerExited;
-        canvas.Tapped += OnTapped;
-        canvas.DoubleTapped += OnDoubleTapped;
-        canvas.Holding += OnHolding;
-        canvas.RightTapped += OnRightTapped;
-        canvas.AddHandler(UIElement.PointerMovedEvent, _canvasPointerMovedHandler, handledEventsToo: true);
-        canvas.AddHandler(UIElement.PointerReleasedEvent, _canvasPointerReleasedHandler, handledEventsToo: true);
-        canvas.AddHandler(UIElement.PointerCanceledEvent, _canvasPointerCanceledHandler, handledEventsToo: true);
-        canvas.AddHandler(UIElement.PointerCaptureLostEvent, _canvasPointerCaptureLostHandler, handledEventsToo: true);
+        _canvasPointerEvents.Attach(canvas);
         AttachCanvasRenderHandlers();
     }
 
@@ -2996,7 +2982,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // only touch ownership, handles, flyouts, and pending input are reset.
         _pendingTouchSelectionPresentationRestore = null;
         _touchTapSuppression.Reset();
-        ResetDeferredPointerInput();
+        _pointerInput.Reset();
         ResetTransientInteractionState(clearSelection: false);
         _touchTapSuppression.RequireAcceptedContactForRecognizedGesture();
         _handles.Update();
@@ -3120,7 +3106,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         => TryHitTestEmbed(point, out position);
 
     bool ISelectionHandlesHost.HasDeferredInputFor(uint pointerId)
-        => _deferredPointerCaptures.ContainsKey(pointerId) || HasQueuedPointerInput(pointerId);
+        => _pointerInput.HasDeferredInputFor(pointerId);
 
     void ISelectionHandlesHost.ResumePendingRebuildAfterPointerInteraction()
         => ResumePendingRebuildAfterPointerInteraction();
@@ -3191,10 +3177,61 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         => RefreshHorizontalOverflowVisualState(target, oldOffset);
 
     void IPointerInputSink.DispatchPointerInput(PointerInputKind kind, object sender, PointerRoutedEventArgs args)
-        => DispatchPointerInput(kind, sender, args);
+        => _pointerInput.DispatchPointerInput(kind, sender, args);
 
     bool IPointerInputSink.DispatchRecognizedGesture(PointerInputKind kind, Point point, Microsoft.UI.Input.PointerDeviceType device)
-        => DispatchRecognizedGesture(kind, point, device);
+        => _pointerInput.DispatchRecognizedGesture(kind, point, device);
+
+    bool IPointerInputRouterHost.RequestGeometryRecoveryIfRequired(LayoutSnapshot? snapshot)
+        => RequestGeometryRecoveryIfRequired(snapshot);
+
+    void IPointerInputRouterHost.ResumePendingRebuildAfterPointerInteraction()
+        => ResumePendingRebuildAfterPointerInteraction();
+
+    void IPointerInputRouterHost.ClearSelectionForExternalInteraction(bool resetClickTracking, bool resetDeferredPointerInput)
+        => ClearSelectionForExternalInteraction(resetClickTracking, resetDeferredPointerInput);
+
+    bool IPointerInputRouterHost.ActivateLinkIntent(
+        LinkActivationIntent intent,
+        LayoutSnapshot snapshot,
+        long snapshotGeneration,
+        long layoutRevision)
+        => ActivateLinkIntent(intent, snapshot, snapshotGeneration, layoutRevision);
+
+    double IDeferredGestureLayoutHost.RasterizationScale => XamlRoot?.RasterizationScale ?? 1;
+
+    bool IDeferredGestureLayoutHost.IsPointOverEmbed(Point point) => IsPointOverEmbed(point);
+
+    bool IDeferredGestureLayoutHost.IsPointOverCodeBlockAction(Point point) => IsPointOverCodeBlockAction(point);
+
+    bool IDeferredGestureLayoutHost.IsLayoutPublicationPending(LayoutSnapshot snapshot) =>
+        _publishingLayoutCommit ||
+        _pendingLayoutCommit is not null || _appliedLazyLayoutRevision < snapshot.LayoutRevision;
+
+    bool IDeferredGestureLayoutHost.IsLazyLayoutBandCovered(LayoutSnapshot snapshot, LazyLayoutBand band)
+    {
+        bool active = _lazyLayoutCts is { IsCancellationRequested: false } &&
+            ReferenceEquals(snapshot, _activeLazyLayoutSnapshot) &&
+            _activeLazyLayoutRevision == snapshot.LayoutRevision &&
+            band.Top >= _activeLazyLayoutBand.Top && band.Bottom <= _activeLazyLayoutBand.Bottom;
+        bool pending = _hasPendingLazyLayoutBand &&
+            ReferenceEquals(snapshot, _pendingLazyLayoutSnapshot) &&
+            band.Top >= _pendingLazyLayoutBand.Top && band.Bottom <= _pendingLazyLayoutBand.Bottom;
+        return active || pending;
+    }
+
+    bool IDeferredGestureLayoutHost.HasSupersedingLazyLayoutRequest(LayoutSnapshot snapshot) =>
+        (_lazyLayoutCts is { IsCancellationRequested: false } &&
+         ReferenceEquals(snapshot, _activeLazyLayoutSnapshot)) ||
+        (_hasPendingLazyLayoutBand && ReferenceEquals(snapshot, _pendingLazyLayoutSnapshot)) ||
+        (_lazyLayoutDispatchQueued && ReferenceEquals(snapshot, _pendingLazyLayoutSnapshot));
+
+    void IDeferredGestureLayoutHost.QueueLazyLayoutForBand(
+        LayoutSnapshot snapshot,
+        LazyLayoutBand band,
+        LazyLayoutBand visibleVectorBand,
+        bool preserveScrollAnchor)
+        => QueueLazyLayoutForBand(snapshot, band, visibleVectorBand, preserveScrollAnchor);
 
     internal void ClearSelectionFromCoordinator()
     {
@@ -3209,7 +3246,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _touchTapSuppression.Reset();
         _contextMenu.Close();
         if (resetDeferredPointerInput)
-            ResetDeferredPointerInput();
+            _pointerInput.Reset();
         _document.ResetSession();
         _handles.ResetDrag();
         _touchSelection.Reset();
@@ -3353,7 +3390,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         StopCanvasDeviceRecovery();
         StopImageRelayoutRecovery(force: true);
         DetachPerformanceSessionDisposalNotification();
-        ResetDeferredPointerInput();
+        _pointerInput.Reset();
         _touchTapSuppression.Reset();
         // An unloaded view is reusable and no longer belongs to this window.
         // Do not let a former host destroy it, or retain weak-event wrappers
@@ -3644,20 +3681,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private void DetachCanvasInputHandlers()
     {
         if (_surface.Canvas is not null)
-        {
-            _surface.Canvas.PointerPressed -= OnPointerPressed;
-            _surface.Canvas.PointerWheelChanged -= OnPointerWheelChanged;
-            _surface.Canvas.PointerExited -= OnPointerExited;
-        _surface.Canvas.Tapped -= OnTapped;
-        _surface.Canvas.DoubleTapped -= OnDoubleTapped;
-        _surface.Canvas.Holding -= OnHolding;
-            _surface.Canvas.RightTapped -= OnRightTapped;
-            _surface.Canvas.RemoveHandler(UIElement.PointerMovedEvent, _canvasPointerMovedHandler);
-            _surface.Canvas.RemoveHandler(UIElement.PointerReleasedEvent, _canvasPointerReleasedHandler);
-            _surface.Canvas.RemoveHandler(UIElement.PointerCanceledEvent, _canvasPointerCanceledHandler);
-            _surface.Canvas.RemoveHandler(UIElement.PointerCaptureLostEvent, _canvasPointerCaptureLostHandler);
-        }
-
+            _canvasPointerEvents.Detach(_surface.Canvas);
     }
 
     private void AttachCanvasRenderHandlers()
@@ -3989,7 +4013,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // relayout while the user is actively selecting text. Releasing pointer
         // capture here terminates the gesture and visibly drops the selection.
         // Keep the latest merged rebuild request pending until pointer release.
-        if (HasSnapshotPointerInteraction)
+        if (_pointerInput.HasSnapshotInteraction)
             return;
 
         if (!_rebuildCoordinator.TryGetDispatchReason(
@@ -6465,14 +6489,14 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (RequestGeometryRecoveryIfRequired(snapshot))
         {
             if (snapshot is not null)
-                OnDeferredGestureLayoutCompletion(snapshot, succeeded: false);
+                _pointerInput.OnLazyLayoutCompletion(snapshot, succeeded: false);
             return;
         }
 
         if (realizationGeneration != _lazyLayoutGeneration)
         {
             if (snapshot is not null)
-                OnDeferredGestureLayoutCompletion(snapshot, succeeded: false);
+                _pointerInput.OnLazyLayoutCompletion(snapshot, succeeded: false);
             return;
         }
 
@@ -6504,7 +6528,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         {
             StopImageRelayoutRecoveryIfIdle();
             if (snapshot is not null)
-                OnDeferredGestureLayoutCompletion(snapshot, succeeded: false);
+                _pointerInput.OnLazyLayoutCompletion(snapshot, succeeded: false);
             return;
         }
 
@@ -6527,7 +6551,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 RequestRebuild(RebuildReason.Full);
             }
             StopImageRelayoutRecoveryIfIdle();
-            OnDeferredGestureLayoutCompletion(snapshot, succeeded: false);
+            _pointerInput.OnLazyLayoutCompletion(snapshot, succeeded: false);
             return;
         }
 
@@ -6560,7 +6584,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             // produced no newer layout revision.
             _ = ResumePendingLazyFocus(snapshot);
             TryResumePendingScrollToBlock(snapshot, pipelineGeneration);
-            OnDeferredGestureLayoutCompletion(snapshot, succeeded: true);
+            _pointerInput.OnLazyLayoutCompletion(snapshot, succeeded: true);
             StopImageRelayoutRecoveryIfIdle();
             return;
         }
@@ -6575,7 +6599,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         SynchronizeVectorCapacityObserver(snapshot);
         if (result.Commit.NativeSceneResourcesChanged)
             NotifyVisibleDeferredSceneItemStatusMayHaveChanged();
-        OnDeferredGestureLayoutCompletion(snapshot, succeeded: true);
+        _pointerInput.OnLazyLayoutCompletion(snapshot, succeeded: true);
         StopImageRelayoutRecoveryIfIdle();
     }
 
@@ -6654,7 +6678,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         {
             // Release logical input waiters only after plans/anchor are applied,
             // not when a worker first updates the snapshot's measured mask.
-            OnDeferredGestureLayoutCompletion(snapshot, succeeded: true);
+            _pointerInput.OnLazyLayoutCompletion(snapshot, succeeded: true);
         }
     }
 
@@ -8075,7 +8099,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             else
                 control.ClearFocusableItemsRefreshForCurrentSnapshot();
             if (control._published.Snapshot is { } failedLayoutSnapshot)
-                control.OnDeferredGestureLayoutCompletion(failedLayoutSnapshot, succeeded: false);
+                control._pointerInput.OnLazyLayoutCompletion(failedLayoutSnapshot, succeeded: false);
         }
         finally
         {
@@ -8161,7 +8185,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // Keep the pending set and recovery route intact. Neither in-place
         // reflow nor private snapshot replacement may change geometry owned
         // by a live or not-yet-captured table/selection gesture.
-        if (HasSnapshotPointerInteraction)
+        if (_pointerInput.HasSnapshotInteraction)
             return;
 
         _imageRelayoutQueued = false;
@@ -8957,7 +8981,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 }
                 else if (candidate is not null)
                 {
-                    if (HasSnapshotPointerInteraction)
+                    if (_pointerInput.HasSnapshotInteraction)
                     {
                         // A gesture may have started after the worker captured
                         // its source. Discard this private candidate and retry
@@ -9582,25 +9606,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         return false;
     }
 
-    private void OnTapped(object sender, TappedRoutedEventArgs e)
-    {
-        if (_surface.Canvas is not null && e.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Touch)
-            e.Handled |= DispatchRecognizedGesture(PointerInputKind.Tap, e.GetPosition(_surface.Canvas), e.PointerDeviceType);
-    }
-
-    private void OnDoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
-    {
-        if (_surface.Canvas is not null && e.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Touch)
-            e.Handled |= DispatchRecognizedGesture(PointerInputKind.DoubleTap, e.GetPosition(_surface.Canvas), e.PointerDeviceType);
-    }
-
-    private void OnHolding(object sender, HoldingRoutedEventArgs e)
-    {
-        if (_surface.Canvas is not null && e.HoldingState == Microsoft.UI.Input.HoldingState.Started &&
-            e.PointerDeviceType is Microsoft.UI.Input.PointerDeviceType.Touch or Microsoft.UI.Input.PointerDeviceType.Pen)
-            e.Handled |= DispatchRecognizedGesture(PointerInputKind.Hold, e.GetPosition(_surface.Canvas), e.PointerDeviceType);
-    }
-
     private void FocusRendererForPointerInteraction()
     {
         _suppressNextFocusPromotion = true;
@@ -9862,7 +9867,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         long snapshotGeneration,
         long layoutRevision)
     {
-        bool IsCurrent() => IsCurrentPointerInteraction(
+        bool IsCurrent() => IsCurrentScrollTarget(
             snapshot,
             snapshotGeneration,
             layoutRevision);
@@ -11949,12 +11954,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     // ---- Word / line selection helpers ----
 
     // ---- Right-click context menu ----
-
-    private void OnRightTapped(object sender, RightTappedRoutedEventArgs e)
-    {
-        if (_surface.Canvas is not null)
-            e.Handled |= DispatchRecognizedGesture(PointerInputKind.RightTap, e.GetPosition(_surface.Canvas), e.PointerDeviceType);
-    }
 
     private bool TryActivateDisclosure(LinkRun? run)
     {

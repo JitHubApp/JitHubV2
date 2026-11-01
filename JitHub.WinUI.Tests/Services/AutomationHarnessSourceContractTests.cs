@@ -642,7 +642,8 @@ public sealed class AutomationHarnessSourceContractTests
             "src",
             "MarkdownRenderer",
             "Controls",
-            "MarkdownRendererControl.PointerInput.cs")).Replace("\r\n", "\n", StringComparison.Ordinal);
+            "Input",
+            "PointerInputRouter.cs")).Replace("\r\n", "\n", StringComparison.Ordinal);
         string menuSource = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
             "MarkdownRenderer",
@@ -698,8 +699,8 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("!ReferenceEquals(_menu, menu) ||\n                !IsCurrentSnapshot(", menu, StringComparison.Ordinal);
         Assert.Contains("catch (Exception ex)\n        {\n            ContextMenuTargets.DisposeContextMenuTarget(target);", menu, StringComparison.Ordinal);
 
-        int recognizedGestureStart = pointerSource.IndexOf("private bool DispatchRecognizedGesture(", StringComparison.Ordinal);
-        int pointerDispatchStart = pointerSource.IndexOf("private void DispatchPointerInput(", recognizedGestureStart, StringComparison.Ordinal);
+        int recognizedGestureStart = pointerSource.IndexOf("internal bool DispatchRecognizedGesture(", StringComparison.Ordinal);
+        int pointerDispatchStart = pointerSource.IndexOf("internal void DispatchPointerInput(", recognizedGestureStart, StringComparison.Ordinal);
         Assert.True(recognizedGestureStart >= 0 && pointerDispatchStart > recognizedGestureStart);
         string recognizedGesture = pointerSource[recognizedGestureStart..pointerDispatchStart];
         int endInteraction = recognizedGesture.IndexOf("snapshot.EndInteraction();", StringComparison.Ordinal);

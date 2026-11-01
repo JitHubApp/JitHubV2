@@ -273,7 +273,7 @@ public sealed class TouchTapSuppressionPolicyTests
             coalescible: false,
             blocksSnapshotInteraction: false));
 
-        // ResetDeferredPointerInput must reconcile a terminal for the current
+        // PointerInputRouter.Reset must reconcile a terminal for the current
         // primary epoch before it clears the geometry-bound queue. Otherwise
         // the processed Press remains active forever after its Release is
         // discarded, and every later touch is rejected by TryBeginContact.

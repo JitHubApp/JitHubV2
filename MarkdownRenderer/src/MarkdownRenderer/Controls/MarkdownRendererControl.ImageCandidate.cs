@@ -155,7 +155,7 @@ public partial class MarkdownRendererControl
         // UI-dispatcher-only, synchronous fence and swap. No host/XAML/native
         // callbacks intervene. Image publication readers verify snapshot identity.
         if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _publishingLayoutCommit || _canvasDeviceRecoveryQueued ||
-            _rebuildCoordinator.HasPendingOrBuilding || HasPendingLazyLayoutWork || HasSnapshotPointerInteraction ||
+            _rebuildCoordinator.HasPendingOrBuilding || HasPendingLazyLayoutWork || _pointerInput.HasSnapshotInteraction ||
             !ReferenceEquals(source, _published.Snapshot) || generation != _published.Generation ||
             source.IsRetiringOrDisposed || source.LayoutRevision != owner.SourceRevision ||
             (float)Math.Max(50, ActualWidth) != owner.Width ||
@@ -182,7 +182,7 @@ public partial class MarkdownRendererControl
             FlowDirection != context.FlowDirection || (XamlRoot?.RasterizationScale ?? 1) != context.RasterizationScale ||
             _embedPlans.Count != 0 ||
             !owner.MatchesSourceImages(_imagePlans, _subscribedImages) ||
-            (_deferredPointerSnapshot is not null && !ReferenceEquals(_deferredPointerSnapshot, source)) ||
+            (_pointerInput.DeferredSnapshot is not null && !ReferenceEquals(_pointerInput.DeferredSnapshot, source)) ||
             !owner.HasCurrentSourceRaster() ||
             !ReferenceEquals(source.SourceMap, candidate.SourceMap) ||
             source.AutomationDocumentGeneration != candidate.AutomationDocumentGeneration)
@@ -249,7 +249,7 @@ public partial class MarkdownRendererControl
                 RetireSnapshot(source);
                 sourceRetirementRequested = true;
 
-                if (ReferenceEquals(_deferredPointerSnapshot, source))
+                if (ReferenceEquals(_pointerInput.DeferredSnapshot, source))
                 {
                     // A logical geometry waiter belongs to the exact snapshot
                     // whose hit-test produced it. Candidate publication must
@@ -258,7 +258,7 @@ public partial class MarkdownRendererControl
                     // after ownership has committed and the old tree is retired.
                     try
                     {
-                        ResetDeferredPointerInput();
+                        _pointerInput.Reset();
                     }
                     catch (Exception exception)
                     {
