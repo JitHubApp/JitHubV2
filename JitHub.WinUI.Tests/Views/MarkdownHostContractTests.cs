@@ -336,13 +336,15 @@ public sealed class MarkdownHostContractTests
         string root = FindRepositoryRoot();
         string control = File.ReadAllText(Path.Combine(
             root, "MarkdownRenderer", "src", "MarkdownRenderer", "Controls", "MarkdownRendererControl.cs"));
+        string selectionCommands = File.ReadAllText(Path.Combine(
+            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Controls", "Selection", "SelectionCommands.cs"));
         string viewer = File.ReadAllText(Path.Combine(
             root, "JitHub.WinUI", "Views", "Controls", "Common", "MarkdownViewer.xaml.cs"));
 
         Assert.Contains("CodeBlockCopyButtonStyle", control, StringComparison.Ordinal);
         Assert.Contains("CopyCompleted?.Invoke", control, StringComparison.Ordinal);
         Assert.Contains("MarkdownCopyKind.CodeBlock", control, StringComparison.Ordinal);
-        Assert.Contains("MarkdownCopyKind.Selection", control, StringComparison.Ordinal);
+        Assert.Contains("_host.RaiseCopyCompleted(MarkdownCopyKind.Selection", selectionCommands, StringComparison.Ordinal);
         Assert.Contains("_renderer.CopyCompleted += OnRendererCopyCompleted", viewer, StringComparison.Ordinal);
         Assert.Contains("AppToolbarButtonStyle", viewer, StringComparison.Ordinal);
         Assert.Contains("TelemetryTaxonomy.Actions.CopyCode", viewer, StringComparison.Ordinal);
