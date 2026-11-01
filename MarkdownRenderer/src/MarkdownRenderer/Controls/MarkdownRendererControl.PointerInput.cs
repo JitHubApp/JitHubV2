@@ -989,7 +989,7 @@ public partial class MarkdownRendererControl
             return false;
         }
 
-        return ShowSelectionContextMenu(
+        return _contextMenu.Show(
             input.GesturePosition,
             touchSelection: input.TouchSelectionContextMenu,
             requiredSnapshot: snapshot,
@@ -1295,7 +1295,7 @@ public partial class MarkdownRendererControl
                     TouchSelectionCancelResult cancelResult = _touchSelection.CancelContact(ownerPointerId);
                     if (cancelResult != TouchSelectionCancelResult.NotOwner)
                     {
-                        CloseSelectionContextMenu();
+                        _contextMenu.Close();
                         _handles.Update();
                         if (cancelResult == TouchSelectionCancelResult.ClearSelection && _selection.IsActive)
                             ClearSelectionForExternalInteraction(resetDeferredPointerInput: false);

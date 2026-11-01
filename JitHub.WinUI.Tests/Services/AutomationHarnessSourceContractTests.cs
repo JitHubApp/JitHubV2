@@ -643,14 +643,22 @@ public sealed class AutomationHarnessSourceContractTests
             "MarkdownRenderer",
             "Controls",
             "MarkdownRendererControl.PointerInput.cs")).Replace("\r\n", "\n", StringComparison.Ordinal);
+        string menuSource = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "MarkdownRenderer",
+            "src",
+            "MarkdownRenderer",
+            "Controls",
+            "Selection",
+            "SelectionContextMenuPresenter.cs")).Replace("\r\n", "\n", StringComparison.Ordinal);
 
         Assert.Contains("case VirtualKey.F10 when shift && _selection.IsActive", source, StringComparison.Ordinal);
-        Assert.Contains("ShowSelectionContextMenu(GetKeyboardContextMenuPoint())", source, StringComparison.Ordinal);
+        Assert.Contains("_contextMenu.Show(_contextMenu.GetKeyboardPoint())", source, StringComparison.Ordinal);
 
         int rightTappedStart = source.IndexOf("private void ProcessRightTapped(ref PointerInput e)", StringComparison.Ordinal);
-        int menuStart = source.IndexOf("private bool ShowSelectionContextMenu(", rightTappedStart, StringComparison.Ordinal);
-        Assert.True(rightTappedStart >= 0 && menuStart > rightTappedStart);
-        string rightTapped = source[rightTappedStart..menuStart];
+        int rightTappedEnd = source.IndexOf("\n    }\n", rightTappedStart, StringComparison.Ordinal);
+        Assert.True(rightTappedStart >= 0 && rightTappedEnd > rightTappedStart);
+        string rightTapped = source[rightTappedStart..rightTappedEnd];
         Assert.Contains("long snapshotGeneration = _published.Generation;", rightTapped, StringComparison.Ordinal);
         Assert.Contains("if (touchOrPen && (!_selection.IsActive || !IsPointInsideSelection(snapshot, pt)))", rightTapped, StringComparison.Ordinal);
         Assert.Contains("TrySelectWordForTouchContext(\n                pt,\n                snapshot,\n                snapshotGeneration,\n                layoutRevision,", rightTapped, StringComparison.Ordinal);
@@ -664,21 +672,22 @@ public sealed class AutomationHarnessSourceContractTests
         string keyDown = source[keyDownStart..keyDownEnd];
         Assert.Contains("case VirtualKey.F10 when shift && _selection.IsActive:", keyDown, StringComparison.Ordinal);
         Assert.Contains("case VirtualKey.Application when _selection.IsActive:", keyDown, StringComparison.Ordinal);
-        Assert.Equal(2, Regex.Matches(keyDown, "ShowSelectionContextMenu\\(GetKeyboardContextMenuPoint\\(\\)\\)").Count);
+        Assert.Equal(2, Regex.Matches(keyDown, "_contextMenu\\.Show\\(_contextMenu\\.GetKeyboardPoint\\(\\)\\)").Count);
 
-        int menuClosedStart = source.IndexOf("private void OnSelectionContextMenuClosed(", menuStart, StringComparison.Ordinal);
-        Assert.True(menuClosedStart > menuStart);
-        string menu = source[menuStart..menuClosedStart];
+        int menuStart = menuSource.IndexOf("internal bool Show(", StringComparison.Ordinal);
+        int menuClosedStart = menuSource.IndexOf("private void OnClosed(", menuStart, StringComparison.Ordinal);
+        Assert.True(menuStart >= 0 && menuClosedStart > menuStart);
+        string menu = menuSource[menuStart..menuClosedStart];
         Assert.Contains("requiredSnapshotGeneration", menu, StringComparison.Ordinal);
         Assert.Contains("requiredLayoutRevision", menu, StringComparison.Ordinal);
-        Assert.Contains("IsCurrentContextMenuSnapshot(", menu, StringComparison.Ordinal);
-        Assert.Contains("CloseSelectionContextMenu();", menu, StringComparison.Ordinal);
+        Assert.Contains("IsCurrentSnapshot(", menu, StringComparison.Ordinal);
+        Assert.Contains("\n        Close();\n", menu, StringComparison.Ordinal);
         Assert.Contains("expectedLayoutRevision = requiredSnapshot is null", menu, StringComparison.Ordinal);
         Assert.Contains(": requiredLayoutRevision;", menu, StringComparison.Ordinal);
         Assert.Contains("expectedSnapshotGeneration,\n                    expectedLayoutRevision,\n                    out target))", menu, StringComparison.Ordinal);
         Assert.Contains("menu.ShowAt(canvas, placementPoint);", menu, StringComparison.Ordinal);
         Assert.Equal(4, Regex.Matches(menu, "DisposeContextMenuTarget\\(target\\);").Count);
-        Assert.Contains("!ReferenceEquals(_selectionContextMenu, menu) ||\n                !IsCurrentContextMenuSnapshot(", menu, StringComparison.Ordinal);
+        Assert.Contains("!ReferenceEquals(_menu, menu) ||\n                !IsCurrentSnapshot(", menu, StringComparison.Ordinal);
         Assert.Contains("catch (Exception ex)\n        {\n            ContextMenuTargets.DisposeContextMenuTarget(target);", menu, StringComparison.Ordinal);
 
         int recognizedGestureStart = pointerSource.IndexOf("private bool DispatchRecognizedGesture(", StringComparison.Ordinal);
@@ -699,7 +708,7 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("snapshotGeneration != _published.Generation", completion, StringComparison.Ordinal);
         Assert.Contains("input.GestureLayoutRevision != layoutRevision", completion, StringComparison.Ordinal);
         Assert.Contains("snapshot.LayoutRevision != layoutRevision", completion, StringComparison.Ordinal);
-        Assert.Contains("ShowSelectionContextMenu(", completion, StringComparison.Ordinal);
+        Assert.Contains("_contextMenu.Show(", completion, StringComparison.Ordinal);
         Assert.Contains("touchSelection: input.TouchSelectionContextMenu", completion, StringComparison.Ordinal);
         Assert.Contains("requiredSnapshotGeneration: snapshotGeneration", completion, StringComparison.Ordinal);
         Assert.Contains("requiredLayoutRevision: layoutRevision", completion, StringComparison.Ordinal);

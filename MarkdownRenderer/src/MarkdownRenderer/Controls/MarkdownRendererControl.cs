@@ -50,7 +50,7 @@ namespace MarkdownRenderer.Controls;
 /// </summary>
 public abstract partial class MarkdownRendererControl : UserControl, IDisposable, IAsyncDisposable, IMarkdownEnvironmentListener,
     IMarkdownPerformanceLegacyParser, ISelectionAdornerHost, ISelectionCommandsHost, ISelectionDismissalHost,
-    ISelectionHandlesHost, IPointerInputSink
+    ISelectionHandlesHost, ISelectionContextMenuHost, IPointerInputSink
 {
     private readonly MarkdownViewSurface _surface;
     private readonly MarkdownViewLifetime _lifetime = new();
@@ -65,6 +65,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private readonly SelectionDragAutoScroll _autoScroll;
     private readonly SelectionDragShield _dragShield;
     private readonly SelectionHandlesPresenter _handles;
+    private readonly SelectionContextMenuPresenter _contextMenu;
     private AppWindow? _windowLifecycleAppWindow;
     private WindowLifecycleSubscription? _windowLifecycleSubscription;
     private bool _scrollViewIntermediate;
@@ -750,8 +751,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private bool _lastFocusEntryWasKeyboardInput;
     private bool _lastFocusEntryWasReverse;
     private bool _suppressNextFocusPromotion;
-    private bool _contextMenuOpen;
-    private MenuFlyout? _selectionContextMenu;
 
     // Lazy-load queue: all ImageBox instances in the current snapshot.
     // EnsureLoading() is called for each when its bounds enter the
@@ -2787,6 +2786,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _autoScroll = new SelectionDragAutoScroll(_surface, _viewport, rect => BringDocumentRectIntoExternalViewport(rect, animate: false));
         _dragShield = new SelectionDragShield(_surface, _viewport, this);
         _handles = new SelectionHandlesPresenter(this, this, this, _surface, _lifetime, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, _adorner, _autoScroll);
+        _contextMenu = new SelectionContextMenuPresenter(this, _surface, _lifetime, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, _handles, _adorner, _selectionCommands);
         _canvasPointerMovedHandler = OnPointerMoved;
         _canvasPointerReleasedHandler = OnPointerReleased;
         _canvasPointerCanceledHandler = OnPointerCanceledOrCaptureLost;
@@ -2964,7 +2964,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _pendingLazyFocus = null;
         _focusedItemIndex = -1;
         UpdateFocusRing();
-        if (!_contextMenuOpen)
+        if (!_contextMenu.IsOpen)
         {
             _selectionAnchor = null;
             _clickMode = ClickSelectionMode.Single;
@@ -3144,6 +3144,23 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     void ISelectionHandlesHost.CancelPendingTouchSelectionRestore()
         => _pendingTouchSelectionPresentationRestore = null;
 
+    bool ISelectionContextMenuHost.IsSelectionEnabled => IsSelectionEnabled;
+
+    IMarkdownCommandProvider? ISelectionContextMenuHost.CommandProvider => CommandProvider;
+
+    string ISelectionContextMenuHost.ResolveLocalizedString(string key, string fallback)
+        => ResolveLocalizedString(key, fallback);
+
+    void ISelectionContextMenuHost.RaiseCopyCompleted(MarkdownCopyKind kind, bool succeeded)
+        => RaiseCopyCompleted(kind, succeeded);
+
+    Rect? ISelectionContextMenuHost.GetFocusedItemRect()
+        => _focusableItems is { } items &&
+           _focusedItemIndex >= 0 &&
+           _focusedItemIndex < items.Count
+            ? GetFocusableItemRect(items[_focusedItemIndex])
+            : null;
+
     void IPointerInputSink.DispatchPointerInput(PointerInputKind kind, object sender, PointerRoutedEventArgs args)
         => DispatchPointerInput(kind, sender, args);
 
@@ -3161,7 +3178,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     {
         _pendingTouchSelectionPresentationRestore = null;
         _touchTapSuppression.Reset();
-        CloseSelectionContextMenu();
+        _contextMenu.Close();
         if (resetDeferredPointerInput)
             ResetDeferredPointerInput();
         _pointerSession = default;
@@ -3333,7 +3350,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         ClearPendingFocusGeometryWork();
         Interlocked.Exchange(ref _deferredSceneStatusRefreshAfterPaint, 0);
         Interlocked.Exchange(ref _deferredSceneProbeAfterPaint, 0);
-        CloseSelectionContextMenu();
+        _contextMenu.Close();
         ClearHorizontalOverflowPointerState();
         _abbreviationTooltip.Hide();
         _abbreviationTooltip.ReleaseTimers();
@@ -4231,7 +4248,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _clicks.Reset();
         _hover.Clear();
         _abbreviationTooltip.ForgetTarget();
-        CloseSelectionContextMenu();
+        _contextMenu.Close();
         _dragShield.SetActive(false);
         _abbreviationTooltip.Hide();
 
@@ -4913,7 +4930,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             finally { _isUpdatingDocumentProperty = false; }
         }
         if (old is not null)
-            CloseSelectionContextMenu();
+            _contextMenu.Close();
         // Dependency-property publication above can reenter Dispose before
         // this old snapshot is retired. Tie its retirement to this context's
         // pipeline lifetime as well as the control's global drain.
@@ -10727,7 +10744,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             {
                 // A canceled unrelated contact should not dismiss a committed
                 // selection, but it must not leave the selection flyout alive.
-                CloseSelectionContextMenu();
+                _contextMenu.Close();
                 _handles.Update();
                 if (cancelResult == TouchSelectionCancelResult.ClearSelection && _selection.IsActive)
                     ClearSelectionForExternalInteraction();
@@ -11193,10 +11210,10 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 e.Handled = true;
                 return;
             case VirtualKey.F10 when shift && _selection.IsActive:
-                e.Handled = ShowSelectionContextMenu(GetKeyboardContextMenuPoint());
+                e.Handled = _contextMenu.Show(_contextMenu.GetKeyboardPoint());
                 return;
             case VirtualKey.Application when _selection.IsActive:
-                e.Handled = ShowSelectionContextMenu(GetKeyboardContextMenuPoint());
+                e.Handled = _contextMenu.Show(_contextMenu.GetKeyboardPoint());
                 return;
             case VirtualKey.Tab:
                 e.Handled = MoveFocus(reverse: shift);
@@ -13137,548 +13154,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         e.ShowContextMenuAfterInteraction = true;
         e.TouchSelectionContextMenu = touchOrPen;
         e.Handled = true;
-    }
-
-    private bool ShowSelectionContextMenu(
-        Point placementPoint,
-        bool touchSelection = false,
-        LayoutSnapshot? requiredSnapshot = null,
-        long requiredSnapshotGeneration = 0,
-        long requiredLayoutRevision = 0)
-    {
-        UIElement? canvas = _surface.Canvas;
-        if (canvas is null)
-        {
-            return false;
-        }
-
-        // Pointer gestures pass the exact geometry generation they used while
-        // interpreting the gesture. Keyboard invocation captures one tuple at
-        // entry, so a later relayout cannot silently retarget the menu.
-        LayoutSnapshot? expectedSnapshot = requiredSnapshot ?? _published.Snapshot;
-        long expectedSnapshotGeneration = requiredSnapshot is null
-            ? _published.Generation
-            : requiredSnapshotGeneration;
-        long expectedLayoutRevision = requiredSnapshot is null
-            ? expectedSnapshot?.LayoutRevision ?? 0
-            : requiredLayoutRevision;
-        if (!IsCurrentContextMenuSnapshot(
-                expectedSnapshot,
-                expectedSnapshotGeneration,
-                expectedLayoutRevision) ||
-            !ReferenceEquals(canvas, _surface.Canvas))
-        {
-            return false;
-        }
-
-        CloseSelectionContextMenu();
-        if (!IsCurrentContextMenuSnapshot(
-                expectedSnapshot,
-                expectedSnapshotGeneration,
-                expectedLayoutRevision) ||
-            !ReferenceEquals(canvas, _surface.Canvas))
-        {
-            return false;
-        }
-
-        var menu = new MenuFlyout();
-        ContextMenuTarget target = new();
-        try
-        {
-            if (!FindContextMenuTarget(
-                    placementPoint,
-                    expectedSnapshot,
-                    expectedSnapshotGeneration,
-                    expectedLayoutRevision,
-                    out target))
-            {
-                return false;
-            }
-
-            _selectionContextMenu = menu;
-            _contextMenuOpen = true;
-            if (touchSelection)
-                _touchSelection.OpenContextMenu();
-            menu.Closed += (_, _) => OnSelectionContextMenuClosed(menu, touchSelection);
-
-            bool hasSelectionItems = _selection.IsActive;
-            if (hasSelectionItems)
-            {
-                var copyItem = new MenuFlyoutItem
-                {
-                    Text = ResolveLocalizedString(
-                        MarkdownStringKeys.Copy,
-                        MarkdownLocalizedStrings.ContextMenuCopy),
-                    IsEnabled = _selectionCommands.CanExecuteOrDefault(
-                        MarkdownCommandKind.CopyRendered),
-                };
-                AutomationProperties.SetAutomationId(copyItem, "MarkdownContextCopy");
-                copyItem.Click += (_, _) =>
-                    _selectionCommands.Execute(MarkdownCommandKind.CopyRendered);
-                menu.Items.Add(copyItem);
-
-                var copyMarkdownItem = new MenuFlyoutItem
-                {
-                    Text = ResolveLocalizedString(
-                        MarkdownStringKeys.CopyMarkdown,
-                        MarkdownLocalizedStrings.ContextMenuCopyMarkdown),
-                    IsEnabled = _selectionCommands.CanExecuteOrDefault(
-                        MarkdownCommandKind.CopyMarkdown),
-                };
-                AutomationProperties.SetAutomationId(copyMarkdownItem, "MarkdownContextCopyMarkdown");
-                copyMarkdownItem.Click += (_, _) =>
-                    _selectionCommands.Execute(MarkdownCommandKind.CopyMarkdown);
-                menu.Items.Add(copyMarkdownItem);
-            }
-
-            if (!ReferenceEquals(_selectionContextMenu, menu) ||
-                !IsCurrentContextMenuSnapshot(
-                    expectedSnapshot,
-                    expectedSnapshotGeneration,
-                    expectedLayoutRevision) ||
-                !ReferenceEquals(canvas, _surface.Canvas))
-            {
-                ContextMenuTargets.DisposeContextMenuTarget(target);
-                OnSelectionContextMenuClosed(menu, touchSelection);
-                return false;
-            }
-
-            bool hasTargetItems = AddTargetContextMenuItems(menu, target);
-            if ((hasSelectionItems || hasTargetItems) && menu.Items.Count > 0)
-                menu.Items.Add(new MenuFlyoutSeparator());
-
-            var selectAllItem = new MenuFlyoutItem
-            {
-                Text = ResolveLocalizedString(
-                    MarkdownStringKeys.SelectAll,
-                    MarkdownLocalizedStrings.ContextMenuSelectAll),
-                IsEnabled = IsSelectionEnabled,
-            };
-            AutomationProperties.SetAutomationId(selectAllItem, "MarkdownContextSelectAll");
-            selectAllItem.Click += (_, _) =>
-            {
-                if (!IsSelectionEnabled) return;
-                if (_handles.HasCaptureTarget)
-                    _handles.ResetDrag();
-                _touchTapSuppression.Reset();
-                _touchSelection.Reset();
-                _selection.SetAnchor(DocumentPosition.Zero);
-                _selection.ExtendTo(new DocumentPosition(int.MaxValue, int.MaxValue, int.MaxValue));
-            };
-            menu.Items.Add(selectAllItem);
-
-            if (!ReferenceEquals(_selectionContextMenu, menu) || !_contextMenuOpen ||
-                !IsCurrentContextMenuSnapshot(
-                    expectedSnapshot,
-                    expectedSnapshotGeneration,
-                    expectedLayoutRevision) ||
-                !ReferenceEquals(canvas, _surface.Canvas))
-            {
-                ContextMenuTargets.DisposeContextMenuTarget(target);
-                OnSelectionContextMenuClosed(menu, touchSelection);
-                return false;
-            }
-
-            // Command providers and MenuFlyout construction can reenter the
-            // control. Fence again immediately before exposing the flyout.
-            if (!IsCurrentContextMenuSnapshot(
-                    expectedSnapshot,
-                    expectedSnapshotGeneration,
-                    expectedLayoutRevision) ||
-                !ReferenceEquals(canvas, _surface.Canvas) ||
-                !ReferenceEquals(_selectionContextMenu, menu) ||
-                !_contextMenuOpen)
-            {
-                ContextMenuTargets.DisposeContextMenuTarget(target);
-                OnSelectionContextMenuClosed(menu, touchSelection);
-                return false;
-            }
-
-            menu.ShowAt(canvas, placementPoint);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            ContextMenuTargets.DisposeContextMenuTarget(target);
-            OnSelectionContextMenuClosed(menu, touchSelection);
-            try { menu.Hide(); } catch { }
-            MarkdownDiagnostics.WriteLine(
-                $"[MarkdownRendererControl] context menu failed: {ex.Message}");
-            return false;
-        }
-    }
-
-    private void OnSelectionContextMenuClosed(MenuFlyout menu, bool touchSelection)
-    {
-        ReleaseTargetContextMenuCommands(menu);
-        if (!ReferenceEquals(_selectionContextMenu, menu))
-            return;
-
-        _contextMenuOpen = false;
-        _selectionContextMenu = null;
-        if (touchSelection)
-            _touchSelection.CloseContextMenu(_selection.IsActive);
-        _handles.Update();
-    }
-
-    private void CloseSelectionContextMenu()
-    {
-        MenuFlyout? menu = _selectionContextMenu;
-        _selectionContextMenu = null;
-        _contextMenuOpen = false;
-        if (menu is null)
-            return;
-
-        try
-        {
-            ReleaseTargetContextMenuCommands(menu);
-            _touchSelection.CloseContextMenu(_selection.IsActive);
-            _handles.Update();
-        }
-        finally
-        {
-            // Detached native state can reject a handle update. The flyout
-            // reference has already been removed from the owner, so hide this
-            // captured instance even if preceding cleanup fails.
-            try { menu.Hide(); }
-            catch { }
-        }
-    }
-
-    private void ReleaseTargetContextMenuCommands(MenuFlyout menu)
-    {
-        foreach (object? entry in menu.Items)
-        {
-            if (entry is MenuFlyoutItem item &&
-                item.Tag is ValueTuple<MarkdownTargetCommand, ContextMenuTarget>)
-            {
-                var command = (ValueTuple<MarkdownTargetCommand, ContextMenuTarget>)item.Tag;
-                item.Click -= OnTargetContextMenuItemClick;
-                item.Tag = null;
-                ContextMenuTargets.DisposeContextMenuTarget(command.Item2);
-            }
-        }
-    }
-
-    private bool AddTargetContextMenuItems(MenuFlyout menu, ContextMenuTarget target)
-    {
-        bool added = false;
-        if (!string.IsNullOrWhiteSpace(target.LinkUrl))
-        {
-            var action = new MarkdownTargetCommand(
-                MarkdownCommandKind.CopyLink,
-                target.LinkSourceRange,
-                target.LinkUrl);
-            bool isEnabled = CanExecuteTargetCommandOrDefault(action, hasDefault: true);
-            if (!ReferenceEquals(_selectionContextMenu, menu))
-                return added;
-            var item = new MenuFlyoutItem
-            {
-                Text = ResolveLocalizedString(
-                    MarkdownStringKeys.CopyLink,
-                    MarkdownLocalizedStrings.ContextMenuCopyLink),
-                IsEnabled = isEnabled,
-            };
-            AutomationProperties.SetAutomationId(item, "MarkdownContextCopyLink");
-            AttachTargetCommand(item, action, target);
-            menu.Items.Add(item);
-            added = true;
-            if (!ReferenceEquals(_selectionContextMenu, menu))
-                return added;
-        }
-
-        if (target.ImageUrl is not null || target.ImageBitmapLease is not null)
-        {
-            var action = new MarkdownTargetCommand(
-                MarkdownCommandKind.CopyImage,
-                target.ImageSourceRange,
-                target.ImageUrl);
-            bool isEnabled = CanExecuteTargetCommandOrDefault(
-                action,
-                hasDefault: !string.IsNullOrWhiteSpace(target.ImageUrl) ||
-                            target.ImageBitmapLease is not null);
-            if (!ReferenceEquals(_selectionContextMenu, menu))
-                return added;
-            var item = new MenuFlyoutItem
-            {
-                Text = ResolveLocalizedString(
-                    MarkdownStringKeys.CopyImage,
-                    MarkdownLocalizedStrings.ContextMenuCopyImage),
-                IsEnabled = isEnabled,
-            };
-            AutomationProperties.SetAutomationId(item, "MarkdownContextCopyImage");
-            AttachTargetCommand(item, action, target);
-            menu.Items.Add(item);
-            added = true;
-            if (!ReferenceEquals(_selectionContextMenu, menu))
-                return added;
-        }
-
-        if (target.CodeText is not null)
-        {
-            var action = new MarkdownTargetCommand(
-                MarkdownCommandKind.CopyCode,
-                target.CodeSourceRange,
-                Language: target.CodeLanguage);
-            bool isEnabled = CanExecuteTargetCommandOrDefault(
-                action,
-                hasDefault: target.CodeText.Length > 0);
-            if (!ReferenceEquals(_selectionContextMenu, menu))
-                return added;
-            var item = new MenuFlyoutItem
-            {
-                Text = ResolveLocalizedString(
-                    MarkdownStringKeys.CopyCode,
-                    MarkdownLocalizedStrings.ContextMenuCopyCode),
-                IsEnabled = isEnabled,
-            };
-            AutomationProperties.SetAutomationId(item, "MarkdownContextCopyCode");
-            AttachTargetCommand(item, action, target);
-            menu.Items.Add(item);
-            added = true;
-            if (!ReferenceEquals(_selectionContextMenu, menu))
-                return added;
-        }
-
-        if (target.TableSnapshot is { } tableSnapshot)
-        {
-            var action = new MarkdownTargetCommand(
-                MarkdownCommandKind.CopyTable,
-                target.TableSourceRange);
-            bool isEnabled = CanExecuteTargetCommandOrDefault(
-                action,
-                hasDefault: tableSnapshot.HasText);
-            if (!ReferenceEquals(_selectionContextMenu, menu))
-                return added;
-            var item = new MenuFlyoutItem
-            {
-                Text = ResolveLocalizedString(
-                    MarkdownStringKeys.CopyTable,
-                    MarkdownLocalizedStrings.ContextMenuCopyTable),
-                IsEnabled = isEnabled,
-            };
-            AutomationProperties.SetAutomationId(item, "MarkdownContextCopyTable");
-            AttachTargetCommand(item, action, target);
-            menu.Items.Add(item);
-            added = true;
-        }
-
-        return added;
-    }
-
-    private void AttachTargetCommand(
-        MenuFlyoutItem item,
-        MarkdownTargetCommand action,
-        ContextMenuTarget target)
-    {
-        item.Tag = (action, target);
-        item.Click += OnTargetContextMenuItemClick;
-    }
-
-    private async void OnTargetContextMenuItemClick(object sender, RoutedEventArgs args)
-    {
-        if (sender is not MenuFlyoutItem item ||
-            item.Tag is not ValueTuple<MarkdownTargetCommand, ContextMenuTarget> command)
-        {
-            return;
-        }
-
-        try
-        {
-            using ContextMenuTarget executionTarget = command.Item2.CloneForExecution();
-            await ExecuteTargetCommandOrDefaultAsync(command.Item1, executionTarget).ConfigureAwait(true);
-        }
-        catch (Exception ex)
-        {
-            MarkdownDiagnostics.WriteLine(
-                $"[MarkdownRendererControl] Context-menu command failed: {ex.Message}");
-        }
-    }
-
-    private bool CanExecuteTargetCommandOrDefault(
-        MarkdownTargetCommand action,
-        bool hasDefault)
-    {
-        try
-        {
-            bool canExecute = MarkdownTargetCommandDispatcher.CanExecute(
-                CommandProvider,
-                action,
-                out bool isProvided);
-            return isProvided ? canExecute : hasDefault;
-        }
-        catch (Exception ex)
-        {
-            MarkdownDiagnostics.WriteLine(
-                $"[MarkdownRendererControl] Host command '{action.Kind}' query failed: {ex.Message}");
-            return hasDefault;
-        }
-    }
-
-    private async Task<bool> ExecuteTargetCommandOrDefaultAsync(
-        MarkdownTargetCommand action,
-        ContextMenuTarget target)
-    {
-        try
-        {
-            MarkdownTargetCommandDispatchResult dispatch =
-                MarkdownTargetCommandDispatcher.Execute(CommandProvider, action);
-            if (dispatch == MarkdownTargetCommandDispatchResult.Executed)
-                return true;
-            if (dispatch == MarkdownTargetCommandDispatchResult.Disabled)
-                return false;
-        }
-        catch (Exception ex)
-        {
-            MarkdownDiagnostics.WriteLine(
-                $"[MarkdownRendererControl] Host command '{action.Kind}' failed: {ex.Message}");
-        }
-
-        return action.Kind switch
-        {
-            MarkdownCommandKind.CopyLink => SelectionClipboard.CopyTextTargetToClipboard(action.Target),
-            MarkdownCommandKind.CopyImage when target.ImageUrl is not null ||
-                                               target.ImageBitmapLease is not null =>
-                await SelectionClipboard.CopyImageTargetToClipboardAsync(
-                    target.ImageUrl,
-                    target.ImageBitmapLease?.Bitmap).ConfigureAwait(true),
-            MarkdownCommandKind.CopyCode when target.CodeText is not null =>
-                CopyCodeTargetToClipboard(target.CodeText),
-            MarkdownCommandKind.CopyTable when target.TableSnapshot is { } tableSnapshot =>
-                await SelectionClipboard.CopyTableTargetToClipboardAsync(tableSnapshot).ConfigureAwait(true),
-            _ => false,
-        };
-    }
-
-    private bool CopyCodeTargetToClipboard(string codeText)
-    {
-        bool succeeded = SelectionClipboard.CopyTextTargetToClipboard(codeText);
-        RaiseCopyCompleted(MarkdownCopyKind.CodeBlock, succeeded);
-        return succeeded;
-    }
-
-    private bool IsCurrentContextMenuSnapshot(
-        LayoutSnapshot? snapshot,
-        long snapshotGeneration,
-        long layoutRevision)
-    {
-        return !_lifetime.IsDisposed && !_lifetime.IsUnloaded &&
-            ReferenceEquals(snapshot, _published.Snapshot) &&
-            snapshotGeneration == _published.Generation &&
-            (snapshot is null || snapshot.LayoutRevision == layoutRevision);
-    }
-
-    private bool FindContextMenuTarget(
-        Point point,
-        LayoutSnapshot? expectedSnapshot,
-        long expectedSnapshotGeneration,
-        long expectedLayoutRevision,
-        out ContextMenuTarget target)
-    {
-        target = new ContextMenuTarget();
-        if (!IsCurrentContextMenuSnapshot(
-                expectedSnapshot,
-                expectedSnapshotGeneration,
-                expectedLayoutRevision))
-        {
-            return false;
-        }
-
-        LayoutSnapshot? snapshot = expectedSnapshot;
-        if (snapshot is null)
-            return true;
-
-        // Busy means target-specific commands may be omitted, but only if the
-        // originally observed tuple is still current. Never substitute a newer
-        // snapshot/revision here.
-        if (!snapshot.TryBeginInteraction())
-            return IsCurrentContextMenuSnapshot(
-                expectedSnapshot,
-                expectedSnapshotGeneration,
-                expectedLayoutRevision);
-
-        bool captured = false;
-        try
-        {
-            try
-            {
-                if (IsCurrentContextMenuSnapshot(
-                        expectedSnapshot,
-                        expectedSnapshotGeneration,
-                        expectedLayoutRevision))
-                {
-                    foreach (BlockBox block in snapshot.Blocks)
-                    {
-                        Point physicalPoint = snapshot.ToPhysicalPointForTopLevelBlockUnderPaint(block, point);
-                        using LayoutPlacementTransformContext.Scope placementScope =
-                            snapshot.EnterPlacementTransformScopeForTopLevelBlockUnderPaint(block);
-                        if (ContextMenuTargets.PopulateContextMenuTarget(block, physicalPoint, target))
-                            break;
-                    }
-                    captured = true;
-                }
-            }
-            finally
-            {
-                snapshot.EndInteraction();
-            }
-        }
-        catch
-        {
-            ContextMenuTargets.DisposeContextMenuTarget(target);
-            target = new ContextMenuTarget();
-            throw;
-        }
-
-        if (!captured || !IsCurrentContextMenuSnapshot(
-                expectedSnapshot,
-                expectedSnapshotGeneration,
-                expectedLayoutRevision))
-        {
-            ContextMenuTargets.DisposeContextMenuTarget(target);
-            target = new ContextMenuTarget();
-            return false;
-        }
-
-        return true;
-    }
-
-    private Point GetKeyboardContextMenuPoint()
-    {
-        _viewport.TryGet(out double viewportTop, out double viewportHeight, out double viewportWidth);
-        double viewportBottom = viewportTop + viewportHeight;
-        if (_focusableItems is { } items &&
-            _focusedItemIndex >= 0 &&
-            _focusedItemIndex < items.Count &&
-            // This returns a copied Rect after its nonblocking snapshot lease
-            // ends; the flyout and command providers are invoked later.
-            GetFocusableItemRect(items[_focusedItemIndex]) is { } focusedRect)
-        {
-            return new Point(
-                Math.Clamp(focusedRect.Left + focusedRect.Width / 2.0, 0, Math.Max(0, viewportWidth - 1)),
-                Math.Clamp(focusedRect.Bottom, viewportTop, Math.Max(viewportTop, viewportBottom - 1)));
-        }
-
-        Rect selectionRect = default;
-        foreach (Rect rectangle in _adorner.Rectangles)
-        {
-            if (rectangle.Bottom < viewportTop || rectangle.Top > viewportBottom)
-            {
-                continue;
-            }
-
-            selectionRect = rectangle;
-            break;
-        }
-
-        if (selectionRect.Width <= 0 || selectionRect.Height <= 0)
-        {
-            return new Point(12, viewportTop + 12);
-        }
-
-        return new Point(
-            Math.Clamp(selectionRect.Left + 8, 0, Math.Max(0, viewportWidth - 1)),
-            Math.Clamp(selectionRect.Bottom, viewportTop, Math.Max(viewportTop, viewportBottom - 1)));
     }
 
     private bool TryActivateDisclosure(LinkRun? run)

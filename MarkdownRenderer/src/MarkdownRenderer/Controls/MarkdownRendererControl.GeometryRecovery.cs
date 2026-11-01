@@ -53,7 +53,7 @@ public partial class MarkdownRendererControl
         TryGeometryRecoveryCleanup(() => ResetTransientInteractionState(clearSelection: false));
         TryGeometryRecoveryCleanup(() => _surface.Canvas?.ReleasePointerCaptures());
         TryGeometryRecoveryCleanup(() => _dragShield.SetActive(false));
-        TryGeometryRecoveryCleanup(CloseSelectionContextMenu);
+        TryGeometryRecoveryCleanup(_contextMenu.Close);
         TryGeometryRecoveryCleanup(_abbreviationTooltip.Hide);
         TryGeometryRecoveryCleanup(() => _cursor.SetShape(null));
         TryGeometryRecoveryCleanup(() =>
