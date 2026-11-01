@@ -19,7 +19,7 @@ public partial class MarkdownRendererControl
     // Read only on the UI dispatcher, including the final publication fence.
     private bool HasSnapshotPointerInteraction =>
         _pointerSession.IsActive || _horizontalOverflowPointerId != 0 ||
-        _selectionHandlePointerId != 0 || _drainingPointerInput ||
+        _handles.DragPointerId != 0 || _drainingPointerInput ||
         _deferredPointerCaptures.Count != 0 ||
         (_deferredPointerInput?.HasBlockingSnapshotInteractions ?? false);
 
@@ -37,10 +37,18 @@ public partial class MarkdownRendererControl
     private void OnPointerCanceledOrCaptureLost(object sender, PointerRoutedEventArgs e) => DispatchPointerInput(PointerInputKind.Cancel, sender, e);
     private void OnPointerExited(object sender, PointerRoutedEventArgs e) => DispatchPointerInput(PointerInputKind.Exit, sender, e);
     private void OnPointerWheelChanged(object sender, PointerRoutedEventArgs e) => DispatchPointerInput(PointerInputKind.Wheel, sender, e);
-    private void OnSelectionHandlePointerPressed(object sender, PointerRoutedEventArgs e) => DispatchPointerInput(PointerInputKind.HandlePress, sender, e);
-    private void OnSelectionHandlePointerMoved(object sender, PointerRoutedEventArgs e) => DispatchPointerInput(PointerInputKind.HandleMove, sender, e);
-    private void OnSelectionHandlePointerReleased(object sender, PointerRoutedEventArgs e) => DispatchPointerInput(PointerInputKind.HandleRelease, sender, e);
-    private void OnSelectionHandlePointerCanceled(object sender, PointerRoutedEventArgs e) => DispatchPointerInput(PointerInputKind.HandleCancel, sender, e);
+
+    private bool HasQueuedPointerInput(uint pointerId)
+    {
+        if (_deferredPointerInput is not { Count: > 0 } queue)
+            return false;
+        for (int index = 0; index < queue.Count; index++)
+        {
+            if (queue.TryGetAt(index, out PointerInput queued) && queued.Pointer?.PointerId == pointerId)
+                return true;
+        }
+        return false;
+    }
 
     private bool DispatchRecognizedGesture(PointerInputKind kind, Windows.Foundation.Point point, PointerDeviceType device)
     {
@@ -552,9 +560,9 @@ public partial class MarkdownRendererControl
         // Retirement refreshes handles from layout, so it needs the snapshot
         // lease; when the worker holds it the per-frame check retries.
         if (kind is PointerInputKind.Press or PointerInputKind.HandlePress &&
-            _selectionHandlePointerId != 0 && snapshot.TryBeginInteraction())
+            _handles.DragPointerId != 0 && snapshot.TryBeginInteraction())
         {
-            try { RetireSilentlyLostSelectionHandleCapture(); }
+            try { _handles.RetireSilentlyLostCapture(); }
             finally { snapshot.EndInteraction(); }
         }
 
@@ -656,7 +664,7 @@ public partial class MarkdownRendererControl
         bool hasSnapshotPointerOwner = input.CapturedBeforeDeferral ||
             (_pointerSession.IsActive && _pointerSession.PointerId == input.Pointer.PointerId) ||
             (_horizontalOverflowPointerId == input.Pointer.PointerId && _horizontalOverflowPointerId != 0) ||
-            _selectionHandlePointerId == input.Pointer.PointerId;
+            _handles.DragPointerId == input.Pointer.PointerId;
         bool blocksSnapshotInteraction = kind is not (
             PointerInputKind.Move or PointerInputKind.Release or PointerInputKind.Cancel or PointerInputKind.Exit) ||
             hasSnapshotPointerOwner;
@@ -956,7 +964,7 @@ public partial class MarkdownRendererControl
             uint id = capture.Pointer.PointerId;
             if ((_pointerSession.IsActive && _pointerSession.PointerId == id) ||
                 (_horizontalOverflowCaptured && _horizontalOverflowPointerId == id) ||
-                _selectionHandlePointerId == id)
+                _handles.DragPointerId == id)
                 continue;
             capture.Target.ReleasePointerCapture(capture.Pointer);
         }
@@ -1136,10 +1144,16 @@ public partial class MarkdownRendererControl
             case PointerInputKind.Cancel: ProcessPointerCanceledOrCaptureLost(ref input); break;
             case PointerInputKind.Exit: ProcessPointerExited(ref input); break;
             case PointerInputKind.Wheel: ProcessPointerWheelChanged(ref input); break;
-            case PointerInputKind.HandlePress: ProcessSelectionHandlePointerPressed(ref input); break;
-            case PointerInputKind.HandleMove: ProcessSelectionHandlePointerMoved(ref input); break;
-            case PointerInputKind.HandleRelease: ProcessSelectionHandlePointerReleased(ref input); break;
-            case PointerInputKind.HandleCancel: ProcessSelectionHandlePointerCanceled(ref input); break;
+            case PointerInputKind.HandlePress: _handles.ProcessPointerPressed(ref input); break;
+            case PointerInputKind.HandleMove: _handles.ProcessPointerMoved(ref input); break;
+            case PointerInputKind.HandleRelease:
+                if (!_handles.TryProcessPointerReleased(ref input))
+                    ProcessPointerReleased(ref input);
+                break;
+            case PointerInputKind.HandleCancel:
+                if (!_handles.TryProcessPointerCanceled(ref input))
+                    ProcessPointerCanceledOrCaptureLost(ref input);
+                break;
             case PointerInputKind.Tap: ProcessTapped(ref input); break;
             case PointerInputKind.DoubleTap: ProcessDoubleTapped(ref input); break;
             case PointerInputKind.Hold: ProcessHolding(ref input); break;
@@ -1185,10 +1199,10 @@ public partial class MarkdownRendererControl
         _pointerSession = default;
         _selectionAnchor = null;
         ClearHorizontalOverflowPointerState();
-        ResetSelectionHandleDrag();
+        _handles.ResetDrag();
         _touchTapSuppression.Reset();
         _touchSelection.Reset();
-        SetSelectionDragShieldActive(false);
+        _dragShield.SetActive(false);
         MarkdownDiagnostics.WriteLine("[MarkdownRendererControl] Cancelled an over-budget deferred pointer gesture.");
         ResumePendingRebuildAfterPointerInteraction();
     }
@@ -1266,15 +1280,15 @@ public partial class MarkdownRendererControl
                 {
                     if (isCanceled)
                     {
-                        ResetSelectionHandleDrag();
+                        _handles.ResetDrag();
                         _touchSelection.CancelContact(ownerPointerId);
                     }
                     else
                     {
                         _touchSelection.CompleteHandleDrag(ownerPointerId);
-                        ResetSelectionHandleDrag();
+                        _handles.ResetDrag();
                     }
-                    UpdateSelectionHandles();
+                    _handles.Update();
                 }
                 else if (isCanceled)
                 {
@@ -1282,7 +1296,7 @@ public partial class MarkdownRendererControl
                     if (cancelResult != TouchSelectionCancelResult.NotOwner)
                     {
                         CloseSelectionContextMenu();
-                        UpdateSelectionHandles();
+                        _handles.Update();
                         if (cancelResult == TouchSelectionCancelResult.ClearSelection && _selection.IsActive)
                             ClearSelectionForExternalInteraction(resetDeferredPointerInput: false);
                     }

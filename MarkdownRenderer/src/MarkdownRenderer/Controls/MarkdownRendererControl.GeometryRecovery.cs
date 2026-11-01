@@ -52,7 +52,7 @@ public partial class MarkdownRendererControl
         // request without scheduling it nor leave another capture unreleased.
         TryGeometryRecoveryCleanup(() => ResetTransientInteractionState(clearSelection: false));
         TryGeometryRecoveryCleanup(() => _surface.Canvas?.ReleasePointerCaptures());
-        TryGeometryRecoveryCleanup(() => SetSelectionDragShieldActive(false));
+        TryGeometryRecoveryCleanup(() => _dragShield.SetActive(false));
         TryGeometryRecoveryCleanup(CloseSelectionContextMenu);
         TryGeometryRecoveryCleanup(_abbreviationTooltip.Hide);
         TryGeometryRecoveryCleanup(() => _cursor.SetShape(null));
@@ -61,7 +61,7 @@ public partial class MarkdownRendererControl
             if (_focusRing is not null)
                 _focusRing.Visibility = Visibility.Collapsed;
         });
-        TryGeometryRecoveryCleanup(() => SetSelectionHandleVisibility(Visibility.Collapsed));
+        TryGeometryRecoveryCleanup(() => _handles.SetVisibility(Visibility.Collapsed));
         TryGeometryRecoveryCleanup(_adorner.ReleaseSurface);
         TryGeometryRecoveryCleanup(InvalidateAutomationLayout);
 

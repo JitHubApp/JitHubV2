@@ -1,4 +1,4 @@
-using MarkdownRenderer.Controls;
+using MarkdownRenderer.Controls.Selection;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;
@@ -15,7 +15,7 @@ public sealed class SelectionHandleSilentCaptureLossTests
     [Fact]
     public void CaptureMissingFromAnActiveDragIsLost()
     {
-        Assert.True(MarkdownRendererControl.IsSelectionHandleCaptureSilentlyLost(
+        Assert.True(SelectionHandlesPresenter.IsCaptureSilentlyLost(
             dragPointerId: 7, hasCaptureTarget: true, captureViewAvailable: true,
             captureTargetHoldsPointer: false, hasDeferredCaptureOrQueuedInput: false));
     }
@@ -30,7 +30,7 @@ public sealed class SelectionHandleSilentCaptureLossTests
         uint dragPointerId, bool hasCaptureTarget, bool captureViewAvailable,
         bool captureTargetHoldsPointer, bool hasDeferredCaptureOrQueuedInput)
     {
-        Assert.False(MarkdownRendererControl.IsSelectionHandleCaptureSilentlyLost(
+        Assert.False(SelectionHandlesPresenter.IsCaptureSilentlyLost(
             dragPointerId, hasCaptureTarget, captureViewAvailable,
             captureTargetHoldsPointer, hasDeferredCaptureOrQueuedInput));
     }
