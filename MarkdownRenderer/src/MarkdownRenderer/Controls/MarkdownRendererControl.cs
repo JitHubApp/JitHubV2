@@ -6,7 +6,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.UI.Xaml;
-using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
@@ -79,8 +78,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private readonly PointerInputRouter _pointerInput;
     private readonly CanvasPointerEvents _canvasPointerEvents;
     private readonly EmbedRealization _embeds;
-    private AppWindow? _windowLifecycleAppWindow;
-    private WindowLifecycleSubscription? _windowLifecycleSubscription;
+    private readonly WindowDestroyingWatch _windowDestroying;
     private bool _scrollViewIntermediate;
     private MarkdownEngine? _ownedEngine;
 
@@ -100,9 +98,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     // attach a PerformanceSession or alter normal layout scheduling; it merely
     // enables the existing build-stage counters for this control instance.
     internal bool EnableStandaloneLayoutDiagnostics { get; set; }
-    private bool _hasInitialLayoutDispatcherDiagnostics;
-    private MarkdownInitialLayoutDispatcherDiagnosticsSnapshot _initialLayoutDispatcherDiagnostics;
-    private MarkdownLayoutDiagnostics? _initialLayoutDispatcherDiagnosticsSource;
 #endif
     private long _snapshotPipelineStartTimestamp;
     private long _snapshotSourceUtf16Bytes;
@@ -111,7 +106,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     // (busy or not yet measured). The next successful paint, which follows
     // band measurement or scene preparation, re-runs the probe once.
     private int _deferredSceneProbeAfterPaint;
-    private MarkdownPipelineTimingSnapshot _lastPipelineTiming;
+    private readonly PipelineTimings _timings = new();
     private CancellationTokenSource? _lazyLayoutCts;
     private Task? _lazyLayoutTask;
     private LayoutSnapshot? _pendingLazyLayoutSnapshot;
@@ -1816,6 +1811,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private protected MarkdownRendererControl(bool ownsScrollViewport)
     {
         _surface = new MarkdownViewSurface(ownsScrollViewport);
+        _windowDestroying = new WindowDestroyingWatch(this, _lifetime);
         _viewport = new MarkdownViewport(this, _surface);
         _cursor = new PointerCursorPresenter(cursor => ProtectedCursor = cursor);
         _abbreviationTooltip = new AbbreviationTooltipPresenter(this, _surface, _lifetime, _hover);
@@ -2551,7 +2547,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // Recreate it for a retained view; the old native child and its input
         // delegates must not retain the unloaded view through a WinRT cycle.
         EnsureCanvas();
-        AttachWindowLifecycle();
+        _windowDestroying.Attach(XamlRoot);
         AttachCanvasRenderHandlers();
         if (_imageLifetimeCts is null || _imageLifetimeCts.IsCancellationRequested)
         {
@@ -2611,7 +2607,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // An unloaded view is reusable and no longer belongs to this window.
         // Do not let a former host destroy it, or retain weak-event wrappers
         // for every virtualized view until the window eventually closes.
-        DetachWindowLifecycle();
+        _windowDestroying.Detach();
         // Win2D can retain queued native draw/resource callbacks after XAML starts
         // removing this control. Stop those callbacks before releasing any snapshot
         // or DirectWrite resources they may reference.
@@ -2760,7 +2756,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _handles.ResetDrag();
         _touchSelection.Dispose();
         _handles.StopFrameClock();
-        DetachWindowLifecycle();
+        _windowDestroying.Detach();
         OnUnloaded();
         _adorner.ReleaseForDispose();
         _published.LayoutDevice = null;
@@ -2812,70 +2808,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     /// whether the app or the view's window started it.
     /// </summary>
     public event EventHandler? Disposed;
-
-    // WinUI does not guarantee a child UserControl receives Unloaded when its
-    // top-level window is destroyed. Subscribe to the non-cancelable window
-    // destruction event so native Canvas resources are released while the
-    // WinUI dispatcher and COM apartment are still valid.
-    private void AttachWindowLifecycle()
-    {
-        if (XamlRoot?.ContentIslandEnvironment is not { } island)
-            return;
-
-        AppWindow appWindow;
-        try
-        {
-            appWindow = AppWindow.GetFromWindowId(island.AppWindowId);
-        }
-        catch
-        {
-            // A host can transition between content islands while it is being
-            // created or torn down. Its regular Unloaded path remains valid.
-            return;
-        }
-
-        if (ReferenceEquals(_windowLifecycleAppWindow, appWindow))
-            return;
-
-        DetachWindowLifecycle();
-        var subscription = new WindowLifecycleSubscription(this);
-        _windowLifecycleAppWindow = appWindow;
-        _windowLifecycleSubscription = subscription;
-        appWindow.Destroying += subscription.OnDestroying;
-    }
-
-    private void DetachWindowLifecycle()
-    {
-        if (_windowLifecycleAppWindow is not { } appWindow)
-            return;
-
-        _windowLifecycleAppWindow = null;
-        var subscription = _windowLifecycleSubscription;
-        _windowLifecycleSubscription = null;
-        if (subscription is null)
-            return;
-
-        try { appWindow.Destroying -= subscription.OnDestroying; }
-        catch { /* The host may already be tearing down its WinRT event source. */ }
-    }
-
-    private sealed class WindowLifecycleSubscription
-    {
-        private readonly WeakReference<MarkdownRendererControl> _owner;
-
-        internal WindowLifecycleSubscription(MarkdownRendererControl owner)
-            => _owner = new WeakReference<MarkdownRendererControl>(owner);
-
-        internal void OnDestroying(AppWindow sender, object args)
-        {
-            if (_owner.TryGetTarget(out var owner) &&
-                ReferenceEquals(sender, owner._windowLifecycleAppWindow) &&
-                !owner._lifetime.IsDisposed)
-            {
-                owner.Dispose();
-            }
-        }
-    }
 
     private void DetachCanvasHandlers()
     {
@@ -3962,9 +3894,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         double setupMilliseconds = Stopwatch.GetElapsedTime(parseEnded, layoutStarted).TotalMilliseconds;
 #if MARKDOWN_LAYOUT_DIAGNOSTICS
         using var initialLayoutDispatcherProbe =
-            layoutDiagnostics is not null && !_hasInitialLayoutDispatcherDiagnostics
-                ? new MarkdownInitialLayoutDispatcherProbe(this, DispatcherQueue, layoutDiagnostics)
-                : null;
+            _timings.StartInitialDispatcherProbe(DispatcherQueue, layoutDiagnostics);
 #endif
         (LayoutSnapshot? Snapshot, double CpuMilliseconds, long Started, long Ended) layoutResult;
         Func<CancellationToken, (LayoutSnapshot? Snapshot, double CpuMilliseconds, long Started, long Ended)> layoutWork =
@@ -4160,12 +4090,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         committed = true;
         NotifyAutomationSnapshotChanged();
 #if MARKDOWN_LAYOUT_DIAGNOSTICS
-        if (!_hasInitialLayoutDispatcherDiagnostics && initialLayoutDispatcherProbe is not null)
-        {
-            _initialLayoutDispatcherDiagnostics = initialLayoutDispatcherProbe.StopAndCapture();
-            _initialLayoutDispatcherDiagnosticsSource = layoutDiagnostics;
-            _hasInitialLayoutDispatcherDiagnostics = true;
-        }
+        _timings.CompleteInitialDispatcherProbe(initialLayoutDispatcherProbe, layoutDiagnostics);
 #endif
         _appliedLazyLayoutRevision = snapshot.LayoutRevision;
         if (!ReferenceEquals(Document, semanticDocument))
@@ -4337,7 +4262,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             NotifyVisibleDeferredSceneItemStatusMayHaveChanged();
         }
         long publicationEnded = Stopwatch.GetTimestamp();
-        _lastPipelineTiming = new MarkdownPipelineTimingSnapshot(
+        _timings.Publish(new MarkdownPipelineTimingSnapshot(
             generation,
             sourceUtf16Bytes,
             parseMilliseconds,
@@ -4355,11 +4280,11 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             layoutDiagnosticSnapshot.BlockConstructionMilliseconds,
             layoutDiagnosticSnapshot.MeasureArrangeMilliseconds,
             layoutDiagnosticSnapshot.SnapshotConstructionMilliseconds,
-            _initialLayoutDispatcherDiagnostics.SentinelEnqueued,
-            _initialLayoutDispatcherDiagnostics.SentinelDispatched,
-            _initialLayoutDispatcherDiagnostics.SentinelDelayMilliseconds,
-            _initialLayoutDispatcherDiagnostics.HeartbeatSampleCount,
-            _initialLayoutDispatcherDiagnostics.HeartbeatMaxGapMilliseconds,
+            _timings.InitialDispatcher.SentinelEnqueued,
+            _timings.InitialDispatcher.SentinelDispatched,
+            _timings.InitialDispatcher.SentinelDelayMilliseconds,
+            _timings.InitialDispatcher.HeartbeatSampleCount,
+            _timings.InitialDispatcher.HeartbeatMaxGapMilliseconds,
 #endif
             publicationStarted,
             commitEnded,
@@ -4369,7 +4294,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             highlightRetirementEnded,
             highlightSchedulingEnded,
             visibleRealizationEnded,
-            publicationEnded);
+            publicationEnded));
         } // end of snapshot try-block
         catch
         {
@@ -4423,133 +4348,10 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         }
     }
 
-    // Diagnostic callers run on the UI thread. A canceled or superseded build never
-    // replaces these timings, so they always describe the snapshot
-    // currently committed to the control.
+    /// <summary>The stage timings of the committed snapshot's pipeline.</summary>
     internal MarkdownPipelineTimingSnapshot GetLastPipelineTimingSnapshot() =>
-        _lastPipelineTiming;
+        _timings.Last;
 
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
-    private void OnInitialLayoutDispatcherSentinelDispatched(MarkdownLayoutDiagnostics diagnostics)
-    {
-        if (!_hasInitialLayoutDispatcherDiagnostics ||
-            !ReferenceEquals(_initialLayoutDispatcherDiagnosticsSource, diagnostics))
-        {
-            return;
-        }
-
-        _initialLayoutDispatcherDiagnostics = diagnostics.CaptureDispatcher();
-        _lastPipelineTiming = _lastPipelineTiming.WithInitialLayoutDispatcherDiagnostics(
-            _initialLayoutDispatcherDiagnostics);
-    }
-
-    /// <summary>
-    /// Diagnostic-only probe for the first layout build captured by a performance
-    /// session. Its timer performs no XAML/UIA writes; it only updates the
-    /// diagnostics accumulator from the dispatcher thread.
-    /// </summary>
-    private sealed class MarkdownInitialLayoutDispatcherProbe : IDisposable
-    {
-        private readonly WeakReference<MarkdownRendererControl> _owner;
-        private readonly MarkdownLayoutDiagnostics _diagnostics;
-        private readonly Microsoft.UI.Dispatching.DispatcherQueue? _dispatcherQueue;
-        private readonly Microsoft.UI.Dispatching.DispatcherQueueHandler _sentinelHandler;
-        private Microsoft.UI.Dispatching.DispatcherQueueTimer? _heartbeatTimer;
-        private int _stopped;
-
-        internal MarkdownInitialLayoutDispatcherProbe(
-            MarkdownRendererControl owner,
-            Microsoft.UI.Dispatching.DispatcherQueue? dispatcherQueue,
-            MarkdownLayoutDiagnostics diagnostics)
-        {
-            _owner = new WeakReference<MarkdownRendererControl>(owner);
-            _diagnostics = diagnostics;
-            _dispatcherQueue = dispatcherQueue;
-            _sentinelHandler = OnSentinelDispatched;
-            if (dispatcherQueue is null)
-                return;
-
-            try
-            {
-                Microsoft.UI.Dispatching.DispatcherQueueTimer timer = dispatcherQueue.CreateTimer();
-                _heartbeatTimer = timer;
-                timer.Interval = TimeSpan.FromMilliseconds(16);
-                timer.IsRepeating = true;
-                timer.Tick += OnHeartbeatTick;
-                timer.Start();
-                diagnostics.StartDispatcherHeartbeat(Stopwatch.GetTimestamp());
-            }
-            catch
-            {
-                // Diagnostics must not change layout behavior if the optional
-                // dispatcher timer cannot be created or started.
-                StopHeartbeatTimer();
-            }
-        }
-
-        internal void EnqueueWorkerCompletionSentinel(long workerCompletionTimestamp)
-        {
-            if (Volatile.Read(ref _stopped) != 0)
-                return;
-
-            bool enqueued = false;
-            try
-            {
-                enqueued = _dispatcherQueue?.TryEnqueue(
-                    Microsoft.UI.Dispatching.DispatcherQueuePriority.Normal,
-                    _sentinelHandler) == true;
-            }
-            catch
-            {
-                // A failed diagnostic enqueue is recorded, not a layout failure.
-            }
-
-            _diagnostics.RecordDispatcherSentinelEnqueue(workerCompletionTimestamp, enqueued);
-        }
-
-        internal MarkdownInitialLayoutDispatcherDiagnosticsSnapshot StopAndCapture()
-        {
-            if (Interlocked.Exchange(ref _stopped, 1) == 0)
-            {
-                StopHeartbeatTimer();
-                _diagnostics.RecordDispatcherHeartbeat(Stopwatch.GetTimestamp());
-            }
-
-            return _diagnostics.CaptureDispatcher(freezeHeartbeat: true);
-        }
-
-        public void Dispose() => StopAndCapture();
-
-        private void OnHeartbeatTick(
-            Microsoft.UI.Dispatching.DispatcherQueueTimer sender,
-            object args) =>
-            _diagnostics.RecordDispatcherHeartbeat(Stopwatch.GetTimestamp());
-
-        private void OnSentinelDispatched()
-        {
-            _diagnostics.RecordDispatcherSentinelDispatched(Stopwatch.GetTimestamp());
-            if (_owner.TryGetTarget(out MarkdownRendererControl? owner))
-                owner.OnInitialLayoutDispatcherSentinelDispatched(_diagnostics);
-        }
-
-        private void StopHeartbeatTimer()
-        {
-            if (_heartbeatTimer is not { } timer)
-                return;
-
-            _heartbeatTimer = null;
-            try
-            {
-                timer.Stop();
-                timer.Tick -= OnHeartbeatTick;
-            }
-            catch
-            {
-                // Stopping an optional diagnostic timer must remain best-effort.
-            }
-        }
-    }
-#endif
 
     private void OnScrollViewChanged(object? sender, ScrollViewerViewChangedEventArgs e)
     {
