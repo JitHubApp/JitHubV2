@@ -611,7 +611,7 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("_imageRelayout.PublishReadyCompletion();", recoveryTick, StringComparison.Ordinal);
         Assert.Contains("internal void PublishReadyCompletion() => _payload?.PublishAfterWorkDrains();", relayoutSource, StringComparison.Ordinal);
         Assert.Contains("_imageRelayout.RecoverFaultedHandoff();", recoveryTick, StringComparison.Ordinal);
-        Assert.Contains("PublishPendingLayoutCommit();", recoveryTick, StringComparison.Ordinal);
+        Assert.Contains("_layoutPublisher.PublishPending();", recoveryTick, StringComparison.Ordinal);
         string lazyLayoutSource = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
             "MarkdownRenderer",

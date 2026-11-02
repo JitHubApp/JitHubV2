@@ -30,6 +30,7 @@ internal sealed class LazyLayoutRealization
     private readonly MarkdownViewLifetime _lifetime;
     private readonly PublishedLayout _published;
     private readonly LayoutCommitState _layoutCommit;
+    private readonly LayoutCommitPublisher _layoutPublisher;
     private readonly MarkdownViewSurface _surface;
     private readonly MarkdownViewport _viewport;
     private readonly RecoveryClock _recoveryClock;
@@ -64,6 +65,7 @@ internal sealed class LazyLayoutRealization
         MarkdownViewLifetime lifetime,
         PublishedLayout published,
         LayoutCommitState layoutCommit,
+        LayoutCommitPublisher layoutPublisher,
         MarkdownViewSurface surface,
         MarkdownViewport viewport,
         RecoveryClock recoveryClock,
@@ -76,6 +78,7 @@ internal sealed class LazyLayoutRealization
         _lifetime = lifetime;
         _published = published;
         _layoutCommit = layoutCommit;
+        _layoutPublisher = layoutPublisher;
         _surface = surface;
         _viewport = viewport;
         _recoveryClock = recoveryClock;
@@ -573,7 +576,7 @@ internal sealed class LazyLayoutRealization
         // over a newer viewport position.
         bool restoreAnchor = LazyLayoutScrollAnchorPolicy.ShouldRestore(
             anchorOffset, _surface.Scroll?.VerticalOffset, _host.IsScrollViewIntermediate);
-        _host.ApplyLazyLayoutCommit(snapshot, restoreAnchor ? result.ScrollAnchor : null);
+        _layoutPublisher.Apply(snapshot, restoreAnchor ? result.ScrollAnchor : null);
         _vectorCapacity.Synchronize(snapshot);
         if (result.Commit.NativeSceneResourcesChanged)
             _host.NotifyVisibleDeferredSceneItemStatusMayHaveChanged();

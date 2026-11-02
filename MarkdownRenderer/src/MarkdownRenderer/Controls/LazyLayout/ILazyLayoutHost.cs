@@ -32,8 +32,6 @@ internal interface ILazyLayoutHost
 
     void HandleDeviceLost(Exception failure);
 
-    void ApplyLazyLayoutCommit(LayoutSnapshot snapshot, (int BlockIndex, double OffsetFromTop)? scrollAnchor);
-
     void TryResumePendingScrollToBlock(LayoutSnapshot snapshot, long snapshotGeneration);
 
     void NotifyVisibleDeferredSceneItemStatusMayHaveChanged();

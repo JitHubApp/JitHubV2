@@ -24,6 +24,7 @@ internal sealed class ImageRelayout
     private readonly MarkdownViewLifetime _lifetime;
     private readonly PublishedLayout _published;
     private readonly LayoutCommitState _layoutCommit;
+    private readonly LayoutCommitPublisher _layoutPublisher;
     private readonly MarkdownViewSurface _surface;
     private readonly PointerInputRouter _pointerInput;
     private readonly ImageSubscriptions _imageSubscriptions;
@@ -46,6 +47,7 @@ internal sealed class ImageRelayout
         MarkdownViewLifetime lifetime,
         PublishedLayout published,
         LayoutCommitState layoutCommit,
+        LayoutCommitPublisher layoutPublisher,
         MarkdownViewSurface surface,
         PointerInputRouter pointerInput,
         ImageSubscriptions imageSubscriptions,
@@ -56,6 +58,7 @@ internal sealed class ImageRelayout
         _lifetime = lifetime;
         _published = published;
         _layoutCommit = layoutCommit;
+        _layoutPublisher = layoutPublisher;
         _surface = surface;
         _pointerInput = pointerInput;
         _imageSubscriptions = imageSubscriptions;
@@ -374,7 +377,7 @@ internal sealed class ImageRelayout
                     }
                 }
                 else
-                    _host.ApplyLazyLayoutCommit(snapshot, rootMeasureCommitted &&
+                    _layoutPublisher.Apply(snapshot, rootMeasureCommitted &&
                         (canceled || capturedScrollOffset != _surface.Scroll?.VerticalOffset) ? null : anchor);
             }
         }

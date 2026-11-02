@@ -59,7 +59,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     IFocusGeometryRecoveryHost, IRendererFocusEntryHost, IImageSubscriptionsHost, IImageResidencyHost,
     ICanvasDeviceRecoveryHost, ICodeBlockHighlightingHost, IRecoveryClockHost, IRasterPlacementHost,
     IImageRelayoutHost, IImageLoadCompletionHost, IVectorCapacityRetryHost,
-    ILazyLayoutHost
+    ILazyLayoutHost, ILayoutCommitHost
 {
     private readonly MarkdownViewSurface _surface;
     private readonly MarkdownViewLifetime _lifetime = new();
@@ -113,6 +113,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private int _deferredSceneProbeAfterPaint;
     private readonly PipelineTimings _timings = new();
     private readonly LayoutCommitState _layoutCommit = new();
+    private readonly LayoutCommitPublisher _layoutPublisher;
     private readonly object _imagePreparationOwnerToken = new();
     private readonly RasterPlacementPublisher _rasterPlacement;
     private readonly ImageRelayout _imageRelayout;
@@ -1788,9 +1789,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _focusGeometry = new FocusGeometryReader(_lifetime, _published);
         _focusRing = new FocusRingPresenter(this, _focus, _focusGeometry, _surface, _lifetime, _published, DispatcherQueue);
         _rasterPlacement = new RasterPlacementPublisher(this, _lifetime, _published, _layoutCommit, _surface, _pointerInput, _imageSubscriptions, _imagePlans, _imageResidency, _embeds, _focus, _focusRing, _hostedFocusPlan, _snapshotRetirements);
-        _imageRelayout = new ImageRelayout(this, _lifetime, _published, _layoutCommit, _surface, _pointerInput, _imageSubscriptions, _rasterPlacement, _recoveryClock);
-        _imageLoadCompletion = new ImageLoadCompletion(this, _lifetime, _published, _layoutCommit, _imageSubscriptions, _imageRelayout);
-        _imageSubscriptions.LoadCompleted += _imageLoadCompletion.OnLoadCompleted;
         _focusRefresh = new FocusableItemsRefreshRequest(_published);
         _hostedFocus = new HostedElementFocus(this, _lifetime, _published, _focus, _hostedFocusPlan, _embeds, _focusRing);
         _overflowScroll = new HorizontalOverflowScrollVisuals(this, _surface, _lifetime, _published, _selection, _focus, _embeds, DispatcherQueue);
@@ -1800,7 +1798,11 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _navigator = new KeyboardFocusNavigator(this, _lifetime, _published, _focus, _focusGeometry, _focusRing, _overflowScroll, _embeds, _focusCommit, queuedFocusKeys, DispatcherQueue);
         _focusGeometryWork = new PendingFocusGeometryWork(this, _lifetime, _published, _focus, _focusGeometry, _focusRing, _reveal, queuedFocusKeys, _navigator);
         _focusEntry = new RendererFocusEntry(this, _lifetime, _focus, _focusRing, _focusCommit, _navigator, DispatcherQueue);
-        _lazyLayout = new LazyLayoutRealization(this, _lifetime, _published, _layoutCommit, _surface, _viewport, _recoveryClock, _vectorCapacity, _pointerInput, _focus, _focusCommit);
+        _layoutPublisher = new LayoutCommitPublisher(this, _lifetime, _published, _layoutCommit, _surface, _recoveryClock, _pointerInput, _embeds, _imageSubscriptions, _imagePlans, _imageResidency, _focus, _focusRing, _focusCommit, _focusRefresh, _hostedFocusPlan);
+        _lazyLayout = new LazyLayoutRealization(this, _lifetime, _published, _layoutCommit, _layoutPublisher, _surface, _viewport, _recoveryClock, _vectorCapacity, _pointerInput, _focus, _focusCommit);
+        _imageRelayout = new ImageRelayout(this, _lifetime, _published, _layoutCommit, _layoutPublisher, _surface, _pointerInput, _imageSubscriptions, _rasterPlacement, _recoveryClock);
+        _imageLoadCompletion = new ImageLoadCompletion(this, _lifetime, _published, _layoutCommit, _imageSubscriptions, _imageRelayout);
+        _imageSubscriptions.LoadCompleted += _imageLoadCompletion.OnLoadCompleted;
         IsTabStop = true;
         Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
         Loaded += (_, _) => OnLoadedInternal();
@@ -2238,7 +2240,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         long generation,
         long hostedFocusPlanEpoch,
         long layoutRevision)
-        => IsCurrentPlanPublication(snapshot, generation, hostedFocusPlanEpoch, layoutRevision);
+        => _layoutPublisher.IsCurrentPlanPublication(snapshot, generation, hostedFocusPlanEpoch, layoutRevision);
 
     bool IEmbedRealizationHost.IsCurrentRasterCodeActionPublication(
         LayoutSnapshot candidate,
@@ -2479,10 +2481,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     void IImageRelayoutHost.RequestFullRebuild() => RequestRebuild(RebuildReason.Full);
 
-    void IImageRelayoutHost.ApplyLazyLayoutCommit(
-        LayoutSnapshot snapshot, (int BlockIndex, double OffsetFromTop)? scrollAnchor) =>
-        ApplyLazyLayoutCommit(snapshot, scrollAnchor);
-
     void IImageRelayoutHost.StopRecoveryClock(bool force) => StopRecoveryClock(force);
 
     Task IImageRelayoutHost.RetireCancellationTokenSource(CancellationTokenSource? cts, Task? lifetime) =>
@@ -2541,10 +2539,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     void ILazyLayoutHost.HandleDeviceLost(Exception failure) => _deviceRecovery.HandleDeviceLost(failure);
 
-    void ILazyLayoutHost.ApplyLazyLayoutCommit(
-        LayoutSnapshot snapshot, (int BlockIndex, double OffsetFromTop)? scrollAnchor) =>
-        ApplyLazyLayoutCommit(snapshot, scrollAnchor);
-
     void ILazyLayoutHost.TryResumePendingScrollToBlock(LayoutSnapshot snapshot, long snapshotGeneration) =>
         TryResumePendingScrollToBlock(snapshot, snapshotGeneration);
 
@@ -2561,6 +2555,27 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     Task ILazyLayoutHost.RetireCancellationTokenSource(CancellationTokenSource? cts, Task? lifetime) =>
         RetireCancellationTokenSource(cts, lifetime);
+
+    bool ILayoutCommitHost.IsScrollViewIntermediate => _scrollViewIntermediate;
+
+    bool ILayoutCommitHost.RequestGeometryRecoveryIfRequired(LayoutSnapshot? snapshot) =>
+        RequestGeometryRecoveryIfRequired(snapshot);
+
+    void ILayoutCommitHost.RequestFullRebuild() => RequestRebuild(RebuildReason.Full);
+
+    void ILayoutCommitHost.ApplySnapshotSize(Size size) => ApplySnapshotSize(size);
+
+    void ILayoutCommitHost.ScheduleVisibleCodeBlockHighlighting() => ScheduleVisibleCodeBlockHighlighting();
+
+    void ILayoutCommitHost.RefreshInteractiveTextAdornerAfterLayoutChange() =>
+        RefreshInteractiveTextAdornerAfterLayoutChange();
+
+    void ILayoutCommitHost.InvalidateAutomationLayout() => InvalidateAutomationLayout();
+
+    void ILayoutCommitHost.InvalidateCanvas() => InvalidateCanvas();
+
+    void ILayoutCommitHost.TryResumePendingScrollToBlock(LayoutSnapshot snapshot, long snapshotGeneration) =>
+        TryResumePendingScrollToBlock(snapshot, snapshotGeneration);
 
     double IDeferredGestureLayoutHost.RasterizationScale => XamlRoot?.RasterizationScale ?? 1;
 
@@ -4348,13 +4363,13 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _focus.ClearResumeIndex();
         _focus.ClearLazyFocus();
         _focusRing.ForgetEvictedRing();
-        bool realizationPlansReady = RebuildRealizationPlans(
+        bool realizationPlansReady = _layoutPublisher.TryRebuildPlans(
             snapshot,
             preserveRealized: false,
             out _,
             out _);
         if (!realizationPlansReady)
-            DeferLayoutCommit(scrollAnchor: null);
+            _layoutPublisher.Defer(scrollAnchor: null);
         long planConstructionEnded = Stopwatch.GetTimestamp();
         if (_surface.Scroll is not null)
         {
@@ -4623,287 +4638,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         return (blockIndex, anchor.OffsetFromTop);
     }
 
-    private void ApplyLazyLayoutCommit(
-        LayoutSnapshot snapshot,
-        (int BlockIndex, double OffsetFromTop)? scrollAnchor)
-    {
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !ReferenceEquals(snapshot, _published.Snapshot))
-            return;
-        if (RequestGeometryRecoveryIfRequired(snapshot))
-            return;
-        if (_layoutCommit.IsPublishing)
-        {
-            DeferLayoutCommit(scrollAnchor);
-            return;
-        }
-        _layoutCommit.BeginPublishing();
-        try
-        {
-            _layoutCommit.ClearPending();
-            if (!RebuildRealizationPlans(snapshot, preserveRealized: true, out Size size,
-                    out double? anchorOffset, scrollAnchor))
-            {
-                DeferLayoutCommit(scrollAnchor);
-                return;
-            }
-            if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !ReferenceEquals(snapshot, _published.Snapshot))
-                return;
-            ApplySnapshotSize(size);
-            if (anchorOffset is { } target && _surface.Scroll is { } scroll &&
-                Math.Abs(target - scroll.VerticalOffset) >= 0.5)
-                scroll.ChangeView(null, target, null, disableAnimation: true);
-            _embeds.RealizeVisible();
-            ScheduleVisibleCodeBlockHighlighting();
-            if (!_focusCommit.ResumePendingLazy(snapshot))
-                _focusRing.Update();
-            RefreshInteractiveTextAdornerAfterLayoutChange();
-            InvalidateAutomationLayout();
-            InvalidateCanvas();
-        }
-        finally
-        {
-            _layoutCommit.EndPublishing();
-        }
-
-        TryResumePendingScrollToBlock(snapshot, _published.Generation);
-        if (!_lifetime.IsDisposed && !_lifetime.IsUnloaded &&
-            ReferenceEquals(snapshot, _published.Snapshot) &&
-            _layoutCommit.Pending is null &&
-            _layoutCommit.AppliedRevision >= snapshot.LayoutRevision)
-        {
-            // Release logical input waiters only after plans/anchor are applied,
-            // not when a worker first updates the snapshot's measured mask.
-            _pointerInput.OnLazyLayoutCompletion(snapshot, succeeded: true);
-        }
-    }
-
-    private void DeferLayoutCommit((int BlockIndex, double OffsetFromTop)? scrollAnchor)
-    {
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _published.Snapshot is null)
-            return;
-        // Retain only value metadata, never a retired graph. Keep old plans and
-        // native children until one coherent geometry read is admitted. The
-        // existing weak recovery timer also covers a withheld UI dispatch.
-        _layoutCommit.Defer(new PendingLayoutCommit(
-            _published.Generation, scrollAnchor, _surface.Scroll?.VerticalOffset));
-        _recoveryClock.Start();
-        if (!_recoveryClock.IsRunning)
-            RequestRebuild(RebuildReason.Full);
-    }
-
-    private void PublishPendingLayoutCommit()
-    {
-        if (_layoutCommit.Pending is not { } pending)
-            return;
-        if (pending.Generation != _published.Generation || _published.Snapshot is not { } snapshot)
-        {
-            _layoutCommit.ClearPending();
-            return;
-        }
-        bool restoreAnchor = LazyLayoutScrollAnchorPolicy.ShouldRestore(
-            pending.ScrollOffset, _surface.Scroll?.VerticalOffset, _scrollViewIntermediate);
-        ApplyLazyLayoutCommit(snapshot, restoreAnchor ? pending.Anchor : null);
-    }
-
-    private bool RebuildRealizationPlans(LayoutSnapshot snapshot, bool preserveRealized,
-        out Size size, out double? anchorOffset,
-        (int BlockIndex, double OffsetFromTop)? scrollAnchor = null)
-    {
-        size = default;
-        anchorOffset = null;
-        long planGeneration = _published.Generation;
-        if (!snapshot.TryBeginInteraction())
-            return false;
-        long hostedFocusPlanEpoch = -1;
-        long hostedFocusPlanRevision = -1;
-        long focusRequestVersion = _focusRefresh.Pending.RequestVersion;
-        IReadOnlyList<Layout.FocusableItem> collectedFocusableItems =
-            Array.Empty<Layout.FocusableItem>();
-        ImagePlanPublication? imagePlanPublication = null;
-        EmbedPlan[] oldPlans = Array.Empty<EmbedPlan>();
-        CodeBlockActionPlan[] oldActionPlans = Array.Empty<CodeBlockActionPlan>();
-        bool plansBuilt = false;
-        Exception? focusPlanCaptureFailure = null;
-        try
-        {
-            try
-            {
-                // Collect before mutating realization plans. Dynamic overflow
-                // eligibility is read only while this exact snapshot lease is
-                // held, and a failed capture leaves the previous focus list and
-                // plan state intact.
-                bool focusPlanCaptured;
-                try
-                {
-                    focusPlanCaptured = snapshot.TryCollectFocusableItemsUnderReadLease(
-                        out collectedFocusableItems);
-                }
-                catch (Exception exception) when (exception is not OutOfMemoryException)
-                {
-                    // A custom overflow getter failed before any realization
-                    // plan is touched. Let the lease unwind before reporting
-                    // it or clearing the matching pending ticket.
-                    focusPlanCaptureFailure = exception;
-                    focusPlanCaptured = false;
-                }
-                if (focusPlanCaptureFailure is null)
-                {
-                    if (!focusPlanCaptured)
-                        return false;
-
-                    hostedFocusPlanRevision = snapshot.LayoutRevision;
-                    if (!IsCurrentFocusablePlanAttempt(
-                            snapshot,
-                            planGeneration,
-                            hostedFocusPlanRevision,
-                            focusRequestVersion))
-                    {
-                        return false;
-                    }
-
-                    hostedFocusPlanEpoch = _hostedFocusPlan.Invalidate();
-                    _embeds.CapturePlansForAdoption(preserveRealized, out oldPlans, out oldActionPlans);
-                    _imageSubscriptions.UnsubscribeAll();
-                    _imagePlans.Clear();
-                    _embeds.ClearHitTargets();
-                    _embeds.ClearPlans();
-
-                    LayoutSnapshot.LayoutPlanCandidateEnumerator planCandidates =
-                        snapshot.GetMeasuredLayoutPlanCandidatesUnderPaint();
-                    int candidateRootOrdinal = -1;
-                    BlockBox? candidateRoot = null;
-                    bool candidateRootIsMeasured = false;
-                    while (planCandidates.MoveNext())
-                    {
-                        LayoutPlanCandidate candidate = planCandidates.Current;
-                        if (candidate.TopLevelOrdinal != candidateRootOrdinal)
-                        {
-                            candidateRootOrdinal = candidate.TopLevelOrdinal;
-                            candidateRootIsMeasured = snapshot.TryGetMeasuredBlockByOrdinalUnderPaint(
-                                candidateRootOrdinal,
-                                out BlockBox measuredRoot);
-                            candidateRoot = candidateRootIsMeasured ? measuredRoot : null;
-                        }
-
-                        if (candidateRootIsMeasured)
-                        {
-                            using LayoutPlacementTransformContext.Scope placementScope =
-                                snapshot.EnterPlacementTransformScopeForTopLevelBlockUnderPaint(candidateRoot!);
-                            _embeds.CollectPlans(snapshot, candidateRoot!, candidate.Box);
-                        }
-                    }
-
-                    _embeds.CommitPlanIndexes();
-
-                    // Membership and indexed bounds remain immutable until the next
-                    // plan publication. The ImageBox itself is mutable and borrowed.
-                    imagePlanPublication = _imagePlans.IndexUnderPaint(
-                        snapshot, planGeneration, hostedFocusPlanRevision);
-                    size = snapshot.Size;
-                    anchorOffset = LazyLayoutScrollAnchorPolicy.GetTargetOffset(snapshot, scrollAnchor);
-                    _layoutCommit.MarkApplied(hostedFocusPlanRevision);
-                    imagePlanPublication ??= ImagePlanSet.Empty(
-                        snapshot, planGeneration, _layoutCommit.AppliedRevision);
-                }
-            }
-            finally
-            {
-                snapshot.EndInteraction();
-            }
-
-            if (focusPlanCaptureFailure is not null)
-            {
-                _focusRefresh.Clear(focusRequestVersion);
-                System.Runtime.ExceptionServices.ExceptionDispatchInfo
-                    .Capture(focusPlanCaptureFailure).Throw();
-            }
-            if (!IsCurrentPlanPublication(snapshot, planGeneration, hostedFocusPlanEpoch, hostedFocusPlanRevision))
-                return false;
-            if (imagePlanPublication is null)
-                return false;
-
-            _imagePlans.Publication = imagePlanPublication;
-
-            // Native child transfer, factories, residency policies and XAML
-            // notifications can reenter the control. Do not invoke them under the
-            // geometry lease; every plan rectangle above is already copied.
-            _imageResidency.Prepare(snapshot);
-
-            if (!_embeds.AdoptRealizedElements(
-                    oldPlans, oldActionPlans, snapshot, planGeneration,
-                    hostedFocusPlanEpoch, hostedFocusPlanRevision))
-                return false;
-
-            plansBuilt = true;
-        }
-        finally
-        {
-            // Even reentrant unload/replacement or failed geometry collection
-            // must retire the old plans not transferred to the current set.
-            // These detached arrays are not invalidated by native callbacks.
-            _embeds.RetireDetachedPlans(oldPlans, oldActionPlans);
-        }
-
-        // Retiring detached plans is callback-capable. Publish the focus index
-        // only after that cleanup completes and the complete plan attempt still
-        // owns the same snapshot, generation, layout revision, and epoch.
-        if (!plansBuilt ||
-            !IsCurrentPlanPublication(snapshot, planGeneration, hostedFocusPlanEpoch, hostedFocusPlanRevision) ||
-            !IsCurrentFocusablePlanAttempt(
-                snapshot,
-                planGeneration,
-                hostedFocusPlanRevision,
-                focusRequestVersion))
-        {
-            return false;
-        }
-
-        // Host, native-resource, and retirement callbacks above may navigate
-        // focus while realization plans are being published. Resolve the
-        // currently focused value identity only now, then atomically replace
-        // the value-only list/index after every snapshot and ticket fence holds.
-        _focus.ReplaceItems(collectedFocusableItems);
-        _hostedFocusPlan.Publish(planGeneration, hostedFocusPlanRevision, hostedFocusPlanEpoch);
-        _focusRefresh.Complete(
-            snapshot,
-            planGeneration,
-            hostedFocusPlanRevision,
-            focusRequestVersion);
-        return true;
-    }
-
-    /// <summary>
-    /// True while a plan publication still owns the published snapshot,
-    /// generation, hosted focus plan epoch and layout revision.
-    /// </summary>
-    private bool IsCurrentPlanPublication(
-        LayoutSnapshot snapshot,
-        long generation,
-        long hostedFocusPlanEpoch,
-        long layoutRevision) =>
-        IsCurrentRealizationSnapshot(snapshot, generation) &&
-        hostedFocusPlanEpoch == _hostedFocusPlan.Epoch &&
-        snapshot.LayoutRevision == layoutRevision;
-
-    private bool IsCurrentRealizationSnapshot(LayoutSnapshot snapshot, long generation) =>
-        !_lifetime.IsDisposed && !_lifetime.IsUnloaded && generation == _published.Generation &&
-        ReferenceEquals(snapshot, _published.Snapshot);
-
-    private bool IsCurrentFocusablePlanAttempt(
-        LayoutSnapshot snapshot,
-        long generation,
-        long revision,
-        long requestVersion)
-    {
-        if (!IsCurrentRealizationSnapshot(snapshot, generation) ||
-            snapshot.LayoutRevision != revision)
-        {
-            return false;
-        }
-
-        return _focusRefresh.Admits(snapshot, generation, revision, requestVersion);
-    }
-
     private void AddImagePlan(Layout.Boxes.ImageBox image)
     {
         if (!_imageSubscriptions.Subscribe(image))
@@ -4935,7 +4669,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 _imageSubscriptions.ProcessBitmapOutputRecovery();
                 _imageRelayout.ProcessQueued();
                 _imageRelayout.PublishReadyCompletion();
-                PublishPendingLayoutCommit();
+                _layoutPublisher.PublishPending();
                 _lazyLayout.ProcessQueued();
                 _lazyLayout.TryPublishCompletion();
                 _overflowScroll.ProcessPendingRetry();

@@ -26,8 +26,6 @@ internal interface IImageRelayoutHost
 
     void RequestFullRebuild();
 
-    void ApplyLazyLayoutCommit(LayoutSnapshot snapshot, (int BlockIndex, double OffsetFromTop)? scrollAnchor);
-
     /// <summary>
     /// Stops the recovery clock. Unless <paramref name="force"/> is set, it
     /// keeps running while other deferred work is pending.

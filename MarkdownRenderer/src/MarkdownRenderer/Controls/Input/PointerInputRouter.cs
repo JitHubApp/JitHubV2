@@ -372,7 +372,7 @@ internal sealed class PointerInputRouter
             {
                 // The worker may publish a newer measured mask before its UI
                 // realization plans and restored anchor are applied. Wait for
-                // ApplyLazyLayoutCommit to signal that publication boundary.
+                // LayoutCommitPublisher.Apply to signal that publication boundary.
                 _retryTimer?.Stop();
                 return;
             }
