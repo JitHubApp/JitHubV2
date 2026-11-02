@@ -10,12 +10,7 @@ internal interface ICanvasTilePainterHost
 
     bool IsLoaded { get; }
 
-    /// <summary>True when a deferred scene status refresh waits for a successful paint.</summary>
-    bool IsDeferredSceneStatusRefreshPending { get; }
-
     bool RequestGeometryRecoveryIfRequired(LayoutSnapshot? snapshot);
-
-    void RefreshDeferredSceneStatusAfterSuccessfulPaintIfNeeded();
 
     void ScheduleVisibleDeferredScenes();
 }

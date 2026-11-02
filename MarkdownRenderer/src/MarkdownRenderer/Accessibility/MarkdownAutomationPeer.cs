@@ -100,11 +100,11 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
 
     protected override string GetItemStatusCore()
     {
-        MarkdownVisibleSceneReadiness sceneStatus = _owner.GetVisibleDeferredSceneStatusForAutomation();
+        MarkdownVisibleSceneReadiness sceneStatus = _owner.DeferredSceneReadiness.GetVisibleStatus();
         if (sceneStatus == MarkdownVisibleSceneReadiness.Failed)
             return _owner.ResolveLocalizedString(MarkdownStringKeys.EmbeddedContentUnavailable,
                 MarkdownLocalizedStrings.EmbeddedContentUnavailable);
-        if (_owner.HasVisibleLoadingImagesForAutomation())
+        if (_owner.ImageReadiness.HasLoadingImages())
         {
             string imageName = _owner.ResolveLocalizedString(
                 MarkdownStringKeys.ImageName,

@@ -40,6 +40,7 @@ using MarkdownRenderer.Controls.Rendering;
 using MarkdownRenderer.Controls.Input;
 using MarkdownRenderer.Controls.LazyLayout;
 using MarkdownRenderer.Controls.Pipeline;
+using MarkdownRenderer.Controls.Readiness;
 using MarkdownRenderer.Controls.Selection;
 
 namespace MarkdownRenderer.Controls;
@@ -61,7 +62,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     ICanvasDeviceRecoveryHost, ICodeBlockHighlightingHost, IRecoveryClockHost, IRasterPlacementHost,
     IImageRelayoutHost, IImageLoadCompletionHost, IVectorCapacityRetryHost,
     ILazyLayoutHost, ILayoutCommitHost, IFocusableItemsPublicationHost,
-    IRebuildSchedulerHost, IRebuildLayoutSetupHost, ICanvasTilePainterHost
+    IRebuildSchedulerHost, IRebuildLayoutSetupHost, ICanvasTilePainterHost,
+    IDeferredSceneReadinessHost
 {
     private readonly MarkdownViewSurface _surface;
     private readonly MarkdownViewLifetime _lifetime = new();
@@ -97,6 +99,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private readonly RebuildScheduler _rebuild;
     private readonly RebuildLayoutSetup _layoutSetup;
     private readonly CanvasTilePainter _painter;
+    private readonly VisibleImageReadiness _imageReadiness;
+    private readonly DeferredSceneReadiness _deferredScenes;
     private CancellationTokenSource? _imageLifetimeCts;
     private readonly MarkdownAutomationDocumentGeneration _automationDocumentGenerations = new();
 #if MARKDOWN_LAYOUT_DIAGNOSTICS
@@ -105,10 +109,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     // enables the existing build-stage counters for this control instance.
     internal bool EnableStandaloneLayoutDiagnostics { get; set; }
 #endif
-    private int _deferredSceneStatusRefreshAfterPaint;
-    // Set when the visible deferred-scene probe could not verify its band
-    // (busy or not yet measured). The next successful paint, which follows
-    // band measurement or scene preparation, re-runs the probe once.
     private readonly PipelineTimings _timings = new();
     private readonly LayoutCommitState _layoutCommit = new();
     private readonly LayoutCommitPublisher _layoutPublisher;
@@ -1432,271 +1432,16 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     internal void ClearAutomationSelection() => _selection.Clear();
 
+    internal VisibleImageReadiness ImageReadiness => _imageReadiness;
+
+    internal DeferredSceneReadiness DeferredSceneReadiness => _deferredScenes;
+
     internal bool TryGetVisibleDocumentRect(out Windows.Foundation.Rect rect)
     {
         bool hasViewport = _viewport.TryGet(out double top, out double height, out double width);
         rect = new Windows.Foundation.Rect(0, top, width, height);
         return hasViewport;
     }
-
-    internal bool HasVisibleLoadingImagesForAutomation()
-    {
-        LayoutSnapshot? snapshot = _published.Snapshot;
-        if (snapshot is null)
-            return false;
-
-        bool hasViewport = TryGetVisibleDocumentRect(out Windows.Foundation.Rect viewport);
-        long snapshotGeneration = _published.Generation;
-        ImagePlanPublication? publication = _imagePlans.Publication;
-        if (publication is null ||
-            !_imagePlans.IsCurrent(snapshot, snapshotGeneration, publication))
-        {
-            // A snapshot or its realization plan is between publications. Do
-            // not let UIA announce readiness from a previous document/plan.
-            return true;
-        }
-
-        // A readiness query must never wait behind DirectWrite/layout work. A
-        // busy snapshot is conservatively reported as still loading and the
-        // existing layout/paint status notifications will retry the query.
-        if (!snapshot.TryBeginInteraction())
-            return true;
-
-        bool hasVisibleLoadingImage = true;
-        long layoutRevision = -1;
-        try
-        {
-            if (!_imagePlans.IsCurrent(snapshot, snapshotGeneration, publication))
-                return true;
-
-            layoutRevision = snapshot.LayoutRevision;
-            if (layoutRevision != publication.LayoutRevision)
-            {
-                // A lazy-measure or image-size commit invalidated the indexed
-                // bounds. The replacement plan is published after the layout
-                // lease is released; until then avoid mixing its bounds with
-                // the previous index or membership.
-                return true;
-            }
-
-            Layout.Boxes.ImageBox[] images = publication.Images;
-            Rect[] imageBounds = publication.ImageBounds;
-            if (imageBounds.Length != images.Length)
-                return true;
-            if (images.Length == 0)
-            {
-                hasVisibleLoadingImage = false;
-            }
-            else
-            {
-                ViewportBandIndex? imageIndex = hasViewport ? publication.Index : null;
-                ViewportRange range = imageIndex is not null
-                    ? imageIndex.Find(viewport.Top, viewport.Bottom)
-                    : new ViewportRange(0, images.Length);
-                hasVisibleLoadingImage = false;
-                for (int index = range.Start; index < range.End; index++)
-                {
-                    int ordinal = imageIndex is not null
-                        ? imageIndex.GetBlockOrdinal(index)
-                        : index;
-                    if ((uint)ordinal >= (uint)images.Length)
-                    {
-                        hasVisibleLoadingImage = true;
-                        break;
-                    }
-
-                    Layout.Boxes.ImageBox image = images[ordinal];
-                    if (!image.IsAwaitingVisiblePixelsForAutomation)
-                        continue;
-                    Rect bounds = imageBounds[ordinal];
-
-                    if (!hasViewport ||
-                        (bounds.Width > 0 &&
-                         bounds.Height > 0 &&
-                         bounds.Right > viewport.Left &&
-                         bounds.Left < viewport.Right &&
-                         bounds.Bottom > viewport.Top &&
-                         bounds.Top < viewport.Bottom))
-                    {
-                        hasVisibleLoadingImage = true;
-                        break;
-                    }
-                }
-            }
-        }
-        finally
-        {
-            snapshot.EndInteraction();
-        }
-
-        // Snapshot replacement and plan publication are independent of the
-        // layout lock. Fence once more after releasing it so a detached result
-        // from a superseded page cannot become a false-ready UIA answer.
-        return !_imagePlans.IsCurrent(snapshot, snapshotGeneration, publication) ||
-            snapshot.LayoutRevision != layoutRevision ||
-            hasVisibleLoadingImage;
-    }
-
-    internal MarkdownVisibleSceneReadiness GetVisibleDeferredSceneStatusForAutomation()
-    {
-        IMarkdownPerformanceSessionInternal? session =
-            PerformanceSession as IMarkdownPerformanceSessionInternal;
-        LayoutSnapshot? snapshot = _published.Snapshot;
-        if (snapshot is null)
-            return session?.HasRegisteredDeferredSceneWork(this) == true
-                ? MarkdownVisibleSceneReadiness.NotReady : MarkdownVisibleSceneReadiness.Ready;
-
-        long generation = _rebuild.Generation;
-        long revision = snapshot.LayoutRevision;
-        if (!TryGetVisibleDocumentRect(out Rect viewport) || !IsFiniteNonEmptyAutomationRect(viewport))
-        {
-            return _published.Generation != generation ||
-                session?.HasRegisteredDeferredSceneWork(this) == true
-                ? MarkdownVisibleSceneReadiness.NotReady : MarkdownVisibleSceneReadiness.Ready;
-        }
-
-        return GetVisibleDeferredSceneReadinessForAutomation(
-            snapshot,
-            generation,
-            revision,
-            viewport);
-    }
-
-    internal void NotifyVisibleDeferredSceneItemStatusMayHaveChanged()
-    {
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded)
-            return;
-
-        var peer = FrameworkElementAutomationPeer.FromElement(this) as MarkdownAutomationPeer;
-        peer?.NotifyLoadingStatusMayHaveChanged();
-        LayoutSnapshot? snapshot = _published.Snapshot;
-        if (snapshot is null || !snapshot.TryBeginInteraction())
-        {
-            if (snapshot is not null)
-                Interlocked.Exchange(ref _deferredSceneStatusRefreshAfterPaint, 1);
-            return;
-        }
-        try
-        {
-            if (snapshot.VectorSceneResidencyPolicy is { } policy)
-            {
-                try
-                {
-                    foreach (VectorSceneBox box in policy.GraphStatusChanges)
-                        peer?.NotifyVectorSceneStatusChanged(box);
-                }
-                finally
-                {
-                    // Drain even without a UIA listener: completed changes must
-                    // not become a second document-sized owner list.
-                    policy.ClearGraphStatusChanges();
-                }
-            }
-        }
-        finally
-        {
-            snapshot.EndInteraction();
-        }
-    }
-
-    private void RefreshDeferredSceneStatusAfterSuccessfulPaintIfNeeded()
-    {
-        if (Interlocked.Exchange(ref _deferredSceneStatusRefreshAfterPaint, 0) == 0 ||
-            _lifetime.IsDisposed ||
-            _lifetime.IsUnloaded)
-        {
-            return;
-        }
-
-        NotifyVisibleDeferredSceneItemStatusMayHaveChanged();
-    }
-
-    internal MarkdownVisibleSceneReadiness GetVisibleDeferredSceneReadinessForAutomation(
-        LayoutSnapshot expectedSnapshot,
-        long expectedGeneration,
-        long expectedLayoutRevision,
-        Rect viewport)
-    {
-        if (expectedSnapshot is null ||
-            expectedGeneration <= 0 ||
-            !IsFiniteNonEmptyAutomationRect(viewport) ||
-            !IsDeferredSceneSnapshotCurrent(
-                expectedSnapshot,
-                expectedGeneration,
-                expectedLayoutRevision))
-        {
-            return MarkdownVisibleSceneReadiness.NotReady;
-        }
-
-        IMarkdownPerformanceSessionInternal? session =
-            PerformanceSession as IMarkdownPerformanceSessionInternal;
-        if (session is not null)
-        {
-            MarkdownVisibleSceneReadiness readiness = session.GetVisibleDeferredSceneReadiness(
-                this,
-                expectedSnapshot,
-                expectedGeneration,
-                expectedLayoutRevision,
-                viewport);
-            if (readiness == MarkdownVisibleSceneReadiness.Busy)
-                Interlocked.Exchange(ref _deferredSceneStatusRefreshAfterPaint, 1);
-            return readiness;
-        }
-
-        // Without the optional session there are no deferred markers. Keep the
-        // native-resource measured-band gate in the base renderer so eager
-        // vector scenes remain covered for every consumer.
-        if (!expectedSnapshot.TryBeginPaint())
-        {
-            Interlocked.Exchange(ref _deferredSceneStatusRefreshAfterPaint, 1);
-            return MarkdownVisibleSceneReadiness.Busy;
-        }
-
-        try
-        {
-            if (!IsDeferredSceneSnapshotCurrent(
-                    expectedSnapshot,
-                    expectedGeneration,
-                    expectedLayoutRevision) ||
-                !ReferenceEquals(PerformanceSession, session))
-            {
-                return MarkdownVisibleSceneReadiness.NotReady;
-            }
-
-            LazyLayoutBand visibleBand = LazyLayoutBand.FromViewport(
-                viewport.Top,
-                viewport.Height,
-                overscan: 0);
-            return expectedSnapshot.IsBandMeasured(visibleBand) &&
-                IsDeferredSceneSnapshotCurrent(
-                    expectedSnapshot,
-                    expectedGeneration,
-                    expectedLayoutRevision) &&
-                ReferenceEquals(PerformanceSession, session)
-                ? MarkdownVisibleSceneReadiness.Ready : MarkdownVisibleSceneReadiness.NotReady;
-        }
-        finally
-        {
-            expectedSnapshot.EndPaint();
-        }
-    }
-
-    internal bool IsDeferredSceneSnapshotCurrent(
-        LayoutSnapshot snapshot,
-        long generation,
-        long layoutRevision) =>
-        ReferenceEquals(_published.Snapshot, snapshot) &&
-        _rebuild.Generation == generation &&
-        _published.Generation == generation &&
-        snapshot.LayoutRevision == layoutRevision;
-
-    private static bool IsFiniteNonEmptyAutomationRect(Rect rect) =>
-        IsFiniteAutomationRect(rect) && rect.Width > 0 && rect.Height > 0;
-
-    private static bool IsFiniteAutomationRect(Rect rect) =>
-        double.IsFinite(rect.X) && double.IsFinite(rect.Y) &&
-        double.IsFinite(rect.Width) && double.IsFinite(rect.Height) &&
-        double.IsFinite(rect.Right) && double.IsFinite(rect.Bottom);
 
     internal long AutomationPipelineGeneration => _rebuild.Generation;
 
@@ -1779,7 +1524,9 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _focusEntry = new RendererFocusEntry(this, _lifetime, _focus, _focusRing, _focusCommit, _navigator, DispatcherQueue);
         _layoutPublisher = new LayoutCommitPublisher(this, _lifetime, _published, _layoutCommit, _surface, _recoveryClock, _pointerInput, _embeds, _imageSubscriptions, _imagePlans, _imageResidency, _focus, _focusRing, _focusCommit, _focusRefresh, _hostedFocusPlan);
         _lazyLayout = new LazyLayoutRealization(this, _lifetime, _published, _layoutCommit, _layoutPublisher, _surface, _viewport, _recoveryClock, _vectorCapacity, _pointerInput, _focus, _focusCommit);
-        _painter = new CanvasTilePainter(this, _lifetime, _published, _surface, _lazyLayout, _deviceRecovery, _rebuild);
+        _deferredScenes = new DeferredSceneReadiness(this, _lifetime, _published, _viewport, _rebuild);
+        _imageReadiness = new VisibleImageReadiness(_published, _imagePlans, _viewport);
+        _painter = new CanvasTilePainter(this, _lifetime, _published, _surface, _lazyLayout, _deviceRecovery, _rebuild, _deferredScenes);
         _imageRelayout = new ImageRelayout(this, _lifetime, _published, _layoutCommit, _layoutPublisher, _surface, _pointerInput, _imageSubscriptions, _rasterPlacement, _recoveryClock);
         _imageLoadCompletion = new ImageLoadCompletion(this, _lifetime, _published, _layoutCommit, _imageSubscriptions, _imageRelayout);
         _imageSubscriptions.LoadCompleted += _imageLoadCompletion.OnLoadCompleted;
@@ -2510,7 +2257,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         TryResumePendingScrollToBlock(snapshot, snapshotGeneration);
 
     void ILazyLayoutHost.NotifyVisibleDeferredSceneItemStatusMayHaveChanged() =>
-        NotifyVisibleDeferredSceneItemStatusMayHaveChanged();
+        _deferredScenes.NotifyItemStatusMayHaveChanged();
 
     void ILazyLayoutHost.ScheduleVisibleDeferredScenes() => ScheduleVisibleDeferredScenes();
 
@@ -2612,16 +2359,18 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     bool ICanvasTilePainterHost.IsLoaded => IsLoaded;
 
-    bool ICanvasTilePainterHost.IsDeferredSceneStatusRefreshPending =>
-        Volatile.Read(ref _deferredSceneStatusRefreshAfterPaint) != 0;
-
     bool ICanvasTilePainterHost.RequestGeometryRecoveryIfRequired(LayoutSnapshot? snapshot) =>
         RequestGeometryRecoveryIfRequired(snapshot);
 
-    void ICanvasTilePainterHost.RefreshDeferredSceneStatusAfterSuccessfulPaintIfNeeded() =>
-        RefreshDeferredSceneStatusAfterSuccessfulPaintIfNeeded();
-
     void ICanvasTilePainterHost.ScheduleVisibleDeferredScenes() => ScheduleVisibleDeferredScenes();
+
+    MarkdownRendererControl IDeferredSceneReadinessHost.DocumentOwner => this;
+
+    IMarkdownPerformanceSessionInternal? IDeferredSceneReadinessHost.PerformanceSession =>
+        PerformanceSession as IMarkdownPerformanceSessionInternal;
+
+    MarkdownAutomationPeer? IDeferredSceneReadinessHost.FindAutomationPeer() =>
+        FrameworkElementAutomationPeer.FromElement(this) as MarkdownAutomationPeer;
 
     double IDeferredGestureLayoutHost.RasterizationScale => XamlRoot?.RasterizationScale ?? 1;
 
@@ -2832,7 +2581,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     {
         _vectorCapacity.Reset();
         ClearPendingFocusGeometryWork();
-        Interlocked.Exchange(ref _deferredSceneStatusRefreshAfterPaint, 0);
+        _deferredScenes.CancelRefreshAfterPaint();
         _painter.CancelDeferredSceneProbe();
         _contextMenu.Close();
         _horizontalOverflowDrag.Clear();
@@ -3577,7 +3326,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             // A progressive scene may have been replaced while the semantic
             // source stayed identical. Refresh root UIA ItemStatus after the
             // committed snapshot without publishing text/structure events.
-            NotifyVisibleDeferredSceneItemStatusMayHaveChanged();
+            _deferredScenes.NotifyItemStatusMayHaveChanged();
         }
         timeline.PublicationEnded = Stopwatch.GetTimestamp();
     }

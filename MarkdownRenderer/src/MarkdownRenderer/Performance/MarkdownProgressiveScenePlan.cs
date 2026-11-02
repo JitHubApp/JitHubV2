@@ -683,7 +683,7 @@ internal sealed partial class MarkdownProgressiveScenePlan : IDisposable
         }
 
         if (changed)
-            control.NotifyVisibleDeferredSceneItemStatusMayHaveChanged();
+            control.DeferredSceneReadiness.NotifyItemStatusMayHaveChanged();
     }
 
     private void EnsureControlCallbacks(MarkdownRendererControl control)

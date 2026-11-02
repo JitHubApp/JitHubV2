@@ -1034,7 +1034,7 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
         LayoutSnapshot expectedSnapshot,
         long expectedGeneration,
         long expectedLayoutRevision) =>
-        owner.IsDeferredSceneSnapshotCurrent(
+        owner.DeferredSceneReadiness.IsSnapshotCurrent(
             expectedSnapshot,
             expectedGeneration,
             expectedLayoutRevision) &&

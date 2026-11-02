@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Threading;
 using MarkdownRenderer.Controls.LazyLayout;
 using MarkdownRenderer.Controls.Pipeline;
+using MarkdownRenderer.Controls.Readiness;
 using MarkdownRenderer.Diagnostics;
 using MarkdownRenderer.Layout;
 using Microsoft.Graphics.Canvas.UI.Xaml;
@@ -26,12 +27,16 @@ internal sealed class CanvasTilePainter
     private readonly LazyLayoutRealization _lazyLayout;
     private readonly CanvasDeviceRecovery _deviceRecovery;
     private readonly RebuildScheduler _rebuild;
+    private readonly DeferredSceneReadiness _deferredScenes;
     // Background color used to clear each tile before painting. Published
     // atomically with the layout/theme snapshot so a tile never clears with
     // the next theme and repaints with the previous one.
     private Color _background = Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
     private long _firstViewportPipelineStart;
     private long _firstViewportSourceUtf16Bytes;
+    // Set when the visible deferred-scene probe could not verify its band
+    // (busy or not yet measured). The next successful paint, which follows
+    // band measurement or scene preparation, re-runs the probe once.
     private int _deferredSceneProbePending;
 
     internal CanvasTilePainter(
@@ -41,7 +46,8 @@ internal sealed class CanvasTilePainter
         MarkdownViewSurface surface,
         LazyLayoutRealization lazyLayout,
         CanvasDeviceRecovery deviceRecovery,
-        RebuildScheduler rebuild)
+        RebuildScheduler rebuild,
+        DeferredSceneReadiness deferredScenes)
     {
         _host = host;
         _lifetime = lifetime;
@@ -50,6 +56,7 @@ internal sealed class CanvasTilePainter
         _lazyLayout = lazyLayout;
         _deviceRecovery = deviceRecovery;
         _rebuild = rebuild;
+        _deferredScenes = deferredScenes;
     }
 
     /// <summary>Publishes the clear color of the snapshot just committed.</summary>
@@ -125,7 +132,7 @@ internal sealed class CanvasTilePainter
         if (_published.Snapshot is not { } snapshot) return;
         if (_host.RequestGeometryRecoveryIfRequired(snapshot))
             return; // No drawing session/clear: retain the last good tiles.
-        bool refreshDeferredSceneStatusAfterPaint = _host.IsDeferredSceneStatusRefreshPending;
+        bool refreshDeferredSceneStatusAfterPaint = _deferredScenes.IsRefreshAfterPaintPending;
         bool paintedRegion = false;
         foreach (var region in args.InvalidatedRegions)
         {
@@ -238,7 +245,7 @@ internal sealed class CanvasTilePainter
     private void OnRegionPainted(bool refreshDeferredSceneStatus)
     {
         if (refreshDeferredSceneStatus)
-            _host.RefreshDeferredSceneStatusAfterSuccessfulPaintIfNeeded();
+            _deferredScenes.RefreshAfterSuccessfulPaintIfNeeded();
         if (Interlocked.Exchange(ref _deferredSceneProbePending, 0) != 0 &&
             !_lifetime.IsDisposed && !_lifetime.IsUnloaded)
         {
