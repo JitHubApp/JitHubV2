@@ -1,6 +1,6 @@
 using System.Reflection;
 using System.Runtime.CompilerServices;
-using MarkdownRenderer.Controls;
+using MarkdownRenderer.Controls.Highlighting;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 using Xunit;
@@ -18,10 +18,10 @@ public sealed class CodeBlockHighlightSnapshotRetentionTests
     [Fact]
     public void CompiledHighlightTasksCarryOnlyWeakSnapshotIdentityAndCopiedText()
     {
-        Type control = typeof(MarkdownDocumentView).BaseType!;
+        Type owner = typeof(CodeBlockHighlighting);
         Type snapshotIdentityType = typeof(WeakReference<LayoutSnapshot>);
-        MethodInfo worker = control.GetMethod(
-            "HighlightCodeBlockAsync",
+        MethodInfo worker = owner.GetMethod(
+            "HighlightAsync",
             BindingFlags.Instance | BindingFlags.NonPublic)!;
 
         Assert.Contains(worker.GetParameters(), parameter =>
@@ -32,11 +32,11 @@ public sealed class CodeBlockHighlightSnapshotRetentionTests
         Type stateMachine = worker.GetCustomAttribute<AsyncStateMachineAttribute>()!.StateMachineType;
         FieldInfo[] stateFields = stateMachine.GetFields(InstanceFields);
         Assert.Contains(stateFields, field => field.FieldType == snapshotIdentityType);
-        Assert.True(AssertGeneratedCaptureGraphIsSafe(stateMachine, control, snapshotIdentityType));
+        Assert.True(AssertGeneratedCaptureGraphIsSafe(stateMachine, owner, snapshotIdentityType));
 
-        Type[] scheduleClosures = GetNestedTypesRecursively(control).Where(type =>
+        Type[] scheduleClosures = GetNestedTypesRecursively(owner).Where(type =>
             type.GetMethods(DeclaredMethods).Any(method =>
-                method.Name.StartsWith("<ScheduleVisibleCodeBlockHighlighting>", StringComparison.Ordinal)))
+                method.Name.StartsWith("<ScheduleVisible>", StringComparison.Ordinal)))
             .ToArray();
         Assert.NotEmpty(scheduleClosures);
         // Roslyn may put the weak identity on a parent display class while the
@@ -46,7 +46,7 @@ public sealed class CodeBlockHighlightSnapshotRetentionTests
         foreach (Type scheduleClosure in scheduleClosures)
         {
             schedulerCapturesWeakIdentity |= AssertGeneratedCaptureGraphIsSafe(
-                scheduleClosure, control, snapshotIdentityType);
+                scheduleClosure, owner, snapshotIdentityType);
         }
         Assert.True(schedulerCapturesWeakIdentity);
 
@@ -54,22 +54,22 @@ public sealed class CodeBlockHighlightSnapshotRetentionTests
         // in a generated display class or directly in the async state machine.
         // Check every emitted closure on the worker path and the state-machine
         // fields above, so either representation remains safe.
-        Type[] publicationClosures = GetNestedTypesRecursively(control)
+        Type[] publicationClosures = GetNestedTypesRecursively(owner)
             .Where(type => type.GetMethods(DeclaredMethods).Any(method =>
-                method.Name.StartsWith("<HighlightCodeBlockAsync>", StringComparison.Ordinal)))
+                method.Name.StartsWith("<HighlightAsync>", StringComparison.Ordinal)))
             .ToArray();
         bool publicationClosureCarriesWeakIdentity = false;
         foreach (Type closure in publicationClosures)
         {
             publicationClosureCarriesWeakIdentity |=
-                AssertGeneratedCaptureGraphIsSafe(closure, control, snapshotIdentityType);
+                AssertGeneratedCaptureGraphIsSafe(closure, owner, snapshotIdentityType);
         }
         Assert.True(publicationClosureCarriesWeakIdentity);
     }
 
     private static bool AssertGeneratedCaptureGraphIsSafe(
         Type root,
-        Type control,
+        Type owner,
         Type snapshotIdentityType)
     {
         var pending = new Stack<Type>();
@@ -96,12 +96,12 @@ public sealed class CodeBlockHighlightSnapshotRetentionTests
                     IsForbiddenStrongCapture(fieldType),
                     $"Generated capture path {current.Name}.{field.Name} strongly retains {fieldType}.");
 
-                // The control is intentionally captured by its own callbacks;
-                // it clears/replaces _snapshot before retirement. Do not walk
-                // through the control's live owner fields. Other compiler-made
-                // closure parents must be followed to inspect the complete
-                // captured-local graph.
-                if (fieldType != control &&
+                // The highlighting owner is intentionally captured by its own
+                // callbacks; it reads the snapshot only through the published
+                // layout. Do not walk through the owner's live fields. Other
+                // compiler-made closure parents must be followed to inspect
+                // the complete captured-local graph.
+                if (fieldType != owner &&
                     fieldType.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false))
                 {
                     pending.Push(fieldType);
