@@ -61,7 +61,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     ICanvasDeviceRecoveryHost, ICodeBlockHighlightingHost, IRecoveryClockHost, IRasterPlacementHost,
     IImageRelayoutHost, IImageLoadCompletionHost, IVectorCapacityRetryHost,
     ILazyLayoutHost, ILayoutCommitHost, IFocusableItemsPublicationHost,
-    IRebuildSchedulerHost, IRebuildLayoutSetupHost
+    IRebuildSchedulerHost, IRebuildLayoutSetupHost, ICanvasTilePainterHost
 {
     private readonly MarkdownViewSurface _surface;
     private readonly MarkdownViewLifetime _lifetime = new();
@@ -96,6 +96,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private readonly PipelineCancellationRetirement _cancellationRetirement;
     private readonly RebuildScheduler _rebuild;
     private readonly RebuildLayoutSetup _layoutSetup;
+    private readonly CanvasTilePainter _painter;
     private CancellationTokenSource? _imageLifetimeCts;
     private readonly MarkdownAutomationDocumentGeneration _automationDocumentGenerations = new();
 #if MARKDOWN_LAYOUT_DIAGNOSTICS
@@ -104,13 +105,10 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     // enables the existing build-stage counters for this control instance.
     internal bool EnableStandaloneLayoutDiagnostics { get; set; }
 #endif
-    private long _snapshotPipelineStartTimestamp;
-    private long _snapshotSourceUtf16Bytes;
     private int _deferredSceneStatusRefreshAfterPaint;
     // Set when the visible deferred-scene probe could not verify its band
     // (busy or not yet measured). The next successful paint, which follows
     // band measurement or scene preparation, re-runs the probe once.
-    private int _deferredSceneProbeAfterPaint;
     private readonly PipelineTimings _timings = new();
     private readonly LayoutCommitState _layoutCommit = new();
     private readonly LayoutCommitPublisher _layoutPublisher;
@@ -138,13 +136,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private TouchSelectionPresentationRestoreIntent? _pendingTouchSelectionPresentationRestore;
     private readonly TouchTapSuppressionPolicy _touchTapSuppression = new();
 
-    // Background color used to clear each canvas tile before painting. Published
-    // atomically with the layout/theme snapshot so OnRegionsInvalidated (UI
-    // thread, but outside the rebuild flow) never mixes presentation generations.
-    // Relying on ds.Clear(Colors.Transparent) doesn't work reliably because
-    // CanvasVirtualControl may not alpha-composite with the XAML compositor
-    // depending on the platform's DirectX swap-chain configuration.
-    private Windows.UI.Color _canvasBackground = Windows.UI.Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
 
     // Last committed theme snapshot. Used by UI operations (focus ring, etc.)
     // that need theme colors after the rebuild is complete.
@@ -1126,7 +1117,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _published.Snapshot = null;
         _automationDocumentGenerations.Invalidate();
         NotifyAutomationSnapshotChanged();
-        _snapshotPipelineStartTimestamp = 0;
+        _painter.CancelFirstViewportMeasurement();
         RetireSnapshot(snapshot);
     }
 
@@ -1788,6 +1779,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _focusEntry = new RendererFocusEntry(this, _lifetime, _focus, _focusRing, _focusCommit, _navigator, DispatcherQueue);
         _layoutPublisher = new LayoutCommitPublisher(this, _lifetime, _published, _layoutCommit, _surface, _recoveryClock, _pointerInput, _embeds, _imageSubscriptions, _imagePlans, _imageResidency, _focus, _focusRing, _focusCommit, _focusRefresh, _hostedFocusPlan);
         _lazyLayout = new LazyLayoutRealization(this, _lifetime, _published, _layoutCommit, _layoutPublisher, _surface, _viewport, _recoveryClock, _vectorCapacity, _pointerInput, _focus, _focusCommit);
+        _painter = new CanvasTilePainter(this, _lifetime, _published, _surface, _lazyLayout, _deviceRecovery, _rebuild);
         _imageRelayout = new ImageRelayout(this, _lifetime, _published, _layoutCommit, _layoutPublisher, _surface, _pointerInput, _imageSubscriptions, _rasterPlacement, _recoveryClock);
         _imageLoadCompletion = new ImageLoadCompletion(this, _lifetime, _published, _layoutCommit, _imageSubscriptions, _imageRelayout);
         _imageSubscriptions.LoadCompleted += _imageLoadCompletion.OnLoadCompleted;
@@ -2616,6 +2608,21 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         MarkdownSvgFailureReason? svgFailureReason) =>
         RaiseImageUnavailable(source, reason, svgFailureReason);
 
+    Microsoft.UI.Dispatching.DispatcherQueue? ICanvasTilePainterHost.DispatcherQueue => DispatcherQueue;
+
+    bool ICanvasTilePainterHost.IsLoaded => IsLoaded;
+
+    bool ICanvasTilePainterHost.IsDeferredSceneStatusRefreshPending =>
+        Volatile.Read(ref _deferredSceneStatusRefreshAfterPaint) != 0;
+
+    bool ICanvasTilePainterHost.RequestGeometryRecoveryIfRequired(LayoutSnapshot? snapshot) =>
+        RequestGeometryRecoveryIfRequired(snapshot);
+
+    void ICanvasTilePainterHost.RefreshDeferredSceneStatusAfterSuccessfulPaintIfNeeded() =>
+        RefreshDeferredSceneStatusAfterSuccessfulPaintIfNeeded();
+
+    void ICanvasTilePainterHost.ScheduleVisibleDeferredScenes() => ScheduleVisibleDeferredScenes();
+
     double IDeferredGestureLayoutHost.RasterizationScale => XamlRoot?.RasterizationScale ?? 1;
 
     bool IDeferredGestureLayoutHost.IsPointOverEmbed(Point point) => _embeds.HitTargets.IsPointOverEmbed(point);
@@ -2826,7 +2833,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _vectorCapacity.Reset();
         ClearPendingFocusGeometryWork();
         Interlocked.Exchange(ref _deferredSceneStatusRefreshAfterPaint, 0);
-        Interlocked.Exchange(ref _deferredSceneProbeAfterPaint, 0);
+        _painter.CancelDeferredSceneProbe();
         _contextMenu.Close();
         _horizontalOverflowDrag.Clear();
         _abbreviationTooltip.Hide();
@@ -3007,7 +3014,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (_surface.Canvas is null || _canvasRenderHandlersAttached)
             return;
 
-        _surface.Canvas.RegionsInvalidated += OnRegionsInvalidated;
+        _surface.Canvas.RegionsInvalidated += _painter.OnRegionsInvalidated;
         _surface.Canvas.CreateResources += OnCanvasCreateResources;
         _canvasRenderHandlersAttached = true;
     }
@@ -3017,7 +3024,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (_surface.Canvas is null || !_canvasRenderHandlersAttached)
             return;
 
-        _surface.Canvas.RegionsInvalidated -= OnRegionsInvalidated;
+        _surface.Canvas.RegionsInvalidated -= _painter.OnRegionsInvalidated;
         _surface.Canvas.CreateResources -= OnCanvasCreateResources;
         _canvasRenderHandlersAttached = false;
     }
@@ -3491,14 +3498,13 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // the snapshot whose boxes use the matching immutable ThemeSnapshot;
         // otherwise an invalidation during background layout can clear using
         // the next theme and repaint using the previous one.
-        _canvasBackground = plan.Theme.SurfaceColor;
+        _painter.PublishBackground(plan.Theme.SurfaceColor);
         _committedLocalization = plan.Inputs.Localization;
         _committedImageDocumentId = imageDocumentId;
         _published.Generation = generation;
         _focusRefresh.Mark(snapshot, generation);
         _vectorCapacity.Synchronize(snapshot);
-        _snapshotPipelineStartTimestamp = pipelineStartTimestamp;
-        _snapshotSourceUtf16Bytes = sourceUtf16Bytes;
+        _painter.ArmFirstViewportMeasurement(pipelineStartTimestamp, sourceUtf16Bytes);
         publication = new ReplacementPublication(
             old, scrollAnchor, touchSelectionRestoreSourceGeneration, touchSelectionRestoreIntent,
             semanticInputChanged, preserveSelection);
@@ -3802,7 +3808,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     /// <summary>Re-runs the visible deferred-scene probe after the next successful paint.</summary>
     internal void RequestDeferredSceneProbeAfterPaint()
-        => Interlocked.Exchange(ref _deferredSceneProbeAfterPaint, 1);
+        => _painter.RequestDeferredSceneProbe();
 
     private void ApplySnapshotSize(Size committedSize)
     {
@@ -3929,169 +3935,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // their own. Refresh an existing document peer after image reflow so UIA
         // clients see the same bounds as the newly painted snapshot immediately.
         FrameworkElementAutomationPeer.FromElement(this)?.InvalidatePeer();
-    }
-
-    private void OnRegionsInvalidated(CanvasVirtualControl sender, CanvasRegionsInvalidatedEventArgs args)
-    {
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !IsLoaded || !ReferenceEquals(sender, _surface.Canvas))
-            return;
-
-        var performance = MarkdownPerformanceEventSource.Log;
-        bool measure = performance.IsMeasurementEnabled();
-        long started = measure ? Stopwatch.GetTimestamp() : 0;
-        long allocatedBefore = measure ? GC.GetAllocatedBytesForCurrentThread() : 0;
-        try
-        {
-            PaintInvalidatedRegions(sender, args);
-        }
-        catch (Exception ex) when (ShouldIgnoreShutdownException(ex))
-        {
-            MarkdownDiagnostics.WriteLine(
-                $"[MarkdownRendererControl] ignored canvas paint during shutdown: {ex.GetType().Name} {GraphicsDeviceErrors.FormatHResult(ex.HResult)}");
-        }
-        finally
-        {
-            if (measure)
-            {
-                long allocated = Math.Max(
-                    0,
-                    GC.GetAllocatedBytesForCurrentThread() - allocatedBefore);
-                performance.PaintWork(
-                    MarkdownPerformanceEventSource.GetLogicalFrameId(),
-                    Stopwatch.GetTimestamp() - started,
-                    allocated);
-            }
-        }
-    }
-
-    private void PaintInvalidatedRegions(CanvasVirtualControl sender, CanvasRegionsInvalidatedEventArgs args)
-    {
-        var performance = MarkdownPerformanceEventSource.Log;
-        bool measure = performance.IsMeasurementEnabled();
-        long allocationCheckpoint = measure ? GC.GetAllocatedBytesForCurrentThread() : 0;
-        _lazyLayout.QueueForViewport();
-        long schedulingBytes = measure
-            ? Math.Max(0, GC.GetAllocatedBytesForCurrentThread() - allocationCheckpoint)
-            : 0;
-        long platformSessionBytes = 0;
-        long snapshotPaintBytes = 0;
-        long interactivePaintBytes = 0;
-
-        if (_published.Snapshot is not { } snapshot) return;
-        if (RequestGeometryRecoveryIfRequired(snapshot))
-            return; // No drawing session/clear: retain the last good tiles.
-        bool refreshDeferredSceneStatusAfterPaint =
-            Volatile.Read(ref _deferredSceneStatusRefreshAfterPaint) != 0;
-        bool paintedRegion = false;
-        foreach (var region in args.InvalidatedRegions)
-        {
-            try
-            {
-                long regionStart = measure ? GC.GetAllocatedBytesForCurrentThread() : 0;
-                // The tile itself is the authoritative paint band; the ScrollViewer
-                // viewport can lag behind CanvasVirtualControl's region requests.
-                _lazyLayout.QueueForPaintRegion(region);
-                if (!snapshot.TryBeginPaint())
-                {
-                    // Do not create or clear the tile while background realization
-                    // owns the layout. Completion invalidates the canvas, so the
-                    // existing pixels remain visible without blocking this frame.
-                    continue;
-                }
-
-                try
-                {
-                    long afterSetup = regionStart;
-                    long afterSnapshot = regionStart;
-                    long afterInteractive = regionStart;
-                    using (var ds = sender.CreateDrawingSession(region))
-                    {
-                        // Clear to the theme-appropriate background color so that switching between
-                        // light and dark mode (or any theme change) fully overwrites old tile content.
-                        // We use an opaque theme color rather than Colors.Transparent because
-                        // CanvasVirtualControl may not alpha-composite with the XAML compositor
-                        // depending on the DirectX swap-chain configuration of the platform; on
-                        // such configurations transparent pixels show as black rather than letting
-                        // the XAML background show through.
-                        ds.Clear(_canvasBackground);
-                        // Force grayscale text anti-aliasing. ClearType is colour-aware:
-                        // the same glyph rendered onto a white background versus an
-                        // alpha-blended selection-tinted background produces subtly
-                        // different sub-pixel RGB values. Switching to grayscale makes
-                        // glyph edges background-independent.
-                        ds.TextAntialiasing = Microsoft.Graphics.Canvas.Text.CanvasTextAntialiasing.Grayscale;
-                        if (measure)
-                            afterSetup = GC.GetAllocatedBytesForCurrentThread();
-                        snapshot.Paint(ds, region);
-                        if (measure)
-                            afterSnapshot = GC.GetAllocatedBytesForCurrentThread();
-                        // Selection/link state is rendered by the dedicated
-                        // viewport-bounded image-source adorner. Never bake it
-                        // into document tiles: changing a selection must not
-                        // invalidate and repaint immutable document content.
-                        afterInteractive = afterSnapshot;
-                        paintedRegion = true;
-                    }
-                    if (measure)
-                    {
-                        long afterDispose = GC.GetAllocatedBytesForCurrentThread();
-                        platformSessionBytes += Math.Max(0, afterSetup - regionStart) +
-                                                Math.Max(0, afterDispose - afterInteractive);
-                        snapshotPaintBytes += Math.Max(0, afterSnapshot - afterSetup);
-                        interactivePaintBytes += Math.Max(0, afterInteractive - afterSnapshot);
-                    }
-                }
-                finally
-                {
-                    snapshot.EndPaint();
-                }
-            }
-            catch (Exception ex) when (GraphicsDeviceErrors.IsDeviceLost(ex))
-            {
-                _deviceRecovery.HandleDeviceLost(ex);
-                return;
-            }
-        }
-        if (refreshDeferredSceneStatusAfterPaint)
-        {
-            if (paintedRegion)
-                RefreshDeferredSceneStatusAfterSuccessfulPaintIfNeeded();
-        }
-        if (paintedRegion &&
-            Interlocked.Exchange(ref _deferredSceneProbeAfterPaint, 0) != 0 &&
-            !_lifetime.IsDisposed && !_lifetime.IsUnloaded)
-        {
-            // A Mermaid or Math scene that scrolled into a band that was
-            // still being measured was never scheduled; its source fallback
-            // stayed "Loading" forever. Re-probe once the band has painted.
-            DispatcherQueue?.TryEnqueue(ScheduleVisibleDeferredScenes);
-        }
-        if (paintedRegion)
-        {
-            _deviceRecovery.NotePainted();
-        }
-        if (paintedRegion &&
-            _published.Generation == _rebuild.Generation &&
-            _snapshotPipelineStartTimestamp != 0)
-        {
-            long pipelineStartTimestamp = _snapshotPipelineStartTimestamp;
-            long sourceUtf16Bytes = _snapshotSourceUtf16Bytes;
-            long generation = _published.Generation;
-            _snapshotPipelineStartTimestamp = 0;
-            MarkdownPerformanceEventSource.Log.FirstViewportPresented(
-                generation,
-                sourceUtf16Bytes,
-                Stopwatch.GetTimestamp() - pipelineStartTimestamp);
-        }
-        if (measure)
-        {
-            performance.PaintAllocationBreakdown(
-                MarkdownPerformanceEventSource.GetLogicalFrameId(),
-                schedulingBytes,
-                platformSessionBytes,
-                snapshotPaintBytes,
-                interactivePaintBytes);
-        }
     }
 
     /// <summary>
