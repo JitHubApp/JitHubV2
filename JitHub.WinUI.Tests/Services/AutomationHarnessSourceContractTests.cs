@@ -490,34 +490,52 @@ public sealed class AutomationHarnessSourceContractTests
             "Layout",
             "LayoutSnapshot.cs"));
 
-        Assert.Contains("QueueImageRelayout(completedImage.BlockIndex);", controlSource, StringComparison.Ordinal);
-        int queueStart = controlSource.IndexOf("private void QueueImageRelayout(", StringComparison.Ordinal);
-        int recoveryTickStart = controlSource.IndexOf("private void ProcessRecoveryTick(", queueStart, StringComparison.Ordinal);
-        Assert.True(queueStart >= 0 && recoveryTickStart > queueStart);
-        string queue = controlSource[queueStart..recoveryTickStart];
-        Assert.Contains("_pendingImageRelayoutBlockIndices.Add(blockIndex);", queue, StringComparison.Ordinal);
-        Assert.Contains("if (_imageRelayoutQueued || _imageRelayoutActive)", queue, StringComparison.Ordinal);
+        string relayoutSource = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "MarkdownRenderer",
+            "src",
+            "MarkdownRenderer",
+            "Controls",
+            "Images",
+            "ImageRelayout.cs")).Replace("\r\n", "\n", StringComparison.Ordinal);
+        string workSource = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "MarkdownRenderer",
+            "src",
+            "MarkdownRenderer",
+            "Controls",
+            "Images",
+            "ImageRelayoutWork.cs")).Replace("\r\n", "\n", StringComparison.Ordinal);
+
+        Assert.Contains("_imageRelayout.Queue(completedImage.BlockIndex);", controlSource, StringComparison.Ordinal);
+        Assert.Contains("void IImageRelayoutHost.RequestFullRebuild() => RequestRebuild(RebuildReason.Full);", controlSource, StringComparison.Ordinal);
+        int queueStart = relayoutSource.IndexOf("internal void Queue(int blockIndex)", StringComparison.Ordinal);
+        int queueEnd = relayoutSource.IndexOf("internal void QueueFirstPending()", queueStart, StringComparison.Ordinal);
+        Assert.True(queueStart >= 0 && queueEnd > queueStart);
+        string queue = relayoutSource[queueStart..queueEnd];
+        Assert.Contains("_pending.Add(blockIndex);", queue, StringComparison.Ordinal);
+        Assert.Contains("if (_queued || _active)", queue, StringComparison.Ordinal);
         Assert.Contains("_recoveryClock.Start();", queue, StringComparison.Ordinal);
-        int queuedFlag = queue.IndexOf("_imageRelayoutQueued = true;", StringComparison.Ordinal);
+        int queuedFlag = queue.IndexOf("_queued = true;", StringComparison.Ordinal);
         Assert.True(queuedFlag >= 0);
         int recoveryStartAfterQueue = queue.IndexOf("_recoveryClock.Start();", queuedFlag, StringComparison.Ordinal);
         Assert.True(recoveryStartAfterQueue > queuedFlag);
         int missingRecoveryClock = queue.IndexOf("if (!_recoveryClock.IsRunning)", recoveryStartAfterQueue, StringComparison.Ordinal);
         Assert.True(missingRecoveryClock > recoveryStartAfterQueue);
-        int dispatcherCapture = queue.IndexOf("Microsoft.UI.Dispatching.DispatcherQueue? dispatcher = DispatcherQueue;", missingRecoveryClock, StringComparison.Ordinal);
+        int dispatcherCapture = queue.IndexOf("Microsoft.UI.Dispatching.DispatcherQueue? dispatcher = _host.DispatcherQueue;", missingRecoveryClock, StringComparison.Ordinal);
         Assert.True(dispatcherCapture > missingRecoveryClock);
         string missingRecovery = queue[missingRecoveryClock..dispatcherCapture];
-        Assert.Contains("_imageRelayoutQueued = false;", missingRecovery, StringComparison.Ordinal);
-        Assert.Contains("RequestRebuild(RebuildReason.Full);", missingRecovery, StringComparison.Ordinal);
-        Assert.DoesNotContain("_pendingImageRelayoutBlockIndices.Clear();", missingRecovery, StringComparison.Ordinal);
+        Assert.Contains("_queued = false;", missingRecovery, StringComparison.Ordinal);
+        Assert.Contains("_host.RequestFullRebuild();", missingRecovery, StringComparison.Ordinal);
+        Assert.DoesNotContain("_pending.Clear();", missingRecovery, StringComparison.Ordinal);
         int enqueueAfterRecovery = queue.IndexOf("dispatcher?.TryEnqueue(", dispatcherCapture, StringComparison.Ordinal);
         Assert.True(enqueueAfterRecovery > dispatcherCapture);
         string dispatch = queue[dispatcherCapture..];
         Assert.Contains("DispatcherQueuePriority.Low", dispatch, StringComparison.Ordinal);
-        Assert.Contains("var receiver = new WeakReference<MarkdownRendererControl>(this);", dispatch, StringComparison.Ordinal);
-        Assert.Contains("if (receiver.TryGetTarget(out var control))", dispatch, StringComparison.Ordinal);
-        Assert.Contains("control.ProcessQueuedImageRelayout(ticket);", dispatch, StringComparison.Ordinal);
-        Assert.DoesNotContain("_pendingImageRelayoutBlockIndices.Clear();", dispatch, StringComparison.Ordinal);
+        Assert.Contains("var receiver = new WeakReference<ImageRelayout>(this);", dispatch, StringComparison.Ordinal);
+        Assert.Contains("if (receiver.TryGetTarget(out var relayout))", dispatch, StringComparison.Ordinal);
+        Assert.Contains("relayout.ProcessQueued(ticket);", dispatch, StringComparison.Ordinal);
+        Assert.DoesNotContain("_pending.Clear();", dispatch, StringComparison.Ordinal);
 
         string clockSource = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
@@ -544,7 +562,7 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Matches(
             "_managedTimer\\s*=\\s*new\\(\\s*this,\\s*callback\\s*=>\\s*dispatcher\\.TryEnqueue\\(callback\\.Invoke\\),\\s*Tick,\\s*TimeSpan\\.FromMilliseconds\\(100\\)\\);",
             recovery);
-        Assert.DoesNotContain("ProcessQueuedImageRelayout(", recovery, StringComparison.Ordinal);
+        Assert.DoesNotContain("ProcessQueued(", recovery, StringComparison.Ordinal);
         Assert.Contains(
             "private static void Tick(RecoveryClock clock) => clock._host.ProcessRecoveryTick();",
             clockSource,
@@ -566,13 +584,17 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("if (!TryGetLiveTarget(out _))", weakRecoveryTimer, StringComparison.Ordinal);
         Assert.Contains("private bool TryGetLiveTarget(out T? target) => _target.TryGetTarget(out target);", weakRecoveryTimer, StringComparison.Ordinal);
 
+        int recoveryTickStart = controlSource.IndexOf("private void ProcessRecoveryTick(", StringComparison.Ordinal);
         int recoveryTickEnd = controlSource.IndexOf("private void StopRecoveryClock(", recoveryTickStart, StringComparison.Ordinal);
         Assert.True(recoveryTickEnd > recoveryTickStart);
         string recoveryTick = controlSource[recoveryTickStart..recoveryTickEnd];
         Assert.Contains("private void ProcessRecoveryTick()", recoveryTick, StringComparison.Ordinal);
         Assert.Contains("_imageSubscriptions.ProcessBitmapOutputRecovery();", recoveryTick, StringComparison.Ordinal);
-        Assert.Contains("ProcessQueuedImageRelayout(_lastImageRelayoutDispatchTicket);", recoveryTick, StringComparison.Ordinal);
-        Assert.Contains("_imageRelayoutPayload?.PublishAfterWorkDrains();", recoveryTick, StringComparison.Ordinal);
+        Assert.Contains("_imageRelayout.ProcessQueued();", recoveryTick, StringComparison.Ordinal);
+        Assert.Contains("internal void ProcessQueued() => ProcessQueued(_dispatchTicket);", relayoutSource, StringComparison.Ordinal);
+        Assert.Contains("_imageRelayout.PublishReadyCompletion();", recoveryTick, StringComparison.Ordinal);
+        Assert.Contains("internal void PublishReadyCompletion() => _payload?.PublishAfterWorkDrains();", relayoutSource, StringComparison.Ordinal);
+        Assert.Contains("_imageRelayout.RecoverFaultedHandoff();", recoveryTick, StringComparison.Ordinal);
         Assert.Contains("PublishPendingLayoutCommit();", recoveryTick, StringComparison.Ordinal);
         Assert.Contains("ProcessQueuedLazyLayoutRealization(_lastLazyLayoutDispatchTicket);", recoveryTick, StringComparison.Ordinal);
         Assert.Contains("TryPublishLazyLayoutCompletion(_lazyLayoutGeneration);", recoveryTick, StringComparison.Ordinal);
@@ -584,18 +606,24 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("StopRecoveryClockIfIdle();", recoveryTick, StringComparison.Ordinal);
         Assert.Contains("catch (Exception exception)", recoveryTick, StringComparison.Ordinal);
 
-        int processStart = controlSource.IndexOf("private void ProcessQueuedImageRelayout(", StringComparison.Ordinal);
-        int automationStart = controlSource.IndexOf("private void InvalidateAutomationLayout(", processStart, StringComparison.Ordinal);
-        Assert.True(processStart >= 0 && automationStart > processStart);
-        string process = controlSource[processStart..automationStart];
-        Assert.Contains("_rebuildCoordinator.HasPendingOrBuilding", process, StringComparison.Ordinal);
+        int processStart = relayoutSource.IndexOf("internal void ProcessQueued(long ticket)", StringComparison.Ordinal);
+        int completionStart = relayoutSource.IndexOf("internal void Complete(", processStart, StringComparison.Ordinal);
+        Assert.True(processStart >= 0 && completionStart > processStart);
+        string process = relayoutSource[processStart..completionStart];
+        Assert.Contains("if (_host.DefersToRebuild())", process, StringComparison.Ordinal);
+        int defersStart = controlSource.IndexOf("bool IImageRelayoutHost.DefersToRebuild()", StringComparison.Ordinal);
+        int defersEnd = controlSource.IndexOf("bool IImageRelayoutHost.RequestGeometryRecoveryIfRequired(", defersStart, StringComparison.Ordinal);
+        Assert.True(defersStart >= 0 && defersEnd > defersStart);
+        string defers = controlSource[defersStart..defersEnd];
+        Assert.Contains("OnRebuildPipelineCompleted(_activePipelineGeneration);", defers, StringComparison.Ordinal);
+        Assert.Contains("return _rebuildCoordinator.HasPendingOrBuilding;", defers, StringComparison.Ordinal);
         Assert.Contains("ImageRelayoutBatch.CapturePendingIndices(", process, StringComparison.Ordinal);
-        Assert.Contains("private readonly SortedSet<int> _pendingImageRelayoutBlockIndices = [];", controlSource, StringComparison.Ordinal);
+        Assert.Contains("private readonly SortedSet<int> _pending = [];", relayoutSource, StringComparison.Ordinal);
         Assert.Contains("optedIn: session is not null", process, StringComparison.Ordinal);
-        int taskLaunch = process.IndexOf("_imageRelayoutTask = RunImageRelayoutAsync(", StringComparison.Ordinal);
-        int acceptedRemoval = process.IndexOf("_pendingImageRelayoutBlockIndices.Remove(completedBlockIndex)", StringComparison.Ordinal);
+        int taskLaunch = process.IndexOf("_task = ImageRelayoutWork.RunAsync(", StringComparison.Ordinal);
+        int acceptedRemoval = process.IndexOf("_pending.Remove(completedBlockIndex)", StringComparison.Ordinal);
         Assert.True(taskLaunch >= 0 && acceptedRemoval > taskLaunch);
-        Assert.DoesNotContain("_pendingImageRelayoutBlockIndices.Clear()", process, StringComparison.Ordinal);
+        Assert.DoesNotContain("_pending.Clear()", process, StringComparison.Ordinal);
         string rasterPublication = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(), "MarkdownRenderer", "src", "MarkdownRenderer", "Controls",
             "Images", "RasterPlacementPublisher.cs")).Replace("\r\n", "\n", StringComparison.Ordinal);
@@ -611,12 +639,12 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.DoesNotContain("CodeBlockActionPlans.Count == 0", inputs, StringComparison.Ordinal);
         Assert.Contains("_imagePlans.Count is > 0 and <= InlineContainerBox.MaximumPrivateRasterPlacementImages", inputs, StringComparison.Ordinal);
         Assert.Contains("? new RasterPlacementInputs(new WeakReference<RasterPlacementPublisher>(this), _published.Generation,", inputs, StringComparison.Ordinal);
-        Assert.Contains("RequestRebuild(RebuildReason.Full);", process, StringComparison.Ordinal);
+        Assert.Contains("_host.RequestFullRebuild();", process, StringComparison.Ordinal);
 
-        int runStart = controlSource.IndexOf("private static async Task RunImageRelayoutAsync(", StringComparison.Ordinal);
-        int publicationStart = controlSource.IndexOf("private static WeakSnapshotPublication<LayoutSnapshot> CreateImageRelayoutPublication(", runStart, StringComparison.Ordinal);
+        int runStart = workSource.IndexOf("internal static async Task RunAsync(", StringComparison.Ordinal);
+        int publicationStart = workSource.IndexOf("private static WeakSnapshotPublication<LayoutSnapshot> CreatePublication(", runStart, StringComparison.Ordinal);
         Assert.True(runStart >= 0 && publicationStart > runStart);
-        string run = controlSource[runStart..publicationStart];
+        string run = workSource[runStart..publicationStart];
         int privateCandidate = run.IndexOf("payload.Snapshot.CreateSingleRasterCandidate(", StringComparison.Ordinal);
         int fallbackRelayout = run.IndexOf("payload.Snapshot.TryRelayoutChangedBlocks(", StringComparison.Ordinal);
         int constructionDrain = run.IndexOf("candidateContext.DrainOwnedRetirementsAsync(failure)", StringComparison.Ordinal);
@@ -640,23 +668,20 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("candidate?.Dispose();", run, StringComparison.Ordinal);
         Assert.Contains("candidatePlan?.Dispose();", run, StringComparison.Ordinal);
 
-        int completionStart = controlSource.IndexOf("private void CompleteImageRelayout(", publicationStart, StringComparison.Ordinal);
-        int failureReporter = controlSource.IndexOf("private bool RequestGeometryRecoveryIfRequired(", completionStart, StringComparison.Ordinal);
-        Assert.True(completionStart >= 0 && failureReporter > completionStart);
-        string publicationFactory = controlSource[publicationStart..completionStart];
+        string publicationFactory = workSource[publicationStart..];
         Assert.Contains("int? retryImageBlockIndex", publicationFactory, StringComparison.Ordinal);
         Assert.Contains("bool retryCurrentImages", publicationFactory, StringComparison.Ordinal);
         Assert.DoesNotContain("int[]", publicationFactory, StringComparison.Ordinal);
         Assert.DoesNotContain("retryImageBlockIndices", publicationFactory, StringComparison.Ordinal);
-        string completion = controlSource[completionStart..failureReporter];
+        string completion = relayoutSource[completionStart..];
         Assert.Contains("current && snapshot is not null && !_lifetime.IsDisposed && !_lifetime.IsUnloaded &&\n                (!canceled || rootMeasureCommitted)", completion, StringComparison.Ordinal);
         Assert.Contains("// A private whole-tree candidate has not committed and is excluded.", completion, StringComparison.Ordinal);
         Assert.Contains("generation == _published.Generation && ReferenceEquals(snapshot, _published.Snapshot)", completion, StringComparison.Ordinal);
         Assert.Contains("_rasterPlacement.TryPublish(snapshot, candidate, generation)", completion, StringComparison.Ordinal);
-        Assert.Contains("RequestRebuild(RebuildReason.Full);", completion, StringComparison.Ordinal);
+        Assert.Contains("_host.RequestFullRebuild();", completion, StringComparison.Ordinal);
         Assert.Contains("else if (retryImageBlockIndex.HasValue || retryCurrentImages)", completion, StringComparison.Ordinal);
         Assert.Contains("if (retryImageBlockIndex is { } retryIndex)", completion, StringComparison.Ordinal);
-        Assert.Contains("if (retryCurrentImages)\n                        _imageSubscriptions.AddBlockIndicesTo(_pendingImageRelayoutBlockIndices);", completion, StringComparison.Ordinal);
+        Assert.Contains("if (retryCurrentImages)\n                        _imageSubscriptions.AddBlockIndicesTo(_pending);", completion, StringComparison.Ordinal);
         string subscriptionsSource = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
             "MarkdownRenderer",

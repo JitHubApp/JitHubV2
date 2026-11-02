@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using MarkdownRenderer.Controls;
+using MarkdownRenderer.Controls.Images;
 using MarkdownRenderer.Layout;
 using Xunit;
 
@@ -54,21 +55,21 @@ public sealed class ImageRelayoutPublicationRetentionTests
         const BindingFlags declaredMethods = BindingFlags.Instance | BindingFlags.Static |
             BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
         Type control = typeof(MarkdownDocumentView).BaseType!;
-        Type closure = Assert.Single(control.GetNestedTypes(BindingFlags.NonPublic),
+        Type work = typeof(ImageRelayoutWork);
+        Type closure = Assert.Single(work.GetNestedTypes(BindingFlags.NonPublic),
             type => type.GetMethods(declaredMethods).Any(method =>
-                method.Name.StartsWith("<CreateImageRelayoutPublication>", StringComparison.Ordinal)));
+                method.Name.StartsWith("<CreatePublication>", StringComparison.Ordinal)));
 
         FieldInfo[] fields = closure.GetFields(instanceFields);
         Assert.Contains(fields, field => field.FieldType == typeof(CancellationTokenSource));
-        Assert.Contains(fields, field => field.FieldType.IsGenericType &&
-            field.FieldType.GetGenericTypeDefinition() == typeof(WeakReference<>));
+        Assert.Contains(fields, field => field.FieldType == typeof(WeakReference<ImageRelayout>));
         Assert.DoesNotContain(fields, field =>
             field.FieldType == typeof(LayoutSnapshot) || field.FieldType == typeof(int[]) ||
-            field.FieldType == control ||
+            field.FieldType == control || field.FieldType == typeof(ImageRelayout) ||
             field.FieldType == typeof(ImageRelayoutWorkPayload<LayoutSnapshot>));
 
-        MethodInfo factory = control.GetMethod(
-            "CreateImageRelayoutPublication", BindingFlags.Static | BindingFlags.NonPublic)!;
+        MethodInfo factory = work.GetMethod(
+            "CreatePublication", BindingFlags.Static | BindingFlags.NonPublic)!;
         Assert.True(factory.IsStatic);
         Assert.Contains(factory.GetParameters(), parameter =>
             parameter.ParameterType == typeof(ImageRelayoutWorkPayload<LayoutSnapshot>));
@@ -76,8 +77,8 @@ public sealed class ImageRelayoutPublicationRetentionTests
             parameter.ParameterType == typeof(LayoutSnapshot) || parameter.ParameterType == typeof(int[]));
         Assert.NotEqual(0, (int)(factory.GetMethodImplementationFlags() & MethodImplAttributes.NoInlining));
 
-        MethodInfo worker = control.GetMethod(
-            "RunImageRelayoutAsync", BindingFlags.Static | BindingFlags.NonPublic)!;
+        MethodInfo worker = work.GetMethod(
+            "RunAsync", BindingFlags.Static | BindingFlags.NonPublic)!;
         Assert.True(worker.IsStatic);
         Assert.Contains(worker.GetParameters(), parameter =>
             parameter.ParameterType == typeof(ImageRelayoutWorkPayload<LayoutSnapshot>));
@@ -86,7 +87,7 @@ public sealed class ImageRelayoutPublicationRetentionTests
 
         Type stateMachine = worker.GetCustomAttribute<AsyncStateMachineAttribute>()!.StateMachineType;
         Assert.DoesNotContain(stateMachine.GetFields(instanceFields), field =>
-            field.FieldType == control ||
+            field.FieldType == control || field.FieldType == typeof(ImageRelayout) ||
             field.FieldType == typeof(LayoutSnapshot) || field.FieldType == typeof(int[]));
     }
 
@@ -97,15 +98,16 @@ public sealed class ImageRelayoutPublicationRetentionTests
         const BindingFlags methods = BindingFlags.Instance | BindingFlags.Static |
             BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
         Type control = typeof(MarkdownDocumentView).BaseType!;
-        var callback = Assert.Single(control.GetNestedTypes(BindingFlags.NonPublic)
+        var callback = Assert.Single(typeof(ImageRelayout).GetNestedTypes(BindingFlags.NonPublic)
             .SelectMany(type => type.GetMethods(methods)
-                .Where(method => method.Name.StartsWith("<QueueImageRelayout>", StringComparison.Ordinal))
+                .Where(method => method.Name.StartsWith("<Queue>", StringComparison.Ordinal))
                 .Select(method => (Closure: type, Method: method))));
 
-        Assert.Contains(callback.Closure.GetFields(fields), field => field.FieldType.IsGenericType &&
-            field.FieldType.GetGenericTypeDefinition() == typeof(WeakReference<>));
+        Assert.Contains(callback.Closure.GetFields(fields), field =>
+            field.FieldType == typeof(WeakReference<ImageRelayout>));
         Assert.DoesNotContain(callback.Closure.GetFields(fields), field =>
-            field.FieldType == control || field.FieldType == typeof(LayoutSnapshot) ||
+            field.FieldType == control || field.FieldType == typeof(ImageRelayout) ||
+            field.FieldType == typeof(LayoutSnapshot) ||
             field.FieldType == typeof(ImageRelayoutWorkPayload<LayoutSnapshot>));
     }
 

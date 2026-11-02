@@ -56,7 +56,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     ICodeBlockCopyButtonHost, IFocusRingHost, IHostedElementFocusHost,
     IHorizontalOverflowScrollHost, IFocusedItemRevealHost, IFocusedItemCommitHost,
     IFocusGeometryRecoveryHost, IRendererFocusEntryHost, IImageSubscriptionsHost, IImageResidencyHost,
-    ICanvasDeviceRecoveryHost, ICodeBlockHighlightingHost, IRecoveryClockHost, IRasterPlacementHost
+    ICanvasDeviceRecoveryHost, ICodeBlockHighlightingHost, IRecoveryClockHost, IRasterPlacementHost,
+    IImageRelayoutHost
 {
     private readonly MarkdownViewSurface _surface;
     private readonly MarkdownViewLifetime _lifetime = new();
@@ -129,6 +130,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private readonly LayoutCommitState _layoutCommit = new();
     private readonly object _imagePreparationOwnerToken = new();
     private readonly RasterPlacementPublisher _rasterPlacement;
+    private readonly ImageRelayout _imageRelayout;
     // Hosted-focus readers consume only realization plans published for the
     // exact snapshot generation and layout revision. The attempt epoch also
     // invalidates a plan while a same-snapshot rebuild is being transferred.
@@ -141,16 +143,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private long _lastRebuildDispatchTicket;
     private readonly MarkdownRebuildCoordinator _rebuildCoordinator = new();
     private int _rejectedCrossThreadRebuildReason = -1;
-    private bool _imageRelayoutQueued;
-    private bool _imageRelayoutActive;
-    private long _lastImageRelayoutDispatchTicket;
-    private CancellationTokenSource? _imageRelayoutCts;
-    private Task? _imageRelayoutTask;
-    private ImageRelayoutWorkPayload<LayoutSnapshot>? _imageRelayoutPayload;
-    // A sparse HashSet can scan an old storm's entire retained slot array to
-    // capture just 32 live indices. A balanced live-only tree keeps capture
-    // O(log N + batch size), and naturally prioritizes earlier document roots.
-    private readonly SortedSet<int> _pendingImageRelayoutBlockIndices = [];
     private bool _selectionAutomationEventQueued;
     private float _lastWidth;
     private static readonly MarkdownTheme _defaultTheme = new();
@@ -1821,6 +1813,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _focusGeometry = new FocusGeometryReader(_lifetime, _published);
         _focusRing = new FocusRingPresenter(this, _focus, _focusGeometry, _surface, _lifetime, _published, DispatcherQueue);
         _rasterPlacement = new RasterPlacementPublisher(this, _lifetime, _published, _layoutCommit, _surface, _pointerInput, _imageSubscriptions, _imagePlans, _imageResidency, _embeds, _focus, _focusRing, _hostedFocusPlan, _snapshotRetirements);
+        _imageRelayout = new ImageRelayout(this, _lifetime, _published, _layoutCommit, _surface, _pointerInput, _imageSubscriptions, _rasterPlacement, _recoveryClock);
         _focusRefresh = new FocusableItemsRefreshRequest(_published);
         _hostedFocus = new HostedElementFocus(this, _lifetime, _published, _focus, _hostedFocusPlan, _embeds, _focusRing);
         _overflowScroll = new HorizontalOverflowScrollVisuals(this, _surface, _lifetime, _published, _selection, _focus, _embeds, DispatcherQueue);
@@ -2482,6 +2475,41 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         string url, MarkdownImageUnavailableReason reason, MarkdownSvgFailureReason? svgReason) =>
         RaiseImageUnavailable(url, reason, svgReason);
 
+    Microsoft.UI.Dispatching.DispatcherQueue? IImageRelayoutHost.DispatcherQueue => DispatcherQueue;
+
+    IMarkdownPerformanceSession? IImageRelayoutHost.PerformanceSession => PerformanceSession;
+
+    float IImageRelayoutHost.LayoutWidth => (float)Math.Max(50, ActualWidth);
+
+    bool IImageRelayoutHost.DefersToRebuild()
+    {
+        // A replacement build's prepublished task is the actual drain barrier;
+        // a withheld UI completion must not leave the coordinator's building
+        // marker wedged.
+        if (_pipelineTask is { IsCompleted: true })
+        {
+            OnRebuildPipelineCompleted(_activePipelineGeneration);
+            // The worker may already have cleared that marker after enqueue
+            // rejection. Retry its pending drain without creating a request.
+            QueuePendingRebuild();
+        }
+        return _rebuildCoordinator.HasPendingOrBuilding;
+    }
+
+    bool IImageRelayoutHost.RequestGeometryRecoveryIfRequired(LayoutSnapshot? snapshot) =>
+        RequestGeometryRecoveryIfRequired(snapshot);
+
+    void IImageRelayoutHost.RequestFullRebuild() => RequestRebuild(RebuildReason.Full);
+
+    void IImageRelayoutHost.ApplyLazyLayoutCommit(
+        LayoutSnapshot snapshot, (int BlockIndex, double OffsetFromTop)? scrollAnchor) =>
+        ApplyLazyLayoutCommit(snapshot, scrollAnchor);
+
+    void IImageRelayoutHost.StopRecoveryClock(bool force) => StopRecoveryClock(force);
+
+    Task IImageRelayoutHost.RetireCancellationTokenSource(CancellationTokenSource? cts, Task? lifetime) =>
+        RetireCancellationTokenSource(cts, lifetime);
+
     double IDeferredGestureLayoutHost.RasterizationScale => XamlRoot?.RasterizationScale ?? 1;
 
     bool IDeferredGestureLayoutHost.IsPointOverEmbed(Point point) => _embeds.HitTargets.IsPointOverEmbed(point);
@@ -2738,17 +2766,9 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _rebuildDispatchState = default;
         _rebuildCoordinator.Reset();
         Interlocked.Exchange(ref _rejectedCrossThreadRebuildReason, -1);
-        _imageRelayoutQueued = false;
-        _imageRelayoutActive = false;
-        ++_lastImageRelayoutDispatchTicket;
-        StopRecoveryClock(force: true);
-        Interlocked.Exchange(ref _imageRelayoutPayload, null)?.DiscardPublication();
-        RetireCancellationTokenSource(_imageRelayoutCts, _imageRelayoutTask);
-        _imageRelayoutCts = null;
-        _imageRelayoutTask = null;
+        _imageRelayout.Retire();
         _lastLazyViewportTimestamp = 0;
         _lazyScrollVelocityPixelsPerSecond = 0;
-        _pendingImageRelayoutBlockIndices.Clear();
         _pendingScrollToBlock = null;
         _selectionAutomationEventQueued = false;
         _overflowScroll.ClearAutomationNotifications();
@@ -3252,8 +3272,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
         RebuildReason reason = coordinatorReason;
         CancelLazyLayoutRealization();
-        if (_imageRelayoutCts is { } imageRelayoutCancellation)
-            _ = CancellationTokenSourceRetirement.RequestCancellation(imageRelayoutCancellation);
+        _imageRelayout.CancelActive();
 
         string effectiveSource = _hasExplicitDocument
             ? Document?.Source ?? string.Empty
@@ -4126,11 +4145,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // including reentrant property notifications during the commit below.
         ClearPendingFocusGeometryWork();
         _imageSubscriptions.UnsubscribeAll();
-        _pendingImageRelayoutBlockIndices.Clear();
-        _imageRelayoutQueued = false;
-        ++_lastImageRelayoutDispatchTicket;
-        if (!_imageRelayoutActive)
-            StopRecoveryClock();
+        _imageRelayout.ClearForSnapshotReplacement();
         _pendingScrollToBlock = null;
         _imagePlans.Publication = null;
         if (!sameDocument)
@@ -5533,7 +5548,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (layoutInvalidated)
         {
             if (completedImage is not null)
-                QueueImageRelayout(completedImage.BlockIndex);
+                _imageRelayout.Queue(completedImage.BlockIndex);
             else
                 RequestRebuild(RebuildReason.Full);
         }
@@ -5543,52 +5558,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             // dispose the newly parsed SVG and start the reparse loop again.
             InvalidateCanvas();
             _adorner.Invalidate();
-        }
-    }
-
-    private void QueueImageRelayout(int blockIndex)
-    {
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _published.Snapshot is null)
-            return;
-
-        if (RequestGeometryRecoveryIfRequired(_published.Snapshot))
-            return;
-
-        // These indices belong to the still-published snapshot, not the
-        // requested replacement. Only a successful snapshot commit clears them.
-        _pendingImageRelayoutBlockIndices.Add(blockIndex);
-        if (_imageRelayoutQueued || _imageRelayoutActive)
-        {
-            _recoveryClock.Start();
-            return;
-        }
-
-        _imageRelayoutQueued = true;
-        long ticket = ++_lastImageRelayoutDispatchTicket;
-        _recoveryClock.Start();
-        if (!_recoveryClock.IsRunning)
-        {
-            // Do not start an asynchronous handoff without its recovery route.
-            _imageRelayoutQueued = false;
-            RequestRebuild(RebuildReason.Full);
-            return;
-        }
-        Microsoft.UI.Dispatching.DispatcherQueue? dispatcher = DispatcherQueue;
-        var receiver = new WeakReference<MarkdownRendererControl>(this);
-        try
-        {
-            // The timer retains the pending set on rejection and can also
-            // claim accepted-but-withheld dispatch. Neither callback owns us.
-            dispatcher?.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
-                () =>
-                {
-                    if (receiver.TryGetTarget(out var control))
-                        control.ProcessQueuedImageRelayout(ticket);
-                });
-        }
-        catch (Exception exception)
-        {
-            RelayoutDiagnostics.ReportFailure("relayout dispatch", exception.Message);
         }
     }
 
@@ -5609,26 +5578,19 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                     // Drain canceled image work so its retirement/active flag
                     // can complete, but do not probe or retry failed geometry.
                     _focusRefresh.ClearForCurrentSnapshot();
-                    _imageRelayoutPayload?.PublishAfterWorkDrains();
+                    _imageRelayout.PublishReadyCompletion();
                     return;
                 }
                 _imageSubscriptions.ProcessBitmapOutputRecovery();
-                ProcessQueuedImageRelayout(_lastImageRelayoutDispatchTicket);
-                _imageRelayoutPayload?.PublishAfterWorkDrains();
+                _imageRelayout.ProcessQueued();
+                _imageRelayout.PublishReadyCompletion();
                 PublishPendingLayoutCommit();
                 ProcessQueuedLazyLayoutRealization(_lastLazyLayoutDispatchTicket);
                 TryPublishLazyLayoutCompletion(_lazyLayoutGeneration);
                 _overflowScroll.ProcessPendingRetry();
                 _focusGeometryWork.Process();
                 TryPublishPendingFocusableItems();
-                if (_imageRelayoutTask is { IsFaulted: true } failed &&
-                    _imageRelayoutCts is { } cancellation)
-                {
-                    RelayoutDiagnostics.ReportFailure("relayout handoff", failed.Exception!);
-                    CompleteImageRelayout(null, null, 0, cancellation, null);
-                    if (!RequestGeometryRecoveryIfRequired(_published.Snapshot))
-                        RequestRebuild(RebuildReason.Full);
-                }
+                _imageRelayout.RecoverFaultedHandoff();
             }
         }
         catch (Exception exception)
@@ -5671,10 +5633,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void StopRecoveryClockIfIdle()
     {
-        if (_imageRelayoutQueued ||
+        if (_imageRelayout.HasPendingWork ||
             _imageSubscriptions.HasPendingBitmapOutputRecovery ||
-            _imageRelayoutActive ||
-            _pendingImageRelayoutBlockIndices.Count > 0 ||
             _overflowScroll.HasPendingRetry ||
             _focusRefresh.Pending.IsPending ||
             _focusGeometryWork.HasPendingWork ||
@@ -5684,97 +5644,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         }
 
         StopRecoveryClock();
-    }
-
-    private void ProcessQueuedImageRelayout(long ticket)
-    {
-        if (!_imageRelayoutQueued || ticket != _lastImageRelayoutDispatchTicket)
-            return;
-
-        LayoutSnapshot? snapshot = _published.Snapshot;
-        if (RequestGeometryRecoveryIfRequired(snapshot))
-            return;
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || snapshot is null ||
-            _pendingImageRelayoutBlockIndices.Count == 0)
-        {
-            _imageRelayoutQueued = false;
-            if (_layoutCommit.Pending is null)
-                StopRecoveryClock();
-            return;
-        }
-
-        // Do not compete with a replacement build. If it fails or is canceled
-        // without committing, the timer resumes work for the old visible graph.
-        // Its prepublished task is the actual drain barrier; a withheld UI
-        // completion must not leave the coordinator's building marker wedged.
-        if (_pipelineTask is { IsCompleted: true })
-        {
-            OnRebuildPipelineCompleted(_activePipelineGeneration);
-            // The worker may already have cleared that marker after enqueue
-            // rejection. Retry its pending drain without creating a request.
-            QueuePendingRebuild();
-        }
-        if (_rebuildCoordinator.HasPendingOrBuilding)
-            return;
-
-        // Keep the pending set and recovery route intact. Neither in-place
-        // reflow nor private snapshot replacement may change geometry owned
-        // by a live or not-yet-captured table/selection gesture.
-        if (_pointerInput.HasSnapshotInteraction)
-            return;
-
-        _imageRelayoutQueued = false;
-        CancellationTokenSource? cancellation = null;
-        try
-        {
-            IMarkdownPerformanceSessionInternal? session =
-                PerformanceSession as IMarkdownPerformanceSessionInternal;
-            int[] changed = ImageRelayoutBatch.CapturePendingIndices(
-                _pendingImageRelayoutBlockIndices,
-                optedIn: session is not null);
-            (int BlockIndex, double OffsetFromTop)? anchor = null;
-            if (_surface.Scroll is { VerticalOffset: > 0 } scroll &&
-                snapshot.TryCaptureScrollAnchor(scroll.VerticalOffset, out var captured) &&
-                captured.BlockIndex is { } blockIndex)
-            {
-                anchor = (blockIndex, captured.OffsetFromTop);
-            }
-
-            // Rebuild start and unload explicitly cancel this operation. A
-            // failed replacement's canceled CTS must not poison recovery of
-            // the snapshot that remains published afterward.
-            cancellation = new CancellationTokenSource();
-            var payload = new ImageRelayoutWorkPayload<LayoutSnapshot>(
-                snapshot, changed, (float)Math.Max(50, ActualWidth));
-            var receiver = new WeakReference<MarkdownRendererControl>(this);
-
-            _imageRelayoutActive = true;
-            _imageRelayoutCts = cancellation;
-            _imageRelayoutPayload = payload;
-            RasterPlacementInputs? rasterPlacement =
-                _rasterPlacement.TryCreateInputs(snapshot, optedIn: session is not null);
-            _imageRelayoutTask = RunImageRelayoutAsync(
-                payload, anchor, _published.Generation, cancellation, DispatcherQueue,
-                receiver, session, rasterPlacement, snapshot.PointerInputEpoch,
-                _surface.Scroll?.VerticalOffset);
-            // The worker now owns only this immutable bounded index array.
-            // Leave any storm remainder in the UI-owned pending set for the
-            // normal completion/recovery route to schedule next.
-            foreach (int completedBlockIndex in changed)
-                _pendingImageRelayoutBlockIndices.Remove(completedBlockIndex);
-        }
-        catch (Exception exception)
-        {
-            Interlocked.Exchange(ref _imageRelayoutPayload, null)?.DiscardPublication();
-            RetireCancellationTokenSource(cancellation, _imageRelayoutTask);
-            _imageRelayoutCts = null;
-            _imageRelayoutTask = null;
-            _imageRelayoutActive = false;
-            StopRecoveryClock();
-            RelayoutDiagnostics.ReportFailure("relayout setup", exception);
-            RequestRebuild(RebuildReason.Full);
-        }
-        return;
     }
 
     private void InvalidateAutomationLayout()
@@ -6119,338 +5988,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         }
     }
 
-    private static async Task RunImageRelayoutAsync(
-        ImageRelayoutWorkPayload<LayoutSnapshot> payload,
-        (int BlockIndex, double OffsetFromTop)? anchor,
-        long generation,
-        CancellationTokenSource cancellation,
-        Microsoft.UI.Dispatching.DispatcherQueue? dispatcher,
-        WeakReference<MarkdownRendererControl> receiver,
-        IMarkdownPerformanceSessionInternal? session,
-        RasterPlacementInputs? rasterPlacement,
-        long pointerInputEpoch,
-        double? capturedScrollOffset)
-    {
-        Exception? failure = null;
-        long started = MarkdownPerformanceEventSource.Log.IsMeasurementEnabled()
-            ? Stopwatch.GetTimestamp()
-            : 0;
-        Func<CancellationToken, bool>? layoutWork = null;
-        Task<bool>? layoutTask = null;
-        WeakSnapshotPublication<LayoutSnapshot>? publication = null;
-        SingleRasterLayoutCandidate? candidate = null;
-        MarkdownLayoutContext? candidateContext = null;
-        MarkdownLayoutContext? rootMeasureContext = null;
-        RasterPlacementPlan? candidatePlan = null;
-        int? retryImageBlockIndex = null;
-        bool retryCurrentImages = false;
-        bool rootMeasureCommitted = false;
-        try
-        {
-            try
-            {
-                layoutWork = layoutToken =>
-                {
-                    // Completed standalone, paragraph, table, list and quote images need
-                    // only their owning placements, not an entire document
-                    // clone. Prefer the bounded root
-                    // batch even when the whole-tree COW path would be eligible.
-                    PreparedImageRelayoutResult result = session is null
-                        ? PreparedImageRelayoutResult.Unavailable
-                        : payload.Snapshot.TryRelayoutCompletedImageRoots(
-                            payload.Changed, payload.Width, layoutToken, out rootMeasureContext,
-                            expectedPointerInputEpoch: pointerInputEpoch);
-                    rootMeasureCommitted = result == PreparedImageRelayoutResult.Committed;
-                    if (result == PreparedImageRelayoutResult.Retry)
-                    {
-                        if (payload.Changed.Length == 1)
-                            retryImageBlockIndex = payload.Changed[0];
-                        else
-                            retryCurrentImages = true;
-                    }
-                    else if (result == PreparedImageRelayoutResult.Unavailable)
-                    {
-                        if (rasterPlacement is not null)
-                            candidate = payload.Snapshot.CreateSingleRasterCandidate(
-                                payload.Changed, payload.Width, layoutToken,
-                                rasterPlacement.ImageLifetime, rasterPlacement.ImagePreparationOwner,
-                                rasterPlacement.RetirementSink,
-                                rasterPlacement.ImageUnavailable, out candidateContext);
-                        if (candidate is null)
-                            if (!payload.Snapshot.TryRelayoutChangedBlocks(
-                                    payload.Changed, payload.Width, layoutToken, pointerInputEpoch))
-                            {
-                                if (payload.Changed.Length == 1)
-                                    retryImageBlockIndex = payload.Changed[0];
-                                else
-                                    retryCurrentImages = true;
-                            }
-                    }
-                    return true;
-                };
-                layoutTask = session is null
-                    ? Task.Run(() => layoutWork(cancellation.Token), CancellationToken.None)
-                    : session.ScheduleLayoutWorkAsync(
-                        MarkdownLayoutWorkPriority.Background,
-                        layoutWork,
-                        cancellation.Token);
-                await layoutTask.ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (
-                cancellation.IsCancellationRequested || session?.IsDisposed == true)
-            {
-                if (session?.IsDisposed == true && !cancellation.IsCancellationRequested)
-                    _ = CancellationTokenSourceRetirement.RequestCancellation(cancellation);
-            }
-            catch (Exception exception)
-            {
-                failure = exception;
-            }
-
-            // Join construction cleanup only after scheduled native work exits.
-            // The new context has its own ledger, including pre-snapshot faults.
-            if (candidateContext is not null)
-            {
-                try { await candidateContext.DrainOwnedRetirementsAsync(failure).ConfigureAwait(false); }
-                catch (Exception exception) { failure = exception; }
-            }
-            if (rootMeasureContext is not null)
-            {
-                try { await rootMeasureContext.DrainOwnedRetirementsAsync(failure).ConfigureAwait(false); }
-                catch (Exception exception) { failure = exception; }
-            }
-            if (candidate is not null && failure is null && !cancellation.IsCancellationRequested && session?.IsDisposed != true)
-            {
-                try
-                {
-                    rasterPlacement!.Bind(candidate.Snapshot);
-                    candidatePlan = new RasterPlacementPlan(candidate, generation, anchor, rasterPlacement.ScrollOffset);
-                    candidate = null; // plan now owns all private native resources
-                }
-                catch (Exception exception) { failure = exception; }
-            }
-
-            if (started != 0)
-                MarkdownPerformanceEventSource.Log.ResourceWork(
-                    3, Stopwatch.GetTimestamp() - started, payload.Changed.Length);
-
-            // The control is the strong owner of the currently published
-            // snapshot. A stale delayed completion needs only weak identity;
-            // it still carries the CTS ticket so ordinary UI cleanup can run.
-            publication = CreateImageRelayoutPublication(
-                payload, anchor, generation, cancellation, failure, receiver, candidatePlan,
-                retryImageBlockIndex, retryCurrentImages, rootMeasureCommitted, capturedScrollOffset);
-            candidatePlan = null; // one-shot envelope owns publish or discard
-            if (!payload.TryOwnPublication(publication))
-            {
-                // Unload/completion closes this specific operation owner. Its
-                // existing CTS retirement barrier owns callback and work drain;
-                // never dispose that ticket early from the losing worker path.
-                return;
-            }
-            // Every delivery route uses the same ready, one-shot owner. Actual
-            // layout has returned; release strong borrows before dispatch so a
-            // retained callback/task cannot hold a retired graph indirectly.
-            payload.ReleaseAfterWorkDrains();
-            try
-            {
-                dispatcher?.TryEnqueue(payload.PublishAfterWorkDrains);
-            }
-            catch (Exception exception)
-            {
-                RelayoutDiagnostics.ReportFailure("relayout completion dispatch", exception.Message);
-            }
-            // Rejection/lost dispatch leaves the ready envelope and CTS owned
-            // by the loaded control's recovery timer, or unload's drain fence.
-        }
-        finally
-        {
-            // These async/closure fields can survive in a retained completed
-            // task. Clear them only after the scheduled work really returned,
-            // not when cancellation was merely requested. The UI callback has
-            // a separate weak handoff and never reads these worker aliases.
-            // Clear the actual owner as well as local aliases: compiler-created
-            // parameter/closure copies then retain only an empty owner.
-            payload.ReleaseAfterWorkDrains();
-            payload = null!;
-            layoutWork = null;
-            layoutTask = null;
-            publication = null;
-            try
-            {
-                candidate?.Dispose();
-                candidatePlan?.Dispose();
-                // Failed/canceled candidates can register retirement after an
-                // unload drain epoch has begun. The worker's existing barrier
-                // must include this private retirement, not just observe it in
-                // the host's next epoch.
-                Task candidateDrain = candidateContext?.DrainOwnedRetirementsAsync(failure) ?? Task.CompletedTask;
-                Task rootMeasureDrain = rootMeasureContext?.DrainOwnedRetirementsAsync(failure) ?? Task.CompletedTask;
-                await Task.WhenAll(candidateDrain, rootMeasureDrain).ConfigureAwait(false);
-            }
-            finally
-            {
-                candidate = null;
-                candidatePlan = null;
-                candidateContext = null;
-                rootMeasureContext = null;
-                retryImageBlockIndex = null;
-                rasterPlacement = null;
-                session = null;
-                dispatcher = null;
-                failure = null;
-                cancellation = null!;
-                receiver = null!;
-            }
-        }
-    }
-
-    // Keep the graph-bearing temporary inside this factory frame, not in the
-    // async caller's frame that may still be unwinding after task completion.
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private static WeakSnapshotPublication<LayoutSnapshot> CreateImageRelayoutPublication(
-        ImageRelayoutWorkPayload<LayoutSnapshot> payload,
-        (int BlockIndex, double OffsetFromTop)? anchor,
-        long generation,
-        CancellationTokenSource cancellation,
-        Exception? failure,
-        WeakReference<MarkdownRendererControl> receiver,
-        RasterPlacementPlan? candidate,
-        int? retryImageBlockIndex,
-        bool retryCurrentImages,
-        bool rootMeasureCommitted,
-        double? capturedScrollOffset) =>
-        new(payload.Snapshot, publishedSnapshot =>
-        {
-            try
-            {
-                if (receiver.TryGetTarget(out var control))
-                    control.CompleteImageRelayout(publishedSnapshot, anchor, generation, cancellation, failure, candidate,
-                        retryImageBlockIndex, retryCurrentImages, rootMeasureCommitted, capturedScrollOffset);
-                else
-                    _ = CancellationTokenSourceRetirement.CancelAndDisposeAfter(cancellation, lifetime: null);
-            }
-            finally { candidate?.Dispose(); }
-        }, candidate is null ? null : candidate.Dispose);
-
-    private void CompleteImageRelayout(
-        LayoutSnapshot? snapshot,
-        (int BlockIndex, double OffsetFromTop)? anchor,
-        long generation,
-        CancellationTokenSource cancellation,
-        Exception? failure,
-        RasterPlacementPlan? candidate = null,
-        int? retryImageBlockIndex = null,
-        bool retryCurrentImages = false,
-        bool rootMeasureCommitted = false,
-        double? capturedScrollOffset = null)
-    {
-        bool current = ReferenceEquals(_imageRelayoutCts, cancellation);
-        Task? workLifetime = current ? _imageRelayoutTask : null;
-        long started = MarkdownPerformanceEventSource.Log.IsMeasurementEnabled()
-            ? Stopwatch.GetTimestamp()
-            : 0;
-        if (current)
-        {
-            Interlocked.Exchange(ref _imageRelayoutPayload, null)?.DiscardPublication();
-            _imageRelayoutCts = null;
-            _imageRelayoutTask = null;
-            _imageRelayoutActive = false;
-            if (_layoutCommit.Pending is null)
-                StopRecoveryClock();
-        }
-
-        bool canceled = cancellation.IsCancellationRequested;
-        RetireCancellationTokenSource(cancellation, workLifetime);
-        try
-        {
-            // Cancellation does not make a failed live mutation safe. This
-            // check precedes the ordinary canceled-result publication fence.
-            if (RequestGeometryRecoveryIfRequired(snapshot))
-                return;
-
-            // Private preparation remains cancelable. Once root placement has
-            // committed, its live size/paint state must still reach the UI even
-            // if cancellation arrived after that non-cancelable commit point.
-            // A private whole-tree candidate has not committed and is excluded.
-            if (current && snapshot is not null && !_lifetime.IsDisposed && !_lifetime.IsUnloaded &&
-                (!canceled || rootMeasureCommitted) &&
-                generation == _published.Generation && ReferenceEquals(snapshot, _published.Snapshot))
-            {
-                if (failure is not null)
-                {
-                    RelayoutDiagnostics.ReportFailure("relayout", failure);
-                    RequestRebuild(RebuildReason.Full);
-                }
-                else if (retryImageBlockIndex.HasValue || retryCurrentImages)
-                {
-                    // Private measurement lost an input/layout/resource fence.
-                    // Keep only a scalar for a singleton. Multi-image fallback
-                    // recovers from the current control-owned subscriptions,
-                    // never retaining the worker's dirty array in a dispatch.
-                    if (retryImageBlockIndex is { } retryIndex)
-                        _pendingImageRelayoutBlockIndices.Add(retryIndex);
-                    if (retryCurrentImages)
-                        _imageSubscriptions.AddBlockIndicesTo(_pendingImageRelayoutBlockIndices);
-                    if (snapshot.IsRetiringOrDisposed ||
-                        (float)Math.Max(50, ActualWidth) != snapshot.Size.Width)
-                        RequestRebuild(RebuildReason.Full);
-                }
-                else if (candidate is not null)
-                {
-                    if (_pointerInput.HasSnapshotInteraction)
-                    {
-                        // A gesture may have started after the worker captured
-                        // its source. Discard this private candidate and retry
-                        // after release; do not reset capture or request a full
-                        // rebuild solely because the user is interacting.
-                        _imageSubscriptions.AddBlockIndicesTo(_pendingImageRelayoutBlockIndices);
-                    }
-                    else if (!_rasterPlacement.TryPublish(snapshot, candidate, generation))
-                    {
-                        // A changed width/policy/raster invalidates the private
-                        // proof. Rebuild rather than mutate the old tree here.
-                        _imageSubscriptions.AddBlockIndicesTo(_pendingImageRelayoutBlockIndices);
-                        RequestRebuild(RebuildReason.Full);
-                    }
-                }
-                else
-                    ApplyLazyLayoutCommit(snapshot, rootMeasureCommitted &&
-                        (canceled || capturedScrollOffset != _surface.Scroll?.VerticalOffset) ? null : anchor);
-            }
-        }
-        catch (Exception exception)
-        {
-            RelayoutDiagnostics.ReportFailure("relayout", exception);
-            RequestRebuild(RebuildReason.Full);
-        }
-        finally
-        {
-            // A replacement can cancel an active reflow and then fail itself.
-            // Recover current image geometry without retaining the worker's
-            // dirty array in the delayed UI envelope or touching a retired graph.
-            if (current && canceled && !_lifetime.IsDisposed && !_lifetime.IsUnloaded &&
-                ReferenceEquals(snapshot, _published.Snapshot) && snapshot?.GeometryRecoveryRequired != true)
-            {
-                _imageSubscriptions.AddBlockIndicesTo(_pendingImageRelayoutBlockIndices);
-            }
-            // The pending set is cleared before every snapshot replacement.
-            // New-snapshot completions may accumulate while an old task drains.
-            if (current && _pendingImageRelayoutBlockIndices.Count > 0 && !_lifetime.IsDisposed && !_lifetime.IsUnloaded &&
-                _published.Snapshot?.GeometryRecoveryRequired != true)
-            {
-                foreach (int pending in _pendingImageRelayoutBlockIndices)
-                {
-                    QueueImageRelayout(pending);
-                    break;
-                }
-            }
-            if (started != 0)
-                MarkdownPerformanceEventSource.Log.ResourceWork(
-                    4, Stopwatch.GetTimestamp() - started, 1);
-        }
-    }
-
     /// <summary>
     /// A failed live layout is not transient lock contention. Preserve the last
     /// painted tiles and committed logical selection, but discard geometry-bound
@@ -6480,14 +6017,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _layoutCommit.DropPending();
         _imageSubscriptions.ResetBitmapOutputRecovery();
         TryGeometryRecoveryCleanup(CancelLazyLayoutRealization);
-        _pendingImageRelayoutBlockIndices.Clear();
-        _imageRelayoutQueued = false;
-        ++_lastImageRelayoutDispatchTicket;
-
-        // Retire/cancel through the normal work barriers; never dispose a CTS
-        // or a native snapshot while its worker is still unwinding.
-        if (_imageRelayoutCts is { } imageCancellation)
-            _ = CancellationTokenSourceRetirement.RequestCancellation(imageCancellation);
+        _imageRelayout.CancelForGeometryRecovery();
 
         // A disconnected XAML input site can throw while closing a flyout or
         // hiding a visual. Such cleanup must neither consume the one recovery
@@ -6828,14 +6358,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     {
         if (!_rebuildDispatchState.IsQueued && !_lifetime.IsUnloaded)
             QueuePendingRebuild();
-        if (!_lifetime.IsDisposed && !_lifetime.IsUnloaded && _pendingImageRelayoutBlockIndices.Count > 0)
-        {
-            foreach (int pending in _pendingImageRelayoutBlockIndices)
-            {
-                QueueImageRelayout(pending);
-                break;
-            }
-        }
+        if (!_lifetime.IsDisposed && !_lifetime.IsUnloaded)
+            _imageRelayout.QueueFirstPending();
     }
 
     /// <summary>
