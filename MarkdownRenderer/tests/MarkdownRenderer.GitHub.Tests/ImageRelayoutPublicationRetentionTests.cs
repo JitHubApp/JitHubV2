@@ -33,15 +33,17 @@ public sealed class ImageRelayoutPublicationRetentionTests
         const BindingFlags declaredMethods = BindingFlags.Instance | BindingFlags.Static |
             BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
         Type control = typeof(MarkdownDocumentView).BaseType!;
-        Type closure = Assert.Single(control.GetNestedTypes(BindingFlags.NonPublic),
+        Type completion = typeof(ImageLoadCompletion);
+        Type closure = Assert.Single(completion.GetNestedTypes(BindingFlags.NonPublic),
             type => type.GetMethods(declaredMethods).Any(method =>
-                method.Name.StartsWith("<OnImageLoadCompleted>", StringComparison.Ordinal)));
+                method.Name.StartsWith("<OnLoadCompleted>", StringComparison.Ordinal)));
 
         FieldInfo[] fields = closure.GetFields(instanceFields);
         Assert.Contains(fields, field => field.FieldType == typeof(bool));
         Assert.Equal(2, fields.Count(field => field.FieldType.IsGenericType &&
             field.FieldType.GetGenericTypeDefinition() == typeof(WeakReference<>)));
-        Assert.DoesNotContain(fields, field => field.FieldType == control ||
+        Assert.Contains(fields, field => field.FieldType == typeof(WeakReference<ImageLoadCompletion>));
+        Assert.DoesNotContain(fields, field => field.FieldType == control || field.FieldType == completion ||
             field.FieldType == typeof(object) ||
             field.FieldType == typeof(MarkdownRenderer.Layout.Boxes.ImageBox) ||
             field.FieldType == typeof(MarkdownRenderer.Layout.Boxes.LoadCompletedEventArgs) ||

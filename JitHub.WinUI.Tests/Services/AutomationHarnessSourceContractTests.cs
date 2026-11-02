@@ -467,8 +467,16 @@ public sealed class AutomationHarnessSourceContractTests
             "ImageSubscriptions.cs"));
         Assert.Contains("if (!_imageSubscriptions.Subscribe(image))", source, StringComparison.Ordinal);
         Assert.Contains("image.LoadCompleted += OnImageLoadCompleted;", subscriptionSource, StringComparison.Ordinal);
-        Assert.Contains("_imageSubscriptions.LoadCompleted += OnImageLoadCompleted;", source, StringComparison.Ordinal);
-        Assert.Contains("_imageSubscriptions.Contains(completedImage)", source, StringComparison.Ordinal);
+        string completionSource = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "MarkdownRenderer",
+            "src",
+            "MarkdownRenderer",
+            "Controls",
+            "Images",
+            "ImageLoadCompletion.cs"));
+        Assert.Contains("_imageSubscriptions.LoadCompleted += _imageLoadCompletion.OnLoadCompleted;", source, StringComparison.Ordinal);
+        Assert.Contains("_imageSubscriptions.Contains(completedImage)", completionSource, StringComparison.Ordinal);
         Assert.Contains("_imageSubscriptions.UnsubscribeAll();", source, StringComparison.Ordinal);
     }
 
@@ -507,7 +515,15 @@ public sealed class AutomationHarnessSourceContractTests
             "Images",
             "ImageRelayoutWork.cs")).Replace("\r\n", "\n", StringComparison.Ordinal);
 
-        Assert.Contains("_imageRelayout.Queue(completedImage.BlockIndex);", controlSource, StringComparison.Ordinal);
+        string completionSource = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "MarkdownRenderer",
+            "src",
+            "MarkdownRenderer",
+            "Controls",
+            "Images",
+            "ImageLoadCompletion.cs"));
+        Assert.Contains("_imageRelayout.Queue(completedImage.BlockIndex);", completionSource, StringComparison.Ordinal);
         Assert.Contains("void IImageRelayoutHost.RequestFullRebuild() => RequestRebuild(RebuildReason.Full);", controlSource, StringComparison.Ordinal);
         int queueStart = relayoutSource.IndexOf("internal void Queue(int blockIndex)", StringComparison.Ordinal);
         int queueEnd = relayoutSource.IndexOf("internal void QueueFirstPending()", queueStart, StringComparison.Ordinal);

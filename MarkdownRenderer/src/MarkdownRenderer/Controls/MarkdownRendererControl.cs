@@ -57,7 +57,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     IHorizontalOverflowScrollHost, IFocusedItemRevealHost, IFocusedItemCommitHost,
     IFocusGeometryRecoveryHost, IRendererFocusEntryHost, IImageSubscriptionsHost, IImageResidencyHost,
     ICanvasDeviceRecoveryHost, ICodeBlockHighlightingHost, IRecoveryClockHost, IRasterPlacementHost,
-    IImageRelayoutHost
+    IImageRelayoutHost, IImageLoadCompletionHost
 {
     private readonly MarkdownViewSurface _surface;
     private readonly MarkdownViewLifetime _lifetime = new();
@@ -131,6 +131,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private readonly object _imagePreparationOwnerToken = new();
     private readonly RasterPlacementPublisher _rasterPlacement;
     private readonly ImageRelayout _imageRelayout;
+    private readonly ImageLoadCompletion _imageLoadCompletion;
     // Hosted-focus readers consume only realization plans published for the
     // exact snapshot generation and layout revision. The attempt epoch also
     // invalidates a plan while a same-snapshot rebuild is being transferred.
@@ -1806,7 +1807,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _embeds = new EmbedRealization(this, this, _surface, _lifetime, _published, _viewport, DispatcherQueue, OnHostedEmbedKeyDown);
         _imagePlans = new ImagePlanSet(_lifetime, _published);
         _imageSubscriptions = new ImageSubscriptions(this, _lifetime, _published, _imagePlans);
-        _imageSubscriptions.LoadCompleted += OnImageLoadCompleted;
         _imageResidency = new ImageResidency(this, _lifetime, _published, _imagePlans, _embeds);
         _highlighting = new CodeBlockHighlighting(this, _lifetime, _published, _viewport, _embeds);
         _focus = new KeyboardFocusModel(_lifetime, _published);
@@ -1814,6 +1814,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _focusRing = new FocusRingPresenter(this, _focus, _focusGeometry, _surface, _lifetime, _published, DispatcherQueue);
         _rasterPlacement = new RasterPlacementPublisher(this, _lifetime, _published, _layoutCommit, _surface, _pointerInput, _imageSubscriptions, _imagePlans, _imageResidency, _embeds, _focus, _focusRing, _hostedFocusPlan, _snapshotRetirements);
         _imageRelayout = new ImageRelayout(this, _lifetime, _published, _layoutCommit, _surface, _pointerInput, _imageSubscriptions, _rasterPlacement, _recoveryClock);
+        _imageLoadCompletion = new ImageLoadCompletion(this, _lifetime, _published, _layoutCommit, _imageSubscriptions, _imageRelayout);
+        _imageSubscriptions.LoadCompleted += _imageLoadCompletion.OnLoadCompleted;
         _focusRefresh = new FocusableItemsRefreshRequest(_published);
         _hostedFocus = new HostedElementFocus(this, _lifetime, _published, _focus, _hostedFocusPlan, _embeds, _focusRing);
         _overflowScroll = new HorizontalOverflowScrollVisuals(this, _surface, _lifetime, _published, _selection, _focus, _embeds, DispatcherQueue);
@@ -2510,6 +2512,30 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     Task IImageRelayoutHost.RetireCancellationTokenSource(CancellationTokenSource? cts, Task? lifetime) =>
         RetireCancellationTokenSource(cts, lifetime);
 
+    Microsoft.UI.Dispatching.DispatcherQueue? IImageLoadCompletionHost.DispatcherQueue => DispatcherQueue;
+
+    IMarkdownPerformanceSession? IImageLoadCompletionHost.PerformanceSession => PerformanceSession;
+
+    float IImageLoadCompletionHost.LayoutWidth => (float)Math.Max(50, ActualWidth);
+
+    bool IImageLoadCompletionHost.RequestGeometryRecoveryIfRequired(LayoutSnapshot? snapshot) =>
+        RequestGeometryRecoveryIfRequired(snapshot);
+
+    void IImageLoadCompletionHost.NotifyImageStatusChanged(Layout.Boxes.ImageBox image) =>
+        (FrameworkElementAutomationPeer.FromElement(this) as MarkdownAutomationPeer)?
+            .NotifyImageStatusChanged(image);
+
+    void IImageLoadCompletionHost.RequestFullRebuild() => RequestRebuild(RebuildReason.Full);
+
+    void IImageLoadCompletionHost.RecordRejectedCrossThreadFullRebuild() =>
+        RecordRejectedCrossThreadRebuildRequest(RebuildReason.Full);
+
+    void IImageLoadCompletionHost.InvalidatePaint()
+    {
+        InvalidateCanvas();
+        _adorner.Invalidate();
+    }
+
     double IDeferredGestureLayoutHost.RasterizationScale => XamlRoot?.RasterizationScale ?? 1;
 
     bool IDeferredGestureLayoutHost.IsPointOverEmbed(Point point) => _embeds.HitTargets.IsPointOverEmbed(point);
@@ -2690,7 +2716,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             return;
 
         // Set before any unsubscription so dispatcher-queued lambdas
-        // (e.g. from OnImageLoadCompleted) that are already in-flight know
+        // (e.g. from image load completions) that are already in-flight know
         // not to call RequestRebuild after we've torn down.
         _lifetime.MarkUnloaded();
         _pendingTouchSelectionPresentationRestore = null;
@@ -2779,7 +2805,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _scrollViewIntermediate = false;
         // Unsubscribe all in-flight image load handlers before clearing the plan
         // list; otherwise an async load completing after unload fires
-        // OnImageLoadCompleted → RequestRebuild on a torn-down control, causing a
+        // a completion → RequestRebuild on a torn-down control, causing a
         // zombie rebuild cycle that re-subscribes handlers indefinitely.
         _imageSubscriptions.UnsubscribeAll();
         // Tear down embed plans before clearing the overlay so block embed
@@ -5469,96 +5495,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             return;
 
         _imagePlans.Add(image);
-    }
-
-    private void OnImageLoadCompleted(object? sender, Layout.Boxes.LoadCompletedEventArgs e)
-    {
-        // ImageBox publishes on UI already. Keep that path inline; only custom
-        // off-thread senders need a second weak dispatcher handoff.
-        var dq = DispatcherQueue;
-        if (dq is null) return;
-        bool layoutInvalidated = e?.LayoutInvalidated ?? true;
-        bool bitmapOutputRecoverySignal = e?.IsBitmapOutputRecoverySignal ?? false;
-        if (dq.HasThreadAccess)
-        {
-            ApplyImageLoadCompleted(sender as Layout.Boxes.ImageBox, layoutInvalidated, bitmapOutputRecoverySignal);
-            return;
-        }
-        var receiver = new WeakReference<MarkdownRendererControl>(this);
-        var image = sender is Layout.Boxes.ImageBox imageSender
-            ? new WeakReference<Layout.Boxes.ImageBox>(imageSender)
-            : null;
-        bool enqueued = false;
-        try
-        {
-            enqueued = dq.TryEnqueue(() =>
-            {
-                if (!receiver.TryGetTarget(out var control))
-                    return;
-                Layout.Boxes.ImageBox? completedImage = null;
-                if (image is not null && !image.TryGetTarget(out completedImage))
-                    return;
-                control.ApplyImageLoadCompleted(completedImage, layoutInvalidated, bitmapOutputRecoverySignal);
-            });
-        }
-        catch (Exception exception)
-        {
-            RelayoutDiagnostics.ReportFailure("completion dispatch", exception.Message);
-        }
-        if (!enqueued && !_lifetime.IsDisposed && !_lifetime.IsUnloaded)
-            RecordRejectedCrossThreadRebuildRequest(RebuildReason.Full);
-    }
-
-    private void ApplyImageLoadCompleted(Layout.Boxes.ImageBox? completedImage, bool layoutInvalidated,
-        bool bitmapOutputRecoverySignal = false)
-    {
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded)
-            return;
-        if (RequestGeometryRecoveryIfRequired(_published.Snapshot))
-            return;
-        if (bitmapOutputRecoverySignal)
-        {
-            if (completedImage is not null)
-                _imageSubscriptions.RequestBitmapOutputRecovery(completedImage);
-            return;
-        }
-        if (completedImage is not null)
-        {
-            if (!_imageSubscriptions.Contains(completedImage))
-                return;
-            (FrameworkElementAutomationPeer.FromElement(this) as MarkdownAutomationPeer)?
-                .NotifyImageStatusChanged(completedImage);
-            // UIA notification can run host code. Recheck lifetime and membership
-            // before using a snapshot-owned placement proof or queuing work.
-            if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !_imageSubscriptions.Contains(completedImage))
-                return;
-            if (layoutInvalidated && !_layoutCommit.IsPublishing &&
-                PerformanceSession is IMarkdownPerformanceSessionInternal session &&
-                !session.IsDisposed && ReferenceEquals(session, completedImage.Context.PerformanceSession) &&
-                _published.Snapshot is { } snapshot &&
-                snapshot.TryCanUsePaintOnlyImageCompletion(
-                    completedImage, (float)Math.Max(50, ActualWidth)))
-            {
-                // Authored dimensions can make intrinsic publication irrelevant
-                // to native layout. Keep the same UIA status and paint/selection
-                // invalidation, without scheduling a no-op text reflow.
-                layoutInvalidated = false;
-            }
-        }
-        if (layoutInvalidated)
-        {
-            if (completedImage is not null)
-                _imageRelayout.Queue(completedImage.BlockIndex);
-            else
-                RequestRebuild(RebuildReason.Full);
-        }
-        else
-        {
-            // Device/theme reparses are paint-only: rebuilding here would
-            // dispose the newly parsed SVG and start the reparse loop again.
-            InvalidateCanvas();
-            _adorner.Invalidate();
-        }
     }
 
     /// <summary>
