@@ -199,16 +199,11 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _canvasDeviceRecoveryTimer;
 
     // ---- Keyboard navigation ----
-    // Ordered list of focusable items (LinkRuns + InlineEmbedRuns) in the current
-    // snapshot.  Rebuilt after each snapshot commit.  -1 means "nothing focused".
-    private System.Collections.Generic.IReadOnlyList<Layout.FocusableItem>? _focusableItems;
-    private int _focusedItemIndex = -1;
-    private int _focusResumeItemIndex = -1;
+    private readonly KeyboardFocusModel _focus;
     private bool _taskCommandAvailabilityRefreshQueued;
     // A deferred focus-plan refresh is value-only: it never keeps a snapshot,
     // box, or native resource alive while a geometry lease is busy.
     private readonly FocusableItemsRefreshRequest _focusRefresh;
-    private PendingLazyFocus? _pendingLazyFocus;
     private const int MaxPendingSpatialFocusKeys = 64;
     private readonly Queue<VirtualKey> _pendingSpatialFocusKeys = new();
     private long _pendingSpatialFocusQueueEpoch;
@@ -996,18 +991,18 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     internal bool IsKeyboardFocusOnLink(LinkRun run)
     {
-        return TryGetFocusedLinkedAtomic(out _, out InlineRun linkedRun) &&
+        return _focus.TryGetFocusedLinkedAtomic(out _, out InlineRun linkedRun) &&
                linkedRun is LinkRun focusedRun &&
                LinkTargets.AreEquivalentLinks(focusedRun, run);
     }
 
     internal bool IsKeyboardFocusOnLinkedImage(InlineImageRun run) =>
-        TryGetFocusedLinkedAtomic(out _, out InlineRun linkedRun) &&
+        _focus.TryGetFocusedLinkedAtomic(out _, out InlineRun linkedRun) &&
         linkedRun is InlineImageRun focusedRun &&
         ReferenceEquals(focusedRun, run);
 
     internal bool IsKeyboardFocusOnLinkedInlineVectorScene(InlineVectorSceneRun run) =>
-        TryGetFocusedLinkedAtomic(out _, out InlineRun linkedRun) &&
+        _focus.TryGetFocusedLinkedAtomic(out _, out InlineRun linkedRun) &&
         linkedRun is InlineVectorSceneRun focusedRun &&
         ReferenceEquals(focusedRun, run);
 
@@ -1015,23 +1010,23 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         Layout.Boxes.VectorSceneBox box,
         int semanticIndex) =>
         FocusState != FocusState.Unfocused &&
-        TryGetFocusedVectorSemantic(out var focusedBox, out var focusedSemanticIndex) &&
+        _focus.TryGetFocusedVectorSemantic(out var focusedBox, out var focusedSemanticIndex) &&
         ReferenceEquals(focusedBox, box) &&
         focusedSemanticIndex == semanticIndex;
 
     internal bool IsKeyboardFocusOnHorizontalOverflow(IHorizontalOverflowBox overflow) =>
         FocusState != FocusState.Unfocused &&
-        TryGetFocusedHorizontalOverflow(out var focusedOverflow) &&
+        _focus.TryGetFocusedHorizontalOverflow(out var focusedOverflow) &&
         ReferenceEquals(focusedOverflow, overflow);
 
     internal bool IsHorizontalOverflowKeyboardFocusable(IHorizontalOverflowBox overflow) =>
-        TryGetFocusableIndexForHorizontalOverflow(overflow, out _);
+        _focus.TryGetIndexForHorizontalOverflow(overflow, out _);
 
     internal bool HasKeyboardFocusOnVirtualChild =>
         FocusState != FocusState.Unfocused &&
-        (TryGetFocusedLinkedAtomic(out _, out _) ||
-         TryGetFocusedVectorSemantic(out _, out _) ||
-         TryGetFocusedHorizontalOverflow(out _));
+        (_focus.TryGetFocusedLinkedAtomic(out _, out _) ||
+         _focus.TryGetFocusedVectorSemantic(out _, out _) ||
+         _focus.TryGetFocusedHorizontalOverflow(out _));
 
     internal bool FocusLinkFromAutomation(LinkRun run) =>
         FocusLinkedAtomicFromAutomation(run);
@@ -1044,12 +1039,10 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private bool FocusLinkedAtomicFromAutomation(InlineRun run)
     {
-        if (!TryGetFocusableIndexForLinkedAtomic(run, out var index))
+        if (!_focus.TryGetIndexForLinkedAtomic(run, out var index))
             return Focus(FocusState.Programmatic);
 
-        _pendingLazyFocus = null;
-        _focusedItemIndex = index;
-        _focusResumeItemIndex = -1;
+        _focus.FocusItem(index);
         BeginFocusedItemReveal();
         bool focused = Focus(FocusState.Programmatic);
         UpdateFocusRing();
@@ -1061,12 +1054,10 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         Layout.Boxes.VectorSceneBox box,
         int semanticIndex)
     {
-        if (!TryGetFocusableIndexForVectorSemantic(box, semanticIndex, out int index))
+        if (!_focus.TryGetIndexForVectorSemantic(box, semanticIndex, out int index))
             return false;
 
-        _pendingLazyFocus = null;
-        _focusedItemIndex = index;
-        _focusResumeItemIndex = -1;
+        _focus.FocusItem(index);
         BeginFocusedItemReveal();
         bool focused = Focus(FocusState.Programmatic);
         UpdateFocusRing();
@@ -1076,12 +1067,10 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     internal bool FocusHorizontalOverflowFromAutomation(IHorizontalOverflowBox overflow)
     {
-        if (!TryGetFocusableIndexForHorizontalOverflow(overflow, out int index))
+        if (!_focus.TryGetIndexForHorizontalOverflow(overflow, out int index))
             return false;
 
-        _pendingLazyFocus = null;
-        _focusedItemIndex = index;
-        _focusResumeItemIndex = -1;
+        _focus.FocusItem(index);
         BeginFocusedItemReveal();
         bool focused = Focus(FocusState.Programmatic);
         UpdateFocusRing();
@@ -1092,8 +1081,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     internal bool FocusDocumentFromAutomation()
     {
         _suppressNextFocusPromotion = true;
-        _pendingLazyFocus = null;
-        _focusedItemIndex = -1;
+        _focus.ClearFocus();
         UpdateFocusRing();
         bool focused = Focus(FocusState.Programmatic);
         if (!focused)
@@ -1937,7 +1925,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _pointerInput = new PointerInputRouter(this, this, DispatcherQueue, _surface, _lifetime, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, _handles, _document, _horizontalOverflowDrag, _touchGestures, _contextMenu, _adorner, _dragShield);
         _canvasPointerEvents = new CanvasPointerEvents(_surface, _pointerInput);
         _embeds = new EmbedRealization(this, this, _surface, _lifetime, _published, _viewport, DispatcherQueue, OnHostedEmbedKeyDown);
-        _focusRing = new FocusRingPresenter(this, _surface, _lifetime, _published, DispatcherQueue);
+        _focus = new KeyboardFocusModel(_published);
+        _focusRing = new FocusRingPresenter(this, _focus, _surface, _lifetime, _published, DispatcherQueue);
         _focusRefresh = new FocusableItemsRefreshRequest(_published);
         IsTabStop = true;
         Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
@@ -2064,7 +2053,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             FocusState != FocusState.Keyboard)
             return;
 
-        if (_pendingLazyFocus is not null)
+        if (_focus.PendingLazy is not null)
         {
             _focusRing.Hide();
             _lastFocusEntryWasKeyboardTraversal = false;
@@ -2072,7 +2061,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             return;
         }
 
-        if (_focusedItemIndex >= 0)
+        if (_focus.FocusedIndex >= 0)
         {
             UpdateFocusRing();
             NotifyFocusedItemAutomation();
@@ -2099,8 +2088,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (e.NewFocusedElement is DependencyObject next && IsElementWithinRenderer(next))
             return;
 
-        _pendingLazyFocus = null;
-        _focusedItemIndex = -1;
+        _focus.ClearFocus();
         UpdateFocusRing();
         if (!_contextMenu.IsOpen)
         {
@@ -2293,10 +2281,10 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         => RaiseCopyCompleted(kind, succeeded);
 
     Rect? ISelectionContextMenuHost.GetFocusedItemRect()
-        => _focusableItems is { } items &&
-           _focusedItemIndex >= 0 &&
-           _focusedItemIndex < items.Count
-            ? GetFocusableItemRect(items[_focusedItemIndex])
+        => _focus.Items is { } items &&
+           _focus.FocusedIndex >= 0 &&
+           _focus.FocusedIndex < items.Count
+            ? GetFocusableItemRect(items[_focus.FocusedIndex])
             : null;
 
     bool IPointerInteractionHost.IsSelectionEnabled => IsSelectionEnabled;
@@ -2314,10 +2302,9 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     void IPointerInteractionHost.ClearKeyboardFocusItem()
     {
-        if (_focusedItemIndex >= 0)
+        if (_focus.FocusedIndex >= 0)
         {
-            _pendingLazyFocus = null;
-            _focusedItemIndex = -1;
+            _focus.ClearFocus();
             UpdateFocusRing();
         }
     }
@@ -2472,8 +2459,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     Windows.UI.Color? IFocusRingHost.FocusVisualColor => _themeSnapshot?.FocusVisualColor;
 
-    Layout.FocusableItem? IFocusRingHost.GetCurrentFocusableIdentity() => GetCurrentFocusableIdentity();
-
     void IFocusRingHost.InvalidateInteractiveTextAdorner() => InvalidateInteractiveTextAdorner();
 
     void IFocusRingHost.RequestFocusGeometryRetry() => RequestFocusGeometryRetry();
@@ -2540,10 +2525,9 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (_selection.IsActive || !_selection.Range.IsEmpty)
             _selection.Clear();
 
-        if (_focusedItemIndex >= 0)
+        if (_focus.FocusedIndex >= 0)
         {
-            _pendingLazyFocus = null;
-            _focusedItemIndex = -1;
+            _focus.ClearFocus();
             UpdateFocusRing();
         }
     }
@@ -4209,10 +4193,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             // A new logical document must not expose the former document's
             // value-only focus identities to automation or reentrant property
             // callbacks below.
-            _focusableItems = Array.Empty<Layout.FocusableItem>();
-            _focusedItemIndex = -1;
-            _focusResumeItemIndex = -1;
-            _pendingLazyFocus = null;
+            _focus.Reset();
         }
         _published.Snapshot = snapshot;
         _published.LayoutDevice = device;
@@ -4371,8 +4352,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             _selection.Clear();
         }
         long overlayResetEnded = Stopwatch.GetTimestamp();
-        _focusResumeItemIndex = -1;
-        _pendingLazyFocus = null;
+        _focus.ClearResumeIndex();
+        _focus.ClearLazyFocus();
         _focusRing.ForgetEvictedRing();
         bool realizationPlansReady = RebuildRealizationPlans(
             snapshot,
@@ -5883,7 +5864,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _activeLazyLayoutAnchorOffset = null;
         _hasPendingLazyLayoutBand = false;
         _pendingLazyLayoutPreserveScrollAnchor = false;
-        _pendingLazyFocus = null;
+        _focus.ClearLazyFocus();
 
         var oldCts = _lazyLayoutCts;
         var oldTask = _lazyLayoutTask;
@@ -6166,11 +6147,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // focus while realization plans are being published. Resolve the
         // currently focused value identity only now, then atomically replace
         // the value-only list/index after every snapshot and ticket fence holds.
-        Layout.FocusableItem? focusedIdentity = GetCurrentFocusableIdentity();
-        _focusableItems = collectedFocusableItems;
-        _focusedItemIndex = focusedIdentity is { } identity
-            ? FocusableItemQueries.FindFocusableItemIndex(collectedFocusableItems, identity)
-            : -1;
+        _focus.ReplaceItems(collectedFocusableItems);
         Volatile.Write(ref _publishedHostedFocusPlanGeneration, planGeneration);
         Volatile.Write(ref _publishedHostedFocusPlanRevision, hostedFocusPlanRevision);
         Volatile.Write(ref _publishedHostedFocusPlanEpoch, hostedFocusPlanEpoch);
@@ -6220,14 +6197,14 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             plan.Realized is null ||
             plan.FocusIdentity is not { } planIdentity ||
             !_embeds.Contains(plan) ||
-            _focusableItems is not { } items ||
-            _focusedItemIndex < 0 ||
-            _focusedItemIndex >= items.Count)
+            _focus.Items is not { } items ||
+            _focus.FocusedIndex < 0 ||
+            _focus.FocusedIndex >= items.Count)
         {
             return;
         }
 
-        var focusedItem = items[_focusedItemIndex];
+        var focusedItem = items[_focus.FocusedIndex];
         if (FocusableItemQueries.SameFocusableIdentity(focusedItem, planIdentity))
         {
             _ = TryFocusHostedElement(focusedItem, reverse: false);
@@ -6922,11 +6899,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             return false;
         }
 
-        Layout.FocusableItem? focusedIdentity = GetCurrentFocusableIdentity();
-        _focusableItems = collected;
-        _focusedItemIndex = focusedIdentity is { } identity
-            ? FocusableItemQueries.FindFocusableItemIndex(collected, identity)
-            : -1;
+        _focus.ReplaceItems(collected);
         _focusRefresh.Clear(request.RequestVersion);
         InvalidateAutomationLayout();
         return true;
@@ -7720,7 +7693,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             UpdateSelectionOverlay();
         if (!IsCurrentScrollTarget(snapshot, state.SnapshotGeneration, state.LayoutRevision))
             return;
-        if (_focusedItemIndex >= 0)
+        if (_focus.FocusedIndex >= 0)
             UpdateFocusRing();
         QueueHorizontalOverflowAutomationNotification(
             snapshot,
@@ -8020,7 +7993,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             return;
 
         if (!_adorner.IsCreated && !_selection.IsActive &&
-            _hover.Run is not LinkRun && !TryGetFocusedLink(out _, out _))
+            _hover.Run is not LinkRun && !_focus.TryGetFocusedLink(out _, out _))
             return;
 
         _adorner.Invalidate();
@@ -8044,7 +8017,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     bool ISelectionAdornerHost.IsDeviceRecoveryQueued => _canvasDeviceRecoveryQueued;
 
-    bool ISelectionAdornerHost.HasFocusedLink => TryGetFocusedLink(out _, out _);
+    bool ISelectionAdornerHost.HasFocusedLink => _focus.TryGetFocusedLink(out _, out _);
 
     bool ISelectionAdornerHost.RequestGeometryRecoveryIfRequired(LayoutSnapshot snapshot)
         => RequestGeometryRecoveryIfRequired(snapshot);
@@ -8107,15 +8080,15 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private bool HasInteractiveTextAdornerContent()
         => (_selection.IsActive && _adorner.Rectangles.Count > 0) ||
            _hover.HasLink ||
-           TryGetFocusedLink(out _, out _);
+           _focus.TryGetFocusedLink(out _, out _);
 
     private bool ShouldRefreshSelectionAdornerForScroll()
     {
         bool hasHoveredLink = _hover.HasLink;
-        IReadOnlyList<Layout.FocusableItem>? focusableItems = _focusableItems;
+        IReadOnlyList<Layout.FocusableItem>? focusableItems = _focus.Items;
         bool hasFocusedLink = focusableItems is not null &&
-            (uint)_focusedItemIndex < (uint)focusableItems.Count &&
-            focusableItems[_focusedItemIndex].Kind == Layout.FocusableItemKind.Link;
+            (uint)_focus.FocusedIndex < (uint)focusableItems.Count &&
+            focusableItems[_focus.FocusedIndex].Kind == Layout.FocusableItemKind.Link;
         bool hasVisibleAdorner = _adorner.IsVisible;
         bool hasRetainedRectangles = _adorner.Rectangles.Count > 0;
         bool hasPendingRefresh = _adorner.HasPendingRefresh;
@@ -8168,7 +8141,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (_hover.TryGetLink(out var hover, out var hoverBox))
             hoverBox.PaintLinkStateForeground(drawingSession, hover, focused: false, viewport);
 
-        if (TryGetFocusedLink(out var focusedBox, out var focusedLink))
+        if (_focus.TryGetFocusedLink(out var focusedBox, out var focusedLink))
             focusedBox.PaintLinkStateForeground(drawingSession, focusedLink, focused: true, viewport);
     }
 
@@ -8479,16 +8452,15 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 e.Handled = MoveFocusSpatial(e.Key);
                 return;
             case VirtualKey.Enter:
-            case VirtualKey.Space when _focusedItemIndex >= 0:
+            case VirtualKey.Space when _focus.FocusedIndex >= 0:
                 ClearPendingSpatialFocusKeys();
                 e.Handled = ActivateFocusedItem();
                 return;
             case VirtualKey.Escape:
                 ClearPendingSpatialFocusKeys();
-                if (_focusedItemIndex >= 0)
+                if (_focus.FocusedIndex >= 0)
                 {
-                    _pendingLazyFocus = null;
-                    _focusedItemIndex = -1;
+                    _focus.ClearFocus();
                     UpdateFocusRing();
                     e.Handled = true;
                 }
@@ -8508,7 +8480,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
         HorizontalArrowHandlingOrder order =
             MarkdownKeyboardInputPolicy.GetHorizontalArrowHandlingOrder(
-                GetCurrentFocusableIdentity()?.Kind);
+                _focus.Current?.Kind);
         FocusGeometryReadStatus status = order == HorizontalArrowHandlingOrder.OverflowThenSpatial
             ? TryScrollFocusedHorizontalOverflow(key)
             : TryMoveFocusSpatial(key);
@@ -8532,9 +8504,9 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     {
         _lastFocusNavigationHandled = false;
         if (_published.Snapshot is not { } snapshot ||
-            _focusableItems is not { } items ||
-            _focusedItemIndex < 0 ||
-            _focusedItemIndex >= items.Count)
+            _focus.Items is not { } items ||
+            _focus.FocusedIndex < 0 ||
+            _focus.FocusedIndex >= items.Count)
         {
             return FocusGeometryReadStatus.Ready;
         }
@@ -8548,7 +8520,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         bool changed = false;
         bool current;
         double oldOffset = 0;
-        int blockIndex = items[_focusedItemIndex].BlockIndex;
+        int blockIndex = items[_focus.FocusedIndex].BlockIndex;
         try
         {
             current = IsCurrentScrollTarget(snapshot, generation, revision);
@@ -8613,9 +8585,9 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     {
         _lastFocusNavigationHandled = false;
         if (_published.Snapshot is not { } snapshot ||
-            _focusableItems is not { } items ||
-            _focusedItemIndex < 0 ||
-            _focusedItemIndex >= items.Count)
+            _focus.Items is not { } items ||
+            _focus.FocusedIndex < 0 ||
+            _focus.FocusedIndex >= items.Count)
         {
             return FocusGeometryReadStatus.Ready;
         }
@@ -8629,7 +8601,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         bool changed = false;
         bool current;
         double oldOffset = 0;
-        int blockIndex = items[_focusedItemIndex].BlockIndex;
+        int blockIndex = items[_focus.FocusedIndex].BlockIndex;
         try
         {
             current = IsCurrentScrollTarget(snapshot, generation, revision);
@@ -8675,23 +8647,22 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private bool MoveFocus(bool reverse)
     {
         ClearPendingSpatialFocusKeys();
-        var items = _focusableItems;
+        var items = _focus.Items;
         if (items is null || items.Count == 0) return false;
 
-        int nextIndex = FocusNavigationHelper.MoveTab(items.Count, _focusedItemIndex, _focusResumeItemIndex, reverse);
+        int nextIndex = FocusNavigationHelper.MoveTab(items.Count, _focus.FocusedIndex, _focus.ResumeIndex, reverse);
         if (nextIndex < 0)
         {
             // Let Tab/Shift+Tab leave the control to the next focusable element.
-            _pendingLazyFocus = null;
-            _focusedItemIndex = -1;
-            _focusResumeItemIndex = -1;
+            _focus.ClearFocus();
+            _focus.ClearResumeIndex();
             UpdateFocusRing();
             SuppressHostedTabStopsForNativeTab();
             return false;
         }
 
-        _focusedItemIndex = nextIndex;
-        _focusResumeItemIndex = -1;
+        _focus.SetFocusedIndex(nextIndex);
+        _focus.ClearResumeIndex();
         return CommitFocusedItem(reverse);
     }
 
@@ -8734,16 +8705,16 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private FocusGeometryReadStatus TryMoveFocusSpatial(VirtualKey key)
     {
         _lastFocusNavigationHandled = false;
-        var items = _focusableItems;
+        var items = _focus.Items;
         if (items is null || items.Count == 0)
             return FocusGeometryReadStatus.Ready;
 
-        if (_focusedItemIndex < 0)
+        if (_focus.FocusedIndex < 0)
         {
-            if (_focusResumeItemIndex < 0)
+            if (_focus.ResumeIndex < 0)
                 return FocusGeometryReadStatus.Ready;
-            _focusedItemIndex = Math.Clamp(_focusResumeItemIndex, 0, items.Count - 1);
-            _focusResumeItemIndex = -1;
+            _focus.SetFocusedIndex(Math.Clamp(_focus.ResumeIndex, 0, items.Count - 1));
+            _focus.ClearResumeIndex();
             _lastFocusNavigationHandled = CommitFocusedItem(reverse: false);
             return FocusGeometryReadStatus.Ready;
         }
@@ -8762,7 +8733,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         int currentLocalIndex = -1;
         for (int i = 0; i < map.Count; i++)
         {
-            if (map[i].Index == _focusedItemIndex)
+            if (map[i].Index == _focus.FocusedIndex)
             {
                 currentLocalIndex = i;
                 break;
@@ -8791,8 +8762,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (!IsCurrentScrollTarget(snapshot, generation, revision))
             return FocusGeometryReadStatus.Stale;
 
-        _focusedItemIndex = map[nextLocalIndex].Index;
-        _focusResumeItemIndex = -1;
+        _focus.SetFocusedIndex(map[nextLocalIndex].Index);
+        _focus.ClearResumeIndex();
         _lastFocusNavigationHandled = CommitFocusedItem(reverse: false);
         return FocusGeometryReadStatus.Ready;
     }
@@ -8802,7 +8773,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (RequestGeometryRecoveryIfRequired(_published.Snapshot))
             return false;
         if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _published.Snapshot is not { } snapshot ||
-            _focusableItems is not { } items || items.Count == 0)
+            _focus.Items is not { } items || items.Count == 0)
         {
             return false;
         }
@@ -8811,7 +8782,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (_pendingSpatialFocusKeys.Count > 0 &&
             (_pendingSpatialFocusGeneration != generation ||
              !_hasPendingSpatialFocusOrigin ||
-             GetCurrentFocusableIdentity() is not { } current ||
+             _focus.Current is not { } current ||
              !FocusableItemQueries.SameFocusableIdentity(current, _pendingSpatialFocusOrigin)))
         {
             ClearPendingSpatialFocusKeys();
@@ -8822,7 +8793,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
         if (!_hasPendingSpatialFocusOrigin)
         {
-            if (GetCurrentFocusableIdentity() is not { } origin)
+            if (_focus.Current is not { } origin)
                 return false;
             _pendingSpatialFocusOrigin = origin;
             _pendingSpatialFocusGeneration = generation;
@@ -8858,7 +8829,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             {
                 if (_pendingSpatialFocusGeneration != _published.Generation ||
                     !_hasPendingSpatialFocusOrigin ||
-                    GetCurrentFocusableIdentity() is not { } current ||
+                    _focus.Current is not { } current ||
                     !FocusableItemQueries.SameFocusableIdentity(current, _pendingSpatialFocusOrigin))
                 {
                     ClearPendingSpatialFocusKeys();
@@ -8878,7 +8849,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                         {
                             _hasPendingSpatialFocusOrigin = false;
                         }
-                        else if (GetCurrentFocusableIdentity() is { } updatedOrigin)
+                        else if (_focus.Current is { } updatedOrigin)
                         {
                             _pendingSpatialFocusOrigin = updatedOrigin;
                         }
@@ -8896,7 +8867,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 if (_pendingFocusResumeGeneration != generation)
                 {
                     _hasPendingFocusResumePoint = false;
-                    _focusResumeItemIndex = -1;
+                    _focus.ClearResumeIndex();
                 }
                 else
                 {
@@ -8904,19 +8875,19 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                         snapshot,
                         generation,
                         snapshot.LayoutRevision,
-                        _focusableItems,
+                        _focus.Items,
                         out List<(int Index, Rect Rect)> map);
                     if (status == FocusGeometryReadStatus.Ready)
                     {
                         Point point = _pendingFocusResumePoint;
                         _hasPendingFocusResumePoint = false;
-                        _focusResumeItemIndex = FocusableItemQueries.FindNearestFocusableItem(map, point);
+                        _focus.SetResumeIndex(FocusableItemQueries.FindNearestFocusableItem(map, point));
                     }
                     else if (status == FocusGeometryReadStatus.Stale &&
                              generation != _published.Generation)
                     {
                         _hasPendingFocusResumePoint = false;
-                        _focusResumeItemIndex = -1;
+                        _focus.ClearResumeIndex();
                     }
                 }
             }
@@ -8946,7 +8917,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         {
             HorizontalArrowHandlingOrder order =
                 MarkdownKeyboardInputPolicy.GetHorizontalArrowHandlingOrder(
-                    GetCurrentFocusableIdentity()?.Kind);
+                    _focus.Current?.Kind);
             FocusGeometryReadStatus first = order == HorizontalArrowHandlingOrder.OverflowThenSpatial
                 ? TryScrollFocusedHorizontalOverflow(key)
                 : TryMoveFocusSpatial(key);
@@ -8993,21 +8964,21 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         {
             _pendingFocusGeometryRefresh = false;
             _hasPendingFocusResumePoint = false;
-            _focusResumeItemIndex = -1;
+            _focus.ClearResumeIndex();
             RequestRebuild(RebuildReason.Full);
         }
     }
 
     private bool CommitFocusedItem(bool reverse)
     {
-        var items = _focusableItems;
+        var items = _focus.Items;
         LayoutSnapshot? snapshot = _published.Snapshot;
         if (snapshot is null ||
             items is null ||
-            _focusedItemIndex < 0 ||
-            _focusedItemIndex >= items.Count)
+            _focus.FocusedIndex < 0 ||
+            _focus.FocusedIndex >= items.Count)
         {
-            _pendingLazyFocus = null;
+            _focus.ClearLazyFocus();
             return false;
         }
 
@@ -9015,7 +8986,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (!ReferenceEquals(snapshot, _published.Snapshot))
             return true;
 
-        Layout.FocusableItem item = items[_focusedItemIndex];
+        Layout.FocusableItem item = items[_focus.FocusedIndex];
         FocusTargetLayoutState layoutState = snapshot.TryGetFocusTargetLayoutState(
             item.BlockIndex,
             out LazyLayoutBand estimatedBand);
@@ -9030,12 +9001,12 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             // Keep native focus on the renderer while the target's top-level
             // block is measured. This consumes the Tab instead of allowing XAML
             // to advance beyond the renderer at a lazy-layout boundary.
-            _pendingLazyFocus = new PendingLazyFocus(
+            _focus.BeginLazyFocus(new PendingLazyFocus(
                 snapshot,
                 snapshotGeneration,
                 item,
-                reverse);
-            var pending = _pendingLazyFocus.Value;
+                reverse));
+            var pending = _focus.PendingLazy!.Value;
             _ = Focus(FocusState.Keyboard);
             if (!IsCurrentPendingLazyFocus(pending))
                 return true;
@@ -9067,7 +9038,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         {
             // A retiring snapshot or malformed custom block index must never
             // turn an already-consumed Tab into focus escape.
-            _pendingLazyFocus = null;
+            _focus.ClearLazyFocus();
             _ = Focus(FocusState.Keyboard);
             if (!ReferenceEquals(snapshot, _published.Snapshot) ||
                 snapshotGeneration != _published.Generation)
@@ -9078,7 +9049,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             return true;
         }
 
-        _pendingLazyFocus = null;
+        _focus.ClearLazyFocus();
         bool scrolled = BeginFocusedItemReveal();
         FocusCurrentItem(reverse);
         if (scrolled)
@@ -9095,36 +9066,25 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private bool ResumePendingLazyFocus(LayoutSnapshot snapshot)
     {
-        if (_pendingLazyFocus is not { } pending)
+        if (_focus.PendingLazy is not { } pending)
             return false;
 
         if (!ReferenceEquals(snapshot, pending.Snapshot) ||
             pending.SnapshotGeneration != _published.Generation)
         {
-            _pendingLazyFocus = null;
+            _focus.ClearLazyFocus();
             return false;
         }
 
-        int index = FocusableItemQueries.FindFocusableItemIndex(_focusableItems, pending.Item);
+        int index = FocusableItemQueries.FindFocusableItemIndex(_focus.Items, pending.Item);
         if (index < 0)
         {
-            _pendingLazyFocus = null;
-            _focusedItemIndex = -1;
+            _focus.ClearFocus();
             return false;
         }
 
-        _focusedItemIndex = index;
+        _focus.SetFocusedIndex(index);
         return CommitFocusedItem(pending.Reverse);
-    }
-
-    private Layout.FocusableItem? GetCurrentFocusableIdentity()
-    {
-        var items = _focusableItems;
-        return items is not null &&
-               _focusedItemIndex >= 0 &&
-               _focusedItemIndex < items.Count
-            ? items[_focusedItemIndex]
-            : null;
     }
 
     private void ScrollLazyFocusTargetIntoView(LazyLayoutBand band, bool reverse)
@@ -9163,17 +9123,17 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     /// <summary>Fires LinkClick for the currently focused painted link.</summary>
     private bool ActivateFocusedItem()
     {
-        if (_pendingLazyFocus is not null)
+        if (_focus.PendingLazy is not null)
             return true;
 
-        var items = _focusableItems;
-        if (items is null || _focusedItemIndex < 0 || _focusedItemIndex >= items.Count)
+        var items = _focus.Items;
+        if (items is null || _focus.FocusedIndex < 0 || _focus.FocusedIndex >= items.Count)
             return false;
 
-        var item = items[_focusedItemIndex];
+        var item = items[_focus.FocusedIndex];
         MarkdownInputModifiers modifiers = InputModifierState.GetCurrentInputModifiers();
         if (item.IsVectorSemantic &&
-            TryGetVectorSemanticForFocusable(item, out var vectorBox, out int semanticIndex) &&
+            _focus.TryGetVectorSemantic(item, out var vectorBox, out int semanticIndex) &&
             vectorBox.TryGetLink(semanticIndex, out var vectorLink) &&
             vectorLink is not null)
         {
@@ -9214,20 +9174,20 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void FocusCurrentItem(bool reverse = false)
     {
-        if (_pendingLazyFocus is not null)
+        if (_focus.PendingLazy is not null)
         {
             _focusRing.Hide();
             return;
         }
 
-        var items = _focusableItems;
-        if (items is null || _focusedItemIndex < 0 || _focusedItemIndex >= items.Count)
+        var items = _focus.Items;
+        if (items is null || _focus.FocusedIndex < 0 || _focus.FocusedIndex >= items.Count)
         {
             UpdateFocusRing();
             return;
         }
 
-        var item = items[_focusedItemIndex];
+        var item = items[_focus.FocusedIndex];
         if (!item.IsLink)
         {
             HostedFocusResult result = TryFocusHostedElement(item, reverse);
@@ -9271,13 +9231,13 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
         void Raise()
         {
-            if (_pendingLazyFocus is not null ||
+            if (_focus.PendingLazy is not null ||
                 !AutomationPeer.ListenerExists(AutomationEvents.AutomationFocusChanged))
                 return;
 
             var peer = FrameworkElementAutomationPeer.FromElement(this) as MarkdownAutomationPeer
                        ?? FrameworkElementAutomationPeer.CreatePeerForElement(this) as MarkdownAutomationPeer;
-            if (TryGetFocusedLinkedAtomic(out var inline, out InlineRun linkedRun))
+            if (_focus.TryGetFocusedLinkedAtomic(out var inline, out InlineRun linkedRun))
             {
                 switch (linkedRun)
                 {
@@ -9292,11 +9252,11 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                         break;
                 }
             }
-            else if (TryGetFocusedVectorSemantic(out var vectorBox, out int semanticIndex))
+            else if (_focus.TryGetFocusedVectorSemantic(out var vectorBox, out int semanticIndex))
             {
                 peer?.RaiseFocusForVectorSemantic(vectorBox, semanticIndex);
             }
-            else if (TryGetFocusedHorizontalOverflow(out var overflow))
+            else if (_focus.TryGetFocusedHorizontalOverflow(out var overflow))
             {
                 peer?.RaiseFocusForHorizontalOverflow(overflow);
             }
@@ -9318,20 +9278,20 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     /// </summary>
     private void UpdateFocusRing()
     {
-        if (_pendingLazyFocus is not null)
+        if (_focus.PendingLazy is not null)
         {
             _focusRing.Hide();
             return;
         }
 
-        var items = _focusableItems;
-        if (items is null || _focusedItemIndex < 0 || _focusedItemIndex >= items.Count)
+        var items = _focus.Items;
+        if (items is null || _focus.FocusedIndex < 0 || _focus.FocusedIndex >= items.Count)
         {
             _focusRing.Hide();
             return;
         }
 
-        var item = items[_focusedItemIndex];
+        var item = items[_focus.FocusedIndex];
         if (!item.IsLink && !item.IsVectorSemantic && !item.IsHorizontalOverflow)
         {
             _focusRing.Hide();
@@ -9380,14 +9340,14 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     {
         if (_published.Snapshot is not { } snapshot)
         {
-            _focusResumeItemIndex = -1;
+            _focus.ClearResumeIndex();
             _hasPendingFocusResumePoint = false;
             return;
         }
 
         long generation = _published.Generation;
         FocusGeometryReadStatus status = TryCaptureFocusableRectMap(
-            snapshot, generation, snapshot.LayoutRevision, _focusableItems,
+            snapshot, generation, snapshot.LayoutRevision, _focus.Items,
             out List<(int Index, Rect Rect)> map);
         if (status != FocusGeometryReadStatus.Ready)
         {
@@ -9399,7 +9359,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         }
 
         _hasPendingFocusResumePoint = false;
-        _focusResumeItemIndex = FocusableItemQueries.FindNearestFocusableItem(map, documentPoint);
+        _focus.SetResumeIndex(FocusableItemQueries.FindNearestFocusableItem(map, documentPoint));
     }
 
     private FocusGeometryReadStatus TryCaptureFocusableItemRect(
@@ -9536,10 +9496,10 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private bool ScrollFocusedItemIntoView()
     {
-        var items = _focusableItems;
-        int focusedIndex = _focusedItemIndex;
+        var items = _focus.Items;
+        int focusedIndex = _focus.FocusedIndex;
         if (items is null || focusedIndex < 0 || focusedIndex >= items.Count) return false;
-        var item = items[_focusedItemIndex];
+        var item = items[_focus.FocusedIndex];
         if (_published.Snapshot is not { } snapshot)
             return false;
 
@@ -9662,7 +9622,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             RequestFocusGeometryRetry();
             return;
         }
-        if (GetCurrentFocusableIdentity() is not { } current ||
+        if (_focus.Current is not { } current ||
             !FocusableItemQueries.SameFocusableIdentity(current, item))
             return;
         if (!IsFocusRevealCurrent())
@@ -9699,7 +9659,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     {
         tuple = default;
         if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _published.Snapshot is not { } snapshot ||
-            _focusableItems is not { } items)
+            _focus.Items is not { } items)
         {
             return HostedFocusPlanStatus.Stale;
         }
@@ -9737,7 +9697,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         tuple.SnapshotGeneration == Volatile.Read(ref _publishedHostedFocusPlanGeneration) &&
         tuple.LayoutRevision == Volatile.Read(ref _publishedHostedFocusPlanRevision) &&
         tuple.LayoutRevision == _appliedLazyLayoutRevision &&
-        ReferenceEquals(tuple.Items, _focusableItems);
+        ReferenceEquals(tuple.Items, _focus.Items);
 
     private bool IsCurrentHostedFocusRequest(
         in HostedFocusTuple tuple,
@@ -9747,21 +9707,21 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         tuple.SnapshotGeneration == _published.Generation &&
         tuple.LayoutRevision == tuple.Snapshot.LayoutRevision &&
         tuple.PlanEpoch == Volatile.Read(ref _hostedFocusPlanEpoch) &&
-        ReferenceEquals(tuple.Items, _focusableItems) &&
-        FocusableItemQueries.IsFocusedIdentity(tuple.Items, _focusedItemIndex, item);
+        ReferenceEquals(tuple.Items, _focus.Items) &&
+        FocusableItemQueries.IsFocusedIdentity(tuple.Items, _focus.FocusedIndex, item);
 
     private bool IsCurrentPendingLazyFocus(in PendingLazyFocus pending) =>
         !_lifetime.IsDisposed && !_lifetime.IsUnloaded &&
         ReferenceEquals(pending.Snapshot, _published.Snapshot) &&
         pending.SnapshotGeneration == _published.Generation &&
-        _pendingLazyFocus is { } current &&
+        _focus.PendingLazy is { } current &&
         FocusableItemQueries.SamePendingLazyFocus(current, pending);
 
     private bool IsCurrentHostedFocusOperation(
         in HostedFocusTuple tuple,
         Layout.FocusableItem item) =>
         IsCurrentHostedFocusTuple(tuple) &&
-        FocusableItemQueries.IsFocusedIdentity(tuple.Items, _focusedItemIndex, item);
+        FocusableItemQueries.IsFocusedIdentity(tuple.Items, _focus.FocusedIndex, item);
 
     private HostedFocusResult DeferHostedFocus(
         in HostedFocusTuple tuple,
@@ -9776,7 +9736,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             tuple.SnapshotGeneration,
             item,
             reverse);
-        _pendingLazyFocus = pending;
+        _focus.BeginLazyFocus(pending);
         _ = Focus(FocusState.Keyboard);
 
         // Focus is a native callback boundary. Do not hide the ring or report
@@ -9855,14 +9815,14 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             plan.Realized is null ||
             plan.FocusIdentity is not { } planIdentity ||
             !_embeds.Contains(plan) ||
-            _focusableItems is not { } items ||
-            _focusedItemIndex < 0 ||
-            _focusedItemIndex >= items.Count)
+            _focus.Items is not { } items ||
+            _focus.FocusedIndex < 0 ||
+            _focus.FocusedIndex >= items.Count)
         {
             return;
         }
 
-        var focusedItem = items[_focusedItemIndex];
+        var focusedItem = items[_focus.FocusedIndex];
         if (FocusableItemQueries.SameFocusableIdentity(focusedItem, planIdentity))
             _ = TryFocusHostedElement(focusedItem, reverse: false);
     }
@@ -9929,7 +9889,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (focusedIndex < 0 || !IsCurrentHostedFocusTuple(tuple))
             return false;
 
-        _focusedItemIndex = focusedIndex;
+        _focus.SetFocusedIndex(focusedIndex);
         return true;
     }
 
@@ -9957,202 +9917,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         return _published.Snapshot is { } snapshot
             ? LinkTargets.FindLinkTargetAt(snapshot, pos, point)
             : null;
-    }
-
-    private bool TryGetFocusedLink(out Layout.Boxes.InlineContainerBox inline, out LinkRun link)
-    {
-        inline = null!;
-        link = null!;
-        if (!TryGetFocusedLinkedAtomic(out inline, out InlineRun run) || run is not LinkRun focusedLink)
-            return false;
-        link = focusedLink;
-        return true;
-    }
-
-    private bool TryGetFocusedLinkedAtomic(
-        out Layout.Boxes.InlineContainerBox inline,
-        out InlineRun run)
-    {
-        inline = null!;
-        run = null!;
-        IReadOnlyList<Layout.FocusableItem>? items = _focusableItems;
-        LayoutSnapshot? snapshot = _published.Snapshot;
-        if (items is null || snapshot is null ||
-            _focusedItemIndex < 0 || _focusedItemIndex >= items.Count)
-            return false;
-
-        return FocusableItemQueries.TryGetLinkedAtomicForFocusable(snapshot, items[_focusedItemIndex], out inline, out run);
-    }
-
-    private bool TryGetFocusedVectorSemantic(
-        out Layout.Boxes.VectorSceneBox box,
-        out int semanticIndex)
-    {
-        box = null!;
-        semanticIndex = -1;
-        var items = _focusableItems;
-        if (items is null || _focusedItemIndex < 0 || _focusedItemIndex >= items.Count)
-            return false;
-
-        return TryGetVectorSemanticForFocusable(items[_focusedItemIndex], out box, out semanticIndex);
-    }
-
-    private bool TryGetFocusedHorizontalOverflow(out IHorizontalOverflowBox overflow)
-    {
-        overflow = null!;
-        var items = _focusableItems;
-        if (items is null ||
-            _published.Snapshot is null ||
-            _focusedItemIndex < 0 ||
-            _focusedItemIndex >= items.Count ||
-            !items[_focusedItemIndex].IsHorizontalOverflow ||
-            !_published.Snapshot.TryGetHorizontalOverflowForBlockIndex(
-                items[_focusedItemIndex].BlockIndex,
-                out IHorizontalOverflowBox? focusedOverflow) ||
-            focusedOverflow is null)
-        {
-            return false;
-        }
-
-        overflow = focusedOverflow;
-        return true;
-    }
-
-    private bool TryGetFocusableIndexForLink(LinkRun run, out int index)
-        => TryGetFocusableIndexForLinkedAtomic(run, out index);
-
-    private bool TryGetFocusableIndexForLinkedAtomic(InlineRun run, out int index)
-    {
-        index = -1;
-        IReadOnlyList<Layout.FocusableItem>? items = _focusableItems;
-        if (items is null || _published.Snapshot is null)
-            return false;
-
-        int equivalentLinkIndex = -1;
-        for (int itemIndex = 0; itemIndex < items.Count; itemIndex++)
-        {
-            if (!items[itemIndex].IsLink ||
-                !FocusableItemQueries.TryGetLinkedAtomicForFocusable(_published.Snapshot, items[itemIndex], out _, out InlineRun candidate))
-            {
-                continue;
-            }
-
-            if (ReferenceEquals(candidate, run))
-            {
-                index = itemIndex;
-                return true;
-            }
-
-            if (run is LinkRun requestedLink &&
-                candidate is LinkRun candidateLink &&
-                equivalentLinkIndex < 0 &&
-                LinkTargets.AreEquivalentLinks(candidateLink, requestedLink))
-            {
-                equivalentLinkIndex = itemIndex;
-            }
-        }
-
-        index = equivalentLinkIndex;
-        return index >= 0;
-    }
-
-    private bool TryGetFocusableIndexForVectorSemantic(
-        Layout.Boxes.VectorSceneBox box,
-        int semanticIndex,
-        out int index)
-    {
-        index = -1;
-        var items = _focusableItems;
-        if (items is null)
-            return false;
-
-        for (int i = 0; i < items.Count; i++)
-        {
-            if (items[i].IsVectorSemantic &&
-                items[i].BlockIndex == box.BlockIndex &&
-                items[i].InlineIndex == semanticIndex &&
-                TryGetVectorSemanticForFocusable(items[i], out var candidate, out _) &&
-                ReferenceEquals(candidate, box))
-            {
-                index = i;
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private bool TryGetFocusableIndexForHorizontalOverflow(
-        IHorizontalOverflowBox overflow,
-        out int index)
-    {
-        var items = _focusableItems;
-        var snapshot = _published.Snapshot;
-        if (items is null || snapshot is null)
-        {
-            index = -1;
-            return false;
-        }
-
-        return FocusableItemQueries.TryFindHorizontalOverflowFocusableIndex(snapshot, items, overflow, out index);
-    }
-
-    private bool TryGetVectorSemanticForFocusable(
-        Layout.FocusableItem item,
-        out Layout.Boxes.VectorSceneBox vector,
-        out int semanticIndex)
-    {
-        vector = null!;
-        semanticIndex = -1;
-        if (!item.IsVectorSemantic || _published.Snapshot is null)
-            return false;
-
-        foreach (BlockBox block in _published.Snapshot.Blocks)
-        {
-            if (TryGetVectorSemanticForFocusable(block, item, out vector, out semanticIndex))
-                return true;
-        }
-
-        return false;
-    }
-
-    private static bool TryGetVectorSemanticForFocusable(
-        BlockBox box,
-        Layout.FocusableItem item,
-        out Layout.Boxes.VectorSceneBox vector,
-        out int semanticIndex)
-    {
-        vector = null!;
-        semanticIndex = -1;
-        switch (box)
-        {
-            case Layout.Boxes.VectorSceneBox candidate
-                when candidate.BlockIndex == item.BlockIndex &&
-                     candidate.GetSemanticItem(item.InlineIndex) is { } semantic &&
-                     MarkdownVectorSemanticPolicy.IsKeyboardFocusable(semantic.Flags):
-                vector = candidate;
-                semanticIndex = item.InlineIndex;
-                return true;
-            case Layout.Boxes.ListItemBox listItem:
-                return TryGetVectorSemanticForFocusable(listItem.Marker, item, out vector, out semanticIndex) ||
-                       TryGetVectorSemanticForFocusable(listItem.Content, item, out vector, out semanticIndex);
-            case Layout.Boxes.TableBox table:
-                foreach (Layout.Boxes.InlineContainerBox cell in table.GetCellBoxes())
-                {
-                    if (TryGetVectorSemanticForFocusable(cell, item, out vector, out semanticIndex))
-                        return true;
-                }
-                return false;
-            case Layout.Boxes.StackBox stack:
-                foreach (BlockBox child in stack.Children)
-                {
-                    if (TryGetVectorSemanticForFocusable(child, item, out vector, out semanticIndex))
-                        return true;
-                }
-                return false;
-            default:
-                return false;
-        }
     }
 
     // ---- Word / line selection helpers ----

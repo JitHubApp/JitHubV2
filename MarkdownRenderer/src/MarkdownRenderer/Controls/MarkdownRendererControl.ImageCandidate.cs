@@ -191,11 +191,11 @@ public partial class MarkdownRendererControl
         if (!TryPrepareCodeBlockActionPublication(plan, out IReadOnlyList<CodeBlockActionPlan> oldCodeActionPlans))
             return false;
 
-        Layout.FocusableItem? focusedIdentity = GetCurrentFocusableIdentity();
+        Layout.FocusableItem? focusedIdentity = _focus.Current;
         Layout.FocusableItem? resumeFocusIdentity =
-            _focusableItems is { } currentItems &&
-            _focusResumeItemIndex >= 0 && _focusResumeItemIndex < currentItems.Count
-                ? currentItems[_focusResumeItemIndex]
+            _focus.Items is { } currentItems &&
+            _focus.ResumeIndex >= 0 && _focus.ResumeIndex < currentItems.Count
+                ? currentItems[_focus.ResumeIndex]
                 : null;
         plan.ResumeFocusIdentity = resumeFocusIdentity;
 
@@ -214,13 +214,7 @@ public partial class MarkdownRendererControl
             _imagePlans = plan.Images!;
             _subscribedImages = plan.Subscriptions!;
             _imagePlanIndex = plan.Publication!.Index;
-            _focusableItems = plan.Focus;
-            _focusedItemIndex = focusedIdentity is { } identity
-                ? FocusableItemQueries.FindFocusableItemIndex(_focusableItems, identity)
-                : -1;
-            _focusResumeItemIndex = resumeFocusIdentity is { } resumeIdentity
-                ? FocusableItemQueries.FindFocusableItemIndex(_focusableItems, resumeIdentity)
-                : -1;
+            _focus.ReplaceItems(plan.Focus, focusedIdentity, resumeFocusIdentity);
             _embeds.AdoptCodeBlockActionPublication(
                 plan.CodeActionPlans!,
                 plan.CodeActionIndex,

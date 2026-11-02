@@ -11,9 +11,6 @@ internal interface IFocusRingHost
     /// <summary>The theme's focus visual color, or null before a theme is resolved.</summary>
     Windows.UI.Color? FocusVisualColor { get; }
 
-    /// <summary>The focused item now, or null when nothing is focused.</summary>
-    Layout.FocusableItem? GetCurrentFocusableIdentity();
-
     /// <summary>Repaints the interactive text adorner the ring sits beside.</summary>
     void InvalidateInteractiveTextAdorner();
 

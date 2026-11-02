@@ -19,6 +19,7 @@ internal sealed class FocusRingPresenter
     private const double Padding = 2.0;
 
     private readonly IFocusRingHost _host;
+    private readonly KeyboardFocusModel _focus;
     private readonly MarkdownViewSurface _surface;
     private readonly MarkdownViewLifetime _lifetime;
     private readonly PublishedLayout _published;
@@ -31,12 +32,14 @@ internal sealed class FocusRingPresenter
 
     internal FocusRingPresenter(
         IFocusRingHost host,
+        KeyboardFocusModel focus,
         MarkdownViewSurface surface,
         MarkdownViewLifetime lifetime,
         PublishedLayout published,
         DispatcherQueue? dispatcher)
     {
         _host = host;
+        _focus = focus;
         _surface = surface;
         _lifetime = lifetime;
         _published = published;
@@ -99,7 +102,7 @@ internal sealed class FocusRingPresenter
 
         if (item is not { } expected ||
             rect is not { Width: > 0, Height: > 0 } r ||
-            _host.GetCurrentFocusableIdentity() is not { } current ||
+            _focus.Current is not { } current ||
             !FocusableItemQueries.SameFocusableIdentity(current, expected))
         {
             if (_ring is not null)
