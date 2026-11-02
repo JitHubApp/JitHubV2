@@ -59,7 +59,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     IFocusGeometryRecoveryHost, IRendererFocusEntryHost, IImageSubscriptionsHost, IImageResidencyHost,
     ICanvasDeviceRecoveryHost, ICodeBlockHighlightingHost, IRecoveryClockHost, IRasterPlacementHost,
     IImageRelayoutHost, IImageLoadCompletionHost, IVectorCapacityRetryHost,
-    ILazyLayoutHost, ILayoutCommitHost, IFocusableItemsPublicationHost
+    ILazyLayoutHost, ILayoutCommitHost, IFocusableItemsPublicationHost,
+    IRebuildSchedulerHost
 {
     private readonly MarkdownViewSurface _surface;
     private readonly MarkdownViewLifetime _lifetime = new();
@@ -92,12 +93,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             $"[MarkdownRendererControl] retirement failed: {exception.GetType().Name} " +
             $"(0x{exception.HResult:X8})."));
     private readonly PipelineCancellationRetirement _cancellationRetirement;
-    private volatile CancellationTokenSource? _pipelineCts;
+    private readonly RebuildScheduler _rebuild;
     private CancellationTokenSource? _imageLifetimeCts;
-    private Task? _pipelineTask;
-    private long _pipelineGeneration;
-    private long _activePipelineGeneration;
-    private long _pendingRebuildRequestTimestamp;
     private readonly MarkdownAutomationDocumentGeneration _automationDocumentGenerations = new();
 #if MARKDOWN_LAYOUT_DIAGNOSTICS
     // Opt-in used only by the standalone quick-profile harness. This does not
@@ -126,10 +123,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     // invalidates a plan while a same-snapshot rebuild is being transferred.
     private readonly HostedFocusPlanPublication _hostedFocusPlan = new();
     private (LayoutSnapshot Snapshot, long SnapshotGeneration, int BlockIndex)? _pendingScrollToBlock;
-    private MarkdownRebuildDispatchState _rebuildDispatchState;
-    private long _lastRebuildDispatchTicket;
-    private readonly MarkdownRebuildCoordinator _rebuildCoordinator = new();
-    private int _rejectedCrossThreadRebuildReason = -1;
     private bool _selectionAutomationEventQueued;
     private float _lastWidth;
     private static readonly MarkdownTheme _defaultTheme = new();
@@ -1561,7 +1554,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             return session?.HasRegisteredDeferredSceneWork(this) == true
                 ? MarkdownVisibleSceneReadiness.NotReady : MarkdownVisibleSceneReadiness.Ready;
 
-        long generation = _pipelineGeneration;
+        long generation = _rebuild.Generation;
         long revision = snapshot.LayoutRevision;
         if (!TryGetVisibleDocumentRect(out Rect viewport) || !IsFiniteNonEmptyAutomationRect(viewport))
         {
@@ -1701,7 +1694,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         long generation,
         long layoutRevision) =>
         ReferenceEquals(_published.Snapshot, snapshot) &&
-        _pipelineGeneration == generation &&
+        _rebuild.Generation == generation &&
         _published.Generation == generation &&
         snapshot.LayoutRevision == layoutRevision;
 
@@ -1713,17 +1706,10 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         double.IsFinite(rect.Width) && double.IsFinite(rect.Height) &&
         double.IsFinite(rect.Right) && double.IsFinite(rect.Bottom);
 
-    internal long AutomationPipelineGeneration => _pipelineGeneration;
+    internal long AutomationPipelineGeneration => _rebuild.Generation;
 
-    internal CancellationToken GetAutomationPipelineCancellationToken(long generation)
-    {
-        CancellationTokenSource? cancellation = _pipelineCts;
-        return generation > 0 &&
-            generation == _activePipelineGeneration &&
-            cancellation is not null
-                ? cancellation.Token
-                : new CancellationToken(canceled: true);
-    }
+    internal CancellationToken GetAutomationPipelineCancellationToken(long generation) =>
+        _rebuild.GetActiveToken(generation);
 
     internal void ScrollDocumentRectIntoView(Windows.Foundation.Rect rect, bool alignToTop)
     {
@@ -1777,6 +1763,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _document = new DocumentPointerInteraction(this, _surface, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, _horizontalOverflowDrag, _handles, _autoScroll, _dragShield, _adorner, _contextMenu, new PointerHoverTracker(this, _published, _hover, _cursor, _abbreviationTooltip), _cursor, _abbreviationTooltip);
         _touchGestures = new TouchGestureInteraction(this, this, _surface, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, _horizontalOverflowDrag, _document);
         _pointerInput = new PointerInputRouter(this, this, DispatcherQueue, _surface, _lifetime, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, _handles, _document, _horizontalOverflowDrag, _touchGestures, _contextMenu, _adorner, _dragShield);
+        _rebuild = new RebuildScheduler(this, _lifetime, _surface, _pointerInput, _cancellationRetirement);
         _canvasPointerEvents = new CanvasPointerEvents(_surface, _pointerInput);
         _embeds = new EmbedRealization(this, this, _surface, _lifetime, _published, _viewport, DispatcherQueue, OnHostedEmbedKeyDown);
         _imagePlans = new ImagePlanSet(_lifetime, _published);
@@ -2175,9 +2162,9 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         long layoutRevision)
         => ActivateLinkIntent(intent, snapshot, snapshotGeneration, layoutRevision);
 
-    CancellationToken IEmbedRealizationHost.PipelineToken => _pipelineCts?.Token ?? CancellationToken.None;
+    CancellationToken IEmbedRealizationHost.PipelineToken => _rebuild.Token;
 
-    long IEmbedRealizationHost.PipelineGeneration => _pipelineGeneration;
+    long IEmbedRealizationHost.PipelineGeneration => _rebuild.Generation;
 
     IMarkdownHostedElementFactory? IEmbedRealizationHost.HostedElementFactory => HostedElementFactory;
 
@@ -2392,7 +2379,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     void IRecoveryClockHost.ProcessRecoveryTick() => ProcessRecoveryTick();
 
     bool IRasterPlacementHost.HasCompetingLayoutWork =>
-        _deviceRecovery.IsQueued || _rebuildCoordinator.HasPendingOrBuilding || HasPendingLazyLayoutWork;
+        _deviceRecovery.IsQueued || _rebuild.HasPendingOrBuilding || HasPendingLazyLayoutWork;
 
     float IRasterPlacementHost.LayoutWidth => (float)Math.Max(50, ActualWidth);
 
@@ -2460,20 +2447,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     float IImageRelayoutHost.LayoutWidth => (float)Math.Max(50, ActualWidth);
 
-    bool IImageRelayoutHost.DefersToRebuild()
-    {
-        // A replacement build's prepublished task is the actual drain barrier;
-        // a withheld UI completion must not leave the coordinator's building
-        // marker wedged.
-        if (_pipelineTask is { IsCompleted: true })
-        {
-            OnRebuildPipelineCompleted(_activePipelineGeneration);
-            // The worker may already have cleared that marker after enqueue
-            // rejection. Retry its pending drain without creating a request.
-            QueuePendingRebuild();
-        }
-        return _rebuildCoordinator.HasPendingOrBuilding;
-    }
+    bool IImageRelayoutHost.DefersToRebuild() => _rebuild.DefersToRebuild();
 
     bool IImageRelayoutHost.RequestGeometryRecoveryIfRequired(LayoutSnapshot? snapshot) =>
         RequestGeometryRecoveryIfRequired(snapshot);
@@ -2501,7 +2475,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     void IImageLoadCompletionHost.RequestFullRebuild() => RequestRebuild(RebuildReason.Full);
 
     void IImageLoadCompletionHost.RecordRejectedCrossThreadFullRebuild() =>
-        RecordRejectedCrossThreadRebuildRequest(RebuildReason.Full);
+        _rebuild.RecordRejectedCrossThread(RebuildReason.Full);
 
     void IImageLoadCompletionHost.InvalidatePaint()
     {
@@ -2525,9 +2499,9 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     object ILazyLayoutHost.DeferredSceneOwner => this;
 
-    long ILazyLayoutHost.PipelineGeneration => _pipelineGeneration;
+    long ILazyLayoutHost.PipelineGeneration => _rebuild.Generation;
 
-    CancellationToken ILazyLayoutHost.PipelineToken => _pipelineCts?.Token ?? CancellationToken.None;
+    CancellationToken ILazyLayoutHost.PipelineToken => _rebuild.Token;
 
     bool ILazyLayoutHost.IsScrollViewIntermediate => _scrollViewIntermediate;
 
@@ -2582,6 +2556,45 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     void IFocusableItemsPublicationHost.RequestFullRebuild() => RequestRebuild(RebuildReason.Full);
 
     void IFocusableItemsPublicationHost.InvalidateAutomationLayout() => InvalidateAutomationLayout();
+
+    Microsoft.UI.Dispatching.DispatcherQueue? IRebuildSchedulerHost.DispatcherQueue => DispatcherQueue;
+
+    bool IRebuildSchedulerHost.IsLoaded => IsLoaded;
+
+    string IRebuildSchedulerHost.EffectiveSource => _hasExplicitDocument
+        ? Document?.Source ?? string.Empty
+        : Markdown ?? string.Empty;
+
+    void IRebuildSchedulerHost.AdvanceDeferredSceneGeneration()
+    {
+        if (PerformanceSession is IMarkdownPerformanceSessionInternal performanceSession)
+        {
+            Task sceneRetirement = performanceSession.AdvanceDeferredSceneGeneration(this);
+            _snapshotRetirements.Track(sceneRetirement);
+        }
+    }
+
+    void IRebuildSchedulerHost.CancelSnapshotWork()
+    {
+        _lazyLayout.Cancel();
+        _imageRelayout.CancelActive();
+    }
+
+    void IRebuildSchedulerHost.ResetInteractionForRebuild()
+    {
+        CaptureTouchSelectionPresentationRestoreIntent();
+        ResetTransientInteractionState(clearSelection: false);
+    }
+
+    void IRebuildSchedulerHost.DiscardTouchSelectionRestore() => _pendingTouchSelectionPresentationRestore = null;
+
+    Task IRebuildSchedulerHost.RunRebuildAsync(
+        CancellationToken ct,
+        RebuildReason reason,
+        long generation,
+        long pipelineStartTimestamp,
+        long sourceUtf16Bytes) =>
+        RebuildAsync(ct, reason, generation, pipelineStartTimestamp, sourceUtf16Bytes);
 
     double IDeferredGestureLayoutHost.RasterizationScale => XamlRoot?.RasterizationScale ?? 1;
 
@@ -2813,20 +2826,12 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _environmentSubscription = null;
         _selectionDismissal.Unregister();
         MarkdownSelectionCoordinator.Unregister(this);
-        var oldCts = _pipelineCts;
-        var oldTask = _pipelineTask;
-        _pipelineCts = null;
-        _pipelineTask = null;
-        _activePipelineGeneration = 0;
-        _cancellationRetirement.Retire(oldCts, oldTask);
+        _rebuild.Retire();
         _lazyLayout.Cancel();
         _layoutCommit.ClearPending();
         var oldImageLifetimeCts = _imageLifetimeCts;
         _imageLifetimeCts = null;
         _cancellationRetirement.Retire(oldImageLifetimeCts, lifetime: null);
-        _rebuildDispatchState = default;
-        _rebuildCoordinator.Reset();
-        Interlocked.Exchange(ref _rejectedCrossThreadRebuildReason, -1);
         _imageRelayout.Retire();
         _lazyLayout.ResetScrollVelocity();
         _pendingScrollToBlock = null;
@@ -3064,8 +3069,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     public void RequestRebuild()
         => RequestRebuild(RebuildReason.Full);
 
-    // Internal requests call the reason-taking overload directly so the
-    // opt-in diagnostic observer retains their actual caller and line number.
+    private void RequestRebuild(RebuildReason reason) => _rebuild.Request(reason);
 
     /// <summary>
     /// Clears cached WinUI resource-key discovery and rebuilds the current
@@ -3080,404 +3084,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
         ThemeResolver.InvalidateResourceKeyCache();
         RequestRebuild(RebuildReason.Restyle);
-    }
-
-    private void RequestRebuild(
-        RebuildReason reason)
-    {
-        if (_lifetime.IsDisposed)
-            return;
-
-        var dispatcher = DispatcherQueue;
-        if (dispatcher is not null && !dispatcher.HasThreadAccess)
-        {
-            bool enqueued;
-            try
-            {
-                enqueued = dispatcher.TryEnqueue(() => RequestRebuild(reason));
-            }
-            catch (Exception exception)
-            {
-                enqueued = false;
-                MarkdownDiagnostics.WriteLine(
-                    $"[MarkdownRendererControl] Dispatcher rejected cross-thread rebuild request: {exception.Message}");
-            }
-
-            if (!enqueued)
-            {
-                if (!_lifetime.IsDisposed && !_lifetime.IsUnloaded)
-                {
-                    RecordRejectedCrossThreadRebuildRequest(reason);
-                    MarkdownDiagnostics.WriteLine("[MarkdownRendererControl] Dispatcher rejected cross-thread rebuild request.");
-                }
-            }
-            return;
-        }
-
-        if (_lifetime.IsUnloaded)
-            return;
-
-        DrainRejectedCrossThreadRebuildRequest();
-
-        MarkdownRebuildRequestDisposition disposition = _rebuildCoordinator.Request(reason);
-
-        var performance = MarkdownPerformanceEventSource.Log;
-        if (_pendingRebuildRequestTimestamp == 0 && performance.IsMeasurementEnabled())
-            _pendingRebuildRequestTimestamp = Stopwatch.GetTimestamp();
-
-        // A materialized scene is already immutable and has passed its plan
-        // generation fence. While another pipeline is active, remember one
-        // follow-up only; do not revoke its probes, image/lazy work, generation,
-        // or cancellation scope.
-        if (disposition == MarkdownRebuildRequestDisposition.Deferred)
-        {
-            // Usually the active build owns this follow-up until completion.
-            // If a genuine Full/Restyle request is already pending (for
-            // example after a rejected dispatch), let it retry without turning
-            // this scene event into a supersession.
-            QueuePendingRebuild();
-            return;
-        }
-
-        // When no pipeline is active, a scene-only request can wait in the
-        // ordinary coalescing queue too. Do not supersede the currently
-        // published snapshot until the replacement pipeline is actually
-        // allowed to start (for example, after an active pointer gesture).
-        if (reason == RebuildReason.SceneMaterialized)
-        {
-            QueuePendingRebuild();
-            return;
-        }
-
-        // Source, configuration, width, and theme requests invalidate the
-        // progressive scene-plan generation. Scene-only work returned above.
-        if (MarkdownRebuildDispatchPolicy.AdvancesDeferredSceneGeneration(
-                reason == RebuildReason.SceneMaterialized))
-        {
-            if (PerformanceSession is IMarkdownPerformanceSessionInternal performanceSession)
-            {
-                Task sceneRetirement = performanceSession.AdvanceDeferredSceneGeneration(this);
-                _snapshotRetirements.Track(sceneRetirement);
-            }
-        }
-
-        // Fence the currently active generation at request time, before the
-        // queued rebuild callback can be delayed by UI work. This makes a
-        // superseded pipeline unable to publish even while its parse worker is
-        // still unwinding, and signals cancellation with request-time latency.
-        ++_pipelineGeneration;
-        var supersededCts = _pipelineCts;
-        var supersededTask = _pipelineTask;
-        long supersededGeneration = _activePipelineGeneration;
-        _pipelineCts = null;
-        _pipelineTask = null;
-        _activePipelineGeneration = 0;
-
-        long supersessionTimestamp = 0;
-        if (supersededCts is not null &&
-            supersededTask is { IsCompleted: false } &&
-            supersededGeneration > 0 &&
-            performance.IsMeasurementEnabled())
-        {
-            supersessionTimestamp = Stopwatch.GetTimestamp();
-            performance.PipelineSuperseded(supersededGeneration);
-        }
-
-        _cancellationRetirement.Retire(
-            supersededCts,
-            supersededTask,
-            supersededGeneration,
-            supersessionTimestamp);
-        QueuePendingRebuild();
-    }
-
-    private void RecordRejectedCrossThreadRebuildRequest(RebuildReason reason)
-    {
-        int requested = (int)reason;
-        while (true)
-        {
-            int current = Volatile.Read(ref _rejectedCrossThreadRebuildReason);
-            int merged = Math.Max(current, requested);
-            if (Interlocked.CompareExchange(
-                    ref _rejectedCrossThreadRebuildReason,
-                    merged,
-                    current) == current)
-            {
-                return;
-            }
-        }
-    }
-
-    private void DrainRejectedCrossThreadRebuildRequest()
-    {
-        var dispatcher = DispatcherQueue;
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || dispatcher is not null && !dispatcher.HasThreadAccess)
-            return;
-
-        int reason = Interlocked.Exchange(ref _rejectedCrossThreadRebuildReason, -1);
-        if (reason >= 0)
-        {
-            RequestRebuild((MarkdownRebuildCoordinatorReason)reason);
-        }
-    }
-
-    private void QueuePendingRebuild()
-    {
-        DrainRejectedCrossThreadRebuildRequest();
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded ||
-            !_rebuildCoordinator.TryGetDispatchReason(out MarkdownRebuildCoordinatorReason pendingReason) ||
-            !IsLoaded || _surface.Canvas is null || _surface.Overlay is null || _surface.Root is null)
-        {
-            return;
-        }
-
-        MarkdownRebuildDispatchPriority dispatchPriority =
-            MarkdownRebuildDispatchPolicy.SelectPriority(
-                pendingReason == MarkdownRebuildCoordinatorReason.Full);
-        if (!_rebuildDispatchState.ShouldSchedule(dispatchPriority))
-            return;
-
-        var dispatcher = DispatcherQueue;
-        if (dispatcher is null)
-        {
-            _rebuildDispatchState = default;
-            ProcessQueuedRebuildCore();
-            return;
-        }
-
-        long dispatchTicket = NextRebuildDispatchTicket();
-        bool enqueued = false;
-        try
-        {
-            enqueued = dispatcher.TryEnqueue(
-                ToDispatcherQueuePriority(dispatchPriority),
-                () => ProcessQueuedRebuild(dispatchTicket));
-        }
-        catch (Exception exception)
-        {
-            MarkdownDiagnostics.WriteLine(
-                $"[MarkdownRendererControl] Dispatcher rejected rebuild callback: {exception.Message}");
-        }
-
-        _rebuildDispatchState = _rebuildDispatchState.AfterEnqueueAttempt(
-            dispatchTicket,
-            dispatchPriority,
-            enqueued);
-    }
-
-    private long NextRebuildDispatchTicket()
-    {
-        unchecked
-        {
-            ++_lastRebuildDispatchTicket;
-            if (_lastRebuildDispatchTicket == 0)
-                ++_lastRebuildDispatchTicket;
-        }
-
-        return _lastRebuildDispatchTicket;
-    }
-
-    private static Microsoft.UI.Dispatching.DispatcherQueuePriority ToDispatcherQueuePriority(
-        MarkdownRebuildDispatchPriority priority) =>
-        priority switch
-        {
-            MarkdownRebuildDispatchPriority.Low =>
-                Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
-            MarkdownRebuildDispatchPriority.Normal =>
-                Microsoft.UI.Dispatching.DispatcherQueuePriority.Normal,
-            _ => throw new ArgumentOutOfRangeException(nameof(priority)),
-        };
-
-    private void ProcessQueuedRebuild(long dispatchTicket)
-    {
-        if (!_rebuildDispatchState.IsCurrent(dispatchTicket))
-            return;
-
-        _rebuildDispatchState = default;
-        ProcessQueuedRebuildCore();
-    }
-
-    private void ProcessQueuedRebuildCore()
-    {
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !IsLoaded)
-            return;
-
-        // Image completion, theme changes, and width changes may request a
-        // relayout while the user is actively selecting text. Releasing pointer
-        // capture here terminates the gesture and visibly drops the selection.
-        // Keep the latest merged rebuild request pending until pointer release.
-        if (_pointerInput.HasSnapshotInteraction)
-            return;
-
-        if (!_rebuildCoordinator.TryGetDispatchReason(
-                out MarkdownRebuildCoordinatorReason pendingReason))
-        {
-            return;
-        }
-
-        if (pendingReason == MarkdownRebuildCoordinatorReason.SceneMaterialized)
-        {
-            // Scene-only requests do not supersede an in-flight/published
-            // generation until dispatch reaches this safe start boundary.
-            ++_pipelineGeneration;
-        }
-
-        long generation = _pipelineGeneration;
-        if (!_rebuildCoordinator.TryBeginPipeline(
-                generation,
-                out MarkdownRebuildCoordinatorReason coordinatorReason))
-        {
-            return;
-        }
-
-        RebuildReason reason = coordinatorReason;
-        _lazyLayout.Cancel();
-        _imageRelayout.CancelActive();
-
-        string effectiveSource = _hasExplicitDocument
-            ? Document?.Source ?? string.Empty
-            : Markdown ?? string.Empty;
-        // Keep the committed selection attached to the still-published snapshot
-        // while its replacement is prepared. The commit compares immutable
-        // document identities and clears selection only if replacement succeeds.
-        CaptureTouchSelectionPresentationRestoreIntent();
-        ResetTransientInteractionState(clearSelection: false);
-
-        // A deferred scene may be the first request after the preceding
-        // pipeline completed. Keep that published token alive until this new
-        // snapshot actually begins replacing it, then retire it with its task.
-        var previousCts = _pipelineCts;
-        var previousTask = _pipelineTask;
-        var cts = new CancellationTokenSource();
-        _pipelineCts = cts;
-        _activePipelineGeneration = generation;
-        var lifetime = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        // Publish a lifetime task before entering RebuildAsync: a synchronous
-        // RenderCompleted callback can reenter RequestRebuild before the async
-        // method returns its Task. Supersession must still wait for this run.
-        _pipelineTask = lifetime.Task;
-        if (previousCts is not null && !ReferenceEquals(previousCts, cts))
-            _cancellationRetirement.Retire(previousCts, previousTask);
-
-        var performance = MarkdownPerformanceEventSource.Log;
-        long pipelineStartTimestamp = performance.IsMeasurementEnabled()
-            ? Interlocked.Exchange(ref _pendingRebuildRequestTimestamp, 0)
-            : 0;
-        if (pipelineStartTimestamp == 0 && performance.IsMeasurementEnabled())
-            pipelineStartTimestamp = Stopwatch.GetTimestamp();
-        long sourceUtf16Bytes = (long)effectiveSource.Length * sizeof(char);
-        if (pipelineStartTimestamp != 0)
-            performance.PipelineStarted(generation, sourceUtf16Bytes);
-
-        // Capture the borrowed queue while this start boundary is on the UI
-        // thread. Completion can run on the pool after unload/disposal and must
-        // not query the control's native dependency object again there.
-        Microsoft.UI.Dispatching.DispatcherQueue? completionDispatcher = DispatcherQueue;
-        Task task;
-        try
-        {
-            task = RebuildAsync(
-                cts.Token,
-                reason,
-                generation,
-                pipelineStartTimestamp,
-                sourceUtf16Bytes);
-        }
-        catch (Exception exception)
-        {
-            MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] Rebuild startup failed: {exception}");
-            task = Task.FromException(exception);
-        }
-
-        _ = task.ContinueWith(
-            completed => CompleteRebuildTask(completed, lifetime, generation, completionDispatcher),
-            CancellationToken.None,
-            TaskContinuationOptions.ExecuteSynchronously,
-            TaskScheduler.Default);
-    }
-
-    private void CompleteRebuildTask(
-        Task completed,
-        TaskCompletionSource lifetime,
-        long generation,
-        Microsoft.UI.Dispatching.DispatcherQueue? dispatcher)
-    {
-        if (completed.IsFaulted)
-        {
-            AggregateException? pipelineFailure = completed.Exception;
-            Exception? diagnosticFailure = pipelineFailure is { InnerExceptions.Count: > 0 }
-                ? pipelineFailure.InnerExceptions[0]
-                : pipelineFailure;
-            if (diagnosticFailure is not null)
-            {
-                MarkdownDiagnostics.WriteLine(
-                    $"[MarkdownRendererControl] Rebuild faulted: {diagnosticFailure.GetType().Name} " +
-                    $"(0x{diagnosticFailure.HResult:X8}).");
-            }
-
-        }
-
-        // `_pipelineTask` is the barrier published before RebuildAsync starts;
-        // preserve the worker's exact terminal state for teardown observers.
-        MarkdownRebuildCoordinator.CompletePipelineLifetime(completed, lifetime);
-
-        // The task is the retirement barrier for the CTS. Do not clear
-        // _pipelineCts/_activePipelineGeneration here: they identify the
-        // published snapshot's image and lazy-layout lifetime after rendering.
-
-        if (dispatcher is null)
-        {
-            // A loaded WinUI control normally has a dispatcher. If it has been
-            // torn down, lifecycle cleanup has already reset the coordinator.
-            _rebuildCoordinator.CompletePipeline(generation);
-            return;
-        }
-
-        if (dispatcher.HasThreadAccess)
-        {
-            OnRebuildPipelineCompleted(generation);
-            return;
-        }
-
-        bool enqueued = false;
-        try
-        {
-            enqueued = dispatcher.TryEnqueue(() => OnRebuildPipelineCompleted(generation));
-        }
-        catch (Exception exception)
-        {
-            MarkdownDiagnostics.WriteLine(
-                $"[MarkdownRendererControl] Dispatcher rejected rebuild completion callback: {exception.Message}");
-        }
-
-        if (!enqueued)
-        {
-            // Keep pending state intact. A later pointer release or rebuild
-            // request can retry scheduling; unloading resets it outright.
-            _rebuildCoordinator.CompletePipeline(generation);
-            MarkdownDiagnostics.WriteLine("[MarkdownRendererControl] Dispatcher did not accept rebuild completion callback.");
-        }
-    }
-
-    private void OnRebuildPipelineCompleted(long generation)
-    {
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !_rebuildCoordinator.CompletePipeline(generation))
-            return;
-
-        DrainRejectedCrossThreadRebuildRequest();
-        if (_rebuildCoordinator.HasPending)
-        {
-            // ProcessQueuedRebuildCore allocates the scene-only generation at
-            // the moment the replacement pipeline can actually start.
-            QueuePendingRebuild();
-        }
-        else
-        {
-            // A failed/canceled current-generation rebuild did not publish the
-            // snapshot needed to restore handles. Do not carry this intent into
-            // an unrelated future rebuild.
-            _pendingTouchSelectionPresentationRestore = null;
-        }
     }
 
     private void CaptureTouchSelectionPresentationRestoreIntent()
@@ -3511,7 +3117,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // Snapshot the barrier before tracking this engine's own retirement;
         // otherwise a later shutdown drain could wait on a task that waits on
         // that same drain.
-        if (_pipelineTask is { } activePipeline)
+        if (_rebuild.ActiveTask is { } activePipeline)
             _snapshotRetirements.Track(activePipeline);
         Task lifetime = _snapshotRetirements.WaitForPendingAsync();
         Task retirement = OwnedResourceRetirement.DisposeAfterPropagating(engine, lifetime);
@@ -3560,7 +3166,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 generation,
                 pipelineStartTimestamp,
                 sourceUtf16Bytes).ConfigureAwait(true);
-            if (!ct.IsCancellationRequested && generation == _pipelineGeneration)
+            if (!ct.IsCancellationRequested && generation == _rebuild.Generation)
             {
                 RaiseRenderCompleted(generation);
             }
@@ -3588,7 +3194,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void RaiseRenderCompleted(long generation)
     {
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || generation != _pipelineGeneration)
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || generation != _rebuild.Generation)
             return;
 
         try
@@ -3605,7 +3211,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void RaiseRenderFailed(long generation, Exception exception)
     {
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || generation != _pipelineGeneration)
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || generation != _rebuild.Generation)
             return;
 
         try
@@ -3647,7 +3253,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         var source = reusableDocument?.Source ?? Markdown ?? string.Empty;
         long parseStarted = Stopwatch.GetTimestamp();
 
-        if (ct.IsCancellationRequested || generation != _pipelineGeneration)
+        if (ct.IsCancellationRequested || generation != _rebuild.Generation)
             return;
 
         MarkdownRenderer.Document.MarkdownDocument? semanticDocument = reusableDocument;
@@ -3691,7 +3297,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             }
         }
 
-        if (parsed is null || semanticDocument is null || ct.IsCancellationRequested || generation != _pipelineGeneration)
+        if (parsed is null || semanticDocument is null || ct.IsCancellationRequested || generation != _rebuild.Generation)
             return;
         long parseEnded = Stopwatch.GetTimestamp();
         double parseMilliseconds = Stopwatch.GetElapsedTime(parseStarted, parseEnded).TotalMilliseconds;
@@ -3925,7 +3531,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             engineSnapshot,
             sharedLayoutMetricsKey);
 
-        if (ct.IsCancellationRequested || generation != _pipelineGeneration)
+        if (ct.IsCancellationRequested || generation != _rebuild.Generation)
             return;
 
         _viewport.TryGet(out double viewportTop, out double viewportHeight, out _);
@@ -4011,7 +3617,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         MarkdownLayoutDiagnosticsSnapshot layoutDiagnosticSnapshot =
             layoutDiagnostics?.Capture() ?? default;
 #endif
-        if (snapshot is null || ct.IsCancellationRequested || generation != _pipelineGeneration)
+        if (snapshot is null || ct.IsCancellationRequested || generation != _rebuild.Generation)
         {
             if (snapshot is not null)
                 ctx.RegisterRetirement(snapshot.Retire());
@@ -4026,7 +3632,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         long publicationStarted = Stopwatch.GetTimestamp();
         try
         {
-        if (ct.IsCancellationRequested || generation != _pipelineGeneration)
+        if (ct.IsCancellationRequested || generation != _rebuild.Generation)
             return;
 
         // Scroll anchoring: capture the current read position before the canvas
@@ -4060,7 +3666,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             }
         }
 
-        if (ct.IsCancellationRequested || generation != _pipelineGeneration)
+        if (ct.IsCancellationRequested || generation != _rebuild.Generation)
             return;
 
         // Atomically swap snapshots, then retire the old one so its
@@ -4240,7 +3846,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 capturedRestoreIntent.Matches(
                     touchSelectionRestoreSourceGeneration,
                     _selection.Range);
-            bool hasPendingRebuild = _rebuildCoordinator.HasPending;
+            bool hasPendingRebuild = _rebuild.HasPending;
 
             if (touchSelectionRestoreStillMatches && !hasPendingRebuild)
             {
@@ -4790,7 +4396,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             _deviceRecovery.NotePainted();
         }
         if (paintedRegion &&
-            _published.Generation == _pipelineGeneration &&
+            _published.Generation == _rebuild.Generation &&
             _snapshotPipelineStartTimestamp != 0)
         {
             long pipelineStartTimestamp = _snapshotPipelineStartTimestamp;
@@ -5181,8 +4787,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void ResumePendingRebuildAfterPointerInteraction()
     {
-        if (!_rebuildDispatchState.IsQueued && !_lifetime.IsUnloaded)
-            QueuePendingRebuild();
+        _rebuild.QueuePendingIfIdle();
         if (!_lifetime.IsDisposed && !_lifetime.IsUnloaded)
             _imageRelayout.QueueFirstPending();
     }

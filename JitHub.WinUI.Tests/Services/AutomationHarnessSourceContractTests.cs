@@ -637,12 +637,16 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.True(processStart >= 0 && completionStart > processStart);
         string process = relayoutSource[processStart..completionStart];
         Assert.Contains("if (_host.DefersToRebuild())", process, StringComparison.Ordinal);
-        int defersStart = controlSource.IndexOf("bool IImageRelayoutHost.DefersToRebuild()", StringComparison.Ordinal);
-        int defersEnd = controlSource.IndexOf("bool IImageRelayoutHost.RequestGeometryRecoveryIfRequired(", defersStart, StringComparison.Ordinal);
+        Assert.Contains("bool IImageRelayoutHost.DefersToRebuild() => _rebuild.DefersToRebuild();", controlSource, StringComparison.Ordinal);
+        string schedulerSource = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(), "MarkdownRenderer", "src", "MarkdownRenderer", "Controls",
+            "Pipeline", "RebuildScheduler.cs")).Replace("\r\n", "\n", StringComparison.Ordinal);
+        int defersStart = schedulerSource.IndexOf("internal bool DefersToRebuild()", StringComparison.Ordinal);
+        int defersEnd = schedulerSource.IndexOf("internal void QueuePendingIfIdle()", defersStart, StringComparison.Ordinal);
         Assert.True(defersStart >= 0 && defersEnd > defersStart);
-        string defers = controlSource[defersStart..defersEnd];
-        Assert.Contains("OnRebuildPipelineCompleted(_activePipelineGeneration);", defers, StringComparison.Ordinal);
-        Assert.Contains("return _rebuildCoordinator.HasPendingOrBuilding;", defers, StringComparison.Ordinal);
+        string defers = schedulerSource[defersStart..defersEnd];
+        Assert.Contains("OnPipelineCompleted(_activeGeneration);", defers, StringComparison.Ordinal);
+        Assert.Contains("return _coordinator.HasPendingOrBuilding;", defers, StringComparison.Ordinal);
         Assert.Contains("ImageRelayoutBatch.CapturePendingIndices(", process, StringComparison.Ordinal);
         Assert.Contains("private readonly SortedSet<int> _pending = [];", relayoutSource, StringComparison.Ordinal);
         Assert.Contains("optedIn: session is not null", process, StringComparison.Ordinal);
