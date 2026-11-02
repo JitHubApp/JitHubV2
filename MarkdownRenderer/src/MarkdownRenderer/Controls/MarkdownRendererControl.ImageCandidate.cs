@@ -154,7 +154,7 @@ public partial class MarkdownRendererControl
             return false;
         // UI-dispatcher-only, synchronous fence and swap. No host/XAML/native
         // callbacks intervene. Image publication readers verify snapshot identity.
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _publishingLayoutCommit || _canvasDeviceRecoveryQueued ||
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _publishingLayoutCommit || _deviceRecovery.IsQueued ||
             _rebuildCoordinator.HasPendingOrBuilding || HasPendingLazyLayoutWork || _pointerInput.HasSnapshotInteraction ||
             !ReferenceEquals(source, _published.Snapshot) || generation != _published.Generation ||
             source.IsRetiringOrDisposed || source.LayoutRevision != owner.SourceRevision ||

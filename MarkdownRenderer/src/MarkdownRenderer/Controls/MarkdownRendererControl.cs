@@ -35,6 +35,7 @@ using MarkdownRenderer.Theming;
 using MarkdownRenderer.Controls.Embeds;
 using MarkdownRenderer.Controls.Focus;
 using MarkdownRenderer.Controls.Images;
+using MarkdownRenderer.Controls.Rendering;
 using MarkdownRenderer.Controls.Input;
 using MarkdownRenderer.Controls.Pipeline;
 using MarkdownRenderer.Controls.Selection;
@@ -54,7 +55,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     IHorizontalOverflowPointerHost, IPointerInputRouterHost, IDeferredGestureLayoutHost, IEmbedRealizationHost,
     ICodeBlockCopyButtonHost, IFocusRingHost, IHostedElementFocusHost,
     IHorizontalOverflowScrollHost, IFocusedItemRevealHost, IFocusedItemCommitHost,
-    IFocusGeometryRecoveryHost, IRendererFocusEntryHost, IImageSubscriptionsHost, IImageResidencyHost
+    IFocusGeometryRecoveryHost, IRendererFocusEntryHost, IImageSubscriptionsHost, IImageResidencyHost,
+    ICanvasDeviceRecoveryHost
 {
     private readonly MarkdownViewSurface _surface;
     private readonly MarkdownViewLifetime _lifetime = new();
@@ -64,6 +66,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private readonly PointerCursorPresenter _cursor;
     private readonly AbbreviationTooltipPresenter _abbreviationTooltip;
     private readonly SelectionAdornerPresenter _adorner;
+    private readonly CanvasDeviceRecovery _deviceRecovery;
     private readonly SelectionCommands _selectionCommands;
     private readonly SelectionDismissalHook _selectionDismissal;
     private readonly SelectionDragAutoScroll _autoScroll;
@@ -189,9 +192,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private string? _committedImageDocumentId;
     private MarkdownEnvironmentMonitor.Subscription? _environmentSubscription;
     private MarkdownEnvironmentSnapshot _environmentSnapshot;
-    private bool _canvasDeviceRecoveryQueued;
-    private int _canvasDeviceRecoveryAttempt;
-    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _canvasDeviceRecoveryTimer;
 
     // ---- Keyboard navigation ----
     private readonly KeyboardFocusModel _focus;
@@ -1819,6 +1819,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _cursor = new PointerCursorPresenter(cursor => ProtectedCursor = cursor);
         _abbreviationTooltip = new AbbreviationTooltipPresenter(this, _surface, _lifetime, _hover);
         _adorner = new SelectionAdornerPresenter(this, this, _surface, _lifetime, _published, _viewport, _selection, _hover);
+        _deviceRecovery = new CanvasDeviceRecovery(this, _lifetime, _published, _surface, _adorner, DispatcherQueue);
         _selectionCommands = new SelectionCommands(this, _published, _selection);
         _selectionDismissal = new SelectionDismissalHook(this, this, _surface, _lifetime, _published, _selection, _selectionCommands);
         _autoScroll = new SelectionDragAutoScroll(_surface, _viewport, rect => BringDocumentRectIntoExternalViewport(rect, animate: false));
@@ -2409,6 +2410,10 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     void IImageResidencyHost.InvalidateCanvas() => InvalidateCanvas();
 
+    void ICanvasDeviceRecoveryHost.RequestFullRebuild() => RequestRebuild(RebuildReason.Full);
+
+    void ICanvasDeviceRecoveryHost.InvalidateCanvas() => InvalidateCanvas();
+
     double IDeferredGestureLayoutHost.RasterizationScale => XamlRoot?.RasterizationScale ?? 1;
 
     bool IDeferredGestureLayoutHost.IsPointOverEmbed(Point point) => _embeds.HitTargets.IsPointOverEmbed(point);
@@ -2597,7 +2602,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // A queued Cancel must apply its per-contact selection disposition
         // before that identity is discarded; a queued Release keeps selection.
         _touchTapSuppression.PrepareForReset();
-        StopCanvasDeviceRecovery();
+        _deviceRecovery.Stop();
         StopImageRelayoutRecovery(force: true);
         DetachPerformanceSessionDisposalNotification();
         _pointerInput.Reset();
@@ -2743,7 +2748,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _lifetime.MarkDisposing();
         _pendingTouchSelectionPresentationRestore = null;
         _touchTapSuppression.Reset();
-        StopCanvasDeviceRecovery();
+        _deviceRecovery.Stop();
         _handles.ResetDrag();
         _touchSelection.Dispose();
         _handles.StopFrameClock();
@@ -5719,7 +5724,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             NotifyVisibleDeferredSceneItemStatusMayHaveChanged();
             if (GraphicsDeviceErrors.IsDeviceLost(failure))
             {
-                HandleCanvasDeviceLost(failure);
+                _deviceRecovery.HandleDeviceLost(failure);
             }
             else
             {
@@ -6768,7 +6773,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             }
             catch (Exception ex) when (GraphicsDeviceErrors.IsDeviceLost(ex))
             {
-                HandleCanvasDeviceLost(ex);
+                _deviceRecovery.HandleDeviceLost(ex);
                 return;
             }
         }
@@ -6788,8 +6793,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         }
         if (paintedRegion)
         {
-            _canvasDeviceRecoveryAttempt = 0;
-            StopCanvasDeviceRecovery();
+            _deviceRecovery.NotePainted();
         }
         if (paintedRegion &&
             _published.Generation == _pipelineGeneration &&
@@ -7155,96 +7159,86 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private static void ReportImageRelayoutFailure(string operation, object details) =>
         MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] image {operation} failed: {details}");
 
-    private void HandleCanvasDeviceLost(Exception exception)
-        => HandleCanvasDeviceLost(exception.HResult);
-
-    private void HandleCanvasDeviceLost(int failureHResult)
+    /// <summary>
+    /// A failed live layout is not transient lock contention. Preserve the last
+    /// painted tiles and committed logical selection, but discard geometry-bound
+    /// input before requesting one offside replacement for this snapshot.
+    /// Runs only on the control's UI dispatcher; workers publish scalar state.
+    /// </summary>
+    private bool RequestGeometryRecoveryIfRequired(LayoutSnapshot? snapshot)
     {
-        // Capture every device in use before release clears the surface owner.
-        CanvasDevice? layoutDevice = _published.LayoutDevice;
-        CanvasDevice? surfaceDevice = _adorner.SurfaceDevice;
-        CanvasDevice? canvasDevice = null;
-        try { canvasDevice = _surface.Canvas?.Device; }
-        catch (Exception deviceException)
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || snapshot is null ||
+            !ReferenceEquals(snapshot, _published.Snapshot) || !snapshot.GeometryRecoveryRequired)
         {
-            MarkdownDiagnostics.WriteLine(
-                $"[MarkdownRendererControl] canvas device query failed: {deviceException.Message}");
+            return false;
         }
 
-        _adorner.TryReleaseSurface();
-        // Snapshot bitmaps are cached under the layout (shared) device, which
-        // need not be the CanvasVirtualControl device.
-        ReleaseImageDeviceResources(layoutDevice);
-        if (!ReferenceEquals(canvasDevice, layoutDevice))
-            ReleaseImageDeviceResources(canvasDevice);
-        // Exceptions were caught instead of reaching Win2D, so notify each
-        // genuinely lost device as the manual device-loss contract requires.
-        NotifyLostCanvasDevices(failureHResult, layoutDevice, surfaceDevice, canvasDevice);
+        if (!snapshot.TryClaimGeometryRecoveryRequest())
+            return true;
 
-        if (_canvasDeviceRecoveryQueued || _lifetime.IsDisposed || _lifetime.IsUnloaded)
-            return;
+        // Deferred presses/captured handles must not keep the Full request
+        // waiting for a release that can no longer safely hit-test this tree.
+        TryGeometryRecoveryCleanup(_pointerInput.Reset);
+        TryGeometryRecoveryCleanup(ResetVectorCapacityObserver);
+        _horizontalOverflowDrag.Clear();
+        _focusGeometryWork.Clear();
+        _adorner.ClearGeometry();
+        // This tuple describes re-publication of this snapshot's geometry, not
+        // an offside replacement candidate. It cannot repair a failed tree.
+        _pendingLayoutCommit = null;
+        ++_lastLayoutCommitTicket;
+        _imageSubscriptions.ResetBitmapOutputRecovery();
+        TryGeometryRecoveryCleanup(CancelLazyLayoutRealization);
+        _pendingImageRelayoutBlockIndices.Clear();
+        _imageRelayoutQueued = false;
+        ++_lastImageRelayoutDispatchTicket;
 
-        _canvasDeviceRecoveryAttempt = Math.Min(_canvasDeviceRecoveryAttempt + 1, 6);
-        int delayMs = Math.Min(5000, 250 << (_canvasDeviceRecoveryAttempt - 1));
+        // Retire/cancel through the normal work barriers; never dispose a CTS
+        // or a native snapshot while its worker is still unwinding.
+        if (_imageRelayoutCts is { } imageCancellation)
+            _ = CancellationTokenSourceRetirement.RequestCancellation(imageCancellation);
 
-        MarkdownDiagnostics.WriteLine(
-            "[MarkdownRendererControl] Win2D device lost while painting; " +
-            $"HRESULT={GraphicsDeviceErrors.FormatHResult(failureHResult)}. " +
-            $"Retrying canvas rebuild in {delayMs}ms.");
+        // A disconnected XAML input site can throw while closing a flyout or
+        // hiding a visual. Such cleanup must neither consume the one recovery
+        // request without scheduling it nor leave another capture unreleased.
+        TryGeometryRecoveryCleanup(() => ResetTransientInteractionState(clearSelection: false));
+        TryGeometryRecoveryCleanup(() => _surface.Canvas?.ReleasePointerCaptures());
+        TryGeometryRecoveryCleanup(() => _dragShield.SetActive(false));
+        TryGeometryRecoveryCleanup(_contextMenu.Close);
+        TryGeometryRecoveryCleanup(_abbreviationTooltip.Hide);
+        TryGeometryRecoveryCleanup(() => _cursor.SetShape(null));
+        TryGeometryRecoveryCleanup(_focusRing.Collapse);
+        TryGeometryRecoveryCleanup(() => _handles.SetVisibility(Visibility.Collapsed));
+        TryGeometryRecoveryCleanup(_adorner.ReleaseSurface);
+        TryGeometryRecoveryCleanup(InvalidateAutomationLayout);
 
-        try
+        if (snapshot.GeometryRecoveryIsDeviceLost)
         {
-            var timer = DispatcherQueue.CreateTimer();
-            timer.IsRepeating = false;
-            timer.Interval = TimeSpan.FromMilliseconds(delayMs);
-            timer.Tick += OnCanvasDeviceRecoveryTimer;
-            _canvasDeviceRecoveryTimer = timer;
-            _canvasDeviceRecoveryQueued = true;
-            timer.Start();
+            // Keep the device-loss backoff even if a detached adorner refuses
+            // its final native property update.
+            if (!TryGeometryRecoveryCleanup(() => _deviceRecovery.HandleDeviceLost(snapshot.GeometryRecoveryFailureHResult)))
+                RequestRebuild(RebuildReason.Full);
         }
-        catch (Exception schedulingFailure)
+        else
         {
-            StopCanvasDeviceRecovery();
-            MarkdownDiagnostics.WriteLine(
-                $"[MarkdownRendererControl] device recovery timer failed: {schedulingFailure.Message}");
             RequestRebuild(RebuildReason.Full);
         }
+
+        return true;
     }
 
-    private static void ReleaseImageDeviceResources(CanvasDevice? device)
+    private static bool TryGeometryRecoveryCleanup(Action cleanup)
     {
-        if (device is null)
-            return;
-
         try
         {
-            Layout.Boxes.ImageBox.ReleaseDeviceResources(device);
+            cleanup();
+            return true;
         }
-        catch (Exception releaseException)
+        catch (Exception failure)
         {
-            MarkdownDiagnostics.WriteLine(
-                $"[MarkdownRendererControl] image device-resource release failed: {releaseException.Message}");
-        }
-    }
-
-    private static void NotifyLostCanvasDevices(int failureHResult, params CanvasDevice?[] devices)
-    {
-        for (int index = 0; index < devices.Length; index++)
-        {
-            CanvasDevice? device = devices[index];
-            if (device is null || Array.IndexOf(devices, device) != index)
-                continue;
-
-            try
-            {
-                if (device.IsDeviceLost(failureHResult))
-                    device.RaiseDeviceLost();
-            }
-            catch (Exception notifyException)
-            {
-                MarkdownDiagnostics.WriteLine(
-                    $"[MarkdownRendererControl] device-lost notification failed: {notifyException.Message}");
-            }
+            Diagnostics.MarkdownDiagnostics.WriteLine(
+                $"[MarkdownRendererControl] geometry recovery cleanup failed: {failure.Message}");
+            return false;
         }
     }
 
@@ -7302,14 +7296,14 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _adorner.Invalidate();
     }
 
-    bool ISelectionAdornerHost.IsDeviceRecoveryQueued => _canvasDeviceRecoveryQueued;
+    bool ISelectionAdornerHost.IsDeviceRecoveryQueued => _deviceRecovery.IsQueued;
 
     bool ISelectionAdornerHost.HasFocusedLink => _focus.TryGetFocusedLink(out _, out _);
 
     bool ISelectionAdornerHost.RequestGeometryRecoveryIfRequired(LayoutSnapshot snapshot)
         => RequestGeometryRecoveryIfRequired(snapshot);
 
-    void ISelectionAdornerHost.HandleDeviceLost(Exception exception) => HandleCanvasDeviceLost(exception);
+    void ISelectionAdornerHost.HandleDeviceLost(Exception exception) => _deviceRecovery.HandleDeviceLost(exception);
 
     void ISelectionAdornerHost.RequestRebuildForDeviceChange() => RequestRebuild(RebuildReason.Full);
 
@@ -7337,7 +7331,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         }
         catch (Exception ex) when (GraphicsDeviceErrors.IsDeviceLost(ex))
         {
-            HandleCanvasDeviceLost(ex);
+            _deviceRecovery.HandleDeviceLost(ex);
         }
         catch (Exception ex) when (ShouldIgnoreShutdownException(ex))
         {
