@@ -265,4 +265,44 @@ internal static class FocusableItemQueries
                 return false;
         }
     }
+
+    /// <summary>
+    /// The logical rectangle of <paramref name="item"/> in
+    /// <paramref name="snapshot"/>, or null when it has none. The caller holds
+    /// the snapshot's interaction lease.
+    /// </summary>
+    internal static Rect? GetLogicalRectUnderPaint(
+        LayoutSnapshot snapshot,
+        Layout.FocusableItem item)
+    {
+        Rect? physicalRect = null;
+        if (item.IsHorizontalOverflow &&
+            snapshot.TryGetHorizontalOverflowForBlockIndex(item.BlockIndex, out var overflow) &&
+            overflow is not null)
+        {
+            physicalRect = overflow.HorizontalViewportBounds;
+        }
+        else
+        {
+            foreach (var block in snapshot.Blocks)
+            {
+                using LayoutPlacementTransformContext.Scope placementScope =
+                    snapshot.EnterPlacementTransformScopeForTopLevelBlockUnderPaint(block);
+                if (block is Layout.Boxes.InlineContainerBox icb && icb.BlockIndex == item.BlockIndex)
+                {
+                    physicalRect = icb.GetRunRect(item.InlineIndex);
+                    break;
+                }
+                if (FocusableItemQueries.GetFocusableItemRectFromBlock(block, item) is { } nested)
+                {
+                    physicalRect = nested;
+                    break;
+                }
+            }
+        }
+
+        return physicalRect is { } rect
+            ? snapshot.ToLogicalRectForBlockIndexUnderPaint(item.BlockIndex, rect)
+            : null;
+    }
 }

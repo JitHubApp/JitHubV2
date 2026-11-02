@@ -200,6 +200,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     // ---- Keyboard navigation ----
     private readonly KeyboardFocusModel _focus;
+    private readonly FocusGeometryReader _focusGeometry;
     private bool _taskCommandAvailabilityRefreshQueued;
     // A deferred focus-plan refresh is value-only: it never keeps a snapshot,
     // box, or native resource alive while a geometry lease is busy.
@@ -1926,6 +1927,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _canvasPointerEvents = new CanvasPointerEvents(_surface, _pointerInput);
         _embeds = new EmbedRealization(this, this, _surface, _lifetime, _published, _viewport, DispatcherQueue, OnHostedEmbedKeyDown);
         _focus = new KeyboardFocusModel(_published);
+        _focusGeometry = new FocusGeometryReader(_lifetime, _published);
         _focusRing = new FocusRingPresenter(this, _focus, _surface, _lifetime, _published, DispatcherQueue);
         _focusRefresh = new FocusableItemsRefreshRequest(_published);
         IsTabStop = true;
@@ -2284,7 +2286,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         => _focus.Items is { } items &&
            _focus.FocusedIndex >= 0 &&
            _focus.FocusedIndex < items.Count
-            ? GetFocusableItemRect(items[_focus.FocusedIndex])
+            ? _focusGeometry.GetCurrentItemRect(items[_focus.FocusedIndex])
             : null;
 
     bool IPointerInteractionHost.IsSelectionEnabled => IsSelectionEnabled;
@@ -8330,9 +8332,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private bool IsCurrentScrollTarget(LayoutSnapshot snapshot, long snapshotGeneration, long layoutRevision) =>
         !_lifetime.IsDisposed && !_lifetime.IsUnloaded &&
-        ReferenceEquals(snapshot, _published.Snapshot) &&
-        snapshotGeneration == _published.Generation &&
-        snapshot.LayoutRevision == layoutRevision;
+        _published.IsCurrent(snapshot, snapshotGeneration, layoutRevision);
 
     private void ClearPendingScrollToBlock(LayoutSnapshot snapshot, long snapshotGeneration, int blockIndex)
     {
@@ -8724,7 +8724,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             return FocusGeometryReadStatus.Stale;
         long generation = _published.Generation;
         long revision = snapshot.LayoutRevision;
-        FocusGeometryReadStatus captureStatus = TryCaptureFocusableRectMap(
+        FocusGeometryReadStatus captureStatus = _focusGeometry.TryCaptureRectMap(
             snapshot, generation, revision, items,
             out List<(int Index, Rect Rect)> map);
         if (captureStatus != FocusGeometryReadStatus.Ready)
@@ -8871,7 +8871,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 }
                 else
                 {
-                    FocusGeometryReadStatus status = TryCaptureFocusableRectMap(
+                    FocusGeometryReadStatus status = _focusGeometry.TryCaptureRectMap(
                         snapshot,
                         generation,
                         snapshot.LayoutRevision,
@@ -9305,7 +9305,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         }
 
         long generation = _published.Generation;
-        FocusGeometryReadStatus status = TryCaptureFocusableItemRect(
+        FocusGeometryReadStatus status = _focusGeometry.TryCaptureItemRect(
             snapshot, generation, snapshot.LayoutRevision, item, out Rect? rect);
         if (status != FocusGeometryReadStatus.Ready)
         {
@@ -9322,20 +9322,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _focusRing.Publish(generation, item, rect);
     }
 
-    private Rect? GetFocusableItemRect(Layout.FocusableItem item)
-    {
-        if (_published.Snapshot is not { } snapshot)
-            return null;
-        return TryCaptureFocusableItemRect(
-            snapshot,
-            _published.Generation,
-            snapshot.LayoutRevision,
-            item,
-            out Rect? rect) == FocusGeometryReadStatus.Ready
-            ? rect
-            : null;
-    }
-
     private void RememberFocusResumePoint(Point documentPoint)
     {
         if (_published.Snapshot is not { } snapshot)
@@ -9346,7 +9332,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         }
 
         long generation = _published.Generation;
-        FocusGeometryReadStatus status = TryCaptureFocusableRectMap(
+        FocusGeometryReadStatus status = _focusGeometry.TryCaptureRectMap(
             snapshot, generation, snapshot.LayoutRevision, _focus.Items,
             out List<(int Index, Rect Rect)> map);
         if (status != FocusGeometryReadStatus.Ready)
@@ -9362,115 +9348,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _focus.SetResumeIndex(FocusableItemQueries.FindNearestFocusableItem(map, documentPoint));
     }
 
-    private FocusGeometryReadStatus TryCaptureFocusableItemRect(
-        LayoutSnapshot snapshot,
-        long snapshotGeneration,
-        long layoutRevision,
-        Layout.FocusableItem item,
-        out Rect? rect)
-    {
-        rect = null;
-        if (!IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))
-            return FocusGeometryReadStatus.Stale;
-        if (!snapshot.TryBeginInteraction())
-            return FocusGeometryReadStatus.Busy;
-
-        bool captured = false;
-        try
-        {
-            if (IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))
-            {
-                rect = GetFocusableItemRectFromSnapshotNoLock(snapshot, item);
-                captured = true;
-            }
-        }
-        finally
-        {
-            snapshot.EndInteraction();
-        }
-
-        return captured && IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision)
-            ? FocusGeometryReadStatus.Ready
-            : FocusGeometryReadStatus.Stale;
-    }
-
-    private FocusGeometryReadStatus TryCaptureFocusableRectMap(
-        LayoutSnapshot snapshot,
-        long snapshotGeneration,
-        long layoutRevision,
-        IReadOnlyList<Layout.FocusableItem>? items,
-        out List<(int Index, Rect Rect)> result)
-    {
-        result = new List<(int Index, Rect Rect)>();
-        if (!IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))
-            return FocusGeometryReadStatus.Stale;
-        if (items is null || items.Count == 0)
-            return FocusGeometryReadStatus.Ready;
-        if (!snapshot.TryBeginInteraction())
-            return FocusGeometryReadStatus.Busy;
-
-        bool captured = false;
-        try
-        {
-            if (IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))
-            {
-                for (int i = 0; i < items.Count; i++)
-                {
-                    if (GetFocusableItemRectFromSnapshotNoLock(snapshot, items[i]) is
-                        { Width: > 0, Height: > 0 } rect)
-                    {
-                        result.Add((i, rect));
-                    }
-                }
-                captured = true;
-            }
-        }
-        finally
-        {
-            snapshot.EndInteraction();
-        }
-
-        return captured && IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision)
-            ? FocusGeometryReadStatus.Ready
-            : FocusGeometryReadStatus.Stale;
-    }
-
-    private Rect? GetFocusableItemRectFromSnapshotNoLock(
-        LayoutSnapshot snapshot,
-        Layout.FocusableItem item)
-    {
-        Rect? physicalRect = null;
-        if (item.IsHorizontalOverflow &&
-            snapshot.TryGetHorizontalOverflowForBlockIndex(item.BlockIndex, out var overflow) &&
-            overflow is not null)
-        {
-            physicalRect = overflow.HorizontalViewportBounds;
-        }
-        else
-        {
-            foreach (var block in snapshot.Blocks)
-            {
-                using LayoutPlacementTransformContext.Scope placementScope =
-                    snapshot.EnterPlacementTransformScopeForTopLevelBlockUnderPaint(block);
-                if (block is Layout.Boxes.InlineContainerBox icb && icb.BlockIndex == item.BlockIndex)
-                {
-                    physicalRect = icb.GetRunRect(item.InlineIndex);
-                    break;
-                }
-                if (FocusableItemQueries.GetFocusableItemRectFromBlock(block, item) is { } nested)
-                {
-                    physicalRect = nested;
-                    break;
-                }
-            }
-        }
-
-        return physicalRect is { } rect
-            ? snapshot.ToLogicalRectForBlockIndexUnderPaint(item.BlockIndex, rect)
-            : null;
-    }
-
-    /// <summary>Scrolls the focused item into view if it's outside the current viewport.</summary>
     /// <summary>Records an explicit scroll request; pending focus reveals yield to it.</summary>
     private void NoteViewportRequest() => _viewportRequestSerial++;
 
@@ -9522,7 +9399,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 focusedIndex < items.Count &&
                 FocusableItemQueries.SameFocusableIdentity(items[focusedIndex], item))
             {
-                capturedRect = GetFocusableItemRectFromSnapshotNoLock(snapshot, item);
+                capturedRect = FocusableItemQueries.GetLogicalRectUnderPaint(snapshot, item);
                 captured = true;
                 if (capturedRect is { } rect &&
                     snapshot.TryGetHorizontalOverflowForBlockIndex(item.BlockIndex, out var overflow) &&
@@ -9546,7 +9423,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                             horizontalScrolled = true;
                             _ = TryCaptureHorizontalOverflowVisualStateNoLock(
                                 snapshot, generation, revision, overflow, oldHorizontalOffset, out visualState);
-                            capturedRect = GetFocusableItemRectFromSnapshotNoLock(snapshot, item) ?? rect;
+                            capturedRect = FocusableItemQueries.GetLogicalRectUnderPaint(snapshot, item) ?? rect;
                         }
                     }
                 }
