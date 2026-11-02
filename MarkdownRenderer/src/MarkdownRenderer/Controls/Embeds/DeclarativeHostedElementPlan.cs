@@ -40,7 +40,7 @@ internal sealed class DeclarativeHostedElementPlan : EmbedPlan
         ValueTask<FrameworkElement?> pending;
         try
         {
-            // RealizeVisibleEmbeds is UI-thread only. Calling the public
+            // Visible realization is UI-thread only. Calling the public
             // factory here keeps creation of thread-affine WinUI objects on
             // the owning dispatcher while still permitting async loading.
             pending = Factory.CreateAsync(operation.Request, operation.CancellationToken);

@@ -74,7 +74,7 @@ public partial class MarkdownRendererControl
             Interlocked.Exchange(ref _imageResidencyReconcileQueued, 0);
             if (_lifetime.IsDisposed || _lifetime.IsUnloaded)
                 return;
-            RealizeVisibleEmbeds();
+            _embeds.RealizeVisible();
             InvalidateCanvas();
         }))
             Interlocked.Exchange(ref _imageResidencyReconcileQueued, 0);

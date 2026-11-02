@@ -135,7 +135,7 @@ internal sealed class CodeBlockActionPlan
         button.KeyDown += context.HostedKeyDown;
 
         AutomationProperties.SetAutomationId(button, MarkdownAutomationIdentity.ForCodeCopy(Box));
-        if (!IsCurrentRasterActionOwner(context, candidate, generation, layoutRevision, hostedFocusPlanEpoch, fe))
+        if (!IsCurrentRasterActionOwner(context.Host, candidate, generation, layoutRevision, hostedFocusPlanEpoch, fe))
             return false;
 
         if (!context.Host.SetCodeBlockCopyButtonStateForRasterCandidate(
@@ -189,7 +189,7 @@ internal sealed class CodeBlockActionPlan
         long hostedFocusPlanEpoch,
         FrameworkElement element)
     {
-        if (!IsCurrentRasterActionOwner(context, candidate, generation, layoutRevision, hostedFocusPlanEpoch, element))
+        if (!IsCurrentRasterActionOwner(context.Host, candidate, generation, layoutRevision, hostedFocusPlanEpoch, element))
             return false;
 
         double left = Math.Round(Rect.X);
@@ -199,13 +199,13 @@ internal sealed class CodeBlockActionPlan
         if (double.IsNaN(element.Width) || Math.Abs(element.Width - width) > 0.1)
         {
             element.Width = width;
-            if (!IsCurrentRasterActionOwner(context, candidate, generation, layoutRevision, hostedFocusPlanEpoch, element))
+            if (!IsCurrentRasterActionOwner(context.Host, candidate, generation, layoutRevision, hostedFocusPlanEpoch, element))
                 return false;
         }
         if (double.IsNaN(element.Height) || Math.Abs(element.Height - height) > 0.1)
         {
             element.Height = height;
-            if (!IsCurrentRasterActionOwner(context, candidate, generation, layoutRevision, hostedFocusPlanEpoch, element))
+            if (!IsCurrentRasterActionOwner(context.Host, candidate, generation, layoutRevision, hostedFocusPlanEpoch, element))
                 return false;
         }
 
@@ -213,27 +213,27 @@ internal sealed class CodeBlockActionPlan
         if (double.IsNaN(currentLeft) || Math.Abs(currentLeft - left) > 0.1)
         {
             Canvas.SetLeft(element, left);
-            if (!IsCurrentRasterActionOwner(context, candidate, generation, layoutRevision, hostedFocusPlanEpoch, element))
+            if (!IsCurrentRasterActionOwner(context.Host, candidate, generation, layoutRevision, hostedFocusPlanEpoch, element))
                 return false;
         }
         double currentTop = Canvas.GetTop(element);
         if (double.IsNaN(currentTop) || Math.Abs(currentTop - top) > 0.1)
         {
             Canvas.SetTop(element, top);
-            if (!IsCurrentRasterActionOwner(context, candidate, generation, layoutRevision, hostedFocusPlanEpoch, element))
+            if (!IsCurrentRasterActionOwner(context.Host, candidate, generation, layoutRevision, hostedFocusPlanEpoch, element))
                 return false;
         }
         if (Canvas.GetZIndex(element) != 2)
         {
             Canvas.SetZIndex(element, 2);
-            if (!IsCurrentRasterActionOwner(context, candidate, generation, layoutRevision, hostedFocusPlanEpoch, element))
+            if (!IsCurrentRasterActionOwner(context.Host, candidate, generation, layoutRevision, hostedFocusPlanEpoch, element))
                 return false;
         }
         return true;
     }
 
     public bool IsCurrentRasterActionOwner(
-        EmbedPlanContext context,
+        IEmbedPlanHost host,
         LayoutSnapshot candidate,
         long generation,
         long layoutRevision,
@@ -241,7 +241,7 @@ internal sealed class CodeBlockActionPlan
         FrameworkElement element)
         => ReferenceEquals(Realized, element) &&
            ReferenceEquals(Box.RealizedCopyButton, element) &&
-           context.Host.IsCurrentRasterCodeActionPublication(
+           host.IsCurrentRasterCodeActionPublication(
                candidate, generation, layoutRevision, hostedFocusPlanEpoch);
 
     public void ShowCopiedFeedback(EmbedPlanContext context)

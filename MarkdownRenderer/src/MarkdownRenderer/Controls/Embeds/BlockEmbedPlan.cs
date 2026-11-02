@@ -32,7 +32,7 @@ internal sealed class BlockEmbedPlan : EmbedPlan
                 return;
             fe.KeyDown += context.HostedKeyDown;
             context.Surface.Overlay!.Children.Add(fe);
-            // _blockEmbedRects rebuilt in RealizeVisibleEmbeds.
+            // EmbedHitTargets is rebuilt by the next visible-realization pass.
         }
         catch (Exception ex)
         {
@@ -48,7 +48,7 @@ internal sealed class BlockEmbedPlan : EmbedPlan
         fe.KeyDown -= context.HostedKeyDown;
         try { context.Surface.Overlay!.Children.Remove(fe); } catch { }
         try { Box.Factory.RecycleBlock(Box.SourceBlock, fe); } catch { }
-        // Refresh _blockEmbedRects defensively (rebuilt fully each Realize cycle from realised plans).
+        // EmbedHitTargets is rebuilt from realized plans by each visible-realization pass.
     }
 
     public override bool IsSameLogicalEmbed(EmbedPlan other)

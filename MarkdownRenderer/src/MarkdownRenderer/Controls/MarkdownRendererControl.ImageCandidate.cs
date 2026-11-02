@@ -115,7 +115,7 @@ public partial class MarkdownRendererControl
             CodeActionPlans = actions;
             CodeActionSources = sources;
             CodeActionPlacementIndices = placementIndices.ToArray();
-            CodeActionIndex = BuildPlanIndex(actions);
+            CodeActionIndex = EmbedRealization.BuildPlanIndex(actions);
             CodeActionRects = new List<(CodeBlockBox Box, Rect Rect, CodeBlockHostedElementKind Kind)>(actions.Count);
             ActiveCodeActionOrdinals = new List<int>(actions.Count);
             CodeActionAdoptions = new List<(CodeBlockActionPlan OldPlan, CodeBlockActionPlan NewPlan, int NewOrdinal)>(actions.Count);
@@ -180,7 +180,7 @@ public partial class MarkdownRendererControl
             !string.Equals(ImageDocumentPath, context.ImageDocumentPath, StringComparison.Ordinal) ||
             AllowThirdPartyRemoteImages != context.AllowThirdPartyRemoteImages ||
             FlowDirection != context.FlowDirection || (XamlRoot?.RasterizationScale ?? 1) != context.RasterizationScale ||
-            _embedPlans.Count != 0 ||
+            _embeds.EmbedPlans.Count != 0 ||
             !owner.MatchesSourceImages(_imagePlans, _subscribedImages) ||
             (_pointerInput.DeferredSnapshot is not null && !ReferenceEquals(_pointerInput.DeferredSnapshot, source)) ||
             !owner.HasCurrentSourceRaster() ||
@@ -188,7 +188,7 @@ public partial class MarkdownRendererControl
             source.AutomationDocumentGeneration != candidate.AutomationDocumentGeneration)
             return false;
 
-        if (!TryPrepareCodeBlockActionPublication(plan, out List<CodeBlockActionPlan> oldCodeActionPlans))
+        if (!TryPrepareCodeBlockActionPublication(plan, out IReadOnlyList<CodeBlockActionPlan> oldCodeActionPlans))
             return false;
 
         Layout.FocusableItem? focusedIdentity = GetCurrentFocusableIdentity();
@@ -221,14 +221,15 @@ public partial class MarkdownRendererControl
             _focusResumeItemIndex = resumeFocusIdentity is { } resumeIdentity
                 ? FocusableItemQueries.FindFocusableItemIndex(_focusableItems, resumeIdentity)
                 : -1;
-            _codeBlockActionPlans = plan.CodeActionPlans!;
+            _embeds.AdoptCodeBlockActionPublication(
+                plan.CodeActionPlans!,
+                plan.CodeActionIndex,
+                plan.ActiveCodeActionOrdinals!,
+                plan.HasMeasuredCodeBlocks,
+                plan.CodeActionRects!);
             plan.CodeActionPlans = null;
-            _codeBlockActionPlanIndex = plan.CodeActionIndex;
             plan.CodeActionIndex = null;
-            _activeCodeBlockActionOrdinals = plan.ActiveCodeActionOrdinals!;
             plan.ActiveCodeActionOrdinals = null;
-            _hasMeasuredCodeBlocks = plan.HasMeasuredCodeBlocks;
-            _codeBlockActionRects = plan.CodeActionRects!;
             plan.CodeActionRects = null;
             _appliedLazyLayoutRevision = candidate.LayoutRevision;
             _pendingLayoutCommit = null;
@@ -281,7 +282,7 @@ public partial class MarkdownRendererControl
                     try
                     {
                         adopted = adoption.NewPlan.AdoptRealizedFromRasterCandidate(
-                            adoption.OldPlan, _embedContext, candidate, generation, candidate.LayoutRevision, epoch);
+                            adoption.OldPlan, _embeds.Context, candidate, generation, candidate.LayoutRevision, epoch);
                     }
                     catch (Exception exception)
                     {
@@ -296,7 +297,7 @@ public partial class MarkdownRendererControl
 
                     if (adopted && adoption.NewPlan.Realized is { } adoptedElement &&
                         !adoption.NewPlan.IsCurrentRasterActionOwner(
-                            _embedContext, candidate, generation, candidate.LayoutRevision, epoch, adoptedElement))
+                            _embeds.Context.Host, candidate, generation, candidate.LayoutRevision, epoch, adoptedElement))
                         break;
 
                     if (!adopted && IsCurrentRasterCodeActionPublication(
@@ -307,7 +308,7 @@ public partial class MarkdownRendererControl
                         {
                             try
                             {
-                                adoption.NewPlan.Derealize(_embedContext);
+                                adoption.NewPlan.Derealize(_embeds.Context);
                             }
                             catch (Exception exception)
                             {
@@ -318,9 +319,7 @@ public partial class MarkdownRendererControl
                         if (!IsCurrentRasterCodeActionPublication(
                                 candidate, generation, candidate.LayoutRevision, epoch))
                             break;
-                        _activeCodeBlockActionOrdinals?.Remove(adoption.NewOrdinal);
-                        _codeBlockActionRects.RemoveAll(
-                            rect => ReferenceEquals(rect.Box, adoption.NewPlan.Box));
+                        _embeds.ForgetCodeBlockAction(adoption.NewOrdinal, adoption.NewPlan.Box);
                     }
                 }
 
@@ -339,7 +338,7 @@ public partial class MarkdownRendererControl
                     {
                         try
                         {
-                            oldPlan.Derealize(_embedContext);
+                            oldPlan.Derealize(_embeds.Context);
                         }
                         catch (Exception exception)
                         {
@@ -384,7 +383,7 @@ public partial class MarkdownRendererControl
             // viewport. Reconcile the new index now, without waiting for a
             // subsequent scroll to realize newly visible Copy buttons or trim
             // constructor-acquired offscreen image leases.
-            RealizeVisibleEmbeds();
+            _embeds.RealizeVisible();
             if (!IsCurrentRasterCodeActionPublication(
                     candidate, generation, candidate.LayoutRevision, epoch))
                 return true;
@@ -422,7 +421,7 @@ public partial class MarkdownRendererControl
 
     private bool TryPrepareCodeBlockActionPublication(
         RasterPlacementPlan plan,
-        out List<CodeBlockActionPlan> oldCodeActionPlans)
+        out IReadOnlyList<CodeBlockActionPlan> oldCodeActionPlans)
     {
         oldCodeActionPlans = null!;
         CodeBlockPlacementIdentity[]? codePlacements = plan.CodePlacements;
@@ -434,10 +433,10 @@ public partial class MarkdownRendererControl
         if (codePlacements is null || candidatePlans is null || actionSources is null ||
             placementIndices is null || actionRects is null || activeOrdinals is null ||
             candidatePlans.Count != actionSources.Count || candidatePlans.Count != placementIndices.Length ||
-            candidatePlans.Count != _codeBlockActionPlans.Count)
+            candidatePlans.Count != _embeds.CodeBlockActionPlans.Count)
             return false;
 
-        List<CodeBlockActionPlan> oldPlans = _codeBlockActionPlans;
+        IReadOnlyList<CodeBlockActionPlan> oldPlans = _embeds.CodeBlockActionPlans;
         List<(CodeBlockActionPlan OldPlan, CodeBlockActionPlan NewPlan, int NewOrdinal)>? adoptions = plan.CodeActionAdoptions;
         adoptions?.Clear();
         actionRects.Clear();

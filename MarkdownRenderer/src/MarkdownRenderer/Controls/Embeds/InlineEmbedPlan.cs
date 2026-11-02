@@ -33,7 +33,7 @@ internal sealed class InlineEmbedPlan : EmbedPlan
                 return;
             fe.KeyDown += context.HostedKeyDown;
             context.Surface.Overlay!.Children.Add(fe);
-            // _embedRects rebuilt in RealizeVisibleEmbeds.
+            // EmbedHitTargets is rebuilt by the next visible-realization pass.
         }
         catch (Exception ex)
         {

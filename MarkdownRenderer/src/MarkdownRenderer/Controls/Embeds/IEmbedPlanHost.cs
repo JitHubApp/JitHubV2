@@ -9,7 +9,7 @@ using Windows.Foundation;
 namespace MarkdownRenderer.Controls.Embeds;
 
 /// <summary>
-/// What embed and code block action plans need from the control: the copy
+/// What embed and code block action plans need from their owner: the copy
 /// button pool, the pipeline's currency, focus restoration and the hosted
 /// element fallback.
 /// </summary>

@@ -441,13 +441,22 @@ public sealed class AutomationHarnessSourceContractTests
             "MarkdownRenderer",
             "Controls",
             "MarkdownRendererControl.cs"));
+        string embedSource = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "MarkdownRenderer",
+            "src",
+            "MarkdownRenderer",
+            "Controls",
+            "Embeds",
+            "EmbedRealization.cs"));
 
-        Assert.Contains("foreach (var (imageRun, _) in icb.InlineImageRuns)", source, StringComparison.Ordinal);
-        Assert.Contains("AddImagePlan(imageRun.Image);", source, StringComparison.Ordinal);
-        Assert.Contains("foreach (var _ in icb.EnumerateInlineImageRects())", source, StringComparison.Ordinal);
+        Assert.Contains("foreach (var (imageRun, _) in icb.InlineImageRuns)", embedSource, StringComparison.Ordinal);
+        Assert.Contains("_host.AddImagePlan(imageRun.Image);", embedSource, StringComparison.Ordinal);
+        Assert.Contains("foreach (var _ in icb.EnumerateInlineImageRects())", embedSource, StringComparison.Ordinal);
         Assert.True(
-            source.IndexOf("AddImagePlan(imageRun.Image);", StringComparison.Ordinal) <
-            source.IndexOf("foreach (var _ in icb.EnumerateInlineImageRects())", StringComparison.Ordinal));
+            embedSource.IndexOf("_host.AddImagePlan(imageRun.Image);", StringComparison.Ordinal) <
+            embedSource.IndexOf("foreach (var _ in icb.EnumerateInlineImageRects())", StringComparison.Ordinal));
+        Assert.Contains("void IEmbedRealizationHost.AddImagePlan(ImageBox image) => AddImagePlan(image);", source, StringComparison.Ordinal);
         Assert.Contains("if (!RegisterImage(image))", source, StringComparison.Ordinal);
         Assert.Contains("image.LoadCompleted += OnImageLoadCompleted;", source, StringComparison.Ordinal);
         Assert.Contains("_subscribedImages.Contains(completedImage)", source, StringComparison.Ordinal);
@@ -556,8 +565,8 @@ public sealed class AutomationHarnessSourceContractTests
         string process = controlSource[processStart..automationStart];
         Assert.Contains("_rebuildCoordinator.HasPendingOrBuilding", process, StringComparison.Ordinal);
         Assert.Contains("snapshot.TopLevelBlockCount is > 0 and <= LayoutSnapshot.MaximumPrivateRasterPlacementRoots", process, StringComparison.Ordinal);
-        Assert.Contains("_embedPlans.Count == 0 &&", process, StringComparison.Ordinal);
-        Assert.DoesNotContain("_codeBlockActionPlans.Count == 0", process, StringComparison.Ordinal);
+        Assert.Contains("_embeds.EmbedPlans.Count == 0 &&", process, StringComparison.Ordinal);
+        Assert.DoesNotContain("CodeBlockActionPlans.Count == 0", process, StringComparison.Ordinal);
         Assert.Contains("ImageRelayoutBatch.CapturePendingIndices(", process, StringComparison.Ordinal);
         Assert.Contains("private readonly SortedSet<int> _pendingImageRelayoutBlockIndices = [];", controlSource, StringComparison.Ordinal);
         Assert.Contains("optedIn: session is not null", process, StringComparison.Ordinal);
