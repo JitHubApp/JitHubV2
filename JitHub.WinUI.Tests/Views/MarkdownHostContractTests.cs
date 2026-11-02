@@ -277,7 +277,9 @@ public sealed class MarkdownHostContractTests
         string layoutSetup = File.ReadAllText(Path.Combine(
             root, "MarkdownRenderer", "src", "MarkdownRenderer", "Controls", "Pipeline", "RebuildLayoutSetup.cs"));
         Assert.Contains("DisclosureStates = inputs.DisclosureStates", layoutSetup, StringComparison.Ordinal);
-        Assert.Contains("TryActivateDisclosure", control, StringComparison.Ordinal);
+        string linkActivation = File.ReadAllText(Path.Combine(
+            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Controls", "Input", "LinkActivation.cs"));
+        Assert.Contains("TryActivateDisclosure", linkActivation, StringComparison.Ordinal);
         Assert.Contains("DisclosureToggled?.Invoke", control, StringComparison.Ordinal);
         Assert.Contains("IExpandCollapseProvider", peer, StringComparison.Ordinal);
         Assert.Contains("PatternInterface.ExpandCollapse", peer, StringComparison.Ordinal);

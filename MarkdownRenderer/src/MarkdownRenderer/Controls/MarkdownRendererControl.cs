@@ -39,6 +39,7 @@ using MarkdownRenderer.Controls.Images;
 using MarkdownRenderer.Controls.Rendering;
 using MarkdownRenderer.Controls.Input;
 using MarkdownRenderer.Controls.LazyLayout;
+using MarkdownRenderer.Controls.Navigation;
 using MarkdownRenderer.Controls.Pipeline;
 using MarkdownRenderer.Controls.Readiness;
 using MarkdownRenderer.Controls.Selection;
@@ -63,7 +64,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     IImageRelayoutHost, IImageLoadCompletionHost, IVectorCapacityRetryHost,
     ILazyLayoutHost, ILayoutCommitHost, IFocusableItemsPublicationHost,
     IRebuildSchedulerHost, IRebuildLayoutSetupHost, ICanvasTilePainterHost,
-    IDeferredSceneReadinessHost
+    IDeferredSceneReadinessHost, ILinkActivationHost
 {
     private readonly MarkdownViewSurface _surface;
     private readonly MarkdownViewLifetime _lifetime = new();
@@ -101,6 +102,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private readonly CanvasTilePainter _painter;
     private readonly VisibleImageReadiness _imageReadiness;
     private readonly DeferredSceneReadiness _deferredScenes;
+    private readonly BlockScrollNavigation _blockScroll;
+    private readonly LinkActivation _links;
     private CancellationTokenSource? _imageLifetimeCts;
     private readonly MarkdownAutomationDocumentGeneration _automationDocumentGenerations = new();
 #if MARKDOWN_LAYOUT_DIAGNOSTICS
@@ -122,7 +125,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     // exact snapshot generation and layout revision. The attempt epoch also
     // invalidates a plan while a same-snapshot rebuild is being transferred.
     private readonly HostedFocusPlanPublication _hostedFocusPlan = new();
-    private (LayoutSnapshot Snapshot, long SnapshotGeneration, int BlockIndex)? _pendingScrollToBlock;
     private bool _selectionAutomationEventQueued;
     private float _lastWidth;
     private static readonly MarkdownTheme _defaultTheme = new();
@@ -963,7 +965,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     internal void RaiseLinkedAtomicClickFromAutomation(InlineRun run)
     {
         if (LinkTargets.TryCreateLinkedAtomicTarget(run, out LinkTarget target))
-            DispatchAutomationLinkActivation(target);
+            _links.ActivateFromAutomation(target);
     }
 
     internal void SetDisclosureExpanded(LinkRun run, bool expanded)
@@ -1130,27 +1132,13 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             return;
 
         var semantic = box.GetSemanticItem(semanticIndex);
-        DispatchAutomationLinkActivation(new LinkTarget(
+        _links.ActivateFromAutomation(new LinkTarget(
             link.Target ?? string.Empty,
             semantic?.Description,
             semantic?.SourceSpan ?? box.SourceRange,
             null,
             link.Action,
             link.External));
-    }
-
-    private void DispatchAutomationLinkActivation(LinkTarget target)
-    {
-        void Activate() => ActivateLinkTarget(
-            target,
-            MarkdownLinkInputKind.Automation,
-            MarkdownInputModifiers.None);
-
-        var dispatcher = DispatcherQueue;
-        if (dispatcher is not null && !dispatcher.HasThreadAccess)
-            dispatcher.TryEnqueue(Activate);
-        else
-            Activate();
     }
 
     internal bool TryGetAutomationScrollMetrics(
@@ -1524,6 +1512,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _focusEntry = new RendererFocusEntry(this, _lifetime, _focus, _focusRing, _focusCommit, _navigator, DispatcherQueue);
         _layoutPublisher = new LayoutCommitPublisher(this, _lifetime, _published, _layoutCommit, _surface, _recoveryClock, _pointerInput, _embeds, _imageSubscriptions, _imagePlans, _imageResidency, _focus, _focusRing, _focusCommit, _focusRefresh, _hostedFocusPlan);
         _lazyLayout = new LazyLayoutRealization(this, _lifetime, _published, _layoutCommit, _layoutPublisher, _surface, _viewport, _recoveryClock, _vectorCapacity, _pointerInput, _focus, _focusCommit);
+        _blockScroll = new BlockScrollNavigation(_lifetime, _published, _surface, _viewport, _lazyLayout, _reveal, rect => BringDocumentRectIntoExternalViewport(rect, animate: false));
+        _links = new LinkActivation(this, _blockScroll);
         _deferredScenes = new DeferredSceneReadiness(this, _lifetime, _published, _viewport, _rebuild);
         _imageReadiness = new VisibleImageReadiness(_published, _imagePlans, _viewport);
         _painter = new CanvasTilePainter(this, _lifetime, _published, _surface, _lazyLayout, _deviceRecovery, _rebuild, _deferredScenes);
@@ -1839,7 +1829,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     bool IPointerInteractionHost.IsSelectionEnabled => IsSelectionEnabled;
 
     bool IPointerInteractionHost.IsCurrentScrollTarget(LayoutSnapshot snapshot, long snapshotGeneration, long layoutRevision)
-        => IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision);
+        => _blockScroll.IsCurrentTarget(snapshot, snapshotGeneration, layoutRevision);
 
     void IPointerInteractionHost.CancelPendingTouchSelectionRestore()
         => _pendingTouchSelectionPresentationRestore = null;
@@ -1901,7 +1891,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         LayoutSnapshot snapshot,
         long snapshotGeneration,
         long layoutRevision)
-        => ActivateLinkIntent(intent, snapshot, snapshotGeneration, layoutRevision);
+        => _links.ActivateIntent(intent, snapshot, snapshotGeneration, layoutRevision);
 
     CancellationToken IEmbedRealizationHost.PipelineToken => _rebuild.Token;
 
@@ -2067,7 +2057,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         LinkTarget link,
         MarkdownLinkInputKind inputKind,
         MarkdownInputModifiers modifiers)
-        => ActivateLinkTarget(link, inputKind, modifiers);
+        => _links.Activate(link, inputKind, modifiers);
 
     MarkdownAutomationPeer? IFocusedItemCommitHost.GetOrCreateAutomationPeer()
         => FrameworkElementAutomationPeer.FromElement(this) as MarkdownAutomationPeer
@@ -2254,7 +2244,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     void ILazyLayoutHost.HandleDeviceLost(Exception failure) => _deviceRecovery.HandleDeviceLost(failure);
 
     void ILazyLayoutHost.TryResumePendingScrollToBlock(LayoutSnapshot snapshot, long snapshotGeneration) =>
-        TryResumePendingScrollToBlock(snapshot, snapshotGeneration);
+        _blockScroll.TryResumePending(snapshot, snapshotGeneration);
 
     void ILazyLayoutHost.NotifyVisibleDeferredSceneItemStatusMayHaveChanged() =>
         _deferredScenes.NotifyItemStatusMayHaveChanged();
@@ -2289,7 +2279,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     void ILayoutCommitHost.InvalidateCanvas() => InvalidateCanvas();
 
     void ILayoutCommitHost.TryResumePendingScrollToBlock(LayoutSnapshot snapshot, long snapshotGeneration) =>
-        TryResumePendingScrollToBlock(snapshot, snapshotGeneration);
+        _blockScroll.TryResumePending(snapshot, snapshotGeneration);
 
     bool IFocusableItemsPublicationHost.RequestGeometryRecoveryIfRequired(LayoutSnapshot? snapshot) =>
         RequestGeometryRecoveryIfRequired(snapshot);
@@ -2371,6 +2361,16 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     MarkdownAutomationPeer? IDeferredSceneReadinessHost.FindAutomationPeer() =>
         FrameworkElementAutomationPeer.FromElement(this) as MarkdownAutomationPeer;
+
+    IMarkdownCommandProvider? ILinkActivationHost.CommandProvider => CommandProvider;
+
+    void ILinkActivationHost.SetDisclosureExpanded(LinkRun run, bool expanded) =>
+        SetDisclosureExpanded(run, expanded);
+
+    void ILinkActivationHost.SetDisclosureExpanded(string disclosureId, bool expanded) =>
+        SetDisclosureExpanded(disclosureId, expanded);
+
+    void ILinkActivationHost.RaiseLinkClick(MarkdownLinkClickEventArgs args) => LinkClick?.Invoke(this, args);
 
     double IDeferredGestureLayoutHost.RasterizationScale => XamlRoot?.RasterizationScale ?? 1;
 
@@ -2610,7 +2610,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _cancellationRetirement.Retire(oldImageLifetimeCts, lifetime: null);
         _imageRelayout.Retire();
         _lazyLayout.ResetScrollVelocity();
-        _pendingScrollToBlock = null;
+        _blockScroll.ClearPending();
         _selectionAutomationEventQueued = false;
         _overflowScroll.ClearAutomationNotifications();
         _highlighting.Retire(restart: false);
@@ -3270,7 +3270,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         ClearPendingFocusGeometryWork();
         _imageSubscriptions.UnsubscribeAll();
         _imageRelayout.ClearForSnapshotReplacement();
-        _pendingScrollToBlock = null;
+        _blockScroll.ClearPending();
         _imagePlans.Publication = null;
         if (!sameDocument)
         {
@@ -3945,113 +3945,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             focusedBox.PaintLinkStateForeground(drawingSession, focusedLink, focused: true, viewport);
     }
 
-    private bool ActivateLinkIntent(
-        LinkActivationIntent intent,
-        LayoutSnapshot snapshot,
-        long snapshotGeneration,
-        long layoutRevision)
-    {
-        bool IsCurrent() => IsCurrentScrollTarget(
-            snapshot,
-            snapshotGeneration,
-            layoutRevision);
-
-        if (!IsCurrent())
-            return false;
-
-        if (intent.DisclosureId is { Length: > 0 } disclosureId)
-        {
-            SetDisclosureExpanded(disclosureId, intent.DisclosureExpanded);
-            return true;
-        }
-
-        return ActivateLinkTarget(
-            new LinkTarget(
-                intent.Url,
-                intent.Title,
-                intent.SourceSpan,
-                run: null,
-                action: intent.Action,
-                external: intent.External),
-            intent.InputKind,
-            intent.Modifiers,
-            IsCurrent);
-    }
-
-    private bool ActivateLinkTarget(
-        LinkTarget link,
-        MarkdownLinkInputKind inputKind,
-        MarkdownInputModifiers modifiers,
-        Func<bool>? isCurrent = null)
-    {
-        if (isCurrent is not null && !isCurrent())
-            return false;
-
-        if (TryActivateDisclosure(link.Run))
-            return true;
-        if (isCurrent is not null && !isCurrent())
-            return false;
-
-        // Intercept internal fragment anchors (e.g. footnote back/forward
-        // links) and scroll without surfacing them to external subscribers.
-        bool internalTargetHandled =
-            link.Url.StartsWith("#", StringComparison.Ordinal) &&
-            HandleInternalAnchor(link.Url);
-        if (isCurrent is not null && !isCurrent())
-            return false;
-
-        MarkdownLinkActivationDecision decision;
-        try
-        {
-            IMarkdownCommandProvider? commandProvider = CommandProvider;
-            decision = isCurrent is null
-                ? MarkdownLinkActivationPolicy.Evaluate(
-                    inputKind,
-                    internalTargetHandled,
-                    commandProvider,
-                    link.SourceSpan,
-                    link.Url,
-                    link.Action)
-                : MarkdownLinkActivationPolicy.Evaluate(
-                    inputKind,
-                    internalTargetHandled,
-                    commandProvider,
-                    link.SourceSpan,
-                    link.Url,
-                    link.Action,
-                    isCurrent);
-        }
-        catch (Exception ex)
-        {
-            // Provider failures must not make built-in link activation vanish.
-            MarkdownDiagnostics.WriteLine(
-                $"[MarkdownRendererControl] Host activation command failed: {ex.Message}");
-            if (isCurrent is not null && !isCurrent())
-                return false;
-            decision = MarkdownLinkActivationPolicy.CreateHostFallback(inputKind);
-        }
-
-        if (isCurrent is not null && !isCurrent())
-            return false;
-        if (decision.IsHandled)
-            return true;
-
-        if (isCurrent is not null && !isCurrent())
-            return false;
-
-        LinkClick?.Invoke(this, new MarkdownLinkClickEventArgs(
-            link.Url,
-            link.Title,
-            link.SourceSpan,
-            decision.InputKind,
-            modifiers,
-            link.External
-                ? MarkdownLinkDisposition.External
-                : LinkTargets.GetRequestedDisposition(modifiers),
-            link.Action));
-        return true;
-    }
-
     private void ResumePendingRebuildAfterPointerInteraction()
     {
         _rebuild.QueuePendingIfIdle();
@@ -4063,143 +3956,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     /// Scrolls the document so the block with <paramref name="blockIndex"/>
     /// is near the top of the viewport.
     /// </summary>
-    public void ScrollToBlock(int blockIndex)
-    {
-        _reveal.NoteViewportRequest();
-        if (_published.Snapshot is not { } snapshot) return;
-        long snapshotGeneration = _published.Generation;
-        SnapshotBlockScrollTargetState targetState = snapshot.TryCaptureBlockScrollTarget(
-            blockIndex,
-            out SnapshotBlockScrollTarget target);
-        if (targetState == SnapshotBlockScrollTargetState.Busy)
-        {
-            _pendingScrollToBlock = (snapshot, snapshotGeneration, blockIndex);
-            return;
-        }
-
-        if (targetState is SnapshotBlockScrollTargetState.NotFound or SnapshotBlockScrollTargetState.Unavailable)
-        {
-            ClearPendingScrollToBlock(snapshot, snapshotGeneration, blockIndex);
-            return;
-        }
-
-        if (!IsCurrentScrollTarget(snapshot, snapshotGeneration, target.LayoutRevision))
-            return;
-
-        double targetTop = target.TargetTop;
-        if (targetState == SnapshotBlockScrollTargetState.RequiresRealization)
-        {
-            // The requested descendant's old coordinates are not authoritative
-            // until its top-level owner is measured. Scroll to the owner's
-            // committed estimate now, then retry this exact block after the
-            // asynchronous layout result publishes.
-            _pendingScrollToBlock = (snapshot, snapshotGeneration, blockIndex);
-            LazyLayoutBand visibleVectorBand = _viewport.GetVisibleBand();
-            _lazyLayout.QueueForBand(
-                snapshot,
-                LazyLayoutBand.Union(
-                    new LazyLayoutBand(target.OwnerTop, Math.Max(target.OwnerTop + 1, target.OwnerBottom)),
-                    visibleVectorBand),
-                visibleVectorBand,
-                preserveScrollAnchor: false);
-        }
-        else
-        {
-            ClearPendingScrollToBlock(snapshot, snapshotGeneration, blockIndex);
-        }
-
-        // Queueing can start worker measurement immediately. Do not apply a
-        // captured offset after a newer geometry or document generation won.
-        if (!IsCurrentScrollTarget(snapshot, snapshotGeneration, target.LayoutRevision))
-            return;
-
-        if (_surface.Scroll is not null)
-            _surface.Scroll.ChangeView(null, Math.Max(0, targetTop - 24), null, disableAnimation: true);
-        else
-            BringDocumentRectIntoExternalViewport(
-                new Rect(0, Math.Max(0, targetTop - 24), 1, Math.Max(1, target.OwnerHeight)),
-                animate: false);
-    }
-
-    private bool IsCurrentScrollTarget(LayoutSnapshot snapshot, long snapshotGeneration, long layoutRevision) =>
-        !_lifetime.IsDisposed && !_lifetime.IsUnloaded &&
-        _published.IsCurrent(snapshot, snapshotGeneration, layoutRevision);
-
-    private void ClearPendingScrollToBlock(LayoutSnapshot snapshot, long snapshotGeneration, int blockIndex)
-    {
-        if (_pendingScrollToBlock is { } pending &&
-            ReferenceEquals(pending.Snapshot, snapshot) &&
-            pending.SnapshotGeneration == snapshotGeneration &&
-            pending.BlockIndex == blockIndex)
-        {
-            _pendingScrollToBlock = null;
-        }
-    }
-
-    private void TryResumePendingScrollToBlock(LayoutSnapshot snapshot, long snapshotGeneration)
-    {
-        if (_pendingScrollToBlock is not { } pending)
-            return;
-
-        if (!ReferenceEquals(pending.Snapshot, snapshot) ||
-            pending.SnapshotGeneration != snapshotGeneration ||
-            !IsCurrentScrollTarget(snapshot, snapshotGeneration, snapshot.LayoutRevision))
-        {
-            ClearPendingScrollToBlock(pending.Snapshot, pending.SnapshotGeneration, pending.BlockIndex);
-            return;
-        }
-
-        _pendingScrollToBlock = null;
-        ScrollToBlock(pending.BlockIndex);
-    }
-
-    /// <summary>
-    /// Handles internal fragment navigation URLs (e.g. <c>#footnote-def-1</c>,
-    /// <c>#footnote-ref-1</c>) by scrolling to the target block directly.
-    /// </summary>
-    private bool HandleInternalAnchor(string url)
-    {
-        if (_published.Snapshot is null) return false;
-        // Resolve block index from footnote registry stored on the layout context.
-        // The registry is embedded in the LayoutSnapshot's block tree; walk to find
-        // the first InlineContainerBox whose block carries the matching footnote tag.
-        // We look for a special metadata property set by FootnoteRenderer.
-        //   #footnote-def-{order}  → scroll to the definition box
-        //   #footnote-ref-{order}  → scroll to the inline citation box
-        const string defPrefix = "#footnote-def-";
-        const string refPrefix = "#footnote-ref-";
-        bool isDef = url.StartsWith(defPrefix, StringComparison.OrdinalIgnoreCase);
-        bool isRef = url.StartsWith(refPrefix, StringComparison.OrdinalIgnoreCase);
-        if (isDef || isRef)
-        {
-            string orderStr = isDef ? url.Substring(defPrefix.Length) : url.Substring(refPrefix.Length);
-            if (!int.TryParse(orderStr, out int order)) return false;
-
-            // Walk blocks looking for the tagged block index stored in the
-            // footnote index dictionary on the snapshot.
-            int? targetIndex = isDef
-                ? _published.Snapshot.FootnoteDefBlock(order)
-                : _published.Snapshot.FootnoteRefBlock(order);
-            if (targetIndex is { } idx)
-            {
-                ScrollToBlock(idx);
-                return true;
-            }
-            return false;
-        }
-
-        if (url.StartsWith("#", StringComparison.Ordinal))
-        {
-            var id = Uri.UnescapeDataString(url.Substring(1));
-            if (_published.Snapshot.FragmentTargetBlock(id) is { } idx)
-            {
-                ScrollToBlock(idx);
-                return true;
-            }
-        }
-
-        return false;
-    }
+    public void ScrollToBlock(int blockIndex) => _blockScroll.ScrollTo(blockIndex);
 
     private void OnKeyDown(object sender, KeyRoutedEventArgs e)
     {
@@ -4284,20 +4041,5 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         return _published.Snapshot is { } snapshot
             ? LinkTargets.FindLinkTargetAt(snapshot, pos, point)
             : null;
-    }
-
-    // ---- Word / line selection helpers ----
-
-    // ---- Right-click context menu ----
-
-    private bool TryActivateDisclosure(LinkRun? run)
-    {
-        if (run is not { IsDisclosure: true })
-        {
-            return false;
-        }
-
-        SetDisclosureExpanded(run, !run.IsExpanded);
-        return true;
     }
 }
