@@ -135,7 +135,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private SizeChangedEventHandler? _sizeChangedHandler;
     private readonly SelectionController _selection = new();
     private readonly MarkdownTouchSelectionSession _touchSelection = new();
-    private TouchSelectionPresentationRestoreIntent? _pendingTouchSelectionPresentationRestore;
+    private readonly TouchSelectionRestore _touchRestore;
     private readonly TouchTapSuppressionPolicy _touchTapSuppression = new();
 
 
@@ -1469,6 +1469,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private protected MarkdownRendererControl(bool ownsScrollViewport)
     {
         _cancellationRetirement = new PipelineCancellationRetirement(_snapshotRetirements);
+        _touchRestore = new TouchSelectionRestore(_published, _selection, _touchSelection);
         _surface = new MarkdownViewSurface(ownsScrollViewport);
         _windowDestroying = new WindowDestroyingWatch(this, _lifetime);
         _recoveryClock = new RecoveryClock(this, _lifetime);
@@ -1674,7 +1675,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // semantics while its input queue is being discarded. The committed
         // document selection remains governed by the normal rebuild commit;
         // only touch ownership, handles, flyouts, and pending input are reset.
-        _pendingTouchSelectionPresentationRestore = null;
+        _touchRestore.Cancel();
         _touchTapSuppression.Reset();
         _pointerInput.Reset();
         ResetTransientInteractionState(clearSelection: false);
@@ -1807,7 +1808,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         => ResumePendingRebuildAfterPointerInteraction();
 
     void ISelectionHandlesHost.CancelPendingTouchSelectionRestore()
-        => _pendingTouchSelectionPresentationRestore = null;
+        => _touchRestore.Cancel();
 
     bool ISelectionContextMenuHost.IsSelectionEnabled => IsSelectionEnabled;
 
@@ -1832,7 +1833,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         => _blockScroll.IsCurrentTarget(snapshot, snapshotGeneration, layoutRevision);
 
     void IPointerInteractionHost.CancelPendingTouchSelectionRestore()
-        => _pendingTouchSelectionPresentationRestore = null;
+        => _touchRestore.Cancel();
 
     void IPointerInteractionHost.RememberFocusResumePoint(Point documentPoint)
         => _focusGeometryWork.RememberResumePoint(documentPoint);
@@ -2313,11 +2314,11 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     void IRebuildSchedulerHost.ResetInteractionForRebuild()
     {
-        CaptureTouchSelectionPresentationRestoreIntent();
+        _touchRestore.Capture();
         ResetTransientInteractionState(clearSelection: false);
     }
 
-    void IRebuildSchedulerHost.DiscardTouchSelectionRestore() => _pendingTouchSelectionPresentationRestore = null;
+    void IRebuildSchedulerHost.DiscardTouchSelectionRestore() => _touchRestore.Cancel();
 
     Task IRebuildSchedulerHost.RunRebuildAsync(
         CancellationToken ct,
@@ -2404,7 +2405,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         bool resetClickTracking = true,
         bool resetDeferredPointerInput = true)
     {
-        _pendingTouchSelectionPresentationRestore = null;
+        _touchRestore.Cancel();
         _touchTapSuppression.Reset();
         _contextMenu.Close();
         if (resetDeferredPointerInput)
@@ -2431,16 +2432,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void OnSelectionChanged()
     {
-        // SelectionController may publish a change notification for a
-        // presentation-only update. Keep a pending restore when the exact
-        // range is unchanged; a real range change invalidates it. Generation
-        // is intentionally checked at commit, because snapshot publication can
-        // notify automation before the restore phase finishes.
-        if (_pendingTouchSelectionPresentationRestore is { } restoreIntent &&
-            !restoreIntent.MatchesRange(_selection.Range))
-        {
-            _pendingTouchSelectionPresentationRestore = null;
-        }
+        _touchRestore.OnSelectionChanged();
 
         if (_selection.IsActive)
             MarkdownSelectionCoordinator.ClearSelectionsExcept(this);
@@ -2543,7 +2535,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // (e.g. from image load completions) that are already in-flight know
         // not to call RequestRebuild after we've torn down.
         _lifetime.MarkUnloaded();
-        _pendingTouchSelectionPresentationRestore = null;
+        _touchRestore.Cancel();
         // Keep the recognizer barrier while the owner epoch is still intact.
         // A queued Cancel must apply its per-contact selection disposition
         // before that identity is discarded; a queued Release keeps selection.
@@ -2682,7 +2674,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             return;
 
         _lifetime.MarkDisposing();
-        _pendingTouchSelectionPresentationRestore = null;
+        _touchRestore.Cancel();
         _touchTapSuppression.Reset();
         _deviceRecovery.Stop();
         _handles.ResetDrag();
@@ -2860,30 +2852,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
         ThemeResolver.InvalidateResourceKeyCache();
         RequestRebuild(RebuildReason.Restyle);
-    }
-
-    private void CaptureTouchSelectionPresentationRestoreIntent()
-    {
-        if (_published.Snapshot is null || !_selection.IsActive)
-        {
-            _pendingTouchSelectionPresentationRestore = null;
-            return;
-        }
-
-        long snapshotGeneration = _published.Generation;
-        DocumentRange selectionRange = _selection.Range.Normalized();
-        if (_touchSelection.ShouldShowHandles)
-        {
-            _pendingTouchSelectionPresentationRestore =
-                new TouchSelectionPresentationRestoreIntent(snapshotGeneration, selectionRange);
-            return;
-        }
-
-        if (_pendingTouchSelectionPresentationRestore is not { } pending ||
-            !pending.Matches(snapshotGeneration, selectionRange))
-        {
-            _pendingTouchSelectionPresentationRestore = null;
-        }
     }
 
     private Task RetireOwnedEngine(MarkdownEngine engine)
@@ -3218,8 +3186,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // this UI-thread commit wait for an in-flight lazy measure.
         var old = _published.Snapshot;
         long touchSelectionRestoreSourceGeneration = _published.Generation;
-        TouchSelectionPresentationRestoreIntent? touchSelectionRestoreIntent =
-            _pendingTouchSelectionPresentationRestore;
+        TouchSelectionPresentationRestoreIntent? touchSelectionRestoreIntent = _touchRestore.Pending;
         var automationDocumentIdentity = plan.CreateAutomationDocumentIdentity(snapshot);
         bool sameAutomationDocument = _automationDocumentGenerations.IsCurrent(automationDocumentIdentity);
         bool sameDocument = old is not null && sameDocumentIdentity &&
@@ -3392,41 +3359,13 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // Rebuild detaches selection chrome with the other overlay children.
         // Surviving selection reattaches what it needs below; inactive chrome
         // stays detached until the next interaction.
-        bool restoreTouchSelectionPresentation = false;
         if (publication.PreserveSelection)
         {
-            // Snapshot publication and dependency-property callbacks above can
-            // reenter selection or request a newer rebuild. Revalidate the
-            // original token against live state at the point of use rather
-            // than relying on eligibility captured before those callbacks.
-            bool touchSelectionRestoreStillMatches =
-                _selection.IsActive &&
-                publication.TouchSelectionRestoreIntent is { } capturedRestoreIntent &&
-                _pendingTouchSelectionPresentationRestore is { } currentRestoreIntent &&
-                currentRestoreIntent == capturedRestoreIntent &&
-                capturedRestoreIntent.Matches(
-                    publication.TouchSelectionRestoreSourceGeneration,
-                    _selection.Range);
-            bool hasPendingRebuild = _rebuild.HasPending;
-
-            if (touchSelectionRestoreStillMatches && !hasPendingRebuild)
-            {
-                restoreTouchSelectionPresentation =
-                    _touchSelection.TryRestoreSelectedPresentation();
-                _pendingTouchSelectionPresentationRestore = null;
-            }
-            else if (touchSelectionRestoreStillMatches && hasPendingRebuild)
-            {
-                // Rebase only across a successful same-document commit while a
-                // newer rebuild is already queued. The request stays bound to
-                // this exact range and the just-published snapshot.
-                _pendingTouchSelectionPresentationRestore =
-                    new TouchSelectionPresentationRestoreIntent(generation, _selection.Range);
-            }
-            else
-            {
-                _pendingTouchSelectionPresentationRestore = null;
-            }
+            bool restoreTouchSelectionPresentation = _touchRestore.TryRestoreAfterReplacement(
+                publication.TouchSelectionRestoreIntent,
+                publication.TouchSelectionRestoreSourceGeneration,
+                generation,
+                _rebuild.HasPending);
 
             UpdateSelectionOverlay();
             if (restoreTouchSelectionPresentation)
@@ -3434,7 +3373,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         }
         else
         {
-            _pendingTouchSelectionPresentationRestore = null;
+            _touchRestore.Cancel();
             _selection.Clear();
         }
     }
