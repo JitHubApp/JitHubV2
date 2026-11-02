@@ -9,7 +9,7 @@ namespace MarkdownRenderer.GitHub.Tests;
 public sealed class ImageRelayoutPublicationRetentionTests
 {
     [Theory]
-    [InlineData("MarkdownRenderer.Controls.MarkdownRendererControl", "ReportImageRelayoutFailure")]
+    [InlineData("MarkdownRenderer.Controls.RelayoutDiagnostics", "ReportFailure")]
     [InlineData("MarkdownRenderer.Theming.MarkdownEnvironmentMonitor", "LogDetachFailure")]
     [InlineData("MarkdownRenderer.Performance.MarkdownPerformanceSession", "LogLeaseCleanupFailure")]
     public void CleanupDiagnosticsPreserveTheExistingDebugOnlyCallContract(string typeName, string methodName)
@@ -90,33 +90,39 @@ public sealed class ImageRelayoutPublicationRetentionTests
             field.FieldType == typeof(LayoutSnapshot) || field.FieldType == typeof(int[]));
     }
 
-    [Theory]
-    [InlineData("<QueueImageRelayout>")]
-    [InlineData("<StartImageRelayoutRecovery>")]
-    public void CompiledDispatchAndRecoveryCallbacksDoNotCaptureControlOrSnapshot(string callbackPrefix)
+    [Fact]
+    public void CompiledRelayoutDispatchCallbackDoesNotCaptureControlOrSnapshot()
     {
         const BindingFlags fields = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
         const BindingFlags methods = BindingFlags.Instance | BindingFlags.Static |
             BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
         Type control = typeof(MarkdownDocumentView).BaseType!;
-        var compiledCallbacks = control.GetNestedTypes(BindingFlags.NonPublic)
+        var callback = Assert.Single(control.GetNestedTypes(BindingFlags.NonPublic)
             .SelectMany(type => type.GetMethods(methods)
-                .Where(method => method.Name.StartsWith(callbackPrefix, StringComparison.Ordinal))
+                .Where(method => method.Name.StartsWith("<QueueImageRelayout>", StringComparison.Ordinal))
+                .Select(method => (Closure: type, Method: method))));
+
+        Assert.Contains(callback.Closure.GetFields(fields), field => field.FieldType.IsGenericType &&
+            field.FieldType.GetGenericTypeDefinition() == typeof(WeakReference<>));
+        Assert.DoesNotContain(callback.Closure.GetFields(fields), field =>
+            field.FieldType == control || field.FieldType == typeof(LayoutSnapshot) ||
+            field.FieldType == typeof(ImageRelayoutWorkPayload<LayoutSnapshot>));
+    }
+
+    [Fact]
+    public void CompiledRecoveryClockCallbacksDoNotCaptureClockControlOrSnapshot()
+    {
+        const BindingFlags fields = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        const BindingFlags methods = BindingFlags.Instance | BindingFlags.Static |
+            BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
+        Type control = typeof(MarkdownDocumentView).BaseType!;
+        Type clock = typeof(RecoveryClock);
+        var compiledCallbacks = clock.GetNestedTypes(BindingFlags.NonPublic)
+            .SelectMany(type => type.GetMethods(methods)
+                .Where(method => method.Name.StartsWith("<Start>", StringComparison.Ordinal))
                 .Select(method => (Closure: type, Method: method)))
             .ToArray();
 
-        if (callbackPrefix == "<QueueImageRelayout>")
-        {
-            var callback = Assert.Single(compiledCallbacks);
-            Assert.Contains(callback.Closure.GetFields(fields), field => field.FieldType.IsGenericType &&
-                field.FieldType.GetGenericTypeDefinition() == typeof(WeakReference<>));
-            Assert.DoesNotContain(callback.Closure.GetFields(fields), field =>
-                field.FieldType == control || field.FieldType == typeof(LayoutSnapshot) ||
-                field.FieldType == typeof(ImageRelayoutWorkPayload<LayoutSnapshot>));
-            return;
-        }
-
-        Assert.Equal("<StartImageRelayoutRecovery>", callbackPrefix);
         Assert.Equal(2, compiledCallbacks.Length);
         var nativeTick = Assert.Single(compiledCallbacks,
             callback => callback.Method.GetParameters().Length == 2);
@@ -131,7 +137,8 @@ public sealed class ImageRelayoutPublicationRetentionTests
         foreach (var callback in compiledCallbacks)
         {
             Assert.DoesNotContain(callback.Closure.GetFields(fields), field =>
-                field.FieldType == control || field.FieldType == typeof(LayoutSnapshot) ||
+                field.FieldType == clock || field.FieldType == control ||
+                field.FieldType == typeof(LayoutSnapshot) ||
                 field.FieldType == typeof(ImageRelayoutWorkPayload<LayoutSnapshot>));
         }
 
@@ -139,9 +146,10 @@ public sealed class ImageRelayoutPublicationRetentionTests
             "MarkdownRenderer.Controls.WeakRecoveryTimer`1", throwOnError: true)!;
         FieldInfo target = recoveryTimer.GetField("_target", fields)!;
         Assert.Equal(typeof(WeakReference<>), target.FieldType.GetGenericTypeDefinition());
-        Assert.DoesNotContain(recoveryTimer.GetFields(fields), field => field.FieldType == control);
-        MethodInfo sharedTick = control.GetMethod(
-            "ProcessImageRelayoutRecovery", BindingFlags.Static | BindingFlags.NonPublic)!;
+        Assert.DoesNotContain(recoveryTimer.GetFields(fields), field =>
+            field.FieldType == clock || field.FieldType == control);
+        MethodInfo sharedTick = clock.GetMethod(
+            "Tick", BindingFlags.Static | BindingFlags.NonPublic)!;
         Assert.True(sharedTick.IsStatic);
     }
 }

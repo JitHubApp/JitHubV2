@@ -154,7 +154,7 @@ public partial class MarkdownRendererControl
             return false;
         // UI-dispatcher-only, synchronous fence and swap. No host/XAML/native
         // callbacks intervene. Image publication readers verify snapshot identity.
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _publishingLayoutCommit || _deviceRecovery.IsQueued ||
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _layoutCommit.IsPublishing || _deviceRecovery.IsQueued ||
             _rebuildCoordinator.HasPendingOrBuilding || HasPendingLazyLayoutWork || _pointerInput.HasSnapshotInteraction ||
             !ReferenceEquals(source, _published.Snapshot) || generation != _published.Generation ||
             source.IsRetiringOrDisposed || source.LayoutRevision != owner.SourceRevision ||
@@ -199,7 +199,7 @@ public partial class MarkdownRendererControl
                 : null;
         plan.ResumeFocusIdentity = resumeFocusIdentity;
 
-        _publishingLayoutCommit = true;
+        _layoutCommit.BeginPublishing();
         bool sourceRetirementRequested = false;
         bool committed = false;
         try
@@ -217,8 +217,8 @@ public partial class MarkdownRendererControl
             plan.CodeActionIndex = null;
             plan.ActiveCodeActionOrdinals = null;
             plan.CodeActionRects = null;
-            _appliedLazyLayoutRevision = candidate.LayoutRevision;
-            _pendingLayoutCommit = null;
+            _layoutCommit.MarkApplied(candidate.LayoutRevision);
+            _layoutCommit.ClearPending();
             _hover.Clear();
             _abbreviationTooltip.ForgetTarget();
             long epoch = _hostedFocusPlan.Invalidate();
@@ -398,7 +398,7 @@ public partial class MarkdownRendererControl
             }
             finally
             {
-                _publishingLayoutCommit = false;
+                _layoutCommit.EndPublishing();
             }
         }
     }

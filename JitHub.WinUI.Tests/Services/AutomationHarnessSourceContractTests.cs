@@ -492,17 +492,17 @@ public sealed class AutomationHarnessSourceContractTests
 
         Assert.Contains("QueueImageRelayout(completedImage.BlockIndex);", controlSource, StringComparison.Ordinal);
         int queueStart = controlSource.IndexOf("private void QueueImageRelayout(", StringComparison.Ordinal);
-        int recoveryStart = controlSource.IndexOf("private void StartImageRelayoutRecovery(", queueStart, StringComparison.Ordinal);
-        Assert.True(queueStart >= 0 && recoveryStart > queueStart);
-        string queue = controlSource[queueStart..recoveryStart];
+        int recoveryTickStart = controlSource.IndexOf("private void ProcessRecoveryTick(", queueStart, StringComparison.Ordinal);
+        Assert.True(queueStart >= 0 && recoveryTickStart > queueStart);
+        string queue = controlSource[queueStart..recoveryTickStart];
         Assert.Contains("_pendingImageRelayoutBlockIndices.Add(blockIndex);", queue, StringComparison.Ordinal);
         Assert.Contains("if (_imageRelayoutQueued || _imageRelayoutActive)", queue, StringComparison.Ordinal);
-        Assert.Contains("StartImageRelayoutRecovery();", queue, StringComparison.Ordinal);
+        Assert.Contains("_recoveryClock.Start();", queue, StringComparison.Ordinal);
         int queuedFlag = queue.IndexOf("_imageRelayoutQueued = true;", StringComparison.Ordinal);
         Assert.True(queuedFlag >= 0);
-        int recoveryStartAfterQueue = queue.IndexOf("StartImageRelayoutRecovery();", queuedFlag, StringComparison.Ordinal);
+        int recoveryStartAfterQueue = queue.IndexOf("_recoveryClock.Start();", queuedFlag, StringComparison.Ordinal);
         Assert.True(recoveryStartAfterQueue > queuedFlag);
-        int missingRecoveryClock = queue.IndexOf("if (!HasImageRelayoutRecoveryClock)", recoveryStartAfterQueue, StringComparison.Ordinal);
+        int missingRecoveryClock = queue.IndexOf("if (!_recoveryClock.IsRunning)", recoveryStartAfterQueue, StringComparison.Ordinal);
         Assert.True(missingRecoveryClock > recoveryStartAfterQueue);
         int dispatcherCapture = queue.IndexOf("Microsoft.UI.Dispatching.DispatcherQueue? dispatcher = DispatcherQueue;", missingRecoveryClock, StringComparison.Ordinal);
         Assert.True(dispatcherCapture > missingRecoveryClock);
@@ -519,24 +519,40 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("control.ProcessQueuedImageRelayout(ticket);", dispatch, StringComparison.Ordinal);
         Assert.DoesNotContain("_pendingImageRelayoutBlockIndices.Clear();", dispatch, StringComparison.Ordinal);
 
+        string clockSource = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "MarkdownRenderer",
+            "src",
+            "MarkdownRenderer",
+            "Controls",
+            "RecoveryClock.cs")).Replace("\r\n", "\n", StringComparison.Ordinal);
         Assert.Contains(
-            "private bool HasImageRelayoutRecoveryClock => _imageRelayoutRecoveryTimer is not null ||\n        _managedImageRelayoutRecoveryTimer is not null;",
-            controlSource,
+            "internal bool IsRunning => _timer is not null || _managedTimer is not null;",
+            clockSource,
             StringComparison.Ordinal);
 
-        int recoveryMethodEnd = controlSource.IndexOf("private static void ProcessImageRelayoutRecovery(", recoveryStart, StringComparison.Ordinal);
-        Assert.True(recoveryMethodEnd > recoveryStart);
-        string recovery = controlSource[recoveryStart..recoveryMethodEnd];
-        Assert.Contains("if (HasImageRelayoutRecoveryClock || DispatcherQueue is not { } dispatcher)", recovery, StringComparison.Ordinal);
-        Assert.Contains("var receiver = new WeakReference<MarkdownRendererControl>(this);", recovery, StringComparison.Ordinal);
+        int recoveryStart = clockSource.IndexOf("internal void Start()", StringComparison.Ordinal);
+        int recoveryMethodEnd = clockSource.IndexOf("internal void Stop()", recoveryStart, StringComparison.Ordinal);
+        Assert.True(recoveryStart >= 0 && recoveryMethodEnd > recoveryStart);
+        string recovery = clockSource[recoveryStart..recoveryMethodEnd];
+        Assert.Contains("if (IsRunning || _host.DispatcherQueue is not { } dispatcher)", recovery, StringComparison.Ordinal);
+        Assert.Contains("var receiver = new WeakReference<RecoveryClock>(this);", recovery, StringComparison.Ordinal);
         Assert.Contains("dispatcher.CreateTimer()", recovery, StringComparison.Ordinal);
         Assert.Contains("timer.Tick +=", recovery, StringComparison.Ordinal);
-        Assert.Contains("!ReferenceEquals(sender, control._imageRelayoutRecoveryTimer)", recovery, StringComparison.Ordinal);
-        Assert.Contains("ProcessImageRelayoutRecovery(control);", recovery, StringComparison.Ordinal);
+        Assert.Contains("!ReferenceEquals(sender, clock._timer)", recovery, StringComparison.Ordinal);
+        Assert.Contains("Tick(clock);", recovery, StringComparison.Ordinal);
         Assert.Matches(
-            "_managedImageRelayoutRecoveryTimer\\s*=\\s*new\\(\\s*this,\\s*callback\\s*=>\\s*dispatcher\\.TryEnqueue\\(callback\\.Invoke\\),\\s*ProcessImageRelayoutRecovery,\\s*TimeSpan\\.FromMilliseconds\\(100\\)\\);",
+            "_managedTimer\\s*=\\s*new\\(\\s*this,\\s*callback\\s*=>\\s*dispatcher\\.TryEnqueue\\(callback\\.Invoke\\),\\s*Tick,\\s*TimeSpan\\.FromMilliseconds\\(100\\)\\);",
             recovery);
         Assert.DoesNotContain("ProcessQueuedImageRelayout(", recovery, StringComparison.Ordinal);
+        Assert.Contains(
+            "private static void Tick(RecoveryClock clock) => clock._host.ProcessRecoveryTick();",
+            clockSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "void IRecoveryClockHost.ProcessRecoveryTick() => ProcessRecoveryTick();",
+            controlSource,
+            StringComparison.Ordinal);
 
         string weakRecoveryTimer = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
@@ -550,22 +566,22 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("if (!TryGetLiveTarget(out _))", weakRecoveryTimer, StringComparison.Ordinal);
         Assert.Contains("private bool TryGetLiveTarget(out T? target) => _target.TryGetTarget(out target);", weakRecoveryTimer, StringComparison.Ordinal);
 
-        int recoveryTickEnd = controlSource.IndexOf("private void StopImageRelayoutRecovery(", recoveryMethodEnd, StringComparison.Ordinal);
-        Assert.True(recoveryTickEnd > recoveryMethodEnd);
-        string recoveryTick = controlSource[recoveryMethodEnd..recoveryTickEnd];
-        Assert.Contains("private static void ProcessImageRelayoutRecovery(MarkdownRendererControl control)", recoveryTick, StringComparison.Ordinal);
-        Assert.Contains("control._imageSubscriptions.ProcessBitmapOutputRecovery();", recoveryTick, StringComparison.Ordinal);
-        Assert.Contains("control.ProcessQueuedImageRelayout(control._lastImageRelayoutDispatchTicket);", recoveryTick, StringComparison.Ordinal);
-        Assert.Contains("control._imageRelayoutPayload?.PublishAfterWorkDrains();", recoveryTick, StringComparison.Ordinal);
-        Assert.Contains("control.PublishPendingLayoutCommit();", recoveryTick, StringComparison.Ordinal);
-        Assert.Contains("control.ProcessQueuedLazyLayoutRealization(control._lastLazyLayoutDispatchTicket);", recoveryTick, StringComparison.Ordinal);
-        Assert.Contains("control.TryPublishLazyLayoutCompletion(control._lazyLayoutGeneration);", recoveryTick, StringComparison.Ordinal);
-        Assert.Contains("control._overflowScroll.ProcessPendingRetry();", recoveryTick, StringComparison.Ordinal);
-        Assert.Contains("control._focusGeometryWork.Process();", recoveryTick, StringComparison.Ordinal);
+        int recoveryTickEnd = controlSource.IndexOf("private void StopRecoveryClock(", recoveryTickStart, StringComparison.Ordinal);
+        Assert.True(recoveryTickEnd > recoveryTickStart);
+        string recoveryTick = controlSource[recoveryTickStart..recoveryTickEnd];
+        Assert.Contains("private void ProcessRecoveryTick()", recoveryTick, StringComparison.Ordinal);
+        Assert.Contains("_imageSubscriptions.ProcessBitmapOutputRecovery();", recoveryTick, StringComparison.Ordinal);
+        Assert.Contains("ProcessQueuedImageRelayout(_lastImageRelayoutDispatchTicket);", recoveryTick, StringComparison.Ordinal);
+        Assert.Contains("_imageRelayoutPayload?.PublishAfterWorkDrains();", recoveryTick, StringComparison.Ordinal);
+        Assert.Contains("PublishPendingLayoutCommit();", recoveryTick, StringComparison.Ordinal);
+        Assert.Contains("ProcessQueuedLazyLayoutRealization(_lastLazyLayoutDispatchTicket);", recoveryTick, StringComparison.Ordinal);
+        Assert.Contains("TryPublishLazyLayoutCompletion(_lazyLayoutGeneration);", recoveryTick, StringComparison.Ordinal);
+        Assert.Contains("_overflowScroll.ProcessPendingRetry();", recoveryTick, StringComparison.Ordinal);
+        Assert.Contains("_focusGeometryWork.Process();", recoveryTick, StringComparison.Ordinal);
         Assert.Matches(
-            "if\\s*\\(control\\._lifetime\\.IsDisposed \\|\\| control\\._lifetime\\.IsUnloaded\\)\\s*control\\.StopImageRelayoutRecovery\\(force: true\\);",
+            "if\\s*\\(_lifetime\\.IsDisposed \\|\\| _lifetime\\.IsUnloaded\\)\\s*StopRecoveryClock\\(force: true\\);",
             recoveryTick);
-        Assert.Contains("control.StopImageRelayoutRecoveryIfIdle();", recoveryTick, StringComparison.Ordinal);
+        Assert.Contains("StopRecoveryClockIfIdle();", recoveryTick, StringComparison.Ordinal);
         Assert.Contains("catch (Exception exception)", recoveryTick, StringComparison.Ordinal);
 
         int processStart = controlSource.IndexOf("private void ProcessQueuedImageRelayout(", StringComparison.Ordinal);
@@ -620,7 +636,7 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("candidatePlan?.Dispose();", run, StringComparison.Ordinal);
 
         int completionStart = controlSource.IndexOf("private void CompleteImageRelayout(", publicationStart, StringComparison.Ordinal);
-        int failureReporter = controlSource.IndexOf("private static void ReportImageRelayoutFailure", completionStart, StringComparison.Ordinal);
+        int failureReporter = controlSource.IndexOf("private bool RequestGeometryRecoveryIfRequired(", completionStart, StringComparison.Ordinal);
         Assert.True(completionStart >= 0 && failureReporter > completionStart);
         string publicationFactory = controlSource[publicationStart..completionStart];
         Assert.Contains("int? retryImageBlockIndex", publicationFactory, StringComparison.Ordinal);
