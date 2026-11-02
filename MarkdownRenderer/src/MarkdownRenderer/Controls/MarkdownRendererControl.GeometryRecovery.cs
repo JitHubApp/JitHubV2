@@ -27,9 +27,9 @@ public partial class MarkdownRendererControl
 
         // Deferred presses/captured handles must not keep the Full request
         // waiting for a release that can no longer safely hit-test this tree.
-        TryGeometryRecoveryCleanup(ResetDeferredPointerInput);
+        TryGeometryRecoveryCleanup(_pointerInput.Reset);
         TryGeometryRecoveryCleanup(ResetVectorCapacityObserver);
-        ClearHorizontalOverflowPointerState();
+        _horizontalOverflowDrag.Clear();
         ClearPendingFocusGeometryWork();
         _adorner.ClearGeometry();
         // This tuple describes re-publication of this snapshot's geometry, not
@@ -52,8 +52,8 @@ public partial class MarkdownRendererControl
         // request without scheduling it nor leave another capture unreleased.
         TryGeometryRecoveryCleanup(() => ResetTransientInteractionState(clearSelection: false));
         TryGeometryRecoveryCleanup(() => _surface.Canvas?.ReleasePointerCaptures());
-        TryGeometryRecoveryCleanup(() => SetSelectionDragShieldActive(false));
-        TryGeometryRecoveryCleanup(CloseSelectionContextMenu);
+        TryGeometryRecoveryCleanup(() => _dragShield.SetActive(false));
+        TryGeometryRecoveryCleanup(_contextMenu.Close);
         TryGeometryRecoveryCleanup(_abbreviationTooltip.Hide);
         TryGeometryRecoveryCleanup(() => _cursor.SetShape(null));
         TryGeometryRecoveryCleanup(() =>
@@ -61,7 +61,7 @@ public partial class MarkdownRendererControl
             if (_focusRing is not null)
                 _focusRing.Visibility = Visibility.Collapsed;
         });
-        TryGeometryRecoveryCleanup(() => SetSelectionHandleVisibility(Visibility.Collapsed));
+        TryGeometryRecoveryCleanup(() => _handles.SetVisibility(Visibility.Collapsed));
         TryGeometryRecoveryCleanup(_adorner.ReleaseSurface);
         TryGeometryRecoveryCleanup(InvalidateAutomationLayout);
 

@@ -49,7 +49,9 @@ namespace MarkdownRenderer.Controls;
 /// <see cref="Canvas"/> overlay for hosted WinUI embeds.
 /// </summary>
 public abstract partial class MarkdownRendererControl : UserControl, IDisposable, IAsyncDisposable, IMarkdownEnvironmentListener,
-    IMarkdownPerformanceLegacyParser, ISelectionAdornerHost
+    IMarkdownPerformanceLegacyParser, ISelectionAdornerHost, ISelectionCommandsHost, ISelectionDismissalHost,
+    ISelectionHandlesHost, ISelectionContextMenuHost, IPointerInputSink, IPointerInteractionHost,
+    IHorizontalOverflowPointerHost, IPointerInputRouterHost, IDeferredGestureLayoutHost
 {
     private readonly MarkdownViewSurface _surface;
     private readonly MarkdownViewLifetime _lifetime = new();
@@ -59,6 +61,17 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private readonly PointerCursorPresenter _cursor;
     private readonly AbbreviationTooltipPresenter _abbreviationTooltip;
     private readonly SelectionAdornerPresenter _adorner;
+    private readonly SelectionCommands _selectionCommands;
+    private readonly SelectionDismissalHook _selectionDismissal;
+    private readonly SelectionDragAutoScroll _autoScroll;
+    private readonly SelectionDragShield _dragShield;
+    private readonly SelectionHandlesPresenter _handles;
+    private readonly SelectionContextMenuPresenter _contextMenu;
+    private readonly HorizontalOverflowPointerDrag _horizontalOverflowDrag;
+    private readonly DocumentPointerInteraction _document;
+    private readonly TouchGestureInteraction _touchGestures;
+    private readonly PointerInputRouter _pointerInput;
+    private readonly CanvasPointerEvents _canvasPointerEvents;
     private AppWindow? _windowLifecycleAppWindow;
     private WindowLifecycleSubscription? _windowLifecycleSubscription;
     private bool _scrollViewIntermediate;
@@ -161,28 +174,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private bool _hasExplicitDocument;
     private SizeChangedEventHandler? _sizeChangedHandler;
     private readonly SelectionController _selection = new();
-    private DocumentPosition? _selectionAnchor;
-    private double _lastSelectionPointerViewportY = double.NaN;
-
-    private Point _selectionStartHandleEndpoint;
-    private Point _selectionEndHandleEndpoint;
-    private bool _selectionStartHandleEndpointAvailable;
-    private bool _selectionEndHandleEndpointAvailable;
-    private Border? _selectionDragShield;
-    private Button? _selectionStartHandle;
-    private Button? _selectionEndHandle;
-    private SelectionHandleEndpoint _activeSelectionHandle;
-    private uint _selectionHandlePointerId;
-    private Button? _selectionHandleCaptureTarget;
-    private DocumentPosition _selectionHandleFixedPosition;
     private readonly MarkdownTouchSelectionSession _touchSelection = new();
     private TouchSelectionPresentationRestoreIntent? _pendingTouchSelectionPresentationRestore;
-    private bool _selectionHandleFrameSubscribed;
-    private long _selectionHandleLastFrameTimestamp;
-    private Point _selectionHandleLatestPoint;
-    private double _selectionHandleLatestViewportY;
-    private Point _selectionHandleCaretOffset;
-    private bool _selectionHandleMovePending;
     private readonly TouchTapSuppressionPolicy _touchTapSuppression = new();
 
     // Background color used to clear each canvas tile before painting. Published
@@ -246,24 +239,12 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private Microsoft.UI.Xaml.Controls.Border? _focusRing;
     private Windows.UI.Color _focusRingBrushColor; // cached to avoid per-keystroke SolidColorBrush allocations
 
-    // ---- Multi-click tracking (double/triple click selection) ----
-    private readonly ClickSequenceTracker _clicks = new();
-    // Tracks the currently captured primary-pointer gesture. Keeping the pointer
-    // id with the state makes release/cancel/capture-lost handling idempotent
-    // when events arrive out of order or are routed through the drag shield.
-    private PointerSession _pointerSession;
     // The provider may raise CacheInvalidated from a worker or system-event
     // callback. Keep the subscribed instance outside DependencyObject storage
     // so the callback never reads a thread-affine dependency property.
     private IMarkdownSvgRenderer? _subscribedSvgRenderer;
     private IMarkdownPerformanceSessionInternal? _subscribedPerformanceSession;
     private bool _canvasRenderHandlersAttached;
-    private readonly PointerEventHandler _canvasPointerMovedHandler;
-    private readonly PointerEventHandler _canvasPointerReleasedHandler;
-    private readonly PointerEventHandler _canvasPointerCanceledHandler;
-    private readonly PointerEventHandler _canvasPointerCaptureLostHandler;
-    // System double-click time; read from the Win32 API at first use.
-    private ClickSelectionMode _clickMode;
     private readonly struct InlineEmbedPlacementUpdate(
         WeakReference<InlineEmbedPlan> Plan,
         Rect Rect)
@@ -300,19 +281,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         public readonly Rect TrackBounds = TrackBounds;
         public readonly InlineEmbedPlacementUpdate[] EmbedPlacements = EmbedPlacements;
     }
-    private uint _horizontalOverflowPointerId;
-    private LayoutSnapshot? _horizontalOverflowSnapshot;
-    private IHorizontalOverflowBox? _horizontalOverflowTarget;
-    private Point _horizontalOverflowPressPoint;
-    private double _horizontalOverflowInitialOffset;
-    private double _horizontalOverflowThumbGrabOffset;
-    private bool _horizontalOverflowCaptured;
-    private bool _horizontalOverflowThumbDrag;
-    // When _clickMode is Word or Block, these hold the start/end of the initially
-    // selected word/block so that backward drag can correctly extend to the
-    // start of the word/block under the pointer rather than always to the end.
-    private DocumentPosition _dragAnchorStart;
-    private DocumentPosition _dragAnchorEnd;
 
     // Cache of inline-embed rectangles (in canvas/document coordinates) plus
     // the InlineRun + owning InlineContainerBox.  Built during PlaceEmbeds
@@ -763,11 +731,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private bool _lastFocusEntryWasKeyboardInput;
     private bool _lastFocusEntryWasReverse;
     private bool _suppressNextFocusPromotion;
-    private bool _contextMenuOpen;
-    private MenuFlyout? _selectionContextMenu;
-    private UIElement? _selectionDismissalRoot;
-    private PointerEventHandler? _selectionDismissalPointerPressedHandler;
-    private KeyEventHandler? _selectionCopyKeyDownHandler;
 
     // Lazy-load queue: all ImageBox instances in the current snapshot.
     // EnsureLoading() is called for each when its bounds enter the
@@ -2288,10 +2251,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void OnStringProviderChanged()
     {
-        if (_selectionStartHandle is not null)
-            UpdateSelectionHandleLocalization(_selectionStartHandle, SelectionHandleEndpoint.Start);
-        if (_selectionEndHandle is not null)
-            UpdateSelectionHandleLocalization(_selectionEndHandle, SelectionHandleEndpoint.End);
+        _handles.UpdateLocalization();
         RequestRebuild(RebuildReason.Restyle);
     }
 
@@ -2801,10 +2761,17 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _cursor = new PointerCursorPresenter(cursor => ProtectedCursor = cursor);
         _abbreviationTooltip = new AbbreviationTooltipPresenter(this, _surface, _lifetime, _hover);
         _adorner = new SelectionAdornerPresenter(this, this, _surface, _lifetime, _published, _viewport, _selection, _hover);
-        _canvasPointerMovedHandler = OnPointerMoved;
-        _canvasPointerReleasedHandler = OnPointerReleased;
-        _canvasPointerCanceledHandler = OnPointerCanceledOrCaptureLost;
-        _canvasPointerCaptureLostHandler = OnPointerCanceledOrCaptureLost;
+        _selectionCommands = new SelectionCommands(this, _published, _selection);
+        _selectionDismissal = new SelectionDismissalHook(this, this, _surface, _lifetime, _published, _selection, _selectionCommands);
+        _autoScroll = new SelectionDragAutoScroll(_surface, _viewport, rect => BringDocumentRectIntoExternalViewport(rect, animate: false));
+        _dragShield = new SelectionDragShield(_surface, _viewport, this);
+        _handles = new SelectionHandlesPresenter(this, this, this, _surface, _lifetime, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, _adorner, _autoScroll);
+        _contextMenu = new SelectionContextMenuPresenter(this, _surface, _lifetime, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, _handles, _adorner, _selectionCommands);
+        _horizontalOverflowDrag = new HorizontalOverflowPointerDrag(this, _surface, _published, _touchTapSuppression);
+        _document = new DocumentPointerInteraction(this, _surface, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, _horizontalOverflowDrag, _handles, _autoScroll, _dragShield, _adorner, _contextMenu, new PointerHoverTracker(this, _published, _hover, _cursor, _abbreviationTooltip), _cursor, _abbreviationTooltip);
+        _touchGestures = new TouchGestureInteraction(this, this, _surface, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, _horizontalOverflowDrag, _document);
+        _pointerInput = new PointerInputRouter(this, this, DispatcherQueue, _surface, _lifetime, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, _handles, _document, _horizontalOverflowDrag, _touchGestures, _contextMenu, _adorner, _dragShield);
+        _canvasPointerEvents = new CanvasPointerEvents(_surface, _pointerInput);
         IsTabStop = true;
         Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
         Loaded += (_, _) => OnLoadedInternal();
@@ -2848,17 +2815,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     {
         if (_lifetime.IsDisposed || _surface.TryCreateCanvas() is not { } canvas)
             return;
-        canvas.PointerPressed += OnPointerPressed;
-        canvas.PointerWheelChanged += OnPointerWheelChanged;
-        canvas.PointerExited += OnPointerExited;
-        canvas.Tapped += OnTapped;
-        canvas.DoubleTapped += OnDoubleTapped;
-        canvas.Holding += OnHolding;
-        canvas.RightTapped += OnRightTapped;
-        canvas.AddHandler(UIElement.PointerMovedEvent, _canvasPointerMovedHandler, handledEventsToo: true);
-        canvas.AddHandler(UIElement.PointerReleasedEvent, _canvasPointerReleasedHandler, handledEventsToo: true);
-        canvas.AddHandler(UIElement.PointerCanceledEvent, _canvasPointerCanceledHandler, handledEventsToo: true);
-        canvas.AddHandler(UIElement.PointerCaptureLostEvent, _canvasPointerCaptureLostHandler, handledEventsToo: true);
+        _canvasPointerEvents.Attach(canvas);
         AttachCanvasRenderHandlers();
     }
 
@@ -2978,10 +2935,9 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _pendingLazyFocus = null;
         _focusedItemIndex = -1;
         UpdateFocusRing();
-        if (!_contextMenuOpen)
+        if (!_contextMenu.IsOpen)
         {
-            _selectionAnchor = null;
-            _clickMode = ClickSelectionMode.Single;
+            _document.ForgetDragAnchor();
         }
     }
 
@@ -3026,10 +2982,10 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // only touch ownership, handles, flyouts, and pending input are reset.
         _pendingTouchSelectionPresentationRestore = null;
         _touchTapSuppression.Reset();
-        ResetDeferredPointerInput();
+        _pointerInput.Reset();
         ResetTransientInteractionState(clearSelection: false);
         _touchTapSuppression.RequireAcceptedContactForRecognizedGesture();
-        UpdateSelectionHandles();
+        _handles.Update();
     }
 
     private void OnEngineChanged(DependencyPropertyChangedEventArgs e)
@@ -3099,116 +3055,25 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     }
 
     private bool IsElementWithinRenderer(DependencyObject element)
-        => IsElementWithin(element, this);
+        => VisualTreeAncestry.IsWithin(element, this);
 
-    private bool IsElementWithinCodeBlockAction(DependencyObject element)
+    bool ISelectionDismissalHost.IsElementWithinCodeBlockAction(DependencyObject element)
     {
         foreach (var plan in _codeBlockActionPlans)
         {
-            if (plan.Realized is DependencyObject realized && IsElementWithin(element, realized))
+            if (plan.Realized is DependencyObject realized && VisualTreeAncestry.IsWithin(element, realized))
                 return true;
         }
 
         return false;
     }
 
-    private bool IsElementWithinSelectionHandle(DependencyObject element)
-    {
-        return (_selectionStartHandle is not null && IsElementWithin(element, _selectionStartHandle)) ||
-               (_selectionEndHandle is not null && IsElementWithin(element, _selectionEndHandle));
-    }
+    bool ISelectionDismissalHost.IsElementWithinSelectionHandle(DependencyObject element)
+        => _handles.ContainsElement(element);
 
-    private static bool IsElementWithin(DependencyObject element, DependencyObject ancestor)
-    {
-        for (DependencyObject? current = element; current is not null;)
-        {
-            if (ReferenceEquals(current, ancestor))
-                return true;
+    bool ISelectionDismissalHost.IsPointOverEmbed(Point canvasPoint) => IsPointOverEmbed(canvasPoint);
 
-            try { current = VisualTreeHelper.GetParent(current); }
-            catch { return false; }
-        }
-
-        return false;
-    }
-
-    private void RegisterSelectionDismissalHook()
-    {
-        if (_selectionDismissalRoot is not null)
-            return;
-
-        var root = XamlRoot?.Content as UIElement;
-        if (root is null)
-            return;
-
-        _selectionDismissalPointerPressedHandler = OnAppRootPointerPressed;
-        root.AddHandler(UIElement.PointerPressedEvent, _selectionDismissalPointerPressedHandler, handledEventsToo: true);
-        _selectionCopyKeyDownHandler = OnAppRootKeyDown;
-        root.AddHandler(UIElement.KeyDownEvent, _selectionCopyKeyDownHandler, handledEventsToo: true);
-        _selectionDismissalRoot = root;
-    }
-
-    private void UnregisterSelectionDismissalHook()
-    {
-        if (_selectionDismissalRoot is not null && _selectionDismissalPointerPressedHandler is not null)
-        {
-            try { _selectionDismissalRoot.RemoveHandler(UIElement.PointerPressedEvent, _selectionDismissalPointerPressedHandler); }
-            catch { }
-        }
-
-        if (_selectionDismissalRoot is not null && _selectionCopyKeyDownHandler is not null)
-        {
-            try { _selectionDismissalRoot.RemoveHandler(UIElement.KeyDownEvent, _selectionCopyKeyDownHandler); }
-            catch { }
-        }
-
-        _selectionDismissalRoot = null;
-        _selectionDismissalPointerPressedHandler = null;
-        _selectionCopyKeyDownHandler = null;
-    }
-
-    private void OnAppRootPointerPressed(object sender, PointerRoutedEventArgs e)
-    {
-        if (_lifetime.IsUnloaded)
-            return;
-
-        var point = e.GetCurrentPoint(sender as UIElement ?? this);
-        var properties = point.Properties;
-        if (properties.IsRightButtonPressed || properties.IsMiddleButtonPressed || properties.IsXButton1Pressed || properties.IsXButton2Pressed)
-            return;
-
-        if (e.OriginalSource is DependencyObject source && IsElementWithinRenderer(source))
-        {
-            MarkdownSelectionCoordinator.ClearSelectionsExcept(this);
-            if (IsElementWithinCodeBlockAction(source))
-                return;
-            if (IsElementWithinSelectionHandle(source))
-                return;
-
-            bool overCanvas = IsPointerOverCanvasTextSurface(e, out var canvasPoint);
-            bool overEmbed = overCanvas && IsPointOverEmbed(canvasPoint);
-            if (!overCanvas || overEmbed)
-                ClearSelectionForExternalInteraction();
-            return;
-        }
-
-        ClearSelectionForExternalInteraction();
-    }
-
-    private void OnAppRootKeyDown(object sender, KeyRoutedEventArgs e)
-    {
-        if (_lifetime.IsUnloaded || _published.Snapshot is null || !_selection.IsActive)
-            return;
-
-        bool ctrl = (Microsoft.UI.Input.InputKeyboardSource
-            .GetKeyStateForCurrentThread(VirtualKey.Control) & Windows.UI.Core.CoreVirtualKeyStates.Down)
-            == Windows.UI.Core.CoreVirtualKeyStates.Down;
-        if (!ctrl || e.Key != VirtualKey.C)
-            return;
-
-        if (ExecuteSelectionCommand(MarkdownCommandKind.CopyRendered))
-            e.Handled = true;
-    }
+    void ISelectionDismissalHost.ClearSelectionForExternalInteraction() => ClearSelectionForExternalInteraction();
 
     /// <summary>
     /// Copies the active selection to the clipboard.
@@ -3216,123 +3081,157 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     /// <param name="options">Optional copy format options. Defaults use rendered plain text and add CF_HTML.</param>
     /// <returns>True when a selection was copied successfully.</returns>
     public bool CopySelectionToClipboard(MarkdownCopyOptions? options = null)
-    {
-        var snapshot = _published.Snapshot;
-        if (snapshot is null || !_selection.IsActive)
-            return false;
-
-        bool succeeded;
-        try
-        {
-            var effectiveOptions = options ?? MarkdownCopyOptions.Default;
-            string? renderedText = null;
-            string? renderedHtml = null;
-            if (effectiveOptions.PlainTextMode == MarkdownPlainTextCopyMode.RenderedText ||
-                effectiveOptions.IncludeHtml)
-            {
-                var rendered = GetRenderedSelectionPayload(snapshot, _selection.Range);
-                if (effectiveOptions.PlainTextMode == MarkdownPlainTextCopyMode.RenderedText)
-                    renderedText = rendered.Text;
-                if (effectiveOptions.IncludeHtml)
-                    renderedHtml = rendered.Html;
-            }
-
-            succeeded = MarkdownClipboardWriter.Copy(
-                snapshot.SourceMap,
-                _selection.Range,
-                effectiveOptions,
-                renderedText,
-                renderedHtml);
-        }
-        catch (Exception ex)
-        {
-            MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] Selection copy failed: {ex.Message}");
-            succeeded = false;
-        }
-
-        RaiseCopyCompleted(MarkdownCopyKind.Selection, succeeded);
-        return succeeded;
-    }
+        => _selectionCommands.CopyToClipboard(options);
 
     /// <summary>Copies the active selection as exact markdown source plus CF_HTML.</summary>
     public bool CopySelectionAsMarkdown()
-        => CopySelectionToClipboard(new MarkdownCopyOptions
-        {
-            PlainTextMode = MarkdownPlainTextCopyMode.SourceMarkdown,
-            IncludeHtml = true,
-        });
+        => _selectionCommands.CopyAsMarkdown();
 
-    private bool ExecuteSelectionCommand(MarkdownCommandKind kind)
+    IMarkdownCommandProvider? ISelectionCommandsHost.CommandProvider => CommandProvider;
+
+    void ISelectionCommandsHost.RaiseCopyCompleted(MarkdownCopyKind kind, bool succeeded)
+        => RaiseCopyCompleted(kind, succeeded);
+
+    Theming.ThemeSnapshot? ISelectionHandlesHost.ThemeSnapshot => _themeSnapshot;
+
+    string ISelectionHandlesHost.ResolveLocalizedString(string key, string fallback)
+        => ResolveLocalizedString(key, fallback);
+
+    bool ISelectionHandlesHost.RequestGeometryRecoveryIfRequired(LayoutSnapshot? snapshot)
+        => RequestGeometryRecoveryIfRequired(snapshot);
+
+    void ISelectionHandlesHost.FocusRendererForPointerInteraction() => FocusRendererForPointerInteraction();
+
+    bool ISelectionHandlesHost.TryHitTestEmbed(Point point, out DocumentPosition position)
+        => TryHitTestEmbed(point, out position);
+
+    bool ISelectionHandlesHost.HasDeferredInputFor(uint pointerId)
+        => _pointerInput.HasDeferredInputFor(pointerId);
+
+    void ISelectionHandlesHost.ResumePendingRebuildAfterPointerInteraction()
+        => ResumePendingRebuildAfterPointerInteraction();
+
+    void ISelectionHandlesHost.CancelPendingTouchSelectionRestore()
+        => _pendingTouchSelectionPresentationRestore = null;
+
+    bool ISelectionContextMenuHost.IsSelectionEnabled => IsSelectionEnabled;
+
+    IMarkdownCommandProvider? ISelectionContextMenuHost.CommandProvider => CommandProvider;
+
+    string ISelectionContextMenuHost.ResolveLocalizedString(string key, string fallback)
+        => ResolveLocalizedString(key, fallback);
+
+    void ISelectionContextMenuHost.RaiseCopyCompleted(MarkdownCopyKind kind, bool succeeded)
+        => RaiseCopyCompleted(kind, succeeded);
+
+    Rect? ISelectionContextMenuHost.GetFocusedItemRect()
+        => _focusableItems is { } items &&
+           _focusedItemIndex >= 0 &&
+           _focusedItemIndex < items.Count
+            ? GetFocusableItemRect(items[_focusedItemIndex])
+            : null;
+
+    bool IPointerInteractionHost.IsSelectionEnabled => IsSelectionEnabled;
+
+    bool IPointerInteractionHost.IsCurrentScrollTarget(LayoutSnapshot snapshot, long snapshotGeneration, long layoutRevision)
+        => IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision);
+
+    void IPointerInteractionHost.CancelPendingTouchSelectionRestore()
+        => _pendingTouchSelectionPresentationRestore = null;
+
+    void IPointerInteractionHost.RememberFocusResumePoint(Point documentPoint)
+        => RememberFocusResumePoint(documentPoint);
+
+    void IPointerInteractionHost.FocusRendererForPointerInteraction() => FocusRendererForPointerInteraction();
+
+    void IPointerInteractionHost.ClearKeyboardFocusItem()
     {
-        try
+        if (_focusedItemIndex >= 0)
         {
-            if (TryResolveSelectionCommand(kind, out var command, out var context))
-            {
-                if (!command.CanExecute(context))
-                    return false;
-
-                command.Execute(context);
-                return true;
-            }
-
-            return kind == MarkdownCommandKind.CopyMarkdown
-                ? CopySelectionAsMarkdown()
-                : CopySelectionToClipboard();
-        }
-        catch (Exception ex)
-        {
-            MarkdownDiagnostics.WriteLine(
-                $"[MarkdownRendererControl] Host command '{kind}' failed: {ex.Message}");
-            return false;
+            _pendingLazyFocus = null;
+            _focusedItemIndex = -1;
+            UpdateFocusRing();
         }
     }
 
-    private bool CanExecuteSelectionCommandOrDefault(MarkdownCommandKind kind)
-    {
-        try
-        {
-            return !TryResolveSelectionCommand(kind, out var command, out var context) ||
-                   command.CanExecute(context);
-        }
-        catch (Exception ex)
-        {
-            MarkdownDiagnostics.WriteLine(
-                $"[MarkdownRendererControl] Host command '{kind}' query failed: {ex.Message}");
-            return false;
-        }
-    }
+    bool IPointerInteractionHost.IsPointOverCodeBlockAction(Point point) => IsPointOverCodeBlockAction(point);
 
-    private bool TryResolveSelectionCommand(
-        MarkdownCommandKind kind,
-        out System.Windows.Input.ICommand command,
-        out MarkdownCommandContext context)
-    {
-        SourceSpan sourceRange = SourceSpan.Empty;
-        if (_published.Snapshot is { } snapshot && _selection.IsActive)
-            snapshot.SourceMap.TryMapRange(_selection.Range, out sourceRange);
+    bool IPointerInteractionHost.IsPointOverEmbed(Point point) => IsPointOverEmbed(point);
 
-        context = new MarkdownCommandContext(kind, sourceRange);
-        command = CommandProvider?.GetCommand(context)!;
-        return command is not null;
-    }
+    bool IPointerInteractionHost.TryHitTestEmbed(Point point, out DocumentPosition position)
+        => TryHitTestEmbed(point, out position);
 
-    private static RenderedSelectionPayload GetRenderedSelectionPayload(
+    bool IPointerInteractionHost.TryGetVectorPointerState(Point point, out bool linked, out bool selectable)
+        => TryGetVectorPointerState(point, out linked, out selectable);
+
+    void IPointerInteractionHost.InvalidateInteractiveTextAdorner() => InvalidateInteractiveTextAdorner();
+
+    void IPointerInteractionHost.UpdateSelectionOverlay() => UpdateSelectionOverlay();
+
+    void IPointerInteractionHost.ClearSelectionForExternalInteraction() => ClearSelectionForExternalInteraction();
+
+    void IPointerInteractionHost.ResumePendingRebuildAfterPointerInteraction()
+        => ResumePendingRebuildAfterPointerInteraction();
+
+    void IHorizontalOverflowPointerHost.RefreshHorizontalOverflowVisualState(IHorizontalOverflowBox target, double oldOffset)
+        => RefreshHorizontalOverflowVisualState(target, oldOffset);
+
+    void IPointerInputSink.DispatchPointerInput(PointerInputKind kind, object sender, PointerRoutedEventArgs args)
+        => _pointerInput.DispatchPointerInput(kind, sender, args);
+
+    bool IPointerInputSink.DispatchRecognizedGesture(PointerInputKind kind, Point point, Microsoft.UI.Input.PointerDeviceType device)
+        => _pointerInput.DispatchRecognizedGesture(kind, point, device);
+
+    bool IPointerInputRouterHost.RequestGeometryRecoveryIfRequired(LayoutSnapshot? snapshot)
+        => RequestGeometryRecoveryIfRequired(snapshot);
+
+    void IPointerInputRouterHost.ResumePendingRebuildAfterPointerInteraction()
+        => ResumePendingRebuildAfterPointerInteraction();
+
+    void IPointerInputRouterHost.ClearSelectionForExternalInteraction(bool resetClickTracking, bool resetDeferredPointerInput)
+        => ClearSelectionForExternalInteraction(resetClickTracking, resetDeferredPointerInput);
+
+    bool IPointerInputRouterHost.ActivateLinkIntent(
+        LinkActivationIntent intent,
         LayoutSnapshot snapshot,
-        DocumentRange range)
-    {
-        var semantic = snapshot.SemanticDocument;
-        var normalized = range.Normalized();
-        int start = semantic.TextOffsetFromDocumentPosition(normalized.Start);
-        int end = semantic.TextOffsetFromDocumentPosition(normalized.End);
-        if (end < start)
-            (start, end) = (end, start);
+        long snapshotGeneration,
+        long layoutRevision)
+        => ActivateLinkIntent(intent, snapshot, snapshotGeneration, layoutRevision);
 
-        start = Math.Clamp(start, 0, semantic.Text.Length);
-        end = Math.Clamp(end, start, semantic.Text.Length);
-        return new RenderedSelectionPayload(
-            semantic.Text.Substring(start, end - start),
-            MarkdownRenderedHtmlWriter.BuildFragment(semantic, start, end));
+    double IDeferredGestureLayoutHost.RasterizationScale => XamlRoot?.RasterizationScale ?? 1;
+
+    bool IDeferredGestureLayoutHost.IsPointOverEmbed(Point point) => IsPointOverEmbed(point);
+
+    bool IDeferredGestureLayoutHost.IsPointOverCodeBlockAction(Point point) => IsPointOverCodeBlockAction(point);
+
+    bool IDeferredGestureLayoutHost.IsLayoutPublicationPending(LayoutSnapshot snapshot) =>
+        _publishingLayoutCommit ||
+        _pendingLayoutCommit is not null || _appliedLazyLayoutRevision < snapshot.LayoutRevision;
+
+    bool IDeferredGestureLayoutHost.IsLazyLayoutBandCovered(LayoutSnapshot snapshot, LazyLayoutBand band)
+    {
+        bool active = _lazyLayoutCts is { IsCancellationRequested: false } &&
+            ReferenceEquals(snapshot, _activeLazyLayoutSnapshot) &&
+            _activeLazyLayoutRevision == snapshot.LayoutRevision &&
+            band.Top >= _activeLazyLayoutBand.Top && band.Bottom <= _activeLazyLayoutBand.Bottom;
+        bool pending = _hasPendingLazyLayoutBand &&
+            ReferenceEquals(snapshot, _pendingLazyLayoutSnapshot) &&
+            band.Top >= _pendingLazyLayoutBand.Top && band.Bottom <= _pendingLazyLayoutBand.Bottom;
+        return active || pending;
     }
+
+    bool IDeferredGestureLayoutHost.HasSupersedingLazyLayoutRequest(LayoutSnapshot snapshot) =>
+        (_lazyLayoutCts is { IsCancellationRequested: false } &&
+         ReferenceEquals(snapshot, _activeLazyLayoutSnapshot)) ||
+        (_hasPendingLazyLayoutBand && ReferenceEquals(snapshot, _pendingLazyLayoutSnapshot)) ||
+        (_lazyLayoutDispatchQueued && ReferenceEquals(snapshot, _pendingLazyLayoutSnapshot));
+
+    void IDeferredGestureLayoutHost.QueueLazyLayoutForBand(
+        LayoutSnapshot snapshot,
+        LazyLayoutBand band,
+        LazyLayoutBand visibleVectorBand,
+        bool preserveScrollAnchor)
+        => QueueLazyLayoutForBand(snapshot, band, visibleVectorBand, preserveScrollAnchor);
 
     internal void ClearSelectionFromCoordinator()
     {
@@ -3345,18 +3244,17 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     {
         _pendingTouchSelectionPresentationRestore = null;
         _touchTapSuppression.Reset();
-        CloseSelectionContextMenu();
+        _contextMenu.Close();
         if (resetDeferredPointerInput)
-            ResetDeferredPointerInput();
-        _pointerSession = default;
-        ResetSelectionHandleDrag();
+            _pointerInput.Reset();
+        _document.ResetSession();
+        _handles.ResetDrag();
         _touchSelection.Reset();
-        _selectionAnchor = null;
-        _clickMode = ClickSelectionMode.Single;
-        SetSelectionDragShieldActive(false);
+        _document.ForgetDragAnchor();
+        _dragShield.SetActive(false);
         if (resetClickTracking)
         {
-            _clicks.Reset();
+            _document.ResetClickTracking();
         }
 
         if (_selection.IsActive || !_selection.Range.IsEmpty)
@@ -3367,27 +3265,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             _pendingLazyFocus = null;
             _focusedItemIndex = -1;
             UpdateFocusRing();
-        }
-    }
-
-    private bool IsPointerOverCanvasTextSurface(PointerRoutedEventArgs e, out Point canvasPoint)
-    {
-        canvasPoint = default;
-        if (_surface.Canvas is null)
-            return false;
-
-        try
-        {
-            canvasPoint = e.GetCurrentPoint(_surface.Canvas).Position;
-            return canvasPoint.X >= 0 &&
-                   canvasPoint.Y >= 0 &&
-                   canvasPoint.X <= _surface.Canvas.ActualWidth &&
-                   canvasPoint.Y <= _surface.Canvas.ActualHeight;
-        }
-        catch
-        {
-            canvasPoint = default;
-            return false;
         }
     }
 
@@ -3466,7 +3343,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             _imageLifetimeCts = new CancellationTokenSource();
         }
         MarkdownSelectionCoordinator.Register(this);
-        RegisterSelectionDismissalHook();
+        _selectionDismissal.Register();
         _environmentSubscription?.Dispose();
         _environmentSubscription = MarkdownEnvironmentMonitor.Acquire(this, this);
         _environmentSnapshot = _environmentSubscription?.Snapshot ?? default;
@@ -3513,7 +3390,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         StopCanvasDeviceRecovery();
         StopImageRelayoutRecovery(force: true);
         DetachPerformanceSessionDisposalNotification();
-        ResetDeferredPointerInput();
+        _pointerInput.Reset();
         _touchTapSuppression.Reset();
         // An unloaded view is reusable and no longer belongs to this window.
         // Do not let a former host destroy it, or retain weak-event wrappers
@@ -3538,8 +3415,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         ClearPendingFocusGeometryWork();
         Interlocked.Exchange(ref _deferredSceneStatusRefreshAfterPaint, 0);
         Interlocked.Exchange(ref _deferredSceneProbeAfterPaint, 0);
-        CloseSelectionContextMenu();
-        ClearHorizontalOverflowPointerState();
+        _contextMenu.Close();
+        _horizontalOverflowDrag.Clear();
         _abbreviationTooltip.Hide();
         _abbreviationTooltip.ReleaseTimers();
         if (_sizeChangedHandler is not null)
@@ -3555,7 +3432,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             svgRenderer.CacheInvalidated -= OnSvgRendererCacheInvalidated;
         _environmentSubscription?.Dispose();
         _environmentSubscription = null;
-        UnregisterSelectionDismissalHook();
+        _selectionDismissal.Unregister();
         MarkdownSelectionCoordinator.Unregister(this);
         var oldCts = _pipelineCts;
         var oldTask = _pipelineTask;
@@ -3625,10 +3502,10 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         }
         _embedRects.Clear();
         _blockEmbedRects.Clear();
-        ResetSelectionHandleDrag();
+        _handles.ResetDrag();
         _touchTapSuppression.Reset();
         _touchSelection.Reset();
-        SetSelectionDragShieldActive(false);
+        _dragShield.SetActive(false);
         // Release native resources & hosted embeds so re-attaching the
         // control to a new visual parent doesn't leak DirectWrite layouts
         // or keep stale FrameworkElements alive. A failed XAML detach must not
@@ -3639,9 +3516,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // surfaces, the child visual and the graphics device here.
         _adorner.DisposeForUnload();
         _cursor.Release();
-        DetachSelectionHandleHandlers();
-        _selectionStartHandle = null;
-        _selectionEndHandle = null;
+        _handles.ReleaseForUnload();
         _focusRing = null; // evicted from overlay above; lazily re-created on re-attach
         var snap = _published.Snapshot;
         _published.Snapshot = null;
@@ -3672,16 +3547,16 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _pendingTouchSelectionPresentationRestore = null;
         _touchTapSuppression.Reset();
         StopCanvasDeviceRecovery();
-        ResetSelectionHandleDrag();
+        _handles.ResetDrag();
         _touchSelection.Dispose();
-        StopSelectionHandleFrameClock();
+        _handles.StopFrameClock();
         DetachWindowLifecycle();
         OnUnloaded();
         _adorner.ReleaseForDispose();
         _published.LayoutDevice = null;
         EffectiveViewportChanged -= OnEffectiveViewportChanged;
         DetachCanvasHandlers();
-        DetachSelectionDragShieldHandlers();
+        _dragShield.Release();
         Content = null;
         _surface.Detach();
         MarkdownEngine? ownedEngine = _ownedEngine;
@@ -3800,26 +3675,13 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         GotFocus -= OnGotFocus;
         LosingFocus -= OnLosingFocus;
         KeyDown -= OnKeyDown;
-        DetachSelectionHandleHandlers();
+        _handles.DetachHandlers();
     }
 
     private void DetachCanvasInputHandlers()
     {
         if (_surface.Canvas is not null)
-        {
-            _surface.Canvas.PointerPressed -= OnPointerPressed;
-            _surface.Canvas.PointerWheelChanged -= OnPointerWheelChanged;
-            _surface.Canvas.PointerExited -= OnPointerExited;
-        _surface.Canvas.Tapped -= OnTapped;
-        _surface.Canvas.DoubleTapped -= OnDoubleTapped;
-        _surface.Canvas.Holding -= OnHolding;
-            _surface.Canvas.RightTapped -= OnRightTapped;
-            _surface.Canvas.RemoveHandler(UIElement.PointerMovedEvent, _canvasPointerMovedHandler);
-            _surface.Canvas.RemoveHandler(UIElement.PointerReleasedEvent, _canvasPointerReleasedHandler);
-            _surface.Canvas.RemoveHandler(UIElement.PointerCanceledEvent, _canvasPointerCanceledHandler);
-            _surface.Canvas.RemoveHandler(UIElement.PointerCaptureLostEvent, _canvasPointerCaptureLostHandler);
-        }
-
+            _canvasPointerEvents.Detach(_surface.Canvas);
     }
 
     private void AttachCanvasRenderHandlers()
@@ -3840,18 +3702,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _surface.Canvas.RegionsInvalidated -= OnRegionsInvalidated;
         _surface.Canvas.CreateResources -= OnCanvasCreateResources;
         _canvasRenderHandlersAttached = false;
-    }
-
-    private void DetachSelectionDragShieldHandlers()
-    {
-        if (_selectionDragShield is null)
-            return;
-
-        _selectionDragShield.PointerMoved -= OnPointerMoved;
-        _selectionDragShield.PointerReleased -= OnPointerReleased;
-        _selectionDragShield.PointerCanceled -= OnPointerCanceledOrCaptureLost;
-        _selectionDragShield.PointerCaptureLost -= OnPointerCanceledOrCaptureLost;
-        _selectionDragShield = null;
     }
 
     private void OnThemeChanged()
@@ -4163,7 +4013,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // relayout while the user is actively selecting text. Releasing pointer
         // capture here terminates the gesture and visibly drops the selection.
         // Keep the latest merged rebuild request pending until pointer release.
-        if (HasSnapshotPointerInteraction)
+        if (_pointerInput.HasSnapshotInteraction)
             return;
 
         if (!_rebuildCoordinator.TryGetDispatchReason(
@@ -4439,19 +4289,14 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // Clear logical capture ownership before touching XAML. A disconnected
         // input site must not keep a replacement blocked by a stale gesture.
         _touchTapSuppression.Reset();
-        ResetSelectionHandleDrag();
+        _handles.ResetDrag();
         _touchSelection.Reset();
-        _pointerSession = default;
-        _selectionAnchor = null;
-        _lastSelectionPointerViewportY = double.NaN;
-        _clickMode = ClickSelectionMode.Single;
-        _dragAnchorStart = default;
-        _dragAnchorEnd = default;
-        _clicks.Reset();
+        _document.Reset();
+        _autoScroll.Reset();
         _hover.Clear();
         _abbreviationTooltip.ForgetTarget();
-        CloseSelectionContextMenu();
-        SetSelectionDragShieldActive(false);
+        _contextMenu.Close();
+        _dragShield.SetActive(false);
         _abbreviationTooltip.Hide();
 
         _cursor.SetShape(null);
@@ -5132,7 +4977,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             finally { _isUpdatingDocumentProperty = false; }
         }
         if (old is not null)
-            CloseSelectionContextMenu();
+            _contextMenu.Close();
         // Dependency-property publication above can reenter Dispose before
         // this old snapshot is retired. Tie its retirement to this context's
         // pipeline lifetime as well as the control's global drain.
@@ -5186,7 +5031,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // viewport. Hooking ScrollViewer.ViewChanged drives subsequent realisation
         // as the user scrolls.
         DerealizeAllEmbeds();
-        SetSelectionDragShieldActive(false);
+        _dragShield.SetActive(false);
         // Keep the attached adorner surface and its placeholder across
         // commits. Repaint against the new snapshot instead of replacing the
         // surface on every relayout.
@@ -5211,8 +5056,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // match — reset so the first post-rebuild realisation always fires.
         _lastFiredRealizedCount = -1;
         _adorner.ClearGeometry();
-        _selectionStartHandleEndpointAvailable = false;
-        _selectionEndHandleEndpointAvailable = false;
+        _handles.MarkEndpointsUnavailable();
         // Rebuild detaches selection chrome with the other overlay children.
         // Surviving selection reattaches what it needs below; inactive chrome
         // stays detached until the next interaction.
@@ -5254,7 +5098,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
             UpdateSelectionOverlay();
             if (restoreTouchSelectionPresentation)
-                UpdateSelectionHandles();
+                _handles.Update();
         }
         else
         {
@@ -6157,7 +6001,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _surface.Root.Height = _surface.Canvas.Height;
         _surface.Overlay.Width = _surface.Canvas.Width;
         _surface.Overlay.Height = _surface.Canvas.Height;
-        SetSelectionDragShieldActive(_selectionAnchor is not null);
+        _dragShield.SetActive(_document.IsDragSelecting);
     }
 
     private static (int BlockIndex, double OffsetFromTop)? CaptureScrollAnchor(LayoutSnapshot snapshot, double verticalOffset)
@@ -6645,14 +6489,14 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (RequestGeometryRecoveryIfRequired(snapshot))
         {
             if (snapshot is not null)
-                OnDeferredGestureLayoutCompletion(snapshot, succeeded: false);
+                _pointerInput.OnLazyLayoutCompletion(snapshot, succeeded: false);
             return;
         }
 
         if (realizationGeneration != _lazyLayoutGeneration)
         {
             if (snapshot is not null)
-                OnDeferredGestureLayoutCompletion(snapshot, succeeded: false);
+                _pointerInput.OnLazyLayoutCompletion(snapshot, succeeded: false);
             return;
         }
 
@@ -6684,7 +6528,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         {
             StopImageRelayoutRecoveryIfIdle();
             if (snapshot is not null)
-                OnDeferredGestureLayoutCompletion(snapshot, succeeded: false);
+                _pointerInput.OnLazyLayoutCompletion(snapshot, succeeded: false);
             return;
         }
 
@@ -6707,7 +6551,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 RequestRebuild(RebuildReason.Full);
             }
             StopImageRelayoutRecoveryIfIdle();
-            OnDeferredGestureLayoutCompletion(snapshot, succeeded: false);
+            _pointerInput.OnLazyLayoutCompletion(snapshot, succeeded: false);
             return;
         }
 
@@ -6740,7 +6584,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             // produced no newer layout revision.
             _ = ResumePendingLazyFocus(snapshot);
             TryResumePendingScrollToBlock(snapshot, pipelineGeneration);
-            OnDeferredGestureLayoutCompletion(snapshot, succeeded: true);
+            _pointerInput.OnLazyLayoutCompletion(snapshot, succeeded: true);
             StopImageRelayoutRecoveryIfIdle();
             return;
         }
@@ -6755,7 +6599,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         SynchronizeVectorCapacityObserver(snapshot);
         if (result.Commit.NativeSceneResourcesChanged)
             NotifyVisibleDeferredSceneItemStatusMayHaveChanged();
-        OnDeferredGestureLayoutCompletion(snapshot, succeeded: true);
+        _pointerInput.OnLazyLayoutCompletion(snapshot, succeeded: true);
         StopImageRelayoutRecoveryIfIdle();
     }
 
@@ -6834,7 +6678,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         {
             // Release logical input waiters only after plans/anchor are applied,
             // not when a worker first updates the snapshot's measured mask.
-            OnDeferredGestureLayoutCompletion(snapshot, succeeded: true);
+            _pointerInput.OnLazyLayoutCompletion(snapshot, succeeded: true);
         }
     }
 
@@ -8255,7 +8099,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             else
                 control.ClearFocusableItemsRefreshForCurrentSnapshot();
             if (control._published.Snapshot is { } failedLayoutSnapshot)
-                control.OnDeferredGestureLayoutCompletion(failedLayoutSnapshot, succeeded: false);
+                control._pointerInput.OnLazyLayoutCompletion(failedLayoutSnapshot, succeeded: false);
         }
         finally
         {
@@ -8341,7 +8185,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // Keep the pending set and recovery route intact. Neither in-place
         // reflow nor private snapshot replacement may change geometry owned
         // by a live or not-yet-captured table/selection gesture.
-        if (HasSnapshotPointerInteraction)
+        if (_pointerInput.HasSnapshotInteraction)
             return;
 
         _imageRelayoutQueued = false;
@@ -9137,7 +8981,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 }
                 else if (candidate is not null)
                 {
-                    if (HasSnapshotPointerInteraction)
+                    if (_pointerInput.HasSnapshotInteraction)
                     {
                         // A gesture may have started after the worker captured
                         // its source. Discard this private candidate and retry
@@ -9304,223 +9148,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // Later resource creation means device/DPI changed, so rebuild layouts.
         if (args.Reason != Microsoft.Graphics.Canvas.UI.CanvasCreateResourcesReason.FirstTime)
             RequestRebuild(RebuildReason.Full);
-    }
-
-    private bool IsActivePointerSessionEvent(PointerInput e)
-        => _pointerSession.IsActive && _pointerSession.PointerId == e.Pointer.PointerId;
-
-    private void ProcessPointerWheelChanged(ref PointerInput e)
-    {
-        if (_published.Snapshot is not { } snapshot || _surface.Canvas is null)
-            return;
-
-        var point = e.Point;
-        bool horizontalWheel = point.Properties.IsHorizontalMouseWheel;
-        bool shift = (e.Modifiers & VirtualKeyModifiers.Shift) != 0;
-        if (!horizontalWheel && !shift)
-            return;
-
-        if (!snapshot.TryGetHorizontalOverflow(point.Position, out var target) || target is null)
-            return;
-
-        int wheelDelta = point.Properties.MouseWheelDelta;
-        if (wheelDelta == 0)
-            return;
-
-        double oldOffset = target.HorizontalOffset;
-        double delta = -(wheelDelta / 120.0) * 64.0;
-        if (target.IsRightToLeft)
-            delta = -delta;
-
-        if (!snapshot.TryScrollHorizontal(target, delta))
-            return;
-
-        RefreshHorizontalOverflowVisualState(target, oldOffset);
-        e.Handled = true;
-    }
-
-    private bool TryBeginHorizontalOverflowPointer(ref PointerInput e)
-    {
-        if (_published.Snapshot is not { } snapshot || _surface.Canvas is null)
-            return false;
-
-        var point = e.Point;
-        if (!point.IsInContact ||
-            !snapshot.TryGetHorizontalOverflow(point.Position, out var target) ||
-            target is null)
-        {
-            return false;
-        }
-
-        Rect track = target.HorizontalScrollTrackBounds;
-        bool precise = PointerInputClassification.IsPrecisePointer(e);
-        if (precise && !track.Contains(point.Position))
-            return false;
-
-        _horizontalOverflowPointerId = e.Pointer.PointerId;
-        _horizontalOverflowSnapshot = snapshot;
-        _horizontalOverflowTarget = target;
-        _horizontalOverflowPressPoint = point.Position;
-        _horizontalOverflowInitialOffset = target.HorizontalOffset;
-        _horizontalOverflowCaptured = false;
-        _horizontalOverflowThumbDrag = precise;
-
-        if (!precise)
-        {
-            // A touch contact starts in a pending state. Do not capture or mark
-            // handled until horizontal movement wins the gesture threshold, so
-            // the ancestor ScrollViewer remains free to own vertical panning.
-            return true;
-        }
-
-        Rect thumb = target.HorizontalScrollThumbBounds;
-        double oldOffset = target.HorizontalOffset;
-        if (!thumb.Contains(point.Position))
-        {
-            SetHorizontalOffsetFromTrackPoint(snapshot, target, point.Position.X, centerThumb: true);
-            thumb = target.HorizontalScrollThumbBounds;
-        }
-        _horizontalOverflowThumbGrabOffset = Math.Clamp(
-            point.Position.X - thumb.Left,
-            0,
-            Math.Max(0, thumb.Width));
-
-        if (!PointerInputClassification.CapturePointerForInput(_surface.Canvas, e))
-        {
-            ClearHorizontalOverflowPointerState();
-            e.ResumeRebuildAfterInteraction = true;
-            return false;
-        }
-
-        _horizontalOverflowCaptured = true;
-        if (Math.Abs(target.HorizontalOffset - oldOffset) > 0.1)
-            RefreshHorizontalOverflowVisualState(target, oldOffset);
-        e.Handled = true;
-        return true;
-    }
-
-    private bool HandleHorizontalOverflowPointerMoved(ref PointerInput e, Point point)
-    {
-        if (_horizontalOverflowPointerId == 0 ||
-            _horizontalOverflowPointerId != e.Pointer.PointerId ||
-            _horizontalOverflowSnapshot is not { } snapshot ||
-            _horizontalOverflowTarget is not { } target ||
-            !ReferenceEquals(snapshot, _published.Snapshot))
-        {
-            return false;
-        }
-
-        if (_horizontalOverflowThumbDrag)
-        {
-            double oldOffset = target.HorizontalOffset;
-            SetHorizontalOffsetFromTrackPoint(
-                snapshot,
-                target,
-                point.X - _horizontalOverflowThumbGrabOffset,
-                centerThumb: false);
-            if (Math.Abs(target.HorizontalOffset - oldOffset) > 0.1)
-                RefreshHorizontalOverflowVisualState(target, oldOffset);
-            e.Handled = true;
-            return true;
-        }
-
-        double dx = point.X - _horizontalOverflowPressPoint.X;
-        double dy = point.Y - _horizontalOverflowPressPoint.Y;
-        if (!_horizontalOverflowCaptured)
-        {
-            MarkdownPanGestureDecision decision =
-                MarkdownPointerGesturePolicy.ClassifyHorizontalPan(dx, dy);
-            if (decision == MarkdownPanGestureDecision.Pending)
-                return false;
-
-            if (decision == MarkdownPanGestureDecision.YieldToAncestor)
-            {
-                ClearHorizontalOverflowPointerState();
-                e.ResumeRebuildAfterInteraction = true;
-                return false;
-            }
-
-            if (_surface.Canvas is null || !PointerInputClassification.CapturePointerForInput(_surface.Canvas, e))
-            {
-                ClearHorizontalOverflowPointerState();
-                e.ResumeRebuildAfterInteraction = true;
-                return false;
-            }
-            _horizontalOverflowCaptured = true;
-            SuppressTouchTap(point, e.TouchTapGestureEpoch);
-        }
-
-        double oldTouchOffset = target.HorizontalOffset;
-        double requested = target.IsRightToLeft
-            ? _horizontalOverflowInitialOffset + dx
-            : _horizontalOverflowInitialOffset - dx;
-        if (snapshot.TrySetHorizontalOffset(target, requested))
-            RefreshHorizontalOverflowVisualState(target, oldTouchOffset);
-        e.Handled = true;
-        return true;
-    }
-
-    private bool HandleHorizontalOverflowPointerReleased(ref PointerInput e)
-    {
-        if (_horizontalOverflowPointerId == 0 ||
-            _horizontalOverflowPointerId != e.Pointer.PointerId)
-        {
-            return false;
-        }
-
-        bool captured = _horizontalOverflowCaptured;
-        if (captured && _surface.Canvas is not null)
-            SuppressTouchTap(e.Point.Position, e.TouchTapGestureEpoch);
-        ClearHorizontalOverflowPointerState();
-        e.ResumeRebuildAfterInteraction = true;
-        if (captured && _surface.Canvas is not null)
-        {
-            e.Handled = true;
-            e.ReleaseCanvasCaptureAfterInteraction = true;
-        }
-        return captured;
-    }
-
-    private bool HandleHorizontalOverflowPointerCanceled(ref PointerInput e)
-    {
-        if (_horizontalOverflowPointerId == 0 ||
-            _horizontalOverflowPointerId != e.Pointer.PointerId)
-        {
-            return false;
-        }
-
-        bool captured = _horizontalOverflowCaptured;
-        ClearHorizontalOverflowPointerState();
-        e.ResumeRebuildAfterInteraction = true;
-        if (captured)
-        {
-            e.Handled = true;
-        }
-        return captured;
-    }
-
-    private static void SetHorizontalOffsetFromTrackPoint(
-        LayoutSnapshot snapshot,
-        IHorizontalOverflowBox target,
-        double x,
-        bool centerThumb)
-    {
-        Rect track = target.HorizontalScrollTrackBounds;
-        Rect thumb = target.HorizontalScrollThumbBounds;
-        if (track.IsEmpty || thumb.IsEmpty)
-            return;
-
-        double thumbLeft = centerThumb ? x - thumb.Width / 2.0 : x;
-        double travel = Math.Max(0, track.Width - thumb.Width);
-        if (travel <= 0)
-            return;
-
-        double physicalFraction = Math.Clamp((thumbLeft - track.Left) / travel, 0, 1);
-        double logicalFraction = target.IsRightToLeft
-            ? 1.0 - physicalFraction
-            : physicalFraction;
-        double maximum = Math.Max(0, target.HorizontalExtent - target.HorizontalViewport);
-        snapshot.TrySetHorizontalOffset(target, logicalFraction * maximum);
     }
 
     private void RefreshHorizontalOverflowVisualState(
@@ -9979,514 +9606,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         return false;
     }
 
-    private void ClearHorizontalOverflowPointerState()
-    {
-        _horizontalOverflowPointerId = 0;
-        _horizontalOverflowSnapshot = null;
-        _horizontalOverflowTarget = null;
-        _horizontalOverflowPressPoint = default;
-        _horizontalOverflowInitialOffset = 0;
-        _horizontalOverflowThumbGrabOffset = 0;
-        _horizontalOverflowCaptured = false;
-        _horizontalOverflowThumbDrag = false;
-    }
-
-    private void ProcessPointerPressed(ref PointerInput e)
-    {
-        if (_published.Snapshot is not { } snapshot || _surface.Canvas is null)
-            return;
-        _pendingTouchSelectionPresentationRestore = null;
-        long snapshotGeneration = _published.Generation;
-        long layoutRevision = snapshot.LayoutRevision;
-
-        if (e.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Touch)
-        {
-            Rect contact = e.Point.Properties.ContactRect;
-            bool contactAccepted = _touchSelection.BeginContact(
-                e.Pointer.PointerId,
-                new TouchContactGeometry(contact.X, contact.Y, contact.Width, contact.Height),
-                selectionIsActive: _selection.IsActive);
-            if (contactAccepted &&
-                _touchTapSuppression.TryBeginContact(e.Pointer.PointerId, out long gestureEpoch))
-            {
-                e.TouchTapGestureEpoch = gestureEpoch;
-            }
-            else
-            {
-                // Holding/Tapped routed events do not expose a pointer ID. Keep
-                // a secondary contact's origin so a recognized event at that
-                // location cannot be mistaken for the primary contact's event.
-                _touchTapSuppression.TrackUnownedContact(
-                    e.Pointer.PointerId,
-                    e.Point.Position);
-                if (contactAccepted)
-                    _touchSelection.Cancel(e.Pointer.PointerId);
-            }
-        }
-
-        if (TryBeginHorizontalOverflowPointer(ref e))
-        {
-            if (e.Handled)
-                return;
-            if (!PointerInputClassification.IsPrecisePointer(e))
-                return;
-        }
-        MarkdownPointerModality modality = PointerInputClassification.GetPointerModality(e.Pointer.PointerDeviceType);
-        if (!MarkdownPointerGesturePolicy.BeginsImmediateSelection(modality))
-            return;
-
-        // Only process left (primary) button presses; right-clicks are handled by
-        // OnRightTapped and must not affect the multi-click counter or selection anchor.
-        var currentPoint = e.Point;
-        if (!MarkdownPointerGesturePolicy.IsPrimarySelectionPress(
-                modality,
-                currentPoint.IsInContact,
-                currentPoint.Properties.IsLeftButtonPressed,
-                currentPoint.Properties.IsBarrelButtonPressed))
-            return;
-        var pt = currentPoint.Position;
-        if (_selectionHandleCaptureTarget is not null)
-            ResetSelectionHandleDrag();
-        _touchTapSuppression.Reset();
-        _touchSelection.Reset();
-        UpdateSelectionHandles();
-        _viewport.TryGet(out double pointerViewportTop, out _, out _);
-        _lastSelectionPointerViewportY = pt.Y - pointerViewportTop;
-        RememberFocusResumePoint(pt);
-
-        // Pressing renderer chrome (code-copy action) must not create or clear
-        // selection; let the native button handle the click.
-        if (IsPointOverCodeBlockAction(pt))
-        {
-            _clicks.Reset();
-            return;
-        }
-
-        _abbreviationTooltip.Hide();
-
-        // Pressing *on* a hosted inline embed must NOT start a selection.
-        // The embed is a real WinUI element layered above the canvas — its
-        // own pointer-pressed handler must run (Button click, TextBox focus,
-        // …).  Returning here without setting _selectionAnchor or capturing
-        // the pointer lets XAML's normal pointer routing deliver the event
-        // to the embedded element.
-        if (IsPointOverEmbed(pt))
-        {
-            // A press on an embedded control breaks any ongoing double/triple-click
-            // sequence; reset timing state so the next text press starts fresh.
-            _clicks.Reset();
-            // Clear any prior selection so the user gets visual feedback that
-            // the click isn't a new selection start.
-            if (!_selection.Range.IsEmpty)
-            {
-                _selection.Clear();
-                // No canvas Invalidate() needed — overlay cleared by Changed handler.
-            }
-            // Also dismiss keyboard focus ring on click over embed.
-            if (_focusedItemIndex >= 0)
-            {
-                _pendingLazyFocus = null;
-                _focusedItemIndex = -1;
-                UpdateFocusRing();
-            }
-            return;
-        }
-
-        // Dismiss any keyboard focus ring — mouse clicks and keyboard nav are
-        // separate modalities; clicking anywhere in the document should clear
-        // the ring so the focus indicator doesn't linger after the user
-        // switches from keyboard to mouse.
-        if (_focusedItemIndex >= 0)
-        {
-            _pendingLazyFocus = null;
-            _focusedItemIndex = -1;
-            UpdateFocusRing();
-        }
-
-        // Track consecutive clicks for word (double) and line (triple) selection.
-        long nowMs = e.TickCount;
-        int clickCount = _clicks.RegisterPress(pt, nowMs);
-
-
-        FocusRendererForPointerInteraction();
-        // Focus can synchronously re-enter application code, including document
-        // replacement or unload. Keep all geometry reads on the snapshot whose
-        // interaction lease DispatchPointerInput acquired.
-        if (!IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))
-            return;
-
-        if (snapshot.HitTest(pt, out var pos))
-        {
-            // Advance clock/position only on successful text hits so a miss in the
-            // same spot doesn't corrupt the double/triple-click timing window.
-            _clicks.AcceptPress(pt, nowMs);
-            _pointerSession = new PointerSession(e.Pointer.PointerId, IsPrimary: true);
-
-            if (!IsSelectionEnabled)
-            {
-                // Selection is disabled but links must still work: capture the pointer
-                // so OnPointerReleased fires and can raise LinkClick.
-                // Also ensure _clickMode is reset so the link-click guard in
-                // OnPointerReleased is not stale from a previous double/triple-click
-                // sequence made while IsSelectionEnabled was true.
-                _clickMode = ClickSelectionMode.Single;
-                if (!PointerInputClassification.CapturePointerForInput(_surface.Canvas, e)) _pointerSession = default;
-                else e.Handled = true;
-                return;
-            }
-
-            // Always arm the anchor first: this suppresses hover processing
-            // in OnPointerMoved during any captured drag (single, double, or triple-click)
-            // and prevents a stale anchor from an earlier interaction being reused.
-            _selectionAnchor = pos;
-
-            if (clickCount == 3)
-            {
-                // Triple-click: select the entire block (line).
-                _clickMode = ClickSelectionMode.Block;
-                (_dragAnchorStart, _dragAnchorEnd) = ExpandSelectionToBlock(
-                    snapshot, pos, snapshotGeneration, layoutRevision);
-                if (!IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))
-                    return;
-                _selection.SetAnchor(_dragAnchorStart);
-                if (!IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))
-                    return;
-                _selection.ExtendTo(_dragAnchorEnd);
-                if (!IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))
-                    return;
-                // Selection is rendered by the XAML overlay; do not dirty canvas
-                // text during mouse-down. Repainting DirectWrite text here causes
-                // visible shake on selection starts, especially on the embeds page.
-                if (!PointerInputClassification.CapturePointerForInput(_surface.Canvas, e)) { _pointerSession = default; _selectionAnchor = null; }
-                else e.Handled = true;
-                return;
-            }
-            if (clickCount == 2)
-            {
-                // Double-click: select the word under the cursor.
-                _clickMode = ClickSelectionMode.Word;
-                (_dragAnchorStart, _dragAnchorEnd) = ExpandSelectionToWord(
-                    snapshot, pos, snapshotGeneration, layoutRevision);
-                if (!IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))
-                    return;
-                _selection.SetAnchor(_dragAnchorStart);
-                if (!IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))
-                    return;
-                _selection.ExtendTo(_dragAnchorEnd);
-                if (!IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))
-                    return;
-                // Selection is rendered by the XAML overlay; do not dirty canvas
-                // text during mouse-down.
-                if (!PointerInputClassification.CapturePointerForInput(_surface.Canvas, e)) { _pointerSession = default; _selectionAnchor = null; }
-                else e.Handled = true;
-                return;
-            }
-            _clickMode = ClickSelectionMode.Single;
-            _selection.SetAnchor(pos);
-            if (!IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))
-                return;
-            // Selection is rendered by the XAML overlay; do not dirty canvas text
-            // for the empty anchor state.
-            bool captured = PointerInputClassification.CapturePointerForInput(_surface.Canvas, e);
-            if (!captured) { _pointerSession = default; _selectionAnchor = null; }
-                else e.Handled = true;
-            }
-        else if (TryGetVectorPointerState(pt, out bool vectorLinked, out _) && vectorLinked)
-        {
-            // Linked and Selectable are independent scene semantics. A linked-only
-            // item must still receive a complete press/release gesture, but it must
-            // not become a text-selection anchor.
-            _clicks.AcceptPress(pt, nowMs);
-            _clickMode = ClickSelectionMode.Single;
-            _pointerSession = new PointerSession(e.Pointer.PointerId, IsPrimary: true);
-            _selectionAnchor = null;
-            _selection.Clear();
-            if (!IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))
-                return;
-            if (!PointerInputClassification.CapturePointerForInput(_surface.Canvas, e))
-                _pointerSession = default;
-            else
-                e.Handled = true;
-        }
-        else
-        {
-            // HitTest missed (pointer landed on a gap or embed area).
-            // Reset click state so this miss isn't counted toward a future
-            // double/triple-click; also reset timing so a miss→text sequence
-            // never misclassifies as a double-click.
-            _clicks.Reset();
-            _selectionAnchor = null; // defensive: clear any stale anchor from a prior capture loss
-            _lastSelectionPointerViewportY = double.NaN;
-            _selection.Clear();
-            // No canvas invalidate: selection clear is overlay-only.
-        }
-    }
-
-    private void OnTapped(object sender, TappedRoutedEventArgs e)
-    {
-        if (_surface.Canvas is not null && e.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Touch)
-            e.Handled |= DispatchRecognizedGesture(PointerInputKind.Tap, e.GetPosition(_surface.Canvas), e.PointerDeviceType);
-    }
-
-    private void OnDoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
-    {
-        if (_surface.Canvas is not null && e.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Touch)
-            e.Handled |= DispatchRecognizedGesture(PointerInputKind.DoubleTap, e.GetPosition(_surface.Canvas), e.PointerDeviceType);
-    }
-
-    private void ProcessTapped(ref PointerInput e)
-    {
-        if (e.InteractionSnapshot is not { } snapshot || _surface.Canvas is null ||
-            e.GestureDevice != Microsoft.UI.Input.PointerDeviceType.Touch)
-        {
-            return;
-        }
-
-        Point point = e.GesturePosition;
-        bool suppressTap = IsSuppressedTouchGesture(e.TouchTapGestureEpoch, point);
-        _touchTapSuppression.CompleteTap(e.TouchTapGestureEpoch);
-        if (suppressTap)
-        {
-            e.Handled = true;
-            return;
-        }
-
-        if (IsPointOverEmbed(point) || IsPointOverCodeBlockAction(point))
-            return;
-
-        if (_selection.IsActive && IsPointInsideSelection(snapshot, point))
-        {
-            e.ShowContextMenuAfterInteraction = true;
-            e.TouchSelectionContextMenu = true;
-            e.Handled = true;
-            return;
-        }
-
-        if (_selection.IsActive)
-            e.ClearSelectionAfterInteraction = true;
-
-        // Tapped is raised only after WinUI's gesture recognizer has ruled out
-        // manipulation. Unlike PointerPressed, this lets an ancestor
-        // ScrollViewer retain vertical-pan ownership without a speculative
-        // renderer capture.
-        RememberFocusResumePoint(point);
-        if (TryCreateLinkActivationIntent(
-            snapshot,
-            point,
-            MarkdownLinkInputKind.Touch,
-            e.LinkModifiers,
-            out LinkActivationIntent intent))
-        {
-            e.SetLinkActivation(intent);
-            e.Handled = true;
-        }
-    }
-
-    private void ProcessDoubleTapped(ref PointerInput e)
-    {
-        if (_published.Snapshot is not { } snapshot || _surface.Canvas is null ||
-            e.GestureDevice != Microsoft.UI.Input.PointerDeviceType.Touch)
-        {
-            return;
-        }
-        long snapshotGeneration = _published.Generation;
-        long layoutRevision = snapshot.LayoutRevision;
-
-        Point point = e.GesturePosition;
-        if (IsPointOverEmbed(point) || IsPointOverCodeBlockAction(point))
-            return;
-
-        ClearHorizontalOverflowPointerState();
-        e.ResumeRebuildAfterInteraction = true;
-        EndCapturedSelectionForContextGesture(ref e);
-        if (IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision) &&
-            TrySelectWordForTouchContext(
-                point,
-                snapshot,
-                snapshotGeneration,
-                layoutRevision,
-                e.HasGestureContact ? e.GestureContact : null))
-        {
-            SuppressTouchTap(point, e.TouchTapGestureEpoch);
-            e.Handled = true;
-        }
-    }
-
-    private void OnHolding(object sender, HoldingRoutedEventArgs e)
-    {
-        if (_surface.Canvas is not null && e.HoldingState == Microsoft.UI.Input.HoldingState.Started &&
-            e.PointerDeviceType is Microsoft.UI.Input.PointerDeviceType.Touch or Microsoft.UI.Input.PointerDeviceType.Pen)
-            e.Handled |= DispatchRecognizedGesture(PointerInputKind.Hold, e.GetPosition(_surface.Canvas), e.PointerDeviceType);
-    }
-
-    private void ProcessHolding(ref PointerInput e)
-    {
-        if (_published.Snapshot is not { } snapshot || _surface.Canvas is null ||
-            e.GestureDevice is not (
-                Microsoft.UI.Input.PointerDeviceType.Touch or
-                Microsoft.UI.Input.PointerDeviceType.Pen))
-        {
-            return;
-        }
-        long snapshotGeneration = _published.Generation;
-        long layoutRevision = snapshot.LayoutRevision;
-
-        Point point = e.GesturePosition;
-        if (IsPointOverEmbed(point) || IsPointOverCodeBlockAction(point))
-            return;
-
-        // A stationary hold has established selection/context intent. Clear a
-        // still-pending block-local pan and end any pen-selection capture: the
-        // flyout and explicit selection handles own subsequent interaction.
-        ClearHorizontalOverflowPointerState();
-        e.ResumeRebuildAfterInteraction = true;
-        EndCapturedSelectionForContextGesture(ref e);
-
-        // A hold inside a committed selection is a context gesture for
-        // that selection, as a tap or context request inside it already is.
-        // Keep the selection and its handles; the release opens its commands.
-        if (_selection.IsActive && IsPointInsideSelection(snapshot, point))
-        {
-            if (IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))
-            {
-                _touchSelection.Select();
-                UpdateSelectionOverlay();
-                SuppressTouchTap(point, e.TouchTapGestureEpoch);
-                e.Handled = true;
-            }
-            return;
-        }
-
-        if (IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision) &&
-            TrySelectWordForTouchContext(
-                point,
-                snapshot,
-                snapshotGeneration,
-                layoutRevision,
-                e.HasGestureContact ? e.GestureContact : null))
-        {
-            SuppressTouchTap(point, e.TouchTapGestureEpoch);
-            e.Handled = true;
-        }
-    }
-
-    private void EndCapturedSelectionForContextGesture(ref PointerInput input)
-    {
-        if (input.ContextCaptureEnded)
-            return;
-        input.ContextCaptureEnded = true;
-
-        if (!_pointerSession.IsActive || _surface.Canvas is null)
-            return;
-
-        // Retire the live logical session under the snapshot lease, but defer
-        // the native/XAML release: WinUI can synchronously route CaptureLost.
-        uint pointerId = _pointerSession.PointerId;
-        _pointerSession = default;
-        _selectionAnchor = null;
-        _lastSelectionPointerViewportY = double.NaN;
-        SetSelectionDragShieldActive(false);
-        input.InteractionCanvas = _surface.Canvas;
-        input.ReleasePointerIdAfterInteraction = pointerId;
-        input.ReleaseCanvasCaptureAfterInteraction = pointerId != 0;
-    }
-
-    private bool TrySelectWordForTouchContext(
-        Point point,
-        LayoutSnapshot snapshot,
-        long snapshotGeneration,
-        long layoutRevision,
-        TouchContactGeometry? capturedContact = null)
-    {
-        if (!IsSelectionEnabled ||
-            !IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision) ||
-            !TryHitTestTouchSelection(point, snapshot, capturedContact, out DocumentPosition position))
-        {
-            return false;
-        }
-
-        FocusRendererForPointerInteraction();
-        if (!IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))
-            return false;
-
-        _clicks.Reset();
-        _selectionAnchor = null;
-        _clickMode = ClickSelectionMode.Word;
-        (_dragAnchorStart, _dragAnchorEnd) = ExpandSelectionToWord(
-            snapshot, position, snapshotGeneration, layoutRevision);
-        if (!IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))
-            return false;
-
-        if (_selection.IsActive)
-            _touchSelection.Select();
-        UpdateSelectionOverlay();
-        return IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision) && _selection.IsActive;
-    }
-
-    private bool TryHitTestTouchSelection(
-        Point gesturePoint,
-        LayoutSnapshot snapshot,
-        TouchContactGeometry? capturedContact,
-        out DocumentPosition position)
-    {
-        position = default;
-        if (IsSelectableTouchPoint(gesturePoint, snapshot, out position))
-            return true;
-
-        if (capturedContact is not { } contact ||
-            !GestureHitTestBands.IsBoundedGestureContact(gesturePoint, contact))
-            return false;
-
-        double left = contact.X;
-        double top = contact.Y;
-        double right = contact.X + contact.Width;
-        double bottom = contact.Y + contact.Height;
-        Point center = new(contact.CenterX, contact.CenterY);
-        double insetX = Math.Min(4, contact.Width / 4);
-        double insetY = Math.Min(4, contact.Height / 4);
-        return IsSelectableTouchPoint(center, snapshot, out position) ||
-               IsSelectableTouchPoint(new Point(left + insetX, center.Y), snapshot, out position) ||
-               IsSelectableTouchPoint(new Point(right - insetX, center.Y), snapshot, out position) ||
-               IsSelectableTouchPoint(new Point(center.X, top + insetY), snapshot, out position) ||
-               IsSelectableTouchPoint(new Point(center.X, bottom - insetY), snapshot, out position);
-    }
-
-    private bool IsSelectableTouchPoint(Point point, LayoutSnapshot snapshot, out DocumentPosition position)
-    {
-        position = default;
-        return !IsPointOverEmbed(point) &&
-               !IsPointOverCodeBlockAction(point) &&
-               snapshot.HitTest(point, out position);
-    }
-
-    private bool IsPointInsideSelection(LayoutSnapshot snapshot, Point point)
-    {
-        _viewport.TryGet(out double top, out double height, out double width);
-        double scale = XamlRoot?.RasterizationScale ?? 1.0;
-        if (!double.IsFinite(scale) || scale <= 0)
-            scale = 1.0;
-
-        return _selection.ContainsPointUnderReadLease(
-            snapshot,
-            point,
-            new Rect(0, top, width, height),
-            scale);
-    }
-
-    private void SuppressTouchTap(Point point, long gestureEpoch)
-    {
-        _touchTapSuppression.SuppressTouchTap(
-            gestureEpoch,
-            point,
-            Environment.TickCount64);
-    }
-
-    private bool IsSuppressedTouchGesture(long gestureEpoch, Point point)
-        => _touchTapSuppression.ShouldSuppressTap(
-            gestureEpoch,
-            Environment.TickCount64,
-            point);
-
     private void FocusRendererForPointerInteraction()
     {
         _suppressNextFocusPromotion = true;
@@ -10498,201 +9617,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         }
 
         DispatcherQueue.TryEnqueue(() => _suppressNextFocusPromotion = false);
-    }
-
-    private void ProcessPointerMoved(ref PointerInput e)
-    {
-        if (_published.Snapshot is null || _surface.Canvas is null) return;
-        var pt = e.Point.Position;
-
-        if (e.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Touch)
-        {
-            Rect contact = e.Point.Properties.ContactRect;
-            _touchSelection.UpdateContact(
-                e.Pointer.PointerId,
-                new TouchContactGeometry(contact.X, contact.Y, contact.Width, contact.Height));
-        }
-
-        if (HandleHorizontalOverflowPointerMoved(ref e, pt))
-            return;
-
-        // Drag-select.
-        if (_selectionAnchor is not null)
-        {
-            if (!IsActivePointerSessionEvent(e))
-                return;
-
-            e.Handled = true;
-
-            _abbreviationTooltip.Hide();
-            var dragPoint = PrepareSelectionDragPoint(pt);
-            // Atomic embed inclusion: when the pointer is inside an inline
-            // embed rect during a drag, snap the position to either the
-            // start or end of the InlineEmbedRun (whichever side the pointer
-            // is closer to).  This treats the embed as a single, indivisible
-            // unit of selectable content — the user can never have a
-            // selection that ends *halfway through* an embedded button or
-            // textbox, which matches how browsers handle <input> /
-            // <textarea> inside contenteditable text.
-            if (TryHitTestEmbed(dragPoint, out var embedPos))
-            {
-                _selection.ExtendTo(embedPos);
-                // No canvas Invalidate(): selection is on the XAML overlay.
-            }
-            else if (_published.Snapshot.HitTestSelectionEndpoint(dragPoint, out var pos))
-            {
-                // For word/block click modes extend selection snapped to the
-                // appropriate boundary so dragging after double/triple-click
-                // produces word-by-word or block-by-block selection, matching
-                // browser / native text editor behaviour.
-                if (_clickMode == ClickSelectionMode.Word)
-                {
-                    var icb = DocumentHitTesting.FindInlineContainerAt(_published.Snapshot, pos.BlockIndex);
-                    if (icb is not null)
-                    {
-                        var (ws, we) = icb.GetWordBoundaries(pos);
-                        // Backward drag: anchor at initial-word end, extend to current-word start.
-                        // Forward drag: anchor at initial-word start, extend to current-word end.
-                        if (pos.CompareTo(_dragAnchorStart) < 0)
-                        { _selection.SetAnchor(_dragAnchorEnd); _selection.ExtendTo(ws); }
-                        else
-                        { _selection.SetAnchor(_dragAnchorStart); _selection.ExtendTo(we); }
-                    }
-                    else
-                        _selection.ExtendTo(pos); // no ICB (code block/embed) — fall back to char selection
-                }
-                else if (_clickMode == ClickSelectionMode.Block)
-                {
-                    var icb = DocumentHitTesting.FindInlineContainerAt(_published.Snapshot, pos.BlockIndex);
-                    if (icb is not null)
-                    {
-                        var (bs, be) = icb.GetBlockBoundaries();
-                        if (pos.CompareTo(_dragAnchorStart) < 0)
-                        { _selection.SetAnchor(_dragAnchorEnd); _selection.ExtendTo(bs); }
-                        else
-                        { _selection.SetAnchor(_dragAnchorStart); _selection.ExtendTo(be); }
-                    }
-                    else
-                        _selection.ExtendTo(pos); // no ICB — fall back to char selection
-                }
-                else
-                    _selection.ExtendTo(pos);
-                // No canvas Invalidate(): selection is on the XAML overlay.
-            }
-            // Do NOT update hover state during an active selection drag.
-            // Calling SetColor on the CanvasTextLayout (which ApplyHoverColor
-            // does whenever HoveredRun changes) causes DirectWrite to
-            // invalidate cached glyph metrics, which in turn produces
-            // sub-pixel vertical jitter ("selection shake") whenever the
-            // pointer crosses run boundaries — most visibly on body text
-            // that contains links, because every time the pointer moves
-            // between the link run and the surrounding body run the
-            // hovered-run identity flips.  Suppressing the toggle here
-            // costs nothing because the IBeam cursor and link-hover color
-            // aren't relevant while the user is mid-drag selecting.
-            return;
-        }
-
-        // Touch contacts should pan the containing ScrollViewer. Treating touch
-        // like a mouse press can capture the pointer, start text selection, and
-        // drive the Win2D selection overlay at touch-scroll frequency.
-        if (!PointerInputClassification.IsPrecisePointer(e))
-        {
-            _abbreviationTooltip.Hide();
-            _cursor.SetShape(null);
-            return;
-        }
-
-        // Pointer hovering an inline embed: do nothing.  The embed is its
-        // own pointer-event target and its ProtectedCursor (Hand / IBeam /
-        // arrow / …) takes effect via XAML's normal pointer routing.  We
-        // reset our own ProtectedCursor to null so child elements are not
-        // overridden by an IBeam that this UserControl last set.  null
-        // means "no cursor override" — XAML walks up the tree and finds
-        // nothing, so the system default (Arrow) applies, allowing each
-        // embed to set its own cursor if desired.
-        if (IsPointOverEmbed(pt))
-        {
-            _abbreviationTooltip.Hide();
-            // Clear our own link-hover so when the pointer leaves the embed
-            // the previous hovered link doesn't appear stuck-on.
-            ClearPointerHover();
-            _cursor.SetShape(null);
-            return;
-        }
-
-        // Hover effect for links + cursor change.
-        // Only respond to transitions that *actually affect rendering or the
-        // cursor shape*.  Earlier this method invalidated the canvas and
-        // re-set ProtectedCursor on every transition between any two runs
-        // (including TextRun → TextRun within the same paragraph as the
-        // pointer moved character-by-character).  That produced visible
-        // text "shake" on plain hover because ProtectedCursor reassignment
-        // and a full Canvas.Invalidate per pointer-move event nudges the
-        // visual tree by a sub-pixel.  Now we only react when the link
-        // we're hovering changes (which mutates run color → must repaint)
-        // or when the cursor shape needs to flip Hand↔IBeam.
-        InlineRun? hovered = null;
-        Layout.Boxes.InlineContainerBox? hoveredBox = null;
-        Point hoveredPhysicalPoint = pt;
-        foreach (var b in _published.Snapshot.Blocks)
-        {
-            Point physicalPoint = e.InteractionSnapshot is { } interactionSnapshot
-                ? interactionSnapshot.ToPhysicalPointForTopLevelBlockUnderPaint(b, pt)
-                : pt;
-            using LayoutPlacementTransformContext.Scope placementScope =
-                e.InteractionSnapshot?.EnterPlacementTransformScopeForTopLevelBlockUnderPaint(b) ?? default;
-            if (DocumentHitTesting.FindInlineHover(b, physicalPoint) is var h && h.Run is not null)
-            {
-                hovered = h.Run;
-                hoveredBox = h.Box;
-                hoveredPhysicalPoint = physicalPoint;
-                break;
-            }
-        }
-
-        if (LinkTargets.IsLinkedRun(hovered) && hoveredBox is { } linkedBox)
-        {
-            using LayoutPlacementTransformContext.Scope placementScope =
-                e.InteractionSnapshot?.EnterPlacementTransformScopeForBlockIndexUnderPaint(linkedBox.BlockIndex) ?? default;
-            if (linkedBox.IsPointInsideRunBounds(hovered!, hoveredPhysicalPoint) != true)
-            {
-                hovered = null;
-                hoveredBox = null;
-            }
-        }
-
-        var hoveredLinkedRun = LinkTargets.IsLinkedRun(hovered) ? hovered : null;
-        var lastLinkedRun = LinkTargets.IsLinkedRun(_hover.Run) ? _hover.Run : null;
-        bool linkChanged = !ReferenceEquals(hoveredLinkedRun, lastLinkedRun);
-        bool overVectorScene = TryGetVectorPointerState(
-            pt,
-            out bool hoveredVectorLink,
-            out bool hoveredVectorSelectable);
-        var wantedShape = hoveredLinkedRun is not null || hoveredVectorLink
-            ? Microsoft.UI.Input.InputSystemCursorShape.Hand
-            : IsSelectionEnabled && (!overVectorScene || hoveredVectorSelectable)
-                ? Microsoft.UI.Input.InputSystemCursorShape.IBeam
-                : (Microsoft.UI.Input.InputSystemCursorShape?)null; // Arrow when selection is off
-
-        if (linkChanged)
-        {
-            // Update hover bookkeeping for click routing, but do NOT invalidate
-            // the canvas — hover causes no visual change to the text any more
-            // (see InlineContainerBox.HoveredRun docs).  Eliminating these
-            // partial-region invalidates is what finally killed the long-
-            // standing text-shake bug: even with grayscale AA + device-pixel
-            // origin snapping, repainting a partial canvas region forced
-            // DirectWrite to re-tile glyphs at sub-pixel-different positions.
-            foreach (var b in _published.Snapshot.Blocks) DocumentHitTesting.ClearHover(b);
-            if (hoveredBox is not null && hoveredLinkedRun is LinkRun hoveredLink)
-                hoveredBox.HoveredRun = hoveredLink;
-            InvalidateInteractiveTextAdorner();
-        }
-        _hover.Set(hovered, hoveredBox);
-
-        _abbreviationTooltip.Update(hovered, hoveredBox, pt);
-        _cursor.SetShape(wantedShape);
     }
 
     private void InvalidateInteractiveTextAdorner()
@@ -10735,7 +9659,10 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     void ISelectionAdornerHost.RequestRebuildForDeviceChange() => RequestRebuild(RebuildReason.Full);
 
     void ISelectionAdornerHost.UpdateSelectionHandlesUnderPaint(LayoutSnapshot snapshot, Rect viewport)
-        => UpdateSelectionHandlesUnderPaint(snapshot, viewport);
+        => _handles.UpdateUnderPaint(snapshot, viewport);
+
+    internal void AppendVisibleSelectionHandleAutomationPeers(IList<AutomationPeer> peers)
+        => _handles.AppendVisibleAutomationPeers(peers);
 
     void ISelectionAdornerHost.PaintInteractiveDocumentState(
         LayoutSnapshot snapshot,
@@ -10766,47 +9693,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private static bool ShouldIgnoreShutdownException(Exception ex)
         => GraphicsDeviceErrors.IsShutdownOrDisposed(ex);
-
-    private Point PrepareSelectionDragPoint(
-        Point point,
-        bool sustained = false,
-        double elapsedSeconds = 0)
-    {
-        if (_surface.Canvas is null)
-            return point;
-
-        _viewport.TryGet(out double viewportTop, out double viewportHeight, out _);
-        double pointerViewportY = point.Y - viewportTop;
-        double delta = sustained
-            ? SelectionAutoScroll.ComputeFrameDelta(
-                point.Y,
-                viewportTop,
-                viewportHeight,
-                elapsedSeconds)
-            : SelectionAutoScroll.ComputeDirectionalDelta(
-                point.Y,
-                viewportTop,
-                viewportHeight,
-                _lastSelectionPointerViewportY);
-        _lastSelectionPointerViewportY = pointerViewportY;
-        if (Math.Abs(delta) > 0.0001)
-        {
-            double maxOffset = Math.Max(0, _surface.Canvas.ActualHeight - viewportHeight);
-            double target = Math.Clamp(viewportTop + delta, 0, maxOffset);
-            if (Math.Abs(target - viewportTop) > 0.0001)
-            {
-                if (_surface.Scroll is not null)
-                    _surface.Scroll.ChangeView(null, target, null, disableAnimation: true);
-                else
-                    BringDocumentRectIntoExternalViewport(new Rect(0, target, 1, 1), animate: false);
-                viewportTop = target;
-            }
-        }
-
-        double x = Math.Clamp(point.X, 0, Math.Max(0, _surface.Canvas.ActualWidth - 1));
-        double y = SelectionAutoScroll.ClampPointToViewport(point.Y, viewportTop, viewportHeight);
-        return new Point(x, y);
-    }
 
     /// <summary>
     /// True when the given point in canvas coordinates is inside the
@@ -10933,1045 +9819,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             hasPendingRefresh: hasPendingRefresh);
     }
 
-    private void CreateSelectionHandles()
-    {
-        if (_surface.Overlay is null)
-            return;
-
-        _selectionStartHandle = CreateSelectionHandle(SelectionHandleEndpoint.Start);
-        _selectionEndHandle = CreateSelectionHandle(SelectionHandleEndpoint.End);
-        _surface.Overlay.Children.Add(_selectionStartHandle);
-        _surface.Overlay.Children.Add(_selectionEndHandle);
-    }
-
-    private Button CreateSelectionHandle(SelectionHandleEndpoint endpoint)
-    {
-        var dot = new Ellipse
-        {
-            IsHitTestVisible = false,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        var handle = new Button
-        {
-            Tag = endpoint,
-            Content = dot,
-            Padding = new Thickness(0),
-            BorderThickness = new Thickness(0),
-            Background = new SolidColorBrush(Color.FromArgb(0, 0, 0, 0)),
-            HorizontalContentAlignment = HorizontalAlignment.Center,
-            VerticalContentAlignment = VerticalAlignment.Center,
-            HorizontalAlignment = HorizontalAlignment.Left,
-            VerticalAlignment = VerticalAlignment.Top,
-            // Handles own their drag. Without opting out of the inherited
-            // ScrollViewer manipulation contract, DirectManipulation can cancel
-            // the Button's pointer stream as soon as the contact starts moving.
-            ManipulationMode = ManipulationModes.None,
-            IsTabStop = true,
-            UseSystemFocusVisuals = true,
-            Visibility = Visibility.Collapsed,
-        };
-
-        string automationId = endpoint == SelectionHandleEndpoint.Start
-            ? "MarkdownSelectionStartHandle"
-            : "MarkdownSelectionEndHandle";
-        AutomationProperties.SetAutomationId(handle, automationId);
-        UpdateSelectionHandleLocalization(handle, endpoint);
-        handle.AddHandler(
-            UIElement.PointerPressedEvent,
-            new PointerEventHandler(OnSelectionHandlePointerPressed),
-            handledEventsToo: true);
-        handle.AddHandler(
-            UIElement.PointerMovedEvent,
-            new PointerEventHandler(OnSelectionHandlePointerMoved),
-            handledEventsToo: true);
-        handle.AddHandler(
-            UIElement.PointerReleasedEvent,
-            new PointerEventHandler(OnSelectionHandlePointerReleased),
-            handledEventsToo: true);
-        handle.AddHandler(
-            UIElement.PointerCanceledEvent,
-            new PointerEventHandler(OnSelectionHandlePointerCanceled),
-            handledEventsToo: true);
-        handle.AddHandler(
-            UIElement.PointerCaptureLostEvent,
-            new PointerEventHandler(OnSelectionHandlePointerCanceled),
-            handledEventsToo: true);
-        handle.RightTapped += OnSelectionHandleRightTapped;
-        handle.KeyDown += OnSelectionHandleKeyDown;
-        Canvas.SetZIndex(handle, 5);
-        return handle;
-    }
-
-    private bool EnsureSelectionHandles()
-    {
-        if (_surface.Overlay is null)
-            return false;
-        if (_selectionStartHandle is null || _selectionEndHandle is null)
-            CreateSelectionHandles();
-
-        bool attached = false;
-        try
-        {
-            if (VisualTreeHelper.GetParent(_selectionStartHandle) is null)
-            {
-                _surface.Overlay.Children.Add(_selectionStartHandle);
-                attached = true;
-            }
-            if (VisualTreeHelper.GetParent(_selectionEndHandle) is null)
-            {
-                _surface.Overlay.Children.Add(_selectionEndHandle);
-                attached = true;
-            }
-        }
-        catch (System.Runtime.InteropServices.COMException ex)
-        {
-            MarkdownDiagnostics.WriteLine(
-                $"[MarkdownRendererControl] selection handle attach failed: {ex.Message}");
-            return false;
-        }
-
-        if (attached)
-        {
-            UpdateSelectionHandleLocalization(_selectionStartHandle!, SelectionHandleEndpoint.Start);
-            UpdateSelectionHandleLocalization(_selectionEndHandle!, SelectionHandleEndpoint.End);
-        }
-        return true;
-    }
-
-    private void UpdateSelectionHandleLocalization(
-        Button handle,
-        SelectionHandleEndpoint endpoint)
-    {
-        string name = endpoint == SelectionHandleEndpoint.Start
-            ? ResolveLocalizedString(
-                MarkdownStringKeys.SelectionStartHandle,
-                MarkdownLocalizedStrings.SelectionStartHandle)
-            : ResolveLocalizedString(
-                MarkdownStringKeys.SelectionEndHandle,
-                MarkdownLocalizedStrings.SelectionEndHandle);
-        string help = ResolveLocalizedString(
-            MarkdownStringKeys.SelectionHandleHelp,
-            MarkdownLocalizedStrings.SelectionHandleHelp);
-        AutomationProperties.SetName(handle, name);
-        AutomationProperties.SetHelpText(handle, help);
-        ToolTipService.SetToolTip(handle, name);
-    }
-
-    private void UpdateSelectionHandles()
-    {
-        if (!_touchSelection.ShouldShowHandles || !_selection.IsActive)
-        {
-            HideUncapturedSelectionHandles();
-            _adorner.MarkVisualDirty();
-            _adorner.RequestRefresh();
-            return;
-        }
-
-        // Geometry is refreshed only by the frame coordinator while holding
-        // the snapshot paint lease. This direct state change merely requests
-        // that coalesced frame; it never walks boxes on the input callback.
-        _adorner.MarkVisualDirty();
-        _adorner.RequestRefresh();
-    }
-
-    private void UpdateSelectionHandlesUnderPaint(LayoutSnapshot snapshot, Rect viewport)
-    {
-        if (snapshot.GeometryRecoveryRequired || snapshot.IsRetiringOrDisposed ||
-            !_touchSelection.ShouldShowHandles || !_selection.IsActive || !EnsureSelectionHandles())
-        {
-            HideUncapturedSelectionHandles();
-            return;
-        }
-
-        double targetSize = Math.Clamp(
-            _themeSnapshot?.MinimumInteractiveSize ?? 40,
-            44,
-            128);
-        double dotSize = Math.Clamp(targetSize * 0.36, 12, 20);
-        // The hit target keeps one physical pixel of slack over the minimum so
-        // its reported size meets the minimum at any sub-pixel alignment.
-        double handleExtent = SelectionController.ComputeSelectionHandleExtent(
-            targetSize,
-            XamlRoot?.RasterizationScale ?? 1.0);
-        Color handleColor = _themeSnapshot?.SelectionHighlightColor
-            ?? Color.FromArgb(0xFF, 0x00, 0x78, 0xD4);
-        bool startCaptured = IsSelectionHandleCaptured(SelectionHandleEndpoint.Start);
-        bool endCaptured = IsSelectionHandleCaptured(SelectionHandleEndpoint.End);
-        bool pointerDragActive = IsSelectionHandlePointerDragActive();
-        SelectionHandleEndpoint freeLogicalEndpoint = pointerDragActive
-            ? _activeSelectionHandle == SelectionHandleEndpoint.Start
-                ? SelectionHandleEndpoint.End
-                : SelectionHandleEndpoint.Start
-            : SelectionHandleEndpoint.None;
-        if (!startCaptured)
-            UpdateSelectionHandleAppearance(_selectionStartHandle!, handleExtent, dotSize, handleColor);
-        if (!endCaptured)
-            UpdateSelectionHandleAppearance(_selectionEndHandle!, handleExtent, dotSize, handleColor);
-
-        Point startPoint = _selectionStartHandleEndpoint;
-        Point endPoint = _selectionEndHandleEndpoint;
-        bool startAvailable = startCaptured || TryGetSelectionHandleEndpointPoint(
-            snapshot,
-            pointerDragActive ? freeLogicalEndpoint : SelectionHandleEndpoint.Start,
-            viewport,
-            targetSize / 2,
-            out startPoint);
-        bool endAvailable = endCaptured || TryGetSelectionHandleEndpointPoint(
-            snapshot,
-            pointerDragActive ? freeLogicalEndpoint : SelectionHandleEndpoint.End,
-            viewport,
-            targetSize / 2,
-            out endPoint);
-
-        if (startCaptured)
-        {
-            // Keep the captured Button and its stored endpoint stationary until
-            // release. Hiding or moving it during an edge-scroll frame can
-            // synthesize PointerCaptureLost and terminate the drag.
-            _selectionStartHandleEndpointAvailable = true;
-        }
-        else if (startAvailable)
-        {
-            _selectionStartHandleEndpoint = startPoint;
-            _selectionStartHandleEndpointAvailable = PlaceSelectionHandle(
-                _selectionStartHandle!, startPoint, handleExtent, viewport);
-        }
-        else
-        {
-            _selectionStartHandleEndpointAvailable = false;
-            _selectionStartHandle!.Visibility = Visibility.Collapsed;
-        }
-
-        if (endCaptured)
-        {
-            _selectionEndHandleEndpointAvailable = true;
-        }
-        else if (endAvailable)
-        {
-            _selectionEndHandleEndpoint = endPoint;
-            _selectionEndHandleEndpointAvailable = PlaceSelectionHandle(
-                _selectionEndHandle!, endPoint, handleExtent, viewport);
-        }
-        else
-        {
-            _selectionEndHandleEndpointAvailable = false;
-            _selectionEndHandle!.Visibility = Visibility.Collapsed;
-        }
-    }
-
-    private bool IsSelectionHandleCaptured(SelectionHandleEndpoint endpoint)
-    {
-        Button? endpointButton = endpoint switch
-        {
-            SelectionHandleEndpoint.Start => _selectionStartHandle,
-            SelectionHandleEndpoint.End => _selectionEndHandle,
-            _ => null,
-        };
-
-        return endpointButton is not null &&
-            ReferenceEquals(endpointButton, _selectionHandleCaptureTarget) &&
-            IsSelectionHandlePointerDragActive();
-    }
-
-    private bool IsSelectionHandlePointerDragActive()
-        => _selectionHandleCaptureTarget is not null &&
-           _activeSelectionHandle != SelectionHandleEndpoint.None &&
-           _selectionHandlePointerId != 0 &&
-           _touchSelection.ContactPointerId == _selectionHandlePointerId &&
-           _touchSelection.State is TouchSelectionState.DraggingStartHandle or
-               TouchSelectionState.DraggingEndHandle;
-
-    private void HideUncapturedSelectionHandles()
-    {
-        if (!IsSelectionHandleCaptured(SelectionHandleEndpoint.Start))
-        {
-            _selectionStartHandleEndpointAvailable = false;
-            if (_selectionStartHandle is not null)
-                _selectionStartHandle.Visibility = Visibility.Collapsed;
-        }
-
-        if (!IsSelectionHandleCaptured(SelectionHandleEndpoint.End))
-        {
-            _selectionEndHandleEndpointAvailable = false;
-            if (_selectionEndHandle is not null)
-                _selectionEndHandle.Visibility = Visibility.Collapsed;
-        }
-    }
-
-    private static void UpdateSelectionHandleAppearance(
-        Button handle,
-        double targetSize,
-        double dotSize,
-        Color color)
-    {
-        handle.Width = targetSize;
-        handle.Height = targetSize;
-        handle.MinWidth = targetSize;
-        handle.MinHeight = targetSize;
-        handle.CornerRadius = new CornerRadius(targetSize / 2.0);
-        if (handle.Content is not Ellipse dot)
-            return;
-
-        dot.Width = dotSize;
-        dot.Height = dotSize;
-        if (dot.Fill is SolidColorBrush brush)
-            brush.Color = color;
-        else
-            dot.Fill = new SolidColorBrush(color);
-    }
-
-    private bool PlaceSelectionHandle(Button handle, Point endpoint, double targetSize, Rect viewport)
-    {
-        double halfTarget = targetSize / 2.0;
-        bool visible = endpoint.X + halfTarget >= viewport.Left &&
-                       endpoint.X - halfTarget <= viewport.Right &&
-                       endpoint.Y + halfTarget >= viewport.Top &&
-                       endpoint.Y - halfTarget <= viewport.Bottom;
-        if (!visible)
-        {
-            handle.Visibility = Visibility.Collapsed;
-            return false;
-        }
-
-        // Snap to the physical pixel grid of the window root so a 44-DIP target
-        // measures exactly 44 DIP when the renderer starts on a fractional
-        // physical pixel.
-        (double left, double top) = SelectionController.ComputeSelectionHandleOrigin(
-            endpoint,
-            targetSize,
-            viewport,
-            GetSelectionOverlayOriginInRoot(),
-            XamlRoot?.RasterizationScale ?? 1.0);
-        Canvas.SetLeft(handle, left);
-        Canvas.SetTop(handle, top);
-        handle.Visibility = Visibility.Visible;
-        return true;
-    }
-
-    private Point GetSelectionOverlayOriginInRoot()
-    {
-        if (_surface.Overlay is null || XamlRoot is null)
-            return new Point(double.NaN, double.NaN);
-        try
-        {
-            return _surface.Overlay.TransformToVisual(null).TransformPoint(new Point(0, 0));
-        }
-        catch (ArgumentException)
-        {
-            // Not yet in the live tree: keep the unsnapped placement.
-            return new Point(double.NaN, double.NaN);
-        }
-    }
-
-    private void SetSelectionHandleVisibility(Visibility visibility)
-    {
-        try
-        {
-            if (_selectionStartHandle is not null)
-                _selectionStartHandle.Visibility = visibility;
-        }
-        finally
-        {
-            if (_selectionEndHandle is not null)
-                _selectionEndHandle.Visibility = visibility;
-        }
-    }
-
-    internal void AppendVisibleSelectionHandleAutomationPeers(IList<AutomationPeer> peers)
-    {
-        AppendVisibleSelectionHandleAutomationPeer(_selectionStartHandle, peers);
-        AppendVisibleSelectionHandleAutomationPeer(_selectionEndHandle, peers);
-    }
-
-    private static void AppendVisibleSelectionHandleAutomationPeer(
-        Button? handle,
-        IList<AutomationPeer> peers)
-    {
-        if (handle is null || handle.Visibility != Visibility.Visible)
-            return;
-
-        AutomationPeer? peer = FrameworkElementAutomationPeer.FromElement(handle) ??
-            FrameworkElementAutomationPeer.CreatePeerForElement(handle);
-        if (peer is not null)
-            peers.Add(peer);
-    }
-
-    private void ProcessSelectionHandlePointerPressed(ref PointerInput e)
-    {
-        if (e.Sender is not Button { Tag: SelectionHandleEndpoint endpoint } handle ||
-            endpoint == SelectionHandleEndpoint.None ||
-            _published.Snapshot is null || !_selection.IsActive || _surface.Canvas is null ||
-            _selectionHandleCaptureTarget is not null ||
-            _selectionHandlePointerId != 0 ||
-            _activeSelectionHandle != SelectionHandleEndpoint.None)
-        {
-            return;
-        }
-
-        _pendingTouchSelectionPresentationRestore = null;
-
-        var point = e.Point;
-        MarkdownPointerModality modality = PointerInputClassification.GetPointerModality(e.Pointer.PointerDeviceType);
-        bool primary = modality == MarkdownPointerModality.Touch
-            ? point.IsInContact
-            : MarkdownPointerGesturePolicy.IsPrimarySelectionPress(
-                modality,
-                point.IsInContact,
-                point.Properties.IsLeftButtonPressed,
-                point.Properties.IsBarrelButtonPressed);
-        if (!primary)
-            return;
-
-        bool endpointAvailable = endpoint == SelectionHandleEndpoint.Start
-            ? _selectionStartHandleEndpointAvailable
-            : _selectionEndHandleEndpointAvailable;
-        if (!endpointAvailable)
-            return;
-
-        DocumentRange range = _selection.Range.Normalized();
-        _activeSelectionHandle = endpoint;
-        _selectionHandlePointerId = e.Pointer.PointerId;
-        _selectionHandleFixedPosition = endpoint == SelectionHandleEndpoint.Start
-            ? range.End
-            : range.Start;
-        _viewport.TryGet(out double viewportTop, out _, out _);
-        _lastSelectionPointerViewportY = point.Position.Y - viewportTop;
-        Point endpointPoint = GetSelectionHandleEndpointPoint(endpoint);
-        _selectionHandleCaretOffset = new Point(
-            endpointPoint.X - point.Position.X,
-            endpointPoint.Y - point.Position.Y);
-        _selectionHandleLatestPoint = point.Position;
-        _selectionHandleLatestViewportY = point.Position.Y - viewportTop;
-        _selectionHandleMovePending = false;
-        if (!_touchSelection.BeginHandleDrag(
-                e.Pointer.PointerId,
-                endpoint == SelectionHandleEndpoint.Start))
-        {
-            ResetSelectionHandleDrag();
-            return;
-        }
-        if (e.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Touch &&
-            !_touchTapSuppression.TryBeginContact(e.Pointer.PointerId, out e.TouchTapGestureEpoch))
-        {
-            ResetSelectionHandleDrag();
-            _touchSelection.Cancel(e.Pointer.PointerId);
-            return;
-        }
-        if (!PointerInputClassification.CapturePointerForInput(handle, e))
-        {
-            if (e.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Touch)
-                _touchTapSuppression.CancelContact(e.Pointer.PointerId);
-            ResetSelectionHandleDrag();
-            _touchSelection.Cancel(e.Pointer.PointerId);
-            return;
-        }
-
-        // Capture belongs to this physical Button even if logical start/end
-        // roles later cross while extending the selection. Only publish the
-        // target after WinUI (or the deferred-input path) confirms capture.
-        if (_selectionHandlePointerId != e.Pointer.PointerId ||
-            _touchSelection.ContactPointerId != e.Pointer.PointerId ||
-            _activeSelectionHandle == SelectionHandleEndpoint.None ||
-            _touchSelection.State is not TouchSelectionState.DraggingStartHandle and
-                not TouchSelectionState.DraggingEndHandle)
-        {
-            if (e.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Touch)
-                _touchTapSuppression.CancelContact(e.Pointer.PointerId);
-            ResetSelectionHandleDrag();
-            _touchSelection.Cancel(e.Pointer.PointerId);
-            return;
-        }
-        _selectionHandleCaptureTarget = handle;
-
-        SetSelectionHandleGlyphVisibility(visible: false);
-        StartSelectionHandleFrameClock();
-        e.Handled = true;
-    }
-
-    private void ProcessSelectionHandlePointerMoved(ref PointerInput e)
-    {
-        if (_activeSelectionHandle == SelectionHandleEndpoint.None ||
-            _selectionHandlePointerId != e.Pointer.PointerId ||
-            _published.Snapshot is null || _surface.Canvas is null)
-        {
-            return;
-        }
-
-        var pointerPoint = e.Point;
-        if (!pointerPoint.IsInContact)
-            return;
-
-        _selectionHandleLatestPoint = pointerPoint.Position;
-        _viewport.TryGet(out double viewportTop, out _, out _);
-        _selectionHandleLatestViewportY = pointerPoint.Position.Y - viewportTop;
-        _selectionHandleMovePending = true;
-        StartSelectionHandleFrameClock();
-        e.Handled = true;
-    }
-
-    private void ProcessSelectionHandlePointerReleased(ref PointerInput e)
-    {
-        if (_selectionHandlePointerId != e.Pointer.PointerId)
-        {
-            // A handle can appear under a finger that is still down,
-            // such as the second tap of a word-selecting double-tap. That
-            // contact belongs to the canvas, which must see it end.
-            ProcessPointerReleased(ref e);
-            return;
-        }
-
-        // Commit the release coordinate even when the dispatcher coalesced the
-        // final PointerMoved event. This mirrors the main text-drag path and
-        // prevents quick flick-and-release gestures from stopping one frame early.
-        _selectionHandleLatestPoint = e.Point.Position;
-        _viewport.TryGet(out double viewportTop, out _, out _);
-        _selectionHandleLatestViewportY = e.Point.Position.Y - viewportTop;
-        _selectionHandleMovePending = true;
-        ApplyPendingSelectionHandleMove(sustained: false);
-        if (_surface.Canvas is not null && e.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Touch)
-            SuppressTouchTap(e.Point.Position, e.TouchTapGestureEpoch);
-        if (e.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Touch)
-            _touchTapSuppression.EndContact(e.Pointer.PointerId);
-        _selectionHandleCaptureTarget = null;
-        _touchSelection.CompleteHandleDrag(e.Pointer.PointerId);
-        _activeSelectionHandle = SelectionHandleEndpoint.None;
-        _selectionHandlePointerId = 0;
-        e.ResumeRebuildAfterInteraction = true;
-        _lastSelectionPointerViewportY = double.NaN;
-        StopSelectionHandleFrameClock();
-        CollapseSelectionHandlesForPendingRefresh();
-        SetSelectionHandleGlyphVisibility(visible: true);
-        if (e.Sender is UIElement element)
-            element.ReleasePointerCapture(e.Pointer);
-        UpdateSelectionHandles();
-        e.Handled = true;
-    }
-
-    private void ProcessSelectionHandlePointerCanceled(ref PointerInput e)
-    {
-        if (_selectionHandlePointerId != e.Pointer.PointerId)
-        {
-            // See ProcessSelectionHandlePointerReleased.
-            ProcessPointerCanceledOrCaptureLost(ref e);
-            return;
-        }
-
-        if (e.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Touch)
-            _touchTapSuppression.CancelContact(e.Pointer.PointerId);
-        ResetSelectionHandleDrag();
-        _touchSelection.Cancel(e.Pointer.PointerId);
-        e.ResumeRebuildAfterInteraction = true;
-        UpdateSelectionHandles();
-        e.Handled = true;
-    }
-
-    /// <summary>
-    /// Decides whether an active handle drag lost its pointer capture
-    /// without a routed terminal. WinUI raises no PointerCaptureLost when a
-    /// touch capture is released by code or by tree changes (it keeps a replay
-    /// pointer point only for mouse), and the contact's later release is then
-    /// routed away from the handle. An unknown capture view, a deferred capture
-    /// record or queued input for the pointer never counts as lost: queued
-    /// terminals must still replay and commit their final position.
-    /// </summary>
-    internal static bool IsSelectionHandleCaptureSilentlyLost(
-        uint dragPointerId,
-        bool hasCaptureTarget,
-        bool captureViewAvailable,
-        bool captureTargetHoldsPointer,
-        bool hasDeferredCaptureOrQueuedInput)
-        => dragPointerId != 0 && hasCaptureTarget && captureViewAvailable &&
-           !captureTargetHoldsPointer && !hasDeferredCaptureOrQueuedInput;
-
-    /// <summary>
-    /// Retires a handle drag whose capture was silently lost exactly
-    /// as a routed handle cancel does: the committed selection is kept and the
-    /// touch owner, gesture epoch, capture target and frame clock are cleared.
-    /// </summary>
-    private bool RetireSilentlyLostSelectionHandleCapture()
-    {
-        uint pointerId = _selectionHandlePointerId;
-        UIElement? target = _selectionHandleCaptureTarget;
-        IReadOnlyList<Pointer>? captures = target?.XamlRoot is null ? null : target.PointerCaptures;
-        if (!IsSelectionHandleCaptureSilentlyLost(
-                pointerId,
-                target is not null,
-                captures is not null,
-                PointerInputClassification.ContainsPointerCapture(captures, pointerId),
-                _deferredPointerCaptures.ContainsKey(pointerId) || HasQueuedPointerInput(pointerId)))
-        {
-            return false;
-        }
-
-        _touchTapSuppression.CancelContact(pointerId);
-        ResetSelectionHandleDrag();
-        _touchSelection.Cancel(pointerId);
-        ResumePendingRebuildAfterPointerInteraction();
-        UpdateSelectionHandles();
-        MarkdownDiagnostics.WriteLine("[MarkdownRendererControl] Retired a selection-handle drag whose pointer capture was lost without a routed terminal.");
-        return true;
-    }
-
-    private bool HasQueuedPointerInput(uint pointerId)
-    {
-        if (_deferredPointerInput is not { Count: > 0 } queue)
-            return false;
-        for (int index = 0; index < queue.Count; index++)
-        {
-            if (queue.TryGetAt(index, out PointerInput queued) && queued.Pointer?.PointerId == pointerId)
-                return true;
-        }
-        return false;
-    }
-
-    private void StartSelectionHandleFrameClock()
-    {
-        if (_selectionHandleFrameSubscribed)
-            return;
-
-        _selectionHandleLastFrameTimestamp = Stopwatch.GetTimestamp();
-        CompositionTarget.Rendering += OnSelectionHandleFrame;
-        _selectionHandleFrameSubscribed = true;
-    }
-
-    private void OnSelectionHandleFrame(object? sender, object args)
-    {
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded ||
-            _activeSelectionHandle == SelectionHandleEndpoint.None ||
-            _published.Snapshot is not { } snapshot)
-        {
-            StopSelectionHandleFrameClock();
-            return;
-        }
-
-        if (!snapshot.TryBeginInteraction())
-            return;
-
-        try
-        {
-            // The clock runs for the whole drag, so a capture that
-            // moved without a routed terminal is retired within a frame.
-            if (RetireSilentlyLostSelectionHandleCapture())
-                return;
-
-            long timestamp = Stopwatch.GetTimestamp();
-            double elapsedSeconds = Math.Max(
-                0,
-                (timestamp - _selectionHandleLastFrameTimestamp) / (double)Stopwatch.Frequency);
-            _selectionHandleLastFrameTimestamp = timestamp;
-
-            // Rendering is the coalescing boundary: at most one hit-test and
-            // overlay update is performed per compositor frame. The latest
-            // contact remains active without PointerMoved so edge scrolling
-            // continues while the finger is stationary.
-            // The return value only reports whether movement or edge scrolling
-            // continues; the clock itself stays subscribed until the drag ends
-            // (ResetSelectionHandleDrag or a routed release stops it).
-            _ = ApplyPendingSelectionHandleMove(
-                sustained: true,
-                elapsedSeconds);
-        }
-        finally
-        {
-            snapshot.EndInteraction();
-        }
-    }
-
-    private bool ApplyPendingSelectionHandleMove(
-        bool sustained,
-        double elapsedSeconds = 0)
-    {
-        if (_activeSelectionHandle == SelectionHandleEndpoint.None ||
-            _published.Snapshot is null || _surface.Canvas is null ||
-            (!sustained && !_selectionHandleMovePending))
-        {
-            return false;
-        }
-
-        _viewport.TryGet(out double viewportTop, out _, out _);
-        Point contact = new(
-            _selectionHandleLatestPoint.X,
-            viewportTop + _selectionHandleLatestViewportY);
-        Point caretPoint = new(
-            contact.X + _selectionHandleCaretOffset.X,
-            contact.Y + _selectionHandleCaretOffset.Y);
-        if (sustained && !_selectionHandleMovePending)
-        {
-            _viewport.TryGet(out double edgeViewportTop, out double edgeViewportHeight, out _);
-            if (Math.Abs(SelectionAutoScroll.ComputeVelocity(
-                    caretPoint.Y,
-                    edgeViewportTop,
-                    edgeViewportHeight)) < 0.5)
-            {
-                return false;
-            }
-        }
-        Point point = PrepareSelectionDragPoint(caretPoint, sustained, elapsedSeconds);
-        _selectionHandleMovePending = false;
-
-        DocumentPosition candidate;
-        if (TryHitTestEmbed(point, out DocumentPosition embedPosition))
-            candidate = embedPosition;
-        else if (!_published.Snapshot.HitTestSelectionEndpoint(point, out candidate))
-            return IsSelectionHandleInAutoScrollBand(caretPoint);
-
-        AdjustSelectionHandle(_activeSelectionHandle, candidate);
-        return IsSelectionHandleInAutoScrollBand(caretPoint);
-    }
-
-    private bool IsSelectionHandleInAutoScrollBand(Point caretPoint)
-    {
-        if (_surface.Canvas is null)
-            return false;
-
-        _viewport.TryGet(out double viewportTop, out double viewportHeight, out _);
-        double velocity = SelectionAutoScroll.ComputeVelocity(
-            caretPoint.Y,
-            viewportTop,
-            viewportHeight);
-        if (Math.Abs(velocity) < 0.5)
-            return false;
-
-        double maxOffset = Math.Max(0, _surface.Canvas.ActualHeight - viewportHeight);
-        return velocity < 0
-            ? viewportTop > 0.0001
-            : viewportTop < maxOffset - 0.0001;
-    }
-
-    private bool TryGetSelectionHandleEndpointPoint(
-        LayoutSnapshot snapshot,
-        SelectionHandleEndpoint endpoint,
-        Rect viewport,
-        double verticalSearchMargin,
-        out Point point)
-    {
-        point = default;
-        if (!_selection.IsActive)
-            return false;
-
-        DocumentRange normalized = _selection.Range.Normalized();
-        bool rangeStart = endpoint == SelectionHandleEndpoint.Start;
-        DocumentPosition position = rangeStart ? normalized.Start : normalized.End;
-        if (!_selection.TryGetSelectionEndpointGeometry(
-                snapshot,
-                position,
-                normalized,
-                viewport,
-                verticalSearchMargin,
-                rangeStart,
-                out Point caretPoint,
-                out Rect rectangle,
-                out bool hasCaret))
-        {
-            return false;
-        }
-
-        if (hasCaret)
-        {
-            point = SnapSelectionHandlePoint(caretPoint);
-            return double.IsFinite(point.X) && double.IsFinite(point.Y);
-        }
-
-        if (rectangle.Width <= 0 || rectangle.Height <= 0)
-            return false;
-
-        bool rightToLeft = FlowDirection == FlowDirection.RightToLeft;
-        point = rangeStart
-            ? new Point(rightToLeft ? rectangle.Right : rectangle.Left, rectangle.Bottom)
-            : new Point(rightToLeft ? rectangle.Left : rectangle.Right, rectangle.Bottom);
-        return double.IsFinite(point.X) && double.IsFinite(point.Y);
-    }
-
-    private Point GetSelectionHandleEndpointPoint(SelectionHandleEndpoint endpoint)
-        => endpoint == SelectionHandleEndpoint.Start
-            ? (_selectionStartHandleEndpointAvailable ? _selectionStartHandleEndpoint : default)
-            : (_selectionEndHandleEndpointAvailable ? _selectionEndHandleEndpoint : default);
-
-    private Point SnapSelectionHandlePoint(Point point)
-    {
-        double scale = XamlRoot?.RasterizationScale ?? 1.0;
-        if (!double.IsFinite(scale) || scale <= 0)
-            scale = 1.0;
-
-        return new Point(
-            Math.Round(point.X * scale) / scale,
-            Math.Round(point.Y * scale) / scale);
-    }
-
-    private void SetSelectionHandleGlyphVisibility(bool visible)
-    {
-        double opacity = visible ? 1 : 0;
-        if (_selectionStartHandle?.Content is Ellipse startGlyph)
-            startGlyph.Opacity = opacity;
-        if (_selectionEndHandle?.Content is Ellipse endGlyph)
-            endGlyph.Opacity = opacity;
-    }
-
-    private void StopSelectionHandleFrameClock()
-    {
-        if (!_selectionHandleFrameSubscribed)
-            return;
-
-        CompositionTarget.Rendering -= OnSelectionHandleFrame;
-        _selectionHandleFrameSubscribed = false;
-        _selectionHandleLastFrameTimestamp = 0;
-    }
-
-    private void OnSelectionHandleKeyDown(object sender, KeyRoutedEventArgs e)
-    {
-        if (RequestGeometryRecoveryIfRequired(_published.Snapshot))
-            return;
-        if (sender is not Button { Tag: SelectionHandleEndpoint endpoint } ||
-            !_selection.IsActive)
-        {
-            return;
-        }
-
-        if (e.Key == VirtualKey.Escape)
-        {
-            FocusRendererForPointerInteraction();
-            e.Handled = true;
-            return;
-        }
-
-        int delta = e.Key switch
-        {
-            VirtualKey.Left => FlowDirection == FlowDirection.RightToLeft ? 1 : -1,
-            VirtualKey.Right => FlowDirection == FlowDirection.RightToLeft ? -1 : 1,
-            VirtualKey.Up => -1,
-            VirtualKey.Down => 1,
-            _ => 0,
-        };
-        if (delta == 0)
-            return;
-
-        MoveSelectionHandleByTextOffset(endpoint, delta);
-        e.Handled = true;
-    }
-
-    private void MoveSelectionHandleByTextOffset(
-        SelectionHandleEndpoint endpoint,
-        int delta)
-    {
-        if (_published.Snapshot is null || !_selection.IsActive)
-            return;
-
-        DocumentRange range = _selection.Range.Normalized();
-        DocumentPosition current = endpoint == SelectionHandleEndpoint.Start
-            ? range.Start
-            : range.End;
-        int currentOffset = _published.Snapshot.SemanticDocument.TextOffsetFromDocumentPosition(current);
-        int requestedOffset = _published.Snapshot.SemanticDocument.TextElementBoundaries.Move(
-            currentOffset,
-            delta,
-            out _);
-        AdjustSelectionHandleAtTextOffset(
-            endpoint,
-            requestedOffset,
-            candidateIsBoundary: true);
-    }
-
-    private void AdjustSelectionHandle(
-        SelectionHandleEndpoint endpoint,
-        DocumentPosition candidate)
-    {
-        if (_published.Snapshot is null || !_selection.IsActive)
-            return;
-
-        var semantic = _published.Snapshot.SemanticDocument;
-        int rawCandidateOffset = semantic.TextOffsetFromDocumentPosition(candidate);
-        AdjustSelectionHandleAtTextOffset(
-            endpoint,
-            rawCandidateOffset,
-            candidateIsBoundary: false);
-    }
-
-    private void AdjustSelectionHandleAtTextOffset(
-        SelectionHandleEndpoint endpoint,
-        int rawCandidateOffset,
-        bool candidateIsBoundary)
-    {
-        if (_published.Snapshot is null || !_selection.IsActive)
-            return;
-
-        var semantic = _published.Snapshot.SemanticDocument;
-        int fixedOffset = semantic.TextOffsetFromDocumentPosition(_selectionHandlePointerId != 0
-            ? _selectionHandleFixedPosition
-            : endpoint == SelectionHandleEndpoint.Start
-                ? _selection.Range.Normalized().End
-                : _selection.Range.Normalized().Start);
-        bool pointerDrag = _selectionHandlePointerId != 0;
-        TouchSelectionEndpointAdjustment adjustment = TouchSelectionEndpointPolicy.Resolve(
-            semantic.TextElementBoundaries,
-            fixedOffset,
-            rawCandidateOffset,
-            endpoint == SelectionHandleEndpoint.Start,
-            pointerDrag,
-            candidateIsBoundary);
-        int candidateOffset = adjustment.Offset;
-        if (candidateOffset == fixedOffset)
-            return;
-        DocumentPosition? adjusted = semantic.PositionFromTextOffset(candidateOffset);
-        if (adjusted is null)
-            return;
-
-        DocumentPosition fixedPosition = semantic.PositionFromTextOffset(fixedOffset)
-            ?? _selectionHandleFixedPosition;
-        _selection.SetAnchor(fixedPosition);
-        _selection.ExtendTo(adjusted.Value);
-        if (pointerDrag)
-            _activeSelectionHandle = adjustment.IsStartEndpoint
-                ? SelectionHandleEndpoint.Start
-                : SelectionHandleEndpoint.End;
-        _touchSelection.Select();
-    }
-
-    private void ResetSelectionHandleDrag()
-    {
-        bool hadCapturedButton = _selectionHandleCaptureTarget is not null;
-        _selectionHandleCaptureTarget = null;
-        if (hadCapturedButton)
-        {
-            _adorner.MarkVisualDirty();
-        }
-        _activeSelectionHandle = SelectionHandleEndpoint.None;
-        _selectionHandlePointerId = 0;
-        _selectionHandleFixedPosition = default;
-        _selectionHandleLatestPoint = default;
-        _selectionHandleLatestViewportY = double.NaN;
-        _selectionHandleCaretOffset = default;
-        _selectionHandleMovePending = false;
-        _lastSelectionPointerViewportY = double.NaN;
-        try
-        {
-            StopSelectionHandleFrameClock();
-            if (hadCapturedButton)
-                CollapseSelectionHandlesForPendingRefresh();
-            SetSelectionHandleGlyphVisibility(visible: true);
-        }
-        finally
-        {
-            try { _selectionStartHandle?.ReleasePointerCaptures(); } catch { }
-            try { _selectionEndHandle?.ReleasePointerCaptures(); } catch { }
-        }
-
-        if (hadCapturedButton && !_lifetime.IsDisposed && !_lifetime.IsUnloaded && IsLoaded)
-            _adorner.RequestRefresh();
-    }
-
-    private void CollapseSelectionHandlesForPendingRefresh()
-    {
-        _selectionStartHandleEndpointAvailable = false;
-        _selectionEndHandleEndpointAvailable = false;
-        if (_selectionStartHandle is not null)
-            _selectionStartHandle.Visibility = Visibility.Collapsed;
-        if (_selectionEndHandle is not null)
-            _selectionEndHandle.Visibility = Visibility.Collapsed;
-    }
-
-    private void DetachSelectionHandleHandlers()
-    {
-        DetachSelectionHandleHandlers(_selectionStartHandle);
-        DetachSelectionHandleHandlers(_selectionEndHandle);
-    }
-
-    private void DetachSelectionHandleHandlers(Button? handle)
-    {
-        if (handle is null)
-            return;
-        handle.RemoveHandler(
-            UIElement.PointerPressedEvent,
-            new PointerEventHandler(OnSelectionHandlePointerPressed));
-        handle.RemoveHandler(
-            UIElement.PointerMovedEvent,
-            new PointerEventHandler(OnSelectionHandlePointerMoved));
-        handle.RemoveHandler(
-            UIElement.PointerReleasedEvent,
-            new PointerEventHandler(OnSelectionHandlePointerReleased));
-        handle.RemoveHandler(
-            UIElement.PointerCanceledEvent,
-            new PointerEventHandler(OnSelectionHandlePointerCanceled));
-        handle.RemoveHandler(
-            UIElement.PointerCaptureLostEvent,
-            new PointerEventHandler(OnSelectionHandlePointerCanceled));
-        handle.RightTapped -= OnSelectionHandleRightTapped;
-        handle.KeyDown -= OnSelectionHandleKeyDown;
-    }
-
-    private void SetSelectionDragShieldActive(bool active)
-    {
-        if (_surface.Overlay is null)
-            return;
-
-        if (!active)
-        {
-            if (_selectionDragShield is not null)
-                _selectionDragShield.Visibility = Visibility.Collapsed;
-            return;
-        }
-
-        if (!EnsureSelectionDragShield())
-            return;
-
-        _selectionDragShield!.Width = GetSelectionOverlayWidth();
-        _selectionDragShield.Height = GetSelectionOverlayHeight();
-        _selectionDragShield.Visibility = Visibility.Visible;
-    }
-
-    private Border CreateSelectionDragShield()
-    {
-        var shield = new Border
-        {
-            Background = new SolidColorBrush(Color.FromArgb(0, 0, 0, 0)),
-            IsHitTestVisible = true,
-            Visibility = Visibility.Collapsed,
-        };
-        shield.PointerMoved += OnPointerMoved;
-        shield.PointerReleased += OnPointerReleased;
-        shield.PointerCanceled += OnPointerCanceledOrCaptureLost;
-        shield.PointerCaptureLost += OnPointerCanceledOrCaptureLost;
-        Canvas.SetLeft(shield, 0);
-        Canvas.SetTop(shield, 0);
-        Canvas.SetZIndex(shield, 4);
-        _selectionDragShield = shield;
-        return shield;
-    }
-
-    private bool EnsureSelectionDragShield()
-    {
-        if (_surface.Overlay is null)
-            return false;
-
-        if (_selectionDragShield is null)
-            CreateSelectionDragShield();
-
-        try
-        {
-            if (VisualTreeHelper.GetParent(_selectionDragShield) is null)
-                _surface.Overlay.Children.Add(_selectionDragShield);
-        }
-        catch (System.Runtime.InteropServices.COMException ex)
-        {
-            MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] selection drag shield attach failed: {ex.Message}");
-            return false;
-        }
-
-        return true;
-    }
-
-    private double GetSelectionOverlayWidth()
-    {
-        _viewport.TryGet(out _, out _, out double width);
-        return double.IsFinite(width) && width > 0 ? width : 1.0;
-    }
-
-    private double GetSelectionOverlayHeight()
-    {
-        _viewport.TryGet(out _, out double height, out _);
-        return double.IsFinite(height) && height > 0 ? height : 1.0;
-    }
-
     private void PaintInteractiveDocumentState(
         LayoutSnapshot snapshot,
         CanvasDrawingSession drawingSession,
@@ -12014,203 +9861,13 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             focusedBox.PaintLinkStateForeground(drawingSession, focusedLink, focused: true, viewport);
     }
 
-    private void ProcessPointerCanceledOrCaptureLost(ref PointerInput e)
-    {
-        if (e.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Touch)
-        {
-            _touchTapSuppression.CancelContact(e.Pointer.PointerId);
-            TouchSelectionCancelResult cancelResult = _touchSelection.CancelContact(e.Pointer.PointerId);
-            if (cancelResult != TouchSelectionCancelResult.NotOwner)
-            {
-                // A canceled unrelated contact should not dismiss a committed
-                // selection, but it must not leave the selection flyout alive.
-                CloseSelectionContextMenu();
-                UpdateSelectionHandles();
-                if (cancelResult == TouchSelectionCancelResult.ClearSelection && _selection.IsActive)
-                    ClearSelectionForExternalInteraction();
-            }
-        }
-
-        if (HandleHorizontalOverflowPointerCanceled(ref e))
-            return;
-
-        if (!IsActivePointerSessionEvent(e))
-            return;
-
-        e.Handled = true;
-
-        // True interruption (system-level cancel or capture taken by another element):
-        // tear down drag state so a phantom anchor doesn't survive into the next gesture.
-        // We deliberately do NOT do this on plain PointerExited — with capture, the
-        // pointer can briefly leave canvas bounds during a normal drag, and clearing
-        // the anchor there would kill drag-select on the very first vertical move
-        // when the pointer crosses into a sibling overlay region (e.g. over a hosted
-        // inline embed). PointerReleased handles the normal end-of-drag cleanup.
-        _pointerSession = default;
-        _selectionAnchor = null;
-        _lastSelectionPointerViewportY = double.NaN;
-        _clickMode = ClickSelectionMode.Single;
-        SetSelectionDragShieldActive(false);
-        if (!_selection.Range.Normalized().IsEmpty)
-            _adorner.Invalidate();
-        ProcessPointerExited(ref e);
-        ResumePendingRebuildAfterPointerInteraction();
-    }
-
-    private void ProcessPointerExited(ref PointerInput e)
-    {
-        _abbreviationTooltip.ScheduleHide();
-
-        // PointerExited fires when the pointer leaves canvas bounds. During an
-        // active captured drag this is expected (drag through hosted embeds /
-        // adjacent areas) so we MUST NOT clear _selectionAnchor here — that
-        // killed drag-select on the embeds page. Capture-loss / cancel are
-        // routed to OnPointerCanceledOrCaptureLost which does the real cleanup.
-
-        // ROOT-CAUSE FIX for text-selection shake:
-        // During an active drag (_selectionAnchor != null), PointerExited fires
-        // whenever the captured pointer physically leaves the canvas bounds (e.g.
-        // the user drags toward the window edge). Calling InvalidateLinkHoverRegion
-        // here issues a partial canvas Invalidate(), which triggers a tile repaint
-        // that calls InlineContainerBox.Paint() → ApplyHoverColor() → CanvasTextLayout
-        // .SetColor() → DirectWrite invalidates cached glyph-run metrics → character
-        // region coordinates shift by sub-pixel amounts → visible text shake on every
-        // drag frame. The canvas was already fully invalidated at drag-start
-        // (OnPointerPressed) so no intermediate repaint is needed during the drag.
-        // OnPointerCanceledOrCaptureLost clears _selectionAnchor *before* calling us,
-        // so real cleanup (cancel / capture-loss) still runs normally here.
-        if (_selectionAnchor is not null)
-        {
-            // Cursor reset is still safe and needed: if the pointer crosses from
-            // the canvas into a hosted embed during drag, the embed must see the
-            // default cursor (not an inherited IBeam).
-            _cursor.SetShape(null);
-            return;
-        }
-
-        // Clear hover state when the pointer leaves the canvas (or capture is
-        // lost).  Without this, a link's hover colour and the hand cursor
-        // persist even when the pointer is no longer over the control.
-        if (_published.Snapshot is null || _surface.Canvas is null) return;
-        // Capture loss routes through here too, with _selectionAnchor already
-        // cleared, so this also runs on click-to-dismiss.
-        ClearPointerHover();
-        // Always reset cursor to null (system default) on exit — not just
-        // when a link was hovered.  PointerExited fires whenever the pointer
-        // moves from the canvas to any sibling element — most importantly the
-        // overlay that hosts embedded WinUI elements.  With ProtectedCursor =
-        // null on this UserControl, XAML finds no cursor override anywhere in
-        // the tree above the embed, so the embed (Button, CheckBox, …) can
-        // show its own cursor instead of inheriting IBeam from us.
-        _cursor.SetShape(null);
-    }
-
-    /// <summary>
-    /// Clears hover from every block. Only a hovered link has painted state,
-    /// its link-state overlay, so only that case refreshes the adorner.
-    /// </summary>
-    /// <remarks>
-    /// Never invalidates the canvas: hover does not change the text layout,
-    /// and a partial CanvasVirtualControl repaint exposes DirectWrite
-    /// sub-pixel glyph variance at tile edges as visible text shake.
-    /// </remarks>
-    private void ClearPointerHover()
-    {
-        if (_hover.Run is null || _published.Snapshot is null)
-            return;
-
-        bool wasLink = _hover.Run is LinkRun;
-        foreach (var b in _published.Snapshot.Blocks) DocumentHitTesting.ClearHover(b);
-        _hover.Clear();
-        if (wasLink)
-            InvalidateInteractiveTextAdorner();
-    }
-
-    private void ProcessPointerReleased(ref PointerInput e)
-    {
-        if (e.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Touch)
-        {
-            _touchTapSuppression.EndContact(e.Pointer.PointerId);
-            _touchSelection.EndContact(e.Pointer.PointerId);
-        }
-
-        if (_surface.Canvas is null) return;
-        if (HandleHorizontalOverflowPointerReleased(ref e))
-            return;
-        if (!IsActivePointerSessionEvent(e))
-            return;
-
-        e.Handled = true;
-
-        // PointerMoved is coalescible, including while the UI dispatcher is
-        // busy. Commit the release location before ending capture so a fast
-        // press/drag/release cannot leave selection at the last delivered move.
-        if (_selectionAnchor is not null)
-            ProcessPointerMoved(ref e);
-
-        // Retire the gesture state while the leased snapshot is stable. Capture
-        // release is staged below because WinUI can synchronously route
-        // PointerCaptureLost from ReleasePointerCapture.
-        bool wasLeft = _pointerSession.IsActive &&
-            _pointerSession.PointerId == e.Pointer.PointerId &&
-            _pointerSession.IsPrimary;
-        _pointerSession = default;
-        _selectionAnchor = null;
-        _lastSelectionPointerViewportY = double.NaN;
-        SetSelectionDragShieldActive(false);
-        e.ReleaseCanvasCaptureAfterInteraction = true;
-        e.ResumeRebuildAfterInteraction = true;
-        if (!wasLeft) return;
-
-        if (!_selection.Range.Normalized().IsEmpty)
-        {
-            e.RefreshSelectionAdornerAfterInteraction = true;
-        }
-
-        // Click handling for links: if no real selection occurred, raise LinkClick
-        // when the click lands on a LinkRun.
-        if (e.InteractionSnapshot is not { } snapshot) return;
-        if (_clickMode != ClickSelectionMode.Single) return; // double/triple-click: selection intent, not link-click
-        if (!_selection.Range.Normalized().IsEmpty) return; // text was dragged — not a click
-        var pt = e.Point.Position;
-        if (TryCreateLinkActivationIntent(
-            snapshot,
-            pt,
-            LinkTargets.GetLinkInputKind(e.Pointer.PointerDeviceType),
-            e.LinkModifiers,
-            out LinkActivationIntent intent))
-        {
-            e.SetLinkActivation(intent);
-        }
-    }
-
-    private bool TryCreateLinkActivationIntent(
-        LayoutSnapshot snapshot,
-        Point point,
-        MarkdownLinkInputKind inputKind,
-        MarkdownInputModifiers modifiers,
-        out LinkActivationIntent intent)
-    {
-        LinkTarget? link = FindVectorLinkTargetAtPoint(snapshot, point);
-        if (link is null && snapshot.HitTest(point, out var position))
-            link = FindLinkTargetAt(snapshot, position, point);
-        if (link is null)
-        {
-            intent = default;
-            return false;
-        }
-
-        intent = new LinkActivationIntent(link.Value, inputKind, modifiers);
-        return true;
-    }
-
     private bool ActivateLinkIntent(
         LinkActivationIntent intent,
         LayoutSnapshot snapshot,
         long snapshotGeneration,
         long layoutRevision)
     {
-        bool IsCurrent() => IsCurrentPointerInteraction(
+        bool IsCurrent() => IsCurrentScrollTarget(
             snapshot,
             snapshotGeneration,
             layoutRevision);
@@ -12482,7 +10139,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         switch (e.Key)
         {
             case VirtualKey.C when ctrl && _selection.IsActive:
-                e.Handled = ExecuteSelectionCommand(MarkdownCommandKind.CopyRendered);
+                e.Handled = _selectionCommands.Execute(MarkdownCommandKind.CopyRendered);
                 return;
             case VirtualKey.A when MarkdownKeyboardInputPolicy.ShouldSelectAll(ctrl, IsSelectionEnabled):
                 _selection.SetAnchor(DocumentPosition.Zero);
@@ -12490,10 +10147,10 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 e.Handled = true;
                 return;
             case VirtualKey.F10 when shift && _selection.IsActive:
-                e.Handled = ShowSelectionContextMenu(GetKeyboardContextMenuPoint());
+                e.Handled = _contextMenu.Show(_contextMenu.GetKeyboardPoint());
                 return;
             case VirtualKey.Application when _selection.IsActive:
-                e.Handled = ShowSelectionContextMenu(GetKeyboardContextMenuPoint());
+                e.Handled = _contextMenu.Show(_contextMenu.GetKeyboardPoint());
                 return;
             case VirtualKey.Tab:
                 e.Handled = MoveFocus(reverse: shift);
@@ -14021,7 +11678,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         {
         }
 
-        if (focused is null || !IsElementWithin(focused, element))
+        if (focused is null || !VisualTreeAncestry.IsWithin(focused, element))
             return;
 
         // Keep the renderer's logical focus index while the native copy button
@@ -14091,50 +11748,11 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         return false;
     }
 
-    private LinkTarget? FindVectorLinkTargetAtPoint(Point point)
-    {
-        return _published.Snapshot is { } snapshot
-            ? FindVectorLinkTargetAtPoint(snapshot, point)
-            : null;
-    }
-
-    private static LinkTarget? FindVectorLinkTargetAtPoint(LayoutSnapshot snapshot, Point point)
-    {
-        foreach (BlockBox block in snapshot.Blocks)
-        {
-            if (LinkTargets.TryGetVectorLinkAtPointInBlock(block, point, out var vector, out var link))
-            {
-                MarkdownVectorSemanticItem? semantic = vector.GetSemanticItem(link.SemanticIndex);
-                return new LinkTarget(
-                    link.Target ?? string.Empty,
-                    semantic?.Description,
-                    semantic?.SourceSpan ?? vector.SourceRange,
-                    null,
-                    link.Action,
-                    link.External);
-            }
-        }
-
-        return null;
-    }
-
     private LinkTarget? FindLinkTargetAt(DocumentPosition pos, Point? point = null)
     {
         return _published.Snapshot is { } snapshot
-            ? FindLinkTargetAt(snapshot, pos, point)
+            ? LinkTargets.FindLinkTargetAt(snapshot, pos, point)
             : null;
-    }
-
-    private static LinkTarget? FindLinkTargetAt(
-        LayoutSnapshot snapshot,
-        DocumentPosition pos,
-        Point? point = null)
-    {
-        foreach (var b in snapshot.Blocks)
-        {
-            if (LinkTargets.FindLinkTargetInBlock(b, pos, point) is { } found) return found;
-        }
-        return null;
     }
 
     private bool TryGetFocusedLink(out Layout.Boxes.InlineContainerBox inline, out LinkRun link)
@@ -14335,661 +11953,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     // ---- Word / line selection helpers ----
 
-    /// <summary>
-    /// Expands selection to the word (maximal non-whitespace run) that contains
-    /// <paramref name="pos"/> in its inline container.
-    /// Returns the (start, end) document positions of the selected word.
-    /// </summary>
-    private (DocumentPosition Start, DocumentPosition End) ExpandSelectionToWord(
-        LayoutSnapshot snapshot,
-        DocumentPosition pos,
-        long snapshotGeneration,
-        long layoutRevision)
-    {
-        var icb = DocumentHitTesting.FindInlineContainerAt(snapshot, pos.BlockIndex);
-        if (icb is null)
-        {
-            // Block has no inline container (code block, embed row, etc.).
-            // Set anchor at the click position so subsequent drag ExtendTo calls
-            // always have a valid anchor; this makes the selection empty (start==end)
-            // while allowing drag to extend from this point.
-            _selection.SetAnchor(pos);
-            if (!IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))
-                return (pos, pos);
-            // No canvas Invalidate(): selection is rendered on the XAML overlay only.
-            return (pos, pos);
-        }
-        var (start, end) = icb.GetWordBoundaries(pos);
-        _selection.SetAnchor(start);
-        if (!IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))
-            return (start, end);
-        _selection.ExtendTo(end);
-        // No canvas Invalidate(): selection is rendered on the XAML overlay only.
-        return (start, end);
-    }
-
-    /// <summary>
-    /// Expands selection to the entire inline container (paragraph/heading line)
-    /// that contains <paramref name="pos"/>.
-    /// Returns the (start, end) document positions of the selected block.
-    /// </summary>
-    private (DocumentPosition Start, DocumentPosition End) ExpandSelectionToBlock(
-        LayoutSnapshot snapshot,
-        DocumentPosition pos,
-        long snapshotGeneration,
-        long layoutRevision)
-    {
-        var icb = DocumentHitTesting.FindInlineContainerAt(snapshot, pos.BlockIndex);
-        if (icb is null)
-        {
-            // Block has no inline container (code block, embed row, etc.).
-            // Set anchor at the click position so subsequent drag ExtendTo calls
-            // always have a valid anchor; this makes the selection empty (start==end)
-            // while allowing drag to extend from this point.
-            _selection.SetAnchor(pos);
-            if (!IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))
-                return (pos, pos);
-            // No canvas Invalidate(): selection is rendered on the XAML overlay only.
-            return (pos, pos);
-        }
-        var (start, end) = icb.GetBlockBoundaries();
-        _selection.SetAnchor(start);
-        if (!IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))
-            return (start, end);
-        _selection.ExtendTo(end);
-        // No canvas Invalidate(): selection is rendered on the XAML overlay only.
-        return (start, end);
-    }
-
     // ---- Right-click context menu ----
-
-    private void OnRightTapped(object sender, RightTappedRoutedEventArgs e)
-    {
-        if (_surface.Canvas is not null)
-            e.Handled |= DispatchRecognizedGesture(PointerInputKind.RightTap, e.GetPosition(_surface.Canvas), e.PointerDeviceType);
-    }
-
-    private void OnSelectionHandleRightTapped(object sender, RightTappedRoutedEventArgs e)
-    {
-        // Handles live in the overlay, a sibling of the canvas, so their
-        // right-taps never reach OnRightTapped.
-        if (_surface.Canvas is null ||
-            !MarkdownPointerGesturePolicy.ForwardsSelectionHandleRightTap(PointerInputClassification.GetPointerModality(e.PointerDeviceType)))
-        {
-            return;
-        }
-
-        e.Handled |= DispatchRecognizedGesture(PointerInputKind.RightTap, e.GetPosition(_surface.Canvas), e.PointerDeviceType);
-    }
-
-    private void ProcessRightTapped(ref PointerInput e)
-    {
-        if (_surface.Canvas is null || e.InteractionSnapshot is not { } snapshot) return;
-        long snapshotGeneration = _published.Generation;
-        long layoutRevision = snapshot.LayoutRevision;
-        var pt = e.GesturePosition;
-        if (IsPointOverEmbed(pt) || IsPointOverCodeBlockAction(pt))
-            return;
-
-        bool touchOrPen = e.GestureDevice is Microsoft.UI.Input.PointerDeviceType.Touch or
-            Microsoft.UI.Input.PointerDeviceType.Pen;
-        if (touchOrPen && (!_selection.IsActive || !IsPointInsideSelection(snapshot, pt)))
-        {
-            _ = TrySelectWordForTouchContext(
-                pt,
-                snapshot,
-                snapshotGeneration,
-                layoutRevision,
-                e.HasGestureContact ? e.GestureContact : null);
-        }
-        if (!IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))
-            return;
-        e.ShowContextMenuAfterInteraction = true;
-        e.TouchSelectionContextMenu = touchOrPen;
-        e.Handled = true;
-    }
-
-    private bool ShowSelectionContextMenu(
-        Point placementPoint,
-        bool touchSelection = false,
-        LayoutSnapshot? requiredSnapshot = null,
-        long requiredSnapshotGeneration = 0,
-        long requiredLayoutRevision = 0)
-    {
-        UIElement? canvas = _surface.Canvas;
-        if (canvas is null)
-        {
-            return false;
-        }
-
-        // Pointer gestures pass the exact geometry generation they used while
-        // interpreting the gesture. Keyboard invocation captures one tuple at
-        // entry, so a later relayout cannot silently retarget the menu.
-        LayoutSnapshot? expectedSnapshot = requiredSnapshot ?? _published.Snapshot;
-        long expectedSnapshotGeneration = requiredSnapshot is null
-            ? _published.Generation
-            : requiredSnapshotGeneration;
-        long expectedLayoutRevision = requiredSnapshot is null
-            ? expectedSnapshot?.LayoutRevision ?? 0
-            : requiredLayoutRevision;
-        if (!IsCurrentContextMenuSnapshot(
-                expectedSnapshot,
-                expectedSnapshotGeneration,
-                expectedLayoutRevision) ||
-            !ReferenceEquals(canvas, _surface.Canvas))
-        {
-            return false;
-        }
-
-        CloseSelectionContextMenu();
-        if (!IsCurrentContextMenuSnapshot(
-                expectedSnapshot,
-                expectedSnapshotGeneration,
-                expectedLayoutRevision) ||
-            !ReferenceEquals(canvas, _surface.Canvas))
-        {
-            return false;
-        }
-
-        var menu = new MenuFlyout();
-        ContextMenuTarget target = new();
-        try
-        {
-            if (!FindContextMenuTarget(
-                    placementPoint,
-                    expectedSnapshot,
-                    expectedSnapshotGeneration,
-                    expectedLayoutRevision,
-                    out target))
-            {
-                return false;
-            }
-
-            _selectionContextMenu = menu;
-            _contextMenuOpen = true;
-            if (touchSelection)
-                _touchSelection.OpenContextMenu();
-            menu.Closed += (_, _) => OnSelectionContextMenuClosed(menu, touchSelection);
-
-            bool hasSelectionItems = _selection.IsActive;
-            if (hasSelectionItems)
-            {
-                var copyItem = new MenuFlyoutItem
-                {
-                    Text = ResolveLocalizedString(
-                        MarkdownStringKeys.Copy,
-                        MarkdownLocalizedStrings.ContextMenuCopy),
-                    IsEnabled = CanExecuteSelectionCommandOrDefault(
-                        MarkdownCommandKind.CopyRendered),
-                };
-                AutomationProperties.SetAutomationId(copyItem, "MarkdownContextCopy");
-                copyItem.Click += (_, _) =>
-                    ExecuteSelectionCommand(MarkdownCommandKind.CopyRendered);
-                menu.Items.Add(copyItem);
-
-                var copyMarkdownItem = new MenuFlyoutItem
-                {
-                    Text = ResolveLocalizedString(
-                        MarkdownStringKeys.CopyMarkdown,
-                        MarkdownLocalizedStrings.ContextMenuCopyMarkdown),
-                    IsEnabled = CanExecuteSelectionCommandOrDefault(
-                        MarkdownCommandKind.CopyMarkdown),
-                };
-                AutomationProperties.SetAutomationId(copyMarkdownItem, "MarkdownContextCopyMarkdown");
-                copyMarkdownItem.Click += (_, _) =>
-                    ExecuteSelectionCommand(MarkdownCommandKind.CopyMarkdown);
-                menu.Items.Add(copyMarkdownItem);
-            }
-
-            if (!ReferenceEquals(_selectionContextMenu, menu) ||
-                !IsCurrentContextMenuSnapshot(
-                    expectedSnapshot,
-                    expectedSnapshotGeneration,
-                    expectedLayoutRevision) ||
-                !ReferenceEquals(canvas, _surface.Canvas))
-            {
-                ContextMenuTargets.DisposeContextMenuTarget(target);
-                OnSelectionContextMenuClosed(menu, touchSelection);
-                return false;
-            }
-
-            bool hasTargetItems = AddTargetContextMenuItems(menu, target);
-            if ((hasSelectionItems || hasTargetItems) && menu.Items.Count > 0)
-                menu.Items.Add(new MenuFlyoutSeparator());
-
-            var selectAllItem = new MenuFlyoutItem
-            {
-                Text = ResolveLocalizedString(
-                    MarkdownStringKeys.SelectAll,
-                    MarkdownLocalizedStrings.ContextMenuSelectAll),
-                IsEnabled = IsSelectionEnabled,
-            };
-            AutomationProperties.SetAutomationId(selectAllItem, "MarkdownContextSelectAll");
-            selectAllItem.Click += (_, _) =>
-            {
-                if (!IsSelectionEnabled) return;
-                if (_selectionHandleCaptureTarget is not null)
-                    ResetSelectionHandleDrag();
-                _touchTapSuppression.Reset();
-                _touchSelection.Reset();
-                _selection.SetAnchor(DocumentPosition.Zero);
-                _selection.ExtendTo(new DocumentPosition(int.MaxValue, int.MaxValue, int.MaxValue));
-            };
-            menu.Items.Add(selectAllItem);
-
-            if (!ReferenceEquals(_selectionContextMenu, menu) || !_contextMenuOpen ||
-                !IsCurrentContextMenuSnapshot(
-                    expectedSnapshot,
-                    expectedSnapshotGeneration,
-                    expectedLayoutRevision) ||
-                !ReferenceEquals(canvas, _surface.Canvas))
-            {
-                ContextMenuTargets.DisposeContextMenuTarget(target);
-                OnSelectionContextMenuClosed(menu, touchSelection);
-                return false;
-            }
-
-            // Command providers and MenuFlyout construction can reenter the
-            // control. Fence again immediately before exposing the flyout.
-            if (!IsCurrentContextMenuSnapshot(
-                    expectedSnapshot,
-                    expectedSnapshotGeneration,
-                    expectedLayoutRevision) ||
-                !ReferenceEquals(canvas, _surface.Canvas) ||
-                !ReferenceEquals(_selectionContextMenu, menu) ||
-                !_contextMenuOpen)
-            {
-                ContextMenuTargets.DisposeContextMenuTarget(target);
-                OnSelectionContextMenuClosed(menu, touchSelection);
-                return false;
-            }
-
-            menu.ShowAt(canvas, placementPoint);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            ContextMenuTargets.DisposeContextMenuTarget(target);
-            OnSelectionContextMenuClosed(menu, touchSelection);
-            try { menu.Hide(); } catch { }
-            MarkdownDiagnostics.WriteLine(
-                $"[MarkdownRendererControl] context menu failed: {ex.Message}");
-            return false;
-        }
-    }
-
-    private void OnSelectionContextMenuClosed(MenuFlyout menu, bool touchSelection)
-    {
-        ReleaseTargetContextMenuCommands(menu);
-        if (!ReferenceEquals(_selectionContextMenu, menu))
-            return;
-
-        _contextMenuOpen = false;
-        _selectionContextMenu = null;
-        if (touchSelection)
-            _touchSelection.CloseContextMenu(_selection.IsActive);
-        UpdateSelectionHandles();
-    }
-
-    private void CloseSelectionContextMenu()
-    {
-        MenuFlyout? menu = _selectionContextMenu;
-        _selectionContextMenu = null;
-        _contextMenuOpen = false;
-        if (menu is null)
-            return;
-
-        try
-        {
-            ReleaseTargetContextMenuCommands(menu);
-            _touchSelection.CloseContextMenu(_selection.IsActive);
-            UpdateSelectionHandles();
-        }
-        finally
-        {
-            // Detached native state can reject a handle update. The flyout
-            // reference has already been removed from the owner, so hide this
-            // captured instance even if preceding cleanup fails.
-            try { menu.Hide(); }
-            catch { }
-        }
-    }
-
-    private void ReleaseTargetContextMenuCommands(MenuFlyout menu)
-    {
-        foreach (object? entry in menu.Items)
-        {
-            if (entry is MenuFlyoutItem item &&
-                item.Tag is ValueTuple<MarkdownTargetCommand, ContextMenuTarget>)
-            {
-                var command = (ValueTuple<MarkdownTargetCommand, ContextMenuTarget>)item.Tag;
-                item.Click -= OnTargetContextMenuItemClick;
-                item.Tag = null;
-                ContextMenuTargets.DisposeContextMenuTarget(command.Item2);
-            }
-        }
-    }
-
-    private bool AddTargetContextMenuItems(MenuFlyout menu, ContextMenuTarget target)
-    {
-        bool added = false;
-        if (!string.IsNullOrWhiteSpace(target.LinkUrl))
-        {
-            var action = new MarkdownTargetCommand(
-                MarkdownCommandKind.CopyLink,
-                target.LinkSourceRange,
-                target.LinkUrl);
-            bool isEnabled = CanExecuteTargetCommandOrDefault(action, hasDefault: true);
-            if (!ReferenceEquals(_selectionContextMenu, menu))
-                return added;
-            var item = new MenuFlyoutItem
-            {
-                Text = ResolveLocalizedString(
-                    MarkdownStringKeys.CopyLink,
-                    MarkdownLocalizedStrings.ContextMenuCopyLink),
-                IsEnabled = isEnabled,
-            };
-            AutomationProperties.SetAutomationId(item, "MarkdownContextCopyLink");
-            AttachTargetCommand(item, action, target);
-            menu.Items.Add(item);
-            added = true;
-            if (!ReferenceEquals(_selectionContextMenu, menu))
-                return added;
-        }
-
-        if (target.ImageUrl is not null || target.ImageBitmapLease is not null)
-        {
-            var action = new MarkdownTargetCommand(
-                MarkdownCommandKind.CopyImage,
-                target.ImageSourceRange,
-                target.ImageUrl);
-            bool isEnabled = CanExecuteTargetCommandOrDefault(
-                action,
-                hasDefault: !string.IsNullOrWhiteSpace(target.ImageUrl) ||
-                            target.ImageBitmapLease is not null);
-            if (!ReferenceEquals(_selectionContextMenu, menu))
-                return added;
-            var item = new MenuFlyoutItem
-            {
-                Text = ResolveLocalizedString(
-                    MarkdownStringKeys.CopyImage,
-                    MarkdownLocalizedStrings.ContextMenuCopyImage),
-                IsEnabled = isEnabled,
-            };
-            AutomationProperties.SetAutomationId(item, "MarkdownContextCopyImage");
-            AttachTargetCommand(item, action, target);
-            menu.Items.Add(item);
-            added = true;
-            if (!ReferenceEquals(_selectionContextMenu, menu))
-                return added;
-        }
-
-        if (target.CodeText is not null)
-        {
-            var action = new MarkdownTargetCommand(
-                MarkdownCommandKind.CopyCode,
-                target.CodeSourceRange,
-                Language: target.CodeLanguage);
-            bool isEnabled = CanExecuteTargetCommandOrDefault(
-                action,
-                hasDefault: target.CodeText.Length > 0);
-            if (!ReferenceEquals(_selectionContextMenu, menu))
-                return added;
-            var item = new MenuFlyoutItem
-            {
-                Text = ResolveLocalizedString(
-                    MarkdownStringKeys.CopyCode,
-                    MarkdownLocalizedStrings.ContextMenuCopyCode),
-                IsEnabled = isEnabled,
-            };
-            AutomationProperties.SetAutomationId(item, "MarkdownContextCopyCode");
-            AttachTargetCommand(item, action, target);
-            menu.Items.Add(item);
-            added = true;
-            if (!ReferenceEquals(_selectionContextMenu, menu))
-                return added;
-        }
-
-        if (target.TableSnapshot is { } tableSnapshot)
-        {
-            var action = new MarkdownTargetCommand(
-                MarkdownCommandKind.CopyTable,
-                target.TableSourceRange);
-            bool isEnabled = CanExecuteTargetCommandOrDefault(
-                action,
-                hasDefault: tableSnapshot.HasText);
-            if (!ReferenceEquals(_selectionContextMenu, menu))
-                return added;
-            var item = new MenuFlyoutItem
-            {
-                Text = ResolveLocalizedString(
-                    MarkdownStringKeys.CopyTable,
-                    MarkdownLocalizedStrings.ContextMenuCopyTable),
-                IsEnabled = isEnabled,
-            };
-            AutomationProperties.SetAutomationId(item, "MarkdownContextCopyTable");
-            AttachTargetCommand(item, action, target);
-            menu.Items.Add(item);
-            added = true;
-        }
-
-        return added;
-    }
-
-    private void AttachTargetCommand(
-        MenuFlyoutItem item,
-        MarkdownTargetCommand action,
-        ContextMenuTarget target)
-    {
-        item.Tag = (action, target);
-        item.Click += OnTargetContextMenuItemClick;
-    }
-
-    private async void OnTargetContextMenuItemClick(object sender, RoutedEventArgs args)
-    {
-        if (sender is not MenuFlyoutItem item ||
-            item.Tag is not ValueTuple<MarkdownTargetCommand, ContextMenuTarget> command)
-        {
-            return;
-        }
-
-        try
-        {
-            using ContextMenuTarget executionTarget = command.Item2.CloneForExecution();
-            await ExecuteTargetCommandOrDefaultAsync(command.Item1, executionTarget).ConfigureAwait(true);
-        }
-        catch (Exception ex)
-        {
-            MarkdownDiagnostics.WriteLine(
-                $"[MarkdownRendererControl] Context-menu command failed: {ex.Message}");
-        }
-    }
-
-    private bool CanExecuteTargetCommandOrDefault(
-        MarkdownTargetCommand action,
-        bool hasDefault)
-    {
-        try
-        {
-            bool canExecute = MarkdownTargetCommandDispatcher.CanExecute(
-                CommandProvider,
-                action,
-                out bool isProvided);
-            return isProvided ? canExecute : hasDefault;
-        }
-        catch (Exception ex)
-        {
-            MarkdownDiagnostics.WriteLine(
-                $"[MarkdownRendererControl] Host command '{action.Kind}' query failed: {ex.Message}");
-            return hasDefault;
-        }
-    }
-
-    private async Task<bool> ExecuteTargetCommandOrDefaultAsync(
-        MarkdownTargetCommand action,
-        ContextMenuTarget target)
-    {
-        try
-        {
-            MarkdownTargetCommandDispatchResult dispatch =
-                MarkdownTargetCommandDispatcher.Execute(CommandProvider, action);
-            if (dispatch == MarkdownTargetCommandDispatchResult.Executed)
-                return true;
-            if (dispatch == MarkdownTargetCommandDispatchResult.Disabled)
-                return false;
-        }
-        catch (Exception ex)
-        {
-            MarkdownDiagnostics.WriteLine(
-                $"[MarkdownRendererControl] Host command '{action.Kind}' failed: {ex.Message}");
-        }
-
-        return action.Kind switch
-        {
-            MarkdownCommandKind.CopyLink => SelectionClipboard.CopyTextTargetToClipboard(action.Target),
-            MarkdownCommandKind.CopyImage when target.ImageUrl is not null ||
-                                               target.ImageBitmapLease is not null =>
-                await SelectionClipboard.CopyImageTargetToClipboardAsync(
-                    target.ImageUrl,
-                    target.ImageBitmapLease?.Bitmap).ConfigureAwait(true),
-            MarkdownCommandKind.CopyCode when target.CodeText is not null =>
-                CopyCodeTargetToClipboard(target.CodeText),
-            MarkdownCommandKind.CopyTable when target.TableSnapshot is { } tableSnapshot =>
-                await SelectionClipboard.CopyTableTargetToClipboardAsync(tableSnapshot).ConfigureAwait(true),
-            _ => false,
-        };
-    }
-
-    private bool CopyCodeTargetToClipboard(string codeText)
-    {
-        bool succeeded = SelectionClipboard.CopyTextTargetToClipboard(codeText);
-        RaiseCopyCompleted(MarkdownCopyKind.CodeBlock, succeeded);
-        return succeeded;
-    }
-
-    private bool IsCurrentContextMenuSnapshot(
-        LayoutSnapshot? snapshot,
-        long snapshotGeneration,
-        long layoutRevision)
-    {
-        return !_lifetime.IsDisposed && !_lifetime.IsUnloaded &&
-            ReferenceEquals(snapshot, _published.Snapshot) &&
-            snapshotGeneration == _published.Generation &&
-            (snapshot is null || snapshot.LayoutRevision == layoutRevision);
-    }
-
-    private bool FindContextMenuTarget(
-        Point point,
-        LayoutSnapshot? expectedSnapshot,
-        long expectedSnapshotGeneration,
-        long expectedLayoutRevision,
-        out ContextMenuTarget target)
-    {
-        target = new ContextMenuTarget();
-        if (!IsCurrentContextMenuSnapshot(
-                expectedSnapshot,
-                expectedSnapshotGeneration,
-                expectedLayoutRevision))
-        {
-            return false;
-        }
-
-        LayoutSnapshot? snapshot = expectedSnapshot;
-        if (snapshot is null)
-            return true;
-
-        // Busy means target-specific commands may be omitted, but only if the
-        // originally observed tuple is still current. Never substitute a newer
-        // snapshot/revision here.
-        if (!snapshot.TryBeginInteraction())
-            return IsCurrentContextMenuSnapshot(
-                expectedSnapshot,
-                expectedSnapshotGeneration,
-                expectedLayoutRevision);
-
-        bool captured = false;
-        try
-        {
-            try
-            {
-                if (IsCurrentContextMenuSnapshot(
-                        expectedSnapshot,
-                        expectedSnapshotGeneration,
-                        expectedLayoutRevision))
-                {
-                    foreach (BlockBox block in snapshot.Blocks)
-                    {
-                        Point physicalPoint = snapshot.ToPhysicalPointForTopLevelBlockUnderPaint(block, point);
-                        using LayoutPlacementTransformContext.Scope placementScope =
-                            snapshot.EnterPlacementTransformScopeForTopLevelBlockUnderPaint(block);
-                        if (ContextMenuTargets.PopulateContextMenuTarget(block, physicalPoint, target))
-                            break;
-                    }
-                    captured = true;
-                }
-            }
-            finally
-            {
-                snapshot.EndInteraction();
-            }
-        }
-        catch
-        {
-            ContextMenuTargets.DisposeContextMenuTarget(target);
-            target = new ContextMenuTarget();
-            throw;
-        }
-
-        if (!captured || !IsCurrentContextMenuSnapshot(
-                expectedSnapshot,
-                expectedSnapshotGeneration,
-                expectedLayoutRevision))
-        {
-            ContextMenuTargets.DisposeContextMenuTarget(target);
-            target = new ContextMenuTarget();
-            return false;
-        }
-
-        return true;
-    }
-
-    private Point GetKeyboardContextMenuPoint()
-    {
-        _viewport.TryGet(out double viewportTop, out double viewportHeight, out double viewportWidth);
-        double viewportBottom = viewportTop + viewportHeight;
-        if (_focusableItems is { } items &&
-            _focusedItemIndex >= 0 &&
-            _focusedItemIndex < items.Count &&
-            // This returns a copied Rect after its nonblocking snapshot lease
-            // ends; the flyout and command providers are invoked later.
-            GetFocusableItemRect(items[_focusedItemIndex]) is { } focusedRect)
-        {
-            return new Point(
-                Math.Clamp(focusedRect.Left + focusedRect.Width / 2.0, 0, Math.Max(0, viewportWidth - 1)),
-                Math.Clamp(focusedRect.Bottom, viewportTop, Math.Max(viewportTop, viewportBottom - 1)));
-        }
-
-        Rect selectionRect = default;
-        foreach (Rect rectangle in _adorner.Rectangles)
-        {
-            if (rectangle.Bottom < viewportTop || rectangle.Top > viewportBottom)
-            {
-                continue;
-            }
-
-            selectionRect = rectangle;
-            break;
-        }
-
-        if (selectionRect.Width <= 0 || selectionRect.Height <= 0)
-        {
-            return new Point(12, viewportTop + 12);
-        }
-
-        return new Point(
-            Math.Clamp(selectionRect.Left + 8, 0, Math.Max(0, viewportWidth - 1)),
-            Math.Clamp(selectionRect.Bottom, viewportTop, Math.Max(viewportTop, viewportBottom - 1)));
-    }
 
     private bool TryActivateDisclosure(LinkRun? run)
     {
