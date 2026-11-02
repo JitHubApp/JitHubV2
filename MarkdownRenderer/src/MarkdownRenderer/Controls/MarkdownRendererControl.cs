@@ -3373,17 +3373,9 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             workerCompleted = initialLayoutDispatcherProbe.EnqueueWorkerCompletionSentinel;
 #endif
         RebuildLayoutRunResult? run = await RebuildLayoutRun.RunAsync(
-            builder,
-            ctx,
-            plan.Parse.Parsed,
-            plan.Width,
-            viewportTop,
-            viewportHeight,
+            builder, ctx, plan.Parse.Parsed, plan.Width, viewportTop, viewportHeight,
             hasCustomBlockEmbedMeasurement: plan.Inputs.EmbedFactory is not null,
-            plan.PerformanceSession,
-            captureLayoutCpu,
-            workerCompleted,
-            ct).ConfigureAwait(true);
+            plan.PerformanceSession, captureLayoutCpu, workerCompleted, ct).ConfigureAwait(true);
         if (run is null)
             return;
 #if MARKDOWN_LAYOUT_DIAGNOSTICS
@@ -3420,10 +3412,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 #endif
             FinishReplacement(plan, snapshot, generation, publication, timeline);
             _timings.PublishCommitted(
-                generation,
-                sourceUtf16Bytes,
-                plan,
-                run,
+                generation, sourceUtf16Bytes, plan, run,
 #if MARKDOWN_LAYOUT_DIAGNOSTICS
                 layoutDiagnosticSnapshot,
 #endif
@@ -3480,14 +3469,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         bool sameDocument = old is not null && sameDocumentIdentity &&
             old.SourceFingerprint.Equals(snapshot.SourceFingerprint) &&
             sameAutomationDocument;
-        bool semanticInputChanged = old is null ||
-            !sameDocument ||
-            !ReferenceEquals(Document, plan.Parse.SemanticDocument) ||
-            !ReferenceEquals(_committedLocalization?.StringProvider, plan.Inputs.StringProvider) ||
-            !string.Equals(
-                _committedLocalization?.Culture.Name,
-                plan.Inputs.Language,
-                StringComparison.OrdinalIgnoreCase);
+        bool semanticInputChanged = HasSemanticInputChanged(plan, sameDocument);
         bool preserveSelection = !_selection.Range.Normalized().IsEmpty && sameDocument;
         // Scrolling or paint can queue another band realization while this
         // replacement pipeline is building. Fence that old-snapshot work at
@@ -3498,20 +3480,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             _scrollViewIntermediate = false;
         snapshot.AssignAutomationDocumentGeneration(
             _automationDocumentGenerations.Publish(automationDocumentIdentity));
-        // Old subscriptions/dirty indices cannot cross this snapshot boundary,
-        // including reentrant property notifications during the commit below.
-        ClearPendingFocusGeometryWork();
-        _imageSubscriptions.UnsubscribeAll();
-        _imageRelayout.ClearForSnapshotReplacement();
-        _pendingScrollToBlock = null;
-        _imagePlans.Publication = null;
-        if (!sameDocument)
-        {
-            // A new logical document must not expose the former document's
-            // value-only focus identities to automation or reentrant property
-            // callbacks below.
-            _focus.Reset();
-        }
+        ForgetSnapshotScopedWork(sameDocument);
         _published.Snapshot = snapshot;
         _published.LayoutDevice = plan.Device;
         // Publish presentation state with the new snapshot before any
@@ -3531,14 +3500,44 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _snapshotPipelineStartTimestamp = pipelineStartTimestamp;
         _snapshotSourceUtf16Bytes = sourceUtf16Bytes;
         publication = new ReplacementPublication(
-            old,
-            scrollAnchor,
-            touchSelectionRestoreSourceGeneration,
-            touchSelectionRestoreIntent,
-            semanticInputChanged,
-            preserveSelection);
+            old, scrollAnchor, touchSelectionRestoreSourceGeneration, touchSelectionRestoreIntent,
+            semanticInputChanged, preserveSelection);
         return true;
     }
+
+    /// <summary>
+    /// Forgets work bound to the outgoing snapshot: subscriptions and dirty
+    /// indices cannot cross the snapshot boundary, including reentrant
+    /// property notifications during the commit.
+    /// </summary>
+    private void ForgetSnapshotScopedWork(bool sameDocument)
+    {
+        ClearPendingFocusGeometryWork();
+        _imageSubscriptions.UnsubscribeAll();
+        _imageRelayout.ClearForSnapshotReplacement();
+        _pendingScrollToBlock = null;
+        _imagePlans.Publication = null;
+        if (!sameDocument)
+        {
+            // A new logical document must not expose the former document's
+            // value-only focus identities to automation or reentrant property
+            // callbacks below.
+            _focus.Reset();
+        }
+    }
+
+    /// <summary>
+    /// True when automation must treat the replacement as a new document:
+    /// another logical document, document object or localization.
+    /// </summary>
+    private bool HasSemanticInputChanged(RebuildLayoutPlan plan, bool sameDocument) =>
+        !sameDocument ||
+        !ReferenceEquals(Document, plan.Parse.SemanticDocument) ||
+        !ReferenceEquals(_committedLocalization?.StringProvider, plan.Inputs.StringProvider) ||
+        !string.Equals(
+            _committedLocalization?.Culture.Name,
+            plan.Inputs.Language,
+            StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Completes a published replacement: presentation, overlays, selection,
