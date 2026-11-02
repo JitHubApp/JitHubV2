@@ -59,7 +59,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     IFocusGeometryRecoveryHost, IRendererFocusEntryHost, IImageSubscriptionsHost, IImageResidencyHost,
     ICanvasDeviceRecoveryHost, ICodeBlockHighlightingHost, IRecoveryClockHost, IRasterPlacementHost,
     IImageRelayoutHost, IImageLoadCompletionHost, IVectorCapacityRetryHost,
-    ILazyLayoutHost, ILayoutCommitHost
+    ILazyLayoutHost, ILayoutCommitHost, IFocusableItemsPublicationHost
 {
     private readonly MarkdownViewSurface _surface;
     private readonly MarkdownViewLifetime _lifetime = new();
@@ -173,10 +173,10 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private readonly KeyboardFocusNavigator _navigator;
     private readonly PendingFocusGeometryWork _focusGeometryWork;
     private readonly RendererFocusEntry _focusEntry;
-    private bool _taskCommandAvailabilityRefreshQueued;
     // A deferred focus-plan refresh is value-only: it never keeps a snapshot,
     // box, or native resource alive while a geometry lease is busy.
     private readonly FocusableItemsRefreshRequest _focusRefresh;
+    private readonly FocusableItemsPublication _focusableItems;
     private readonly FocusRingPresenter _focusRing;
 
     // The provider may raise CacheInvalidated from a worker or system-event
@@ -1790,6 +1790,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _focusRing = new FocusRingPresenter(this, _focus, _focusGeometry, _surface, _lifetime, _published, DispatcherQueue);
         _rasterPlacement = new RasterPlacementPublisher(this, _lifetime, _published, _layoutCommit, _surface, _pointerInput, _imageSubscriptions, _imagePlans, _imageResidency, _embeds, _focus, _focusRing, _hostedFocusPlan, _snapshotRetirements);
         _focusRefresh = new FocusableItemsRefreshRequest(_published);
+        _focusableItems = new FocusableItemsPublication(this, _lifetime, _published, _focusRefresh, _focus, _recoveryClock);
         _hostedFocus = new HostedElementFocus(this, _lifetime, _published, _focus, _hostedFocusPlan, _embeds, _focusRing);
         _overflowScroll = new HorizontalOverflowScrollVisuals(this, _surface, _lifetime, _published, _selection, _focus, _embeds, DispatcherQueue);
         _reveal = new FocusedItemReveal(this, _surface, _lifetime, _published, _viewport, _focus, _overflowScroll, DispatcherQueue);
@@ -2576,6 +2577,13 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     void ILayoutCommitHost.TryResumePendingScrollToBlock(LayoutSnapshot snapshot, long snapshotGeneration) =>
         TryResumePendingScrollToBlock(snapshot, snapshotGeneration);
+
+    bool IFocusableItemsPublicationHost.RequestGeometryRecoveryIfRequired(LayoutSnapshot? snapshot) =>
+        RequestGeometryRecoveryIfRequired(snapshot);
+
+    void IFocusableItemsPublicationHost.RequestFullRebuild() => RequestRebuild(RebuildReason.Full);
+
+    void IFocusableItemsPublicationHost.InvalidateAutomationLayout() => InvalidateAutomationLayout();
 
     double IDeferredGestureLayoutHost.RasterizationScale => XamlRoot?.RasterizationScale ?? 1;
 
@@ -3943,7 +3951,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             IsCodeBlockCopyEnabled = codeBlockCopyEnabledSnapshot,
             IsTaskListEditingEnabled = taskListEditingEnabledSnapshot,
             CommandProvider = commandProviderSnapshot,
-            TaskCommandAvailabilityChanged = OnTaskCommandAvailabilityChanged,
+            TaskCommandAvailabilityChanged = _focusableItems.OnTaskCommandAvailabilityChanged,
             StringProvider = stringProviderSnapshot,
             CodeBlockLineNumberMode = lineNumberModeSnapshot,
             CodeBlockWrappingMode = wrappingModeSnapshot,
@@ -4674,7 +4682,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 _lazyLayout.TryPublishCompletion();
                 _overflowScroll.ProcessPendingRetry();
                 _focusGeometryWork.Process();
-                TryPublishPendingFocusableItems();
+                _focusableItems.TryPublishPending();
                 _imageRelayout.RecoverFaultedHandoff();
             }
         }
@@ -4737,177 +4745,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // their own. Refresh an existing document peer after image reflow so UIA
         // clients see the same bounds as the newly painted snapshot immediately.
         FrameworkElementAutomationPeer.FromElement(this)?.InvalidatePeer();
-    }
-
-    private void OnTaskCommandAvailabilityChanged()
-    {
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _taskCommandAvailabilityRefreshQueued)
-            return;
-
-        _taskCommandAvailabilityRefreshQueued = true;
-        if (!DispatcherQueue.TryEnqueue(RefreshTaskCommandAvailability))
-            _taskCommandAvailabilityRefreshQueued = false;
-    }
-
-    private void RefreshTaskCommandAvailability()
-    {
-        _taskCommandAvailabilityRefreshQueued = false;
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _published.Snapshot is not { } snapshot)
-            return;
-
-        _focusRefresh.Mark(snapshot, _published.Generation);
-        if (!TryPublishPendingFocusableItems())
-            _recoveryClock.Start();
-    }
-
-    private bool TryPublishPendingFocusableItems()
-    {
-        var request = _focusRefresh.Pending;
-        if (!request.IsPending)
-            return true;
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded)
-            return false;
-
-        LayoutSnapshot? snapshot = _published.Snapshot;
-        long generation = _published.Generation;
-        if (snapshot is null)
-        {
-            _focusRefresh.Reset();
-            return false;
-        }
-
-        long automationGeneration = snapshot.AutomationDocumentGeneration;
-        if (request.SnapshotGeneration != generation ||
-            request.AutomationDocumentGeneration != automationGeneration)
-        {
-            // A newer snapshot supersedes the value-only request. Never follow
-            // an old ticket into its retired graph; the current generation gets
-            // a fresh request instead.
-            _focusRefresh.Mark(snapshot, generation);
-            request = _focusRefresh.Pending;
-        }
-
-        if (snapshot.IsRetiringOrDisposed)
-        {
-            _focusRefresh.Clear(request.RequestVersion);
-            return false;
-        }
-        if (snapshot.GeometryRecoveryRequired)
-        {
-            RequestGeometryRecoveryIfRequired(snapshot);
-            _focusRefresh.Clear(request.RequestVersion);
-            return false;
-        }
-
-        long revisionBefore = snapshot.LayoutRevision;
-        if (request.LayoutRevision != revisionBefore)
-        {
-            _focusRefresh.Retarget(generation, automationGeneration, revisionBefore, request.RequestVersion);
-            request = _focusRefresh.Pending;
-        }
-
-        if (!snapshot.TryBeginInteraction())
-            return false;
-
-        IReadOnlyList<Layout.FocusableItem> collected = Array.Empty<Layout.FocusableItem>();
-        long revisionUnderLease = -1;
-        bool collectedSuccessfully = false;
-        Exception? captureFailure = null;
-        try
-        {
-            if (snapshot.LayoutRevision == revisionBefore &&
-                snapshot.TryCollectFocusableItemsUnderReadLease(out collected))
-            {
-                revisionUnderLease = snapshot.LayoutRevision;
-                collectedSuccessfully = true;
-            }
-        }
-        catch (Exception exception) when (exception is not OutOfMemoryException)
-        {
-            // A custom overflow owner can fail while its availability is read.
-            // The local partial list is discarded, and the normal replacement
-            // route is responsible for recovery. Defer diagnostics until after
-            // EndInteraction because log sinks are callback-capable.
-            captureFailure = exception;
-        }
-        finally
-        {
-            snapshot.EndInteraction();
-        }
-
-        if (!_focusRefresh.IsCurrent(
-                request,
-                snapshot,
-                generation,
-                automationGeneration))
-        {
-            return false;
-        }
-
-        if (captureFailure is not null)
-            RelayoutDiagnostics.ReportFailure("focus plan refresh", captureFailure);
-
-        // Diagnostics can reenter the dispatcher/control. Do not let a failed
-        // older attempt clear or rebuild over a newer availability request.
-        if (!_focusRefresh.IsCurrent(
-                request,
-                snapshot,
-                generation,
-                automationGeneration))
-        {
-            return false;
-        }
-
-        if (!collectedSuccessfully)
-        {
-            if (snapshot.IsRetiringOrDisposed || snapshot.GeometryRecoveryRequired)
-                _focusRefresh.Clear(request.RequestVersion);
-            else if (!ReferenceEquals(snapshot, _published.Snapshot) || generation != _published.Generation)
-                return false;
-            else if (revisionBefore != snapshot.LayoutRevision)
-            {
-                _focusRefresh.Retarget(
-                    generation, automationGeneration, snapshot.LayoutRevision, request.RequestVersion);
-            }
-            else
-            {
-                _focusRefresh.Clear(request.RequestVersion);
-                RequestRebuild(RebuildReason.Full);
-            }
-            return false;
-        }
-
-        long revisionAfter = snapshot.LayoutRevision;
-        if (!ReferenceEquals(snapshot, _published.Snapshot) ||
-            generation != _published.Generation ||
-            automationGeneration != snapshot.AutomationDocumentGeneration ||
-            revisionUnderLease != revisionBefore ||
-            revisionAfter != revisionBefore ||
-            !_focusRefresh.IsCurrent(
-                request,
-                snapshot,
-                generation,
-                automationGeneration))
-        {
-            if (ReferenceEquals(snapshot, _published.Snapshot) &&
-                generation == _published.Generation &&
-                automationGeneration == snapshot.AutomationDocumentGeneration &&
-                _focusRefresh.IsCurrent(
-                    request,
-                    snapshot,
-                    generation,
-                    automationGeneration))
-            {
-                _focusRefresh.Retarget(
-                    generation, automationGeneration, revisionAfter, request.RequestVersion);
-            }
-            return false;
-        }
-
-        _focus.ReplaceItems(collected);
-        _focusRefresh.Clear(request.RequestVersion);
-        InvalidateAutomationLayout();
-        return true;
     }
 
     private void OnRegionsInvalidated(CanvasVirtualControl sender, CanvasRegionsInvalidatedEventArgs args)
