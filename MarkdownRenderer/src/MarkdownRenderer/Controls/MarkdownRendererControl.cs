@@ -56,7 +56,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     ICodeBlockCopyButtonHost, IFocusRingHost, IHostedElementFocusHost,
     IHorizontalOverflowScrollHost, IFocusedItemRevealHost, IFocusedItemCommitHost,
     IFocusGeometryRecoveryHost, IRendererFocusEntryHost, IImageSubscriptionsHost, IImageResidencyHost,
-    ICanvasDeviceRecoveryHost, ICodeBlockHighlightingHost, IRecoveryClockHost
+    ICanvasDeviceRecoveryHost, ICodeBlockHighlightingHost, IRecoveryClockHost, IRasterPlacementHost
 {
     private readonly MarkdownViewSurface _surface;
     private readonly MarkdownViewLifetime _lifetime = new();
@@ -127,6 +127,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private long _lastLazyLayoutDispatchTicket;
     private readonly WeakSnapshotPublicationDrainFence<LayoutSnapshot> _lazyLayoutPublicationHandoff = new();
     private readonly LayoutCommitState _layoutCommit = new();
+    private readonly object _imagePreparationOwnerToken = new();
+    private readonly RasterPlacementPublisher _rasterPlacement;
     // Hosted-focus readers consume only realization plans published for the
     // exact snapshot generation and layout revision. The attempt epoch also
     // invalidates a plan while a same-snapshot rebuild is being transferred.
@@ -1818,6 +1820,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _focus = new KeyboardFocusModel(_lifetime, _published);
         _focusGeometry = new FocusGeometryReader(_lifetime, _published);
         _focusRing = new FocusRingPresenter(this, _focus, _focusGeometry, _surface, _lifetime, _published, DispatcherQueue);
+        _rasterPlacement = new RasterPlacementPublisher(this, _lifetime, _published, _layoutCommit, _surface, _pointerInput, _imageSubscriptions, _imagePlans, _imageResidency, _embeds, _focus, _focusRing, _hostedFocusPlan, _snapshotRetirements);
         _focusRefresh = new FocusableItemsRefreshRequest(_published);
         _hostedFocus = new HostedElementFocus(this, _lifetime, _published, _focus, _hostedFocusPlan, _embeds, _focusRing);
         _overflowScroll = new HorizontalOverflowScrollVisuals(this, _surface, _lifetime, _published, _selection, _focus, _embeds, DispatcherQueue);
@@ -2271,7 +2274,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         long generation,
         long layoutRevision,
         long hostedFocusPlanEpoch)
-        => IsCurrentRasterCodeActionPublication(candidate, generation, layoutRevision, hostedFocusPlanEpoch);
+        => _rasterPlacement.IsCurrentPublication(candidate, generation, layoutRevision, hostedFocusPlanEpoch);
 
     void IEmbedRealizationHost.InvalidateHostedFocusPlanPublication() => _hostedFocusPlan.Invalidate();
 
@@ -2415,6 +2418,69 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     Microsoft.UI.Dispatching.DispatcherQueue? IRecoveryClockHost.DispatcherQueue => DispatcherQueue;
 
     void IRecoveryClockHost.ProcessRecoveryTick() => ProcessRecoveryTick();
+
+    bool IRasterPlacementHost.HasCompetingLayoutWork =>
+        _deviceRecovery.IsQueued || _rebuildCoordinator.HasPendingOrBuilding || HasPendingLazyLayoutWork;
+
+    float IRasterPlacementHost.LayoutWidth => (float)Math.Max(50, ActualWidth);
+
+    object IRasterPlacementHost.ImagePreparationOwner => _imagePreparationOwnerToken;
+
+    CancellationToken IRasterPlacementHost.ImageLifetime => _imageLifetimeCts?.Token ?? CancellationToken.None;
+
+    bool IRasterPlacementHost.IsScrollViewIntermediate => _scrollViewIntermediate;
+
+    bool IRasterPlacementHost.MatchesLayoutInputs(MarkdownLayoutContext context) =>
+        ReferenceEquals(_themeSnapshot, context.ThemeSnapshot) &&
+        ReferenceEquals(PerformanceSession, context.PerformanceSession) &&
+        context.PerformanceSession?.IsDisposed != true &&
+        !context.ImageCancellationToken.IsCancellationRequested &&
+        ReferenceEquals(_imagePreparationOwnerToken, context.ImagePreparationOwner) &&
+        RasterPlacementResolverFence.Matches(
+            ImageResolver,
+            context.ImageResolver,
+            PerformanceSession as IMarkdownPerformanceSessionInternal,
+            context.PerformanceSession,
+            new MarkdownImageResolveContext(
+                ImageBaseUri, ImageDocumentPath, AllowThirdPartyRemoteImages, ImageDocumentSource),
+            new MarkdownImageResolveContext(
+                context.ImageBaseUri, context.ImageDocumentPath,
+                context.AllowThirdPartyRemoteImages, context.ImageDocumentSource)) &&
+        ReferenceEquals(SvgRenderer, context.SvgRenderer) &&
+        ReferenceEquals(ImageDocumentSource, context.ImageDocumentSource) &&
+        Equals(ImageBaseUri, context.ImageBaseUri) &&
+        string.Equals(ImageDocumentPath, context.ImageDocumentPath, StringComparison.Ordinal) &&
+        AllowThirdPartyRemoteImages == context.AllowThirdPartyRemoteImages &&
+        FlowDirection == context.FlowDirection && (XamlRoot?.RasterizationScale ?? 1) == context.RasterizationScale;
+
+    void IRasterPlacementHost.RetireSnapshot(LayoutSnapshot snapshot) => RetireSnapshot(snapshot);
+
+    void IRasterPlacementHost.ForgetHoverTarget()
+    {
+        _hover.Clear();
+        _abbreviationTooltip.ForgetTarget();
+    }
+
+    void IRasterPlacementHost.ScheduleVisibleCodeBlockHighlighting() => ScheduleVisibleCodeBlockHighlighting();
+
+    void IRasterPlacementHost.NotifyAutomationSnapshotChanged() => NotifyAutomationSnapshotChanged();
+
+    void IRasterPlacementHost.HideAbbreviationTooltip() => _abbreviationTooltip.Hide();
+
+    void IRasterPlacementHost.ResetCursor() => _cursor.SetShape(null);
+
+    void IRasterPlacementHost.ApplySnapshotSize(Size size) => ApplySnapshotSize(size);
+
+    void IRasterPlacementHost.RefreshInteractiveTextAdornerAfterLayoutChange() =>
+        RefreshInteractiveTextAdornerAfterLayoutChange();
+
+    void IRasterPlacementHost.InvalidateAutomationLayout() => InvalidateAutomationLayout();
+
+    void IRasterPlacementHost.InvalidateCanvas() => InvalidateCanvas();
+
+    void IRasterPlacementHost.RaiseImageUnavailable(
+        string url, MarkdownImageUnavailableReason reason, MarkdownSvgFailureReason? svgReason) =>
+        RaiseImageUnavailable(url, reason, svgReason);
 
     double IDeferredGestureLayoutHost.RasterizationScale => XamlRoot?.RasterizationScale ?? 1;
 
@@ -4503,23 +4569,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         return (blockIndex, anchor.OffsetFromTop);
     }
 
-    private static double? GetScrollAnchorOffset(LayoutSnapshot snapshot, (int BlockIndex, double OffsetFromTop)? anchor)
-    {
-        if (anchor is not { } value)
-            return null;
-
-        foreach (var b in snapshot.Blocks)
-        {
-            if (b.BlockIndex != value.BlockIndex)
-                continue;
-
-            return snapshot.TryGetLogicalTopForBlockIndex(value.BlockIndex, out double logicalTop)
-                ? Math.Max(0, logicalTop - value.OffsetFromTop)
-                : null;
-        }
-        return null;
-    }
-
     private void QueueLazyLayoutForViewport(bool forceCapacityRetry = false)
     {
         var snapshot = _published.Snapshot;
@@ -5295,7 +5344,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                     imagePlanPublication = _imagePlans.IndexUnderPaint(
                         snapshot, planGeneration, hostedFocusPlanRevision);
                     size = snapshot.Size;
-                    anchorOffset = GetScrollAnchorOffset(snapshot, scrollAnchor);
+                    anchorOffset = LazyLayoutScrollAnchorPolicy.GetTargetOffset(snapshot, scrollAnchor);
                     _layoutCommit.MarkApplied(hostedFocusPlanRevision);
                     imagePlanPublication ??= ImagePlanSet.Empty(
                         snapshot, planGeneration, _layoutCommit.AppliedRevision);
@@ -5702,14 +5751,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             _imageRelayoutActive = true;
             _imageRelayoutCts = cancellation;
             _imageRelayoutPayload = payload;
-            RasterPlacementInputs? rasterPlacement = session is not null &&
-                snapshot.TopLevelBlockCount is > 0 and <= LayoutSnapshot.MaximumPrivateRasterPlacementRoots &&
-                _embeds.EmbedPlans.Count == 0 &&
-                _imagePlans.Count is > 0 and <= InlineContainerBox.MaximumPrivateRasterPlacementImages
-                ? new RasterPlacementInputs(receiver, _published.Generation,
-                    _imagePreparationOwnerToken, _imageLifetimeCts?.Token ?? CancellationToken.None,
-                    _snapshotRetirements, _surface.Scroll?.VerticalOffset)
-                : null;
+            RasterPlacementInputs? rasterPlacement =
+                _rasterPlacement.TryCreateInputs(snapshot, optedIn: session is not null);
             _imageRelayoutTask = RunImageRelayoutAsync(
                 payload, anchor, _published.Generation, cancellation, DispatcherQueue,
                 receiver, session, rasterPlacement, snapshot.PointerInputEpoch,
@@ -6363,7 +6406,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                         // rebuild solely because the user is interacting.
                         _imageSubscriptions.AddBlockIndicesTo(_pendingImageRelayoutBlockIndices);
                     }
-                    else if (!TryPublishRasterPlacement(snapshot, candidate, generation))
+                    else if (!_rasterPlacement.TryPublish(snapshot, candidate, generation))
                     {
                         // A changed width/policy/raster invalidates the private
                         // proof. Rebuild rather than mutate the old tree here.

@@ -589,9 +589,6 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.True(processStart >= 0 && automationStart > processStart);
         string process = controlSource[processStart..automationStart];
         Assert.Contains("_rebuildCoordinator.HasPendingOrBuilding", process, StringComparison.Ordinal);
-        Assert.Contains("snapshot.TopLevelBlockCount is > 0 and <= LayoutSnapshot.MaximumPrivateRasterPlacementRoots", process, StringComparison.Ordinal);
-        Assert.Contains("_embeds.EmbedPlans.Count == 0 &&", process, StringComparison.Ordinal);
-        Assert.DoesNotContain("CodeBlockActionPlans.Count == 0", process, StringComparison.Ordinal);
         Assert.Contains("ImageRelayoutBatch.CapturePendingIndices(", process, StringComparison.Ordinal);
         Assert.Contains("private readonly SortedSet<int> _pendingImageRelayoutBlockIndices = [];", controlSource, StringComparison.Ordinal);
         Assert.Contains("optedIn: session is not null", process, StringComparison.Ordinal);
@@ -601,11 +598,19 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.DoesNotContain("_pendingImageRelayoutBlockIndices.Clear()", process, StringComparison.Ordinal);
         string rasterPublication = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(), "MarkdownRenderer", "src", "MarkdownRenderer", "Controls",
-            "MarkdownRendererControl.ImageCandidate.cs"));
+            "Images", "RasterPlacementPublisher.cs")).Replace("\r\n", "\n", StringComparison.Ordinal);
         Assert.Contains("TryPrepareCodeBlockActionPublication(plan", rasterPublication, StringComparison.Ordinal);
         Assert.Contains("ReferenceEquals(newPlan.Box, identity.Placement)", rasterPublication, StringComparison.Ordinal);
-        Assert.Contains("_imagePlans.Count is > 0 and <= InlineContainerBox.MaximumPrivateRasterPlacementImages", process, StringComparison.Ordinal);
-        Assert.Contains("new RasterPlacementInputs(receiver, _published.Generation,", process, StringComparison.Ordinal);
+        Assert.Contains("_rasterPlacement.TryCreateInputs(snapshot, optedIn: session is not null);", process, StringComparison.Ordinal);
+        int inputsStart = rasterPublication.IndexOf("internal RasterPlacementInputs? TryCreateInputs(", StringComparison.Ordinal);
+        int inputsEnd = rasterPublication.IndexOf("internal void RaiseImageUnavailableIfCurrent(", inputsStart, StringComparison.Ordinal);
+        Assert.True(inputsStart >= 0 && inputsEnd > inputsStart);
+        string inputs = rasterPublication[inputsStart..inputsEnd];
+        Assert.Contains("snapshot.TopLevelBlockCount is > 0 and <= LayoutSnapshot.MaximumPrivateRasterPlacementRoots", inputs, StringComparison.Ordinal);
+        Assert.Contains("_embeds.EmbedPlans.Count == 0 &&", inputs, StringComparison.Ordinal);
+        Assert.DoesNotContain("CodeBlockActionPlans.Count == 0", inputs, StringComparison.Ordinal);
+        Assert.Contains("_imagePlans.Count is > 0 and <= InlineContainerBox.MaximumPrivateRasterPlacementImages", inputs, StringComparison.Ordinal);
+        Assert.Contains("? new RasterPlacementInputs(new WeakReference<RasterPlacementPublisher>(this), _published.Generation,", inputs, StringComparison.Ordinal);
         Assert.Contains("RequestRebuild(RebuildReason.Full);", process, StringComparison.Ordinal);
 
         int runStart = controlSource.IndexOf("private static async Task RunImageRelayoutAsync(", StringComparison.Ordinal);
@@ -647,7 +652,7 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("current && snapshot is not null && !_lifetime.IsDisposed && !_lifetime.IsUnloaded &&\n                (!canceled || rootMeasureCommitted)", completion, StringComparison.Ordinal);
         Assert.Contains("// A private whole-tree candidate has not committed and is excluded.", completion, StringComparison.Ordinal);
         Assert.Contains("generation == _published.Generation && ReferenceEquals(snapshot, _published.Snapshot)", completion, StringComparison.Ordinal);
-        Assert.Contains("TryPublishRasterPlacement(snapshot, candidate, generation)", completion, StringComparison.Ordinal);
+        Assert.Contains("_rasterPlacement.TryPublish(snapshot, candidate, generation)", completion, StringComparison.Ordinal);
         Assert.Contains("RequestRebuild(RebuildReason.Full);", completion, StringComparison.Ordinal);
         Assert.Contains("else if (retryImageBlockIndex.HasValue || retryCurrentImages)", completion, StringComparison.Ordinal);
         Assert.Contains("if (retryImageBlockIndex is { } retryIndex)", completion, StringComparison.Ordinal);
