@@ -1,5 +1,6 @@
 using System;
 using Microsoft.UI.Xaml;
+using MarkdownRenderer.Layout;
 using Windows.Foundation;
 
 namespace MarkdownRenderer.Controls;
@@ -86,6 +87,13 @@ internal sealed class MarkdownViewport
         height = Math.Max(_owner.ActualHeight, 600);
         width = Math.Max(_owner.ActualWidth, 1);
         return false;
+    }
+
+    /// <summary>The band the current viewport makes visible, with no overscan.</summary>
+    internal LazyLayoutBand GetVisibleBand()
+    {
+        TryGet(out double top, out double height, out _);
+        return LazyLayoutBand.FromVisibleViewport(top, height);
     }
 
     public bool TryMapCanvasToViewport(Point canvasPoint, out Point viewportPoint)

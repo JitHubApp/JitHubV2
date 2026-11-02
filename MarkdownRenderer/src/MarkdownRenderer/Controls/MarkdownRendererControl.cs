@@ -37,6 +37,7 @@ using MarkdownRenderer.Controls.Highlighting;
 using MarkdownRenderer.Controls.Images;
 using MarkdownRenderer.Controls.Rendering;
 using MarkdownRenderer.Controls.Input;
+using MarkdownRenderer.Controls.LazyLayout;
 using MarkdownRenderer.Controls.Pipeline;
 using MarkdownRenderer.Controls.Selection;
 
@@ -57,7 +58,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     IHorizontalOverflowScrollHost, IFocusedItemRevealHost, IFocusedItemCommitHost,
     IFocusGeometryRecoveryHost, IRendererFocusEntryHost, IImageSubscriptionsHost, IImageResidencyHost,
     ICanvasDeviceRecoveryHost, ICodeBlockHighlightingHost, IRecoveryClockHost, IRasterPlacementHost,
-    IImageRelayoutHost, IImageLoadCompletionHost
+    IImageRelayoutHost, IImageLoadCompletionHost, IVectorCapacityRetryHost
 {
     private readonly MarkdownViewSurface _surface;
     private readonly MarkdownViewLifetime _lifetime = new();
@@ -132,6 +133,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private readonly RasterPlacementPublisher _rasterPlacement;
     private readonly ImageRelayout _imageRelayout;
     private readonly ImageLoadCompletion _imageLoadCompletion;
+    private readonly VectorCapacityRetry _vectorCapacity;
     // Hosted-focus readers consume only realization plans published for the
     // exact snapshot generation and layout revision. The attempt epoch also
     // invalidates a plan while a same-snapshot rebuild is being transferred.
@@ -1153,7 +1155,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     /// </summary>
     internal void PrepareForSyntheticDeviceReset()
     {
-        ResetVectorCapacityObserver();
+        _vectorCapacity.Reset();
         CancelLazyLayoutRealization();
         _layoutCommit.ClearPending();
         LayoutSnapshot? snapshot = _published.Snapshot;
@@ -1789,6 +1791,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _windowDestroying = new WindowDestroyingWatch(this, _lifetime);
         _recoveryClock = new RecoveryClock(this, _lifetime);
         _viewport = new MarkdownViewport(this, _surface);
+        _vectorCapacity = new VectorCapacityRetry(this, _lifetime, _published, _viewport);
         _cursor = new PointerCursorPresenter(cursor => ProtectedCursor = cursor);
         _abbreviationTooltip = new AbbreviationTooltipPresenter(this, _surface, _lifetime, _hover);
         _adorner = new SelectionAdornerPresenter(this, this, _surface, _lifetime, _published, _viewport, _selection, _hover);
@@ -2348,10 +2351,10 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             estimatedBand.Top,
             Math.Max(1, estimatedBand.Bottom - estimatedBand.Top),
             LazyLayoutOverscanPx);
-        LazyLayoutBand visibleVectorBand = GetCurrentVisibleVectorBand();
+        LazyLayoutBand visibleVectorBand = _viewport.GetVisibleBand();
         QueueLazyLayoutForBand(
             snapshot,
-            IncludeBand(realizationBand, visibleVectorBand),
+            LazyLayoutBand.Union(realizationBand, visibleVectorBand),
             visibleVectorBand,
             preserveScrollAnchor: _surface.Scroll is not null);
     }
@@ -2535,6 +2538,16 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         InvalidateCanvas();
         _adorner.Invalidate();
     }
+
+    Microsoft.UI.Dispatching.DispatcherQueue? IVectorCapacityRetryHost.DispatcherQueue => DispatcherQueue;
+
+    IMarkdownPerformanceSession? IVectorCapacityRetryHost.PerformanceSession => PerformanceSession;
+
+    bool IVectorCapacityRetryHost.RequestGeometryRecoveryIfRequired(LayoutSnapshot? snapshot) =>
+        RequestGeometryRecoveryIfRequired(snapshot);
+
+    void IVectorCapacityRetryHost.QueueLazyLayoutForViewport(bool forceCapacityRetry) =>
+        QueueLazyLayoutForViewport(forceCapacityRetry);
 
     double IDeferredGestureLayoutHost.RasterizationScale => XamlRoot?.RasterizationScale ?? 1;
 
@@ -2755,7 +2768,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void ReleaseLoadedResources()
     {
-        ResetVectorCapacityObserver();
+        _vectorCapacity.Reset();
         ClearPendingFocusGeometryWork();
         Interlocked.Exchange(ref _deferredSceneStatusRefreshAfterPaint, 0);
         Interlocked.Exchange(ref _deferredSceneProbeAfterPaint, 0);
@@ -4196,7 +4209,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _committedImageDocumentId = imageDocumentId;
         _published.Generation = generation;
         _focusRefresh.Mark(snapshot, generation);
-        SynchronizeVectorCapacityObserver(snapshot);
+        _vectorCapacity.Synchronize(snapshot);
         _snapshotPipelineStartTimestamp = pipelineStartTimestamp;
         _snapshotSourceUtf16Bytes = sourceUtf16Bytes;
         committed = true;
@@ -4650,20 +4663,20 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // Directional look-ahead and image realization can be broader than the
         // viewport. Keep vector admission tied to the actual viewport rather
         // than letting an unchanged prefetch union absorb a changed viewport.
-        band = IncludeBand(band, visibleVectorBand);
+        band = LazyLayoutBand.Union(band, visibleVectorBand);
 
-        bool capacityAdmissionEnabled = IsVisibleFirstVectorAdmissionEnabled;
+        bool capacityAdmissionEnabled = _vectorCapacity.IsAdmissionEnabled;
         bool capacityDeferred = capacityAdmissionEnabled && snapshot.HasCapacityDeferredScenes;
         if (!snapshot.IsLazyLayoutEnabled && !capacityDeferred)
             return;
 
         if (capacityAdmissionEnabled)
         {
-            SynchronizeVectorCapacityObserver(snapshot);
-            forceCapacityRetry |= ConsumePendingVectorCapacityWake(snapshot);
+            _vectorCapacity.Synchronize(snapshot);
+            forceCapacityRetry |= _vectorCapacity.ConsumePendingWake(snapshot);
         }
 
-        bool capacityRetryDue = capacityDeferred && IsVectorCapacityRetryDue(
+        bool capacityRetryDue = capacityDeferred && _vectorCapacity.IsRetryDue(
             snapshot, visibleVectorBand, forceCapacityRetry);
         if (capacityDeferred && !capacityRetryDue &&
             snapshot.IsRealizationBandMeasured(band))
@@ -4698,27 +4711,27 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 performanceSession.Options.LookAheadViewports,
                 _lazyScrollVelocityPixelsPerSecond)
             : LazyLayoutBand.FromViewport(region.Top, region.Height, LazyLayoutOverscanPx);
-        band = IncludeBand(band, visibleVectorBand);
-        bool capacityAdmissionEnabled = IsVisibleFirstVectorAdmissionEnabled;
+        band = LazyLayoutBand.Union(band, visibleVectorBand);
+        bool capacityAdmissionEnabled = _vectorCapacity.IsAdmissionEnabled;
         bool capacityDeferred = capacityAdmissionEnabled && snapshot.HasCapacityDeferredScenes;
         if (!snapshot.IsLazyLayoutEnabled && !capacityDeferred)
             return;
         bool forceCapacityRetry = false;
         if (capacityAdmissionEnabled)
         {
-            SynchronizeVectorCapacityObserver(snapshot);
-            bool wake = ConsumePendingVectorCapacityWake(snapshot);
+            _vectorCapacity.Synchronize(snapshot);
+            bool wake = _vectorCapacity.ConsumePendingWake(snapshot);
             if (capacityDeferred && wake)
                 forceCapacityRetry = true;
             if (capacityDeferred && !wake &&
-                !IsVectorCapacityRetryDue(snapshot, visibleVectorBand, forceCapacityRetry) &&
+                !_vectorCapacity.IsRetryDue(snapshot, visibleVectorBand, forceCapacityRetry) &&
                 snapshot.IsRealizationBandMeasured(band))
             {
                 return;
             }
         }
         if (snapshot.IsBandWorkSettled(band, visibleVectorBand) &&
-            !(capacityDeferred && IsVectorCapacityRetryDue(snapshot, visibleVectorBand, forceCapacityRetry)))
+            !(capacityDeferred && _vectorCapacity.IsRetryDue(snapshot, visibleVectorBand, forceCapacityRetry)))
             return;
 
         QueueLazyLayoutForBand(
@@ -4745,12 +4758,12 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             // Same-band work from an older image-reflow revision must not
             // absorb the retry needed to refresh scene indexes/graph bindings.
             _activeLazyLayoutRevision == snapshot.LayoutRevision &&
-            (!IsVisibleFirstVectorAdmissionEnabled ||
+            (!_vectorCapacity.IsAdmissionEnabled ||
              VectorNativeResourceAdmission.Shared.CapacityGeneration <=
                 _activeLazyLayoutCapacityGeneration) &&
             band.Top >= _activeLazyLayoutBand.Top &&
             band.Bottom <= _activeLazyLayoutBand.Bottom &&
-            (!IsVisibleFirstVectorAdmissionEnabled ||
+            (!_vectorCapacity.IsAdmissionEnabled ||
              visibleVectorBand.Top == _activeLazyLayoutVisibleVectorBand.Top &&
              visibleVectorBand.Bottom == _activeLazyLayoutVisibleVectorBand.Bottom) &&
             (!preserveScrollAnchor ||
@@ -4875,7 +4888,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // The active ticket is current through every refund already visible
         // when dispatch starts. A later refund invalidates this work and makes
         // the capacity wake eligible to schedule a fresh attempt.
-        _activeLazyLayoutCapacityGeneration = IsVisibleFirstVectorAdmissionEnabled
+        _activeLazyLayoutCapacityGeneration = _vectorCapacity.IsAdmissionEnabled
             ? VectorNativeResourceAdmission.Shared.CapacityGeneration
             : snapshot.ActiveCapacityGeneration;
         _activeLazyLayoutAnchorOffset = anchorOffset;
@@ -5112,11 +5125,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             return;
         }
 
-        // Record only a completed attempt. Canceled/superseded workers must not
-        // consume the one retry associated with a capacity generation.
-        _lastVectorCapacityAttemptVisibleBand = attemptedVisibleBand;
-        _lastVectorCapacityAttemptGeneration = attemptedCapacityGeneration;
-        _hasVectorCapacityAttempt = true;
+        // Record only a completed attempt.
+        _vectorCapacity.RecordAttempt(attemptedVisibleBand, attemptedCapacityGeneration);
 
         if (failure is not null)
         {
@@ -5135,7 +5145,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             return;
         }
 
-        SynchronizeVectorCapacityObserver(snapshot);
+        _vectorCapacity.Synchronize(snapshot);
 
         if (result.Commit.LayoutRevision <= _layoutCommit.AppliedRevision)
         {
@@ -5176,7 +5186,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         bool restoreAnchor = LazyLayoutScrollAnchorPolicy.ShouldRestore(
             anchorOffset, _surface.Scroll?.VerticalOffset, _scrollViewIntermediate);
         ApplyLazyLayoutCommit(snapshot, restoreAnchor ? result.ScrollAnchor : null);
-        SynchronizeVectorCapacityObserver(snapshot);
+        _vectorCapacity.Synchronize(snapshot);
         if (result.Commit.NativeSceneResourcesChanged)
             NotifyVisibleDeferredSceneItemStatusMayHaveChanged();
         _pointerInput.OnLazyLayoutCompletion(snapshot, succeeded: true);
@@ -5944,7 +5954,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // Deferred presses/captured handles must not keep the Full request
         // waiting for a release that can no longer safely hit-test this tree.
         TryGeometryRecoveryCleanup(_pointerInput.Reset);
-        TryGeometryRecoveryCleanup(ResetVectorCapacityObserver);
+        TryGeometryRecoveryCleanup(_vectorCapacity.Reset);
         _horizontalOverflowDrag.Clear();
         ClearPendingFocusGeometryWork();
         _adorner.ClearGeometry();
@@ -6333,10 +6343,10 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             // committed estimate now, then retry this exact block after the
             // asynchronous layout result publishes.
             _pendingScrollToBlock = (snapshot, snapshotGeneration, blockIndex);
-            LazyLayoutBand visibleVectorBand = GetCurrentVisibleVectorBand();
+            LazyLayoutBand visibleVectorBand = _viewport.GetVisibleBand();
             QueueLazyLayoutForBand(
                 snapshot,
-                IncludeBand(
+                LazyLayoutBand.Union(
                     new LazyLayoutBand(target.OwnerTop, Math.Max(target.OwnerTop + 1, target.OwnerBottom)),
                     visibleVectorBand),
                 visibleVectorBand,
