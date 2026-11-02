@@ -30,7 +30,7 @@ public partial class MarkdownRendererControl
         TryGeometryRecoveryCleanup(_pointerInput.Reset);
         TryGeometryRecoveryCleanup(ResetVectorCapacityObserver);
         _horizontalOverflowDrag.Clear();
-        ClearPendingFocusGeometryWork();
+        _focusGeometryWork.Clear();
         _adorner.ClearGeometry();
         // This tuple describes re-publication of this snapshot's geometry, not
         // an offside replacement candidate. It cannot repair a failed tree.

@@ -20,6 +20,7 @@ internal sealed class FocusRingPresenter
 
     private readonly IFocusRingHost _host;
     private readonly KeyboardFocusModel _focus;
+    private readonly FocusGeometryReader _geometry;
     private readonly MarkdownViewSurface _surface;
     private readonly MarkdownViewLifetime _lifetime;
     private readonly PublishedLayout _published;
@@ -33,6 +34,7 @@ internal sealed class FocusRingPresenter
     internal FocusRingPresenter(
         IFocusRingHost host,
         KeyboardFocusModel focus,
+        FocusGeometryReader geometry,
         MarkdownViewSurface surface,
         MarkdownViewLifetime lifetime,
         PublishedLayout published,
@@ -40,6 +42,7 @@ internal sealed class FocusRingPresenter
     {
         _host = host;
         _focus = focus;
+        _geometry = geometry;
         _surface = surface;
         _lifetime = lifetime;
         _published = published;
@@ -76,6 +79,57 @@ internal sealed class FocusRingPresenter
     {
         if (_ring is not null)
             _ring.Visibility = Visibility.Collapsed;
+    }
+
+    /// <summary>
+    /// Moves the ring to surround the focused painted item, or hides it when
+    /// nothing painted is focused. Asks for a geometry retry when the item's
+    /// rectangle cannot be read yet.
+    /// </summary>
+    internal void Update()
+    {
+        if (_focus.PendingLazy is not null)
+        {
+            Hide();
+            return;
+        }
+
+        var items = _focus.Items;
+        if (items is null || _focus.FocusedIndex < 0 || _focus.FocusedIndex >= items.Count)
+        {
+            Hide();
+            return;
+        }
+
+        var item = items[_focus.FocusedIndex];
+        if (!item.IsLink && !item.IsVectorSemantic && !item.IsHorizontalOverflow)
+        {
+            Hide();
+            return;
+        }
+
+        if (_published.Snapshot is not { } snapshot)
+        {
+            Hide();
+            return;
+        }
+
+        long generation = _published.Generation;
+        FocusGeometryReadStatus status = _geometry.TryCaptureItemRect(
+            snapshot, generation, snapshot.LayoutRevision, item, out Rect? rect);
+        if (status != FocusGeometryReadStatus.Ready)
+        {
+            _host.RequestFocusGeometryRetry();
+            return;
+        }
+
+        if (rect is not { Width: > 0, Height: > 0 })
+        {
+            Hide();
+            return;
+        }
+
+        Publish(generation, item, rect);
     }
 
     /// <summary>Makes queued publications stale.</summary>

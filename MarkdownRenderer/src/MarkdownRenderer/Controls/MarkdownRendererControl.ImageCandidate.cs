@@ -379,7 +379,7 @@ public partial class MarkdownRendererControl
             if (!IsCurrentRasterCodeActionPublication(
                     candidate, generation, candidate.LayoutRevision, epoch))
                 return true;
-            UpdateFocusRing();
+            _focusRing.Update();
             if (!IsCurrentRasterCodeActionPublication(
                     candidate, generation, candidate.LayoutRevision, epoch))
                 return true;

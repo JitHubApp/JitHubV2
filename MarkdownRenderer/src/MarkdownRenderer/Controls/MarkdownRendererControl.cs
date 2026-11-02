@@ -53,7 +53,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     ISelectionHandlesHost, ISelectionContextMenuHost, IPointerInputSink, IPointerInteractionHost,
     IHorizontalOverflowPointerHost, IPointerInputRouterHost, IDeferredGestureLayoutHost, IEmbedRealizationHost,
     ICodeBlockCopyButtonHost, IFocusRingHost, IHostedElementFocusHost,
-    IHorizontalOverflowScrollHost, IFocusedItemRevealHost
+    IHorizontalOverflowScrollHost, IFocusedItemRevealHost, IFocusedItemCommitHost,
+    IFocusGeometryRecoveryHost
 {
     private readonly MarkdownViewSurface _surface;
     private readonly MarkdownViewLifetime _lifetime = new();
@@ -199,25 +200,16 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private readonly HostedElementFocus _hostedFocus;
     private readonly HorizontalOverflowScrollVisuals _overflowScroll;
     private readonly FocusedItemReveal _reveal;
+    private readonly FocusedItemCommit _focusCommit;
+    private readonly KeyboardFocusNavigator _navigator;
+    private readonly PendingFocusGeometryWork _focusGeometryWork;
     private bool _taskCommandAvailabilityRefreshQueued;
     // A deferred focus-plan refresh is value-only: it never keeps a snapshot,
     // box, or native resource alive while a geometry lease is busy.
     private readonly FocusableItemsRefreshRequest _focusRefresh;
-    private const int MaxPendingSpatialFocusKeys = 64;
-    private readonly Queue<VirtualKey> _pendingSpatialFocusKeys = new();
-    private long _pendingSpatialFocusQueueEpoch;
-    private bool _processingPendingFocusGeometry;
-    private bool _hasPendingSpatialFocusOrigin;
-    private Layout.FocusableItem _pendingSpatialFocusOrigin;
-    private long _pendingSpatialFocusGeneration;
-    private bool _pendingFocusGeometryRefresh;
     // GotFocus is raised asynchronously, after the dispatcher may have
     // cleared _suppressNextFocusPromotion. GettingFocus captures it in time.
     private bool _focusEntrySuppressed;
-    private bool _hasPendingFocusResumePoint;
-    private Point _pendingFocusResumePoint;
-    private long _pendingFocusResumeGeneration;
-    private bool _lastFocusNavigationHandled;
     private readonly FocusRingPresenter _focusRing;
 
     // The provider may raise CacheInvalidated from a worker or system-event
@@ -1007,8 +999,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _focus.FocusItem(index);
         _reveal.Begin();
         bool focused = Focus(FocusState.Programmatic);
-        UpdateFocusRing();
-        NotifyFocusedItemAutomation();
+        _focusRing.Update();
+        _focusCommit.NotifyAutomation();
         return focused;
     }
 
@@ -1022,8 +1014,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _focus.FocusItem(index);
         _reveal.Begin();
         bool focused = Focus(FocusState.Programmatic);
-        UpdateFocusRing();
-        NotifyFocusedItemAutomation();
+        _focusRing.Update();
+        _focusCommit.NotifyAutomation();
         return focused;
     }
 
@@ -1035,8 +1027,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _focus.FocusItem(index);
         _reveal.Begin();
         bool focused = Focus(FocusState.Programmatic);
-        UpdateFocusRing();
-        NotifyFocusedItemAutomation();
+        _focusRing.Update();
+        _focusCommit.NotifyAutomation();
         return focused;
     }
 
@@ -1044,7 +1036,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     {
         _suppressNextFocusPromotion = true;
         _focus.ClearFocus();
-        UpdateFocusRing();
+        _focusRing.Update();
         bool focused = Focus(FocusState.Programmatic);
         if (!focused)
             _suppressNextFocusPromotion = false;
@@ -1518,14 +1510,14 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 return;
             }
 
-            e.Handled = MoveFocus(reverse: shift);
+            e.Handled = _navigator.MoveTab(reverse: shift);
             return;
         }
 
         if (e.Key is VirtualKey.Left or VirtualKey.Right or VirtualKey.Up or VirtualKey.Down &&
             element is not TextBox)
         {
-            e.Handled = MoveFocusSpatial(e.Key);
+            e.Handled = _navigator.MoveSpatial(e.Key);
         }
     }
 
@@ -1889,11 +1881,15 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _embeds = new EmbedRealization(this, this, _surface, _lifetime, _published, _viewport, DispatcherQueue, OnHostedEmbedKeyDown);
         _focus = new KeyboardFocusModel(_lifetime, _published);
         _focusGeometry = new FocusGeometryReader(_lifetime, _published);
-        _focusRing = new FocusRingPresenter(this, _focus, _surface, _lifetime, _published, DispatcherQueue);
+        _focusRing = new FocusRingPresenter(this, _focus, _focusGeometry, _surface, _lifetime, _published, DispatcherQueue);
         _focusRefresh = new FocusableItemsRefreshRequest(_published);
         _hostedFocus = new HostedElementFocus(this, _lifetime, _published, _focus, _hostedFocusPlan, _embeds, _focusRing);
         _overflowScroll = new HorizontalOverflowScrollVisuals(this, _surface, _lifetime, _published, _selection, _focus, _embeds, DispatcherQueue);
         _reveal = new FocusedItemReveal(this, _surface, _lifetime, _published, _viewport, _focus, _overflowScroll, DispatcherQueue);
+        _focusCommit = new FocusedItemCommit(this, _lifetime, _published, _focus, _focusRing, _reveal, _hostedFocus, _embeds, DispatcherQueue);
+        var queuedFocusKeys = new SpatialFocusKeyQueue();
+        _navigator = new KeyboardFocusNavigator(this, _lifetime, _published, _focus, _focusGeometry, _focusRing, _overflowScroll, _embeds, _focusCommit, queuedFocusKeys, DispatcherQueue);
+        _focusGeometryWork = new PendingFocusGeometryWork(this, _lifetime, _published, _focus, _focusGeometry, _focusRing, _reveal, _overflowScroll, queuedFocusKeys, _navigator);
         IsTabStop = true;
         Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
         Loaded += (_, _) => OnLoadedInternal();
@@ -2029,15 +2025,15 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
         if (_focus.FocusedIndex >= 0)
         {
-            UpdateFocusRing();
-            NotifyFocusedItemAutomation();
+            _focusRing.Update();
+            _focusCommit.NotifyAutomation();
             return;
         }
 
         _promotingKeyboardFocusEntry = true;
         try
         {
-            MoveFocus(_lastFocusEntryWasReverse);
+            _navigator.MoveTab(_lastFocusEntryWasReverse);
         }
         finally
         {
@@ -2055,7 +2051,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             return;
 
         _focus.ClearFocus();
-        UpdateFocusRing();
+        _focusRing.Update();
         if (!_contextMenu.IsOpen)
         {
             _document.ForgetDragAnchor();
@@ -2262,7 +2258,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         => _pendingTouchSelectionPresentationRestore = null;
 
     void IPointerInteractionHost.RememberFocusResumePoint(Point documentPoint)
-        => RememberFocusResumePoint(documentPoint);
+        => _focusGeometryWork.RememberResumePoint(documentPoint);
 
     void IPointerInteractionHost.FocusRendererForPointerInteraction() => FocusRendererForPointerInteraction();
 
@@ -2271,7 +2267,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (_focus.FocusedIndex >= 0)
         {
             _focus.ClearFocus();
-            UpdateFocusRing();
+            _focusRing.Update();
         }
     }
 
@@ -2427,7 +2423,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     void IFocusRingHost.InvalidateInteractiveTextAdorner() => InvalidateInteractiveTextAdorner();
 
-    void IFocusRingHost.RequestFocusGeometryRetry() => RequestFocusGeometryRetry();
+    void IFocusRingHost.RequestFocusGeometryRetry() => _focusGeometryWork.RequestRetry();
 
     FocusState IHostedElementFocusHost.FocusState => FocusState;
 
@@ -2437,11 +2433,9 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     bool IHostedElementFocusHost.FocusRenderer() => Focus(FocusState.Keyboard);
 
-    void IHostedElementFocusHost.UpdateFocusRing() => UpdateFocusRing();
-
     void IHorizontalOverflowScrollHost.UpdateSelectionOverlay() => UpdateSelectionOverlay();
 
-    void IHorizontalOverflowScrollHost.UpdateFocusRing() => UpdateFocusRing();
+    void IHorizontalOverflowScrollHost.UpdateFocusRing() => _focusRing.Update();
 
     void IHorizontalOverflowScrollHost.StartRecoveryClock() => StartImageRelayoutRecovery();
 
@@ -2455,10 +2449,47 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     MarkdownAutomationPeer? IHorizontalOverflowScrollHost.FindAutomationPeer()
         => FrameworkElementAutomationPeer.FromElement(this) as MarkdownAutomationPeer;
 
-    void IFocusedItemRevealHost.RequestFocusGeometryRetry() => RequestFocusGeometryRetry();
+    void IFocusedItemRevealHost.RequestFocusGeometryRetry() => _focusGeometryWork.RequestRetry();
 
     bool IFocusedItemRevealHost.BringDocumentRectIntoExternalViewport(Rect rect, bool animate, double alignmentRatio)
         => BringDocumentRectIntoExternalViewport(rect, animate, alignmentRatio);
+
+    bool IFocusedItemCommitHost.FocusRenderer() => Focus(FocusState.Keyboard);
+
+    void IFocusedItemCommitHost.RealizeLazyFocusTarget(LayoutSnapshot snapshot, LazyLayoutBand estimatedBand)
+    {
+        var realizationBand = LazyLayoutBand.FromViewport(
+            estimatedBand.Top,
+            Math.Max(1, estimatedBand.Bottom - estimatedBand.Top),
+            LazyLayoutOverscanPx);
+        LazyLayoutBand visibleVectorBand = GetCurrentVisibleVectorBand();
+        QueueLazyLayoutForBand(
+            snapshot,
+            IncludeBand(realizationBand, visibleVectorBand),
+            visibleVectorBand,
+            preserveScrollAnchor: _surface.Scroll is not null);
+    }
+
+    LinkTarget? IFocusedItemCommitHost.FindLinkTargetAt(DocumentPosition position) => FindLinkTargetAt(position);
+
+    bool IFocusedItemCommitHost.ActivateLink(
+        LinkTarget link,
+        MarkdownLinkInputKind inputKind,
+        MarkdownInputModifiers modifiers)
+        => ActivateLinkTarget(link, inputKind, modifiers);
+
+    MarkdownAutomationPeer? IFocusedItemCommitHost.GetOrCreateAutomationPeer()
+        => FrameworkElementAutomationPeer.FromElement(this) as MarkdownAutomationPeer
+           ?? FrameworkElementAutomationPeer.CreatePeerForElement(this) as MarkdownAutomationPeer;
+
+    bool IFocusGeometryRecoveryHost.RequestGeometryRecoveryIfRequired(LayoutSnapshot? snapshot)
+        => RequestGeometryRecoveryIfRequired(snapshot);
+
+    void IFocusGeometryRecoveryHost.StartRecoveryClock() => StartImageRelayoutRecovery();
+
+    bool IFocusGeometryRecoveryHost.HasRecoveryClock => HasImageRelayoutRecoveryClock;
+
+    void IFocusGeometryRecoveryHost.RequestFullRebuild() => RequestRebuild(RebuildReason.Full);
 
     double IDeferredGestureLayoutHost.RasterizationScale => XamlRoot?.RasterizationScale ?? 1;
 
@@ -2525,7 +2556,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (_focus.FocusedIndex >= 0)
         {
             _focus.ClearFocus();
-            UpdateFocusRing();
+            _focusRing.Update();
         }
     }
 
@@ -2673,7 +2704,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private void ReleaseLoadedResources()
     {
         ResetVectorCapacityObserver();
-        ClearPendingFocusGeometryWork();
+        _focusGeometryWork.Clear();
         Interlocked.Exchange(ref _deferredSceneStatusRefreshAfterPaint, 0);
         Interlocked.Exchange(ref _deferredSceneProbeAfterPaint, 0);
         _contextMenu.Close();
@@ -4175,7 +4206,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             _automationDocumentGenerations.Publish(automationDocumentIdentity));
         // Old subscriptions/dirty indices cannot cross this snapshot boundary,
         // including reentrant property notifications during the commit below.
-        ClearPendingFocusGeometryWork();
+        _focusGeometryWork.Clear();
         UnsubscribeAllImages();
         _pendingImageRelayoutBlockIndices.Clear();
         _imageRelayoutQueued = false;
@@ -4366,14 +4397,14 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         }
         _embeds.RealizeVisible();
         long embedRealizationEnded = Stopwatch.GetTimestamp();
-        bool resumedPendingHostedFocus = ResumePendingLazyFocus(snapshot);
+        bool resumedPendingHostedFocus = _focusCommit.ResumePendingLazy(snapshot);
         _ = RestartCodeBlockHighlighting();
         long highlightRetirementEnded = Stopwatch.GetTimestamp();
         ScheduleVisibleCodeBlockHighlighting();
         long highlightSchedulingEnded = Stopwatch.GetTimestamp();
         _adorner.InvalidateGeometry();
         if (!resumedPendingHostedFocus)
-            UpdateFocusRing();
+            _focusRing.Update();
         long visibleRealizationEnded = Stopwatch.GetTimestamp();
 
         InvalidateCanvas();
@@ -5824,7 +5855,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             // A focus request can arrive while an already-measured band is
             // publishing its completion. Re-evaluate it even when that worker
             // produced no newer layout revision.
-            _ = ResumePendingLazyFocus(snapshot);
+            _ = _focusCommit.ResumePendingLazy(snapshot);
             TryResumePendingScrollToBlock(snapshot, pipelineGeneration);
             _pointerInput.OnLazyLayoutCompletion(snapshot, succeeded: true);
             StopImageRelayoutRecoveryIfIdle();
@@ -5901,8 +5932,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 scroll.ChangeView(null, target, null, disableAnimation: true);
             _embeds.RealizeVisible();
             ScheduleVisibleCodeBlockHighlighting();
-            if (!ResumePendingLazyFocus(snapshot))
-                UpdateFocusRing();
+            if (!_focusCommit.ResumePendingLazy(snapshot))
+                _focusRing.Update();
             RefreshInteractiveTextAdornerAfterLayoutChange();
             InvalidateAutomationLayout();
             InvalidateCanvas();
@@ -6518,7 +6549,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 control.ProcessQueuedLazyLayoutRealization(control._lastLazyLayoutDispatchTicket);
                 control.TryPublishLazyLayoutCompletion(control._lazyLayoutGeneration);
                 control._overflowScroll.ProcessPendingRetry();
-                control.ProcessPendingFocusGeometry();
+                control._focusGeometryWork.Process();
                 control.TryPublishPendingFocusableItems();
                 if (control._imageRelayoutTask is { IsFaulted: true } failed &&
                     control._imageRelayoutCts is { } cancellation)
@@ -6557,9 +6588,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (!force && (_bitmapOutputRecovery.IsPending || HasPendingLazyLayoutWork ||
             _overflowScroll.HasPendingRetry ||
             _focusRefresh.Pending.IsPending ||
-            _pendingSpatialFocusKeys.Count > 0 ||
-            _pendingFocusGeometryRefresh ||
-            _hasPendingFocusResumePoint))
+            _focusGeometryWork.HasPendingWork))
             return;
 
         if (force)
@@ -6582,9 +6611,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             _pendingImageRelayoutBlockIndices.Count > 0 ||
             _overflowScroll.HasPendingRetry ||
             _focusRefresh.Pending.IsPending ||
-            _pendingSpatialFocusKeys.Count > 0 ||
-            _pendingFocusGeometryRefresh ||
-            _hasPendingFocusResumePoint ||
+            _focusGeometryWork.HasPendingWork ||
             HasPendingLazyLayoutWork)
         {
             return;
@@ -7953,31 +7980,27 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 e.Handled = _contextMenu.Show(_contextMenu.GetKeyboardPoint());
                 return;
             case VirtualKey.Tab:
-                e.Handled = MoveFocus(reverse: shift);
+                e.Handled = _navigator.MoveTab(reverse: shift);
                 return;
             case VirtualKey.Left:
             case VirtualKey.Right:
-                e.Handled = HandleHorizontalArrowKey(e.Key);
-                return;
             case VirtualKey.Home:
             case VirtualKey.End:
-                e.Handled = ScrollFocusedHorizontalOverflowToEdge(e.Key == VirtualKey.End);
-                return;
             case VirtualKey.Up:
             case VirtualKey.Down:
-                e.Handled = MoveFocusSpatial(e.Key);
+                e.Handled = _navigator.Navigate(e.Key);
                 return;
             case VirtualKey.Enter:
             case VirtualKey.Space when _focus.FocusedIndex >= 0:
-                ClearPendingSpatialFocusKeys();
-                e.Handled = ActivateFocusedItem();
+                _navigator.ClearQueuedKeys();
+                e.Handled = _focusCommit.Activate();
                 return;
             case VirtualKey.Escape:
-                ClearPendingSpatialFocusKeys();
+                _navigator.ClearQueuedKeys();
                 if (_focus.FocusedIndex >= 0)
                 {
                     _focus.ClearFocus();
-                    UpdateFocusRing();
+                    _focusRing.Update();
                     e.Handled = true;
                 }
                 else if (_selection.IsActive)
@@ -7987,847 +8010,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 }
                 return;
         }
-    }
-
-    private bool HandleHorizontalArrowKey(VirtualKey key)
-    {
-        if (_pendingSpatialFocusKeys.Count > 0)
-            return QueuePendingSpatialFocusKey(key);
-
-        HorizontalArrowHandlingOrder order =
-            MarkdownKeyboardInputPolicy.GetHorizontalArrowHandlingOrder(
-                _focus.Current?.Kind);
-        FocusGeometryReadStatus status = order == HorizontalArrowHandlingOrder.OverflowThenSpatial
-            ? TryScrollFocusedHorizontalOverflow(key)
-            : TryMoveFocusSpatial(key);
-        if (status == FocusGeometryReadStatus.Ready)
-        {
-            bool handled = status == FocusGeometryReadStatus.Ready && _lastFocusNavigationHandled;
-            if (handled)
-                return true;
-
-            status = order == HorizontalArrowHandlingOrder.OverflowThenSpatial
-                ? TryMoveFocusSpatial(key)
-                : TryScrollFocusedHorizontalOverflow(key);
-            if (status == FocusGeometryReadStatus.Ready)
-                return _lastFocusNavigationHandled;
-        }
-
-        return QueuePendingSpatialFocusKey(key);
-    }
-
-    private FocusGeometryReadStatus TryScrollFocusedHorizontalOverflow(VirtualKey key)
-    {
-        _lastFocusNavigationHandled = false;
-        if (_published.Snapshot is not { } snapshot ||
-            _focus.Items is not { } items ||
-            _focus.FocusedIndex < 0 ||
-            _focus.FocusedIndex >= items.Count)
-        {
-            return FocusGeometryReadStatus.Ready;
-        }
-
-        long generation = _published.Generation;
-        long revision = snapshot.LayoutRevision;
-        if (!snapshot.TryBeginInteraction())
-            return FocusGeometryReadStatus.Busy;
-
-        HorizontalOverflowVisualState visualState = default;
-        bool changed = false;
-        bool current;
-        double oldOffset = 0;
-        int blockIndex = items[_focus.FocusedIndex].BlockIndex;
-        try
-        {
-            current = IsCurrentScrollTarget(snapshot, generation, revision);
-            if (current && snapshot.TryGetHorizontalOverflowForBlockIndex(
-                    blockIndex,
-                    out IHorizontalOverflowBox? overflow) &&
-                overflow is not null)
-            {
-                bool towardPhysicalRight = key == VirtualKey.Right;
-                double logicalDelta = overflow.IsRightToLeft
-                    ? (towardPhysicalRight ? -48 : 48)
-                    : (towardPhysicalRight ? 48 : -48);
-                oldOffset = overflow.HorizontalOffset;
-                changed = snapshot.TryScrollHorizontal(overflow, logicalDelta);
-                if (changed)
-                    _ = _overflowScroll.TryCaptureUnderLease(
-                        snapshot, generation, revision, overflow, oldOffset, out visualState);
-            }
-        }
-        finally
-        {
-            snapshot.EndInteraction();
-        }
-
-        if (!current)
-            return FocusGeometryReadStatus.Stale;
-        if (!changed)
-            return IsCurrentScrollTarget(snapshot, generation, revision)
-                ? FocusGeometryReadStatus.Ready
-                : FocusGeometryReadStatus.Stale;
-
-        _lastFocusNavigationHandled = true;
-        if (visualState.Snapshot is not null)
-            _overflowScroll.Publish(visualState);
-        else
-            _overflowScroll.QueueRetry(snapshot, generation, blockIndex, oldOffset);
-        return FocusGeometryReadStatus.Ready;
-    }
-
-    private bool ScrollFocusedHorizontalOverflow(VirtualKey key)
-    {
-        if (_pendingSpatialFocusKeys.Count > 0)
-            return QueuePendingSpatialFocusKey(key);
-        FocusGeometryReadStatus status = TryScrollFocusedHorizontalOverflow(key);
-        if (status == FocusGeometryReadStatus.Ready)
-            return _lastFocusNavigationHandled;
-        return QueuePendingSpatialFocusKey(key);
-    }
-
-    private bool ScrollFocusedHorizontalOverflowToEdge(bool end)
-    {
-        VirtualKey key = end ? VirtualKey.End : VirtualKey.Home;
-        if (_pendingSpatialFocusKeys.Count > 0)
-            return QueuePendingSpatialFocusKey(key);
-        FocusGeometryReadStatus status = TryScrollFocusedHorizontalOverflowToEdge(end);
-        if (status == FocusGeometryReadStatus.Ready)
-            return _lastFocusNavigationHandled;
-        return QueuePendingSpatialFocusKey(key);
-    }
-
-    private FocusGeometryReadStatus TryScrollFocusedHorizontalOverflowToEdge(bool end)
-    {
-        _lastFocusNavigationHandled = false;
-        if (_published.Snapshot is not { } snapshot ||
-            _focus.Items is not { } items ||
-            _focus.FocusedIndex < 0 ||
-            _focus.FocusedIndex >= items.Count)
-        {
-            return FocusGeometryReadStatus.Ready;
-        }
-
-        long generation = _published.Generation;
-        long revision = snapshot.LayoutRevision;
-        if (!snapshot.TryBeginInteraction())
-            return FocusGeometryReadStatus.Busy;
-
-        HorizontalOverflowVisualState visualState = default;
-        bool changed = false;
-        bool current;
-        double oldOffset = 0;
-        int blockIndex = items[_focus.FocusedIndex].BlockIndex;
-        try
-        {
-            current = IsCurrentScrollTarget(snapshot, generation, revision);
-            if (current && snapshot.TryGetHorizontalOverflowForBlockIndex(
-                    blockIndex,
-                    out IHorizontalOverflowBox? overflow) &&
-                overflow is not null)
-            {
-                oldOffset = overflow.HorizontalOffset;
-                double target = end
-                    ? Math.Max(0, overflow.HorizontalExtent - overflow.HorizontalViewport)
-                    : 0;
-                changed = snapshot.TrySetHorizontalOffset(overflow, target);
-                if (changed)
-                    _ = _overflowScroll.TryCaptureUnderLease(
-                        snapshot, generation, revision, overflow, oldOffset, out visualState);
-            }
-        }
-        finally
-        {
-            snapshot.EndInteraction();
-        }
-
-        if (!current)
-            return FocusGeometryReadStatus.Stale;
-        if (!changed)
-            return IsCurrentScrollTarget(snapshot, generation, revision)
-                ? FocusGeometryReadStatus.Ready
-                : FocusGeometryReadStatus.Stale;
-
-        _lastFocusNavigationHandled = true;
-        if (visualState.Snapshot is not null)
-            _overflowScroll.Publish(visualState);
-        else
-            _overflowScroll.QueueRetry(snapshot, generation, blockIndex, oldOffset);
-        return FocusGeometryReadStatus.Ready;
-    }
-
-    /// <summary>
-    /// Advances (or reverses) keyboard focus through the focusable items list.
-    /// Returns true when focus is successfully moved (prevents Tab from leaving the control).
-    /// </summary>
-    private bool MoveFocus(bool reverse)
-    {
-        ClearPendingSpatialFocusKeys();
-        var items = _focus.Items;
-        if (items is null || items.Count == 0) return false;
-
-        int nextIndex = FocusNavigationHelper.MoveTab(items.Count, _focus.FocusedIndex, _focus.ResumeIndex, reverse);
-        if (nextIndex < 0)
-        {
-            // Let Tab/Shift+Tab leave the control to the next focusable element.
-            _focus.ClearFocus();
-            _focus.ClearResumeIndex();
-            UpdateFocusRing();
-            SuppressHostedTabStopsForNativeTab();
-            return false;
-        }
-
-        _focus.SetFocusedIndex(nextIndex);
-        _focus.ClearResumeIndex();
-        return CommitFocusedItem(reverse);
-    }
-
-    private void SuppressHostedTabStopsForNativeTab()
-    {
-        var suppressed = new List<(Control Control, bool IsTabStop)>();
-        var seen = new HashSet<Control>();
-        foreach (var plan in _embeds.EmbedPlans)
-        {
-            if (plan.Realized is { } realized)
-                HostedFocusNavigation.SuppressHostedTabStops(realized, suppressed, seen);
-        }
-        foreach (var plan in _embeds.CodeBlockActionPlans)
-        {
-            if (plan.Realized is { } realized)
-                HostedFocusNavigation.SuppressHostedTabStops(realized, suppressed, seen);
-        }
-
-        if (suppressed.Count == 0)
-            return;
-
-        DispatcherQueue.TryEnqueue(() =>
-        {
-            foreach (var (control, isTabStop) in suppressed)
-                control.IsTabStop = isTabStop;
-        });
-    }
-
-    private bool MoveFocusSpatial(VirtualKey key)
-    {
-        if (_pendingSpatialFocusKeys.Count > 0)
-            return QueuePendingSpatialFocusKey(key);
-
-        FocusGeometryReadStatus status = TryMoveFocusSpatial(key);
-        if (status == FocusGeometryReadStatus.Ready)
-            return _lastFocusNavigationHandled;
-        return QueuePendingSpatialFocusKey(key);
-    }
-
-    private FocusGeometryReadStatus TryMoveFocusSpatial(VirtualKey key)
-    {
-        _lastFocusNavigationHandled = false;
-        var items = _focus.Items;
-        if (items is null || items.Count == 0)
-            return FocusGeometryReadStatus.Ready;
-
-        if (_focus.FocusedIndex < 0)
-        {
-            if (_focus.ResumeIndex < 0)
-                return FocusGeometryReadStatus.Ready;
-            _focus.SetFocusedIndex(Math.Clamp(_focus.ResumeIndex, 0, items.Count - 1));
-            _focus.ClearResumeIndex();
-            _lastFocusNavigationHandled = CommitFocusedItem(reverse: false);
-            return FocusGeometryReadStatus.Ready;
-        }
-
-        LayoutSnapshot? snapshot = _published.Snapshot;
-        if (snapshot is null)
-            return FocusGeometryReadStatus.Stale;
-        long generation = _published.Generation;
-        long revision = snapshot.LayoutRevision;
-        FocusGeometryReadStatus captureStatus = _focusGeometry.TryCaptureRectMap(
-            snapshot, generation, revision, items,
-            out List<(int Index, Rect Rect)> map);
-        if (captureStatus != FocusGeometryReadStatus.Ready)
-            return captureStatus;
-
-        int currentLocalIndex = -1;
-        for (int i = 0; i < map.Count; i++)
-        {
-            if (map[i].Index == _focus.FocusedIndex)
-            {
-                currentLocalIndex = i;
-                break;
-            }
-        }
-
-        if (currentLocalIndex < 0)
-            return FocusGeometryReadStatus.Ready;
-
-        var rects = new List<Rect>(map.Count);
-        foreach (var entry in map) rects.Add(entry.Rect);
-
-        var direction = key switch
-        {
-            VirtualKey.Left => Layout.FocusNavigationDirection.Left,
-            VirtualKey.Right => Layout.FocusNavigationDirection.Right,
-            VirtualKey.Up => Layout.FocusNavigationDirection.Up,
-            VirtualKey.Down => Layout.FocusNavigationDirection.Down,
-            _ => Layout.FocusNavigationDirection.Down,
-        };
-
-        int nextLocalIndex = FocusNavigationHelper.MoveSpatial(rects, currentLocalIndex, direction);
-        if (nextLocalIndex < 0)
-            return FocusGeometryReadStatus.Ready;
-
-        if (!IsCurrentScrollTarget(snapshot, generation, revision))
-            return FocusGeometryReadStatus.Stale;
-
-        _focus.SetFocusedIndex(map[nextLocalIndex].Index);
-        _focus.ClearResumeIndex();
-        _lastFocusNavigationHandled = CommitFocusedItem(reverse: false);
-        return FocusGeometryReadStatus.Ready;
-    }
-
-    private bool QueuePendingSpatialFocusKey(VirtualKey key)
-    {
-        if (RequestGeometryRecoveryIfRequired(_published.Snapshot))
-            return false;
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _published.Snapshot is not { } snapshot ||
-            _focus.Items is not { } items || items.Count == 0)
-        {
-            return false;
-        }
-
-        long generation = _published.Generation;
-        if (_pendingSpatialFocusKeys.Count > 0 &&
-            (_pendingSpatialFocusGeneration != generation ||
-             !_hasPendingSpatialFocusOrigin ||
-             _focus.Current is not { } current ||
-             !FocusableItemQueries.SameFocusableIdentity(current, _pendingSpatialFocusOrigin)))
-        {
-            ClearPendingSpatialFocusKeys();
-        }
-
-        if (_pendingSpatialFocusKeys.Count >= MaxPendingSpatialFocusKeys)
-            return false; // Leave this repeated key unhandled so its parent can act on it.
-
-        if (!_hasPendingSpatialFocusOrigin)
-        {
-            if (_focus.Current is not { } origin)
-                return false;
-            _pendingSpatialFocusOrigin = origin;
-            _pendingSpatialFocusGeneration = generation;
-            _hasPendingSpatialFocusOrigin = true;
-        }
-
-        _pendingSpatialFocusKeys.Enqueue(key);
-        StartImageRelayoutRecovery();
-        if (!HasImageRelayoutRecoveryClock)
-        {
-            ClearPendingSpatialFocusKeys();
-            return false;
-        }
-
-        return true;
-    }
-
-    private void ProcessPendingFocusGeometry()
-    {
-        if (_processingPendingFocusGeometry || _lifetime.IsDisposed || _lifetime.IsUnloaded || _published.Snapshot is not { } snapshot)
-            return;
-
-        if (RequestGeometryRecoveryIfRequired(snapshot))
-        {
-            ClearPendingFocusGeometryWork();
-            return;
-        }
-
-        _processingPendingFocusGeometry = true;
-        try
-        {
-            if (_pendingSpatialFocusKeys.Count > 0)
-            {
-                if (_pendingSpatialFocusGeneration != _published.Generation ||
-                    !_hasPendingSpatialFocusOrigin ||
-                    _focus.Current is not { } current ||
-                    !FocusableItemQueries.SameFocusableIdentity(current, _pendingSpatialFocusOrigin))
-                {
-                    ClearPendingSpatialFocusKeys();
-                }
-                else
-                {
-                    VirtualKey key = _pendingSpatialFocusKeys.Peek();
-                    long queueEpoch = _pendingSpatialFocusQueueEpoch;
-                    FocusGeometryReadStatus status = TryProcessFocusSpatialKey(key);
-                    if (status == FocusGeometryReadStatus.Ready &&
-                        queueEpoch == _pendingSpatialFocusQueueEpoch &&
-                        _pendingSpatialFocusKeys.Count > 0 &&
-                        _pendingSpatialFocusKeys.Peek() == key)
-                    {
-                        _pendingSpatialFocusKeys.Dequeue();
-                        if (_pendingSpatialFocusKeys.Count == 0)
-                        {
-                            _hasPendingSpatialFocusOrigin = false;
-                        }
-                        else if (_focus.Current is { } updatedOrigin)
-                        {
-                            _pendingSpatialFocusOrigin = updatedOrigin;
-                        }
-                        else
-                        {
-                            ClearPendingSpatialFocusKeys();
-                        }
-                    }
-                }
-            }
-
-            if (_hasPendingFocusResumePoint)
-            {
-                long generation = _published.Generation;
-                if (_pendingFocusResumeGeneration != generation)
-                {
-                    _hasPendingFocusResumePoint = false;
-                    _focus.ClearResumeIndex();
-                }
-                else
-                {
-                    FocusGeometryReadStatus status = _focusGeometry.TryCaptureRectMap(
-                        snapshot,
-                        generation,
-                        snapshot.LayoutRevision,
-                        _focus.Items,
-                        out List<(int Index, Rect Rect)> map);
-                    if (status == FocusGeometryReadStatus.Ready)
-                    {
-                        Point point = _pendingFocusResumePoint;
-                        _hasPendingFocusResumePoint = false;
-                        _focus.SetResumeIndex(FocusableItemQueries.FindNearestFocusableItem(map, point));
-                    }
-                    else if (status == FocusGeometryReadStatus.Stale &&
-                             generation != _published.Generation)
-                    {
-                        _hasPendingFocusResumePoint = false;
-                        _focus.ClearResumeIndex();
-                    }
-                }
-            }
-
-            if (_pendingFocusGeometryRefresh && _pendingSpatialFocusKeys.Count == 0)
-            {
-                _pendingFocusGeometryRefresh = false;
-                // A reveal waiting for settled geometry must not
-                // override a scroll the user requested since focus moved.
-                if (_reveal.IsCurrent())
-                    _ = _reveal.ScrollIntoView();
-                UpdateFocusRing();
-            }
-        }
-        finally
-        {
-            _processingPendingFocusGeometry = false;
-        }
-    }
-
-    private FocusGeometryReadStatus TryProcessFocusSpatialKey(VirtualKey key)
-    {
-        if (key is VirtualKey.Home or VirtualKey.End)
-            return TryScrollFocusedHorizontalOverflowToEdge(key == VirtualKey.End);
-
-        if (key is VirtualKey.Left or VirtualKey.Right)
-        {
-            HorizontalArrowHandlingOrder order =
-                MarkdownKeyboardInputPolicy.GetHorizontalArrowHandlingOrder(
-                    _focus.Current?.Kind);
-            FocusGeometryReadStatus first = order == HorizontalArrowHandlingOrder.OverflowThenSpatial
-                ? TryScrollFocusedHorizontalOverflow(key)
-                : TryMoveFocusSpatial(key);
-            if (first != FocusGeometryReadStatus.Ready || _lastFocusNavigationHandled)
-                return first;
-            return order == HorizontalArrowHandlingOrder.OverflowThenSpatial
-                ? TryMoveFocusSpatial(key)
-                : TryScrollFocusedHorizontalOverflow(key);
-        }
-
-        return TryMoveFocusSpatial(key);
-    }
-
-    private void ClearPendingSpatialFocusKeys()
-    {
-        ++_pendingSpatialFocusQueueEpoch;
-        _pendingSpatialFocusKeys.Clear();
-        _hasPendingSpatialFocusOrigin = false;
-        _pendingSpatialFocusGeneration = 0;
-    }
-
-    private void ClearPendingFocusGeometryWork()
-    {
-        ClearPendingSpatialFocusKeys();
-        _pendingFocusGeometryRefresh = false;
-        _hasPendingFocusResumePoint = false;
-        _pendingFocusResumeGeneration = 0;
-        _overflowScroll.ClearPendingRetry();
-        _focusRing.InvalidatePublication();
-    }
-
-    private void RequestFocusGeometryRetry()
-    {
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded)
-            return;
-
-        if (RequestGeometryRecoveryIfRequired(_published.Snapshot))
-            return;
-
-        _pendingFocusGeometryRefresh = true;
-        StartImageRelayoutRecovery();
-        if (!HasImageRelayoutRecoveryClock)
-        {
-            _pendingFocusGeometryRefresh = false;
-            _hasPendingFocusResumePoint = false;
-            _focus.ClearResumeIndex();
-            RequestRebuild(RebuildReason.Full);
-        }
-    }
-
-    private bool CommitFocusedItem(bool reverse)
-    {
-        var items = _focus.Items;
-        LayoutSnapshot? snapshot = _published.Snapshot;
-        if (snapshot is null ||
-            items is null ||
-            _focus.FocusedIndex < 0 ||
-            _focus.FocusedIndex >= items.Count)
-        {
-            _focus.ClearLazyFocus();
-            return false;
-        }
-
-        long snapshotGeneration = _published.Generation;
-        if (!ReferenceEquals(snapshot, _published.Snapshot))
-            return true;
-
-        Layout.FocusableItem item = items[_focus.FocusedIndex];
-        FocusTargetLayoutState layoutState = snapshot.TryGetFocusTargetLayoutState(
-            item.BlockIndex,
-            out LazyLayoutBand estimatedBand);
-        if (!ReferenceEquals(snapshot, _published.Snapshot) ||
-            snapshotGeneration != _published.Generation)
-        {
-            return true;
-        }
-
-        if (layoutState is FocusTargetLayoutState.RequiresRealization or FocusTargetLayoutState.Busy)
-        {
-            // Keep native focus on the renderer while the target's top-level
-            // block is measured. This consumes the Tab instead of allowing XAML
-            // to advance beyond the renderer at a lazy-layout boundary.
-            _focus.BeginLazyFocus(new PendingLazyFocus(
-                snapshot,
-                snapshotGeneration,
-                item,
-                reverse));
-            var pending = _focus.PendingLazy!.Value;
-            _ = Focus(FocusState.Keyboard);
-            if (!_focus.IsCurrentLazyFocus(pending))
-                return true;
-            _focusRing.Hide();
-            if (!_focus.IsCurrentLazyFocus(pending))
-                return true;
-
-            if (layoutState == FocusTargetLayoutState.RequiresRealization)
-            {
-                _reveal.ScrollLazyTargetIntoView(estimatedBand, reverse);
-                if (!_focus.IsCurrentLazyFocus(pending))
-                    return true;
-                var realizationBand = LazyLayoutBand.FromViewport(
-                    estimatedBand.Top,
-                    Math.Max(1, estimatedBand.Bottom - estimatedBand.Top),
-                    LazyLayoutOverscanPx);
-                LazyLayoutBand visibleVectorBand = GetCurrentVisibleVectorBand();
-                QueueLazyLayoutForBand(
-                    snapshot,
-                    IncludeBand(realizationBand, visibleVectorBand),
-                    visibleVectorBand,
-                    preserveScrollAnchor: _surface.Scroll is not null);
-            }
-
-            return true;
-        }
-
-        if (layoutState == FocusTargetLayoutState.Unavailable)
-        {
-            // A retiring snapshot or malformed custom block index must never
-            // turn an already-consumed Tab into focus escape.
-            _focus.ClearLazyFocus();
-            _ = Focus(FocusState.Keyboard);
-            if (!ReferenceEquals(snapshot, _published.Snapshot) ||
-                snapshotGeneration != _published.Generation)
-            {
-                return true;
-            }
-            _focusRing.Hide();
-            return true;
-        }
-
-        _focus.ClearLazyFocus();
-        bool scrolled = _reveal.Begin();
-        FocusCurrentItem(reverse);
-        if (scrolled)
-        {
-            DispatcherQueue.TryEnqueue(() =>
-            {
-                if (_lifetime.IsUnloaded) return;
-                _embeds.RealizeVisible();
-                FocusCurrentItem(reverse);
-            });
-        }
-        return true;
-    }
-
-    private bool ResumePendingLazyFocus(LayoutSnapshot snapshot)
-    {
-        if (_focus.PendingLazy is not { } pending)
-            return false;
-
-        if (!ReferenceEquals(snapshot, pending.Snapshot) ||
-            pending.SnapshotGeneration != _published.Generation)
-        {
-            _focus.ClearLazyFocus();
-            return false;
-        }
-
-        int index = FocusableItemQueries.FindFocusableItemIndex(_focus.Items, pending.Item);
-        if (index < 0)
-        {
-            _focus.ClearFocus();
-            return false;
-        }
-
-        _focus.SetFocusedIndex(index);
-        return CommitFocusedItem(pending.Reverse);
-    }
-
-    /// <summary>Fires LinkClick for the currently focused painted link.</summary>
-    private bool ActivateFocusedItem()
-    {
-        if (_focus.PendingLazy is not null)
-            return true;
-
-        var items = _focus.Items;
-        if (items is null || _focus.FocusedIndex < 0 || _focus.FocusedIndex >= items.Count)
-            return false;
-
-        var item = items[_focus.FocusedIndex];
-        MarkdownInputModifiers modifiers = InputModifierState.GetCurrentInputModifiers();
-        if (item.IsVectorSemantic &&
-            _focus.TryGetVectorSemantic(item, out var vectorBox, out int semanticIndex) &&
-            vectorBox.TryGetLink(semanticIndex, out var vectorLink) &&
-            vectorLink is not null)
-        {
-            MarkdownVectorSemanticItem? semantic = vectorBox.GetSemanticItem(semanticIndex);
-            return ActivateLinkTarget(
-                new LinkTarget(
-                    vectorLink.Target ?? string.Empty,
-                    semantic?.Description,
-                    semantic?.SourceSpan ?? vectorBox.SourceRange,
-                    null,
-                    vectorLink.Action,
-                    vectorLink.External),
-                MarkdownLinkInputKind.Keyboard,
-                modifiers);
-        }
-
-        if (!item.IsLink)
-        {
-            return _hostedFocus.TryFocus(item, reverse: false) switch
-            {
-                HostedFocusResult.Focused => true,
-                HostedFocusResult.Deferred => true,
-                HostedFocusResult.Stale => true,
-                _ => false,
-            };
-        }
-
-        // Resolve a text link or linked atomic inline (image/math) and use the
-        // same activation path as pointer input.
-        if (_published.Snapshot is null) return false;
-        var pos = new DocumentPosition(item.BlockIndex, item.InlineIndex, 0);
-        if (FindLinkTargetAt(pos) is { } link)
-        {
-            return ActivateLinkTarget(link, MarkdownLinkInputKind.Keyboard, modifiers);
-        }
-        return false;
-    }
-
-    private void FocusCurrentItem(bool reverse = false)
-    {
-        if (_focus.PendingLazy is not null)
-        {
-            _focusRing.Hide();
-            return;
-        }
-
-        var items = _focus.Items;
-        if (items is null || _focus.FocusedIndex < 0 || _focus.FocusedIndex >= items.Count)
-        {
-            UpdateFocusRing();
-            return;
-        }
-
-        var item = items[_focus.FocusedIndex];
-        if (!item.IsLink)
-        {
-            HostedFocusResult result = _hostedFocus.TryFocus(item, reverse);
-            if (result == HostedFocusResult.Focused)
-            {
-                _focusRing.Collapse();
-                return;
-            }
-
-            // A pending realization is resumed by the normal layout path. A
-            // stale tuple means a callback changed the active focus/snapshot;
-            // neither case may write the old caller's focus ring or fallback.
-            if (result is HostedFocusResult.Deferred or HostedFocusResult.Stale)
-                return;
-        }
-
-        if (_hostedFocus.TryCaptureTuple(out HostedFocusTuple fallbackTuple) == HostedFocusPlanStatus.Stale ||
-            !_hostedFocus.IsCurrentRequest(fallbackTuple, item))
-        {
-            return;
-        }
-
-        Focus(FocusState.Keyboard);
-        if (!_hostedFocus.IsCurrentRequest(fallbackTuple, item))
-            return;
-        UpdateFocusRing();
-        if (!_hostedFocus.IsCurrentRequest(fallbackTuple, item))
-            return;
-        NotifyFocusedItemAutomation();
-    }
-
-    private void NotifyFocusedItemAutomation()
-    {
-        // Virtual focus is observable through HasKeyboardFocus even when no UIA
-        // client subscribes to focus events. Avoid entering UIA from the input
-        // path unless an assistive-technology listener actually needs the event;
-        // this also prevents a queued focus notification from racing a subsequent
-        // key press and re-entering this provider while the client is polling it.
-        if (!AutomationPeer.ListenerExists(AutomationEvents.AutomationFocusChanged))
-            return;
-
-        void Raise()
-        {
-            if (_focus.PendingLazy is not null ||
-                !AutomationPeer.ListenerExists(AutomationEvents.AutomationFocusChanged))
-                return;
-
-            var peer = FrameworkElementAutomationPeer.FromElement(this) as MarkdownAutomationPeer
-                       ?? FrameworkElementAutomationPeer.CreatePeerForElement(this) as MarkdownAutomationPeer;
-            if (_focus.TryGetFocusedLinkedAtomic(out var inline, out InlineRun linkedRun))
-            {
-                switch (linkedRun)
-                {
-                    case LinkRun link:
-                        peer?.RaiseFocusForLink(inline, link);
-                        break;
-                    case InlineImageRun image:
-                        peer?.RaiseFocusForLinkedImage(inline, image);
-                        break;
-                    case InlineVectorSceneRun inlineScene:
-                        peer?.RaiseFocusForInlineVectorScene(inlineScene);
-                        break;
-                }
-            }
-            else if (_focus.TryGetFocusedVectorSemantic(out var vectorBox, out int semanticIndex))
-            {
-                peer?.RaiseFocusForVectorSemantic(vectorBox, semanticIndex);
-            }
-            else if (_focus.TryGetFocusedHorizontalOverflow(out var overflow))
-            {
-                peer?.RaiseFocusForHorizontalOverflow(overflow);
-            }
-        }
-
-        // Let WinUI finish the real focus transition to the renderer first,
-        // then publish the virtual hyperlink focus event. If we raise inside
-        // GotFocus, Narrator can observe the root document focus event last and
-        // announce the whole renderer instead of the focused painted link.
-        if (DispatcherQueue is { } dispatcher)
-            dispatcher.TryEnqueue(Raise);
-        else
-            Raise();
-    }
-
-    /// <summary>
-    /// Places or moves the focus-ring <see cref="Border"/> on the overlay to
-    /// surround the currently focused item. Hides the ring if nothing is focused.
-    /// </summary>
-    private void UpdateFocusRing()
-    {
-        if (_focus.PendingLazy is not null)
-        {
-            _focusRing.Hide();
-            return;
-        }
-
-        var items = _focus.Items;
-        if (items is null || _focus.FocusedIndex < 0 || _focus.FocusedIndex >= items.Count)
-        {
-            _focusRing.Hide();
-            return;
-        }
-
-        var item = items[_focus.FocusedIndex];
-        if (!item.IsLink && !item.IsVectorSemantic && !item.IsHorizontalOverflow)
-        {
-            _focusRing.Hide();
-            return;
-        }
-
-        if (_published.Snapshot is not { } snapshot)
-        {
-            _focusRing.Hide();
-            return;
-        }
-
-        long generation = _published.Generation;
-        FocusGeometryReadStatus status = _focusGeometry.TryCaptureItemRect(
-            snapshot, generation, snapshot.LayoutRevision, item, out Rect? rect);
-        if (status != FocusGeometryReadStatus.Ready)
-        {
-            RequestFocusGeometryRetry();
-            return;
-        }
-
-        if (rect is not { Width: > 0, Height: > 0 })
-        {
-            _focusRing.Hide();
-            return;
-        }
-
-        _focusRing.Publish(generation, item, rect);
-    }
-
-    private void RememberFocusResumePoint(Point documentPoint)
-    {
-        if (_published.Snapshot is not { } snapshot)
-        {
-            _focus.ClearResumeIndex();
-            _hasPendingFocusResumePoint = false;
-            return;
-        }
-
-        long generation = _published.Generation;
-        FocusGeometryReadStatus status = _focusGeometry.TryCaptureRectMap(
-            snapshot, generation, snapshot.LayoutRevision, _focus.Items,
-            out List<(int Index, Rect Rect)> map);
-        if (status != FocusGeometryReadStatus.Ready)
-        {
-            _pendingFocusResumePoint = documentPoint;
-            _pendingFocusResumeGeneration = generation;
-            _hasPendingFocusResumePoint = true;
-            RequestFocusGeometryRetry();
-            return;
-        }
-
-        _hasPendingFocusResumePoint = false;
-        _focus.SetResumeIndex(FocusableItemQueries.FindNearestFocusableItem(map, documentPoint));
     }
 
     private bool TryGetVectorPointerState(

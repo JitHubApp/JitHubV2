@@ -16,7 +16,4 @@ internal interface IHostedElementFocusHost
 
     /// <summary>Gives the control itself keyboard focus.</summary>
     bool FocusRenderer();
-
-    /// <summary>Moves the focus ring to the focused item.</summary>
-    void UpdateFocusRing();
 }

@@ -181,7 +181,7 @@ internal sealed class HostedElementFocus
         // is recycled. If the action comes back into the realize band,
         // RestoreCodeBlockActionIfNeeded transfers focus back to it.
         _ = _host.FocusRenderer();
-        _host.UpdateFocusRing();
+        _focusRing.Update();
     }
 
     /// <summary>

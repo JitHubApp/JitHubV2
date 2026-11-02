@@ -552,7 +552,7 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("control.ProcessQueuedLazyLayoutRealization(control._lastLazyLayoutDispatchTicket);", recoveryTick, StringComparison.Ordinal);
         Assert.Contains("control.TryPublishLazyLayoutCompletion(control._lazyLayoutGeneration);", recoveryTick, StringComparison.Ordinal);
         Assert.Contains("control._overflowScroll.ProcessPendingRetry();", recoveryTick, StringComparison.Ordinal);
-        Assert.Contains("control.ProcessPendingFocusGeometry();", recoveryTick, StringComparison.Ordinal);
+        Assert.Contains("control._focusGeometryWork.Process();", recoveryTick, StringComparison.Ordinal);
         Assert.Matches(
             "if\\s*\\(control\\._lifetime\\.IsDisposed \\|\\| control\\._lifetime\\.IsUnloaded\\)\\s*control\\.StopImageRelayoutRecovery\\(force: true\\);",
             recoveryTick);
@@ -685,7 +685,7 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("e.TouchSelectionContextMenu = touchOrPen;", rightTapped, StringComparison.Ordinal);
 
         int keyDownStart = source.IndexOf("private void OnKeyDown(", StringComparison.Ordinal);
-        int keyDownEnd = source.IndexOf("private bool HandleHorizontalArrowKey(", keyDownStart, StringComparison.Ordinal);
+        int keyDownEnd = source.IndexOf("private bool TryGetVectorPointerState(", keyDownStart, StringComparison.Ordinal);
         Assert.True(keyDownStart >= 0 && keyDownEnd > keyDownStart);
         string keyDown = source[keyDownStart..keyDownEnd];
         Assert.Contains("case VirtualKey.F10 when shift && _selection.IsActive:", keyDown, StringComparison.Ordinal);
