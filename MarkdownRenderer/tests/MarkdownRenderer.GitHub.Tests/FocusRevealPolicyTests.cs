@@ -1,4 +1,4 @@
-using MarkdownRenderer.Controls;
+using MarkdownRenderer.Controls.Focus;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;
