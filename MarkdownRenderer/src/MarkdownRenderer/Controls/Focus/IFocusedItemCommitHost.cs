@@ -11,6 +11,9 @@ internal interface IFocusedItemCommitHost
     /// <summary>Gives the control itself keyboard focus.</summary>
     bool FocusRenderer();
 
+    /// <summary>Gives the control itself programmatic focus.</summary>
+    bool FocusRendererProgrammatically();
+
     /// <summary>
     /// Queues lazy layout for the estimated band of a focus target whose
     /// top-level block has not been measured yet.

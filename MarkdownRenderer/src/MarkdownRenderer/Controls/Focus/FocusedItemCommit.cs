@@ -274,6 +274,21 @@ internal sealed class FocusedItemCommit
         NotifyAutomation();
     }
 
+    /// <summary>
+    /// Focuses the item at <paramref name="index"/> for an automation client:
+    /// reveals it, focuses the renderer and raises automation focus. Returns
+    /// whether the renderer took focus.
+    /// </summary>
+    internal bool FocusFromAutomation(int index)
+    {
+        _focus.FocusItem(index);
+        _reveal.Begin();
+        bool focused = _host.FocusRendererProgrammatically();
+        _focusRing.Update();
+        NotifyAutomation();
+        return focused;
+    }
+
     /// <summary>Raises automation focus for the focused painted item.</summary>
     internal void NotifyAutomation()
     {

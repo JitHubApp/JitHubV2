@@ -54,7 +54,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     IHorizontalOverflowPointerHost, IPointerInputRouterHost, IDeferredGestureLayoutHost, IEmbedRealizationHost,
     ICodeBlockCopyButtonHost, IFocusRingHost, IHostedElementFocusHost,
     IHorizontalOverflowScrollHost, IFocusedItemRevealHost, IFocusedItemCommitHost,
-    IFocusGeometryRecoveryHost
+    IFocusGeometryRecoveryHost, IRendererFocusEntryHost
 {
     private readonly MarkdownViewSurface _surface;
     private readonly MarkdownViewLifetime _lifetime = new();
@@ -203,13 +203,11 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private readonly FocusedItemCommit _focusCommit;
     private readonly KeyboardFocusNavigator _navigator;
     private readonly PendingFocusGeometryWork _focusGeometryWork;
+    private readonly RendererFocusEntry _focusEntry;
     private bool _taskCommandAvailabilityRefreshQueued;
     // A deferred focus-plan refresh is value-only: it never keeps a snapshot,
     // box, or native resource alive while a geometry lease is busy.
     private readonly FocusableItemsRefreshRequest _focusRefresh;
-    // GotFocus is raised asynchronously, after the dispatcher may have
-    // cleared _suppressNextFocusPromotion. GettingFocus captures it in time.
-    private bool _focusEntrySuppressed;
     private readonly FocusRingPresenter _focusRing;
 
     // The provider may raise CacheInvalidated from a worker or system-event
@@ -230,11 +228,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private CancellationTokenSource? _codeBlockHighlightCts;
     private Task _codeBlockHighlightRetirement = Task.CompletedTask;
     private int _codeBlockHighlightGeneration;
-    private bool _promotingKeyboardFocusEntry;
-    private bool _lastFocusEntryWasKeyboardTraversal;
-    private bool _lastFocusEntryWasKeyboardInput;
-    private bool _lastFocusEntryWasReverse;
-    private bool _suppressNextFocusPromotion;
 
     // Lazy-load queue: all ImageBox instances in the current snapshot.
     // EnsureLoading() is called for each when its bounds enter the
@@ -996,12 +989,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (!_focus.TryGetIndexForLinkedAtomic(run, out var index))
             return Focus(FocusState.Programmatic);
 
-        _focus.FocusItem(index);
-        _reveal.Begin();
-        bool focused = Focus(FocusState.Programmatic);
-        _focusRing.Update();
-        _focusCommit.NotifyAutomation();
-        return focused;
+        return _focusCommit.FocusFromAutomation(index);
     }
 
     internal bool FocusVectorSemanticFromAutomation(
@@ -1011,12 +999,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (!_focus.TryGetIndexForVectorSemantic(box, semanticIndex, out int index))
             return false;
 
-        _focus.FocusItem(index);
-        _reveal.Begin();
-        bool focused = Focus(FocusState.Programmatic);
-        _focusRing.Update();
-        _focusCommit.NotifyAutomation();
-        return focused;
+        return _focusCommit.FocusFromAutomation(index);
     }
 
     internal bool FocusHorizontalOverflowFromAutomation(IHorizontalOverflowBox overflow)
@@ -1024,25 +1007,14 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (!_focus.TryGetIndexForHorizontalOverflow(overflow, out int index))
             return false;
 
-        _focus.FocusItem(index);
-        _reveal.Begin();
-        bool focused = Focus(FocusState.Programmatic);
-        _focusRing.Update();
-        _focusCommit.NotifyAutomation();
-        return focused;
+        return _focusCommit.FocusFromAutomation(index);
     }
 
     internal bool FocusDocumentFromAutomation()
     {
-        _suppressNextFocusPromotion = true;
         _focus.ClearFocus();
         _focusRing.Update();
-        bool focused = Focus(FocusState.Programmatic);
-        if (!focused)
-            _suppressNextFocusPromotion = false;
-        else
-            DispatcherQueue.TryEnqueue(() => _suppressNextFocusPromotion = false);
-        return focused;
+        return _focusEntry.FocusWithoutPromotion();
     }
 
     /// <summary>Invoked by <see cref="MarkdownLinkPeer.Invoke"/> so UIA clients
@@ -1890,6 +1862,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         var queuedFocusKeys = new SpatialFocusKeyQueue();
         _navigator = new KeyboardFocusNavigator(this, _lifetime, _published, _focus, _focusGeometry, _focusRing, _overflowScroll, _embeds, _focusCommit, queuedFocusKeys, DispatcherQueue);
         _focusGeometryWork = new PendingFocusGeometryWork(this, _lifetime, _published, _focus, _focusGeometry, _focusRing, _reveal, _overflowScroll, queuedFocusKeys, _navigator);
+        _focusEntry = new RendererFocusEntry(this, _lifetime, _focus, _focusRing, _focusCommit, _navigator, DispatcherQueue);
         IsTabStop = true;
         Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
         Loaded += (_, _) => OnLoadedInternal();
@@ -1980,72 +1953,19 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void OnGettingFocus(UIElement sender, GettingFocusEventArgs e)
     {
-        if (!ReferenceEquals(e.NewFocusedElement, this))
-            return;
-
-        _focusEntrySuppressed = _suppressNextFocusPromotion;
-
-        var direction = e.Direction;
-        _lastFocusEntryWasKeyboardInput = e.InputDevice == FocusInputDeviceKind.Keyboard;
-        _lastFocusEntryWasKeyboardTraversal =
-            direction is Microsoft.UI.Xaml.Input.FocusNavigationDirection.Next
-                      or Microsoft.UI.Xaml.Input.FocusNavigationDirection.Previous;
-        _lastFocusEntryWasReverse = direction == Microsoft.UI.Xaml.Input.FocusNavigationDirection.Previous;
+        if (ReferenceEquals(e.NewFocusedElement, this))
+            _focusEntry.NoteGettingFocus(e.InputDevice, e.Direction);
     }
 
     private void OnGotFocus(object sender, RoutedEventArgs e)
     {
-        if (_promotingKeyboardFocusEntry || _lifetime.IsUnloaded)
-            return;
-
-        if (!ReferenceEquals(e.OriginalSource, this) || FocusState == FocusState.Pointer)
-            return;
-
-        if (_focusEntrySuppressed || _suppressNextFocusPromotion)
-        {
-            _focusEntrySuppressed = false;
-            _suppressNextFocusPromotion = false;
-            _lastFocusEntryWasKeyboardTraversal = false;
-            _lastFocusEntryWasKeyboardInput = false;
-            return;
-        }
-
-        if (!_lastFocusEntryWasKeyboardTraversal &&
-            !_lastFocusEntryWasKeyboardInput &&
-            FocusState != FocusState.Keyboard)
-            return;
-
-        if (_focus.PendingLazy is not null)
-        {
-            _focusRing.Hide();
-            _lastFocusEntryWasKeyboardTraversal = false;
-            _lastFocusEntryWasKeyboardInput = false;
-            return;
-        }
-
-        if (_focus.FocusedIndex >= 0)
-        {
-            _focusRing.Update();
-            _focusCommit.NotifyAutomation();
-            return;
-        }
-
-        _promotingKeyboardFocusEntry = true;
-        try
-        {
-            _navigator.MoveTab(_lastFocusEntryWasReverse);
-        }
-        finally
-        {
-            _promotingKeyboardFocusEntry = false;
-            _lastFocusEntryWasKeyboardTraversal = false;
-            _lastFocusEntryWasKeyboardInput = false;
-        }
+        if (ReferenceEquals(e.OriginalSource, this))
+            _focusEntry.OnGotFocus(FocusState);
     }
 
     private void OnLosingFocus(UIElement sender, LosingFocusEventArgs e)
     {
-        _suppressNextFocusPromotion = false;
+        _focusEntry.OnLosingFocus();
 
         if (e.NewFocusedElement is DependencyObject next && IsElementWithinRenderer(next))
             return;
@@ -2217,7 +2137,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     bool ISelectionHandlesHost.RequestGeometryRecoveryIfRequired(LayoutSnapshot? snapshot)
         => RequestGeometryRecoveryIfRequired(snapshot);
 
-    void ISelectionHandlesHost.FocusRendererForPointerInteraction() => FocusRendererForPointerInteraction();
+    void ISelectionHandlesHost.FocusRendererForPointerInteraction() => _focusEntry.FocusWithoutPromotion();
 
     bool ISelectionHandlesHost.TryHitTestEmbed(Point point, out DocumentPosition position)
         => _embeds.HitTargets.TryHitTest(
@@ -2260,7 +2180,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     void IPointerInteractionHost.RememberFocusResumePoint(Point documentPoint)
         => _focusGeometryWork.RememberResumePoint(documentPoint);
 
-    void IPointerInteractionHost.FocusRendererForPointerInteraction() => FocusRendererForPointerInteraction();
+    void IPointerInteractionHost.FocusRendererForPointerInteraction() => _focusEntry.FocusWithoutPromotion();
 
     void IPointerInteractionHost.ClearKeyboardFocusItem()
     {
@@ -2455,6 +2375,10 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         => BringDocumentRectIntoExternalViewport(rect, animate, alignmentRatio);
 
     bool IFocusedItemCommitHost.FocusRenderer() => Focus(FocusState.Keyboard);
+
+    bool IFocusedItemCommitHost.FocusRendererProgrammatically() => Focus(FocusState.Programmatic);
+
+    bool IRendererFocusEntryHost.FocusRendererProgrammatically() => Focus(FocusState.Programmatic);
 
     void IFocusedItemCommitHost.RealizeLazyFocusTarget(LayoutSnapshot snapshot, LazyLayoutBand estimatedBand)
     {
@@ -7518,19 +7442,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         IHorizontalOverflowBox target,
         double percent)
         => _overflowScroll.SetPercentForAutomation(target, percent);
-
-    private void FocusRendererForPointerInteraction()
-    {
-        _suppressNextFocusPromotion = true;
-        bool focused = Focus(FocusState.Programmatic);
-        if (!focused)
-        {
-            _suppressNextFocusPromotion = false;
-            return;
-        }
-
-        DispatcherQueue.TryEnqueue(() => _suppressNextFocusPromotion = false);
-    }
 
     private void InvalidateInteractiveTextAdorner()
     {
