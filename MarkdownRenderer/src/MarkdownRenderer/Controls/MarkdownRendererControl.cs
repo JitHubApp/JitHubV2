@@ -91,6 +91,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         static exception => MarkdownDiagnostics.WriteLine(
             $"[MarkdownRendererControl] retirement failed: {exception.GetType().Name} " +
             $"(0x{exception.HResult:X8})."));
+    private readonly PipelineCancellationRetirement _cancellationRetirement;
     private volatile CancellationTokenSource? _pipelineCts;
     private CancellationTokenSource? _imageLifetimeCts;
     private Task? _pipelineTask;
@@ -133,12 +134,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private float _lastWidth;
     private static readonly MarkdownTheme _defaultTheme = new();
     private static readonly MarkdownExtensionRegistry _defaultRegistry = new();
-    private readonly object _parseCacheGate = new();
     private readonly Dictionary<string, bool> _disclosureStates = new(StringComparer.Ordinal);
-    private ParsedMarkdown? _parseCache;
-    private string? _parseCacheSource;
-    private MarkdownExtensionRegistry? _parseCacheRegistry;
-    private int _parseCacheRegistryRevision = -1;
+    private readonly ParsedMarkdownCache _parseCache = new();
     private bool _isUpdatingDocumentProperty;
     private bool _hasExplicitDocument;
     private SizeChangedEventHandler? _sizeChangedHandler;
@@ -1760,6 +1757,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     /// </param>
     private protected MarkdownRendererControl(bool ownsScrollViewport)
     {
+        _cancellationRetirement = new PipelineCancellationRetirement(_snapshotRetirements);
         _surface = new MarkdownViewSurface(ownsScrollViewport);
         _windowDestroying = new WindowDestroyingWatch(this, _lifetime);
         _recoveryClock = new RecoveryClock(this, _lifetime);
@@ -2387,7 +2385,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     void ICodeBlockHighlightingHost.InvalidateCanvas() => InvalidateCanvas();
 
     Task ICodeBlockHighlightingHost.RetireCancellationTokenSource(CancellationTokenSource? cts, Task? lifetime) =>
-        RetireCancellationTokenSource(cts, lifetime);
+        _cancellationRetirement.Retire(cts, lifetime);
 
     Microsoft.UI.Dispatching.DispatcherQueue? IRecoveryClockHost.DispatcherQueue => DispatcherQueue;
 
@@ -2485,7 +2483,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     void IImageRelayoutHost.StopRecoveryClock(bool force) => StopRecoveryClock(force);
 
     Task IImageRelayoutHost.RetireCancellationTokenSource(CancellationTokenSource? cts, Task? lifetime) =>
-        RetireCancellationTokenSource(cts, lifetime);
+        _cancellationRetirement.Retire(cts, lifetime);
 
     Microsoft.UI.Dispatching.DispatcherQueue? IImageLoadCompletionHost.DispatcherQueue => DispatcherQueue;
 
@@ -2555,7 +2553,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     void ILazyLayoutHost.StopRecoveryClockIfIdle() => StopRecoveryClockIfIdle();
 
     Task ILazyLayoutHost.RetireCancellationTokenSource(CancellationTokenSource? cts, Task? lifetime) =>
-        RetireCancellationTokenSource(cts, lifetime);
+        _cancellationRetirement.Retire(cts, lifetime);
 
     bool ILayoutCommitHost.IsScrollViewIntermediate => _scrollViewIntermediate;
 
@@ -2820,12 +2818,12 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _pipelineCts = null;
         _pipelineTask = null;
         _activePipelineGeneration = 0;
-        RetireCancellationTokenSource(oldCts, oldTask);
+        _cancellationRetirement.Retire(oldCts, oldTask);
         _lazyLayout.Cancel();
         _layoutCommit.ClearPending();
         var oldImageLifetimeCts = _imageLifetimeCts;
         _imageLifetimeCts = null;
-        RetireCancellationTokenSource(oldImageLifetimeCts, lifetime: null);
+        _cancellationRetirement.Retire(oldImageLifetimeCts, lifetime: null);
         _rebuildDispatchState = default;
         _rebuildCoordinator.Reset();
         Interlocked.Exchange(ref _rejectedCrossThreadRebuildReason, -1);
@@ -3185,7 +3183,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             performance.PipelineSuperseded(supersededGeneration);
         }
 
-        RetireCancellationTokenSource(
+        _cancellationRetirement.Retire(
             supersededCts,
             supersededTask,
             supersededGeneration,
@@ -3359,7 +3357,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // method returns its Task. Supersession must still wait for this run.
         _pipelineTask = lifetime.Task;
         if (previousCts is not null && !ReferenceEquals(previousCts, cts))
-            RetireCancellationTokenSource(previousCts, previousTask);
+            _cancellationRetirement.Retire(previousCts, previousTask);
 
         var performance = MarkdownPerformanceEventSource.Log;
         long pipelineStartTimestamp = performance.IsMeasurementEnabled()
@@ -3506,63 +3504,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         }
     }
 
-    private Task RetireCancellationTokenSource(
-        CancellationTokenSource? cts,
-        Task? lifetime,
-        long supersededGeneration = 0,
-        long cancellationStartTimestamp = 0)
-    {
-        if (lifetime is not null)
-            _snapshotRetirements.Track(lifetime);
-
-        Task retirement;
-        if (cts is null)
-        {
-            retirement = lifetime ?? Task.CompletedTask;
-        }
-        else
-        {
-            // Retain the work and cancellation-callback tasks independently:
-            // CancelAndDisposeAfter intentionally suppresses their failures so
-            // it can always dispose the source.
-            Task callbacks = CancellationTokenSourceRetirement.RequestCancellation(cts);
-            _snapshotRetirements.Track(callbacks);
-            retirement = CancellationTokenSourceRetirement.DisposeAfter(
-                cts,
-                callbacks,
-                lifetime);
-            _snapshotRetirements.Track(retirement);
-        }
-
-        var performance = MarkdownPerformanceEventSource.Log;
-        if (cancellationStartTimestamp != 0 &&
-            (lifetime is null || lifetime.IsCompleted))
-        {
-            performance.SupersededPipelineStopped(
-                supersededGeneration,
-                Stopwatch.GetTimestamp() - cancellationStartTimestamp);
-        }
-        else if (cancellationStartTimestamp != 0 && lifetime is not null)
-        {
-            _ = lifetime.ContinueWith(
-                static (_, state) =>
-                {
-                    var observation = (PipelineCancellationObservation)state!;
-                    MarkdownPerformanceEventSource.Log.SupersededPipelineStopped(
-                        observation.Generation,
-                        Stopwatch.GetTimestamp() - observation.CancellationStartTimestamp);
-                },
-                new PipelineCancellationObservation(
-                    supersededGeneration,
-                    cancellationStartTimestamp),
-                CancellationToken.None,
-                TaskContinuationOptions.ExecuteSynchronously,
-                TaskScheduler.Default);
-        }
-
-        return retirement;
-    }
-
     private Task RetireOwnedEngine(MarkdownEngine engine)
     {
         ArgumentNullException.ThrowIfNull(engine);
@@ -3677,49 +3618,11 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         }
     }
 
-    private async Task<ParsedMarkdown?> GetParsedMarkdownAsync(
-        string source,
-        MarkdownExtensionRegistry registry,
-        CancellationToken ct)
-    {
-        var normalizedSource = ForgivingDataUriFixer.Fix(source ?? string.Empty);
-        int registryRevision = registry.Revision;
-        lock (_parseCacheGate)
-        {
-            if (_parseCache is not null &&
-                ReferenceEquals(_parseCacheRegistry, registry) &&
-                _parseCacheRegistryRevision == registryRevision &&
-                string.Equals(_parseCacheSource, normalizedSource, StringComparison.Ordinal))
-            {
-                return _parseCache;
-            }
-        }
-
-        if (ct.IsCancellationRequested)
-            return null;
-
-        var pipeline = registry.BuildPipeline();
-        var parser = new MarkdigParser(pipeline);
-        var parsed = await parser.ParseAsync(normalizedSource, ct).ConfigureAwait(true);
-        if (parsed is null || ct.IsCancellationRequested)
-            return null;
-
-        lock (_parseCacheGate)
-        {
-            _parseCache = parsed;
-            _parseCacheSource = parsed.SourceText;
-            _parseCacheRegistry = registry;
-            _parseCacheRegistryRevision = registryRevision;
-        }
-
-        return parsed;
-    }
-
     Task<ParsedMarkdown?> IMarkdownPerformanceLegacyParser.ParseLegacyMarkdownAsync(
         string source,
         MarkdownExtensionRegistry registry,
         CancellationToken cancellationToken) =>
-        GetParsedMarkdownAsync(source, registry, cancellationToken);
+        _parseCache.GetAsync(source, registry, cancellationToken);
 
     private async Task RebuildInternalAsync(
         CancellationToken ct,
@@ -3775,7 +3678,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         }
         else
         {
-            parsed = await GetParsedMarkdownAsync(source, legacyRegistry, ct).ConfigureAwait(true);
+            parsed = await _parseCache.GetAsync(source, legacyRegistry, ct).ConfigureAwait(true);
             if (parsed is not null)
             {
                 semanticDocument = await Task.Run(
