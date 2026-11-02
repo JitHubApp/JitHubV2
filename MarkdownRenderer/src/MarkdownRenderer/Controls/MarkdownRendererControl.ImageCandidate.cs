@@ -181,7 +181,7 @@ public partial class MarkdownRendererControl
             AllowThirdPartyRemoteImages != context.AllowThirdPartyRemoteImages ||
             FlowDirection != context.FlowDirection || (XamlRoot?.RasterizationScale ?? 1) != context.RasterizationScale ||
             _embeds.EmbedPlans.Count != 0 ||
-            !owner.MatchesSourceImages(_imagePlans, _subscribedImages) ||
+            !owner.MatchesSourceImages(_imagePlans.Items, _imageSubscriptions.Images) ||
             (_pointerInput.DeferredSnapshot is not null && !ReferenceEquals(_pointerInput.DeferredSnapshot, source)) ||
             !owner.HasCurrentSourceRaster() ||
             !ReferenceEquals(source.SourceMap, candidate.SourceMap) ||
@@ -204,16 +204,8 @@ public partial class MarkdownRendererControl
         bool committed = false;
         try
         {
-            // Compiler-generated events on sealed ImageBox do not run host code.
-            // Both subscriptions and all new containers were allocated off-thread.
-            ResetBitmapOutputRecovery();
-            foreach (ImageBox image in _subscribedImages)
-                image.LoadCompleted -= OnImageLoadCompleted;
-            foreach (ImageBox image in plan.Subscriptions!)
-                image.LoadCompleted += OnImageLoadCompleted;
-            _imagePlans = plan.Images!;
-            _subscribedImages = plan.Subscriptions!;
-            _imagePlanIndex = plan.Publication!.Index;
+            _imageSubscriptions.Replace(plan.Subscriptions!);
+            _imagePlans.Adopt(plan.Images!, plan.Publication!.Index);
             _focus.ReplaceItems(plan.Focus, focusedIdentity, resumeFocusIdentity);
             _embeds.AdoptCodeBlockActionPublication(
                 plan.CodeActionPlans!,
@@ -231,7 +223,7 @@ public partial class MarkdownRendererControl
             _abbreviationTooltip.ForgetTarget();
             long epoch = _hostedFocusPlan.Invalidate();
             _published.Snapshot = owner.TransferToControl();
-            Volatile.Write(ref _imagePlanPublication, plan.Publication);
+            _imagePlans.Publication = plan.Publication;
             _hostedFocusPlan.Publish(generation, candidate.LayoutRevision, epoch);
             committed = true;
 
@@ -367,7 +359,7 @@ public partial class MarkdownRendererControl
             if (!IsCurrentRasterCodeActionPublication(
                     candidate, generation, candidate.LayoutRevision, epoch))
                 return true;
-            PrepareImageResidency(candidate);
+            _imageResidency.Prepare(candidate);
             if (!IsCurrentRasterCodeActionPublication(
                     candidate, generation, candidate.LayoutRevision, epoch))
                 return true;

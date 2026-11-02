@@ -457,10 +457,19 @@ public sealed class AutomationHarnessSourceContractTests
             embedSource.IndexOf("_host.AddImagePlan(imageRun.Image);", StringComparison.Ordinal) <
             embedSource.IndexOf("foreach (var _ in icb.EnumerateInlineImageRects())", StringComparison.Ordinal));
         Assert.Contains("void IEmbedRealizationHost.AddImagePlan(ImageBox image) => AddImagePlan(image);", source, StringComparison.Ordinal);
-        Assert.Contains("if (!RegisterImage(image))", source, StringComparison.Ordinal);
-        Assert.Contains("image.LoadCompleted += OnImageLoadCompleted;", source, StringComparison.Ordinal);
-        Assert.Contains("_subscribedImages.Contains(completedImage)", source, StringComparison.Ordinal);
-        Assert.Contains("UnsubscribeAllImages();", source, StringComparison.Ordinal);
+        string subscriptionSource = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "MarkdownRenderer",
+            "src",
+            "MarkdownRenderer",
+            "Controls",
+            "Images",
+            "ImageSubscriptions.cs"));
+        Assert.Contains("if (!_imageSubscriptions.Subscribe(image))", source, StringComparison.Ordinal);
+        Assert.Contains("image.LoadCompleted += OnImageLoadCompleted;", subscriptionSource, StringComparison.Ordinal);
+        Assert.Contains("_imageSubscriptions.LoadCompleted += OnImageLoadCompleted;", source, StringComparison.Ordinal);
+        Assert.Contains("_imageSubscriptions.Contains(completedImage)", source, StringComparison.Ordinal);
+        Assert.Contains("_imageSubscriptions.UnsubscribeAll();", source, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -545,7 +554,7 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.True(recoveryTickEnd > recoveryMethodEnd);
         string recoveryTick = controlSource[recoveryMethodEnd..recoveryTickEnd];
         Assert.Contains("private static void ProcessImageRelayoutRecovery(MarkdownRendererControl control)", recoveryTick, StringComparison.Ordinal);
-        Assert.Contains("control.ProcessBitmapOutputRecovery();", recoveryTick, StringComparison.Ordinal);
+        Assert.Contains("control._imageSubscriptions.ProcessBitmapOutputRecovery();", recoveryTick, StringComparison.Ordinal);
         Assert.Contains("control.ProcessQueuedImageRelayout(control._lastImageRelayoutDispatchTicket);", recoveryTick, StringComparison.Ordinal);
         Assert.Contains("control._imageRelayoutPayload?.PublishAfterWorkDrains();", recoveryTick, StringComparison.Ordinal);
         Assert.Contains("control.PublishPendingLayoutCommit();", recoveryTick, StringComparison.Ordinal);
@@ -626,7 +635,7 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("RequestRebuild(RebuildReason.Full);", completion, StringComparison.Ordinal);
         Assert.Contains("else if (retryImageBlockIndex.HasValue || retryCurrentImages)", completion, StringComparison.Ordinal);
         Assert.Contains("if (retryImageBlockIndex is { } retryIndex)", completion, StringComparison.Ordinal);
-        Assert.Contains("if (retryCurrentImages)\n                        foreach (var image in _subscribedImages)", completion, StringComparison.Ordinal);
+        Assert.Contains("if (retryCurrentImages)\n                        foreach (var image in _imageSubscriptions.Images)", completion, StringComparison.Ordinal);
         Assert.DoesNotContain("retryImageBlockIndices", completion, StringComparison.Ordinal);
         Assert.Contains("rootMeasureCommitted &&\n                        (canceled || capturedScrollOffset != _surface.Scroll?.VerticalOffset) ? null : anchor", completion, StringComparison.Ordinal);
 

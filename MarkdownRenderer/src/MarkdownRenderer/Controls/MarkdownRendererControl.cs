@@ -54,7 +54,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     IHorizontalOverflowPointerHost, IPointerInputRouterHost, IDeferredGestureLayoutHost, IEmbedRealizationHost,
     ICodeBlockCopyButtonHost, IFocusRingHost, IHostedElementFocusHost,
     IHorizontalOverflowScrollHost, IFocusedItemRevealHost, IFocusedItemCommitHost,
-    IFocusGeometryRecoveryHost, IRendererFocusEntryHost
+    IFocusGeometryRecoveryHost, IRendererFocusEntryHost, IImageSubscriptionsHost, IImageResidencyHost
 {
     private readonly MarkdownViewSurface _surface;
     private readonly MarkdownViewLifetime _lifetime = new();
@@ -81,7 +81,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private bool _scrollViewIntermediate;
     private MarkdownEngine? _ownedEngine;
 
-    private ImagePlanPublication? _imagePlanPublication;
     private readonly SnapshotRetirementTracker _snapshotRetirements = new(
         static exception => MarkdownDiagnostics.WriteLine(
             $"[MarkdownRendererControl] retirement failed: {exception.GetType().Name} " +
@@ -233,18 +232,11 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     // EnsureLoading() is called for each when its bounds enter the
     // viewport + LazyImageOverscanPx band.  Images already in the
     // in-memory cache start loading (no-op) immediately after build.
-    private List<Layout.Boxes.ImageBox> _imagePlans = new();
-    private const int MaximumCompletedImageCarryEntries = 4096;
-    private readonly Dictionary<string, Layout.Boxes.CompletedImageCarry> _completedImageCarry =
-        new(StringComparer.Ordinal);
-    private Layout.Boxes.MarkdownImageCarryIdentity? _completedImageCarryIdentity;
-    private ViewportBandIndex? _imagePlanIndex;
-    private HashSet<Layout.Boxes.ImageBox> _subscribedImages = new();
-    private string? _prefetchedMarkdownSource;
-    private IMarkdownImagePrefetcher? _activeImagePrefetcher;
-    private MarkdownImageResolveContext? _activeImagePrefetchContext;
-    private int _prefetchedImageRegistryRevision = -1;
-    private PendingImagePrefetch? _pendingImagePrefetch;
+    private readonly ImagePlanSet _imagePlans;
+    private readonly ImageSubscriptions _imageSubscriptions;
+    private readonly ImageResidency _imageResidency;
+    private readonly ImageSourcePrefetch _imagePrefetch = new();
+    private readonly CompletedImageCarryLedger _completedImageCarry = new();
 
     private const int CodeBlockHighlightCacheMaxEntries = 128;
     private const long CodeBlockHighlightCacheBudgetBytes = 8L * 1024 * 1024;
@@ -1527,9 +1519,9 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
         bool hasViewport = TryGetVisibleDocumentRect(out Windows.Foundation.Rect viewport);
         long snapshotGeneration = _published.Generation;
-        ImagePlanPublication? publication = Volatile.Read(ref _imagePlanPublication);
+        ImagePlanPublication? publication = _imagePlans.Publication;
         if (publication is null ||
-            !IsCurrentImagePlanPublication(snapshot, snapshotGeneration, publication))
+            !_imagePlans.IsCurrent(snapshot, snapshotGeneration, publication))
         {
             // A snapshot or its realization plan is between publications. Do
             // not let UIA announce readiness from a previous document/plan.
@@ -1546,7 +1538,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         long layoutRevision = -1;
         try
         {
-            if (!IsCurrentImagePlanPublication(snapshot, snapshotGeneration, publication))
+            if (!_imagePlans.IsCurrent(snapshot, snapshotGeneration, publication))
                 return true;
 
             layoutRevision = snapshot.LayoutRevision;
@@ -1612,22 +1604,10 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // Snapshot replacement and plan publication are independent of the
         // layout lock. Fence once more after releasing it so a detached result
         // from a superseded page cannot become a false-ready UIA answer.
-        return !IsCurrentImagePlanPublication(snapshot, snapshotGeneration, publication) ||
+        return !_imagePlans.IsCurrent(snapshot, snapshotGeneration, publication) ||
             snapshot.LayoutRevision != layoutRevision ||
             hasVisibleLoadingImage;
     }
-
-    private bool IsCurrentImagePlanPublication(
-        LayoutSnapshot snapshot,
-        long snapshotGeneration,
-        ImagePlanPublication publication) =>
-        !_lifetime.IsDisposed && !_lifetime.IsUnloaded &&
-        ReferenceEquals(snapshot, _published.Snapshot) &&
-        snapshotGeneration == _published.Generation &&
-        ReferenceEquals(publication, Volatile.Read(ref _imagePlanPublication)) &&
-        ReferenceEquals(snapshot, publication.Snapshot) &&
-        snapshotGeneration == publication.SnapshotGeneration &&
-        snapshot.LayoutRevision == publication.LayoutRevision;
 
     internal MarkdownVisibleSceneReadiness GetVisibleDeferredSceneStatusForAutomation()
     {
@@ -1851,6 +1831,10 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _pointerInput = new PointerInputRouter(this, this, DispatcherQueue, _surface, _lifetime, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, _handles, _document, _horizontalOverflowDrag, _touchGestures, _contextMenu, _adorner, _dragShield);
         _canvasPointerEvents = new CanvasPointerEvents(_surface, _pointerInput);
         _embeds = new EmbedRealization(this, this, _surface, _lifetime, _published, _viewport, DispatcherQueue, OnHostedEmbedKeyDown);
+        _imagePlans = new ImagePlanSet(_lifetime, _published);
+        _imageSubscriptions = new ImageSubscriptions(this, _lifetime, _published, _imagePlans);
+        _imageSubscriptions.LoadCompleted += OnImageLoadCompleted;
+        _imageResidency = new ImageResidency(this, _lifetime, _published, _imagePlans, _embeds);
         _focus = new KeyboardFocusModel(_lifetime, _published);
         _focusGeometry = new FocusGeometryReader(_lifetime, _published);
         _focusRing = new FocusRingPresenter(this, _focus, _focusGeometry, _surface, _lifetime, _published, DispatcherQueue);
@@ -2242,7 +2226,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     IMarkdownHostedElementFactory? IEmbedRealizationHost.HostedElementFactory => HostedElementFactory;
 
-    ViewportBandIndex? IEmbedRealizationHost.ImagePlanIndex => _imagePlanIndex;
+    ViewportBandIndex? IEmbedRealizationHost.ImagePlanIndex => _imagePlans.Index;
 
     void IEmbedRealizationHost.AddImagePlan(ImageBox image) => AddImagePlan(image);
 
@@ -2266,7 +2250,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         double imgLoadBottom = imageBand.Bottom;
         ViewportBandIndex? imageIndex = pass.ImageIndex;
         ViewportRange imageRange = imageIndex?.Find(imgLoadTop, imgLoadBottom) ?? default;
-        ReconcileImageResidency(imageBand, imageRange);
+        _imageResidency.Reconcile(imageBand, imageRange);
         if (!_embeds.IsCurrent(pass))
             return false;
 
@@ -2414,6 +2398,16 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     bool IFocusGeometryRecoveryHost.HasRecoveryClock => HasImageRelayoutRecoveryClock;
 
     void IFocusGeometryRecoveryHost.RequestFullRebuild() => RequestRebuild(RebuildReason.Full);
+
+    void IImageSubscriptionsHost.StartRecoveryClock() => StartImageRelayoutRecovery();
+
+    Microsoft.UI.Dispatching.DispatcherQueue? IImageResidencyHost.DispatcherQueue => DispatcherQueue;
+
+    IMarkdownPerformanceSession? IImageResidencyHost.PerformanceSession => PerformanceSession;
+
+    long IImageResidencyHost.AppliedLazyLayoutRevision => _appliedLazyLayoutRevision;
+
+    void IImageResidencyHost.InvalidateCanvas() => InvalidateCanvas();
 
     double IDeferredGestureLayoutHost.RasterizationScale => XamlRoot?.RasterizationScale ?? 1;
 
@@ -2687,7 +2681,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // list; otherwise an async load completing after unload fires
         // OnImageLoadCompleted → RequestRebuild on a torn-down control, causing a
         // zombie rebuild cycle that re-subscribes handlers indefinitely.
-        UnsubscribeAllImages();
+        _imageSubscriptions.UnsubscribeAll();
         // Tear down embed plans before clearing the overlay so block embed
         // factories get RecycleBlock callbacks and inline embeds release
         // their Run.RealizedElement references — otherwise hosted controls
@@ -2696,14 +2690,9 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _embeds.ClearPlans();
         _embeds.ClearCopyButtonPool();
         _imagePlans.Clear();
-        _imagePlanIndex = null;
-        Volatile.Write(ref _imagePlanPublication, null);
-        ResetImageResidency();
-        _prefetchedMarkdownSource = null;
-        _activeImagePrefetcher = null;
-        _activeImagePrefetchContext = null;
-        _prefetchedImageRegistryRevision = -1;
-        _pendingImagePrefetch = null;
+        _imagePlans.Publication = null;
+        _imageResidency.Reset();
+        _imagePrefetch.Reset();
         if (PerformanceSession is IMarkdownPerformanceSessionInternal performanceSession)
         {
             _snapshotRetirements.Track(performanceSession.ReleaseDeferredSceneDocument(this));
@@ -3573,19 +3562,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] RenderCompleted subscriber failed: {ex.Message}");
         }
 
-        PendingImagePrefetch? pending = Interlocked.Exchange(ref _pendingImagePrefetch, null);
-        if (pending is not null)
-        {
-            // The first resolver call can perform synchronous host-policy work.
-            // Queue collection and resolution together so RenderCompleted never
-            // inherits that work on the UI thread.
-            _ = Task.Run(() => PrefetchImageSourcesObservedAsync(
-                pending.Document,
-                pending.SafeHtmlPolicy,
-                pending.Prefetcher,
-                pending.Context,
-                pending.CancellationToken));
-        }
+        _imagePrefetch.StartPending();
     }
 
     private void RaiseRenderFailed(long generation, Exception exception)
@@ -3766,12 +3743,13 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             if (scope is null)
             {
                 performanceSessionSnapshot = null;
-                QueueImageSourcePrefetch(
+                _imagePrefetch.Queue(
                     parsed.Document,
                     parsed.SourceText,
                     layoutRegistry,
                     imageResolverSnapshot,
-                    imageResolveContext);
+                    imageResolveContext,
+                    _imageLifetimeCts);
             }
             else
                 imageResolverSnapshot = scope;
@@ -3779,12 +3757,13 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         else
         {
             performanceSessionSnapshot?.ReleaseDocumentScope(this);
-            QueueImageSourcePrefetch(
+            _imagePrefetch.Queue(
                 parsed.Document,
                 parsed.SourceText,
                 layoutRegistry,
                 imageResolverSnapshot,
-                imageResolveContext);
+                imageResolveContext,
+                _imageLifetimeCts);
         }
         bool codeBlockCopyEnabledSnapshot = IsCodeBlockCopyEnabled;
         bool taskListEditingEnabledSnapshot = IsTaskListEditingEnabled;
@@ -3845,12 +3824,13 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             rasterDecoderSnapshot,
             allowThirdPartyRemoteImagesSnapshot);
         IReadOnlyDictionary<string, Layout.Boxes.CompletedImageCarry>? completedImageCarrySnapshot =
-            CaptureCompletedImageCarry(
+            _completedImageCarry.Capture(
                 imageCarryIdentity,
                 // A permanent failure is carried only across an automatic
                 // scene rebuild; any other rebuild (for example the host's Retry)
                 // still retries it.
-                carryFailures: reason == RebuildReason.SceneMaterialized);
+                carryFailures: reason == RebuildReason.SceneMaterialized,
+                _imagePlans.Items);
         var ctx = new MarkdownLayoutContext(
             device,
             themeSnapshot,
@@ -4131,14 +4111,14 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // Old subscriptions/dirty indices cannot cross this snapshot boundary,
         // including reentrant property notifications during the commit below.
         _focusGeometryWork.Clear();
-        UnsubscribeAllImages();
+        _imageSubscriptions.UnsubscribeAll();
         _pendingImageRelayoutBlockIndices.Clear();
         _imageRelayoutQueued = false;
         ++_lastImageRelayoutDispatchTicket;
         if (!_imageRelayoutActive)
             StopImageRelayoutRecovery();
         _pendingScrollToBlock = null;
-        Volatile.Write(ref _imagePlanPublication, null);
+        _imagePlans.Publication = null;
         if (!sameDocument)
         {
             // A new logical document must not expose the former document's
@@ -4245,10 +4225,9 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _adorner.RemoveOtherOverlayChildren();
         _embeds.ClearHitTargets();
         _embeds.ClearPlans();
-        UnsubscribeAllImages();
+        _imageSubscriptions.UnsubscribeAll();
         _imagePlans.Clear();
-        _imagePlanIndex = null;
-        ResetImageResidency();
+        _imageResidency.Reset();
         // Identities change across rebuild even when the count happens to
         // match — reset so the first post-rebuild realisation always fires.
         _embeds.ResetRealizedCountNotification();
@@ -5965,9 +5944,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
                     hostedFocusPlanEpoch = _hostedFocusPlan.Invalidate();
                     _embeds.CapturePlansForAdoption(preserveRealized, out oldPlans, out oldActionPlans);
-                    UnsubscribeAllImages();
+                    _imageSubscriptions.UnsubscribeAll();
                     _imagePlans.Clear();
-                    _imagePlanIndex = null;
                     _embeds.ClearHitTargets();
                     _embeds.ClearPlans();
 
@@ -6000,36 +5978,13 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
                     // Membership and indexed bounds remain immutable until the next
                     // plan publication. The ImageBox itself is mutable and borrowed.
-                    if (_imagePlans.Count > 0)
-                    {
-                        _imagePlanIndex = new ViewportBandIndex(_imagePlans.Count);
-                        var imageBounds = new Rect[_imagePlans.Count];
-                        for (int index = 0; index < _imagePlans.Count; index++)
-                        {
-                            Rect bounds = snapshot.ToLogicalRectForBlockIndexUnderPaint(
-                                _imagePlans[index].BlockIndex, _imagePlans[index].Bounds);
-                            imageBounds[index] = bounds;
-                            _imagePlanIndex.SetEntry(index, index, bounds.Top, bounds.Bottom);
-                        }
-                        _imagePlanIndex.Commit();
-                        imagePlanPublication = new ImagePlanPublication(
-                            snapshot,
-                            planGeneration,
-                            hostedFocusPlanRevision,
-                            _imagePlans.ToArray(),
-                            imageBounds,
-                            _imagePlanIndex);
-                    }
+                    imagePlanPublication = _imagePlans.IndexUnderPaint(
+                        snapshot, planGeneration, hostedFocusPlanRevision);
                     size = snapshot.Size;
                     anchorOffset = GetScrollAnchorOffset(snapshot, scrollAnchor);
                     _appliedLazyLayoutRevision = hostedFocusPlanRevision;
-                    imagePlanPublication ??= new ImagePlanPublication(
-                        snapshot,
-                        planGeneration,
-                        _appliedLazyLayoutRevision,
-                        Array.Empty<Layout.Boxes.ImageBox>(),
-                        Array.Empty<Rect>(),
-                        null);
+                    imagePlanPublication ??= ImagePlanSet.Empty(
+                        snapshot, planGeneration, _appliedLazyLayoutRevision);
                 }
             }
             finally
@@ -6048,12 +6003,12 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             if (imagePlanPublication is null)
                 return false;
 
-            Volatile.Write(ref _imagePlanPublication, imagePlanPublication);
+            _imagePlans.Publication = imagePlanPublication;
 
             // Native child transfer, factories, residency policies and XAML
             // notifications can reenter the control. Do not invoke them under the
             // geometry lease; every plan rectangle above is already copied.
-            PrepareImageResidency(snapshot);
+            _imageResidency.Prepare(snapshot);
 
             if (!_embeds.AdoptRealizedElements(
                     oldPlans, oldActionPlans, snapshot, planGeneration,
@@ -6130,136 +6085,12 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         return _focusRefresh.Admits(snapshot, generation, revision, requestVersion);
     }
 
-    /// <summary>
-    /// Records the completed images of the current layout so the next
-    /// rebuild of the same document keeps their result. The ledger accumulates
-    /// across consecutive rebuilds (a lazily rebuilt document lists only its
-    /// measured images) and is discarded whenever the source text or image
-    /// configuration changes. Runs on the UI thread, which owns image
-    /// publication; the context receives an immutable copy.
-    /// </summary>
-    private IReadOnlyDictionary<string, Layout.Boxes.CompletedImageCarry>? CaptureCompletedImageCarry(
-        Layout.Boxes.MarkdownImageCarryIdentity identity,
-        bool carryFailures)
-    {
-        bool identityReset = _completedImageCarryIdentity is not { } previous || !previous.Matches(identity);
-        if (identityReset)
-            _completedImageCarry.Clear();
-        _completedImageCarryIdentity = identity;
-
-        foreach (Layout.Boxes.ImageBox image in _imagePlans)
-        {
-            if (image.Context.ImageCarryIdentity is not { } builtWith || !builtWith.Matches(identity))
-                continue;
-            if (!image.TryCaptureCompletedCarry(out Layout.Boxes.CompletedImageCarry? carry) || carry is null)
-                continue;
-            if (_completedImageCarry.Count >= MaximumCompletedImageCarryEntries &&
-                !_completedImageCarry.ContainsKey(carry.Url))
-            {
-                break;
-            }
-            _completedImageCarry[carry.Url] = carry;
-        }
-
-        var snapshot = new Dictionary<string, Layout.Boxes.CompletedImageCarry>(StringComparer.Ordinal);
-        foreach ((string url, Layout.Boxes.CompletedImageCarry carry) in _completedImageCarry)
-        {
-            if (carryFailures || !carry.Failed)
-                snapshot[url] = carry;
-        }
-
-        return snapshot.Count == 0 ? null : snapshot;
-    }
-
     private void AddImagePlan(Layout.Boxes.ImageBox image)
     {
-        if (!RegisterImage(image))
+        if (!_imageSubscriptions.Subscribe(image))
             return;
 
         _imagePlans.Add(image);
-    }
-
-    private void QueueImageSourcePrefetch(
-        Markdig.Syntax.MarkdownDocument document,
-        string markdownSource,
-        MarkdownExtensionRegistry registry,
-        IMarkdownImageResolver? resolver,
-        MarkdownImageResolveContext context)
-    {
-        if (resolver is not IMarkdownImagePrefetcher prefetcher ||
-            _imageLifetimeCts is not { IsCancellationRequested: false } imageLifetime)
-        {
-            return;
-        }
-
-        if (ReferenceEquals(_activeImagePrefetcher, prefetcher) &&
-            string.Equals(_prefetchedMarkdownSource, markdownSource, StringComparison.Ordinal) &&
-            Equals(_activeImagePrefetchContext, context) &&
-            _prefetchedImageRegistryRevision == registry.Revision)
-        {
-            return;
-        }
-
-        _activeImagePrefetcher = prefetcher;
-        _prefetchedMarkdownSource = markdownSource;
-        _activeImagePrefetchContext = context;
-        _prefetchedImageRegistryRevision = registry.Revision;
-        _pendingImagePrefetch = new PendingImagePrefetch(
-            document,
-            registry.SafeHtmlPolicy,
-            prefetcher,
-            context,
-            imageLifetime.Token);
-    }
-
-    private static async Task PrefetchImageSourcesObservedAsync(
-        Markdig.Syntax.MarkdownDocument document,
-        SafeHtmlRenderPolicy? safeHtmlPolicy,
-        IMarkdownImagePrefetcher prefetcher,
-        MarkdownImageResolveContext context,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            IReadOnlyList<string> sources = MarkdownImagePrefetchSourceCollector.Collect(
-                document,
-                safeHtmlPolicy,
-                cancellationToken);
-            if (sources.Count > 0)
-            {
-                await prefetcher.PrefetchAsync(sources, context, cancellationToken)
-                    .ConfigureAwait(false);
-            }
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-        }
-        catch (Exception exception)
-        {
-            MarkdownDiagnostics.WriteLine($"[MarkdownRenderer] image prefetch failed: {exception.Message}");
-        }
-    }
-
-    private bool RegisterImage(Layout.Boxes.ImageBox image)
-    {
-        if (!_subscribedImages.Add(image))
-            return false;
-
-        image.LoadCompleted += OnImageLoadCompleted;
-        // A fast background denial may precede first UI subscription.
-        RequestBitmapOutputRecovery(image);
-        return true;
-    }
-
-    private void UnsubscribeAllImages()
-    {
-        ResetBitmapOutputRecovery();
-        foreach (var image in _subscribedImages)
-        {
-            image.LoadCompleted -= OnImageLoadCompleted;
-        }
-
-        _subscribedImages.Clear();
     }
 
     private void OnImageLoadCompleted(object? sender, Layout.Boxes.LoadCompletedEventArgs e)
@@ -6310,18 +6141,18 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (bitmapOutputRecoverySignal)
         {
             if (completedImage is not null)
-                RequestBitmapOutputRecovery(completedImage);
+                _imageSubscriptions.RequestBitmapOutputRecovery(completedImage);
             return;
         }
         if (completedImage is not null)
         {
-            if (!_subscribedImages.Contains(completedImage))
+            if (!_imageSubscriptions.Contains(completedImage))
                 return;
             (FrameworkElementAutomationPeer.FromElement(this) as MarkdownAutomationPeer)?
                 .NotifyImageStatusChanged(completedImage);
             // UIA notification can run host code. Recheck lifetime and membership
             // before using a snapshot-owned placement proof or queuing work.
-            if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !_subscribedImages.Contains(completedImage))
+            if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !_imageSubscriptions.Contains(completedImage))
                 return;
             if (layoutInvalidated && !_publishingLayoutCommit &&
                 PerformanceSession is IMarkdownPerformanceSessionInternal session &&
@@ -6466,7 +6297,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                     control._imageRelayoutPayload?.PublishAfterWorkDrains();
                     return;
                 }
-                control.ProcessBitmapOutputRecovery();
+                control._imageSubscriptions.ProcessBitmapOutputRecovery();
                 control.ProcessQueuedImageRelayout(control._lastImageRelayoutDispatchTicket);
                 control._imageRelayoutPayload?.PublishAfterWorkDrains();
                 control.PublishPendingLayoutCommit();
@@ -6509,7 +6340,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void StopImageRelayoutRecovery(bool force = false)
     {
-        if (!force && (_bitmapOutputRecovery.IsPending || HasPendingLazyLayoutWork ||
+        if (!force && (_imageSubscriptions.HasPendingBitmapOutputRecovery || HasPendingLazyLayoutWork ||
             _overflowScroll.HasPendingRetry ||
             _focusRefresh.Pending.IsPending ||
             _focusGeometryWork.HasPendingWork))
@@ -6517,7 +6348,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
         if (force)
         {
-            ResetBitmapOutputRecovery();
+            _imageSubscriptions.ResetBitmapOutputRecovery();
             _focusRefresh.Reset();
         }
         var timer = _imageRelayoutRecoveryTimer;
@@ -6530,7 +6361,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private void StopImageRelayoutRecoveryIfIdle()
     {
         if (_imageRelayoutQueued ||
-            _bitmapOutputRecovery.IsPending ||
+            _imageSubscriptions.HasPendingBitmapOutputRecovery ||
             _imageRelayoutActive ||
             _pendingImageRelayoutBlockIndices.Count > 0 ||
             _overflowScroll.HasPendingRetry ||
@@ -7256,7 +7087,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                     if (retryImageBlockIndex is { } retryIndex)
                         _pendingImageRelayoutBlockIndices.Add(retryIndex);
                     if (retryCurrentImages)
-                        foreach (var image in _subscribedImages)
+                        foreach (var image in _imageSubscriptions.Images)
                             _pendingImageRelayoutBlockIndices.Add(image.BlockIndex);
                     if (snapshot.IsRetiringOrDisposed ||
                         (float)Math.Max(50, ActualWidth) != snapshot.Size.Width)
@@ -7270,14 +7101,14 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                         // its source. Discard this private candidate and retry
                         // after release; do not reset capture or request a full
                         // rebuild solely because the user is interacting.
-                        foreach (var image in _subscribedImages)
+                        foreach (var image in _imageSubscriptions.Images)
                             _pendingImageRelayoutBlockIndices.Add(image.BlockIndex);
                     }
                     else if (!TryPublishRasterPlacement(snapshot, candidate, generation))
                     {
                         // A changed width/policy/raster invalidates the private
                         // proof. Rebuild rather than mutate the old tree here.
-                        foreach (var image in _subscribedImages)
+                        foreach (var image in _imageSubscriptions.Images)
                             _pendingImageRelayoutBlockIndices.Add(image.BlockIndex);
                         RequestRebuild(RebuildReason.Full);
                     }
@@ -7300,7 +7131,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             if (current && canceled && !_lifetime.IsDisposed && !_lifetime.IsUnloaded &&
                 ReferenceEquals(snapshot, _published.Snapshot) && snapshot?.GeometryRecoveryRequired != true)
             {
-                foreach (var image in _subscribedImages)
+                foreach (var image in _imageSubscriptions.Images)
                     _pendingImageRelayoutBlockIndices.Add(image.BlockIndex);
             }
             // The pending set is cleared before every snapshot replacement.

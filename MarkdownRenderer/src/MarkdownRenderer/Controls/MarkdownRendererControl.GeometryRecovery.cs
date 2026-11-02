@@ -36,7 +36,7 @@ public partial class MarkdownRendererControl
         // an offside replacement candidate. It cannot repair a failed tree.
         _pendingLayoutCommit = null;
         ++_lastLayoutCommitTicket;
-        ResetBitmapOutputRecovery();
+        _imageSubscriptions.ResetBitmapOutputRecovery();
         TryGeometryRecoveryCleanup(CancelLazyLayoutRealization);
         _pendingImageRelayoutBlockIndices.Clear();
         _imageRelayoutQueued = false;
