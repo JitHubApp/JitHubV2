@@ -1,0 +1,395 @@
+{
+  "$comment": "Files over 1,000 lines that eng/Test-ProjectStructure.ps1 allows (MRS0008). Each cap is the file's current length: a listed file may not grow (MRS0009), and an entry must be lowered or removed as the file shrinks (MRS0010). Do not add entries; split the file instead.",
+  "files": [
+    {
+      "path": "perf/MarkdownRenderer.PerformanceHarness.Core/MeasurementVisibilityEvidence.cs",
+      "lines": 1071,
+      "reason": "Predates the size rule; split by responsibility in a later structure step."
+    },
+    {
+      "path": "perf/MarkdownRenderer.PerformanceHarness.Core/PerformanceReleaseEvidenceValidator.cs",
+      "lines": 1102,
+      "reason": "Predates the size rule; split by responsibility in a later structure step."
+    },
+    {
+      "path": "perf/MarkdownRenderer.PerformanceHarness/PerformanceWindow.cs",
+      "lines": 2712,
+      "reason": "Predates the size rule; split by responsibility in a later structure step."
+    },
+    {
+      "path": "samples/MarkdownRenderer.Sample.Automation/Program.cs",
+      "lines": 2940,
+      "reason": "Predates the size rule; split by responsibility in a later structure step."
+    },
+    {
+      "path": "samples/MarkdownRenderer.Sample/MainWindow.xaml.cs",
+      "lines": 1162,
+      "reason": "Predates the size rule; split by responsibility in a later structure step."
+    },
+    {
+      "path": "src/MarkdownRenderer.Math/ThirdParty/CSharpMath.Core/Atom/LaTeXSettings.cs",
+      "lines": 1160,
+      "reason": "Vendored third-party source, kept as upstream wrote it so it can be compared with its release."
+    },
+    {
+      "path": "src/MarkdownRenderer.Math/ThirdParty/CSharpMath.Core/Display/Typesetter.cs",
+      "lines": 1003,
+      "reason": "Vendored third-party source, kept as upstream wrote it so it can be compared with its release."
+    },
+    {
+      "path": "src/MarkdownRenderer.Math/ThirdParty/Typography/Typography.OpenFont/Tables.AdvancedLayout/MathTable.cs",
+      "lines": 1367,
+      "reason": "Vendored third-party source, kept as upstream wrote it so it can be compared with its release."
+    },
+    {
+      "path": "src/MarkdownRenderer.Math/ThirdParty/Typography/Typography.OpenFont/Tables.CFF/CFF.cs",
+      "lines": 1783,
+      "reason": "Vendored third-party source, kept as upstream wrote it so it can be compared with its release."
+    },
+    {
+      "path": "src/MarkdownRenderer.Math/ThirdParty/Typography/Typography.OpenFont/Tables.CFF/CffEvaluationEngine.cs",
+      "lines": 1431,
+      "reason": "Vendored third-party source, kept as upstream wrote it so it can be compared with its release."
+    },
+    {
+      "path": "src/MarkdownRenderer.Math/ThirdParty/Typography/Typography.OpenFont/Tables.CFF/Type2CharStringParser.cs",
+      "lines": 1253,
+      "reason": "Vendored third-party source, kept as upstream wrote it so it can be compared with its release."
+    },
+    {
+      "path": "src/MarkdownRenderer.Mermaid/MermaidSceneDecoder.cs",
+      "lines": 1076,
+      "reason": "Predates the size rule; split by responsibility in a later structure step."
+    },
+    {
+      "path": "src/MarkdownRenderer.Svg.Resvg/Internal/SvgPreflight.cs",
+      "lines": 2526,
+      "reason": "Predates the size rule; split by responsibility in a later structure step."
+    },
+    {
+      "path": "src/MarkdownRenderer.Svg.Resvg/Internal/SvgStaticSnapshot.cs",
+      "lines": 2513,
+      "reason": "Predates the size rule; split by responsibility in a later structure step."
+    },
+    {
+      "path": "src/MarkdownRenderer.Svg.Resvg/Internal/WindowsWorkerProcess.cs",
+      "lines": 1358,
+      "reason": "Predates the size rule; split by responsibility in a later structure step."
+    },
+    {
+      "path": "src/MarkdownRenderer.Svg.Resvg/Internal/WorkerPool.cs",
+      "lines": 3424,
+      "reason": "Predates the size rule; split by responsibility in a later structure step."
+    },
+    {
+      "path": "src/MarkdownRenderer/Accessibility/MarkdownAutomationPeer.cs",
+      "lines": 1093,
+      "reason": "Predates the size rule; split by responsibility in a later structure step."
+    },
+    {
+      "path": "src/MarkdownRenderer/Accessibility/MarkdownSemanticDocument.cs",
+      "lines": 2845,
+      "reason": "Predates the size rule; split by responsibility in a later structure step."
+    },
+    {
+      "path": "src/MarkdownRenderer/Controls/MarkdownRendererControl.cs",
+      "lines": 3825,
+      "reason": "Composition root: dependency properties, the explicit host adapters its owners call, and the commit, recovery and lifecycle sequencing across those owners. Structure step 3d moved its logic into owners (7,795 to 3,825 lines); this cap holds that."
+    },
+    {
+      "path": "src/MarkdownRenderer/Document/MarkdownDocument.cs",
+      "lines": 1091,
+      "reason": "Predates the size rule; split by responsibility in a later structure step."
+    },
+    {
+      "path": "src/MarkdownRenderer/Engine/Gfm029Compatibility.cs",
+      "lines": 1223,
+      "reason": "Predates the size rule; split by responsibility in a later structure step."
+    },
+    {
+      "path": "src/MarkdownRenderer/Engine/MarkdownEngine.cs",
+      "lines": 1204,
+      "reason": "Predates the size rule; split by responsibility in a later structure step."
+    },
+    {
+      "path": "src/MarkdownRenderer/Extensions/MarkdownVectorScene.cs",
+      "lines": 1057,
+      "reason": "Predates the size rule; split by responsibility in a later structure step."
+    },
+    {
+      "path": "src/MarkdownRenderer/Html/Renderers/HtmlBlockRenderer.cs",
+      "lines": 2358,
+      "reason": "Predates the size rule; split by responsibility in a later structure step."
+    },
+    {
+      "path": "src/MarkdownRenderer/Layout/Boxes/BlockMeasuredPlacementTransfer.cs",
+      "lines": 1009,
+      "reason": "Predates the size rule; split by responsibility in a later structure step."
+    },
+    {
+      "path": "src/MarkdownRenderer/Layout/Boxes/CodeBlockBox.cs",
+      "lines": 1720,
+      "reason": "Predates the size rule; split by responsibility in a later structure step."
+    },
+    {
+      "path": "src/MarkdownRenderer/Layout/Boxes/ImageBox.BitmapAdmission.cs",
+      "lines": 1365,
+      "reason": "Predates the size rule; split by responsibility in a later structure step."
+    },
+    {
+      "path": "src/MarkdownRenderer/Layout/Boxes/ImageBox.cs",
+      "lines": 9641,
+      "reason": "Predates the size rule; split by responsibility in a later structure step."
+    },
+    {
+      "path": "src/MarkdownRenderer/Layout/Boxes/InlineContainerBox.cs",
+      "lines": 6030,
+      "reason": "Predates the size rule; split by responsibility in a later structure step."
+    },
+    {
+      "path": "src/MarkdownRenderer/Layout/Boxes/InlineContainerBox.MeasuredPlacementTransfer.cs",
+      "lines": 1824,
+      "reason": "Predates the size rule; split by responsibility in a later structure step."
+    },
+    {
+      "path": "src/MarkdownRenderer/Layout/Boxes/RasterNativeWicDecoder.cs",
+      "lines": 1166,
+      "reason": "Predates the size rule; split by responsibility in a later structure step."
+    },
+    {
+      "path": "src/MarkdownRenderer/Layout/Boxes/SharedCanvasBitmapCache.cs",
+      "lines": 1092,
+      "reason": "Predates the size rule; split by responsibility in a later structure step."
+    },
+    {
+      "path": "src/MarkdownRenderer/Layout/Boxes/SvgHostAdmissionCoordinator.cs",
+      "lines": 1415,
+      "reason": "Predates the size rule; split by responsibility in a later structure step."
+    },
+    {
+      "path": "src/MarkdownRenderer/Layout/Boxes/TableBox.cs",
+      "lines": 1112,
+      "reason": "Predates the size rule; split by responsibility in a later structure step."
+    },
+    {
+      "path": "src/MarkdownRenderer/Layout/Boxes/TableBox.MeasuredPlacementTransfer.cs",
+      "lines": 1032,
+      "reason": "Predates the size rule; split by responsibility in a later structure step."
+    },
+    {
+      "path": "src/MarkdownRenderer/Layout/Boxes/VectorSceneBox.cs",
+      "lines": 1340,
+      "reason": "Predates the size rule; split by responsibility in a later structure step."
+    },
+    {
+      "path": "src/MarkdownRenderer/Layout/LayoutBuilder.cs",
+      "lines": 3182,
+      "reason": "Predates the size rule; split by responsibility in a later structure step."
+    },
+    {
+      "path": "src/MarkdownRenderer/Layout/LayoutSnapshot.cs",
+      "lines": 3740,
+      "reason": "Predates the size rule; split by responsibility in a later structure step."
+    },
+    {
+      "path": "src/MarkdownRenderer/Layout/MarkdownLayoutContext.cs",
+      "lines": 1141,
+      "reason": "Predates the size rule; split by responsibility in a later structure step."
+    },
+    {
+      "path": "src/MarkdownRenderer/Layout/VectorSceneDrawing.cs",
+      "lines": 1514,
+      "reason": "Predates the size rule; split by responsibility in a later structure step."
+    },
+    {
+      "path": "src/MarkdownRenderer/Parsing/SafeHtmlParser.cs",
+      "lines": 1432,
+      "reason": "Predates the size rule; split by responsibility in a later structure step."
+    },
+    {
+      "path": "src/MarkdownRenderer/Performance/MarkdownPerformanceSession.cs",
+      "lines": 3539,
+      "reason": "Predates the size rule; split by responsibility in a later structure step."
+    },
+    {
+      "path": "src/MarkdownRenderer/Performance/MarkdownProgressiveScenePlan.cs",
+      "lines": 1573,
+      "reason": "Predates the size rule; split by responsibility in a later structure step."
+    },
+    {
+      "path": "src/MarkdownRenderer/Performance/MarkdownVectorSceneResidencyPolicy.cs",
+      "lines": 1421,
+      "reason": "Predates the size rule; split by responsibility in a later structure step."
+    },
+    {
+      "path": "src/MarkdownRenderer/Theming/ThemeResolver.cs",
+      "lines": 1056,
+      "reason": "Predates the size rule; split by responsibility in a later structure step."
+    },
+    {
+      "path": "tests/MarkdownRenderer.GitHub.Tests/CodeBlockVisualLinePlacementCacheTests.cs",
+      "lines": 1059,
+      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
+    },
+    {
+      "path": "tests/MarkdownRenderer.GitHub.Tests/ImageBoxMeasuredPlacementTransferTests.cs",
+      "lines": 1128,
+      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
+    },
+    {
+      "path": "tests/MarkdownRenderer.GitHub.Tests/ImageBoxSourceLeaseTests.cs",
+      "lines": 1408,
+      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
+    },
+    {
+      "path": "tests/MarkdownRenderer.GitHub.Tests/ImageBoxSvgPublicationCommitTests.cs",
+      "lines": 1240,
+      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
+    },
+    {
+      "path": "tests/MarkdownRenderer.GitHub.Tests/ImageBoxSvgRendererTests.cs",
+      "lines": 2852,
+      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
+    },
+    {
+      "path": "tests/MarkdownRenderer.GitHub.Tests/InlineCodePaddingLayoutTests.cs",
+      "lines": 1112,
+      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
+    },
+    {
+      "path": "tests/MarkdownRenderer.GitHub.Tests/LayoutSnapshotIndexConstructionTests.cs",
+      "lines": 1234,
+      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
+    },
+    {
+      "path": "tests/MarkdownRenderer.GitHub.Tests/MarkdownPerformanceSessionTests.cs",
+      "lines": 1239,
+      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
+    },
+    {
+      "path": "tests/MarkdownRenderer.GitHub.Tests/MarkdownPerformanceSourceLeaseTests.cs",
+      "lines": 1014,
+      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
+    },
+    {
+      "path": "tests/MarkdownRenderer.GitHub.Tests/MultiRootRasterLayoutCandidateTests.cs",
+      "lines": 1170,
+      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
+    },
+    {
+      "path": "tests/MarkdownRenderer.GitHub.Tests/ProgressiveSceneDeferralTests.cs",
+      "lines": 1945,
+      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
+    },
+    {
+      "path": "tests/MarkdownRenderer.GitHub.Tests/RelativeScriptFontSizeTests.cs",
+      "lines": 1459,
+      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
+    },
+    {
+      "path": "tests/MarkdownRenderer.GitHub.Tests/RootLocalContainerImageRelayoutTests.cs",
+      "lines": 1773,
+      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
+    },
+    {
+      "path": "tests/MarkdownRenderer.GitHub.Tests/RootLocalContainerVectorImageRelayoutTests.cs",
+      "lines": 1065,
+      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
+    },
+    {
+      "path": "tests/MarkdownRenderer.GitHub.Tests/RootLocalImageRelayoutTests.cs",
+      "lines": 1626,
+      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
+    },
+    {
+      "path": "tests/MarkdownRenderer.GitHub.Tests/RootLocalInlineImageRelayoutTests.cs",
+      "lines": 1302,
+      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
+    },
+    {
+      "path": "tests/MarkdownRenderer.GitHub.Tests/RootLocalTableImageRelayoutTests.cs",
+      "lines": 2149,
+      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
+    },
+    {
+      "path": "tests/MarkdownRenderer.GitHub.Tests/SafeHtmlRenderingTests.cs",
+      "lines": 2547,
+      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
+    },
+    {
+      "path": "tests/MarkdownRenderer.GitHub.Tests/ScriptBaselineGeometryTests.cs",
+      "lines": 2020,
+      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
+    },
+    {
+      "path": "tests/MarkdownRenderer.GitHub.Tests/SelectionAdornerViewportParityTests.cs",
+      "lines": 1537,
+      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
+    },
+    {
+      "path": "tests/MarkdownRenderer.GitHub.Tests/SvgHostAdmissionCoordinatorTests.cs",
+      "lines": 1421,
+      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
+    },
+    {
+      "path": "tests/MarkdownRenderer.GitHub.Tests/SvgTileQueuePlanTests.cs",
+      "lines": 1237,
+      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
+    },
+    {
+      "path": "tests/MarkdownRenderer.GitHub.Tests/ThemeSnapshotContractTests.cs",
+      "lines": 1293,
+      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
+    },
+    {
+      "path": "tests/MarkdownRenderer.GitHub.Tests/VectorAccessibilityContractTests.cs",
+      "lines": 1574,
+      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
+    },
+    {
+      "path": "tests/MarkdownRenderer.GitHub.Tests/VectorSceneResourceResidencyTests.cs",
+      "lines": 1257,
+      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
+    },
+    {
+      "path": "tests/MarkdownRenderer.GitHub.Tests/VectorSceneTerminalRetirementTests.cs",
+      "lines": 1042,
+      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
+    },
+    {
+      "path": "tests/MarkdownRenderer.Math.Tests/MathContractsTests.cs",
+      "lines": 1414,
+      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
+    },
+    {
+      "path": "tests/MarkdownRenderer.Svg.Resvg.Tests/ResvgProviderTests.cs",
+      "lines": 1150,
+      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
+    },
+    {
+      "path": "tests/MarkdownRenderer.Svg.Resvg.Tests/SvgProcessSnapshotAdmissionTests.cs",
+      "lines": 1046,
+      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
+    },
+    {
+      "path": "tests/MarkdownRenderer.Tests/MarkdownEngineTests.cs",
+      "lines": 1378,
+      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
+    },
+    {
+      "path": "tests/MarkdownRenderer.Tests/PerformanceExternalGateFixtureTests.cs",
+      "lines": 3390,
+      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
+    },
+    {
+      "path": "tests/MarkdownRenderer.Tests/PerformanceMeasurementContractTests.cs",
+      "lines": 1132,
+      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
+    },
+    {
+      "path": "tests/MarkdownRenderer.Tests/PerformanceRegressionEvaluatorTests.cs",
+      "lines": 1738,
+      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
+    }
+  ]
+}

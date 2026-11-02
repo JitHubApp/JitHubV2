@@ -52,8 +52,17 @@ what one project build cannot see:
 | `MRS0005` | A project under those folders that is missing from `MarkdownRenderer.slnx`. |
 | `MRS0006` | A `MarkdownRenderer.slnx` entry that does not exist. |
 | `MRS0007` | An exception `Compile` item that does not name an existing file literally. |
+| `MRS0008` | A `.cs` file under those folders that is over 1,000 lines and is not listed in `eng/file-size-exceptions.json`. |
+| `MRS0009` | A listed file that grew past its recorded line cap. |
+| `MRS0010` | A size exception that is not current: no reason, a missing file, a file back within 1,000 lines, or a cap above the file's length. |
 
-An item may break a rule only when it carries `ProjectStructureException`
+`eng/file-size-exceptions.json` records the files that were already over
+1,000 lines when the rule was enforced, each with its current length as its
+cap and a reason. The list only shrinks: a listed file may not grow, and when
+it shrinks its cap is lowered to match, or its entry removed once it is within
+the limit. A new oversized file is split instead of listed.
+
+An item may break a project rule only when it carries `ProjectStructureException`
 metadata that states the reason and how the exception is removed:
 
 ```xml
@@ -61,7 +70,7 @@ metadata that states the reason and how the exception is removed:
                     ProjectStructureException="ExampleTool reads an internal counter; the counter moves to public diagnostics API." />
 ```
 
-The project files are the only list of exceptions; search them for
+The project files are the only list of project exceptions; search them for
 `ProjectStructureException`. Run the script locally with:
 
 ```powershell
