@@ -115,7 +115,7 @@ public partial class MarkdownRendererControl
             CodeActionPlans = actions;
             CodeActionSources = sources;
             CodeActionPlacementIndices = placementIndices.ToArray();
-            CodeActionIndex = BuildPlanIndex(actions);
+            CodeActionIndex = EmbedRealization.BuildPlanIndex(actions);
             CodeActionRects = new List<(CodeBlockBox Box, Rect Rect, CodeBlockHostedElementKind Kind)>(actions.Count);
             ActiveCodeActionOrdinals = new List<int>(actions.Count);
             CodeActionAdoptions = new List<(CodeBlockActionPlan OldPlan, CodeBlockActionPlan NewPlan, int NewOrdinal)>(actions.Count);
@@ -154,7 +154,7 @@ public partial class MarkdownRendererControl
             return false;
         // UI-dispatcher-only, synchronous fence and swap. No host/XAML/native
         // callbacks intervene. Image publication readers verify snapshot identity.
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _publishingLayoutCommit || _canvasDeviceRecoveryQueued ||
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _publishingLayoutCommit || _deviceRecovery.IsQueued ||
             _rebuildCoordinator.HasPendingOrBuilding || HasPendingLazyLayoutWork || _pointerInput.HasSnapshotInteraction ||
             !ReferenceEquals(source, _published.Snapshot) || generation != _published.Generation ||
             source.IsRetiringOrDisposed || source.LayoutRevision != owner.SourceRevision ||
@@ -180,22 +180,22 @@ public partial class MarkdownRendererControl
             !string.Equals(ImageDocumentPath, context.ImageDocumentPath, StringComparison.Ordinal) ||
             AllowThirdPartyRemoteImages != context.AllowThirdPartyRemoteImages ||
             FlowDirection != context.FlowDirection || (XamlRoot?.RasterizationScale ?? 1) != context.RasterizationScale ||
-            _embedPlans.Count != 0 ||
-            !owner.MatchesSourceImages(_imagePlans, _subscribedImages) ||
+            _embeds.EmbedPlans.Count != 0 ||
+            !owner.MatchesSourceImages(_imagePlans.Items, _imageSubscriptions.Images) ||
             (_pointerInput.DeferredSnapshot is not null && !ReferenceEquals(_pointerInput.DeferredSnapshot, source)) ||
             !owner.HasCurrentSourceRaster() ||
             !ReferenceEquals(source.SourceMap, candidate.SourceMap) ||
             source.AutomationDocumentGeneration != candidate.AutomationDocumentGeneration)
             return false;
 
-        if (!TryPrepareCodeBlockActionPublication(plan, out List<CodeBlockActionPlan> oldCodeActionPlans))
+        if (!TryPrepareCodeBlockActionPublication(plan, out IReadOnlyList<CodeBlockActionPlan> oldCodeActionPlans))
             return false;
 
-        Layout.FocusableItem? focusedIdentity = GetCurrentFocusableIdentity();
+        Layout.FocusableItem? focusedIdentity = _focus.Current;
         Layout.FocusableItem? resumeFocusIdentity =
-            _focusableItems is { } currentItems &&
-            _focusResumeItemIndex >= 0 && _focusResumeItemIndex < currentItems.Count
-                ? currentItems[_focusResumeItemIndex]
+            _focus.Items is { } currentItems &&
+            _focus.ResumeIndex >= 0 && _focus.ResumeIndex < currentItems.Count
+                ? currentItems[_focus.ResumeIndex]
                 : null;
         plan.ResumeFocusIdentity = resumeFocusIdentity;
 
@@ -204,42 +204,27 @@ public partial class MarkdownRendererControl
         bool committed = false;
         try
         {
-            // Compiler-generated events on sealed ImageBox do not run host code.
-            // Both subscriptions and all new containers were allocated off-thread.
-            ResetBitmapOutputRecovery();
-            foreach (ImageBox image in _subscribedImages)
-                image.LoadCompleted -= OnImageLoadCompleted;
-            foreach (ImageBox image in plan.Subscriptions!)
-                image.LoadCompleted += OnImageLoadCompleted;
-            _imagePlans = plan.Images!;
-            _subscribedImages = plan.Subscriptions!;
-            _imagePlanIndex = plan.Publication!.Index;
-            _focusableItems = plan.Focus;
-            _focusedItemIndex = focusedIdentity is { } identity
-                ? FocusableItemQueries.FindFocusableItemIndex(_focusableItems, identity)
-                : -1;
-            _focusResumeItemIndex = resumeFocusIdentity is { } resumeIdentity
-                ? FocusableItemQueries.FindFocusableItemIndex(_focusableItems, resumeIdentity)
-                : -1;
-            _codeBlockActionPlans = plan.CodeActionPlans!;
+            _imageSubscriptions.Replace(plan.Subscriptions!);
+            _imagePlans.Adopt(plan.Images!, plan.Publication!.Index);
+            _focus.ReplaceItems(plan.Focus, focusedIdentity, resumeFocusIdentity);
+            _embeds.AdoptCodeBlockActionPublication(
+                plan.CodeActionPlans!,
+                plan.CodeActionIndex,
+                plan.ActiveCodeActionOrdinals!,
+                plan.HasMeasuredCodeBlocks,
+                plan.CodeActionRects!);
             plan.CodeActionPlans = null;
-            _codeBlockActionPlanIndex = plan.CodeActionIndex;
             plan.CodeActionIndex = null;
-            _activeCodeBlockActionOrdinals = plan.ActiveCodeActionOrdinals!;
             plan.ActiveCodeActionOrdinals = null;
-            _hasMeasuredCodeBlocks = plan.HasMeasuredCodeBlocks;
-            _codeBlockActionRects = plan.CodeActionRects!;
             plan.CodeActionRects = null;
             _appliedLazyLayoutRevision = candidate.LayoutRevision;
             _pendingLayoutCommit = null;
             _hover.Clear();
             _abbreviationTooltip.ForgetTarget();
-            long epoch = InvalidateHostedFocusPlanPublication();
+            long epoch = _hostedFocusPlan.Invalidate();
             _published.Snapshot = owner.TransferToControl();
-            Volatile.Write(ref _imagePlanPublication, plan.Publication);
-            Volatile.Write(ref _publishedHostedFocusPlanGeneration, generation);
-            Volatile.Write(ref _publishedHostedFocusPlanRevision, candidate.LayoutRevision);
-            Volatile.Write(ref _publishedHostedFocusPlanEpoch, epoch);
+            _imagePlans.Publication = plan.Publication;
+            _hostedFocusPlan.Publish(generation, candidate.LayoutRevision, epoch);
             committed = true;
 
             try
@@ -281,7 +266,7 @@ public partial class MarkdownRendererControl
                     try
                     {
                         adopted = adoption.NewPlan.AdoptRealizedFromRasterCandidate(
-                            adoption.OldPlan, this, candidate, generation, candidate.LayoutRevision, epoch);
+                            adoption.OldPlan, _embeds.Context, candidate, generation, candidate.LayoutRevision, epoch);
                     }
                     catch (Exception exception)
                     {
@@ -296,7 +281,7 @@ public partial class MarkdownRendererControl
 
                     if (adopted && adoption.NewPlan.Realized is { } adoptedElement &&
                         !adoption.NewPlan.IsCurrentRasterActionOwner(
-                            this, candidate, generation, candidate.LayoutRevision, epoch, adoptedElement))
+                            _embeds.Context.Host, candidate, generation, candidate.LayoutRevision, epoch, adoptedElement))
                         break;
 
                     if (!adopted && IsCurrentRasterCodeActionPublication(
@@ -307,7 +292,7 @@ public partial class MarkdownRendererControl
                         {
                             try
                             {
-                                adoption.NewPlan.Derealize(this);
+                                adoption.NewPlan.Derealize(_embeds.Context);
                             }
                             catch (Exception exception)
                             {
@@ -318,9 +303,7 @@ public partial class MarkdownRendererControl
                         if (!IsCurrentRasterCodeActionPublication(
                                 candidate, generation, candidate.LayoutRevision, epoch))
                             break;
-                        _activeCodeBlockActionOrdinals?.Remove(adoption.NewOrdinal);
-                        _codeBlockActionRects.RemoveAll(
-                            rect => ReferenceEquals(rect.Box, adoption.NewPlan.Box));
+                        _embeds.ForgetCodeBlockAction(adoption.NewOrdinal, adoption.NewPlan.Box);
                     }
                 }
 
@@ -339,7 +322,7 @@ public partial class MarkdownRendererControl
                     {
                         try
                         {
-                            oldPlan.Derealize(this);
+                            oldPlan.Derealize(_embeds.Context);
                         }
                         catch (Exception exception)
                         {
@@ -376,7 +359,7 @@ public partial class MarkdownRendererControl
             if (!IsCurrentRasterCodeActionPublication(
                     candidate, generation, candidate.LayoutRevision, epoch))
                 return true;
-            PrepareImageResidency(candidate);
+            _imageResidency.Prepare(candidate);
             if (!IsCurrentRasterCodeActionPublication(
                     candidate, generation, candidate.LayoutRevision, epoch))
                 return true;
@@ -384,11 +367,11 @@ public partial class MarkdownRendererControl
             // viewport. Reconcile the new index now, without waiting for a
             // subsequent scroll to realize newly visible Copy buttons or trim
             // constructor-acquired offscreen image leases.
-            RealizeVisibleEmbeds();
+            _embeds.RealizeVisible();
             if (!IsCurrentRasterCodeActionPublication(
                     candidate, generation, candidate.LayoutRevision, epoch))
                 return true;
-            UpdateFocusRing();
+            _focusRing.Update();
             if (!IsCurrentRasterCodeActionPublication(
                     candidate, generation, candidate.LayoutRevision, epoch))
                 return true;
@@ -422,7 +405,7 @@ public partial class MarkdownRendererControl
 
     private bool TryPrepareCodeBlockActionPublication(
         RasterPlacementPlan plan,
-        out List<CodeBlockActionPlan> oldCodeActionPlans)
+        out IReadOnlyList<CodeBlockActionPlan> oldCodeActionPlans)
     {
         oldCodeActionPlans = null!;
         CodeBlockPlacementIdentity[]? codePlacements = plan.CodePlacements;
@@ -434,10 +417,10 @@ public partial class MarkdownRendererControl
         if (codePlacements is null || candidatePlans is null || actionSources is null ||
             placementIndices is null || actionRects is null || activeOrdinals is null ||
             candidatePlans.Count != actionSources.Count || candidatePlans.Count != placementIndices.Length ||
-            candidatePlans.Count != _codeBlockActionPlans.Count)
+            candidatePlans.Count != _embeds.CodeBlockActionPlans.Count)
             return false;
 
-        List<CodeBlockActionPlan> oldPlans = _codeBlockActionPlans;
+        IReadOnlyList<CodeBlockActionPlan> oldPlans = _embeds.CodeBlockActionPlans;
         List<(CodeBlockActionPlan OldPlan, CodeBlockActionPlan NewPlan, int NewOrdinal)>? adoptions = plan.CodeActionAdoptions;
         adoptions?.Clear();
         actionRects.Clear();
@@ -503,8 +486,8 @@ public partial class MarkdownRendererControl
         => !_lifetime.IsDisposed && !_lifetime.IsUnloaded && ReferenceEquals(candidate, _published.Snapshot) &&
            generation == _published.Generation &&
            candidate.LayoutRevision == layoutRevision &&
-           layoutRevision == Volatile.Read(ref _publishedHostedFocusPlanRevision) &&
-           generation == Volatile.Read(ref _publishedHostedFocusPlanGeneration) &&
-           epoch == Volatile.Read(ref _hostedFocusPlanEpoch) &&
-           epoch == Volatile.Read(ref _publishedHostedFocusPlanEpoch);
+           layoutRevision == _hostedFocusPlan.PublishedRevision &&
+           generation == _hostedFocusPlan.PublishedGeneration &&
+           epoch == _hostedFocusPlan.Epoch &&
+           epoch == _hostedFocusPlan.PublishedEpoch;
 }

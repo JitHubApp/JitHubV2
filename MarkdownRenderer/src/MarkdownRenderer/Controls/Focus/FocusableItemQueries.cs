@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Windows.Foundation;
 using MarkdownRenderer.Layout;
+using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Controls.Input;
 
 namespace MarkdownRenderer.Controls.Focus;
@@ -220,5 +221,88 @@ internal static class FocusableItemQueries
             default:
                 return false;
         }
+    }
+
+    /// <summary>
+    /// Finds the keyboard-focusable vector semantic item that
+    /// <paramref name="item"/> names inside <paramref name="box"/> or its descendants.
+    /// </summary>
+    internal static bool TryGetVectorSemanticForFocusable(
+        BlockBox box,
+        Layout.FocusableItem item,
+        out Layout.Boxes.VectorSceneBox vector,
+        out int semanticIndex)
+    {
+        vector = null!;
+        semanticIndex = -1;
+        switch (box)
+        {
+            case Layout.Boxes.VectorSceneBox candidate
+                when candidate.BlockIndex == item.BlockIndex &&
+                     candidate.GetSemanticItem(item.InlineIndex) is { } semantic &&
+                     MarkdownVectorSemanticPolicy.IsKeyboardFocusable(semantic.Flags):
+                vector = candidate;
+                semanticIndex = item.InlineIndex;
+                return true;
+            case Layout.Boxes.ListItemBox listItem:
+                return TryGetVectorSemanticForFocusable(listItem.Marker, item, out vector, out semanticIndex) ||
+                       TryGetVectorSemanticForFocusable(listItem.Content, item, out vector, out semanticIndex);
+            case Layout.Boxes.TableBox table:
+                foreach (Layout.Boxes.InlineContainerBox cell in table.GetCellBoxes())
+                {
+                    if (TryGetVectorSemanticForFocusable(cell, item, out vector, out semanticIndex))
+                        return true;
+                }
+                return false;
+            case Layout.Boxes.StackBox stack:
+                foreach (BlockBox child in stack.Children)
+                {
+                    if (TryGetVectorSemanticForFocusable(child, item, out vector, out semanticIndex))
+                        return true;
+                }
+                return false;
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>
+    /// The logical rectangle of <paramref name="item"/> in
+    /// <paramref name="snapshot"/>, or null when it has none. The caller holds
+    /// the snapshot's interaction lease.
+    /// </summary>
+    internal static Rect? GetLogicalRectUnderPaint(
+        LayoutSnapshot snapshot,
+        Layout.FocusableItem item)
+    {
+        Rect? physicalRect = null;
+        if (item.IsHorizontalOverflow &&
+            snapshot.TryGetHorizontalOverflowForBlockIndex(item.BlockIndex, out var overflow) &&
+            overflow is not null)
+        {
+            physicalRect = overflow.HorizontalViewportBounds;
+        }
+        else
+        {
+            foreach (var block in snapshot.Blocks)
+            {
+                using LayoutPlacementTransformContext.Scope placementScope =
+                    snapshot.EnterPlacementTransformScopeForTopLevelBlockUnderPaint(block);
+                if (block is Layout.Boxes.InlineContainerBox icb && icb.BlockIndex == item.BlockIndex)
+                {
+                    physicalRect = icb.GetRunRect(item.InlineIndex);
+                    break;
+                }
+                if (FocusableItemQueries.GetFocusableItemRectFromBlock(block, item) is { } nested)
+                {
+                    physicalRect = nested;
+                    break;
+                }
+            }
+        }
+
+        return physicalRect is { } rect
+            ? snapshot.ToLogicalRectForBlockIndexUnderPaint(item.BlockIndex, rect)
+            : null;
     }
 }

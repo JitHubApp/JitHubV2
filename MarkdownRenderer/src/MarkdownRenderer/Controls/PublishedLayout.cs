@@ -41,6 +41,15 @@ internal sealed class PublishedLayout
     }
 
     /// <summary>
+    /// True while <paramref name="snapshot"/>, <paramref name="generation"/>
+    /// and <paramref name="layoutRevision"/> are still the published ones.
+    /// </summary>
+    public bool IsCurrent(LayoutSnapshot snapshot, long generation, long layoutRevision) =>
+        ReferenceEquals(snapshot, Snapshot) &&
+        generation == Generation &&
+        snapshot.LayoutRevision == layoutRevision;
+
+    /// <summary>
     /// The Win2D device that measured <see cref="Snapshot"/>. Text layouts
     /// belong to it, so a device change needs a rebuild.
     /// </summary>

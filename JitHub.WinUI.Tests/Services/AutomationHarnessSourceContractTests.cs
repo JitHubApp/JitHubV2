@@ -441,17 +441,35 @@ public sealed class AutomationHarnessSourceContractTests
             "MarkdownRenderer",
             "Controls",
             "MarkdownRendererControl.cs"));
+        string embedSource = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "MarkdownRenderer",
+            "src",
+            "MarkdownRenderer",
+            "Controls",
+            "Embeds",
+            "EmbedRealization.cs"));
 
-        Assert.Contains("foreach (var (imageRun, _) in icb.InlineImageRuns)", source, StringComparison.Ordinal);
-        Assert.Contains("AddImagePlan(imageRun.Image);", source, StringComparison.Ordinal);
-        Assert.Contains("foreach (var _ in icb.EnumerateInlineImageRects())", source, StringComparison.Ordinal);
+        Assert.Contains("foreach (var (imageRun, _) in icb.InlineImageRuns)", embedSource, StringComparison.Ordinal);
+        Assert.Contains("_host.AddImagePlan(imageRun.Image);", embedSource, StringComparison.Ordinal);
+        Assert.Contains("foreach (var _ in icb.EnumerateInlineImageRects())", embedSource, StringComparison.Ordinal);
         Assert.True(
-            source.IndexOf("AddImagePlan(imageRun.Image);", StringComparison.Ordinal) <
-            source.IndexOf("foreach (var _ in icb.EnumerateInlineImageRects())", StringComparison.Ordinal));
-        Assert.Contains("if (!RegisterImage(image))", source, StringComparison.Ordinal);
-        Assert.Contains("image.LoadCompleted += OnImageLoadCompleted;", source, StringComparison.Ordinal);
-        Assert.Contains("_subscribedImages.Contains(completedImage)", source, StringComparison.Ordinal);
-        Assert.Contains("UnsubscribeAllImages();", source, StringComparison.Ordinal);
+            embedSource.IndexOf("_host.AddImagePlan(imageRun.Image);", StringComparison.Ordinal) <
+            embedSource.IndexOf("foreach (var _ in icb.EnumerateInlineImageRects())", StringComparison.Ordinal));
+        Assert.Contains("void IEmbedRealizationHost.AddImagePlan(ImageBox image) => AddImagePlan(image);", source, StringComparison.Ordinal);
+        string subscriptionSource = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "MarkdownRenderer",
+            "src",
+            "MarkdownRenderer",
+            "Controls",
+            "Images",
+            "ImageSubscriptions.cs"));
+        Assert.Contains("if (!_imageSubscriptions.Subscribe(image))", source, StringComparison.Ordinal);
+        Assert.Contains("image.LoadCompleted += OnImageLoadCompleted;", subscriptionSource, StringComparison.Ordinal);
+        Assert.Contains("_imageSubscriptions.LoadCompleted += OnImageLoadCompleted;", source, StringComparison.Ordinal);
+        Assert.Contains("_imageSubscriptions.Contains(completedImage)", source, StringComparison.Ordinal);
+        Assert.Contains("_imageSubscriptions.UnsubscribeAll();", source, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -536,14 +554,14 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.True(recoveryTickEnd > recoveryMethodEnd);
         string recoveryTick = controlSource[recoveryMethodEnd..recoveryTickEnd];
         Assert.Contains("private static void ProcessImageRelayoutRecovery(MarkdownRendererControl control)", recoveryTick, StringComparison.Ordinal);
-        Assert.Contains("control.ProcessBitmapOutputRecovery();", recoveryTick, StringComparison.Ordinal);
+        Assert.Contains("control._imageSubscriptions.ProcessBitmapOutputRecovery();", recoveryTick, StringComparison.Ordinal);
         Assert.Contains("control.ProcessQueuedImageRelayout(control._lastImageRelayoutDispatchTicket);", recoveryTick, StringComparison.Ordinal);
         Assert.Contains("control._imageRelayoutPayload?.PublishAfterWorkDrains();", recoveryTick, StringComparison.Ordinal);
         Assert.Contains("control.PublishPendingLayoutCommit();", recoveryTick, StringComparison.Ordinal);
         Assert.Contains("control.ProcessQueuedLazyLayoutRealization(control._lastLazyLayoutDispatchTicket);", recoveryTick, StringComparison.Ordinal);
         Assert.Contains("control.TryPublishLazyLayoutCompletion(control._lazyLayoutGeneration);", recoveryTick, StringComparison.Ordinal);
-        Assert.Contains("control.ProcessPendingHorizontalOverflowVisualRetry();", recoveryTick, StringComparison.Ordinal);
-        Assert.Contains("control.ProcessPendingFocusGeometry();", recoveryTick, StringComparison.Ordinal);
+        Assert.Contains("control._overflowScroll.ProcessPendingRetry();", recoveryTick, StringComparison.Ordinal);
+        Assert.Contains("control._focusGeometryWork.Process();", recoveryTick, StringComparison.Ordinal);
         Assert.Matches(
             "if\\s*\\(control\\._lifetime\\.IsDisposed \\|\\| control\\._lifetime\\.IsUnloaded\\)\\s*control\\.StopImageRelayoutRecovery\\(force: true\\);",
             recoveryTick);
@@ -556,8 +574,8 @@ public sealed class AutomationHarnessSourceContractTests
         string process = controlSource[processStart..automationStart];
         Assert.Contains("_rebuildCoordinator.HasPendingOrBuilding", process, StringComparison.Ordinal);
         Assert.Contains("snapshot.TopLevelBlockCount is > 0 and <= LayoutSnapshot.MaximumPrivateRasterPlacementRoots", process, StringComparison.Ordinal);
-        Assert.Contains("_embedPlans.Count == 0 &&", process, StringComparison.Ordinal);
-        Assert.DoesNotContain("_codeBlockActionPlans.Count == 0", process, StringComparison.Ordinal);
+        Assert.Contains("_embeds.EmbedPlans.Count == 0 &&", process, StringComparison.Ordinal);
+        Assert.DoesNotContain("CodeBlockActionPlans.Count == 0", process, StringComparison.Ordinal);
         Assert.Contains("ImageRelayoutBatch.CapturePendingIndices(", process, StringComparison.Ordinal);
         Assert.Contains("private readonly SortedSet<int> _pendingImageRelayoutBlockIndices = [];", controlSource, StringComparison.Ordinal);
         Assert.Contains("optedIn: session is not null", process, StringComparison.Ordinal);
@@ -617,7 +635,16 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("RequestRebuild(RebuildReason.Full);", completion, StringComparison.Ordinal);
         Assert.Contains("else if (retryImageBlockIndex.HasValue || retryCurrentImages)", completion, StringComparison.Ordinal);
         Assert.Contains("if (retryImageBlockIndex is { } retryIndex)", completion, StringComparison.Ordinal);
-        Assert.Contains("if (retryCurrentImages)\n                        foreach (var image in _subscribedImages)", completion, StringComparison.Ordinal);
+        Assert.Contains("if (retryCurrentImages)\n                        _imageSubscriptions.AddBlockIndicesTo(_pendingImageRelayoutBlockIndices);", completion, StringComparison.Ordinal);
+        string subscriptionsSource = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "MarkdownRenderer",
+            "src",
+            "MarkdownRenderer",
+            "Controls",
+            "Images",
+            "ImageSubscriptions.cs")).Replace("\r\n", "\n", StringComparison.Ordinal);
+        Assert.Contains("foreach (ImageBox image in _images)\n            blockIndices.Add(image.BlockIndex);", subscriptionsSource, StringComparison.Ordinal);
         Assert.DoesNotContain("retryImageBlockIndices", completion, StringComparison.Ordinal);
         Assert.Contains("rootMeasureCommitted &&\n                        (canceled || capturedScrollOffset != _surface.Scroll?.VerticalOffset) ? null : anchor", completion, StringComparison.Ordinal);
 
@@ -676,7 +703,7 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("e.TouchSelectionContextMenu = touchOrPen;", rightTapped, StringComparison.Ordinal);
 
         int keyDownStart = source.IndexOf("private void OnKeyDown(", StringComparison.Ordinal);
-        int keyDownEnd = source.IndexOf("private bool HandleHorizontalArrowKey(", keyDownStart, StringComparison.Ordinal);
+        int keyDownEnd = source.IndexOf("private bool TryGetVectorPointerState(", keyDownStart, StringComparison.Ordinal);
         Assert.True(keyDownStart >= 0 && keyDownEnd > keyDownStart);
         string keyDown = source[keyDownStart..keyDownEnd];
         Assert.Contains("case VirtualKey.F10 when shift && _selection.IsActive:", keyDown, StringComparison.Ordinal);

@@ -35,6 +35,7 @@ using MarkdownRenderer.Theming;
 using MarkdownRenderer.Controls.Embeds;
 using MarkdownRenderer.Controls.Focus;
 using MarkdownRenderer.Controls.Images;
+using MarkdownRenderer.Controls.Rendering;
 using MarkdownRenderer.Controls.Input;
 using MarkdownRenderer.Controls.Pipeline;
 using MarkdownRenderer.Controls.Selection;
@@ -51,7 +52,11 @@ namespace MarkdownRenderer.Controls;
 public abstract partial class MarkdownRendererControl : UserControl, IDisposable, IAsyncDisposable, IMarkdownEnvironmentListener,
     IMarkdownPerformanceLegacyParser, ISelectionAdornerHost, ISelectionCommandsHost, ISelectionDismissalHost,
     ISelectionHandlesHost, ISelectionContextMenuHost, IPointerInputSink, IPointerInteractionHost,
-    IHorizontalOverflowPointerHost, IPointerInputRouterHost, IDeferredGestureLayoutHost
+    IHorizontalOverflowPointerHost, IPointerInputRouterHost, IDeferredGestureLayoutHost, IEmbedRealizationHost,
+    ICodeBlockCopyButtonHost, IFocusRingHost, IHostedElementFocusHost,
+    IHorizontalOverflowScrollHost, IFocusedItemRevealHost, IFocusedItemCommitHost,
+    IFocusGeometryRecoveryHost, IRendererFocusEntryHost, IImageSubscriptionsHost, IImageResidencyHost,
+    ICanvasDeviceRecoveryHost
 {
     private readonly MarkdownViewSurface _surface;
     private readonly MarkdownViewLifetime _lifetime = new();
@@ -61,6 +66,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private readonly PointerCursorPresenter _cursor;
     private readonly AbbreviationTooltipPresenter _abbreviationTooltip;
     private readonly SelectionAdornerPresenter _adorner;
+    private readonly CanvasDeviceRecovery _deviceRecovery;
     private readonly SelectionCommands _selectionCommands;
     private readonly SelectionDismissalHook _selectionDismissal;
     private readonly SelectionDragAutoScroll _autoScroll;
@@ -72,12 +78,12 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private readonly TouchGestureInteraction _touchGestures;
     private readonly PointerInputRouter _pointerInput;
     private readonly CanvasPointerEvents _canvasPointerEvents;
+    private readonly EmbedRealization _embeds;
     private AppWindow? _windowLifecycleAppWindow;
     private WindowLifecycleSubscription? _windowLifecycleSubscription;
     private bool _scrollViewIntermediate;
     private MarkdownEngine? _ownedEngine;
 
-    private ImagePlanPublication? _imagePlanPublication;
     private readonly SnapshotRetirementTracker _snapshotRetirements = new(
         static exception => MarkdownDiagnostics.WriteLine(
             $"[MarkdownRendererControl] retirement failed: {exception.GetType().Name} " +
@@ -127,10 +133,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     // Hosted-focus readers consume only realization plans published for the
     // exact snapshot generation and layout revision. The attempt epoch also
     // invalidates a plan while a same-snapshot rebuild is being transferred.
-    private long _hostedFocusPlanEpoch;
-    private long _publishedHostedFocusPlanEpoch = -1;
-    private long _publishedHostedFocusPlanGeneration = -1;
-    private long _publishedHostedFocusPlanRevision = -1;
+    private readonly HostedFocusPlanPublication _hostedFocusPlan = new();
     private (LayoutSnapshot Snapshot, long SnapshotGeneration, int BlockIndex)? _pendingScrollToBlock;
     private double _lastLazyViewportTop;
     private long _lastLazyViewportTimestamp;
@@ -157,15 +160,11 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     // O(log N + batch size), and naturally prioritizes earlier document roots.
     private readonly SortedSet<int> _pendingImageRelayoutBlockIndices = [];
     private bool _selectionAutomationEventQueued;
-    private bool _horizontalOverflowAutomationEventQueued;
-    private readonly Dictionary<IHorizontalOverflowBox, PendingHorizontalOverflowAutomationChange>
-        _pendingHorizontalOverflowAutomationChanges = new(ReferenceEqualityComparer.Instance);
     private float _lastWidth;
     private static readonly MarkdownTheme _defaultTheme = new();
     private static readonly MarkdownExtensionRegistry _defaultRegistry = new();
     private readonly object _parseCacheGate = new();
     private readonly Dictionary<string, bool> _disclosureStates = new(StringComparer.Ordinal);
-    private readonly HashSet<HostedElementFallbackKey> _hostedElementFallbacks = new();
     private ParsedMarkdown? _parseCache;
     private string? _parseCacheSource;
     private MarkdownExtensionRegistry? _parseCacheRegistry;
@@ -193,51 +192,22 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private string? _committedImageDocumentId;
     private MarkdownEnvironmentMonitor.Subscription? _environmentSubscription;
     private MarkdownEnvironmentSnapshot _environmentSnapshot;
-    private bool _canvasDeviceRecoveryQueued;
-    private int _canvasDeviceRecoveryAttempt;
-    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _canvasDeviceRecoveryTimer;
 
     // ---- Keyboard navigation ----
-    // Ordered list of focusable items (LinkRuns + InlineEmbedRuns) in the current
-    // snapshot.  Rebuilt after each snapshot commit.  -1 means "nothing focused".
-    private System.Collections.Generic.IReadOnlyList<Layout.FocusableItem>? _focusableItems;
-    private int _focusedItemIndex = -1;
-    private int _focusResumeItemIndex = -1;
+    private readonly KeyboardFocusModel _focus;
+    private readonly FocusGeometryReader _focusGeometry;
+    private readonly HostedElementFocus _hostedFocus;
+    private readonly HorizontalOverflowScrollVisuals _overflowScroll;
+    private readonly FocusedItemReveal _reveal;
+    private readonly FocusedItemCommit _focusCommit;
+    private readonly KeyboardFocusNavigator _navigator;
+    private readonly PendingFocusGeometryWork _focusGeometryWork;
+    private readonly RendererFocusEntry _focusEntry;
     private bool _taskCommandAvailabilityRefreshQueued;
     // A deferred focus-plan refresh is value-only: it never keeps a snapshot,
     // box, or native resource alive while a geometry lease is busy.
-    private (long SnapshotGeneration, long AutomationDocumentGeneration,
-        long LayoutRevision, long RequestVersion, bool IsPending) _pendingFocusableItemsRefresh;
-    private long _focusableItemsRefreshRequestVersion;
-    private PendingLazyFocus? _pendingLazyFocus;
-    private const int MaxPendingSpatialFocusKeys = 64;
-    private readonly Queue<VirtualKey> _pendingSpatialFocusKeys = new();
-    private long _pendingSpatialFocusQueueEpoch;
-    private bool _processingPendingFocusGeometry;
-    private bool _hasPendingSpatialFocusOrigin;
-    private Layout.FocusableItem _pendingSpatialFocusOrigin;
-    private long _pendingSpatialFocusGeneration;
-    private bool _pendingFocusGeometryRefresh;
-    // GotFocus is raised asynchronously, after the dispatcher may have
-    // cleared _suppressNextFocusPromotion. GettingFocus captures it in time.
-    private bool _focusEntrySuppressed;
-    // Counts explicit scroll requests so a delayed focus reveal
-    // never overrides a newer one, even before its view change applies.
-    private long _viewportRequestSerial;
-    private FocusRevealOrigin? _focusReveal;
-    private bool _hasPendingFocusResumePoint;
-    private Point _pendingFocusResumePoint;
-    private long _pendingFocusResumeGeneration;
-    private bool _lastFocusNavigationHandled;
-    private long _focusRingPublicationTicket;
-    private bool _hasPendingHorizontalOverflowRefresh;
-    private long _pendingHorizontalOverflowRefreshGeneration;
-    private int _pendingHorizontalOverflowRefreshBlockIndex;
-    private double _pendingHorizontalOverflowRefreshOldOffset;
-    // XAML Border element used to show a focus ring around the focused item.
-    // Lives on the overlay at ZIndex 1 (above selection at -1, below embeds at 0).
-    private Microsoft.UI.Xaml.Controls.Border? _focusRing;
-    private Windows.UI.Color _focusRingBrushColor; // cached to avoid per-keystroke SolidColorBrush allocations
+    private readonly FocusableItemsRefreshRequest _focusRefresh;
+    private readonly FocusRingPresenter _focusRing;
 
     // The provider may raise CacheInvalidated from a worker or system-event
     // callback. Keep the subscribed instance outside DependencyObject storage
@@ -245,476 +215,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private IMarkdownSvgRenderer? _subscribedSvgRenderer;
     private IMarkdownPerformanceSessionInternal? _subscribedPerformanceSession;
     private bool _canvasRenderHandlersAttached;
-    private readonly struct InlineEmbedPlacementUpdate(
-        WeakReference<InlineEmbedPlan> Plan,
-        Rect Rect)
-    {
-        public readonly WeakReference<InlineEmbedPlan> Plan = Plan;
-        public readonly Rect Rect = Rect;
-    }
-    private readonly struct HorizontalOverflowVisualState(
-        WeakReference<LayoutSnapshot> Snapshot,
-        long SnapshotGeneration,
-        long LayoutRevision,
-        int BlockIndex,
-        WeakReference<IHorizontalOverflowBox> Target,
-        double OldOffset,
-        double NewOffset,
-        double Extent,
-        double Viewport,
-        bool IsRightToLeft,
-        Rect ViewportBounds,
-        Rect TrackBounds,
-        InlineEmbedPlacementUpdate[] EmbedPlacements)
-    {
-        public readonly WeakReference<LayoutSnapshot> Snapshot = Snapshot;
-        public readonly long SnapshotGeneration = SnapshotGeneration;
-        public readonly long LayoutRevision = LayoutRevision;
-        public readonly int BlockIndex = BlockIndex;
-        public readonly WeakReference<IHorizontalOverflowBox> Target = Target;
-        public readonly double OldOffset = OldOffset;
-        public readonly double NewOffset = NewOffset;
-        public readonly double Extent = Extent;
-        public readonly double Viewport = Viewport;
-        public readonly bool IsRightToLeft = IsRightToLeft;
-        public readonly Rect ViewportBounds = ViewportBounds;
-        public readonly Rect TrackBounds = TrackBounds;
-        public readonly InlineEmbedPlacementUpdate[] EmbedPlacements = EmbedPlacements;
-    }
 
-    // Cache of inline-embed rectangles (in canvas/document coordinates) plus
-    // the InlineRun + owning InlineContainerBox.  Built during PlaceEmbeds
-    // and consulted from pointer handlers so we can:
-    //   (a) suppress our own ProtectedCursor / link-hover work over an embed
-    //       so the embedded XAML element's own cursor (Hand for Button, IBeam
-    //       for TextBox, …) wins;
-    //   (b) avoid starting a selection on PointerPressed inside an embed so
-    //       that click routes to the embed normally;
-    //   (c) snap drag-through positions atomically to the run start or end,
-    //       so an embed is included or excluded as a single unit.
-    private readonly List<(Layout.Boxes.InlineContainerBox Box, InlineEmbedRun Run, Rect Rect)> _embedRects = new();
-
-    // Cache of block-embed bounding rects (in document coordinates).
-    // Mirrors _embedRects but for EmbedBox block elements (e.g. hosted Buttons).
-    // Used by IsPointOverEmbed so that hovering a block-embed button correctly
-    // suppresses link-hover and IBeam-cursor work, just like inline embeds.
-    private readonly List<(BlockBox Box, Rect Rect)> _blockEmbedRects = new();
-
-    private List<(Layout.Boxes.CodeBlockBox Box, Rect Rect, CodeBlockHostedElementKind Kind)> _codeBlockActionRects = new();
-
-    // Embed virtualisation. Plans capture each embed's position + factory
-    // delegate up front; realisation happens lazily as scrolling brings them
-    // into the viewport (plus an overscan band). Off-screen embeds beyond a
-    // wider derealisation band are removed from the visual tree and their
-    // factory's RecycleBlock hook is called. This keeps memory usage bounded
-    // for very long documents with many hosted controls.
-    private abstract class EmbedPlan
-    {
-        public Rect Rect;
-        public FrameworkElement? Realized;
-        public Layout.FocusableItem? FocusIdentity;
-        public virtual bool HasActiveWork => Realized is not null;
-        public abstract object LogicalOwner { get; }
-        public abstract void Realize(MarkdownRendererControl owner);
-        public abstract void Derealize(MarkdownRendererControl owner);
-        public abstract bool IsSameLogicalEmbed(EmbedPlan other);
-        public virtual void UpdatePlacement() => UpdatePlacement(snapEdges: true);
-
-        protected void UpdatePlacement(bool snapEdges)
-        {
-            FrameworkElement? element = Realized;
-            if (element is null) return;
-            // Rect was copied under the snapshot read lease. A hosted element
-            // can synchronously recycle/unload us from any DP callback.
-            Rect rect = Rect;
-            double left = Math.Round(rect.X);
-            double top = Math.Round(rect.Y);
-            double width = snapEdges ? Math.Round(rect.Right) - left : Math.Round(rect.Width);
-            double height = snapEdges ? Math.Round(rect.Bottom) - top : Math.Round(rect.Height);
-            element.Width = Math.Max(0, width);
-            if (!ReferenceEquals(Realized, element)) return;
-            element.Height = Math.Max(0, height);
-            if (!ReferenceEquals(Realized, element)) return;
-            Canvas.SetLeft(element, left);
-            if (!ReferenceEquals(Realized, element)) return;
-            Canvas.SetTop(element, top);
-            if (!ReferenceEquals(Realized, element)) return;
-            Canvas.SetZIndex(element, 2);
-        }
-    }
-    private sealed class BlockEmbedPlan : EmbedPlan
-    {
-        public Layout.Boxes.EmbedBox Box = null!;
-        public override object LogicalOwner => Box;
-        public override void Realize(MarkdownRendererControl owner)
-        {
-            if (Realized is not null) return;
-            long generation = owner._published.Generation;
-            try
-            {
-                var fe = Box.Factory.CreateBlock(Box.SourceBlock);
-                if (owner._lifetime.IsDisposed || owner._lifetime.IsUnloaded || generation != owner._published.Generation)
-                {
-                    try { Box.Factory.RecycleBlock(Box.SourceBlock, fe); } catch { }
-                    return;
-                }
-                Realized = fe;
-                Box.RealizedElement = fe;
-                UpdatePlacement();
-                if (!ReferenceEquals(Realized, fe) || owner._lifetime.IsDisposed || owner._lifetime.IsUnloaded)
-                    return;
-                fe.KeyDown += owner.OnHostedEmbedKeyDown;
-                owner._surface.Overlay!.Children.Add(fe);
-                // _blockEmbedRects rebuilt in RealizeVisibleEmbeds.
-            }
-            catch (Exception ex)
-            {
-                MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] EmbedBox factory threw: {ex.Message}");
-            }
-        }
-        public override void Derealize(MarkdownRendererControl owner)
-        {
-            if (Realized is null) return;
-            var fe = Realized;
-            Realized = null;
-            Box.RealizedElement = null;
-            fe.KeyDown -= owner.OnHostedEmbedKeyDown;
-            try { owner._surface.Overlay!.Children.Remove(fe); } catch { }
-            try { Box.Factory.RecycleBlock(Box.SourceBlock, fe); } catch { }
-            // Refresh _blockEmbedRects defensively (rebuilt fully each Realize cycle from realised plans).
-        }
-
-        public override bool IsSameLogicalEmbed(EmbedPlan other)
-            => other is BlockEmbedPlan block && ReferenceEquals(Box, block.Box);
-
-        public override void UpdatePlacement() => UpdatePlacement(snapEdges: false);
-    }
-    private sealed class InlineEmbedPlan : EmbedPlan
-    {
-        public Layout.Boxes.InlineContainerBox Icb = null!;
-        public InlineEmbedRun Run = null!;
-        public override object LogicalOwner => Icb;
-        public override void Realize(MarkdownRendererControl owner)
-        {
-            if (Realized is not null) return;
-            long generation = owner._published.Generation;
-            try
-            {
-                var fe = Run.ElementFactory();
-                if (owner._lifetime.IsDisposed || owner._lifetime.IsUnloaded || generation != owner._published.Generation)
-                {
-                    try { Run.Recycle?.Invoke(fe); } catch { }
-                    return;
-                }
-                Realized = fe;
-                Run.RealizedElement = fe;
-                UpdatePlacement();
-                if (!ReferenceEquals(Realized, fe) || owner._lifetime.IsDisposed || owner._lifetime.IsUnloaded)
-                    return;
-                fe.KeyDown += owner.OnHostedEmbedKeyDown;
-                owner._surface.Overlay!.Children.Add(fe);
-                // _embedRects rebuilt in RealizeVisibleEmbeds.
-            }
-            catch (Exception ex)
-            {
-                MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] inline embed factory threw: {ex.Message}");
-            }
-        }
-        public override void Derealize(MarkdownRendererControl owner)
-        {
-            if (Realized is null) return;
-            var fe = Realized;
-            Realized = null;
-            Run.RealizedElement = null;
-            fe.KeyDown -= owner.OnHostedEmbedKeyDown;
-            try { owner._surface.Overlay!.Children.Remove(fe); } catch { }
-            try { Run.Recycle?.Invoke(fe); }
-            catch (Exception ex)
-            {
-                MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] inline embed Recycle threw: {ex.Message}");
-            }
-        }
-
-        public override bool IsSameLogicalEmbed(EmbedPlan other)
-            => other is InlineEmbedPlan inline &&
-               ReferenceEquals(Icb, inline.Icb) &&
-               ReferenceEquals(Run, inline.Run);
-
-    }
-    private readonly List<EmbedPlan> _embedPlans = new();
-    private ViewportBandIndex? _embedPlanIndex;
-    // Document ordinals stay sorted so hit-test rectangles retain their source
-    // order while scroll work visits only the small active realization band.
-    private readonly List<int> _activeEmbedOrdinals = new();
-    private sealed class CodeBlockActionPlan
-    {
-        public Layout.Boxes.CodeBlockBox Box = null!;
-        public Rect Rect;
-        public CodeBlockHostedElementKind Kind;
-        public Layout.FocusableItem? FocusIdentity;
-        public FrameworkElement? Realized;
-        private RoutedEventHandler? _clickHandler;
-        private int _feedbackVersion;
-        private bool _showsCopiedFeedback;
-
-        public void Realize(MarkdownRendererControl owner)
-        {
-            if (Realized is not null) return;
-            long generation = owner._published.Generation;
-            var (button, alreadyAttached) = owner.RentCodeBlockCopyButton();
-            if (owner._lifetime.IsDisposed || owner._lifetime.IsUnloaded || generation != owner._published.Generation)
-                return;
-            AutomationProperties.SetAutomationId(button, MarkdownAutomationIdentity.ForCodeCopy(Box));
-            if (owner._lifetime.IsDisposed || owner._lifetime.IsUnloaded || generation != owner._published.Generation)
-                return;
-            AttachHandlers(button, owner);
-            button.KeyDown += owner.OnHostedEmbedKeyDown;
-            Realized = button;
-            Box.RealizedCopyButton = button;
-            UpdatePlacement();
-            if (!ReferenceEquals(Realized, button) || owner._lifetime.IsDisposed || owner._lifetime.IsUnloaded)
-                return;
-            if (!alreadyAttached)
-                owner._surface.Overlay!.Children.Add(button);
-            button.Visibility = Visibility.Visible;
-            owner.RestoreFocusedCodeBlockActionIfNeeded(this);
-        }
-
-        public void Derealize(MarkdownRendererControl owner)
-        {
-            if (Realized is null) return;
-            var fe = Realized;
-            bool resetFeedback = _showsCopiedFeedback;
-            Box.RealizedCopyButton = null;
-            Realized = null;
-            _showsCopiedFeedback = false;
-            _feedbackVersion++;
-            if (fe is Button button)
-            {
-                if (_clickHandler is not null)
-                    button.Click -= _clickHandler;
-                button.KeyDown -= owner.OnHostedEmbedKeyDown;
-            }
-
-            owner.PreserveLogicalFocusBeforeDerealizingCodeBlockAction(fe);
-            if (resetFeedback && fe is Button copiedButton)
-                owner.SetCodeBlockCopyButtonState(copiedButton, copied: false);
-            if (fe is Button pooledButton)
-                owner.ReturnCodeBlockCopyButton(pooledButton);
-            else
-            {
-                try { owner._surface.Overlay!.Children.Remove(fe); } catch { }
-            }
-        }
-
-        public void AdoptRealizedFrom(CodeBlockActionPlan oldPlan, MarkdownRendererControl owner)
-        {
-            if (oldPlan.Realized is null) return;
-
-            var fe = oldPlan.Realized;
-            RoutedEventHandler? oldClickHandler = oldPlan._clickHandler;
-            oldPlan._clickHandler = null;
-            oldPlan._feedbackVersion++;
-            oldPlan._showsCopiedFeedback = false;
-            oldPlan.Box.RealizedCopyButton = null;
-            oldPlan.Realized = null;
-            Realized = fe;
-            Box.RealizedCopyButton = fe;
-            if (fe is Button button)
-            {
-                if (oldClickHandler is not null)
-                    button.Click -= oldClickHandler;
-                button.KeyDown -= owner.OnHostedEmbedKeyDown;
-                AttachHandlers(button, owner);
-                button.KeyDown += owner.OnHostedEmbedKeyDown;
-                AutomationProperties.SetAutomationId(button, MarkdownAutomationIdentity.ForCodeCopy(Box));
-                if (!ReferenceEquals(Realized, fe) || owner._lifetime.IsDisposed || owner._lifetime.IsUnloaded)
-                    return;
-                owner.SetCodeBlockCopyButtonState(button, copied: false);
-                if (!ReferenceEquals(Realized, fe) || owner._lifetime.IsDisposed || owner._lifetime.IsUnloaded)
-                    return;
-            }
-            UpdatePlacement();
-        }
-
-        public bool AdoptRealizedFromRasterCandidate(
-            CodeBlockActionPlan oldPlan,
-            MarkdownRendererControl owner,
-            LayoutSnapshot candidate,
-            long generation,
-            long layoutRevision,
-            long hostedFocusPlanEpoch)
-        {
-            if (!owner.IsCurrentRasterCodeActionPublication(
-                    candidate, generation, layoutRevision, hostedFocusPlanEpoch) ||
-                oldPlan.Realized is not Button button)
-                return false;
-
-            FrameworkElement fe = button;
-            RoutedEventHandler? oldClickHandler = oldPlan._clickHandler;
-            oldPlan._clickHandler = null;
-            oldPlan._feedbackVersion++;
-            oldPlan._showsCopiedFeedback = false;
-            oldPlan.Box.RealizedCopyButton = null;
-            oldPlan.Realized = null;
-            Realized = fe;
-            Box.RealizedCopyButton = fe;
-
-            if (oldClickHandler is not null)
-                button.Click -= oldClickHandler;
-            button.KeyDown -= owner.OnHostedEmbedKeyDown;
-            AttachHandlers(button, owner);
-            button.KeyDown += owner.OnHostedEmbedKeyDown;
-
-            AutomationProperties.SetAutomationId(button, MarkdownAutomationIdentity.ForCodeCopy(Box));
-            if (!IsCurrentRasterActionOwner(owner, candidate, generation, layoutRevision, hostedFocusPlanEpoch, fe))
-                return false;
-
-            if (!owner.SetCodeBlockCopyButtonStateForRasterCandidate(
-                    this, button, fe, candidate, generation, layoutRevision, hostedFocusPlanEpoch))
-                return false;
-
-            return UpdatePlacementForRasterCandidate(
-                owner, candidate, generation, layoutRevision, hostedFocusPlanEpoch, fe);
-        }
-
-        private void AttachHandlers(Button button, MarkdownRendererControl owner)
-        {
-            _clickHandler ??= (_, _) => owner.CopyCodeBlockToClipboard(this);
-            button.Click += _clickHandler;
-        }
-
-        public bool IsSameLogicalAction(CodeBlockActionPlan other)
-            => ReferenceEquals(Box, other.Box) && Kind == other.Kind;
-
-        public void UpdatePlacement()
-        {
-            FrameworkElement? element = Realized;
-            if (element is null) return;
-            double left = Math.Round(Rect.X);
-            double top = Math.Round(Rect.Y);
-            double width = Math.Round(Rect.X + Rect.Width) - left;
-            double height = Math.Round(Rect.Y + Rect.Height) - top;
-            if (double.IsNaN(element.Width) || Math.Abs(element.Width - width) > 0.1)
-                element.Width = width;
-            if (!ReferenceEquals(Realized, element)) return;
-            if (double.IsNaN(element.Height) || Math.Abs(element.Height - height) > 0.1)
-                element.Height = height;
-            if (!ReferenceEquals(Realized, element)) return;
-            double currentLeft = Canvas.GetLeft(element);
-            if (double.IsNaN(currentLeft) || Math.Abs(currentLeft - left) > 0.1)
-                Canvas.SetLeft(element, left);
-            if (!ReferenceEquals(Realized, element)) return;
-            double currentTop = Canvas.GetTop(element);
-            if (double.IsNaN(currentTop) || Math.Abs(currentTop - top) > 0.1)
-                Canvas.SetTop(element, top);
-            if (!ReferenceEquals(Realized, element)) return;
-            if (Canvas.GetZIndex(element) != 2)
-                Canvas.SetZIndex(element, 2);
-        }
-
-        private bool UpdatePlacementForRasterCandidate(
-            MarkdownRendererControl owner,
-            LayoutSnapshot candidate,
-            long generation,
-            long layoutRevision,
-            long hostedFocusPlanEpoch,
-            FrameworkElement element)
-        {
-            if (!IsCurrentRasterActionOwner(owner, candidate, generation, layoutRevision, hostedFocusPlanEpoch, element))
-                return false;
-
-            double left = Math.Round(Rect.X);
-            double top = Math.Round(Rect.Y);
-            double width = Math.Round(Rect.X + Rect.Width) - left;
-            double height = Math.Round(Rect.Y + Rect.Height) - top;
-            if (double.IsNaN(element.Width) || Math.Abs(element.Width - width) > 0.1)
-            {
-                element.Width = width;
-                if (!IsCurrentRasterActionOwner(owner, candidate, generation, layoutRevision, hostedFocusPlanEpoch, element))
-                    return false;
-            }
-            if (double.IsNaN(element.Height) || Math.Abs(element.Height - height) > 0.1)
-            {
-                element.Height = height;
-                if (!IsCurrentRasterActionOwner(owner, candidate, generation, layoutRevision, hostedFocusPlanEpoch, element))
-                    return false;
-            }
-
-            double currentLeft = Canvas.GetLeft(element);
-            if (double.IsNaN(currentLeft) || Math.Abs(currentLeft - left) > 0.1)
-            {
-                Canvas.SetLeft(element, left);
-                if (!IsCurrentRasterActionOwner(owner, candidate, generation, layoutRevision, hostedFocusPlanEpoch, element))
-                    return false;
-            }
-            double currentTop = Canvas.GetTop(element);
-            if (double.IsNaN(currentTop) || Math.Abs(currentTop - top) > 0.1)
-            {
-                Canvas.SetTop(element, top);
-                if (!IsCurrentRasterActionOwner(owner, candidate, generation, layoutRevision, hostedFocusPlanEpoch, element))
-                    return false;
-            }
-            if (Canvas.GetZIndex(element) != 2)
-            {
-                Canvas.SetZIndex(element, 2);
-                if (!IsCurrentRasterActionOwner(owner, candidate, generation, layoutRevision, hostedFocusPlanEpoch, element))
-                    return false;
-            }
-            return true;
-        }
-
-        public bool IsCurrentRasterActionOwner(
-            MarkdownRendererControl owner,
-            LayoutSnapshot candidate,
-            long generation,
-            long layoutRevision,
-            long hostedFocusPlanEpoch,
-            FrameworkElement element)
-            => ReferenceEquals(Realized, element) &&
-               ReferenceEquals(Box.RealizedCopyButton, element) &&
-               owner.IsCurrentRasterCodeActionPublication(
-                   candidate, generation, layoutRevision, hostedFocusPlanEpoch);
-
-        public void ShowCopiedFeedback(MarkdownRendererControl owner)
-        {
-            if (Realized is not Button button)
-                return;
-
-            int version = ++_feedbackVersion;
-            _showsCopiedFeedback = true;
-            owner.SetCodeBlockCopyButtonState(button, copied: true);
-            _ = Task.Run(async () =>
-            {
-                try { await Task.Delay(1500).ConfigureAwait(false); }
-                catch { return; }
-
-                owner.DispatcherQueue.TryEnqueue(() =>
-                {
-                    if (owner._lifetime.IsUnloaded || _feedbackVersion != version)
-                        return;
-                    if (Realized is Button realizedButton)
-                    {
-                        owner.SetCodeBlockCopyButtonState(realizedButton, copied: false);
-                        _showsCopiedFeedback = false;
-                    }
-                });
-            });
-        }
-    }
-
-    private List<CodeBlockActionPlan> _codeBlockActionPlans = new();
-    private bool _hasMeasuredCodeBlocks;
-    private ViewportBandIndex? _codeBlockActionPlanIndex;
-    private List<int> _activeCodeBlockActionOrdinals = new();
-    private readonly Stack<(Button Button, bool Attached)> _codeBlockCopyButtonPool = new();
-    private const int CodeBlockCopyButtonPoolCapacity = 8;
-    private bool _derealizingAllEmbeds;
-    private bool _realizingVisibleEmbeds;
-    private bool _realizeVisibleEmbedsRequested;
-    private bool _realizeVisibleEmbedsContinuationQueued;
-    private long _realizeVisibleEmbedsContinuationTicket;
-    private long _realizationPassEpoch;
     private readonly BoundedCodeBlockHighlightCache<CodeBlockHighlightCacheKey> _codeBlockHighlightCache = new(
         CodeBlockHighlightCacheMaxEntries,
         CodeBlockHighlightCacheBudgetBytes,
@@ -726,28 +227,16 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private CancellationTokenSource? _codeBlockHighlightCts;
     private Task _codeBlockHighlightRetirement = Task.CompletedTask;
     private int _codeBlockHighlightGeneration;
-    private bool _promotingKeyboardFocusEntry;
-    private bool _lastFocusEntryWasKeyboardTraversal;
-    private bool _lastFocusEntryWasKeyboardInput;
-    private bool _lastFocusEntryWasReverse;
-    private bool _suppressNextFocusPromotion;
 
     // Lazy-load queue: all ImageBox instances in the current snapshot.
     // EnsureLoading() is called for each when its bounds enter the
     // viewport + LazyImageOverscanPx band.  Images already in the
     // in-memory cache start loading (no-op) immediately after build.
-    private List<Layout.Boxes.ImageBox> _imagePlans = new();
-    private const int MaximumCompletedImageCarryEntries = 4096;
-    private readonly Dictionary<string, Layout.Boxes.CompletedImageCarry> _completedImageCarry =
-        new(StringComparer.Ordinal);
-    private Layout.Boxes.MarkdownImageCarryIdentity? _completedImageCarryIdentity;
-    private ViewportBandIndex? _imagePlanIndex;
-    private HashSet<Layout.Boxes.ImageBox> _subscribedImages = new();
-    private string? _prefetchedMarkdownSource;
-    private IMarkdownImagePrefetcher? _activeImagePrefetcher;
-    private MarkdownImageResolveContext? _activeImagePrefetchContext;
-    private int _prefetchedImageRegistryRevision = -1;
-    private PendingImagePrefetch? _pendingImagePrefetch;
+    private readonly ImagePlanSet _imagePlans;
+    private readonly ImageSubscriptions _imageSubscriptions;
+    private readonly ImageResidency _imageResidency;
+    private readonly ImageSourcePrefetch _imagePrefetch = new();
+    private readonly CompletedImageCarryLedger _completedImageCarry = new();
 
     private const int CodeBlockHighlightCacheMaxEntries = 128;
     private const long CodeBlockHighlightCacheBudgetBytes = 8L * 1024 * 1024;
@@ -766,10 +255,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     // weakly so peers are released alongside the layout snapshot.
     private readonly System.Runtime.CompilerServices.ConditionalWeakTable<LinkRun, MarkdownLinkPeer> _linkPeerCache = new();
     private readonly System.Runtime.CompilerServices.ConditionalWeakTable<InlineImageRun, MarkdownLinkedImagePeer> _linkedImagePeerCache = new();
-
-    // Previous realised embed count — used to suppress redundant
-    // EmbedsRealizationChanged fires on every scroll tick (UIA-friendly).
-    private int _lastFiredRealizedCount = -1;
 
     /// <summary>
     /// Viewport over-scan band, in pixels, in either direction. Embeds whose
@@ -803,256 +288,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     {
         get => (string)GetValue(MarkdownProperty);
         set => SetValue(MarkdownProperty, value);
-    }
-
-    private sealed class DeclarativeHostedElementPlan : EmbedPlan
-    {
-        private readonly HostedElementRealizationGate<MarkdownHostedElementRequest> _realizationGate = new();
-        private MarkdownHostedElementRequest? _realizedRequest;
-        private bool _fallbackRequested;
-
-        public Layout.Boxes.DeclarativeHostedElementBox Box = null!;
-        public IMarkdownHostedElementFactory Factory = null!;
-        public override object LogicalOwner => Box;
-        public override bool HasActiveWork => Realized is not null || _realizationGate.HasActive;
-
-        public override void Realize(MarkdownRendererControl owner)
-        {
-            if (Realized is not null || _fallbackRequested)
-                return;
-
-            var request = owner.CreateHostedElementRequest(Box, Rect);
-            var pipelineToken = owner._pipelineCts?.Token ?? CancellationToken.None;
-            long pipelineGeneration = owner._pipelineGeneration;
-            if (!_realizationGate.TryBegin(request, pipelineToken, out var operation))
-                return;
-
-            ValueTask<FrameworkElement?> pending;
-            try
-            {
-                // RealizeVisibleEmbeds is UI-thread only. Calling the public
-                // factory here keeps creation of thread-affine WinUI objects on
-                // the owning dispatcher while still permitting async loading.
-                pending = Factory.CreateAsync(operation.Request, operation.CancellationToken);
-            }
-            catch (Exception ex)
-            {
-                CompleteFailure(owner, operation, ex, pipelineGeneration);
-                return;
-            }
-
-            if (pending.IsCompletedSuccessfully)
-            {
-                CompleteOnUiThread(owner, operation, pending.Result, pipelineGeneration);
-                return;
-            }
-
-            _ = CompleteAsync(owner, operation, pending, pipelineGeneration);
-        }
-
-        private async Task CompleteAsync(
-            MarkdownRendererControl owner,
-            HostedElementRealizationGate<MarkdownHostedElementRequest>.Operation operation,
-            ValueTask<FrameworkElement?> pending,
-            long pipelineGeneration)
-        {
-            FrameworkElement? element;
-            try
-            {
-                element = await pending.ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (operation.CancellationToken.IsCancellationRequested)
-            {
-                QueueCompletion(
-                    owner,
-                    operation,
-                    element: null,
-                    () => CompleteOnUiThread(owner, operation, null, pipelineGeneration));
-                return;
-            }
-            catch (Exception ex)
-            {
-                QueueCompletion(
-                    owner,
-                    operation,
-                    element: null,
-                    () => CompleteFailure(owner, operation, ex, pipelineGeneration));
-                return;
-            }
-
-            QueueCompletion(
-                owner,
-                operation,
-                element,
-                () => CompleteOnUiThread(owner, operation, element, pipelineGeneration));
-        }
-
-        private void QueueCompletion(
-            MarkdownRendererControl owner,
-            HostedElementRealizationGate<MarkdownHostedElementRequest>.Operation operation,
-            FrameworkElement? element,
-            Action completion)
-        {
-            var dispatcher = owner.DispatcherQueue;
-            bool queued = false;
-            try { queued = dispatcher is not null && dispatcher.TryEnqueue(() => completion()); }
-            catch (Exception ex)
-            {
-                MarkdownDiagnostics.WriteLine(
-                    $"[MarkdownRendererControl] hosted element completion dispatch failed: {ex.Message}");
-            }
-            if (queued)
-                return;
-
-            // Dispatcher shutdown means the control cannot attach the result.
-            // Dispose host state as a last resort rather than leaking it.
-            _realizationGate.TryClaimCompletion(operation);
-            operation.Cancel();
-            operation.Dispose();
-            RecycleResult(operation.Request, element);
-        }
-
-        private void CompleteFailure(
-            MarkdownRendererControl owner,
-            HostedElementRealizationGate<MarkdownHostedElementRequest>.Operation operation,
-            Exception exception,
-            long pipelineGeneration)
-        {
-            bool wasCurrent = _realizationGate.TryClaimCompletion(operation);
-            operation.Dispose();
-            if (wasCurrent && owner.CanActivateHostedElementFallback(this, pipelineGeneration))
-            {
-                _fallbackRequested = true;
-                MarkdownDiagnostics.WriteLine(
-                    $"[MarkdownRendererControl] hosted element factory threw: {exception.Message}");
-                owner.ActivateHostedElementFallback(this);
-            }
-        }
-
-        private void CompleteOnUiThread(
-            MarkdownRendererControl owner,
-            HostedElementRealizationGate<MarkdownHostedElementRequest>.Operation operation,
-            FrameworkElement? element,
-            long pipelineGeneration)
-        {
-            bool isCurrent = _realizationGate.TryClaimCompletion(operation);
-            bool canAttach = isCurrent &&
-                !operation.CancellationToken.IsCancellationRequested &&
-                owner.CanAttachHostedElement(this, pipelineGeneration);
-            operation.Dispose();
-
-            if (!canAttach)
-            {
-                RecycleResult(operation.Request, element);
-                return;
-            }
-
-            if (element is null)
-            {
-                _fallbackRequested = true;
-                owner.ActivateHostedElementFallback(this);
-                return;
-            }
-
-            bool ownershipEstablished = false;
-            try
-            {
-                MarkdownRendererControl.ApplyHostedElementAutomationProperties(Box, element);
-                if (owner._lifetime.IsDisposed || !owner.CanAttachHostedElement(this, pipelineGeneration))
-                {
-                    RecycleResult(operation.Request, element);
-                    return;
-                }
-                _realizedRequest = operation.Request;
-                Realized = element;
-                ownershipEstablished = true;
-                Box.RealizedElement = element;
-                UpdatePlacement();
-                if (!ReferenceEquals(Realized, element))
-                    return; // Reentrant teardown already recycled this result.
-                if (owner._lifetime.IsDisposed || !owner.CanAttachHostedElement(this, pipelineGeneration))
-                {
-                    Derealize(owner);
-                    return;
-                }
-                element.KeyDown += owner.OnHostedEmbedKeyDown;
-                owner._surface.Overlay!.Children.Add(element);
-            }
-            catch (Exception ex)
-            {
-                if (ownershipEstablished && !ReferenceEquals(Realized, element))
-                    return; // Never mutate or recycle an already-transferred result.
-                element.KeyDown -= owner.OnHostedEmbedKeyDown;
-                try { owner._surface.Overlay?.Children.Remove(element); } catch { }
-                _realizedRequest = null;
-                Realized = null;
-                Box.RealizedElement = null;
-                RecycleResult(operation.Request, element);
-                MarkdownDiagnostics.WriteLine(
-                    $"[MarkdownRendererControl] hosted element attachment failed: {ex.Message}");
-                _fallbackRequested = true;
-                owner.ActivateHostedElementFallback(this);
-                return;
-            }
-
-            if (!ReferenceEquals(Realized, element) || owner._lifetime.IsDisposed ||
-                !owner.CanAttachHostedElement(this, pipelineGeneration))
-                return;
-            owner.RealizeVisibleEmbeds();
-            owner.RestoreFocusedHostedElementIfNeeded(this);
-        }
-
-        public override void Derealize(MarkdownRendererControl owner)
-        {
-            // Clear the active slot before cancellation so a quick scroll back
-            // into view can start a fresh attempt even if the old factory does
-            // not observe cancellation promptly.
-            _realizationGate.CancelActive();
-
-            if (Realized is null)
-                return;
-
-            var element = Realized;
-            var request = _realizedRequest;
-            _realizedRequest = null;
-            Realized = null;
-            Box.RealizedElement = null;
-            element.KeyDown -= owner.OnHostedEmbedKeyDown;
-            try { owner._surface.Overlay?.Children.Remove(element); } catch { }
-            if (request is not null)
-                RecycleResult(request, element);
-        }
-
-        public override bool IsSameLogicalEmbed(EmbedPlan other)
-            => other is DeclarativeHostedElementPlan declarative &&
-               ReferenceEquals(Box, declarative.Box) &&
-               ReferenceEquals(Factory, declarative.Factory);
-
-        internal void AdoptRealizedFrom(DeclarativeHostedElementPlan oldPlan)
-        {
-            _realizedRequest = oldPlan._realizedRequest;
-            Realized = oldPlan.Realized;
-            oldPlan._realizedRequest = null;
-            oldPlan.Realized = null;
-            oldPlan.Box.RealizedElement = null;
-            Box.RealizedElement = Realized;
-        }
-
-        private void RecycleResult(
-            MarkdownHostedElementRequest request,
-            FrameworkElement? element)
-        {
-            if (element is null)
-                return;
-
-            try { Factory.Recycle(request, element); }
-            catch (Exception ex)
-            {
-                MarkdownDiagnostics.WriteLine(
-                    $"[MarkdownRendererControl] hosted element Recycle threw: {ex.Message}");
-            }
-        }
-
     }
 
     /// <summary>Dependency property backing <see cref="Document"/>.</summary>
@@ -1695,18 +930,18 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     internal bool IsKeyboardFocusOnLink(LinkRun run)
     {
-        return TryGetFocusedLinkedAtomic(out _, out InlineRun linkedRun) &&
+        return _focus.TryGetFocusedLinkedAtomic(out _, out InlineRun linkedRun) &&
                linkedRun is LinkRun focusedRun &&
                LinkTargets.AreEquivalentLinks(focusedRun, run);
     }
 
     internal bool IsKeyboardFocusOnLinkedImage(InlineImageRun run) =>
-        TryGetFocusedLinkedAtomic(out _, out InlineRun linkedRun) &&
+        _focus.TryGetFocusedLinkedAtomic(out _, out InlineRun linkedRun) &&
         linkedRun is InlineImageRun focusedRun &&
         ReferenceEquals(focusedRun, run);
 
     internal bool IsKeyboardFocusOnLinkedInlineVectorScene(InlineVectorSceneRun run) =>
-        TryGetFocusedLinkedAtomic(out _, out InlineRun linkedRun) &&
+        _focus.TryGetFocusedLinkedAtomic(out _, out InlineRun linkedRun) &&
         linkedRun is InlineVectorSceneRun focusedRun &&
         ReferenceEquals(focusedRun, run);
 
@@ -1714,23 +949,23 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         Layout.Boxes.VectorSceneBox box,
         int semanticIndex) =>
         FocusState != FocusState.Unfocused &&
-        TryGetFocusedVectorSemantic(out var focusedBox, out var focusedSemanticIndex) &&
+        _focus.TryGetFocusedVectorSemantic(out var focusedBox, out var focusedSemanticIndex) &&
         ReferenceEquals(focusedBox, box) &&
         focusedSemanticIndex == semanticIndex;
 
     internal bool IsKeyboardFocusOnHorizontalOverflow(IHorizontalOverflowBox overflow) =>
         FocusState != FocusState.Unfocused &&
-        TryGetFocusedHorizontalOverflow(out var focusedOverflow) &&
+        _focus.TryGetFocusedHorizontalOverflow(out var focusedOverflow) &&
         ReferenceEquals(focusedOverflow, overflow);
 
     internal bool IsHorizontalOverflowKeyboardFocusable(IHorizontalOverflowBox overflow) =>
-        TryGetFocusableIndexForHorizontalOverflow(overflow, out _);
+        _focus.TryGetIndexForHorizontalOverflow(overflow, out _);
 
     internal bool HasKeyboardFocusOnVirtualChild =>
         FocusState != FocusState.Unfocused &&
-        (TryGetFocusedLinkedAtomic(out _, out _) ||
-         TryGetFocusedVectorSemantic(out _, out _) ||
-         TryGetFocusedHorizontalOverflow(out _));
+        (_focus.TryGetFocusedLinkedAtomic(out _, out _) ||
+         _focus.TryGetFocusedVectorSemantic(out _, out _) ||
+         _focus.TryGetFocusedHorizontalOverflow(out _));
 
     internal bool FocusLinkFromAutomation(LinkRun run) =>
         FocusLinkedAtomicFromAutomation(run);
@@ -1743,63 +978,36 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private bool FocusLinkedAtomicFromAutomation(InlineRun run)
     {
-        if (!TryGetFocusableIndexForLinkedAtomic(run, out var index))
+        if (!_focus.TryGetIndexForLinkedAtomic(run, out var index))
             return Focus(FocusState.Programmatic);
 
-        _pendingLazyFocus = null;
-        _focusedItemIndex = index;
-        _focusResumeItemIndex = -1;
-        BeginFocusedItemReveal();
-        bool focused = Focus(FocusState.Programmatic);
-        UpdateFocusRing();
-        NotifyFocusedItemAutomation();
-        return focused;
+        return _focusCommit.FocusFromAutomation(index);
     }
 
     internal bool FocusVectorSemanticFromAutomation(
         Layout.Boxes.VectorSceneBox box,
         int semanticIndex)
     {
-        if (!TryGetFocusableIndexForVectorSemantic(box, semanticIndex, out int index))
+        if (!_focus.TryGetIndexForVectorSemantic(box, semanticIndex, out int index))
             return false;
 
-        _pendingLazyFocus = null;
-        _focusedItemIndex = index;
-        _focusResumeItemIndex = -1;
-        BeginFocusedItemReveal();
-        bool focused = Focus(FocusState.Programmatic);
-        UpdateFocusRing();
-        NotifyFocusedItemAutomation();
-        return focused;
+        return _focusCommit.FocusFromAutomation(index);
     }
 
     internal bool FocusHorizontalOverflowFromAutomation(IHorizontalOverflowBox overflow)
     {
-        if (!TryGetFocusableIndexForHorizontalOverflow(overflow, out int index))
+        if (!_focus.TryGetIndexForHorizontalOverflow(overflow, out int index))
             return false;
 
-        _pendingLazyFocus = null;
-        _focusedItemIndex = index;
-        _focusResumeItemIndex = -1;
-        BeginFocusedItemReveal();
-        bool focused = Focus(FocusState.Programmatic);
-        UpdateFocusRing();
-        NotifyFocusedItemAutomation();
-        return focused;
+        return _focusCommit.FocusFromAutomation(index);
     }
 
     internal bool FocusDocumentFromAutomation()
     {
-        _suppressNextFocusPromotion = true;
-        _pendingLazyFocus = null;
-        _focusedItemIndex = -1;
-        UpdateFocusRing();
-        bool focused = Focus(FocusState.Programmatic);
-        if (!focused)
-            _suppressNextFocusPromotion = false;
-        else
-            DispatcherQueue.TryEnqueue(() => _suppressNextFocusPromotion = false);
-        return focused;
+        _focusEntry.SuppressNextPromotion();
+        _focus.ClearFocus();
+        _focusRing.Update();
+        return _focusEntry.FocusWithoutPromotion();
     }
 
     /// <summary>Invoked by <see cref="MarkdownLinkPeer.Invoke"/> so UIA clients
@@ -2041,7 +1249,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     {
         if (_surface.Scroll is null || amount == ScrollAmount.NoAmount)
             return;
-        NoteViewportRequest();
+        _reveal.NoteViewportRequest();
 
         double delta = amount switch
         {
@@ -2060,7 +1268,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     {
         if (_surface.Scroll is null)
             return;
-        NoteViewportRequest();
+        _reveal.NoteViewportRequest();
 
         double maximum = Math.Max(0, _surface.Scroll.ExtentHeight - _surface.Scroll.ViewportHeight);
         double target = maximum * (Math.Clamp(percent, 0, 100) / 100);
@@ -2110,70 +1318,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     /// Exposed for UI-automation tests that want to validate virtualisation
     /// without relying on heuristic descendant counts.
     /// </summary>
-    public int RealizedEmbedCount
-    {
-        get
-        {
-            int n = 0;
-            foreach (int ordinal in _activeEmbedOrdinals)
-            {
-                if (_embedPlans[ordinal].Realized is not null)
-                    n++;
-            }
-            return n;
-        }
-    }
-
-    private Button CreateCodeBlockCopyButton()
-    {
-        var button = new Button
-        {
-            Content = new SymbolIcon(Symbol.Copy),
-            Style = CodeBlockCopyButtonStyle,
-            Padding = new Thickness(0),
-            MinWidth = 0,
-            MinHeight = 0,
-            IsTabStop = true,
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            VerticalAlignment = VerticalAlignment.Stretch,
-            Visibility = Visibility.Collapsed,
-        };
-        AutomationProperties.SetAutomationId(button, "MarkdownCodeBlockCopyButton");
-        SetCodeBlockCopyButtonState(button, copied: false);
-        return button;
-    }
-
-    private (Button Button, bool Attached) RentCodeBlockCopyButton()
-    {
-        if (_codeBlockCopyButtonPool.Count == 0)
-            return (CreateCodeBlockCopyButton(), false);
-
-        var pooled = _codeBlockCopyButtonPool.Pop();
-        Button button = pooled.Button;
-        if (!ReferenceEquals(button.Style, CodeBlockCopyButtonStyle))
-            button.Style = CodeBlockCopyButtonStyle;
-        return (button, pooled.Attached);
-    }
-
-    private void ReturnCodeBlockCopyButton(Button button)
-    {
-        bool keepAttached = !_derealizingAllEmbeds &&
-                            _codeBlockCopyButtonPool.Count < CodeBlockCopyButtonPoolCapacity;
-        button.Visibility = Visibility.Collapsed;
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded)
-        {
-            try { _surface.Overlay?.Children.Remove(button); } catch { }
-            return;
-        }
-        if (_codeBlockCopyButtonPool.Count < CodeBlockCopyButtonPoolCapacity)
-        {
-            _codeBlockCopyButtonPool.Push((button,
-                keepAttached && ReferenceEquals(VisualTreeHelper.GetParent(button), _surface.Overlay)));
-            return;
-        }
-
-        try { _surface.Overlay?.Children.Remove(button); } catch { }
-    }
+    public int RealizedEmbedCount => _embeds.RealizedEmbedCount;
 
     internal string ResolvedCodeBlockCopyButtonLabel =>
         string.IsNullOrWhiteSpace(CodeBlockCopyButtonLabel)
@@ -2255,83 +1400,9 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         RequestRebuild(RebuildReason.Restyle);
     }
 
-    private void SetCodeBlockCopyButtonState(Button button, bool copied)
-    {
-        string label = copied ? ResolvedCodeBlockCopiedButtonLabel : ResolvedCodeBlockCopyButtonLabel;
-        if (button.Content is SymbolIcon icon)
-            icon.Symbol = copied ? Symbol.Accept : Symbol.Copy;
-        else
-            button.Content = new SymbolIcon(copied ? Symbol.Accept : Symbol.Copy);
+    private void UpdateCodeBlockCopyButtonLabels() => _embeds.UpdateCodeBlockCopyButtonLabels();
 
-        AutomationProperties.SetName(button, label);
-        ToolTipService.SetToolTip(button, label);
-    }
-
-    private bool SetCodeBlockCopyButtonStateForRasterCandidate(
-        CodeBlockActionPlan plan,
-        Button button,
-        FrameworkElement element,
-        LayoutSnapshot candidate,
-        long generation,
-        long layoutRevision,
-        long hostedFocusPlanEpoch)
-    {
-        if (!ReferenceEquals(button, element) ||
-            !plan.IsCurrentRasterActionOwner(
-                this, candidate, generation, layoutRevision, hostedFocusPlanEpoch, element))
-            return false;
-
-        // Localization can call a host StringProvider. Resolve it before the
-        // first visual mutation, then revalidate before touching this recycled
-        // element. Every subsequent XAML property update is independently
-        // fenced because dependency-property callbacks may reenter the host.
-        string label = ResolvedCodeBlockCopyButtonLabel;
-        if (!plan.IsCurrentRasterActionOwner(
-                this, candidate, generation, layoutRevision, hostedFocusPlanEpoch, element))
-            return false;
-
-        if (button.Content is SymbolIcon icon)
-        {
-            icon.Symbol = Symbol.Copy;
-            if (!plan.IsCurrentRasterActionOwner(
-                    this, candidate, generation, layoutRevision, hostedFocusPlanEpoch, element))
-                return false;
-        }
-        else
-        {
-            button.Content = new SymbolIcon(Symbol.Copy);
-            if (!plan.IsCurrentRasterActionOwner(
-                    this, candidate, generation, layoutRevision, hostedFocusPlanEpoch, element))
-                return false;
-        }
-
-        AutomationProperties.SetName(button, label);
-        if (!plan.IsCurrentRasterActionOwner(
-                this, candidate, generation, layoutRevision, hostedFocusPlanEpoch, element))
-            return false;
-
-        ToolTipService.SetToolTip(button, label);
-        return plan.IsCurrentRasterActionOwner(
-            this, candidate, generation, layoutRevision, hostedFocusPlanEpoch, element);
-    }
-
-    private void UpdateCodeBlockCopyButtonLabels()
-    {
-        foreach (var plan in _codeBlockActionPlans)
-        {
-            if (plan.Realized is Button button)
-                SetCodeBlockCopyButtonState(button, copied: false);
-        }
-    }
-
-    private void UpdateCodeBlockCopyButtonStyles()
-    {
-        foreach (var plan in _codeBlockActionPlans)
-        {
-            if (plan.Realized is Button button)
-                button.Style = CodeBlockCopyButtonStyle;
-        }
-    }
+    private void UpdateCodeBlockCopyButtonStyles() => _embeds.UpdateCodeBlockCopyButtonStyles(CodeBlockCopyButtonStyle);
 
     private void CopyCodeBlockToClipboard(CodeBlockActionPlan plan)
     {
@@ -2342,7 +1413,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             package.SetText(plan.Box.CodeText);
             Clipboard.SetContent(package);
             Clipboard.Flush();
-            plan.ShowCopiedFeedback(this);
+            plan.ShowCopiedFeedback(_embeds.Context);
             succeeded = true;
         }
         catch (Exception ex)
@@ -2358,7 +1429,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (CodeBlockChromeMode == CodeBlockChromeMode.PlainMarkdown || !box.IsCopyButtonEnabled)
             return;
 
-        foreach (CodeBlockActionPlan plan in _codeBlockActionPlans)
+        foreach (CodeBlockActionPlan plan in _embeds.CodeBlockActionPlans)
         {
             if (ReferenceEquals(plan.Box, box))
             {
@@ -2394,7 +1465,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             .GetKeyStateForCurrentThread(VirtualKey.Shift) & Windows.UI.Core.CoreVirtualKeyStates.Down)
             == Windows.UI.Core.CoreVirtualKeyStates.Down;
 
-        if (!TrySetFocusedItemForHostedElement(element)) return;
+        if (!_hostedFocus.TrySetFocusedItemFor(element)) return;
 
         if (e.Key == VirtualKey.Tab)
         {
@@ -2404,14 +1475,14 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 return;
             }
 
-            e.Handled = MoveFocus(reverse: shift);
+            e.Handled = _navigator.MoveTab(reverse: shift);
             return;
         }
 
         if (e.Key is VirtualKey.Left or VirtualKey.Right or VirtualKey.Up or VirtualKey.Down &&
             element is not TextBox)
         {
-            e.Handled = MoveFocusSpatial(e.Key);
+            e.Handled = _navigator.MoveSpatial(e.Key);
         }
     }
 
@@ -2449,9 +1520,9 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
         bool hasViewport = TryGetVisibleDocumentRect(out Windows.Foundation.Rect viewport);
         long snapshotGeneration = _published.Generation;
-        ImagePlanPublication? publication = Volatile.Read(ref _imagePlanPublication);
+        ImagePlanPublication? publication = _imagePlans.Publication;
         if (publication is null ||
-            !IsCurrentImagePlanPublication(snapshot, snapshotGeneration, publication))
+            !_imagePlans.IsCurrent(snapshot, snapshotGeneration, publication))
         {
             // A snapshot or its realization plan is between publications. Do
             // not let UIA announce readiness from a previous document/plan.
@@ -2468,7 +1539,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         long layoutRevision = -1;
         try
         {
-            if (!IsCurrentImagePlanPublication(snapshot, snapshotGeneration, publication))
+            if (!_imagePlans.IsCurrent(snapshot, snapshotGeneration, publication))
                 return true;
 
             layoutRevision = snapshot.LayoutRevision;
@@ -2534,22 +1605,10 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // Snapshot replacement and plan publication are independent of the
         // layout lock. Fence once more after releasing it so a detached result
         // from a superseded page cannot become a false-ready UIA answer.
-        return !IsCurrentImagePlanPublication(snapshot, snapshotGeneration, publication) ||
+        return !_imagePlans.IsCurrent(snapshot, snapshotGeneration, publication) ||
             snapshot.LayoutRevision != layoutRevision ||
             hasVisibleLoadingImage;
     }
-
-    private bool IsCurrentImagePlanPublication(
-        LayoutSnapshot snapshot,
-        long snapshotGeneration,
-        ImagePlanPublication publication) =>
-        !_lifetime.IsDisposed && !_lifetime.IsUnloaded &&
-        ReferenceEquals(snapshot, _published.Snapshot) &&
-        snapshotGeneration == _published.Generation &&
-        ReferenceEquals(publication, Volatile.Read(ref _imagePlanPublication)) &&
-        ReferenceEquals(snapshot, publication.Snapshot) &&
-        snapshotGeneration == publication.SnapshotGeneration &&
-        snapshot.LayoutRevision == publication.LayoutRevision;
 
     internal MarkdownVisibleSceneReadiness GetVisibleDeferredSceneStatusForAutomation()
     {
@@ -2726,7 +1785,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     internal void ScrollDocumentRectIntoView(Windows.Foundation.Rect rect, bool alignToTop)
     {
-        NoteViewportRequest();
+        _reveal.NoteViewportRequest();
         if (_surface.Scroll is null)
         {
             BringDocumentRectIntoExternalViewport(rect, animate: false, alignToTop ? 0 : 0.5);
@@ -2761,6 +1820,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _cursor = new PointerCursorPresenter(cursor => ProtectedCursor = cursor);
         _abbreviationTooltip = new AbbreviationTooltipPresenter(this, _surface, _lifetime, _hover);
         _adorner = new SelectionAdornerPresenter(this, this, _surface, _lifetime, _published, _viewport, _selection, _hover);
+        _deviceRecovery = new CanvasDeviceRecovery(this, _lifetime, _published, _surface, _adorner, DispatcherQueue);
         _selectionCommands = new SelectionCommands(this, _published, _selection);
         _selectionDismissal = new SelectionDismissalHook(this, this, _surface, _lifetime, _published, _selection, _selectionCommands);
         _autoScroll = new SelectionDragAutoScroll(_surface, _viewport, rect => BringDocumentRectIntoExternalViewport(rect, animate: false));
@@ -2772,6 +1832,23 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _touchGestures = new TouchGestureInteraction(this, this, _surface, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, _horizontalOverflowDrag, _document);
         _pointerInput = new PointerInputRouter(this, this, DispatcherQueue, _surface, _lifetime, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, _handles, _document, _horizontalOverflowDrag, _touchGestures, _contextMenu, _adorner, _dragShield);
         _canvasPointerEvents = new CanvasPointerEvents(_surface, _pointerInput);
+        _embeds = new EmbedRealization(this, this, _surface, _lifetime, _published, _viewport, DispatcherQueue, OnHostedEmbedKeyDown);
+        _imagePlans = new ImagePlanSet(_lifetime, _published);
+        _imageSubscriptions = new ImageSubscriptions(this, _lifetime, _published, _imagePlans);
+        _imageSubscriptions.LoadCompleted += OnImageLoadCompleted;
+        _imageResidency = new ImageResidency(this, _lifetime, _published, _imagePlans, _embeds);
+        _focus = new KeyboardFocusModel(_lifetime, _published);
+        _focusGeometry = new FocusGeometryReader(_lifetime, _published);
+        _focusRing = new FocusRingPresenter(this, _focus, _focusGeometry, _surface, _lifetime, _published, DispatcherQueue);
+        _focusRefresh = new FocusableItemsRefreshRequest(_published);
+        _hostedFocus = new HostedElementFocus(this, _lifetime, _published, _focus, _hostedFocusPlan, _embeds, _focusRing);
+        _overflowScroll = new HorizontalOverflowScrollVisuals(this, _surface, _lifetime, _published, _selection, _focus, _embeds, DispatcherQueue);
+        _reveal = new FocusedItemReveal(this, _surface, _lifetime, _published, _viewport, _focus, _overflowScroll, DispatcherQueue);
+        _focusCommit = new FocusedItemCommit(this, _lifetime, _published, _focus, _focusRing, _reveal, _hostedFocus, _embeds, DispatcherQueue);
+        var queuedFocusKeys = new SpatialFocusKeyQueue();
+        _navigator = new KeyboardFocusNavigator(this, _lifetime, _published, _focus, _focusGeometry, _focusRing, _overflowScroll, _embeds, _focusCommit, queuedFocusKeys, DispatcherQueue);
+        _focusGeometryWork = new PendingFocusGeometryWork(this, _lifetime, _published, _focus, _focusGeometry, _focusRing, _reveal, queuedFocusKeys, _navigator);
+        _focusEntry = new RendererFocusEntry(this, _lifetime, _focus, _focusRing, _focusCommit, _navigator, DispatcherQueue);
         IsTabStop = true;
         Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
         Loaded += (_, _) => OnLoadedInternal();
@@ -2831,7 +1908,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         QueueLazyLayoutForViewport();
         _adorner.InvalidateGeometry();
         _adorner.Invalidate();
-        RealizeVisibleEmbeds();
+        _embeds.RealizeVisible();
         ScheduleVisibleCodeBlockHighlighting();
     }
 
@@ -2862,79 +1939,25 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void OnGettingFocus(UIElement sender, GettingFocusEventArgs e)
     {
-        if (!ReferenceEquals(e.NewFocusedElement, this))
-            return;
-
-        _focusEntrySuppressed = _suppressNextFocusPromotion;
-
-        var direction = e.Direction;
-        _lastFocusEntryWasKeyboardInput = e.InputDevice == FocusInputDeviceKind.Keyboard;
-        _lastFocusEntryWasKeyboardTraversal =
-            direction is Microsoft.UI.Xaml.Input.FocusNavigationDirection.Next
-                      or Microsoft.UI.Xaml.Input.FocusNavigationDirection.Previous;
-        _lastFocusEntryWasReverse = direction == Microsoft.UI.Xaml.Input.FocusNavigationDirection.Previous;
+        if (ReferenceEquals(e.NewFocusedElement, this))
+            _focusEntry.NoteGettingFocus(e.InputDevice, e.Direction);
     }
 
     private void OnGotFocus(object sender, RoutedEventArgs e)
     {
-        if (_promotingKeyboardFocusEntry || _lifetime.IsUnloaded)
-            return;
-
-        if (!ReferenceEquals(e.OriginalSource, this) || FocusState == FocusState.Pointer)
-            return;
-
-        if (_focusEntrySuppressed || _suppressNextFocusPromotion)
-        {
-            _focusEntrySuppressed = false;
-            _suppressNextFocusPromotion = false;
-            _lastFocusEntryWasKeyboardTraversal = false;
-            _lastFocusEntryWasKeyboardInput = false;
-            return;
-        }
-
-        if (!_lastFocusEntryWasKeyboardTraversal &&
-            !_lastFocusEntryWasKeyboardInput &&
-            FocusState != FocusState.Keyboard)
-            return;
-
-        if (_pendingLazyFocus is not null)
-        {
-            HideFocusRing();
-            _lastFocusEntryWasKeyboardTraversal = false;
-            _lastFocusEntryWasKeyboardInput = false;
-            return;
-        }
-
-        if (_focusedItemIndex >= 0)
-        {
-            UpdateFocusRing();
-            NotifyFocusedItemAutomation();
-            return;
-        }
-
-        _promotingKeyboardFocusEntry = true;
-        try
-        {
-            MoveFocus(_lastFocusEntryWasReverse);
-        }
-        finally
-        {
-            _promotingKeyboardFocusEntry = false;
-            _lastFocusEntryWasKeyboardTraversal = false;
-            _lastFocusEntryWasKeyboardInput = false;
-        }
+        if (ReferenceEquals(e.OriginalSource, this))
+            _focusEntry.OnGotFocus(FocusState);
     }
 
     private void OnLosingFocus(UIElement sender, LosingFocusEventArgs e)
     {
-        _suppressNextFocusPromotion = false;
+        _focusEntry.OnLosingFocus();
 
         if (e.NewFocusedElement is DependencyObject next && IsElementWithinRenderer(next))
             return;
 
-        _pendingLazyFocus = null;
-        _focusedItemIndex = -1;
-        UpdateFocusRing();
+        _focus.ClearFocus();
+        _focusRing.Update();
         if (!_contextMenu.IsOpen)
         {
             _document.ForgetDragAnchor();
@@ -2956,7 +1979,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             finally { _isUpdatingDocumentProperty = false; }
         }
         _disclosureStates.Clear();
-        _hostedElementFallbacks.Clear();
+        _embeds.ClearHostedElementFallbacks();
         ClearCodeBlockHighlightCache();
         RequestRebuild(RebuildReason.Full);
     }
@@ -2969,7 +1992,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         ResetInputForDocumentReplacement();
         _hasExplicitDocument = e.NewValue is MarkdownRenderer.Document.MarkdownDocument;
         _disclosureStates.Clear();
-        _hostedElementFallbacks.Clear();
+        _embeds.ClearHostedElementFallbacks();
         ClearCodeBlockHighlightCache();
         RequestRebuild(RebuildReason.Full);
     }
@@ -3026,14 +2049,14 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         }
 
         _disclosureStates.Clear();
-        _hostedElementFallbacks.Clear();
+        _embeds.ClearHostedElementFallbacks();
         ClearCodeBlockHighlightCache();
         RequestRebuild(RebuildReason.Full);
     }
 
     private void OnHostedElementFactoryChanged()
     {
-        _hostedElementFallbacks.Clear();
+        _embeds.ClearHostedElementFallbacks();
         RequestRebuild(RebuildReason.Full);
     }
 
@@ -3059,7 +2082,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     bool ISelectionDismissalHost.IsElementWithinCodeBlockAction(DependencyObject element)
     {
-        foreach (var plan in _codeBlockActionPlans)
+        foreach (var plan in _embeds.CodeBlockActionPlans)
         {
             if (plan.Realized is DependencyObject realized && VisualTreeAncestry.IsWithin(element, realized))
                 return true;
@@ -3071,7 +2094,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     bool ISelectionDismissalHost.IsElementWithinSelectionHandle(DependencyObject element)
         => _handles.ContainsElement(element);
 
-    bool ISelectionDismissalHost.IsPointOverEmbed(Point canvasPoint) => IsPointOverEmbed(canvasPoint);
+    bool ISelectionDismissalHost.IsPointOverEmbed(Point canvasPoint) => _embeds.HitTargets.IsPointOverEmbed(canvasPoint);
 
     void ISelectionDismissalHost.ClearSelectionForExternalInteraction() => ClearSelectionForExternalInteraction();
 
@@ -3100,10 +2123,11 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     bool ISelectionHandlesHost.RequestGeometryRecoveryIfRequired(LayoutSnapshot? snapshot)
         => RequestGeometryRecoveryIfRequired(snapshot);
 
-    void ISelectionHandlesHost.FocusRendererForPointerInteraction() => FocusRendererForPointerInteraction();
+    void ISelectionHandlesHost.FocusRendererForPointerInteraction() => _focusEntry.FocusWithoutPromotion();
 
     bool ISelectionHandlesHost.TryHitTestEmbed(Point point, out DocumentPosition position)
-        => TryHitTestEmbed(point, out position);
+        => _embeds.HitTargets.TryHitTest(
+            point, FlowDirection == Microsoft.UI.Xaml.FlowDirection.RightToLeft, out position);
 
     bool ISelectionHandlesHost.HasDeferredInputFor(uint pointerId)
         => _pointerInput.HasDeferredInputFor(pointerId);
@@ -3125,10 +2149,10 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         => RaiseCopyCompleted(kind, succeeded);
 
     Rect? ISelectionContextMenuHost.GetFocusedItemRect()
-        => _focusableItems is { } items &&
-           _focusedItemIndex >= 0 &&
-           _focusedItemIndex < items.Count
-            ? GetFocusableItemRect(items[_focusedItemIndex])
+        => _focus.Items is { } items &&
+           _focus.FocusedIndex >= 0 &&
+           _focus.FocusedIndex < items.Count
+            ? _focusGeometry.GetCurrentItemRect(items[_focus.FocusedIndex])
             : null;
 
     bool IPointerInteractionHost.IsSelectionEnabled => IsSelectionEnabled;
@@ -3140,26 +2164,26 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         => _pendingTouchSelectionPresentationRestore = null;
 
     void IPointerInteractionHost.RememberFocusResumePoint(Point documentPoint)
-        => RememberFocusResumePoint(documentPoint);
+        => _focusGeometryWork.RememberResumePoint(documentPoint);
 
-    void IPointerInteractionHost.FocusRendererForPointerInteraction() => FocusRendererForPointerInteraction();
+    void IPointerInteractionHost.FocusRendererForPointerInteraction() => _focusEntry.FocusWithoutPromotion();
 
     void IPointerInteractionHost.ClearKeyboardFocusItem()
     {
-        if (_focusedItemIndex >= 0)
+        if (_focus.FocusedIndex >= 0)
         {
-            _pendingLazyFocus = null;
-            _focusedItemIndex = -1;
-            UpdateFocusRing();
+            _focus.ClearFocus();
+            _focusRing.Update();
         }
     }
 
-    bool IPointerInteractionHost.IsPointOverCodeBlockAction(Point point) => IsPointOverCodeBlockAction(point);
+    bool IPointerInteractionHost.IsPointOverCodeBlockAction(Point point) => _embeds.HitTargets.IsPointOverCodeBlockAction(point);
 
-    bool IPointerInteractionHost.IsPointOverEmbed(Point point) => IsPointOverEmbed(point);
+    bool IPointerInteractionHost.IsPointOverEmbed(Point point) => _embeds.HitTargets.IsPointOverEmbed(point);
 
     bool IPointerInteractionHost.TryHitTestEmbed(Point point, out DocumentPosition position)
-        => TryHitTestEmbed(point, out position);
+        => _embeds.HitTargets.TryHitTest(
+            point, FlowDirection == Microsoft.UI.Xaml.FlowDirection.RightToLeft, out position);
 
     bool IPointerInteractionHost.TryGetVectorPointerState(Point point, out bool linked, out bool selectable)
         => TryGetVectorPointerState(point, out linked, out selectable);
@@ -3174,7 +2198,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         => ResumePendingRebuildAfterPointerInteraction();
 
     void IHorizontalOverflowPointerHost.RefreshHorizontalOverflowVisualState(IHorizontalOverflowBox target, double oldOffset)
-        => RefreshHorizontalOverflowVisualState(target, oldOffset);
+        => _overflowScroll.Refresh(target, oldOffset);
 
     void IPointerInputSink.DispatchPointerInput(PointerInputKind kind, object sender, PointerRoutedEventArgs args)
         => _pointerInput.DispatchPointerInput(kind, sender, args);
@@ -3198,11 +2222,204 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         long layoutRevision)
         => ActivateLinkIntent(intent, snapshot, snapshotGeneration, layoutRevision);
 
+    CancellationToken IEmbedRealizationHost.PipelineToken => _pipelineCts?.Token ?? CancellationToken.None;
+
+    long IEmbedRealizationHost.PipelineGeneration => _pipelineGeneration;
+
+    IMarkdownHostedElementFactory? IEmbedRealizationHost.HostedElementFactory => HostedElementFactory;
+
+    ViewportBandIndex? IEmbedRealizationHost.ImagePlanIndex => _imagePlans.Index;
+
+    void IEmbedRealizationHost.AddImagePlan(ImageBox image) => AddImagePlan(image);
+
+    bool IEmbedRealizationHost.RealizeVisibleImages(
+        in VisibleRealizationPass pass,
+        double top,
+        double viewportHeight,
+        double bottom)
+    {
+        // Lazy image loading: trigger EnsureLoading for images within the
+        // viewport + LazyImageOverscanPx band.  Images already started (cached
+        // or previously triggered) are silently skipped by EnsureLoading().
+        LazyLayoutBand imageBand = PerformanceSession is { } performanceSession
+            ? LazyLayoutBand.FromDirectionalViewport(
+                top,
+                viewportHeight,
+                performanceSession.Options.LookAheadViewports,
+                _lazyScrollVelocityPixelsPerSecond)
+            : LazyLayoutBand.FromViewport(top, viewportHeight, LazyImageOverscanPx);
+        double imgLoadTop = imageBand.Top;
+        double imgLoadBottom = imageBand.Bottom;
+        ViewportBandIndex? imageIndex = pass.ImageIndex;
+        ViewportRange imageRange = imageIndex?.Find(imgLoadTop, imgLoadBottom) ?? default;
+        _imageResidency.Reconcile(imageBand, imageRange);
+        if (!_embeds.IsCurrent(pass))
+            return false;
+
+        for (int index = imageRange.Start; index < imageRange.End; index++)
+        {
+            int imageOrdinal = imageIndex!.GetBlockOrdinal(index);
+            (double imageTop, double imageBottom) = imageIndex.GetBounds(index);
+            var img = _imagePlans[imageOrdinal];
+            if (imageBottom >= imgLoadTop && imageTop <= imgLoadBottom)
+            {
+                bool intersectsViewport = imageBottom >= top && imageTop <= bottom;
+                if (!_embeds.IsCurrent(pass))
+                    return false;
+
+                // Paint culls offscreen images before ImageBox can observe the
+                // viewport. Keep current residency visibility separate from the
+                // monotonic load-demand ticket, including images in overscan.
+                object? svgObservation = img.CaptureSvgViewportObservationToken();
+                img.ObserveSvgViewportVisibility(svgObservation, intersectsViewport);
+                img.EnsureLoading(isVisible: intersectsViewport);
+                if (!_embeds.IsCurrent(pass))
+                    return false;
+            }
+        }
+
+        return true;
+    }
+
+    bool IEmbedRealizationHost.IsCurrentPlanPublication(
+        LayoutSnapshot snapshot,
+        long generation,
+        long hostedFocusPlanEpoch,
+        long layoutRevision)
+        => IsCurrentPlanPublication(snapshot, generation, hostedFocusPlanEpoch, layoutRevision);
+
+    bool IEmbedRealizationHost.IsCurrentRasterCodeActionPublication(
+        LayoutSnapshot candidate,
+        long generation,
+        long layoutRevision,
+        long hostedFocusPlanEpoch)
+        => IsCurrentRasterCodeActionPublication(candidate, generation, layoutRevision, hostedFocusPlanEpoch);
+
+    void IEmbedRealizationHost.InvalidateHostedFocusPlanPublication() => _hostedFocusPlan.Invalidate();
+
+    void IEmbedRealizationHost.CopyCodeBlockToClipboard(CodeBlockActionPlan plan) => CopyCodeBlockToClipboard(plan);
+
+    void IEmbedRealizationHost.RestoreFocusedCodeBlockActionIfNeeded(CodeBlockActionPlan plan)
+        => _hostedFocus.RestoreCodeBlockActionIfNeeded(plan);
+
+    void IEmbedRealizationHost.PreserveLogicalFocusBeforeDerealizingCodeBlockAction(FrameworkElement element)
+        => _hostedFocus.PreserveLogicalFocusBeforeDerealizingCodeBlockAction(element);
+
+    void IEmbedRealizationHost.RestoreFocusedHostedElementIfNeeded(DeclarativeHostedElementPlan plan)
+        => _hostedFocus.RestoreHostedElementIfNeeded(plan);
+
+    void IEmbedRealizationHost.RequestFallbackRebuild() => RequestRebuild(RebuildReason.Restyle);
+
+    void IEmbedRealizationHost.InvalidateAutomationLayout() => InvalidateAutomationLayout();
+
+    void IEmbedRealizationHost.RaiseEmbedsRealizationChanged()
+    {
+        try { EmbedsRealizationChanged?.Invoke(this, EventArgs.Empty); }
+        catch { /* subscriber threw — swallow to keep scroll pipeline alive. */ }
+    }
+
+    Style? ICodeBlockCopyButtonHost.CodeBlockCopyButtonStyle => CodeBlockCopyButtonStyle;
+
+    string ICodeBlockCopyButtonHost.ResolveCodeBlockCopyButtonLabel(bool copied) =>
+        copied ? ResolvedCodeBlockCopiedButtonLabel : ResolvedCodeBlockCopyButtonLabel;
+
+    XamlRoot? IFocusRingHost.XamlRoot => XamlRoot;
+
+    Windows.UI.Color? IFocusRingHost.FocusVisualColor => _themeSnapshot?.FocusVisualColor;
+
+    void IFocusRingHost.InvalidateInteractiveTextAdorner() => InvalidateInteractiveTextAdorner();
+
+    void IFocusRingHost.RequestFocusGeometryRetry() => _focusGeometryWork.RequestRetry();
+
+    FocusState IHostedElementFocusHost.FocusState => FocusState;
+
+    XamlRoot? IHostedElementFocusHost.XamlRoot => XamlRoot;
+
+    long IHostedElementFocusHost.AppliedLazyLayoutRevision => _appliedLazyLayoutRevision;
+
+    bool IHostedElementFocusHost.FocusRenderer() => Focus(FocusState.Keyboard);
+
+    void IHorizontalOverflowScrollHost.UpdateSelectionOverlay() => UpdateSelectionOverlay();
+
+    void IHorizontalOverflowScrollHost.UpdateFocusRing() => _focusRing.Update();
+
+    void IHorizontalOverflowScrollHost.StartRecoveryClock() => StartImageRelayoutRecovery();
+
+    bool IHorizontalOverflowScrollHost.HasRecoveryClock => HasImageRelayoutRecoveryClock;
+
+    void IHorizontalOverflowScrollHost.RequestFullRebuild() => RequestRebuild(RebuildReason.Full);
+
+    bool IHorizontalOverflowScrollHost.RequestGeometryRecoveryIfRequired(LayoutSnapshot? snapshot)
+        => RequestGeometryRecoveryIfRequired(snapshot);
+
+    MarkdownAutomationPeer? IHorizontalOverflowScrollHost.FindAutomationPeer()
+        => FrameworkElementAutomationPeer.FromElement(this) as MarkdownAutomationPeer;
+
+    void IFocusedItemRevealHost.RequestFocusGeometryRetry() => _focusGeometryWork.RequestRetry();
+
+    bool IFocusedItemRevealHost.BringDocumentRectIntoExternalViewport(Rect rect, bool animate, double alignmentRatio)
+        => BringDocumentRectIntoExternalViewport(rect, animate, alignmentRatio);
+
+    bool IFocusedItemCommitHost.FocusRenderer() => Focus(FocusState.Keyboard);
+
+    bool IFocusedItemCommitHost.FocusRendererProgrammatically() => Focus(FocusState.Programmatic);
+
+    bool IRendererFocusEntryHost.FocusRendererProgrammatically() => Focus(FocusState.Programmatic);
+
+    void IFocusedItemCommitHost.RealizeLazyFocusTarget(LayoutSnapshot snapshot, LazyLayoutBand estimatedBand)
+    {
+        var realizationBand = LazyLayoutBand.FromViewport(
+            estimatedBand.Top,
+            Math.Max(1, estimatedBand.Bottom - estimatedBand.Top),
+            LazyLayoutOverscanPx);
+        LazyLayoutBand visibleVectorBand = GetCurrentVisibleVectorBand();
+        QueueLazyLayoutForBand(
+            snapshot,
+            IncludeBand(realizationBand, visibleVectorBand),
+            visibleVectorBand,
+            preserveScrollAnchor: _surface.Scroll is not null);
+    }
+
+    LinkTarget? IFocusedItemCommitHost.FindLinkTargetAt(DocumentPosition position) => FindLinkTargetAt(position);
+
+    bool IFocusedItemCommitHost.ActivateLink(
+        LinkTarget link,
+        MarkdownLinkInputKind inputKind,
+        MarkdownInputModifiers modifiers)
+        => ActivateLinkTarget(link, inputKind, modifiers);
+
+    MarkdownAutomationPeer? IFocusedItemCommitHost.GetOrCreateAutomationPeer()
+        => FrameworkElementAutomationPeer.FromElement(this) as MarkdownAutomationPeer
+           ?? FrameworkElementAutomationPeer.CreatePeerForElement(this) as MarkdownAutomationPeer;
+
+    bool IFocusGeometryRecoveryHost.RequestGeometryRecoveryIfRequired(LayoutSnapshot? snapshot)
+        => RequestGeometryRecoveryIfRequired(snapshot);
+
+    void IFocusGeometryRecoveryHost.StartRecoveryClock() => StartImageRelayoutRecovery();
+
+    bool IFocusGeometryRecoveryHost.HasRecoveryClock => HasImageRelayoutRecoveryClock;
+
+    void IFocusGeometryRecoveryHost.RequestFullRebuild() => RequestRebuild(RebuildReason.Full);
+
+    void IImageSubscriptionsHost.StartRecoveryClock() => StartImageRelayoutRecovery();
+
+    Microsoft.UI.Dispatching.DispatcherQueue? IImageResidencyHost.DispatcherQueue => DispatcherQueue;
+
+    IMarkdownPerformanceSession? IImageResidencyHost.PerformanceSession => PerformanceSession;
+
+    long IImageResidencyHost.AppliedLazyLayoutRevision => _appliedLazyLayoutRevision;
+
+    void IImageResidencyHost.InvalidateCanvas() => InvalidateCanvas();
+
+    void ICanvasDeviceRecoveryHost.RequestFullRebuild() => RequestRebuild(RebuildReason.Full);
+
+    void ICanvasDeviceRecoveryHost.InvalidateCanvas() => InvalidateCanvas();
+
     double IDeferredGestureLayoutHost.RasterizationScale => XamlRoot?.RasterizationScale ?? 1;
 
-    bool IDeferredGestureLayoutHost.IsPointOverEmbed(Point point) => IsPointOverEmbed(point);
+    bool IDeferredGestureLayoutHost.IsPointOverEmbed(Point point) => _embeds.HitTargets.IsPointOverEmbed(point);
 
-    bool IDeferredGestureLayoutHost.IsPointOverCodeBlockAction(Point point) => IsPointOverCodeBlockAction(point);
+    bool IDeferredGestureLayoutHost.IsPointOverCodeBlockAction(Point point) => _embeds.HitTargets.IsPointOverCodeBlockAction(point);
 
     bool IDeferredGestureLayoutHost.IsLayoutPublicationPending(LayoutSnapshot snapshot) =>
         _publishingLayoutCommit ||
@@ -3260,11 +2477,10 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (_selection.IsActive || !_selection.Range.IsEmpty)
             _selection.Clear();
 
-        if (_focusedItemIndex >= 0)
+        if (_focus.FocusedIndex >= 0)
         {
-            _pendingLazyFocus = null;
-            _focusedItemIndex = -1;
-            UpdateFocusRing();
+            _focus.ClearFocus();
+            _focusRing.Update();
         }
     }
 
@@ -3387,7 +2603,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // A queued Cancel must apply its per-contact selection disposition
         // before that identity is discarded; a queued Release keeps selection.
         _touchTapSuppression.PrepareForReset();
-        StopCanvasDeviceRecovery();
+        _deviceRecovery.Stop();
         StopImageRelayoutRecovery(force: true);
         DetachPerformanceSessionDisposalNotification();
         _pointerInput.Reset();
@@ -3407,6 +2623,13 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // subsequent window resize.
         _surface.RemoveCanvas();
         ReleaseLoadedResources();
+    }
+
+    private void ClearPendingFocusGeometryWork()
+    {
+        _focusGeometryWork.Clear();
+        _overflowScroll.ClearPendingRetry();
+        _focusRing.InvalidatePublication();
     }
 
     private void ReleaseLoadedResources()
@@ -3461,8 +2684,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _pendingImageRelayoutBlockIndices.Clear();
         _pendingScrollToBlock = null;
         _selectionAutomationEventQueued = false;
-        _horizontalOverflowAutomationEventQueued = false;
-        _pendingHorizontalOverflowAutomationChanges.Clear();
+        _overflowScroll.ClearAutomationNotifications();
         RetireCodeBlockHighlighting(restart: false);
         // Unsubscribe scroll handler so scroll-inertia events after visual-tree
         // removal don't fire OnScrollViewChanged on a partially-torn-down control.
@@ -3472,36 +2694,24 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // list; otherwise an async load completing after unload fires
         // OnImageLoadCompleted → RequestRebuild on a torn-down control, causing a
         // zombie rebuild cycle that re-subscribes handlers indefinitely.
-        UnsubscribeAllImages();
+        _imageSubscriptions.UnsubscribeAll();
         // Tear down embed plans before clearing the overlay so block embed
         // factories get RecycleBlock callbacks and inline embeds release
         // their Run.RealizedElement references — otherwise hosted controls
         // and their event handlers would leak past detach.
-        DerealizeAllEmbeds();
-        _embedPlans.Clear();
-        _embedPlanIndex = null;
-        _activeEmbedOrdinals.Clear();
-        _codeBlockActionPlans.Clear();
-        _hasMeasuredCodeBlocks = false;
-        _codeBlockActionPlanIndex = null;
-        _activeCodeBlockActionOrdinals.Clear();
-        _codeBlockCopyButtonPool.Clear();
+        _embeds.DerealizeAll();
+        _embeds.ClearPlans();
+        _embeds.ClearCopyButtonPool();
         _imagePlans.Clear();
-        _imagePlanIndex = null;
-        Volatile.Write(ref _imagePlanPublication, null);
-        ResetImageResidency();
-        _prefetchedMarkdownSource = null;
-        _activeImagePrefetcher = null;
-        _activeImagePrefetchContext = null;
-        _prefetchedImageRegistryRevision = -1;
-        _pendingImagePrefetch = null;
+        _imagePlans.Publication = null;
+        _imageResidency.Reset();
+        _imagePrefetch.Reset();
         if (PerformanceSession is IMarkdownPerformanceSessionInternal performanceSession)
         {
             _snapshotRetirements.Track(performanceSession.ReleaseDeferredSceneDocument(this));
             performanceSession.ReleaseDocumentScope(this);
         }
-        _embedRects.Clear();
-        _blockEmbedRects.Clear();
+        _embeds.ClearHostedElementHitTargets();
         _handles.ResetDrag();
         _touchTapSuppression.Reset();
         _touchSelection.Reset();
@@ -3517,7 +2727,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _adorner.DisposeForUnload();
         _cursor.Release();
         _handles.ReleaseForUnload();
-        _focusRing = null; // evicted from overlay above; lazily re-created on re-attach
+        _focusRing.ForgetEvictedRing();
         var snap = _published.Snapshot;
         _published.Snapshot = null;
         _automationDocumentGenerations.Invalidate();
@@ -3546,7 +2756,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _lifetime.MarkDisposing();
         _pendingTouchSelectionPresentationRestore = null;
         _touchTapSuppression.Reset();
-        StopCanvasDeviceRecovery();
+        _deviceRecovery.Stop();
         _handles.ResetDrag();
         _touchSelection.Dispose();
         _handles.StopFrameClock();
@@ -4365,19 +3575,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] RenderCompleted subscriber failed: {ex.Message}");
         }
 
-        PendingImagePrefetch? pending = Interlocked.Exchange(ref _pendingImagePrefetch, null);
-        if (pending is not null)
-        {
-            // The first resolver call can perform synchronous host-policy work.
-            // Queue collection and resolution together so RenderCompleted never
-            // inherits that work on the UI thread.
-            _ = Task.Run(() => PrefetchImageSourcesObservedAsync(
-                pending.Document,
-                pending.SafeHtmlPolicy,
-                pending.Prefetcher,
-                pending.Context,
-                pending.CancellationToken));
-        }
+        _imagePrefetch.StartPending();
     }
 
     private void RaiseRenderFailed(long generation, Exception exception)
@@ -4558,12 +3756,13 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             if (scope is null)
             {
                 performanceSessionSnapshot = null;
-                QueueImageSourcePrefetch(
+                _imagePrefetch.Queue(
                     parsed.Document,
                     parsed.SourceText,
                     layoutRegistry,
                     imageResolverSnapshot,
-                    imageResolveContext);
+                    imageResolveContext,
+                    _imageLifetimeCts);
             }
             else
                 imageResolverSnapshot = scope;
@@ -4571,12 +3770,13 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         else
         {
             performanceSessionSnapshot?.ReleaseDocumentScope(this);
-            QueueImageSourcePrefetch(
+            _imagePrefetch.Queue(
                 parsed.Document,
                 parsed.SourceText,
                 layoutRegistry,
                 imageResolverSnapshot,
-                imageResolveContext);
+                imageResolveContext,
+                _imageLifetimeCts);
         }
         bool codeBlockCopyEnabledSnapshot = IsCodeBlockCopyEnabled;
         bool taskListEditingEnabledSnapshot = IsTaskListEditingEnabled;
@@ -4637,12 +3837,13 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             rasterDecoderSnapshot,
             allowThirdPartyRemoteImagesSnapshot);
         IReadOnlyDictionary<string, Layout.Boxes.CompletedImageCarry>? completedImageCarrySnapshot =
-            CaptureCompletedImageCarry(
+            _completedImageCarry.Capture(
                 imageCarryIdentity,
                 // A permanent failure is carried only across an automatic
                 // scene rebuild; any other rebuild (for example the host's Retry)
                 // still retries it.
-                carryFailures: reason == RebuildReason.SceneMaterialized);
+                carryFailures: reason == RebuildReason.SceneMaterialized,
+                _imagePlans.Items);
         var ctx = new MarkdownLayoutContext(
             device,
             themeSnapshot,
@@ -4733,7 +3934,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             embedFactorySnapshot,
             enableDeclarativeHostedElements: hostedElementFactorySnapshot is not null,
             semanticDocument,
-            new HashSet<HostedElementFallbackKey>(_hostedElementFallbacks),
+            _embeds.CopyHostedElementFallbacks(),
             engineSnapshot,
             sharedLayoutMetricsKey);
 
@@ -4923,23 +4124,20 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // Old subscriptions/dirty indices cannot cross this snapshot boundary,
         // including reentrant property notifications during the commit below.
         ClearPendingFocusGeometryWork();
-        UnsubscribeAllImages();
+        _imageSubscriptions.UnsubscribeAll();
         _pendingImageRelayoutBlockIndices.Clear();
         _imageRelayoutQueued = false;
         ++_lastImageRelayoutDispatchTicket;
         if (!_imageRelayoutActive)
             StopImageRelayoutRecovery();
         _pendingScrollToBlock = null;
-        Volatile.Write(ref _imagePlanPublication, null);
+        _imagePlans.Publication = null;
         if (!sameDocument)
         {
             // A new logical document must not expose the former document's
             // value-only focus identities to automation or reentrant property
             // callbacks below.
-            _focusableItems = Array.Empty<Layout.FocusableItem>();
-            _focusedItemIndex = -1;
-            _focusResumeItemIndex = -1;
-            _pendingLazyFocus = null;
+            _focus.Reset();
         }
         _published.Snapshot = snapshot;
         _published.LayoutDevice = device;
@@ -4955,7 +4153,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _committedLocalization = localizationSnapshot;
         _committedImageDocumentId = imageDocumentId;
         _published.Generation = generation;
-        MarkFocusableItemsRefreshPending(snapshot, generation);
+        _focusRefresh.Mark(snapshot, generation);
         SynchronizeVectorCapacityObserver(snapshot);
         _snapshotPipelineStartTimestamp = pipelineStartTimestamp;
         _snapshotSourceUtf16Bytes = sourceUtf16Bytes;
@@ -5030,7 +4228,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // LoadCompleted, then realise only embeds that fall in the current
         // viewport. Hooking ScrollViewer.ViewChanged drives subsequent realisation
         // as the user scrolls.
-        DerealizeAllEmbeds();
+        _embeds.DerealizeAll();
         _dragShield.SetActive(false);
         // Keep the attached adorner surface and its placeholder across
         // commits. Repaint against the new snapshot instead of replacing the
@@ -5038,23 +4236,14 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _adorner.InvalidatePresentation();
         _adorner.Collapse();
         _adorner.RemoveOtherOverlayChildren();
-        _embedRects.Clear();
-        _blockEmbedRects.Clear();
-        _codeBlockActionRects.Clear();
-        _embedPlans.Clear();
-        _embedPlanIndex = null;
-        _activeEmbedOrdinals.Clear();
-        _codeBlockActionPlans.Clear();
-        _hasMeasuredCodeBlocks = false;
-        _codeBlockActionPlanIndex = null;
-        _activeCodeBlockActionOrdinals.Clear();
-        UnsubscribeAllImages();
+        _embeds.ClearHitTargets();
+        _embeds.ClearPlans();
+        _imageSubscriptions.UnsubscribeAll();
         _imagePlans.Clear();
-        _imagePlanIndex = null;
-        ResetImageResidency();
+        _imageResidency.Reset();
         // Identities change across rebuild even when the count happens to
         // match — reset so the first post-rebuild realisation always fires.
-        _lastFiredRealizedCount = -1;
+        _embeds.ResetRealizedCountNotification();
         _adorner.ClearGeometry();
         _handles.MarkEndpointsUnavailable();
         // Rebuild detaches selection chrome with the other overlay children.
@@ -5106,9 +4295,9 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             _selection.Clear();
         }
         long overlayResetEnded = Stopwatch.GetTimestamp();
-        _focusResumeItemIndex = -1;
-        _pendingLazyFocus = null;
-        _focusRing = null;              // evicted from overlay; will be lazily re-created on demand
+        _focus.ClearResumeIndex();
+        _focus.ClearLazyFocus();
+        _focusRing.ForgetEvictedRing();
         bool realizationPlansReady = RebuildRealizationPlans(
             snapshot,
             preserveRealized: false,
@@ -5122,16 +4311,16 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             _surface.Scroll.ViewChanged -= OnScrollViewChanged;
             _surface.Scroll.ViewChanged += OnScrollViewChanged;
         }
-        RealizeVisibleEmbeds();
+        _embeds.RealizeVisible();
         long embedRealizationEnded = Stopwatch.GetTimestamp();
-        bool resumedPendingHostedFocus = ResumePendingLazyFocus(snapshot);
+        bool resumedPendingHostedFocus = _focusCommit.ResumePendingLazy(snapshot);
         _ = RestartCodeBlockHighlighting();
         long highlightRetirementEnded = Stopwatch.GetTimestamp();
         ScheduleVisibleCodeBlockHighlighting();
         long highlightSchedulingEnded = Stopwatch.GetTimestamp();
         _adorner.InvalidateGeometry();
         if (!resumedPendingHostedFocus)
-            UpdateFocusRing();
+            _focusRing.Update();
         long visibleRealizationEnded = Stopwatch.GetTimestamp();
 
         InvalidateCanvas();
@@ -5390,7 +4579,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             // so we don't thrash during fling/inertia. ViewChanged with
             // IsIntermediate=false fires at the end of inertia; we also realise on
             // intermediate ticks to keep the visual current.
-            RealizeVisibleEmbeds();
+            _embeds.RealizeVisible();
             if (measure)
                 afterRealization = GC.GetAllocatedBytesForCurrentThread();
             ScheduleVisibleCodeBlockHighlighting();
@@ -5412,7 +4601,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                     Math.Max(0, afterAdorner - afterLazyLayout),
                     Math.Max(0, afterRealization - afterAdorner),
                     Math.Max(0, GC.GetAllocatedBytesForCurrentThread() - afterRealization));
-                GetCodeBlockActionRealizationCounts(out int realizedActions, out int offscreenActions);
+                _embeds.GetCodeBlockActionRealizationCounts(out int realizedActions, out int offscreenActions);
                 performance.CodeActionRealization(
                     MarkdownPerformanceEventSource.GetLogicalFrameId(),
                     realizedActions,
@@ -5444,7 +4633,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             return;
         ScheduleVisibleDeferredScenes();
 
-        if (!_hasMeasuredCodeBlocks ||
+        if (!_embeds.HasMeasuredCodeBlocks ||
             !IsCodeBlockSyntaxHighlightingEnabled ||
             CodeHighlighter is not { } highlighter ||
             _published.Snapshot is not { } snapshot ||
@@ -6543,7 +5732,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             NotifyVisibleDeferredSceneItemStatusMayHaveChanged();
             if (GraphicsDeviceErrors.IsDeviceLost(failure))
             {
-                HandleCanvasDeviceLost(failure);
+                _deviceRecovery.HandleDeviceLost(failure);
             }
             else
             {
@@ -6582,7 +5771,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             // A focus request can arrive while an already-measured band is
             // publishing its completion. Re-evaluate it even when that worker
             // produced no newer layout revision.
-            _ = ResumePendingLazyFocus(snapshot);
+            _ = _focusCommit.ResumePendingLazy(snapshot);
             TryResumePendingScrollToBlock(snapshot, pipelineGeneration);
             _pointerInput.OnLazyLayoutCompletion(snapshot, succeeded: true);
             StopImageRelayoutRecoveryIfIdle();
@@ -6618,7 +5807,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _activeLazyLayoutAnchorOffset = null;
         _hasPendingLazyLayoutBand = false;
         _pendingLazyLayoutPreserveScrollAnchor = false;
-        _pendingLazyFocus = null;
+        _focus.ClearLazyFocus();
 
         var oldCts = _lazyLayoutCts;
         var oldTask = _lazyLayoutTask;
@@ -6657,10 +5846,10 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             if (anchorOffset is { } target && _surface.Scroll is { } scroll &&
                 Math.Abs(target - scroll.VerticalOffset) >= 0.5)
                 scroll.ChangeView(null, target, null, disableAnimation: true);
-            RealizeVisibleEmbeds();
+            _embeds.RealizeVisible();
             ScheduleVisibleCodeBlockHighlighting();
-            if (!ResumePendingLazyFocus(snapshot))
-                UpdateFocusRing();
+            if (!_focusCommit.ResumePendingLazy(snapshot))
+                _focusRing.Update();
             RefreshInteractiveTextAdornerAfterLayoutChange();
             InvalidateAutomationLayout();
             InvalidateCanvas();
@@ -6710,56 +5899,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         ApplyLazyLayoutCommit(snapshot, restoreAnchor ? pending.Anchor : null);
     }
 
-    private long InvalidateHostedFocusPlanPublication()
-    {
-        long epoch = unchecked(Volatile.Read(ref _hostedFocusPlanEpoch) + 1);
-        Volatile.Write(ref _hostedFocusPlanEpoch, epoch);
-        Volatile.Write(ref _publishedHostedFocusPlanEpoch, -1);
-        Volatile.Write(ref _publishedHostedFocusPlanGeneration, -1);
-        Volatile.Write(ref _publishedHostedFocusPlanRevision, -1);
-        return epoch;
-    }
-
-    private void DerealizeAllEmbeds()
-    {
-        if (_derealizingAllEmbeds)
-            return;
-
-        InvalidateHostedFocusPlanPublication();
-        _derealizingAllEmbeds = true;
-        _realizationPassEpoch++;
-        _realizeVisibleEmbedsRequested = false;
-        _realizeVisibleEmbedsContinuationQueued = false;
-        _realizeVisibleEmbedsContinuationTicket++;
-        // Native callbacks can synchronously unload or replace the document.
-        // Keep this teardown's ownership detached from the mutable plan lists;
-        // nested cleanup is rejected above and each plan retires its element
-        // before invoking callback-capable recycling code.
-        EmbedPlan[] embedPlans = Array.Empty<EmbedPlan>();
-        CodeBlockActionPlan[] actionPlans = Array.Empty<CodeBlockActionPlan>();
-        try
-        {
-            embedPlans = _embedPlans.ToArray();
-            actionPlans = _codeBlockActionPlans.ToArray();
-            // Previously pooled buttons may still be collapsed children of the
-            // current overlay. The caller clears that overlay after this pass,
-            // so discard those attached-state entries before pooling plans.
-            _codeBlockCopyButtonPool.Clear();
-            foreach (EmbedPlan plan in embedPlans)
-                plan.Derealize(this);
-            foreach (CodeBlockActionPlan plan in actionPlans)
-            {
-                if (plan.Realized is not null) plan.Derealize(this);
-            }
-        }
-        finally
-        {
-            _derealizingAllEmbeds = false;
-            _activeEmbedOrdinals.Clear();
-            _activeCodeBlockActionOrdinals.Clear();
-        }
-    }
-
     private bool RebuildRealizationPlans(LayoutSnapshot snapshot, bool preserveRealized,
         out Size size, out double? anchorOffset,
         (int BlockIndex, double OffsetFromTop)? scrollAnchor = null)
@@ -6771,7 +5910,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             return false;
         long hostedFocusPlanEpoch = -1;
         long hostedFocusPlanRevision = -1;
-        long focusRequestVersion = _pendingFocusableItemsRefresh.RequestVersion;
+        long focusRequestVersion = _focusRefresh.Pending.RequestVersion;
         IReadOnlyList<Layout.FocusableItem> collectedFocusableItems =
             Array.Empty<Layout.FocusableItem>();
         ImagePlanPublication? imagePlanPublication = null;
@@ -6816,22 +5955,12 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                         return false;
                     }
 
-                    hostedFocusPlanEpoch = InvalidateHostedFocusPlanPublication();
-                    oldPlans = preserveRealized ? _embedPlans.ToArray() : Array.Empty<EmbedPlan>();
-                    oldActionPlans = preserveRealized ? _codeBlockActionPlans.ToArray() : Array.Empty<CodeBlockActionPlan>();
-                    UnsubscribeAllImages();
+                    hostedFocusPlanEpoch = _hostedFocusPlan.Invalidate();
+                    _embeds.CapturePlansForAdoption(preserveRealized, out oldPlans, out oldActionPlans);
+                    _imageSubscriptions.UnsubscribeAll();
                     _imagePlans.Clear();
-                    _imagePlanIndex = null;
-                    _embedRects.Clear();
-                    _blockEmbedRects.Clear();
-                    _codeBlockActionRects.Clear();
-                    _embedPlans.Clear();
-                    _embedPlanIndex = null;
-                    _activeEmbedOrdinals.Clear();
-                    _codeBlockActionPlans.Clear();
-                    _hasMeasuredCodeBlocks = false;
-                    _codeBlockActionPlanIndex = null;
-                    _activeCodeBlockActionOrdinals.Clear();
+                    _embeds.ClearHitTargets();
+                    _embeds.ClearPlans();
 
                     LayoutSnapshot.LayoutPlanCandidateEnumerator planCandidates =
                         snapshot.GetMeasuredLayoutPlanCandidatesUnderPaint();
@@ -6854,45 +5983,21 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                         {
                             using LayoutPlacementTransformContext.Scope placementScope =
                                 snapshot.EnterPlacementTransformScopeForTopLevelBlockUnderPaint(candidateRoot!);
-                            CollectEmbedPlans(snapshot, candidateRoot!, candidate.Box);
+                            _embeds.CollectPlans(snapshot, candidateRoot!, candidate.Box);
                         }
                     }
 
-                    _embedPlanIndex = BuildPlanIndex(_embedPlans);
-                    _codeBlockActionPlanIndex = BuildPlanIndex(_codeBlockActionPlans);
+                    _embeds.CommitPlanIndexes();
 
                     // Membership and indexed bounds remain immutable until the next
                     // plan publication. The ImageBox itself is mutable and borrowed.
-                    if (_imagePlans.Count > 0)
-                    {
-                        _imagePlanIndex = new ViewportBandIndex(_imagePlans.Count);
-                        var imageBounds = new Rect[_imagePlans.Count];
-                        for (int index = 0; index < _imagePlans.Count; index++)
-                        {
-                            Rect bounds = snapshot.ToLogicalRectForBlockIndexUnderPaint(
-                                _imagePlans[index].BlockIndex, _imagePlans[index].Bounds);
-                            imageBounds[index] = bounds;
-                            _imagePlanIndex.SetEntry(index, index, bounds.Top, bounds.Bottom);
-                        }
-                        _imagePlanIndex.Commit();
-                        imagePlanPublication = new ImagePlanPublication(
-                            snapshot,
-                            planGeneration,
-                            hostedFocusPlanRevision,
-                            _imagePlans.ToArray(),
-                            imageBounds,
-                            _imagePlanIndex);
-                    }
+                    imagePlanPublication = _imagePlans.IndexUnderPaint(
+                        snapshot, planGeneration, hostedFocusPlanRevision);
                     size = snapshot.Size;
                     anchorOffset = GetScrollAnchorOffset(snapshot, scrollAnchor);
                     _appliedLazyLayoutRevision = hostedFocusPlanRevision;
-                    imagePlanPublication ??= new ImagePlanPublication(
-                        snapshot,
-                        planGeneration,
-                        _appliedLazyLayoutRevision,
-                        Array.Empty<Layout.Boxes.ImageBox>(),
-                        Array.Empty<Rect>(),
-                        null);
+                    imagePlanPublication ??= ImagePlanSet.Empty(
+                        snapshot, planGeneration, _appliedLazyLayoutRevision);
                 }
             }
             finally
@@ -6902,129 +6007,27 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
             if (focusPlanCaptureFailure is not null)
             {
-                ClearFocusableItemsRefresh(focusRequestVersion);
+                _focusRefresh.Clear(focusRequestVersion);
                 System.Runtime.ExceptionServices.ExceptionDispatchInfo
                     .Capture(focusPlanCaptureFailure).Throw();
             }
-            if (!IsCurrentRealizationSnapshot(snapshot, planGeneration) ||
-                hostedFocusPlanEpoch != Volatile.Read(ref _hostedFocusPlanEpoch) ||
-                snapshot.LayoutRevision != hostedFocusPlanRevision)
+            if (!IsCurrentPlanPublication(snapshot, planGeneration, hostedFocusPlanEpoch, hostedFocusPlanRevision))
                 return false;
             if (imagePlanPublication is null)
                 return false;
 
-            Volatile.Write(ref _imagePlanPublication, imagePlanPublication);
+            _imagePlans.Publication = imagePlanPublication;
 
             // Native child transfer, factories, residency policies and XAML
             // notifications can reenter the control. Do not invoke them under the
             // geometry lease; every plan rectangle above is already copied.
-            PrepareImageResidency(snapshot);
+            _imageResidency.Prepare(snapshot);
 
-            if (oldPlans.Length > 0)
-            {
-                // Only plans owned by the same logical box can be the same
-                // logical embed. Index realized plans once: a long document can
-                // otherwise spend O(n²) UI-thread work after every lazy-layout or
-                // image-size publication.
-                var oldByOwner = new Dictionary<object, List<EmbedPlan>>(
-                    ReferenceEqualityComparer.Instance);
-                foreach (EmbedPlan oldPlan in oldPlans)
-                {
-                    if (oldPlan.Realized is null)
-                        continue;
-                    if (!oldByOwner.TryGetValue(oldPlan.LogicalOwner, out var candidates))
-                        oldByOwner.Add(oldPlan.LogicalOwner, candidates = []);
-                    candidates.Add(oldPlan);
-                }
+            if (!_embeds.AdoptRealizedElements(
+                    oldPlans, oldActionPlans, snapshot, planGeneration,
+                    hostedFocusPlanEpoch, hostedFocusPlanRevision))
+                return false;
 
-                for (int ordinal = 0; ordinal < _embedPlans.Count; ordinal++)
-                {
-                    if (!IsCurrentRealizationSnapshot(snapshot, planGeneration) ||
-                        hostedFocusPlanEpoch != Volatile.Read(ref _hostedFocusPlanEpoch) ||
-                        snapshot.LayoutRevision != hostedFocusPlanRevision)
-                        return false;
-                    EmbedPlan newPlan = _embedPlans[ordinal];
-                    if (!oldByOwner.TryGetValue(newPlan.LogicalOwner, out var candidates))
-                        continue;
-                    for (int index = 0; index < candidates.Count; index++)
-                    {
-                        EmbedPlan oldPlan = candidates[index];
-                        if (!newPlan.IsSameLogicalEmbed(oldPlan))
-                            continue;
-
-                        if (newPlan is DeclarativeHostedElementPlan newDeclarative &&
-                            oldPlan is DeclarativeHostedElementPlan oldDeclarative)
-                        {
-                            newDeclarative.AdoptRealizedFrom(oldDeclarative);
-                        }
-                        else
-                        {
-                            newPlan.Realized = oldPlan.Realized;
-                            oldPlan.Realized = null;
-                            AttachRealizedElement(newPlan);
-                        }
-                        newPlan.UpdatePlacement();
-                        if (!IsCurrentRealizationSnapshot(snapshot, planGeneration) ||
-                            hostedFocusPlanEpoch != Volatile.Read(ref _hostedFocusPlanEpoch) ||
-                            snapshot.LayoutRevision != hostedFocusPlanRevision)
-                            return false;
-                        candidates.RemoveAt(index);
-                        break;
-                    }
-                }
-            }
-
-            if (oldActionPlans.Length > 0)
-            {
-                var oldByBox = new Dictionary<Layout.Boxes.CodeBlockBox, List<CodeBlockActionPlan>>(
-                    ReferenceEqualityComparer.Instance);
-                foreach (CodeBlockActionPlan oldPlan in oldActionPlans)
-                {
-                    if (oldPlan.Realized is null)
-                        continue;
-                    if (!oldByBox.TryGetValue(oldPlan.Box, out var candidates))
-                        oldByBox.Add(oldPlan.Box, candidates = []);
-                    candidates.Add(oldPlan);
-                }
-
-                for (int ordinal = 0; ordinal < _codeBlockActionPlans.Count; ordinal++)
-                {
-                    if (!IsCurrentRealizationSnapshot(snapshot, planGeneration) ||
-                        hostedFocusPlanEpoch != Volatile.Read(ref _hostedFocusPlanEpoch) ||
-                        snapshot.LayoutRevision != hostedFocusPlanRevision)
-                        return false;
-                    CodeBlockActionPlan newPlan = _codeBlockActionPlans[ordinal];
-                    if (!oldByBox.TryGetValue(newPlan.Box, out var candidates))
-                        continue;
-                    for (int index = 0; index < candidates.Count; index++)
-                    {
-                        CodeBlockActionPlan oldPlan = candidates[index];
-                        if (!newPlan.IsSameLogicalAction(oldPlan))
-                            continue;
-
-                        newPlan.AdoptRealizedFrom(oldPlan, this);
-                        if (!IsCurrentRealizationSnapshot(snapshot, planGeneration) ||
-                            hostedFocusPlanEpoch != Volatile.Read(ref _hostedFocusPlanEpoch) ||
-                            snapshot.LayoutRevision != hostedFocusPlanRevision)
-                            return false;
-                        candidates.RemoveAt(index);
-                        break;
-                    }
-                }
-            }
-
-            for (int index = 0; index < _embedPlans.Count; index++)
-            {
-                if (_embedPlans[index].HasActiveWork)
-                    _activeEmbedOrdinals.Add(index);
-            }
-            for (int index = 0; index < _codeBlockActionPlans.Count; index++)
-            {
-                if (_codeBlockActionPlans[index].Realized is not null)
-                    _activeCodeBlockActionOrdinals.Add(index);
-            }
-
-            _lastFiredRealizedCount = -1;
             plansBuilt = true;
         }
         finally
@@ -7032,22 +6035,14 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             // Even reentrant unload/replacement or failed geometry collection
             // must retire the old plans not transferred to the current set.
             // These detached arrays are not invalidated by native callbacks.
-            foreach (EmbedPlan oldPlan in oldPlans)
-                oldPlan.Derealize(this);
-            foreach (CodeBlockActionPlan oldPlan in oldActionPlans)
-            {
-                if (oldPlan.Realized is not null)
-                    oldPlan.Derealize(this);
-            }
+            _embeds.RetireDetachedPlans(oldPlans, oldActionPlans);
         }
 
         // Retiring detached plans is callback-capable. Publish the focus index
         // only after that cleanup completes and the complete plan attempt still
         // owns the same snapshot, generation, layout revision, and epoch.
         if (!plansBuilt ||
-            !IsCurrentRealizationSnapshot(snapshot, planGeneration) ||
-            hostedFocusPlanEpoch != Volatile.Read(ref _hostedFocusPlanEpoch) ||
-            snapshot.LayoutRevision != hostedFocusPlanRevision ||
+            !IsCurrentPlanPublication(snapshot, planGeneration, hostedFocusPlanEpoch, hostedFocusPlanRevision) ||
             !IsCurrentFocusablePlanAttempt(
                 snapshot,
                 planGeneration,
@@ -7061,21 +6056,28 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // focus while realization plans are being published. Resolve the
         // currently focused value identity only now, then atomically replace
         // the value-only list/index after every snapshot and ticket fence holds.
-        Layout.FocusableItem? focusedIdentity = GetCurrentFocusableIdentity();
-        _focusableItems = collectedFocusableItems;
-        _focusedItemIndex = focusedIdentity is { } identity
-            ? FocusableItemQueries.FindFocusableItemIndex(collectedFocusableItems, identity)
-            : -1;
-        Volatile.Write(ref _publishedHostedFocusPlanGeneration, planGeneration);
-        Volatile.Write(ref _publishedHostedFocusPlanRevision, hostedFocusPlanRevision);
-        Volatile.Write(ref _publishedHostedFocusPlanEpoch, hostedFocusPlanEpoch);
-        CompleteFocusableItemsRefresh(
+        _focus.ReplaceItems(collectedFocusableItems);
+        _hostedFocusPlan.Publish(planGeneration, hostedFocusPlanRevision, hostedFocusPlanEpoch);
+        _focusRefresh.Complete(
             snapshot,
             planGeneration,
             hostedFocusPlanRevision,
             focusRequestVersion);
         return true;
     }
+
+    /// <summary>
+    /// True while a plan publication still owns the published snapshot,
+    /// generation, hosted focus plan epoch and layout revision.
+    /// </summary>
+    private bool IsCurrentPlanPublication(
+        LayoutSnapshot snapshot,
+        long generation,
+        long hostedFocusPlanEpoch,
+        long layoutRevision) =>
+        IsCurrentRealizationSnapshot(snapshot, generation) &&
+        hostedFocusPlanEpoch == _hostedFocusPlan.Epoch &&
+        snapshot.LayoutRevision == layoutRevision;
 
     private bool IsCurrentRealizationSnapshot(LayoutSnapshot snapshot, long generation) =>
         !_lifetime.IsDisposed && !_lifetime.IsUnloaded && generation == _published.Generation &&
@@ -7093,776 +6095,15 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             return false;
         }
 
-        var pending = _pendingFocusableItemsRefresh;
-        return pending.RequestVersion == requestVersion &&
-            (!pending.IsPending ||
-             (pending.SnapshotGeneration == generation &&
-              pending.AutomationDocumentGeneration == snapshot.AutomationDocumentGeneration &&
-              pending.LayoutRevision == revision));
-    }
-
-    private static ViewportBandIndex? BuildPlanIndex(List<EmbedPlan> plans)
-    {
-        if (plans.Count == 0)
-            return null;
-        var index = new ViewportBandIndex(plans.Count);
-        for (int ordinal = 0; ordinal < plans.Count; ordinal++)
-        {
-            Rect rect = plans[ordinal].Rect;
-            index.SetEntry(ordinal, ordinal, rect.Top, rect.Bottom);
-        }
-        index.Commit();
-        return index;
-    }
-
-    private static ViewportBandIndex? BuildPlanIndex(List<CodeBlockActionPlan> plans)
-    {
-        if (plans.Count == 0)
-            return null;
-        var index = new ViewportBandIndex(plans.Count);
-        for (int ordinal = 0; ordinal < plans.Count; ordinal++)
-        {
-            Rect rect = plans[ordinal].Rect;
-            index.SetEntry(ordinal, ordinal, rect.Top, rect.Bottom);
-        }
-        index.Commit();
-        return index;
-    }
-
-    private static void AddActiveOrdinal(List<int> ordinals, int ordinal)
-    {
-        int position = ordinals.BinarySearch(ordinal);
-        if (position < 0)
-            ordinals.Insert(~position, ordinal);
-    }
-
-    private static void AttachRealizedElement(EmbedPlan plan)
-    {
-        switch (plan)
-        {
-            case BlockEmbedPlan block:
-                block.Box.RealizedElement = block.Realized;
-                break;
-            case InlineEmbedPlan inline:
-                inline.Run.RealizedElement = inline.Realized;
-                break;
-            case DeclarativeHostedElementPlan declarative:
-                declarative.Box.RealizedElement = declarative.Realized;
-                break;
-        }
-    }
-
-    /// <summary>
-    /// Realise embeds whose rect intersects the realisation band (viewport +
-    /// overscan) and derealise embeds that have left the wider derealisation
-    /// band. Called from snapshot commit, scroll, and resize.
-    /// </summary>
-    internal void RealizeVisibleEmbeds()
-    {
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _derealizingAllEmbeds)
-            return;
-
-        // Plan factories and native child teardown can synchronously raise
-        // layout/scroll events. Coalesce those nested requests instead of
-        // allowing them to mutate the active ordinal lists being traversed.
-        if (_realizingVisibleEmbeds)
-        {
-            _realizeVisibleEmbedsRequested = true;
-            return;
-        }
-
-        _realizingVisibleEmbeds = true;
-        bool queueContinuation = false;
-        try
-        {
-            for (int pass = 0; pass < 2; pass++)
-            {
-                _realizeVisibleEmbedsRequested = false;
-                if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _derealizingAllEmbeds)
-                    break;
-
-                RealizeVisibleEmbedsCore();
-                if (!_realizeVisibleEmbedsRequested)
-                    break;
-            }
-            queueContinuation = _realizeVisibleEmbedsRequested &&
-                !_lifetime.IsDisposed && !_lifetime.IsUnloaded && !_derealizingAllEmbeds;
-        }
-        finally
-        {
-            _realizingVisibleEmbeds = false;
-        }
-
-        if (queueContinuation)
-            QueueVisibleRealizationContinuation();
-    }
-
-    private void QueueVisibleRealizationContinuation()
-    {
-        if (_realizeVisibleEmbedsContinuationQueued ||
-            _lifetime.IsDisposed || _lifetime.IsUnloaded || _derealizingAllEmbeds)
-            return;
-
-        var dispatcher = DispatcherQueue;
-        if (dispatcher is null)
-            return;
-
-        long ticket = ++_realizeVisibleEmbedsContinuationTicket;
-        if (ticket == 0)
-            ticket = ++_realizeVisibleEmbedsContinuationTicket;
-        var receiver = new WeakReference<MarkdownRendererControl>(this);
-        try
-        {
-            if (dispatcher.TryEnqueue(
-                    Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
-                    () =>
-                    {
-                        if (receiver.TryGetTarget(out var control))
-                            control.ProcessQueuedVisibleRealizationContinuation(ticket);
-                    }))
-            {
-                _realizeVisibleEmbedsContinuationQueued = true;
-            }
-        }
-        catch (Exception exception)
-        {
-            MarkdownDiagnostics.WriteLine(
-                $"[MarkdownRendererControl] visible realization continuation dispatch failed: {exception.GetType().Name} " +
-                $"(0x{exception.HResult:X8}).");
-        }
-    }
-
-    private void ProcessQueuedVisibleRealizationContinuation(long ticket)
-    {
-        if (ticket != _realizeVisibleEmbedsContinuationTicket)
-            return;
-
-        _realizeVisibleEmbedsContinuationQueued = false;
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _derealizingAllEmbeds)
-        {
-            _realizeVisibleEmbedsRequested = false;
-            return;
-        }
-
-        RealizeVisibleEmbeds();
-    }
-
-    private void RealizeVisibleEmbedsCore()
-    {
-        LayoutSnapshot? snapshot = _published.Snapshot;
-        if (snapshot is null)
-            return;
-
-        long snapshotGeneration = _published.Generation;
-        long realizationPassEpoch = _realizationPassEpoch;
-        ViewportBandIndex? imageIndex = _imagePlanIndex;
-        ViewportBandIndex? embedIndex = _embedPlanIndex;
-        ViewportBandIndex? actionIndex = _codeBlockActionPlanIndex;
-        if (!IsCurrentVisibleRealizationPass(
-                snapshot, snapshotGeneration, realizationPassEpoch,
-                imageIndex, embedIndex, actionIndex))
-            return;
-
-        _viewport.TryGet(out double top, out double viewportHeight, out _);
-        double bottom = top + viewportHeight;
-
-        // Lazy image loading: trigger EnsureLoading for images within the
-        // viewport + LazyImageOverscanPx band.  Images already started (cached
-        // or previously triggered) are silently skipped by EnsureLoading().
-        LazyLayoutBand imageBand = PerformanceSession is { } performanceSession
-            ? LazyLayoutBand.FromDirectionalViewport(
-                top,
-                viewportHeight,
-                performanceSession.Options.LookAheadViewports,
-                _lazyScrollVelocityPixelsPerSecond)
-            : LazyLayoutBand.FromViewport(top, viewportHeight, LazyImageOverscanPx);
-        double imgLoadTop = imageBand.Top;
-        double imgLoadBottom = imageBand.Bottom;
-        ViewportRange imageRange = imageIndex?.Find(imgLoadTop, imgLoadBottom) ?? default;
-        ReconcileImageResidency(imageBand, imageRange);
-        if (!IsCurrentVisibleRealizationPass(
-                snapshot, snapshotGeneration, realizationPassEpoch,
-                imageIndex, embedIndex, actionIndex))
-            return;
-
-        for (int index = imageRange.Start; index < imageRange.End; index++)
-        {
-            int imageOrdinal = imageIndex!.GetBlockOrdinal(index);
-            (double imageTop, double imageBottom) = imageIndex.GetBounds(index);
-            var img = _imagePlans[imageOrdinal];
-            if (imageBottom >= imgLoadTop && imageTop <= imgLoadBottom)
-            {
-                bool intersectsViewport = imageBottom >= top && imageTop <= bottom;
-                if (!IsCurrentVisibleRealizationPass(
-                        snapshot, snapshotGeneration, realizationPassEpoch,
-                        imageIndex, embedIndex, actionIndex))
-                    return;
-
-                // Paint culls offscreen images before ImageBox can observe the
-                // viewport. Keep current residency visibility separate from the
-                // monotonic load-demand ticket, including images in overscan.
-                object? svgObservation = img.CaptureSvgViewportObservationToken();
-                img.ObserveSvgViewportVisibility(svgObservation, intersectsViewport);
-                img.EnsureLoading(isVisible: intersectsViewport);
-                if (!IsCurrentVisibleRealizationPass(
-                        snapshot, snapshotGeneration, realizationPassEpoch,
-                        imageIndex, embedIndex, actionIndex))
-                    return;
-            }
-        }
-
-        // Drop old realisation-side caches; they'll be repopulated from realised plans.
-        _embedRects.Clear();
-        _blockEmbedRects.Clear();
-        _codeBlockActionRects.Clear();
-
-        ViewportRange actionRange = actionIndex?.Find(top, bottom) ?? default;
-        for (int index = actionRange.Start; index < actionRange.End; index++)
-        {
-            int ordinal = actionIndex!.GetBlockOrdinal(index);
-            CodeBlockActionPlan plan = _codeBlockActionPlans[ordinal];
-            double actionTop = plan.Rect.Top;
-            double actionBottom = plan.Rect.Bottom;
-            // Copy buttons are XAML controls, so retaining them in an overscan
-            // band creates off-screen automation peers and warm-scroll churn.
-            // Realize only actions that intersect the effective viewport; the
-            // detached bounded pool makes boundary crossings inexpensive.
-            bool inRealize = actionBottom >= top && actionTop <= bottom;
-            if (inRealize)
-            {
-                plan.Realize(this);
-                if (!IsCurrentVisibleRealizationPass(
-                        snapshot, snapshotGeneration, realizationPassEpoch,
-                        imageIndex, embedIndex, actionIndex))
-                    return;
-                if (plan.Realized is not null)
-                    AddActiveOrdinal(_activeCodeBlockActionOrdinals, ordinal);
-            }
-        }
-
-        for (int index = _activeCodeBlockActionOrdinals.Count - 1; index >= 0; index--)
-        {
-            int ordinal = _activeCodeBlockActionOrdinals[index];
-            CodeBlockActionPlan plan = _codeBlockActionPlans[ordinal];
-            if (plan.Rect.Bottom >= top && plan.Rect.Top <= bottom)
-                continue;
-            plan.Derealize(this);
-            if (!IsCurrentVisibleRealizationPass(
-                    snapshot, snapshotGeneration, realizationPassEpoch,
-                    imageIndex, embedIndex, actionIndex))
-                return;
-            _activeCodeBlockActionOrdinals.RemoveAt(index);
-        }
-
-        foreach (int ordinal in _activeCodeBlockActionOrdinals)
-        {
-            CodeBlockActionPlan plan = _codeBlockActionPlans[ordinal];
-            if (plan.Realized is not null)
-            {
-                double left = Math.Round(plan.Rect.X);
-                double t = Math.Round(plan.Rect.Y);
-                double w = Math.Round(plan.Rect.X + plan.Rect.Width) - left;
-                double h = Math.Round(plan.Rect.Y + plan.Rect.Height) - t;
-                _codeBlockActionRects.Add((plan.Box, new Rect(left, t, w, h), plan.Kind));
-            }
-        }
-
-        if (_embedPlans.Count == 0)
-        {
-            // No embeds: still emit a transition-to-zero event so subscribers
-            // that mirror the count (e.g. UI-automation) don't go stale after
-            // a rebuild that dropped all embeds.
-            if (_lastFiredRealizedCount != 0)
-            {
-                _lastFiredRealizedCount = 0;
-                try { EmbedsRealizationChanged?.Invoke(this, EventArgs.Empty); }
-                catch { /* swallow */ }
-            }
-            return;
-        }
-
-        ViewportRange embedRange = embedIndex?.Find(
-            top - EmbedVirtualizationOverscanPx,
-            bottom + EmbedVirtualizationOverscanPx) ?? default;
-        for (int index = embedRange.Start; index < embedRange.End; index++)
-        {
-            int ordinal = embedIndex!.GetBlockOrdinal(index);
-            EmbedPlan plan = _embedPlans[ordinal];
-            double pTop = plan.Rect.Top;
-            double pBottom = plan.Rect.Bottom;
-            bool inRealize = EmbedVisibility.IsInRealizeBand(pTop, pBottom, top, bottom, EmbedVirtualizationOverscanPx);
-            if (inRealize)
-            {
-                plan.Realize(this);
-                if (!IsCurrentVisibleRealizationPass(
-                        snapshot, snapshotGeneration, realizationPassEpoch,
-                        imageIndex, embedIndex, actionIndex))
-                    return;
-                if (plan.HasActiveWork)
-                    AddActiveOrdinal(_activeEmbedOrdinals, ordinal);
-            }
-        }
-
-        for (int index = _activeEmbedOrdinals.Count - 1; index >= 0; index--)
-        {
-            int ordinal = _activeEmbedOrdinals[index];
-            EmbedPlan plan = _embedPlans[ordinal];
-            if (EmbedVisibility.IsInDerealizeBand(
-                plan.Rect.Top, plan.Rect.Bottom, top, bottom,
-                EmbedVirtualizationDerealizeOverscanPx))
-                continue;
-            plan.Derealize(this);
-            if (!IsCurrentVisibleRealizationPass(
-                    snapshot, snapshotGeneration, realizationPassEpoch,
-                    imageIndex, embedIndex, actionIndex))
-                return;
-            _activeEmbedOrdinals.RemoveAt(index);
-        }
-
-        foreach (int ordinal in _activeEmbedOrdinals)
-        {
-            EmbedPlan plan = _embedPlans[ordinal];
-            // Pending declarative factories occupy the active band but do not
-            // contribute a hit-test rectangle or a realized-element count.
-            if (plan.Realized is null)
-                continue;
-
-            // Rebuild hit-rect caches from realised plans in document order.
-            if (plan is BlockEmbedPlan bp)
-            {
-                Rect rect = bp.Rect;
-                double left = Math.Round(rect.X);
-                double t = Math.Round(rect.Y);
-                double w = Math.Round(rect.Width);
-                double h = Math.Round(rect.Height);
-                _blockEmbedRects.Add((bp.Box, new Rect(left, t, w, h)));
-            }
-            else if (plan is InlineEmbedPlan ip)
-            {
-                double iLeft = Math.Round(ip.Rect.X);
-                double iTop  = Math.Round(ip.Rect.Y);
-                double iW    = Math.Round(ip.Rect.X + ip.Rect.Width)  - iLeft;
-                double iH    = Math.Round(ip.Rect.Y + ip.Rect.Height) - iTop;
-                _embedRects.Add((ip.Icb, ip.Run, new Rect(iLeft, iTop, iW, iH)));
-            }
-            else if (plan is DeclarativeHostedElementPlan declarative)
-            {
-                _blockEmbedRects.Add((declarative.Box, declarative.Rect));
-            }
-        }
-
-        // Surface the realised count to subscribers (e.g. sample app exposing
-        // it via a hidden TextBlock for UI-automation tests) — but only when
-        // the count actually changed. Firing on every scroll tick causes a
-        // property-change event storm for any UIA listener bound to a Name
-        // property mirror in the subscriber's UI.
-        int realised = 0;
-        foreach (int ordinal in _activeEmbedOrdinals)
-        {
-            if (_embedPlans[ordinal].Realized is not null)
-                realised++;
-        }
-        if (realised != _lastFiredRealizedCount)
-        {
-            _lastFiredRealizedCount = realised;
-            InvalidateAutomationLayout();
-            if (!IsCurrentVisibleRealizationPass(
-                    snapshot, snapshotGeneration, realizationPassEpoch,
-                    imageIndex, embedIndex, actionIndex))
-                return;
-            try { EmbedsRealizationChanged?.Invoke(this, EventArgs.Empty); }
-            catch { /* subscriber threw — swallow to keep scroll pipeline alive. */ }
-        }
-    }
-
-    private bool IsCurrentVisibleRealizationPass(
-        LayoutSnapshot snapshot,
-        long snapshotGeneration,
-        long realizationPassEpoch,
-        ViewportBandIndex? imageIndex,
-        ViewportBandIndex? embedIndex,
-        ViewportBandIndex? actionIndex) =>
-        !_lifetime.IsDisposed && !_lifetime.IsUnloaded && !_derealizingAllEmbeds &&
-        snapshotGeneration == _published.Generation &&
-        realizationPassEpoch == _realizationPassEpoch &&
-        ReferenceEquals(snapshot, _published.Snapshot) &&
-        ReferenceEquals(imageIndex, _imagePlanIndex) &&
-        ReferenceEquals(embedIndex, _embedPlanIndex) &&
-        ReferenceEquals(actionIndex, _codeBlockActionPlanIndex);
-
-    private void GetCodeBlockActionRealizationCounts(out int realizedCount, out int offscreenCount)
-    {
-        _viewport.TryGet(out double top, out double viewportHeight, out _);
-        double bottom = top + viewportHeight;
-        realizedCount = 0;
-        offscreenCount = 0;
-        foreach (int ordinal in _activeCodeBlockActionOrdinals)
-        {
-            CodeBlockActionPlan plan = _codeBlockActionPlans[ordinal];
-            if (plan.Realized is null)
-                continue;
-            realizedCount++;
-            if (plan.Rect.Bottom < top || plan.Rect.Top > bottom)
-                offscreenCount++;
-        }
-    }
-
-    private MarkdownHostedElementRequest CreateHostedElementRequest(
-        Layout.Boxes.DeclarativeHostedElementBox box,
-        Rect layoutBounds)
-    {
-        _viewport.TryGet(out double viewportTop, out double viewportHeight, out double viewportWidth);
-        return new MarkdownHostedElementRequest(
-            box.FactoryKey,
-            box.SourceRange,
-            layoutBounds,
-            new Rect(0, viewportTop, Math.Max(0, viewportWidth), Math.Max(0, viewportHeight)),
-            box.Attributes,
-            box.AccessibilityRole,
-            box.AccessibilityName,
-            box.AccessibilityDescription,
-            box.SemanticText,
-            box.AutomationId);
-    }
-
-    private bool CanAttachHostedElement(
-        DeclarativeHostedElementPlan plan,
-        long pipelineGeneration)
-    {
-        if (_lifetime.IsUnloaded ||
-            pipelineGeneration != _pipelineGeneration ||
-            _surface.Overlay is null ||
-            !_embedPlans.Contains(plan))
-            return false;
-
-        _viewport.TryGet(out double top, out double viewportHeight, out _);
-        double bottom = top + viewportHeight;
-        return EmbedVisibility.IsInRealizeBand(
-            plan.Rect.Top,
-            plan.Rect.Bottom,
-            top,
-            bottom,
-            EmbedVirtualizationOverscanPx);
-    }
-
-    private bool CanActivateHostedElementFallback(
-        DeclarativeHostedElementPlan plan,
-        long pipelineGeneration)
-        => !_lifetime.IsUnloaded &&
-           pipelineGeneration == _pipelineGeneration &&
-           _embedPlans.Contains(plan);
-
-    private void ActivateHostedElementFallback(DeclarativeHostedElementPlan plan)
-    {
-        if (!_hostedElementFallbacks.Add(plan.Box.FallbackKey))
-            return;
-
-        MarkdownDiagnostics.WriteLine(
-            $"[MarkdownRendererControl] using native markdown fallback for hosted element '{plan.Box.FactoryKey}'.");
-        RequestRebuild(RebuildReason.Restyle);
-    }
-
-    private static void ApplyHostedElementAutomationProperties(
-        Layout.Boxes.DeclarativeHostedElementBox box,
-        FrameworkElement element)
-    {
-        // The semantic wrapper owns the logical identity across virtualization.
-        // Give its realized native child a stable, distinct id when the host
-        // did not provide one (or copied the logical request id verbatim).
-        string nativeAutomationId = AutomationProperties.GetAutomationId(element);
-        if (string.IsNullOrWhiteSpace(nativeAutomationId) ||
-            string.Equals(nativeAutomationId, box.AutomationId, StringComparison.Ordinal))
-        {
-            AutomationProperties.SetAutomationId(element, $"{box.AutomationId}-Native");
-        }
-
-        // Host-owned names and descriptions remain authoritative when supplied.
-        if (!string.IsNullOrWhiteSpace(box.AccessibilityName) &&
-            string.IsNullOrWhiteSpace(AutomationProperties.GetName(element)))
-        {
-            AutomationProperties.SetName(element, box.AccessibilityName);
-        }
-
-        if (!string.IsNullOrWhiteSpace(box.AccessibilityDescription) &&
-            string.IsNullOrWhiteSpace(AutomationProperties.GetHelpText(element)))
-        {
-            AutomationProperties.SetHelpText(element, box.AccessibilityDescription);
-        }
-    }
-
-    private void RestoreFocusedHostedElementIfNeeded(DeclarativeHostedElementPlan plan)
-    {
-        if (FocusState == FocusState.Unfocused ||
-            plan.Realized is null ||
-            plan.FocusIdentity is not { } planIdentity ||
-            !_embedPlans.Contains(plan) ||
-            _focusableItems is not { } items ||
-            _focusedItemIndex < 0 ||
-            _focusedItemIndex >= items.Count)
-        {
-            return;
-        }
-
-        var focusedItem = items[_focusedItemIndex];
-        if (FocusableItemQueries.SameFocusableIdentity(focusedItem, planIdentity))
-        {
-            _ = TryFocusHostedElement(focusedItem, reverse: false);
-        }
-    }
-
-    private void CollectEmbedPlans(
-        LayoutSnapshot snapshot,
-        BlockBox topLevelRoot,
-        Layout.BlockBox box)
-    {
-        switch (box)
-        {
-            case Layout.Boxes.EmbedBox eb:
-            {
-                double left = eb.Bounds.X + eb.Margin.Left;
-                double top  = eb.Bounds.Y + eb.Margin.Top;
-                double w = eb.Bounds.Width  - eb.Margin.Left - eb.Margin.Right;
-                double h = eb.Bounds.Height - eb.Margin.Top  - eb.Margin.Bottom;
-                Rect physicalBounds = new(left, top, w, h);
-                _embedPlans.Add(new BlockEmbedPlan
-                {
-                    Box = eb,
-                    FocusIdentity = new Layout.FocusableItem(
-                        eb.BlockIndex, 0, Layout.FocusableItemKind.BlockEmbed),
-                    Rect = snapshot.ToLogicalRectForTopLevelBlockUnderPaint(topLevelRoot, physicalBounds),
-                });
-                break;
-            }
-            case Layout.Boxes.DeclarativeHostedElementBox hosted when HostedElementFactory is { } factory:
-            {
-                double left = hosted.Bounds.X + hosted.Margin.Left;
-                double top = hosted.Bounds.Y + hosted.Margin.Top;
-                double width = hosted.Bounds.Width - hosted.Margin.Left - hosted.Margin.Right;
-                double height = hosted.Bounds.Height - hosted.Margin.Top - hosted.Margin.Bottom;
-                _embedPlans.Add(new DeclarativeHostedElementPlan
-                {
-                    Box = hosted,
-                    Factory = factory,
-                    FocusIdentity = new Layout.FocusableItem(
-                        hosted.BlockIndex, 0, Layout.FocusableItemKind.DeclarativeHostedElement),
-                    Rect = snapshot.ToLogicalRectForTopLevelBlockUnderPaint(
-                        topLevelRoot, new Rect(left, top, Math.Max(0, width), Math.Max(0, height))),
-                });
-                break;
-            }
-            case Layout.Boxes.ImageBox ib:
-            {
-                AddImagePlan(ib);
-                break;
-            }
-            case Layout.Boxes.InlineContainerBox icb:
-            {
-                // Most paragraphs contain only text. Avoid walking their runs
-                // and querying DirectWrite geometry when no overlay/image
-                // plan can possibly be produced.
-                if (!icb.HasInlineImages && !icb.HasInlineEmbeds)
-                    break;
-
-                // Register completion before asking DirectWrite for rectangles. During the
-                // first commit an inline image can be measurable but not yet have a stable
-                // character region; paint will start it and completion must still reflow.
-                if (icb.HasInlineImages)
-                {
-                    foreach (var (imageRun, _) in icb.InlineImageRuns)
-                    {
-                        // Image registration must not depend on DirectWrite
-                        // returning a character rectangle for the object
-                        // replacement slot. In particular, a linked image on
-                        // an otherwise empty line can temporarily have no
-                        // region during the first layout pass. Keeping it out
-                        // of _imagePlans in that state leaves it permanently
-                        // "Loading" because no later viewport pass can start
-                        // it. A missing first-pass rectangle has the default
-                        // origin, which deliberately starts the bounded load;
-                        // EnumerateInlineImageRects synchronizes the real
-                        // bounds as soon as DirectWrite publishes them.
-                        AddImagePlan(imageRun.Image);
-                    }
-                }
-                if (icb.HasInlineEmbeds)
-                {
-                    foreach (var (run, rect) in icb.EnumerateEmbedRects())
-                        _embedPlans.Add(new InlineEmbedPlan
-                        {
-                            Icb = icb,
-                            Run = run,
-                            FocusIdentity = new Layout.FocusableItem(
-                                icb.BlockIndex, run.InlineIndex, Layout.FocusableItemKind.InlineEmbed),
-                            Rect = snapshot.ToLogicalRectForTopLevelBlockUnderPaint(topLevelRoot, rect),
-                        });
-                }
-                // Force enumeration so each ImageBox receives its document
-                // bounds. Images were already added above, independently of
-                // whether this geometry query succeeds.
-                if (icb.HasInlineImages)
-                {
-                    foreach (var _ in icb.EnumerateInlineImageRects()) { }
-                }
-                break;
-            }
-            case Layout.Boxes.CodeBlockBox codeBlock:
-            {
-                _hasMeasuredCodeBlocks = true;
-                if (codeBlock.IsCopyButtonEnabled && codeBlock.CopyButtonBounds.Width > 0 && codeBlock.CopyButtonBounds.Height > 0)
-                    _codeBlockActionPlans.Add(new CodeBlockActionPlan
-                    {
-                        Box = codeBlock,
-                        FocusIdentity = new Layout.FocusableItem(
-                            codeBlock.BlockIndex, 0, Layout.FocusableItemKind.CodeBlockCopy),
-                        Rect = snapshot.ToLogicalRectForTopLevelBlockUnderPaint(
-                            topLevelRoot, codeBlock.CopyButtonBounds),
-                        Kind = CodeBlockHostedElementKind.Copy,
-                    });
-                break;
-            }
-            case Layout.Boxes.ListItemBox lib:
-                CollectEmbedPlans(snapshot, topLevelRoot, lib.Marker);
-                CollectEmbedPlans(snapshot, topLevelRoot, lib.Content);
-                break;
-            case Layout.Boxes.TableBox tb:
-                foreach (var cell in tb.GetCellBoxes()) CollectEmbedPlans(snapshot, topLevelRoot, cell);
-                break;
-            case Layout.Boxes.StackBox sb:
-                foreach (var c in sb.Children) CollectEmbedPlans(snapshot, topLevelRoot, c);
-                break;
-        }
-    }
-
-    /// <summary>
-    /// Records the completed images of the current layout so the next
-    /// rebuild of the same document keeps their result. The ledger accumulates
-    /// across consecutive rebuilds (a lazily rebuilt document lists only its
-    /// measured images) and is discarded whenever the source text or image
-    /// configuration changes. Runs on the UI thread, which owns image
-    /// publication; the context receives an immutable copy.
-    /// </summary>
-    private IReadOnlyDictionary<string, Layout.Boxes.CompletedImageCarry>? CaptureCompletedImageCarry(
-        Layout.Boxes.MarkdownImageCarryIdentity identity,
-        bool carryFailures)
-    {
-        bool identityReset = _completedImageCarryIdentity is not { } previous || !previous.Matches(identity);
-        if (identityReset)
-            _completedImageCarry.Clear();
-        _completedImageCarryIdentity = identity;
-
-        foreach (Layout.Boxes.ImageBox image in _imagePlans)
-        {
-            if (image.Context.ImageCarryIdentity is not { } builtWith || !builtWith.Matches(identity))
-                continue;
-            if (!image.TryCaptureCompletedCarry(out Layout.Boxes.CompletedImageCarry? carry) || carry is null)
-                continue;
-            if (_completedImageCarry.Count >= MaximumCompletedImageCarryEntries &&
-                !_completedImageCarry.ContainsKey(carry.Url))
-            {
-                break;
-            }
-            _completedImageCarry[carry.Url] = carry;
-        }
-
-        var snapshot = new Dictionary<string, Layout.Boxes.CompletedImageCarry>(StringComparer.Ordinal);
-        foreach ((string url, Layout.Boxes.CompletedImageCarry carry) in _completedImageCarry)
-        {
-            if (carryFailures || !carry.Failed)
-                snapshot[url] = carry;
-        }
-
-        return snapshot.Count == 0 ? null : snapshot;
+        return _focusRefresh.Admits(snapshot, generation, revision, requestVersion);
     }
 
     private void AddImagePlan(Layout.Boxes.ImageBox image)
     {
-        if (!RegisterImage(image))
+        if (!_imageSubscriptions.Subscribe(image))
             return;
 
         _imagePlans.Add(image);
-    }
-
-    private void QueueImageSourcePrefetch(
-        Markdig.Syntax.MarkdownDocument document,
-        string markdownSource,
-        MarkdownExtensionRegistry registry,
-        IMarkdownImageResolver? resolver,
-        MarkdownImageResolveContext context)
-    {
-        if (resolver is not IMarkdownImagePrefetcher prefetcher ||
-            _imageLifetimeCts is not { IsCancellationRequested: false } imageLifetime)
-        {
-            return;
-        }
-
-        if (ReferenceEquals(_activeImagePrefetcher, prefetcher) &&
-            string.Equals(_prefetchedMarkdownSource, markdownSource, StringComparison.Ordinal) &&
-            Equals(_activeImagePrefetchContext, context) &&
-            _prefetchedImageRegistryRevision == registry.Revision)
-        {
-            return;
-        }
-
-        _activeImagePrefetcher = prefetcher;
-        _prefetchedMarkdownSource = markdownSource;
-        _activeImagePrefetchContext = context;
-        _prefetchedImageRegistryRevision = registry.Revision;
-        _pendingImagePrefetch = new PendingImagePrefetch(
-            document,
-            registry.SafeHtmlPolicy,
-            prefetcher,
-            context,
-            imageLifetime.Token);
-    }
-
-    private static async Task PrefetchImageSourcesObservedAsync(
-        Markdig.Syntax.MarkdownDocument document,
-        SafeHtmlRenderPolicy? safeHtmlPolicy,
-        IMarkdownImagePrefetcher prefetcher,
-        MarkdownImageResolveContext context,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            IReadOnlyList<string> sources = MarkdownImagePrefetchSourceCollector.Collect(
-                document,
-                safeHtmlPolicy,
-                cancellationToken);
-            if (sources.Count > 0)
-            {
-                await prefetcher.PrefetchAsync(sources, context, cancellationToken)
-                    .ConfigureAwait(false);
-            }
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-        }
-        catch (Exception exception)
-        {
-            MarkdownDiagnostics.WriteLine($"[MarkdownRenderer] image prefetch failed: {exception.Message}");
-        }
-    }
-
-    private bool RegisterImage(Layout.Boxes.ImageBox image)
-    {
-        if (!_subscribedImages.Add(image))
-            return false;
-
-        image.LoadCompleted += OnImageLoadCompleted;
-        // A fast background denial may precede first UI subscription.
-        RequestBitmapOutputRecovery(image);
-        return true;
-    }
-
-    private void UnsubscribeAllImages()
-    {
-        ResetBitmapOutputRecovery();
-        foreach (var image in _subscribedImages)
-        {
-            image.LoadCompleted -= OnImageLoadCompleted;
-        }
-
-        _subscribedImages.Clear();
     }
 
     private void OnImageLoadCompleted(object? sender, Layout.Boxes.LoadCompletedEventArgs e)
@@ -7913,18 +6154,18 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (bitmapOutputRecoverySignal)
         {
             if (completedImage is not null)
-                RequestBitmapOutputRecovery(completedImage);
+                _imageSubscriptions.RequestBitmapOutputRecovery(completedImage);
             return;
         }
         if (completedImage is not null)
         {
-            if (!_subscribedImages.Contains(completedImage))
+            if (!_imageSubscriptions.Contains(completedImage))
                 return;
             (FrameworkElementAutomationPeer.FromElement(this) as MarkdownAutomationPeer)?
                 .NotifyImageStatusChanged(completedImage);
             // UIA notification can run host code. Recheck lifetime and membership
             // before using a snapshot-owned placement proof or queuing work.
-            if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !_subscribedImages.Contains(completedImage))
+            if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !_imageSubscriptions.Contains(completedImage))
                 return;
             if (layoutInvalidated && !_publishingLayoutCommit &&
                 PerformanceSession is IMarkdownPerformanceSessionInternal session &&
@@ -8065,18 +6306,18 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 {
                     // Drain canceled image work so its retirement/active flag
                     // can complete, but do not probe or retry failed geometry.
-                    control.ClearFocusableItemsRefreshForCurrentSnapshot();
+                    control._focusRefresh.ClearForCurrentSnapshot();
                     control._imageRelayoutPayload?.PublishAfterWorkDrains();
                     return;
                 }
-                control.ProcessBitmapOutputRecovery();
+                control._imageSubscriptions.ProcessBitmapOutputRecovery();
                 control.ProcessQueuedImageRelayout(control._lastImageRelayoutDispatchTicket);
                 control._imageRelayoutPayload?.PublishAfterWorkDrains();
                 control.PublishPendingLayoutCommit();
                 control.ProcessQueuedLazyLayoutRealization(control._lastLazyLayoutDispatchTicket);
                 control.TryPublishLazyLayoutCompletion(control._lazyLayoutGeneration);
-                control.ProcessPendingHorizontalOverflowVisualRetry();
-                control.ProcessPendingFocusGeometry();
+                control._overflowScroll.ProcessPendingRetry();
+                control._focusGeometryWork.Process();
                 control.TryPublishPendingFocusableItems();
                 if (control._imageRelayoutTask is { IsFaulted: true } failed &&
                     control._imageRelayoutCts is { } cancellation)
@@ -8097,7 +6338,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             if (!control.RequestGeometryRecoveryIfRequired(control._published.Snapshot))
                 control.RequestRebuild(RebuildReason.Full);
             else
-                control.ClearFocusableItemsRefreshForCurrentSnapshot();
+                control._focusRefresh.ClearForCurrentSnapshot();
             if (control._published.Snapshot is { } failedLayoutSnapshot)
                 control._pointerInput.OnLazyLayoutCompletion(failedLayoutSnapshot, succeeded: false);
         }
@@ -8112,18 +6353,16 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void StopImageRelayoutRecovery(bool force = false)
     {
-        if (!force && (_bitmapOutputRecovery.IsPending || HasPendingLazyLayoutWork ||
-            _hasPendingHorizontalOverflowRefresh ||
-            _pendingFocusableItemsRefresh.IsPending ||
-            _pendingSpatialFocusKeys.Count > 0 ||
-            _pendingFocusGeometryRefresh ||
-            _hasPendingFocusResumePoint))
+        if (!force && (_imageSubscriptions.HasPendingBitmapOutputRecovery || HasPendingLazyLayoutWork ||
+            _overflowScroll.HasPendingRetry ||
+            _focusRefresh.Pending.IsPending ||
+            _focusGeometryWork.HasPendingWork))
             return;
 
         if (force)
         {
-            ResetBitmapOutputRecovery();
-            ResetPendingFocusableItemsRefresh();
+            _imageSubscriptions.ResetBitmapOutputRecovery();
+            _focusRefresh.Reset();
         }
         var timer = _imageRelayoutRecoveryTimer;
         _imageRelayoutRecoveryTimer = null;
@@ -8135,14 +6374,12 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private void StopImageRelayoutRecoveryIfIdle()
     {
         if (_imageRelayoutQueued ||
-            _bitmapOutputRecovery.IsPending ||
+            _imageSubscriptions.HasPendingBitmapOutputRecovery ||
             _imageRelayoutActive ||
             _pendingImageRelayoutBlockIndices.Count > 0 ||
-            _hasPendingHorizontalOverflowRefresh ||
-            _pendingFocusableItemsRefresh.IsPending ||
-            _pendingSpatialFocusKeys.Count > 0 ||
-            _pendingFocusGeometryRefresh ||
-            _hasPendingFocusResumePoint ||
+            _overflowScroll.HasPendingRetry ||
+            _focusRefresh.Pending.IsPending ||
+            _focusGeometryWork.HasPendingWork ||
             HasPendingLazyLayoutWork)
         {
             return;
@@ -8218,7 +6455,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             _imageRelayoutPayload = payload;
             RasterPlacementInputs? rasterPlacement = session is not null &&
                 snapshot.TopLevelBlockCount is > 0 and <= LayoutSnapshot.MaximumPrivateRasterPlacementRoots &&
-                _embedPlans.Count == 0 &&
+                _embeds.EmbedPlans.Count == 0 &&
                 _imagePlans.Count is > 0 and <= InlineContainerBox.MaximumPrivateRasterPlacementImages
                 ? new RasterPlacementInputs(receiver, _published.Generation,
                     _imagePreparationOwnerToken, _imageLifetimeCts?.Token ?? CancellationToken.None,
@@ -8272,28 +6509,14 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _published.Snapshot is not { } snapshot)
             return;
 
-        MarkFocusableItemsRefreshPending(snapshot, _published.Generation);
+        _focusRefresh.Mark(snapshot, _published.Generation);
         if (!TryPublishPendingFocusableItems())
             StartImageRelayoutRecovery();
     }
 
-    private void MarkFocusableItemsRefreshPending(LayoutSnapshot snapshot, long generation)
-    {
-        long requestVersion = unchecked(_focusableItemsRefreshRequestVersion + 1);
-        if (requestVersion <= 0)
-            requestVersion = 1;
-        _focusableItemsRefreshRequestVersion = requestVersion;
-        _pendingFocusableItemsRefresh = (
-            generation,
-            snapshot.AutomationDocumentGeneration,
-            snapshot.LayoutRevision,
-            requestVersion,
-            true);
-    }
-
     private bool TryPublishPendingFocusableItems()
     {
-        var request = _pendingFocusableItemsRefresh;
+        var request = _focusRefresh.Pending;
         if (!request.IsPending)
             return true;
         if (_lifetime.IsDisposed || _lifetime.IsUnloaded)
@@ -8303,7 +6526,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         long generation = _published.Generation;
         if (snapshot is null)
         {
-            ResetPendingFocusableItemsRefresh();
+            _focusRefresh.Reset();
             return false;
         }
 
@@ -8314,32 +6537,27 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             // A newer snapshot supersedes the value-only request. Never follow
             // an old ticket into its retired graph; the current generation gets
             // a fresh request instead.
-            MarkFocusableItemsRefreshPending(snapshot, generation);
-            request = _pendingFocusableItemsRefresh;
+            _focusRefresh.Mark(snapshot, generation);
+            request = _focusRefresh.Pending;
         }
 
         if (snapshot.IsRetiringOrDisposed)
         {
-            ClearFocusableItemsRefresh(request.RequestVersion);
+            _focusRefresh.Clear(request.RequestVersion);
             return false;
         }
         if (snapshot.GeometryRecoveryRequired)
         {
             RequestGeometryRecoveryIfRequired(snapshot);
-            ClearFocusableItemsRefresh(request.RequestVersion);
+            _focusRefresh.Clear(request.RequestVersion);
             return false;
         }
 
         long revisionBefore = snapshot.LayoutRevision;
         if (request.LayoutRevision != revisionBefore)
         {
-            _pendingFocusableItemsRefresh = (
-                generation,
-                automationGeneration,
-                revisionBefore,
-                request.RequestVersion,
-                true);
-            request = _pendingFocusableItemsRefresh;
+            _focusRefresh.Retarget(generation, automationGeneration, revisionBefore, request.RequestVersion);
+            request = _focusRefresh.Pending;
         }
 
         if (!snapshot.TryBeginInteraction())
@@ -8371,7 +6589,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             snapshot.EndInteraction();
         }
 
-        if (!IsCurrentFocusableItemsRefresh(
+        if (!_focusRefresh.IsCurrent(
                 request,
                 snapshot,
                 generation,
@@ -8385,7 +6603,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
         // Diagnostics can reenter the dispatcher/control. Do not let a failed
         // older attempt clear or rebuild over a newer availability request.
-        if (!IsCurrentFocusableItemsRefresh(
+        if (!_focusRefresh.IsCurrent(
                 request,
                 snapshot,
                 generation,
@@ -8397,21 +6615,17 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (!collectedSuccessfully)
         {
             if (snapshot.IsRetiringOrDisposed || snapshot.GeometryRecoveryRequired)
-                ClearFocusableItemsRefresh(request.RequestVersion);
+                _focusRefresh.Clear(request.RequestVersion);
             else if (!ReferenceEquals(snapshot, _published.Snapshot) || generation != _published.Generation)
                 return false;
             else if (revisionBefore != snapshot.LayoutRevision)
             {
-                _pendingFocusableItemsRefresh = (
-                    generation,
-                    automationGeneration,
-                    snapshot.LayoutRevision,
-                    request.RequestVersion,
-                    true);
+                _focusRefresh.Retarget(
+                    generation, automationGeneration, snapshot.LayoutRevision, request.RequestVersion);
             }
             else
             {
-                ClearFocusableItemsRefresh(request.RequestVersion);
+                _focusRefresh.Clear(request.RequestVersion);
                 RequestRebuild(RebuildReason.Full);
             }
             return false;
@@ -8423,7 +6637,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             automationGeneration != snapshot.AutomationDocumentGeneration ||
             revisionUnderLease != revisionBefore ||
             revisionAfter != revisionBefore ||
-            !IsCurrentFocusableItemsRefresh(
+            !_focusRefresh.IsCurrent(
                 request,
                 snapshot,
                 generation,
@@ -8432,110 +6646,23 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             if (ReferenceEquals(snapshot, _published.Snapshot) &&
                 generation == _published.Generation &&
                 automationGeneration == snapshot.AutomationDocumentGeneration &&
-                IsCurrentFocusableItemsRefresh(
+                _focusRefresh.IsCurrent(
                     request,
                     snapshot,
                     generation,
                     automationGeneration))
             {
-                _pendingFocusableItemsRefresh = (
-                    generation,
-                    automationGeneration,
-                    revisionAfter,
-                    request.RequestVersion,
-                    true);
+                _focusRefresh.Retarget(
+                    generation, automationGeneration, revisionAfter, request.RequestVersion);
             }
             return false;
         }
 
-        Layout.FocusableItem? focusedIdentity = GetCurrentFocusableIdentity();
-        _focusableItems = collected;
-        _focusedItemIndex = focusedIdentity is { } identity
-            ? FocusableItemQueries.FindFocusableItemIndex(collected, identity)
-            : -1;
-        ClearFocusableItemsRefresh(request.RequestVersion);
+        _focus.ReplaceItems(collected);
+        _focusRefresh.Clear(request.RequestVersion);
         InvalidateAutomationLayout();
         return true;
     }
-
-    private bool IsCurrentFocusableItemsRefresh(
-        (long SnapshotGeneration, long AutomationDocumentGeneration,
-            long LayoutRevision, long RequestVersion, bool IsPending) request,
-        LayoutSnapshot snapshot,
-        long generation,
-        long automationGeneration)
-    {
-        var pending = _pendingFocusableItemsRefresh;
-        return request.IsPending &&
-            pending.IsPending &&
-            pending.RequestVersion == request.RequestVersion &&
-            pending.SnapshotGeneration == generation &&
-            pending.AutomationDocumentGeneration == automationGeneration &&
-            pending.LayoutRevision == request.LayoutRevision &&
-            ReferenceEquals(snapshot, _published.Snapshot) &&
-            generation == _published.Generation &&
-            automationGeneration == snapshot.AutomationDocumentGeneration;
-    }
-
-    private void CompleteFocusableItemsRefresh(
-        LayoutSnapshot snapshot,
-        long generation,
-        long revision,
-        long requestVersion)
-    {
-        var pending = _pendingFocusableItemsRefresh;
-        if (pending.IsPending &&
-            pending.RequestVersion == requestVersion &&
-            pending.SnapshotGeneration == generation &&
-            pending.AutomationDocumentGeneration == snapshot.AutomationDocumentGeneration &&
-            pending.LayoutRevision == revision &&
-            ReferenceEquals(snapshot, _published.Snapshot) &&
-            generation == _published.Generation &&
-            revision == snapshot.LayoutRevision)
-        {
-            _pendingFocusableItemsRefresh = (
-                pending.SnapshotGeneration,
-                pending.AutomationDocumentGeneration,
-                pending.LayoutRevision,
-                pending.RequestVersion,
-                false);
-        }
-    }
-
-    private void ClearFocusableItemsRefresh(long requestVersion)
-    {
-        var pending = _pendingFocusableItemsRefresh;
-        if (pending.IsPending && pending.RequestVersion == requestVersion)
-        {
-            _pendingFocusableItemsRefresh = (
-                pending.SnapshotGeneration,
-                pending.AutomationDocumentGeneration,
-                pending.LayoutRevision,
-                pending.RequestVersion,
-                false);
-        }
-    }
-
-    private void ClearFocusableItemsRefreshForCurrentSnapshot()
-    {
-        LayoutSnapshot? snapshot = _published.Snapshot;
-        if (snapshot is null)
-        {
-            ResetPendingFocusableItemsRefresh();
-            return;
-        }
-
-        var pending = _pendingFocusableItemsRefresh;
-        if (pending.IsPending &&
-            pending.SnapshotGeneration == _published.Generation &&
-            pending.AutomationDocumentGeneration == snapshot.AutomationDocumentGeneration)
-        {
-            ClearFocusableItemsRefresh(pending.RequestVersion);
-        }
-    }
-
-    private void ResetPendingFocusableItemsRefresh() =>
-        _pendingFocusableItemsRefresh = default;
 
     private void OnRegionsInvalidated(CanvasVirtualControl sender, CanvasRegionsInvalidatedEventArgs args)
     {
@@ -8654,7 +6781,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             }
             catch (Exception ex) when (GraphicsDeviceErrors.IsDeviceLost(ex))
             {
-                HandleCanvasDeviceLost(ex);
+                _deviceRecovery.HandleDeviceLost(ex);
                 return;
             }
         }
@@ -8674,8 +6801,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         }
         if (paintedRegion)
         {
-            _canvasDeviceRecoveryAttempt = 0;
-            StopCanvasDeviceRecovery();
+            _deviceRecovery.NotePainted();
         }
         if (paintedRegion &&
             _published.Generation == _pipelineGeneration &&
@@ -8973,8 +7099,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                     if (retryImageBlockIndex is { } retryIndex)
                         _pendingImageRelayoutBlockIndices.Add(retryIndex);
                     if (retryCurrentImages)
-                        foreach (var image in _subscribedImages)
-                            _pendingImageRelayoutBlockIndices.Add(image.BlockIndex);
+                        _imageSubscriptions.AddBlockIndicesTo(_pendingImageRelayoutBlockIndices);
                     if (snapshot.IsRetiringOrDisposed ||
                         (float)Math.Max(50, ActualWidth) != snapshot.Size.Width)
                         RequestRebuild(RebuildReason.Full);
@@ -8987,15 +7112,13 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                         // its source. Discard this private candidate and retry
                         // after release; do not reset capture or request a full
                         // rebuild solely because the user is interacting.
-                        foreach (var image in _subscribedImages)
-                            _pendingImageRelayoutBlockIndices.Add(image.BlockIndex);
+                        _imageSubscriptions.AddBlockIndicesTo(_pendingImageRelayoutBlockIndices);
                     }
                     else if (!TryPublishRasterPlacement(snapshot, candidate, generation))
                     {
                         // A changed width/policy/raster invalidates the private
                         // proof. Rebuild rather than mutate the old tree here.
-                        foreach (var image in _subscribedImages)
-                            _pendingImageRelayoutBlockIndices.Add(image.BlockIndex);
+                        _imageSubscriptions.AddBlockIndicesTo(_pendingImageRelayoutBlockIndices);
                         RequestRebuild(RebuildReason.Full);
                     }
                 }
@@ -9017,8 +7140,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             if (current && canceled && !_lifetime.IsDisposed && !_lifetime.IsUnloaded &&
                 ReferenceEquals(snapshot, _published.Snapshot) && snapshot?.GeometryRecoveryRequired != true)
             {
-                foreach (var image in _subscribedImages)
-                    _pendingImageRelayoutBlockIndices.Add(image.BlockIndex);
+                _imageSubscriptions.AddBlockIndicesTo(_pendingImageRelayoutBlockIndices);
             }
             // The pending set is cleared before every snapshot replacement.
             // New-snapshot completions may accumulate while an old task drains.
@@ -9041,96 +7163,86 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private static void ReportImageRelayoutFailure(string operation, object details) =>
         MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] image {operation} failed: {details}");
 
-    private void HandleCanvasDeviceLost(Exception exception)
-        => HandleCanvasDeviceLost(exception.HResult);
-
-    private void HandleCanvasDeviceLost(int failureHResult)
+    /// <summary>
+    /// A failed live layout is not transient lock contention. Preserve the last
+    /// painted tiles and committed logical selection, but discard geometry-bound
+    /// input before requesting one offside replacement for this snapshot.
+    /// Runs only on the control's UI dispatcher; workers publish scalar state.
+    /// </summary>
+    private bool RequestGeometryRecoveryIfRequired(LayoutSnapshot? snapshot)
     {
-        // Capture every device in use before release clears the surface owner.
-        CanvasDevice? layoutDevice = _published.LayoutDevice;
-        CanvasDevice? surfaceDevice = _adorner.SurfaceDevice;
-        CanvasDevice? canvasDevice = null;
-        try { canvasDevice = _surface.Canvas?.Device; }
-        catch (Exception deviceException)
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || snapshot is null ||
+            !ReferenceEquals(snapshot, _published.Snapshot) || !snapshot.GeometryRecoveryRequired)
         {
-            MarkdownDiagnostics.WriteLine(
-                $"[MarkdownRendererControl] canvas device query failed: {deviceException.Message}");
+            return false;
         }
 
-        _adorner.TryReleaseSurface();
-        // Snapshot bitmaps are cached under the layout (shared) device, which
-        // need not be the CanvasVirtualControl device.
-        ReleaseImageDeviceResources(layoutDevice);
-        if (!ReferenceEquals(canvasDevice, layoutDevice))
-            ReleaseImageDeviceResources(canvasDevice);
-        // Exceptions were caught instead of reaching Win2D, so notify each
-        // genuinely lost device as the manual device-loss contract requires.
-        NotifyLostCanvasDevices(failureHResult, layoutDevice, surfaceDevice, canvasDevice);
+        if (!snapshot.TryClaimGeometryRecoveryRequest())
+            return true;
 
-        if (_canvasDeviceRecoveryQueued || _lifetime.IsDisposed || _lifetime.IsUnloaded)
-            return;
+        // Deferred presses/captured handles must not keep the Full request
+        // waiting for a release that can no longer safely hit-test this tree.
+        TryGeometryRecoveryCleanup(_pointerInput.Reset);
+        TryGeometryRecoveryCleanup(ResetVectorCapacityObserver);
+        _horizontalOverflowDrag.Clear();
+        ClearPendingFocusGeometryWork();
+        _adorner.ClearGeometry();
+        // This tuple describes re-publication of this snapshot's geometry, not
+        // an offside replacement candidate. It cannot repair a failed tree.
+        _pendingLayoutCommit = null;
+        ++_lastLayoutCommitTicket;
+        _imageSubscriptions.ResetBitmapOutputRecovery();
+        TryGeometryRecoveryCleanup(CancelLazyLayoutRealization);
+        _pendingImageRelayoutBlockIndices.Clear();
+        _imageRelayoutQueued = false;
+        ++_lastImageRelayoutDispatchTicket;
 
-        _canvasDeviceRecoveryAttempt = Math.Min(_canvasDeviceRecoveryAttempt + 1, 6);
-        int delayMs = Math.Min(5000, 250 << (_canvasDeviceRecoveryAttempt - 1));
+        // Retire/cancel through the normal work barriers; never dispose a CTS
+        // or a native snapshot while its worker is still unwinding.
+        if (_imageRelayoutCts is { } imageCancellation)
+            _ = CancellationTokenSourceRetirement.RequestCancellation(imageCancellation);
 
-        MarkdownDiagnostics.WriteLine(
-            "[MarkdownRendererControl] Win2D device lost while painting; " +
-            $"HRESULT={GraphicsDeviceErrors.FormatHResult(failureHResult)}. " +
-            $"Retrying canvas rebuild in {delayMs}ms.");
+        // A disconnected XAML input site can throw while closing a flyout or
+        // hiding a visual. Such cleanup must neither consume the one recovery
+        // request without scheduling it nor leave another capture unreleased.
+        TryGeometryRecoveryCleanup(() => ResetTransientInteractionState(clearSelection: false));
+        TryGeometryRecoveryCleanup(() => _surface.Canvas?.ReleasePointerCaptures());
+        TryGeometryRecoveryCleanup(() => _dragShield.SetActive(false));
+        TryGeometryRecoveryCleanup(_contextMenu.Close);
+        TryGeometryRecoveryCleanup(_abbreviationTooltip.Hide);
+        TryGeometryRecoveryCleanup(() => _cursor.SetShape(null));
+        TryGeometryRecoveryCleanup(_focusRing.Collapse);
+        TryGeometryRecoveryCleanup(() => _handles.SetVisibility(Visibility.Collapsed));
+        TryGeometryRecoveryCleanup(_adorner.ReleaseSurface);
+        TryGeometryRecoveryCleanup(InvalidateAutomationLayout);
 
-        try
+        if (snapshot.GeometryRecoveryIsDeviceLost)
         {
-            var timer = DispatcherQueue.CreateTimer();
-            timer.IsRepeating = false;
-            timer.Interval = TimeSpan.FromMilliseconds(delayMs);
-            timer.Tick += OnCanvasDeviceRecoveryTimer;
-            _canvasDeviceRecoveryTimer = timer;
-            _canvasDeviceRecoveryQueued = true;
-            timer.Start();
+            // Keep the device-loss backoff even if a detached adorner refuses
+            // its final native property update.
+            if (!TryGeometryRecoveryCleanup(() => _deviceRecovery.HandleDeviceLost(snapshot.GeometryRecoveryFailureHResult)))
+                RequestRebuild(RebuildReason.Full);
         }
-        catch (Exception schedulingFailure)
+        else
         {
-            StopCanvasDeviceRecovery();
-            MarkdownDiagnostics.WriteLine(
-                $"[MarkdownRendererControl] device recovery timer failed: {schedulingFailure.Message}");
             RequestRebuild(RebuildReason.Full);
         }
+
+        return true;
     }
 
-    private static void ReleaseImageDeviceResources(CanvasDevice? device)
+    private static bool TryGeometryRecoveryCleanup(Action cleanup)
     {
-        if (device is null)
-            return;
-
         try
         {
-            Layout.Boxes.ImageBox.ReleaseDeviceResources(device);
+            cleanup();
+            return true;
         }
-        catch (Exception releaseException)
+        catch (Exception failure)
         {
-            MarkdownDiagnostics.WriteLine(
-                $"[MarkdownRendererControl] image device-resource release failed: {releaseException.Message}");
-        }
-    }
-
-    private static void NotifyLostCanvasDevices(int failureHResult, params CanvasDevice?[] devices)
-    {
-        for (int index = 0; index < devices.Length; index++)
-        {
-            CanvasDevice? device = devices[index];
-            if (device is null || Array.IndexOf(devices, device) != index)
-                continue;
-
-            try
-            {
-                if (device.IsDeviceLost(failureHResult))
-                    device.RaiseDeviceLost();
-            }
-            catch (Exception notifyException)
-            {
-                MarkdownDiagnostics.WriteLine(
-                    $"[MarkdownRendererControl] device-lost notification failed: {notifyException.Message}");
-            }
+            Diagnostics.MarkdownDiagnostics.WriteLine(
+                $"[MarkdownRendererControl] geometry recovery cleanup failed: {failure.Message}");
+            return false;
         }
     }
 
@@ -9150,474 +7262,15 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             RequestRebuild(RebuildReason.Full);
     }
 
-    private void RefreshHorizontalOverflowVisualState(
-        IHorizontalOverflowBox target,
-        double oldOffset)
-    {
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _published.Snapshot is not { } snapshot ||
-            target is not BlockBox targetBlock)
-        {
-            return;
-        }
-
-        long generation = _published.Generation;
-        long revision = snapshot.LayoutRevision;
-        if (!snapshot.TryBeginInteraction())
-        {
-            QueueHorizontalOverflowVisualRetry(
-                snapshot, generation, targetBlock.BlockIndex, oldOffset);
-            return;
-        }
-
-        HorizontalOverflowVisualState state = default;
-        bool captured = false;
-        try
-        {
-            if (IsCurrentScrollTarget(snapshot, generation, revision))
-            {
-                captured = snapshot.TryGetHorizontalOverflowForBlockIndex(
-                    targetBlock.BlockIndex,
-                    out IHorizontalOverflowBox? currentTarget) &&
-                    ReferenceEquals(currentTarget, target) &&
-                    TryCaptureHorizontalOverflowVisualStateNoLock(
-                        snapshot, generation, revision, target, oldOffset, out state);
-            }
-        }
-        finally
-        {
-            snapshot.EndInteraction();
-        }
-
-        if (captured && IsCurrentScrollTarget(snapshot, generation, revision))
-            PublishHorizontalOverflowVisualState(state);
-        else if (ReferenceEquals(snapshot, _published.Snapshot) &&
-                 generation == _published.Generation)
-            QueueHorizontalOverflowVisualRetry(
-                snapshot, generation, targetBlock.BlockIndex, oldOffset);
-    }
-
-    private bool TryCaptureHorizontalOverflowVisualStateNoLock(
-        LayoutSnapshot snapshot,
-        long snapshotGeneration,
-        long layoutRevision,
-        IHorizontalOverflowBox target,
-        double oldOffset,
-        out HorizontalOverflowVisualState state)
-    {
-        state = default;
-        if (!IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision) ||
-            target is not BlockBox targetBlock ||
-            !snapshot.TryGetHorizontalOverflowForBlockIndex(
-                targetBlock.BlockIndex,
-                out IHorizontalOverflowBox? currentTarget) ||
-            !ReferenceEquals(currentTarget, target))
-        {
-            return false;
-        }
-
-        double newOffset = target.HorizontalOffset;
-        double logicalDelta = newOffset - oldOffset;
-        if (Math.Abs(logicalDelta) <= 0.1)
-            return false;
-
-        double physicalDelta = target.IsRightToLeft ? logicalDelta : -logicalDelta;
-        List<InlineEmbedPlacementUpdate>? placements = null;
-        foreach (EmbedPlan plan in _embedPlans)
-        {
-            if (plan is not InlineEmbedPlan inline ||
-                !HorizontalOverflowContains(target, inline.Icb))
-            {
-                continue;
-            }
-
-            Rect rect = inline.Rect;
-            placements ??= new List<InlineEmbedPlacementUpdate>();
-            placements.Add(new(
-                new WeakReference<InlineEmbedPlan>(inline),
-                new Rect(rect.X + physicalDelta, rect.Y, rect.Width, rect.Height)));
-        }
-
-        state = new(
-            new WeakReference<LayoutSnapshot>(snapshot),
-            snapshotGeneration,
-            layoutRevision,
-            targetBlock.BlockIndex,
-            new WeakReference<IHorizontalOverflowBox>(target),
-            oldOffset,
-            newOffset,
-            target.HorizontalExtent,
-            target.HorizontalViewport,
-            target.IsRightToLeft,
-            snapshot.ToLogicalRectForBlockIndexUnderPaint(
-                targetBlock.BlockIndex, target.HorizontalViewportBounds),
-            snapshot.ToLogicalRectForBlockIndexUnderPaint(
-                targetBlock.BlockIndex, target.HorizontalScrollTrackBounds),
-            placements?.ToArray() ?? Array.Empty<InlineEmbedPlacementUpdate>());
-        return true;
-    }
-
-    private void PublishHorizontalOverflowVisualState(HorizontalOverflowVisualState state)
-    {
-        bool queued = false;
-        try
-        {
-            queued = DispatcherQueue is { } dispatcher &&
-                dispatcher.TryEnqueue(() => ApplyHorizontalOverflowVisualState(state));
-        }
-        catch (Exception)
-        {
-        }
-        if (!queued)
-        {
-            QueueHorizontalOverflowVisualRetry(
-                state.Snapshot.TryGetTarget(out LayoutSnapshot? snapshot)
-                    ? snapshot
-                    : null,
-                state.SnapshotGeneration,
-                state.BlockIndex,
-                state.OldOffset);
-        }
-    }
-
-    private void ApplyHorizontalOverflowVisualState(HorizontalOverflowVisualState state)
-    {
-        LayoutSnapshot? snapshot = null;
-        IHorizontalOverflowBox? target = null;
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded ||
-            state.Snapshot is null || state.Target is null ||
-            !state.Snapshot.TryGetTarget(out snapshot) ||
-            !state.Target.TryGetTarget(out target) ||
-            !IsCurrentScrollTarget(snapshot, state.SnapshotGeneration, state.LayoutRevision))
-        {
-            if (snapshot is not null &&
-                ReferenceEquals(snapshot, _published.Snapshot) &&
-                state.SnapshotGeneration == _published.Generation)
-            {
-                QueueHorizontalOverflowVisualRetry(
-                    snapshot, state.SnapshotGeneration, state.BlockIndex, state.OldOffset);
-            }
-            return;
-        }
-
-        bool movedEmbed = false;
-        foreach (InlineEmbedPlacementUpdate placement in state.EmbedPlacements)
-        {
-            if (!IsCurrentScrollTarget(snapshot, state.SnapshotGeneration, state.LayoutRevision))
-                return;
-            if (!placement.Plan.TryGetTarget(out InlineEmbedPlan? plan) ||
-                !_embedPlans.Contains(plan))
-            {
-                continue;
-            }
-
-            plan.Rect = placement.Rect;
-            plan.UpdatePlacement();
-            movedEmbed = true;
-        }
-
-        if (!IsCurrentScrollTarget(snapshot, state.SnapshotGeneration, state.LayoutRevision))
-            return;
-        if (movedEmbed)
-            RealizeVisibleEmbeds();
-        if (!IsCurrentScrollTarget(snapshot, state.SnapshotGeneration, state.LayoutRevision))
-            return;
-        if (_selection.IsActive)
-            UpdateSelectionOverlay();
-        if (!IsCurrentScrollTarget(snapshot, state.SnapshotGeneration, state.LayoutRevision))
-            return;
-        if (_focusedItemIndex >= 0)
-            UpdateFocusRing();
-        QueueHorizontalOverflowAutomationNotification(
-            snapshot,
-            state.SnapshotGeneration,
-            target,
-            state.OldOffset,
-            state.NewOffset,
-            state.Extent,
-            state.Viewport,
-            state.IsRightToLeft);
-
-        if (_surface.Canvas is { } canvas)
-        {
-            if (MarkdownCanvasInvalidationPolicy.TryClipToCanvas(
-                    new Rect(
-                        state.ViewportBounds.X - 1,
-                        state.ViewportBounds.Y - 1,
-                        state.ViewportBounds.Width + 2,
-                        Math.Max(state.ViewportBounds.Bottom, state.TrackBounds.Bottom) - state.ViewportBounds.Y + 2),
-                    canvas.Width,
-                    canvas.Height,
-                    out Rect invalidation))
-            {
-                canvas.Invalidate(invalidation);
-            }
-        }
-    }
-
-    private void QueueHorizontalOverflowVisualRetry(
-        LayoutSnapshot? snapshot,
-        long snapshotGeneration,
-        int blockIndex,
-        double oldOffset)
-    {
-        if (snapshot is null || !ReferenceEquals(snapshot, _published.Snapshot) ||
-            snapshotGeneration != _published.Generation)
-        {
-            return;
-        }
-
-        _hasPendingHorizontalOverflowRefresh = true;
-        _pendingHorizontalOverflowRefreshGeneration = snapshotGeneration;
-        _pendingHorizontalOverflowRefreshBlockIndex = blockIndex;
-        _pendingHorizontalOverflowRefreshOldOffset = oldOffset;
-        StartImageRelayoutRecovery();
-        if (!HasImageRelayoutRecoveryClock)
-        {
-            _hasPendingHorizontalOverflowRefresh = false;
-            RequestRebuild(RebuildReason.Full);
-        }
-    }
-
-    private void ProcessPendingHorizontalOverflowVisualRetry()
-    {
-        if (!_hasPendingHorizontalOverflowRefresh)
-            return;
-        if (RequestGeometryRecoveryIfRequired(_published.Snapshot))
-        {
-            _hasPendingHorizontalOverflowRefresh = false;
-            return;
-        }
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _published.Snapshot is not { } snapshot ||
-            _pendingHorizontalOverflowRefreshGeneration != _published.Generation)
-        {
-            _hasPendingHorizontalOverflowRefresh = false;
-            return;
-        }
-
-        long generation = _pendingHorizontalOverflowRefreshGeneration;
-        long revision = snapshot.LayoutRevision;
-        if (!snapshot.TryBeginInteraction())
-            return;
-
-        HorizontalOverflowVisualState state = default;
-        bool found = false;
-        bool missing = false;
-        try
-        {
-            if (IsCurrentScrollTarget(snapshot, generation, revision) &&
-                snapshot.TryGetHorizontalOverflowForBlockIndex(
-                    _pendingHorizontalOverflowRefreshBlockIndex,
-                    out IHorizontalOverflowBox? target) &&
-                target is not null)
-            {
-                found = TryCaptureHorizontalOverflowVisualStateNoLock(
-                    snapshot,
-                    generation,
-                    revision,
-                    target,
-                    _pendingHorizontalOverflowRefreshOldOffset,
-                    out state);
-                missing = !found &&
-                    Math.Abs(target.HorizontalOffset - _pendingHorizontalOverflowRefreshOldOffset) <= 0.1;
-            }
-            else
-            {
-                missing = true;
-            }
-        }
-        finally
-        {
-            snapshot.EndInteraction();
-        }
-
-        if (!IsCurrentScrollTarget(snapshot, generation, revision))
-            return;
-        if (found)
-        {
-            _hasPendingHorizontalOverflowRefresh = false;
-            PublishHorizontalOverflowVisualState(state);
-        }
-        else if (missing)
-        {
-            _hasPendingHorizontalOverflowRefresh = false;
-        }
-    }
-
-    private void QueueHorizontalOverflowAutomationNotification(
-        LayoutSnapshot snapshot,
-        long snapshotGeneration,
-        IHorizontalOverflowBox target,
-        double oldOffset,
-        double newOffset,
-        double extent,
-        double viewport,
-        bool isRightToLeft)
-    {
-        if (!AutomationPeer.ListenerExists(AutomationEvents.PropertyChanged) ||
-            _lifetime.IsDisposed ||
-            _lifetime.IsUnloaded ||
-            !ReferenceEquals(snapshot, _published.Snapshot) ||
-            snapshotGeneration != _published.Generation ||
-            !snapshot.SemanticDocument.TryGetHorizontalOverflowNode(target, out _))
-        {
-            return;
-        }
-
-        double oldPhysicalPercent = MarkdownHorizontalScrollPolicy.GetPhysicalPercent(
-            oldOffset,
-            extent,
-            viewport,
-            isRightToLeft);
-        double newPhysicalPercent = MarkdownHorizontalScrollPolicy.GetPhysicalPercent(
-            newOffset,
-            extent,
-            viewport,
-            isRightToLeft);
-        if (Math.Abs(newPhysicalPercent - oldPhysicalPercent) <= 0.0001)
-            return;
-
-        if (_pendingHorizontalOverflowAutomationChanges.TryGetValue(
-                target,
-                out PendingHorizontalOverflowAutomationChange pending) &&
-            ReferenceEquals(pending.Snapshot, snapshot))
-        {
-            _pendingHorizontalOverflowAutomationChanges[target] = new(
-                pending.Snapshot,
-                pending.OldPhysicalPercent,
-                newPhysicalPercent);
-        }
-        else
-        {
-            _pendingHorizontalOverflowAutomationChanges[target] = new(
-                snapshot,
-                oldPhysicalPercent,
-                newPhysicalPercent);
-        }
-
-        if (_horizontalOverflowAutomationEventQueued)
-            return;
-
-        _horizontalOverflowAutomationEventQueued = true;
-        Microsoft.UI.Dispatching.DispatcherQueue? dispatcher = DispatcherQueue;
-        if (dispatcher is null || !dispatcher.TryEnqueue(
-                Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
-                ProcessQueuedHorizontalOverflowAutomationNotifications))
-        {
-            _horizontalOverflowAutomationEventQueued = false;
-            _pendingHorizontalOverflowAutomationChanges.Clear();
-        }
-    }
-
-    private void ProcessQueuedHorizontalOverflowAutomationNotifications()
-    {
-        _horizontalOverflowAutomationEventQueued = false;
-        var changes = new KeyValuePair<IHorizontalOverflowBox, PendingHorizontalOverflowAutomationChange>[
-            _pendingHorizontalOverflowAutomationChanges.Count];
-        ((ICollection<KeyValuePair<IHorizontalOverflowBox, PendingHorizontalOverflowAutomationChange>>)
-            _pendingHorizontalOverflowAutomationChanges).CopyTo(changes, 0);
-        _pendingHorizontalOverflowAutomationChanges.Clear();
-
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _published.Snapshot is not { } currentSnapshot)
-            return;
-
-        MarkdownAutomationPeer? peer =
-            FrameworkElementAutomationPeer.FromElement(this) as MarkdownAutomationPeer;
-        if (peer is null)
-            return;
-
-        foreach (KeyValuePair<IHorizontalOverflowBox, PendingHorizontalOverflowAutomationChange> entry in changes)
-        {
-            PendingHorizontalOverflowAutomationChange change = entry.Value;
-            if (!ReferenceEquals(change.Snapshot, currentSnapshot) ||
-                !currentSnapshot.SemanticDocument.TryGetHorizontalOverflowNode(entry.Key, out _))
-            {
-                continue;
-            }
-
-            peer.NotifyHorizontalOverflowScrolled(
-                entry.Key,
-                change.OldPhysicalPercent,
-                change.NewPhysicalPercent);
-        }
-    }
-
     internal void ScrollHorizontalOverflowForAutomation(
         IHorizontalOverflowBox target,
         ScrollAmount amount)
-    {
-        if (_published.Snapshot is not { } snapshot)
-            return;
-
-        double physicalDelta = amount switch
-        {
-            ScrollAmount.LargeDecrement => -Math.Max(48, target.HorizontalViewport * 0.9),
-            ScrollAmount.SmallDecrement => -48,
-            ScrollAmount.SmallIncrement => 48,
-            ScrollAmount.LargeIncrement => Math.Max(48, target.HorizontalViewport * 0.9),
-            _ => 0,
-        };
-        double logicalDelta = MarkdownHorizontalScrollPolicy.GetLogicalDelta(
-            physicalDelta,
-            target.IsRightToLeft);
-        double oldOffset = target.HorizontalOffset;
-        if (snapshot.TryScrollHorizontal(target, logicalDelta))
-            RefreshHorizontalOverflowVisualState(target, oldOffset);
-    }
+        => _overflowScroll.ScrollForAutomation(target, amount);
 
     internal void SetHorizontalOverflowPercentForAutomation(
         IHorizontalOverflowBox target,
         double percent)
-    {
-        if (_published.Snapshot is not { } snapshot || !double.IsFinite(percent))
-            return;
-
-        double oldOffset = target.HorizontalOffset;
-        double logicalOffset = MarkdownHorizontalScrollPolicy.GetLogicalOffset(
-            percent,
-            target.HorizontalExtent,
-            target.HorizontalViewport,
-            target.IsRightToLeft);
-        if (snapshot.TrySetHorizontalOffset(target, logicalOffset))
-            RefreshHorizontalOverflowVisualState(target, oldOffset);
-    }
-
-    private static bool HorizontalOverflowContains(
-        IHorizontalOverflowBox target,
-        Layout.Boxes.InlineContainerBox box)
-    {
-        if (target is Layout.Boxes.CodeBlockBox code)
-        {
-            foreach (var chunk in code.Chunks)
-            {
-                if (ReferenceEquals(chunk, box))
-                    return true;
-            }
-            return false;
-        }
-
-        if (target is Layout.Boxes.TableBox table)
-        {
-            foreach (var cell in table.GetCellBoxes())
-            {
-                if (ReferenceEquals(cell, box))
-                    return true;
-            }
-        }
-        return false;
-    }
-
-    private void FocusRendererForPointerInteraction()
-    {
-        _suppressNextFocusPromotion = true;
-        bool focused = Focus(FocusState.Programmatic);
-        if (!focused)
-        {
-            _suppressNextFocusPromotion = false;
-            return;
-        }
-
-        DispatcherQueue.TryEnqueue(() => _suppressNextFocusPromotion = false);
-    }
+        => _overflowScroll.SetPercentForAutomation(target, percent);
 
     private void InvalidateInteractiveTextAdorner()
     {
@@ -9625,7 +7278,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             return;
 
         if (!_adorner.IsCreated && !_selection.IsActive &&
-            _hover.Run is not LinkRun && !TryGetFocusedLink(out _, out _))
+            _hover.Run is not LinkRun && !_focus.TryGetFocusedLink(out _, out _))
             return;
 
         _adorner.Invalidate();
@@ -9647,14 +7300,14 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _adorner.Invalidate();
     }
 
-    bool ISelectionAdornerHost.IsDeviceRecoveryQueued => _canvasDeviceRecoveryQueued;
+    bool ISelectionAdornerHost.IsDeviceRecoveryQueued => _deviceRecovery.IsQueued;
 
-    bool ISelectionAdornerHost.HasFocusedLink => TryGetFocusedLink(out _, out _);
+    bool ISelectionAdornerHost.HasFocusedLink => _focus.TryGetFocusedLink(out _, out _);
 
     bool ISelectionAdornerHost.RequestGeometryRecoveryIfRequired(LayoutSnapshot snapshot)
         => RequestGeometryRecoveryIfRequired(snapshot);
 
-    void ISelectionAdornerHost.HandleDeviceLost(Exception exception) => HandleCanvasDeviceLost(exception);
+    void ISelectionAdornerHost.HandleDeviceLost(Exception exception) => _deviceRecovery.HandleDeviceLost(exception);
 
     void ISelectionAdornerHost.RequestRebuildForDeviceChange() => RequestRebuild(RebuildReason.Full);
 
@@ -9682,7 +7335,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         }
         catch (Exception ex) when (GraphicsDeviceErrors.IsDeviceLost(ex))
         {
-            HandleCanvasDeviceLost(ex);
+            _deviceRecovery.HandleDeviceLost(ex);
         }
         catch (Exception ex) when (ShouldIgnoreShutdownException(ex))
         {
@@ -9693,90 +7346,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private static bool ShouldIgnoreShutdownException(Exception ex)
         => GraphicsDeviceErrors.IsShutdownOrDisposed(ex);
-
-    /// <summary>
-    /// True when the given point in canvas coordinates is inside the
-    /// rectangle of any realised inline or block embed.
-    /// </summary>
-    private bool IsPointOverEmbed(Point pt)
-    {
-        if (IsPointOverCodeBlockAction(pt))
-            return true;
-
-        for (int i = 0; i < _embedRects.Count; i++)
-        {
-            var r = _embedRects[i].Rect;
-            if (pt.X >= r.X && pt.X < r.X + r.Width &&
-                pt.Y >= r.Y && pt.Y < r.Y + r.Height)
-                return true;
-        }
-        for (int i = 0; i < _blockEmbedRects.Count; i++)
-        {
-            var r = _blockEmbedRects[i].Rect;
-            if (pt.X >= r.X && pt.X < r.X + r.Width &&
-                pt.Y >= r.Y && pt.Y < r.Y + r.Height)
-                return true;
-        }
-        return false;
-    }
-
-    private bool IsPointOverCodeBlockAction(Point pt)
-    {
-        for (int i = 0; i < _codeBlockActionRects.Count; i++)
-        {
-            var r = _codeBlockActionRects[i].Rect;
-            if (pt.X >= r.X && pt.X < r.X + r.Width &&
-                pt.Y >= r.Y && pt.Y < r.Y + r.Height)
-                return true;
-        }
-
-        return false;
-    }
-
-    /// <summary>
-    /// If the point is inside an inline embed's rectangle, returns a
-    /// DocumentPosition that snaps to the start (left half) or end (right
-    /// half) of the embed run — making the embed an atomic, indivisible
-    /// unit of selection.  Returns false when the point is not over any
-    /// embed.
-    /// </summary>
-    private bool TryHitTestEmbed(Point pt, out DocumentPosition position)
-    {
-        for (int i = 0; i < _embedRects.Count; i++)
-        {
-            var (box, run, r) = _embedRects[i];
-            if (pt.X >= r.X && pt.X < r.X + r.Width &&
-                pt.Y >= r.Y && pt.Y < r.Y + r.Height)
-            {
-                bool rightHalf = pt.X >= r.X + r.Width / 2.0;
-                // In RTL flow the logical start of a run is visually on the
-                // right, so the right half maps to charOffset 0 and the left
-                // half maps to charOffset Text.Length. In LTR it's the
-                // opposite.
-                bool isRtl = FlowDirection == Microsoft.UI.Xaml.FlowDirection.RightToLeft;
-                int charOffset = isRtl
-                    ? (rightHalf ? 0 : run.TextLength)
-                    : (rightHalf ? run.TextLength : 0);
-                position = new DocumentPosition(box.BlockIndex, run.InlineIndex, charOffset);
-                return true;
-            }
-        }
-
-        for (int i = 0; i < _blockEmbedRects.Count; i++)
-        {
-            var (box, r) = _blockEmbedRects[i];
-            if (pt.X >= r.X && pt.X < r.X + r.Width &&
-                pt.Y >= r.Y && pt.Y < r.Y + r.Height)
-            {
-                bool afterMidpoint = pt.Y >= r.Y + r.Height / 2.0;
-                position = new DocumentPosition(box.BlockIndex, 0, afterMidpoint ? 1 : 0);
-                return true;
-            }
-        }
-
-        position = default;
-        return false;
-    }
 
     /// <summary>
     /// Syncs the selection adorner geometry. The adorner is a single stable
@@ -9796,15 +7365,15 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private bool HasInteractiveTextAdornerContent()
         => (_selection.IsActive && _adorner.Rectangles.Count > 0) ||
            _hover.HasLink ||
-           TryGetFocusedLink(out _, out _);
+           _focus.TryGetFocusedLink(out _, out _);
 
     private bool ShouldRefreshSelectionAdornerForScroll()
     {
         bool hasHoveredLink = _hover.HasLink;
-        IReadOnlyList<Layout.FocusableItem>? focusableItems = _focusableItems;
+        IReadOnlyList<Layout.FocusableItem>? focusableItems = _focus.Items;
         bool hasFocusedLink = focusableItems is not null &&
-            (uint)_focusedItemIndex < (uint)focusableItems.Count &&
-            focusableItems[_focusedItemIndex].Kind == Layout.FocusableItemKind.Link;
+            (uint)_focus.FocusedIndex < (uint)focusableItems.Count &&
+            focusableItems[_focus.FocusedIndex].Kind == Layout.FocusableItemKind.Link;
         bool hasVisibleAdorner = _adorner.IsVisible;
         bool hasRetainedRectangles = _adorner.Rectangles.Count > 0;
         bool hasPendingRefresh = _adorner.HasPendingRefresh;
@@ -9857,7 +7426,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (_hover.TryGetLink(out var hover, out var hoverBox))
             hoverBox.PaintLinkStateForeground(drawingSession, hover, focused: false, viewport);
 
-        if (TryGetFocusedLink(out var focusedBox, out var focusedLink))
+        if (_focus.TryGetFocusedLink(out var focusedBox, out var focusedLink))
             focusedBox.PaintLinkStateForeground(drawingSession, focusedLink, focused: true, viewport);
     }
 
@@ -9988,7 +7557,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     /// </summary>
     public void ScrollToBlock(int blockIndex)
     {
-        NoteViewportRequest();
+        _reveal.NoteViewportRequest();
         if (_published.Snapshot is not { } snapshot) return;
         long snapshotGeneration = _published.Generation;
         SnapshotBlockScrollTargetState targetState = snapshot.TryCaptureBlockScrollTarget(
@@ -10046,9 +7615,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private bool IsCurrentScrollTarget(LayoutSnapshot snapshot, long snapshotGeneration, long layoutRevision) =>
         !_lifetime.IsDisposed && !_lifetime.IsUnloaded &&
-        ReferenceEquals(snapshot, _published.Snapshot) &&
-        snapshotGeneration == _published.Generation &&
-        snapshot.LayoutRevision == layoutRevision;
+        _published.IsCurrent(snapshot, snapshotGeneration, layoutRevision);
 
     private void ClearPendingScrollToBlock(LayoutSnapshot snapshot, long snapshotGeneration, int blockIndex)
     {
@@ -10153,32 +7720,27 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 e.Handled = _contextMenu.Show(_contextMenu.GetKeyboardPoint());
                 return;
             case VirtualKey.Tab:
-                e.Handled = MoveFocus(reverse: shift);
+                e.Handled = _navigator.MoveTab(reverse: shift);
                 return;
             case VirtualKey.Left:
             case VirtualKey.Right:
-                e.Handled = HandleHorizontalArrowKey(e.Key);
-                return;
             case VirtualKey.Home:
             case VirtualKey.End:
-                e.Handled = ScrollFocusedHorizontalOverflowToEdge(e.Key == VirtualKey.End);
-                return;
             case VirtualKey.Up:
             case VirtualKey.Down:
-                e.Handled = MoveFocusSpatial(e.Key);
+                e.Handled = _navigator.Navigate(e.Key);
                 return;
             case VirtualKey.Enter:
-            case VirtualKey.Space when _focusedItemIndex >= 0:
-                ClearPendingSpatialFocusKeys();
-                e.Handled = ActivateFocusedItem();
+            case VirtualKey.Space when _focus.FocusedIndex >= 0:
+                _navigator.ClearQueuedKeys();
+                e.Handled = _focusCommit.Activate();
                 return;
             case VirtualKey.Escape:
-                ClearPendingSpatialFocusKeys();
-                if (_focusedItemIndex >= 0)
+                _navigator.ClearQueuedKeys();
+                if (_focus.FocusedIndex >= 0)
                 {
-                    _pendingLazyFocus = null;
-                    _focusedItemIndex = -1;
-                    UpdateFocusRing();
+                    _focus.ClearFocus();
+                    _focusRing.Update();
                     e.Handled = true;
                 }
                 else if (_selection.IsActive)
@@ -10188,1545 +7750,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 }
                 return;
         }
-    }
-
-    private bool HandleHorizontalArrowKey(VirtualKey key)
-    {
-        if (_pendingSpatialFocusKeys.Count > 0)
-            return QueuePendingSpatialFocusKey(key);
-
-        HorizontalArrowHandlingOrder order =
-            MarkdownKeyboardInputPolicy.GetHorizontalArrowHandlingOrder(
-                GetCurrentFocusableIdentity()?.Kind);
-        FocusGeometryReadStatus status = order == HorizontalArrowHandlingOrder.OverflowThenSpatial
-            ? TryScrollFocusedHorizontalOverflow(key)
-            : TryMoveFocusSpatial(key);
-        if (status == FocusGeometryReadStatus.Ready)
-        {
-            bool handled = status == FocusGeometryReadStatus.Ready && _lastFocusNavigationHandled;
-            if (handled)
-                return true;
-
-            status = order == HorizontalArrowHandlingOrder.OverflowThenSpatial
-                ? TryMoveFocusSpatial(key)
-                : TryScrollFocusedHorizontalOverflow(key);
-            if (status == FocusGeometryReadStatus.Ready)
-                return _lastFocusNavigationHandled;
-        }
-
-        return QueuePendingSpatialFocusKey(key);
-    }
-
-    private FocusGeometryReadStatus TryScrollFocusedHorizontalOverflow(VirtualKey key)
-    {
-        _lastFocusNavigationHandled = false;
-        if (_published.Snapshot is not { } snapshot ||
-            _focusableItems is not { } items ||
-            _focusedItemIndex < 0 ||
-            _focusedItemIndex >= items.Count)
-        {
-            return FocusGeometryReadStatus.Ready;
-        }
-
-        long generation = _published.Generation;
-        long revision = snapshot.LayoutRevision;
-        if (!snapshot.TryBeginInteraction())
-            return FocusGeometryReadStatus.Busy;
-
-        HorizontalOverflowVisualState visualState = default;
-        bool changed = false;
-        bool current;
-        double oldOffset = 0;
-        int blockIndex = items[_focusedItemIndex].BlockIndex;
-        try
-        {
-            current = IsCurrentScrollTarget(snapshot, generation, revision);
-            if (current && snapshot.TryGetHorizontalOverflowForBlockIndex(
-                    blockIndex,
-                    out IHorizontalOverflowBox? overflow) &&
-                overflow is not null)
-            {
-                bool towardPhysicalRight = key == VirtualKey.Right;
-                double logicalDelta = overflow.IsRightToLeft
-                    ? (towardPhysicalRight ? -48 : 48)
-                    : (towardPhysicalRight ? 48 : -48);
-                oldOffset = overflow.HorizontalOffset;
-                changed = snapshot.TryScrollHorizontal(overflow, logicalDelta);
-                if (changed)
-                    _ = TryCaptureHorizontalOverflowVisualStateNoLock(
-                        snapshot, generation, revision, overflow, oldOffset, out visualState);
-            }
-        }
-        finally
-        {
-            snapshot.EndInteraction();
-        }
-
-        if (!current)
-            return FocusGeometryReadStatus.Stale;
-        if (!changed)
-            return IsCurrentScrollTarget(snapshot, generation, revision)
-                ? FocusGeometryReadStatus.Ready
-                : FocusGeometryReadStatus.Stale;
-
-        _lastFocusNavigationHandled = true;
-        if (visualState.Snapshot is not null)
-            PublishHorizontalOverflowVisualState(visualState);
-        else
-            QueueHorizontalOverflowVisualRetry(snapshot, generation, blockIndex, oldOffset);
-        return FocusGeometryReadStatus.Ready;
-    }
-
-    private bool ScrollFocusedHorizontalOverflow(VirtualKey key)
-    {
-        if (_pendingSpatialFocusKeys.Count > 0)
-            return QueuePendingSpatialFocusKey(key);
-        FocusGeometryReadStatus status = TryScrollFocusedHorizontalOverflow(key);
-        if (status == FocusGeometryReadStatus.Ready)
-            return _lastFocusNavigationHandled;
-        return QueuePendingSpatialFocusKey(key);
-    }
-
-    private bool ScrollFocusedHorizontalOverflowToEdge(bool end)
-    {
-        VirtualKey key = end ? VirtualKey.End : VirtualKey.Home;
-        if (_pendingSpatialFocusKeys.Count > 0)
-            return QueuePendingSpatialFocusKey(key);
-        FocusGeometryReadStatus status = TryScrollFocusedHorizontalOverflowToEdge(end);
-        if (status == FocusGeometryReadStatus.Ready)
-            return _lastFocusNavigationHandled;
-        return QueuePendingSpatialFocusKey(key);
-    }
-
-    private FocusGeometryReadStatus TryScrollFocusedHorizontalOverflowToEdge(bool end)
-    {
-        _lastFocusNavigationHandled = false;
-        if (_published.Snapshot is not { } snapshot ||
-            _focusableItems is not { } items ||
-            _focusedItemIndex < 0 ||
-            _focusedItemIndex >= items.Count)
-        {
-            return FocusGeometryReadStatus.Ready;
-        }
-
-        long generation = _published.Generation;
-        long revision = snapshot.LayoutRevision;
-        if (!snapshot.TryBeginInteraction())
-            return FocusGeometryReadStatus.Busy;
-
-        HorizontalOverflowVisualState visualState = default;
-        bool changed = false;
-        bool current;
-        double oldOffset = 0;
-        int blockIndex = items[_focusedItemIndex].BlockIndex;
-        try
-        {
-            current = IsCurrentScrollTarget(snapshot, generation, revision);
-            if (current && snapshot.TryGetHorizontalOverflowForBlockIndex(
-                    blockIndex,
-                    out IHorizontalOverflowBox? overflow) &&
-                overflow is not null)
-            {
-                oldOffset = overflow.HorizontalOffset;
-                double target = end
-                    ? Math.Max(0, overflow.HorizontalExtent - overflow.HorizontalViewport)
-                    : 0;
-                changed = snapshot.TrySetHorizontalOffset(overflow, target);
-                if (changed)
-                    _ = TryCaptureHorizontalOverflowVisualStateNoLock(
-                        snapshot, generation, revision, overflow, oldOffset, out visualState);
-            }
-        }
-        finally
-        {
-            snapshot.EndInteraction();
-        }
-
-        if (!current)
-            return FocusGeometryReadStatus.Stale;
-        if (!changed)
-            return IsCurrentScrollTarget(snapshot, generation, revision)
-                ? FocusGeometryReadStatus.Ready
-                : FocusGeometryReadStatus.Stale;
-
-        _lastFocusNavigationHandled = true;
-        if (visualState.Snapshot is not null)
-            PublishHorizontalOverflowVisualState(visualState);
-        else
-            QueueHorizontalOverflowVisualRetry(snapshot, generation, blockIndex, oldOffset);
-        return FocusGeometryReadStatus.Ready;
-    }
-
-    /// <summary>
-    /// Advances (or reverses) keyboard focus through the focusable items list.
-    /// Returns true when focus is successfully moved (prevents Tab from leaving the control).
-    /// </summary>
-    private bool MoveFocus(bool reverse)
-    {
-        ClearPendingSpatialFocusKeys();
-        var items = _focusableItems;
-        if (items is null || items.Count == 0) return false;
-
-        int nextIndex = FocusNavigationHelper.MoveTab(items.Count, _focusedItemIndex, _focusResumeItemIndex, reverse);
-        if (nextIndex < 0)
-        {
-            // Let Tab/Shift+Tab leave the control to the next focusable element.
-            _pendingLazyFocus = null;
-            _focusedItemIndex = -1;
-            _focusResumeItemIndex = -1;
-            UpdateFocusRing();
-            SuppressHostedTabStopsForNativeTab();
-            return false;
-        }
-
-        _focusedItemIndex = nextIndex;
-        _focusResumeItemIndex = -1;
-        return CommitFocusedItem(reverse);
-    }
-
-    private void SuppressHostedTabStopsForNativeTab()
-    {
-        var suppressed = new List<(Control Control, bool IsTabStop)>();
-        var seen = new HashSet<Control>();
-        foreach (var plan in _embedPlans)
-        {
-            if (plan.Realized is { } realized)
-                HostedFocusNavigation.SuppressHostedTabStops(realized, suppressed, seen);
-        }
-        foreach (var plan in _codeBlockActionPlans)
-        {
-            if (plan.Realized is { } realized)
-                HostedFocusNavigation.SuppressHostedTabStops(realized, suppressed, seen);
-        }
-
-        if (suppressed.Count == 0)
-            return;
-
-        DispatcherQueue.TryEnqueue(() =>
-        {
-            foreach (var (control, isTabStop) in suppressed)
-                control.IsTabStop = isTabStop;
-        });
-    }
-
-    private bool MoveFocusSpatial(VirtualKey key)
-    {
-        if (_pendingSpatialFocusKeys.Count > 0)
-            return QueuePendingSpatialFocusKey(key);
-
-        FocusGeometryReadStatus status = TryMoveFocusSpatial(key);
-        if (status == FocusGeometryReadStatus.Ready)
-            return _lastFocusNavigationHandled;
-        return QueuePendingSpatialFocusKey(key);
-    }
-
-    private FocusGeometryReadStatus TryMoveFocusSpatial(VirtualKey key)
-    {
-        _lastFocusNavigationHandled = false;
-        var items = _focusableItems;
-        if (items is null || items.Count == 0)
-            return FocusGeometryReadStatus.Ready;
-
-        if (_focusedItemIndex < 0)
-        {
-            if (_focusResumeItemIndex < 0)
-                return FocusGeometryReadStatus.Ready;
-            _focusedItemIndex = Math.Clamp(_focusResumeItemIndex, 0, items.Count - 1);
-            _focusResumeItemIndex = -1;
-            _lastFocusNavigationHandled = CommitFocusedItem(reverse: false);
-            return FocusGeometryReadStatus.Ready;
-        }
-
-        LayoutSnapshot? snapshot = _published.Snapshot;
-        if (snapshot is null)
-            return FocusGeometryReadStatus.Stale;
-        long generation = _published.Generation;
-        long revision = snapshot.LayoutRevision;
-        FocusGeometryReadStatus captureStatus = TryCaptureFocusableRectMap(
-            snapshot, generation, revision, items,
-            out List<(int Index, Rect Rect)> map);
-        if (captureStatus != FocusGeometryReadStatus.Ready)
-            return captureStatus;
-
-        int currentLocalIndex = -1;
-        for (int i = 0; i < map.Count; i++)
-        {
-            if (map[i].Index == _focusedItemIndex)
-            {
-                currentLocalIndex = i;
-                break;
-            }
-        }
-
-        if (currentLocalIndex < 0)
-            return FocusGeometryReadStatus.Ready;
-
-        var rects = new List<Rect>(map.Count);
-        foreach (var entry in map) rects.Add(entry.Rect);
-
-        var direction = key switch
-        {
-            VirtualKey.Left => Layout.FocusNavigationDirection.Left,
-            VirtualKey.Right => Layout.FocusNavigationDirection.Right,
-            VirtualKey.Up => Layout.FocusNavigationDirection.Up,
-            VirtualKey.Down => Layout.FocusNavigationDirection.Down,
-            _ => Layout.FocusNavigationDirection.Down,
-        };
-
-        int nextLocalIndex = FocusNavigationHelper.MoveSpatial(rects, currentLocalIndex, direction);
-        if (nextLocalIndex < 0)
-            return FocusGeometryReadStatus.Ready;
-
-        if (!IsCurrentScrollTarget(snapshot, generation, revision))
-            return FocusGeometryReadStatus.Stale;
-
-        _focusedItemIndex = map[nextLocalIndex].Index;
-        _focusResumeItemIndex = -1;
-        _lastFocusNavigationHandled = CommitFocusedItem(reverse: false);
-        return FocusGeometryReadStatus.Ready;
-    }
-
-    private bool QueuePendingSpatialFocusKey(VirtualKey key)
-    {
-        if (RequestGeometryRecoveryIfRequired(_published.Snapshot))
-            return false;
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _published.Snapshot is not { } snapshot ||
-            _focusableItems is not { } items || items.Count == 0)
-        {
-            return false;
-        }
-
-        long generation = _published.Generation;
-        if (_pendingSpatialFocusKeys.Count > 0 &&
-            (_pendingSpatialFocusGeneration != generation ||
-             !_hasPendingSpatialFocusOrigin ||
-             GetCurrentFocusableIdentity() is not { } current ||
-             !FocusableItemQueries.SameFocusableIdentity(current, _pendingSpatialFocusOrigin)))
-        {
-            ClearPendingSpatialFocusKeys();
-        }
-
-        if (_pendingSpatialFocusKeys.Count >= MaxPendingSpatialFocusKeys)
-            return false; // Leave this repeated key unhandled so its parent can act on it.
-
-        if (!_hasPendingSpatialFocusOrigin)
-        {
-            if (GetCurrentFocusableIdentity() is not { } origin)
-                return false;
-            _pendingSpatialFocusOrigin = origin;
-            _pendingSpatialFocusGeneration = generation;
-            _hasPendingSpatialFocusOrigin = true;
-        }
-
-        _pendingSpatialFocusKeys.Enqueue(key);
-        StartImageRelayoutRecovery();
-        if (!HasImageRelayoutRecoveryClock)
-        {
-            ClearPendingSpatialFocusKeys();
-            return false;
-        }
-
-        return true;
-    }
-
-    private void ProcessPendingFocusGeometry()
-    {
-        if (_processingPendingFocusGeometry || _lifetime.IsDisposed || _lifetime.IsUnloaded || _published.Snapshot is not { } snapshot)
-            return;
-
-        if (RequestGeometryRecoveryIfRequired(snapshot))
-        {
-            ClearPendingFocusGeometryWork();
-            return;
-        }
-
-        _processingPendingFocusGeometry = true;
-        try
-        {
-            if (_pendingSpatialFocusKeys.Count > 0)
-            {
-                if (_pendingSpatialFocusGeneration != _published.Generation ||
-                    !_hasPendingSpatialFocusOrigin ||
-                    GetCurrentFocusableIdentity() is not { } current ||
-                    !FocusableItemQueries.SameFocusableIdentity(current, _pendingSpatialFocusOrigin))
-                {
-                    ClearPendingSpatialFocusKeys();
-                }
-                else
-                {
-                    VirtualKey key = _pendingSpatialFocusKeys.Peek();
-                    long queueEpoch = _pendingSpatialFocusQueueEpoch;
-                    FocusGeometryReadStatus status = TryProcessFocusSpatialKey(key);
-                    if (status == FocusGeometryReadStatus.Ready &&
-                        queueEpoch == _pendingSpatialFocusQueueEpoch &&
-                        _pendingSpatialFocusKeys.Count > 0 &&
-                        _pendingSpatialFocusKeys.Peek() == key)
-                    {
-                        _pendingSpatialFocusKeys.Dequeue();
-                        if (_pendingSpatialFocusKeys.Count == 0)
-                        {
-                            _hasPendingSpatialFocusOrigin = false;
-                        }
-                        else if (GetCurrentFocusableIdentity() is { } updatedOrigin)
-                        {
-                            _pendingSpatialFocusOrigin = updatedOrigin;
-                        }
-                        else
-                        {
-                            ClearPendingSpatialFocusKeys();
-                        }
-                    }
-                }
-            }
-
-            if (_hasPendingFocusResumePoint)
-            {
-                long generation = _published.Generation;
-                if (_pendingFocusResumeGeneration != generation)
-                {
-                    _hasPendingFocusResumePoint = false;
-                    _focusResumeItemIndex = -1;
-                }
-                else
-                {
-                    FocusGeometryReadStatus status = TryCaptureFocusableRectMap(
-                        snapshot,
-                        generation,
-                        snapshot.LayoutRevision,
-                        _focusableItems,
-                        out List<(int Index, Rect Rect)> map);
-                    if (status == FocusGeometryReadStatus.Ready)
-                    {
-                        Point point = _pendingFocusResumePoint;
-                        _hasPendingFocusResumePoint = false;
-                        _focusResumeItemIndex = FocusableItemQueries.FindNearestFocusableItem(map, point);
-                    }
-                    else if (status == FocusGeometryReadStatus.Stale &&
-                             generation != _published.Generation)
-                    {
-                        _hasPendingFocusResumePoint = false;
-                        _focusResumeItemIndex = -1;
-                    }
-                }
-            }
-
-            if (_pendingFocusGeometryRefresh && _pendingSpatialFocusKeys.Count == 0)
-            {
-                _pendingFocusGeometryRefresh = false;
-                // A reveal waiting for settled geometry must not
-                // override a scroll the user requested since focus moved.
-                if (IsFocusRevealCurrent())
-                    _ = ScrollFocusedItemIntoView();
-                UpdateFocusRing();
-            }
-        }
-        finally
-        {
-            _processingPendingFocusGeometry = false;
-        }
-    }
-
-    private FocusGeometryReadStatus TryProcessFocusSpatialKey(VirtualKey key)
-    {
-        if (key is VirtualKey.Home or VirtualKey.End)
-            return TryScrollFocusedHorizontalOverflowToEdge(key == VirtualKey.End);
-
-        if (key is VirtualKey.Left or VirtualKey.Right)
-        {
-            HorizontalArrowHandlingOrder order =
-                MarkdownKeyboardInputPolicy.GetHorizontalArrowHandlingOrder(
-                    GetCurrentFocusableIdentity()?.Kind);
-            FocusGeometryReadStatus first = order == HorizontalArrowHandlingOrder.OverflowThenSpatial
-                ? TryScrollFocusedHorizontalOverflow(key)
-                : TryMoveFocusSpatial(key);
-            if (first != FocusGeometryReadStatus.Ready || _lastFocusNavigationHandled)
-                return first;
-            return order == HorizontalArrowHandlingOrder.OverflowThenSpatial
-                ? TryMoveFocusSpatial(key)
-                : TryScrollFocusedHorizontalOverflow(key);
-        }
-
-        return TryMoveFocusSpatial(key);
-    }
-
-    private void ClearPendingSpatialFocusKeys()
-    {
-        ++_pendingSpatialFocusQueueEpoch;
-        _pendingSpatialFocusKeys.Clear();
-        _hasPendingSpatialFocusOrigin = false;
-        _pendingSpatialFocusGeneration = 0;
-    }
-
-    private void ClearPendingFocusGeometryWork()
-    {
-        ClearPendingSpatialFocusKeys();
-        _pendingFocusGeometryRefresh = false;
-        _hasPendingFocusResumePoint = false;
-        _pendingFocusResumeGeneration = 0;
-        _hasPendingHorizontalOverflowRefresh = false;
-        _pendingHorizontalOverflowRefreshGeneration = 0;
-        ++_focusRingPublicationTicket;
-    }
-
-    private void RequestFocusGeometryRetry()
-    {
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded)
-            return;
-
-        if (RequestGeometryRecoveryIfRequired(_published.Snapshot))
-            return;
-
-        _pendingFocusGeometryRefresh = true;
-        StartImageRelayoutRecovery();
-        if (!HasImageRelayoutRecoveryClock)
-        {
-            _pendingFocusGeometryRefresh = false;
-            _hasPendingFocusResumePoint = false;
-            _focusResumeItemIndex = -1;
-            RequestRebuild(RebuildReason.Full);
-        }
-    }
-
-    private bool CommitFocusedItem(bool reverse)
-    {
-        var items = _focusableItems;
-        LayoutSnapshot? snapshot = _published.Snapshot;
-        if (snapshot is null ||
-            items is null ||
-            _focusedItemIndex < 0 ||
-            _focusedItemIndex >= items.Count)
-        {
-            _pendingLazyFocus = null;
-            return false;
-        }
-
-        long snapshotGeneration = _published.Generation;
-        if (!ReferenceEquals(snapshot, _published.Snapshot))
-            return true;
-
-        Layout.FocusableItem item = items[_focusedItemIndex];
-        FocusTargetLayoutState layoutState = snapshot.TryGetFocusTargetLayoutState(
-            item.BlockIndex,
-            out LazyLayoutBand estimatedBand);
-        if (!ReferenceEquals(snapshot, _published.Snapshot) ||
-            snapshotGeneration != _published.Generation)
-        {
-            return true;
-        }
-
-        if (layoutState is FocusTargetLayoutState.RequiresRealization or FocusTargetLayoutState.Busy)
-        {
-            // Keep native focus on the renderer while the target's top-level
-            // block is measured. This consumes the Tab instead of allowing XAML
-            // to advance beyond the renderer at a lazy-layout boundary.
-            _pendingLazyFocus = new PendingLazyFocus(
-                snapshot,
-                snapshotGeneration,
-                item,
-                reverse);
-            var pending = _pendingLazyFocus.Value;
-            _ = Focus(FocusState.Keyboard);
-            if (!IsCurrentPendingLazyFocus(pending))
-                return true;
-            HideFocusRing();
-            if (!IsCurrentPendingLazyFocus(pending))
-                return true;
-
-            if (layoutState == FocusTargetLayoutState.RequiresRealization)
-            {
-                ScrollLazyFocusTargetIntoView(estimatedBand, reverse);
-                if (!IsCurrentPendingLazyFocus(pending))
-                    return true;
-                var realizationBand = LazyLayoutBand.FromViewport(
-                    estimatedBand.Top,
-                    Math.Max(1, estimatedBand.Bottom - estimatedBand.Top),
-                    LazyLayoutOverscanPx);
-                LazyLayoutBand visibleVectorBand = GetCurrentVisibleVectorBand();
-                QueueLazyLayoutForBand(
-                    snapshot,
-                    IncludeBand(realizationBand, visibleVectorBand),
-                    visibleVectorBand,
-                    preserveScrollAnchor: _surface.Scroll is not null);
-            }
-
-            return true;
-        }
-
-        if (layoutState == FocusTargetLayoutState.Unavailable)
-        {
-            // A retiring snapshot or malformed custom block index must never
-            // turn an already-consumed Tab into focus escape.
-            _pendingLazyFocus = null;
-            _ = Focus(FocusState.Keyboard);
-            if (!ReferenceEquals(snapshot, _published.Snapshot) ||
-                snapshotGeneration != _published.Generation)
-            {
-                return true;
-            }
-            HideFocusRing();
-            return true;
-        }
-
-        _pendingLazyFocus = null;
-        bool scrolled = BeginFocusedItemReveal();
-        FocusCurrentItem(reverse);
-        if (scrolled)
-        {
-            DispatcherQueue.TryEnqueue(() =>
-            {
-                if (_lifetime.IsUnloaded) return;
-                RealizeVisibleEmbeds();
-                FocusCurrentItem(reverse);
-            });
-        }
-        return true;
-    }
-
-    private bool ResumePendingLazyFocus(LayoutSnapshot snapshot)
-    {
-        if (_pendingLazyFocus is not { } pending)
-            return false;
-
-        if (!ReferenceEquals(snapshot, pending.Snapshot) ||
-            pending.SnapshotGeneration != _published.Generation)
-        {
-            _pendingLazyFocus = null;
-            return false;
-        }
-
-        int index = FocusableItemQueries.FindFocusableItemIndex(_focusableItems, pending.Item);
-        if (index < 0)
-        {
-            _pendingLazyFocus = null;
-            _focusedItemIndex = -1;
-            return false;
-        }
-
-        _focusedItemIndex = index;
-        return CommitFocusedItem(pending.Reverse);
-    }
-
-    private Layout.FocusableItem? GetCurrentFocusableIdentity()
-    {
-        var items = _focusableItems;
-        return items is not null &&
-               _focusedItemIndex >= 0 &&
-               _focusedItemIndex < items.Count
-            ? items[_focusedItemIndex]
-            : null;
-    }
-
-    private void ScrollLazyFocusTargetIntoView(LazyLayoutBand band, bool reverse)
-    {
-        _viewport.TryGet(out double viewportTop, out double viewportHeight, out double viewportWidth);
-        double viewportBottom = viewportTop + viewportHeight;
-        const double margin = 24;
-        if (band.Top >= viewportTop + margin && band.Bottom <= viewportBottom - margin)
-            return;
-
-        if (_surface.Scroll is not null)
-        {
-            double target = reverse
-                ? band.Bottom - viewportHeight + margin
-                : band.Top - margin;
-            double maximum = Math.Max(0, (_published.Snapshot?.Size.Height ?? band.Bottom) - viewportHeight);
-            _surface.Scroll.ChangeView(
-                null,
-                Math.Clamp(target, 0, maximum),
-                null,
-                disableAnimation: false);
-            return;
-        }
-
-        var targetRect = new Rect(
-            0,
-            band.Top,
-            Math.Max(1, viewportWidth),
-            Math.Max(1, band.Bottom - band.Top));
-        BringDocumentRectIntoExternalViewport(
-            targetRect,
-            animate: true,
-            alignmentRatio: reverse ? 1 : 0);
-    }
-
-    /// <summary>Fires LinkClick for the currently focused painted link.</summary>
-    private bool ActivateFocusedItem()
-    {
-        if (_pendingLazyFocus is not null)
-            return true;
-
-        var items = _focusableItems;
-        if (items is null || _focusedItemIndex < 0 || _focusedItemIndex >= items.Count)
-            return false;
-
-        var item = items[_focusedItemIndex];
-        MarkdownInputModifiers modifiers = InputModifierState.GetCurrentInputModifiers();
-        if (item.IsVectorSemantic &&
-            TryGetVectorSemanticForFocusable(item, out var vectorBox, out int semanticIndex) &&
-            vectorBox.TryGetLink(semanticIndex, out var vectorLink) &&
-            vectorLink is not null)
-        {
-            MarkdownVectorSemanticItem? semantic = vectorBox.GetSemanticItem(semanticIndex);
-            return ActivateLinkTarget(
-                new LinkTarget(
-                    vectorLink.Target ?? string.Empty,
-                    semantic?.Description,
-                    semantic?.SourceSpan ?? vectorBox.SourceRange,
-                    null,
-                    vectorLink.Action,
-                    vectorLink.External),
-                MarkdownLinkInputKind.Keyboard,
-                modifiers);
-        }
-
-        if (!item.IsLink)
-        {
-            return TryFocusHostedElement(item, reverse: false) switch
-            {
-                HostedFocusResult.Focused => true,
-                HostedFocusResult.Deferred => true,
-                HostedFocusResult.Stale => true,
-                _ => false,
-            };
-        }
-
-        // Resolve a text link or linked atomic inline (image/math) and use the
-        // same activation path as pointer input.
-        if (_published.Snapshot is null) return false;
-        var pos = new DocumentPosition(item.BlockIndex, item.InlineIndex, 0);
-        if (FindLinkTargetAt(pos) is { } link)
-        {
-            return ActivateLinkTarget(link, MarkdownLinkInputKind.Keyboard, modifiers);
-        }
-        return false;
-    }
-
-    private void FocusCurrentItem(bool reverse = false)
-    {
-        if (_pendingLazyFocus is not null)
-        {
-            HideFocusRing();
-            return;
-        }
-
-        var items = _focusableItems;
-        if (items is null || _focusedItemIndex < 0 || _focusedItemIndex >= items.Count)
-        {
-            UpdateFocusRing();
-            return;
-        }
-
-        var item = items[_focusedItemIndex];
-        if (!item.IsLink)
-        {
-            HostedFocusResult result = TryFocusHostedElement(item, reverse);
-            if (result == HostedFocusResult.Focused)
-            {
-                if (_focusRing is not null) _focusRing.Visibility = Visibility.Collapsed;
-                return;
-            }
-
-            // A pending realization is resumed by the normal layout path. A
-            // stale tuple means a callback changed the active focus/snapshot;
-            // neither case may write the old caller's focus ring or fallback.
-            if (result is HostedFocusResult.Deferred or HostedFocusResult.Stale)
-                return;
-        }
-
-        if (TryCaptureHostedFocusTuple(out HostedFocusTuple fallbackTuple) == HostedFocusPlanStatus.Stale ||
-            !IsCurrentHostedFocusRequest(fallbackTuple, item))
-        {
-            return;
-        }
-
-        Focus(FocusState.Keyboard);
-        if (!IsCurrentHostedFocusRequest(fallbackTuple, item))
-            return;
-        UpdateFocusRing();
-        if (!IsCurrentHostedFocusRequest(fallbackTuple, item))
-            return;
-        NotifyFocusedItemAutomation();
-    }
-
-    private void NotifyFocusedItemAutomation()
-    {
-        // Virtual focus is observable through HasKeyboardFocus even when no UIA
-        // client subscribes to focus events. Avoid entering UIA from the input
-        // path unless an assistive-technology listener actually needs the event;
-        // this also prevents a queued focus notification from racing a subsequent
-        // key press and re-entering this provider while the client is polling it.
-        if (!AutomationPeer.ListenerExists(AutomationEvents.AutomationFocusChanged))
-            return;
-
-        void Raise()
-        {
-            if (_pendingLazyFocus is not null ||
-                !AutomationPeer.ListenerExists(AutomationEvents.AutomationFocusChanged))
-                return;
-
-            var peer = FrameworkElementAutomationPeer.FromElement(this) as MarkdownAutomationPeer
-                       ?? FrameworkElementAutomationPeer.CreatePeerForElement(this) as MarkdownAutomationPeer;
-            if (TryGetFocusedLinkedAtomic(out var inline, out InlineRun linkedRun))
-            {
-                switch (linkedRun)
-                {
-                    case LinkRun link:
-                        peer?.RaiseFocusForLink(inline, link);
-                        break;
-                    case InlineImageRun image:
-                        peer?.RaiseFocusForLinkedImage(inline, image);
-                        break;
-                    case InlineVectorSceneRun inlineScene:
-                        peer?.RaiseFocusForInlineVectorScene(inlineScene);
-                        break;
-                }
-            }
-            else if (TryGetFocusedVectorSemantic(out var vectorBox, out int semanticIndex))
-            {
-                peer?.RaiseFocusForVectorSemantic(vectorBox, semanticIndex);
-            }
-            else if (TryGetFocusedHorizontalOverflow(out var overflow))
-            {
-                peer?.RaiseFocusForHorizontalOverflow(overflow);
-            }
-        }
-
-        // Let WinUI finish the real focus transition to the renderer first,
-        // then publish the virtual hyperlink focus event. If we raise inside
-        // GotFocus, Narrator can observe the root document focus event last and
-        // announce the whole renderer instead of the focused painted link.
-        if (DispatcherQueue is { } dispatcher)
-            dispatcher.TryEnqueue(Raise);
-        else
-            Raise();
-    }
-
-    /// <summary>
-    /// Places or moves the focus-ring <see cref="Border"/> on the overlay to
-    /// surround the currently focused item. Hides the ring if nothing is focused.
-    /// </summary>
-    private void UpdateFocusRing()
-    {
-        if (_pendingLazyFocus is not null)
-        {
-            HideFocusRing();
-            return;
-        }
-
-        var items = _focusableItems;
-        if (items is null || _focusedItemIndex < 0 || _focusedItemIndex >= items.Count)
-        {
-            HideFocusRing();
-            return;
-        }
-
-        var item = items[_focusedItemIndex];
-        if (!item.IsLink && !item.IsVectorSemantic && !item.IsHorizontalOverflow)
-        {
-            HideFocusRing();
-            return;
-        }
-
-        if (_published.Snapshot is not { } snapshot)
-        {
-            HideFocusRing();
-            return;
-        }
-
-        long generation = _published.Generation;
-        FocusGeometryReadStatus status = TryCaptureFocusableItemRect(
-            snapshot, generation, snapshot.LayoutRevision, item, out Rect? rect);
-        if (status != FocusGeometryReadStatus.Ready)
-        {
-            RequestFocusGeometryRetry();
-            return;
-        }
-
-        if (rect is not { Width: > 0, Height: > 0 })
-        {
-            HideFocusRing();
-            return;
-        }
-
-        QueueFocusRingPublication(generation, item, rect);
-    }
-
-    private void QueueFocusRingPublication(
-        long snapshotGeneration,
-        Layout.FocusableItem? item,
-        Rect? rect)
-    {
-        long ticket = ++_focusRingPublicationTicket;
-        bool queued = false;
-        try
-        {
-            queued = DispatcherQueue is { } dispatcher &&
-                dispatcher.TryEnqueue(() => ApplyFocusRingPublication(
-                    ticket, snapshotGeneration, item, rect));
-        }
-        catch (Exception)
-        {
-        }
-        if (!queued)
-        {
-            RequestFocusGeometryRetry();
-        }
-    }
-
-    private void ApplyFocusRingPublication(
-        long ticket,
-        long snapshotGeneration,
-        Layout.FocusableItem? item,
-        Rect? rect)
-    {
-        if (ticket != _focusRingPublicationTicket ||
-            _lifetime.IsDisposed || _lifetime.IsUnloaded ||
-            snapshotGeneration != _published.Generation)
-        {
-            return;
-        }
-
-        if (item is not { } expected ||
-            rect is not { Width: > 0, Height: > 0 } r ||
-            GetCurrentFocusableIdentity() is not { } current ||
-            !FocusableItemQueries.SameFocusableIdentity(current, expected))
-        {
-            if (_focusRing is not null)
-                _focusRing.Visibility = Visibility.Collapsed;
-            InvalidateInteractiveTextAdorner();
-            return;
-        }
-
-        if (!EnsureFocusRing())
-            return;
-        var focusRing = _focusRing!;
-
-        var focusVisual = _themeSnapshot?.FocusVisualColor
-                          ?? Windows.UI.Color.FromArgb(0xFF, 0x00, 0x78, 0xD4);
-        // Allocate a new SolidColorBrush only when the focus color actually changes;
-        // avoid per-keystroke GC pressure during Tab traversal.
-        if (focusRing.BorderBrush is null || focusVisual != _focusRingBrushColor)
-        {
-            _focusRingBrushColor = focusVisual;
-            focusRing.BorderBrush = new SolidColorBrush(focusVisual);
-        }
-
-        const double pad = 2.0;
-        Canvas.SetLeft(focusRing, r.X - pad);
-        Canvas.SetTop(focusRing, r.Y - pad);
-        focusRing.Width  = r.Width  + pad * 2;
-        focusRing.Height = r.Height + pad * 2;
-        focusRing.Visibility = Visibility.Visible;
-        InvalidateInteractiveTextAdorner();
-    }
-
-    private void HideFocusRing()
-    {
-        QueueFocusRingPublication(
-            _published.Generation,
-            item: null,
-            rect: null);
-    }
-
-    private bool EnsureFocusRing()
-    {
-        if (_focusRing is not null)
-            return true;
-
-        if (_surface.Overlay is null || _lifetime.IsUnloaded || XamlRoot is null)
-            return false;
-
-        var focusRing = new Microsoft.UI.Xaml.Controls.Border
-        {
-            BorderThickness = new Thickness(2),
-            CornerRadius = new CornerRadius(3),
-            IsHitTestVisible = false,
-        };
-        Canvas.SetZIndex(focusRing, 1);
-
-        try
-        {
-            _surface.Overlay.Children.Add(focusRing);
-        }
-        catch (System.Runtime.InteropServices.COMException ex)
-        {
-            MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] focus ring attach failed: {ex.Message}");
-            return false;
-        }
-
-        _focusRing = focusRing;
-        return true;
-    }
-
-    private Rect? GetFocusableItemRect(Layout.FocusableItem item)
-    {
-        if (_published.Snapshot is not { } snapshot)
-            return null;
-        return TryCaptureFocusableItemRect(
-            snapshot,
-            _published.Generation,
-            snapshot.LayoutRevision,
-            item,
-            out Rect? rect) == FocusGeometryReadStatus.Ready
-            ? rect
-            : null;
-    }
-
-    private void RememberFocusResumePoint(Point documentPoint)
-    {
-        if (_published.Snapshot is not { } snapshot)
-        {
-            _focusResumeItemIndex = -1;
-            _hasPendingFocusResumePoint = false;
-            return;
-        }
-
-        long generation = _published.Generation;
-        FocusGeometryReadStatus status = TryCaptureFocusableRectMap(
-            snapshot, generation, snapshot.LayoutRevision, _focusableItems,
-            out List<(int Index, Rect Rect)> map);
-        if (status != FocusGeometryReadStatus.Ready)
-        {
-            _pendingFocusResumePoint = documentPoint;
-            _pendingFocusResumeGeneration = generation;
-            _hasPendingFocusResumePoint = true;
-            RequestFocusGeometryRetry();
-            return;
-        }
-
-        _hasPendingFocusResumePoint = false;
-        _focusResumeItemIndex = FocusableItemQueries.FindNearestFocusableItem(map, documentPoint);
-    }
-
-    private FocusGeometryReadStatus TryCaptureFocusableItemRect(
-        LayoutSnapshot snapshot,
-        long snapshotGeneration,
-        long layoutRevision,
-        Layout.FocusableItem item,
-        out Rect? rect)
-    {
-        rect = null;
-        if (!IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))
-            return FocusGeometryReadStatus.Stale;
-        if (!snapshot.TryBeginInteraction())
-            return FocusGeometryReadStatus.Busy;
-
-        bool captured = false;
-        try
-        {
-            if (IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))
-            {
-                rect = GetFocusableItemRectFromSnapshotNoLock(snapshot, item);
-                captured = true;
-            }
-        }
-        finally
-        {
-            snapshot.EndInteraction();
-        }
-
-        return captured && IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision)
-            ? FocusGeometryReadStatus.Ready
-            : FocusGeometryReadStatus.Stale;
-    }
-
-    private FocusGeometryReadStatus TryCaptureFocusableRectMap(
-        LayoutSnapshot snapshot,
-        long snapshotGeneration,
-        long layoutRevision,
-        IReadOnlyList<Layout.FocusableItem>? items,
-        out List<(int Index, Rect Rect)> result)
-    {
-        result = new List<(int Index, Rect Rect)>();
-        if (!IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))
-            return FocusGeometryReadStatus.Stale;
-        if (items is null || items.Count == 0)
-            return FocusGeometryReadStatus.Ready;
-        if (!snapshot.TryBeginInteraction())
-            return FocusGeometryReadStatus.Busy;
-
-        bool captured = false;
-        try
-        {
-            if (IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))
-            {
-                for (int i = 0; i < items.Count; i++)
-                {
-                    if (GetFocusableItemRectFromSnapshotNoLock(snapshot, items[i]) is
-                        { Width: > 0, Height: > 0 } rect)
-                    {
-                        result.Add((i, rect));
-                    }
-                }
-                captured = true;
-            }
-        }
-        finally
-        {
-            snapshot.EndInteraction();
-        }
-
-        return captured && IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision)
-            ? FocusGeometryReadStatus.Ready
-            : FocusGeometryReadStatus.Stale;
-    }
-
-    private Rect? GetFocusableItemRectFromSnapshotNoLock(
-        LayoutSnapshot snapshot,
-        Layout.FocusableItem item)
-    {
-        Rect? physicalRect = null;
-        if (item.IsHorizontalOverflow &&
-            snapshot.TryGetHorizontalOverflowForBlockIndex(item.BlockIndex, out var overflow) &&
-            overflow is not null)
-        {
-            physicalRect = overflow.HorizontalViewportBounds;
-        }
-        else
-        {
-            foreach (var block in snapshot.Blocks)
-            {
-                using LayoutPlacementTransformContext.Scope placementScope =
-                    snapshot.EnterPlacementTransformScopeForTopLevelBlockUnderPaint(block);
-                if (block is Layout.Boxes.InlineContainerBox icb && icb.BlockIndex == item.BlockIndex)
-                {
-                    physicalRect = icb.GetRunRect(item.InlineIndex);
-                    break;
-                }
-                if (FocusableItemQueries.GetFocusableItemRectFromBlock(block, item) is { } nested)
-                {
-                    physicalRect = nested;
-                    break;
-                }
-            }
-        }
-
-        return physicalRect is { } rect
-            ? snapshot.ToLogicalRectForBlockIndexUnderPaint(item.BlockIndex, rect)
-            : null;
-    }
-
-    /// <summary>Scrolls the focused item into view if it's outside the current viewport.</summary>
-    /// <summary>Records an explicit scroll request; pending focus reveals yield to it.</summary>
-    private void NoteViewportRequest() => _viewportRequestSerial++;
-
-    /// <summary>
-    /// Starts revealing the focused item from the current viewport. Geometry
-    /// retries continue it only while <see cref="IsFocusRevealCurrent"/> holds.
-    /// </summary>
-    private bool BeginFocusedItemReveal()
-    {
-        _viewport.TryGet(out double top, out _, out _);
-        _focusReveal = new FocusRevealOrigin(_viewportRequestSerial, top, null);
-        return ScrollFocusedItemIntoView();
-    }
-
-    private bool IsFocusRevealCurrent()
-    {
-        _viewport.TryGet(out double top, out _, out _);
-        if (FocusRevealPolicy.IsCurrent(_focusReveal, _viewportRequestSerial, top))
-            return true;
-        _focusReveal = null;
-        return false;
-    }
-
-    private bool ScrollFocusedItemIntoView()
-    {
-        var items = _focusableItems;
-        int focusedIndex = _focusedItemIndex;
-        if (items is null || focusedIndex < 0 || focusedIndex >= items.Count) return false;
-        var item = items[_focusedItemIndex];
-        if (_published.Snapshot is not { } snapshot)
-            return false;
-
-        long generation = _published.Generation;
-        long revision = snapshot.LayoutRevision;
-        if (!snapshot.TryBeginInteraction())
-        {
-            RequestFocusGeometryRetry();
-            return false;
-        }
-
-        Rect? capturedRect = null;
-        HorizontalOverflowVisualState visualState = default;
-        bool horizontalScrolled = false;
-        double oldHorizontalOffset = 0;
-        bool captured = false;
-        try
-        {
-            if (IsCurrentScrollTarget(snapshot, generation, revision) &&
-                focusedIndex < items.Count &&
-                FocusableItemQueries.SameFocusableIdentity(items[focusedIndex], item))
-            {
-                capturedRect = GetFocusableItemRectFromSnapshotNoLock(snapshot, item);
-                captured = true;
-                if (capturedRect is { } rect &&
-                    snapshot.TryGetHorizontalOverflowForBlockIndex(item.BlockIndex, out var overflow) &&
-                    overflow is not null)
-                {
-                    Rect localViewport = snapshot.ToLogicalRectForBlockIndexUnderPaint(
-                        item.BlockIndex, overflow.HorizontalViewportBounds);
-                    const double localMargin = 8.0;
-                    double physicalShift = 0;
-                    if (rect.Left < localViewport.Left + localMargin)
-                        physicalShift = localViewport.Left + localMargin - rect.Left;
-                    else if (rect.Right > localViewport.Right - localMargin)
-                        physicalShift = localViewport.Right - localMargin - rect.Right;
-
-                    if (Math.Abs(physicalShift) > 0.1)
-                    {
-                        oldHorizontalOffset = overflow.HorizontalOffset;
-                        double logicalShift = overflow.IsRightToLeft ? physicalShift : -physicalShift;
-                        if (snapshot.TrySetHorizontalOffset(overflow, oldHorizontalOffset + logicalShift))
-                        {
-                            horizontalScrolled = true;
-                            _ = TryCaptureHorizontalOverflowVisualStateNoLock(
-                                snapshot, generation, revision, overflow, oldHorizontalOffset, out visualState);
-                            capturedRect = GetFocusableItemRectFromSnapshotNoLock(snapshot, item) ?? rect;
-                        }
-                    }
-                }
-            }
-        }
-        finally
-        {
-            snapshot.EndInteraction();
-        }
-
-        if (!captured || !IsCurrentScrollTarget(snapshot, generation, revision))
-        {
-            RequestFocusGeometryRetry();
-            return false;
-        }
-
-        if (horizontalScrolled)
-        {
-            if (visualState.Snapshot is not null)
-                PublishHorizontalOverflowVisualState(visualState);
-            else
-                QueueHorizontalOverflowVisualRetry(snapshot, generation, item.BlockIndex,
-                    oldHorizontalOffset);
-        }
-
-        if (capturedRect is not { } detachedRect)
-            return horizontalScrolled;
-
-        _viewport.TryGet(out double top, out double viewportHeight, out _);
-        double bottom = top + viewportHeight;
-        const double margin = 24.0;
-        bool verticalNeeded = detachedRect.Top < top + margin || detachedRect.Bottom > bottom - margin;
-        if (verticalNeeded && !QueueFocusedItemScroll(snapshot, generation, revision, item, detachedRect))
-            RequestFocusGeometryRetry();
-        return horizontalScrolled || verticalNeeded;
-    }
-
-    private bool QueueFocusedItemScroll(
-        LayoutSnapshot snapshot,
-        long snapshotGeneration,
-        long layoutRevision,
-        Layout.FocusableItem item,
-        Rect rect)
-    {
-        var weakSnapshot = new WeakReference<LayoutSnapshot>(snapshot);
-        try
-        {
-            return DispatcherQueue is { } dispatcher && dispatcher.TryEnqueue(() =>
-                ApplyFocusedItemScroll(weakSnapshot, snapshotGeneration, layoutRevision, item, rect));
-        }
-        catch (Exception)
-        {
-            return false;
-        }
-    }
-
-    private void ApplyFocusedItemScroll(
-        WeakReference<LayoutSnapshot> weakSnapshot,
-        long snapshotGeneration,
-        long layoutRevision,
-        Layout.FocusableItem item,
-        Rect rect)
-    {
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded ||
-            !weakSnapshot.TryGetTarget(out LayoutSnapshot? snapshot) ||
-            !ReferenceEquals(snapshot, _published.Snapshot) ||
-            snapshotGeneration != _published.Generation)
-        {
-            return;
-        }
-        if (snapshot.LayoutRevision != layoutRevision)
-        {
-            RequestFocusGeometryRetry();
-            return;
-        }
-        if (GetCurrentFocusableIdentity() is not { } current ||
-            !FocusableItemQueries.SameFocusableIdentity(current, item))
-            return;
-        if (!IsFocusRevealCurrent())
-            return;
-
-        _viewport.TryGet(out double top, out double viewportHeight, out _);
-        double bottom = top + viewportHeight;
-        const double margin = 24.0;
-        double? revealTop = null;
-        if (rect.Top < top + margin)
-        {
-            revealTop = _surface.Scroll is not null ? Math.Max(0, rect.Top - margin) : rect.Top;
-            _ = _surface.Scroll is not null
-                ? _surface.Scroll.ChangeView(null, Math.Max(0, rect.Top - margin), null, disableAnimation: false)
-                : BringDocumentRectIntoExternalViewport(rect, animate: true);
-        }
-        else if (rect.Bottom > bottom - margin)
-        {
-            revealTop = _surface.Scroll is not null
-                ? rect.Bottom - viewportHeight + margin
-                : rect.Bottom - viewportHeight;
-            _ = _surface.Scroll is not null
-                ? _surface.Scroll.ChangeView(null, rect.Bottom - viewportHeight + margin, null, disableAnimation: false)
-                : BringDocumentRectIntoExternalViewport(rect, animate: true, alignmentRatio: 1);
-        }
-        // The reveal's own animated scroll toward this top keeps it current.
-        // Owned: ChangeView's target. Ancestor: StartBringIntoView aligns the
-        // rect's top (ratio 0) or bottom (ratio 1) to the viewport edge.
-        if (revealTop is { } requested && _focusReveal is { } reveal)
-            _focusReveal = reveal with { RevealTop = requested };
-    }
-
-    private HostedFocusPlanStatus TryCaptureHostedFocusTuple(out HostedFocusTuple tuple)
-    {
-        tuple = default;
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _published.Snapshot is not { } snapshot ||
-            _focusableItems is not { } items)
-        {
-            return HostedFocusPlanStatus.Stale;
-        }
-
-        long generation = _published.Generation;
-        long revision = snapshot.LayoutRevision;
-        long epoch = Volatile.Read(ref _hostedFocusPlanEpoch);
-        tuple = new HostedFocusTuple(snapshot, generation, revision, epoch, items);
-        if (!ReferenceEquals(snapshot, _published.Snapshot) ||
-            generation != _published.Generation)
-        {
-            return HostedFocusPlanStatus.Stale;
-        }
-
-        long publishedEpoch = Volatile.Read(ref _publishedHostedFocusPlanEpoch);
-        if (publishedEpoch != epoch ||
-            Volatile.Read(ref _publishedHostedFocusPlanGeneration) != generation ||
-            Volatile.Read(ref _publishedHostedFocusPlanRevision) != revision ||
-            _appliedLazyLayoutRevision != revision ||
-            snapshot.LayoutRevision != revision)
-        {
-            return HostedFocusPlanStatus.LayoutPending;
-        }
-
-        return HostedFocusPlanStatus.Current;
-    }
-
-    private bool IsCurrentHostedFocusTuple(in HostedFocusTuple tuple) =>
-        !_lifetime.IsDisposed && !_lifetime.IsUnloaded &&
-        ReferenceEquals(tuple.Snapshot, _published.Snapshot) &&
-        tuple.SnapshotGeneration == _published.Generation &&
-        tuple.LayoutRevision == tuple.Snapshot.LayoutRevision &&
-        tuple.PlanEpoch == Volatile.Read(ref _hostedFocusPlanEpoch) &&
-        tuple.PlanEpoch == Volatile.Read(ref _publishedHostedFocusPlanEpoch) &&
-        tuple.SnapshotGeneration == Volatile.Read(ref _publishedHostedFocusPlanGeneration) &&
-        tuple.LayoutRevision == Volatile.Read(ref _publishedHostedFocusPlanRevision) &&
-        tuple.LayoutRevision == _appliedLazyLayoutRevision &&
-        ReferenceEquals(tuple.Items, _focusableItems);
-
-    private bool IsCurrentHostedFocusRequest(
-        in HostedFocusTuple tuple,
-        Layout.FocusableItem item) =>
-        !_lifetime.IsDisposed && !_lifetime.IsUnloaded &&
-        ReferenceEquals(tuple.Snapshot, _published.Snapshot) &&
-        tuple.SnapshotGeneration == _published.Generation &&
-        tuple.LayoutRevision == tuple.Snapshot.LayoutRevision &&
-        tuple.PlanEpoch == Volatile.Read(ref _hostedFocusPlanEpoch) &&
-        ReferenceEquals(tuple.Items, _focusableItems) &&
-        FocusableItemQueries.IsFocusedIdentity(tuple.Items, _focusedItemIndex, item);
-
-    private bool IsCurrentPendingLazyFocus(in PendingLazyFocus pending) =>
-        !_lifetime.IsDisposed && !_lifetime.IsUnloaded &&
-        ReferenceEquals(pending.Snapshot, _published.Snapshot) &&
-        pending.SnapshotGeneration == _published.Generation &&
-        _pendingLazyFocus is { } current &&
-        FocusableItemQueries.SamePendingLazyFocus(current, pending);
-
-    private bool IsCurrentHostedFocusOperation(
-        in HostedFocusTuple tuple,
-        Layout.FocusableItem item) =>
-        IsCurrentHostedFocusTuple(tuple) &&
-        FocusableItemQueries.IsFocusedIdentity(tuple.Items, _focusedItemIndex, item);
-
-    private HostedFocusResult DeferHostedFocus(
-        in HostedFocusTuple tuple,
-        Layout.FocusableItem item,
-        bool reverse)
-    {
-        if (!IsCurrentHostedFocusRequest(tuple, item))
-            return HostedFocusResult.Stale;
-
-        var pending = new PendingLazyFocus(
-            tuple.Snapshot,
-            tuple.SnapshotGeneration,
-            item,
-            reverse);
-        _pendingLazyFocus = pending;
-        _ = Focus(FocusState.Keyboard);
-
-        // Focus is a native callback boundary. Do not hide the ring or report
-        // deferred ownership if reentrancy changed the snapshot, focus item,
-        // pending request, or plan attempt while it ran.
-        if (!IsCurrentHostedFocusRequest(tuple, item) ||
-            !IsCurrentPendingLazyFocus(pending))
-        {
-            return HostedFocusResult.Stale;
-        }
-
-        HideFocusRing();
-        return HostedFocusResult.Deferred;
-    }
-
-    private HostedFocusResult TryFocusHostedElement(Layout.FocusableItem item, bool reverse)
-    {
-        HostedFocusPlanStatus status = TryCaptureHostedFocusTuple(out HostedFocusTuple tuple);
-        if (status == HostedFocusPlanStatus.Stale ||
-            !IsCurrentHostedFocusRequest(tuple, item))
-        {
-            return HostedFocusResult.Stale;
-        }
-
-        if (status == HostedFocusPlanStatus.LayoutPending)
-            return DeferHostedFocus(tuple, item, reverse);
-
-        FrameworkElement? element = FindRealizedHostedElement(item);
-        if (!IsCurrentHostedFocusOperation(tuple, item))
-            return HostedFocusResult.Stale;
-        if (element is null)
-            return HostedFocusResult.NotRealized;
-
-        if (HostedFocusNavigation.TryFocusHostedDescendant(element, reverse))
-            return IsCurrentHostedFocusOperation(tuple, item)
-                ? HostedFocusResult.Focused
-                : HostedFocusResult.Stale;
-
-        if (!IsCurrentHostedFocusOperation(tuple, item))
-            return HostedFocusResult.Stale;
-
-        bool focused = element.Focus(FocusState.Keyboard);
-        if (!IsCurrentHostedFocusOperation(tuple, item))
-            return HostedFocusResult.Stale;
-        return focused ? HostedFocusResult.Focused : HostedFocusResult.NotRealized;
-    }
-
-    private FrameworkElement? FindRealizedHostedElement(Layout.FocusableItem item)
-    {
-        foreach (EmbedPlan plan in _embedPlans)
-        {
-            if (plan.FocusIdentity is { } identity &&
-                FocusableItemQueries.SameFocusableIdentity(identity, item) &&
-                plan.Realized is { } element)
-            {
-                return element;
-            }
-        }
-
-        foreach (CodeBlockActionPlan plan in _codeBlockActionPlans)
-        {
-            if (plan.FocusIdentity is { } identity &&
-                FocusableItemQueries.SameFocusableIdentity(identity, item) &&
-                plan.Realized is { } element)
-            {
-                return element;
-            }
-        }
-
-        return null;
-    }
-
-    private void RestoreFocusedCodeBlockActionIfNeeded(CodeBlockActionPlan plan)
-    {
-        if (FocusState == FocusState.Unfocused ||
-            plan.Realized is null ||
-            plan.FocusIdentity is not { } planIdentity ||
-            !_codeBlockActionPlans.Contains(plan) ||
-            _focusableItems is not { } items ||
-            _focusedItemIndex < 0 ||
-            _focusedItemIndex >= items.Count)
-        {
-            return;
-        }
-
-        var focusedItem = items[_focusedItemIndex];
-        if (FocusableItemQueries.SameFocusableIdentity(focusedItem, planIdentity))
-            _ = TryFocusHostedElement(focusedItem, reverse: false);
-    }
-
-    private void PreserveLogicalFocusBeforeDerealizingCodeBlockAction(FrameworkElement element)
-    {
-        if (_lifetime.IsUnloaded || _lifetime.IsDisposed)
-            return;
-
-        DependencyObject? focused = null;
-        try
-        {
-            if (XamlRoot is not null)
-                focused = FocusManager.GetFocusedElement(XamlRoot) as DependencyObject;
-        }
-        catch
-        {
-        }
-
-        if (focused is null || !VisualTreeAncestry.IsWithin(focused, element))
-            return;
-
-        // Keep the renderer's logical focus index while the native copy button
-        // is recycled. If the action comes back into the realize band,
-        // RestoreFocusedCodeBlockActionIfNeeded transfers focus back to it.
-        _ = Focus(FocusState.Keyboard);
-        UpdateFocusRing();
-    }
-
-    private bool TrySetFocusedItemForHostedElement(FrameworkElement element)
-    {
-        if (TryCaptureHostedFocusTuple(out HostedFocusTuple tuple) != HostedFocusPlanStatus.Current)
-            return false;
-
-        Layout.FocusableItem? focusIdentity = null;
-        foreach (EmbedPlan plan in _embedPlans)
-        {
-            if (ReferenceEquals(plan.Realized, element) && plan.FocusIdentity is { } identity)
-            {
-                focusIdentity = identity;
-                break;
-            }
-        }
-
-        if (focusIdentity is null)
-        {
-            foreach (CodeBlockActionPlan plan in _codeBlockActionPlans)
-            {
-                if (ReferenceEquals(plan.Realized, element) && plan.FocusIdentity is { } identity)
-                {
-                    focusIdentity = identity;
-                    break;
-                }
-            }
-        }
-
-        if (focusIdentity is not { } focusedIdentity ||
-            !IsCurrentHostedFocusTuple(tuple))
-        {
-            return false;
-        }
-
-        int focusedIndex = FocusableItemQueries.FindFocusableItemIndex(tuple.Items, focusedIdentity);
-        if (focusedIndex < 0 || !IsCurrentHostedFocusTuple(tuple))
-            return false;
-
-        _focusedItemIndex = focusedIndex;
-        return true;
     }
 
     private bool TryGetVectorPointerState(
@@ -11753,202 +7776,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         return _published.Snapshot is { } snapshot
             ? LinkTargets.FindLinkTargetAt(snapshot, pos, point)
             : null;
-    }
-
-    private bool TryGetFocusedLink(out Layout.Boxes.InlineContainerBox inline, out LinkRun link)
-    {
-        inline = null!;
-        link = null!;
-        if (!TryGetFocusedLinkedAtomic(out inline, out InlineRun run) || run is not LinkRun focusedLink)
-            return false;
-        link = focusedLink;
-        return true;
-    }
-
-    private bool TryGetFocusedLinkedAtomic(
-        out Layout.Boxes.InlineContainerBox inline,
-        out InlineRun run)
-    {
-        inline = null!;
-        run = null!;
-        IReadOnlyList<Layout.FocusableItem>? items = _focusableItems;
-        LayoutSnapshot? snapshot = _published.Snapshot;
-        if (items is null || snapshot is null ||
-            _focusedItemIndex < 0 || _focusedItemIndex >= items.Count)
-            return false;
-
-        return FocusableItemQueries.TryGetLinkedAtomicForFocusable(snapshot, items[_focusedItemIndex], out inline, out run);
-    }
-
-    private bool TryGetFocusedVectorSemantic(
-        out Layout.Boxes.VectorSceneBox box,
-        out int semanticIndex)
-    {
-        box = null!;
-        semanticIndex = -1;
-        var items = _focusableItems;
-        if (items is null || _focusedItemIndex < 0 || _focusedItemIndex >= items.Count)
-            return false;
-
-        return TryGetVectorSemanticForFocusable(items[_focusedItemIndex], out box, out semanticIndex);
-    }
-
-    private bool TryGetFocusedHorizontalOverflow(out IHorizontalOverflowBox overflow)
-    {
-        overflow = null!;
-        var items = _focusableItems;
-        if (items is null ||
-            _published.Snapshot is null ||
-            _focusedItemIndex < 0 ||
-            _focusedItemIndex >= items.Count ||
-            !items[_focusedItemIndex].IsHorizontalOverflow ||
-            !_published.Snapshot.TryGetHorizontalOverflowForBlockIndex(
-                items[_focusedItemIndex].BlockIndex,
-                out IHorizontalOverflowBox? focusedOverflow) ||
-            focusedOverflow is null)
-        {
-            return false;
-        }
-
-        overflow = focusedOverflow;
-        return true;
-    }
-
-    private bool TryGetFocusableIndexForLink(LinkRun run, out int index)
-        => TryGetFocusableIndexForLinkedAtomic(run, out index);
-
-    private bool TryGetFocusableIndexForLinkedAtomic(InlineRun run, out int index)
-    {
-        index = -1;
-        IReadOnlyList<Layout.FocusableItem>? items = _focusableItems;
-        if (items is null || _published.Snapshot is null)
-            return false;
-
-        int equivalentLinkIndex = -1;
-        for (int itemIndex = 0; itemIndex < items.Count; itemIndex++)
-        {
-            if (!items[itemIndex].IsLink ||
-                !FocusableItemQueries.TryGetLinkedAtomicForFocusable(_published.Snapshot, items[itemIndex], out _, out InlineRun candidate))
-            {
-                continue;
-            }
-
-            if (ReferenceEquals(candidate, run))
-            {
-                index = itemIndex;
-                return true;
-            }
-
-            if (run is LinkRun requestedLink &&
-                candidate is LinkRun candidateLink &&
-                equivalentLinkIndex < 0 &&
-                LinkTargets.AreEquivalentLinks(candidateLink, requestedLink))
-            {
-                equivalentLinkIndex = itemIndex;
-            }
-        }
-
-        index = equivalentLinkIndex;
-        return index >= 0;
-    }
-
-    private bool TryGetFocusableIndexForVectorSemantic(
-        Layout.Boxes.VectorSceneBox box,
-        int semanticIndex,
-        out int index)
-    {
-        index = -1;
-        var items = _focusableItems;
-        if (items is null)
-            return false;
-
-        for (int i = 0; i < items.Count; i++)
-        {
-            if (items[i].IsVectorSemantic &&
-                items[i].BlockIndex == box.BlockIndex &&
-                items[i].InlineIndex == semanticIndex &&
-                TryGetVectorSemanticForFocusable(items[i], out var candidate, out _) &&
-                ReferenceEquals(candidate, box))
-            {
-                index = i;
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private bool TryGetFocusableIndexForHorizontalOverflow(
-        IHorizontalOverflowBox overflow,
-        out int index)
-    {
-        var items = _focusableItems;
-        var snapshot = _published.Snapshot;
-        if (items is null || snapshot is null)
-        {
-            index = -1;
-            return false;
-        }
-
-        return FocusableItemQueries.TryFindHorizontalOverflowFocusableIndex(snapshot, items, overflow, out index);
-    }
-
-    private bool TryGetVectorSemanticForFocusable(
-        Layout.FocusableItem item,
-        out Layout.Boxes.VectorSceneBox vector,
-        out int semanticIndex)
-    {
-        vector = null!;
-        semanticIndex = -1;
-        if (!item.IsVectorSemantic || _published.Snapshot is null)
-            return false;
-
-        foreach (BlockBox block in _published.Snapshot.Blocks)
-        {
-            if (TryGetVectorSemanticForFocusable(block, item, out vector, out semanticIndex))
-                return true;
-        }
-
-        return false;
-    }
-
-    private static bool TryGetVectorSemanticForFocusable(
-        BlockBox box,
-        Layout.FocusableItem item,
-        out Layout.Boxes.VectorSceneBox vector,
-        out int semanticIndex)
-    {
-        vector = null!;
-        semanticIndex = -1;
-        switch (box)
-        {
-            case Layout.Boxes.VectorSceneBox candidate
-                when candidate.BlockIndex == item.BlockIndex &&
-                     candidate.GetSemanticItem(item.InlineIndex) is { } semantic &&
-                     MarkdownVectorSemanticPolicy.IsKeyboardFocusable(semantic.Flags):
-                vector = candidate;
-                semanticIndex = item.InlineIndex;
-                return true;
-            case Layout.Boxes.ListItemBox listItem:
-                return TryGetVectorSemanticForFocusable(listItem.Marker, item, out vector, out semanticIndex) ||
-                       TryGetVectorSemanticForFocusable(listItem.Content, item, out vector, out semanticIndex);
-            case Layout.Boxes.TableBox table:
-                foreach (Layout.Boxes.InlineContainerBox cell in table.GetCellBoxes())
-                {
-                    if (TryGetVectorSemanticForFocusable(cell, item, out vector, out semanticIndex))
-                        return true;
-                }
-                return false;
-            case Layout.Boxes.StackBox stack:
-                foreach (BlockBox child in stack.Children)
-                {
-                    if (TryGetVectorSemanticForFocusable(child, item, out vector, out semanticIndex))
-                        return true;
-                }
-                return false;
-            default:
-                return false;
-        }
     }
 
     // ---- Word / line selection helpers ----
