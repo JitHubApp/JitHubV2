@@ -52,7 +52,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     IMarkdownPerformanceLegacyParser, ISelectionAdornerHost, ISelectionCommandsHost, ISelectionDismissalHost,
     ISelectionHandlesHost, ISelectionContextMenuHost, IPointerInputSink, IPointerInteractionHost,
     IHorizontalOverflowPointerHost, IPointerInputRouterHost, IDeferredGestureLayoutHost, IEmbedRealizationHost,
-    ICodeBlockCopyButtonHost, IFocusRingHost
+    ICodeBlockCopyButtonHost, IFocusRingHost, IHostedElementFocusHost
 {
     private readonly MarkdownViewSurface _surface;
     private readonly MarkdownViewLifetime _lifetime = new();
@@ -129,10 +129,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     // Hosted-focus readers consume only realization plans published for the
     // exact snapshot generation and layout revision. The attempt epoch also
     // invalidates a plan while a same-snapshot rebuild is being transferred.
-    private long _hostedFocusPlanEpoch;
-    private long _publishedHostedFocusPlanEpoch = -1;
-    private long _publishedHostedFocusPlanGeneration = -1;
-    private long _publishedHostedFocusPlanRevision = -1;
+    private readonly HostedFocusPlanPublication _hostedFocusPlan = new();
     private (LayoutSnapshot Snapshot, long SnapshotGeneration, int BlockIndex)? _pendingScrollToBlock;
     private double _lastLazyViewportTop;
     private long _lastLazyViewportTimestamp;
@@ -201,6 +198,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     // ---- Keyboard navigation ----
     private readonly KeyboardFocusModel _focus;
     private readonly FocusGeometryReader _focusGeometry;
+    private readonly HostedElementFocus _hostedFocus;
     private bool _taskCommandAvailabilityRefreshQueued;
     // A deferred focus-plan refresh is value-only: it never keeps a snapshot,
     // box, or native resource alive while a geometry lease is busy.
@@ -1547,7 +1545,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             .GetKeyStateForCurrentThread(VirtualKey.Shift) & Windows.UI.Core.CoreVirtualKeyStates.Down)
             == Windows.UI.Core.CoreVirtualKeyStates.Down;
 
-        if (!TrySetFocusedItemForHostedElement(element)) return;
+        if (!_hostedFocus.TrySetFocusedItemFor(element)) return;
 
         if (e.Key == VirtualKey.Tab)
         {
@@ -1926,10 +1924,11 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _pointerInput = new PointerInputRouter(this, this, DispatcherQueue, _surface, _lifetime, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, _handles, _document, _horizontalOverflowDrag, _touchGestures, _contextMenu, _adorner, _dragShield);
         _canvasPointerEvents = new CanvasPointerEvents(_surface, _pointerInput);
         _embeds = new EmbedRealization(this, this, _surface, _lifetime, _published, _viewport, DispatcherQueue, OnHostedEmbedKeyDown);
-        _focus = new KeyboardFocusModel(_published);
+        _focus = new KeyboardFocusModel(_lifetime, _published);
         _focusGeometry = new FocusGeometryReader(_lifetime, _published);
         _focusRing = new FocusRingPresenter(this, _focus, _surface, _lifetime, _published, DispatcherQueue);
         _focusRefresh = new FocusableItemsRefreshRequest(_published);
+        _hostedFocus = new HostedElementFocus(this, _lifetime, _published, _focus, _hostedFocusPlan, _embeds, _focusRing);
         IsTabStop = true;
         Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
         Loaded += (_, _) => OnLoadedInternal();
@@ -2429,18 +2428,18 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         long hostedFocusPlanEpoch)
         => IsCurrentRasterCodeActionPublication(candidate, generation, layoutRevision, hostedFocusPlanEpoch);
 
-    void IEmbedRealizationHost.InvalidateHostedFocusPlanPublication() => InvalidateHostedFocusPlanPublication();
+    void IEmbedRealizationHost.InvalidateHostedFocusPlanPublication() => _hostedFocusPlan.Invalidate();
 
     void IEmbedRealizationHost.CopyCodeBlockToClipboard(CodeBlockActionPlan plan) => CopyCodeBlockToClipboard(plan);
 
     void IEmbedRealizationHost.RestoreFocusedCodeBlockActionIfNeeded(CodeBlockActionPlan plan)
-        => RestoreFocusedCodeBlockActionIfNeeded(plan);
+        => _hostedFocus.RestoreCodeBlockActionIfNeeded(plan);
 
     void IEmbedRealizationHost.PreserveLogicalFocusBeforeDerealizingCodeBlockAction(FrameworkElement element)
-        => PreserveLogicalFocusBeforeDerealizingCodeBlockAction(element);
+        => _hostedFocus.PreserveLogicalFocusBeforeDerealizingCodeBlockAction(element);
 
     void IEmbedRealizationHost.RestoreFocusedHostedElementIfNeeded(DeclarativeHostedElementPlan plan)
-        => RestoreFocusedHostedElementIfNeeded(plan);
+        => _hostedFocus.RestoreHostedElementIfNeeded(plan);
 
     void IEmbedRealizationHost.RequestFallbackRebuild() => RequestRebuild(RebuildReason.Restyle);
 
@@ -2464,6 +2463,16 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     void IFocusRingHost.InvalidateInteractiveTextAdorner() => InvalidateInteractiveTextAdorner();
 
     void IFocusRingHost.RequestFocusGeometryRetry() => RequestFocusGeometryRetry();
+
+    FocusState IHostedElementFocusHost.FocusState => FocusState;
+
+    XamlRoot? IHostedElementFocusHost.XamlRoot => XamlRoot;
+
+    long IHostedElementFocusHost.AppliedLazyLayoutRevision => _appliedLazyLayoutRevision;
+
+    bool IHostedElementFocusHost.FocusRenderer() => Focus(FocusState.Keyboard);
+
+    void IHostedElementFocusHost.UpdateFocusRing() => UpdateFocusRing();
 
     double IDeferredGestureLayoutHost.RasterizationScale => XamlRoot?.RasterizationScale ?? 1;
 
@@ -5958,16 +5967,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         ApplyLazyLayoutCommit(snapshot, restoreAnchor ? pending.Anchor : null);
     }
 
-    private long InvalidateHostedFocusPlanPublication()
-    {
-        long epoch = unchecked(Volatile.Read(ref _hostedFocusPlanEpoch) + 1);
-        Volatile.Write(ref _hostedFocusPlanEpoch, epoch);
-        Volatile.Write(ref _publishedHostedFocusPlanEpoch, -1);
-        Volatile.Write(ref _publishedHostedFocusPlanGeneration, -1);
-        Volatile.Write(ref _publishedHostedFocusPlanRevision, -1);
-        return epoch;
-    }
-
     private bool RebuildRealizationPlans(LayoutSnapshot snapshot, bool preserveRealized,
         out Size size, out double? anchorOffset,
         (int BlockIndex, double OffsetFromTop)? scrollAnchor = null)
@@ -6024,7 +6023,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                         return false;
                     }
 
-                    hostedFocusPlanEpoch = InvalidateHostedFocusPlanPublication();
+                    hostedFocusPlanEpoch = _hostedFocusPlan.Invalidate();
                     _embeds.CapturePlansForAdoption(preserveRealized, out oldPlans, out oldActionPlans);
                     UnsubscribeAllImages();
                     _imagePlans.Clear();
@@ -6150,9 +6149,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // currently focused value identity only now, then atomically replace
         // the value-only list/index after every snapshot and ticket fence holds.
         _focus.ReplaceItems(collectedFocusableItems);
-        Volatile.Write(ref _publishedHostedFocusPlanGeneration, planGeneration);
-        Volatile.Write(ref _publishedHostedFocusPlanRevision, hostedFocusPlanRevision);
-        Volatile.Write(ref _publishedHostedFocusPlanEpoch, hostedFocusPlanEpoch);
+        _hostedFocusPlan.Publish(planGeneration, hostedFocusPlanRevision, hostedFocusPlanEpoch);
         _focusRefresh.Complete(
             snapshot,
             planGeneration,
@@ -6171,7 +6168,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         long hostedFocusPlanEpoch,
         long layoutRevision) =>
         IsCurrentRealizationSnapshot(snapshot, generation) &&
-        hostedFocusPlanEpoch == Volatile.Read(ref _hostedFocusPlanEpoch) &&
+        hostedFocusPlanEpoch == _hostedFocusPlan.Epoch &&
         snapshot.LayoutRevision == layoutRevision;
 
     private bool IsCurrentRealizationSnapshot(LayoutSnapshot snapshot, long generation) =>
@@ -6191,26 +6188,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         }
 
         return _focusRefresh.Admits(snapshot, generation, revision, requestVersion);
-    }
-
-    private void RestoreFocusedHostedElementIfNeeded(DeclarativeHostedElementPlan plan)
-    {
-        if (FocusState == FocusState.Unfocused ||
-            plan.Realized is null ||
-            plan.FocusIdentity is not { } planIdentity ||
-            !_embeds.Contains(plan) ||
-            _focus.Items is not { } items ||
-            _focus.FocusedIndex < 0 ||
-            _focus.FocusedIndex >= items.Count)
-        {
-            return;
-        }
-
-        var focusedItem = items[_focus.FocusedIndex];
-        if (FocusableItemQueries.SameFocusableIdentity(focusedItem, planIdentity))
-        {
-            _ = TryFocusHostedElement(focusedItem, reverse: false);
-        }
     }
 
     /// <summary>
@@ -9008,16 +8985,16 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 reverse));
             var pending = _focus.PendingLazy!.Value;
             _ = Focus(FocusState.Keyboard);
-            if (!IsCurrentPendingLazyFocus(pending))
+            if (!_focus.IsCurrentLazyFocus(pending))
                 return true;
             _focusRing.Hide();
-            if (!IsCurrentPendingLazyFocus(pending))
+            if (!_focus.IsCurrentLazyFocus(pending))
                 return true;
 
             if (layoutState == FocusTargetLayoutState.RequiresRealization)
             {
                 ScrollLazyFocusTargetIntoView(estimatedBand, reverse);
-                if (!IsCurrentPendingLazyFocus(pending))
+                if (!_focus.IsCurrentLazyFocus(pending))
                     return true;
                 var realizationBand = LazyLayoutBand.FromViewport(
                     estimatedBand.Top,
@@ -9152,7 +9129,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
         if (!item.IsLink)
         {
-            return TryFocusHostedElement(item, reverse: false) switch
+            return _hostedFocus.TryFocus(item, reverse: false) switch
             {
                 HostedFocusResult.Focused => true,
                 HostedFocusResult.Deferred => true,
@@ -9190,7 +9167,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         var item = items[_focus.FocusedIndex];
         if (!item.IsLink)
         {
-            HostedFocusResult result = TryFocusHostedElement(item, reverse);
+            HostedFocusResult result = _hostedFocus.TryFocus(item, reverse);
             if (result == HostedFocusResult.Focused)
             {
                 _focusRing.Collapse();
@@ -9204,17 +9181,17 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 return;
         }
 
-        if (TryCaptureHostedFocusTuple(out HostedFocusTuple fallbackTuple) == HostedFocusPlanStatus.Stale ||
-            !IsCurrentHostedFocusRequest(fallbackTuple, item))
+        if (_hostedFocus.TryCaptureTuple(out HostedFocusTuple fallbackTuple) == HostedFocusPlanStatus.Stale ||
+            !_hostedFocus.IsCurrentRequest(fallbackTuple, item))
         {
             return;
         }
 
         Focus(FocusState.Keyboard);
-        if (!IsCurrentHostedFocusRequest(fallbackTuple, item))
+        if (!_hostedFocus.IsCurrentRequest(fallbackTuple, item))
             return;
         UpdateFocusRing();
-        if (!IsCurrentHostedFocusRequest(fallbackTuple, item))
+        if (!_hostedFocus.IsCurrentRequest(fallbackTuple, item))
             return;
         NotifyFocusedItemAutomation();
     }
@@ -9530,244 +9507,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // rect's top (ratio 0) or bottom (ratio 1) to the viewport edge.
         if (revealTop is { } requested && _focusReveal is { } reveal)
             _focusReveal = reveal with { RevealTop = requested };
-    }
-
-    private HostedFocusPlanStatus TryCaptureHostedFocusTuple(out HostedFocusTuple tuple)
-    {
-        tuple = default;
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _published.Snapshot is not { } snapshot ||
-            _focus.Items is not { } items)
-        {
-            return HostedFocusPlanStatus.Stale;
-        }
-
-        long generation = _published.Generation;
-        long revision = snapshot.LayoutRevision;
-        long epoch = Volatile.Read(ref _hostedFocusPlanEpoch);
-        tuple = new HostedFocusTuple(snapshot, generation, revision, epoch, items);
-        if (!ReferenceEquals(snapshot, _published.Snapshot) ||
-            generation != _published.Generation)
-        {
-            return HostedFocusPlanStatus.Stale;
-        }
-
-        long publishedEpoch = Volatile.Read(ref _publishedHostedFocusPlanEpoch);
-        if (publishedEpoch != epoch ||
-            Volatile.Read(ref _publishedHostedFocusPlanGeneration) != generation ||
-            Volatile.Read(ref _publishedHostedFocusPlanRevision) != revision ||
-            _appliedLazyLayoutRevision != revision ||
-            snapshot.LayoutRevision != revision)
-        {
-            return HostedFocusPlanStatus.LayoutPending;
-        }
-
-        return HostedFocusPlanStatus.Current;
-    }
-
-    private bool IsCurrentHostedFocusTuple(in HostedFocusTuple tuple) =>
-        !_lifetime.IsDisposed && !_lifetime.IsUnloaded &&
-        ReferenceEquals(tuple.Snapshot, _published.Snapshot) &&
-        tuple.SnapshotGeneration == _published.Generation &&
-        tuple.LayoutRevision == tuple.Snapshot.LayoutRevision &&
-        tuple.PlanEpoch == Volatile.Read(ref _hostedFocusPlanEpoch) &&
-        tuple.PlanEpoch == Volatile.Read(ref _publishedHostedFocusPlanEpoch) &&
-        tuple.SnapshotGeneration == Volatile.Read(ref _publishedHostedFocusPlanGeneration) &&
-        tuple.LayoutRevision == Volatile.Read(ref _publishedHostedFocusPlanRevision) &&
-        tuple.LayoutRevision == _appliedLazyLayoutRevision &&
-        ReferenceEquals(tuple.Items, _focus.Items);
-
-    private bool IsCurrentHostedFocusRequest(
-        in HostedFocusTuple tuple,
-        Layout.FocusableItem item) =>
-        !_lifetime.IsDisposed && !_lifetime.IsUnloaded &&
-        ReferenceEquals(tuple.Snapshot, _published.Snapshot) &&
-        tuple.SnapshotGeneration == _published.Generation &&
-        tuple.LayoutRevision == tuple.Snapshot.LayoutRevision &&
-        tuple.PlanEpoch == Volatile.Read(ref _hostedFocusPlanEpoch) &&
-        ReferenceEquals(tuple.Items, _focus.Items) &&
-        FocusableItemQueries.IsFocusedIdentity(tuple.Items, _focus.FocusedIndex, item);
-
-    private bool IsCurrentPendingLazyFocus(in PendingLazyFocus pending) =>
-        !_lifetime.IsDisposed && !_lifetime.IsUnloaded &&
-        ReferenceEquals(pending.Snapshot, _published.Snapshot) &&
-        pending.SnapshotGeneration == _published.Generation &&
-        _focus.PendingLazy is { } current &&
-        FocusableItemQueries.SamePendingLazyFocus(current, pending);
-
-    private bool IsCurrentHostedFocusOperation(
-        in HostedFocusTuple tuple,
-        Layout.FocusableItem item) =>
-        IsCurrentHostedFocusTuple(tuple) &&
-        FocusableItemQueries.IsFocusedIdentity(tuple.Items, _focus.FocusedIndex, item);
-
-    private HostedFocusResult DeferHostedFocus(
-        in HostedFocusTuple tuple,
-        Layout.FocusableItem item,
-        bool reverse)
-    {
-        if (!IsCurrentHostedFocusRequest(tuple, item))
-            return HostedFocusResult.Stale;
-
-        var pending = new PendingLazyFocus(
-            tuple.Snapshot,
-            tuple.SnapshotGeneration,
-            item,
-            reverse);
-        _focus.BeginLazyFocus(pending);
-        _ = Focus(FocusState.Keyboard);
-
-        // Focus is a native callback boundary. Do not hide the ring or report
-        // deferred ownership if reentrancy changed the snapshot, focus item,
-        // pending request, or plan attempt while it ran.
-        if (!IsCurrentHostedFocusRequest(tuple, item) ||
-            !IsCurrentPendingLazyFocus(pending))
-        {
-            return HostedFocusResult.Stale;
-        }
-
-        _focusRing.Hide();
-        return HostedFocusResult.Deferred;
-    }
-
-    private HostedFocusResult TryFocusHostedElement(Layout.FocusableItem item, bool reverse)
-    {
-        HostedFocusPlanStatus status = TryCaptureHostedFocusTuple(out HostedFocusTuple tuple);
-        if (status == HostedFocusPlanStatus.Stale ||
-            !IsCurrentHostedFocusRequest(tuple, item))
-        {
-            return HostedFocusResult.Stale;
-        }
-
-        if (status == HostedFocusPlanStatus.LayoutPending)
-            return DeferHostedFocus(tuple, item, reverse);
-
-        FrameworkElement? element = FindRealizedHostedElement(item);
-        if (!IsCurrentHostedFocusOperation(tuple, item))
-            return HostedFocusResult.Stale;
-        if (element is null)
-            return HostedFocusResult.NotRealized;
-
-        if (HostedFocusNavigation.TryFocusHostedDescendant(element, reverse))
-            return IsCurrentHostedFocusOperation(tuple, item)
-                ? HostedFocusResult.Focused
-                : HostedFocusResult.Stale;
-
-        if (!IsCurrentHostedFocusOperation(tuple, item))
-            return HostedFocusResult.Stale;
-
-        bool focused = element.Focus(FocusState.Keyboard);
-        if (!IsCurrentHostedFocusOperation(tuple, item))
-            return HostedFocusResult.Stale;
-        return focused ? HostedFocusResult.Focused : HostedFocusResult.NotRealized;
-    }
-
-    private FrameworkElement? FindRealizedHostedElement(Layout.FocusableItem item)
-    {
-        foreach (EmbedPlan plan in _embeds.EmbedPlans)
-        {
-            if (plan.FocusIdentity is { } identity &&
-                FocusableItemQueries.SameFocusableIdentity(identity, item) &&
-                plan.Realized is { } element)
-            {
-                return element;
-            }
-        }
-
-        foreach (CodeBlockActionPlan plan in _embeds.CodeBlockActionPlans)
-        {
-            if (plan.FocusIdentity is { } identity &&
-                FocusableItemQueries.SameFocusableIdentity(identity, item) &&
-                plan.Realized is { } element)
-            {
-                return element;
-            }
-        }
-
-        return null;
-    }
-
-    private void RestoreFocusedCodeBlockActionIfNeeded(CodeBlockActionPlan plan)
-    {
-        if (FocusState == FocusState.Unfocused ||
-            plan.Realized is null ||
-            plan.FocusIdentity is not { } planIdentity ||
-            !_embeds.Contains(plan) ||
-            _focus.Items is not { } items ||
-            _focus.FocusedIndex < 0 ||
-            _focus.FocusedIndex >= items.Count)
-        {
-            return;
-        }
-
-        var focusedItem = items[_focus.FocusedIndex];
-        if (FocusableItemQueries.SameFocusableIdentity(focusedItem, planIdentity))
-            _ = TryFocusHostedElement(focusedItem, reverse: false);
-    }
-
-    private void PreserveLogicalFocusBeforeDerealizingCodeBlockAction(FrameworkElement element)
-    {
-        if (_lifetime.IsUnloaded || _lifetime.IsDisposed)
-            return;
-
-        DependencyObject? focused = null;
-        try
-        {
-            if (XamlRoot is not null)
-                focused = FocusManager.GetFocusedElement(XamlRoot) as DependencyObject;
-        }
-        catch
-        {
-        }
-
-        if (focused is null || !VisualTreeAncestry.IsWithin(focused, element))
-            return;
-
-        // Keep the renderer's logical focus index while the native copy button
-        // is recycled. If the action comes back into the realize band,
-        // RestoreFocusedCodeBlockActionIfNeeded transfers focus back to it.
-        _ = Focus(FocusState.Keyboard);
-        UpdateFocusRing();
-    }
-
-    private bool TrySetFocusedItemForHostedElement(FrameworkElement element)
-    {
-        if (TryCaptureHostedFocusTuple(out HostedFocusTuple tuple) != HostedFocusPlanStatus.Current)
-            return false;
-
-        Layout.FocusableItem? focusIdentity = null;
-        foreach (EmbedPlan plan in _embeds.EmbedPlans)
-        {
-            if (ReferenceEquals(plan.Realized, element) && plan.FocusIdentity is { } identity)
-            {
-                focusIdentity = identity;
-                break;
-            }
-        }
-
-        if (focusIdentity is null)
-        {
-            foreach (CodeBlockActionPlan plan in _embeds.CodeBlockActionPlans)
-            {
-                if (ReferenceEquals(plan.Realized, element) && plan.FocusIdentity is { } identity)
-                {
-                    focusIdentity = identity;
-                    break;
-                }
-            }
-        }
-
-        if (focusIdentity is not { } focusedIdentity ||
-            !IsCurrentHostedFocusTuple(tuple))
-        {
-            return false;
-        }
-
-        int focusedIndex = FocusableItemQueries.FindFocusableItemIndex(tuple.Items, focusedIdentity);
-        if (focusedIndex < 0 || !IsCurrentHostedFocusTuple(tuple))
-            return false;
-
-        _focus.SetFocusedIndex(focusedIndex);
-        return true;
     }
 
     private bool TryGetVectorPointerState(

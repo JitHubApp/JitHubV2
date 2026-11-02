@@ -229,12 +229,10 @@ public partial class MarkdownRendererControl
             _pendingLayoutCommit = null;
             _hover.Clear();
             _abbreviationTooltip.ForgetTarget();
-            long epoch = InvalidateHostedFocusPlanPublication();
+            long epoch = _hostedFocusPlan.Invalidate();
             _published.Snapshot = owner.TransferToControl();
             Volatile.Write(ref _imagePlanPublication, plan.Publication);
-            Volatile.Write(ref _publishedHostedFocusPlanGeneration, generation);
-            Volatile.Write(ref _publishedHostedFocusPlanRevision, candidate.LayoutRevision);
-            Volatile.Write(ref _publishedHostedFocusPlanEpoch, epoch);
+            _hostedFocusPlan.Publish(generation, candidate.LayoutRevision, epoch);
             committed = true;
 
             try
@@ -496,8 +494,8 @@ public partial class MarkdownRendererControl
         => !_lifetime.IsDisposed && !_lifetime.IsUnloaded && ReferenceEquals(candidate, _published.Snapshot) &&
            generation == _published.Generation &&
            candidate.LayoutRevision == layoutRevision &&
-           layoutRevision == Volatile.Read(ref _publishedHostedFocusPlanRevision) &&
-           generation == Volatile.Read(ref _publishedHostedFocusPlanGeneration) &&
-           epoch == Volatile.Read(ref _hostedFocusPlanEpoch) &&
-           epoch == Volatile.Read(ref _publishedHostedFocusPlanEpoch);
+           layoutRevision == _hostedFocusPlan.PublishedRevision &&
+           generation == _hostedFocusPlan.PublishedGeneration &&
+           epoch == _hostedFocusPlan.Epoch &&
+           epoch == _hostedFocusPlan.PublishedEpoch;
 }

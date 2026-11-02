@@ -16,9 +16,14 @@ namespace MarkdownRenderer.Controls.Focus;
 /// </summary>
 internal sealed class KeyboardFocusModel
 {
+    private readonly MarkdownViewLifetime _lifetime;
     private readonly PublishedLayout _published;
 
-    internal KeyboardFocusModel(PublishedLayout published) => _published = published;
+    internal KeyboardFocusModel(MarkdownViewLifetime lifetime, PublishedLayout published)
+    {
+        _lifetime = lifetime;
+        _published = published;
+    }
 
     /// <summary>The focusable items of the published layout, or null before the first one.</summary>
     internal IReadOnlyList<FocusableItem>? Items { get; private set; }
@@ -45,6 +50,17 @@ internal sealed class KeyboardFocusModel
                 : null;
         }
     }
+
+    /// <summary>
+    /// True while <paramref name="pending"/> is still the waiting Tab and its
+    /// snapshot is still published.
+    /// </summary>
+    internal bool IsCurrentLazyFocus(in PendingLazyFocus pending) =>
+        !_lifetime.IsDisposed && !_lifetime.IsUnloaded &&
+        ReferenceEquals(pending.Snapshot, _published.Snapshot) &&
+        pending.SnapshotGeneration == _published.Generation &&
+        PendingLazy is { } current &&
+        FocusableItemQueries.SamePendingLazyFocus(current, pending);
 
     internal void SetFocusedIndex(int index) => FocusedIndex = index;
 
