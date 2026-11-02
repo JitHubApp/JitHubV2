@@ -153,7 +153,7 @@ internal sealed partial class MarkdownBlockPeer : FrameworkElementAutomationPeer
     {
         EnsureCurrentDocument();
         return _box.ElementKey == MarkdownElementKeys.CodeBlock && !string.IsNullOrWhiteSpace(_box.CodeLanguage)
-            ? _owner.ResolveFormattedLocalizedString(
+            ? _owner.Localization.ResolveFormatted(
                 Hosting.MarkdownStringKeys.CodeLanguageHelp,
                 MarkdownLocalizedStrings.CodeLanguageHelpFormat,
                 _box.CodeLanguage)

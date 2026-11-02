@@ -64,7 +64,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     IImageRelayoutHost, IImageLoadCompletionHost, IVectorCapacityRetryHost,
     ILazyLayoutHost, ILayoutCommitHost, IFocusableItemsPublicationHost,
     IRebuildSchedulerHost, IRebuildLayoutSetupHost, ICanvasTilePainterHost,
-    IDeferredSceneReadinessHost, ILinkActivationHost
+    IDeferredSceneReadinessHost, ILinkActivationHost, IRendererLocalizationHost
 {
     private readonly MarkdownViewSurface _surface;
     private readonly MarkdownViewLifetime _lifetime = new();
@@ -136,13 +136,13 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private readonly SelectionController _selection = new();
     private readonly MarkdownTouchSelectionSession _touchSelection = new();
     private readonly TouchSelectionRestore _touchRestore;
+    private readonly RendererLocalization _localization;
     private readonly TouchTapSuppressionPolicy _touchTapSuppression = new();
 
 
     // Last committed theme snapshot. Used by UI operations (focus ring, etc.)
     // that need theme colors after the rebuild is complete.
     private Theming.ThemeSnapshot? _themeSnapshot;
-    private MarkdownLocalizationSnapshot? _committedLocalization;
     private string? _committedImageDocumentId;
     private MarkdownEnvironmentMonitor.Subscription? _environmentSubscription;
     private MarkdownEnvironmentSnapshot _environmentSnapshot;
@@ -1216,17 +1216,10 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     internal Theming.ThemeSnapshot? CurrentThemeSnapshot => _themeSnapshot;
 
     /// <summary>Effective document-language LCID exposed through UI Automation.</summary>
-    internal int AutomationCultureLcid
-    {
-        get
-        {
-            return AutomationCulture.LCID;
-        }
-    }
+    internal int AutomationCultureLcid => _localization.Culture.LCID;
 
-    /// <summary>Culture resolved from the same language snapshot used by the committed layout.</summary>
-    internal System.Globalization.CultureInfo AutomationCulture =>
-        GetEffectiveLocalization().Culture;
+    /// <summary>Strings and culture resolved from the language snapshot of the committed layout.</summary>
+    internal RendererLocalization Localization => _localization;
 
     /// <summary>
     /// Number of currently-realised hosted embed elements (block + inline).
@@ -1237,77 +1230,13 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     internal string ResolvedCodeBlockCopyButtonLabel =>
         string.IsNullOrWhiteSpace(CodeBlockCopyButtonLabel)
-            ? ResolveLocalizedString(MarkdownStringKeys.CopyCode, MarkdownLocalizedStrings.CodeBlockCopyAutomationName)
+            ? _localization.Resolve(MarkdownStringKeys.CopyCode, MarkdownLocalizedStrings.CodeBlockCopyAutomationName)
             : CodeBlockCopyButtonLabel!;
 
     private string ResolvedCodeBlockCopiedButtonLabel =>
         string.IsNullOrWhiteSpace(CodeBlockCopiedButtonLabel)
-            ? ResolveLocalizedString(MarkdownStringKeys.CodeCopied, MarkdownLocalizedStrings.CodeBlockCopied)
+            ? _localization.Resolve(MarkdownStringKeys.CodeCopied, MarkdownLocalizedStrings.CodeBlockCopied)
             : CodeBlockCopiedButtonLabel!;
-
-    internal string ResolveLocalizedString(string key, string fallback)
-    {
-        MarkdownLocalizationSnapshot localization = GetEffectiveLocalization();
-        return ResolveLocalizedString(key, fallback, localization);
-    }
-
-    private static string ResolveLocalizedString(
-        string key,
-        string fallback,
-        MarkdownLocalizationSnapshot localization)
-    {
-        var culture = localization.Culture;
-        string localizedFallback = MarkdownLocalizedStrings.Resolve(key, fallback, culture);
-        try
-        {
-            string? value = localization.StringProvider?.GetString(key, culture);
-            return string.IsNullOrWhiteSpace(value) ? localizedFallback : value;
-        }
-        catch (Exception ex)
-        {
-            MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] String provider failed for '{key}': {ex.Message}");
-            return localizedFallback;
-        }
-    }
-
-    internal string ResolveFormattedLocalizedString(
-        string key,
-        string fallbackFormat,
-        params object?[] arguments)
-    {
-        MarkdownLocalizationSnapshot localization = GetEffectiveLocalization();
-        string format = ResolveLocalizedString(key, fallbackFormat, localization);
-        try
-        {
-            return string.Format(localization.Culture, format, arguments);
-        }
-        catch (FormatException)
-        {
-            return string.Format(
-                localization.Culture,
-                fallbackFormat,
-                arguments);
-        }
-    }
-
-    private MarkdownLocalizationSnapshot GetEffectiveLocalization()
-    {
-        MarkdownLocalizationSnapshot? committed =
-            MarkdownLocalizationSnapshot.SelectCommitted(
-                _published.Snapshot is not null,
-                _committedLocalization);
-        if (committed is not null)
-            return committed;
-
-        return CaptureRequestedLocalization();
-    }
-
-    private MarkdownLocalizationSnapshot CaptureRequestedLocalization() =>
-        MarkdownLocalizationSnapshot.Capture(
-            Language,
-            _environmentSnapshot.Language,
-            StringProvider,
-            System.Globalization.CultureInfo.CurrentUICulture);
 
     private void OnStringProviderChanged()
     {
@@ -1470,6 +1399,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     {
         _cancellationRetirement = new PipelineCancellationRetirement(_snapshotRetirements);
         _touchRestore = new TouchSelectionRestore(_published, _selection, _touchSelection);
+        _localization = new RendererLocalization(this, _published);
         _surface = new MarkdownViewSurface(ownsScrollViewport);
         _windowDestroying = new WindowDestroyingWatch(this, _lifetime);
         _recoveryClock = new RecoveryClock(this, _lifetime);
@@ -1790,7 +1720,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     Theming.ThemeSnapshot? ISelectionHandlesHost.ThemeSnapshot => _themeSnapshot;
 
     string ISelectionHandlesHost.ResolveLocalizedString(string key, string fallback)
-        => ResolveLocalizedString(key, fallback);
+        => _localization.Resolve(key, fallback);
 
     bool ISelectionHandlesHost.RequestGeometryRecoveryIfRequired(LayoutSnapshot? snapshot)
         => RequestGeometryRecoveryIfRequired(snapshot);
@@ -1815,7 +1745,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     IMarkdownCommandProvider? ISelectionContextMenuHost.CommandProvider => CommandProvider;
 
     string ISelectionContextMenuHost.ResolveLocalizedString(string key, string fallback)
-        => ResolveLocalizedString(key, fallback);
+        => _localization.Resolve(key, fallback);
 
     void ISelectionContextMenuHost.RaiseCopyCompleted(MarkdownCopyKind kind, bool succeeded)
         => RaiseCopyCompleted(kind, succeeded);
@@ -2372,6 +2302,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         SetDisclosureExpanded(disclosureId, expanded);
 
     void ILinkActivationHost.RaiseLinkClick(MarkdownLinkClickEventArgs args) => LinkClick?.Invoke(this, args);
+
+    string? IRendererLocalizationHost.EnvironmentLanguage => _environmentSnapshot.Language;
 
     double IDeferredGestureLayoutHost.RasterizationScale => XamlRoot?.RasterizationScale ?? 1;
 
@@ -3057,7 +2989,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         IsCodeBlockCopyEnabled = IsCodeBlockCopyEnabled,
         IsTaskListEditingEnabled = IsTaskListEditingEnabled,
         CommandProvider = CommandProvider,
-        Localization = CaptureRequestedLocalization(),
+        Localization = _localization.CaptureRequested(),
         LineNumberMode = CodeBlockLineNumberMode,
         WrappingMode = CodeBlockWrappingMode,
         ChromeMode = CodeBlockChromeMode,
@@ -3215,7 +3147,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // otherwise an invalidation during background layout can clear using
         // the next theme and repaint using the previous one.
         _painter.PublishBackground(plan.Theme.SurfaceColor);
-        _committedLocalization = plan.Inputs.Localization;
+        _localization.Publish(plan.Inputs.Localization);
         _committedImageDocumentId = imageDocumentId;
         _published.Generation = generation;
         _focusRefresh.Mark(snapshot, generation);
@@ -3255,9 +3187,9 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private bool HasSemanticInputChanged(RebuildLayoutPlan plan, bool sameDocument) =>
         !sameDocument ||
         !ReferenceEquals(Document, plan.Parse.SemanticDocument) ||
-        !ReferenceEquals(_committedLocalization?.StringProvider, plan.Inputs.StringProvider) ||
+        !ReferenceEquals(_localization.Committed?.StringProvider, plan.Inputs.StringProvider) ||
         !string.Equals(
-            _committedLocalization?.Culture.Name,
+            _localization.Committed?.Culture.Name,
             plan.Inputs.Language,
             StringComparison.OrdinalIgnoreCase);
 

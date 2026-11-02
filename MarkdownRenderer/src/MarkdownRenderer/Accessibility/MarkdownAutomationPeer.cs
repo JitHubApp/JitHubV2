@@ -78,7 +78,7 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
         var doc = GetSemanticDocumentOrNull();
         if (doc is null)
         {
-            return _owner.ResolveLocalizedString(
+            return _owner.Localization.Resolve(
                 MarkdownStringKeys.DocumentName,
                 MarkdownLocalizedStrings.MarkdownDocumentName);
         }
@@ -93,7 +93,7 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
                 return heading.Length > 120 ? heading.Substring(0, 120) : heading;
         }
 
-        return _owner.ResolveLocalizedString(
+        return _owner.Localization.Resolve(
             MarkdownStringKeys.DocumentName,
             MarkdownLocalizedStrings.MarkdownDocumentName);
     }
@@ -102,14 +102,14 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
     {
         MarkdownVisibleSceneReadiness sceneStatus = _owner.DeferredSceneReadiness.GetVisibleStatus();
         if (sceneStatus == MarkdownVisibleSceneReadiness.Failed)
-            return _owner.ResolveLocalizedString(MarkdownStringKeys.EmbeddedContentUnavailable,
+            return _owner.Localization.Resolve(MarkdownStringKeys.EmbeddedContentUnavailable,
                 MarkdownLocalizedStrings.EmbeddedContentUnavailable);
         if (_owner.ImageReadiness.HasLoadingImages())
         {
-            string imageName = _owner.ResolveLocalizedString(
+            string imageName = _owner.Localization.Resolve(
                 MarkdownStringKeys.ImageName,
                 MarkdownLocalizedStrings.ImageName);
-            return _owner.ResolveFormattedLocalizedString(
+            return _owner.Localization.ResolveFormatted(
                 MarkdownStringKeys.ImageLoading,
                 MarkdownLocalizedStrings.ImageLoadingFormat,
                 imageName);
@@ -117,10 +117,10 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
 
         if (sceneStatus != MarkdownVisibleSceneReadiness.Ready)
         {
-            string sceneName = _owner.ResolveLocalizedString(
+            string sceneName = _owner.Localization.Resolve(
                 MarkdownStringKeys.EmbeddedContentName,
                 MarkdownLocalizedStrings.EmbeddedContentName);
-            return _owner.ResolveFormattedLocalizedString(
+            return _owner.Localization.ResolveFormatted(
                 MarkdownStringKeys.ImageLoading,
                 MarkdownLocalizedStrings.ImageLoadingFormat,
                 sceneName);

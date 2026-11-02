@@ -197,7 +197,7 @@ internal sealed partial class MarkdownLinkedImagePeer : FrameworkElementAutomati
     {
         string description = string.IsNullOrWhiteSpace(run.AltText)
             ? string.IsNullOrWhiteSpace(run.LinkTitle)
-                ? _owner.ResolveLocalizedString(
+                ? _owner.Localization.Resolve(
                     MarkdownStringKeys.ImageName,
                     MarkdownLocalizedStrings.ImageName)
                 : run.LinkTitle!
@@ -205,11 +205,11 @@ internal sealed partial class MarkdownLinkedImagePeer : FrameworkElementAutomati
 
         return state switch
         {
-            MarkdownImageAccessibilityState.Loading => _owner.ResolveFormattedLocalizedString(
+            MarkdownImageAccessibilityState.Loading => _owner.Localization.ResolveFormatted(
                 MarkdownStringKeys.ImageLoading,
                 MarkdownLocalizedStrings.ImageLoadingFormat,
                 description),
-            MarkdownImageAccessibilityState.Error => _owner.ResolveFormattedLocalizedString(
+            MarkdownImageAccessibilityState.Error => _owner.Localization.ResolveFormatted(
                 MarkdownStringKeys.ImageError,
                 MarkdownLocalizedStrings.ImageErrorFormat,
                 description),

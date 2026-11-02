@@ -261,7 +261,7 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
 
         if (_node.Role == MarkdownSemanticRole.Diagram)
         {
-            return _owner.ResolveLocalizedString(
+            return _owner.Localization.Resolve(
                 MarkdownStringKeys.DiagramName,
                 MarkdownLocalizedStrings.DiagramName);
         }
@@ -270,7 +270,7 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
 
         if (_node.Role == MarkdownSemanticRole.CodeBlock && _node.Box is CodeBlockBox)
         {
-            return _owner.ResolveLocalizedString(
+            return _owner.Localization.Resolve(
                 MarkdownStringKeys.StyleCodeBlock,
                 MarkdownLocalizedStrings.StyleName(MarkdownElementKeys.CodeBlock));
         }
@@ -284,16 +284,16 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
             return text;
         return _node.Role switch
         {
-            MarkdownSemanticRole.Image => _owner.ResolveLocalizedString(
+            MarkdownSemanticRole.Image => _owner.Localization.Resolve(
                 MarkdownStringKeys.ImageName,
                 MarkdownLocalizedStrings.ImageName),
-            MarkdownSemanticRole.Table => _owner.ResolveLocalizedString(
+            MarkdownSemanticRole.Table => _owner.Localization.Resolve(
                 MarkdownStringKeys.TableName,
                 MarkdownLocalizedStrings.TableName),
-            MarkdownSemanticRole.List => _owner.ResolveLocalizedString(
+            MarkdownSemanticRole.List => _owner.Localization.Resolve(
                 MarkdownStringKeys.ListName,
                 MarkdownLocalizedStrings.ListName),
-            MarkdownSemanticRole.Embed => _owner.ResolveLocalizedString(
+            MarkdownSemanticRole.Embed => _owner.Localization.Resolve(
                 MarkdownStringKeys.EmbeddedContentName,
                 MarkdownLocalizedStrings.EmbeddedContentName),
             _ => string.Empty,
@@ -309,7 +309,7 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
         if (_node.Role == MarkdownSemanticRole.CodeBlock &&
             !string.IsNullOrWhiteSpace(_node.CodeLanguage))
         {
-            return _owner.ResolveFormattedLocalizedString(
+            return _owner.Localization.ResolveFormatted(
                 MarkdownStringKeys.CodeLanguageHelp,
                 MarkdownLocalizedStrings.CodeLanguageHelpFormat,
                 _node.CodeLanguage);
@@ -325,7 +325,7 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
     {
         EnsureCurrentDocument();
         if (_node.Box is Layout.Boxes.VectorSceneBox { GraphRebindFailed: true })
-            return _owner.ResolveLocalizedString(MarkdownStringKeys.EmbeddedContentUnavailable,
+            return _owner.Localization.Resolve(MarkdownStringKeys.EmbeddedContentUnavailable,
                 MarkdownLocalizedStrings.EmbeddedContentUnavailable);
         if (_node.Role == MarkdownSemanticRole.Image &&
             _node.ImageBox?.AccessibilityState == MarkdownImageAccessibilityState.Loading)
@@ -804,15 +804,15 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
     private string GetImageName(string text, MarkdownImageAccessibilityState? state)
     {
         string description = string.IsNullOrWhiteSpace(text)
-            ? _owner.ResolveLocalizedString(MarkdownStringKeys.ImageName, MarkdownLocalizedStrings.ImageName)
+            ? _owner.Localization.Resolve(MarkdownStringKeys.ImageName, MarkdownLocalizedStrings.ImageName)
             : text;
         return state switch
         {
-            MarkdownImageAccessibilityState.Loading => _owner.ResolveFormattedLocalizedString(
+            MarkdownImageAccessibilityState.Loading => _owner.Localization.ResolveFormatted(
                 MarkdownStringKeys.ImageLoading,
                 MarkdownLocalizedStrings.ImageLoadingFormat,
                 description),
-            MarkdownImageAccessibilityState.Error => _owner.ResolveFormattedLocalizedString(
+            MarkdownImageAccessibilityState.Error => _owner.Localization.ResolveFormatted(
                 MarkdownStringKeys.ImageError,
                 MarkdownLocalizedStrings.ImageErrorFormat,
                 description),
