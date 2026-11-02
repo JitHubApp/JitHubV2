@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -60,7 +61,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     ICanvasDeviceRecoveryHost, ICodeBlockHighlightingHost, IRecoveryClockHost, IRasterPlacementHost,
     IImageRelayoutHost, IImageLoadCompletionHost, IVectorCapacityRetryHost,
     ILazyLayoutHost, ILayoutCommitHost, IFocusableItemsPublicationHost,
-    IRebuildSchedulerHost
+    IRebuildSchedulerHost, IRebuildLayoutSetupHost
 {
     private readonly MarkdownViewSurface _surface;
     private readonly MarkdownViewLifetime _lifetime = new();
@@ -94,6 +95,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             $"(0x{exception.HResult:X8})."));
     private readonly PipelineCancellationRetirement _cancellationRetirement;
     private readonly RebuildScheduler _rebuild;
+    private readonly RebuildLayoutSetup _layoutSetup;
     private CancellationTokenSource? _imageLifetimeCts;
     private readonly MarkdownAutomationDocumentGeneration _automationDocumentGenerations = new();
 #if MARKDOWN_LAYOUT_DIAGNOSTICS
@@ -126,7 +128,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private bool _selectionAutomationEventQueued;
     private float _lastWidth;
     private static readonly MarkdownTheme _defaultTheme = new();
-    private static readonly MarkdownExtensionRegistry _defaultRegistry = new();
     private readonly Dictionary<string, bool> _disclosureStates = new(StringComparer.Ordinal);
     private readonly ParsedMarkdownCache _parseCache = new();
     private bool _isUpdatingDocumentProperty;
@@ -1776,6 +1777,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _rasterPlacement = new RasterPlacementPublisher(this, _lifetime, _published, _layoutCommit, _surface, _pointerInput, _imageSubscriptions, _imagePlans, _imageResidency, _embeds, _focus, _focusRing, _hostedFocusPlan, _snapshotRetirements);
         _focusRefresh = new FocusableItemsRefreshRequest(_published);
         _focusableItems = new FocusableItemsPublication(this, _lifetime, _published, _focusRefresh, _focus, _recoveryClock);
+        _layoutSetup = new RebuildLayoutSetup(this, _snapshotRetirements, _imagePrefetch, _completedImageCarry, _imagePlans, _embeds, _focusableItems, _imagePreparationOwnerToken);
         _hostedFocus = new HostedElementFocus(this, _lifetime, _published, _focus, _hostedFocusPlan, _embeds, _focusRing);
         _overflowScroll = new HorizontalOverflowScrollVisuals(this, _surface, _lifetime, _published, _selection, _focus, _embeds, DispatcherQueue);
         _reveal = new FocusedItemReveal(this, _surface, _lifetime, _published, _viewport, _focus, _overflowScroll, DispatcherQueue);
@@ -2596,6 +2598,24 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         long sourceUtf16Bytes) =>
         RebuildAsync(ct, reason, generation, pipelineStartTimestamp, sourceUtf16Bytes);
 
+    Microsoft.UI.Dispatching.DispatcherQueue? IRebuildLayoutSetupHost.DispatcherQueue => DispatcherQueue;
+
+    FrameworkElement IRebuildLayoutSetupHost.ThemeHost => this;
+
+    object IRebuildLayoutSetupHost.DocumentOwner => this;
+
+    CancellationTokenSource? IRebuildLayoutSetupHost.ImageLifetimeCts => _imageLifetimeCts;
+
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+    bool IRebuildLayoutSetupHost.EnableStandaloneLayoutDiagnostics => EnableStandaloneLayoutDiagnostics;
+#endif
+
+    void IRebuildLayoutSetupHost.RaiseImageUnavailable(
+        string source,
+        MarkdownImageUnavailableReason reason,
+        MarkdownSvgFailureReason? svgFailureReason) =>
+        RaiseImageUnavailable(source, reason, svgFailureReason);
+
     double IDeferredGestureLayoutHost.RasterizationScale => XamlRoot?.RasterizationScale ?? 1;
 
     bool IDeferredGestureLayoutHost.IsPointOverEmbed(Point point) => _embeds.HitTargets.IsPointOverEmbed(point);
@@ -3241,382 +3261,136 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         var width = (float)Math.Max(50, ActualWidth);
         _lastWidth = width;
 
-        MarkdownExtensionRegistry? extensionRegistrySnapshot = ExtensionRegistry;
-        MarkdownExtensionRegistry legacyRegistry = extensionRegistrySnapshot ?? _defaultRegistry;
-        int parserRegistryRevisionSnapshot = legacyRegistry.Revision;
-        MarkdownEngine? engineSnapshot = Engine;
-        IMarkdownPerformanceSessionInternal? performanceSessionSnapshot =
-            PerformanceSession as IMarkdownPerformanceSessionInternal;
-        if (performanceSessionSnapshot?.IsDisposed == true)
-            performanceSessionSnapshot = null;
-        var reusableDocument = _hasExplicitDocument ? Document : null;
-        var source = reusableDocument?.Source ?? Markdown ?? string.Empty;
-        long parseStarted = Stopwatch.GetTimestamp();
-
+        RebuildSourceInputs source = CaptureRebuildSourceInputs();
         if (ct.IsCancellationRequested || generation != _rebuild.Generation)
             return;
 
-        MarkdownRenderer.Document.MarkdownDocument? semanticDocument = reusableDocument;
-        MarkdownRenderer.Document.MarkdownDocument? reusableParsedDocument =
-            reusableDocument?.ParsedDocument is not null ? reusableDocument : null;
-        if (performanceSessionSnapshot is not null)
-        {
-            semanticDocument = await performanceSessionSnapshot.ParseAndPrepareDocumentAsync(
-                engineSnapshot,
-                reusableParsedDocument,
-                source,
-                legacyRegistry,
-                this,
-                ct).ConfigureAwait(true);
-        }
-
-        ParsedMarkdown? parsed;
-        if (semanticDocument?.ParsedDocument is { } semanticAst)
-        {
-            parsed = new ParsedMarkdown(semanticDocument.Source, semanticAst);
-        }
-        else if (engineSnapshot is { } engine)
-        {
-            semanticDocument = await engine.ParseAsync(source, ct).ConfigureAwait(true);
-            parsed = semanticDocument.ParsedDocument is { } engineAst
-                ? new ParsedMarkdown(semanticDocument.Source, engineAst)
-                : null;
-        }
-        else
-        {
-            parsed = await _parseCache.GetAsync(source, legacyRegistry, ct).ConfigureAwait(true);
-            if (parsed is not null)
-            {
-                semanticDocument = await Task.Run(
-                    () => MarkdownRenderer.Document.MarkdownDocument.FromParsed(
-                        parsed.SourceText,
-                        parsed.Document,
-                        diagnostics: [],
-                        ct),
-                    CancellationToken.None).ConfigureAwait(true);
-            }
-        }
-
-        if (parsed is null || semanticDocument is null || ct.IsCancellationRequested || generation != _rebuild.Generation)
+        RebuildParseResult? parse = await RebuildParse.ParseAsync(source, _parseCache, this, ct).ConfigureAwait(true);
+        if (parse is null || ct.IsCancellationRequested || generation != _rebuild.Generation)
             return;
-        long parseEnded = Stopwatch.GetTimestamp();
-        double parseMilliseconds = Stopwatch.GetElapsedTime(parseStarted, parseEnded).TotalMilliseconds;
 
-        // Presentation registrations travel with reusable documents/engines.
-        // Keep the legacy control registry only as the fallback parser/layout
-        // source so an engine-produced document cannot silently lose its
-        // custom renderers when it reaches the WinUI adapter.
-        MarkdownExtensionRegistry baseRegistry =
-            semanticDocument.PresentationConfiguration as MarkdownExtensionRegistry ??
-            engineSnapshot?.PresentationConfiguration as MarkdownExtensionRegistry ??
-            _defaultRegistry;
-        int presentationRegistryRevisionSnapshot = baseRegistry.Revision;
-        int extensionRegistryRevisionSnapshot = extensionRegistrySnapshot?.Revision ?? 0;
-        MarkdownExtensionRegistry layoutRegistry =
-            MarkdownExtensionRegistry.ComposePresentation(baseRegistry, extensionRegistrySnapshot);
-
-        var sourceMap = new MarkdownSourceMap(parsed.SourceText);
-        var theme = Theme ?? _defaultTheme;
-        MarkdownStyleSheet? styleSheetSnapshot = StyleSheet;
-        FlowDirection flowDirectionSnapshot = FlowDirection;
-        var embedFactorySnapshot = EmbedFactory;
-        var hostedElementFactorySnapshot = HostedElementFactory;
-        var imageResolverSnapshot = ImageResolver;
-        // The host resolver may be wrapped in a per-document scope below; the
-        // carry identity uses the host's own resolver.
-        var imageResolverIdentity = imageResolverSnapshot;
-        var svgRendererSnapshot = SvgRenderer;
-        var rasterDecoderSnapshot = RasterDecoder;
-        Uri? imageBaseUriSnapshot = ImageBaseUri;
-        string? imageDocumentPathSnapshot = ImageDocumentPath;
-        MarkdownDocumentSource? imageDocumentSourceSnapshot = ImageDocumentSource;
-        bool allowThirdPartyRemoteImagesSnapshot = AllowThirdPartyRemoteImages;
-        var imageResolveContext = new MarkdownImageResolveContext(
-            imageBaseUriSnapshot,
-            imageDocumentPathSnapshot,
-            allowThirdPartyRemoteImagesSnapshot,
-            imageDocumentSourceSnapshot);
-        if (performanceSessionSnapshot is not null && imageResolverSnapshot is not null)
-        {
-            IMarkdownPerformanceDocumentScope? scope = performanceSessionSnapshot.PrepareDocumentScope(
-                this,
-                parsed.SourceText,
-                layoutRegistry.Revision,
-                parsed.Document,
-                layoutRegistry.SafeHtmlPolicy,
-                imageResolverSnapshot,
-                imageResolveContext);
-            if (scope is null)
-            {
-                performanceSessionSnapshot = null;
-                _imagePrefetch.Queue(
-                    parsed.Document,
-                    parsed.SourceText,
-                    layoutRegistry,
-                    imageResolverSnapshot,
-                    imageResolveContext,
-                    _imageLifetimeCts);
-            }
-            else
-                imageResolverSnapshot = scope;
-        }
-        else
-        {
-            performanceSessionSnapshot?.ReleaseDocumentScope(this);
-            _imagePrefetch.Queue(
-                parsed.Document,
-                parsed.SourceText,
-                layoutRegistry,
-                imageResolverSnapshot,
-                imageResolveContext,
-                _imageLifetimeCts);
-        }
-        bool codeBlockCopyEnabledSnapshot = IsCodeBlockCopyEnabled;
-        bool taskListEditingEnabledSnapshot = IsTaskListEditingEnabled;
-        var commandProviderSnapshot = CommandProvider;
-        MarkdownLocalizationSnapshot localizationSnapshot = CaptureRequestedLocalization();
-        var stringProviderSnapshot = localizationSnapshot.StringProvider;
-        string languageSnapshot = localizationSnapshot.Culture.Name;
-        CodeBlockLineNumberMode lineNumberModeSnapshot = CodeBlockLineNumberMode;
-        CodeBlockWrappingMode wrappingModeSnapshot = CodeBlockWrappingMode;
-        CodeBlockChromeMode chromeModeSnapshot = CodeBlockChromeMode;
-        var disclosureStatesSnapshot = new Dictionary<string, bool>(
-            _disclosureStates,
-            StringComparer.Ordinal);
-        double textScaleFactor = _environmentSnapshot.TextScaleFactor > 0
-            ? _environmentSnapshot.TextScaleFactor
-            : 1.0;
-        ulong? styleRoleDemandMask = null;
-        if (performanceSessionSnapshot is not null &&
-            !layoutRegistry.HasUnclassifiedStyleRoleRenderers &&
-            performanceSessionSnapshot.TryGetStyleRoleDemandMask(
-                semanticDocument,
-                ct,
-                out ulong completeStyleRoleDemandMask))
-        {
-            styleRoleDemandMask = completeStyleRoleDemandMask;
-        }
-
-        long themeSnapshotStarted = Stopwatch.GetTimestamp();
-        var themeResolver = new ThemeResolver(this, theme);
-        var themeSnapshot = themeResolver.CreateSnapshot(
-            styleSheetSnapshot,
-            textScaleFactor,
-            semanticDocument.GetExtensionStyleRoleNames(),
-            styleRoleDemandMask);
-        double themeSnapshotMilliseconds = Stopwatch.GetElapsedTime(themeSnapshotStarted).TotalMilliseconds;
-        // Use the shared CanvasDevice (always available, no visual-tree required).
-        // CanvasVirtualControl only has a device after CreateResources fires, so
-        // passing the canvas directly would crash if layout runs before first draw.
-        var device = CanvasDevice.GetSharedDevice();
-        // Capture the host's rasterization scale so raster-fallback image
-        // paths (e.g. SvgSkiaRasterizer) render at device-pixel resolution.
-        // XamlRoot is null until the control is loaded; default to 1.0.
-        double rasterScale = XamlRoot?.RasterizationScale ?? 1.0;
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
-        MarkdownLayoutDiagnostics? layoutDiagnostics =
-            performanceSessionSnapshot?.IsLayoutDiagnosticCaptureEnabled == true ||
-            EnableStandaloneLayoutDiagnostics
-                ? new MarkdownLayoutDiagnostics()
-                : null;
-#endif
-        var imageCarryIdentity = new Layout.Boxes.MarkdownImageCarryIdentity(
-            parsed.SourceText,
-            imageBaseUriSnapshot,
-            imageDocumentPathSnapshot,
-            imageDocumentSourceSnapshot,
-            imageResolverIdentity,
-            svgRendererSnapshot,
-            rasterDecoderSnapshot,
-            allowThirdPartyRemoteImagesSnapshot);
-        IReadOnlyDictionary<string, Layout.Boxes.CompletedImageCarry>? completedImageCarrySnapshot =
-            _completedImageCarry.Capture(
-                imageCarryIdentity,
-                // A permanent failure is carried only across an automatic
-                // scene rebuild; any other rebuild (for example the host's Retry)
-                // still retries it.
-                carryFailures: reason == RebuildReason.SceneMaterialized,
-                _imagePlans.Items);
-        var ctx = new MarkdownLayoutContext(
-            device,
-            themeSnapshot,
-            sourceMap,
-            layoutRegistry,
-            flowDirectionSnapshot,
-            DispatcherQueue,
-            languageSnapshot)
-        {
-            RasterizationScale = rasterScale,
-            // Propagate the rebuild lifetime through layout and host image
-            // construction. Image resolution has a separate loaded-lifetime
-            // token so benign width/theme relayouts do not cancel committed
-            // image boxes before they can publish their result.
-            CancellationToken = ct,
-            ImageCancellationToken = _imageLifetimeCts?.Token ?? CancellationToken.None,
-            // Failed layout construction can retire images after the control's
-            // current drain epoch has started. Keep a context-local barrier and
-            // also publish those retirements to the control's observer.
-            RetirementSink = _snapshotRetirements.Track,
-            IsCodeBlockCopyEnabled = codeBlockCopyEnabledSnapshot,
-            IsTaskListEditingEnabled = taskListEditingEnabledSnapshot,
-            CommandProvider = commandProviderSnapshot,
-            TaskCommandAvailabilityChanged = _focusableItems.OnTaskCommandAvailabilityChanged,
-            StringProvider = stringProviderSnapshot,
-            CodeBlockLineNumberMode = lineNumberModeSnapshot,
-            CodeBlockWrappingMode = wrappingModeSnapshot,
-            CodeBlockChromeMode = chromeModeSnapshot,
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
-            LayoutDiagnostics = layoutDiagnostics,
-#endif
-            ImageResolver = imageResolverSnapshot,
-            PerformanceSession = performanceSessionSnapshot,
-            PerformanceDocumentOwner = this,
-            ImagePreparationOwner = _imagePreparationOwnerToken,
-            SvgRenderer = svgRendererSnapshot,
-            RasterDecoder = rasterDecoderSnapshot,
-            ImageBaseUri = imageBaseUriSnapshot,
-            ImageDocumentPath = imageDocumentPathSnapshot,
-            ImageDocumentSource = imageDocumentSourceSnapshot,
-            AllowThirdPartyRemoteImages = allowThirdPartyRemoteImagesSnapshot,
-            ImageUnavailable = RaiseImageUnavailable,
-            DisclosureStates = disclosureStatesSnapshot,
-            ImageCarryIdentity = imageCarryIdentity,
-            CompletedImageCarry = completedImageCarrySnapshot,
-        };
+        RebuildLayoutPlan plan = _layoutSetup.CreatePlan(
+            source,
+            CaptureRebuildLayoutInputs(),
+            parse,
+            reason,
+            width,
+            ct);
         Exception? primaryFailure = null;
         try
         {
-        SharedLayoutMetricsKey? sharedLayoutMetricsKey = engineSnapshot is null
-            ? null
-            : new SharedLayoutMetricsKey(
-                parsed.SourceText,
-                semanticDocument,
-                widthInSixtyFourthDips: (int)Math.Clamp(
-                    Math.Round(width * 64d),
-                    1d,
-                    int.MaxValue),
-                typographyFingerprint: themeSnapshot.LayoutFingerprint,
-                flowDirection: (int)flowDirectionSnapshot,
-                codeWrappingMode: (int)wrappingModeSnapshot,
-                lineNumberMode: (int)lineNumberModeSnapshot,
-                codeCopyEnabled: codeBlockCopyEnabledSnapshot,
-                taskEditingEnabled: taskListEditingEnabledSnapshot,
-                rasterScaleInThousandths: (int)Math.Clamp(
-                    Math.Round(rasterScale * 1_000d),
-                    1d,
-                    int.MaxValue),
-                language: languageSnapshot,
-                registryRevision: layoutRegistry.Revision,
-                disclosureFingerprint: ComputeDisclosureFingerprint(disclosureStatesSnapshot),
-                imageContext: new SharedLayoutImageContext(
-                    imageBaseUriSnapshot?.OriginalString,
-                    imageDocumentPathSnapshot,
-                    allowThirdPartyRemoteImagesSnapshot,
-                    imageDocumentSourceSnapshot),
-                styleSheetSnapshot,
-                layoutRegistry,
-                embedFactorySnapshot,
-                hostedElementFactorySnapshot,
-                imageResolverSnapshot,
-                svgRendererSnapshot,
-                rasterDecoderSnapshot,
-                commandProviderSnapshot,
-                stringProviderSnapshot);
-        var builder = new LayoutBuilder(
-            ctx,
-            embedFactorySnapshot,
-            enableDeclarativeHostedElements: hostedElementFactorySnapshot is not null,
-            semanticDocument,
-            _embeds.CopyHostedElementFallbacks(),
-            engineSnapshot,
-            sharedLayoutMetricsKey);
+            await BuildAndCommitAsync(plan, generation, pipelineStartTimestamp, sourceUtf16Bytes, ct)
+                .ConfigureAwait(true);
+        }
+        catch (Exception exception)
+        {
+            primaryFailure = exception;
+            throw;
+        }
+        finally
+        {
+            // The control-level drain is epoch-based: work registered after its
+            // disposal snapshot belongs to a later epoch. Drain this build's
+            // own registrations before its pipeline task completes so provider
+            // retirement cannot race failed-build image teardown.
+            await plan.Context.DrainOwnedRetirementsAsync(primaryFailure).ConfigureAwait(true);
+        }
+    }
 
+    private RebuildSourceInputs CaptureRebuildSourceInputs()
+    {
+        MarkdownExtensionRegistry? extensionRegistry = ExtensionRegistry;
+        MarkdownExtensionRegistry legacyRegistry = extensionRegistry ?? RebuildLayoutSetup.DefaultRegistry;
+        IMarkdownPerformanceSessionInternal? performanceSession =
+            PerformanceSession as IMarkdownPerformanceSessionInternal;
+        if (performanceSession?.IsDisposed == true)
+            performanceSession = null;
+        var reusableDocument = _hasExplicitDocument ? Document : null;
+        return new RebuildSourceInputs(
+            extensionRegistry,
+            legacyRegistry,
+            legacyRegistry.Revision,
+            Engine,
+            performanceSession,
+            reusableDocument,
+            reusableDocument?.Source ?? Markdown ?? string.Empty);
+    }
+
+    private RebuildLayoutInputs CaptureRebuildLayoutInputs() => new()
+    {
+        Theme = Theme ?? _defaultTheme,
+        StyleSheet = StyleSheet,
+        FlowDirection = FlowDirection,
+        EmbedFactory = EmbedFactory,
+        HostedElementFactory = HostedElementFactory,
+        ImageResolver = ImageResolver,
+        SvgRenderer = SvgRenderer,
+        RasterDecoder = RasterDecoder,
+        ImageBaseUri = ImageBaseUri,
+        ImageDocumentPath = ImageDocumentPath,
+        ImageDocumentSource = ImageDocumentSource,
+        AllowThirdPartyRemoteImages = AllowThirdPartyRemoteImages,
+        IsCodeBlockCopyEnabled = IsCodeBlockCopyEnabled,
+        IsTaskListEditingEnabled = IsTaskListEditingEnabled,
+        CommandProvider = CommandProvider,
+        Localization = CaptureRequestedLocalization(),
+        LineNumberMode = CodeBlockLineNumberMode,
+        WrappingMode = CodeBlockWrappingMode,
+        ChromeMode = CodeBlockChromeMode,
+        DisclosureStates = new Dictionary<string, bool>(_disclosureStates, StringComparer.Ordinal),
+        TextScaleFactor = _environmentSnapshot.TextScaleFactor > 0
+            ? _environmentSnapshot.TextScaleFactor
+            : 1.0,
+        // XamlRoot is null until the control is loaded; default to 1.0.
+        RasterScale = XamlRoot?.RasterizationScale ?? 1.0,
+    };
+
+    /// <summary>
+    /// Builds the snapshot <paramref name="plan"/> describes and, while
+    /// <paramref name="generation"/> is still current, replaces the published
+    /// snapshot with it. An unpublished snapshot is always retired.
+    /// </summary>
+    private async Task BuildAndCommitAsync(
+        RebuildLayoutPlan plan,
+        long generation,
+        long pipelineStartTimestamp,
+        long sourceUtf16Bytes,
+        CancellationToken ct)
+    {
+        MarkdownLayoutContext ctx = plan.Context;
+        LayoutBuilder builder = _layoutSetup.CreateBuilder(plan);
         if (ct.IsCancellationRequested || generation != _rebuild.Generation)
             return;
 
         _viewport.TryGet(out double viewportTop, out double viewportHeight, out _);
-        // Custom block embed measurement remains on the background build path.
-        // Subsequent lazy-band extension is also dispatched to a background
-        // worker, so IMarkdownEmbedFactory.MeasureHeight and text reflow never
-        // run from viewport or paint callbacks.
-        bool visibleFirstVectorAdmissionRequested = performanceSessionSnapshot is
-            { IsDisposed: false, Options.DeferOffscreenScenes: true };
-        bool useLazyLayout = visibleFirstVectorAdmissionRequested || MarkdownLazyLayoutPolicy.ShouldUse(
-            parsed.Document.Count,
-            parsed.SourceText.Length,
-            hasCustomBlockEmbedMeasurement: embedFactorySnapshot is not null);
-        double initialLazyOverscan = performanceSessionSnapshot is null
-            ? MarkdownLazyLayoutPolicy.OverscanPx
-            : Math.Clamp(
-                viewportHeight * performanceSessionSnapshot.Options.LookAheadViewports,
-                0,
-                6000);
-        long layoutStarted = Stopwatch.GetTimestamp();
-        double setupMilliseconds = Stopwatch.GetElapsedTime(parseEnded, layoutStarted).TotalMilliseconds;
+        bool captureLayoutCpu = plan.PerformanceSession is not null;
+        Action<long>? workerCompleted = null;
 #if MARKDOWN_LAYOUT_DIAGNOSTICS
         using var initialLayoutDispatcherProbe =
-            _timings.StartInitialDispatcherProbe(DispatcherQueue, layoutDiagnostics);
+            _timings.StartInitialDispatcherProbe(DispatcherQueue, plan.LayoutDiagnostics);
+        captureLayoutCpu |= plan.LayoutDiagnostics is not null;
+        if (initialLayoutDispatcherProbe is not null)
+            workerCompleted = initialLayoutDispatcherProbe.EnqueueWorkerCompletionSentinel;
 #endif
-        (LayoutSnapshot? Snapshot, double CpuMilliseconds, long Started, long Ended) layoutResult;
-        Func<CancellationToken, (LayoutSnapshot? Snapshot, double CpuMilliseconds, long Started, long Ended)> layoutWork =
-            layoutToken =>
-            {
-                ctx.SetCancellationToken(layoutToken);
-                long started = Stopwatch.GetTimestamp();
-                // Keep this synchronous build on one worker. Its CPU time
-                // separates layout work from queueing/descheduling when a
-                // profile reports an anomalous wall-clock stall.
-                bool captureLayoutCpu = performanceSessionSnapshot is not null;
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
-                captureLayoutCpu |= layoutDiagnostics is not null;
-#endif
-                long cpuStarted = !captureLayoutCpu
-                    ? -1
-                    : ThreadCpuClock.ReadCurrentThreadTicks();
-                LayoutSnapshot? built = BuildSnapshotOrNullOnCancellation(
-                    builder,
-                    parsed.Document,
-                    width,
-                    viewportTop,
-                    viewportHeight,
-                    useLazyLayout,
-                    initialLazyOverscan,
-                    layoutToken);
-                long cpuEnded = cpuStarted < 0
-                    ? -1
-                    : ThreadCpuClock.ReadCurrentThreadTicks();
-                long ended = Stopwatch.GetTimestamp();
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
-                initialLayoutDispatcherProbe?.EnqueueWorkerCompletionSentinel(ended);
-#endif
-                return (built, ThreadCpuClock.ElapsedMilliseconds(cpuStarted, cpuEnded), started, ended);
-            };
-        try
-        {
-            Task<(LayoutSnapshot? Snapshot, double CpuMilliseconds, long Started, long Ended)> layoutTask =
-                performanceSessionSnapshot is null
-                    ? Task.Run(() => layoutWork(ct), CancellationToken.None)
-                    : performanceSessionSnapshot.ScheduleLayoutWorkAsync(
-                        MarkdownLayoutWorkPriority.Primary,
-                        layoutWork,
-                        ct);
-            layoutResult = await layoutTask.ConfigureAwait(true);
-        }
-        catch (OperationCanceledException) when (
-            ct.IsCancellationRequested || performanceSessionSnapshot?.IsDisposed == true)
-        {
+        RebuildLayoutRunResult? run = await RebuildLayoutRun.RunAsync(
+            builder,
+            ctx,
+            plan.Parse.Parsed,
+            plan.Width,
+            viewportTop,
+            viewportHeight,
+            hasCustomBlockEmbedMeasurement: plan.Inputs.EmbedFactory is not null,
+            plan.PerformanceSession,
+            captureLayoutCpu,
+            workerCompleted,
+            ct).ConfigureAwait(true);
+        if (run is null)
             return;
-        }
-        var (snapshot, layoutCpuMilliseconds, workerStarted, workerEnded) = layoutResult;
-        long layoutEnded = Stopwatch.GetTimestamp();
-        double layoutMilliseconds = Stopwatch.GetElapsedTime(layoutStarted, layoutEnded).TotalMilliseconds;
-        double layoutQueueMilliseconds = Stopwatch.GetElapsedTime(layoutStarted, workerStarted).TotalMilliseconds;
-        double layoutWorkerWallMilliseconds = Stopwatch.GetElapsedTime(workerStarted, workerEnded).TotalMilliseconds;
-        double layoutContinuationMilliseconds = Stopwatch.GetElapsedTime(workerEnded, layoutEnded).TotalMilliseconds;
 #if MARKDOWN_LAYOUT_DIAGNOSTICS
         MarkdownLayoutDiagnosticsSnapshot layoutDiagnosticSnapshot =
-            layoutDiagnostics?.Capture() ?? default;
+            plan.LayoutDiagnostics?.Capture() ?? default;
 #endif
+        LayoutSnapshot? snapshot = run.Snapshot;
         if (snapshot is null || ct.IsCancellationRequested || generation != _rebuild.Generation)
         {
             if (snapshot is not null)
@@ -3626,48 +3400,73 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
         // From this point the snapshot holds GPU-side CanvasTextLayout objects.
         // If we are cancelled before committing, dispose it to avoid a native-memory leak.
-        // `committed` tracks whether the snapshot was published; the catch
-        // block must only dispose it if not yet committed (once published, _published owns it).
+        // `committed` tracks whether the snapshot was published; only an
+        // unpublished snapshot is retired here (once published, _published owns it).
         bool committed = false;
-        long publicationStarted = Stopwatch.GetTimestamp();
+        var timeline = new ReplacementTimeline(Stopwatch.GetTimestamp());
         try
         {
+            if (!TryPublishReplacement(
+                    plan, snapshot, generation, pipelineStartTimestamp, sourceUtf16Bytes, ct,
+                    out ReplacementPublication? publication))
+            {
+                return;
+            }
+
+            committed = true;
+            NotifyAutomationSnapshotChanged();
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+            _timings.CompleteInitialDispatcherProbe(initialLayoutDispatcherProbe, plan.LayoutDiagnostics);
+#endif
+            FinishReplacement(plan, snapshot, generation, publication, timeline);
+            _timings.PublishCommitted(
+                generation,
+                sourceUtf16Bytes,
+                plan,
+                run,
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+                layoutDiagnosticSnapshot,
+#endif
+                timeline);
+        }
+        finally
+        {
+            // Every cancellation/generation retry after construction must release
+            // the unpublished Win2D layout. Once committed, _published owns it.
+            if (!committed)
+                ctx.RegisterRetirement(snapshot.Retire());
+        }
+    }
+
+    /// <summary>
+    /// Publishes <paramref name="snapshot"/> and the presentation state that
+    /// describes it in place of the current snapshot. Returns false, having
+    /// published nothing, when <paramref name="generation"/> was superseded.
+    /// </summary>
+    private bool TryPublishReplacement(
+        RebuildLayoutPlan plan,
+        LayoutSnapshot snapshot,
+        long generation,
+        long pipelineStartTimestamp,
+        long sourceUtf16Bytes,
+        CancellationToken ct,
+        [NotNullWhen(true)] out ReplacementPublication? publication)
+    {
+        publication = null;
         if (ct.IsCancellationRequested || generation != _rebuild.Generation)
-            return;
+            return false;
 
         // Scroll anchoring: capture the current read position before the canvas
-        // height changes.  If the user has scrolled down, we identify the first
-        // visible block (its top edge closest to viewport top) and how far it is
-        // from the viewport top.  After committing the new layout we restore the
-        // same offset so content above the fold shifting (e.g. an image loading)
-        // doesn't jump the reader's position.
-        (int? BlockIndex, double OffsetFromTop, double OldOffset, double OldHeight)? scrollAnchor = null;
-        string? imageDocumentId = imageDocumentSourceSnapshot?.DocumentId;
+        // height changes, so content above the fold shifting (e.g. an image
+        // loading) doesn't jump the reader's position.
+        string? imageDocumentId = plan.Inputs.ImageDocumentSource?.DocumentId;
         bool sameDocumentIdentity = _committedImageDocumentId == imageDocumentId;
-        if (sameDocumentIdentity &&
-            _surface.Scroll is { VerticalOffset: > 0 } scrollSnap &&
-            _published.Snapshot is { } prevSnap)
-        {
-            double vTop = scrollSnap.VerticalOffset;
-            if (prevSnap.TryCaptureScrollAnchor(vTop, out var capturedAnchor))
-            {
-                scrollAnchor = (
-                    capturedAnchor.BlockIndex,
-                    capturedAnchor.OffsetFromTop,
-                    vTop,
-                    capturedAnchor.Height);
-            }
-            else
-            {
-                // Lazy measurement still owns the old snapshot. Preserve a
-                // proportional fallback from the already-committed XAML extent
-                // rather than blocking this UI-thread replacement for its lock.
-                scrollAnchor = (null, 0, vTop, _surface.Root?.Height ?? 0);
-            }
-        }
+        ReplacementScrollAnchor? scrollAnchor = sameDocumentIdentity
+            ? ReplacementScrollAnchor.Capture(_published.Snapshot, _surface)
+            : null;
 
         if (ct.IsCancellationRequested || generation != _rebuild.Generation)
-            return;
+            return false;
 
         // Atomically swap snapshots, then retire the old one so its
         // CanvasTextLayout / placeholder handles are released without making
@@ -3676,31 +3475,18 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         long touchSelectionRestoreSourceGeneration = _published.Generation;
         TouchSelectionPresentationRestoreIntent? touchSelectionRestoreIntent =
             _pendingTouchSelectionPresentationRestore;
-        var automationDocumentIdentity = new MarkdownAutomationDocumentIdentity(
-            snapshot.SourceFingerprint,
-            snapshot.SemanticDocument.TextProjectionFingerprint,
-            snapshot.SemanticDocument.SemanticRangeFingerprint,
-            reusableDocument,
-            engineSnapshot,
-            legacyRegistry,
-            parserRegistryRevisionSnapshot,
-            baseRegistry,
-            presentationRegistryRevisionSnapshot,
-            extensionRegistrySnapshot,
-            extensionRegistryRevisionSnapshot,
-            stringProviderSnapshot,
-            languageSnapshot);
+        var automationDocumentIdentity = plan.CreateAutomationDocumentIdentity(snapshot);
         bool sameAutomationDocument = _automationDocumentGenerations.IsCurrent(automationDocumentIdentity);
         bool sameDocument = old is not null && sameDocumentIdentity &&
             old.SourceFingerprint.Equals(snapshot.SourceFingerprint) &&
             sameAutomationDocument;
         bool semanticInputChanged = old is null ||
             !sameDocument ||
-            !ReferenceEquals(Document, semanticDocument) ||
-            !ReferenceEquals(_committedLocalization?.StringProvider, stringProviderSnapshot) ||
+            !ReferenceEquals(Document, plan.Parse.SemanticDocument) ||
+            !ReferenceEquals(_committedLocalization?.StringProvider, plan.Inputs.StringProvider) ||
             !string.Equals(
                 _committedLocalization?.Culture.Name,
-                languageSnapshot,
+                plan.Inputs.Language,
                 StringComparison.OrdinalIgnoreCase);
         bool preserveSelection = !_selection.Range.Normalized().IsEmpty && sameDocument;
         // Scrolling or paint can queue another band realization while this
@@ -3727,41 +3513,89 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             _focus.Reset();
         }
         _published.Snapshot = snapshot;
-        _published.LayoutDevice = device;
+        _published.LayoutDevice = plan.Device;
         // Publish presentation state with the new snapshot before any
         // dependency-property notification can re-enter UIA or menu queries.
         // These immutable objects therefore always describe the same commit.
-        _themeSnapshot = themeSnapshot;
+        _themeSnapshot = plan.Theme;
         // The tile clear color is presentation state too. Publish it only with
         // the snapshot whose boxes use the matching immutable ThemeSnapshot;
         // otherwise an invalidation during background layout can clear using
         // the next theme and repaint using the previous one.
-        _canvasBackground = themeSnapshot.SurfaceColor;
-        _committedLocalization = localizationSnapshot;
+        _canvasBackground = plan.Theme.SurfaceColor;
+        _committedLocalization = plan.Inputs.Localization;
         _committedImageDocumentId = imageDocumentId;
         _published.Generation = generation;
         _focusRefresh.Mark(snapshot, generation);
         _vectorCapacity.Synchronize(snapshot);
         _snapshotPipelineStartTimestamp = pipelineStartTimestamp;
         _snapshotSourceUtf16Bytes = sourceUtf16Bytes;
-        committed = true;
-        NotifyAutomationSnapshotChanged();
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
-        _timings.CompleteInitialDispatcherProbe(initialLayoutDispatcherProbe, layoutDiagnostics);
-#endif
+        publication = new ReplacementPublication(
+            old,
+            scrollAnchor,
+            touchSelectionRestoreSourceGeneration,
+            touchSelectionRestoreIntent,
+            semanticInputChanged,
+            preserveSelection);
+        return true;
+    }
+
+    /// <summary>
+    /// Completes a published replacement: presentation, overlays, selection,
+    /// realization plans and automation, recording each phase on
+    /// <paramref name="timeline"/>.
+    /// </summary>
+    private void FinishReplacement(
+        RebuildLayoutPlan plan,
+        LayoutSnapshot snapshot,
+        long generation,
+        ReplacementPublication publication,
+        ReplacementTimeline timeline)
+    {
+        ApplyReplacementPresentation(plan, snapshot, publication);
+        timeline.CommitEnded = Stopwatch.GetTimestamp();
+
+        ResetOverlaysForReplacement();
+        RestoreSelectionAfterReplacement(publication, generation);
+        timeline.OverlayResetEnded = Stopwatch.GetTimestamp();
+
+        RealizeReplacement(snapshot, timeline);
+
+        InvalidateCanvas();
+        if (publication.SemanticInputChanged)
+        {
+            (FrameworkElementAutomationPeer.FromElement(this) as MarkdownAutomationPeer)?
+                .NotifyDocumentChanged();
+        }
+        else
+        {
+            // A progressive scene may have been replaced while the semantic
+            // source stayed identical. Refresh root UIA ItemStatus after the
+            // committed snapshot without publishing text/structure events.
+            NotifyVisibleDeferredSceneItemStatusMayHaveChanged();
+        }
+        timeline.PublicationEnded = Stopwatch.GetTimestamp();
+    }
+
+    private void ApplyReplacementPresentation(
+        RebuildLayoutPlan plan,
+        LayoutSnapshot snapshot,
+        ReplacementPublication publication)
+    {
         _layoutCommit.MarkApplied(snapshot.LayoutRevision);
+        MarkdownRenderer.Document.MarkdownDocument semanticDocument = plan.Parse.SemanticDocument;
         if (!ReferenceEquals(Document, semanticDocument))
         {
             _isUpdatingDocumentProperty = true;
             try { SetValue(DocumentProperty, semanticDocument); }
             finally { _isUpdatingDocumentProperty = false; }
         }
-        if (old is not null)
+        if (publication.Old is not null)
             _contextMenu.Close();
         // Dependency-property publication above can reenter Dispose before
         // this old snapshot is retired. Tie its retirement to this context's
         // pipeline lifetime as well as the control's global drain.
-        ctx.RegisterRetirement(RetireSnapshot(old));
+        plan.Context.RegisterRetirement(RetireSnapshot(publication.Old));
         // Clear stale hover references so OnPointerExited/OnPointerMoved after the
         // rebuild don't use Bounds from the now-disposed old snapshot for invalidation.
         _hover.Clear();
@@ -3769,43 +3603,12 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
         // Restore scroll anchor: find the anchor block's new Y in the new layout
         // and adjust the scroll offset so the user's read position is unchanged.
-        if (scrollAnchor is { } anchor &&
-            _surface.Scroll is { } scrollRestore &&
-            LazyLayoutScrollAnchorPolicy.ShouldRestore(
-                anchor.OldOffset,
-                scrollRestore.VerticalOffset,
-                _scrollViewIntermediate))
-        {
-            double? newY = null;
-            if (anchor.BlockIndex is { } anchorBlock)
-            {
-                if (snapshot.TryCaptureScrollAnchorTarget(
-                        anchorBlock,
-                        anchor.OffsetFromTop,
-                        out double capturedTargetOffset))
-                {
-                    newY = capturedTargetOffset;
-                }
-            }
+        if (publication.ScrollAnchor is { } anchor && _surface.Scroll is { } scroll)
+            anchor.Restore(snapshot, scroll, _scrollViewIntermediate);
+    }
 
-            if (newY is null)
-            {
-                double ratio = anchor.OldHeight > 0
-                    ? anchor.OldOffset / anchor.OldHeight
-                    : 0;
-                newY = ratio > 0
-                    ? ratio * snapshot.Size.Height
-                    : anchor.OldOffset;
-            }
-
-            if (newY is { } targetOffset)
-            {
-                double maxOffset = Math.Max(0, snapshot.Size.Height - scrollRestore.ViewportHeight);
-                scrollRestore.ChangeView(null, Math.Clamp(targetOffset, 0, maxOffset), null, disableAnimation: true);
-            }
-        }
-        long commitEnded = Stopwatch.GetTimestamp();
-
+    private void ResetOverlaysForReplacement()
+    {
         // UI thread: collect embed plans (don't realise yet), hook image
         // LoadCompleted, then realise only embeds that fall in the current
         // viewport. Hooking ScrollViewer.ViewChanged drives subsequent realisation
@@ -3828,11 +3631,15 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _embeds.ResetRealizedCountNotification();
         _adorner.ClearGeometry();
         _handles.MarkEndpointsUnavailable();
+    }
+
+    private void RestoreSelectionAfterReplacement(ReplacementPublication publication, long generation)
+    {
         // Rebuild detaches selection chrome with the other overlay children.
         // Surviving selection reattaches what it needs below; inactive chrome
         // stays detached until the next interaction.
         bool restoreTouchSelectionPresentation = false;
-        if (preserveSelection)
+        if (publication.PreserveSelection)
         {
             // Snapshot publication and dependency-property callbacks above can
             // reenter selection or request a newer rebuild. Revalidate the
@@ -3840,11 +3647,11 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             // than relying on eligibility captured before those callbacks.
             bool touchSelectionRestoreStillMatches =
                 _selection.IsActive &&
-                touchSelectionRestoreIntent is { } capturedRestoreIntent &&
+                publication.TouchSelectionRestoreIntent is { } capturedRestoreIntent &&
                 _pendingTouchSelectionPresentationRestore is { } currentRestoreIntent &&
                 currentRestoreIntent == capturedRestoreIntent &&
                 capturedRestoreIntent.Matches(
-                    touchSelectionRestoreSourceGeneration,
+                    publication.TouchSelectionRestoreSourceGeneration,
                     _selection.Range);
             bool hasPendingRebuild = _rebuild.HasPending;
 
@@ -3876,7 +3683,10 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             _pendingTouchSelectionPresentationRestore = null;
             _selection.Clear();
         }
-        long overlayResetEnded = Stopwatch.GetTimestamp();
+    }
+
+    private void RealizeReplacement(LayoutSnapshot snapshot, ReplacementTimeline timeline)
+    {
         _focus.ClearResumeIndex();
         _focus.ClearLazyFocus();
         _focusRing.ForgetEvictedRing();
@@ -3887,122 +3697,23 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             out _);
         if (!realizationPlansReady)
             _layoutPublisher.Defer(scrollAnchor: null);
-        long planConstructionEnded = Stopwatch.GetTimestamp();
+        timeline.PlanConstructionEnded = Stopwatch.GetTimestamp();
         if (_surface.Scroll is not null)
         {
             _surface.Scroll.ViewChanged -= OnScrollViewChanged;
             _surface.Scroll.ViewChanged += OnScrollViewChanged;
         }
         _embeds.RealizeVisible();
-        long embedRealizationEnded = Stopwatch.GetTimestamp();
+        timeline.EmbedRealizationEnded = Stopwatch.GetTimestamp();
         bool resumedPendingHostedFocus = _focusCommit.ResumePendingLazy(snapshot);
         _ = _highlighting.Restart();
-        long highlightRetirementEnded = Stopwatch.GetTimestamp();
+        timeline.HighlightRetirementEnded = Stopwatch.GetTimestamp();
         ScheduleVisibleCodeBlockHighlighting();
-        long highlightSchedulingEnded = Stopwatch.GetTimestamp();
+        timeline.HighlightSchedulingEnded = Stopwatch.GetTimestamp();
         _adorner.InvalidateGeometry();
         if (!resumedPendingHostedFocus)
             _focusRing.Update();
-        long visibleRealizationEnded = Stopwatch.GetTimestamp();
-
-        InvalidateCanvas();
-        if (semanticInputChanged)
-        {
-            (FrameworkElementAutomationPeer.FromElement(this) as MarkdownAutomationPeer)?
-                .NotifyDocumentChanged();
-        }
-        else
-        {
-            // A progressive scene may have been replaced while the semantic
-            // source stayed identical. Refresh root UIA ItemStatus after the
-            // committed snapshot without publishing text/structure events.
-            NotifyVisibleDeferredSceneItemStatusMayHaveChanged();
-        }
-        long publicationEnded = Stopwatch.GetTimestamp();
-        _timings.Publish(new MarkdownPipelineTimingSnapshot(
-            generation,
-            sourceUtf16Bytes,
-            parseMilliseconds,
-            setupMilliseconds,
-            themeSnapshotMilliseconds,
-            layoutMilliseconds,
-            layoutCpuMilliseconds,
-            layoutQueueMilliseconds,
-            layoutWorkerWallMilliseconds,
-            layoutContinuationMilliseconds,
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
-            layoutDiagnosticSnapshot.TopLevelBlockCount,
-            layoutDiagnosticSnapshot.CanvasTextLayoutConstructorCalls,
-            layoutDiagnosticSnapshot.CanvasTextLayoutConstructorMilliseconds,
-            layoutDiagnosticSnapshot.BlockConstructionMilliseconds,
-            layoutDiagnosticSnapshot.MeasureArrangeMilliseconds,
-            layoutDiagnosticSnapshot.SnapshotConstructionMilliseconds,
-            _timings.InitialDispatcher.SentinelEnqueued,
-            _timings.InitialDispatcher.SentinelDispatched,
-            _timings.InitialDispatcher.SentinelDelayMilliseconds,
-            _timings.InitialDispatcher.HeartbeatSampleCount,
-            _timings.InitialDispatcher.HeartbeatMaxGapMilliseconds,
-#endif
-            publicationStarted,
-            commitEnded,
-            overlayResetEnded,
-            planConstructionEnded,
-            embedRealizationEnded,
-            highlightRetirementEnded,
-            highlightSchedulingEnded,
-            visibleRealizationEnded,
-            publicationEnded));
-        } // end of snapshot try-block
-        catch
-        {
-            throw;
-        }
-        finally
-        {
-            // Every cancellation/generation retry after construction must release
-            // the unpublished Win2D layout. Once committed, _published owns it.
-            if (!committed)
-                ctx.RegisterRetirement(snapshot.Retire());
-        }
-        }
-        catch (Exception exception)
-        {
-            primaryFailure = exception;
-            throw;
-        }
-        finally
-        {
-            // The control-level drain is epoch-based: work registered after its
-            // disposal snapshot belongs to a later epoch. Drain this build's
-            // own registrations before its pipeline task completes so provider
-            // retirement cannot race failed-build image teardown.
-            await ctx.DrainOwnedRetirementsAsync(primaryFailure).ConfigureAwait(true);
-        }
-    }
-
-    private static LayoutSnapshot? BuildSnapshotOrNullOnCancellation(
-        LayoutBuilder builder,
-        Markdig.Syntax.MarkdownDocument document,
-        float width,
-        double viewportTop,
-        double viewportHeight,
-        bool useLazyLayout,
-        double overscan,
-        CancellationToken ct)
-    {
-        if (ct.IsCancellationRequested)
-            return null;
-
-        try
-        {
-            return useLazyLayout
-                ? builder.BuildLazyForViewport(document, width, viewportTop, viewportHeight, overscan, ct)
-                : builder.Build(document, width, ct);
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            return null;
-        }
+        timeline.VisibleRealizationEnded = Stopwatch.GetTimestamp();
     }
 
     /// <summary>The stage timings of the committed snapshot's pipeline.</summary>
@@ -4093,41 +3804,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     /// <summary>Re-runs the visible deferred-scene probe after the next successful paint.</summary>
     internal void RequestDeferredSceneProbeAfterPaint()
         => Interlocked.Exchange(ref _deferredSceneProbeAfterPaint, 1);
-
-    private static ulong ComputeDisclosureFingerprint(
-        IReadOnlyDictionary<string, bool> disclosureStates)
-    {
-        if (disclosureStates.Count == 0)
-            return 0;
-
-        const ulong prime = 1099511628211UL;
-        var keys = new List<string>(disclosureStates.Keys);
-        keys.Sort(StringComparer.Ordinal);
-        ulong hash = 14695981039346656037UL;
-        foreach (string key in keys)
-        {
-            hash ^= Fnv1A64(key);
-            hash *= prime;
-            hash ^= disclosureStates[key] ? 1UL : 0UL;
-            hash *= prime;
-        }
-
-        return hash;
-    }
-
-    private static ulong Fnv1A64(string value)
-    {
-        const ulong offset = 14695981039346656037UL;
-        const ulong prime = 1099511628211UL;
-        ulong hash = offset;
-        foreach (var ch in value)
-        {
-            hash ^= ch;
-            hash *= prime;
-        }
-
-        return hash;
-    }
 
     private void ApplySnapshotSize(Size committedSize)
     {

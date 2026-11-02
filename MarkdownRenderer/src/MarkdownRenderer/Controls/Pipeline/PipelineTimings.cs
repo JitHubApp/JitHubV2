@@ -1,3 +1,4 @@
+using System.Diagnostics;
 #if MARKDOWN_LAYOUT_DIAGNOSTICS
 using MarkdownRenderer.Layout;
 using Microsoft.UI.Dispatching;
@@ -23,6 +24,53 @@ internal sealed class PipelineTimings
 
     /// <summary>Records the timings of a pipeline that just committed.</summary>
     internal void Publish(MarkdownPipelineTimingSnapshot timing) => Last = timing;
+
+    /// <summary>
+    /// Records the stage timings of generation <paramref name="generation"/>,
+    /// whose replacement just finished publishing along <paramref name="timeline"/>.
+    /// </summary>
+    internal void PublishCommitted(
+        long generation,
+        long sourceUtf16Bytes,
+        RebuildLayoutPlan plan,
+        RebuildLayoutRunResult run,
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+        MarkdownLayoutDiagnosticsSnapshot layoutDiagnostics,
+#endif
+        ReplacementTimeline timeline) =>
+        Publish(new MarkdownPipelineTimingSnapshot(
+            generation,
+            sourceUtf16Bytes,
+            plan.Parse.Milliseconds,
+            Stopwatch.GetElapsedTime(plan.Parse.Ended, run.Started).TotalMilliseconds,
+            plan.ThemeSnapshotMilliseconds,
+            run.Milliseconds,
+            run.CpuMilliseconds,
+            run.QueueMilliseconds,
+            run.WorkerWallMilliseconds,
+            run.ContinuationMilliseconds,
+#if MARKDOWN_LAYOUT_DIAGNOSTICS
+            layoutDiagnostics.TopLevelBlockCount,
+            layoutDiagnostics.CanvasTextLayoutConstructorCalls,
+            layoutDiagnostics.CanvasTextLayoutConstructorMilliseconds,
+            layoutDiagnostics.BlockConstructionMilliseconds,
+            layoutDiagnostics.MeasureArrangeMilliseconds,
+            layoutDiagnostics.SnapshotConstructionMilliseconds,
+            _initialDispatcher.SentinelEnqueued,
+            _initialDispatcher.SentinelDispatched,
+            _initialDispatcher.SentinelDelayMilliseconds,
+            _initialDispatcher.HeartbeatSampleCount,
+            _initialDispatcher.HeartbeatMaxGapMilliseconds,
+#endif
+            timeline.PublicationStarted,
+            timeline.CommitEnded,
+            timeline.OverlayResetEnded,
+            timeline.PlanConstructionEnded,
+            timeline.EmbedRealizationEnded,
+            timeline.HighlightRetirementEnded,
+            timeline.HighlightSchedulingEnded,
+            timeline.VisibleRealizationEnded,
+            timeline.PublicationEnded));
 
 #if MARKDOWN_LAYOUT_DIAGNOSTICS
     /// <summary>The dispatcher diagnostics of the first captured layout build.</summary>
