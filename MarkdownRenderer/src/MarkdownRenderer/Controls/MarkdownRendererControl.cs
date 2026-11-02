@@ -58,7 +58,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     IHorizontalOverflowScrollHost, IFocusedItemRevealHost, IFocusedItemCommitHost,
     IFocusGeometryRecoveryHost, IRendererFocusEntryHost, IImageSubscriptionsHost, IImageResidencyHost,
     ICanvasDeviceRecoveryHost, ICodeBlockHighlightingHost, IRecoveryClockHost, IRasterPlacementHost,
-    IImageRelayoutHost, IImageLoadCompletionHost, IVectorCapacityRetryHost
+    IImageRelayoutHost, IImageLoadCompletionHost, IVectorCapacityRetryHost,
+    ILazyLayoutHost
 {
     private readonly MarkdownViewSurface _surface;
     private readonly MarkdownViewLifetime _lifetime = new();
@@ -111,37 +112,18 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     // band measurement or scene preparation, re-runs the probe once.
     private int _deferredSceneProbeAfterPaint;
     private readonly PipelineTimings _timings = new();
-    private CancellationTokenSource? _lazyLayoutCts;
-    private Task? _lazyLayoutTask;
-    private LayoutSnapshot? _pendingLazyLayoutSnapshot;
-    private LayoutSnapshot? _activeLazyLayoutSnapshot;
-    private long _activeLazyLayoutRevision = -1;
-    private LazyLayoutBand _pendingLazyLayoutBand;
-    private LazyLayoutBand _activeLazyLayoutBand;
-    private LazyLayoutBand _pendingLazyLayoutVisibleVectorBand;
-    private LazyLayoutBand _activeLazyLayoutVisibleVectorBand;
-    private long _activeLazyLayoutCapacityGeneration;
-    private double? _activeLazyLayoutAnchorOffset;
-    private bool _hasPendingLazyLayoutBand;
-    private bool _lazyLayoutDispatchQueued;
-    private bool _pendingLazyLayoutPreserveScrollAnchor;
-    private long _lazyLayoutGeneration;
-    private long _lastLazyLayoutDispatchTicket;
-    private readonly WeakSnapshotPublicationDrainFence<LayoutSnapshot> _lazyLayoutPublicationHandoff = new();
     private readonly LayoutCommitState _layoutCommit = new();
     private readonly object _imagePreparationOwnerToken = new();
     private readonly RasterPlacementPublisher _rasterPlacement;
     private readonly ImageRelayout _imageRelayout;
     private readonly ImageLoadCompletion _imageLoadCompletion;
     private readonly VectorCapacityRetry _vectorCapacity;
+    private readonly LazyLayoutRealization _lazyLayout;
     // Hosted-focus readers consume only realization plans published for the
     // exact snapshot generation and layout revision. The attempt epoch also
     // invalidates a plan while a same-snapshot rebuild is being transferred.
     private readonly HostedFocusPlanPublication _hostedFocusPlan = new();
     private (LayoutSnapshot Snapshot, long SnapshotGeneration, int BlockIndex)? _pendingScrollToBlock;
-    private double _lastLazyViewportTop;
-    private long _lastLazyViewportTimestamp;
-    private double _lazyScrollVelocityPixelsPerSecond;
     private MarkdownRebuildDispatchState _rebuildDispatchState;
     private long _lastRebuildDispatchTicket;
     private readonly MarkdownRebuildCoordinator _rebuildCoordinator = new();
@@ -241,12 +223,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     /// </summary>
     public const double EmbedVirtualizationDerealizeOverscanPx = 1200;
 
-    /// <summary>
-    /// Extra document pixels measured around the viewport in lazy layout mode.
-    /// Wider than embed realization so text, inline image geometry, and
-    /// accessibility ranges are ready before the user reaches them.
-    /// </summary>
-    internal const double LazyLayoutOverscanPx = 2400;
 
     // ---- Dependency properties ----
 
@@ -1130,11 +1106,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     /// only after queued/background band realization has retired.
     /// </summary>
     internal bool HasPendingLazyLayoutWork =>
-        _lazyLayoutDispatchQueued ||
-        _hasPendingLazyLayoutBand ||
-        _lazyLayoutPublicationHandoff.HasPendingPublication ||
-        _layoutCommit.Pending is not null ||
-        _lazyLayoutTask is { IsCompleted: false };
+        _lazyLayout.HasPendingWork || _layoutCommit.Pending is not null;
 
     /// <summary>
     /// Returns a completion task for every renderer-owned resource or work item
@@ -1156,7 +1128,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     internal void PrepareForSyntheticDeviceReset()
     {
         _vectorCapacity.Reset();
-        CancelLazyLayoutRealization();
+        _lazyLayout.Cancel();
         _layoutCommit.ClearPending();
         LayoutSnapshot? snapshot = _published.Snapshot;
         _published.Snapshot = null;
@@ -1828,6 +1800,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _navigator = new KeyboardFocusNavigator(this, _lifetime, _published, _focus, _focusGeometry, _focusRing, _overflowScroll, _embeds, _focusCommit, queuedFocusKeys, DispatcherQueue);
         _focusGeometryWork = new PendingFocusGeometryWork(this, _lifetime, _published, _focus, _focusGeometry, _focusRing, _reveal, queuedFocusKeys, _navigator);
         _focusEntry = new RendererFocusEntry(this, _lifetime, _focus, _focusRing, _focusCommit, _navigator, DispatcherQueue);
+        _lazyLayout = new LazyLayoutRealization(this, _lifetime, _published, _layoutCommit, _surface, _viewport, _recoveryClock, _vectorCapacity, _pointerInput, _focus, _focusCommit);
         IsTabStop = true;
         Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
         Loaded += (_, _) => OnLoadedInternal();
@@ -1884,7 +1857,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             !materiallyChanged || _lifetime.IsUnloaded)
             return;
 
-        QueueLazyLayoutForViewport();
+        _lazyLayout.QueueForViewport();
         _adorner.InvalidateGeometry();
         _adorner.Invalidate();
         _embeds.RealizeVisible();
@@ -2225,7 +2198,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 top,
                 viewportHeight,
                 performanceSession.Options.LookAheadViewports,
-                _lazyScrollVelocityPixelsPerSecond)
+                _lazyLayout.ScrollVelocity)
             : LazyLayoutBand.FromViewport(top, viewportHeight, LazyImageOverscanPx);
         double imgLoadTop = imageBand.Top;
         double imgLoadBottom = imageBand.Bottom;
@@ -2350,9 +2323,9 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         var realizationBand = LazyLayoutBand.FromViewport(
             estimatedBand.Top,
             Math.Max(1, estimatedBand.Bottom - estimatedBand.Top),
-            LazyLayoutOverscanPx);
+            MarkdownLazyLayoutPolicy.OverscanPx);
         LazyLayoutBand visibleVectorBand = _viewport.GetVisibleBand();
-        QueueLazyLayoutForBand(
+        _lazyLayout.QueueForBand(
             snapshot,
             LazyLayoutBand.Union(realizationBand, visibleVectorBand),
             visibleVectorBand,
@@ -2404,7 +2377,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     Theming.ThemeSnapshot? ICodeBlockHighlightingHost.ThemeSnapshot => _themeSnapshot;
 
-    double ICodeBlockHighlightingHost.LazyScrollVelocityPixelsPerSecond => _lazyScrollVelocityPixelsPerSecond;
+    double ICodeBlockHighlightingHost.LazyScrollVelocityPixelsPerSecond => _lazyLayout.ScrollVelocity;
 
     void ICodeBlockHighlightingHost.ScheduleVisibleCodeBlockHighlighting() => ScheduleVisibleCodeBlockHighlighting();
 
@@ -2547,7 +2520,47 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         RequestGeometryRecoveryIfRequired(snapshot);
 
     void IVectorCapacityRetryHost.QueueLazyLayoutForViewport(bool forceCapacityRetry) =>
-        QueueLazyLayoutForViewport(forceCapacityRetry);
+        _lazyLayout.QueueForViewport(forceCapacityRetry);
+
+    Microsoft.UI.Dispatching.DispatcherQueue? ILazyLayoutHost.DispatcherQueue => DispatcherQueue;
+
+    IMarkdownPerformanceSession? ILazyLayoutHost.PerformanceSession => PerformanceSession;
+
+    object ILazyLayoutHost.DeferredSceneOwner => this;
+
+    long ILazyLayoutHost.PipelineGeneration => _pipelineGeneration;
+
+    CancellationToken ILazyLayoutHost.PipelineToken => _pipelineCts?.Token ?? CancellationToken.None;
+
+    bool ILazyLayoutHost.IsScrollViewIntermediate => _scrollViewIntermediate;
+
+    bool ILazyLayoutHost.RequestGeometryRecoveryIfRequired(LayoutSnapshot? snapshot) =>
+        RequestGeometryRecoveryIfRequired(snapshot);
+
+    void ILazyLayoutHost.RequestFullRebuild() => RequestRebuild(RebuildReason.Full);
+
+    void ILazyLayoutHost.HandleDeviceLost(Exception failure) => _deviceRecovery.HandleDeviceLost(failure);
+
+    void ILazyLayoutHost.ApplyLazyLayoutCommit(
+        LayoutSnapshot snapshot, (int BlockIndex, double OffsetFromTop)? scrollAnchor) =>
+        ApplyLazyLayoutCommit(snapshot, scrollAnchor);
+
+    void ILazyLayoutHost.TryResumePendingScrollToBlock(LayoutSnapshot snapshot, long snapshotGeneration) =>
+        TryResumePendingScrollToBlock(snapshot, snapshotGeneration);
+
+    void ILazyLayoutHost.NotifyVisibleDeferredSceneItemStatusMayHaveChanged() =>
+        NotifyVisibleDeferredSceneItemStatusMayHaveChanged();
+
+    void ILazyLayoutHost.ScheduleVisibleDeferredScenes() => ScheduleVisibleDeferredScenes();
+
+    void ILazyLayoutHost.InvalidateAutomationLayout() => InvalidateAutomationLayout();
+
+    void ILazyLayoutHost.InvalidateCanvas() => InvalidateCanvas();
+
+    void ILazyLayoutHost.StopRecoveryClockIfIdle() => StopRecoveryClockIfIdle();
+
+    Task ILazyLayoutHost.RetireCancellationTokenSource(CancellationTokenSource? cts, Task? lifetime) =>
+        RetireCancellationTokenSource(cts, lifetime);
 
     double IDeferredGestureLayoutHost.RasterizationScale => XamlRoot?.RasterizationScale ?? 1;
 
@@ -2559,30 +2572,18 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _layoutCommit.IsPublishing ||
         _layoutCommit.Pending is not null || _layoutCommit.AppliedRevision < snapshot.LayoutRevision;
 
-    bool IDeferredGestureLayoutHost.IsLazyLayoutBandCovered(LayoutSnapshot snapshot, LazyLayoutBand band)
-    {
-        bool active = _lazyLayoutCts is { IsCancellationRequested: false } &&
-            ReferenceEquals(snapshot, _activeLazyLayoutSnapshot) &&
-            _activeLazyLayoutRevision == snapshot.LayoutRevision &&
-            band.Top >= _activeLazyLayoutBand.Top && band.Bottom <= _activeLazyLayoutBand.Bottom;
-        bool pending = _hasPendingLazyLayoutBand &&
-            ReferenceEquals(snapshot, _pendingLazyLayoutSnapshot) &&
-            band.Top >= _pendingLazyLayoutBand.Top && band.Bottom <= _pendingLazyLayoutBand.Bottom;
-        return active || pending;
-    }
+    bool IDeferredGestureLayoutHost.IsLazyLayoutBandCovered(LayoutSnapshot snapshot, LazyLayoutBand band) =>
+        _lazyLayout.IsBandCovered(snapshot, band);
 
     bool IDeferredGestureLayoutHost.HasSupersedingLazyLayoutRequest(LayoutSnapshot snapshot) =>
-        (_lazyLayoutCts is { IsCancellationRequested: false } &&
-         ReferenceEquals(snapshot, _activeLazyLayoutSnapshot)) ||
-        (_hasPendingLazyLayoutBand && ReferenceEquals(snapshot, _pendingLazyLayoutSnapshot)) ||
-        (_lazyLayoutDispatchQueued && ReferenceEquals(snapshot, _pendingLazyLayoutSnapshot));
+        _lazyLayout.HasSupersedingRequest(snapshot);
 
     void IDeferredGestureLayoutHost.QueueLazyLayoutForBand(
         LayoutSnapshot snapshot,
         LazyLayoutBand band,
         LazyLayoutBand visibleVectorBand,
         bool preserveScrollAnchor)
-        => QueueLazyLayoutForBand(snapshot, band, visibleVectorBand, preserveScrollAnchor);
+        => _lazyLayout.QueueForBand(snapshot, band, visibleVectorBand, preserveScrollAnchor);
 
     internal void ClearSelectionFromCoordinator()
     {
@@ -2797,7 +2798,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _pipelineTask = null;
         _activePipelineGeneration = 0;
         RetireCancellationTokenSource(oldCts, oldTask);
-        CancelLazyLayoutRealization();
+        _lazyLayout.Cancel();
         _layoutCommit.ClearPending();
         var oldImageLifetimeCts = _imageLifetimeCts;
         _imageLifetimeCts = null;
@@ -2806,8 +2807,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _rebuildCoordinator.Reset();
         Interlocked.Exchange(ref _rejectedCrossThreadRebuildReason, -1);
         _imageRelayout.Retire();
-        _lastLazyViewportTimestamp = 0;
-        _lazyScrollVelocityPixelsPerSecond = 0;
+        _lazyLayout.ResetScrollVelocity();
         _pendingScrollToBlock = null;
         _selectionAutomationEventQueued = false;
         _overflowScroll.ClearAutomationNotifications();
@@ -3310,7 +3310,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         }
 
         RebuildReason reason = coordinatorReason;
-        CancelLazyLayoutRealization();
+        _lazyLayout.Cancel();
         _imageRelayout.CancelActive();
 
         string effectiveSource = _hasExplicitDocument
@@ -4014,7 +4014,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             parsed.SourceText.Length,
             hasCustomBlockEmbedMeasurement: embedFactorySnapshot is not null);
         double initialLazyOverscan = performanceSessionSnapshot is null
-            ? LazyLayoutOverscanPx
+            ? MarkdownLazyLayoutPolicy.OverscanPx
             : Math.Clamp(
                 viewportHeight * performanceSessionSnapshot.Options.LookAheadViewports,
                 0,
@@ -4174,7 +4174,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // Scrolling or paint can queue another band realization while this
         // replacement pipeline is building. Fence that old-snapshot work at
         // the commit boundary before publishing and retiring its owner.
-        CancelLazyLayoutRealization();
+        _lazyLayout.Cancel();
         _layoutCommit.ClearPending();
         if (!sameDocument)
             _scrollViewIntermediate = false;
@@ -4490,7 +4490,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         long afterRealization = allocatedBefore;
         try
         {
-            QueueLazyLayoutForViewport();
+            _lazyLayout.QueueForViewport();
             if (measure)
                 afterLazyLayout = GC.GetAllocatedBytesForCurrentThread();
             // CanvasVirtualControl already requests newly exposed document
@@ -4621,601 +4621,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             anchor.BlockIndex is not { } blockIndex)
             return null;
         return (blockIndex, anchor.OffsetFromTop);
-    }
-
-    private void QueueLazyLayoutForViewport(bool forceCapacityRetry = false)
-    {
-        var snapshot = _published.Snapshot;
-        if (RequestGeometryRecoveryIfRequired(snapshot) || snapshot is null)
-            return;
-
-        _viewport.TryGet(out double viewportTop, out double viewportHeight, out _);
-        LazyLayoutBand visibleVectorBand = LazyLayoutBand.FromVisibleViewport(
-            viewportTop, viewportHeight);
-        LazyLayoutBand band;
-        if (PerformanceSession is { } performanceSession)
-        {
-            long now = Stopwatch.GetTimestamp();
-            if (_lastLazyViewportTimestamp > 0)
-            {
-                double elapsedSeconds = (now - _lastLazyViewportTimestamp) /
-                    (double)Stopwatch.Frequency;
-                if (elapsedSeconds is > 0.002 and < 1)
-                {
-                    _lazyScrollVelocityPixelsPerSecond =
-                        (viewportTop - _lastLazyViewportTop) / elapsedSeconds;
-                }
-            }
-            _lastLazyViewportTop = viewportTop;
-            _lastLazyViewportTimestamp = now;
-            band = LazyLayoutBand.FromDirectionalViewport(
-                viewportTop,
-                viewportHeight,
-                performanceSession.Options.LookAheadViewports,
-                _lazyScrollVelocityPixelsPerSecond);
-        }
-        else
-        {
-            band = LazyLayoutBand.FromViewport(
-                viewportTop, viewportHeight, LazyLayoutOverscanPx);
-        }
-
-        // Directional look-ahead and image realization can be broader than the
-        // viewport. Keep vector admission tied to the actual viewport rather
-        // than letting an unchanged prefetch union absorb a changed viewport.
-        band = LazyLayoutBand.Union(band, visibleVectorBand);
-
-        bool capacityAdmissionEnabled = _vectorCapacity.IsAdmissionEnabled;
-        bool capacityDeferred = capacityAdmissionEnabled && snapshot.HasCapacityDeferredScenes;
-        if (!snapshot.IsLazyLayoutEnabled && !capacityDeferred)
-            return;
-
-        if (capacityAdmissionEnabled)
-        {
-            _vectorCapacity.Synchronize(snapshot);
-            forceCapacityRetry |= _vectorCapacity.ConsumePendingWake(snapshot);
-        }
-
-        bool capacityRetryDue = capacityDeferred && _vectorCapacity.IsRetryDue(
-            snapshot, visibleVectorBand, forceCapacityRetry);
-        if (capacityDeferred && !capacityRetryDue &&
-            snapshot.IsRealizationBandMeasured(band))
-        {
-            return;
-        }
-
-        if (snapshot.IsBandWorkSettled(band, visibleVectorBand) && !capacityRetryDue)
-            return;
-
-        QueueLazyLayoutForBand(
-            snapshot,
-            band,
-            visibleVectorBand,
-            preserveScrollAnchor: _surface.Scroll is not null);
-    }
-
-    private void QueueLazyLayoutForPaintRegion(Rect region)
-    {
-        var snapshot = _published.Snapshot;
-        if (RequestGeometryRecoveryIfRequired(snapshot) || snapshot is null)
-            return;
-
-        _viewport.TryGet(out double viewportTop, out double viewportHeight, out _);
-        LazyLayoutBand visibleVectorBand = LazyLayoutBand.FromVisibleViewport(
-            viewportTop, viewportHeight);
-
-        var band = PerformanceSession is { } performanceSession
-            ? LazyLayoutBand.FromDirectionalViewport(
-                region.Top,
-                region.Height,
-                performanceSession.Options.LookAheadViewports,
-                _lazyScrollVelocityPixelsPerSecond)
-            : LazyLayoutBand.FromViewport(region.Top, region.Height, LazyLayoutOverscanPx);
-        band = LazyLayoutBand.Union(band, visibleVectorBand);
-        bool capacityAdmissionEnabled = _vectorCapacity.IsAdmissionEnabled;
-        bool capacityDeferred = capacityAdmissionEnabled && snapshot.HasCapacityDeferredScenes;
-        if (!snapshot.IsLazyLayoutEnabled && !capacityDeferred)
-            return;
-        bool forceCapacityRetry = false;
-        if (capacityAdmissionEnabled)
-        {
-            _vectorCapacity.Synchronize(snapshot);
-            bool wake = _vectorCapacity.ConsumePendingWake(snapshot);
-            if (capacityDeferred && wake)
-                forceCapacityRetry = true;
-            if (capacityDeferred && !wake &&
-                !_vectorCapacity.IsRetryDue(snapshot, visibleVectorBand, forceCapacityRetry) &&
-                snapshot.IsRealizationBandMeasured(band))
-            {
-                return;
-            }
-        }
-        if (snapshot.IsBandWorkSettled(band, visibleVectorBand) &&
-            !(capacityDeferred && _vectorCapacity.IsRetryDue(snapshot, visibleVectorBand, forceCapacityRetry)))
-            return;
-
-        QueueLazyLayoutForBand(
-            snapshot,
-            band,
-            visibleVectorBand,
-            preserveScrollAnchor: _surface.Scroll is not null);
-    }
-
-    private void QueueLazyLayoutForBand(
-        LayoutSnapshot snapshot,
-        LazyLayoutBand band,
-        LazyLayoutBand visibleVectorBand,
-        bool preserveScrollAnchor)
-    {
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !ReferenceEquals(snapshot, _published.Snapshot))
-            return;
-
-        if (RequestGeometryRecoveryIfRequired(snapshot))
-            return;
-
-        if (_lazyLayoutCts is { IsCancellationRequested: false } &&
-            ReferenceEquals(snapshot, _activeLazyLayoutSnapshot) &&
-            // Same-band work from an older image-reflow revision must not
-            // absorb the retry needed to refresh scene indexes/graph bindings.
-            _activeLazyLayoutRevision == snapshot.LayoutRevision &&
-            (!_vectorCapacity.IsAdmissionEnabled ||
-             VectorNativeResourceAdmission.Shared.CapacityGeneration <=
-                _activeLazyLayoutCapacityGeneration) &&
-            band.Top >= _activeLazyLayoutBand.Top &&
-            band.Bottom <= _activeLazyLayoutBand.Bottom &&
-            (!_vectorCapacity.IsAdmissionEnabled ||
-             visibleVectorBand.Top == _activeLazyLayoutVisibleVectorBand.Top &&
-             visibleVectorBand.Bottom == _activeLazyLayoutVisibleVectorBand.Bottom) &&
-            (!preserveScrollAnchor ||
-             (_surface.Scroll is not null &&
-              _activeLazyLayoutAnchorOffset is { } activeOffset &&
-              Math.Abs(_surface.Scroll.VerticalOffset - activeOffset) < 0.5)))
-        {
-            return;
-        }
-
-        if (_lazyLayoutCts is { } activeCancellation)
-            _ = CancellationTokenSourceRetirement.RequestCancellation(activeCancellation);
-
-        if (_hasPendingLazyLayoutBand && ReferenceEquals(snapshot, _pendingLazyLayoutSnapshot))
-        {
-            _pendingLazyLayoutBand = new LazyLayoutBand(
-                Math.Min(_pendingLazyLayoutBand.Top, band.Top),
-                Math.Max(_pendingLazyLayoutBand.Bottom, band.Bottom));
-            // Layout/image overscan is unioned; visible vector demand is the
-            // latest viewport, never a stale union of previously visible bands.
-            _pendingLazyLayoutVisibleVectorBand = visibleVectorBand;
-            _pendingLazyLayoutPreserveScrollAnchor |= preserveScrollAnchor;
-        }
-        else
-        {
-            _pendingLazyLayoutSnapshot = snapshot;
-            _pendingLazyLayoutBand = band;
-            _pendingLazyLayoutVisibleVectorBand = visibleVectorBand;
-            _pendingLazyLayoutPreserveScrollAnchor = preserveScrollAnchor;
-            _hasPendingLazyLayoutBand = true;
-        }
-
-        if (_lazyLayoutDispatchQueued)
-            return;
-
-        // Lazy work has two UI handoffs: request admission and result
-        // publication. Start the timer before either so rejected or accepted-
-        // but-withheld dispatcher callbacks still have a bounded recovery path.
-        _recoveryClock.Start();
-        if (!_recoveryClock.IsRunning)
-        {
-            // There is no dispatcher timer left to own a rejected or withheld
-            // lazy handoff. Drop this request epoch and rebuild instead of
-            // advertising permanently pending work that cannot be recovered.
-            CancelLazyLayoutRealization();
-            RequestRebuild(RebuildReason.Full);
-            return;
-        }
-
-        _lazyLayoutDispatchQueued = true;
-        long dispatchTicket = ++_lastLazyLayoutDispatchTicket;
-        if (dispatchTicket == 0)
-            dispatchTicket = ++_lastLazyLayoutDispatchTicket;
-        var dispatcher = DispatcherQueue;
-        var receiver = new WeakReference<MarkdownRendererControl>(this);
-        try
-        {
-            if (dispatcher is null || !dispatcher.TryEnqueue(
-                    Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
-                    () =>
-                    {
-                        if (receiver.TryGetTarget(out var control))
-                            control.ProcessQueuedLazyLayoutRealization(dispatchTicket);
-                    }))
-            {
-                _lazyLayoutDispatchQueued = false;
-            }
-        }
-        catch (Exception exception)
-        {
-            _lazyLayoutDispatchQueued = false;
-            MarkdownDiagnostics.WriteLine(
-                $"[MarkdownRendererControl] lazy layout request dispatch failed: {exception.GetType().Name} " +
-                $"(0x{exception.HResult:X8}).");
-        }
-    }
-
-    private void ProcessQueuedLazyLayoutRealization(long dispatchTicket)
-    {
-        if (dispatchTicket != _lastLazyLayoutDispatchTicket || !_hasPendingLazyLayoutBand)
-            return;
-
-        _lazyLayoutDispatchQueued = false;
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !_hasPendingLazyLayoutBand)
-        {
-            _pendingLazyLayoutSnapshot = null;
-            _hasPendingLazyLayoutBand = false;
-            _pendingLazyLayoutPreserveScrollAnchor = false;
-            StopRecoveryClockIfIdle();
-            return;
-        }
-
-        LayoutSnapshot? snapshot = _pendingLazyLayoutSnapshot;
-        LazyLayoutBand band = _pendingLazyLayoutBand;
-        LazyLayoutBand visibleVectorBand = _pendingLazyLayoutVisibleVectorBand;
-        bool preserveScrollAnchor = _pendingLazyLayoutPreserveScrollAnchor;
-        _pendingLazyLayoutSnapshot = null;
-        _hasPendingLazyLayoutBand = false;
-        _pendingLazyLayoutPreserveScrollAnchor = false;
-
-        if (snapshot is null || !ReferenceEquals(snapshot, _published.Snapshot))
-            return;
-
-        var oldCts = _lazyLayoutCts;
-        var oldTask = _lazyLayoutTask;
-        var cts = CancellationTokenSource.CreateLinkedTokenSource(
-            _pipelineCts?.Token ?? CancellationToken.None);
-        long realizationGeneration = ++_lazyLayoutGeneration;
-        _lazyLayoutPublicationHandoff.Reset(realizationGeneration);
-        long pipelineGeneration = _pipelineGeneration;
-        CancellationToken operationToken = cts.Token;
-        double? anchorOffset = preserveScrollAnchor && _surface.Scroll is not null
-            ? _surface.Scroll.VerticalOffset
-            : null;
-        var dispatcher = DispatcherQueue;
-
-        _lazyLayoutCts = cts;
-        _activeLazyLayoutSnapshot = snapshot;
-        _activeLazyLayoutRevision = snapshot.LayoutRevision;
-        _activeLazyLayoutBand = band;
-        _activeLazyLayoutVisibleVectorBand = visibleVectorBand;
-        // The active ticket is current through every refund already visible
-        // when dispatch starts. A later refund invalidates this work and makes
-        // the capacity wake eligible to schedule a fresh attempt.
-        _activeLazyLayoutCapacityGeneration = _vectorCapacity.IsAdmissionEnabled
-            ? VectorNativeResourceAdmission.Shared.CapacityGeneration
-            : snapshot.ActiveCapacityGeneration;
-        _activeLazyLayoutAnchorOffset = anchorOffset;
-        Task operationTask = RunLazyLayoutRealizationAsync(
-            snapshot,
-            band,
-            visibleVectorBand,
-            anchorOffset,
-            pipelineGeneration,
-            realizationGeneration,
-            operationToken,
-            dispatcher);
-        _lazyLayoutTask = operationTask;
-        _ = operationTask.ContinueWith(
-            static (_, state) =>
-            {
-                var (receiver, generation) =
-                    ((WeakReference<MarkdownRendererControl> Receiver, long Generation))state!;
-                if (receiver.TryGetTarget(out var control))
-                    control.MarkLazyLayoutWorkDrained(generation);
-            },
-            (new WeakReference<MarkdownRendererControl>(this), realizationGeneration),
-            CancellationToken.None,
-            TaskContinuationOptions.ExecuteSynchronously,
-            TaskScheduler.Default);
-        RetireCancellationTokenSource(oldCts, oldTask);
-    }
-
-    private async Task RunLazyLayoutRealizationAsync(
-        LayoutSnapshot snapshot,
-        LazyLayoutBand band,
-        LazyLayoutBand visibleVectorBand,
-        double? anchorOffset,
-        long pipelineGeneration,
-        long realizationGeneration,
-        CancellationToken operationToken,
-        Microsoft.UI.Dispatching.DispatcherQueue? dispatcher)
-    {
-        LazyLayoutWorkResult result = default;
-        Exception? failure = null;
-        bool canceled = false;
-        IMarkdownPerformanceSessionInternal? session =
-            PerformanceSession as IMarkdownPerformanceSessionInternal;
-        Func<CancellationToken, LazyLayoutWorkResult>? layoutWork = null;
-        try
-        {
-            layoutWork = layoutToken =>
-            {
-                var anchor = anchorOffset is { } offset
-                    ? snapshot.CaptureScrollAnchor(offset)
-                    : null;
-                LazyLayoutCommit commit = snapshot.EnsureMeasuredBand(
-                    band, visibleVectorBand, layoutToken);
-                return new LazyLayoutWorkResult(commit, anchor);
-            };
-            bool restoredSceneResources = false;
-            while (true)
-            {
-                Task<LazyLayoutWorkResult> layoutTask = session is null
-                    ? Task.Run(() => layoutWork(operationToken), CancellationToken.None)
-                    : session.ScheduleLayoutWorkAsync(
-                        MarkdownLayoutWorkPriority.Background,
-                        layoutWork,
-                        operationToken);
-                result = await layoutTask.ConfigureAwait(false);
-                if (restoredSceneResources)
-                    result = new LazyLayoutWorkResult(
-                        result.Commit with { NativeSceneResourcesChanged = true }, result.ScrollAnchor);
-                if (!result.Commit.SceneGraphRebindRequired)
-                    break;
-
-                // The layout queue slot and snapshot lock are released before
-                // waiting for provider/native scene work. Keep this lazy request
-                // alive so scroll supersession cancels it and covered viewport
-                // events cannot start a second realization/refill loop.
-                if (session is null || !await session.PrepareDeferredSceneBandAsync(
-                        this, snapshot, visibleVectorBand, operationToken).ConfigureAwait(false))
-                    break;
-                restoredSceneResources = true;
-                operationToken.ThrowIfCancellationRequested();
-            }
-        }
-        catch (OperationCanceledException) when (
-            operationToken.IsCancellationRequested ||
-            session?.IsDisposed == true)
-        {
-            canceled = true;
-        }
-        catch (Exception ex)
-        {
-            result = default;
-            failure = ex;
-        }
-
-        try
-        {
-            var publication = CreateLazyLayoutCompletionPublication(
-                snapshot,
-                new WeakReference<MarkdownRendererControl>(this),
-                result,
-                failure,
-                anchorOffset,
-                pipelineGeneration,
-                realizationGeneration,
-                canceled,
-                operationToken);
-
-            if (_lazyLayoutPublicationHandoff.TryStage(realizationGeneration, publication) &&
-                dispatcher is not null)
-            {
-                try
-                {
-                    dispatcher.TryEnqueue(
-                        Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
-                        CreateLazyLayoutCompletionDispatchCallback(
-                            new WeakReference<MarkdownRendererControl>(this),
-                            realizationGeneration));
-                }
-                catch (Exception exception)
-                {
-                    // The UI recovery timer owns the retained weak handoff.
-                    MarkdownDiagnostics.WriteLine(
-                        $"[MarkdownRendererControl] lazy layout completion dispatch failed: " +
-                        $"{exception.GetType().Name} (0x{exception.HResult:X8}).");
-                }
-            }
-        }
-        finally
-        {
-            // The task continuation marks the operation drained only after this
-            // method completes. Clear graph-bearing locals before that signal.
-            layoutWork = null;
-            snapshot = null!;
-        }
-    }
-
-    private static WeakSnapshotPublication<LayoutSnapshot> CreateLazyLayoutCompletionPublication(
-        LayoutSnapshot snapshot,
-        WeakReference<MarkdownRendererControl> receiver,
-        LazyLayoutWorkResult result,
-        Exception? failure,
-        double? anchorOffset,
-        long pipelineGeneration,
-        long realizationGeneration,
-        bool canceled,
-        CancellationToken operationToken)
-        => new(snapshot, publishedSnapshot =>
-        {
-            if (receiver.TryGetTarget(out var control))
-            {
-                control.CompleteLazyLayoutRealization(
-                    publishedSnapshot,
-                    result,
-                    failure,
-                    anchorOffset,
-                    pipelineGeneration,
-                    realizationGeneration,
-                    canceled,
-                    operationToken);
-            }
-        });
-
-    private static Microsoft.UI.Dispatching.DispatcherQueueHandler
-        CreateLazyLayoutCompletionDispatchCallback(
-            WeakReference<MarkdownRendererControl> receiver,
-            long realizationGeneration)
-        => () =>
-        {
-            if (receiver.TryGetTarget(out var control))
-                control.TryPublishLazyLayoutCompletion(realizationGeneration);
-        };
-
-    private void MarkLazyLayoutWorkDrained(long realizationGeneration)
-        => _lazyLayoutPublicationHandoff.MarkWorkDrained(realizationGeneration);
-
-    private void TryPublishLazyLayoutCompletion(long realizationGeneration)
-        => _lazyLayoutPublicationHandoff.TryPublishAfterWorkDrains(realizationGeneration);
-
-    private void CompleteLazyLayoutRealization(
-        LayoutSnapshot? snapshot,
-        LazyLayoutWorkResult result,
-        Exception? failure,
-        double? anchorOffset,
-        long pipelineGeneration,
-        long realizationGeneration,
-        bool canceled,
-        CancellationToken operationToken)
-    {
-        // A canceled or superseded worker can still have mutated the currently
-        // published tree. Recover that identity before dropping its result.
-        if (RequestGeometryRecoveryIfRequired(snapshot))
-        {
-            if (snapshot is not null)
-                _pointerInput.OnLazyLayoutCompletion(snapshot, succeeded: false);
-            return;
-        }
-
-        if (realizationGeneration != _lazyLayoutGeneration)
-        {
-            if (snapshot is not null)
-                _pointerInput.OnLazyLayoutCompletion(snapshot, succeeded: false);
-            return;
-        }
-
-        var completedCts = _lazyLayoutCts;
-        var completedTask = _lazyLayoutTask;
-        LazyLayoutBand attemptedVisibleBand = _activeLazyLayoutVisibleVectorBand;
-        long attemptedCapacityGeneration = snapshot?.ActiveCapacityGeneration ??
-            _activeLazyLayoutCapacityGeneration;
-        // Retirement requests cancellation as part of disposal. Capture the
-        // operation's outcome first so a successful completion isn't mistaken
-        // for superseded work merely because this method is now retiring its CTS.
-        bool operationWasCanceled = canceled || operationToken.IsCancellationRequested;
-        _lazyLayoutCts = null;
-        _lazyLayoutTask = null;
-        _activeLazyLayoutSnapshot = null;
-        _activeLazyLayoutRevision = -1;
-        _activeLazyLayoutAnchorOffset = null;
-        RetireCancellationTokenSource(completedCts, completedTask);
-
-        // A current canceled or obsolete operation still owns its CTS/task
-        // fields. Retire those before dropping its result, or the timer will
-        // keep observing a completed but permanently active operation.
-        if (_lifetime.IsDisposed ||
-            _lifetime.IsUnloaded ||
-            operationWasCanceled ||
-            pipelineGeneration != _pipelineGeneration ||
-            snapshot is null ||
-            !ReferenceEquals(snapshot, _published.Snapshot))
-        {
-            StopRecoveryClockIfIdle();
-            if (snapshot is not null)
-                _pointerInput.OnLazyLayoutCompletion(snapshot, succeeded: false);
-            return;
-        }
-
-        // Record only a completed attempt.
-        _vectorCapacity.RecordAttempt(attemptedVisibleBand, attemptedCapacityGeneration);
-
-        if (failure is not null)
-        {
-            NotifyVisibleDeferredSceneItemStatusMayHaveChanged();
-            if (GraphicsDeviceErrors.IsDeviceLost(failure))
-            {
-                _deviceRecovery.HandleDeviceLost(failure);
-            }
-            else
-            {
-                MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] lazy layout realization failed: {failure}");
-                RequestRebuild(RebuildReason.Full);
-            }
-            StopRecoveryClockIfIdle();
-            _pointerInput.OnLazyLayoutCompletion(snapshot, succeeded: false);
-            return;
-        }
-
-        _vectorCapacity.Synchronize(snapshot);
-
-        if (result.Commit.LayoutRevision <= _layoutCommit.AppliedRevision)
-        {
-            // Moving the active band can finish visible readiness without a
-            // geometry revision or resource change (for example, two already
-            // measured text-only viewports). Publish that status transition
-            // even when there is no new drawing lease to repaint.
-            NotifyVisibleDeferredSceneItemStatusMayHaveChanged();
-            // This band is now measured and its native resources are
-            // settled, but no layout commit follows to re-run the deferred
-            // scene probe. A Mermaid or Math fallback that scrolled into this
-            // band while it was being prepared would otherwise never be
-            // scheduled and keep showing its source as "Loading".
-            ScheduleVisibleDeferredScenes();
-            if (result.Commit.NativeSceneResourcesChanged)
-            {
-                // A prepared/retired drawing lease changes only the raster
-                // surface. Repaint without rebuilding layout or disturbing
-                // selection, focus, source mapping, or scroll position.
-                InvalidateAutomationLayout();
-                InvalidateCanvas();
-            }
-
-            // A focus request can arrive while an already-measured band is
-            // publishing its completion. Re-evaluate it even when that worker
-            // produced no newer layout revision.
-            _ = _focusCommit.ResumePendingLazy(snapshot);
-            TryResumePendingScrollToBlock(snapshot, pipelineGeneration);
-            _pointerInput.OnLazyLayoutCompletion(snapshot, succeeded: true);
-            StopRecoveryClockIfIdle();
-            return;
-        }
-
-        // A user can jump to an already-measured band while this worker is
-        // finishing. That jump need not queue replacement work, so the old
-        // completion still arrives. Never restore its captured scroll anchor
-        // over a newer viewport position.
-        bool restoreAnchor = LazyLayoutScrollAnchorPolicy.ShouldRestore(
-            anchorOffset, _surface.Scroll?.VerticalOffset, _scrollViewIntermediate);
-        ApplyLazyLayoutCommit(snapshot, restoreAnchor ? result.ScrollAnchor : null);
-        _vectorCapacity.Synchronize(snapshot);
-        if (result.Commit.NativeSceneResourcesChanged)
-            NotifyVisibleDeferredSceneItemStatusMayHaveChanged();
-        _pointerInput.OnLazyLayoutCompletion(snapshot, succeeded: true);
-        StopRecoveryClockIfIdle();
-    }
-
-    private void CancelLazyLayoutRealization()
-    {
-        // Superseding work is not snapshot replacement. Preserve an already
-        // committed geometry publication if the replacement subsequently fails.
-        long generation = ++_lazyLayoutGeneration;
-        _lazyLayoutPublicationHandoff.Reset(generation);
-        ++_lastLazyLayoutDispatchTicket;
-        _lazyLayoutDispatchQueued = false;
-        _pendingLazyLayoutSnapshot = null;
-        _activeLazyLayoutSnapshot = null;
-        _activeLazyLayoutRevision = -1;
-        _pendingLazyLayoutVisibleVectorBand = default;
-        _activeLazyLayoutAnchorOffset = null;
-        _hasPendingLazyLayoutBand = false;
-        _pendingLazyLayoutPreserveScrollAnchor = false;
-        _focus.ClearLazyFocus();
-
-        var oldCts = _lazyLayoutCts;
-        var oldTask = _lazyLayoutTask;
-        _lazyLayoutCts = null;
-        _lazyLayoutTask = null;
-        RetireCancellationTokenSource(oldCts, oldTask);
-        StopRecoveryClockIfIdle();
     }
 
     private void ApplyLazyLayoutCommit(
@@ -5531,8 +4936,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 _imageRelayout.ProcessQueued();
                 _imageRelayout.PublishReadyCompletion();
                 PublishPendingLayoutCommit();
-                ProcessQueuedLazyLayoutRealization(_lastLazyLayoutDispatchTicket);
-                TryPublishLazyLayoutCompletion(_lazyLayoutGeneration);
+                _lazyLayout.ProcessQueued();
+                _lazyLayout.TryPublishCompletion();
                 _overflowScroll.ProcessPendingRetry();
                 _focusGeometryWork.Process();
                 TryPublishPendingFocusableItems();
@@ -5809,7 +5214,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         var performance = MarkdownPerformanceEventSource.Log;
         bool measure = performance.IsMeasurementEnabled();
         long allocationCheckpoint = measure ? GC.GetAllocatedBytesForCurrentThread() : 0;
-        QueueLazyLayoutForViewport();
+        _lazyLayout.QueueForViewport();
         long schedulingBytes = measure
             ? Math.Max(0, GC.GetAllocatedBytesForCurrentThread() - allocationCheckpoint)
             : 0;
@@ -5830,7 +5235,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 long regionStart = measure ? GC.GetAllocatedBytesForCurrentThread() : 0;
                 // The tile itself is the authoritative paint band; the ScrollViewer
                 // viewport can lag behind CanvasVirtualControl's region requests.
-                QueueLazyLayoutForPaintRegion(region);
+                _lazyLayout.QueueForPaintRegion(region);
                 if (!snapshot.TryBeginPaint())
                 {
                     // Do not create or clear the tile while background realization
@@ -5962,7 +5367,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // an offside replacement candidate. It cannot repair a failed tree.
         _layoutCommit.DropPending();
         _imageSubscriptions.ResetBitmapOutputRecovery();
-        TryGeometryRecoveryCleanup(CancelLazyLayoutRealization);
+        TryGeometryRecoveryCleanup(_lazyLayout.Cancel);
         _imageRelayout.CancelForGeometryRecovery();
 
         // A disconnected XAML input site can throw while closing a flyout or
@@ -6344,7 +5749,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             // asynchronous layout result publishes.
             _pendingScrollToBlock = (snapshot, snapshotGeneration, blockIndex);
             LazyLayoutBand visibleVectorBand = _viewport.GetVisibleBand();
-            QueueLazyLayoutForBand(
+            _lazyLayout.QueueForBand(
                 snapshot,
                 LazyLayoutBand.Union(
                     new LazyLayoutBand(target.OwnerTop, Math.Max(target.OwnerTop + 1, target.OwnerBottom)),

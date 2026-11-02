@@ -612,8 +612,18 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("internal void PublishReadyCompletion() => _payload?.PublishAfterWorkDrains();", relayoutSource, StringComparison.Ordinal);
         Assert.Contains("_imageRelayout.RecoverFaultedHandoff();", recoveryTick, StringComparison.Ordinal);
         Assert.Contains("PublishPendingLayoutCommit();", recoveryTick, StringComparison.Ordinal);
-        Assert.Contains("ProcessQueuedLazyLayoutRealization(_lastLazyLayoutDispatchTicket);", recoveryTick, StringComparison.Ordinal);
-        Assert.Contains("TryPublishLazyLayoutCompletion(_lazyLayoutGeneration);", recoveryTick, StringComparison.Ordinal);
+        string lazyLayoutSource = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "MarkdownRenderer",
+            "src",
+            "MarkdownRenderer",
+            "Controls",
+            "LazyLayout",
+            "LazyLayoutRealization.cs")).Replace("\r\n", "\n", StringComparison.Ordinal);
+        Assert.Contains("_lazyLayout.ProcessQueued();", recoveryTick, StringComparison.Ordinal);
+        Assert.Contains("internal void ProcessQueued() => ProcessQueued(_dispatchTicket);", lazyLayoutSource, StringComparison.Ordinal);
+        Assert.Contains("_lazyLayout.TryPublishCompletion();", recoveryTick, StringComparison.Ordinal);
+        Assert.Contains("internal void TryPublishCompletion() => TryPublishCompletion(_generation);", lazyLayoutSource, StringComparison.Ordinal);
         Assert.Contains("_overflowScroll.ProcessPendingRetry();", recoveryTick, StringComparison.Ordinal);
         Assert.Contains("_focusGeometryWork.Process();", recoveryTick, StringComparison.Ordinal);
         Assert.Matches(
